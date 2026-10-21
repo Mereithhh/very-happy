@@ -76,6 +76,25 @@ describe('team coordination invariants', () => {
         expect(f.state.operations.at(-1)).toMatchObject({ status: 'completed', error: null });
     });
 
+    it('B-729: a rebind (adopt) or cleanup keeps the unbound conversation in previousSessionIds', () => {
+        const f = fixture(); f.act({ type: 'join', name: 'Root', sessionId: 's1' }); const root = f.state.bots[0];
+        expect(root.previousSessionIds).toBeUndefined();
+        f.act({ type: 'join', name: 'Root', sessionId: 's2', botId: root.id });
+        expect(f.state.bots[0]).toMatchObject({ sessionId: 's2', previousSessionIds: ['s1'] });
+        f.act({ type: 'join', name: 'Root', sessionId: 's2', botId: root.id }); // same binding: no duplicate history
+        expect(f.state.bots[0].previousSessionIds).toEqual(['s1']);
+        f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] });
+        const spawn = f.state.operations[0];
+        f.act({ type: 'claim-operation', operationId: spawn.id, machineId: 'machine', teamLaunchVersion: 1 });
+        f.act({ type: 'complete-operation', operationId: spawn.id, machineId: 'machine', claimId: f.state.operations[0].claimId!, sessionId: 'w1' });
+        const task = f.state.tasks[0];
+        f.act({ type: 'submit', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1, result: 'ok' });
+        f.act({ type: 'accept', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1 });
+        const stop = f.state.operations.at(-1)!;
+        f.act({ type: 'claim-operation', operationId: stop.id, machineId: 'machine' });
+        f.act({ type: 'complete-operation', operationId: stop.id, machineId: 'machine', claimId: f.state.operations.at(-1)!.claimId! });
+        expect(f.state.bots[1]).toMatchObject({ sessionId: null, previousSessionIds: ['w1'] });
+    });
     it('fences old bot credentials after rebind', () => {
         const f = fixture(); f.act({ type: 'join', name: 'Root', sessionId: 's1' }); const bot = f.state.bots[0];
         f.act({ type: 'join', name: 'Root', sessionId: 's2', botId: bot.id });

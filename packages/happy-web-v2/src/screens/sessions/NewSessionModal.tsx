@@ -1,3 +1,4 @@
+import { ProjectPicker } from '@/screens/projects/ProjectPicker';
 import { useProjects } from '@/sync/projects';
 import { suggestProjectFor } from '@/screens/projects/projectSuggestion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -10,7 +11,8 @@ import type { RecentMachinePath } from '@/utils/quickChat';
 import { newSessionTimingStart } from '@/app/newSessionTiming';
 import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { pendingSessions } from '@/sync/pendingSessionsRuntime';
-import { Button, Spinner } from '@/ui';
+import { Button, Combobox, Spinner } from '@/ui';
+import type { SelectOption } from '@/ui';
 import { toast } from '@/ui/Toast';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ConnectMachineLink, NoMachinesNotice } from './NoMachinesNotice';
@@ -91,7 +93,7 @@ export function NewSessionModal({
   // `useAllMachines` answers [] until the store is hydrated (storage.ts's
   // `!isDataReady` guard) and settings can be overwritten by a later server
   // sync, so every initializer below used to freeze at a pre-hydration value:
-  // machineId at '' (→ <select> matches no option, `canCreate` false FOREVER,
+  // machineId at '' (→ the picker matches no option, `canCreate` false FOREVER,
   // Create permanently disabled on a cold start — the exact bug B-146 fixed in
   // the terminal dialog), and directory/agent at "no presets / default agent"
   // even after the real values arrived.
@@ -201,6 +203,18 @@ export function NewSessionModal({
   // recent-path memory and the Task Board mapping happen on success there.
   const suggested = suggestProjectFor({ machineId, path: directory.trim() }, liveProjects)?.id ?? null;
   const projectId = pickedProject === undefined ? suggested : pickedProject;
+  // Offline machines stay listed, disabled, so the picker says why they can't be
+  // chosen; a remembered machine this account no longer lists keeps its old row.
+  const offlineText = lang.startsWith('zh') ? '离线' : 'Offline';
+  const machineOptions: SelectOption[] = [
+    ...online.map((m) => ({
+      value: m.id,
+      label: machineLabel(m),
+      ...(hasClaudeAuthNotice(claudeAuthNotice(m, agent)) ? { description: t('newSession.claudeAuthOptionSuffix') } : {}),
+    })),
+    ...machines.filter((m) => !isMachineOnline(m)).map((m) => ({ value: m.id, label: machineLabel(m), meta: offlineText, disabled: true })),
+    ...(machineId && !machines.some((m) => m.id === machineId) ? [{ value: machineId, label: machineLabel(undefined), meta: offlineText, disabled: true }] : []),
+  ];
   async function onCreate() {
     if (!canCreate) return;
     let path = resolveDir(trimmed);
@@ -248,21 +262,18 @@ export function NewSessionModal({
         ) : (
           <>
             <div className="ns-label-row">
-              <label className="ns-label">{t('newSession.machine')}</label>
+              <label className="ns-label" id="ns-machine-label">{t('newSession.machine')}</label>
               <ConnectMachineLink onClose={onClose} />
             </div>
-            <select className="ns-select" value={machineId} onChange={(e) => setMachineId(e.target.value)}>
-              {machineId && !onlineIds.includes(machineId) && <option value={machineId} disabled>{machineLabel(machines.find(m => m.id === machineId))} · {(lang.startsWith('zh') ? '离线' : 'Offline')}</option>}
-              {online.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {/* A native <option> can only carry text, so the marker is
-                    * appended to the label rather than rendered as a chip. */}
-                  {hasClaudeAuthNotice(claudeAuthNotice(m, agent))
-                    ? `${machineLabel(m)} · ${t('newSession.claudeAuthOptionSuffix')}`
-                    : machineLabel(m)}
-                </option>
-              ))}
-            </select>
+            <Combobox
+              label={t('newSession.machine')}
+              labelledBy="ns-machine-label"
+              size="md"
+              value={machineId}
+              onChange={setMachineId}
+              options={machineOptions}
+              leading={machineId ? <span className={`vh-dot ns-machine-dot vh-dot--${onlineIds.includes(machineId) ? 'connected' : 'offline'}`} aria-hidden="true" /> : undefined}
+            />
             {selectedClaudeAuth.kind !== 'none' && (
               <div className="ns-machine-warn">
                 {selectedClaudeAuth.kind === 'not-logged-in'
@@ -277,10 +288,7 @@ export function NewSessionModal({
             {projectsSnap.status === 'ready' && liveProjects.length > 0 && (
               <>
                 <label className="ns-label" htmlFor="ns-project">{lang.startsWith('zh') ? '项目' : 'Project'}</label>
-                <select id="ns-project" className="ns-select" value={projectId ?? ''} onChange={(e) => setPickedProject(e.target.value || null)}>
-                  <option value="">{lang.startsWith('zh') ? '无项目' : 'No project'}</option>
-                  {liveProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                <ProjectPicker id="ns-project" value={projectId ? { kind: 'existing', projectId } : { kind: 'none' }} onChange={(next) => setPickedProject(next.kind === 'existing' ? next.projectId : null)} projects={liveProjects} />
               </>
             )}
 

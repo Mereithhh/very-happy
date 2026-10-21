@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FolderKanban, MoreHorizontal, Send, UsersRound, Zap, History, Undo2, Plus } from 'lucide-react';
+import { ArrowLeft, FolderKanban, MoreHorizontal, Send, UsersRound, Zap, History, Undo2, Plus, Link2, LogOut } from 'lucide-react';
+import { ActionDropdownMenu } from '@/ui/Menu';
+import { linkableTeams } from './projectChoice';
 import type { ProjectDetailResponse, ProjectInstructionsRevisionView, ProjectLogEntryView, ProjectLogKind } from '@slopus/happy-wire';
-import { projectsApi, ProjectsApiError, refreshProjects } from '@/sync/projects';
+import { applyLocalMembership, projectsApi, ProjectsApiError, refreshProjects, useProjects } from '@/sync/projects';
 import { useAllMachines, useAllSessions, storage } from '@/sync/storage';
 import { useBoardCompleted, useBoardItems } from '@/screens/board/useBoardItems';
 import { attentionKeysOf } from '@/screens/sessions/sidebarAttention';
@@ -13,6 +15,9 @@ import { getSessionName } from '@/utils/sessionUtils';
 import { machineLabel } from '@/utils/machineUtils';
 import { toast } from '@/ui/Toast';
 import { Modal } from '@/modal';
+import { Combobox } from '@/ui/Combobox';
+import { Segmented } from '@/ui/Segmented';
+import { SelectMenu } from '@/ui/SelectMenu';
 import { bucketItems, injectionStateOf, summarizeInjection, utf8Bytes, INSTRUCTIONS_MAX_BYTES, type InjectionState } from './projectPage';
 import { useProjectCopy, type ProjectCopy } from './projectCopy';
 import './projects.css';
@@ -77,7 +82,7 @@ export function ProjectScreen() {
         <button type="button" role="tab" aria-selected={tab === 'overview'} className={tab === 'overview' ? 'is-active' : ''} onClick={() => setTab('overview')}>{c.overview}</button>
         <button type="button" role="tab" aria-selected={tab === 'context'} className={tab === 'context' ? 'is-active' : ''} onClick={() => setTab('context')}>{c.context}</button>
       </div>
-      {tab === 'overview' ? <ProjectOverview detail={detail} c={c} /> : <ProjectContext detail={detail} c={c} onChanged={reload} />}
+      {tab === 'overview' ? <ProjectOverview detail={detail} c={c} onChanged={reload} /> : <ProjectContext detail={detail} c={c} onChanged={reload} />}
     </main>
   );
 }
@@ -122,13 +127,18 @@ function ProjectComposer({ detail, c }: { detail: ProjectDetailResponse; c: Proj
       />
       <div className="pj-composer-bar">
         {folder ? (
-          <label className="pj-composer-summary">
-            <span className="pj-muted">{c.folder}</span>
-            <select value={folderIndex} onChange={(e) => setFolderIndex(Number(e.target.value))} aria-label={c.folder}>
-              {folders.map((f, i) => <option key={`${f.machineId}:${f.path}`} value={i}>{f.path}{f.primary ? ` · ${c.primary}` : ''}</option>)}
-            </select>
+          <div className="pj-composer-summary">
+            <span className="pj-muted" aria-hidden="true">{c.folder}</span>
+            <SelectMenu
+              variant="soft"
+              className="pj-folder-select"
+              label={c.folder}
+              value={String(Math.min(folderIndex, folders.length - 1))}
+              onChange={(v) => setFolderIndex(Number(v))}
+              options={folders.map((f, i) => ({ value: String(i), label: `${f.path}${f.primary ? ` · ${c.primary}` : ''}` }))}
+            />
             {machine && <span className="pj-muted mono">{machineLabel(machine)}</span>}
-          </label>
+          </div>
         ) : <span className="pj-muted">{c.noFolder}</span>}
         <button type="button" className="pj-send" disabled={!folder || !text.trim() || busy} onClick={send} aria-label={c.send} title={`${c.send} (⌘↵)`}><Send size={16} /></button>
       </div>
@@ -148,7 +158,8 @@ function injectionLabel(s: InjectionState, c: ProjectCopy): string {
   }
 }
 
-function ProjectOverview({ detail, c }: { detail: ProjectDetailResponse; c: ProjectCopy }) {
+function ProjectOverview({ detail, c, onChanged }: { detail: ProjectDetailResponse; c: ProjectCopy; onChanged: () => Promise<void> }) {
+  const navigate = useNavigate();
   const items = useBoardItems();
   const sessions = useAllSessions();
   const teams = useTeamNavigation();
@@ -170,6 +181,16 @@ function ProjectOverview({ detail, c }: { detail: ProjectDetailResponse; c: Proj
   });
   const summary = summarizeInjection(memberRows.map((r) => r.injection));
   const attachedTeams = teams.filter((t) => detail.project.teamIds.includes(t.id));
+  const projects = useProjects();
+  const linkable = linkableTeams(teams, detail.project.id, projects.status === 'ready' ? projects.projects : [detail.project]);
+  const linkTeam = async (teamId: string) => {
+    try { await projectsApi.attachTeam(detail.project.id, teamId); await onChanged(); }
+    catch (error) { toast.error(error instanceof ProjectsApiError && error.code === 'team_machine_not_in_project' ? c.teamNoFolder : c.failed); }
+  };
+  const leave = async (sessionId: string) => {
+    try { await projectsApi.removeMember(detail.project.id, sessionId); applyLocalMembership(null, [sessionId]); await onChanged(); }
+    catch { toast.error(c.failed); }
+  };
   const Bucket = ({ title, list, tone }: { title: string; list: { key: string; title: string; href: string }[]; tone?: 'attention' }) => (
     <section className="pj-bucket">
       <h2>{title}<span className={`pj-count${tone === 'attention' && list.length ? ' is-attention' : ''}`}>{list.length}</span></h2>
@@ -185,12 +206,18 @@ function ProjectOverview({ detail, c }: { detail: ProjectDetailResponse; c: Proj
         <Bucket title={c.doneToday} list={done.map((e) => ({ key: e.key, href: e.href!, title: e.title }))} />
         <Bucket title={c.idle} list={titled(buckets.idle)} />
       </div>
-      {attachedTeams.length > 0 && (
-        <section className="pj-section">
-          <h2>{c.teams}</h2>
-          {attachedTeams.map((t) => <Link key={t.id} className="pj-row" to={`/teams/${encodeURIComponent(t.id)}`}><UsersRound size={15} aria-hidden />{t.name}</Link>)}
-        </section>
-      )}
+      {/* B-726: the project is the team's context — teams live here, with「新建团队」and「关联已有团队」. */}
+      <section className="pj-section pj-teams">
+        <h2>{c.teams}
+          <span className="pj-h-actions">
+            <button type="button" className="pj-ghost" onClick={() => navigate(`/teams?new=1&project=${encodeURIComponent(detail.project.id)}`)}><Plus size={14} aria-hidden />{c.newTeamHere}</button>
+            {linkable.length > 0 && <ActionDropdownMenu align="end" items={linkable.map((t) => ({ key: t.id, icon: UsersRound, label: t.name, onSelect: () => void linkTeam(t.id) }))}>
+              <button type="button" className="pj-ghost"><Link2 size={14} aria-hidden />{c.linkTeam}</button>
+            </ActionDropdownMenu>}
+          </span>
+        </h2>
+        {attachedTeams.length === 0 ? <p className="pj-muted">{c.noTeams}</p> : attachedTeams.map((t) => <Link key={t.id} className="pj-row" to={`/teams/${encodeURIComponent(t.id)}`}><UsersRound size={15} aria-hidden />{t.name}</Link>)}
+      </section>
       {detail.project.automationIds.length > 0 && (
         <section className="pj-section">
           <h2>{c.automations}</h2>
@@ -200,11 +227,15 @@ function ProjectOverview({ detail, c }: { detail: ProjectDetailResponse; c: Proj
       <section className="pj-section">
         <h2>{c.members}<span className="pj-muted pj-h-note">{c.injectionSummary(summary.current, summary.stale + summary.pending, summary.none)}</span></h2>
         {memberRows.length === 0 ? <p className="pj-muted">{c.empty}</p> : memberRows.map((r) => (
-          <Link key={r.member.sessionId} className="pj-member" to={`/session/${encodeURIComponent(r.member.sessionId)}`}>
-            <span className="pj-member-title">{r.title}</span>
-            <span className="pj-muted pj-member-meta">{[r.agent, r.machine, r.doing].filter(Boolean).join(' · ')}</span>
-            <span className={`pj-badge pj-badge--${r.injection.kind}`}>{injectionLabel(r.injection, c)}</span>
-          </Link>
+          <div key={r.member.sessionId} className="pj-member-row">
+            <Link className="pj-member" to={`/session/${encodeURIComponent(r.member.sessionId)}`}>
+              <span className="pj-member-title">{r.title}</span>
+              <span className="pj-muted pj-member-meta">{[r.member.via === 'team' ? c.viaTeam : null, r.agent, r.machine, r.doing].filter(Boolean).join(' · ')}</span>
+              <span className={`pj-badge pj-badge--${r.injection.kind}`}>{injectionLabel(r.injection, c)}</span>
+            </Link>
+            {/* B-726: explicit members leave here; a team member follows its team (team settings). */}
+            {r.member.via !== 'team' && <button type="button" className="pj-icon-btn pj-member-leave" title={c.removeFromProject} aria-label={`${c.removeFromProject}: ${r.title}`} onClick={() => void leave(r.member.sessionId)}><LogOut size={15} aria-hidden /></button>}
+          </div>
         ))}
       </section>
     </div>
@@ -293,9 +324,13 @@ function ProjectLog({ detail, c, onChanged }: { detail: ProjectDetailResponse; c
       </span></h2>
       <p className="pj-muted pj-hint">{c.logHint}</p>
       <div className="pj-note-form">
-        <select value={newKind} onChange={(e) => setNewKind(e.target.value as ProjectLogKind)} aria-label={c.addNote}>
-          <option value="decision">{c.decision}</option><option value="finding">{c.finding}</option><option value="handoff">{c.handoff}</option>
-        </select>
+        <Segmented<ProjectLogKind>
+          className="pj-note-kind"
+          label={c.addNote}
+          value={newKind}
+          onChange={setNewKind}
+          options={[{ value: 'decision', label: c.decision }, { value: 'finding', label: c.finding }, { value: 'handoff', label: c.handoff }]}
+        />
         <input value={title} maxLength={200} placeholder={c.titlePh} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void add(); }} />
         <button type="button" className="pj-primary" disabled={!title.trim()} onClick={() => void add()}><Plus size={14} />{c.addNote}</button>
         <textarea value={body} rows={2} placeholder={c.bodyPh} onChange={(e) => setBody(e.target.value)} />
@@ -331,9 +366,10 @@ function ProjectSettings({ detail, c, onChanged }: { detail: ProjectDetailRespon
   const [goal, setGoal] = useState(project.goal ?? '');
   const [machineId, setMachineId] = useState(machines[0]?.id ?? '');
   const [path, setPath] = useState('');
+  const machineLabelId = useId();
   const run = async (work: () => Promise<unknown>) => { try { await work(); await onChanged(); } catch { toast.error(c.failed); } };
-  const folderMachines = new Set(project.folders.map((f) => f.machineId));
-  const attachable = teams.filter((t) => !t.archivedAt && folderMachines.has(t.machineId) && !project.teamIds.includes(t.id));
+  // B-726: any live team can join — the server adds the team's folder when its machine is new to the project.
+  const attachable = teams.filter((t) => t.archivedAt === undefined && !project.teamIds.includes(t.id));
   return (
     <section className="pj-settings" aria-label={c.settings}>
       <div className="pj-field-row">
@@ -351,13 +387,23 @@ function ProjectSettings({ detail, c, onChanged }: { detail: ProjectDetailRespon
         </div>
       ))}
       <div className="pj-field-row">
-        <label>{c.machine}<select value={machineId} onChange={(e) => setMachineId(e.target.value)}>{machines.map((m) => <option key={m.id} value={m.id}>{machineLabel(m)}</option>)}</select></label>
+        <div className="pj-field">
+          <span id={machineLabelId}>{c.machine}</span>
+          <Combobox
+            size="md"
+            labelledBy={machineLabelId}
+            label={c.machine}
+            value={machineId}
+            onChange={setMachineId}
+            options={machines.map((m) => ({ value: m.id, label: machineLabel(m) }))}
+          />
+        </div>
         <label className="pj-grow">{c.path}<input value={path} placeholder="/home/me/code/repo" onChange={(e) => setPath(e.target.value)} /></label>
         <button type="button" className="pj-ghost" disabled={!machineId || !path.trim()} onClick={() => void run(async () => { await projectsApi.update(project.id, { folders: [...project.folders, { machineId, path: path.trim(), primary: project.folders.length === 0 }] }); setPath(''); })}><Plus size={14} />{c.addFolder}</button>
       </div>
       <h3>{c.teams}</h3>
       {project.teamIds.map((id) => <div key={id} className="pj-folder"><span>{teams.find((t) => t.id === id)?.name ?? id.slice(0, 8)}</span><button type="button" className="pj-ghost" onClick={() => void run(() => projectsApi.detachTeam(project.id, id))}>{c.detach}</button></div>)}
-      {attachable.length > 0 && <div className="pj-field-row">{attachable.map((t) => <button key={t.id} type="button" className="pj-ghost" onClick={() => void run(() => projectsApi.attachTeam(project.id, t.id))}><UsersRound size={14} />{c.attachTeam}: {t.name}</button>)}</div>}
+      {attachable.length > 0 && <div className="pj-field-row"><ActionDropdownMenu align="start" items={attachable.map((t) => ({ key: t.id, icon: UsersRound, label: t.name, onSelect: () => void run(() => projectsApi.attachTeam(project.id, t.id)) }))}><button type="button" className="pj-ghost"><Link2 size={14} aria-hidden />{c.linkTeam}</button></ActionDropdownMenu></div>}
       <div className="pj-field-row pj-danger-row">
         <button type="button" className="pj-ghost" onClick={() => void run(() => projectsApi.update(project.id, { archived: !project.archivedAt }))}>{project.archivedAt ? c.unarchive : c.archive}</button>
         <button type="button" className="pj-danger" onClick={async () => { if (await Modal.confirm(c.delete, c.deleteConfirm, { confirmText: c.delete, destructive: true })) { try { await projectsApi.remove(project.id); void refreshProjects(); navigate('/'); } catch { toast.error(c.failed); } } }}>{c.delete}</button>

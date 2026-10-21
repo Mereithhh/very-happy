@@ -8,10 +8,14 @@
  * the machine-key-encrypted RPC params, and is cleared after the write.
  */
 import * as Dialog from '@radix-ui/react-dialog';
-import { ChevronDown, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Spinner, toast } from '@/ui';
+import { Checkbox } from '@/ui/Checkbox';
+import { Combobox } from '@/ui/Combobox';
+import { SelectMenu, type SelectOption } from '@/ui/SelectMenu';
+import { Summary } from '@/ui/Summary';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useAllMachines } from '@/sync/storage';
 import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
@@ -197,17 +201,16 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
         </label>
     );
 
-    const select = (label: string, value: string, options: { key: string; name: string }[], onChange: (v: string) => void, disabled = false) => (
-        <label className="so-field">
-            <span className="so-field-label">{label}</span>
-            <span className="so-select-wrap">
-                <select className="so-select" value={value} disabled={disabled || busy} onChange={(e) => onChange(e.target.value)} aria-label={label}>
-                    {options.map((o) => <option key={o.key} value={o.key}>{o.name}</option>)}
-                </select>
-                <ChevronDown size={15} aria-hidden="true" />
-            </span>
-        </label>
-    );
+    // B-714: machine / provider are dynamic lists → Combobox; pi API and auth header are fixed → SelectMenu.
+    const select = (label: string, value: string, options: SelectOption[], onChange: (v: string) => void, disabled = false, kind: 'combobox' | 'menu' = 'menu') => {
+        const picker = { label, size: 'md', className: 'mce-picker', value: value || null, options, disabled: disabled || busy, onChange } as const;
+        return (
+            <div className="so-field">
+                <span className="so-field-label">{label}</span>
+                {kind === 'combobox' ? <Combobox {...picker} /> : <SelectMenu {...picker} />}
+            </div>
+        );
+    };
 
     const changedNothing = pending && !pending.result.changed;
 
@@ -224,7 +227,7 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
                 </div>
 
                 <div className="so-fields">
-                    {select(t('modelConfig.machine'), machineId, machines.map((m) => ({ key: m.id, name: `${machineLabel(m)}${isMachineOnline(m) ? '' : ` · ${t('settingsMachines.offline')}`}` })), (v) => { setMachineId(v); setProvider(''); })}
+                    {select(t('modelConfig.machine'), machineId, machines.map((m) => ({ value: m.id, label: machineLabel(m), meta: isMachineOnline(m) ? undefined : t('settingsMachines.offline') })), (v) => { setMachineId(v); setProvider(''); }, false, 'combobox')}
                     <div className="vh-segmented mce-harness" role="tablist" aria-label={t('modelConfig.harness')}>
                         {HARNESS_IDS.map((id) => (
                             <button key={id} type="button" role="tab" aria-selected={harness === id} className={harness === id ? 'is-active' : ''} onClick={() => { setHarness(id); setProvider(''); }}>
@@ -250,16 +253,16 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
                     </div>}
 
                     {view && hasProviders && select(t('modelConfig.provider'), selectedProvider,
-                        [...providerIds.map((id) => ({ key: id, name: id === view.current.activeProvider ? `${id} · ${t('modelConfig.activeSuffix')}` : id })), { key: NEW_PROVIDER, name: t('modelConfig.newProvider') }],
-                        setProvider, !canEdit)}
+                        [...providerIds.map((id) => ({ value: id, label: id, meta: id === view.current.activeProvider ? t('modelConfig.activeSuffix') : undefined })), { value: NEW_PROVIDER, label: t('modelConfig.newProvider') }],
+                        setProvider, !canEdit, 'combobox')}
 
                     {view && hasProviders && form.isNewProvider && field(t('modelConfig.providerId'), 'providerId', { placeholder: harness === 'codex' ? 'my-gateway' : 'my-gateway', hint: t('modelConfig.providerIdHint') })}
                     {view && harness === 'codex' && field(t('modelConfig.providerName'), 'providerName', { placeholder: form.providerId || 'My gateway' })}
                     {view && field(t('modelConfig.baseUrl'), 'baseUrl', { placeholder: harness === 'claude' ? 'https://gateway.example.com' : harness === 'gemini' ? 'https://gemini-gateway.example.com' : 'https://gateway.example.com/v1', hint: t(`modelConfig.baseUrlHint.${harness}` as 'modelConfig.baseUrlHint.claude') })}
-                    {view && harness === 'pi' && select(t('modelConfig.api'), form.api, PI_APIS.map((a) => ({ key: a, name: a })), (v) => set('api', v), !canEdit)}
+                    {view && harness === 'pi' && select(t('modelConfig.api'), form.api, PI_APIS.map((a) => ({ value: a, label: a })), (v) => set('api', v), !canEdit)}
                     {view && harness === 'claude' && select(t('modelConfig.authHeader'), form.authHeader, [
-                        { key: 'bearer', name: 'Authorization: Bearer (ANTHROPIC_AUTH_TOKEN)' },
-                        { key: 'x-api-key', name: 'x-api-key (ANTHROPIC_API_KEY)' },
+                        { value: 'bearer', label: 'Authorization: Bearer (ANTHROPIC_AUTH_TOKEN)' },
+                        { value: 'x-api-key', label: 'x-api-key (ANTHROPIC_API_KEY)' },
                     ], (v) => set('authHeader', v as 'bearer' | 'x-api-key'), !canEdit)}
 
                     {view && <fieldset className="so-field mce-key" disabled={!canEdit || busy}>
@@ -285,7 +288,7 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
 
                     {view && harness !== 'pi' && field(t('modelConfig.defaultModel'), 'model', { placeholder: harness === 'claude' ? 'glm-5.3' : harness === 'codex' ? 'gpt-5.5' : 'gemini-3-flash-preview', hint: t('modelConfig.defaultModelHint') })}
                     {view && harness === 'claude' && <details className="mce-more">
-                        <summary>{t('modelConfig.aliasMapping')}</summary>
+                        <Summary>{t('modelConfig.aliasMapping')}</Summary>
                         <div className="so-fields">
                             {field('opus →', 'opusModel', { placeholder: 'ANTHROPIC_DEFAULT_OPUS_MODEL' })}
                             {field('sonnet →', 'sonnetModel', { placeholder: 'ANTHROPIC_DEFAULT_SONNET_MODEL' })}
@@ -297,10 +300,9 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
                         <textarea className="mce-input mce-textarea" rows={3} value={form.extraModels} spellCheck={false} disabled={!canEdit || busy} placeholder={harness === 'pi' ? 'glm-5.3 200k\nkimi-k3 256k' : 'glm-5.3\nkimi-k3'} onChange={(e) => set('extraModels', e.target.value)} />
                         <span className="mce-hint">{t(harness === 'pi' ? 'modelConfig.piModelListHint' : 'modelConfig.modelListHint')}</span>
                     </label>}
-                    {view && hasProviders && <label className="mce-check">
-                        <input type="checkbox" checked={form.activate} disabled={!canEdit || busy} onChange={(e) => set('activate', e.target.checked)} />
-                        <span>{t(harness === 'codex' ? 'modelConfig.activateCodex' : 'modelConfig.activatePi')}</span>
-                    </label>}
+                    {view && hasProviders && <Checkbox className="mce-check" checked={form.activate} disabled={!canEdit || busy} onCheckedChange={(checked) => set('activate', checked)}>
+                        {t(harness === 'codex' ? 'modelConfig.activateCodex' : 'modelConfig.activatePi')}
+                    </Checkbox>}
                     {view && harness === 'pi' && form.activate && field(t('modelConfig.defaultModel'), 'model', { placeholder: parsePiModelLines(form.extraModels).ids[0] || 'model-id' })}
 
                     {view && view.warnings.length > 0 && !pending && <ul className="mce-warnings">
@@ -328,7 +330,7 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
                     </div>
 
                     {view && view.backups.length > 0 && <details className="mce-more">
-                        <summary>{t('modelConfig.backups', { count: view.backups.length })}</summary>
+                        <Summary>{t('modelConfig.backups', { count: view.backups.length })}</Summary>
                         <ul className="mce-backups">
                             {view.backups.slice(0, 10).map((b) => <li key={b.id}>
                                 <span>{new Date(b.createdAt).toLocaleString()}</span>

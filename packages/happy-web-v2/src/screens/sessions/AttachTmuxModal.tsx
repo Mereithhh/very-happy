@@ -17,7 +17,7 @@ import { isMachineOnline, machineLabel, pickDefaultMachineId } from '@/utils/mac
 import { createTerminalAt } from '@/app/newTerminal';
 import { machineListTmuxSessions } from '@/sync/ops';
 import { tmuxSessionsSupported } from '@/sync/closedTerminals';
-import { Button, useToast } from '@/ui';
+import { Button, Combobox, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { NoMachinesNotice } from './NoMachinesNotice';
 import { formatSessionAge, type UserTmuxSession } from './newTerminalAttach';
@@ -80,12 +80,15 @@ export function AttachTmuxModal({ onClose }: { onClose: () => void }) {
           <>
             {online.length > 1 && (
               <>
-                <label className="ns-label">{t('newSession.machine')}</label>
-                <select className="ns-select" value={machineId} onChange={(e) => setMachineId(e.target.value)}>
-                  {online.map((m) => (
-                    <option key={m.id} value={m.id}>{machineLabel(m)}</option>
-                  ))}
-                </select>
+                <label className="ns-label" id="at-machine-label">{t('newSession.machine')}</label>
+                <Combobox
+                  label={t('newSession.machine')}
+                  labelledBy="at-machine-label"
+                  size="md"
+                  value={machineId}
+                  onChange={setMachineId}
+                  options={online.map((m) => ({ value: m.id, label: machineLabel(m) }))}
+                />
               </>
             )}
 

@@ -14,6 +14,7 @@ import { getDisplayName } from '@/sync/friendTypes';
 import { SessionShareApiError } from '@/sync/apiSessionShares';
 import type { SessionGrantView, SessionShareRole, ShareExpiryDays } from '@/sync/sessionShareTypes';
 import { Button, Input } from '@/ui';
+import { SelectMenu } from '@/ui/SelectMenu';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ExpirySelect, ShareLinkPanel } from './ShareLinkPanel';
 import { remainingDaysLabel } from './shareFormat';
@@ -168,8 +169,8 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
                             </button>
                         </div>
                         <div className="shd-link-row">
-                            <label className="shd-inline-label" htmlFor={`shd-grant-exp-${sessionId}`}>{t('share.expiry.label')}</label>
-                            <ExpirySelect id={`shd-grant-exp-${sessionId}`} value={expiry} onChange={setExpiry} />
+                            <span className="shd-inline-label" id={`shd-grant-exp-${sessionId}`}>{t('share.expiry.label')}</span>
+                            <ExpirySelect labelledBy={`shd-grant-exp-${sessionId}`} value={expiry} onChange={setExpiry} />
                         </div>
                         {role === 'driver' && (
                             <p className="shd-warn"><ShieldAlert size={15} aria-hidden />{t('share.dialog.driverWarning')}</p>
@@ -199,15 +200,17 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
                                     <span className="shd-grant-name">{grant.grantee.displayName}</span>
                                     <span className="shd-grant-sub">{[grant.grantee.email ?? grant.grantee.username, grant.status === 'pending' ? t('share.dialog.statusPending') : null, grant.expiresAt ? remainingDaysLabel(t, grant.expiresAt) : null].filter(Boolean).join(' · ')}</span>
                                 </span>
-                                <select
-                                    className="shd-grant-role"
+                                <SelectMenu<SessionShareRole>
+                                    className="shd-grant-picker"
                                     value={grant.role}
-                                    aria-label={t('share.dialog.roleLabel')}
-                                    onChange={(e) => void onRole(grant, e.target.value as SessionShareRole)}
-                                >
-                                    <option value="viewer">{t('share.roleViewer')}</option>
-                                    <option value="driver">{t('share.roleDriver')}</option>
-                                </select>
+                                    label={t('share.dialog.roleLabel')}
+                                    align="end"
+                                    options={[
+                                        { value: 'viewer', label: t('share.roleViewer') },
+                                        { value: 'driver', label: t('share.roleDriver') },
+                                    ]}
+                                    onChange={(next) => void onRole(grant, next)}
+                                />
                                 <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmRevoke(grant.id)}>{t('share.dialog.revoke')}</Button>
                             </div>
                         ))}

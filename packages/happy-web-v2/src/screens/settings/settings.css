@@ -544,7 +544,6 @@ input.set-value:focus {
 .settings-layout { display:grid; grid-template-columns:240px minmax(0,1fr); height:100%; min-height:0; background:var(--bg-1); }
 .settings-navigation { flex:none; width:240px; background:var(--bg-1); padding:var(--sp-3); overflow-y:auto; }
 .settings-navigation-top { display:flex; align-items:center; justify-content:space-between; }
-.settings-search-toggle { display:none; }
 .settings-return { display:flex; gap:var(--sp-2); align-items:center; min-height:36px; color:var(--text); font-size:var(--fs-13); padding:0 var(--sp-2); }
 .settings-search { display:flex; align-items:center; gap:var(--sp-2); background:var(--bg-2); border-radius:var(--r-sm); padding:6px var(--sp-2); margin:var(--sp-3) 0; color:var(--text-faint); }
 .settings-search input { min-width:0; width:100%; border:0; background:transparent; font-size:var(--fs-12); }
@@ -557,16 +556,13 @@ input.set-value:focus {
 .settings-content .vh-item { padding:10px var(--sp-4); font-size:var(--fs-13); }
 .settings-content .vh-item__subtitle { font-size:var(--fs-12); }
 .settings-content .set-header__title { margin:0; font-size:var(--fs-20); }
-.settings-mobile-select { display:none; }
 @container (max-width:700px) {
  .settings-layout { grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); }
  .settings-navigation { width:100%; padding:var(--sp-2); overflow:visible; }
- .settings-navigation nav, .settings-search { display:none; }
- .settings-return { min-height:44px; }
- .settings-search-toggle { display:grid; place-items:center; width:44px; height:44px; flex:none; border-radius:var(--r-sm); }
- .settings-navigation[data-search-open="true"] .settings-search { display:flex; }
- .settings-navigation[data-searching="true"] nav { display:grid; max-height:30dvh; overflow-y:auto; }
- .settings-mobile-select { display:block; width:100%; min-height:44px; background:var(--bg-2); border:1px solid var(--line); border-radius:var(--r-sm); padding:6px var(--sp-2); }
+ /* B-714: no select, no second back row — root keeps just the search; subpages hide the aside */
+ .settings-navigation[data-root="false"], .settings-navigation-top, .settings-navigation nav { display:none; }
+ .settings-search { margin:0; min-height:44px; }
+ .settings-navigation[data-searching="true"] nav { display:grid; max-height:40dvh; overflow-y:auto; margin-top:var(--sp-2); }
  .settings-content .set-page { padding:var(--sp-4); }
 }
 @media (pointer:coarse) { .settings-navigation nav a { min-height:44px; } }

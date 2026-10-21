@@ -14,6 +14,14 @@ export function inTaskTree(state: TeamState, task: TeamTask, ancestorId: string)
     }
     return false;
 }
+/** B-729: every conversation a member has had stays attributable to the team —
+ *  a join (adopt / rebind) or cleanup that drops `bot.sessionId` keeps it in
+ *  `previousSessionIds` (oldest first). Spawn receipts already keep theirs. */
+const PREVIOUS_SESSION_LIMIT = 32;
+function releaseBotSession(bot: TeamBot): void {
+    if (bot.sessionId && !bot.previousSessionIds?.includes(bot.sessionId)) bot.previousSessionIds = [...(bot.previousSessionIds ?? []), bot.sessionId].slice(-PREVIOUS_SESSION_LIMIT);
+    bot.sessionId = null;
+}
 export function actorCanReadTask(state: TeamState, actor: TeamActor, task: TeamTask): boolean {
     if (actor.kind === 'owner') return true;
     if (state.bots.some(b => b.id === actor.botId && b.root)) return true;
@@ -158,7 +166,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             if (bot) {
                 requireTeam(!s.operations.some(o => o.botId === bot!.id && o.status !== 'completed' && !(o.status === 'failed' && o.error === 'task_closed_before_spawn')), 'bot_has_unresolved_operations');
                 requireTeam(!s.tasks.some(t => t.assigneeBotId === bot!.id && ['pending', 'failed'].includes(t.cleanup)), 'bot_cleanup_unfinished');
-                bot.generation++; bot.sessionId = action.sessionId; bot.name = action.name;
+                releaseBotSession(bot); bot.generation++; bot.sessionId = action.sessionId; bot.name = action.name;
                 for (const task of s.tasks.filter(t => t.assigneeBotId === bot!.id && !['done', 'cancelled'].includes(t.status))) {
                     task.attempts.find(a => a.id === task.currentAttemptId)!.status = 'superseded';
                     task.currentAttemptId = id(); task.status = 'running';
@@ -296,9 +304,9 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             op.status = 'completed'; op.manualResolution = { note: action.note, at: now };
             if (task.currentAttemptId === op.attemptId) task.cleanup = 'done';
             const bot = s.bots.find(b => b.id === op.botId);
-            if (bot && bot.generation === op.generation && bot.sessionId === op.sessionId && !s.tasks.some(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status))) bot.sessionId = null;
+            if (bot && bot.generation === op.generation && bot.sessionId === op.sessionId && !s.tasks.some(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status))) releaseBotSession(bot);
             // B-692: a reconciled cleanup releases its session even if a launch is queued behind it.
-            else if (bot && op.type === 'stop' && op.sessionId && bot.sessionId === op.sessionId) bot.sessionId = null;
+            else if (bot && op.type === 'stop' && op.sessionId && bot.sessionId === op.sessionId) releaseBotSession(bot);
             operationId = op.id;
             break;
         }
@@ -359,7 +367,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                     if (t.currentAttemptId === op.attemptId) t.cleanup = 'done';
                     // B-692: the stopped session is unbound even when a newer launch is
                     // already queued for this bot (its generation moved on).
-                    if (op.sessionId && bot.sessionId === op.sessionId) bot.sessionId = null;
+                    if (op.sessionId && bot.sessionId === op.sessionId) releaseBotSession(bot);
                 }
                 op.status = 'completed';
             }

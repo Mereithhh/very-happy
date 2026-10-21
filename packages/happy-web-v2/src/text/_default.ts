@@ -1977,6 +1977,7 @@ export const en = {
         groupProjects: 'Group by project',
         moveToProject: 'Move to project…',
         projectsUnassigned: 'No project',
+        projectsUnassignedByFolder: 'Not in a project · by folder',
         projectAttention: ({ count }: { count: number }) => `${count} waiting for you`,
         makeProject: 'Make this folder a project',
         makeProjectDone: ({ name }: { name: string }) => `Project "${name}" created`,
@@ -2394,6 +2395,9 @@ export const en = {
         editorDescription: 'Edits the agent\'s own config file on the selected machine. Nothing is written until you confirm the preview.',
         customize: 'Custom…',
         customModelDescription: 'from this machine\'s config',
+        // B-714 model picker groups
+        groupCatalog: 'Models',
+        groupCustom: 'Custom',
     },
     settingsMachines: {
         title: 'Machines',

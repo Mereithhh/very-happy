@@ -38,14 +38,35 @@ export const TeamActionSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('message-delivered'), messageId: id, recipientBotId: id, generation: z.number().int().positive(), sessionId: id }),
 ]);
 export const TeamActionRequestSchema = z.object({ requestId: id, action: TeamActionSchema });
-export const TeamCreateSchema = z.object({ name: id, machineId: id, requestId: id.optional(), launch: TeamLaunchSchema.optional() });
+/**
+ * B-726 (`specs/2026-10-team-project.md`): which project a new team belongs to.
+ * Precedence: `projectId` (attach an existing project) > `inheritFromSessionId`
+ * (the creating session's own project, if it has one) > `create` (a new
+ * project named after the team, folder = launch directory or `directory`).
+ * Absent = no project (what an older client sends); an older server strips it.
+ */
+export const TeamProjectChoiceSchema = z.object({
+    projectId: id.optional(),
+    inheritFromSessionId: id.optional(),
+    create: z.boolean().optional(),
+    directory: z.string().min(1).max(4096).optional(),
+});
+export type TeamProjectChoice = z.infer<typeof TeamProjectChoiceSchema>;
+export const TeamCreateSchema = z.object({ name: id, machineId: id, requestId: id.optional(), launch: TeamLaunchSchema.optional(), project: TeamProjectChoiceSchema.optional() });
+/** B-726: owner changes a team's project — attach (`projectId`), detach (`projectId: null`) or create a same-name project and attach (`create`). */
+export const TeamProjectBindSchema = z.object({
+    projectId: id.nullable().optional(),
+    create: z.boolean().optional(),
+    requestId: id.optional(),
+}).refine(v => (v.projectId !== undefined) !== (v.create === true), 'exactly one of projectId / create');
+export type TeamProjectBind = z.infer<typeof TeamProjectBindSchema>;
 export type TeamAction = z.infer<typeof TeamActionSchema>;
 export type TeamActionRequest = z.infer<typeof TeamActionRequestSchema>;
-export type TeamBot = { /** B-692: server-derived (teamBotActivity); absent from old servers. */ activity?: 'active' | 'stopping' | 'idle' | 'inactive'; /** B-692: names before a reuse renamed this member, oldest first. */ previousNames?: string[]; model?: string; id: string; name: string; sessionId: string | null; generation: number; root: boolean; managed: boolean; assistant: 'claude' | 'codex' | 'pi-acp'; directory: string | null; lastEvent?: 'idle' | 'blocked' | 'exited'; lastEventAt?: number };
+export type TeamBot = { /** B-692: server-derived (teamBotActivity); absent from old servers. */ activity?: 'active' | 'stopping' | 'idle' | 'inactive'; /** B-692: names before a reuse renamed this member, oldest first. */ previousNames?: string[]; /** B-729: conversations this member had before a join (adopt / rebind) or cleanup unbound them, oldest first (max 32); absent from old servers. */ previousSessionIds?: string[]; model?: string; id: string; name: string; sessionId: string | null; generation: number; root: boolean; managed: boolean; assistant: 'claude' | 'codex' | 'pi-acp'; directory: string | null; lastEvent?: 'idle' | 'blocked' | 'exited'; lastEventAt?: number };
 export type TeamAttempt = { id: string; botId: string; generation: number; goalVersion: number; status: 'pending' | 'running' | 'submitted' | 'accepted' | 'cancelled' | 'superseded'; result: string | null };
 export type TeamTask = { id: string; parentTaskId: string | null; goal: string; acceptance: string[]; goalVersion: number; ownerBotId: string | null; assigneeBotId: string; status: 'queued' | 'running' | 'submitted' | 'done' | 'cancelled'; attempts: TeamAttempt[]; currentAttemptId: string; cleanup: 'none' | 'pending' | 'done' | 'failed' };
 export type TeamMessage = { id: string; taskId: string | null; scheduleId?: string; cancelledAt?: number; senderBotId: string | null; source?: 'agent' | 'user' | 'system'; recipientBotId: string; body: string; deliveredAt: number | null; createdAt: number };
 export type TeamOperation = { teamLaunchVersion?: 1; model?: string; permissionMode?: TeamPermissionMode; manualResolution?: { note: string; at: number }; retryRequestedAt?: number; id: string; teamId: string; machineId: string; taskId: string; botId: string; attemptId: string; generation: number; type: 'spawn' | 'stop'; status: 'pending' | 'claimed' | 'completed' | 'failed' | 'unknown'; claimId: string | null; claimedAt: number | null; error: string | null; sessionId: string | null; directory: string | null; assistant: 'claude' | 'codex' | 'pi-acp'; prompt: string; createdAt: number };
 export type TeamSchedule = { finishedAt?: number; id: string; name: string; botId: string; machineId: string; body: string; status: 'active' | 'paused' | 'cancelled' | 'completed'; version: number; nextRunAt: number | null; intervalMs?: number; pendingMessageId?: string; lastFiredAt?: number; fireCount: number; createdAt: number };
-export type TeamState = { /** B-692: server-derived (teamMemberCounts); absent from old servers. */ memberCounts?: { active: number; stopping: number; idle: number; inactive: number }; defaults?: TeamDefaults; creationLaunch?: TeamLaunch; permissionMode?: TeamPermissionMode; schedules?: TeamSchedule[]; archivedAt?: number; id: string; name: string; machineId: string; version: number; bots: TeamBot[]; tasks: TeamTask[]; messages: TeamMessage[]; operations: TeamOperation[]; createdAt: number };
+export type TeamState = { /** B-726: project this team belongs to (`AgentTeam.projectId`); absent from old servers and when unattached. */ projectId?: string; /** B-692: server-derived (teamMemberCounts); absent from old servers. */ memberCounts?: { active: number; stopping: number; idle: number; inactive: number }; defaults?: TeamDefaults; creationLaunch?: TeamLaunch; permissionMode?: TeamPermissionMode; schedules?: TeamSchedule[]; archivedAt?: number; id: string; name: string; machineId: string; version: number; bots: TeamBot[]; tasks: TeamTask[]; messages: TeamMessage[]; operations: TeamOperation[]; createdAt: number };
 export type TeamResponse = { scheduleRecordRetained?: boolean; taskId?: string; scheduleId?: string; team: TeamState; operation?: TeamOperation; credential?: { botId: string; token: string } };

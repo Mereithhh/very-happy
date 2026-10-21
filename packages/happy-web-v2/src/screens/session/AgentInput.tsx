@@ -1466,6 +1466,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                         subtitle={modelSubtitle}
                         effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
                         customize={canConfigureModels ? { label: t('modelConfig.customize'), onSelect: () => setModelEditorOpen(true) } : undefined}
+                        groups={{ catalog: t('modelConfig.groupCatalog'), custom: t('modelConfig.groupCustom'), customKeys: customModels }}
                         onOpen={() => {
                             if (canConfigureModels && machineSupportsModelConfig(configMachine) && configMachine?.active) void modelConfigStore.getState().load(configMachineId);
                         }}

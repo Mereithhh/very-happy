@@ -4,26 +4,48 @@ import { teamBotActivity, teamMemberCounts, type TeamActivityContext, type TeamB
 export function botHistorySessionId(team: TeamState, bot: TeamBot): string | null {
   if (bot.sessionId) return bot.sessionId;
   return team.operations.filter(operation => operation.type === 'spawn' && operation.status === 'completed' && operation.botId === bot.id && operation.sessionId)
-    .sort((a, b) => b.generation - a.generation || b.createdAt - a.createdAt)[0]?.sessionId ?? null;
+    .sort((a, b) => b.generation - a.generation || b.createdAt - a.createdAt)[0]?.sessionId ?? bot.previousSessionIds?.at(-1) ?? null;
 }
 
-/** Ambiguous membership must never silently hide a conversation. */
+/**
+ * B-729: every conversation a team member has had belongs to that team — the
+ * live binding, each completed spawn receipt (every generation of a reused
+ * bot) and `previousSessionIds` (adopt / rebind / cleanup history). Only these
+ * server-recorded fields count; titles and folders never do.
+ *
+ * A session claimed more than once gets ONE owner instead of being dropped —
+ * dropping it showed a team's own conversation outside every team (prod
+ * 10-22: roll-pool-cot's spawned Lead created roll-pool and joined it as lead).
+ * Precedence: a live binding, then a spawn receipt, then other history; on a
+ * tie the newer team wins — a conversation joins teams over time, so the latest
+ * team is the role it has now (the other team's row still opens it as its
+ * lead, B-721). Deterministic, so every view agrees.
+ */
 export function teamSessionMembership(teams: TeamState[]) {
-  const memberships = new Map<string, { team: TeamState; bot: TeamBot }>();
-  const ambiguous = new Set<string>();
-  const register = (sessionId: string, team: TeamState, bot: TeamBot) => {
-    const previous = memberships.get(sessionId);
-    if (previous && (previous.team.id !== team.id || previous.bot.id !== bot.id)) ambiguous.add(sessionId);
-    else memberships.set(sessionId, { team, bot });
+  type Claim = { team: TeamState; bot: TeamBot; rank: number };
+  const claims = new Map<string, Claim>();
+  const better = (a: Claim, b: Claim) => a.rank !== b.rank ? a.rank < b.rank : a.team.createdAt !== b.team.createdAt ? a.team.createdAt > b.team.createdAt : a.team.id > b.team.id;
+  const register = (sessionId: string, team: TeamState, bot: TeamBot, rank: number) => {
+    const previous = claims.get(sessionId);
+    if (!previous || better({ team, bot, rank }, previous)) claims.set(sessionId, { team, bot, rank });
   };
   for (const team of teams) for (const bot of team.bots) {
-    if (bot.sessionId) register(bot.sessionId, team, bot);
+    if (bot.sessionId) register(bot.sessionId, team, bot, 0);
     for (const operation of team.operations) {
-      if (operation.botId === bot.id && operation.type === 'spawn' && operation.status === 'completed' && operation.sessionId) register(operation.sessionId, team, bot);
+      if (operation.botId === bot.id && operation.type === 'spawn' && operation.status === 'completed' && operation.sessionId) register(operation.sessionId, team, bot, 1);
     }
+    for (const sessionId of bot.previousSessionIds ?? []) register(sessionId, team, bot, 2);
   }
-  for (const id of ambiguous) memberships.delete(id);
+  const memberships = new Map<string, { team: TeamState; bot: TeamBot }>();
+  for (const [sessionId, { team, bot }] of claims) memberships.set(sessionId, { team, bot });
   return memberships;
+}
+
+/** B-729: a conversation from an earlier generation of a member (its bot has
+ *  moved on to a newer one) folds with the inactive members. */
+export function teamSessionSuperseded(team: TeamState, bot: TeamBot, sessionId: string): boolean {
+  const current = botHistorySessionId(team, bot);
+  return !!current && current !== sessionId;
 }
 
 /** Only add receipt-backed team sessions; ordinary archived conversations stay archived. */

@@ -77,7 +77,12 @@ For changes that span CLI + Web (a real Claude/Codex turn, an RPC, a tombstone):
 
 1. `SIGNUP_MODE=open pnpm -C packages/happy-server standalone:dev` — standalone
    defaults to `closed`, and the login form never creates accounts; register at
-   `/signup` (B-528, 2026-10-03).
+   `/signup` (B-528, 2026-10-03). Teams are off by default: add
+   `VH_AGENT_TEAMS_ENABLED=true` (otherwise creating a team answers 404
+   `teams_disabled`). Projects are on unless `VH_PROJECTS_ENABLED=false`.
+   Starting the daemon from inside a team session inherits its scope — clear
+   `VH_TEAM_SCOPE_FILE HAPPY_MANAGED VH_TEAM_OPERATION_ID HAPPY_SPAWNED_BY
+   VH_PEER_SESSION_ID HAPPY_DAEMON_SUPERVISOR` with `env -u …` first.
 2. Web as above (`VH_SERVER_URL=http://127.0.0.1:3005 … dev --port <free port>`).
 3. `HAPPY_HOME_DIR=<tmp> HAPPY_SERVER_URL=… HAPPY_WEBAPP_URL=… node packages/happy-cli/dist/index.mjs auth login`,
    approve the printed `/terminal/connect#key=…` link in the logged-in browser,

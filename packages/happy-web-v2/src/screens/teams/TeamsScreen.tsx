@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { TeamAction, TeamState } from "@slopus/happy-wire";
 import {
@@ -24,6 +24,8 @@ import { AdoptTeamForm } from "./AdoptTeamForm";
 import { TeamStartForm } from "./TeamStartForm";
 import { useFirstUseCopy } from "./firstUseCopy";
 import { TeamOptions } from "./TeamOptions";
+import { TeamProjectLine, TeamProjectNudge, TeamProjectSettings } from "./TeamProject";
+import { refreshProjects } from "@/sync/projects";
 import { TeamDialog } from "./TeamDialog";
 import { TeamTaskMessages, TeamTaskSummary } from "./TeamTaskDetail";
 import { useWorkspaceCopy } from "./workspaceCopy";
@@ -38,6 +40,11 @@ import {
   teamRetrySupport,
 } from "./teamView";
 import { useTranslation } from "@/i18n/useTranslation";
+import { Checkbox } from "@/ui/Checkbox";
+import { Combobox } from "@/ui/Combobox";
+import { Segmented } from "@/ui/Segmented";
+import { Summary } from "@/ui/Summary";
+import { TEAM_ASSISTANT_LABELS, TEAM_ASSISTANTS, type TeamAssistant } from "./teamHarnessModel";
 export function TeamsScreen() {
   const { teamId } = useParams();
   return <TeamsContent key={teamId ?? "list"} />;
@@ -64,9 +71,9 @@ function TeamsContent() {
   // the param so the next click (same URL) opens it again.
   function closeCreate() {
     setCreating(false);
-    if (searchParams.has("new")) {
+    if (searchParams.has("new") || searchParams.has("project")) {
       const next = new URLSearchParams(searchParams);
-      next.delete("new");
+      next.delete("new"); next.delete("project");
       setSearchParams(next, { replace: true });
     }
   }
@@ -174,6 +181,7 @@ function TeamsContent() {
       <header className="teams-heading">
         <div><Link className="teams-back" to={teamId ? "/teams" : "/"}><ArrowLeft size={16} />{teamId ? c.title : tr("teams.sessions")}</Link>
           <h1><UsersRound size={26} aria-hidden />{team?.name ?? c.title}</h1>
+          {team && <TeamProjectLine team={team} />}
           <p>{team ? <><span data-live={machineOnline}>{machineOnline ? c.online : c.offline}</span> · {executionMachine ? machineLabel(executionMachine) : c.unnamedMachine}</> : c.intro}</p>
           {team?.archivedAt !== undefined && <p role="status">{tr("teams.archived")} · {new Date(team.archivedAt).toLocaleString()}</p>}
         </div>
@@ -207,10 +215,10 @@ function TeamsContent() {
           )}
           {creating && <TeamDialog title={c.create} onClose={closeCreate}>
             {error && <p role="alert" className="teams-error">{error}</p>}
-          <TeamStartForm onStart={async (name, machineId, launch, requestId) => {
-            return (await createTeam(name, machineId, requestId, launch)).team;
+          <TeamStartForm chooseProject initialProjectId={searchParams.get("project") ?? undefined} onStart={async (name, machineId, launch, requestId, project) => {
+            return (await createTeam(name, machineId, requestId, launch, project)).team;
           }} onStarted={created => {
-            void refreshTeamNavigation();
+            void refreshTeamNavigation(); void refreshProjects();
             navigate(`/teams/${created.id}?starting=1`);
           }} />
           </TeamDialog>}
@@ -231,18 +239,19 @@ function TeamsContent() {
               {team.bots.find(b => b.root && b.sessionId)?.sessionId && <Link className="teams-primary teams-talk" to={`/session/${encodeURIComponent(team.bots.find(b => b.root && b.sessionId)!.sessionId!)}`}><Bot size={18} />{c.talk}</Link>}
               <button disabled={disabled || !dispatchReady} onClick={() => setDelegating(true)}><Plus size={16} />{c.newTask}</button>
             </div>
+            <TeamProjectNudge team={team} />
             <TeamWorkspace team={team} onTask={setSelectedTask} archivedSessionIds={archivedMemberSessions} />
           </>}
           {view === "settings" && <>          <section>
-            <label>{tr("teams.executionMode")}
-              <select disabled={disabled} value={team.permissionMode ?? "default"}
-                onChange={(event) => void act({ type: "set-permission-mode", permissionMode: event.target.value === "bypassPermissions" ? "bypassPermissions" : "default" })}>
-                <option value="default">{tr("teams.approvalDefault")}</option>
-                <option value="bypassPermissions">{tr("teams.approvalBypass")}</option>
-              </select>
-            </label>
+            <div className="teams-field">
+              <span id="teams-execution-mode">{tr("teams.executionMode")}</span>
+              <Segmented labelledBy="teams-execution-mode" disabled={disabled} value={team.permissionMode === "bypassPermissions" ? "bypassPermissions" : "default"}
+                options={[{ value: "default", label: tr("teams.approvalDefault") }, { value: "bypassPermissions", label: tr("teams.approvalBypass") }]}
+                onChange={(mode) => void act({ type: "set-permission-mode", permissionMode: mode === "bypassPermissions" ? "bypassPermissions" : "default" })} />
+            </div>
             <p>{tr("teams.executionModeHint")}</p>
           </section>
+            <TeamProjectSettings team={team} disabled={disabled} />
             <TeamOptions team={team} disabled={disabled} onSave={async defaults => { await act({type: 'set-defaults', defaults}); }} />
           </>}
           {startingExisting && <TeamDialog title={first.setup} onClose={() => setStartingExisting(false)}><TeamStartForm machineId={team.machineId} intentScope={`team:${team.id}`} onStart={async (_name, _machineId, launch, requestId) => {
@@ -295,27 +304,7 @@ function TeamsContent() {
                   />
                 </label>
                 <label>{first.member}<input name="botName" placeholder={first.working} maxLength={128} /></label>
-                <label>
-                  {t('teams.codingAgent')}
-                  <select name="assistant" defaultValue={team.defaults?.assistant ?? "claude"}>
-                    <option value="claude">Claude Code</option>
-                    <option value="codex">Codex</option>
-                    <option value="pi-acp">pi</option>
-                  </select>
-                </label>
-                <label>
-                  {tr("teams.parent")}
-                  <select name="parent">
-                    <option value="">{tr("teams.independent")}</option>
-                    {team.tasks
-                      .filter((t) => !["done", "cancelled"].includes(t.status))
-                      .map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.goal}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                <DelegateChoices team={team} agentLabel={t('teams.codingAgent')} />
                 <button
                   className="teams-primary"
                   disabled={disabled || !dispatchReady}
@@ -378,16 +367,7 @@ function TeamsContent() {
                       {tr("teams.body")}
                       <textarea name="body" required />
                     </label>
-                    <label>
-                      {tr("teams.action")}
-                      <select name="action">
-                        <option value="message">{tr("teams.message")}</option>
-                        {t.status === "submitted" && (
-                          <option value="return">{tr("teams.return")}</option>
-                        )}
-                        <option value="cancel">{tr("teams.cancel")}</option>
-                      </select>
-                    </label>
+                    <TaskActionField canReturn={t.status === "submitted"} />
                     <button disabled={disabled}>{tr("teams.execute")}</button>
                   </form>
                 )}
@@ -406,18 +386,7 @@ function TeamsContent() {
                         });
                       }}
                     >
-                      <label>
-                        {tr("teams.transferTo")}
-                        <select name="assignee" required>
-                          {team.bots
-                            .filter((bot) => bot.id !== t.assigneeBotId)
-                            .map((bot) => (
-                              <option key={bot.id} value={bot.id}>
-                                {bot.name}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
+                      <HandoffAssignee bots={team.bots.filter((bot) => bot.id !== t.assigneeBotId)} />
                       <button disabled={disabled}>{tr("teams.handoff")}</button>
                     </form>
                   )}
@@ -441,7 +410,7 @@ function TeamsContent() {
               ))}
             {/* B-691: handled entries stay readable but stop crowding the page. */}
             {attention.resolved.length > 0 && <details className="teams-resolved">
-              <summary>{c.resolvedCount(attention.resolved.length)}</summary>
+              <Summary>{c.resolvedCount(attention.resolved.length)}</Summary>
               {attention.resolved.map((operation) => (
                 <OperationResolution
                   key={`${operation.id}:${operation.claimId ?? "unclaimed"}`}
@@ -474,6 +443,60 @@ function TeamsContent() {
 }
 
 /** B-689: why a launch is stuck, what the computer does next, and the owner's retry. */
+/** B-714: the new-task form reads FormData — these stay controlled and post `assistant` / `parent` through hidden inputs. */
+export function DelegateChoices({ team, agentLabel }: { team: TeamState; agentLabel: string }) {
+  const id = useId();
+  const [assistant, setAssistant] = useState<TeamAssistant>(team.defaults?.assistant ?? "claude");
+  const [parent, setParent] = useState("");
+  const open = team.tasks.filter((task) => !["done", "cancelled"].includes(task.status));
+  const parentOptions = [
+    { value: "", label: tr("teams.independent") },
+    ...open.map((task) => {
+      const [head = "", ...rest] = task.goal.trim().split("\n");
+      const description = rest.join(" ").trim();
+      return { value: task.id, label: head || task.id, ...(description ? { description } : {}), keywords: task.goal };
+    }),
+  ];
+  return <>
+    <div className="teams-field">
+      <span id={`${id}-agent`}>{agentLabel}</span>
+      <Segmented labelledBy={`${id}-agent`} name="assistant" value={assistant} onChange={setAssistant}
+        options={TEAM_ASSISTANTS.map((value) => ({ value, label: TEAM_ASSISTANT_LABELS[value] }))} />
+    </div>
+    <div className="teams-field">
+      <span id={`${id}-parent`}>{tr("teams.parent")}</span>
+      <Combobox variant="soft" size="md" label={tr("teams.parent")} labelledBy={`${id}-parent`} name="parent" searchable
+        value={open.some((task) => task.id === parent) ? parent : ""} onChange={setParent} options={parentOptions} />
+    </div>
+  </>;
+}
+
+export function TaskActionField({ canReturn }: { canReturn: boolean }) {
+  const id = useId();
+  const [action, setAction] = useState<"message" | "return" | "cancel">("message");
+  const options = [
+    { value: "message" as const, label: tr("teams.message") },
+    ...(canReturn ? [{ value: "return" as const, label: tr("teams.return") }] : []),
+    { value: "cancel" as const, label: tr("teams.cancel") },
+  ];
+  return <div className="teams-field">
+    <span id={`${id}-action`}>{tr("teams.action")}</span>
+    <Segmented labelledBy={`${id}-action`} name="action" value={options.some((o) => o.value === action) ? action : "message"} onChange={setAction} options={options} />
+  </div>;
+}
+
+/** The old native select (required) preselected the first member; keep that default. */
+export function HandoffAssignee({ bots }: { bots: TeamState["bots"] }) {
+  const id = useId();
+  const [assignee, setAssignee] = useState(bots[0]?.id ?? "");
+  const value = bots.some((bot) => bot.id === assignee) ? assignee : bots[0]?.id ?? null;
+  return <div className="teams-field">
+    <span id={`${id}-assignee`}>{tr("teams.transferTo")}</span>
+    <Combobox variant="soft" size="md" label={tr("teams.transferTo")} labelledBy={`${id}-assignee`} name="assignee" required
+      value={value} onChange={setAssignee} options={bots.map((bot) => ({ value: bot.id, label: bot.name }))} />
+  </div>;
+}
+
 function LaunchIssue({
   team,
   operation,
@@ -509,10 +532,9 @@ function LaunchIssue({
           }}
         >
           {uncertain && (
-            <label className="teams-confirm">
-              <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} required />
+            <Checkbox className="teams-confirm" checked={confirmed} onCheckedChange={setConfirmed} required>
               {first.retryConfirm}
-            </label>
+            </Checkbox>
           )}
           <button disabled={disabled || (uncertain && !confirmed)}>
             <RefreshCw size={16} aria-hidden />
@@ -618,15 +640,9 @@ export function OperationResolution({
                   });
               }}
             >
-              <label className="teams-wide teams-confirm">
-                <input
-                  type="checkbox"
-                  checked={confirmed}
-                  onChange={(event) => setConfirmed(event.target.checked)}
-                  required
-                />
+              <Checkbox className="teams-wide teams-confirm" checked={confirmed} onCheckedChange={setConfirmed} required>
                 {tr("teams.reconcileConfirmation")}
-              </label>
+              </Checkbox>
               <label className="teams-wide">
                 {tr("teams.reconcileNote")}
                 <textarea

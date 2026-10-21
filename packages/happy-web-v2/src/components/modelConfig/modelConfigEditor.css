@@ -27,8 +27,8 @@
 .mce-key { border: 0; margin: 0; padding: 0; min-width: 0; }
 .mce-key > legend { padding: 0; margin-bottom: var(--sp-2); }
 .mce-keymodes { width: 100%; }
-.mce-check { display: flex; gap: var(--sp-2); align-items: center; color: var(--text); font-size: var(--fs-13); }
-.mce-check input { width: 16px; height: 16px; accent-color: var(--text); }
+.mce-check { color: var(--text); font-size: var(--fs-13); }
+.mce-picker { width: 100%; }
 .mce-more > summary { cursor: pointer; color: var(--text-dim); font-size: var(--fs-12); font-weight: 600; padding: var(--sp-1) 0; }
 .mce-more > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-sm); }
 .mce-more > .so-fields { margin-top: var(--sp-3); }
@@ -58,6 +58,4 @@
 }
 /* settings page machine row */
 .mcs-machine { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
-.mcs-machine > .so-select-wrap { flex: 1; min-width: 0; }
-/* inside the settings card the select is fill-only (1-Border Rule) */
-.mcs-machine .so-select { border: 0; }
+.mcs-machine-picker { flex: 1; }

@@ -15,6 +15,7 @@ import { useMediaQuery } from '@/app/useMediaQuery';
 import { useSetting } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { toast } from '@/ui';
+import { Checkbox } from '@/ui/Checkbox';
 import { ReviewDiffBody } from '../diffComments/ReviewDiffPane';
 import { useGitFileDiff } from '../diffComments/useGitFileDiff';
 import { useDiffComments } from '../diffComments/diffCommentsStore';
@@ -90,10 +91,9 @@ function ReviewSection({ sessionId, file, copy, root, collapsed, onToggle, viewe
                     )}
                     {commentCount > 0 && <span className="rva-comments">{copy.comments(commentCount)}</span>}
                 </button>
-                <label className="rva-viewed">
-                    <input type="checkbox" checked={viewed} onChange={(e) => onViewed(e.target.checked, hash)}/>
-                    <span>{copy.viewed}</span>
-                </label>
+                <Checkbox className="rva-viewed" checked={viewed} onCheckedChange={(next) => onViewed(next, hash)}>
+                    {copy.viewed}
+                </Checkbox>
                 <button type="button" className="fsb-iconbtn rva-open" onClick={() => onOpenDiff(file.path)} aria-label={copy.openDiff} title={copy.openDiff}><FileDiff size={14}/></button>
             </div>
             {!collapsed && (

@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import type { TeamAction, TeamState } from "@slopus/happy-wire";
 import { useTranslation } from "@/i18n/useTranslation";
+import { SelectMenu } from "@/ui/SelectMenu";
+import { Summary } from "@/ui/Summary";
 import { scheduleAction } from "./scheduleDraft";
 
 export function TeamSchedules({
@@ -15,6 +17,8 @@ export function TeamSchedules({
 }) {
   const { t } = useTranslation();
   const [error, setError] = useState(false);
+  const [botId, setBotId] = useState("");
+  const fieldId = useId();
   const labels = {
     active: t("teams.scheduleActive"),
     paused: t("teams.schedulePaused"),
@@ -97,7 +101,7 @@ export function TeamSchedules({
       })}
       {team.archivedAt === undefined && (
         <details>
-          <summary>{t("teams.createSchedule")}</summary>
+          <Summary>{t("teams.createSchedule")}</Summary>
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -117,17 +121,21 @@ export function TeamSchedules({
               {t("teams.scheduleName")}
               <input name="name" required maxLength={128} />
             </label>
-            <label>
-              {t("teams.scheduleRecipient")}
-              <select name="botId" required>
-                <option value="">{t("teams.chooseBot")}</option>
-                {team.bots.map((bot) => (
-                  <option key={bot.id} value={bot.id}>
-                    {bot.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="teams-field">
+              <span id={`${fieldId}-recipient`}>{t("teams.scheduleRecipient")}</span>
+              <SelectMenu
+                variant="soft"
+                size="md"
+                label={t("teams.scheduleRecipient")}
+                labelledBy={`${fieldId}-recipient`}
+                name="botId"
+                required
+                placeholder={t("teams.chooseBot")}
+                value={team.bots.some((bot) => bot.id === botId) ? botId : null}
+                onChange={setBotId}
+                options={team.bots.map((bot) => ({ value: bot.id, label: bot.name }))}
+              />
+            </div>
             <label>
               {t("teams.scheduleTime")}
               <input type="datetime-local" name="time" required />

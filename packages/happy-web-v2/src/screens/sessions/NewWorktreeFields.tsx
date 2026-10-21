@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { Spinner } from '@/ui';
+import { Checkbox, Combobox, Spinner } from '@/ui';
 import { worktreeInfo, type WorktreeInfo, type WorktreeRpcResult } from '@/sync/worktreeOps';
 import { generateWorktreeBranch, isAbsoluteMachinePath, isPlausibleBranchName, worktreeLocationFor } from '@/utils/worktree';
 import { worktreeCopy, worktreeErrorText } from './worktreeCopy';
@@ -87,15 +87,14 @@ export function NewWorktreeFields({ lang, supported, draft, onChange, info }: {
 
     return (
         <div className="nwt">
-            <label className={`nwt-toggle${unsupported ? ' is-disabled' : ''}`}>
-                <input
-                    type="checkbox"
-                    checked={draft.enabled && !unsupported}
-                    disabled={unsupported}
-                    onChange={(e) => onChange({ ...draft, enabled: e.target.checked })}
-                />
-                <span>{copy.toggle}</span>
-            </label>
+            <Checkbox
+                className="nwt-toggle"
+                checked={draft.enabled && !unsupported}
+                disabled={unsupported}
+                onCheckedChange={(enabled) => onChange({ ...draft, enabled })}
+            >
+                {copy.toggle}
+            </Checkbox>
             {unsupported ? (
                 <div className="ns-agent-help">{copy.unsupported}</div>
             ) : !draft.enabled ? (
@@ -106,11 +105,20 @@ export function NewWorktreeFields({ lang, supported, draft, onChange, info }: {
                 <div className="nwt-error" role="alert">{worktreeErrorText(copy, info.result.error)}</div>
             ) : data ? (
                 <div className="nwt-fields">
-                    <label className="ns-label" htmlFor="nwt-base">{copy.baseBranch}</label>
-                    <select id="nwt-base" className="ns-select" value={draft.baseRef} onChange={(e) => onChange({ ...draft, baseRef: e.target.value })}>
-                        {!data.branches.includes(draft.baseRef) && draft.baseRef && <option value={draft.baseRef}>{draft.baseRef}</option>}
-                        {data.branches.map((b) => <option key={b} value={b}>{b}</option>)}
-                    </select>
+                    <label className="ns-label" id="nwt-base-label">{copy.baseBranch}</label>
+                    <Combobox
+                        id="nwt-base"
+                        label={copy.baseBranch}
+                        labelledBy="nwt-base-label"
+                        size="md"
+                        searchable
+                        value={draft.baseRef}
+                        onChange={(baseRef) => onChange({ ...draft, baseRef })}
+                        options={[
+                            ...(!data.branches.includes(draft.baseRef) && draft.baseRef ? [{ value: draft.baseRef, label: draft.baseRef }] : []),
+                            ...data.branches.map((b) => ({ value: b, label: b })),
+                        ]}
+                    />
                     <label className="ns-label" htmlFor="nwt-branch">{copy.newBranch}</label>
                     <div className="ns-path-row">
                         <input

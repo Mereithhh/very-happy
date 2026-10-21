@@ -8,9 +8,10 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronDown, Pencil, RefreshCw } from 'lucide-react';
+import { Pencil, RefreshCw } from 'lucide-react';
 import { SettingsPage as Page, SettingsHeader as Header } from './SettingsLayout';
 import { Button, Item, ItemGroup, ItemList, Spinner } from '@/ui';
+import { Combobox } from '@/ui/Combobox';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -18,7 +19,6 @@ import { modelConfigStore, useMachineModelConfig } from '@/sync/modelConfigStore
 import { HARNESS_LABELS, machineSupportsModelConfig } from '@/sync/modelConfigModel';
 import { HARNESS_IDS, type HarnessConfigView, type HarnessId } from '@/sync/modelConfigTypes';
 import { ModelConfigEditor } from '@/components/modelConfig/ModelConfigEditor';
-import '@/screens/session/sessionOptionsDialog.css';
 import '@/components/modelConfig/modelConfigEditor.css';
 
 function keySummary(view: HarnessConfigView, t: ReturnType<typeof useTranslation>['t']): string {
@@ -55,12 +55,10 @@ export function ModelProviderSettings() {
             <ItemList>
                 <ItemGroup settingId="models.machine" title={t('modelConfig.machine')} footer={t('modelConfig.settingsFooter')}>
                     <div className="mcs-machine">
-                        <span className="so-select-wrap">
-                            <select className="so-select" value={effectiveId} aria-label={t('modelConfig.machine')} onChange={(e) => setMachineId(e.target.value)}>
-                                {machines.map((m) => <option key={m.id} value={m.id}>{`${machineLabel(m)}${isMachineOnline(m) ? '' : ` · ${t('settingsMachines.offline')}`}`}</option>)}
-                            </select>
-                            <ChevronDown size={15} aria-hidden="true" />
-                        </span>
+                        {/* inside the settings card the picker is fill-only (1-Border Rule) */}
+                        <Combobox label={t('modelConfig.machine')} variant="soft" size="md" className="mcs-machine-picker"
+                            value={effectiveId || null} onChange={setMachineId}
+                            options={machines.map((m) => ({ value: m.id, label: machineLabel(m), meta: isMachineOnline(m) ? undefined : t('settingsMachines.offline') }))} />
                         {machine && supported && online && <Button size="sm" variant="ghost" leftIcon={<RefreshCw size={14} />} loading={state?.status === 'loading'}
                             onClick={() => void modelConfigStore.getState().load(effectiveId, { force: true })}>{t('modelConfig.reload')}</Button>}
                     </div>

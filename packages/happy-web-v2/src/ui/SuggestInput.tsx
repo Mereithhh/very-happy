@@ -19,11 +19,18 @@ export interface SuggestInputProps extends Omit<React.InputHTMLAttributes<HTMLIn
     value: string;
     onValueChange: (value: string) => void;
     suggestions: readonly (string | PickerOption)[];
+    /** the underlying input (focus management) */
+    inputRef?: React.Ref<HTMLInputElement>;
 }
 
-export function SuggestInput({ value, onValueChange, suggestions, onKeyDown, onFocus, onBlur, className, ...input }: SuggestInputProps) {
+export function SuggestInput({ value, onValueChange, suggestions, inputRef: externalRef, onKeyDown, onFocus, onBlur, className, ...input }: SuggestInputProps) {
     const baseId = `vh-suggest-${React.useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
-    const inputRef = React.useRef<HTMLInputElement>(null);
+    const inputRef = React.useRef<HTMLInputElement | null>(null);
+    const setInput = React.useCallback((el: HTMLInputElement | null) => {
+        inputRef.current = el;
+        if (typeof externalRef === 'function') externalRef(el);
+        else if (externalRef) (externalRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
+    }, [externalRef]);
     const [open, setOpen] = React.useState(false);
     const [active, setActive] = React.useState(-1);
     const [portalHost, setPortalHost] = React.useState<HTMLElement | undefined>(undefined);
@@ -50,7 +57,7 @@ export function SuggestInput({ value, onValueChange, suggestions, onKeyDown, onF
             <Popover.Anchor asChild>
                 <input
                     {...input}
-                    ref={inputRef}
+                    ref={setInput}
                     className={className}
                     value={value}
                     role="combobox"

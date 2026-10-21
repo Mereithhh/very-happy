@@ -179,7 +179,7 @@
 .shd-grant-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .shd-grant-name { color: var(--text); font-size: var(--fs-13); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shd-grant-sub { color: var(--text-faint); font-family: var(--font-mono); font-size: var(--fs-11); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.shd-grant-role { flex: none; min-height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-2); color: var(--text); font: var(--fs-12)/1.2 var(--font-mono); }
+.shd-grant-picker { flex: none; }
 .shd-empty { margin: 0; padding: var(--sp-3) 0; color: var(--text-faint); font-size: var(--fs-12); }
 
 /* B-701 sharing tiers: tabs, expiry, link tab. */
@@ -189,7 +189,7 @@
 .shd-note > svg { flex: none; margin-top: 2px; color: var(--text-faint); }
 .shd-link-row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .shd-inline-label { color: var(--text-faint); font-size: var(--fs-12); }
-.shd-expiry { font-family: inherit; }
+.shd-expiry { flex: none; }
 .shd-link-row > .vh-btn:last-child { margin-left: auto; }
 .shd-mask { margin: 0; color: var(--text-faint); font-size: var(--fs-11); line-height: 1.45; }
 .shd-fresh { display: grid; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--fill-soft); }

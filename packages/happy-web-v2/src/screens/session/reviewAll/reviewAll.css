@@ -145,7 +145,7 @@
 .rva-dir { color: var(--text-dim); }
 .rva-name { color: var(--text); }
 .rva-comments { flex: none; font-size: var(--fs-11); color: var(--text-dim); }
-.rva-viewed {
+.rva-viewed.vh-checkbox {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -158,8 +158,7 @@
   cursor: pointer;
   user-select: none;
 }
-.rva-viewed:hover { background: var(--bg-3); color: var(--text); }
-.rva-viewed input { margin: 0; accent-color: var(--text); }
+.rva-viewed.vh-checkbox:hover { background: var(--bg-3); color: var(--text); }
 .rva-section.is-viewed .rva-name { color: var(--text-dim); }
 .rva-section-body {
   container-type: inline-size;

@@ -7,23 +7,30 @@ vi.mock('@/sync/storage', () => ({ useMachine: () => machine, useAllSessions: ()
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ lang: 'en', t: (key: string) => key }) }));
 import { TeamOptions } from './TeamOptions';
 
-it('B-698: team settings show the saved harness/model, flag a model outside the list, and save the selects', async () => {
+it('B-698: team settings show the saved harness/model, flag a model outside the list, and save the pickers', async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
     const save = vi.fn().mockResolvedValue(undefined);
     const team = { id: 't', machineId: 'm', defaults: { assistant: 'codex', model: 'retired-model', maxParallel: 4 } } as never;
     try {
         await act(async () => root.render(<TeamOptions team={team} disabled={false} onSave={save} />));
-        const assistant = host.querySelector('select[name=assistant]') as HTMLSelectElement;
-        const model = host.querySelector('select[name=model]') as HTMLSelectElement;
-        expect([...assistant.options].map((o) => o.value)).toEqual(['claude', 'codex', 'pi-acp']);
+        const assistant = host.querySelector('input[name=assistant]') as HTMLInputElement;
+        const harnessButtons = () => [...assistant.parentElement!.querySelectorAll('button')];
+        const model = () => host.querySelector('input[name=model]') as HTMLInputElement;
+        const modelTrigger = () => model().parentElement!.querySelector('.vh-select-trigger') as HTMLButtonElement;
+        expect(harnessButtons().map((b) => b.textContent)).toEqual(['Claude Code', 'Codex', 'pi']);
         expect(assistant.value).toBe('codex');
-        expect(model.value).toBe('retired-model');
+        expect(harnessButtons()[1].getAttribute('aria-pressed')).toBe('true');
+        expect(model().value).toBe('retired-model');
+        expect(modelTrigger().textContent).toContain('retired-model');
         expect(host.textContent).toContain('not in this harness’s list');
-        await act(async () => { assistant.value = 'pi-acp'; assistant.dispatchEvent(new Event('change', { bubbles: true })); });
-        const piModel = host.querySelector('select[name=model]') as HTMLSelectElement;
-        expect([...piModel.options].map((o) => o.value)).toEqual(['', 'gw/m1']);
-        await act(async () => { piModel.value = 'gw/m1'; piModel.dispatchEvent(new Event('change', { bubbles: true })); });
+        await act(async () => { harnessButtons()[2].click(); });
+        expect(model().value).toBe('');
+        await act(async () => { modelTrigger().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })); });
+        const options = [...document.querySelectorAll<HTMLElement>('[role=option]')];
+        expect(options.map((o) => o.title)).toEqual(['Follow the harness default', 'm1 · gw/m1']);
+        await act(async () => { options[1].click(); });
+        expect(model().value).toBe('gw/m1');
         await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
         expect(save).toHaveBeenCalledWith({ assistant: 'pi-acp', model: 'gw/m1', maxParallel: 4 });
     } finally { await act(async () => root.unmount()); host.remove(); }

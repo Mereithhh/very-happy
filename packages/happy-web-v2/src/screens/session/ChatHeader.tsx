@@ -2,7 +2,10 @@ import { ClaudeRuntimeDialog } from './ClaudeRuntimeDialog';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { useLocalSetting } from '@/sync/storage';
 import { useNavigate } from 'react-router-dom';
-import { Bot, Moon, Users } from 'lucide-react';
+import { Bot, FolderKanban, FolderMinus, Moon, Users } from 'lucide-react';
+import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
+import { MoveToProjectModal } from '@/screens/projects/MoveToProjectModal';
+import { sessionProjectMenu } from '@/screens/projects/projectChoice';
 import { ShareDialog } from './ShareDialog';
 import { isSharedWithMe } from '@/app/sessionAccess';
 import { isMirrorSession } from '@/assistant/assistantSession';
@@ -58,6 +61,8 @@ export function ChatHeader({
     const [editing, setEditing] = useState(false);
     const [runtimeOpen, setRuntimeOpen] = useState(false);
     const [shareOpen, setShareOpen] = useState(false);
+    const [moveProjectOpen, setMoveProjectOpen] = useState(false);
+    const projectsSnap = useProjects();
     // B-619: shared WITH me → every owner-only control disappears (the server refuses them anyway).
     const sharedWithMe = !!session && isSharedWithMe(session);
     const canShare = !!session && !sharedWithMe && !isMirrorSession(session) && session.archivedAt == null;
@@ -129,6 +134,18 @@ export function ChatHeader({
         hasBtw: !!onToggleBtw,
         hasFiles: !!onToggleFiles,
     });
+    // B-726: the session header can move this session into / out of a project (also from the sidebar row and the new-session dialog).
+    const projectMenu = sessionProjectMenu(sessionId, projectsSnap, { shared: sharedWithMe, zh: lang.startsWith('zh') });
+    const leaveProject = async () => {
+        if (!projectMenu.leave) return;
+        try { await projectsApi.removeMember(projectMenu.leave.projectId, sessionId); applyLocalMembership(null, [sessionId]); }
+        catch { toast.error(lang.startsWith('zh') ? '移出失败' : 'Could not remove'); }
+        finally { void refreshProjects(); }
+    };
+    const projectItems: MenuItemDef[] = [
+        ...(projectMenu.move ? [{ key: 'move-project', label: projectMenu.move, icon: FolderKanban, onSelect: () => setMoveProjectOpen(true) }] : []),
+        ...(projectMenu.leave ? [{ key: 'leave-project', label: projectMenu.leave.label, icon: FolderMinus, onSelect: () => void leaveProject() }] : []),
+    ];
     const canStartTeam = !sharedWithMe && showTeams && session?.metadata?.capabilities?.includes('teams-adopt-v1') && session.archivedAt == null && !teams.some(t => t.bots.some(b => b.sessionId === sessionId));
     const overflowHasActive = plan.overflow.some(
         (key) => (key === 'btw' && btwOpen) || (key === 'files' && filesOpen),
@@ -243,8 +260,8 @@ export function ChatHeader({
                 </div>
             )}
             {!editing && plan.inline.map(renderAction)}
-            {!editing && (plan.overflow.length > 0 || canStartTeam || canControlRuntime || canKeepAwake || canShare) && (
-                <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...(canShare ? [{key:'share',label:t('share.menu'),icon:Users,onSelect:()=>setShareOpen(true)}] : []), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : [])]}>
+            {!editing && (plan.overflow.length > 0 || canStartTeam || canControlRuntime || canKeepAwake || canShare || projectItems.length > 0) && (
+                <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...projectItems, ...(canShare ? [{key:'share',label:t('share.menu'),icon:Users,onSelect:()=>setShareOpen(true)}] : []), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : [])]}>
                     <button
                         type="button"
                         className={`ch-icon${overflowHasActive ? ' is-active' : ''}`}
@@ -257,6 +274,7 @@ export function ChatHeader({
             )}
             {canControlRuntime && <ClaudeRuntimeDialog key={sessionId} sessionId={sessionId} open={runtimeOpen} onOpenChange={setRuntimeOpen}/>}
             {canShare && <ShareDialog key={`share:${sessionId}`} sessionId={sessionId} open={shareOpen} onOpenChange={setShareOpen} />}
+            {moveProjectOpen && <MoveToProjectModal initialSessionId={sessionId} candidates={[]} onClose={() => setMoveProjectOpen(false)} />}
         </header>
     );
 }

@@ -10,6 +10,7 @@ import { useSessionShares } from '@/sync/sessionSharesStore';
 import { SessionShareApiError, shareLinkUrl } from '@/sync/apiSessionShares';
 import { SHARE_EXPIRY_CHOICES, type ShareExpiryDays, type ShareLinkScope, type ShareLinkView } from '@/sync/sessionShareTypes';
 import { Button, CopyButton, toast } from '@/ui';
+import { SelectMenu } from '@/ui/SelectMenu';
 import { useTranslation } from '@/i18n/useTranslation';
 import { expiryLabel, formatShareTime, remainingDaysLabel } from './shareFormat';
 
@@ -24,13 +25,17 @@ function linkErrorCopy(t: T, error: unknown): string {
     return t('share.link.errors.generic', { error: code });
 }
 
-export function ExpirySelect({ value, onChange, id }: { value: ShareExpiryDays; onChange: (v: ShareExpiryDays) => void; id?: string }) {
+export function ExpirySelect({ value, onChange, labelledBy }: { value: ShareExpiryDays; onChange: (v: ShareExpiryDays) => void; labelledBy?: string }) {
     const { t } = useTranslation();
     return (
-        <select id={id} className="shd-grant-role shd-expiry" value={value === null ? 'never' : String(value)} aria-label={t('share.expiry.label')}
-            onChange={(e) => onChange(e.target.value === 'never' ? null : Number(e.target.value) as ShareExpiryDays)}>
-            {SHARE_EXPIRY_CHOICES.map((c) => <option key={String(c)} value={c === null ? 'never' : String(c)}>{expiryLabel(t, c)}</option>)}
-        </select>
+        <SelectMenu
+            className="shd-expiry"
+            label={t('share.expiry.label')}
+            labelledBy={labelledBy}
+            value={value === null ? 'never' : String(value)}
+            onChange={(v) => onChange(v === 'never' ? null : Number(v) as ShareExpiryDays)}
+            options={SHARE_EXPIRY_CHOICES.map((c) => ({ value: c === null ? 'never' : String(c), label: expiryLabel(t, c) }))}
+        />
     );
 }
 
@@ -94,8 +99,8 @@ export function ShareLinkPanel({ sessionId, open }: { sessionId: string; open: b
                 </button>
             </div>
             <div className="shd-link-row">
-                <label className="shd-inline-label" htmlFor={`shd-link-exp-${sessionId}`}>{t('share.expiry.label')}</label>
-                <ExpirySelect id={`shd-link-exp-${sessionId}`} value={expiry} onChange={setExpiry} />
+                <span className="shd-inline-label" id={`shd-link-exp-${sessionId}`}>{t('share.expiry.label')}</span>
+                <ExpirySelect labelledBy={`shd-link-exp-${sessionId}`} value={expiry} onChange={setExpiry} />
                 <Button type="button" variant="primary" size="md" loading={busy} leftIcon={<Link2 size={15} />} onClick={() => void run(async () => showFresh(await createLink(sessionId, scope, expiry)))}>{t('share.link.create')}</Button>
             </div>
             <p className="shd-mask">{t('share.link.maskNotice')}</p>

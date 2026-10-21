@@ -187,7 +187,11 @@
   margin-bottom: var(--sp-1);
 }
 
-.cfp-launcher .ns-select,
+.cfp-launcher .vh-select-trigger.cfp-machine-select {
+  width: 100%;
+}
+
+.cfp-launcher .vh-select-trigger.cfp-machine-select,
 .cfp-launcher .ns-input,
 .cfp-launcher .ns-initial {
   min-height: 42px;

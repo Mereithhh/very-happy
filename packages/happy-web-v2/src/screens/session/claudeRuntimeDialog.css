@@ -15,6 +15,6 @@
 .runtime-error { color:var(--danger); overflow-wrap:anywhere; }
 .runtime-progress { display:flex; align-items:center; gap:var(--sp-2); color:var(--text-dim); overflow-wrap:anywhere; }
 .runtime-checkpoint { display:grid; gap:var(--sp-2); margin:var(--sp-3) 0; }
-.runtime-checkpoint select { width:100%; min-width:0; border:1px solid var(--line); border-radius:var(--r-sm); background:var(--bg-2); padding:var(--sp-2); font:inherit; }
+.runtime-checkpoint .vh-select-trigger { width:100%; }
 .runtime-preview { overflow-wrap:anywhere; }
-@media(max-width:600px) { .runtime-controls { width:100%; padding:0; max-height:90dvh; } .runtime-body { padding-bottom:max(var(--sp-4), env(safe-area-inset-bottom)); } .runtime-checkpoint select { font-size:var(--fs-16); } }
+@media(max-width:600px) { .runtime-controls { width:100%; padding:0; max-height:90dvh; } .runtime-body { padding-bottom:max(var(--sp-4), env(safe-area-inset-bottom)); } }

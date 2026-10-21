@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TEAM_MEMBER_IDLE_MS, type TeamState } from '@slopus/happy-wire';
-import { groupTeamNavigation, teamSessionMembership, botHistorySessionId, missingTeamSessionIds, unstartedTeamMembers, teamInactiveGroupId, teamMemberInactive, teamMemberCount, teamRoster, teamHomeDirectory, isTeamWorktreePath, type TeamNavigationEntry } from './teamNavigation';
+import { groupTeamNavigation, teamSessionMembership, teamSessionSuperseded, botHistorySessionId, missingTeamSessionIds, unstartedTeamMembers, teamInactiveGroupId, teamMemberInactive, teamMemberCount, teamRoster, teamHomeDirectory, isTeamWorktreePath, type TeamNavigationEntry } from './teamNavigation';
 import { defaultCollapsed } from './sidebarCollapsedGroups';
 const label = (e: TeamNavigationEntry<{ sessionId: string }>) => e.kind === 'row' ? e.row.sessionId : e.kind === 'team' ? e.team.id : `inactive:${e.count}:${e.open ? 'open' : 'closed'}`;
 const team = (id: string, sessionIds: string[]): TeamState => ({ id, name: id, machineId: 'm', version: 1, createdAt: 1, bots: sessionIds.map((sessionId, i) => ({ id: `${id}-${i}`, sessionId, name: `Member ${i}`, generation: 1, root: i === 0, managed: true, assistant: 'claude', directory: null })), tasks: [], operations: [], messages: [] });
@@ -18,8 +18,8 @@ describe('team history', () => {
   it('keeps newly created teams reachable before a session exists', () => {
     expect(groupTeamNavigation([], [team('preparing', [])], new Set())).toEqual([{ kind: 'team', team: team('preparing', []) }]);
   });
-  it('does not hide a session claimed by multiple teams', () => {
-    expect(teamSessionMembership([team('one', ['lead']), team('two', ['lead'])]).has('lead')).toBe(false);
+  it('B-729: a session claimed by several teams belongs to exactly one (newer team on a tie) instead of none', () => {
+    expect(teamSessionMembership([team('one', ['lead']), { ...team('two', ['lead']), createdAt: 2 }]).get('lead')?.team.id).toBe('two');
   });
 });
 
@@ -48,10 +48,10 @@ describe('retired member history', () => {
     expect([...teamSessionMembership([t]).keys()].sort()).toEqual(['new-session', 'old-session']);
     expect(missingTeamSessionIds(new Set(['new-session']), [t])).toEqual(['old-session']);
   });
-  it('never associates a stopped receipt or an ambiguous historical session with a team', () => {
+  it('never associates a stopped receipt with a team; a live binding elsewhere outranks a receipt (B-729)', () => {
     const t = completedTeam();
-    const other = team('other', ['old-session']);
-    expect(teamSessionMembership([t, other]).has('old-session')).toBe(false);
+    const other = { ...team('other', ['old-session']), createdAt: 0 }; // older: rank, not age, decides
+    expect(teamSessionMembership([t, other]).get('old-session')?.team.id).toBe('other');
     t.operations[0].type = 'stop';
     expect(botHistorySessionId(t, t.bots[0])).toBeNull();
     expect(missingTeamSessionIds(new Set(), [t])).toEqual([]);
@@ -156,5 +156,61 @@ describe('B-723', () => {
     expect(teamHomeDirectory(t([b('lead', { root: true, directory: '/repo3' })]))).toBe('/repo3');
     expect(isTeamWorktreePath('C:\\Users\\u\\.happy\\teams\\worktrees\\abc')).toBe(true);
     expect(isTeamWorktreePath('/home/u/code/teams/worktrees-notes')).toBe(false);
+  });
+});
+
+/**
+ * B-729 (production 10-22): the roll-pool-cot Lead was spawned by roll-pool-cot
+ * and then adopted as roll-pool's lead — claimed twice, it was dropped from
+ * both and rendered outside every team. Every generation and role must nest.
+ */
+describe('B-729 every team conversation nests under its team', () => {
+  const op = (teamId: string, botId: string, generation: number, sessionId: string, extra: Partial<TeamState['operations'][number]> = {}): TeamState['operations'][number] => ({ id: `${botId}-g${generation}`, teamId, machineId: 'm', taskId: 'task', botId, attemptId: `a${generation}`, generation, type: 'spawn', status: 'completed', claimId: 'c', claimedAt: 1, error: null, sessionId, directory: '/repo', assistant: 'claude', prompt: '', createdAt: generation, ...extra });
+  /** Lead (spawned), a reused worker (gen 1 → gen 2), its delegated sub-member, and an adopted second lead with an older rebind. */
+  function devTeam(): TeamState {
+    const t = team('dev', ['lead', 'worker-g2', 'sub']);
+    t.bots[1].generation = 2;
+    t.bots.push({ id: 'dev-adopted', name: 'Adopted', sessionId: 'adopted-now', generation: 2, root: true, managed: false, assistant: 'claude', directory: null, previousSessionIds: ['adopted-before'] });
+    t.operations = [op('dev', 'dev-0', 1, 'lead'), op('dev', 'dev-1', 1, 'worker-g1'), op('dev', 'dev-1', 2, 'worker-g2'), op('dev', 'dev-2', 1, 'sub'), op('dev', 'dev-1', 1, 'worker-g1', { id: 'stop', type: 'stop' })];
+    return t;
+  }
+  const all = ['lead', 'worker-g1', 'worker-g2', 'sub', 'adopted-now', 'adopted-before'];
+  it('lead, every generation of a reused bot, sub-members and adopt history all belong to the team; unrelated sessions never do', () => {
+    const m = teamSessionMembership([devTeam()]);
+    expect(all.map(id => [id, m.get(id)?.team.id])).toEqual(all.map(id => [id, 'dev']));
+    expect(m.get('worker-g1')?.bot.id).toBe('dev-1');
+    expect(m.get('adopted-before')?.bot.id).toBe('dev-adopted');
+    expect(m.has('ordinary')).toBe(false);
+  });
+  it('older generations fold behind 已停用 while the member\'s current conversation stays listed', () => {
+    const t = devTeam();
+    expect(teamSessionSuperseded(t, t.bots[1], 'worker-g1')).toBe(true);
+    expect(teamSessionSuperseded(t, t.bots[1], 'worker-g2')).toBe(false);
+    expect(teamSessionSuperseded(t, t.bots[3], 'adopted-before')).toBe(true);
+    const rows = ['ordinary', ...all].map(sessionId => ({ sessionId }));
+    const isInactive = (r: { sessionId: string }, team: TeamState, bot: TeamState['bots'][number] | undefined) => !!bot && teamSessionSuperseded(team, bot, r.sessionId);
+    expect(groupTeamNavigation(rows, [t], new Set(['dev']), { isInactive, open: new Set() }).map(label))
+      .toEqual(['ordinary', 'dev', 'lead', 'worker-g2', 'sub', 'adopted-now', 'inactive:2:closed']);
+  });
+  it('prod 10-22: a spawned Lead that created and joined a second team nests under that newer team, not outside both', () => {
+    const cot = { ...team('roll-pool-cot', ['L', 'w']), createdAt: 1 };
+    cot.operations = [op('roll-pool-cot', 'roll-pool-cot-0', 1, 'L')];
+    const pool = { ...team('roll-pool', ['L', 'p']), createdAt: 2 }; // joined later as root (no receipt)
+    pool.bots[0].managed = false;
+    for (const order of [[pool, cot], [cot, pool]]) expect(teamSessionMembership(order).get('L')).toMatchObject({ team: { id: 'roll-pool' }, bot: { id: 'roll-pool-0' } });
+    expect(groupTeamNavigation(['x', 'L', 'w', 'p'].map(sessionId => ({ sessionId })), [cot, pool], new Set(['roll-pool', 'roll-pool-cot'])).map(label))
+      .toEqual(['x', 'roll-pool', 'L', 'p', 'roll-pool-cot', 'w']);
+  });
+  it('a retired member\'s session rejoined as a new lead of the same team keeps one row, labeled by its live binding', () => {
+    const t = team('t', ['', 'reused']);
+    t.bots[0].sessionId = null;
+    t.operations = [op('t', 't-0', 1, 'reused')];
+    expect(teamSessionMembership([t]).get('reused')?.bot.id).toBe('t-1');
+  });
+  it('a member with only adopt history still links its last conversation', () => {
+    const t = team('t', ['']);
+    t.bots[0] = { ...t.bots[0], sessionId: null, previousSessionIds: ['a1', 'a2'] };
+    expect(botHistorySessionId(t, t.bots[0])).toBe('a2');
+    expect(missingTeamSessionIds(new Set(['a2']), [t])).toEqual(['a1']);
   });
 });

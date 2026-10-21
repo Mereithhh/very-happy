@@ -75,18 +75,13 @@
   color: var(--text-dim);
   font-size: var(--fs-13);
   font-weight: 500;
-  cursor: pointer;
-  list-style: none;
 }
-.wnh-more > summary::-webkit-details-marker { display: none; }
 .wnh-more > summary:hover { color: var(--text); }
-.wnh-more > summary svg { transition: transform var(--dur-snap) var(--ease-out); }
-.wnh-more[open] > summary svg { transform: rotate(90deg); }
 .wnh-more .wn-list { margin: var(--sp-3) 0 0; }
 
 @media (pointer: coarse) {
   .wnh-try, .wnh-docs, .wnh-more > summary { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .wnh-try, .wnh-more > summary svg { transition: none; }
+  .wnh-try { transition: none; }
 }

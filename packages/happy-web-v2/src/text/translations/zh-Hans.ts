@@ -2134,6 +2134,7 @@ export const zhHans: TranslationStructure = {
         groupProjects: '按项目分组',
         moveToProject: '移到项目…',
         projectsUnassigned: '未归属',
+        projectsUnassignedByFolder: '未归属项目 · 按目录',
         projectAttention: ({ count }: { count: number }) => `${count} 个等你处理`,
         makeProject: '把这个目录设为项目',
         makeProjectDone: ({ name }: { name: string }) => `已创建项目「${name}」`,
@@ -2539,6 +2540,9 @@ export const zhHans: TranslationStructure = {
         editorDescription: '修改所选机器上 agent 自己的配置文件。确认预览之前不会写入任何内容。',
         customize: '自定义…',
         customModelDescription: '来自这台机器的配置',
+        // B-714 model picker groups
+        groupCatalog: '目录',
+        groupCustom: '自定义',
     },
     settingsMachines: {
         title: '机器',
