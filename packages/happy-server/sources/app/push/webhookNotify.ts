@@ -254,7 +254,7 @@ export function parseWebhookToken(token: string): WebhookConfig | null {
 //
 
 /**
- * Map a push-event kind ('done' | 'permission' | 'question') to the webhook
+ * Map a push-event kind ('done' | 'permission' | 'question' | 'attention') to the webhook
  * event category the user can toggle. Unknown kinds map to null (no send).
  */
 export function mapKindToWebhookEvent(kind: unknown): WebhookEvent | null {
@@ -263,6 +263,9 @@ export function mapKindToWebhookEvent(kind: unknown): WebhookEvent | null {
             return 'completed';
         case 'permission':
         case 'question':
+        // B-510: "needs you" rides the existing needs-a-decision category, so
+        // stored configs (explicit events lists) and old web toggles keep working.
+        case 'attention':
             return 'permission';
         default:
             return null;
@@ -326,6 +329,10 @@ export function buildWebhookPayload(push: {
             title = `⏸ 需要确认 · ${shortTitle}`;
             headline = tool ? `请求执行工具：${tool}，等待确认。` : '有权限请求等待确认。';
             break;
+        case 'attention':
+            title = `🙋 需要你介入 · ${shortTitle}`;
+            headline = push.body ? `需要你介入：${truncate(push.body, 200)}` : 'Agent 需要你介入。';
+            break;
         case 'question':
         default:
             title = `❓ 等待回答 · ${shortTitle}`;
@@ -341,7 +348,11 @@ export function buildWebhookPayload(push: {
     if (provider) lines.push(`Agent：${provider}`);
     if (sessionId) {
         const base = webhookWebUrlBase();
-        if (base) lines.push(`链接：${base}/session/${sessionId}`);
+        // B-510: an attention push may point at a machine web panel instead.
+        const target = kind === 'attention' && typeof push.data.url === 'string' && push.data.url.startsWith('/machine/')
+            ? push.data.url
+            : `/session/${sessionId}`;
+        if (base) lines.push(`链接：${base}${target}`);
         // Fixed, machine-parseable LAST line. External automation (e.g. the
         // Tanka quote-reply dispatcher) extracts the id from here — keep the
         // exact `session: <id>` format stable.

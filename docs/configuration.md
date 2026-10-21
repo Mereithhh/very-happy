@@ -386,3 +386,46 @@ without tmux, authentication, structured sessions, daemon control, and plain Web
 terminals still work. A direct shell may survive a brief browser reconnect while
 the same daemon holds its PTY, but it is not durable/discoverable like tmux and
 ends on daemon restart or idle cleanup.
+
+### Machine web panels and "needs you" (B-510)
+
+A machine can declare local web pages a person may need to look at — a noVNC
+desktop, an agent-browser dashboard, Grafana, a dev server — in its own
+`~/.happy/settings.json`:
+
+```jsonc
+"webPanels": [
+  { "id": "desktop", "title": "Desktop", "url": "https://dev.example.ts.net:6443/vnc.html?autoconnect=1" },
+  { "id": "grafana", "title": "Grafana", "url": "https://grafana.example.com/", "embed": false }
+]
+```
+
+- `id` matches `^[a-z0-9][a-z0-9-]{0,31}$`; `title` ≤ 40 characters; at most 8 panels.
+- `url` must be `https://`, or `http://` on `localhost` / `127.0.0.1` (only useful
+  when you browse on that same machine). No credentials in the URL.
+- `embed: false` when the site refuses to be framed; the web then only offers
+  "Open in a new window". `very-happy panels check` tells you (it reads
+  `X-Frame-Options` / CSP `frame-ancestors` from this machine).
+- Only this file can declare panels — the web, RPC and server have no write
+  path. The daemon re-reads it within ~2 s of a change; invalid entries are
+  skipped and logged once in the daemon log.
+- Nothing is proxied: the viewer's browser connects to the URL directly, so it
+  must be reachable from that device (tailnet + certificate, Cloudflare Tunnel,
+  Caddy …). A secure page cannot embed a plain `http://` LAN address.
+
+Panels appear in the session workspace **+** menu (for sessions on that
+machine), on the machine page, and at `/machine/<machineId>/panel/<id>`.
+
+An agent that needs a person (captcha, 2FA, QR code, OAuth consent) calls the
+session tool `request_human({ reason, panel? })`: the task board shows the
+session as blocked, a "Needs you" push goes out (click → the panel, or the
+session), and an open session page shows a banner with **Open panel**. The same
+reason within 60 s does not push twice. From scripts:
+
+```bash
+very-happy panels list | check
+very-happy attention "Scan the QR code on the desktop" --panel desktop          # account notification
+very-happy attention "Approve the OAuth page" --session <sessionId> --panel desktop
+```
+
+The reason is sent in clear to the relay like every push; keep secrets out of it.

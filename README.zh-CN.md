@@ -304,6 +304,7 @@ Agent Client Protocol 与同样缩写为 ACP 的旧 Agent Communication Protocol
 - 机器文件浏览器：丰富预览文本、Markdown、图片与 PDF，并可打开 Agent 输出中的文件链接。
 - 剪贴板及拖放文件交接：8 MB 上限、有界分块、上传反馈、插入引用后的路径且不自动执行。
 - 任务看板、todo provider 命令、笔记、通知、Web Push 与 HTTPS webhook。
+- 机器网页面板：在机器本地 settings.json 声明 noVNC、浏览器 dashboard 等页面，在会话工作区和机器页直接打开；Agent 可用 `request_human` 叫人介入，推送直达面板（[配置说明](docs/configuration.md#machine-web-panels-and-needs-you-b-510)）。
 - Claude 驱动的协调器：文本输入、会话感知、在所选机器上调度；配置兼容语音服务后可使用语音输入。
 - 免密码邮箱验证码与 Google 登录、可选密码兼容、可配置注册/容量控制、托管公共中继与生产级自托管。
 - 移动端友好、可主动安装的 PWA，无需应用商店。
@@ -327,7 +328,7 @@ Very Happy 会向托管会话注入一个小型 MCP 能力面，让 Agent 不只
 
 | 运行路径 | 今天已交付的 MCP 工具 |
 |---|---|
-| 基础托管 Claude 会话 | `change_title`、`copy_to_clipboard`、`open_preview`、`report_progress` |
+| 基础托管 Claude 会话 | `change_title`、`copy_to_clipboard`、`open_preview`、`report_progress`、`request_human` |
 | 托管 Codex / Gemini / ACP 桥接 | `change_title`、`copy_to_clipboard`、`open_preview`、`report_progress` |
 | Assistant/meta-agent 变体额外能力 | `sessions_list`、`session_read`、`session_send`、`session_spawn`、`session_kill`、`session_archive`、`terminals_list`、`terminal_read`、`terminal_send`、`memory_update`、`journal_append` |
 | 用户级普通 `claude`（主动启用后） | 仅 `copy_to_clipboard` |

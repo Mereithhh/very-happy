@@ -98,6 +98,12 @@ interface Settings {
    * as arbitrary code on this machine, so letting a (potentially hijacked) web
    * session set it would be an RCE. Absent = the web Todo panel stays disabled.
    */
+  /**
+   * B-510: local web pages shown as panels on the web (noVNC, dashboards…).
+   * Raw as written by the user; webPanels/webPanels.ts validates. Like
+   * todoProvider, the web has NO write path to this field.
+   */
+  webPanels?: unknown;
   todoProvider?: {
     command: string
     args?: string[]

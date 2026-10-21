@@ -498,3 +498,24 @@ describe('B-026 pinned lookup under Node autoSelectFamily', () => {
         }
     });
 });
+
+describe('B-510 attention push', () => {
+    const originalWebUrl = process.env.HAPPY_WEB_URL;
+    afterEach(() => {
+        if (originalWebUrl === undefined) delete process.env.HAPPY_WEB_URL;
+        else process.env.HAPPY_WEB_URL = originalWebUrl;
+    });
+
+    it('rides the existing permission category (stored configs keep working)', () => {
+        expect(mapKindToWebhookEvent('attention')).toBe('permission');
+    });
+
+    it('titles it as a request to step in and links the panel when the push points at one', () => {
+        process.env.HAPPY_WEB_URL = 'https://veryhappy.dev';
+        const p = buildWebhookPayload({ body: 'scan the QR code', data: { kind: 'attention', sessionId: 's1', sessionTitle: 'deploy', url: '/machine/m1/panel/desktop' } })!;
+        expect(p.title).toBe('🙋 需要你介入 · deploy');
+        expect(p.message.split('\n')).toEqual(['需要你介入：scan the QR code', '会话：deploy', '链接：https://veryhappy.dev/machine/m1/panel/desktop', 'session: s1']);
+        const q = buildWebhookPayload({ body: 'x', data: { kind: 'attention', sessionId: 's1', url: '/elsewhere' } })!;
+        expect(q.message).toContain('链接：https://veryhappy.dev/session/s1');
+    });
+});

@@ -1,4 +1,5 @@
 import { supportsSessionAttachments } from './attachmentCapabilities';
+import { attentionFromEvent, useHumanAttention } from './humanAttention';
 import type { SessionShareInfo } from './sessionShareTypes';
 import { useSessionShares } from './sessionSharesStore';
 import { uploadContentPublicKey } from './apiSessionShares';
@@ -3433,6 +3434,9 @@ class Sync {
         // unread counter on these only, ignore the noisy per-message stream.
         if (updateData.type === 'session-event') {
             notifyUnreadMessage();
+            // B-510: request_human → banner on that session.
+            const attention = attentionFromEvent(updateData);
+            if (attention) useHumanAttention.getState().report(updateData.sessionId, attention);
         }
 
         // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity
