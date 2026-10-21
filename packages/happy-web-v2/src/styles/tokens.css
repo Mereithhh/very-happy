@@ -422,7 +422,7 @@
    hover time), modals/previews, and the terminal screen's tool history
    (terminal geometry is fixed, AGENTS 铁律 9). design-language「对话字号档位」. */
 :root,
-:is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls) {
+:is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls, .msg-reader) {
   --chat-fs-body: calc(var(--fs-14) * var(--chat-scale));      /* 正文：消息、工具/子代理行、输入框（触屏 15，见下方媒体查询） */
   --chat-fs-control: calc(var(--fs-13) * var(--chat-scale));   /* 次级控件：卡片标题/按钮/权限说明 */
   --chat-fs-secondary: calc(var(--fs-12) * var(--chat-scale)); /* 次级：标签、时间、计数、行下第二行 */
@@ -433,11 +433,11 @@
   --conversation-size: var(--chat-fs-body);
   --conversation-icon-size: calc(18px * var(--chat-scale));
 }
-:is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls) { --chat-scale: 1; }
+:is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls, .msg-reader) { --chat-scale: 1; }
 
 @media (pointer: coarse), (max-width: 860px) {
   :root,
-  :is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls) { --chat-fs-body: calc(var(--fs-15) * var(--chat-scale)); }
+  :is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls, .msg-reader) { --chat-fs-body: calc(var(--fs-15) * var(--chat-scale)); }
   :root { --conversation-size-base: var(--fs-15); }
 }
 

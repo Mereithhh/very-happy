@@ -7,13 +7,15 @@
  * derived in `components/tools/builtinTools.ts` (pure, tested); this file only
  * lays it out.
  */
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowUpRight, ChevronRight } from 'lucide-react';
 import type { ToolCall } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
-import { builtinToolDigest, builtinToolFields, type ResolvedBuiltinTool } from '@/components/tools/builtinTools';
+import { builtinToolDigest, builtinToolFields, builtinToolLabel, type BuiltinToolField, type ResolvedBuiltinTool } from '@/components/tools/builtinTools';
+import { plainPreviewLines } from '@/utils/markdownPreview';
+import { MessageReader, PreviewLines } from './MessageReader';
 import './builtinTool.css';
 
 function RawOutput({ text, label }: { text: string; label: string }) {
@@ -37,6 +39,24 @@ function RawOutput({ text, label }: { text: string; label: string }) {
     );
 }
 
+/**
+ * B-716: a delegation goal, a team message / submission / return reason or a
+ * cross-session body is agent markdown — the card shows plain preview lines,
+ * a click opens the reader with it rendered in full.
+ */
+function MarkdownField({ field, tool }: { field: BuiltinToolField; tool: string }) {
+    const { t } = useTranslation();
+    const [open, setOpen] = useState(false);
+    const openRef = useRef<HTMLButtonElement>(null);
+    const preview = plainPreviewLines(field.value, 4);
+    return <>
+        <button ref={openRef} type="button" className="bt-md" aria-haspopup="dialog" aria-expanded={open} aria-label={`${t('session.messageReader.open')}: ${field.label}`} onClick={() => setOpen(true)}>
+            <PreviewLines {...preview} />
+        </button>
+        <MessageReader open={open} onOpenChange={setOpen} triggerRef={openRef} title={`${tool} · ${field.label}`} body={field.value} />
+    </>;
+}
+
 export function BuiltinToolView({ resolved, tool }: { resolved: ResolvedBuiltinTool; tool: ToolCall }) {
     const { t } = useTranslation();
     const fields = builtinToolFields(resolved);
@@ -56,7 +76,7 @@ export function BuiltinToolView({ resolved, tool }: { resolved: ResolvedBuiltinT
                             <dd className={`bt-v${f.mono ? ' bt-v--mono' : ''}${f.multiline ? ' bt-v--multiline' : ''}`}>
                                 {f.items ? (
                                     <ul className="bt-list">{f.items.map((item, idx) => <li key={idx}>{item}</li>)}</ul>
-                                ) : f.value}
+                                ) : f.markdown ? <MarkdownField field={f} tool={builtinToolLabel(resolved.name)} /> : f.value}
                             </dd>
                         </div>
                     ))}

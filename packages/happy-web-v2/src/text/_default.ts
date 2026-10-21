@@ -613,6 +613,22 @@ export const en = {
         reconnectingPlaceholder: 'Reconnecting… messages you send will go out once it recovers',
         // B-497: a message another session on the same machine sent this one,
         // or the daemon's edit-conflict notice — rendered as a source card.
+        // B-716: the reader a team / cross-session / delegation card opens on click.
+        messageReader: {
+            open: 'Open full message',
+            close: 'Close',
+            copy: 'Copy message',
+            source: 'Original message',
+            openTask: 'View task',
+            task: 'Task',
+            kind: {
+                assigned: 'New task',
+                submitted: 'Submitted',
+                revision: 'Revision requested',
+                handoff: 'Handed off',
+                message: 'Message',
+            },
+        },
         peerMessage: {
             messageFrom: 'Message from another session',
             conflict: 'Edit conflict',

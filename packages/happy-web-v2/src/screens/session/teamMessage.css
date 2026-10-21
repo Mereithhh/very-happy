@@ -1,35 +1,21 @@
-/* B-614: one block per team message — no box-in-box. A single 1px line above
- * and below; the source fold lives on the same action row as the task link. */
+/* B-614: one block per team message — no box-in-box (CDS 1-Border Rule).
+ * B-716: the folded card is a plain preview; the whole card opens the reader
+ * (MessageReader), so the source fold moved into the reader. */
 .msg--team { min-width: 0; }
-.team-message { min-width: 0; color: var(--text); }
-/* B-614 (CDS 1-Border Rule): a team message is ONE closed card; a summary-only
- * message is a card whose whole body is its summary row. */
-.msg--team > .team-message { width: 100%; box-sizing: border-box; background: var(--bg-1); border: 0; border-radius: var(--r-md); box-shadow: var(--panel-shadow); overflow: hidden; }
-.msg--team > .team-message > .team-message-summary { padding-inline: calc(var(--chat-space) * 3); }
-.msg--team > .team-message[open] > .team-message-source { background: var(--surface-code); padding-inline: calc(var(--chat-space) * 3); }
-.team-message-summary { display: flex; align-items: center; gap: calc(var(--chat-space) * 2); min-height: calc(var(--chat-space) * 9); padding: calc(var(--chat-space) * 2) 0; cursor: pointer; font-size: var(--chat-fs-body); }
-.team-message-summary:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);  }
-.team-message-summary > svg { flex-shrink: 0; color: var(--text-faint); }
-.team-message-label, .team-message-toggle { flex-shrink: 0; font-size: var(--chat-fs-secondary); color: var(--text-faint); }
-.team-message-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-.team-message-source { margin: 0; padding: calc(var(--chat-space) * 3); background: var(--surface-code); border-radius: var(--r-sm); font-family: var(--font-mono); font-size: var(--chat-fs-code); white-space: pre-wrap; overflow-wrap: anywhere; }
-.team-message-work { display: flex; flex-direction: column; gap: calc(var(--chat-space) * 2); padding: 0 0 var(--chat-space); background: var(--bg-1); border: 0; border-radius: var(--r-md); box-shadow: var(--panel-shadow); overflow: hidden; overflow-wrap: anywhere; min-width: 0; }
+.team-message-work { display: flex; flex-direction: column; gap: calc(var(--chat-space) * 2); padding: 0 0 calc(var(--chat-space) * 2); background: var(--bg-1); border: 0; border-radius: var(--r-md); box-shadow: var(--panel-shadow); overflow: hidden; overflow-wrap: anywhere; min-width: 0; }
+.team-message-card { cursor: pointer; transition: box-shadow var(--motion-fast); }
+.team-message-card:hover { box-shadow: var(--panel-shadow-hover); }
 .team-message-work > :not(.team-message-work-heading) { margin-inline: calc(var(--chat-space) * 3); }
-.team-message-work-heading { display: flex; align-items: flex-start; flex-wrap: wrap; row-gap: var(--chat-space); gap: calc(var(--chat-space) * 2); min-width: 0; padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3); border-bottom: var(--hairline) solid var(--line); color: var(--text-dim); font-size: var(--chat-fs-secondary); }
+.team-message-work-heading { display: flex; align-items: center; flex-wrap: wrap; row-gap: var(--chat-space); gap: calc(var(--chat-space) * 2); min-width: 0; padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3); border-bottom: var(--hairline) solid var(--line); color: var(--text-dim); font-size: var(--chat-fs-secondary); }
 .team-message-work-heading > svg { flex-shrink: 0; color: var(--text-faint); }
 .team-message-work-heading > .ag-route { flex: 1 1 0; min-width: 0; }
+.team-message-kind { flex-shrink: 0; color: var(--text-faint); }
+.team-message-sender { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .team-message-status { margin-left: auto; flex-shrink: 0; font-size: var(--chat-fs-secondary); }
-.team-message-work > strong { font-size: var(--chat-fs-body); font-weight: 600; }
-/* B-687: goals and results are multi-line text from agents — keep their line
- * breaks; the result stays a preview (220 chars, 6 lines), full text one click
- * away behind 「查看任务和结果」. */
-.team-message-goal { white-space: pre-wrap; }
-.team-message-result-text { min-width: 0; white-space: pre-line; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; }
-.team-message-assignee { font-size: var(--chat-fs-secondary); min-width: 0; }
-.team-message-result { display: flex; gap: calc(var(--chat-space) * 2); margin: 0; font-size: var(--chat-fs-secondary); color: var(--text-dim); }
-.team-message-result svg { flex-shrink: 0; color: var(--text-faint); }
+.team-message-work-heading > .msg-time { flex-shrink: 0; min-height: 0; padding-inline: 0; }
+.team-message-open { display: flex; flex-direction: column; align-items: stretch; gap: var(--chat-space); min-width: 0; padding: 0; text-align: left; color: var(--text); background: none; border: 0; border-radius: var(--r-sm); cursor: pointer; font: inherit; }
+.team-message-open:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--text-faint); }
+.team-message-goal { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--chat-fs-body); font-weight: 600; }
 .team-message-actions { display: flex; align-items: center; flex-wrap: wrap; column-gap: calc(var(--chat-space) * 5); min-width: 0; }
 .team-message-actions > a { display: inline-flex; align-items: center; gap: calc(var(--chat-space) * 1.5); min-height: calc(var(--chat-space) * 8); color: var(--text); font-size: var(--chat-fs-control); }
-.team-message-actions > .team-message[open] { flex-basis: 100%; }
-.team-message-actions .team-message-summary { min-height: calc(var(--chat-space) * 8); padding: 0; }
-@media (pointer: coarse) { .team-message-actions > a, .team-message-summary { min-height: 44px; } }
+@media (pointer: coarse) { .team-message-actions > a { min-height: 44px; } }
