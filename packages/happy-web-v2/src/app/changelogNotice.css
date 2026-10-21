@@ -40,6 +40,8 @@
 
 .wn-card[data-featured] { width: min(660px, calc(100vw - 2 * var(--sp-4))); }
 .wn-card[data-featured] h2 { font-size: var(--fs-24); line-height: 1.3; }
+/* B-677: highlight cards need room for a two-up screenshot grid. */
+.wn-card[data-highlights] { width: min(760px, calc(100vw - 2 * var(--sp-4))); max-height: min(860px, calc(100dvh - 2 * var(--sp-4))); }
 .wn-brand { display: flex; align-items: center; gap: var(--sp-3); margin: 0 44px var(--sp-5) 0; padding-bottom: var(--sp-4); border-bottom: 1px solid var(--line); }
 .wn-brand > span { font-size: var(--fs-16); font-weight: 600; }
 .wn-brand > span > span { display: block; margin-top: var(--sp-1); font-size: var(--fs-12); font-weight: 400; color: var(--text-dim); }
@@ -78,7 +80,7 @@
 @keyframes wn-enter { from { opacity: 0; transform: translate(-50%, calc(-50% + var(--sp-2))); } }
 
 @media (max-width: 520px) {
-  .wn-card, .wn-card[data-featured] {
+  .wn-card, .wn-card[data-featured], .wn-card[data-highlights] {
     top: auto;
     bottom: 0;
     left: 0;

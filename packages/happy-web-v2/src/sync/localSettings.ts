@@ -72,9 +72,16 @@ export const LocalSettingsSchema = z.object({
     // reusing that field could not move existing devices to the new default.
     // `sidebarGroupMode` / `sidebarGroupByTag` stay readable (add-only) and are
     // mirrored for an old-Web rollback; tag grouping is gone from the menu.
-    sidebarGrouping: z.enum(['project', 'none']).describe('Sidebar list grouping: by project (default) or flat'),
-    // B-647: one-time 「标签分组已合并到项目」 notice for devices that used tag grouping.
+    // B-675 (Owner 2026-10-21): tag grouping is back beside projects — 'tag'
+    // is an ADDED value. Rolling the Web back past B-675 on a device that
+    // picked it resets that device's local settings (whole-blob safeParse —
+    // see boardLayout), the accepted cost of every enum addition here.
+    // Default stays 'project'; nothing switches a device's lens automatically.
+    sidebarGrouping: z.enum(['project', 'tag', 'none']).describe('Sidebar list grouping: by project (default), by first tag, or flat'),
+    // B-647: one-time 「标签分组已合并到项目」 notice — retired by B-675; kept readable (add-only).
     projectsTagNoticeDismissed: z.boolean().describe('The tag-grouping-merged-into-projects notice was dismissed'),
+    // B-675: one-time 「按标签分组回来了」 notice for devices that used tag grouping before B-647.
+    tagGroupingBackNoticeDismissed: z.boolean().describe('The tag-grouping-is-back notice was dismissed'),
     // Web terminal (mobile): line-input mode — a plain textarea below the key
     // bar composes whole lines (IME/dictation-friendly, no xterm composition
     // quirks) and sends them to the pty on Enter, instead of per-key input
@@ -209,6 +216,7 @@ export const localSettingsDefaults: LocalSettings = {
     // B-647: projects are the default organisation.
     sidebarGrouping: 'project',
     projectsTagNoticeDismissed: false,
+    tagGroupingBackNoticeDismissed: false,
     // Default to per-key mode: it's the full-fidelity terminal; users who hit
     // IME pain opt into the line-input bar from the key bar toggle.
     terminalInputBarMode: false,
