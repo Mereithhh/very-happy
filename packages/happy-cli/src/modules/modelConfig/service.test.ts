@@ -270,6 +270,9 @@ describe('invalid input', () => {
         [{ harness: 'pi', providerId: 'p', baseUrl: 'https://x.example.com/v1', apiKey: { mode: 'literal', value: '!cat ~/.ssh/id_rsa' } }, 'invalid-input'],
         [{ harness: 'pi', providerId: 'p', baseUrl: 'https://x.example.com/v1', api: 'made-up' }, 'invalid-input'],
         [{ harness: 'pi', providerId: '../x', baseUrl: 'https://x.example.com/v1' }, 'invalid-input'],
+        [{ harness: 'pi', providerId: 'p', baseUrl: 'https://x.example.com/v1', models: ['m'], contextWindows: { m: 1.5 } }, 'invalid-input'],
+        [{ harness: 'pi', providerId: 'p', baseUrl: 'https://x.example.com/v1', models: ['m'], contextWindows: { m: 10 } }, 'invalid-input'],
+        [{ harness: 'pi', providerId: 'p', baseUrl: 'https://x.example.com/v1', models: ['m'], contextWindows: { other: 200000 } }, 'invalid-input'],
     ])('%j → %s', async (patch, code) => {
         await expect(service().apply({ patch })).rejects.toMatchObject({ code });
     });
@@ -297,6 +300,18 @@ describe('pi models.json + settings.json', () => {
         expect(JSON.parse(readFileSync(join(dir, 'models.json'), 'utf8')).providers.mine.models).toEqual([{ id: 'a', contextWindow: 64000 }, { id: 'b' }]);
         const view = (await service().read({ harness: 'pi', providerId: 'mine' })).harnesses[0];
         expect(view.current.apiKey).toEqual({ mode: 'command' });
+        expect(view.current.contextWindows).toEqual({ a: 64000 });
+    });
+
+    // B-727: without contextWindow pi assumes 128000 — the form can now write the real one.
+    it('sets and removes per-model contextWindow, keeping other fields', async () => {
+        const dir = join(home, '.pi', 'agent');
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, 'models.json'), JSON.stringify({ providers: { gw: { baseUrl: 'https://gw.example.com/v1', api: 'openai-completions', apiKey: '${GW}', models: [{ id: 'a', maxTokens: 8000, contextWindow: 64000 }, { id: 'b' }] } } }, null, 2));
+        await applyForReal(service(), { harness: 'pi', providerId: 'gw', models: ['a', 'b', 'c'], contextWindows: { a: null, b: 1_000_000, c: 262_144 } });
+        expect(JSON.parse(readFileSync(join(dir, 'models.json'), 'utf8')).providers.gw.models).toEqual([{ id: 'a', maxTokens: 8000 }, { id: 'b', contextWindow: 1_000_000 }, { id: 'c', contextWindow: 262_144 }]);
+        const view = (await service().read({ harness: 'pi', providerId: 'gw' })).harnesses[0];
+        expect(view.current.contextWindows).toEqual({ b: 1_000_000, c: 262_144 });
     });
 });
 

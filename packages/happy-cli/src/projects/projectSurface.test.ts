@@ -53,7 +53,9 @@ describe('project-v1 capability and injection points', () => {
         expect(codex).toContain('message: await projectInjector.decorate(message.message),');
         const acp = read('../agent/acp/runAcp.ts');
         expect(acp).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY],');
-        expect(acp).toContain('const projected = await projectInjector.decorate(batch.message);');
+        // B-727: decoration goes through buildAcpPrompt (slash commands stay verbatim; acpSlashCommand.test.ts).
+        expect(acp).toContain('const { prompt, slashCommand } = await buildAcpPrompt(batch.message, {');
+        expect(acp).toContain('decorate: (m) => projectInjector.decorate(m),');
         expect(acp).toContain('projectInjector.reset();');
         const gemini = read('../gemini/runGemini.ts');
         expect(gemini).toContain('capabilities: [PROJECT_SESSION_CAPABILITY],');

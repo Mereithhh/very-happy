@@ -1,3 +1,5 @@
+import { contextWindowSourceOf, type ContextUsage, type ContextWindowSource } from '@slopus/happy-wire';
+
 /**
  * 按真实模型 id 推断上下文窗口大小（B-135）。
  *
@@ -58,19 +60,45 @@ export function contextPercentOf(contextSize: number, window: number | null): nu
     return Math.max(0, Math.min(100, Math.round((contextSize / window) * 100)));
 }
 
+export interface ComposerContextUsage {
+    tokens: number | null;
+    /** Denominator, or null when no trustworthy window exists (no percentage then). */
+    window: number | null;
+    estimated: boolean;
+    /** Where `window` came from: the harness config, a known-model table, or nowhere. */
+    windowSource: ContextWindowSource;
+    /** pi compacted and has not measured the new context yet (tokens is null). */
+    compacted: boolean;
+}
+
 /**
  * Pi reports current occupancy through its runtime; message/billing totals are not a fallback.
  * Session-protocol envelopes carry usage but no model id, so the model the
  * wrapper reports running (`metadata.currentModelCode`, SDK init — keeps the
  * `[1m]` marker) sizes the window when the usage snapshot has none.
+ *
+ * B-727: pi's window for a custom model without `contextWindow` is its 128k
+ * default; the CLI marks it `windowSource: 'unknown'` (or already replaced it
+ * with a same-id model's window → 'inferred'). Unknown falls back to this
+ * table, then to no denominator — never to pi's 128k.
  */
 export function composerContextUsage(
     isPi: boolean,
-    runtime: import('@slopus/happy-wire').ContextUsage | null | undefined,
+    runtime: ContextUsage | null | undefined,
     message: {contextSize: number; model?: string | null} | null | undefined,
     runningModel?: string | null,
-) {
-    if (isPi) return { tokens: runtime?.tokens ?? null, window: runtime?.contextWindow ?? null, estimated: true };
+): ComposerContextUsage {
+    if (isPi) {
+        const tokens = runtime?.tokens ?? null;
+        let windowSource = contextWindowSourceOf(runtime);
+        let window = runtime?.contextWindow ?? null;
+        if (runtime && windowSource === 'unknown') {
+            window = contextWindowFor(runtime.model);
+            if (window !== null) windowSource = 'inferred';
+        }
+        return { tokens, window, estimated: true, windowSource, compacted: tokens === null && typeof runtime?.compactedAt === 'number' };
+    }
     const tokens = message?.contextSize ?? null;
-    return { tokens, window: windowHolding(contextWindowFor(message?.model ?? runningModel), tokens), estimated: false };
+    const window = windowHolding(contextWindowFor(message?.model ?? runningModel), tokens);
+    return { tokens, window, estimated: false, windowSource: window === null ? 'unknown' : 'inferred', compacted: false };
 }

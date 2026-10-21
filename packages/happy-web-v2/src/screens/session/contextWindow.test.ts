@@ -95,3 +95,28 @@ it('uses pi runtime occupancy, including unknown after compaction, without falli
     expect(windowHolding(null, 5)).toBeNull();
     expect(windowHolding(1000000, 1200000)).toBe(1000000);
 });
+
+describe('B-727 pi denominator and compaction', () => {
+    const snap = (over: Record<string, unknown>) => ({source:'pi' as const,tokens:90_000,contextWindow:128_000,updatedAt:1,...over});
+    it('configured window (or an older CLI without windowSource) is used as is', () => {
+        expect(composerContextUsage(true, snap({}), null)).toMatchObject({window:128_000,windowSource:'configured'});
+        expect(composerContextUsage(true, snap({windowSource:'configured',contextWindow:200_000}), null)).toMatchObject({window:200_000});
+        expect(composerContextUsage(true, snap({windowSource:'inferred',contextWindow:1_000_000}), null)).toMatchObject({window:1_000_000,windowSource:'inferred'});
+    });
+    it('unknown window: never pi\'s 128k default — Very Happy\'s table, else no denominator', () => {
+        const unknown = composerContextUsage(true, snap({windowSource:'unknown',model:'deepseek-v4-1-flash-1017'}), null);
+        expect(unknown).toMatchObject({tokens:90_000,window:null,windowSource:'unknown'});
+        expect(contextPercentOf(unknown.tokens!, unknown.window)).toBeNull();
+        expect(composerContextUsage(true, snap({windowSource:'unknown',model:'claude-opus-5-5'}), null)).toMatchObject({window:1_000_000,windowSource:'inferred'});
+    });
+    it('after compaction: tokens unknown and flagged until the next measurement', () => {
+        expect(composerContextUsage(true, snap({tokens:null,compactedAt:5}), null)).toMatchObject({tokens:null,compacted:true});
+        expect(composerContextUsage(true, snap({tokens:null}), null)).toMatchObject({compacted:false});
+        expect(composerContextUsage(true, snap({tokens:30_000,compactedAt:null}), null)).toMatchObject({tokens:30_000,compacted:false});
+    });
+    it('Claude / Codex paths are unchanged by pi provenance', () => {
+        const piSnapshot = snap({windowSource:'unknown',compactedAt:5});
+        expect(composerContextUsage(false, piSnapshot, {contextSize:150_000,model:'claude-sonnet-5'})).toMatchObject({tokens:150_000,window:200_000,estimated:false,compacted:false});
+        expect(composerContextUsage(false, undefined, {contextSize:150_000,model:'gpt-5.5-codex'})).toMatchObject({tokens:150_000,window:null,estimated:false});
+    });
+});

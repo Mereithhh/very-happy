@@ -37,6 +37,8 @@ export interface HarnessCurrent {
     providerName?: string | null;
     api?: string | null;
     models?: string[];
+    /** pi: explicit contextWindow per model (B-727). Absent = the daemon cannot write it yet. */
+    contextWindows?: Record<string, number>;
     defaultModel?: string | null;
     activeProvider?: string | null;
     active?: boolean;
@@ -82,7 +84,7 @@ export interface ClaudePatch {
 }
 export interface CodexPatch { harness: 'codex'; providerId: string; providerName?: string; baseUrl?: string | null; apiKey?: SecretInput; model?: string | null; activate?: boolean }
 export interface GeminiPatch { harness: 'gemini'; baseUrl?: string | null; apiKey?: SecretInput; model?: string | null }
-export interface PiPatch { harness: 'pi'; providerId: string; baseUrl?: string | null; api?: string; apiKey?: SecretInput; models?: string[]; activate?: boolean; defaultModel?: string | null }
+export interface PiPatch { harness: 'pi'; providerId: string; baseUrl?: string | null; api?: string; apiKey?: SecretInput; models?: string[]; contextWindows?: Record<string, number | null>; activate?: boolean; defaultModel?: string | null }
 export type ModelConfigPatch = ClaudePatch | CodexPatch | GeminiPatch | PiPatch;
 
 export const PI_APIS = ['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative-ai', 'mistral-conversations'] as const;

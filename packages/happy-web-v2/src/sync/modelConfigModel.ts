@@ -44,7 +44,10 @@ export interface ModelConfigForm {
     opusModel: string;
     sonnetModel: string;
     haikuModel: string;
-    /** claude: extra picker models; pi: the provider's model ids. One per line or comma-separated. */
+    /**
+     * claude: extra picker models; pi: the provider's model ids. One per line or comma-separated.
+     * pi (B-727): a line may end with the model's context window — `glm-5.3 200k`.
+     */
     extraModels: string;
     api: string;
     activate: boolean;
@@ -57,6 +60,54 @@ export function splitModelList(text: string): string[] {
         if (id && !out.includes(id)) out.push(id);
     }
     return out;
+}
+
+/** `1000000` → `1M`, `262144` → `262144` (only exact k/M multiples are shortened). */
+export function formatContextWindow(tokens: number): string {
+    if (tokens % 1_000_000 === 0) return `${tokens / 1_000_000}M`;
+    if (tokens % 1000 === 0) return `${tokens / 1000}k`;
+    return String(tokens);
+}
+
+/** `200k` / `1M` / `1.5m` / `262144` → tokens; null when it is not a size. k = 1000, M = 1 000 000. */
+export function parseContextWindow(text: string): number | null {
+    const m = /^(\d+(?:\.\d+)?)\s*([kKmM]?)$/.exec(text.trim());
+    if (!m) return null;
+    const n = Number(m[1]) * (m[2] ? (m[2].toLowerCase() === 'k' ? 1000 : 1_000_000) : 1);
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+export interface PiModelLines {
+    ids: string[];
+    /** Window written after an id; ids without one are absent. */
+    windows: Record<string, number>;
+    /** The first line that is neither `id` nor `id <size>`. */
+    invalid: string | null;
+}
+
+/** B-727: the pi model list — `id` or `id <size>` per line (commas also separate entries). */
+export function parsePiModelLines(text: string): PiModelLines {
+    const out: PiModelLines = { ids: [], windows: {}, invalid: null };
+    for (const part of text.split(/[\n,]+/)) {
+        const line = part.trim();
+        if (!line) continue;
+        const m = /^(\S+)(?:\s+(.+))?$/.exec(line);
+        const id = m?.[1] ?? '';
+        const window = m?.[2] === undefined ? undefined : parseContextWindow(m[2]);
+        if (!m || window === null) { out.invalid ??= line; continue; }
+        if (!out.ids.includes(id)) out.ids.push(id);
+        if (window !== undefined) out.windows[id] = window;
+    }
+    return out;
+}
+
+/** What blocks a pi preview: a malformed line, or windows on a daemon that cannot write them. */
+export function piModelLinesError(form: ModelConfigForm, view: HarnessConfigView | null | undefined): { code: 'invalid-line' | 'needs-upgrade'; line?: string } | null {
+    if (form.harness !== 'pi') return null;
+    const parsed = parsePiModelLines(form.extraModels);
+    if (parsed.invalid) return { code: 'invalid-line', line: parsed.invalid };
+    if (Object.keys(parsed.windows).length && view?.current.contextWindows === undefined) return { code: 'needs-upgrade' };
+    return null;
 }
 
 export function formFromView(harness: HarnessId, view: HarnessConfigView | null | undefined): ModelConfigForm {
@@ -76,7 +127,9 @@ export function formFromView(harness: HarnessId, view: HarnessConfigView | null 
         opusModel: c.opusModel ?? '',
         sonnetModel: c.sonnetModel ?? '',
         haikuModel: c.haikuModel ?? '',
-        extraModels: (harness === 'pi' ? c.models ?? [] : c.pickerModels ?? []).join('\n'),
+        extraModels: (harness === 'pi'
+            ? (c.models ?? []).map((id) => c.contextWindows?.[id] ? `${id} ${formatContextWindow(c.contextWindows[id])}` : id)
+            : c.pickerModels ?? []).join('\n'),
         api: c.api ?? 'openai-completions',
         activate: harness === 'codex' || harness === 'pi' ? (hasProvider ? !!c.active : true) : false,
     };
@@ -145,7 +198,16 @@ export function patchFromForm(form: ModelConfigForm, view: HarnessConfigView | n
         case 'gemini':
             return strip({ harness: 'gemini' as const, baseUrl, apiKey, model: changed(form.model, c.model) });
         case 'pi': {
-            const models = splitModelList(form.extraModels);
+            const { ids: models, windows } = parsePiModelLines(form.extraModels);
+            // B-727: only daemons that report contextWindows can write them (older ones ignore the field).
+            let contextWindows: Record<string, number | null> | undefined;
+            if (view?.current.contextWindows !== undefined) {
+                const current = form.isNewProvider ? {} : view.current.contextWindows;
+                for (const id of models) {
+                    const next = windows[id] ?? null;
+                    if (next !== (current[id] ?? null)) (contextWindows ??= {})[id] = next;
+                }
+            }
             return strip({
                 harness: 'pi' as const,
                 providerId: form.providerId.trim(),
@@ -153,6 +215,7 @@ export function patchFromForm(form: ModelConfigForm, view: HarnessConfigView | n
                 api: form.isNewProvider || form.api !== (c.api ?? '') ? form.api : undefined,
                 apiKey,
                 models: sameList(models, c.models ?? []) ? undefined : models,
+                contextWindows,
                 activate: form.activate !== !!c.active ? form.activate : undefined,
                 defaultModel: form.activate && form.model.trim() && form.model.trim() !== (c.defaultModel ?? '') ? form.model.trim() : undefined,
             });

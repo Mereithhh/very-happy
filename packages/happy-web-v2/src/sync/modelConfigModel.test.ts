@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { formFromView, newProviderForm, harnessForFlavor, machineSupportsModelConfig, patchFromForm, splitModelList, withCustomModels, describeModelConfigError } from './modelConfigModel';
+import { formFromView, newProviderForm, harnessForFlavor, machineSupportsModelConfig, patchFromForm, splitModelList, withCustomModels, describeModelConfigError, parseContextWindow, parsePiModelLines, piModelLinesError } from './modelConfigModel';
 import { createModelConfigStore } from './modelConfigStore';
 import type { HarnessConfigView } from './modelConfigTypes';
 
@@ -100,5 +100,36 @@ describe('modelConfigStore', () => {
         expect(state.status).toBe('error');
         expect(state.status === 'error' && state.unsupported).toBe(true);
         expect(state.data?.harnesses).toHaveLength(1);
+    });
+});
+
+describe('pi context windows in the model list (B-727)', () => {
+    it('parses sizes with k / M suffixes; rejects junk', () => {
+        expect(parseContextWindow('200k')).toBe(200_000);
+        expect(parseContextWindow('1M')).toBe(1_000_000);
+        expect(parseContextWindow('1.5m')).toBe(1_500_000);
+        expect(parseContextWindow('262144')).toBe(262_144);
+        expect(parseContextWindow('big')).toBeNull();
+        expect(parseContextWindow('0')).toBeNull();
+    });
+    it('reads `id` and `id <size>` lines', () => {
+        expect(parsePiModelLines('glm-5.3 200k\nkimi-k3, deepseek 1M')).toEqual({ ids: ['glm-5.3', 'kimi-k3', 'deepseek'], windows: { 'glm-5.3': 200_000, deepseek: 1_000_000 }, invalid: null });
+        expect(parsePiModelLines('glm-5.3 huge').invalid).toBe('glm-5.3 huge');
+    });
+    it('round-trips the view: an untouched form sends no contextWindows', () => {
+        const v = view({ harness: 'pi', current: { providerId: 'gw', baseUrl: 'https://x/v1', api: 'openai-completions', models: ['a', 'b'], contextWindows: { a: 1_000_000 }, active: true } });
+        const form = formFromView('pi', v);
+        expect(form.extraModels).toBe('a 1M\nb');
+        expect(patchFromForm(form, v)).toEqual({ harness: 'pi', providerId: 'gw' });
+        // set b, drop a's window (pi then assumes 128k again)
+        expect(patchFromForm({ ...form, extraModels: 'a\nb 262144' }, v)).toEqual({ harness: 'pi', providerId: 'gw', contextWindows: { a: null, b: 262_144 } });
+    });
+    it('never sends windows to a daemon that does not report them', () => {
+        const old = view({ harness: 'pi', current: { providerId: 'gw', baseUrl: 'https://x/v1', models: ['a'] } });
+        const form = { ...formFromView('pi', old), extraModels: 'a 200k' };
+        expect(patchFromForm(form, old)).toEqual({ harness: 'pi', providerId: 'gw', api: 'openai-completions' });
+        expect(piModelLinesError(form, old)).toEqual({ code: 'needs-upgrade' });
+        expect(piModelLinesError({ ...form, extraModels: 'a' }, old)).toBeNull();
+        expect(piModelLinesError({ ...form, extraModels: 'a lots' }, old)).toEqual({ code: 'invalid-line', line: 'a lots' });
     });
 });
