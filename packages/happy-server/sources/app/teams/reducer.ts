@@ -22,6 +22,37 @@ function releaseBotSession(bot: TeamBot): void {
     if (bot.sessionId && !bot.previousSessionIds?.includes(bot.sessionId)) bot.previousSessionIds = [...(bot.previousSessionIds ?? []), bot.sessionId].slice(-PREVIOUS_SESSION_LIMIT);
     bot.sessionId = null;
 }
+/**
+ * B-730 (`specs/2026-10-team-scope-reattach.md`): a session leads or works in at
+ * most one live team. The first other unarchived team that binds `sessionId`, or
+ * null. The roll-pool incident: a restarted lead lost its scope env, was told
+ * "Join or create a team first" and created a second team for itself.
+ */
+export function otherTeamBinding(teams: readonly Pick<TeamState, 'id' | 'name' | 'archivedAt' | 'bots'>[], sessionId: string, exceptTeamId?: string): { teamId: string; teamName: string; botId: string; root: boolean } | null {
+    for (const team of teams) {
+        if (team.id === exceptTeamId || team.archivedAt !== undefined) continue;
+        const bot = team.bots.find(b => b.sessionId === sessionId);
+        if (bot) return { teamId: team.id, teamName: team.name, botId: bot.id, root: bot.root };
+    }
+    return null;
+}
+export function sessionInOtherTeamMessage(binding: { teamId: string; teamName: string }): string {
+    return `This session is already the lead or a member of team "${binding.teamName}" (${binding.teamId}). Call team_inspect and use team_delegate to assign work inside that team; do not create or join another team. 你已经是团队「${binding.teamName}」的成员或负责人，请先 team_inspect，再用 team_delegate 在本团队内派活，不要新建或加入其他团队。`;
+}
+/** B-730: the owner confirmed moving `sessionId` into `toTeamId` — the old member
+ *  keeps the conversation in its history, loses its credential (generation++) and
+ *  records where the session went. */
+export function transferSessionOut(input: TeamState, sessionId: string, toTeamId: string, now: number): TeamState {
+    const s = structuredClone(input);
+    for (const bot of s.bots) {
+        if (bot.sessionId !== sessionId) continue;
+        releaseBotSession(bot);
+        bot.generation++;
+        bot.transferredTo = { teamId: toTeamId, sessionId, at: now };
+    }
+    s.version++;
+    return s;
+}
 export function actorCanReadTask(state: TeamState, actor: TeamActor, task: TeamTask): boolean {
     if (actor.kind === 'owner') return true;
     if (state.bots.some(b => b.id === actor.botId && b.root)) return true;

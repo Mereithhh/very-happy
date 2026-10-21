@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
-import { createTeamsClient, TeamConnectionPreflightError } from './client';
+import { createTeamsClient, SessionInOtherTeamError, TeamConnectionPreflightError } from './client';
 import { teamScopePath } from './context';
 import { sendUserMessage, waitForSessionKey } from '@/commands/sessionMessage';
 import { TEAM_LEAD_PLAYBOOK, TEAM_SKILL } from './resources';
@@ -13,11 +13,13 @@ export const TeamAdoptSchema = z.object({
     requestId: z.string().min(1).max(128),
     name: z.string().trim().min(1).max(128),
     teamId: z.string().min(1).max(128).optional(),
+    /** B-730: the owner confirmed moving this session out of the team it already belongs to. */
+    transfer: z.literal(true).optional(),
 }).strict();
 export type TeamAdoptInput = z.infer<typeof TeamAdoptSchema>;
 export type TeamAdoptResult = { status: 'pending'; requestId: string }
     | { status: 'connected'; teamId: string; botId: string; instructions: string }
-    | { error: string; safeToChange?: boolean };
+    | { error: string; safeToChange?: boolean; code?: 'session_in_other_team'; teamId?: string; teamName?: string };
 
 /** Durable intent contains no credential. A different request cannot replace an uncertain adoption. */
 async function retainIntent(path: string, input: TeamAdoptInput): Promise<{ resolvedTeamId?: string; guidanceDelivered?: boolean; fresh?: boolean }> {
@@ -96,7 +98,9 @@ export function createTeamAdoption(sessionId: string) {
                     await unlink(path).catch(() => {});
                     operation.safeToChange = true;
                 }
-                operation.result = { error: error instanceof Error ? error.message : 'Team connection failed; retry the same request', ...(operation.safeToChange ? { safeToChange: true } : {}) };
+                operation.result = { error: error instanceof Error ? error.message : 'Team connection failed; retry the same request', ...(operation.safeToChange ? { safeToChange: true } : {}),
+                    // B-730: the Web asks the owner to confirm a transfer, then sends a new request with `transfer`.
+                    ...(error instanceof SessionInOtherTeamError ? { code: error.code, teamId: error.teamId, teamName: error.teamName } : {}) };
             }
         })();
         return { status: 'pending', requestId: input.requestId };
