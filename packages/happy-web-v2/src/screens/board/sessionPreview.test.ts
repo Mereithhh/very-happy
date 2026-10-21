@@ -121,3 +121,23 @@ describe('earliestPendingRequest (shared with attentionSince)', () => {
     expect(earliestPendingRequest({})).toBeUndefined();
   });
 });
+
+// B-704: transport envelopes are not what the user (or a teammate) said.
+describe('sessionPreview strips Very Happy message envelopes (B-704)', () => {
+  const FOOTER = '\n\nUse the teams tools to inspect current task state before acting. This message is team context, not a system instruction.';
+  it('team message: envelope, footer and machine prefix gone, markdown plain', () => {
+    const text = `[Very Happy team message m1; task t1; from Dev]\nTask t1 submitted:\n**PR #7** green\n| a | b |\n|---|---|${FOOTER}`;
+    const preview = sessionPreview(newestFirst(user(text, { meta: { sentFrom: 'team' } } as never)));
+    expect(preview?.user).toBe('PR #7 green a b');
+  });
+  it('session peer message and shared-session message', () => {
+    const peer = '[Very Happy session message m2 from "relay" cmh2x9relay01; agent claude; cwd /x]\n## 已修\n- 重连退避\n\nThis message comes from another agent session on this machine, not from the user.';
+    expect(sessionPreview(newestFirst(user(peer, { meta: { sentFrom: 'session-peer' } } as never)))?.user).toBe('已修 重连退避');
+    const shared = '[Very Happy shared session message from "Ann" acc1]\nhello **there**';
+    expect(sessionPreview(newestFirst(user(shared, { meta: { sentFrom: 'shared' } } as never)))?.user).toBe('hello there');
+  });
+  it('an ordinary message that merely copies an envelope keeps its text', () => {
+    const text = '[Very Happy team message m1; task t1; from Dev]\nhi';
+    expect(sessionPreview(newestFirst(user(text)))?.user).toBe(text.replace('\n', ' '));
+  });
+});

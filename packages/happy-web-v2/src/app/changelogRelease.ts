@@ -72,6 +72,12 @@ export interface ChangelogRelease {
   buildVersion?: string;
   cliVersion?: string;
   featured?: boolean;
+  /**
+   * B-715: a big update — 「大更新」 badge everywhere, its own page in the
+   * notice pager (which cannot be dismissed before the last page), and the
+   * sidebar entry until read. Needs `highlights` (check-release.mjs enforces).
+   */
+  major?: boolean;
   /** Line under the brand on a featured notice; defaults to the 2026-09 redesign wording. */
   featuredTaglineKey?: SimpleTranslationKey;
   titleKey: SimpleTranslationKey;
@@ -137,6 +143,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     date: '2026-10-21',
     buildVersion: __APP_VERSION__,
     featured: true,
+    major: true,
     featuredTaglineKey: 'changelog.releases.oct21b.tagline',
     titleKey: 'changelog.releases.oct21b.title',
     summaryKey: 'changelog.releases.oct21b.summary',
@@ -208,6 +215,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     id: '2026-10-21-projects-drafts-search',
     date: '2026-10-21',
     buildVersion: __APP_VERSION__,
+    major: true,
     titleKey: 'changelog.releases.oct21.title',
     summaryKey: 'changelog.releases.oct21.summary',
     highlights: [

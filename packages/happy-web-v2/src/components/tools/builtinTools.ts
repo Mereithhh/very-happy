@@ -28,6 +28,7 @@ import { AutomationActionSchema, AutomationTriggerSchema } from '@slopus/happy-w
 import { getCurrentLanguage, t } from '@/text';
 import { spawnedSessionIdOf } from '@/screens/session/spawnedSessionId';
 import { describeAction, describeInterval, describeTrigger, fmtAbsolute, fmtSpan, langOf } from '@/screens/automations/automationPresentation';
+import { plainPreviewText } from '@/utils/markdownPreview';
 
 export const BUILTIN_TOOL_NAMES = [
     'change_title', 'copy_to_clipboard', 'open_preview', 'report_progress',
@@ -172,6 +173,8 @@ export function builtinToolSummary(r: ResolvedBuiltinTool): BuiltinToolSummary {
         return kept.length ? kept.join(' · ') : null;
     };
     const line = (v: unknown, max?: number) => (str(v) ? oneLine(str(v)!, max) : null);
+    // B-716: agent-written prose (goal / body / result / reason) is markdown — the row shows it plain.
+    const prose = (v: unknown) => (str(v) ? plainPreviewText(str(v)!, 96) || null : null);
     const sid = (v: unknown) => (str(v) ? shortId(str(v)!) : null);
     let detail: string | null;
     switch (r.name) {
@@ -188,14 +191,14 @@ export function builtinToolSummary(r: ResolvedBuiltinTool): BuiltinToolSummary {
         case 'team_inspect': detail = null; break;
         case 'team_delegate': {
             const target = str(i.botName) ?? sid(i.assigneeBotId) ?? agentName(str(i.assistant));
-            detail = join(target ? t('tools.builtin.to', { target }) : null, line(i.goal));
+            detail = join(target ? t('tools.builtin.to', { target }) : null, prose(i.goal));
             break;
         }
-        case 'team_message': detail = join(sid(i.recipientBotId), line(i.body)); break;
-        case 'team_submit': detail = join(sid(i.taskId), line(i.result)); break;
+        case 'team_message': detail = join(sid(i.recipientBotId), prose(i.body)); break;
+        case 'team_submit': detail = join(sid(i.taskId), prose(i.result)); break;
         case 'team_accept': detail = sid(i.taskId); break;
         case 'team_return':
-        case 'team_cancel': detail = join(sid(i.taskId), line(i.reason)); break;
+        case 'team_cancel': detail = join(sid(i.taskId), prose(i.reason)); break;
         case 'team_handoff': detail = join(sid(i.taskId), sid(i.assigneeBotId) ? t('tools.builtin.to', { target: sid(i.assigneeBotId)! }) : null); break;
         case 'team_schedule_create': {
             const runAt = num(i.runAt);
@@ -233,12 +236,12 @@ export function builtinToolSummary(r: ResolvedBuiltinTool): BuiltinToolSummary {
         case 'sessions_list':
         case 'terminals_list': detail = null; break;
         case 'session_read': detail = join(sid(i.sessionId), num(i.limit) ? t('tools.builtin.lastN', { count: num(i.limit)! }) : null); break;
-        case 'session_send': detail = join(sid(i.sessionId), line(i.text)); break;
-        case 'session_spawn': detail = join(str(i.directory) ? basename(str(i.directory)!) : null, line(i.prompt)); break;
+        case 'session_send': detail = join(sid(i.sessionId), prose(i.text)); break;
+        case 'session_spawn': detail = join(str(i.directory) ? basename(str(i.directory)!) : null, prose(i.prompt)); break;
         case 'session_kill':
         case 'session_archive': detail = sid(i.sessionId); break;
         // B-497: peer messaging between sessions on one machine.
-        case 'session_message': detail = join(sid(i.to) ? t('tools.builtin.to', { target: sid(i.to)! }) : null, line(i.body)); break;
+        case 'session_message': detail = join(sid(i.to) ? t('tools.builtin.to', { target: sid(i.to)! }) : null, prose(i.body)); break;
         case 'session_peers': detail = scopeLabel(i.scope); break;
         case 'terminal_read': detail = join(line(i.terminalId, 24), num(i.lines) ? t('tools.builtin.lastN', { count: num(i.lines)! }) : null); break;
         case 'terminal_send': detail = join(line(i.terminalId, 24), line(i.text, 64), i.submit === true ? t('tools.builtin.fields.submit') : null); break;
@@ -255,6 +258,8 @@ export interface BuiltinToolField {
     value: string;
     mono?: boolean;
     multiline?: boolean;
+    /** B-716: markdown prose — previewed plain, rendered in full in the card reader. */
+    markdown?: boolean;
     items?: string[];
 }
 
@@ -267,6 +272,8 @@ export function builtinToolFields(r: ResolvedBuiltinTool): BuiltinToolField[] {
     const L = (key: keyof typeof FIELD_KEYS) => t(`tools.builtin.fields.${key}` as 'tools.builtin.fields.name');
     const text = (key: keyof typeof FIELD_KEYS, v: unknown, mono = false) => F(key, L(key), str(v), { mono, multiline: (str(v)?.length ?? 0) > 96 || (str(v)?.includes('\n') ?? false) });
     const id = (key: keyof typeof FIELD_KEYS, v: unknown) => F(key, L(key), str(v), { mono: true });
+    // B-716: agent-written markdown — a plain preview in the card, rendered in full on click.
+    const md = (key: keyof typeof FIELD_KEYS, v: unknown) => F(key, L(key), str(v), { multiline: true, markdown: true });
     const at = (key: keyof typeof FIELD_KEYS, v: unknown) => F(key, L(key), num(v) ? when(num(v)!) : null, { mono: true });
     switch (r.name) {
         case 'change_title': text('title', i.title); break;
@@ -277,7 +284,7 @@ export function builtinToolFields(r: ResolvedBuiltinTool): BuiltinToolField[] {
         case 'team_join': text('name', i.name); id('team', i.teamId); id('bot', i.botId); break;
         case 'team_inspect': break;
         case 'team_delegate': {
-            text('goal', i.goal);
+            md('goal', i.goal);
             const acceptance = strList(i.acceptance);
             if (acceptance.length) out.push({ key: 'acceptance', label: L('acceptance'), value: String(acceptance.length), items: acceptance });
             F('assignee', L('assignee'), str(i.botName) ?? str(i.assigneeBotId), { mono: !str(i.botName) });
@@ -287,16 +294,16 @@ export function builtinToolFields(r: ResolvedBuiltinTool): BuiltinToolField[] {
             id('parentTask', i.parentTaskId);
             break;
         }
-        case 'team_message': id('task', i.taskId); id('recipient', i.recipientBotId); text('body', i.body); break;
-        case 'team_submit': id('task', i.taskId); id('attempt', i.attemptId); text('result', i.result); break;
+        case 'team_message': id('task', i.taskId); id('recipient', i.recipientBotId); md('body', i.body); break;
+        case 'team_submit': id('task', i.taskId); id('attempt', i.attemptId); md('result', i.result); break;
         case 'team_accept': id('task', i.taskId); id('attempt', i.attemptId); break;
         case 'team_return':
-        case 'team_cancel': id('task', i.taskId); text('reason', i.reason); break;
+        case 'team_cancel': id('task', i.taskId); md('reason', i.reason); break;
         case 'team_handoff': id('task', i.taskId); id('assignee', i.assigneeBotId); break;
         case 'team_schedule_create':
             text('name', i.name); id('bot', i.botId); at('runAt', i.runAt);
             F('interval', L('interval'), num(i.intervalMs) ? fmtSpan(num(i.intervalMs)!) : null);
-            text('body', i.body);
+            md('body', i.body);
             break;
         case 'team_schedule_pause':
         case 'team_schedule_resume':
@@ -339,11 +346,11 @@ export function builtinToolFields(r: ResolvedBuiltinTool): BuiltinToolField[] {
         case 'sessions_list':
         case 'terminals_list': break;
         case 'session_read': id('session', i.sessionId); F('limit', L('limit'), num(i.limit) ? String(num(i.limit)) : null); break;
-        case 'session_send': id('session', i.sessionId); text('text', i.text); break;
-        case 'session_spawn': id('directory', i.directory); text('prompt', i.prompt); break;
+        case 'session_send': id('session', i.sessionId); md('text', i.text); break;
+        case 'session_spawn': id('directory', i.directory); md('prompt', i.prompt); break;
         case 'session_kill':
         case 'session_archive': id('session', i.sessionId); break;
-        case 'session_message': id('to', i.to); id('replyTo', i.replyTo); text('body', i.body); break;
+        case 'session_message': id('to', i.to); id('replyTo', i.replyTo); md('body', i.body); break;
         case 'session_peers': F('scope', L('scope'), scopeLabel(i.scope)); break;
         case 'terminal_read': id('terminal', i.terminalId); F('lines', L('lines'), num(i.lines) ? String(num(i.lines)) : null); break;
         case 'terminal_send': id('terminal', i.terminalId); text('text', i.text, true); F('submit', L('submit'), i.submit === true ? t('tools.builtin.yes') : t('tools.builtin.no')); break;

@@ -3,7 +3,7 @@
  * B-614: heading = route (sender → this session); link + source on one row;
  * adjacent cards share one hairline. */
 .msg--peer { min-width: 0; }
-.peer-message { display: flex; flex-direction: column; gap: calc(var(--chat-space) * 2); width: 100%; min-width: 0; box-sizing: border-box; padding: 0 0 var(--chat-space); background: var(--bg-1); border: 0; border-radius: var(--r-md); box-shadow: var(--panel-shadow); overflow: hidden; color: var(--text); overflow-wrap: anywhere; }
+.peer-message { display: flex; flex-direction: column; gap: calc(var(--chat-space) * 2); width: 100%; min-width: 0; box-sizing: border-box; padding: 0 0 calc(var(--chat-space) * 2); background: var(--bg-1); border: 0; border-radius: var(--r-md); box-shadow: var(--panel-shadow); overflow: hidden; color: var(--text); overflow-wrap: anywhere; }
 /* B-614 (CDS): one closed card per message; the route is its header strip,
  * split by one hairline — no box of its own. */
 .peer-message > :not(.peer-message-heading) { margin-inline: calc(var(--chat-space) * 3); }
@@ -18,14 +18,15 @@
 .peer-message-ago { margin-left: auto; flex-shrink: 0; color: var(--text-faint); font-variant-numeric: tabular-nums; font-size: var(--chat-fs-caption); }
 .peer-message-path { display: block; font-family: var(--font-mono); font-size: var(--chat-fs-secondary); color: var(--text-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
 .peer-message-note { color: var(--text-faint); font-size: var(--chat-fs-secondary); }
-/* Long bodies are clamped; the full text stays one click away in the raw source. */
-.peer-message-body { margin: 0; font-size: var(--chat-fs-body); line-height: var(--conversation-leading); white-space: pre-wrap; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 12; overflow: hidden; }
+.peer-message--card { cursor: pointer; transition: box-shadow var(--motion-fast); }
+.peer-message--card:hover { box-shadow: var(--panel-shadow-hover); }
+.msg--peer-conflict .peer-message--card:hover { box-shadow: 0 0 0 1px var(--warn), var(--shadow-md); }
+.peer-message-heading > .msg-time { flex-shrink: 0; align-self: center; min-height: 0; padding-inline: 0; }
+/* B-716: the folded body — plain preview lines; the reader has the full text. */
+.peer-message-open { display: flex; min-width: 0; padding: 0; text-align: left; background: none; border: 0; border-radius: var(--r-sm); color: var(--text); cursor: pointer; font: inherit; }
+.peer-message-open:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--text-faint); }
+.peer-message-preview { flex: 1; color: var(--text); font-size: var(--chat-fs-body); line-height: var(--conversation-leading); }
 .peer-message-actions { display: flex; align-items: center; flex-wrap: wrap; column-gap: calc(var(--chat-space) * 5); min-width: 0; }
 .peer-message-link { display: inline-flex; align-items: center; gap: calc(var(--chat-space) * 1.5); min-height: calc(var(--chat-space) * 8); color: var(--text); font-size: var(--chat-fs-control); }
-.peer-message-details { min-width: 0; }
-.peer-message-details[open] { flex-basis: 100%; }
-.peer-message-summary { min-height: calc(var(--chat-space) * 8); display: flex; align-items: center; cursor: pointer; font-size: var(--chat-fs-secondary); color: var(--text-faint); }
-.peer-message-summary:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint); }
-.peer-message-source { margin: 0 0 calc(var(--chat-space) * 2); padding: calc(var(--chat-space) * 3); background: var(--surface-code); border-radius: var(--r-sm); font-family: var(--font-mono); font-size: var(--chat-fs-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .peer-message-ago { order: 9; flex-basis: 100%; margin-left: 0; } }
-@media (pointer: coarse) { .peer-message-link, .peer-message-summary { min-height: 44px; } }
+@media (pointer: coarse) { .peer-message-link { min-height: 44px; } }

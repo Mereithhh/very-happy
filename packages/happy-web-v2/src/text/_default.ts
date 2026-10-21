@@ -613,6 +613,22 @@ export const en = {
         reconnectingPlaceholder: 'Reconnecting… messages you send will go out once it recovers',
         // B-497: a message another session on the same machine sent this one,
         // or the daemon's edit-conflict notice — rendered as a source card.
+        // B-716: the reader a team / cross-session / delegation card opens on click.
+        messageReader: {
+            open: 'Open full message',
+            close: 'Close',
+            copy: 'Copy message',
+            source: 'Original message',
+            openTask: 'View task',
+            task: 'Task',
+            kind: {
+                assigned: 'New task',
+                submitted: 'Submitted',
+                revision: 'Revision requested',
+                handoff: 'Handed off',
+                message: 'Message',
+            },
+        },
         peerMessage: {
             messageFrom: 'Message from another session',
             conflict: 'Edit conflict',
@@ -2446,6 +2462,19 @@ export const en = {
         learnMore: 'Read the docs',
         otherImprovements: ({ count }: { count: number }) => `Other improvements (${count})`,
         noEntriesAvailable: 'No changelog entries available.',
+        // B-715: major updates + the page-by-page pager
+        majorBadge: 'Major update',
+        next: 'Next',
+        previous: 'Previous',
+        doneAll: "I've seen them all",
+        pageProgress: ({ current, total }: { current: number; total: number }) => `${current} / ${total}`,
+        pageProgressLabel: ({ current, total }: { current: number; total: number }) => `Update ${current} of ${total}`,
+        lockedHint: ({ total }: { total: number }) => `${total} updates — go through them all to close`,
+        minorPageTitle: 'Other updates',
+        minorPageSummary: 'Smaller fixes and improvements shipped alongside, newest first.',
+        entryLabel: ({ count }: { count: number }) => `Major update · ${count} unread`,
+        entryShort: 'Major update',
+        entryCount: ({ count }: { count: number }) => `${count} unread`,
         releases: {
             oct21b: {
                 tagline: 'Today’s second big update · Oct 21',

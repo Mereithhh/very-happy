@@ -282,3 +282,20 @@ describe('builtinToolDigest — result lines, links and errors', () => {
         expect(builtinResultText(null)).toBe('');
     });
 });
+
+describe('B-716 markdown prose in team / session tool cards', () => {
+    const summary = (name: string, input: unknown) => builtinToolSummary(resolveBuiltinTool(call(name, input))!);
+    it('row summaries show agent markdown as plain text', () => {
+        expect(summary('team_submit', { taskId: 't', result: '## Done\n**PR #9** green\n|a|b|\n|---|---|' }).detail).toBe('t · Done PR #9 green a b');
+        expect(summary('team_delegate', { botName: 'Dev', goal: '- fix `a.ts`\n- **test**' }).detail).toBe('to Dev · fix a.ts test');
+        expect(summary('session_message', { to: 's-2', body: '# Hi\n> quoted' }).detail).toBe('to s-2 · Hi quoted');
+    });
+    it('marks goal / body / result / reason fields as markdown, ids stay plain', () => {
+        const fields = (name: string, input: unknown) => builtinToolFields(resolveBuiltinTool(call(name, input))!).filter(f => f.markdown).map(f => f.key);
+        expect(fields('team_delegate', { goal: 'g', acceptance: ['a'] })).toEqual(['goal']);
+        expect(fields('team_submit', { taskId: 't', attemptId: 'a', result: 'r' })).toEqual(['result']);
+        expect(fields('team_message', { taskId: 't', recipientBotId: 'b', body: 'x' })).toEqual(['body']);
+        expect(fields('team_return', { taskId: 't', reason: 'x' })).toEqual(['reason']);
+        expect(fields('session_message', { to: 's', body: 'x' })).toEqual(['body']);
+    });
+});

@@ -94,6 +94,9 @@
   --warn-dim: rgba(230, 180, 80, 0.14);
   /* B-650: search-hit marks (session search results + the landed hit in the chat). Not a status colour. */
   --search-hit: rgba(250, 204, 21, 0.32);
+  /* B-715: 「大更新」 marks (release-notes badge, sidebar entry). Own hue: accent is live, warn/danger are states. */
+  --major: #b9a2ff;
+  --major-dim: rgba(167, 139, 250, 0.16);
   --danger-dim: rgba(255, 107, 107, 0.14);
   --danger-ink: #1c0606; /* text/icon on --danger fill (dark danger is light-ish red) */
 
@@ -166,6 +169,8 @@
   --danger: #b52f35;
   --warn-dim: rgba(132, 92, 9, 0.12);
   --search-hit: rgba(250, 204, 21, 0.42);
+  --major: #6346c9;
+  --major-dim: rgba(109, 79, 214, 0.1);
   --danger-dim: rgba(181, 47, 53, 0.1);
   --danger-ink: #ffffff; /* light danger fill is dark red — white reads ≥7:1 */
 
@@ -233,6 +238,8 @@
     --danger: #b52f35;
     --warn-dim: rgba(132, 92, 9, 0.12);
     --search-hit: rgba(250, 204, 21, 0.42);
+    --major: #6346c9;
+    --major-dim: rgba(109, 79, 214, 0.1);
     --danger-dim: rgba(181, 47, 53, 0.1);
     --danger-ink: #ffffff; /* light danger fill is dark red — white reads ≥7:1 */
 
@@ -415,7 +422,7 @@
    hover time), modals/previews, and the terminal screen's tool history
    (terminal geometry is fixed, AGENTS 铁律 9). design-language「对话字号档位」. */
 :root,
-:is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls) {
+:is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls, .msg-reader) {
   --chat-fs-body: calc(var(--fs-14) * var(--chat-scale));      /* 正文：消息、工具/子代理行、输入框（触屏 15，见下方媒体查询） */
   --chat-fs-control: calc(var(--fs-13) * var(--chat-scale));   /* 次级控件：卡片标题/按钮/权限说明 */
   --chat-fs-secondary: calc(var(--fs-12) * var(--chat-scale)); /* 次级：标签、时间、计数、行下第二行 */
@@ -426,11 +433,11 @@
   --conversation-size: var(--chat-fs-body);
   --conversation-icon-size: calc(18px * var(--chat-scale));
 }
-:is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls) { --chat-scale: 1; }
+:is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls, .msg-reader) { --chat-scale: 1; }
 
 @media (pointer: coarse), (max-width: 860px) {
   :root,
-  :is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls) { --chat-fs-body: calc(var(--fs-15) * var(--chat-scale)); }
+  :is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls, .msg-reader) { --chat-fs-body: calc(var(--fs-15) * var(--chat-scale)); }
   :root { --conversation-size-base: var(--fs-15); }
 }
 
