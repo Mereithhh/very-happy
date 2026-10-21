@@ -110,3 +110,21 @@ export function unstartedTeamMembers(team: TeamState) {
     return { bot, task, failed: !!operation && ['failed', 'unknown'].includes(operation.status), href: `/teams/${encodeURIComponent(team.id)}${task ? `?task=${encodeURIComponent(task.id)}` : ''}` };
   });
 }
+
+/** B-721: the lead's (root bot's) conversation — live or its latest spawn receipt. */
+export function teamLeadSessionId(team: TeamState): string | null {
+  const lead = team.bots.find(bot => bot.root);
+  return lead ? botHistorySessionId(team, lead) : null;
+}
+
+/**
+ * B-721: where a click on a sidebar team row goes. The lead's conversation
+ * first (Owner: "点一下只想跟默认的负责人聊聊"); a team without one falls back
+ * to its board. Ended / hibernated lead sessions still open — the session page
+ * owns resume and leave-a-message.
+ */
+export function teamRowTarget(team: TeamState): { href: string; leadSessionId: string | null; boardHref: string } {
+  const boardHref = `/teams/${encodeURIComponent(team.id)}`;
+  const leadSessionId = teamLeadSessionId(team);
+  return { href: leadSessionId ? `/session/${encodeURIComponent(leadSessionId)}` : boardHref, leadSessionId, boardHref };
+}

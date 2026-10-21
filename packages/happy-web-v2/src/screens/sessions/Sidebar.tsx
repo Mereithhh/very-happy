@@ -67,7 +67,8 @@ import { rowRenameMenuTranslationKeys } from './sidebarRowMenu';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
 import { useTeamNavigation } from './useTeamNavigation';
-import { botHistorySessionId, groupTeamNavigation, missingTeamSessionIds, teamInactiveGroupId, teamMemberCount, teamMemberInactive, teamSessionMembership, unstartedTeamMembers } from './teamNavigation';
+import { botHistorySessionId, groupTeamNavigation, missingTeamSessionIds, teamInactiveGroupId, teamMemberCount, teamMemberInactive, teamSessionMembership, unstartedTeamMembers, teamLeadSessionId } from './teamNavigation';
+import { SidebarTeamRow } from './SidebarTeamRow';
 import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
@@ -1424,16 +1425,30 @@ export function Sidebar() {
                       ><ChevronRight size={13} className={`sb-section-chevron${fold.open ? ' is-open' : ''}`} /><Archive size={14} /><span>{r.title}</span></button></div>;
                     }
                     if (r.team) {
+                      // B-721: name → lead's conversation (board fallback), chevron → fold only, board → its own button.
                       const team = r.team;
                       const open = expandedTeams.has(team.id);
-                      const selected = location.pathname === r.href;
-                      return <div key={r.key} className={`sb-team-row${selected ? ' is-selected' : ''}`}>
-                        <button type="button" className="sb-team-toggle" aria-expanded={open} aria-label={`${open ? teamCopy.collapse : teamCopy.expand}: ${team.name}`} onClick={() => setExpandedTeams((current) => { const next = new Set(current); if (open) next.delete(team.id); else next.add(team.id); return next; })}><ChevronRight size={15} className={open ? 'is-open' : ''} /></button>
-                        <button type="button" className="sb-team-main" data-href={r.href} aria-current={selected ? 'page' : undefined} onClick={() => navigate(r.href)}>
-                          <UsersRound size={17} /><span><strong>{team.name}</strong><small>{team.bots.length ? `${teamMemberCount(team, memberContext)} ${teamCopy.members}` : teamCopy.preparing}</small></span>
-                          {cmdHeld && i < 9 && <kbd className="sb-row-badge mono">⌘{i + 1}</kbd>}
-                        </button>
-                      </div>;
+                      const leadId = teamLeadSessionId(team);
+                      const leadSession = leadId ? storage.getState().sessions[leadId] : undefined;
+                      const leadExecution: AgentExecution | null = leadId ? executionByKey.get(leadId) ?? (leadSession?.presence === 'online' ? 'idle' : 'offline') : null;
+                      const leadStatus = leadExecution ? agentStatusSignal(leadExecution, showsUnreadDot(leadSession, unreadIds)) : null;
+                      const leadStatusLabel = leadStatus === 'running' ? t('sidebar.groupRunning')
+                        : leadStatus === 'background' ? t('sidebar.rowBackgroundTasks', { count: (leadId && backgroundCountByKey.get(leadId)) || 1 })
+                        : leadStatus === 'input' ? t('sidebar.rowNeedsAttention')
+                        : leadStatus === 'unread' ? t('sidebar.rowUnread') : undefined;
+                      return <SidebarTeamRow
+                        key={r.key}
+                        team={team}
+                        open={open}
+                        pathname={location.pathname}
+                        subtitle={team.bots.length ? `${teamMemberCount(team, memberContext)} ${teamCopy.members}` : teamCopy.preparing}
+                        leadStatus={leadStatus}
+                        leadStatusLabel={leadStatusLabel}
+                        copy={teamCopy}
+                        badge={cmdHeld && i < 9 ? <kbd className="sb-row-badge mono">⌘{i + 1}</kbd> : undefined}
+                        onToggle={() => setExpandedTeams((current) => { const next = new Set(current); if (open) next.delete(team.id); else next.add(team.id); return next; })}
+                        onNavigate={navigate}
+                      />;
                     }
                     if (r.teamHistoryLink) return <div key={r.key} className="sb-team-child"><div className={`sb-row${location.pathname === r.href ? ' is-selected' : ''}`}>
                       <button type="button" className="sb-row-main" data-href={r.href} aria-current={location.pathname === r.href ? 'page' : undefined} onClick={() => navigate(r.href)}>
