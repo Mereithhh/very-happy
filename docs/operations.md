@@ -225,6 +225,38 @@ connections with a 5s lock timeout and 60s statement timeout by default
 (`MIGRATION_PGOPTIONS` may be reviewed/overridden); the serving process does not
 inherit those migration-only timeouts.
 
+### Post-deploy browser smoke (B-024)
+
+`.github/workflows/e2e-smoke.yml` runs as the `smoke` job of **Deploy
+production** after a successful `rollout=switch` (and on demand, against any
+URL; a reusable workflow because `workflow_run` is forbidden by
+`check-public-pr-isolation.mjs`): a real Chromium logs in with a
+dedicated smoke account, waits for the sidebar, opens a web terminal on that
+account's machine, types `echo VH_SMOKE_$((40+2))_<random>` and requires
+`VH_SMOKE_42_<random>` on screen — text only the shell's output can contain —
+then closes the terminal with `exit`. Script: `packages/happy-web-v2/e2e/smoke.mjs`.
+It is a separate workflow on purpose: red means look (and roll back by hand if
+needed); it never rolls back by itself.
+
+One-time setup (Owner): create a normal account for the smoke, pair one
+machine that stays online (daemon running, tmux installed), then add repository
+secrets `VH_SMOKE_USERNAME` / `VH_SMOKE_PASSWORD` and, if the account has more
+than one machine, repository variable `VH_SMOKE_MACHINE` (its name in the
+terminal picker). Until the secrets exist the job prints a notice and passes.
+Never put these credentials in the repository.
+
+Run by hand:
+
+```bash
+gh workflow run e2e-smoke.yml -f url=https://veryhappy.dev
+# or locally (credentials from your shell, not from a file in the repo):
+VH_SMOKE_URL=https://veryhappy.dev VH_SMOKE_USERNAME=… VH_SMOKE_PASSWORD=… \
+  pnpm -C packages/happy-web-v2 exec node e2e/smoke.mjs
+```
+
+A failure uploads `smoke-failure` (a screenshot and the page's visible text,
+never cookies or storage) for 7 days.
+
 ### Standalone PGlite process exclusivity and incident recovery
 
 The maintainer Cloud uses external PostgreSQL. This section applies only to
