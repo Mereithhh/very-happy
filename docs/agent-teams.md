@@ -31,8 +31,10 @@ Teams delegation; it does not fall back to Claude or the legacy assistant.
 
 ## Start a team in the app
 
-Choose **Teams → New team**, select the project folder and execution computer,
-and describe the goal. A compatible daemon starts a managed lead in an isolated
+Choose **Teams → New team**, select the working folder and execution computer,
+and describe the goal. The team goes into a new project with its name unless you
+pick an existing project or *No project*; the project's instructions and log are
+the team's shared context (see [Projects](projects.md#teams-and-projects)). A compatible daemon starts a managed lead in an isolated
 worktree, supplies the official skill, and opens the lead conversation. App users
 do not install skills manually. The lead lives for this goal; after acceptance its
 session can be cleaned up, while unmerged changes remain preserved.

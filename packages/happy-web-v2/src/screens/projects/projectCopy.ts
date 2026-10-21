@@ -15,7 +15,7 @@ export function useProjectCopy() {
     revoke: '撤销', revoked: '已撤销', superseded: '已被替代', addNote: '添加记录', titlePh: '一句话标题', bodyPh: '细节（可选）', byUser: '你', noLog: '还没有记录',
     serverVisible: '项目的说明、记录和留言存在服务器上，对服务器可见（与团队同一信任级别）；会话正文仍按原方式加密。',
     rename: '名称', goal: '目标', folders: '目录', primary: '主目录', makePrimary: '设为主目录', remove: '移除', addFolder: '添加目录', path: '路径', machine: '机器',
-    attachTeam: '挂载团队', detach: '取消挂载', archive: '归档项目', unarchive: '取消归档', delete: '删除项目', deleteConfirm: '删除项目？会话不会被删除，只是不再属于这个项目。',
+    attachTeam: '关联团队', detach: '解除关联', newTeamHere: '在此项目中新建团队', linkTeam: '关联已有团队', noTeams: '还没有团队。团队的负责人和成员会共享这个项目的说明和记录。', teamNoFolder: '这个团队没有已知的工作目录，无法加入项目', viaTeam: '团队成员', removeFromProject: '从项目移出', archive: '归档项目', unarchive: '取消归档', delete: '删除项目', deleteConfirm: '删除项目？会话不会被删除，只是不再属于这个项目。',
     notFound: '项目不存在或已被删除', unavailable: '这个服务器还不支持项目', loading: '正在加载…', failed: '操作失败', saved: '已保存',
   } : {
     back: 'Sessions', overview: 'Overview', context: 'Context', settings: 'Project settings', composerPlaceholder: (name: string) => `Start a session in ${name}…`, send: 'Send', sending: 'Creating…',
@@ -29,7 +29,7 @@ export function useProjectCopy() {
     revoke: 'Revoke', revoked: 'Revoked', superseded: 'Superseded', addNote: 'Add entry', titlePh: 'One-line title', bodyPh: 'Details (optional)', byUser: 'You', noLog: 'No entries yet',
     serverVisible: 'Project instructions, log and messages are stored on the server and visible to it (same trust level as Teams); session content stays encrypted as before.',
     rename: 'Name', goal: 'Goal', folders: 'Folders', primary: 'Primary', makePrimary: 'Make primary', remove: 'Remove', addFolder: 'Add folder', path: 'Path', machine: 'Machine',
-    attachTeam: 'Attach team', detach: 'Detach', archive: 'Archive project', unarchive: 'Unarchive', delete: 'Delete project', deleteConfirm: 'Delete the project? Sessions are kept; they just leave the project.',
+    attachTeam: 'Link team', detach: 'Unlink', newTeamHere: 'New team in this project', linkTeam: 'Link a team', noTeams: 'No teams yet. A team’s lead and members share this project’s instructions and log.', teamNoFolder: 'This team has no known working folder, so it cannot join the project', viaTeam: 'Team member', removeFromProject: 'Remove from project', archive: 'Archive project', unarchive: 'Unarchive', delete: 'Delete project', deleteConfirm: 'Delete the project? Sessions are kept; they just leave the project.',
     notFound: 'Project not found or deleted', unavailable: 'This server does not support projects yet', loading: 'Loading…', failed: 'Something went wrong', saved: 'Saved',
   };
 }

@@ -13,8 +13,8 @@ export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: s
             catch (error) { return { content: [{ type: 'text' as const, text: error instanceof Error ? error.message : 'Teams operation failed' }], isError: true }; }
         });
     };
-    register('team_create', 'Create an official Very Happy team and join this session as its root bot. Does not grant access outside this account.',
-        { name: id, machineId: id.optional(), requestId }, (args) => client.initialize(args));
+    register('team_create', 'Create an official Very Happy team and join this session as its root bot. Does not grant access outside this account. The team joins this session\'s project, or a new project with the team\'s name; its members share that project\'s context.',
+        { name: id, machineId: id.optional(), requestId, projectId: id.optional().describe('Existing project to put the team in'), noProject: z.boolean().optional().describe('Create the team without a project') }, (args) => client.initialize(args));
     register('team_join', 'Join an existing team as a root bot using this session owner’s account. Scoped workers cannot elevate their role.',
         { teamId: id, name: id, botId: id.optional().describe('Existing root bot to reconnect; preserves its identity'), requestId }, (args) => client.initialize(args));
     register('team_inspect', 'Read your visible team tasks, attempts and messages. Inspect before decisions; submission is not acceptance.', {}, () => client.inspect());

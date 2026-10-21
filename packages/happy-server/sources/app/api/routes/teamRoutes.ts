@@ -1,6 +1,8 @@
 import { teamPollOperations } from '@/app/teams/poll';
 import { z } from 'zod';
-import { TeamActionRequestSchema, TeamCreateSchema } from '@slopus/happy-wire';
+import { TeamActionRequestSchema, TeamCreateSchema, TeamProjectBindSchema } from '@slopus/happy-wire';
+import { bindTeamProject } from '@/app/projects/store';
+import { ProjectError } from '@/app/projects/rules';
 import type { Fastify } from '../types';
 import { createTeam, listTeams, readTeam, actOnTeam, tickTeamSchedules } from '@/app/teams/store';
 import { TeamError } from '@/app/teams/reducer';
@@ -11,6 +13,8 @@ export function teamRoutes(app: Fastify) {
         try { return await work(); }
         catch (error) {
             if (error instanceof TeamError) return reply.code(error.status).send({ error: error.code });
+            // B-726: project errors raised while creating/binding a team keep their own codes.
+            if (error instanceof ProjectError) return reply.code(error.status).send({ error: error.code, ...(error.details ?? {}) });
             throw error;
         }
     };
@@ -23,6 +27,8 @@ export function teamRoutes(app: Fastify) {
         return { teams, operations: teamPollOperations(teams, request.query) };
     }));
     app.get('/v1/teams/:id', { preHandler: app.authenticate, schema: { params } }, async (request, reply) => handle(reply, async () => ({ team: await readTeam(request.params.id, { accountId: request.userId }) })));
+    // B-726: owner-only team ↔ project binding (team settings, old-team one-click).
+    app.post('/v1/teams/:id/project', { preHandler: app.authenticate, schema: { params, body: TeamProjectBindSchema } }, async (request, reply) => handle(reply, () => bindTeamProject(request.userId, request.params.id, request.body)));
     app.post('/v1/teams/:id/actions', { preHandler: app.authenticate, schema: { params, body: TeamActionRequestSchema } }, async (request, reply) => handle(reply, () => actOnTeam(request.params.id, { accountId: request.userId }, request.body)));
     const scope = (request: { headers: Record<string, unknown> }) => {
         const token = request.headers['x-happy-team-token'];

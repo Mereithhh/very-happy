@@ -186,3 +186,15 @@
 .mtp-item:hover { background: var(--fill-hover); }
 .mtp-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (pointer: coarse) { .mtp-item { min-height: 44px; } }
+
+/* B-726 teams section actions + member rows with「从项目移出」 */
+.pj-h-actions { display: inline-flex; gap: 4px; margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.pj-member-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.pj-member-row > .pj-member { flex: 1; min-width: 0; }
+.pj-member-leave { flex-shrink: 0; opacity: 0; }
+.pj-member-row:hover .pj-member-leave, .pj-member-leave:focus-visible { opacity: 1; }
+@media (hover: none), (pointer: coarse) { .pj-member-leave { opacity: 1; } }
+@media (max-width: 520px) { .pj-h-actions { margin-left: 0; width: 100%; flex-wrap: wrap; } }
+
+/* B-726 project picker: a full-width form field wherever it sits (team pages right-align bare buttons) */
+.vh-select-trigger.vh-project-picker, .teams-screen button.vh-project-picker { width: 100%; align-self: stretch; }

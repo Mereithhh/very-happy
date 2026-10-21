@@ -23,10 +23,23 @@ async function serializeInitialization<T>(path: string, work: () => Promise<T>):
     finally { if (initializationLocks.get(path) === next) initializationLocks.delete(path); }
 }
 
+/**
+ * B-726 (`specs/2026-10-team-project.md`): a new team belongs to a project by
+ * default — the creating session's own project when it has one, otherwise a
+ * new same-name project at this session's folder. An older server strips
+ * `project` and creates the team exactly as before.
+ */
+export function teamCreateBody(input: { name: string; requestId: string; projectId?: string; noProject?: boolean }, machineId: string, sessionId: string, directory: string | undefined) {
+    const body = { name: input.name, machineId, requestId: input.requestId };
+    if (input.noProject) return body;
+    if (input.projectId) return { ...body, project: { projectId: input.projectId } };
+    return { ...body, project: { inheritFromSessionId: sessionId, ...(directory ? { directory } : {}) } };
+}
+
 export function createTeamsClient(sessionId?: string) {
     const scopePath = () => teamScopePath(sessionId ?? process.env.HAPPY_SESSION_ID);
     return {
-        async initialize(input: { teamId?: string; name: string; machineId?: string; botId?: string; requestId: string }, options?: { resumeAdoption?: boolean; expectedTeamId?: string; onTeamResolved?: (teamId: string) => Promise<void> }) {
+        async initialize(input: { teamId?: string; name: string; machineId?: string; botId?: string; requestId: string; projectId?: string; noProject?: boolean }, options?: { resumeAdoption?: boolean; expectedTeamId?: string; onTeamResolved?: (teamId: string) => Promise<void> }) {
             const path = scopePath();
             return serializeInitialization(path, async () => {
                 const priorScope = await readTeamScope(path);
@@ -45,7 +58,7 @@ export function createTeamsClient(sessionId?: string) {
                 if (priorScope && !options?.expectedTeamId) throw new Error('This session already belongs to another team scope');
                 let teamId = input.teamId ?? options?.expectedTeamId;
                 if (!teamId) {
-                    const created = await teamRequest('/v1/teams', 'POST', credentials.token, false, { name: input.name, machineId, requestId: input.requestId });
+                    const created = await teamRequest('/v1/teams', 'POST', credentials.token, false, teamCreateBody(input, machineId, sid, persisted.metadata.path));
                     teamId = created.team.id;
                 } else {
                     const existing = await teamRequest(`/v1/teams/${encodeURIComponent(teamId)}`, 'GET', credentials.token, false);

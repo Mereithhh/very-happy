@@ -36,10 +36,38 @@ name opens the project page; its ＋ starts a session in that project.
 | `very-happy spawn --project <id>` | The CLI session joins before its first message. Run from inside a project session, `spawn` joins the caller's project unless you pass `--no-project`. See [channels](channels.md#very-happy-spawn--start-a-session). |
 | Fork | A fork keeps its source's project. |
 | Automation with a project | Sessions it spawns join quietly (see [Automations](automations.md)). |
-| Team attached to the project | The team's sessions are listed as members. |
+| Team in the project | The lead's and members' sessions are members through the team. They leave when the team leaves the project; moving one explicitly into another project wins. |
 
 A session whose folder lies inside a project folder is only **suggested** for
 that project (a banner in the session asks), never added automatically.
+
+To take a session out, use **Move to project…** → *No project*, the session
+header menu (**Remove from "…"**), or the leave button on its row on the project
+page. The session header menu also has **Move to project…**.
+
+## Teams and projects
+
+A project says *what* is being done; a team says *who* does it. A team has no
+context of its own — **its context is its project's**: the lead and every member
+start with the project instructions and decisions, the lead records the team's
+decisions, assignments and handoffs with `project_note`, and members record
+findings and handoffs the same way.
+
+- **New team** creates a project with the team's name by default (folder = the
+  team's working folder). Pick an existing project instead, or *No project*.
+  `team_create` from a session joins that session's project, or creates the
+  same-name project.
+- **Project page → Teams** lists the project's teams, with **New team in this
+  project** and **Link a team**. A linked team brings its working folder into
+  the project when its computer is not already there.
+- **Team page** shows *Project · name* under the title. **Team settings →
+  Project** changes the project, creates a same-name one, or removes the team
+  from its project (asks first; the project and its log stay).
+- A team without a project (created before this) shows **Put this team in a
+  project** on its overview: one click creates the same-name project and links
+  it. Nothing is migrated automatically.
+- The sidebar shows each team inside its project's group; sessions and teams
+  outside any project are listed under *Not in a project · by folder*.
 
 ## What agents in a project get
 
@@ -81,8 +109,8 @@ start a new session after updating the CLI.
   concurrent edit is not overwritten; history is kept) and browse the log,
   filter it by kind, add an entry yourself or revoke one.
 - **Project settings**: name and goal, folders (on any machine; one is
-  primary), attach or detach teams (only teams whose computer has one of the
-  project's folders), archive or delete. Deleting a project keeps its
+  primary), link or unlink teams (a team's folder is added when its computer
+  is new to the project), archive or delete. Deleting a project keeps its
   sessions; they just leave the project.
 
 ## Requirements and trust

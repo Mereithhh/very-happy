@@ -82,8 +82,11 @@ the project's instructions in front of their first message and get a one-line
 note on their next turn when something changes — idle sessions are never woken
 up; harnesses that cannot be injected are marked “not injected”. Start a
 session from the project page, its group's ＋, `very-happy spawn --project <id>`,
-or let spawned and forked sessions inherit their parent's project. Project
-instructions, log and messages are stored on the server.
+or let spawned and forked sessions inherit their parent's project. A new
+team gets a project with its name by default, so its lead and members share the
+project's instructions and log; link or change a team's project from the project
+page or team settings. Project instructions, log and messages are stored on the
+server.
 
 ## Teams: from one goal to parallel work
 
