@@ -34,7 +34,7 @@ export function Command({ value }: { value: string }) {
   return (
     <div className="fr-command">
       <code>{value}</code>
-      <button type="button" onClick={copy} aria-label={`Copy ${value}`}>
+      <button type="button" onClick={copy} aria-label={`${t('common.copy')} ${value}`}>
         {copied ? <Check size={15} /> : <Copy size={15} />}
       </button>
     </div>

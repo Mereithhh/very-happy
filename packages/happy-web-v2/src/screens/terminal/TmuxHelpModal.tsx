@@ -65,7 +65,7 @@ export function TmuxHelpModal({ onClose }: { onClose: () => void }) {
       <div className="tmux-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="tmux-head">
           <span className="tmux-title">{t('tmuxHelp.title')}</span>
-          <button className="tmux-close" onClick={onClose} aria-label="close">
+          <button className="tmux-close" onClick={onClose} aria-label={t('common.close')}>
             <X size={16} />
           </button>
         </div>

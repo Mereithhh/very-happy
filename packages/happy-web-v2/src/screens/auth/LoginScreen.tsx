@@ -179,7 +179,7 @@ export function LoginScreen() {
                 autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="username"
+                placeholder={t('common.name')}
               />
               <Input
                 label={t('settingsAccount.password')}

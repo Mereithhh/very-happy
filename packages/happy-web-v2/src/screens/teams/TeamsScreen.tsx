@@ -41,7 +41,7 @@ export function TeamsScreen() {
   return <TeamsContent key={teamId ?? "list"} />;
 }
 function TeamsContent() {
-  useTranslation();
+  const { t } = useTranslation();
   const c = useWorkspaceCopy();
   const first = useFirstUseCopy();
   const [archiving, setArchiving] = useState(false);
@@ -274,7 +274,7 @@ function TeamsContent() {
                 </label>
                 <label>{first.member}<input name="botName" placeholder={first.working} maxLength={128} /></label>
                 <label>
-                  Coding agent
+                  {t('teams.codingAgent')}
                   <select name="assistant" defaultValue={team.defaults?.assistant ?? "claude"}>
                     <option value="claude">Claude Code</option>
                     <option value="codex">Codex</option>

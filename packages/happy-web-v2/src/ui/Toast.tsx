@@ -1,3 +1,4 @@
+import { t as translate } from '@/text';
 import {
   createContext,
   useCallback,
@@ -149,7 +150,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 className="vh-toast-x"
-                aria-label="dismiss"
+                aria-label={translate('common.close')}
                 onClick={(e) => {
                   e.stopPropagation();
                   dismiss(t.id);

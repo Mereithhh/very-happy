@@ -1,3 +1,5 @@
+import { useTranslation } from '@/i18n/useTranslation';
+
 interface SpinnerProps {
   size?: number;
   color?: string;
@@ -5,6 +7,7 @@ interface SpinnerProps {
 }
 
 export function Spinner({ size = 16, color, className }: SpinnerProps) {
+  const { t } = useTranslation();
   return (
     <span
       className={`vh-spinner${className ? ` ${className}` : ''}`}
@@ -14,7 +17,7 @@ export function Spinner({ size = 16, color, className }: SpinnerProps) {
         borderColor: color,
         borderTopColor: 'transparent',
       }}
-      aria-label="loading"
+      aria-label={t('common.loading')}
       role="status"
     />
   );
