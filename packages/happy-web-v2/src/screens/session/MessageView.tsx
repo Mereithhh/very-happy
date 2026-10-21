@@ -53,11 +53,11 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     const send = turnSendStatus(message, attachments);
     useSendSpinnerReset(send, message.localId);
     const teamContent = presentTeamMessage(message);
-    if (teamContent) return <TeamMessageCard content={teamContent} sessionId={sessionId} localId={message.localId} />;
+    if (teamContent) return <TeamMessageCard content={teamContent} sessionId={sessionId} localId={message.localId} createdAt={message.createdAt} />;
     // B-497: a message from another session on the same machine, or the
     // daemon's edit-conflict notice — a source card with a link to that session.
     const peerContent = presentSessionPeerMessage(message);
-    if (peerContent) return <SessionPeerMessageCard content={peerContent} sessionId={sessionId} />;
+    if (peerContent) return <SessionPeerMessageCard content={peerContent} sessionId={sessionId} createdAt={message.createdAt} />;
     // B-619: a message another person wrote into this (shared) session — an
     // ordinary user bubble with the sender's name above it.
     const shared = presentSharedMessage(message);

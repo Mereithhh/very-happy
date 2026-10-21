@@ -160,6 +160,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 | 从已知列表里单选（带勾选列） | 沿用 `ModeMenu` / `PresetsMenu` 的选择器写法 | 套用动作菜单 |
 | 点击打开表单、选择器或详情 | Radix Popover（`ModelEffortMenu`、`RelayBadge`） | Dialog：它会锁焦点、压暗背景 |
 | 必须先做决定才能继续 | `Modal.confirm` / `alert` / `prompt`；自定义内容用 `Modal.show` 或 Radix Dialog（`SessionOptionsDialog`、`ImagePreview`） | Popover 或行内浮层 |
+| 对话里的卡片正文（团队消息、跨会话消息、委派/提交工具卡的 goal/body/result） | 收起态只放纯文本预览（`utils/markdownPreview.ts`，前 3 行、去掉 markdown 符号和 `[Very Happy … message]` 协议头尾），整张卡可点；点开用 `MessageReader`（Radix Dialog，桌面居中、≤600px 底部 sheet）完整渲染 Markdown，带复制、跳任务/会话、折叠的原始消息（B-716） | 卡里直接渲染 Markdown 或裸文本、`<details>` 折叠原文、自造浮层 |
 | 长期查看的辅助内容，或有自己时间线的内容 | 右侧工作区标签（`screens/workspace/`）或 session aside 抽屉，窄屏自动全屏 | 居中模态框 |
 | 一闪而过的确认（已复制、已保存） | `toast`（`ui/Toast.tsx`） | Dialog、常驻横幅 |
 | 需要阅读、重试或复制的状态和错误 | 行内文字 + `StatusDot` / `Badge` / `.tg-error`；空状态用 `EmptyState` | toast，它会自己消失 |
@@ -482,7 +483,7 @@ Pi 框下上下文使用运行时当前估算与真实容量，前缀 ≈；未�
 - 对话内 lucide 图标由 `.cl-inner` / `.sap-body` 的 `svg.lucide { zoom: var(--chat-scale) }` 统一缩放；直接给 svg 设宽度的规则要写 `calc(var(--conversation-icon-size) / var(--chat-scale))` 抵消 zoom。
 - 命中区只增不减：触屏一律 `max(44px, …)`。手机输入 `max(16px, var(--chat-fs-body))`。
 - 不缩放：终端 pane（铁律 9）、对话列宽 820px 与左右内边距（含输入框上方 dock 的水平内边距）、输入框工具栏控件、diff 视图、侧栏/顶栏/弹窗/菜单。
-- **浮层与弹窗一律不缩放**：浮在对话上的 chrome（选中引用、提问导航轨预览、悬浮时间）、弹窗/预览（运行控制、图片预览、skill 文档预览）和终端页的工具历史列在 tokens.css 的「固定比例岛」里，岛内 `--chat-scale` 恒为 1，档位 token 按默认值计算。新浮层若复用对话 css，要加入这份名单。弹窗正文需要对话正文字号时用不乘比例的 `--conversation-size-base`。设置作用于所有复用这些 token 的阅读面（对话、侧问、子代理面板、笔记，以及文件/skill 预览和团队详情里的 Markdown/代码块）。
+- **浮层与弹窗一律不缩放**：浮在对话上的 chrome（选中引用、提问导航轨预览、悬浮时间）、弹窗/预览（运行控制、图片预览、skill 文档预览、卡片消息阅读器 `.msg-reader`）和终端页的工具历史列在 tokens.css 的「固定比例岛」里，岛内 `--chat-scale` 恒为 1，档位 token 按默认值计算。新浮层若复用对话 css，要加入这份名单。弹窗正文需要对话正文字号时用不乘比例的 `--conversation-size-base`。设置作用于所有复用这些 token 的阅读面（对话、侧问、子代理面板、笔记，以及文件/skill 预览和团队详情里的 Markdown/代码块）。
 - 不做双指捏合调字号（会和页面缩放、长按选择冲突），理由见 [spec](../specs/2026-10-chat-type-scale.md)。
 
 ### 图片与 skill 预览（B-457）

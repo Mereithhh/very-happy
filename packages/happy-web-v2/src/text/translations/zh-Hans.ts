@@ -834,6 +834,21 @@ export const zhHans: TranslationStructure = {
         infoPath: '路径',
         inputPlaceholder: '输入消息...',
         reconnectingPlaceholder: '重连中…发送的消息会在恢复后送出',
+        messageReader: {
+            open: '查看完整消息',
+            close: '关闭',
+            copy: '复制正文',
+            source: '原始消息',
+            openTask: '查看任务',
+            task: '任务',
+            kind: {
+                assigned: '新任务',
+                submitted: '提交结果',
+                revision: '要求修改',
+                handoff: '移交',
+                message: '消息',
+            },
+        },
         peerMessage: {
             messageFrom: '来自其他会话的消息',
             conflict: '编辑冲突',
