@@ -9,6 +9,6 @@ describe('compact model and effort entry', () => {
         expect(source).toMatch(/<ModelEffortMenu\s/);
         expect(source.match(/<ModeMenu\s/g)).toHaveLength(1);
         expect(source).not.toMatch(/<EffortSlider\s/);
-        expect(popup).toMatch(/<Popover.Content[\s\S]*<select[\s\S]*<EffortSlider \{\.\.\.effort\} \/>/);
+        expect(popup).toMatch(/<Popover.Content[\s\S]*<Combobox[\s\S]*<EffortSlider \{\.\.\.effort\} \/>/);
     });
 });

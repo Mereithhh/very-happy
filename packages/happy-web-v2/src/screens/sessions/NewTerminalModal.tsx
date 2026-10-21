@@ -47,7 +47,7 @@ import {
 } from './newTerminalAttach';
 import { FsBrowser } from '@/screens/files/FsBrowser';
 import { fsFailureText } from '@/screens/files/fsFailureText';
-import { Button, useToast } from '@/ui';
+import { Button, Combobox, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ConnectMachineLink, NoMachinesNotice } from './NoMachinesNotice';
 import {
@@ -108,7 +108,7 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
 
   // B-146: useAllMachines answers [] until the store is hydrated
   // (storage.ts's `!isDataReady` guard), so the useState initializer above can
-  // freeze machineId at ''. Left alone, the <select> then matches no option and
+  // freeze machineId at ''. Left alone, the picker then matches no option and
   // `canCreate` stays false FOREVER — Create permanently disabled on a cold
   // start. Re-derive whenever the online set changes; `machineId` as the
   // preferred value makes this a no-op once a live machine is selected, and it
@@ -245,23 +245,20 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
         ) : (
           <>
             <div className="ns-label-row">
-              <label className="ns-label">{t('newSession.machine')}</label>
+              <label className="ns-label" id="nt-machine-label">{t('newSession.machine')}</label>
               <ConnectMachineLink onClose={onClose} />
             </div>
-            <select
-              className="ns-select"
+            <Combobox
+              label={t('newSession.machine')}
+              labelledBy="nt-machine-label"
+              size="md"
               value={machineId}
-              onChange={(e) => {
-                setMachineId(e.target.value);
+              onChange={(next) => {
+                setMachineId(next);
                 setBrowsing(false); // the open listing belongs to the old machine
               }}
-            >
-              {online.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {machineLabel(m)}
-                </option>
-              ))}
-            </select>
+              options={online.map((m) => ({ value: m.id, label: machineLabel(m) }))}
+            />
             {/* B-486: warn BEFORE creating a terminal that cannot survive. */}
             {machine && tmuxMissing((machine as any).daemonState) && (
               <div className="ns-hint" role="note">{t('newTerminalModal.tmuxMissing')}</div>

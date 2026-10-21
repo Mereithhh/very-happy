@@ -6,9 +6,10 @@
  * the plain checklist, rendered by the callers as before.
  */
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Check, ChevronRight } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useTheme } from '@/ui';
+import { Summary } from '@/ui/Summary';
 import { openSessionSearch } from '@/screens/search/sessionSearchEvents';
 import { changelogImageSrc, changelogMotionSrc, type ChangelogHighlight, type ChangelogImage, type ChangelogRelease, type ChangelogTopic } from './changelogRelease';
 import './changelogHighlights.css';
@@ -44,10 +45,9 @@ export function ChangelogHighlights({ release, onNavigate, headingLevel = 3, inA
       {topics.length > 0 && <ChangelogTopics topics={topics} headingLevel={headingLevel} />}
       {release.itemKeys.length > 0 && (
         <details className="wnh-more">
-          <summary>
-            <ChevronRight size={15} aria-hidden="true" />
+          <Summary>
             {t('changelog.otherImprovements', { count: release.itemKeys.length })}
-          </summary>
+          </Summary>
           <ul className="wn-list">
             {release.itemKeys.map((key) => (
               <li key={key}><Check size={15} aria-hidden="true" />{t(key)}</li>

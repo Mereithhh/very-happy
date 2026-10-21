@@ -1,5 +1,10 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useId, useMemo, useState } from 'react';
 import { Button } from '@/ui';
+import { Checkbox } from '@/ui/Checkbox';
+import { Combobox } from '@/ui/Combobox';
+import { Segmented } from '@/ui/Segmented';
+import { SelectMenu } from '@/ui/SelectMenu';
+import { t } from '@/text';
 
 type JsonSchemaProperty = {
     type?: string;
@@ -19,6 +24,42 @@ type ElicitationRequest = {
         required?: string[];
     };
 };
+
+type EnumValue = string | number | boolean;
+
+/** MCP enum: ≤4 short options → segmented, ≤12 → menu, more → searchable combobox. The value is the option's index; only scalar entries are selectable. */
+function EnumField({ label, options, value, disabled, required, missing, labelledBy, onChange }: {
+    /** field title: the menu's sheet title */
+    label: string;
+    options: unknown[];
+    value: unknown;
+    disabled: boolean;
+    required: boolean;
+    /** a required enum left empty on submit */
+    missing: boolean;
+    labelledBy: string;
+    onChange: (value: EnumValue | undefined) => void;
+}) {
+    const index = options.findIndex((option) => Object.is(option, value));
+    const choices = options.map((option, i) => ({ value: String(i), label: String(option) }));
+    const pick = (next: string) => {
+        if (next === '') { onChange(undefined); return; }
+        const picked = options[Number(next)];
+        if (typeof picked === 'string' || typeof picked === 'number' || typeof picked === 'boolean') onChange(picked);
+    };
+    if (choices.length <= 4 && choices.every((choice) => choice.label.length <= 24)) {
+        return <>
+            <Segmented labelledBy={labelledBy} options={choices} value={index < 0 ? '' : String(index)} onChange={pick} disabled={disabled} className="perm-elicitation-segmented" />
+            {missing && <span className="tg-error" role="alert">{t('picker.required')}</span>}
+        </>;
+    }
+    const menu = {
+        label, labelledBy, placeholder: '—', variant: 'soft', size: 'md', disabled, required, onChange: pick,
+        value: index < 0 ? '' : String(index),
+        options: required ? choices : [{ value: '', label: '—' }, ...choices],
+    } as const;
+    return choices.length > 12 ? <Combobox {...menu} /> : <SelectMenu {...menu} />;
+}
 
 function safeUrl(value: unknown): string | null {
     if (typeof value !== 'string') return null;
@@ -53,6 +94,9 @@ export function ElicitationRequestView({
         return initial;
     });
 
+    const [attempted, setAttempted] = useState(false);
+    const formId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+
     const url = safeUrl(request.url);
     if (request.mode === 'url') {
         return (
@@ -68,6 +112,7 @@ export function ElicitationRequestView({
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
+        setAttempted(true);
         for (const name of required) {
             const value = values[name];
             if (value === undefined || value === '' || (Array.isArray(value) && value.length === 0)
@@ -79,38 +124,42 @@ export function ElicitationRequestView({
     return (
         <form className="perm-elicitation" onSubmit={submit}>
             {request.message && <p>{request.message}</p>}
-            {properties.map(([name, property]) => (
-                <label key={name}>
-                    <span>{String(property.title || name).slice(0, 120)}{required.has(name) ? ' *' : ''}</span>
-                    {Array.isArray(property.enum) ? (
-                        <select disabled={disabled} required={required.has(name)} value={property.enum.findIndex((option) => Object.is(option, values[name])) < 0 ? '' : String(property.enum.findIndex((option) => Object.is(option, values[name])))} onChange={(event) => {
-                            if (event.target.value === '') {
-                                setValues((old) => {
-                                    const next = { ...old };
-                                    delete next[name];
-                                    return next;
-                                });
-                                return;
-                            }
-                            const index = Number(event.target.value);
-                            const value = property.enum?.[index];
-                            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-                                setValues((old) => ({ ...old, [name]: value }));
-                            }
-                        }}>
-                            <option value="" />
-                            {property.enum.map((option, index) => <option key={`${index}:${String(option)}`} value={index}>{String(option)}</option>)}
-                        </select>
-                    ) : property.type === 'boolean' ? (
-                        <input disabled={disabled} type="checkbox" checked={values[name] === true} onChange={(event) => setValues((old) => ({ ...old, [name]: event.target.checked }))} />
-                    ) : property.type === 'array' && property.items?.type === 'string' ? (
-                        <input disabled={disabled} required={required.has(name)} maxLength={4096} type="text" value={Array.isArray(values[name]) ? values[name].join(', ') : ''} onChange={(event) => setValues((old) => ({ ...old, [name]: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) }))} />
-                    ) : (
-                        <input disabled={disabled} required={required.has(name)} maxLength={4096} step={property.type === 'integer' ? 1 : undefined} type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'} value={String(values[name] ?? '')} onChange={(event) => setValues((old) => ({ ...old, [name]: property.type === 'number' || property.type === 'integer' ? (event.target.value === '' ? '' : event.target.valueAsNumber) : event.target.value }))} />
-                    )}
-                    {property.description && <small>{property.description.slice(0, 400)}</small>}
-                </label>
-            ))}
+            {properties.map(([name, property], fieldIndex) => {
+                const title = <span id={`${formId}-${fieldIndex}`}>{String(property.title || name).slice(0, 120)}{required.has(name) ? ' *' : ''}</span>;
+                const description = property.description && <small>{property.description.slice(0, 400)}</small>;
+                // B-714: picker / segmented / checkbox are buttons or own a <label> — a wrapping <label> would re-target clicks.
+                if (Array.isArray(property.enum) || property.type === 'boolean') {
+                    return (
+                        <div key={name} className="perm-elicitation-field">
+                            {title}
+                            {Array.isArray(property.enum)
+                                ? <EnumField label={String(property.title || name).slice(0, 120)} options={property.enum} value={values[name]} disabled={disabled}
+                                    required={required.has(name)} missing={attempted && required.has(name) && values[name] === undefined}
+                                    labelledBy={`${formId}-${fieldIndex}`}
+                                    onChange={(value) => setValues((old) => {
+                                        const next = { ...old };
+                                        if (value === undefined) delete next[name];
+                                        else next[name] = value;
+                                        return next;
+                                    })} />
+                                : <Checkbox disabled={disabled} checked={values[name] === true} aria-labelledby={`${formId}-${fieldIndex}`}
+                                    onCheckedChange={(checked) => setValues((old) => ({ ...old, [name]: checked }))} />}
+                            {description}
+                        </div>
+                    );
+                }
+                return (
+                    <label key={name}>
+                        {title}
+                        {property.type === 'array' && property.items?.type === 'string' ? (
+                            <input disabled={disabled} required={required.has(name)} maxLength={4096} type="text" value={Array.isArray(values[name]) ? values[name].join(', ') : ''} onChange={(event) => setValues((old) => ({ ...old, [name]: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) }))} />
+                        ) : (
+                            <input disabled={disabled} required={required.has(name)} maxLength={4096} step={property.type === 'integer' ? 1 : undefined} type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'} value={String(values[name] ?? '')} onChange={(event) => setValues((old) => ({ ...old, [name]: property.type === 'number' || property.type === 'integer' ? (event.target.value === '' ? '' : event.target.valueAsNumber) : event.target.value }))} />
+                        )}
+                        {description}
+                    </label>
+                );
+            })}
             <Button size="sm" variant="primary" disabled={disabled} type="submit">{submitLabel}</Button>
         </form>
     );

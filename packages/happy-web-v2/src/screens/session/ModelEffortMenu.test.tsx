@@ -51,7 +51,7 @@ describe('ModelEffortMenu maximum indicator', () => {
         expect(host.querySelector('.effort-energy')).toBeNull();
     });
 
-    it('keeps the real popover slider and exact model/effort callbacks usable', () => {
+    it('keeps the real popover slider and exact model/effort callbacks usable', async () => {
         const onModelChange = vi.fn();
         const onEffortChange = vi.fn();
         act(() => root.render(<ModelEffortMenu label="Model" options={models} value="model-a" onChange={onModelChange}
@@ -59,9 +59,19 @@ describe('ModelEffortMenu maximum indicator', () => {
         act(() => host.querySelector('button')!.click());
         const panel = document.querySelector('.me-panel')!;
         expect(panel.querySelector('.effort-slider--max .effort-energy')).not.toBeNull();
-        const select = panel.querySelector('select')!;
-        act(() => { select.value = 'model-b'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+        const picker = panel.querySelector<HTMLButtonElement>('[role="combobox"]')!;
+        expect(picker.getAttribute('aria-labelledby')).toBe(panel.querySelector('.me-model-label')!.id);
+        act(() => picker.click());
+        // Radix arms its outside-pointerdown listeners on a 0ms timer.
+        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+        const option = [...document.querySelectorAll<HTMLElement>('[data-vh-picker-surface] [role="option"]')].find((el) => el.textContent === 'Model B')!;
+        // B-714: the picker is its own portal; a press inside it is not "outside" the model panel.
+        act(() => {
+            option.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+            option.click();
+        });
         expect(onModelChange).toHaveBeenCalledExactlyOnceWith('model-b');
+        expect(document.querySelector('.me-panel')).not.toBeNull();
         const range = panel.querySelector('input')!;
         const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
         act(() => {
@@ -70,5 +80,33 @@ describe('ModelEffortMenu maximum indicator', () => {
             range.dispatchEvent(new Event('change', { bubbles: true }));
         });
         expect(onEffortChange).toHaveBeenCalledExactlyOnceWith('low');
+        // control: a real outside press still closes the panel
+        act(() => { document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })); });
+        expect(document.querySelector('.me-panel')).toBeNull();
+    });
+});
+
+describe('B-714 model picker groups', () => {
+    const open = (el: Element) => act(() => { el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })); });
+    it('with custom models: default ungrouped, then 目录 and 自定义 headings', () => {
+        act(() => root.render(<ModelEffortMenu label="Model" value="default" onChange={vi.fn()}
+            options={[{ key: 'default', name: 'Default' }, ...models, { key: 'gw/opus', name: 'gw/opus' }]}
+            groups={{ catalog: 'Models', custom: 'Custom', customKeys: ['gw/opus'] }}
+            effort={{ label: 'Thinking', options: levels, value: 'low', onChange: vi.fn() }} />));
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        open(document.querySelector('.me-panel .vh-select-trigger')!);
+        const groups = [...document.querySelectorAll('.vh-picker [role="group"]')];
+        expect(groups.map((g) => g.querySelector('.vh-picker-group-label')?.textContent)).toEqual(['Models', 'Custom']);
+        expect(groups[1].textContent).toContain('gw/opus');
+        expect(document.querySelector('.vh-picker [role="option"]')?.textContent).toContain('Default');
+    });
+
+    it('without custom models there are no headings', () => {
+        act(() => root.render(<ModelEffortMenu label="Model" value="model-a" onChange={vi.fn()} options={models}
+            groups={{ catalog: 'Models', custom: 'Custom', customKeys: [] }}
+            effort={{ label: 'Thinking', options: levels, value: 'low', onChange: vi.fn() }} />));
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        open(document.querySelector('.me-panel .vh-select-trigger')!);
+        expect(document.querySelectorAll('.vh-picker-group-label').length).toBe(0);
     });
 });

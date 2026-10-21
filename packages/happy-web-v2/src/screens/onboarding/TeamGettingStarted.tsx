@@ -4,7 +4,11 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Command } from './ConnectMachineGuide';
 import { teamGettingStartedCopy, teamSkillInstallCommand, type TeamSkillHost } from './teamGettingStartedCopy';
+import { Segmented } from '@/ui/Segmented';
+import { Summary } from '@/ui/Summary';
 import './teamGettingStarted.css';
+
+const HOSTS: { value: TeamSkillHost; label: string }[] = [{ value: 'claude', label: 'Claude Code' }, { value: 'codex', label: 'Codex' }, { value: 'pi', label: 'pi' }];
 
 export function TeamGettingStarted() {
   const { lang } = useTranslation();
@@ -31,11 +35,9 @@ export function TeamGettingStarted() {
       </article>
     </div>
     <details id="team-skill-install" className="team-start__install">
-      <summary>{copy.install}</summary>
+      <Summary>{copy.install}</Summary>
       <p>{copy.instruction}</p>
-      <label>{copy.host}<select value={host} onChange={event => setHost(event.target.value as TeamSkillHost)}>
-        <option value="claude">Claude Code</option><option value="codex">Codex</option><option value="pi">pi</option>
-      </select></label>
+      <div className="team-start__host"><span id="team-skill-host">{copy.host}</span><Segmented labelledBy="team-skill-host" value={host} onChange={setHost} options={HOSTS} /></div>
       <Command value={teamSkillInstallCommand(host)} />
       <p className="team-start__limit">{copy.limit}</p>
       <Link to="/docs/agent-teams">{copy.docs}<ArrowRight size={15} /></Link>

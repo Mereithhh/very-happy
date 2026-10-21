@@ -1,6 +1,7 @@
 import { teamBotActivity, type TeamBot, type TeamState } from '@slopus/happy-wire';
 import { Link } from 'react-router-dom';
-import { Circle, UsersRound, CircleCheck, CircleDashed, Clock3, ArrowUpRight, GitBranch, Monitor, Archive, ChevronRight } from 'lucide-react';
+import { Circle, UsersRound, CircleCheck, CircleDashed, Clock3, ArrowUpRight, GitBranch, Monitor, Archive } from 'lucide-react';
+import { Summary } from '@/ui/Summary';
 import { useWorkspaceCopy } from './workspaceCopy';
 import { t as tr } from '@/text';
 import { useFirstUseCopy } from './firstUseCopy';
@@ -83,7 +84,7 @@ export function TeamMembers({ team, archivedSessionIds, now }: { team: TeamState
     {team.bots.length === 0 && <p>{c.noMembers}</p>}
     {current.length > 0 && <div className="teams-members-grid">{current.map(card)}</div>}
     {inactive.length > 0 && <details className="teams-members-inactive" open={inactiveOpen} onToggle={(e) => { if (e.currentTarget.open !== inactiveOpen) setGroupCollapsed(foldKey, !e.currentTarget.open); }}>
-      <summary title={inactiveOpen ? navCopy.hideInactive : navCopy.showInactive}><ChevronRight size={14} className="teams-members-inactive-chevron" aria-hidden /><Archive size={14} aria-hidden />{navCopy.inactiveCount(inactive.length)}</summary>
+      <Summary title={inactiveOpen ? navCopy.hideInactive : navCopy.showInactive}><Archive size={14} aria-hidden />{navCopy.inactiveCount(inactive.length)}</Summary>
       <p className="teams-members-inactive-hint">{navCopy.inactiveHint}</p>
       <div className="teams-members-grid">{inactive.map(card)}</div>
     </details>}

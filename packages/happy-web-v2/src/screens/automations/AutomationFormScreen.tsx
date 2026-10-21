@@ -10,6 +10,11 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useNavigate, useParams } from 'react-router-dom';
 import { BackButton } from '@/app/BackButton';
 import { Spinner, toast } from '@/ui';
+import { Checkbox } from '@/ui/Checkbox';
+import { Combobox } from '@/ui/Combobox';
+import { Segmented } from '@/ui/Segmented';
+import { SelectMenu } from '@/ui/SelectMenu';
+import { SuggestInput } from '@/ui/SuggestInput';
 import { useTranslation, type TranslationKey } from '@/i18n/useTranslation';
 import { useAllMachines, useSetting } from '@/sync/storage';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
@@ -59,13 +64,15 @@ const ERR_KEY: Record<string, TranslationKey> = {
   stale: 'automations.errStale',
 };
 
-function Field({ label, hint, error, children, wide }: { label: string; hint?: string; error?: string; children: ReactNode; wide?: boolean }) {
+/** `labelId`: the control is a picker button (not labelable by a wrapping <label>) — render a div and name it via aria-labelledby */
+function Field({ label, hint, error, children, wide, labelId }: { label: string; hint?: string; error?: string; children: ReactNode; wide?: boolean; labelId?: string }) {
+  const Tag = labelId ? 'div' : 'label';
   return (
-    <label className={`au-field${wide ? ' au-field--wide' : ''}${error ? ' is-error' : ''}`}>
-      <span className="au-field-label">{label}</span>
+    <Tag className={`au-field${wide ? ' au-field--wide' : ''}${error ? ' is-error' : ''}`}>
+      <span className="au-field-label" id={labelId}>{label}</span>
       {children}
       {error ? <span className="au-field-error">{error}</span> : hint ? <span className="au-field-hint">{hint}</span> : null}
-    </label>
+    </Tag>
   );
 }
 
@@ -178,23 +185,32 @@ export function AutomationFormScreen() {
           <Field label={t('automations.fieldName') as string} hint={t('automations.fieldNameHint') as string} error={err('name')}>
             <input className="au-input mono" value={draft.name} onChange={(e) => set('name', e.target.value)} placeholder="daily-work-inventory" autoComplete="off" spellCheck={false} />
           </Field>
-          <Field label={t('automations.fieldMachine') as string} hint={t('automations.fieldMachineHint') as string} error={err('machineId')}>
-            <select className="au-input" value={draft.machineId} onChange={(e) => set('machineId', e.target.value)}>
-              <option value="">{t('automations.chooseMachine')}</option>
-              {machines.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {machineLabel(m)}
-                  {isMachineOnline(m) ? '' : ` · ${t('automations.offlineMachine')}`}
-                </option>
-              ))}
-            </select>
+          <Field label={t('automations.fieldMachine') as string} hint={t('automations.fieldMachineHint') as string} error={err('machineId')} labelId="au-field-machine">
+            <Combobox
+              size="md"
+              className="au-picker"
+              labelledBy="au-field-machine"
+              label={t('automations.fieldMachine') as string}
+              placeholder={t('automations.chooseMachine') as string}
+              value={draft.machineId}
+              onChange={(v) => set('machineId', v)}
+              options={machines.map((m) => ({ value: m.id, label: machineLabel(m), meta: isMachineOnline(m) ? undefined : (t('automations.offlineMachine') as string) }))}
+            />
           </Field>
           {projectsSnap.status === 'ready' && (draft.actionKind === 'spawn' || draft.projectId) && (
-            <Field label={zhCopy ? '项目' : 'Project'} hint={zhCopy ? '这个自动化新开的会话进入该项目（安静模式：只拿说明，不主动发消息、不写记录）' : 'Sessions this automation starts join the project (quiet: they get its instructions but do not message others or write notes)'}>
-              <select className="au-input" value={draft.projectId} onChange={(e) => set('projectId', e.target.value)}>
-                <option value="">{zhCopy ? '无项目' : 'No project'}</option>
-                {projectsSnap.projects.filter((p) => !p.archivedAt || p.id === draft.projectId).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+            <Field label={zhCopy ? '项目' : 'Project'} hint={zhCopy ? '这个自动化新开的会话进入该项目（安静模式：只拿说明，不主动发消息、不写记录）' : 'Sessions this automation starts join the project (quiet: they get its instructions but do not message others or write notes)'} labelId="au-field-project">
+              <Combobox
+                size="md"
+                className="au-picker"
+                labelledBy="au-field-project"
+                label={zhCopy ? '项目' : 'Project'}
+                value={draft.projectId}
+                onChange={(v) => set('projectId', v)}
+                options={[
+                  { value: '', label: zhCopy ? '无项目' : 'No project' },
+                  ...projectsSnap.projects.filter((p) => !p.archivedAt || p.id === draft.projectId).map((p) => ({ value: p.id, label: p.name })),
+                ]}
+              />
             </Field>
           )}
           <Field label={t('automations.fieldDescription') as string} wide>
@@ -224,14 +240,7 @@ export function AutomationFormScreen() {
                 <input className="au-input mono" value={draft.cronExpr} onChange={(e) => set('cronExpr', e.target.value)} placeholder="0 9 * * 1-5" autoComplete="off" spellCheck={false} />
               </Field>
               <Field label={t('automations.fieldTz') as string} error={err('cronTz')}>
-                <input className="au-input mono" value={draft.cronTz} onChange={(e) => set('cronTz', e.target.value)} list="au-tz-list" placeholder="Asia/Singapore" autoComplete="off" spellCheck={false} />
-                {timeZones.length > 0 && (
-                  <datalist id="au-tz-list">
-                    {timeZones.map((z) => (
-                      <option key={z} value={z} />
-                    ))}
-                  </datalist>
-                )}
+                <SuggestInput className="au-input mono" aria-label={t('automations.fieldTz') as string} value={draft.cronTz} onValueChange={(v) => set('cronTz', v)} suggestions={timeZones} placeholder="Asia/Singapore" spellCheck={false} />
               </Field>
             </>
           )}
@@ -262,44 +271,40 @@ export function AutomationFormScreen() {
           </p>
           {draft.actionKind === 'spawn' && (
             <>
-              <Field label={t('automations.fieldAgent') as string} error={err('agent')}>
-                <select className="au-input" value={draft.agent} onChange={(e) => set('agent', e.target.value)}>
-                  {SPAWN_AGENTS.map((a) => (
-                    <option key={a} value={a}>
-                      {a}
-                    </option>
-                  ))}
-                </select>
+              <Field label={t('automations.fieldAgent') as string} error={err('agent')} labelId="au-field-agent">
+                <SelectMenu
+                  size="md"
+                  className="au-picker"
+                  labelledBy="au-field-agent"
+                  label={t('automations.fieldAgent') as string}
+                  value={draft.agent}
+                  onChange={(v) => set('agent', v)}
+                  options={SPAWN_AGENTS.map((a): { value: string; label: string } => ({ value: a, label: a }))}
+                />
               </Field>
               <Field label={t('automations.fieldDirectory') as string} hint={t('automations.fieldDirectoryHint') as string} error={err('directory')}>
-                <input className="au-input mono" value={draft.directory} onChange={(e) => set('directory', e.target.value)} list="au-dir-list" placeholder="~/project" autoComplete="off" spellCheck={false} />
-                {pathsForMachine.length > 0 && (
-                  <datalist id="au-dir-list">
-                    {pathsForMachine.map((p) => (
-                      <option key={p} value={p} />
-                    ))}
-                  </datalist>
-                )}
+                <SuggestInput className="au-input mono" aria-label={t('automations.fieldDirectory') as string} value={draft.directory} onValueChange={(v) => set('directory', v)} suggestions={pathsForMachine} placeholder="~/project" spellCheck={false} />
               </Field>
               <Field label={t('automations.fieldModel') as string} hint={t('automations.fieldModelHint') as string}>
                 <input className="au-input mono" value={draft.model} onChange={(e) => set('model', e.target.value)} autoComplete="off" spellCheck={false} />
               </Field>
-              <Field label={t('automations.fieldPermissionMode') as string}>
-                <select className="au-input" value={draft.permissionMode} onChange={(e) => set('permissionMode', e.target.value)}>
-                  {SPAWN_PERMISSION_MODES.map((m) => (
-                    <option key={m} value={m}>
-                      {m || t('automations.fieldPermissionDefault')}
-                    </option>
-                  ))}
-                </select>
+              <Field label={t('automations.fieldPermissionMode') as string} labelId="au-field-permission">
+                <SelectMenu
+                  size="md"
+                  className="au-picker"
+                  labelledBy="au-field-permission"
+                  label={t('automations.fieldPermissionMode') as string}
+                  value={draft.permissionMode}
+                  onChange={(v) => set('permissionMode', v)}
+                  options={SPAWN_PERMISSION_MODES.map((m): { value: string; label: string } => ({ value: m, label: m || (t('automations.fieldPermissionDefault') as string) }))}
+                />
               </Field>
               <Field label={t('automations.fieldStickyKey') as string} hint={t('automations.fieldStickyKeyHint') as string}>
                 <input className="au-input mono" value={draft.stickyKey} onChange={(e) => set('stickyKey', e.target.value)} placeholder="conv-{{payload.conversationId}}" autoComplete="off" spellCheck={false} />
               </Field>
-              <label className="au-check">
-                <input type="checkbox" checked={draft.worktree} onChange={(e) => set('worktree', e.target.checked)} />
-                <span>{t('automations.fieldWorktree')}</span>
-              </label>
+              <Checkbox className="au-check" checked={draft.worktree} onCheckedChange={(v) => set('worktree', v)}>
+                {t('automations.fieldWorktree')}
+              </Checkbox>
               <Field label={t('automations.fieldPrompt') as string} hint={t('automations.fieldPromptHint') as string} error={err('prompt')} wide>
                 <textarea className="au-input au-textarea" value={draft.prompt} onChange={(e) => set('prompt', e.target.value)} rows={6} maxLength={32000} />
               </Field>
@@ -329,10 +334,9 @@ export function AutomationFormScreen() {
 
         <fieldset className="au-fieldset">
           <legend className="au-legend">{t('automations.formPrecheck')}</legend>
-          <label className="au-check au-field--wide">
-            <input type="checkbox" checked={draft.precheckEnabled} onChange={(e) => set('precheckEnabled', e.target.checked)} />
-            <span>{t('automations.precheckEnable')}</span>
-          </label>
+          <Checkbox className="au-check au-field--wide" checked={draft.precheckEnabled} onCheckedChange={(v) => set('precheckEnabled', v)}>
+            {t('automations.precheckEnable')}
+          </Checkbox>
           <p className="au-field-hint au-field--wide">{t('automations.precheckEnableHint')}</p>
           {draft.precheckEnabled && (
             <>
@@ -365,10 +369,9 @@ export function AutomationFormScreen() {
                 <input className="au-input mono" value={draft.precheckTimeout} onChange={(e) => set('precheckTimeout', e.target.value)} placeholder="60s" autoComplete="off" />
               </Field>
               {draft.actionKind !== 'script' && (
-                <label className="au-check">
-                  <input type="checkbox" checked={draft.precheckIncludeOutput} onChange={(e) => set('precheckIncludeOutput', e.target.checked)} />
-                  <span>{t('automations.fieldPrecheckIncludeOutput')}</span>
-                </label>
+                <Checkbox className="au-check" checked={draft.precheckIncludeOutput} onCheckedChange={(v) => set('precheckIncludeOutput', v)}>
+                  {t('automations.fieldPrecheckIncludeOutput')}
+                </Checkbox>
               )}
             </>
           )}
@@ -376,11 +379,17 @@ export function AutomationFormScreen() {
 
         <fieldset className="au-fieldset">
           <legend className="au-legend">{t('automations.formLimits')}</legend>
-          <Field label={t('automations.fieldConcurrency') as string}>
-            <select className="au-input" value={draft.concurrency} onChange={(e) => set('concurrency', e.target.value as 'skip' | 'queue')}>
-              <option value="skip">{t('automations.concurrencySkipLabel')}</option>
-              <option value="queue">{t('automations.concurrencyQueueLabel')}</option>
-            </select>
+          <Field label={t('automations.fieldConcurrency') as string} labelId="au-field-concurrency">
+            <Segmented<'skip' | 'queue'>
+              className="au-segmented"
+              labelledBy="au-field-concurrency"
+              value={draft.concurrency}
+              onChange={(v) => set('concurrency', v)}
+              options={[
+                { value: 'skip', label: t('automations.concurrencySkipLabel') as string },
+                { value: 'queue', label: t('automations.concurrencyQueueLabel') as string },
+              ]}
+            />
           </Field>
           <Field label={t('automations.fieldMaxRuntime') as string} hint={t('automations.fieldMaxRuntimeHint') as string} error={err('maxRuntime')}>
             <input className="au-input mono" value={draft.maxRuntime} onChange={(e) => set('maxRuntime', e.target.value)} placeholder="6h" autoComplete="off" />

@@ -9,23 +9,8 @@
   margin-top: var(--sp-2);
 }
 .nwt-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
   font-size: var(--fs-13);
-  color: var(--text);
   min-height: 32px;
-  cursor: pointer;
-}
-.nwt-toggle input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--text);
-}
-.nwt-toggle.is-disabled {
-  color: var(--text-faint);
-  cursor: not-allowed;
 }
 .nwt-fields {
   display: flex;

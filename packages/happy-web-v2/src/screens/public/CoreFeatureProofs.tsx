@@ -6,6 +6,8 @@ import {
   TerminalSquare,
 } from 'lucide-react';
 import { usePublicI18n } from '../../i18n/publicI18n';
+// Picker directly, not SelectMenu: that wrapper pulls the app's `@/text`.
+import { Picker, type PickerText } from '@/ui/picker/Picker';
 
 // These are the authenticated product's visual contracts. This public proof
 // keeps only local demo state, so it never imports auth, sync, storage, or socket
@@ -46,6 +48,10 @@ const AGENT_FACTS: Record<AgentKey, { status: string; detail: string }> = {
     detail: 'Connects to a configured local OpenClaw gateway over its own protocol—not ACP.',
   },
 };
+
+// same wording as the app's `picker.*` keys
+const PICKER_TEXT_EN: PickerText = { search: 'Search…', empty: 'No matches', loading: 'Loading…', retry: 'Retry', required: 'Choose an option' };
+const PICKER_TEXT_ZH: PickerText = { search: '搜索…', empty: '没有匹配的选项', loading: '加载中…', retry: '重试', required: '需要选择一项' };
 
 function NewSessionProof({ titleId }: { titleId: string }) {
   const { language } = usePublicI18n();
@@ -96,20 +102,21 @@ function NewSessionProof({ titleId }: { titleId: string }) {
           <div className="cfp-ui-kicker">{zh ? '当前 WEB 流程' : 'CURRENT WEB FLOW'}</div>
           <div className="ns-title">{zh ? '新建 Agent 会话' : 'New agent session'}</div>
 
-          <label className="ns-label" htmlFor={machineId}>{zh ? '机器' : 'Machine'}</label>
-          <select
+          <label className="ns-label" id={`${machineId}-label`} htmlFor={machineId}>{zh ? '机器' : 'Machine'}</label>
+          <Picker
             id={machineId}
-            className="ns-select"
+            labelledBy={`${machineId}-label`}
+            label={zh ? '机器' : 'Machine'}
+            size="md"
+            className="cfp-machine-select"
             value={machine}
-            onChange={(event) => {
-              setMachine(event.target.value as (typeof MACHINES)[number]['id']);
+            onChange={(next) => {
+              setMachine(next);
               markChanged();
             }}
-          >
-            {MACHINES.map((item) => (
-              <option key={item.id} value={item.id}>{item.label} · {item.detail}</option>
-            ))}
-          </select>
+            options={MACHINES.map((item) => ({ value: item.id, label: item.label, meta: item.detail }))}
+            text={zh ? PICKER_TEXT_ZH : PICKER_TEXT_EN}
+          />
 
           <label className="ns-label" htmlFor={directoryId}>{zh ? '目录' : 'Directory'}</label>
           <div className="ns-presets" aria-label={zh ? '示例目录预设' : 'Example directory presets'}>

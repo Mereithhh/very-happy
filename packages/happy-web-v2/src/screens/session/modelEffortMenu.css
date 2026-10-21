@@ -18,21 +18,7 @@
   z-index: 60;
 }
 .me-model-label { display: block; font-size: var(--fs-11); color: var(--text-dim); margin-bottom: var(--sp-1); }
-.me-model-select { position: relative; }
-.me-model-select select {
-  appearance: none;
-  width: 100%;
-  min-height: 44px;
-  padding: var(--sp-2) 28px var(--sp-2) var(--sp-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-2);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--fs-16);
-  text-overflow: ellipsis;
-}
-.me-model-select > svg { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-dim); }
+.me-model-picker { width: 100%; }
 .me-note { font-size: var(--fs-11); color: var(--text-dim); overflow-wrap: anywhere; margin: var(--sp-2) 0 0; }
 .me-panel .effort-slider { width: 100%; min-width: 0; margin-top: var(--sp-4); }
 .me-panel .effort-slider-control { height: 44px; }

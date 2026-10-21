@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from '@/i18n/useTranslation';
 import { FolderOpen, ArrowUp, Bot, ChevronDown } from 'lucide-react';
@@ -14,6 +14,9 @@ import { useFirstUseCopy } from './firstUseCopy';
 import { decideQuickChat } from '@/utils/quickChat';
 import { recordRecentMachinePath } from '@/app/newChat';
 import { Spinner } from '@/ui/Spinner';
+import { Combobox } from '@/ui/Combobox';
+import { SuggestInput } from '@/ui/SuggestInput';
+import { t } from '@/text';
 import { TeamHarnessModelFields } from './TeamHarnessModelFields';
 import { preferredTeamAssistant } from './teamHarnessModel';
 import { CollapsePanel } from '@/ui/CollapsePanel';
@@ -35,6 +38,7 @@ type LaunchIntent = z.infer<typeof intentSchema>;
  */
 export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create', chooseProject = false, initialProjectId, onStart, onStarted }: { machineId?: string; intentScope?: string; chooseProject?: boolean; initialProjectId?: string; onStart: (name: string, machineId: string, launch: TeamLaunchInput, requestId: string, project?: TeamProjectChoice) => Promise<TeamState>; onStarted: (team: TeamState) => void }) {
   const c = useFirstUseCopy();
+  const fieldId = useId();
   const { lang } = useTranslation(); const zh = lang.startsWith('zh');
   const profile = useProfile();
   const key = profile.id ? pendingIntentKey(getServerUrl(), profile.id, intentScope) : '';
@@ -130,9 +134,8 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
       <button type="button" className="team-start-toggle" aria-expanded={configOpen} aria-controls="team-start-config" onClick={() => setConfigOpen(open => !open)}><ChevronDown size={16} aria-hidden className="team-start-chev" />{c.configure}<span className="team-start-context">{machine ? machineLabel(machine) : c.machine} · {directory || c.project} · {assistant === 'claude' ? 'Claude Code' : assistant === 'codex' ? 'Codex' : 'pi'}</span></button>
       <CollapsePanel id="team-start-config" open={configOpen} className="team-start-config-body">
 
-      {!fixedMachine && <label>{c.machine}<select value={machineId} onChange={e => { const next = machines.find(m => m.id === e.target.value); setMachine(e.target.value); setDirectory(''); setPicking(false); const a = preferredTeamAssistant(next?.metadata, assistant); if (a !== assistant) { setAssistant(a); setModel(''); } }} required><option value="">{c.machine}</option>{machines.map(m => <option value={m.id} key={m.id}>{machineLabel(m)}{!isMachineOnline(m) ? ' · offline' : ''}</option>)}</select></label>}
-      <label>{c.project}<div className="team-folder-input"><input ref={directoryRef} value={directory} onChange={e => setDirectory(e.target.value)} required list="team-projects" placeholder="/path/to/project" /><button type="button" disabled={!machine || !isMachineOnline(machine)} onClick={() => setPicking(!picking)}><FolderOpen size={16} />{c.browse}</button></div></label>
-      <datalist id="team-projects">{(presets ?? []).map(p => <option value={p.path} key={p.id} />)}</datalist>
+      {!fixedMachine && <div className="teams-field"><span id={`${fieldId}-machine`}>{c.machine}</span><Combobox variant="soft" size="md" label={c.machine} labelledBy={`${fieldId}-machine`} placeholder={c.machine} required value={machineId || null} options={machines.map(m => ({ value: m.id, label: machineLabel(m), meta: isMachineOnline(m) ? undefined : t('status.offline') }))} onChange={value => { const next = machines.find(m => m.id === value); setMachine(value); setDirectory(''); setPicking(false); const a = preferredTeamAssistant(next?.metadata, assistant); if (a !== assistant) { setAssistant(a); setModel(''); } }} /></div>}
+      <label>{c.project}<div className="team-folder-input"><SuggestInput inputRef={directoryRef} value={directory} onValueChange={setDirectory} required aria-label={c.project} suggestions={(presets ?? []).map(p => ({ value: p.path, label: p.path }))} placeholder="/path/to/project" /><button type="button" disabled={!machine || !isMachineOnline(machine)} onClick={() => setPicking(!picking)}><FolderOpen size={16} />{c.browse}</button></div></label>
       {picking && machine && <div className="team-folder-browser"><FsBrowser machineId={machineId} initialPath={directory || machine.metadata?.homeDir || '/'} onPickDir={path => { setDirectory(path); setPicking(false); }} /></div>}
       {/* B-698: the launch harness/model also become the team's defaults for new members (server reducer). */}
       <div className="team-start-options"><TeamHarnessModelFields machineId={machineId} assistant={assistant} model={model} onAssistant={setAssistant} onModel={setModel} harnessLabel={c.leadAndMembers} /><label>{c.name}<input name="name" value={name} onChange={e => setName(e.target.value)} maxLength={128} /></label></div>

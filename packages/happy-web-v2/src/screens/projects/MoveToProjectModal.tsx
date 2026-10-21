@@ -1,6 +1,6 @@
 import { reportProjectUx } from '@/sync/projectUx';
-import { useState } from 'react';
-import { Button } from '@/ui';
+import { useEffect, useState } from 'react';
+import { Button, Checkbox } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
 import { toast } from '@/ui/Toast';
@@ -29,6 +29,8 @@ export function MoveToProjectModal({ initialSessionId, candidates, onClose }: {
   const [target, setTarget] = useState<string>(current);
   const [selected, setSelected] = useState<Set<string>>(() => new Set([initialSessionId]));
   const [busy, setBusy] = useState(false);
+  // initial focus on the project picker trigger (the old field was autoFocus)
+  useEffect(() => { document.getElementById('mtp-project')?.focus(); }, []);
   const toggle = (id: string) => setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const apply = async () => {
     const plan = planMove([...selected], target || null, snap.members);
@@ -60,10 +62,9 @@ export function MoveToProjectModal({ initialSessionId, candidates, onClose }: {
             <label className="ns-label">{zh ? `会话（已选 ${selected.size}）` : `Sessions (${selected.size} selected)`}</label>
             <div className="mtp-list">
               {candidates.map((c) => (
-                <label key={c.sessionId} className="mtp-item">
-                  <input type="checkbox" checked={selected.has(c.sessionId)} onChange={() => toggle(c.sessionId)} />
-                  <span>{c.title}</span>
-                </label>
+                <Checkbox key={c.sessionId} className="mtp-item" checked={selected.has(c.sessionId)} onCheckedChange={() => toggle(c.sessionId)}>
+                  {c.title}
+                </Checkbox>
               ))}
             </div>
           </>

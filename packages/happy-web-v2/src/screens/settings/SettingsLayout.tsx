@@ -48,7 +48,7 @@ export function SettingsHeader({title,subtitle,right}:{title:string;subtitle?:st
 /** Navigation only: actual settings screens keep their own persistence and capability gates. */
 export function SettingsWorkspace({children,basePath='/settings'}:{children:ReactNode;basePath?:string}) {
   const {t,lang}=useTranslation(); const navigate=useNavigate(); const location=useLocation();
-  const [query,setQuery]=useState(''); const [searchOpen,setSearchOpen]=useState(false); const zh=lang.startsWith('zh');
+  const [query,setQuery]=useState(''); const zh=lang.startsWith('zh');
   const contentRef=useRef<HTMLDivElement|null>(null);
   const current=location.pathname.slice(basePath.length).replace(/^\//,'');
   const label=(section:typeof settingsSections[number])=>section.path==='google'?'Google':t(section.key);
@@ -64,14 +64,17 @@ export function SettingsWorkspace({children,basePath='/settings'}:{children:Reac
     if(!targetId||!contentRef.current) return;
     return revealSettingWhenReady(contentRef.current,targetId);
   },[location.key,targetId]);
-  const openHit=(href:string)=>{setQuery('');setSearchOpen(false);navigate(href);};
+  const openHit=(href:string)=>{setQuery('');navigate(href);};
   const searchLabel=zh?'搜索设置':'Search settings';
   return <div className="settings-workspace"><div className="settings-layout">
-    <aside className="settings-navigation vh-scroll-fade" data-search-open={searchOpen} data-searching={Boolean(trimmed)}>
-      <div className="settings-navigation-top"><Link className="settings-return" to="/"><ArrowLeft size={16}/><span>{zh?'返回工作台':'Back to workspace'}</span></Link><button className="settings-search-toggle" aria-label={searchLabel} aria-expanded={searchOpen} onClick={()=>{setSearchOpen(!searchOpen);setQuery('');}}><Search size={16}/></button></div>
+    {/* B-714 (UI-P1-02): ≤700px the aside is only the search on the root page —
+        the root's own section list is the navigation and every page header's
+        ‹ back already leads up (subpage → /settings → workspace). */}
+    <aside className="settings-navigation vh-scroll-fade" data-root={current===''} data-searching={Boolean(trimmed)}>
+      <div className="settings-navigation-top"><Link className="settings-return" to="/"><ArrowLeft size={16}/><span>{zh?'返回工作台':'Back to workspace'}</span></Link></div>
       <label className="settings-search"><Search size={14}/><input type="search" aria-label={searchLabel} placeholder={zh?'搜索设置…':'Search settings…'} value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter'&&hits[0]&&!e.nativeEvent.isComposing){e.preventDefault();openHit(settingHref(hits[0].entry,basePath));} }}/></label>
       <nav aria-label={t('settings.title')}>
-        {visible.map(s=><Link key={s.path} to={`${basePath}${s.path?'/'+s.path:''}`} aria-current={current===s.path?'page':undefined} onClick={()=>{if(trimmed){setQuery('');setSearchOpen(false);}}}><s.icon size={15}/><span>{label(s)}</span></Link>)}
+        {visible.map(s=><Link key={s.path} to={`${basePath}${s.path?'/'+s.path:''}`} aria-current={current===s.path?'page':undefined} onClick={()=>{if(trimmed)setQuery('');}}><s.icon size={15}/><span>{label(s)}</span></Link>)}
         {hits.length>0&&<div className="settings-search-results" role="group" aria-label={zh?'设置项':'Settings'}>
           {visible.length>0&&<div className="settings-search-results__label">{zh?'设置项':'Settings'}</div>}
           {hits.map(({entry})=>{
@@ -85,7 +88,6 @@ export function SettingsWorkspace({children,basePath='/settings'}:{children:Reac
         </div>}
         {!visible.length&&!hits.length&&<p className="set-note">{zh?'没有匹配的设置':'No matching settings'}</p>}
       </nav>
-      <select className="settings-mobile-select" aria-label={t('settings.title')} value={current} onChange={e=>navigate(`${basePath}${e.target.value?'/'+e.target.value:''}`)}>{settingsSections.map(s=><option key={s.path} value={s.path}>{label(s)}</option>)}</select>
     </aside>
     <div className="settings-content" ref={contentRef}>{children}</div>
   </div></div>;

@@ -2392,6 +2392,9 @@ export const en = {
         editorDescription: 'Edits the agent\'s own config file on the selected machine. Nothing is written until you confirm the preview.',
         customize: 'Custom…',
         customModelDescription: 'from this machine\'s config',
+        // B-714 model picker groups
+        groupCatalog: 'Models',
+        groupCustom: 'Custom',
     },
     settingsMachines: {
         title: 'Machines',

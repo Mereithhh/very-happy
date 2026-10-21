@@ -30,27 +30,33 @@ it('uses visible recent defaults, resolves the execution home, and preserves the
  }finally{await act(async()=>root.unmount());host.remove();localStorage.clear();}
 });
 
-it('B-698: harness lists only what the computer runs; the default model is a select whose choice is launched', async () => {
+it('B-698: harness lists only what the computer runs; the default model is a combobox whose choice is launched', async () => {
  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});localStorage.clear();
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host);const start=vi.fn().mockResolvedValueOnce({id:'team'});
  try{
  await act(async()=>root.render(<MemoryRouter><TeamStartForm onStart={start} onStarted={vi.fn()}/></MemoryRouter>));
  await act(async()=>{(host.querySelector('.team-start-toggle') as HTMLButtonElement).click();});
- const assistant=host.querySelector('select[name=assistant]') as HTMLSelectElement;
+ const assistant=host.querySelector('input[name=assistant]')!.parentElement!;
  // no cliAvailability.pi on this daemon → pi is not offered
- expect([...assistant.options].map(o=>o.value)).toEqual(['claude','codex']);
- const model=host.querySelector('select[name=model]') as HTMLSelectElement;
- expect(model.tagName).toBe('SELECT');
- expect(model.options[0].value).toBe('');expect(model.options[0].textContent).toBe('Follow the harness default');
- expect([...model.options].map(o=>o.value)).toContain('gpt-5.5');
- await act(async()=>{model.value='gpt-5.5';model.dispatchEvent(new Event('change',{bubbles:true}));});
+ expect([...assistant.querySelectorAll('button')].map(b=>b.textContent)).toEqual(['Claude Code','Codex']);
+ const model=()=>host.querySelector('input[name=model]')!.parentElement!.querySelector<HTMLButtonElement>('.vh-select-trigger')!;
+ expect(model().getAttribute('role')).toBe('combobox');
+ expect(model().textContent).toBe('Follow the harness default');
+ await act(async()=>{model().dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));});
+ const options=[...document.querySelectorAll<HTMLElement>('[role=option]')];
+ expect(options[0].textContent).toContain('Follow the harness default');
+ const gpt=options.find(o=>o.title.includes('gpt-5.5'))!;
+ expect(gpt).toBeTruthy();
+ await act(async()=>{gpt.click();});
+ expect((host.querySelector('input[name=model]') as HTMLInputElement).value).toBe('gpt-5.5');
  const input=host.querySelector('textarea')!;
  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(input,'Ship it');input.dispatchEvent(new Event('input',{bubbles:true}));});
  await act(async()=>{host.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});
  expect(start.mock.calls[0][2]).toEqual({goal:'Ship it',directory:'/home/executor/project',assistant:'codex',model:'gpt-5.5'});
  // switching the harness resets the model to "follow default"
- await act(async()=>{assistant.value='claude';assistant.dispatchEvent(new Event('change',{bubbles:true}));});
- expect((host.querySelector('select[name=model]') as HTMLSelectElement).value).toBe('');
+ await act(async()=>{[...assistant.querySelectorAll('button')].find(b=>b.textContent==='Claude Code')!.click();});
+ expect((host.querySelector('input[name=assistant]') as HTMLInputElement).value).toBe('claude');
+ expect((host.querySelector('input[name=model]') as HTMLInputElement).value).toBe('');
  }finally{await act(async()=>root.unmount());host.remove();localStorage.clear();}
 });
 

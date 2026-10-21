@@ -10,8 +10,7 @@
 .team-start blockquote { margin: var(--sp-3) 0; padding: var(--sp-3); background: var(--bg-2); font-size: var(--fs-14); line-height: 1.5; }
 .team-start a { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 44px; color: var(--text); font-size: var(--fs-13); text-decoration: underline; text-underline-offset: 4px; }
 .team-start__install { border-top: 1px solid var(--line); padding-top: var(--sp-4); }
-.team-start__install label { display: flex; align-items: center; gap: var(--sp-3); margin-block: var(--sp-3); font-size: var(--fs-13); }
-.team-start__install select { min-height: 44px; padding: var(--sp-2); font-size: 16px; background: var(--bg-1); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.team-start__host { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-3); margin-block: var(--sp-3); font-size: var(--fs-13); }
 .team-start__install .fr-command { width: 100%; min-width: 0; }
 .team-start__install .fr-command code { overflow-wrap: anywhere; white-space: pre-wrap; }
 .team-start__limit { font-size: var(--fs-12); }

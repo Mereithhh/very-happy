@@ -79,19 +79,7 @@
   flex-shrink: 0;
 }
 .ss-status { flex: 0 1 360px; width: 360px; } /* vh-segmented is an inline-size container: it needs a definite width */
-.ss-select {
-  min-width: 0;
-  max-width: 160px;
-  height: 28px;
-  padding: 0 var(--sp-2);
-  border: none;
-  border-radius: var(--r-btn);
-  background: var(--fill-soft);
-  color: var(--text-dim);
-  font-size: var(--fs-12);
-}
-.ss-select:hover { background: var(--fill-soft-hover); color: var(--text); }
-.ss-select:focus-visible { box-shadow: var(--focus-ring); outline: none; }
+.ss-filters .ss-filter { max-width: 160px; }
 
 .ss-notice {
   padding: var(--sp-2) var(--sp-4) 0;
@@ -240,7 +228,6 @@
 
 @media (pointer: coarse) {
   .ss-close { width: 44px; height: 44px; }
-  .ss-select { height: 36px; font-size: var(--fs-16); }
   .ss-snippet { min-height: 44px; align-items: center; }
   .ss-palette-link {
   margin-top: var(--sp-3);
@@ -271,6 +258,6 @@
   .ss-search { padding-left: var(--sp-3); }
   .ss-filters { padding: var(--sp-2) var(--sp-3); }
   .ss-row { padding: var(--sp-2) var(--sp-3); }
-  .ss-select { flex: 1 1 40%; max-width: none; }
+  .ss-filters .ss-filter { flex: 1 1 40%; max-width: none; }
   .ss-status { flex: 1 1 100%; width: 100%; }
 }

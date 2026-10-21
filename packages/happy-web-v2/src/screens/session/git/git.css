@@ -71,7 +71,7 @@
 }
 .gd-file:hover { background: var(--bg-2); }
 .gd-file--all { border-bottom: 1px solid var(--line); color: var(--text); }
-.gd-file input, .gd-check input { flex: none; width: 15px; height: 15px; margin: 0; accent-color: var(--text); }
+.gd-file > .vh-checkbox, .gd-check > .vh-checkbox { flex: none; }
 .gd-path {
   flex: 1;
   min-width: 0;

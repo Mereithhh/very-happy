@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { Spinner, useToast } from '@/ui';
+import { Summary } from '@/ui/Summary';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
 import { useImeGuard } from '@/utils/ime';
@@ -579,7 +580,7 @@ export function AssistantScreen() {
                             if (e.role === 'thinking') {
                                 return (
                                     <details key={e.id} className="as-transcript-fold" data-role="thinking">
-                                        <summary>{t('assistant.thinkingTrace')}</summary>
+                                        <Summary>{t('assistant.thinkingTrace')}</Summary>
                                         <div className="as-transcript-fold-body">{e.detail}</div>
                                     </details>
                                 );
@@ -601,7 +602,7 @@ export function AssistantScreen() {
                                 );
                                 return e.detail ? (
                                     <details key={e.id} className="as-transcript-fold" data-role="tool">
-                                        <summary className="as-transcript-tool-summary">{row}</summary>
+                                        <Summary className="as-transcript-tool-summary">{row}</Summary>
                                         <div className="as-transcript-fold-body as-transcript-tool-body">{e.detail}</div>
                                     </details>
                                 ) : (
