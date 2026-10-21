@@ -148,3 +148,4 @@
 @media (prefers-reduced-motion: reduce) {
   .vh-picker, .vh-picker-scrim, .vh-picker-sheet { animation: none; }
 }
+.vh-suggest .vh-picker-option { padding-left: 10px; }

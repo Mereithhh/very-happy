@@ -161,10 +161,11 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 | 长列表、要搜索或分组的单选（机器、项目、分支、模型、checkpoint） | `ui/Combobox`（B-714）：超过 8 项自动出搜索框，命中高亮；支持加载中、失败重试、末尾动作行（「＋ 新建…」） | 原生 `<select>`；在 Popover 里手写列表 |
 | 2–4 个一行放得下的选项 | `ui/Segmented`（`.vh-segmented` + `aria-pressed`，`name` 时带隐藏 input） | 下拉 |
 | 输入框旁的模式切换菜单（权限模式、预设） | 沿用 `ModeMenu`（菜单项 + 勾选列） | — |
+| 输入框的补全建议（目录预设、时区） | `ui/SuggestInput`：值是自由输入，列表只给补全；Esc 先关列表 | `<input list>` + `<datalist>` |
 | 勾选 | `ui/Checkbox`（原生 input 换成 16px token 方框，带文字时整行 label，触屏 44px） | 原生 `input[type=checkbox]` |
 | `<details>` 折叠头 | `ui/Summary`（隐藏浏览器三角，前置 chevron，展开时旋转）；动画折叠用 `CollapsePanel` | 原生 `<summary>` 三角 |
 | 点击打开表单、选择器或详情 | Radix Popover（`ModelEffortMenu`、`RelayBadge`） | Dialog：它会锁焦点、压暗背景 |
-| 必须先做决定才能继续 | `Modal.confirm` / `alert` / `prompt`；自定义内容用 `Modal.show` 或 Radix Dialog（`SessionOptionsDialog`、`ImagePreview`） | Popover 或行内浮层 |
+| 必须先做决定才能继续 | `Modal.confirm` / `alert` / `prompt`；自定义内容用 `Modal.show` 或 Radix Dialog（`ShareDialog`、`ImagePreview`） | Popover 或行内浮层 |
 | 对话里的卡片正文（团队消息、跨会话消息、委派/提交工具卡的 goal/body/result） | 收起态只放纯文本预览（`utils/markdownPreview.ts`，前 3 行、去掉 markdown 符号和 `[Very Happy … message]` 协议头尾），整张卡可点；点开用 `MessageReader`（Radix Dialog，桌面居中、≤600px 底部 sheet）完整渲染 Markdown，带复制、跳任务/会话、折叠的原始消息（B-716） | 卡里直接渲染 Markdown 或裸文本、`<details>` 折叠原文、自造浮层 |
 | 长期查看的辅助内容，或有自己时间线的内容 | 右侧工作区标签（`screens/workspace/`）或 session aside 抽屉，窄屏自动全屏 | 居中模态框 |
 | 一闪而过的确认（已复制、已保存） | `toast`（`ui/Toast.tsx`） | Dialog、常驻横幅 |
@@ -174,7 +175,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 
 ### 选择控件（B-714）
 
-产品界面不用原生 `<select>` / `<option>` / `input[type=checkbox]` / `<summary>` 三角：系统下拉在 iOS、Android、桌面各是一套，不能搜索、分组、写禁用原因，也不跟主题。design lint `native-control` 拦新增，白名单只有 `ui/Checkbox.tsx`、`ui/Summary.tsx` 自身。
+产品界面不用原生 `<select>` / `<option>` / `<datalist>` / `input[type=checkbox]` / `<summary>` 三角：系统下拉在 iOS、Android、桌面各是一套，不能搜索、分组、写禁用原因，也不跟主题。design lint `native-control` 拦新增，白名单只有 `ui/Checkbox.tsx`、`ui/Summary.tsx` 自身。
 
 - **触发器** `.vh-select-trigger`：桌面 32px（`size="md"` 表单 36px），coarse 44px；`--bg-2` 底 + `--line` 边框，闭合容器里用 `variant="soft"`（填充、无边框），筛选条用 `variant="chip"`；Sans 13.5px，手机 16px；选中值单行截断，完整值在 `title`；`busy` 用 Spinner 替换 chevron，宽度不变。
 - **浮层**：`--surface-popover` + `--shadow-popover`，`--r-md`；最小等于触发器宽，最大 min(420px, 100vw−24px)；行高 32px（coarse 44px），高亮 `--fill-selected`；左侧 16px 勾选列，可带说明行（12px faint）和右侧元信息。
@@ -201,7 +202,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 2. 对话区 css（脚本里的 `CONVERSATION_CSS`：对话流、工具和子代理行、实时状态、输入框、侧问、提问步进、阅读辅助）的 `font-size` 与 `font` 简写只能用对话档位 `var(--chat-fs-*)` / `var(--conversation-size)`；写死 px、`var(--fs-*)`、未乘 `--chat-scale` 的 `--workspace-primary-size` 都报。触屏输入的 `max(16px, var(--chat-fs-body))` 和 em 放行。
 3. `outline: none|0`：同一文件里没有对应的 `:focus-visible` / `:focus-within` 替代样式就报。`X:focus { outline: none }` 这种程序化聚焦容器的写法放行。
 4. 文本输入框焦点环（`field-focus-ring`，B-699）：选择器在 `:focus*` 状态下指向 `input` / `textarea` 或以 `input`、`textarea` 结尾的类名，且声明了 `var(--focus-ring)`、`var(--accent-glow)` 阴影或非 none 的 outline 就报。`:not(...)` 里的排除、checkbox/radio 等非文本 input 放行。
-5. 原生控件（`native-control`，B-714）：tsx 新增 `<select`、`<option`、`type="checkbox"`、`<summary` 就报，改用 `SelectMenu` / `Combobox` / `Segmented` / `Checkbox` / `Summary`（见 §6「选择控件」）。只有 `ui/Checkbox.tsx`、`ui/Summary.tsx` 可以写对应的原生元素；字符串字面量里的同名文本放行。
+5. 原生控件（`native-control`，B-714）：tsx 新增 `<select`、`<option`、`<datalist`、`type="checkbox"`、`<summary` 就报，改用 `SelectMenu` / `Combobox` / `Segmented` / `SuggestInput` / `Checkbox` / `Summary`（见 §6「选择控件」）。只有 `ui/Checkbox.tsx`、`ui/Summary.tsx` 可以写对应的原生元素；字符串字面量里的同名文本放行。
 
 确实要保留时，在同一行或上一行写 `design-lint-allow: <理由>`，理由必填。规则本身宁可漏报、不要误报，误报应该修脚本，不要靠堆豁免。
 

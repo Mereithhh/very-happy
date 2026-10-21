@@ -189,6 +189,7 @@ test('B-714 native-control: new <select>/<option>/checkbox/<summary> in tsx are 
     assert.deepEqual(lintAll('ui/Checkbox.tsx', '<input type="checkbox" className="vh-checkbox-input" />'), []);
     assert.deepEqual(lintAll('ui/Summary.tsx', '<summary className="vh-summary">'), []);
     assert.deepEqual(findNativeControls('<input type={"checkbox"} />', 'screens/a.tsx').map(h => h.kind), ['checkbox']);
+    assert.deepEqual(findNativeControls('<datalist id="x"><option value="a" /></datalist>', 'screens/a.tsx').map(h => h.kind), ['option', 'datalist']);
     // the owner whitelist is per control: Checkbox.tsx may not grow a <select>
     assert.deepEqual(findNativeControls('<select>', 'ui/Checkbox.tsx').map(h => h.kind), ['select']);
     // css and tests are out of scope for this rule

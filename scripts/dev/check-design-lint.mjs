@@ -16,8 +16,8 @@
  *                    对话区集合见 CONVERSATION_CSS。
  *   ③ outline-none   `outline: none|0` 所在规则及同文件内，找不到同类名的 :focus* 替代样式。
  *   ④ field-focus-ring 文本输入框在 :focus* 下画焦点环（B-699）。
- *   ⑤ native-control tsx 新增原生 `<select>` / `<option>` / `<input type="checkbox">` / `<summary>`
- *                    （B-714）：分别改用 ui/SelectMenu、ui/Combobox、`.vh-segmented`、ui/Checkbox、
+ *   ⑤ native-control tsx 新增原生 `<select>` / `<option>` / `<datalist>` / `<input type="checkbox">` / `<summary>`
+ *                    （B-714）：分别改用 ui/SelectMenu、ui/Combobox、ui/Segmented、ui/SuggestInput、ui/Checkbox、
  *                    ui/Summary。白名单只有组件自身（NATIVE_CONTROL_OWNERS）；字符串字面量里的同名文本不算。
  * 宁可漏报不误报：tsx 只认明显的色值字符串；③ 只查 css。
  *
@@ -58,6 +58,7 @@ export const NATIVE_CONTROL_OWNERS = { checkbox: 'ui/Checkbox.tsx', summary: 'ui
 const NATIVE_CONTROL_RES = [
     { kind: 'select', re: /<select(?=[\s>/]|$)/g, fix: '用 ui/SelectMenu（≤12 项已知列表）或 ui/Combobox（长列表/搜索/分组）；2–4 项用 .vh-segmented' },
     { kind: 'option', re: /<option(?=[\s>/]|$)/g, fix: '选项写成 SelectMenu / Combobox 的 options 数组' },
+    { kind: 'datalist', re: /<datalist(?=[\s>/]|$)/g, fix: '输入框的补全建议用 ui/SuggestInput' },
     { kind: 'checkbox', re: /\btype\s*=\s*(?:\{\s*)?['"`]checkbox['"`]/g, fix: '用 ui/Checkbox' },
     { kind: 'summary', re: /<summary(?=[\s>/]|$)/g, fix: '用 ui/Summary（隐藏浏览器三角，换 chevron）' },
 ];

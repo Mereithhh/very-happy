@@ -21,3 +21,4 @@ export { Combobox } from './Combobox';
 export { Checkbox } from './Checkbox';
 export { Summary } from './Summary';
 export { Segmented, type SegmentedOption } from './Segmented';
+export { SuggestInput } from './SuggestInput';
