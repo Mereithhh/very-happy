@@ -560,6 +560,18 @@
 .ci-queue-failure { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); color: var(--danger); font-size: var(--chat-fs-secondary); }
 .ci-queue-action--retry { width: auto; min-width: 44px; min-height: 44px; margin-left: auto; flex: none; color: var(--text); }
 
+/* B-722: a submitted prompt the server has not confirmed yet, and where the dock's prompts go. */
+.ci-queue-body { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.ci-queue-item--pending .ci-queue-text { opacity: 0.55; }
+.ci-queue-item--failed .ci-queue-text { opacity: 1; }
+.ci-queue-status, .ci-queue-note { display: inline-flex; align-items: center; gap: 5px; color: var(--text-dim); font: var(--chat-fs-caption)/1.4 var(--font-sans); }
+.ci-queue-status > svg, .ci-queue-note > svg { flex: none; }
+.ci-queue-status--failed { color: var(--danger); }
+.ci-queue-note { padding: var(--sp-1) var(--sp-3); }
+.ci-queue-item--pending .ci-queue-action--retry { margin-left: 0; padding-inline: var(--sp-2); font: var(--chat-fs-secondary)/1.4 var(--font-sans); font-weight: 600; }
+.ci-queue-save { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); font: var(--chat-fs-caption)/1.4 var(--font-sans); white-space: nowrap; }
+.ci-queue-save--failed { color: var(--danger); }
+
 .ci-meter-tokens { font-variant-numeric: tabular-nums; color: var(--text-dim); }
 .ci-meter > svg { flex: none; }
 .ci-status .ci-meter { flex-wrap: wrap; row-gap: 2px; }
@@ -573,3 +585,6 @@
     font-size: max(16px, var(--chat-fs-body));
   }
 }
+.ci-queue-save-retry { padding: 0 4px; border-radius: var(--r-sm); background: transparent; color: var(--text); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.ci-queue-save-retry:hover { background: var(--bg-3); }
+@media (pointer: coarse) { .ci-queue-save-retry { min-height: 44px; padding-inline: var(--sp-2); } }

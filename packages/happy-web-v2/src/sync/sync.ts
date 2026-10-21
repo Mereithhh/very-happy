@@ -25,6 +25,7 @@ import { handleFilePreviewPush } from '@/sync/filePreviewPush';
 import { handleSessionStream } from '@/sync/liveStreamStore';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage, isSessionDeleted } from './storage';
+import { markSendConfirmed } from './sendConfirmations';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
@@ -155,6 +156,11 @@ type OutboxRecord = {
     mayHaveStored: boolean;
     /** An attempt is on the wire right now. */
     attemptInFlight: boolean;
+    /**
+     * B-722: the plain record of a turn shown before it was encrypted. Kept so
+     * a failed encryption can be retried; `content` is '' until then.
+     */
+    raw?: RawRecord;
 };
 
 const SEND_DEADLINE_TICK_MS = 500;
@@ -205,6 +211,8 @@ class Sync {
     private pendingOutbox = new Map<string, OutboxMessage[]>();
     private outboxRecords = new Map<string, OutboxRecord>();
     private outboxOrder = 0;
+    /** B-722: per-session encryption chain — outbox items enter `pendingOutbox` in send order. */
+    private outboxEncryptChain = new Map<string, Promise<void>>();
     private sendDeadlines = new SendDeadlines();
     private sendDeadlineTimer: ReturnType<typeof setInterval> | null = null;
     /** localIds of the request currently on the wire, per session. */
@@ -725,7 +733,7 @@ class Sync {
         if (failures.length > 0) storage.getState().applyOutboxResult(sessionId, { failures });
     }
 
-    private trackOutboxItems(sessionId: string, localIds: readonly string[], contents: readonly string[], group: string) {
+    private trackOutboxItems(sessionId: string, localIds: readonly string[], contents: readonly string[], group: string, raws?: readonly RawRecord[]) {
         localIds.forEach((localId, index) => {
             this.outboxRecords.set(localId, {
                 sessionId,
@@ -735,10 +743,69 @@ class Sync {
                 order: this.outboxOrder++,
                 mayHaveStored: false,
                 attemptInFlight: false,
+                ...(raws?.[index] ? { raw: raws[index] } : {}),
             });
         });
         this.sendDeadlines.start(localIds, Date.now());
         this.ensureSendDeadlineTicker();
+    }
+
+    /**
+     * B-722: run `step` after every earlier outbox step of this session, so
+     * items reach `pendingOutbox` in the order they were shown even though
+     * each one is encrypted after it appeared.
+     */
+    private inOutboxOrder(sessionId: string, step: () => Promise<void> | void): Promise<void> {
+        const previous = this.outboxEncryptChain.get(sessionId) ?? Promise.resolve();
+        const run = previous.then(step);
+        const tail = run.catch(() => {});
+        this.outboxEncryptChain.set(sessionId, tail);
+        void tail.then(() => {
+            if (this.outboxEncryptChain.get(sessionId) === tail) this.outboxEncryptChain.delete(sessionId);
+        });
+        return run;
+    }
+
+    /**
+     * B-722: encrypt items that are already on screen (marked `sending`) and
+     * hand them to the outbox. A failed encryption fails them visibly (they
+     * never left, so they stay restorable); an item withdrawn or failed by its
+     * deadline meanwhile keeps its encrypted content for Retry but is not sent.
+     */
+    private encryptIntoOutbox(
+        sessionId: string,
+        encryption: { encryptRawRecord: (record: RawRecord) => Promise<string> },
+        items: readonly { localId: string; raw: RawRecord }[],
+        options?: { httpOnly?: boolean },
+    ): Promise<void> {
+        return this.inOutboxOrder(sessionId, async () => {
+            let encrypted: string[];
+            try {
+                encrypted = await Promise.all(items.map((item) => encryption.encryptRawRecord(item.raw)));
+            } catch (error) {
+                log.log(`📨 encrypting a send for ${sessionId} failed (${error instanceof Error ? error.message : String(error)})`);
+                this.failOutboxItems(sessionId, items.map((item) => item.localId));
+                return;
+            }
+            const ready: OutboxMessage[] = [];
+            items.forEach((item, index) => {
+                const record = this.outboxRecords.get(item.localId);
+                if (!record) return;
+                record.content = encrypted[index];
+                if (this.sendDeadlines.has(item.localId)) {
+                    ready.push({ localId: item.localId, content: encrypted[index], ...(options?.httpOnly ? { httpOnly: true } : {}) });
+                }
+            });
+            if (ready.length === 0) return;
+            let pending = this.pendingOutbox.get(sessionId);
+            if (!pending) {
+                pending = [];
+                this.pendingOutbox.set(sessionId, pending);
+            }
+            pending.push(...ready);
+            this.getSendSync(sessionId).invalidateNow();
+            this.maybeStartBackgroundSendWatchdog();
+        });
     }
 
     /** B-513 review: drop retry records the reducer has confirmed (e.g. an echo after a deadline failure). */
@@ -792,12 +859,22 @@ class Sync {
             .filter((other) => other.group === record.group && reducerState.sendStates.get(other.localId) === 'failed')
             .sort((a, b) => a.order - b.order);
         if (members.length === 0) return false;
+        const localIds = members.map((member) => member.localId);
+        if (members.some((member) => !member.content)) {
+            // B-722: its encryption failed — encrypt again, then send as usual.
+            const encryption = this.encryption.getSessionEncryption(sessionId);
+            if (!encryption || members.some((member) => !member.raw)) return false;
+            storage.getState().applyOutboxResult(sessionId, { sending: localIds });
+            this.sendDeadlines.start(localIds, Date.now());
+            this.ensureSendDeadlineTicker();
+            void this.encryptIntoOutbox(sessionId, encryption, members.map((member) => ({ localId: member.localId, raw: member.raw! })), { httpOnly: true });
+            return true;
+        }
         let pending = this.pendingOutbox.get(sessionId);
         if (!pending) {
             pending = [];
             this.pendingOutbox.set(sessionId, pending);
         }
-        const localIds = members.map((member) => member.localId);
         removeByLocalId(pending, new Set(localIds));
         for (const member of members) {
             pending.push({ localId: member.localId, content: member.content, httpOnly: true });
@@ -1022,6 +1099,31 @@ class Sync {
         // that never reaches the outbox (a later throw) still fails visibly.
         const group = randomUUID();
         const turnItems: OutboxMessage[] = [];
+        const localId = randomUUID();
+        // Create user message content with metadata (B-509: one builder shared
+        // with the server-side prompt queue, so a queued prompt is the same record).
+        const content: RawRecord = buildOutboundUserRecord({
+            text,
+            sentFrom: resolveSentFrom(),
+            appendSystemPrompt: systemPrompt,
+            modeMeta,
+            delivery,
+            displayText,
+            queuedAt,
+        });
+
+        // B-722: a text-only turn is shown in the click stack — encryption
+        // (async WebCrypto) used to sit between the click and the bubble. It is
+        // tracked before it is shown, encrypted after, and enters the outbox in
+        // send order (encryptIntoOutbox); a failed encryption shows as failed.
+        if (!effectiveAttachments || effectiveAttachments.length === 0) {
+            const normalizedText = normalizeRawMessage(localId, localId, Date.now(), content);
+            this.trackOutboxItems(sessionId, [localId], [''], group, [content]);
+            if (normalizedText) this.applyOptimistic(sessionId, normalizedText);
+            trackMessageSent(source, session.metadata);
+            void this.encryptIntoOutbox(sessionId, encryption, [{ localId, raw: content }]);
+            return localId; // Receipt: accepted into the local outbox, not server delivery.
+        }
 
         // Upload attachments and queue file events before the text message.
         if (effectiveAttachments && effectiveAttachments.length > 0) {
@@ -1088,22 +1190,6 @@ class Sync {
             }
         }
 
-        // Generate local ID
-        const localId = randomUUID();
-
-        const sentFrom = resolveSentFrom();
-
-        // Create user message content with metadata (B-509: one builder shared
-        // with the server-side prompt queue, so a queued prompt is the same record).
-        const content: RawRecord = buildOutboundUserRecord({
-            text,
-            sentFrom,
-            appendSystemPrompt: systemPrompt,
-            modeMeta,
-            delivery,
-            displayText,
-            queuedAt,
-        });
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
         // Add to messages - normalize the raw record
@@ -1114,18 +1200,20 @@ class Sync {
             this.applyOptimistic(sessionId, normalizedMessage);
         }
         turnItems.push({ localId, content: encryptedRawRecord });
-
-        // Synchronous from here: the whole turn enters the outbox at once.
-        let pending = this.pendingOutbox.get(sessionId);
-        if (!pending) {
-            pending = [];
-            this.pendingOutbox.set(sessionId, pending);
-        }
-        pending.push(...turnItems);
         trackMessageSent(source, session.metadata);
 
-        this.getSendSync(sessionId).invalidateNow();
-        this.maybeStartBackgroundSendWatchdog();
+        // The whole turn enters the outbox at once, behind any text-only turn
+        // shown earlier that is still being encrypted (B-722).
+        void this.inOutboxOrder(sessionId, () => {
+            let pending = this.pendingOutbox.get(sessionId);
+            if (!pending) {
+                pending = [];
+                this.pendingOutbox.set(sessionId, pending);
+            }
+            pending.push(...turnItems);
+            this.getSendSync(sessionId).invalidateNow();
+            this.maybeStartBackgroundSendWatchdog();
+        });
         return localId; // Receipt: accepted into the local outbox, not server delivery.
     }
 
@@ -2361,7 +2449,10 @@ class Sync {
             this.outboxRecords.delete(ack.localId);
             this.sendDeadlines.delete(ack.localId);
         }
-        if (outcome.acks.length > 0) storage.getState().applyOutboxResult(sessionId, { acks: outcome.acks });
+        if (outcome.acks.length > 0) {
+            storage.getState().applyOutboxResult(sessionId, { acks: outcome.acks });
+            markSendConfirmed(outcome.acks.map((ack) => ack.localId));
+        }
         if (outcome.lastSeqCandidates.length > 0) this.advanceSessionLastSeq(sessionId, outcome.lastSeqCandidates);
 
         // Only drop the queue this request drained: a deadline may have removed
