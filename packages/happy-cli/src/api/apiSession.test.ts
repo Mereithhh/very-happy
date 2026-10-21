@@ -1478,7 +1478,9 @@ describe('B-332 queue-cancel tombstones from the CLI', () => {
             const src = readFileSync(new URL(file, import.meta.url), 'utf8');
             const block = src.slice(src.indexOf('if (reconnectSessionId) {\n        session.suppressNextArchiveSignal();'));
             const end = block.indexOf('\n    }\n');
-            expect(block.slice(0, end)).toContain('void session.cancelUndeliveredQueuedInputs();');
+            // B-587 skips it for a hibernation wake; B-679 bounds it to the
+            // previous wrapper's exit cursor when replaying above it.
+            expect(block.slice(0, end)).toContain('if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);');
         }
     });
 });

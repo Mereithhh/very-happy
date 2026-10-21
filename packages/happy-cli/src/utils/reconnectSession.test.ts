@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyHibernationReplay, applyServerSnapshot, mergeReconnectMetadata, processIdentityFields, withoutServerSnapshot } from './reconnectSession';
+import { applyHibernationReplay, applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, processIdentityFields, withoutServerSnapshot } from './reconnectSession';
 import type { Metadata, Session } from '@/api/types';
 
 const base: Metadata = { path: '/p', host: 'h', homeDir: '/home', happyHomeDir: '/h/.happy', happyLibDir: '/lib', happyToolsDir: '/tools' };
@@ -67,5 +67,36 @@ describe('B-587 waking a hibernated session', () => {
         expect(applyHibernationReplay(session(45, base))).toMatchObject({ replaying: false, response: { seq: 45 } });
         expect(applyHibernationReplay(session(30, { ...base, hibernation: stamp }))).toMatchObject({ replaying: false, response: { seq: 30 } });
         expect(applyHibernationReplay(session(45, { ...base, hibernation: { at: 1 } } as unknown as Metadata))).toMatchObject({ replaying: false });
+    });
+});
+
+describe('B-679 resuming after an offline exit', () => {
+    const session = (seq: number, metadata: Metadata): Session => ({
+        id: 's', seq, encryptionKey: new Uint8Array(32), encryptionVariant: 'dataKey',
+        metadata, metadataVersion: 3, agentState: null, agentStateVersion: 1,
+    } as Session);
+    const cursor = exitCursorStamp(21, 5);
+
+    it('input stored after the exit cursor is replayed: the seeded cursor moves back to the stamp (QA repro: seq=21 skipped the message sent offline)', () => {
+        const { response, replay } = applyReconnectReplay(session(22, { ...base, exitCursor: cursor }));
+        expect(replay).toEqual({ source: 'offline-exit', seq: 21 });
+        expect(response.seq).toBe(21);
+    });
+
+    it('nothing arrived / no stamp / corrupt or ahead → keep the server cursor', () => {
+        expect(applyReconnectReplay(session(21, { ...base, exitCursor: cursor }))).toMatchObject({ replay: null, response: { seq: 21 } });
+        expect(applyReconnectReplay(session(22, base))).toMatchObject({ replay: null, response: { seq: 22 } });
+        expect(applyReconnectReplay(session(22, { ...base, exitCursor: { at: 1, seq: -1 } } as unknown as Metadata))).toMatchObject({ replay: null });
+        expect(applyReconnectReplay(session(22, { ...base, exitCursor: { at: 1 } } as unknown as Metadata))).toMatchObject({ replay: null });
+    });
+
+    it('a hibernation stamp wins (same replay, but the B-332 scan is skipped for it)', () => {
+        const hibernation = { at: 1, seq: 18, idleMs: 1, v: 1 as const };
+        expect(applyReconnectReplay(session(22, { ...base, hibernation, exitCursor: cursor })).replay).toEqual({ source: 'hibernation', seq: 18 });
+    });
+
+    it('the reconnect merge clears the previous wrapper\'s exit cursor', () => {
+        const merged = mergeReconnectMetadata({ ...base, exitCursor: cursor }, { ...base, hostPid: 2 }, 9);
+        expect('exitCursor' in JSON.parse(JSON.stringify(merged))).toBe(false);
     });
 });

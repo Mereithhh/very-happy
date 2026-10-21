@@ -94,6 +94,15 @@ export const MetadataSchema = z.object({
         seq: z.number().optional(),
         idleMs: z.number().optional(),
     }).passthrough().optional().catch(undefined),
+    /**
+     * B-679: the message cursor of a wrapper that went offline (SIGTERM /
+     * `sessions stop`); the next wrapper replays input stored above it and
+     * clears it. Declared so a web metadata write (rename, tags) keeps it.
+     */
+    exitCursor: z.object({
+        at: z.number(),
+        seq: z.number(),
+    }).passthrough().optional().catch(undefined),
     /** B-587: user opted this session out of idle hibernation. Never default it. */
     keepAwake: z.boolean().optional().catch(undefined),
     /**

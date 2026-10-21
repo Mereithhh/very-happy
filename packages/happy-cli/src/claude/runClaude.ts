@@ -1,5 +1,5 @@
 import os from 'node:os';
-import { applyHibernationReplay, applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
+import { applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, withoutServerSnapshot, type ReconnectReplay } from '@/utils/reconnectSession';
 import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, latchKeepAwake, resolveCheckMs, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
 import { HibernationProbe, commitHibernation } from '@/hibernation/hibernationProbe';
 import { randomUUID } from 'node:crypto';
@@ -338,17 +338,20 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // reconnect with zeroed versions so the first write pulls the server copy.
     let reconnectSeeded = false;
     let wakingFromHibernation = false;
+    let reconnectReplay: ReconnectReplay | null = null;
     if (reconnectSessionId) {
         const snapshot = await api.getSession(response.id, response.encryptionKey, response.encryptionVariant);
         if (snapshot.ok) {
             response = applyServerSnapshot(response, snapshot.session);
             reconnectSeeded = true;
             logger.debug(`[START] Reconnect seeded from server: seq=${snapshot.session.seq} metadataVersion=${snapshot.session.metadataVersion}`);
-            // B-587: waking from hibernation → replay what arrived after the stamp.
-            const wake = applyHibernationReplay(response);
+            // B-587 / B-679: waking from hibernation, or resuming after an
+            // offline exit → replay what arrived after the previous cursor.
+            const wake = applyReconnectReplay(response);
             response = wake.response;
-            wakingFromHibernation = wake.replaying;
-            if (wake.replaying) logger.debug(`[START] Waking from hibernation: replaying records after seq=${response.seq}`);
+            reconnectReplay = wake.replay;
+            wakingFromHibernation = wake.replay?.source === 'hibernation';
+            if (wake.replay) logger.debug(`[START] Resuming (${wake.replay.source}): replaying records after seq=${response.seq}`);
         } else {
             response = withoutServerSnapshot(response);
             logger.debug(`[START] Reconnect without server snapshot (${snapshot.reason}); skipping existing messages`);
@@ -441,7 +444,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // it so the web stops showing it as「排队中」/ delivered. Best-effort.
         // B-587: not when waking from hibernation — its queue was empty by
         // definition, and the scan would tombstone the records being replayed.
-        if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs();
+        // B-679: after an offline exit only what the old wrapper saw (≤ its
+        // cursor) can have been lost in its queue; above it is being replayed.
+        if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);
         // First write: server truth (handler arg) + this process's identity
         // (the local `metadata` object) + lifecycle back to running.
         session.updateMetadata((meta) => ({
@@ -1170,6 +1175,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
         try {
             if (session) {
+                // B-679: an offline exit pins its cursor and routes nothing more
+                // (same tick: no record can slip between the two) — everything
+                // above it is the next wrapper's to replay, never both.
+                const exitCursor = intent === 'offline' ? exitCursorStamp(session.messageCursor, Date.now()) : undefined;
+                if (exitCursor) session.freezeInbound();
+
                 // Cleanup session resources (intervals, callbacks)
                 currentSession?.cleanup();
 
@@ -1179,7 +1190,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 // where a dropped link leaves it — visible and resumable.
                 await settleSessionOnExit(session.sessionId, intent, {
                     updateMetadata: (handler) => session.updateMetadata(handler),
-                    updateMetadataAndWait: (handler) => session.updateMetadataAndWait(handler),
+                    updateMetadataAndWait: (handler, timeoutMs) => session.updateMetadataAndWait(handler, timeoutMs),
+                    exitCursor,
                     sendSessionDeath: () => session.sendSessionDeath(),
                     archiveSession: (id) => api.archiveSession(id),
                     deactivateSession: (id) => api.deactivateSession(id),

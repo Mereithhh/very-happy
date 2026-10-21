@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { SessionExitGate, exitIntentFromArchiveFlag, settleSessionOnExit } from './sessionExitLifecycle';
+import { OFFLINE_EXIT_STAMP_TIMEOUT_MS, SessionExitGate, exitIntentFromArchiveFlag, settleSessionOnExit } from './sessionExitLifecycle';
 import type { Metadata } from '@/api/types';
 
 /**
@@ -24,7 +24,7 @@ function deps() {
 }
 
 describe('settleSessionOnExit', () => {
-    it('offline: session-end + /deactivate only — no metadata stamp, never /archive', async () => {
+    it('offline (no B-679 cursor dep): session-end + /deactivate only — no metadata stamp, never /archive', async () => {
         const d = deps();
         await settleSessionOnExit('s1', 'offline', d);
         expect(d.sendSessionDeath).toHaveBeenCalledTimes(1);
@@ -110,6 +110,44 @@ describe('runClaude / api wiring', () => {
         const start = api.indexOf('async archiveSession(sessionId: string)');
         expect(api.slice(start, start + 800)).toContain('/v1/sessions/${sessionId}/archive`');
         expect(api.match(/\/v1\/sessions\/\$\{sessionId\}\/archive`/g)).toHaveLength(1);
+    });
+});
+
+describe('B-679 offline exit cursor', () => {
+    const exitCursor = { at: 1_000, seq: 21, v: 1 as const };
+
+    it('stamps metadata.exitCursor (awaited, short bound) BEFORE session-end, then /deactivate — never archived', async () => {
+        const order: string[] = [];
+        const d = {
+            ...deps(),
+            sendSessionDeath: vi.fn(() => { order.push('session-end'); }),
+            deactivateSession: vi.fn(async () => { order.push('deactivate'); return true; }),
+            updateMetadataAndWait: vi.fn(async (_handler: (metadata: Metadata) => Metadata, _timeoutMs?: number) => { order.push('stamp'); return true; }),
+            exitCursor,
+        };
+        await settleSessionOnExit('s1', 'offline', d);
+        expect(order).toEqual(['stamp', 'session-end', 'deactivate']);
+        expect(d.updateMetadataAndWait.mock.calls[0][1]).toBe(OFFLINE_EXIT_STAMP_TIMEOUT_MS);
+        const written = d.updateMetadataAndWait.mock.calls[0][0]({ flavor: 'claude', lifecycleState: 'running' } as never);
+        expect(written).toEqual({ flavor: 'claude', lifecycleState: 'running', exitCursor });
+        expect(d.archiveSession).not.toHaveBeenCalled();
+    });
+
+    it('archive exits never write the cursor; a stamp that times out still goes offline', async () => {
+        const a = { ...deps(), updateMetadataAndWait: vi.fn(async () => true), exitCursor };
+        await settleSessionOnExit('s1', 'archive', a);
+        expect(a.updateMetadataAndWait).not.toHaveBeenCalled();
+        const o = { ...deps(), updateMetadataAndWait: vi.fn(async () => false), exitCursor };
+        await settleSessionOnExit('s1', 'offline', o);
+        expect(o.deactivateSession).toHaveBeenCalledWith('s1');
+    });
+
+    it('runClaude pins the cursor and freezes inbound in the same tick, hands it to settle, and bounds the B-332 scan on replay', () => {
+        const src = readFileSync(join(__dirname, 'runClaude.ts'), 'utf8').replace(/\/\/.*$/gm, '');
+        expect(src).toContain("const exitCursor = intent === 'offline' ? exitCursorStamp(session.messageCursor, Date.now()) : undefined;\n                if (exitCursor) session.freezeInbound();");
+        expect(src).toMatch(/updateMetadataAndWait: \(handler, timeoutMs\) => session\.updateMetadataAndWait\(handler, timeoutMs\),\s*exitCursor,/);
+        expect(src).toContain('const wake = applyReconnectReplay(response);');
+        expect(src).toContain('void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);');
     });
 });
 

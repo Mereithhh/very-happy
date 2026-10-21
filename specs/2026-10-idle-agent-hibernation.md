@@ -136,6 +136,14 @@ daemon 在 `onChildExited` 时若该会话刚被批准休眠：恢复记录写 `
 - `mergeReconnectMetadata` 清掉 `hibernation` 键（新 CLI 才有）。
 - 唤醒时 web 把 `metadata.permissionMode` 作为 resume RPC 的 `permissionMode` 传入（daemon 已有白名单
   `sanitizeSpawnPermissionMode`），header 不会在唤醒后跳回 default。
+- **B-679 推广到普通 offline 退出**：SIGTERM/SIGINT（`sessions stop`、daemon stop/升级、关机）退出的 wrapper
+  在同一 tick 里取 `messageCursor` 并 `freezeInbound()`，在 session-end 前以 3 s 上限 awaited 写
+  `metadata.exitCursor = { at, seq, v: 1 }`；新 wrapper 用 `applyReconnectReplay`（休眠戳优先，其次 exitCursor）
+  把游标退回去重放离线期间存进来的消息（Web 输入框、`sessions send`、peer），与休眠同一条路由与 localId 去重。
+  与休眠不同，B-332 扫描**不跳过**而是限定在 `seq ≤ exitCursor`（旧 wrapper 内存队列里的才可能丢；之上的在重放）。
+  `mergeReconnectMetadata` 同样清掉 `exitCursor`；Web `MetadataSchema` 声明该字段，避免改名写回时被剥除。
+  崩溃/SIGKILL 不写戳 → 维持旧行为（跳到最新）。旧 CLI 忽略该字段；旧 Web 改名会剥掉它 → 退化为旧行为，不会更糟。
+  （B-683 起普通恢复同样携带权限模式，不再只限唤醒。）
 
 ### 5. web
 
