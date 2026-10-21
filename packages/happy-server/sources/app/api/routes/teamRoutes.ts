@@ -12,7 +12,7 @@ export function teamRoutes(app: Fastify) {
     const handle = async (reply: any, work: () => Promise<unknown>) => {
         try { return await work(); }
         catch (error) {
-            if (error instanceof TeamError) return reply.code(error.status).send({ error: error.code });
+            if (error instanceof TeamError) return reply.code(error.status).send({ error: error.code, ...(error.details ?? {}) });
             // B-726: project errors raised while creating/binding a team keep their own codes.
             if (error instanceof ProjectError) return reply.code(error.status).send({ error: error.code, ...(error.details ?? {}) });
             throw error;

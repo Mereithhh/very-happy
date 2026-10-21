@@ -283,5 +283,22 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
     const timer = setInterval(() => { void tick(); }, 5_000);
     timer.unref();
     void tick();
-    return { tick, report, hasSession: (id: string) => knownSessionIds.has(id), get busy() { return running; }, stop: () => { closed = true; clearInterval(timer); } };
+    /**
+     * B-730: rebuild a relaunched member's missing scope file. Replaying this
+     * daemon's own claim request returns the bot's current credential; only an
+     * unchanged binding (same session, same generation, live team) qualifies.
+     */
+    async function recoverScope(operationId: string, sessionId: string, scopeFile: string): Promise<void> {
+        const teams: TeamState[] = (await http.get('/v1/teams')).data.teams ?? [];
+        const team = teams.find(candidate => candidate.archivedAt === undefined && candidate.operations.some(op => op.id === operationId));
+        const op = team?.operations.find(candidate => candidate.id === operationId);
+        if (!team || !op || op.type !== 'spawn' || op.machineId !== deps.machineId) throw new Error('No live team launch for this session');
+        const bot = team.bots.find(candidate => candidate.id === op.botId);
+        if (!bot || bot.sessionId !== sessionId || bot.generation !== op.generation) throw new Error('Team binding changed; not restoring its scope');
+        const claimed = await action(op.teamId, `claim-${op.id}`, { type: 'claim-operation', operationId: op.id, machineId: deps.machineId, ...(op.teamLaunchVersion === 1 ? { teamLaunchVersion: 1 as const } : {}) });
+        if (!claimed.credential?.token || claimed.credential.botId !== op.botId) throw new Error('Team did not reissue the member credential');
+        ensurePrivateDirectorySync(join(home, 'teams', 'scopes'));
+        writePrivateFileSync(scopeFile, JSON.stringify({ serverUrl: server, scopeToken: claimed.credential.token, teamId: op.teamId, botId: op.botId, taskId: op.taskId, attemptId: op.attemptId }));
+    }
+    return { tick, report, recoverScope, hasSession: (id: string) => knownSessionIds.has(id), get busy() { return running; }, stop: () => { closed = true; clearInterval(timer); } };
 }

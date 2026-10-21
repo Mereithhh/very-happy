@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -24,6 +24,8 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         await db.machine.create({ data: { id: machineId, accountId, metadata: 'metadata' } });
         sessionId = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
     }, 60000);
+    // B-730: a session leads or works in one live team, so every test binds its own.
+    beforeEach(async () => { sessionId = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id; });
     afterAll(async () => { await db?.$disconnect(); rmSync(root, { recursive: true, force: true }); });
     it('creates idempotently and rejects cross-account reads', async () => {
         const input = { name: 'T', machineId, requestId: 'create-1' };
@@ -253,7 +255,8 @@ describe('agent teams persistent transactions and scoped credentials', () => {
     it('keeps a capacity-blocked Team from stopping other Teams schedule recovery', async () => {
         const makeScheduled = async (name: string) => {
             const team = await store.createTeam(accountId, { name, machineId });
-            const joined = await store.actOnTeam(team.id, { accountId }, { requestId: 'join', action: { type: 'join', name: 'Root', sessionId } });
+            const lead = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+            const joined = await store.actOnTeam(team.id, { accountId }, { requestId: 'join', action: { type: 'join', name: 'Root', sessionId: lead } });
             await store.actOnTeam(team.id, { accountId }, { requestId: 'schedule', action: { type: 'schedule-create', name: 'Due', botId: joined.credential!.botId, body: 'Inspect', runAt: 1 } });
             return team;
         };
@@ -268,4 +271,50 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         expect((await store.readTeam(full.id, { accountId })).schedules![0].fireCount).toBe(0);
     });
 
+    describe('B-730: a session belongs to at most one live team', () => {
+        const join = (teamId: string, requestId: string, sid: string, extra: { transfer?: true } = {}) =>
+            store.actOnTeam(teamId, { accountId }, { requestId, action: { type: 'join', name: 'Lead', sessionId: sid, ...extra } });
+        it('refuses create and join for a session bound in another live team, naming that team and team_delegate', async () => {
+            const home = await store.createTeam(accountId, { name: 'roll-pool-cot', machineId, sessionId });
+            await join(home.id, 'join-home', sessionId);
+            const refusal = { code: 'session_in_other_team', status: 409, details: { teamId: home.id, teamName: 'roll-pool-cot' } };
+            await expect(store.createTeam(accountId, { name: 'roll-pool', machineId, requestId: 'self-create', sessionId })).rejects.toMatchObject(refusal);
+            // A pre-B-730 CLI sends no sessionId, only the session it inherits its project from.
+            await expect(store.createTeam(accountId, { name: 'roll-pool', machineId, requestId: 'old-cli', project: { inheritFromSessionId: sessionId } })).rejects.toMatchObject(refusal);
+            const [created] = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'name'='roll-pool'`;
+            expect(Number(created.count)).toBe(0);
+            const other = await store.createTeam(accountId, { name: 'Other', machineId });
+            const error = await join(other.id, 'join-other', sessionId).catch(e => e);
+            expect(error).toMatchObject(refusal);
+            expect(error.details.message).toContain('team_delegate');
+            expect(error.details.message).toContain('roll-pool-cot');
+            // Nothing was recorded: the same request can be retried once the owner decides.
+            const memo = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "TeamRequest" WHERE "teamId"=${other.id} AND "requestId"='join-other'`;
+            expect(Number(memo[0].count)).toBe(0);
+            // Re-joining the team it already belongs to stays idempotent.
+            expect((await join(home.id, 'join-home-again', sessionId)).credential?.botId).toBe(home.bots[0]?.id ?? (await store.readTeam(home.id, { accountId })).bots[0].id);
+        });
+        it('lets the owner transfer after confirming: old binding released, revoked and marked transferred', async () => {
+            const home = await store.createTeam(accountId, { name: 'Home', machineId });
+            const joined = await join(home.id, 'join-home', sessionId);
+            const oldToken = joined.credential!.token;
+            const next = await store.createTeam(accountId, { name: 'Next', machineId, sessionId, transfer: true });
+            const moved = await join(next.id, 'join-next', sessionId, { transfer: true });
+            expect(moved.team.bots.find(b => b.sessionId === sessionId)?.root).toBe(true);
+            const old = (await store.readTeam(home.id, { accountId })).bots[0];
+            expect(old.sessionId).toBeNull();
+            expect(old.previousSessionIds).toContain(sessionId);
+            expect(old.transferredTo).toMatchObject({ teamId: next.id, sessionId });
+            expect(old.generation).toBe(2);
+            await expect(store.readTeam(home.id, { token: oldToken })).rejects.toMatchObject({ code: 'stale_agent' });
+        });
+        it('never blocks on an archived team', async () => {
+            const old = await store.createTeam(accountId, { name: 'Archived', machineId });
+            await join(old.id, 'join-old', sessionId);
+            await store.actOnTeam(old.id, { accountId }, { requestId: 'archive', action: { type: 'archive' } });
+            const next = await store.createTeam(accountId, { name: 'Fresh', machineId, sessionId });
+            expect((await join(next.id, 'join-fresh', sessionId)).credential?.botId).toBeTruthy();
+            expect((await store.readTeam(old.id, { accountId })).bots[0].sessionId).toBe(sessionId);
+        });
+    });
 });

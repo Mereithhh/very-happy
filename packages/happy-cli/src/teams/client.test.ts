@@ -50,11 +50,11 @@ describe('team scope transport boundary', () => {
 
 describe('B-726 team_create project choice', () => {
     it('defaults to the creating session\'s project, else a same-name project at its folder', () => {
-        expect(teamCreateBody({ name: 'T', requestId: 'r' }, 'm', 's1', '/repo')).toEqual({ name: 'T', machineId: 'm', requestId: 'r', project: { inheritFromSessionId: 's1', directory: '/repo' } });
-        expect(teamCreateBody({ name: 'T', requestId: 'r' }, 'm', 's1', undefined)).toEqual({ name: 'T', machineId: 'm', requestId: 'r', project: { inheritFromSessionId: 's1' } });
+        expect(teamCreateBody({ name: 'T', requestId: 'r' }, 'm', 's1', '/repo')).toEqual({ name: 'T', machineId: 'm', requestId: 'r', sessionId: 's1', project: { inheritFromSessionId: 's1', directory: '/repo' } });
+        expect(teamCreateBody({ name: 'T', requestId: 'r' }, 'm', 's1', undefined)).toEqual({ name: 'T', machineId: 'm', requestId: 'r', sessionId: 's1', project: { inheritFromSessionId: 's1' } });
     });
     it('honours an explicit project or no project (the old request shape)', () => {
-        expect(teamCreateBody({ name: 'T', requestId: 'r', projectId: 'p' }, 'm', 's1', '/repo')).toEqual({ name: 'T', machineId: 'm', requestId: 'r', project: { projectId: 'p' } });
-        expect(teamCreateBody({ name: 'T', requestId: 'r', noProject: true }, 'm', 's1', '/repo')).toEqual({ name: 'T', machineId: 'm', requestId: 'r' });
+        expect(teamCreateBody({ name: 'T', requestId: 'r', projectId: 'p' }, 'm', 's1', '/repo')).toEqual({ name: 'T', machineId: 'm', requestId: 'r', sessionId: 's1', project: { projectId: 'p' } });
+        expect(teamCreateBody({ name: 'T', requestId: 'r', noProject: true }, 'm', 's1', '/repo')).toEqual({ name: 'T', machineId: 'm', requestId: 'r', sessionId: 's1' });
     });
 });

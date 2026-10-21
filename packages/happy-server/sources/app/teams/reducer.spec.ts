@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TeamAction, TeamState } from '@slopus/happy-wire';
-import { reduceTeam, teamView, occupiedTeamWorkSlots, type TeamActor } from './reducer';
+import { reduceTeam, teamView, occupiedTeamWorkSlots, otherTeamBinding, transferSessionOut, type TeamActor } from './reducer';
 
 const owner: TeamActor = { kind: 'owner' };
 const empty = (): TeamState => ({ id: 'team', name: 'Team', machineId: 'machine', version: 0, bots: [], tasks: [], messages: [], operations: [], createdAt: 1 });
@@ -445,5 +445,25 @@ describe('B-692 member lifecycle', () => {
         // derived fields are response-only
         expect('memberCounts' in f.state).toBe(false);
         expect(f.state.bots.some(b => 'activity' in b)).toBe(false);
+    });
+});
+
+describe('B-730 one live team per session', () => {
+    const team = (id: string, bots: { id: string; sessionId: string | null; root?: boolean }[], archivedAt?: number): TeamState =>
+        ({ ...empty(), id, name: `T-${id}`, ...(archivedAt ? { archivedAt } : {}), bots: bots.map(b => ({ name: b.id, generation: 1, root: b.root ?? false, managed: !b.root, assistant: 'claude' as const, directory: null, ...b })) });
+    it('finds a lead or member binding in another live team, never the target or an archived team', () => {
+        const teams = [team('archived', [{ id: 'x', sessionId: 's' }], 5), team('target', [{ id: 'y', sessionId: 's' }]), team('home', [{ id: 'lead', sessionId: 's', root: true }])];
+        expect(otherTeamBinding(teams, 's', 'target')).toEqual({ teamId: 'home', teamName: 'T-home', botId: 'lead', root: true });
+        expect(otherTeamBinding(teams.slice(0, 2), 's', 'target')).toBeNull();
+        expect(otherTeamBinding([team('home', [{ id: 'm', sessionId: 's' }])], 's')).toMatchObject({ botId: 'm', root: false });
+        expect(otherTeamBinding([team('home', [{ id: 'm', sessionId: 'other' }])], 's')).toBeNull();
+    });
+    it('a transfer releases only that session, revokes its generation and records the destination', () => {
+        const before = team('home', [{ id: 'lead', sessionId: 's', root: true }, { id: 'm', sessionId: 'kept' }]);
+        const after = transferSessionOut(before, 's', 'next', 42);
+        expect(after.bots[0]).toMatchObject({ sessionId: null, generation: 2, previousSessionIds: ['s'], transferredTo: { teamId: 'next', sessionId: 's', at: 42 } });
+        expect(after.bots[1]).toEqual(before.bots[1]);
+        expect(after.version).toBe(before.version + 1);
+        expect(before.bots[0].sessionId).toBe('s');
     });
 });
