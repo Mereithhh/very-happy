@@ -186,6 +186,9 @@ const SidebarHarness = import.meta.env.DEV
 const OrbitLoaderHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/OrbitLoaderHarness').then((m) => ({ default: m.OrbitLoaderHarness })))
   : null;
+const PickerHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/PickerHarness').then((m) => ({ default: m.PickerHarness })))
+  : null;
 const WorkspaceDesignHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/WorkspaceDesignHarness').then((m) => ({ default: m.WorkspaceDesignHarness })))
   : null;
@@ -255,6 +258,7 @@ const router = createBrowserRouter(
     ...(OrbitLoaderHarness
       ? [{ path: '/dev/orbit-loader', element: <Lazy><OrbitLoaderHarness /></Lazy> }]
       : []),
+    ...(PickerHarness ? [{ path: '/dev/picker', element: <Lazy><PickerHarness /></Lazy> }] : []),
     ...(WorkspaceDesignHarness
       ? [{ path: '/dev/workspace-design', element: <Lazy><WorkspaceDesignHarness /></Lazy> }]
       : []),

@@ -13,7 +13,9 @@ vi.mock('@/ui/Toast', () => ({ toast: { success: vi.fn() } }));
 import { MessageActions } from './MessageActions';
 import { useSendSpinnerResetAll } from './SendStatusView';
 import { onComposerRestore } from './composerRestore';
-import { clearSendSpinner, SEND_SPINNER_DELAY_MS, sendSpinnerRemaining, turnSendStatus } from './sendStatusModel';
+import { clearSendSpinner, SEND_SPINNER_DELAY_MS, sendSpinnerRemaining, turnSendStatus, undeliveredPromptId } from './sendStatusModel';
+import { __resetSendConfirmationsForTests, isSentFlashActive, markSendConfirmed, SENT_FLASH_MS } from '@/sync/sendConfirmations';
+import { storage } from '@/sync/storage';
 
 const base = { kind: 'user-text', id: 'msg', localId: 'l1', seq: 7, text: 'hello', createdAt: Date.UTC(2026, 8, 30, 1, 2, 3) } satisfies UserTextMessage;
 
@@ -62,15 +64,73 @@ describe('MessageActions send states', () => {
     }
     const labels = () => [...host.querySelectorAll('.msg-actions button')].map((b) => b.getAttribute('aria-label') ?? b.textContent);
 
-    it('sending: copy only, time kept, spinner only after 150ms', () => {
+    it('sending: copy only, time kept; B-722: a clock from the first frame, read out politely, spinner after 150ms', () => {
         clearSendSpinner('l1');
         render({ ...base, sendState: 'sending' });
         expect(labels()).toEqual(['message.copyMessage']);
         expect(host.querySelector('time')).not.toBeNull();
-        expect(host.querySelector('.msg-sending')).not.toBeNull();
+        const status = host.querySelector('.msg-sending')!;
+        expect(status.getAttribute('data-send-state')).toBe('sending');
+        expect(status.getAttribute('aria-live')).toBe('polite');
+        expect(status.getAttribute('aria-label')).toBe('session.chat.sending');
+        expect(status.querySelector('svg')).not.toBeNull(); // the clock
         expect(host.querySelector('.vh-spinner')).toBeNull();
         act(() => { vi.advanceTimersByTime(SEND_SPINNER_DELAY_MS); });
         expect(host.querySelector('.vh-spinner')).not.toBeNull();
+    });
+
+    it('B-722: offline, a sending message says it goes out when the connection is back', () => {
+        const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+        try {
+            render({ ...base, sendState: 'sending' });
+            const status = host.querySelector('.msg-sending')!;
+            expect(status.getAttribute('data-send-state')).toBe('waiting');
+            expect(status.textContent).toBe('session.chat.sendingOffline');
+        } finally {
+            online.mockRestore();
+        }
+    });
+
+    it('B-722: the server ack shows a 「sent」 check that goes away by itself — no permanent mark', () => {
+        __resetSendConfirmationsForTests();
+        render({ ...base, sendState: 'sending' });
+        // The ack: reducer drops sendState, the outbox records the moment.
+        act(() => { markSendConfirmed(['l1']); });
+        render(base);
+        const sent = host.querySelector('.msg-sent')!;
+        expect(sent.getAttribute('data-send-state')).toBe('sent');
+        expect(sent.getAttribute('aria-label')).toBe('session.chat.sent');
+        act(() => { vi.advanceTimersByTime(SENT_FLASH_MS); });
+        render(base);
+        expect(host.querySelector('.msg-sent')).toBeNull();
+    });
+
+    it('B-722: a restorable failure offers Delete as well (drops it without refilling the composer)', () => {
+        render({ ...base, sendState: 'failed', sendRestorable: true });
+        expect(labels()).toContain('session.chat.sendDelete');
+        const remove = [...host.querySelectorAll('button')].find((b) => b.textContent === 'session.chat.sendDelete')!;
+        act(() => { remove.click(); });
+        expect(mocks.takeBack).toHaveBeenCalledWith('s1', 'l1');
+        render({ ...base, sendState: 'failed' });
+        expect(labels()).not.toContain('session.chat.sendDelete');
+    });
+
+    it('B-722: under the newest unanswered prompt of an offline session — 「saved · delivered when the session is back」', () => {
+        const prev = storage.getState();
+        act(() => {
+            storage.setState({
+                sessions: { ...prev.sessions, s1: { id: 's1', presence: 1, metadata: null } as never },
+                sessionMessages: { ...prev.sessionMessages, s1: { messages: [base], messagesMap: {}, isLoaded: true } as never },
+            });
+        });
+        try {
+            render(base);
+            expect(host.querySelector('[data-send-state="deliver-on-resume"]')?.textContent).toBe('session.chat.deliverOnResume');
+            act(() => { storage.setState({ sessions: { ...storage.getState().sessions, s1: { id: 's1', presence: 'online', metadata: null } as never } }); });
+            expect(host.querySelector('[data-send-state="deliver-on-resume"]')).toBeNull();
+        } finally {
+            act(() => { storage.setState({ sessions: prev.sessions, sessionMessages: prev.sessionMessages }); });
+        }
     });
 
     it('failed: replaces the time with 「failed · retry」; retry re-sends by localId', () => {
@@ -130,4 +190,24 @@ describe('queue dock spinner reset (review #5)', () => {
 
 it('the queue dock wires the reset for its rows', () => {
     expect(readFileSync(resolve(__dirname, 'ChatList.tsx'), 'utf8')).toMatch(/useSendSpinnerResetAll\(queuedMessages/);
+});
+
+describe('B-722 pure send-state rules', () => {
+    it('the sent flash lasts SENT_FLASH_MS from the ack', () => {
+        expect(isSentFlashActive(undefined, 1000)).toBe(false);
+        expect(isSentFlashActive(1000, 1000)).toBe(true);
+        expect(isSentFlashActive(1000, 1000 + SENT_FLASH_MS - 1)).toBe(true);
+        expect(isSentFlashActive(1000, 1000 + SENT_FLASH_MS)).toBe(false);
+    });
+
+    it('only the newest prompt nothing answered yet, and only while the session is offline, waits for resume', () => {
+        const user = (id: string, sendState?: 'sending' | 'failed') => ({ kind: 'user-text', id, ...(sendState ? { sendState } : {}) });
+        const event = { kind: 'agent-event', id: 'e' };
+        const agent = { kind: 'agent-text', id: 'a' };
+        expect(undeliveredPromptId([user('u2'), event, user('u1'), agent], false)).toBe('u2');
+        expect(undeliveredPromptId([user('u2'), agent], true)).toBeNull();
+        expect(undeliveredPromptId([agent, user('u1')], false)).toBeNull();
+        expect(undeliveredPromptId([user('u3', 'sending')], false)).toBeNull(); // still sending: its own state says so
+        expect(undeliveredPromptId(undefined, false)).toBeNull();
+    });
 });

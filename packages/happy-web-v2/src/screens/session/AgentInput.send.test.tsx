@@ -111,29 +111,30 @@ async function attach(name: string) {
 async function finishPaint() { await act(async () => { paint.resolve(); }); }
 
 describe('AgentInput immediate send feedback', () => {
-    it('commits the real spinner before preflight or relay work and locks same-frame repeated events', async () => {
+    it('B-722: a text-only send reaches the outbox in the click stack (no frame wait) and same-frame repeats send once', async () => {
         render();
+        let sentInClickStack = -1;
         await act(async () => {
             input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            // sync.sendMessage applies the optimistic bubble before its first await,
+            // so being called synchronously here is what puts it on screen at once.
+            sentInClickStack = mocks.send.mock.calls.length;
             input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
             sendButton().click();
         });
-        expect(sendButton().getAttribute('aria-busy')).toBe('true');
-        expect(sendButton().disabled).toBe(true);
-        expect(sendButton().querySelector('.vh-spinner')).not.toBeNull();
-        expect(input().value).toBe('');
-        expect(mocks.paint).toHaveBeenCalledTimes(1);
-        expect(mocks.modeMeta).not.toHaveBeenCalled();
-        expect(mocks.send).not.toHaveBeenCalled();
-        await finishPaint();
+        expect(sentInClickStack).toBe(1);
+        expect(mocks.paint).not.toHaveBeenCalled();
         expect(mocks.send).toHaveBeenCalledExactlyOnceWith('session', 'Send this draft', {
             source: 'chat', delivery: 'queue', attachments: undefined, modeMeta: { model: null, effort: null },
         });
+        expect(input().value).toBe('');
         expect(sendButton().getAttribute('aria-busy')).toBe('true');
+        expect(sendButton().disabled).toBe(true);
         await act(async () => { request.resolve(); });
         expect(sendButton().getAttribute('aria-busy')).toBe('false');
         expect(sendButton().querySelector('.vh-spinner')).toBeNull();
         expect(input().value).toBe('');
+        expect(mocks.send).toHaveBeenCalledTimes(1);
     });
 
     it('restores failed text and attachments without overwriting the next draft or revoking its files', async () => {

@@ -12,7 +12,7 @@ import { quoteMessage } from './messageQuote';
 import { getTouchQuoteOffer, setTouchQuoteOffer, useTouchQuoteOffer } from './selectionQuoteOffer';
 import { messageActionsCopy } from './messageActionsCopy';
 import { MessageTime } from './MessageTime';
-import { SendFailedActions, SendingIndicator } from './SendStatusView';
+import { DeliverOnResumeHint, SendFailedActions, SendingIndicator, SentFlash } from './SendStatusView';
 import type { TurnSendStatus } from './sendStatusModel';
 import { RewindFailure, rewindConversation } from './conversationRewind';
 import './messageActions.css';
@@ -143,7 +143,8 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, send,
             />
             {error && <p role="alert" className="msg-edit-error">{error}</p>}
             <div className="msg-edit-footer">
-                <p id={hintId} className="msg-edit-hint">{copy.editHint}</p>
+                {/* B-722: the save is visible where it happens; the new prompt then shows its own send state. */}
+                <p id={hintId} className="msg-edit-hint" aria-live="polite" data-save-state={busy ? 'saving' : undefined}>{busy ? t('session.chat.saveState.saving') : copy.editHint}</p>
                 <Button size="sm" onClick={() => close('edit')} disabled={busy}>{copy.cancel}</Button>
                 <Button size="sm" variant="primary" loading={busy} disabled={!edited.trim()} onClick={submitEdit}>{copy.submit}</Button>
             </div>
@@ -185,6 +186,8 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, send,
                     ? <SendFailedActions sessionId={sessionId} status={send} />
                     : <>
                         {send?.state === 'sending' && <SendingIndicator localId={userMessage?.localId ?? send.localId} />}
+                        {!send && userMessage && <SentFlash localId={userMessage.localId} />}
+                        {!send && userMessage && <DeliverOnResumeHint sessionId={sessionId} messageId={userMessage.id} />}
                         <MessageTime createdAt={createdAt} />
                     </>}
             </div>}

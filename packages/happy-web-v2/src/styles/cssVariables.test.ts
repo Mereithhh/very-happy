@@ -38,6 +38,7 @@ const EXTERNAL = new Set([
     '--radix-dropdown-menu-content-transform-origin',
     '--radix-dropdown-menu-trigger-width',
     '--radix-popover-content-available-height',
+    '--radix-popover-trigger-width',
 ]);
 
 /**

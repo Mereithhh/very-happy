@@ -253,6 +253,14 @@ export const en = {
         soundEventDoneDesc: 'The agent finished its turn',
     },
 
+    picker: {
+        // B-714 SelectMenu / Combobox
+        search: 'Search…',
+        empty: 'No matches',
+        loading: 'Loading…',
+        retry: 'Retry',
+        required: 'Choose an option',
+    },
     common: {
         name: 'Username',
         // Simple string constants
@@ -725,6 +733,20 @@ export const en = {
             sendFailed: 'Not sent',
             sendRetry: 'Retry',
             sendRestore: 'Back to input',
+            // B-722: send / save states (aria-live status text).
+            sendDelete: 'Delete',
+            sent: 'Sent',
+            sendingOffline: 'Sends when the connection is back',
+            deliverOnResume: 'Saved · delivered when the session is back online',
+            queueAdding: 'Adding to queue…',
+            queueWaitingNetwork: 'Offline · joins the queue when the connection is back',
+            queueAddFailed: 'Not added to the queue',
+            queueAfterRestore: 'Saved here — delivered in order once the session is restored',
+            saveState: {
+                saving: 'Saving…',
+                saved: 'Saved',
+                failed: 'Not saved',
+            },
             // B-642: editable drafts (```draft fences) and their composer chips.
             draft: {
                 label: 'Draft',

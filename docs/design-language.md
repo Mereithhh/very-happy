@@ -145,7 +145,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 | 3s 以上或多步骤 | 阶段文字（真实阶段，不用假百分比） |
 
 - 禁用要立刻生效，防止重复提交；可见的 loading 延迟约 200ms 再出。本地很快、经 relay 会多出 50–200ms 延迟，延迟出现能让快的路径什么都不显示，慢的路径照样有反馈。
-- 和 B-513 的关系：发送确认态是这条规则的具体实例，以 B-513 为准。气泡降透明度相当于立即禁用，超过 150ms 才出 Spinner，因为 Spinner 放在时间位，不改变布局，可以比默认更早出现。其他异步动作默认延迟 200ms。
+- 和 B-513 / B-722 的关系：发送确认态是这条规则的具体实例，以 B-513 为准。气泡降透明度相当于立即禁用；时间位首帧就放一个静态时钟（静态图标不会「闪」，0–100ms 规则针对的是动画/布局变化），超过 150ms 换 Spinner，因为都在时间位、不改变布局，可以比默认更早出现；服务端确认后对勾 1.6s 渐隐，不留永久标记。离线/重连中写明去向（「连接恢复后发送」「会话恢复后送达」），修改类操作就地显示「保存中… → 已保存」。其他异步动作默认延迟 200ms。
 - 控件预先占好最终尺寸：要换成更长的文案或多出图标时，一开始就用固定 `width`（不用 `min-width`），执行中途不能变宽。`Button` 的 `loading` 已在组件内统一收口（B-590）：立即禁用，Spinner 延迟 200ms（`ui/useDelayedFlag.ts`），有 `leftIcon` 时与图标共用同一格，没有时叠在透明文案上，`rightIcon` 保留占位，宽度全程不变；调用方直接传 `loading` 即可，不要再自己拼 Spinner。
 - 异步状态显示在原操作位置（同 B-436）；减少动态效果时 Spinner 静止，但仍要能看出「进行中」。
 
@@ -157,15 +157,32 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 | 悬停显示富内容（悬浮卡） | 只读预览（B-588 侧栏会话预览 `SessionPeek`）：只在 `(hover: hover) and (pointer: fine)` 下悬停约 600ms 打开、离开即关，不抢焦点；悬停态是不接收指针的普通浮层，不挂 Radix 关闭层（它会在捕获阶段吞掉终端/输入框的 Esc），点击/键盘打开才用 Radix Popover；内容只读，不放主要操作（操作留在行本身和菜单）；同一内容必须另有点击/键盘入口（行菜单「预览」、Alt+Enter），触屏只走点击 | 无延迟或触屏悬停、卡内放按钮、只能悬停才看得到的信息、自造 HoverCard |
 | 点击后列出一组动作 | `ui/Menu.tsx` 的 `ActionDropdownMenu`，菜单项写成 `MenuItemDef[]` | 在 Popover 里手写列表 |
 | 右键或长按的动作 | `ActionContextMenu`，和下拉菜单共用同一份 `MenuItemDef[]` | 另写一份菜单项 |
-| 从已知列表里单选（带勾选列） | 沿用 `ModeMenu` / `PresetsMenu` 的选择器写法 | 套用动作菜单 |
+| 表单或设置里从已知短列表单选（≤12 项） | `ui/SelectMenu`（B-714）：桌面 Popover，手机（coarse 且 ≤600px）底部 sheet；勾选列、分组、禁用项带原因、`name`/`required` 表单值 | 原生 `<select>`；套用动作菜单；`PresetsMenu`（它没有勾选列，不是单选范本） |
+| 长列表、要搜索或分组的单选（机器、项目、分支、模型、checkpoint） | `ui/Combobox`（B-714）：超过 8 项自动出搜索框，命中高亮；支持加载中、失败重试、末尾动作行（「＋ 新建…」） | 原生 `<select>`；在 Popover 里手写列表 |
+| 2–4 个一行放得下的选项 | `ui/Segmented`（`.vh-segmented` + `aria-pressed`，`name` 时带隐藏 input） | 下拉 |
+| 输入框旁的模式切换菜单（权限模式、预设） | 沿用 `ModeMenu`（菜单项 + 勾选列） | — |
+| 输入框的补全建议（目录预设、时区） | `ui/SuggestInput`：值是自由输入，列表只给补全；Esc 先关列表 | `<input list>` + `<datalist>` |
+| 勾选 | `ui/Checkbox`（原生 input 换成 16px token 方框，带文字时整行 label，触屏 44px） | 原生 `input[type=checkbox]` |
+| `<details>` 折叠头 | `ui/Summary`（隐藏浏览器三角，前置 chevron，展开时旋转）；动画折叠用 `CollapsePanel` | 原生 `<summary>` 三角 |
 | 点击打开表单、选择器或详情 | Radix Popover（`ModelEffortMenu`、`RelayBadge`） | Dialog：它会锁焦点、压暗背景 |
-| 必须先做决定才能继续 | `Modal.confirm` / `alert` / `prompt`；自定义内容用 `Modal.show` 或 Radix Dialog（`SessionOptionsDialog`、`ImagePreview`） | Popover 或行内浮层 |
+| 必须先做决定才能继续 | `Modal.confirm` / `alert` / `prompt`；自定义内容用 `Modal.show` 或 Radix Dialog（`ShareDialog`、`ImagePreview`） | Popover 或行内浮层 |
 | 对话里的卡片正文（团队消息、跨会话消息、委派/提交工具卡的 goal/body/result） | 收起态只放纯文本预览（`utils/markdownPreview.ts`，前 3 行、去掉 markdown 符号和 `[Very Happy … message]` 协议头尾），整张卡可点；点开用 `MessageReader`（Radix Dialog，桌面居中、≤600px 底部 sheet）完整渲染 Markdown，带复制、跳任务/会话、折叠的原始消息（B-716） | 卡里直接渲染 Markdown 或裸文本、`<details>` 折叠原文、自造浮层 |
 | 长期查看的辅助内容，或有自己时间线的内容 | 右侧工作区标签（`screens/workspace/`）或 session aside 抽屉，窄屏自动全屏 | 居中模态框 |
 | 一闪而过的确认（已复制、已保存） | `toast`（`ui/Toast.tsx`） | Dialog、常驻横幅 |
 | 需要阅读、重试或复制的状态和错误 | 行内文字 + `StatusDot` / `Badge` / `.tg-error`；空状态用 `EmptyState` | toast，它会自己消失 |
 
 如果需要绕着某个组件改样式，把 Popover 改得像 Dialog，或者反过来，就该换组件了：两者的焦点语义不同，后来的人会被误导。
+
+### 选择控件（B-714）
+
+产品界面不用原生 `<select>` / `<option>` / `<datalist>` / `input[type=checkbox]` / `<summary>` 三角：系统下拉在 iOS、Android、桌面各是一套，不能搜索、分组、写禁用原因，也不跟主题。design lint `native-control` 拦新增，白名单只有 `ui/Checkbox.tsx`、`ui/Summary.tsx` 自身。
+
+- **触发器** `.vh-select-trigger`：桌面 32px（`size="md"` 表单 36px），coarse 44px；`--bg-2` 底 + `--line` 边框，闭合容器里用 `variant="soft"`（填充、无边框），筛选条用 `variant="chip"`；Sans 13.5px，手机 16px；选中值单行截断，完整值在 `title`；`busy` 用 Spinner 替换 chevron，宽度不变。
+- **浮层**：`--surface-popover` + `--shadow-popover`，`--r-md`；最小等于触发器宽，最大 min(420px, 100vw−24px)；行高 32px（coarse 44px），高亮 `--fill-selected`；左侧 16px 勾选列，可带说明行（12px faint）和右侧元信息。
+- **手机**：`(pointer: coarse) and (max-width: 600px)` 下改为底部 sheet：标题即字段名，搜索固定顶部，行高 48px，留 safe-area；点 scrim、Esc、下滑标题区关闭。系统返回键不处理：data router 在 popstate 上会重跑导航，和 `MessageReader` 等现有 sheet 一致。
+- **键盘与读屏**：触发器是 select-only combobox（`aria-haspopup=listbox`、`aria-expanded`、`aria-controls`）；无搜索时焦点留在触发器，用 `aria-activedescendant` 指向高亮项；有搜索时焦点进搜索框（`role=combobox`）。↑↓ / Home / End / PageUp / PageDown 移动并跳过禁用项，无搜索时首字母 typeahead，Enter / Space 选中并关闭，Esc 关闭回触发器，Tab 关闭并去下一个字段。
+- **表单**：`name` 渲染隐藏 input，`FormData` 可直接取值；`required` 未选时提交被拦，触发器下方用 `.tg-error` 写原因，不弹浏览器气泡。
+- **代码位置**：`ui/SelectMenu.tsx`、`ui/Combobox.tsx`（文案取 `t('picker.*')`）共用 `ui/picker/Picker.tsx`；公开页不能引入 app 的 i18n，直接用 `Picker` 并传 `text`。
 
 ### 文案
 
@@ -185,6 +202,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 2. 对话区 css（脚本里的 `CONVERSATION_CSS`：对话流、工具和子代理行、实时状态、输入框、侧问、提问步进、阅读辅助）的 `font-size` 与 `font` 简写只能用对话档位 `var(--chat-fs-*)` / `var(--conversation-size)`；写死 px、`var(--fs-*)`、未乘 `--chat-scale` 的 `--workspace-primary-size` 都报。触屏输入的 `max(16px, var(--chat-fs-body))` 和 em 放行。
 3. `outline: none|0`：同一文件里没有对应的 `:focus-visible` / `:focus-within` 替代样式就报。`X:focus { outline: none }` 这种程序化聚焦容器的写法放行。
 4. 文本输入框焦点环（`field-focus-ring`，B-699）：选择器在 `:focus*` 状态下指向 `input` / `textarea` 或以 `input`、`textarea` 结尾的类名，且声明了 `var(--focus-ring)`、`var(--accent-glow)` 阴影或非 none 的 outline 就报。`:not(...)` 里的排除、checkbox/radio 等非文本 input 放行。
+5. 原生控件（`native-control`，B-714）：tsx 新增 `<select`、`<option`、`<datalist`、`type="checkbox"`、`<summary` 就报，改用 `SelectMenu` / `Combobox` / `Segmented` / `SuggestInput` / `Checkbox` / `Summary`（见 §6「选择控件」）。只有 `ui/Checkbox.tsx`、`ui/Summary.tsx` 可以写对应的原生元素；字符串字面量里的同名文本放行。
 
 确实要保留时，在同一行或上一行写 `design-lint-allow: <理由>`，理由必填。规则本身宁可漏报、不要误报，误报应该修脚本，不要靠堆豁免。
 

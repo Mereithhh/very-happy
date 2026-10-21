@@ -58,3 +58,22 @@ export function sendSpinnerRemaining(localId: string, now: number): number {
 export function clearSendSpinner(localId: string): void {
     sendingSince.delete(localId);
 }
+
+type DeliveryItem = { kind: string; id: string; sendState?: SendState };
+
+/**
+ * B-722: while the session is offline, the newest user prompt the agent has
+ * not answered yet is stored on the server but not delivered — it goes out
+ * when the session is back (B-679 replays it). Returns that message's id, or
+ * null. Input is newest-first (the chat list order); events are skipped, any
+ * agent output or tool call means the prompt was picked up.
+ */
+export function undeliveredPromptId(messagesNewestFirst: readonly DeliveryItem[] | undefined, sessionOnline: boolean): string | null {
+    if (sessionOnline || !messagesNewestFirst) return null;
+    for (const message of messagesNewestFirst) {
+        if (message.kind === 'agent-event') continue;
+        if (message.kind === 'user-text') return message.sendState ? null : message.id;
+        return null;
+    }
+    return null;
+}

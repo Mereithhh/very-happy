@@ -34,7 +34,8 @@ describe('B-568 composer wiring', () => {
     const input = read('./AgentInput.tsx');
     it('a direct send records outcome sent; both queue paths record queued', () => {
         expect(input).toMatch(/await sendQueuedItem\(makeItem\(\), delivery\);\s+outcome = 'sent';/);
-        expect(input).toMatch(/queueOwnsItem = true;\s+outcome = 'queued';\s+if \(gate === 'restore-first'\)/);
+        // B-722: the server-queue branch reads its submit outcome, then records queued.
+        expect(input).toMatch(/setQueued\(next\);\s+\}\s+outcome = 'queued';\s+return;/);
         expect(input).toMatch(/if \(queueOwnsItem\) \{\s+outcome = 'queued';/);
     });
     it('B-654: doSend declares outcome once, so the server-queue branch writes the outer one', () => {
@@ -42,7 +43,7 @@ describe('B-568 composer wiring', () => {
         const doSend = input.slice(input.indexOf(outer) + outer.length, input.indexOf('const interveneQueued = async'));
         expect(input.indexOf(outer)).toBeGreaterThan(0);
         expect(doSend).not.toMatch(/\b(?:let|const|var)\s+outcome\b/);
-        expect(doSend).toContain('enqueued = await enqueuePrompt(sessionId, item.text, item.modeMeta);');
+        expect(doSend).toContain('enqueued = await serverSubmit;');
     });
     it('the caret decision comes from focusAfterSend', () => {
         expect(input).toContain('const caret = focusAfterSend({ coarse: IS_COARSE_POINTER, hadFocus, softKeyboard, outcome });');
