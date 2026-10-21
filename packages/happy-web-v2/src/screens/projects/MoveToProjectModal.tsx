@@ -1,3 +1,4 @@
+import { reportProjectUx } from '@/sync/projectUx';
 import { useState } from 'react';
 import { Button } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -33,6 +34,8 @@ export function MoveToProjectModal({ initialSessionId, candidates, onClose }: {
       if (plan.add) await projectsApi.addMembers(plan.add.projectId, plan.add.sessionIds);
       for (const r of plan.remove) await projectsApi.removeMember(r.projectId, r.sessionId);
       applyLocalMembership(target || null, [...selected]);
+      // B-651 ①: a move is a dispatch decision too (entry 'move').
+      for (let i = 0; i < selected.size; i++) reportProjectUx({ kind: 'dispatch', entry: 'move', inProject: !!target });
       onClose();
     } catch {
       toast.error(zh ? '移动失败' : 'Could not move');

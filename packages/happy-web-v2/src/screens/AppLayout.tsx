@@ -1,3 +1,4 @@
+import { AttentionOpenReporter } from '@/screens/projects/AttentionOpenReporter';
 import { useCallback, useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { PanelLeft } from 'lucide-react';
@@ -112,6 +113,8 @@ export function AppLayout() {
         notes={<NotesDock />}
       >
         <Outlet />
+        {/* B-651 ②: 「等你处理」 → opened latency (renders nothing). */}
+        <AttentionOpenReporter />
       </AppShell>
       {/* B-559: inbox unread → PWA app-icon badge (mounted once; the bell is mounted twice) */}
       <AppBadgeSync />
