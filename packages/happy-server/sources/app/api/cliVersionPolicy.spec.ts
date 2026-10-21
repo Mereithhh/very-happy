@@ -10,6 +10,7 @@ describe('resolveCliVersionPolicyConfig', () => {
             autoUpdateVersion: null,
             autoUpdateFollowsLatest: false,
             registryLookup: false,
+            registryUrl: 'https://registry.npmjs.org/very-happy-cli/latest',
         });
     });
 
@@ -24,6 +25,7 @@ describe('resolveCliVersionPolicyConfig', () => {
             autoUpdateVersion: null,
             autoUpdateFollowsLatest: false,
             registryLookup: true,
+            registryUrl: 'https://registry.npmjs.org/very-happy-cli/latest',
         });
     });
 

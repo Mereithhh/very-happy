@@ -227,6 +227,10 @@ export const CliUpdateStateSchema = z.object({
     detail: z.string().optional(),
     at: z.number(),
   }).nullable().optional(),
+  /** B-718: the machine-level `cliAutoUpdate` setting (absent = not read yet / old daemon). */
+  autoUpdateEnabled: z.boolean().optional(),
+  /** B-718: the last install this machine completed, carried across its handover. */
+  lastInstall: z.object({ from: z.string(), to: z.string(), at: z.number(), source: z.string() }).nullable().optional(),
 })
 
 export type CliUpdateState = z.infer<typeof CliUpdateStateSchema>

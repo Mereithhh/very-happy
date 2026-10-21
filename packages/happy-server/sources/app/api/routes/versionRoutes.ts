@@ -2,12 +2,12 @@ import { z } from "zod";
 import { type Fastify } from "../types";
 import * as semver from 'semver';
 import { ANDROID_UP_TO_DATE, IOS_UP_TO_DATE } from "@/versions";
-import { CliVersionPolicyProvider, resolveCliVersionPolicyConfig } from '../cliVersionPolicy';
+import { sharedCliVersionPolicy } from '../cliVersionPolicy';
 
 export function versionRoutes(app: Fastify) {
     // Validate operator policy while routes are registered so a typo fails at
     // startup instead of silently publishing a misleading compatibility gate.
-    const cliPolicy = new CliVersionPolicyProvider(resolveCliVersionPolicyConfig());
+    const cliPolicy = sharedCliVersionPolicy().provider;
 
     app.get('/v1/version/cli', {
         schema: {

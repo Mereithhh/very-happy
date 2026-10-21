@@ -1,5 +1,5 @@
 /** Local-only review pages. Controls demonstrate layout and never persist settings. */
-import { CyberMark } from '@/ui/CyberMark';
+import { VeryHappyMark } from '@/ui/VeryHappyMark';
 import { useState } from 'react';
 import { ArrowLeft, Check, ChevronRight, HelpCircle, ListChecks, Plus, Search, Settings, Shield, SlidersHorizontal, Terminal, Users, Zap } from 'lucide-react';
 
@@ -26,7 +26,7 @@ export function WorkspaceDesignPages({ page, onBack, onPage, theme, onTheme }: {
   return <div className="wd wd-pages">
     <aside className="wd-sidebar"><button className="wd-page-back" onClick={onBack}><ArrowLeft size={16}/>返回应用</button>
       {page === '设置' ? <><label className="wd-search"><Search size={14}/><input aria-label="搜索设置" placeholder="搜索设置…" value={query} onChange={e => setQuery(e.target.value)}/></label><div className="wd-section-label">偏好设置</div><nav className="wd-nav">{categories.map(name => <button key={name} aria-current={category === name && !query ? 'page' : undefined} onClick={() => { setCategory(name); setQuery(''); }}><SlidersHorizontal/>{name}</button>)}</nav></> : <><div className="wd-section-label">工作区</div><nav className="wd-nav">{[{ name: '帮助', icon: HelpCircle }, { name: '团队', icon: Users }, { name: '待办', icon: ListChecks }, { name: '设置', icon: Settings }].map(({ name, icon: Icon }) => <button key={name} aria-current={page === name ? 'page' : undefined} onClick={() => onPage(name)}><Icon/>{name}</button>)}</nav></>}
-      <div className="wd-page-note"><div className="wd-brand-home"><CyberMark size={22}/><strong>Very Happy</strong></div>设计预览 · 本地示例<br/>不会修改真实设置</div>
+      <div className="wd-page-note"><div className="wd-brand-home"><VeryHappyMark size={22}/><strong>Very Happy</strong></div>设计预览 · 本地示例<br/>不会修改真实设置</div>
     </aside>
     <main className="wd-settings-main"><header className="wd-settings-mobile"><button className="wd-icon" aria-label="返回应用" onClick={onBack}><ArrowLeft size={18}/></button><strong>{page}</strong></header>
       <div className="wd-settings-content"><h1>{page === '设置' ? query ? '搜索结果' : category : page === '帮助' ? '你的工作，从这里继续' : page}</h1>

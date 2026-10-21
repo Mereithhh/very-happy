@@ -239,6 +239,9 @@ export interface EphemeralPayload {
 
 // === EVENT ROUTER CLASS ===
 
+/** B-718: all machine-scoped sockets (relay-wide announcements). */
+export const MACHINES_ROOM = 'machines';
+
 class EventRouter {
     private io!: Server;
     /** B-619: mirrors session-scoped traffic to the session's grantees (installed by sessionShares). */
@@ -274,10 +277,20 @@ class EventRouter {
                 socket.join(`user:${userId}:session:${connection.sessionId}`);
                 break;
             case 'machine-scoped':
+                // B-718: every daemon, across accounts — for relay-wide policy announcements only.
+                socket.join(MACHINES_ROOM);
                 socket.join(`user:${userId}:machine-scoped`);
                 socket.join(`user:${userId}:machine:${connection.machineId}`);
                 break;
         }
+    }
+
+    /**
+     * B-718: the promoted CLI changed. Carries no account data — only the
+     * version every daemon could read from the public `/v1/version/cli`.
+     */
+    emitCliUpdatePolicy(payload: { autoUpdateVersion: string }): void {
+        this.io.to(MACHINES_ROOM).emit('cli-update-policy', payload);
     }
 
     removeConnection(userId: string, connection: ClientConnection): void {

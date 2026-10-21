@@ -218,7 +218,10 @@ smoke run, and that is the gate working.
 The Owner's standing decision (2026-09-25) is that the fleet always runs the
 newest promoted CLI, so a release needs no second env edit: once `promote`
 moves `latest`, `/v1/version/cli` reports `autoUpdateVersion = X.Y.Z` within
-a minute and idle daemons install it on their next policy check (hourly).
+a minute, the relay pushes `cli-update-policy` to connected daemons (B-718),
+and idle daemons install it within a few minutes (hourly check as fallback).
+The machine page shows each machine's on/off, running → target, last check and
+last update (automatic or requested).
 `npm publish` alone still reaches nobody — `next` is never followed, and a red
 smoke run leaves `latest` (and therefore the fleet) where it was.
 

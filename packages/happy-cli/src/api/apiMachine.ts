@@ -78,6 +78,8 @@ interface ServerToDaemonEvents {
     'server-draining': (data: ReleaseDrainNotice) => void;
     /** B-635: the relay is retiring; `data` is a ServerMigrateNotice (validated by the daemon). */
     'server-migrate': (data: unknown) => void;
+    /** B-718: the relay's promoted CLI changed — a hint to re-read /v1/version/cli early (update/policyAnnouncement.ts). */
+    'cli-update-policy': (data: unknown) => void;
 }
 
 interface DaemonToServerEvents {
@@ -1507,6 +1509,18 @@ export class ApiMachineClient {
             if (this.socket !== socket) return;
             this.serverMigrateHandler?.(data);
         });
+
+        socket.on('cli-update-policy', (data) => {
+            if (this.socket !== socket) return;
+            this.cliUpdatePolicyHandler?.(data);
+        });
+    }
+
+    private cliUpdatePolicyHandler: ((payload: unknown) => void) | null = null;
+
+    /** B-718: the daemon decides what a policy announcement means (update/policyAnnouncement.ts). */
+    setCliUpdatePolicyHandler(handler: ((payload: unknown) => void) | null): void {
+        this.cliUpdatePolicyHandler = handler;
     }
 
     private serverMigrateHandler: ((notice: unknown) => void) | null = null;

@@ -23,6 +23,8 @@ import { accessKeyHandler } from "./socket/accessKeyHandler";
 import { parseSocketClientType, validateSocketOwnership } from './socket/socketIdentity';
 import { recordClientVersion } from './socket/clientVersion';
 import { emitServerMigrateIfTargeted } from '@/app/migration/daemonNotice';
+import { followsPromotedLatest, sharedCliVersionPolicy } from './cliVersionPolicy';
+import { startCliPolicyAnnouncer } from './cliPolicyAnnouncer';
 import { AccountTerminalRateLimiter, resolveRpcRelayLimit, resolveSessionStreamRelayLimit, resolveTerminalRelayLimit } from './socket/terminalRateLimit';
 import { resolveSocketConnectionLimit } from './socket/socketConnectionLimit';
 import { resolveReleaseConfig } from '@/app/release/releaseConfig';
@@ -219,6 +221,15 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
     // Initialize event router with Socket.IO server instance
     eventRouter.init(io);
     installSessionShareFanout();
+    // B-718: push a promote to connected daemons instead of waiting for their hourly check.
+    const cliPolicy = sharedCliVersionPolicy();
+    if (followsPromotedLatest(cliPolicy.config)) {
+        startCliPolicyAnnouncer({
+            current: () => cliPolicy.provider.get(),
+            emit: (payload) => eventRouter.emitCliUpdatePolicy(payload),
+            log: (message) => log({ module: 'cli-policy' }, message),
+        });
+    }
 
     // Auth runs in middleware so it completes BEFORE the client's `connect`
     // event fires. Without this, the async verifyToken in the connection

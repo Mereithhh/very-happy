@@ -11,9 +11,10 @@
 /** Calm → dense. The first entry is open air above the surface. */
 export const TIDE_RAMP = [' ', '.', '·', ':', '-', '=', '+', '*'] as const;
 
-const MARK_OPEN = ['.---------.', '| >     o |', '|  \\___/  |', "'---------'"];
+// B-724 mark in plain text: the ^_^ face (the reverse-video block itself needs █, which leaves the grid).
+const MARK_OPEN = ['.---------.', '|  ^   ^  |', '|   ___   |', "'---------'"];
 /** Plain ASCII only: box-drawing glyphs fall back to another font and leave the grid. */
-const MARK_WINK = ['.---------.', '| >     - |', '|  \\___/  |', "'---------'"];
+const MARK_WINK = ['.---------.', '|  ^   -  |', '|   ___   |', "'---------'"];
 export const MARK_WIDTH = MARK_OPEN[0].length;
 export const MARK_HEIGHT = MARK_OPEN.length;
 
