@@ -8,11 +8,12 @@
  * previews) has none and keeps the plain read-only code block.
  */
 import React, { useContext, useEffect, useLayoutEffect, useRef } from 'react';
-import { PenLine, RotateCcw } from 'lucide-react';
+import { AlertCircle, Check, PenLine, RotateCcw } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
 import { draftKeyFor, draftKvKey, DRAFT_FENCE_LANG, DRAFT_TEXT_MAX_CHARS } from '@/sync/editableDrafts';
-import { editDraft, ensureDraftsLoaded, useEditableDrafts } from '@/sync/editableDraftsStore';
+import { editDraft, ensureDraftsLoaded, retryDraftSave, useEditableDrafts } from '@/sync/editableDraftsStore';
+import { Spinner } from '@/ui/Spinner';
 import { CodeView } from './CodeView';
 import './draftBlock.css';
 
@@ -41,6 +42,7 @@ function EditableDraft({ scope, original, title }: { scope: DraftScope; original
     const key = draftKeyFor(scope.seq, original);
     const kvKey = draftKvKey(scope.sessionId, key);
     const rec = useEditableDrafts((s) => s.drafts[kvKey]);
+    const save = useEditableDrafts((s) => s.saves[kvKey]);
     const text = rec?.text ?? original;
     const edited = text !== original;
     const taRef = useRef<HTMLTextAreaElement>(null);
@@ -64,6 +66,16 @@ function EditableDraft({ scope, original, title }: { scope: DraftScope; original
                     <PenLine size={13} aria-hidden />
                     <span className="dft-title">{title || t('session.chat.draft.label')}</span>
                     {edited && <span className="dft-badge">{t('session.chat.draft.edited')}</span>}
+                    {/* B-722: 保存中… → 已保存 (fades), or 未保存 · 重试 — in place, read out politely. */}
+                    <span className="dft-save" role="status" aria-live="polite" data-save-state={save}>
+                        {save === 'saving' && <><Spinner size={11} /><span>{t('session.chat.saveState.saving')}</span></>}
+                        {save === 'saved' && <><Check size={12} aria-hidden /><span>{t('session.chat.saveState.saved')}</span></>}
+                        {save === 'failed' && <>
+                            <AlertCircle size={12} aria-hidden />
+                            <span>{t('session.chat.saveState.failed')}</span>
+                            <button type="button" className="dft-save-retry" onClick={() => retryDraftSave(kvKey)}>{t('session.chat.sendRetry')}</button>
+                        </>}
+                    </span>
                 </span>
                 <span className="dft-actions">
                     {edited && (

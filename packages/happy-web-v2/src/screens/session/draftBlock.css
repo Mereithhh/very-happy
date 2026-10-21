@@ -95,3 +95,32 @@
     font-size: max(16px, var(--chat-fs-body));
   }
 }
+
+/* B-722: in-place save state next to the label. Empty = nothing to say. */
+.dft-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: var(--text-faint);
+  font-size: var(--chat-fs-caption);
+  white-space: nowrap;
+}
+.dft-save:empty { display: none; }
+.dft-save[data-save-state="saved"] { animation: dft-save-fade 1600ms var(--ease-out) forwards; }
+@keyframes dft-save-fade { 0%, 55% { opacity: 1; } 100% { opacity: 0; } }
+.dft-save[data-save-state="failed"] { color: var(--danger); }
+.dft-save-retry {
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dft-save-retry:hover { background: var(--bg-2); }
+@media (prefers-reduced-motion: reduce) { .dft-save[data-save-state="saved"] { animation: none; } }
+@media (pointer: coarse) { .dft-save-retry { min-height: 44px; padding-inline: var(--sp-2); } }

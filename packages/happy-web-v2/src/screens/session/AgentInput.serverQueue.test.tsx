@@ -18,9 +18,16 @@ const mocks = vi.hoisted(() => ({
     working: true,
     gate: 'send' as 'send' | 'restore-first',
     queues: {} as Record<string, unknown>,
-    queueState: { items: [] as Array<{ id: string; localId: string; position: number; text: string; modeMeta: object; createdAt: number }>, status: 'ready' as string },
+    queueState: {
+        items: [] as Array<{ id: string; localId: string; position: number; text: string; modeMeta: object; createdAt: number }>,
+        status: 'ready' as string,
+    } as {
+        items: Array<{ id: string; localId: string; position: number; text: string; modeMeta: object; createdAt: number }>;
+        status: string;
+        pending?: Array<{ localId: string; text: string; modeMeta: object; createdAt: number; state: 'sending' | 'waiting' | 'failed' }>;
+    },
     send: vi.fn(), paint: vi.fn(), restoreSession: vi.fn(), draft: vi.fn(), toast: vi.fn(), toastShow: vi.fn(), abort: vi.fn(), saveQueue: vi.fn(),
-    enqueue: vi.fn(), load: vi.fn(), remove: vi.fn(), move: vi.fn(), updateText: vi.fn(),
+    enqueue: vi.fn(), submit: vi.fn(), retryPending: vi.fn(), discardPending: vi.fn(), load: vi.fn(), remove: vi.fn(), move: vi.fn(), updateText: vi.fn(),
 }));
 vi.mock('@/sync/sync', () => ({ sync: { sendMessage: mocks.send } }));
 vi.mock('@/sync/ops', () => ({ sessionAbort: mocks.abort, sessionSetPermissionMode: vi.fn() }));
@@ -53,6 +60,9 @@ vi.mock('@/sync/promptQueue', async () => ({
     usePromptQueue: () => mocks.queueState,
     loadPromptQueue: mocks.load,
     enqueuePrompt: mocks.enqueue,
+    submitPrompt: mocks.submit,
+    retryPendingPrompt: mocks.retryPending,
+    discardPendingPrompt: mocks.discardPending,
     removePrompt: mocks.remove,
     movePrompt: mocks.move,
     updatePromptText: mocks.updateText,
@@ -71,10 +81,12 @@ beforeEach(() => {
     mocks.working = true;
     mocks.gate = 'send';
     mocks.queues = {};
-    mocks.queueState = { items: [], status: 'ready' };
+    mocks.queueState = { items: [], status: 'ready', pending: undefined };
     mocks.saveQueue.mockImplementation(queues => { mocks.queues = structuredClone(queues); });
     mocks.paint.mockResolvedValue(undefined);
     mocks.enqueue.mockResolvedValue('queued');
+    mocks.submit.mockResolvedValue('queued');
+    mocks.retryPending.mockResolvedValue('queued');
     mocks.send.mockResolvedValue('accepted');
     mocks.remove.mockResolvedValue(true);
     host = document.createElement('div');
@@ -93,10 +105,10 @@ describe('AgentInput server-side prompt queue (B-509)', () => {
         render();
         expect(mocks.load).toHaveBeenCalledWith('session');
         await clickSend();
-        expect(mocks.enqueue).toHaveBeenCalledExactlyOnceWith('session', 'Queue me', { model: null, effort: 'high' });
+        expect(mocks.submit).toHaveBeenCalledExactlyOnceWith('session', 'Queue me', { model: null, effort: 'high' });
         expect(mocks.send).not.toHaveBeenCalled();
         expect(localQueue()).toEqual([]);
-        expect(host.querySelector('.ci-queue-item')).toBeNull(); // the server snapshot renders it, not local state
+        expect(host.querySelector('.ci-queue-item')).toBeNull(); // the store (pending → server snapshot) renders it, not local state
         // Agent goes idle: the tab must NOT send anything — the wrapper pops the queue.
         mocks.working = false;
         await act(async () => root.render(<AgentInput sessionId="session" />));
@@ -133,40 +145,67 @@ describe('AgentInput server-side prompt queue (B-509)', () => {
     });
 
     it('an old server (unsupported) or an old wrapper (no capability) keeps the tab-local queue', async () => {
-        mocks.queueState = { items: [], status: 'unsupported' };
+        mocks.queueState = { items: [], status: 'unsupported', pending: undefined };
         render();
         await clickSend();
-        expect(mocks.enqueue).not.toHaveBeenCalled();
+        expect(mocks.submit).not.toHaveBeenCalled();
         expect(localQueue()).toHaveLength(1);
         expect(host.querySelector('.ci-queue')!.getAttribute('data-queue-source')).toBe('local');
 
         act(() => root.unmount());
         root = createRoot(host);
         mocks.queues = {};
-        mocks.queueState = { items: [], status: 'ready' };
+        mocks.queueState = { items: [], status: 'ready', pending: undefined };
         mocks.session.metadata.capabilities = ['claude-steer-v1'];
         render();
         await clickSend();
-        expect(mocks.enqueue).not.toHaveBeenCalled();
+        expect(mocks.submit).not.toHaveBeenCalled();
         expect(mocks.load).not.toHaveBeenCalled();
         expect(localQueue()).toHaveLength(1);
     });
 
     it('a server that answers 404 mid-send falls back to the tab-local queue for that item', async () => {
-        mocks.enqueue.mockResolvedValueOnce('unsupported');
+        mocks.submit.mockResolvedValueOnce('unsupported');
         render();
         await clickSend();
         expect(localQueue()).toHaveLength(1);
         expect(mocks.send).not.toHaveBeenCalled();
     });
 
-    it('a failed enqueue keeps the draft and tells the user', async () => {
-        mocks.enqueue.mockRejectedValueOnce(new Error('prompt_queue_full'));
+    it('B-722: a failed enqueue stays in the dock as its own row (Retry / Back to input / Delete); the composer is not refilled behind it', async () => {
+        mocks.submit.mockRejectedValueOnce(new Error('prompt_queue_full'));
         render();
         await clickSend();
-        expect(mocks.toast).toHaveBeenCalledWith('session.chat.queueDeliveryFailed');
-        expect(host.querySelector<HTMLTextAreaElement>('.ci-textarea')!.value).toBe('  Queue me  '); // exact failed draft, as every failed send
+        expect(host.querySelector<HTMLTextAreaElement>('.ci-textarea')!.value).toBe('');
+        expect(mocks.toast).not.toHaveBeenCalled();
         expect(localQueue()).toEqual([]);
+        // The store keeps the row as failed (promptQueue.submit); render it.
+        mocks.queueState = { items: [], status: 'ready', pending: [{ localId: 'p1', text: 'Queue me', modeMeta: {}, createdAt: 1, state: 'failed' }] };
+        mocks.discardPending.mockReturnValue({ localId: 'p1', text: 'Queue me', modeMeta: {}, createdAt: 1, state: 'failed' });
+        await act(async () => root.render(<AgentInput sessionId="session" />));
+        const row = host.querySelector<HTMLElement>('[data-queue-item-source="pending"]')!;
+        expect(row.querySelector('[data-send-state="failed"]')!.textContent).toBe('session.chat.queueAddFailed');
+        await act(async () => { row.querySelector<HTMLButtonElement>('.ci-queue-action--retry')!.click(); });
+        expect(mocks.retryPending).toHaveBeenCalledExactlyOnceWith('session', 'p1');
+        await act(async () => { row.querySelector<HTMLButtonElement>('[aria-label="session.chat.sendRestore"]')!.click(); });
+        expect(mocks.discardPending).toHaveBeenCalledWith('session', 'p1');
+        expect(host.querySelector<HTMLTextAreaElement>('.ci-textarea')!.value).toBe('Queue me');
+    });
+
+    it('B-722: a sending / offline row says where the prompt is, and the restore-first dock says where it goes', async () => {
+        mocks.gate = 'restore-first';
+        mocks.working = false;
+        mocks.queueState = { items: [], status: 'ready', pending: [
+            { localId: 'p1', text: 'one', modeMeta: {}, createdAt: 1, state: 'sending' },
+            { localId: 'p2', text: 'two', modeMeta: {}, createdAt: 2, state: 'waiting' },
+        ] };
+        render();
+        const rows = host.querySelectorAll<HTMLElement>('[data-queue-item-source="pending"]');
+        expect([...rows].map((row) => row.querySelector('[data-send-state]')!.textContent)).toEqual(['session.chat.queueAdding', 'session.chat.queueWaitingNetwork']);
+        expect(rows[0].getAttribute('aria-busy')).toBe('true');
+        expect(rows[0].querySelector('.ci-queue-action--retry')).toBeNull();
+        expect(rows[0].querySelector('[role="status"]')!.getAttribute('aria-live')).toBe('polite');
+        expect(host.querySelector('[data-queue-destination="restore"]')!.textContent).toBe('session.chat.queueAfterRestore');
     });
 
     it('legacy tab-local text items migrate to the server once the queue is ready — and the idle gate never releases them from this tab', async () => {
@@ -220,12 +259,51 @@ describe('AgentInput server-side prompt queue (B-509)', () => {
         expect(mocks.toastShow).toHaveBeenCalledWith('session.chat.queueStillPending', 'info');
     });
 
+    it('B-722: editing a server row closes the editor at once and reads 保存中 → 已保存, or 未保存 · 重试 with the edit kept', async () => {
+        mocks.queueState = { status: 'ready', pending: undefined, items: [{ id: 'q1', localId: 'l1', position: 1, text: 'first', modeMeta: {}, createdAt: 1 }] };
+        let answer!: (ok: boolean) => void;
+        mocks.updateText.mockImplementationOnce(() => new Promise<boolean>((resolve) => { answer = resolve; }));
+        render();
+        const openEditor = async () => {
+            const more = host.querySelector<HTMLButtonElement>('[aria-label="session.chat.queueMore"]')!;
+            await act(async () => { more.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+            const edit = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent?.includes('session.chat.queueEdit'))!;
+            await act(async () => { edit.click(); });
+        };
+        const typeAndSave = async (value: string) => {
+            const editor = host.querySelector<HTMLTextAreaElement>('.ci-queue-edit')!;
+            act(() => {
+                Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(editor, value);
+                editor.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="session.chat.queueSave"]')!.click(); });
+        };
+        await openEditor();
+        await typeAndSave('first, edited');
+        expect(mocks.updateText).toHaveBeenCalledWith('session', 'q1', 'first, edited');
+        expect(host.querySelector('.ci-queue-edit')).toBeNull();
+        expect(host.querySelector('[data-save-state]')!.textContent).toBe('session.chat.saveState.saving');
+        expect(host.querySelector('[data-save-state]')!.getAttribute('aria-live')).toBe('polite');
+        await act(async () => { answer(true); });
+        expect(host.querySelector('[data-save-state]')!.getAttribute('data-save-state')).toBe('saved');
+
+        mocks.updateText.mockRejectedValueOnce(new Error('offline'));
+        await openEditor();
+        await typeAndSave('second try');
+        const failed = host.querySelector('[data-save-state="failed"]')!;
+        expect(failed.textContent).toContain('session.chat.saveState.failed');
+        mocks.updateText.mockResolvedValueOnce(true);
+        await act(async () => { failed.querySelector<HTMLButtonElement>('button')!.click(); });
+        expect(mocks.updateText).toHaveBeenLastCalledWith('session', 'q1', 'second try');
+        expect(host.querySelector('[data-save-state]')!.getAttribute('data-save-state')).toBe('saved');
+    });
+
     it('an archived session enqueues on the server and still asks for the restore', async () => {
         mocks.gate = 'restore-first';
         mocks.working = false;
         render();
         await clickSend();
-        expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+        expect(mocks.submit).toHaveBeenCalledTimes(1);
         expect(mocks.restoreSession).toHaveBeenCalledExactlyOnceWith('session');
         expect(mocks.send).not.toHaveBeenCalled();
     });
