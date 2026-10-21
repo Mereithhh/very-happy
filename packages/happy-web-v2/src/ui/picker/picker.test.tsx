@@ -238,6 +238,14 @@ describe('SelectMenu (no search) — popover', () => {
     });
 });
 
+describe('inside a native modal <dialog>', () => {
+    it('portals the popup into the dialog (outside the top layer is inert)', () => {
+        render(<dialog open><Controlled options={MACHINES} /></dialog>);
+        key(trigger(), 'ArrowDown');
+        expect(listbox()?.closest('dialog')).toBe(document.querySelector('dialog'));
+    });
+});
+
 describe('Combobox (search) — popover', () => {
     const MANY: PickerOption[] = Array.from({ length: 12 }, (_, i) => ({ value: `b${i}`, label: i === 7 ? 'feature/select-menu' : `branch-${i}` }));
 

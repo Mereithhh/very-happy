@@ -175,6 +175,9 @@ export function Picker<V extends string = string>(props: PickerProps<V>) {
     const typeahead = React.useRef<{ buffer: string; at: number }>({ buffer: '', at: 0 });
     const swipe = React.useRef<{ y: number; dy: number } | null>(null);
     const [swipeOffset, setSwipeOffset] = React.useState(0);
+    // Inside a native modal <dialog> (TeamDialog's showModal) everything outside
+    // the top layer is inert: portal into that dialog instead of <body>.
+    const [portalHost, setPortalHost] = React.useState<HTMLElement | undefined>(undefined);
 
     const showSearch = shouldShowSearch(searchable, options.length);
     const ordered = React.useMemo(() => orderedOptions(options), [options]);
@@ -187,6 +190,7 @@ export function Picker<V extends string = string>(props: PickerProps<V>) {
         setOpenState(next);
         onOpenChange?.(next);
         if (next) {
+            setPortalHost(triggerRef.current?.closest('dialog') ?? undefined);
             setQuery('');
             setActive(initialActive(ordered, value));
         } else {
@@ -507,7 +511,7 @@ export function Picker<V extends string = string>(props: PickerProps<V>) {
                 {formProxy}
                 {requiredLine}
                 <Dialog.Root open={open} onOpenChange={setOpen}>
-                    <Dialog.Portal>
+                    <Dialog.Portal container={portalHost}>
                         <Dialog.Overlay className="vh-picker-scrim" />
                         <Dialog.Content
                             className="vh-picker-sheet"
@@ -549,7 +553,7 @@ export function Picker<V extends string = string>(props: PickerProps<V>) {
         <>
             <Popover.Root open={open} onOpenChange={(next) => { if (!disabled) setOpen(next); }}>
                 <Popover.Trigger asChild>{trigger}</Popover.Trigger>
-                <Popover.Portal>
+                <Popover.Portal container={portalHost}>
                     <Popover.Content
                         className="vh-picker"
                         data-vh-picker-surface=""
