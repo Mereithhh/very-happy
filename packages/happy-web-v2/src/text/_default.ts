@@ -2446,6 +2446,19 @@ export const en = {
         learnMore: 'Read the docs',
         otherImprovements: ({ count }: { count: number }) => `Other improvements (${count})`,
         noEntriesAvailable: 'No changelog entries available.',
+        // B-715: major updates + the page-by-page pager
+        majorBadge: 'Major update',
+        next: 'Next',
+        previous: 'Previous',
+        doneAll: "I've seen them all",
+        pageProgress: ({ current, total }: { current: number; total: number }) => `${current} / ${total}`,
+        pageProgressLabel: ({ current, total }: { current: number; total: number }) => `Update ${current} of ${total}`,
+        lockedHint: ({ total }: { total: number }) => `${total} updates — go through them all to close`,
+        minorPageTitle: 'Other updates',
+        minorPageSummary: 'Smaller fixes and improvements shipped alongside, newest first.',
+        entryLabel: ({ count }: { count: number }) => `Major update · ${count} unread`,
+        entryShort: 'Major update',
+        entryCount: ({ count }: { count: number }) => `${count} unread`,
         releases: {
             oct21b: {
                 tagline: 'Today’s second big update · Oct 21',

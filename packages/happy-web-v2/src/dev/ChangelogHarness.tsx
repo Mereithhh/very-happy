@@ -1,8 +1,10 @@
 /** DEV-only visual harness for the release notice and history page. */
 import { ChangelogNotice } from '@/app/ChangelogNotice';
 import { CHANGELOG_RELEASES, CHANGELOG_STORAGE_KEY } from '@/app/changelogRelease';
+import { CHANGELOG_READ_KEY } from '@/app/changelogPager';
 
 function reopenAs(seen: string | null) {
+    localStorage.removeItem(CHANGELOG_READ_KEY);
     if (seen === null) localStorage.removeItem(CHANGELOG_STORAGE_KEY);
     else localStorage.setItem(CHANGELOG_STORAGE_KEY, seen);
     location.reload();

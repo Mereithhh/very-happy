@@ -6,6 +6,7 @@ import { PanelLeft } from 'lucide-react';
 import { useIsDesktop } from '@/app/useMediaQuery';
 import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs';
 import { Sidebar } from '@/screens/sessions/Sidebar';
+import { MajorUpdateEntry } from '@/app/MajorUpdateEntry';
 import { CommandPalette } from '@/screens/command/CommandPalette';
 import { ClipboardHistoryPanel } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { FsPreviewOverlay } from '@/screens/files/FsPreviewOverlay';
@@ -113,6 +114,7 @@ export function AppLayout() {
             <PanelLeft size={18} />
           </button>
           <NotificationBell />
+          <MajorUpdateEntry compact />
         </>}
         notes={<NotesDock />}
       >

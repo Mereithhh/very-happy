@@ -40,9 +40,9 @@ test('reads the live release SHA from the public entry asset name', () => {
 
 test('extracts release ids and cliVersions in file order', () => {
   assert.deepEqual(extractReleases(SOURCE), [
-    { id: '2026-09-02-b', cliVersion: '0.2.97' },
-    { id: '2026-09-02-a', cliVersion: null },
-    { id: '2026-08-31', cliVersion: '0.2.90' },
+    { id: '2026-09-02-b', cliVersion: '0.2.97', major: false, highlights: false },
+    { id: '2026-09-02-a', cliVersion: null, major: false, highlights: false },
+    { id: '2026-08-31', cliVersion: '0.2.90', major: false, highlights: false },
   ]);
 });
 
@@ -91,4 +91,50 @@ test('annotated tag message can carry an audited skip', () => {
   assert.equal(parseSkipReason('v0.2.99'), null);
   assert.equal(parseSkipReason(null), null);
   assert.equal(normalizeVersion('v0.2.99'), '0.2.99');
+});
+
+const MAJOR_SOURCE = `
+export const CHANGELOG_RELEASES = [
+  {
+    id: '2026-10-22-big',
+    date: '2026-10-22',
+    major: true,
+    titleKey: 'changelog.releases.oct22.title',
+    highlights: [
+      { key: 'projects', titleKey: 'changelog.releases.oct22.projectsTitle' },
+    ],
+    itemKeys: [],
+  },
+  {
+    id: '2026-10-21-small',
+    date: '2026-10-21',
+    major: false,
+    itemKeys: [],
+  },
+  {
+    id: '2026-10-20-bare-major',
+    date: '2026-10-20',
+    major: true,
+    itemKeys: [],
+  },
+];
+`;
+
+test('B-715: extracts the major flag and whether highlights exist; highlight keys are not releases', () => {
+  assert.deepEqual(extractReleases(MAJOR_SOURCE), [
+    { id: '2026-10-22-big', cliVersion: null, major: true, highlights: true },
+    { id: '2026-10-21-small', cliVersion: null, major: false, highlights: false },
+    { id: '2026-10-20-bare-major', cliVersion: null, major: true, highlights: false },
+  ]);
+});
+
+test('B-715: web gate fails a major release without highlights and reports added majors', () => {
+  const releases = extractReleases(MAJOR_SOURCE);
+  const bad = evaluateWebRelease({ commits: ['a1\tfeat(web): x'], liveReleases: [], targetReleases: releases });
+  assert.equal(bad.ok, false);
+  assert.match(bad.reason, /2026-10-20-bare-major/);
+  const good = releases.slice(0, 2);
+  const ok = evaluateWebRelease({ commits: ['a1\tfeat(web): x'], liveReleases: good.slice(1), targetReleases: good });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.addedMajor, ['2026-10-22-big']);
 });
