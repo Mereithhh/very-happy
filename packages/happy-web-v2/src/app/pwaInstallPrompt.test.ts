@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import {
   canOfferPwaInstall,
   isAppleMobile,
+  isPwaInstallSnoozed,
+  pwaInstallSnoozeUntil,
+  PWA_INSTALL_SNOOZE_MS,
   isAppleInstallGuide,
   isStandalonePwa,
   manualInstallGuide,
@@ -49,10 +52,34 @@ describe('PWA install prompt policy', () => {
     expect(canOfferPwaInstall({ ...base, neverPrompt: true })).toBe(false);
   });
 
-  it('keeps a normal dismissal session-only and reserves persistence for the explicit never action', () => {
-    const dismissBody = component.slice(component.indexOf('const dismiss ='), component.indexOf('const neverPrompt ='));
-    expect(dismissBody).not.toContain('writeStorage');
-    expect(component).toContain("writeStorage(PWA_INSTALL_NEVER_KEY, '1')");
+  it('B-681:「暂不」/ ✕ / 知道了 / Esc / a declined browser dialog snooze this device for a week; 不再提示 stays permanent', () => {
+    const strip = (src: string) => src.replace(/\/\/.*$/gm, '');
+    const c = strip(component);
+    const snoozeBody = c.slice(c.indexOf('const snooze ='), c.indexOf('const neverPrompt ='));
+    expect(snoozeBody).toContain('writeStorage(PWA_INSTALL_SNOOZE_KEY, pwaInstallSnoozeUntil(Date.now()));');
+    expect(c).toContain('className="pwa-install-later" type="button" onClick={snooze}');
+    expect(c).toContain('className="pwa-install-close" type="button" onClick={snooze}');
+    expect(c).toContain('className="pwa-install-primary" type="button" onClick={snooze}');
+    expect(c).toContain("if (event.key !== 'Escape') return;\n      writeStorage(PWA_INSTALL_SNOOZE_KEY, pwaInstallSnoozeUntil(Date.now()));");
+    expect(c).toContain("writeStorage(PWA_INSTALL_NEVER_KEY, '1')");
+    // the browser re-offering install (beforeinstallprompt) respects the snooze too
+    expect(c.slice(c.indexOf('const permanentlyBlocked ='), c.indexOf('const eligible ='))).toContain('|| snoozed()');
+  });
+
+  it('B-681 snooze policy: a week, per device; garbage or clock-skewed values never block for longer', () => {
+    const now = 1_000_000_000_000;
+    const until = pwaInstallSnoozeUntil(now);
+    expect(Number(until) - now).toBe(PWA_INSTALL_SNOOZE_MS);
+    expect(PWA_INSTALL_SNOOZE_MS).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(isPwaInstallSnoozed(until, now)).toBe(true);
+    expect(isPwaInstallSnoozed(until, now + PWA_INSTALL_SNOOZE_MS - 1)).toBe(true);
+    expect(isPwaInstallSnoozed(until, now + PWA_INSTALL_SNOOZE_MS)).toBe(false);
+    expect(isPwaInstallSnoozed(null, now)).toBe(false);
+    expect(isPwaInstallSnoozed('nope', now)).toBe(false);
+    expect(isPwaInstallSnoozed(String(now + 10 * PWA_INSTALL_SNOOZE_MS), now)).toBe(false);
+    const base = { isStandalone: false, installConfirmed: false, neverPrompt: false };
+    expect(canOfferPwaInstall({ ...base, snoozed: true })).toBe(false);
+    expect(canOfferPwaInstall({ ...base, snoozed: false })).toBe(true);
   });
 
   it('lets a new browser install event recover from a stale installed marker', () => {

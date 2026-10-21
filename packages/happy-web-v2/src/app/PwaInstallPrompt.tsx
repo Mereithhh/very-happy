@@ -11,7 +11,10 @@ import {
 import {
   PWA_INSTALL_CONFIRMED_KEY,
   PWA_INSTALL_NEVER_KEY,
+  PWA_INSTALL_SNOOZE_KEY,
   canOfferPwaInstall,
+  isPwaInstallSnoozed,
+  pwaInstallSnoozeUntil,
   isAppleInstallGuide,
   isStandalonePwa,
   manualInstallGuide,
@@ -60,12 +63,16 @@ export function PwaInstallPrompt() {
   useEffect(() => {
     const standaloneQuery = window.matchMedia('(display-mode: standalone)');
     const nav = navigator as Navigator & { standalone?: boolean };
+    const snoozed = () => isPwaInstallSnoozed(readStorage(PWA_INSTALL_SNOOZE_KEY), Date.now());
+    // B-681: a snooze blocks the browser's own (re-)offer too, not only our reveal.
     const permanentlyBlocked = () => isStandalonePwa(standaloneQuery.matches, nav.standalone)
-      || readStorage(PWA_INSTALL_NEVER_KEY) === '1';
+      || readStorage(PWA_INSTALL_NEVER_KEY) === '1'
+      || snoozed();
     const eligible = () => canOfferPwaInstall({
       isStandalone: isStandalonePwa(standaloneQuery.matches, nav.standalone),
       installConfirmed: readStorage(PWA_INSTALL_CONFIRMED_KEY) === '1',
       neverPrompt: readStorage(PWA_INSTALL_NEVER_KEY) === '1',
+      snoozed: snoozed(),
     });
 
     let revealTimer = 0;
@@ -122,6 +129,7 @@ export function PwaInstallPrompt() {
     if (!guide) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      writeStorage(PWA_INSTALL_SNOOZE_KEY, pwaInstallSnoozeUntil(Date.now()));
       setInstallEvent(null);
       setGuide(null);
     };
@@ -134,6 +142,14 @@ export function PwaInstallPrompt() {
   const dismiss = () => {
     setInstallEvent(null);
     setGuide(null);
+  };
+
+  // B-681:「暂不」, ✕, 知道了 and Esc are「not now」on THIS device: remembered for
+  // PWA_INSTALL_SNOOZE_MS so a reload / route change / re-fired browser offer
+  // does not bring the card straight back (it used to be in-memory only).
+  const snooze = () => {
+    writeStorage(PWA_INSTALL_SNOOZE_KEY, pwaInstallSnoozeUntil(Date.now()));
+    dismiss();
   };
 
   const neverPrompt = () => {
@@ -149,6 +165,9 @@ export function PwaInstallPrompt() {
       clearCapturedPwaInstallPrompt(installEvent);
       if (outcome === 'accepted') {
         writeStorage(PWA_INSTALL_CONFIRMED_KEY, '1');
+      } else {
+        // Declined in the browser's own dialog: same「not now」as 暂不.
+        writeStorage(PWA_INSTALL_SNOOZE_KEY, pwaInstallSnoozeUntil(Date.now()));
       }
       setInstallEvent(null);
       setGuide(null);
@@ -163,7 +182,7 @@ export function PwaInstallPrompt() {
 
   return (
     <aside className="pwa-install" role="region" aria-live="polite" aria-atomic="true" aria-labelledby="pwa-install-title" aria-describedby="pwa-install-description">
-      <button className="pwa-install-close" type="button" onClick={dismiss} aria-label={copy.close}><X size={19} /></button>
+      <button className="pwa-install-close" type="button" onClick={snooze} aria-label={copy.close}><X size={19} /></button>
       <div className="pwa-install-mark" aria-hidden><BrandIcon size={30} /></div>
       <div className="pwa-install-copy">
         <div className="pwa-install-eyebrow mono">{copy.eyebrow}</div>
@@ -184,9 +203,9 @@ export function PwaInstallPrompt() {
               <Download size={17} /> {prompting ? copy.pending : copy.install}
             </button>
           ) : (
-            <button className="pwa-install-primary" type="button" onClick={dismiss}>{copy.done}</button>
+            <button className="pwa-install-primary" type="button" onClick={snooze}>{copy.done}</button>
           )}
-          <button className="pwa-install-later" type="button" onClick={dismiss}>{copy.later}</button>
+          <button className="pwa-install-later" type="button" onClick={snooze}>{copy.later}</button>
           <button className="pwa-install-never" type="button" onClick={neverPrompt}>{copy.never}</button>
         </div>
       </div>
