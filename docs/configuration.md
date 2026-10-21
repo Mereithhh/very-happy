@@ -159,7 +159,11 @@ Optional controls are `AUTH_EMAIL_CODE_TTL_MINUTES` (default `10`, range 2–30)
 (defaults `200` / `3000`). Codes are bound to
 the normalized email and challenge, stored as HMACs, consumed once, and locked
 after three wrong attempts. Sending and verification also use database-backed
-email/IP/global rate limits.
+email/IP/global rate limits: one address can request at most 3 codes per 10
+minutes and 10 per day, alongside per-IP and the global caps above. Every
+authentication `429` carries `retryAfter` (seconds, body) and a standard
+`Retry-After` header for the longest blocking limit, and the Web sign-in forms
+show that remaining time.
 
 Existing password accounts are not matched or merged by address. After Email OTP
 is enabled, sign in to the existing account, open **Settings → Account → Email

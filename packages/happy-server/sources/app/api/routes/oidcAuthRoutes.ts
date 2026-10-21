@@ -18,7 +18,7 @@ import { auth } from '@/app/auth/auth';
 import { log } from '@/utils/log';
 import { auditLogin } from '@/app/audit/requestAudit';
 import { clientRateLimitKey } from '@/app/api/clientIp';
-import { allowAuthRequest } from '@/app/auth/authRateLimiter';
+import { rateLimitRetryAfter, tooManyRequests, tooManyRequestsSchema } from '@/app/auth/authRateLimitResponse';
 import { hashPairingValue } from '@/app/auth/pairingSecurity';
 import { loadAccountSecret, upsertAccountSecret } from '@/app/auth/accountSecrets';
 import { SignupPolicyError, withSignupGate } from '@/app/auth/signupPolicy';
@@ -281,7 +281,7 @@ export function oidcAuthRoutes(app: Fastify, options: { fetchImpl?: typeof fetch
             response: {
                 200: z.object({ authorizationUrl: z.string() }),
                 401: z.object({ error: z.literal('invalid_migration_handoff') }),
-                429: z.object({ error: z.literal('too_many_requests') }),
+                429: tooManyRequestsSchema,
                 501: z.object({ error: z.literal('oidc_not_configured') }),
                 503: z.object({ error: z.enum(['oidc_challenge_capacity', 'oidc_provider_unavailable']) }),
             },
@@ -289,9 +289,8 @@ export function oidcAuthRoutes(app: Fastify, options: { fetchImpl?: typeof fetch
     }, async (request, reply) => {
         if (!config) return reply.code(501).send({ error: 'oidc_not_configured' as const });
         const bucket = oidcStartRateBucket(clientRateLimitKey(request));
-        if (!(await allowAuthRequest(bucket.key, bucket))) {
-            return reply.code(429).send({ error: 'too_many_requests' as const });
-        }
+        const retryAfter = await rateLimitRetryAfter([bucket]);
+        if (retryAfter !== null) return reply.code(429).send(tooManyRequests(reply, retryAfter));
         let discovery;
         try {
             discovery = await loadOidcDiscovery(config.issuer, { fetchImpl });
@@ -398,16 +397,15 @@ export function oidcAuthRoutes(app: Fastify, options: { fetchImpl?: typeof fetch
             response: {
                 200: z.object({ token: z.string(), secret: z.string(), expiresAt: z.string() }),
                 401: z.object({ error: z.literal('invalid_handoff') }),
-                429: z.object({ error: z.literal('too_many_requests') }),
+                429: tooManyRequestsSchema,
                 501: z.object({ error: z.literal('oidc_not_configured') }),
             },
         },
     }, async (request, reply) => {
         if (!config) return reply.code(501).send({ error: 'oidc_not_configured' as const });
         const bucket = oidcCompleteRateBucket(clientRateLimitKey(request));
-        if (!(await allowAuthRequest(bucket.key, bucket))) {
-            return reply.code(429).send({ error: 'too_many_requests' as const });
-        }
+        const retryAfter = await rateLimitRetryAfter([bucket]);
+        if (retryAfter !== null) return reply.code(429).send(tooManyRequests(reply, retryAfter));
         const payload = await consumeOidcLoginHandoff(request.body.handoff);
         if (!payload) return reply.code(401).send({ error: 'invalid_handoff' as const });
         reply.header('cache-control', 'no-store');

@@ -12,6 +12,7 @@ import axios from 'axios';
 import { getServerUrl } from '@/sync/serverConfig';
 import { getHappyClientId } from '@/sync/apiSocket';
 import type { AuthCredentials } from '@/auth/tokenStorage';
+import { retryAfterSecondsFromError } from './rateLimitRetry';
 
 export type AccountAuthErrorCode =
     | 'invalid-credentials' // wrong username/password (401)
@@ -22,10 +23,13 @@ export type AccountAuthErrorCode =
 
 export class AccountAuthError extends Error {
     code: AccountAuthErrorCode;
-    constructor(code: AccountAuthErrorCode, message: string) {
+    /** B-668: present on `rate-limited` when the server reported when to retry. */
+    retryAfterSeconds?: number;
+    constructor(code: AccountAuthErrorCode, message: string, retryAfterSeconds?: number) {
         super(message);
         this.name = 'AccountAuthError';
         this.code = code;
+        this.retryAfterSeconds = retryAfterSeconds;
     }
 }
 
@@ -42,7 +46,7 @@ export async function loginWithPassword(username: string, password: string): Pro
     } catch (error: any) {
         const status = error?.response?.status;
         if (status === 401) throw new AccountAuthError('invalid-credentials', 'Wrong username or password.');
-        if (status === 429) throw new AccountAuthError('rate-limited', 'Too many attempts. Wait a minute and try again.');
+        if (status === 429) throw new AccountAuthError('rate-limited', 'Too many attempts. Try again later.', retryAfterSecondsFromError(error));
         throw new AccountAuthError('network', 'Could not reach the server. Check your connection.');
     }
 }
@@ -71,7 +75,7 @@ export async function signupWithPassword(
         const status = error?.response?.status;
         const reason = error?.response?.data?.error;
         if (status === 409) throw new AccountAuthError('username-taken', 'That username is taken.');
-        if (status === 429) throw new AccountAuthError('rate-limited', 'Too many attempts. Wait a minute and try again.');
+        if (status === 429) throw new AccountAuthError('rate-limited', 'Too many attempts. Try again later.', retryAfterSecondsFromError(error));
         if (status === 403) throw error;
         if (reason === 'invalid_secret') throw new AccountAuthError('network', 'Could not create account. Please try again.');
         throw new AccountAuthError('network', 'Could not reach the server. Check your connection.');
@@ -108,6 +112,7 @@ export async function setAccountCredentials(
     } catch (error: any) {
         const status = error?.response?.status;
         if (status === 409) throw new AccountAuthError('username-taken', 'That username is taken.');
+        if (status === 429) throw new AccountAuthError('rate-limited', 'Too many attempts. Try again later.', retryAfterSecondsFromError(error));
         if (status === 403 && error?.response?.data?.error === 'reauth_required') {
             throw new AccountAuthError('reauth-required', 'Sign out and sign in again before changing login credentials.');
         }

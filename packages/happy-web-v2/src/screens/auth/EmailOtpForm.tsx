@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { AuthCredentials } from '@/auth/tokenStorage';
 import { CloudAuthError, loginWithEmail, requestEmailLoginCode } from '@/auth/cloudAuth';
+import { rateLimitedMessage } from '@/auth/rateLimitMessage';
 import { Button, Input } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { emailOtpTiming, shouldResetEmailChallenge } from './emailOtpPresentation';
@@ -17,7 +18,7 @@ function emailErrorMessage(error: unknown, t: ReturnType<typeof useTranslation>[
   if (error.code === 'invalid-email-code') return t('emailAuth.invalidCode');
   if (error.code === 'email-delivery-unavailable') return t('emailAuth.deliveryUnavailable');
   if (error.code === 'email-not-configured') return t('emailAuth.notConfigured');
-  if (error.code === 'rate-limited') return t('signup.errorRateLimited');
+  if (error.code === 'rate-limited') return rateLimitedMessage(t, error.retryAfterSeconds);
   if (error.code === 'capacity-reached') return t('signup.errorCapacityReached');
   if (error.code === 'signup-closed') return t('signup.errorSignupClosed');
   if (error.code === 'invite-required') return t('signup.errorInviteRequired');

@@ -21,7 +21,7 @@ import {
     resolveGoogleLoginConfig,
 } from '@/app/auth/googleLoginSecurity';
 import { signupRejectionsCounter } from '@/app/monitoring/metrics2';
-import { allowAuthRequest } from '@/app/auth/authRateLimiter';
+import { rateLimitRetryAfter, tooManyRequests, tooManyRequestsSchema } from '@/app/auth/authRateLimitResponse';
 import { decodeFixedBase64, hashPairingValue } from '@/app/auth/pairingSecurity';
 import { configuredResourceLimit } from '../resourceLimits';
 import {
@@ -105,16 +105,6 @@ export function passwordLoginRateBuckets(ip: string, username: string): Array<{ 
     ];
 }
 
-export async function consumeRateBucketsSequentially(
-    buckets: ReadonlyArray<{ key: string; max: number; windowMs?: number }>,
-    consume: typeof allowAuthRequest = allowAuthRequest,
-): Promise<boolean> {
-    for (const bucket of buckets) {
-        if (!(await consume(bucket.key, { max: bucket.max, windowMs: bucket.windowMs ?? 60_000 }))) return false;
-    }
-    return true;
-}
-
 export function emailCodeRateBuckets(
     ip: string,
     email: string,
@@ -127,7 +117,9 @@ export function emailCodeRateBuckets(
         { key: `email-code:ip:${ipKey}:hour`, max: 20, windowMs: 60 * 60_000 },
         { key: `email-code:ip:${ipKey}:day`, max: 50, windowMs: 24 * 60 * 60_000 },
         { key: `email-code:email:${emailKey}:ten-minute`, max: 3, windowMs: 10 * 60_000 },
-        { key: `email-code:email:${emailKey}:day`, max: 3, windowMs: 24 * 60 * 60_000 },
+        // B-668: 10/day lets one person sign in on several devices in a day; the
+        // 3-per-10-minute burst limit above still bounds mailbox flooding.
+        { key: `email-code:email:${emailKey}:day`, max: 10, windowMs: 24 * 60 * 60_000 },
         { key: 'email-code:global:hour', max: 60, windowMs: 60 * 60_000 },
         { key: 'email-code:global:day', max: limits.globalDailySendLimit, windowMs: 24 * 60 * 60_000 },
         { key: 'email-code:global:month', max: limits.globalMonthlySendLimit, windowMs: 30 * 24 * 60 * 60_000 },
@@ -278,7 +270,7 @@ export function accountAuthRoutes(app: Fastify) {
             body: z.object({ email: emailSchema }).strict(),
             response: {
                 200: z.object({ challengeId: z.string(), expiresAt: z.string() }),
-                429: z.object({ error: z.literal('too_many_requests') }),
+                429: tooManyRequestsSchema,
                 501: z.object({ error: z.literal('email_not_configured') }),
                 503: z.object({ error: z.literal('email_delivery_unavailable') }),
             },
@@ -286,8 +278,8 @@ export function accountAuthRoutes(app: Fastify) {
     }, async (request, reply) => {
         if (!emailConfig) return reply.code(501).send({ error: 'email_not_configured' as const });
         const email = normalizeEmail(request.body.email);
-        const allowed = await consumeRateBucketsSequentially(emailCodeRateBuckets(clientRateLimitKey(request), email, emailConfig));
-        if (!allowed) return reply.code(429).send({ error: 'too_many_requests' as const });
+        const retryAfter = await rateLimitRetryAfter(emailCodeRateBuckets(clientRateLimitKey(request), email, emailConfig));
+        if (retryAfter !== null) return reply.code(429).send(tooManyRequests(reply, retryAfter));
 
         let challenge: Awaited<ReturnType<typeof createEmailLoginChallenge>>;
         try {
@@ -323,7 +315,7 @@ export function accountAuthRoutes(app: Fastify) {
             response: {
                 200: z.object({ nonce: z.string(), expiresAt: z.string() }),
                 403: z.object({ error: z.literal('origin_not_allowed') }),
-                429: z.object({ error: z.literal('too_many_requests') }),
+                429: tooManyRequestsSchema,
                 501: z.object({ error: z.literal('google_not_configured') }),
             },
         },
@@ -333,9 +325,8 @@ export function accountAuthRoutes(app: Fastify) {
             return reply.code(403).send({ error: 'origin_not_allowed' as const });
         }
         const challengeBucket = googleChallengeRateBucket(clientRateLimitKey(request));
-        if (!(await allowAuthRequest(challengeBucket.key, challengeBucket))) {
-            return reply.code(429).send({ error: 'too_many_requests' as const });
-        }
+        const challengeRetryAfter = await rateLimitRetryAfter([challengeBucket]);
+        if (challengeRetryAfter !== null) return reply.code(429).send(tooManyRequests(reply, challengeRetryAfter));
         try {
             const challenge = await issueGoogleLoginChallenge();
             return reply.send({ nonce: challenge.nonce, expiresAt: challenge.expiresAt.toISOString() });
@@ -360,7 +351,7 @@ export function accountAuthRoutes(app: Fastify) {
                 400: z.object({ error: z.literal('invalid_secret') }),
                 403: z.object({ error: z.enum(['signup-closed', 'invite-required', 'capacity-reached', 'password_login_disabled']) }),
                 409: z.object({ error: z.literal('username_taken') }),
-                429: z.object({ error: z.literal('too_many_requests') }),
+                429: tooManyRequestsSchema,
             },
         },
     }, async (request, reply) => {
@@ -370,14 +361,12 @@ export function accountAuthRoutes(app: Fastify) {
         if (!publicKey) return reply.code(400).send({ error: 'invalid_secret' as const });
         const ipKey = hashPairingValue(clientRateLimitKey(request)).slice(0, 32);
         const usernameKey = hashPairingValue(username).slice(0, 32);
-        const allowed = await consumeRateBucketsSequentially([
+        const retryAfter = await rateLimitRetryAfter([
             { key: `password-signup:ip:${ipKey}`, max: 5 },
             { key: `password-signup:user:${usernameKey}`, max: 3 },
             { key: 'password-signup:global', max: 50 },
         ]);
-        if (!allowed) {
-            return reply.code(429).send({ error: 'too_many_requests' as const });
-        }
+        if (retryAfter !== null) return reply.code(429).send(tooManyRequests(reply, retryAfter));
 
         try {
             const passwordHash = await hashPassword(request.body.password);
@@ -458,7 +447,7 @@ export function accountAuthRoutes(app: Fastify) {
                 400: z.object({ error: z.literal('invalid_secret') }),
                 403: z.object({ error: z.enum(['reauth_required', 'password_login_disabled']) }),
                 409: z.object({ error: z.literal('username_taken') }),
-                429: z.object({ error: z.literal('too_many_requests') }),
+                429: tooManyRequestsSchema,
                 500: z.object({ error: z.literal('failed') }),
             },
         },
@@ -505,11 +494,11 @@ export function accountAuthRoutes(app: Fastify) {
                 'MAX_CREDENTIAL_CHANGES_PER_ACCOUNT_PER_MINUTE',
                 5,
             );
-            if (credentialChangeRate > 0 && !(await allowAuthRequest(
-                `credential-change:${accountId}`,
-                { max: credentialChangeRate, windowMs: 60_000 },
-            ))) {
-                return reply.code(429).send({ error: 'too_many_requests' as const });
+            if (credentialChangeRate > 0) {
+                const retryAfter = await rateLimitRetryAfter([
+                    { key: `credential-change:${accountId}`, max: credentialChangeRate, windowMs: 60_000 },
+                ]);
+                if (retryAfter !== null) return reply.code(429).send(tooManyRequests(reply, retryAfter));
             }
 
             const passwordHash = await hashPassword(request.body.password);
@@ -590,6 +579,7 @@ export function accountAuthRoutes(app: Fastify) {
                     email: z.string().nullable(),
                     google: z.object({ connected: z.boolean(), email: z.string().nullable() }),
                     passwordConfigured: z.boolean(),
+                    ssoConnected: z.boolean(),
                 }),
             },
         },
@@ -606,7 +596,7 @@ export function accountAuthRoutes(app: Fastify) {
             response: {
                 200: loginResponse,
                 400: z.object({ error: z.literal('invalid_secret') }),
-                429: z.object({ error: z.literal('too_many_requests') }),
+                429: tooManyRequestsSchema,
             },
         },
     }, async (request, reply) => {
@@ -615,12 +605,11 @@ export function accountAuthRoutes(app: Fastify) {
             return reply.code(400).send({ error: 'invalid_secret' as const });
         }
         const accountKey = hashPairingValue(accountId).slice(0, 32);
-        if (!(await consumeRateBucketsSequentially([
+        const retryAfter = await rateLimitRetryAfter([
             { key: `login-refresh:account:${accountKey}:minute`, max: 5 },
             { key: `login-refresh:account:${accountKey}:day`, max: 20, windowMs: 24 * 60 * 60_000 },
-        ]))) {
-            return reply.code(429).send({ error: 'too_many_requests' as const });
-        }
+        ]);
+        if (retryAfter !== null) return reply.code(429).send(tooManyRequests(reply, retryAfter));
 
         const session = await db.$transaction(async (tx) => {
             // Some accounts predate AccountSecret and login-session tracking. A
@@ -658,7 +647,7 @@ export function accountAuthRoutes(app: Fastify) {
                 401: z.object({ error: z.literal('invalid_email_code') }),
                 403: z.object({ error: z.literal('reauth_required') }),
                 409: z.object({ error: z.literal('email_identity_in_use') }),
-                429: z.object({ error: z.literal('too_many_requests') }),
+                429: tooManyRequestsSchema,
                 501: z.object({ error: z.literal('email_not_configured') }),
             },
         },
@@ -674,12 +663,12 @@ export function accountAuthRoutes(app: Fastify) {
 
         const email = normalizeEmail(request.body.email);
         const accountKey = hashPairingValue(accountId).slice(0, 32);
-        const allowed = await consumeRateBucketsSequentially([
+        const retryAfter = await rateLimitRetryAfter([
             ...emailVerifyRateBuckets(clientRateLimitKey(request), email, request.body.challengeId),
             { key: `email-link:account:${accountKey}:hour`, max: 5, windowMs: 60 * 60_000 },
             { key: `email-link:account:${accountKey}:day`, max: 10, windowMs: 24 * 60 * 60_000 },
         ]);
-        if (!allowed) return reply.code(429).send({ error: 'too_many_requests' as const });
+        if (retryAfter !== null) return reply.code(429).send(tooManyRequests(reply, retryAfter));
         try {
             const result = await linkVerifiedEmailIdentity(db, accountId, {
                 email,
@@ -713,7 +702,7 @@ export function accountAuthRoutes(app: Fastify) {
                 401: z.object({ error: z.literal('invalid_google_credential') }),
                 403: z.object({ error: z.enum(['reauth_required', 'origin_not_allowed']) }),
                 409: z.object({ error: z.literal('google_identity_in_use') }),
-                429: z.object({ error: z.literal('too_many_requests') }),
+                429: tooManyRequestsSchema,
                 501: z.object({ error: z.literal('google_not_configured') }),
             },
         },
@@ -731,13 +720,13 @@ export function accountAuthRoutes(app: Fastify) {
             return reply.code(400).send({ error: 'invalid_secret' as const });
         }
         const accountKey = hashPairingValue(accountId).slice(0, 32);
-        const allowed = await consumeRateBucketsSequentially([
+        const retryAfter = await rateLimitRetryAfter([
             { key: `google-link:ip:${hashPairingValue(clientRateLimitKey(request)).slice(0, 32)}:minute`, max: 10 },
             { key: `google-link:account:${accountKey}:hour`, max: 5, windowMs: 60 * 60_000 },
             { key: `google-link:account:${accountKey}:day`, max: 10, windowMs: 24 * 60 * 60_000 },
             { key: 'google-link:global:hour', max: 300, windowMs: 60 * 60_000 },
         ]);
-        if (!allowed) return reply.code(429).send({ error: 'too_many_requests' as const });
+        if (retryAfter !== null) return reply.code(429).send(tooManyRequests(reply, retryAfter));
 
         let claims;
         try {
@@ -778,16 +767,14 @@ export function accountAuthRoutes(app: Fastify) {
                 200: loginResponse,
                 401: z.object({ error: z.literal('invalid_credentials') }),
                 403: z.object({ error: z.literal('password_login_disabled') }),
-                429: z.object({ error: z.literal('too_many_requests') }),
+                429: tooManyRequestsSchema,
             },
         },
     }, async (request, reply) => {
         if (!passwordLoginEnabled) return reply.code(403).send({ error: 'password_login_disabled' as const });
         const username = request.body.username;
-        const allowed = await consumeRateBucketsSequentially(passwordLoginRateBuckets(clientRateLimitKey(request), username));
-        if (!allowed) {
-            return reply.code(429).send({ error: 'too_many_requests' as const });
-        }
+        const retryAfter = await rateLimitRetryAfter(passwordLoginRateBuckets(clientRateLimitKey(request), username));
+        if (retryAfter !== null) return reply.code(429).send(tooManyRequests(reply, retryAfter));
         const rows = await db.$queryRawUnsafe<Array<{ accountId: string; passwordHash: string; secretEnc: string }>>(
             'SELECT "accountId", "passwordHash", "secretEnc" FROM "AccountCredential" WHERE "username" = $1 LIMIT 1',
             username,
@@ -831,15 +818,15 @@ export function accountAuthRoutes(app: Fastify) {
                 200: loginResponse,
                 401: z.object({ error: z.literal('invalid_email_code') }),
                 403: z.object({ error: z.enum(['signup-closed', 'invite-required', 'capacity-reached']) }),
-                429: z.object({ error: z.literal('too_many_requests') }),
+                429: tooManyRequestsSchema,
                 501: z.object({ error: z.literal('email_not_configured') }),
             },
         },
     }, async (request, reply) => {
         if (!emailConfig) return reply.code(501).send({ error: 'email_not_configured' as const });
         const email = normalizeEmail(request.body.email);
-        const allowed = await consumeRateBucketsSequentially(emailVerifyRateBuckets(clientRateLimitKey(request), email, request.body.challengeId));
-        if (!allowed) return reply.code(429).send({ error: 'too_many_requests' as const });
+        const retryAfter = await rateLimitRetryAfter(emailVerifyRateBuckets(clientRateLimitKey(request), email, request.body.challengeId));
+        if (retryAfter !== null) return reply.code(429).send(tooManyRequests(reply, retryAfter));
         if (!(await consumeEmailLoginChallenge(request.body.challengeId, email, request.body.code))) {
             return reply.code(401).send({ error: 'invalid_email_code' as const });
         }
@@ -905,7 +892,7 @@ export function accountAuthRoutes(app: Fastify) {
                 200: loginResponse,
                 401: z.object({ error: z.literal('invalid_google_credential') }),
                 403: z.object({ error: z.enum(['signup-closed', 'invite-required', 'capacity-reached', 'origin_not_allowed']) }),
-                429: z.object({ error: z.literal('too_many_requests') }),
+                429: tooManyRequestsSchema,
                 501: z.object({ error: z.literal('google_not_configured') }),
             },
         },
@@ -916,9 +903,8 @@ export function accountAuthRoutes(app: Fastify) {
             return reply.code(403).send({ error: 'origin_not_allowed' as const });
         }
         const loginBucket = googleLoginRateBucket(clientRateLimitKey(request));
-        if (!(await allowAuthRequest(loginBucket.key, loginBucket))) {
-            return reply.code(429).send({ error: 'too_many_requests' as const });
-        }
+        const loginRetryAfter = await rateLimitRetryAfter([loginBucket]);
+        if (loginRetryAfter !== null) return reply.code(429).send(tooManyRequests(reply, loginRetryAfter));
 
         let claims;
         try {

@@ -5,6 +5,7 @@ import { Button } from '@/ui';
 import { CloudAuthError, startOidcLogin } from '@/auth/cloudAuth';
 import { persistAuthReturnTarget } from '@/app/authReturnTarget';
 import { useTranslation } from '@/i18n/useTranslation';
+import { rateLimitedMessage } from '@/auth/rateLimitMessage';
 
 /**
  * B-620: "Continue with <SSO>" — the primary action when the server has a
@@ -41,7 +42,7 @@ export function OidcLoginButton({ displayName, inviteCode, migrationHandoff, lab
     } catch (err) {
       setBusy(false);
       onBusyChange?.(false);
-      if (err instanceof CloudAuthError && err.code === 'rate-limited') setError(t('signup.errorRateLimited'));
+      if (err instanceof CloudAuthError && err.code === 'rate-limited') setError(rateLimitedMessage(t, err.retryAfterSeconds));
       else if (err instanceof CloudAuthError && err.code === 'oidc-provider-unavailable') setError(t('oidc.errors.exchange_failed'));
       else if (err instanceof CloudAuthError && err.code === 'oidc-not-configured') setError(t('oidc.errors.not_configured'));
       else if (err instanceof CloudAuthError && err.code === 'invalid-migration-handoff') setError(t('oidc.errors.invalid_migration_handoff'));
