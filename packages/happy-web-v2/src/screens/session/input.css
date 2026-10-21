@@ -607,5 +607,5 @@
   }
 }
 .ci-queue-save-retry { padding: 0 4px; border-radius: var(--r-sm); background: transparent; color: var(--text); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
-.ci-queue-save-retry:hover { background: var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .ci-queue-save-retry:hover { background: var(--bg-3); } }
 @media (pointer: coarse) { .ci-queue-save-retry { min-height: 44px; padding-inline: var(--sp-2); } }

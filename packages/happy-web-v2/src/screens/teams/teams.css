@@ -53,7 +53,7 @@
   max-width: 100%;
   transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-micro) var(--ease-out);
 }
-.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):not(:disabled):hover { background: var(--fill-soft-hover); }
+@media (hover: hover) and (pointer: fine) { .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):not(:disabled):hover { background: var(--fill-soft-hover); } }
 .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):not(:disabled):active { transform: scale(0.98); }
 .teams-screen textarea {
   min-height: 80px;
@@ -76,7 +76,7 @@
   background: var(--text);
   color: var(--bg-0);
 }
-.teams-screen .teams-primary:not(:disabled):hover { background: var(--text-dim); }
+@media (hover: hover) and (pointer: fine) { .teams-screen .teams-primary:not(:disabled):hover { background: var(--text-dim); } }
 .teams-wide {
   grid-column: 1/-1;
 }
@@ -159,7 +159,7 @@
 .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)), .teams-talk { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .teams-tabs { display: flex; gap: 16px; margin-top: 20px; border-bottom: 1px solid var(--line); }
 .teams-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 12px 0; color: var(--text-dim); }
-.teams-tabs button:not(:disabled):hover { background: none; color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .teams-tabs button:not(:disabled):hover { background: none; color: var(--text); } }
 .teams-tabs button[aria-current] { color: var(--text); border-bottom-color: var(--text); }
 .teams-work-actions { margin-top: 20px; justify-content: flex-end; }
 .teams-talk { box-sizing: border-box; padding: 5px 10px; min-height: 32px; border-radius: var(--r-sm); text-decoration: none; font-size: var(--fs-13); }
@@ -168,13 +168,14 @@
 .teams-screen h2 small { font-size: 13px; font-weight: 400; margin-left: 8px; }
 .teams-members-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 24px; }
 .teams-member { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); text-decoration: none; min-width: 0; }
-.teams-member:hover .teams-member-info strong { text-decoration: underline; }
+@media (hover: hover) and (pointer: fine) { .teams-member:hover .teams-member-info strong { text-decoration: underline; } }
 .teams-avatar { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--fill-soft); flex: none; }
 .teams-member-info { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
 .teams-member-info strong { font-size: var(--fs-13); }
 /* B-690: inactive members fold behind one quiet disclosure (sidebar's 「已停用 N 个」 row). */
 .teams-members-inactive > summary { gap: var(--sp-2); min-height: 32px; padding: 4px 0; border-top: 1px solid var(--line); color: var(--text-dim); font-size: var(--fs-13); }
-.teams-members-inactive > summary:hover, .teams-members-inactive > summary:focus-visible { outline: none; color: var(--text); }
+.teams-members-inactive > summary:focus-visible { outline: none; color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .teams-members-inactive > summary:hover { outline: none; color: var(--text); } }
 .teams-members-inactive-hint { margin: 0 0 4px; color: var(--text-faint); font-size: var(--fs-12); }
 .teams-member-info > span { color: var(--text-dim); }
 .teams-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
@@ -195,7 +196,8 @@
   .teams-screen .teams-task-preview:not(:disabled):hover, .teams-list-card:hover { background: var(--bg-1); box-shadow: var(--panel-shadow-hover); transform: translateY(-1.5px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .teams-screen .teams-task-preview:not(:disabled):hover, .teams-list-card:hover, .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):not(:disabled):active { transform: none; }
+  .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):not(:disabled):active { transform: none; }
+  @media (hover: hover) and (pointer: fine) { .teams-screen .teams-task-preview:not(:disabled):hover, .teams-list-card:hover { transform: none; } }
 }
 .teams-task-preview strong { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 /* B-687: the card is a 4-line preview of the goal's own lines; the dialog shows all of it. */
@@ -331,7 +333,8 @@
 .team-start-project { display: flex; flex-direction: column; gap: var(--sp-2); }
 .team-start-blocker { margin: 0; align-self: flex-end; font-size: var(--fs-13); color: var(--text-dim); }
 .team-start-missing { border: 0; background: none; padding: 0; color: var(--text-dim); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.team-start-missing:hover, .team-start-missing:focus-visible { color: var(--text); }
+.team-start-missing:focus-visible { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .team-start-missing:hover { color: var(--text); } }
 @media (prefers-reduced-motion: reduce) { .team-start-chev { transition: none; } }
 
 /* B-726 team ↔ project: header line, old-team nudge (one row, no card-in-card), settings */

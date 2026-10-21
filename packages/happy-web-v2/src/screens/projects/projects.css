@@ -28,7 +28,7 @@
 }
 .pj-goal { margin: 4px 0 0; color: var(--text-dim); text-wrap: pretty; }
 .pj-back { display: inline-flex; align-items: center; gap: 4px; color: var(--text-faint); text-decoration: none; font-size: var(--fs-12); }
-.pj-back:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .pj-back:hover { color: var(--text); } }
 .pj-muted { color: var(--text-faint); }
 .pj-icon-btn, .pj-ghost, .pj-primary, .pj-danger, .pj-send {
   display: inline-flex; align-items: center; justify-content: center; gap: 4px;
@@ -36,13 +36,14 @@
   transition: background var(--motion-fast), color var(--motion-fast);
 }
 .pj-icon-btn { width: 32px; height: 32px; background: transparent; color: var(--text-dim); }
-.pj-icon-btn:hover, .pj-icon-btn[aria-expanded='true'] { background: var(--fill-hover); color: var(--text); }
+.pj-icon-btn[aria-expanded='true'] { background: var(--fill-hover); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .pj-icon-btn:hover { background: var(--fill-hover); color: var(--text); } }
 .pj-ghost { height: 28px; padding: 0 8px; background: transparent; color: var(--text-dim); font-size: var(--fs-12); }
-.pj-ghost:hover { background: var(--fill-hover); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .pj-ghost:hover { background: var(--fill-hover); color: var(--text); } }
 .pj-primary { height: 28px; padding: 0 12px; background: var(--text); color: var(--bg-0); font-size: var(--fs-12); font-weight: 500; }
 .pj-primary:disabled, .pj-send:disabled, .pj-ghost:disabled { opacity: 0.45; cursor: default; }
 .pj-danger { height: 28px; padding: 0 10px; background: transparent; color: var(--danger); font-size: var(--fs-12); }
-.pj-danger:hover { background: var(--fill-hover); }
+@media (hover: hover) and (pointer: fine) { .pj-danger:hover { background: var(--fill-hover); } }
 :is(.pj-icon-btn, .pj-ghost, .pj-primary, .pj-danger, .pj-send):focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* composer: the page's single closed object */
@@ -94,7 +95,7 @@
   color: var(--text); text-decoration: none;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.pj-row:hover { background: var(--fill-hover); }
+@media (hover: hover) and (pointer: fine) { .pj-row:hover { background: var(--fill-hover); } }
 .pj-overview { display: flex; flex-direction: column; gap: 16px; }
 .pj-member {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'title badge' 'meta badge';
@@ -102,7 +103,7 @@
   padding: 6px; margin: 0 -6px; border-radius: var(--r-sm);
   color: var(--text); text-decoration: none;
 }
-.pj-member:hover { background: var(--fill-hover); }
+@media (hover: hover) and (pointer: fine) { .pj-member:hover { background: var(--fill-hover); } }
 .pj-member-title { grid-area: title; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pj-member-meta { grid-area: meta; font-size: var(--fs-12); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pj-badge {
@@ -187,7 +188,7 @@
 /* B-649 移到项目 — multi-select list inside the dialog (rows, no inner frame) */
 .mtp-list { display: flex; flex-direction: column; max-height: 240px; overflow: auto; margin: 0 -6px; }
 .mtp-item { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px; border-radius: var(--r-sm); cursor: pointer; overflow: hidden; }
-.mtp-item:hover { background: var(--fill-hover); }
+@media (hover: hover) and (pointer: fine) { .mtp-item:hover { background: var(--fill-hover); } }
 .mtp-item .vh-checkbox-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (pointer: coarse) { .mtp-item { min-height: 44px; } }
 
@@ -196,7 +197,8 @@
 .pj-member-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .pj-member-row > .pj-member { flex: 1; min-width: 0; }
 .pj-member-leave { flex-shrink: 0; opacity: 0; }
-.pj-member-row:hover .pj-member-leave, .pj-member-leave:focus-visible { opacity: 1; }
+.pj-member-leave:focus-visible { opacity: 1; }
+@media (hover: hover) and (pointer: fine) { .pj-member-row:hover .pj-member-leave { opacity: 1; } }
 @media (hover: none), (pointer: coarse) { .pj-member-leave { opacity: 1; } }
 @media (max-width: 520px) { .pj-h-actions { margin-left: 0; width: 100%; flex-wrap: wrap; } }
 

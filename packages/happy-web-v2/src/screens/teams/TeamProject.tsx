@@ -112,7 +112,7 @@ export function TeamProjectSettings({ team, disabled }: { team: TeamState; disab
       {current && <p className="team-project-line"><Link to={`/projects/${encodeURIComponent(current.id)}`}>{c.open} →</Link></p>}
       {confirmDetach && current && <TeamDialog title={c.detachTitle} onClose={() => setConfirmDetach(false)}>
         <p>{c.detachBody(current.name)}</p>
-        <div className="team-project-confirm">
+        <div className="team-project-confirm vh-dialog-foot">
           <button type="button" onClick={() => setConfirmDetach(false)}>{c.cancel}</button>
           <button type="button" className="teams-danger" disabled={busy} onClick={async () => { await bind({ kind: 'none' }); setConfirmDetach(false); }}>{c.detach}</button>
         </div>

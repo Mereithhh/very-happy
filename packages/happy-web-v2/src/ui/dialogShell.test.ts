@@ -24,6 +24,7 @@ const FAMILIES: Record<string, string[]> = {
   '../screens/session/git/GitActionDialog.tsx': ['vh-dialog-overlay', 'vh-dialog so-dialog', 'vh-dialog-close', 'vh-dialog-foot gd-actions'],
   '../screens/session/ShareDialog.tsx': ['vh-dialog-overlay', 'vh-dialog so-dialog', 'vh-dialog-close'],
   '../components/modelConfig/ModelConfigEditor.tsx': ['vh-dialog-overlay', 'vh-dialog so-dialog', 'vh-dialog-close'],
+  '../screens/teams/TeamProject.tsx': ['<TeamDialog', 'team-project-confirm vh-dialog-foot'],
   '../screens/teams/TeamDialog.tsx': ['vh-dialog vh-dialog--tall teams-dialog', 'vh-dialog-head', 'vh-dialog-close'],
 };
 

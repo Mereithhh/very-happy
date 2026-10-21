@@ -121,6 +121,6 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.dft-save-retry:hover { background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .dft-save-retry:hover { background: var(--bg-2); } }
 @media (prefers-reduced-motion: reduce) { .dft-save[data-save-state="saved"] { animation: none; } }
 @media (pointer: coarse) { .dft-save-retry { min-height: 44px; padding-inline: var(--sp-2); } }

@@ -66,7 +66,7 @@
   color: var(--text-faint);
   flex-shrink: 0;
 }
-.ss-close:hover { background: var(--fill-hover); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .ss-close:hover { background: var(--fill-hover); color: var(--text); } }
 .ss-close:focus-visible { box-shadow: var(--focus-ring); outline: none; }
 
 .ss-filters {
@@ -169,7 +169,7 @@
   font-size: var(--fs-13);
   line-height: 1.45;
 }
-.ss-snippet:hover { background: var(--fill-hover); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .ss-snippet:hover { background: var(--fill-hover); color: var(--text); } }
 .ss-snippet:focus-visible { box-shadow: var(--focus-ring); outline: none; }
 .ss-snippet-role {
   flex-shrink: 0;
@@ -208,7 +208,7 @@
   color: var(--text-dim);
   font-size: var(--fs-12);
 }
-.ss-palette-link:hover { background: var(--fill-soft-hover); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .ss-palette-link:hover { background: var(--fill-soft-hover); color: var(--text); } }
 .ss-palette-link:focus-visible { box-shadow: var(--focus-ring); outline: none; }
 
 .ss-foot {
@@ -240,7 +240,7 @@
   color: var(--text-dim);
   font-size: var(--fs-12);
 }
-.ss-palette-link:hover { background: var(--fill-soft-hover); color: var(--text); }
+.ss-palette-link:active { background: var(--fill-soft-hover); color: var(--text); } /* B-728: this block is touch-only — press feedback, not hover */
 .ss-palette-link:focus-visible { box-shadow: var(--focus-ring); outline: none; }
 
 .ss-foot { display: none; }
