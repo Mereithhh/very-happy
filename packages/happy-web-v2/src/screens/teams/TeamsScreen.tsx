@@ -195,7 +195,9 @@ function TeamsContent() {
         <p>{tr('teams.archiveDescription')}</p>
         <button disabled={disabled} onClick={async () => { await act({type:'archive'}); setArchiving(false); }}>{tr('teams.archive')}</button>
       </TeamDialog>}
-      {error && (
+      {/* B-728 (UI-P1-12): "not enabled for this account" is an explanation, not a red error */}
+      {unavailable && <div className="teams-empty" role="status"><UsersRound size={36} aria-hidden /><h2>{first.unavailable}</h2></div>}
+      {error && !unavailable && (
         <p role="alert" className="teams-error">
           {error}
           {pending && (
@@ -303,7 +305,7 @@ function TeamsContent() {
                     placeholder="/path/to/project"
                   />
                 </label>
-                <label>{first.member}<input name="botName" placeholder={first.working} maxLength={128} /></label>
+                <label>{first.member}<input name="botName" placeholder={first.memberPlaceholder} maxLength={128} /></label>
                 <DelegateChoices team={team} agentLabel={t('teams.codingAgent')} />
                 <button
                   className="teams-primary"

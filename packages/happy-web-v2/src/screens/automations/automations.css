@@ -370,7 +370,7 @@
   min-width: 0;
 }
 .au-row-name {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); /* B-728 (UI-P1-20): names are text, not machine output */
   font-size: var(--fs-13);
   font-weight: 600;
   color: var(--text);

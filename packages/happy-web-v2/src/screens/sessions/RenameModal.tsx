@@ -6,6 +6,7 @@ import { useImeGuard } from '@/utils/ime';
 import { addTag, normalizeTag } from '@/utils/tags';
 import './newsession.css';
 import './renamemodal.css';
+import { DialogHead } from '@/ui/DialogHead';
 
 /**
  * Rename dialog (replaces the old single-line Modal.prompt): title input plus
@@ -76,11 +77,12 @@ export function RenameModal({
   }
 
   return (
-    <div className="ns-backdrop" onClick={onClose}>
+    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
       <div
-        className="ns-card rn-card"
+        className="ns-card rn-card vh-dialog"
         role="dialog"
         aria-modal="true"
+        aria-labelledby="rn-dialog-title"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
@@ -89,7 +91,7 @@ export function RenameModal({
           }
         }}
       >
-        <div className="ns-title">{t('common.rename')}</div>
+        <DialogHead title={t('common.rename')} titleId="rn-dialog-title" onClose={onClose} />
 
         <label className="ns-label">{t('renameModal.titleLabel')}</label>
         <input
@@ -160,7 +162,7 @@ export function RenameModal({
           </>
         )}
 
-        <div className="ns-actions">
+        <div className="ns-actions vh-dialog-foot">
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>

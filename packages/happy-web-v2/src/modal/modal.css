@@ -12,8 +12,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: var(--scrim);
-  backdrop-filter: blur(2px);
+  /* B-728: scrim and the card's look come from styles/dialog.css (no blur) */
   animation: vh-fade var(--motion-fast);
 }
 @keyframes vh-fade {
@@ -24,18 +23,7 @@
 .vh-modal-card {
   width: 100%;
   max-width: 400px;
-  background: var(--bg-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-modal);
-  padding: var(--sp-5);
-  display: flex;
-  flex-direction: column;
   gap: var(--sp-3);
-}
-.vh-modal-title {
-  font-size: var(--fs-16);
-  font-weight: 600;
 }
 .vh-modal-message {
   font-size: var(--fs-14);
@@ -54,12 +42,7 @@
   border-color: var(--line-heavy);
   box-shadow: none;
 }
-.vh-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--sp-2);
-  margin-top: var(--sp-2);
-}
+.vh-modal-actions { margin-top: var(--sp-2); }
 .vh-modal-btn {
   font-size: var(--fs-13);
   font-weight: 500;
@@ -71,9 +54,13 @@
   background: var(--text);
   color: var(--bg-0);
 }
+/* quiet cancel: soft fill, no frame (1-Border Rule — the card already has one) */
 .vh-modal-btn.is-cancel {
   color: var(--text-dim);
-  border-color: var(--line-2);
+  background: var(--fill-soft);
+}
+@media (hover: hover) and (pointer: fine) {
+  .vh-modal-btn.is-cancel:hover { background: var(--fill-soft-hover); color: var(--text); }
 }
 .vh-modal-btn.is-danger {
   background: var(--danger-dim);
@@ -85,9 +72,22 @@
  * third so the on-screen keyboard doesn't cover the prompt input (position:
  * fixed doesn't track the iOS visual viewport); comfier button targets. */
 @media (pointer: coarse) {
-  .vh-modal-backdrop {
+  /* prompts keep the upper-third card (the keyboard would cover a bottom
+     sheet's field); alerts and confirms use the shared phone sheet. */
+  :root .vh-modal-backdrop.is-prompt {
     align-items: flex-start;
-    padding-top: max(12dvh, env(safe-area-inset-top));
+    padding: max(12dvh, env(safe-area-inset-top)) var(--sp-4) var(--sp-4);
+  }
+  :root .vh-modal-backdrop.is-prompt > .vh-modal-card {
+    border-width: 1px;
+    border-radius: var(--r-lg);
+    padding: var(--sp-5);
+  }
+  :root .vh-modal-backdrop.is-prompt .vh-modal-actions {
+    position: static;
+    margin: var(--sp-2) 0 0;
+    padding: 0;
+    border-top: 0;
   }
   .vh-modal-input {
     font-size: var(--fs-16);

@@ -1,6 +1,6 @@
-import { X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import './tmuxhelp.css';
+import { DialogHead } from '@/ui/DialogHead';
 
 interface Shortcut {
   keys: string;
@@ -61,14 +61,9 @@ export function TmuxHelpModal({ onClose }: { onClose: () => void }) {
   ];
 
   return (
-    <div className="tmux-backdrop" onClick={onClose}>
-      <div className="tmux-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <div className="tmux-head">
-          <span className="tmux-title">{t('tmuxHelp.title')}</span>
-          <button className="tmux-close" onClick={onClose} aria-label={t('common.close')}>
-            <X size={16} />
-          </button>
-        </div>
+    <div className="tmux-backdrop vh-dialog-overlay" onClick={onClose}>
+      <div className="tmux-card vh-dialog vh-dialog--flush" role="dialog" aria-modal="true" aria-labelledby="tmux-help-title" onClick={(e) => e.stopPropagation()}>
+        <DialogHead title={t('tmuxHelp.title')} titleId="tmux-help-title" onClose={onClose} />
         <div className="tmux-body">
           {sections.map((s, i) => (
             <div className="tmux-section" key={i}>

@@ -4,12 +4,15 @@
  */
 export type Status = 'connected' | 'thinking' | 'permission' | 'offline';
 
-const LABELS: Record<Status, string> = {
-  connected: 'Connected',
-  thinking: 'Working',
-  permission: 'Needs permission',
-  offline: 'Offline',
-};
+import { t } from '@/text';
+
+/** B-728 (UI-P1-10): localized default tooltip / aria label. */
+const LABEL_KEYS = {
+  connected: 'status.dotConnected',
+  thinking: 'status.dotWorking',
+  permission: 'status.dotPermission',
+  offline: 'status.dotOffline',
+} as const satisfies Record<Status, string>;
 
 interface StatusDotProps {
   status: Status;
@@ -26,8 +29,8 @@ export function StatusDot({ status, pulse, phase = 0, size = 8, title }: StatusD
       className={`vh-dot vh-dot--${status}${pulse ? ' vh-dot--pulse' : ''}`}
       style={{ width: size, height: size, animationDelay: phase ? `${phase}ms` : undefined }}
       role="img"
-      aria-label={title ?? LABELS[status]}
-      title={title ?? LABELS[status]}
+      aria-label={title ?? t(LABEL_KEYS[status])}
+      title={title ?? t(LABEL_KEYS[status])}
     />
   );
 }

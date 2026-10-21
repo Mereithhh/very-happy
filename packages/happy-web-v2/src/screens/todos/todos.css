@@ -58,8 +58,8 @@
   width: 30px;
   height: 30px;
   border-radius: var(--r-sm);
-  border: 1px solid var(--line);
-  background: var(--bg-2);
+  border: 1px solid transparent;
+  background: var(--fill-soft);
   color: var(--text-dim);
 }
 @media (hover: hover) and (pointer: fine) {
@@ -70,7 +70,7 @@
 }
 .td-groupby:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--text-faint);
+  box-shadow: var(--focus-ring);
 }
 
 .td-refresh {
@@ -80,8 +80,8 @@
   width: 30px;
   height: 30px;
   border-radius: var(--r-sm);
-  border: 1px solid var(--line);
-  background: var(--bg-2);
+  border: 1px solid transparent;
+  background: var(--fill-soft);
   color: var(--text-dim);
 }
 @media (hover: hover) and (pointer: fine) {
@@ -388,22 +388,22 @@
 .td-workspace .td-title { margin: 0; }
 .td-source-tabs, .td-filters { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
 .td-source-tabs { margin-left: auto; }
-.td-source-tabs button, .td-filters button, .td-action {
+/* B-728 (UI-P1-14): source / status switches are .vh-segmented; secondary actions are soft fill, no frame */
+.td-source-tabs.vh-segmented { flex-wrap: nowrap; gap: 0; }
+.td-action {
   min-width: 32px; min-height: 32px; padding: 5px 10px;
-  border: 1px solid var(--line); border-radius: var(--r-sm);
-  background: var(--bg-1); color: var(--text-dim);
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  background: var(--fill-soft); color: var(--text-dim);
   display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
 }
-.td-source-tabs button[aria-pressed="true"], .td-filters button[aria-pressed="true"] {
-  color: var(--text); background: var(--bg-3); border-color: var(--line-2);
-}
+@media (hover: hover) and (pointer: fine) { .td-action:hover:not(:disabled) { background: var(--fill-soft-hover); color: var(--text); } }
 .td-builtin { width: 100%; max-width: 900px; margin: 0 auto; box-sizing: border-box; }
 .td-intro { display: flex; align-items: center; gap: var(--sp-3); }
 .td-intro p { flex: 1; margin: 0; color: var(--text-dim); font-size: var(--fs-13); line-height: 1.6; }
 .td-builtin .td-input { font-size: var(--fs-13); min-height: 32px; box-sizing: border-box; }
 .td-primary { min-width: 32px; min-height: 32px; border: 1px solid var(--text); border-radius: var(--r-sm); background: var(--text); color: var(--bg-0); padding: 8px 16px; display: inline-flex; align-items: center; justify-content: center; }
 .td-builtin button:disabled { opacity: .45; cursor: default; }
-.td-builtin button:focus-visible, .td-source-tabs button:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint); }
+.td-builtin button:focus-visible, .td-source-tabs button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .td-filters { font-size: var(--fs-13); color: var(--text-dim); }
 .td-filters > span { margin-left: auto; }
 .td-editor { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--line-2); background: var(--bg-1); border-radius: var(--r-md); }
@@ -421,7 +421,7 @@
 @media (hover: hover) and (pointer: fine) { .td-row-actions .td-action:hover:not(:disabled) { background: var(--bg-3); } }
 .td-delete-confirm { font-size: var(--fs-13); color: var(--danger); }
 @media (max-width: 640px) {
-  .td-source-tabs button { padding: 8px 10px; }
+  .td-source-tabs.vh-segmented > button { padding: 0 10px; }
   .td-builtin-row { padding: var(--sp-2); }
   .td-workspace > .td > .td-header { flex-wrap: wrap; }
   .td-workspace .td-check, .td-workspace .td-refresh, .td-workspace .td-groupby, .td-workspace .td-add { min-width: 44px; min-height: 44px; }
@@ -442,6 +442,11 @@
 .td-agent-preview { display: block; width: 100%; margin-top: var(--sp-3); resize: vertical; box-sizing: border-box; }
 
 @media (pointer: coarse) {
- .td-source-tabs button, .td-filters button, .td-action, .td-primary, .td-builtin .td-input { min-height:44px; }
+ .td-action, .td-primary, .td-builtin .td-input { min-height:44px; }
  .td-input, .td-builtin .td-input { font-size:var(--fs-16); }
+ /* B-728 (UI-P1-07) */
+ .td-refresh, .td-groupby, .td-add { min-width:44px; min-height:44px; }
+ /* the 22px box stays; an invisible ring makes the hit area 44px */
+ .td-check { position:relative; }
+ .td-check::after { content:''; position:absolute; inset:-11px; }
 }

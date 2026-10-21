@@ -60,6 +60,7 @@
   font: inherit; font-size: var(--fs-14); line-height: 1.5;
 }
 .pj-composer-bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pj-composer-empty { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: 1; min-width: 0; }
 .pj-composer-summary { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: var(--fs-12); }
 .pj-composer-summary .vh-select-trigger.pj-folder-select {
   flex: 0 1 auto; height: 26px; padding: 0 4px 0 6px;
@@ -175,7 +176,9 @@
   .pj-ghost, .pj-primary, .pj-danger { height: 44px; }
   .pj-send, .pj-icon-btn { width: 44px; height: 44px; }
   .pj-composer-input, .pj-editor textarea, .pj-note-form textarea, .pj-note-form input, .pj-settings input { font-size: 16px; }
-  .pj-tabs > button { min-height: 40px; }
+  .pj-tabs > button { min-height: 44px; }
+  /* B-728 (UI-P1-07): settings fields are finger-sized too */
+  .pj-settings input, .pj-note-form input { min-height: 44px; }
 }
 
 /* B-649 移到项目 — multi-select list inside the dialog (rows, no inner frame) */

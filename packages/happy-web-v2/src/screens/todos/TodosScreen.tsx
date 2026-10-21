@@ -18,7 +18,7 @@ export function TodosScreen() {
         <header className="td-header">
             <BackButton />
             <h1 className="td-title">{zh ? '待办' : 'Todos'}</h1>
-            <nav className="td-source-tabs" aria-label={zh ? '任务来源' : 'Task source'}>
+            <nav className="td-source-tabs vh-segmented" aria-label={zh ? '任务来源' : 'Task source'}>
                 <button type="button" aria-pressed={source === 'builtin'} onClick={() => setSource('builtin')}>{zh ? '我的待办' : 'My todos'}</button>
                 <button type="button" aria-pressed={source === 'external'} onClick={() => { setExternalVisited(true); setSource('external'); }}>{zh ? '外部来源' : 'External source'}</button>
             </nav>

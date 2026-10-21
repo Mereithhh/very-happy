@@ -292,6 +292,7 @@ export const en = {
         files: 'Files',
         fileViewer: 'File Viewer',
         loading: 'Loading...',
+        loadingWorkspace: 'Loading workspace',
         retry: 'Retry',
         delete: 'Delete',
         optional: 'optional',
@@ -321,6 +322,11 @@ export const en = {
         activeNow: 'Active now',
         unknown: 'unknown',
         unread: 'new results',
+        // B-728: StatusDot tooltip / aria label (sentence case)
+        dotConnected: 'Connected',
+        dotWorking: 'Working',
+        dotPermission: 'Needs permission',
+        dotOffline: 'Offline',
     },
 
     liveStatus: {

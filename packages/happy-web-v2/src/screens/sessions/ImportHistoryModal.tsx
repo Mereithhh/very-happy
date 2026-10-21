@@ -56,6 +56,7 @@ import {
   type ImportRowState,
 } from './claudeHistoryImport';
 import './newsession.css';
+import { DialogHead } from '@/ui/DialogHead';
 
 export type ImportHistoryAgent = HistoryAgent;
 /** B-549: browse the most recent conversations, or search their content. */
@@ -302,10 +303,9 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
   const now = Date.now();
   const progressed = summary.done + summary.failed;
   return (
-    <div className="ns-backdrop" onClick={running ? undefined : onClose}>
-      <div className="ns-card ns-card--wide" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <div className="eyebrow">{t('importClaudeHistory.eyebrow')}</div>
-        <div className="ns-title">{mode === 'search' ? t('historySearch.title') : copy.title}</div>
+    <div className="ns-backdrop vh-dialog-overlay" onClick={running ? undefined : onClose}>
+      <div className="ns-card ns-card--wide vh-dialog vh-dialog--tall" role="dialog" aria-modal="true" aria-labelledby="ih-dialog-title" onClick={(e) => e.stopPropagation()}>
+        <DialogHead title={mode === 'search' ? t('historySearch.title') : copy.title} titleId="ih-dialog-title" onClose={running ? undefined : onClose} />
         {mode === 'recent' && <div className="ns-hint" style={{ marginTop: 0 }}>{copy.intro}</div>}
 
         {online.length === 0 ? (
@@ -483,9 +483,9 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
           </>
         )}
 
-        <div className="ns-actions">
+        <div className="ns-actions vh-dialog-foot">
           {running && (
-            <span className="ns-progress mono" aria-live="polite">
+            <span className="ns-progress mono vh-dialog-foot-note" aria-live="polite">
               {t('importClaudeHistory.progress', { done: progressed, total: summary.total })}
             </span>
           )}

@@ -446,8 +446,8 @@
   display: inline-block;
   margin-right: 6px;
   padding: 0 5px;
-  border: 1px solid var(--line-2);
   border-radius: var(--r-pill);
+  background: var(--fill-soft); /* B-728 (UI-P1-19): soft fill inside the card, no second frame */
   font-size: var(--fs-10, 10px);
   color: var(--text-dim);
   vertical-align: 1px;
@@ -514,22 +514,24 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: var(--fs-10, 10px);
-  border: 1px solid currentColor;
   border-radius: var(--r-pill);
+  background: var(--fill-soft); /* B-728 (UI-P1-19): soft fill, no currentColor frame */
   padding: 0 6px;
 }
 .bd-card-llm--blocked {
   color: var(--danger);
+  background: var(--danger-dim);
 }
 .bd-card-llm--review {
   color: var(--warn);
+  background: var(--warn-dim);
 }
 
 /* ---- V2: new-task modal ---- */
+/* B-728: scrim, card, head, footer and the phone sheet come from styles/dialog.css */
 .bd-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -537,12 +539,6 @@
 }
 .bd-modal {
   width: min(440px, calc(100vw - 32px));
-  background: var(--bg-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: var(--sp-5);
-  display: flex;
-  flex-direction: column;
   gap: var(--sp-3);
 }
 .bd-modal-input {
@@ -557,11 +553,7 @@
 .bd-modal-desc {
   resize: vertical;
 }
-.bd-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--sp-3);
-}
+
 
 /* ---- B-498: automations band above the columns; empty → collapses to 0 ---- */
 .bd-attn-wrap {

@@ -94,6 +94,7 @@ export const zhHant: PartialTranslationStructure = {
         files: '檔案',
         fileViewer: '檔案檢視器',
         loading: '載入中...',
+        loadingWorkspace: '正在載入工作台',
         retry: '重試',
         delete: '刪除',
         optional: '選填',
@@ -122,6 +123,10 @@ export const zhHant: PartialTranslationStructure = {
         activeNow: '目前活躍',
         unknown: '未知',
         unread: '新結果',
+        dotConnected: '已連線',
+        dotWorking: '工作中',
+        dotPermission: '需要授權',
+        dotOffline: '離線',
     },
     liveStatus: {
         thinking: ({ elapsed }: { elapsed: string }) => `思考中 ${elapsed}`,

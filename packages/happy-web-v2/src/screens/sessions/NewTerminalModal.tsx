@@ -66,6 +66,7 @@ import {
   type StartupPreset,
 } from '@/utils/terminalStartup';
 import './newsession.css';
+import { DialogHead } from '@/ui/DialogHead';
 
 function newId(): string {
   const c = (globalThis as any).crypto;
@@ -218,10 +219,9 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="ns-backdrop" onClick={onClose}>
-      <div className="ns-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <div className="eyebrow">{t('newTerminalModal.eyebrow')}</div>
-        <div className="ns-title">{t('newTerminalModal.title')}</div>
+    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+      <div className="ns-card vh-dialog vh-dialog--tall" role="dialog" aria-modal="true" aria-labelledby="nt-dialog-title" onClick={(e) => e.stopPropagation()}>
+        <DialogHead title={t('newTerminalModal.title')} titleId="nt-dialog-title" onClose={onClose} />
 
         {showTips && (
           <div className="ns-tips" role="note">
@@ -449,7 +449,7 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
           </>
         )}
 
-        <div className="ns-actions">
+        <div className="ns-actions vh-dialog-foot">
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>

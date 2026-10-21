@@ -23,6 +23,7 @@ import { worktreeCopy } from '@/screens/sessions/worktreeCopy';
 import '@/screens/sessions/newsession.css';
 import '@/screens/sessions/worktree.css';
 import './mirror.css';
+import { DialogHead } from '@/ui/DialogHead';
 
 const RUNNING_POLL_MS = 3_000;
 
@@ -182,9 +183,9 @@ export function WorktreeSetupDialog({ machineId, worktreePath, initial, mode, la
     };
 
     return (
-        <div className="ns-backdrop" onClick={onClose}>
-            <div ref={cardRef} tabIndex={-1} className="ns-card wts-card" role="dialog" aria-modal="true" aria-labelledby="wts-title" onClick={(e) => e.stopPropagation()}>
-                <div className="ns-title" id="wts-title">{mode === 'review' ? copy.approveTitle : copy.outputTitle}</div>
+        <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+            <div ref={cardRef} tabIndex={-1} className="ns-card wts-card vh-dialog vh-dialog--tall" role="dialog" aria-modal="true" aria-labelledby="wts-title" onClick={(e) => e.stopPropagation()}>
+                <DialogHead title={mode === 'review' ? copy.approveTitle : copy.outputTitle} titleId="wts-title" onClose={onClose} />
                 {mode === 'review' && pending ? (
                     <>
                         <p className="wts-lead">{copy.approveLead}</p>
@@ -213,14 +214,14 @@ export function WorktreeSetupDialog({ machineId, worktreePath, initial, mode, la
                     <>
                         <div className="wts-state">
                             {copy.stateLabel[status.setup.state] ?? status.setup.state}
-                            {status.setup.exitCode != null ? ` · exit ${status.setup.exitCode}` : ''}
+                            {status.setup.exitCode != null ? ` · ${copy.exitCode(status.setup.exitCode)}` : ''}
                             {status.setup.message ? ` · ${status.setup.message}` : ''}
                         </div>
                         <pre className="wts-script" data-testid="worktree-setup-output" tabIndex={0}>{output || copy.outputEmpty}</pre>
                     </>
                 )}
                 {error && <p className="wts-error" role="alert">{error}</p>}
-                <div className="ns-actions">
+                <div className="ns-actions vh-dialog-foot">
                     {mode === 'review' && pending ? (
                         <>
                             <Button variant="ghost" onClick={() => { void decline(); }} disabled={busy !== null}>

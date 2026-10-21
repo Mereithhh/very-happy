@@ -1,8 +1,9 @@
 import { StartupLoader } from '@/ui/StartupLoader';
+import { t } from '@/text';
 
 export function RouteLoading({
   fullViewport = false,
-  label = 'Loading workspace',
+  label = t('common.loadingWorkspace'),
   centered = false,
 }: {
   fullViewport?: boolean;

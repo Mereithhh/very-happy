@@ -54,7 +54,7 @@ export const CONVERSATION_CSS = new Set([
     'askStepper', 'attachments', 'btw', 'builtinTool', 'chatlist', 'chatReadingAids', 'code', 'command', 'compaction', 'draftBlock',
     'filepathlink', 'input', 'livestream', 'markdown', 'mermaid', 'message', 'messageActions',
     'meta', 'permission', 'sessionPeerMessage', 'sessionpreviews', 'statusbar', 'subagent',
-    'teamMessage', 'toolgroup', 'toolHistory', 'toolview', 'turnactivity',
+    'teamMessage', 'toolgroup', 'toolHistory', 'toolview', 'turnactivity', 'turnDiff',
 ].map(name => `screens/session/${name}.css`));
 
 /** ⑤ 允许出现对应原生控件的唯一文件（相对 WEB_SRC）。 */

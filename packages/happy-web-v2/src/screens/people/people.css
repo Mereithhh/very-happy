@@ -47,4 +47,4 @@
   .pp-row:has(.pp-confirm) .pp-actions { width: 100%; justify-content: flex-end; padding-left: 44px; }
   .pp-confirm { max-width: none; flex: 1; }
 }
-@media (pointer: coarse) { .pp-actions .vh-btn { min-height: 36px; } }
+@media (pointer: coarse) { .pp-search { min-height: 44px; } .pp-search input { font-size: var(--fs-16); } }

@@ -1,0 +1,134 @@
+/* B-728 (UI-P1-05/06): the one dialog shell.
+ *
+ * Every form dialog — the Radix ones (运行控制、Git、模型配置、分享), the
+ * new-session family (新会话、新终端、接入 tmux、导入对话、移到项目、重命名),
+ * the global Modal (alert/confirm/prompt) and the teams <dialog> — wears these
+ * classes. Positioning and z-index stay with each family (a centring backdrop
+ * wrapper, a Radix fixed card, a native top-layer <dialog>); the look lives here:
+ *
+ *   scrim backdrop, no blur (design-language §5.7)
+ *   card: --bg-1, one hairline, --r-lg, --shadow-modal
+ *   head: title (+ description) left, ghost × pinned top-right
+ *   foot: right-aligned, quiet cancel then the primary action last (bottom-right)
+ *   phone (≤600px): bottom sheet, top corners only; the footer sticks to the
+ *   bottom of the sheet with 48px buttons, so 创建 / 保存 never scroll away.
+ */
+.vh-dialog-overlay {
+  background: var(--scrim);
+  backdrop-filter: none;
+}
+.vh-dialog {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-1);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-modal);
+  padding: var(--sp-5);
+}
+/* sections own their padding (runtime controls: pinned head + scrolling body) */
+.vh-dialog--flush { padding: 0; overflow: hidden; }
+.vh-dialog:focus { outline: none; } /* focused only as the open-dialog anchor on touch */
+.vh-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+.vh-dialog-head > :first-child { flex: 1; min-width: 0; }
+.vh-dialog-title {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-16);
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.vh-dialog-description {
+  margin: var(--sp-1) 0 0;
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+}
+/* ghost ×: no fill, no frame until hover; always the last item of the head row */
+.vh-dialog-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: -4px -6px 0 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .vh-dialog-close:hover { background: var(--fill-hover); color: var(--text); }
+}
+.vh-dialog-close:active { background: var(--fill-hover); }
+.vh-dialog-close:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.vh-dialog-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+/* a status line (progress, counter) in the footer takes the left side */
+.vh-dialog-foot > .vh-dialog-foot-note { flex: 1 1 auto; margin: 0 auto 0 0; }
+
+@media (pointer: coarse) {
+  .vh-dialog-close { width: 44px; height: 44px; margin: -10px -12px 0 0; }
+}
+
+/* ── phone: bottom sheet with a sticky footer ─────────────────────────────
+   `:root` lifts these above the families' own desktop width rules, which load
+   later in lazy chunks. */
+@media (max-width: 600px) {
+  :root .vh-dialog {
+    width: 100%;
+    max-width: none;
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top)));
+    border-width: 1px 0 0;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    padding: var(--sp-4) var(--sp-4) 0;
+  }
+  :root .vh-dialog--flush { padding: 0; }
+  /* wrapper-type families (Modal, new-session): the backdrop lays the sheet on the bottom edge */
+  :root .vh-dialog-overlay:has(> .vh-dialog) {
+    align-items: flex-end;
+    justify-content: stretch;
+    padding: 0;
+  }
+  /* form dialogs fill the screen: inputs stay at the top, above the keyboard */
+  :root .vh-dialog--tall { height: calc(100dvh - max(12px, env(safe-area-inset-top))); }
+  :root .vh-dialog-foot {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    flex-wrap: nowrap;
+    margin: auto calc(-1 * var(--sp-4)) 0;
+    padding: var(--sp-3) var(--sp-4) max(var(--sp-3), env(safe-area-inset-bottom));
+    background: var(--bg-1);
+    border-top: var(--hairline) solid var(--line);
+  }
+  :root .vh-dialog-foot > :is(button, a, .vh-btn) { flex: 1 1 0; min-height: 48px; justify-content: center; }
+  .vh-dialog-foot > .vh-dialog-foot-note { flex: 1 1 100%; }
+  .vh-dialog-foot:has(> .vh-dialog-foot-note) { flex-wrap: wrap; }
+  /* no footer: keep the home-indicator inset below the last field */
+  .vh-dialog:not(:has(> .vh-dialog-foot))::after {
+    content: '';
+    display: block;
+    flex: none;
+    height: max(var(--sp-4), env(safe-area-inset-bottom));
+  }
+}

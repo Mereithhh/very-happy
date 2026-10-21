@@ -1,7 +1,7 @@
 /* B-571 turn change rollup — one neutral line, no card, no accent. */
 .tdr {
   min-width: 0;
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
   color: var(--text-dim);
 }
 .tdr-head {
@@ -37,11 +37,11 @@
   display: inline-flex;
   gap: var(--sp-1);
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
 }
 .tdr-unknown {
   flex: none;
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-faint);
 }
 .tdr-review {
@@ -70,10 +70,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
   color: var(--text);
 }
-.tdr-edits { flex: none; color: var(--text-faint); font-size: var(--fs-11); }
+.tdr-edits { flex: none; color: var(--text-faint); font-size: var(--chat-fs-caption); }
 .tdr-file-row .tdr-counts,
 .tdr-file-row .tdr-unknown { margin-left: auto; }
 .tdr-diffs {
@@ -84,7 +84,7 @@
 }
 .tdr-note {
   padding: var(--sp-1);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-faint);
 }
 

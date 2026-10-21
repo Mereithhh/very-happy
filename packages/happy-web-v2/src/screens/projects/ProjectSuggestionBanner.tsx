@@ -12,7 +12,7 @@ import { readDismissed, suggestProjectFor, writeDismissed } from './projectSugge
  * Reuses the session strip chrome (`.mrb-note`). Mount with a per-session key.
  */
 export function ProjectSuggestionBanner({ sessionId }: { sessionId: string }) {
-  const zh = useTranslation().lang === 'zh-Hans';
+  const zh = useTranslation().lang.startsWith('zh');
   const snap = useProjects();
   const meta = storage((s) => s.sessions[sessionId]?.metadata as { machineId?: string; path?: string } | undefined);
   const [dismissed, setDismissed] = useState(() => readDismissed().has(sessionId));

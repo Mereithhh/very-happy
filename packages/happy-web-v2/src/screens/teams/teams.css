@@ -187,7 +187,8 @@
 .teams-lane { min-width: 0; }
 .teams-lane > h3 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .teams-lane > h3 small { margin-left: auto; }
-.teams-lane:nth-child(2) > h3 svg { color: var(--accent); }
+/* B-728 (P2-05): live colour only while the 进行中 lane actually holds work */
+.teams-lane:nth-child(2):has(.teams-task-preview) > h3 svg { color: var(--accent); }
 .teams-screen .teams-task-preview { display: flex; flex-direction: column; align-items: stretch; gap: 12px; text-align: left; width: 100%; min-width: 0; margin: 0 0 8px; padding: 12px; border: 0; border-radius: var(--r-md); background: var(--bg-1); box-shadow: var(--panel-shadow); font-size: 13px; transition: box-shadow var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }
 /* B-614 (CDS): clickable cards lift on hover (translateY -1.5px + md shadow + strong ring) */
 @media (hover: hover) {
@@ -215,10 +216,17 @@
 .teams-roster span { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .teams-list-task { display: block !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .teams-list-task span { margin-right: 8px; color: var(--text); }
-.teams-dialog { width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); margin: auto; padding: 24px; border: 0; border-radius: var(--r-lg); background: var(--bg-1); box-shadow: var(--shadow-popover); color: var(--text); box-sizing: border-box; overflow-y: auto; }
-.teams-dialog::backdrop { background: var(--bg-0); opacity: .8; }
-.teams-dialog-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
-.teams-dialog-heading h2 { margin: 0; }
+/* B-728 (UI-P1-05): the look is the shared shell (styles/dialog.css .vh-dialog*);
+   the native <dialog> only keeps its width, scrim and form footer here. */
+.teams-dialog { width: min(680px, calc(100vw - 32px)); margin: auto; }
+.teams-dialog::backdrop { background: var(--scrim); }
+.teams-dialog:focus { outline: none; }
+/* `.teams-screen button` fills every control; the × stays a ghost */
+.teams-screen .teams-dialog .vh-dialog-close { padding: 0; min-height: 0; background: transparent; }
+@media (hover: hover) and (pointer: fine) { .teams-screen .teams-dialog .vh-dialog-close:not(:disabled):hover { background: var(--fill-hover); } }
+/* UI-P1-15: each form's submit is its footer — own row, bottom-right */
+.teams-dialog form > button:last-child { grid-column: 1 / -1; justify-self: end; min-width: 96px; }
+.teams-dialog > button:last-child { align-self: flex-end; margin-top: var(--sp-4); min-width: 96px; }
 .teams-dialog .teams-task { border: 0; }
 .teams-full-result { background: var(--surface-code); padding: 16px; margin: 16px 0; border: 0; border-radius: var(--r-btn); }
 .teams-full-result h3 { margin-top: 0; font-size: 14px; }
@@ -234,7 +242,10 @@
   .teams-board { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .teams-work-actions { justify-content: flex-start; }
   .teams-members-grid { grid-template-columns: minmax(0, 1fr); }
-  .teams-dialog { padding: 16px; max-height: calc(100dvh - 24px); }
+  /* phone sheet: the native dialog sits on the bottom edge; submit stays reachable */
+  .teams-dialog { margin: auto 0 0; }
+  .teams-dialog form > button:last-child,
+  .teams-dialog > button:last-child { position: sticky; bottom: max(var(--sp-3), env(safe-area-inset-bottom)); justify-self: stretch; align-self: stretch; min-height: 48px; box-shadow: 0 0 0 var(--sp-3) var(--bg-1); }
   .teams-list-card { padding: 18px; }
 }
 /* First use follows the ordinary conversation visual language. */

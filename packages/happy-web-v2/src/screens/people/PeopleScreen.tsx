@@ -8,7 +8,7 @@
  * `relationship-updated` socket event AND an explicit refresh, so a row
  * never shows a state the server does not hold.
  */
-import { Check, Search, UserPlus, X } from 'lucide-react';
+import { Check, Search, UserPlus, UsersRound, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BackButton } from '@/app/BackButton';
 import { useAuth } from '@/auth/AuthContext';
@@ -17,7 +17,7 @@ import { removeFriend, searchUsersByUsername, sendFriendRequest } from '@/sync/a
 import { getDisplayName, type UserProfile } from '@/sync/friendTypes';
 import { useFriends, useFriendsLoaded } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { Button, Spinner, toast } from '@/ui';
+import { Button, EmptyState, Spinner, toast } from '@/ui';
 import { groupPeople, initialsOf, personSubline, searchActionFor } from './peoplePresentation';
 import './people.css';
 
@@ -164,7 +164,7 @@ export function PeopleScreen() {
                     <section className="pp-section">
                         <h2 className="pp-section-title">{t('people.friends')}</h2>
                         {groups.friends.length === 0 ? (
-                            <p className="pp-empty">{t('people.friendsEmpty')}</p>
+                            <EmptyState compact icon={<UsersRound size={28} aria-hidden />} title={t('people.friendsEmpty')} />
                         ) : (
                             <ul className="pp-list">
                                 {groups.friends.map((person) => <Person key={person.id} person={person} actions={removeButton(person, t('people.remove'))} />)}

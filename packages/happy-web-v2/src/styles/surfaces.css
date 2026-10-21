@@ -111,8 +111,9 @@
   .vh-segmented > :is(button, a):not([aria-pressed='true'], [aria-selected='true'], [aria-current='page'], .is-active):has(svg) .vh-segmented-label { display: none; }
   .vh-segmented > :is(button, a):not([aria-pressed='true'], [aria-selected='true'], [aria-current='page'], .is-active):has(svg) { flex: 0 0 auto; padding: 0 var(--sp-2); }
 }
+/* B-728 (UI-P1-07): finger-sized segments on touch */
 @media (pointer: coarse) {
-  .vh-segmented > :is(button, a) { min-height: 36px; }
+  .vh-segmented > :is(button, a) { min-height: 44px; }
 }
 
 /* ── typography details (CDS §1.5) ───────────────────────────────────────── */

@@ -120,12 +120,17 @@
   color: var(--text-faint);
   opacity: 0.72;
 }
+/* B-728 (UI-P1-20): directory group titles are names — Sans, no caps; the path is the tooltip */
 .sb-section-head--workspace {
   min-height: 32px;
   padding-block: 2px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-12);
+  text-transform: none;
+  letter-spacing: 0;
 }
 .sb-section-head--workspace .sb-section-label {
-  max-width: 112px;
+  max-width: 160px;
   flex-shrink: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -452,6 +457,11 @@
   width: 36px;
   height: 36px;
   justify-content: center;
+}
+/* B-728 (UI-P1-07): footer controls are 44px targets on touch */
+@media (pointer: coarse) {
+  .sb-footer-btn { min-height: 44px; }
+  .sb-footer-notes, .sb-footer-icon, .sb-theme-toggle { min-width: 44px; height: 44px; }
 }
 
 /* shared Radix dropdown menu */

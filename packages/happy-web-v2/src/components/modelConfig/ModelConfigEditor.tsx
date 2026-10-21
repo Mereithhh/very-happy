@@ -216,14 +216,14 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
 
     return <Dialog.Root open={open} onOpenChange={(next) => { if (!next) setForm((f) => ({ ...f, keyValue: '' })); onOpenChange(next); }}>
         <Dialog.Portal>
-            <Dialog.Overlay className="so-overlay" />
-            <Dialog.Content className="so-dialog mce-dialog" aria-describedby="mce-desc" onOpenAutoFocus={(e) => { e.preventDefault(); titleRef.current?.focus(); }}>
-                <div className="so-head">
+            <Dialog.Overlay className="vh-dialog-overlay so-overlay" />
+            <Dialog.Content className="vh-dialog so-dialog mce-dialog" aria-describedby="mce-desc" onOpenAutoFocus={(e) => { e.preventDefault(); titleRef.current?.focus(); }}>
+                <div className="vh-dialog-head so-head">
                     <div>
-                        <Dialog.Title ref={titleRef} tabIndex={-1} className="so-title">{t('modelConfig.editorTitle')}</Dialog.Title>
+                        <Dialog.Title ref={titleRef} tabIndex={-1} className="vh-dialog-title so-title">{t('modelConfig.editorTitle')}</Dialog.Title>
                         <p id="mce-desc" className="so-description">{t('modelConfig.editorDescription')}</p>
                     </div>
-                    <Dialog.Close className="so-close" aria-label={t('common.close')}><X size={18} /></Dialog.Close>
+                    <Dialog.Close className="vh-dialog-close so-close" aria-label={t('common.close')}><X size={18} /></Dialog.Close>
                 </div>
 
                 <div className="so-fields">

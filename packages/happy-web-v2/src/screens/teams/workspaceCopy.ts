@@ -82,4 +82,4 @@ const zh: typeof en = {
 };
 /** Both languages, for tests that every key has copy. */
 export const WORKSPACE_COPY = { en, zh };
-export function useWorkspaceCopy() { return useTranslation().lang === 'zh-Hans' ? zh : en; }
+export function useWorkspaceCopy() { return useTranslation().lang.startsWith('zh') ? zh : en; }
