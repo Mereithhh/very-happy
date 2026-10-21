@@ -29,8 +29,10 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { AppShell, type AppShellMode } from './AppShell';
 import './layout.css';
 import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
+import { useTranslation } from '@/i18n/useTranslation';
 
 export function AppLayout() {
+  const { t } = useTranslation();
   // Singleton terminal sync (daemon pushes + legacy-poll fallback) — lives at
   // layout level so it keeps running with the sidebar collapsed/unmounted
   // (mobile detail, /board).
@@ -107,7 +109,7 @@ export function AppLayout() {
       <AppShell mode={mode} width={width} onResizeStart={onDragStart}
         sidebar={<RecoverableBoundary region="sidebar"><Sidebar /></RecoverableBoundary>}
         rail={<>
-          <button className="app-rail-btn" onClick={() => setCollapsed(false)} aria-label="expand sidebar" title="Show sidebar">
+          <button className="app-rail-btn" onClick={() => setCollapsed(false)} aria-label={t('files.expandSidebar')} title={t('files.expandSidebar')}>
             <PanelLeft size={18} />
           </button>
           <NotificationBell />

@@ -28,6 +28,7 @@ export const en = {
         latencyHint: "Latency measures the browser-to-relay connection, not model response time.",
     },
     teams: {
+        codingAgent: 'Coding agent',
         executionMode: "Execution mode",
         approvalDefault: "Approve as needed",
         approvalBypass: "No approvals",
@@ -256,6 +257,8 @@ export const en = {
         name: 'Username',
         // Simple string constants
         cancel: 'Cancel',
+        moreActions: 'More actions',
+        removeItem: ({ name }: { name: string }) => `Remove ${name}`,
         authenticate: 'Authenticate',
         save: 'Save',
         saveAs: 'Save As',
@@ -385,6 +388,8 @@ export const en = {
         // Appearance settings screen
         theme: 'Theme',
         themeDescription: 'Choose your preferred color scheme',
+        switchToLight: 'Switch to light theme',
+        switchToDark: 'Switch to dark theme',
         themeOptions: {
             adaptive: 'Adaptive',
             light: 'Light', 
@@ -600,6 +605,9 @@ export const en = {
     },
 
     session: {
+        infoAgent: 'Agent',
+        infoHost: 'Host',
+        infoPath: 'Path',
         inputPlaceholder: 'Type a message ...',
         // B-568: socket down for 1.5s+
         reconnectingPlaceholder: 'Reconnecting… messages you send will go out once it recovers',
@@ -1777,6 +1785,8 @@ export const en = {
         },
     },
     sidebar: {
+        kindTerminal: 'Terminal',
+        kindChat: 'Chat',
         agentStatusUnknown: 'Status unknown — waiting for a fresh agent observation',
         // B-465: the daemon predates observation stamps; the verdict is an estimate.
         agentStatusLegacy: 'Estimated from an older Very Happy CLI (terminal activity) — update the daemon for exact status',

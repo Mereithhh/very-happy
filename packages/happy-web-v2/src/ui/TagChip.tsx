@@ -1,3 +1,4 @@
+import { useTranslation } from '@/i18n/useTranslation';
 import { X } from 'lucide-react';
 import { isPriorityTag, tagHueIndex } from '@/utils/tags';
 import './tagchip.css';
@@ -24,6 +25,7 @@ export function TagChip({
   onRemove?: () => void;
   onClick?: () => void;
 }) {
+  const { t } = useTranslation();
   const color = isPriorityTag(tag) ? 'priority' : `h${tagHueIndex(tag)}`;
   const cls = `vh-tag vh-tag--${color}${small ? ' vh-tag--sm' : ''}${onClick ? ' vh-tag--btn' : ''}`;
   const body = (
@@ -32,7 +34,7 @@ export function TagChip({
       {onRemove && (
         <button
           className="vh-tag-x"
-          aria-label={`remove ${tag}`}
+          aria-label={t('common.removeItem', { name: tag })}
           onClick={(e) => {
             e.stopPropagation();
             onRemove();

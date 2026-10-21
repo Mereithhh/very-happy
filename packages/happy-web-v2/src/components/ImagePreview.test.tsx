@@ -2,7 +2,7 @@
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ lang: 'en' }) }));
+vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ lang: 'en', t: (key: string) => key }) }));
 import { ImagePreview } from './ImagePreview';
 
 let host: HTMLDivElement;

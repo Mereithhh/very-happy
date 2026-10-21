@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { Modal } from './ModalManager';
+import { t } from '@/text';
 import type { ModalConfig, ModalContextValue } from './types';
 import { useImeGuard, isImeGuardedEvent } from '@/utils/ime';
 import './modal.css';
@@ -194,7 +195,7 @@ function ModalCard({
 
         <div className="vh-modal-actions">
           {config.type === 'alert' &&
-            (config.buttons ?? [{ text: 'OK' }]).map((b, i) => (
+            (config.buttons ?? [{ text: t('common.ok') }]).map((b, i) => (
               <button
                 key={i}
                 className={`vh-modal-btn ${b.style === 'destructive' ? 'is-danger' : b.style === 'cancel' ? 'is-cancel' : 'is-primary'}`}
@@ -210,13 +211,13 @@ function ModalCard({
                 className="vh-modal-btn is-cancel"
                 onClick={() => close(() => Modal.resolveConfirm(config.id, false))}
               >
-                {config.cancelText ?? 'Cancel'}
+                {config.cancelText ?? t('common.cancel')}
               </button>
               <button
                 className={`vh-modal-btn ${config.destructive ? 'is-danger' : 'is-primary'}`}
                 onClick={() => close(() => Modal.resolveConfirm(config.id, true))}
               >
-                {config.confirmText ?? 'OK'}
+                {config.confirmText ?? t('common.ok')}
               </button>
             </>
           )}
@@ -227,13 +228,13 @@ function ModalCard({
                 className="vh-modal-btn is-cancel"
                 onClick={() => close(() => Modal.resolvePrompt(config.id, null))}
               >
-                {config.cancelText ?? 'Cancel'}
+                {config.cancelText ?? t('common.cancel')}
               </button>
               <button
                 className="vh-modal-btn is-primary"
                 onClick={() => close(() => Modal.resolvePrompt(config.id, promptValue))}
               >
-                {config.confirmText ?? 'OK'}
+                {config.confirmText ?? t('common.ok')}
               </button>
             </>
           )}

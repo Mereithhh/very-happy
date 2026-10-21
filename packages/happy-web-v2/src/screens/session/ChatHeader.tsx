@@ -231,7 +231,7 @@ export function ChatHeader({
                     {host && <span className="ch-host">{host}</span>}
                 </button></Popover.Trigger>
                 <Popover.Portal><Popover.Content className="ch-identity-details" align="end" sideOffset={6} collisionPadding={12}>
-                    <dl><dt>Agent</dt><dd>{agent}</dd><dt>Host</dt><dd>{host || t('status.unknown')}</dd><dt>Path</dt><dd>{cwd || t('status.unknown')}</dd></dl>
+                    <dl><dt>{t('session.infoAgent')}</dt><dd>{agent}</dd><dt>{t('session.infoHost')}</dt><dd>{host || t('status.unknown')}</dd><dt>{t('session.infoPath')}</dt><dd>{cwd || t('status.unknown')}</dd></dl>
                 </Popover.Content></Popover.Portal>
             </Popover.Root></div>}
             {/* Rename takes the whole bar: with the status pill and icons in

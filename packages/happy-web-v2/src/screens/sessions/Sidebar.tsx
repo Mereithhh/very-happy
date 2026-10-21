@@ -2003,7 +2003,7 @@ function SidebarRow({
         aria-expanded={peekable ? peek.open !== null : undefined}
         aria-describedby={peekable && peek.open !== null ? peekDomId(row.session!.id) : undefined}
       >
-        <span className="sb-row-icon sb-row-icon--neutral" title={`${agentLabel} · ${isTerminal ? 'Terminal' : 'Chat'}`} aria-label={`${agentLabel} · ${isTerminal ? 'Terminal' : 'Chat'}`}>
+        <span className="sb-row-icon sb-row-icon--neutral" title={`${agentLabel} · ${isTerminal ? t('sidebar.kindTerminal') : t('sidebar.kindChat')}`} aria-label={`${agentLabel} · ${isTerminal ? t('sidebar.kindTerminal') : t('sidebar.kindChat')}`}>
           {!isTerminal ? <MessageSquare size={15} /> : terminalAgent === 'claude' ? <Asterisk size={16} /> : terminalAgent === 'codex' ? <CodeXml size={16} /> : terminalAgent === 'pi' ? <Pi size={16} /> : <TerminalSquare size={16} />}
         </span>
         <span className="sb-row-text">
@@ -2066,7 +2066,7 @@ function SidebarRow({
         </button>
       )}
       <ActionDropdownMenu items={menuItems} align="end" sideOffset={4}>
-        <button className="sb-row-menu" aria-label="actions" onClick={(e) => e.stopPropagation()}>
+        <button className="sb-row-menu" aria-label={t('common.moreActions')} onClick={(e) => e.stopPropagation()}>
           <MoreHorizontal size={16} />
         </button>
       </ActionDropdownMenu>

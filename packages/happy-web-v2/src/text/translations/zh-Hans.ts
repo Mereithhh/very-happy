@@ -30,6 +30,7 @@ export const zhHans: TranslationStructure = {
         latencyHint: "延迟仅反映浏览器到区域中继，不代表模型响应速度。",
     },
     teams: {
+        codingAgent: '编码 Agent',
         executionMode: "执行模式",
         approvalDefault: "按需审批",
         approvalBypass: "免审批",
@@ -508,6 +509,8 @@ export const zhHans: TranslationStructure = {
 
     common: {
         name: '用户名',
+        moreActions: '更多操作',
+        removeItem: ({ name }: { name: string }) => `移除 ${name}`,
         // Simple string constants
         cancel: '取消',
         authenticate: '认证',
@@ -660,6 +663,8 @@ export const zhHans: TranslationStructure = {
         // Appearance settings screen
         theme: '主题',
         themeDescription: '选择您喜欢的配色方案',
+        switchToLight: '切换到浅色主题',
+        switchToDark: '切换到深色主题',
         themeOptions: {
             adaptive: '自适应',
             light: '浅色', 
@@ -824,6 +829,9 @@ export const zhHans: TranslationStructure = {
     },
 
     session: {
+        infoAgent: 'Agent',
+        infoHost: '主机',
+        infoPath: '路径',
         inputPlaceholder: '输入消息...',
         reconnectingPlaceholder: '重连中…发送的消息会在恢复后送出',
         peerMessage: {
@@ -1950,6 +1958,8 @@ export const zhHans: TranslationStructure = {
         },
     },
     sidebar: {
+        kindTerminal: '终端',
+        kindChat: '对话',
         agentStatusUnknown: '状态未知，等待新的 Agent 状态上报',
         agentStatusLegacy: '由旧版 Very Happy CLI 上报，按终端活动估计；升级 daemon 后才精确',
         agentStatusOffline: 'Agent 未连接',
