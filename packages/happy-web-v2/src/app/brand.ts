@@ -12,7 +12,7 @@ export interface BrandConfig {
   name: string;
   /** Lower-case wordmark used by the auth cards; the default keeps the "very happy" lockup. */
   wordmark: string;
-  /** Optional logo replacing the CyberMark; http(s) URL or an absolute path. */
+  /** Optional logo replacing the VeryHappyMark; http(s) URL or an absolute path. */
   logoUrl: string | null;
   /** B-638: dark-theme variant of `logoUrl` (shown via `brand.css` when the theme is dark). */
   logoDarkUrl: string | null;
