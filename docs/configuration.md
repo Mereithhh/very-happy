@@ -392,6 +392,42 @@ terminals still work. A direct shell may survive a brief browser reconnect while
 the same daemon holds its PTY, but it is not durable/discoverable like tmux and
 ends on daemon restart or idle cleanup.
 
+### Custom models and providers (B-688)
+
+**Settings → Models & providers** (and **Custom…** at the bottom of the composer's
+model picker) edits each agent's *own* config file on the chosen machine, so the
+same configuration applies when you run the agent in a terminal there:
+
+| Agent | File (on the machine) | Keys Very Happy manages |
+|---|---|---|
+| Claude Code | `${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json` | `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_AUTH_TOKEN` or `env.ANTHROPIC_API_KEY`, `env.ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`, `model`, `modelPicker.options`, an `apiKeyHelper` for env-variable keys |
+| Codex | `${CODEX_HOME:-~/.codex}/config.toml` | `model`, `model_provider`, and `name` / `base_url` / `wire_api` / `env_key` / `experimental_bearer_token` in `[model_providers.<id>]` |
+| Gemini CLI | `~/.gemini/settings.json`, `~/.gemini/.env` | `model.name`; `GOOGLE_GEMINI_BASE_URL`, `GEMINI_API_KEY` |
+| pi | `${PI_CODING_AGENT_DIR:-~/.pi/agent}/models.json`, `settings.json` | `providers.<id>.{baseUrl, api, apiKey, models}`; `defaultProvider`, `defaultModel` |
+
+- Every change is previewed as a diff (keys masked) and written only after you
+  confirm. The daemon re-reads the files first and refuses if they changed since
+  the preview, keeps every other setting (TOML comments and layout included),
+  backs the files up to `$HAPPY_HOME_DIR/model-config-backups/` (last 20 per
+  agent, restorable from the same dialog) and writes atomically. Files with
+  comments in JSON (allowed by pi and Gemini) are left alone — edit those by hand.
+- Keys travel only inside the machine-key-encrypted RPC to the daemon; the server
+  does not store or log them and the Web only shows a mask. Prefer **Env variable**:
+  Codex writes `env_key`, pi writes `${NAME}`, Claude gets an `apiKeyHelper` that
+  prints `$NAME`. Sessions inherit the daemon's environment, so set the variable
+  where the daemon starts (the page says whether it is present). Gemini has no
+  env-reference form; set `GEMINI_API_KEY` in the daemon environment instead.
+- Changes apply to **new** sessions; running sessions keep their configuration
+  until restarted. A Claude change re-runs the auth preflight
+  (`daemonState.claudeAuth`). The model ids you configure are added to that
+  machine's model picker.
+- `~/.gemini/.env` is Gemini's fallback: a `.gemini/.env` or `.env` in the
+  session folder (or a parent) takes precedence.
+- Needs a CLI that publishes `modelConfigVersion`; older machines show
+  "update the CLI".
+- Audit trail: `$HAPPY_HOME_DIR/model-config-audit.jsonl` records the action,
+  files, key names and the key mode — never key values.
+
 ### Machine web panels and "needs you" (B-510)
 
 A machine can declare local web pages a person may need to look at — a noVNC

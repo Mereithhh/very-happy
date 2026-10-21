@@ -1,0 +1,63 @@
+/* B-688 model / provider editor. Reuses the session-options dialog shell (.so-*);
+   one closed outline (the dialog) — everything inside is fill steps + hairlines. */
+.mce-dialog { width: min(640px, calc(100vw - 32px)); max-height: min(820px, calc(100dvh - 32px)); }
+.mce-harness { width: 100%; }
+.mce-input {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  border-radius: var(--r-btn);
+  background: var(--bg-2);
+  color: var(--text);
+  padding: 8px 12px;
+  font: var(--fs-13)/1.4 var(--font-mono);
+}
+.mce-input:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.mce-input:disabled { opacity: 0.6; }
+.mce-textarea { resize: vertical; min-height: 72px; }
+.mce-hint { color: var(--text-faint); font-size: var(--fs-11); line-height: 1.45; overflow-wrap: anywhere; }
+.mce-note { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin: 0; color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; }
+.mce-note a { color: var(--text); text-decoration: underline; }
+.mce-note--warn { color: var(--warn); }
+.mce-note--danger { color: var(--danger); }
+.mce-files { display: grid; gap: 2px; }
+.mce-file { display: flex; gap: var(--sp-2); align-items: baseline; flex-wrap: wrap; font-size: var(--fs-11); color: var(--text-faint); }
+.mce-file code { font-family: var(--font-mono); overflow-wrap: anywhere; color: var(--text-dim); }
+.mce-file-state { color: var(--warn); }
+.mce-key { border: 0; margin: 0; padding: 0; min-width: 0; }
+.mce-key > legend { padding: 0; margin-bottom: var(--sp-2); }
+.mce-keymodes { width: 100%; }
+.mce-check { display: flex; gap: var(--sp-2); align-items: center; color: var(--text); font-size: var(--fs-13); }
+.mce-check input { width: 16px; height: 16px; accent-color: var(--text); }
+.mce-more > summary { cursor: pointer; color: var(--text-dim); font-size: var(--fs-12); font-weight: 600; padding: var(--sp-1) 0; }
+.mce-more > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-sm); }
+.mce-more > .so-fields { margin-top: var(--sp-3); }
+.mce-warnings { margin: 0; padding-left: 18px; color: var(--warn); font-size: var(--fs-12); line-height: 1.5; }
+.mce-preview { display: grid; gap: var(--sp-2); }
+.mce-diff {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  border-radius: var(--r-code);
+  background: var(--surface-code);
+  box-shadow: var(--panel-shadow);
+  padding: var(--sp-2) 0;
+  font: var(--fs-12)/1.5 var(--font-mono);
+}
+.mce-diff-line { display: block; padding: 0 var(--sp-3); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-dim); }
+.mce-diff-line--add { background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--text); }
+.mce-diff-line--del { background: color-mix(in srgb, var(--danger) 8%, transparent); color: var(--text); }
+.mce-diff-line--hunk, .mce-diff-line--file { color: var(--text-faint); }
+.mce-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); }
+.mce-backups { list-style: none; margin: var(--sp-2) 0 0; padding: 0; display: grid; gap: 2px; }
+.mce-backups li { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-12); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.mce-backups li > :last-child { margin-left: auto; }
+@media (pointer: coarse) {
+  .mce-input { font-size: 16px; min-height: 44px; }
+  .mce-actions :is(button) { min-height: 44px; }
+}
+/* settings page machine row */
+.mcs-machine { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
+.mcs-machine > .so-select-wrap { flex: 1; min-width: 0; }
+/* inside the settings card the select is fill-only (1-Border Rule) */
+.mcs-machine .so-select { border: 0; }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Settings, Palette, User, Bot, Bookmark, Bell, Cable, Volume2, HardDrive, BarChart3, Stethoscope, KeyRound, Mail, Link2, Search, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Settings, Palette, User, Bot, Cpu, Bookmark, Bell, Cable, Volume2, HardDrive, BarChart3, Stethoscope, KeyRound, Mail, Link2, Search, ChevronRight } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
@@ -15,6 +15,7 @@ export const settingsSections: {path:string; key:SimpleTranslationKey; icon:type
   {path:'appearance',key:'settings.appearance',icon:Palette},
   {path:'account',key:'settings.account',icon:User},
   {path:'agents',key:'settingsAgents.title',icon:Bot},
+  {path:'models',key:'modelConfig.title',icon:Cpu},
   {path:'snippets',key:'settingsSnippets.navTitle',icon:Bookmark},
   {path:'notifications',key:'notifications.title',icon:Bell},
   {path:'channels',key:'settingsChannels.title',icon:Cable},

@@ -48,3 +48,26 @@
 .me-panel .effort-slider-burst { top: 22px; }
 .me-panel .effort-slider input::-webkit-slider-thumb { width: 22px; height: 22px; }
 .me-panel .effort-slider input::-moz-range-thumb { width: 16px; height: 16px; }
+
+/* B-688: 「自定义…」 — last row, hairline above, ghost row (no own outline). */
+.me-customize {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 36px;
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) var(--sp-2);
+  border: 0;
+  border-top: var(--hairline) solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-13);
+  text-align: left;
+  cursor: pointer;
+}
+.me-customize:hover { background: var(--fill-hover); color: var(--text); }
+.me-customize:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-sm); }
+@media (pointer: coarse) { .me-customize { min-height: 44px; } }
