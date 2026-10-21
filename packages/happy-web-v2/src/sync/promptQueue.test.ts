@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { createPromptQueueStore, movedOrder, supportsServerPromptQueue, type PromptQueueWireItem } from './promptQueue';
+import { createPromptQueueStore, movedOrder, retryWaitingPrompts, supportsServerPromptQueue, type PromptQueueWireItem } from './promptQueue';
 
 type Call = { path: string; method: string; body?: unknown };
 
-function harness(opts?: { status?: number; items?: () => PromptQueueWireItem[] }) {
+function harness(opts?: {
+    status?: number;
+    items?: () => PromptQueueWireItem[];
+    /** B-722: awaited before a POST/PATCH is answered — hold it open or make it throw. */
+    gate?: (method: string) => Promise<void>;
+    online?: () => boolean;
+}) {
     const calls: Call[] = [];
     let items: PromptQueueWireItem[] = [];
     let nextId = 0;
@@ -15,6 +21,7 @@ function harness(opts?: { status?: number; items?: () => PromptQueueWireItem[] }
             const method = init?.method ?? 'GET';
             const body = init?.body ? JSON.parse(init.body) : undefined;
             calls.push({ path, method, body });
+            if (opts?.gate && (method === 'POST' || method === 'PATCH')) await opts.gate(method);
             // Production's SPA fallback answers an unknown /v1 path with `{error:'Not found'}` (spaFallback.ts) — the exact body.
             if (opts?.status) return { status: opts.status, json: async () => ({ error: opts.status === 404 ? 'Not found' : 'nope' }) };
             if (method === 'POST' && path.endsWith('/prompt-queue')) {
@@ -47,6 +54,8 @@ function harness(opts?: { status?: number; items?: () => PromptQueueWireItem[] }
             return { role: 'user', content: { type: 'text', text }, meta: meta ? JSON.parse(meta) : {} };
         },
         newLocalId: () => `local-${++nextId}`,
+        isOnline: opts?.online,
+        now: () => 42,
     });
     return { store, calls, setItems: (next: PromptQueueWireItem[]) => { items = next; }, wire };
 }
@@ -156,5 +165,86 @@ describe('B-509 prompt queue store', () => {
         await h.store.getState().enqueue('s1', 'legacy', {}, 'legacy-id');
         await h.store.getState().enqueue('s1', 'legacy', {}, 'legacy-id');
         expect(h.calls.filter((call) => call.method === 'POST').map((call) => (call.body as { localId: string }).localId)).toEqual(['legacy-id', 'legacy-id']);
+    });
+});
+
+describe('B-722 optimistic queue rows', () => {
+    const flush = async () => { for (let i = 0; i < 6; i += 1) await Promise.resolve(); };
+
+    it('submit shows the row before the server answers; the snapshot replaces it in one update — never both, never neither', async () => {
+        let release!: () => void;
+        const h = harness({ gate: () => new Promise<void>((resolve) => { release = resolve; }) });
+        const seen: Array<{ items: string[]; pending: string[] }> = [];
+        h.store.subscribe((state) => {
+            const s1 = state.sessions.s1;
+            seen.push({ items: (s1?.items ?? []).map((item) => item.localId), pending: (s1?.pending ?? []).map((row) => row.localId) });
+        });
+        const result = h.store.getState().submit('s1', 'queued text', { effort: 'high' });
+        // Synchronously visible, as `sending`.
+        expect(h.store.getState().sessions.s1.pending).toEqual([{ localId: 'local-1', text: 'queued text', modeMeta: { effort: 'high' }, createdAt: 42, state: 'sending' }]);
+        await flush();
+        release();
+        expect(await result).toBe('queued');
+        expect(h.store.getState().sessions.s1.items.map((item) => item.localId)).toEqual(['local-1']);
+        expect(h.store.getState().sessions.s1.pending).toBeUndefined();
+        // Every intermediate state shows the prompt exactly once.
+        for (const state of seen) expect([...state.items, ...state.pending].filter((id) => id === 'local-1')).toHaveLength(1);
+    });
+
+    it('a failure online marks the row failed (kept for Retry with its localId); offline it waits and goes out when the network is back', async () => {
+        let fail = true;
+        let online = true;
+        const h = harness({ gate: async () => { if (fail) throw new Error('network'); }, online: () => online });
+        await expect(h.store.getState().submit('s1', 'one', {})).rejects.toThrow('network');
+        expect(h.store.getState().sessions.s1.pending?.map((row) => row.state)).toEqual(['failed']);
+
+        online = false;
+        await expect(h.store.getState().submit('s1', 'two', {})).rejects.toThrow('network');
+        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.text, row.state])).toEqual([['one', 'failed'], ['two', 'waiting']]);
+
+        // Back online: only the waiting row is retried automatically, with its own localId.
+        fail = false;
+        online = true;
+        retryWaitingPrompts(h.store);
+        await flush();
+        await flush();
+        expect(h.calls.filter((call) => call.method === 'POST').map((call) => (call.body as { localId: string }).localId)).toEqual(['local-1', 'local-2', 'local-2']);
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['two']);
+        expect(h.store.getState().sessions.s1.pending?.map((row) => row.text)).toEqual(['one']);
+
+        // Retry by hand: same localId (idempotent on the server).
+        expect(await h.store.getState().retryPending('s1', 'local-1')).toBe('queued');
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['two', 'one']);
+        expect(h.store.getState().sessions.s1.pending).toBeUndefined();
+    });
+
+    it('discard hands a failed row back (放回输入框 / 删除) and never drops one still sending', async () => {
+        let release!: () => void;
+        let fail = false;
+        const h = harness({ gate: () => fail ? Promise.reject(new Error('x')) : new Promise<void>((resolve) => { release = resolve; }) });
+        const sending = h.store.getState().submit('s1', 'in flight', {});
+        expect(h.store.getState().discardPending('s1', 'local-1')).toBeNull();
+        await flush();
+        release();
+        await sending;
+        fail = true;
+        await expect(h.store.getState().submit('s1', 'broken', {})).rejects.toThrow('x');
+        expect(h.store.getState().discardPending('s1', 'local-2')?.text).toBe('broken');
+        expect(h.store.getState().sessions.s1.pending).toBeUndefined();
+    });
+
+    it('an edit shows the new text at once and puts the old one back when the save fails', async () => {
+        let fail = false;
+        let release: (() => void) | null = null;
+        const h = harness({ gate: (method) => method !== 'PATCH' ? Promise.resolve() : fail ? Promise.reject(new Error('offline')) : new Promise<void>((resolve) => { release = resolve; }) });
+        await h.store.getState().enqueue('s1', 'before', {});
+        const saving = h.store.getState().updateText('s1', 'id-local-1', 'after');
+        expect(h.store.getState().sessions.s1.items[0].text).toBe('after');
+        await flush();
+        release!();
+        expect(await saving).toBe(true);
+        fail = true;
+        await expect(h.store.getState().updateText('s1', 'id-local-1', 'lost')).rejects.toThrow('offline');
+        expect(h.store.getState().sessions.s1.items[0].text).toBe('after');
     });
 });

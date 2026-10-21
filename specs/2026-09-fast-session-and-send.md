@@ -86,6 +86,16 @@ Owner 2026-09-30：「每次启动新的 claude sdk session 都加载特别慢�
 9. **UI**：sending = 变淡立即生效，转圈按 localId 计时 >150 ms 才出现；隐藏引用/编辑、保留复制；failed = `MessageActions` 内以「发送失败 · 重试 · 放回输入框」替换 `MessageTime`（danger token）。
 10. **提速**：中继仅在已连接时用于首次投递、ack 超时 3 s → 1.5 s；附件 PUT 并发上限 3、保持顺序与部分失败语义。
 
+#### B-722 增补（2026-10，仅 web）：所有发送/修改链路即时上屏 + 去向/保存状态
+
+实测与根因见 B-722 PR。改动：
+
+- **纯文本直发在点击栈内上屏**：`sync.sendMessage` 先 track（`raw` 留存）+ `applyOptimistic`，再加密；加密在每会话串行链 `inOutboxOrder` 里完成后按显示顺序入 `pendingOutbox`。加密失败 = 该条 failed 且可放回；重试用 `raw` 重新加密。`AgentInput` 的直发不再等 `yieldForSendFeedback` 一帧。带附件的回合仍先上传（文件事件须排在文本前，见下「未做」）。
+- **服务端队列乐观行**：`promptQueue.submit` 同步写入 `pending` 行（sending），server 快照按 localId 在同一次更新里替换它；失败在线 = failed（重试 · 放回输入框 · 删除），离线 = waiting（`online` 事件自动重试，同 localId 幂等）。composer 不再在失败时回填草稿（行持有文本，避免一份文本两处）。restore-first 时恢复与入队并行发起。
+- **状态视觉**：sending 首帧即显示静态时钟（不会闪），>150 ms 换转圈；离线/重连中换成「连接恢复后发送」；ack 后 `sendConfirmations` 记一笔，时间位出现 1.6 s 渐隐的对勾（`已发送`），不留永久标记。会话离线时，最新一条未被处理的用户消息下显示「已保存 · 会话恢复后送达」（`undeliveredPromptId`，不新增数据）。restore-first 的队列 dock 显示「已存在这里，会话恢复后按顺序送达」。全部状态 `role=status` + `aria-live=polite`。
+- **修改类**：服务端队列项编辑立即改文本、关编辑器，行内「保存中… → 已保存」，失败回滚文本并给「未保存 · 重试」（保留编辑内容）；本地队列编辑直接「已保存」；可编辑草稿（B-642）在标题栏显示保存中/已保存/未保存 · 重试（`editableDraftsStore.saves`）；编辑已发消息（B-528）提交时提示行变「保存中…」，成功后新消息走上面的发送状态。
+- **未做**：带附件回合的乐观上屏（需要本地预览 + 上传占位，且文件事件必须排在文本之前，另立条目）；会话列表首次同步前（加密 key 未就绪）的发送仍等 `sessionsSync`。
+
 ### B-514 去掉正文悬停时间（仅 web）
 
 实际机制是 `ChatList.tsx:323` 的 `MessageTimeTooltip`（读行 `title`，220 ms 气泡）。按 Owner 字面「消息正文」：

@@ -6,6 +6,7 @@ import { harnessForFlavor, machineSupportsModelConfig, withCustomModels } from '
 import { modelConfigStore, useCustomPickerModels } from '@/sync/modelConfigStore';
 import { onMessageQuote } from './messageQuote';
 import { mergeRestoredDraft, onComposerRestore } from './composerRestore';
+import { PendingQueueRow } from './SendStatusView';
 import { appendMessageQuote, insertMessageQuoteAt } from './messageActionsModel';
 /**
  * AgentInput — the composer. A rounded auto-growing textarea + circular send
@@ -15,7 +16,7 @@ import { appendMessageQuote, insertMessageQuoteAt } from './messageActionsModel'
  * newline; soft keyboards newline). IME-safe: never sends mid-composition.
  */
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronUp, CornerDownRight, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, CloudOff, CornerDownRight, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
@@ -67,14 +68,35 @@ import {
 } from './queuedMessages';
 import { composerGate, restoreSession, useRestoreState } from '@/app/sessionRestore';
 import {
+    discardPendingPrompt,
     enqueuePrompt,
     loadPromptQueue,
+    retryPendingPrompt,
+    submitPrompt,
     movePrompt,
     removePrompt,
     supportsServerPromptQueue,
     updatePromptText,
     usePromptQueue,
+    type PendingPrompt,
 } from '@/sync/promptQueue';
+
+/** B-722: how long a queue row says 「已保存」 after an edit. */
+const QUEUE_SAVED_VISIBLE_MS = 1600;
+type QueueSave = { state: 'saving' | 'saved' | 'failed'; text: string };
+
+/** B-722: 保存中… / 已保存 / 未保存 · 重试 under an edited queue row. */
+function QueueSaveStatus({ save, onRetry }: { save: QueueSave; onRetry: () => void }) {
+    const { t } = useTranslation();
+    return <span className={`ci-queue-save ci-queue-save--${save.state}`} role="status" aria-live="polite" data-save-state={save.state}>
+        {save.state === 'saving' && <><Spinner size={11} /><span>{t('session.chat.saveState.saving')}</span></>}
+        {save.state === 'saved' && <><Check size={12} aria-hidden /><span>{t('session.chat.saveState.saved')}</span></>}
+        {save.state === 'failed' && <>
+            <span>{t('session.chat.saveState.failed')}</span>
+            <button type="button" className="ci-queue-save-retry" onClick={onRetry}>{t('session.chat.sendRetry')}</button>
+        </>}
+    </span>;
+}
 
 /** B-509: idle + server-queued items for this long = the wrapper is not popping. */
 export const PROMPT_QUEUE_STALE_MS = 30_000;
@@ -646,12 +668,19 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                 modeMeta: resolveMessageModeMeta(session, storage.getState().settings),
                 attachments: takenAttachments,
             });
-            let serverQueueOwnsItem = false;
+            let serverSubmit: Promise<'queued' | 'unsupported'> | null = null;
+            let serverItem: QueuedMessage | null = null;
             if (gate === 'restore-first' || (isWorking && delivery === 'queue')) {
                 if (serverQueue && !takenAttachments) {
-                    // B-509: durable from the server's acceptance on; until then
-                    // the draft is restored by the catch below like any failed send.
-                    serverQueueOwnsItem = true;
+                    // B-509: durable from the server's acceptance on. B-722: the
+                    // dock shows the row in this click stack (sending → server row,
+                    // or failed / waiting-for-network with Retry), so the row —
+                    // not the composer — owns the text from here on.
+                    serverItem = makeItem();
+                    serverSubmit = submitPrompt(sessionId, serverItem.text, serverItem.modeMeta);
+                    queueOwnsItem = true;
+                    // B-680: restore in parallel; the wrapper pops the queue once it is up.
+                    if (gate === 'restore-first') void restoreSession(sessionId);
                 } else {
                     // Queue ownership must transfer in the click stack: navigating
                     // away during the frame must not lose an accepted submission.
@@ -662,32 +691,38 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                     queueOwnsItem = true;
                 }
             }
+            if (!queueOwnsItem && !takenAttachments) {
+                // B-722: a text-only send shows its bubble in this click stack
+                // (sync.sendMessage applies it before any await); the bubble's
+                // own send state is the feedback, so nothing waits for a frame.
+                await sendQueuedItem(makeItem(), delivery);
+                outcome = 'sent';
+                return;
+            }
+
             // A resolved promise / one rAF resumes before paint. Yield through
             // the frame instead, so busy is visible before relay/restore work.
             // The release effect also waits for this submission's feedback.
             await yieldForSendFeedback();
 
-            if (serverQueueOwnsItem) {
-                const item = makeItem();
+            if (serverSubmit && serverItem) {
                 // B-654: its own name — shadowing `outcome` left the caret
                 // decision below reading 'failed' after a successful enqueue.
-                let enqueued: 'queued' | 'unsupported';
+                let enqueued: 'queued' | 'unsupported' | 'failed';
                 try {
-                    enqueued = await enqueuePrompt(sessionId, item.text, item.modeMeta);
-                } catch (error) {
-                    toast.error(t('session.chat.queueDeliveryFailed'));
-                    throw error;
+                    enqueued = await serverSubmit;
+                } catch {
+                    // The dock row shows the failure with Retry / Back to input.
+                    enqueued = 'failed';
                 }
                 if (enqueued === 'unsupported') {
                     // Old server: this session falls back to the tab-local queue.
-                    const next = [...queuedRef.current, item];
+                    const next = [...queuedRef.current, serverItem];
                     persistSessionQueue(sessionId, next);
                     queuedRef.current = next;
                     setQueued(next);
                 }
-                queueOwnsItem = true;
                 outcome = 'queued';
-                if (gate === 'restore-first') void restoreSession(sessionId);
                 return;
             }
 
@@ -773,18 +808,36 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             setServerBusyId(null);
         }
     };
+    // B-722: a queue edit shows 保存中… → 已保存 (or 未保存 · 重试) on its row.
+    const [queueSaves, setQueueSaves] = useState<Record<string, QueueSave>>({});
+    const queueSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+    const setQueueSave = (key: string, save: QueueSave | null) => {
+        clearTimeout(queueSaveTimers.current[key]);
+        delete queueSaveTimers.current[key];
+        setQueueSaves((current) => {
+            const next = { ...current };
+            if (save) next[key] = save;
+            else delete next[key];
+            return next;
+        });
+        if (save?.state === 'saved') queueSaveTimers.current[key] = setTimeout(() => setQueueSave(key, null), QUEUE_SAVED_VISIBLE_MS);
+    };
+    useEffect(() => () => { for (const timer of Object.values(queueSaveTimers.current)) clearTimeout(timer); }, []);
     const saveServerEdit = async (id: string, text: string) => {
         const trimmed = text.trim();
         if (!trimmed) return;
-        setServerBusyId(id);
+        const key = `server:${id}`;
+        // The row takes the new text at once (promptQueue.updateText); the editor closes.
+        setEditingId(null);
+        setQueueSave(key, { state: 'saving', text: trimmed });
         try {
             const updated = await updatePromptText(sessionId, id, trimmed);
-            if (!updated) toast.error(t('session.chat.queueCancelTooLate'));
+            if (!updated) {
+                setQueueSave(key, null);
+                toast.error(t('session.chat.queueCancelTooLate'));
+            } else setQueueSave(key, { state: 'saved', text: trimmed });
         } catch {
-            toast.error(t('session.chat.queueEditFailed'));
-        } finally {
-            setServerBusyId(null);
-            setEditingId(null);
+            setQueueSave(key, { state: 'failed', text: trimmed });
         }
     };
     const deleteServerQueued = async (id: string) => {
@@ -913,9 +966,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
 
     // B-509: one list for the composer. Server items first (the wrapper runs
     // them in this order); tab-local items (old wrapper, or attachments) after.
-    const queueRows: Array<{ id: string; text: string; draftBlock: string; source: 'server' | 'local' }> = (serverQueue
+    // B-722: rows the server has not confirmed yet follow the server items (that is where they land).
+    const queueRows: Array<{ id: string; text: string; draftBlock: string; source: 'server' | 'local' | 'pending'; pendingState?: PendingPrompt['state'] }> = (serverQueue
         ? [
             ...serverQueueState.items.map((item) => ({ id: item.id, text: item.text, source: 'server' as const })),
+            ...(serverQueueState.pending ?? []).map((row) => ({ id: row.localId, text: row.text, source: 'pending' as const, pendingState: row.state })),
             ...queued.filter((item) => !!item.attachments?.length).map((item) => ({ id: item.id, text: item.text, source: 'local' as const })),
         ]
         : queued.map((item) => ({ id: item.id, text: item.text, source: 'local' as const })))
@@ -1153,20 +1208,43 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                         <span>{t('session.chat.queueDeliveryFailed')}</span>
                         <button type="button" className="ci-queue-action ci-queue-action--retry" onClick={() => { deliveryPhaseRef.current = 'idle'; setStuckTick(value => value + 1); }}>{t('common.retry')}</button>
                     </div>}
+                    {gate === 'restore-first' && <div className="ci-queue-note" role="status" aria-live="polite" data-queue-destination="restore">
+                        <CloudOff size={13} aria-hidden />
+                        <span>{t('session.chat.queueAfterRestore')}</span>
+                    </div>}
                     {serverQueueStale && <div className="ci-queue-failure" role="status" data-queue-stale>
                         <span>{t('session.chat.queueNotConsumed')}</span>
                         <button type="button" className="ci-queue-action ci-queue-action--retry" disabled={serverBusyId !== null} onClick={() => void sendServerHeadNow()}>{t('session.chat.queueSendNow')}</button>
                     </div>}
                     <div className="ci-queue-list">
                         {queueRows.map((row, index) => {
+                            if (row.source === 'pending') {
+                                return <PendingQueueRow
+                                    key={`pending:${row.id}`}
+                                    text={row.text}
+                                    state={row.pendingState ?? 'sending'}
+                                    onRetry={() => void retryPendingPrompt(sessionId, row.id).catch(() => {})}
+                                    onRestore={() => {
+                                        const taken = discardPendingPrompt(sessionId, row.id);
+                                        if (!taken) return;
+                                        const next = mergeRestoredDraft(taken.text, draftRef.current);
+                                        draftRef.current = next;
+                                        setText(next);
+                                        requestAnimationFrame(() => taRef.current?.focus());
+                                    }}
+                                    onDelete={() => { discardPendingPrompt(sessionId, row.id); }}
+                                />;
+                            }
                             const busy = row.source === 'server' && serverBusyId === row.id;
                             const saveEdit = () => {
                                 if (!editingText.trim()) return;
                                 const nextText = appendEditedDrafts(editingText.trim(), row.draftBlock);
                                 if (row.source === 'server') void saveServerEdit(row.id, nextText);
                                 else {
+                                    // Tab-local: saved the moment it is written (localStorage).
                                     setQueued((current) => updateQueuedMessage(current, row.id, nextText));
                                     setEditingId(null);
+                                    setQueueSave(`local:${row.id}`, { state: 'saved', text: nextText });
                                 }
                             };
                             return (
@@ -1189,6 +1267,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                                             else if (action === 'newline') { event.preventDefault(); insertComposerNewline(event.currentTarget); }
                                         }}
                                     />
+                                ) : queueSaves[`${row.source}:${row.id}`] ? (
+                                    <div className="ci-queue-body">
+                                        <span className="ci-queue-text">{row.text || t('session.chat.attachmentOnly')}</span>
+                                        <QueueSaveStatus save={queueSaves[`${row.source}:${row.id}`]} onRetry={() => void saveServerEdit(row.id, queueSaves[`${row.source}:${row.id}`].text)} />
+                                    </div>
                                 ) : (
                                     <span className="ci-queue-text">{row.text || t('session.chat.attachmentOnly')}</span>
                                 )}

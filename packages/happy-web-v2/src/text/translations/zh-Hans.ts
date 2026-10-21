@@ -945,6 +945,20 @@ export const zhHans: TranslationStructure = {
             sendFailed: '发送失败',
             sendRetry: '重试',
             sendRestore: '放回输入框',
+            // B-722
+            sendDelete: '删除',
+            sent: '已发送',
+            sendingOffline: '连接恢复后发送',
+            deliverOnResume: '已保存 · 会话恢复后送达',
+            queueAdding: '加入队列中…',
+            queueWaitingNetwork: '离线 · 连接恢复后加入队列',
+            queueAddFailed: '未加入队列',
+            queueAfterRestore: '已存在这里，会话恢复后按顺序送达',
+            saveState: {
+                saving: '保存中…',
+                saved: '已保存',
+                failed: '未保存',
+            },
             // B-642: 可编辑草稿（```draft 围栏）与输入框上方的附带提示。
             draft: {
                 label: '草稿',

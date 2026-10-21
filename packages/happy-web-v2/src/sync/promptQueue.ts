@@ -33,9 +33,25 @@ export type PromptQueueEntry = {
 
 export type PromptQueueStatus = 'idle' | 'loading' | 'ready' | 'unsupported' | 'error';
 
+/**
+ * B-722: a prompt the composer submitted that the server has not confirmed
+ * yet. Shown in the queue dock at once (it used to appear only after the
+ * POST answered); dropped the moment a server snapshot lists its localId.
+ * `waiting`: the device is offline — retried automatically when it is back.
+ */
+export type PendingPrompt = {
+    localId: string;
+    text: string;
+    modeMeta: MessageModeMeta;
+    createdAt: number;
+    state: 'sending' | 'waiting' | 'failed';
+};
+
 export type PromptQueueSessionState = {
     items: PromptQueueEntry[];
     status: PromptQueueStatus;
+    /** B-722: optimistic rows, oldest first; absent = none. */
+    pending?: PendingPrompt[];
     /** Highest socket-update seq applied; snapshots arriving out of order are dropped. */
     snapshotSeq?: number;
 };
@@ -47,6 +63,9 @@ export type PromptQueueDeps = {
     encrypt: (sessionId: string, text: string, modeMeta: MessageModeMeta) => Promise<string | null>;
     decrypt: (sessionId: string, encrypted: string) => Promise<unknown | null>;
     newLocalId: () => string;
+    /** B-722: false while the device reports offline (a failure then waits instead of failing). */
+    isOnline?: () => boolean;
+    now?: () => number;
 };
 
 interface PromptQueueStoreState {
@@ -54,6 +73,16 @@ interface PromptQueueStoreState {
     load: (sessionId: string) => Promise<void>;
     /** `localId` (optional) makes a retry / a second tab's migration of the same item idempotent on the server. */
     enqueue: (sessionId: string, text: string, modeMeta: MessageModeMeta, localId?: string) => Promise<'queued' | 'unsupported'>;
+    /**
+     * B-722: the composer's enqueue — the row is visible before this returns
+     * its promise (sending → dropped on the server snapshot; failed/waiting on
+     * error, kept for Retry). Rejects like `enqueue`; the row stays.
+     */
+    submit: (sessionId: string, text: string, modeMeta: MessageModeMeta) => Promise<'queued' | 'unsupported'>;
+    /** B-722: re-send a failed/waiting row with its own localId (idempotent on the server). */
+    retryPending: (sessionId: string, localId: string) => Promise<'queued' | 'unsupported' | 'gone'>;
+    /** B-722: drop a failed/waiting row (delete, or 放回输入框); returns it. */
+    discardPending: (sessionId: string, localId: string) => PendingPrompt | null;
     updateText: (sessionId: string, id: string, text: string) => Promise<boolean>;
     remove: (sessionId: string, id: string) => Promise<boolean>;
     move: (sessionId: string, id: string, delta: -1 | 1) => Promise<void>;
@@ -117,7 +146,32 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
         };
         const applyItems = async (sessionId: string, raw: unknown) => {
             const items = Array.isArray(raw) ? raw.filter(isWireItem) : [];
-            patch(sessionId, { items: await decode(sessionId, items), status: 'ready' });
+            const decoded = await decode(sessionId, items);
+            // B-722: the server row replaces its optimistic one in the same update — never both, never a gap.
+            const listed = new Set(decoded.map((item) => item.localId));
+            const pending = get().sessions[sessionId]?.pending;
+            patch(sessionId, {
+                items: decoded,
+                status: 'ready',
+                ...(pending?.some((row) => listed.has(row.localId)) ? { pending: pending.filter((row) => !listed.has(row.localId)) } : {}),
+            });
+        };
+        const setPending = (sessionId: string, update: (rows: PendingPrompt[]) => PendingPrompt[]) => {
+            const next = update(get().sessions[sessionId]?.pending ?? []);
+            patch(sessionId, { pending: next.length > 0 ? next : undefined });
+        };
+        const sendPending = async (sessionId: string, row: PendingPrompt): Promise<'queued' | 'unsupported'> => {
+            try {
+                const result = await get().enqueue(sessionId, row.text, row.modeMeta, row.localId);
+                // 'unsupported': the caller moves it to the tab-local queue; 'queued': the
+                // snapshot already dropped it (kept defensively for a snapshot without it).
+                setPending(sessionId, (rows) => rows.filter((other) => other.localId !== row.localId));
+                return result;
+            } catch (error) {
+                const state = deps.isOnline && !deps.isOnline() ? 'waiting' : 'failed';
+                setPending(sessionId, (rows) => rows.map((other) => other.localId === row.localId ? { ...other, state } : other));
+                throw error;
+            }
         };
         const call = async (sessionId: string, path: string, init?: { method?: string; body?: string }) => {
             const response = await deps.request(`/v1/sessions/${sessionId}/prompt-queue${path}`, init);
@@ -159,18 +213,43 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
                 await applyItems(sessionId, body.items);
                 return 'queued';
             },
+            submit: (sessionId, text, modeMeta) => {
+                if (get().sessions[sessionId]?.status === 'unsupported') return Promise.resolve('unsupported');
+                const row: PendingPrompt = { localId: deps.newLocalId(), text, modeMeta, createdAt: deps.now?.() ?? Date.now(), state: 'sending' };
+                setPending(sessionId, (rows) => [...rows, row]);
+                return sendPending(sessionId, row);
+            },
+            retryPending: async (sessionId, localId) => {
+                const row = get().sessions[sessionId]?.pending?.find((other) => other.localId === localId);
+                if (!row || row.state === 'sending') return 'gone';
+                setPending(sessionId, (rows) => rows.map((other) => other.localId === localId ? { ...other, state: 'sending' } : other));
+                return sendPending(sessionId, { ...row, state: 'sending' });
+            },
+            discardPending: (sessionId, localId) => {
+                const row = get().sessions[sessionId]?.pending?.find((other) => other.localId === localId) ?? null;
+                if (!row || row.state === 'sending') return null;
+                setPending(sessionId, (rows) => rows.filter((other) => other.localId !== localId));
+                return row;
+            },
             updateText: async (sessionId, id, text) => {
                 const entry = get().sessions[sessionId]?.items.find((item) => item.id === id);
                 if (!entry) return false;
-                const content = await deps.encrypt(sessionId, text, entry.modeMeta);
-                if (!content) throw new Error('Session encryption is not ready');
+                // B-722: the row shows the new text at once; a failure puts the old one back
+                // (the composer keeps the edit for Retry).
+                const setText = (next: string) => patch(sessionId, {
+                    items: (get().sessions[sessionId]?.items ?? []).map((item) => item.id === id ? { ...item, text: next } : item),
+                });
+                setText(text);
                 try {
+                    const content = await deps.encrypt(sessionId, text, entry.modeMeta);
+                    if (!content) throw new Error('Session encryption is not ready');
                     const body = await call(sessionId, `/${id}`, { method: 'PATCH', body: JSON.stringify({ content }) });
-                    if (!body) return false;
+                    if (!body) { setText(entry.text); return false; }
                     await applyItems(sessionId, body.items);
                     return true;
                 } catch (error) {
                     if (error instanceof Error && error.message === 'prompt_queue_item_gone') { await get().load(sessionId); return false; }
+                    setText(entry.text);
                     throw error;
                 }
             },
@@ -212,7 +291,20 @@ export const promptQueueStore = createPromptQueueStore({
     encrypt: (sessionId, text, modeMeta) => import('./sync').then(({ sync }) => sync.encryptQueuedPrompt(sessionId, text, modeMeta)),
     decrypt: (sessionId, encrypted) => import('./sync').then(({ sync }) => sync.decryptQueuedPrompt(sessionId, encrypted)),
     newLocalId: () => crypto.randomUUID(),
+    isOnline: () => typeof navigator === 'undefined' || navigator.onLine !== false,
 });
+
+/** B-722: rows that waited for the network go out as soon as the device is back online. */
+export function retryWaitingPrompts(store: ReturnType<typeof createPromptQueueStore> = promptQueueStore): void {
+    for (const [sessionId, state] of Object.entries(store.getState().sessions)) {
+        for (const row of state.pending ?? []) {
+            if (row.state === 'waiting') void store.getState().retryPending(sessionId, row.localId).catch(() => {});
+        }
+    }
+}
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('online', () => retryWaitingPrompts());
+}
 
 export function usePromptQueue(sessionId: string): PromptQueueSessionState {
     return promptQueueStore((state) => state.sessions[sessionId] ?? EMPTY_PROMPT_QUEUE);
@@ -220,6 +312,9 @@ export function usePromptQueue(sessionId: string): PromptQueueSessionState {
 
 export const loadPromptQueue = (sessionId: string) => promptQueueStore.getState().load(sessionId);
 export const enqueuePrompt = (sessionId: string, text: string, modeMeta: MessageModeMeta, localId?: string) => promptQueueStore.getState().enqueue(sessionId, text, modeMeta, localId);
+export const submitPrompt = (sessionId: string, text: string, modeMeta: MessageModeMeta) => promptQueueStore.getState().submit(sessionId, text, modeMeta);
+export const retryPendingPrompt = (sessionId: string, localId: string) => promptQueueStore.getState().retryPending(sessionId, localId);
+export const discardPendingPrompt = (sessionId: string, localId: string) => promptQueueStore.getState().discardPending(sessionId, localId);
 export const updatePromptText = (sessionId: string, id: string, text: string) => promptQueueStore.getState().updateText(sessionId, id, text);
 export const removePrompt = (sessionId: string, id: string) => promptQueueStore.getState().remove(sessionId, id);
 export const movePrompt = (sessionId: string, id: string, delta: -1 | 1) => promptQueueStore.getState().move(sessionId, id, delta);

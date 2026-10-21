@@ -101,3 +101,45 @@ describe('editableDraftsStore', () => {
         expect(store.useEditableDrafts.getState().loaded[SESSION]).toBe(true);
     });
 });
+
+describe('B-722 draft save state', () => {
+    const save = () => store.useEditableDrafts.getState().saves[KV_KEY];
+
+    it('an edit reads 保存中 at once, 已保存 after the CAS write, then clears by itself', async () => {
+        let answer!: (value: unknown) => void;
+        kvMutate.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+        store.editDraft({ sessionId: SESSION, key: KEY, original: ORIGINAL, text: 'edited' });
+        expect(save()).toBe('saving');
+        await vi.advanceTimersByTimeAsync(1000); // debounce fired, request in flight
+        expect(kvMutate).toHaveBeenCalledTimes(1);
+        expect(save()).toBe('saving');
+        answer({ success: true, results: [{ key: KV_KEY, version: 0 }] });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(save()).toBe('saved');
+        await vi.advanceTimersByTimeAsync(store.DRAFT_SAVED_VISIBLE_MS);
+        expect(save()).toBeUndefined();
+    });
+
+    it('a failed write reads 未保存 and Retry saves it', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        kvMutate.mockRejectedValueOnce(new Error('offline'));
+        store.editDraft({ sessionId: SESSION, key: KEY, original: ORIGINAL, text: 'edited' });
+        await vi.runAllTimersAsync();
+        expect(save()).toBe('failed');
+        kvMutate.mockResolvedValue({ success: true, results: [{ key: KV_KEY, version: 0 }] });
+        store.retryDraftSave(KV_KEY);
+        expect(save()).toBe('saving');
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(kvMutate).toHaveBeenCalledTimes(2);
+        expect(save()).toBe('saved');
+    });
+
+    it('a remote edit that wins the conflict also settles the save (no stuck 保存中)', async () => {
+        const remote = { v: 1, sessionId: SESSION, key: KEY, original: ORIGINAL, base: ORIGINAL, text: 'theirs', updatedAt: Date.now() + 60_000 };
+        kvMutate.mockResolvedValue({ success: false, errors: [{ key: KV_KEY, version: 3, value: b64(remote) }] });
+        store.editDraft({ sessionId: SESSION, key: KEY, original: ORIGINAL, text: 'mine' });
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(get()?.text).toBe('theirs');
+        expect(save()).toBe('saved');
+    });
+});
