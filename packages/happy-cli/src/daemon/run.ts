@@ -30,6 +30,7 @@ import { assistantSpawnMode, createSpawnGate, findLiveAssistant, isAssistantTrac
 import { decideAssistantReport, formatAssistantReportMessage, resolveReportSessionTitle, type AssistantReportEvent } from './assistantReport';
 import { sendUserMessage } from '@/commands/sessionMessage';
 import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
+import { publishedRelaunchPermissionMode } from './relaunchPermissionMode';
 import { resumePrecheck, resumeStartsFreshConversation, sanitizeResumeModel } from './resumePrecheck';
 import { decideRestart, recordRestartAttempt, DEFAULT_MAX_RESTARTS } from './restartBreaker';
 import type { SpawnGate } from './assistantSpawn';
@@ -1228,7 +1229,7 @@ export async function startDaemon(): Promise<void> {
     // live process wins outright. Precheck failures carry a fixed
     // `resume-precheck:<reason>` prefix the web maps to user-facing text.
     const resumeGates = new Map<string, SpawnGate<SpawnSessionResult>>();
-    const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
+    const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }): Promise<SpawnSessionResult> => {
       let gate = resumeGates.get(happySessionId);
       if (!gate) {
         gate = createSpawnGate<SpawnSessionResult>();
@@ -1242,7 +1243,7 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    const resumeSessionImpl = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
+    const resumeSessionImpl = async (happySessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }): Promise<SpawnSessionResult> => {
       try {
         // B-587 review P1-2: the wrapper we just let hibernate has sent
         // session-end but may still be exiting. Its pid is not "already
@@ -1326,9 +1327,13 @@ export async function startDaemon(): Promise<void> {
         const model = sanitizeResumeModel(options?.model);
         if (model) launch.args.push('--model', model);
         else if (options?.model !== undefined) logger.debug(`[DAEMON RUN] resume: ignoring invalid model ${JSON.stringify(options.model)}`);
-        const permissionMode = sanitizeSpawnPermissionMode(options?.permissionMode);
+        // B-696: a daemon-initiated wake has no client to supply the mode —
+        // keep the one the last wrapper published (an explicit one still wins).
+        const requestedMode = options?.permissionMode
+          ?? (options?.keepPublishedPermissionMode ? publishedRelaunchPermissionMode(metadata) : undefined);
+        const permissionMode = sanitizeSpawnPermissionMode(requestedMode);
         if (permissionMode) launch.args.push('--permission-mode', permissionMode);
-        else if (options?.permissionMode !== undefined) logger.debug(`[DAEMON RUN] resume: ignoring invalid permission mode ${JSON.stringify(options.permissionMode)}`);
+        else if (requestedMode !== undefined) logger.debug(`[DAEMON RUN] resume: ignoring invalid permission mode ${JSON.stringify(requestedMode)}`);
 
         const result = await spawnTrackedHappyProcess({
           args: launch.args,
@@ -2150,7 +2155,8 @@ export async function startDaemon(): Promise<void> {
         return !!record && typeof record.hibernatedAt === 'number' && record.hibernatedAt >= record.savedAt;
       },
       wakeHibernated: async (id) => {
-        const result = await resumeSession(id);
+        // B-696: the woken wrapper keeps the permission mode it ran with.
+        const result = await resumeSession(id, { keepPublishedPermissionMode: true });
         if (result.type !== 'success') return false;
         return waitForSessionLive(id, (sid) => [...pidToTrackedSession.values()].some(s => s.happySessionId === sid && isPidAlive(s.pid)));
       },
