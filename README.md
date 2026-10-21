@@ -56,17 +56,17 @@ In a pi conversation, **Steer** sends a queued message into the turn that is run
 Run `very-happy install-pi-tools` once, then launch `pi` directly inside a Very Happy terminal to load terminal naming, clipboard and file preview tools. `very-happy pi --terminal` remains available for temporary loading. Each conversation and terminal has a **Copy and preview history** disclosure for reopening files and copying earlier content. [Tool setup and retention limits](docs/channels.md#native-pi-terminal-tools).
 
 
-## What's new — October 21, 2026
+## What's new — October 22, 2026
 
 <a href="https://veryhappy.dev/whats-new">
-  <img src="docs/screenshots/whats-new-2026-10-21-en.webp" width="100%" alt="The October 21 update: projects, custom models and providers, session search and editable drafts, shown in the real app with example data">
+  <img src="docs/screenshots/whats-new-2026-10-22-en.webp" width="100%" alt="The October 22 update: a new logo and living ASCII, share links, teams with their own project, and machines that update themselves, shown in the real app with example data">
 </a>
 
-- **Projects** keep a whole effort together: instructions written once, a decision log every agent adds to, and one page that shows who is doing what.
-- **Custom models and providers**: point Claude Code, Codex, Gemini or pi at any gateway from Settings → Models & providers, with a diff preview and one-click rollback (CLI 0.2.180).
-- **Session search**: ⌘⇧F searches every session's title, project and conversation and jumps to the matching message.
-- **Editable drafts**: fix the email or release note the agent wrote, right in the conversation; it sees your final version next turn.
-- Also: teams that retire finished members, restart failed launches and clean up worktrees; a calmer sidebar; messages sent while a session was offline are delivered when you restore it.
+- **A new face**: the ^_^ block is our new mark, built out of characters on the landing page, with a layered ASCII field behind the site, docs and your empty workspace.
+- **Share a conversation as a link**: a read-only link anyone can open without an account — up to now or live, expiring in 1, 7 or 30 days, revocable any time; Settings → Shared lists everything you have shared.
+- **Teams come with their project**: a new team creates a same-name project whose instructions and decisions are the team's context; click the team to talk to its lead, who delegates and runs members in parallel (CLI 0.2.181).
+- **Machines keep themselves up to date**: daemons install a new CLI within minutes of release, the machine page shows the status with Update now, and a missing Claude Code, Codex, Gemini or pi installs in one click (CLI 0.2.181).
+- Also: New session / New project / New team lead the sidebar; messages appear the moment you send them; team cards open in a full reader; our own dropdowns and dialogs; Claude Code 2.1.306.
 
 [See the full update →](https://veryhappy.dev/whats-new) · [All releases](https://veryhappy.dev/changelog)
 
