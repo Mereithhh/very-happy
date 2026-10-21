@@ -21,7 +21,7 @@ import { canOfferRestore, useRestoreState } from '@/app/sessionRestore';
 import { isHibernated } from '@/app/sessionHibernation';
 import { sessionUpdateTitleTags } from '@/sync/ops';
 import { priorityLevel, setPriorityLevel, sortByPriority, PRIORITY_LEVELS, priorityTag, type PriorityLevel } from '@/utils/tags';
-import { sidebarListEmpty, visibleSidebarSessions } from './sidebarRows';
+import { flatListRows, sidebarListEmpty, visibleSidebarSessions } from './sidebarRows';
 import { groupRowsByProject, foldersOfRows, legacyGroupModeFor, resolveSidebarGrouping, showTagGroupingBackNotice, type SidebarGrouping } from './sidebarProjectGroups';
 import { groupRowsByTag } from './sidebarTagGroups';
 import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
@@ -673,10 +673,13 @@ export function Sidebar() {
     () => (sessions ? sortRowsByRecent(visibleSidebarSessions(sessions, view).filter((s) => !!s.share).map(sessionRow)) : []),
     [sessions, view],
   );
-  const displayRows = useMemo<Row[] | null>(() => {
-    if (!plainDisplayRows || !teamHistory) return plainDisplayRows;
-    return nestTeams([...plainDisplayRows, ...teamHistoryRows], liveTeams).filter((r) => !r.teamInactiveFold);
+  // B-710: the flat list renders the inactive-member folds (`flatRows`) but
+  // numbers / reorders only the sequence without them (`displayRows`).
+  const flatRows = useMemo(() => {
+    if (!plainDisplayRows || !teamHistory) return plainDisplayRows ? { rendered: plainDisplayRows, sequence: plainDisplayRows } : null;
+    return flatListRows(nestTeams([...plainDisplayRows, ...teamHistoryRows], liveTeams));
   }, [plainDisplayRows, teamHistory, teamHistoryRows, liveTeams, nestTeams]);
+  const displayRows = flatRows?.sequence ?? null;
   // Feeds the hold's arming snapshot (assigned during render, read by the
   // pointer listeners) — always the sequence actually on screen.
   displayedKeysRef.current = displayRows?.map((r) => r.key) ?? [];
@@ -979,14 +982,14 @@ export function Sidebar() {
         id: 'all',
         label: undefined as string | undefined,
         count: displayRows?.length ?? 0,
-        rows: displayRows ?? [],
-        allRows: displayRows ?? [],
+        rows: flatRows?.rendered ?? [],
+        allRows: flatRows?.rendered ?? [],
         collapsible: false,
         open: true,
       },
       ...shared,
     ];
-  }, [view, statusGroups, completedRows, collapsedGroups, groupedSections, displayRows, sharedRows, t]);
+  }, [view, statusGroups, completedRows, collapsedGroups, groupedSections, displayRows, flatRows, sharedRows, t]);
 
   // ----- collapsed-header status summary (B-580) -----
   // Same inputs as the row's own status slot (SidebarRow → agentStatusSignal),
