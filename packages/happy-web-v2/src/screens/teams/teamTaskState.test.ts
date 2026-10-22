@@ -70,12 +70,12 @@ describe('B-761 teamTaskState — every state from its rule', () => {
 
     it('lanes, tones and owner attention are total over the state set', () => {
         expect(TEAM_TASK_STATES.map(s => [s, teamTaskLane(s)])).toEqual([
-            ['queued', 'queued'], ['starting', 'queued'], ['launchFailed', 'queued'],
+            ['queued', 'queued'], ['starting', 'queued'], ['launchFailed', 'queued'], ['cleanupBlocked', 'queued'],
             ['working', 'running'], ['waiting', 'running'], ['idle', 'running'], ['stopped', 'running'], ['checking', 'running'],
             ['submitted', 'submitted'], ['done', 'finished'], ['cancelled', 'finished'],
         ]);
         expect(TEAM_TASK_STATES.filter(s => teamTaskTone(s) === 'live')).toEqual(['working']);
-        expect(TEAM_TASK_STATES.filter(teamTaskNeedsOwner)).toEqual(['launchFailed', 'waiting', 'stopped']);
+        expect(TEAM_TASK_STATES.filter(teamTaskNeedsOwner)).toEqual(['launchFailed', 'cleanupBlocked', 'waiting', 'stopped']);
     });
 
     it('every state has an English and a Chinese label', () => {

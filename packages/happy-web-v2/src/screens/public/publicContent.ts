@@ -97,7 +97,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         },
         {
           "type": "note",
-          "text": "Connecting an existing conversation establishes its scope and delivers the official instructions in the background. Team options choose the default agent/model and concurrent leaf work limit. Waiting parents yield to children; unmerged results remain preserved. Members whose work was accepted or cancelled and whose cleanup finished become inactive: they no longer count as members, and new work with the same agent, model and folder reuses them. Work delegated to a member still being cleaned up queues until the cleanup completes."
+          "text": "Connecting an existing conversation establishes its scope and delivers the official instructions in the background. Team options choose the default agent/model and concurrent leaf work limit. Waiting parents yield to children; unmerged results remain preserved. Members whose work was accepted or cancelled and whose cleanup finished become inactive: they no longer count as members, and new work with the same agent, model and folder reuses them. Work delegated to a member still being cleaned up queues until the cleanup completes; if the cleanup fails after stopping the member, the work starts in a fresh worktree, and if it fails while still holding the member, the task shows Waiting for cleanup until you retry or mark it handled."
         }
       ]
     },

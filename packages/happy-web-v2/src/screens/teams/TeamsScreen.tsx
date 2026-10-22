@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type { TeamAction, TeamState } from "@slopus/happy-wire";
+import { teamCleanupIssues, type TeamAction, type TeamState } from "@slopus/happy-wire";
 import {
   actOnTeam,
   createTeam,
@@ -424,7 +424,7 @@ function TeamsContent() {
             </TeamDialog>
           ))}
           {view === "schedules" && <TeamSchedules team={team} disabled={disabled} act={act} />}
-          {(attention.open.length > 0 || attention.resolved.length > 0) && <section>
+          {(attention.open.length > 0 || attention.resolved.length > 0) && <section id="team-attention">
             {attention.open.length > 0 && <h2>{c.attention}</h2>}
             {attention.open.map((operation) => (
                 <OperationResolution
@@ -606,6 +606,7 @@ export function OperationResolution({
   const [reconciling, setReconciling] = useState(false);
   const eligible = canReconcileOperation(team, operation);
   const cleanupRetry = canRetryCleanup(operation);
+  const cleanupIssue = teamCleanupIssues(team).find(issue => issue.operationId === operation.id);
   return (
     <article className="teams-task">
       <p>
@@ -638,6 +639,8 @@ export function OperationResolution({
           {eligible ? (
             <>
             {operation.type === "stop" && operation.status === "failed" && <p>{c.cleanupHint}</p>}
+            {/* B-775: whether the member can take new work meanwhile. */}
+            {cleanupIssue && <p className={cleanupIssue.holdsSession ? "teams-error" : undefined}>{cleanupIssue.holdsSession ? c.cleanupHoldsMember : c.cleanupRetainedOnly}{cleanupIssue.waitingTaskIds.length > 0 && ` ${c.cleanupWaitingTasks(cleanupIssue.waitingTaskIds.length)}`}</p>}
             {cleanupRetry && cleanupRetrySupported === null && <p role="status">{c.retryChecking}</p>}
             {cleanupRetry && cleanupRetrySupported === false && <p>{c.cleanupUpgrade}</p>}
             {/* B-691: the two ways out of a retained cleanup, side by side. */}
