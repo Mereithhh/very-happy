@@ -56,17 +56,17 @@ In a pi conversation, **Steer** sends a queued message into the turn that is run
 Run `very-happy install-pi-tools` once, then launch `pi` directly inside a Very Happy terminal to load terminal naming, clipboard and file preview tools. `very-happy pi --terminal` remains available for temporary loading. Each conversation and terminal has a **Copy and preview history** disclosure for reopening files and copying earlier content. [Tool setup and retention limits](docs/channels.md#native-pi-terminal-tools).
 
 
-## What's new — October 22, 2026
+## What's new — October 22, 2026 (projects)
 
 <a href="https://veryhappy.dev/whats-new">
-  <img src="docs/screenshots/whats-new-2026-10-22-en.webp" width="100%" alt="The October 22 update: a new logo and living ASCII, share links, teams with their own project, and machines that update themselves, shown in the real app with example data">
+  <img src="docs/screenshots/whats-new-2026-10-22c-en.webp" width="100%" alt="The October 22 projects update: projects in the sidebar with a list and settings page, purpose-built tool-call cards, a calm ASCII backdrop and one session menu, shown in the real app with example data">
 </a>
 
-- **A new face**: the ^_^ block is our new mark, built out of characters on the landing page, with a layered ASCII field behind the site, docs and your empty workspace.
-- **Share a conversation as a link**: a read-only link anyone can open without an account — up to now or live, expiring in 1, 7 or 30 days, revocable any time; Settings → Shared lists everything you have shared.
-- **Teams come with their project**: a new team creates a same-name project whose instructions and decisions are the team's context; click the team to open its team page and its Lead row to talk to the lead, who creates members as needed and runs them in parallel (CLI 0.2.181).
-- **Machines keep themselves up to date**: daemons install a new CLI within minutes of release, the machine page shows the status with Update now, and a missing Claude Code, Codex, Gemini or pi installs in one click (CLI 0.2.181).
-- Also: New session / New project / New team lead the sidebar; messages appear the moment you send them; team cards open in a full reader; our own dropdowns and dialogs; Claude Code 2.1.306.
+- **Projects take center stage**: a Projects entry and list page, projects in every sidebar view, and a settings page per project (instructions, folders, teams, sessions). A new project always has a folder — choose one or create a new working folder, optionally with git init (CLI 0.2.182).
+- **A card for every tool call**: tool calls from Claude, Codex, pi, Gemini and MCP read as cards — diffs, code, lists and command output instead of JSON; raw data stays one click away.
+- **A calm ASCII backdrop**: conversations get a faint ASCII field in the side margins, never behind the text; it pauses while you scroll and follows Background motion.
+- **One menu for every session**: right-click a session in the sidebar to share it, move it to a project, tag it, copy its link or archive it.
+- Also: click a team in the sidebar to open its team page (members are created by the lead as needed); a task shows Running only while its member is really working; the Teams workspace folds Finished into one row; New session says which project a session joins; shared links to long conversations scroll.
 
 [See the full update →](https://veryhappy.dev/whats-new) · [All releases](https://veryhappy.dev/changelog)
 
