@@ -8,6 +8,7 @@ import { applyLocalMembership, projectsApi, ProjectsApiError, refreshProjects, u
 import { useAllMachines, useAllSessions, storage } from '@/sync/storage';
 import { useBoardCompleted, useBoardItems } from '@/screens/board/useBoardItems';
 import { attentionKeysOf } from '@/screens/sessions/sidebarAttention';
+import { useItemNeedsYouSessionIds, withItemAttention } from '@/sync/needsYou';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { pendingSessions } from '@/sync/pendingSessionsRuntime';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
@@ -174,7 +175,9 @@ function ProjectOverview({ detail, c, onChanged }: { detail: ProjectDetailRespon
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
   const completed = useBoardCompleted(now);
   const memberIds = useMemo(() => new Set(detail.members.map((m) => m.sessionId)), [detail.members]);
-  const attentionKeys = useMemo(() => attentionKeysOf(items), [items]);
+  // B-766 W-2: same 需要你 as the sidebar — urgent band plus open 汇报板 items.
+  const itemNeedsYou = useItemNeedsYouSessionIds();
+  const attentionKeys = useMemo(() => withItemAttention(attentionKeysOf(items), itemNeedsYou), [items, itemNeedsYou]);
   const buckets = useMemo(() => bucketItems(items, memberIds, attentionKeys), [items, memberIds, attentionKeys]);
   const done = completed.filter((e) => e.kind === 'session' && e.href && memberIds.has(decodeURIComponent(e.href.replace(/^\/session\//, ''))));
   const sessionById = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);

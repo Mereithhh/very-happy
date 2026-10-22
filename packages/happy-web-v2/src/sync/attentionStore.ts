@@ -6,9 +6,12 @@
  * server flag off / an older server answers 404 → `disabled`, and nothing of
  * the board renders anywhere (no button, strip or pointer).
  */
+import { useMemo } from 'react';
 import { create } from 'zustand';
 import { ATTENTION_LIMITS, type AttentionItem } from '@slopus/happy-wire';
 import { isAttentionDisabled, listAttentionItems } from './apiAttention';
+import { isSeenAt, type SeenMap } from './notificationSeen';
+import { useNotificationSeen, useSeenMap } from './notificationSeenStore';
 
 export interface BoardFocus { sessionId: string; itemId: string; nonce: number }
 
@@ -16,14 +19,11 @@ interface AttentionStoreState {
     /** Server has no board (flag off / older server). */
     disabled: boolean;
     bySession: Record<string, AttentionItem[]>;
-    /** Item ids the Owner has expanded / opened (W-2 moves this to KV `vh.notif-seen.v1` `item:<id>`). */
-    seen: ReadonlySet<string>;
     /** Last 「看板 ›」 request: the screen opens the board and the card scrolls into view. */
     focus: BoardFocus | null;
     setItems: (sessionId: string, items: AttentionItem[]) => void;
     clear: (sessionId: string) => void;
     apply: (item: AttentionItem) => void;
-    markSeen: (itemId: string) => void;
     focusItem: (sessionId: string, itemId: string) => void;
 }
 
@@ -43,7 +43,6 @@ export function mergeItem(list: readonly AttentionItem[] | undefined, item: Atte
 export const useAttentionStore = create<AttentionStoreState>((set) => ({
     disabled: false,
     bySession: {},
-    seen: new Set(),
     focus: null,
     setItems: (sessionId, items) => set((s) => ({ bySession: { ...s.bySession, [sessionId]: items } })),
     clear: (sessionId) => set((s) => {
@@ -52,7 +51,6 @@ export const useAttentionStore = create<AttentionStoreState>((set) => ({
         return { bySession: next };
     }),
     apply: (item) => set((s) => ({ bySession: { ...s.bySession, [item.sessionId]: mergeItem(s.bySession[item.sessionId], item) } })),
-    markSeen: (itemId) => set((s) => (s.seen.has(itemId) ? s : { seen: new Set([...s.seen, itemId]) })),
     focusItem: (sessionId, itemId) => set({ focus: { sessionId, itemId, nonce: ++nonce } }),
 }));
 
@@ -82,6 +80,38 @@ export function loadAttentionItems(sessionId: string): Promise<void> {
         .finally(() => inflight.delete(sessionId));
     inflight.set(sessionId, work);
     return work;
+}
+
+/**
+ * All open needs-owner items of the account (DESIGN §6.1: badges / 「需要你」
+ * across sessions). Socket updates keep them fresh; this covers app start and
+ * resume (sync.onResume).
+ */
+export function loadNeedsYouItems(): Promise<void> {
+    if (useAttentionStore.getState().disabled) return Promise.resolve();
+    return listAttentionItems({ state: 'open', limit: ATTENTION_LIMITS.listMax, needsOwner: '1' })
+        .then(({ items }) => { for (const item of items) useAttentionStore.getState().apply(item); })
+        .catch((error) => { if (isAttentionDisabled(error)) useAttentionStore.setState({ disabled: true }); });
+}
+
+// ─── Read state: synced KV `vh.notif-seen.v1`, key `item:<id>` (§6.4) ─────────
+
+export const itemSeenKey = (id: string) => `item:${id}`;
+
+/** Seen = opened at or after its last change; a repost / reopen makes it new again. */
+export function seenItemIds(items: readonly AttentionItem[], seen: SeenMap): ReadonlySet<string> {
+    const out = new Set<string>();
+    for (const item of items) if (isSeenAt(seen, itemSeenKey(item.id), item.updatedAt)) out.add(item.id);
+    return out;
+}
+
+export function markItemSeen(itemId: string): void {
+    useNotificationSeen.getState().markSeen([itemSeenKey(itemId)]);
+}
+
+export function useSeenItemIds(items: readonly AttentionItem[]): ReadonlySet<string> {
+    const seen = useSeenMap();
+    return useMemo(() => seenItemIds(items, seen), [items, seen]);
 }
 
 const EMPTY: AttentionItem[] = [];

@@ -100,6 +100,15 @@ composer. Picking an option also sends the choice as your message
 lead posted an item, the transcript keeps a one-line *On Briefing · Decide*
 pointer (also in *Just me & the lead*); *Briefing ›* opens the item.
 
+A conversation with something on its Briefing that waits on you counts as
+*needs you* everywhere else too: its sidebar row, the team and project tree
+badges and the project pages (one per conversation, however many items). When an
+agent asks for a person (`request_human`), the **Needs you** strip on that
+conversation now comes from its open *Blocked* item: it is still there after a
+refresh and closes when the item is resolved; decisions and to-dos stay on the
+Briefing instead of adding a second strip. Opening an item marks it read on all
+your devices.
+
 The Briefing is stored by the server in plain text (same tier as teams and
 projects) and appears only when the server enables it
 (`VH_OWNER_BOARD_ENABLED`, see [configuration](configuration.md)) and the

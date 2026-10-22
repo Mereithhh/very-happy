@@ -47,11 +47,12 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
     return data as T;
 }
 
-export function listAttentionItems(query: Pick<AttentionItemListQuery, 'sessionId' | 'state' | 'limit'>): Promise<AttentionItemListResponse> {
+export function listAttentionItems(query: Pick<AttentionItemListQuery, 'sessionId' | 'state' | 'limit' | 'needsOwner'>): Promise<AttentionItemListResponse> {
     const params = new URLSearchParams();
     if (query.sessionId) params.set('sessionId', query.sessionId);
     if (query.state) params.set('state', query.state);
     if (query.limit) params.set('limit', String(query.limit));
+    if (query.needsOwner) params.set('needsOwner', query.needsOwner);
     const qs = params.toString();
     return request(qs ? `?${qs}` : '');
 }

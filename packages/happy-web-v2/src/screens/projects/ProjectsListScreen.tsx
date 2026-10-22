@@ -6,6 +6,7 @@ import { ActionContextMenu, ActionDropdownMenu } from '@/ui';
 import { projectsApi, useProjects } from '@/sync/projects';
 import { useBoardItems } from '@/screens/board/useBoardItems';
 import { attentionKeysOf } from '@/screens/sessions/sidebarAttention';
+import { useItemNeedsYouSessionIds, withItemAttention } from '@/sync/needsYou';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { RecentMachinePath } from '@/utils/quickChat';
@@ -28,7 +29,9 @@ export function ProjectsListScreen() {
   const navigate = useNavigate();
   const snap = useProjects();
   const boardItems = useBoardItems();
-  const attentionKeys = useMemo(() => attentionKeysOf(boardItems), [boardItems]);
+  // B-766 W-2: same 需要你 as the sidebar — urgent band plus open 汇报板 items.
+  const itemNeedsYou = useItemNeedsYouSessionIds();
+  const attentionKeys = useMemo(() => withItemAttention(attentionKeysOf(boardItems), itemNeedsYou), [boardItems, itemNeedsYou]);
   const [archived, setArchived] = useState<ProjectView[] | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   // B-755: the one 新建项目 dialog (name + folder + context); it opens the new project when done.

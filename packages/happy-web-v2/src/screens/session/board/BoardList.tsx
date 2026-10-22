@@ -5,7 +5,7 @@ import type { AttentionItem } from '@slopus/happy-wire';
 import type { BoardCopy } from './boardCopy';
 import { buildBoard, isUnread, type BoardTab } from './boardModel';
 import { chooseOption, followUp, resolveItem } from './boardActions';
-import { useBoardItemsOrEmpty, useAttentionStore } from '@/sync/attentionStore';
+import { markItemSeen, useBoardItemsOrEmpty, useAttentionStore, useSeenItemIds } from '@/sync/attentionStore';
 import { BoardCard, type BoardCardActions } from './BoardCard';
 
 export function BoardList({ sessionId, tab, copy, onLeave }: {
@@ -16,7 +16,7 @@ export function BoardList({ sessionId, tab, copy, onLeave }: {
     onLeave?: () => void;
 }) {
     const items = useBoardItemsOrEmpty(sessionId);
-    const seen = useAttentionStore((s) => s.seen);
+    const seen = useSeenItemIds(items);
     const focus = useAttentionStore((s) => s.focus);
     const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
     const [selected, setSelected] = useState<string | null>(null);
@@ -27,7 +27,7 @@ export function BoardList({ sessionId, tab, copy, onLeave }: {
         if (!focus || focus.sessionId !== sessionId) return;
         setSelected(focus.itemId);
         setExpanded((prev) => new Set([...prev, focus.itemId]));
-        useAttentionStore.getState().markSeen(focus.itemId);
+        markItemSeen(focus.itemId);
         const raf = requestAnimationFrame(() => cards.current.get(focus.itemId)?.scrollIntoView({ block: 'nearest' }));
         return () => cancelAnimationFrame(raf);
     }, [focus, sessionId]);
@@ -40,7 +40,7 @@ export function BoardList({ sessionId, tab, copy, onLeave }: {
                 if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
                 return next;
             });
-            useAttentionStore.getState().markSeen(item.id);
+            markItemSeen(item.id);
         },
         onChoose: (item, optionId) => void chooseOption(item, optionId, copy),
         onResolve: (item) => void resolveItem(item, copy),

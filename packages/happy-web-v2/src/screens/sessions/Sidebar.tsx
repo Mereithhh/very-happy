@@ -64,6 +64,7 @@ import {
 } from './sidebarRecentSort';
 import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
 import { attentionKeysOf, rowSignalOf, type RowSignal } from './sidebarAttention';
+import { useItemNeedsYouSessionIds, useNeedsYouSync, withItemAttention } from '@/sync/needsYou';
 import { attentionSessionIds } from '@/screens/automations/automationPresentation';
 import { buildSessionMenu, sessionMenuAvailability } from '@/app/sessionMenu';
 import { copySessionLink, leaveSessionProject, stopSessionTurn } from '@/app/sessionMenuActions';
@@ -479,7 +480,10 @@ export function Sidebar() {
   // finished a turn while the user wasn't looking (memory-only set, cleared
   // on open). rowSignalOf ranks them; the decision table is unit-tested in
   // sidebarAttention.test.ts.
-  const attentionKeys = useMemo(() => attentionKeysOf(boardItems), [boardItems]);
+  // B-766 W-2: plus sessions with an open 汇报板 item that waits on you (needsYou, Set per session).
+  useNeedsYouSync();
+  const itemNeedsYou = useItemNeedsYouSessionIds();
+  const attentionKeys = useMemo(() => withItemAttention(attentionKeysOf(boardItems), itemNeedsYou), [boardItems, itemNeedsYou]);
   const unreadIds = storage((s) => s.unreadSessionIds);
   // B-330: terminals carry the same 未读 dot, owned by the store that observes
   // their transitions (sync/terminalAgentState.ts).

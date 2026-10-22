@@ -148,3 +148,14 @@ export function pointedMessageIds(items: readonly AttentionItem[]): ReadonlySet<
     for (const i of items) if (i.source !== 'owner' && i.anchor?.messageId) out.add(i.anchor.messageId);
     return out;
 }
+
+/**
+ * B-766 W-2: the request_human strip from items — the newest open `blocked`
+ * item; its `panel` link opens that machine web panel (`?panel=machine&wp=`).
+ */
+export function blockedBanner(items: readonly AttentionItem[], sessionId: string): { id: string; reason: string; url: string | null } | null {
+    const open = items.filter((i) => i.kind === 'blocked' && isLive(i)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (!open) return null;
+    const panel = open.links?.find((l) => l.type === 'panel')?.ref;
+    return { id: open.id, reason: open.title, url: panel ? `/session/${encodeURIComponent(sessionId)}?panel=machine&wp=${encodeURIComponent(panel)}` : null };
+}

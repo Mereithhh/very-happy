@@ -10,7 +10,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { Segmented } from '@/ui/Segmented';
 import { boardCopy } from './boardCopy';
 import { boardCounts, type BoardTab } from './boardModel';
-import { useBoardItemsOrEmpty, useAttentionStore } from '@/sync/attentionStore';
+import { useBoardItemsOrEmpty, useSeenItemIds } from '@/sync/attentionStore';
 import { BoardList } from './BoardList';
 import './board.css';
 
@@ -23,7 +23,7 @@ export function BoardMobile({ sessionId, open, onOpenChange, trailing }: {
     const { lang } = useTranslation();
     const copy = boardCopy(lang.startsWith('zh'));
     const items = useBoardItemsOrEmpty(sessionId);
-    const seen = useAttentionStore((s) => s.seen);
+    const seen = useSeenItemIds(items);
     const [tab, setTab] = useState<BoardTab>('open');
     const c = boardCounts(items, seen);
     useEffect(() => {

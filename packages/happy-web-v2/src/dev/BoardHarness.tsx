@@ -13,7 +13,7 @@ import { setCurrentAuth } from '@/auth/AuthContext';
 import { sync } from '@/sync/sync';
 import { setTeamNavigationDevOverride } from '@/screens/sessions/useTeamNavigation';
 import { buildLeadFixture } from './leadSessionFixture';
-import { useAttentionStore } from '@/sync/attentionStore';
+import { markItemSeen, useAttentionStore } from '@/sync/attentionStore';
 import { ATTENTION_SESSION_CAPABILITY, type AttentionItem } from '@slopus/happy-wire';
 import '@/screens/session/session.css';
 
@@ -152,7 +152,7 @@ export function BoardHarness() {
         // A local stand-in so the REST client sends (only `/v1/attention-items` is answered).
         setCurrentAuth({ isAuthenticated: true, credentials: { token: 'dev-board', secret: '' }, login: async () => false, logout: async () => {} } as never);
         useAttentionStore.setState({ disabled: false });
-        useAttentionStore.getState().markSeen('r1');
+        markItemSeen('r1');
         // No sync keys here: record the board's chat message instead of sending it.
         const realSend = sync.sendMessage;
         sync.sendMessage = (async (sid: string, text: string, opts?: { localId?: string }) => {

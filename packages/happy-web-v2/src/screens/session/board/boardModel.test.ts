@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AttentionItem } from '@slopus/happy-wire';
-import { pointedMessageIds, sessionHasBoard, boardCounts, boardGroup, buildBoard, followUpQuote, isUnread, itemStatus, pointersAt, repliesTo, resolveAction, RECENT_ANSWERED } from './boardModel';
+import { blockedBanner, pointedMessageIds, sessionHasBoard, boardCounts, boardGroup, buildBoard, followUpQuote, isUnread, itemStatus, pointersAt, repliesTo, resolveAction, RECENT_ANSWERED } from './boardModel';
 
 let n = 0;
 function item(over: Partial<AttentionItem>): AttentionItem {
@@ -134,5 +134,17 @@ describe('pointedMessageIds', () => {
             item({ kind: 'report', anchor: { localId: 'l3' } }),
         ]);
         expect([...ids]).toEqual(['m1']);
+    });
+});
+
+describe('blockedBanner (W-2: request_human strip reads items)', () => {
+    it('newest open blocked item; panel link → machine panel deep link; closed ones never show', () => {
+        const old = item({ kind: 'blocked', needsOwner: true, source: 'agent', title: '扫码登录', updatedAt: 10 });
+        const fresh = item({ kind: 'blocked', needsOwner: true, source: 'agent', title: '输入验证码', updatedAt: 20, links: [{ type: 'panel', ref: 'vnc main' }] });
+        const done = item({ kind: 'blocked', needsOwner: true, source: 'agent', title: '旧的', updatedAt: 30, state: 'resolved' });
+        const decision = item({ kind: 'decision', needsOwner: true, updatedAt: 40 });
+        expect(blockedBanner([old, fresh, done, decision], 's 1')).toEqual({ id: fresh.id, reason: '输入验证码', url: '/session/s%201?panel=machine&wp=vnc%20main' });
+        expect(blockedBanner([old], 's')?.url).toBeNull();
+        expect(blockedBanner([done, decision], 's')).toBeNull();
     });
 });
