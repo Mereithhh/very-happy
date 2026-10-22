@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { buildProjectMenu, projectPath, projectPrimaryFolder, projectSettingsPath } from './projectMenu';
 import { projectListModel } from './projectList';
@@ -44,5 +45,14 @@ describe('projectListModel (/projects)', () => {
   it('the archived list holds only archived projects, latest first', () => {
     const rows = projectListModel([project('a', { archivedAt: 1 }), project('b', { archivedAt: 3 }), project('live')], [], new Set(), { archived: true });
     expect(rows.map((r) => r.project.id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('links resolve to real routes', () => {
+  const appRoot = readFileSync(new URL('../../app/AppRoot.tsx', import.meta.url), 'utf8');
+  it('⚙ → B-757’s settings page, 项目 entry → the /projects list', () => {
+    expect(projectSettingsPath('p1')).toBe('/projects/p1/settings');
+    expect(appRoot).toContain("{ path: 'projects/:projectId/settings', element: <Lazy><ProjectSettingsScreen /></Lazy> }");
+    expect(appRoot).toContain("{ path: 'projects', element: <Lazy><ProjectsListScreen /></Lazy> }");
   });
 });
