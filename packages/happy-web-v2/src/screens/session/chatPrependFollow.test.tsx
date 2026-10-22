@@ -33,6 +33,8 @@ vi.mock('@/sync/storage', () => ({
     useSessionMessages: () => useSyncExternalStore(store.subscribe, store.get),
 }));
 vi.mock('@/sync/sync', () => ({ sync: { loadOlderMessages: vi.fn() } }));
+// B-766: not a team lead session (ChatList reads team membership for the lead view).
+vi.mock('@/screens/sessions/useTeamNavigation', () => ({ useTeamNavigation: () => [] }));
 vi.mock('@/sync/ops', () => ({ sessionCancelQueuedMessage: vi.fn() }));
 vi.mock('@/sync/liveStreamStore', () => ({ endLiveStreamTurn: vi.fn(), useHasLiveDraft: () => false }));
 vi.mock('@/sync/heartbeatLease', () => ({ useHeartbeatFresh: () => false }));

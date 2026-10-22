@@ -1,0 +1,73 @@
+/* B-766 B-1 — 「只看我和负责人」. Chat-scaled like the activity header (.ta-head);
+   the folded run is one dashed line (its only outline), never a card. */
+.lv-fold {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--chat-space) * 2);
+  width: 100%;
+  min-width: 0;
+  padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-btn);
+  background: transparent;
+  color: var(--text-dim);
+  font: var(--chat-fs-secondary)/1.4 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.lv-fold-summary { flex: 1 1 auto; min-width: 0; }
+.lv-fold-who { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--chat-space); min-width: 0; }
+.lv-fold-chip {
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 calc(var(--chat-space) * 2);
+  border-radius: var(--r-sm);
+  background: var(--fill-soft);
+  color: var(--text-dim);
+  font-size: var(--chat-fs-caption);
+  line-height: 1.6;
+}
+.lv-fold-chevron { flex: none; color: var(--text-faint); transition: transform var(--dur-snap) var(--ease-snap); }
+.lv-fold--open { border-style: solid; border-color: transparent; padding-inline: 0; color: var(--text-faint); }
+.lv-fold--open .lv-fold-chevron { transform: rotate(180deg); }
+@media (hover: hover) and (pointer: fine) {
+  .lv-fold:hover { background: var(--fill-hover); color: var(--text); }
+  .lv-fold--open:hover { background: transparent; }
+}
+.lv-fold:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint); }
+@media (pointer: coarse) { .lv-fold { min-height: 44px; } }
+
+/* Owner bubble: 「已答 ↗」 before the time (always visible, unlike the hover actions). */
+.lv-answered {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 24px;
+  padding: 0 calc(var(--chat-space) * 2);
+  border-radius: var(--r-sm);
+  background: var(--fill-soft);
+  color: var(--text-dim);
+  font: var(--chat-fs-caption)/1.4 var(--font-sans);
+  white-space: nowrap;
+}
+@media (hover: hover) and (pointer: fine) { .lv-answered:hover { background: var(--fill-soft-hover); color: var(--text); } }
+.lv-answered:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint); }
+@media (pointer: coarse) { .lv-answered { min-height: 44px; } }
+
+/* The view switch sits at the end of the team context row (D6: one row on phones). */
+/* Sized by its labels: the atom's inline-size container would collapse it to its padding. */
+.lv-toggle { flex: none; margin-left: auto; container-type: normal; }
+.lv-toggle > button { flex: none; }
+.lv-label-short { display: none; }
+.lv-toggle--compact > button { padding-inline: var(--sp-2); }
+.session-team-context:has(.lv-toggle) a.session-team-context-progress { margin-left: auto; }
+.session-team-context a.session-team-context-progress + .lv-toggle { margin-left: 0; }
+@media (max-width: 600px) {
+  /* The team link already opens the same page: give the switch the room. */
+  .session-team-context:has(.lv-toggle) a.session-team-context-progress { display: none; }
+  .session-team-context a.session-team-context-progress + .lv-toggle { margin-left: auto; }
+  .lv-label-full { display: none; }
+  .lv-label-short { display: inline; }
+}

@@ -168,7 +168,7 @@ describe('team coordination invariants', () => {
         f.act({ type: 'handoff', taskId: old.id, attemptId: old.currentAttemptId, goalVersion: 1, assigneeBotId: f.state.bots[1].id });
         expect(() => f.act({ type: 'submit', taskId: old.id, attemptId: old.currentAttemptId, goalVersion: 1, result: 'stale' })).toThrow('stale_attempt');
     });
-    it('turn idle events notify owner without completing a task', () => {
+    it('turn idle events never complete a task', () => {
         const f = fixture(); f.act({ type: 'join', name: 'Root', sessionId: 'root' }); const root = f.state.bots[0];
         f.act({ type: 'join', name: 'Worker', sessionId: 'worker' }); const worker = f.state.bots[1];
         f.act({ type: 'delegate', goal: 'g', acceptance: ['a'], assigneeBotId: worker.id });

@@ -38,6 +38,7 @@ import { presentSharedMessage } from './sharedMessage';
 import { PenLine, Users } from 'lucide-react';
 import './shared.css';
 import { SessionPeerMessageCard } from './SessionPeerMessageCard';
+import { AnsweredChip } from './LeadView';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { composerGate } from '@/app/sessionRestoreRules';
 import { DraftScopeProvider } from './DraftBlock';
@@ -122,6 +123,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     // B-332: the CLI destroyed this queued message before it ever ran. Say so
     // under the bubble instead of letting it pass for a delivered prompt.
     const discarded = discardedReasonKey(message);
+    const answeredChip = <AnsweredChip messageId={message.id} />;
     return (
         <div className="msg msg--user" data-chat-prompt-id={message.id}>
             {shared && shared.displayName && (
@@ -129,7 +131,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
             )}
             <UserAttachments sessionId={sessionId} items={attachmentItems} />
             <div className={`msg-bubble-wrap vh-copyhost${send ? ' msg-bubble-wrap--unsent' : ''}`}>
-                <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0} send={send}>
+                <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0} send={send} status={answeredChip}>
                 {text && <div className="msg-bubble">
                     <div id={contentId} className={`msg-bubble-text${clamped ? ' msg-bubble-text--clamped' : ''}`}>
                         {text}
@@ -247,7 +249,8 @@ function AgentText({
     if (!text && !showMeta) return null;
     const prose = text;
     return (
-        <div className="msg msg--agent">
+        // B-766: the anchor 「已答 ↗」 lands on (and phase 2's board pointers).
+        <div className="msg msg--agent" data-message-id={message.id}>
             {prose && (
                 <div className="msg-agent-text vh-copyhost">
                     <DraftScopeProvider sessionId={sessionId} seq={message.seq}>

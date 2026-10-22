@@ -5,7 +5,7 @@
  * single ToolGroupView. "Load older" appears when hasMoreOlder.
  */
 import { stripEditedDrafts } from '@/sync/editableDrafts';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import { ChevronDown, Trash2 } from 'lucide-react';
 import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -61,6 +61,13 @@ import { ChatPromptRail } from './ChatPromptRail';
 import { ReaderFollowContext, createReaderFollow, type ReaderFollowSource } from './readerFollow';
 import './chatReadingAids.css';
 import { useChatJump } from '@/screens/search/useChatJump';
+import { requestChatJump } from '@/screens/search/chatJump';
+import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
+import { teamSessionMembership } from '@/screens/sessions/teamNavigation';
+import { leadViewEntries, leadViewKeys, ownerAnswers, turnOpenerIds, turnOrigin } from './leadView';
+import { useLeadView } from './leadViewPrefs';
+import { LeadAnswerContext, LeadFoldRow } from './LeadView';
+import type { ChatRow } from './chatTurns';
 
 export function ChatList({
     sessionId,
@@ -157,7 +164,32 @@ export function ChatList({
         () => buildChatRows(shownChronological, sessionLive, { turnDiffs: true, keepTurnsOpen: heldTurns, liveDraft }),
         [shownChronological, sessionLive, heldTurns, liveDraft],
     );
-    const rowKeys = useMemo(() => rows.map((row) => row.key), [rows]);
+    // B-766 B-1: in the team lead's conversation, 「只看我和负责人」 folds runs of
+    // member / system turns into one summary row (leadView.ts). Follow and the
+    // unseen badge read the keys on screen, so noise folding in counts as nothing.
+    const teams = useTeamNavigation();
+    const leadTeam = useMemo(() => {
+        const membership = teamSessionMembership(teams).get(sessionId);
+        return membership?.bot.root ? membership.team : undefined;
+    }, [teams, sessionId]);
+    const leadView = useLeadView(sessionId);
+    const origin = useMemo(() => (m: Parameters<typeof turnOrigin>[0]) => turnOrigin(m, leadTeam), [leadTeam]);
+    const answers = useMemo(() => (leadTeam ? ownerAnswers(shownChronological, origin) : null), [leadTeam, shownChronological, origin]);
+    const entries = useMemo(
+        () => (leadTeam && leadView === 'owner' ? leadViewEntries(rows, turnOpenerIds(shownChronological), origin) : null),
+        [leadTeam, leadView, rows, shownChronological, origin],
+    );
+    const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set());
+    const toggleFold = (key: string) => setOpenFolds((prev) => {
+        const next = new Set(prev);
+        if (!next.delete(key)) next.add(key);
+        return next;
+    });
+    const visibleRows = useMemo(
+        () => (entries ? entries.flatMap((entry) => (entry.type === 'row' ? [entry.row] : openFolds.has(entry.key) ? entry.rows : [])) : rows),
+        [entries, openFolds, rows],
+    );
+    const rowKeys = useMemo(() => (entries ? leadViewKeys(entries, openFolds) : rows.map((row) => row.key)), [entries, openFolds, rows]);
     // B-578: 「继续」 only while nothing runs or waits — same liveness verdict
     // as the transcript, and a queued prompt already is the continuation.
     const canOfferContinue = !sessionLive && queuedMessages.length === 0;
@@ -643,6 +675,21 @@ export function ChatList({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId, isLoaded]);
 
+    // B-766: switching the lead view keeps a reader at the live end there.
+    const filtered = entries !== null;
+    useLayoutEffect(() => {
+        if (atBottomRef.current) scrollToBottom(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filtered]);
+
+    // B-766: 「已答 ↗」 goes through the session-search jump (chatJump): it lands
+    // on the answer's `data-message-id` anchor and tints it; an answer not on
+    // screen (inside a folded activity) lands on its question.
+    const answerContext = useMemo(
+        () => (answers ? { answers, jump: (answerId: string) => requestChatJump(sessionId, { terms: [], messageId: answerId, flash: true }) } : null),
+        [answers, sessionId],
+    );
+
     // 「跳到最新」 is asking to follow again: drop the detach so the smooth
     // catch-up re-arms through the follow band like before B-598.
     const jumpToLatest = () => {
@@ -687,11 +734,50 @@ export function ChatList({
         );
     }
 
+    const renderRow = (row: ChatRow) =>
+        row.type === 'activity' ? (
+            <TurnActivityView
+                key={row.key}
+                messages={row.messages}
+                live={row.live}
+                sessionId={sessionId}
+                durationSeconds={row.durationSeconds}
+                trigger={row.trigger}
+                abortedAt={row.abortedAt}
+                answer={row.answer}
+            />
+        ) : row.type === 'turn-diff' ? (
+            <TurnDiffRollup key={row.key} sessionId={sessionId} diff={row.diff} />
+        ) : row.type === 'compaction' ? (
+            <CompactionDivider key={row.key} state={row.state} startedAt={row.startedAt}
+                durationSeconds={row.durationSeconds} error={row.error} />
+        ) : row.type === 'toolgroup' ? (
+            <ToolGroupView
+                key={row.key}
+                tools={row.tools}
+                stalled={!sessionLive}
+                abortedAt={row.tools[0].createdAt >= currentTurnStartedAt ? abortedAt : null}
+            />
+        ) : (
+            <MessageView
+                key={row.key}
+                message={row.message}
+                showMeta={row.showMeta}
+                showActions={row.showActions}
+                sessionId={sessionId}
+                thinkingDurationMs={row.thinkingDurationMs}
+                attachments={row.attachments}
+                optionsActive={row.optionsActive}
+                continueOffer={row.continueOffer === true && canOfferContinue}
+            />
+        );
+
     return (
         // B-145 finding 2: 路径白名单在**会话根**挂一次。挂在每条消息上会让长会话
         // 变成 O(N²)（每条各订阅全量 messages 并各扫一遍），流式输出时尤其明显。
         <MarkdownPathProvider sessionId={sessionId}>
         <ReaderFollowContext.Provider value={readerFollowRef.current}>
+        <LeadAnswerContext.Provider value={answerContext}>
         <div className="cl">
             {/* B-473: one delegated hover-time bubble for every row below. */}
             <MessageTimeTooltip containerRef={scrollRef} />
@@ -719,44 +805,14 @@ export function ChatList({
                             </Button>
                         </div>
                     )}
-                    {rows.map((row) =>
-                        row.type === 'activity' ? (
-                            <TurnActivityView
-                                key={row.key}
-                                messages={row.messages}
-                                live={row.live}
-                                sessionId={sessionId}
-                                durationSeconds={row.durationSeconds}
-                                trigger={row.trigger}
-                                abortedAt={row.abortedAt}
-                                answer={row.answer}
-                            />
-                        ) : row.type === 'turn-diff' ? (
-                            <TurnDiffRollup key={row.key} sessionId={sessionId} diff={row.diff} />
-                        ) : row.type === 'compaction' ? (
-                            <CompactionDivider key={row.key} state={row.state} startedAt={row.startedAt}
-                                durationSeconds={row.durationSeconds} error={row.error} />
-                        ) : row.type === 'toolgroup' ? (
-                            <ToolGroupView
-                                key={row.key}
-                                tools={row.tools}
-                                stalled={!sessionLive}
-                                abortedAt={row.tools[0].createdAt >= currentTurnStartedAt ? abortedAt : null}
-                            />
-                        ) : (
-                            <MessageView
-                                key={row.key}
-                                message={row.message}
-                                showMeta={row.showMeta}
-                                showActions={row.showActions}
-                                sessionId={sessionId}
-                                thinkingDurationMs={row.thinkingDurationMs}
-                                attachments={row.attachments}
-                                optionsActive={row.optionsActive}
-                                continueOffer={row.continueOffer === true && canOfferContinue}
-                            />
-                        ),
-                    )}
+                    {entries
+                        ? entries.map((entry) => entry.type === 'row' ? renderRow(entry.row) : (
+                            <Fragment key={entry.key}>
+                                <LeadFoldRow fold={entry} open={openFolds.has(entry.key)} onToggle={() => toggleFold(entry.key)} />
+                                {openFolds.has(entry.key) && entry.rows.map(renderRow)}
+                            </Fragment>
+                        ))
+                        : rows.map(renderRow)}
                     {/* B-309: the draft of what is being generated right now,
                         between the last persisted message and the status bar.
                         Not a row: it has no id, no seq, no place in history —
@@ -774,7 +830,7 @@ export function ChatList({
             {/* B-577 / B-579: selection quote and the 「你的提问」 rail. */}
             <SelectionQuote rootRef={scrollRef} sessionId={sessionId} />
             <ChatPromptRail
-                rows={rows}
+                rows={visibleRows}
                 scrollRef={scrollRef}
                 innerRef={innerRef}
                 hasMoreOlder={!!hasMoreOlder}
@@ -856,6 +912,7 @@ export function ChatList({
                 </button>
             )}
         </div>
+        </LeadAnswerContext.Provider>
         </ReaderFollowContext.Provider>
         </MarkdownPathProvider>
     );
