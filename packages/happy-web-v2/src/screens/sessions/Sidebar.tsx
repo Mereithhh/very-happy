@@ -1301,8 +1301,6 @@ export function Sidebar() {
         chips={top.chips}
         capabilities={navEntries}
         capabilityNames={navName}
-        onNewProject={() => void createNamedProject()}
-        onNewTeam={newTeam}
         onNavigate={navigate}
       />
 

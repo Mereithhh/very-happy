@@ -10,7 +10,7 @@ import { ActionDropdownMenu, QuickThemeToggle, Spinner, type MenuItemDef } from 
 import { useTranslation } from '@/i18n/useTranslation';
 import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
-import { MIN_LIST_ROWS, fitCapabilityRows, navAttentionTotal, navMenuLabel, splitCapabilities, type SidebarActionRow, type SidebarChip, type SidebarNavEntry, type SidebarNavKey } from './sidebarNavEntries';
+import { MIN_LIST_ROWS, fitCapabilityRows, moreMenuEntries, navAttentionTotal, navMenuLabel, splitCapabilities, type SidebarActionRow, type SidebarChip, type SidebarNavEntry, type SidebarNavKey } from './sidebarNavEntries';
 
 const navIcon = { projects: FolderKanban, teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact } as const;
 
@@ -141,32 +141,35 @@ export function SidebarActionRows(props: {
   );
 }
 
-/** Phone: one compact 44px chip row under the header — 项目 · 团队 · 更多 ▾. */
+/**
+ * Phone: one compact 44px chip row under the header — 项目 · 团队 · 更多 ▾.
+ * B-756 (Lead 10-22): chips navigate — 项目 → /projects, 团队 → /teams, whose
+ * pages carry 新建项目 / 新建团队; 更多 lists the remaining capabilities only.
+ */
 export function SidebarChipRow(props: {
   chips: readonly SidebarChip[];
   capabilities: readonly SidebarNavEntry[];
   capabilityNames: Record<SidebarNavKey, string>;
-  onNewProject: () => void;
-  onNewTeam: () => void;
   onNavigate: (path: string) => void;
 }) {
   const { t } = useTranslation();
   if (props.chips.length === 0) return null;
-  const attention = navAttentionTotal(props.capabilities);
+  const more = moreMenuEntries(props.capabilities, props.chips);
+  const attention = navAttentionTotal(more);
   return (
     <div className="sb-chips">
-      {props.chips.includes('new-project') && (
-        <button type="button" className="sb-chip" data-action="new-project" aria-label={t('sidebar.newProject')} title={t('sidebar.newProject')} onClick={props.onNewProject}>
-          <FolderPlus size={16} /><span>{t('sidebar.chipProject')}</span>
+      {props.chips.includes('projects') && (
+        <button type="button" className="sb-chip" data-cap="projects" aria-label={props.capabilityNames.projects} title={props.capabilityNames.projects} onClick={() => props.onNavigate('/projects')}>
+          <FolderKanban size={16} /><span>{t('sidebar.chipProject')}</span>
         </button>
       )}
-      {props.chips.includes('new-team') && (
-        <button type="button" className="sb-chip" data-action="new-team" aria-label={t('sidebar.newTeam')} title={t('sidebar.newTeam')} onClick={props.onNewTeam}>
+      {props.chips.includes('teams') && (
+        <button type="button" className="sb-chip" data-cap="teams" aria-label={props.capabilityNames.teams} title={props.capabilityNames.teams} onClick={() => props.onNavigate('/teams')}>
           <UsersRound size={16} /><span>{t('sidebar.chipTeam')}</span>
         </button>
       )}
-      {props.chips.includes('more') && props.capabilities.length > 0 && (
-        <ActionDropdownMenu align="start" sideOffset={4} items={capabilityMenuItems(props.capabilities, props.capabilityNames, props.onNavigate)}>
+      {props.chips.includes('more') && more.length > 0 && (
+        <ActionDropdownMenu align="start" sideOffset={4} items={capabilityMenuItems(more, props.capabilityNames, props.onNavigate)}>
           <button type="button" className="sb-chip sb-chip-more" aria-label={navMenuLabel(t('sidebar.moreCapabilities'), attention)} title={t('sidebar.moreCapabilities')}>
             <LayoutGrid size={16} /><span>{t('sidebar.moreEntries')}</span><AttentionBadge count={attention} /><ChevronDown size={14} />
           </button>

@@ -49,17 +49,23 @@ export function navMenuLabel(name: string, attention: number): string {
  * create type) · 新建项目 (once the projects API answered) · 新建团队 (unless
  * Teams is hidden on this device), followed by the capability rows. Phone:
  * header 🔍 · ＋ (B-641's create menu, one tap) and one compact chip row
- * 项目 · 团队 · 更多 ▾.
+ * 项目 · 团队 · 更多 ▾ (B-756: the chips open the lists, not the create dialogs).
  */
 export type SidebarHeaderControl = 'search' | 'create-menu' | 'collapse';
 export type SidebarActionRow = 'new-session' | 'new-project' | 'new-team';
-export type SidebarChip = 'new-project' | 'new-team' | 'more';
+/** B-756 (Lead 10-22): phone chips NAVIGATE (项目 → /projects, 团队 → /teams); creating lives on those pages and in ＋. */
+export type SidebarChip = 'projects' | 'teams' | 'more';
 
 export function sidebarTopModel(input: { isDesktop: boolean; projectsReady: boolean; teamsVisible: boolean }): { header: SidebarHeaderControl[]; actions: SidebarActionRow[]; chips: SidebarChip[] } {
   const creates: ('new-project' | 'new-team')[] = [];
   if (input.projectsReady) creates.push('new-project');
   if (input.teamsVisible) creates.push('new-team');
-  if (!input.isDesktop) return { header: ['search', 'create-menu'], actions: [], chips: [...creates, 'more'] };
+  if (!input.isDesktop) {
+    const chips: SidebarChip[] = [];
+    if (input.projectsReady) chips.push('projects');
+    if (input.teamsVisible) chips.push('teams');
+    return { header: ['search', 'create-menu'], actions: [], chips: [...chips, 'more'] };
+  }
   return { header: ['search', 'collapse'], actions: ['new-session', ...creates], chips: [] };
 }
 
@@ -83,6 +89,11 @@ export function fitCapabilityRows(input: { spare: number; rowPitch: number; tota
   if (!(rowPitch > 0) || !Number.isFinite(spare)) return 0;
   if (total * rowPitch <= spare) return total;
   return Math.max(0, Math.min(total - 1, Math.floor(spare / rowPitch) - 1));
+}
+
+/** Phone 「更多 ▾」: every capability that is not already a chip (no 项目 / 团队 twice). */
+export function moreMenuEntries<T extends { key: string }>(entries: readonly T[], chips: readonly SidebarChip[]): T[] {
+  return entries.filter((e) => !(chips as readonly string[]).includes(e.key));
 }
 
 /** Rows shown directly vs folded into 「更多能力 ▾」 (priority order kept in both). */
