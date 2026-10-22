@@ -31,10 +31,19 @@ describe('sessionTrail (B-763)', () => {
   it('a team in no project: just the team', () => {
     expect(sessionTrail('s1', { projects: [], members: [] }, [team('t', ['s1'])]).ancestors.map((s) => s.kind)).toEqual(['team']);
   });
-  it('placement matches the sidebar: explicit membership beats the team project; archived projects are ignored', () => {
+  it('placement matches the tree (项目 ⊃ 团队 ⊃ 成员): a member follows its team even when explicitly put elsewhere; archived projects are ignored', () => {
     const projects = [project('p', { teamIds: ['t'] }), project('q'), project('gone', { archivedAt: 5 })];
-    expect(sessionTrail('s2', { projects, members: [member('q', 's2')] }, [team('t', ['s1', 's2'])]).ancestors.map((s) => s.href)).toEqual(['/projects/q', '/teams/t']);
+    expect(sessionTrail('s2', { projects, members: [member('q', 's2')] }, [team('t', ['s1', 's2'])]).ancestors.map((s) => s.href)).toEqual(['/projects/p', '/teams/t']);
     expect(sessionTrail('x', { projects, members: [member('gone', 'x')] }, []).ancestors).toEqual([]);
+  });
+  it('a session of an archived team is placed like any other session (its explicit project, no team step)', () => {
+    const t = sessionTrail('s1', { projects: [project('q')], members: [member('q', 's1')] }, [team('t', ['s1'], { archivedAt: 9 })]);
+    expect(t.ancestors.map((s) => s.kind)).toEqual(['project']);
+    expect(t.member).toBeNull();
+  });
+  it('a conversation claimed by a live team and a newer archived one names the live team (the one it is placed in)', () => {
+    const t = sessionTrail('s', { projects: [], members: [] }, [team('live', ['s'], { createdAt: 1 }), team('old', ['s'], { createdAt: 5, archivedAt: 9 })]);
+    expect(t.ancestors).toEqual([{ kind: 'team', label: 'Team live', href: '/teams/live' }]);
   });
   it('ids are URL-encoded in hrefs', () => {
     const t = sessionTrail('s', { projects: [project('a/b', { teamIds: ['c d'] })], members: [] }, [team('c d', ['s'])]);

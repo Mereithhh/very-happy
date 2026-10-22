@@ -1,15 +1,15 @@
 import type { ProjectMemberView, ProjectView, TeamState } from '@slopus/happy-wire';
-import { sessionProjectResolver } from '@/screens/sessions/sidebarProjectGroups';
 import { teamRowTarget, teamSessionMembership } from '@/screens/sessions/teamNavigation';
+import { resolveSessionPlacement } from './sessionPlacement';
 import { projectPath } from '@/screens/projects/projectMenu';
 
 /**
  * B-763 (B-760 方案 A-3「位置感」): where a page sits in 项目 › 团队 › 成员.
  * The trail is the ancestors of the current page; the current page renders
- * itself (the session title stays the rename button). Placement follows the
- * sidebar's own rules — `sessionProjectResolver` (explicit membership, else the
- * team's project) and `teamSessionMembership` — so the header and the tree
- * always agree on where a conversation lives.
+ * itself (the session title stays the rename button). Placement is the tree's
+ * own rule, `resolveSessionPlacement` (B-762): a member follows its live team
+ * into the team's project, any other session sits in its explicit project — so
+ * the header and the sidebar tree always agree on where a conversation lives.
  */
 export type TrailKind = 'projects' | 'teams' | 'project' | 'team';
 export interface TrailSegment { kind: TrailKind; label: string; href: string }
@@ -26,8 +26,10 @@ type ProjectsSnap = { projects: ProjectView[]; members: ProjectMemberView[] };
 export function sessionTrail(sessionId: string, snap: ProjectsSnap, teams: TeamState[]): {
   ancestors: TrailSegment[]; member: { name: string; lead: boolean } | null;
 } {
-  const project = sessionProjectResolver(snap.projects, snap.members, teams)(sessionId);
-  const membership = teamSessionMembership(teams).get(sessionId);
+  const placement = resolveSessionPlacement(sessionId, { projects: snap.projects, members: snap.members, teams });
+  const project = placement.projectId ? snap.projects.find((p) => p.id === placement.projectId) : undefined;
+  // the same live-team membership the placement used (an archived team places nothing)
+  const membership = placement.teamId ? teamSessionMembership(teams.filter((t) => !t.archivedAt)).get(sessionId) : undefined;
   const ancestors: TrailSegment[] = [];
   if (project) ancestors.push({ kind: 'project', label: project.name, href: projectPath(project.id) });
   if (membership) ancestors.push({ kind: 'team', label: membership.team.name, href: teamRowTarget(membership.team).href });

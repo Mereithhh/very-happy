@@ -153,8 +153,8 @@ findings and handoffs the same way.
   project session, nothing for a session in neither. The team page shows
   *Project › Team* (*Teams › Team* without a project) and the project page
   *Projects › Project*. Every earlier step is a link; on a phone only the step
-  just above the current page is shown. Placement follows the sidebar: an
-  explicit project membership wins over the team's project.
+  just above the current page is shown. Placement follows the sidebar tree: a
+  team member always sits under its team, in the team's project.
 - A team without a project (created before this) shows **Put this team in a
   project** on its overview: one click creates the same-name project and links
   it. Nothing is migrated automatically.
