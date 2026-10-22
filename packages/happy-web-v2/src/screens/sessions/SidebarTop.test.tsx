@@ -14,9 +14,9 @@ vi.mock('@/screens/notifications/NotificationBell', () => ({ NotificationBell: (
 vi.mock('@/ui', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/ui')>()), QuickThemeToggle: () => <span data-theme-toggle /> }));
 
 const { SidebarActionRows, SidebarChipRow, SidebarFooter, capabilityMenuItems } = await import('./SidebarTop');
-const { sidebarNavEntries, sidebarTopModel } = await import('./sidebarNavEntries');
+const { moreMenuEntries, sidebarNavEntries, sidebarTopModel } = await import('./sidebarNavEntries');
 
-const names = { teams: 'Teams', automations: 'Automations', todos: 'Todos', people: 'People' };
+const names = { projects: 'Projects', teams: 'Teams', automations: 'Automations', todos: 'Todos', people: 'People' };
 const entries = sidebarNavEntries({ teamsVisible: true, automationsVisible: true, automationAttention: 2, incomingPeople: 1 });
 const desktop = sidebarTopModel({ isDesktop: true, projectsReady: true, teamsVisible: true });
 const phone = sidebarTopModel({ isDesktop: false, projectsReady: true, teamsVisible: true });
@@ -119,22 +119,23 @@ it('the fold menu lists the folded entries with counts and routes', () => {
   expect(onNavigate).toHaveBeenCalledWith('/automations');
 });
 
-it('phone: no action rows; one chip row 项目 · 团队 · 更多 with the attention total', async () => {
-  const onNewProject = vi.fn();
-  const onNewTeam = vi.fn();
+it('phone: no action rows; chips 项目 · 团队 open their lists (B-756), 更多 holds the rest with its attention total', async () => {
+  const onNavigate = vi.fn();
+  const phoneEntries = sidebarNavEntries({ projectsVisible: true, teamsVisible: true, automationsVisible: true, automationAttention: 2, incomingPeople: 1 });
   const el = await render(
     <>
-      <SidebarActionRows actions={phone.actions} creatingChat={false} createItems={[]} capabilities={entries} capabilityNames={names} listRef={listWithHeight(900)} onNewChat={() => {}} onNewProject={() => {}} onNewTeam={() => {}} onNavigate={() => {}} />
-      <SidebarChipRow chips={phone.chips} capabilities={entries} capabilityNames={names} onNewProject={onNewProject} onNewTeam={onNewTeam} onNavigate={() => {}} />
+      <SidebarActionRows actions={phone.actions} creatingChat={false} createItems={[]} capabilities={phoneEntries} capabilityNames={names} listRef={listWithHeight(900)} onNewChat={() => {}} onNewProject={() => {}} onNewTeam={() => {}} onNavigate={() => {}} />
+      <SidebarChipRow chips={phone.chips} capabilities={phoneEntries} capabilityNames={names} onNavigate={onNavigate} />
     </>,
   );
   expect(el.querySelector('.sb-actions')).toBeNull();
   const chips = [...el.querySelectorAll('.sb-chips > button')];
-  expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual(['sidebar.newProject', 'sidebar.newTeam', 'sidebar.moreCapabilities · 3']);
-  await act(async () => (chips[1] as HTMLButtonElement).click());
-  expect(onNewTeam).toHaveBeenCalledTimes(1);
+  expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual(['Projects', 'Teams', 'sidebar.moreCapabilities · 3']);
   await act(async () => (chips[0] as HTMLButtonElement).click());
-  expect(onNewProject).toHaveBeenCalledTimes(1);
+  await act(async () => (chips[1] as HTMLButtonElement).click());
+  expect(onNavigate.mock.calls).toEqual([['/projects'], ['/teams']]);
+  // 更多 never repeats a chip
+  expect(moreMenuEntries(phoneEntries, phone.chips).map((e) => e.key)).toEqual(['automations', 'todos', 'people']);
 });
 
 it('帮助 sits in the footer next to 设置', async () => {

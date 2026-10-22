@@ -292,3 +292,47 @@ a.mrb-term-btn { text-decoration: none; }
 .pj-new-context-hint { margin: 0; font-size: var(--fs-12); line-height: 1.5; color: var(--text-dim); }
 .pj-new-textarea { width: 100%; resize: vertical; min-height: 96px; line-height: 1.5; font-family: inherit; }
 @media (pointer: coarse) { .pj-new-dialog input, .pj-new-dialog textarea { font-size: var(--fs-16); } }
+
+/* ----- B-756 /projects list: rows, not cards ----- */
+.pjl-create { flex-shrink: 0; margin-top: 22px; }
+.pjl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.pjl-row { display: flex; align-items: center; gap: 2px; min-width: 0; border-radius: var(--r-sm); }
+@media (hover: hover) and (pointer: fine) { .pjl-row:hover { background: var(--fill-hover); } }
+.pjl-row.is-archived .pjl-name { color: var(--text-dim); }
+.pjl-main {
+  display: flex; align-items: center; gap: 10px;
+  flex: 1; min-width: 0; min-height: 44px; padding: 6px 8px;
+  border: 0; border-radius: var(--r-sm); background: transparent;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.pjl-main:focus-visible { outline: none; background: var(--fill-hover); }
+.pjl-icon { flex-shrink: 0; color: var(--text-dim); }
+.pjl-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.pjl-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pjl-sub { color: var(--text-faint); font-size: var(--fs-12); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pjl-meta { flex-shrink: 0; color: var(--text-faint); font-size: var(--fs-12); font-variant-numeric: tabular-nums; }
+.pjl-attn {
+  flex-shrink: 0; min-width: 18px; padding: 0 5px; border-radius: var(--r-pill);
+  background: var(--fill-soft); color: var(--warn); font-size: var(--fs-11); line-height: 18px; text-align: center; font-variant-numeric: tabular-nums;
+}
+.pjl-act {
+  display: inline-grid; place-items: center; flex: none; width: 32px; height: 32px;
+  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-dim); cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .pjl-act { opacity: 0; }
+  .pjl-row:hover .pjl-act, .pjl-row:focus-within .pjl-act { opacity: 1; }
+  .pjl-act:hover { background: var(--fill-selected); color: var(--text); }
+}
+.pjl-act:focus-visible { outline: none; opacity: 1; background: var(--fill-selected); color: var(--text); }
+.pjl-archived { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.pjl-archived .pjl-list { align-self: stretch; }
+@media (pointer: coarse) {
+  .pjl-act { width: 44px; height: 44px; }
+  .pjl-create { height: 44px; }
+  .pjl-archived .pj-ghost { height: 44px; }
+}
+@media (max-width: 560px) {
+  .pjl-screen { padding: 12px 16px 40px; }
+  .pjl-meta { display: none; }
+}

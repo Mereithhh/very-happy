@@ -853,3 +853,50 @@
 .sb-ascii { position: absolute; right: 0; bottom: 0; left: 0; height: 168px; pointer-events: none; -webkit-mask-image: linear-gradient(transparent 0, var(--text) 70%); mask-image: linear-gradient(transparent 0, var(--text) 70%); }
 .sb-ascii > .ascii-field { z-index: auto; }
 .sb-footer, .sb-ratelimit { position: relative; }
+
+/* ----- B-756 projects outside the project lens ----- */
+/* Tag lens 「项目」 area: one row per project — name opens it, ＋/⚙ on hover
+   (always shown on touch), right-click / long-press = the project menu. */
+.sb-project-row { display: flex; align-items: center; min-width: 0; border-radius: var(--r-sm); }
+.sb-project-row.is-selected { background: var(--fill-selected); }
+.sb-project-main {
+  display: flex; align-items: center; gap: var(--sp-2);
+  flex: 1; min-width: 0; min-height: 32px; padding: 5px var(--sp-2);
+  color: var(--text); text-align: left;
+}
+.sb-project-main > svg { flex-shrink: 0; color: var(--text-dim); }
+.sb-project-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-project-row.is-selected .sb-project-name { font-weight: 600; }
+.sb-project-count { flex-shrink: 0; color: var(--text-faint); font-size: var(--fs-11); }
+.sb-project-main:focus-visible { outline: none; background: var(--fill-hover); border-radius: var(--r-sm); }
+.sb-project-act {
+  display: inline-grid; place-items: center; flex: none;
+  width: 28px; height: 28px; border-radius: var(--r-sm); color: var(--text-faint);
+}
+.sb-project-act:focus-visible { background: var(--fill-selected); color: var(--text); }
+.sb-project-act:disabled { opacity: 0.45; }
+/* The project group head's ＋/⚙ use the same reveal rule. */
+@media (hover: hover) and (pointer: fine) {
+  .sb-project-row:hover .sb-project-main { background: var(--fill-hover); border-radius: var(--r-sm); }
+  .sb-project-act { opacity: 0; }
+  .sb-project-row:hover .sb-project-act, .sb-project-row:focus-within .sb-project-act,
+  .sb-section-head--project:hover .sb-project-act, .sb-section-head--project:focus-within .sb-project-act,
+  .sb-project-act:focus-visible { opacity: 1; }
+  .sb-project-act:hover { background: var(--fill-selected); color: var(--text); }
+}
+@media (pointer: coarse) {
+  .sb-project-main { min-height: 44px; }
+  .sb-project-act { width: 44px; height: 44px; }
+}
+.sb-section-head--project .sb-project-act + .sb-project-act { margin-left: 2px; }
+/* Project chip on a session row (tag / flat / status views): quiet, like the shared-owner chip.
+   It gives way before the title does (shrink 4:1) and never below its icon. */
+.sb-row-project {
+  flex: 0 4 auto; min-width: 22px; max-width: 96px;
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 0 5px; border-radius: 4px;
+  font-size: var(--fs-11); line-height: 1.5;
+  color: var(--text-faint); background: var(--fill-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sb-row-project > svg { flex: none; }

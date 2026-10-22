@@ -5,7 +5,7 @@ import { BrandIcon, BrandEnvBadge } from '@/ui/BrandMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Flag, FolderOpen, Rows3, RotateCcw, Cable, Trash2, History, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, FolderKanban, FolderPlus, Tags } from 'lucide-react';
+import { Search, Plus, CircleHelp, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ChevronRight, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, FolderOpen, Rows3, RotateCcw, Cable, Trash2, History, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, FolderKanban, FolderPlus, Tags, Settings2 } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -20,9 +20,9 @@ import { confirmArchiveSession, nextSessionPathAfterClose, confirmCloseTerminal,
 import { canOfferRestore, useRestoreState } from '@/app/sessionRestore';
 import { isHibernated } from '@/app/sessionHibernation';
 import { sessionUpdateTitleTags } from '@/sync/ops';
-import { priorityLevel, setPriorityLevel, sortByPriority, PRIORITY_LEVELS, priorityTag, type PriorityLevel } from '@/utils/tags';
+import { priorityLevel, setPriorityLevel, sortByPriority } from '@/utils/tags';
 import { flatListRows, sidebarListEmpty, visibleSidebarSessions } from './sidebarRows';
-import { groupRowsByProject, foldersOfRows, legacyGroupModeFor, resolveSidebarGrouping, showTagGroupingBackNotice, type SidebarGrouping } from './sidebarProjectGroups';
+import { groupRowsByProject, projectAreaEntries, sessionProjectResolver, type ProjectAreaEntry, foldersOfRows, legacyGroupModeFor, resolveSidebarGrouping, showTagGroupingBackNotice, type SidebarGrouping } from './sidebarProjectGroups';
 import { groupRowsByTag } from './sidebarTagGroups';
 import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
 import { toast } from '@/ui/Toast';
@@ -64,12 +64,19 @@ import {
 import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
 import { attentionKeysOf, rowSignalOf, type RowSignal } from './sidebarAttention';
 import { attentionSessionIds } from '@/screens/automations/automationPresentation';
-import { rowRenameMenuTranslationKeys } from './sidebarRowMenu';
+import { buildSessionMenu, sessionMenuAvailability } from '@/app/sessionMenu';
+import { copySessionLink, leaveSessionProject, stopSessionTurn } from '@/app/sessionMenuActions';
+import { sessionProjectMenu } from '@/screens/projects/projectChoice';
+import { ShareDialog } from '@/screens/session/ShareDialog';
+import { isMirrorSession } from '@/assistant/assistantSession';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
 import { useTeamNavigation } from './useTeamNavigation';
 import { botHistorySessionId, groupTeamNavigation, missingTeamSessionIds, teamInactiveGroupId, teamMemberCount, teamMemberInactive, teamSessionMembership, teamSessionSuperseded, unstartedTeamMembers, teamLeadSessionId } from './teamNavigation';
 import { SidebarTeamRow } from './SidebarTeamRow';
+import { SidebarProjectRow } from './SidebarProjectRow';
+import { newSessionInProject, projectMenuItems } from '@/screens/projects/projectActions';
+import { projectMenuCopy, projectPath, projectSettingsPath } from '@/screens/projects/projectMenu';
 import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamBot, TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
@@ -115,6 +122,8 @@ interface Row {
   teamLabel?: string;
   /** B-674/B-690: the 「已停用 N 个」 fold row under an expanded team (not a nav target, no ⌘N slot). */
   teamInactiveFold?: { teamId: string; count: number; open: boolean };
+  /** B-756: a project entry in the tag lens's 「项目」 area (not a nav row: no ⌘N slot, no reorder). */
+  projectEntry?: ProjectAreaEntry;
   key: string;
   kind: 'terminal' | 'session';
   /** Resolved before click so a mirrored terminal never paints xterm first. */
@@ -664,13 +673,24 @@ export function Sidebar() {
       const teamRows = [...orderedRows.filter(isTeamRow), ...teamHistoryRows];
       out.push({ ...collapsibleSection('teams:tag-lens', teamCopy.title, nestTeams(teamRows, liveTeams), collapsedGroups), count: teamRows.filter((r) => !r.teamHistoryLink).length });
     }
+    // B-756: projects stay visible in the tag lens — one 「项目」 area on top, one
+    // entry per project (sessions stay in their tag groups with a project chip).
+    if (projectsSnap.status === 'ready') {
+      const area = projectAreaEntries([...orderedRows, ...teamHistoryRows], projectsSnap.projects, projectsSnap.members, liveTeams, attentionKeys)
+        .map((e): Row => ({ key: `project-entry:${e.project.id}`, kind: 'session', href: projectPath(e.project.id), title: e.project.name, subtitle: '', ts: 0, createdAt: 0, projectEntry: e }));
+      if (area.length > 0) out.unshift(collapsibleSection('tag-lens:projects', lang.startsWith('zh') ? '项目' : 'Projects', area, collapsedGroups));
+    }
     return out;
-  }, [orderable, groupMode, orderedRows, liveTeams, teamHistoryRows, nestTeams, collapsedGroups, projectsSnap.status, teamCopy.title, t]);
+  }, [orderable, groupMode, orderedRows, liveTeams, teamHistoryRows, nestTeams, collapsedGroups, projectsSnap, attentionKeys, teamCopy.title, t, lang]);
+  // B-756: outside the project lens a session row names its project in a chip.
+  const projectOfRow = useMemo(() => sessionProjectResolver(projectsSnap.projects, projectsSnap.members, liveTeams), [projectsSnap.projects, projectsSnap.members, liveTeams]);
+  const chipProjects = projectsSnap.status === 'ready' && !(orderable && groupMode === 'project');
+  const projectChipOf = (r: Row) => (chipProjects && r.kind === 'session' && !r.share && !r.teamHistoryLink ? projectOfRow(r.sessionId)?.name : undefined);
   const groupedSections = projectSections ?? tagSections;
   // Collapsed groups' rows are not rendered, so they take no ⌘1-9 number
   // and no move-up/down position either (B-580).
   const plainDisplayRows = useMemo<Row[] | null>(
-    () => (groupedSections ? groupedSections.flatMap((sec) => sec.rows).filter((r) => !r.teamInactiveFold) : orderedRows),
+    () => (groupedSections ? groupedSections.flatMap((sec) => sec.rows).filter((r) => !r.teamInactiveFold && !r.projectEntry) : orderedRows),
     [groupedSections, orderedRows],
   );
   // The flat list (不分组) nests teams over the whole list; the project and tag lenses do it per group.
@@ -889,6 +909,10 @@ export function Sidebar() {
 
   // ----- rename modal (title + tags) -----
   const [renameTarget, setRenameTarget] = useState<Row | null>(null);
+  const [renameFocusTags, setRenameFocusTags] = useState(false);
+  const openRename = useCallback((row: Row, focusTags = false) => { setRenameFocusTags(focusTags); setRenameTarget(row); }, []);
+  // B-756: 「分享…」 from a row opens the same share panel as the session header.
+  const [shareTarget, setShareTarget] = useState<string | null>(null);
   // Suggestions: every tag currently in use across sessions and terminals.
   const allTags = useMemo(() => collectAllTags(sessions, terminals), [sessions, terminals]);
 
@@ -942,7 +966,7 @@ export function Sidebar() {
           e.stopPropagation();
           // Opens the rename modal (title + tags) instead of the old
           // single-line prompt — same dialog as the row menu's Rename.
-          setRenameTarget(target);
+          openRename(target);
         }
         return;
       }
@@ -965,7 +989,7 @@ export function Sidebar() {
       window.removeEventListener('blur', clear);
       if (holdTimer) clearTimeout(holdTimer);
     };
-  }, [navigate]);
+  }, [navigate, openRename]);
 
   // Render model: list/archived = one unlabeled section; status = the three
   // lifecycle sections. `rows` holds only the VISIBLE rows (collapsed 已完成
@@ -1204,14 +1228,23 @@ export function Sidebar() {
   // capability entries as rows while they fit (the rest under 「更多能力 ▾」);
   // the phone gets one chip row 项目 · 团队 · 更多 ▾ under the header.
   const top = sidebarTopModel({ isDesktop, projectsReady: projectsSnap.status === 'ready', teamsVisible: happyBotEntryVisible });
-  const navEntries = sidebarNavEntries({ teamsVisible: happyBotEntryVisible, automationsVisible: automationsEnabled, automationAttention, incomingPeople });
+  const navEntries = sidebarNavEntries({ projectsVisible: projectsSnap.status === 'ready', teamsVisible: happyBotEntryVisible, automationsVisible: automationsEnabled, automationAttention, incomingPeople });
   const navName: Record<SidebarNavKey, string> = {
+    projects: lang.startsWith('zh') ? '项目' : 'Projects',
     teams: teamCopy.title,
     automations: t('automations.sidebarEntry'),
     todos: t('todos.title'),
     people: t('people.title'),
   };
   const newTeam = () => navigate(NEW_TEAM_PATH);
+  // B-756: 新建会话 into a project — its primary folder, joined before the first message.
+  const newProjectSession = (project: ProjectView) => newSessionInProject(project, navigate, configureNew);
+  const projectCopy = projectMenuCopy(lang.startsWith('zh'));
+
+  /** B-756: right-click / long-press on a project head → the shared project menu. */
+  const wrapProjectHead = (project: ProjectView | undefined, head: React.ReactElement) => (project
+    ? <ActionContextMenu items={projectMenuItems(project, { zh: lang.startsWith('zh'), navigate, openConfigure: configureNew })}>{head}</ActionContextMenu>
+    : head);
 
   return (
     <div className="sb">
@@ -1268,8 +1301,6 @@ export function Sidebar() {
         chips={top.chips}
         capabilities={navEntries}
         capabilityNames={navName}
-        onNewProject={() => void createNamedProject()}
-        onNewTeam={newTeam}
         onNavigate={navigate}
       />
 
@@ -1362,7 +1393,7 @@ export function Sidebar() {
               return sections.map((sec) => (
                 <div key={sec.id} className="sb-section">
                   {sec.kicker && <div className="sb-section-kicker">{sec.kicker}</div>}
-                  {sec.label !== undefined && (
+                  {sec.label !== undefined && wrapProjectHead(sec.project, (
                     <div className={`sb-section-head sb-section-head--toggle${sec.createLocation || sec.makeProject || sec.tagToProject ? ' sb-section-head--workspace' : ''}${sec.project ? ' sb-section-head--project' : ''}`} title={sec.detail || undefined}>
                       {/* B-580: every labelled group folds; Enter/Space via the native button. */}
                       <button
@@ -1395,7 +1426,21 @@ export function Sidebar() {
                           {!sec.open && <GroupSummary summary={summarizeGroup(sec.allRows.map(rowStatusOf))} zh={lang.startsWith('zh')} />}
                         </button>
                       )}
-                      {sec.createLocation && <button
+                      {/* B-756: a project head carries the same two actions as its menu's top: new session + settings. */}
+                      {sec.project && <button
+                        type="button" className="sb-workspace-new sb-project-act" disabled={creatingChat}
+                        title={`${projectCopy.newSession}：${sec.label}`}
+                        aria-label={`${projectCopy.newSession}: ${sec.label}`}
+                        onPointerDown={prefetchSessionDetail}
+                        onClick={() => newProjectSession(sec.project!)}
+                      ><Plus size={14} /></button>}
+                      {sec.project && <button
+                        type="button" className="sb-workspace-new sb-project-act"
+                        title={projectCopy.settings}
+                        aria-label={`${projectCopy.settings}: ${sec.label}`}
+                        onClick={() => navigate(projectSettingsPath(sec.project!.id))}
+                      ><Settings2 size={14} /></button>}
+                      {sec.createLocation && !sec.project && <button
                         type="button" className="sb-workspace-new" disabled={creatingChat}
                         title={lang.startsWith('zh') ? `在此目录新建会话：${sec.createLocation.path}` : `New chat here: ${sec.createLocation.path}`}
                         aria-label={lang.startsWith('zh') ? `在此目录新建会话：${sec.label}` : `New chat here: ${sec.label}`}
@@ -1415,11 +1460,26 @@ export function Sidebar() {
                         onClick={() => void convertTagToProject(sec.tagToProject!)}
                       ><FolderPlus size={14} /></button>}
                     </div>
-                  )}
+                  ))}
                   {sec.rows.map((r) => {
                     // B-619: shared rows are outside displayRows — no ⌘N slot, no reorder.
                     // B-674: the inactive-members fold is a disclosure, not a row — outside displayRows too.
-                    const i = r.share || r.teamInactiveFold ? -1 : flat++;
+                    const i = r.share || r.teamInactiveFold || r.projectEntry ? -1 : flat++;
+                    if (r.projectEntry) {
+                      const entry = r.projectEntry;
+                      return <SidebarProjectRow
+                        key={r.key}
+                        entry={entry}
+                        selected={location.pathname === r.href || location.pathname === projectSettingsPath(entry.project.id)}
+                        zh={lang.startsWith('zh')}
+                        attentionLabel={t('sidebar.projectAttention', { count: entry.attention }) as string}
+                        menuItems={projectMenuItems(entry.project, { zh: lang.startsWith('zh'), navigate, openConfigure: configureNew })}
+                        creating={creatingChat}
+                        onOpen={() => navigate(r.href)}
+                        onSettings={() => navigate(projectSettingsPath(entry.project.id))}
+                        onNewSession={() => newProjectSession(entry.project)}
+                      />;
+                    }
                     if (r.teamInactiveFold) {
                       const fold = r.teamInactiveFold;
                       return <div key={r.key} className="sb-team-child"><button
@@ -1499,10 +1559,13 @@ export function Sidebar() {
                           canMoveUp={i > 0}
                           canMoveDown={i >= 0 && i < displayRows.length - 1}
                           onMove={orderable && !grouped && !teamHistory && !r.share ? (dir) => moveRow(r.key, i, dir) : undefined}
-                          onRenameRequest={() => setRenameTarget(r)}
+                          onRenameRequest={(focusTags) => openRename(r, focusTags)}
+                          projectMenu={r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink ? sessionProjectMenu(r.sessionId, projectsSnap, { shared: false, zh: lang.startsWith('zh') }) : undefined}
                           onMoveToProject={projectsSnap.status === 'ready' && r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink
                             ? () => setMoveProjectTarget({ sessionId: r.sessionId!, candidates: sec.allRows.flatMap((x) => (x.kind === 'session' && x.sessionId && !x.share && !x.teamHistoryLink && !x.team ? [{ sessionId: x.sessionId, title: x.title || x.sessionId.slice(0, 8) }] : [])) })
                             : undefined}
+                          onShare={r.kind === 'session' && r.session ? () => setShareTarget(r.session!.id) : undefined}
+                          projectChip={projectChipOf(r)}
                           peekTipAnchor={peekTipAnchor}
                         />
                       </div>
@@ -1617,6 +1680,7 @@ export function Sidebar() {
       {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
       {showImport && <ImportHistoryModal initialAgent={showImport} onClose={() => setShowImport(null)} />}
       {newProject && <NewProjectDialog initialName={newProject.name} sessionIds={newProject.sessionIds} onClose={() => setNewProject(null)} />}
+      {shareTarget && <ShareDialog key={`share:${shareTarget}`} sessionId={shareTarget} open onOpenChange={(open) => { if (!open) setShareTarget(null); }} />}
       {moveProjectTarget && <MoveToProjectModal initialSessionId={moveProjectTarget.sessionId} candidates={moveProjectTarget.candidates} onClose={() => setMoveProjectTarget(null)} />}
       {renameTarget && (
         <RenameModal
@@ -1627,6 +1691,7 @@ export function Sidebar() {
               : renameTarget.tags
           }
           suggestions={allTags}
+          focusTags={renameFocusTags}
           onClose={() => setRenameTarget(null)}
           onSave={async (title, tags) => {
             const target = renameTarget;
@@ -1650,11 +1715,6 @@ export function Sidebar() {
   );
 }
 
-/**
- * The row's actions as DATA — one definition consumed by BOTH the "…"
- * dropdown (all pointers) and the right-click context menu (fine pointers /
- * long-press). Icon, label, danger tone and disabled state live here only.
- */
 function workspaceGroupId(g: { key: string }): string {
   return `workspace:${g.key}`;
 }
@@ -1686,97 +1746,6 @@ function GroupSummary({ summary, zh }: { summary: GroupStatusSummary; zh: boolea
   );
 }
 
-function rowMenuItems(opts: {
-  t: ReturnType<typeof useTranslation>['t'];
-  isTerminal: boolean;
-  supportsTags: boolean;
-  canMoveUp?: boolean;
-  canMoveDown?: boolean;
-  onRename: () => void;
-  onMoveToProject?: () => void;
-  onMove?: (dir: -1 | 1) => void;
-  onArchiveOrClose: () => void;
-  /** B-091/B-522 priority level (null = none); `onSetPriority` undefined hides it on old terminal daemons. */
-  priorityLevel?: PriorityLevel | null;
-  onSetPriority?: (level: PriorityLevel | null) => void;
-  /** B-265/recoverability: inactive session (archived OR offline) → restore in
-   *  place (undefined hides it). */
-  onRestore?: () => void;
-  /** Restore offered but the machine is offline → shown disabled. */
-  restoreDisabled?: boolean;
-  /** Whether the archive/close lifecycle action shows. Decoupled from restore:
-   *  a merely-offline (non-archived) session is BOTH restorable and archivable;
-   *  an already-archived one is neither closable nor re-archivable. */
-  canArchiveOrClose: boolean;
-}): MenuItemDef[] {
-  const { t } = opts;
-  const items: MenuItemDef[] = [
-    {
-      key: 'rename',
-      label: rowRenameMenuTranslationKeys(opts.supportsTags).map((key) => t(key)).join(' / '),
-      icon: Pencil,
-      onSelect: opts.onRename,
-    },
-  ];
-  if (opts.onMoveToProject) items.push({ key: 'move-project', label: t('sidebar.moveToProject'), icon: FolderKanban, onSelect: opts.onMoveToProject });
-  if (opts.onRestore) {
-    items.push({ key: 'restore', label: t('restore.restore'), icon: RotateCcw, disabled: opts.restoreDisabled, onSelect: opts.onRestore });
-  }
-  if (opts.onSetPriority) {
-    // B-522: P0/P1/P2 as checkable items; the current one unchecks (clears).
-    const setPriority = opts.onSetPriority;
-    for (const level of PRIORITY_LEVELS) {
-      const current = opts.priorityLevel === level;
-      items.push({
-        key: `priority-${level}`,
-        label: t('sidebar.markPriorityLevel', { level: priorityTag(level) }),
-        icon: Flag,
-        checked: current,
-        separatorBefore: level === 0,
-        onSelect: () => setPriority(current ? null : level),
-      });
-    }
-  }
-  if (opts.onMove) {
-    // Full-list adjacent swap — the reorder path for coarse pointers (no
-    // touch drag), harmless extra on desktop.
-    const move = opts.onMove;
-    items.push(
-      {
-        key: 'move-up',
-        label: t('sidebar.moveUp'),
-        icon: ArrowUp,
-        disabled: !opts.canMoveUp,
-        onSelect: () => move(-1),
-      },
-      {
-        key: 'move-down',
-        label: t('sidebar.moveDown'),
-        icon: ArrowDown,
-        disabled: !opts.canMoveDown,
-        onSelect: () => move(1),
-      },
-    );
-  }
-  // Archive-only (B-083): a chat session ends by archiving (records survive);
-  // a terminal ends by a neutral "close" (tmux dies, the claude conversation
-  // inside stays on the machine — `claude --resume`). No delete concept.
-  // B-265/recoverability: an already-archived session has nothing to archive
-  // (restore is its only lifecycle action); a merely-offline non-archived one is
-  // still archivable AND restorable, so this is decoupled from onRestore.
-  if (opts.canArchiveOrClose) {
-    items.push({
-      key: 'archive',
-      label: opts.isTerminal ? t('common.close') : t('common.archive'),
-      icon: opts.isTerminal ? X : Archive,
-      danger: !opts.isTerminal,
-      separatorBefore: true,
-      onSelect: opts.onArchiveOrClose,
-    });
-  }
-  return items;
-}
-
 function SidebarRow({
   row,
   execution,
@@ -1790,7 +1759,10 @@ function SidebarRow({
   canMoveDown,
   onMove,
   onRenameRequest,
+  projectMenu,
   onMoveToProject,
+  onShare,
+  projectChip,
   peekTipAnchor,
 }: {
   row: Row;
@@ -1815,9 +1787,15 @@ function SidebarRow({
    *  coarse pointers. undefined → reordering unavailable (archived view /
    *  search narrowing). */
   onMove?: (dir: -1 | 1) => void;
-  onRenameRequest: () => void;
+  onRenameRequest: (focusTags?: boolean) => void;
+  /** B-756: this session's project entries (`sessionProjectMenu`), undefined for terminals / shared / history rows. */
+  projectMenu?: ReturnType<typeof sessionProjectMenu>;
   /** B-649: 「移到项目…」 (undefined hides it: projects unavailable, shared or history rows). */
   onMoveToProject?: () => void;
+  /** B-756: 「分享…」 — the session header's share panel (owner's active sessions only). */
+  onShare?: () => void;
+  /** B-756: project name chip in the tag / flat lenses (the project lens already groups by it). */
+  projectChip?: string;
   /** B-588: this row hosts the one-time 「会话预览」 tip */
   peekTipAnchor?: boolean;
 }) {
@@ -1883,9 +1861,6 @@ function SidebarRow({
   const restoreState = useRestoreState(s?.id ?? '');
   const restoring = restoreState?.phase === 'spawning' || restoreState?.phase === 'awaiting-online';
   const onRestore = () => { void restoreSessionOrAlert(s!.id); };
-  // Decoupled from restore: a non-archived (incl. merely offline) session can
-  // still be archived; an already-archived one cannot.
-  const canArchiveOrClose = isTerminal || (!!s && s.archivedAt == null && !s.share);
 
   // Archive (session) / close (terminal) — the flows, confirms included,
   // live in rowActions.ts and are shared with the board. Archive-only (B-083):
@@ -1933,36 +1908,37 @@ function SidebarRow({
       })();
     },
   }] : [];
-  // ONE item list feeds both the "…" dropdown and the right-click menu.
-  const menuItems = row.share ? sharedMenuItems : rowMenuItems({
+  // ONE item list feeds both the "…" dropdown and the right-click menu, built
+  // by the same function as the session header ⋯ (B-756, app/sessionMenu.ts).
+  const zh = lang.startsWith('zh');
+  const leave = projectMenu?.leave;
+  // Same gate as the session header ⋯ (terminals: rename / tags / priority / close as before).
+  const avail = s ? sessionMenuAvailability(s, { running: execution === 'running' || execution === 'background', mirror: isMirrorSession(s) }) : null;
+  const menuItems = row.share ? [...sharedMenuItems, ...buildSessionMenu({ t, zh, onCopyLink: () => void copySessionLink(row.href, zh) })] : buildSessionMenu({
     t,
+    zh,
     isTerminal,
-    supportsTags: !isTerminal || row.tags !== undefined,
-    canMoveUp,
-    canMoveDown,
-    onRename: onRenameRequest,
+    onShare: avail?.share ? onShare : undefined,
+    onRename: () => onRenameRequest(false),
+    onTags: !isTerminal || row.tags !== undefined ? () => onRenameRequest(true) : undefined,
+    project: projectMenu,
     onMoveToProject,
-    onMove,
-    onArchiveOrClose: () => void onArchiveOrClose(),
-    onRestore: restorable ? onRestore : undefined,
-    restoreDisabled: restoreBlockedOffline,
-    canArchiveOrClose,
+    onLeaveProject: leave && s ? () => void leaveSessionProject(leave.projectId, s.id, zh) : undefined,
     // B-091 标记优先/取消优先 — writes metadata.tags through the same
     // update-metadata op as the rename dialog (setPriorityLevel prepends the
     // tag, so the row also lands in the priority group when grouping is on).
-    priorityLevel: priorityLevel(row.tags),
-    onSetPriority: isTerminal
-      ? row.tags === undefined
-        ? undefined
-        : (level) =>
-            useTerminalSessions
-              .getState()
-              .update(row.terminalId!, { tags: setPriorityLevel(row.tags, level) })
-      : (level) => {
-          void sessionUpdateTitleTags(s!.id, { tags: setPriorityLevel(s!.metadata?.tags, level) }).catch(
-            () => {},
-          );
-        },
+    priority: isTerminal && row.tags === undefined ? undefined : {
+      level: priorityLevel(row.tags),
+      onSet: isTerminal
+        ? (level) => useTerminalSessions.getState().update(row.terminalId!, { tags: setPriorityLevel(row.tags, level) })
+        : (level) => { void sessionUpdateTitleTags(s!.id, { tags: setPriorityLevel(s!.metadata?.tags, level) }).catch(() => {}); },
+    },
+    onCopyLink: () => void copySessionLink(row.href, zh),
+    restore: restorable ? { onSelect: onRestore, disabled: restoreBlockedOffline } : undefined,
+    // Full-list adjacent swap — the reorder path for coarse pointers (no touch drag).
+    reorder: onMove ? { canUp: !!canMoveUp, canDown: !!canMoveDown, onMove } : undefined,
+    onStop: !isTerminal && s && avail?.stop ? () => void stopSessionTurn(s.id, t('session.chat.stopFailed')) : undefined,
+    onArchive: isTerminal || avail?.archive ? () => void onArchiveOrClose() : undefined,
   });
 
   // B-586: opt-in sibling of archive for a web-created worktree session (plain
@@ -2060,6 +2036,12 @@ function SidebarRow({
             {row.share && (
               <span className="sb-row-shared" title={t('sidebar.sharedFrom', { owner: row.share.owner })}>
                 <UsersRound size={10} aria-hidden />{row.share.owner}
+              </span>
+            )}
+            {/* B-756: the project this session belongs to (tag / flat / status views). */}
+            {projectChip && (
+              <span className="sb-row-project" title={projectChip}>
+                <FolderKanban size={10} aria-hidden />{projectChip}
               </span>
             )}
             {automationAttention && (

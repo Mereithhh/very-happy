@@ -23,6 +23,7 @@ export function RenameModal({
   suggestions,
   onClose,
   onSave,
+  focusTags,
 }: {
   defaultTitle: string;
   /** undefined → this row has no tag support; [] → supported, empty editor. */
@@ -31,6 +32,8 @@ export function RenameModal({
   suggestions?: string[];
   onClose: () => void;
   onSave: (title: string, tags: string[] | undefined) => void | Promise<void>;
+  /** B-756: opened from 「标签…」 — focus lands on the tag input instead of the title. */
+  focusTags?: boolean;
 }) {
   const { t } = useTranslation();
   const ime = useImeGuard();
@@ -97,7 +100,7 @@ export function RenameModal({
         <input
           className="ns-input"
           value={title}
-          autoFocus
+          autoFocus={!(focusTags && tags !== undefined)}
           onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => setTitle(e.target.value)}
           onCompositionStart={ime.onCompositionStart}
@@ -125,6 +128,7 @@ export function RenameModal({
               <input
                 className="rn-tag-input"
                 value={tagInput}
+                autoFocus={!!focusTags}
                 onChange={(e) => setTagInput(e.target.value)}
                 placeholder={t('renameModal.tagPlaceholder')}
                 onCompositionStart={ime.onCompositionStart}

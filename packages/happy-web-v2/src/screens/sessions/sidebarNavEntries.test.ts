@@ -14,6 +14,11 @@ describe('sidebarNavEntries (B-641)', () => {
     ]);
   });
 
+  it('B-756: 项目 leads the entries once the projects API answered, and opens the /projects list', () => {
+    expect(sidebarNavEntries({ ...all, projectsVisible: true }).map((e) => [e.key, e.path])[0]).toEqual(['projects', '/projects']);
+    expect(sidebarNavEntries({ ...all, projectsVisible: false }).map((e) => e.key)).not.toContain('projects');
+  });
+
   it('keeps the existing visibility gates for teams and automations', () => {
     const keys = sidebarNavEntries({ ...all, teamsVisible: false, automationsVisible: false }).map((e) => e.key);
     expect(keys).toEqual(['todos', 'people']);
@@ -43,7 +48,7 @@ describe('sidebar top model (B-676, B-713)', () => {
     expect(sidebarTopModel({ isDesktop: true, projectsReady: true, teamsVisible: false }).actions).toEqual(['new-session', 'new-project']);
   });
   it('phone: header 🔍 · ＋ (B-641 create menu), one chip row 项目 · 团队 · 更多 and no action rows', () => {
-    expect(sidebarTopModel({ isDesktop: false, ...base })).toEqual({ header: ['search', 'create-menu'], actions: [], chips: ['new-project', 'new-team', 'more'] });
+    expect(sidebarTopModel({ isDesktop: false, ...base })).toEqual({ header: ['search', 'create-menu'], actions: [], chips: ['projects', 'teams', 'more'] });
     expect(sidebarTopModel({ isDesktop: false, projectsReady: false, teamsVisible: false }).chips).toEqual(['more']);
   });
   it('新建团队 opens the Teams create dialog directly', () => {

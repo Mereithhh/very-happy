@@ -29,6 +29,7 @@ import { setProjectsDevOverride } from '@/sync/projects';
 import { recordBackgroundTasks, recordHeartbeat } from '@/sync/heartbeatLease';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { Sidebar } from '@/screens/sessions/Sidebar';
+import { ProjectsListScreen } from '@/screens/projects/ProjectsListScreen';
 import { CommandPalette } from '@/screens/command/CommandPalette';
 import { setTeamNavigationDevOverride } from '@/screens/sessions/useTeamNavigation';
 import type { Session, Machine } from '@/sync/storageTypes';
@@ -168,8 +169,18 @@ function seed() {
     fakeSession('sP', 'or-gemini-eval', 1),
   ]);
   setTeamNavigationDevOverride([harnessTeam(now), ...b729Teams(now)]);
-  // projects API answered with no projects yet: every project-gated control shows
-  setProjectsDevOverride({ status: 'ready', projects: [], members: [] });
+  // projects API answered with no projects yet: every project-gated control shows.
+  // B-756: `?projects=1` seeds two projects (one with a waiting session, one empty)
+  // so the tag lens's 「项目」 area, the row chips and the project heads render.
+  const withProjects = new URLSearchParams(window.location.search).get('projects') === '1';
+  const harnessProject = (id: string, name: string, createdAt: number, folders: { machineId: string; path: string; primary: boolean }[]) => ({ id, name, goal: null, instructions: '', instructionsVersion: 0, instructionsUpdatedBy: null, instructionsUpdatedAt: null, folders, defaults: {}, archivedAt: null, createdAt, updatedAt: createdAt, teamIds: [], automationIds: [] });
+  setProjectsDevOverride(withProjects
+    ? {
+      status: 'ready',
+      projects: [harnessProject('pj-vh', 'very-happy', now - 2000, [{ machineId: 'm1', path: '/home/u/code/very-happy', primary: true }]), harnessProject('pj-docs', 'docs-site', now - 1000, [])],
+      members: ['s1', 's4', 's10', 's12'].map((sessionId) => ({ projectId: 'pj-vh', sessionId, via: 'explicit', machineId: null, createdAt: now })),
+    }
+    : { status: 'ready', projects: [], members: [] });
   storage.getState().applyReady();
   // B-312 红色未读点：s5 跑完一轮而用户当时在看别处（真实产生路径在
   // applySessions 的 running→idle 检测里，harness 直接调同一个 action）
@@ -217,12 +228,14 @@ export function SidebarHarness() {
     return () => clearInterval(timer);
   }, []);
   if (!ready) return null;
+  // B-756: `?page=projects` shows the /projects list beside the sidebar (phone: the list alone).
+  const page = new URLSearchParams(window.location.search).get('page');
   return (
     <div style={{ display: 'flex', height: '100dvh', background: 'var(--bg-0)' }}>
       {/* phone: the real app renders the sidebar full-width (AppShell 'list' mode) */}
-      <style>{'@media(max-width:600px){.sidebar-harness-note{display:none}.sidebar-harness-pane{width:100%!important;border-right:0!important}}'}</style>
+      <style>{'@media(max-width:600px){.sidebar-harness-note{display:none}.sidebar-harness-pane{width:100%!important;border-right:0!important}.sidebar-harness-pane.has-page{display:none!important}}'}</style>
       <div
-        className="sidebar-harness-pane"
+        className={`sidebar-harness-pane${page ? ' has-page' : ''}`}
         style={{
           width: 320,
           maxWidth: '100vw',
@@ -235,7 +248,7 @@ export function SidebarHarness() {
       >
         <Sidebar />
       </div>
-      <main className="sidebar-harness-note" style={{ flex: 1, padding:24 }}>本地状态预览 · 示例数据<br/>灰色类型图标；右侧统一状态位。终端区分 Claude、Codex、Pi。</main>
+      {page === 'projects' ? <div style={{ flex: 1, minWidth: 0, display: 'flex' }}><ProjectsListScreen /></div> : <main className="sidebar-harness-note" style={{ flex: 1, padding:24 }}>本地状态预览 · 示例数据<br/>灰色类型图标；右侧统一状态位。终端区分 Claude、Codex、Pi。</main>}
       {/* the sidebar's search entry (⌘K / mobile header icon) — real palette */}
       <CommandPalette />
     </div>

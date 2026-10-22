@@ -2,8 +2,17 @@ import { ClaudeRuntimeDialog } from './ClaudeRuntimeDialog';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { useLocalSetting } from '@/sync/storage';
 import { useNavigate } from 'react-router-dom';
-import { Bot, FolderKanban, FolderMinus, Moon, Users } from 'lucide-react';
-import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
+import { Bot, Moon } from 'lucide-react';
+import { useProjects } from '@/sync/projects';
+import { buildSessionMenu, sessionMenuAvailability } from '@/app/sessionMenu';
+import { copySessionLink, leaveSessionProject, stopSessionTurn } from '@/app/sessionMenuActions';
+import { confirmArchiveSession, nextSessionPathAfterClose, collectAllTags, saveRowRename } from '@/app/rowActions';
+import { isAgentWorkLive } from '@/sync/agentLiveness';
+import { useHeartbeatFresh } from '@/sync/heartbeatLease';
+import { useTerminalSessions } from '@/sync/terminalSessions';
+import { priorityLevel, setPriorityLevel } from '@/utils/tags';
+import { sessionUpdateTitleTags } from '@/sync/ops';
+import { RenameModal } from '@/screens/sessions/RenameModal';
 import { MoveToProjectModal } from '@/screens/projects/MoveToProjectModal';
 import { sessionProjectMenu } from '@/screens/projects/projectChoice';
 import { ShareDialog } from './ShareDialog';
@@ -14,10 +23,10 @@ import * as Popover from '@radix-ui/react-popover';
  * ChatHeader — title (editable rename), machine·cwd breadcrumb, relay badge,
  * and the global back button.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StickyNote, Check, FolderOpen, MessageCircleQuestion, MoreHorizontal, Pencil, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
-import { useSession } from '@/sync/storage';
+import { useSession, useSessions } from '@/sync/storage';
 import { sessionSetKeepAwake, sessionUpdateTitle } from '@/sync/ops';
 import { supportsKeepAwake } from '@/app/sessionHibernation';
 import { toast } from '@/ui/Toast';
@@ -62,10 +71,15 @@ export function ChatHeader({
     const [runtimeOpen, setRuntimeOpen] = useState(false);
     const [shareOpen, setShareOpen] = useState(false);
     const [moveProjectOpen, setMoveProjectOpen] = useState(false);
+    const [tagsOpen, setTagsOpen] = useState(false);
     const projectsSnap = useProjects();
     // B-619: shared WITH me → every owner-only control disappears (the server refuses them anyway).
     const sharedWithMe = !!session && isSharedWithMe(session);
-    const canShare = !!session && !sharedWithMe && !isMirrorSession(session) && session.archivedAt == null;
+    // B-756: same liveness entry point as the composer's Stop (铁律 13) and the same gate as the sidebar row menu.
+    const leaseFresh = useHeartbeatFresh(sessionId);
+    const running = !!session && isAgentWorkLive({ presence: session.presence, thinking: session.thinking, runningSubagentsInTurn: 0, heartbeatFresh: leaseFresh });
+    const avail = session ? sessionMenuAvailability({ archivedAt: session.archivedAt, share: sharedWithMe ? true : undefined }, { running, mirror: isMirrorSession(session) }) : null;
+    const canShare = !!avail?.share;
     const canControlRuntime = !sharedWithMe && session?.metadata?.capabilities?.includes('claude-runtime-controls-v1') === true;
     // B-587: only a wrapper that can hibernate offers「保持唤醒」(AGENTS #14).
     const canKeepAwake = !sharedWithMe && supportsKeepAwake(session?.metadata);
@@ -136,16 +150,28 @@ export function ChatHeader({
     });
     // B-726: the session header can move this session into / out of a project (also from the sidebar row and the new-session dialog).
     const projectMenu = sessionProjectMenu(sessionId, projectsSnap, { shared: sharedWithMe, zh: lang.startsWith('zh') });
-    const leaveProject = async () => {
-        if (!projectMenu.leave) return;
-        try { await projectsApi.removeMember(projectMenu.leave.projectId, sessionId); applyLocalMembership(null, [sessionId]); }
-        catch { toast.error(lang.startsWith('zh') ? '移出失败' : 'Could not remove'); }
-        finally { void refreshProjects(); }
-    };
-    const projectItems: MenuItemDef[] = [
-        ...(projectMenu.move ? [{ key: 'move-project', label: projectMenu.move, icon: FolderKanban, onSelect: () => setMoveProjectOpen(true) }] : []),
-        ...(projectMenu.leave ? [{ key: 'leave-project', label: projectMenu.leave.label, icon: FolderMinus, onSelect: () => void leaveProject() }] : []),
-    ];
+    const zh = lang.startsWith('zh');
+    const leave = projectMenu.leave;
+    // B-756: the session's shared actions — the same builder and gate as the sidebar row's ⋯ / right-click menu.
+    const sessionItems: MenuItemDef[] = session && avail ? buildSessionMenu({
+        t,
+        zh,
+        onShare: avail.share ? () => setShareOpen(true) : undefined,
+        onRename: avail.rename ? startEdit : undefined,
+        onTags: avail.tags ? () => setTagsOpen(true) : undefined,
+        project: projectMenu,
+        onMoveToProject: () => setMoveProjectOpen(true),
+        onLeaveProject: leave ? () => void leaveSessionProject(leave.projectId, sessionId, zh) : undefined,
+        priority: avail.priority ? {
+            level: priorityLevel(meta?.tags),
+            onSet: (level) => { void sessionUpdateTitleTags(sessionId, { tags: setPriorityLevel(meta?.tags, level) }).catch(() => {}); },
+        } : undefined,
+        onCopyLink: () => void copySessionLink(`/session/${encodeURIComponent(sessionId)}`, zh),
+        onStop: avail.stop ? () => void stopSessionTurn(sessionId, t('session.chat.stopFailed')) : undefined,
+        onArchive: avail.archive ? () => {
+            void confirmArchiveSession(session).then((archived) => { if (archived) navigateTeam(nextSessionPathAfterClose(sessionId)); });
+        } : undefined,
+    }) : [];
     const canStartTeam = !sharedWithMe && showTeams && session?.metadata?.capabilities?.includes('teams-adopt-v1') && session.archivedAt == null && !teams.some(t => t.bots.some(b => b.sessionId === sessionId));
     const overflowHasActive = plan.overflow.some(
         (key) => (key === 'btw' && btwOpen) || (key === 'files' && filesOpen),
@@ -260,8 +286,8 @@ export function ChatHeader({
                 </div>
             )}
             {!editing && plan.inline.map(renderAction)}
-            {!editing && (plan.overflow.length > 0 || canStartTeam || canControlRuntime || canKeepAwake || canShare || projectItems.length > 0) && (
-                <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...projectItems, ...(canShare ? [{key:'share',label:t('share.menu'),icon:Users,onSelect:()=>setShareOpen(true)}] : []), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : [])]}>
+            {!editing && (plan.overflow.length > 0 || canStartTeam || canControlRuntime || canKeepAwake || sessionItems.length > 0) && (
+                <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...sessionItems.map((item, i) => (i === 0 && plan.overflow.length > 0 ? { ...item, separatorBefore: true } : item)), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : [])]}>
                     <button
                         type="button"
                         className={`ch-icon${overflowHasActive ? ' is-active' : ''}`}
@@ -275,6 +301,24 @@ export function ChatHeader({
             {canControlRuntime && <ClaudeRuntimeDialog key={sessionId} sessionId={sessionId} open={runtimeOpen} onOpenChange={setRuntimeOpen}/>}
             {canShare && <ShareDialog key={`share:${sessionId}`} sessionId={sessionId} open={shareOpen} onOpenChange={setShareOpen} />}
             {moveProjectOpen && <MoveToProjectModal initialSessionId={sessionId} candidates={[]} onClose={() => setMoveProjectOpen(false)} />}
+            {tagsOpen && session && <HeaderTagsModal session={session} title={meta?.summary?.text ?? ''} onClose={() => setTagsOpen(false)} />}
         </header>
+    );
+}
+
+/** B-756: 「标签…」 from the header ⋯ — the sidebar's rename dialog, focused on tags. */
+function HeaderTagsModal({ session, title, onClose }: { session: NonNullable<ReturnType<typeof useSession>>; title: string; onClose: () => void }) {
+    const sessions = useSessions();
+    const terminals = useTerminalSessions((s) => s.terminals);
+    const suggestions = useMemo(() => collectAllTags(sessions, terminals), [sessions, terminals]);
+    return (
+        <RenameModal
+            defaultTitle={title}
+            tags={session.metadata?.tags ?? []}
+            suggestions={suggestions}
+            focusTags
+            onClose={onClose}
+            onSave={(nextTitle, tags) => saveRowRename({ kind: 'session', session, currentTitle: title }, nextTitle, tags)}
+        />
     );
 }

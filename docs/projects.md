@@ -25,7 +25,16 @@ one project; sessions outside any project keep working exactly as before.
 The sidebar groups by project by default; the group menu offers **Project**,
 **Tag** (one group per first tag, untagged last, teams in their own group) or no
 grouping. Teams appear inside their project's group. Selecting a group's
-name opens the project page; its ＋ starts a session in that project.
+name opens the project page; hovering it shows ＋ (new session in that project)
+and ⚙ (project settings), and right-click / long-press offers **New session**,
+**Project settings**, **Rename** and **Archive project**.
+
+Projects stay visible in the other views too: grouped by tag, a **Projects**
+area on top lists every project (sessions stay in their tag groups); in every
+view other than project grouping, a session row shows its project as a small
+chip. **Projects** in the sidebar's entry row (next to Teams, Automations…)
+opens the list of all projects, where you can create one, open one, or show
+archived projects and unarchive them.
 
 ## Put sessions in a project
 
@@ -75,6 +84,11 @@ but not its project.
 To take a session out, use **Move to project…** → *No project*, the session
 header menu (**Remove from "…"**), or the leave button on its row on the project
 page. The session header menu also has **Move to project…**.
+
+The session menu is the same in the sidebar (⋯, right-click or long-press on a
+row) and in the session header ⋯: **Share…**, **Rename**, **Tags…**, **Move to
+project…** / **Remove from "…"**, priority, **Copy link**, **Stop** (while a
+turn runs) and **Archive**.
 
 ## Teams and projects
 
