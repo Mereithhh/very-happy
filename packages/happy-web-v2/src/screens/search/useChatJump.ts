@@ -1,8 +1,9 @@
 /**
  * B-650 — ChatList side of "jump to the search hit" (see chatJump.ts).
  *
- * Message → DOM: user prompts carry `data-chat-prompt-id`; everything else is
- * found by text inside that turn (between its prompt and the next one). A hit
+ * Message → DOM: a rendered message carries `data-message-id` (B-766: agent
+ * text too) and is landed on directly; user prompts also carry
+ * `data-chat-prompt-id`; everything else is found by text inside that turn (between its prompt and the next one). A hit
  * whose text is not rendered (inside a collapsed activity row) lands on the
  * turn's prompt instead. Occurrences of the query terms in the turn are
  * painted with the CSS Custom Highlight API (no DOM mutation, so React's tree
@@ -81,11 +82,19 @@ export function locateJumpTarget(
     return el ? { el, scope: prompt ? [...textNodesBetween(root, null, null).filter((n) => prompt.contains(n)), ...scope] : scope } : null;
 }
 
+/** No terms (a 汇报板 jump, B-766): the whole landed message is painted. */
 function paintHighlights(nodes: readonly Text[], terms: readonly string[]): () => void {
     const hl = highlightRegistry();
-    if (!hl || terms.length === 0) return () => {};
+    if (!hl) return () => {};
     const ranges: Range[] = [];
     for (const node of nodes) {
+        if (terms.length === 0) {
+            if (ranges.length >= MAX_HIGHLIGHT_RANGES) break;
+            const r = document.createRange();
+            r.selectNodeContents(node);
+            ranges.push(r);
+            continue;
+        }
         const lower = (node.nodeValue ?? '').toLowerCase();
         for (const term of terms) {
             let at = lower.indexOf(term);

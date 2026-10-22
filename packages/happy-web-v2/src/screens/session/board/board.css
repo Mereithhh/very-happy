@@ -1,0 +1,101 @@
+/* B-766 W-1 — 汇报板 (Briefing): aside panel, cards, in-stream pointers,
+   phone summary strip + top sheet. Tokens only (design-language §2.1):
+   cards are one surface each (no outline on outline), waiting items warn. */
+
+/* ── aside panel ── */
+.brf-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-0); }
+.brf-tabs { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); }
+/* .vh-segmented is a size container: it needs a definite width or it collapses. */
+.brf-tabs .vh-segmented { flex: none; width: 168px; }
+.brf-head-sum { flex: 1; min-width: 0; text-align: right; font-size: var(--fs-12); color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brf-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.brf-list { padding: var(--sp-1) var(--sp-3) var(--sp-5); }
+
+/* ── groups ── */
+.brf-group-head { display: flex; align-items: center; gap: 6px; margin: var(--sp-4) var(--sp-1) 6px; font-size: var(--fs-12); font-weight: 500; color: var(--text-faint); }
+.brf-group-count { font-family: var(--font-mono); }
+.brf-group-line { flex: 1; height: 1px; background: var(--line); }
+.brf-empty { padding: var(--sp-2) 6px; font-size: var(--fs-12); color: var(--text-faint); }
+
+/* ── card ── */
+.brf-card { position: relative; margin-bottom: 6px; border-radius: var(--r-md); background: var(--bg-1); box-shadow: var(--panel-shadow); }
+.brf-card.is-selected { box-shadow: 0 0 0 1.5px var(--text-faint); }
+.brf-unread { position: absolute; left: -7px; top: 15px; width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
+.brf-card-head { display: block; width: 100%; padding: 9px 10px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: var(--r-md); }
+.brf-card.is-open .brf-card-head { padding-bottom: 0; }
+@media (hover: hover) and (pointer: fine) {
+  .brf-card:not(.is-selected):hover { box-shadow: 0 0 0 1px var(--line-2); }
+}
+.brf-r1 { display: flex; align-items: center; gap: 6px; }
+.brf-title { flex: 1; min-width: 0; font-size: var(--fs-13); font-weight: 500; line-height: 1.35; color: var(--text); overflow-wrap: anywhere; }
+.brf-card.is-done .brf-title { color: var(--text-faint); font-weight: 400; }
+.brf-r2 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--sp-2); margin-top: 4px; font-size: var(--fs-11); color: var(--text-faint); }
+.brf-link { font-family: var(--font-mono); font-size: var(--fs-11); line-height: 17px; padding: 0 5px; border-radius: var(--r-xs); background: var(--fill-soft); }
+
+.brf-kind { flex: none; font-size: var(--fs-11); font-weight: 600; line-height: 18px; padding: 0 6px; border-radius: var(--r-xs); background: var(--fill-soft); color: var(--text-dim); white-space: nowrap; }
+.brf-kind--warn { background: var(--warn-dim); color: var(--warn); }
+.brf-status { flex: none; font-size: var(--fs-11); line-height: 18px; padding: 0 6px; border-radius: var(--r-xs); white-space: nowrap; }
+.brf-status--open { background: var(--warn-dim); color: var(--warn); }
+.brf-status--wip { background: var(--fill-soft); color: var(--text-dim); }
+.brf-status--done { color: var(--text-faint); }
+
+/* ── expanded ── */
+.brf-x { margin: var(--sp-2) 10px 0; padding: var(--sp-2) 0 10px; border-top: 1px solid var(--line); font-size: var(--fs-13); color: var(--text-dim); }
+.brf-body { line-height: 1.5; }
+.brf-body > :first-child { margin-top: 0; }
+.brf-body > :last-child { margin-bottom: 0; }
+.brf-opts { display: flex; flex-direction: column; gap: 6px; margin-top: var(--sp-2); }
+.brf-opt { display: flex; align-items: flex-start; gap: var(--sp-2); width: 100%; padding: 7px 9px; border: 0; border-radius: var(--r-btn); background: var(--fill-soft); color: var(--text); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
+.brf-opt:disabled { cursor: default; }
+.brf-opt:disabled:not(.is-chosen) { opacity: 0.6; }
+.brf-opt.is-chosen { background: var(--fill-selected); box-shadow: inset 0 0 0 1px var(--line-2); }
+@media (hover: hover) and (pointer: fine) {
+  .brf-opt:not(:disabled):hover { background: var(--fill-selected); }
+}
+.brf-opt-id { font-family: var(--font-mono); font-size: var(--fs-12); font-weight: 600; color: var(--text-faint); line-height: 1.55; }
+.brf-opt-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.brf-opt-detail { font-size: var(--fs-12); color: var(--text-faint); }
+.brf-opt-rec { flex: none; margin-left: auto; font-size: var(--fs-11); color: var(--text-dim); font-weight: 500; }
+.brf-ans { margin-top: var(--sp-2); padding-left: 9px; border-left: 2px solid var(--line-2); line-height: 1.45; }
+.brf-ans-label { font-size: var(--fs-11); color: var(--text-faint); }
+.brf-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--sp-2); }
+.brf-acts button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border: 0; border-radius: var(--r-btn); background: var(--fill-soft); color: var(--text-dim); font: inherit; font-size: var(--fs-12); cursor: pointer; }
+@media (hover: hover) and (pointer: fine) {
+  .brf-acts button:hover { background: var(--fill-selected); color: var(--text); }
+}
+@media (pointer: coarse) {
+  .brf-acts button { min-height: 44px; padding: 0 12px; }
+  .brf-opt { padding: 11px 12px; }
+}
+
+/* ── in-stream pointer ── */
+.brf-ptrs { display: flex; flex-direction: column; gap: 6px; margin-top: var(--sp-2); }
+.brf-ptr { display: flex; align-items: center; gap: var(--sp-2); width: 100%; padding: 7px 10px; border: 0; border-radius: var(--r-btn); background: var(--fill-soft); color: var(--text); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
+@media (hover: hover) and (pointer: fine) {
+  .brf-ptr:hover { background: var(--fill-selected); }
+}
+@media (pointer: coarse) { .brf-ptr { min-height: 44px; } }
+.brf-ptr-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brf-ptr-go { flex: none; display: inline-flex; align-items: center; gap: 1px; font-size: var(--fs-12); color: var(--text-faint); }
+
+/* ── header button badge ── */
+.brf-hbtn { position: relative; }
+.brf-hbadge { position: absolute; top: -3px; right: -4px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: var(--r-pill); background: var(--warn-dim); color: var(--warn); font: 600 var(--fs-10)/15px var(--font-mono); text-align: center; pointer-events: none; }
+
+/* ── phone: summary strip + top sheet ── */
+.brf-mobile { position: relative; z-index: 40; flex: none; }
+.brf-strip { display: flex; align-items: center; gap: var(--sp-2); height: 40px; padding: 0 var(--sp-3); border-bottom: 1px solid var(--line); background: var(--bg-0); }
+.brf-strip-btn { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: var(--sp-3); border: 0; background: none; color: var(--text-dim); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
+.brf-strip-n { white-space: nowrap; }
+.brf-strip-n b { font: 600 var(--fs-12) var(--font-mono); color: var(--text-dim); }
+.brf-strip-n.is-hot b { color: var(--warn); }
+.brf-strip-grow { flex: 1; }
+.brf-strip-chev { color: var(--text-faint); transition: transform var(--motion-fast); }
+.brf-mobile.is-open .brf-strip-chev { transform: rotate(180deg); }
+.brf-sheet-scrim { position: absolute; top: 100%; left: 0; right: 0; height: 100dvh; background: var(--scrim); }
+.brf-sheet { position: absolute; top: 100%; left: 0; right: 0; display: flex; flex-direction: column; max-height: calc(100dvh - 160px); background: var(--bg-0); border-radius: 0 0 var(--r-lg) var(--r-lg); box-shadow: var(--shadow-popover); animation: brf-sheet-in var(--motion-fast) ease-out; }
+.brf-sheet .brf-tabs { padding-top: var(--sp-2); }
+.brf-sheet-grab { flex: none; height: 24px; display: grid; place-items: center; border: 0; background: none; cursor: pointer; }
+.brf-sheet-grab i { width: 36px; height: 4px; border-radius: 2px; background: var(--line-2); }
+@keyframes brf-sheet-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .brf-sheet { animation: none; } }

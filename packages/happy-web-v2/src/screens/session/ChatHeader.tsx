@@ -23,7 +23,7 @@ import * as Popover from '@radix-ui/react-popover';
  * ChatHeader — title (editable rename), machine·cwd breadcrumb, relay badge,
  * and the global back button.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { StickyNote, Check, FolderOpen, MessageCircleQuestion, MoreHorizontal, Pencil, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useSession, useSessions } from '@/sync/storage';
@@ -51,6 +51,7 @@ export function ChatHeader({
     onToggleFiles,
     btwOpen,
     onToggleBtw,
+    boardAction,
 }: {
     sessionId: string;
     filesOpen?: boolean;
@@ -58,6 +59,8 @@ export function ChatHeader({
     /** B-283 `/btw` side-question panel; absent = this session can't host it */
     btwOpen?: boolean;
     onToggleBtw?: () => void;
+    /** B-766: the 汇报板 button (owned by the board; absent when the session has none). */
+    boardAction?: ReactNode;
 }) {
     const { t, lang } = useTranslation();
     // B-588: the ⌘P tip sits next to the files button — the visible neighbour
@@ -293,6 +296,7 @@ export function ChatHeader({
                 </div>
             )}
             {!editing && plan.inline.map(renderAction)}
+            {!editing && boardAction}
             {!editing && (plan.overflow.length > 0 || canStartTeam || canControlRuntime || canKeepAwake || sessionItems.length > 0) && (
                 <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...sessionItems.map((item, i) => (i === 0 && plan.overflow.length > 0 ? { ...item, separatorBefore: true } : item)), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : [])]}>
                     <button

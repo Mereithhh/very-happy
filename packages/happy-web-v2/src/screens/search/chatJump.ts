@@ -18,8 +18,10 @@ import { messageSearchText } from './sessionSearch';
 export interface ChatJumpRequest {
     /** Lower-cased query terms (for highlighting and the fallback match). */
     terms: string[];
-    /** Exact target (cached hit). */
+    /** Exact target (cached hit, or a 汇报板 anchor — B-766). */
     messageId?: string;
+    /** B-766: an Owner message anchored by its client localId (the server id is not known when the item is written). */
+    localId?: string;
     /** Snippet text (daemon hit) — locates the message by content. */
     snippet?: string;
     /** Daemon snippet timestamp — breaks ties between equal candidates. */
@@ -86,6 +88,10 @@ export function snippetNeedle(snippet: string, terms: readonly string[]): string
 export function findJumpMessage(chronological: readonly Message[], req: ChatJumpRequest): string | null {
     if (req.messageId) {
         const found = deepFind(chronological, (m) => m.id === req.messageId);
+        if (found) return found;
+    }
+    if (req.localId) {
+        const found = deepFind(chronological, (m) => 'localId' in m && m.localId === req.localId);
         if (found) return found;
     }
     if (req.terms.length === 0) return null;

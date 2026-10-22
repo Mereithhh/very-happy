@@ -13,6 +13,7 @@ import { sessionCancelQueuedMessage } from '@/sync/ops';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Button, EmptyState, OrbitLoader, Spinner, useToast } from '@/ui';
 import { MessageView } from './MessageView';
+import { BoardPointers } from './board/BoardPointer';
 import { ToolGroupView } from './ToolGroupView';
 import { MarkdownPathProvider } from './Markdown';
 import { PermissionPointer } from './PermissionCard';
@@ -759,8 +760,8 @@ export function ChatList({
                 abortedAt={row.tools[0].createdAt >= currentTurnStartedAt ? abortedAt : null}
             />
         ) : (
+            <Fragment key={row.key}>
             <MessageView
-                key={row.key}
                 message={row.message}
                 showMeta={row.showMeta}
                 showActions={row.showActions}
@@ -770,6 +771,9 @@ export function ChatList({
                 optionsActive={row.optionsActive}
                 continueOffer={row.continueOffer === true && canOfferContinue}
             />
+            {/* B-766: 「已上板」 pointers the lead posted from this message (none without a board). */}
+            <BoardPointers sessionId={sessionId} messageId={row.message.id} />
+            </Fragment>
         );
 
     return (

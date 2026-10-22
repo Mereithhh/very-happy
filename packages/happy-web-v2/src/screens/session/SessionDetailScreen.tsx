@@ -5,7 +5,7 @@ import { SessionPreviews } from './SessionPreviews';
 import { SubagentDock } from './SubagentDock';
 import { PermissionCard } from './PermissionCard';
 import { messageActionsCopy } from './messageActionsCopy';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useSession, useMessage, useLocalSetting, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -47,6 +47,8 @@ import { isMirrorSession } from '@/assistant/assistantSession';
 import { newSessionTimingComposerMounted, newSessionTimingInStore, newSessionTimingPendingShown } from '@/app/newSessionTiming';
 import { isHistoryPanel, readSessionPanel, readSubagentTarget, toggleHistoryPanel, withSessionPanel, withSubagentPanel, type SessionPanelTab } from './sessionPanelState';
 import { ChatBackdrop } from './ChatBackdrop';
+import { BoardHeaderButton, BoardMobile } from './board/BoardMobile';
+import { useBoardItems, useBoardStore } from './board/boardStore';
 import './session.css';
 
 export function SessionDetailScreen() {
@@ -114,8 +116,14 @@ export function SessionDetailScreen() {
     const subagentTarget = panelTab === 'subagent' ? readSubagentTarget(searchParams) : null;
     const subagentOpen = subagentTarget !== null;
     const historyTab = isHistoryPanel(panelTab) ? panelTab : null;
-    const filesOpen = panelTab !== null && panelTab !== 'btw' && panelTab !== 'subagent' && panelTab !== 'notes' && !historyTab;
-    const panelOpen = btwOpen || filesOpen || subagentOpen || panelTab === 'notes' || !!historyTab;
+    // B-766: the 汇报板 — only for a session that has one (no items list = no board, the feature stays inert).
+    const boardItems = useBoardItems(id ?? '');
+    const boardAllowed = !!boardItems && !!session && !isMirrorSession(session) && !sharedWithMe;
+    const boardOpen = panelTab === 'board' && boardAllowed;
+    const boardPhone = useMediaQuery('(max-width: 767px)');
+    const [boardSheet, setBoardSheet] = useState(false);
+    const filesOpen = panelTab !== null && panelTab !== 'btw' && panelTab !== 'subagent' && panelTab !== 'notes' && panelTab !== 'board' && !historyTab;
+    const panelOpen = btwOpen || filesOpen || subagentOpen || panelTab === 'notes' || boardOpen || !!historyTab;
     const retainedPanel = useRetainedWorkspace(id ?? '', panelOpen ? { tab: panelTab!, subagentTarget } : null);
     const setPanel = (tab: SessionPanelTab | null, replace = false) => {
         setSearchParams(withSessionPanel(searchParams, tab), { replace });
@@ -156,6 +164,22 @@ export function SessionDetailScreen() {
             else btwStore.getState().setDraft(id, question);
         });
     }, [id]);
+    // B-766: 「看板 ›」 on a transcript pointer opens the board on that item —
+    // the top sheet on phones, the aside tab elsewhere.
+    const boardPhoneRef = useRef(boardPhone);
+    boardPhoneRef.current = boardPhone;
+    const panelTabRef = useRef(panelTab);
+    panelTabRef.current = panelTab;
+    useEffect(() => {
+        if (!id) return;
+        return useBoardStore.subscribe((state, prev) => {
+            const focus = state.focus;
+            if (!focus || focus === prev.focus || focus.sessionId !== id) return;
+            if (boardPhoneRef.current) setBoardSheet(true);
+            else if (panelTabRef.current !== 'board') setPanelRef.current('board', panelTabRef.current !== null);
+        });
+    }, [id]);
+    useEffect(() => { if (!boardPhone) setBoardSheet(false); }, [boardPhone]);
     // A sub-agent card anywhere in the transcript opens the drawer on itself.
     // Replace (not push) while the drawer is already open, so switching cards
     // does not stack history entries the back button has to walk through.
@@ -292,7 +316,11 @@ export function SessionDetailScreen() {
                     onToggleBtw={btwAllowed
                         ? () => (btwOpen ? setPanel(null, true) : setPanel('btw'))
                         : undefined}
+                    boardAction={boardAllowed ? <BoardHeaderButton sessionId={id} active={boardPhone ? boardSheet : boardOpen}
+                        onClick={() => boardPhone ? setBoardSheet((v) => !v) : boardOpen ? setPanel(null, true) : setPanel('board', panelOpen)} /> : undefined}
                 />}
+                {/* B-766: phones get the 汇报板 as a summary strip + top sheet under the header. */}
+                {boardAllowed && boardPhone && <BoardMobile key={`board:${id}`} sessionId={id} open={boardSheet} onOpenChange={setBoardSheet} />}
                 {session && <SessionTeamContext sessionId={id} />}
                 {mirror && <MirrorBanner sessionId={id} />}
                 {/* B-619: whose session this is and what I may do here. */}
