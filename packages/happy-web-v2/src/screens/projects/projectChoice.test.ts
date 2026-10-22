@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectMemberView, ProjectView } from '@slopus/happy-wire';
-import { linkableTeams, pickerLabel, projectOfTeam, sessionProject, sessionProjectMenu, teamProjectFromChoice } from './projectChoice';
+import { linkableTeams, pickerLabel, projectOfTeam, sessionProject, sessionProjectMenu, teamMoveSource, teamProjectFromChoice } from './projectChoice';
 
 const project = (id: string, teamIds: string[] = [], extra: Partial<ProjectView> = {}): ProjectView => ({
   id, name: id.toUpperCase(), goal: null, instructions: '', instructionsVersion: 0, instructionsUpdatedBy: null, instructionsUpdatedAt: null,
@@ -30,6 +30,13 @@ describe('B-726 project choice helpers', () => {
   it('project page「关联已有团队」lists live teams not already in this project', () => {
     const teams = [{ id: 'in', archivedAt: undefined }, { id: 'elsewhere', archivedAt: undefined }, { id: 'free', archivedAt: undefined }, { id: 'old', archivedAt: 5 }];
     expect(linkableTeams(teams, 'a', [project('a', ['in']), project('b', ['elsewhere'])]).map((t) => t.id)).toEqual(['elsewhere', 'free']);
+  });
+
+  it('B-772 (QA4 O3): linking a team that lives in another project names that project, so the link confirms the move', () => {
+    const projects = [project('a', ['t1']), project('b')];
+    expect(teamMoveSource({ id: 't1' }, 'b', projects)?.name).toBe('A');
+    expect(teamMoveSource({ id: 't1' }, 'a', projects)).toBeNull();
+    expect(teamMoveSource({ id: 'free' }, 'b', projects)).toBeNull();
   });
 
   it('session entries: explicit members can leave; team members follow their team', () => {

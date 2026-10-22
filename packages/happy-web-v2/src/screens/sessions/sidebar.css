@@ -964,11 +964,12 @@
 .sb-project-act:disabled { opacity: 0.45; }
 @media (hover: hover) and (pointer: fine) { .sb-project-act:hover { background: var(--fill-selected); color: var(--text); } }
 /* Owner chip (team or project) on a session row in the list lenses: quiet, like the
-   shared-owner chip, pushed to the row's end. It gives way before the title does
-   (shrink 4:1) and never below its icon. */
+   shared-owner chip, pushed to the row's end. It gives way before the title does,
+   but B-772 (QA4 O4): never below ~3 characters of its name (icon 10 + gap 3 +
+   padding 10 = 23px) — at 22px it read as「📁 r」. */
 .sb-row-project {
   margin-left: auto;
-  flex: 0 1 auto; min-width: 22px; max-width: 40%;
+  flex: 0 1 auto; min-width: calc(3em + 23px); max-width: 40%;
   display: inline-flex; align-items: center; gap: 3px;
   padding: 0 5px; border-radius: 4px;
   font-size: var(--fs-11); line-height: 1.5;
@@ -980,3 +981,5 @@
 .sb-row-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* B-762 review: the title comes first — it keeps about 8 CJK characters before an owner chip may shrink it. */
 .sb-row-title-line .sb-row-title:has(~ .sb-row-project) { flex: 1 1 auto; min-width: min(8em, 60%); }
+/* B-772: with tag chips on the same line there is no room for 8em + a readable chip; the title keeps 6. */
+.sb-row-title-line:has(.sb-row-tags) .sb-row-title:has(~ .sb-row-project) { min-width: min(6em, 45%); }
