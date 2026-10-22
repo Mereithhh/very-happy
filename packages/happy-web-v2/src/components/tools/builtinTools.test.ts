@@ -48,6 +48,7 @@ describe('resolveBuiltinTool — one identity for every runner name shape', () =
             'sessions_list', 'session_read', 'session_send', 'session_spawn', 'session_kill', 'session_archive',
             'session_message', 'session_peers',
             'terminals_list', 'terminal_read', 'terminal_send', 'memory_update', 'journal_append',
+            'project_context', 'project_note', 'request_human',
         ];
         expect([...BUILTIN_TOOL_NAMES].sort()).toEqual([...expected].sort());
     });

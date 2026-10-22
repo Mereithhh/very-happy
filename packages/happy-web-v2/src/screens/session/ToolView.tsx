@@ -30,6 +30,12 @@ import { langForPath } from './langForPath';
 import { FilePathLink } from './FilePathLink';
 import { resolveBuiltinTool } from '@/components/tools/builtinTools';
 import { BuiltinToolView } from './BuiltinToolView';
+import { keyValueRows, parseJsonText } from '@/components/tools/toolKeyValues';
+import {
+    acpInfo, acpResultText, commandInfo, fetchUrl, mcpIdentity, parseFetchedPage, parseSearchLinks, patchEdits,
+    readInfo, searchQuery, shortUrl, stripReadLineNumbers, toolCardKind,
+} from '@/components/tools/toolPresentation';
+import { KvTable, LinkList, RawData } from './ToolCardParts';
 
 /** B-145: 工具卡里的文件路径可点 —— sessionId 从路由取（同本文件既有做法）。 */
 function ToolPath({ path }: { path: string }) {
@@ -71,11 +77,65 @@ function OutputText({ text }: { text: string }) {
     );
 }
 
-// ── Bash ───────────────────────────────────────────────────────────────────
+// ── Bash / CodexBash / ACP execute ───────────────────────────────────────────
 function BashView({ tool }: { tool: ToolCall }) {
+    const { t } = useTranslation();
     const cmd = asCommand(tool);
     if (!cmd) return <DefaultView tool={tool} />;
-    return <CommandView command={cmd.command} stdout={cmd.stdout} stderr={cmd.stderr} error={cmd.error} />;
+    const info = commandInfo(tool);
+    return (
+        <div className="tv-stack">
+            {info?.cwd && <div className="tv-note"><span className="tv-note-label">{t('tools.card.cwd')}</span><span className="tv-path"><ToolPath path={info.cwd} /></span></div>}
+            <CommandView command={cmd.command} stdout={cmd.stdout} stderr={cmd.stderr} error={cmd.error} />
+        </div>
+    );
+}
+
+// ── CodexPatch / CodexDiff / GeminiDiff / ACP edit (per-file diffs) ───────────
+function PatchView({ tool }: { tool: ToolCall }) {
+    const showLn = useSetting('showLineNumbersInToolViews');
+    const edits = patchEdits(tool).filter((e) => e.path || e.renders.length);
+    if (edits.length === 0) return <DefaultView tool={tool} />;
+    return (
+        <div className="tv-stack">
+            {edits.map((edit, i) => (
+                <div key={`${edit.path}-${i}`} className="tv-stack">
+                    <div className="tv-file-head">
+                        <span className="tv-file-path">{edit.path ? <ToolPath path={edit.path} /> : null}</span>
+                        {/* DiffView's own bar carries +/− when there is a body to show. */}
+                        {edit.renders.length === 0 && edit.added !== null && <span className="tv-file-stat tv-file-stat-add">+{edit.added}</span>}
+                        {edit.renders.length === 0 && edit.removed !== null && <span className="tv-file-stat tv-file-stat-del">−{edit.removed}</span>}
+                    </div>
+                    {edit.renders.map((r, j) => (
+                        <DiffView key={j} oldText={r.oldText} newText={r.newText} lang={langForPath(edit.path)} showLineNumbers={showLn} />
+                    ))}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// ── Monitor (Claude background watch) ─────────────────────────────────────────
+function MonitorView({ tool }: { tool: ToolCall }) {
+    const command = asString(tool.input?.command);
+    const out = resultToText(tool.result);
+    const rest = keyValueRows({ timeout_ms: tool.input?.timeout_ms, persistent: tool.input?.persistent });
+    return (
+        <div className="tv-stack">
+            {command && <CommandView command={command} />}
+            <KvTable rows={rest} />
+            {out.trim() && <div className="tv-prose">{out.trim()}</div>}
+        </div>
+    );
+}
+
+// ── think / CodexReasoning / GeminiReasoning ──────────────────────────────────
+function ThinkView({ tool }: { tool: ToolCall }) {
+    const items = Array.isArray(tool.input?.items) ? acpResultText(tool.input.items) : null;
+    const text = items ?? acpResultText(tool.result);
+    // A title-only reasoning step is already the row's detail — nothing more to show.
+    if (!text?.trim()) return null;
+    return <div className="tv-prose">{text.trim()}</div>;
 }
 
 // ── Edit / MultiEdit / Write (diff) ──────────────────────────────────────────
@@ -128,13 +188,16 @@ function WriteView({ tool }: { tool: ToolCall }) {
 
 // ── Read ─────────────────────────────────────────────────────────────────────
 function ReadView({ tool }: { tool: ToolCall }) {
-    const filePath = asString(tool.input?.file_path) ?? asString(tool.input?.locations?.[0]?.path);
+    const { path: filePath, range } = readInfo(tool);
     const result = tool.result as any;
-    const content = asString(result?.file?.content) ?? (typeof result === 'string' ? result : null);
-    if (content == null || content.trim() === '') {
-        return filePath ? <div className="tv-path"><ToolPath path={filePath} /></div> : <DefaultView tool={tool} />;
+    const raw = asString(result?.file?.content) ?? (typeof result === 'string' ? result : acpResultText(result));
+    if (raw == null || raw.trim() === '') {
+        return filePath ? <div className="tv-path"><ToolPath path={filePath} />{range ? `:${range}` : ''}</div> : <DefaultView tool={tool} />;
     }
-    return <CodeView code={content} lang={langForPath(filePath)} showLineNumbers />;
+    // B-754: Claude's Read text is `cat -n` output — the gutter numbers it instead.
+    const { code, startLine } = stripReadLineNumbers(raw);
+    const offset = typeof tool.input?.offset === 'number' ? tool.input.offset : null;
+    return <CodeView code={code} lang={langForPath(filePath)} showLineNumbers startLine={startLine > 1 ? startLine : offset ?? 1} />;
 }
 
 function SkillView({ tool }: { tool: ToolCall }) {
@@ -214,8 +277,9 @@ function TodoView({ tool }: { tool: ToolCall }) {
 // ── Grep / Glob / LS ──────────────────────────────────────────────────────────
 function SearchView({ tool }: { tool: ToolCall }) {
     const input = tool.input ?? {};
-    const pattern = asString(input.pattern);
-    const path = asString(input.path);
+    const acp = acpInfo(tool);
+    const pattern = asString(input.pattern) ?? (acp ? searchQuery(tool) : null);
+    const path = asString(input.path) ?? asString(acp?.raw.path);
     const out = resultToText(tool.result);
     return (
         <div className="tv-stack">
@@ -236,23 +300,61 @@ function SearchView({ tool }: { tool: ToolCall }) {
 // the row into a pointer and never mounts this.
 
 // ── WebFetch / WebSearch ────────────────────────────────────────────────────────
-function WebView({ tool }: { tool: ToolCall }) {
-    const url = asString(tool.input?.url);
-    const query = asString(tool.input?.query);
+function WebSearchView({ tool }: { tool: ToolCall }) {
+    const query = searchQuery(tool);
     const out = resultToText(tool.result);
+    const parsed = out.trim() ? parseSearchLinks(out) : null;
     return (
         <div className="tv-stack">
             <div className="tv-query">
-                <Globe size={13} className="tv-query-icon" />
-                {url ? (
-                    <a className="tv-query-link" href={url} target="_blank" rel="noopener noreferrer">{url}</a>
-                ) : (
-                    <span className="tv-query-text">{query ?? tool.name}</span>
-                )}
+                <Search size={13} className="tv-query-icon" aria-hidden />
+                <span className="tv-query-text">{query ?? tool.name}</span>
             </div>
-            {out.trim() && <OutputText text={out} />}
+            {parsed ? <LinkList links={parsed.links} /> : out.trim() && <ResultBlock text={out} />}
+            {parsed?.rest && <Markdown text={parsed.rest} />}
         </div>
     );
+}
+
+function FetchView({ tool }: { tool: ToolCall }) {
+    const { t } = useTranslation();
+    const url = fetchUrl(tool);
+    const args = mcpIdentity(tool)?.args ?? tool.input ?? {};
+    const ask = asString(args.prompt) ?? asString(args.question);
+    const out = resultToText(tool.result);
+    const page = out.trim() ? parseFetchedPage(out) : null;
+    return (
+        <div className="tv-stack">
+            <div className="tv-query">
+                <Globe size={13} className="tv-query-icon" aria-hidden />
+                {url ? (
+                    <a className="tv-query-link" href={url} target="_blank" rel="noopener noreferrer" title={url}>{page?.title ?? shortUrl(url)}</a>
+                ) : (
+                    <span className="tv-query-text">{asString(acpInfo(tool)?.title) ?? tool.name}</span>
+                )}
+            </div>
+            {ask && <div className="tv-note"><span className="tv-note-label">{t('tools.card.prompt')}</span>{ask}</div>}
+            {page?.body.trim() && <OutputText text={page.body.trim()} />}
+        </div>
+    );
+}
+
+/**
+ * A result: search hits become links, a JSON object a key/value table, a
+ * short sentence stays prose, and anything longer the copyable output well.
+ */
+function ResultBlock({ text }: { text: string }) {
+    const { t } = useTranslation();
+    const links = parseSearchLinks(text);
+    if (links) return <LinkList links={links.links} />;
+    const json = parseJsonText(text);
+    if (json !== undefined) {
+        const rows = keyValueRows(json);
+        if (rows.length) return <div className="tv-result"><KvTable rows={rows} label={t('tools.card.result')} /></div>;
+    }
+    const trimmed = text.trim();
+    if (trimmed.length <= 280 && trimmed.split('\n').length <= 3) return <div className="tv-result tv-prose">{trimmed}</div>;
+    return <OutputText text={text} />;
 }
 
 // ── ExitPlanMode (incl. lowercase alias) ─────────────────────────────────────
@@ -337,43 +439,35 @@ function QuestionView({ tool }: { tool: ToolCall }) {
 }
 
 // ── Default (incl. all MCP / unrecognized tools) ─────────────────────────────────
+// B-754: arguments and JSON results render as a key/value table; the raw
+// payload is only in the collapsed 「原始数据」 that every card ends with.
 function DefaultView({ tool }: { tool: ToolCall }) {
     const { t } = useTranslation();
     const error = tool.state === 'error' ? extractError(tool) : undefined;
     const out = resultToText(tool.result);
-    const inputKeys = Object.keys(tool.input ?? {});
-    const hasInput = inputKeys.length > 0;
-    // Detect whether the output is structured (JSON) vs prose, for nicer rendering.
-    const outIsJson = out.trim().startsWith('{') || out.trim().startsWith('[');
+    const acp = acpInfo(tool);
+    const args = mcpIdentity(tool)?.args ?? (acp ? acp.raw : tool.input);
+    const rows = keyValueRows(args);
+    // Codex collaboration results echo the call's own arguments — not worth a second table.
+    const echoed = echoesInput(parseJsonText(out), args);
     return (
         <div className="tv-stack">
-            {hasInput && (
-                <Section label={t('tools.fullView.inputParams')} defaultOpen={!out}>
-                    <CodeView code={prettyInput(tool.input)} lang="json" />
-                </Section>
-            )}
+            {rows.length > 0 && <KvTable rows={rows} label={t('tools.card.arguments')} />}
             {error && <div className="tg-error">{error}</div>}
-            {out && !error && (
-                <Section label={t('tools.fullView.output')} defaultOpen>
-                    {outIsJson ? (
-                        <CodeView code={out} lang="json" />
-                    ) : (
-                        <OutputText text={out} />
-                    )}
-                </Section>
-            )}
-            {!hasInput && !out && !error && <div className="tv-empty">{t('tools.fullView.noOutput')}</div>}
+            {out.trim() && !error && !echoed && <ResultBlock text={out} />}
+            {rows.length === 0 && !out.trim() && !error && <div className="tv-empty">{t('tools.fullView.noOutput')}</div>}
         </div>
     );
 }
 
-function prettyInput(input: unknown): string {
-    try {
-        return JSON.stringify(input, null, 2);
-    } catch {
-        return String(input);
-    }
+function echoesInput(result: unknown, input: unknown): boolean {
+    if (!result || typeof result !== 'object' || Array.isArray(result) || !input || typeof input !== 'object') return false;
+    const entries = Object.entries(result as Record<string, unknown>);
+    return entries.length > 0 && entries.every(([k, v]) => JSON.stringify((input as Record<string, unknown>)[k]) === JSON.stringify(v));
 }
+
+/** Cards whose body already IS the whole payload (or a live control). */
+const NO_RAW = new Set(['AskUserQuestion', 'Task', 'Agent', 'file', 'TodoWrite', 'ExitPlanMode', 'exit_plan_mode']);
 
 /** B-565: a tool card's body crashing must not take the transcript with it. */
 export function ToolView(props: { message: ToolCallMessage; abortedAt?: number | null }) {
@@ -403,6 +497,9 @@ function ToolViewBody({ message, abortedAt = null }: { message: ToolCallMessage;
     if (builtin) return <div className="tv"><BuiltinToolView resolved={builtin} tool={tool} /></div>;
     switch (tool.name) {
         case 'Bash':
+        case 'CodexBash':
+        case 'GeminiBash':
+        case 'shell':
             body = <BashView tool={tool} />;
             handlesOwnError = true;
             break;
@@ -444,9 +541,13 @@ function ToolViewBody({ message, abortedAt = null }: { message: ToolCallMessage;
             handlesOwnError = true;
             break;
         case 'WebFetch':
+            body = <FetchView tool={tool} />;
+            break;
         case 'WebSearch':
-            body = <WebView tool={tool} />;
-            handlesOwnError = true;
+            body = <WebSearchView tool={tool} />;
+            break;
+        case 'Monitor':
+            body = <MonitorView tool={tool} />;
             break;
         case 'ExitPlanMode':
         case 'exit_plan_mode':
@@ -455,17 +556,28 @@ function ToolViewBody({ message, abortedAt = null }: { message: ToolCallMessage;
         case 'AskUserQuestion':
             body = <QuestionView tool={tool} />;
             break;
-        default:
-            // All MCP + unrecognized tools land here with a clean collapsible view.
-            body = tool.name.toLowerCase().endsWith('__read_skill')
-                ? <SkillView tool={tool} />
+        default: {
+            // B-754: other runners' shapes of the same operations get the same
+            // cards; everything else (unknown MCP tools…) the key/value table.
+            const kind = tool.name.toLowerCase().endsWith('__read_skill') ? 'skill' : toolCardKind(tool);
+            body = kind === 'skill' ? <SkillView tool={tool} />
+                : kind === 'command' ? <BashView tool={tool} />
+                : kind === 'patch' ? <PatchView tool={tool} />
+                : kind === 'read' ? <ReadView tool={tool} />
+                : kind === 'search' ? <SearchView tool={tool} />
+                : kind === 'webSearch' ? <WebSearchView tool={tool} />
+                : kind === 'fetch' ? <FetchView tool={tool} />
+                : kind === 'monitor' ? <MonitorView tool={tool} />
+                : kind === 'think' ? <ThinkView tool={tool} />
                 : <DefaultView tool={tool} />;
-            handlesOwnError = true;
+            handlesOwnError = kind === 'command' || kind === 'search' || kind === 'generic' || kind === 'skill';
+        }
     }
     return (
         <div className="tv">
             {body}
             {error && !handlesOwnError && <div className="tg-error">{error}</div>}
+            {!NO_RAW.has(tool.name) && <RawData input={tool.input} result={tool.result} />}
         </div>
     );
 }

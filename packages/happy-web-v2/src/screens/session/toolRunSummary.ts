@@ -1,29 +1,30 @@
 import { isTerminalToolName } from '@/utils/toolDisplay';
 import type { ToolCall } from '@/sync/typesMessage';
 import { toolLabel } from './toolInfo';
+import { toolVerbLabel } from '@/components/tools/toolPresentation';
 import { normalizePiToolCall } from '@/components/tools/piToolMapping';
 
 /** Paseo-style overview without hiding the underlying calls: collapse a run
  * into a short, stable activity scan, while each row remains expandable. */
 function activityLabel(rawTool: ToolCall): string {
   const tool = normalizePiToolCall(rawTool);   // B-353: pi bash/read/edit → Terminal/Read/Edit, not Execute/Other
-  if (isTerminalToolName(tool.name)) return 'Terminal';
+  // B-754: the same localized verbs as the rows below the summary.
+  if (isTerminalToolName(tool.name)) return toolVerbLabel('run');
   switch (tool.name) {
     case 'Edit':
     case 'MultiEdit':
     case 'NotebookEdit':
     case 'Write':
-      return 'Edit';
+    case 'CodexPatch':
+      return toolVerbLabel('edit');
     case 'Read':
-      return 'Read';
-    case 'Bash':
-      return 'Terminal';
+      return toolVerbLabel('read');
     case 'Glob':
     case 'Grep':
     case 'LS':
     case 'WebFetch':
     case 'WebSearch':
-      return 'Search';
+      return toolVerbLabel('search');
     case 'Task':
     case 'Agent':
       return 'Task';

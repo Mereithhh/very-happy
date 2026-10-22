@@ -1,31 +1,27 @@
 import type { ToolCall } from '@/sync/typesMessage';
 import { builtinToolSummary, resolveBuiltinTool } from '@/components/tools/builtinTools';
+import { acpResultText, commandInfo, toolHeader, toolVerbLabel } from '@/components/tools/toolPresentation';
+import { parseJsonText } from '@/components/tools/toolKeyValues';
+import { t } from '@/text';
 
 /** A short, human-friendly subtitle/detail for a tool call (path, command, etc). */
 export function toolDetail(tool: ToolCall): string | null {
     // B-499: very-happy's own tools (any name shape) get a human one-liner.
     const builtin = resolveBuiltinTool(tool);
     if (builtin) return builtinToolSummary(builtin).detail;
+    // B-754: verb + key parameter for every runner's shape of the same operation.
+    const header = toolHeader(tool);
+    if (header) return header.detail;
     const input = tool.input ?? {};
     switch (tool.name) {
-        case 'Bash':
-            return typeof input.command === 'string' ? input.command : null;
-        case 'Read':
-        case 'Write':
-        case 'Edit':
-        case 'MultiEdit':
-        case 'NotebookEdit':
-            return typeof input.file_path === 'string' ? basename(input.file_path) : null;
-        case 'Glob':
-            return typeof input.pattern === 'string' ? input.pattern : null;
-        case 'Grep':
-            return typeof input.pattern === 'string' ? input.pattern : null;
-        case 'LS':
-            return typeof input.path === 'string' ? input.path : null;
         case 'WebFetch':
             return typeof input.url === 'string' ? input.url : null;
         case 'WebSearch':
             return typeof input.query === 'string' ? input.query : null;
+        case 'AskUserQuestion': {
+            const q = Array.isArray(input.questions) ? input.questions[0] : null;
+            return typeof q?.question === 'string' ? q.question : null;
+        }
         case 'Task':
         case 'Agent':
             return typeof input.description === 'string'
@@ -56,15 +52,24 @@ export function toolDetail(tool: ToolCall): string | null {
 export function toolLabel(tool: ToolCall): string {
     const builtin = resolveBuiltinTool(tool);
     if (builtin) return builtinToolSummary(builtin).label;
+    const header = toolHeader(tool);
+    if (header) return header.label;
     switch (tool.name) {
-        case 'Bash':
-            return 'Terminal';
         case 'Task':
         case 'Agent':
             return 'Task';
         case 'Skill':
         case 'read_skill':
-            return 'Skill';
+            return toolVerbLabel('skill');
+        case 'WebFetch':
+            return toolVerbLabel('fetch');
+        case 'WebSearch':
+            return toolVerbLabel('searchWeb');
+        case 'ExitPlanMode':
+        case 'exit_plan_mode':
+            return t('tools.names.planProposal');
+        case 'AskUserQuestion':
+            return t('tools.card.question');
         default:
             return prettyToolName(tool.name);
     }
@@ -72,7 +77,10 @@ export function toolLabel(tool: ToolCall): string {
 
 /** B-499: a built-in tool's detail is prose (sans), not a command/path (mono). */
 export function toolDetailIsProse(tool: ToolCall): boolean {
-    return resolveBuiltinTool(tool) !== null;
+    if (resolveBuiltinTool(tool) !== null) return true;
+    const header = toolHeader(tool);
+    if (header) return !header.mono;
+    return tool.name === 'AskUserQuestion' || tool.name === 'WebSearch';
 }
 
 /** Full single-line title (label + detail) — used where only one string fits. */
@@ -83,24 +91,22 @@ export function toolTitle(tool: ToolCall): string {
     return label;
 }
 
-function basename(p: string): string {
-    const parts = p.split('/');
-    return parts[parts.length - 1] || p;
-}
-
 /** Extract a Bash command + stdout/stderr for CommandView, if this is a Bash tool. */
 export function asCommand(tool: ToolCall): { command: string; stdout?: string; stderr?: string; error?: string } | null {
-    if (tool.name !== 'Bash') return null;
-    const command = typeof tool.input?.command === 'string' ? tool.input.command : '';
+    // B-754: Claude Bash, Codex CodexBash, Gemini/ACP execute — one command card.
+    const command = commandInfo(tool)?.command ?? '';
     if (!command) return null;
     const r = tool.result;
     let stdout: string | undefined;
     let stderr: string | undefined;
-    if (r && typeof r === 'object') {
+    if (r && typeof r === 'object' && !Array.isArray(r) && (typeof r.stdout === 'string' || typeof r.stderr === 'string')) {
         if (typeof r.stdout === 'string') stdout = r.stdout;
         if (typeof r.stderr === 'string') stderr = r.stderr;
     } else if (typeof r === 'string') {
-        stdout = r;
+        // A failed call's string result IS the error — shown once, below.
+        if (tool.state !== 'error') stdout = r;
+    } else if (tool.state !== 'error') {
+        stdout = acpResultText(r) ?? undefined;
     }
     const error = tool.state === 'error' ? extractError(tool) : undefined;
     return { command, stdout, stderr, error };
@@ -108,10 +114,17 @@ export function asCommand(tool: ToolCall): { command: string; stdout?: string; s
 
 export function extractError(tool: ToolCall): string | undefined {
     const r = tool.result;
-    if (typeof r === 'string') return r;
+    if (typeof r === 'string') {
+        // B-754: a JSON-encoded failure gives its message, never the JSON itself.
+        const json = parseJsonText(r);
+        if (json === undefined) return r;
+        return extractError({ ...tool, result: json });
+    }
+    if (Array.isArray(r)) return acpResultText(r) ?? undefined;
     if (r && typeof r === 'object') {
         if (typeof r.error === 'string') return r.error;
         if (typeof r.message === 'string') return r.message;
+        if (typeof r.text === 'string') return r.text;
     }
     return undefined;
 }
@@ -131,8 +144,11 @@ export function resultToText(result: unknown): string {
 
     // Content-block array (MCP / Claude tool_result content)
     if (Array.isArray(result)) {
+        // B-754: ACP blocks nest the text one level down (`{type:'content', content:{text}}`).
         const joined = result
-            .map((b) => (b && typeof b === 'object' && typeof (b as any).text === 'string' ? (b as any).text : null))
+            .map((b) => (b && typeof b === 'object'
+                ? typeof (b as any).text === 'string' ? (b as any).text : typeof (b as any).content?.text === 'string' ? (b as any).content.text : null
+                : null))
             .filter((s): s is string => s != null)
             .join('\n');
         if (joined) return joined;

@@ -94,9 +94,11 @@ describe('built-in tool rows', () => {
         expect(progress).toContain('Board updated.');
     });
 
-    it('unknown MCP tools keep the generic collapsible view', () => {
+    it('unknown MCP tools get the generic key/value card (B-754), raw JSON only folded away', () => {
         const html = render(message('u1', 'mcp__jira__create_issue', { summary: 'x' }, 'completed', mcpText({ ok: true })));
         expect(html).toContain('jira · create_issue');
-        expect(html).toContain('Input Parameters');
+        expect(html).toContain('tv-kv');
+        expect(html).toContain('Raw data');
+        expect(html).not.toContain('Input Parameters');
     });
 });

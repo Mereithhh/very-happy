@@ -41,6 +41,8 @@ export const BUILTIN_TOOL_NAMES = [
     'sessions_list', 'session_read', 'session_send', 'session_spawn', 'session_kill', 'session_archive',
     'session_message', 'session_peers',
     'terminals_list', 'terminal_read', 'terminal_send', 'memory_update', 'journal_append',
+    // B-754: project log + the attention request (B-510), same identity rules.
+    'project_context', 'project_note', 'request_human',
 ] as const;
 export type BuiltinToolName = typeof BUILTIN_TOOL_NAMES[number];
 const NAME_SET: ReadonlySet<string> = new Set(BUILTIN_TOOL_NAMES);
@@ -161,6 +163,14 @@ function scopeLabel(v: unknown): string | null {
     return v === 'repo' || v === 'cwd' || v === 'machine' ? t(`tools.builtin.scope.${v}` as 'tools.builtin.scope.repo') : null;
 }
 
+/** B-754: `project_note` kind / `project_context` section → words; null for absent/unknown values. */
+function noteKindLabel(v: unknown): string | null {
+    return v === 'decision' || v === 'finding' || v === 'handoff' ? t(`tools.builtin.noteKind.${v}` as 'tools.builtin.noteKind.decision') : null;
+}
+function projectSectionLabel(v: unknown): string | null {
+    return v === 'instructions' || v === 'log' || v === 'sessions' || v === 'messages' ? t(`tools.builtin.projectSection.${v}` as 'tools.builtin.projectSection.log') : null;
+}
+
 function automationRef(input: Record<string, unknown>): string | null {
     return str(input.name) ?? (str(input.id) ? shortId(str(input.id)!) : null);
 }
@@ -257,6 +267,9 @@ export function builtinToolSummary(r: ResolvedBuiltinTool): BuiltinToolSummary {
         case 'terminal_send': detail = join(line(i.terminalId, 24), line(i.text, 64), i.submit === true ? t('tools.builtin.fields.submit') : null); break;
         case 'memory_update': detail = line(i.section); break;
         case 'journal_append': detail = line(i.content); break;
+        case 'project_context': detail = join(projectSectionLabel(i.section), i.full === true ? t('tools.builtin.fullContext') : null); break;
+        case 'project_note': detail = join(noteKindLabel(i.kind), i.revoke === true ? t('tools.builtin.revoked') : null, line(i.title)); break;
+        case 'request_human': detail = line(i.reason); break;
     }
     return { label, detail };
 }
@@ -366,6 +379,12 @@ export function builtinToolFields(r: ResolvedBuiltinTool): BuiltinToolField[] {
         case 'terminal_send': id('terminal', i.terminalId); text('text', i.text, true); F('submit', L('submit'), i.submit === true ? t('tools.builtin.yes') : t('tools.builtin.no')); break;
         case 'memory_update': text('section', i.section); text('content', i.content); break;
         case 'journal_append': text('content', i.content); break;
+        case 'project_context': F('section', L('section'), projectSectionLabel(i.section)); if (i.full === true) F('full', L('full'), t('tools.builtin.yes')); break;
+        case 'project_note':
+            F('kind', L('kind'), noteKindLabel(i.kind)); text('title', i.title); md('body', i.body);
+            id('supersedes', i.supersedes); if (i.revoke === true) F('revoke', L('revoke'), t('tools.builtin.yes'));
+            break;
+        case 'request_human': text('reason', i.reason); id('panel', i.panel); break;
     }
     return out;
 }
@@ -378,6 +397,7 @@ const FIELD_KEYS = {
     command: 1, sticky: 1, concurrency: 1, maxRuntime: 1, maxRuntimeMs: 1, status: 1, payload: 1, dedupeKey: 1, limit: 1, run: 1,
     summary: 1, error: 1, session: 1, terminal: 1, lines: 1, submit: 1, section: 1, content: 1,
     to: 1, replyTo: 1, scope: 1,
+    kind: 1, full: 1, supersedes: 1, revoke: 1, panel: 1,
 } as const;
 
 // ── result digest ────────────────────────────────────────────────────────────
