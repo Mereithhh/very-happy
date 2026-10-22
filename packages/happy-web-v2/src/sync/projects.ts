@@ -126,6 +126,8 @@ function subscribe(listener: () => void) {
 let devOverride: ProjectsSnapshot | null = null;
 export function setProjectsDevOverride(next: ProjectsSnapshot | null): void { devOverride = next; notify(); }
 const getSnapshot = () => devOverride ?? (owner === ownerKey() ? snapshot : EMPTY);
+/** Imperative read of the same snapshot (no fetch) for one-shot callers such as the archive landing. */
+export function projectsSnapshot(): ProjectsSnapshot { return getSnapshot(); }
 export function useProjects(): ProjectsSnapshot {
   return useSyncExternalStore(subscribe, getSnapshot, () => EMPTY);
 }

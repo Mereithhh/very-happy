@@ -619,6 +619,11 @@
       transform: translateY(-6px);
     }
   }
+  /* B-774 (QA5 O1): over a full-height dialog the top would cover its title
+     and ✕ — sit just below the dialog's header (Toast.tsx measures it). */
+  .vh-toasts.vh-toasts--below-dialog-head {
+    top: var(--vh-toast-top);
+  }
 }
 @media (pointer: coarse) {
   /* B-566 touch target: the undo button must be easy to hit */
