@@ -2171,6 +2171,7 @@ export const en = {
             more: ({ count }: { count: number }) => `+${count} more`,
             value: 'Value',
             truncated: 'Shortened — the full value is in Raw data',
+            resultTruncated: 'Output truncated — only part of it was sent',
             opensInNewTab: 'opens in a new tab',
         },
         fullView: {

@@ -34,7 +34,7 @@ agent 一轮改了哪些文件，现在只能逐个展开工具卡数；想把�
 | turn 切分：`buildChatRows` 以 user-text + `opensTurn` 切轮，`live` = 会话活着且为最后一轮 | `screens/session/chatTurns.ts:279`、`:294-296` |
 | 子代理的消息挂在 Task/Agent 工具消息的 `children` 下，不在顶层 | `sync/typesMessage.ts:139-144` |
 | Claude 写工具：`Edit{file_path,old_string,new_string,replace_all?}`、`MultiEdit{file_path,edits[]}`、`Write{file_path,content}`、`NotebookEdit{notebook_path}` | `screens/session/ToolView.tsx:80-125`；CLI `sessions/editPaths.ts:13` |
-| Claude 旧通道 tool result 带 `toolUseResult`（Write: `type: create/update`，Edit/Write update: `structuredPatch[].lines`）；session 协议通道 `tool-call-end` 的 result 为 null | `sync/typesRaw.ts:1113`、`:874-891` |
+| Claude 旧通道 tool result 带 `toolUseResult`（Write: `type: create/update`，Edit/Write update: `structuredPatch[].lines`）；session 协议通道 `tool-call-end` 的 result 为 null（B-771 起带文本输出，仍无 structuredPatch） | `sync/typesRaw.ts:1113`、`:874-891` |
 | Claude 写已存在文件前必须先 Read 过（Claude Code 工具约束），所以「之前没碰过的路径上的 Write」≈ 新建 | 推断，Claude Code 工具说明 |
 | pi 写工具经 `normalizePiToolCall` 映射成 Claude 形状的 Edit/MultiEdit/Write | `components/tools/piToolMapping.ts:62-90` |
 | Codex 文件改动 = `CodexPatch`，`input.changes: Record<path, {kind:{type:add/delete/update,move_path}, diff?, add?/delete?/modify?/update?}>` | CLI `codex/codexAppServerClient.ts:92-140`、`codex/utils/sessionProtocolMapper.ts:584-611`；web `components/tools/knownTools.tsx:696` |

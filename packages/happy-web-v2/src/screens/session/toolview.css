@@ -49,6 +49,12 @@
   color: var(--text-faint);
   padding: var(--chat-space) 0;
 }
+/* B-771: the CLI capped this result — say so under the card body. */
+.tv-truncated {
+  font-size: var(--chat-fs-secondary);
+  color: var(--text-faint);
+  padding-top: var(--chat-space);
+}
 .tv-path {
   font-family: var(--font-mono);
   font-size: var(--conversation-size);

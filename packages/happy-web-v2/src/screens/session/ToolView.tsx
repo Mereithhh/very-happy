@@ -24,7 +24,7 @@ import { Markdown } from './Markdown';
 import { AskUserQuestionOptions } from './AskUserQuestionView';
 import { useTranscriptQuestionPlacement } from './usePinnedRequest';
 import { detectSelectedLabels } from './askUserQuestion';
-import { asCommand, extractError, resultToText } from './toolInfo';
+import { asCommand, emptyStateKey, extractError, resultToText } from './toolInfo';
 import { SubagentDetail } from './SubagentDetail';
 import { langForPath } from './langForPath';
 import { FilePathLink } from './FilePathLink';
@@ -455,7 +455,7 @@ function DefaultView({ tool }: { tool: ToolCall }) {
             {rows.length > 0 && <KvTable rows={rows} label={t('tools.card.arguments')} />}
             {error && <div className="tg-error">{error}</div>}
             {out.trim() && !error && !echoed && <ResultBlock text={out} />}
-            {rows.length === 0 && !out.trim() && !error && <div className="tv-empty">{t('tools.fullView.noOutput')}</div>}
+            {rows.length === 0 && !out.trim() && !error && <div className="tv-empty">{t(emptyStateKey(tool))}</div>}
         </div>
     );
 }
@@ -465,6 +465,9 @@ function echoesInput(result: unknown, input: unknown): boolean {
     const entries = Object.entries(result as Record<string, unknown>);
     return entries.length > 0 && entries.every(([k, v]) => JSON.stringify((input as Record<string, unknown>)[k]) === JSON.stringify(v));
 }
+
+/** Sub-agent cards mark their own truncated report (SubagentDetail). */
+const SUBAGENT_TOOLS = new Set(['Task', 'Agent']);
 
 /** Cards whose body already IS the whole payload (or a live control). */
 const NO_RAW = new Set(['AskUserQuestion', 'Task', 'Agent', 'file', 'TodoWrite', 'ExitPlanMode', 'exit_plan_mode']);
@@ -479,6 +482,7 @@ export function ToolView(props: { message: ToolCallMessage; abortedAt?: number |
 }
 
 function ToolViewBody({ message, abortedAt = null }: { message: ToolCallMessage; abortedAt?: number | null }) {
+    const { t } = useTranslation();
     const {id:sessionId}=useParams();
     const subagentNavigation = useSubagentNavigation();
     const tool = message.tool;
@@ -577,6 +581,7 @@ function ToolViewBody({ message, abortedAt = null }: { message: ToolCallMessage;
         <div className="tv">
             {body}
             {error && !handlesOwnError && <div className="tg-error">{error}</div>}
+            {tool.resultTruncated && !SUBAGENT_TOOLS.has(tool.name) && <div className="tv-truncated">{t('tools.card.resultTruncated')}</div>}
             {!NO_RAW.has(tool.name) && <RawData input={tool.input} result={tool.result} />}
         </div>
     );

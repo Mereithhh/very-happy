@@ -715,6 +715,8 @@ export async function runGemini(opts: {
           callId: msg.callId,
           output: msg.result,
           id: randomUUID(),
+          // B-771: a failed call shows red on the card instead of as a completed result.
+          ...(isError ? { isError: true } : {}),
         });
         break;
 
