@@ -155,38 +155,108 @@ describe('attention REST + hooks through startApi (pglite)', () => {
         expect(await until(() => item(body.item.id), r => r.state !== 'open')).toMatchObject({ state: 'dismissed', resolvedBy: 'session-archived' });
     });
 
-    it('an owner message via POST /v3/sessions/:id/messages settles the only open decision; a board- message does not', async () => {
-        const sessionId = await newSession();
-        const { body } = await call('POST', '/v1/attention-items', { sessionId, source: 'lead', kind: 'decision', title: 'Pick', options, requestId: 'v1' });
-        const board = await call('POST', `/v3/sessions/${sessionId}/messages`, { messages: [{ localId: attentionBoardLocalId(body.item.id, 'n1'), content: 'enc' }] });
-        expect(board.status).toBe(200);
-        await sleep(300);
-        expect((await item(body.item.id)).state).toBe('open');
-        expect((await call('POST', `/v3/sessions/${sessionId}/messages`, { messages: [{ localId: 'owner-1', content: 'enc' }] })).status).toBe(200);
-        expect(await until(() => item(body.item.id), r => r.state !== 'open')).toMatchObject({ state: 'resolved', resolvedBy: 'owner-replied' });
-    });
-
-    it('an owner message leaves D5 drafts open: alone they are no target, beside a real decision only that one settles', async () => {
-        const sessionId = await newSession();
-        const draft = (await call('POST', '/v1/attention-items', { sessionId, source: 'lead', kind: 'decision', title: 'Maybe region', options, key: 'region', inferred: true, requestId: 'd1' })).body.item;
-        expect(draft).toMatchObject({ inferred: true, state: 'open' });
-        expect((await call('POST', `/v3/sessions/${sessionId}/messages`, { messages: [{ localId: 'owner-d1', content: 'enc' }] })).status).toBe(200);
-        await sleep(300);
-        expect((await item(draft.id)).state).toBe('open');
-
-        const real = (await call('POST', '/v1/attention-items', { sessionId, source: 'lead', kind: 'decision', title: 'Pick', options, requestId: 'd2' })).body.item;
-        expect((await call('POST', `/v3/sessions/${sessionId}/messages`, { messages: [{ localId: 'owner-d2', content: 'enc' }] })).status).toBe(200);
-        expect(await until(() => item(real.id), r => r.state !== 'open')).toMatchObject({ state: 'resolved', resolvedBy: 'owner-replied' });
-        expect(await item(draft.id)).toMatchObject({ state: 'open', resolvedBy: null });
-    });
-
-    it('an owner message over the user-scoped socket settles it too', async () => {
-        const sessionId = await newSession();
-        const { body } = await call('POST', '/v1/attention-items', { sessionId, source: 'lead', kind: 'decision', title: 'Pick', options, requestId: 's1' });
+    // S-1d: the owner's ordinary chat never closes a decision (it used to settle the only open one as `owner-replied`,
+    // silently, with the lead unaware). Only the board choice (owner-respond) or the lead's resolve closes it.
+    const ownerSocket = async () => {
         const socket = connect(base, { path: '/v1/updates', transports: ['websocket'], auth: { token, clientType: 'user-scoped' }, reconnection: false });
         sockets.push(socket);
         await new Promise<void>((resolve, reject) => { socket.once('connect', () => resolve()); socket.once('connect_error', reject); });
+        return socket;
+    };
+    const messageCount = (sessionId: string) => db.sessionMessage.count({ where: { sessionId } });
+
+    it('an owner message (v3 HTTP or socket) leaves the only open decision open; the board choice closes it', async () => {
+        const sessionId = await newSession();
+        const { body } = await call('POST', '/v1/attention-items', { sessionId, source: 'lead', kind: 'decision', title: 'Pick', options, requestId: 'v1' });
+        expect((await call('POST', `/v3/sessions/${sessionId}/messages`, { messages: [{ localId: 'owner-1', content: 'enc' }] })).status).toBe(200);
+        const socket = await ownerSocket();
         socket.emit('message', { sid: sessionId, message: 'enc', localId: 'owner-socket-1' });
-        expect(await until(() => item(body.item.id), r => r.state !== 'open')).toMatchObject({ state: 'resolved', resolvedBy: 'owner-replied' });
+        // Both messages landed (the ingress ran) and the decision is untouched.
+        await until(() => messageCount(sessionId), n => n === 2);
+        await sleep(300);
+        expect(await item(body.item.id)).toMatchObject({ state: 'open', resolvedBy: null, ownerChoice: null });
+        expect((await call('POST', `/v1/attention-items/${body.item.id}/owner-respond`, { action: 'choose', choice: 'B' })).body.item)
+            .toMatchObject({ state: 'resolved', resolvedBy: 'owner', ownerChoice: 'B' });
+        // The board's own follow-up chat line changes nothing either.
+        expect((await call('POST', `/v3/sessions/${sessionId}/messages`, { messages: [{ localId: attentionBoardLocalId(body.item.id, 'n1'), content: 'enc' }] })).status).toBe(200);
+        await sleep(300);
+        expect(await item(body.item.id)).toMatchObject({ state: 'resolved', resolvedBy: 'owner', ownerChoice: 'B' });
+    });
+
+    it('an owner message leaves the decision open until the lead resolves it', async () => {
+        const sessionId = await newSession();
+        const { body } = await call('POST', '/v1/attention-items', { sessionId, source: 'lead', kind: 'decision', title: 'Pick', options, requestId: 'l1' });
+        expect((await call('POST', `/v3/sessions/${sessionId}/messages`, { messages: [{ localId: 'owner-l1', content: 'enc' }] })).status).toBe(200);
+        await until(() => messageCount(sessionId), n => n === 1);
+        await sleep(300);
+        expect((await item(body.item.id)).state).toBe('open');
+        expect((await call('POST', `/v1/attention-items/${body.item.id}/resolve`, { outcome: 'done', note: 'went with A' })).body.item)
+            .toMatchObject({ state: 'resolved', resolvedBy: 'lead', resolveNote: 'went with A' });
+    });
+
+    describe('root-task「等你验收」through the team routes', () => {
+        let machineId: string;
+        beforeAll(async () => {
+            process.env.VH_AGENT_TEAMS_ENABLED = 'true';
+            machineId = crypto.randomUUID();
+            await db.machine.create({ data: { id: machineId, accountId, metadata: 'm' } });
+        });
+        const act = async (teamId: string, requestId: string, action: Record<string, unknown>) => {
+            const res = await call('POST', `/v1/teams/${teamId}/actions`, { requestId, action });
+            expect(res.status, JSON.stringify(res.body)).toBe(200);
+            return res.body.team as { tasks: { id: string; status: string; currentAttemptId: string; goalVersion: number }[]; messages: { taskId: string; recipientBotId: string; body: string }[]; operations: { id: string; taskId: string; type: string; claimId?: string }[] };
+        };
+        const startRootTask = async (name: string, goal: string) => {
+            const sessionId = await newSession();
+            const created = await call('POST', '/v1/teams', { name, machineId });
+            expect(created.status, JSON.stringify(created.body)).toBe(200);
+            const teamId = created.body.team.id as string;
+            const delegated = await call('POST', `/v1/teams/${teamId}/actions`, { requestId: `${name}-delegate`, action: { type: 'delegate', goal, acceptance: ['done'] } });
+            const taskId = delegated.body.taskId as string;
+            const operationId = delegated.body.team.operations.find((o: { taskId: string; type: string }) => o.taskId === taskId && o.type === 'spawn').id as string;
+            const claimed = await act(teamId, `${name}-claim`, { type: 'claim-operation', operationId, machineId, teamLaunchVersion: 1 });
+            const claimId = claimed.operations.find(o => o.id === operationId)!.claimId!;
+            const started = await act(teamId, `${name}-complete`, { type: 'complete-operation', operationId, machineId, claimId, sessionId });
+            const task = started.tasks.find(t => t.id === taskId)!;
+            const submit = (t: typeof task, requestId: string) =>
+                act(teamId, requestId, { type: 'submit', taskId, attemptId: t.currentAttemptId, goalVersion: t.goalVersion, result: 'PR #1 merged.' });
+            return { sessionId, teamId, taskId, task, submit };
+        };
+        const submitItem = async (sessionId: string, taskId: string) =>
+            (await call('GET', `/v1/attention-items?sessionId=${sessionId}&state=all`)).body.items.find((i: { key: string }) => i.key === `team-submit:${taskId}`);
+
+        it('writes a word-safe title, readable labels and no recommended option', async () => {
+            const goal = 'Rewrite the attention briefing board so that every decision the lead posts survives casual owner chat and gets resolved explicitly';
+            const { sessionId, taskId, task, submit } = await startRootTask('root-title', goal);
+            await submit(task, 'root-title-submit');
+            const row = await submitItem(sessionId, taskId);
+            expect(row.title.length).toBeLessThanOrEqual(120);
+            expect(row.title).toMatch(/^根目标已提交，等你验收 · Rewrite the attention/);
+            expect(row.title.endsWith('…')).toBe(true);
+            // Cut between words: the text before「…」is a whole-word prefix of the goal.
+            const kept = row.title.slice('根目标已提交，等你验收 · '.length, -1);
+            expect(goal.startsWith(kept) && /^\s/.test(goal.slice(kept.length))).toBe(true);
+            expect(row.options).toEqual([{ id: 'accept', label: '验收' }, { id: 'return', label: '退回' }]);
+        });
+
+        it('a board「退回」notifies the lead once (its chat line); a team-page return still sends the team message', async () => {
+            const { sessionId, teamId, taskId, task, submit } = await startRootTask('root-return', 'Ship the notes');
+            await submit(task, 'root-return-submit-1');
+            const row = await submitItem(sessionId, taskId);
+            expect((await call('POST', `/v1/attention-items/${row.id}/owner-respond`, { action: 'choose', choice: 'return' })).body.item)
+                .toMatchObject({ state: 'resolved', ownerChoice: 'return' });
+            // What the web board sends next: the owner's chat line, the lead's one notice.
+            expect((await call('POST', `/v3/sessions/${sessionId}/messages`, { messages: [{ localId: attentionBoardLocalId(row.id, 'n1'), content: 'enc' }] })).status).toBe(200);
+            const revisions = (team: Awaited<ReturnType<typeof act>>) => team.messages.filter(m => m.taskId === taskId && m.body.startsWith('Revision requested'));
+            let team = (await call('GET', `/v1/teams/${teamId}`)).body.team as Awaited<ReturnType<typeof act>>;
+            expect(team.tasks.find(t => t.id === taskId)!.status).toBe('running');
+            expect(revisions(team)).toHaveLength(0);
+            expect(await messageCount(sessionId)).toBe(1);
+
+            const returned = team.tasks.find(t => t.id === taskId)!;
+            await submit(returned, 'root-return-submit-2');
+            team = await act(teamId, 'root-return-team-page', { type: 'return', taskId, attemptId: returned.currentAttemptId, goalVersion: returned.goalVersion, reason: 'from the team page' });
+            expect(revisions(team)).toHaveLength(1);
+        });
     });
 });

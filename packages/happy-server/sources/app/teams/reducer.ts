@@ -102,7 +102,7 @@ export function teamBotRepository(state: Pick<TeamState, 'operations'>, bot: Tea
     return state.operations.find(o => o.botId === bot.id && o.type === 'spawn' && o.directory)?.directory ?? bot.directory;
 }
 
-export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string }): { team: TeamState; credentialBotId?: string; operationId?: string; taskId?: string; scheduleId?: string } {
+export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string; quiet?: boolean }): { team: TeamState; credentialBotId?: string; operationId?: string; taskId?: string; scheduleId?: string } {
     requireTeam(input.archivedAt === undefined || ['archive', 'claim-operation', 'complete-operation', 'fail-operation', 'reconcile-operation', 'session-event'].includes(action.type), 'team_archived');
     const s = structuredClone(input);
     const { now, id } = ctx;
@@ -115,6 +115,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         // A root task (ownerBotId null) is owned by the person, not a bot: no team message. Its submit reaches
         // the owner as a「待你验收」briefing item (B-766, attention/store `applyTeamTransitionsTx`).
         if (!recipientBotId) return;
+        // `quiet`: the caller tells the recipient itself (the briefing board's「退回」sends the owner's chat line, B-766 S-1d).
+        if (ctx.quiet) return;
         requireTeam(s.messages.length < 2000, 'team_message_limit', 429);
         // B-769: idle members are reported here, on a message that wakes the recipient anyway.
         const digest = idleDigest(s, recipientBotId, now, actor.kind === 'agent' ? [actor.botId] : []);

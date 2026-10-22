@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { PrismaClient } from '@prisma/client';
-import { attentionBoardLocalId } from '@slopus/happy-wire';
 import type * as Store from './store';
 import type * as Teams from '@/app/teams/store';
 
@@ -172,19 +171,6 @@ describe('attention items store (pglite)', () => {
         expect((await store.listItems(otherAccountId, { sessionId: s, state: 'all' })).items).toHaveLength(0);
     });
 
-    it('owner reply settles the only open decision; board messages, agents and ambiguity do not', async () => {
-        const one = await store.postItem(accountId, { sessionId, source: 'lead', kind: 'decision', title: 'One', options, requestId: 'o1' });
-        await store.postItem(accountId, { sessionId, source: 'agent', kind: 'blocked', title: 'Blocked', requestId: 'o2' });
-        expect(await store.noteAttentionOwnerMessage({ accountId, sessionId, localId: 'teams-abc' })).toEqual([]);
-        expect(await store.noteAttentionOwnerMessage({ accountId, sessionId, localId: attentionBoardLocalId(one.item.id, 'n') })).toEqual([]);
-        expect(await store.noteAttentionOwnerMessage({ accountId, sessionId, localId: 'l-1', connectionType: 'session-scoped' })).toEqual([]);
-        expect(await store.noteAttentionOwnerMessage({ accountId, sessionId, localId: 'l-2' })).toEqual([one.item.id]);
-        expect(await db.attentionItem.findUniqueOrThrow({ where: { id: one.item.id } })).toMatchObject({ state: 'resolved', resolvedBy: 'owner-replied' });
-        await store.postItem(accountId, { sessionId, source: 'lead', kind: 'decision', title: 'Two', options, requestId: 'o3' });
-        await store.postItem(accountId, { sessionId, source: 'lead', kind: 'decision', title: 'Three', options, requestId: 'o4' });
-        expect(await store.noteAttentionOwnerMessage({ accountId, sessionId, localId: 'l-3' })).toEqual([]);
-    });
-
     it('archiving a session dismisses its open items', async () => {
         const a = await store.postItem(accountId, { sessionId, source: 'agent', kind: 'blocked', title: 'x', requestId: 'ar1' });
         const b = await store.postItem(accountId, { sessionId, source: 'lead', kind: 'report', title: 'y', requestId: 'ar2' });
@@ -217,8 +203,6 @@ describe('attention items store (pglite)', () => {
             expect(row.title).toBe('根目标已提交，等你验收 · Ship the release notes');
             await settle();
             expect(pushesFor(row.id)).toBe(1);
-            // The owner's chat does not accept work.
-            expect(await store.noteAttentionOwnerMessage({ accountId, sessionId, localId: 'l-chat' })).toEqual([]);
             const accepted = await store.ownerRespond(accountId, row.id, { action: 'choose', choice: 'accept' });
             expect(accepted.item).toMatchObject({ state: 'resolved', resolvedBy: 'owner', ownerChoice: 'accept' });
             expect((await teams.readTeam(teamId, { accountId })).tasks.find(t => t.id === task.id)!.status).toBe('done');
@@ -230,8 +214,11 @@ describe('attention items store (pglite)', () => {
             await submit(teamId, task, 'root-return-submit-1');
             const row = await db.attentionItem.findFirstOrThrow({ where: { sessionId, key: `team-submit:${task.id}` } });
             await store.ownerRespond(accountId, row.id, { action: 'choose', choice: 'return', note: 'add the zh copy' });
-            const returned = (await teams.readTeam(teamId, { accountId })).tasks.find(t => t.id === task.id)!;
+            const after = await teams.readTeam(teamId, { accountId });
+            const returned = after.tasks.find(t => t.id === task.id)!;
             expect(returned.status).toBe('running');
+            // The board's own chat line is the lead's one notice: no second「Revision requested」team message (S-1d).
+            expect(after.messages.filter(m => m.taskId === task.id && m.body.startsWith('Revision requested'))).toHaveLength(0);
             expect(await db.attentionItem.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({ state: 'resolved', ownerChoice: 'return' });
             await submit(teamId, returned, 'root-return-submit-2');
             expect(await db.attentionItem.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({ state: 'open', ownerChoice: null, repostCount: 1 });

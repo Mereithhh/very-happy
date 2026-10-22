@@ -116,7 +116,36 @@ function truncateBytes(text: string, maxBytes: number): string {
     return out + suffix;
 }
 
-/** The「待你验收」item for a submitted root task; its options map to the team accept / return actions. */
+/**
+ * Caps a server-written title at `maxChars` (UTF-16 units, as the wire
+ * schema counts) without splitting a surrogate pair or cutting a
+ * word: CJK text breaks between characters, Latin text backs off to the last
+ * word boundary — unless that would drop more than half the title, the one
+ * case (a single over-long word) that is cut mid-word. The cut ends in「…」.
+ */
+export function truncateTitle(text: string, maxChars: number): string {
+    const trimmed = text.trim();
+    if (trimmed.length <= maxChars) return trimmed;
+    const chars = Array.from(trimmed);
+    const word = /[\p{L}\p{N}_'’-]/u;
+    const cjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+    const inWord = (i: number) => word.test(chars[i]) && !cjk.test(chars[i]);
+    let end = 0;
+    for (let used = 0; used + chars[end].length <= maxChars - 1; end++) used += chars[end].length;
+    // `end` is the first dropped character: inside a word when both it and the one before are word characters.
+    if (inWord(end) && inWord(end - 1)) {
+        let back = end - 1;
+        while (back > 0 && inWord(back - 1)) back--;
+        if (back > maxChars / 2) end = back;
+    }
+    return chars.slice(0, end).join('').trimEnd() + '…';
+}
+
+/**
+ * The「待你验收」item for a submitted root task; its options map to the team
+ * accept / return actions (ids stay machine values, labels are what the owner
+ * reads). Neither is marked recommended: the system has no opinion on the work.
+ */
 export function teamSubmitItem(team: Pick<TeamState, 'id' | 'name'>, task: TeamTask) {
     const result = task.attempts.find(a => a.id === task.currentAttemptId)?.result ?? '';
     const goal = task.goal.split('\n')[0]?.trim() ?? '';
@@ -124,29 +153,17 @@ export function teamSubmitItem(team: Pick<TeamState, 'id' | 'name'>, task: TeamT
         source: 'team' as const,
         kind: 'decision' as const,
         key: teamSubmitKey(task.id),
-        title: `根目标已提交，等你验收 · ${goal}`.slice(0, ATTENTION_LIMITS.titleChars).trim(),
+        title: truncateTitle(`根目标已提交，等你验收 · ${goal}`, ATTENTION_LIMITS.titleChars),
         bodyMd: result ? truncateBytes(result, ATTENTION_LIMITS.bodyBytes) : null,
         options: [
-            { id: TEAM_SUBMIT_CHOICES.accept, label: '验收 / Accept', recommended: true },
-            { id: TEAM_SUBMIT_CHOICES.return, label: '退回 / Return' },
+            { id: TEAM_SUBMIT_CHOICES.accept, label: '验收' },
+            { id: TEAM_SUBMIT_CHOICES.return, label: '退回' },
         ],
         links: [{ type: 'task' as const, ref: task.id, label: team.name }],
     };
 }
 
-// ─── Owner replied / push ─────────────────────────────────────────────────────
-
-/**
- * B-508 rule carried over: when the owner speaks in a session, the session's
- * only open decision is taken as answered. Several open decisions are
- * ambiguous and stay open; root-task submits never close on chat (accepting
- * work needs the explicit button). D5 drafts (`inferred`) are neither targets
- * nor competitors: the owner never saw them asked, so chat cannot answer them.
- */
-export function ownerRepliedTarget(items: readonly Pick<AttentionRow, 'id' | 'kind' | 'source' | 'state' | 'inferred'>[]): string | null {
-    const open = items.filter(i => i.kind === 'decision' && i.source !== 'team' && !i.inferred && isAttentionActive(i.state));
-    return open.length === 1 ? open[0].id : null;
-}
+// ─── Push ─────────────────────────────────────────────────────────────────────
 
 const PUSH_TITLE: Record<string, string> = {
     decision: '等你决定',
