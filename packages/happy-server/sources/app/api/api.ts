@@ -5,6 +5,7 @@ import { auditLoginFailure } from '@/app/audit/requestAudit';
 import { teamRoutes } from './routes/teamRoutes';
 import { projectRoutes } from './routes/projectRoutes';
 import { automationRoutes } from './routes/automationRoutes';
+import { attentionRoutes } from './routes/attentionRoutes';
 import { promptQueueRoutes } from './routes/promptQueueRoutes';
 import fastify from "fastify";
 import { log, logger } from "@/utils/log";
@@ -138,6 +139,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     sessionRoutes(typed);
     teamRoutes(typed);
     projectRoutes(typed);
+    attentionRoutes(typed);
     automationRoutes(typed);
     promptQueueRoutes(typed);
     accountRoutes(typed);
