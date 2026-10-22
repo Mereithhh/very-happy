@@ -2832,6 +2832,7 @@ export const zhHans: TranslationStructure = {
                 toolResultsAlt: '命令卡片里标红的失败测试输出，以及标明已截断的长构建输出',
                 quietTitle: '团队更安静了',
                 quietBody: '成员空闲不再打断负责人：空闲成员会附在负责人收到的下一条团队消息里一并说明；成员空闲满 30 分钟仍未提交，才会提醒负责人。',
+                quietAlt: '成员提交给负责人的消息末尾附带另一名成员的空闲说明（Meanwhile idle），没有单独的空闲通知',
                 trailTitle: '每个页面都有面包屑',
                 trailBody: '会话页头、团队页、项目页显示「项目 › 团队 › 成员」，每一段都能点。手机上只显示上一级和当前页。',
                 trailAlt: '成员会话页头：项目 › 团队 › 成员 · 任务',

@@ -174,6 +174,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
         key: 'quiet',
         titleKey: 'changelog.releases.oct23a.quietTitle',
         bodyKey: 'changelog.releases.oct23a.quietBody',
+        image: changelogShots('2026-10-23a', 'quiet', SHOT_SIZE, 'changelog.releases.oct23a.quietAlt'),
         docsHref: '/docs/agent-teams',
       },
     ],

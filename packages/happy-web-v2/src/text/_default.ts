@@ -2692,6 +2692,7 @@ export const en = {
                 toolResultsAlt: 'A failed test run shown in red inside its command card, then a long build output marked as truncated',
                 quietTitle: 'Quieter teams',
                 quietBody: 'A member going idle no longer interrupts the lead. Idle members are summed up on the lead’s next team message instead, and the lead is reminded only when a member has sat idle for 30 minutes without submitting.',
+                quietAlt: 'A member’s submission to the lead carrying a Meanwhile idle note about another member, with no separate idle message',
                 trailTitle: 'Breadcrumbs on every page',
                 trailBody: 'Session headers, team pages and project pages show project › team › member, and each part is a link. Phones show the parent and the current page.',
                 trailAlt: 'A member session header reading project › team › member · task',
