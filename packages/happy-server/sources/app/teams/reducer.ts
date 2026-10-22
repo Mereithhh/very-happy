@@ -129,6 +129,9 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         s.operations.push(op);
         return op;
     };
+    // B-769b: new work restarts the bot's idle clock — an idle (and its long-idle notice) from
+    // before belongs to the previous task, not to this attempt (teamIdle.idleSince).
+    const assigned = (bot: TeamBot) => { bot.workAssignedAt = now; delete bot.idleEscalatedAt; };
     const cleanup = (t: TeamTask) => {
         const bot = s.bots.find(b => b.id === t.assigneeBotId)!;
         const spawn = s.operations.find(o => o.type === 'spawn' && o.attemptId === t.currentAttemptId);
@@ -203,7 +206,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             if (bot) {
                 requireTeam(!s.operations.some(o => o.botId === bot!.id && o.status !== 'completed' && !(o.status === 'failed' && o.error === 'task_closed_before_spawn')), 'bot_has_unresolved_operations');
                 requireTeam(!s.tasks.some(t => t.assigneeBotId === bot!.id && ['pending', 'failed'].includes(t.cleanup)), 'bot_cleanup_unfinished');
-                releaseBotSession(bot); bot.generation++; bot.sessionId = action.sessionId; bot.name = action.name;
+                releaseBotSession(bot); bot.generation++; bot.sessionId = action.sessionId; bot.name = action.name; assigned(bot);
                 for (const task of s.tasks.filter(t => t.assigneeBotId === bot!.id && !['done', 'cancelled'].includes(t.status))) {
                     task.attempts.find(a => a.id === task.currentAttemptId)!.status = 'superseded';
                     task.currentAttemptId = id(); task.status = 'running';
@@ -261,7 +264,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             if ((action.assigneeBotId || reused) && !bound) bot.generation++;
             const attemptId = id();
             const t: TeamTask = { id: id(), parentTaskId: parent?.id ?? null, goal: action.goal, acceptance: action.acceptance, goalVersion: 1, ownerBotId: actor.kind === 'agent' ? actor.botId : null, assigneeBotId: bot.id, status: bound ? 'running' : 'queued', attempts: [{ id: attemptId, botId: bot.id, generation: bot.generation, goalVersion: 1, status: bound ? 'running' : 'pending', result: null }], currentAttemptId: attemptId, cleanup: 'none' };
-            s.tasks.push(t); taskId = t.id;
+            s.tasks.push(t); taskId = t.id; assigned(bot);
             if (bound) msg(t, bot.id, `New task ${t.id}: ${t.goal}\nAcceptance:\n${t.acceptance.join('\n')}`);
             else {
                 // A launch never inherits the session being cleaned up.
@@ -305,7 +308,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             t.attempts.find(a => a.id === t.currentAttemptId)!.status = 'superseded';
             const bot = s.bots.find(b => b.id === t.assigneeBotId)!;
             t.currentAttemptId = id(); t.status = 'running';
-            t.attempts.push({ id: t.currentAttemptId, botId: bot.id, generation: bot.generation, goalVersion: t.goalVersion, status: 'running', result: null });
+            t.attempts.push({ id: t.currentAttemptId, botId: bot.id, generation: bot.generation, goalVersion: t.goalVersion, status: 'running', result: null }); assigned(bot);
             msg(t, t.assigneeBotId, `Revision requested (attempt ${t.currentAttemptId}): ${action.reason}`); break;
         }
         case 'cancel': {
@@ -327,7 +330,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             if (!bot.sessionId) bot.generation++;
             t.assigneeBotId = bot.id; t.currentAttemptId = id(); t.cleanup = 'none';
             t.attempts.push({ id: t.currentAttemptId, botId: bot.id, generation: bot.generation, goalVersion: t.goalVersion, status: bot.sessionId ? 'running' : 'pending', result: null });
-            t.status = bot.sessionId ? 'running' : 'queued';
+            t.status = bot.sessionId ? 'running' : 'queued'; assigned(bot);
             if (bot.sessionId) msg(t, bot.id, `Task handed off: ${t.goal}`); else operation(t, bot, 'spawn');
             break;
         }
@@ -398,7 +401,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                     // B-761: a newly bound session starts with no turn event — the previous
                     // generation's「idle 19:50」/「exited」described another conversation.
                     if (bot.sessionId !== action.sessionId) { delete bot.lastEvent; delete bot.lastEventAt; delete bot.idleEscalatedAt; }
-                    bot.sessionId = action.sessionId; op.sessionId = action.sessionId;
+                    bot.sessionId = action.sessionId; op.sessionId = action.sessionId; assigned(bot);
                     op.error = null; // B-706: an earlier failed attempt of this launch no longer applies
                     if (action.workingDirectory) bot.directory = action.workingDirectory;
                     if (t.currentAttemptId === op.attemptId && t.status === 'queued') { t.status = 'running'; t.attempts.find(a => a.id === op.attemptId)!.status = 'running'; }
