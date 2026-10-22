@@ -4,6 +4,7 @@ export type TeamActor = { kind: 'owner' } | { kind: 'agent'; botId: string; gene
 export { TeamError, requireTeam } from './errors';
 import { requireTeam } from './errors';
 import { applyScheduleAction, acknowledgeScheduleMessage } from './schedules';
+import { idleDigest, idleMembersFor } from './teamIdle';
 export function inTaskTree(state: TeamState, task: TeamTask, ancestorId: string): boolean {
     const seen = new Set<string>();
     let current: TeamTask | undefined = task;
@@ -59,7 +60,8 @@ export function actorCanReadTask(state: TeamState, actor: TeamActor, task: TeamT
     return state.tasks.some(t => (t.assigneeBotId === actor.botId || t.ownerBotId === actor.botId) && inTaskTree(state, task, t.id));
 }
 export function teamView(state: TeamState, actor: TeamActor): TeamState {
-    return withMemberActivity(scopedTeamView(state, actor), state);
+    const view = withMemberActivity(scopedTeamView(state, actor), state);
+    return actor.kind === 'agent' ? { ...view, idleMembers: idleMembersFor(state, actor.botId) } : view;
 }
 /** B-692: response-only derived fields (never persisted): each bot's activity
  *  and the team's member counts, from the full state. */
@@ -114,7 +116,9 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         // the owner as a「待你验收」briefing item (B-766, attention/store `applyTeamTransitionsTx`).
         if (!recipientBotId) return;
         requireTeam(s.messages.length < 2000, 'team_message_limit', 429);
-        s.messages.push({ id: id(), taskId: t.id, senderBotId: actor.kind === 'agent' ? actor.botId : null, recipientBotId, body, deliveredAt: null, createdAt: now });
+        // B-769: idle members are reported here, on a message that wakes the recipient anyway.
+        const digest = idleDigest(s, recipientBotId, now, actor.kind === 'agent' ? [actor.botId] : []);
+        s.messages.push({ id: id(), taskId: t.id, senderBotId: actor.kind === 'agent' ? actor.botId : null, recipientBotId, body: body + digest, deliveredAt: null, createdAt: now });
     };
     const operation = (t: TeamTask, bot: TeamBot, type: 'spawn' | 'stop', attemptId = t.currentAttemptId) => {
         requireTeam(s.operations.length < 1000, 'team_operation_limit', 429);
@@ -393,7 +397,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                     requireTeam(!bot.sessionId || bot.sessionId === action.sessionId, 'bot_already_bound');
                     // B-761: a newly bound session starts with no turn event — the previous
                     // generation's「idle 19:50」/「exited」described another conversation.
-                    if (bot.sessionId !== action.sessionId) { delete bot.lastEvent; delete bot.lastEventAt; }
+                    if (bot.sessionId !== action.sessionId) { delete bot.lastEvent; delete bot.lastEventAt; delete bot.idleEscalatedAt; }
                     bot.sessionId = action.sessionId; op.sessionId = action.sessionId;
                     op.error = null; // B-706: an earlier failed attempt of this launch no longer applies
                     if (action.workingDirectory) bot.directory = action.workingDirectory;
@@ -414,6 +418,9 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             const bot = s.bots.find(b => b.sessionId === action.sessionId);
             requireTeam(bot, 'session_not_bound', 404);
             bot.lastEvent = action.event; bot.lastEventAt = now;
+            // B-769: a turn-end idle is not a wake-up — it rides the owner's next team message
+            // (digest) and team_inspect; teamIdle.escalateIdleMembers wakes on a long idle.
+            if (action.event === 'idle') break;
             for (const task of s.tasks.filter(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status))) {
                 const before = s.messages.length;
                 msg(task, task.ownerBotId, `Agent ${bot.name}: ${action.event}. Task ${task.id} still requires explicit submission and acceptance.`);

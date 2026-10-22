@@ -45,6 +45,35 @@ add members yourself. Until the lead creates one, the team page and the expanded
 sidebar team say so, with a link into the lead's conversation, and the ⓘ beside
 **Who is working** explains the split.
 
+### Just me & the lead
+
+The lead's conversation also carries the members' submissions, progress and
+questions, the system's idle / queue notices and everything the lead does in
+reply — in a busy team most of the transcript. The team row above the lead's
+conversation therefore has a switch: **All messages | Just me & the lead**
+(「全部消息 | 只看我和负责人」; on a phone **All | Me & lead**). *Just me & the
+lead* is the default, and the choice is remembered per conversation on this
+device.
+
+In *Just me & the lead* your messages and the lead's turns that answer them stay
+as they are. Each run of member messages, system notices and the lead's turns
+handling them becomes one dashed line such as *3 member messages · 1 system
+notice · lead handled 3 turns* with chips for the members who wrote; click it to
+expand the run in place (**Collapse N** folds it again). New member traffic lands
+inside the last line, so a reader who scrolled back is not moved and the
+↓ counter only counts what is on screen. Your message shows **Answered ↗** once
+the lead has written text in reply to it; click it to jump to that answer, which
+is briefly highlighted.
+
+What is "yours" comes from transport fields, never from the wording: a team
+message is classified by its team record (`source`, sender), a background-task
+notice or automation / assistant prompt is a system notice, a message from
+another session counts as a member, and anything typed by a person (web, phone,
+desktop, terminal, a shared-session guest) is yours. Ordinary conversations and
+members' conversations have no switch. Rules: `screens/session/leadView.ts`.
+
+![Just me & the lead: member and system runs folded, Answered ↗ jump](screenshots/b766-lead-view/desktop-1440x900-light-answered-jump.png)
+
 In the sidebar's **By project** tree a team sits inside its project, beside the
 project's own sessions (teams outside every project are under **Not in a
 project**). Select a team's name (or press Enter) to open its team page — goal,
@@ -197,6 +226,13 @@ source adapter; a schedule by itself does not import or complete Todo items.
   the stored task status only changes on submit / accept / return / cancel /
   handoff. A newly bound member session starts without the previous
   generation's last event.
+- Who gets woken: a member's **submit**, **message**, **blocked** (waiting for
+  permission or input) and **exited** reach the task owner (usually the lead)
+  as a new turn right away. A member whose turn merely ended (**idle**) does not
+  wake anyone: it is listed in the owner's next team message ("Meanwhile idle:
+  …") and in `team_inspect` as `idleMembers`. Only an idle stretch of 30 minutes
+  with the task still not submitted wakes the owner, once per stretch. Your own
+  chat with the lead and push notifications are unaffected.
 - A submitted result requires the owner's acceptance. Returning it creates a new
   attempt. Acceptance/return/cancellation/handoff reference the displayed attempt
   and goal version, so old pages cannot silently act on newer work.

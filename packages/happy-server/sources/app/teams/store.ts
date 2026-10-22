@@ -7,6 +7,7 @@ import { db } from '@/storage/db';
 import { inTx, type Tx } from '@/storage/inTx';
 import { encryptString, decryptString } from '@/modules/encrypt';
 import { advanceSchedules } from './schedules';
+import { escalateIdleMembers } from './teamIdle';
 import { otherTeamBinding, reduceTeam, requireTeam, sessionInOtherTeamMessage, teamView, transferSessionOut, TeamError, type TeamActor } from './reducer';
 
 type Principal = { accountId: string; actor: TeamActor; credentialId?: string };
@@ -205,8 +206,11 @@ export async function tickTeamSchedules(accountId: string, machineId: string): P
         try {
             fired += await inTx(async tx => {
                 const row = await load(tx, id, accountId);
-                const next = advanceSchedules(row.state, Date.now());
-                if (next.fired) await persistTransition(tx, row, next.team);
+                const now = Date.now();
+                const next = advanceSchedules(row.state, now);
+                // B-769: the same per-machine 5 s tick (old daemons included) wakes owners of long-idle members.
+                const idle = escalateIdleMembers(next.team, now, randomUUID);
+                if (next.fired || idle.fired) await persistTransition(tx, row, idle.team);
                 return next.fired;
             });
         } catch (error) {
