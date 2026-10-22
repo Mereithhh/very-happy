@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, FolderKanban, Settings2, Send, UsersRound, Zap, Undo2, Plus, Link2, LogOut } from 'lucide-react';
 import { ActionDropdownMenu } from '@/ui/Menu';
-import { linkableTeams } from './projectChoice';
+import { Modal } from '@/modal';
+import { linkableTeams, teamMoveSource } from './projectChoice';
 import type { ProjectDetailResponse, ProjectLogEntryView, ProjectLogKind } from '@slopus/happy-wire';
 import { applyLocalMembership, projectsApi, ProjectsApiError, refreshProjects, useProjects } from '@/sync/projects';
 import { useAllMachines, useAllSessions, storage } from '@/sync/storage';
@@ -189,8 +190,12 @@ function ProjectOverview({ detail, c, onChanged }: { detail: ProjectDetailRespon
   const summary = summarizeInjection(memberRows.map((r) => r.injection));
   const attachedTeams = teams.filter((t) => detail.project.teamIds.includes(t.id));
   const projects = useProjects();
-  const linkable = linkableTeams(teams, detail.project.id, projects.status === 'ready' ? projects.projects : [detail.project]);
+  const known = projects.status === 'ready' ? projects.projects : [detail.project];
+  const linkable = linkableTeams(teams, detail.project.id, known);
   const linkTeam = async (teamId: string) => {
+    const from = teamMoveSource({ id: teamId }, detail.project.id, known);
+    const name = teams.find((t) => t.id === teamId)?.name ?? teamId.slice(0, 8);
+    if (from && !(await Modal.confirm(c.moveTeamTitle, c.moveTeamBody(name, from.name, detail.project.name), { confirmText: c.moveTeam }))) return;
     try { await projectsApi.attachTeam(detail.project.id, teamId); await onChanged(); }
     catch (error) { toast.error(error instanceof ProjectsApiError && error.code === 'team_machine_not_in_project' ? c.teamNoFolder : c.failed); }
   };

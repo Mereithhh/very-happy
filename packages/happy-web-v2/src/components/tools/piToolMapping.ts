@@ -112,7 +112,7 @@ export function mapPiToolToKnown(args: PiToolArgs | null | undefined): MappedKno
             if (!sessionSubagent) return null;
             const task = str(raw.task);
             const count = Array.isArray(raw.tasks) ? raw.tasks.length : Array.isArray(raw.chain) ? raw.chain.length : undefined;
-            const description = task ?? (Array.isArray(raw.tasks) ? `${count} parallel tasks` : Array.isArray(raw.chain) ? `chain of ${count} steps` : 'sub-agent');
+            const description = task ?? (Array.isArray(raw.tasks) ? (count === 1 ? '1 parallel task' : `${count} parallel tasks`) : Array.isArray(raw.chain) ? (count === 1 ? 'chain of 1 step' : `chain of ${count} steps`) : 'sub-agent');
             return { name: 'Agent', input: compact({ description: description.length > 120 ? `${description.slice(0, 119)}…` : description, prompt: task, subagent_type: str(raw.agent), sessionSubagent }) };
         }
         default:

@@ -244,7 +244,7 @@ export function GitActionDialog({
                 <label className="gd-file gd-file--all">
                     <Checkbox checked={allSelected} indeterminate={!allSelected && chosen.length > 0}
                         onChange={() => setSelected(allSelected ? new Set() : new Set(candidates.map((c) => c.path)))}/>
-                    <span>{zh ? `全部 ${candidates.length} 个文件` : `All ${candidates.length} files`}</span>
+                    <span>{zh ? `全部 ${candidates.length} 个文件` : candidates.length === 1 ? 'The 1 file' : `All ${candidates.length} files`}</span>
                     {!allSelected && <span className="gd-count">{zh ? `已选 ${chosen.length}` : `${chosen.length} selected`}</span>}
                 </label>
                 <div className="gd-file-list">
