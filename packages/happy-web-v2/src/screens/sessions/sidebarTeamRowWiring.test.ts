@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-describe('Sidebar wiring (B-721 / B-762)', () => {
+describe('Sidebar wiring (B-721 / B-762 / B-773)', () => {
   const src = readFileSync(new URL('./Sidebar.tsx', import.meta.url), 'utf8');
   const row = readFileSync(new URL('./SidebarTeamRow.tsx', import.meta.url), 'utf8');
   it('team nodes render through SidebarTeamRow only (one render path, tree lens only)', () => {
@@ -27,18 +27,29 @@ describe('Sidebar wiring (B-721 / B-762)', () => {
     expect(src).not.toContain('tag-lens:projects');
     expect(src).toContain('projectAttention: projectBadgeTotal');
   });
-  it('B-762 review: the title outranks the owner chip — ≥ 8em kept, chip ≤ 40% with a real ellipsis on its name', () => {
+  it('B-762 review: the owner chip carries a real ellipsis on its name, capped at 40% of the line', () => {
     const css = readFileSync(new URL('./sidebar.css', import.meta.url), 'utf8');
-    expect(css).toContain('.sb-row-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }');
-    expect(css).toContain('.sb-row-title-line .sb-row-title:has(~ .sb-row-project) { flex: 1 1 auto; min-width: min(8em, 60%); }');
-    expect(css).toMatch(/\.sb-row-project \{[^}]*max-width: 40%;/);
+    expect(css).toContain('.sb-row-project-name { min-width: 0; max-width: calc(40cqw - 23px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }');
     expect(src).toContain('<span className="sb-row-project-name">{ownerChip.name}</span>');
   });
-  it('B-772 (QA4 O4): the owner chip never shrinks below ~3 characters of its name; next to tag chips the title keeps 6em', () => {
-    // Measured in Chromium (最近 / 按标签 × 1440 / 390 coarse × light / dark): tmp/vh-b772/chips.mjs.
+  it('B-772 (QA4 O4): the owner chip never shrinks below ~3 characters of its name', () => {
     const css = readFileSync(new URL('./sidebar.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.sb-row-project \{[^}]*min-width: calc\(3em \+ 23px\);/);
-    expect(css).not.toMatch(/\.sb-row-project \{[^}]*min-width: 22px;/);
-    expect(css).toContain('.sb-row-title-line:has(.sb-row-tags) .sb-row-title:has(~ .sb-row-project) { min-width: min(6em, 45%); }');
+    expect(css).toMatch(/\.sb-row-project \{[^}]*flex: 1 1 calc\(3em \+ 23px\); min-width: calc\(3em \+ 23px\); max-width: max-content;/);
+  });
+  it('B-773 (QA5): lead/member title text keeps ≥ 6em (or all of it) — the 「负责人」 tag is outside the title box, chips wrap off the one-line row first', () => {
+    // Measured in Chromium (树 / 最近 / 按标签 × 1440 with a 260 / 240 sidebar + 390 coarse × light / dark, scene=crowded) with mutations: tmp/vh-team-B-773/assert-titles.mjs, mutate.sh.
+    const css = readFileSync(new URL('./sidebar.css', import.meta.url), 'utf8');
+    expect(src).toContain('? <><span className="sb-lead-tag">{row.teamLabel}</span><span className="sb-row-title">{row.title}</span></>');
+    expect(css).toMatch(/\.sb-row-title-line \{[^}]*flex-wrap: wrap;[^}]*max-height: 1lh;\s*overflow: hidden;\s*\}/);
+    expect(css).toContain('.sb-row-text:has(> .sb-row-title-line) { container-type: inline-size; }');
+    expect(css).toMatch(/@container \(max-width: 139px\) \{\s*\.sb-row-title-line:has\(> \.sb-lead-tag\) \{ --lead-w: 0px; \}\s*\.sb-row-title-line > \.sb-lead-tag \{ position: absolute;/);
+    expect(css).toMatch(/\.sb-row-title-line \.sb-row-title \{\s*flex: 1000 1 0;\s*min-width: min\(var\(--title-min\), 100% - var\(--lead-w\)\);\s*max-width: max-content;/);
+    // 6em on lead/member rows; 5em elsewhere, or the default 260px sidebar drops every project chip / P0 tag
+    expect(css).toMatch(/\.sb-row-title-line \{\s*--lead-w: 0px;\s*--title-min: 5em;/);
+    expect(css).toContain('.sb-row-title-line--team { --title-min: 6em; }');
+    expect(src).toContain("<span className={`sb-row-title-line${row.teamRole ? ' sb-row-title-line--team' : ''}`}>");
+    expect(css).toContain('.sb-row-title-line:has(> .sb-lead-tag) { --lead-w: 56px; }');
+    expect(css).toMatch(/\.sb-lead-tag \{\s*flex: none; max-width: calc\(56px - var\(--sp-2\)\);/);
+    expect(css).toContain('.sb-row-tags { display: contents; }');
   });
 });
