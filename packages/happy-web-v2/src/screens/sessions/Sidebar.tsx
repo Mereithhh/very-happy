@@ -122,6 +122,8 @@ interface Row {
   teamLabel?: string;
   /** B-674/B-690: the 「已停用 N 个」 fold row under an expanded team (not a nav target, no ⌘N slot). */
   teamInactiveFold?: { teamId: string; count: number; open: boolean };
+  /** B-759: 「成员由负责人按需创建」 under an expanded team with only its lead (not a nav target, no ⌘N slot). */
+  teamEmptyHint?: boolean;
   /** B-756: a project entry in the tag lens's 「项目」 area (not a nav row: no ⌘N slot, no reorder). */
   projectEntry?: ProjectAreaEntry;
   key: string;
@@ -604,6 +606,7 @@ export function Sidebar() {
         { key: teamInactiveGroupId(entry.team.id), kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: teamCopy.inactiveCount(entry.count), subtitle: '', ts: 0, createdAt: 0, teamInactiveFold: { teamId: entry.team.id, count: entry.count, open: entry.open } },
         ...(entry.open ? unstarted(entry.team, true).map(pendingRow(entry.team)) : []),
       ];
+      if (entry.kind === 'empty') return [{ key: `team-empty:${entry.team.id}`, kind: 'session', href: '', title: teamCopy.membersByLead, subtitle: '', ts: 0, createdAt: 0, teamEmptyHint: true }];
       if (entry.kind === 'row') return [entry.team ? { ...entry.row, teamChild: true, href: `/session/${encodeURIComponent(entry.row.sessionId!)}`, teamLabel: entry.bot?.root ? teamCopy.lead : entry.bot?.name || teamCopy.member } : entry.row];
       const header: Row = { key: `team:${entry.team.id}`, kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: entry.team.name, subtitle: '', ts: entry.team.createdAt, createdAt: entry.team.createdAt, team: entry.team };
       const pending: Row[] = expandedTeams.has(entry.team.id) ? unstarted(entry.team, false).map(pendingRow(entry.team)) : [];
@@ -690,7 +693,7 @@ export function Sidebar() {
   // Collapsed groups' rows are not rendered, so they take no ⌘1-9 number
   // and no move-up/down position either (B-580).
   const plainDisplayRows = useMemo<Row[] | null>(
-    () => (groupedSections ? groupedSections.flatMap((sec) => sec.rows).filter((r) => !r.teamInactiveFold && !r.projectEntry) : orderedRows),
+    () => (groupedSections ? groupedSections.flatMap((sec) => sec.rows).filter((r) => !r.teamInactiveFold && !r.teamEmptyHint && !r.projectEntry) : orderedRows),
     [groupedSections, orderedRows],
   );
   // The flat list (不分组) nests teams over the whole list; the project and tag lenses do it per group.
@@ -1464,7 +1467,7 @@ export function Sidebar() {
                   {sec.rows.map((r) => {
                     // B-619: shared rows are outside displayRows — no ⌘N slot, no reorder.
                     // B-674: the inactive-members fold is a disclosure, not a row — outside displayRows too.
-                    const i = r.share || r.teamInactiveFold || r.projectEntry ? -1 : flat++;
+                    const i = r.share || r.teamInactiveFold || r.teamEmptyHint || r.projectEntry ? -1 : flat++;
                     if (r.projectEntry) {
                       const entry = r.projectEntry;
                       return <SidebarProjectRow
@@ -1480,6 +1483,7 @@ export function Sidebar() {
                         onNewSession={() => newProjectSession(entry.project)}
                       />;
                     }
+                    if (r.teamEmptyHint) return <div key={r.key} className="sb-team-child"><p className="sb-team-empty">{r.title}</p></div>;
                     if (r.teamInactiveFold) {
                       const fold = r.teamInactiveFold;
                       return <div key={r.key} className="sb-team-child"><button
@@ -1494,7 +1498,7 @@ export function Sidebar() {
                       ><ChevronRight size={13} className={`sb-section-chevron${fold.open ? ' is-open' : ''}`} /><Archive size={14} /><span>{r.title}</span></button></div>;
                     }
                     if (r.team) {
-                      // B-721: name → lead's conversation (board fallback), chevron → fold only, board → its own button.
+                      // B-759: row → team page, chevron → fold only, lead → its own member row / the context menu.
                       const team = r.team;
                       const open = expandedTeams.has(team.id);
                       const leadId = teamLeadSessionId(team);
@@ -1725,7 +1729,7 @@ function tagGroupId(g: { tag: string | null }): string {
 /** A labelled group: `rows` empty while folded, `allRows` always complete. */
 function collapsibleSection(id: string, label: string, rows: Row[], collapsed: Record<string, boolean>): SidebarSection {
   const open = !isGroupCollapsed(collapsed, id);
-  return { id, label, count: rows.length, rows: open ? rows : [], allRows: rows, collapsible: true, open };
+  return { id, label, count: rows.filter((r) => !r.teamEmptyHint).length, rows: open ? rows : [], allRows: rows, collapsible: true, open };
 }
 
 /** B-580: a folded group's header still shows the states that need the user. */

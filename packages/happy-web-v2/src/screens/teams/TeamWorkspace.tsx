@@ -1,7 +1,7 @@
 import { teamBotActivity, type TeamBot, type TeamState, type TeamTask } from '@slopus/happy-wire';
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Circle, UsersRound, CircleCheck, CircleDashed, Clock3, ArrowUpRight, GitBranch, Monitor, Archive } from 'lucide-react';
+import { Circle, UsersRound, CircleCheck, CircleDashed, Clock3, ArrowUpRight, GitBranch, Monitor, Archive, Info, Bot } from 'lucide-react';
 import { Summary } from '@/ui/Summary';
 import { useWorkspaceCopy } from './workspaceCopy';
 import { t as tr } from '@/text';
@@ -10,7 +10,7 @@ import { memberTitle, teamRootTask, taskLaunchIssue, teamTextPreviewLines } from
 import { Markdown } from '@/screens/session/Markdown';
 import { useOperationErrorSummary } from './OperationError';
 import { FINISHED_PAGE_SIZE, finishedTasksByRecency, taskRows, teamFinishedGroupId } from './teamView';
-import { botHistorySessionId, teamInactiveGroupId, teamMemberCount, teamMemberInactive, teamRoster } from '@/screens/sessions/teamNavigation';
+import { botHistorySessionId, teamHasOnlyLead, teamInactiveGroupId, teamLeadSessionId, teamMemberCount, teamMemberInactive, teamRoster } from '@/screens/sessions/teamNavigation';
 import { isGroupCollapsed, setGroupCollapsed, useCollapsedGroups } from '@/screens/sessions/sidebarCollapsedGroups';
 import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
 import { AgentGlyph } from '@/screens/session/AgentChip';
@@ -107,12 +107,17 @@ function FinishedLane({ team, preview }: { team: TeamState; preview: (task: Team
  * 「已停用 N 个」 disclosure — the sidebar's rule and its device-local choice
  * (`team-archived:<id>`). Folded members keep their history links, and the
  * handoff / new-task forms still offer them, so they can be reassigned.
+ * B-759: the ⓘ explains who does what, and a team with only its lead says the
+ * lead creates members, with a way into the lead's conversation.
  */
 export function TeamMembers({ team, archivedSessionIds, now, execution }: { team: TeamState; archivedSessionIds?: ReadonlySet<string>; now: number; execution?: MemberExecution }) {
   const c = useWorkspaceCopy();
   const stateOf = useTeamTaskStates(team, execution);
   const f = useFirstUseCopy();
   const navCopy = useTeamNavigationCopy();
+  const [rolesOpen, setRolesOpen] = React.useState(false);
+  const rolesId = React.useId();
+  const leadSessionId = teamLeadSessionId(team);
   const foldKey = teamInactiveGroupId(team.id);
   const inactiveOpen = !isGroupCollapsed(useCollapsedGroups(), foldKey);
   const context = { now, sessionArchived: (sessionId: string) => !!archivedSessionIds?.has(sessionId) };
@@ -124,8 +129,11 @@ export function TeamMembers({ team, archivedSessionIds, now, execution }: { team
     const content = <><span className="teams-avatar" data-live={active.some(t => stateOf(t) === 'working')}><AgentGlyph kind={agentKindOf(bot.assistant)} size={18} /></span><span className="teams-member-info"><strong>{memberTitle(bot, f)}</strong><small>{agentKindLabel(agentKindOf(bot.assistant)) ?? bot.assistant}</small><span>{active[0] ? teamTextPreviewLines(active[0].goal).join(' ') : c.idle}</span>{!bot.sessionId && <small>{team.operations.some(o => o.botId === bot.id && ["unknown", "failed"].includes(o.status)) ? f.unknown : active.length ? teamTaskStateLabel(stateOf(active[0])) : f.stopped}</small>}{teamBotActivity(team, bot, context) === 'stopping' && <small className="teams-error">{navCopy.stopping}</small>}{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{historySessionId && <ArrowUpRight size={16} aria-hidden />}</>;
     return historySessionId ? <Link key={bot.id} className="teams-member" to={`/session/${encodeURIComponent(historySessionId)}`}>{content}</Link> : <div key={bot.id} className="teams-member">{content}</div>;
   };
-  return <section className="teams-members"><h2>{f.membersTitle} <small>{teamMemberCount(team, context)}</small></h2>
+  return <section className="teams-members"><h2>{f.membersTitle} <small>{teamMemberCount(team, context)}</small>
+    <button type="button" className="teams-roles-info" aria-expanded={rolesOpen} aria-controls={rolesId} aria-label={c.rolesInfo} title={c.rolesInfo} onClick={() => setRolesOpen(open => !open)}><Info size={15} aria-hidden /></button></h2>
+    {rolesOpen && <p id={rolesId} className="teams-roles">{c.roles}</p>}
     {team.bots.length === 0 && <p>{c.noMembers}</p>}
+    {teamHasOnlyLead(team) && <div className="teams-members-empty"><p>{c.membersByLead}</p>{leadSessionId && <Link className="teams-members-empty-cta" to={`/session/${encodeURIComponent(leadSessionId)}`}><Bot size={16} aria-hidden />{navCopy.openLead}</Link>}</div>}
     {current.length > 0 && <div className="teams-members-grid">{current.map(card)}</div>}
     {inactive.length > 0 && <details className="teams-members-inactive" open={inactiveOpen} onToggle={(e) => { if (e.currentTarget.open !== inactiveOpen) setGroupCollapsed(foldKey, !e.currentTarget.open); }}>
       <Summary title={inactiveOpen ? navCopy.hideInactive : navCopy.showInactive}><Archive size={14} aria-hidden />{navCopy.inactiveCount(inactive.length)}</Summary>

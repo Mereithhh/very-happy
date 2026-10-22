@@ -120,6 +120,12 @@ function b729Teams(now: number): TeamState[] {
   ];
 }
 
+/** B-759: a team with only its lead (sL) — expanded, it says the lead creates members. */
+function soloTeam(now: number): TeamState {
+  return { id: 'solo', name: 'Solo 团队', machineId: 'm1', version: 1, createdAt: now - 120_000, tasks: [], messages: [], operations: [],
+    bots: [{ id: 'solo-lead', name: 'Lead', sessionId: 'sL', root: true, generation: 1, managed: true, assistant: 'claude', directory: null } as TeamState['bots'][number]] };
+}
+
 function seed() {
   const now = Date.now();
   storage.getState().applyLocalSettings({
@@ -167,8 +173,9 @@ function seed() {
     fakeSession('sW1', 'xhub key fetch (gen 1)', 6),
     fakeSession('sW2', 'xhub key fetch (gen 2)', 2),
     fakeSession('sP', 'or-gemini-eval', 1),
+    fakeSession('sL', 'Plan the release checklist', 1),
   ]);
-  setTeamNavigationDevOverride([harnessTeam(now), ...b729Teams(now)]);
+  setTeamNavigationDevOverride([harnessTeam(now), ...b729Teams(now), soloTeam(now)]);
   // projects API answered with no projects yet: every project-gated control shows.
   // B-756: `?projects=1` seeds two projects (one with a waiting session, one empty)
   // so the tag lens's 「项目」 area, the row chips and the project heads render.

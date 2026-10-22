@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TEAM_MEMBER_IDLE_MS, type TeamState } from '@slopus/happy-wire';
 import { groupTeamNavigation, teamSessionMembership, teamSessionSuperseded, botHistorySessionId, missingTeamSessionIds, unstartedTeamMembers, teamInactiveGroupId, teamMemberInactive, teamMemberCount, teamRoster, teamHomeDirectory, isTeamWorktreePath, type TeamNavigationEntry } from './teamNavigation';
 import { defaultCollapsed } from './sidebarCollapsedGroups';
-const label = (e: TeamNavigationEntry<{ sessionId: string }>) => e.kind === 'row' ? e.row.sessionId : e.kind === 'team' ? e.team.id : `inactive:${e.count}:${e.open ? 'open' : 'closed'}`;
+const label = (e: TeamNavigationEntry<{ sessionId: string }>) => e.kind === 'row' ? e.row.sessionId : e.kind === 'team' ? e.team.id : e.kind === 'empty' ? `empty:${e.team.id}` : `inactive:${e.count}:${e.open ? 'open' : 'closed'}`;
 const team = (id: string, sessionIds: string[]): TeamState => ({ id, name: id, machineId: 'm', version: 1, createdAt: 1, bots: sessionIds.map((sessionId, i) => ({ id: `${id}-${i}`, sessionId, name: `Member ${i}`, generation: 1, root: i === 0, managed: true, assistant: 'claude', directory: null })), tasks: [], operations: [], messages: [] });
 describe('team history', () => {
   const rows = ['ordinary-a', 'lead', 'ordinary-b', 'member', 'ordinary-c'].map((sessionId) => ({ sessionId }));
@@ -17,6 +17,13 @@ describe('team history', () => {
   });
   it('keeps newly created teams reachable before a session exists', () => {
     expect(groupTeamNavigation([], [team('preparing', [])], new Set())).toEqual([{ kind: 'team', team: team('preparing', []) }]);
+  });
+  it('B-759: an expanded team with only its lead gets one 「成员由负责人按需创建」 hint after the lead', () => {
+    const solo = team('solo', ['lead']);
+    expect(groupTeamNavigation([{ sessionId: 'lead' }], [solo], new Set(['solo'])).map(label)).toEqual(['solo', 'lead', 'empty:solo']);
+    expect(groupTeamNavigation([{ sessionId: 'lead' }], [solo], new Set()).map(label)).toEqual(['solo']);
+    expect(groupTeamNavigation([], [team('preparing', [])], new Set(['preparing'])).map(label)).toEqual(['preparing']);
+    expect(groupTeamNavigation(rows, [team('team', ['lead', 'member'])], new Set(['team'])).map(label)).not.toContain('empty:team');
   });
   it('B-729: a session claimed by several teams belongs to exactly one (newer team on a tie) instead of none', () => {
     expect(teamSessionMembership([team('one', ['lead']), { ...team('two', ['lead']), createdAt: 2 }]).get('lead')?.team.id).toBe('two');
@@ -37,7 +44,7 @@ describe('retired member history', () => {
     expect(teamSessionMembership([t]).get('old-session')?.team.id).toBe(t.id);
     const history = missingTeamSessionIds(new Set(['ordinary-live']), [t]);
     expect(history).toEqual(['old-session']);
-    expect(groupTeamNavigation(history.map(sessionId => ({ sessionId })), [t], new Set([t.id])).map(label)).toEqual(['completed', 'old-session']);
+    expect(groupTeamNavigation(history.map(sessionId => ({ sessionId })), [t], new Set([t.id])).map(label)).toEqual(['completed', 'old-session', 'empty:completed']);
     expect(t.bots[0].sessionId).toBeNull();
   });
   it('prefers a live binding, preserves older attempts and does not duplicate current receipts', () => {

@@ -44,8 +44,9 @@ export function sidebarListEmpty(sections: ReadonlyArray<{ count: number; allRow
  * 「N inactive」 fold — a disclosure row, like in the project and tag lenses —
  * while the ⌘1-9 / move-up-down sequence leaves the fold out (B-674). Before,
  * the flat section reused the sequence as its rendered rows, so the fold and
- * the inactive members behind it never appeared.
+ * the inactive members behind it never appeared. B-759's 「成员由负责人按需创建」
+ * hint is likewise rendered but not in the sequence.
  */
-export function flatListRows<R extends { teamInactiveFold?: unknown }>(nested: R[]): { rendered: R[]; sequence: R[] } {
-  return { rendered: nested, sequence: nested.filter((r) => !r.teamInactiveFold) };
+export function flatListRows<R extends { teamInactiveFold?: unknown; teamEmptyHint?: unknown }>(nested: R[]): { rendered: R[]; sequence: R[] } {
+  return { rendered: nested, sequence: nested.filter((r) => !r.teamInactiveFold && !r.teamEmptyHint) };
 }

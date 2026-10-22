@@ -68,6 +68,10 @@ it('UI-P0-01: with no known folder the configuration is open and the disabled bu
  expect(host.querySelector('.team-start-toggle')?.getAttribute('aria-expanded')).toBe('true');
  expect((host.querySelector('.team-start-send') as HTMLButtonElement).disabled).toBe(true);
  expect(host.querySelector('#team-start-blocker')?.textContent).toBe('Describe the goal first');
+ // B-759: the new-team dialog says the lead creates members, right under the goal.
+ const note=host.querySelector('.team-start-goal-note');
+ expect(note?.textContent).toBe('Just tell the lead what you need. It splits the work, creates members as needed and reviews their results.');
+ expect(host.querySelector('textarea[name="goal"]')?.getAttribute('aria-describedby')).toBe(note?.id);
  const input=host.querySelector('textarea')!;
  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(input,'Ship it');input.dispatchEvent(new Event('input',{bubbles:true}));});
  expect(host.querySelector('#team-start-blocker')?.textContent).toBe('Choose a working folder first');

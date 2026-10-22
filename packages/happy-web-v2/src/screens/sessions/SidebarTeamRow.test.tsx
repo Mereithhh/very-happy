@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 /**
- * B-721: a click on a sidebar team row means "talk to the lead". The name opens
- * the root bot's conversation (board only when there is none), the chevron
- * only folds, the board has its own button and a context-menu item.
+ * B-759: a click on a sidebar team row opens the team page (B-721 sent it to
+ * the lead, duplicating the expanded 「负责人」 row). The chevron only folds;
+ * the lead and team settings live in the context menu; no hover board button.
  */
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -12,25 +12,26 @@ import { teamLeadSessionId, teamRowTarget } from './teamNavigation';
 
 const { SidebarTeamRow } = await import('./SidebarTeamRow');
 
-const copy = { expand: 'Expand team', collapse: 'Collapse team', openBoard: 'Open board', openLead: 'Chat with the lead', leadStatus: 'Lead' };
+const copy = { expand: 'Expand team', collapse: 'Collapse team', openBoard: 'Open team page', openTeam: 'Open team', openLead: 'Chat with the lead', settings: 'Team settings', leadStatus: 'Lead' };
 const team = (sessionIds: (string | null)[], rootIndex = 0): TeamState => ({
   id: 'team-1', name: 'VeryHappy', machineId: 'm', version: 1, createdAt: 1, tasks: [], operations: [], messages: [],
   bots: sessionIds.map((sessionId, i) => ({ id: `bot-${i}`, sessionId, name: i === rootIndex ? 'Lead' : `Member ${i}`, generation: 1, root: i === rootIndex, managed: true, assistant: 'claude', directory: null })),
 } as TeamState);
 
-describe('team row target (B-721)', () => {
-  it('opens the root bot’s conversation, not the first member’s', () => {
-    expect(teamRowTarget(team(['member', 'lead'], 1))).toEqual({ href: '/session/lead', leadSessionId: 'lead', boardHref: '/teams/team-1' });
+describe('team row target (B-759)', () => {
+  it('the row opens the team page; the lead link is the root bot’s conversation, not the first member’s', () => {
+    expect(teamRowTarget(team(['member', 'lead'], 1))).toEqual({ href: '/teams/team-1', leadHref: '/session/lead', leadSessionId: 'lead', settingsHref: '/teams/team-1?view=settings' });
   });
-  it('falls back to the board when the lead has no session yet (or there is no lead)', () => {
-    expect(teamRowTarget(team([null, 'member'])).href).toBe('/teams/team-1');
+  it('no lead link while the lead has no session yet (or there is no lead)', () => {
+    expect(teamRowTarget(team([null, 'member'])).leadHref).toBeNull();
+    expect(teamRowTarget(team([])).leadHref).toBeNull();
     expect(teamRowTarget(team([])).href).toBe('/teams/team-1');
   });
   it('a retired lead still opens its last conversation (spawn receipt)', () => {
     const t = team([null]);
     t.operations = [{ id: 'op', teamId: t.id, machineId: 'm', taskId: 'task', botId: 'bot-0', attemptId: 'a', generation: 1, type: 'spawn', status: 'completed', claimId: 'c', claimedAt: 1, error: null, sessionId: 'old-lead', directory: '/repo', assistant: 'claude', prompt: 'goal', createdAt: 1 }] as TeamState['operations'];
     expect(teamLeadSessionId(t)).toBe('old-lead');
-    expect(teamRowTarget(t).href).toBe('/session/old-lead');
+    expect(teamRowTarget(t).leadHref).toBe('/session/old-lead');
   });
 });
 
@@ -54,18 +55,23 @@ async function render(t: TeamState, extra: Partial<Parameters<typeof SidebarTeam
   return { el: host, onNavigate, onToggle };
 }
 
-describe('SidebarTeamRow (B-721)', () => {
-  it('clicking the name opens the lead’s conversation', async () => {
+describe('SidebarTeamRow (B-759)', () => {
+  it('clicking the row opens the team page, even when the lead has a conversation', async () => {
     const { el, onNavigate, onToggle } = await render(team(['lead', 'member']));
-    await act(async () => el.querySelector<HTMLButtonElement>('.sb-team-main')!.click());
-    expect(onNavigate).toHaveBeenCalledWith('/session/lead');
+    const main = el.querySelector<HTMLButtonElement>('.sb-team-main')!;
+    expect(main.title).toBe('Open team · VeryHappy');
+    await act(async () => main.click());
+    expect(onNavigate).toHaveBeenCalledWith('/teams/team-1');
     expect(onToggle).not.toHaveBeenCalled();
   });
 
-  it('no lead session yet → the name opens the board', async () => {
-    const { el, onNavigate } = await render(team([null, 'member']));
-    await act(async () => el.querySelector<HTMLButtonElement>('.sb-team-main')!.click());
-    expect(onNavigate).toHaveBeenCalledWith('/teams/team-1');
+  it('Enter is left to the native button (→ the same click as the team page), not swallowed or turned into a fold', async () => {
+    const { el, onToggle } = await render(team(['lead']));
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    await act(async () => { el.querySelector('.sb-team-main')!.dispatchEvent(enter); });
+    expect(enter.defaultPrevented).toBe(false);
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(el.querySelector('.sb-team-main')!.tagName).toBe('BUTTON');
   });
 
   it('the chevron only folds — no navigation', async () => {
@@ -75,13 +81,25 @@ describe('SidebarTeamRow (B-721)', () => {
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
-  it('the board button opens the board', async () => {
-    const { el, onNavigate, onToggle } = await render(team(['lead']));
-    const board = el.querySelector<HTMLButtonElement>('.sb-team-board')!;
-    expect(board.getAttribute('aria-label')).toBe('Open board: VeryHappy');
-    await act(async () => board.click());
-    expect(onNavigate).toHaveBeenCalledWith('/teams/team-1');
-    expect(onToggle).not.toHaveBeenCalled();
+  it('no hover-only board button: the row has just the chevron and the main button', async () => {
+    const { el } = await render(team(['lead']));
+    expect(el.querySelector('.sb-team-board')).toBeNull();
+    expect([...el.querySelectorAll('.sb-team-row > button')].map(b => b.className)).toEqual(['sb-team-toggle', 'sb-team-main']);
+  });
+
+  it('the context menu offers team page, lead, settings and fold — in that order', async () => {
+    const { el, onNavigate } = await render(team(['lead']));
+    await act(async () => { el.querySelector('.sb-team-row')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })); });
+    const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    expect(items.map(i => i.textContent?.trim())).toEqual(['Open team page', 'Chat with the lead', 'Team settings', 'Expand team']);
+    await act(async () => items[1].click());
+    expect(onNavigate).toHaveBeenLastCalledWith('/session/lead');
+  });
+
+  it('without a lead conversation the menu skips 「和负责人对话」', async () => {
+    const { el } = await render(team([null]));
+    await act(async () => { el.querySelector('.sb-team-row')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })); });
+    expect([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(i => i.textContent?.trim())).toEqual(['Open team page', 'Team settings', 'Expand team']);
   });
 
   it('keyboard: → expands, ← collapses, the other direction does nothing', async () => {
@@ -109,7 +127,7 @@ describe('SidebarTeamRow (B-721)', () => {
     expect(idle.el.querySelector('.sb-team-lead-status')).toBeNull();
   });
 
-  it('selected on the board page, and on the lead’s page while folded', async () => {
+  it('selected on the team page, and on the lead’s page while folded', async () => {
     const onBoard = await render(team(['lead']), { pathname: '/teams/team-1' });
     expect(onBoard.el.querySelector('.sb-team-row')!.classList.contains('is-selected')).toBe(true);
     await act(async () => root!.unmount()); root = null; host!.remove();

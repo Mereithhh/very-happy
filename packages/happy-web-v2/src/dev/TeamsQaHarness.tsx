@@ -8,10 +8,14 @@
  *  (B-753): a team with 35 finished tasks (done / cancelled) next to live work.
  *  `?case=states` (B-761): the Owner's teams as read from production on
  *  10-22 09:58Z (every lead / member execution as it actually was), then one
- *  task per derived state with its details head. */
+ *  task per derived state with its details head.
+ *  `?case=solo` (B-759): a team with only its lead — 「成员由负责人按需创建」 and the ⓘ.
+ *  `?case=start` (B-759): the 新建团队 dialog with its 「按需创建成员」 note (nothing is sent). */
 import { useEffect, useRef } from 'react';
 import type { TeamBot, TeamOperation, TeamState } from '@slopus/happy-wire';
 import { TeamListCard, TeamWorkspace } from '@/screens/teams/TeamWorkspace';
+import { TeamDialog } from '@/screens/teams/TeamDialog';
+import { TeamStartForm } from '@/screens/teams/TeamStartForm';
 import { OperationResolution } from '@/screens/teams/TeamsScreen';
 import { TeamTaskSummary } from '@/screens/teams/TeamTaskDetail';
 import type { AgentExecution } from '@/sync/agentStatus';
@@ -124,6 +128,7 @@ export const STATES_TEAM: TeamState = {
 };
 const STATES_EXECUTION: Record<string, AgentExecution> = { 's-lead': 'running', 's-working': 'running', 's-waiting': 'input', 's-idle': 'idle', 's-stopped': 'offline' };
 const reader = (map: Record<string, AgentExecution>) => (sessionId: string) => map[sessionId];
+export const SOLO_TEAM: TeamState = { ...QA_TEAM, id: 'team-solo', name: '[QA] 只有负责人的团队', bots: QA_TEAM.bots.slice(0, 1), tasks: [], operations: [] };
 
 function TipAnchor() {
   const ref = useRef<HTMLButtonElement | null>(null);
@@ -152,6 +157,12 @@ export function TeamsQaHarness() {
     <div data-case="prod-vh"><TeamWorkspace team={PROD_VH_TEAM} onTask={() => {}} now={NOW} execution={reader(PROD_EXECUTION)} /></div>
     <div data-case="all-states"><TeamWorkspace team={STATES_TEAM} onTask={() => {}} now={NOW} execution={reader(STATES_EXECUTION)} /></div>
     <section data-case="details">{['t-idle', 't-stopped', 't-waiting'].map(id => <article key={id} className="teams-task"><TeamTaskSummary team={STATES_TEAM} task={STATES_TEAM.tasks.find(t => t.id === id)!} execution={reader(STATES_EXECUTION)} /></article>)}</section>
+  </main>;
+  if (view === 'start') return <main className="teams-screen">
+    <TeamDialog title="新建团队" onClose={() => {}}><TeamStartForm intentScope="dev-qa" onStart={() => new Promise(() => {})} onStarted={() => {}} /></TeamDialog>
+  </main>;
+  if (view === 'solo') return <main className="teams-screen">
+    <TeamWorkspace team={SOLO_TEAM} onTask={() => {}} now={NOW} />
   </main>;
   if (view === 'finished') return <main className="teams-screen">
     <TeamWorkspace team={FINISHED_TEAM} onTask={() => {}} now={NOW} />
