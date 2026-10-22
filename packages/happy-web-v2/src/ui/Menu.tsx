@@ -16,7 +16,7 @@
  * Deliberately NOT used by picker-style menus (ModeMenu, PresetsMenu): those
  * are selection lists with a check column, not action lists.
  */
-import { Fragment } from 'react';
+import { Fragment, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import type { LucideIcon } from 'lucide-react';
@@ -150,6 +150,47 @@ export function ActionDropdownMenu({
 /** Right-click menu — wraps `children` as the context target. The menu only
  *  attaches to chrome elements (rows, cards, lane headers); surfaces with
  *  their own contextmenu semantics (the terminal canvas) are never wrapped. */
+/**
+ * B-774 (QA5 O6): a touch long-press opens the menu while the finger is still
+ * down; lifting it fires the browser's compat click at that spot, which is now
+ * on the menu — the sidebar's bottom sheet put 「重命名」 under the finger, so
+ * the long press renamed instead of showing the menu. Only the first click
+ * right after that release (`RELEASE_CLICK_MS`) is the release's own: dropped
+ * when it lands in the menu, ignored elsewhere; any later tap selects as usual.
+ *
+ * Pure state: `release()` says whether the press that just ended opened the menu.
+ */
+export const RELEASE_CLICK_MS = 400;
+export function createLongPressReleaseGuard() {
+  let pressDown = false;
+  let openedByPress = false;
+  return {
+    /** a non-mouse press began on the trigger */
+    press() { pressDown = true; openedByPress = false; },
+    opened() { if (pressDown) openedByPress = true; },
+    closed() { openedByPress = false; },
+    /** that press ended (pointerup / pointercancel anywhere): true ⇒ it opened the menu */
+    release(): boolean {
+      const long = pressDown && openedByPress;
+      pressDown = false;
+      openedByPress = false;
+      return long;
+    },
+  };
+}
+
+/** Drop the release's own click if it lands in the menu; any click (or the timeout) ends the watch. */
+function dropReleaseClick(menu: () => HTMLElement | null): void {
+  const stop = () => { clearTimeout(timer); document.removeEventListener('click', onClick, true); };
+  const onClick = (e: MouseEvent) => {
+    stop();
+    const el = menu();
+    if (el && e.target instanceof Node && el.contains(e.target)) { e.preventDefault(); e.stopPropagation(); }
+  };
+  const timer = setTimeout(stop, RELEASE_CLICK_MS);
+  document.addEventListener('click', onClick, true);
+}
+
 export function ActionContextMenu({
   items,
   children,
@@ -163,11 +204,24 @@ export function ActionContextMenu({
   sheetTitle?: string;
 }) {
   const className = ['vh-menu', sheetTitle ? 'vh-menu--sheet' : '', contentClassName ?? ''].filter(Boolean).join(' ');
+  const [guard] = useState(() => createLongPressReleaseGuard());
+  const contentRef = useRef<HTMLDivElement>(null);
+  const onTriggerPointerDown = (e: ReactPointerEvent) => {
+    if (e.pointerType === 'mouse') return;
+    guard.press();
+    const end = () => {
+      document.removeEventListener('pointerup', end, true);
+      document.removeEventListener('pointercancel', end, true);
+      if (guard.release()) dropReleaseClick(() => contentRef.current);
+    };
+    document.addEventListener('pointerup', end, true);
+    document.addEventListener('pointercancel', end, true);
+  };
   return (
-    <ContextMenu.Root>
-      <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
+    <ContextMenu.Root onOpenChange={(open) => (open ? guard.opened() : guard.closed())}>
+      <ContextMenu.Trigger asChild onPointerDown={onTriggerPointerDown}>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className={className} onCloseAutoFocus={giveFocusBackToTerminal}>
+        <ContextMenu.Content ref={contentRef} className={className} onCloseAutoFocus={giveFocusBackToTerminal}>
           {sheetTitle && <ContextMenu.Label className="vh-menu-sheet-title">{sheetTitle}</ContextMenu.Label>}
           {items.map((item) => (
             <Fragment key={item.key}>
