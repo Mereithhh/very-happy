@@ -120,6 +120,12 @@ row) and in the session header ⋯: **Share…**, **Rename**, **Tags…**, **Mov
 project…** / **Remove from "…"**, priority, **Copy link**, **Stop** (while a
 turn runs) and **Archive**.
 
+Archiving the session you have open takes you to the most recent other session
+in the same place — the same project, or the sessions in no project — and to
+the project page (or home) when none is left. A team member's or lead's
+conversation goes back to its team page; archiving never opens a session from
+another team, another project or one shared with you.
+
 ## Teams and projects
 
 A project says *what* is being done; a team says *who* does it. A team has no

@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
 
@@ -66,6 +67,28 @@ export function topModalDialog(doc: Document): HTMLElement | null {
   return all.length ? all[all.length - 1] : null;
 }
 
+/** B-774 (QA5 O1): the open modal on top — a native modal <dialog> or the
+ *  last portalled `role=dialog aria-modal` card. */
+export function openModalDialog(doc: Document): HTMLElement | null {
+  const native = topModalDialog(doc);
+  if (native) return native;
+  const cards = doc.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]');
+  return cards.length ? cards[cards.length - 1] : null;
+}
+
+/**
+ * B-774 (QA5 O1): phones stack toasts at the top — over a full-height
+ * dialog's title and ✕ (新建团队). When the stack would overlap the dialog,
+ * it moves to just below the dialog's header (`.vh-dialog-head`); a bottom
+ * sheet leaves room above it, so the toast stays put there (moving it to the
+ * bottom would cover the sheet's 取消/确定 instead). Returns the new top in px,
+ * or null to keep the default.
+ */
+export function toastTopOverDialog(dialog: { top: number }, head: { bottom: number } | null, stack: { top: number; height: number }, gap = 8): number | null {
+  if (stack.top + stack.height + gap <= dialog.top) return null;
+  return Math.round((head ? head.bottom : dialog.top) + gap);
+}
+
 // module-level bridge so non-React code (data layer) can toast too
 let externalShow: ToastApi['show'] | null = null;
 export const toast: ToastApi = {
@@ -87,14 +110,31 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   // and is re-shown as a manual popover (top layer, viewport-positioned).
   const regionRef = useRef<HTMLDivElement>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
+  const [belowHead, setBelowHead] = useState<number | null>(null);
+  // the stack's own top before any shift (env(safe-area-inset-top) + gap), measured unshifted
+  const defaultTop = useRef<number | null>(null);
   const hasItems = items.length > 0;
+  const placeRef = useRef<() => void>(() => {});
+  placeRef.current = () => {
+    const region = regionRef.current;
+    const dialog = openModalDialog(document);
+    const phone = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px), (pointer: coarse)').matches;
+    if (!region || !dialog || !phone) { setBelowHead(null); return; }
+    const rect = region.getBoundingClientRect();
+    if (belowHead === null || defaultTop.current === null) defaultTop.current = rect.top;
+    const head = dialog.querySelector('.vh-dialog-head')?.getBoundingClientRect() ?? null;
+    setBelowHead(toastTopOverDialog(dialog.getBoundingClientRect(), head, { top: defaultTop.current, height: rect.height }));
+  };
   useEffect(() => {
-    if (!hasItems || typeof document === 'undefined') { setHost(null); return; }
-    const pick = () => setHost(topModalDialog(document));
+    if (!hasItems || typeof document === 'undefined') { setHost(null); setBelowHead(null); return; }
+    const pick = () => { setHost(topModalDialog(document)); placeRef.current(); };
     pick();
+    // a sheet / dialog animates in: measure again once it has settled
+    const settle = window.setTimeout(pick, 300);
     const observer = new MutationObserver(pick);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
-    return () => observer.disconnect();
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'aria-modal'] });
+    window.addEventListener('resize', pick);
+    return () => { observer.disconnect(); window.clearTimeout(settle); window.removeEventListener('resize', pick); };
   }, [hasItems]);
   useEffect(() => {
     const region = regionRef.current;
@@ -103,6 +143,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       if (region.matches(':popover-open')) region.hidePopover();
       if (items.length > 0) region.showPopover();
     } catch { /* not connected yet / unsupported: stays a plain fixed layer */ }
+    if (items.length > 0) placeRef.current(); // the stack's height changed
   }, [items, host]);
 
   const dismiss = useCallback((id: number) => {
@@ -150,7 +191,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 
   const region = (
-    <div ref={regionRef} className="vh-toasts" role="region" aria-live="polite" popover="manual">
+    <div
+      ref={regionRef}
+      className={`vh-toasts${belowHead !== null ? ' vh-toasts--below-dialog-head' : ''}`}
+      style={belowHead !== null ? ({ '--vh-toast-top': `${belowHead}px` } as CSSProperties) : undefined}
+      role="region"
+      aria-live="polite"
+      popover="manual"
+    >
       {items.map((t) => (
         <div
           key={t.id}

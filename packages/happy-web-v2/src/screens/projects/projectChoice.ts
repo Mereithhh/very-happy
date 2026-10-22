@@ -80,6 +80,11 @@ export function sessionProjectMenu(sessionId: string, snap: { status: string; me
  */
 export function teamProjectMenu(team: Pick<TeamState, 'id' | 'archivedAt'>, snap: { status: string; projects: ProjectView[] }, opts: { zh: boolean }): string | null {
   if (snap.status !== 'ready' || team.archivedAt !== undefined) return null;
-  const inProject = projectOfTeam(team, snap.projects) !== null;
-  return inProject ? (opts.zh ? '换项目…' : 'Move to another project…') : (opts.zh ? '放进项目…' : 'Put in a project…');
+  return `${teamProjectAction(projectOfTeam(team, snap.projects) !== null, opts)}…`;
+}
+
+/** B-774 (QA5 O3): the one name of that action — the menu entry adds 「…」, the
+ *  dialog it opens uses it as its title, so the two always read the same. */
+export function teamProjectAction(inProject: boolean, opts: { zh: boolean }): string {
+  return inProject ? (opts.zh ? '换项目' : 'Move to another project') : (opts.zh ? '放进项目' : 'Put in a project');
 }
