@@ -1,4 +1,5 @@
-import { teamBotActivity, type TeamBot, type TeamState } from '@slopus/happy-wire';
+import { teamBotActivity, type TeamBot, type TeamState, type TeamTask } from '@slopus/happy-wire';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { Circle, UsersRound, CircleCheck, CircleDashed, Clock3, ArrowUpRight, GitBranch, Monitor, Archive } from 'lucide-react';
 import { Summary } from '@/ui/Summary';
@@ -8,7 +9,7 @@ import { useFirstUseCopy } from './firstUseCopy';
 import { memberTitle, teamRootTask, taskLaunchIssue, teamTextPreviewLines } from './teamPresentation';
 import { Markdown } from '@/screens/session/Markdown';
 import { useOperationErrorSummary } from './OperationError';
-import { taskRows } from './teamView';
+import { FINISHED_PAGE_SIZE, finishedTasksByRecency, taskRows, teamFinishedGroupId } from './teamView';
 import { botHistorySessionId, teamInactiveGroupId, teamMemberCount, teamMemberInactive, teamRoster } from '@/screens/sessions/teamNavigation';
 import { isGroupCollapsed, setGroupCollapsed, useCollapsedGroups } from '@/screens/sessions/sidebarCollapsedGroups';
 import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
@@ -33,29 +34,59 @@ export function TeamWorkspace({ team, onTask, archivedSessionIds, now = Date.now
     { key: 'queued', label: c.queued, Icon: CircleDashed },
     { key: 'running', label: c.running, Icon: Clock3 },
     { key: 'submitted', label: c.submitted, Icon: Circle },
-    { key: 'finished', label: c.finished, Icon: CircleCheck },
   ];
+  const preview = (task: TeamTask, depth: number) => {
+    const result = task.attempts.find(a => a.id === task.currentAttemptId)?.result;
+    const assignee = team.bots.find(b => b.id === task.assigneeBotId);
+    return <button className="teams-task-preview" id={`team-task-${task.id}`} key={task.id} onClick={() => onTask(task.id)}>
+      {depth > 0 && <small className="teams-parent-label"><GitBranch size={12} />{teamTextPreviewLines(team.tasks.find(t => t.id === task.parentTaskId)?.goal ?? '')[0]}</small>}
+      <strong className="teams-task-goal">{teamTextPreviewLines(task.goal).join('\n')}</strong><span className="teams-task-owner">{assignee && <AgentGlyph kind={agentKindOf(assignee.assistant)} />}{assignee ? memberTitle(assignee, f) : '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
+      {taskLaunchIssue(team, task) && <span className="teams-error">{f.launchFailed} · {operationError(taskLaunchIssue(team, task)?.error)}</span>}
+      {result && <span className="teams-result-preview">{teamTextPreviewLines(result).join('\n')}</span>}
+      {['pending', 'failed'].includes(task.cleanup) && <small className={task.cleanup === 'failed' ? 'teams-error' : ''}>{task.cleanup === 'failed' ? c.cleanupFailed : c.cleanupPending}</small>}
+    </button>;
+  };
   return <>
     {rootTask && <section className="team-goal"><div className="teams-section-heading"><h2>{f.goalTitle}</h2><span>{taskLaunchIssue(team, rootTask) ? f.launchFailed : tr(`teams.${rootTask.status}`)}</span></div><p>{rootTask.goal}</p><button onClick={() => onTask(rootTask.id)}>{f.inspect} →</button></section>}
     {rootResult && <section className="team-delivery"><h2><CircleCheck size={20} />{f.result}</h2><Markdown text={rootResult} /><button onClick={() => onTask(rootTask!.id)}>{f.inspect} →</button></section>}
     <TeamMembers team={team} archivedSessionIds={archivedSessionIds} now={now} />
     <section className="teams-work"><div className="teams-section-heading"><h2>{c.overview}</h2><TeamProgress team={team} /></div>
       {!team.tasks.length ? <div className="teams-empty"><GitBranch size={28} /><h3>{c.noTasks}</h3><p>{c.noTasksHint}</p></div> : <div className="teams-board">{lanes.map(({ key, label, Icon }) => {
-        const tasks = rows.filter(({ task }) => key === 'finished' ? ['done', 'cancelled'].includes(task.status) : task.status === key);
-        return <div className="teams-lane" key={key}><h3><Icon size={16} /><span>{label}</span><small>{tasks.length}</small></h3>{!tasks.length && <p className="teams-lane-empty">{c.emptyLane}</p>}{tasks.map(({ task, depth }) => {
-          const result = task.attempts.find(a => a.id === task.currentAttemptId)?.result;
-          const assignee = team.bots.find(b => b.id === task.assigneeBotId);
-          return <button className="teams-task-preview" id={`team-task-${task.id}`} key={task.id} onClick={() => onTask(task.id)}>
-            {depth > 0 && <small className="teams-parent-label"><GitBranch size={12} />{teamTextPreviewLines(team.tasks.find(t => t.id === task.parentTaskId)?.goal ?? '')[0]}</small>}
-            <strong className="teams-task-goal">{teamTextPreviewLines(task.goal).join('\n')}</strong><span className="teams-task-owner">{assignee && <AgentGlyph kind={agentKindOf(assignee.assistant)} />}{assignee ? memberTitle(assignee, f) : '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
-            {taskLaunchIssue(team, task) && <span className="teams-error">{f.launchFailed} · {operationError(taskLaunchIssue(team, task)?.error)}</span>}
-            {result && <span className="teams-result-preview">{teamTextPreviewLines(result).join('\n')}</span>}
-            {['pending', 'failed'].includes(task.cleanup) && <small className={task.cleanup === 'failed' ? 'teams-error' : ''}>{task.cleanup === 'failed' ? c.cleanupFailed : c.cleanupPending}</small>}
-          </button>;
-        })}</div>;
-      })}</div>}
+        const tasks = rows.filter(({ task }) => task.status === key);
+        return <div className="teams-lane" key={key}><h3><Icon size={16} /><span>{label}</span><small>{tasks.length}</small></h3>{!tasks.length && <p className="teams-lane-empty">{c.emptyLane}</p>}{tasks.map(({ task, depth }) => preview(task, depth))}</div>;
+      })}<FinishedLane team={team} preview={preview} /></div>}
     </section>
   </>;
+}
+
+/**
+ * B-753: the 「已结束」 lane (done + cancelled) folds into one 「已结束 N 个」
+ * row by default — a long-lived team piles up finished work that buries the
+ * live lanes, worst on a phone where the lanes stack. The choice is per team
+ * and device-local (sidebarCollapsedGroups, `team-finished:<id>`); open, it
+ * shows the most recent FINISHED_PAGE_SIZE tasks and 「显示更多」 adds as many
+ * again. Cards mount only while open, so hundreds of finished tasks cost no DOM.
+ */
+function FinishedLane({ team, preview }: { team: TeamState; preview: (task: TeamTask, depth: number) => React.ReactNode }) {
+  const c = useWorkspaceCopy();
+  const foldKey = teamFinishedGroupId(team.id);
+  const open = !isGroupCollapsed(useCollapsedGroups(), foldKey);
+  const [page, setPage] = React.useState({ teamId: team.id, limit: FINISHED_PAGE_SIZE });
+  const limit = page.teamId === team.id ? page.limit : FINISHED_PAGE_SIZE;
+  const tasks = finishedTasksByRecency(team);
+  if (!tasks.length) return <div className="teams-lane"><h3><CircleCheck size={16} /><span>{c.finished}</span><small>0</small></h3><p className="teams-lane-empty">{c.emptyLane}</p></div>;
+  const remaining = tasks.length - limit;
+  return <details className="teams-lane teams-lane-finished" open={open} onToggle={(e) => {
+    if (e.currentTarget.open === open) return;
+    setGroupCollapsed(foldKey, !e.currentTarget.open);
+    if (!e.currentTarget.open) setPage({ teamId: team.id, limit: FINISHED_PAGE_SIZE });
+  }}>
+    <Summary title={open ? c.hideFinished : c.showFinished}><CircleCheck size={16} aria-hidden /><span>{c.finishedCount(tasks.length)}</span></Summary>
+    {open && <>
+      {tasks.slice(0, limit).map(task => preview(task, team.tasks.some(t => t.id === task.parentTaskId) ? 1 : 0))}
+      {remaining > 0 && <button type="button" className="teams-lane-more" onClick={() => setPage({ teamId: team.id, limit: limit + FINISHED_PAGE_SIZE })}>{c.showMore(remaining)}</button>}
+    </>}
+  </details>;
 }
 
 /**

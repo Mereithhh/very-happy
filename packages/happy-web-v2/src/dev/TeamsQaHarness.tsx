@@ -4,7 +4,8 @@
  *  machine metadata arrives (O2, O3), and a feature tip next to an offline
  *  banner (O4). Route `/dev/teams-qa` (stripped from prod builds); all data is
  *  local, nothing is sent. `?case=rawmd` (B-746): task previews whose goals and
- *  results carry markdown and the team protocol header. */
+ *  results carry markdown and the team protocol header. `?case=finished`
+ *  (B-753): a team with 35 finished tasks (done / cancelled) next to live work. */
 import { useEffect, useRef } from 'react';
 import type { TeamBot, TeamOperation, TeamState } from '@slopus/happy-wire';
 import { TeamListCard, TeamWorkspace } from '@/screens/teams/TeamWorkspace';
@@ -51,6 +52,19 @@ export const RAW_MD_TEAM: TeamState = {
   ],
 };
 
+const FINISHED_COUNT = 35;
+export const FINISHED_TEAM: TeamState = {
+  ...QA_TEAM, id: 'team-finished', name: '[QA] 已结束很多的团队',
+  bots: QA_TEAM.bots.slice(0, 3),
+  tasks: [
+    QA_TEAM.tasks[0],
+    { ...QA_TEAM.tasks[0], id: 't-review', goal: '待验收的任务', assigneeBotId: 'dev-b', status: 'submitted', attempts: [{ id: 'aa', botId: 'dev-b', status: 'submitted', goalVersion: 1, generation: 1, result: '已提交证据' }] as never },
+    ...Array.from({ length: FINISHED_COUNT }, (_, i) => ({ ...QA_TEAM.tasks[1], id: `t-fin-${i + 1}`, goal: `已结束任务 #${i + 1}`, assigneeBotId: i % 2 ? 'dev-a' : 'dev-b', status: i % 7 === 3 ? 'cancelled' as const : 'done' as const, cleanup: 'done' as const })),
+  ],
+  // Finish order: each task's stop operation — #1 oldest, #35 newest.
+  operations: Array.from({ length: FINISHED_COUNT }, (_, i) => op(`stop-fin-${i + 1}`, { type: 'stop', status: 'completed', taskId: `t-fin-${i + 1}`, createdAt: NOW - (FINISHED_COUNT - i) * 60_000 })),
+};
+
 function TipAnchor() {
   const ref = useRef<HTMLButtonElement | null>(null);
   useFeatureTipAnchor('quick-open', ref, true, { dismissOnClick: false });
@@ -68,6 +82,9 @@ export function TeamsQaHarness() {
   if (view === 'rawmd') return <main className="teams-screen">
     <div className="teams-list"><TeamListCard team={RAW_MD_TEAM} machine="dev-sg" now={NOW} /></div>
     <TeamWorkspace team={RAW_MD_TEAM} onTask={() => {}} now={NOW} />
+  </main>;
+  if (view === 'finished') return <main className="teams-screen">
+    <TeamWorkspace team={FINISHED_TEAM} onTask={() => {}} now={NOW} />
   </main>;
   const attention = attentionOperations(QA_TEAM);
   // `loading`: the execution machine is known but its metadata has not arrived (O3).

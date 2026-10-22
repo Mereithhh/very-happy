@@ -7,6 +7,9 @@ const en = {
   noTasks: 'Ready for a goal', noTasksHint: 'Ask the lead to inspect a project or build a feature. Tasks appear here as work is delegated.',
   noMembers: 'Start the team to create its lead', members: 'Team members',
   queued: 'Queued', running: 'In progress', submitted: 'Review', finished: 'Finished',
+  // B-753: the folded 「已结束」 lane and its paging.
+  finishedCount: (n: number) => `Finished · ${n}`, showFinished: 'Show finished tasks', hideFinished: 'Hide finished tasks',
+  showMore: (n: number) => `Show more (${n} left)`,
   emptyLane: 'No tasks', close: 'Close', details: 'Task details', controls: 'Task actions',
   result: 'Result', waiting: 'No result submitted yet', criteria: 'Acceptance criteria',
   online: 'Machine online', offline: 'Machine offline', progress: 'accepted',
@@ -48,6 +51,8 @@ const zh: typeof en = {
   noTasks: '准备好接收目标', noTasksHint: '让负责人检查一个项目，或开发一个功能。派出的任务会直接展示在这里。',
   noMembers: '启动团队后，负责人会出现在这里', members: '团队成员',
   queued: '待开始', running: '进行中', submitted: '待验收', finished: '已结束',
+  finishedCount: (n: number) => `已结束 ${n} 个`, showFinished: '展开已结束的任务', hideFinished: '收起已结束的任务',
+  showMore: (n: number) => `显示更多（还有 ${n} 个）`,
   emptyLane: '暂无任务', close: '关闭', details: '任务详情', controls: '处理任务',
   result: '交付结果', waiting: '尚未提交结果', criteria: '验收标准',
   online: '机器在线', offline: '机器离线', progress: '已验收',

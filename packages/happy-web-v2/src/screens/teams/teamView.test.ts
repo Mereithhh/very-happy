@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/i18n/useTranslation", () => ({ useTranslation: () => ({ lang: "en" }) }));
 import type { TeamTask, TeamState } from "@slopus/happy-wire";
 import {
+  FINISHED_PAGE_SIZE,
+  finishedTasksByRecency,
+  teamFinishedGroupId,
   attentionOperations,
   canReconcileOperation,
   canRetryCleanup,
@@ -14,6 +17,7 @@ import {
   TEAM_OPERATION_ERROR_KINDS,
 } from "./teamView";
 import { WORKSPACE_COPY } from "./workspaceCopy";
+import { defaultCollapsed } from "@/screens/sessions/sidebarCollapsedGroups";
 const task = (id: string, parentTaskId: string | null) =>
   ({ id, parentTaskId }) as TeamTask;
 describe("team task tree", () => {
@@ -170,5 +174,23 @@ describe("B-723", () => {
     expect(teamRetrySupport({ metadata: null })).toBeNull();
     expect(teamRetrySupport({ metadata: { teamRetryVersion: 1 } }, 2)).toBe(false);
     expect(teamRetrySupport({ metadata: { teamRetryVersion: 2 } }, 2)).toBe(true);
+  });
+});
+
+describe("B-753 finishedTasksByRecency / teamFinishedGroupId", () => {
+  const t = (id: string, status: TeamTask["status"]) => ({ id, status }) as TeamTask;
+  it("keeps done + cancelled, newest operation or message first, array order as the fallback", () => {
+    const team = {
+      tasks: [t("a", "done"), t("live", "running"), t("b", "cancelled"), t("c", "done"), t("d", "done"), t("review", "submitted")],
+      operations: [{ taskId: "a", createdAt: 50 }, { taskId: "b", createdAt: 10 }, { taskId: "live", createdAt: 99 }],
+      messages: [{ taskId: "b", createdAt: 70 }, { taskId: null, createdAt: 500 }],
+    } as unknown as TeamState;
+    // b (70) > a (50) > no timestamp: d, c (later in the array = newer)
+    expect(finishedTasksByRecency(team).map(x => x.id)).toEqual(["b", "a", "d", "c"]);
+  });
+  it("folds by default, per team", () => {
+    expect(teamFinishedGroupId("x")).toBe("team-finished:x");
+    expect(defaultCollapsed(teamFinishedGroupId("x"))).toBe(true);
+    expect(FINISHED_PAGE_SIZE).toBe(20);
   });
 });

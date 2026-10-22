@@ -207,6 +207,13 @@
 .teams-result-preview { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-dim); white-space: pre-line; overflow-wrap: anywhere; border-top: var(--hairline) solid var(--line); padding-top: 10px; }
 .teams-parent-label { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .teams-lane-empty { color: var(--text-faint); font-size: 13px; padding: 12px 0; }
+/* B-753: 「已结束」 folds behind ui/Summary — same row as the other lane headings
+   (an h3's default 1em block margins included, so the four headings line up) */
+.teams-lane-finished > .vh-summary { gap: 8px; font-size: 13px; font-weight: 500; margin: 1em 0; padding: 0 0 12px; border-bottom: 1px solid var(--line); border-radius: var(--r-xs); }
+.teams-lane-finished:not([open]) > .vh-summary { color: var(--text-dim); }
+.teams-lane-finished > .vh-summary:focus-visible { outline: none; box-shadow: var(--focus-ring); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .teams-lane-finished > .vh-summary:hover { color: var(--text); } }
+.teams-screen .teams-lane-more { width: 100%; justify-content: center; color: var(--text-dim); font-size: 13px; }
 .teams-empty { padding: 44px 24px; text-align: center; max-width: 600px; margin: 20px auto; }
 .teams-empty h3 { font-size: 20px; font-weight: 500; }
 .teams-empty p { color: var(--text-dim); line-height: 1.6; }
