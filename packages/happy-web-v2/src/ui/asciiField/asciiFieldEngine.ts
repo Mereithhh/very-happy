@@ -16,7 +16,8 @@
  * Timing rules: ≤ preset fps (cap 30) via rAF + `frameDue`; paused while the tab
  * is hidden, the host is off-screen (IntersectionObserver) or the owner set
  * pace 0 (`setPace`, B-752: the chat backdrop while scrolling); under
- * prefers-reduced-motion a single still is drawn and no loop runs.
+ * prefers-reduced-motion (or a preset's `liteStill` on the lite tier) a single
+ * still is drawn and no loop runs.
  * Everything browser-shaped comes through `AsciiFieldEnv` so tests can drive it.
  */
 import { boxBlurAlpha, packInk, stampGlyph, type GlyphBitmap } from './asciiRaster';
@@ -191,7 +192,9 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   const budgetMs = options.budgetMs ?? FRAME_BUDGET_MS;
   const reducedQuery = env.matchMedia('(prefers-reduced-motion: reduce)');
   const schemeQuery = env.matchMedia('(prefers-color-scheme: dark)');
-  let reduced = reducedQuery?.matches === true;
+  // A still-only tier behaves exactly like reduced motion: one frame, no loop.
+  const stillOnly = tier === 'lite' && spec.liteStill === true;
+  let reduced = stillOnly || reducedQuery?.matches === true;
   let raf: number | null = null;
   let stopped = false;
   let pace: number | null = null;
@@ -608,7 +611,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   }
 
   function onReducedChange() {
-    reduced = reducedQuery?.matches === true;
+    reduced = stillOnly || reducedQuery?.matches === true;
     if (reduced) paintStatic();
     else { nextSpawn = clock + 1; }
     lastFrameAt = 0;

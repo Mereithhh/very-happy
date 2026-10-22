@@ -235,6 +235,24 @@ describe('B-720 AsciiField engine', () => {
     left.stop(); right.stop();
   });
 
+  it('B-752 chat on the lite tier (phones): one still frame, no loop, like reduced motion', () => {
+    const h = harness();
+    controller = startAsciiField(h.host, { preset: 'chat', tier: 'lite' }, h.env);
+    expect(controller.layers).toBe(1);
+    expect(controller.reducedMotion()).toBe(true);
+    expect(controller.running()).toBe(false);
+    expect(controller.stats.frames).toBe(1);
+    expect(controller.stats.layerRefreshes).toBe(1);
+    expect(h.frames(30)).toBe(0);
+    controller.setPace(null);
+    expect(controller.running()).toBe(false);
+    // Desktop keeps the loop.
+    controller.stop();
+    const d = harness();
+    controller = startAsciiField(d.host, { preset: 'chat', tier: 'full' }, d.env);
+    expect(controller.running()).toBe(true);
+  });
+
   it('the lite tier (phones / low-end) runs two layers', () => {
     const h = harness();
     controller = startAsciiField(h.host, { preset: 'hero', tier: 'lite' }, h.env);

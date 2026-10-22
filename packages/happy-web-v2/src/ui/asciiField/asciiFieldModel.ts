@@ -42,6 +42,8 @@ export interface AsciiFieldSpec {
   fps: number;
   /** Frame-rate cap on the lite tier (default 24). */
   liteFps?: number;
+  /** Lite tier draws one still frame and runs no loop (B-752: behind a conversation on a phone). */
+  liteStill?: boolean;
 }
 
 /** Calm → dense. Plain ASCII so every glyph comes from the mono font (no fallback). */
@@ -76,15 +78,16 @@ export const PRESETS: Record<AsciiFieldPreset, AsciiFieldSpec> = {
   },
   /**
    * B-752 — behind a conversation: the text is the subject. Far + mid layers
-   * only (no near layer, no creatures) at ~40% of `empty`'s ink, slow drift,
-   * and the stylesheet masks it down further behind the message column.
+   * only (no near layer, no creatures) at ~40% of `empty`'s ink, slow drift;
+   * ChatBackdrop keeps it in the margins. Phones / low-end get a still: a
+   * conversation stays open for long, and a loop there costs ~1 ms a frame.
    */
   chat: {
     layers: [
       L(0, 11, 0.12, 1.6, -0.5, 0.08, 0.46, 4, 0),
       L(1, 14, 0.13, 0.6, -0.9, 0.12, 0.28, 8, 0),
     ],
-    creatures: false, creatureEvery: [0, 0], creatureAlpha: 0, fps: 15, liteFps: 10,
+    creatures: false, creatureEvery: [0, 0], creatureAlpha: 0, fps: 15, liteFps: 10, liteStill: true,
   },
   divider: {
     layers: [
