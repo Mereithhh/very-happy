@@ -24,6 +24,11 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-751 | dev-sg daemon 环境缺 `LLMHUB_API_KEY`，而 `~/.codex/config.toml` 引用了它 → 10-21 起 dev-sg 上 Codex 全部不可用；key 来源待 Owner 决定 | bug | 10-22 hotfix 后 | todo | |
+| B-750 | 模型：sonnet 启动的会话，模型选择器显示 opus 1M 而上下文分母是 200k，两边不一致；`/settings/models` 冷加载闪一下「还没有连接机器」 | bug | 10-22 hotfix 后 | todo | |
+| B-749 | pi：会话太短时执行 `/compact` 直接显示英文原始报错；pi 会话的 agent 名显示成「acp」 | ux | 10-22 hotfix 后 | todo | |
+| B-748 | 团队：新建团队不填名称时直接拿目标第一行原文当团队名（带 `**`、`#` 等符号且写入数据库）→ 先转纯文本再截断（`TeamStartForm.tsx:107`）；「解绑项目」「归档团队」确认弹窗缺 `role=dialog` | bug | 10-22 hotfix 后 | todo | |
+| B-747 | 分享页：同一轮的工具行被排到整页最后，没放在该轮回复之前；正文「Basic HTTP auth」被误遮成 `Basic [redacted] auth` | bug | 10-22 hotfix 后 | todo | |
 | B-744 | dev-sg 交互 shell 的 `npm -g` 仍写到 root 的 `/usr`（B-718 发版只把 daemon/systemd 改成用户级 prefix）→ 是否 `npm config set prefix ~/.npm-global` 统一，待 Owner 决定 | debt | 第三版收尾（10-22） | todo | |
 | B-743 | 团队负责人的会话标题会跟账号级语言指令变成中文（低优先级）→ 标题生成固定用团队/任务原文语言或不受全局指令影响 | ux | 第三版收尾（10-22） | todo | |
 | B-742 | 发版流程：B-718 已生效，daemon 升级改为「等自动升级，只做核对」（PROCESS/release skill）；demo 环境复用本机 Claude 凭据会注入 Owner 邮箱和全局指令 → demo 用专用隔离凭据 | debt | 第三版收尾（10-22） | todo | |
@@ -72,6 +77,8 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-746 | /teams 卡片任务预览：按 markdown 渲染为纯文本，去掉协议头 | bug | 第三版收尾（10-22） | done | **10-22 hotfix：server/Web aa3b8a61（CLI 不变 0.2.181）**：#683；oct22b 通知 #685 |
+| B-745 | 分享链接显示 assistant 回复（项目 role=session 按真实 wire 形状解析）+ runner 契约测试 + favicon | bug | 第三版收尾（10-22） | done | **10-22 hotfix：server/Web aa3b8a61（CLI 不变 0.2.181）**：#684；oct22b 通知 #685 |
 | B-730 | restart / resume / 唤醒拉起的团队 wrapper 重新带上团队作用域（缺 scope 文件时重建）；会话至多属于一个活团队（`session_in_other_team`，Web 确认后转移）；负责人工作法第 8 条 | bug | roll-pool 事故（10-21） | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#680 |
 | B-729 | 团队会话都嵌在所属团队下：被两个团队认领的会话不再落在两边之外；早期 generation / adopt 历史折叠；可选 `TeamBot.previousSessionIds` | bug | 第三版 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#675 |
 | B-728 | UI 走查 P1/P2：受控 hover（codemod + lint）、按输入方式的焦点环、统一弹窗外壳及 P1/P2 修复（剩余项见 B-738） | ux | UI 走查 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#672 |
