@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -102,5 +104,14 @@ describe('owner board in startHappyServer', () => {
         await happy!.leadBoard.idle();
         expect(state.calls.find(c => c.op === 'patch')?.body).toMatchObject({ firstReply: { localId: 'm1', snippet: 'I will, tonight.' } });
         expect(state.calls.find(c => c.op === 'resolve')?.body).toMatchObject({ outcome: 'answered', by: 'auto-first-reply' });
+    });
+
+    // The Claude remote launcher is the only place a turn starts; without these two calls no question settles and no digest is sent.
+    it('starts the board turn and adds the digest where the Claude launcher finalizes the prompt', () => {
+        const launcher = readFileSync(join(__dirname, '../claude/claudeRemoteLauncher.ts'), 'utf8');
+        const finalize = launcher.slice(launcher.indexOf('const finalize = async'), launcher.indexOf('const parked = modeGate.takeParked()'));
+        expect(finalize).toContain('board?.onTurnStart(batchSourceIds);');
+        expect(finalize).toContain('const text = board ? await board.decorate(prompt) : prompt;');
+        expect(launcher).toContain('batchSourceIds = msg?.sourceIds;');
     });
 });

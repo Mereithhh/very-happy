@@ -611,13 +611,15 @@ export async function claudeRemoteLauncher(
                         // B-645: the project prefix / digest is added to exactly what reaches
                         // the SDK, and `onPromptFinalized` records that same string (the JSONL
                         // dedupe compares against what the SDK writes).
-                        const finalize = async (text: string, sourceIds?: string[]): Promise<string> => {
+                        // B-766: localIds of the batch being finalized (queue path); a parked replay has none.
+                        let batchSourceIds: string[] | undefined;
+                        const finalize = async (prompt: string): Promise<string> => {
                             // B-766: the turn starts here (owner questions it answers, `this_turn` anchor) and
                             // a lead's prompt carries the open briefing-board items.
                             const board = leadBoardFor(session.client);
-                            board?.onTurnStart(sourceIds);
-                            const projected = await session.projectInjector.decorate(text);
-                            const out = board ? await board.decorate(projected) : projected;
+                            board?.onTurnStart(batchSourceIds);
+                            const text = board ? await board.decorate(prompt) : prompt;
+                            const out = await session.projectInjector.decorate(text);
                             onPromptFinalized?.(out);
                             return out;
                         };
@@ -634,6 +636,7 @@ export async function claudeRemoteLauncher(
                         // wrong conversation.
                         await rewindReconciler.settled(controller.signal);
                         let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
+                        batchSourceIds = msg?.sourceIds;
 
                         // Check if mode has changed
                         if (msg) {
@@ -676,7 +679,7 @@ export async function claudeRemoteLauncher(
                                     sessionId: session.client.sessionId,
                                 });
                                 logger.debug(`[remote] Staged ${staged.length} attachment(s) for the coding agent`);
-                                const withAttachments = await finalize(appendStagedAttachmentsToPrompt(msg.message, staged), msg.sourceIds);
+                                const withAttachments = await finalize(appendStagedAttachmentsToPrompt(msg.message, staged));
                                 return {
                                     message: withAttachments,
                                     mode: msg.mode,
@@ -685,7 +688,7 @@ export async function claudeRemoteLauncher(
                                 };
                             }
 
-                            const finalized = await finalize(msg.message, msg.sourceIds);
+                            const finalized = await finalize(msg.message);
                             return {
                                 message: finalized,
                                 mode: msg.mode,

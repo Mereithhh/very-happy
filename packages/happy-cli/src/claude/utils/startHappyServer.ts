@@ -38,7 +38,7 @@ import { checkPreviewPath } from "./previewPath";
 import { checkDownloadTarget } from "./downloadTarget";
 import { ATTENTION_SESSION_CAPABILITY } from "@slopus/happy-wire";
 import { sharedAttentionClient } from "@/attention/client";
-import { attachLeadBoard, createLeadBoard, resolveTeamLead, type LeadBoard } from "@/attention/leadBoard";
+import { attachLeadBoard, createLeadBoard, resolveTeamLead } from "@/attention/leadBoard";
 import { OWNER_BOARD_TOOL_NAMES, registerOwnerBoardTools } from "@/attention/tools";
 
 interface HappyMcpHandlers {
@@ -85,7 +85,7 @@ function assistantTexts(body: unknown): string[] {
         .map((block: any) => block.text as string);
 }
 
-function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string, client?: ApiSessionClient, leadBoard?: LeadBoard): McpServer {
+function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string, client?: ApiSessionClient): McpServer {
     const mcp = new McpServer({
         name: "Very Happy Tools",
         version: "1.0.0",
@@ -98,8 +98,6 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     if (client) registerSessionPeerTools(mcp, createSessionPeerToolExecutor(client));
     // B-645: project_context / project_note — always registered (a fixed tools prefix); "not in a project" otherwise.
     if (client) registerProjectTools(mcp, createProjectToolExecutor(() => client.sessionId));
-    // B-766: owner briefing board, team lead on a server that serves it (decided once per process).
-    if (leadBoard?.toolsExposed()) registerOwnerBoardTools(mcp, leadBoard);
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -416,7 +414,9 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             return;
         }
         await leadBoard.ready(OWNER_BOARD_READY_MS);
-        const mcp = createMcpServer(handlers, options, client.sessionId, client, leadBoard);
+        const mcp = createMcpServer(handlers, options, client.sessionId, client);
+        // B-766: owner briefing board, team lead on a server that serves it (decided once per process).
+        if (leadBoard.toolsExposed()) registerOwnerBoardTools(mcp, leadBoard);
         try {
             const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: undefined
