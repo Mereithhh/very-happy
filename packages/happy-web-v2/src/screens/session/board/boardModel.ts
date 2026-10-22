@@ -128,9 +128,9 @@ export function repliesTo(items: readonly AttentionItem[], id: string): Attentio
     return items.filter((i) => i.replyToId === id).sort((a, b) => a.createdAt - b.createdAt);
 }
 
-/** Text the composer gets for 「追问」 until W0 carries `meta.replyToItem`. */
+/** What 「追问」 quotes into the composer (`quoteMessage` adds the `> ` itself). */
 export function followUpQuote(item: AttentionItem, prefix: string): string {
-    return `> ${prefix}${item.title}\n\n`;
+    return `${prefix}${item.title}`;
 }
 
 /**

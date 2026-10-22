@@ -104,7 +104,7 @@ describe('pointersAt / repliesTo / followUpQuote', () => {
         const q = item({ kind: 'question', source: 'owner', title: '谁来写？' });
         const a = item({ kind: 'answer', replyToId: q.id });
         expect(repliesTo([q, a], q.id)).toEqual([a]);
-        expect(followUpQuote(q, '［汇报板］')).toBe('> ［汇报板］谁来写？\n\n');
+        expect(followUpQuote(q, '［汇报板］')).toBe('［汇报板］谁来写？');
     });
 });
 
