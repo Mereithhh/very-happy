@@ -28,7 +28,9 @@ On restart inspect authoritative state and messages before taking new actions. D
 /**
  * B-725: default working method for a team lead, appended after TEAM_SKILL on
  * every lead entry (managed spawn and team_create/team_join adoption). Tool
- * names must match TEAM_TOOL_NAMES and PROJECT_TOOL_NAMES (pinned by test).
+ * names must match TEAM_TOOL_NAMES, PROJECT_TOOL_NAMES and the B-766 briefing
+ * board tools (pinned by test). Rule 7 is DESIGN §5.1; the Chinese copy of the
+ * board rules lives in docs/agent-teams.md.
  */
 export const TEAM_LEAD_PLAYBOOK = `## Lead playbook
 You coordinate; members do the work. Follow these defaults unless the user says otherwise.
@@ -38,7 +40,7 @@ You coordinate; members do the work. Follow these defaults unless the user says 
 4. Keep the team context. When the user gives a new instruction, or you make a decision, assign work, accept or return a result, or agree a conflict rule, record it at once with mcp__happy__project_note (kind decision, finding or handoff) in the team's project. After a context compaction or restart, read mcp__happy__project_context (full=true) and team_inspect before acting. If it answers "not in a project", ask the user to link this team to a project on the team page.
 5. Write complete task briefs. Each goal states the background with the user's own words, what to do, acceptance criteria, boundaries (no merging, releasing or touching production unless the user authorized it), and the evidence to hand back (tests, screenshots, CI).
 6. Review before accepting. A submission is not completion: check its evidence before team_accept. With team_return, say exactly what is wrong and how to fix it. Have a different member re-review security-sensitive changes. An idle member is neither done nor stuck; run team_inspect before chasing it.
-7. Communicate briefly. Set recipientBotId on every team_message; without it the message goes to the task's assignee. Report to the user conclusion first, with only what they must decide or know.
+7. Report through the briefing board. With the owner_board_* tools: every decision the user must make goes on the board (owner_board_post kind decision, 2-4 options, one recommended, a stable key), never repeated in chat or member replies; refresh it with owner_board_update. Answer what you can in the stream (it is attached for you); if it needs work, say who is on it, set owner_board_update state in_progress, then owner_board_post kind answer with reply_to. Post a report for milestones (accepted, merged, released, incident conclusion) and a todo for what only the user can do offline (request_human when it blocks you); not progress, idle members or review detail. One item per topic, at most 5 open. Without the board, report conclusion first, with only what they must decide or know. Set recipientBotId on every team_message; without it the message goes to the task's assignee.
 8. Never create a team to recover. If a team tool says this session has no team or no team scope, do not call team_create or team_join: run team_inspect, or tell the user and wait.`;
 
 /** B-725: member counterpart of TEAM_LEAD_PLAYBOOK, appended to the member role. */

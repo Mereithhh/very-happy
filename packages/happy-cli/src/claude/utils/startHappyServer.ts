@@ -36,6 +36,10 @@ import { readSettings } from "@/persistence";
 import { getSessionNotificationBody } from "@/api/pushNotifications";
 import { checkPreviewPath } from "./previewPath";
 import { checkDownloadTarget } from "./downloadTarget";
+import { ATTENTION_SESSION_CAPABILITY } from "@slopus/happy-wire";
+import { sharedAttentionClient } from "@/attention/client";
+import { attachLeadBoard, createLeadBoard, resolveTeamLead } from "@/attention/leadBoard";
+import { OWNER_BOARD_TOOL_NAMES, registerOwnerBoardTools } from "@/attention/tools";
 
 interface HappyMcpHandlers {
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
@@ -67,6 +71,18 @@ export interface StartHappyServerOptions {
     assistant?: boolean;
     /** B-510: push client for `request_human` (absent → the tool only marks the board). */
     push?: { sendAttention: (input: { sessionId: string; reason: string; url: string; sessionTitle?: string }) => Promise<{ sent: boolean; kind?: string; error?: string }> };
+}
+
+/** B-766: the first `tools/list` waits this long for the board probe, so a lead sees `owner_board_*` from its first turn. */
+const OWNER_BOARD_READY_MS = 3_000;
+
+/** B-766: raw Claude assistant line → its text blocks (main thread only). */
+function assistantTexts(body: unknown): string[] {
+    const line = body as { type?: string; isSidechain?: boolean; message?: { content?: unknown } };
+    if (line?.type !== 'assistant' || line.isSidechain || !Array.isArray(line.message?.content)) return [];
+    return line.message!.content
+        .filter((block: any) => block?.type === 'text' && typeof block.text === 'string' && block.text.trim())
+        .map((block: any) => block.text as string);
 }
 
 function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string, client?: ApiSessionClient): McpServer {
@@ -228,6 +244,31 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
 
     const selfReportState = options?.selfReportState ?? createSelfReportState();
 
+    // B-766 C-1: briefing board — probe, lead check, owner-question / first-reply / D5 fallbacks.
+    const leadBoard = createLeadBoard({
+        sessionId: () => client.sessionId,
+        client: sharedAttentionClient(),
+        isLead: () => resolveTeamLead(client.sessionId),
+        autoDetect: async () => (await readSettings()).ownerBoardAutoDetect !== false,
+        onSupported: () => client.updateMetadata(metadata => ({ ...metadata, capabilities: [...new Set([...(metadata.capabilities ?? []), ATTENTION_SESSION_CAPABILITY])] })),
+        log: (message) => logger.debug(message),
+    });
+    attachLeadBoard(client, leadBoard);
+    void leadBoard.init();
+    const onRoutedUserMessage = (event: { localId?: string | null; message?: { content?: { text?: unknown }; meta?: { sentFrom?: string; delivery?: string } } }) => {
+        const text = event.message?.content?.text;
+        leadBoard.onUserMessage({ localId: event.localId, text: typeof text === 'string' ? text : null, sentFrom: event.message?.meta?.sentFrom, delivery: event.message?.meta?.delivery });
+    };
+    const onClaudeLine = (body: unknown) => { for (const text of assistantTexts(body)) leadBoard.onAssistantText(text); };
+    const onTurnEnded = () => { void leadBoard.onTurnEnd(); };
+    // Test doubles of the session client are not always emitters.
+    const tapped = typeof client.on === 'function';
+    if (tapped) {
+        client.on('user-message-routed', onRoutedUserMessage);
+        client.on('claude-session-message', onClaudeLine);
+        client.on('turn-ended', onTurnEnded);
+    }
+
     const handlers: HappyMcpHandlers = {
         openPreview: async (path: string, mode: 'file' | 'diff', download = false) => {
             // 这道闸必须在 CLI 侧（模型请求刚落地时），不能放 web——web 可绕过。
@@ -316,6 +357,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             sendAttention: (input) => options?.push
                 ? options.push.sendAttention({ ...input, sessionTitle: getSessionNotificationBody(client.getMetadata()) })
                 : Promise.resolve({ sent: false, error: 'push is not available in this runner' }),
+            postBlocked: (reason, panel) => leadBoard.postBlocked(reason, panel),
         }),
     };
 
@@ -371,7 +413,10 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             } catch { if (!res.headersSent) res.writeHead(400).end(); }
             return;
         }
+        await leadBoard.ready(OWNER_BOARD_READY_MS);
         const mcp = createMcpServer(handlers, options, client.sessionId, client);
+        // B-766: owner briefing board, team lead on a server that serves it (decided once per process).
+        if (leadBoard.toolsExposed()) registerOwnerBoardTools(mcp, leadBoard);
         try {
             const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: undefined
@@ -420,11 +465,19 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             ...AUTOMATION_TOOL_NAMES,
             ...SESSION_PEER_TOOL_NAMES,
             ...PROJECT_TOOL_NAMES,
+            // Auto-allow only; the tools themselves appear for a lead on a board server.
+            ...OWNER_BOARD_TOOL_NAMES,
             ...(options?.assistant && !process.env.VH_TEAM_SCOPE_FILE ? ASSISTANT_TOOL_NAMES : []),
         ],
+        leadBoard,
         stop: () => {
             logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);
             if (adoptionEnabled) client.rpcHandlerManager.unregisterHandler('teams-adopt');
+            if (tapped) {
+                client.off('user-message-routed', onRoutedUserMessage);
+                client.off('claude-session-message', onClaudeLine);
+                client.off('turn-ended', onTurnEnded);
+            }
             server.close();
         }
     }

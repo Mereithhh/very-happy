@@ -15,6 +15,7 @@ import {
     toolUseResultToText,
     type ProgressThrottleState,
 } from './subagentLifecycle';
+import { toolResultPayload } from '@/sessionProtocol/toolResultPayload';
 
 export type ClaudeSessionProtocolState = {
     currentTurnId: string | null;
@@ -910,9 +911,13 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                         maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, envelopes);
                     }
                 }
+                // B-771: ordinary tools carry their output (capped) so the Web
+                // card can show stdout / file content / search hits / MCP result.
+                const toolResult = toolResultPayload(block);
                 envelopes.push(createEnvelope('agent', {
                     t: 'tool-call-end',
                     call: block.tool_use_id,
+                    ...(toolResult ? { result: toolResult } : {}),
                 }, { turn: turnId, subagent }));
                 continue;
             }

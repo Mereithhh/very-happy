@@ -156,7 +156,8 @@ describe('session adoption', () => {
         const server = await startHappyServer(client as any);
         try {
             expect(registerHandler).toHaveBeenCalledWith('teams-adopt', expect.any(Function));
-            expect(metadata.capabilities).toEqual(['existing', 'teams-adopt-v1']);
+            // B-766: this test's catch-all fetch also answers the briefing-board probe (`owner-board-v1`, async).
+            expect(metadata.capabilities.filter((c: string) => c !== 'owner-board-v1')).toEqual(['existing', 'teams-adopt-v1']);
         } finally { server.stop(); }
         expect(unregisterHandler).toHaveBeenCalledWith('teams-adopt');
         registerHandler.mockClear();

@@ -29,6 +29,9 @@ import { Maximize2, Minimize2, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { previewDockTarget, previewFollowTarget, previewPinTarget } from './previewPinTarget';
+import { leavesPage, userIsBusy } from './previewInterrupt';
+import { toast } from '@/ui/Toast';
+import { getSessionName } from '@/utils/sessionUtils';
 import { storage, useMachine } from '@/sync/storage';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { onFsPreviewOpen, type FsPreviewRequest } from '@/sync/filePreviewOpen';
@@ -130,7 +133,7 @@ export function FsPreviewOverlay() {
 
     const locationRef = useRef(location);
     locationRef.current = location;
-    useEffect(() => onFsPreviewOpen((next) => {
+    useEffect(() => onFsPreviewOpen(function show(next: FsPreviewRequest, held = false) {
         // B-562: record the download intent BEFORE docking/following, so the
         // viewer that mounts for this file (side panel or this overlay) finds it.
         if (next.intent === 'download') {
@@ -143,6 +146,16 @@ export function FsPreviewOverlay() {
         // session, other machine).
         const sessions = storage.getState().sessions;
         const dock = previewDockTarget(next, locationRef.current, id => sessions[id]?.metadata?.machineId);
+        const follow = dock ? null : previewFollowTarget(next, locationRef.current.pathname, (id) => !!sessions[id]);
+        // B-772: a push that would take you off this page while a dialog is
+        // open or you are typing waits behind a notice; clicking it goes.
+        const target = dock ?? follow;
+        if (next.fromPush && !held && leavesPage(target, locationRef.current.pathname) && userIsBusy(document)) {
+            const source = next.sessionId ? sessions[next.sessionId] : undefined;
+            const name = source ? getSessionName(source) : t('filePreview.title');
+            toast.action(t('filePreview.pushHeld', { name }), () => show(next, true));
+            return;
+        }
         if (dock) {
             setRequest(null);
             setFullscreen(false);
@@ -151,13 +164,12 @@ export function FsPreviewOverlay() {
         }
         // B-526: a pushed preview brings you to its session first (the overlay
         // is app-level, so it survives the route change).
-        const follow = previewFollowTarget(next, locationRef.current.pathname, (id) => !!storage.getState().sessions[id]);
         if (follow) navigate(follow);
         // A second push replaces the first (one overlay, newest wins) and resets
         // the geometry so a stale fullscreen doesn't carry over.
         setRequest(next);
         setFullscreen(false);
-    }), [navigate]);
+    }), [navigate, t]);
 
     /**
      * 焦点与 Esc（B-131 的一处设计修正）。

@@ -494,6 +494,10 @@
 /* toasts */
 .vh-toasts {
   position: fixed;
+  /* B-772: the region is a manual popover (top layer, above a native modal
+     <dialog>); undo the UA popover box so it stays a bare toast stack. */
+  inset: auto;
+  margin: 0; padding: 0; border: 0; background: transparent; color: inherit; overflow: visible;
   bottom: var(--sp-5);
   left: 50%;
   transform: translateX(-50%);

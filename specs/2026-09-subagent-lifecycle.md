@@ -41,7 +41,7 @@
 - `agent{t:'start'}` 加可选 `description?: string`、`subagentType?: string`（首次 task_started 时携带）。
 - **新 `agent{t:'progress'}`**：`{ subagent (cuid2), toolUses: number, lastTool?: string, totalTokens?: number, durationMs?: number, summary?: string }`。老 Web 丢该条并回拉一次 → CLI 节流：≥5s 且 `tool_uses` 变化才发。superRefine 要求 `subagent` 存在。
 - `agent{t:'stop'}` 加可选 `status?: 'completed'|'failed'|'stopped'`、`result?: { text: string; truncated?: boolean }`、`usage?: { toolUses, totalTokens, durationMs }`。
-- `tool-call-end` 加可选 `result?: { text: string; truncated?: boolean; isError?: boolean; stats?: { toolUses, durationMs, totalTokens, toolStats? } }`（仅 Agent/Task 且前台完成时填）。
+- `tool-call-end` 加可选 `result?: { text: string; truncated?: boolean; isError?: boolean; stats?: { toolUses, durationMs, totalTokens, toolStats? } }`（本 spec 时仅 Agent/Task 前台完成时填；B-771 起所有工具都填，见 [tool-call-end-result](2026-10-tool-call-end-result.md)）。
 - 老 Web：可选字段被 zod 剥掉；老 CLI：不发。无 `t` 以外的破坏。
 
 ### CLI（mapper + converter + launcher）

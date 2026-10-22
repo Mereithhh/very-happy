@@ -733,7 +733,7 @@ export const zhHans: TranslationStructure = {
         backgroundMotion: '背景动效',
         backgroundMotionDescription: '在本设备的默认页、会话页（更淡，集中在两侧）、侧栏、页头和官网背后显示动态 ASCII 景深背景；关闭后为纯色背景。系统开启「减少动态效果」时始终只显示静止画面。',
         diffStyle: '差异视图',
-        diffStyleDescription: '以单列（unified）或并排（split）显示差异。split 视图仅在 Web 上可用。',
+        diffStyleDescription: '以单列或并排显示差异。并排视图仅在 Web 上可用。',
         diffStyleOptions: {
             unified: 'Unified',
             split: 'Split',
@@ -1377,6 +1377,7 @@ export const zhHans: TranslationStructure = {
         receiveTitle: '接收预览推送',
         receiveSubtitle: 'agent 调用 open_preview 时，在本设备弹出文件预览。关闭后本设备忽略这类推送（其他设备照旧弹出）。',
         diffUnavailable: 'diff 视图尚未实现，这里按普通文件展示',
+        pushHeld: ({ name }: { name: string }) => `「${name}」推送了预览，点击查看`,
         machineOffline: ({ machine }: { machine: string }) =>
             `${machine} 不在线，读不到这个文件。在那台机器上把 happy daemon 起起来，预览会自己加载。`,
         machineUnknown: '这台机器还不在当前账号里，读不到这个文件',
@@ -2319,6 +2320,7 @@ export const zhHans: TranslationStructure = {
             more: ({ count }: { count: number }) => `还有 ${count} 项`,
             value: '值',
             truncated: '已截断，完整内容见「原始数据」',
+            resultTruncated: '输出已截断，只传回了一部分',
             opensInNewTab: '在新标签页打开',
         },
         fullView: {
@@ -2992,7 +2994,7 @@ export const zhHans: TranslationStructure = {
                 panelsBody: '在机器的 settings.json 里声明远程桌面或 dashboard，就能在会话旁边打开。agent 需要人帮忙时，「需要你介入」通知直达对应面板。',
                 panelsAlt: '对话旁边以面板形式打开的预发环境页面',
                 spawn: 'very-happy spawn --project <id> 直接在项目里开会话；子会话和 fork 继承项目；给项目里暂时没在跑的会话发消息，会等它下一轮读到，不再报错。',
-                pi: 'pi 会话支持插话（Steer），扩展发出的问题显示成可作答的卡片，子代理有自己的卡片；崩溃后能接回对话，也能像 Claude、Codex 一样从网页恢复。',
+                pi: 'pi 会话支持插话，扩展发出的问题显示成可作答的卡片，子代理有自己的卡片；崩溃后能接回对话，也能像 Claude、Codex 一样从网页恢复。',
                 stop: '停止卡死的 Claude 会话时，会一并结束它启动的后台命令。所选模型下线后自动换回默认模型并提示。',
                 reliability: '用 --prompt 新建的 fork，sessions read --wait 能正常等到结束；上一轮瞬间结束时排队消息不再卡住；同一台 Mac 上再起一个 daemon 不会让原来的失去防休眠。',
             },
@@ -4053,9 +4055,9 @@ export const zhHans: TranslationStructure = {
             },
             sep03f: {
                 title: '切换模型这次是真的切了',
-                summary: '对话中途换模型可能被静默忽略，思考深度（effort）在 Claude 会话里更是从来没生效过。两个都修好了；切换改成对运行中的会话原地生效，不再重启 Claude Code。移动端会话 header 也不再把自己的按钮挤出屏幕。',
+                summary: '对话中途换模型可能被静默忽略，思考深度在 Claude 会话里更是从来没生效过。两个都修好了；切换改成对运行中的会话原地生效，不再重启 Claude Code。移动端会话 header 也不再把自己的按钮挤出屏幕。',
                 model: '换模型现在从你发出的下一条消息起必定生效（打断注入当前回合的那条仍由当前模型回答）。此前只要这次切换紧跟在上一次模式变更之后就会被丢掉——跑着的 Claude Code 进程仍用旧模型，而界面上没有任何东西提示不一致。切换还改成对运行中的会话原地生效，不再重启进程、重载对话记录。选择器会显示当前真正在跑的模型。',
-                effort: 'Claude 会话的思考深度（effort）选择器生效了。此前它的值在传输途中被丢弃，任何已发布版本都没真正送到 agent。',
+                effort: 'Claude 会话的思考深度选择器生效了。此前它的值在传输途中被丢弃，任何已发布版本都没真正送到 agent。',
                 header: '手机端终端 header：终端连接中或字体加载中时，操作按钮不会再被挤出屏幕——「切到普通视图」按钮就是这么消失的。该按钮留在栏上；便签、选择模式、文件、重新适配宽度、tmux 帮助收进一个「⋯」菜单，触控目标变大，终端标题也不再被压成零宽。',
                 chatHeader: '手机端对话 header：便签、/btw、文件收进同一个「⋯」菜单，把宽度让给会话标题；重命名会话终于有一个能用的输入框，而不是几个像素。',
             },
@@ -4874,7 +4876,7 @@ export const zhHans: TranslationStructure = {
         startupFooter: '新建网页终端时自动执行；重连 / 附着已有会话绝不会再跑一遍。留空则不执行。',
         startupPlaceholder: '如 cd ~/code && claude，留空 = 关闭',
         inputOwnershipGroup: '终端输入方式（实验性）',
-        inputOwnershipFooter: '决定由谁掌管终端的键盘与输入法状态机。新方式由我们自己接管输入法（composition）状态，打字打一半切换输入法不会再把中文输入卡死。若出现异常——某个键没反应、焦点跑掉、候选窗位置不对——切回「标准」即可，立即生效，不用刷新也不用发版。目前仅桌面端生效。',
+        inputOwnershipFooter: '决定由谁掌管终端的键盘与输入法状态机。新方式由我们自己接管输入法的组字状态，打字打一半切换输入法不会再把中文输入卡死。若出现异常——某个键没反应、焦点跑掉、候选窗位置不对——切回「标准」即可，立即生效，不用刷新也不用发版。目前仅桌面端生效。',
         inputOwnershipOptions: {
             xterm: '标准',
             own: '自有输入（实验性）',
