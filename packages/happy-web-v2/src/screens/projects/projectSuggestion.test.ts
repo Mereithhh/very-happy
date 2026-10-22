@@ -6,7 +6,7 @@ const p = (id: string, folders: { machineId: string; path: string }[], extra: Pa
 
 describe('directory suggestion (suggest only, never auto-join)', () => {
   it('matches a folder on the same machine, the deepest one wins', () => {
-    const projects = [p('repo', [{ machineId: 'm', path: '/code/app' }]), p('sub', [{ machineId: 'm', path: '/code/app/tanka/' }])];
+    const projects = [p('repo', [{ machineId: 'm', path: '/code/app' }]), p('sub', [{ machineId: 'm', path: '/code/app/pkg/' }])];
     expect(suggestProjectFor({ machineId: 'm', path: '/code/app/pkg/x' }, projects)?.id).toBe('sub');
     expect(suggestProjectFor({ machineId: 'm', path: '/code/app' }, projects)?.id).toBe('repo');
   });
