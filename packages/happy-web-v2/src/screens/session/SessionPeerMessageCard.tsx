@@ -23,6 +23,7 @@ import { formatAgo, type PresentedPeerMessage } from './sessionPeerMessage';
 import { AgentChip, AgentRoute } from './AgentChip';
 import { agentKindLabel, agentKindOf } from './agentIdentity';
 import { MessageReader, PreviewLines } from './MessageReader';
+import { readerTitle } from '@/screens/teams/teamPresentation';
 import { MessageTime } from './MessageTime';
 import { cardClickOpens } from './cardClick';
 import './sessionPeerMessage.css';
@@ -78,7 +79,7 @@ export function SessionPeerMessageCard({ content, sessionId, createdAt }: { cont
             onOpenChange={setOpen}
             triggerRef={openRef}
             icon={<Icon size={18} aria-hidden />}
-            title={`${label} · ${content.fromTitle ?? content.fromSessionId}`}
+            title={readerTitle(label, content.fromTitle ?? content.fromSessionId)}
             meta={<>{route}{ago}<MessageTime createdAt={createdAt} /></>}
             before={paths.length > 0 ? <div className="msg-reader-paths">{paths.map((p) => <code key={p}>{p}</code>)}</div> : undefined}
             body={body || content.raw}

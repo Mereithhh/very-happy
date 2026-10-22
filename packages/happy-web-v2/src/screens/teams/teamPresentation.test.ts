@@ -25,3 +25,15 @@ describe('B-746 task text previews', () => {
   expect(teamTextPreviewLines('Plain goal')).toEqual(['Plain goal']);
  });
 });
+
+describe('B-746 (O8) reader title', () => {
+ it('is 「kind · first plain line」, capped at 60 characters', async () => {
+  const { readerTitle } = await import('./teamPresentation');
+  expect(readerTitle('委派', 'Task t1\n**修 B-746**：剥掉协议头\n\n| a | b |')).toBe('委派 · 修 B-746：剥掉协议头');
+  const long = readerTitle('Submitted', `# ${'x'.repeat(200)}\nsecond line`);
+  expect(Array.from(long)).toHaveLength(60);
+  expect(long.endsWith('…')).toBe(true);
+  expect(long).not.toContain('second');
+  expect(readerTitle('Message', '')).toBe('Message');
+ });
+});
