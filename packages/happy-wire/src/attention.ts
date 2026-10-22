@@ -87,8 +87,11 @@ export function attentionResolveState(outcome: string): AttentionState {
  * Push kind for an item, or null when it never pushes (§6.2). The server sends
  * at most one push per item (`pushedAt`), plus one more only after a reopen.
  * `answer` pushes only when it answers an owner question (`replyToId`).
+ * An `inferred` draft (D5) never pushes: it shows on the board and badge only,
+ * until the lead posts the same key and confirms it.
  */
-export function attentionPushKind(item: { kind: string; replyToId?: string | null }): 'attention' | 'question' | null {
+export function attentionPushKind(item: { kind: string; replyToId?: string | null; inferred?: boolean }): 'attention' | 'question' | null {
+    if (item.inferred) return null;
     if (attentionKindNeedsOwner(item.kind)) return 'attention';
     if (item.kind === 'answer' && item.replyToId) return 'question';
     return null;
@@ -147,6 +150,8 @@ export const AttentionItemSchema = z.object({
     /** The lead's first in-stream reply to an owner question (auto-attached by the CLI, §4.4). */
     firstReply: z.object({ localId: z.string().optional(), messageId: z.string().optional(), snippet: z.string().optional() }).nullable(),
     replyToId: z.string().nullable(),
+    /** D5: drafted by the CLI from the lead's text (「自动识别」), not posted by the lead. No push until the lead confirms it. */
+    inferred: z.boolean().default(false),
     needsOwner: z.boolean(),
     state: z.string(),
     ownerChoice: z.string().nullable(),
@@ -193,8 +198,14 @@ export const AttentionItemPostSchema = z.object({
     replyToId: id.optional(),
     key: key.optional(),
     requestId: requestId.optional(),
+    /**
+     * D5 draft: only the CLI's auto-detect path sets it (`owner_board_post` does
+     * not expose it). A repost of the key with `false` confirms the draft (and
+     * pushes once); a draft never downgrades a confirmed item.
+     */
+    inferred: z.boolean().default(false),
 }).refine(p => p.kind !== 'decision' || p.options !== undefined, { message: 'decision needs 2-4 options', path: ['options'] });
-export type AttentionItemPost = z.infer<typeof AttentionItemPostSchema>;
+export type AttentionItemPost = z.input<typeof AttentionItemPostSchema>;
 
 /** PATCH /v1/attention-items/:id → `AttentionItemResponse`. Omitted fields keep their value; `appendMd` appends to `bodyMd`. */
 export const AttentionItemPatchSchema = z.object({
@@ -316,5 +327,6 @@ export function ownerBoardPostToRest(sessionId: string, input: OwnerBoardPostInp
         ...(input.reply_to ? { replyToId: input.reply_to } : {}),
         ...(input.key ? { key: input.key } : {}),
         requestId: input.request_id,
+        inferred: false,
     };
 }

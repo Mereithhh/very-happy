@@ -54,7 +54,7 @@
 
 ### Push
 
-- 只推 `attentionPushKind` 非空的条目：decision / todo / blocked → `attention`；回答 Owner 问题的 answer → `question`；report / pin 不推。
+- 只推 `attentionPushKind` 非空的条目：decision / todo / blocked → `attention`；回答 Owner 问题的 answer → `question`；report / pin 不推；`inferred`（D5 自动识别草稿）不推，负责人确认后再推一次。
 - 以 `pushedAt` 为水位，用条件更新（`pushedAt IS NULL`）抢占，保证同一条至多推一次；重新打开时清空 `pushedAt`。
 - 前台在线静默规则不变。
 
@@ -78,7 +78,12 @@
 ## 风险
 
 1. 条目内容 server 可读：D1 已由 Owner 确认，与 Teams / Projects 同级。
-2. 自动识别草稿（D5）可能刷屏：key 取选项文本哈希，重复只累加 `repostCount`，开放条目软上限 5 条（`ATTENTION_LIMITS.openPerSessionSoftCap`）。
+2. 自动识别草稿（D5）可能刷屏：
+   - 条目带 `inferred: true`（只有 CLI 的 D5 识别路径会设置，`owner_board_post` 不开放该参数），Web 显示「自动识别」标签，Owner 能分清是负责人主动上板还是系统推断。
+   - `inferred` 条目不推送，只进看板和徽标（`attentionPushKind` 对其返回 null）。
+   - key 取选项文本哈希，重复识别只累加 `repostCount`；草稿不会把已确认的条目降级为 inferred。
+   - 负责人随后用 `owner_board_post` 发同一个 key：条目改为 `inferred: false`，按正常规则推送一次（草稿期间从未推送，`pushedAt` 仍为空）。
+   - 开放条目软上限 5 条（`ATTENTION_LIMITS.openPerSessionSoftCap`）。
 3. 并发 upsert：依赖 `@@unique([sessionId, key])` 加冲突重试（P2002 / P2034 / 40001），S-1 用并发测试覆盖。
 
 ## 验收标准

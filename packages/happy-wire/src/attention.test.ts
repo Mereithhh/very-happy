@@ -25,7 +25,7 @@ const twoOptions = [{ id: 'A', label: 'Ship now', recommended: true }, { id: 'B'
 const item = {
     id: 'i1', sessionId: 's1', teamId: null, projectId: null, source: 'lead', kind: 'decision', key: 'release-window',
     title: 'Pick the release window', bodyMd: null, options: twoOptions, links: null, anchor: { localId: 'l1' }, firstReply: null,
-    replyToId: null, needsOwner: true, state: 'open', ownerChoice: null, ownerNote: null, resolvedBy: null, resolveNote: null, repostCount: 0,
+    replyToId: null, inferred: false, needsOwner: true, state: 'open', ownerChoice: null, ownerNote: null, resolvedBy: null, resolveNote: null, repostCount: 0,
     createdAt: 1, updatedAt: 1, resolvedAt: null, pushedAt: null, version: 1,
 };
 
@@ -38,6 +38,10 @@ describe('attention item wire schemas', () => {
         expect(attentionPushKind({ kind: 'report' })).toBeNull();
         expect(attentionPushKind({ kind: 'pin' })).toBeNull();
         expect(attentionPushKind({ kind: 'future-kind' })).toBeNull();
+        // D5 drafts stay silent until the lead confirms them.
+        expect(attentionPushKind({ kind: 'decision', inferred: true })).toBeNull();
+        expect(attentionPushKind({ kind: 'answer', replyToId: 'q1', inferred: true })).toBeNull();
+        expect(attentionPushKind({ kind: 'decision', inferred: false })).toBe('attention');
     });
 
     it('tags board-sent owner messages by localId', () => {
@@ -64,6 +68,8 @@ describe('attention item wire schemas', () => {
         expect(AttentionItemPostSchema.safeParse({ ...base, options: [twoOptions[0], twoOptions[0]] }).success).toBe(false);
         expect(AttentionItemPostSchema.safeParse({ ...base, options: twoOptions }).success).toBe(true);
         expect(AttentionItemPostSchema.safeParse({ ...base, kind: 'report' }).success).toBe(true);
+        expect(AttentionItemPostSchema.parse({ ...base, options: twoOptions }).inferred).toBe(false);
+        expect(AttentionItemPostSchema.parse({ ...base, options: twoOptions, inferred: true }).inferred).toBe(true);
     });
 
     it('bounds title, body bytes and anchors', () => {
@@ -106,6 +112,8 @@ describe('attention item wire schemas', () => {
         expect(parsed.kind).toBe('escalation');
         expect(parsed.options?.[0]).toMatchObject({ icon: 'x' });
         expect(UpdateAttentionItemBodySchema.parse({ t: 'attention-item', item }).item.id).toBe('i1');
+        const { inferred: _omit, ...olderServer } = item;
+        expect(AttentionItemSchema.parse(olderServer).inferred).toBe(false);
     });
 });
 
@@ -118,6 +126,8 @@ describe('owner_board_* tool schemas', () => {
         expect(OwnerBoardPostInputSchema.safeParse({ ...base, kind: 'question' }).success).toBe(false);
         expect(OwnerBoardPostInputSchema.safeParse({ kind: 'report', title: 'Merged' }).success).toBe(false);
         expect(OwnerBoardPostInputSchema.safeParse({ ...base, kind: 'answer', reply_to: 'q1', anchor: { localId: 'l9' } }).success).toBe(true);
+        // The tool never marks its own posts as drafts.
+        expect('inferred' in OwnerBoardPostInputSchema.parse({ ...base, kind: 'report', inferred: true })).toBe(false);
     });
 
     it('update / resolve / list', () => {
@@ -133,7 +143,7 @@ describe('owner_board_* tool schemas', () => {
     it('maps a post tool call to a valid REST body', () => {
         const input = OwnerBoardPostInputSchema.parse({ kind: 'decision', title: 'Pick one', options: twoOptions, key: 'k', reply_to: 'q1', links: [{ type: 'pr', ref: '701' }], request_id: 'r1' });
         const rest = ownerBoardPostToRest('s1', input, { messageId: 'm1' });
-        expect(rest).toEqual({ sessionId: 's1', source: 'lead', kind: 'decision', title: 'Pick one', options: twoOptions, links: [{ type: 'pr', ref: '701' }], anchor: { messageId: 'm1' }, replyToId: 'q1', key: 'k', requestId: 'r1' });
+        expect(rest).toEqual({ sessionId: 's1', source: 'lead', kind: 'decision', title: 'Pick one', options: twoOptions, links: [{ type: 'pr', ref: '701' }], anchor: { messageId: 'm1' }, replyToId: 'q1', key: 'k', requestId: 'r1', inferred: false });
         expect(AttentionItemPostSchema.safeParse(rest).success).toBe(true);
     });
 });
