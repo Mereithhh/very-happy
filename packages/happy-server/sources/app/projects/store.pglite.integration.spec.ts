@@ -273,6 +273,8 @@ describe('projects store (pglite)', () => {
             expect(team.projectId).toBeTruthy();
             const detail = await store.getProject(accountId, team.projectId!);
             expect(detail.project).toMatchObject({ name: 'Team Alpha', folders: [{ machineId, path: '/work/alpha', primary: true }], teamIds: [team.id] });
+            // B-755: the same-name project's context starts as the team goal.
+            expect(detail.project).toMatchObject({ instructions: 'ship it', instructionsVersion: 1 });
             const again = await teams.createTeam(accountId, input);
             expect(again.projectId).toBe(team.projectId);
             expect((await store.listProjects(accountId)).projects.filter(p => p.name === 'Team Alpha')).toHaveLength(1);

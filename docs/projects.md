@@ -38,6 +38,16 @@ name opens the project page; its ＋ starts a session in that project.
 | Automation with a project | Sessions it spawns join quietly (see [Automations](automations.md)). |
 | Team in the project | The lead's and members' sessions are members through the team. They leave when the team leaves the project; moving one explicitly into another project wins. |
 
+**New project** asks for a name and a folder: **Choose a folder** (a path on a
+computer; remembered folders and **Browse** help) or **New working folder**
+(created by that computer's daemon, default `~/projects/<name>`, only inside
+home, never over an existing folder; optionally `git init`). *New working
+folder* needs the computer online and a CLI that supports it — otherwise it is
+disabled with the reason. The dialog also has a **Project context** box: what
+you write becomes the project instructions every session in it reads first. A
+team's same-name project starts with the team goal as its context, and the
+new-team form can create its working folder the same way.
+
 A session whose folder lies inside a project folder is only **suggested** for
 that project (a banner in the session asks), never added automatically.
 

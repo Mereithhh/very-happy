@@ -363,3 +363,4 @@
   .team-project-nudge-actions { width: 100%; }
   .team-project-nudge-actions > * { flex: 1 1 100%; justify-content: center; }
 }
+.team-folder-new { margin-top: var(--sp-2); }

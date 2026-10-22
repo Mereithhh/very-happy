@@ -140,3 +140,24 @@ export async function machineFsRead(
         return failureOf(error instanceof Error ? error.message : 'fs-read failed');
     }
 }
+
+export type FsMkdirFailureCode = FsFailureCode | 'exists' | 'outside-home';
+export type FsMkdirResult = { ok: true; path: string; git: boolean } | { ok: false; code: FsMkdirFailureCode; error: string };
+
+/** B-755: create a new working folder under the machine user's home (daemon `fs-mkdir`, gated by `fsMkdirVersion`). Never throws. */
+export async function machineFsMkdir(machineId: string, path: string, options: { gitInit?: boolean } = {}): Promise<FsMkdirResult> {
+    try {
+        await ensureMachineEncryption(machineId);
+        const res = await apiSocket.machineRPC<{ path: string; created: boolean; git: boolean } & { error?: string }, { path: string; gitInit?: boolean }>(
+            machineId, 'fs-mkdir', { path, gitInit: options.gitInit === true });
+        if (typeof res?.error === 'string') {
+            if (res.error === 'exists' || res.error === 'outside-home') return { ok: false, code: res.error, error: res.error };
+            return failureOf(res.error);
+        }
+        if (!res || typeof res.path !== 'string' || res.created !== true) return { ok: false, code: 'unknown', error: 'Malformed fs-mkdir response' };
+        return { ok: true, path: res.path, git: res.git === true };
+    } catch (error) {
+        if (isTimeoutError(error)) return { ok: false, code: 'timeout', error: 'fs-mkdir timed out' };
+        return failureOf(error instanceof Error ? error.message : 'fs-mkdir failed');
+    }
+}

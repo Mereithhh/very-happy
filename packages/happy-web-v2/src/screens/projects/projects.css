@@ -214,3 +214,21 @@
 
 /* B-726 project picker: a full-width form field wherever it sits (team pages right-align bare buttons) */
 .vh-select-trigger.vh-project-picker, .teams-screen button.vh-project-picker { width: 100%; align-self: stretch; }
+
+/* B-755: project folder picker (new-project dialog, settings) and the new-project dialog. */
+.pj-folder-picker { display: grid; gap: var(--sp-2); min-width: 0; }
+.pj-folder-picker .pj-field { display: grid; gap: 4px; font-size: var(--fs-12); color: var(--text-dim); }
+.pj-folder-mode { width: 100%; } /* .vh-segmented is a size container: it needs an explicit width */
+.pj-folder-input { display: flex; align-items: stretch; gap: var(--sp-2); min-width: 0; }
+.pj-folder-input > :first-child { flex: 1; min-width: 0; }
+.pj-folder-input .pj-ghost { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; height: auto; background: var(--fill-soft); color: var(--text); border-radius: var(--r-sm); }
+.pj-folder-browser { height: 260px; min-height: 160px; overflow: auto; border-radius: var(--r-md); background: var(--fill-hover); }
+.pj-folder-new { width: 100%; font-family: var(--font-mono), monospace; }
+.pj-folder-hint { margin: 0; font-size: var(--fs-12); line-height: 1.5; }
+.pj-folder-problem { margin: 0; font-size: var(--fs-12); line-height: 1.5; color: var(--danger); }
+.pj-new-dialog { max-width: 520px; }
+.pj-new-context { display: grid; gap: 4px; margin-top: var(--sp-2); padding: var(--sp-3); border-radius: var(--r-md); background: var(--fill-soft); }
+.pj-new-context .ns-label { margin-top: 0; color: var(--text); font-weight: 600; font-size: var(--fs-14); }
+.pj-new-context-hint { margin: 0; font-size: var(--fs-12); line-height: 1.5; color: var(--text-dim); }
+.pj-new-textarea { width: 100%; resize: vertical; min-height: 96px; line-height: 1.5; font-family: inherit; }
+@media (pointer: coarse) { .pj-new-dialog input, .pj-new-dialog textarea { font-size: var(--fs-16); } }

@@ -157,6 +157,8 @@ export const MachineMetadataSchema = z.object({
   teamRetryVersion: z.number().int().positive().optional(),
   /** B-586: daemon serves the `worktree-*` RPCs. Absent on old daemons. */
   worktreeVersion: z.number().int().positive().optional(),
+  /** B-755: this daemon serves `fs-mkdir` (web gates 「新建工作目录」 on it). */
+  fsMkdirVersion: z.number().int().positive().optional(),
   /** B-688: daemon serves the `model-config-*` RPCs (harness model/provider config). */
   modelConfigVersion: z.number().int().positive().optional(),
   /** B-719: daemon serves `harness-install` (Install / Update buttons for coding-agent CLIs). */
