@@ -28,6 +28,7 @@ import { storage, isSessionDeleted } from './storage';
 import { markSendConfirmed } from './sendConfirmations';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
+import { applyAttentionItem } from './attentionStore';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
@@ -179,6 +180,8 @@ type SendMessageOptions = {
     attachments?: AttachmentPreview[];
     /** Internal composer queue override: preserve the mode selected at enqueue time. */
     modeMeta?: MessageModeMeta;
+    /** B-766: a 汇报板 action's message carries `attentionBoardLocalId(...)` so the server's owner-replied rule skips it. */
+    localId?: string;
 };
 
 /** Which client sent this message — the same answer for a direct send and a queued prompt (B-509). */
@@ -1099,7 +1102,7 @@ class Sync {
         // that never reaches the outbox (a later throw) still fails visibly.
         const group = randomUUID();
         const turnItems: OutboxMessage[] = [];
-        const localId = randomUUID();
+        const localId = options?.localId ?? randomUUID();
         // Create user message content with metadata (B-509: one builder shared
         // with the server-side prompt queue, so a queued prompt is the same record).
         const content: RawRecord = buildOutboundUserRecord({
@@ -3427,6 +3430,9 @@ class Sync {
             // notification read state, so opening a session on one device
             // clears its notifications on the others without polling.
             dispatchKvChanges(updateData.body.changes);
+        } else if (updateData.body.t === 'attention-item') {
+            // B-766: 汇报板 item snapshot (full item; the store keeps the highest version).
+            applyAttentionItem(updateData.body.item);
         }
     }
 

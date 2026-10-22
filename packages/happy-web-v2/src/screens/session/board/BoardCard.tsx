@@ -2,9 +2,10 @@
  *  body, options (pick = decide), first reply / answer, and the actions. */
 import { forwardRef } from 'react';
 import { CornerDownLeft, CornerUpRight } from 'lucide-react';
-import type { AttentionItem } from './attentionTypes';
-import type { BoardCopy } from './boardCopy';
-import { itemStatus, kindTone, repliesTo, resolveAction } from './boardModel';
+import type { AttentionItem } from '@slopus/happy-wire';
+import { kindLabel, type BoardCopy } from './boardCopy';
+import { isLive, itemStatus, kindTone, repliesTo, resolveAction } from './boardModel';
+import { useMessage } from '@/sync/storage';
 import { Markdown } from '../Markdown';
 
 export function boardTime(ts: number): string {
@@ -34,6 +35,10 @@ export const BoardCard = forwardRef<HTMLDivElement, {
     const replies = item.kind === 'question' || item.kind === 'request' ? repliesTo(all, item.id) : [];
     const answering = item.replyToId ? all.find((i) => i.id === item.replyToId) : undefined;
     const bodyId = `brf-x-${item.id}`;
+    // W0 keeps only the anchor of the lead's first reply: show its snippet, else the transcript text.
+    const firstMsg = useMessage(item.sessionId, item.firstReply?.messageId ?? '');
+    const firstText = item.firstReply?.snippet ?? (firstMsg?.kind === 'agent-text' ? firstMsg.text : undefined);
+    const firstAt = firstMsg?.createdAt;
     const statusLabel = status ? (status.key === 'decided' && status.choice ? copy.decided(status.choice) : copy.status[status.key]) : null;
     return (
         <div ref={ref} className={`brf-card${expanded ? ' is-open' : ''}${selected ? ' is-selected' : ''}${status?.tone === 'done' ? ' is-done' : ''}`}
@@ -41,15 +46,17 @@ export const BoardCard = forwardRef<HTMLDivElement, {
             {unread && <span className="brf-unread" aria-hidden />}
             <button type="button" className="brf-card-head" aria-expanded={expanded} aria-controls={bodyId} onClick={() => actions.onToggle(item)}>
                 <span className="brf-r1">
-                    <span className={`brf-kind brf-kind--${kindTone(item.kind)}`}>{copy.kinds[item.kind]}</span>
+                    <span className={`brf-kind brf-kind--${kindTone(item.kind)}`}>{kindLabel(copy, item.kind)}</span>
                     <span className="brf-title">{item.title}</span>
                     {statusLabel && <span className={`brf-status brf-status--${status!.tone}`}>{statusLabel}</span>}
                 </span>
                 <span className="brf-r2">
                     <span>{by} · {boardTime(item.createdAt)}</span>
+                    {item.inferred && <span className="brf-inferred">{copy.inferred}</span>}
                     {item.repostCount > 0 && <span>{copy.merged(item.repostCount)}</span>}
                     {item.links?.map((l) => <span key={`${l.type}:${l.ref}`} className="brf-link">{l.label ?? l.ref}</span>)}
                 </span>
+                {item.resolveNote && !isLive(item) && <span className="brf-note">{copy.resolveNote}：{item.resolveNote}</span>}
             </button>
             {expanded && (
                 <div className="brf-x" id={bodyId}>
@@ -70,10 +77,10 @@ export const BoardCard = forwardRef<HTMLDivElement, {
                             ))}
                         </div>
                     )}
-                    {item.firstReply && (
+                    {item.firstReply && firstText && (
                         <div className="brf-ans">
-                            <div className="brf-ans-label">{copy.firstReply} · {boardTime(item.firstReply.at)}{item.firstReply.auto ? ` · ${copy.autoAttached}` : ''}</div>
-                            {item.firstReply.text}
+                            <div className="brf-ans-label">{copy.firstReply}{firstAt ? ` · ${boardTime(firstAt)}` : ''}{item.resolvedBy === 'auto-first-reply' ? ` · ${copy.autoAttached}` : ''}</div>
+                            {firstText}
                         </div>
                     )}
                     {replies.map((r) => (

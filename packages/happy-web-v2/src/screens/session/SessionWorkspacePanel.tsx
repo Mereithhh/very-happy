@@ -12,7 +12,7 @@ import { BtwPanel } from './BtwPanel';
 import { SessionHistoryPanel } from './SessionPreviews';
 import { SubagentPanel } from './SubagentPanel';
 import { BoardPanel } from './board/BoardPanel';
-import { useBoardItems } from './board/boardStore';
+import { useSessionBoard } from './board/useSessionBoard';
 import { boardCopy } from './board/boardCopy';
 import { buildSubagentSummary } from './subagentSummary';
 import { useNotesWorkspace } from '../notes/useNotesWorkspace';
@@ -39,7 +39,7 @@ export function SessionWorkspacePanel({ sessionId, panel, subagentTarget, btwAll
   const filesTab = useRef<SessionFilesTab>('browse');
   const notes = useNotesWorkspace(visible && panel === 'notes');
   // B-766: the 汇报板 tab exists only for a session that has a board (sync / harness fed).
-  const hasBoard = useBoardItems(sessionId) !== undefined;
+  const hasBoard = useSessionBoard(sessionId);
   const boardTitle = boardCopy(lang.startsWith('zh')).title;
   // B-510: the session machine's declared web panels (`?panel=machine&wp=<id>`).
   const [searchParams, setSearchParams] = useSearchParams();

@@ -1,11 +1,11 @@
 /** B-766 W-1 — the three groups of the 汇报板 (aside panel and phone top sheet share it). */
 import { useEffect, useRef, useState } from 'react';
 import { requestChatJump } from '@/screens/search/chatJump';
-import { quoteMessage } from '../messageQuote';
-import type { AttentionItem } from './attentionTypes';
+import type { AttentionItem } from '@slopus/happy-wire';
 import type { BoardCopy } from './boardCopy';
-import { buildBoard, followUpQuote, isUnread, type BoardTab } from './boardModel';
-import { useBoardItemsOrEmpty, useBoardStore } from './boardStore';
+import { buildBoard, isUnread, type BoardTab } from './boardModel';
+import { chooseOption, followUp, resolveItem } from './boardActions';
+import { useBoardItemsOrEmpty, useAttentionStore } from '@/sync/attentionStore';
 import { BoardCard, type BoardCardActions } from './BoardCard';
 
 export function BoardList({ sessionId, tab, copy, onLeave }: {
@@ -16,8 +16,8 @@ export function BoardList({ sessionId, tab, copy, onLeave }: {
     onLeave?: () => void;
 }) {
     const items = useBoardItemsOrEmpty(sessionId);
-    const seen = useBoardStore((s) => s.seen);
-    const focus = useBoardStore((s) => s.focus);
+    const seen = useAttentionStore((s) => s.seen);
+    const focus = useAttentionStore((s) => s.focus);
     const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
     const [selected, setSelected] = useState<string | null>(null);
     const cards = useRef(new Map<string, HTMLDivElement>());
@@ -27,7 +27,7 @@ export function BoardList({ sessionId, tab, copy, onLeave }: {
         if (!focus || focus.sessionId !== sessionId) return;
         setSelected(focus.itemId);
         setExpanded((prev) => new Set([...prev, focus.itemId]));
-        useBoardStore.getState().markSeen(focus.itemId);
+        useAttentionStore.getState().markSeen(focus.itemId);
         const raf = requestAnimationFrame(() => cards.current.get(focus.itemId)?.scrollIntoView({ block: 'nearest' }));
         return () => cancelAnimationFrame(raf);
     }, [focus, sessionId]);
@@ -40,10 +40,10 @@ export function BoardList({ sessionId, tab, copy, onLeave }: {
                 if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
                 return next;
             });
-            useBoardStore.getState().markSeen(item.id);
+            useAttentionStore.getState().markSeen(item.id);
         },
-        onChoose: (item, optionId) => useBoardStore.getState().choose(sessionId, item.id, optionId),
-        onResolve: (item) => useBoardStore.getState().resolve(sessionId, item.id),
+        onChoose: (item, optionId) => void chooseOption(item, optionId, copy),
+        onResolve: (item) => void resolveItem(item, copy),
         onLocate: (item: AttentionItem) => {
             const a = item.anchor;
             if (!a) return;
@@ -52,7 +52,7 @@ export function BoardList({ sessionId, tab, copy, onLeave }: {
         },
         onFollowUp: (item) => {
             onLeave?.();
-            quoteMessage(sessionId, followUpQuote(item, copy.followUpPrefix));
+            void followUp(item, copy);
         },
     };
 
@@ -62,7 +62,8 @@ export function BoardList({ sessionId, tab, copy, onLeave }: {
                 <section key={section.group} className="brf-group" aria-label={copy.groups[section.group]}>
                     <div className="brf-group-head">
                         <span>{copy.groups[section.group]}</span>
-                        {section.liveCount > 0 && <span className="brf-group-count">{section.liveCount}</span>}
+                        {/* 「进行中」 counts what is still open; 「已处理」 counts what is listed. */}
+                        {(tab === 'done' ? section.items.length : section.liveCount) > 0 && <span className="brf-group-count">{tab === 'done' ? section.items.length : section.liveCount}</span>}
                         <span className="brf-group-line" aria-hidden />
                     </div>
                     {section.items.length === 0

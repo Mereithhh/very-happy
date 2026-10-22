@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import type { AttentionItem } from './attentionTypes';
-import { boardCounts, boardGroup, buildBoard, followUpQuote, isUnread, itemStatus, pointersAt, repliesTo, resolveAction, RECENT_ANSWERED } from './boardModel';
+import type { AttentionItem } from '@slopus/happy-wire';
+import { sessionHasBoard, boardCounts, boardGroup, buildBoard, followUpQuote, isUnread, itemStatus, pointersAt, repliesTo, resolveAction, RECENT_ANSWERED } from './boardModel';
 
 let n = 0;
 function item(over: Partial<AttentionItem>): AttentionItem {
     n++;
     return {
-        id: `i${n}`, sessionId: 's', source: 'lead', kind: 'report', title: `item ${n}`, needsOwner: false,
-        state: 'open', repostCount: 0, createdAt: n * 1000, updatedAt: n * 1000, ...over,
+        id: `i${n}`, sessionId: 's', teamId: null, projectId: null, source: 'lead', kind: 'report', key: null, title: `item ${n}`, bodyMd: null,
+        options: null, links: null, anchor: null, firstReply: null, replyToId: null, inferred: false, needsOwner: false, state: 'open',
+        ownerChoice: null, ownerNote: null, resolvedBy: null, resolveNote: null, repostCount: 0,
+        createdAt: n * 1000, updatedAt: n * 1000, resolvedAt: null, pushedAt: null, version: 1, ...over,
     };
 }
 
@@ -73,7 +75,7 @@ describe('boardCounts / isUnread', () => {
 describe('itemStatus / resolveAction', () => {
     it('maps each kind to the prototype chip and the one resolve action', () => {
         expect(itemStatus(item({ kind: 'question', source: 'owner' }))).toEqual({ tone: 'open', key: 'unanswered' });
-        expect(itemStatus(item({ kind: 'question', source: 'owner', firstReply: { anchor: {}, text: 'x', at: 1 } }))?.key).toBe('inProgress');
+        expect(itemStatus(item({ kind: 'question', source: 'owner', firstReply: { messageId: 'm9' } }))?.key).toBe('inProgress');
         expect(itemStatus(item({ kind: 'question', source: 'owner', state: 'answered' }))?.key).toBe('answered');
         expect(itemStatus(item({ kind: 'request', source: 'owner', state: 'in_progress' }))?.key).toBe('working');
         expect(itemStatus(item({ kind: 'decision', needsOwner: true, state: 'resolved', ownerChoice: 'B' }))).toEqual({ tone: 'done', key: 'decided', choice: 'B' });
@@ -103,5 +105,23 @@ describe('pointersAt / repliesTo / followUpQuote', () => {
         const a = item({ kind: 'answer', replyToId: q.id });
         expect(repliesTo([q, a], q.id)).toEqual([a]);
         expect(followUpQuote(q, '［汇报板］')).toBe('> ［汇报板］谁来写？\n\n');
+    });
+});
+
+describe('sessionHasBoard / W0 fields', () => {
+    it('needs a loaded list, then items or the owner-board-v1 capability', () => {
+        expect(sessionHasBoard(undefined, ['owner-board-v1'])).toBe(false);
+        expect(sessionHasBoard([], undefined)).toBe(false);
+        expect(sessionHasBoard([], ['owner-board-v1'])).toBe(true);
+        expect(sessionHasBoard([item({})], [])).toBe(true);
+    });
+
+    it('an inferred (自动识别) decision still counts toward 「等你」', () => {
+        expect(boardCounts([item({ kind: 'decision', needsOwner: true, inferred: true })]).need).toBe(1);
+    });
+
+    it('an unknown kind from a newer server lands in reports, an unknown state is not live', () => {
+        expect(boardGroup(item({ kind: 'future-kind' }))).toBe('report');
+        expect(buildBoard([item({ kind: 'report', state: 'future-state' })], 'open')[2].items).toEqual([]);
     });
 });

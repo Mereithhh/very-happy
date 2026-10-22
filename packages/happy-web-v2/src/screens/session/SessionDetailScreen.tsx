@@ -48,7 +48,8 @@ import { newSessionTimingComposerMounted, newSessionTimingInStore, newSessionTim
 import { isHistoryPanel, readSessionPanel, readSubagentTarget, toggleHistoryPanel, withSessionPanel, withSubagentPanel, type SessionPanelTab } from './sessionPanelState';
 import { ChatBackdrop } from './ChatBackdrop';
 import { BoardHeaderButton, BoardMobile } from './board/BoardMobile';
-import { useBoardItems, useBoardStore } from './board/boardStore';
+import { loadAttentionItems, useAttentionStore } from '@/sync/attentionStore';
+import { useSessionBoard } from './board/useSessionBoard';
 import './session.css';
 
 export function SessionDetailScreen() {
@@ -116,9 +117,11 @@ export function SessionDetailScreen() {
     const subagentTarget = panelTab === 'subagent' ? readSubagentTarget(searchParams) : null;
     const subagentOpen = subagentTarget !== null;
     const historyTab = isHistoryPanel(panelTab) ? panelTab : null;
-    // B-766: the 汇报板 — only for a session that has one (no items list = no board, the feature stays inert).
-    const boardItems = useBoardItems(id ?? '');
-    const boardAllowed = !!boardItems && !!session && !isMirrorSession(session) && !sharedWithMe;
+    // B-766: the 汇报板 — only where the server has the feature and the session holds items / advertises the board tools.
+    const hasBoard = useSessionBoard(id ?? '');
+    const boardAllowed = hasBoard && !!session && !isMirrorSession(session) && !sharedWithMe;
+    const boardLoadable = !!id && !!session && !pendingMode && !isMirrorSession(session) && !sharedWithMe;
+    useEffect(() => { if (boardLoadable) void loadAttentionItems(id!); }, [id, boardLoadable]);
     const boardOpen = panelTab === 'board' && boardAllowed;
     const boardPhone = useMediaQuery('(max-width: 767px)');
     const [boardSheet, setBoardSheet] = useState(false);
@@ -172,7 +175,7 @@ export function SessionDetailScreen() {
     panelTabRef.current = panelTab;
     useEffect(() => {
         if (!id) return;
-        return useBoardStore.subscribe((state, prev) => {
+        return useAttentionStore.subscribe((state, prev) => {
             const focus = state.focus;
             if (!focus || focus === prev.focus || focus.sessionId !== id) return;
             if (boardPhoneRef.current) setBoardSheet(true);

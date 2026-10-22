@@ -3,7 +3,7 @@
  * belongs to, what the two tabs show, the counts on the strip / badge, the
  * status chip, and the in-stream pointers. No React, no store (DESIGN §3 A, §6).
  */
-import type { AttentionItem, AttentionKind } from './attentionTypes';
+import { ATTENTION_SESSION_CAPABILITY, attentionKindNeedsOwner, isAttentionActive, type AttentionItem } from '@slopus/happy-wire';
 
 export type BoardGroup = 'need' | 'asked' | 'report';
 export type BoardTab = 'open' | 'done';
@@ -20,7 +20,7 @@ export function boardGroup(item: AttentionItem): BoardGroup {
 
 /** Still in play: 「进行中」. Answered / resolved / dismissed belong to 「已处理」. */
 export function isLive(item: AttentionItem): boolean {
-    return item.state === 'open' || item.state === 'in_progress';
+    return isAttentionActive(item.state);
 }
 
 export interface BoardSection { group: BoardGroup; items: AttentionItem[]; liveCount: number }
@@ -89,7 +89,7 @@ export function itemStatus(item: AttentionItem): ItemStatus | null {
             if (!live) return { tone: 'done', key: 'answered' };
             return item.state === 'in_progress' || item.firstReply ? { tone: 'wip', key: 'inProgress' } : { tone: 'open', key: 'unanswered' };
         case 'decision':
-            return live ? { tone: 'open', key: 'waiting' } : { tone: 'done', key: 'decided', choice: item.ownerChoice };
+            return live ? { tone: 'open', key: 'waiting' } : { tone: 'done', key: 'decided', choice: item.ownerChoice ?? undefined };
         case 'todo':
         case 'blocked':
             return live ? { tone: 'open', key: 'waiting' } : { tone: 'done', key: 'completed' };
@@ -99,8 +99,8 @@ export function itemStatus(item: AttentionItem): ItemStatus | null {
 }
 
 /** Kinds whose chip is tinted warn (they wait on the Owner); the rest are neutral. */
-export function kindTone(kind: AttentionKind): 'warn' | 'neutral' {
-    return kind === 'decision' || kind === 'todo' || kind === 'blocked' ? 'warn' : 'neutral';
+export function kindTone(kind: string): 'warn' | 'neutral' {
+    return attentionKindNeedsOwner(kind) ? 'warn' : 'neutral';
 }
 
 /** The one resolve action a live card offers, by kind (prototype 方案 C). */
@@ -131,4 +131,13 @@ export function repliesTo(items: readonly AttentionItem[], id: string): Attentio
 /** Text the composer gets for 「追问」 until W0 carries `meta.replyToItem`. */
 export function followUpQuote(item: AttentionItem, prefix: string): string {
     return `> ${prefix}${item.title}\n\n`;
+}
+
+/**
+ * Does this session show a 汇报板 at all? Loaded (the server has the feature)
+ * and either it already holds items or its wrapper advertises the board tools
+ * (AGENTS #14: decide by session capabilities, not CLI version).
+ */
+export function sessionHasBoard(items: readonly AttentionItem[] | undefined, capabilities: readonly string[] | undefined): boolean {
+    return !!items && (items.length > 0 || capabilities?.includes(ATTENTION_SESSION_CAPABILITY) === true);
 }

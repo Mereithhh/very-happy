@@ -1,5 +1,5 @@
 /** B-766 W-1 — 汇报板 copy (D7: 中文「汇报板」, English "Briefing"). */
-import type { AttentionKind } from './attentionTypes';
+import type { AttentionKind } from '@slopus/happy-wire';
 import type { BoardGroup, ResolveAction, StatusKey } from './boardModel';
 
 export interface BoardCopy {
@@ -9,6 +9,12 @@ export interface BoardCopy {
     tabs: { open: string; done: string };
     groups: Record<BoardGroup, string>;
     kinds: Record<AttentionKind, string>;
+    /** D5 draft the CLI detected from the lead's text. */
+    inferred: string;
+    resolveNote: string;
+    choicePrefix: string;
+    actionFailed: string;
+    choiceNotSent: string;
     status: Record<StatusKey, string>;
     decided: (choice: string) => string;
     summary: (need: number, asked: number) => string;
@@ -43,6 +49,11 @@ const ZH: BoardCopy = {
     tabs: { open: '进行中', done: '已处理' },
     groups: { need: '等你处理', asked: '你提的', report: '给你的汇报' },
     kinds: { decision: '决定', todo: '待办', blocked: '卡住了', report: '汇报', answer: '回答', question: '你问的', request: '你交代的', pin: '你钉的' },
+    inferred: '自动识别',
+    resolveNote: '负责人备注',
+    choicePrefix: '［汇报板 · 决定］',
+    actionFailed: '汇报板操作没有成功，已刷新',
+    choiceNotSent: '已记下你的选择，但没能发消息告诉负责人',
     status: { waiting: '等你', unanswered: '未答', working: '在做', inProgress: '处理中', answered: '已答', completed: '已完成', decided: '已决定', dismissed: '已忽略' },
     decided: (choice) => `已决定 ${choice}`,
     summary: (need, asked) => `${need} 件等你 · ${asked} 件未结`,
@@ -77,6 +88,11 @@ const EN: BoardCopy = {
     tabs: { open: 'Active', done: 'Handled' },
     groups: { need: 'Needs you', asked: 'You asked', report: 'For you' },
     kinds: { decision: 'Decide', todo: 'To do', blocked: 'Blocked', report: 'Report', answer: 'Answer', question: 'Asked', request: 'Requested', pin: 'Pinned' },
+    inferred: 'Auto-detected',
+    resolveNote: 'Lead note',
+    choicePrefix: '[Briefing · decision] ',
+    actionFailed: 'That Briefing action did not go through; refreshed',
+    choiceNotSent: 'Your choice is saved, but the message to the lead was not sent',
     status: { waiting: 'Waiting', unanswered: 'Unanswered', working: 'Working', inProgress: 'In progress', answered: 'Answered', completed: 'Done', decided: 'Decided', dismissed: 'Dismissed' },
     decided: (choice) => `Chose ${choice}`,
     summary: (need, asked) => `${need} need you · ${asked} open`,
@@ -106,4 +122,9 @@ const EN: BoardCopy = {
 
 export function boardCopy(zh: boolean): BoardCopy {
     return zh ? ZH : EN;
+}
+
+/** Kind label; a kind added by a newer server shows its raw name. */
+export function kindLabel(copy: BoardCopy, kind: string): string {
+    return (copy.kinds as Record<string, string>)[kind] ?? kind;
 }
