@@ -15,6 +15,7 @@ import {
 } from '../sessionMessageStore';
 import { updateSessionStateWithQuota } from '@/app/state/accountStateStore';
 import { noteSessionMessage } from '@/app/automations/attentionLifecycle';
+import { noteAttentionOwnerMessage } from '@/app/attention/store';
 
 export function ownsSessionLifecycle(connection: ClientConnection, sessionId: string): boolean {
     return connection.connectionType === 'session-scoped' && connection.sessionId === sessionId;
@@ -215,7 +216,10 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 const created = stored.createdMessages[0];
                 if (!created) return;
                 // B-508: an owner message in a session an attention run is about resolves that run (best-effort, off the reply path).
-                void noteSessionMessage({ accountId: userId, sessionId: sid, localId: created.localId, client: socket.data.happyClient as string | undefined, connectionType: connection.connectionType });
+                const origin = { accountId: userId, sessionId: sid, localId: created.localId, client: socket.data.happyClient as string | undefined, connectionType: connection.connectionType };
+                void noteSessionMessage(origin);
+                // B-766: same rule for the briefing board's only open decision.
+                void noteAttentionOwnerMessage(origin);
                 const { updateSeq: updSeq, ...msg } = created;
 
                 // Emit new message update to relevant clients

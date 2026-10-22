@@ -1,6 +1,6 @@
 import { GitHubProfile as GitHubProfileType, GitHubOrg as GitHubOrgType } from "../app/api/types";
 import { ImageRef as ImageRefType } from "./files";
-import type { SessionMessageContent as WireSessionMessageContent, AutomationTrigger as WireAutomationTrigger, AutomationAction as WireAutomationAction, ProjectFolder as WireProjectFolder, ProjectDefaults as WireProjectDefaults } from "@slopus/happy-wire";
+import type { SessionMessageContent as WireSessionMessageContent, AutomationTrigger as WireAutomationTrigger, AutomationAction as WireAutomationAction, ProjectFolder as WireProjectFolder, ProjectDefaults as WireProjectDefaults, AttentionOption as WireAttentionOption, AttentionLink as WireAttentionLink, AttentionAnchor as WireAttentionAnchor } from "@slopus/happy-wire";
 declare global {
     namespace PrismaJson {
         // Session message content types
@@ -97,6 +97,11 @@ declare global {
         type ProjectFolders = WireProjectFolder[];
         type ProjectDefaults = WireProjectDefaults;
         type ProjectCapabilities = string[];
+
+        // B-766 briefing board
+        type AttentionOptions = WireAttentionOption[];
+        type AttentionLinks = WireAttentionLink[];
+        type AttentionAnchor = WireAttentionAnchor;
 
         type GitHubProfile = GitHubProfileType;
         type GitHubOrg = GitHubOrgType;

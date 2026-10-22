@@ -70,6 +70,7 @@ model Account {
     SessionGrantsReceived SessionGrant[] @relation("SessionGrantGrantee")
     SessionGrantsGiven    SessionGrant[] @relation("SessionGrantGrantedBy")
     SessionShareLinks     SessionShareLink[]
+    AttentionItems        AttentionItem[]
 }
 
 model AccountCredential {
@@ -268,6 +269,7 @@ model Session {
     grants            SessionGrant[]
     shareLinks        SessionShareLink[]
     projectMember     ProjectMember?
+    attentionItems    AttentionItem[]
 
     @@unique([accountId, tag])
     @@index([accountId, updatedAt(sort: Desc)])
@@ -916,4 +918,50 @@ model ProjectReadCursor {
     sessionId String   @id
     projectId String
     readAt    DateTime
+}
+
+/// B-766 汇报板 / Briefing (`specs/2026-10-owner-briefing.md`): one plaintext row per
+/// "needs you" item (lead posts, request_human, owner questions/pins, root-task
+/// submits). Same trust tier as AgentTeam / Project (Owner decision D1).
+model AttentionItem {
+    id            String    @id
+    accountId     String
+    account       Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    sessionId     String
+    session       Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    teamId        String?
+    projectId     String?
+    source        String
+    kind          String
+    /// Dedupe key: a repost of the same (sessionId, key) updates this row. Key-less posts use `req:<requestId>`.
+    key           String?
+    /// Last request applied; a retry with the same id is a no-op.
+    lastRequestId String?
+    title         String
+    bodyMd        String?
+    /// [AttentionOptions]
+    options       Json?
+    /// [AttentionLinks]
+    links         Json?
+    /// [AttentionAnchor]
+    anchor        Json?
+    /// [AttentionAnchor]
+    firstReply    Json?
+    replyToId     String?
+    needsOwner    Boolean
+    state         String
+    ownerChoice   String?
+    ownerNote     String?
+    resolvedBy    String?
+    resolveNote   String?
+    repostCount   Int       @default(0)
+    createdAt     DateTime  @default(now())
+    updatedAt     DateTime  @default(now())
+    resolvedAt    DateTime?
+    /// At-most-once push watermark; cleared only when a repost reopens a closed item.
+    pushedAt      DateTime?
+    version       Int       @default(1)
+    @@unique([sessionId, key])
+    @@index([accountId, state, needsOwner])
+    @@index([accountId, updatedAt])
 }

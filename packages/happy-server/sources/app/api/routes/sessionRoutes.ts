@@ -12,6 +12,7 @@ import { createSessionWithQuota, sessionCreateSchema } from '@/app/state/account
 import { activityCache } from '@/app/presence/sessionCache';
 import { allocateUserSeq } from '@/storage/seq';
 import { noteSessionArchived } from '@/app/automations/attentionLifecycle';
+import { noteAttentionSessionArchived } from '@/app/attention/store';
 import { fanoutSessionUpdateToGrantees, listSharedSessionRows, resolveSessionAccess, sharedSessionRowFor } from '@/app/session/sessionShares';
 
 /** B-265: one projection for the list and the by-id read, so the web sees the
@@ -439,6 +440,7 @@ export function sessionRoutes(app: Fastify) {
         await emitArchivedAtUpdate(userId, sessionId, archivedAt);
         // B-508: archiving is user intent (B-505) — attention runs about this session are resolved.
         void noteSessionArchived(userId, sessionId);
+        void noteAttentionSessionArchived(userId, sessionId);
 
         // Notify all clients about the session deactivation
         sessionActivityRelayGate.forget(sessionId);
