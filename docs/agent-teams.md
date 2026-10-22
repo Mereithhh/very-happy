@@ -72,6 +72,8 @@ another session counts as a member, and anything typed by a person (web, phone,
 desktop, terminal, a shared-session guest) is yours. Ordinary conversations and
 members' conversations have no switch. Rules: `screens/session/leadView.ts`.
 
+![Just me & the lead: member and system runs folded, Answered ↗ jump](screenshots/b766-lead-view/desktop-1440x900-light-answered-jump.png)
+
 In the sidebar's **By project** tree a team sits inside its project, beside the
 project's own sessions (teams outside every project are under **Not in a
 project**). Select a team's name (or press Enter) to open its team page — goal,
