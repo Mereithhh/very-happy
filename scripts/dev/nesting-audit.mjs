@@ -42,6 +42,7 @@ const PAGES = [
     { name: 'session', path: '/dev/depth/session/dev-depth', expand: '.ta-head', openTools: true, regions: { transcript: '.cl-inner', composer: '.sd-foot' } },
     { name: 'multiagent', path: '/dev/multi-agent/dev-multi-agent?drawer=sa-done', regions: { transcript: '.cl-inner', composer: '.sd-foot', sidepanel: '.sd-files' } },
     { name: 'codexpanel', path: '/dev/multi-agent/dev-multi-agent?drawer=codex-spawn', regions: { sidepanel: '.sd-files' } },
+    { name: 'board', path: '/dev/board/session/dev-board?panel=board', regions: { transcript: '.cl-inner', sidepanel: '.sd-files' } },
     { name: 'sidebar', path: '/dev/sidebar', regions: { sidebar: '.sb' } },
     { name: 'teams', path: '/dev/multi-agent-teams', regions: { teams: '.teams-screen' } },
     // B-754: every runner's tool card, expanded.
