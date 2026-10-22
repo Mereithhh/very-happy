@@ -21,10 +21,12 @@ const TERMS = new Set([
   '32c2fd7428ae3e719487ac1f4549d295b149ba64d8f92b2a002f21bd99537aa7',
   '40478ea553a14e0c5c3d21ceae0b9d0b7589204b5e648315d1e51e2ab2fa2b0f',
   '8ba493f2e2ece9dcab6f58c85d64cfd5b768d3ced2eccb89915a3622cfffd333',
+  '79383dd3e0fe8d495240818ea48154cc2baa34c2d103578fe038650753db05fd',
+  '16d3fc1f8837ed2c29a81e7c14fc8e243a52d2578492e3d5ea8d21cc55e44626',
 ]);
 // Lengths (in code points) of the hashed terms, per script.
-const ASCII_LENGTHS = [7, 8, 9];
-const CJK_LENGTHS = [6, 7];
+const ASCII_LENGTHS = [7, 8, 9, 13];
+const CJK_LENGTHS = [2, 6, 7];
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 

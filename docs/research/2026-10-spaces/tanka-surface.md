@@ -1,6 +1,6 @@
 # Tanka / Ridge 接入面调研
 
-> 2026-10-17 子代理调研，来源在 mereith 的 skills 仓（messaging/tanka、apodex-product/ridge、company-infra/sso）与 open.tanka.ai。供 specs/2026-10-spaces-a2a.design.md 引用。
+> 2026-10-17 子代理调研，来源为内部知识库（消息渠道、数据平台与 SSO 相关笔记）与 open.tanka.ai。供 specs/2026-10-spaces-a2a.design.md 引用。
 
 ## 结论
 「数据在 Tanka 体系内」在现有能力下只能落成「Tanka 身份 + Tanka AI 能经 Ridge 查到 very-happy 数据 + 事件进 Tanka 群」，做不到把空间/会话物理存进 Tanka：开放平台没有自定义 agent 注册、没有普通消息事件订阅、建群/拉人 restricted。
