@@ -14,12 +14,33 @@
   min-height: 0;
 }
 .sd-body {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
+/* B-752: the calm ASCII field sits behind the transcript and does not scroll
+   with it. It is the first positioned child, so the (positioned, z-index auto)
+   transcript paints above it without a new stacking context — fixed popovers
+   inside the chat keep their z-index against the composer and the app.
+   Wide: two strips in the margins beside the 820px column (ChatBackdrop's
+   backdropLayout), each fading out toward the text with an opaque canvas
+   gradient — no CSS mask, which would cost an offscreen pass every frame.
+   Narrow (no margins): one field at half strength. Both fade out above the
+   composer. */
+.sd-body > * { position: relative; }
+.sd-body > .sd-backdrop { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.sd-backdrop > .sd-backdrop__side { right: auto; width: calc((100% - 820px) / 2 + var(--sp-4)); }
+.sd-backdrop > .sd-backdrop__side--end { right: 0; left: auto; }
+.sd-backdrop__side::after { position: absolute; z-index: 1; top: 0; bottom: 0; width: var(--sp-12); pointer-events: none; content: ''; }
+.sd-backdrop__side--start::after { right: 0; background: linear-gradient(90deg, transparent, var(--bg-0)); }
+.sd-backdrop__side--end::after { left: 0; background: linear-gradient(270deg, transparent, var(--bg-0)); }
+.sd-backdrop > .ascii-field::before { position: absolute; z-index: 1; right: 0; bottom: 0; left: 0; height: var(--sp-10); background: linear-gradient(transparent, var(--bg-0)); pointer-events: none; content: ''; }
+.sd-backdrop--full > .ascii-field { --ascii-gain: 0.5; }
+:root[data-theme='light'] .sd-backdrop--full > .ascii-field { --ascii-gain: 0.68; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .sd-backdrop--full > .ascii-field { --ascii-gain: 0.68; } }
 .sd-foot {
   flex: none;
   position: relative;

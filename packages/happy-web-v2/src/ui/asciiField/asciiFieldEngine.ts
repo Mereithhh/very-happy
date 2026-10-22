@@ -14,8 +14,10 @@
  *    Far layers use a lower resolution and a blur baked into their atlas.
  *  - Creatures are small `<pre>` elements moved by transform.
  * Timing rules: ≤ preset fps (cap 30) via rAF + `frameDue`; paused while the tab
- * is hidden or the host is off-screen (IntersectionObserver); under
- * prefers-reduced-motion a single still is drawn and no loop runs.
+ * is hidden, the host is off-screen (IntersectionObserver) or the owner set
+ * pace 0 (`setPace`, B-752: the chat backdrop while scrolling); under
+ * prefers-reduced-motion (or a preset's `liteStill` on the lite tier) a single
+ * still is drawn and no loop runs.
  * Everything browser-shaped comes through `AsciiFieldEnv` so tests can drive it.
  */
 import { boxBlurAlpha, packInk, stampGlyph, type GlyphBitmap } from './asciiRaster';
@@ -86,6 +88,11 @@ export interface AsciiFieldController {
   /** True while the rAF loop is scheduled. */
   running(): boolean;
   reducedMotion(): boolean;
+  /**
+   * B-752 — frame-rate override: 0 pauses the loop (the last frame stays on
+   * screen), n caps it at n fps, null restores the preset's rate.
+   */
+  setPace(fps: number | null): void;
   stop(): void;
 }
 
@@ -100,6 +107,8 @@ export interface AsciiFieldOptions {
   tier?: AsciiFieldTier;
   /** Main-thread ms per frame shared by all fields for incremental re-rendering. */
   budgetMs?: number;
+  /** World offset in CSS px, so sibling fields (B-752's two chat margins) do not show the same pattern. */
+  originX?: number;
 }
 
 interface Plane {
@@ -183,9 +192,12 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   const budgetMs = options.budgetMs ?? FRAME_BUDGET_MS;
   const reducedQuery = env.matchMedia('(prefers-reduced-motion: reduce)');
   const schemeQuery = env.matchMedia('(prefers-color-scheme: dark)');
-  let reduced = reducedQuery?.matches === true;
+  // A still-only tier behaves exactly like reduced motion: one frame, no loop.
+  const stillOnly = tier === 'lite' && spec.liteStill === true;
+  let reduced = stillOnly || reducedQuery?.matches === true;
   let raf: number | null = null;
   let stopped = false;
+  let pace: number | null = null;
   let intersecting = true;
   let width = 0;
   let height = 0;
@@ -212,6 +224,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
     stats,
     running: () => raf !== null,
     reducedMotion: () => reduced,
+    setPace,
     stop,
   };
 
@@ -366,7 +379,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
    */
   function camera(l: Layer, t: number, scroll: number): [number, number] {
     const s = l.spec;
-    const cx = -s.driftX * t - (mouse.x * s.mousePx) / l.cellW;
+    const cx = (options.originX ?? 0) / l.cellW - s.driftX * t - (mouse.x * s.mousePx) / l.cellW;
     const shift = Math.max(-l.scrollRoom, Math.min(l.scrollRoom, scroll * s.scroll));
     const cy = -s.driftY * t - (mouse.y * s.mousePx) / l.cellH + shift / l.cellH;
     return [cx, cy];
@@ -552,7 +565,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
     raf = null;
     if (stopped) return;
     schedule();
-    if (!frameDue(now, lastTick, spec.fps)) return;
+    if (!frameDue(now, lastTick, pace === null ? spec.fps : Math.min(spec.fps, pace))) return;
     const start = env.now();
     const dt = lastFrameAt ? Math.min(0.1, (now - lastFrameAt) / 1000) : 0;
     lastFrameAt = now;
@@ -570,7 +583,16 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   }
 
   function active() {
-    return !stopped && !reduced && !env.doc.hidden && intersecting;
+    return !stopped && !reduced && !env.doc.hidden && intersecting && pace !== 0;
+  }
+
+  function setPace(fps: number | null) {
+    const next = fps === null ? null : Math.max(0, fps);
+    if (next === pace) return;
+    // Resuming must not jump either (same as visibility).
+    if (next === 0) lastFrameAt = 0;
+    pace = next;
+    schedule();
   }
 
   function schedule() {
@@ -589,7 +611,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   }
 
   function onReducedChange() {
-    reduced = reducedQuery?.matches === true;
+    reduced = stillOnly || reducedQuery?.matches === true;
     if (reduced) paintStatic();
     else { nextSpawn = clock + 1; }
     lastFrameAt = 0;

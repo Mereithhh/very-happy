@@ -68,15 +68,22 @@ export interface AsciiFieldProps {
   /** Let the Very Happy mark swim by among the creatures. */
   mark?: boolean;
   className?: string;
+  /** B-752 — frame-rate override (0 = paused, n = cap, null/absent = preset); see `backdropPace`. */
+  pace?: number | null;
+  /** World offset in CSS px (see AsciiFieldOptions.originX). */
+  originX?: number;
   /** Test seams. */
   loadEngine?: () => Promise<EngineModule>;
   env?: AsciiFieldEnv;
   defer?: (fn: () => void) => () => void;
 }
 
-export function AsciiField({ preset, mark, className, loadEngine = loadEngineDefault, env, defer = whenIdle }: AsciiFieldProps) {
+export function AsciiField({ preset, mark, className, pace = null, originX, loadEngine = loadEngineDefault, env, defer = whenIdle }: AsciiFieldProps) {
   const [enabled] = useAsciiMotion();
   const hostRef = useRef<HTMLDivElement>(null);
+  const controllerRef = useRef<AsciiFieldController | null>(null);
+  const paceRef = useRef(pace);
+  paceRef.current = pace;
 
   useEffect(() => {
     if (!enabled) return;
@@ -87,16 +94,22 @@ export function AsciiField({ preset, mark, className, loadEngine = loadEngineDef
     const cancelDefer = defer(() => {
       void loadEngine().then(({ startAsciiField }) => {
         if (disposed) return;
-        controller = startAsciiField(host, { preset, mark, onFirstFrame: () => host.classList.add('is-ready') }, env);
+        controller = startAsciiField(host, { preset, mark, originX, onFirstFrame: () => host.classList.add('is-ready') }, env);
+        controller.setPace(paceRef.current);
+        controllerRef.current = controller;
       }).catch(() => { /* decoration only: a failed chunk load leaves the plain background */ });
     });
     return () => {
       disposed = true;
       cancelDefer();
       controller?.stop();
+      controllerRef.current = null;
       host.classList.remove('is-ready');
     };
-  }, [enabled, preset, mark, loadEngine, env, defer]);
+  }, [enabled, preset, mark, originX, loadEngine, env, defer]);
+
+  // Pace changes (scroll / streaming) never restart the engine.
+  useEffect(() => { controllerRef.current?.setPace(pace); }, [pace]);
 
   if (!enabled) return null;
   return (
