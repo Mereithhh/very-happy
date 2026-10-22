@@ -3,14 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FolderKanban, MoreHorizontal, Plus, Settings2 } from 'lucide-react';
 import type { ProjectView } from '@slopus/happy-wire';
 import { ActionContextMenu, ActionDropdownMenu } from '@/ui';
-import { Modal } from '@/modal';
-import { projectsApi, refreshProjects, useProjects } from '@/sync/projects';
+import { projectsApi, useProjects } from '@/sync/projects';
 import { useBoardItems } from '@/screens/board/useBoardItems';
 import { attentionKeysOf } from '@/screens/sessions/sidebarAttention';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import { useTranslation } from '@/i18n/useTranslation';
-import { toast } from '@/ui/Toast';
 import type { RecentMachinePath } from '@/utils/quickChat';
+import { NewProjectDialog } from './NewProjectDialog';
 import { newSessionInProject, projectMenuItems } from './projectActions';
 import { projectListModel } from './projectList';
 import { projectMenuCopy, projectPath, projectPrimaryFolder, projectSettingsPath } from './projectMenu';
@@ -24,7 +23,7 @@ import './projects.css';
  * sidebar group head. Archived projects fold behind 「已归档」.
  */
 export function ProjectsListScreen() {
-  const { t, lang } = useTranslation();
+  const { lang } = useTranslation();
   const zh = lang.startsWith('zh');
   const navigate = useNavigate();
   const snap = useProjects();
@@ -32,6 +31,8 @@ export function ProjectsListScreen() {
   const attentionKeys = useMemo(() => attentionKeysOf(boardItems), [boardItems]);
   const [archived, setArchived] = useState<ProjectView[] | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  // B-755: the one 新建项目 dialog (name + folder + context); it opens the new project when done.
+  const [creating, setCreating] = useState(false);
   const [configure, setConfigure] = useState<{ open: boolean; target?: RecentMachinePath }>({ open: false });
   const openConfigure = (target?: RecentMachinePath) => setConfigure({ open: true, target });
 
@@ -49,20 +50,6 @@ export function ProjectsListScreen() {
     ? { title: '项目', back: '会话', create: '新建项目', empty: '还没有项目。项目把相关会话、说明和记录放在一起。', unavailable: '这个服务器还不支持项目', loading: '正在加载…', sessions: (n: number) => `${n} 个会话`, teams: (n: number) => `${n} 个团队`, attention: (n: number) => `${n} 个等你处理`, showArchived: '显示已归档', hideArchived: '隐藏已归档', noArchived: '没有已归档的项目', noFolder: '还没有目录' }
     : { title: 'Projects', back: 'Sessions', create: 'New project', empty: 'No projects yet. A project keeps related sessions, instructions and a log together.', unavailable: 'This server does not support projects yet', loading: 'Loading…', sessions: (n: number) => `${n} session${n === 1 ? '' : 's'}`, teams: (n: number) => `${n} team${n === 1 ? '' : 's'}`, attention: (n: number) => `${n} waiting for you`, showArchived: 'Show archived', hideArchived: 'Hide archived', noArchived: 'No archived projects', noFolder: 'No folder yet' };
   const menuCopy = projectMenuCopy(zh);
-
-  const createProject = async () => {
-    const name = (await Modal.prompt(t('sidebar.newProject') as string, t('sidebar.newProjectPrompt') as string))?.trim();
-    if (!name) return;
-    try {
-      const { project } = await projectsApi.create({ name: name.slice(0, 120), folders: [] });
-      toast.success(t('sidebar.makeProjectDone', { name: project.name }) as string);
-      navigate(projectPath(project.id));
-    } catch {
-      toast.error(t('sidebar.makeProjectFailed') as string);
-    } finally {
-      void refreshProjects();
-    }
-  };
 
   const renderRow = (entry: (typeof model)[number]) => {
     const p = entry.project;
@@ -100,7 +87,7 @@ export function ProjectsListScreen() {
           <Link className="pj-back" to="/"><ArrowLeft size={16} />{c.back}</Link>
           <h1><FolderKanban size={22} aria-hidden />{c.title}</h1>
         </div>
-        {snap.status === 'ready' && <button type="button" className="pj-primary pjl-create" onClick={() => void createProject()}><Plus size={14} />{c.create}</button>}
+        {snap.status === 'ready' && <button type="button" className="pj-primary pjl-create" onClick={() => setCreating(true)}><Plus size={14} />{c.create}</button>}
       </header>
       {snap.status === 'unavailable' ? <p className="pj-muted">{c.unavailable}</p>
         : snap.status === 'loading' ? <p className="pj-muted">{c.loading}</p>
@@ -112,6 +99,7 @@ export function ProjectsListScreen() {
           {showArchived && (archived === null ? <p className="pj-muted">{c.loading}</p> : archivedModel.length === 0 ? <p className="pj-muted">{c.noArchived}</p> : <ul className="pjl-list">{archivedModel.map(renderRow)}</ul>)}
         </section>
       )}
+      {creating && <NewProjectDialog onClose={() => setCreating(false)} />}
       {configure.open && <NewSessionModal initialLocation={configure.target} onClose={() => setConfigure({ open: false })} />}
     </main>
   );
