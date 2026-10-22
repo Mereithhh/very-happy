@@ -8,7 +8,7 @@ import { OperationError } from "./OperationError";
 import { useTranslation } from "@/i18n/useTranslation";
 import { Link } from "react-router-dom";
 import { botHistorySessionId } from "@/screens/sessions/teamNavigation";
-import { teamTaskState, type MemberExecution, type TeamTaskState } from "./teamTaskState";
+import { teamCleanupBlockingLaunch, teamTaskState, type MemberExecution, type TeamTaskState } from "./teamTaskState";
 import { useMemberExecution } from "./useMemberExecution";
 import { TeamTaskStatePill } from "./TeamTaskStatePill";
 import type { TranslationKey } from "@/text";
@@ -20,6 +20,7 @@ export function labelColon(lang: string): string {
 
 /** B-761: why an unfinished task is not「运行中」, and what the owner can do. */
 const STATE_HINT: Partial<Record<TeamTaskState, TranslationKey>> = {
+  cleanupBlocked: "teams.taskStateHint.cleanupBlocked",
   idle: "teams.taskStateHint.idle", waiting: "teams.taskStateHint.waiting",
   stopped: "teams.taskStateHint.stopped", checking: "teams.taskStateHint.checking",
 };
@@ -41,8 +42,9 @@ export function TeamTaskSummary({ team, task, launchIssue, execution }: { team: 
       <strong className="teams-multiline">{task.goal}</strong>
       <TeamTaskStatePill state={state} />
     </div>
-    {hint && <div className={`teams-task-state-hint${state === "stopped" ? " teams-error" : ""}`} role={state === "stopped" ? "alert" : "status"}>
+    {hint && <div className={`teams-task-state-hint${state === "stopped" || state === "cleanupBlocked" ? " teams-error" : ""}`} role={state === "stopped" || state === "cleanupBlocked" ? "alert" : "status"}>
       <p>{tr(hint)}</p>
+      {state === "cleanupBlocked" && <OperationError error={teamCleanupBlockingLaunch(team, task)?.error} />}
       {(state === "stopped" || state === "idle" || state === "waiting") && memberSession && <Link to={`/session/${encodeURIComponent(memberSession)}`}>{tr("teams.openMemberSession")} →</Link>}
     </div>}
     {/* B-689: the screen supplies the actionable block (Retry launch); this is the read-only fallback. */}

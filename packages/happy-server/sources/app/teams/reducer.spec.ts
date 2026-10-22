@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TeamAction, TeamState } from '@slopus/happy-wire';
-import { reduceTeam, teamView, occupiedTeamWorkSlots, otherTeamBinding, transferSessionOut, type TeamActor } from './reducer';
+import { reduceTeam, teamView, CLEANUP_HELD_HINT, CLEANUP_RETAINED_HINT, TeamError, occupiedTeamWorkSlots, otherTeamBinding, transferSessionOut, type TeamActor } from './reducer';
 
 const owner: TeamActor = { kind: 'owner' };
 const empty = (): TeamState => ({ id: 'team', name: 'Team', machineId: 'machine', version: 0, bots: [], tasks: [], messages: [], operations: [], createdAt: 1 });
@@ -430,10 +430,11 @@ describe('B-692 member lifecycle', () => {
         const first = f.act({ type: 'delegate', goal: 'one', acceptance: ['a'] });
         launch(f, first.taskId!, 'old-session');
         const stop = finish(f, first.taskId!);
+        // B-775: queued while the cleanup was still running; the cleanup then fails (old CLI: no sessionStopped).
+        const second = f.act({ type: 'delegate', goal: 'two', acceptance: ['a'], assigneeBotId: f.state.bots[0].id });
         f.act({ type: 'claim-operation', operationId: stop.id, machineId: 'machine' });
         const claimId = f.state.operations.find(o => o.id === stop.id)!.claimId!;
         f.act({ type: 'fail-operation', operationId: stop.id, machineId: 'machine', claimId, error: 'Unmerged work retained' });
-        const second = f.act({ type: 'delegate', goal: 'two', acceptance: ['a'], assigneeBotId: f.state.bots[0].id });
         f.act({ type: 'reconcile-operation', operationId: stop.id, claimId, note: 'pushed by hand' });
         expect(f.state.bots[0].sessionId).toBeNull();
         launch(f, second.taskId!, 'new-session');
@@ -490,5 +491,101 @@ describe('B-730 one live team per session', () => {
         expect(after.bots[1]).toEqual(before.bots[1]);
         expect(after.version).toBe(before.version + 1);
         expect(before.bots[0].sessionId).toBe('s');
+    });
+});
+
+describe('B-775 a failed member cleanup never strands the member', () => {
+    const lead = (f: ReturnType<typeof fixture>) => {
+        f.act({ type: 'join', name: 'Lead', sessionId: 'lead-session' });
+        const bot = f.state.bots.find(b => b.root)!;
+        return { kind: 'agent' as const, botId: bot.id, generation: bot.generation };
+    };
+    const opById = (f: ReturnType<typeof fixture>, id: string) => f.state.operations.find(o => o.id === id)!;
+    const launch = (f: ReturnType<typeof fixture>, taskId: string, sessionId: string) => {
+        const op = f.state.operations.filter(o => o.taskId === taskId && o.type === 'spawn').pop()!;
+        f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: op.id, machineId: 'machine' });
+        f.act({ type: 'complete-operation', operationId: op.id, machineId: 'machine', claimId: opById(f, op.id).claimId!, sessionId, workingDirectory: `/home/.happy/teams/worktrees/${op.id}` });
+    };
+    /** Lead delegates to Worker, it submits, the lead accepts → cleanup stop for Worker's session. */
+    const acceptedWork = (f: ReturnType<typeof fixture>, actor: TeamActor) => {
+        const first = f.act({ type: 'delegate', goal: 'one', acceptance: ['a'], botName: 'Worker' }, actor);
+        launch(f, first.taskId!, 'worker-1');
+        const t = f.state.tasks.find(t => t.id === first.taskId)!;
+        f.act({ type: 'submit', taskId: t.id, attemptId: t.currentAttemptId, goalVersion: 1, result: 'ok' });
+        f.act({ type: 'accept', taskId: t.id, attemptId: t.currentAttemptId, goalVersion: 1 }, actor);
+        const stop = f.state.operations.filter(o => o.type === 'stop' && o.taskId === t.id).pop()!;
+        f.act({ type: 'claim-operation', operationId: stop.id, machineId: 'machine' });
+        return { worker: f.state.bots.find(b => b.name === 'Worker')!, stop: opById(f, stop.id), task: t };
+    };
+    const failStop = (f: ReturnType<typeof fixture>, stopId: string, error: string, sessionStopped?: boolean) =>
+        f.act({ type: 'fail-operation', operationId: stopId, machineId: 'machine', claimId: opById(f, stopId).claimId!, error, ...(sessionStopped ? { sessionStopped } : {}) });
+
+    it('QA5 O4: a cleanup that stopped the session but kept unmerged work lets the next task launch in a fresh worktree', () => {
+        const f = fixture(); const actor = lead(f);
+        const { worker, stop } = acceptedWork(f, actor);
+        // N1/M1: delegated while the cleanup was still running → queued behind it, generation bumped.
+        const next = f.act({ type: 'delegate', goal: 'two', acceptance: ['a'], assigneeBotId: worker.id }, actor);
+        failStop(f, stop.id, 'Unmerged work retained on codex/team-x at /wt: 1 commit is not pushed or merged; push or merge, then retry cleanup', true);
+        expect(f.state.bots.find(b => b.id === worker.id)?.sessionId).toBeNull();
+        expect(opById(f, stop.id)).toMatchObject({ status: 'failed' }); // still the owner's to resolve
+        launch(f, next.taskId!, 'worker-2'); // pre-fix: claim threw bot_cleanup_pending forever
+        expect(f.state.tasks.find(t => t.id === next.taskId)?.status).toBe('running');
+        expect(f.state.bots.find(b => b.id === worker.id)).toMatchObject({ sessionId: 'worker-2', previousSessionIds: ['worker-1'] });
+        // A later report of the same retained cleanup (5-min re-check) never unbinds the member's new session.
+        failStop(f, stop.id, 'Uncommitted work retained at /wt (1 changed file): commit and push it, or discard it, then retry cleanup', true);
+        expect(f.state.bots.find(b => b.id === worker.id)?.sessionId).toBe('worker-2');
+        const view = teamView(f.state, actor);
+        expect(view.cleanupIssues).toEqual([expect.objectContaining({ botId: worker.id, operationId: stop.id, holdsSession: false, waitingTaskIds: [], hint: CLEANUP_RETAINED_HINT })]);
+    });
+
+    it('a failed cleanup that still holds the session is refused up front, visible, and never stacks a second stop', () => {
+        const f = fixture(); const actor = lead(f);
+        const { worker, stop, task } = acceptedWork(f, actor);
+        const queued = f.act({ type: 'delegate', goal: 'queued before the failure', acceptance: ['a'], assigneeBotId: worker.id }, actor);
+        failStop(f, stop.id, 'Original worktree ownership is unknown; manual reconciliation required'); // old CLI: no sessionStopped
+        const spawn = f.state.operations.find(o => o.type === 'spawn' && o.taskId === queued.taskId)!;
+        expect(() => f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: spawn.id, machineId: 'machine' })).toThrow('bot_cleanup_pending');
+        expect(teamView(f.state, actor).cleanupIssues).toEqual([expect.objectContaining({ botId: worker.id, name: 'Worker', holdsSession: true, waitingTaskIds: [queued.taskId], hint: CLEANUP_HELD_HINT })]);
+        // The lead heard about it once, as a system notice on the accepted task.
+        const notices = f.state.messages.filter(m => m.taskId === task.id && m.body.startsWith('Cleanup of Worker'));
+        expect(notices).toHaveLength(1);
+        expect(notices[0]).toMatchObject({ recipientBotId: actor.botId, source: 'system' });
+        expect(notices[0].body).toContain(CLEANUP_HELD_HINT);
+        failStop(f, stop.id, 'a different reason on retry');
+        expect(f.state.messages.filter(m => m.body.startsWith('Cleanup of Worker'))).toHaveLength(1);
+        // Cancelling the stranded task must not add a stop for a session that is not its own (N1: gen 2/3 stops).
+        const q = f.state.tasks.find(t => t.id === queued.taskId)!;
+        const stops = f.state.operations.filter(o => o.type === 'stop').length;
+        f.act({ type: 'cancel', taskId: q.id, attemptId: q.currentAttemptId, goalVersion: 1, reason: 'reassign' }, actor);
+        expect(f.state.operations.filter(o => o.type === 'stop')).toHaveLength(stops);
+        expect(f.state.tasks.find(t => t.id === q.id)?.cleanup).toBe('none');
+        // New work for the member is refused with the reason instead of waiting for ever.
+        let refusal: unknown;
+        try { f.act({ type: 'delegate', goal: 'three', acceptance: ['a'], assigneeBotId: worker.id }, actor); } catch (error) { refusal = error; }
+        expect(refusal).toBeInstanceOf(TeamError);
+        expect(refusal).toMatchObject({ code: 'bot_cleanup_failed', status: 409, details: { botId: worker.id, botName: 'Worker', operationId: stop.id, cleanupError: 'a different reason on retry', hint: CLEANUP_HELD_HINT } });
+        const other = f.act({ type: 'delegate', goal: 'four', acceptance: ['a'], botName: 'Other' }, actor);
+        launch(f, other.taskId!, 'other-1');
+        const o = f.state.tasks.find(t => t.id === other.taskId)!;
+        f.act({ type: 'submit', taskId: o.id, attemptId: o.currentAttemptId, goalVersion: 1, result: 'r' }, { kind: 'owner' });
+        expect(() => f.act({ type: 'handoff', taskId: o.id, attemptId: o.currentAttemptId, goalVersion: 1, assigneeBotId: worker.id }, actor)).toThrow('bot_cleanup_failed');
+        // The owner resolves it → the member takes work again.
+        f.act({ type: 'reconcile-operation', operationId: stop.id, claimId: opById(f, stop.id).claimId!, note: 'pushed by hand' });
+        expect(teamView(f.state, actor).cleanupIssues).toEqual([]);
+        const again = f.act({ type: 'delegate', goal: 'five', acceptance: ['a'], assigneeBotId: worker.id }, actor);
+        launch(f, again.taskId!, 'worker-3');
+        expect(f.state.tasks.find(t => t.id === again.taskId)?.status).toBe('running');
+    });
+
+    it('a cleanup still in flight keeps queueing (B-692) and sessionStopped never unbinds another session', () => {
+        const f = fixture(); const actor = lead(f);
+        const { worker, stop } = acceptedWork(f, actor);
+        const queued = f.act({ type: 'delegate', goal: 'two', acceptance: ['a'], assigneeBotId: worker.id }, actor);
+        expect(f.state.tasks.find(t => t.id === queued.taskId)?.status).toBe('queued');
+        expect(teamView(f.state, actor).cleanupIssues).toEqual([]);
+        const leadBot = f.state.bots.find(b => b.root)!;
+        expect(leadBot.sessionId).toBe('lead-session');
+        failStop(f, stop.id, 'Uncommitted work retained', true);
+        expect(f.state.bots.find(b => b.root)?.sessionId).toBe('lead-session');
     });
 });

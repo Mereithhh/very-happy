@@ -1,8 +1,8 @@
-import { teamBotActivity, teamMemberCounts, type TeamAction, type TeamState, type TeamBot, type TeamTask, type TeamOperation } from '@slopus/happy-wire';
+import { teamBotActivity, teamCleanupHoldsSession, teamCleanupIssues, teamMemberCounts, type TeamAction, type TeamCleanupIssue, type TeamState, type TeamBot, type TeamTask, type TeamOperation } from '@slopus/happy-wire';
 
 export type TeamActor = { kind: 'owner' } | { kind: 'agent'; botId: string; generation: number };
 export { TeamError, requireTeam } from './errors';
-import { requireTeam } from './errors';
+import { requireTeam, TeamError } from './errors';
 import { applyScheduleAction, acknowledgeScheduleMessage } from './schedules';
 import { idleDigest, idleMembersFor } from './teamIdle';
 export function inTaskTree(state: TeamState, task: TeamTask, ancestorId: string): boolean {
@@ -61,7 +61,15 @@ export function actorCanReadTask(state: TeamState, actor: TeamActor, task: TeamT
 }
 export function teamView(state: TeamState, actor: TeamActor): TeamState {
     const view = withMemberActivity(scopedTeamView(state, actor), state);
-    return actor.kind === 'agent' ? { ...view, idleMembers: idleMembersFor(state, actor.botId) } : view;
+    return actor.kind === 'agent' ? { ...view, idleMembers: idleMembersFor(state, actor.botId), cleanupIssues: cleanupIssuesFor(state, view) } : view;
+}
+/** B-775: what the reader must know about a member cleanup that failed — agents cannot
+ *  resolve it (reconcile / retry are owner actions), so the hint says who can and what waits. */
+export const CLEANUP_HELD_HINT = 'New work for this member cannot start until the owner retries this cleanup or marks it handled on the team page (需要处理). Delegate to another member meanwhile.';
+export const CLEANUP_RETAINED_HINT = 'The member\'s session is stopped; new work for it starts in a fresh worktree. The retained worktree waits for the owner (team page → 需要处理).';
+function cleanupIssuesFor(state: TeamState, view: TeamState): TeamCleanupIssue[] {
+    const visible = new Set(view.bots.map(b => b.id));
+    return teamCleanupIssues(state).filter(issue => visible.has(issue.botId)).map(issue => ({ ...issue, error: issue.error?.slice(0, 300) ?? null, hint: issue.holdsSession ? CLEANUP_HELD_HINT : CLEANUP_RETAINED_HINT }));
 }
 /** B-692: response-only derived fields (never persisted): each bot's activity
  *  and the team's member counts, from the full state. */
@@ -134,12 +142,21 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
     // B-769b: new work restarts the bot's idle clock — an idle (and its long-idle notice) from
     // before belongs to the previous task, not to this attempt (teamIdle.idleSince).
     const assigned = (bot: TeamBot) => { bot.workAssignedAt = now; delete bot.idleEscalatedAt; };
+    // B-775: work for a member whose failed cleanup still holds its session would wait for the owner
+    // indefinitely (the launch is never claimable) — refuse it now, with the reason, instead.
+    const refuseFailedCleanup = (bot: TeamBot) => {
+        const held = teamCleanupHoldsSession(s, bot.id);
+        if (held && (held.status === 'failed' || held.status === 'unknown')) throw new TeamError('bot_cleanup_failed', 409, { botId: bot.id, botName: bot.name, operationId: held.id, cleanupError: held.error?.slice(0, 300) ?? null, hint: CLEANUP_HELD_HINT });
+    };
     const cleanup = (t: TeamTask) => {
         const bot = s.bots.find(b => b.id === t.assigneeBotId)!;
         const spawn = s.operations.find(o => o.type === 'spawn' && o.attemptId === t.currentAttemptId);
         if (spawn?.status === 'pending') { spawn.status = 'failed'; spawn.error = 'task_closed_before_spawn'; }
         const otherWork = s.tasks.some(other => other.id !== t.id && other.assigneeBotId === bot.id && !['done', 'cancelled'].includes(other.status));
-        if (bot.managed && !otherWork && (bot.sessionId || spawn?.status === 'claimed' || spawn?.status === 'unknown')) {
+        // B-775: a session an unresolved cleanup already targets is not this task's: its launch
+        // never ran (it waited behind that cleanup). A second stop for it could never find its
+        // worktree ("Original worktree ownership is unknown") and blocked the member for good.
+        if (bot.managed && !otherWork && !teamCleanupHoldsSession(s, bot.id) && (bot.sessionId || spawn?.status === 'claimed' || spawn?.status === 'unknown')) {
             t.cleanup = 'pending';
             if (bot.sessionId) operation(t, bot, 'stop');
         }
@@ -260,6 +277,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             // B-692: a bot whose cleanup has not finished is no longer refused (409
             // made leads create a new bot every time): the task queues and its launch
             // is claimable only after the cleanup completes (see claim-operation).
+            refuseFailedCleanup(bot);
             const stopping = s.operations.some(o => o.botId === bot!.id && o.type === 'stop' && o.status !== 'completed');
             requireTeam(!s.tasks.some(t => t.assigneeBotId === bot!.id && !['done', 'cancelled'].includes(t.status)), 'bot_busy');
             const bound = !!bot.sessionId && !stopping;
@@ -325,7 +343,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             requireTeam(!s.tasks.some(child => child.parentTaskId === t.id && !['done', 'cancelled'].includes(child.status)), 'children_unfinished');
             const bot = s.bots.find(b => b.id === action.assigneeBotId); requireTeam(bot, 'bot_not_found', 404);
             requireTeam(bot.id !== t.assigneeBotId, 'same_assignee');
-            requireTeam(!s.operations.some(o => o.botId === bot.id && o.type === 'stop' && o.status !== 'completed'), 'bot_cleanup_pending');
+            refuseFailedCleanup(bot);
+            requireTeam(!teamCleanupHoldsSession(s, bot.id), 'bot_cleanup_pending');
             requireTeam(!s.tasks.some(other => other.assigneeBotId === bot.id && !['done', 'cancelled'].includes(other.status)), 'bot_busy');
             if (actor.kind === 'agent') requireTeam(currentBot?.root || s.tasks.some(other => actorCanReadTask(s, actor, other) && other.assigneeBotId === bot.id), 'bot_outside_scope', 403);
             cleanup(t); t.attempts.find(a => a.id === t.currentAttemptId)!.status = 'superseded';
@@ -375,7 +394,9 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             requireTeam(op.status === 'pending', 'operation_not_pending');
             requireTeam(!op.teamLaunchVersion || action.teamLaunchVersion === 1, 'team_launch_upgrade_required');
             // B-692: a launch queued behind its bot's cleanup waits for it (the daemon retries the claim).
-            if (op.type === 'spawn') requireTeam(!s.operations.some(o => o.botId === op.botId && o.type === 'stop' && o.status !== 'completed'), 'bot_cleanup_pending');
+            // B-775: only while that cleanup still holds the member's session — a failed cleanup whose
+            // session was stopped keeps just its worktree, and the launch gets a fresh one.
+            if (op.type === 'spawn') requireTeam(!teamCleanupHoldsSession(s, op.botId), 'bot_cleanup_pending');
             if (op.type === 'spawn' && !s.bots.find(b => b.id === op.botId)?.root && s.defaults?.maxParallel) {
                 const occupied = occupiedTeamWorkSlots(s);
                 requireTeam(occupied.size < s.defaults.maxParallel, 'team_parallel_limit');
@@ -392,8 +413,19 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             const bot = s.bots.find(b => b.id === op.botId)!;
             const t = s.tasks.find(t => t.id === op.taskId)!;
             if (action.type === 'fail-operation') {
+                const first = op.status === 'claimed';
                 op.status = action.unknown ? 'unknown' : 'failed'; op.error = action.error;
-                if (op.type === 'stop') t.cleanup = 'failed';
+                if (op.type === 'stop') {
+                    t.cleanup = 'failed';
+                    // B-775: the wrapper is gone and only its worktree is retained — unbind the session
+                    // so the member can take new work (a fresh worktree); the owner still resolves this op.
+                    if (action.sessionStopped && op.sessionId && bot.sessionId === op.sessionId) releaseBotSession(bot);
+                    // Best effort: a full message log must never make the failure report itself fail.
+                    if (first && s.messages.length < 2000) {
+                        msg(t, t.ownerBotId, `Cleanup of ${bot.name} after task ${t.id} kept its resources: ${action.error.slice(0, 300)}\n${teamCleanupHoldsSession(s, bot.id) ? CLEANUP_HELD_HINT : CLEANUP_RETAINED_HINT}`);
+                        if (t.ownerBotId) s.messages[s.messages.length - 1].source = 'system';
+                    }
+                }
             } else {
                 if (op.type === 'spawn') {
                     requireTeam(action.sessionId, 'session_required', 400);

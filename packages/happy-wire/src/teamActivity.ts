@@ -1,4 +1,4 @@
-import type { TeamBot, TeamState } from './teams';
+import type { TeamBot, TeamCleanupIssue, TeamOperation, TeamState } from './teams';
 
 /**
  * B-692: the one rule for "who is a member right now" — server (member limit,
@@ -45,4 +45,32 @@ export function teamMemberCounts(team: Pick<TeamState, 'bots' | 'tasks' | 'opera
     const counts: TeamMemberCounts = { active: 0, stopping: 0, idle: 0, inactive: 0 };
     for (const bot of team.bots) counts[teamBotActivity(team, bot, context)]++;
     return counts;
+}
+
+/**
+ * B-775: whether a launch for `botId` must wait for its cleanup. Only a cleanup
+ * whose session is still bound to the member blocks: that wrapper may still be
+ * running and a member has at most one live session. When the daemon confirmed
+ * the session stopped and only the worktree was retained (dirty / unmerged /
+ * ownership unknown), the server unbinds the session (`fail-operation`
+ * `sessionStopped`) and new work launches in a fresh worktree.
+ */
+export function teamCleanupHoldsSession(team: Pick<TeamState, 'bots' | 'operations'>, botId: string): TeamOperation | undefined {
+    const bot = team.bots.find(b => b.id === botId);
+    if (!bot?.sessionId) return undefined;
+    return team.operations.find(o => o.botId === botId && o.type === 'stop' && o.status !== 'completed' && o.sessionId === bot.sessionId);
+}
+
+/**
+ * B-775: cleanups that failed and wait for the owner (「重试清理」/「标记已处理」 on
+ * the team page). `holdsSession`: new work for this member cannot start until
+ * then; `waitingTaskIds`: queued tasks of the member whose launch is held.
+ */
+export function teamCleanupIssues(team: Pick<TeamState, 'bots' | 'tasks' | 'operations'>): TeamCleanupIssue[] {
+    return team.operations.filter(o => o.type === 'stop' && (o.status === 'failed' || o.status === 'unknown')).map(o => {
+        const bot = team.bots.find(b => b.id === o.botId);
+        const holdsSession = teamCleanupHoldsSession(team, o.botId)?.id === o.id;
+        const waitingTaskIds = holdsSession ? team.tasks.filter(t => t.assigneeBotId === o.botId && t.status === 'queued').map(t => t.id) : [];
+        return { botId: o.botId, name: bot?.name ?? o.botId, operationId: o.id, taskId: o.taskId, error: o.error, holdsSession, waitingTaskIds };
+    });
 }

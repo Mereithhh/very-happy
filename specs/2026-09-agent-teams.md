@@ -76,7 +76,7 @@ Bot 换 session 时递增 generation，旧 token 撤销、旧 attempt 失效；�
   - 发布范围仅 server（wire 只加可选字段/类型）；旧 daemon/CLI 无需升级，旧 server 仍按原样逐条通知。
   - **B-769b 新工作重新计时。** 事故（10-23 04:34，31956d5d）：QA 上一个任务验收后空闲 220 分钟，派新任务 3 秒后负责人收到「idle for 220 min」。原因：空闲起点只看 `lastEventAt`，`releaseBotSession` 停会话不清它，新任务 queued→spawn 的几秒、或绑定会话新任务消息送达前，上一段空闲被算到新任务头上。现在：新 attempt（delegate / return / handoff / join 重绑）与 spawn 完成都记 `bot.workAssignedAt` 并清 `idleEscalatedAt`；`idleSince` 取 `max(lastEventAt, workAssignedAt)`，无绑定会话的 bot 不算空闲；digest 与 `idleMembers` 只认新工作之后的真实回合结束（新任务尚未送达不算「期间空闲」）。新任务 30 分钟仍未送达/开工才升级一次。
 
-资源只能回收 Teams 自建 worktree/session。先请求停进程并确认退出，再 archive session。worktree 有未提交改动、分支未合并到源 checkout 时保留，cleanup 独立显示失败并可重试；不会因验收成功强删成果。用户关联的既有 Bot/session 不自动销毁。
+资源只能回收 Teams 自建 worktree/session。（B-775：清理失败后成员能否接新任务、怎么报错与可见，见 [2026-10-team-cleanup-failure-member](2026-10-team-cleanup-failure-member.md)。）先请求停进程并确认退出，再 archive session。worktree 有未提交改动、分支未合并到源 checkout 时保留，cleanup 独立显示失败并可重试；不会因验收成功强删成果。用户关联的既有 Bot/session 不自动销毁。
 
 界限：单 Team 最多 32 Bot、200 Task、2000 Message、1000 Operation、8 层任务树、2 MB 状态。这是首批可审计的硬上限，不是无限运行承诺；到限返回明确错误。账号最多 32 个未归档 Team；收尾后归档保留历史并释放团队名额。没有额外模型调度槽，因此等待子任务的 meta 不会占满另一套调度器；跨团队机器资源预算和无限历史分页仍是后续工作。
 

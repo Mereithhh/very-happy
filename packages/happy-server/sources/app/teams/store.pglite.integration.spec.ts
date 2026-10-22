@@ -319,6 +319,44 @@ describe('agent teams persistent transactions and scoped credentials', () => {
             expect((await toLead()).length).toBe(queued);
         } finally { vi.useRealTimers(); }
     });
+    it('B-775: cleanup failure → re-delegate: a stopped session launches the queued task; a held one is refused with its reason', async () => {
+        const team = await store.createTeam(accountId, { name: 'Cleanup failure', machineId });
+        const lead = await store.actOnTeam(team.id, { accountId }, { requestId: 'join-lead', action: { type: 'join', name: 'Lead', sessionId } });
+        const leadToken = { token: lead.credential!.token };
+        const read = () => store.readTeam(team.id, { accountId });
+        const daemon = (requestId: string, action: Record<string, unknown>) => store.actOnTeam(team.id, { accountId }, { requestId, action: { machineId, ...action } as never });
+        const claimId = async (opId: string) => (await read()).operations.find(o => o.id === opId)!.claimId!;
+        const firstLaunch = async (key: string, worker: string | undefined) => {
+            const delegated = await store.actOnTeam(team.id, leadToken, { requestId: `d-${key}`, action: { type: 'delegate', goal: key, acceptance: ['a'], ...(worker ? { assigneeBotId: worker } : { botName: `W-${key}` }) } });
+            const spawn = (await read()).operations.find(o => o.type === 'spawn' && o.taskId === delegated.taskId)!;
+            await daemon(`c-${key}`, { type: 'claim-operation', operationId: spawn.id, teamLaunchVersion: 1 });
+            const worktreeSession = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+            await daemon(`k-${key}`, { type: 'complete-operation', operationId: spawn.id, claimId: await claimId(spawn.id), sessionId: worktreeSession });
+            const t = (await read()).tasks.find(x => x.id === delegated.taskId)!;
+            await store.actOnTeam(team.id, { accountId }, { requestId: `s-${key}`, action: { type: 'submit', taskId: t.id, attemptId: t.currentAttemptId, goalVersion: 1, result: 'ok' } });
+            await store.actOnTeam(team.id, leadToken, { requestId: `a-${key}`, action: { type: 'accept', taskId: t.id, attemptId: t.currentAttemptId, goalVersion: 1 } });
+            const stop = (await read()).operations.find(o => o.type === 'stop' && o.taskId === t.id)!;
+            await daemon(`cs-${key}`, { type: 'claim-operation', operationId: stop.id });
+            return { bot: t.assigneeBotId, stop: stop.id };
+        };
+        // QA5 O4 / N1: delegated while the cleanup runs, then the cleanup keeps unmerged work.
+        const one = await firstLaunch('one', undefined);
+        const queued = await store.actOnTeam(team.id, leadToken, { requestId: 'd-two', action: { type: 'delegate', goal: 'two', acceptance: ['a'], assigneeBotId: one.bot } });
+        await daemon('f-one', { type: 'fail-operation', operationId: one.stop, claimId: await claimId(one.stop), error: 'Unmerged work retained on codex/team-x at /wt: 1 commit is not pushed or merged; push or merge, then retry cleanup', sessionStopped: true });
+        const spawn = (await read()).operations.find(o => o.type === 'spawn' && o.taskId === queued.taskId)!;
+        expect((await daemon('c-two', { type: 'claim-operation', operationId: spawn.id, teamLaunchVersion: 1 })).operation?.status).toBe('claimed');
+        expect((await store.readTeam(team.id, leadToken)).cleanupIssues).toEqual([expect.objectContaining({ botId: one.bot, holdsSession: false })]);
+        // An old daemon (no sessionStopped): the next task is refused up front with the reason, nothing recorded.
+        const three = await firstLaunch('three', undefined);
+        await daemon('f-three', { type: 'fail-operation', operationId: three.stop, claimId: await claimId(three.stop), error: 'Original worktree ownership is unknown; manual reconciliation required' });
+        await expect(store.actOnTeam(team.id, leadToken, { requestId: 'd-four', action: { type: 'delegate', goal: 'four', acceptance: ['a'], assigneeBotId: three.bot } }))
+            .rejects.toMatchObject({ code: 'bot_cleanup_failed', status: 409, details: { botId: three.bot, operationId: three.stop, cleanupError: 'Original worktree ownership is unknown; manual reconciliation required' } });
+        const memo = await db.$queryRaw<Array<{ count: bigint }>>`SELECT count(*) AS count FROM "TeamRequest" WHERE "teamId"=${team.id} AND "requestId"='d-four'`;
+        expect(Number(memo[0].count)).toBe(0);
+        const issues = (await store.readTeam(team.id, leadToken)).cleanupIssues!;
+        expect(issues.find(i => i.botId === three.bot)).toMatchObject({ holdsSession: true, hint: expect.stringContaining('owner') });
+        expect((await read()).messages.filter(m => m.body.startsWith('Cleanup of '))).toHaveLength(2);
+    });
     it('withholds schedule messages from daemons without the delivery capability', async () => {
         const { default: fastify } = await import('fastify');
         const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');

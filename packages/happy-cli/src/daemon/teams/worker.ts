@@ -25,6 +25,12 @@ export interface TeamWorkerDeps {
     serverUrl?: string;
 }
 
+/** B-775: ` (<code>)` for a server refusal such as `bot_cleanup_pending`; never other response content. */
+export function refusalCode(error: unknown): string {
+    const code = axios.isAxiosError(error) ? (error.response?.data as { error?: unknown } | undefined)?.error : undefined;
+    return typeof code === 'string' && /^[a-z_]{1,64}$/.test(code) ? ` (${code})` : '';
+}
+
 function persistedSpawnMatches(operationId: string) {
     return Object.entries(readPersistedSessions()).filter(([, entry]) => entry.metadata?.teamOperationId === operationId);
 }
@@ -66,6 +72,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
             writeReceipt(home, receipt);
         }
         if (receipt.phase === 'completed') return;
+        let sessionStopped = false;
         try {
             if (op.type === 'spawn') {
                 // B-689: the owner's「重试启动」. For an uncertain spawn the owner has confirmed
@@ -167,10 +174,16 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                 const latest = team.operations.find(candidate => candidate.id === op.id);
                 if (latest?.status === 'completed') { writeReceipt(home, { ...receipt, phase: 'completed' }); return; }
                 const bot = team.bots.find(candidate => candidate.id === op.botId);
-                if (!bot || bot.generation !== op.generation || bot.sessionId !== op.sessionId) throw new Error('Worker binding changed; preserve resources for reconciliation');
+                // B-775: the target is the op's own session, whatever the member's generation now is:
+                // a task delegated while this cleanup ran bumps the generation (its launch waits for
+                // us), and requiring the old one made every retry fail with "binding changed", so
+                // the member could never take work again. Only a session moved to another team
+                // (B-730) is no longer ours to stop.
+                if (!bot || (op.sessionId && bot.transferredTo?.sessionId === op.sessionId)) throw new Error('Worker binding changed; preserve resources for reconciliation');
                 if (op.sessionId) {
                     await deps.stopAndWait(op.sessionId);
                     await archiveSession(op.sessionId);
+                    sessionStopped = true;
                 }
                 // Archiving hides a team, it never authorizes deleting its worktrees.
                 if (team.archivedAt !== undefined) { await complete(op, receipt); return; }
@@ -194,7 +207,9 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
             }
             // B-691: one request per distinct reason, so a changed reason (e.g. the owner
             // pushed but left a file) replaces the stale one instead of replaying it.
-            await action(op.teamId, `failure-${op.id}-${receipt.phase}-${createHash('sha256').update(detail).digest('hex').slice(0, 12)}`, { type: 'fail-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, error: detail.slice(0, 1000), unknown }).catch(() => {});
+            // B-775: a cleanup that already stopped its wrapper says so — the server then unbinds the
+            // session so the member can take new work while the worktree waits for the owner.
+            await action(op.teamId, `failure-${op.id}-${receipt.phase}-${createHash('sha256').update(detail).digest('hex').slice(0, 12)}${sessionStopped ? '-stopped' : ''}`, { type: 'fail-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, error: detail.slice(0, 1000), unknown, ...(sessionStopped ? { sessionStopped: true } : {}) }).catch(() => {});
             deps.log(`Teams operation ${op.id} ${unknown ? 'needs reconciliation' : 'will retry'}`);
         }
     }
@@ -269,7 +284,9 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
             // Limit simultaneous launch IO; a running model does not occupy this polling slot.
             for (const op of data.operations) {
                 if (closed) break;
-                try { await execute(op); } catch { deps.log(`Teams operation ${op.id} remains pending`); }
+                // B-775: say why (e.g. bot_cleanup_pending) — a bare "remains pending" every 5 s hid a launch
+                // that could never be claimed. Only the server's error code is logged, never the body.
+                try { await execute(op); } catch (error) { deps.log(`Teams operation ${op.id} remains pending${refusalCode(error)}`); }
             }
             await flushEvents(data.teams ?? []);
             for (const team of data.teams ?? []) await deliver(team);

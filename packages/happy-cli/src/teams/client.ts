@@ -17,9 +17,23 @@ export async function teamRequest(path: string, method: string, token: string, s
         // B-730: the one refusal the model must read verbatim. Only allow-listed, length-capped fields leave this function.
         const body = response.status === 409 ? await response.json().catch(() => null) : null;
         if (body?.error === 'session_in_other_team') throw new SessionInOtherTeamError(typeof body.teamId === 'string' ? body.teamId : '', typeof body.teamName === 'string' ? body.teamName : '');
-        throw new Error(`Teams request failed (HTTP ${response.status})`);
+        throw new Error(teamRefusalMessage(response.status, body));
     }
     try { return await response.json(); } catch { throw new Error('Teams returned an invalid response'); }
+}
+/**
+ * B-775: a 409 names its reason (a snake_case code; nothing else from the body unless listed
+ * here). A bare "HTTP 409" left a lead guessing why work for a member never started.
+ */
+export function teamRefusalMessage(status: number, body: unknown): string {
+    const field = (key: string, max: number) => { const value = (body as Record<string, unknown> | null)?.[key]; return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, max) : ''; };
+    const code = field('error', 64);
+    if (!/^[a-z_]+$/.test(code)) return `Teams request failed (HTTP ${status})`;
+    if (code === 'bot_cleanup_failed') {
+        const reason = field('cleanupError', 300);
+        return `Teams request refused (bot_cleanup_failed): the cleanup of member "${field('botName', 128) || 'this member'}" failed${reason ? ` (${reason})` : ''} and still holds its session, so new work for it could not start. Only the owner can retry that cleanup or mark it handled on the team page (需要处理). Delegate to another member (omit assigneeBotId) meanwhile. 该成员的清理失败且仍占用会话，派给它的任务无法启动；请改派给其他成员，并请 Owner 在团队页「需要处理」重试清理或标记已处理。`;
+    }
+    return `Teams request failed (HTTP ${status}: ${code})`;
 }
 export class TeamConnectionPreflightError extends Error {}
 /** B-730: nothing was created or joined, so a Web adopt may change its request (confirm a transfer). */
