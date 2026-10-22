@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -234,6 +234,30 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         expect(retry.team.schedules).toHaveLength(64); expect(retry.team.schedules!.every(s => s.status === 'cancelled')).toBe(true);
     });
 
+    it('B-769: a member idle wakes the lead only after a long unsubmitted stretch, once under duplicate polls', async () => {
+        const team = await store.createTeam(accountId, { name: 'Idle digest', machineId });
+        const lead = await store.actOnTeam(team.id, { accountId }, { requestId: 'join-lead', action: { type: 'join', name: 'Lead', sessionId } });
+        const memberSession = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+        const member = await store.actOnTeam(team.id, { accountId }, { requestId: 'join-member', action: { type: 'join', name: 'Member', sessionId: memberSession } });
+        const leadToken = { token: lead.credential!.token };
+        await store.actOnTeam(team.id, leadToken, { requestId: 'delegate', action: { type: 'delegate', goal: 'g', acceptance: ['a'], assigneeBotId: member.credential!.botId } });
+        await store.actOnTeam(team.id, { accountId }, { requestId: 'idle', action: { type: 'session-event', sessionId: memberSession, event: 'idle' } });
+        const toLead = async () => (await store.readTeam(team.id, { accountId })).messages.filter(m => m.recipientBotId === lead.credential!.botId);
+        expect(await toLead()).toHaveLength(0);
+        expect((await store.readTeam(team.id, leadToken)).idleMembers?.map(m => m.name)).toEqual(['Member']);
+        expect((await store.tickTeamSchedules(accountId, machineId)).errors).toEqual([]);
+        expect(await toLead()).toHaveLength(0);
+        vi.useFakeTimers({ toFake: ['Date'] });
+        try {
+            vi.setSystemTime(Date.now() + 31 * 60_000);
+            await Promise.all([store.tickTeamSchedules(accountId, machineId), store.tickTeamSchedules(accountId, machineId)]);
+            await store.tickTeamSchedules(accountId, machineId);
+        } finally { vi.useRealTimers(); }
+        const woken = await toLead();
+        expect(woken).toHaveLength(1);
+        expect(woken[0]).toMatchObject({ source: 'system', deliveredAt: null });
+        expect(woken[0].body).toMatch(/^Agent Member: idle for 31 min\./);
+    });
     it('withholds schedule messages from daemons without the delivery capability', async () => {
         const { default: fastify } = await import('fastify');
         const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');

@@ -226,6 +226,13 @@ source adapter; a schedule by itself does not import or complete Todo items.
   the stored task status only changes on submit / accept / return / cancel /
   handoff. A newly bound member session starts without the previous
   generation's last event.
+- Who gets woken: a member's **submit**, **message**, **blocked** (waiting for
+  permission or input) and **exited** reach the task owner (usually the lead)
+  as a new turn right away. A member whose turn merely ended (**idle**) does not
+  wake anyone: it is listed in the owner's next team message ("Meanwhile idle:
+  …") and in `team_inspect` as `idleMembers`. Only an idle stretch of 30 minutes
+  with the task still not submitted wakes the owner, once per stretch. Your own
+  chat with the lead and push notifications are unaffected.
 - A submitted result requires the owner's acceptance. Returning it creates a new
   attempt. Acceptance/return/cancellation/handoff reference the displayed attempt
   and goal version, so old pages cannot silently act on newer work.
