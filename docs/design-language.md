@@ -546,9 +546,19 @@ Pi 框下上下文使用运行时当前估算与真实容量，前缀 ≈；未�
 
 ### 内置工具行（B-499）
 
-very-happy 自己注入的工具（change_title、copy_to_clipboard、open_preview、report_progress、`team_*`、`automation_*`、assistant 变体的 `sessions_*`/`terminal*`/`memory_update`/`journal_append`）在对话里不显示原始 JSON。识别不依赖运行器的命名形态：Claude 的 `mcp__happy__x`、Gemini 的 `happy__x`、Codex 的 `McpTool`+`{server,tool,arguments}`、pi 的 `other`+`piTool`/`rawInput` 与裸名共用一套身份（`components/tools/builtinTools.ts`）；只认 server 名含 `happy` 的前缀，其他 MCP 服务器的同名工具保持通用视图。
+very-happy 自己注入的工具（change_title、copy_to_clipboard、open_preview、report_progress、`team_*`、`automation_*`、assistant 变体的 `sessions_*`/`terminal*`/`memory_update`/`journal_append`，以及 B-754 补齐的 `project_context`/`project_note`/`request_human`）在对话里不显示原始 JSON。识别不依赖运行器的命名形态：Claude 的 `mcp__happy__x`、Gemini 的 `happy__x`、Codex 的 `McpTool`+`{server,tool,arguments}`、pi 的 `other`+`piTool`/`rawInput` 与裸名共用一套身份（`components/tools/builtinTools.ts`）；只认 server 名含 `happy` 的前缀，其他 MCP 服务器的同名工具保持通用视图。
 
 - 行内：工具名位是动词短语（Sans 600），detail 位是人话摘要（Sans，不用 Mono）：「委派任务 · 给 Codex · <目标>」「创建自动化 · <名称> · 每天 09:00 · Asia/Singapore · codex · <目录>」（触发/动作措辞复用上节 `automationPresentation` 的 `describeTrigger`/`describeAction`，不另写一份）「进度 · 待审阅 · <一句话>」。id 只显示前 8 位，长文本压成一行截断。
 - 展开：参数按字段两列排列（窄屏单列），路径/命令/id 用 Mono，其余 Sans；验收标准等列表按项展示。结果区先给结构化摘要（任务 id 与状态、自动化的触发/下次运行、运行状态），再给指向 `/session/<id>`、`/teams/<id>?task=<id>` 的中性按钮（不用 accent；触屏 44px），原始输出折叠在「原始输出」下；自动化按钮指向 `/automations/<id>`，只有名称、还没有结果时不猜链接。
 - 失败态用 `.tg-error` 直接显示服务端错误文本，不再显示结果摘要；流式阶段参数不全时只显示已到达的字段，完全没有参数时显示「等待参数…」，任何形状都不能崩。
 - `change_title` 不再隐藏：Claude 路径仍由 `messageToEvent` 转成事件，Codex/pi/Gemini 路径显示「标题改为 · <标题>」一行。已完成的 `open_preview` 保持 B-452 的「文件预览＋可点击路径」行。
+
+### 其他工具卡（B-754）
+
+聊天流里不出现成块 JSON。所有运行器的同一种操作共用一张卡，识别只读数据、不改工具事件形状（`components/tools/toolPresentation.ts`，纯函数，带测试）：
+
+- 行内是「动词 + 关键参数」，动词走 i18n（`tools.verbs`）：运行 `<命令>`（Claude `Bash`、Codex `CodexBash`、Gemini/ACP `execute`，Gemini 标题里的 `[cwd …] (说明)` 拆开）、读取 `<文件>:<起-止行>`、编辑 `<文件> +N`（含 Codex `CodexPatch` 的实时 record 与历史数组、`CodexDiff`/`GeminiDiff`、ACP `diff` 块）、搜索 `"pattern" · 路径`、搜索网页 `<query>`、抓取 `<host/path>`、更新待办 `已完成 m/n`、监视、停止任务、发消息给 agent、定时唤醒、创建定时任务、推送通知、思考等；命令/路径/模式用 Mono，其余 Sans。合并工具组的摘要用同一套动词。
+- 展开：命令卡（命令 + 输出 + 工作目录）、文件卡（去掉 `cat -n` 行号前缀，行号槽从真实起始行开始）、按文件分段的 diff、搜索结果链接列表（Claude WebSearch 的 `Links:` 行、Jina 的 YAML 列表、Tavily 等 JSON `results` 都识别；外链标注「在新标签页打开」）、抓取卡（链接 + 提问 + 正文）、思考正文。
+- 没有专门卡的工具（第三方 MCP、Codex `McpTool`、pi 未映射的工具、`SendMessage`/`TaskStop` 等）走通用键值表：字段名转成可读形式（`file_path` → File path），嵌套对象最多展两层（`Fields › Priority`），URL 成链接，列表取前 8 项，长字符串截断；JSON 字符串结果同样转成键值表，短句结果按正文显示，长文本进可复制的输出框。结果只是回显参数时不重复显示。
+- 原始数据只在每张卡末尾折叠的「原始数据」里（`data-raw`），默认收起；失败态的错误若是 JSON，只显示其中的 `error`/`message`。
+- 验收样例：`/dev/tool-cards/:id`（`src/dev/toolCardFixtures.ts`，与渲染测试共用一份），`?runner=claude|codex|pi|gemini|mcp`、`?theme=dark|light`。

@@ -12,7 +12,7 @@
  *   node scripts/dev/nesting-audit.mjs [--base http://localhost:8082] [--json out.json]
  *
  * 默认审 dev harness 页（`/dev/depth/session/:id`、`/dev/multi-agent/:id`、
- * `/dev/sidebar`、`/dev/multi-agent-teams`）的对话、输入区、侧栏、右侧面板与团队页，
+ * `/dev/sidebar`、`/dev/multi-agent-teams`、B-754 `/dev/tool-cards/:id`）的对话、输入区、侧栏、右侧面板与团队页，
  * 明暗两套主题各跑一遍。退出码：0 无违规；1 有违规；2 环境问题。
  * 焦点环只在聚焦时出现，审计时鼠标移出、不聚焦任何控件。伪元素不在审计范围内。
  */
@@ -44,6 +44,8 @@ const PAGES = [
     { name: 'codexpanel', path: '/dev/multi-agent/dev-multi-agent?drawer=codex-spawn', regions: { sidepanel: '.sd-files' } },
     { name: 'sidebar', path: '/dev/sidebar', regions: { sidebar: '.sb' } },
     { name: 'teams', path: '/dev/multi-agent-teams', regions: { teams: '.teams-screen' } },
+    // B-754: every runner's tool card, expanded.
+    { name: 'toolcards', path: '/dev/tool-cards/dev-tools', openTools: true, regions: { transcript: '.cl-inner' } },
 ];
 
 /** Runs in the page. */
@@ -99,6 +101,8 @@ try {
         const p = await ctx.newPage();
         await p.goto(base + page.path, { waitUntil: 'networkidle' }).catch(() => {});
         await p.waitForTimeout(1200);
+        // A loaded machine can take longer than the fixed pause to mount lazy harness chunks.
+        await p.waitForSelector(Object.values(page.regions)[0], { timeout: 20000 }).catch(() => {});
         if (page.expand) { const h = await p.$(page.expand); if (h && (await h.getAttribute('aria-expanded')) === 'false') { await h.click(); await p.waitForTimeout(300); } }
         // open every collapsed tool row so each output kind (file, search, diff, command) is audited
         if (page.openTools) for (const h of await p.$$('.cl-inner .tg-row-head[aria-expanded="false"]')) { await h.click().catch(() => {}); await p.waitForTimeout(80); }

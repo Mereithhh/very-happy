@@ -46,7 +46,7 @@ describe('buildSubagentSummary (B-260)', () => {
         const summary = buildSubagentSummary(card({}, children));
         expect(summary.toolCount).toBe(3);
         expect(summary.childTools.map((c) => c.id)).toEqual(['c1', 'c2', 'c3']);
-        expect(summary.recent[summary.recent.length - 1]).toBe('[Terminal] pnpm test');
+        expect(summary.recent[summary.recent.length - 1]).toBe('[Run] pnpm test');
     });
 
     it('recent keeps the last N one-liners and ignores non-tool children (text/thinking)', () => {

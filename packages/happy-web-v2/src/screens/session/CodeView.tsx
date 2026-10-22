@@ -9,7 +9,7 @@
  * the wheel must bubble to the transcript, never a nested scroll area.
  * File-preview surfaces pass `collapsible={false}` and render in full.
  */
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState, type CSSProperties } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
@@ -24,6 +24,7 @@ export function CodeView({
     showLineNumbers = false,
     collapsible = true,
     plain = false,
+    startLine = 1,
 }: {
     code: string;
     lang?: string | null;
@@ -38,6 +39,8 @@ export function CodeView({
      * replaced by the persisted (and highlighted) message anyway.
      */
     plain?: boolean;
+    /** B-754: first gutter number when the block is a slice of a file. */
+    startLine?: number;
 }) {
     const { t } = useTranslation();
     const [html, setHtml] = useState<string | null>(null);
@@ -64,7 +67,10 @@ export function CodeView({
     const collapsed = canCollapse && !expanded;
 
     return (
-        <div className={`cv${showLineNumbers ? ' cv--ln' : ''}${collapsed ? ' cv--collapsed' : ''}`}>
+        <div
+            className={`cv${showLineNumbers ? ' cv--ln' : ''}${collapsed ? ' cv--collapsed' : ''}`}
+            style={showLineNumbers && startLine > 1 ? ({ '--cv-ln-start': startLine - 1 } as CSSProperties) : undefined}
+        >
             <div className="cv-bar">
                 <span className="cv-lang">{lang || 'text'}</span>
                 {copyable && <CopyButton text={code} showLabel className="cv-copy" />}

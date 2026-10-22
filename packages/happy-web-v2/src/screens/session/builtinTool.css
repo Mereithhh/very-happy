@@ -164,7 +164,9 @@
   }
 }
 @media (pointer: coarse) {
-  .bt-link {
+  .bt-link,
+  .bt-raw-head {
+    /* B-754: the raw-data toggle's own 30px beat base.css's coarse 44px. */
     min-height: 44px;
   }
 }
