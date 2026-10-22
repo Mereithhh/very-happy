@@ -21,6 +21,9 @@ import { projectSettingsPath } from './projectSettings';
 import { InstructionsEditor } from './ProjectSettingsScreen';
 import { WorktreeFolderNotice } from './WorktreeFolderNotice';
 import { useProjectCopy, type ProjectCopy } from './projectCopy';
+import { useTranslation } from '@/i18n/useTranslation';
+import { LocationTrail } from '@/components/LocationTrail';
+import { projectTrail, trailCopy } from '@/app/locationTrail';
 import './projects.css';
 
 /**
@@ -38,6 +41,7 @@ export function ProjectScreen() {
   const [detail, setDetail] = useState<ProjectDetailResponse | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'missing' | 'unavailable'>('loading');
   const [tab, setTab] = useState<'overview' | 'context'>('overview');
+  const trail = trailCopy(useTranslation().lang.startsWith('zh'));
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
@@ -71,7 +75,8 @@ export function ProjectScreen() {
     <main className="pj-screen">
       <header className="pj-head">
         <div className="pj-head-text">
-          <Link className="pj-back" to="/"><ArrowLeft size={16} />{c.back}</Link>
+          {/* B-763: 项目 › 名称 — the Projects list is the one ancestor (phones show the same two segments). */}
+          <LocationTrail className="pj-trail" segments={projectTrail(trail)} label={trail.label}><span className="pj-trail-current">{project.name}</span></LocationTrail>
           <h1><FolderKanban size={22} aria-hidden />{project.name}</h1>
           {project.goal && <p className="pj-goal">{project.goal}</p>}
         </div>

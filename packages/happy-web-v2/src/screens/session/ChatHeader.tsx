@@ -41,6 +41,8 @@ import { RelayBadge } from '@/components/RelayBadge';
 import { sessionAgentLabel } from './sessionAgentLabel';
 import { PrStatusChip } from './git/PrStatusChip';
 import { useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
+import { LocationTrail } from '@/components/LocationTrail';
+import { sessionTrail, trailCopy, visibleTrail } from '@/app/locationTrail';
 import './header.css';
 
 export function ChatHeader({
@@ -149,6 +151,8 @@ export function ChatHeader({
         hasFiles: !!onToggleFiles,
     });
     // B-726: the session header can move this session into / out of a project (also from the sidebar row and the new-session dialog).
+    // B-763: 项目 › 团队 › 当前 — the same placement as the sidebar tree; phones keep only the parent.
+    const trail = useMemo(() => sessionTrail(sessionId, projectsSnap, teams), [sessionId, projectsSnap, teams]);
     const projectMenu = sessionProjectMenu(sessionId, projectsSnap, { shared: sharedWithMe, zh: lang.startsWith('zh') });
     const zh = lang.startsWith('zh');
     const leave = projectMenu.leave;
@@ -173,6 +177,12 @@ export function ChatHeader({
         } : undefined,
     }) : [];
     const canStartTeam = !sharedWithMe && showTeams && session?.metadata?.capabilities?.includes('teams-adopt-v1') && session.archivedAt == null && !teams.some(t => t.bots.some(b => b.sessionId === sessionId));
+    const titleButton = (
+        <button type="button" className="ch-title-btn" onClick={startEdit} disabled={sharedWithMe} title={sharedWithMe ? undefined : t('session.renameTitle')}>
+            <span className="ch-title">{trail.member && <span className="ch-member">{trail.member.lead ? (zh ? '负责人' : 'Lead') : trail.member.name} · </span>}{title}</span>
+            <Pencil size={13} className="ch-title-pencil" />
+        </button>
+    );
     const overflowHasActive = plan.overflow.some(
         (key) => (key === 'btw' && btwOpen) || (key === 'files' && filesOpen),
     );
@@ -260,12 +270,9 @@ export function ChatHeader({
                             <X size={16} />
                         </button>
                     </div>
-                ) : (
-                    <button type="button" className="ch-title-btn" onClick={startEdit} disabled={sharedWithMe} title={sharedWithMe ? undefined : t('session.renameTitle')}>
-                        <span className="ch-title">{title}</span>
-                        <Pencil size={13} className="ch-title-pencil" />
-                    </button>
-                )}
+                ) : trail.ancestors.length > 0 ? (
+                    <LocationTrail segments={visibleTrail(trail.ancestors, !isTablet)} label={trailCopy(zh).label} className="ch-trail">{titleButton}</LocationTrail>
+                ) : titleButton}
 
             </div>
             {!editing && <div className="ch-identity"><Popover.Root>

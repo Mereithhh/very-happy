@@ -145,7 +145,16 @@ findings and handoffs the same way.
   the project when its computer is not already there.
 - **Team page** shows *Project · name* under the title. **Team settings →
   Project** changes the project, creates a same-name one, or removes the team
-  from its project (asks first; the project and its log stay).
+  from its project (asks first; the project and its log stay). The same picker
+  opens from **Move to another project…** (*Put in a project…* for a team in
+  none) in the sidebar team row's menu and the team page's ⋯ menu.
+- **Where am I.** The session header shows the path before the title:
+  *Project › Team › member · task* for a team member, *Project › title* for a
+  project session, nothing for a session in neither. The team page shows
+  *Project › Team* (*Teams › Team* without a project) and the project page
+  *Projects › Project*. Every earlier step is a link; on a phone only the step
+  just above the current page is shown. Placement follows the sidebar tree: a
+  team member always sits under its team, in the team's project.
 - A team without a project (created before this) shows **Put this team in a
   project** on its overview: one click creates the same-name project and links
   it. Nothing is migrated automatically.
