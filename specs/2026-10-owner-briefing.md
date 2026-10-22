@@ -49,6 +49,8 @@
 ### 去重与幂等
 
 - 同一 `(sessionId, key)` 再 post：条目仍是 open / in_progress 时，更新内容并 `repostCount+1`；已关闭时重新打开（state=open，清 resolved*，允许再推一次）。
+- 再 post（无论活跃还是重新打开）只覆盖显式给出的字段：`title` 总按新值写入，`kind` 必须相同（不同返回 409 `attention_key_kind_mismatch`）；省略的 `bodyMd` / `options` / `links` / `anchor` / `replyToId` 保留原值（S-1c，G1 联调发现重贴不带 anchor 会让卡片丢掉「定位」）。W0 的 POST schema 这些字段都不接受 `null`，所以 REST 只有「省略 = 保留」；要清空用 `PATCH`（`bodyMd` / `options` / `links` 可传 `null`）。server 内部的根任务 submit 钩子在 attempt 没有结果时显式传 `bodyMd: null`，避免重新提交沿用上一轮的结果。
+- C-1 `owner_board_post` 走同一路径：`body_md` / `options` / `links` / `reply_to` 省略即不发送；`anchor` 默认 `this_turn`，有本轮锚点时用新锚点覆盖，取不到时省略、保留原锚点。
 - 不带 `key` 时，`requestId` 保证幂等；同一 `requestId` 重试返回原条目，不累加 `repostCount`。
 - `request_human` 用 `key = hash(reason)` 取代 CLI 进程内 60 秒去重。
 
@@ -70,7 +72,7 @@
 |---|---|
 | 迁移 `20261022120000_attention_items`：只新增 `AttentionItem` 一张表（FK 到 Account / Session，级联删除），不回填；回滚 `DROP TABLE "AttentionItem";` | `packages/happy-server/prisma/migrations/` |
 | 纯规则：post 计划（create / noop / repost、关闭条目重开）、根任务状态迁移、「待你验收」条目、owner-replied 目标、push 文案、answered 每会话保留 2 条 | `sources/app/attention/rules.ts` |
-| 存储：SERIALIZABLE `inTx`；并发首插同 key 时输家撞唯一索引（P2002）后整笔重试、落成 repost；push 用 `UPDATE … WHERE pushedAt IS NULL` 抢占 | `sources/app/attention/store.ts` |
+| 存储：SERIALIZABLE `inTx`；并发首插同 key 时输家撞唯一索引（P2002）后整笔重试、落成 repost；repost 只写入参里出现的可选字段（`repostFields`）；push 用 `UPDATE … WHERE pushedAt IS NULL` 抢占 | `sources/app/attention/store.ts` |
 | 根任务 submit：`actOnTeam` 在同一事务里比较前后状态，root task 变成 submitted 时在负责人会话写条目（key `team-submit:<taskId>`，requestId 按 attempt），离开 submitted 时关闭；看板「验收 / 退回」先执行团队 accept / return | `sources/app/teams/store.ts`、`attention/store.ts` |
 | 钩子：消息入口（socket / v3 HTTP）调用 owner-replied；归档入口调用 session-archived | `sessionUpdateHandler.ts`、`v3SessionRoutes.ts`、`sessionRoutes.ts` |
 | 路由 | `sources/app/api/routes/attentionRoutes.ts` |
@@ -119,6 +121,7 @@
 - [ ] W0：wire schema、update 事件、REST 与工具入参出参有单测；wire build、vitest 通过。
 - [ ] S-1：迁移只新增一张表；`/v1/attention-items` CRUD 与 owner-respond；并发 upsert 去重；push 至多一次；根任务 submit 写条目（修 `reducer.ts:113`）；归档清理；`owner-replied` 自动 resolve；feature 开关。
 - [ ] server vitest（含 PGlite）覆盖迁移、并发去重、push 只发一次。
+- [ ] S-1c：重贴省略字段保留原值、显式字段覆盖（活跃与重新打开两种），`attentionApi.pglite.integration.spec.ts` 经 `startApi` 覆盖，「省略即保留」分支做过 mutation。
 - [ ] C-1：`owner_board_*` 能力门控；`request_human` 写 blocked 条目并兼容旧 server；Owner 提问 + firstReply；D5 草稿；digest；playbook 中英规则；单测 + mutation + 隔离 daemon 对 S-1 实测。
 
 ## 留真机验证项

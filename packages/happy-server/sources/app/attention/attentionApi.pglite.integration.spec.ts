@@ -127,6 +127,27 @@ describe('attention REST + hooks through startApi (pglite)', () => {
         expect((await call('GET', `/v1/attention-items?sessionId=${sessionId}&state=all`, undefined, otherToken)).body.items).toEqual([]);
     });
 
+    it('a repost keeps the fields it omits (active and reopened) and overwrites the ones it carries (S-1c)', async () => {
+        const sessionId = await newSession();
+        const post = (body: Record<string, unknown>) => call('POST', '/v1/attention-items', { sessionId, source: 'lead', kind: 'todo', key: 'keep', ...body });
+        const anchor = { localId: 'l1', snippet: 'first' };
+        const links = [{ type: 'pr', ref: '713' }];
+        const first = await post({ title: 'T1', bodyMd: 'body 1', anchor, links, replyToId: 'q-none', requestId: 'p1' });
+        const id = first.body.item.id as string;
+
+        const bare = await post({ title: 'T2', requestId: 'p2' });
+        expect(bare.body.item).toMatchObject({ id, title: 'T2', bodyMd: 'body 1', anchor, links, replyToId: 'q-none', repostCount: 1 });
+
+        await call('POST', `/v1/attention-items/${id}/resolve`, { outcome: 'done' });
+        const reopened = await post({ title: 'T3', requestId: 'p3' });
+        expect(reopened.body.item).toMatchObject({ id, state: 'open', title: 'T3', bodyMd: 'body 1', anchor, links, replyToId: 'q-none' });
+
+        const anchor2 = { messageId: 'm2' };
+        const fresh = await post({ title: 'T4', bodyMd: 'body 2', anchor: anchor2, requestId: 'p4' });
+        expect(fresh.body.item).toMatchObject({ title: 'T4', bodyMd: 'body 2', anchor: anchor2, links, replyToId: 'q-none' });
+        expect(await item(id)).toMatchObject({ bodyMd: 'body 2', anchor: anchor2 });
+    });
+
     it('POST /v1/sessions/:id/archive dismisses the session’s open items', async () => {
         const sessionId = await newSession();
         const { body } = await call('POST', '/v1/attention-items', { sessionId, source: 'agent', kind: 'blocked', title: 'login', requestId: 'a1' });
