@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolve } from 'node:path';
-import { actionFromCommand, AUTO_HELP, describePrecheck, parseAutoArgs, precheckFromCommand } from './auto';
+import { AutomationReportSchema } from '@slopus/happy-wire';
+import { actionFromCommand, AUTO_HELP, buildCliReport, describePrecheck, parseAutoArgs, precheckFromCommand } from './auto';
 
 describe('very-happy auto argv parsing', () => {
     it('parses subcommands, targets, value/boolean flags, repeatable --env and script argv after --', () => {
@@ -92,5 +93,22 @@ describe('B-548 precheck flags', () => {
     it('documents and describes the precheck', () => {
         for (const word of ['--precheck-shell', '--precheck-argv', '--precheck-output', '--no-precheck', 'VH_AUTOMATION_PAYLOAD', '×N']) expect(AUTO_HELP).toContain(word);
         expect(describePrecheck({ shell: 'test -s x', timeoutMs: 5000, includeOutput: true })).toBe('sh: test -s x  (timeout 5s, output → prompt)');
+    });
+
+    it('B-767: report clips over-long --attention / --summary / --error and names each clipped flag', () => {
+        const attention = '😀'.repeat(450); // 900 UTF-16 units; unit 512 would be the low half of an emoji
+        const command = parseAutoArgs(['report', '--status', 'failed', '--attention', attention, '--summary', '总结'.repeat(2500), '--error', '😀'.repeat(2500), '--json']);
+        const { report, notices } = buildCliReport('failed', command.flags);
+        expect(AutomationReportSchema.safeParse(report).success).toBe(true);
+        expect(report.needsAttention).toBe(true);
+        expect(report.attentionReason).toBe(`${'😀'.repeat(255)}…`); // 510 units + `…`: never half an emoji
+        expect(report.summary).toHaveLength(4096);
+        expect(report.error).toHaveLength(4095);
+        expect(notices).toEqual([
+            '--summary clipped 5000→4096 chars (server limit 4096).',
+            '--error clipped 5000→4095 chars (server limit 4096).',
+            '--attention clipped 900→511 chars (server limit 512).',
+        ]);
+        expect(buildCliReport('done', parseAutoArgs(['report', '--status', 'done', '--summary', 'ok']).flags)).toEqual({ report: { status: 'done', summary: 'ok' }, notices: [] });
     });
 });

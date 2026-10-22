@@ -9,7 +9,7 @@
  * prompt that legitimately talks about `{{foo}}` is not mangled.
  */
 
-import type { AutomationAction, AutomationTrigger } from '@slopus/happy-wire';
+import { AUTOMATION_ATTENTION_REASON_MAX_CHARS, AUTOMATION_SUMMARY_MAX_CHARS, type AutomationAction, type AutomationReport, type AutomationTrigger } from '@slopus/happy-wire';
 
 export interface TemplateContext {
     payload?: string | null;
@@ -71,10 +71,46 @@ export function renderAction(action: AutomationAction, context: TemplateContext)
     return { ...action, command: action.command.map(r), ...(action.env ? { env: Object.fromEntries(Object.entries(action.env).map(([k, v]) => [k, r(v)])) } : {}) };
 }
 
-/** Cut to at most `maxChars` characters, keeping the tail (for logs) or the head (for summaries). */
-export function clipText(text: string, maxChars: number, keep: 'head' | 'tail' = 'head'): string {
+/**
+ * Cut to at most `maxChars` UTF-16 units (what the server's zod `.max()` counts), keeping the tail
+ * (for logs) or the head (for summaries). Never splits a surrogate pair; `marker` (e.g. `…`) is put
+ * on the cut side and counts toward the limit.
+ */
+export function clipText(text: string, maxChars: number, keep: 'head' | 'tail' = 'head', marker = ''): string {
     if (text.length <= maxChars) return text;
-    return keep === 'head' ? text.slice(0, maxChars) : text.slice(text.length - maxChars);
+    const room = Math.max(0, maxChars - marker.length);
+    if (keep === 'head') {
+        let end = room;
+        if (end > 0 && isHighSurrogate(text.charCodeAt(end - 1))) end--;
+        return text.slice(0, end) + marker;
+    }
+    let start = text.length - room;
+    if (start < text.length && isLowSurrogate(text.charCodeAt(start))) start++;
+    return marker + text.slice(start);
+}
+
+function isHighSurrogate(code: number): boolean { return code >= 0xd800 && code <= 0xdbff; }
+function isLowSurrogate(code: number): boolean { return code >= 0xdc00 && code <= 0xdfff; }
+
+/** Server limits of `AutomationReportSchema`'s free-text fields. */
+export const AUTOMATION_REPORT_TEXT_LIMITS = { summary: AUTOMATION_SUMMARY_MAX_CHARS, error: AUTOMATION_SUMMARY_MAX_CHARS, attentionReason: AUTOMATION_ATTENTION_REASON_MAX_CHARS } as const;
+
+export interface ClippedReportField { field: keyof typeof AUTOMATION_REPORT_TEXT_LIMITS; from: number; to: number }
+
+/**
+ * B-767: clip a report's free-text fields to the server limits (ending in `…`) so an over-long
+ * summary / error / attention reason is not rejected wholesale with HTTP 400. Lengths are UTF-16 units.
+ */
+export function clipAutomationReport(report: AutomationReport): { report: AutomationReport; clipped: ClippedReportField[] } {
+    const out: AutomationReport = { ...report };
+    const clipped: ClippedReportField[] = [];
+    for (const field of Object.keys(AUTOMATION_REPORT_TEXT_LIMITS) as Array<keyof typeof AUTOMATION_REPORT_TEXT_LIMITS>) {
+        const value = out[field];
+        if (typeof value !== 'string' || value.length <= AUTOMATION_REPORT_TEXT_LIMITS[field]) continue;
+        out[field] = clipText(value, AUTOMATION_REPORT_TEXT_LIMITS[field], 'head', '…');
+        clipped.push({ field, from: value.length, to: out[field]!.length });
+    }
+    return { report: out, clipped };
 }
 
 const DURATION_UNITS: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };

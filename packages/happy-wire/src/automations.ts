@@ -13,6 +13,7 @@ export const AUTOMATION_MAX_INTERVAL_MS = 366 * 86_400_000;
 export const AUTOMATION_MAX_TIMESTAMP = 8_640_000_000_000_000;
 export const AUTOMATION_PAYLOAD_MAX_BYTES = 65_536;
 export const AUTOMATION_SUMMARY_MAX_CHARS = 4096;
+export const AUTOMATION_ATTENTION_REASON_MAX_CHARS = 512;
 export const AUTOMATION_DEFAULT_MAX_RUNTIME_MS = 6 * 3_600_000;
 export const AUTOMATION_SCRIPT_DEFAULT_MAX_RUNTIME_MS = 30 * 60_000;
 export const AUTOMATION_DEFAULT_LEASE_MS = 60_000;
@@ -165,7 +166,7 @@ export const AutomationReportSchema = z.object({
     error: z.string().max(AUTOMATION_SUMMARY_MAX_CHARS).nullable().optional(),
     exitCode: z.number().int().nullable().optional(),
     needsAttention: z.boolean().optional(),
-    attentionReason: z.string().max(512).nullable().optional(),
+    attentionReason: z.string().max(AUTOMATION_ATTENTION_REASON_MAX_CHARS).nullable().optional(),
     leaseMs: z.number().int().min(5_000).max(3_600_000).optional(),
 });
 export type AutomationReport = z.infer<typeof AutomationReportSchema>;
