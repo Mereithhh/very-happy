@@ -2,7 +2,7 @@ import { t, type TranslationKey } from '@/text';
 import { teamTaskTone, type TeamTaskState } from './teamTaskState';
 
 const LABEL: Record<TeamTaskState, TranslationKey> = {
-    queued: 'teams.taskState.queued', starting: 'teams.taskState.starting', launchFailed: 'teams.taskState.launchFailed',
+    queued: 'teams.taskState.queued', starting: 'teams.taskState.starting', launchFailed: 'teams.taskState.launchFailed', cleanupBlocked: 'teams.taskState.cleanupBlocked',
     working: 'teams.taskState.working', waiting: 'teams.taskState.waiting', idle: 'teams.taskState.idle',
     stopped: 'teams.taskState.stopped', checking: 'teams.taskState.checking', submitted: 'teams.taskState.submitted',
     done: 'teams.taskState.done', cancelled: 'teams.taskState.cancelled',

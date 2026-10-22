@@ -1,4 +1,4 @@
-import type { TeamState, TeamTask } from '@slopus/happy-wire';
+import { teamCleanupHoldsSession, type TeamState, type TeamTask } from '@slopus/happy-wire';
 import type { AgentExecution } from '@/sync/agentStatus';
 
 /**
@@ -19,6 +19,7 @@ import type { AgentExecution } from '@/sync/agentStatus';
  * | task.status | condition                                   | state        |
  * |-------------|---------------------------------------------|--------------|
  * | queued      | current launch failed / outcome unknown     | launchFailed |
+ * | queued      | launch held by the member's failed cleanup  | cleanupBlocked |
  * | queued      | current launch pending / claimed            | starting     |
  * | queued      | otherwise (waiting for a member slot)       | queued       |
  * | running     | no session, launch pending / claimed        | starting     |
@@ -35,7 +36,7 @@ import type { AgentExecution } from '@/sync/agentStatus';
  *
  * `checking` never claims「运行中」: unknown is shown as unknown (宁可晚亮，不可长亮).
  */
-export const TEAM_TASK_STATES = ['queued', 'starting', 'launchFailed', 'working', 'waiting', 'idle', 'stopped', 'checking', 'submitted', 'done', 'cancelled'] as const;
+export const TEAM_TASK_STATES = ['queued', 'starting', 'launchFailed', 'cleanupBlocked', 'working', 'waiting', 'idle', 'stopped', 'checking', 'submitted', 'done', 'cancelled'] as const;
 export type TeamTaskState = (typeof TEAM_TASK_STATES)[number];
 /** Board lanes: 待开始 / 进行中 / 待验收 / 已结束. */
 export type TeamTaskLane = 'queued' | 'running' | 'submitted' | 'finished';
@@ -43,7 +44,7 @@ export type TeamTaskLane = 'queued' | 'running' | 'submitted' | 'finished';
 export type MemberExecution = (sessionId: string) => AgentExecution | undefined;
 
 const LANE: Record<TeamTaskState, TeamTaskLane> = {
-    queued: 'queued', starting: 'queued', launchFailed: 'queued',
+    queued: 'queued', starting: 'queued', launchFailed: 'queued', cleanupBlocked: 'queued',
     working: 'running', waiting: 'running', idle: 'running', stopped: 'running', checking: 'running',
     submitted: 'submitted', done: 'finished', cancelled: 'finished',
 };
@@ -54,7 +55,7 @@ export function teamTaskLane(state: TeamTaskState): TeamTaskLane {
 
 /** States the owner should act on: a dead member, a failed launch, a permission prompt. */
 export function teamTaskNeedsOwner(state: TeamTaskState): boolean {
-    return state === 'stopped' || state === 'launchFailed' || state === 'waiting';
+    return state === 'stopped' || state === 'launchFailed' || state === 'cleanupBlocked' || state === 'waiting';
 }
 
 export function teamTaskState(team: Pick<TeamState, 'bots' | 'operations'>, task: TeamTask, execution: MemberExecution): TeamTaskState {
@@ -63,6 +64,8 @@ export function teamTaskState(team: Pick<TeamState, 'bots' | 'operations'>, task
     const launching = !!launch && (launch.status === 'pending' || launch.status === 'claimed');
     if (task.status === 'queued') {
         if (launch && (launch.status === 'failed' || launch.status === 'unknown')) return 'launchFailed';
+        // B-775: the launch is not "starting" — it waits for the owner to resolve the member's cleanup.
+        if (launch?.status === 'pending' && teamCleanupBlockingLaunch(team, task)) return 'cleanupBlocked';
         return launching ? 'starting' : 'queued';
     }
     const bot = team.bots.find(b => b.id === task.assigneeBotId);
@@ -76,10 +79,20 @@ export function teamTaskState(team: Pick<TeamState, 'bots' | 'operations'>, task
     }
 }
 
+/**
+ * B-775: the member's failed cleanup that keeps this task's launch from being claimed
+ * (server `bot_cleanup_pending`), or undefined. A cleanup still in flight is just「启动中」.
+ */
+export function teamCleanupBlockingLaunch(team: Pick<TeamState, 'bots' | 'operations'>, task: TeamTask): TeamState['operations'][number] | undefined {
+    if (task.status !== 'queued') return undefined;
+    const held = teamCleanupHoldsSession(team, task.assigneeBotId);
+    return held && (held.status === 'failed' || held.status === 'unknown') ? held : undefined;
+}
+
 /** The status pill tone: accent only for a live turn (design contract), warn / danger for owner work. */
 export function teamTaskTone(state: TeamTaskState): 'live' | 'warn' | 'danger' | null {
     if (state === 'working') return 'live';
-    if (state === 'stopped' || state === 'launchFailed') return 'danger';
+    if (state === 'stopped' || state === 'launchFailed' || state === 'cleanupBlocked') return 'danger';
     if (state === 'waiting' || state === 'submitted') return 'warn';
     return null;
 }

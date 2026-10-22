@@ -119,6 +119,10 @@
 .teams-screen small {
   color: var(--text-dim);
 }
+/* B-775: a warning line stays red — the rule above (0,1,1) used to outrank .teams-error. */
+.teams-screen small.teams-error {
+  color: var(--danger);
+}
 @media (max-width: 600px) {
   .teams-screen {
     padding: 16px;

@@ -24,6 +24,10 @@ const en = {
   retryCleanup: 'Retry cleanup', markHandled: 'Mark as handled',
   cleanupHint: 'Cleanup keeps a worktree that still has uncommitted files or commits that are not pushed or merged. Push, merge or commit, then retry cleanup. If you already handled it yourself, mark it as handled.',
   cleanupUpgrade: 'Update the CLI on this computer to retry cleanup from here.',
+  // B-775: what a failed cleanup means for the member's next task.
+  cleanupHoldsMember: 'New tasks for this member cannot start until this is handled.',
+  cleanupWaitingTasks: (n: number) => `${n} queued ${n === 1 ? 'task is' : 'tasks are'} waiting for it.`,
+  cleanupRetainedOnly: 'The member\'s session is stopped; new tasks start in a fresh worktree.',
   resolvedCount: (n: number) => `${n} handled ${n === 1 ? 'item' : 'items'}`,
   // B-723 (O2/O3): team operation labels and error summaries; the raw daemon text stays under 「Details」.
   opType: { spawn: 'Start member', stop: 'Clean up member' } as Record<string, string>,
@@ -70,6 +74,9 @@ const zh: typeof en = {
   retryCleanup: '重试清理', markHandled: '标记为已处理',
   cleanupHint: '工作区里还有未提交的文件，或有未推送、未合并的提交时，会保留它不清理。推送、合并或提交后点「重试清理」；如果已经自行处理，点「标记为已处理」。',
   cleanupUpgrade: '这台电脑的 CLI 更新后才能在这里重试清理。',
+  cleanupHoldsMember: '处理之前，这个成员的新任务无法启动。',
+  cleanupWaitingTasks: (n: number) => `有 ${n} 个待开始的任务在等它。`,
+  cleanupRetainedOnly: '成员会话已停止，新任务会使用新的工作区。',
   resolvedCount: (n: number) => `已处理 ${n} 条`,
   opType: { spawn: '启动成员', stop: '回收成员' },
   opStatus: { pending: '等待中', claimed: '执行中', completed: '已完成', failed: '失败', unknown: '结果未知' },

@@ -183,7 +183,12 @@ A member whose task was accepted or cancelled and whose cleanup finished is
 **inactive**: it no longer counts as a member, its tasks and sessions stay
 readable, and a new delegation with the same agent, model and folder reuses it
 instead of adding another member. Delegating to a member that is still being
-cleaned up queues the task; it starts once the cleanup completes. Delegating to an
+cleaned up queues the task; it starts once the cleanup completes. If that cleanup
+fails after the member's session was stopped (it kept a worktree with unpushed
+work), the queued task starts in a fresh worktree and the old one waits for you.
+If the failed cleanup still holds the member's session, the task shows **Waiting
+for cleanup** and new delegations to that member are refused with the reason
+(`bot_cleanup_failed`); retry the cleanup or mark it handled. Delegating to an
 inactive member by name reactivates it in a fresh session and worktree. The
 member limit (32) counts active members only.
 
