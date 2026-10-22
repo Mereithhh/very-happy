@@ -56,21 +56,12 @@
 .lv-answered:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint); }
 @media (pointer: coarse) { .lv-answered { min-height: 44px; } }
 
-/* Landing on the answer: the search-hit tint, fading out (same token as B-650). */
-.lv-flash { animation: lv-flash 2.4s ease-out; border-radius: var(--r-md); }
-@keyframes lv-flash {
-  0%, 30% { background: var(--search-hit); box-shadow: 0 0 0 6px var(--search-hit); }
-  100% { background: transparent; box-shadow: 0 0 0 6px transparent; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .lv-flash { animation-duration: 0.01s; outline: 2px solid var(--search-hit); outline-offset: 4px; }
-}
-
 /* The view switch sits at the end of the team context row (D6: one row on phones). */
 /* Sized by its labels: the atom's inline-size container would collapse it to its padding. */
 .lv-toggle { flex: none; margin-left: auto; container-type: normal; }
 .lv-toggle > button { flex: none; }
 .lv-label-short { display: none; }
+.lv-toggle--compact > button { padding-inline: var(--sp-2); }
 .session-team-context:has(.lv-toggle) a.session-team-context-progress { margin-left: auto; }
 .session-team-context a.session-team-context-progress + .lv-toggle { margin-left: 0; }
 @media (max-width: 600px) {

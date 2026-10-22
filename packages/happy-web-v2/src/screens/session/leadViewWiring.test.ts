@@ -17,6 +17,8 @@ describe('lead view wiring', () => {
     });
     it('anchors agent answers for 「已答 ↗」', () => {
         expect(read('./MessageView.tsx')).toContain('<div className="msg msg--agent" data-message-id={message.id}>');
-        expect(read('./ChatList.tsx')).toContain('root.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(answerId)}"]`)');
+        // …through the session-search jump, tinted (no terms to paint).
+        expect(read('./ChatList.tsx')).toContain('requestChatJump(sessionId, { terms: [], messageId: answerId, flash: true })');
+        expect(read('../search/useChatJump.ts')).toContain('if (req.flash) flashElement(found.el);');
     });
 });

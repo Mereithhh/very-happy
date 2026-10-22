@@ -4,7 +4,7 @@
  * 「已答 ↗」 chip. Rules live in leadView.ts.
  */
 import { createContext, useContext } from 'react';
-import { ArrowUpRight, ChevronDown } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, ListFilter, MessagesSquare } from 'lucide-react';
 import type { LeadFold, LeadViewMode } from './leadView';
 import { setLeadView, useLeadView } from './leadViewPrefs';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -28,17 +28,20 @@ export function AnsweredChip({ messageId }: { messageId: string }) {
     </button>;
 }
 
-export function LeadViewToggle({ sessionId }: { sessionId: string }) {
+/**
+ * `.vh-segmented` markup (ui/Segmented) with a full and a phone label per
+ * option. `compact` = icons only (W-1's phone summary strip, D6: one row).
+ */
+export function LeadViewToggle({ sessionId, compact = false }: { sessionId: string; compact?: boolean }) {
     const copy = useLeadViewCopy();
     const mode = useLeadView(sessionId);
-    // `.vh-segmented` markup (ui/Segmented) with a full and a phone label per option.
-    const option = (value: LeadViewMode, full: string, short: string) => <button type="button" aria-pressed={mode === value} title={full}
-        onClick={() => { if (mode !== value) setLeadView(sessionId, value); }}>
-        <span className="lv-label-full">{full}</span><span className="lv-label-short">{short}</span>
+    const option = (value: LeadViewMode, full: string, short: string, Icon: typeof ListFilter) => <button type="button" aria-pressed={mode === value} title={full}
+        aria-label={compact ? full : undefined} onClick={() => { if (mode !== value) setLeadView(sessionId, value); }}>
+        {compact ? <Icon size={14} aria-hidden /> : <><span className="lv-label-full">{full}</span><span className="lv-label-short">{short}</span></>}
     </button>;
-    return <div role="group" aria-label={copy.label} className="vh-segmented lv-toggle">
-        {option('all', copy.all, copy.allShort)}
-        {option('owner', copy.owner, copy.ownerShort)}
+    return <div role="group" aria-label={copy.label} className={`vh-segmented lv-toggle${compact ? ' lv-toggle--compact' : ''}`}>
+        {option('all', copy.all, copy.allShort, MessagesSquare)}
+        {option('owner', copy.owner, copy.ownerShort, ListFilter)}
     </div>;
 }
 

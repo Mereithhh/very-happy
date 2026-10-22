@@ -26,6 +26,7 @@ import {
 
 const HIGHLIGHT_NAME = 'vh-search-hit';
 const HIGHLIGHT_MS = 8_000;
+const FLASH_CLASS = 'chat-jump-flash';
 const MAX_HIGHLIGHT_RANGES = 200;
 // Older history can be held back from the DOM while the transcript is moving (B-603 heldTranscript): give it ~4.5 s.
 const LOCATE_ATTEMPTS = 30;
@@ -62,6 +63,9 @@ export function locateJumpTarget(
     targetId: string,
     req: ChatJumpRequest,
 ): { el: HTMLElement; scope: Text[] } | null {
+    // B-766: an agent message with its own anchor is landed on directly.
+    const direct = root.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(targetId)}"]`);
+    if (direct) return { el: direct, scope: [] };
     const promptId = promptForMessage(chronological, targetId);
     const prompt = promptEl(root, promptId);
     const prompts = [...root.querySelectorAll<HTMLElement>('[data-chat-prompt-id]')];
@@ -97,6 +101,14 @@ function paintHighlights(nodes: readonly Text[], terms: readonly string[]): () =
     if (ranges.length === 0) return () => {};
     hl.registry.set(HIGHLIGHT_NAME, new hl.Ctor(...ranges));
     return () => hl.registry.delete(HIGHLIGHT_NAME);
+}
+
+/** B-766: restartable tint on the landed element (`.chat-jump-flash`, chatReadingAids.css). */
+function flashElement(el: HTMLElement): void {
+    el.classList.remove(FLASH_CLASS);
+    void el.offsetWidth;
+    el.classList.add(FLASH_CLASS);
+    el.addEventListener('animationend', () => el.classList.remove(FLASH_CLASS), { once: true });
 }
 
 export function useChatJump(opts: {
@@ -151,6 +163,7 @@ export function useChatJump(opts: {
             land();
             // The open-at-bottom pass and late layout (images, code blocks) can move it; re-assert twice.
             timers.push(setTimeout(land, 250), setTimeout(land, 700));
+            if (req.flash) flashElement(found.el);
             clearRef.current();
             const clear = paintHighlights(found.scope, req.terms);
             const t = setTimeout(clear, HIGHLIGHT_MS);

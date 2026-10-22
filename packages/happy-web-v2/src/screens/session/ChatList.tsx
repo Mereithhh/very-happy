@@ -61,6 +61,7 @@ import { ChatPromptRail } from './ChatPromptRail';
 import { ReaderFollowContext, createReaderFollow, type ReaderFollowSource } from './readerFollow';
 import './chatReadingAids.css';
 import { useChatJump } from '@/screens/search/useChatJump';
+import { requestChatJump } from '@/screens/search/chatJump';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { teamSessionMembership } from '@/screens/sessions/teamNavigation';
 import { leadViewEntries, leadViewKeys, ownerAnswers, turnOpenerIds, turnOrigin } from './leadView';
@@ -681,29 +682,13 @@ export function ChatList({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filtered]);
 
-    // B-766: 「已答 ↗」 lands on the answer (data-message-id on agent text) and
-    // tints it; an answer not on screen (inside a folded activity) falls back
-    // to the row right after the question.
-    const jumpToAnswer = (ownerId: string, answerId: string) => {
-        const root = scrollRef.current;
-        if (!root) return;
-        const target = root.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(answerId)}"]`)
-            ?? root.querySelector<HTMLElement>(`[data-chat-prompt-id="${CSS.escape(ownerId)}"]`)?.nextElementSibling as HTMLElement | null;
-        if (!target) return;
-        detach();
-        target.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
-        target.classList.remove('lv-flash');
-        void target.offsetWidth;
-        target.classList.add('lv-flash');
-        target.addEventListener('animationend', () => target.classList.remove('lv-flash'), { once: true });
-    };
-    const jumpRef = useRef(jumpToAnswer);
-    jumpRef.current = jumpToAnswer;
-    const answerContext = useMemo(() => {
-        if (!answers) return null;
-        const owners = new Map([...answers].map(([owner, answer]) => [answer, owner]));
-        return { answers, jump: (answerId: string) => jumpRef.current(owners.get(answerId) ?? '', answerId) };
-    }, [answers]);
+    // B-766: 「已答 ↗」 goes through the session-search jump (chatJump): it lands
+    // on the answer's `data-message-id` anchor and tints it; an answer not on
+    // screen (inside a folded activity) lands on its question.
+    const answerContext = useMemo(
+        () => (answers ? { answers, jump: (answerId: string) => requestChatJump(sessionId, { terms: [], messageId: answerId, flash: true }) } : null),
+        [answers, sessionId],
+    );
 
     // 「跳到最新」 is asking to follow again: drop the detach so the smooth
     // catch-up re-arms through the follow band like before B-598.

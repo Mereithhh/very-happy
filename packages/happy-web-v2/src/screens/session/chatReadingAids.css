@@ -161,3 +161,13 @@
 @media (prefers-reduced-motion: reduce) {
   .cl-rail-mark { transition: none; }
 }
+
+/* B-766: a jump that lands on an element without terms to paint (「已答 ↗」): the search-hit tint, fading out. */
+.chat-jump-flash { animation: chat-jump-flash 2.4s ease-out; border-radius: var(--r-md); }
+@keyframes chat-jump-flash {
+  0%, 30% { background: var(--search-hit); box-shadow: 0 0 0 6px var(--search-hit); }
+  100% { background: transparent; box-shadow: 0 0 0 6px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-jump-flash { animation-duration: 0.01s; outline: 2px solid var(--search-hit); outline-offset: 4px; }
+}
