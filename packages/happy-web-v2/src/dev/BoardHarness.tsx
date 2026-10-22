@@ -32,7 +32,11 @@ function agent(text: string, min: number): NormalizedMessage {
         content: [{ type: 'text', text, uuid: `u-${seq}`, parentUUID: null }] } as unknown as NormalizedMessage;
 }
 
-const T = {
+/** Fixture language follows the browser locale (captures run zh-CN and en-US). */
+const ZH = typeof navigator === 'undefined' || navigator.language.toLowerCase().startsWith('zh');
+const L = (zh: string, en: string) => (ZH ? zh : en);
+
+const T_ZH = {
     q1: '登录页改版现在到哪一步了？今天能合吗？',
     r1: '前端 PR #431 已提交，回归测试还在跑。能不能今天合要看测试结果，结论出来放到汇报板。',
     q4: '注册页也按同样的样式改一下，跟登录页一起发。',
@@ -44,6 +48,19 @@ const T = {
     r3: '我先安排一下，稍后回复你。',
     m2: '记录，继续观察。',
 };
+const T_EN: typeof T_ZH = {
+    q1: 'Where is the login page redesign at? Can it merge today?',
+    r1: 'Frontend PR #431 is up and the regression run is still going. Whether it merges today depends on the result — I will put the answer on the board.',
+    q4: 'Restyle the sign-up page the same way and ship it with the login page.',
+    r4: 'OK — task #16 goes to member A, in the same PR series as the login page. I will tell you on the board when it is done.',
+    q2: 'By the way, who is on the dark-mode contrast issue?',
+    r2: 'Member A is fixing it; it is in the revision notes on task #12, about 20 minutes.',
+    m1: 'Accepted task #12, tests all green. On the board: an answer to your 09:02 question, and a release-time decision for you.',
+    q3: 'Who writes the release notes?',
+    r3: 'Let me line that up and get back to you.',
+    m2: 'Noted, keeping an eye on it.',
+};
+const T = ZH ? T_ZH : T_EN;
 
 function messages(): NormalizedMessage[] {
     seq = 0;
@@ -76,33 +93,33 @@ function items(): AttentionItem[] {
     const m1 = agentId(T.m1), m2 = agentId(T.m2);
         return ([
         { id: 'd1', source: 'lead', kind: 'decision', key: 'login-release', needsOwner: true, state: 'open', repostCount: 3,
-            title: '登录页改版今天发布还是明早发布？', bodyMd: '测试 40/40 已通过，PR 可以合并。发布窗口有两个选择：',
-            options: [{ id: 'A', label: '今晚 20:00 发布', detail: '今天就上线；晚间值守需要有人在' }, { id: 'B', label: '明早 10:00 发布', detail: '有完整值守，晚一天', recommended: true }],
-            links: [{ type: 'pr', ref: '431', label: 'PR #431' }, { type: 'task', ref: '12', label: '任务 #12' }],
+            title: L('登录页改版今天发布还是明早发布？', 'Ship the login redesign tonight or tomorrow morning?'), bodyMd: L('测试 40/40 已通过，PR 可以合并。发布窗口有两个选择：', 'Tests 40/40 passed and the PR can merge. Two release windows:'),
+            options: [{ id: 'A', label: L('今晚 20:00 发布', 'Tonight 20:00'), detail: L('今天就上线；晚间值守需要有人在', 'Live today; someone has to be on call tonight') }, { id: 'B', label: L('明早 10:00 发布', 'Tomorrow 10:00'), detail: L('有完整值守，晚一天', 'Full on-call cover, one day later'), recommended: true }],
+            links: [{ type: 'pr', ref: '431', label: 'PR #431' }, { type: 'task', ref: '12', label: L('任务 #12', 'Task #12') }],
             anchor: { messageId: m1, snippet: T.m1 }, createdAt: at(34), updatedAt: at(34) },
         { id: 't1', source: 'lead', kind: 'todo', needsOwner: true, state: 'open',
-            title: '在手机上看一眼新登录页（预发环境）', bodyMd: '自动化截图只覆盖了模拟器，真机还没人看过。看完回一句「可以」或指出问题。',
-            links: [{ type: 'url', ref: 'https://staging.example.com/login', label: '预发链接' }],
+            title: L('在手机上看一眼新登录页（预发环境）', 'Check the new login page on your phone (staging)'), bodyMd: L('自动化截图只覆盖了模拟器，真机还没人看过。看完回一句「可以」或指出问题。', 'Automated captures only covered the simulator; nobody has looked on a real phone. Reply OK or point out what is wrong.'),
+            links: [{ type: 'url', ref: 'https://staging.example.com/login', label: L('预发链接', 'Staging link') }],
             anchor: { messageId: m2, snippet: T.m2 }, createdAt: at(43), updatedAt: at(43) },
         { id: 'q3', source: 'owner', kind: 'question', needsOwner: false, state: 'in_progress', title: T.q3,
             anchor: { localId: 'owner-q3' }, firstReply: { messageId: agentId(T.r3), snippet: T.r3 }, createdAt: at(39), updatedAt: at(39.5) },
-        { id: 'q4', source: 'owner', kind: 'request', needsOwner: false, state: 'in_progress', title: '注册页也按同样的样式改，跟登录页一起发',
-            links: [{ type: 'task', ref: '16', label: '任务 #16' }],
-            anchor: { localId: 'owner-q4' }, firstReply: { messageId: agentId(T.r4), snippet: '派给成员 A 做任务 #16，完成后在汇报板上告诉你。' }, createdAt: at(11), updatedAt: at(11.5) },
+        { id: 'q4', source: 'owner', kind: 'request', needsOwner: false, state: 'in_progress', title: L('注册页也按同样的样式改，跟登录页一起发', 'Restyle the sign-up page the same way, ship with the login page'),
+            links: [{ type: 'task', ref: '16', label: L('任务 #16', 'Task #16') }],
+            anchor: { localId: 'owner-q4' }, firstReply: { messageId: agentId(T.r4), snippet: L('派给成员 A 做任务 #16，完成后在汇报板上告诉你。', 'Task #16 goes to member A; I will tell you on the board when done.') }, createdAt: at(11), updatedAt: at(11.5) },
         { id: 'q1', source: 'owner', kind: 'question', needsOwner: false, state: 'answered', title: T.q1,
-            anchor: { localId: 'owner-q1' }, firstReply: { messageId: agentId(T.r1), snippet: '前端 PR 已提交，测试在跑，结论出来放到汇报板。' }, createdAt: at(0), updatedAt: at(34), resolvedAt: at(34) },
+            anchor: { localId: 'owner-q1' }, firstReply: { messageId: agentId(T.r1), snippet: L('前端 PR 已提交，测试在跑，结论出来放到汇报板。', 'Frontend PR is up, tests running; the answer goes on the board.') }, createdAt: at(0), updatedAt: at(34), resolvedAt: at(34) },
         { id: 'q2', source: 'owner', kind: 'question', needsOwner: false, state: 'answered', title: T.q2,
-            anchor: { localId: 'owner-q2' }, firstReply: { messageId: agentId(T.r2), snippet: '成员 A 在改，已写进任务 #12 的退回意见里。' }, resolvedBy: 'auto-first-reply', createdAt: at(12), updatedAt: at(12.5), resolvedAt: at(12.5) },
+            anchor: { localId: 'owner-q2' }, firstReply: { messageId: agentId(T.r2), snippet: L('成员 A 在改，已写进任务 #12 的退回意见里。', 'Member A is fixing it; it is in the revision notes on task #12.') }, resolvedBy: 'auto-first-reply', createdAt: at(12), updatedAt: at(12.5), resolvedAt: at(12.5) },
         { id: 'a1', source: 'lead', kind: 'answer', needsOwner: false, state: 'open', replyToId: 'q1',
-            title: '可以今天合：测试 40/40 通过，PR #431 已就绪', bodyMd: '任务 #12 退回一次（暗色对比度），修改后复测全绿。合并后是否今天发布见上方「决定」。',
+            title: L('可以今天合：测试 40/40 通过，PR #431 已就绪', 'It can merge today: tests 40/40, PR #431 ready'), bodyMd: L('任务 #12 退回一次（暗色对比度），修改后复测全绿。合并后是否今天发布见上方「决定」。', 'Task #12 went back once (dark-mode contrast); the retest is all green. Whether to ship today is the decision above.'),
             links: [{ type: 'pr', ref: '431', label: 'PR #431' }], anchor: { messageId: m1, snippet: T.m1 }, createdAt: at(33.9), updatedAt: at(34) },
-        { id: 'r1', source: 'lead', kind: 'report', needsOwner: false, state: 'resolved', title: '任务 #14 已验收：登录接口限流参数调整',
-            bodyMd: '预发环境观察 10 分钟无异常。', links: [{ type: 'task', ref: '14', label: '任务 #14' }], createdAt: at(21), updatedAt: at(22), resolvedAt: at(22) },
-        { id: 'd0', source: 'lead', kind: 'decision', needsOwner: true, state: 'dismissed', title: '限流阈值先放宽到 200 还是保持 100？',
-            options: [{ id: 'A', label: '放宽到 200' }, { id: 'B', label: '保持 100' }], resolvedBy: 'lead', resolveNote: '压测结果出来了，保持 100 就够，撤回这条。',
+        { id: 'r1', source: 'lead', kind: 'report', needsOwner: false, state: 'resolved', title: L('任务 #14 已验收：登录接口限流参数调整', 'Task #14 accepted: login API rate-limit tuning'),
+            bodyMd: L('预发环境观察 10 分钟无异常。', '10 minutes on staging, no anomalies.'), links: [{ type: 'task', ref: '14', label: L('任务 #14', 'Task #14') }], createdAt: at(21), updatedAt: at(22), resolvedAt: at(22) },
+        { id: 'd0', source: 'lead', kind: 'decision', needsOwner: true, state: 'dismissed', title: L('限流阈值先放宽到 200 还是保持 100？', 'Raise the rate limit to 200 or keep 100?'),
+            options: [{ id: 'A', label: L('放宽到 200', 'Raise to 200') }, { id: 'B', label: L('保持 100', 'Keep 100') }], resolvedBy: 'lead', resolveNote: L('压测结果出来了，保持 100 就够，撤回这条。', 'Load test is in: 100 is enough, withdrawing this.'),
             createdAt: at(15), updatedAt: at(20), resolvedAt: at(20) },
-        { id: 'd2', source: 'lead', kind: 'decision', needsOwner: true, state: 'open', inferred: true, title: '要不要把旧登录页的入口一起下线？',
-            options: [{ id: 'A', label: '一起下线' }, { id: 'B', label: '保留一周' }], key: 'auto:legacy-login', createdAt: at(44), updatedAt: at(44) },
+        { id: 'd2', source: 'lead', kind: 'decision', needsOwner: true, state: 'open', inferred: true, title: L('要不要把旧登录页的入口一起下线？', 'Retire the old login page entry at the same time?'),
+            options: [{ id: 'A', label: L('一起下线', 'Retire it too') }, { id: 'B', label: L('保留一周', 'Keep it a week') }], key: 'auto:legacy-login', createdAt: at(44), updatedAt: at(44) },
     ] as Draft[]).map(wire);
 }
 
@@ -138,7 +155,7 @@ export function BoardHarness() {
         const now = Date.now();
         storage.getState().applySessions([{
             id: SESSION_ID, seq: 1, createdAt: BASE, updatedAt: now, active: true, activeAt: now,
-            metadata: { machineId: 'dev-machine', path: '/repo', host: 'dev-box', flavor: 'claude', summary: { text: '网站改版 · 负责人', updatedAt: now },
+            metadata: { machineId: 'dev-machine', path: '/repo', host: 'dev-box', flavor: 'claude', summary: { text: L('网站改版 · 负责人', 'Website redesign · lead'), updatedAt: now },
                 capabilities: ['claude-steer-v1', 'claude-live-permission-v1', ATTENTION_SESSION_CAPABILITY] },
             metadataVersion: 1,
             agentState: { controlledByUser: false, requests: {} },
@@ -161,7 +178,7 @@ export function BoardHarness() {
         }) as typeof sync.sendMessage;
         // This session is the team lead (B-1's 「只看我和负责人」 toggle; on phones it sits in the board strip).
         const team = buildLeadFixture({ now }).team;
-        setTeamNavigationDevOverride([{ ...team, bots: team.bots.map((b) => (b.root ? { ...b, sessionId: SESSION_ID } : b)) }]);
+        setTeamNavigationDevOverride([{ ...team, name: L(team.name, 'Redesign squad (example)'), bots: team.bots.map((b) => (b.root ? { ...b, sessionId: SESSION_ID } : b)) }]);
         setReady(true);
         return () => { setTeamNavigationDevOverride(null); sync.sendMessage = realSend; restoreFetch(); useAttentionStore.getState().clear(SESSION_ID); };
     }, []);
