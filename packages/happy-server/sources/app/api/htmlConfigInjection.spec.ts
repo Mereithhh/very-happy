@@ -18,8 +18,8 @@ describe('runtime HTML config injection', () => {
 
     const INDEX = `<html><head><title>Very Happy</title>
 <meta name="apple-mobile-web-app-title" content="Very Happy" />
-<link rel="apple-touch-icon" href="apple-touch-icon.png" />
-<link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
 <meta property="og:title" content="Very Happy — tagline" />
 <meta property="og:image" content="https://veryhappy.dev/og-image.png" />
 <meta property="og:image:width" content="1200" />
@@ -52,7 +52,7 @@ describe('runtime HTML config injection', () => {
         expect(html).toContain('<title>Acme</title>');
         expect(html).toContain('<strong class="vh-startup-wordmark">Acme</strong>');
         expect(html).toContain('<div class="vh-startup-hub"><svg viewBox="0 0 96 96"><path/></svg></div>');
-        expect(html).toContain('href="favicon.png"');
+        expect(html).toContain('href="/favicon.png"');
         expect(html).toContain('og:image" content="https://veryhappy.dev/og-image.png"');
         expect(applyBrandToHtml(INDEX, null)).toBe(INDEX);
         expect(readHtmlBrand({ serverUrl: 'same-origin' })).toBeNull();

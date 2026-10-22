@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { SessionProtocolMessageSchema } from '@slopus/happy-wire';
 import { LinkBudget, MAX_RECORD_CIPHER, MAX_SAME_KEY, OVERSIZE_TEXT, isSecretKey, makePathScrubber, projectLinkPage, projectRecordForLink, scrubLinkText } from './linkProjection';
 
 const fake = (...parts: string[]) => parts.join('');
+/** B-745: role=session records are built by the wire schema (`content` IS the envelope), never hand-shaped. */
+const wire = (envelope: Record<string, unknown>) => SessionProtocolMessageSchema.parse({ role: 'session', content: envelope });
 
 /**
  * B-701 security review: the link projection is a whitelist. Each case below
@@ -14,7 +17,7 @@ const IMG = Buffer.from('fake-png-bytes-'.repeat(6)).toString('base64');
 
 describe('B-701 link projection (whitelist)', () => {
     it('session tool-call-start: absolute paths become the project folder / ~', () => {
-        const out = projectRecordForLink({ role: 'session', content: { type: 'session', data: { id: 'e1', time: 1, role: 'agent', turn: 't1', ev: { t: 'tool-call-start', call: 'c1', name: 'Read', title: 'Read file', description: 'd', args: { file_path: '/home/alice/work/secret-project/src/a.ts', other: '/home/alice/.ssh/id_rsa', foreign: '/Users/bob/x' } } } } }, scrub);
+        const out = projectRecordForLink(wire({ id: 'e1', time: 1, role: 'agent', turn: 't1', ev: { t: 'tool-call-start', call: 'c1', name: 'Read', title: 'Read file', description: 'd', args: { file_path: '/home/alice/work/secret-project/src/a.ts', other: '/home/alice/.ssh/id_rsa', foreign: '/Users/bob/x' } } }), scrub);
         const s = json(out);
         expect(s).not.toMatch(/\/home\/alice|\/Users\/bob/);
         expect(s).toContain('secret-project/src/a.ts');
@@ -23,13 +26,13 @@ describe('B-701 link projection (whitelist)', () => {
     });
 
     it('session turn-end: no cost, usage or duration; envelope usage dropped', () => {
-        const out = projectRecordForLink({ role: 'session', content: { type: 'session', data: { id: 'e2', time: 1, role: 'agent', turn: 't1', usage: { input_tokens: 1, output_tokens: 2 }, claudeUuid: 'u', ev: { t: 'turn-end', status: 'completed', costUsd: 1.23, durationMs: 9, numTurns: 3, usage: { input_tokens: 1, output_tokens: 2 } } } } }, scrub);
-        expect(out).toEqual({ role: 'session', content: { type: 'session', data: { id: 'e2', time: 1, role: 'agent', turn: 't1', ev: { t: 'turn-end', status: 'completed' } } } });
+        const out = projectRecordForLink(wire({ id: 'e2', time: 1, role: 'agent', turn: 't1', usage: { input_tokens: 1, output_tokens: 2 }, claudeUuid: 'u', ev: { t: 'turn-end', status: 'completed', costUsd: 1.23, durationMs: 9, numTurns: 3, usage: { input_tokens: 1, output_tokens: 2 } } }), scrub);
+        expect(out).toEqual(wire({ id: 'e2', time: 1, role: 'agent', turn: 't1', ev: { t: 'turn-end', status: 'completed' } }));
     });
 
     it('session thinking text and file events are not shown', () => {
-        expect(projectRecordForLink({ role: 'session', content: { type: 'session', data: { id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'text', text: 'secret plan', thinking: true } } } }, scrub)).toBeNull();
-        expect(projectRecordForLink({ role: 'session', content: { type: 'session', data: { id: 'e', time: 1, role: 'user', ev: { t: 'file', ref: 'r', name: 'a.png', size: 1 } } } }, scrub)).toBeNull();
+        expect(projectRecordForLink(wire({ id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'text', text: 'secret plan', thinking: true } }), scrub)).toBeNull();
+        expect(projectRecordForLink(wire({ id: 'e', time: 1, role: 'user', ev: { t: 'file', ref: 'r', name: 'a.png', size: 1 } }), scrub)).toBeNull();
     });
 
     it('legacy output records: only whitelisted fields (no cwd, gitBranch, toolUseResult, signature, usage)', () => {
@@ -83,10 +86,10 @@ describe('B-701 link projection (whitelist)', () => {
 
     it('free-form object KEYS are path-scrubbed and secret-masked too', () => {
         const token = 'gh' + 'p_abcdefghijklmnopqrstuvwxyz0123456789';
-        const out = projectRecordForLink({ role: 'session', content: { type: 'session', data: { id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'tool-call-start', call: 'c', name: 'Edit', title: 't', description: 'd', args: {
+        const out = projectRecordForLink(wire({ id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'tool-call-start', call: 'c', name: 'Edit', title: 't', description: 'd', args: {
             [`/home/alice/work/secret-project/${token}`]: 1,
             ['OPENAI_API_KEY=' + 'sk-' + 'proj-abcdefghijklmnopqrstuvwxyz']: 'x',
-        } } } } }, scrub);
+        } } }), scrub);
         const s = json(out);
         expect(s).not.toMatch(/\/home\/alice|abcdefghijklmnopqrstuvwxyz/);
         expect(s).toContain('secret-project/[redacted]');
@@ -94,11 +97,11 @@ describe('B-701 link projection (whitelist)', () => {
     });
 
     it('data URIs are removed anywhere in a string (markdown, HTML), not only at the start', () => {
-        const out = projectRecordForLink({ role: 'session', content: { type: 'session', data: { id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'text', text: `Here: ![shot](data:image/png;base64,${IMG}) and <img src="data:image/jpeg;base64,${IMG}"> done` } } } }, scrub);
+        const out = projectRecordForLink(wire({ id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'text', text: `Here: ![shot](data:image/png;base64,${IMG}) and <img src="data:image/jpeg;base64,${IMG}"> done` } }), scrub);
         const s = json(out);
         expect(s).not.toContain(IMG.slice(0, 16));
         expect(s).toContain('![shot]([image])');
-        expect((out as any).content.data.ev.text).toContain('<img src="[image]">');
+        expect((out as any).content.ev.text).toContain('<img src="[image]">');
         expect(s).toContain('done');
     });
 
@@ -107,7 +110,7 @@ describe('B-701 link projection (whitelist)', () => {
         const field = (i: number) => ['eyJ-', 'a-', 'TOKEN=', '"secret": "', 'a://b:', 'Bearer '][i % 6].repeat(32 * 1024 / 6);
         const args: Record<string, string> = {};
         for (let i = 0; i < 32; i++) args[`f${i}`] = field(i);
-        const record = { role: 'session', content: { type: 'session', data: { id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'tool-call-start', call: 'c', name: 'n', title: 't', description: 'd', args } } } };
+        const record = wire({ id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'tool-call-start', call: 'c', name: 'n', title: 't', description: 'd', args } });
         expect(JSON.stringify(record).length).toBeGreaterThan(1_000_000);
         let out: unknown = null;
         let best = Infinity;
@@ -120,7 +123,7 @@ describe('B-701 link projection (whitelist)', () => {
         expect(JSON.stringify(out).length).toBeLessThan(400 * 1024);
     });
 
-    const env = (args: Record<string, unknown>) => ({ role: 'session', content: { type: 'session', data: { id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'tool-call-start', call: 'c', name: 'n', title: 't', description: 'd', args } } } });
+    const env = (args: Record<string, unknown>) => (wire({ id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'tool-call-start', call: 'c', name: 'n', title: 't', description: 'd', args } }));
 
     // Re-review #3: the 256 KB record budget cut must not leak a straddling secret either.
     it('never exposes the head of a secret that straddles the record budget cut', () => {
@@ -172,13 +175,12 @@ describe('B-701 link projection (whitelist)', () => {
     it('structural keys survive an exhausted budget; rewritten free-form keys never collide', () => {
         const out = projectRecordForLink(env({ big: 'q '.repeat(200 * 1024), more: new Array(50).fill('w'.repeat(64)) }), scrub, new LinkBudget(scrub, 4096)) as any;
         expect(out.role).toBe('session');
-        expect(out.content.type).toBe('session');
-        expect(out.content.data.ev.t).toBe('tool-call-start');
-        expect(Object.keys(out.content.data.ev).sort()).toEqual(['args', 'call', 'description', 'name', 't', 'title']);
-        expect(Object.keys(out.content.data).sort()).toEqual(['ev', 'id', 'role', 'time', 'turn']);
-        expect(out.content.data.ev.args.more[49]).toContain('[truncated]'); // values are cut once the budget is gone, keys are not
+                expect(out.content.ev.t).toBe('tool-call-start');
+        expect(Object.keys(out.content.ev).sort()).toEqual(['args', 'call', 'description', 'name', 't', 'title']);
+        expect(Object.keys(out.content).sort()).toEqual(['ev', 'id', 'role', 'time', 'turn']);
+        expect(out.content.ev.args.more[49]).toContain('[truncated]'); // values are cut once the budget is gone, keys are not
         const keys = projectRecordForLink(env({ '/home/alice/x': 1, '~/x': 2, '/Users/bob/x': 3 }), scrub) as any;
-        expect(keys.content.data.ev.args).toEqual({ '~/x': 1, '~/x~2': 2, '~/x~3': 3 });
+        expect(keys.content.ev.args).toEqual({ '~/x': 1, '~/x~2': 2, '~/x~3': 3 });
     });
 
     // Re-review 4 #1: records that project to NOTHING (reasoning) still pay for decrypt + parse.
@@ -202,7 +204,7 @@ describe('B-701 link projection (whitelist)', () => {
             records: [{ id: 'big', cipher: MAX_RECORD_CIPHER + 1 }, { id: 'ok', cipher: 100 }],
             cipherLength: (r) => r.cipher,
             decode: () => { decoded++; return { role: 'user', content: { type: 'text', text: 'hi' } }; },
-            oversize: (r) => ({ role: 'session', content: { type: 'session', data: { id: `oversize-${r.id}`, time: 1, role: 'agent', turn: 'x', ev: { t: 'service', text: OVERSIZE_TEXT } } } }),
+            oversize: (r) => (wire({ id: `oversize-${r.id}`, time: 1, role: 'agent', turn: 'x', ev: { t: 'service', text: OVERSIZE_TEXT } })),
             scrub,
         });
         expect(decoded).toBe(1);
@@ -219,7 +221,7 @@ describe('B-701 link projection (whitelist)', () => {
             env: { DB_PASSWORD: 'pw-0001', NODE_ENV: 'production', nested: [{ apiKey: 'k-abcdef' }, { Authorization: 'Basic dXNlcjpwYXNz' }] },
             headers: { Authorization: 'xyz' }, author: 'alice',
         }), scrub) as any;
-        const args = out.content.data.ev.args;
+        const args = out.content.ev.args;
         expect(args.password).toBe('[redacted]');
         expect(args.apiKey).toBe('[redacted]');
         expect(args.env.DB_PASSWORD).toBe('[redacted]');
@@ -241,7 +243,7 @@ describe('B-701 link projection (whitelist)', () => {
         const record = env(args);
         const { best, out } = timed(() => projectRecordForLink(record, scrub));
         expect(best).toBeLessThan(50);
-        const keys = Object.keys((out as any).content.data.ev.args);
+        const keys = Object.keys((out as any).content.ev.args);
         expect(keys).toHaveLength(MAX_SAME_KEY + 1);
         expect(keys.slice(0, 3)).toEqual(['~/x', '~/x~2', '~/x~3']);
         expect(keys).toContain(`…[${4000 - MAX_SAME_KEY} more keys]`); // 950 same-name + 3000 past the per-object key cap
@@ -261,6 +263,6 @@ describe('B-701 link projection (whitelist)', () => {
         for (const k of ['bearer', 'jwt', 'pass', 'pw', 'passcode', 'PGPASSWORD', 'signing_key', 'encryptionKey', 'MASTER_KEY', 'hmac_key', 'otp', 'session', 'session_token', 'sessionSecret', 'session_key', 'refresh_token', 'GITHUB_TOKEN', 'tokens']) expect(isSecretKey(k), k).toBe(true);
         for (const k of ['sessionId', 'session_count', 'max_tokens', 'token_count', 'tokens_used', 'input_tokens', 'maxTokens', 'author', 'passage', 'tokenizer']) expect(isSecretKey(k), k).toBe(false);
         const out = projectRecordForLink(env({ jwt: 'eyJabc', otp: 123456, signing_key: 'k', max_tokens: 4096, token_count: 12, sessionId: 'abc' }), scrub) as any;
-        expect(out.content.data.ev.args).toEqual({ jwt: '[redacted]', otp: '[redacted]', signing_key: '[redacted]', max_tokens: 4096, token_count: 12, sessionId: 'abc' });
+        expect(out.content.ev.args).toEqual({ jwt: '[redacted]', otp: '[redacted]', signing_key: '[redacted]', max_tokens: 4096, token_count: 12, sessionId: 'abc' });
     });
 });

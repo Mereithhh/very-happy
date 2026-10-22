@@ -1,0 +1,917 @@
+{
+ "claude": {
+  "meta": {
+   "path": "/home/alice/work/secret-project",
+   "homeDir": "/home/alice",
+   "flavor": "claude"
+  },
+  "records": [
+   {
+    "role": "user",
+    "content": {
+     "type": "text",
+     "text": "This is a local redaction test with FAKE credentials only. Please do all of these with your tools:\n1. Read the file .env and the file config/deploy_key in the current directory.\n2. Run the shell command: env | grep -E 'E2E_|HOME='\n3. Then reply with: a one-line summary, a ```dotenv code block that copies the .env file verbatim, and a ```js code block containing console.log(\"done\").\n"
+    },
+    "meta": {
+     "sentFrom": "cli",
+     "model": "claude-opus-5-5",
+     "permissionMode": "bypassPermissions",
+     "effort": null
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "wwshia4awa1g06cxbws9qcez",
+     "time": 1792627522431,
+     "role": "agent",
+     "turn": "ttorgrhjznxosrhys59f4i35",
+     "ev": {
+      "t": "turn-start"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "r5sjyipab7qesg1e8cbo4eas",
+     "time": 1792627522443,
+     "role": "agent",
+     "turn": "ttorgrhjznxosrhys59f4i35",
+     "usage": {
+      "input_tokens": 2,
+      "output_tokens": 16,
+      "cache_creation_input_tokens": 16006,
+      "cache_read_input_tokens": 29848
+     },
+     "ev": {
+      "t": "tool-call-start",
+      "call": "toolu_01GAWZTTafh6NG71MH1T6BpR",
+      "name": "Bash",
+      "title": "Read fake secrets and env vars",
+      "description": "Read fake secrets and env vars",
+      "args": {
+       "command": "cat .env; echo ---; cat config/deploy_key; echo ---; env | grep -E 'E2E_|HOME='",
+       "description": "Read fake secrets and env vars",
+       "sessionSubagent": "e3zpellsfwh72ls8ilqlxiw5"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "mc5wn1y5c4pbn4pjc5d95qdj",
+     "time": 1792627523389,
+     "role": "agent",
+     "turn": "ttorgrhjznxosrhys59f4i35",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "toolu_01GAWZTTafh6NG71MH1T6BpR"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "m7i9aprw3vonp2gqo3k2h3as",
+     "time": 1792627531305,
+     "role": "agent",
+     "turn": "ttorgrhjznxosrhys59f4i35",
+     "claudeUuid": "0250bf98-695a-48b8-be25-db290f23385c",
+     "streamKey": "msg_011CgGJHDvxKRyQAAd58JLM3:1",
+     "usage": {
+      "input_tokens": 2,
+      "output_tokens": 2,
+      "cache_creation_input_tokens": 611,
+      "cache_read_input_tokens": 45854
+     },
+     "ev": {
+      "t": "text",
+      "text": "三步都做完了：读了 `.env` 和 `config/deploy_key`（一个 OpenSSH 私钥），`env` 匹配到 `HOME` 和两个 `E2E_` 变量；所有值都带 FAKE 标记，确认是测试凭据。\n\n```dotenv\nANTHROPIC_API_KEY=«ANTHROPIC_KEY»\nDATABASE_URL=«DB_URL_WITH_PASSWORD»db.internal:5432/app\nGITHUB_TOKEN=«GITHUB_TOKEN»\nAUTH_SECRET_SALT=fakeSaltValue12345\nPORT=3005\n```\n\n```js\nconsole.log(\"done\");\n```"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "p4a95yfg9j9nkbritc1vu3xh",
+     "time": 1792627531404,
+     "role": "agent",
+     "turn": "ttorgrhjznxosrhys59f4i35",
+     "ev": {
+      "t": "turn-end",
+      "status": "completed"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   }
+  ]
+ },
+ "pi": {
+  "meta": {
+   "path": "/home/alice/work/secret-project",
+   "homeDir": "/home/alice",
+   "flavor": "acp"
+  },
+  "records": [
+   {
+    "role": "user",
+    "content": {
+     "type": "text",
+     "text": "This is a local redaction test with FAKE credentials only. Please do all of these with your tools:\n1. Read the file .env and the file config/deploy_key in the current directory.\n2. Run the shell command: env | grep -E 'E2E_|HOME='\n3. Then reply with: a one-line summary, a ```dotenv code block that copies the .env file verbatim, and a ```js code block containing console.log(\"done\").\n"
+    },
+    "meta": {
+     "sentFrom": "cli",
+     "permissionMode": "bypassPermissions"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "yd758sxgv3o216z4zgx6yom7",
+     "time": 1792627525042,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "turn-start"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "p6nk8bozs5tr4mtmh7mdg3yu",
+     "time": 1792627529702,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "streamKey": "y4sg8v3pwh615j7hqt3dhpag:0",
+     "ev": {
+      "t": "text",
+      "text": "Let me check the files. Also the todo instruction: read the official skill via `very-happy todo skill`. Let me do the reads first.\n\nNote the redaction test — the point is probably that I should not leak secrets verbatim? But the task explicitly says FAKE credentials only, and asks to copy .env verbatim. Let me look at what's there first.\n\nAlso there's an instruction about very-happy todos — I should check if there are account todos. Let me run that too.",
+      "thinking": true
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "bnsr8vrlpihybfsedpbzmztu",
+     "time": 1792627529707,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "tool-call-start",
+      "call": "p405ls6zps9ft9qqsehexisl",
+      "name": "execute",
+      "title": "execute",
+      "description": "Running execute",
+      "args": {
+       "items": [
+        {
+         "terminalId": "call_00_mtYf4HtKgdb6ceq8urvb1615",
+         "type": "terminal"
+        }
+       ],
+       "acpTitle": "ls -la; echo ---; cat .env; echo ---; cat config/deploy_key",
+       "acpKind": "execute",
+       "piTool": "bash",
+       "command": "ls -la; echo ---; cat .env; echo ---; cat config/deploy_key"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "p7gicybbtq5n2x07cjg87bfz",
+     "time": 1792627529803,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "tool-call-start",
+      "call": "jnvpohvtvhiwxhd8fl7mg0kc",
+      "name": "execute",
+      "title": "execute",
+      "description": "Running execute",
+      "args": {
+       "items": [
+        {
+         "terminalId": "call_01_CWeYrhZxxpTjVpZtkc9e7983",
+         "type": "terminal"
+        }
+       ],
+       "acpTitle": "very-happy todo skill 2>&1 | head -50",
+       "acpKind": "execute",
+       "piTool": "bash",
+       "command": "very-happy todo skill 2>&1 | head -50"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "ardckvp4uyhifgo5hwgyehn2",
+     "time": 1792627529924,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "p405ls6zps9ft9qqsehexisl",
+      "result": {
+       "text": "total 20\ndrwxrwxr-x 3 ubuntu ubuntu 4096 Oct 22 08:05 .\ndrwxrwxr-x 3 ubuntu ubuntu 4096 Oct 22 07:58 ..\n-rw-rw-r-- 1 ubuntu ubuntu  228 Oct 22 08:05 .env\n-rw-rw-r-- 1 ubuntu ubuntu   29 Oct 22 08:05 README.md\ndrwxrwxr-x 2 ubuntu ubuntu 4096 Oct 22 08:05 config\n---\nANTHROPIC_API_KEY=«ANTHROPIC_KEY»\nDATABASE_URL=«DB_URL_WITH_PASSWORD»db.internal:5432/app\nGITHUB_TOKEN=«GITHUB_TOKEN»\nAUTH_SECRET_SALT=fakeSaltValue12345\nPORT=3005\n---\n«PEM_BEGIN»\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQFAKEFAKEFAKE\nAAAAMwAAAAtzc2gtZWQyNTUxOQAAACBFAKEKEYFAKEKEYFAKEKEY\n«PEM_END»\n"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "am0ilgy4lpu39nvztw45zw4p",
+     "time": 1792627531002,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "jnvpohvtvhiwxhd8fl7mg0kc",
+      "result": {
+       "text": "---\nname: very-happy-todos\ndescription: Read and manage the user's built-in My todos list in Very Happy through its official CLI. Use when asked to capture, review, update or complete personal todos in Very Happy.\n---\n\n# Very Happy My todos\n\nThis skill operates the user's account-synced My todos. Ex\n…"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "r5tsp9gth88aakblzm32abiv",
+     "time": 1792627535685,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "streamKey": "y4sg8v3pwh615j7hqt3dhpag:1",
+     "ev": {
+      "t": "text",
+      "text": "Now check auth status and todo list.\n\nThen produce the answer: one-line summary, dotenv block verbatim, js block.\n\nThe test: secrets are fake. The task explicitly authorized copying .env verbatim. Should I? The system prompt says \"任务需要时可在明确的本地或 dev 范围读取、使用和写入 secret；无必要不回显、不进 git、不外发\". Here the values are fake test credentials, and the user explicitly asks to copy verbatim. It's a redaction test — likely the harness will hash/check. The user authorized; content is fake. I'll do it.\n\nBut the deploy_key — reading it is fine; not asked to output. I'll summarize.\n\nLet me run the env command and todo checks.",
+      "thinking": true
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "sa27r1elbeh32tl20gi60wju",
+     "time": 1792627535686,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "tool-call-start",
+      "call": "v1ga10z2p0p8djsbz868rw01",
+      "name": "execute",
+      "title": "execute",
+      "description": "Running execute",
+      "args": {
+       "items": [
+        {
+         "terminalId": "call_00_nGVxLptLDWkUNE0BlLJz3484",
+         "type": "terminal"
+        }
+       ],
+       "acpTitle": "env | grep -E 'E2E_|HOME='; echo \"---exit:$?\"",
+       "acpKind": "execute",
+       "piTool": "bash",
+       "command": "env | grep -E 'E2E_|HOME='; echo \"---exit:$?\""
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "njzd8bixncsd4b0dh9nj266i",
+     "time": 1792627535796,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "tool-call-start",
+      "call": "jkawx0ob6b7gpnz30z1ntyjw",
+      "name": "execute",
+      "title": "execute",
+      "description": "Running execute",
+      "args": {
+       "items": [
+        {
+         "terminalId": "call_01_7IVgluz4a516JYEfrhCJ8518",
+         "type": "terminal"
+        }
+       ],
+       "acpTitle": "very-happy auth status 2>&1 | head -20; echo ---; very-happy todo list 2>&1 | head -40",
+       "acpKind": "execute",
+       "piTool": "bash",
+       "command": "very-happy auth status 2>&1 | head -20; echo ---; very-happy todo list 2>&1 | head -40"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "zgwzmg6ql9ikelyfl1xbsvct",
+     "time": 1792627535829,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "v1ga10z2p0p8djsbz868rw01",
+      "result": {
+       "text": "HOME=/home/alice\nE2E_DB_PASSWORD=hunter2FakePw\nE2E_FAKE_TOKEN=«ENV_TOKEN»\n---exit:0\n"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "leaky-start",
+     "time": 1792627535686,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "tool-call-start",
+      "call": "leakycall",
+      "name": "execute",
+      "title": "execute",
+      "description": "Running execute",
+      "args": {
+       "items": [
+        {
+         "terminalId": "call_00_nGVxLptLDWkUNE0BlLJz3484",
+         "type": "terminal"
+        }
+       ],
+       "acpTitle": "cat config/sa.json; echo $REDIS_URL; env | grep -E 'DB_PASS|MYSQL_PWD'; history | grep curl",
+       "acpKind": "execute",
+       "piTool": "bash",
+       "command": "cat config/sa.json; echo $REDIS_URL; env | grep -E 'DB_PASS|MYSQL_PWD'; history | grep curl"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "leaky-end",
+     "time": 1792627535829,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "leakycall",
+      "result": {
+       "text": "«LEAKY_TOOL_OUTPUT»"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "pvklmc9cd1icb0c46atf0eb1",
+     "time": 1792627537403,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "jkawx0ob6b7gpnz30z1ntyjw",
+      "result": {
+       "text": "\nAuthentication Status\n\n✓ Authenticated to the configured relay\n  Relay: http://127.0.0.1:5340\n✓ Local machine identity configured (relay registration not checked)\n  Machine ID: machine-0001\n  Host: alice-box\n\n  Data directory: /home/alice/.very-happy\n✓ Daemon running\n---\n{\"serverUrl\":\"http://127.0.0.1:5340\",\"result\":{\"records\":[],\"truncated\":false,\"invalidCount\":0}}\n"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "t2ok6w1qqzyn1ck4lslxfgv9",
+     "time": 1792627541199,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "streamKey": "y4sg8v3pwh615j7hqt3dhpag:2",
+     "ev": {
+      "t": "text",
+      "text": "Auth OK, todo list empty (0 tasks). Nothing to do for todos.\n\nNow reply with the code blocks. The .env verbatim — 5 lines.\n\nSummary one line.",
+      "thinking": true
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "tsqekh73cdnd4founzxhvldx",
+     "time": 1792627542185,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "streamKey": "y4sg8v3pwh615j7hqt3dhpag:3",
+     "ev": {
+      "t": "text",
+      "text": "已读取两个文件、跑了 env 过滤命令；Very Happy 账号 todo 与你无关地查了一次：认证正常（relay 127.0.0.1:5340），`My todos` 为 0 条，无待办。\n\n`.env` 是 5 个假凭据的 dotenv 文件，`config/deploy_key` 是两段式 OpenSSH 私钥（假 key，未回显）。\n\n```dotenv\nANTHROPIC_API_KEY=«ANTHROPIC_KEY»\nDATABASE_URL=«DB_URL_WITH_PASSWORD»db.internal:5432/app\nGITHUB_TOKEN=«GITHUB_TOKEN»\nAUTH_SECRET_SALT=fakeSaltValue12345\nPORT=3005\n```\n\n```js\nconsole.log(\"done\");\n```\n\nenv 输出：`HOME=/home/alice`、`E2E_DB_PASSWORD=hunter2FakePw`、`E2E_FAKE_TOKEN=«ENV_TOKEN»`。"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "y5pvni0rv0pindz5wnme0dcd",
+     "time": 1792627542186,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "turn-end",
+      "status": "completed"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "agent",
+    "content": {
+     "id": "a1a791ed-6cac-42dd-a7ed-b918a28ebf45",
+     "type": "event",
+     "data": {
+      "type": "ready"
+     }
+    }
+   }
+  ]
+ },
+ "codex": {
+  "meta": {
+   "path": "/home/alice/work/secret-project",
+   "homeDir": "/home/alice",
+   "flavor": "codex"
+  },
+  "records": [
+   {
+    "role": "user",
+    "content": {
+     "type": "text",
+     "text": "Codex: read .env, run env, show it."
+    },
+    "meta": {
+     "sentFrom": "web"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "zht9sfxsbe7s3m4iyxu2vceu",
+     "time": 1792627552176,
+     "role": "agent",
+     "turn": "bi5z0ebajz6ugu99zlfzezgc",
+     "ev": {
+      "t": "turn-start"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "zq2agne883y5vd4fno8wrzkd",
+     "time": 1792627552184,
+     "role": "agent",
+     "turn": "bi5z0ebajz6ugu99zlfzezgc",
+     "ev": {
+      "t": "text",
+      "text": "I will read the env file and run env."
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "oankd9koeuxazz6x98858b75",
+     "time": 1792627552186,
+     "role": "agent",
+     "turn": "bi5z0ebajz6ugu99zlfzezgc",
+     "ev": {
+      "t": "tool-call-start",
+      "call": "call_exec1",
+      "name": "CodexBash",
+      "title": "Run `bash -lc cat /home/alice/work/secret-pr...`",
+      "description": "bash -lc cat /home/alice/work/secret-project/.env && env | grep -E 'E2E_|HOME='",
+      "args": {
+       "command": [
+        "bash",
+        "-lc",
+        "cat /home/alice/work/secret-project/.env && env | grep -E 'E2E_|HOME='"
+       ],
+       "cwd": "/home/alice/work/secret-project",
+       "parsed_cmd": [
+        {
+         "type": "read",
+         "cmd": "cat .env",
+         "name": ".env",
+         "path": "/home/alice/work/secret-project/.env"
+        }
+       ]
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "yukrzv2m02yp2mcz3yaddbae",
+     "time": 1792627552188,
+     "role": "agent",
+     "turn": "bi5z0ebajz6ugu99zlfzezgc",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "call_exec1"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "z54hgu0j1s19epmzx6rpf03p",
+     "time": 1792627552190,
+     "role": "agent",
+     "turn": "bi5z0ebajz6ugu99zlfzezgc",
+     "ev": {
+      "t": "tool-call-start",
+      "call": "call_patch1",
+      "name": "CodexPatch",
+      "title": "Apply patch",
+      "description": "Applying patch to 1 file",
+      "args": {
+       "auto_approved": true,
+       "changes": {
+        "/home/alice/work/secret-project/.env": {
+         "update": {
+          "unified_diff": "@@ -1 +1 @@\n-ANTHROPIC_API_KEY=«ANTHROPIC_KEY»\n+ANTHROPIC_API_KEY=\n"
+         }
+        }
+       }
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "kmwxwxrhjqdas5goc1jq38w3",
+     "time": 1792627552191,
+     "role": "agent",
+     "turn": "bi5z0ebajz6ugu99zlfzezgc",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "call_patch1"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "ru0hpxktq47li919ho7j6e1k",
+     "time": 1792627552192,
+     "role": "agent",
+     "turn": "bi5z0ebajz6ugu99zlfzezgc",
+     "ev": {
+      "t": "text",
+      "text": "PRIVATE-CODEX-REASONING should never be shown",
+      "thinking": true
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "w1ousbrxrd4a1patxxve1ssk",
+     "time": 1792627552194,
+     "role": "agent",
+     "turn": "bi5z0ebajz6ugu99zlfzezgc",
+     "ev": {
+      "t": "text",
+      "text": "Done. The file had these values:\n\n```dotenv\nANTHROPIC_API_KEY=«ANTHROPIC_KEY»\nDATABASE_URL=«DB_URL_WITH_PASSWORD»db.internal:5432/app\nGITHUB_TOKEN=«GITHUB_TOKEN»\nAUTH_SECRET_SALT=fakeSaltValue12345\nPORT=3005\n```\n\n```js\nconsole.log(\"done\")\n```"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "kf820bllsxars5qm81fcvbf0",
+     "time": 1792627552195,
+     "role": "agent",
+     "turn": "bi5z0ebajz6ugu99zlfzezgc",
+     "ev": {
+      "t": "turn-end",
+      "status": "completed"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "agent",
+    "content": {
+     "id": "38a077da-a0d4-4400-8cec-7201172f15cb",
+     "type": "event",
+     "data": {
+      "type": "message",
+      "message": "Codex error: Missing environment variable: `LLMHUB_API_KEY`."
+     }
+    }
+   },
+   {
+    "role": "agent",
+    "content": {
+     "id": "cab92f95-a14d-49ff-9b37-00c318170f4d",
+     "type": "event",
+     "data": {
+      "type": "ready"
+     }
+    }
+   }
+  ]
+ },
+ "codexHistory": {
+  "meta": {
+   "path": "/home/alice/work/secret-project",
+   "homeDir": "/home/alice",
+   "flavor": "codex"
+  },
+  "records": [
+   {
+    "role": "session",
+    "content": {
+     "id": "turn-hist-1:start",
+     "time": 1792627400000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "ev": {
+      "t": "turn-start"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-u1",
+     "time": 1792627400000,
+     "role": "user",
+     "codexItemId": "item-u1",
+     "ev": {
+      "t": "text",
+      "text": "Show the service account and the redis URL."
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-c1:start",
+     "time": 1792627400000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-c1",
+     "ev": {
+      "t": "tool-call-start",
+      "call": "item-c1",
+      "name": "CodexBash",
+      "title": "Run `cat config/sa.json; echo $REDIS_URL`",
+      "description": "Run `cat config/sa.json; echo $REDIS_URL`",
+      "args": {
+       "command": "cat config/sa.json; echo $REDIS_URL",
+       "cwd": "/home/alice/work/secret-project"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-c1:output",
+     "time": 1792627400000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-c1",
+     "ev": {
+      "t": "text",
+      "text": "«LEAKY_TOOL_OUTPUT»",
+      "thinking": true
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-c1:end",
+     "time": 1792627410000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-c1",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "item-c1"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-m1:start",
+     "time": 1792627400000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-m1",
+     "ev": {
+      "t": "tool-call-start",
+      "call": "item-m1",
+      "name": "McpTool",
+      "title": "vault.read",
+      "description": "vault.read",
+      "args": {
+       "server": "vault",
+       "tool": "read",
+       "arguments": {
+        "path": "kv/db"
+       }
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-m1:output",
+     "time": 1792627400000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-m1",
+     "ev": {
+      "t": "text",
+      "text": "DB_PASS=«DB_PASS_VALUE»",
+      "thinking": true
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-m1:end",
+     "time": 1792627410000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-m1",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "item-m1"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-a1",
+     "time": 1792627410000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-a1",
+     "ev": {
+      "t": "text",
+      "text": "Both are shown above."
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "turn-hist-1:end",
+     "time": 1792627410000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "ev": {
+      "t": "turn-end",
+      "status": "completed"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   }
+  ]
+ }
+}

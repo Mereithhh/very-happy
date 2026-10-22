@@ -134,4 +134,34 @@ describe('B-701 redactSecrets', () => {
             }
         }
     });
+
+    // B-745: `env` / `.env` dumps from tool output now reach the mask; more secret NAMES.
+    it('masks AUTH / BEARER / JWT / signing, encryption, master and HMAC key assignments; AUTHOR is not a secret', () => {
+        const value = ['abcd', '1234', 'efgh'].join('');
+        const env = ['NPM_AUTH', 'BEARER_VALUE', 'SUPABASE_JWT', 'SIGNING_KEY', 'ENCRYPTION_KEY', 'MASTER_KEY', 'WEBHOOK_HMAC'].map((name) => `${name}=${value}`);
+        for (const line of env) expect(redactSecrets(line), line).toBe(line.replace(/=.*/, `=${REDACTED}`));
+        expect(redactSecrets('GIT_AUTHOR_NAME=alice-builder\nPORT=3005')).toBe('GIT_AUTHOR_NAME=alice-builder\nPORT=3005');
+    });
+
+    // B-745 re-review: DB_PASS / MYSQL_PWD, empty-user URLs, curl -u, short Basic, JSON-escaped PEM.
+    it('masks PASS / _PWD names without touching BYPASS, COMPASS, PASSAGE, PASSPORT or a bare PWD', () => {
+        const value = ['Qx7', 'mZ2', 'pL9'].join('');
+        for (const name of ['DB_PASS', 'PASS', 'SMTP_PASS', 'MYSQL_PWD', 'ROOT_PWD']) expect(redactSecrets(`${name}=${value}`), name).toBe(`${name}=${REDACTED}`);
+        for (const line of [`BYPASS_CACHE=${value}`, `COMPASS_DIR=${value}`, `PASSAGE=${value}`, `PASSPORT_ID=${value}`, 'PWD=/srv/app', 'OLDPWD=/srv']) expect(redactSecrets(line), line).toBe(line);
+    });
+
+    it('masks empty-user URL credentials, curl -u, short encoded Basic and a JSON-escaped PEM body', () => {
+        const pw = ['Rq7', 'vZx2'].join('');
+        expect(redactSecrets(`redis://:${pw}@cache:6379`)).toBe(`redis://:${REDACTED}@cache:6379`);
+        expect(redactSecrets(`curl -u admin:${pw} https://x`)).toBe(`curl -u admin:${REDACTED} https://x`);
+        expect(redactSecrets(`curl --user='admin:${pw}' https://x`)).toBe(`curl --user='admin:${REDACTED}' https://x`);
+        expect(redactSecrets('git push -u origin main')).toBe('git push -u origin main');
+        expect(redactSecrets('Authorization: Basic YTpi')).toBe(`Authorization: Basic ${REDACTED}`);
+        expect(redactSecrets('Basic usage: run it')).toBe('Basic usage: run it');
+        const body = ['MIIEvQIBADANBgkq', 'hkiG9w0BAQEFAASC'].join('');
+        const pem = `"private_key": "${['-----BEGIN PRIVATE', ' KEY-----'].join('')}\\n${body}\\n${body}\\n${['-----END PRIVATE', ' KEY-----'].join('')}\\n", "client_email": "svc@x"`;
+        const out = redactSecrets(pem);
+        expect(out).not.toContain('MIIE');
+        expect(out).toContain('svc@x');
+    });
 });
