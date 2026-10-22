@@ -120,10 +120,26 @@ async function enforceActiveLimit(tx: Tx, accountId: string) {
     requireAttention(active < max, 'attention_item_limit', 429, { max });
 }
 
+/** The optional content a post carries: present keys only, so a repost leaves the omitted ones as they were. */
+function repostFields(input: Pick<AttentionItemPost, 'options' | 'links' | 'anchor' | 'replyToId'> & { bodyMd?: string | null }) {
+    return {
+        ...(input.bodyMd !== undefined ? { bodyMd: input.bodyMd } : {}),
+        ...(input.options !== undefined ? { options: json(input.options) } : {}),
+        ...(input.links !== undefined ? { links: json(input.links) } : {}),
+        ...(input.anchor !== undefined ? { anchor: json(input.anchor) } : {}),
+        ...(input.replyToId !== undefined ? { replyToId: input.replyToId } : {}),
+    };
+}
+
 const reopenData = { state: 'open', resolvedBy: null, resolvedAt: null, ownerChoice: null, ownerNote: null, resolveNote: null, pushedAt: null };
 
-/** Insert-or-repost by `(sessionId, key)` inside an open transaction (shared by the REST post and the root-task hook). */
-async function upsertTx(tx: Tx, accountId: string, input: AttentionItemPost & { inferred?: boolean }, context?: { teamId: string | null; projectId: string | null }): Promise<{ row: AttentionRow; created: boolean }> {
+/**
+ * Insert-or-repost by `(sessionId, key)` inside an open transaction (shared by the REST post and the root-task hook).
+ * A repost writes `title` / `kind` and only the optional fields the input carries; an omitted `bodyMd` / `options` /
+ * `links` / `anchor` / `replyToId` keeps the row's value (S-1c). The REST schema has no `null` for them, so only an
+ * internal caller (the root-task hook's empty result) can clear one by passing `null`.
+ */
+async function upsertTx(tx: Tx, accountId: string, input: Omit<AttentionItemPost, 'bodyMd'> & { bodyMd?: string | null; inferred?: boolean }, context?: { teamId: string | null; projectId: string | null }): Promise<{ row: AttentionRow; created: boolean }> {
     const key = postKey(input);
     const existing = key ? await tx.attentionItem.findUnique({ where: { sessionId_key: { sessionId: input.sessionId, key } } }) : null;
     requireAttention(!existing || existing.accountId === accountId, 'attention_item_not_found', 404);
@@ -132,11 +148,7 @@ async function upsertTx(tx: Tx, accountId: string, input: AttentionItemPost & { 
     const now = new Date();
     const content = {
         title: input.title,
-        bodyMd: input.bodyMd ?? null,
-        options: json(input.options ?? null),
-        links: json(input.links ?? null),
-        anchor: json(input.anchor ?? null),
-        replyToId: input.replyToId ?? null,
+        ...repostFields(input),
         lastRequestId: input.requestId ?? null,
     };
     const inferred = input.inferred === true;
@@ -324,7 +336,7 @@ export async function applyTeamTransitionsTx(tx: Tx, accountId: string, before: 
         if (!sessionId || !await tx.session.findFirst({ where: { id: sessionId, accountId }, select: { id: true } })) continue;
         const item = teamSubmitItem(after, task);
         // A resubmit after「退回」is a new attempt: same key, new request id → the closed item reopens and may push again.
-        await upsertTx(tx, accountId, { sessionId, ...item, bodyMd: item.bodyMd ?? undefined, requestId: `team-submit-${task.currentAttemptId}` },
+        await upsertTx(tx, accountId, { sessionId, ...item, requestId: `team-submit-${task.currentAttemptId}` },
             { teamId: after.id, projectId: after.projectId ?? null });
     }
     const now = new Date();
