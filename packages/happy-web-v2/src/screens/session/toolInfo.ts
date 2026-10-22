@@ -211,3 +211,13 @@ export function prettyToolName(name: string): string {
     if (mcp) return `${mcp.server} · ${mcp.tool}`;
     return name;
 }
+
+/**
+ * B-771 (QA4 D2): a card with no arguments and no output. Only a result that
+ * actually arrived empty is 「no output」; a running call is running, and a
+ * finished call whose CLI never reported results (null) just has no arguments.
+ */
+export function emptyStateKey(tool: Pick<ToolCall, 'state' | 'result'>): 'tools.fullView.running' | 'tools.fullView.noOutput' | 'tools.card.noDetails' {
+    if (tool.state === 'running') return 'tools.fullView.running';
+    return tool.result == null ? 'tools.card.noDetails' : 'tools.fullView.noOutput';
+}

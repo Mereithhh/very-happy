@@ -196,6 +196,7 @@ type ToolResultContent = {
     tool_use_id: string;
     content: any;
     is_error: boolean;
+    truncated?: boolean;
     uuid: string;
     parentUUID: string | null;
     permissions?: {
@@ -409,6 +410,7 @@ function applyToolResult(
 
     message.tool.state = result.is_error ? 'error' : 'completed';
     message.tool.result = result.content;
+    if (result.truncated) message.tool.resultTruncated = true;
     message.tool.completedAt = resultCreatedAt;
 
     if (result.permissions) {

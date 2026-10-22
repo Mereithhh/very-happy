@@ -597,6 +597,8 @@ type NormalizedAgentContent =
         tool_use_id: string;
         content: any;
         is_error: boolean;
+        /** B-771: the CLI capped `content`; the card says so. */
+        truncated?: boolean;
         uuid: string;
         parentUUID: string | null;
         permissions?: {
@@ -881,10 +883,12 @@ function normalizeSessionEnvelope(
             content: [{
                 type: 'tool-result',
                 tool_use_id: envelope.ev.call,
-                // B-260-P2: a foreground sub-agent's final report; null for
-                // every other tool (the session protocol carries no output).
+                // B-260-P2 / B-771: the tool's (capped) output — a sub-agent's
+                // report, or any tool's text from a CLI that reports it; null
+                // from an older CLI that does not.
                 content: envelope.ev.result ? envelope.ev.result.text : null,
                 is_error: envelope.ev.result?.isError === true,
+                ...(envelope.ev.result?.truncated === true ? { truncated: true } : {}),
                 uuid: contentUUID,
                 parentUUID
             }],

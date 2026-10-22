@@ -204,6 +204,22 @@ describe('AcpSessionManager tool mapping', () => {
     }
   });
 
+  it('B-771: ACP content blocks, string results and failures reach tool-call-end.result', () => {
+    const endFor = (result: unknown) => {
+      const mapper = new AcpSessionManager();
+      mapper.startTurn();
+      mapper.mapMessage({ type: 'tool-call', callId: 'c', toolName: 'read', args: {} });
+      return mapper.mapMessage({ type: 'tool-result', callId: 'c', toolName: 'read', result }).find((e) => e.ev.t === 'tool-call-end')!.ev;
+    };
+    expect(endFor([{ type: 'content', content: { type: 'text', text: 'file body' } }, { type: 'diff', path: 'a', oldText: '', newText: 'x' }]))
+      .toMatchObject({ result: { text: 'file body' } });
+    expect(endFor('plain')).toMatchObject({ result: { text: 'plain' } });
+    expect(endFor({ error: 'Tool call failed', status: 'failed' })).toMatchObject({ result: { text: 'Tool call failed', isError: true } });
+    expect(endFor({ content: [{ type: 'image', mimeType: 'image/png', data: 'QUJD' }] })).toMatchObject({ result: { text: '[image image/png, 1 KB]' } });
+    expect((endFor({ ok: true }) as { result?: unknown }).result).toBeUndefined();
+    expect((endFor([{ type: 'diff', path: 'a', oldText: '', newText: 'x' }]) as { result?: unknown }).result).toBeUndefined();
+  });
+
   it('creates distinct call ids for multiple tool calls', () => {
     const mapper = new AcpSessionManager();
     mapper.startTurn();
