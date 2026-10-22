@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-22-share-replies-fix',
+    date: '2026-10-22',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct22b.title',
+    summaryKey: 'changelog.releases.oct22b.summary',
+    itemKeys: ['changelog.releases.oct22b.share', 'changelog.releases.oct22b.teamCards'],
+  },
+  {
     id: '2026-10-22-big-update',
     date: '2026-10-22',
     buildVersion: __APP_VERSION__,
