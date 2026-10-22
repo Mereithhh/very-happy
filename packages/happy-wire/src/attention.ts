@@ -152,6 +152,8 @@ export const AttentionItemSchema = z.object({
     ownerChoice: z.string().nullable(),
     ownerNote: z.string().nullable(),
     resolvedBy: z.string().nullable(),
+    /** The lead's `owner_board_resolve` note. */
+    resolveNote: z.string().nullable(),
     /** Times the same `(sessionId, key)` was posted again and folded into this item. */
     repostCount: z.number(),
     createdAt: z.number(),

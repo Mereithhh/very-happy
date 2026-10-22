@@ -25,7 +25,7 @@ const twoOptions = [{ id: 'A', label: 'Ship now', recommended: true }, { id: 'B'
 const item = {
     id: 'i1', sessionId: 's1', teamId: null, projectId: null, source: 'lead', kind: 'decision', key: 'release-window',
     title: 'Pick the release window', bodyMd: null, options: twoOptions, links: null, anchor: { localId: 'l1' }, firstReply: null,
-    replyToId: null, needsOwner: true, state: 'open', ownerChoice: null, ownerNote: null, resolvedBy: null, repostCount: 0,
+    replyToId: null, needsOwner: true, state: 'open', ownerChoice: null, ownerNote: null, resolvedBy: null, resolveNote: null, repostCount: 0,
     createdAt: 1, updatedAt: 1, resolvedAt: null, pushedAt: null, version: 1,
 };
 
