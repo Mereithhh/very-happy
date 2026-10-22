@@ -21,18 +21,26 @@ export const TRUNCATED_SUFFIX = '\n…[truncated]';
 
 // B-745: assistant tool output (`env`, `.env` dumps) now reaches this — the names also
 // cover AUTH (not AUTHOR), BEARER, JWT and the signing / encryption / master / HMAC keys.
-const SECRET_WORD = /SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CREDENTIAL|COOKIE|DSN|DATABASE_URL|AUTH(?!OR)|BEARER|JWT|SIGNING[_-]?KEY|ENCRYPTION[_-]?KEY|MASTER[_-]?KEY|HMAC/i;
+// PASS as its own word (DB_PASS, PGPASS… not BYPASS / COMPASS / PASSAGE / PASSPORT); PWD only with a prefix
+// (MYSQL_PWD) — a bare PWD / OLDPWD is the working directory.
+const SECRET_WORD = /SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|(?<![a-z])PASS(?!AGE|PORT|IVE|ENGER|THROUGH)|_PWD(?![a-z0-9])|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CREDENTIAL|COOKIE|DSN|DATABASE_URL|AUTH(?!OR)|BEARER|JWT|SIGNING[_-]?KEY|ENCRYPTION[_-]?KEY|MASTER[_-]?KEY|HMAC/i;
 const MAX_NAME = 64;
 const MAX_VALUE = 512;
 
 const PATTERNS: Array<[RegExp, string | ((...m: string[]) => string)]> = [
     // PEM private keys: header, body (base64 + RFC 1421 headers; never "--"), optional footer.
+    // The body may be JSON-escaped (`\n` as two characters: a GCP service-account file shown by `cat`).
     // Greedy body + optional footer = no backtracking.
-    [/-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY-----(?:[A-Za-z0-9+/=\s:,.]|-(?!-)){0,8192}(?:-----END [A-Z0-9 ]{0,40}PRIVATE KEY-----)?/g, REDACTED],
-    // Credentials embedded in URLs: scheme://user:pass@host
-    [/(?<![a-z0-9+.-])([a-z][a-z0-9+.-]{0,30}:\/\/)([^\s:@/]{1,128}):([^\s@/]{1,256})@/gi, (_m, scheme, user) => `${scheme}${user}:${REDACTED}@`],
+    [/-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY-----(?:[A-Za-z0-9+/=\s:,.]|\\[nr]|-(?!-)){0,8192}(?:-----END [A-Z0-9 ]{0,40}PRIVATE KEY-----)?/g, REDACTED],
+    // Credentials embedded in URLs: scheme://user:pass@host (the user may be empty: redis://:pw@host)
+    [/(?<![a-z0-9+.-])([a-z][a-z0-9+.-]{0,30}:\/\/)([^\s:@/]{0,128}):([^\s@/]{1,256})@/gi, (_m, scheme, user) => `${scheme}${user}:${REDACTED}@`],
     // Authorization headers / token words (case-insensitive: "bearer", "BEARER").
     [/\b(Bearer|Basic|token)\s+[A-Za-z0-9._~+/=-]{16,4096}/gi, (_m, kind) => `${kind} ${REDACTED}`],
+    // Short Basic credentials (base64 of "u:p" can be 4 chars) — only when the token looks encoded
+    // (digit, padding, +/ or inner capitals), so prose like "Basic usage" stays.
+    [/\bBasic\s+([A-Za-z0-9+/]{4,15}={0,2})(?![A-Za-z0-9+/=])/g, (m, tok) => (/[0-9+/=]|.[A-Z]/.test(tok) ? `Basic ${REDACTED}` : m)],
+    // curl -u / --user user:password
+    [/(?<![\w-])(-u|--user)(\s+|=)(['"]?)([^\s:'"]{1,128}):([^\s'"]{1,256})/g, (_m, flag, sep, quote, user) => `${flag}${sep}${quote}${user}:${REDACTED}`],
     // Well-known token shapes.
     [/\bsk-ant-[A-Za-z0-9_-]{16,512}/g, REDACTED],
     [/\bsk-(?:proj-|live-|test-)?[A-Za-z0-9_-]{20,512}/g, REDACTED],

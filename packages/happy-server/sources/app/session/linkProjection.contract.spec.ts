@@ -26,13 +26,39 @@ const SECRETS: Record<string, string> = {
     '«DB_URL_WITH_PASSWORD»': join('postgres://admin:', 'FakeDbPass9876@'),
     '«PEM_BEGIN»': join('-----BEGIN OPENSSH PRIVATE', ' KEY-----'),
     '«PEM_END»': join('-----END OPENSSH PRIVATE', ' KEY-----'),
+    '«LEAKY_TOOL_OUTPUT»': '', // filled below
+    '«DB_PASS_VALUE»': 'Vk3mDbQz8w',
 };
+/**
+ * Re-review 1 (B-745): shapes that reached the mask only once tool output did. A GCP
+ * service-account file whose private key is JSON-escaped (`\n` as two characters), an
+ * empty-user URL credential, DB_PASS / MYSQL_PWD, `curl -u` and a short Basic credential.
+ */
+const LEAKED = {
+    pem1: join('MIIEvQIBADANBgkqhkiG9w0BAQEFAASC', 'BKcwggSjAgEAAoIBAQC7Qx9FAKEsa'),
+    pem2: join('Zm9vYmFyYmF6cXV4cXV1eGNvcmdl', 'Z3JhdWx0Z2FycGx5d2FsZG9fake'),
+    redis: 'Rq7vZx2Lm9', dbPass: 'Dp4sKw8Tn', mysql: 'My5qWe3Rt', curl: 'Cu6rLy1Pw', basic: 'YTpi',
+};
+SECRETS['«LEAKY_TOOL_OUTPUT»'] = [
+    '{',
+    '  "type": "service_account",',
+    `  "private_key": "${join('-----BEGIN PRIVATE', ' KEY-----')}\\n${LEAKED.pem1}\\n${LEAKED.pem2}\\n${join('-----END PRIVATE', ' KEY-----')}\\n",`,
+    '  "client_email": "svc@proj.iam.gserviceaccount.com"',
+    '}',
+    `redis://:${LEAKED.redis}@cache.internal:6379/0`,
+    `DB_PASS=${LEAKED.dbPass}`,
+    `MYSQL_PWD=${LEAKED.mysql}`,
+    `${join("cu", "rl")} -u admin:${LEAKED.curl} https://api.internal/x`,
+    `Authorization: Basic ${LEAKED.basic}`,
+    'PWD=/home/alice/work/secret-project',
+    '',
+].join('\n');
 /** Secret material that must never reach a link viewer (any of these substrings). */
-const NEVER = ['FAKEe2eKEY', 'FAKEe2etoken', 'FAKEenvTOKEN', 'FakeDbPass9876', 'hunter2FakePw', 'fakeSaltValue12345', 'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQFAKE', 'PRIVATE KEY', '/home/alice', 'PRIVATE-CODEX-REASONING'];
+const NEVER = ['Vk3mDbQz8w', 'FAKEe2eKEY', 'FAKEe2etoken', 'FAKEenvTOKEN', 'FakeDbPass9876', 'hunter2FakePw', 'fakeSaltValue12345', 'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQFAKE', 'PRIVATE KEY', '/home/alice', 'PRIVATE-CODEX-REASONING'];
 
 type Sample = { meta: { path: string; homeDir: string; flavor: string }; records: unknown[] };
 const raw = readFileSync(joinPath(__dirname, 'linkProjection.samples.json'), 'utf8');
-const SAMPLES: Record<'claude' | 'codex' | 'pi', Sample> = JSON.parse(Object.entries(SECRETS).reduce((s, [k, v]) => s.split(k).join(v), raw));
+const SAMPLES: Record<'claude' | 'codex' | 'codexHistory' | 'pi', Sample> = JSON.parse(Object.entries(SECRETS).reduce((s, [k, v]) => s.split(k).join(JSON.stringify(v).slice(1, -1)), raw));
 
 function project(sample: Sample) {
     const scrub = makePathScrubber({ cwd: sample.meta.path, homeDir: sample.meta.homeDir });
@@ -115,6 +141,32 @@ describe('B-745 share-link projection — real runner records (structure contrac
             const s = JSON.stringify(project(sample));
             for (const leaked of NEVER) expect(s, `${runner} leaks ${leaked}`).not.toContain(leaked);
         }
+    });
+
+    it('re-review: JSON-escaped PEM, empty-user URL, DB_PASS / MYSQL_PWD, curl -u, short Basic in a real pi tool result', () => {
+        const out = project(SAMPLES.pi);
+        const leaky = sessionEvents(out).find((ev) => ev.t === 'tool-call-end' && ev.result?.text.includes('service_account')).result.text as string;
+        for (const [name, value] of Object.entries(LEAKED)) {
+            for (let n = 4; n <= value.length; n++) for (let i = 0; i + n <= value.length; i++) expect(leaky, `${name} leaks ${value.slice(i, i + n)}`).not.toContain(value.slice(i, i + n));
+        }
+        expect(leaky).toContain('"private_key": "[redacted]');
+        expect(leaky).toContain('redis://:[redacted]@cache.internal');
+        expect(leaky).toContain('DB_PASS=[redacted]');
+        expect(leaky).toContain('MYSQL_PWD=[redacted]');
+        expect(leaky).toContain('curl -u admin:[redacted] https://api.internal/x');
+        expect(leaky).toContain('Basic [redacted]');
+        expect(leaky).toContain('PWD=secret-project'); // a bare PWD is a path, rewritten not masked
+        expect(leaky).toContain('svc@proj.iam.gserviceaccount.com');
+    });
+
+    it('Codex history (import / resume): tool output is a thinking text and never shown; calls and replies are', () => {
+        const out = project(SAMPLES.codexHistory);
+        expect(texts(out)).toEqual(['Show the service account and the redis URL.', 'Both are shown above.']);
+        const calls = sessionEvents(out).filter((ev) => ev.t === 'tool-call-start');
+        expect(calls.map((c) => c.name)).toEqual(['CodexBash', 'McpTool']);
+        expect(calls[0].args).toEqual({ command: 'cat config/sa.json; echo $REDIS_URL', cwd: 'secret-project' });
+        const s = JSON.stringify(out);
+        for (const value of [...Object.values(LEAKED), 'Vk3mDbQz8w', 'service_account']) expect(s).not.toContain(value);
     });
 
     // B-701 adversarial budget cases, re-run on the real pi `tool-call-end.result` slot.

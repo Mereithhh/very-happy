@@ -375,6 +375,56 @@
    {
     "role": "session",
     "content": {
+     "id": "leaky-start",
+     "time": 1792627535686,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "tool-call-start",
+      "call": "leakycall",
+      "name": "execute",
+      "title": "execute",
+      "description": "Running execute",
+      "args": {
+       "items": [
+        {
+         "terminalId": "call_00_nGVxLptLDWkUNE0BlLJz3484",
+         "type": "terminal"
+        }
+       ],
+       "acpTitle": "cat config/sa.json; echo $REDIS_URL; env | grep -E 'DB_PASS|MYSQL_PWD'; history | grep curl",
+       "acpKind": "execute",
+       "piTool": "bash",
+       "command": "cat config/sa.json; echo $REDIS_URL; env | grep -E 'DB_PASS|MYSQL_PWD'; history | grep curl"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "leaky-end",
+     "time": 1792627535829,
+     "role": "agent",
+     "turn": "y4sg8v3pwh615j7hqt3dhpag",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "leakycall",
+      "result": {
+       "text": "«LEAKY_TOOL_OUTPUT»"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
      "id": "pvklmc9cd1icb0c46atf0eb1",
      "time": 1792627537403,
      "role": "agent",
@@ -666,6 +716,200 @@
      "data": {
       "type": "ready"
      }
+    }
+   }
+  ]
+ },
+ "codexHistory": {
+  "meta": {
+   "path": "/home/alice/work/secret-project",
+   "homeDir": "/home/alice",
+   "flavor": "codex"
+  },
+  "records": [
+   {
+    "role": "session",
+    "content": {
+     "id": "turn-hist-1:start",
+     "time": 1792627400000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "ev": {
+      "t": "turn-start"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-u1",
+     "time": 1792627400000,
+     "role": "user",
+     "codexItemId": "item-u1",
+     "ev": {
+      "t": "text",
+      "text": "Show the service account and the redis URL."
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-c1:start",
+     "time": 1792627400000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-c1",
+     "ev": {
+      "t": "tool-call-start",
+      "call": "item-c1",
+      "name": "CodexBash",
+      "title": "Run `cat config/sa.json; echo $REDIS_URL`",
+      "description": "Run `cat config/sa.json; echo $REDIS_URL`",
+      "args": {
+       "command": "cat config/sa.json; echo $REDIS_URL",
+       "cwd": "/home/alice/work/secret-project"
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-c1:output",
+     "time": 1792627400000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-c1",
+     "ev": {
+      "t": "text",
+      "text": "«LEAKY_TOOL_OUTPUT»",
+      "thinking": true
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-c1:end",
+     "time": 1792627410000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-c1",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "item-c1"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-m1:start",
+     "time": 1792627400000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-m1",
+     "ev": {
+      "t": "tool-call-start",
+      "call": "item-m1",
+      "name": "McpTool",
+      "title": "vault.read",
+      "description": "vault.read",
+      "args": {
+       "server": "vault",
+       "tool": "read",
+       "arguments": {
+        "path": "kv/db"
+       }
+      }
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-m1:output",
+     "time": 1792627400000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-m1",
+     "ev": {
+      "t": "text",
+      "text": "DB_PASS=«DB_PASS_VALUE»",
+      "thinking": true
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-m1:end",
+     "time": 1792627410000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-m1",
+     "ev": {
+      "t": "tool-call-end",
+      "call": "item-m1"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "item-a1",
+     "time": 1792627410000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "codexItemId": "item-a1",
+     "ev": {
+      "t": "text",
+      "text": "Both are shown above."
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
+    }
+   },
+   {
+    "role": "session",
+    "content": {
+     "id": "turn-hist-1:end",
+     "time": 1792627410000,
+     "role": "agent",
+     "turn": "turn-hist-1",
+     "ev": {
+      "t": "turn-end",
+      "status": "completed"
+     }
+    },
+    "meta": {
+     "sentFrom": "cli"
     }
    }
   ]
