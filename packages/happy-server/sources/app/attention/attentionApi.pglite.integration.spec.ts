@@ -145,6 +145,20 @@ describe('attention REST + hooks through startApi (pglite)', () => {
         expect(await until(() => item(body.item.id), r => r.state !== 'open')).toMatchObject({ state: 'resolved', resolvedBy: 'owner-replied' });
     });
 
+    it('an owner message leaves D5 drafts open: alone they are no target, beside a real decision only that one settles', async () => {
+        const sessionId = await newSession();
+        const draft = (await call('POST', '/v1/attention-items', { sessionId, source: 'lead', kind: 'decision', title: 'Maybe region', options, key: 'region', inferred: true, requestId: 'd1' })).body.item;
+        expect(draft).toMatchObject({ inferred: true, state: 'open' });
+        expect((await call('POST', `/v3/sessions/${sessionId}/messages`, { messages: [{ localId: 'owner-d1', content: 'enc' }] })).status).toBe(200);
+        await sleep(300);
+        expect((await item(draft.id)).state).toBe('open');
+
+        const real = (await call('POST', '/v1/attention-items', { sessionId, source: 'lead', kind: 'decision', title: 'Pick', options, requestId: 'd2' })).body.item;
+        expect((await call('POST', `/v3/sessions/${sessionId}/messages`, { messages: [{ localId: 'owner-d2', content: 'enc' }] })).status).toBe(200);
+        expect(await until(() => item(real.id), r => r.state !== 'open')).toMatchObject({ state: 'resolved', resolvedBy: 'owner-replied' });
+        expect(await item(draft.id)).toMatchObject({ state: 'open', resolvedBy: null });
+    });
+
     it('an owner message over the user-scoped socket settles it too', async () => {
         const sessionId = await newSession();
         const { body } = await call('POST', '/v1/attention-items', { sessionId, source: 'lead', kind: 'decision', title: 'Pick', options, requestId: 's1' });

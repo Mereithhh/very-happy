@@ -55,11 +55,13 @@ describe('briefing board rules', () => {
     });
 
     it('owner reply settles only an unambiguous, non-team decision', () => {
-        const d = (id: string, over = {}) => ({ id, kind: 'decision', source: 'lead', state: 'open', ...over });
-        expect(ownerRepliedTarget([d('a'), { id: 'b', kind: 'blocked', source: 'agent', state: 'open' }])).toBe('a');
+        const d = (id: string, over = {}) => ({ id, kind: 'decision', source: 'lead', state: 'open', inferred: false, ...over });
+        expect(ownerRepliedTarget([d('a'), { id: 'b', kind: 'blocked', source: 'agent', state: 'open', inferred: false }])).toBe('a');
         expect(ownerRepliedTarget([d('a'), d('b')])).toBeNull();
         expect(ownerRepliedTarget([d('a', { source: 'team' })])).toBeNull();
         expect(ownerRepliedTarget([d('a', { state: 'resolved' }), d('b', { state: 'in_progress' })])).toBe('b');
+        expect(ownerRepliedTarget([d('a', { inferred: true })])).toBeNull();
+        expect(ownerRepliedTarget([d('a', { inferred: true }), d('b')])).toBe('b');
     });
 
     it('push text per kind', () => {
