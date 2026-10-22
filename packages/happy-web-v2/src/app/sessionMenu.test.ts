@@ -96,6 +96,9 @@ describe('one builder for both surfaces', () => {
       expect(src).toContain('stopSessionTurn(');
       expect(src).toContain('copySessionLink(');
     }
+    // 分享… is gated by the shared availability on both surfaces
+    expect(sidebar).toContain('onShare: avail?.share ? onShare : undefined,');
+    expect(header).toContain('onShare: avail.share ? () => setShareOpen(true) : undefined,');
     // no surface keeps a private share / project item list next to the builder
     expect(header).not.toContain("key:'share'");
     expect(header).not.toContain("key: 'move-project'");
