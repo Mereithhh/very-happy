@@ -1,4 +1,5 @@
 import { startAgentVersionChecks } from './agentVersions';
+import { FS_MKDIR_CAPABILITY_VERSION } from '@/modules/fs/fsMkdir';
 import { resolveRelaunchMetadata } from './relaunchMetadata';
 import { sanitizeSpawnModel } from './spawnModel';
 import fs from 'fs/promises';
@@ -2253,6 +2254,8 @@ export async function startDaemon(): Promise<void> {
       modelConfigVersion: MODEL_CONFIG_CAPABILITY_VERSION,
       // B-719: this daemon serves `harness-install` (web gates the Install / Update buttons on it).
       harnessInstallVersion: HARNESS_INSTALL_CAPABILITY_VERSION,
+      // B-755: this daemon serves `fs-mkdir` (web gates 「新建工作目录」 on it).
+      fsMkdirVersion: FS_MKDIR_CAPABILITY_VERSION,
     })).catch(() => logger.debug('[DAEMON RUN] Teams capability publication will retry on reconnect'));
 
     // Setup signal handlers
