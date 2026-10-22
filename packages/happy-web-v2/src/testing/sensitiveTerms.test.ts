@@ -10,7 +10,9 @@ import { describe, expect, it } from 'vitest';
  * again in package sources, specs or docs. Terms are stored only as SHA-256 of
  * their lowercase form, so the list itself never spells them out; use neutral
  * examples (「订单看板」, `atlas-pay`, `sess-lead-a`, `wt-0001`) instead.
- * To add a term: `printf %s '<term in lowercase>' | sha256sum`.
+ * To add a term: `printf %s '<term in lowercase>' | sha256sum`. A term that
+ * mixes ASCII and CJK (B-768) is hashed without its separators
+ * (`Atlas Pay 看板` → `atlaspay看板`), so spacing, hyphen and case variants all hit.
  */
 const TERMS = new Set([
   '7cf393b53fce62e79de82e56eb71139573f53c285a3189b0ebe96e816629a756',
@@ -23,19 +25,23 @@ const TERMS = new Set([
   '8ba493f2e2ece9dcab6f58c85d64cfd5b768d3ced2eccb89915a3622cfffd333',
   '79383dd3e0fe8d495240818ea48154cc2baa34c2d103578fe038650753db05fd',
   '16d3fc1f8837ed2c29a81e7c14fc8e243a52d2578492e3d5ea8d21cc55e44626',
+  'bfdc2a9c2b7345ed8e5264aa47354df0dc359974910907ede8ad8d33e92bb276',
 ]);
 // Lengths (in code points) of the hashed terms, per script.
 const ASCII_LENGTHS = [7, 8, 9, 13];
 const CJK_LENGTHS = [2, 6, 7];
+const MIXED_LENGTHS = [11];
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 /**
  * Windows of each length starting at an ASCII word start (a word is
  * `[a-z0-9-]+`; each hyphen-separated part starts one too) and at every CJK
- * character; one that hashes into `terms` is a hit.
+ * character; one that hashes into `terms` is a hit. Mixed windows start at an
+ * ASCII word start inside a run of ASCII words that ends in CJK on the same
+ * line, with spaces, `_` and `-` dropped.
  */
-function findTerms(text: string, terms: Set<string>, asciiLengths: number[], cjkLengths: number[], seen = new Map<string, boolean>()): string[] {
+function findTerms(text: string, terms: Set<string>, asciiLengths: number[], cjkLengths: number[], mixedLengths: number[] = [], seen = new Map<string, boolean>()): string[] {
   const hits: string[] = [];
   const check = (window: string) => {
     let hit = seen.get(window);
@@ -53,6 +59,14 @@ function findTerms(text: string, terms: Set<string>, asciiLengths: number[], cjk
     const chars = Array.from(run);
     for (let i = 0; i < chars.length; i++) {
       for (const n of cjkLengths) if (i + n <= chars.length) check(chars.slice(i, i + n).join(''));
+    }
+  }
+  if (mixedLengths.length) {
+    for (const [run] of lower.matchAll(/[a-z0-9][a-z0-9 \t\u3000_-]*\p{Script=Han}+/gu)) {
+      for (const { index } of run.matchAll(/(?<![a-z0-9])[a-z0-9]/g)) {
+        const chars = Array.from(run.slice(index).replace(/[ \t\u3000_-]+/g, ''));
+        for (const n of mixedLengths) if (n <= chars.length) check(chars.slice(0, n).join(''));
+      }
     }
   }
   return hits;
@@ -76,12 +90,19 @@ describe('sensitive terms (B-764)', () => {
     expect(findTerms('xatlas-pay sess-7 订单看', terms, [5, 9], [4])).toEqual([]);
   });
 
+  it('the matcher finds a mixed ASCII + CJK term in any spacing, hyphen or case variant', () => {
+    const terms = new Set([sha256('atlaspay看板')]);
+    const find = (text: string) => findTerms(text, terms, [], [], [10]);
+    expect(find('「Atlas Pay 看板」 / atlas-pay-看板 / ATLASPAY看板 / my atlaspay_看板组')).toEqual(['atlaspay看板', 'atlaspay看板', 'atlaspay看板', 'atlaspay看板']);
+    expect(find('xatlas pay 看板 / atlas pay\n看板 / atlas pay 看 / atlas, pay 看板')).toEqual([]);
+  });
+
   it('no listed term appears in package sources, specs or docs', () => {
     const seen = new Map<string, boolean>();
     const hits: string[] = [];
     for (const root of ROOTS) {
       for (const file of files(join(repo, root))) {
-        if (findTerms(readFileSync(file, 'utf8'), TERMS, ASCII_LENGTHS, CJK_LENGTHS, seen).length) hits.push(file.slice(repo.length));
+        if (findTerms(readFileSync(file, 'utf8'), TERMS, ASCII_LENGTHS, CJK_LENGTHS, MIXED_LENGTHS, seen).length) hits.push(file.slice(repo.length));
       }
     }
     expect(hits).toEqual([]);

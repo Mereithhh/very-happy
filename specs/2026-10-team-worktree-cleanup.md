@@ -2,7 +2,7 @@
 
 状态：Final · 2026-10-21 · B-691（依赖 B-689 的 `retry-operation`）
 
-## 现场（10-21，dev-sg「VeryHappy 研发」团队）
+## 现场（10-21，dev-sg 上的研发团队）
 
 团队设置页底部堆着 `stop · failed · Worktree branch changed; preserve for manual reconciliation`。本地 receipt：5 条 stop 停在 `prepared`，daemon 日志里每条已重试约 2000 次（每 5 s 一次：stop → archive → git 检查 → fail-operation）。
 
