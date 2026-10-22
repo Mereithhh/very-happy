@@ -1,12 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import {
-    attentionKindNeedsOwner, attentionResolveState, isAttentionActive, isAttentionBoardLocalId,
+    attentionKindNeedsOwner, attentionResolveState, isAttentionActive,
     type AttentionItem, type AttentionItemListQuery, type AttentionItemOwnerRespond, type AttentionItemPatch, type AttentionItemPost,
     type AttentionItemResolve, type TeamState,
 } from '@slopus/happy-wire';
 import { configuredResourceLimit } from '@/app/api/resourceLimits';
-import { isOwnerAuthoredMessage, type MessageOrigin } from '@/app/automations/attentionLifecycle';
 import { buildAttentionItemUpdate, buildSessionEventEphemeral, eventRouter } from '@/app/events/eventRouter';
 import { dispatchSessionEventPush } from '@/app/push/pushDispatch';
 import { db } from '@/storage/db';
@@ -15,7 +14,7 @@ import { allocateUserSeq } from '@/storage/seq';
 import { log } from '@/utils/log';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 import {
-    AttentionError, attentionEnabled, capAnswered, itemView, ownerRepliedTarget, planPost, postKey, pushPresentation, replyTargetState,
+    AttentionError, attentionEnabled, capAnswered, itemView, planPost, postKey, pushPresentation, replyTargetState,
     requireAttention, rootTaskTransitions, TEAM_SUBMIT_CHOICES, TEAM_SUBMIT_KEY_PREFIX, teamSubmitItem, teamSubmitKey, type AttentionRow,
 } from './rules';
 
@@ -296,7 +295,9 @@ async function settleRootTask(accountId: string, row: AttentionRow, choice: stri
     const base = { taskId: task.id, attemptId: task.currentAttemptId, goalVersion: task.goalVersion };
     const requestId = `board-${row.id}-${task.currentAttemptId}`;
     if (choice === TEAM_SUBMIT_CHOICES.accept) await teams.actOnTeam(row.teamId!, { accountId }, { requestId, action: { type: 'accept', ...base } });
-    else if (choice === TEAM_SUBMIT_CHOICES.return) await teams.actOnTeam(row.teamId!, { accountId }, { requestId, action: { type: 'return', ...base, reason: note?.trim() || 'Returned from the briefing board.' } });
+    // Quiet: the board follows every choice with the owner's own chat line (board- localId), which is the lead's
+    // one notice — like accept, which never had a team message. Without it the lead heard「退回」twice.
+    else if (choice === TEAM_SUBMIT_CHOICES.return) await teams.actOnTeam(row.teamId!, { accountId }, { requestId, action: { type: 'return', ...base, reason: note?.trim() || 'Returned from the briefing board.' } }, { quiet: true });
     else throw new AttentionError('attention_unknown_choice', 400);
 }
 
@@ -365,22 +366,6 @@ async function closeActive(accountId: string, sessionId: string, select: (rows: 
         }
         return ids;
     });
-}
-
-/**
- * Message ingress hook beside B-508's `noteSessionMessage`: the owner speaking
- * in a session settles its only open decision (`owner-replied`). A message the
- * board itself sent (localId `board-…`) is skipped — that button already
- * settled its own item through `owner-respond`.
- */
-export async function noteAttentionOwnerMessage(input: { accountId: string; sessionId: string } & MessageOrigin): Promise<string[]> {
-    if (!attentionEnabled() || !isOwnerAuthoredMessage(input) || isAttentionBoardLocalId(input.localId)) return [];
-    try {
-        return await closeActive(input.accountId, input.sessionId, rows => { const id = ownerRepliedTarget(rows); return id ? [id] : []; }, { state: 'resolved', resolvedBy: 'owner-replied' });
-    } catch (error) {
-        log({ module: 'attention', level: 'warn', error }, 'attention owner-replied hook failed');
-        return [];
-    }
 }
 
 /** Archive hook (user intent, B-505): every open item of the session is dismissed. */

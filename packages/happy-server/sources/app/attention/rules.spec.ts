@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TeamState, TeamTask } from '@slopus/happy-wire';
-import { capAnswered, ownerRepliedTarget, planPost, postKey, pushPresentation, replyTargetState, rootTaskTransitions, teamSubmitItem } from './rules';
+import { capAnswered, planPost, postKey, pushPresentation, replyTargetState, rootTaskTransitions, teamSubmitItem, truncateTitle } from './rules';
 
 const task = (over: Partial<TeamTask>): TeamTask => ({
     id: 't1', parentTaskId: null, goal: 'Ship the notes\nmore', acceptance: ['a'], goalVersion: 1, ownerBotId: null, assigneeBotId: 'lead',
@@ -48,20 +48,28 @@ describe('briefing board rules', () => {
         const big = task({ status: 'submitted', attempts: [{ id: 'a1', botId: 'lead', generation: 1, goalVersion: 1, status: 'submitted', result: '汇'.repeat(5000) }] });
         const item = teamSubmitItem({ id: 'team', name: 'Team' }, big);
         expect(item).toMatchObject({ source: 'team', kind: 'decision', key: 'team-submit:t1', title: '根目标已提交，等你验收 · Ship the notes' });
-        expect(item.options.map(o => o.id)).toEqual(['accept', 'return']);
+        // Machine ids, readable labels, and no system「recommended」(S-1d).
+        expect(item.options).toEqual([{ id: 'accept', label: '验收' }, { id: 'return', label: '退回' }]);
         expect(new TextEncoder().encode(item.bodyMd!).length).toBeLessThanOrEqual(8 * 1024);
         expect(item.bodyMd!.endsWith('…')).toBe(true);
-        expect(teamSubmitItem({ id: 'team', name: 'Team' }, task({ goal: 'x'.repeat(300) })).title).toHaveLength(120);
+        const long = teamSubmitItem({ id: 'team', name: 'Team' }, task({ goal: 'Rewrite the release pipeline so '.repeat(8) })).title;
+        expect(long.length).toBeLessThanOrEqual(120);
+        expect(long).toMatch(/ so…$|pipeline…$|release…$|Rewrite…$|the…$/);
     });
 
-    it('owner reply settles only an unambiguous, non-team decision', () => {
-        const d = (id: string, over = {}) => ({ id, kind: 'decision', source: 'lead', state: 'open', inferred: false, ...over });
-        expect(ownerRepliedTarget([d('a'), { id: 'b', kind: 'blocked', source: 'agent', state: 'open', inferred: false }])).toBe('a');
-        expect(ownerRepliedTarget([d('a'), d('b')])).toBeNull();
-        expect(ownerRepliedTarget([d('a', { source: 'team' })])).toBeNull();
-        expect(ownerRepliedTarget([d('a', { state: 'resolved' }), d('b', { state: 'in_progress' })])).toBe('b');
-        expect(ownerRepliedTarget([d('a', { inferred: true })])).toBeNull();
-        expect(ownerRepliedTarget([d('a', { inferred: true }), d('b')])).toBe('b');
+    it('truncates titles between words or CJK characters, never mid-word, ending in …', () => {
+        expect(truncateTitle('  short  ', 10)).toBe('short');
+        expect(truncateTitle('hello world', 11)).toBe('hello world');
+        expect(truncateTitle('the quick brown fox jumps', 19)).toBe('the quick brown…');
+        expect(truncateTitle('the quick, brownie', 16)).toBe('the quick,…');
+        expect(truncateTitle('汇报板上线前的验收条目', 6)).toBe('汇报板上线…');
+        expect(truncateTitle('验收 · deploy now please', 15)).toBe('验收 · deploy…');
+        // One word longer than half the title is the only mid-word cut.
+        expect(truncateTitle('x'.repeat(300), 120)).toBe(`${'x'.repeat(119)}…`);
+        // A surrogate pair is never split; the cap counts UTF-16 units like the wire schema.
+        const emoji = truncateTitle('😀'.repeat(10), 6);
+        expect(emoji).toBe('😀😀…');
+        expect(emoji.length).toBeLessThanOrEqual(6);
     });
 
     it('push text per kind', () => {

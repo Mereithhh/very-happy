@@ -148,7 +148,7 @@ export async function readTeam(teamId: string, auth: { accountId: string } | { t
         return teamView(state, p.actor);
     });
 }
-export async function actOnTeam(teamId: string, auth: { accountId: string } | { token: string }, request: TeamActionRequest): Promise<TeamResponse> {
+export async function actOnTeam(teamId: string, auth: { accountId: string } | { token: string }, request: TeamActionRequest, opts: { quiet?: boolean } = {}): Promise<TeamResponse> {
     return inTx(async tx => {
         const p = await principal(tx, teamId, auth);
         const row = await load(tx, teamId, p.accountId);
@@ -182,7 +182,7 @@ export async function actOnTeam(teamId: string, auth: { accountId: string } | { 
             }
         }
         if (action.type === 'join' && p.actor.kind === 'owner' && row.state.archivedAt === undefined) await guardSessionTeam(tx, p.accountId, action.sessionId, teamId, action.transfer === true);
-        const reduced = reduceTeam(row.state, p.actor, action, { now: Date.now(), id: randomUUID });
+        const reduced = reduceTeam(row.state, p.actor, action, { now: Date.now(), id: randomUUID, quiet: opts.quiet });
         await persistTransition(tx, row, reduced.team);
         // B-766: a root task's submit has no recipient in the reducer — it becomes a「待你验收」briefing item instead.
         await applyTeamTransitionsTx(tx, p.accountId, row.state, reduced.team);

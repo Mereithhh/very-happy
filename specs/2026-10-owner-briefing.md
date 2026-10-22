@@ -11,7 +11,7 @@
 
 1. 一张明文表 `AttentionItem` 承接所有「需要你」：负责人上板（decision / todo / report / answer）、`request_human`（blocked）、Owner 提问（question / request）、钉（pin）、根任务提交（team）、二期的自动化 attention。
 2. `happy-wire` 给出 W0 契约：条目 schema、`attention-item` update 事件、`/v1/attention-items` 请求与响应、`owner_board_post/update/resolve/list` 工具入参与出参。CLI（C-1）和 Web（W-1/W-2）只依赖这份契约并行开工。
-3. S-1：server 存储、按 `(sessionId, key)` upsert 去重、同一条目 push 至多一次、根任务 submit 写「待你验收」、会话归档时清理、Owner 回复自动 resolve，全部在 feature 开关后面。
+3. S-1：server 存储、按 `(sessionId, key)` upsert 去重、同一条目 push 至多一次、根任务 submit 写「待你验收」、会话归档时清理，全部在 feature 开关后面（Owner 回复自动 resolve 已由 S-1d 撤销，见「自动 resolve」）。
 
 ## 非目标
 
@@ -62,19 +62,20 @@
 
 ### 自动 resolve
 
-- Owner 在会话里发言（判定沿用 `isOwnerAuthoredMessage`）：会话里唯一一个开放的 decision 置为 resolved、`resolvedBy='owner-replied'`；有多个开放 decision 时不动。D5 草稿（`inferred=true`）不参与计数也不会被关：Owner 没看到它被正式提问，聊天不能算回答（S-1b，C-1 实测复现）。消息正文是加密的，server 读不到 `meta.boardItemId`，所以看板按钮发出的 Owner 消息用 `attentionBoardLocalId`（localId 前缀 `board-`）标记，server 见到这个前缀就跳过自动 resolve——对应条目已经由 `owner-respond` 处理，不能顺手关掉另一条 decision。
+- Owner 在会话里发普通消息**不关闭任何条目**（S-1d，QA5 F2）。decision 只在两种情况下关闭：Owner 在看板上点选项（`owner-respond`），或负责人 resolve。原规则「会话里唯一一个开放的 decision 置为 `owner-replied`」已删除：Owner 随口一句与之无关的话（如「派个成员」）就会把它关掉，Owner 以为还在等，负责人也不知道它被关了，决定悄悄丢失。负责人每回合的 digest 会列出未结条目，由负责人看到 Owner 的回答后显式 resolve。删除后钩子已无作用对象，消息入口（socket / v3 HTTP）不再调用它；`ATTENTION_RESOLVED_BY` 里的 `owner-replied` 留在 wire 只为兼容旧行，server 不再写入。看板按钮发出的 Owner 消息仍带 `attentionBoardLocalId`（localId 前缀 `board-`），CLI 的 D5 推断据此跳过它。
 - 会话归档：所有开放条目置为 dismissed、`resolvedBy='session-archived'`。
-- 根任务 `team_submit`：写一条 `source='team'`、`kind='decision'`、标题「根目标已提交，等你验收」的条目，选项「验收 / 退回」；Owner 选择后映射为团队的 accept / return。
+- 根任务 `team_submit`：写一条 `source='team'`、`kind='decision'`、标题「根目标已提交，等你验收 · <目标首行>」的条目；标题超过 `titleChars` 时按字（CJK）或按词（拉丁文）截断并加「…」，不在单词中间截断（单个词长到要丢掉一半标题时例外）。选项 `{id:'accept', label:'验收'}`、`{id:'return', label:'退回'}`，都不标 `recommended`（这是系统生成的条目，不代表负责人的推荐）。Owner 选择后映射为团队的 accept / return。
+- 看板「退回」只通知负责人一次（S-1d，QA5 O3）：看板每次选择之后都会发一条 Owner 聊天消息（`board-` localId），这就是负责人收到的通知；因此看板发起的 return 以 `quiet` 调用 `actOnTeam`，reducer 不再追加「Revision requested」团队消息（accept 本来就没有团队消息）。团队页发起的 return 照旧发团队消息。
 
 ### S-1 实现（server）
 
 | 部分 | 位置 |
 |---|---|
 | 迁移 `20261022120000_attention_items`：只新增 `AttentionItem` 一张表（FK 到 Account / Session，级联删除），不回填；回滚 `DROP TABLE "AttentionItem";` | `packages/happy-server/prisma/migrations/` |
-| 纯规则：post 计划（create / noop / repost、关闭条目重开）、根任务状态迁移、「待你验收」条目、owner-replied 目标、push 文案、answered 每会话保留 2 条 | `sources/app/attention/rules.ts` |
+| 纯规则：post 计划（create / noop / repost、关闭条目重开）、根任务状态迁移、「待你验收」条目与标题截断、push 文案、answered 每会话保留 2 条 | `sources/app/attention/rules.ts` |
 | 存储：SERIALIZABLE `inTx`；并发首插同 key 时输家撞唯一索引（P2002）后整笔重试、落成 repost；repost 只写入参里出现的可选字段（`repostFields`）；push 用 `UPDATE … WHERE pushedAt IS NULL` 抢占 | `sources/app/attention/store.ts` |
 | 根任务 submit：`actOnTeam` 在同一事务里比较前后状态，root task 变成 submitted 时在负责人会话写条目（key `team-submit:<taskId>`，requestId 按 attempt），离开 submitted 时关闭；看板「验收 / 退回」先执行团队 accept / return | `sources/app/teams/store.ts`、`attention/store.ts` |
-| 钩子：消息入口（socket / v3 HTTP）调用 owner-replied；归档入口调用 session-archived | `sessionUpdateHandler.ts`、`v3SessionRoutes.ts`、`sessionRoutes.ts` |
+| 钩子：归档入口调用 session-archived（消息入口不再挂 attention 钩子，S-1d） | `sessionRoutes.ts` |
 | 路由 | `sources/app/api/routes/attentionRoutes.ts` |
 
 看板选择与已关闭条目：同一选项重复提交返回原条目；关闭后换选项返回 409（普通条目 `attention_item_closed`，根任务条目 `attention_item_stale`），需要先「追问」重开。
@@ -119,9 +120,10 @@
 ## 验收标准
 
 - [ ] W0：wire schema、update 事件、REST 与工具入参出参有单测；wire build、vitest 通过。
-- [ ] S-1：迁移只新增一张表；`/v1/attention-items` CRUD 与 owner-respond；并发 upsert 去重；push 至多一次；根任务 submit 写条目（修 `reducer.ts:113`）；归档清理；`owner-replied` 自动 resolve；feature 开关。
+- [ ] S-1：迁移只新增一张表；`/v1/attention-items` CRUD 与 owner-respond；并发 upsert 去重；push 至多一次；根任务 submit 写条目（修 `reducer.ts:113`）；归档清理；feature 开关。
 - [ ] server vitest（含 PGlite）覆盖迁移、并发去重、push 只发一次。
 - [ ] S-1c：重贴省略字段保留原值、显式字段覆盖（活跃与重新打开两种），`attentionApi.pglite.integration.spec.ts` 经 `startApi` 覆盖，「省略即保留」分支做过 mutation。
+- [ ] S-1d：Owner 普通消息不关 decision（看板选择或负责人 resolve 才关）；「待你验收」标题按字 / 词截断、选项 label「验收」「退回」、不默认 recommended；看板退回只通知负责人一次。`attentionApi.pglite.integration.spec.ts` 经 `startApi` 覆盖，均做过 mutation。
 - [ ] C-1：`owner_board_*` 能力门控；`request_human` 写 blocked 条目并兼容旧 server；Owner 提问 + firstReply；D5 草稿；digest；playbook 中英规则；单测 + mutation + 隔离 daemon 对 S-1 实测。
 
 ## 留真机验证项
