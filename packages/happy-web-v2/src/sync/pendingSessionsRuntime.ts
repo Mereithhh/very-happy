@@ -5,6 +5,7 @@
  */
 import { dispatchEntryOf, reportProjectUx } from './projectUx';
 import { applyLocalMembership, projectsApi, refreshProjects } from './projects';
+import { markQuickSession } from '@/screens/projects/newSessionProject';
 import { useEffect, useSyncExternalStore } from 'react';
 import { randomUUID } from 'expo-crypto';
 import { storage } from './storage';
@@ -103,6 +104,8 @@ export const pendingSessions = createPendingSessionStore({
     },
     onSpawned(record, realId) {
         recordRecentMachinePath(record.machineId, record.path);
+        // B-757: 快捷新建 opened no dialog — its page says once which project it landed in.
+        if (record.source === 'quick') markQuickSession(realId);
         // B-651 ①: where sessions are dispatched from, and whether they land in a project.
         reportProjectUx({ kind: 'dispatch', entry: dispatchEntryOf(record.source), inProject: !!record.onSpawnedProject });
         if (record.onSpawnedTask) useBoardTasks.getState().attachSession(record.onSpawnedTask.taskId, realId);

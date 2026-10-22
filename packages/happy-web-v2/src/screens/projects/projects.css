@@ -122,7 +122,7 @@
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .pj-editor { display: flex; flex-direction: column; gap: 6px; }
-.pj-editor textarea, .pj-note-form textarea, .pj-note-form input, .pj-settings input {
+.pj-editor textarea, .pj-note-form textarea, .pj-note-form input {
   box-sizing: border-box; width: 100%; padding: 6px 8px;
   border: 0; border-radius: var(--r-btn); background: var(--fill-soft); color: var(--text);
   font: inherit;
@@ -148,6 +148,7 @@
 .pj-kind { padding: 0 6px; border-radius: var(--r-pill); background: var(--fill-soft); font-size: var(--fs-11); color: var(--text-dim); }
 .pj-kind--decision { color: var(--text); }
 
+<<<<<<< HEAD
 .pj-settings { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: var(--hairline) solid var(--line); border-bottom: var(--hairline) solid var(--line); }
 .pj-settings h3 { margin: 6px 0 0; font-size: var(--fs-12); font-weight: 600; color: var(--text-dim); }
 .pj-settings label, .pj-field { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-11); color: var(--text-faint); min-width: 0; }
@@ -168,6 +169,8 @@
   .pj-worktree-row { flex-wrap: wrap; }
   .pj-worktree-row .pj-ghost { margin-left: 23px; }
 }
+=======
+>>>>>>> 7e31ad15 (wip B-757)
 
 @media (max-width: 760px) {
   .pj-screen { padding: 12px 16px 24px; }
@@ -189,10 +192,9 @@
   .pj-row, .pj-member { min-height: 44px; }
   .pj-ghost, .pj-primary, .pj-danger { height: 44px; }
   .pj-send, .pj-icon-btn { width: 44px; height: 44px; }
-  .pj-composer-input, .pj-editor textarea, .pj-note-form textarea, .pj-note-form input, .pj-settings input { font-size: 16px; }
+  .pj-composer-input, .pj-editor textarea, .pj-note-form textarea, .pj-note-form input { font-size: 16px; }
   .pj-tabs > button { min-height: 44px; }
-  /* B-728 (UI-P1-07): settings fields are finger-sized too */
-  .pj-settings input, .pj-note-form input { min-height: 44px; }
+  .pj-note-form input { min-height: 44px; }
 }
 
 /* B-649 移到项目 — multi-select list inside the dialog (rows, no inner frame) */
@@ -214,3 +216,76 @@
 
 /* B-726 project picker: a full-width form field wherever it sits (team pages right-align bare buttons) */
 .vh-select-trigger.vh-project-picker, .teams-screen button.vh-project-picker { width: 100%; align-self: stretch; }
+
+/* B-757 project settings page — the team settings tab's structure: one
+   hairline-topped section per concern, rows not cards (1-Border Rule). */
+a.pj-icon-btn { text-decoration: none; }
+.pj-settings-page { max-width: 760px; }
+.pj-settings-nav { display: flex; flex-wrap: wrap; gap: 4px; margin-top: -4px; }
+.pj-settings-nav a {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 10px;
+  border-radius: var(--r-pill); background: var(--fill-soft);
+  color: var(--text-dim); font-size: var(--fs-12); text-decoration: none;
+}
+@media (hover: hover) and (pointer: fine) { .pj-settings-nav a:hover { background: var(--fill-hover); color: var(--text); } }
+.pj-settings-nav a:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.pj-settings-page .pj-section { scroll-margin-top: 12px; }
+.pj-settings-page .pj-section h2 { font-size: var(--fs-14); }
+.pj-archived-note { margin: 0; padding: 8px 10px; border-radius: var(--r-md); background: var(--fill-soft); color: var(--warn); font-size: var(--fs-12); }
+.pj-form { display: flex; flex-direction: column; gap: 10px; }
+.pj-form-foot { display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+
+.pj-instr { display: flex; flex-direction: column; gap: 8px; }
+.pj-instr-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pj-instr-mode { width: 148px; }
+.pj-instr-history { margin-left: auto; }
+.pj-instr-input {
+  box-sizing: border-box; width: 100%; min-height: 220px; padding: 10px 12px; resize: vertical;
+  border: 0; border-radius: var(--r-code); background: var(--fill-soft); color: var(--text);
+  font-family: var(--font-mono); font-size: var(--fs-12); line-height: 1.6;
+}
+.pj-instr-input:focus { outline: none; background: var(--fill-hover); }
+.pj-instr-preview { min-height: 120px; padding: 4px 2px; overflow-wrap: anywhere; }
+
+.pj-list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; }
+.pj-list-row { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 0; min-width: 0; }
+.pj-list-row + .pj-list-row { border-top: var(--hairline) solid var(--line); }
+.pj-list-icon { flex-shrink: 0; color: var(--text-faint); }
+.pj-list-main { flex: 1; min-width: 0; display: flex; flex-direction: column; color: var(--text); text-decoration: none; }
+a.pj-list-main:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-sm); }
+@media (hover: hover) and (pointer: fine) { a.pj-list-main:hover .pj-list-title { text-decoration: underline; } }
+.pj-list-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-list-meta { font-size: var(--fs-12); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-list-actions { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.pj-badge--inline { grid-area: auto; justify-self: auto; flex-shrink: 0; }
+
+.pj-folder-form { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.pj-folder-form > .pj-folder-machine { flex: 1 1 180px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pj-folder-form > .pj-grow { flex: 2 1 260px; min-width: 0; }
+.pj-folder-form > .pj-form-foot { align-self: flex-end; margin-left: auto; padding-bottom: 2px; }
+/* fields as compact as the md Combobox beside them (36px); coarse keeps 16px / 44px */
+.pj-settings-page .vh-input { padding: 7px 0; font-size: var(--fs-13); }
+.pj-list-row > .pj-folder-form { padding: 6px 0; }
+
+.pj-danger-zone h2 { color: var(--danger); }
+.pj-danger-item { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
+.pj-danger-item > p { flex: 1; margin: 0; font-size: var(--fs-12); text-wrap: pretty; }
+
+@media (max-width: 520px) {
+  .pj-list-row { flex-wrap: wrap; }
+  .pj-list-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+  .pj-danger-item { flex-direction: column; align-items: stretch; }
+  .pj-danger-item > .vh-btn { align-self: flex-end; }
+  /* member rows stay one line: 「从项目移出」 becomes its icon (aria-label keeps the name) */
+  .pj-list-row[data-testid=project-member] { flex-wrap: nowrap; }
+  .pj-list-row[data-testid=project-member] .pj-list-actions { width: auto; }
+  .pj-list-row[data-testid=project-member] .pj-btn-label { display: none; }
+}
+@media (pointer: coarse) {
+  .pj-settings-nav a { height: 36px; }
+  .pj-instr-input { font-size: 16px; }
+  .pj-settings-page .vh-input { padding: 11px 0; font-size: 16px; }
+  .pj-list-row { min-height: 48px; }
+}
+/* B-757 quick-session note: 「打开项目」 is a link styled as the strip's button */
+a.mrb-term-btn { text-decoration: none; }
