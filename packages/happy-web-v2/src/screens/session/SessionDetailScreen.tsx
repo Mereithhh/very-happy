@@ -1,4 +1,6 @@
 import { ProjectSuggestionBanner } from '@/screens/projects/ProjectSuggestionBanner';
+import { QuickSessionProjectBanner } from '@/screens/projects/QuickSessionProjectBanner';
+import { isQuickSession } from '@/screens/projects/newSessionProject';
 import { SessionPreviews } from './SessionPreviews';
 import { SubagentDock } from './SubagentDock';
 import { PermissionCard } from './PermissionCard';
@@ -63,6 +65,7 @@ export function SessionDetailScreen() {
         : routeId;
     const pendingId = pendingMode ? pending!.pendingId : null;
     const session = useSession(id ?? '');
+    const quickSession = useMemo(() => !!id && isQuickSession(id), [id]);
     const branchOrigin = useMessage(session?.metadata?.parentSessionId ?? '', session?.metadata?.forkedFromMessageId ?? '');
     const bannerMachine = storage((s) => {
         const mid = session?.metadata?.machineId;
@@ -299,8 +302,11 @@ export function SessionDetailScreen() {
                     so React reconciles it by key map, and two same-key siblings orphan one fiber —
                     its DOM stays and a fresh copy is inserted on every re-render (duplicated strip). */}
                 {session && !mirror && !sharedWithMe && <AutomationAttentionBanner key={`automation-attention:${id}`} sessionId={id} />}
-                {/* B-649: folder belongs to a project this session is not in → suggest (never auto-join). */}
-                {session && !mirror && !sharedWithMe && <ProjectSuggestionBanner key={`project-suggestion:${id}`} sessionId={id} />}
+                {/* B-649: folder belongs to a project this session is not in → suggest (never auto-join).
+                    B-757: a 快捷新建 session instead says where it landed (project or none), once. */}
+                {session && !mirror && !sharedWithMe && (quickSession
+                    ? <QuickSessionProjectBanner key={`quick-project:${id}`} sessionId={id} />
+                    : <ProjectSuggestionBanner key={`project-suggestion:${id}`} sessionId={id} />)}
                 {/* B-510: an agent asked for a person (request_human). */}
                 {session && !mirror && <HumanAttentionBanner key={`human-attention:${id}`} sessionId={id} />}
                 {/* recoverability: inactive session (archived OR offline) → restore banner */}

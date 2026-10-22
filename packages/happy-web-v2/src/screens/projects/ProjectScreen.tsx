@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FolderKanban, MoreHorizontal, Send, UsersRound, Zap, History, Undo2, Plus, Link2, LogOut, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, FolderKanban, Settings2, Send, UsersRound, Zap, Undo2, Plus, Link2, LogOut } from 'lucide-react';
 import { ActionDropdownMenu } from '@/ui/Menu';
 import { linkableTeams } from './projectChoice';
-import type { ProjectDetailResponse, ProjectInstructionsRevisionView, ProjectLogEntryView, ProjectLogKind } from '@slopus/happy-wire';
+import type { ProjectDetailResponse, ProjectLogEntryView, ProjectLogKind } from '@slopus/happy-wire';
 import { applyLocalMembership, projectsApi, ProjectsApiError, refreshProjects, useProjects } from '@/sync/projects';
 import { useAllMachines, useAllSessions, storage } from '@/sync/storage';
 import { useBoardCompleted, useBoardItems } from '@/screens/board/useBoardItems';
@@ -14,11 +14,12 @@ import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agent
 import { getSessionName } from '@/utils/sessionUtils';
 import { machineLabel } from '@/utils/machineUtils';
 import { toast } from '@/ui/Toast';
-import { Modal } from '@/modal';
-import { Combobox } from '@/ui/Combobox';
 import { Segmented } from '@/ui/Segmented';
 import { SelectMenu } from '@/ui/SelectMenu';
-import { bucketItems, injectionStateOf, summarizeInjection, utf8Bytes, INSTRUCTIONS_MAX_BYTES, repairWorktreeFolders, worktreeFolders, type InjectionState } from './projectPage';
+import { bucketItems, injectionStateOf, summarizeInjection, type InjectionState } from './projectPage';
+import { projectSettingsPath } from './projectSettings';
+import { InstructionsEditor } from './ProjectSettingsScreen';
+import { WorktreeFolderNotice } from './WorktreeFolderNotice';
 import { useProjectCopy, type ProjectCopy } from './projectCopy';
 import './projects.css';
 
@@ -28,8 +29,8 @@ import './projects.css';
  * primary folder that joins the project before its first message. Two tabs:
  * 概览 — the board's own classification filtered to this project (so
  * 等你处理 equals the sidebar header and /board), teams, members with their
- * real injection state; 上下文 — instructions (CAS) and the log. Settings sit
- * behind ⋯.
+ * real injection state; 上下文 — instructions (CAS) and the log. Settings are
+ * their own page (B-757, `/projects/:id/settings`), opened from the header.
  */
 export function ProjectScreen() {
   const { projectId = '' } = useParams();
@@ -37,7 +38,7 @@ export function ProjectScreen() {
   const [detail, setDetail] = useState<ProjectDetailResponse | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'missing' | 'unavailable'>('loading');
   const [tab, setTab] = useState<'overview' | 'context'>('overview');
-  const [showSettings, setShowSettings] = useState(false);
+  const navigate = useNavigate();
 
   const load = useCallback(async () => {
     try {
@@ -74,15 +75,11 @@ export function ProjectScreen() {
           <h1><FolderKanban size={22} aria-hidden />{project.name}</h1>
           {project.goal && <p className="pj-goal">{project.goal}</p>}
         </div>
-        <button type="button" className="pj-icon-btn" aria-expanded={showSettings} aria-label={c.settings} title={c.settings} onClick={() => setShowSettings((v) => !v)}><MoreHorizontal size={18} /></button>
+        <Link className="pj-icon-btn" to={projectSettingsPath(project.id)} aria-label={c.settings} title={c.settings} data-testid="project-settings-link"><Settings2 size={18} /></Link>
       </header>
-      <WorktreeFolderNotice detail={detail} c={c} onChanged={reload} onOpenSettings={() => setShowSettings(true)} />
-      {showSettings && <ProjectSettings detail={detail} c={c} onChanged={reload} />}
-      <ProjectComposer detail={detail} c={c} onAddFolder={() => {
-        // B-728 (UI-P1-12): the empty state's action opens settings on the path field
-        setShowSettings(true);
-        requestAnimationFrame(() => document.getElementById(FOLDER_PATH_ID)?.focus());
-      }} />
+      <WorktreeFolderNotice detail={detail} c={c} onChanged={reload} onOpenSettings={() => navigate(projectSettingsPath(project.id, 'folders'))} />
+      {/* B-728 (UI-P1-12): the empty state's action opens settings on the path field */}
+      <ProjectComposer detail={detail} c={c} onAddFolder={() => navigate(projectSettingsPath(project.id, 'folders'))} />
       <div className="vh-segmented pj-tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === 'overview'} className={tab === 'overview' ? 'is-active' : ''} onClick={() => setTab('overview')}>{c.overview}</button>
         <button type="button" role="tab" aria-selected={tab === 'context'} className={tab === 'context' ? 'is-active' : ''} onClick={() => setTab('context')}>{c.context}</button>
@@ -92,43 +89,7 @@ export function ProjectScreen() {
   );
 }
 
-// ─── worktree folder repair (B-755) ──────────────────────────────────────
-
-/**
- * B-755: a folder that is a team member's throwaway worktree (B-726 projects
- * of teams launched from one) — say so and offer the repository it was cut
- * from. Never changed without this click; an unknown worktree points to settings.
- */
-function WorktreeFolderNotice({ detail, c, onChanged, onOpenSettings }: { detail: ProjectDetailResponse; c: ProjectCopy; onChanged: () => Promise<void>; onOpenSettings: () => void }) {
-  const teams = useTeamNavigation();
-  const [busy, setBusy] = useState(false);
-  const project = detail.project;
-  const bad = worktreeFolders(project.folders, teams);
-  if (bad.length === 0) return null;
-  const fix = async () => {
-    setBusy(true);
-    try { await projectsApi.update(project.id, { folders: repairWorktreeFolders(project.folders, teams) }); toast.success(c.worktreeFixed); await onChanged(); }
-    catch { toast.error(c.failed); }
-    finally { setBusy(false); }
-  };
-  return (
-    <section className="pj-worktree" role="status" data-testid="project-worktree-folder">
-      {bad.map((f) => (
-        <div key={`${f.machineId}:${f.path}`} className="pj-worktree-row">
-          <TriangleAlert size={15} aria-hidden className="pj-worktree-icon" />
-          <p>{c.worktreeFolder(f.path)}{f.repository ? c.worktreeRepo(f.repository) : c.worktreeUnknown}</p>
-          {f.repository
-            ? <button type="button" className="pj-ghost" disabled={busy} aria-busy={busy} onClick={() => void fix()}>{c.worktreeFix}</button>
-            : <button type="button" className="pj-ghost" onClick={onOpenSettings}>{c.worktreeOpenSettings}</button>}
-        </div>
-      ))}
-    </section>
-  );
-}
-
 // ─── composer ────────────────────────────────────────────────────────────
-
-const FOLDER_PATH_ID = 'pj-folder-path';
 
 function ProjectComposer({ detail, c, onAddFolder }: { detail: ProjectDetailResponse; c: ProjectCopy; onAddFolder: () => void }) {
   const navigate = useNavigate();
@@ -286,51 +247,13 @@ function ProjectOverview({ detail, c, onChanged }: { detail: ProjectDetailRespon
 // ─── context: instructions + log ─────────────────────────────────────────
 
 function ProjectContext({ detail, c, onChanged }: { detail: ProjectDetailResponse; c: ProjectCopy; onChanged: () => Promise<void> }) {
-  const project = detail.project;
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(project.instructions);
-  const [base, setBase] = useState(project.instructionsVersion);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [history, setHistory] = useState<ProjectInstructionsRevisionView[] | null>(null);
-  const tooLong = utf8Bytes(draft) > INSTRUCTIONS_MAX_BYTES;
-  const presenceVersions = detail.presence.map((p) => p.injectedInstructionsVersion);
-  const delivered = presenceVersions.filter((v) => v === project.instructionsVersion).length;
-  const older = presenceVersions.filter((v) => typeof v === 'number' && v < project.instructionsVersion).length;
-  const save = async () => {
-    try {
-      await projectsApi.putInstructions(project.id, { instructions: draft, ifVersion: base });
-      setEditing(false); setNotice(null);
-      await onChanged();
-    } catch (error) {
-      if (error instanceof ProjectsApiError && error.code === 'instructions_version_conflict') {
-        const latest = (error.details?.project ?? null) as { instructions?: string; instructionsVersion?: number } | null;
-        if (latest?.instructionsVersion !== undefined) { setDraft(latest.instructions ?? ''); setBase(latest.instructionsVersion); setNotice(c.conflict(latest.instructionsVersion)); }
-      } else toast.error(c.failed);
-    }
-  };
   return (
     <div className="pj-context">
       <p className="pj-muted pj-trust">{c.serverVisible}</p>
       <section className="pj-section">
-        <h2>{c.instructions}<span className="pj-muted pj-h-note">{c.versionLine(project.instructionsVersion, delivered, older)}</span>
-          <span className="pj-h-actions">
-            {!editing && <button type="button" className="pj-ghost" onClick={() => { setDraft(project.instructions); setBase(project.instructionsVersion); setEditing(true); }}>{c.edit}</button>}
-            <button type="button" className="pj-ghost" onClick={async () => setHistory(history ? null : (await projectsApi.history(project.id)).revisions)}><History size={14} />{c.history}</button>
-          </span>
-        </h2>
+        <h2>{c.instructions}</h2>
         <p className="pj-muted pj-hint">{c.instructionsHint}</p>
-        {notice && <p role="alert" className="pj-alert">{notice}</p>}
-        {editing ? (
-          <div className="pj-editor">
-            <textarea value={draft} rows={10} onChange={(e) => setDraft(e.target.value)} aria-label={c.instructions} />
-            <div className="pj-editor-bar">
-              {tooLong && <span className="pj-alert-text">{c.tooLong}</span>}
-              <button type="button" className="pj-ghost" onClick={() => { setEditing(false); setNotice(null); }}>{c.cancel}</button>
-              <button type="button" className="pj-primary" disabled={tooLong} onClick={() => void save()}>{c.save}</button>
-            </div>
-          </div>
-        ) : project.instructions.trim() ? <pre className="pj-instructions">{project.instructions}</pre> : <p className="pj-muted">{c.noInstructions}</p>}
-        {history && <ol className="pj-history">{history.map((h) => <li key={h.version}><span className="mono">v{h.version}</span> <span className="pj-muted">{new Date(h.createdAt).toLocaleString()}{h.summary ? ` · ${h.summary}` : ''}</span><pre>{h.instructions}</pre></li>)}</ol>}
+        <InstructionsEditor detail={detail} c={c} editable={detail.project.archivedAt === null} onChanged={onChanged} />
       </section>
       <ProjectLog detail={detail} c={c} onChanged={onChanged} />
     </div>
@@ -392,63 +315,6 @@ function ProjectLog({ detail, c, onChanged }: { detail: ProjectDetailResponse; c
           ))}
         </ol>
       )}
-    </section>
-  );
-}
-
-// ─── settings ────────────────────────────────────────────────────────────
-
-function ProjectSettings({ detail, c, onChanged }: { detail: ProjectDetailResponse; c: ProjectCopy; onChanged: () => Promise<void> }) {
-  const navigate = useNavigate();
-  const project = detail.project;
-  const machines = useAllMachines({ includeOffline: true });
-  const teams = useTeamNavigation();
-  const [name, setName] = useState(project.name);
-  const [goal, setGoal] = useState(project.goal ?? '');
-  const [machineId, setMachineId] = useState(machines[0]?.id ?? '');
-  const [path, setPath] = useState('');
-  const machineLabelId = useId();
-  const run = async (work: () => Promise<unknown>) => { try { await work(); await onChanged(); } catch { toast.error(c.failed); } };
-  // B-726: any live team can join — the server adds the team's folder when its machine is new to the project.
-  const attachable = teams.filter((t) => t.archivedAt === undefined && !project.teamIds.includes(t.id));
-  return (
-    <section className="pj-settings" aria-label={c.settings}>
-      <div className="pj-field-row">
-        <label>{c.rename}<input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} /></label>
-        <label>{c.goal}<input value={goal} maxLength={2000} onChange={(e) => setGoal(e.target.value)} /></label>
-        <button type="button" className="pj-primary" disabled={!name.trim()} onClick={() => void run(() => projectsApi.update(project.id, { name: name.trim(), goal: goal.trim() || null }))}>{c.save}</button>
-      </div>
-      <h3>{c.folders}</h3>
-      {project.folders.map((f, i) => (
-        <div key={`${f.machineId}:${f.path}`} className="pj-folder">
-          <span className="mono">{f.path}</span>
-          <span className="pj-muted">{machineLabel(machines.find((m) => m.id === f.machineId) ?? ({ id: f.machineId } as never))}</span>
-          {f.primary ? <span className="pj-badge">{c.primary}</span> : <button type="button" className="pj-ghost" onClick={() => void run(() => projectsApi.update(project.id, { folders: project.folders.map((x, j) => ({ ...x, primary: i === j })) }))}>{c.makePrimary}</button>}
-          <button type="button" className="pj-ghost" onClick={() => void run(() => projectsApi.update(project.id, { folders: project.folders.filter((_, j) => j !== i) }))}>{c.remove}</button>
-        </div>
-      ))}
-      <div className="pj-field-row">
-        <div className="pj-field">
-          <span id={machineLabelId}>{c.machine}</span>
-          <Combobox
-            size="md"
-            labelledBy={machineLabelId}
-            label={c.machine}
-            value={machineId}
-            onChange={setMachineId}
-            options={machines.map((m) => ({ value: m.id, label: machineLabel(m) }))}
-          />
-        </div>
-        <label className="pj-grow">{c.path}<input id={FOLDER_PATH_ID} value={path} placeholder="/home/me/code/repo" onChange={(e) => setPath(e.target.value)} /></label>
-        <button type="button" className="pj-ghost" disabled={!machineId || !path.trim()} onClick={() => void run(async () => { await projectsApi.update(project.id, { folders: [...project.folders, { machineId, path: path.trim(), primary: project.folders.length === 0 }] }); setPath(''); })}><Plus size={14} />{c.addFolder}</button>
-      </div>
-      <h3>{c.teams}</h3>
-      {project.teamIds.map((id) => <div key={id} className="pj-folder"><span>{teams.find((t) => t.id === id)?.name ?? id.slice(0, 8)}</span><button type="button" className="pj-ghost" onClick={() => void run(() => projectsApi.detachTeam(project.id, id))}>{c.detach}</button></div>)}
-      {attachable.length > 0 && <div className="pj-field-row"><ActionDropdownMenu align="start" items={attachable.map((t) => ({ key: t.id, icon: UsersRound, label: t.name, onSelect: () => void run(() => projectsApi.attachTeam(project.id, t.id)) }))}><button type="button" className="pj-ghost"><Link2 size={14} aria-hidden />{c.linkTeam}</button></ActionDropdownMenu></div>}
-      <div className="pj-field-row pj-danger-row">
-        <button type="button" className="pj-ghost" onClick={() => void run(() => projectsApi.update(project.id, { archived: !project.archivedAt }))}>{project.archivedAt ? c.unarchive : c.archive}</button>
-        <button type="button" className="pj-danger" onClick={async () => { if (await Modal.confirm(c.delete, c.deleteConfirm, { confirmText: c.delete, destructive: true })) { try { await projectsApi.remove(project.id); void refreshProjects(); navigate('/'); } catch { toast.error(c.failed); } } }}>{c.delete}</button>
-      </div>
     </section>
   );
 }

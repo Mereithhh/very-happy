@@ -31,7 +31,7 @@ name opens the project page; its ＋ starts a session in that project.
 
 | Way | What happens |
 |---|---|
-| Start it from the project page, the group's ＋, or pick the project in **New session** | The session joins before its first message. The dialog pre-selects a project when the chosen folder is inside one of its folders; you can change it or pick none. |
+| Start it from the project page, the group's ＋, or pick the project in **New session** | The session joins before its first message. The dialog's **Project** field sits under the folder: it pre-selects the project whose folder contains the chosen one and says so (*This folder is in "X"; the session joins it*), or says *Not in any project*. You can change it or pick none. |
 | Row menu **Move to project…** | Pick a project (or none) and, optionally, more sessions from the same group in one go. Moving is the only way to change a session's project; dragging does not. |
 | `very-happy spawn --project <id>` | The CLI session joins before its first message. Run from inside a project session, `spawn` joins the caller's project unless you pass `--no-project`. See [channels](channels.md#very-happy-spawn--start-a-session). |
 | Fork | A fork keeps its source's project. |
@@ -60,7 +60,17 @@ never default to one. **New chat** while viewing a member's conversation starts
 in that repository. A project that already has a worktree folder says so at the
 top of its page, with **Use repository …** to switch it in one click (or, when
 the repository is unknown, a pointer to settings to remove it and add the
-repository path).
+repository path). The same note sits above the folder list in project settings,
+and settings refuses a worktree path as a new folder.
+
+**Quick new session** (the sidebar's **New session**, the phone's ＋, ⌘N) opens
+no dialog, so the new session shows a note at the top saying where it landed:
+*This session is in "X"* (with **Open project**), *not in any project; its
+folder is in "X"* (with **Join "X"**), or *not in any project* (with **Join a
+project**). Close it with ×; it stays closed on this device and also silences
+the folder suggestion for that session. A session started from a project's
+group ＋ joins that project; the plain **New session** keeps the current folder
+but not its project.
 
 To take a session out, use **Move to project…** → *No project*, the session
 header menu (**Remove from "…"**), or the leave button on its row on the project
@@ -137,10 +147,21 @@ start a new session after updating the CLI.
 - **Context**: edit the instructions (saves are version-checked, so a
   concurrent edit is not overwritten; history is kept) and browse the log,
   filter it by kind, add an entry yourself or revoke one.
-- **Project settings**: name and goal, folders (on any machine; one is
-  primary), link or unlink teams (a team's folder is added when its computer
-  is new to the project), archive or delete. Deleting a project keeps its
-  sessions; they just leave the project.
+- **Project settings** (the gear in the page header, or
+  `/projects/<id>/settings`; `#basics`, `#context`, `#folders`, `#teams`,
+  `#sessions`, `#danger` jump to a section), laid out like team settings:
+  - **Basics**: name and description.
+  - **Project instructions**: **Write** / **Preview** (rendered Markdown),
+    a byte counter against the 8 KB limit, version-checked saves and history.
+  - **Folders**: add, edit (machine and path) or remove a folder, choose the
+    primary one. A duplicate folder on the same machine is refused inline.
+  - **Teams**: link a team, start a new one in the project, or unlink one
+    (asks first; its members leave the project, the team is unaffected).
+  - **Member sessions**: open or remove a session (asks first). A team member
+    follows its team and is removed by unlinking the team.
+  - **Danger zone**: archive (asks first; an archived project's settings are
+    read-only until you unarchive it) or delete (asks first). Deleting a
+    project keeps its sessions; they just leave the project.
 
 ## Requirements and trust
 

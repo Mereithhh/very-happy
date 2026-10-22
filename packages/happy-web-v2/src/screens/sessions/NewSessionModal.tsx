@@ -5,6 +5,7 @@ import { readAgentVersions } from '@/app/agentVersions';
 import { useHarnessInstall } from '@/app/useHarnessInstall';
 import { useProjects } from '@/sync/projects';
 import { suggestProjectFor } from '@/screens/projects/projectSuggestion';
+import { newSessionProjectHint, projectHintText } from '@/screens/projects/newSessionProject';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bookmark, Check, X } from 'lucide-react';
@@ -209,8 +210,9 @@ export function NewSessionModal({
   // B-516: optimistic open. The pending page owns the spawn, a directory
   // creation approval, the first message (queued in its outbox) and failure;
   // recent-path memory and the Task Board mapping happen on success there.
-  const suggested = suggestProjectFor({ machineId, path: directory.trim() }, liveProjects)?.id ?? null;
-  const projectId = pickedProject === undefined ? suggested : pickedProject;
+  const suggestedProject = suggestProjectFor({ machineId, path: directory.trim() }, liveProjects);
+  const projectHint = newSessionProjectHint(suggestedProject, pickedProject, liveProjects);
+  const projectId = projectHint.kind === 'auto' || projectHint.kind === 'picked' ? projectHint.project.id : null;
   // Offline machines stay listed, disabled, so the picker says why they can't be
   // chosen; a remembered machine this account no longer lists keeps its old row.
   const offlineText = lang.startsWith('zh') ? '离线' : 'Offline';
@@ -292,13 +294,6 @@ export function NewSessionModal({
               </div>
             )}
 
-            {projectsSnap.status === 'ready' && liveProjects.length > 0 && (
-              <>
-                <label className="ns-label" htmlFor="ns-project">{lang.startsWith('zh') ? '项目' : 'Project'}</label>
-                <ProjectPicker id="ns-project" value={projectId ? { kind: 'existing', projectId } : { kind: 'none' }} onChange={(next) => setPickedProject(next.kind === 'existing' ? next.projectId : null)} projects={liveProjects} />
-              </>
-            )}
-
             <label className="ns-label">{t('newSession.directory')}</label>
 
             {list.length > 0 && (
@@ -356,6 +351,15 @@ export function NewSessionModal({
               info={worktreeInfoState}
             />
             {createError && <div className="nwt-error" role="alert">{createError}</div>}
+
+            {/* B-757: 所属项目 sits under the folder it follows, with a line saying where the session lands. */}
+            {projectsSnap.status === 'ready' && liveProjects.length > 0 && (
+              <>
+                <label className="ns-label" htmlFor="ns-project">{lang.startsWith('zh') ? '所属项目' : 'Project'}</label>
+                <ProjectPicker id="ns-project" value={projectId ? { kind: 'existing', projectId } : { kind: 'none' }} onChange={(next) => setPickedProject(next.kind === 'existing' ? next.projectId : null)} projects={liveProjects} />
+                <div className="ns-agent-help" data-testid="ns-project-hint" aria-live="polite">{projectHintText(projectHint, lang.startsWith('zh'))}</div>
+              </>
+            )}
 
             <label className="ns-label">{t('newSession.agent')}</label>
             <div className="ns-agents">
