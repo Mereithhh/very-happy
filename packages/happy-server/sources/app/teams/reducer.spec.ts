@@ -76,6 +76,31 @@ describe('team coordination invariants', () => {
         expect(f.state.operations.at(-1)).toMatchObject({ status: 'completed', error: null });
     });
 
+    it('B-761: a reused member\'s new session starts without the previous generation\'s turn event', () => {
+        const f = fixture();
+        f.act({ type: 'delegate', goal: 'first', acceptance: ['a'], directory: '/repo' });
+        const first = f.state.operations[0];
+        f.act({ type: 'claim-operation', operationId: first.id, machineId: 'machine', teamLaunchVersion: 1 });
+        f.act({ type: 'complete-operation', operationId: first.id, machineId: 'machine', claimId: f.state.operations[0].claimId!, sessionId: 's1' });
+        f.act({ type: 'session-event', sessionId: 's1', event: 'idle' });
+        expect(f.state.bots[0]).toMatchObject({ lastEvent: 'idle', lastEventAt: 1000 });
+        const task = f.state.tasks[0];
+        f.act({ type: 'submit', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1, result: 'ok' });
+        f.act({ type: 'accept', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1 });
+        const stop = f.state.operations.at(-1)!;
+        f.act({ type: 'claim-operation', operationId: stop.id, machineId: 'machine' });
+        f.act({ type: 'complete-operation', operationId: stop.id, machineId: 'machine', claimId: f.state.operations.at(-1)!.claimId! });
+        f.act({ type: 'delegate', goal: 'second', acceptance: ['a'], assigneeBotId: f.state.bots[0].id });
+        const relaunch = f.state.operations.at(-1)!;
+        f.act({ type: 'claim-operation', operationId: relaunch.id, machineId: 'machine', teamLaunchVersion: 1 });
+        f.act({ type: 'complete-operation', operationId: relaunch.id, machineId: 'machine', claimId: f.state.operations.at(-1)!.claimId!, sessionId: 's2' });
+        expect(f.state.bots[0].sessionId).toBe('s2');
+        expect(f.state.bots[0].lastEvent).toBeUndefined();
+        expect(f.state.bots[0].lastEventAt).toBeUndefined();
+        f.act({ type: 'session-event', sessionId: 's2', event: 'idle' });
+        expect(f.state.bots[0]).toMatchObject({ lastEvent: 'idle' });
+    });
+
     it('B-729: a rebind (adopt) or cleanup keeps the unbound conversation in previousSessionIds', () => {
         const f = fixture(); f.act({ type: 'join', name: 'Root', sessionId: 's1' }); const root = f.state.bots[0];
         expect(root.previousSessionIds).toBeUndefined();

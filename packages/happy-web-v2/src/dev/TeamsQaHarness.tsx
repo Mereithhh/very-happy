@@ -5,11 +5,16 @@
  *  banner (O4). Route `/dev/teams-qa` (stripped from prod builds); all data is
  *  local, nothing is sent. `?case=rawmd` (B-746): task previews whose goals and
  *  results carry markdown and the team protocol header. `?case=finished`
- *  (B-753): a team with 35 finished tasks (done / cancelled) next to live work. */
+ *  (B-753): a team with 35 finished tasks (done / cancelled) next to live work.
+ *  `?case=states` (B-761): the Owner's teams as read from production on
+ *  10-22 09:58Z (every lead / member execution as it actually was), then one
+ *  task per derived state with its details head. */
 import { useEffect, useRef } from 'react';
 import type { TeamBot, TeamOperation, TeamState } from '@slopus/happy-wire';
 import { TeamListCard, TeamWorkspace } from '@/screens/teams/TeamWorkspace';
 import { OperationResolution } from '@/screens/teams/TeamsScreen';
+import { TeamTaskSummary } from '@/screens/teams/TeamTaskDetail';
+import type { AgentExecution } from '@/sync/agentStatus';
 import { attentionOperations, teamRetrySupport } from '@/screens/teams/teamView';
 import { FeatureTipHost, resetFeatureTips, useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
 import '@/screens/teams/teams.css';
@@ -65,6 +70,61 @@ export const FINISHED_TEAM: TeamState = {
   operations: Array.from({ length: FINISHED_COUNT }, (_, i) => op(`stop-fin-${i + 1}`, { type: 'stop', status: 'completed', taskId: `t-fin-${i + 1}`, createdAt: NOW - (FINISHED_COUNT - i) * 60_000 })),
 };
 
+// B-761: production shapes (status / binding / lastEvent) and what each member session was doing.
+const runTask = (id: string, assigneeBotId: string, goal: string, extra: Partial<TeamState['tasks'][number]> = {}): TeamState['tasks'][number] =>
+  ({ id, parentTaskId: 'root-vh', goal, acceptance: ['验收标准'], goalVersion: 1, ownerBotId: 'lead', assigneeBotId, status: 'running', attempts: [{ id: `a-${id}`, botId: assigneeBotId, status: 'running', goalVersion: 1, generation: 1, result: null }], currentAttemptId: `a-${id}`, cleanup: 'none', ...extra });
+export const PROD_VH_TEAM: TeamState = {
+  ...QA_TEAM, id: 'team-vh', name: 'VeryHappy 研发', operations: [],
+  bots: [
+    bot('lead', { name: 'Lead', root: true, sessionId: 's-lead', lastEvent: 'idle', lastEventAt: NOW - 3 * 60_000 }),
+    bot('dev-e1', { name: 'Dev-E1', sessionId: 's-e1', lastEvent: 'idle', lastEventAt: NOW - 30 * 60_000 }),
+    bot('dev-k2', { name: 'Dev-K2', sessionId: 's-k2', generation: 3, lastEvent: 'idle', lastEventAt: NOW - 14 * 3_600_000 }),
+    bot('release2', { name: 'Release2', sessionId: 's-r2', lastEvent: 'idle', lastEventAt: NOW - 8 * 3_600_000 }),
+    bot('ui-audit', { name: 'UI-Audit', sessionId: 's-ui' }),
+  ],
+  tasks: [
+    runTask('root-vh', 'lead', '这是 veryhappy 项目的专属团队，目标是尽量并行、快速的完成各种相关需求。', { parentTaskId: null, ownerBotId: null }),
+    runTask('e21ceb87', 'dev-e1', '你是 B-759 的研发（复用 Dev-E1）'),
+    runTask('47d883d3', 'dev-k2', '你是 B-761 的研发（复用 Dev-K2）'),
+    runTask('f9580aba', 'release2', '你是第四版的发版负责人（复用 Release2）'),
+    runTask('87ca10bf', 'ui-audit', '你负责 B-760 的设计（复用 UI-Audit）'),
+  ],
+};
+export const PROD_BIZ_TEAM: TeamState = {
+  ...QA_TEAM, id: 'team-biz', name: '业务数据治理', operations: [],
+  bots: [bot('lead-biz', { name: 'Lead', root: true, sessionId: 's-biz', lastEvent: 'idle', lastEventAt: NOW - 133 * 60_000 }), bot('rank', { name: '实验排名' })],
+  tasks: [
+    runTask('root-biz', 'lead-biz', '业务数据治理：把公司的业务数据接到一起、核准，用来回答「资源花得值不值」。', { parentTaskId: null, ownerBotId: null }),
+    { ...runTask('ac3a68a7', 'rank', 'W41 排名发布'), status: 'done', cleanup: 'done' },
+  ],
+};
+const PROD_EXECUTION: Record<string, AgentExecution> = { 's-lead': 'idle', 's-e1': 'running', 's-k2': 'running', 's-r2': 'running', 's-ui': 'running', 's-biz': 'idle' };
+// One task per derived state (B-761 teamTaskState table).
+export const STATES_TEAM: TeamState = {
+  ...QA_TEAM, id: 'team-states', name: '[QA] 任务状态', messages: [],
+  bots: [
+    bot('lead', { name: 'Lead', root: true, sessionId: 's-lead' }),
+    ...['working', 'waiting', 'idle', 'stopped', 'checking', 'starting', 'failed', 'queued'].map(k => bot(`m-${k}`, { name: k, sessionId: ['starting', 'failed', 'queued'].includes(k) ? null : `s-${k}` })),
+  ],
+  tasks: [
+    runTask('t-working', 'm-working', '成员正在跑一轮'),
+    runTask('t-waiting', 'm-waiting', '成员在等权限确认'),
+    runTask('t-idle', 'm-idle', '成员这一轮结束了但没提交'),
+    runTask('t-stopped', 'm-stopped', '成员会话已退出、任务没收尾'),
+    runTask('t-checking', 'm-checking', '成员会话状态还没到'),
+    runTask('t-starting', 'm-starting', '正在启动成员', { status: 'queued' }),
+    runTask('t-failed', 'm-failed', '成员启动失败', { status: 'queued' }),
+    runTask('t-queued', 'm-queued', '等成员名额', { status: 'queued' }),
+    { ...runTask('t-submitted', 'm-working', '已提交待验收'), status: 'submitted', attempts: [{ id: 'a-t-submitted', botId: 'm-working', status: 'submitted', goalVersion: 1, generation: 1, result: '证据' }] as never },
+  ],
+  operations: [
+    op('spawn-starting', { taskId: 't-starting', botId: 'm-starting', attemptId: 'a-t-starting', status: 'claimed' }),
+    op('spawn-failed', { taskId: 't-failed', botId: 'm-failed', attemptId: 'a-t-failed', status: 'failed', error: 'Team repository is missing: /home/dev/very-happy' }),
+  ],
+};
+const STATES_EXECUTION: Record<string, AgentExecution> = { 's-lead': 'running', 's-working': 'running', 's-waiting': 'input', 's-idle': 'idle', 's-stopped': 'offline' };
+const reader = (map: Record<string, AgentExecution>) => (sessionId: string) => map[sessionId];
+
 function TipAnchor() {
   const ref = useRef<HTMLButtonElement | null>(null);
   useFeatureTipAnchor('quick-open', ref, true, { dismissOnClick: false });
@@ -82,6 +142,16 @@ export function TeamsQaHarness() {
   if (view === 'rawmd') return <main className="teams-screen">
     <div className="teams-list"><TeamListCard team={RAW_MD_TEAM} machine="dev-sg" now={NOW} /></div>
     <TeamWorkspace team={RAW_MD_TEAM} onTask={() => {}} now={NOW} />
+  </main>;
+  if (view === 'states') return <main className="teams-screen">
+    <div className="teams-list">
+      <TeamListCard team={PROD_VH_TEAM} machine="dev-sg" now={NOW} execution={reader(PROD_EXECUTION)} />
+      <TeamListCard team={PROD_BIZ_TEAM} machine="dev-sg" now={NOW} execution={reader(PROD_EXECUTION)} />
+    </div>
+    <div data-case="prod-biz"><TeamWorkspace team={PROD_BIZ_TEAM} onTask={() => {}} now={NOW} execution={reader(PROD_EXECUTION)} /></div>
+    <div data-case="prod-vh"><TeamWorkspace team={PROD_VH_TEAM} onTask={() => {}} now={NOW} execution={reader(PROD_EXECUTION)} /></div>
+    <div data-case="all-states"><TeamWorkspace team={STATES_TEAM} onTask={() => {}} now={NOW} execution={reader(STATES_EXECUTION)} /></div>
+    <section data-case="details">{['t-idle', 't-stopped', 't-waiting'].map(id => <article key={id} className="teams-task"><TeamTaskSummary team={STATES_TEAM} task={STATES_TEAM.tasks.find(t => t.id === id)!} execution={reader(STATES_EXECUTION)} /></article>)}</section>
   </main>;
   if (view === 'finished') return <main className="teams-screen">
     <TeamWorkspace team={FINISHED_TEAM} onTask={() => {}} now={NOW} />
