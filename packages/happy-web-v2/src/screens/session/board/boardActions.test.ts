@@ -17,6 +17,9 @@ describe('board actions (B-766)', () => {
         expect(choiceMessage({ ...base, id: 'd1' }, 'B', boardCopy(true))).toBe('［汇报板 · 决定］今天发还是明早发？ → B. 明早');
         expect(choiceMessage({ ...base, id: 'd1' }, 'B', boardCopy(false))).toBe('[Briefing · decision] 今天发还是明早发？ → B. 明早');
         expect(isAttentionBoardLocalId('board-d1-x')).toBe(true);
+        // QA5 O1: an internal id (team submit) is not spelled out to the lead.
+        const submit = { ...base, id: 's1', source: 'team', options: [{ id: 'accept', label: '验收 / Accept', recommended: true }, { id: 'return', label: '退回 / Return' }] };
+        expect(choiceMessage(submit, 'return', boardCopy(true))).toBe('［汇报板 · 决定］今天发还是明早发？ → 退回 / Return');
     });
 
     it('socket snapshots never go back in version; same version replaces (optimistic undo)', () => {

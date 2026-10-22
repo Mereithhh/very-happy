@@ -14,6 +14,7 @@
  */
 import type { Message } from '@/sync/typesMessage';
 import { messageSearchText } from './sessionSearch';
+import { resolveBoardAnchor, type BoardAnchor } from '@/screens/session/board/boardAnchor';
 
 export interface ChatJumpRequest {
     /** Lower-cased query terms (for highlighting and the fallback match). */
@@ -26,6 +27,8 @@ export interface ChatJumpRequest {
     snippet?: string;
     /** Daemon snippet timestamp — breaks ties between equal candidates. */
     at?: number;
+    /** B-766 (QA5 F1): an agent-side 汇报板 item's anchor — resolved like its pointer (boardAnchor.ts). */
+    anchor?: BoardAnchor;
     /** B-766: tint the landed element briefly (a jump with no terms to paint, e.g. 「已答 ↗」). */
     flash?: boolean;
 }
@@ -86,6 +89,7 @@ export function snippetNeedle(snippet: string, terms: readonly string[]): string
  * the newest. `chronological` is old → new.
  */
 export function findJumpMessage(chronological: readonly Message[], req: ChatJumpRequest): string | null {
+    if (req.anchor) return resolveBoardAnchor(chronological, req.anchor);
     if (req.messageId) {
         const found = deepFind(chronological, (m) => m.id === req.messageId);
         if (found) return found;

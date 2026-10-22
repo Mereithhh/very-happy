@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AttentionItem } from '@slopus/happy-wire';
-import { blockedBanner, pointedMessageIds, sessionHasBoard, boardCounts, boardGroup, buildBoard, followUpQuote, isUnread, itemStatus, pointersAt, repliesTo, resolveAction, RECENT_ANSWERED } from './boardModel';
+import { blockedBanner, choiceLabel, displayTitle, optionMarker, showsLeadRecommendation, sessionHasBoard, boardCounts, boardGroup, buildBoard, followUpQuote, isUnread, itemStatus, repliesTo, resolveAction, RECENT_ANSWERED } from './boardModel';
 
 let n = 0;
 function item(over: Partial<AttentionItem>): AttentionItem {
@@ -90,16 +90,7 @@ describe('itemStatus / resolveAction', () => {
     });
 });
 
-describe('pointersAt / repliesTo / followUpQuote', () => {
-    it('pointers are agent-side items anchored at that message, oldest first; Owner items never point', () => {
-        const late = item({ kind: 'decision', needsOwner: true, anchor: { messageId: 'm1' }, createdAt: 20 });
-        const early = item({ kind: 'answer', anchor: { messageId: 'm1' }, createdAt: 10 });
-        const owner = item({ kind: 'pin', source: 'owner', anchor: { messageId: 'm1' } });
-        const other = item({ kind: 'report', anchor: { messageId: 'm2' } });
-        expect(pointersAt([late, early, owner, other], 'm1').map((i) => i.id)).toEqual([early.id, late.id]);
-        expect(pointersAt([late], 'nope')).toEqual([]);
-    });
-
+describe('repliesTo / followUpQuote', () => {
     it('replies are linked by replyToId; follow-up quotes the title', () => {
         const q = item({ kind: 'question', source: 'owner', title: '谁来写？' });
         const a = item({ kind: 'answer', replyToId: q.id });
@@ -126,17 +117,6 @@ describe('sessionHasBoard / W0 fields', () => {
     });
 });
 
-describe('pointedMessageIds', () => {
-    it('agent-side anchors only — those rows stay unfolded in 「只看我和负责人」', () => {
-        const ids = pointedMessageIds([
-            item({ kind: 'decision', needsOwner: true, anchor: { messageId: 'm1' } }),
-            item({ kind: 'question', source: 'owner', anchor: { localId: 'l1', messageId: 'm2' } }),
-            item({ kind: 'report', anchor: { localId: 'l3' } }),
-        ]);
-        expect([...ids]).toEqual(['m1']);
-    });
-});
-
 describe('blockedBanner (W-2: request_human strip reads items)', () => {
     it('newest open blocked item; panel link → machine panel deep link; closed ones never show', () => {
         const old = item({ kind: 'blocked', needsOwner: true, source: 'agent', title: '扫码登录', updatedAt: 10 });
@@ -146,5 +126,34 @@ describe('blockedBanner (W-2: request_human strip reads items)', () => {
         expect(blockedBanner([old, fresh, done, decision], 's 1')).toEqual({ id: fresh.id, reason: '输入验证码', url: '/session/s%201?panel=machine&wp=vnc%20main' });
         expect(blockedBanner([old], 's')?.url).toBeNull();
         expect(blockedBanner([done, decision], 's')).toBeNull();
+    });
+});
+
+describe('card text (QA5 O1)', () => {
+    // The server's team-submit title: `根目标已提交，等你验收 · ${goal}`.slice(0, 120) — cut inside 「short」.
+    const cut = `根目标已提交，等你验收 · [QA] Briefing board QA probe. No code work unless the owner asks. Run team_inspect once, reply in one short line.`.slice(0, 120).trim();
+
+    it('a server-clipped title backs off to the last word and says it was cut; short / CJK titles stay', () => {
+        expect(cut.endsWith('shor')).toBe(true);
+        expect(displayTitle(cut)).toBe('根目标已提交，等你验收 · [QA] Briefing board QA probe. No code work unless the owner asks. Run team_inspect once, reply in one…');
+        expect(displayTitle('发版窗口选哪个？')).toBe('发版窗口选哪个？');
+        const cjk = '这是一条很长的中文标题'.repeat(12).slice(0, 120);
+        expect(displayTitle(cjk)).toBe(`${cjk}…`);
+    });
+
+    it('internal option ids stay hidden; one-character markers show; the chosen label reads the same', () => {
+        expect(optionMarker({ id: 'accept' })).toBeNull();
+        expect(optionMarker({ id: 'return' })).toBeNull();
+        expect(optionMarker({ id: 'B' })).toBe('B');
+        const submit = item({ kind: 'decision', source: 'team', options: [{ id: 'accept', label: '验收 / Accept', recommended: true }, { id: 'return', label: '退回 / Return' }] });
+        expect(choiceLabel(submit, 'accept')).toBe('验收 / Accept');
+        expect(choiceLabel(item({ options: [{ id: 'B', label: '明早' }] }), 'B')).toBe('B. 明早');
+        expect(choiceLabel(submit, 'gone')).toBe('gone');
+    });
+
+    it('「负责人推荐」 only for a lead item whose option is recommended', () => {
+        expect(showsLeadRecommendation({ source: 'team' }, { recommended: true })).toBe(false);
+        expect(showsLeadRecommendation({ source: 'lead' }, { recommended: true })).toBe(true);
+        expect(showsLeadRecommendation({ source: 'lead' }, {})).toBe(false);
     });
 });

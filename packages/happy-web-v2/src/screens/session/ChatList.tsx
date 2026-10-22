@@ -14,7 +14,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { Button, EmptyState, OrbitLoader, Spinner, useToast } from '@/ui';
 import { MessageView } from './MessageView';
 import { BoardPointers } from './board/BoardPointer';
-import { pointedMessageIds } from './board/boardModel';
+import { boardAnchors, rowMessageIds } from './board/boardAnchor';
 import { useBoardItems } from '@/sync/attentionStore';
 import { ToolGroupView } from './ToolGroupView';
 import { MarkdownPathProvider } from './Markdown';
@@ -179,13 +179,15 @@ export function ChatList({
     const origin = useMemo(() => (m: Parameters<typeof turnOrigin>[0]) => turnOrigin(m, leadTeam), [leadTeam]);
     const answers = useMemo(() => (leadTeam ? ownerAnswers(shownChronological, origin) : null), [leadTeam, shownChronological, origin]);
     // B-766: a reply that put something on the 汇报板 keeps its pointer visible in the filtered view.
+    // One resolver (boardAnchor.ts) places the pointer, keeps its row and lands 「定位」.
     const boardItems = useBoardItems(sessionId);
-    const pointed = useMemo(() => pointedMessageIds(boardItems ?? []), [boardItems]);
+    const anchors = useMemo(() => boardAnchors(shownChronological, boardItems ?? []), [shownChronological, boardItems]);
+    const pointedIds = (row: ChatRow) => rowMessageIds(row).filter((id) => anchors.has(id));
     const entries = useMemo(
         () => (leadTeam && leadView === 'owner'
-            ? leadViewEntries(rows, turnOpenerIds(shownChronological), origin, (row) => row.type === 'message' && pointed.has(row.message.id))
+            ? leadViewEntries(rows, turnOpenerIds(shownChronological), origin, (row) => rowMessageIds(row).some((id) => anchors.has(id)))
             : null),
-        [leadTeam, leadView, rows, shownChronological, origin, pointed],
+        [leadTeam, leadView, rows, shownChronological, origin, anchors],
     );
     const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set());
     const toggleFold = (key: string) => setOpenFolds((prev) => {
@@ -742,10 +744,16 @@ export function ChatList({
         );
     }
 
+    // B-766: 「已上板」 pointers under the row that shows the anchored message (none without a board).
+    const pointers = (row: ChatRow) => {
+        const ids = pointedIds(row);
+        return ids.length > 0 ? <BoardPointers sessionId={sessionId} anchorIds={ids} items={ids.flatMap((id) => anchors.get(id) ?? [])} /> : null;
+    };
+
     const renderRow = (row: ChatRow) =>
         row.type === 'activity' ? (
+            <Fragment key={row.key}>
             <TurnActivityView
-                key={row.key}
                 messages={row.messages}
                 live={row.live}
                 sessionId={sessionId}
@@ -754,6 +762,8 @@ export function ChatList({
                 abortedAt={row.abortedAt}
                 answer={row.answer}
             />
+            {pointers(row)}
+            </Fragment>
         ) : row.type === 'turn-diff' ? (
             <TurnDiffRollup key={row.key} sessionId={sessionId} diff={row.diff} />
         ) : row.type === 'compaction' ? (
@@ -778,8 +788,7 @@ export function ChatList({
                 optionsActive={row.optionsActive}
                 continueOffer={row.continueOffer === true && canOfferContinue}
             />
-            {/* B-766: 「已上板」 pointers the lead posted from this message (none without a board). */}
-            <BoardPointers sessionId={sessionId} messageId={row.message.id} />
+            {pointers(row)}
             </Fragment>
         );
 
