@@ -24,3 +24,4 @@ export * from './agentCodeDefaults';
 export * from './promptQueue';
 
 export * from './migrationProtocol';
+export * from './attention';
