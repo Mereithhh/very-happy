@@ -94,7 +94,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     if (parsed.kind === 'caveat') return null;
     if (parsed.kind === 'command-run') {
         return (
-            <div className="msg msg--user" data-chat-prompt-id={message.id}>
+            <div className="msg msg--user" data-chat-prompt-id={message.id} data-message-id={message.id}>
                 <div className={`msg-bubble msg-bubble--cmd${send ? ' msg-bubble--unsent' : ''}`}>
                     <Terminal size={13} />
                     <span className="msg-cmd-name">/{parsed.commandName}</span>
@@ -125,7 +125,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     const discarded = discardedReasonKey(message);
     const answeredChip = <AnsweredChip messageId={message.id} />;
     return (
-        <div className="msg msg--user" data-chat-prompt-id={message.id}>
+        <div className="msg msg--user" data-chat-prompt-id={message.id} data-message-id={message.id}>
             {shared && shared.displayName && (
                 <span className="msg-sender" title={shared.accountId ?? undefined}><Users size={11} aria-hidden />{shared.displayName}</span>
             )}
@@ -226,7 +226,7 @@ function AgentText({
         const durationLabel = formatThoughtFor(thinkingDurationMs, t);
         const preview = thinkingPreview(content);
         return (
-            <div className="msg msg--agent">
+            <div className="msg msg--agent" data-message-id={message.id}>
                 <div ref={thinkingRef} className="msg-thinking">
                     <button type="button" className="msg-thinking-head vh-disclosure-trigger" onClick={toggleOpen} aria-expanded={open} aria-controls={thinkingId}>
                         <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />

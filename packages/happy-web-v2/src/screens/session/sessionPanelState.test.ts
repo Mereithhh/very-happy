@@ -10,6 +10,7 @@ describe('session panel URL state (B-208)', () => {
     expect(readSessionPanel('agent')).toBe('subagent');
     expect(readSessionPanel('notes')).toBe('notes');
     expect(readSessionPanel('web')).toBe('web');
+    expect(readSessionPanel('board')).toBe('board');
     expect(readSessionPanel('changed')).toBeNull();
     expect(readSessionPanel(null)).toBeNull();
   });

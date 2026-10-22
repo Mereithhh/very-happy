@@ -1,9 +1,10 @@
 /** Files panel tabs, the `/btw` side-question panel (B-283), the sub-agent
- *  drawer (B-317) and the preview / clipboard history (B-602). One aside,
+ *  drawer (B-317), the preview / clipboard history (B-602) and the 汇报板
+ *  (B-766). One aside,
  *  several tenants — the tab lives in `?panel=`. */
-export type SessionPanelTab = 'changed' | 'all' | 'browse' | 'btw' | 'subagent' | 'notes' | 'web' | 'machine-panel' | 'previews' | 'clipboard';
+export type SessionPanelTab = 'changed' | 'all' | 'browse' | 'btw' | 'subagent' | 'notes' | 'web' | 'machine-panel' | 'previews' | 'clipboard' | 'board';
 export type SessionHistoryTab = 'previews' | 'clipboard';
-export type SessionFilesTab = Exclude<SessionPanelTab, 'btw' | 'subagent' | 'notes' | 'web' | 'machine-panel' | SessionHistoryTab>;
+export type SessionFilesTab = Exclude<SessionPanelTab, 'btw' | 'subagent' | 'notes' | 'web' | 'machine-panel' | 'board' | SessionHistoryTab>;
 
 /** B-602: the preview / clipboard records the composer dock used to expand inline. */
 export function isHistoryPanel(tab: string | null): tab is SessionHistoryTab {
@@ -26,6 +27,7 @@ const QUERY_TO_TAB: Record<string, SessionPanelTab> = {
   machine: 'machine-panel',
   previews: 'previews',
   clipboard: 'clipboard',
+  board: 'board',
 };
 
 const TAB_TO_QUERY: Record<SessionPanelTab, string> = {
@@ -39,6 +41,7 @@ const TAB_TO_QUERY: Record<SessionPanelTab, string> = {
   'machine-panel': 'machine',
   previews: 'previews',
   clipboard: 'clipboard',
+  board: 'board',
 };
 
 /** Which tool-call message the sub-agent drawer is pointed at. */

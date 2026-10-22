@@ -5,6 +5,7 @@ import {
     ApiUpdateMachineStateSchema,
     ApiUpdateNewMessageSchema,
     ApiUpdateSessionStateSchema,
+    UpdateAttentionItemBodySchema,
     type ApiMessage,
 } from '@slopus/happy-wire';
 import { GitHubProfileSchema, ImageRefSchema } from './profile';
@@ -193,7 +194,8 @@ export const ApiUpdateSchema = z.union([
     ApiRelationshipUpdatedSchema,
     ApiNewFeedPostSchema,
     ApiKvBatchUpdateSchema,
-    ApiPromptQueueUpdateSchema
+    ApiPromptQueueUpdateSchema,
+    UpdateAttentionItemBodySchema
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;

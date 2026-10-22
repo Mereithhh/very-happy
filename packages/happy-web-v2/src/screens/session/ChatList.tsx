@@ -13,6 +13,9 @@ import { sessionCancelQueuedMessage } from '@/sync/ops';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Button, EmptyState, OrbitLoader, Spinner, useToast } from '@/ui';
 import { MessageView } from './MessageView';
+import { BoardPointers } from './board/BoardPointer';
+import { pointedMessageIds } from './board/boardModel';
+import { useBoardItems } from '@/sync/attentionStore';
 import { ToolGroupView } from './ToolGroupView';
 import { MarkdownPathProvider } from './Markdown';
 import { PermissionPointer } from './PermissionCard';
@@ -175,9 +178,14 @@ export function ChatList({
     const leadView = useLeadView(sessionId);
     const origin = useMemo(() => (m: Parameters<typeof turnOrigin>[0]) => turnOrigin(m, leadTeam), [leadTeam]);
     const answers = useMemo(() => (leadTeam ? ownerAnswers(shownChronological, origin) : null), [leadTeam, shownChronological, origin]);
+    // B-766: a reply that put something on the 汇报板 keeps its pointer visible in the filtered view.
+    const boardItems = useBoardItems(sessionId);
+    const pointed = useMemo(() => pointedMessageIds(boardItems ?? []), [boardItems]);
     const entries = useMemo(
-        () => (leadTeam && leadView === 'owner' ? leadViewEntries(rows, turnOpenerIds(shownChronological), origin) : null),
-        [leadTeam, leadView, rows, shownChronological, origin],
+        () => (leadTeam && leadView === 'owner'
+            ? leadViewEntries(rows, turnOpenerIds(shownChronological), origin, (row) => row.type === 'message' && pointed.has(row.message.id))
+            : null),
+        [leadTeam, leadView, rows, shownChronological, origin, pointed],
     );
     const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set());
     const toggleFold = (key: string) => setOpenFolds((prev) => {
@@ -759,8 +767,8 @@ export function ChatList({
                 abortedAt={row.tools[0].createdAt >= currentTurnStartedAt ? abortedAt : null}
             />
         ) : (
+            <Fragment key={row.key}>
             <MessageView
-                key={row.key}
                 message={row.message}
                 showMeta={row.showMeta}
                 showActions={row.showActions}
@@ -770,6 +778,9 @@ export function ChatList({
                 optionsActive={row.optionsActive}
                 continueOffer={row.continueOffer === true && canOfferContinue}
             />
+            {/* B-766: 「已上板」 pointers the lead posted from this message (none without a board). */}
+            <BoardPointers sessionId={sessionId} messageId={row.message.id} />
+            </Fragment>
         );
 
     return (

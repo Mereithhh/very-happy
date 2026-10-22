@@ -234,6 +234,9 @@ const DepthHarness = import.meta.env.DEV
 const LeadViewHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/LeadViewHarness').then((m) => ({ default: m.LeadViewHarness })))
   : null;
+const BoardHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/BoardHarness').then((m) => ({ default: m.BoardHarness })))
+  : null;
 const MultiAgentTeamsHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/MultiAgentHarness').then((m) => ({ default: m.MultiAgentTeamsHarness })))
   : null;
@@ -309,6 +312,7 @@ const router = createBrowserRouter(
           { path: '/dev/multi-agent-teams', element: <Lazy><MultiAgentTeamsHarness /></Lazy> },
           ...(DepthHarness ? [{ path: '/dev/depth/session/:id', element: <Lazy><DepthHarness /></Lazy> }] : []),
           ...(LeadViewHarness ? [{ path: '/dev/lead-view/session/:id', element: <Lazy><LeadViewHarness /></Lazy> }] : []),
+          ...(BoardHarness ? [{ path: '/dev/board/session/:id', element: <Lazy><BoardHarness /></Lazy> }] : []),
         ]
       : []),
     ...(BuiltinToolsHarness
