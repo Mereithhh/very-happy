@@ -5,14 +5,14 @@
  * 2026-10-sidebar-header §B-713).
  */
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { ChevronDown, CircleHelp, Contact, FolderPlus, LayoutGrid, ListChecks, Plus, Settings, StickyNote, UsersRound, Zap } from 'lucide-react';
+import { ChevronDown, CircleHelp, Contact, FolderKanban, FolderPlus, LayoutGrid, ListChecks, Plus, Settings, StickyNote, UsersRound, Zap } from 'lucide-react';
 import { ActionDropdownMenu, QuickThemeToggle, Spinner, type MenuItemDef } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { MIN_LIST_ROWS, fitCapabilityRows, navAttentionTotal, navMenuLabel, splitCapabilities, type SidebarActionRow, type SidebarChip, type SidebarNavEntry, type SidebarNavKey } from './sidebarNavEntries';
 
-const navIcon = { teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact } as const;
+const navIcon = { projects: FolderKanban, teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact } as const;
 
 /** Capability entries as menu items (「更多能力 ▾」 / phone 「更多 ▾」), each with its count. */
 export function capabilityMenuItems(entries: readonly SidebarNavEntry[], names: Record<SidebarNavKey, string>, onNavigate: (path: string) => void): MenuItemDef[] {

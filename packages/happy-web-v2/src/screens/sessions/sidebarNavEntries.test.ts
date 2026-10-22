@@ -14,6 +14,11 @@ describe('sidebarNavEntries (B-641)', () => {
     ]);
   });
 
+  it('B-756: 项目 leads the entries once the projects API answered, and opens the /projects list', () => {
+    expect(sidebarNavEntries({ ...all, projectsVisible: true }).map((e) => [e.key, e.path])[0]).toEqual(['projects', '/projects']);
+    expect(sidebarNavEntries({ ...all, projectsVisible: false }).map((e) => e.key)).not.toContain('projects');
+  });
+
   it('keeps the existing visibility gates for teams and automations', () => {
     const keys = sidebarNavEntries({ ...all, teamsVisible: false, automationsVisible: false }).map((e) => e.key);
     expect(keys).toEqual(['todos', 'people']);

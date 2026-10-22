@@ -114,6 +114,41 @@ export function groupRowsByProject<T extends WorkspaceRowLike>(
   return { projects: projectGroups, unassigned, teamsGroup };
 }
 
+/**
+ * B-756: a session's project outside the project lens (tag / flat / status
+ * views), by the same rule as `groupRowsByProject` — explicit membership, else
+ * its team's attached project; archived projects count as none.
+ */
+export function sessionProjectResolver(projects: ProjectView[], members: ProjectMemberView[], teams: TeamState[]): (sessionId: string | undefined) => ProjectView | null {
+  const live = projects.filter(p => !p.archivedAt);
+  const byId = new Map(live.map(p => [p.id, p]));
+  const memberProject = new Map(members.filter(m => byId.has(m.projectId)).map(m => [m.sessionId, m.projectId]));
+  const teamProject = new Map<string, string>();
+  for (const p of live) for (const teamId of p.teamIds ?? []) teamProject.set(teamId, p.id);
+  const teamOfSession = teamSessionMembership(teams);
+  return (sessionId) => {
+    const pid = projectOfSession(sessionId, memberProject, teamProject, teamOfSession);
+    return pid ? byId.get(pid) ?? null : null;
+  };
+}
+
+export interface ProjectAreaEntry { project: ProjectView; sessions: number; attention: number }
+/**
+ * B-756: the 「项目」 area on top of the tag lens — one entry per live project
+ * (same order as the project lens: first appearance in the ordered list, then
+ * the rest oldest first), with its visible session count and 等你处理 count.
+ * Sessions themselves stay in their tag groups (with a project chip): moving
+ * them here would empty the P0–P2 groups and give a row two ⌘N slots.
+ */
+export function projectAreaEntries<T extends WorkspaceRowLike & { teamHistoryLink?: boolean }>(
+  rows: T[], projects: ProjectView[], members: ProjectMemberView[], teams: TeamState[], attentionKeys: ReadonlySet<string>,
+): ProjectAreaEntry[] {
+  return groupRowsByProject(rows, projects, members, teams).projects.map(g => {
+    const sessions = g.rows.filter(r => !r.teamHistoryLink);
+    return { project: g.project, sessions: sessions.length, attention: sessions.filter(r => attentionKeys.has(r.key)).length };
+  });
+}
+
 /** Folders a converted group brings along (one per machine + path, ≤20). */
 export function foldersOfRows(rows: WorkspaceRowLike[]): { machineId: string; path: string }[] {
   const seen = new Set<string>();

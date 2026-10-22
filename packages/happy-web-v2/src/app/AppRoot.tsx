@@ -61,6 +61,7 @@ const MachinePanelScreen = lazy(() => import('@/screens/machine/MachinePanelScre
 const ConnectMachineScreen = lazy(() => import('@/screens/onboarding/ConnectMachineScreen').then((m) => ({ default: m.ConnectMachineScreen })));
 const ProjectScreen = lazy(() => import('@/screens/projects/ProjectScreen').then(m => ({ default: m.ProjectScreen })));
 const ProjectSettingsScreen = lazy(() => import('@/screens/projects/ProjectSettingsScreen').then(m => ({ default: m.ProjectSettingsScreen })));
+const ProjectsListScreen = lazy(() => import('@/screens/projects/ProjectsListScreen').then(m => ({ default: m.ProjectsListScreen })));
 const TeamsScreen = lazy(() => import('@/screens/teams/TeamsScreen').then(m => ({ default: m.TeamsScreen })));
 const TaskBoardScreen = lazy(() => import('@/screens/board/TaskBoardScreen').then((m) => ({ default: m.TaskBoardScreen })));
 const AutomationsScreen = lazy(() => import('@/screens/automations/AutomationsScreen').then((m) => ({ default: m.AutomationsScreen })));
@@ -369,6 +370,8 @@ const router = createBrowserRouter(
             { path: 'projects/:projectId', element: <Lazy><ProjectScreen /></Lazy> },
             // B-757: project settings (the team settings tab's counterpart); #section anchors deep-link.
             { path: 'projects/:projectId/settings', element: <Lazy><ProjectSettingsScreen /></Lazy> },
+            // B-756: project list (sidebar capability entry)
+            { path: 'projects', element: <Lazy><ProjectsListScreen /></Lazy> },
             { path: 'board', element: <Lazy><TaskBoardScreen /></Lazy> },
             // B-498: automations — sidebar entry + board band; the first cut lived
             // under /board/automations, keep those URLs working.

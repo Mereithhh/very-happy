@@ -1,12 +1,13 @@
 /**
- * B-641: the sidebar's capability entries (团队 / 自动化 / 待办 / 联系人), in
+ * B-641: the sidebar's capability entries (项目 / 团队 / 自动化 / 待办 / 联系人), in
  * priority order. B-713 (spec 2026-10-sidebar-header): desktop shows as many
  * as fit as labelled rows under the create rows and folds the rest into
  * 「更多能力 ▾」; the phone folds them all into the chip row's 「更多 ▾」.
  * 帮助 lives in the sidebar footer. Visibility gates and attention counts are
- * computed here once.
+ * computed here once. B-756: 项目 (the /projects list) leads once the projects
+ * API answered — same gate as 新建项目.
  */
-export type SidebarNavKey = 'teams' | 'automations' | 'todos' | 'people';
+export type SidebarNavKey = 'projects' | 'teams' | 'automations' | 'todos' | 'people';
 
 export interface SidebarNavEntry {
   key: SidebarNavKey;
@@ -16,12 +17,14 @@ export interface SidebarNavEntry {
 }
 
 export function sidebarNavEntries(input: {
+  projectsVisible?: boolean;
   teamsVisible: boolean;
   automationsVisible: boolean;
   automationAttention: number;
   incomingPeople: number;
 }): SidebarNavEntry[] {
   const entries: SidebarNavEntry[] = [];
+  if (input.projectsVisible) entries.push({ key: 'projects', path: '/projects', attention: 0 });
   if (input.teamsVisible) entries.push({ key: 'teams', path: '/teams', attention: 0 });
   if (input.automationsVisible) entries.push({ key: 'automations', path: '/automations', attention: Math.max(0, input.automationAttention) });
   entries.push({ key: 'todos', path: '/todos', attention: 0 });
