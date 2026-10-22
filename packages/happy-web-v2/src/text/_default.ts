@@ -2691,6 +2691,7 @@ export const en = {
                 teamProject: 'A project created for a team takes the team goal as its context.',
                 shareDialog: 'The Share dialog keeps its padding and its link list no longer overflows.',
                 motion: 'The ASCII backdrop draws at most 8 frames a second while the agent works.',
+                teamState: 'A team task shows Running only while its member is really in a turn; otherwise it says Idle · awaiting reply, Needs approval, Stopped · needs attention or Checking status, the same on the board, the task details, the list card and the chat.',
             },
             oct22d: {
                 title: 'CLI 0.2.182: create project folders from the web',

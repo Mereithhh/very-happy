@@ -2831,6 +2831,7 @@ export const zhHans: TranslationStructure = {
                 teamProject: '团队自动创建的项目，以团队目标作为项目说明。',
                 shareDialog: '分享弹窗边距完整，链接列表不再溢出。',
                 motion: 'agent 工作时，ASCII 背景每秒最多刷新 8 帧。',
+                teamState: '团队任务只有在成员真的在跑一轮时才显示「运行中」，否则显示「空闲待回复」「等待确认」「已停止 · 需要处理」或「状态确认中」；看板、任务详情、列表卡片和对话里显示同一个状态。',
             },
             oct22d: {
                 title: 'CLI 0.2.182：在网页上新建项目目录',

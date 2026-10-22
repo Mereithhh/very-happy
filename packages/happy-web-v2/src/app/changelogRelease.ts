@@ -189,6 +189,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
       'changelog.releases.oct22c.teamProject',
       'changelog.releases.oct22c.shareDialog',
       'changelog.releases.oct22c.motion',
+      'changelog.releases.oct22c.teamState',
     ],
   },
   {
