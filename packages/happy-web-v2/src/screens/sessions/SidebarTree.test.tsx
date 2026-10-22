@@ -205,7 +205,9 @@ describe('按标签 / 最近: conversation lists', () => {
     const chip = row.querySelector<HTMLElement>('.sb-row-project')!;
     expect(chip.getAttribute('title')).toBe('跨境结算与多币种对账平台迁移');
     expect(chip.querySelector('.sb-row-project-name')!.textContent).toBe('跨境结算与多币种对账平台迁移');
-    // Layout (title ≥ 8em, chip ≤ 40%, real ellipsis): CSS pinned in sidebarTeamRowWiring.test.ts, measured in Chromium by tmp/vh-team-B-762/assert-chips.mjs.
+    // Layout (chip ≤ 40%, real ellipsis): CSS pinned in sidebarTeamRowWiring.test.ts, measured in Chromium by tmp/vh-team-B-762/assert-chips.mjs.
+    // B-773: title widths are now 6em on lead/member rows and 5em on other rows (no longer 8em). assert-titles.mjs
+    // (tmp/vh-team-B-773) supersedes assert-chips for title widths, so an 8em miss there is not a regression.
   });
 
   it('最近 (formerly 不分组): one flat list, the lens button says 最近', async () => {
