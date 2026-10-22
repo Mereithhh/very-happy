@@ -11,7 +11,9 @@ import {
     OwnerBoardResolveInputSchema,
     OwnerBoardUpdateInputSchema,
     UpdateAttentionItemBodySchema,
+    attentionBoardLocalId,
     attentionKindNeedsOwner,
+    isAttentionBoardLocalId,
     attentionPushKind,
     attentionResolveState,
     isAttentionActive,
@@ -36,6 +38,14 @@ describe('attention item wire schemas', () => {
         expect(attentionPushKind({ kind: 'report' })).toBeNull();
         expect(attentionPushKind({ kind: 'pin' })).toBeNull();
         expect(attentionPushKind({ kind: 'future-kind' })).toBeNull();
+    });
+
+    it('tags board-sent owner messages by localId', () => {
+        const localId = attentionBoardLocalId('i1', 'n1');
+        expect(localId).toBe('board-i1-n1');
+        expect(isAttentionBoardLocalId(localId)).toBe(true);
+        expect(isAttentionBoardLocalId('l-123')).toBe(false);
+        expect(isAttentionBoardLocalId(null)).toBe(false);
     });
 
     it('maps resolve outcomes to states', () => {

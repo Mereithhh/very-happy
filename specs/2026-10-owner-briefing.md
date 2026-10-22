@@ -60,7 +60,7 @@
 
 ### 自动 resolve
 
-- Owner 在会话里发言：引用该条目（`meta.boardItemId` / `meta.replyToItem`）的条目，或会话里唯一一个开放的 decision，置为 resolved、`resolvedBy='owner-replied'`；有多个开放 decision 时不动。
+- Owner 在会话里发言（判定沿用 `isOwnerAuthoredMessage`）：会话里唯一一个开放的 decision 置为 resolved、`resolvedBy='owner-replied'`；有多个开放 decision 时不动。消息正文是加密的，server 读不到 `meta.boardItemId`，所以看板按钮发出的 Owner 消息用 `attentionBoardLocalId`（localId 前缀 `board-`）标记，server 见到这个前缀就跳过自动 resolve——对应条目已经由 `owner-respond` 处理，不能顺手关掉另一条 decision。
 - 会话归档：所有开放条目置为 dismissed、`resolvedBy='session-archived'`。
 - 根任务 `team_submit`：写一条 `source='team'`、`kind='decision'`、标题「根目标已提交，等你验收」的条目，选项「验收 / 退回」；Owner 选择后映射为团队的 accept / return。
 

@@ -52,6 +52,21 @@ export type OwnerBoardPostKind = typeof OWNER_BOARD_POST_KINDS[number];
 export const OWNER_BOARD_RESOLVE_OUTCOMES = ['done', 'answered', 'dropped', 'superseded'] as const;
 export type OwnerBoardResolveOutcome = typeof OWNER_BOARD_RESOLVE_OUTCOMES[number];
 
+/**
+ * localId prefix of the owner chat message the Web sends for a board action
+ * (`board-<itemId>-<nonce>`: a choice or a 追问). Message bodies are encrypted,
+ * so the server's owner-replied rule reads only this plaintext prefix: a board
+ * message never auto-resolves some other open decision (the board action
+ * already settled its own item through `owner-respond`).
+ */
+export const ATTENTION_BOARD_LOCAL_ID_PREFIX = 'board-';
+export function attentionBoardLocalId(itemId: string, nonce: string): string {
+    return `${ATTENTION_BOARD_LOCAL_ID_PREFIX}${itemId}-${nonce}`;
+}
+export function isAttentionBoardLocalId(localId: string | null | undefined): boolean {
+    return typeof localId === 'string' && localId.startsWith(ATTENTION_BOARD_LOCAL_ID_PREFIX);
+}
+
 /** Badge + push: only these kinds wait on the owner (§6.1). */
 export function attentionKindNeedsOwner(kind: string): boolean {
     return kind === 'decision' || kind === 'todo' || kind === 'blocked';
@@ -209,7 +224,8 @@ export type AttentionItemResolve = z.infer<typeof AttentionItemResolveSchema>;
  * Board buttons. `choose` (decision option) and `resolve` (知道了 / 标为完成 /
  * 已经答了 / 不用跟了) close the item with `resolvedBy:'owner'`; `reopen` is 追问.
  * The Web client sends the matching owner chat message itself
- * (`meta.boardItemId` / `meta.replyToItem`); the server never writes session content.
+ * (`meta.boardItemId` / `meta.replyToItem`, localId from `attentionBoardLocalId`);
+ * the server never writes session content.
  * A root-task submit item maps `choose` to the team accept / return action.
  */
 export const AttentionItemOwnerRespondSchema = z.discriminatedUnion('action', [
