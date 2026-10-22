@@ -13,6 +13,7 @@ import type { TeamState } from '@slopus/happy-wire';
 import { teamLeadSessionId, teamRowTarget } from './teamNavigation';
 
 const { SidebarTeamRow } = await import('./SidebarTeamRow');
+const { setProjectsDevOverride } = await import('@/sync/projects');
 
 const copy = { expand: 'Expand team', collapse: 'Collapse team', openBoard: 'Open team page', openTeam: 'Open team', openLead: 'Chat with the lead', settings: 'Team settings', running: 'A member is running' };
 const team = (sessionIds: (string | null)[], rootIndex = 0): TeamState => ({
@@ -40,6 +41,7 @@ describe('team row target (B-759)', () => {
 let root: Root | null = null;
 let host: HTMLElement | null = null;
 afterEach(async () => {
+  setProjectsDevOverride(null);
   if (root) await act(async () => root!.unmount());
   host?.remove();
   root = null;
@@ -142,5 +144,15 @@ describe('SidebarTeamRow (B-759)', () => {
     await act(async () => root!.unmount()); root = null; host!.remove();
     const onLeadOpen = await render(team(['lead']), { pathname: '/session/lead', open: true });
     expect(onLeadOpen.el.querySelector('.sb-team-row')!.classList.contains('is-selected')).toBe(false);
+  });
+
+  it('B-763: with projects loaded the menu adds 换项目… after settings, and it opens the team project dialog', async () => {
+    setProjectsDevOverride({ status: 'ready', members: [], projects: [{ id: 'p', name: 'Demo project', goal: null, instructions: '', instructionsVersion: 0, instructionsUpdatedBy: null, instructionsUpdatedAt: null, folders: [], defaults: {}, archivedAt: null, createdAt: 1, updatedAt: 1, teamIds: ['team-1'], automationIds: [] }] });
+    const { el } = await render(team(['lead']));
+    await act(async () => { el.querySelector('.sb-team-row')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })); });
+    const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    expect(items.map(i => i.textContent?.trim())).toEqual(['Open team page', 'Chat with the lead', 'Team settings', 'Move to another project…', 'Expand team']);
+    await act(async () => items[3].click());
+    expect(document.querySelector('[role="dialog"][aria-labelledby="ctp-dialog-title"]')).not.toBeNull();
   });
 });

@@ -1,0 +1,21 @@
+/* B-763 breadcrumb (B-760 §5.3): ancestors are quiet links, the current page
+   keeps its own weight. Sized to content here; the session header (a full-width
+   flex slot) adds its own shares in header.css. */
+.vh-trail { min-width: 0; }
+.vh-trail ol { display: flex; align-items: center; gap: 2px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.vh-trail-item { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 0 1 auto; max-width: 24em; }
+.vh-trail-link {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0;
+  padding: 2px 4px; border-radius: var(--r-sm);
+  color: var(--text-dim); font-size: var(--fs-13); text-decoration: none; white-space: nowrap;
+}
+.vh-trail-link > svg { flex: none; }
+.vh-trail-link > span { overflow: hidden; text-overflow: ellipsis; }
+.vh-trail-sep { flex: none; color: var(--text-faint); font-size: var(--fs-13); padding: 0 2px; }
+.vh-trail-current { display: flex; align-items: center; min-width: 0; flex: 0 1 auto; }
+@media (hover: hover) and (pointer: fine) {
+  .vh-trail-link:hover { background: var(--fill-hover); color: var(--text); }
+}
+@media (pointer: coarse) {
+  .vh-trail-link { min-height: 44px; }
+}

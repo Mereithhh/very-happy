@@ -15,7 +15,7 @@ import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
 import "./teams.css";
 import { TeamSchedules } from "./TeamSchedules";
 import { t as tr } from "@/text";
-import { Bot, UsersRound, ArrowLeft, Settings2, Clock3, LayoutDashboard, Plus, RefreshCw, Archive, Check } from "lucide-react";
+import { Bot, UsersRound, ArrowLeft, Settings2, Clock3, LayoutDashboard, Plus, RefreshCw, Archive, Check, FolderInput, MoreHorizontal } from "lucide-react";
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
@@ -25,7 +25,14 @@ import { TeamStartForm } from "./TeamStartForm";
 import { useFirstUseCopy } from "./firstUseCopy";
 import { TeamOptions } from "./TeamOptions";
 import { TeamProjectLine, TeamProjectNudge, TeamProjectSettings } from "./TeamProject";
-import { refreshProjects } from "@/sync/projects";
+import { refreshProjects, useProjects } from "@/sync/projects";
+import { ActionDropdownMenu } from "@/ui/Menu";
+import type { MenuItemDef } from "@/ui";
+import { useIsTablet } from "@/app/useMediaQuery";
+import { LocationTrail } from "@/components/LocationTrail";
+import { teamTrail, trailCopy, visibleTrail } from "@/app/locationTrail";
+import { teamProjectMenu } from "@/screens/projects/projectChoice";
+import { ChangeTeamProjectModal } from "@/screens/projects/ChangeTeamProjectModal";
 import { TeamDialog } from "./TeamDialog";
 import { TeamTaskMessages, TeamTaskSummary } from "./TeamTaskDetail";
 import { useWorkspaceCopy } from "./workspaceCopy";
@@ -50,7 +57,11 @@ export function TeamsScreen() {
   return <TeamsContent key={teamId ?? "list"} />;
 }
 function TeamsContent() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
+  const zh = lang.startsWith("zh");
+  const projectsSnap = useProjects();
+  const isTablet = useIsTablet();
+  const [changingProject, setChangingProject] = useState(false);
   const c = useWorkspaceCopy();
   const first = useFirstUseCopy();
   const [archiving, setArchiving] = useState(false);
@@ -187,7 +198,10 @@ function TeamsContent() {
   return (
     <main className="teams-screen">
       <header className="teams-heading">
-        <div><Link className="teams-back" to={teamId ? "/teams" : "/"}><ArrowLeft size={16} />{teamId ? c.title : tr("teams.sessions")}</Link>
+        <div>{team
+          // B-763: 项目 › 团队 (or 团队 › X for a team in no project); every ancestor is a link.
+          ? <LocationTrail className="teams-trail" segments={visibleTrail(teamTrail(team, projectsSnap.projects, trailCopy(zh)), !isTablet)} label={trailCopy(zh).label}><span className="teams-trail-current">{team.name}</span></LocationTrail>
+          : <Link className="teams-back" to={teamId ? "/teams" : "/"}><ArrowLeft size={16} />{teamId ? c.title : tr("teams.sessions")}</Link>}
           <h1><UsersRound size={26} aria-hidden />{team?.name ?? c.title}</h1>
           {team && <TeamProjectLine team={team} />}
           <p>{team ? <><span data-live={machineOnline}>{machineOnline ? c.online : c.offline}</span> · {executionMachine ? machineLabel(executionMachine) : c.unnamedMachine}</> : c.intro}</p>
@@ -196,9 +210,14 @@ function TeamsContent() {
         <div className="teams-heading-actions">
           <Link to="/help">{c.guide}</Link>
           {team && team.archivedAt === undefined && <button disabled={disabled} onClick={() => setArchiving(true)}><Archive size={16}/>{tr('teams.archive')}</button>}
+          {team && <TeamHeadingMenu label={tr("common.moreActions")} items={[
+            ...(teamProjectMenu(team, projectsSnap, { zh }) ? [{ key: "change-project", label: teamProjectMenu(team, projectsSnap, { zh })!, icon: FolderInput, onSelect: () => setChangingProject(true) }] : []),
+            { key: "settings", label: c.settings, icon: Settings2, onSelect: () => setView("settings") },
+          ]} />}
           {teamId ? <button aria-label={tr("teams.refresh")} title={tr("teams.refresh")} onClick={() => { setError(""); void load(); }}><RefreshCw size={17} /></button> : <button className="teams-primary" disabled={unavailable} onClick={() => setCreating(true)}><Plus size={16} />{c.create}</button>}
         </div>
       </header>
+      {changingProject && team && <ChangeTeamProjectModal team={team} onClose={() => setChangingProject(false)} />}
       {archiving && team && <TeamDialog title={tr('teams.archive')} onClose={() => setArchiving(false)}>
         <p>{tr('teams.archiveDescription')}</p>
         <button disabled={disabled} onClick={async () => { await act({type:'archive'}); setArchiving(false); }}>{tr('teams.archive')}</button>
@@ -454,6 +473,11 @@ function TeamsContent() {
 
 /** B-689: why a launch is stuck, what the computer does next, and the owner's retry. */
 /** B-714: the new-task form reads FormData — these stay controlled and post `assistant` / `parent` through hidden inputs. */
+/** B-763: the team page's ⋯ — 「换项目…」 and settings, the same entries as the sidebar team row. */
+function TeamHeadingMenu({ label, items }: { label: string; items: MenuItemDef[] }) {
+  return <ActionDropdownMenu align="end" items={items}><button type="button" className="teams-heading-more" aria-label={label} title={label}><MoreHorizontal size={17} /></button></ActionDropdownMenu>;
+}
+
 export function DelegateChoices({ team, agentLabel }: { team: TeamState; agentLabel: string }) {
   const id = useId();
   const [assistant, setAssistant] = useState<TeamAssistant>(team.defaults?.assistant ?? "claude");

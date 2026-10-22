@@ -384,3 +384,8 @@
 .teams-task-state-hint { display: grid; gap: 4px; }
 .teams-task-state-hint p { margin: 0; }
 .teams-task-state-hint a { text-decoration: underline; }
+
+/* B-763: the team page breadcrumb (项目 › 团队) replaces the back link; the ⋯ holds 换项目… */
+.teams-trail { margin-bottom: 4px; }
+.teams-trail-current { font-size: var(--fs-13); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.teams-heading-more { display: inline-flex; align-items: center; justify-content: center; }

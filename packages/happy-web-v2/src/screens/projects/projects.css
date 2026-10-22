@@ -336,3 +336,7 @@ a.mrb-term-btn { text-decoration: none; }
   .pjl-screen { padding: 12px 16px 40px; }
   .pjl-meta { display: none; }
 }
+
+/* B-763: project page breadcrumb (项目 › 名称) in place of the back link. */
+.pj-trail { margin-bottom: 4px; }
+.pj-trail-current { font-size: var(--fs-13); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

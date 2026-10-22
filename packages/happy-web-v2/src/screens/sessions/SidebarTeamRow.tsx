@@ -9,11 +9,17 @@
  * 「N 人」), a spinner while any member runs. Only the 按项目 lens draws teams;
  * ←/→ fold through the tree's one keyboard handler (Sidebar), and on touch the
  * long-press menu is a bottom sheet headed by the team name.
+ *
+ * B-763 adds 「换项目…」: B-726's team project picker, in a dialog.
  */
-import type { CSSProperties, ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import type { TeamState } from '@slopus/happy-wire';
-import { ChevronRight, ChevronDown, LayoutDashboard, MessageSquare, Settings2, UsersRound } from 'lucide-react';
+import { ChevronRight, ChevronDown, FolderInput, LayoutDashboard, MessageSquare, Settings2, UsersRound } from 'lucide-react';
 import { ActionContextMenu, Spinner, type MenuItemDef } from '@/ui';
+import { useProjects } from '@/sync/projects';
+import { useTranslation } from '@/i18n/useTranslation';
+import { teamProjectMenu } from '@/screens/projects/projectChoice';
+import { ChangeTeamProjectModal } from '@/screens/projects/ChangeTeamProjectModal';
 import { teamRowTarget } from './teamNavigation';
 
 export interface SidebarTeamRowCopy {
@@ -52,13 +58,17 @@ export function SidebarTeamRow(props: {
   // The team page is "this row"; the lead's page is this row only while the
   // lead's own member row is folded away.
   const selected = props.pathname === target.href || (!open && target.leadHref !== null && props.pathname === target.leadHref);
+  const zh = useTranslation().lang.startsWith('zh');
+  const changeProject = teamProjectMenu(team, useProjects(), { zh });
+  const [changingProject, setChangingProject] = useState(false);
   const items: MenuItemDef[] = [
     { key: 'open-board', label: copy.openBoard, icon: LayoutDashboard, onSelect: () => props.onNavigate(target.href) },
     ...(target.leadHref ? [{ key: 'open-lead', label: copy.openLead, icon: MessageSquare, onSelect: () => props.onNavigate(target.leadHref!) } satisfies MenuItemDef] : []),
     { key: 'settings', label: copy.settings, icon: Settings2, onSelect: () => props.onNavigate(target.settingsHref) },
+    ...(changeProject ? [{ key: 'change-project', label: changeProject, icon: FolderInput, onSelect: () => setChangingProject(true) } satisfies MenuItemDef] : []),
     { key: 'toggle', label: open ? copy.collapse : copy.expand, icon: open ? ChevronDown : ChevronRight, separatorBefore: true, onSelect: props.onToggle },
   ];
-  return (
+  return (<>
     <ActionContextMenu items={items} sheetTitle={team.name}>
       <div className="sb-tree-node" data-tree-node data-depth={props.depth} style={{ '--depth': props.depth } as CSSProperties}>
         <div className={`sb-team-row${selected ? ' is-selected' : ''}`} data-team-id={team.id}>
@@ -78,5 +88,6 @@ export function SidebarTeamRow(props: {
         </div>
       </div>
     </ActionContextMenu>
-  );
+    {changingProject && <ChangeTeamProjectModal team={team} onClose={() => setChangingProject(false)} />}
+  </>);
 }
