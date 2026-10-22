@@ -29,7 +29,7 @@ const bot = (id: string, extra: Partial<TeamBot> = {}): TeamBot => ({ id, name: 
 const op = (id: string, extra: Partial<TeamOperation>): TeamOperation => ({ id, teamId: 'team-qa', machineId: 'dev-machine', taskId: 't-done', botId: 'w1', attemptId: 'a1', generation: 1, type: 'spawn', status: 'failed', claimId: `claim-${id}`, claimedAt: NOW, error: null, sessionId: null, directory: '/home/dev/very-happy', assistant: 'claude', prompt: '', createdAt: NOW, ...extra });
 
 export const QA_TEAM: TeamState = {
-  id: 'team-qa', name: 'VeryHappy 研发', machineId: 'dev-machine', version: 1, createdAt: NOW - 86_400_000,
+  id: 'team-qa', name: 'Atlas 研发队', machineId: 'dev-machine', version: 1, createdAt: NOW - 86_400_000,
   creationLaunch: { goal: '研发团队', assistant: 'claude', directory: '/home/dev/very-happy' } as TeamState['creationLaunch'],
   bots: [
     bot('lead', { name: 'Lead', root: true, sessionId: 's-lead', lastEvent: 'idle', lastEventAt: NOW }),
@@ -78,7 +78,7 @@ export const FINISHED_TEAM: TeamState = {
 const runTask = (id: string, assigneeBotId: string, goal: string, extra: Partial<TeamState['tasks'][number]> = {}): TeamState['tasks'][number] =>
   ({ id, parentTaskId: 'root-vh', goal, acceptance: ['验收标准'], goalVersion: 1, ownerBotId: 'lead', assigneeBotId, status: 'running', attempts: [{ id: `a-${id}`, botId: assigneeBotId, status: 'running', goalVersion: 1, generation: 1, result: null }], currentAttemptId: `a-${id}`, cleanup: 'none', ...extra });
 export const PROD_VH_TEAM: TeamState = {
-  ...QA_TEAM, id: 'team-vh', name: 'VeryHappy 研发', operations: [],
+  ...QA_TEAM, id: 'team-vh', name: 'Atlas 研发队', operations: [],
   bots: [
     bot('lead', { name: 'Lead', root: true, sessionId: 's-lead', lastEvent: 'idle', lastEventAt: NOW - 3 * 60_000 }),
     bot('dev-e1', { name: 'Dev-E1', sessionId: 's-e1', lastEvent: 'idle', lastEventAt: NOW - 30 * 60_000 }),

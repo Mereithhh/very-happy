@@ -94,6 +94,11 @@ A team can belong to a [project](projects.md): on the project page open
 the project's folders are offered). The team's sessions are then listed as
 project members, and the team appears under the project in the sidebar tree. Team members get the project instructions as background and
 coordinate through their lead rather than messaging other project sessions.
+The team page header shows where the team sits (*Project › Team*, or
+*Teams › Team* without a project), and a member's conversation shows
+*Project › Team › member · task*; each earlier step is a link. To change a
+team's project use **Move to another project…** in the sidebar team row's menu
+or the team page's ⋯ menu, or **Team settings → Project**.
 
 For an existing managed conversation, use **More → Start a team from this
 conversation**. Its wrapper establishes the scoped connection and delivers the

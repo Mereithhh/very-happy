@@ -1,14 +1,13 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FolderKanban, FolderPlus } from 'lucide-react';
 import type { TeamState } from '@slopus/happy-wire';
-import { bindTeamProject, TeamsApiError } from '@/sync/teams';
-import { refreshProjects, useProjects } from '@/sync/projects';
+import { useProjects } from '@/sync/projects';
 import { useTranslation } from '@/i18n/useTranslation';
-import { toast } from '@/ui/Toast';
 import { ProjectPicker } from '@/screens/projects/ProjectPicker';
 import { projectOfTeam, type ProjectChoice } from '@/screens/projects/projectChoice';
 import { TeamDialog } from './TeamDialog';
+import { useTeamProjectBind } from './teamProjectBind';
 
 /**
  * B-726 (`specs/2026-10-team-project.md`): the team side of「团队属于一个项目」.
@@ -39,26 +38,7 @@ function useCopy() {
 
 function useBind(team: TeamState) {
   const c = useCopy();
-  const [busy, setBusy] = useState(false);
-  const createRequest = useRef<string>('');
-  const bind = async (choice: ProjectChoice) => {
-    setBusy(true);
-    try {
-      if (choice.kind === 'new') {
-        createRequest.current ||= crypto.randomUUID();
-        await bindTeamProject(team.id, { create: true, requestId: createRequest.current });
-        createRequest.current = '';
-      } else {
-        await bindTeamProject(team.id, { projectId: choice.kind === 'existing' ? choice.projectId : null });
-      }
-      await refreshProjects();
-    } catch (error) {
-      toast.error(error instanceof TeamsApiError && error.status === 404 && error.code.startsWith('http_') ? c.unsupported : c.failed);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return { busy, bind };
+  return useTeamProjectBind(team, c);
 }
 
 /** Header line under the team name: 所属项目 · <link to the project page>. */

@@ -152,3 +152,22 @@
   .ch-agent { max-width: 72px; }
   .ch .relay-badge-label { display: none; }
 }
+
+/* B-763: breadcrumb before the title. The member name reads like the tree row
+   (「后端-1 · 任务」) but quieter than the task. */
+.ch-trail .ch-title-btn { min-width: 0; }
+/* Ancestors shrink first; the title keeps a readable minimum and a squeezed
+   ancestor still shows a few characters, not just its icon. */
+.ch-trail .vh-trail-item { min-width: min(5.5em, 40%); max-width: 40%; }
+.ch-trail .vh-trail-current { min-width: 6em; flex: 1 1 0; }
+.ch-member { color: var(--text-dim); font-weight: 500; }
+/* Phone header: agent, machine and relay keep their slots, leaving ~120-150px
+   for 上一级 › 当前. The parent drops its icon and may take half, so both
+   names stay readable (measured at 360/390, B-763). */
+@container ch (max-width: 599px) {
+  .ch-trail .vh-trail-link > svg { display: none; }
+  .ch-trail .vh-trail-item { max-width: 50%; min-width: min(4.5em, 50%); }
+  .ch-trail .vh-trail-current { min-width: 4.5em; }
+  /* the parent already names the team; the room goes to the task */
+  .ch-trail .ch-member { display: none; }
+}

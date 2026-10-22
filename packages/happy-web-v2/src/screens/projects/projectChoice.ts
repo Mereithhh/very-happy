@@ -63,3 +63,14 @@ export function sessionProjectMenu(sessionId: string, snap: { status: string; me
   const leave = project && canLeave ? { projectId: project.id, label: opts.zh ? `从「${project.name}」移出` : `Remove from "${project.name}"` } : null;
   return { move, leave };
 }
+
+/**
+ * B-763 (B-760 §5.1): the team row / team page menu entry — 「换项目…」 for a
+ * team in a project, 「放进项目…」 for one in none. Hidden for an archived team
+ * (the server refuses a bind) and while projects are unavailable.
+ */
+export function teamProjectMenu(team: Pick<TeamState, 'id' | 'archivedAt'>, snap: { status: string; projects: ProjectView[] }, opts: { zh: boolean }): string | null {
+  if (snap.status !== 'ready' || team.archivedAt !== undefined) return null;
+  const inProject = projectOfTeam(team, snap.projects) !== null;
+  return inProject ? (opts.zh ? '换项目…' : 'Move to another project…') : (opts.zh ? '放进项目…' : 'Put in a project…');
+}
