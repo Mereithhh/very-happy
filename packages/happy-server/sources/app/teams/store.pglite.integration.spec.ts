@@ -275,19 +275,19 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         const join = (teamId: string, requestId: string, sid: string, extra: { transfer?: true } = {}) =>
             store.actOnTeam(teamId, { accountId }, { requestId, action: { type: 'join', name: 'Lead', sessionId: sid, ...extra } });
         it('refuses create and join for a session bound in another live team, naming that team and team_delegate', async () => {
-            const home = await store.createTeam(accountId, { name: 'roll-pool-cot', machineId, sessionId });
+            const home = await store.createTeam(accountId, { name: 'atlas-pay-ops', machineId, sessionId });
             await join(home.id, 'join-home', sessionId);
-            const refusal = { code: 'session_in_other_team', status: 409, details: { teamId: home.id, teamName: 'roll-pool-cot' } };
-            await expect(store.createTeam(accountId, { name: 'roll-pool', machineId, requestId: 'self-create', sessionId })).rejects.toMatchObject(refusal);
+            const refusal = { code: 'session_in_other_team', status: 409, details: { teamId: home.id, teamName: 'atlas-pay-ops' } };
+            await expect(store.createTeam(accountId, { name: 'atlas-pay', machineId, requestId: 'self-create', sessionId })).rejects.toMatchObject(refusal);
             // A pre-B-730 CLI sends no sessionId, only the session it inherits its project from.
-            await expect(store.createTeam(accountId, { name: 'roll-pool', machineId, requestId: 'old-cli', project: { inheritFromSessionId: sessionId } })).rejects.toMatchObject(refusal);
-            const [created] = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'name'='roll-pool'`;
+            await expect(store.createTeam(accountId, { name: 'atlas-pay', machineId, requestId: 'old-cli', project: { inheritFromSessionId: sessionId } })).rejects.toMatchObject(refusal);
+            const [created] = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'name'='atlas-pay'`;
             expect(Number(created.count)).toBe(0);
             const other = await store.createTeam(accountId, { name: 'Other', machineId });
             const error = await join(other.id, 'join-other', sessionId).catch(e => e);
             expect(error).toMatchObject(refusal);
             expect(error.details.message).toContain('team_delegate');
-            expect(error.details.message).toContain('roll-pool-cot');
+            expect(error.details.message).toContain('atlas-pay-ops');
             // Nothing was recorded: the same request can be retried once the owner decides.
             const memo = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "TeamRequest" WHERE "teamId"=${other.id} AND "requestId"='join-other'`;
             expect(Number(memo[0].count)).toBe(0);

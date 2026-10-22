@@ -7,7 +7,7 @@ import { readReceipt, receiptPath } from './journal';
  * only in its spawn env (VH_TEAM_SCOPE_FILE / VH_TEAM_OPERATION_ID). Restart,
  * resume, offline recovery and automation wake used to relaunch it without
  * them, so the session silently became "not in a team" and created its own
- * team (roll-pool). Every relaunch now re-derives the env from the session.
+ * team. Every relaunch now re-derives the env from the session.
  */
 const OPERATION_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 

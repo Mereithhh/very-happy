@@ -19,7 +19,7 @@ const writeScope = (operationId: string) => {
 };
 
 describe('B-730: a relaunched team wrapper stays in its team', () => {
-    // The roll-pool lead was a pi session; restart, resume, offline recovery and
+    // The lead in the incident was a pi session; restart, resume, offline recovery and
     // automation wake all relaunch through resumeSessionImpl / restartSessionImpl.
     it.each([
         ['claude', { flavor: 'claude', claudeSessionId: 'c1' }],

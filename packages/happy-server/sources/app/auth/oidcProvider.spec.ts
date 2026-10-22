@@ -112,7 +112,7 @@ describe('B-620 OIDC provider (discovery, JWKS, id_token)', () => {
     });
 
     it('splits an IdP display name into first/last and keeps single-token names whole', () => {
-        expect(splitDisplayName('Zhaopeng Feng')).toEqual({ firstName: 'Zhaopeng', lastName: 'Feng' });
+        expect(splitDisplayName('Alex Rivera')).toEqual({ firstName: 'Alex', lastName: 'Rivera' });
         expect(splitDisplayName('  Mary Ann  Lee ')).toEqual({ firstName: 'Mary', lastName: 'Ann  Lee' });
         expect(splitDisplayName('魏晨')).toEqual({ firstName: '魏晨', lastName: null });
         expect(splitDisplayName('   ')).toEqual({ firstName: null, lastName: null });

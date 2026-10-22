@@ -233,7 +233,7 @@ describe('B-757 project settings page', () => {
   });
 
   it('B-755: a folder that is a team worktree is flagged here (no 打开设置 — this is settings) and cannot be added', async () => {
-    const wt = '/home/u/.happy/teams/worktrees/f0747a90-5f06-4c9c-9f39-a8d3c677ecd8';
+    const wt = '/home/u/.happy/teams/worktrees/11111111-2222-4333-8444-555555555555';
     await render(detail({ folders: [{ machineId: 'm1', path: wt, primary: true }] }));
     const notice = section('folders').querySelector('[data-testid=project-worktree-folder]')!;
     expect(notice.textContent).toContain(wt);

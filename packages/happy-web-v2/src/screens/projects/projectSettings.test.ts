@@ -33,8 +33,8 @@ describe('B-757 project settings rules', () => {
     expect(folderError(folders, { machineId: 'm1', path: '/code//a' })).toBe('duplicate');
     expect(folderError(folders, { machineId: 'm3', path: '/code/a' })).toBeNull();
     // B-755: a team member's worktree is refused (the repository goes in instead)
-    expect(folderError(folders, { machineId: 'm1', path: '/home/u/.happy/teams/worktrees/f0747a90-5f06-4c9c-9f39-a8d3c677ecd8' })).toBe('worktree');
-    expect(folderError(folders, { machineId: 'm1', path: '/home/u/.happy/teams/worktrees/f0747a90-5f06-4c9c-9f39-a8d3c677ecd8/pkg' })).toBe('worktree');
+    expect(folderError(folders, { machineId: 'm1', path: '/home/u/.happy/teams/worktrees/11111111-2222-4333-8444-555555555555' })).toBe('worktree');
+    expect(folderError(folders, { machineId: 'm1', path: '/home/u/.happy/teams/worktrees/11111111-2222-4333-8444-555555555555/pkg' })).toBe('worktree');
     expect(folderError(folders, { machineId: 'm1', path: '/code/a' }, 0)).toBeNull();
     expect(folderError(folders, { machineId: 'm1', path: '/code/b' }, 0)).toBe('duplicate');
     const full = Array.from({ length: PROJECT_LIMITS.folders }, (_, i) => ({ machineId: 'm', path: `/p${i}` }));

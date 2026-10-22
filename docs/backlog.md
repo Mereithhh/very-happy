@@ -79,7 +79,7 @@
 |---|---|---|---|---|---|
 | B-746 | /teams 卡片任务预览：按 markdown 渲染为纯文本，去掉协议头 | bug | 第三版收尾（10-22） | done | **10-22 hotfix：server/Web aa3b8a61（CLI 不变 0.2.181）**：#683；oct22b 通知 #685 |
 | B-745 | 分享链接显示 assistant 回复（项目 role=session 按真实 wire 形状解析）+ runner 契约测试 + favicon | bug | 第三版收尾（10-22） | done | **10-22 hotfix：server/Web aa3b8a61（CLI 不变 0.2.181）**：#684；oct22b 通知 #685 |
-| B-730 | restart / resume / 唤醒拉起的团队 wrapper 重新带上团队作用域（缺 scope 文件时重建）；会话至多属于一个活团队（`session_in_other_team`，Web 确认后转移）；负责人工作法第 8 条 | bug | roll-pool 事故（10-21） | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#680 |
+| B-730 | restart / resume / 唤醒拉起的团队 wrapper 重新带上团队作用域（缺 scope 文件时重建）；会话至多属于一个活团队（`session_in_other_team`，Web 确认后转移）；负责人工作法第 8 条 | bug | 负责人重拉丢作用域事故（10-21） | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#680 |
 | B-729 | 团队会话都嵌在所属团队下：被两个团队认领的会话不再落在两边之外；早期 generation / adopt 历史折叠；可选 `TeamBot.previousSessionIds` | bug | 第三版 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#675 |
 | B-728 | UI 走查 P1/P2：受控 hover（codemod + lint）、按输入方式的焦点环、统一弹窗外壳及 P1/P2 修复（剩余项见 B-738） | ux | UI 走查 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#672 |
 | B-727 | pi 上下文用量指示：真实窗口（配置 > 推断 > 未知），/compact 真正压缩，自定义模型表单可填上下文窗口 | feat | 第三版 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#674 |

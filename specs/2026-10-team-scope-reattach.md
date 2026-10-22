@@ -3,11 +3,11 @@
 > 状态：Final（实现 B-730）
 > 日期：2026-10-22 ｜ 关联 backlog：B-730（展示侧兜底是 B-729）
 
-## 背景（roll-pool 事故）
+## 背景（负责人重拉丢作用域事故）
 
-cmvhu15 是 roll-pool-cot 的托管负责人（pi）。10-21 22:19 收到 restart-session，daemon 用服务端 metadata `pi --resume` 重拉 wrapper，
+一个团队的托管负责人（pi 会话）。10-21 22:19 收到 restart-session，daemon 用服务端 metadata `pi --resume` 重拉 wrapper，
 但 env 里**没有** `VH_TEAM_SCOPE_FILE` / `VH_TEAM_OPERATION_ID`（`teams/scopes/<op>.json` 还在）。00:24 `team_delegate` 返回
-「Join or create a team first」，模型于是 `team_create` 建了 roll-pool 并以 root join。两处缺口：
+「Join or create a team first」，模型于是 `team_create` 另建了一个团队并以 root join。两处缺口：
 
 1. 团队作用域只活在**首次 spawn 的 env**（`daemon/teams/worker.ts`），`resumeSessionImpl` / `restartSessionImpl` 重建 env 时不带。
 2. CLI 只在 env 有 scope 时拦「已分配成员 create/join」（`teams/adopt.ts`）；服务端 join 只查同团队 `session_already_bound`。
