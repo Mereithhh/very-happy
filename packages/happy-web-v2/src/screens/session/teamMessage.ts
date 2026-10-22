@@ -74,10 +74,7 @@ const PREFIXES: Array<{ re: RegExp; kind: TeamMessageKind; preview?: string }> =
     { re: /^Task handed off: /, kind: 'handoff' },
 ];
 
-/** Metadata is a transport source hint, never a privilege or proof of system authority. */
-export function presentTeamMessage(message: Pick<UserTextMessage, 'text' | 'meta'>): PresentedTeamMessage | null {
-    if (message.meta?.sentFrom !== 'team') return null;
-    const raw = message.text;
+function parseTeamProtocol(raw: string) {
     const envelope = stripTeamEnvelope(raw);
     let body = envelope.body;
     let kind: TeamMessageKind = 'message';
@@ -92,7 +89,19 @@ export function presentTeamMessage(message: Pick<UserTextMessage, 'text' | 'meta
         if (match[1] && !taskId) taskId = match[1];
         break;
     }
-    body = body.trim();
+    return { envelope, body: body.trim(), kind, prefix, taskId };
+}
+
+/** B-746: any team text (task goal, result, message) → its human markdown, envelope and machine prefix stripped. */
+export function teamProtocolBody(raw: string): string {
+    return parseTeamProtocol(raw).body;
+}
+
+/** Metadata is a transport source hint, never a privilege or proof of system authority. */
+export function presentTeamMessage(message: Pick<UserTextMessage, 'text' | 'meta'>): PresentedTeamMessage | null {
+    if (message.meta?.sentFrom !== 'team') return null;
+    const raw = message.text;
+    const { envelope, body, kind, prefix, taskId } = parseTeamProtocol(raw);
     // Keep unfamiliar formats visible, but hide machine IDs from the compact preview.
     const first = plainMarkdownLines(body.replace(UUID, '…'))[0] ?? '';
     const preview = capChars(`${prefix}${first}`, 180);

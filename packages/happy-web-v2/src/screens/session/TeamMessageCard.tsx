@@ -3,8 +3,8 @@ import { UsersRound, ArrowUpRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
-import { teamMessageTask, memberTitle, teamForMessage, teamMessageRoute } from '@/screens/teams/teamPresentation';
-import { plainPreviewLines, plainPreviewText } from '@/utils/markdownPreview';
+import { teamMessageTask, memberTitle, teamForMessage, teamMessageRoute, readerTitle, teamTextPreviewLines } from '@/screens/teams/teamPresentation';
+import { capChars, plainPreviewLines } from '@/utils/markdownPreview';
 import { AgentChip, AgentRoute } from './AgentChip';
 import { agentKindLabel, agentKindOf } from './agentIdentity';
 import { useFirstUseCopy } from '@/screens/teams/firstUseCopy';
@@ -49,7 +49,7 @@ export function TeamMessageCardView({ content, team, localId, createdAt }: { con
         : content.sender ? <span className="team-message-sender">{content.sender}</span> : null;
     const status = task && <span className={`team-message-status vh-pill${task.status === 'running' ? ' vh-pill--live' : task.status === 'submitted' ? ' vh-pill--warn' : ''}`}>{t(`teams.${task.status}`)}</span>;
     // An assignment's body IS the goal; every other kind names the task it is about.
-    const goal = task && content.kind !== 'assigned' ? plainPreviewText(task.goal, 160) : null;
+    const goal = task && content.kind !== 'assigned' ? capChars(teamTextPreviewLines(task.goal).join(' '), 160) : null;
     const preview = plainPreviewLines(content.body.trim() ? content.body : t('teams.genericMessage'), 3);
     const taskLink = team && task ? `/teams/${encodeURIComponent(team.id)}?task=${encodeURIComponent(task.id)}` : null;
     const links: MessageReaderLink[] = taskLink ? [{ to: taskLink, label: copy.inspect }] : [];
@@ -75,7 +75,7 @@ export function TeamMessageCardView({ content, team, localId, createdAt }: { con
             onOpenChange={setOpen}
             triggerRef={openRef}
             icon={<UsersRound size={18} aria-hidden />}
-            title={task ? `${kindLabel} · ${plainPreviewText(task.goal, 120)}` : (content.sender ? `${kindLabel} · ${content.sender}` : t('teams.collaborationMessage'))}
+            title={task ? readerTitle(kindLabel, task.goal) : (content.sender ? readerTitle(kindLabel, content.sender) : t('teams.collaborationMessage'))}
             meta={<>{who}{status}<MessageTime createdAt={createdAt} /></>}
             body={content.body || content.raw}
             links={links}

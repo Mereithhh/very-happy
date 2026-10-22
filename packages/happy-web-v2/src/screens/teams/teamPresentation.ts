@@ -1,4 +1,20 @@
 import type { TeamBot, TeamState, TeamTask } from '@slopus/happy-wire';
+import { teamProtocolBody } from '@/screens/session/teamMessage';
+import { capChars, plainMarkdownLines } from '@/utils/markdownPreview';
+/**
+ * B-746: a task goal / result as compact plain lines for every folded preview
+ * (list card, board, member card, parent label, parent picker): the team
+ * protocol header is stripped and no markdown syntax survives. Full views
+ * keep the source text.
+ */
+export function teamTextPreviewLines(text: string): string[] {
+  return plainMarkdownLines(teamProtocolBody(text));
+}
+/** B-746 (O8): a reader / tooltip title — 「kind · first plain line」, at most 60 characters. */
+export function readerTitle(kind: string, text: string): string {
+  const head = teamTextPreviewLines(text)[0];
+  return capChars(head ? `${kind} · ${head}` : kind, 60);
+}
 export function teamRootTask(team: TeamState): TeamTask | undefined {
   return team.tasks.find(t => !t.parentTaskId && team.bots.some(b => b.root && b.managed && b.id === t.assigneeBotId));
 }
