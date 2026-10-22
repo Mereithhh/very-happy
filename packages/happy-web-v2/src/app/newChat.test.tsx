@@ -13,6 +13,7 @@ vi.mock('@/sync/agentDefaults', () => ({normalizeAgentKey:()=> 'claude',resolveN
 vi.mock('@/utils/quickChat', () => ({decideQuickChat:(args:unknown)=>{mocks.decide(args);return mocks.decision;},pushRecentMachinePath:()=>[]}));
 vi.mock('./recentMachinePath', () => ({ recordRecentMachinePath: vi.fn() }));
 vi.mock('./prefetchSessionDetail', () => ({ prefetchSessionDetail: vi.fn() }));
+vi.mock('@/screens/sessions/useTeamNavigation', () => ({ teamNavigationSnapshot: () => [] }));
 import {createChatOrConfigure,useNewChatPending} from './newChat';
 function Feedback(){return <button disabled={useNewChatPending()}>{useNewChatPending() ? 'Creating' : 'New chat'}</button>;}
 

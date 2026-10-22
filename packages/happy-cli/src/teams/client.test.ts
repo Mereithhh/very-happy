@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { configuration } from '@/configuration';
 import { writeTeamScope, readTeamScope } from './context';
-import { createTeamsClient, teamCreateBody } from './client';
+import { createTeamsClient, teamCreateBody, teamProjectDirectory } from './client';
 import { readCredentialsForConfiguredRelay, readSettings, readPersistedSessions } from '@/persistence';
 vi.mock('@/persistence', () => ({ readCredentialsForConfiguredRelay: vi.fn(), readSettings: vi.fn(), readPersistedSessions: vi.fn() }));
 
@@ -52,6 +52,17 @@ describe('B-726 team_create project choice', () => {
     it('defaults to the creating session\'s project, else a same-name project at its folder', () => {
         expect(teamCreateBody({ name: 'T', requestId: 'r' }, 'm', 's1', '/repo')).toEqual({ name: 'T', machineId: 'm', requestId: 'r', sessionId: 's1', project: { inheritFromSessionId: 's1', directory: '/repo' } });
         expect(teamCreateBody({ name: 'T', requestId: 'r' }, 'm', 's1', undefined)).toEqual({ name: 'T', machineId: 'm', requestId: 'r', sessionId: 's1', project: { inheritFromSessionId: 's1' } });
+    });
+    it('B-755: a session in a team worktree names the main checkout; Git failure leaves the server to resolve it', async () => {
+        const wt = '/home/u/.happy/teams/worktrees/f0747a90';
+        const common = async () => '/home/u/code/skills/.git';
+        expect(await teamProjectDirectory(wt, common)).toBe('/home/u/code/skills');
+        expect(await teamProjectDirectory(`${wt}/docs`, common)).toBe('/home/u/code/skills/docs');
+        expect(await teamProjectDirectory(wt, async () => { throw new Error('not a git repository'); })).toBe(wt);
+        expect(await teamProjectDirectory(wt, async () => '/srv/bare.git')).toBe(wt);
+        const never = async () => { throw new Error('git must not run outside a team worktree'); };
+        expect(await teamProjectDirectory('/home/u/code/skills', never)).toBe('/home/u/code/skills');
+        expect(await teamProjectDirectory(undefined, never)).toBeUndefined();
     });
     it('honours an explicit project or no project (the old request shape)', () => {
         expect(teamCreateBody({ name: 'T', requestId: 'r', projectId: 'p' }, 'm', 's1', '/repo')).toEqual({ name: 'T', machineId: 'm', requestId: 'r', sessionId: 's1', project: { projectId: 'p' } });

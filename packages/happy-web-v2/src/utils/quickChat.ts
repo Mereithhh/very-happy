@@ -1,5 +1,6 @@
 import type { Machine } from '@/sync/storageTypes';
 import { isMachineOnline } from './machineUtils';
+import { withoutTeamWorktrees, isInsideTeamWorktree } from './teamWorktree';
 
 /** One remembered machine+directory combination (settings.recentMachinePaths). */
 export interface RecentMachinePath {
@@ -25,6 +26,9 @@ export type QuickChatDecision =
  *   directory                    → most recent remembered path FOR THAT
  *                                  machine; none → configure (one time —
  *                                  the first successful create records it)
+ *   remembered team worktree     → never offered (B-755: a quick chat in
+ *                                  one made it the MRU, and the next chats
+ *                                  and a new team's folder followed)
  *
  * model/effort/permission are deliberately absent here: they are not spawn
  * inputs at all. Each message resolves them from the per-agent defaults in
@@ -50,6 +54,7 @@ export function decideQuickChat({
         return { kind: 'spawn', machineId: target.machineId, directory: target.path };
     }
     if (online.length === 0) return { kind: 'configure' };
+    recents = withoutTeamWorktrees(recents);
 
     let machineId: string;
     if (online.length === 1) {
@@ -76,6 +81,7 @@ export function pushRecentMachinePath(
     entry: RecentMachinePath,
     cap = 10,
 ): RecentMachinePath[] {
-    const rest = list.filter((r) => !(r.machineId === entry.machineId && r.path === entry.path));
-    return [entry, ...rest].slice(0, cap);
+    // B-755: a team worktree is never remembered, and the next write drops ones remembered before.
+    const rest = withoutTeamWorktrees(list).filter((r) => !(r.machineId === entry.machineId && r.path === entry.path));
+    return (isInsideTeamWorktree(entry.path) ? rest : [entry, ...rest]).slice(0, cap);
 }

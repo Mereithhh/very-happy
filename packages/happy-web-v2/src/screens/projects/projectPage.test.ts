@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { bucketItems, injectionStateOf, summarizeInjection, utf8Bytes } from './projectPage';
+import type { TeamState } from '@slopus/happy-wire';
+import { bucketItems, injectionStateOf, summarizeInjection, utf8Bytes, repairWorktreeFolders, worktreeFolders } from './projectPage';
 
 describe('injection badge (准则 1: every harness shows its real state)', () => {
   it('no project-v1 → 未注入; restart helps only for injectable harnesses', () => {
@@ -34,5 +35,18 @@ describe('overview buckets', () => {
   it('utf8 byte count for the 8KB cap', () => {
     expect(utf8Bytes('ab')).toBe(2);
     expect(utf8Bytes('项目')).toBe(6);
+  });
+});
+
+describe('B-755 worktree project folders', () => {
+  const wt = '/home/u/.happy/teams/worktrees/f0747a90';
+  const teams = [{ id: 't', machineId: 'm', operations: [{ id: 'f0747a90', type: 'spawn', directory: '/code/skills' }] }] as unknown as TeamState[];
+  it('lists worktree folders with their repository when a loaded team knows it', () => {
+    expect(worktreeFolders([{ machineId: 'm', path: wt, primary: true }, { machineId: 'm', path: '/code/x', primary: false }, { machineId: 'm', path: '/h/.happy/teams/worktrees/gone', primary: false }], teams))
+      .toEqual([{ machineId: 'm', path: wt, repository: '/code/skills' }, { machineId: 'm', path: '/h/.happy/teams/worktrees/gone', repository: null }]);
+  });
+  it('repair swaps in the repository, keeps unknown ones, deduplicates and keeps the primary', () => {
+    expect(repairWorktreeFolders([{ machineId: 'm', path: '/code/skills', primary: false }, { machineId: 'm', path: wt, primary: true }, { machineId: 'm', path: '/h/.happy/teams/worktrees/gone', primary: false }], teams))
+      .toEqual([{ machineId: 'm', path: '/code/skills', primary: true }, { machineId: 'm', path: '/h/.happy/teams/worktrees/gone', primary: false }]);
   });
 });

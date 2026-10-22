@@ -41,6 +41,17 @@ name opens the project page; its ＋ starts a session in that project.
 A session whose folder lies inside a project folder is only **suggested** for
 that project (a banner in the session asks), never added automatically.
 
+A team member's temporary worktree (`~/.happy/teams/worktrees/<id>`) is never a
+project folder: a session working inside one is not asked to join anything (a
+member already belongs through its team), a new team or `team_create` started
+from one uses the repository the worktree was cut from, and worktrees are left
+out of remembered folders, so quick **New chat**, **New team** and automations
+never default to one. **New chat** while viewing a member's conversation starts
+in that repository. A project that already has a worktree folder says so at the
+top of its page, with **Use repository …** to switch it in one click (or, when
+the repository is unknown, a pointer to settings to remove it and add the
+repository path).
+
 To take a session out, use **Move to project…** → *No project*, the session
 header menu (**Remove from "…"**), or the leave button on its row on the project
 page. The session header menu also has **Move to project…**.
@@ -54,7 +65,9 @@ decisions, assignments and handoffs with `project_note`, and members record
 findings and handoffs the same way.
 
 - **New team** creates a project with the team's name by default (folder = the
-  team's working folder). Pick an existing project instead, or *No project*.
+  team's working folder; a member worktree resolves to its repository, and an
+  unknown one leaves the project without a folder to add in settings). Pick an
+  existing project instead, or *No project*.
   `team_create` from a session joins that session's project, or creates the
   same-name project.
 - **One live team per conversation** (B-730). A conversation that already leads

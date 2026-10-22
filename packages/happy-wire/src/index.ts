@@ -8,6 +8,7 @@ export * from './releaseProtocol';
 export * from './connectionDiagnostics';
 
 export * from "./teams";
+export * from "./teamWorktree";
 export * from "./teamActivity";
 export * from "./automations";
 export * from "./projects";

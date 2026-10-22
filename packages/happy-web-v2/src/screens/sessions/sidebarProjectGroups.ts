@@ -88,7 +88,7 @@ export function groupRowsByProject<T extends WorkspaceRowLike>(
   for (const row of loose) {
     const team = row.sessionId ? teamOfSession.get(row.sessionId)?.team : undefined;
     if (!team || anchor.has(team.id)) continue;
-    const home = teamHomeDirectory(team);
+    const home = teamHomeDirectory(team, teams);
     if (home) anchor.set(team.id, { key: `team-home:${team.id}`, machineId: team.machineId, workspacePath: home, machineName: machineNames.get(team.machineId) });
     else if (row.machineId) anchor.set(team.id, row);
   }

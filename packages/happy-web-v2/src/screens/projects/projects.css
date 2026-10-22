@@ -158,6 +158,16 @@
 .pj-folder .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .pj-folder .pj-badge { justify-self: auto; }
 .pj-danger-row { justify-content: flex-end; }
+/* B-755: a project folder that is a team member's worktree. */
+.pj-worktree { display: grid; gap: 6px; padding: 10px 12px; border-radius: var(--r-md); background: var(--warn-dim); }
+.pj-worktree-row { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.pj-worktree-row p { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.pj-worktree-icon { flex-shrink: 0; margin-top: 2px; color: var(--warn); }
+.pj-worktree-row .pj-ghost { flex-shrink: 0; white-space: nowrap; background: var(--fill-soft); color: var(--text); border-radius: var(--r-sm); }
+@media (max-width: 560px) {
+  .pj-worktree-row { flex-wrap: wrap; }
+  .pj-worktree-row .pj-ghost { margin-left: 23px; }
+}
 
 @media (max-width: 760px) {
   .pj-screen { padding: 12px 16px 24px; }
