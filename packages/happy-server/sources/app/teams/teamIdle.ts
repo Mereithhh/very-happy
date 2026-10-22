@@ -10,21 +10,27 @@ export const TEAM_IDLE_ESCALATE_MS = 30 * 60 * 1000;
 
 /** Start of `bot`'s current idle stretch, or null. The server sees no turn-start
  *  event, so a team message delivered to the bot or sent by it after its last
- *  idle proves it was working again. */
+ *  idle proves it was working again. B-769b: the stretch starts no earlier than the
+ *  bot's newest work (`workAssignedAt`) — the incident: a member idle 220 min after
+ *  its previous task got a new one and its owner was told「idle for 220 min」3 s
+ *  later, before the launch / task message reached it. An unbound bot (its session
+ *  stopped, a launch pending) has no current idle at all. */
 export function idleSince(team: Pick<TeamState, 'messages'>, bot: TeamBot): number | null {
-    if (bot.lastEvent !== 'idle' || bot.lastEventAt === undefined) return null;
-    const at = bot.lastEventAt;
+    if (!bot.sessionId || bot.lastEvent !== 'idle' || bot.lastEventAt === undefined) return null;
+    const at = Math.max(bot.lastEventAt, bot.workAssignedAt ?? -Infinity);
     const woke = team.messages.some(m => (m.recipientBotId === bot.id && m.deliveredAt !== null && m.deliveredAt > at) || (m.senderBotId === bot.id && m.createdAt > at));
     return woke ? null : at;
 }
 
-/** Idle members whose queued/running (not yet submitted) tasks `ownerBotId` owns. */
+/** Idle members whose queued/running (not yet submitted) tasks `ownerBotId` owns.
+ *  B-769b: only a turn end on the current work counts — a bot given new work since
+ *  its idle has not finished a turn on it yet (the digest is not an escalation). */
 export function idleMembersFor(team: Pick<TeamState, 'bots' | 'tasks' | 'messages'>, ownerBotId: string): TeamIdleMember[] {
     const members: TeamIdleMember[] = [];
     for (const bot of team.bots) {
         if (bot.id === ownerBotId) continue;
         const since = idleSince(team, bot);
-        if (since === null) continue;
+        if (since === null || since !== bot.lastEventAt) continue;
         const taskIds = team.tasks.filter(t => t.assigneeBotId === bot.id && t.ownerBotId === ownerBotId && ['queued', 'running'].includes(t.status)).map(t => t.id);
         if (taskIds.length) members.push({ botId: bot.id, name: bot.name, since, taskIds });
     }

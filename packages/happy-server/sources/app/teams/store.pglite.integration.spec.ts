@@ -258,6 +258,67 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         expect(woken[0]).toMatchObject({ source: 'system', deliveredAt: null });
         expect(woken[0].body).toMatch(/^Agent Member: idle for 31 min\./);
     });
+    it('B-769b: a member idle 4 h before its new task is not escalated on the new attempt; 30 min of it is, once', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        try {
+            const H4 = 4 * 60 * 60_000; const M30 = 30 * 60_000;
+            const team = await store.createTeam(accountId, { name: 'Idle reset', machineId });
+            const lead = await store.actOnTeam(team.id, { accountId }, { requestId: 'join-lead', action: { type: 'join', name: 'Lead', sessionId } });
+            const leadToken = { token: lead.credential!.token }; const leadId = lead.credential!.botId;
+            const read = () => store.readTeam(team.id, { accountId });
+            const toLead = async () => (await read()).messages.filter(m => m.recipientBotId === leadId);
+            const tick = async () => { await Promise.all([store.tickTeamSchedules(accountId, machineId), store.tickTeamSchedules(accountId, machineId)]); };
+            const finish = async (key: string) => {
+                const t = (await read()).tasks.find(x => x.status === 'running')!;
+                await store.actOnTeam(team.id, { accountId }, { requestId: `submit-${key}`, action: { type: 'submit', taskId: t.id, attemptId: t.currentAttemptId, goalVersion: 1, result: 'ok' } });
+                await store.actOnTeam(team.id, leadToken, { requestId: `accept-${key}`, action: { type: 'accept', taskId: t.id, attemptId: t.currentAttemptId, goalVersion: 1 } });
+            };
+            const op = async (key: string, sessionId?: string) => {
+                const o = (await read()).operations.find(x => x.status === 'pending')!;
+                const { team: claimed } = await store.actOnTeam(team.id, { accountId }, { requestId: `claim-${key}`, action: { type: 'claim-operation', operationId: o.id, machineId, teamLaunchVersion: 1 } });
+                const claimId = claimed.operations.find(x => x.id === o.id)!.claimId!;
+                await store.actOnTeam(team.id, { accountId }, { requestId: `complete-${key}`, action: { type: 'complete-operation', operationId: o.id, machineId, claimId, ...(sessionId ? { sessionId } : {}) } });
+            };
+
+            // Path 1, the incident: a bound member, idle 4 h after its previous task, gets a new one.
+            const qaSession = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+            const qa = (await store.actOnTeam(team.id, { accountId }, { requestId: 'join-qa', action: { type: 'join', name: 'QA', sessionId: qaSession } })).credential!.botId;
+            await store.actOnTeam(team.id, leadToken, { requestId: 'qa-1', action: { type: 'delegate', goal: 'first', acceptance: ['a'], assigneeBotId: qa } });
+            await finish('qa-1');
+            await store.actOnTeam(team.id, { accountId }, { requestId: 'qa-idle', action: { type: 'session-event', sessionId: qaSession, event: 'idle' } });
+            vi.setSystemTime(Date.now() + H4);
+            await store.actOnTeam(team.id, leadToken, { requestId: 'qa-2', action: { type: 'delegate', goal: 'second', acceptance: ['a'], assigneeBotId: qa } });
+            const before = (await toLead()).length;
+            await tick();
+            expect((await toLead()).length).toBe(before);
+            expect((await store.readTeam(team.id, leadToken)).idleMembers).toEqual([]);
+            vi.setSystemTime(Date.now() + M30 - 60_000); await tick();
+            expect((await toLead()).length).toBe(before);
+            vi.setSystemTime(Date.now() + 60_000); await tick(); await tick();
+            const woken = (await toLead()).slice(before);
+            expect(woken).toHaveLength(1);
+            expect(woken[0].body).toMatch(/^Agent QA: idle for 30 min\./);
+            await finish('qa-2');
+
+            // Path 2: a managed member whose session was stopped is relaunched for its next task.
+            await store.actOnTeam(team.id, leadToken, { requestId: 'w-1', action: { type: 'delegate', goal: 'first', acceptance: ['a'], botName: 'Worker', directory: '/repo' } });
+            const w1 = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+            await op('w-1', w1);
+            const worker = (await read()).bots.find(b => b.name === 'Worker')!.id;
+            await finish('w-1');
+            await store.actOnTeam(team.id, { accountId }, { requestId: 'w-idle', action: { type: 'session-event', sessionId: w1, event: 'idle' } });
+            await op('w-stop');
+            vi.setSystemTime(Date.now() + H4);
+            await store.actOnTeam(team.id, leadToken, { requestId: 'w-2', action: { type: 'delegate', goal: 'second', acceptance: ['a'], assigneeBotId: worker } });
+            const queued = (await toLead()).length;
+            await tick();
+            expect((await toLead()).length).toBe(queued);
+            const w2 = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+            await op('w-2', w2);
+            await tick();
+            expect((await toLead()).length).toBe(queued);
+        } finally { vi.useRealTimers(); }
+    });
     it('withholds schedule messages from daemons without the delivery capability', async () => {
         const { default: fastify } = await import('fastify');
         const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');

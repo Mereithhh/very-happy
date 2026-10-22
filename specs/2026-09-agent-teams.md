@@ -74,6 +74,7 @@ Bot 换 session 时递增 generation，旧 token 撤销、旧 attempt 失效；�
   - 长时间未交：`/v1/teams/schedules/tick`（daemon 每 5 秒、旧 daemon 也调）里 `escalateIdleMembers` 对空闲 ≥30 分钟（`TEAM_IDLE_ESCALATE_MS`）且任务仍 queued/running 的成员给负责人发一条唤醒；`bot.idleEscalatedAt` 记已报的空闲段，同段不重复。函数不抛错，不影响同一 tick 的 schedule 推进。
   - 「仍在空闲」由服务端可见信号判：idle 之后该 bot 收到已投递的团队消息或自己发过团队消息，即视为已醒。Owner 直接在成员会话聊天服务端看不到，可能在 30 分钟时多发一次唤醒，属可接受误报。
   - 发布范围仅 server（wire 只加可选字段/类型）；旧 daemon/CLI 无需升级，旧 server 仍按原样逐条通知。
+  - **B-769b 新工作重新计时。** 事故（10-23 04:34，31956d5d）：QA 上一个任务验收后空闲 220 分钟，派新任务 3 秒后负责人收到「idle for 220 min」。原因：空闲起点只看 `lastEventAt`，`releaseBotSession` 停会话不清它，新任务 queued→spawn 的几秒、或绑定会话新任务消息送达前，上一段空闲被算到新任务头上。现在：新 attempt（delegate / return / handoff / join 重绑）与 spawn 完成都记 `bot.workAssignedAt` 并清 `idleEscalatedAt`；`idleSince` 取 `max(lastEventAt, workAssignedAt)`，无绑定会话的 bot 不算空闲；digest 与 `idleMembers` 只认新工作之后的真实回合结束（新任务尚未送达不算「期间空闲」）。新任务 30 分钟仍未送达/开工才升级一次。
 
 资源只能回收 Teams 自建 worktree/session。先请求停进程并确认退出，再 archive session。worktree 有未提交改动、分支未合并到源 checkout 时保留，cleanup 独立显示失败并可重试；不会因验收成功强删成果。用户关联的既有 Bot/session 不自动销毁。
 
