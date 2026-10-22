@@ -19,7 +19,7 @@ import { authAndSetupMachineIfNeeded } from './ui/auth'
 import packageJson from '../package.json'
 import { z } from 'zod'
 import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './daemon/controlClient'
-import { SYSTEMD_RESTART_HINT } from './daemon/daemonSupervisor'
+import { kickstartLaunchdJob, SYSTEMD_RESTART_HINT } from './daemon/daemonSupervisor'
 import { getLatestDaemonLog } from './ui/logger'
 import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
@@ -679,20 +679,30 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         console.log('Configured relay or CLI version changed; restarting the existing daemon')
         await stopDaemon()
       }
-      // Spawn detached daemon process. B-505: a daemon started from here is
-      // owned by nobody, so it must not inherit a supervisor claim (a wrapper
-      // spawned by a systemd unit carries INVOCATION_ID and the unit's env).
-      const { HAPPY_DAEMON_SUPERVISOR: _supervisor, INVOCATION_ID: _invocation, ...detachedEnv } = process.env;
-      const child = spawnHappyCLI(['daemon', 'start-sync'], {
-        detached: true,
-        stdio: 'ignore',
-        env: detachedEnv
-      });
-      child.unref();
+      // B-770: a launchd-owned daemon goes back to its job — the documented
+      // re-adopt (`daemon stop` exits 0, which KeepAlive.SuccessfulExit=false
+      // leaves down; a plain kickstart starts the wrapper on the installed
+      // CLI). A replacement spawned below would live outside the job. Only if
+      // the job cannot be started does this fall back to the old spawn.
+      const handedToLaunchd = running && !currentDaemonMatches && currentState?.supervisor === 'launchd' && await kickstartLaunchdJob()
+      if (handedToLaunchd) {
+        console.log('Started the launchd job on the installed CLI')
+      } else {
+        // Spawn detached daemon process. B-505: a daemon started from here is
+        // owned by nobody, so it must not inherit a supervisor claim (a wrapper
+        // spawned by a systemd unit carries INVOCATION_ID and the unit's env).
+        const { HAPPY_DAEMON_SUPERVISOR: _supervisor, INVOCATION_ID: _invocation, ...detachedEnv } = process.env;
+        const child = spawnHappyCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore',
+          env: detachedEnv
+        });
+        child.unref();
+      }
 
-      // Wait for daemon to write state file (up to 5 seconds)
+      // Wait for daemon to write state file (5 s; 15 s via launchd, whose wrapper adds a shell and a re-exec)
       let started = false;
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < (handedToLaunchd ? 150 : 50); i++) {
         if (await checkIfDaemonRunningAndCleanupStaleState()) {
           started = true;
           break;

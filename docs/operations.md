@@ -425,12 +425,24 @@ CLI capability with a session started after the upgrade, or explicitly stop and
 resume the target session when interrupting it is acceptable; daemon version
 alone is not evidence that an existing session hot-loaded the new capability.
 
-A CLI upgrade's handover leaves the new daemon outside launchd. `very-happy
-daemon start` (and `vh-update`, which wraps it) hands over by starting the new
-daemon from the calling shell, so `launchctl print gui/$(id -u)/com.mereith.happy-daemon`
-reports `state = not running` afterwards and KeepAlive will not restart the
-daemon if it dies (verified 2026-09-03 upgrading to 0.2.103). Re-adopt it as the
-last step of every upgrade, and check the state, not just `daemon status`:
+Since CLI 0.2.183 (B-770) a launchd-owned daemon hands over through its job.
+The daemon records `supervisor: launchd` only when `launchctl print` shows the
+job's pid is itself or an ancestor (the bin shim); `XPC_SERVICE_NAME` alone is
+never enough, because a daemon that already escaped the job still carries it.
+An automatic update then exits 75 after releasing state/lock/socket, and
+`KeepAlive SuccessfulExit=false` relaunches the wrapper on the installed CLI;
+`very-happy daemon start` (and `vh-update`) stops it and runs a plain
+`launchctl kickstart` instead of spawning a replacement from the shell. Session
+wrappers are spawned detached (own process group), so the job exit leaves them
+running and the new daemon re-adopts them.
+
+Before that, every handover — automatic (B-718) or `daemon start` — spawned the
+new daemon detached and exited 0: the replacement re-parented to PID 1 outside
+the job, `launchctl print` read `state = not running`, and KeepAlive would not
+restart it (verified 2026-09-03 on 0.2.103; Release4 2026-10-22 on both Macs
+after auto-update). The update TO 0.2.183 is still performed by the old code,
+and an already-escaped daemon reads `supervisor: none`, so re-adopt once after
+installing it — and whenever `launchctl print` does not say `running`:
 
 ```bash
 very-happy daemon stop

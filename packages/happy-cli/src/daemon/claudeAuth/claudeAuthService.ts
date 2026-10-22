@@ -32,6 +32,8 @@ export interface ClaudeAuthServiceOptions {
     env?: NodeJS.ProcessEnv;
     platform?: string;
     now?: () => number;
+    /** B-770: resolved once at daemon start with the supervisor (daemonSupervisor.ts), so the two agree. */
+    lineage?: ClaudeAuthLineage;
 }
 
 export class ClaudeAuthService {
@@ -49,6 +51,7 @@ export class ClaudeAuthService {
     constructor(private readonly opts: ClaudeAuthServiceOptions) {
         this.env = opts.env ?? process.env;
         this.platform = opts.platform ?? process.platform;
+        this.lineage = opts.lineage ?? null;
     }
 
     start(): void {

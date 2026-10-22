@@ -273,8 +273,10 @@ Daemon hosts still need their supervised handover: with `latest` in force they
 install by themselves when idle, but confirm the running version and the
 supervisor afterwards (or update them at once). Update mac-office with `vh-update` (repository fallback:
 `bash scripts/update-daemon.sh`) and confirm the running daemon version,
-not only npm metadata. On mac-office, handover starts the replacement outside
-launchd. Complete the existing re-adoption procedure in
+not only npm metadata. On mac-office, a daemon below 0.2.183 hands over outside
+launchd (B-770; from 0.2.183 a launchd-owned daemon hands over through the job,
+state `supervisor: launchd`). Whenever `launchctl print` is not `running` —
+always after the upgrade to 0.2.183 itself — complete the re-adoption procedure in
 [docs/operations.md](../../../docs/operations.md) (search “Re-adopt”), then verify
 launchd is `running`, the daemon has the expected version, and a read-only RPC
 works. Do not use `kickstart -k` against a live same-version daemon: the launcher

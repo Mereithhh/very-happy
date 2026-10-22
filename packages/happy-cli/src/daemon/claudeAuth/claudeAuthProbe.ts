@@ -17,7 +17,7 @@ export type ClaudeAuthStatus = 'ok' | 'not-logged-in' | 'unknown' | 'error' | 'c
 export type ClaudeAuthDiagnosis =
     | 'keychain-empty-item' | 'store-divergence' | 'no-credentials' | 'credentials-rejected'
     | 'sdk-binary-missing' | 'probe-timeout' | 'probe-crash';
-export type ClaudeAuthLineage = 'launchd' | 'inherited-env' | 'other';
+export type ClaudeAuthLineage = 'launchd' | 'systemd' | 'inherited-env' | 'other';
 export type ClaudeCredentialStore = 'auto' | 'file';
 
 export interface ClaudeAuthState {
