@@ -82,7 +82,7 @@ describe('按项目: the project tree', () => {
     expect(shape.slice(0, 9)).toEqual([
       '0|Atlas 支付重构',
       '1|Atlas 研发队',
-      '2|负责人拆分网关并分派',
+      '2|拆分网关并分派', // B-773: 「负责人」 is a prefix beside the title box
       '2|前端-1 · 结算页改造',
       '2|后端-1 · 退款接口迁移',
       '2|测试-1 · 回归用例',
@@ -129,6 +129,17 @@ describe('按项目: the project tree', () => {
     expect(list(el).querySelector('.sb-lead-tag')!.textContent).toBe('负责人');
   });
 
+  it('B-773 (QA5): the 「负责人」 tag sits beside the title box, never inside its ellipsis box', async () => {
+    const el = await mount('crowded', 'project', '/teams/t-atlas');
+    const tag = list(el).querySelector<HTMLElement>('.sb-lead-tag')!;
+    expect(tag.parentElement!.classList.contains('sb-row-title-line')).toBe(true);
+    expect(tag.closest('.sb-row-title')).toBeNull();
+    expect(tag.nextElementSibling!.className).toBe('sb-row-title');
+    expect(tag.nextElementSibling!.textContent).toBe('Coordinate coding agents via Very Happy teams');
+    // Layout (title text ≥ 6em or whole, chips drop or shrink first): CSS pinned in
+    // sidebarTeamRowWiring.test.ts, measured in Chromium by tmp/vh-team-B-773/assert-titles.mjs.
+  });
+
   it('keyboard: ↓ moves, → opens a folded team, ← folds it, ← again steps out to the project', async () => {
     const el = await mount('atlas', 'project', '/');
     const items = () => [...list(el).querySelectorAll<HTMLElement>('[data-tree-item]')];
@@ -169,7 +180,7 @@ describe('按标签 / 最近: conversation lists', () => {
     expect(list(el).querySelector('.sb-tree-project, .sb-team-row, [data-tree-node]')).toBeNull();
     expect(list(el).textContent).not.toContain('Atlas 研发队负责人'); // no team head
     expect(chipOf(el, '排查退款回调超时')).toBe('Atlas 支付重构');
-    expect(chipOf(el, '负责人拆分网关并分派')).toBe('Atlas 研发队');
+    expect(chipOf(el, '拆分网关并分派')).toBe('Atlas 研发队');
     expect(chipOf(el, '正则写法速查')).toBeNull();
     expect(el.querySelector('[data-cap="projects"] .sb-nav-attn')!.textContent).toBe('2');
   });
@@ -182,8 +193,8 @@ describe('按标签 / 最近: conversation lists', () => {
       expect(t).not.toContain('前端-1 · 结算页改造'); // running, not waiting
       expect(t).not.toContain('测试-1 · 回归用例');
       expect(t).not.toContain('调研-1 · 整理报价');
-      expect(t).toContain('负责人拆分网关并分派');
-      expect(t).toContain('负责人评估首页需求');
+      expect(t).toContain('拆分网关并分派');
+      expect(t).toContain('评估首页需求');
       await act(async () => root!.unmount()); root = null; host!.remove();
     }
   });

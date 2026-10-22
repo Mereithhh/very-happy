@@ -375,24 +375,37 @@
   }
 }
 
-/* tag chips share the title line; the title keeps priority and ellipsizes,
- * chips never shrink */
+/* Chips share the title line; the title text comes first. B-773 (QA5): the line
+ * wraps and is clipped to one line high, so a chip that does not fit next to
+ * ≥ 6em of a lead/member title (5em elsewhere — at the default 260px sidebar 6em
+ * would drop every project chip and P0 tag), or the whole title, drops onto the
+ * hidden second line instead of squeezing the title. Chips line up at their smallest (owner chip ~3
+ * characters, tag chips whole); the title then takes the free space first, up to
+ * its own text width, and the owner chip what remains. Every chip keeps its full
+ * name in `title`. */
 .sb-row-title-line {
+  --lead-w: 0px;
+  --title-min: 5em;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-2);
+  column-gap: var(--sp-2);
   min-width: 0;
+  max-height: 1.45em;
+  max-height: 1lh;
+  overflow: hidden;
 }
+/* the line's width, for the chip cap (cqw) and the lead-tag query below */
+.sb-row-text:has(> .sb-row-title-line) { container-type: inline-size; }
 .sb-row-title-line .sb-row-title {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 1000 1 0;
+  min-width: min(var(--title-min), 100% - var(--lead-w));
+  max-width: max-content;
 }
-.sb-row-tags {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
+.sb-row-title-line--team { --title-min: 6em; }
+/* the tag chips wrap one by one */
+.sb-row-tags { display: contents; }
+.sb-row-tags > .vh-tag ~ .vh-tag { margin-left: -4px; }
 
 .sb-loading {
   display: flex;
@@ -742,10 +755,20 @@
 @media (pointer: coarse) { .sb-team-main { min-height: 44px; } }
 
 /* Level 3 — lead (crown + 「负责人」 tag, neutral: --accent stays live-only) and members (名字 · 任务). */
+/* B-773: a fixed prefix outside the title box; --lead-w reserves it (tag + gap) so the
+   title's 6em minimum never pushes the title itself off the line. */
+.sb-row-title-line:has(> .sb-lead-tag) { --lead-w: 56px; }
+/* Too narrow for tag + 6em (a deep tree row at the default 260px sidebar): the crown
+   alone marks the lead; the tag stays for screen readers. */
+@container (max-width: 139px) {
+  .sb-row-title-line:has(> .sb-lead-tag) { --lead-w: 0px; }
+  .sb-row-title-line > .sb-lead-tag { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+}
 .sb-lead-tag {
-  display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 4px;
+  flex: none; max-width: calc(56px - var(--sp-2)); box-sizing: border-box; padding: 0 5px; border-radius: 4px;
   background: var(--fill-soft); color: var(--text-dim);
-  font-size: var(--fs-11); font-weight: 400; line-height: 1.6; vertical-align: 1px;
+  font-size: var(--fs-11); font-weight: 400; line-height: 1.6;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .sb-row-task { color: var(--text-faint); font-weight: 400; }
 /* B-759: an expanded team with only its lead says where members come from. */
@@ -966,10 +989,11 @@
 /* Owner chip (team or project) on a session row in the list lenses: quiet, like the
    shared-owner chip, pushed to the row's end. It gives way before the title does,
    but B-772 (QA4 O4): never below ~3 characters of its name (icon 10 + gap 3 +
-   padding 10 = 23px) — at 22px it read as「📁 r」. */
+   padding 10 = 23px) — at 22px it read as「📁 r」. B-773: it lines up at that
+   minimum (flex-basis) and grows to its name, capped at 40% of the line. */
 .sb-row-project {
   margin-left: auto;
-  flex: 0 1 auto; min-width: calc(3em + 23px); max-width: 40%;
+  flex: 1 1 calc(3em + 23px); min-width: calc(3em + 23px); max-width: max-content;
   display: inline-flex; align-items: center; gap: 3px;
   padding: 0 5px; border-radius: 4px;
   font-size: var(--fs-11); line-height: 1.5;
@@ -978,8 +1002,4 @@
 }
 .sb-row-project > svg { flex: none; }
 /* B-762 review: the name (not the flex box) carries the ellipsis — a flex container never shows one. */
-.sb-row-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* B-762 review: the title comes first — it keeps about 8 CJK characters before an owner chip may shrink it. */
-.sb-row-title-line .sb-row-title:has(~ .sb-row-project) { flex: 1 1 auto; min-width: min(8em, 60%); }
-/* B-772: with tag chips on the same line there is no room for 8em + a readable chip; the title keeps 6. */
-.sb-row-title-line:has(.sb-row-tags) .sb-row-title:has(~ .sb-row-project) { min-width: min(6em, 45%); }
+.sb-row-project-name { min-width: 0; max-width: calc(40cqw - 23px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

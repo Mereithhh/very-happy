@@ -147,14 +147,14 @@ function seed() {
       daemonStateVersion: 1,
     } as unknown as Machine,
   ]);
-  // B-762: `?scene=atlas|solo|fresh` seeds the B-760 prototype's data instead
+  // B-762: `?scene=atlas|solo|fresh|crowded` seeds the B-760 prototype's data instead
   // (src/dev/sidebarTreeScene.ts, shared with SidebarTree.test.tsx);
   // `?lens=project|tag|none` picks the grouping.
   const params = new URLSearchParams(window.location.search);
   const lens = params.get('lens');
   if (lens === 'project' || lens === 'tag' || lens === 'none') storage.getState().applyLocalSettings({ sidebarView: 'list', sidebarGrouping: lens });
   const scene = params.get('scene') as SceneKind | null;
-  if (scene === 'atlas' || scene === 'solo' || scene === 'fresh') {
+  if (scene === 'atlas' || scene === 'solo' || scene === 'fresh' || scene === 'crowded') {
     const data = sidebarTreeScene(scene, now);
     storage.getState().applySessions(data.sessions);
     setTeamNavigationDevOverride(data.teams);
@@ -256,6 +256,8 @@ export function SidebarHarness() {
   if (!ready) return null;
   // B-756: `?page=projects` shows the /projects list beside the sidebar (phone: the list alone).
   const page = new URLSearchParams(window.location.search).get('page');
+  // B-773: `?w=260` sets the desktop pane width (the app's default is 260, its minimum 240).
+  const paneWidth = Number(new URLSearchParams(window.location.search).get('w')) || 320;
   return (
     <div style={{ display: 'flex', height: '100dvh', background: 'var(--bg-0)' }}>
       {/* phone: the real app renders the sidebar full-width (AppShell 'list' mode) */}
@@ -263,7 +265,7 @@ export function SidebarHarness() {
       <div
         className={`sidebar-harness-pane${page ? ' has-page' : ''}`}
         style={{
-          width: 320,
+          width: paneWidth,
           maxWidth: '100vw',
           display: 'flex',
           flexDirection: 'column',

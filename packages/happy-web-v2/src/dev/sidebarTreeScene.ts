@@ -4,11 +4,14 @@
  * one empty) plus 不在项目中 (an old team and loose chats). Shared by the
  * sidebar render tests and the `/dev/sidebar?scene=atlas` harness, so the
  * screenshots and the tests look at the same tree. Names are fictional.
+ * B-773: `crowded` is Atlas with QA5's production shape on the team rows — long
+ * lead/member titles carrying (long) tags — so the lead's 「负责人」 tag, the
+ * tag chips and the owner chip all compete with the title for one line.
  */
 import type { ProjectMemberView, ProjectView, TeamOperation, TeamState } from '@slopus/happy-wire';
 import type { Session } from '@/sync/storageTypes';
 
-export type SceneKind = 'atlas' | 'solo' | 'fresh';
+export type SceneKind = 'atlas' | 'solo' | 'fresh' | 'crowded';
 
 interface FakeOpts { thinking?: boolean; tags?: string[]; permission?: boolean; agoMin?: number }
 
@@ -53,9 +56,14 @@ export function sidebarTreeScene(kind: SceneKind, now = Date.now()): {
     fakeSession('paper', '论文阅读笔记', now, { tags: ['docs'], agoMin: 50 }),
   ];
   if (kind === 'solo') return { sessions: loose, teams: [], projects: [], members: [], unread: [] };
+  const crowded = kind === 'crowded';
   const sessions = [
-    fakeSession('lead', '拆分网关并分派', now, { thinking: true, agoMin: 1 }),
-    fakeSession('fe1', '结算页改造', now, { thinking: true, agoMin: 2 }),
+    crowded
+      ? fakeSession('lead', 'Coordinate coding agents via Very Happy teams', now, { thinking: true, tags: ['teams', 'release-coordination'], agoMin: 1 })
+      : fakeSession('lead', '拆分网关并分派', now, { thinking: true, agoMin: 1 }),
+    crowded
+      ? fakeSession('fe1', '结算页改造：拆分支付表单与风控校验并补回归', now, { thinking: true, tags: ['teams'], agoMin: 2 })
+      : fakeSession('fe1', '结算页改造', now, { thinking: true, agoMin: 2 }),
     fakeSession('be1', '退款接口迁移', now, { permission: true, agoMin: 3 }),
     fakeSession('qa1', '回归用例', now, { agoMin: 9 }),
     fakeSession('timeout', '排查退款回调超时', now, { tags: ['P0'], agoMin: 4 }),
@@ -66,7 +74,7 @@ export function sidebarTreeScene(kind: SceneKind, now = Date.now()): {
     fakeSession('metrics', '周报指标口径', now, { tags: ['docs'], agoMin: 90 }),
     // B-762 review: a long title in a long-named project — the list chip must not eat the title.
     fakeSession('ledger', '排查对账任务在月末批量重跑时的超时与重复入账', now, { agoMin: 120 }),
-    fakeSession('scout-lead', '比较三家供应商', now, { agoMin: 6 }),
+    fakeSession('scout-lead', '比较三家供应商', now, crowded ? { tags: ['vendor-evaluation-2026'], agoMin: 6 } : { agoMin: 6 }),
     fakeSession('scout-1', '整理报价', now, { agoMin: 70 }),
     ...loose,
   ];

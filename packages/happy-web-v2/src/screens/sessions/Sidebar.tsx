@@ -2127,10 +2127,12 @@ function SidebarRow({
           {row.teamRole === 'lead' ? <Crown size={14} /> : row.teamRole === 'member' ? <Bot size={14} /> : !isTerminal ? <MessageSquare size={15} /> : terminalAgent === 'claude' ? <Asterisk size={16} /> : terminalAgent === 'codex' ? <CodeXml size={16} /> : terminalAgent === 'pi' ? <Pi size={16} /> : <TerminalSquare size={16} />}
         </span>
         <span className="sb-row-text">
-          <span className="sb-row-title-line">
-            {/* B-762: the lead carries a 「负责人」 tag; a member reads 「名字 · 任务」 with the task faint. */}
+          <span className={`sb-row-title-line${row.teamRole ? ' sb-row-title-line--team' : ''}`}>
+            {/* B-762: the lead carries a 「负责人」 tag; a member reads 「名字 · 任务」 with the task faint.
+                B-773: the tag is a fixed prefix BESIDE the title box — inside it, the tag ate the
+                ellipsis box and left the title 0px. */}
             {row.teamRole === 'lead'
-              ? <span className="sb-row-title"><span className="sb-lead-tag">{row.teamLabel}</span>{row.title}</span>
+              ? <><span className="sb-lead-tag">{row.teamLabel}</span><span className="sb-row-title">{row.title}</span></>
               : row.teamRole === 'member'
                 ? <span className="sb-row-title">{row.teamLabel}<span className="sb-row-task"> · {row.title}</span></span>
                 : <span className="sb-row-title">{row.teamLabel ? `${row.teamLabel} · ` : ''}{row.title}</span>}
