@@ -14,7 +14,8 @@
  *    Far layers use a lower resolution and a blur baked into their atlas.
  *  - Creatures are small `<pre>` elements moved by transform.
  * Timing rules: ≤ preset fps (cap 30) via rAF + `frameDue`; paused while the tab
- * is hidden or the host is off-screen (IntersectionObserver); under
+ * is hidden, the host is off-screen (IntersectionObserver) or the owner set
+ * pace 0 (`setPace`, B-752: the chat backdrop while scrolling); under
  * prefers-reduced-motion a single still is drawn and no loop runs.
  * Everything browser-shaped comes through `AsciiFieldEnv` so tests can drive it.
  */
@@ -86,6 +87,11 @@ export interface AsciiFieldController {
   /** True while the rAF loop is scheduled. */
   running(): boolean;
   reducedMotion(): boolean;
+  /**
+   * B-752 — frame-rate override: 0 pauses the loop (the last frame stays on
+   * screen), n caps it at n fps, null restores the preset's rate.
+   */
+  setPace(fps: number | null): void;
   stop(): void;
 }
 
@@ -186,6 +192,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   let reduced = reducedQuery?.matches === true;
   let raf: number | null = null;
   let stopped = false;
+  let pace: number | null = null;
   let intersecting = true;
   let width = 0;
   let height = 0;
@@ -212,6 +219,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
     stats,
     running: () => raf !== null,
     reducedMotion: () => reduced,
+    setPace,
     stop,
   };
 
@@ -552,7 +560,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
     raf = null;
     if (stopped) return;
     schedule();
-    if (!frameDue(now, lastTick, spec.fps)) return;
+    if (!frameDue(now, lastTick, pace === null ? spec.fps : Math.min(spec.fps, pace))) return;
     const start = env.now();
     const dt = lastFrameAt ? Math.min(0.1, (now - lastFrameAt) / 1000) : 0;
     lastFrameAt = now;
@@ -570,7 +578,16 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   }
 
   function active() {
-    return !stopped && !reduced && !env.doc.hidden && intersecting;
+    return !stopped && !reduced && !env.doc.hidden && intersecting && pace !== 0;
+  }
+
+  function setPace(fps: number | null) {
+    const next = fps === null ? null : Math.max(0, fps);
+    if (next === pace) return;
+    // Resuming must not jump either (same as visibility).
+    if (next === 0) lastFrameAt = 0;
+    pace = next;
+    schedule();
   }
 
   function schedule() {

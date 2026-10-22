@@ -437,7 +437,7 @@ export const en = {
         },
         // B-720: device-local switch for the animated ASCII backdrops.
         backgroundMotion: 'Background motion',
-        backgroundMotionDescription: 'Animated ASCII depth field behind the empty workspace, sidebar, page headers and the public site on this device. Off shows a plain background. With reduced motion turned on in the system it is always a still frame.',
+        backgroundMotionDescription: 'Animated ASCII depth field behind the empty workspace, conversations (fainter, in the side margins), sidebar, page headers and the public site on this device. Off shows a plain background. With reduced motion turned on in the system it is always a still frame.',
         diffStyle: 'Diff View',
         diffStyleDescription: 'Show diffs as a single column (unified) or side-by-side (split). Split view is web-only.',
         diffStyleOptions: {

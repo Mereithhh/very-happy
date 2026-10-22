@@ -14,11 +14,33 @@
   min-height: 0;
 }
 .sd-body {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+/* B-752: the calm ASCII field sits behind the transcript and does not scroll
+   with it. It is the first positioned child, so the (positioned, z-index auto)
+   transcript paints above it without a new stacking context — fixed popovers
+   inside the chat keep their z-index against the composer and the app. The
+   mask keeps the motion in the side margins: behind the 820px message column
+   only --sd-backdrop-column of the field's ink remains. */
+.sd-body > * { position: relative; }
+.sd-body > .sd-backdrop {
+  --sd-backdrop-column: 30%;
+  --sd-backdrop-half: 410px;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, var(--text) calc(50% - var(--sd-backdrop-half) - 96px), color-mix(in srgb, var(--text) var(--sd-backdrop-column), transparent) calc(50% - var(--sd-backdrop-half) + 16px), color-mix(in srgb, var(--text) var(--sd-backdrop-column), transparent) calc(50% + var(--sd-backdrop-half) - 16px), var(--text) calc(50% + var(--sd-backdrop-half) + 96px));
+  mask-image: linear-gradient(90deg, var(--text) calc(50% - var(--sd-backdrop-half) - 96px), color-mix(in srgb, var(--text) var(--sd-backdrop-column), transparent) calc(50% - var(--sd-backdrop-half) + 16px), color-mix(in srgb, var(--text) var(--sd-backdrop-column), transparent) calc(50% + var(--sd-backdrop-half) - 16px), var(--text) calc(50% + var(--sd-backdrop-half) + 96px));
+}
+/* Phones have no side margins: a little more of the (single, lite) layer stays. */
+@media (max-width: 720px) {
+  .sd-body > .sd-backdrop { --sd-backdrop-column: 50%; }
 }
 .sd-foot {
   flex: none;

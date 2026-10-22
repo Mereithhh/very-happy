@@ -24,11 +24,12 @@ afterEach(() => { act(() => root.unmount()); host.remove(); });
 
 function engineDouble() {
   const stop = vi.fn();
-  const startAsciiField = vi.fn((_host: HTMLElement, _options: { preset: string; mark?: boolean }) => ({ tier: 'full' as const, layers: 3, stats: { frames: 0, lastMs: 0, avgMs: 0, maxMs: 0, layerRefreshes: 0, rows: 0, resizes: 0 }, running: () => true, reducedMotion: () => false, stop }));
+  const setPace = vi.fn();
+  const startAsciiField = vi.fn((_host: HTMLElement, _options: { preset: string; mark?: boolean }) => ({ tier: 'full' as const, layers: 3, stats: { frames: 0, lastMs: 0, avgMs: 0, maxMs: 0, layerRefreshes: 0, rows: 0, resizes: 0 }, running: () => true, reducedMotion: () => false, setPace, stop }));
   const loadEngine = vi.fn(async () => ({ startAsciiField }));
   let run: (() => void) | null = null;
   const defer = vi.fn((fn: () => void) => { run = fn; return () => { run = null; }; });
-  return { stop, startAsciiField, loadEngine, defer, flushIdle: async () => { await act(async () => { run?.(); await Promise.resolve(); }); } };
+  return { stop, setPace, startAsciiField, loadEngine, defer, flushIdle: async () => { await act(async () => { run?.(); await Promise.resolve(); }); } };
 }
 
 describe('B-720 AsciiField wrapper', () => {
@@ -71,6 +72,19 @@ describe('B-720 AsciiField wrapper', () => {
     expect(localStorage.getItem(ASCII_MOTION_STORAGE)).toBeNull();
     await e.flushIdle();
     expect(e.startAsciiField).toHaveBeenCalledTimes(2);
+  });
+
+  it('B-752 pace: applied at start and on change, without restarting the engine', async () => {
+    const e = engineDouble();
+    act(() => root.render(<AsciiField preset="chat" pace={8} loadEngine={e.loadEngine} defer={e.defer} />));
+    await e.flushIdle();
+    expect(e.setPace).toHaveBeenLastCalledWith(8);
+    act(() => root.render(<AsciiField preset="chat" pace={0} loadEngine={e.loadEngine} defer={e.defer} />));
+    expect(e.setPace).toHaveBeenLastCalledWith(0);
+    act(() => root.render(<AsciiField preset="chat" loadEngine={e.loadEngine} defer={e.defer} />));
+    expect(e.setPace).toHaveBeenLastCalledWith(null);
+    expect(e.startAsciiField).toHaveBeenCalledTimes(1);
+    expect(e.stop).not.toHaveBeenCalled();
   });
 
   it('a unmount before the idle callback never starts the engine', async () => {

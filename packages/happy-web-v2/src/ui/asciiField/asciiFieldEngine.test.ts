@@ -193,6 +193,36 @@ describe('B-720 AsciiField engine', () => {
     expect(h.host.querySelectorAll('canvas, pre')).toHaveLength(0);
   });
 
+  it('B-752 setPace: 0 pauses the loop (frame stays), n caps the rate, null restores the preset', () => {
+    const h = harness();
+    controller = startAsciiField(h.host, { preset: 'chat', tier: 'full' }, h.env);
+    expect(controller.layers).toBe(2);
+    h.frames(60); // 1 s at the preset's 20 fps
+    const atPreset = controller.stats.frames;
+    expect(atPreset).toBeGreaterThanOrEqual(18);
+    controller.setPace(0);
+    expect(controller.running()).toBe(false);
+    expect(h.pending()).toBe(0);
+    expect(h.frames(60)).toBe(0);
+    expect(controller.stats.frames).toBe(atPreset);
+    // Planes are not torn down while paused.
+    expect(h.host.querySelectorAll('canvas')).toHaveLength(4);
+    controller.setPace(8);
+    expect(controller.running()).toBe(true);
+    h.frames(120); // 2 s
+    const atEight = controller.stats.frames - atPreset;
+    expect(atEight).toBeLessThanOrEqual(17);
+    expect(atEight).toBeGreaterThanOrEqual(14);
+    controller.setPace(null);
+    const before = controller.stats.frames;
+    h.frames(60);
+    expect(controller.stats.frames - before).toBeGreaterThanOrEqual(18);
+    // A hidden tab still wins over a non-zero pace.
+    h.setHidden(true);
+    controller.setPace(8);
+    expect(controller.running()).toBe(false);
+  });
+
   it('the lite tier (phones / low-end) runs two layers', () => {
     const h = harness();
     controller = startAsciiField(h.host, { preset: 'hero', tier: 'lite' }, h.env);
