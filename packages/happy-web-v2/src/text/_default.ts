@@ -2636,6 +2636,12 @@ export const en = {
                 teamSessions: 'Every session that belongs to a team, including a reused member’s earlier sessions, stays under that team in the sidebar.',
                 fixes: 'Feature tips no longer cover an offline session’s Restore banner, and loading a machine no longer flashes a false “update the CLI” prompt.',
             },
+            oct22b: {
+                title: 'Shared links show assistant replies again',
+                summary: 'A fix to today’s update: links to a shared session now show the assistant’s replies, not just your messages.',
+                share: 'Shared sessions show the assistant’s replies and code blocks again; secrets in them are still shown as [redacted].',
+                teamCards: 'Task previews on /teams cards show plain text instead of raw markdown.',
+            },
             oct22a: {
                 title: 'CLI 0.2.181: teams with projects, auto-updates, harness install, Claude Code 2.1.306',
                 summary: 'Update the CLI on your machines to bring team projects, automatic updates and one-click harness install to them.',

@@ -2777,6 +2777,12 @@ export const zhHans: TranslationStructure = {
                 teamSessions: '属于团队的会话（包括复用成员以前的会话）都留在侧栏的这个团队下面。',
                 fixes: '新手提示不再挡住离线会话的「恢复」；机器信息加载时不再误提示「更新 CLI」。',
             },
+            oct22b: {
+                title: '分享链接重新显示助手回复',
+                summary: '今天更新的一个修复：打开分享的会话链接，现在能看到助手的回复，不再只有你发的消息。',
+                share: '分享的会话重新显示助手回复和代码块，里面的密钥仍然显示为 [redacted]。',
+                teamCards: '/teams 卡片上的任务预览显示纯文本，不再出现原始 markdown。',
+            },
             oct22a: {
                 title: 'CLI 0.2.181：团队即项目、自动升级、一键安装 harness、Claude Code 2.1.306',
                 summary: '把机器上的 CLI 升级一下，团队项目、自动升级和一键安装 harness 才能用。',
