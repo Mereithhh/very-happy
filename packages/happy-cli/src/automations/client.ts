@@ -18,8 +18,8 @@ import { configuration } from '@/configuration';
 import { readCredentialsForConfiguredRelay, readSettings } from '@/persistence';
 
 export class AutomationsRequestError extends Error {
-    constructor(readonly status: number, readonly code: string, readonly runStatus?: string) {
-        super(describeAutomationError(status, code, runStatus));
+    constructor(readonly status: number, readonly code: string, readonly runStatus?: string, readonly invalidFields: string[] = []) {
+        super(describeAutomationError(status, code, runStatus, invalidFields));
     }
 }
 
@@ -30,7 +30,20 @@ export function isAutomationsUnavailable(error: unknown): boolean {
 
 export const AUTOMATIONS_UNAVAILABLE_MESSAGE = 'Automations are not enabled on this server (set VH_AUTOMATIONS_ENABLED=true on the server, or upgrade it).';
 
-function describeAutomationError(status: number, code: string, runStatus?: string): string {
+/**
+ * B-767: field paths from a 400 schema-rejection message (`body/attentionReason Too big: …, body/summary …`;
+ * the relay's error handler drops Fastify's `FST_ERR_VALIDATION` code). Only identifier-shaped paths are
+ * kept, never the message text, so nothing from the request is echoed.
+ */
+export function validationFieldPaths(body: unknown): string[] {
+    const message = (body as { message?: unknown } | null)?.message;
+    if (typeof message !== 'string') return [];
+    const fields = new Set<string>();
+    for (const match of message.matchAll(/(?:^|, )body\/([A-Za-z0-9_./]{1,64}) /g)) fields.add(match[1].replace(/\//g, '.'));
+    return [...fields];
+}
+
+function describeAutomationError(status: number, code: string, runStatus?: string, invalidFields: string[] = []): string {
     if (status === 404 && !code.endsWith('_not_found')) return AUTOMATIONS_UNAVAILABLE_MESSAGE;
     const known: Record<string, string> = {
         automation_not_found: 'No automation with that name or id.',
@@ -53,7 +66,7 @@ function describeAutomationError(status: number, code: string, runStatus?: strin
     };
     if (known[code]) return known[code];
     // Schema rejections carry Fastify's generic `error: 'Bad Request'`; never echo the body.
-    if (status === 400) return 'The server rejected the request (HTTP 400): check the arguments, or the server may expect a newer request shape.';
+    if (status === 400) return `The server rejected the request (HTTP 400${invalidFields.length ? `; invalid: ${invalidFields.join(', ')}` : ''}): check the arguments, or the server may expect a newer request shape.`;
     return `Automations request failed (HTTP ${status}${code ? `, ${code}` : ''}).`;
 }
 
@@ -86,7 +99,7 @@ export function createAutomationsClient(options: AutomationsClientOptions) {
         try { parsed = await response.json(); } catch { parsed = null; }
         if (!response.ok) {
             const code = typeof parsed?.error === 'string' ? parsed.error : '';
-            throw new AutomationsRequestError(response.status, code, typeof parsed?.status === 'string' ? parsed.status : undefined);
+            throw new AutomationsRequestError(response.status, code, typeof parsed?.status === 'string' ? parsed.status : undefined, response.status === 400 ? validationFieldPaths(parsed) : []);
         }
         return parsed as T;
     }

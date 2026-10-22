@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 import {
+    AUTOMATION_ATTENTION_REASON_MAX_CHARS, AUTOMATION_SUMMARY_MAX_CHARS,
     AutomationActionSchema, AutomationConcurrencySchema, AutomationNameSchema, AutomationPrecheckSchema, AutomationTriggerSchema,
     type Automation, type AutomationCreate, type AutomationReport, type AutomationUpdate,
 } from '@slopus/happy-wire';
@@ -60,7 +61,7 @@ export const AUTOMATION_TOOL_SCHEMAS: Record<AutomationToolName, { description: 
     automation_runs: { description: 'List runs, newest first: status, session, summary, error, attention. Filter by automation, status or attention.', readOnly: true, inputSchema: { ...ref, status: z.string().min(1).max(64).optional(), attention: z.boolean().optional().describe('Only runs flagged for a human'), limit: z.number().int().min(1).max(200).optional() } },
     automation_report: {
         description: 'Report the result of an automation run. Without runId it targets the run that STARTED this session (VH_AUTOMATION_RUN_ID); in a continued sticky session always pass the runId named in the latest "[Very Happy automation … run <id>; …]" prompt header. Use status done with a short summary, or failed with the error; set needsAttention when a human must look.',
-        inputSchema: { runId: id.optional(), status: z.enum(['done', 'failed']), summary: z.string().max(4096).optional(), error: z.string().max(4096).optional(), needsAttention: z.boolean().optional(), attentionReason: z.string().max(512).optional() },
+        inputSchema: { runId: id.optional(), status: z.enum(['done', 'failed']), summary: z.string().max(AUTOMATION_SUMMARY_MAX_CHARS).optional(), error: z.string().max(AUTOMATION_SUMMARY_MAX_CHARS).optional(), needsAttention: z.boolean().optional(), attentionReason: z.string().max(AUTOMATION_ATTENTION_REASON_MAX_CHARS).optional() },
     },
     automation_ack: { description: 'Clear the attention flag of a run after a human handled it.', inputSchema: { runId: id } },
 };

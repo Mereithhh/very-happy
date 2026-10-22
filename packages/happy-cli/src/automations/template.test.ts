@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { clipText, describeAction, describeTrigger, formatNow, parseDuration, renderAction, renderTemplate, triggerFromFlags } from './template';
+import { AUTOMATION_ATTENTION_REASON_MAX_CHARS, AUTOMATION_SUMMARY_MAX_CHARS, AutomationReportSchema } from '@slopus/happy-wire';
+import { clipAutomationReport, clipText, describeAction, describeTrigger, formatNow, parseDuration, renderAction, renderTemplate, triggerFromFlags } from './template';
 
 const context = { runId: 'run-1', automationName: 'nightly', now: Date.UTC(2026, 8, 25, 1, 2, 3) };
 
@@ -57,5 +58,44 @@ describe('durations and triggers', () => {
         expect(describeTrigger({ kind: 'cron', expr: '0 9 * * *', tz: 'UTC' })).toBe('cron 0 9 * * * (UTC)');
         expect(describeAction({ kind: 'spawn', agent: 'codex', directory: '/r', prompt: 'p', sticky: { key: '{{payload.id}}' } })).toBe('spawn codex in /r (sticky {{payload.id}})');
         expect(describeAction({ kind: 'script', command: ['a', 'b'] })).toBe('script a b');
+    });
+
+    it('B-767: clipText never splits a surrogate pair and counts the marker toward the limit', () => {
+        const emoji = '😀'; // 2 UTF-16 units
+        expect(clipText('ab😀cd', 3)).toBe('ab');
+        expect(clipText('ab😀cd', 4)).toBe('ab😀');
+        expect(clipText('ab😀cd', 3, 'tail')).toBe('cd');
+        expect(clipText('ab😀cd', 4, 'tail')).toBe('😀cd');
+        expect(clipText('ab😀cd', 4, 'head', '…')).toBe('ab…');
+        expect(clipText('ab😀cd', 4, 'tail', '…')).toBe('…cd');
+        expect(clipText(emoji.repeat(5), 6, 'head', '…')).toBe(`${emoji.repeat(2)}…`);
+        expect(clipText('ab', 2, 'head', '…')).toBe('ab');
+    });
+
+    const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    for (const [label, unit] of [['ASCII', 'a'], ['CJK', '漂'], ['emoji', '😀'], ['mixed', '漂移a😀']] as const) {
+        it(`B-767: clips a 600-char attention and 5000-char summary/error (${label}) so the server schema accepts them`, () => {
+            const long = (n: number) => unit.repeat(Math.ceil(n / unit.length)).slice(0, n);
+            const input = { status: 'done' as const, needsAttention: true, summary: long(5000), error: long(5000), attentionReason: long(600) };
+            expect(AutomationReportSchema.safeParse(input).success).toBe(false);
+            const { report, clipped } = clipAutomationReport(input);
+            expect(AutomationReportSchema.safeParse(report).success).toBe(true);
+            expect(clipped.map(c => [c.field, c.from])).toEqual([['summary', 5000], ['error', 5000], ['attentionReason', 600]]);
+            for (const c of clipped) {
+                const value = report[c.field]!;
+                expect(value.length).toBe(c.to);
+                expect(value.length).toBeLessThanOrEqual(c.field === 'attentionReason' ? AUTOMATION_ATTENTION_REASON_MAX_CHARS : AUTOMATION_SUMMARY_MAX_CHARS);
+                expect(value.length).toBeGreaterThanOrEqual((c.field === 'attentionReason' ? AUTOMATION_ATTENTION_REASON_MAX_CHARS : AUTOMATION_SUMMARY_MAX_CHARS) - 1);
+                expect(value.endsWith('…')).toBe(true);
+                expect(lone.test(value)).toBe(false);
+                expect(input[c.field].startsWith(value.slice(0, -1))).toBe(true);
+            }
+            expect(report.needsAttention).toBe(true);
+        });
+    }
+
+    it('B-767: leaves in-limit and absent report fields untouched', () => {
+        const input = { status: 'failed' as const, summary: 'x'.repeat(AUTOMATION_SUMMARY_MAX_CHARS), error: null, attentionReason: '😀'.repeat(256) };
+        expect(clipAutomationReport(input)).toEqual({ report: input, clipped: [] });
     });
 });
