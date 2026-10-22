@@ -14,6 +14,8 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { Button, EmptyState, OrbitLoader, Spinner, useToast } from '@/ui';
 import { MessageView } from './MessageView';
 import { BoardPointers } from './board/BoardPointer';
+import { pointedMessageIds } from './board/boardModel';
+import { useBoardItems } from '@/sync/attentionStore';
 import { ToolGroupView } from './ToolGroupView';
 import { MarkdownPathProvider } from './Markdown';
 import { PermissionPointer } from './PermissionCard';
@@ -176,9 +178,14 @@ export function ChatList({
     const leadView = useLeadView(sessionId);
     const origin = useMemo(() => (m: Parameters<typeof turnOrigin>[0]) => turnOrigin(m, leadTeam), [leadTeam]);
     const answers = useMemo(() => (leadTeam ? ownerAnswers(shownChronological, origin) : null), [leadTeam, shownChronological, origin]);
+    // B-766: a reply that put something on the 汇报板 keeps its pointer visible in the filtered view.
+    const boardItems = useBoardItems(sessionId);
+    const pointed = useMemo(() => pointedMessageIds(boardItems ?? []), [boardItems]);
     const entries = useMemo(
-        () => (leadTeam && leadView === 'owner' ? leadViewEntries(rows, turnOpenerIds(shownChronological), origin) : null),
-        [leadTeam, leadView, rows, shownChronological, origin],
+        () => (leadTeam && leadView === 'owner'
+            ? leadViewEntries(rows, turnOpenerIds(shownChronological), origin, (row) => row.type === 'message' && pointed.has(row.message.id))
+            : null),
+        [leadTeam, leadView, rows, shownChronological, origin, pointed],
     );
     const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set());
     const toggleFold = (key: string) => setOpenFolds((prev) => {

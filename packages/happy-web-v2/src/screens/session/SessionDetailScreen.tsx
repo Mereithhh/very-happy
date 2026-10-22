@@ -14,7 +14,7 @@ import { useMediaQuery } from '@/app/useMediaQuery';
 import { useFilesPanelWidth } from '@/screens/files/useFilesPanelWidth';
 import { useTranslation } from '@/i18n/useTranslation';
 import { EmptyState, Button, OrbitLoader, toast } from '@/ui';
-import { SessionTeamContext } from './SessionTeamContext';
+import { LeadViewStripToggle, SessionTeamContext } from './SessionTeamContext';
 import { ChatHeader } from './ChatHeader';
 import { ChatList } from './ChatList';
 import { AgentInput, type PendingComposer } from './AgentInput';
@@ -323,7 +323,7 @@ export function SessionDetailScreen() {
                         onClick={() => boardPhone ? setBoardSheet((v) => !v) : boardOpen ? setPanel(null, true) : setPanel('board', panelOpen)} /> : undefined}
                 />}
                 {/* B-766: phones get the 汇报板 as a summary strip + top sheet under the header. */}
-                {boardAllowed && boardPhone && <BoardMobile key={`board:${id}`} sessionId={id} open={boardSheet} onOpenChange={setBoardSheet} />}
+                {boardAllowed && boardPhone && <BoardMobile key={`board:${id}`} sessionId={id} open={boardSheet} onOpenChange={setBoardSheet} trailing={<LeadViewStripToggle sessionId={id} />} />}
                 {session && <SessionTeamContext sessionId={id} />}
                 {mirror && <MirrorBanner sessionId={id} />}
                 {/* B-619: whose session this is and what I may do here. */}

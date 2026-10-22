@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AttentionItem } from '@slopus/happy-wire';
-import { sessionHasBoard, boardCounts, boardGroup, buildBoard, followUpQuote, isUnread, itemStatus, pointersAt, repliesTo, resolveAction, RECENT_ANSWERED } from './boardModel';
+import { pointedMessageIds, sessionHasBoard, boardCounts, boardGroup, buildBoard, followUpQuote, isUnread, itemStatus, pointersAt, repliesTo, resolveAction, RECENT_ANSWERED } from './boardModel';
 
 let n = 0;
 function item(over: Partial<AttentionItem>): AttentionItem {
@@ -123,5 +123,16 @@ describe('sessionHasBoard / W0 fields', () => {
     it('an unknown kind from a newer server lands in reports, an unknown state is not live', () => {
         expect(boardGroup(item({ kind: 'future-kind' }))).toBe('report');
         expect(buildBoard([item({ kind: 'report', state: 'future-state' })], 'open')[2].items).toEqual([]);
+    });
+});
+
+describe('pointedMessageIds', () => {
+    it('agent-side anchors only — those rows stay unfolded in 「只看我和负责人」', () => {
+        const ids = pointedMessageIds([
+            item({ kind: 'decision', needsOwner: true, anchor: { messageId: 'm1' } }),
+            item({ kind: 'question', source: 'owner', anchor: { localId: 'l1', messageId: 'm2' } }),
+            item({ kind: 'report', anchor: { localId: 'l3' } }),
+        ]);
+        expect([...ids]).toEqual(['m1']);
     });
 });

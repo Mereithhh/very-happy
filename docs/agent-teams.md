@@ -74,6 +74,42 @@ members' conversations have no switch. Rules: `screens/session/leadView.ts`.
 
 ![Just me & the lead: member and system runs folded, Answered ↗ jump](screenshots/b766-lead-view/desktop-1440x900-light-answered-jump.png)
 
+### Briefing (汇报板)
+
+The lead's conversation also has a **Briefing** (「汇报板」): one fixed place for
+what is waiting on you, so a decision is not re-posted in the transcript every
+time it comes up. Open it with the board button in the session header (its
+badge counts only what waits on you); on a wide screen it is a tab in the right
+panel (`?panel=board`), on a phone a one-line summary under the header —
+*Needs you 2 · Open 2 · New 1* — that drops the board down from the top, with
+the *All | Me & lead* switch at the end of the same row.
+
+- **Needs you** — decisions (pick an option to decide), to-dos, and blocks the
+  lead raised with `request_human`. An item marked *Auto-detected* was drafted
+  from the lead's text without the lead posting it; it still counts as waiting.
+- **You asked** — every message you sent the lead, as a question or a request,
+  with its state (*Unanswered*, *In progress*, *Answered* / *Working*, *Done*)
+  and the lead's first reply and answer. Answered ones stay for the latest two.
+- **For you** — the lead's reports and answers, and messages you pinned.
+
+**Active | Handled** switches between what is still open and what is settled
+(with the lead's note when the lead closed it). *Show in conversation* jumps to
+the message an item came from and tints it; *Follow up* quotes the item into the
+composer. Picking an option also sends the choice as your message
+(「［汇报板 · 决定］… → B. …」), so the lead gets it as a normal turn. Where the
+lead posted an item, the transcript keeps a one-line *On Briefing · Decide*
+pointer (also in *Just me & the lead*); *Briefing ›* opens the item.
+
+The Briefing is stored by the server in plain text (same tier as teams and
+projects) and appears only when the server enables it
+(`VH_OWNER_BOARD_ENABLED`, see [configuration](configuration.md)) and the
+conversation has items or runs a CLI with the board tools. Contract:
+[owner briefing spec](../specs/2026-10-owner-briefing.md); Web rules:
+`screens/session/board/boardModel.ts`.
+
+![Briefing: decision expanded in the right panel, On Briefing pointers in the transcript](screenshots/b766-briefing/desktop-1440x900-light.png)
+![Briefing on a phone: summary strip and the board dropped from the top](screenshots/b766-briefing/phone-390x844-light-sheet.png)
+
 In the sidebar's **By project** tree a team sits inside its project, beside the
 project's own sessions (teams outside every project are under **Not in a
 project**). Select a team's name (or press Enter) to open its team page — goal,

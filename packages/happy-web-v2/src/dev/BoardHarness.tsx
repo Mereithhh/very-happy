@@ -11,6 +11,8 @@ import type { Session } from '@/sync/storageTypes';
 import { SessionDetailScreen } from '@/screens/session/SessionDetailScreen';
 import { setCurrentAuth } from '@/auth/AuthContext';
 import { sync } from '@/sync/sync';
+import { setTeamNavigationDevOverride } from '@/screens/sessions/useTeamNavigation';
+import { buildLeadFixture } from './leadSessionFixture';
 import { useAttentionStore } from '@/sync/attentionStore';
 import { ATTENTION_SESSION_CAPABILITY, type AttentionItem } from '@slopus/happy-wire';
 import '@/screens/session/session.css';
@@ -157,8 +159,11 @@ export function BoardHarness() {
             ((window as unknown as { __boardSends?: unknown[] }).__boardSends ??= []).push({ sid, text, localId: opts?.localId });
             return opts?.localId;
         }) as typeof sync.sendMessage;
+        // This session is the team lead (B-1's 「只看我和负责人」 toggle; on phones it sits in the board strip).
+        const team = buildLeadFixture({ now }).team;
+        setTeamNavigationDevOverride([{ ...team, bots: team.bots.map((b) => (b.root ? { ...b, sessionId: SESSION_ID } : b)) }]);
         setReady(true);
-        return () => { sync.sendMessage = realSend; restoreFetch(); useAttentionStore.getState().clear(SESSION_ID); };
+        return () => { setTeamNavigationDevOverride(null); sync.sendMessage = realSend; restoreFetch(); useAttentionStore.getState().clear(SESSION_ID); };
     }, []);
     return ready ? <SessionDetailScreen /> : null;
 }

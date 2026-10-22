@@ -6,12 +6,17 @@ const read = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf
 // B-766 B-1: the lead view is wired only into the team LEAD's conversation.
 describe('lead view wiring', () => {
     it('offers the switch only on the lead (root) member’s session', () => {
-        expect(read('./SessionTeamContext.tsx')).toContain('toggle={membership.bot.root ? <LeadViewToggle sessionId={sessionId} /> : undefined}');
+        const ctx = read('./SessionTeamContext.tsx');
+        expect(ctx).toContain('toggle={membership.bot.root && !inStrip ? <LeadViewToggle sessionId={sessionId} /> : undefined}');
+        // B-766 W-1 / D6: on a phone with a 汇报板 the compact toggle moves into the board strip (lead only).
+        expect(ctx).toContain('const inStrip = phone && hasBoard;');
+        expect(ctx).toContain('return teamSessionMembership(teams).get(sessionId)?.bot.root ? <LeadViewToggle sessionId={sessionId} compact /> : null;');
+        expect(read('./SessionDetailScreen.tsx')).toContain('trailing={<LeadViewStripToggle sessionId={id} />}');
     });
     it('folds only a lead session, and only in 「只看我和负责人」', () => {
         const chat = read('./ChatList.tsx');
         expect(chat).toContain('return membership?.bot.root ? membership.team : undefined;');
-        expect(chat).toContain("(leadTeam && leadView === 'owner' ? leadViewEntries(rows, turnOpenerIds(shownChronological), origin) : null)");
+        expect(chat).toContain("(leadTeam && leadView === 'owner'\n            ? leadViewEntries(rows, turnOpenerIds(shownChronological), origin, (row) => row.type === 'message' && pointed.has(row.message.id))\n            : null)");
         // Follow / unseen badge read the keys on screen.
         expect(chat).toContain('(entries ? leadViewKeys(entries, openFolds) : rows.map((row) => row.key))');
     });

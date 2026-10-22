@@ -141,3 +141,10 @@ export function followUpQuote(item: AttentionItem, prefix: string): string {
 export function sessionHasBoard(items: readonly AttentionItem[] | undefined, capabilities: readonly string[] | undefined): boolean {
     return !!items && (items.length > 0 || capabilities?.includes(ATTENTION_SESSION_CAPABILITY) === true);
 }
+
+/** Transcript messages carrying a 「已上板」 pointer — B-1's 「只看我和负责人」 keeps them out of folds. */
+export function pointedMessageIds(items: readonly AttentionItem[]): ReadonlySet<string> {
+    const out = new Set<string>();
+    for (const i of items) if (i.source !== 'owner' && i.anchor?.messageId) out.add(i.anchor.messageId);
+    return out;
+}

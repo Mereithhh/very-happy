@@ -48,7 +48,8 @@ export function BoardList({ sessionId, tab, copy, onLeave }: {
             const a = item.anchor;
             if (!a) return;
             onLeave?.();
-            requestChatJump(sessionId, { terms: [], messageId: a.messageId, localId: a.localId, snippet: a.snippet });
+            // Same landing as 「已答 ↗」 (B-1): data-message-id, else the turn prompt; `flash` tints it.
+            requestChatJump(sessionId, { terms: [], messageId: a.messageId ?? undefined, localId: a.localId ?? undefined, flash: true });
         },
         onFollowUp: (item) => {
             onLeave?.();

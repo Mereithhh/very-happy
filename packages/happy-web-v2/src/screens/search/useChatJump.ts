@@ -82,19 +82,11 @@ export function locateJumpTarget(
     return el ? { el, scope: prompt ? [...textNodesBetween(root, null, null).filter((n) => prompt.contains(n)), ...scope] : scope } : null;
 }
 
-/** No terms (a 汇报板 jump, B-766): the whole landed message is painted. */
 function paintHighlights(nodes: readonly Text[], terms: readonly string[]): () => void {
     const hl = highlightRegistry();
-    if (!hl) return () => {};
+    if (!hl || terms.length === 0) return () => {};
     const ranges: Range[] = [];
     for (const node of nodes) {
-        if (terms.length === 0) {
-            if (ranges.length >= MAX_HIGHLIGHT_RANGES) break;
-            const r = document.createRange();
-            r.selectNodeContents(node);
-            ranges.push(r);
-            continue;
-        }
         const lower = (node.nodeValue ?? '').toLowerCase();
         for (const term of terms) {
             let at = lower.indexOf(term);
