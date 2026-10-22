@@ -246,10 +246,8 @@ a.pj-list-main:focus-visible { outline: none; box-shadow: var(--focus-ring); bor
 .pj-list-actions { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .pj-badge--inline { grid-area: auto; justify-self: auto; flex-shrink: 0; }
 
-.pj-folder-form { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
-.pj-folder-form > .pj-folder-machine { flex: 1 1 180px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.pj-folder-form > .pj-grow { flex: 2 1 260px; min-width: 0; }
-.pj-folder-form > .pj-form-foot { align-self: flex-end; margin-left: auto; padding-bottom: 2px; }
+.pj-folder-form { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.pj-folder-form > .pj-folder-picker { max-width: 560px; }
 /* fields as compact as the md Combobox beside them (36px); coarse keeps 16px / 44px */
 .pj-settings-page .vh-input { padding: 7px 0; font-size: var(--fs-13); }
 .pj-list-row > .pj-folder-form { padding: 6px 0; }

@@ -6,12 +6,10 @@ import { applyLocalMembership, projectsApi, ProjectsApiError, refreshProjects, u
 import { useAllMachines, useAllSessions } from '@/sync/storage';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { getSessionName } from '@/utils/sessionUtils';
-import { machineLabel } from '@/utils/machineUtils';
 import { Modal } from '@/modal';
 import { toast } from '@/ui/Toast';
 import { Button } from '@/ui/Button';
 import { Input } from '@/ui/Input';
-import { Combobox } from '@/ui/Combobox';
 import { Segmented } from '@/ui/Segmented';
 import { ActionDropdownMenu } from '@/ui/Menu';
 import { Markdown } from '@/screens/session/Markdown';
@@ -19,6 +17,11 @@ import { linkableTeams } from './projectChoice';
 import { utf8Bytes, INSTRUCTIONS_MAX_BYTES } from './projectPage';
 import { addFolder, basicsPatch, canRemoveMember, folderError, makePrimary, projectSettingsPolicy, removeFolder, updateFolder, PROJECT_SETTINGS_SECTIONS, type FolderDraft } from './projectSettings';
 import { useProjectCopy, type ProjectCopy } from './projectCopy';
+import { ProjectFolderPicker } from './ProjectFolderPicker';
+import { expandHome, folderProblem, resolveProjectFolderDraft, type ProjectFolderDraft } from './projectFolderDraft';
+import { machineFsMkdir } from '@/sync/fsOps';
+import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
+import { useTranslation } from '@/i18n/useTranslation';
 import { WorktreeFolderNotice } from './WorktreeFolderNotice';
 import './projects.css';
 
@@ -54,7 +57,7 @@ export function ProjectSettingsScreen() {
     if (!ready || !(PROJECT_SETTINGS_SECTIONS as readonly string[]).includes(section)) return;
     document.getElementById(`pj-settings-${section}`)?.scrollIntoView({ block: 'start' });
     // B-728 (UI-P1-12): the composer's「添加目录」lands on the path field.
-    if (section === 'folders' && detail?.project.folders.length === 0) document.getElementById(FOLDER_PATH_ID)?.focus();
+    if (section === 'folders' && detail?.project.folders.length === 0) document.querySelector<HTMLInputElement>(FOLDER_ADD_SELECTOR)?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, location.hash]);
 
@@ -207,31 +210,48 @@ export function InstructionsEditor({ detail, c, editable, onChanged }: { detail:
 
 // ─── 目录 ────────────────────────────────────────────────────────────────
 
-export const FOLDER_PATH_ID = 'pj-folder-path';
+/** The add-folder path field (deep link `#folders` focuses it on a project without folders). */
+export const FOLDER_ADD_SELECTOR = '#pj-settings-folders .pj-folder-add .pj-folder-picker input';
 
+/**
+ * B-757 + B-755: one folder form — B-755's ProjectFolderPicker (an existing
+ * folder, or a new working folder the daemon creates; team worktrees refused)
+ * plus the project-level rules (no duplicate on the same machine, the 20-folder
+ * limit) checked on the resolved path.
+ */
 function FolderForm({ c, initial, folders, index, busy, onSubmit, onCancel }: {
   c: ProjectCopy; initial: FolderDraft; folders: ProjectView['folders']; index?: number; busy: boolean;
-  onSubmit: (draft: FolderDraft) => void; onCancel?: () => void;
+  onSubmit: (draft: FolderDraft) => Promise<boolean>; onCancel?: () => void;
 }) {
+  const zh = useTranslation().lang.startsWith('zh');
   const machines = useAllMachines({ includeOffline: true });
-  const [draft, setDraft] = useState(initial);
-  const [touched, setTouched] = useState(false);
-  const machineLabelId = useId();
-  const error = folderError(folders, draft, index);
-  // An empty field is not an error until the user tries to submit.
-  const shown = touched || (error !== 'empty' && error !== 'machine') ? error : null;
+  const [draft, setDraft] = useState<ProjectFolderDraft>({ machineId: initial.machineId, mode: 'existing', path: initial.path, gitInit: true });
+  const [tried, setTried] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const machine = machines.find((m) => m.id === draft.machineId);
+  const problem = folderProblem(draft, machine, !!machine && isMachineOnline(machine));
+  const clash = draft.mode === 'existing' ? folderError(folders, { machineId: draft.machineId, path: expandHome(draft.path, machine?.metadata?.homeDir) }, index) : null;
+  const shownClash = clash === 'duplicate' || clash === 'limit' ? clash : null;
+  const submit = async () => {
+    setTried(true); setNote(null);
+    if (problem || shownClash || resolving || busy) return;
+    setResolving(true);
+    try {
+      const resolved = await resolveProjectFolderDraft(draft, machine?.metadata?.homeDir, machineFsMkdir);
+      if (!resolved.ok) { setNote(resolved.code === 'exists' ? c.folderExists : `${c.failed} (${resolved.code})`); if (resolved.code === 'exists') setDraft((d) => ({ ...d, mode: 'existing' })); return; }
+      const after = folderError(folders, resolved.folder, index);
+      if (after === 'duplicate' || after === 'limit') { setNote(c.folderErr[after]); return; }
+      await onSubmit(resolved.folder);
+    } finally { setResolving(false); }
+  };
   return (
-    <form className="pj-folder-form" onSubmit={(e) => { e.preventDefault(); setTouched(true); if (!error) onSubmit(draft); }}>
-      <div className="pj-field pj-folder-machine">
-        <span id={machineLabelId} className="vh-field__label">{c.machine}</span>
-        <Combobox size="md" labelledBy={machineLabelId} label={c.machine} value={draft.machineId} onChange={(machineId) => setDraft({ ...draft, machineId })}
-          options={machines.map((m) => ({ value: m.id, label: machineLabel(m) }))} />
-      </div>
-      <Input id={index === undefined ? FOLDER_PATH_ID : undefined} className="pj-grow" label={c.path} value={draft.path} placeholder="/home/me/code/repo" spellCheck={false} autoCapitalize="off"
-        onChange={(e) => setDraft({ ...draft, path: e.target.value })} error={shown ? c.folderErr[shown] : null} />
+    <form className={`pj-folder-form${index === undefined ? ' pj-folder-add' : ''}`} onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+      <ProjectFolderPicker value={draft} onChange={(next) => { setNote(null); setDraft(next); }} zh={zh} showProblem={tried} />
+      {(shownClash || note) && <p className="pj-folder-problem" role="alert">{note ?? c.folderErr[shownClash!]}</p>}
       <div className="pj-form-foot">
         {onCancel && <Button variant="ghost" size="sm" onClick={onCancel}>{c.cancel}</Button>}
-        <Button type="submit" variant={index === undefined ? 'secondary' : 'primary'} size="sm" loading={busy} leftIcon={index === undefined ? <Plus size={14} /> : undefined}>{index === undefined ? c.addFolder : c.save}</Button>
+        <Button type="submit" variant={index === undefined ? 'secondary' : 'primary'} size="sm" loading={busy || resolving} leftIcon={index === undefined ? <Plus size={14} /> : undefined}>{index === undefined ? c.addFolder : c.save}</Button>
       </div>
     </form>
   );
@@ -257,7 +277,7 @@ function FoldersSection({ project, c, editable, onChanged }: SectionProps) {
           <li key={`${f.machineId}:${f.path}`} className="pj-list-row" data-testid="project-folder">
             {editing === i ? (
               <FolderForm c={c} folders={folders} index={i} initial={{ machineId: f.machineId, path: f.path }} busy={busy === `edit:${i}`}
-                onCancel={() => setEditing(null)} onSubmit={async (draft) => { if (await save(`edit:${i}`, updateFolder(folders, i, draft))) setEditing(null); }} />
+                onCancel={() => setEditing(null)} onSubmit={async (draft) => { const ok = await save(`edit:${i}`, updateFolder(folders, i, draft)); if (ok) setEditing(null); return ok; }} />
             ) : (
               <>
                 <FolderOpen size={15} aria-hidden className="pj-list-icon" />
@@ -276,7 +296,7 @@ function FoldersSection({ project, c, editable, onChanged }: SectionProps) {
       </ul>
       {editable && folders.length < PROJECT_LIMITS.folders && (
         <FolderForm key={addKey} c={c} folders={folders} initial={{ machineId: folders[0]?.machineId ?? machines[0]?.id ?? '', path: '' }} busy={busy === 'add'}
-          onSubmit={async (draft) => { if (await save('add', addFolder(folders, draft))) setAddKey((k) => k + 1); }} />
+          onSubmit={async (draft) => { const ok = await save('add', addFolder(folders, draft)); if (ok) setAddKey((k) => k + 1); return ok; }} />
       )}
     </section>
   );

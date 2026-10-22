@@ -27,14 +27,16 @@ vi.mock('@/sync/projects', () => {
 vi.mock('@/sync/storage', () => ({
   useAllMachines: () => [{ id: 'm1', metadata: { displayName: 'dev-sg' } }, { id: 'm2', metadata: { displayName: 'mac' } }],
   useAllSessions: () => [{ id: 's1', metadata: { summary: { text: 'Explicit one' } } }],
+  useSetting: () => [],
 }));
+vi.mock('@/sync/fsOps', () => ({ machineFsMkdir: vi.fn() }));
 vi.mock('@/screens/sessions/useTeamNavigation', () => ({
   useTeamNavigation: () => [{ id: 't1', name: 'Core team' }, { id: 't2', name: 'Spare team' }],
 }));
 vi.mock('@/modal', () => ({ Modal: { confirm } }));
 vi.mock('@/ui/Toast', () => ({ toast: { error: vi.fn(), success: vi.fn(), show: vi.fn() } }));
 vi.mock('@/screens/session/Markdown', () => ({ Markdown: ({ text }: { text: string }) => <div data-md>{text}</div> }));
-vi.mock('@/utils/machineUtils', () => ({ machineLabel: (m: { id: string; metadata?: { displayName?: string } }) => m?.metadata?.displayName ?? m?.id }));
+vi.mock('@/utils/machineUtils', () => ({ isMachineOnline: () => true, machineLabel: (m: { id: string; metadata?: { displayName?: string } }) => m?.metadata?.displayName ?? m?.id }));
 vi.mock('@/utils/sessionUtils', () => ({ getSessionName: (s: { metadata?: { summary?: { text?: string } } }) => s.metadata?.summary?.text ?? '?' }));
 
 const { ProjectSettingsScreen } = await import('./ProjectSettingsScreen');
@@ -147,7 +149,7 @@ describe('B-757 project settings page', () => {
     const folders = section('folders');
     expect($$('[data-testid=project-folder]').map((r) => r.textContent)).toEqual([expect.stringContaining('/code/alpha'), expect.stringContaining('/code/alpha-mac')]);
     // add: a duplicate is refused inline, a new path is written
-    const addPath = folders.querySelector<HTMLInputElement>('#pj-folder-path')!;
+    const addPath = folders.querySelector<HTMLInputElement>('.pj-folder-add .pj-folder-picker input')!;
     await act(async () => { type(addPath, '/code/alpha/'); });
     expect(folders.textContent).toContain('This machine already has this folder');
     await click(button(folders, 'Add folder'));
@@ -159,7 +161,7 @@ describe('B-757 project settings page', () => {
     ] });
     // edit the second folder's path
     await click(button($$('[data-testid=project-folder]')[1], 'Edit'));
-    const editPath = $$('[data-testid=project-folder]')[1].querySelector<HTMLInputElement>('input')!;
+    const editPath = $$('[data-testid=project-folder]')[1].querySelector<HTMLInputElement>('.pj-folder-picker input')!;
     await act(async () => { type(editPath, '/code/alpha-2'); });
     await click(button($$('[data-testid=project-folder]')[1], 'Save'));
     expect(api.update).toHaveBeenLastCalledWith('p1', { folders: [
@@ -236,14 +238,14 @@ describe('B-757 project settings page', () => {
     const notice = section('folders').querySelector('[data-testid=project-worktree-folder]')!;
     expect(notice.textContent).toContain(wt);
     expect(button(notice, 'Open settings')).toBeUndefined();
-    await act(async () => { type(section('folders').querySelector<HTMLInputElement>('#pj-folder-path')!, `${wt}/web`); });
-    expect(section('folders').textContent).toContain('temporary worktree; use the repository path');
+    await act(async () => { type(section('folders').querySelector<HTMLInputElement>('.pj-folder-add .pj-folder-picker input')!, `${wt}/web`); });
+    expect(section('folders').textContent).toContain('temporary worktree — choose the repository');
     await click(button(section('folders'), 'Add folder'));
     expect(api.update).not.toHaveBeenCalled();
   });
 
   it('#folders on a project without folders focuses the path field', async () => {
     await render(detail({ folders: [] }), '/projects/p1/settings#folders');
-    expect(document.activeElement?.id).toBe('pj-folder-path');
+    expect(document.activeElement?.closest('.pj-folder-add .pj-folder-picker')).not.toBeNull();
   });
 });

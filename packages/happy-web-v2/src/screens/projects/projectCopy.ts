@@ -28,7 +28,7 @@ export function useProjectCopy() {
     teamsHint: '关联的团队里，负责人和成员都属于这个项目，读同一份说明和记录。', detachTitle: '解除关联？', detachBody: (name: string) => `团队「${name}」的成员会离开这个项目，团队本身不受影响。`,
     sessions: '成员会话', sessionsHint: '属于这个项目的会话。团队成员跟随团队：要移出请解除关联对应团队。', followsTeam: '跟随团队', removeMemberTitle: '从项目移出？', removeMemberBody: (title: string) => `「${title}」将不再属于这个项目，下一轮起不再带项目说明。`,
     danger: '危险区', archiveHint: '归档后项目从侧栏和选择器里隐藏，设置变为只读，可随时取消归档。', archiveConfirm: '归档项目？成员会话保留，只是不再显示在项目下。', deleteHint: '删除后无法恢复。会话不会被删除，只是不再属于这个项目。',
-    nameRequired: '填写名称', archivedNote: '项目已归档：设置只读。在危险区取消归档后可编辑。', open: '打开',
+    nameRequired: '填写名称', folderExists: '目录已存在，已切到「选择已有目录」，确认后再添加', archivedNote: '项目已归档：设置只读。在危险区取消归档后可编辑。', open: '打开',
   } : {
     back: 'Sessions', overview: 'Overview', context: 'Context', settings: 'Project settings', composerPlaceholder: (name: string) => `Start a session in ${name}…`, send: 'Send', sending: 'Creating…',
     noFolder: 'No folder yet — add one to start sessions here', folder: 'Folder', agent: 'Agent',
@@ -54,7 +54,7 @@ export function useProjectCopy() {
     teamsHint: 'A linked team’s lead and members belong to this project and share its instructions and log.', detachTitle: 'Unlink team?', detachBody: (name: string) => `Members of “${name}” leave this project. The team itself is unaffected.`,
     sessions: 'Member sessions', sessionsHint: 'Sessions in this project. Team members follow their team: unlink the team to remove them.', followsTeam: 'Follows team', removeMemberTitle: 'Remove from project?', removeMemberBody: (title: string) => `“${title}” leaves this project; from its next turn it no longer carries the project instructions.`,
     danger: 'Danger zone', archiveHint: 'An archived project is hidden from the sidebar and pickers and its settings become read-only. Unarchive any time.', archiveConfirm: 'Archive the project? Member sessions are kept; they just no longer show under it.', deleteHint: 'Deleting cannot be undone. Sessions are kept; they just leave the project.',
-    nameRequired: 'Enter a name', archivedNote: 'This project is archived, so its settings are read-only. Unarchive it in the danger zone to edit.', open: 'Open',
+    nameRequired: 'Enter a name', folderExists: 'That folder already exists; switched to “Choose a folder” — add it from there', archivedNote: 'This project is archived, so its settings are read-only. Unarchive it in the danger zone to edit.', open: 'Open',
   };
 }
 export type ProjectCopy = ReturnType<typeof useProjectCopy>;
