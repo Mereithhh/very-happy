@@ -45,6 +45,33 @@ add members yourself. Until the lead creates one, the team page and the expanded
 sidebar team say so, with a link into the lead's conversation, and the ⓘ beside
 **Who is working** explains the split.
 
+### Just me & the lead
+
+The lead's conversation also carries the members' submissions, progress and
+questions, the system's idle / queue notices and everything the lead does in
+reply — in a busy team most of the transcript. The team row above the lead's
+conversation therefore has a switch: **All messages | Just me & the lead**
+(「全部消息 | 只看我和负责人」; on a phone **All | Me & lead**). *Just me & the
+lead* is the default, and the choice is remembered per conversation on this
+device.
+
+In *Just me & the lead* your messages and the lead's turns that answer them stay
+as they are. Each run of member messages, system notices and the lead's turns
+handling them becomes one dashed line such as *3 member messages · 1 system
+notice · lead handled 3 turns* with chips for the members who wrote; click it to
+expand the run in place (**Collapse N** folds it again). New member traffic lands
+inside the last line, so a reader who scrolled back is not moved and the
+↓ counter only counts what is on screen. Your message shows **Answered ↗** once
+the lead has written text in reply to it; click it to jump to that answer, which
+is briefly highlighted.
+
+What is "yours" comes from transport fields, never from the wording: a team
+message is classified by its team record (`source`, sender), a background-task
+notice or automation / assistant prompt is a system notice, a message from
+another session counts as a member, and anything typed by a person (web, phone,
+desktop, terminal, a shared-session guest) is yours. Ordinary conversations and
+members' conversations have no switch. Rules: `screens/session/leadView.ts`.
+
 In the sidebar's **By project** tree a team sits inside its project, beside the
 project's own sessions (teams outside every project are under **Not in a
 project**). Select a team's name (or press Enter) to open its team page — goal,
