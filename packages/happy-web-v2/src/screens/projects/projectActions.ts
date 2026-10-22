@@ -5,7 +5,7 @@ import { createChatOrConfigure } from '@/app/newChat';
 import { Modal } from '@/modal';
 import { projectsApi, refreshProjects } from '@/sync/projects';
 import { toast } from '@/ui/Toast';
-import { buildProjectMenu, projectPath, projectPrimaryFolder, projectSettingsPath } from './projectMenu';
+import { buildProjectMenu, projectNewTeamPath, projectPath, projectPrimaryFolder, projectSettingsPath } from './projectMenu';
 
 /**
  * B-756: the flows behind `buildProjectMenu`. Rename and archive go through the
@@ -52,11 +52,12 @@ export function newSessionInProject(project: ProjectView, navigate: NavigateFunc
   void createChatOrConfigure(navigate, openConfigure, { target, projectId: project.id });
 }
 
-export function projectMenuItems(project: ProjectView, opts: { zh: boolean; navigate: NavigateFunction; openConfigure: (target?: RecentMachinePath) => void }) {
+export function projectMenuItems(project: ProjectView, opts: { zh: boolean; navigate: NavigateFunction; openConfigure: (target?: RecentMachinePath) => void; teams?: boolean }) {
   return buildProjectMenu({
     zh: opts.zh,
     archived: !!project.archivedAt,
     onNewSession: () => newSessionInProject(project, opts.navigate, opts.openConfigure),
+    ...(opts.teams ? { onNewTeam: () => opts.navigate(projectNewTeamPath(project.id)) } : {}),
     onSettings: () => opts.navigate(projectSettingsPath(project.id)),
     onRename: () => void renameProject(project, opts.zh),
     onArchive: () => void toggleProjectArchived(project, opts.zh),

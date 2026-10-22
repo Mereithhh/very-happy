@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ProjectView, TeamState } from '@slopus/happy-wire';
 import { groupRowsByTag } from './sidebarTagGroups';
 import { groupTeamNavigation, teamSessionMembership } from './teamNavigation';
-import { foldersOfRows, groupRowsByProject, legacyGroupModeFor, projectAreaEntries, sessionProjectResolver, usedTagGrouping } from './sidebarProjectGroups';
+import { foldersOfRows, groupRowsByProject, legacyGroupModeFor, sessionProjectResolver, usedTagGrouping } from './sidebarProjectGroups';
 
 const project = (id: string, extra: Partial<ProjectView> = {}): ProjectView => ({ id, name: id, goal: null, instructions: '', instructionsVersion: 0, instructionsUpdatedBy: null, instructionsUpdatedAt: null, folders: [], defaults: {}, archivedAt: null, createdAt: 1, updatedAt: 1, teamIds: [], automationIds: [], ...extra });
 const row = (key: string, machineId = 'm', path = '/repo', tags?: string[]) => ({ key, sessionId: key, machineId, workspacePath: path, machineName: 'mac', tags });
@@ -193,11 +193,6 @@ describe('B-729 team conversations nest identically in every lens', () => {
 });
 
 describe('projects outside the project lens (B-756)', () => {
-  it('tag lens 「项目」 area: every live project with its visible sessions and 等你处理, in project-lens order', () => {
-    const rows = [row('a'), row('b'), row('c'), { ...history('h'), machineId: undefined, workspacePath: undefined }];
-    const entries = projectAreaEntries(rows, [project('empty', { createdAt: 5 }), project('p'), project('gone', { archivedAt: 1 })], [member('p', 'b'), member('p', 'c'), member('p', 'h'), member('gone', 'a')], [], new Set(['c']));
-    expect(entries.map((e) => [e.project.id, e.sessions, e.attention])).toEqual([['p', 2, 1], ['empty', 0, 0]]);
-  });
   it('session → project for the chip: explicit membership, else its team’s project; archived projects never', () => {
     const t1 = team('t1', ['s1']);
     const of = sessionProjectResolver([project('p', { teamIds: ['t1'] }), project('q'), project('old', { archivedAt: 3 })], [member('q', 'x'), member('old', 'y')], [t1]);

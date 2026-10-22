@@ -105,8 +105,8 @@ describe('unread marking — runs that end offline (B-331)', () => {
 describe('Sidebar paints the dot through showsUnreadDot, not session.active (B-331)', () => {
     const src = readFileSync(new URL('../screens/sessions/Sidebar.tsx', import.meta.url), 'utf8')
         .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    it('both the row signal and the folded-group summary use it', () => {
-        expect(src.match(/r\.kind === 'session' &&\s*showsUnreadDot\(r\.session, unreadIds\)/g)).toHaveLength(2);
+    it('the row signal, the folded-group summary and the tree badges (B-762) all use it', () => {
+        expect(src.match(/r\.kind === 'session' &&\s*showsUnreadDot\(r\.session, unreadIds\)/g)).toHaveLength(3);
         expect(src).not.toMatch(/!!r\.session\?\.active\s*&&\s*unreadIds\.has/);
     });
 });

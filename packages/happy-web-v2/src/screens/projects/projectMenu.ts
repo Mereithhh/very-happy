@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, MessageSquarePlus, Pencil, Settings2 } from 'lucide-react';
+import { Archive, ArchiveRestore, MessageSquarePlus, Pencil, Settings2, UsersRound } from 'lucide-react';
 import type { ProjectView } from '@slopus/happy-wire';
 import type { MenuItemDef } from '@/ui';
 
@@ -12,6 +12,11 @@ export function projectPath(projectId: string): string {
 }
 
 /** Project settings (B-757 owns the route and page, `#basics`…`#danger` anchors; this is the one place that names it). */
+/** B-762: the Teams create dialog with this project preselected (TeamsScreen reads `?new=1&project=`). */
+export function projectNewTeamPath(projectId: string): string {
+  return `/teams?new=1&project=${encodeURIComponent(projectId)}`;
+}
+
 export function projectSettingsPath(projectId: string): string {
   return `${projectPath(projectId)}/settings`;
 }
@@ -24,14 +29,16 @@ export function projectPrimaryFolder(project: Pick<ProjectView, 'folders'>): { m
 
 export function projectMenuCopy(zh: boolean) {
   return zh
-    ? { newSession: '新建会话', settings: '项目设置', rename: '重命名', archive: '归档项目', unarchive: '取消归档', actions: '项目操作' }
-    : { newSession: 'New session', settings: 'Project settings', rename: 'Rename', archive: 'Archive project', unarchive: 'Unarchive', actions: 'Project actions' };
+    ? { newSession: '新建会话', newTeam: '在此项目组建团队', settings: '项目设置', rename: '重命名', archive: '归档项目', unarchive: '取消归档', actions: '项目操作' }
+    : { newSession: 'New session', newTeam: 'Start a team here', settings: 'Project settings', rename: 'Rename', archive: 'Archive project', unarchive: 'Unarchive', actions: 'Project actions' };
 }
 
 export function buildProjectMenu(input: {
   zh: boolean;
   archived?: boolean;
   onNewSession: () => void;
+  /** B-762 (spec B-760 §5.1): 「在此项目组建团队」 — omitted where teams are hidden. */
+  onNewTeam?: () => void;
   onSettings: () => void;
   onRename: () => void;
   onArchive: () => void;
@@ -39,6 +46,7 @@ export function buildProjectMenu(input: {
   const c = projectMenuCopy(input.zh);
   return [
     { key: 'new-session', label: c.newSession, icon: MessageSquarePlus, disabled: input.archived, onSelect: input.onNewSession },
+    ...(input.onNewTeam ? [{ key: 'new-team', label: c.newTeam, icon: UsersRound, disabled: input.archived, onSelect: input.onNewTeam } satisfies MenuItemDef] : []),
     { key: 'settings', label: c.settings, icon: Settings2, onSelect: input.onSettings },
     { key: 'rename', label: c.rename, icon: Pencil, onSelect: input.onRename },
     { key: 'archive', label: input.archived ? c.unarchive : c.archive, icon: input.archived ? ArchiveRestore : Archive, danger: !input.archived, separatorBefore: true, onSelect: input.onArchive },

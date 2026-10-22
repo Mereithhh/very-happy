@@ -10,6 +10,7 @@ import {
   FileText,
   FolderOpen,
   Folder,
+  FolderKanban,
   FolderPlus,
   HelpCircle,
   LayoutGrid,
@@ -146,8 +147,8 @@ export function ProductWorkspacePreview({
 function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: { active: ProductPreviewView; onSearch: () => void; onTerminal: () => void; onBoard: () => void; onCloseNav: () => void }) {
   const { language } = usePublicI18n();
   const zh = language === 'zh-Hans';
-  // B-647: the real sidebar groups by project by default; sessions outside a
-  // project fall into folder groups that can become a project in one click.
+  // B-647/B-762: the real sidebar is a project tree by default; sessions
+  // outside a project sit in one 不在项目中 area below.
   const groups: Array<{ key: string; label: string; project: boolean; attention?: number; rows: Array<{ icon: typeof TerminalSquare; title: string; meta: string; selected?: boolean; attention?: boolean; live?: boolean; actionable?: boolean }> }> = [
     { key: 'project', label: zh ? '发布 0.9' : 'Release 0.9', project: true, attention: 1, rows: [
       { icon: TerminalSquare, title: zh ? '发布候选版' : 'Release candidate', actionable: true, meta: 'build · terminal', selected: active === 'terminal' || active === 'conversation', live: true },
@@ -183,20 +184,24 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
           </div>
         </div>
         <div className="sb-list-controls"><div className="sb-filter vh-segmented" role="presentation"><button className="sb-filter-btn is-on is-active" type="button" disabled>{zh ? '列表' : 'List'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '状态' : 'Status'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '归档' : 'Archived'}</button></div><div className="sb-list-tools"><button className="sb-icon-btn sb-board-btn" type="button" aria-label={zh ? '打开任务看板' : 'Open task board'} aria-pressed={active === 'board'} onClick={onBoard}><LayoutGrid size={16} /><span className="sb-board-badge mono">1</span></button></div></div>
-        <div className="sb-list">
-          {groups.map((group) => <div key={group.key} className="sb-section">
-            <div className={`sb-section-head sb-section-head--toggle sb-section-head--workspace${group.project ? ' sb-section-head--project' : ''}`}>
-              <button type="button" className="sb-section-toggle" aria-expanded="true" disabled>
-                <ChevronRight size={11} className="sb-section-chevron is-open" />
-                {group.project ? <span className="sb-visually-hidden">{group.label}</span> : <><span className="sb-section-label">{group.label}</span><span className="sb-section-count mono">{group.rows.length}</span></>}
-              </button>
-              {group.project && <button type="button" className="sb-section-name" disabled><span className="sb-section-label">{group.label}</span>{group.attention ? <span className="sb-section-attention" aria-label={zh ? `${group.attention} 个会话等你处理` : `${group.attention} session waiting on you`}>{group.attention}</span> : null}</button>}
-              {group.project
-                ? <button type="button" className="sb-workspace-new" disabled aria-label={zh ? `在项目中新建会话：${group.label}` : `New chat in project: ${group.label}`}><Plus size={14} /></button>
-                : <button type="button" className="sb-workspace-new sb-workspace-make-project" disabled aria-label={zh ? `设为项目：${group.label}` : `Make project: ${group.label}`}><FolderPlus size={14} /></button>}
-            </div>
+        {/* B-762: the same project tree as the app — project node, its sessions one level in, then 不在项目中. */}
+        <div className="sb-list sb-list--tree">
+          {groups.map((group) => <div key={group.key} className={`sb-section${group.project ? ' sb-section--project' : ' sb-section--area'}`}>
+            {group.project ? (
+              <div className="sb-tree-node" data-depth={0} style={{ '--depth': 0 } as CSSProperties}>
+                <div className="sb-tree-project">
+                  <span className="sb-tree-chevron" aria-hidden><ChevronRight size={13} className="is-open" /></span>
+                  <button type="button" className="sb-tree-project-main" disabled>
+                    <FolderKanban size={16} aria-hidden /><span className="sb-tree-project-name">{group.label}</span>
+                    {group.attention ? <span className="sb-tree-badge" aria-label={zh ? `${group.attention} 个会话等你处理` : `${group.attention} session waiting on you`}>{group.attention}</span> : null}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="sb-tree-area"><span className="sb-tree-area-label">{zh ? '不在项目中' : 'Not in a project'}</span><span className="sb-tree-area-rule" aria-hidden /></div>
+            )}
             {group.rows.map(({ icon: Icon, title, meta, selected, attention, live, actionable }) => (
-              <div key={title} className={`sb-row${selected ? ' is-selected' : ''}${attention ? ' sb-row--attention' : ''}`}>
+              <div key={title} className="sb-tree-node" data-depth={group.project ? 1 : 0} style={{ '--depth': group.project ? 1 : 0 } as CSSProperties}><div className={`sb-row${selected ? ' is-selected' : ''}${attention ? ' sb-row--attention' : ''}`}>
                 <button type="button" className="sb-row-main" title={`${title} · ${meta}`} data-product-session={actionable ? '' : undefined} disabled={!actionable} onClick={actionable ? onTerminal : undefined}>
                   <span className="sb-row-icon sb-row-icon--neutral"><Icon size={Icon === MessageSquare ? 15 : 16} /></span>
                   <span className="sb-row-text"><span className="sb-row-title-line"><span className="sb-row-title">{title}</span></span><span className="sb-row-sub mono">{meta}</span></span>
@@ -204,7 +209,7 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
                   {attention && <span className="sb-row-status sb-row-status--input" role="img" aria-label={zh ? '等你处理' : 'Waiting for you'}><CircleAlert size={14} /></span>}
                 </button>
                 <button type="button" className="sb-row-menu" aria-label={zh ? `${title}操作` : `${title} actions`} disabled><MoreHorizontal size={16} /></button>
-              </div>
+              </div></div>
             ))}
           </div>)}
         </div>

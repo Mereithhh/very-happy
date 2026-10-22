@@ -154,16 +154,21 @@ export function ActionContextMenu({
   items,
   children,
   contentClassName,
+  sheetTitle,
 }: {
   items: MenuItemDef[];
   children: React.ReactElement;
   contentClassName?: string;
+  /** B-762: on touch the long-press menu becomes a bottom sheet headed by this name (sidebar tree rows). */
+  sheetTitle?: string;
 }) {
+  const className = ['vh-menu', sheetTitle ? 'vh-menu--sheet' : '', contentClassName ?? ''].filter(Boolean).join(' ');
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className={contentClassName ? `vh-menu ${contentClassName}` : 'vh-menu'} onCloseAutoFocus={giveFocusBackToTerminal}>
+        <ContextMenu.Content className={className} onCloseAutoFocus={giveFocusBackToTerminal}>
+          {sheetTitle && <ContextMenu.Label className="vh-menu-sheet-title">{sheetTitle}</ContextMenu.Label>}
           {items.map((item) => (
             <Fragment key={item.key}>
               {item.separatorBefore && <ContextMenu.Separator className="vh-menu-sep" />}

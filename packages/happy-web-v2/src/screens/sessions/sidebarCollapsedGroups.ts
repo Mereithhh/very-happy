@@ -26,8 +26,9 @@ export function defaultCollapsed(groupId: string): boolean {
   return groupId === 'completed' || groupId.startsWith('team-archived:') || groupId.startsWith('team-finished:');
 }
 
-export function isGroupCollapsed(state: CollapsedGroups, groupId: string): boolean {
-  return Object.prototype.hasOwnProperty.call(state, groupId) ? state[groupId] === true : defaultCollapsed(groupId);
+/** `fallback` overrides `defaultCollapsed` for groups whose default depends on live data (B-762: tree projects / teams). */
+export function isGroupCollapsed(state: CollapsedGroups, groupId: string, fallback?: boolean): boolean {
+  return Object.prototype.hasOwnProperty.call(state, groupId) ? state[groupId] === true : fallback ?? defaultCollapsed(groupId);
 }
 
 /** Set one group's state; re-inserted last so trimming drops the oldest choices. */
