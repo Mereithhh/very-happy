@@ -4,6 +4,7 @@ import type { ReasoningOutput } from './reasoningProcessor';
 import type { DiffToolCall, DiffToolResult } from './diffProcessor';
 import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
 import type { Thread, ThreadItem, ThreadTurn } from '../codexAppServerTypes';
+import { textResultPayload, toolResultContentText } from '@/sessionProtocol/toolResultPayload';
 
 export type CodexTurnState = {
     currentTurnId: string | null;
@@ -227,6 +228,41 @@ function turnStatus(turn: ThreadTurn): TurnEndStatus {
     return 'completed';
 }
 
+/** B-771: a Codex command failed when it exited non-zero or never ran. */
+function commandFailed(exitCode: unknown, status: unknown): boolean {
+    return (typeof exitCode === 'number' && exitCode !== 0) || status === 'failed' || status === 'declined';
+}
+
+/** Card result for a live `exec_command_end` (aggregatedOutput + exit code). */
+function commandResult(message: Record<string, unknown>) {
+    // App-server `output`; the legacy `codex mcp` event named it `aggregated_output`.
+    const raw = [message.output, message.aggregated_output, message.formatted_output].find((v) => typeof v === 'string');
+    const output = typeof raw === 'string' ? raw : '';
+    const exitCode = message.exit_code;
+    const failed = commandFailed(exitCode, message.status);
+    const text = typeof exitCode === 'number' && exitCode !== 0
+        ? `${output}${output === '' || output.endsWith('\n') ? '' : '\n'}[exit code ${exitCode}]`
+        : output;
+    return textResultPayload(text, failed);
+}
+
+function errorText(error: unknown): string {
+    if (typeof error === 'string') return error;
+    if (error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string') return (error as { message: string }).message;
+    return JSON.stringify(error) ?? String(error);
+}
+
+/** MCP `CallToolResult` → text (content blocks, else structured JSON); never "[object Object]". */
+function mcpResultText(result: unknown): string | null {
+    if (result === undefined || result === null) return null;
+    if (typeof result === 'string') return result;
+    const content = (result as { content?: unknown }).content;
+    const text = Array.isArray(content) ? toolResultContentText(content) : '';
+    if (text) return text;
+    const structured = (result as { structuredContent?: unknown }).structuredContent;
+    return JSON.stringify(structured ?? result, null, 2) ?? null;
+}
+
 function emitHistoricalToolCall(
     envelopes: SessionEnvelope[],
     turn: ThreadTurn,
@@ -235,6 +271,7 @@ function emitHistoricalToolCall(
     title: string,
     args: Record<string, unknown>,
     output: string | null,
+    isError = false,
 ): void {
     const time = turnTimestampMs(turn);
     const opts = { turn: turn.id, time, codexItemId: item.id } satisfies CreateEnvelopeOptions;
@@ -250,22 +287,28 @@ function emitHistoricalToolCall(
         id: `${item.id}:start`,
     }));
 
-    if (output && output.trim().length > 0) {
-        envelopes.push(createEnvelope('agent', {
-            t: 'text',
-            text: output,
-            thinking: true,
-        }, {
-            ...opts,
-            id: `${item.id}:output`,
-        }));
+    const running = 'status' in item && (item.status === 'inProgress' || item.status === 'running');
+    // B-771: a finished call's output belongs on its card (tool-call-end.result);
+    // only a still-running call keeps it as a reasoning line, since it has no end yet.
+    if (running) {
+        if (output && output.trim().length > 0) {
+            envelopes.push(createEnvelope('agent', {
+                t: 'text',
+                text: output,
+                thinking: true,
+            }, {
+                ...opts,
+                id: `${item.id}:output`,
+            }));
+        }
+        return;
     }
 
-    if ('status' in item && (item.status === 'inProgress' || item.status === 'running')) return;
-
+    const result = textResultPayload(output ?? '', isError);
     envelopes.push(createEnvelope('agent', {
         t: 'tool-call-end',
         call: item.id,
+        ...(result ? { result } : {}),
     }, {
         ...opts,
         id: `${item.id}:end`,
@@ -365,6 +408,7 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
                         commandToTitle(command),
                         { command, cwd: item.cwd },
                         typeof item.aggregatedOutput === 'string' ? item.aggregatedOutput : null,
+                        commandFailed(item.exitCode, item.status),
                     );
                     break;
                 }
@@ -383,9 +427,8 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
                 }
                 case 'mcpToolCall': {
                     const title = `${item.server}.${item.tool}`;
-                    const output = item.error !== undefined && item.error !== null
-                        ? String(item.error)
-                        : (item.result !== undefined && item.result !== null ? String(item.result) : null);
+                    const failed = item.error !== undefined && item.error !== null;
+                    const output = failed ? errorText(item.error) : mcpResultText(item.result);
                     emitHistoricalToolCall(
                         envelopes,
                         turn,
@@ -398,6 +441,7 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
                             arguments: item.arguments,
                         },
                         output,
+                        failed,
                     );
                     break;
                 }
@@ -639,7 +683,9 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         const call = pickCallId(message);
         const envelopes: SessionEnvelope[] = [];
         maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes, pickSubagentLabel(message), labeledSubagents);
-        envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, opts));
+        // B-771: the command's output reaches the card (it used to be dropped here).
+        const result = commandResult(message);
+        envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call, ...(result ? { result } : {}) }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,

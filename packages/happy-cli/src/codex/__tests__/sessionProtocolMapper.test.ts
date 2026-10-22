@@ -311,10 +311,10 @@ describe('mapCodexThreadToSessionEnvelopes', () => {
             }],
         });
 
+        // B-771: the output rides on the card's tool-call-end, not a stray reasoning line.
         expect(envelopes.map((envelope) => envelope.ev.t)).toEqual([
             'turn-start',
             'tool-call-start',
-            'text',
             'tool-call-end',
             'turn-end',
         ]);
@@ -326,13 +326,70 @@ describe('mapCodexThreadToSessionEnvelopes', () => {
         expect(envelopes[2]).toMatchObject({
             role: 'agent',
             turn: 'turn-1',
-            ev: { t: 'text', text: 'ok', thinking: true },
+            ev: { t: 'tool-call-end', call: 'cmd-1', result: { text: 'ok' } },
         });
-        expect(envelopes[3]).toMatchObject({
-            role: 'agent',
-            turn: 'turn-1',
-            ev: { t: 'tool-call-end', call: 'cmd-1' },
-        });
+    });
+
+    it('B-771: a failed historical command is marked isError; a running one keeps its partial output as text', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-1',
+                startedAt: 100,
+                items: [
+                    { id: 'cmd-1', type: 'commandExecution', command: 'false', cwd: '/p', aggregatedOutput: 'boom', exitCode: 1, status: 'failed' },
+                    { id: 'cmd-2', type: 'commandExecution', command: 'sleep 9', cwd: '/p', aggregatedOutput: 'partial', status: 'inProgress' },
+                    { id: 'cmd-3', type: 'commandExecution', command: 'rm -rf /', cwd: '/p', aggregatedOutput: '', exitCode: null, status: 'declined' },
+                ],
+            }],
+        } as any);
+        const end = envelopes.find((e) => e.ev.t === 'tool-call-end' && e.ev.call === 'cmd-1');
+        expect(end?.ev).toEqual({ t: 'tool-call-end', call: 'cmd-1', result: { text: 'boom', isError: true } });
+        expect(envelopes.some((e) => e.ev.t === 'tool-call-end' && e.ev.call === 'cmd-2')).toBe(false);
+        expect(envelopes.find((e) => e.ev.t === 'tool-call-end' && e.ev.call === 'cmd-3')?.ev).toEqual({ t: 'tool-call-end', call: 'cmd-3', result: { text: '', isError: true } });
+        expect(envelopes.find((e) => e.id === 'cmd-2:output')?.ev).toEqual({ t: 'text', text: 'partial', thinking: true });
+    });
+
+    it('B-771: historical MCP results become text (content blocks), never "[object Object]"', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-1',
+                items: [
+                    { id: 'mcp-1', type: 'mcpToolCall', server: 'jina', tool: 'primer', arguments: {}, status: 'completed', result: { content: [{ type: 'text', text: 'time: 10:00' }] } },
+                    { id: 'mcp-2', type: 'mcpToolCall', server: 'jina', tool: 'primer', arguments: {}, status: 'failed', error: { message: 'denied' } },
+                ],
+            }],
+        } as any);
+        const ends = envelopes.filter((e) => e.ev.t === 'tool-call-end').map((e) => e.ev);
+        expect(ends).toEqual([
+            { t: 'tool-call-end', call: 'mcp-1', result: { text: 'time: 10:00' } },
+            { t: 'tool-call-end', call: 'mcp-2', result: { text: 'denied', isError: true } },
+        ]);
+    });
+});
+
+describe('B-771: live Codex command output reaches the card', () => {
+    it('exec_command_end carries aggregated output', () => {
+        const end = mapCodexMcpMessageToSessionEnvelopes({ type: 'exec_command_end', call_id: 'c1', output: 'a\nb\n', exit_code: 0, status: 'completed' }, { currentTurnId: 'turn-1' });
+        expect(end.envelopes.map((e) => e.ev)).toEqual([{ t: 'tool-call-end', call: 'c1', result: { text: 'a\nb\n' } }]);
+    });
+
+    it('a non-zero exit is isError with the exit code appended', () => {
+        const end = mapCodexMcpMessageToSessionEnvelopes({ type: 'exec_command_end', call_id: 'c1', output: 'nope', exit_code: 2, status: 'failed' }, { currentTurnId: 'turn-1' });
+        expect(end.envelopes[0].ev).toEqual({ t: 'tool-call-end', call: 'c1', result: { text: 'nope\n[exit code 2]', isError: true } });
+    });
+
+    it('legacy aggregated_output; empty successful output carries no result', () => {
+        expect(mapCodexMcpMessageToSessionEnvelopes({ type: 'exec_command_end', call_id: 'c1', aggregated_output: 'x' }, { currentTurnId: 't' }).envelopes[0].ev)
+            .toEqual({ t: 'tool-call-end', call: 'c1', result: { text: 'x' } });
+        expect(mapCodexMcpMessageToSessionEnvelopes({ type: 'exec_command_end', call_id: 'c1', output: '', exit_code: 0 }, { currentTurnId: 't' }).envelopes[0].ev)
+            .toEqual({ t: 'tool-call-end', call: 'c1' });
+    });
+
+    it('oversized output is capped and marked truncated', () => {
+        const end = mapCodexMcpMessageToSessionEnvelopes({ type: 'exec_command_end', call_id: 'c1', output: '日本'.repeat(50_000), exit_code: 0 }, { currentTurnId: 't' });
+        const result = (end.envelopes[0].ev as { result?: { text: string; truncated?: boolean } }).result!;
+        expect(result.truncated).toBe(true);
+        expect(Buffer.byteLength(result.text, 'utf8')).toBeLessThanOrEqual(32 * 1024);
     });
 });
 

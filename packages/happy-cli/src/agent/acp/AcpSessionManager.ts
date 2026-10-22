@@ -1,6 +1,7 @@
 import { createId } from '@paralleldrive/cuid2';
 import { createEnvelope, streamKeyOf, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
 import type { AgentMessage } from '@/agent/core';
+import { textResultPayload, toolResultPayload } from '@/sessionProtocol/toolResultPayload';
 
 /**
  * Where the mapper reports the text it is still holding back (B-309 for ACP).
@@ -41,15 +42,21 @@ function buildToolDescription(toolName: string): string {
 }
 
 /**
- * Carry a tool result onto `tool-call-end` only when the runner produced a
- * text result (today: pi-acp bash output, see acpToolArgs.buildAcpBashResult).
- * The wire slot already exists (B-260-P2 `result.{text,isError,truncated}`);
- * other ACP results stay off the wire as before.
+ * Carry a tool result onto `tool-call-end` (B-260-P2 `result.{text,isError,truncated}`):
+ * pi-acp bash output (acpToolArgs.buildAcpBashResult), and since B-771 every
+ * other ACP result too — content blocks become capped text, a failed/cancelled
+ * call (`{ error, status }` from failToolCall) its error, marked isError.
  */
 function toolCallEndResult(result: unknown): { text: string; isError?: boolean; truncated?: boolean } | undefined {
-  if (!result || typeof result !== 'object' || Array.isArray(result)) return undefined;
-  const record = result as { text?: unknown; exitCode?: unknown; truncated?: unknown };
-  if (typeof record.text !== 'string') return undefined;
+  if (typeof result === 'string') return textResultPayload(result, false);
+  if (Array.isArray(result)) return toolResultPayload({ content: result });
+  if (!result || typeof result !== 'object') return undefined;
+  const record = result as { text?: unknown; exitCode?: unknown; truncated?: unknown; error?: unknown; content?: unknown };
+  if (typeof record.text !== 'string') {
+    if (record.error !== undefined) return textResultPayload(typeof record.error === 'string' ? record.error : JSON.stringify(record.error) ?? '', true);
+    if (Array.isArray(record.content)) return toolResultPayload({ content: record.content });
+    return undefined;
+  }
   const exitCode = typeof record.exitCode === 'number' ? record.exitCode : undefined;
   const text = exitCode !== undefined && exitCode !== 0 ? `${record.text}${record.text.endsWith('\n') || record.text === '' ? '' : '\n'}[exit code ${exitCode}]` : record.text;
   return {

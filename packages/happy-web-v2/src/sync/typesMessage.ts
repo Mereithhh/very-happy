@@ -10,6 +10,8 @@ export type ToolCall = {
     completedAt: number | null;
     description: string | null;
     result?: any;
+    /** B-771: `result` is a prefix of the real output (the CLI caps it). */
+    resultTruncated?: boolean;
     permission?: {
         id: string;
         status: 'pending' | 'approved' | 'denied' | 'canceled';

@@ -2320,6 +2320,7 @@ export const zhHans: TranslationStructure = {
             more: ({ count }: { count: number }) => `还有 ${count} 项`,
             value: '值',
             truncated: '已截断，完整内容见「原始数据」',
+            resultTruncated: '输出已截断，只传回了一部分',
             opensInNewTab: '在新标签页打开',
         },
         fullView: {

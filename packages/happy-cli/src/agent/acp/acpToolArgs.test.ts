@@ -202,7 +202,7 @@ describe('handleToolCall args shape (pi-acp probe payloads)', () => {
 });
 
 describe('AcpSessionManager tool-call-end result', () => {
-  it('carries bash text/isError on the wire; other results stay off the wire', () => {
+  it('carries bash text/isError on the wire; a result with no text stays off the wire', () => {
     const mapper = new AcpSessionManager();
     mapper.startTurn();
     mapper.mapMessage({ type: 'tool-call', toolName: 'execute', args: {}, callId: 'tc-bash' });
