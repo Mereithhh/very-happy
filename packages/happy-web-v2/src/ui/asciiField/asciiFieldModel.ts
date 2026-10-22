@@ -10,7 +10,7 @@
  * has no license, so nothing of its code or artwork is used here.
  */
 
-export type AsciiFieldPreset = 'hero' | 'empty' | 'band' | 'faint' | 'sidebar' | 'divider';
+export type AsciiFieldPreset = 'hero' | 'empty' | 'chat' | 'band' | 'faint' | 'sidebar' | 'divider';
 export type AsciiFieldTier = 'full' | 'lite';
 
 export interface AsciiLayerSpec {
@@ -40,6 +40,10 @@ export interface AsciiFieldSpec {
   creatureEvery: [number, number];
   creatureAlpha: number;
   fps: number;
+  /** Frame-rate cap on the lite tier (default 24). */
+  liteFps?: number;
+  /** Lite tier draws one still frame and runs no loop (B-752: behind a conversation on a phone). */
+  liteStill?: boolean;
 }
 
 /** Calm → dense. Plain ASCII so every glyph comes from the mono font (no fallback). */
@@ -51,7 +55,7 @@ const L = (depth: number, fontPx: number, alpha: number, blurPx: number, driftX:
   ({ depth, fontPx, alpha, blurPx, driftX, driftY, density, mousePx, scroll });
 
 /**
- * Strength, strongest first: hero > empty > divider > band > faint > sidebar.
+ * Strength, strongest first: hero > empty > divider > band > chat > faint > sidebar.
  * Alphas are tuned against --text on --bg-0 so the copy on top keeps WCAG AA
  * (measured from pixels, see the PR); CSS masks fade the field under copy.
  */
@@ -71,6 +75,19 @@ export const PRESETS: Record<AsciiFieldPreset, AsciiFieldSpec> = {
       L(2, 18, 0.42, 0, -2.1, 0.22, 0.12, 24, 0),
     ],
     creatures: true, creatureEvery: [5, 10], creatureAlpha: 0.7, fps: 30,
+  },
+  /**
+   * B-752 — behind a conversation: the text is the subject. Far + mid layers
+   * only (no near layer, no creatures) at ~40% of `empty`'s ink, slow drift;
+   * ChatBackdrop keeps it in the margins. Phones / low-end get a still: a
+   * conversation stays open for long, and a loop there costs ~1 ms a frame.
+   */
+  chat: {
+    layers: [
+      L(0, 11, 0.12, 1.6, -0.5, 0.08, 0.46, 4, 0),
+      L(1, 14, 0.13, 0.6, -0.9, 0.12, 0.28, 8, 0),
+    ],
+    creatures: false, creatureEvery: [0, 0], creatureAlpha: 0, fps: 15, liteFps: 10, liteStill: true,
   },
   divider: {
     layers: [
@@ -116,7 +133,7 @@ export function specForTier(preset: AsciiFieldPreset, tier: AsciiFieldTier): Asc
   return {
     ...spec,
     layers: spec.layers.slice(1).map((layer) => ({ ...layer, blurPx: 0, mousePx: 0, scroll: 0 })),
-    fps: Math.min(spec.fps, 24),
+    fps: Math.min(spec.fps, spec.liteFps ?? 24),
   };
 }
 
@@ -169,6 +186,18 @@ export function layerRow(x0: number, y: number, cols: number, t: number, depth: 
     out += FIELD_RAMP[level];
   }
   return out;
+}
+
+/**
+ * B-752 — frame-rate override for a field behind live content: paused (0)
+ * while the reader scrolls, ≤ 8 fps while the agent streams, the preset's own
+ * rate (null) otherwise. Scrolling wins: nothing should compete with it.
+ */
+export const STREAMING_FPS = 8;
+export function backdropPace(s: { scrolling: boolean; streaming: boolean }): number | null {
+  if (s.scrolling) return 0;
+  if (s.streaming) return STREAMING_FPS;
+  return null;
 }
 
 /** True when enough time passed for the next frame under the fps cap (1 ms jitter allowance). */

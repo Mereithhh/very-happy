@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
-  FIELD_RAMP, MAX_FPS, PRESETS, SPRITES, creaturePosition, fieldValue, frameDue, isWinking, layerRow, mirrorSprite, pickTier,
+  FIELD_RAMP, MAX_FPS, PRESETS, SPRITES, STREAMING_FPS, backdropPace, creaturePosition, fieldValue, frameDue, isWinking, layerRow, mirrorSprite, pickTier,
   rng, spawnCreature, specForTier, spriteLines, type AsciiFieldPreset,
 } from './asciiFieldModel';
 import { boxBlurAlpha, packInk, stampGlyph } from './asciiRaster';
 
 const presets = Object.keys(PRESETS) as AsciiFieldPreset[];
+/** B-752: the conversation backdrop deliberately has no near layer. */
+const depthPresets = presets.filter((p) => p !== 'chat');
 
 describe('B-720 AsciiField presets — depth of field', () => {
   it('every preset has ≥ 3 layers: far is small, dim, blurred and slow; near is large, bright, sharp and fast', () => {
-    for (const name of presets) {
+    for (const name of depthPresets) {
       const { layers } = PRESETS[name];
       expect(layers.length, name).toBeGreaterThanOrEqual(3);
       const far = layers[0];
@@ -31,6 +33,34 @@ describe('B-720 AsciiField presets — depth of field', () => {
     expect(near('faint')).toBeGreaterThan(near('sidebar'));
     // The sidebar must stay far below text contrast.
     expect(near('sidebar')).toBeLessThanOrEqual(0.1);
+  });
+
+  it('B-752 chat: far + mid only, no creatures, 30–50% of the default page (empty) ink, calmer frame rate', () => {
+    const chat = PRESETS.chat;
+    const empty = PRESETS.empty;
+    expect(chat.layers).toHaveLength(2);
+    expect(chat.creatures).toBe(false);
+    chat.layers.forEach((layer, i) => {
+      expect(layer.depth).toBe(i);
+      expect(layer.scroll).toBe(0);
+      const ratio = layer.alpha / empty.layers[i].alpha;
+      expect(ratio).toBeGreaterThanOrEqual(0.3);
+      expect(ratio).toBeLessThanOrEqual(0.5);
+      expect(layer.fontPx).toBeLessThanOrEqual(empty.layers[i].fontPx);
+    });
+    expect(Math.max(...chat.layers.map((l) => l.alpha))).toBeLessThan(empty.layers[2].alpha / 2);
+    expect(chat.fps).toBeLessThan(empty.fps);
+    expect(specForTier('chat', 'lite').fps).toBeLessThanOrEqual(10);
+    expect(specForTier('chat', 'lite').liteStill).toBe(true);
+    expect(presets.filter((p) => PRESETS[p].liteStill)).toEqual(['chat']);
+  });
+
+  it('B-752 backdropPace: paused while scrolling, ≤ 10 fps while streaming, preset rate when idle', () => {
+    expect(backdropPace({ scrolling: true, streaming: false })).toBe(0);
+    expect(backdropPace({ scrolling: true, streaming: true })).toBe(0);
+    expect(backdropPace({ scrolling: false, streaming: true })).toBe(STREAMING_FPS);
+    expect(STREAMING_FPS).toBeLessThanOrEqual(10);
+    expect(backdropPace({ scrolling: false, streaming: false })).toBeNull();
   });
 
   it('never asks for more than 30 fps', () => {

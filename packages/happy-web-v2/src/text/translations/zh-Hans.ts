@@ -711,7 +711,7 @@ export const zhHans: TranslationStructure = {
         },
         // B-720：本设备的 ASCII 景深背景动效开关。
         backgroundMotion: '背景动效',
-        backgroundMotionDescription: '在本设备的默认页、侧栏、页头和官网背后显示动态 ASCII 景深背景；关闭后为纯色背景。系统开启「减少动态效果」时始终只显示静止画面。',
+        backgroundMotionDescription: '在本设备的默认页、会话页（更淡，集中在两侧）、侧栏、页头和官网背后显示动态 ASCII 景深背景；关闭后为纯色背景。系统开启「减少动态效果」时始终只显示静止画面。',
         diffStyle: '差异视图',
         diffStyleDescription: '以单列（unified）或并排（split）显示差异。split 视图仅在 Web 上可用。',
         diffStyleOptions: {

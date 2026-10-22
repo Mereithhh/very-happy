@@ -46,6 +46,7 @@ import { useHibernationAutoWake } from '@/app/useHibernationAutoWake';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { newSessionTimingComposerMounted, newSessionTimingInStore, newSessionTimingPendingShown } from '@/app/newSessionTiming';
 import { isHistoryPanel, readSessionPanel, readSubagentTarget, toggleHistoryPanel, withSessionPanel, withSubagentPanel, type SessionPanelTab } from './sessionPanelState';
+import { ChatBackdrop } from './ChatBackdrop';
 import './session.css';
 
 export function SessionDetailScreen() {
@@ -317,6 +318,8 @@ export function SessionDetailScreen() {
                 {/* B-585: this session's worktree setup is waiting for approval / running / failed */}
                 {session && !mirror && !sharedWithMe && <WorktreeSetupBanner key={`worktree-setup:${id}`} sessionId={id} />}
                 <div className="sd-body">
+                    {/* B-752: calm ASCII field behind the transcript (fixed, not scrolled). */}
+                    <ChatBackdrop sessionId={id} />
                     {session ? <ChatList key={id} sessionId={id} showLiveStatus={!mirror} /> : <PendingSessionBody record={pending!} />}
                 </div>
                 {!mirror && !sharedWithMe && (

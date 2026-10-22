@@ -435,9 +435,9 @@ Landing、文档入口、登录与整屏启动承担品牌识别，不使用工�
 
 共用引擎 `src/ui/asciiField/`（`AsciiField` 组件 + 懒加载引擎），取代 B-700 只在空状态的单条海浪。三层字符场：远景小字号、低不透明度、模糊（模糊烘焙进字形图集，不做每帧 CSS blur）；中景；近景清晰、更亮、漂得更快。字符只用 ASCII 密度梯度，墨色取 `--text`（亮色主题 `--ascii-gain` 补偿），生物（鱼、鲨鱼、水母、微笑终端标）同为墨色——`--accent` 仍只表示 live。
 
-强度从强到弱：Landing hero（全幅，鼠标/滚动视差，文案列下垫 `--bg-0` 晕染保 AA）> App 默认页（全区域，标题与按钮下同样垫晕染）> Landing 分隔带与结尾 CTA、文档页头带 > 设置页头带（很淡）> 侧栏底部（极淡，只在 footer 与列表尾部）。新增位置先选现有 preset，不另调一套参数；文字对比度以像素取样验证（背景最亮像素对文字色 ≥ 4.5，大字 ≥ 3）。
+强度从强到弱：Landing hero（全幅，鼠标/滚动视差，文案列下垫 `--bg-0` 晕染保 AA）> App 默认页（全区域，标题与按钮下同样垫晕染）> Landing 分隔带与结尾 CTA、文档页头带 > 会话页（B-752 `chat` preset：只有远景+中景、无近景无生物，墨色约为默认页的 40%；固定在对话流背后不随滚动。820px 消息列两侧各有 ≥120px 空白时只在两侧各放一条字段，列背后不放，内侧与底部用 `--bg-0` 渐变淡出；没有两侧空白（手机、窄窗）时铺一整块，强度减半（`--ascii-gain`）。不用 CSS mask：mask 每帧多一次离屏合成，动画层也会让整块区域每帧重绘）> 设置页头带（很淡）> 侧栏底部（极淡，只在 footer 与列表尾部）。新增位置先选现有 preset，不另调一套参数；文字对比度以像素取样验证（背景最亮像素对文字色 ≥ 4.5，大字 ≥ 3）。
 
-运行约束：≤30fps；标签页隐藏或元素离屏（IntersectionObserver）暂停；`prefers-reduced-motion` 只画一帧；手机 / coarse 指针 / ≤4 核或 ≤4GB 降为两层、无模糊、无鼠标视差。每帧主线程只写 transform，层内容按页面共享的 1ms 预算分行重绘后交叉淡入。「设置 → 外观 → 背景动效」为设备级开关（localStorage `vh-ascii-motion`，不进 synced settings），关闭后不挂载、不加载引擎。
+运行约束：≤30fps；标签页隐藏或元素离屏（IntersectionObserver）暂停；`prefers-reduced-motion` 只画一帧；手机 / coarse 指针 / ≤4 核或 ≤4GB 降为两层、无模糊、无鼠标视差。每帧主线程只写 transform，层内容按页面共享的 1ms 预算分行重绘后交叉淡入。「设置 → 外观 → 背景动效」为设备级开关（localStorage `vh-ascii-motion`，不进 synced settings），关闭后不挂载、不加载引擎。会话页额外按负载降速（`setPace` / `backdropPace`）：平时 15fps；手机 / 低端（lite 档）只画一帧静止画面、不跑循环（preset `liteStill`），对话区内任何滚动（含自动跟随）期间暂停、停 500ms 后恢复，agent 工作中 ≤8fps；终端视图不挂。
 
 ### 工作台反馈修复（B-435）
 
