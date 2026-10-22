@@ -181,7 +181,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     topics: [
       { key: 'folder', titleKey: 'changelog.releases.oct22c.folderTitle', bodyKey: 'changelog.releases.oct22c.folderBody', image: changelogShots('2026-10-22c', 'folder', TOPIC_SIZE, 'changelog.releases.oct22c.folderAlt') },
       { key: 'hint', titleKey: 'changelog.releases.oct22c.hintTitle', bodyKey: 'changelog.releases.oct22c.hintBody', image: changelogShots('2026-10-22c', 'hint', TOPIC_SIZE, 'changelog.releases.oct22c.hintAlt') },
-      { key: 'finished', titleKey: 'changelog.releases.oct22c.finishedTitle', bodyKey: 'changelog.releases.oct22c.finishedBody', image: changelogShots('2026-10-22c', 'finished', TOPIC_SIZE, 'changelog.releases.oct22c.finishedAlt') },
+      { key: 'teams', titleKey: 'changelog.releases.oct22c.teamsTitle', bodyKey: 'changelog.releases.oct22c.teamsBody', image: changelogShots('2026-10-22c', 'teams', TOPIC_SIZE, 'changelog.releases.oct22c.teamsAlt') },
       { key: 'sharePage', titleKey: 'changelog.releases.oct22c.sharePageTitle', bodyKey: 'changelog.releases.oct22c.sharePageBody', image: changelogShots('2026-10-22c', 'sharepage', TOPIC_SIZE, 'changelog.releases.oct22c.sharePageAlt') },
     ],
     itemKeys: [
@@ -189,6 +189,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
       'changelog.releases.oct22c.teamProject',
       'changelog.releases.oct22c.shareDialog',
       'changelog.releases.oct22c.motion',
+      'changelog.releases.oct22c.finished',
       'changelog.releases.oct22c.teamState',
     ],
   },
