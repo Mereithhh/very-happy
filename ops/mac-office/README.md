@@ -41,7 +41,10 @@ very-happy daemon stop
 ```
 
 Because the plist restarts only abnormal exits, an intentional successful stop
-stays stopped. Resume with:
+stays stopped. A CLI upgrade's handover (automatic or `very-happy daemon start`)
+is not a successful stop: since 0.2.183 the daemon exits 75 or is restarted with
+a plain kickstart, so it stays in the job (B-770, `daemonSupervisor.ts`).
+Resume with:
 
 ```bash
 launchctl kickstart gui/$(id -u)/com.mereith.happy-daemon

@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-23-cli-supervised-auto-update',
+    cliVersion: '0.2.183',
+    date: '2026-10-23',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct23r.title',
+    summaryKey: 'changelog.releases.oct23r.summary',
+    itemKeys: ['changelog.releases.oct23r.launchd', 'changelog.releases.oct23r.lineage'],
+  },
+  {
     id: '2026-10-22-projects-tool-cards',
     date: '2026-10-22',
     buildVersion: __APP_VERSION__,
