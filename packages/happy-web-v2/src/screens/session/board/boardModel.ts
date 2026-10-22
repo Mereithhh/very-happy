@@ -171,9 +171,10 @@ export function optionMarker(option: Pick<AttentionOption, 'id'>): string | null
     return /^[A-Za-z0-9]$/.test(option.id) ? option.id : null;
 }
 
-/** 「负责人推荐」 only when the lead itself marked it; a system item (team submit) recommending accept is not the lead's call. */
-export function showsLeadRecommendation(item: Pick<AttentionItem, 'source'>, option: Pick<AttentionOption, 'recommended'>): boolean {
-    return option.recommended === true && item.source === 'lead';
+/** No `recommended` mark → no tag. The lead's own mark reads 「负责人推荐」; any other source (system / automation) just 「推荐」. */
+export function recommendationTag(item: Pick<AttentionItem, 'source'>, option: Pick<AttentionOption, 'recommended'>): 'lead' | 'plain' | null {
+    if (option.recommended !== true) return null;
+    return item.source === 'lead' ? 'lead' : 'plain';
 }
 
 /** The chosen option as the Owner reads it: `B. 明早`, or just the label for an internal id. */

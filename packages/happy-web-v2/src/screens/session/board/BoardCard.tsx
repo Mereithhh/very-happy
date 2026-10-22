@@ -4,7 +4,7 @@ import { forwardRef } from 'react';
 import { CornerDownLeft, CornerUpRight } from 'lucide-react';
 import type { AttentionItem } from '@slopus/happy-wire';
 import { kindLabel, type BoardCopy } from './boardCopy';
-import { choiceLabel, displayTitle, isLive, itemStatus, kindTone, optionMarker, repliesTo, resolveAction, showsLeadRecommendation } from './boardModel';
+import { choiceLabel, displayTitle, isLive, itemStatus, kindTone, optionMarker, repliesTo, resolveAction, recommendationTag } from './boardModel';
 import { useMessage } from '@/sync/storage';
 import { Markdown } from '../Markdown';
 
@@ -72,7 +72,7 @@ export const BoardCard = forwardRef<HTMLDivElement, {
                                         <span>{o.label}</span>
                                         {o.detail && <span className="brf-opt-detail">{o.detail}</span>}
                                     </span>
-                                    {showsLeadRecommendation(item, o) && <span className="brf-opt-rec">{copy.recommended}</span>}
+                                    {recommendationTag(item, o) && <span className="brf-opt-rec">{recommendationTag(item, o) === 'lead' ? copy.recommended : copy.recommendedPlain}</span>}
                                 </button>
                             ))}
                         </div>

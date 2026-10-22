@@ -18,7 +18,8 @@ const goal = '[QA] Briefing board QA probe. No code work unless the owner asks. 
 const base: AttentionItem = {
     id: 'sub1', sessionId: 's', teamId: 't', projectId: null, source: 'team', kind: 'decision', key: 'team-submit:x',
     title: `根目标已提交，等你验收 · ${goal}`.slice(0, 120).trim(), bodyMd: 'QA5 根任务第 1 次提交',
-    options: [{ id: 'accept', label: '验收 / Accept', recommended: true }, { id: 'return', label: '退回 / Return' }],
+    // S-1d (#717): the team-submit item no longer marks a recommendation.
+    options: [{ id: 'accept', label: '验收 / Accept' }, { id: 'return', label: '退回 / Return' }],
     links: null, anchor: null, firstReply: null, replyToId: null, inferred: false, needsOwner: true, state: 'open',
     ownerChoice: null, ownerNote: null, resolvedBy: null, resolveNote: null, repostCount: 0, createdAt: 1, updatedAt: 1, resolvedAt: null, pushedAt: null, version: 1,
 };
@@ -40,7 +41,7 @@ async function render(item: AttentionItem) {
 }
 
 describe('BoardCard text (QA5 O1)', () => {
-    it('team submit: word-boundary title + hover title, labels only, no lead recommendation', async () => {
+    it('team submit: word-boundary title + hover title, labels only, no recommendation tag', async () => {
         const host = await render(base);
         const title = host.querySelector('.brf-title')!;
         expect(title.textContent).toMatch(/reply in one…$/);
@@ -54,7 +55,10 @@ describe('BoardCard text (QA5 O1)', () => {
         const lead = { ...base, source: 'lead', title: '发版窗口选哪个？', options: [{ id: 'A', label: '今晚' }, { id: 'B', label: '明早', recommended: true }] };
         const host = await render(lead);
         expect([...host.querySelectorAll('.brf-opt-id')].map((b) => b.textContent)).toEqual(['A', 'B']);
-        expect(host.querySelectorAll('.brf-opt-rec')).toHaveLength(1);
+        expect([...host.querySelectorAll('.brf-opt-rec')].map((t) => t.textContent)).toEqual(['负责人推荐']);
+        await act(async () => root!.unmount());
+        const auto = await render({ ...base, source: 'automation', options: [{ id: 'A', label: '今晚', recommended: true }, { id: 'B', label: '明早' }] });
+        expect([...auto.querySelectorAll('.brf-opt-rec')].map((t) => t.textContent)).toEqual(['推荐']);
         await act(async () => root!.unmount());
         const done = await render({ ...base, state: 'resolved', ownerChoice: 'accept', resolvedBy: 'owner' });
         expect(done.querySelector('.brf-status')?.textContent).toBe('已决定 验收 / Accept');

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AttentionItem } from '@slopus/happy-wire';
-import { blockedBanner, choiceLabel, displayTitle, optionMarker, showsLeadRecommendation, sessionHasBoard, boardCounts, boardGroup, buildBoard, followUpQuote, isUnread, itemStatus, repliesTo, resolveAction, RECENT_ANSWERED } from './boardModel';
+import { blockedBanner, choiceLabel, displayTitle, optionMarker, recommendationTag, sessionHasBoard, boardCounts, boardGroup, buildBoard, followUpQuote, isUnread, itemStatus, repliesTo, resolveAction, RECENT_ANSWERED } from './boardModel';
 
 let n = 0;
 function item(over: Partial<AttentionItem>): AttentionItem {
@@ -151,9 +151,11 @@ describe('card text (QA5 O1)', () => {
         expect(choiceLabel(submit, 'gone')).toBe('gone');
     });
 
-    it('「负责人推荐」 only for a lead item whose option is recommended', () => {
-        expect(showsLeadRecommendation({ source: 'team' }, { recommended: true })).toBe(false);
-        expect(showsLeadRecommendation({ source: 'lead' }, { recommended: true })).toBe(true);
-        expect(showsLeadRecommendation({ source: 'lead' }, {})).toBe(false);
+    it('a tag only for a recommended option: 「负责人推荐」 from the lead, plain 「推荐」 from anyone else', () => {
+        expect(recommendationTag({ source: 'lead' }, { recommended: true })).toBe('lead');
+        expect(recommendationTag({ source: 'team' }, { recommended: true })).toBe('plain');
+        expect(recommendationTag({ source: 'automation' }, { recommended: true })).toBe('plain');
+        expect(recommendationTag({ source: 'lead' }, {})).toBeNull();
+        expect(recommendationTag({ source: 'team' }, { recommended: false })).toBeNull();
     });
 });
