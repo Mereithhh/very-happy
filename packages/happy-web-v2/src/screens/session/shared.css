@@ -134,7 +134,9 @@
 @media (pointer: coarse) { .sb-invite-actions .vh-btn { min-height: 36px; } }
 
 /* ── share dialog (owner) — reuses the sessionOptionsDialog surface tokens ── */
-.shd-form { display: grid; gap: var(--sp-3); margin-top: var(--sp-4); }
+/* B-758: one minmax(0, 1fr) column. An implicit `auto` track is as wide as its widest min-content —
+   a nowrap link/grant subtitle — and pushed the link tab past the dialog's right padding. */
+.shd-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); margin-top: var(--sp-4); }
 /* B-621 friends row: one chip per friend not yet on the list; tap = share with the chosen role */
 .shd-friends { display: grid; gap: var(--sp-1); }
 .shd-friends-label { font-size: var(--fs-11); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); }
@@ -184,7 +186,7 @@
 
 /* B-701 sharing tiers: tabs, expiry, link tab. */
 .shd-tabs { margin-top: var(--sp-4); width: min(100%, 240px); }
-.shd-link { display: grid; gap: var(--sp-3); margin-top: var(--sp-4); }
+.shd-link { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); margin-top: var(--sp-4); }
 .shd-note { display: flex; gap: var(--sp-2); align-items: flex-start; margin: 0; color: var(--text); font-size: var(--fs-13); line-height: 1.45; }
 .shd-note > svg { flex: none; margin-top: 2px; color: var(--text-faint); }
 .shd-link-row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }

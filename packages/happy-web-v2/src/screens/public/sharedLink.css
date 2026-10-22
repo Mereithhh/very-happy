@@ -1,6 +1,10 @@
-/* B-701 read-only share-link page. Workspace density, public shell. */
+/* B-701 read-only share-link page. Workspace density, public shell.
+   B-758: a fixed-height shell, like the app. `.cl-scroll` (chatlist.css) is the scroller and
+   contains its overscroll; with a content-tall shell it never overflowed, so touch scrolling
+   latched onto it and went nowhere (the document could not take the chain) and the page had no
+   scrollbar of its own. */
 .slk {
-  min-height: 100dvh;
+  height: var(--app-h);
   display: flex;
   flex-direction: column;
   background: var(--bg-0);
@@ -52,7 +56,7 @@
   font-size: var(--chat-fs-secondary);
   color: var(--text-faint);
 }
-.slk-foot { padding: var(--sp-4) 0 var(--sp-6); }
+.slk-foot { padding: var(--sp-4) 0 max(var(--sp-6), env(safe-area-inset-bottom)); }
 .slk-state {
   flex: 1;
   display: flex;
