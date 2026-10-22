@@ -39,12 +39,18 @@ worktree, supplies the official skill, and opens the lead conversation. App user
 do not install skills manually. The lead lives for this goal; after acceptance its
 session can be cleaned up, while unmerged changes remain preserved.
 
+You only talk to the lead. The lead splits the goal into tasks, creates members
+as it needs them, follows their progress and reviews their results; you do not
+add members yourself. Until the lead creates one, the team page and the expanded
+sidebar team say so, with a link into the lead's conversation, and the ⓘ beside
+**Who is working** explains the split.
+
 Team names appear alongside ordinary conversations in history. Select a team's
-name to chat with its lead (a team whose lead has no conversation yet opens its
-board); the row shows the lead's status. The chevron (or → / ←) expands the
-member list without navigating, and the board icon at the end of the row — or
-**Open board** in its right-click / long-press menu — opens goal, progress, and
-results.
+name (or press Enter) to open its team page — goal, progress, members and results;
+the row shows the lead's status. The chevron (or → / ←) expands the member list
+without navigating; its **Lead** row opens the lead's conversation. The row's
+right-click / long-press menu offers **Open team page**, **Chat with the lead**,
+**Team settings** and expand / collapse.
 Members no longer in use fold into one **N inactive** row, both under the expanded
 team in the sidebar and in the team page's member list; open it to reach their
 history (this device remembers the choice, shared by both places). A member is

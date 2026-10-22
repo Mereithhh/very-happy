@@ -66,6 +66,14 @@ function TeamsContent() {
     if (searchParams.get("new") === "1") setCreating(true);
     const task = searchParams.get("task");
     if (task) setSelectedTask(task);
+    // B-759: the sidebar menu's 团队设置 opens this tab via ?view=settings;
+    // the param is dropped so the tabs stay the only state afterwards.
+    if (searchParams.get("view") === "settings") {
+      setView("settings");
+      const next = new URLSearchParams(searchParams);
+      next.delete("view");
+      setSearchParams(next, { replace: true });
+    }
   }, [searchParams]);
   // B-713: the sidebar's 新建团队 opens this dialog via ?new=1; closing drops
   // the param so the next click (same URL) opens it again.

@@ -58,7 +58,9 @@ export type TeamNavigationEntry<T> =
   | { kind: 'row'; row: T; team?: TeamState; bot?: TeamBot }
   | { kind: 'team'; team: TeamState }
   /** B-674 / B-690: one fold row standing in for the team's inactive members. */
-  | { kind: 'inactive'; team: TeamState; count: number; open: boolean };
+  | { kind: 'inactive'; team: TeamState; count: number; open: boolean }
+  /** B-759: an expanded team with only its lead — a hint that the lead creates members. */
+  | { kind: 'empty'; team: TeamState };
 /** B-690: which member rows are inactive (`teamMemberInactive`), which teams show
  *  them (device-local choice), and how many sessionless inactive members the
  *  caller folds in itself (`extra`, rendered right after the fold row). */
@@ -66,7 +68,8 @@ export interface InactiveMemberFold<T> { isInactive: (row: T, team: TeamState, b
 /** Preserve ordinary rows' relative order. Put each team at its first member,
  * keep children in that same order, and include newly created empty teams.
  * With `inactive`, an expanded team lists its active members first and folds the
- * inactive ones behind a single 「已停用 N 个」 entry (B-674, B-690). */
+ * inactive ones behind a single 「已停用 N 个」 entry (B-674, B-690); a team with
+ * only its lead gets an `empty` hint after the lead (B-759). */
 export function groupTeamNavigation<T extends { sessionId?: string }>(rows: T[], teams: TeamState[], expanded: ReadonlySet<string>, inactive?: InactiveMemberFold<T>): TeamNavigationEntry<T>[] {
   const membership = teamSessionMembership(teams);
   const children = new Map<string, T[]>();
@@ -87,6 +90,7 @@ export function groupTeamNavigation<T extends { sessionId?: string }>(rows: T[],
     const old = inactive ? kids.filter((row) => inactive.isInactive(row, team, botOf(row))) : [];
     for (const row of kids) if (!old.includes(row)) output.push(child(row, team));
     const count = old.length + (inactive?.extra?.(team) ?? 0);
+    if (count === 0 && teamHasOnlyLead(team)) output.push({ kind: 'empty', team });
     if (count === 0) return;
     const open = inactive!.open.has(team.id);
     output.push({ kind: 'inactive', team, count, open });
@@ -170,13 +174,20 @@ export function teamLeadSessionId(team: TeamState): string | null {
 }
 
 /**
- * B-721: where a click on a sidebar team row goes. The lead's conversation
- * first (Owner: "点一下只想跟默认的负责人聊聊"); a team without one falls back
- * to its board. Ended / hibernated lead sessions still open — the session page
- * owns resume and leave-a-message.
+ * B-759: where a sidebar team row goes. The row (name, Enter) opens the team
+ * page — the expanded member list's own 「负责人」 row is the way to the lead,
+ * so the row no longer duplicates it (B-721 sent the name to the lead). The
+ * lead's conversation stays one context-menu item away; ended / hibernated
+ * lead sessions still open — the session page owns resume and leave-a-message.
  */
-export function teamRowTarget(team: TeamState): { href: string; leadSessionId: string | null; boardHref: string } {
-  const boardHref = `/teams/${encodeURIComponent(team.id)}`;
+export function teamRowTarget(team: TeamState): { href: string; leadHref: string | null; leadSessionId: string | null; settingsHref: string } {
+  const href = `/teams/${encodeURIComponent(team.id)}`;
   const leadSessionId = teamLeadSessionId(team);
-  return { href: leadSessionId ? `/session/${encodeURIComponent(leadSessionId)}` : boardHref, leadSessionId, boardHref };
+  return { href, leadHref: leadSessionId ? `/session/${encodeURIComponent(leadSessionId)}` : null, leadSessionId, settingsHref: `${href}?view=settings` };
+}
+
+/** B-759: a team with a lead and nobody else yet — the place to say that the
+ *  lead creates members itself (sidebar, team page). Not while still preparing. */
+export function teamHasOnlyLead(team: TeamState): boolean {
+  return team.bots.length > 0 && team.bots.every(bot => bot.root);
 }

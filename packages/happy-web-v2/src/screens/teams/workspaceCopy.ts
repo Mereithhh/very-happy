@@ -6,6 +6,10 @@ const en = {
   noTeams: 'Your first team starts with a conversation', noTeamsHint: 'Choose a project and describe your goal. We will prepare the lead and connect the team.',
   noTasks: 'Ready for a goal', noTasksHint: 'Ask the lead to inspect a project or build a feature. Tasks appear here as work is delegated.',
   noMembers: 'Start the team to create its lead', members: 'Team members',
+  // B-759: say plainly that members come from the lead, not from the user.
+  membersByLead: 'The lead creates members as needed. Describe your goal in the lead’s conversation.',
+  rolesInfo: 'How the lead and members work',
+  roles: 'You talk to the lead. The lead splits the goal into tasks, creates a member for each piece of work when it needs one, follows their progress and reviews the results. You can open any member’s conversation to see what it is doing.',
   queued: 'Queued', running: 'In progress', submitted: 'Review', finished: 'Finished',
   // B-753: the folded 「已结束」 lane and its paging.
   finishedCount: (n: number) => `Finished · ${n}`, showFinished: 'Show finished tasks', hideFinished: 'Hide finished tasks',
@@ -50,6 +54,9 @@ const zh: typeof en = {
   noTeams: '从一句需求，开始第一个团队', noTeamsHint: '选择项目，说清目标，系统会准备负责人并连接团队。',
   noTasks: '准备好接收目标', noTasksHint: '让负责人检查一个项目，或开发一个功能。派出的任务会直接展示在这里。',
   noMembers: '启动团队后，负责人会出现在这里', members: '团队成员',
+  membersByLead: '成员由负责人按需创建。在负责人的对话里描述目标即可。',
+  rolesInfo: '负责人和成员如何分工',
+  roles: '你只需要和负责人对话。负责人把目标拆成任务，需要时为每项工作创建成员，跟进进度并验收结果。你可以随时打开任何成员的对话，看它在做什么。',
   queued: '待开始', running: '进行中', submitted: '待验收', finished: '已结束',
   finishedCount: (n: number) => `已结束 ${n} 个`, showFinished: '展开已结束的任务', hideFinished: '收起已结束的任务',
   showMore: (n: number) => `显示更多（还有 ${n} 个）`,

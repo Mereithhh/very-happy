@@ -1,12 +1,13 @@
 /**
- * B-721: a sidebar team row. The name opens the lead's conversation (board as
- * the fallback), the chevron only folds the member list, and the board has its
- * own button plus a context-menu item. Shared by every grouping view (project /
- * tag / none) — Sidebar renders team headers in one place.
+ * B-759: a sidebar team row. The row (click, Enter) opens the team page, the
+ * chevron only folds the member list, and the expanded 「负责人」 row opens the
+ * lead. The context menu holds team page / lead / settings / fold — no hover
+ * button. Shared by every grouping view (project / tag / none) — Sidebar
+ * renders team headers in one place. B-721 added the lead status on the row.
  */
 import type { KeyboardEvent, ReactNode } from 'react';
 import type { TeamState } from '@slopus/happy-wire';
-import { ChevronRight, ChevronDown, CircleAlert, LayoutDashboard, MessageSquare, UsersRound } from 'lucide-react';
+import { ChevronRight, ChevronDown, CircleAlert, LayoutDashboard, MessageSquare, Settings2, UsersRound } from 'lucide-react';
 import { ActionContextMenu, Spinner, type MenuItemDef } from '@/ui';
 import type { AgentExecution } from '@/sync/agentStatus';
 import { teamRowTarget } from './teamNavigation';
@@ -15,7 +16,9 @@ export interface SidebarTeamRowCopy {
   expand: string;
   collapse: string;
   openBoard: string;
+  openTeam: string;
   openLead: string;
+  settings: string;
   leadStatus: string;
 }
 
@@ -35,9 +38,9 @@ export function SidebarTeamRow(props: {
 }) {
   const { team, open, copy } = props;
   const target = teamRowTarget(team);
-  // The board is "this row" on its page; the lead's page is this row only while
-  // the lead's own member row is folded away.
-  const selected = props.pathname === target.boardHref || (!open && target.leadSessionId !== null && props.pathname === target.href);
+  // The team page is "this row"; the lead's page is this row only while the
+  // lead's own member row is folded away.
+  const selected = props.pathname === target.href || (!open && target.leadHref !== null && props.pathname === target.leadHref);
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     if ((e.key === 'ArrowRight' && !open) || (e.key === 'ArrowLeft' && open)) {
       e.preventDefault();
@@ -46,8 +49,9 @@ export function SidebarTeamRow(props: {
   };
   const status = props.leadStatus;
   const items: MenuItemDef[] = [
-    ...(target.leadSessionId ? [{ key: 'open-lead', label: copy.openLead, icon: MessageSquare, onSelect: () => props.onNavigate(target.href) } satisfies MenuItemDef] : []),
-    { key: 'open-board', label: copy.openBoard, icon: LayoutDashboard, onSelect: () => props.onNavigate(target.boardHref) },
+    { key: 'open-board', label: copy.openBoard, icon: LayoutDashboard, onSelect: () => props.onNavigate(target.href) },
+    ...(target.leadHref ? [{ key: 'open-lead', label: copy.openLead, icon: MessageSquare, onSelect: () => props.onNavigate(target.leadHref!) } satisfies MenuItemDef] : []),
+    { key: 'settings', label: copy.settings, icon: Settings2, onSelect: () => props.onNavigate(target.settingsHref) },
     { key: 'toggle', label: open ? copy.collapse : copy.expand, icon: open ? ChevronDown : ChevronRight, onSelect: props.onToggle },
   ];
   return (
@@ -56,7 +60,7 @@ export function SidebarTeamRow(props: {
         <button type="button" className="sb-team-toggle" aria-expanded={open} aria-label={`${open ? copy.collapse : copy.expand}: ${team.name}`} onClick={props.onToggle}>
           <ChevronRight size={15} className={open ? 'is-open' : ''} />
         </button>
-        <button type="button" className="sb-team-main" data-href={target.href} aria-current={selected ? 'page' : undefined} title={target.leadSessionId ? `${copy.openLead} · ${team.name}` : `${copy.openBoard} · ${team.name}`} onClick={() => props.onNavigate(target.href)} onKeyDown={onKeyDown}>
+        <button type="button" className="sb-team-main" data-href={target.href} aria-current={selected ? 'page' : undefined} title={`${copy.openTeam} · ${team.name}`} onClick={() => props.onNavigate(target.href)} onKeyDown={onKeyDown}>
           <UsersRound size={17} /><span><strong>{team.name}</strong><small>{props.subtitle}</small></span>
           {status && status !== 'idle' && (
             <span className={`sb-row-status sb-row-status--${status} sb-team-lead-status`} role="img" aria-label={props.leadStatusLabel ? `${copy.leadStatus} · ${props.leadStatusLabel}` : copy.leadStatus} title={props.leadStatusLabel ? `${copy.leadStatus} · ${props.leadStatusLabel}` : undefined}>
@@ -64,9 +68,6 @@ export function SidebarTeamRow(props: {
             </span>
           )}
           {props.badge}
-        </button>
-        <button type="button" className="sb-team-board" aria-label={`${copy.openBoard}: ${team.name}`} title={copy.openBoard} onClick={() => props.onNavigate(target.boardHref)}>
-          <LayoutDashboard size={15} />
         </button>
       </div>
     </ActionContextMenu>

@@ -129,7 +129,7 @@ describe('flat list keeps the inactive-members fold (B-710)', () => {
   // Same shape Sidebar's nestTeams maps entries to: the fold becomes a row carrying teamInactiveFold.
   const nested = (open: boolean) => groupTeamNavigation([{ sessionId: 'lead' }, { sessionId: 'ui' }, { sessionId: 'x' }], [team], new Set(['t']), {
     isInactive: (r) => r.sessionId === 'ui', open: new Set(open ? ['t'] : []),
-  }).map((e) => e.kind === 'inactive' ? { key: 'fold', teamInactiveFold: { count: e.count, open: e.open } } : e.kind === 'team' ? { key: 'team' } : { key: e.row.sessionId! });
+  }).map((e) => e.kind === 'inactive' ? { key: 'fold', teamInactiveFold: { count: e.count, open: e.open } } : e.kind === 'team' ? { key: 'team' } : e.kind === 'empty' ? { key: 'empty', teamEmptyHint: true } : { key: e.row.sessionId! });
   it('collapsed by default: the fold row is rendered, the inactive member is not, and the fold takes no ⌘N slot', () => {
     const { rendered, sequence } = flatListRows(nested(false));
     expect(rendered.map((r) => r.key)).toEqual(['team', 'lead', 'fold', 'x']);
@@ -137,6 +137,14 @@ describe('flat list keeps the inactive-members fold (B-710)', () => {
   });
   it('opened (device-local choice): the inactive member shows behind the fold', () => {
     expect(flatListRows(nested(true)).rendered.map((r) => r.key)).toEqual(['team', 'lead', 'fold', 'ui', 'x']);
+  });
+  it('B-759: a lead-only team’s 「成员由负责人按需创建」 hint is rendered but takes no ⌘N slot', () => {
+    const solo = { ...team, bots: team.bots.slice(0, 1) } as TeamState;
+    const rows = groupTeamNavigation([{ sessionId: 'lead' }, { sessionId: 'x' }], [solo], new Set(['t']))
+      .map((e) => e.kind === 'empty' ? { key: 'empty', teamEmptyHint: true } : e.kind === 'team' ? { key: 'team' } : e.kind === 'row' ? { key: e.row.sessionId! } : { key: 'fold' });
+    const { rendered, sequence } = flatListRows(rows);
+    expect(rendered.map((r) => r.key)).toEqual(['team', 'lead', 'empty', 'x']);
+    expect(sequence.map((r) => r.key)).toEqual(['team', 'lead', 'x']);
   });
   it('Sidebar renders the flat section from the rendered rows, numbers it from the sequence', () => {
     const src = readFileSync(new URL('./Sidebar.tsx', import.meta.url), 'utf8');

@@ -64,7 +64,7 @@ Run `very-happy install-pi-tools` once, then launch `pi` directly inside a Very 
 
 - **A new face**: the ^_^ block is our new mark, built out of characters on the landing page, with a layered ASCII field behind the site, docs and your empty workspace.
 - **Share a conversation as a link**: a read-only link anyone can open without an account — up to now or live, expiring in 1, 7 or 30 days, revocable any time; Settings → Shared lists everything you have shared.
-- **Teams come with their project**: a new team creates a same-name project whose instructions and decisions are the team's context; click the team to talk to its lead, who delegates and runs members in parallel (CLI 0.2.181).
+- **Teams come with their project**: a new team creates a same-name project whose instructions and decisions are the team's context; click the team to open its team page and its Lead row to talk to the lead, who creates members as needed and runs them in parallel (CLI 0.2.181).
 - **Machines keep themselves up to date**: daemons install a new CLI within minutes of release, the machine page shows the status with Update now, and a missing Claude Code, Codex, Gemini or pi installs in one click (CLI 0.2.181).
 - Also: New session / New project / New team lead the sidebar; messages appear the moment you send them; team cards open in a full reader; our own dropdowns and dialogs; Claude Code 2.1.306.
 

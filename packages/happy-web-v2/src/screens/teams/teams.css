@@ -177,6 +177,17 @@
 .teams-members-inactive > summary:focus-visible { outline: none; color: var(--text); }
 @media (hover: hover) and (pointer: fine) { .teams-members-inactive > summary:hover { outline: none; color: var(--text); } }
 .teams-members-inactive-hint { margin: 0 0 4px; color: var(--text-faint); font-size: var(--fs-12); }
+/* B-759: ⓘ beside 「谁在做什么」 explains lead vs members; a lead-only team says the lead creates members. */
+.teams-screen .teams-roles-info { display: inline-grid; place-items: center; width: 28px; min-height: 28px; height: 28px; margin-left: 4px; padding: 0; vertical-align: middle; background: none; color: var(--text-dim); border-radius: var(--r-sm); }
+@media (hover: hover) and (pointer: fine) { .teams-screen .teams-roles-info:not(:disabled):hover { background: var(--fill-hover); color: var(--text); } }
+.teams-screen .teams-roles-info[aria-expanded="true"] { color: var(--text); }
+@media (pointer: coarse) { .teams-screen .teams-roles-info { width: 44px; height: 44px; min-height: 44px; margin-left: 0; } }
+.teams-roles { margin: -4px 0 12px; max-width: 640px; color: var(--text-dim); font-size: var(--fs-13); line-height: 1.6; }
+.teams-members-empty { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); padding: 12px 0; border-top: 1px solid var(--line); color: var(--text-dim); font-size: var(--fs-13); }
+.teams-members-empty p { margin: 0; }
+.teams-members-empty-cta { display: inline-flex; align-items: center; gap: var(--sp-2); box-sizing: border-box; min-height: 32px; padding: 5px 10px; border-radius: var(--r-btn); background: var(--fill-soft); color: var(--text); text-decoration: none; }
+@media (hover: hover) and (pointer: fine) { .teams-members-empty-cta:hover { background: var(--fill-soft-hover); } }
+@media (pointer: coarse) { .teams-members-empty-cta { min-height: 44px; } }
 .teams-member-info > span { color: var(--text-dim); }
 .teams-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .teams-progress { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }
@@ -274,6 +285,8 @@
 .team-start-form details summary { min-height: 32px; cursor: pointer; padding-block: var(--sp-3); }
 .team-start-form details :is(label, .teams-field) + :is(label, .teams-field) { margin-top: var(--sp-3); }
 .team-start-assurance { color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; }
+/* B-759: the 「负责人按需创建成员」 note belongs to the goal field above it. */
+.team-start-goal-note { margin: -6px 0 0; }
 .team-launch-state { border: 0; border-radius: var(--r-md); background: var(--bg-1); box-shadow: var(--panel-shadow); padding: var(--sp-4); margin-top: var(--sp-4); }
 .team-goal p { font-size: var(--fs-16); white-space: pre-wrap; }
 .team-delivery h2 { display: flex; gap: var(--sp-2); align-items: center; }

@@ -150,7 +150,8 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
   }}>
     <p className="team-chat-intro"><Bot size={20} />{c.chatIntro}</p>
     <fieldset disabled={busy || !!intent || !restored}>
-      <label>{c.goal}<textarea ref={goalRef} name="goal" value={goal} onChange={e => setGoal(e.target.value)} required maxLength={32000} placeholder={c.goalHint} autoFocus /></label>
+      <label>{c.goal}<textarea ref={goalRef} name="goal" value={goal} onChange={e => setGoal(e.target.value)} required maxLength={32000} placeholder={c.goalHint} autoFocus aria-describedby={`${fieldId}-goal-note`} /></label>
+      <p id={`${fieldId}-goal-note`} className="team-start-assurance team-start-goal-note">{c.goalNote}</p>
       <div className="team-start-config">
       <button type="button" className="team-start-toggle" aria-expanded={configOpen} aria-controls="team-start-config" onClick={() => setConfigOpen(open => !open)}><ChevronDown size={16} aria-hidden className="team-start-chev" />{c.configure}<span className="team-start-context">{machine ? machineLabel(machine) : c.machine} · {directory || c.project} · {assistant === 'claude' ? 'Claude Code' : assistant === 'codex' ? 'Codex' : 'pi'}</span></button>
       <CollapsePanel id="team-start-config" open={configOpen} className="team-start-config-body">
