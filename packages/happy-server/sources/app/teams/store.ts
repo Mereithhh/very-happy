@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { TeamActionRequest, TeamResponse, TeamState, TeamOperation, TeamMessage, TeamLaunch, TeamProjectChoice } from '@slopus/happy-wire';
 import { bindNewTeamProjectTx } from '@/app/projects/store';
+import { applyTeamTransitionsTx } from '@/app/attention/store';
 import { db } from '@/storage/db';
 import { inTx, type Tx } from '@/storage/inTx';
 import { encryptString, decryptString } from '@/modules/encrypt';
@@ -183,6 +184,8 @@ export async function actOnTeam(teamId: string, auth: { accountId: string } | { 
         if (action.type === 'join' && p.actor.kind === 'owner' && row.state.archivedAt === undefined) await guardSessionTeam(tx, p.accountId, action.sessionId, teamId, action.transfer === true);
         const reduced = reduceTeam(row.state, p.actor, action, { now: Date.now(), id: randomUUID });
         await persistTransition(tx, row, reduced.team);
+        // B-766: a root task's submit has no recipient in the reducer — it becomes a「待你验收」briefing item instead.
+        await applyTeamTransitionsTx(tx, p.accountId, row.state, reduced.team);
         const memo = JSON.stringify({ credentialBotId: reduced.credentialBotId, credentialGeneration: reduced.team.bots.find(b => b.id === reduced.credentialBotId)?.generation, operationId: reduced.operationId, taskId: reduced.taskId, scheduleId: reduced.scheduleId });
         await tx.$executeRaw`INSERT INTO "TeamRequest" ("teamId","requestId","actorKey","requestHash","response") VALUES (${teamId},${request.requestId},${actorKey},${requestHash},${memo}::jsonb)`;
         const response: TeamResponse = { team: teamView(reduced.team, p.actor), taskId: reduced.taskId, scheduleId: reduced.scheduleId, ...(reduced.scheduleId ? { scheduleRecordRetained: !!reduced.team.schedules?.some(s => s.id === reduced.scheduleId) } : {}) };

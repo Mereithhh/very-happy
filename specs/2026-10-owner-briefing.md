@@ -42,7 +42,7 @@
 | update | `{ t: 'attention-item', item }`，发给账号所有连接，全量快照；条目不硬删除，客户端按 id 取最大 version |
 | REST | `POST /v1/attention-items`（upsert）、`PATCH /:id`、`POST /:id/resolve`（agent 侧）、`POST /:id/owner-respond`（choose / resolve / reopen）、`GET /v1/attention-items`（sessionId / state / needsOwner / since / limit） |
 | 工具 | `owner_board_post`（kind 限 decision / todo / report / answer；decision 必须 2～4 个选项；`anchor` 默认 `this_turn`，由 CLI 解析成锚点）、`owner_board_update`（state 只能 open / in_progress）、`owner_board_resolve`（done / answered / dropped / superseded）、`owner_board_list` |
-| 能力与开关 | wrapper 在 `metadata.capabilities` 声明 `owner-board-v1`；开关关闭时所有路由 404 `owner_board_disabled` |
+| 能力与开关 | wrapper 在 `metadata.capabilities` 声明 `owner-board-v1`；server env `VH_OWNER_BOARD_ENABLED=true` 才开启（与 `VH_AGENT_TEAMS_ENABLED` 并列，默认关，Owner 的部署打开），关闭时所有路由 404 `owner_board_disabled`、钩子不动作 |
 
 `resolve` 的结果：done → resolved，answered → answered，dropped / superseded → dismissed。
 
@@ -64,11 +64,24 @@
 - 会话归档：所有开放条目置为 dismissed、`resolvedBy='session-archived'`。
 - 根任务 `team_submit`：写一条 `source='team'`、`kind='decision'`、标题「根目标已提交，等你验收」的条目，选项「验收 / 退回」；Owner 选择后映射为团队的 accept / return。
 
+### S-1 实现（server）
+
+| 部分 | 位置 |
+|---|---|
+| 迁移 `20261022120000_attention_items`：只新增 `AttentionItem` 一张表（FK 到 Account / Session，级联删除），不回填；回滚 `DROP TABLE "AttentionItem";` | `packages/happy-server/prisma/migrations/` |
+| 纯规则：post 计划（create / noop / repost、关闭条目重开）、根任务状态迁移、「待你验收」条目、owner-replied 目标、push 文案、answered 每会话保留 2 条 | `sources/app/attention/rules.ts` |
+| 存储：SERIALIZABLE `inTx`；并发首插同 key 时输家撞唯一索引（P2002）后整笔重试、落成 repost；push 用 `UPDATE … WHERE pushedAt IS NULL` 抢占 | `sources/app/attention/store.ts` |
+| 根任务 submit：`actOnTeam` 在同一事务里比较前后状态，root task 变成 submitted 时在负责人会话写条目（key `team-submit:<taskId>`，requestId 按 attempt），离开 submitted 时关闭；看板「验收 / 退回」先执行团队 accept / return | `sources/app/teams/store.ts`、`attention/store.ts` |
+| 钩子：消息入口（socket / v3 HTTP）调用 owner-replied；归档入口调用 session-archived | `sessionUpdateHandler.ts`、`v3SessionRoutes.ts`、`sessionRoutes.ts` |
+| 路由 | `sources/app/api/routes/attentionRoutes.ts` |
+
+看板选择与已关闭条目：同一选项重复提交返回原条目；关闭后换选项返回 409（普通条目 `attention_item_closed`，根任务条目 `attention_item_stale`），需要先「追问」重开。
+
 ## 兼容矩阵与发布顺序
 
 | 组合 | 行为 |
 |---|---|
-| 新 server + 旧 Web | 旧 Web 不认识 `attention-item` update，按未知 update 忽略；看不到汇报板，其他功能不受影响 |
+| 新 server + 旧 Web | 旧 Web 的 `ApiUpdateContainerSchema` 解析 `attention-item` 失败，只打一条 console 日志并忽略（`happy-web-v2/src/sync/sync.ts` `handleUpdate`；账号级 update 没有 seq 断档检测，不会触发重同步）；看不到汇报板，其他功能不受影响 |
 | 新 server + 旧 CLI | 旧 CLI 不注册 `owner_board_*`，`request_human` 继续写 `metadata.board.attention`，新 Web 两者都兼容一个版本 |
 | 旧 server + 新 CLI / Web | `/v1/attention-items` 404：CLI 不暴露工具、`request_human` 退回旧路径；Web 不显示汇报板入口 |
 | 开关关闭 | 等同旧 server（404 `owner_board_disabled`） |

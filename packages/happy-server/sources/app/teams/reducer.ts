@@ -112,6 +112,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
     const getTask = (taskId: string) => { const t = s.tasks.find(t => t.id === taskId); requireTeam(t && actorCanReadTask(s, actor, t), 'task_not_found', 404); return t; };
     const controls = (t: TeamTask) => requireTeam(actor.kind === 'owner' || t.ownerBotId === actor.botId, 'task_owner_required', 403);
     const msg = (t: TeamTask, recipientBotId: string | null, body: string) => {
+        // A root task (ownerBotId null) is owned by the person, not a bot: no team message. Its submit reaches
+        // the owner as a「待你验收」briefing item (B-766, attention/store `applyTeamTransitionsTx`).
         if (!recipientBotId) return;
         requireTeam(s.messages.length < 2000, 'team_message_limit', 429);
         // B-769: idle members are reported here, on a message that wakes the recipient anyway.

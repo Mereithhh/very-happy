@@ -1,6 +1,7 @@
 import { countPeerMessage } from '@/app/monitoring/projectMetrics';
 import { buildNewMessageUpdate, eventRouter } from "@/app/events/eventRouter";
 import { noteSessionMessage } from '@/app/automations/attentionLifecycle';
+import { noteAttentionOwnerMessage } from '@/app/attention/store';
 import { isAccountResourceLimitError } from "@/app/api/resourceLimits";
 import { utf8StringSchema } from "@/app/api/resourceSchemas";
 import {
@@ -176,7 +177,11 @@ export function v3SessionRoutes(app: Fastify) {
         if (firstCreated?.localId?.startsWith('session-message-')) {
             void Promise.resolve().then(() => db.projectMember.count({ where: { sessionId } })).then((n) => countPeerMessage(firstCreated.localId, n > 0)).catch(() => undefined);
         }
-        if (firstCreated) void noteSessionMessage({ accountId: userId, sessionId, localId: firstCreated.localId, client: request.headers['x-happy-client'] as string | undefined, origin: request.headers['x-happy-message-origin'] as string | undefined });
+        if (firstCreated) {
+            const origin = { accountId: userId, sessionId, localId: firstCreated.localId, client: request.headers['x-happy-client'] as string | undefined, origin: request.headers['x-happy-message-origin'] as string | undefined };
+            void noteSessionMessage(origin);
+            void noteAttentionOwnerMessage(origin);
+        }
         for (const message of stored.createdMessages) {
             const { updateSeq, ...storedMessage } = message;
             const updatePayload = buildNewMessageUpdate(

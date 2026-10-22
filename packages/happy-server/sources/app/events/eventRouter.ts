@@ -158,6 +158,10 @@ export type UpdateEvent = {
     sessionId: string;
     items: unknown[];
 } | {
+    /** B-766: full snapshot of one briefing-board item after a mutation. */
+    type: 'attention-item';
+    item: unknown;
+} | {
     type: 'kv-batch-update';
     changes: Array<{
         key: string;
@@ -754,6 +758,18 @@ export function buildPromptQueueUpdate(sessionId: string, items: unknown[], upda
             t: 'prompt-queue',
             sid: sessionId,
             items
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildAttentionItemUpdate(item: unknown, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'attention-item',
+            item
         },
         createdAt: Date.now()
     };
