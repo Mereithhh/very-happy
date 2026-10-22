@@ -1,4 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { basename, dirname } from 'node:path';
+import { isInsideTeamWorktree, rebaseTeamWorktreePath } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
 import { readCredentialsForConfiguredRelay, readSettings, readPersistedSessions } from '@/persistence';
 import { readTeamScope, teamScopePath, writeTeamScope } from './context';
@@ -59,6 +63,24 @@ export function teamCreateBody(input: { name: string; requestId: string; project
     return { ...body, project: { inheritFromSessionId: sessionId, ...(directory ? { directory } : {}) } };
 }
 
+const gitCommonDir = async (directory: string) =>
+    (await promisify(execFile)('git', ['-C', directory, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { timeout: 10_000 })).stdout.trim();
+
+/**
+ * B-755: the folder a same-name project gets when this session creates a
+ * team. A session inside a team worktree (`<happy home>/teams/worktrees/<id>`)
+ * names the repository's main checkout instead (`--git-common-dir`'s parent),
+ * keeping a subfolder's place. When Git cannot tell, the raw path goes to the
+ * server, which follows the worktree's spawn operation or leaves the project
+ * without a folder — never the worktree itself.
+ */
+export async function teamProjectDirectory(path: string | undefined, commonDir: (directory: string) => Promise<string> = gitCommonDir): Promise<string | undefined> {
+    if (!path || !isInsideTeamWorktree(path)) return path;
+    const common = await commonDir(path).catch(() => null);
+    // A bare repository's common dir is not `.git` and has no checkout to point at.
+    return common && basename(common) === '.git' ? rebaseTeamWorktreePath(path, dirname(common)) : path;
+}
+
 export function createTeamsClient(sessionId?: string) {
     const scopePath = () => teamScopePath(sessionId ?? process.env.HAPPY_SESSION_ID);
     return {
@@ -81,7 +103,7 @@ export function createTeamsClient(sessionId?: string) {
                 if (priorScope && !options?.expectedTeamId) throw new Error('This session already belongs to another team scope');
                 let teamId = input.teamId ?? options?.expectedTeamId;
                 if (!teamId) {
-                    const created = await teamRequest('/v1/teams', 'POST', credentials.token, false, teamCreateBody(input, machineId, sid, persisted.metadata.path));
+                    const created = await teamRequest('/v1/teams', 'POST', credentials.token, false, teamCreateBody(input, machineId, sid, await teamProjectDirectory(persisted.metadata.path)));
                     teamId = created.team.id;
                 } else {
                     const existing = await teamRequest(`/v1/teams/${encodeURIComponent(teamId)}`, 'GET', credentials.token, false);

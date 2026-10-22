@@ -52,6 +52,10 @@ function getSnapshot() {
   const token = getCurrentAuth()?.credentials?.token;
   return token && owner === `${getServerUrl()}\0${token}` ? snapshot : empty;
 }
+/** Imperative read of the same snapshot (no fetch) for one-shot callers such as quick chat. */
+export function teamNavigationSnapshot(): TeamState[] {
+  return getSnapshot();
+}
 export function useTeamNavigation() {
   return useSyncExternalStore(subscribe, getSnapshot, () => empty);
 }

@@ -12,6 +12,8 @@ import { prefetchSessionDetail } from './prefetchSessionDetail';
 
 export { recordRecentMachinePath } from './recentMachinePath';
 import { currentSpawnOrigin, hasUserGesture } from '@/sync/spawnOrigin';
+import { redirectFromTeamWorktree } from '@/utils/teamWorktree';
+import { teamNavigationSnapshot } from '@/screens/sessions/useTeamNavigation';
 
 /**
  * The ONE quick "new chat" entry point (chat sibling of newTerminal.ts's
@@ -69,9 +71,11 @@ export async function createChatOrConfigure(
 ): Promise<void> {
     if (inFlight) return;
     const state = storage.getState();
-    const target = context?.target
+    // B-755 / B-740: viewing a team member (or its folder group) never starts an
+    // unrelated chat inside that member's throwaway worktree — it starts in the repository.
+    const target = redirectFromTeamWorktree(context?.target
         ?? pendingRouteLocation(context?.location)
-        ?? newChatLocation(context?.location, state.sessions, useTerminalSessions.getState().terminals);
+        ?? newChatLocation(context?.location, state.sessions, useTerminalSessions.getState().terminals), teamNavigationSnapshot());
     const decision = decideQuickChat({
         target,
         machines: Object.values(state.machines),

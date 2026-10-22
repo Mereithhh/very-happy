@@ -4,7 +4,7 @@ import {
     PROJECT_LIMITS,
     type ProjectCreate, type ProjectUpdate, type ProjectInstructionsPut, type ProjectMembersAdd, type ProjectLogCreate, type ProjectPresencePut,
     type ProjectMessageCreate, type ProjectView, type ProjectMemberView, type ProjectLogEntryView, type ProjectPresenceView, type ProjectMessageView,
-    type ProjectDetailResponse, type ProjectListResponse, type TeamProjectChoice, type TeamProjectBind, type ProjectSessionContext, type ProjectDigest, type ProjectInstructionsRevisionView, type ProjectLogKind,
+    type ProjectDetailResponse, type ProjectListResponse, type TeamProjectChoice, resolveTeamWorktreePath, type TeamProjectBind, type ProjectSessionContext, type ProjectDigest, type ProjectInstructionsRevisionView, type ProjectLogKind,
 } from '@slopus/happy-wire';
 import { inTx, isRetryableTransactionConflict, type Tx } from '@/storage/inTx';
 import { configuredResourceLimit, enforceAccountWriteRate, isAccountResourceLimitError } from '@/app/api/resourceLimits';
@@ -333,7 +333,7 @@ export async function removeMember(accountId: string, id: string, sessionId: str
 
 // ─── Teams ────────────────────────────────────────────────────────────────
 
-type TeamRow = { id: string; machineId: string; version: number; projectId: string | null; state: { name?: string; archivedAt?: number; creationLaunch?: { directory?: string }; defaults?: { assistant?: string; model?: string; maxParallel?: number }; bots?: { root?: boolean; directory?: string | null }[] } };
+type TeamRow = { id: string; machineId: string; version: number; projectId: string | null; state: { name?: string; archivedAt?: number; creationLaunch?: { directory?: string }; defaults?: { assistant?: string; model?: string; maxParallel?: number }; bots?: { id?: string; root?: boolean; directory?: string | null }[] } };
 async function loadTeamRow(tx: Tx, accountId: string, teamId: string): Promise<TeamRow> {
     const teams = await tx.$queryRaw<TeamRow[]>`SELECT "id","machineId","version","projectId","state" FROM "AgentTeam" WHERE "id"=${teamId} AND "accountId"=${accountId}`;
     requireProject(teams[0], 'team_not_found', 404);
@@ -361,7 +361,7 @@ async function attachTeamTx(tx: Tx, accountId: string, projectId: string, teamId
     const folders = readFolders(project.folders);
     // A project with no folders yet has no workplace to check against (e.g. a same-name project for a team that never started).
     if (folders.length > 0 && !teamMachineAllowed(folders, team.machineId)) {
-        const folder = teamFolder(team);
+        const folder = await teamFolder(tx, accountId, team);
         requireProject(folder && folders.length < PROJECT_LIMITS.folders, 'team_machine_not_in_project', 400, { machineId: team.machineId });
         await tx.project.update({ where: { id: projectId }, data: { folders: normalizeFolders([...folders, { ...folder, primary: folders.length === 0 }]), updatedAt: new Date() } });
     }
@@ -375,10 +375,29 @@ async function attachTeamTx(tx: Tx, accountId: string, projectId: string, teamId
     }
 }
 
-/** Where a team works: its launch directory, else its lead's directory. */
-function teamFolder(team: TeamRow): { machineId: string; path: string } | null {
-    const path = team.state?.creationLaunch?.directory ?? team.state?.bots?.find(b => b.root)?.directory ?? null;
-    return path ? { machineId: team.machineId, path } : null;
+/**
+ * Where a team works: its launch directory, else its lead's requested spawn
+ * directory, else its lead's directory, else `fallback` (the creating
+ * session's folder). B-755: a candidate inside a team worktree
+ * (`<happy home>/teams/worktrees/<op id>`, a member's throwaway checkout) is
+ * followed back through that spawn operation to its repository; one that
+ * cannot be is skipped, so the project gets no folder rather than a worktree.
+ */
+async function teamFolder(tx: Tx, accountId: string, team: TeamRow, fallback?: string): Promise<{ machineId: string; path: string } | null> {
+    const root = team.state?.bots?.find(b => b.root);
+    const spawns = root?.id ? await tx.$queryRaw<{ directory: string | null }[]>`
+        SELECT "state"->>'directory' AS "directory" FROM "TeamOperation"
+        WHERE "teamId"=${team.id} AND "state"->>'type'='spawn' AND "state"->>'botId'=${root.id} AND "state"->>'directory' IS NOT NULL
+        ORDER BY "createdAt" ASC, "id" ASC LIMIT 1` : [];
+    const sourceOf = async (operationId: string) => (await tx.$queryRaw<{ directory: string | null }[]>`
+        SELECT o."state"->>'directory' AS "directory" FROM "TeamOperation" o JOIN "AgentTeam" t ON t."id"=o."teamId"
+        WHERE o."id"=${operationId} AND t."accountId"=${accountId} AND t."machineId"=${team.machineId} AND o."state"->>'type'='spawn'`)[0]?.directory ?? null;
+    for (const candidate of [team.state?.creationLaunch?.directory, spawns[0]?.directory, root?.directory, fallback]) {
+        if (!candidate) continue;
+        const path = await resolveTeamWorktreePath(candidate, sourceOf);
+        if (path) return { machineId: team.machineId, path };
+    }
+    return null;
 }
 
 /**
@@ -409,7 +428,7 @@ export async function bindNewTeamProjectTx(tx: Tx, accountId: string, teamId: st
 
 async function createSameNameProjectTx(tx: Tx, accountId: string, teamId: string, requestId: string, directory?: string): Promise<ProjectRow> {
     const team = await loadTeamRow(tx, accountId, teamId);
-    const folder = teamFolder(team) ?? (directory ? { machineId: team.machineId, path: directory } : null);
+    const folder = await teamFolder(tx, accountId, team, directory);
     const name = (team.state?.name ?? 'Team').trim().slice(0, PROJECT_LIMITS.nameChars) || 'Team';
     return (await createProjectTx(tx, accountId, { name, requestId, folders: folder ? [{ ...folder, primary: true }] : [] })).row;
 }

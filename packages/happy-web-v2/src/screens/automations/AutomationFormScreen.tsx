@@ -41,6 +41,7 @@ import {
 } from './automationForm';
 import { describeInterval, langOf } from './automationPresentation';
 import { reportAutomationError } from './AutomationShared';
+import { withoutTeamWorktrees } from '@/utils/teamWorktree';
 import './automations.css';
 
 const ERR_KEY: Record<string, TranslationKey> = {
@@ -122,7 +123,7 @@ export function AutomationFormScreen() {
     if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
   };
   const err = (key: DraftField) => (errors[key] ? (t(ERR_KEY[errors[key]!] ?? 'automations.errSchema') as string) : undefined);
-  const pathsForMachine = useMemo(() => (recentPaths ?? []).filter((p) => p.machineId === draft.machineId).map((p) => p.path), [recentPaths, draft.machineId]);
+  const pathsForMachine = useMemo(() => withoutTeamWorktrees(recentPaths ?? []).filter((p) => p.machineId === draft.machineId).map((p) => p.path), [recentPaths, draft.machineId]);
   const preview = draft.triggerKind === 'cron' ? cronPreview(draft.cronExpr, draft.cronTz, l) : draft.triggerKind === 'interval' && parseDuration(draft.intervalEvery) ? describeInterval(parseDuration(draft.intervalEvery)!, l) : null;
 
   const onSubmit = async (e: React.FormEvent) => {

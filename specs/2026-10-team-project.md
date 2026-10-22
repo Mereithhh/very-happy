@@ -75,7 +75,9 @@ Owner 原话（10-21）：「团队和项目的关系感觉还是不太清楚。
 
 服务端规则（`happy-server/sources/app/projects/store.ts`）：
 - 建团队时在**同一事务**里建 / 挂项目：重试同一 `requestId` 返回已绑定的团队，不会多建项目；同名项目的 `requestId` 由团队 id 派生。
-- 同名项目的目录 = 团队启动目录（`launch.directory`），无启动目录时用请求带的 `directory`（CLI：创建会话的 cwd）。
+- 同名项目的目录 = 团队启动目录（`launch.directory`），无启动目录时依次用负责人首个 spawn 的目录、负责人目录、请求带的 `directory`（CLI：创建会话的 cwd）。
+- **B-755：团队 worktree（`…/teams/worktrees/<spawn op id>`）永远不是项目目录。** 上面任一候选落在团队 worktree 里，就沿 id 同名的 spawn 操作（同账号、同电脑）找到它的源目录，源目录本身还是 worktree 就继续追（≤8 跳），子目录保留相对位置；追不到就跳过这个候选，全都追不到时项目不写目录（项目页提示去设置里加）。CLI `team_create` 先用 `git rev-parse --git-common-dir` 的上一级换成主 checkout，失败再交给服务端追。规则在 happy-wire `teamWorktree.ts`，server / Web（`teamHomeDirectory`、目录建议、最近目录、新对话落点）/ CLI 共用。
+  - 事故（10-22「业务数据治理」）：Owner 在 roll-pool 负责人会话（cwd = 它的 worktree）页面上按「+」，快捷新对话用了「当前查看会话的目录」→ 新会话落进 worktree，成功后又被记进 `recentMachinePaths` 顶部；之后的快捷新对话与新建团队表单（默认取最近目录、配置区折叠）都落到这个 worktree，于是团队的 `creationLaunch.directory` 和同名项目目录都是它，worktree 里另外 4 个无关会话都收到「加入项目」。修法：worktree 不进最近目录（写入时丢弃、读取时过滤）、从 worktree 上下文开的新对话改落到仓库、目录建议忽略 worktree 目录和身处 worktree 的会话、存量项目页一键改成仓库路径（`scripts/ops/worktree-project-folders.mjs` 只读列清单）。
 - 关联已有项目时，若团队电脑不在项目目录里，**自动把团队的工作目录加进项目目录**（团队带着自己的工作地点加入）；只有团队没有已知目录或目录已满 20 个才拒绝 `team_machine_not_in_project`。这放宽了 B-644 的「团队机器 ∈ 项目目录」校验。
 - 项目数达上限（`project_count_quota_exceeded`）时，新团队照常创建、只是不带项目；`VH_PROJECTS_ENABLED=false` 时同样跳过。指定的 `projectId` 不存在则整个创建失败（用户明确选的）。
 - 解绑 = `AgentTeam.projectId = NULL`；成员随即不再派生为项目成员，显式成员不受影响。

@@ -1,4 +1,5 @@
-import { PROJECT_SESSION_CAPABILITY, type ProjectPresenceView } from '@slopus/happy-wire';
+import { PROJECT_SESSION_CAPABILITY, type ProjectPresenceView, type ProjectView, type TeamState } from '@slopus/happy-wire';
+import { isInsideTeamWorktree, teamWorktreeRepository } from '@/utils/teamWorktree';
 
 /**
  * B-648 pure rules for the project page (`specs/2026-10-projects.md` §6.2).
@@ -70,4 +71,29 @@ export function bucketItems<T extends { key: string; lifecycle: string }>(items:
 export const INSTRUCTIONS_MAX_BYTES = 8 * 1024;
 export function utf8Bytes(text: string): number {
   return new TextEncoder().encode(text).length;
+}
+
+type ProjectFolder = ProjectView['folders'][number];
+export type WorktreeFolder = { machineId: string; path: string; repository: string | null };
+
+/**
+ * B-755: project folders that are a team member's throwaway worktree (the
+ * B-726 same-name project of a team launched from one), each with the
+ * repository it was cut from when a loaded team knows it. Such a folder makes
+ * every unrelated session in that worktree get 「加入项目」.
+ */
+export function worktreeFolders(folders: readonly ProjectFolder[], teams: readonly TeamState[]): WorktreeFolder[] {
+  return folders.filter(f => isInsideTeamWorktree(f.path)).map(f => ({ machineId: f.machineId, path: f.path, repository: teamWorktreeRepository(teams, f.machineId, f.path) }));
+}
+
+/** The folder list with every resolvable worktree replaced by its repository (deduplicated; the primary stays primary). */
+export function repairWorktreeFolders(folders: readonly ProjectFolder[], teams: readonly TeamState[]): ProjectFolder[] {
+  const out: ProjectFolder[] = [];
+  for (const f of folders) {
+    const path = isInsideTeamWorktree(f.path) ? teamWorktreeRepository(teams, f.machineId, f.path) ?? f.path : f.path;
+    const same = out.find(o => o.machineId === f.machineId && o.path === path);
+    if (same) same.primary = same.primary || f.primary;
+    else out.push({ ...f, path });
+  }
+  return out;
 }

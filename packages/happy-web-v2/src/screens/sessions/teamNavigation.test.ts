@@ -157,6 +157,16 @@ describe('B-723', () => {
     expect(isTeamWorktreePath('C:\\Users\\u\\.happy\\teams\\worktrees\\abc')).toBe(true);
     expect(isTeamWorktreePath('/home/u/code/teams/worktrees-notes')).toBe(false);
   });
+  it('B-755: a team launched from another team\'s worktree is homed in that worktree\'s repository', () => {
+    const op = (id: string, directory: string) => ({ id, type: 'spawn', botId: 'lead', directory, createdAt: 1 });
+    const source = t([b('lead', { root: true, directory: '/h/.happy/teams/worktrees/f0747a90' })], { id: 'roll', creationLaunch: { directory: '/code/skills' }, operations: [op('f0747a90', '/code/skills')] });
+    const nested = t([b('lead', { root: true, directory: '/h/.happy/teams/worktrees/801fecdb' })], { id: 'gov', creationLaunch: { directory: '/h/.happy/teams/worktrees/f0747a90' }, operations: [op('801fecdb', '/h/.happy/teams/worktrees/f0747a90')] });
+    expect(teamHomeDirectory(nested, [source, nested])).toBe('/code/skills');
+    // Without the source team loaded the worktree is never the answer.
+    expect(teamHomeDirectory(nested)).toBeNull();
+    // The lead's own worktree resolves through its own spawn operation.
+    expect(teamHomeDirectory(t([b('lead', { root: true, directory: '/h/.happy/teams/worktrees/x' })], { operations: [op('x', '/repo')] }))).toBe('/repo');
+  });
 });
 
 /**

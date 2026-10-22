@@ -1,4 +1,5 @@
 import { teamBotActivity, teamMemberCounts, type TeamActivityContext, type TeamBot, type TeamState } from '@slopus/happy-wire';
+import { isInsideTeamWorktree, teamWorktreeRepository } from '@/utils/teamWorktree';
 
 /** A retired managed member keeps its immutable spawn receipt as a history link. */
 export function botHistorySessionId(team: TeamState, bot: TeamBot): string | null {
@@ -140,14 +141,17 @@ export function isTeamWorktreePath(path: string): boolean {
 /** B-723 (O1): the folder a team belongs to — the repository it was created
  *  in, never a member's worktree (whose UUID path changes with whoever ran
  *  last). Creation launch first, then the lead's requested spawn directory,
- *  then the lead's own directory when it is not a team worktree. */
-export function teamHomeDirectory(team: TeamState): string | null {
-  if (team.creationLaunch?.directory) return team.creationLaunch.directory;
+ *  then the lead's own directory when it is not a team worktree. B-755: a
+ *  candidate inside a team worktree (a team launched from another team's
+ *  worktree) is followed back to its repository through `teams`, else skipped. */
+export function teamHomeDirectory(team: TeamState, teams: readonly TeamState[] = [team]): string | null {
+  const home = (path: string | null | undefined) => !path ? null : isInsideTeamWorktree(path) ? teamWorktreeRepository(teams, team.machineId, path) : path;
+  const launched = home(team.creationLaunch?.directory);
+  if (launched) return launched;
   const root = team.bots.find(bot => bot.root);
   if (!root) return null;
   const spawn = team.operations.filter(op => op.type === 'spawn' && op.botId === root.id && op.directory).sort((a, b) => a.createdAt - b.createdAt)[0];
-  if (spawn?.directory && !isTeamWorktreePath(spawn.directory)) return spawn.directory;
-  return root.directory && !isTeamWorktreePath(root.directory) ? root.directory : null;
+  return home(spawn?.directory) ?? home(root.directory);
 }
 
 /** A registered member is visible even before its first session exists. */

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FolderKanban, MoreHorizontal, Send, UsersRound, Zap, History, Undo2, Plus, Link2, LogOut } from 'lucide-react';
+import { ArrowLeft, FolderKanban, MoreHorizontal, Send, UsersRound, Zap, History, Undo2, Plus, Link2, LogOut, TriangleAlert } from 'lucide-react';
 import { ActionDropdownMenu } from '@/ui/Menu';
 import { linkableTeams } from './projectChoice';
 import type { ProjectDetailResponse, ProjectInstructionsRevisionView, ProjectLogEntryView, ProjectLogKind } from '@slopus/happy-wire';
@@ -18,7 +18,7 @@ import { Modal } from '@/modal';
 import { Combobox } from '@/ui/Combobox';
 import { Segmented } from '@/ui/Segmented';
 import { SelectMenu } from '@/ui/SelectMenu';
-import { bucketItems, injectionStateOf, summarizeInjection, utf8Bytes, INSTRUCTIONS_MAX_BYTES, type InjectionState } from './projectPage';
+import { bucketItems, injectionStateOf, summarizeInjection, utf8Bytes, INSTRUCTIONS_MAX_BYTES, repairWorktreeFolders, worktreeFolders, type InjectionState } from './projectPage';
 import { useProjectCopy, type ProjectCopy } from './projectCopy';
 import './projects.css';
 
@@ -76,6 +76,7 @@ export function ProjectScreen() {
         </div>
         <button type="button" className="pj-icon-btn" aria-expanded={showSettings} aria-label={c.settings} title={c.settings} onClick={() => setShowSettings((v) => !v)}><MoreHorizontal size={18} /></button>
       </header>
+      <WorktreeFolderNotice detail={detail} c={c} onChanged={reload} onOpenSettings={() => setShowSettings(true)} />
       {showSettings && <ProjectSettings detail={detail} c={c} onChanged={reload} />}
       <ProjectComposer detail={detail} c={c} onAddFolder={() => {
         // B-728 (UI-P1-12): the empty state's action opens settings on the path field
@@ -88,6 +89,40 @@ export function ProjectScreen() {
       </div>
       {tab === 'overview' ? <ProjectOverview detail={detail} c={c} onChanged={reload} /> : <ProjectContext detail={detail} c={c} onChanged={reload} />}
     </main>
+  );
+}
+
+// ─── worktree folder repair (B-755) ──────────────────────────────────────
+
+/**
+ * B-755: a folder that is a team member's throwaway worktree (B-726 projects
+ * of teams launched from one) — say so and offer the repository it was cut
+ * from. Never changed without this click; an unknown worktree points to settings.
+ */
+function WorktreeFolderNotice({ detail, c, onChanged, onOpenSettings }: { detail: ProjectDetailResponse; c: ProjectCopy; onChanged: () => Promise<void>; onOpenSettings: () => void }) {
+  const teams = useTeamNavigation();
+  const [busy, setBusy] = useState(false);
+  const project = detail.project;
+  const bad = worktreeFolders(project.folders, teams);
+  if (bad.length === 0) return null;
+  const fix = async () => {
+    setBusy(true);
+    try { await projectsApi.update(project.id, { folders: repairWorktreeFolders(project.folders, teams) }); toast.success(c.worktreeFixed); await onChanged(); }
+    catch { toast.error(c.failed); }
+    finally { setBusy(false); }
+  };
+  return (
+    <section className="pj-worktree" role="status" data-testid="project-worktree-folder">
+      {bad.map((f) => (
+        <div key={`${f.machineId}:${f.path}`} className="pj-worktree-row">
+          <TriangleAlert size={15} aria-hidden className="pj-worktree-icon" />
+          <p>{c.worktreeFolder(f.path)}{f.repository ? c.worktreeRepo(f.repository) : c.worktreeUnknown}</p>
+          {f.repository
+            ? <button type="button" className="pj-ghost" disabled={busy} aria-busy={busy} onClick={() => void fix()}>{c.worktreeFix}</button>
+            : <button type="button" className="pj-ghost" onClick={onOpenSettings}>{c.worktreeOpenSettings}</button>}
+        </div>
+      ))}
+    </section>
   );
 }
 

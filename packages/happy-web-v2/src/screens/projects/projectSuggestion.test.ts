@@ -17,6 +17,14 @@ describe('directory suggestion (suggest only, never auto-join)', () => {
     expect(suggestProjectFor({ machineId: 'm', path: null }, projects)).toBeNull();
     expect(suggestProjectFor({ machineId: 'm', path: '/code/other/x' }, projects)).toBeNull();
   });
+  it('B-755: a folder inside a team worktree suggests nothing; a session inside one is never asked', () => {
+    const wt = '/home/u/.happy/teams/worktrees/f0747a90';
+    const projects = [p('governance', [{ machineId: 'm', path: wt }]), p('skills', [{ machineId: 'm', path: '/home/u' }])];
+    expect(suggestProjectFor({ machineId: 'm', path: wt }, projects)).toBeNull();
+    expect(suggestProjectFor({ machineId: 'm', path: `${wt}/docs` }, projects)).toBeNull();
+    // The worktree folder no longer shadows a real folder for sessions outside worktrees.
+    expect(suggestProjectFor({ machineId: 'm', path: '/home/u/code' }, projects)?.id).toBe('skills');
+  });
   it('dismissals persist per session and survive broken storage', () => {
     const map = new Map<string, string>();
     const storage = { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => void map.set(k, v) };

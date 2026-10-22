@@ -1,3 +1,5 @@
+import { withoutTeamWorktrees } from './teamWorktree';
+
 /**
  * Pure helpers behind "new terminal in a directory" (B-144) — the sidebar's
  * fourth create option, where the user picks a working directory BEFORE the
@@ -98,7 +100,7 @@ export function mergeDirectoryChoices(
     }));
     const seen = new Set(saved.map((p) => normalizeCwdInput(p.path)));
     const out: DirectoryChoice[] = [...saved];
-    for (const r of recents ?? []) {
+    for (const r of withoutTeamWorktrees(recents ?? [])) {
         if (r.machineId !== machineId) continue;
         const path = normalizeCwdInput(r.path);
         if (!path || seen.has(path)) continue;

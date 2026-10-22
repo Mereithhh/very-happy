@@ -78,6 +78,18 @@ describe('decideQuickChat', () => {
     });
 });
 
+describe('B-755: team worktrees are never remembered or offered', () => {
+    const wt = '/home/u/.happy/teams/worktrees/f0747a90';
+    it('decideQuickChat skips a remembered worktree for the next remembered folder, or asks', () => {
+        expect(decideQuickChat({ machines: [M('a', true)], recents: [R('a', wt), R('a', '/code/skills')], alwaysAsk: false })).toEqual({ kind: 'spawn', machineId: 'a', directory: '/code/skills' });
+        expect(decideQuickChat({ machines: [M('a', true)], recents: [R('a', `${wt}/docs`)], alwaysAsk: false })).toEqual({ kind: 'configure' });
+    });
+    it('pushRecentMachinePath does not record a worktree and drops ones recorded before', () => {
+        expect(pushRecentMachinePath([R('a', '/1'), R('a', wt)], R('a', wt))).toEqual([R('a', '/1')]);
+        expect(pushRecentMachinePath([R('a', wt), R('a', '/1')], R('b', '/2'))).toEqual([R('b', '/2'), R('a', '/1')]);
+    });
+});
+
 describe('pushRecentMachinePath', () => {
     it('prepends a new entry', () => {
         expect(pushRecentMachinePath([R('a', '/1')], R('b', '/2'))).toEqual([R('b', '/2'), R('a', '/1')]);
