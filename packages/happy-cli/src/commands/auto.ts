@@ -21,7 +21,7 @@ import { resolve } from 'node:path';
 import { AUTOMATION_NAME_PATTERN, AUTOMATION_PRECHECK_MAX_TIMEOUT_MS, AutomationPrecheckSchema, isAutomationRunTerminal, type Automation, type AutomationAction, type AutomationCreate, type AutomationPrecheck, type AutomationReport, type AutomationRun, type AutomationUpdate } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
 import { authenticatedAutomationsClient, automationRunIdFromEnv, isAutomationsUnavailable, AUTOMATIONS_UNAVAILABLE_MESSAGE, type AutomationsClient } from '@/automations/client';
-import { describeAction, describeTrigger, parseDuration, triggerFromFlags } from '@/automations/template';
+import { AUTOMATION_REPORT_TEXT_LIMITS, clipAutomationReport, describeAction, describeTrigger, parseDuration, triggerFromFlags, type ClippedReportField } from '@/automations/template';
 import { AUTOMATION_SKILL } from '@/automations/resources';
 import { createAutomationChecked, updateAutomationChecked } from '@/automations/precheckCompat';
 import { installAutomationSkill } from '@/automations/install';
@@ -458,12 +458,9 @@ export async function handleAutoCommand(args: string[]): Promise<void> {
                 if (!runId) throw new Error('--run <id> is required outside an automation-started session (VH_AUTOMATION_RUN_ID is not set)');
                 const status = command.flags['--status'];
                 if (status !== 'done' && status !== 'failed') throw new Error('--status must be done or failed');
-                const report: AutomationReport = {
-                    status,
-                    ...(command.flags['--summary'] !== undefined ? { summary: command.flags['--summary'] } : {}),
-                    ...(command.flags['--error'] !== undefined ? { error: command.flags['--error'] } : {}),
-                    ...(command.flags['--attention'] !== undefined ? { needsAttention: true, attentionReason: command.flags['--attention'] } : {}),
-                };
+                const { report, notices } = buildCliReport(status, command.flags);
+                // stderr even with --json, so stdout stays one JSON document.
+                for (const notice of notices) console.error(chalk.yellow(notice));
                 const run = await client.report(runId, report);
                 if (json) console.log(JSON.stringify({ run })); else printRun(run);
                 return;
@@ -474,6 +471,19 @@ export async function handleAutoCommand(args: string[]): Promise<void> {
         if (isAutomationsUnavailable(error)) throw new Error(AUTOMATIONS_UNAVAILABLE_MESSAGE);
         throw error;
     }
+}
+
+const REPORT_FIELD_FLAGS: Record<ClippedReportField['field'], string> = { summary: '--summary', error: '--error', attentionReason: '--attention' };
+
+/** B-767: the `auto report` body with over-long text clipped to the server limits, plus one stderr line per clipped field. */
+export function buildCliReport(status: 'done' | 'failed', flags: AutoCommand['flags']): { report: AutomationReport; notices: string[] } {
+    const { report, clipped } = clipAutomationReport({
+        status,
+        ...(flags['--summary'] !== undefined ? { summary: flags['--summary'] } : {}),
+        ...(flags['--error'] !== undefined ? { error: flags['--error'] } : {}),
+        ...(flags['--attention'] !== undefined ? { needsAttention: true, attentionReason: flags['--attention'] } : {}),
+    });
+    return { report, notices: clipped.map(c => `${REPORT_FIELD_FLAGS[c.field]} clipped ${c.from}→${c.to} chars (server limit ${AUTOMATION_REPORT_TEXT_LIMITS[c.field]}).`) };
 }
 
 function concurrency(value: string): 'skip' | 'queue' {

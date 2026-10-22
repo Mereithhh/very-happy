@@ -40,7 +40,7 @@ import { sanitizeSpawnPermissionMode } from '@/daemon/spawnPermissionMode';
 import { isSpawnAgent } from '@/utils/spawnAgents';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { AutomationsRequestError, createAutomationsClient, isAutomationsUnavailable, type AutomationsClient } from '@/automations/client';
-import { clipText, renderAction, renderTemplate, type TemplateContext } from '@/automations/template';
+import { clipAutomationReport, clipText, renderAction, renderTemplate, type TemplateContext } from '@/automations/template';
 import { prepareTeamWorktree } from '@/daemon/teams/worktree';
 import { readReceipts, writeReceipt, type AutomationReceipt } from './receipts';
 import { runScript as defaultRunScript, terminateScriptTree, type ScriptRunOptions, type ScriptRunResult } from './script';
@@ -176,7 +176,10 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
     function persist(receipt: Omit<AutomationReceipt, 'updatedAt'>): void { writeReceipt(home, receipt, now()); }
 
     /** Terminal report + receipt; anything but a server-side settlement keeps the run tracked for a retry. */
-    async function finish(item: Tracked, report: AutomationReport): Promise<void> {
+    async function finish(item: Tracked, input: AutomationReport): Promise<void> {
+        // B-767: an over-long turn error / reason would be a 400 on every retry, keeping the run tracked until its lease ends.
+        const { report, clipped } = clipAutomationReport(input);
+        if (clipped.length) deps.log(`Automation run ${item.runId} report clipped: ${clipped.map(c => `${c.field} ${c.from}→${c.to}`).join(', ')}`);
         try {
             await client.report(item.runId, report);
         } catch (error) {

@@ -30,7 +30,7 @@ There is no inbound webhook. A private adapter (an IM bot, a watcher, a systemd 
 
 ## Finishing a run
 
-When you are the session an automation started (\`VH_AUTOMATION_RUN_ID\` is set) or continued, finish by calling \`automation_report\` with \`status: done\` and a short summary, or \`status: failed\` with the error. Without an explicit report the daemon marks the run done when your turn ends and uses your last message as the summary — explicit reports are exact, so prefer them for long or multi-turn work. Set \`needsAttention\` with a reason when a human must look (blocked, ambiguous input, partial result).
+When you are the session an automation started (\`VH_AUTOMATION_RUN_ID\` is set) or continued, finish by calling \`automation_report\` with \`status: done\` and a short summary, or \`status: failed\` with the error. Without an explicit report the daemon marks the run done when your turn ends and uses your last message as the summary — explicit reports are exact, so prefer them for long or multi-turn work. Set \`needsAttention\` with a reason when a human must look (blocked, ambiguous input, partial result). Keep the attention reason to one line (at most 512 characters) and the summary / error under 4096: \`automation_report\` rejects longer values, and \`very-happy auto report\` clips them with a trailing \`…\`.
 
 ## Operating
 

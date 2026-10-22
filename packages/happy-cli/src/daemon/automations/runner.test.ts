@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Automation, AutomationClaimedRun, AutomationRun } from '@slopus/happy-wire';
+import { AutomationReportSchema } from '@slopus/happy-wire';
 const mocks = vi.hoisted(() => ({ persisted: vi.fn() }));
 vi.mock('@/configuration', () => ({ configuration: { happyHomeDir: '', serverUrl: '', currentCliVersion: '0' } }));
 vi.mock('@/persistence', () => ({ readPersistedSessions: mocks.persisted, readCredentialsForConfiguredRelay: vi.fn(), readSettings: vi.fn() }));
@@ -165,6 +166,16 @@ describe('automation runner: spawn runs', () => {
         live.delete('s1'); runner.report('s1', 'exited');
         await runner.tick();
         expect(client.report).toHaveBeenLastCalledWith('r3', expect.objectContaining({ status: 'done', summary: 'done before dying' }));
+    });
+    it('B-767: clips an over-long turn error so the final report is not a 400 on every retry', async () => {
+        const client = fakeClient([claimed()]);
+        const runner = start(client); await settled(runner);
+        readTurn.mockResolvedValue(ended('', 'failed', '模型错误😀'.repeat(1000)));
+        await turnEdge(runner);
+        const body = client.report.mock.calls.at(-1)![1];
+        expect(AutomationReportSchema.safeParse(body).success).toBe(true);
+        expect(body).toMatchObject({ status: 'failed', attentionReason: 'turn_failed' });
+        expect(body.error.endsWith('…')).toBe(true);
     });
     it('marks failed / cancelled turns and dead sessions as failed with attention', async () => {
         const client = fakeClient([claimed()]);

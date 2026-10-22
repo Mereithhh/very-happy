@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/configuration', () => ({ configuration: { serverUrl: 'http://relay.test', currentCliVersion: '0.0.0-test' } }));
 vi.mock('@/persistence', () => ({ readCredentialsForConfiguredRelay: vi.fn(), readSettings: vi.fn() }));
-import { AUTOMATIONS_UNAVAILABLE_MESSAGE, AutomationsRequestError, automationRunIdFromEnv, createAutomationsClient, isAutomationsUnavailable } from './client';
+import { AUTOMATIONS_UNAVAILABLE_MESSAGE, AutomationsRequestError, automationRunIdFromEnv, createAutomationsClient, isAutomationsUnavailable, validationFieldPaths } from './client';
 
 function respond(status: number, body: unknown): typeof fetch {
     return vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch;
@@ -53,5 +53,22 @@ describe('automations client', () => {
         expect(automationRunIdFromEnv({ VH_AUTOMATION_RUN_ID: 'run_1-a' })).toBe('run_1-a');
         expect(automationRunIdFromEnv({ VH_AUTOMATION_RUN_ID: 'bad id' })).toBeUndefined();
         expect(automationRunIdFromEnv({})).toBeUndefined();
+    });
+
+    it('B-767: a schema 400 names the rejected fields, never the rejected values', async () => {
+        // Shape the relay actually returns (standalone server, 2026-10-22): no Fastify `code`.
+        const body = { error: 'Error', message: 'body/summary Too big: expected string to have <=4096 characters, body/attentionReason Too big: expected string to have <=512 characters', statusCode: 400 };
+        expect(validationFieldPaths(body)).toEqual(['summary', 'attentionReason']);
+        expect(validationFieldPaths({ ...body, code: 'FST_ERR_VALIDATION', error: 'Bad Request' })).toEqual(['summary', 'attentionReason']);
+        expect(validationFieldPaths({ message: 'body/a/b secret, querystring/x bad, x body/no-match' })).toEqual(['a.b']);
+        expect(validationFieldPaths({ message: 42 })).toEqual([]);
+        const client = createAutomationsClient({ serverUrl: 'http://relay.test', token: 't', fetch: respond(400, body) });
+        const error = await client.report('r1', { status: 'done' }).catch(e => e);
+        expect(error).toBeInstanceOf(AutomationsRequestError);
+        expect(error.invalidFields).toEqual(['summary', 'attentionReason']);
+        expect(error.message).toContain('invalid: summary, attentionReason');
+        expect(error.message).not.toContain('Too big');
+        const plain = await createAutomationsClient({ serverUrl: 'http://relay.test', token: 't', fetch: respond(400, { error: 'Bad Request' }) }).report('r1', { status: 'done' }).catch(e => e);
+        expect(plain.message).toBe('The server rejected the request (HTTP 400): check the arguments, or the server may expect a newer request shape.');
     });
 });
