@@ -139,13 +139,66 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-23-project-tree-lead-view',
+    date: '2026-10-23',
+    buildVersion: __APP_VERSION__,
+    featured: true,
+    major: true,
+    featuredTaglineKey: 'changelog.releases.oct23a.tagline',
+    titleKey: 'changelog.releases.oct23a.title',
+    summaryKey: 'changelog.releases.oct23a.summary',
+    hero: changelogShots('2026-10-23a', 'hero', { width: 1280, height: 640 }, 'changelog.releases.oct23a.heroAlt'),
+    highlights: [
+      {
+        key: 'tree',
+        titleKey: 'changelog.releases.oct23a.treeTitle',
+        bodyKey: 'changelog.releases.oct23a.treeBody',
+        image: changelogShots('2026-10-23a', 'tree', SHOT_SIZE, 'changelog.releases.oct23a.treeAlt'),
+        docsHref: '/docs/projects',
+      },
+      {
+        key: 'leadView',
+        titleKey: 'changelog.releases.oct23a.leadViewTitle',
+        bodyKey: 'changelog.releases.oct23a.leadViewBody',
+        image: changelogShots('2026-10-23a', 'leadview', SHOT_SIZE, 'changelog.releases.oct23a.leadViewAlt'),
+        docsHref: '/docs/agent-teams',
+      },
+      {
+        key: 'toolResults',
+        titleKey: 'changelog.releases.oct23a.toolResultsTitle',
+        bodyKey: 'changelog.releases.oct23a.toolResultsBody',
+        image: changelogShots('2026-10-23a', 'toolresults', SHOT_SIZE, 'changelog.releases.oct23a.toolResultsAlt'),
+        docsHref: '/docs/sessions',
+      },
+      {
+        key: 'quiet',
+        titleKey: 'changelog.releases.oct23a.quietTitle',
+        bodyKey: 'changelog.releases.oct23a.quietBody',
+        docsHref: '/docs/agent-teams',
+      },
+    ],
+    topics: [
+      { key: 'trail', titleKey: 'changelog.releases.oct23a.trailTitle', bodyKey: 'changelog.releases.oct23a.trailBody', image: changelogShots('2026-10-23a', 'trail', TOPIC_SIZE, 'changelog.releases.oct23a.trailAlt') },
+      { key: 'moveTeam', titleKey: 'changelog.releases.oct23a.moveTeamTitle', bodyKey: 'changelog.releases.oct23a.moveTeamBody', image: changelogShots('2026-10-23a', 'moveteam', TOPIC_SIZE, 'changelog.releases.oct23a.moveTeamAlt') },
+      { key: 'lenses', titleKey: 'changelog.releases.oct23a.lensesTitle', bodyKey: 'changelog.releases.oct23a.lensesBody', image: changelogShots('2026-10-23a', 'lenses', TOPIC_SIZE, 'changelog.releases.oct23a.lensesAlt') },
+      { key: 'linkConfirm', titleKey: 'changelog.releases.oct23a.linkConfirmTitle', bodyKey: 'changelog.releases.oct23a.linkConfirmBody', image: changelogShots('2026-10-23a', 'linkconfirm', TOPIC_SIZE, 'changelog.releases.oct23a.linkConfirmAlt') },
+    ],
+    itemKeys: [
+      'changelog.releases.oct23a.previewPush',
+      'changelog.releases.oct23a.treeKeys',
+      'changelog.releases.oct23a.notInProject',
+      'changelog.releases.oct23a.plurals',
+      'changelog.releases.oct23a.instructions',
+    ],
+  },
+  {
     id: '2026-10-23-cli-supervised-auto-update',
     cliVersion: '0.2.183',
     date: '2026-10-23',
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.oct23r.title',
     summaryKey: 'changelog.releases.oct23r.summary',
-    itemKeys: ['changelog.releases.oct23r.launchd', 'changelog.releases.oct23r.lineage'],
+    itemKeys: ['changelog.releases.oct23r.toolResults', 'changelog.releases.oct23r.autoReport', 'changelog.releases.oct23r.launchd', 'changelog.releases.oct23r.lineage'],
   },
   {
     id: '2026-10-22-projects-tool-cards',
