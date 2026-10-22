@@ -1,4 +1,5 @@
 import { createRuntimeControls, isRuntimeCheckpointReplay } from './runtimeControls';
+import { leadBoardFor } from '@/attention/leadBoard';
 import { createBackgroundTaskTracker } from './backgroundTasks';
 import { notifyDaemonClaudeAuthFailed } from '@/daemon/controlClient';
 import { Session } from "./session";
@@ -610,8 +611,13 @@ export async function claudeRemoteLauncher(
                         // B-645: the project prefix / digest is added to exactly what reaches
                         // the SDK, and `onPromptFinalized` records that same string (the JSONL
                         // dedupe compares against what the SDK writes).
-                        const finalize = async (text: string): Promise<string> => {
-                            const out = await session.projectInjector.decorate(text);
+                        const finalize = async (text: string, sourceIds?: string[]): Promise<string> => {
+                            // B-766: the turn starts here (owner questions it answers, `this_turn` anchor) and
+                            // a lead's prompt carries the open briefing-board items.
+                            const board = leadBoardFor(session.client);
+                            board?.onTurnStart(sourceIds);
+                            const projected = await session.projectInjector.decorate(text);
+                            const out = board ? await board.decorate(projected) : projected;
                             onPromptFinalized?.(out);
                             return out;
                         };
@@ -670,7 +676,7 @@ export async function claudeRemoteLauncher(
                                     sessionId: session.client.sessionId,
                                 });
                                 logger.debug(`[remote] Staged ${staged.length} attachment(s) for the coding agent`);
-                                const withAttachments = await finalize(appendStagedAttachmentsToPrompt(msg.message, staged));
+                                const withAttachments = await finalize(appendStagedAttachmentsToPrompt(msg.message, staged), msg.sourceIds);
                                 return {
                                     message: withAttachments,
                                     mode: msg.mode,
@@ -679,7 +685,7 @@ export async function claudeRemoteLauncher(
                                 };
                             }
 
-                            const finalized = await finalize(msg.message);
+                            const finalized = await finalize(msg.message, msg.sourceIds);
                             return {
                                 message: finalized,
                                 mode: msg.mode,

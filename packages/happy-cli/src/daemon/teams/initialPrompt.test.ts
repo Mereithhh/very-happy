@@ -3,11 +3,13 @@ import { teamInitialPrompt } from './initialPrompt';
 import { TEAM_LEAD_PLAYBOOK, TEAM_MEMBER_RULES, TEAM_SKILL } from '@/teams/resources';
 import { TEAM_TOOL_NAMES } from '@/teams/tools';
 import { PROJECT_TOOL_NAMES } from '@/projects/tools';
+import { OWNER_BOARD_TOOL_NAMES } from '@/attention/tools';
+import { REQUEST_HUMAN_TOOL_NAME } from '@/claude/utils/requestHuman';
 
 /** Every tool the injected text names must be a tool the session really has. */
 function namedTools(text: string): string[] {
     const happy = [...text.matchAll(/mcp__happy__([a-z_]+)/g)].map(m => m[1]);
-    const bare = [...text.matchAll(/\b((?:team|project)_[a-z_]+)\b/g)].map(m => m[1]);
+    const bare = [...text.matchAll(/\b((?:team|project|owner_board)_[a-z_]+|request_human)\b/g)].map(m => m[1]);
     return [...new Set([...happy, ...bare])];
 }
 
@@ -36,7 +38,7 @@ describe('managed team entry instructions', () => {
         expect(member).toContain(TEAM_MEMBER_RULES);
         expect(member).not.toContain(TEAM_LEAD_PLAYBOOK);
         const rules = TEAM_LEAD_PLAYBOOK.split('\n').filter(line => /^\d+\. /.test(line)).map(line => line.split('.')[1].trim());
-        expect(rules).toEqual(['Delegate first', 'Run work in parallel', 'Prevent conflicts', 'Keep the team context', 'Write complete task briefs', 'Review before accepting', 'Communicate briefly', 'Never create a team to recover']);
+        expect(rules).toEqual(['Delegate first', 'Run work in parallel', 'Prevent conflicts', 'Keep the team context', 'Write complete task briefs', 'Review before accepting', 'Report through the briefing board', 'Never create a team to recover']);
         expect(TEAM_LEAD_PLAYBOOK).toContain('Do not write code yourself');
         expect(TEAM_LEAD_PLAYBOOK).toContain('link this team to a project');
         expect(TEAM_LEAD_PLAYBOOK).toContain('recipientBotId');
@@ -47,11 +49,13 @@ describe('managed team entry instructions', () => {
         expect(TEAM_LEAD_PLAYBOOK.length).toBeLessThanOrEqual(3200);
     });
     it('names only tools that exist, and the project tools that hold the team context', () => {
-        const known = new Set<string>([...TEAM_TOOL_NAMES, ...PROJECT_TOOL_NAMES]);
+        const known = new Set<string>([...TEAM_TOOL_NAMES, ...PROJECT_TOOL_NAMES, ...OWNER_BOARD_TOOL_NAMES, REQUEST_HUMAN_TOOL_NAME]);
         for (const text of [TEAM_SKILL, TEAM_LEAD_PLAYBOOK, TEAM_MEMBER_RULES]) {
             for (const name of namedTools(text)) expect(known, `${name} is not a registered tool`).toContain(name);
         }
         expect(namedTools(TEAM_LEAD_PLAYBOOK)).toEqual(expect.arrayContaining(['project_note', 'project_context', 'team_accept', 'team_return', 'team_message', 'team_inspect']));
+        // B-766: the board rule names the tools a lead uses for decisions, progress and answers.
+        expect(namedTools(TEAM_LEAD_PLAYBOOK)).toEqual(expect.arrayContaining(['owner_board_post', 'owner_board_update', 'request_human']));
         expect(namedTools(TEAM_MEMBER_RULES)).toEqual(expect.arrayContaining(['project_context', 'team_message']));
     });
 });
