@@ -11,7 +11,7 @@ export function projectPath(projectId: string): string {
   return `/projects/${encodeURIComponent(projectId)}`;
 }
 
-/** Project settings (B-757 owns the page; this is the one place that names its route). */
+/** Project settings (B-757 owns the route and page, `#basics`…`#danger` anchors; this is the one place that names it). */
 export function projectSettingsPath(projectId: string): string {
   return `${projectPath(projectId)}/settings`;
 }
