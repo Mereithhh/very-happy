@@ -2678,6 +2678,21 @@ export const en = {
         entryShort: 'Major update',
         entryCount: ({ count }: { count: number }) => `${count} unread`,
         releases: {
+            oct23b: {
+                title: 'Briefing: one place for what your team lead needs from you',
+                summary: 'A lead conversation now has a Briefing (汇报板). Decisions, to-dos and blocks the lead raises wait there until you settle them, the questions you asked are tracked until they are answered, and the lead’s reports collect in one list, so you no longer scroll the transcript to find them.',
+                boardTitle: 'Decide from the Briefing',
+                boardBody: 'Open it with the board button in the lead conversation’s header. Pick an option and the choice goes to the lead as your message; Show in conversation jumps to where the item came from, and the transcript keeps an On Briefing pointer in both views.',
+                boardAlt: 'A lead conversation with the Briefing in the right panel: a decision expanded with two options, On Briefing pointers in the transcript',
+                phoneTitle: 'On your phone too',
+                phoneBody: 'A one-line summary under the header (Needs you · Open · New) drops the Briefing down from the top. A block the lead raises with request_human stays as a banner after a refresh until you resolve it.',
+                phoneAlt: 'Two phone screens: the lead conversation with the Briefing summary strip, and the Briefing dropped down from the top',
+                asked: 'The messages you send the lead (not slash commands) are listed under You asked and marked Answered once the lead replies.',
+                autoDetect: 'When the lead only asks you to choose in its text, an Auto-detected draft decision is added to the Briefing, without a push notification.',
+                signOff: 'When the lead submits the team goal, a sign-off item lets you accept it or send it back from the Briefing.',
+                push: 'A decision, to-do or block sends at most one push notification while it stays open, however often the lead repeats it.',
+                restart: 'The Briefing needs CLI 0.2.183 or later on the lead’s machine. A lead conversation that was already running before the Briefing was switched on (October 23) gets the board tools after one restart.',
+            },
             oct23a: {
                 tagline: 'Oct 23 · always know where you are',
                 title: 'A project tree in the sidebar, breadcrumbs on every page, Just me & the lead, and tool cards that show their results',

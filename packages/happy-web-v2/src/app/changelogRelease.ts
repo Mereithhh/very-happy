@@ -139,6 +139,36 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-23-briefing-board',
+    date: '2026-10-23',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct23b.title',
+    summaryKey: 'changelog.releases.oct23b.summary',
+    highlights: [
+      {
+        key: 'board',
+        titleKey: 'changelog.releases.oct23b.boardTitle',
+        bodyKey: 'changelog.releases.oct23b.boardBody',
+        image: changelogShots('2026-10-23b', 'board', SHOT_SIZE, 'changelog.releases.oct23b.boardAlt'),
+        docsHref: '/docs/agent-teams',
+      },
+      {
+        key: 'phone',
+        titleKey: 'changelog.releases.oct23b.phoneTitle',
+        bodyKey: 'changelog.releases.oct23b.phoneBody',
+        image: changelogShots('2026-10-23b', 'phone', SHOT_SIZE, 'changelog.releases.oct23b.phoneAlt'),
+        docsHref: '/docs/agent-teams',
+      },
+    ],
+    itemKeys: [
+      'changelog.releases.oct23b.asked',
+      'changelog.releases.oct23b.autoDetect',
+      'changelog.releases.oct23b.signOff',
+      'changelog.releases.oct23b.push',
+      'changelog.releases.oct23b.restart',
+    ],
+  },
+  {
     id: '2026-10-23-project-tree-lead-view',
     date: '2026-10-23',
     buildVersion: __APP_VERSION__,
