@@ -124,3 +124,32 @@ export function teamOperationErrorKind(error: string | null | undefined): TeamOp
   if (/\(automatic retries exhausted after \d+ attempts?; use Retry launch after fixing the cause\)$/.test(error)) return "startupExhausted";
   return "other";
 }
+
+/** B-753: the 「已结束」 lane (done + cancelled) folds by default; this is its
+ *  device-local key in sidebarCollapsedGroups (default collapsed there). */
+export function teamFinishedGroupId(teamId: string): string {
+  return `team-finished:${teamId}`;
+}
+
+/** B-753: an open 「已结束」 lane shows this many cards, then 「显示更多」 adds as many again. */
+export const FINISHED_PAGE_SIZE = 20;
+
+/**
+ * B-753: finished tasks (done / cancelled), most recent first. Tasks carry no
+ * timestamps, so recency is the newest operation or message about the task
+ * (its cleanup `stop`, the submit / accept messages); tasks with neither, and
+ * ties, fall back to array order — the server appends, so later is newer.
+ */
+export function finishedTasksByRecency(team: Pick<TeamState, "tasks" | "operations" | "messages">): TeamTask[] {
+  const last = new Map<string, number>();
+  const note = (taskId: string | null | undefined, at: number) => {
+    if (taskId && at > (last.get(taskId) ?? -Infinity)) last.set(taskId, at);
+  };
+  for (const op of team.operations) note(op.taskId, op.createdAt);
+  for (const msg of team.messages) note(msg.taskId, msg.createdAt);
+  return team.tasks
+    .map((task, index) => ({ task, index }))
+    .filter(({ task }) => task.status === "done" || task.status === "cancelled")
+    .sort((a, b) => (last.get(b.task.id) ?? -Infinity) - (last.get(a.task.id) ?? -Infinity) || b.index - a.index)
+    .map(({ task }) => task);
+}

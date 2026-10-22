@@ -21,15 +21,18 @@ const team = {
   })),
 } as TeamState;
 describe('team workspace presentation', () => {
-  it('shows every lifecycle lane and submitted evidence without opening a disclosure', () => {
+  it('shows every live lane and submitted evidence without opening a disclosure; 「已结束」 starts folded (B-753)', () => {
+    collapsed.resetCollapsedGroupsForTest();
     const html = renderToStaticMarkup(createElement(MemoryRouter, {}, createElement(TeamWorkspace, { team, onTask: () => {} })));
-    for (const task of team.tasks) expect(html).toContain(task.goal);
+    for (const task of team.tasks.filter(t => !['done', 'cancelled'].includes(t.status))) expect(html).toContain(task.goal);
     expect(html).toContain('Evidence submitted');
-    expect(html).not.toContain('<details');
+    expect(html.match(/<details/g)).toHaveLength(1);
+    expect(html).toContain('<details class="teams-lane teams-lane-finished">');
+    expect(html).toContain('Finished · 2');
+    expect(html).not.toContain('Goal done');
     expect(html).toContain('/session/session');
     expect(html).toContain('Last event');
     expect(html).toContain('Blocked');
-    expect(html).toContain('Cleanup needs attention');
     expect(html).not.toContain('scopeToken');
   });
   it('counts only accepted tasks as progress, excluding submitted and cancelled work', () => {

@@ -53,6 +53,11 @@ its conversation is archived, it has stopped or exited, or it has had no activit
 for 7 days. Member counts leave inactive members out; the lead never folds, and a
 member whose cleanup has not finished shows **Cleanup needs attention** instead.
 Inactive members can still receive work through **Transfer to** in task details.
+On the team page's workspace, the **Finished** lane (done and cancelled tasks)
+folds into one **Finished · N** row so long-lived teams keep their live lanes in
+view; open it with a click, Enter or Space, and this device remembers the choice
+for each team. An open lane shows the 20 most recently finished tasks first, and
+**Show more** adds 20 at a time. Queued, In progress and Review never fold.
 Every conversation a team has had stays under that team in all three sidebar
 groupings: the lead, sub-members, adopted leads and each earlier session of a
 reused member. Earlier sessions fold into the **N inactive** row. Membership comes
