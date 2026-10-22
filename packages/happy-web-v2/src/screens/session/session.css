@@ -24,24 +24,23 @@
 /* B-752: the calm ASCII field sits behind the transcript and does not scroll
    with it. It is the first positioned child, so the (positioned, z-index auto)
    transcript paints above it without a new stacking context — fixed popovers
-   inside the chat keep their z-index against the composer and the app. The
-   mask keeps the motion in the side margins: behind the 820px message column
-   only --sd-backdrop-column of the field's ink remains. */
+   inside the chat keep their z-index against the composer and the app.
+   Wide: two strips in the margins beside the 820px column (ChatBackdrop's
+   backdropLayout), each fading out toward the text with an opaque canvas
+   gradient — no CSS mask, which would cost an offscreen pass every frame.
+   Narrow (no margins): one field at half strength. Both fade out above the
+   composer. */
 .sd-body > * { position: relative; }
-.sd-body > .sd-backdrop {
-  --sd-backdrop-column: 30%;
-  --sd-backdrop-half: 410px;
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  -webkit-mask-image: linear-gradient(90deg, var(--text) calc(50% - var(--sd-backdrop-half) - 96px), color-mix(in srgb, var(--text) var(--sd-backdrop-column), transparent) calc(50% - var(--sd-backdrop-half) + 16px), color-mix(in srgb, var(--text) var(--sd-backdrop-column), transparent) calc(50% + var(--sd-backdrop-half) - 16px), var(--text) calc(50% + var(--sd-backdrop-half) + 96px));
-  mask-image: linear-gradient(90deg, var(--text) calc(50% - var(--sd-backdrop-half) - 96px), color-mix(in srgb, var(--text) var(--sd-backdrop-column), transparent) calc(50% - var(--sd-backdrop-half) + 16px), color-mix(in srgb, var(--text) var(--sd-backdrop-column), transparent) calc(50% + var(--sd-backdrop-half) - 16px), var(--text) calc(50% + var(--sd-backdrop-half) + 96px));
-}
-/* Phones have no side margins: a little more of the (single, lite) layer stays. */
-@media (max-width: 720px) {
-  .sd-body > .sd-backdrop { --sd-backdrop-column: 50%; }
-}
+.sd-body > .sd-backdrop { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.sd-backdrop > .sd-backdrop__side { right: auto; width: calc((100% - 820px) / 2 + var(--sp-4)); }
+.sd-backdrop > .sd-backdrop__side--end { right: 0; left: auto; }
+.sd-backdrop__side::after { position: absolute; z-index: 1; top: 0; bottom: 0; width: var(--sp-12); pointer-events: none; content: ''; }
+.sd-backdrop__side--start::after { right: 0; background: linear-gradient(90deg, transparent, var(--bg-0)); }
+.sd-backdrop__side--end::after { left: 0; background: linear-gradient(270deg, transparent, var(--bg-0)); }
+.sd-backdrop > .ascii-field::before { position: absolute; z-index: 1; right: 0; bottom: 0; left: 0; height: var(--sp-10); background: linear-gradient(transparent, var(--bg-0)); pointer-events: none; content: ''; }
+.sd-backdrop--full > .ascii-field { --ascii-gain: 0.5; }
+:root[data-theme='light'] .sd-backdrop--full > .ascii-field { --ascii-gain: 0.68; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .sd-backdrop--full > .ascii-field { --ascii-gain: 0.68; } }
 .sd-foot {
   flex: none;
   position: relative;

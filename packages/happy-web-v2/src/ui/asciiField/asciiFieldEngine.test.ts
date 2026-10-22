@@ -197,9 +197,9 @@ describe('B-720 AsciiField engine', () => {
     const h = harness();
     controller = startAsciiField(h.host, { preset: 'chat', tier: 'full' }, h.env);
     expect(controller.layers).toBe(2);
-    h.frames(60); // 1 s at the preset's 20 fps
+    h.frames(60); // 1 s at the preset's 15 fps
     const atPreset = controller.stats.frames;
-    expect(atPreset).toBeGreaterThanOrEqual(18);
+    expect(atPreset).toBeGreaterThanOrEqual(14);
     controller.setPace(0);
     expect(controller.running()).toBe(false);
     expect(h.pending()).toBe(0);
@@ -216,11 +216,23 @@ describe('B-720 AsciiField engine', () => {
     controller.setPace(null);
     const before = controller.stats.frames;
     h.frames(60);
-    expect(controller.stats.frames - before).toBeGreaterThanOrEqual(18);
+    expect(controller.stats.frames - before).toBeGreaterThanOrEqual(14);
     // A hidden tab still wins over a non-zero pace.
     h.setHidden(true);
     controller.setPace(8);
     expect(controller.running()).toBe(false);
+  });
+
+  it('B-752 originX shifts the world, so sibling fields show different patterns', () => {
+    const a = harness();
+    const b = harness();
+    const left = startAsciiField(a.host, { preset: 'chat', tier: 'full', budgetMs: 1000 }, a.env);
+    const right = startAsciiField(b.host, { preset: 'chat', tier: 'full', budgetMs: 1000, originX: 4096 }, b.env);
+    a.frames(1); b.frames(1);
+    const ix = (h: Harness) => Number(/translate3d\((-?[\d.]+)px/.exec((h.host.querySelector('canvas[style*="translate3d"]') as HTMLElement).style.transform)![1]);
+    // Same camera drift, different world origin: the far plane sits at a different world cell.
+    expect(ix(a)).not.toBe(ix(b));
+    left.stop(); right.stop();
   });
 
   it('the lite tier (phones / low-end) runs two layers', () => {

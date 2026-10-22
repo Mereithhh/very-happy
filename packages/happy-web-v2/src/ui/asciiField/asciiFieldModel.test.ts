@@ -50,7 +50,7 @@ describe('B-720 AsciiField presets — depth of field', () => {
     });
     expect(Math.max(...chat.layers.map((l) => l.alpha))).toBeLessThan(empty.layers[2].alpha / 2);
     expect(chat.fps).toBeLessThan(empty.fps);
-    expect(specForTier('chat', 'lite').fps).toBeLessThanOrEqual(12);
+    expect(specForTier('chat', 'lite').fps).toBeLessThanOrEqual(10);
   });
 
   it('B-752 backdropPace: paused while scrolling, ≤ 10 fps while streaming, preset rate when idle', () => {

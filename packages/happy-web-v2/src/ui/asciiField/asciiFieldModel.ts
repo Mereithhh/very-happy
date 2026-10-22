@@ -84,7 +84,7 @@ export const PRESETS: Record<AsciiFieldPreset, AsciiFieldSpec> = {
       L(0, 11, 0.12, 1.6, -0.5, 0.08, 0.46, 4, 0),
       L(1, 14, 0.13, 0.6, -0.9, 0.12, 0.28, 8, 0),
     ],
-    creatures: false, creatureEvery: [0, 0], creatureAlpha: 0, fps: 20, liteFps: 12,
+    creatures: false, creatureEvery: [0, 0], creatureAlpha: 0, fps: 15, liteFps: 10,
   },
   divider: {
     layers: [

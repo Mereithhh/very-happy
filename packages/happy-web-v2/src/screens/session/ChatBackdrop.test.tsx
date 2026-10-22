@@ -17,7 +17,7 @@ vi.mock('@/ui/asciiField/AsciiField', () => ({
 vi.mock('@/sync/storage', () => ({ useSession: () => live.session }));
 vi.mock('@/sync/heartbeatLease', () => ({ useHeartbeatFresh: () => true }));
 
-import { ChatBackdrop, SCROLL_IDLE_MS } from './ChatBackdrop';
+import { CHAT_COLUMN_PX, ChatBackdrop, MIN_SIDE_PX, SCROLL_IDLE_MS, backdropLayout } from './ChatBackdrop';
 import { ASCII_MOTION_STORAGE, resetAsciiMotionForTests } from '@/ui/asciiField/asciiMotionPreference';
 import { STREAMING_FPS } from '@/ui/asciiField/asciiFieldModel';
 
@@ -44,6 +44,18 @@ describe('B-752 ChatBackdrop', () => {
         expect(host.querySelector('.sd-backdrop [data-ascii-field="chat"]')).not.toBeNull();
         expect(host.querySelector('.sd-backdrop')?.getAttribute('aria-hidden')).toBe('true');
         expect(lastPace()).toBeNull();
+    });
+
+    it('layout: two margin strips when both sides have room beside the 820px column, else one full field', () => {
+        expect(CHAT_COLUMN_PX).toBe(820);
+        expect(backdropLayout(CHAT_COLUMN_PX + 2 * MIN_SIDE_PX)).toBe('sides');
+        expect(backdropLayout(1174)).toBe('sides');
+        expect(backdropLayout(CHAT_COLUMN_PX + 2 * MIN_SIDE_PX - 1)).toBe('full');
+        expect(backdropLayout(390)).toBe('full');
+        // happy-dom reports width 0 → the narrow layout: a single field.
+        act(() => root.render(<ChatBackdrop sessionId="s1" />));
+        expect(host.querySelector('.sd-backdrop--full')).not.toBeNull();
+        expect(host.querySelectorAll('[data-ascii-field="chat"]')).toHaveLength(1);
     });
 
     it('pauses while a scroller inside the chat body scrolls, resumes after the idle gap', () => {

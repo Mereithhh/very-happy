@@ -106,6 +106,8 @@ export interface AsciiFieldOptions {
   tier?: AsciiFieldTier;
   /** Main-thread ms per frame shared by all fields for incremental re-rendering. */
   budgetMs?: number;
+  /** World offset in CSS px, so sibling fields (B-752's two chat margins) do not show the same pattern. */
+  originX?: number;
 }
 
 interface Plane {
@@ -374,7 +376,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
    */
   function camera(l: Layer, t: number, scroll: number): [number, number] {
     const s = l.spec;
-    const cx = -s.driftX * t - (mouse.x * s.mousePx) / l.cellW;
+    const cx = (options.originX ?? 0) / l.cellW - s.driftX * t - (mouse.x * s.mousePx) / l.cellW;
     const shift = Math.max(-l.scrollRoom, Math.min(l.scrollRoom, scroll * s.scroll));
     const cy = -s.driftY * t - (mouse.y * s.mousePx) / l.cellH + shift / l.cellH;
     return [cx, cy];
