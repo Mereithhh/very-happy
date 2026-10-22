@@ -58,6 +58,15 @@ folds into one **Finished · N** row so long-lived teams keep their live lanes i
 view; open it with a click, Enter or Space, and this device remembers the choice
 for each team. An open lane shows the 20 most recently finished tasks first, and
 **Show more** adds 20 at a time. Queued, In progress and Review never fold.
+Each task card, the team goal, the task details, the team list card and the task
+pill in chat show one derived status (B-761, `screens/teams/teamTaskState.ts`):
+**Running** only while the member's session has an active turn (or a running
+sub-agent / background task), **Idle · awaiting reply** when its turn ended
+without a submission, **Needs approval** on a pending permission prompt, and
+**Stopped · needs attention** when its session is no longer running but the task
+was never submitted — the details then link the member's conversation, next to
+Transfer to and Cancel. A status the page cannot see yet reads **Checking status**,
+never Running. Queued work reads Queued / Starting / Launch failed.
 Every conversation a team has had stays under that team in all three sidebar
 groupings: the lead, sub-members, adopted leads and each earlier session of a
 reused member. Earlier sessions fold into the **N inactive** row. Membership comes
@@ -166,7 +175,11 @@ source adapter; a schedule by itself does not import or complete Todo items.
 ## Review and recovery
 
 - A task can be queued, running, submitted, accepted, or cancelled. Idle/blocked/
-  exited are separate bot activity events; none of them means a task passed.
+  exited are separate bot activity events; none of them means a task passed. The
+  page refines `running` by the member's live session (see the status list above);
+  the stored task status only changes on submit / accept / return / cancel /
+  handoff. A newly bound member session starts without the previous
+  generation's last event.
 - A submitted result requires the owner's acceptance. Returning it creates a new
   attempt. Acceptance/return/cancellation/handoff reference the displayed attempt
   and goal version, so old pages cannot silently act on newer work.

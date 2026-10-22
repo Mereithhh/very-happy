@@ -389,6 +389,9 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                     requireTeam(bot.generation === op.generation, 'stale_generation');
                     requireTeam(!s.bots.some(other => other.id !== bot.id && other.sessionId === action.sessionId), 'session_already_bound');
                     requireTeam(!bot.sessionId || bot.sessionId === action.sessionId, 'bot_already_bound');
+                    // B-761: a newly bound session starts with no turn event — the previous
+                    // generation's「idle 19:50」/「exited」described another conversation.
+                    if (bot.sessionId !== action.sessionId) { delete bot.lastEvent; delete bot.lastEventAt; }
                     bot.sessionId = action.sessionId; op.sessionId = action.sessionId;
                     op.error = null; // B-706: an earlier failed attempt of this launch no longer applies
                     if (action.workingDirectory) bot.directory = action.workingDirectory;

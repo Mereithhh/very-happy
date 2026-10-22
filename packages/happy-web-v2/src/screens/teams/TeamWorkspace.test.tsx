@@ -35,6 +35,22 @@ describe('team workspace presentation', () => {
     expect(html).toContain('Blocked');
     expect(html).not.toContain('scopeToken');
   });
+  it('B-761: a running task whose member has no active turn reads 空闲待回复, not 运行中, on card, goal, list and avatar', () => {
+    collapsed.resetCollapsedGroupsForTest();
+    const root = { ...team, bots: [{ ...team.bots[0], managed: true }], tasks: [{ ...team.tasks[1], id: 'goal' }] } as TeamState;
+    const idle = renderToStaticMarkup(createElement(MemoryRouter, {}, createElement(TeamWorkspace, { team: root, onTask: () => {}, execution: () => 'idle' as const })));
+    expect(idle).toMatch(/<section class="team-goal">(?:(?!<\/section>).)*data-state="idle"/);
+    expect(idle).toContain('Idle · awaiting reply');
+    expect(idle).not.toContain('>Running<');
+    expect(idle).toContain('data-live="false"');
+    const working = renderToStaticMarkup(createElement(MemoryRouter, {}, createElement(TeamWorkspace, { team: root, onTask: () => {}, execution: () => 'running' as const })));
+    expect(working).toContain('>Running<');
+    expect(working).toContain('vh-pill--live');
+    expect(working).toContain('class="teams-avatar" data-live="true"');
+    const stopped = renderToStaticMarkup(createElement(MemoryRouter, {}, createElement(TeamListCard, { team: root, machine: 'dev', execution: () => 'offline' as const })));
+    expect(stopped).toContain('Stopped · needs attention');
+    expect(stopped).toContain('vh-pill--danger');
+  });
   it('counts only accepted tasks as progress, excluding submitted and cancelled work', () => {
     const html = renderToStaticMarkup(createElement(TeamProgress, { team }));
     expect(html).toContain('max="5" value="1"');

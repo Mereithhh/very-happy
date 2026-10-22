@@ -14,6 +14,9 @@ import { cardClickOpens } from './cardClick';
 import type { TeamBot, TeamState } from '@slopus/happy-wire';
 import type { PresentedTeamMessage, TeamMessageKind } from './teamMessage';
 import type { TranslationKey } from '@/text';
+import { teamTaskState, type MemberExecution } from '@/screens/teams/teamTaskState';
+import { useMemberExecution } from '@/screens/teams/useMemberExecution';
+import { TeamTaskStatePill } from '@/screens/teams/TeamTaskStatePill';
 import './teamMessage.css';
 
 const KIND_LABEL: Record<TeamMessageKind, TranslationKey> = {
@@ -26,7 +29,8 @@ const KIND_LABEL: Record<TeamMessageKind, TranslationKey> = {
 
 export function TeamMessageCard({ content, sessionId, localId, createdAt }: { content: PresentedTeamMessage; sessionId?: string; localId?: string | null; createdAt?: number | null }) {
     const teams = useTeamNavigation();
-    return <TeamMessageCardView content={content} team={teamForMessage(teams, sessionId, localId ?? null)} localId={localId ?? null} createdAt={createdAt} />;
+    const execution = useMemberExecution();
+    return <TeamMessageCardView content={content} team={teamForMessage(teams, sessionId, localId ?? null)} localId={localId ?? null} createdAt={createdAt} execution={execution} />;
 }
 
 /**
@@ -35,7 +39,7 @@ export function TeamMessageCard({ content, sessionId, localId, createdAt }: { co
  * 3-line preview (no markdown syntax); the whole card opens MessageReader with
  * the body rendered in full. The task link stays on the card.
  */
-export function TeamMessageCardView({ content, team, localId, createdAt }: { content: PresentedTeamMessage; team: TeamState | undefined; localId: string | null; createdAt?: number | null }) {
+export function TeamMessageCardView({ content, team, localId, createdAt, execution = () => undefined }: { content: PresentedTeamMessage; team: TeamState | undefined; localId: string | null; createdAt?: number | null; execution?: MemberExecution }) {
     const { t } = useTranslation();
     const copy = useFirstUseCopy();
     const [open, setOpen] = useState(false);
@@ -47,7 +51,8 @@ export function TeamMessageCardView({ content, team, localId, createdAt }: { con
     const who = route?.from && route.to
         ? <AgentRoute from={chip(route.from)} to={chip(route.to)} />
         : content.sender ? <span className="team-message-sender">{content.sender}</span> : null;
-    const status = task && <span className={`team-message-status vh-pill${task.status === 'running' ? ' vh-pill--live' : task.status === 'submitted' ? ' vh-pill--warn' : ''}`}>{t(`teams.${task.status}`)}</span>;
+    // B-761: the task's derived state (teamTaskState), the same pill as the Teams page.
+    const status = team && task && <TeamTaskStatePill className="team-message-status" state={teamTaskState(team, task, execution)} />;
     // An assignment's body IS the goal; every other kind names the task it is about.
     const goal = task && content.kind !== 'assigned' ? capChars(teamTextPreviewLines(task.goal).join(' '), 160) : null;
     const preview = plainPreviewLines(content.body.trim() ? content.body : t('teams.genericMessage'), 3);

@@ -364,3 +364,10 @@
   .team-project-nudge-actions > * { flex: 1 1 100%; justify-content: center; }
 }
 .team-folder-new { margin-top: var(--sp-2); }
+/* B-761: the derived task state pill (TeamTaskStatePill) sits at the end of the owner line;
+   the hint under the details head says why a task is not 运行中 and links its conversation. */
+.teams-task-owner .teams-task-state { margin-left: auto; }
+.teams-list-task .teams-task-state { margin-right: 8px; }
+.teams-task-state-hint { display: grid; gap: 4px; }
+.teams-task-state-hint p { margin: 0; }
+.teams-task-state-hint a { text-decoration: underline; }
