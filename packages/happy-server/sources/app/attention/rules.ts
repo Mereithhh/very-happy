@@ -21,7 +21,7 @@ export interface AttentionRow {
     id: string; accountId: string; sessionId: string; teamId: string | null; projectId: string | null;
     source: string; kind: string; key: string | null; lastRequestId: string | null;
     title: string; bodyMd: string | null; options: unknown; links: unknown; anchor: unknown; firstReply: unknown;
-    replyToId: string | null; needsOwner: boolean; state: string; ownerChoice: string | null; ownerNote: string | null;
+    replyToId: string | null; inferred: boolean; needsOwner: boolean; state: string; ownerChoice: string | null; ownerNote: string | null;
     resolvedBy: string | null; resolveNote: string | null; repostCount: number;
     createdAt: Date; updatedAt: Date; resolvedAt: Date | null; pushedAt: Date | null; version: number;
 }
@@ -32,7 +32,7 @@ export function itemView(row: AttentionRow): AttentionItem {
         id: row.id, sessionId: row.sessionId, teamId: row.teamId, projectId: row.projectId, source: row.source, kind: row.kind, key: row.key,
         title: row.title, bodyMd: row.bodyMd, options: (row.options as AttentionItem['options']) ?? null, links: (row.links as AttentionItem['links']) ?? null,
         anchor: (row.anchor as AttentionItem['anchor']) ?? null, firstReply: (row.firstReply as AttentionItem['firstReply']) ?? null,
-        replyToId: row.replyToId, needsOwner: row.needsOwner, state: row.state, ownerChoice: row.ownerChoice, ownerNote: row.ownerNote,
+        replyToId: row.replyToId, inferred: row.inferred, needsOwner: row.needsOwner, state: row.state, ownerChoice: row.ownerChoice, ownerNote: row.ownerNote,
         resolvedBy: row.resolvedBy, resolveNote: row.resolveNote, repostCount: row.repostCount,
         createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime(), resolvedAt: ms(row.resolvedAt), pushedAt: ms(row.pushedAt), version: row.version,
     };
@@ -154,7 +154,7 @@ const PUSH_TITLE: Record<string, string> = {
 };
 
 /** Push text for an item, or null when it never pushes (§6.2). */
-export function pushPresentation(item: Pick<AttentionRow, 'kind' | 'title' | 'replyToId'>): { kind: 'attention' | 'question'; title: string; body: string } | null {
+export function pushPresentation(item: Pick<AttentionRow, 'kind' | 'title' | 'replyToId'> & { inferred?: boolean }): { kind: 'attention' | 'question'; title: string; body: string } | null {
     const kind = attentionPushKind(item);
     if (!kind) return null;
     if (kind === 'question') return { kind, title: '负责人回答了你的问题', body: item.title.slice(0, 500) };

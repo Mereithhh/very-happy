@@ -74,11 +74,11 @@ async function emitItem(accountId: string, item: AttentionItem) {
  * is the claim, so concurrent reposts / retries / server replicas race on one
  * row and only the winner dispatches. Closed items never push.
  */
-export async function pushOnce(row: Pick<AttentionRow, 'id' | 'accountId' | 'sessionId' | 'kind' | 'title' | 'replyToId' | 'state'>): Promise<boolean> {
+export async function pushOnce(row: Pick<AttentionRow, 'id' | 'accountId' | 'sessionId' | 'kind' | 'title' | 'replyToId' | 'state' | 'inferred'>): Promise<boolean> {
     const presentation = pushPresentation(row);
     if (!presentation || !isAttentionActive(row.state)) return false;
     try {
-        const claimed = await db.attentionItem.updateMany({ where: { id: row.id, pushedAt: null, state: { in: ACTIVE_STATES } }, data: { pushedAt: new Date() } });
+        const claimed = await db.attentionItem.updateMany({ where: { id: row.id, pushedAt: null, inferred: false, state: { in: ACTIVE_STATES } }, data: { pushedAt: new Date() } });
         if (claimed.count !== 1) return false;
         const url = `/session/${row.sessionId}?panel=board&item=${encodeURIComponent(row.id)}`;
         eventRouter.emitEphemeral({
@@ -123,7 +123,7 @@ async function enforceActiveLimit(tx: Tx, accountId: string) {
 const reopenData = { state: 'open', resolvedBy: null, resolvedAt: null, ownerChoice: null, ownerNote: null, resolveNote: null, pushedAt: null };
 
 /** Insert-or-repost by `(sessionId, key)` inside an open transaction (shared by the REST post and the root-task hook). */
-async function upsertTx(tx: Tx, accountId: string, input: AttentionItemPost, context?: { teamId: string | null; projectId: string | null }): Promise<{ row: AttentionRow; created: boolean }> {
+async function upsertTx(tx: Tx, accountId: string, input: AttentionItemPost & { inferred?: boolean }, context?: { teamId: string | null; projectId: string | null }): Promise<{ row: AttentionRow; created: boolean }> {
     const key = postKey(input);
     const existing = key ? await tx.attentionItem.findUnique({ where: { sessionId_key: { sessionId: input.sessionId, key } } }) : null;
     requireAttention(!existing || existing.accountId === accountId, 'attention_item_not_found', 404);
@@ -139,11 +139,13 @@ async function upsertTx(tx: Tx, accountId: string, input: AttentionItemPost, con
         replyToId: input.replyToId ?? null,
         lastRequestId: input.requestId ?? null,
     };
+    const inferred = input.inferred === true;
     let row: AttentionRow;
     if (plan.action === 'repost') {
+        // D5: the lead posting a drafted key confirms it (then pushes once); a draft never downgrades a confirmed item.
         row = await tx.attentionItem.update({
             where: { id: existing!.id },
-            data: { ...content, ...(plan.reopened ? reopenData : {}), repostCount: { increment: 1 }, version: { increment: 1 }, updatedAt: now },
+            data: { ...content, ...(plan.reopened ? reopenData : {}), ...(existing!.inferred && !inferred ? { inferred: false } : {}), repostCount: { increment: 1 }, version: { increment: 1 }, updatedAt: now },
         });
     } else {
         await enforceActiveLimit(tx, accountId);
@@ -151,7 +153,7 @@ async function upsertTx(tx: Tx, accountId: string, input: AttentionItemPost, con
         row = await tx.attentionItem.create({
             data: {
                 ...content, id: randomUUID(), accountId, sessionId: input.sessionId, teamId: ctx.teamId, projectId: ctx.projectId,
-                source: input.source, kind: input.kind, key, needsOwner: attentionKindNeedsOwner(input.kind), state: 'open', createdAt: now, updatedAt: now,
+                source: input.source, kind: input.kind, key, inferred, needsOwner: attentionKindNeedsOwner(input.kind), state: 'open', createdAt: now, updatedAt: now,
             },
         });
     }

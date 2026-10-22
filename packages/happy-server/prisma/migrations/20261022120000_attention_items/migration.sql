@@ -19,6 +19,7 @@ CREATE TABLE "AttentionItem" (
     "anchor" JSONB,
     "firstReply" JSONB,
     "replyToId" TEXT,
+    "inferred" BOOLEAN NOT NULL DEFAULT false,
     "needsOwner" BOOLEAN NOT NULL,
     "state" TEXT NOT NULL,
     "ownerChoice" TEXT,

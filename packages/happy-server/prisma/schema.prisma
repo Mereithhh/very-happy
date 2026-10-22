@@ -948,6 +948,8 @@ model AttentionItem {
     /// [AttentionAnchor]
     firstReply    Json?
     replyToId     String?
+    /// D5 draft auto-detected by the CLI: no push until the lead posts the same key.
+    inferred      Boolean   @default(false)
     needsOwner    Boolean
     state         String
     ownerChoice   String?

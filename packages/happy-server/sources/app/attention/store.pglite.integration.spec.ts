@@ -109,6 +109,22 @@ describe('attention items store (pglite)', () => {
         expect(pushesFor(report.item.id)).toBe(0);
     });
 
+    it('D5 drafts (inferred) never push; the lead posting the same key confirms and pushes once; drafts never downgrade', async () => {
+        const draft = await store.postItem(accountId, { sessionId, source: 'lead', kind: 'decision', title: 'Pick a region', options, key: 'region', inferred: true, requestId: 'i1' });
+        expect(draft.item).toMatchObject({ inferred: true, needsOwner: true, state: 'open' });
+        await store.postItem(accountId, { sessionId, source: 'lead', kind: 'decision', title: 'Pick a region', options, key: 'region', inferred: true, requestId: 'i2' });
+        await settle();
+        expect(pushesFor(draft.item.id)).toBe(0);
+        const confirmed = await store.postItem(accountId, { sessionId, source: 'lead', kind: 'decision', title: 'Pick a region', options, key: 'region', requestId: 'i3' });
+        expect(confirmed.item).toMatchObject({ id: draft.item.id, inferred: false, repostCount: 2 });
+        await settle();
+        expect(pushesFor(draft.item.id)).toBe(1);
+        const again = await store.postItem(accountId, { sessionId, source: 'lead', kind: 'decision', title: 'Pick a region', options, key: 'region', inferred: true, requestId: 'i4' });
+        expect(again.item.inferred).toBe(false);
+        await settle();
+        expect(pushesFor(draft.item.id)).toBe(1);
+    });
+
     it('answers and reports settle the item they reply to; an answer to an owner question pushes as question', async () => {
         const question = await store.postItem(accountId, { sessionId, source: 'owner', kind: 'question', title: 'Who writes the notes?', anchor: { localId: 'l1' }, requestId: 'q1' });
         expect(question.item.needsOwner).toBe(false);
