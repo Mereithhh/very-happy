@@ -7,10 +7,7 @@
  * isAssistantSession predicate, archived view included.
  */
 import { describe, it, expect } from 'vitest';
-import { flatListRows, sidebarListEmpty, visibleSidebarSessions } from './sidebarRows';
-import { readFileSync } from 'node:fs';
-import { groupTeamNavigation } from './teamNavigation';
-import type { TeamState } from '@slopus/happy-wire';
+import { sidebarListEmpty, visibleSidebarSessions } from './sidebarRows';
 import { isAssistantSession, isHiddenSession, isMirrorSession } from '@/assistant/assistantSession';
 import type { Session } from '@/sync/storageTypes';
 
@@ -120,37 +117,5 @@ describe('sidebarListEmpty (B-708)', () => {
     expect(sidebarListEmpty([{ count: 0, allRows: [] }], 0)).toBe(true);
     expect(sidebarListEmpty([{ count: 0, allRows: [], project: {} }], 0)).toBe(false);
     expect(sidebarListEmpty([{ count: 0, allRows: [] }], 2)).toBe(false);
-  });
-});
-
-describe('flat list keeps the inactive-members fold (B-710)', () => {
-  const team = { id: 't', name: 't', machineId: 'm', version: 1, tasks: [], messages: [], operations: [], createdAt: 1,
-    bots: ['lead', 'ui', 'tests'].map((s, i) => ({ id: `b${i}`, name: s, sessionId: s, generation: 1, root: i === 0, managed: true, assistant: 'claude', directory: null })) } as unknown as TeamState;
-  // Same shape Sidebar's nestTeams maps entries to: the fold becomes a row carrying teamInactiveFold.
-  const nested = (open: boolean) => groupTeamNavigation([{ sessionId: 'lead' }, { sessionId: 'ui' }, { sessionId: 'x' }], [team], new Set(['t']), {
-    isInactive: (r) => r.sessionId === 'ui', open: new Set(open ? ['t'] : []),
-  }).map((e) => e.kind === 'inactive' ? { key: 'fold', teamInactiveFold: { count: e.count, open: e.open } } : e.kind === 'team' ? { key: 'team' } : e.kind === 'empty' ? { key: 'empty', teamEmptyHint: true } : { key: e.row.sessionId! });
-  it('collapsed by default: the fold row is rendered, the inactive member is not, and the fold takes no ⌘N slot', () => {
-    const { rendered, sequence } = flatListRows(nested(false));
-    expect(rendered.map((r) => r.key)).toEqual(['team', 'lead', 'fold', 'x']);
-    expect(sequence.map((r) => r.key)).toEqual(['team', 'lead', 'x']);
-  });
-  it('opened (device-local choice): the inactive member shows behind the fold', () => {
-    expect(flatListRows(nested(true)).rendered.map((r) => r.key)).toEqual(['team', 'lead', 'fold', 'ui', 'x']);
-  });
-  it('B-759: a lead-only team’s 「成员由负责人按需创建」 hint is rendered but takes no ⌘N slot', () => {
-    const solo = { ...team, bots: team.bots.slice(0, 1) } as TeamState;
-    const rows = groupTeamNavigation([{ sessionId: 'lead' }, { sessionId: 'x' }], [solo], new Set(['t']))
-      .map((e) => e.kind === 'empty' ? { key: 'empty', teamEmptyHint: true } : e.kind === 'team' ? { key: 'team' } : e.kind === 'row' ? { key: e.row.sessionId! } : { key: 'fold' });
-    const { rendered, sequence } = flatListRows(rows);
-    expect(rendered.map((r) => r.key)).toEqual(['team', 'lead', 'empty', 'x']);
-    expect(sequence.map((r) => r.key)).toEqual(['team', 'lead', 'x']);
-  });
-  it('Sidebar renders the flat section from the rendered rows, numbers it from the sequence', () => {
-    const src = readFileSync(new URL('./Sidebar.tsx', import.meta.url), 'utf8');
-    const flat = src.slice(src.indexOf("id: 'all',"), src.indexOf("id: 'all',") + 300);
-    expect(flat).toContain('rows: flatRows?.rendered ?? []');
-    expect(flat).toContain('allRows: flatRows?.rendered ?? []');
-    expect(src).toContain('const displayRows = flatRows?.sequence ?? null;');
   });
 });

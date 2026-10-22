@@ -82,6 +82,10 @@ export const LocalSettingsSchema = z.object({
     projectsTagNoticeDismissed: z.boolean().describe('The tag-grouping-merged-into-projects notice was dismissed'),
     // B-675: one-time 「按标签分组回来了」 notice for devices that used tag grouping before B-647.
     tagGroupingBackNoticeDismissed: z.boolean().describe('The tag-grouping-is-back notice was dismissed'),
+    // B-762 (B-760 D2): 不在项目中 is one flat area by default; folder sub-groups are an opt-in from its ⋯.
+    sidebarUnassignedByFolder: z.boolean().describe('Sub-group sessions outside every project by folder'),
+    // B-762: the 「放进同一个项目」 hint above a project-less sidebar was dismissed.
+    sidebarProjectHintDismissed: z.boolean().describe('The put-chats-in-a-project hint was dismissed'),
     // Web terminal (mobile): line-input mode — a plain textarea below the key
     // bar composes whole lines (IME/dictation-friendly, no xterm composition
     // quirks) and sends them to the pty on Enter, instead of per-key input
@@ -217,6 +221,8 @@ export const localSettingsDefaults: LocalSettings = {
     sidebarGrouping: 'project',
     projectsTagNoticeDismissed: false,
     tagGroupingBackNoticeDismissed: false,
+    sidebarUnassignedByFolder: false,
+    sidebarProjectHintDismissed: false,
     // Default to per-key mode: it's the full-fidelity terminal; users who hit
     // IME pain opt into the line-input bar from the key bar toggle.
     terminalInputBarMode: false,

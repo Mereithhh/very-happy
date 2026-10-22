@@ -14,17 +14,21 @@ export interface SidebarNavEntry {
   path: string;
   /** count that needs the user (automation decisions / incoming contact requests); 0 = none */
   attention: number;
+  /** B-762: 项目 carries the tree's 需要你 total in the tree's warn tone (the others stay danger) */
+  tone?: 'warn';
 }
 
 export function sidebarNavEntries(input: {
   projectsVisible?: boolean;
+  /** B-762 (B-760 D1): sessions in projects that need the user (waiting + unread) */
+  projectAttention?: number;
   teamsVisible: boolean;
   automationsVisible: boolean;
   automationAttention: number;
   incomingPeople: number;
 }): SidebarNavEntry[] {
   const entries: SidebarNavEntry[] = [];
-  if (input.projectsVisible) entries.push({ key: 'projects', path: '/projects', attention: 0 });
+  if (input.projectsVisible) entries.push({ key: 'projects', path: '/projects', attention: Math.max(0, input.projectAttention ?? 0), tone: 'warn' });
   if (input.teamsVisible) entries.push({ key: 'teams', path: '/teams', attention: 0 });
   if (input.automationsVisible) entries.push({ key: 'automations', path: '/automations', attention: Math.max(0, input.automationAttention) });
   entries.push({ key: 'todos', path: '/todos', attention: 0 });

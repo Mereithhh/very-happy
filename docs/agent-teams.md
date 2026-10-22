@@ -45,12 +45,19 @@ add members yourself. Until the lead creates one, the team page and the expanded
 sidebar team say so, with a link into the lead's conversation, and the ⓘ beside
 **Who is working** explains the split.
 
-Team names appear alongside ordinary conversations in history. Select a team's
-name (or press Enter) to open its team page — goal, progress, members and results;
-the row shows the lead's status. The chevron (or → / ←) expands the member list
-without navigating; its **Lead** row opens the lead's conversation. The row's
-right-click / long-press menu offers **Open team page**, **Chat with the lead**,
-**Team settings** and expand / collapse.
+In the sidebar's **By project** tree a team sits inside its project, beside the
+project's own sessions (teams outside every project are under **Not in a
+project**). Select a team's name (or press Enter) to open its team page — goal,
+progress, members and results. The row shows how many of its members need you
+(waiting or unread), or its head count when none do, and a spinner while any
+member runs. The chevron (or → / ←) expands the member list without navigating;
+its **Lead** row (crown) opens the lead's conversation, member rows read
+*name · task*. A team starts folded and opens while its page or one of its
+conversations is open; your own folding is remembered on this device. The row's
+right-click menu (a bottom sheet on a phone's long-press) offers **Open team
+page**, **Chat with the lead**, **Team settings** and expand / collapse.
+In **By tag** and **Recent** there are no team rows: the lead's conversation is
+listed with a team chip, and a member's only while it waits for you.
 Members no longer in use fold into one **N inactive** row, both under the expanded
 team in the sidebar and in the team page's member list; open it to reach their
 history (this device remembers the choice, shared by both places). A member is
@@ -73,8 +80,7 @@ without a submission, **Needs approval** on a pending permission prompt, and
 was never submitted — the details then link the member's conversation, next to
 Transfer to and Cancel. A status the page cannot see yet reads **Checking status**,
 never Running. Queued work reads Queued / Starting / Launch failed.
-Every conversation a team has had stays under that team in all three sidebar
-groupings: the lead, sub-members, adopted leads and each earlier session of a
+Every conversation a team has had stays under that team in the project tree: the lead, sub-members, adopted leads and each earlier session of a
 reused member. Earlier sessions fold into the **N inactive** row. Membership comes
 only from the team's own records (live bindings, launch receipts and rebind
 history), never from titles or folders. A conversation that leads two teams, such
@@ -86,7 +92,7 @@ settings can hide the Teams entry without stopping or deleting existing work.
 A team can belong to a [project](projects.md): on the project page open
 **Project settings → Teams** and attach it (only teams whose computer has one of
 the project's folders are offered). The team's sessions are then listed as
-project members, and the team appears in the project's sidebar group. Team members get the project instructions as background and
+project members, and the team appears under the project in the sidebar tree. Team members get the project instructions as background and
 coordinate through their lead rather than messaging other project sessions.
 
 For an existing managed conversation, use **More → Start a team from this

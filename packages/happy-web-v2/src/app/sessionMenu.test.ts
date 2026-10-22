@@ -105,7 +105,7 @@ describe('one builder for both surfaces', () => {
     expect(sidebar).not.toContain('function rowMenuItems');
   });
   it('the row menu feeds both its ⋯ dropdown and its right-click / long-press menu', () => {
-    expect(sidebar).toContain('<ActionContextMenu items={menuItems}>');
+    expect(sidebar).toContain('<ActionContextMenu items={menuItems} sheetTitle={sheetTitle}>');
     expect(sidebar).toContain('<ActionDropdownMenu items={menuItems} align="end" sideOffset={4}>');
   });
 });

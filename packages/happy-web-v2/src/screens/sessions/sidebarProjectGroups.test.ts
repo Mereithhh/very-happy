@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ProjectView, TeamState } from '@slopus/happy-wire';
 import { groupRowsByTag } from './sidebarTagGroups';
 import { groupTeamNavigation, teamSessionMembership } from './teamNavigation';
-import { foldersOfRows, groupRowsByProject, legacyGroupModeFor, projectAreaEntries, sessionProjectResolver, usedTagGrouping } from './sidebarProjectGroups';
+import { foldersOfRows, groupRowsByProject, legacyGroupModeFor, sessionProjectResolver, usedTagGrouping } from './sidebarProjectGroups';
 
 const project = (id: string, extra: Partial<ProjectView> = {}): ProjectView => ({ id, name: id, goal: null, instructions: '', instructionsVersion: 0, instructionsUpdatedBy: null, instructionsUpdatedAt: null, folders: [], defaults: {}, archivedAt: null, createdAt: 1, updatedAt: 1, teamIds: [], automationIds: [], ...extra });
 const row = (key: string, machineId = 'm', path = '/repo', tags?: string[]) => ({ key, sessionId: key, machineId, workspacePath: path, machineName: 'mac', tags });
@@ -37,10 +37,10 @@ describe('groupRowsByProject', () => {
     expect(g.projects[0].teams.map(t => t.id)).toEqual(['t1', 't2']);
     expect(g.unassigned.flatMap(u => u.rows.map(r => r.key))).toEqual(['x']);
   });
-  it('explicit membership beats the team attachment', () => {
-    const g = groupRowsByProject([row('s1'), row('s2')], [project('p', { teamIds: ['t'] }), project('q')], [member('q', 's2')], [team('t', ['s1', 's2'])]);
-    expect(g.projects.find(p => p.project.id === 'p')!.rows.map(r => r.key)).toEqual(['s1']);
-    expect(g.projects.find(p => p.project.id === 'q')!.rows.map(r => r.key)).toEqual(['s2']);
+  it('B-762: a team member follows its team’s project even when explicitly put in another (项目 ⊃ 团队 ⊃ 成员)', () => {
+    const g = groupRowsByProject([row('s1'), row('s2'), row('s3')], [project('p', { teamIds: ['t'] }), project('q')], [member('q', 's2'), member('q', 's3')], [team('t', ['s1', 's2'])]);
+    expect(g.projects.find(p => p.project.id === 'p')!.rows.map(r => r.key)).toEqual(['s1', 's2']);
+    expect(g.projects.find(p => p.project.id === 'q')!.rows.map(r => r.key)).toEqual(['s3']);
   });
   it('an unattached team stays together in its first row\'s folder group (team worktrees differ)', () => {
     const t = team('t', ['s1', 's2']);
@@ -184,20 +184,16 @@ describe('B-729 team conversations nest identically in every lens', () => {
   it('no grouping', () => {
     expect(placement([nest(rows, teams)])).toEqual(expected);
   });
-  it('an unanchored history link nests with its team even when that team also heads a project group', () => {
+  it('B-762: a member explicitly put in another project still sits with its team, and so does the team’s history link (one place, never split)', () => {
     const t = team('t', ['s1', 's2']);
     const g = groupRowsByProject([row('s1'), history('s2')], [project('q')], [member('q', 's1')], [t]);
-    expect(g.teamsGroup!.teams.map(x => x.id)).toEqual(['t']);
-    expect(placement([nest(g.teamsGroup!.rows, g.teamsGroup!.teams)])).toEqual({ s2: 't' });
+    expect(g.projects.find(p => p.project.id === 'q')!.rows).toEqual([]);
+    expect(g.teamsGroup).toBeNull();
+    expect(placement(g.unassigned.map(u => nest(u.rows, u.teams)))).toEqual({ s1: 't', s2: 't' });
   });
 });
 
 describe('projects outside the project lens (B-756)', () => {
-  it('tag lens 「项目」 area: every live project with its visible sessions and 等你处理, in project-lens order', () => {
-    const rows = [row('a'), row('b'), row('c'), { ...history('h'), machineId: undefined, workspacePath: undefined }];
-    const entries = projectAreaEntries(rows, [project('empty', { createdAt: 5 }), project('p'), project('gone', { archivedAt: 1 })], [member('p', 'b'), member('p', 'c'), member('p', 'h'), member('gone', 'a')], [], new Set(['c']));
-    expect(entries.map((e) => [e.project.id, e.sessions, e.attention])).toEqual([['p', 2, 1], ['empty', 0, 0]]);
-  });
   it('session → project for the chip: explicit membership, else its team’s project; archived projects never', () => {
     const t1 = team('t1', ['s1']);
     const of = sessionProjectResolver([project('p', { teamIds: ['t1'] }), project('q'), project('old', { archivedAt: 3 })], [member('q', 'x'), member('old', 'y')], [t1]);

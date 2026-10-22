@@ -523,6 +523,36 @@
   background: var(--line);
   margin: 4px 6px;
 }
+/* B-762 (spec B-760 §5.3): a sidebar tree row's long-press menu is a bottom
+   sheet on touch — full width above the home indicator, headed by the row's
+   name, with the page dimmed behind it. Fine pointers keep the popover. */
+.vh-menu-sheet-title { display: none; }
+@media (pointer: coarse) {
+  [data-radix-popper-content-wrapper]:has(> .vh-menu--sheet) {
+    position: fixed !important;
+    inset: auto 12px calc(12px + env(safe-area-inset-bottom)) 12px !important;
+    transform: none !important;
+    min-width: 0 !important;
+  }
+  .vh-menu--sheet {
+    width: 100%;
+    max-height: 70dvh;
+    overflow-y: auto;
+    padding: var(--sp-2);
+    border-radius: var(--r-lg);
+    box-shadow: 0 0 0 100vmax var(--scrim), var(--shadow-popover);
+  }
+  .vh-menu--sheet .vh-menu-sheet-title {
+    display: block;
+    padding: 10px 12px 6px;
+    color: var(--text-faint);
+    font-size: var(--fs-13);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vh-menu--sheet .vh-menu-item { min-height: 48px; font-size: var(--fs-15); }
+}
 
 .sb-row-badge {
   flex-shrink: 0;
@@ -638,27 +668,127 @@
 
 
 
-.sb-team-row { display: flex; align-items: center; min-width: 0; border-radius: 6px; }
-.sb-team-row.is-selected { background: var(--fill-selected); }
-.sb-team-toggle { display: grid; place-items: center; width: 32px; min-height: 44px; flex-shrink: 0; color: var(--text-dim); border-radius: var(--r-sm); }
-.sb-team-toggle .is-open { transform: rotate(90deg); }
-.sb-team-main { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; text-align: left; min-height: 52px; padding: 5px 8px 5px 0; }
-.sb-team-main > svg { flex-shrink: 0; }
-.sb-team-main > span { display: grid; min-width: 0; flex: 1; }
-.sb-team-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
-.sb-team-main small { color: var(--text-dim); font-size: 12px; }
-.sb-team-child { margin-left: 20px; border-left: 1px solid var(--line); }
-/* B-721: the lead's status sits in the row's status slot. B-759: no board
-   button — the row itself opens the team page. */
-.sb-team-main .sb-team-lead-status { margin-left: auto; }
+/* ----- B-762 project tree (B-760 scheme A, DESIGN §5.1) -----
+   项目 (0) › 团队 / 会话 (1) › 负责人 / 成员 / 已停用 (2); 不在项目中 children at 0.
+   Every node reserves one chevron slot so icons line up per level; each level
+   indents by --tree-indent. Guide lines are 1px single-edge hairlines (--line)
+   painted on the node wrapper under each ancestor's chevron; the row's own
+   selection fill spans the full width above them. */
+.sb-list--tree { --tree-pad: 4px; --tree-indent: 14px; --tree-slot: 18px; }
+@media (pointer: coarse) { .sb-list--tree { --tree-indent: 12px; --tree-slot: 28px; } }
+.sb-tree-node { position: relative; }
+.sb-tree-node[data-depth="1"] {
+  background: linear-gradient(var(--line), var(--line)) no-repeat calc(var(--tree-pad) + var(--tree-slot) / 2) 0 / 1px 100%;
+}
+.sb-tree-node[data-depth="2"] {
+  background:
+    linear-gradient(var(--line), var(--line)) no-repeat calc(var(--tree-pad) + var(--tree-slot) / 2) 0 / 1px 100%,
+    linear-gradient(var(--line), var(--line)) no-repeat calc(var(--tree-pad) + var(--tree-indent) + var(--tree-slot) / 2) 0 / 1px 100%;
+}
+.sb-tree-node .sb-row-main { padding-left: calc(var(--tree-pad) + var(--depth) * var(--tree-indent) + var(--tree-slot)); }
+.sb-tree-chevron {
+  display: grid; place-items: center; flex: none;
+  width: var(--tree-slot); height: 24px;
+  margin-left: calc(var(--tree-pad) + var(--depth) * var(--tree-indent));
+  border-radius: var(--r-sm); color: var(--text-faint);
+}
+.sb-tree-chevron > svg { transition: transform var(--motion-fast); }
+.sb-tree-chevron > svg.is-open { transform: rotate(90deg); }
+@media (hover: hover) and (pointer: fine) { .sb-tree-chevron:hover { background: var(--fill-hover); color: var(--text); } }
+@media (pointer: coarse) { .sb-tree-chevron { height: 40px; } }
+/* 需要你 badge (waiting + unread) on every level; a count when nothing needs you. */
+.sb-tree-badge {
+  flex: none; min-width: 18px; padding: 0 5px; border-radius: var(--r-pill);
+  background: var(--warn-dim); color: var(--warn);
+  font-size: var(--fs-11); font-weight: 600; font-variant-numeric: tabular-nums; line-height: 18px; text-align: center;
+}
+.sb-tree-count { flex: none; color: var(--text-faint); font-size: var(--fs-11); font-weight: 400; font-variant-numeric: tabular-nums; }
+
+/* Level 1 — the project: FolderKanban 16 in --text, 14px 600; 6px between projects, no rule. */
+.sb-section--project + .sb-section--project { margin-top: 6px; }
+.sb-tree-project { display: flex; align-items: center; min-width: 0; border-radius: var(--r-sm); }
+.sb-tree-project.is-selected { background: var(--fill-selected); }
+.sb-tree-project-main {
+  display: flex; align-items: center; gap: var(--sp-2); flex: 1; min-width: 0; min-height: 32px;
+  padding: 0 var(--sp-2) 0 2px; color: var(--text); font-size: var(--fs-14); font-weight: 600; text-align: left;
+}
+.sb-tree-project-main > svg { flex: none; color: var(--text); }
+.sb-tree-project-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-tree-project-main:focus-visible { outline: none; background: var(--fill-hover); border-radius: var(--r-sm); }
+/* ＋ / ⋯ appear on hover over the badge's place, so the badge column stays aligned with the team rows. */
+.sb-tree-project { position: relative; }
+.sb-tree-project-acts { display: none; position: absolute; top: 50%; right: 2px; transform: translateY(-50%); align-items: center; gap: 2px; padding-left: 6px; border-radius: var(--r-sm); background: var(--surface-sidebar); }
 @media (hover: hover) and (pointer: fine) {
-  .sb-team-toggle:hover { background: var(--fill-hover); color: var(--text); }
+  .sb-tree-project:not(.is-selected):hover { background: var(--fill-hover); }
+  .sb-tree-project:hover .sb-tree-project-acts, .sb-tree-project:focus-within .sb-tree-project-acts, .sb-tree-project-acts:has([data-state="open"]) { display: inline-flex; }
 }
+/* §5.3: touch has no hover — ＋ / ⋯ go away, long-press opens the bottom sheet. */
 @media (pointer: coarse) {
-  .sb-team-toggle { width: 44px; }
+  .sb-tree-project-main { min-height: 44px; }
 }
+
+/* Level 2 — a team: UsersRound 15 dim, 13.5px 500, one line. */
+.sb-team-row { display: flex; align-items: center; min-width: 0; border-radius: var(--r-sm); }
+.sb-team-row.is-selected { background: var(--fill-selected); }
+.sb-team-main {
+  display: flex; align-items: center; gap: var(--sp-2); flex: 1; min-width: 0; min-height: 32px;
+  padding: 0 var(--sp-2) 0 2px; color: var(--text); font-size: 13.5px; font-weight: 500; text-align: left;
+}
+.sb-team-main > svg { flex: none; color: var(--text-dim); }
+.sb-team-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-team-main:focus-visible { outline: none; background: var(--fill-hover); border-radius: var(--r-sm); }
+.sb-team-unplaced { flex: none; color: var(--warn); font-size: var(--fs-11); font-weight: 400; }
+@media (hover: hover) and (pointer: fine) { .sb-team-row:not(.is-selected):hover { background: var(--fill-hover); } }
+@media (pointer: coarse) { .sb-team-main { min-height: 44px; } }
+
+/* Level 3 — lead (crown + 「负责人」 tag, neutral: --accent stays live-only) and members (名字 · 任务). */
+.sb-lead-tag {
+  display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 4px;
+  background: var(--fill-soft); color: var(--text-dim);
+  font-size: var(--fs-11); font-weight: 400; line-height: 1.6; vertical-align: 1px;
+}
+.sb-row-task { color: var(--text-faint); font-weight: 400; }
 /* B-759: an expanded team with only its lead says where members come from. */
-.sb-team-empty { margin: 0; padding: 4px var(--sp-2) 6px; color: var(--text-faint); font-size: var(--fs-12); line-height: 1.45; }
+.sb-team-empty { margin: 0; padding: 4px var(--sp-2) 6px calc(var(--tree-pad) + var(--depth) * var(--tree-indent) + var(--tree-slot)); color: var(--text-faint); font-size: var(--fs-12); line-height: 1.45; }
+.sb-tree-empty { margin: 0; padding: 4px var(--sp-2) 6px calc(var(--tree-pad) + var(--depth) * var(--tree-indent) + var(--tree-slot)); color: var(--text-faint); font-size: var(--fs-12); line-height: 1.6; }
+.sb-tree-link { padding: 0; border: 0; background: none; color: var(--text-dim); font: inherit; text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; cursor: pointer; }
+.sb-tree-link:disabled { opacity: 0.5; }
+@media (hover: hover) and (pointer: fine) { .sb-tree-link:hover { color: var(--text); } }
+.sb-tree-link:focus-visible { outline: none; border-radius: 2px; box-shadow: var(--focus-ring); }
+
+/* 不在项目中 / 会话 — a small title and a hairline, not a group head. */
+.sb-section--area { margin-top: 10px; }
+.sb-section--area:first-child { margin-top: 2px; }
+.sb-tree-area { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 0 0 var(--tree-pad); color: var(--text-faint); font-size: var(--fs-12); }
+.sb-tree-area-toggle { display: inline-flex; align-items: center; gap: 4px; flex: none; min-height: 24px; padding: 0 4px 0 0; border-radius: var(--r-sm); color: inherit; font: inherit; }
+.sb-tree-area-toggle:focus-visible { outline: none; background: var(--fill-hover); color: var(--text); }
+.sb-tree-area-label { flex: none; padding-left: 4px; }
+.sb-tree-area-rule { flex: 1; min-width: 12px; height: var(--hairline); background: var(--line); }
+.sb-tree-area-menu { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: var(--r-sm); color: var(--text-faint); }
+@media (hover: hover) and (pointer: fine) { .sb-tree-area-menu:hover, .sb-tree-area-toggle:hover { background: var(--fill-hover); color: var(--text); } }
+@media (pointer: coarse) {
+  .sb-tree-area { min-height: 44px; }
+  .sb-tree-area-toggle { min-height: 44px; }
+  .sb-tree-area-menu { width: 44px; height: 44px; }
+}
+.sb-tree-hint { position: relative; margin: 0; padding: 2px 28px 6px var(--sp-2); color: var(--text-faint); font-size: var(--fs-12); line-height: 1.55; }
+.sb-tree-hint-close { position: absolute; top: 0; right: 0; display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-sm); color: var(--text-faint); }
+@media (hover: hover) and (pointer: fine) { .sb-tree-hint-close:hover { background: var(--fill-hover); color: var(--text); } }
+@media (pointer: coarse) { .sb-tree-hint-close { width: 44px; height: 44px; top: -10px; right: -8px; } }
+
+/* 「已停用 N 个」 fold: its chevron sits in the member level's slot. */
+.sb-list--tree .sb-team-archived { padding-left: calc(var(--tree-pad) + var(--depth) * var(--tree-indent) + (var(--tree-slot) - 13px) / 2); gap: calc((var(--tree-slot) - 13px) / 2 + 4px); }
+
+/* The lens switch says which view is on: 按项目 / 按标签 / 最近 (§5.2). */
+.sb-lens-btn {
+  display: inline-flex; align-items: center; gap: 4px; flex: none; height: 28px; padding: 0 8px;
+  border-radius: var(--r-sm); background: var(--fill-soft); color: var(--text-dim);
+  font-size: var(--fs-12); white-space: nowrap;
+}
+.sb-lens-btn[data-state="open"] { background: var(--fill-selected); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .sb-lens-btn:hover { background: var(--fill-soft-hover); color: var(--text); } }
+.sb-lens-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media (pointer: coarse) { .sb-lens-btn { height: 44px; padding: 0 12px; } }
 
 .sb-closed-row .sb-row-sub { display:block; }
 .sb-list-controls { display:flex; align-items:center; padding:0 var(--sp-2); gap:var(--sp-1); }
@@ -674,6 +804,8 @@
 .sb-products kbd { margin-left:auto; color: var(--text-faint); font-size:var(--fs-10); }
 /* B-498: automation runs waiting for a decision — danger, same semantics as the board's attention count */
 .sb-nav-attn { margin-left:auto; font-size:var(--fs-10); line-height:16px; padding:0 6px; border-radius:var(--r-pill); color:var(--danger); border:1px solid var(--danger); background:var(--danger-dim); }
+/* B-762: 项目 carries the tree's 需要你 total — the tree badge's warn tone, not an alarm. */
+.sb-nav-attn.sb-nav-attn--warn { color: var(--warn); border-color: transparent; background: var(--warn-dim); font-weight: 600; }
 @media (pointer:coarse) {
  .sb-brand--button { min-height:44px; }
  .sb-products > button, .sb-products .sb-nav-btn, .sb-row-main, .sb-row-menu { min-height:44px; }
@@ -744,37 +876,12 @@
 /* ----- B-647 project lens ----- */
 /* A project is the user's own name for the work, so its head reads as a title
    (sans, normal case), not as a machine label like the folder groups below. */
-.sb-section-head--project {
-  font-family: var(--font-sans);
-  font-size: var(--fs-13);
-  font-weight: 500;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--text-dim);
-}
-.sb-section-head--project .sb-section-label { max-width: none; flex: 1 1 auto; }
-.sb-section-head--project .sb-section-detail { display: none; }
+
+
+
 /* 等你处理 count: same warn tone as the folded-group summary's input item. */
-.sb-section-attention {
-  flex-shrink: 0;
-  min-width: 18px;
-  padding: 0 5px;
-  border-radius: var(--r-pill);
-  background: var(--fill-soft);
-  color: var(--warn);
-  font-family: var(--font-sans);
-  font-size: var(--fs-11);
-  font-variant-numeric: tabular-nums;
-  line-height: 18px;
-  text-align: center;
-}
-.sb-section-kicker {
-  margin-top: var(--sp-3);
-  padding: 4px var(--sp-4) 0;
-  color: var(--text-faint);
-  font-size: var(--fs-11);
-  letter-spacing: 0.02em;
-}
+
+
 .sb-workspace-make-project { margin-left: 0; }
 .sb-section-head--workspace .sb-workspace-new + .sb-workspace-make-project { margin-left: 2px; }
 
@@ -827,20 +934,16 @@
   .sb-tag-notice__dismiss { height: 44px; }
 }
 /* B-648: project head = chevron (fold) + name (opens /projects/:id) */
-.sb-section-head--project .sb-section-toggle { flex: 0 0 auto; padding-right: 0; }
-.sb-section-name {
-  display: flex; align-items: center; gap: var(--sp-2);
-  flex: 1; min-width: 0; min-height: 24px;
-  padding: 0 6px; margin-left: -4px;
-  border: 0; border-radius: var(--r-sm); background: transparent;
-  font: inherit; color: inherit; text-align: left; cursor: pointer;
-}
-.sb-section-name .sb-section-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sb-section-name.is-selected { background: var(--fill-hover); color: var(--text); }
-@media (hover: hover) and (pointer: fine) { .sb-section-name:hover { background: var(--fill-hover); color: var(--text); } }
-.sb-section-name:focus-visible { outline: none; background: var(--fill-hover); color: var(--text); }
-.sb-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-@media (pointer: coarse) { .sb-section-name { min-height: 44px; } }
+
+
+
+
+
+
+
+
+
+
 
 /* B-720 — sidebar ASCII field: only the bottom strip (footer + the list's tail,
    usually empty space), faded upward, far below text contrast. It is the first
@@ -851,49 +954,29 @@
 .sb-ascii > .ascii-field { z-index: auto; }
 .sb-footer, .sb-ratelimit { position: relative; }
 
-/* ----- B-756 projects outside the project lens ----- */
-/* Tag lens 「项目」 area: one row per project — name opens it, ＋/⚙ on hover
-   (always shown on touch), right-click / long-press = the project menu. */
-.sb-project-row { display: flex; align-items: center; min-width: 0; border-radius: var(--r-sm); }
-.sb-project-row.is-selected { background: var(--fill-selected); }
-.sb-project-main {
-  display: flex; align-items: center; gap: var(--sp-2);
-  flex: 1; min-width: 0; min-height: 32px; padding: 5px var(--sp-2);
-  color: var(--text); text-align: left;
-}
-.sb-project-main > svg { flex-shrink: 0; color: var(--text-dim); }
-.sb-project-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sb-project-row.is-selected .sb-project-name { font-weight: 600; }
-.sb-project-count { flex-shrink: 0; color: var(--text-faint); font-size: var(--fs-11); }
-.sb-project-main:focus-visible { outline: none; background: var(--fill-hover); border-radius: var(--r-sm); }
+/* ----- B-756 / B-762 project actions and owner chips ----- */
+/* ＋ / ⋯ on a tree project node (revealed on hover, see .sb-tree-project-acts). */
 .sb-project-act {
   display: inline-grid; place-items: center; flex: none;
   width: 28px; height: 28px; border-radius: var(--r-sm); color: var(--text-faint);
 }
 .sb-project-act:focus-visible { background: var(--fill-selected); color: var(--text); }
 .sb-project-act:disabled { opacity: 0.45; }
-/* The project group head's ＋/⚙ use the same reveal rule. */
-@media (hover: hover) and (pointer: fine) {
-  .sb-project-row:hover .sb-project-main { background: var(--fill-hover); border-radius: var(--r-sm); }
-  .sb-project-act { opacity: 0; }
-  .sb-project-row:hover .sb-project-act, .sb-project-row:focus-within .sb-project-act,
-  .sb-section-head--project:hover .sb-project-act, .sb-section-head--project:focus-within .sb-project-act,
-  .sb-project-act:focus-visible { opacity: 1; }
-  .sb-project-act:hover { background: var(--fill-selected); color: var(--text); }
-}
-@media (pointer: coarse) {
-  .sb-project-main { min-height: 44px; }
-  .sb-project-act { width: 44px; height: 44px; }
-}
-.sb-section-head--project .sb-project-act + .sb-project-act { margin-left: 2px; }
-/* Project chip on a session row (tag / flat / status views): quiet, like the shared-owner chip.
-   It gives way before the title does (shrink 4:1) and never below its icon. */
+@media (hover: hover) and (pointer: fine) { .sb-project-act:hover { background: var(--fill-selected); color: var(--text); } }
+/* Owner chip (team or project) on a session row in the list lenses: quiet, like the
+   shared-owner chip, pushed to the row's end. It gives way before the title does
+   (shrink 4:1) and never below its icon. */
 .sb-row-project {
-  flex: 0 4 auto; min-width: 22px; max-width: 96px;
+  margin-left: auto;
+  flex: 0 1 auto; min-width: 22px; max-width: 40%;
   display: inline-flex; align-items: center; gap: 3px;
   padding: 0 5px; border-radius: 4px;
   font-size: var(--fs-11); line-height: 1.5;
   color: var(--text-faint); background: var(--fill-soft);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden;
 }
 .sb-row-project > svg { flex: none; }
+/* B-762 review: the name (not the flex box) carries the ellipsis — a flex container never shows one. */
+.sb-row-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* B-762 review: the title comes first — it keeps about 8 CJK characters before an owner chip may shrink it. */
+.sb-row-title-line .sb-row-title:has(~ .sb-row-project) { flex: 1 1 auto; min-width: min(8em, 60%); }

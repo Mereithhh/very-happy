@@ -33,6 +33,7 @@ import { ProjectsListScreen } from '@/screens/projects/ProjectsListScreen';
 import { CommandPalette } from '@/screens/command/CommandPalette';
 import { setTeamNavigationDevOverride } from '@/screens/sessions/useTeamNavigation';
 import type { Session, Machine } from '@/sync/storageTypes';
+import { sidebarTreeScene, type SceneKind } from './sidebarTreeScene';
 import type { TeamOperation, TeamState } from '@slopus/happy-wire';
 
 // console access for the driving harness (same names the old spine used)
@@ -146,6 +147,23 @@ function seed() {
       daemonStateVersion: 1,
     } as unknown as Machine,
   ]);
+  // B-762: `?scene=atlas|solo|fresh` seeds the B-760 prototype's data instead
+  // (src/dev/sidebarTreeScene.ts, shared with SidebarTree.test.tsx);
+  // `?lens=project|tag|none` picks the grouping.
+  const params = new URLSearchParams(window.location.search);
+  const lens = params.get('lens');
+  if (lens === 'project' || lens === 'tag' || lens === 'none') storage.getState().applyLocalSettings({ sidebarView: 'list', sidebarGrouping: lens });
+  const scene = params.get('scene') as SceneKind | null;
+  if (scene === 'atlas' || scene === 'solo' || scene === 'fresh') {
+    const data = sidebarTreeScene(scene, now);
+    storage.getState().applySessions(data.sessions);
+    setTeamNavigationDevOverride(data.teams);
+    setProjectsDevOverride({ status: 'ready', projects: data.projects, members: data.members });
+    storage.getState().applyReady();
+    for (const id of data.unread) storage.getState().markSessionUnread(id);
+    for (const s of data.sessions) recordHeartbeat(s.id, s.thinking, now);
+    return;
+  }
   storage.getState().applySessions([
     // status view — 等我看 (urgent band, longest wait first: s2 above s1)
     fakeSession('s1', 'Alpha perm 5m', 1, { permissionWaitMin: 5, tags: ['api', 'prod'] }),
@@ -229,6 +247,7 @@ export function SidebarHarness() {
     setReady(true);
     const timer = setInterval(() => {
       for (const id of ['s1','s2','s3','s4','s5','s9']) recordHeartbeat(id, id === 's3');
+      for (const s of Object.values(storage.getState().sessions)) if (s.thinking) recordHeartbeat(s.id, true);
       const states = useTerminalAgentStates.getState().states;
       useTerminalAgentStates.getState().ingest('m1', Object.entries(states).map(([id, e]) => ({ id, agentKind:e.agentKind, agentState:e.state, agentObservedAt:Date.now() })));
     }, 2000);

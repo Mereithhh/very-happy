@@ -1,11 +1,13 @@
 import type { ProjectMemberView, ProjectView, TeamState } from '@slopus/happy-wire';
 import { groupRowsByWorkspace, type SidebarWorkspaceGroup, type WorkspaceRowLike } from './sidebarWorkspaceGroups';
 import { teamHomeDirectory, teamSessionMembership } from './teamNavigation';
+import { sessionPlacementResolver } from '@/app/sessionPlacement';
 
 /**
  * B-647: the default sidebar lens — sessions grouped by project
- * (`specs/2026-10-projects.md` §6.1). A session's project is its explicit
- * membership, else the project its team is attached to. Everything else goes
+ * (`specs/2026-10-projects.md` §6.1). B-762: a session's project is
+ * `sessionPlacementResolver` — a team member follows its team's project (even
+ * when explicitly put elsewhere), any other session its explicit membership. Everything else goes
  * to 「未归属」, sub-grouped by folder exactly like the old workspace lens, so
  * a user with no projects sees the same shape as before (never an empty list).
  *
@@ -50,16 +52,15 @@ export function groupRowsByProject<T extends WorkspaceRowLike>(
   teams: TeamState[],
 ): ProjectGrouping<T> {
   const live = projects.filter(p => !p.archivedAt);
-  const known = new Set(live.map(p => p.id));
-  const memberProject = new Map(members.filter(m => known.has(m.projectId)).map(m => [m.sessionId, m.projectId]));
   const teamProject = new Map<string, string>();
   for (const p of live) for (const teamId of p.teamIds ?? []) teamProject.set(teamId, p.id);
   const teamOfSession = teamSessionMembership(teams);
+  const place = sessionPlacementResolver(live, members, teams);
 
   const byProject = new Map<string, T[]>();
   const loose: T[] = [];
   for (const row of rows) {
-    const pid = projectOfSession(row.sessionId, memberProject, teamProject, teamOfSession);
+    const pid = place(row.sessionId).projectId;
     if (pid) byProject.set(pid, [...(byProject.get(pid) ?? []), row]);
     else loose.push(row);
   }
@@ -115,9 +116,9 @@ export function groupRowsByProject<T extends WorkspaceRowLike>(
 }
 
 /**
- * B-756: a session's project outside the project lens (tag / flat / status
- * views), by the same rule as `groupRowsByProject` — explicit membership, else
- * its team's attached project; archived projects count as none.
+ * B-756: a session's project — explicit membership, else its team's attached
+ * project; archived projects count as none. B-762: the sidebar tree and chips
+ * use `sessionPlacementResolver` (team first) instead; this stays for its callers.
  */
 export function sessionProjectResolver(projects: ProjectView[], members: ProjectMemberView[], teams: TeamState[]): (sessionId: string | undefined) => ProjectView | null {
   const live = projects.filter(p => !p.archivedAt);
@@ -130,23 +131,6 @@ export function sessionProjectResolver(projects: ProjectView[], members: Project
     const pid = projectOfSession(sessionId, memberProject, teamProject, teamOfSession);
     return pid ? byId.get(pid) ?? null : null;
   };
-}
-
-export interface ProjectAreaEntry { project: ProjectView; sessions: number; attention: number }
-/**
- * B-756: the 「项目」 area on top of the tag lens — one entry per live project
- * (same order as the project lens: first appearance in the ordered list, then
- * the rest oldest first), with its visible session count and 等你处理 count.
- * Sessions themselves stay in their tag groups (with a project chip): moving
- * them here would empty the P0–P2 groups and give a row two ⌘N slots.
- */
-export function projectAreaEntries<T extends WorkspaceRowLike & { teamHistoryLink?: boolean }>(
-  rows: T[], projects: ProjectView[], members: ProjectMemberView[], teams: TeamState[], attentionKeys: ReadonlySet<string>,
-): ProjectAreaEntry[] {
-  return groupRowsByProject(rows, projects, members, teams).projects.map(g => {
-    const sessions = g.rows.filter(r => !r.teamHistoryLink);
-    return { project: g.project, sessions: sessions.length, attention: sessions.filter(r => attentionKeys.has(r.key)).length };
-  });
 }
 
 /** Folders a converted group brings along (one per machine + path, ≤20). */

@@ -19,8 +19,8 @@ export function capabilityMenuItems(entries: readonly SidebarNavEntry[], names: 
   return entries.map((e) => ({ key: e.key, label: navMenuLabel(names[e.key], e.attention), icon: navIcon[e.key], onSelect: () => onNavigate(e.path) }));
 }
 
-function AttentionBadge({ count }: { count: number }) {
-  return count > 0 ? <span className="sb-nav-attn mono" aria-hidden>{count}</span> : null;
+function AttentionBadge({ count, tone }: { count: number; tone?: 'warn' }) {
+  return count > 0 ? <span className={`sb-nav-attn mono${tone === 'warn' ? ' sb-nav-attn--warn' : ''}`} aria-hidden>{count}</span> : null;
 }
 
 /**
@@ -125,7 +125,7 @@ export function SidebarActionRows(props: {
           const Icon = navIcon[e.key];
           return (
             <button key={e.key} type="button" className="sb-nav-btn sb-cap" data-cap={e.key} onClick={() => props.onNavigate(e.path)} aria-label={navMenuLabel(props.capabilityNames[e.key], e.attention)}>
-              <Icon size={17} /><span>{props.capabilityNames[e.key]}</span><AttentionBadge count={e.attention} />
+              <Icon size={17} /><span>{props.capabilityNames[e.key]}</span><AttentionBadge count={e.attention} tone={e.tone} />
             </button>
           );
         })}
@@ -156,11 +156,13 @@ export function SidebarChipRow(props: {
   if (props.chips.length === 0) return null;
   const more = moreMenuEntries(props.capabilities, props.chips);
   const attention = navAttentionTotal(more);
+  // B-762 (D1): the 项目 chip carries the project tree's 需要你 total.
+  const projectAttention = props.capabilities.find((e) => e.key === 'projects')?.attention ?? 0;
   return (
     <div className="sb-chips">
       {props.chips.includes('projects') && (
-        <button type="button" className="sb-chip" data-cap="projects" aria-label={props.capabilityNames.projects} title={props.capabilityNames.projects} onClick={() => props.onNavigate('/projects')}>
-          <FolderKanban size={16} /><span>{t('sidebar.chipProject')}</span>
+        <button type="button" className="sb-chip" data-cap="projects" aria-label={navMenuLabel(props.capabilityNames.projects, projectAttention)} title={props.capabilityNames.projects} onClick={() => props.onNavigate('/projects')}>
+          <FolderKanban size={16} /><span>{t('sidebar.chipProject')}</span><AttentionBadge count={projectAttention} tone="warn" />
         </button>
       )}
       {props.chips.includes('teams') && (

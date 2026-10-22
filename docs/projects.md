@@ -15,26 +15,56 @@ one project; sessions outside any project keep working exactly as before.
 
 - Sidebar **New project** (right under **New session**; also in the **New session ▾** menu): give it a name, then add folders on the
   project page.
-- In the sidebar, sessions outside any project are grouped by folder under
-  **No project**; **Make this folder a project** turns that folder into a
-  project and moves its sessions in.
-- With **Group by tag** on, each tag group's header has **Turn #tag into a
+- In the sidebar, the **Not in a project** area's ⋯ → **Group by folder** splits
+  it by folder; each folder group then offers **Make this folder a project**,
+  which turns that folder into a project and moves its sessions in.
+- With **By tag** on, each tag group's header has **Turn #tag into a
   project**: a project named after the tag, with every session whose first tag
   it is. Tags themselves stay, and `#tag` still filters search.
 
-The sidebar groups by project by default; the group menu offers **Project**,
-**Tag** (one group per first tag, untagged last, teams in their own group) or no
-grouping. Teams appear inside their project's group. Selecting a group's
-name opens the project page; hovering it shows ＋ (new session in that project)
-and ⚙ (project settings), and right-click / long-press offers **New session**,
-**Project settings**, **Rename** and **Archive project**.
+### The sidebar tree
 
-Projects stay visible in the other views too: grouped by tag, a **Projects**
-area on top lists every project (sessions stay in their tag groups); in every
-view other than project grouping, a session row shows its project as a small
-chip. **Projects** in the sidebar's entry row (next to Teams, Automations…)
-opens the list of all projects, where you can create one, open one, or show
-archived projects and unarchive them.
+The sidebar's default view, **By project (structure)**, is a tree (B-762):
+
+- **Projects** at the top level (folder icon, bold), each with its **teams** and
+  its own **sessions** one level in, and each team's **lead** (crown and a
+  **Lead** tag), **members** (*name · task*) and **N inactive** fold one level
+  further. Guide lines show what belongs to what.
+- A team member's conversation always sits with its team: under the team's
+  project, or under **Not in a project** when the team has none — even if the
+  conversation itself was moved into another project.
+- **Not in a project** at the bottom: sessions and teams outside every project,
+  in one list by recent activity (no folder groups unless you switch on
+  **Group by folder** from its ⋯). An older team that was never put in a project
+  says **Not in a project** on its row. With no project yet the area is just
+  **Chats**, with a dismissible hint to put related chats in a project.
+- Every level shows how many things **need you** (waiting for you or unread) as
+  a badge, so a folded project still tells you a member is waiting; with nothing
+  pending a project shows its session count and a team its head count. A team
+  with a running member shows a spinner.
+- Folding: a project is open when it had activity in the last 7 days, something
+  needs you or you are inside it; a team opens while its page or one of its
+  conversations is open. Your own clicks on the chevrons are remembered on this
+  device, and opening a conversation always reveals it.
+- Selecting a project's name opens the project page; a team's name opens its
+  team page; the chevron only folds. Hovering a project shows ＋ (new session in
+  it) and ⋯; right-click (long-press on a phone, as a bottom sheet) offers
+  **New session**, **Start a team here**, **Project settings**, **Rename** and
+  **Archive project**. An empty project says so, with **New chat** and **Start a
+  team** links.
+- Keyboard: ↑ / ↓ move between rows, → opens a folded row or steps into it, ←
+  folds it or steps out to its parent, Enter opens the row. ⌘1–9 number
+  conversations only (leads, members and sessions), never projects or teams.
+
+The view menu offers **By project (structure)**, **By tag** and **Recent** (was
+*Do not group*). **By tag** and **Recent** are lists of conversations: no
+project or team rows, and each row carries one chip naming its owner — the team
+for a lead or member, otherwise the project. A team member's conversation shows
+up there only while it waits for you; leads always do. The **Projects** entry in
+the sidebar's entry row (next to Teams, Automations…; the 项目 chip on a phone)
+carries the total that needs you across projects and opens the list of all
+projects, where you can create one, open one, or show archived projects and
+unarchive them.
 
 ## Put sessions in a project
 
@@ -119,8 +149,8 @@ findings and handoffs the same way.
 - A team without a project (created before this) shows **Put this team in a
   project** on its overview: one click creates the same-name project and links
   it. Nothing is migrated automatically.
-- The sidebar shows each team inside its project's group; sessions and teams
-  outside any project are listed under *Not in a project · by folder*.
+- The sidebar shows each team inside its project's tree node; sessions and teams
+  outside any project are listed under *Not in a project*.
 
 ## What agents in a project get
 

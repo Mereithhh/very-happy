@@ -5,7 +5,7 @@ import { BrandIcon, BrandEnvBadge } from '@/ui/BrandMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ChevronRight, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, FolderOpen, Rows3, RotateCcw, Cable, Trash2, History, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, FolderKanban, FolderPlus, Tags, Settings2 } from 'lucide-react';
+import { Search, Plus, CircleHelp, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ChevronRight, X, UsersRound, ArrowDownWideNarrow, ListOrdered, FolderOpen, Clock3, Crown, Bot, RotateCcw, Cable, Trash2, History, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, FolderKanban, FolderPlus, Tags } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -21,8 +21,9 @@ import { canOfferRestore, useRestoreState } from '@/app/sessionRestore';
 import { isHibernated } from '@/app/sessionHibernation';
 import { sessionUpdateTitleTags } from '@/sync/ops';
 import { priorityLevel, setPriorityLevel, sortByPriority } from '@/utils/tags';
-import { flatListRows, sidebarListEmpty, visibleSidebarSessions } from './sidebarRows';
-import { groupRowsByProject, projectAreaEntries, sessionProjectResolver, type ProjectAreaEntry, foldersOfRows, legacyGroupModeFor, resolveSidebarGrouping, showTagGroupingBackNotice, type SidebarGrouping } from './sidebarProjectGroups';
+import { sidebarListEmpty, visibleSidebarSessions } from './sidebarRows';
+import { groupRowsByProject, foldersOfRows, legacyGroupModeFor, resolveSidebarGrouping, showTagGroupingBackNotice, type SidebarGrouping } from './sidebarProjectGroups';
+import { buildSidebarTree, entryDepth, listShowsRow, ownerChipResolver, projectDefaultOpen, teamDefaultOpen, teamRowRole, teamsFirst, teamTreeGroupId, treeKeyAction, UNASSIGNED_GROUP_ID } from './sidebarTree';
 import { groupRowsByTag } from './sidebarTagGroups';
 import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
 import { toast } from '@/ui/Toast';
@@ -72,11 +73,10 @@ import { isMirrorSession } from '@/assistant/assistantSession';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
 import { useTeamNavigation } from './useTeamNavigation';
-import { botHistorySessionId, groupTeamNavigation, missingTeamSessionIds, teamInactiveGroupId, teamMemberCount, teamMemberInactive, teamSessionMembership, teamSessionSuperseded, unstartedTeamMembers, teamLeadSessionId } from './teamNavigation';
+import { botHistorySessionId, groupTeamNavigation, missingTeamSessionIds, teamInactiveGroupId, teamMemberCount, teamMemberInactive, teamSessionMembership, teamSessionSuperseded, unstartedTeamMembers } from './teamNavigation';
 import { SidebarTeamRow } from './SidebarTeamRow';
-import { SidebarProjectRow } from './SidebarProjectRow';
 import { newSessionInProject, projectMenuItems } from '@/screens/projects/projectActions';
-import { projectMenuCopy, projectPath, projectSettingsPath } from '@/screens/projects/projectMenu';
+import { projectMenuCopy, projectNewTeamPath, projectPath, projectSettingsPath } from '@/screens/projects/projectMenu';
 import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamBot, TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
@@ -124,8 +124,12 @@ interface Row {
   teamInactiveFold?: { teamId: string; count: number; open: boolean };
   /** B-759: 「成员由负责人按需创建」 under an expanded team with only its lead (not a nav target, no ⌘N slot). */
   teamEmptyHint?: boolean;
-  /** B-756: a project entry in the tag lens's 「项目」 area (not a nav row: no ⌘N slot, no reorder). */
-  projectEntry?: ProjectAreaEntry;
+  /** B-762: 「还没有内容。新建会话 或 组建团队」 under an empty project (not a nav row: no ⌘N slot). */
+  projectEmptyHint?: ProjectView;
+  /** B-762: tree depth in the 按项目 lens (0 = project / 不在项目中 child, 1, 2); undefined in the list lenses. */
+  depth?: number;
+  /** B-762: the lead or a member of a team — crown / bot icon and the 「负责人」 tag. */
+  teamRole?: 'lead' | 'member';
   key: string;
   kind: 'terminal' | 'session';
   /** Resolved before click so a mirrored terminal never paints xterm first. */
@@ -173,12 +177,12 @@ interface SidebarSection {
   /** B-647: a project group (header shows 等你处理 instead of a row count). */
   project?: ProjectView;
   attention?: number;
-  /** B-647: small label above the first 未归属 folder group. */
-  kicker?: string;
   /** B-647: 「设为项目」 for an unassigned folder group. */
   makeProject?: { name: string; machineId: string; path: string; sessionIds: string[] };
   /** B-675: 「转成项目」 for a tag group (the tag→project action kept from B-647). */
   tagToProject?: string;
+  /** B-762: the 不在项目中 area head (or 「会话」 for a user without projects). */
+  area?: { kind: 'unassigned' | 'chats'; hint: boolean };
 }
 
 function sessionRow(s: Session): Row {
@@ -217,13 +221,11 @@ export function Sidebar() {
   const automationAttentionKeys = useMemo(() => attentionSessionIds(automationAttentionRuns), [automationAttentionRuns]);
   const refreshAutomations = useAutomations((s) => s.refreshOverview);
   useAutomationsPoll(refreshAutomations, AUTOMATIONS_SIDEBAR_POLL_MS);
-  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(() => new Set());
   const location = useLocation();
   const currentSessionId = /^\/session\/([^/]+)/.exec(location.pathname)?.[1];
   const currentTeamId = currentSessionId ? teamSessionMembership(teams).get(decodeURIComponent(currentSessionId))?.team.id : undefined;
-  useEffect(() => {
-    if (currentTeamId) setExpandedTeams((current) => current.has(currentTeamId) ? current : new Set([...current, currentTeamId]));
-  }, [currentTeamId]);
+  // B-762: the team page counts as being inside the team (its tree node opens).
+  const currentTeamPageId = (() => { const m = /^\/teams\/([^/?]+)/.exec(location.pathname); return m ? decodeURIComponent(m[1]) : undefined; })();
   const { t, lang } = useTranslation();
   // Three segments, ONE state: 列表/状态 are display modes over the active
   // set, 归档 is a filter over a different set — but three parallel segments
@@ -552,7 +554,7 @@ export function Sidebar() {
     const { pinned, rest } = splitPinnedRows(rows, pinnedSetting ?? []);
     return priorityFirst([...pinned, ...rest]);
   }, [rows, view, statusGroups, completedRows, completedOpen, collapsedGroups, orderSetting, pinnedSetting, orderable, sortMode, heldKeys]);
-  // ----- teams (B-480) and the project lens (B-647) -----
+  // ----- teams (B-480) and the project tree (B-647 → B-762) -----
   const liveTeams = useMemo(() => teams.filter((team) => !team.archivedAt), [teams]);
   // Receipt-backed team sessions that are no longer in the visible list keep a history link.
   const teamHistoryRows = useMemo<Row[]>(() => {
@@ -590,10 +592,23 @@ export function Sidebar() {
     () => new Set(liveTeams.filter((team) => !isGroupCollapsed(collapsedGroups, teamInactiveGroupId(team.id))).map((team) => team.id)),
     [liveTeams, collapsedGroups],
   );
-  /** Team header + (expanded) member rows in place of the members, ordinary rows untouched. */
-  const nestTeams = useCallback((groupRows: Row[], groupTeams: TeamState[]): Row[] => {
-    if (groupTeams.length === 0) return groupRows;
-    const pendingRow = (team: TeamState) => ({bot, task, failed, href}: ReturnType<typeof unstartedTeamMembers>[number]): Row => ({ key: `member:${team.id}:${bot.id}`, kind: 'session', href, title: bot.root ? teamCopy.lead : bot.name, subtitle: failed ? teamCopy.failed : task ? teamCopy.preparing : teamCopy.noSession, ts: team.createdAt, createdAt: team.createdAt, teamHistoryLink: true });
+  // B-762 (spec B-760 §5.1): a team node starts folded and opens while its page
+  // or one of its conversations is current; a click on its chevron is
+  // remembered on this device (`team:<id>`), and opening a member's
+  // conversation reveals it for that route even when folded by hand.
+  const expandedTeams = useMemo(
+    () => new Set(liveTeams.filter((team) => !isGroupCollapsed(collapsedGroups, teamTreeGroupId(team.id), !teamDefaultOpen(team.id === currentTeamId || team.id === currentTeamPageId))).map((team) => team.id)),
+    [liveTeams, collapsedGroups, currentTeamId, currentTeamPageId],
+  );
+  /** Fold / unfold a tree group by hand: persisted, and any temporary reveal-open ends. */
+  const toggleTreeGroup = useCallback((id: string, open: boolean) => {
+    setRevealExpanded((cur) => { if (!cur.has(id)) return cur; const next = new Set(cur); next.delete(id); return next; });
+    setGroupCollapsed(id, open);
+  }, []);
+  /** Team node + (expanded) member rows in place of the members, ordinary rows untouched; `base` = the group's child depth. */
+  const nestTeams = useCallback((groupRows: Row[], groupTeams: TeamState[], base: number): Row[] => {
+    if (groupTeams.length === 0) return groupRows.map((r) => ({ ...r, depth: base }));
+    const pendingRow = (team: TeamState) => ({bot, task, failed, href}: ReturnType<typeof unstartedTeamMembers>[number]): Row => ({ key: `member:${team.id}:${bot.id}`, kind: 'session', href, title: bot.root ? teamCopy.lead : bot.name, subtitle: failed ? teamCopy.failed : task ? teamCopy.preparing : teamCopy.noSession, ts: team.createdAt, createdAt: team.createdAt, teamHistoryLink: true, depth: base + 1, teamRole: teamRowRole(bot) });
     const unstarted = (team: TeamState, inactive: boolean) => unstartedTeamMembers(team).filter(({ bot }) => (inactiveMembers.unstarted.get(team.id)?.has(bot.id) ?? false) === inactive);
     const fold = {
       // B-729: an earlier generation's conversation folds too, even while the member is active.
@@ -601,115 +616,140 @@ export function Sidebar() {
       open: inactiveOpenTeams,
       extra: (team: TeamState) => inactiveMembers.unstarted.get(team.id)?.size ?? 0,
     };
-    return groupTeamNavigation(groupRows, groupTeams, expandedTeams, fold).flatMap((entry): Row[] => {
+    return teamsFirst(groupTeamNavigation(groupRows, groupTeams, expandedTeams, fold)).flatMap((entry): Row[] => {
+      const depth = entryDepth(entry, base);
       if (entry.kind === 'inactive') return [
-        { key: teamInactiveGroupId(entry.team.id), kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: teamCopy.inactiveCount(entry.count), subtitle: '', ts: 0, createdAt: 0, teamInactiveFold: { teamId: entry.team.id, count: entry.count, open: entry.open } },
+        { key: teamInactiveGroupId(entry.team.id), kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: teamCopy.inactiveCount(entry.count), subtitle: '', ts: 0, createdAt: 0, teamInactiveFold: { teamId: entry.team.id, count: entry.count, open: entry.open }, depth },
         ...(entry.open ? unstarted(entry.team, true).map(pendingRow(entry.team)) : []),
       ];
-      if (entry.kind === 'empty') return [{ key: `team-empty:${entry.team.id}`, kind: 'session', href: '', title: teamCopy.membersByLead, subtitle: '', ts: 0, createdAt: 0, teamEmptyHint: true }];
-      if (entry.kind === 'row') return [entry.team ? { ...entry.row, teamChild: true, href: `/session/${encodeURIComponent(entry.row.sessionId!)}`, teamLabel: entry.bot?.root ? teamCopy.lead : entry.bot?.name || teamCopy.member } : entry.row];
-      const header: Row = { key: `team:${entry.team.id}`, kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: entry.team.name, subtitle: '', ts: entry.team.createdAt, createdAt: entry.team.createdAt, team: entry.team };
+      if (entry.kind === 'empty') return [{ key: `team-empty:${entry.team.id}`, kind: 'session', href: '', title: teamCopy.membersByLead, subtitle: '', ts: 0, createdAt: 0, teamEmptyHint: true, depth }];
+      if (entry.kind === 'row') return [entry.team ? { ...entry.row, depth, teamChild: true, href: `/session/${encodeURIComponent(entry.row.sessionId!)}`, teamLabel: entry.bot?.root ? teamCopy.lead : entry.bot?.name || teamCopy.member, teamRole: teamRowRole(entry.bot) } : { ...entry.row, depth }];
+      const header: Row = { key: `team:${entry.team.id}`, kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: entry.team.name, subtitle: '', ts: entry.team.createdAt, createdAt: entry.team.createdAt, team: entry.team, depth };
       const pending: Row[] = expandedTeams.has(entry.team.id) ? unstarted(entry.team, false).map(pendingRow(entry.team)) : [];
       return [header, ...pending];
     });
   }, [expandedTeams, inactiveOpenTeams, inactiveMembers, teamCopy]);
-  // Default lens: project groups, then 未归属 sub-grouped by folder. Teams nest
-  // inside their group, so they stay visible while grouped (spec §6.1).
-  const projectGrouping = useMemo(
-    () => (orderable && groupMode === 'project' && orderedRows
-      ? groupRowsByProject([...orderedRows, ...teamHistoryRows], projectsSnap.projects, projectsSnap.members, liveTeams)
+  // 需要你 = waiting for the user or unread — the tree's badges (§5.1), same two signals as the row marker.
+  const needsYou = useCallback((r: Row) => attentionKeys.has(r.key)
+    || (r.kind === 'session' && showsUnreadDot(r.session, unreadIds))
+    || (r.kind === 'terminal' && !!r.terminalId && unreadTerminalIds.has(r.terminalId)), [attentionKeys, unreadIds, unreadTerminalIds]);
+  const projectLens = orderable && groupMode === 'project';
+  const [unassignedByFolder, setUnassignedByFolder] = useLocalSettingMutable('sidebarUnassignedByFolder');
+  const [projectHintDismissed, setProjectHintDismissed] = useLocalSettingMutable('sidebarProjectHintDismissed');
+  // B-762: 按项目 is a tree — projects › teams › lead / members, sessions beside
+  // the teams, then ONE 不在项目中 area (D2: no folder sub-groups unless asked).
+  const tree = useMemo(
+    () => (projectLens && orderedRows
+      ? buildSidebarTree({ rows: [...orderedRows, ...teamHistoryRows], projects: projectsSnap.projects, members: projectsSnap.members, teams: liveTeams, needsYou })
       : null),
-    [orderable, groupMode, orderedRows, teamHistoryRows, projectsSnap.projects, projectsSnap.members, liveTeams],
+    [projectLens, orderedRows, teamHistoryRows, projectsSnap.projects, projectsSnap.members, liveTeams, needsYou],
   );
   const projectSections = useMemo<SidebarSection[] | null>(() => {
-    if (!projectGrouping) return null;
+    if (!tree) return null;
     const out: SidebarSection[] = [];
-    const sessionCount = (groupRows: Row[]) => groupRows.filter((r) => !r.teamHistoryLink).length;
-    for (const g of projectGrouping.projects) {
-      const primary = g.project.folders.find((f) => f.primary) ?? g.project.folders[0];
+    const currentSession = currentSessionId ? decodeURIComponent(currentSessionId) : undefined;
+    const now = Date.now();
+    for (const g of tree.projects) {
+      const project = g.project!;
+      const page = projectPath(project.id);
+      const current = location.pathname === page || location.pathname.startsWith(`${page}/`)
+        || (!!currentSession && g.rows.some((r) => r.sessionId === currentSession))
+        || g.teams.some((team) => team.id === currentTeamPageId);
+      const nested = nestTeams(g.rows, g.teams, 1);
+      const rows: Row[] = nested.length > 0 ? nested : [{ key: `project-empty:${project.id}`, kind: 'session', href: '', title: '', subtitle: '', ts: 0, createdAt: 0, projectEmptyHint: project, depth: 1 }];
+      const primary = project.folders.find((f) => f.primary) ?? project.folders[0];
       out.push({
-        ...collapsibleSection(`project:${g.project.id}`, g.project.name, nestTeams(g.rows, g.teams), collapsedGroups),
-        count: sessionCount(g.rows),
-        project: g.project,
-        attention: g.rows.filter((r) => attentionKeys.has(r.key)).length,
+        ...collapsibleSection(g.id, project.name, rows, collapsedGroups, !projectDefaultOpen({ lastActivity: g.lastActivity, badge: g.badge, current, now })),
+        count: g.sessions,
+        project,
+        attention: g.badge,
         ...(primary ? { createLocation: { machineId: primary.machineId, path: primary.path }, detail: primary.path } : {}),
       });
     }
-    const unassignedLabel = t('sidebar.projectsUnassigned') as string;
-    projectGrouping.unassigned.forEach((g, i) => {
+    const u = tree.unassigned;
+    if (!u) return out;
+    const hasProjects = tree.projects.length > 0;
+    const label = (hasProjects ? t('sidebar.notInProject') : t('sidebar.chatsArea')) as string;
+    const area = { kind: hasProjects ? 'unassigned' as const : 'chats' as const, hint: !hasProjects && projectsSnap.status === 'ready' && !projectHintDismissed };
+    if (!unassignedByFolder) {
+      const rows = nestTeams(u.rows, u.teams, 0);
+      // With no project at all the area is the whole list: nothing to fold.
+      out.push(hasProjects
+        ? { ...collapsibleSection(UNASSIGNED_GROUP_ID, label, rows, collapsedGroups), count: u.sessions, area }
+        : { id: UNASSIGNED_GROUP_ID, label, count: u.sessions, rows, allRows: rows, collapsible: false, open: true, area });
+      return out;
+    }
+    // Opt-in (the area's ⋯): the pre-B-762 folder groups, each with 「设为项目」.
+    out.push({ id: UNASSIGNED_GROUP_ID, label, count: u.sessions, rows: [], allRows: [], collapsible: false, open: true, area });
+    const byFolder = groupRowsByProject(u.rows, [], [], u.teams);
+    for (const g of byFolder.unassigned) {
       const sessionIds = g.rows.flatMap((r) => (r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink ? [r.sessionId] : []));
       out.push({
-        ...collapsibleSection(workspaceGroupId(g), g.name ?? (t('sidebar.workspaceUnassigned') as string), nestTeams(g.rows, g.teams), collapsedGroups),
-        count: sessionCount(g.rows),
+        ...collapsibleSection(workspaceGroupId(g), g.name ?? (t('sidebar.workspaceUnassigned') as string), nestTeams(g.rows, g.teams, 0), collapsedGroups),
+        count: g.rows.filter((r) => !r.teamHistoryLink).length,
         detail: [g.machineName, g.path].filter(Boolean).join(' · '),
         createLocation: g.machineId && g.path ? { machineId: g.machineId, path: g.rows.find(r => r.workspacePath)?.workspacePath ?? g.path } : undefined,
-        // B-726: always say these are FOLDER groups outside any project — with no project yet, bare folder headers
-        // (NO WORKING DIRECTORY / DATA / PROJECT …) under「按项目分组」read as if projects were folders.
-        kicker: i === 0 ? (t('sidebar.projectsUnassignedByFolder') as string) : undefined,
         makeProject: projectsSnap.status === 'ready' && g.machineId && g.path && sessionIds.length > 0 ? { name: g.name ?? g.path, machineId: g.machineId, path: g.path, sessionIds } : undefined,
       });
-    });
-    // B-708: teams with no located row (new, or every member archived) show
-    // once here — never as one 「无工作目录」 group per history link.
-    const tg = projectGrouping.teamsGroup;
-    if (tg) {
-      const first = projectGrouping.unassigned.length === 0;
-      out.push({
-        ...collapsibleSection('unassigned:teams', first ? unassignedLabel : teamCopy.title, nestTeams(tg.rows, tg.teams), collapsedGroups),
-        count: sessionCount(tg.rows),
-      });
     }
+    // B-708: teams with no located row show once, never as one 「无工作目录」 group per history link.
+    const tg = byFolder.teamsGroup;
+    if (tg) out.push({ ...collapsibleSection('unassigned:teams', teamCopy.title, nestTeams(tg.rows, tg.teams, 0), collapsedGroups), count: tg.rows.filter((r) => !r.teamHistoryLink).length });
     return out;
-  }, [projectGrouping, nestTeams, collapsedGroups, attentionKeys, projectsSnap.status, teamCopy.title, t]);
+  }, [tree, nestTeams, collapsedGroups, currentSessionId, currentTeamPageId, location.pathname, unassignedByFolder, projectHintDismissed, projectsSnap.status, teamCopy.title, t]);
+  // ----- 按标签 / 最近: session lists (B-762, spec B-760 §5.2) -----
+  // No project or team rows; each row names its owner in one chip (team for a
+  // lead / member, else project). D3: a member's conversation joins the list
+  // only while it waits for the user; the lead's always does.
+  const ownerOf = useMemo(() => ownerChipResolver(projectsSnap.projects, projectsSnap.members, liveTeams), [projectsSnap.projects, projectsSnap.members, liveTeams]);
+  const listRows = useMemo<Row[] | null>(() => {
+    if (!orderable || projectLens || !orderedRows) return null;
+    return orderedRows.flatMap((r): Row[] => {
+      if (r.kind !== 'session' || r.share) return [r];
+      const owner = ownerOf(r.sessionId);
+      if (!listShowsRow(owner.role, attentionKeys.has(r.key))) return [];
+      return owner.role ? [{ ...r, teamRole: owner.role, teamLabel: owner.role === 'lead' ? teamCopy.lead : owner.botName || teamCopy.member }] : [r];
+    });
+  }, [orderable, projectLens, orderedRows, ownerOf, attentionKeys, teamCopy.lead, teamCopy.member]);
   // B-675: 按标签 — one group per first tag (priority P0-P2 first, 未分组 last).
-  // Teams have no tags, so their members and history links leave the tag
-  // groups and nest under one trailing 「团队」 group instead of being dropped.
   const tagSections = useMemo<SidebarSection[] | null>(() => {
-    if (!orderable || groupMode !== 'tag' || !orderedRows) return null;
-    const membership = liveTeams.length > 0 ? teamSessionMembership(liveTeams) : null;
-    const isTeamRow = (r: Row) => !!membership && !!r.sessionId && membership.has(r.sessionId);
-    const out: SidebarSection[] = groupRowsByTag(orderedRows.filter((r) => !isTeamRow(r))).map((g) => ({
+    if (groupMode !== 'tag' || !listRows) return null;
+    return groupRowsByTag(listRows).map((g) => ({
       ...collapsibleSection(tagGroupId(g), g.tag ?? (t('sidebar.groupUntagged') as string), g.rows, collapsedGroups),
       ...(g.tag && projectsSnap.status === 'ready' ? { tagToProject: g.tag } : {}),
     }));
-    if (liveTeams.length > 0) {
-      const teamRows = [...orderedRows.filter(isTeamRow), ...teamHistoryRows];
-      out.push({ ...collapsibleSection('teams:tag-lens', teamCopy.title, nestTeams(teamRows, liveTeams), collapsedGroups), count: teamRows.filter((r) => !r.teamHistoryLink).length });
-    }
-    // B-756: projects stay visible in the tag lens — one 「项目」 area on top, one
-    // entry per project (sessions stay in their tag groups with a project chip).
-    if (projectsSnap.status === 'ready') {
-      const area = projectAreaEntries([...orderedRows, ...teamHistoryRows], projectsSnap.projects, projectsSnap.members, liveTeams, attentionKeys)
-        .map((e): Row => ({ key: `project-entry:${e.project.id}`, kind: 'session', href: projectPath(e.project.id), title: e.project.name, subtitle: '', ts: 0, createdAt: 0, projectEntry: e }));
-      if (area.length > 0) out.unshift(collapsibleSection('tag-lens:projects', lang.startsWith('zh') ? '项目' : 'Projects', area, collapsedGroups));
+  }, [groupMode, listRows, collapsedGroups, projectsSnap.status, t]);
+  // Outside the tree a session row names its owner (team or project) in one chip.
+  const ownerChipOf = (r: Row) => (!projectLens && r.kind === 'session' && !r.share && !r.teamHistoryLink ? ownerOf(r.sessionId).chip : null);
+  // B-762 (D1): the 项目 capability row carries the projects' 需要你 total in every lens.
+  const projectBadgeTotal = useMemo(() => {
+    if (projectsSnap.status !== 'ready' || !sessions) return 0;
+    const live = visibleSidebarSessions(sessions, 'list').filter((s) => !s.share).map(sessionRow);
+    return buildSidebarTree({ rows: live, projects: projectsSnap.projects, members: projectsSnap.members, teams: liveTeams, needsYou }).projectBadgeTotal;
+  }, [projectsSnap, sessions, liveTeams, needsYou]);
+  // B-762: tree members' 运行中 rolls up to their team node.
+  const runningTeams = useMemo(() => {
+    const out = new Set<string>();
+    for (const [sessionId, { team }] of teamSessionMembership(liveTeams)) {
+      const e = executionByKey.get(sessionId);
+      if (e === 'running' || e === 'background') out.add(team.id);
     }
     return out;
-  }, [orderable, groupMode, orderedRows, liveTeams, teamHistoryRows, nestTeams, collapsedGroups, projectsSnap, attentionKeys, teamCopy.title, t, lang]);
-  // B-756: outside the project lens a session row names its project in a chip.
-  const projectOfRow = useMemo(() => sessionProjectResolver(projectsSnap.projects, projectsSnap.members, liveTeams), [projectsSnap.projects, projectsSnap.members, liveTeams]);
-  const chipProjects = projectsSnap.status === 'ready' && !(orderable && groupMode === 'project');
-  const projectChipOf = (r: Row) => (chipProjects && r.kind === 'session' && !r.share && !r.teamHistoryLink ? projectOfRow(r.sessionId)?.name : undefined);
+  }, [liveTeams, executionByKey]);
   const groupedSections = projectSections ?? tagSections;
   // Collapsed groups' rows are not rendered, so they take no ⌘1-9 number
-  // and no move-up/down position either (B-580).
+  // and no move-up/down position either (B-580). B-762: ⌘1-9 only numbers
+  // conversations (lead, members, sessions) — never a team node or a hint.
   const plainDisplayRows = useMemo<Row[] | null>(
-    () => (groupedSections ? groupedSections.flatMap((sec) => sec.rows).filter((r) => !r.teamInactiveFold && !r.teamEmptyHint && !r.projectEntry) : orderedRows),
-    [groupedSections, orderedRows],
+    () => (groupedSections ? groupedSections.flatMap((sec) => sec.rows).filter((r) => !r.teamInactiveFold && !r.teamEmptyHint && !r.projectEmptyHint && !r.team) : listRows ?? orderedRows),
+    [groupedSections, listRows, orderedRows],
   );
-  // The flat list (不分组) nests teams over the whole list; the project and tag lenses do it per group.
-  const teamHistory = view === 'list' && !grouped && liveTeams.length > 0;
   // B-619: 「分享给我的」 — a trailing group in every view mode; not draggable, no ⌘N badge.
   const sharedRows = useMemo<Row[]>(
     () => (sessions ? sortRowsByRecent(visibleSidebarSessions(sessions, view).filter((s) => !!s.share).map(sessionRow)) : []),
     [sessions, view],
   );
-  // B-710: the flat list renders the inactive-member folds (`flatRows`) but
-  // numbers / reorders only the sequence without them (`displayRows`).
-  const flatRows = useMemo(() => {
-    if (!plainDisplayRows || !teamHistory) return plainDisplayRows ? { rendered: plainDisplayRows, sequence: plainDisplayRows } : null;
-    return flatListRows(nestTeams([...plainDisplayRows, ...teamHistoryRows], liveTeams));
-  }, [plainDisplayRows, teamHistory, teamHistoryRows, liveTeams, nestTeams]);
-  const displayRows = flatRows?.sequence ?? null;
+  const displayRows = plainDisplayRows;
   // Feeds the hold's arming snapshot (assigned during render, read by the
   // pointer listeners) — always the sequence actually on screen.
   displayedKeysRef.current = displayRows?.map((r) => r.key) ?? [];
@@ -770,7 +810,7 @@ export function Sidebar() {
     // archived is a plain activity list. Dragging works in BOTH sort modes —
     // in recent mode the drop switches the mode (see commitSeq). Grouped-by-
     // tag disables dragging: the sequence is derived from tags (B-091).
-    if (!orderable || grouped || teamHistory) return;
+    if (!orderable || grouped) return;
     if (typeof window.matchMedia === 'function' && !window.matchMedia('(pointer: fine)').matches) return;
     if ((e.target as HTMLElement).closest('.sb-row-menu')) return;
     const list = listRef.current;
@@ -1016,14 +1056,14 @@ export function Sidebar() {
         id: 'all',
         label: undefined as string | undefined,
         count: displayRows?.length ?? 0,
-        rows: flatRows?.rendered ?? [],
-        allRows: flatRows?.rendered ?? [],
+        rows: displayRows ?? [],
+        allRows: displayRows ?? [],
         collapsible: false,
         open: true,
       },
       ...shared,
     ];
-  }, [view, statusGroups, completedRows, collapsedGroups, groupedSections, displayRows, flatRows, sharedRows, t]);
+  }, [view, statusGroups, completedRows, collapsedGroups, groupedSections, displayRows, sharedRows, t]);
 
   // ----- collapsed-header status summary (B-580) -----
   // Same inputs as the row's own status slot (SidebarRow → agentStatusSignal),
@@ -1067,13 +1107,23 @@ export function Sidebar() {
     const id = teamInactiveGroupId(currentTeamId);
     setRevealExpanded((cur) => (cur.has(id) ? cur : new Set([...cur, id])));
   }, [location.pathname, currentTeamId, currentSessionId, inactiveMembers]);
+  // B-762: a member's conversation opens its team node for this route, even one folded by hand.
+  const teamRevealRoute = useRef('');
+  useEffect(() => {
+    const route = location.pathname;
+    if (!currentTeamId || teamRevealRoute.current === route) return;
+    teamRevealRoute.current = route;
+    const id = teamTreeGroupId(currentTeamId);
+    setRevealExpanded((cur) => (cur.has(id) ? cur : new Set([...cur, id])));
+  }, [location.pathname, currentTeamId]);
   const locateCurrent = useCallback(() => { revealManual.current = true; setRevealSeq((n) => n + 1); }, []);
   useEffect(() => {
     if (displayRows === null) return;
     const target = findRevealTarget(
       sections.map((sec) => ({ id: sec.id, collapsible: sec.collapsible, keys: sec.allRows })),
       isCurrentRow,
-      (id) => isGroupCollapsed(collapsedGroups, id),
+      // B-762: tree projects fold by a live default, so ask the section itself.
+      (id) => sections.find((sec) => sec.id === id)?.open === false,
     );
     const step = planReveal({
       armed: revealHandled.current !== revealSeq,
@@ -1231,7 +1281,7 @@ export function Sidebar() {
   // capability entries as rows while they fit (the rest under 「更多能力 ▾」);
   // the phone gets one chip row 项目 · 团队 · 更多 ▾ under the header.
   const top = sidebarTopModel({ isDesktop, projectsReady: projectsSnap.status === 'ready', teamsVisible: happyBotEntryVisible });
-  const navEntries = sidebarNavEntries({ projectsVisible: projectsSnap.status === 'ready', teamsVisible: happyBotEntryVisible, automationsVisible: automationsEnabled, automationAttention, incomingPeople });
+  const navEntries = sidebarNavEntries({ projectsVisible: projectsSnap.status === 'ready', projectAttention: projectBadgeTotal, teamsVisible: happyBotEntryVisible, automationsVisible: automationsEnabled, automationAttention, incomingPeople });
   const navName: Record<SidebarNavKey, string> = {
     projects: lang.startsWith('zh') ? '项目' : 'Projects',
     teams: teamCopy.title,
@@ -1243,11 +1293,26 @@ export function Sidebar() {
   // B-756: 新建会话 into a project — its primary folder, joined before the first message.
   const newProjectSession = (project: ProjectView) => newSessionInProject(project, navigate, configureNew);
   const projectCopy = projectMenuCopy(lang.startsWith('zh'));
+  const zh = lang.startsWith('zh');
+  const projectItems = (project: ProjectView) => projectMenuItems(project, { zh, navigate, openConfigure: configureNew, teams: happyBotEntryVisible });
+  // B-762 (spec B-760 §5.1): the tree's keyboard — ↑/↓ move between nodes, →
+  // opens / steps in, ← folds / steps out. Nodes mark their focus target
+  // [data-tree-item] and fold button [data-tree-toggle] inside [data-tree-node].
+  const onTreeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey || e.shiftKey || isImeGuardedEvent(e.nativeEvent)) return;
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    const items = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-tree-item]') ?? []);
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    if (index < 0) return;
+    const nodes = items.map((el) => el.closest<HTMLElement>('[data-tree-node]'));
+    const toggles = nodes.map((node) => node?.querySelector<HTMLElement>('[data-tree-toggle]') ?? null);
+    const action = treeKeyAction(nodes.map((node, i) => ({ depth: Number(node?.dataset.depth ?? 0), expanded: toggles[i] ? toggles[i]!.getAttribute('aria-expanded') === 'true' : undefined })), index, e.key);
+    if (!action) return;
+    e.preventDefault();
+    if ('focus' in action) items[action.focus].focus();
+    else toggles[action.toggle]?.click();
+  };
 
-  /** B-756: right-click / long-press on a project head → the shared project menu. */
-  const wrapProjectHead = (project: ProjectView | undefined, head: React.ReactElement) => (project
-    ? <ActionContextMenu items={projectMenuItems(project, { zh: lang.startsWith('zh'), navigate, openConfigure: configureNew })}>{head}</ActionContextMenu>
-    : head);
 
   return (
     <div className="sb">
@@ -1348,23 +1413,25 @@ export function Sidebar() {
               align="end"
               sideOffset={6}
               items={[
-                // B-675: 项目 (default) / 标签 / 不分组 — tag grouping is back beside projects.
+                // B-675: 项目 (default) / 标签 / 不分组. B-762 (spec B-760 §5.2): one structure
+                // view and two lists — 按项目（结构） / 按标签 / 最近 (不分组 renamed).
                 { key: 'project', disabled: !orderable, label: `${groupMode === 'project' ? '✓ ' : ''}${t('sidebar.groupProjects')}`, icon: FolderKanban, onSelect: () => selectGroupMode('project') },
                 { key: 'tag', disabled: !orderable, label: `${groupMode === 'tag' ? '✓ ' : ''}${t('sidebar.groupTags')}`, icon: Tags, onSelect: () => selectGroupMode('tag') },
-                { key: 'none', disabled: !orderable, label: `${groupMode === 'none' ? '✓ ' : ''}${t('sidebar.groupNone')}`, icon: Rows3, onSelect: () => selectGroupMode('none') },
-                { key: 'ordering-help', disabled: !orderable || Boolean(teamHistory), label: lang.startsWith('zh') ? '排序说明' : 'Reordering help', icon: CircleHelp, checked: showOrderHint, onSelect: () => setShowOrderHint((shown) => !shown) },
+                { key: 'none', disabled: !orderable, label: `${groupMode === 'none' ? '✓ ' : ''}${t('sidebar.groupNone')}`, icon: Clock3, onSelect: () => selectGroupMode('none') },
+                { key: 'ordering-help', disabled: !orderable, label: lang.startsWith('zh') ? '排序说明' : 'Reordering help', icon: CircleHelp, checked: showOrderHint, onSelect: () => setShowOrderHint((shown) => !shown) },
                 { key: 'locate-current', disabled: !onRowRoute, label: lang.startsWith('zh') ? '定位当前会话' : 'Locate current session', icon: LocateFixed, separatorBefore: true, onSelect: locateCurrent },
                 { key: 'overview', label: `${t('board.title')}${attentionCount ? ` · ${attentionCount}` : ''}`, icon: LayoutGrid, separatorBefore: true, onSelect: () => navigate('/board') },
               ]}
             >
-              <button className={`sb-icon-btn${groupMode !== 'none' ? ' is-on' : ''}`} title={t('sidebar.groupMenu')} aria-label={t('sidebar.groupMenu')}>
-                {groupMode === 'project' ? <FolderKanban size={17} /> : groupMode === 'tag' ? <Tags size={17} /> : <Rows3 size={17} />}
+              <button className="sb-lens-btn" title={t('sidebar.groupMenu')} aria-label={`${t('sidebar.groupMenu')}: ${t(groupMode === 'project' ? 'sidebar.lensProjects' : groupMode === 'tag' ? 'sidebar.lensTags' : 'sidebar.lensRecent')}`}>
+                {groupMode === 'project' ? <FolderKanban size={15} /> : groupMode === 'tag' ? <Tags size={15} /> : <Clock3 size={15} />}
+                <span>{t(groupMode === 'project' ? 'sidebar.lensProjects' : groupMode === 'tag' ? 'sidebar.lensTags' : 'sidebar.lensRecent')}</span>
               </button>
             </ActionDropdownMenu>
           )}
 
 </div></div>
-      {showOrderHint && orderable && !teamHistory && <SidebarOrderHint grouped={grouped} onUngroup={() => selectGroupMode('none')} />}
+      {showOrderHint && orderable && <SidebarOrderHint grouped={grouped} onUngroup={() => selectGroupMode('none')} />}
 
       {tagNoticeVisible && (
         <TagGroupingBackNotice
@@ -1376,7 +1443,7 @@ export function Sidebar() {
           dismissLabel={t('sidebar.tagNoticeDismiss') as string}
         />
       )}
-      <div className={`sb-list vh-scroll-fade${dragKey ? ' is-dragging' : ''}`} ref={listRef}>
+      <div className={`sb-list vh-scroll-fade${dragKey ? ' is-dragging' : ''}${projectLens ? ' sb-list--tree' : ''}`} ref={listRef} onKeyDown={projectLens ? onTreeKeyDown : undefined}>
         <PendingSessionRows />
         {/* B-619: invitations first — they need an answer before anything else shows. */}
         <SharedInvites />
@@ -1394,61 +1461,96 @@ export function Sidebar() {
               let flat = 0;
               let peekTipPlaced = false; // B-588: the session-preview tip anchors to the first chat row
               return sections.map((sec) => (
-                <div key={sec.id} className="sb-section">
-                  {sec.kicker && <div className="sb-section-kicker">{sec.kicker}</div>}
-                  {sec.label !== undefined && wrapProjectHead(sec.project, (
-                    <div className={`sb-section-head sb-section-head--toggle${sec.createLocation || sec.makeProject || sec.tagToProject ? ' sb-section-head--workspace' : ''}${sec.project ? ' sb-section-head--project' : ''}`} title={sec.detail || undefined}>
+                <div key={sec.id} className={`sb-section${sec.project ? ' sb-section--project' : ''}${sec.area ? ' sb-section--area' : ''}`}>
+                  {/* B-762 (spec B-760 §5.1): a project is the tree's level-1 node — chevron (fold) ·
+                      FolderKanban · name (opens the project) · 需要你 badge or session count; hover ＋ / ⋯,
+                      right-click / long-press = the project menu (a bottom sheet on touch). */}
+                  {sec.project && (() => {
+                    const project = sec.project;
+                    const selected = location.pathname === projectPath(project.id) || location.pathname === projectSettingsPath(project.id);
+                    return (
+                      <ActionContextMenu items={projectItems(project)} sheetTitle={project.name}>
+                        <div className="sb-tree-node" data-tree-node data-depth={0} style={{ '--depth': 0 } as React.CSSProperties}>
+                          <div className={`sb-tree-project${selected ? ' is-selected' : ''}`} title={sec.detail || undefined}>
+                            <button type="button" className="sb-tree-chevron" data-tree-toggle tabIndex={-1} aria-expanded={sec.open}
+                              aria-label={t(sec.open ? 'sidebar.treeCollapse' : 'sidebar.treeExpand', { name: project.name }) as string}
+                              onClick={() => toggleTreeGroup(sec.id, sec.open)}
+                            ><ChevronRight size={13} className={sec.open ? 'is-open' : ''} /></button>
+                            <button type="button" className="sb-tree-project-main" data-tree-item aria-current={selected ? 'page' : undefined} onClick={() => navigate(projectPath(project.id))}>
+                              <FolderKanban size={16} aria-hidden />
+                              <span className="sb-tree-project-name">{sec.label}</span>
+                              {sec.attention
+                                ? <span className="sb-tree-badge" role="img" title={t('sidebar.treeAttention', { count: sec.attention }) as string} aria-label={t('sidebar.treeAttention', { count: sec.attention }) as string}>{sec.attention}</span>
+                                : <span className="sb-tree-count mono">{sec.count}</span>}
+                            </button>
+                            <span className="sb-tree-project-acts">
+                            <button
+                              type="button" className="sb-project-act" disabled={creatingChat}
+                              title={`${projectCopy.newSession}：${sec.label}`}
+                              aria-label={`${projectCopy.newSession}: ${sec.label}`}
+                              onPointerDown={prefetchSessionDetail}
+                              onClick={() => newProjectSession(project)}
+                            ><Plus size={14} /></button>
+                            <ActionDropdownMenu items={projectItems(project)} align="end" sideOffset={4}>
+                              <button type="button" className="sb-project-act" title={projectCopy.actions} aria-label={`${projectCopy.actions}: ${sec.label}`}><MoreHorizontal size={14} /></button>
+                            </ActionDropdownMenu>
+                            </span>
+                          </div>
+                        </div>
+                      </ActionContextMenu>
+                    );
+                  })()}
+                  {/* B-762: 不在项目中 — small title + hairline (D2: flat; folder groups from its ⋯).
+                      With no project yet it is just 「会话」 plus a dismissible hint. */}
+                  {sec.area && (
+                    <>
+                      <div className="sb-tree-area" data-tree-node data-depth={-1}>
+                        {sec.collapsible ? (
+                          <button type="button" className="sb-tree-area-toggle" data-tree-item data-tree-toggle aria-expanded={sec.open} onClick={() => toggleTreeGroup(sec.id, sec.open)}>
+                            <ChevronRight size={11} className={`sb-section-chevron${sec.open ? ' is-open' : ''}`} />
+                            <span>{sec.label}</span><span className="mono">{sec.count}</span>
+                          </button>
+                        ) : <span className="sb-tree-area-label">{sec.label}</span>}
+                        <span className="sb-tree-area-rule" aria-hidden />
+                        {sec.area.kind === 'unassigned' && (
+                          <ActionDropdownMenu align="end" sideOffset={4} items={[
+                            { key: 'by-folder', label: t('sidebar.groupUnassignedByFolder'), icon: FolderOpen, checked: !!unassignedByFolder, onSelect: () => setUnassignedByFolder(!unassignedByFolder) },
+                          ]}>
+                            <button type="button" className="sb-tree-area-menu" title={t('sidebar.unassignedActions')} aria-label={t('sidebar.unassignedActions')}><MoreHorizontal size={14} /></button>
+                          </ActionDropdownMenu>
+                        )}
+                      </div>
+                      {sec.area.hint && sec.allRows.length > 0 && (
+                        <p className="sb-tree-hint">
+                          {t('sidebar.projectHint')}{' '}
+                          <button type="button" className="sb-tree-link" onClick={() => void createNamedProject()}>{t('sidebar.newProject')}</button>
+                          <button type="button" className="sb-tree-hint-close" title={t('sidebar.projectHintDismiss')} aria-label={t('sidebar.projectHintDismiss')} onClick={() => setProjectHintDismissed(true)}><X size={12} /></button>
+                        </p>
+                      )}
+                    </>
+                  )}
+                  {sec.label !== undefined && !sec.project && !sec.area && (
+                    <div className={`sb-section-head sb-section-head--toggle${sec.createLocation || sec.makeProject || sec.tagToProject ? ' sb-section-head--workspace' : ''}`} title={sec.detail || undefined}>
                       {/* B-580: every labelled group folds; Enter/Space via the native button. */}
                       <button
                         type="button"
                         className="sb-section-toggle"
                         aria-expanded={sec.open}
-                        onClick={() => {
-                          // Only a click on the head persists; it also drops any temporary reveal-open.
-                          setRevealExpanded((cur) => { if (!cur.has(sec.id)) return cur; const next = new Set(cur); next.delete(sec.id); return next; });
-                          setGroupCollapsed(sec.id, sec.open);
-                        }}
+                        onClick={() => toggleTreeGroup(sec.id, sec.open)}
                       >
                         <ChevronRight size={11} className={`sb-section-chevron${sec.open ? ' is-open' : ''}`} />
-                        {/* B-648: a project's name opens its page; the chevron alone folds it. */}
-                        {sec.project ? <span className="sb-visually-hidden">{sec.label}</span> : <span className="sb-section-label">{sec.label}</span>}
-                        {!sec.project && <span className="sb-section-count mono">{sec.count}</span>}
-                        {!sec.open && !sec.project && <GroupSummary summary={summarizeGroup(sec.allRows.map(rowStatusOf))} zh={lang.startsWith('zh')} />}
+                        <span className="sb-section-label">{sec.label}</span>
+                        <span className="sb-section-count mono">{sec.count}</span>
+                        {!sec.open && <GroupSummary summary={summarizeGroup(sec.allRows.map(rowStatusOf))} zh={zh} />}
                         {/* folded: the summary needs the room; machine · path stays in the head's tooltip */}
-                        {sec.detail && sec.open && !sec.project && <span className="sb-section-detail">{sec.detail}</span>}
+                        {sec.detail && sec.open && <span className="sb-section-detail">{sec.detail}</span>}
                       </button>
-                      {sec.project && (
-                        <button
-                          type="button"
-                          className={`sb-section-name${location.pathname === `/projects/${encodeURIComponent(sec.project.id)}` ? ' is-selected' : ''}`}
-                          aria-current={location.pathname === `/projects/${encodeURIComponent(sec.project.id)}` ? 'page' : undefined}
-                          onClick={() => navigate(`/projects/${encodeURIComponent(sec.project!.id)}`)}
-                        >
-                          <span className="sb-section-label">{sec.label}</span>
-                          {sec.attention ? <span className="sb-section-attention" title={t('sidebar.projectAttention', { count: sec.attention }) as string} aria-label={t('sidebar.projectAttention', { count: sec.attention }) as string}>{sec.attention}</span> : null}
-                          {!sec.open && <GroupSummary summary={summarizeGroup(sec.allRows.map(rowStatusOf))} zh={lang.startsWith('zh')} />}
-                        </button>
-                      )}
-                      {/* B-756: a project head carries the same two actions as its menu's top: new session + settings. */}
-                      {sec.project && <button
-                        type="button" className="sb-workspace-new sb-project-act" disabled={creatingChat}
-                        title={`${projectCopy.newSession}：${sec.label}`}
-                        aria-label={`${projectCopy.newSession}: ${sec.label}`}
-                        onPointerDown={prefetchSessionDetail}
-                        onClick={() => newProjectSession(sec.project!)}
-                      ><Plus size={14} /></button>}
-                      {sec.project && <button
-                        type="button" className="sb-workspace-new sb-project-act"
-                        title={projectCopy.settings}
-                        aria-label={`${projectCopy.settings}: ${sec.label}`}
-                        onClick={() => navigate(projectSettingsPath(sec.project!.id))}
-                      ><Settings2 size={14} /></button>}
-                      {sec.createLocation && !sec.project && <button
+                      {sec.createLocation && <button
                         type="button" className="sb-workspace-new" disabled={creatingChat}
-                        title={lang.startsWith('zh') ? `在此目录新建会话：${sec.createLocation.path}` : `New chat here: ${sec.createLocation.path}`}
-                        aria-label={lang.startsWith('zh') ? `在此目录新建会话：${sec.label}` : `New chat here: ${sec.label}`}
+                        title={zh ? `在此目录新建会话：${sec.createLocation.path}` : `New chat here: ${sec.createLocation.path}`}
+                        aria-label={zh ? `在此目录新建会话：${sec.label}` : `New chat here: ${sec.label}`}
                         onPointerDown={prefetchSessionDetail}
-                        onClick={() => void createChatOrConfigure(navigate, configureNew, { target: sec.createLocation, ...(sec.project ? { projectId: sec.project.id } : {}) })}
+                        onClick={() => void createChatOrConfigure(navigate, configureNew, { target: sec.createLocation })}
                       ><Plus size={14} /></button>}
                       {sec.makeProject && <button
                         type="button" className="sb-workspace-new sb-workspace-make-project"
@@ -1463,69 +1565,60 @@ export function Sidebar() {
                         onClick={() => void convertTagToProject(sec.tagToProject!)}
                       ><FolderPlus size={14} /></button>}
                     </div>
-                  ))}
+                  )}
                   {sec.rows.map((r) => {
                     // B-619: shared rows are outside displayRows — no ⌘N slot, no reorder.
                     // B-674: the inactive-members fold is a disclosure, not a row — outside displayRows too.
-                    const i = r.share || r.teamInactiveFold || r.teamEmptyHint || r.projectEntry ? -1 : flat++;
-                    if (r.projectEntry) {
-                      const entry = r.projectEntry;
-                      return <SidebarProjectRow
-                        key={r.key}
-                        entry={entry}
-                        selected={location.pathname === r.href || location.pathname === projectSettingsPath(entry.project.id)}
-                        zh={lang.startsWith('zh')}
-                        attentionLabel={t('sidebar.projectAttention', { count: entry.attention }) as string}
-                        menuItems={projectMenuItems(entry.project, { zh: lang.startsWith('zh'), navigate, openConfigure: configureNew })}
-                        creating={creatingChat}
-                        onOpen={() => navigate(r.href)}
-                        onSettings={() => navigate(projectSettingsPath(entry.project.id))}
-                        onNewSession={() => newProjectSession(entry.project)}
-                      />;
+                    // B-762: so are tree hints and team nodes (⌘1-9 numbers conversations only).
+                    const i = r.share || r.teamInactiveFold || r.teamEmptyHint || r.projectEmptyHint || r.team ? -1 : flat++;
+                    // B-762: every tree node carries its depth (indent + guide lines, sidebar.css).
+                    const treeNode = r.depth !== undefined ? { 'data-tree-node': '', 'data-depth': r.depth, style: { '--depth': r.depth } as React.CSSProperties } : null;
+                    if (r.projectEmptyHint) {
+                      const project = r.projectEmptyHint;
+                      return <div key={r.key} className="sb-tree-node" {...treeNode}><p className="sb-tree-empty">
+                        {t('sidebar.projectEmpty')}{' '}
+                        <button type="button" className="sb-tree-link" disabled={creatingChat} onClick={() => newProjectSession(project)}>{projectCopy.newSession}</button>
+                        {happyBotEntryVisible && <> {t('sidebar.projectEmptyOr')} <button type="button" className="sb-tree-link" onClick={() => navigate(projectNewTeamPath(project.id))}>{t('sidebar.startTeam')}</button></>}
+                      </p></div>;
                     }
-                    if (r.teamEmptyHint) return <div key={r.key} className="sb-team-child"><p className="sb-team-empty">{r.title}</p></div>;
+                    if (r.teamEmptyHint) return <div key={r.key} className="sb-tree-node" {...treeNode}><p className="sb-team-empty">{r.title}</p></div>;
                     if (r.teamInactiveFold) {
                       const fold = r.teamInactiveFold;
-                      return <div key={r.key} className="sb-team-child"><button
+                      return <div key={r.key} className="sb-tree-node" {...treeNode}><button
                         type="button"
                         className="sb-team-archived"
+                        data-tree-item
+                        data-tree-toggle
                         aria-expanded={fold.open}
                         title={fold.open ? teamCopy.hideInactive : teamCopy.showInactive}
-                        onClick={() => {
-                          setRevealExpanded((cur) => { if (!cur.has(r.key)) return cur; const next = new Set(cur); next.delete(r.key); return next; });
-                          setGroupCollapsed(r.key, fold.open);
-                        }}
-                      ><ChevronRight size={13} className={`sb-section-chevron${fold.open ? ' is-open' : ''}`} /><Archive size={14} /><span>{r.title}</span></button></div>;
+                        onClick={() => toggleTreeGroup(r.key, fold.open)}
+                      ><ChevronRight size={13} className={`sb-section-chevron${fold.open ? ' is-open' : ''}`} /><span>{r.title}</span></button></div>;
                     }
                     if (r.team) {
                       // B-759: row → team page, chevron → fold only, lead → its own member row / the context menu.
                       const team = r.team;
                       const open = expandedTeams.has(team.id);
-                      const leadId = teamLeadSessionId(team);
-                      const leadSession = leadId ? storage.getState().sessions[leadId] : undefined;
-                      const leadExecution: AgentExecution | null = leadId ? executionByKey.get(leadId) ?? (leadSession?.presence === 'online' ? 'idle' : 'offline') : null;
-                      const leadStatus = leadExecution ? agentStatusSignal(leadExecution, showsUnreadDot(leadSession, unreadIds)) : null;
-                      const leadStatusLabel = leadStatus === 'running' ? t('sidebar.groupRunning')
-                        : leadStatus === 'background' ? t('sidebar.rowBackgroundTasks', { count: (leadId && backgroundCountByKey.get(leadId)) || 1 })
-                        : leadStatus === 'input' ? t('sidebar.rowNeedsAttention')
-                        : leadStatus === 'unread' ? t('sidebar.rowUnread') : undefined;
+                      const attention = tree?.teamBadges.get(team.id) ?? 0;
+                      const unplaced = (tree?.projects.length ?? 0) > 0 && !projectsSnap.projects.some((p) => !p.archivedAt && (p.teamIds ?? []).includes(team.id));
                       return <SidebarTeamRow
                         key={r.key}
                         team={team}
                         open={open}
                         pathname={location.pathname}
-                        subtitle={team.bots.length ? `${teamMemberCount(team, memberContext)} ${teamCopy.members}` : teamCopy.preparing}
-                        leadStatus={leadStatus}
-                        leadStatusLabel={leadStatusLabel}
+                        depth={r.depth ?? 0}
+                        attention={attention}
+                        attentionLabel={t('sidebar.treeAttention', { count: attention }) as string}
+                        countLabel={team.bots.length ? teamCopy.headcount(teamMemberCount(team, memberContext)) : teamCopy.preparing}
+                        running={runningTeams.has(team.id)}
+                        unplacedLabel={unplaced ? teamCopy.unplaced : undefined}
                         copy={teamCopy}
-                        badge={cmdHeld && i < 9 ? <kbd className="sb-row-badge mono">⌘{i + 1}</kbd> : undefined}
-                        onToggle={() => setExpandedTeams((current) => { const next = new Set(current); if (open) next.delete(team.id); else next.add(team.id); return next; })}
+                        onToggle={() => toggleTreeGroup(teamTreeGroupId(team.id), open)}
                         onNavigate={navigate}
                       />;
                     }
-                    if (r.teamHistoryLink) return <div key={r.key} className="sb-team-child"><div className={`sb-row${location.pathname === r.href ? ' is-selected' : ''}`}>
-                      <button type="button" className="sb-row-main" data-href={r.href} aria-current={location.pathname === r.href ? 'page' : undefined} onClick={() => navigate(r.href)}>
-                        <span className="sb-row-icon">{r.sessionId ? <History size={16} /> : <UsersRound size={16} />}</span><span className="sb-row-text"><span className="sb-row-title" title={r.subtitle}>{r.teamLabel || r.title}{!r.sessionId && <span className="sb-team-member-status"> · {r.subtitle}</span>}</span>{r.sessionId && <span className="sb-row-sub">{r.subtitle}</span>}</span>
+                    if (r.teamHistoryLink) return <div key={r.key} className="sb-tree-node" {...treeNode}><div className={`sb-row${location.pathname === r.href ? ' is-selected' : ''}`}>
+                      <button type="button" className="sb-row-main" data-tree-item data-href={r.href} aria-current={location.pathname === r.href ? 'page' : undefined} onClick={() => navigate(r.href)}>
+                        <span className="sb-row-icon">{r.sessionId ? <History size={14} /> : r.teamRole === 'lead' ? <Crown size={14} /> : <Bot size={14} />}</span><span className="sb-row-text"><span className="sb-row-title" title={r.subtitle}>{r.teamLabel || r.title}<span className="sb-team-member-status"> · {r.subtitle}</span></span></span>
                         {cmdHeld && i < 9 && <kbd className="sb-row-badge mono">⌘{i + 1}</kbd>}
                       </button>
                     </div></div>;
@@ -1535,7 +1628,8 @@ export function Sidebar() {
                       <div
                         key={r.key}
                         data-dragkey={r.key}
-                        className={`sb-drag-item${r.teamChild ? ' sb-team-child' : ''}${dragKey === r.key ? ' is-drag' : ''}`}
+                        className={`sb-drag-item${treeNode ? ' sb-tree-node' : ''}${dragKey === r.key ? ' is-drag' : ''}`}
+                        {...treeNode}
                         onPointerDown={(e) => onRowPointerDown(e, r.key)}
                       >
                         <SidebarRow
@@ -1562,14 +1656,16 @@ export function Sidebar() {
                           badge={cmdHeld && i >= 0 && i < 9 ? i + 1 : undefined}
                           canMoveUp={i > 0}
                           canMoveDown={i >= 0 && i < displayRows.length - 1}
-                          onMove={orderable && !grouped && !teamHistory && !r.share ? (dir) => moveRow(r.key, i, dir) : undefined}
+                          onMove={orderable && !grouped && !r.share ? (dir) => moveRow(r.key, i, dir) : undefined}
                           onRenameRequest={(focusTags) => openRename(r, focusTags)}
                           projectMenu={r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink ? sessionProjectMenu(r.sessionId, projectsSnap, { shared: false, zh: lang.startsWith('zh') }) : undefined}
                           onMoveToProject={projectsSnap.status === 'ready' && r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink
                             ? () => setMoveProjectTarget({ sessionId: r.sessionId!, candidates: sec.allRows.flatMap((x) => (x.kind === 'session' && x.sessionId && !x.share && !x.teamHistoryLink && !x.team ? [{ sessionId: x.sessionId, title: x.title || x.sessionId.slice(0, 8) }] : [])) })
                             : undefined}
                           onShare={r.kind === 'session' && r.session ? () => setShareTarget(r.session!.id) : undefined}
-                          projectChip={projectChipOf(r)}
+                          ownerChip={ownerChipOf(r)}
+                          hideFirstTag={groupMode === 'tag' && orderable && !!r.tags?.[0]}
+                          sheetTitle={treeNode ? r.title : undefined}
                           peekTipAnchor={peekTipAnchor}
                         />
                       </div>
@@ -1727,8 +1823,8 @@ function tagGroupId(g: { tag: string | null }): string {
   return g.tag === null ? 'untagged' : `tag:${g.tag.toLowerCase()}`;
 }
 /** A labelled group: `rows` empty while folded, `allRows` always complete. */
-function collapsibleSection(id: string, label: string, rows: Row[], collapsed: Record<string, boolean>): SidebarSection {
-  const open = !isGroupCollapsed(collapsed, id);
+function collapsibleSection(id: string, label: string, rows: Row[], collapsed: Record<string, boolean>, fallbackCollapsed?: boolean): SidebarSection {
+  const open = !isGroupCollapsed(collapsed, id, fallbackCollapsed);
   return { id, label, count: rows.filter((r) => !r.teamEmptyHint).length, rows: open ? rows : [], allRows: rows, collapsible: true, open };
 }
 
@@ -1766,7 +1862,9 @@ function SidebarRow({
   projectMenu,
   onMoveToProject,
   onShare,
-  projectChip,
+  ownerChip,
+  sheetTitle,
+  hideFirstTag,
   peekTipAnchor,
 }: {
   row: Row;
@@ -1798,8 +1896,12 @@ function SidebarRow({
   onMoveToProject?: () => void;
   /** B-756: 「分享…」 — the session header's share panel (owner's active sessions only). */
   onShare?: () => void;
-  /** B-756: project name chip in the tag / flat lenses (the project lens already groups by it). */
-  projectChip?: string;
+  /** B-762 (spec B-760 §5.2): ONE owner chip outside the tree — the team for a lead / member, else the project. */
+  ownerChip?: { kind: 'team' | 'project'; name: string } | null;
+  /** B-762: a tree row's long-press menu is a bottom sheet on touch, headed by this. */
+  sheetTitle?: string;
+  /** B-762: 按标签 — the group head already names the first tag, so the row leaves room for its owner chip. */
+  hideFirstTag?: boolean;
   /** B-588: this row hosts the one-time 「会话预览」 tip */
   peekTipAnchor?: boolean;
 }) {
@@ -1817,6 +1919,7 @@ function SidebarRow({
   }, [peek.open]);
 
   const isTerminal = row.kind === 'terminal';
+  const shownTags = (hideFirstTag ? row.tags?.slice(1) : row.tags) ?? [];
   // Terminal rows are focused when the terminal route + tid match (they were
   // hardcoded unselected before, so the open terminal had no indicator).
   // A terminal can have two valid faces. Keep the row highlighted when the
@@ -1982,7 +2085,7 @@ function SidebarRow({
   }
 
   return (
-    <ActionContextMenu items={menuItems}>
+    <ActionContextMenu items={menuItems} sheetTitle={sheetTitle}>
     <div
       ref={rowRef}
       className={`sb-row${selected ? ' is-selected' : ''}${
@@ -2006,6 +2109,7 @@ function SidebarRow({
           announce the selected row the same way the rail highlight shows it. */}
       <button
         className="sb-row-main"
+        data-tree-item
         title={`${row.title} · ${row.subtitle}`}
         aria-label={`${row.title} · ${row.subtitle}`}
         data-href={row.href}
@@ -2016,11 +2120,16 @@ function SidebarRow({
         aria-describedby={peekable && peek.open !== null ? peekDomId(row.session!.id) : undefined}
       >
         <span className="sb-row-icon sb-row-icon--neutral" title={`${agentLabel} · ${isTerminal ? t('sidebar.kindTerminal') : t('sidebar.kindChat')}`} aria-label={`${agentLabel} · ${isTerminal ? t('sidebar.kindTerminal') : t('sidebar.kindChat')}`}>
-          {!isTerminal ? <MessageSquare size={15} /> : terminalAgent === 'claude' ? <Asterisk size={16} /> : terminalAgent === 'codex' ? <CodeXml size={16} /> : terminalAgent === 'pi' ? <Pi size={16} /> : <TerminalSquare size={16} />}
+          {row.teamRole === 'lead' ? <Crown size={14} /> : row.teamRole === 'member' ? <Bot size={14} /> : !isTerminal ? <MessageSquare size={15} /> : terminalAgent === 'claude' ? <Asterisk size={16} /> : terminalAgent === 'codex' ? <CodeXml size={16} /> : terminalAgent === 'pi' ? <Pi size={16} /> : <TerminalSquare size={16} />}
         </span>
         <span className="sb-row-text">
           <span className="sb-row-title-line">
-            <span className="sb-row-title">{row.teamLabel ? `${row.teamLabel} · ` : ''}{row.title}</span>
+            {/* B-762: the lead carries a 「负责人」 tag; a member reads 「名字 · 任务」 with the task faint. */}
+            {row.teamRole === 'lead'
+              ? <span className="sb-row-title"><span className="sb-lead-tag">{row.teamLabel}</span>{row.title}</span>
+              : row.teamRole === 'member'
+                ? <span className="sb-row-title">{row.teamLabel}<span className="sb-row-task"> · {row.title}</span></span>
+                : <span className="sb-row-title">{row.teamLabel ? `${row.teamLabel} · ` : ''}{row.title}</span>}
             {/* B-150: this tmux session and its processes are NEW — only the
                 directory and the claude conversation carried over. Worth saying
                 once, so a fresh scrollback isn't read as lost work. */}
@@ -2042,10 +2151,10 @@ function SidebarRow({
                 <UsersRound size={10} aria-hidden />{row.share.owner}
               </span>
             )}
-            {/* B-756: the project this session belongs to (tag / flat / status views). */}
-            {projectChip && (
-              <span className="sb-row-project" title={projectChip}>
-                <FolderKanban size={10} aria-hidden />{projectChip}
+            {/* B-756/B-762: the one owner chip — team or project (tag / recent / status views). */}
+            {ownerChip && (
+              <span className="sb-row-project" title={ownerChip.name}>
+                {ownerChip.kind === 'team' ? <UsersRound size={10} aria-hidden /> : <FolderKanban size={10} aria-hidden />}<span className="sb-row-project-name">{ownerChip.name}</span>
               </span>
             )}
             {automationAttention && (
@@ -2053,12 +2162,12 @@ function SidebarRow({
                 <Zap size={11} />
               </span>
             )}
-            {row.tags && row.tags.length > 0 && (
+            {shownTags.length > 0 && (
               <span className="sb-row-tags">
-                {row.tags.slice(0, 2).map((tag) => (
+                {shownTags.slice(0, 2).map((tag) => (
                   <TagChip key={tag} tag={tag} small />
                 ))}
-                {row.tags.length > 2 && <TagOverflowChip count={row.tags.length - 2} small />}
+                {shownTags.length > 2 && <TagOverflowChip count={shownTags.length - 2} small />}
               </span>
             )}
           </span>
