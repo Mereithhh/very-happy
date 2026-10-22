@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { TeamState, TeamTask } from "@slopus/happy-wire";
 import { t as tr } from "@/text";
-import { taskLaunchIssue } from "./teamPresentation";
+import { taskLaunchIssue, teamTextPreviewLines } from "./teamPresentation";
 import { useFirstUseCopy } from "./firstUseCopy";
 import { useWorkspaceCopy } from "./workspaceCopy";
 import { OperationError } from "./OperationError";
@@ -35,7 +35,7 @@ export function TeamTaskSummary({ team, task, launchIssue }: { team: TeamState; 
     {/* B-689: the screen supplies the actionable block (Retry launch); this is the read-only fallback. */}
     {issue && (launchIssue ? launchIssue(issue) : <div className="teams-error" role="alert"><strong>{first.launchFailed}</strong><OperationError error={issue.error} /><p>{issue.status === "unknown" ? first.unknownHint : first.retryHint}</p></div>)}
     {/* The parent is a reference: its first line, like the board's parent label. */}
-    {task.parentTaskId && <p>{tr("teams.parent")}{colon}{parent?.goal.split("\n")[0] ?? task.parentTaskId}</p>}
+    {task.parentTaskId && <p>{tr("teams.parent")}{colon}{(parent && teamTextPreviewLines(parent.goal)[0]) || task.parentTaskId}</p>}
     <p>
       {tr("teams.assignee")}{colon}{team.bots.find((b) => b.id === task.assigneeBotId)?.name ?? task.assigneeBotId}{" "}
       · {tr("teams.cleanup")}{colon}{task.cleanup === "done" ? c.cleanupDone : task.cleanup === "failed" ? c.cleanupFailed : task.cleanup === "pending" ? c.cleanupPending : c.cleanupNone}

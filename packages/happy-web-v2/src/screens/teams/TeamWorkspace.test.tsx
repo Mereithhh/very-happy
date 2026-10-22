@@ -7,8 +7,9 @@ import type { TeamState } from '@slopus/happy-wire';
 let TeamWorkspace: typeof import('./TeamWorkspace').TeamWorkspace;
 let TeamProgress: typeof import('./TeamWorkspace').TeamProgress;
 let TeamMembers: typeof import('./TeamWorkspace').TeamMembers;
+let TeamListCard: typeof import('./TeamWorkspace').TeamListCard;
 let collapsed: typeof import('@/screens/sessions/sidebarCollapsedGroups');
-beforeAll(async () => { installBrowserTestGlobals(); ({ TeamWorkspace, TeamProgress, TeamMembers } = await import('./TeamWorkspace')); collapsed = await import('@/screens/sessions/sidebarCollapsedGroups'); });
+beforeAll(async () => { installBrowserTestGlobals(); ({ TeamWorkspace, TeamProgress, TeamMembers, TeamListCard } = await import('./TeamWorkspace')); collapsed = await import('@/screens/sessions/sidebarCollapsedGroups'); });
 const team = {
   id: 'team', name: 'Team', machineId: 'machine', version: 1, createdAt: 1,
   bots: [{ id: 'lead', name: 'Lead', lastEvent: 'blocked', lastEventAt: 1, root: true, managed: false, directory: null, sessionId: 'session', assistant: 'pi-acp', generation: 1 }],
@@ -74,5 +75,25 @@ describe('B-690 inactive members on the Teams page', () => {
     collapsed.setGroupCollapsed('team-archived:fold-team', false);
     expect(render()).toContain('<details class="teams-members-inactive" open=""');
     collapsed.setGroupCollapsed('team-archived:fold-team', true);
+  });
+});
+
+describe('B-746 task previews never show raw markdown or the protocol header', () => {
+  const goal = '[Very Happy team message m1; task t1; from Lead]\nTask 47280515-0e1a-42c8-b8b2-984a6d38af4d\n**[QA] Card task**: edit `README.md`\n\n| a | b |\n|---|---|';
+  const raw = { ...team, tasks: team.tasks.map(t => ({ ...t, goal, attempts: t.attempts.map(a => ({ ...a, result: a.result && `## ${a.result}` })) })) } as TeamState;
+  const clean = (html: string) => {
+    expect(html).not.toMatch(/\*\*|\|---|`|## |Very Happy team message|Task 47280515/);
+    expect(html).toContain('[QA] Card task: edit README.md');
+  };
+  it('list card task rows', () => {
+    const html = renderToStaticMarkup(createElement(MemoryRouter, {}, createElement(TeamListCard, { team: raw, machine: 'dev' })));
+    expect(html.match(/teams-list-task/g)).toHaveLength(2);
+    clean(html);
+  });
+  it('board cards, results and member cards', () => {
+    const html = renderToStaticMarkup(createElement(MemoryRouter, {}, createElement(TeamWorkspace, { team: { ...raw, tasks: raw.tasks.map(t => ({ ...t, id: `x-${t.id}` })) }, onTask: () => {} })));
+    clean(html);
+    expect(html).toContain('Evidence submitted');
+    expect(html).not.toContain('## Evidence');
   });
 });

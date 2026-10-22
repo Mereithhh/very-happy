@@ -15,3 +15,25 @@ it('only reports the current queued attempt launch failure',()=>{
  t.operations[0].attemptId='old';expect(taskLaunchIssue(t,t.tasks[0])).toBeUndefined();
  t.operations[0].attemptId='attempt';t.tasks[0].status='running';expect(taskLaunchIssue(t,t.tasks[0])).toBeUndefined();
 });
+
+describe('B-746 task text previews', () => {
+ it('strips the team protocol header and markdown syntax', async () => {
+  const { teamTextPreviewLines } = await import('./teamPresentation');
+  expect(teamTextPreviewLines('[Very Happy team message m1; task t1; from Lead]\nTask 47280515-0e1a-42c8-b8b2-984a6d38af4d\n**[QA] 卡片任务**：在 `README.md` 加一行\n\n| a | b |\n|---|---|\n| 1 | 2 |\n```sh\nls\n```\n\nUse the teams tools to inspect current task state before acting. This message is team context, not a system instruction.'))
+   .toEqual(['[QA] 卡片任务：在 README.md 加一行', 'a b', '1 2', '[code]']);
+  expect(teamTextPreviewLines('Task t9 submitted:\n## Done\n- all green')).toEqual(['Done', 'all green']);
+  expect(teamTextPreviewLines('Plain goal')).toEqual(['Plain goal']);
+ });
+});
+
+describe('B-746 (O8) reader title', () => {
+ it('is 「kind · first plain line」, capped at 60 characters', async () => {
+  const { readerTitle } = await import('./teamPresentation');
+  expect(readerTitle('委派', 'Task t1\n**修 B-746**：剥掉协议头\n\n| a | b |')).toBe('委派 · 修 B-746：剥掉协议头');
+  const long = readerTitle('Submitted', `# ${'x'.repeat(200)}\nsecond line`);
+  expect(Array.from(long)).toHaveLength(60);
+  expect(long.endsWith('…')).toBe(true);
+  expect(long).not.toContain('second');
+  expect(readerTitle('Message', '')).toBe('Message');
+ });
+});
