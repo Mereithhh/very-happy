@@ -91,6 +91,12 @@ interface Settings {
    */
   remoteSessionOps?: 'on' | 'off'
   /**
+   * B-766 D5: a team lead's turn that asks the owner to decide (「需要你决定」,
+   * "please decide") without posting a board decision gets an inferred draft
+   * on the briefing board. Absent/true = on; false = off.
+   */
+  ownerBoardAutoDetect?: boolean
+  /**
    * B-007: external todo provider — a user-supplied command that speaks the
    * contract in docs/channels.md (`<command> list|complete <id>|create <title>`).
    *

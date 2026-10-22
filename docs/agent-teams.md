@@ -263,6 +263,65 @@ falling back to another bot. Cancel active or paused schedules before archiving.
 External task-source mapping and its completion policy still belong to that
 source adapter; a schedule by itself does not import or complete Todo items.
 
+## Briefing board (汇报板)
+
+On a server with the briefing board (B-766), the lead session gets four tools
+— `owner_board_post`, `owner_board_update`, `owner_board_resolve`,
+`owner_board_list` — and the lead playbook's rule 7 tells it what goes on the
+board and what stays in the message stream. The CLI also keeps a few fallbacks
+that need no model help:
+
+- Every message you send in the lead session becomes a "you asked" item; the
+  lead's first reply in that turn is attached and the item shows as answered
+  (unless the lead marked it in progress). Board buttons (choices, follow-ups)
+  do not create a second item.
+- A lead turn that asks you to decide in prose without posting a decision gets
+  an auto-detected draft (`ownerBoardAutoDetect`, on by default; drafts never
+  push).
+- Each lead turn starts with a two-line digest of the open items.
+- `request_human` from any session posts a **blocked** item.
+
+The tools appear when the lead session starts (or restarts) on a server with
+the board; a session adopted as lead mid-run gets them after its next restart.
+
+**Lead rules (EN)**
+
+1. Every decision you need from the owner goes on the board: `owner_board_post`
+   kind `decision`, 2–4 options with one recommended, and a stable `key`. Do not
+   repeat open decisions in replies to members or the system; refresh with
+   `owner_board_update`.
+2. Answer what the owner can get right away in the stream; it is attached
+   automatically. If it needs work, say who is on it, set the item
+   `in_progress`, and later post kind `answer` with `reply_to`.
+3. For work the owner handed you: post a `report` with `reply_to` when done, or
+   resolve it `dropped` with a note.
+4. Milestones go on the board as `report`: accepted, merged, released, incident
+   conclusion. Progress, idle members and review detail do not.
+5. Things only the owner can do offline (log in, authorize, look at a device)
+   are a `todo`; if they block you, use `request_human` (a `blocked` item).
+6. One item per topic (same `key` or `update`); keep at most 5 open, merging or
+   withdrawing stale ones first.
+7. Do not write long owner-facing text in turns that answer members or the
+   system; put what the owner must know on the board.
+
+**负责人规则（中文）**
+
+1. 需要 Owner 拍板的事一律上板：`owner_board_post`（kind `decision`），给 2～4
+   个选项并标出推荐项，用稳定的 `key`。不要在回成员或系统的回复里重复贴出待决
+   选项；需要提醒时用 `owner_board_update` 刷新。
+2. Owner 当场能答的，就在消息流里答，系统会自动挂回。需要派人或等结果才能答的，
+   当轮先说一句「已派给 X，结果会上板」，再把条目改成 `in_progress`；结果出来后
+   `owner_board_post`（kind `answer`，带 `reply_to`）。
+3. Owner 交代的事：做完后 `report`（带 `reply_to`）；放弃或转交时
+   `owner_board_resolve`（`dropped`，写明原因）。
+4. 阶段性结论上板（`report`）：验收通过、PR 合并、发布、事故结论。过程进度、
+   成员 idle、审查细节不上板。
+5. Owner 需要线下动手的事上板（`todo`）：登录、授权、真机看一眼。负责人因此
+   阻塞时用 `request_human`，它就是 `blocked` 类型。
+6. 一事一条：同一话题用同一个 `key` 或 `update`。开放条目超过 5 条时，先合并
+   或撤回过期条目。
+7. 回答成员或系统的回合里，不要写给 Owner 看的长文；有需要 Owner 知道的，就上板。
+
 ## Review and recovery
 
 - A task can be queued, running, submitted, accepted, or cancelled. Idle/blocked/
