@@ -30,6 +30,9 @@ The sidebar's default view, **By project (structure)**, is a tree (B-762):
   its own **sessions** one level in, and each team's **lead** (crown and a
   **Lead** tag), **members** (*name · task*) and **N inactive** fold one level
   further. Guide lines show what belongs to what.
+- A team member's conversation always sits with its team: under the team's
+  project, or under **Not in a project** when the team has none — even if the
+  conversation itself was moved into another project.
 - **Not in a project** at the bottom: sessions and teams outside every project,
   in one list by recent activity (no folder groups unless you switch on
   **Group by folder** from its ⋯). An older team that was never put in a project

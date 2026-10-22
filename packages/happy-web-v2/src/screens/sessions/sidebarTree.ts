@@ -1,5 +1,6 @@
 import type { ProjectMemberView, ProjectView, TeamState } from '@slopus/happy-wire';
-import { groupRowsByProject, sessionProjectResolver } from './sidebarProjectGroups';
+import { groupRowsByProject } from './sidebarProjectGroups';
+import { sessionPlacementResolver } from '@/app/sessionPlacement';
 import type { WorkspaceRowLike } from './sidebarWorkspaceGroups';
 import { teamSessionMembership, type TeamNavigationEntry } from './teamNavigation';
 
@@ -168,13 +169,14 @@ export function listOwnerChip(input: { teamName?: string; projectName?: string }
 /** Owner chips for every session of the user's projects and teams (B-756's project resolver + team membership). */
 export function ownerChipResolver(projects: ProjectView[], members: ProjectMemberView[], teams: TeamState[]) {
   const live = teams.filter((t) => !t.archivedAt);
-  const projectOf = sessionProjectResolver(projects, members, live);
+  const place = sessionPlacementResolver(projects, members, live);
+  const projectName = new Map(projects.map((p) => [p.id, p.name]));
   const membership = teamSessionMembership(live);
   return (sessionId: string | undefined): { chip: ReturnType<typeof listOwnerChip>; role: 'lead' | 'member' | undefined; botName?: string } => {
     if (!sessionId) return { chip: null, role: undefined };
     const member = membership.get(sessionId);
     return {
-      chip: listOwnerChip({ teamName: member?.team.name, projectName: projectOf(sessionId)?.name }),
+      chip: listOwnerChip({ teamName: member?.team.name, projectName: projectName.get(place(sessionId).projectId ?? '') }),
       role: teamRowRole(member?.bot),
       botName: member?.bot.name,
     };

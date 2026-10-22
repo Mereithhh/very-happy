@@ -228,6 +228,7 @@ Unread for you: {≤3 lines "from {title}: {first 120 chars}"}
 **6.1c 项目树（B-762，B-760 方案 A，Owner 2026-10-22 拍板，D1–D3 按设计师建议）——修订 6.1 / 6.1b**
 
 - 「按项目（结构）」画三级树：项目（0）› 团队、项目自己的会话（1）› 负责人 / 成员 / 已停用 N 个（2）；团队在前、会话在后，各自按列表顺序。缩进 + 单边 hairline 引导线；每级右侧「需要你」徽标（等你处理 + 未读，与 `sidebarAttention` 同口径），没有时显示数量。纯函数 `screens/sessions/sidebarTree.ts`。
+- 归属口径（Lead 10-22）：`app/sessionPlacement.ts` 的 `sessionPlacementResolver` 是树和面包屑（B-763）共用的唯一规则——属于未归档团队的会话跟团队走（团队挂的项目，没有就不在项目中，忽略它自己的显式成员关系），其他会话看显式成员关系。`sessionProjectResolver`（显式优先）保留给原调用方。
 - 底部只有一个「不在项目中」区，按列表顺序平铺（**D2**：默认不按目录分子组；区头 ⋯ 的「按目录分组」打开后回到上面 6.1 的目录子组和「设为项目」）。没有任何项目时这一区叫「会话」，带可关的「放进同一个项目」提示。两个开关在 localSettings：`sidebarUnassignedByFolder`、`sidebarProjectHintDismissed`（只加不删，默认值只在 defaults）。
 - 默认折叠：项目在 7 天内有动静（会话或项目本身更新）、有需要你的事或是当前所在就展开；团队只在当前打开它的页面或它的会话时展开。手动折叠记在本设备（`project:<id>`、`team:<id>`，sidebarCollapsedGroups）；打开成员会话会临时展开它的团队。
 - 键盘：↑↓ 移动，→ 展开 / 进入，← 收起 / 回父级，Enter 打开。⌘1–9 只给会话行（负责人、成员、普通会话）编号。

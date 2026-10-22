@@ -1,11 +1,13 @@
 import type { ProjectMemberView, ProjectView, TeamState } from '@slopus/happy-wire';
 import { groupRowsByWorkspace, type SidebarWorkspaceGroup, type WorkspaceRowLike } from './sidebarWorkspaceGroups';
 import { teamHomeDirectory, teamSessionMembership } from './teamNavigation';
+import { sessionPlacementResolver } from '@/app/sessionPlacement';
 
 /**
  * B-647: the default sidebar lens — sessions grouped by project
- * (`specs/2026-10-projects.md` §6.1). A session's project is its explicit
- * membership, else the project its team is attached to. Everything else goes
+ * (`specs/2026-10-projects.md` §6.1). B-762: a session's project is
+ * `sessionPlacementResolver` — a team member follows its team's project (even
+ * when explicitly put elsewhere), any other session its explicit membership. Everything else goes
  * to 「未归属」, sub-grouped by folder exactly like the old workspace lens, so
  * a user with no projects sees the same shape as before (never an empty list).
  *
@@ -50,16 +52,15 @@ export function groupRowsByProject<T extends WorkspaceRowLike>(
   teams: TeamState[],
 ): ProjectGrouping<T> {
   const live = projects.filter(p => !p.archivedAt);
-  const known = new Set(live.map(p => p.id));
-  const memberProject = new Map(members.filter(m => known.has(m.projectId)).map(m => [m.sessionId, m.projectId]));
   const teamProject = new Map<string, string>();
   for (const p of live) for (const teamId of p.teamIds ?? []) teamProject.set(teamId, p.id);
   const teamOfSession = teamSessionMembership(teams);
+  const place = sessionPlacementResolver(live, members, teams);
 
   const byProject = new Map<string, T[]>();
   const loose: T[] = [];
   for (const row of rows) {
-    const pid = projectOfSession(row.sessionId, memberProject, teamProject, teamOfSession);
+    const pid = place(row.sessionId).projectId;
     if (pid) byProject.set(pid, [...(byProject.get(pid) ?? []), row]);
     else loose.push(row);
   }
@@ -115,9 +116,9 @@ export function groupRowsByProject<T extends WorkspaceRowLike>(
 }
 
 /**
- * B-756: a session's project outside the project lens (tag / flat / status
- * views), by the same rule as `groupRowsByProject` — explicit membership, else
- * its team's attached project; archived projects count as none.
+ * B-756: a session's project — explicit membership, else its team's attached
+ * project; archived projects count as none. B-762: the sidebar tree and chips
+ * use `sessionPlacementResolver` (team first) instead; this stays for its callers.
  */
 export function sessionProjectResolver(projects: ProjectView[], members: ProjectMemberView[], teams: TeamState[]): (sessionId: string | undefined) => ProjectView | null {
   const live = projects.filter(p => !p.archivedAt);
