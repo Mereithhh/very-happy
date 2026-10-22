@@ -24,6 +24,8 @@ export interface ChatJumpRequest {
     snippet?: string;
     /** Daemon snippet timestamp — breaks ties between equal candidates. */
     at?: number;
+    /** B-766: tint the landed element briefly (a jump with no terms to paint, e.g. 「已答 ↗」). */
+    flash?: boolean;
 }
 
 /** Older pages loaded at most while looking for a daemon hit. */

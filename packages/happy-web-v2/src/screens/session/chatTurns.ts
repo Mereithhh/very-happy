@@ -158,7 +158,7 @@ function lastFinalAgentId(messages: Message[]): string | null {
     return null;
 }
 
-function renderableAgentText(message: Extract<Message, { kind: 'agent-text' }>): boolean {
+export function renderableAgentText(message: Extract<Message, { kind: 'agent-text' }>): boolean {
     const content = stripHarnessBlocks(message.text);
     return message.isThinking ? stripThinkingWrapper(content).length > 0 : content.trim().length > 0;
 }

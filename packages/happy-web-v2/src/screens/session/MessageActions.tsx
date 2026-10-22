@@ -29,18 +29,20 @@ import './messageActions.css';
  * are not rolled back. Claude sessions only: the runner rewinds its own
  * transcript (conversationRewind.ts).
  */
-export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, send = null, children }: {
+export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, send = null, status, children }: {
     text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments?: boolean;
     /** B-513: not yet confirmed by the server — copy only; a failed turn shows its recovery actions instead of the time. */
     send?: TurnSendStatus | null;
+    /** B-766: an always-visible chip before the time (the owner bubble's 「已答 ↗」). */
+    status?: ReactNode;
     children?: ReactNode;
 }) {
     if (useReadOnlyTranscript()) return <>{children}</>;
-    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} send={send}>{children}</EditableMessageActions>;
+    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} send={send} status={status}>{children}</EditableMessageActions>;
 }
 
-function EditableMessageActions({ text, sessionId, userMessage, createdAt, send, children }: {
-    text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; send: TurnSendStatus | null; children?: ReactNode;
+function EditableMessageActions({ text, sessionId, userMessage, createdAt, send, status, children }: {
+    text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; send: TurnSendStatus | null; status?: ReactNode; children?: ReactNode;
 }) {
     const { t, lang } = useTranslation();
     const copy = messageActionsCopy(lang);
@@ -188,6 +190,7 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, send,
                         {send?.state === 'sending' && <SendingIndicator localId={userMessage?.localId ?? send.localId} />}
                         {!send && userMessage && <SentFlash localId={userMessage.localId} />}
                         {!send && userMessage && <DeliverOnResumeHint sessionId={sessionId} messageId={userMessage.id} />}
+                        {!send && status}
                         <MessageTime createdAt={createdAt} />
                     </>}
             </div>}
