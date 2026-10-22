@@ -89,4 +89,19 @@ describe('B-701 share-link viewer helpers', () => {
         const html = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
         for (const rel of ['icon', 'apple-touch-icon']) expect(html).toMatch(new RegExp(`<link rel="${rel}"[^>]*href="/[^/]`));
     });
+
+    // B-758: `.cl-scroll` contains its overscroll; in a content-tall shell it never overflows, and real
+    // Chrome latched wheel/touch onto it with nowhere to go (document scrollTop stayed 0). The shell must be
+    // viewport-tall so `.cl-scroll` is the scroller (measured: wheel → .cl-scroll 4200, scrollbar 10px).
+    it('the page is a viewport-tall shell and the transcript is the scroller', () => {
+        const css = readFileSync(new URL('./sharedLink.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+        const shell = css.match(/\.slk \{([^}]*)\}/)?.[1] ?? '';
+        expect(shell).toMatch(/(^|[\s;])height: var\(--app-h\)/);
+        expect(shell).not.toMatch(/min-height/);
+        expect(css).toMatch(/\.slk-chat \{[^}]*flex: 1;[^}]*min-height: 0/);
+        const chat = readFileSync(new URL('../session/chatlist.css', import.meta.url), 'utf8');
+        expect(chat).toMatch(/\.cl-scroll \{[^}]*min-height: 0;[^}]*overflow-y: auto/);
+        const screen = readFileSync(new URL('./SharedLinkScreen.tsx', import.meta.url), 'utf8');
+        expect(screen).toMatch(/<main className="cl slk-chat">\s*<div className="cl-scroll">/);
+    });
 });
