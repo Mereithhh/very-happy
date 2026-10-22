@@ -27,4 +27,11 @@ describe('Sidebar wiring (B-721 / B-762)', () => {
     expect(src).not.toContain('tag-lens:projects');
     expect(src).toContain('projectAttention: projectBadgeTotal');
   });
+  it('B-762 review: the title outranks the owner chip — ≥ 8em kept, chip ≤ 40% with a real ellipsis on its name', () => {
+    const css = readFileSync(new URL('./sidebar.css', import.meta.url), 'utf8');
+    expect(css).toContain('.sb-row-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }');
+    expect(css).toContain('.sb-row-title-line .sb-row-title:has(~ .sb-row-project) { flex: 1 1 auto; min-width: min(8em, 60%); }');
+    expect(css).toMatch(/\.sb-row-project \{[^}]*max-width: 40%;/);
+    expect(src).toContain('<span className="sb-row-project-name">{ownerChip.name}</span>');
+  });
 });

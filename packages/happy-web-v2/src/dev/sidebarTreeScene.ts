@@ -64,6 +64,8 @@ export function sidebarTreeScene(kind: SceneKind, now = Date.now()): {
     fakeSession('copy', '首页文案 A/B', now, { thinking: true, tags: ['web'], agoMin: 5 }),
     fakeSession('pricing', '定价页对比表', now, { tags: ['web'], agoMin: 60 }),
     fakeSession('metrics', '周报指标口径', now, { tags: ['docs'], agoMin: 90 }),
+    // B-762 review: a long title in a long-named project — the list chip must not eat the title.
+    fakeSession('ledger', '排查对账任务在月末批量重跑时的超时与重复入账', now, { agoMin: 120 }),
     fakeSession('scout-lead', '比较三家供应商', now, { agoMin: 6 }),
     fakeSession('scout-1', '整理报价', now, { agoMin: 70 }),
     ...loose,
@@ -86,8 +88,9 @@ export function sidebarTreeScene(kind: SceneKind, now = Date.now()): {
     project('pj-web', '官网改版', now, ['t-web']),
     project('pj-data', '数据看板', now),
     project('pj-mobile', '移动端试验', now),
+    project('pj-ledger', '跨境结算与多币种对账平台迁移', now),
   ];
   const member = (projectId: string, sessionId: string): ProjectMemberView => ({ projectId, sessionId, via: 'explicit', machineId: null, createdAt: now }) as ProjectMemberView;
-  const members = [member('pj-atlas', 'timeout'), member('pj-atlas', 'migrate'), member('pj-web', 'copy'), member('pj-web', 'pricing'), member('pj-data', 'metrics')];
+  const members = [member('pj-atlas', 'timeout'), member('pj-atlas', 'migrate'), member('pj-web', 'copy'), member('pj-web', 'pricing'), member('pj-data', 'metrics'), member('pj-ledger', 'ledger')];
   return { sessions, teams, projects, members, unread: ['timeout', 'scout-lead'] };
 }

@@ -968,11 +968,15 @@
    (shrink 4:1) and never below its icon. */
 .sb-row-project {
   margin-left: auto;
-  flex: 0 4 auto; min-width: 22px; max-width: 96px;
+  flex: 0 1 auto; min-width: 22px; max-width: 40%;
   display: inline-flex; align-items: center; gap: 3px;
   padding: 0 5px; border-radius: 4px;
   font-size: var(--fs-11); line-height: 1.5;
   color: var(--text-faint); background: var(--fill-soft);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden;
 }
 .sb-row-project > svg { flex: none; }
+/* B-762 review: the name (not the flex box) carries the ellipsis — a flex container never shows one. */
+.sb-row-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* B-762 review: the title comes first — it keeps about 8 CJK characters before an owner chip may shrink it. */
+.sb-row-title-line .sb-row-title:has(~ .sb-row-project) { flex: 1 1 auto; min-width: min(8em, 60%); }

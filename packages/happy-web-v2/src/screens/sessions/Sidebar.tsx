@@ -2154,7 +2154,7 @@ function SidebarRow({
             {/* B-756/B-762: the one owner chip — team or project (tag / recent / status views). */}
             {ownerChip && (
               <span className="sb-row-project" title={ownerChip.name}>
-                {ownerChip.kind === 'team' ? <UsersRound size={10} aria-hidden /> : <FolderKanban size={10} aria-hidden />}{ownerChip.name}
+                {ownerChip.kind === 'team' ? <UsersRound size={10} aria-hidden /> : <FolderKanban size={10} aria-hidden />}<span className="sb-row-project-name">{ownerChip.name}</span>
               </span>
             )}
             {automationAttention && (

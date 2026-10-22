@@ -188,6 +188,15 @@ describe('按标签 / 最近: conversation lists', () => {
     }
   });
 
+  it('review: a long project name never eats the title — the name sits in its own ellipsis span, the chip’s title is the full name', async () => {
+    const el = await mount('atlas', 'none', '/');
+    const row = [...list(el).querySelectorAll<HTMLElement>('.sb-row')].find((r) => r.querySelector('.sb-row-title')?.textContent === '排查对账任务在月末批量重跑时的超时与重复入账')!;
+    const chip = row.querySelector<HTMLElement>('.sb-row-project')!;
+    expect(chip.getAttribute('title')).toBe('跨境结算与多币种对账平台迁移');
+    expect(chip.querySelector('.sb-row-project-name')!.textContent).toBe('跨境结算与多币种对账平台迁移');
+    // Layout (title ≥ 8em, chip ≤ 40%, real ellipsis): CSS pinned in sidebarTeamRowWiring.test.ts, measured in Chromium by tmp/vh-team-B-762/assert-chips.mjs.
+  });
+
   it('最近 (formerly 不分组): one flat list, the lens button says 最近', async () => {
     const el = await mount('atlas', 'none', '/');
     expect(list(el).querySelector('.sb-section-head')).toBeNull();
