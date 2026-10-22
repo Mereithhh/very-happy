@@ -16,7 +16,7 @@ describe('lead view wiring', () => {
     it('folds only a lead session, and only in 「只看我和负责人」', () => {
         const chat = read('./ChatList.tsx');
         expect(chat).toContain('return membership?.bot.root ? membership.team : undefined;');
-        expect(chat).toContain("(leadTeam && leadView === 'owner'\n            ? leadViewEntries(rows, turnOpenerIds(shownChronological), origin, (row) => row.type === 'message' && pointed.has(row.message.id))\n            : null)");
+        expect(chat).toContain("(leadTeam && leadView === 'owner'\n            ? leadViewEntries(rows, turnOpenerIds(shownChronological), origin, (row) => rowMessageIds(row).some((id) => anchors.has(id)))\n            : null)");
         // Follow / unseen badge read the keys on screen.
         expect(chat).toContain('(entries ? leadViewKeys(entries, openFolds) : rows.map((row) => row.key))');
     });

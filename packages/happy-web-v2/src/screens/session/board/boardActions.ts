@@ -15,7 +15,7 @@ import { loadAttentionItems, useAttentionStore } from '@/sync/attentionStore';
 import { toast } from '@/ui/Toast';
 import { quoteMessage } from '../messageQuote';
 import type { BoardCopy } from './boardCopy';
-import { followUpQuote } from './boardModel';
+import { choiceLabel, followUpQuote } from './boardModel';
 
 function nonce(): string {
     return Math.random().toString(36).slice(2, 10);
@@ -23,8 +23,7 @@ function nonce(): string {
 
 /** The chat line a board choice sends: 「［汇报板 · 决定］<标题> → B. <label>」. */
 export function choiceMessage(item: AttentionItem, optionId: string, copy: BoardCopy): string {
-    const option = item.options?.find((o) => o.id === optionId);
-    return `${copy.choicePrefix}${item.title} → ${optionId}${option ? `. ${option.label}` : ''}`;
+    return `${copy.choicePrefix}${item.title} → ${choiceLabel(item, optionId)}`;
 }
 
 function optimistic(item: AttentionItem, patch: Partial<AttentionItem>): void {

@@ -4,7 +4,7 @@ import { forwardRef } from 'react';
 import { CornerDownLeft, CornerUpRight } from 'lucide-react';
 import type { AttentionItem } from '@slopus/happy-wire';
 import { kindLabel, type BoardCopy } from './boardCopy';
-import { isLive, itemStatus, kindTone, repliesTo, resolveAction } from './boardModel';
+import { choiceLabel, displayTitle, isLive, itemStatus, kindTone, optionMarker, repliesTo, resolveAction, recommendationTag } from './boardModel';
 import { useMessage } from '@/sync/storage';
 import { Markdown } from '../Markdown';
 
@@ -39,7 +39,7 @@ export const BoardCard = forwardRef<HTMLDivElement, {
     const firstMsg = useMessage(item.sessionId, item.firstReply?.messageId ?? '');
     const firstText = item.firstReply?.snippet ?? (firstMsg?.kind === 'agent-text' ? firstMsg.text : undefined);
     const firstAt = firstMsg?.createdAt;
-    const statusLabel = status ? (status.key === 'decided' && status.choice ? copy.decided(status.choice) : copy.status[status.key]) : null;
+    const statusLabel = status ? (status.key === 'decided' && status.choice ? copy.decided(choiceLabel(item, status.choice)) : copy.status[status.key]) : null;
     return (
         <div ref={ref} className={`brf-card${expanded ? ' is-open' : ''}${selected ? ' is-selected' : ''}${status?.tone === 'done' ? ' is-done' : ''}`}
             data-item-id={item.id}>
@@ -47,7 +47,7 @@ export const BoardCard = forwardRef<HTMLDivElement, {
             <button type="button" className="brf-card-head" aria-expanded={expanded} aria-controls={bodyId} onClick={() => actions.onToggle(item)}>
                 <span className="brf-r1">
                     <span className={`brf-kind brf-kind--${kindTone(item.kind)}`}>{kindLabel(copy, item.kind)}</span>
-                    <span className="brf-title">{item.title}</span>
+                    <span className="brf-title" title={item.title}>{displayTitle(item.title)}</span>
                     {statusLabel && <span className={`brf-status brf-status--${status!.tone}`}>{statusLabel}</span>}
                 </span>
                 <span className="brf-r2">
@@ -67,12 +67,12 @@ export const BoardCard = forwardRef<HTMLDivElement, {
                                 <button key={o.id} type="button" className={`brf-opt${item.ownerChoice === o.id ? ' is-chosen' : ''}`}
                                     aria-pressed={item.ownerChoice === o.id} disabled={item.state !== 'open' && item.state !== 'in_progress'}
                                     onClick={() => actions.onChoose(item, o.id)}>
-                                    <b className="brf-opt-id">{o.id}</b>
+                                    {optionMarker(o) && <b className="brf-opt-id">{optionMarker(o)}</b>}
                                     <span className="brf-opt-text">
                                         <span>{o.label}</span>
                                         {o.detail && <span className="brf-opt-detail">{o.detail}</span>}
                                     </span>
-                                    {o.recommended && <span className="brf-opt-rec">{copy.recommended}</span>}
+                                    {recommendationTag(item, o) && <span className="brf-opt-rec">{recommendationTag(item, o) === 'lead' ? copy.recommended : copy.recommendedPlain}</span>}
                                 </button>
                             ))}
                         </div>

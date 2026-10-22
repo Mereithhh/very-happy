@@ -63,4 +63,34 @@ describe('HumanAttentionBanner (B-766 W-2)', () => {
         await act(async () => useAttentionStore.getState().apply(item({ state: 'resolved', version: 2 })));
         expect(strip()).toBeNull();
     });
+
+    // QA5 F3: after a reload the session renders before any item has arrived —
+    // first the account-wide needs-owner load (apply), then the session's list.
+    it('session first, items later: the strip appears when the blocked item lands, in either load order', async () => {
+        await render();
+        expect(strip()).toBeNull();
+        await act(async () => useAttentionStore.getState().apply(item({})));
+        expect(strip()).toContain('Scan the QR code');
+        await act(async () => useAttentionStore.getState().setItems('s', [item({}), item({ id: 'r1', kind: 'report', source: 'lead', title: 'done' })]));
+        expect(strip()).toContain('Scan the QR code');
+    });
+
+    it('the session list may land first and the needs-owner load after it — still shown, never doubled', async () => {
+        await render();
+        await act(async () => useAttentionStore.getState().setItems('s', [item({ id: 'r1', kind: 'report', source: 'lead', title: 'done' })]));
+        expect(strip()).toBeNull();
+        await act(async () => useAttentionStore.getState().apply(item({})));
+        expect(document.querySelectorAll('[data-testid=human-attention-banner]')).toHaveLength(1);
+        expect(strip()).toContain('Scan the QR code');
+    });
+
+    it('「知道了」 hides it for this view only; a reload (fresh mount) shows the still-open item again', async () => {
+        useAttentionStore.getState().setItems('s', [item({})]);
+        await render();
+        await act(async () => (document.querySelector('.mrb-dismiss') as HTMLButtonElement).click());
+        expect(strip()).toBeNull();
+        await act(async () => root!.unmount());
+        await render();
+        expect(strip()).toContain('Scan the QR code');
+    });
 });

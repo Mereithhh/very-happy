@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TEAM_MEMBER_IDLE_MS, teamBotActivity, teamMemberCounts } from './teamActivity';
+import { TEAM_MEMBER_IDLE_MS, teamBotActivity, teamCleanupHoldsSession, teamCleanupIssues, teamMemberCounts } from './teamActivity';
 import type { TeamBot, TeamOperation, TeamState, TeamTask } from './teams';
 
 const NOW = 10 * TEAM_MEMBER_IDLE_MS;
@@ -42,5 +42,26 @@ describe('B-692 team member activity', () => {
     it('counts members without the inactive ones', () => {
         const state = { bots: [bot({ id: 'lead', root: true }), bot({ id: 'b' }), bot({ id: 'c' }), bot({ id: 'd', sessionId: 's', lastEventAt: NOW })], tasks: [task('running')], operations: [] } as Pick<TeamState, 'bots' | 'tasks' | 'operations'>;
         expect(teamMemberCounts(state, at)).toEqual({ active: 2, stopping: 0, idle: 1, inactive: 1 });
+    });
+});
+
+describe('B-775 member cleanup that waits for the owner', () => {
+    const bound = bot({ sessionId: 'old' });
+    const queued = { ...task('queued'), id: 'next' };
+    it('holds the member only while its session is still bound', () => {
+        const failed = op('stop', 'failed', { sessionId: 'old', error: 'Unmerged work retained' });
+        expect(teamCleanupHoldsSession({ bots: [bound], operations: [failed] }, 'b')?.id).toBe(failed.id);
+        expect(teamCleanupHoldsSession({ bots: [bound], operations: [op('stop', 'claimed', { sessionId: 'old' })] }, 'b')).toBeDefined();
+        expect(teamCleanupHoldsSession({ bots: [bot({ sessionId: null })], operations: [failed] }, 'b')).toBeUndefined();
+        expect(teamCleanupHoldsSession({ bots: [bot({ sessionId: 'new' })], operations: [failed] }, 'b')).toBeUndefined();
+        expect(teamCleanupHoldsSession({ bots: [bound], operations: [op('stop', 'completed', { sessionId: 'old' })] }, 'b')).toBeUndefined();
+        expect(teamCleanupHoldsSession({ bots: [bound], operations: [op('spawn', 'failed', { sessionId: 'old' })] }, 'b')).toBeUndefined();
+    });
+    it('lists failed / unknown cleanups with what they hold up', () => {
+        const failed = op('stop', 'failed', { sessionId: 'old', error: 'Unmerged work retained' });
+        expect(teamCleanupIssues({ bots: [bound], tasks: [task('done'), queued], operations: [failed] })).toEqual([{ botId: 'b', name: 'Dev', operationId: failed.id, taskId: 't', error: 'Unmerged work retained', holdsSession: true, waitingTaskIds: ['next'] }]);
+        expect(teamCleanupIssues({ bots: [bot()], tasks: [queued], operations: [failed] })).toEqual([expect.objectContaining({ holdsSession: false, waitingTaskIds: [] })]);
+        expect(teamCleanupIssues({ bots: [bound], tasks: [], operations: [op('stop', 'unknown', { sessionId: 'old' })] })).toHaveLength(1);
+        expect(teamCleanupIssues({ bots: [bound], tasks: [], operations: [op('stop', 'claimed', { sessionId: 'old' }), op('stop', 'completed', { sessionId: 'old' })] })).toEqual([]);
     });
 });

@@ -4,13 +4,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { TeamOperation, TeamState } from '@slopus/happy-wire';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), send: vi.fn(), key: vi.fn(), persisted: vi.fn(), prepare: vi.fn(), resolve: vi.fn(), remove: vi.fn(), archive: vi.fn() }));
-vi.mock('axios', () => ({ default: { create: () => ({ get: mocks.get, post: mocks.post }), isAxiosError: () => false } }));
+vi.mock('axios', () => ({ default: { create: () => ({ get: mocks.get, post: mocks.post }), isAxiosError: (error: unknown) => !!(error as { isAxiosError?: boolean } | null)?.isAxiosError } }));
 vi.mock('@/configuration', () => ({ configuration: { happyHomeDir: '', serverUrl: '' } }));
 vi.mock('@/persistence', () => ({ readPersistedSessions: mocks.persisted }));
 vi.mock('@/commands/sessionMessage', () => ({ sendUserMessage: mocks.send, waitForSessionKey: mocks.key }));
 vi.mock('@/sessions/sessionOps', () => ({ archiveSession: mocks.archive }));
 vi.mock('./worktree', () => ({ prepareTeamWorktree: mocks.prepare, resolveTeamRepository: mocks.resolve, removeTeamWorktree: mocks.remove }));
-import { createTeamWorker } from './worker';
+import { createTeamWorker, refusalCode } from './worker';
 import { readReceipt, writeReceipt } from './journal';
 
 let home: string;
@@ -19,8 +19,9 @@ const op = (): TeamOperation => ({ id: 'op1', teamId: 'team1', machineId: 'machi
 const team = (operations: TeamOperation[]): TeamState => ({ id: 'team1', name: 'Team', machineId: 'machine1', version: 1, bots: [{ id: 'bot1', name: 'Worker', sessionId: 'session1', generation: 1, root: false, managed: true, assistant: 'codex', directory: '/repo' }], tasks: [{ id: 'task1', parentTaskId: null, goal: 'g', acceptance: ['a'], goalVersion: 1, ownerBotId: null, assigneeBotId: 'bot1', status: 'queued', attempts: [], currentAttemptId: 'attempt1', cleanup: 'none' }], messages: [], operations, createdAt: 1 });
 const spawn = vi.fn();
 const stopAndWait = vi.fn();
+const logged: string[] = [];
 function start(live: () => boolean = () => false) {
-    const worker = createTeamWorker({ home, serverUrl: 'http://127.0.0.1:1', machineId: 'machine1', token: 'test', spawn, stopAndWait, live, log: () => {} });
+    const worker = createTeamWorker({ home, serverUrl: 'http://127.0.0.1:1', machineId: 'machine1', token: 'test', spawn, stopAndWait, live, log: message => { logged.push(message); } });
     workers.push(worker);
     return worker;
 }
@@ -35,6 +36,7 @@ function setup(operation: TeamOperation) {
 }
 beforeEach(() => {
     vi.clearAllMocks();
+    logged.length = 0;
     const root = join(homedir(), 'code/github/skills/tmp/agent-teams-implementation/tests');
     mkdirSync(root, { recursive: true });
     home = mkdtempSync(join(root, 'worker-'));
@@ -285,6 +287,66 @@ describe('daemon team effect recovery', () => {
         expect(mocks.post.mock.calls.some(c => c[1].action?.type === 'complete-operation')).toBe(false);
         expect(mocks.post.mock.calls.some(c => c[1].action?.type === 'fail-operation')).toBe(true);
     });
+    // B-775 (Dev-N1/M1, QA5 O4): a task delegated while the cleanup ran bumps the member's generation.
+    // Requiring the old generation failed every retry with "binding changed" and the queued launch was never claimable.
+    it('B-775: cleans the op\'s own session after a queued launch bumped the member generation', async () => {
+        const spawnOperation = { ...op(), status: 'completed' as const, sessionId: 'session1' };
+        const cleanup = { ...op(), id: 'stop1', type: 'stop' as const, sessionId: 'session1' };
+        const state = team([spawnOperation, cleanup]);
+        state.bots[0].generation = 2; // delegate → queued launch behind this cleanup
+        setup(cleanup);
+        mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [cleanup], teams: [state] } : { team: state } }));
+        writeReceipt(home, { operationId: 'op1', teamId: 'team1', claimId: 'claim0', phase: 'completed', directory: '/isolated', repository: '/repo', branch: 'codex/team-op1' });
+        const worker = start(); await settled(worker);
+        expect(stopAndWait).toHaveBeenCalledWith('session1');
+        expect(mocks.remove).toHaveBeenCalledWith(expect.objectContaining({ directory: '/isolated' }));
+        expect(readReceipt(home, 'stop1')?.phase).toBe('completed');
+    });
+    it('B-775: a cleanup that stopped the wrapper but kept the worktree reports sessionStopped', async () => {
+        const spawnOperation = { ...op(), status: 'completed' as const, sessionId: 'session1' };
+        const cleanup = { ...op(), id: 'stop1', type: 'stop' as const, sessionId: 'session1' };
+        const state = team([spawnOperation, cleanup]);
+        setup(cleanup);
+        mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [cleanup], teams: [state] } : { team: state } }));
+        writeReceipt(home, { operationId: 'op1', teamId: 'team1', claimId: 'claim0', phase: 'completed', directory: '/isolated', repository: '/repo', branch: 'codex/team-op1' });
+        mocks.remove.mockRejectedValue(new Error('Unmerged work retained'));
+        const worker = start(); await settled(worker);
+        const failure = mocks.post.mock.calls.find(c => c[1].action?.type === 'fail-operation')!;
+        expect(failure[1].action).toMatchObject({ error: 'Unmerged work retained', sessionStopped: true });
+        // A new request id: an old daemon may already have reported the same reason without the flag.
+        expect(failure[1].requestId).toMatch(/^failure-stop1-prepared-[0-9a-f]{12}-stopped$/);
+    });
+    it('B-775: no sessionStopped when the wrapper was not stopped, and never stops a session moved to another team', async () => {
+        const cleanup = { ...op(), id: 'stop1', type: 'stop' as const, sessionId: 'session1' };
+        setup(cleanup);
+        stopAndWait.mockRejectedValueOnce(new Error('Orphan wrapper still running'));
+        let worker = start(); await settled(worker);
+        let failure = mocks.post.mock.calls.find(c => c[1].action?.type === 'fail-operation')!;
+        expect(failure[1].action.sessionStopped).toBeUndefined();
+        worker.stop(); vi.clearAllMocks(); rmSync(join(home, 'teams'), { recursive: true, force: true });
+        const state = team([cleanup]);
+        state.bots[0] = { ...state.bots[0], sessionId: null, generation: 2, transferredTo: { teamId: 'other', sessionId: 'session1', at: 1 } };
+        setup(cleanup);
+        mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [cleanup], teams: [state] } : { team: state } }));
+        worker = start(); await settled(worker);
+        expect(stopAndWait).not.toHaveBeenCalled();
+        failure = mocks.post.mock.calls.find(c => c[1].action?.type === 'fail-operation')!;
+        expect(failure[1].action).toMatchObject({ error: expect.stringContaining('Worker binding changed') });
+        expect(failure[1].action.sessionStopped).toBeUndefined();
+    });
+    it('B-775: logs why a launch stays pending (server code only)', async () => {
+        const operation = op();
+        setup(operation);
+        const original = mocks.post.getMockImplementation()!;
+        mocks.post.mockImplementation(async (path: string, request: { action: { type: string } }) => {
+            if (request.action?.type === 'claim-operation') throw Object.assign(new Error('Request failed with status code 409'), { isAxiosError: true, response: { status: 409, data: { error: 'bot_cleanup_pending', secret: 'x' } } });
+            return original(path, request);
+        });
+        const worker = start(); await settled(worker);
+        expect(logged).toContain('Teams operation op1 remains pending (bot_cleanup_pending)');
+        expect(refusalCode(Object.assign(new Error('x'), { isAxiosError: true, response: { data: { error: 'Bearer abc.def' } } }))).toBe('');
+        expect(refusalCode(new Error('plain'))).toBe('');
+    });
     // B-691: retained cleanups were re-run every 5 s (≈2000 stop/archive/git passes each).
     it('re-checks a retained cleanup after 5 minutes, or at once on the owner retry', async () => {
         let now = 5_000_000;
@@ -302,7 +364,7 @@ describe('daemon team effect recovery', () => {
             expect(readReceipt(home, 'stop1')?.retryAt).toBe(now + 300_000);
             const failure = mocks.post.mock.calls.find(c => c[1].action?.type === 'fail-operation')!;
             expect(failure[1].action.error).toContain('push or merge, then retry cleanup');
-            expect(failure[1].requestId).toMatch(/^failure-stop1-prepared-[0-9a-f]{12}$/);
+            expect(failure[1].requestId).toMatch(/^failure-stop1-prepared-[0-9a-f]{12}-stopped$/); // B-775: the wrapper was stopped
             now += 60_000; await worker.tick();
             expect(mocks.remove).toHaveBeenCalledTimes(1);
             expect(mocks.archive).toHaveBeenCalledTimes(1); // no stop/archive churn while waiting

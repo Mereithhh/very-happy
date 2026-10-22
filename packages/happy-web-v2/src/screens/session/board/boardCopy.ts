@@ -25,6 +25,8 @@ export interface BoardCopy {
     lead: string;
     merged: (n: number) => string;
     recommended: string;
+    /** A recommendation not set by the lead (system / automation item). */
+    recommendedPlain: string;
     firstReply: string;
     autoAttached: string;
     formalAnswer: string;
@@ -64,6 +66,7 @@ const ZH: BoardCopy = {
     lead: '负责人',
     merged: (n) => `已合并 ${n} 次重复提醒`,
     recommended: '负责人推荐',
+    recommendedPlain: '推荐',
     firstReply: '首次回复',
     autoAttached: '自动挂回',
     formalAnswer: '正式回答',
@@ -103,6 +106,7 @@ const EN: BoardCopy = {
     lead: 'Lead',
     merged: (n) => `${n} repeat reminders merged`,
     recommended: 'Lead recommends',
+    recommendedPlain: 'Recommended',
     firstReply: 'First reply',
     autoAttached: 'attached automatically',
     formalAnswer: 'Answer',
