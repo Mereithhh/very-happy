@@ -173,6 +173,14 @@ describe('lead board (B-766 C-1)', () => {
         await viaBoard.onTurnEnd();
         expect(used.calls.filter(c => c.op === 'post')).toHaveLength(1);
 
+        // An unreadable settings file keeps the default (on).
+        const unreadable = fakeServer();
+        const brokenSettings = createLeadBoard({ sessionId: () => 's1', client: unreadable.client, isLead: async () => true, autoDetect: async () => { throw new Error('EACCES'); } });
+        brokenSettings.onTurnStart(['t4']);
+        brokenSettings.onAssistantText(ask);
+        await brokenSettings.onTurnEnd();
+        expect(unreadable.calls.filter(c => c.op === 'post')).toHaveLength(1);
+
         const off = fakeServer();
         const switchedOff = board(off, { autoDetect: false }).b;
         switchedOff.onTurnStart(['t3']);
