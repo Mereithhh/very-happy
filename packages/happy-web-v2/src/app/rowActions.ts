@@ -24,7 +24,11 @@ import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { Session } from '@/sync/storageTypes';
-import { pickNextSessionId } from './nextSession';
+import { nextPathAfterClose } from './nextSession';
+import { sessionPlacementResolver } from './sessionPlacement';
+import { projectsSnapshot } from '@/sync/projects';
+import { teamNavigationSnapshot } from '@/screens/sessions/useTeamNavigation';
+import { projectPath } from '@/screens/projects/projectMenu';
 import { commitSessionArchive } from './sessionArchiveFlow';
 import { restoreSession, useSessionRestore } from './sessionRestore';
 import { archiveCommitKey, deferredCommits, installDeferredCommitFlush, isPageExitFlush, isUnloadFlush, type FlushReason } from './deferredCommit';
@@ -38,13 +42,21 @@ export const UNDO_WINDOW_MS = 6_000;
 const UNDO_HOLD_MS = UNDO_WINDOW_MS + 5_000;
 
 /** B-111: route to land on after closing `closedId` — the most recently
- *  active other visible session, or '/' when none is left. Read the store at
- *  CALL time (after the archive flipped local state is fine — the candidate
- *  set excludes the closed id explicitly). */
+ *  active other visible session in the same place (B-774: its team page for a
+ *  team conversation, the same project, or the no-project pool), else that
+ *  project's page or '/'. Read the stores at CALL time (after the archive
+ *  flipped local state is fine — the candidate set excludes the closed id
+ *  explicitly). */
 export function nextSessionPathAfterClose(closedId: string): string {
   const all = Object.values(storage.getState().sessions ?? {}) as Session[];
-  const next = pickNextSessionId(all, closedId);
-  return next ? `/session/${next}` : '/';
+  const projects = projectsSnapshot();
+  const teams = teamNavigationSnapshot();
+  const placementOf = projects.status === 'ready' ? sessionPlacementResolver(projects.projects, projects.members, teams) : null;
+  return nextPathAfterClose(all, closedId, {
+    placementOf,
+    teamHref: (teamId) => `/teams/${encodeURIComponent(teamId)}`,
+    projectHref: projectPath,
+  });
 }
 
 /** The server-owned archive transition (no confirm). The server commits the

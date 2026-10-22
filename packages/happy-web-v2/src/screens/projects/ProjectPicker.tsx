@@ -36,6 +36,9 @@ export function ProjectPicker({ id, value, onChange, projects, newName, noneLabe
   ];
   const selected = value.kind === 'existing' ? value.projectId : value.kind === 'none' ? NONE : NEW;
   const newLabel = pickerLabel({ kind: 'new' }, live, { zh, newName, none });
+  // B-774 (QA5 O2): a long name (「新建同名项目「…」」 carries the whole team
+  // goal) stays one ellipsized line inside the box; the full text is the title.
+  const current = options.find((o) => o.value === selected)?.label ?? (selected === NEW ? newLabel : pickerLabel(value, live, { zh, newName, none }));
   return (
     <Combobox
       id={id}
@@ -45,7 +48,8 @@ export function ProjectPicker({ id, value, onChange, projects, newName, noneLabe
       disabled={disabled}
       size="md"
       className="vh-project-picker"
-      renderValue={(option) => option?.label ?? (selected === NEW ? newLabel : pickerLabel(value, live, { zh, newName, none }))}
+      title={current}
+      renderValue={() => <span className="vh-select-value">{current}</span>}
       onChange={(v) => onChange(v === NONE ? { kind: 'none' } : { kind: 'existing', projectId: v })}
       actions={newName !== undefined ? [{ key: 'new-project', label: newLabel, icon: Plus, onSelect: () => onChange({ kind: 'new' }) }] : undefined}
     />

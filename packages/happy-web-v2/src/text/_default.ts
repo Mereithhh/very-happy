@@ -2700,7 +2700,7 @@ export const en = {
                 trailAlt: 'A member session header reading project › team › member · task',
                 moveTeamTitle: 'Move a team to another project',
                 moveTeamBody: 'The team row menu and the team page’s ⋯ menu have Move to another project… (Put in a project… for a team without one).',
-                moveTeamAlt: 'The Change project dialog for a team, with the project picker',
+                moveTeamAlt: 'The Move to another project dialog for a team, with the project picker',
                 lensesTitle: 'Tags and Recent list conversations',
                 lensesBody: 'The Tags and Recent views list only conversations; each row carries a chip for its team or project that always keeps a few characters.',
                 lensesAlt: 'The Recent view: conversations with team and project chips and tags',

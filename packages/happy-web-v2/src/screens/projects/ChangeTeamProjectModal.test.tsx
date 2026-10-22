@@ -15,6 +15,7 @@ vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ lang: 'en', t
 
 const { setProjectsDevOverride } = await import('@/sync/projects');
 const { ChangeTeamProjectModal } = await import('./ChangeTeamProjectModal');
+const { teamProjectMenu } = await import('./projectChoice');
 
 const project = (id: string, extra: Partial<ProjectView> = {}): ProjectView => ({ id, name: `Project ${id}`, goal: null, instructions: '', instructionsVersion: 0, instructionsUpdatedBy: null, instructionsUpdatedAt: null, folders: [], defaults: {}, archivedAt: null, createdAt: 1, updatedAt: 1, teamIds: [], automationIds: [], ...extra });
 const team = { id: 't', name: 'Demo team' } as Pick<TeamState, 'id' | 'name'>;
@@ -52,6 +53,18 @@ describe('ChangeTeamProjectModal (B-763)', () => {
     expect(document.querySelector('[role="dialog"]')!.textContent).toContain('Demo team');
     expect(document.querySelector('#ctp-project')!.textContent).toContain('Project a');
     expect(applyButton().disabled).toBe(true);
+  });
+
+  it('is titled like the menu entry that opened it (B-774, QA5 O3)', async () => {
+    await render([project('a', { teamIds: ['t'] })]);
+    expect(document.querySelector('#ctp-dialog-title')!.textContent).toBe('Move to another project');
+    expect(teamProjectMenu({ id: 't', archivedAt: undefined } as never, { status: 'ready', projects: [project('a', { teamIds: ['t'] })] }, { zh: false })).toBe('Move to another project…');
+    await act(async () => root!.unmount());
+    root = null;
+    document.body.innerHTML = '';
+    await render([project('a')]);
+    expect(document.querySelector('#ctp-dialog-title')!.textContent).toBe('Put in a project');
+    expect(teamProjectMenu({ id: 't', archivedAt: undefined } as never, { status: 'ready', projects: [project('a')] }, { zh: false })).toBe('Put in a project…');
   });
 
   it('moving to another project binds it and closes', async () => {
