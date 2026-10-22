@@ -10,6 +10,10 @@ import { pendingIntentKey, readPendingIntent, retainPendingIntent, clearPendingI
 import { useAllMachines, useSetting, useProfile } from '@/sync/storage';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { FsBrowser } from '@/screens/files/FsBrowser';
+import { Checkbox } from '@/ui';
+import { machineFsMkdir } from '@/sync/fsOps';
+import { defaultNewFolder, folderProblem, newFolderBlocker } from '@/screens/projects/projectFolderDraft';
+import { folderPickerCopy } from '@/screens/projects/ProjectFolderPicker';
 import { useFirstUseCopy } from './firstUseCopy';
 import { decideQuickChat } from '@/utils/quickChat';
 import { recordRecentMachinePath } from '@/app/newChat';
@@ -59,6 +63,9 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
   const [machineId, setMachine] = useState(fixedMachine ?? machines.find(m => isMachineOnline(m) && supportsTeamLaunch(m))?.id ?? machines[0]?.id ?? '');
   const [directory, setDirectory] = useState('');
   const [picking, setPicking] = useState(false);
+  // B-755: 「新建工作目录」 — the daemon creates the folder (home-only) before the team starts there.
+  const [newFolder, setNewFolder] = useState(false);
+  const [gitInit, setGitInit] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const projectsSnap = useProjects();
@@ -91,22 +98,36 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
   }, [machineId, machines, fixedMachine]);
   const machine = machines.find(m => m.id === machineId);
   const ready = !!machine && isMachineOnline(machine) && supportsTeamLaunch(machine);
-  const blocker = startBlocker({ ready, goal, directory });
+  const folderCopy = { ...folderPickerCopy(zh), existsTeam: zh ? '这个目录已经存在：取消勾选「新建工作目录」即可直接使用它。' : 'That folder already exists — untick “New working folder” to use it as is.', mkdirFailed: zh ? '新建目录失败' : 'Could not create the folder' };
+  const newFolderBlocked = !!newFolderBlocker(machine, !!machine && isMachineOnline(machine));
+  const folderProblemOf = (asNew: boolean) => folderProblem({ machineId, mode: asNew ? 'new' : 'existing', path: directory, gitInit }, machine, !!machine && isMachineOnline(machine));
+  const newProblem = newFolder ? folderProblemOf(true) : null;
+  const blocker = newProblem ? 'directory' : startBlocker({ ready, goal, directory });
   const blockerText = blocker === 'goal' ? c.needGoal : blocker === 'directory' ? c.needDirectory : null;
   const showMissing = () => {
     if (blocker === 'directory') { setConfigOpen(true); requestAnimationFrame(() => directoryRef.current?.focus()); }
     else if (blocker === 'goal') goalRef.current?.focus();
   };
   return <form className="team-start-form" onSubmit={async event => {
-    event.preventDefault(); if (busy || !ready) return;
+    event.preventDefault(); if (busy || !ready || newProblem) return;
     if (!restored || !key) return;
     const path = directory.trim();
     const home = machine?.metadata?.homeDir;
     const resolvedPath = home && (path === '~' || path.startsWith('~/')) ? home.replace(/\/$/, '') + path.slice(1) : path;
-    const launch: TeamLaunchInput = { goal: goal.trim(), directory: resolvedPath, assistant, ...(model.trim() ? { model: model.trim() } : {}) };
-    const title = name.trim() || launch.goal.split('\n')[0].slice(0, 128);
-    if (!launch.goal || !launch.directory || !title) return;
+    const title = name.trim() || goal.trim().split('\n')[0].slice(0, 128);
+    if (!goal.trim() || !path || !title) return;
     setBusy(true); setError('');
+    let launchDirectory = resolvedPath;
+    if (newFolder) {
+      const made = await machineFsMkdir(machineId, path, { gitInit });
+      if (!made.ok) {
+        if (mounted.current) { setBusy(false); setError(made.code === 'exists' ? folderCopy.existsTeam : made.code === 'outside-home' ? folderCopy.problem['outside-home'] : `${folderCopy.mkdirFailed} (${made.code})`); }
+        return;
+      }
+      launchDirectory = made.path;
+      if (mounted.current) { setNewFolder(false); setDirectory(made.path); }
+    }
+    const launch: TeamLaunchInput = { goal: goal.trim(), directory: launchDirectory, assistant, ...(model.trim() ? { model: model.trim() } : {}) };
     let sending: LaunchIntent | null = null;
     let resuming = true;
     try {
@@ -136,6 +157,9 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
 
       {!fixedMachine && <div className="teams-field"><span id={`${fieldId}-machine`}>{c.machine}</span><Combobox variant="soft" size="md" label={c.machine} labelledBy={`${fieldId}-machine`} placeholder={c.machine} required value={machineId || null} options={machines.map(m => ({ value: m.id, label: machineLabel(m), meta: isMachineOnline(m) ? undefined : t('status.offline') }))} onChange={value => { const next = machines.find(m => m.id === value); setMachine(value); setDirectory(''); setPicking(false); const a = preferredTeamAssistant(next?.metadata, assistant); if (a !== assistant) { setAssistant(a); setModel(''); } }} /></div>}
       <label>{c.project}<div className="team-folder-input"><SuggestInput inputRef={directoryRef} value={directory} onValueChange={setDirectory} required aria-label={c.project} suggestions={(presets ?? []).map(p => ({ value: p.path, label: p.path }))} placeholder="/path/to/project" /><button type="button" disabled={!machine || !isMachineOnline(machine)} onClick={() => setPicking(!picking)}><FolderOpen size={16} />{c.browse}</button></div></label>
+      {!newFolderBlocked && <Checkbox className="team-folder-new" checked={newFolder} onCheckedChange={on => { setNewFolder(on); setPicking(false); if (on) setDirectory(defaultNewFolder(name.trim() || goal.trim().split('\n')[0])); }}>{folderCopy.create}</Checkbox>}
+      {newFolder && <Checkbox className="team-folder-new" checked={gitInit} onCheckedChange={setGitInit}>{folderCopy.gitInit}</Checkbox>}
+      {newFolder && newProblem && <p className="team-start-blocker" role="status">{folderCopy.problem[newProblem]}</p>}
       {picking && machine && <div className="team-folder-browser"><FsBrowser machineId={machineId} initialPath={directory || machine.metadata?.homeDir || '/'} onPickDir={path => { setDirectory(path); setPicking(false); }} /></div>}
       {/* B-698: the launch harness/model also become the team's defaults for new members (server reducer). */}
       <div className="team-start-options"><TeamHarnessModelFields machineId={machineId} assistant={assistant} model={model} onAssistant={setAssistant} onModel={setModel} harnessLabel={c.leadAndMembers} /><label>{c.name}<input name="name" value={name} onChange={e => setName(e.target.value)} maxLength={128} /></label></div>
@@ -147,6 +171,6 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
     {error && <p className="teams-error" role="alert">{error}</p>}
     <p className="team-start-assurance">{c.automatic}</p>
     {blockerText && !busy && <p className="team-start-blocker" role="status" id="team-start-blocker"><button type="button" className="team-start-missing" onClick={showMissing}>{blockerText}</button></p>}
-    <button className="teams-primary team-start-send" aria-busy={busy} aria-describedby={blockerText ? 'team-start-blocker' : undefined} disabled={busy || !ready || !restored || !goal.trim() || !directory.trim()}>{busy ? <Spinner size={16} /> : <ArrowUp size={16} />}{busy ? c.preparing : intent ? (zh ? '继续启动' : 'Continue launch') : c.start}</button>
+    <button className="teams-primary team-start-send" aria-busy={busy} aria-describedby={blockerText ? 'team-start-blocker' : undefined} disabled={busy || !ready || !restored || !goal.trim() || !directory.trim() || !!newProblem}>{busy ? <Spinner size={16} /> : <ArrowUp size={16} />}{busy ? c.preparing : intent ? (zh ? '继续启动' : 'Continue launch') : c.start}</button>
   </form>;
 }

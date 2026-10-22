@@ -333,7 +333,7 @@ export async function removeMember(accountId: string, id: string, sessionId: str
 
 // ─── Teams ────────────────────────────────────────────────────────────────
 
-type TeamRow = { id: string; machineId: string; version: number; projectId: string | null; state: { name?: string; archivedAt?: number; creationLaunch?: { directory?: string }; defaults?: { assistant?: string; model?: string; maxParallel?: number }; bots?: { id?: string; root?: boolean; directory?: string | null }[] } };
+type TeamRow = { id: string; machineId: string; version: number; projectId: string | null; state: { name?: string; archivedAt?: number; creationLaunch?: { directory?: string; goal?: string }; defaults?: { assistant?: string; model?: string; maxParallel?: number }; bots?: { id?: string; root?: boolean; directory?: string | null }[] } };
 async function loadTeamRow(tx: Tx, accountId: string, teamId: string): Promise<TeamRow> {
     const teams = await tx.$queryRaw<TeamRow[]>`SELECT "id","machineId","version","projectId","state" FROM "AgentTeam" WHERE "id"=${teamId} AND "accountId"=${accountId}`;
     requireProject(teams[0], 'team_not_found', 404);
@@ -430,7 +430,9 @@ async function createSameNameProjectTx(tx: Tx, accountId: string, teamId: string
     const team = await loadTeamRow(tx, accountId, teamId);
     const folder = await teamFolder(tx, accountId, team, directory);
     const name = (team.state?.name ?? 'Team').trim().slice(0, PROJECT_LIMITS.nameChars) || 'Team';
-    return (await createProjectTx(tx, accountId, { name, requestId, folders: folder ? [{ ...folder, primary: true }] : [] })).row;
+    // B-755: the project's context starts as the team's goal (the user edits it on the project page).
+    const instructions = clipUtf8((team.state?.creationLaunch?.goal ?? '').trim(), PROJECT_LIMITS.instructionsBytes);
+    return (await createProjectTx(tx, accountId, { name, requestId, folders: folder ? [{ ...folder, primary: true }] : [], ...(instructions ? { instructions } : {}) })).row;
 }
 
 /**
@@ -679,3 +681,14 @@ export async function sessionMembership(accountId: string, sessionId: string): P
 }
 
 export { ProjectError };
+
+/** The longest prefix of `text` that fits in `bytes` UTF-8 bytes, never splitting a character. */
+function clipUtf8(text: string, bytes: number): string {
+    if (Buffer.byteLength(text, 'utf8') <= bytes) return text;
+    let out = '';
+    for (const ch of text) {
+        if (Buffer.byteLength(out + ch, 'utf8') > bytes) break;
+        out += ch;
+    }
+    return out;
+}

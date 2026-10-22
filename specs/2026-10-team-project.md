@@ -147,3 +147,34 @@ Owner 原话（10-21）：「团队和项目的关系感觉还是不太清楚。
 - 「提议修改说明」：会话追加 `kind=proposal` 记录、项目页一键采纳。需要扩 `PROJECT_LOG_KINDS`（旧 Web 的 enum 会拒绝未知 kind，需先让读取端放宽），本条不做。
 - B-714 SelectMenu 合入后，`ProjectPicker` 换用它（调用方不变）。
 - 侧栏团队行菜单（换项目 / 解绑）——等团队行有菜单后再加。
+
+## B-755 追加：新建项目必须有目录（选择已有 / 新建工作目录）
+
+Owner 10-22：「创建项目的时候，需要指定目录，或者让用户新建一个工作目录吧。」
+
+**入口与规则**
+
+| 入口 | 目录来源 |
+| --- | --- |
+| Web「新建项目」（侧栏） | 弹窗必须填：名称 + 电脑 + 目录，另有醒目的选填「项目说明（context）」，存为 instructions v1。目录二选一：**选择已有目录**（路径输入 + 最近/收藏候选 + 文件夹浏览，候选排除团队 worktree）或 **新建工作目录**（默认 `~/projects/<名称 slug>`，可改，可勾「初始化 git 仓库」）。没有目录不能提交。 |
+| 新建团队（默认同名项目） | 同名项目目录 = 团队工作目录（必填，预填最近的仓库路径）；工作目录可勾「新建工作目录」，先建好再启动团队。同名项目的 context 默认 = 团队目标（服务端写入 instructions v1，超 8KB 按字符截断）。 |
+| CLI `team_create` | 目录 = 创建会话的 cwd（worktree 换成主 checkout）；解析不出来的极少数情况项目暂无目录，项目页提示补上。 |
+| 标签/目录分组「转成项目」 | 用这些会话的目录；一个目录都没有时打开新建项目弹窗（名称预填）。 |
+| 老项目没有目录 | 项目页顶部提示「这个项目还没有目录」+「添加目录」（打开设置并聚焦路径）。 |
+
+**daemon RPC `fs-mkdir`**（新增，旧字段不动）
+
+- 请求 `{ path: string; gitInit?: boolean }`，`path` 可用 `~`。
+- 校验：原始输入任何一段是 `..` → `invalid-path`；展开后必须是绝对路径且**严格位于 daemon 用户 home 之下**（不能就是 home 本身）→ 否则 `outside-home`；最近的已存在祖先 `realpath` 后也必须在 home 之下（挡住指向 home 外的符号链接）→ `outside-home`；目标已存在 → `exists`（Web 提示改为直接选用）；权限不足 → `permission-denied`。不提权、不 sudo，`mkdir -p` 以 daemon 用户身份执行。
+- `gitInit: true` 时在新目录里 `git init`；git 失败不回滚目录，返回 `git: false` 由 Web 提示。
+- 应答 `{ path, created: true, git: boolean }`。
+- 能力位：机器 metadata 新增 `fsMkdirVersion: 1`（daemon 启动时发布）。Web 只在 **机器在线且 `fsMkdirVersion ≥ 1`** 时可选「新建工作目录」，否则该选项禁用并写明原因（离线 / 需要升级 CLI）。
+
+**兼容矩阵**
+
+| Web \ daemon | 旧 daemon（无 fs-mkdir） | 新 daemon |
+| --- | --- | --- |
+| 旧 Web | 不变 | 不变（不调用新 RPC） |
+| 新 Web | 「新建」禁用 + 说明，只能选已有 | 两种都可用 |
+
+服务端 `POST /v1/projects` 不收紧校验（旧客户端的无目录请求仍接受），「必须有目录」由新 Web 表单与团队路径保证；发布顺序：server/Web 与 CLI 互不依赖。

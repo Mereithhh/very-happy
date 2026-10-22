@@ -31,6 +31,7 @@ import {
     normalizeFsPath,
     type FsEntry,
 } from './fsBrowse';
+import { fsMkdir, type FsMkdirResponse } from './fsMkdir';
 
 export interface FsListResponse {
     /** Normalized absolute path actually listed (after ~ expansion). */
@@ -152,7 +153,7 @@ export async function fsRead(inputPath: unknown, options: FsReadOptions = {}, ho
     }
 }
 
-/** Register the two machine-level file-browser RPCs. */
+/** Register the machine-level file RPCs (fs-list / fs-read / fs-mkdir). */
 export function registerFsHandlers(rpcHandlerManager: RpcHandlerManager): void {
     rpcHandlerManager.registerHandler<{ path: string }, FsListResponse>('fs-list', async (params) => {
         logger.debug('[FS RPC] fs-list', params?.path);
@@ -162,5 +163,11 @@ export function registerFsHandlers(rpcHandlerManager: RpcHandlerManager): void {
     rpcHandlerManager.registerHandler<{ path: string; maxBytes?: number; allowBinary?: boolean; offset?: number }, FsReadResponse>('fs-read', async (params) => {
         logger.debug('[FS RPC] fs-read', params?.path);
         return fsRead(params?.path, { maxBytes: params?.maxBytes, allowBinary: params?.allowBinary === true, offset: params?.offset });
+    });
+
+    // B-755: new project working folder (home-only, never reuses a path). Gated on the web by `fsMkdirVersion`.
+    rpcHandlerManager.registerHandler<{ path: string; gitInit?: boolean }, FsMkdirResponse>('fs-mkdir', async (params) => {
+        logger.debug('[FS RPC] fs-mkdir', params?.path);
+        return fsMkdir(params?.path, { gitInit: params?.gitInit === true });
     });
 }

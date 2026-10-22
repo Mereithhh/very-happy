@@ -27,6 +27,7 @@ import { groupRowsByTag } from './sidebarTagGroups';
 import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
 import { toast } from '@/ui/Toast';
 import { MoveToProjectModal } from '@/screens/projects/MoveToProjectModal';
+import { NewProjectDialog } from '@/screens/projects/NewProjectDialog';
 import type { ProjectView } from '@slopus/happy-wire';
 import type { Session } from '@/sync/storageTypes';
 // aliased: keeps the name apart from lucide's `Settings` gear icon
@@ -1101,15 +1102,15 @@ export function Sidebar() {
       void refreshProjects();
     }
   }, [t]);
-  const createNamedProject = useCallback(async () => {
-    const name = (await Modal.prompt(t('sidebar.newProject') as string, t('sidebar.newProjectPrompt') as string))?.trim();
-    if (!name) return;
-    await makeProjectFromRows(name, []);
-  }, [t]);
+  // B-755: 「新建项目」 is a dialog that always asks for a folder (existing or new) and offers the project context.
+  const [newProject, setNewProject] = useState<{ name: string; sessionIds: string[] } | null>(null);
+  const createNamedProject = useCallback(async () => { setNewProject({ name: '', sessionIds: [] }); }, []);
   /** Project from a set of rows: folders = their machine+path pairs, the first one primary. */
   const makeProjectFromRows = useCallback(async (name: string, sourceRows: Row[]) => {
     const folders = foldersOfRows(sourceRows).map((f, i) => ({ ...f, primary: i === 0 }));
     const sessionIds = sourceRows.flatMap((r) => (r.kind === 'session' && r.sessionId && !r.share ? [r.sessionId] : []));
+    // B-755: no folder among the rows → the dialog asks for one instead of a folderless project.
+    if (folders.length === 0) { setNewProject({ name, sessionIds }); return; }
     try {
       const { project } = await projectsApi.create({ name: name.slice(0, 120), folders, sessionIds: sessionIds.slice(0, 200) });
       if (sessionIds.length) applyLocalMembership(project.id, sessionIds);
@@ -1615,6 +1616,7 @@ export function Sidebar() {
       {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
       {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
       {showImport && <ImportHistoryModal initialAgent={showImport} onClose={() => setShowImport(null)} />}
+      {newProject && <NewProjectDialog initialName={newProject.name} sessionIds={newProject.sessionIds} onClose={() => setNewProject(null)} />}
       {moveProjectTarget && <MoveToProjectModal initialSessionId={moveProjectTarget.sessionId} candidates={moveProjectTarget.candidates} onClose={() => setMoveProjectTarget(null)} />}
       {renameTarget && (
         <RenameModal
