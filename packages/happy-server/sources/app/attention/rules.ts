@@ -140,10 +140,11 @@ export function teamSubmitItem(team: Pick<TeamState, 'id' | 'name'>, task: TeamT
  * B-508 rule carried over: when the owner speaks in a session, the session's
  * only open decision is taken as answered. Several open decisions are
  * ambiguous and stay open; root-task submits never close on chat (accepting
- * work needs the explicit button).
+ * work needs the explicit button). D5 drafts (`inferred`) are neither targets
+ * nor competitors: the owner never saw them asked, so chat cannot answer them.
  */
-export function ownerRepliedTarget(items: readonly Pick<AttentionRow, 'id' | 'kind' | 'source' | 'state'>[]): string | null {
-    const open = items.filter(i => i.kind === 'decision' && i.source !== 'team' && isAttentionActive(i.state));
+export function ownerRepliedTarget(items: readonly Pick<AttentionRow, 'id' | 'kind' | 'source' | 'state' | 'inferred'>[]): string | null {
+    const open = items.filter(i => i.kind === 'decision' && i.source !== 'team' && !i.inferred && isAttentionActive(i.state));
     return open.length === 1 ? open[0].id : null;
 }
 
