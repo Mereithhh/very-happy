@@ -33,7 +33,7 @@
 cron 定时（最短 10 min，错过不补跑，需服务端在线）；/goal 持续推进；目标空间由编排者拆任务分派、任务图+关键路径；Matrix 定时扫描；接口应用：令牌/公开访问，处理方式 直连/规则/智能体/本机服务，权限白名单，带签名事件推送、调用日志 30 天；`$eval` 评测。
 
 ## 6. 接入与 API
-官网无 Tanka 字样；群记录：接回 Tanka「在推进、无时间点」，陈总 10-16「必须放到 tanka 否则不接了」。开放面：接口应用（入站事件+出站 webhook）、ACP 供 Zed/JetBrains 连空间内 agent、`ui-cli`（UI 全部操作有 JSON 命令，配置树 `apply --dry-run`，`raw` 发协议帧）、`mirasim chat`、连接器走 MCP 官方注册表。公开 REST API 文档未披露。
+官网无 Tanka 字样；群记录：接回 Tanka「在推进、无时间点」；内部要求数据须留在 Tanka 体系内，否则不接入。开放面：接口应用（入站事件+出站 webhook）、ACP 供 Zed/JetBrains 连空间内 agent、`ui-cli`（UI 全部操作有 JSON 命令，配置树 `apply --dry-run`，`raw` 发协议帧）、`mirasim chat`、连接器走 MCP 官方注册表。公开 REST API 文档未披露。
 
 ## 7. 试用群产品层事实（10-16）
 无自有 Harness，调原生 CC/Codex；核心价值=人与 agent 协作（空间聊天、分享 session、@成员/智能体接管）；空间内容属客户资产可导出；额度默认扣空间池。jojo 顾虑：协作上下文与聊天不在 Tanka 体系。外部争议（未核实）：上游额度不稳定、skills 安全指控。
