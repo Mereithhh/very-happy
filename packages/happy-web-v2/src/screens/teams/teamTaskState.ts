@@ -9,8 +9,8 @@ import type { AgentExecution } from '@/sync/agentStatus';
  * cancelled) and only moves on explicit actions — a member whose turn ended,
  * or whose session exited, leaves its task `running` until someone submits,
  * hands off or cancels (reducer `session-event`: "still requires explicit
- * submission"). Showing that raw value as「运行中」is what lied (prod 10-22:
- * 业务数据治理's lead idle for 2 h, its goal still 运行中). So an unfinished
+ * submission"). Showing that raw value as「运行中」is what lied (prod 10-22: a
+ * team's lead idle for 2 h, its goal still 运行中). So an unfinished
  * task is refined by what its member's session is doing NOW — the same
  * `sessionExecution` the sidebar and the session board use (heartbeat lease,
  * AGENTS #13) — and「运行中」means exactly: that session has an active turn,

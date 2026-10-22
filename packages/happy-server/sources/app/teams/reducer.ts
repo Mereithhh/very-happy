@@ -25,7 +25,7 @@ function releaseBotSession(bot: TeamBot): void {
 /**
  * B-730 (`specs/2026-10-team-scope-reattach.md`): a session leads or works in at
  * most one live team. The first other unarchived team that binds `sessionId`, or
- * null. The roll-pool incident: a restarted lead lost its scope env, was told
+ * null. The incident: a restarted lead lost its scope env, was told
  * "Join or create a team first" and created a second team for itself.
  */
 export function otherTeamBinding(teams: readonly Pick<TeamState, 'id' | 'name' | 'archivedAt' | 'bots'>[], sessionId: string, exceptTeamId?: string): { teamId: string; teamName: string; botId: string; root: boolean } | null {

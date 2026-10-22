@@ -116,7 +116,7 @@ export function oidcPublicConfig(
     return config ? { displayName: config.displayName, signupMode } : undefined;
 }
 
-/** "Zhaopeng Feng" → first/last; a single token (e.g. a CJK full name) stays in firstName. */
+/** "Alex Rivera" → first/last; a single token (e.g. a CJK full name) stays in firstName. */
 export function splitDisplayName(name: string | undefined): { firstName: string | null; lastName: string | null } {
     const trimmed = name?.trim();
     if (!trimmed) return { firstName: null, lastName: null };

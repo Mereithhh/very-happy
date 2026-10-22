@@ -166,9 +166,9 @@ describe('B-723', () => {
   });
   it('B-755: a team launched from another team\'s worktree is homed in that worktree\'s repository', () => {
     const op = (id: string, directory: string) => ({ id, type: 'spawn', botId: 'lead', directory, createdAt: 1 });
-    const source = t([b('lead', { root: true, directory: '/h/.happy/teams/worktrees/f0747a90' })], { id: 'roll', creationLaunch: { directory: '/code/skills' }, operations: [op('f0747a90', '/code/skills')] });
-    const nested = t([b('lead', { root: true, directory: '/h/.happy/teams/worktrees/801fecdb' })], { id: 'gov', creationLaunch: { directory: '/h/.happy/teams/worktrees/f0747a90' }, operations: [op('801fecdb', '/h/.happy/teams/worktrees/f0747a90')] });
-    expect(teamHomeDirectory(nested, [source, nested])).toBe('/code/skills');
+    const source = t([b('lead', { root: true, directory: '/h/.happy/teams/worktrees/wt-0001' })], { id: 'src', creationLaunch: { directory: '/code/app' }, operations: [op('wt-0001', '/code/app')] });
+    const nested = t([b('lead', { root: true, directory: '/h/.happy/teams/worktrees/wt-0002' })], { id: 'nested', creationLaunch: { directory: '/h/.happy/teams/worktrees/wt-0001' }, operations: [op('wt-0002', '/h/.happy/teams/worktrees/wt-0001')] });
+    expect(teamHomeDirectory(nested, [source, nested])).toBe('/code/app');
     // Without the source team loaded the worktree is never the answer.
     expect(teamHomeDirectory(nested)).toBeNull();
     // The lead's own worktree resolves through its own spawn operation.
@@ -177,8 +177,8 @@ describe('B-723', () => {
 });
 
 /**
- * B-729 (production 10-22): the roll-pool-cot Lead was spawned by roll-pool-cot
- * and then adopted as roll-pool's lead — claimed twice, it was dropped from
+ * B-729 (production 10-22): the atlas-pay-ops Lead was spawned by atlas-pay-ops
+ * and then adopted as atlas-pay's lead — claimed twice, it was dropped from
  * both and rendered outside every team. Every generation and role must nest.
  */
 describe('B-729 every team conversation nests under its team', () => {
@@ -210,13 +210,13 @@ describe('B-729 every team conversation nests under its team', () => {
       .toEqual(['ordinary', 'dev', 'lead', 'worker-g2', 'sub', 'adopted-now', 'inactive:2:closed']);
   });
   it('prod 10-22: a spawned Lead that created and joined a second team nests under that newer team, not outside both', () => {
-    const cot = { ...team('roll-pool-cot', ['L', 'w']), createdAt: 1 };
-    cot.operations = [op('roll-pool-cot', 'roll-pool-cot-0', 1, 'L')];
-    const pool = { ...team('roll-pool', ['L', 'p']), createdAt: 2 }; // joined later as root (no receipt)
+    const cot = { ...team('atlas-pay-ops', ['L', 'w']), createdAt: 1 };
+    cot.operations = [op('atlas-pay-ops', 'atlas-pay-ops-0', 1, 'L')];
+    const pool = { ...team('atlas-pay', ['L', 'p']), createdAt: 2 }; // joined later as root (no receipt)
     pool.bots[0].managed = false;
-    for (const order of [[pool, cot], [cot, pool]]) expect(teamSessionMembership(order).get('L')).toMatchObject({ team: { id: 'roll-pool' }, bot: { id: 'roll-pool-0' } });
-    expect(groupTeamNavigation(['x', 'L', 'w', 'p'].map(sessionId => ({ sessionId })), [cot, pool], new Set(['roll-pool', 'roll-pool-cot'])).map(label))
-      .toEqual(['x', 'roll-pool', 'L', 'p', 'roll-pool-cot', 'w']);
+    for (const order of [[pool, cot], [cot, pool]]) expect(teamSessionMembership(order).get('L')).toMatchObject({ team: { id: 'atlas-pay' }, bot: { id: 'atlas-pay-0' } });
+    expect(groupTeamNavigation(['x', 'L', 'w', 'p'].map(sessionId => ({ sessionId })), [cot, pool], new Set(['atlas-pay', 'atlas-pay-ops'])).map(label))
+      .toEqual(['x', 'atlas-pay', 'L', 'p', 'atlas-pay-ops', 'w']);
   });
   it('a retired member\'s session rejoined as a new lead of the same team keeps one row, labeled by its live binding', () => {
     const t = team('t', ['', 'reused']);

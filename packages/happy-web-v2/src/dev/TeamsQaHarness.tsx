@@ -95,11 +95,11 @@ export const PROD_VH_TEAM: TeamState = {
   ],
 };
 export const PROD_BIZ_TEAM: TeamState = {
-  ...QA_TEAM, id: 'team-biz', name: '业务数据治理', operations: [],
-  bots: [bot('lead-biz', { name: 'Lead', root: true, sessionId: 's-biz', lastEvent: 'idle', lastEventAt: NOW - 133 * 60_000 }), bot('rank', { name: '实验排名' })],
+  ...QA_TEAM, id: 'team-biz', name: '订单看板', operations: [],
+  bots: [bot('lead-biz', { name: 'Lead', root: true, sessionId: 's-biz', lastEvent: 'idle', lastEventAt: NOW - 133 * 60_000 }), bot('rank', { name: '指标汇总' })],
   tasks: [
-    runTask('root-biz', 'lead-biz', '业务数据治理：把公司的业务数据接到一起、核准，用来回答「资源花得值不值」。', { parentTaskId: null, ownerBotId: null }),
-    { ...runTask('ac3a68a7', 'rank', 'W41 排名发布'), status: 'done', cleanup: 'done' },
+    runTask('root-biz', 'lead-biz', '订单看板：把订单数据汇总成一个看板，每天自动刷新。', { parentTaskId: null, ownerBotId: null }),
+    { ...runTask('ac3a68a7', 'rank', '第一版看板上线'), status: 'done', cleanup: 'done' },
   ],
 };
 const PROD_EXECUTION: Record<string, AgentExecution> = { 's-lead': 'idle', 's-e1': 'running', 's-k2': 'running', 's-r2': 'running', 's-ui': 'running', 's-biz': 'idle' };

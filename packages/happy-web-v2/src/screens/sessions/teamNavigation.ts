@@ -16,7 +16,7 @@ export function botHistorySessionId(team: TeamState, bot: TeamBot): string | nul
  *
  * A session claimed more than once gets ONE owner instead of being dropped —
  * dropping it showed a team's own conversation outside every team (prod
- * 10-22: roll-pool-cot's spawned Lead created roll-pool and joined it as lead).
+ * 10-22: one team's spawned Lead created a second team and joined it as lead).
  * Precedence: a live binding, then a spawn receipt, then other history; on a
  * tie the newer team wins — a conversation joins teams over time, so the latest
  * team is the role it has now (the other team's row still opens it as its

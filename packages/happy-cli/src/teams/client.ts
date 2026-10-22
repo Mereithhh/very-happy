@@ -37,7 +37,7 @@ export class SessionInOtherTeamError extends TeamConnectionPreflightError {
 export function sessionInOtherTeamMessage(teamName: string, teamId: string): string {
     return `This session is already the lead or a member of team "${teamName}"${teamId ? ` (${teamId})` : ''}. Call team_inspect and use team_delegate to assign work inside that team; do not create or join another team. 你已经是团队「${teamName}」的成员或负责人，请先 team_inspect，再用 team_delegate 在本团队内派活，不要新建或加入其他团队。`;
 }
-/** B-730: shown when this session holds no team scope. A restarted lead used to read it as "make a team" (roll-pool). */
+/** B-730: shown when this session holds no team scope. A restarted lead used to read it as "make a team". */
 export const NO_TEAM_SCOPE_MESSAGE = 'This session has no team scope. Do not create a team to get one: if you lead or work in a team (for example after a restart), call team_inspect again or tell the user; use team_create or team_join only when the user asks for a new team.';
 
 const initializationLocks = new Map<string, Promise<unknown>>();

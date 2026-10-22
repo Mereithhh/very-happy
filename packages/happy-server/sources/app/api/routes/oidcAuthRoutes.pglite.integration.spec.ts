@@ -150,13 +150,13 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         process.env.SIGNUP_MODE = 'invite';
         process.env.SIGNUP_INVITE_CODES = 'team-2026';
         process.env.OIDC_SIGNUP_MODE = 'open';
-        idp.claims = { sub: 'subject-selfserve', email: 'self@apodex.com', name: 'Zhaopeng Feng' };
+        idp.claims = { sub: 'subject-selfserve', email: 'self@apodex.com', name: 'Alex Rivera' };
         const before = await db.account.count();
         const selfServe = await start();
         expect(returned((await callback({ code: 'good-code', state: selfServe.params.state })).headers.location as string).handoff).toBeTruthy();
         expect(await db.account.count()).toBe(before + 1);
         const created = await db.accountIdentity.findFirst({ where: { providerSubject: 'subject-selfserve' }, include: { account: true } });
-        expect(created?.account).toMatchObject({ firstName: 'Zhaopeng', lastName: 'Feng' });
+        expect(created?.account).toMatchObject({ firstName: 'Alex', lastName: 'Rivera' });
 
         process.env.SIGNUP_MODE = 'open';
         process.env.OIDC_SIGNUP_MODE = 'closed';

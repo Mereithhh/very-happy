@@ -128,10 +128,10 @@ describe('session adoption', () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
     it('B-730: a session already in another team gets the verbatim refusal, can change its request, and transfers once confirmed', async () => {
-        const refusal = new Response(JSON.stringify({ error: 'session_in_other_team', teamId: 'roll-pool-cot', teamName: 'roll-pool-cot', message: 'server text is not echoed', token: 'never-leaks' }), { status: 409 });
+        const refusal = new Response(JSON.stringify({ error: 'session_in_other_team', teamId: 'atlas-pay-ops', teamName: 'atlas-pay-ops', message: 'server text is not echoed', token: 'never-leaks' }), { status: 409 });
         fetchMock.mockImplementationOnce(async () => refusal);
         const refused = await settle(createTeamAdoption('session'));
-        expect(refused).toMatchObject({ code: 'session_in_other_team', teamId: 'roll-pool-cot', teamName: 'roll-pool-cot', safeToChange: true });
+        expect(refused).toMatchObject({ code: 'session_in_other_team', teamId: 'atlas-pay-ops', teamName: 'atlas-pay-ops', safeToChange: true });
         expect((refused as { error: string }).error).toContain('team_delegate');
         expect(JSON.stringify(refused)).not.toContain('never-leaks');
         expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ sessionId: 'session' });

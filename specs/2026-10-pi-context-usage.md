@@ -11,7 +11,7 @@ Owner 10-21：「pi + 自定义模型时上下文指示不准，常显示 90% �
 
 1. **分母**：pi 给 models.json 里没写 `contextWindow` 的模型一律按 **128000**（pi 1.1.0 `core/provider-composer.js` `contextWindow: definition.contextWindow ?? 128000`）。B-688 的 pi 写回只写 `{ id }`（`modelConfig/harnesses/pi.ts`），所以经表单加的模型窗口都是 128k；pi 扩展上报的 `ctx.getContextUsage().contextWindow` 就是这个默认值，Web 原样当分母。1M 模型显示的百分比是实际的约 8 倍，pi 也按 128k − 16384 提前自动压缩。
 2. **分子**：没有累加。pi `getContextUsage()` 取**最后一条有效 assistant 的 usage**（`input + output + cacheRead + cacheWrite`，`compaction.js` `calculateContextTokens`）加其后消息的估算；openai-completions 适配把 `cached_tokens` 从 `prompt_tokens` 里扣掉再记 cacheRead，不重复。Very Happy 原样转发，不做加总。压缩后 pi 返回 `tokens: null`，直到下一次回答。
-3. **压缩没执行**：Web 的 `/compact` 经 runAcp 发给 pi-acp 前被加了内容——每个 wrapper 进程的第一条消息后面拼 `BUILTIN_TODO_DISCOVERY`，项目会话前面拼项目前缀/摘要。pi-acp 0.0.33 只在文本以 `/` 开头、且命令词截到第一个空格时才执行命令；`"/compact\n\nFor the user’s…"` 的命令词是 `compact\n\nFor`，于是整段当普通消息发给模型。实证：会话 `cmvhu15eh1pcko92kk6epcpix`（pi 文件 `2026-10-21T08-10-32-159Z_01a15d83….jsonl`）14:19:53 的 `/compact` 作为 user 文本进入上下文，模型回了一段「会话压缩摘要」，没有 compaction 条目，占用 949,671 / 1,000,000（95%）不变。
+3. **压缩没执行**：Web 的 `/compact` 经 runAcp 发给 pi-acp 前被加了内容——每个 wrapper 进程的第一条消息后面拼 `BUILTIN_TODO_DISCOVERY`，项目会话前面拼项目前缀/摘要。pi-acp 0.0.33 只在文本以 `/` 开头、且命令词截到第一个空格时才执行命令；`"/compact\n\nFor the user’s…"` 的命令词是 `compact\n\nFor`，于是整段当普通消息发给模型。实证：一个 pi 负责人会话 14:19:53 的 `/compact` 作为 user 文本进入上下文，模型回了一段「会话压缩摘要」，没有 compaction 条目，占用 949,671 / 1,000,000（95%）不变。
 4. **慢**：同一会话缓存命中时，占用 0–100k 的回合中位 5.1 s，900k+ 中位 8.0 s；那次被当成聊天的 `/compact` 有 942,899 个未命中缓存的输入 token，耗时 39.7 s。慢的主因是上下文真实很大且压缩没生效，不是 provider 本身慢（`tmp/vh-team-B-727/latency-by-context.txt`）。
 
 ## 目标

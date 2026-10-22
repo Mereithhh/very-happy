@@ -31,14 +31,14 @@ it('asks before moving a conversation out of its team, then retries with transfe
   const onDone = vi.fn();
   rpc.mockImplementation(async (_sid: string, _method: string, input: { transfer?: true }) => input.transfer
     ? { status: 'connected', teamId: 'new', botId: 'b', instructions: '' }
-    : { error: 'already in team', safeToChange: true, code: 'session_in_other_team', teamId: 'cot', teamName: 'roll-pool-cot' });
+    : { error: 'already in team', safeToChange: true, code: 'session_in_other_team', teamId: 'cot', teamName: 'atlas-pay-ops' });
   const root = createRoot(host);
   await act(async () => root.render(<AdoptTeamForm sessionId="s1" onDone={onDone} />));
   await flush();
   await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
   await flush();
   const dialog = host.querySelector('[role="alertdialog"]')!;
-  expect(dialog.textContent).toContain('roll-pool-cot');
+  expect(dialog.textContent).toContain('atlas-pay-ops');
   expect(host.querySelector('[role="alert"]')).toBeNull();
   expect(rpc).toHaveBeenCalledTimes(1);
   expect(rpc.mock.calls[0][2]).not.toHaveProperty('transfer');

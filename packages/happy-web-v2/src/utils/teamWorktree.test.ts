@@ -5,18 +5,18 @@ import { mergeDirectoryChoices } from './terminalCwd';
 
 const wt = (id: string, sub = '') => `/home/u/.happy/teams/worktrees/${id}${sub}`;
 const team = (machineId: string, ops: [string, string][]) => ({ id: `t-${machineId}`, machineId, operations: ops.map(([id, directory]) => ({ id, type: 'spawn', directory })) }) as unknown as TeamState;
-const teams = [team('m', [['f0747a90', '/code/skills'], ['801fecdb', wt('f0747a90')]])];
+const teams = [team('m', [['wt-0001', '/code/app'], ['wt-0002', wt('wt-0001')]])];
 
 describe('B-755 team worktree candidates', () => {
   it('resolves a worktree (and one cut from it, and a subfolder) to its repository on the same machine only', () => {
-    expect(teamWorktreeRepository(teams, 'm', wt('f0747a90'))).toBe('/code/skills');
-    expect(teamWorktreeRepository(teams, 'm', wt('801fecdb', '/docs'))).toBe('/code/skills/docs');
-    expect(teamWorktreeRepository(teams, 'other', wt('f0747a90'))).toBeNull();
+    expect(teamWorktreeRepository(teams, 'm', wt('wt-0001'))).toBe('/code/app');
+    expect(teamWorktreeRepository(teams, 'm', wt('wt-0002', '/docs'))).toBe('/code/app/docs');
+    expect(teamWorktreeRepository(teams, 'other', wt('wt-0001'))).toBeNull();
     expect(teamWorktreeRepository(teams, 'm', wt('gone'))).toBeNull();
-    expect(teamWorktreeRepository(teams, 'm', '/code/skills')).toBe('/code/skills');
+    expect(teamWorktreeRepository(teams, 'm', '/code/app')).toBe('/code/app');
   });
   it('a new chat from a worktree context starts in the repository, or asks for the folder', () => {
-    expect(redirectFromTeamWorktree({ machineId: 'm', path: wt('f0747a90') }, teams)).toEqual({ machineId: 'm', path: '/code/skills' });
+    expect(redirectFromTeamWorktree({ machineId: 'm', path: wt('wt-0001') }, teams)).toEqual({ machineId: 'm', path: '/code/app' });
     expect(redirectFromTeamWorktree({ machineId: 'm', path: wt('gone') }, teams)).toEqual({ machineId: 'm', path: '' });
     expect(redirectFromTeamWorktree({ machineId: 'm', path: '/code/x' }, teams)).toEqual({ machineId: 'm', path: '/code/x' });
     expect(redirectFromTeamWorktree(undefined, teams)).toBeUndefined();

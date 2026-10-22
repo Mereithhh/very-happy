@@ -153,8 +153,8 @@ describe('B-723 (O1): an unattached team groups under its own repository', () =>
 });
 
 /**
- * B-729: the production shape on 10-22 — a Lead spawned by roll-pool-cot that
- * created and joined roll-pool, a reused worker's two generations, plus the Owner's own
+ * B-729: the production shape on 10-22 — a Lead spawned by atlas-pay-ops that
+ * created and joined atlas-pay, a reused worker's two generations, plus the Owner's own
  * chats started in a team worktree folder (no team field: never pulled in).
  * Composed the way Sidebar.tsx composes each lens, every team conversation is a
  * team child in all three, and no unrelated row is.

@@ -6,19 +6,19 @@ const p = (id: string, folders: { machineId: string; path: string }[], extra: Pa
 
 describe('directory suggestion (suggest only, never auto-join)', () => {
   it('matches a folder on the same machine, the deepest one wins', () => {
-    const projects = [p('repo', [{ machineId: 'm', path: '/code/skills' }]), p('sub', [{ machineId: 'm', path: '/code/skills/tanka/' }])];
-    expect(suggestProjectFor({ machineId: 'm', path: '/code/skills/tanka/x' }, projects)?.id).toBe('sub');
-    expect(suggestProjectFor({ machineId: 'm', path: '/code/skills' }, projects)?.id).toBe('repo');
+    const projects = [p('repo', [{ machineId: 'm', path: '/code/app' }]), p('sub', [{ machineId: 'm', path: '/code/app/pkg/' }])];
+    expect(suggestProjectFor({ machineId: 'm', path: '/code/app/pkg/x' }, projects)?.id).toBe('sub');
+    expect(suggestProjectFor({ machineId: 'm', path: '/code/app' }, projects)?.id).toBe('repo');
   });
   it('no match: other machine, sibling prefix, missing path, archived project', () => {
-    const projects = [p('a', [{ machineId: 'm', path: '/code/skills' }]), p('z', [{ machineId: 'm', path: '/code/other' }], { archivedAt: 5 })];
-    expect(suggestProjectFor({ machineId: 'n', path: '/code/skills/x' }, projects)).toBeNull();
-    expect(suggestProjectFor({ machineId: 'm', path: '/code/skills-old' }, projects)).toBeNull();
+    const projects = [p('a', [{ machineId: 'm', path: '/code/app' }]), p('z', [{ machineId: 'm', path: '/code/other' }], { archivedAt: 5 })];
+    expect(suggestProjectFor({ machineId: 'n', path: '/code/app/x' }, projects)).toBeNull();
+    expect(suggestProjectFor({ machineId: 'm', path: '/code/app-old' }, projects)).toBeNull();
     expect(suggestProjectFor({ machineId: 'm', path: null }, projects)).toBeNull();
     expect(suggestProjectFor({ machineId: 'm', path: '/code/other/x' }, projects)).toBeNull();
   });
   it('B-755: a folder inside a team worktree suggests nothing; a session inside one is never asked', () => {
-    const wt = '/home/u/.happy/teams/worktrees/f0747a90';
+    const wt = '/home/u/.happy/teams/worktrees/wt-0001';
     const projects = [p('governance', [{ machineId: 'm', path: wt }]), p('skills', [{ machineId: 'm', path: '/home/u' }])];
     expect(suggestProjectFor({ machineId: 'm', path: wt }, projects)).toBeNull();
     expect(suggestProjectFor({ machineId: 'm', path: `${wt}/docs` }, projects)).toBeNull();

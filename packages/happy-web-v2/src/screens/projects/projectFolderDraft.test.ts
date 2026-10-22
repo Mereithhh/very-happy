@@ -7,7 +7,7 @@ const d = (extra: Partial<ProjectFolderDraft> = {}): ProjectFolderDraft => ({ ma
 describe('B-755 project folder draft', () => {
   it('suggests ~/projects/<slug>, keeping CJK names', () => {
     expect(defaultNewFolder('My App!')).toBe('~/projects/my-app');
-    expect(defaultNewFolder('业务数据治理')).toBe('~/projects/业务数据治理');
+    expect(defaultNewFolder('订单看板')).toBe('~/projects/订单看板');
     expect(defaultNewFolder('  ')).toBe('~/projects/project');
   });
   it('「新建」 needs an online machine whose daemon serves fs-mkdir', () => {

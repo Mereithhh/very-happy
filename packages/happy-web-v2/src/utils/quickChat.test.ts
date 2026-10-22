@@ -79,9 +79,9 @@ describe('decideQuickChat', () => {
 });
 
 describe('B-755: team worktrees are never remembered or offered', () => {
-    const wt = '/home/u/.happy/teams/worktrees/f0747a90';
+    const wt = '/home/u/.happy/teams/worktrees/wt-0001';
     it('decideQuickChat skips a remembered worktree for the next remembered folder, or asks', () => {
-        expect(decideQuickChat({ machines: [M('a', true)], recents: [R('a', wt), R('a', '/code/skills')], alwaysAsk: false })).toEqual({ kind: 'spawn', machineId: 'a', directory: '/code/skills' });
+        expect(decideQuickChat({ machines: [M('a', true)], recents: [R('a', wt), R('a', '/code/app')], alwaysAsk: false })).toEqual({ kind: 'spawn', machineId: 'a', directory: '/code/app' });
         expect(decideQuickChat({ machines: [M('a', true)], recents: [R('a', `${wt}/docs`)], alwaysAsk: false })).toEqual({ kind: 'configure' });
     });
     it('pushRecentMachinePath does not record a worktree and drops ones recorded before', () => {

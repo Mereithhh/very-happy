@@ -342,16 +342,16 @@ describe('projects store (pglite)', () => {
 
         it('B-755: a folder inside a team worktree resolves to the repository it was cut from, else the project gets no folder', async () => {
             const wt = (id: string, sub = '') => `/home/u/.happy/teams/worktrees/${id}${sub}`;
-            const source = await teams.createTeam(accountId, { name: 'Roll pool', machineId, requestId: 'wt-1', launch: launch('/code/skills') });
+            const source = await teams.createTeam(accountId, { name: 'Atlas pay', machineId, requestId: 'wt-1', launch: launch('/code/app') });
             const leadOp = source.operations.find(op => op.type === 'spawn')!;
-            expect(leadOp.directory).toBe('/code/skills');
-            // Launched from another team's worktree (the 「业务数据治理」 incident): the folder is the repository.
-            const nested = await teams.createTeam(accountId, { name: 'Data governance', machineId, requestId: 'wt-2', launch: launch(wt(leadOp.id)), project: { create: true } });
-            expect((await store.getProject(accountId, nested.projectId!)).project.folders).toEqual([{ machineId, path: '/code/skills', primary: true }]);
+            expect(leadOp.directory).toBe('/code/app');
+            // Launched from another team's worktree (a team created from a lead's worktree): the folder is the repository.
+            const nested = await teams.createTeam(accountId, { name: 'Order dashboard', machineId, requestId: 'wt-2', launch: launch(wt(leadOp.id)), project: { create: true } });
+            expect((await store.getProject(accountId, nested.projectId!)).project.folders).toEqual([{ machineId, path: '/code/app', primary: true }]);
             // A worktree cut from that worktree, and a subfolder, still land in the repository.
             const nestedOp = nested.operations.find(op => op.type === 'spawn')!;
             const deeper = await teams.createTeam(accountId, { name: 'Deeper', machineId, requestId: 'wt-3', launch: launch(wt(nestedOp.id, '/docs')), project: { create: true } });
-            expect((await store.getProject(accountId, deeper.projectId!)).project.folders).toEqual([{ machineId, path: '/code/skills/docs', primary: true }]);
+            expect((await store.getProject(accountId, deeper.projectId!)).project.folders).toEqual([{ machineId, path: '/code/app/docs', primary: true }]);
             // An unknown worktree (cleaned up, another machine, another account) never becomes a folder.
             const unknown = await teams.createTeam(accountId, { name: 'Unknown wt', machineId, requestId: 'wt-4', launch: launch(wt('gone')), project: { create: true } });
             expect((await store.getProject(accountId, unknown.projectId!)).project.folders).toEqual([]);
@@ -360,13 +360,13 @@ describe('projects store (pglite)', () => {
             // CLI team_create from a session inside a worktree (old CLI sends the raw cwd as `directory`).
             const lone = await newSession();
             const cli = await teams.createTeam(accountId, { name: 'CLI in worktree', machineId, requestId: 'wt-6', project: { inheritFromSessionId: lone, directory: wt(leadOp.id) } });
-            expect((await store.getProject(accountId, cli.projectId!)).project.folders).toEqual([{ machineId, path: '/code/skills', primary: true }]);
+            expect((await store.getProject(accountId, cli.projectId!)).project.folders).toEqual([{ machineId, path: '/code/app', primary: true }]);
             const cliUnknown = await teams.createTeam(accountId, { name: 'CLI unknown wt', machineId, requestId: 'wt-7', project: { inheritFromSessionId: await newSession(), directory: wt('gone') } });
             expect((await store.getProject(accountId, cliUnknown.projectId!)).project.folders).toEqual([]);
             // Attaching a team to a project on another machine adds the repository, not the worktree.
             const elsewhere = await store.createProject(accountId, { name: 'wt-elsewhere', folders: [{ machineId: otherMachineId, path: '/other' }] });
             await store.attachTeam(accountId, elsewhere.id, nested.id);
-            expect((await store.getProject(accountId, elsewhere.id)).project.folders).toEqual([{ machineId: otherMachineId, path: '/other', primary: true }, { machineId, path: '/code/skills', primary: false }]);
+            expect((await store.getProject(accountId, elsewhere.id)).project.folders).toEqual([{ machineId: otherMachineId, path: '/other', primary: true }, { machineId, path: '/code/app', primary: false }]);
         });
 
         it('B-755: the read-only inventory SQL (scripts/ops/worktree-project-folders.sql) lists exactly the worktree folders, with their spawn source', async () => {
