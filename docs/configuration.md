@@ -490,3 +490,18 @@ very-happy attention "Approve the OAuth page" --session <sessionId> --panel desk
 ```
 
 The reason is sent in clear to the relay like every push; keep secrets out of it.
+
+On a server with the briefing board (B-766, `VH_OWNER_BOARD_ENABLED`), a CLI
+that advertises `owner-board-v1` posts `request_human` as a **blocked** item on
+the board instead: the server dedupes the same reason and pushes once, and the
+item stays until it is resolved (no 60 s window, no loss on refresh). The task
+board is still marked blocked for older web clients. An older server keeps the
+push path above.
+
+A team lead's turn that asks you to decide in prose ("需要你决定", "please
+decide") without posting a board decision gets an **auto-detected** draft on the
+board (never pushed). Turn it off per machine in `~/.happy/settings.json`:
+
+```jsonc
+"ownerBoardAutoDetect": false
+```

@@ -627,6 +627,9 @@ export class ApiSessionClient extends EventEmitter {
             : message;
         const userResult = UserMessageSchema.safeParse(messageWithSource);
         if (userResult.success) {
+            // B-766 tap (owner briefing board): the server localId of every routed user message.
+            try { this.emit('user-message-routed', { localId: sourceLocalId ?? null, message: userResult.data }); }
+            catch (error) { logger.debug('[API] user-message-routed listener failed:', error); }
             if (this.pendingMessageCallback) {
                 this.pendingMessageCallback(userResult.data);
             } else {

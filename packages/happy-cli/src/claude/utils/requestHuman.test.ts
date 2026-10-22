@@ -57,4 +57,27 @@ describe('B-510 request_human', () => {
         await h.fn('need you')
         expect(send).toHaveBeenCalledTimes(2)
     })
+
+    // B-766: a server with the briefing board takes the ask as a `blocked` item and pushes once itself.
+    it('posts a blocked board item instead of pushing when the server has the board, keeping the metadata write', async () => {
+        const postBlocked = vi.fn(async (_reason: string, _panel?: string) => true)
+        const h = setup({ postBlocked })
+        const r = await h.fn('scan the QR code', 'desktop')
+        expect(h.reportBlocked).toHaveBeenCalledWith('scan the QR code')
+        expect(postBlocked).toHaveBeenCalledWith('scan the QR code', 'desktop')
+        expect(h.sendAttention).not.toHaveBeenCalled()
+        expect(r).toMatchObject({ notified: true, board: true })
+        expect(requestHumanResultText(r)).toContain('briefing board')
+        // An undeclared panel is not linked on the item.
+        await h.fn('2FA code', 'nope')
+        expect(postBlocked).toHaveBeenLastCalledWith('2FA code', undefined)
+    })
+
+    it('falls back to the push path when the server has no board or the post fails', async () => {
+        for (const postBlocked of [vi.fn(async () => false), vi.fn(async () => { throw new Error('offline') })]) {
+            const h = setup({ postBlocked })
+            expect(await h.fn('need you')).toMatchObject({ notified: true, url: '/session/s1' })
+            expect(h.sendAttention).toHaveBeenCalledTimes(1)
+        }
+    })
 })
