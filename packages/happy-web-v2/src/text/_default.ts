@@ -2674,6 +2674,12 @@ export const en = {
         entryShort: 'Major update',
         entryCount: ({ count }: { count: number }) => `${count} unread`,
         releases: {
+            oct23r: {
+                title: 'CLI 0.2.183: automatic updates stay under launchd',
+                summary: 'On a Mac whose daemon runs as a LaunchAgent, an automatic CLI update now restarts the daemon through launchd instead of leaving it running on its own, so it is still brought back if it ever crashes. Running sessions carry on across the update.',
+                launchd: 'After the one manual re-adopt that installing 0.2.183 needs, later updates stay under launchd by themselves, and `very-happy daemon start` hands a launchd-owned daemon back to its job.',
+                lineage: 'The machine page’s daemon lineage now shows systemd for a daemon run by a systemd unit, instead of other.',
+            },
             oct22c: {
                 tagline: 'Oct 22 · projects take center stage',
                 title: 'Projects front and center, a purpose-built card for every tool call, and a calm ASCII backdrop',

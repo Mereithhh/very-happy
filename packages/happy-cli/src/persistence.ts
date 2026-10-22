@@ -200,8 +200,9 @@ export interface DaemonLocallyPersistedState {
    * B-505: who restarts this daemon. `systemd` = a unit owns it, so a CLI
    * upgrade must go through the unit (`systemctl --user restart`), never a
    * shell `daemon start` that would leave the replacement unsupervised.
+   * B-770: `launchd` = the mac LaunchAgent job owns it, same rule.
    */
-  supervisor?: 'systemd' | 'none';
+  supervisor?: 'launchd' | 'systemd' | 'none';
 }
 
 /**

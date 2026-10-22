@@ -2814,6 +2814,12 @@ export const zhHans: TranslationStructure = {
         entryShort: '大更新',
         entryCount: ({ count }: { count: number }) => `${count} 条未看`,
         releases: {
+            oct23r: {
+                title: 'CLI 0.2.183：自动升级后 daemon 仍由 launchd 托管',
+                summary: 'Mac 上以 LaunchAgent 运行的 daemon，自动升级 CLI 时改为交给 launchd 重启，不会再脱离托管自己运行，之后崩溃也能被拉起。升级过程中正在运行的会话不受影响。',
+                launchd: '装上 0.2.183 时需要手动重新交给 launchd 一次，之后的升级会自动保持托管；对 launchd 托管的 daemon 执行 `very-happy daemon start` 也会交回 launchd。',
+                lineage: '机器页的「daemon 血统」对 systemd unit 运行的 daemon 显示 systemd，不再显示 other。',
+            },
             oct22c: {
                 tagline: '10 月 22 日 · 项目唱主角',
                 title: '项目成了一等公民、工具调用有了专门卡片、对话页加上 ASCII 背景',

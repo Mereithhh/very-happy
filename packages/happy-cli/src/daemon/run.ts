@@ -95,7 +95,7 @@ import { createTeamWorker } from './teams/worker';
 import { TEAM_RETRY_CAPABILITY_VERSION } from './teams/spawnRetry';
 import { createAutomationRunner } from './automations/runner';
 import { daemonExitCode, HANDOVER_EXIT_CODE, type ShutdownSource } from './shutdownExit';
-import { detectDaemonSupervisor } from './daemonSupervisor';
+import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob } from './daemonSupervisor';
 
 import { shellescape } from '@/utils/shellescape';
 
@@ -1758,9 +1758,11 @@ export async function startDaemon(): Promise<void> {
 
     // Write initial daemon state (no lock needed for state file)
     const daemonClaudeCredentials = resolveClaudeCredentialReadiness();
-    // B-505: decides how the auto-update handover leaves this process.
-    const daemonSupervisor = detectDaemonSupervisor(process.env);
-    logger.debug(`[DAEMON RUN] Supervisor: ${daemonSupervisor}`);
+    // B-505/B-770: decides how the auto-update handover leaves this process.
+    const launchdJob = process.platform === 'darwin' ? await probeLaunchdJob() : null;
+    const daemonSupervisor = detectDaemonSupervisor(process.env, process.platform, launchdJob);
+    const lineage = daemonLineage(daemonSupervisor, process.env, process.platform, launchdJob);
+    logger.debug(`[DAEMON RUN] Supervisor: ${daemonSupervisor} (lineage ${lineage}${launchdJob ? `, launchd job pid ${launchdJob.jobPid ?? '-'}` : ''})`);
     let fileState: DaemonLocallyPersistedState = {
       pid: process.pid,
       httpPort: controlPort,
@@ -1884,6 +1886,7 @@ export async function startDaemon(): Promise<void> {
         claudeCredentialStoreSetting = store;
       },
       publish: (state) => apiMachine.setClaudeAuthState(state),
+      lineage,
     });
     claudeAuthServiceRef = claudeAuthService;
     apiMachine.setClaudeAuthHandlers({
@@ -2099,8 +2102,8 @@ export async function startDaemon(): Promise<void> {
 
         // B-321: prove the new bundle runs BEFORE giving up ownership. Everything
         // below this point is irreversible — once the state, lock and socket are
-        // released this process exits no matter what happens, and a handed-over
-        // daemon lives outside launchd, so a bad bundle means a machine that
+        // released this process exits no matter what happens, and a supervisor
+        // only restarts a bundle that starts, so a bad bundle means a machine that
         // stays offline until a person notices.
         // (A relay move hands over on the bundle we already run: nothing to preflight.)
         const preflight = bundleReplaced ? await preflightNewBundle(bundlePath) : { action: 'proceed' as const };
@@ -2139,12 +2142,14 @@ export async function startDaemon(): Promise<void> {
         await releaseDaemonLock(daemonLockHandle);
         await stopCaffeinate();
 
-        // B-505: under systemd the unit restarts us on the new bundle; a daemon
-        // spawned from in here would be unsupervised, and with the default
-        // KillMode the exit below would SIGTERM every wrapper in the cgroup.
-        // See daemonSupervisor.ts and ops/dev-sg/very-happy-daemon.service.
-        if (daemonSupervisor === 'systemd') {
-          logger.debug(`[DAEMON RUN] systemd-supervised: exiting ${HANDOVER_EXIT_CODE} for the unit to restart on the new bundle`);
+        // B-505/B-770: a supervisor restarts us on the new bundle (systemd
+        // Restart=on-failure, launchd KeepAlive.SuccessfulExit=false). A daemon
+        // spawned from in here would be unsupervised — under launchd it
+        // escapes the job and the exit 0 below leaves the job `not running`;
+        // under systemd the default KillMode would also SIGTERM every wrapper.
+        // See daemonSupervisor.ts, ops/dev-sg and ops/mac-office.
+        if (daemonSupervisor !== 'none') {
+          logger.debug(`[DAEMON RUN] ${daemonSupervisor}-supervised: exiting ${HANDOVER_EXIT_CODE} for the supervisor to restart on the new bundle`);
           process.exit(HANDOVER_EXIT_CODE);
         }
 
