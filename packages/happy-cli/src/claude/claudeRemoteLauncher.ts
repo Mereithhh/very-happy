@@ -1,4 +1,5 @@
 import { createRuntimeControls, isRuntimeCheckpointReplay } from './runtimeControls';
+import { leadBoardFor } from '@/attention/leadBoard';
 import { createBackgroundTaskTracker } from './backgroundTasks';
 import { notifyDaemonClaudeAuthFailed } from '@/daemon/controlClient';
 import { Session } from "./session";
@@ -610,7 +611,14 @@ export async function claudeRemoteLauncher(
                         // B-645: the project prefix / digest is added to exactly what reaches
                         // the SDK, and `onPromptFinalized` records that same string (the JSONL
                         // dedupe compares against what the SDK writes).
-                        const finalize = async (text: string): Promise<string> => {
+                        // B-766: localIds of the batch being finalized (queue path); a parked replay has none.
+                        let batchSourceIds: string[] | undefined;
+                        const finalize = async (prompt: string): Promise<string> => {
+                            // B-766: the turn starts here (owner questions it answers, `this_turn` anchor) and
+                            // a lead's prompt carries the open briefing-board items.
+                            const board = leadBoardFor(session.client);
+                            board?.onTurnStart(batchSourceIds);
+                            const text = board ? await board.decorate(prompt) : prompt;
                             const out = await session.projectInjector.decorate(text);
                             onPromptFinalized?.(out);
                             return out;
@@ -628,6 +636,7 @@ export async function claudeRemoteLauncher(
                         // wrong conversation.
                         await rewindReconciler.settled(controller.signal);
                         let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
+                        batchSourceIds = msg?.sourceIds;
 
                         // Check if mode has changed
                         if (msg) {

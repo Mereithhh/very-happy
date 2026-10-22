@@ -99,11 +99,27 @@
    - 开放条目软上限 5 条（`ATTENTION_LIMITS.openPerSessionSoftCap`）。
 3. 并发 upsert：依赖 `@@unique([sessionId, key])` 加冲突重试（P2002 / P2034 / 40001），S-1 用并发测试覆盖。
 
+## C-1 实现（CLI）
+
+| 部分 | 行为 | 位置 |
+|---|---|---|
+| 门控 | 启动即探测 `GET /v1/attention-items?sessionId=…&limit=1`：404（旧 server 的 Not Found 或 `owner_board_disabled`）= 不支持，退避 10 分钟。支持时任何会话都在 `metadata.capabilities` 声明 `owner-board-v1`（它的 `request_human` 已改写条目）。负责人 = 本会话 team scope 的 bot 在 `GET /v1/teams/:id/agent` 里是 root | `attention/client.ts`、`attention/leadBoard.ts` |
+| 工具暴露 | `owner_board_*` 只在「server 支持 且 负责人」时注册。首个 `tools/list` 最多等探测 3 s，结论随后在进程内冻结，工具集不在 agent 运行中变化；运行中被 adopt 的负责人下次重启才有工具，下面的兜底立即生效 | `claude/utils/startHappyServer.ts`、`attention/tools.ts` |
+| 入参 | 按 W0 `OwnerBoard*InputSchema` 全量校验（含 decision 2～4 个选项），失败不发请求；`update` / `resolve` 透传 `request_id` 作为 `requestId` | `attention/tools.ts` |
+| `this_turn` | `{ localId: 本回合 prompt 的 localId（批次最后一条 sourceId，没有就用最近一条路由消息）, snippet: 本回合最新一段回复 }`。agent 消息的 server id 在 CLI 侧拿不到，靠 snippet 在回合内定位（Web 的 chatJump 已按「回合 + snippet」定位） | `leadBoard.ts` `thisTurnAnchor` |
+| `request_human` | 先照旧写 `metadata.board.attention`（旧 Web）；server 支持时 POST `source:'agent'`、`kind:'blocked'`，`key = request-human-<sha256(reason) 前 16 位>`，panel 只在本机声明时作为 `links[{type:'panel'}]`；server 去重并只推一次，CLI 不再自己推。不支持或请求失败 → 旧 push 路径（含 60 秒去重） | `claude/utils/requestHuman.ts` |
+| Owner 提问（D2） | 路由到的用户消息里，`sentFrom` ∈ web / mobile / ios / android、localId 不是 `board-` 也不是自动发送者前缀、不是斜杠命令 → `question`（`source:'owner'`，标题取首行 ≤60 字，`requestId = owner-q-<localId>`，不带 key，重放幂等） | `api/apiSession.ts`（`user-message-routed` 事件）、`leadBoard.ts` |
+| firstReply | Claude 回合结束（`turn-ended`）且本回合有文本：`PATCH firstReply { localId, snippet: 首段回复 }`；返回仍是 `open` 才 `resolve(answered, by:auto-first-reply)`。负责人本回合改成 `in_progress`、已发 answer 或已关闭的不动；本回合没有文本则保持 open，由 digest 继续提醒。只结算本批次（sourceIds）里的问题 | `leadBoard.ts`、`claude/claudeRemoteLauncher.ts` |
+| D5 自动识别 | 回合结束时，本回合没调 `owner_board_post` / `request_human`，且正文（忽略代码块）命中中英触发词或 `<options>` → `inferred:true` 的 decision；选项取 `A.` / `1)` 列表或 `<option>`，否则给两项默认；`key = inferred-<sha256(标题+选项) 前 16 位>`。开关：机器 `settings.json` 的 `ownerBoardAutoDetect`（缺省开） | `attention/inferDecision.ts` |
+| digest | 负责人每回合 prompt 前最多 2 行：`[Briefing board] N open: kind 「标题≤40」 key=…（无则 id=…） 时长`，总长约 480 字符，超出折叠为 `+N more`；第二行（有工具时）提示用法。刚由本条消息生成的提问不列。1.5 s 超时或失败就原样发送 | `leadBoard.ts` `formatBoardDigest` |
+| 范围 | 工具、`request_human`、Owner 提问对所有 runner 生效；firstReply / D5 / digest 接在 Claude remote 路径（Codex / pi 负责人另行接入） | — |
+
 ## 验收标准
 
 - [ ] W0：wire schema、update 事件、REST 与工具入参出参有单测；wire build、vitest 通过。
 - [ ] S-1：迁移只新增一张表；`/v1/attention-items` CRUD 与 owner-respond；并发 upsert 去重；push 至多一次；根任务 submit 写条目（修 `reducer.ts:113`）；归档清理；`owner-replied` 自动 resolve；feature 开关。
 - [ ] server vitest（含 PGlite）覆盖迁移、并发去重、push 只发一次。
+- [ ] C-1：`owner_board_*` 能力门控；`request_human` 写 blocked 条目并兼容旧 server；Owner 提问 + firstReply；D5 草稿；digest；playbook 中英规则；单测 + mutation + 隔离 daemon 对 S-1 实测。
 
 ## 留真机验证项
 

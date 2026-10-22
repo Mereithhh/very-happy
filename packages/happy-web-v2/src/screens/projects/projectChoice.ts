@@ -44,6 +44,15 @@ export function sessionProject(sessionId: string, members: ProjectMemberView[], 
   return { project, via: m?.via ?? null, teamId: m?.teamId ?? null, canLeave: !!m && m.via !== 'team' };
 }
 
+/**
+ * B-772 (QA4 O3): linking a team that is already in another project moves it
+ * out of that one — the project it would leave, so the link asks first.
+ */
+export function teamMoveSource(team: Pick<TeamState, 'id'>, projectId: string, projects: ProjectView[]): ProjectView | null {
+  const from = projectOfTeam(team, projects);
+  return from && from.id !== projectId ? from : null;
+}
+
 /** Teams that can be linked to `projectId` from the project page: live, and not already in it. */
 export function linkableTeams<T extends Pick<TeamState, 'id' | 'archivedAt'>>(teams: T[], projectId: string, projects: ProjectView[]): T[] {
   return teams.filter((t) => t.archivedAt === undefined && projectOfTeam(t, projects)?.id !== projectId);

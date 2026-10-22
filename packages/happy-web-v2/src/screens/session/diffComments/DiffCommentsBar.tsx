@@ -43,7 +43,7 @@ export function DiffCommentsBar({ sessionId, onSent }: { sessionId: string; onSe
     const clear = async () => {
         const ok = await Modal.confirm(
             zh ? '清空批注' : 'Clear comments',
-            zh ? `删除本会话全部 ${comments.length} 条批注？` : `Delete all ${comments.length} comments in this session?`,
+            zh ? `删除本会话全部 ${comments.length} 条批注？` : comments.length === 1 ? 'Delete the 1 comment in this session?' : `Delete all ${comments.length} comments in this session?`,
             { destructive: true, confirmText: zh ? '清空' : 'Clear' },
         );
         if (ok && clearDiffComments(sessionId) !== 'ok') toast.show(zh ? '清空失败：浏览器存储不可用' : 'Could not clear: browser storage is unavailable', 'error');

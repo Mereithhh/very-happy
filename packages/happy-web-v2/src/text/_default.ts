@@ -147,7 +147,7 @@ export const en = {
         assignee: "Assignee",
         cleanup: "Cleanup",
         failed: ({ reason }: { reason: string }) => `Action did not complete: ${reason}. Please retry.`,
-        counts: ({ bots, tasks }: { bots: number; tasks: number }) => `${bots} teammates · ${tasks} tasks`,
+        counts: ({ bots, tasks }: { bots: number; tasks: number }) => `${bots === 1 ? '1 teammate' : `${bots} teammates`} · ${tasks === 1 ? '1 task' : `${tasks} tasks`}`,
     },
     tabs: {
         // Tab navigation labels
@@ -1182,6 +1182,7 @@ export const en = {
         receiveSubtitle: 'When an agent calls open_preview, pop the file preview on this device. Off = this device ignores the push (your other devices still show it).',
         // diff mode is a parameter placeholder until B-036 lands
         diffUnavailable: 'Diff view is not built yet — showing the file as-is',
+        pushHeld: ({ name }: { name: string }) => `“${name}” pushed a preview. Click to view`,
         machineOffline: ({ machine }: { machine: string }) =>
             `${machine} is offline, so the file cannot be read. Start the happy daemon there and this preview loads itself.`,
         machineUnknown: 'That machine is not on this account yet — the file cannot be read',
@@ -1430,7 +1431,7 @@ export const en = {
         // B-294: select any number of conversations and import them in one run.
         importAction: ({ count }: { count: number }) => count <= 1 ? 'Import' : `Import ${count} conversations`,
         progress: ({ done, total }: { done: number; total: number }) => `${done}/${total}`,
-        batchImported: ({ count }: { count: number }) => `${count} conversations imported`,
+        batchImported: ({ count }: { count: number }) => count === 1 ? '1 conversation imported' : `${count} conversations imported`,
         batchPartial: ({ done, failed }: { done: number; failed: number }) => `${done} imported, ${failed} failed — the failed rows show why`,
         // B-464: the same dialog imports Codex threads; the source switch and
         // the Codex-specific copy live here.
@@ -1509,7 +1510,7 @@ export const en = {
         failed: 'Search failed on this machine.',
         indexError: ({ message }: { message: string }) => `The index could not be refreshed: ${message}`,
         truncated: 'More conversations match; add a word to narrow it down.',
-        evicted: ({ count }: { count: number }) => `${count} older conversations are searchable by title only (index size cap).`,
+        evicted: ({ count }: { count: number }) => count === 1 ? '1 older conversation is searchable by title only (index size cap).' : `${count} older conversations are searchable by title only (index size cap).`,
         open: 'Open',
         import: 'Import',
         // B-600: hit an earlier import was made from.
@@ -2239,7 +2240,7 @@ export const en = {
             readingFile: ({ file }: { file: string }) => `Reading ${file}`,
             writingFile: ({ file }: { file: string }) => `Writing ${file}`,
             modifyingFile: ({ file }: { file: string }) => `Modifying ${file}`,
-            modifyingFiles: ({ count }: { count: number }) => `Modifying ${count} files`,
+            modifyingFiles: ({ count }: { count: number }) => count === 1 ? 'Modifying 1 file' : `Modifying ${count} files`,
             modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} and ${count} more`,
             showingDiff: 'Showing changes',
         },
@@ -2331,7 +2332,7 @@ export const en = {
             no: 'no',
             nextRun: ({ at }: { at: string }) => `next ${at}`,
             teamSummary: ({ name, members }: { name: string; members: number }) => `Team ${name} · ${members === 1 ? '1 member' : `${members} members`}`,
-            inspectSummary: ({ name, tasks, bots, messages }: { name: string; tasks: number; bots: number; messages: number }) => `${name} · ${tasks} tasks · ${bots} members · ${messages} messages`,
+            inspectSummary: ({ name, tasks, bots, messages }: { name: string; tasks: number; bots: number; messages: number }) => `${name} · ${tasks === 1 ? '1 task' : `${tasks} tasks`} · ${bots === 1 ? '1 member' : `${bots} members`} · ${messages === 1 ? '1 message' : `${messages} messages`}`,
             taskRef: ({ id }: { id: string }) => `Task ${id}`,
             scheduleRef: ({ id }: { id: string }) => `Reminder ${id}`,
             automationCount: ({ count }: { count: number }) => count === 1 ? '1 automation' : `${count} automations`,
@@ -4693,7 +4694,7 @@ export const en = {
         requiredTitle: 'This daemon is below the relay minimum',
         summary: ({ machine, current, target, count }: { machine: string; current: string; target: string; count: number }) =>
             count > 1
-                ? `${machine} is on ${current}; ${target} is available. View its update status. ${count - 1} other machines have updates.`
+                ? `${machine} is on ${current}; ${target} is available. View its update status. ${count === 2 ? '1 other machine has an update' : `${count - 1} other machines have updates`}.`
                 : `${machine} is on ${current}; ${target} is available. View the machine’s update status.`,
         copyCommand: 'Copy update command',
         handoverHeld: 'Update installed but not running',

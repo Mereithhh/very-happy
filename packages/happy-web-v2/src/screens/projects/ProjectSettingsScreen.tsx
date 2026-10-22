@@ -13,7 +13,7 @@ import { Input } from '@/ui/Input';
 import { Segmented } from '@/ui/Segmented';
 import { ActionDropdownMenu } from '@/ui/Menu';
 import { Markdown } from '@/screens/session/Markdown';
-import { linkableTeams } from './projectChoice';
+import { linkableTeams, teamMoveSource } from './projectChoice';
 import { utf8Bytes, INSTRUCTIONS_MAX_BYTES } from './projectPage';
 import { addFolder, basicsPatch, canRemoveMember, folderError, makePrimary, projectSettingsPolicy, removeFolder, updateFolder, PROJECT_SETTINGS_SECTIONS, type FolderDraft } from './projectSettings';
 import { useProjectCopy, type ProjectCopy } from './projectCopy';
@@ -310,10 +310,14 @@ function TeamsSection({ project, c, editable, onChanged }: SectionProps) {
   const projects = useProjects();
   const { busy, run } = useWrite(c, onChanged);
   const attached = project.teamIds.map((id) => ({ id, name: teams.find((t) => t.id === id)?.name ?? id.slice(0, 8) }));
-  const linkable = linkableTeams(teams, project.id, projects.status === 'ready' ? projects.projects : [project]);
+  const known = projects.status === 'ready' ? projects.projects : [project];
+  const linkable = linkableTeams(teams, project.id, known);
   const [linkError, setLinkError] = useState<string | null>(null);
   const link = async (teamId: string) => {
     setLinkError(null);
+    const from = teamMoveSource({ id: teamId }, project.id, known);
+    const name = teams.find((t) => t.id === teamId)?.name ?? teamId.slice(0, 8);
+    if (from && !(await Modal.confirm(c.moveTeamTitle, c.moveTeamBody(name, from.name, project.name), { confirmText: c.moveTeam }))) return;
     try { await projectsApi.attachTeam(project.id, teamId); await onChanged(); }
     catch (error) { setLinkError(error instanceof ProjectsApiError && error.code === 'team_machine_not_in_project' ? c.teamNoFolder : c.failed); }
   };

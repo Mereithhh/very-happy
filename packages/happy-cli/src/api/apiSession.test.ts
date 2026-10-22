@@ -710,6 +710,21 @@ describe('ApiSessionClient v3 messages API migration', () => {
         });
     });
 
+    // B-766: the briefing board turns owner messages into items by their server localId.
+    it('announces every routed user message with its transport local id, even before a runner subscribes', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const routed = vi.fn();
+        client.on('user-message-routed', routed);
+        (client as any).routeIncomingMessage({ role: 'user', content: { type: 'text', text: 'who writes the notes?' }, meta: { sentFrom: 'web' } }, 'owner-local-id');
+        expect(routed).toHaveBeenCalledWith({ localId: 'owner-local-id', message: expect.objectContaining({ content: { type: 'text', text: 'who writes the notes?' }, meta: { sentFrom: 'web' } }) });
+        // A throwing listener never blocks delivery to the runner.
+        client.on('user-message-routed', () => { throw new Error('listener bug'); });
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+        (client as any).routeIncomingMessage({ role: 'user', content: { type: 'text', text: 'next' } }, 'second');
+        expect(onUserMessage).toHaveBeenLastCalledWith(expect.objectContaining({ localKey: 'second' }));
+    });
+
     it('fetchMessages uses incremental cursor and paginates while hasMore is true', async () => {
         const client = new ApiSessionClient('fake-token', session);
         const onUserMessage = vi.fn();

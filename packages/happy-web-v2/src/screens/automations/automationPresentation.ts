@@ -82,7 +82,7 @@ export function describeCron(input: string, lang: Lang): string | null {
   if (hourF === '*' && domF === '*' && monF === '*' && dowF === '*') {
     if (minF === '*') return zh ? '每分钟' : 'Every minute';
     const step = /^\*\/(\d+)$/.exec(minF);
-    if (step) return zh ? `每 ${step[1]} 分钟` : `Every ${step[1]} minutes`;
+    if (step) return zh ? `每 ${step[1]} 分钟` : step[1] === '1' ? 'Every minute' : `Every ${step[1]} minutes`;
   }
   const minutes = expandList(minF, 0, 59);
   if (!minutes) return null;
@@ -96,7 +96,7 @@ export function describeCron(input: string, lang: Lang): string | null {
     const step = /^\*\/(\d+)$/.exec(hourF);
     if (step) {
       if (minutes.length !== 1) return null;
-      return zh ? `每 ${step[1]} 小时（${pad2(minutes[0])} 分）` : `Every ${step[1]} hours at :${pad2(minutes[0])}`;
+      return zh ? `每 ${step[1]} 小时（${pad2(minutes[0])} 分）` : step[1] === '1' ? `Hourly at :${pad2(minutes[0])}` : `Every ${step[1]} hours at :${pad2(minutes[0])}`;
     }
   }
   const hours = expandList(hourF, 0, 23);

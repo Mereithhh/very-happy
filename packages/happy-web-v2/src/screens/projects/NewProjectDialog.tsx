@@ -18,14 +18,14 @@ import './projects.css';
 
 function copy(zh: boolean) {
   return zh ? {
-    title: '新建项目', name: '名称', namePlaceholder: '比如：支付重构', context: '项目说明（context）',
+    title: '新建项目', name: '名称', namePlaceholder: '比如：支付重构', context: '项目说明',
     contextHint: '写下这个项目的目标、约定和背景。项目里的每个会话（包括团队成员）开工时都会先读到它，之后在项目页随时可改。',
     contextPlaceholder: '例如：目标是……；代码在……；约定：……；不要……', optional: '选填',
     create: '创建项目', creating: '正在创建…', cancel: '取消', failed: '创建项目失败',
     exists: '这个目录已经存在，已切换到「选择已有目录」，确认后再创建。', outside: '新目录只能建在 home 下面', mkdirFailed: '新建目录失败', gitFailed: '目录已建好，但 git init 失败',
     done: (n: string) => `已创建项目「${n}」`, tooLong: '超过 8KB 上限',
   } : {
-    title: 'New project', name: 'Name', namePlaceholder: 'e.g. Payments revamp', context: 'Project context',
+    title: 'New project', name: 'Name', namePlaceholder: 'e.g. Payments revamp', context: 'Project instructions',
     contextHint: 'The goal, conventions and background of this project. Every session in it — team members too — reads this first; edit it any time on the project page.',
     contextPlaceholder: 'e.g. Goal: …; code lives in …; conventions: …; don’t …', optional: 'Optional',
     create: 'Create project', creating: 'Creating…', cancel: 'Cancel', failed: 'Could not create the project',

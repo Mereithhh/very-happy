@@ -230,14 +230,14 @@ describe('builtinToolDigest — result lines, links and errors', () => {
         const inspected = builtinToolDigest(resolveBuiltinTool(call('team_inspect', {}))!, {
             state: 'completed', result: mcpText({ team: { id: 't1', name: 'core', bots: [{}], tasks: [{}, {}], messages: [] } }),
         });
-        expect(inspected.lines).toEqual(['core · 2 tasks · 1 members · 0 messages']);
+        expect(inspected.lines).toEqual(['core · 2 tasks · 1 member · 0 messages']);
     });
 
     it('B-723: team summaries count current members only (server memberCounts / bot activity)', () => {
         const counted = builtinToolDigest(resolveBuiltinTool(call('team_inspect', {}))!, {
             state: 'completed', result: mcpText({ team: { id: 't1', name: 'core', bots: [{}, {}, {}, {}], tasks: [], messages: [], memberCounts: { active: 1, stopping: 0, idle: 0, inactive: 3 } } }),
         });
-        expect(counted.lines).toEqual(['core · 0 tasks · 1 members · 0 messages']);
+        expect(counted.lines).toEqual(['core · 0 tasks · 1 member · 0 messages']);
         const byActivity = builtinToolDigest(resolveBuiltinTool(call('team_create', { name: 'core' }))!, {
             state: 'completed', result: mcpText({ team: { id: 't1', name: 'core', bots: [{ activity: 'active' }, { activity: 'inactive' }, { activity: 'idle' }] } }),
         });

@@ -34,4 +34,11 @@ describe('Sidebar wiring (B-721 / B-762)', () => {
     expect(css).toMatch(/\.sb-row-project \{[^}]*max-width: 40%;/);
     expect(src).toContain('<span className="sb-row-project-name">{ownerChip.name}</span>');
   });
+  it('B-772 (QA4 O4): the owner chip never shrinks below ~3 characters of its name; next to tag chips the title keeps 6em', () => {
+    // Measured in Chromium (最近 / 按标签 × 1440 / 390 coarse × light / dark): tmp/vh-b772/chips.mjs.
+    const css = readFileSync(new URL('./sidebar.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.sb-row-project \{[^}]*min-width: calc\(3em \+ 23px\);/);
+    expect(css).not.toMatch(/\.sb-row-project \{[^}]*min-width: 22px;/);
+    expect(css).toContain('.sb-row-title-line:has(.sb-row-tags) .sb-row-title:has(~ .sb-row-project) { min-width: min(6em, 45%); }');
+  });
 });

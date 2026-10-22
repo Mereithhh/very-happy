@@ -1,4 +1,5 @@
 import { t as translate } from '@/text';
+import { createPortal } from 'react-dom';
 import {
   createContext,
   useCallback,
@@ -58,6 +59,13 @@ interface ToastApi {
 
 const ToastContext = createContext<ToastApi | null>(null);
 
+/** The topmost open modal <dialog>, if any — everything outside it is inert. */
+export function topModalDialog(doc: Document): HTMLElement | null {
+  let all: NodeListOf<HTMLElement>;
+  try { all = doc.querySelectorAll<HTMLElement>('dialog:modal'); } catch { return null; }
+  return all.length ? all[all.length - 1] : null;
+}
+
 // module-level bridge so non-React code (data layer) can toast too
 let externalShow: ToastApi['show'] | null = null;
 export const toast: ToastApi = {
@@ -73,6 +81,29 @@ let seq = 0;
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  // B-772: a native modal <dialog> (新建团队) sits in the top layer and makes
+  // everything outside it inert, so a plain fixed toast is hidden and can't be
+  // clicked. While toasts show, the region moves into the topmost modal dialog
+  // and is re-shown as a manual popover (top layer, viewport-positioned).
+  const regionRef = useRef<HTMLDivElement>(null);
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  const hasItems = items.length > 0;
+  useEffect(() => {
+    if (!hasItems || typeof document === 'undefined') { setHost(null); return; }
+    const pick = () => setHost(topModalDialog(document));
+    pick();
+    const observer = new MutationObserver(pick);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
+    return () => observer.disconnect();
+  }, [hasItems]);
+  useEffect(() => {
+    const region = regionRef.current;
+    if (!region || typeof region.showPopover !== 'function') return;
+    try {
+      if (region.matches(':popover-open')) region.hidePopover();
+      if (items.length > 0) region.showPopover();
+    } catch { /* not connected yet / unsupported: stays a plain fixed layer */ }
+  }, [items, host]);
 
   const dismiss = useCallback((id: number) => {
     setItems((prev) => prev.filter((t) => t.id !== id));
@@ -118,50 +149,54 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [show],
   );
 
+  const region = (
+    <div ref={regionRef} className="vh-toasts" role="region" aria-live="polite" popover="manual">
+      {items.map((t) => (
+        <div
+          key={t.id}
+          className={`vh-toast vh-toast--${t.tone}${t.onAction ? ' vh-toast--action' : ''}${t.button ? ' vh-toast--button' : ''}`}
+          onClick={() => {
+            if (t.button) return; // only the explicit button acts
+            t.onAction?.();
+            dismiss(t.id);
+          }}
+        >
+          {t.button ? <span className="vh-toast-text">{t.message}</span> : t.message}
+          {t.button && (
+            <button
+              type="button"
+              className="vh-toast-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                t.button?.onClick();
+                dismiss(t.id);
+              }}
+            >
+              {t.button.label}
+            </button>
+          )}
+          {t.sticky && (
+            <button
+              type="button"
+              className="vh-toast-x"
+              aria-label={translate('common.close')}
+              onClick={(e) => {
+                e.stopPropagation();
+                dismiss(t.id);
+              }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div className="vh-toasts" role="region" aria-live="polite">
-        {items.map((t) => (
-          <div
-            key={t.id}
-            className={`vh-toast vh-toast--${t.tone}${t.onAction ? ' vh-toast--action' : ''}${t.button ? ' vh-toast--button' : ''}`}
-            onClick={() => {
-              if (t.button) return; // only the explicit button acts
-              t.onAction?.();
-              dismiss(t.id);
-            }}
-          >
-            {t.button ? <span className="vh-toast-text">{t.message}</span> : t.message}
-            {t.button && (
-              <button
-                type="button"
-                className="vh-toast-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  t.button?.onClick();
-                  dismiss(t.id);
-                }}
-              >
-                {t.button.label}
-              </button>
-            )}
-            {t.sticky && (
-              <button
-                type="button"
-                className="vh-toast-x"
-                aria-label={translate('common.close')}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  dismiss(t.id);
-                }}
-              >
-                ×
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
+      {host ? createPortal(region, host) : region}
     </ToastContext.Provider>
   );
 }
