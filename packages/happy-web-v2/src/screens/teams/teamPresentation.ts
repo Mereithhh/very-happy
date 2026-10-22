@@ -1,4 +1,15 @@
 import type { TeamBot, TeamState, TeamTask } from '@slopus/happy-wire';
+import { teamProtocolBody } from '@/screens/session/teamMessage';
+import { plainMarkdownLines } from '@/utils/markdownPreview';
+/**
+ * B-746: a task goal / result as compact plain lines for every folded preview
+ * (list card, board, member card, parent label, parent picker): the team
+ * protocol header is stripped and no markdown syntax survives. Full views
+ * keep the source text.
+ */
+export function teamTextPreviewLines(text: string): string[] {
+  return plainMarkdownLines(teamProtocolBody(text));
+}
 export function teamRootTask(team: TeamState): TeamTask | undefined {
   return team.tasks.find(t => !t.parentTaskId && team.bots.some(b => b.root && b.managed && b.id === t.assigneeBotId));
 }

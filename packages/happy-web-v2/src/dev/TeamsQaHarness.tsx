@@ -3,10 +3,11 @@
  *  spawn / unknown-outcome / retained-cleanup operations before and after the
  *  machine metadata arrives (O2, O3), and a feature tip next to an offline
  *  banner (O4). Route `/dev/teams-qa` (stripped from prod builds); all data is
- *  local, nothing is sent. */
+ *  local, nothing is sent. `?case=rawmd` (B-746): task previews whose goals and
+ *  results carry markdown and the team protocol header. */
 import { useEffect, useRef } from 'react';
 import type { TeamBot, TeamOperation, TeamState } from '@slopus/happy-wire';
-import { TeamListCard } from '@/screens/teams/TeamWorkspace';
+import { TeamListCard, TeamWorkspace } from '@/screens/teams/TeamWorkspace';
 import { OperationResolution } from '@/screens/teams/TeamsScreen';
 import { attentionOperations, teamRetrySupport } from '@/screens/teams/teamView';
 import { FeatureTipHost, resetFeatureTips, useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
@@ -40,6 +41,16 @@ export const QA_TEAM: TeamState = {
   ],
 };
 
+const RAW_GOAL = '[Very Happy team message m-qa; task t-run; from Lead]\nTask 47280515-0e1a-42c8-b8b2-984a6d38af4d\n**[QA] QA3 卡片测试任务**：在 `README.md` 末尾加一行\n\n| 步骤 | 说明 |\n|---|---|\n| 1 | 改 README |\n\n```sh\npnpm test\n```';
+export const RAW_MD_TEAM: TeamState = {
+  ...QA_TEAM, id: 'team-md', name: '[QA] QA3 团队', operations: [],
+  bots: QA_TEAM.bots.slice(0, 3),
+  tasks: [
+    { ...QA_TEAM.tasks[0], id: 't-run', goal: RAW_GOAL, assigneeBotId: 'dev-a' },
+    { ...QA_TEAM.tasks[0], id: 't-sub', goal: '## [QA] 验收用测试团队\n- 只在 **README.md** 加一行\n- 不改代码', assigneeBotId: 'dev-b', status: 'submitted', attempts: [{ id: 'aa', botId: 'dev-b', status: 'submitted', goalVersion: 1, generation: 1, result: '## 结果\n- **已完成**：`README.md` +1 行\n\n| 门禁 | 结果 |\n|---|---|\n| vitest | ✅ |' }] as never },
+  ],
+};
+
 function TipAnchor() {
   const ref = useRef<HTMLButtonElement | null>(null);
   useFeatureTipAnchor('quick-open', ref, true, { dismissOnClick: false });
@@ -53,6 +64,10 @@ export function TeamsQaHarness() {
     <header style={{ height: 48, borderBottom: '1px solid var(--line)' }}><TipAnchor /></header>
     <div className="mrb"><div className="mrb-note" role="status"><span className="mrb-note-text">此会话已离线。恢复后可以在这里继续对话。</span><button type="button" className="mrb-term-btn mono"><span>恢复</span></button></div></div>
     <FeatureTipHost />
+  </main>;
+  if (view === 'rawmd') return <main className="teams-screen">
+    <div className="teams-list"><TeamListCard team={RAW_MD_TEAM} machine="dev-sg" now={NOW} /></div>
+    <TeamWorkspace team={RAW_MD_TEAM} onTask={() => {}} now={NOW} />
   </main>;
   const attention = attentionOperations(QA_TEAM);
   // `loading`: the execution machine is known but its metadata has not arrived (O3).

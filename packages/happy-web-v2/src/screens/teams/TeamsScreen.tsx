@@ -19,7 +19,7 @@ import { Bot, UsersRound, ArrowLeft, Settings2, Clock3, LayoutDashboard, Plus, R
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
-import { teamLaunchPhase } from "./teamPresentation";
+import { teamLaunchPhase, teamTextPreviewLines } from "./teamPresentation";
 import { AdoptTeamForm } from "./AdoptTeamForm";
 import { TeamStartForm } from "./TeamStartForm";
 import { useFirstUseCopy } from "./firstUseCopy";
@@ -454,8 +454,8 @@ export function DelegateChoices({ team, agentLabel }: { team: TeamState; agentLa
   const parentOptions = [
     { value: "", label: tr("teams.independent") },
     ...open.map((task) => {
-      const [head = "", ...rest] = task.goal.trim().split("\n");
-      const description = rest.join(" ").trim();
+      const [head = "", ...rest] = teamTextPreviewLines(task.goal);
+      const description = rest.join(" ");
       return { value: task.id, label: head || task.id, ...(description ? { description } : {}), keywords: task.goal };
     }),
   ];

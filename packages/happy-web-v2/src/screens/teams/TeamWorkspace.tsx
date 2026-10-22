@@ -5,7 +5,7 @@ import { Summary } from '@/ui/Summary';
 import { useWorkspaceCopy } from './workspaceCopy';
 import { t as tr } from '@/text';
 import { useFirstUseCopy } from './firstUseCopy';
-import { memberTitle, teamRootTask, taskLaunchIssue } from './teamPresentation';
+import { memberTitle, teamRootTask, taskLaunchIssue, teamTextPreviewLines } from './teamPresentation';
 import { Markdown } from '@/screens/session/Markdown';
 import { useOperationErrorSummary } from './OperationError';
 import { taskRows } from './teamView';
@@ -13,7 +13,6 @@ import { botHistorySessionId, teamInactiveGroupId, teamMemberCount, teamMemberIn
 import { isGroupCollapsed, setGroupCollapsed, useCollapsedGroups } from '@/screens/sessions/sidebarCollapsedGroups';
 import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
 import { AgentGlyph } from '@/screens/session/AgentChip';
-import { plainMarkdownLines } from '@/utils/markdownPreview';
 import { agentKindLabel, agentKindOf } from '@/screens/session/agentIdentity';
 
 export function TeamProgress({ team }: { team: TeamState }) {
@@ -47,10 +46,10 @@ export function TeamWorkspace({ team, onTask, archivedSessionIds, now = Date.now
           const result = task.attempts.find(a => a.id === task.currentAttemptId)?.result;
           const assignee = team.bots.find(b => b.id === task.assigneeBotId);
           return <button className="teams-task-preview" id={`team-task-${task.id}`} key={task.id} onClick={() => onTask(task.id)}>
-            {depth > 0 && <small className="teams-parent-label"><GitBranch size={12} />{plainMarkdownLines(team.tasks.find(t => t.id === task.parentTaskId)?.goal ?? '')[0]}</small>}
-            <strong className="teams-task-goal">{plainMarkdownLines(task.goal).join('\n')}</strong><span className="teams-task-owner">{assignee && <AgentGlyph kind={agentKindOf(assignee.assistant)} />}{assignee ? memberTitle(assignee, f) : '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
+            {depth > 0 && <small className="teams-parent-label"><GitBranch size={12} />{teamTextPreviewLines(team.tasks.find(t => t.id === task.parentTaskId)?.goal ?? '')[0]}</small>}
+            <strong className="teams-task-goal">{teamTextPreviewLines(task.goal).join('\n')}</strong><span className="teams-task-owner">{assignee && <AgentGlyph kind={agentKindOf(assignee.assistant)} />}{assignee ? memberTitle(assignee, f) : '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
             {taskLaunchIssue(team, task) && <span className="teams-error">{f.launchFailed} · {operationError(taskLaunchIssue(team, task)?.error)}</span>}
-            {result && <span className="teams-result-preview">{plainMarkdownLines(result).join('\n')}</span>}
+            {result && <span className="teams-result-preview">{teamTextPreviewLines(result).join('\n')}</span>}
             {['pending', 'failed'].includes(task.cleanup) && <small className={task.cleanup === 'failed' ? 'teams-error' : ''}>{task.cleanup === 'failed' ? c.cleanupFailed : c.cleanupPending}</small>}
           </button>;
         })}</div>;
@@ -77,7 +76,7 @@ export function TeamMembers({ team, archivedSessionIds, now }: { team: TeamState
   const card = (bot: TeamBot) => {
     const historySessionId = botHistorySessionId(team, bot);
     const active = team.tasks.filter(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status));
-    const content = <><span className="teams-avatar" data-live={!!bot.sessionId && active.some(t => t.status === "running")}><AgentGlyph kind={agentKindOf(bot.assistant)} size={18} /></span><span className="teams-member-info"><strong>{memberTitle(bot, f)}</strong><small>{agentKindLabel(agentKindOf(bot.assistant)) ?? bot.assistant}</small><span>{active[0]?.goal ?? c.idle}</span>{!bot.sessionId && <small>{team.operations.some(o => o.botId === bot.id && ["unknown", "failed"].includes(o.status)) ? f.unknown : active.length ? f.starting : f.stopped}</small>}{teamBotActivity(team, bot, context) === 'stopping' && <small className="teams-error">{navCopy.stopping}</small>}{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{historySessionId && <ArrowUpRight size={16} aria-hidden />}</>;
+    const content = <><span className="teams-avatar" data-live={!!bot.sessionId && active.some(t => t.status === "running")}><AgentGlyph kind={agentKindOf(bot.assistant)} size={18} /></span><span className="teams-member-info"><strong>{memberTitle(bot, f)}</strong><small>{agentKindLabel(agentKindOf(bot.assistant)) ?? bot.assistant}</small><span>{active[0] ? teamTextPreviewLines(active[0].goal).join(' ') : c.idle}</span>{!bot.sessionId && <small>{team.operations.some(o => o.botId === bot.id && ["unknown", "failed"].includes(o.status)) ? f.unknown : active.length ? f.starting : f.stopped}</small>}{teamBotActivity(team, bot, context) === 'stopping' && <small className="teams-error">{navCopy.stopping}</small>}{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{historySessionId && <ArrowUpRight size={16} aria-hidden />}</>;
     return historySessionId ? <Link key={bot.id} className="teams-member" to={`/session/${encodeURIComponent(historySessionId)}`}>{content}</Link> : <div key={bot.id} className="teams-member">{content}</div>;
   };
   return <section className="teams-members"><h2>{f.membersTitle} <small>{teamMemberCount(team, context)}</small></h2>
@@ -99,5 +98,5 @@ export function TeamListCard({ team, machine, archivedSessionIds, now = Date.now
   const f = useFirstUseCopy();
   const navCopy = useTeamNavigationCopy();
   const { members, inactive } = teamRoster(team, { now, sessionArchived: (sessionId: string) => !!archivedSessionIds?.has(sessionId) });
-  return <Link className="teams-list-card" to={`/teams/${team.id}`}><div className="teams-section-heading"><h2><UsersRound size={22} aria-hidden />{team.name}</h2><ArrowUpRight size={18} /></div><p><Monitor size={14} />{machine}</p><div className="teams-roster">{members.slice(0, 4).map(b => <span key={b.id} title={agentKindLabel(agentKindOf(b.assistant)) ?? undefined}><AgentGlyph kind={agentKindOf(b.assistant)} />{memberTitle(b, f)}</span>)}{members.length > 4 && <span>+{members.length - 4}</span>}{inactive > 0 && <span className="teams-roster-inactive"><Archive size={12} aria-hidden />{navCopy.inactiveCount(inactive)}</span>}{!team.bots.length && <span>{c.noMembers}</span>}</div><TeamProgress team={team} />{team.tasks.filter(t => ['running', 'submitted'].includes(t.status)).slice(0, 2).map(t => <p className="teams-list-task" key={t.id}><span>{t.status === 'submitted' ? c.submitted : c.running}</span>{t.goal}</p>)}</Link>;
+  return <Link className="teams-list-card" to={`/teams/${team.id}`}><div className="teams-section-heading"><h2><UsersRound size={22} aria-hidden />{team.name}</h2><ArrowUpRight size={18} /></div><p><Monitor size={14} />{machine}</p><div className="teams-roster">{members.slice(0, 4).map(b => <span key={b.id} title={agentKindLabel(agentKindOf(b.assistant)) ?? undefined}><AgentGlyph kind={agentKindOf(b.assistant)} />{memberTitle(b, f)}</span>)}{members.length > 4 && <span>+{members.length - 4}</span>}{inactive > 0 && <span className="teams-roster-inactive"><Archive size={12} aria-hidden />{navCopy.inactiveCount(inactive)}</span>}{!team.bots.length && <span>{c.noMembers}</span>}</div><TeamProgress team={team} />{team.tasks.filter(t => ['running', 'submitted'].includes(t.status)).slice(0, 2).map(t => <p className="teams-list-task" key={t.id}><span>{t.status === 'submitted' ? c.submitted : c.running}</span>{teamTextPreviewLines(t.goal).join(' ')}</p>)}</Link>;
 }
