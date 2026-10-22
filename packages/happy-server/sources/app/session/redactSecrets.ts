@@ -19,7 +19,9 @@ export const REDACTED = '[redacted]';
 export const MAX_REDACT_INPUT = 32 * 1024;
 export const TRUNCATED_SUFFIX = '\n…[truncated]';
 
-const SECRET_WORD = /SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CREDENTIAL|COOKIE|DSN|DATABASE_URL/i;
+// B-745: assistant tool output (`env`, `.env` dumps) now reaches this — the names also
+// cover AUTH (not AUTHOR), BEARER, JWT and the signing / encryption / master / HMAC keys.
+const SECRET_WORD = /SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CREDENTIAL|COOKIE|DSN|DATABASE_URL|AUTH(?!OR)|BEARER|JWT|SIGNING[_-]?KEY|ENCRYPTION[_-]?KEY|MASTER[_-]?KEY|HMAC/i;
 const MAX_NAME = 64;
 const MAX_VALUE = 512;
 

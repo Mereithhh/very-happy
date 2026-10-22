@@ -70,4 +70,23 @@ describe('B-701 share-link viewer helpers', () => {
         expect(src).not.toMatch(/auth_credentials|TokenStorage|authorization:|apiSocket/);
         expect(src).toContain("credentials: 'omit'");
     });
+
+    // B-745: the server now returns role=session records in the wire shape (`content` IS the envelope).
+    it('renders wire-shaped role=session records (assistant text and tool calls)', () => {
+        const env = (id: string, ev: Record<string, unknown>) => ({ role: 'session', content: { id, time: 2, role: 'agent', turn: 't1', ev } });
+        const messages = messagesFromRecords([
+            { id: 'a', seq: 1, createdAt: 1, content: { role: 'user', content: { type: 'text', text: 'hello' } } },
+            { id: 'b', seq: 2, createdAt: 2, content: env('e1', { t: 'turn-start' }) },
+            { id: 'c', seq: 3, createdAt: 2, content: env('e2', { t: 'text', text: 'assistant reply' }) },
+            { id: 'd', seq: 4, createdAt: 2, content: env('e3', { t: 'tool-call-start', call: 'c1', name: 'Bash', title: 'env', description: 'env', args: { command: 'env' } }) },
+        ]);
+        expect(messages.map((m) => ('text' in m ? m.text : null))).toContain('assistant reply');
+        expect(messages.some((m) => m.kind === 'tool-call' && m.tool.name === 'Bash')).toBe(true);
+    });
+
+    // B-745: a relative icon href resolves to /s/favicon.png on a share page (404).
+    it('index.html icon links are root-absolute', () => {
+        const html = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
+        for (const rel of ['icon', 'apple-touch-icon']) expect(html).toMatch(new RegExp(`<link rel="${rel}"[^>]*href="/[^/]`));
+    });
 });

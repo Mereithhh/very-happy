@@ -384,6 +384,11 @@ export function projectRecordForLink(record: unknown, scrub: (s: string) => stri
     }
 }
 
+function sessionEnvelopeOf(content: unknown): unknown {
+    if (!isObj(content)) return null;
+    return content.type === 'session' && isObj(content.data) ? content.data : content;
+}
+
 function projectRecord(record: Obj, budget: LinkBudget): Obj | null {
     let content: Obj | null;
     if (record.role === 'user') {
@@ -393,8 +398,12 @@ function projectRecord(record: Obj, budget: LinkBudget): Obj | null {
     } else if (record.role === 'agent') {
         content = projectAgentContent(record.content);
     } else if (record.role === 'session') {
-        const envelope = isObj(record.content) ? projectEnvelope(record.content.data) : null;
-        content = envelope ? { type: 'session', data: envelope } : null;
+        // B-745: the wire shape (SessionProtocolMessageSchema, CLI apiSession
+        // enqueueSessionProtocolEnvelope) is `content: <SessionEnvelope>` — the
+        // envelope itself. Reading `content.data` here dropped every assistant
+        // reply. The web-normalized `{ type: 'session', data }` wrapper is still
+        // accepted; the output is always the wire shape (the web takes both).
+        content = projectEnvelope(sessionEnvelopeOf(record.content));
     } else {
         content = null;
     }
@@ -425,7 +434,7 @@ export const OVERSIZE_TEXT = 'This message is too large to show on a share page.
 
 /** What the viewer sees instead of an oversize record (renders as a service line). */
 export function oversizePlaceholder(id: string, time: number): Obj {
-    return { role: 'session', content: { type: 'session', data: { id: `oversize-${id}`, time, role: 'agent', turn: `oversize-${id}`, ev: { t: 'service', text: OVERSIZE_TEXT } } } };
+    return { role: 'session', content: { id: `oversize-${id}`, time, role: 'agent', turn: `oversize-${id}`, ev: { t: 'service', text: OVERSIZE_TEXT } } };
 }
 
 export interface LinkPageHooks<T> {

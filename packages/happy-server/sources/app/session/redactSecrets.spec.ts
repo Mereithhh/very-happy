@@ -134,4 +134,12 @@ describe('B-701 redactSecrets', () => {
             }
         }
     });
+
+    // B-745: `env` / `.env` dumps from tool output now reach the mask; more secret NAMES.
+    it('masks AUTH / BEARER / JWT / signing, encryption, master and HMAC key assignments; AUTHOR is not a secret', () => {
+        const value = ['abcd', '1234', 'efgh'].join('');
+        const env = ['NPM_AUTH', 'BEARER_VALUE', 'SUPABASE_JWT', 'SIGNING_KEY', 'ENCRYPTION_KEY', 'MASTER_KEY', 'WEBHOOK_HMAC'].map((name) => `${name}=${value}`);
+        for (const line of env) expect(redactSecrets(line), line).toBe(line.replace(/=.*/, `=${REDACTED}`));
+        expect(redactSecrets('GIT_AUTHOR_NAME=alice-builder\nPORT=3005')).toBe('GIT_AUTHOR_NAME=alice-builder\nPORT=3005');
+    });
 });
