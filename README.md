@@ -56,17 +56,17 @@ In a pi conversation, **Steer** sends a queued message into the turn that is run
 Run `very-happy install-pi-tools` once, then launch `pi` directly inside a Very Happy terminal to load terminal naming, clipboard and file preview tools. `very-happy pi --terminal` remains available for temporary loading. Each conversation and terminal has a **Copy and preview history** disclosure for reopening files and copying earlier content. [Tool setup and retention limits](docs/channels.md#native-pi-terminal-tools).
 
 
-## What's new — October 22, 2026 (projects)
+## What's new — October 23, 2026 (where am I)
 
 <a href="https://veryhappy.dev/whats-new">
-  <img src="docs/screenshots/whats-new-2026-10-22c-en.webp" width="100%" alt="The October 22 projects update: projects in the sidebar with a list and settings page, purpose-built tool-call cards, a calm ASCII backdrop and one session menu, shown in the real app with example data">
+  <img src="docs/screenshots/whats-new-2026-10-23a-en.webp" width="100%" alt="The October 23 update: a project tree in the sidebar, breadcrumbs, Just me & the lead, and tool cards with their results, shown in the real app with example data">
 </a>
 
-- **Projects take center stage**: a Projects entry and list page, projects in every sidebar view, and a settings page per project (instructions, folders, teams, sessions). A new project always has a folder — choose one or create a new working folder, optionally with git init (CLI 0.2.182).
-- **A card for every tool call**: tool calls from Claude, Codex, pi, Gemini and MCP read as cards — diffs, code, lists and command output instead of JSON; raw data stays one click away.
-- **A calm ASCII backdrop**: conversations get a faint ASCII field in the side margins, never behind the text; it pauses while you scroll and follows Background motion.
-- **One menu for every session**: right-click a session in the sidebar to share it, move it to a project, tag it, copy its link or archive it.
-- Also: click a team in the sidebar to open its team page (members are created by the lead as needed); a task shows Running only while its member is really working; the Teams workspace folds Finished into one row; New session says which project a session joins; shared links to long conversations scroll.
+- **Projects, teams and members in one tree**: the Projects view of the sidebar nests project › team › lead and members, with a badge for what needs you at every level. Session headers, team pages and project pages show breadcrumbs, and a team can move to another project from its menu.
+- **Just me & the lead**: a lead's conversation opens on your messages and the lead's answers; member and system traffic folds into one line, and Answered ↗ jumps to the reply.
+- **Tool cards show their results**: command output, file contents, search results and MCP replies; failures in red, output over 32 KB cut and marked (CLI 0.2.183).
+- **Quieter teams**: an idle member no longer interrupts the lead; idle members are summed up on the lead's next team message, with a reminder only after 30 minutes idle without a submit.
+- Also: Tags and Recent list conversations with a team or project chip; linking a team from another project asks first; a pushed preview waits behind a notice instead of pulling you out of a dialog; `auto report` clips long fields instead of failing; on a Mac, automatic CLI updates stay under launchd (CLI 0.2.183).
 
 [See the full update →](https://veryhappy.dev/whats-new) · [All releases](https://veryhappy.dev/changelog)
 
