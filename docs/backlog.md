@@ -24,6 +24,24 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-793 | dev-sg 装了两份 very-happy（`~/.npm-global` 和 `/usr`），PATH 先后不同导致命令和 daemon 可能跑不同版本 → 删掉 `/usr` 那份并统一 npm prefix（Owner 待办，关联 B-744） | debt | 第五版收尾（10-23） | todo | **P2**；Owner 待办 |
+| B-792 | 侧栏行空间不够时 P0 等 tag 跟其他 chip 一起被隐藏（B-773 的取舍）→ 优先级类 tag 保底显示或改为图标 | ux | 第五版收尾（10-23） | todo | **P3** |
+| B-791 | 中文界面英文残留：「已结束」等标题、change_title 的「Title changed to …」事件行、负责人/成员会话自动标题（QA4 O5）；新建团队没有名字字段，团队名和项目名直接用目标全文，侧栏和 /projects 里很长（QA4 O7，关联 B-748） | ux | 第五版收尾（10-23） | todo | **P2** |
+| B-790 | deploy 后的 smoke 卡在安装 Chromium；smoke 账号 secret 仍未配置（B-024 遗留，B-672 job 级 skipped 仍未做）→ 预装/缓存浏览器或换带浏览器的镜像，配好账号后让 smoke 真正跑 | debt | 第五版收尾（10-23） | todo | **P1**；发版验收缺自动冒烟 |
+| B-789 | `asciiFieldEngine` 在初始化完成前调用 `stop()` 触发 TDZ（ReferenceError）→ stop 对未初始化状态幂等，加用例 | bug | 第五版收尾（10-23） | todo | **P2** |
+| B-788 | server 测试 `schedule.spec` 的 `nextCronAfter` TZ 用例偶发超时（5s）→ 定位慢点后放宽或改造用例（同 B-663/B-694 类） | debt | 第五版收尾（10-23） | todo | **P3** |
+| B-787 | `scripts/land-pr.sh` 远程 update-branch 生成的 merge commit 不触发 CI，PR 卡在 blocked → 改为本地 rebase + push，或 update 后显式触发检查 | debt | 第五版收尾（10-23） | todo | **P1**；阻塞合并流程 |
+| B-786 | worker 之间不能直接发团队消息（scope 互不可见，返回 404），只能由 Lead 转达 → 同团队成员间允许受限直发（或明确报错并提示经 Lead） | feat | 第五版收尾（10-23） | todo | **P2** |
+| B-785 | 团队页面包屑和「所属项目 ·」那一行信息重复 → 去掉其中一处 | ux | 第五版收尾（10-23） | todo | **P3**；B-763 后续 |
+| B-784 | 手机会话页头太挤：agent、机器、relay 都占位，标题被压缩 → 身份（agent/机器）和 relay 收纳进一个入口 | ux | 第五版收尾（10-23） | todo | **P2** |
+| B-783 | Read 卡片去掉 `cat -n` 前缀后没有行号槽 → 按起始行号补行号列 | ux | 第五版收尾（10-23） | todo | **P3**；B-771 后续 |
+| B-782 | Codex app-server 的实时 MCP 调用、web search、dynamic tool 调用没有转发到 Web（会话里看不到这些工具卡片）→ CLI 映射这些事件到 tool-call 帧 | bug | 第五版收尾（10-23） | todo | **P1** |
+| B-781 | 几处注释仍写着已删除的 owner-replied 规则（B-766 S-1d 已改）：web `boardActions.ts:6`、`sync.ts:183`、wire `attention.ts:58`、CLI `leadBoard.ts:41` → 同步改注释 | debt | 第五版收尾（10-23） | todo | **P3**；B-766 后续 |
+| B-780 | 通知中心按汇报板 item 展示，替代 input_needed feed（B-766 W-2 未做部分）；同一回合 item push 和 done push 去重，避免一轮推两条 | feat | 第五版收尾（10-23） | todo | **P2**；B-766 后续 |
+| B-779 | 汇报板的 firstReply、D5 自动识别草稿和 digest 目前只接了 Claude 负责人，Codex 和 pi 负责人没有 → 对齐三种 runner | feat | 第五版收尾（10-23） | todo | **P1**；B-766 后续 |
+| B-778 | 汇报板开关打开前已在运行的负责人会话要重启一次才有 `owner_board_*` 工具（C-1 按进程冻结工具集）→ 运行中会话可刷新工具集，或 Web 对缺工具的负责人会话提示重启 | ux | 第五版收尾（10-23） | todo | **P2**；B-766 后续，已在 oct23b 通知里说明 |
+| B-777 | 汇报板推送标题前缀规则不对（`[QA]` 等标记不在最前面）；server 推送标题是写死的中文，没有多语言 → 定前缀顺序，推送标题按接收者语言 | bug | 第五版收尾（10-23） | todo | **P2**；B-766 后续 |
+| B-776 | 新建团队时选的「默认模型」对负责人不生效：Release5 hotfix 实测负责人第一轮仍是 opus xhigh → 负责人 spawn 也按团队默认模型/effort 启动 | bug | 第五版收尾（10-23） | todo | **P1** |
 | B-751 | dev-sg daemon 环境缺 `LLMHUB_API_KEY`，而 `~/.codex/config.toml` 引用了它 → 10-21 起 dev-sg 上 Codex 全部不可用；key 来源待 Owner 决定 | bug | 10-22 hotfix 后 | todo | |
 | B-750 | 模型：sonnet 启动的会话，模型选择器显示 opus 1M 而上下文分母是 200k，两边不一致；`/settings/models` 冷加载闪一下「还没有连接机器」 | bug | 10-22 hotfix 后 | todo | |
 | B-749 | pi：会话太短时执行 `/compact` 直接显示英文原始报错；pi 会话的 agent 名显示成「acp」 | ux | 10-22 hotfix 后 | todo | |
@@ -44,7 +62,7 @@
 | B-732 | 项目上下文支持「提议修改说明」（`project_note` kind=proposal）→ 先放宽旧 Web 读取端的 kind enum（未知值不丢），再开写入端（约束 4/14 双向兼容） | feat | 第三版收尾（10-22） | todo | |
 | B-731 | B-701 nits：`password_policy` 被误遮；计数词豁免能被 `access_token_limit` 这类写法绕过；`PUBLIC_FETCH_BATCH=4` 改为按大小自适应；超大行先查长度，不整行读入 | debt | 第三版收尾（10-22） | todo | |
 | B-712 | **CLI publish 的 promote 读 smoke run 有竞态**：run 已显示 completed，windows/node24 那格 job 结论仍是 in_progress/null，被判为失败（0.2.180 publish 39609083643 第 1 次 promote 被拒，等那格 success 后重跑通过）→ 等所有 job 级 conclusion 落定再判，缺格不算通过 | debt | 第二版 CLI 0.2.180 发版 | todo | **10-22 第三版 CLI 0.2.181 未复现**：smoke 六格全绿，promote 一次通过（latest=next=0.2.181）；竞态仍在，保持 todo |
-| B-711 | **蓝绿切流停旧槽后线上约 9s 不可用**（deploy run 39607760413，exit=5 phase=after-old-stop）：Caddy 13:31:05.06 reload，blue 05.83 即退出（隔 0.8s），origin probe 06.8–15.5 连续超时；同窗 green 260 connect / 306 disconnect / 412 auth，重连风暴压住新槽 → 旧槽停止前等连接排空，和/或客户端重连加抖动退避 | bug | 第二版发版 | todo | **10-22 第三版切流**（deploy 39688524732，blue 上线、回滚点 green f2eb1836）：只出现 2 次不连续的 2s probe 超时（第二版是连续 4 次 / 约 9s），有缓解但仍非零中断，保持 todo |
+| B-711 | **蓝绿切流停旧槽后线上约 9s 不可用**（deploy run 39607760413，exit=5 phase=after-old-stop）：Caddy 13:31:05.06 reload，blue 05.83 即退出（隔 0.8s），origin probe 06.8–15.5 连续超时；同窗 green 260 connect / 306 disconnect / 412 auth，重连风暴压住新槽 → 旧槽停止前等连接排空，和/或客户端重连加抖动退避 | bug | 第二版发版 | todo | **10-22 第三版切流**（deploy 39688524732，blue 上线、回滚点 green f2eb1836）：只出现 2 次不连续的 2s probe 超时（第二版是连续 4 次 / 约 9s），有缓解但仍非零中断，保持 todo；**10-23 第五版 / hotfix5**：Lead 报告切流超时仍在（deploy 39844980024 / 39866540717 / 39867925662 的 after-old-stop 均 exit=0，超时出现在探测），保持 todo |
 | B-709 | daemon 对 worktree 准备之外的通用 spawn 失败仍每 5s 重试一次 → 统一有界退避；另：worker 委派子成员时继承父成员 worktree 作为源仓库，语义未写进文档 | debt | B-706 顺带 | todo | |
 | B-705 | `scripts/dev/mutation-check.mjs` 的 `--mutate` 字面量以冒号开头（如 `::not(`）时解析错，报出假的 0/1 caught → 修参数解析并加用例 | debt | B-699 顺带 | todo | |
 | B-703 | 团队仓库还没有任何 commit 时 `git worktree add` 失败，Web 只显示「重试」不说原因 → daemon 回报具体原因（空仓库需先提交），Web 显示 | bug | B-688/B-698 顺带 | todo | |
@@ -77,6 +95,31 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-775 | 成员上一次的清理失败时，派给它的新任务不再一直「启动中」：成员会话已停时，新任务直接用新的工作区启动；否则任务显示「等待清理处理」并说明原因，负责人改派会收到明确提示，在团队页重试清理或标记已处理即可恢复 | bug | QA5（10-23） | done | **10-23 hotfix5：server/Web da21fda3（CLI 不变 0.2.183）**：#721；**CLI 部分待 0.2.184 发版** |
+| B-774 | 手机上有弹窗时，推送预览提示不再挡住弹窗标题和关闭按钮；长按会话行弹出操作菜单，不再直接打开重命名；项目名很长时选择框显示省略号；团队「换项目」弹窗的标题和菜单项一致；归档会话后只在同一团队或项目里跳转，不会跳进别的团队、项目或别人分享的会话 | ux | QA5（10-23） | done | **10-23 hotfix5：server/Web da21fda3（CLI 不变 0.2.183）**：#718 |
+| B-773 | 侧栏负责人/成员行标题至少保留 6em：「负责人」tag 移出标题框，空间不够时 chip 先让位（QA5：负责人行看不到标题） | bug | QA5（10-23） | done | **10-23 hotfix5：server/Web da21fda3（CLI 不变 0.2.183）**：#720；取舍：窄侧栏时 P0 等 tag 一起隐藏，见 B-792 |
+| B-772 | QA4 Web 修复：其他会话推送预览时，如果你开着弹窗或输入框里有没发出的内容，不再自动跳走，而是显示「「会话」推送了预览，点击查看」；「关联已有团队」会把团队从原项目移走时先确认；英文界面计数单复数正确；「最近」视图项目标签至少显示约 3 个字；新建项目弹窗「项目说明 · 选填」不再夹英文 | bug | QA4（10-22） | done | **10-23 第五版发版：server/Web 31956d5d，CLI 0.2.183**：#711 |
+| B-771 | 工具卡片现在显示结果——命令输出、读取的文件内容、搜索结果和 MCP 返回（Claude、Codex、pi 等）；单条超过 32 KB 时截断并标明，失败的调用标红；没有参数的工具不再误报「未产生输出」 | feat | 第五版（10-22） | done | **10-23 第五版发版：server/Web 31956d5d，CLI 0.2.183**：#712（需 CLI 0.2.183 上新开的会话） |
+| B-770 | Mac 上以 LaunchAgent 运行的 daemon，自动升级 CLI 后改由 launchd 重启，不再脱离托管；正在运行的会话不受影响。机器页的「daemon 血统」对 systemd 运行的 daemon 显示 systemd，不再是 other | bug | 第五版（10-22） | done | **10-23 第五版发版：server/Web 31956d5d，CLI 0.2.183**：#709 |
+| B-769b | 给成员派新任务（delegate/return/handoff）重新计算空闲起点，不再把上一段空闲算到新任务头上（QA bot 刚派任务 3 秒就收到「idle for 220 min」）；digest 的 Meanwhile idle 同步修正 | bug | 生产事故（10-23 04:34） | done | **10-23 hotfix5：server/Web da21fda3（CLI 不变 0.2.183）**：#716 |
+| B-769 | 团队成员只是回合结束（空闲）时不再打断负责人；空闲情况汇总在负责人下一条团队消息和 team_inspect 里，成员提交、等待权限、退出或空闲超过 30 分钟仍未提交时照常立即提醒 | ux | 第五版（10-22） | done | **10-23 第五版发版：server/Web 31956d5d，CLI 0.2.183**：#706；后续 B-769b |
+| B-768 | 隐私卫生：fixture、文档和 b713 截图里剩余的真实团队名换成中性名称；敏感词守卫补中英混排变体 | debt | B-765 回查（10-22） | done | **10-23 第五版发版：server/Web 31956d5d，CLI 0.2.183**：#702（未改写 git 历史） |
+| B-767 | `very-happy auto report` 遇到超长的 attention/summary/error 会先截断到服务端上限再发送，并在 stderr 提示哪个字段被截断，不再整条报 400 失败 | bug | 第五版（10-22） | done | **10-23 第五版发版：server/Web 31956d5d，CLI 0.2.183**：#704 |
+| B-766 | 汇报板（Briefing）：团队负责人可以把需要你拍板的事、待办和阶段结论发到「汇报板」；你在负责人会话里的提问会自动进「你提的」并挂上首个回复；负责人用文字请你拍板时自动生成草稿；`request_human` 改为汇报板上的「被卡住」条目。负责人会话新增「全部消息 / 只看我和负责人」切换 | feat | 第五版（10-22） | done | **10-23 第五版发版：server/Web 31956d5d，CLI 0.2.183**：B-1 #708、W0 #703、S-1 #705、C-1 #710、W-1/W-2 #707、S-1b #713、S-1c #714；**10-23 hotfix5：server/Web da21fda3（CLI 不变 0.2.183）**：S-1d #717、W-fix #719，**汇报板于 hotfix5 在生产打开**；oct23b 通知 #722。后续 B-777～B-780 |
+| B-765 | 公开仓库已发布截图的隐私回查（OCR 扫描 scan.py / scan2.py）：只查不改，出回查报告 | debt | B-764 顺带（10-22） | done | **10-22 只查不改**：回查报告在 `~/code/github/skills/tmp/vh-team-B-765/`；命中项由 B-768 #702 修复 |
+| B-764 | 隐私卫生：测试、fixture、dev harness、注释、文档里的真实人名/团队名/id 换成中性名称，加基于 hash 的敏感词守卫（不改功能） | debt | 公开仓隐私（10-22） | done | **10-22 第四版发版：server/Web f8c800c8，CLI 0.2.182**：#698 + #699（未改写 git 历史，是否清理由 Owner 决定） |
+| B-763 | 位置感：会话页头、团队页、项目页显示「项目 › 团队 › 成员」面包屑，每一段都能点，手机上只显示上一级和当前页；团队菜单加「换项目…」（B-760 方案 A-3） | ux | B-760 方案 A（10-22） | done | **10-23 第五版发版：server/Web 31956d5d，CLI 0.2.183**：#701；后续 B-785 |
+| B-762 | 侧栏「按项目」变成一棵树：项目 › 团队 › 负责人/成员，项目里的会话和团队同级，不在项目里的放在底部「不在项目中」；每一级都标出需要你处理的数量，最近不活跃的项目和不在用的团队默认收起，方向键可以在树里移动，手机上长按弹出底部菜单。「按标签」和「最近」（原「不分组」）只列会话，每行标出所属团队或项目，团队成员只在等你处理时出现；侧栏「项目」入口显示需要你的总数 | ux | B-760 方案 A（10-22） | done | **10-23 第五版发版：server/Web 31956d5d，CLI 0.2.183**：#700 |
+| B-761 | 团队任务状态：「运行中」只在成员真的有活跃回合时显示；任务不在运行时说明原因（空闲待回复 / 等待确认 / 已停止 · 需要处理 / 状态确认中），看板、任务详情、列表卡片和对话里显示同一个状态 | bug | Owner 10-22 | done | **10-22 第四版发版：server/Web f8c800c8，CLI 0.2.182**：#695 |
+| B-760 | 侧栏 / 项目 / 团队信息架构设计：Owner 选定方案 A（A-1/A-2 项目树与列表视图，A-3 面包屑） | ux | Owner 10-22 | done | **10-22 Owner 拍板方案 A**（设计稿 `~/code/github/skills/tmp/vh-team-B-760/DESIGN.md`），由 B-762 #700、B-763 #701 实现，随第五版发版 |
+| B-759 | 点侧栏的团队行进入团队页，点负责人行进入负责人的对话；团队页写明成员由负责人按需创建 | ux | Owner 10-22 | done | **10-22 第四版发版：server/Web f8c800c8，CLI 0.2.182**：#696 |
+| B-758 | 分享链接页面长对话现在可以正常滚动（桌面滚轮/手机触摸），分享弹窗的「链接」页不再被裁掉右侧内容 | bug | Owner 10-22 | done | **10-22 第四版发版：server/Web f8c800c8，CLI 0.2.182**：#690 |
+| B-757 | 项目有了独立的设置页（项目页右上齿轮）：基本信息、项目说明（编辑 + 预览）、目录增删改、关联团队、成员会话、危险区，删除/归档/移出都会先确认。新建会话弹窗会说明新会话将加入哪个项目（目录在项目里时自动预选）；快捷新建的会话顶部会提示它属于哪个项目，或不属于任何项目并可一键加入 | feat | Owner 10-22 | done | **10-22 第四版发版：server/Web f8c800c8，CLI 0.2.182**：#692 |
+| B-756 | 按标签分组、不分组时也能看到项目（顶部「项目」区与会话上的项目标签）；侧栏新增「项目」入口和项目列表页（手机上「项目」「团队」两个按钮改为打开列表页）；项目组头可直接新建会话、打开设置、右键重命名/归档；会话右键菜单新增分享、复制链接、停止等，与会话页头菜单一致 | feat | Owner 10-22 | done | **10-22 第四版发版：server/Web f8c800c8，CLI 0.2.182**：#694 |
+| B-755 | 团队 worktree 永远不是项目目录（解析到仓库，worktree 里不提示加入项目，存量项目一键改成仓库路径）；新建项目必须有目录（选择已有目录 / 新建工作目录，daemon `fs-mkdir`）并可填项目说明 | bug | Owner 10-22 | done | **10-22 第四版发版：server/Web f8c800c8，CLI 0.2.182**：#689 + #693（新建工作目录需 CLI 0.2.182） |
+| B-754 | 工具调用特化展示：Claude、Codex、pi、Gemini 和各种 MCP 的工具调用都换成卡片，不认识的工具显示键值表，原始 JSON 收进折叠的「原始数据」 | ux | Owner 10-22 | done | **10-22 第四版发版：server/Web f8c800c8，CLI 0.2.182**：#688；结果展示见 B-771 |
+| B-753 | 团队页工作台的「已结束」默认收成一行「已结束 N 个」，点开先显示最近 20 条，可「显示更多」；每个团队的展开状态在本设备记住 | ux | Owner 10-22 | done | **10-22 第四版发版：server/Web f8c800c8，CLI 0.2.182**：#687 |
+| B-752 | 会话页两侧多了一层很淡的 ASCII 动效背景（滚动时暂停，手机为静止纹理），可在「设置 → 外观 → 背景动效」关闭 | ux | Owner 10-22 | done | **10-22 第四版发版：server/Web f8c800c8，CLI 0.2.182**：#691 |
 | B-746 | /teams 卡片任务预览：按 markdown 渲染为纯文本，去掉协议头 | bug | 第三版收尾（10-22） | done | **10-22 hotfix：server/Web aa3b8a61（CLI 不变 0.2.181）**：#683；oct22b 通知 #685 |
 | B-745 | 分享链接显示 assistant 回复（项目 role=session 按真实 wire 形状解析）+ runner 契约测试 + favicon | bug | 第三版收尾（10-22） | done | **10-22 hotfix：server/Web aa3b8a61（CLI 不变 0.2.181）**：#684；oct22b 通知 #685 |
 | B-730 | restart / resume / 唤醒拉起的团队 wrapper 重新带上团队作用域（缺 scope 文件时重建）；会话至多属于一个活团队（`session_in_other_team`，Web 确认后转移）；负责人工作法第 8 条 | bug | 负责人重拉丢作用域事故（10-21） | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#680 |
