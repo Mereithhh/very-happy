@@ -49,7 +49,11 @@ export function BoardList({ sessionId, tab, copy, onLeave }: {
             if (!a) return;
             onLeave?.();
             // Same landing as 「已答 ↗」 (B-1): data-message-id, else the turn prompt; `flash` tints it.
-            requestChatJump(sessionId, { terms: [], messageId: a.messageId ?? undefined, localId: a.localId ?? undefined, flash: true });
+            // An Owner item is its own message; an agent-side one lands where its pointer sits (boardAnchor.ts).
+            const anchor = { localId: a.localId ?? undefined, messageId: a.messageId ?? undefined, snippet: a.snippet ?? undefined };
+            requestChatJump(sessionId, item.source === 'owner'
+                ? { terms: [], messageId: anchor.messageId, localId: anchor.localId, flash: true }
+                : { terms: [], anchor, flash: true });
         },
         onFollowUp: (item) => {
             onLeave?.();

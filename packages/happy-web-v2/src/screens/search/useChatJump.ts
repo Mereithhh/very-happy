@@ -65,7 +65,9 @@ export function locateJumpTarget(
     req: ChatJumpRequest,
 ): { el: HTMLElement; scope: Text[] } | null {
     // B-766: an agent message with its own anchor is landed on directly.
-    const direct = root.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(targetId)}"]`);
+    const direct = root.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(targetId)}"]`)
+        // B-766 (QA5 F1): a reply folded inside an activity row — land on its 「已上板」 pointer.
+        ?? root.querySelector<HTMLElement>(`[data-board-for~="${CSS.escape(targetId)}"]`);
     if (direct) return { el: direct, scope: [] };
     const promptId = promptForMessage(chronological, targetId);
     const prompt = promptEl(root, promptId);

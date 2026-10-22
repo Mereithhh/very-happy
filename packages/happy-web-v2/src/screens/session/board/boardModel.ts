@@ -3,7 +3,7 @@
  * belongs to, what the two tabs show, the counts on the strip / badge, the
  * status chip, and the in-stream pointers. No React, no store (DESIGN §3 A, §6).
  */
-import { ATTENTION_SESSION_CAPABILITY, attentionKindNeedsOwner, isAttentionActive, type AttentionItem } from '@slopus/happy-wire';
+import { ATTENTION_LIMITS, ATTENTION_SESSION_CAPABILITY, attentionKindNeedsOwner, isAttentionActive, type AttentionItem, type AttentionOption } from '@slopus/happy-wire';
 
 export type BoardGroup = 'need' | 'asked' | 'report';
 export type BoardTab = 'open' | 'done';
@@ -116,13 +116,6 @@ export function resolveAction(item: AttentionItem): ResolveAction | null {
     }
 }
 
-/** 「已上板」pointers under a transcript message: items the agent side posted from that reply. */
-export function pointersAt(items: readonly AttentionItem[], messageId: string): AttentionItem[] {
-    return items
-        .filter((i) => i.anchor?.messageId === messageId && i.source !== 'owner')
-        .sort((a, b) => a.createdAt - b.createdAt);
-}
-
 /** Answers / reports the lead attached to an Owner item, oldest first. */
 export function repliesTo(items: readonly AttentionItem[], id: string): AttentionItem[] {
     return items.filter((i) => i.replyToId === id).sort((a, b) => a.createdAt - b.createdAt);
@@ -142,13 +135,6 @@ export function sessionHasBoard(items: readonly AttentionItem[] | undefined, cap
     return !!items && (items.length > 0 || capabilities?.includes(ATTENTION_SESSION_CAPABILITY) === true);
 }
 
-/** Transcript messages carrying a 「已上板」 pointer — B-1's 「只看我和负责人」 keeps them out of folds. */
-export function pointedMessageIds(items: readonly AttentionItem[]): ReadonlySet<string> {
-    const out = new Set<string>();
-    for (const i of items) if (i.source !== 'owner' && i.anchor?.messageId) out.add(i.anchor.messageId);
-    return out;
-}
-
 /**
  * B-766 W-2: the request_human strip from items — the newest open `blocked`
  * item; its `panel` link opens that machine web panel (`?panel=machine&wp=`).
@@ -158,4 +144,43 @@ export function blockedBanner(items: readonly AttentionItem[], sessionId: string
     if (!open) return null;
     const panel = open.links?.find((l) => l.type === 'panel')?.ref;
     return { id: open.id, reason: open.title, url: panel ? `/session/${encodeURIComponent(sessionId)}?panel=machine&wp=${encodeURIComponent(panel)}` : null };
+}
+
+// ─── Card text (QA5 O1) ───────────────────────────────────────────────────────
+
+/** How far back a cut title may retreat to the previous word boundary. */
+const TITLE_WORD_BACKOFF = 24;
+
+/**
+ * A title the server clipped at `titleChars` (e.g. 「根目标已提交，等你验收 · <goal>」)
+ * ends mid-word with no mark. Back off to the last word boundary when the cut
+ * fell inside a Latin word, and say it was cut. CJK text has no word to keep.
+ */
+export function displayTitle(title: string): string {
+    if (title.length < ATTENTION_LIMITS.titleChars - 1) return title;
+    let cut = title;
+    if (/[A-Za-z0-9]$/.test(cut)) {
+        const space = cut.search(/\s\S*$/);
+        if (space > 0 && space >= cut.length - TITLE_WORD_BACKOFF) cut = cut.slice(0, space);
+    }
+    return `${cut.replace(/[\s,，、·:：;；/-]+$/, '')}…`;
+}
+
+/** An option's id is shown only when it is a one-character marker the Owner can say (A / B / 1); `accept` / `return` are internal. */
+export function optionMarker(option: Pick<AttentionOption, 'id'>): string | null {
+    return /^[A-Za-z0-9]$/.test(option.id) ? option.id : null;
+}
+
+/** No `recommended` mark → no tag. The lead's own mark reads 「负责人推荐」; any other source (system / automation) just 「推荐」. */
+export function recommendationTag(item: Pick<AttentionItem, 'source'>, option: Pick<AttentionOption, 'recommended'>): 'lead' | 'plain' | null {
+    if (option.recommended !== true) return null;
+    return item.source === 'lead' ? 'lead' : 'plain';
+}
+
+/** The chosen option as the Owner reads it: `B. 明早`, or just the label for an internal id. */
+export function choiceLabel(item: Pick<AttentionItem, 'options'>, choiceId: string): string {
+    const option = item.options?.find((o) => o.id === choiceId);
+    if (!option) return choiceId;
+    const marker = optionMarker(option);
+    return marker ? `${marker}. ${option.label}` : option.label;
 }

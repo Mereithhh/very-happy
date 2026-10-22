@@ -5,8 +5,8 @@ import { ChevronRight } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { AttentionItem } from '@slopus/happy-wire';
 import { boardCopy, kindLabel } from './boardCopy';
-import { kindTone, pointersAt } from './boardModel';
-import { useBoardItems, useAttentionStore } from '@/sync/attentionStore';
+import { kindTone } from './boardModel';
+import { useAttentionStore } from '@/sync/attentionStore';
 import './board.css';
 
 export function BoardPointer({ item, onOpen }: { item: AttentionItem; onOpen: (item: AttentionItem) => void }) {
@@ -21,12 +21,13 @@ export function BoardPointer({ item, onOpen }: { item: AttentionItem; onOpen: (i
     );
 }
 
-/** Pointers for one transcript message; renders nothing when the session has no board. */
-export function BoardPointers({ sessionId, messageId }: { sessionId: string; messageId: string }) {
-    const items = useBoardItems(sessionId);
-    if (!items) return null;
-    const here = pointersAt(items, messageId);
-    if (here.length === 0) return null;
+/**
+ * Pointers under one transcript row: `items` were resolved to its messages by
+ * `boardAnchors` (boardAnchor.ts). `data-board-for` lets 「在消息流中定位」 land
+ * here when the anchored reply itself is folded inside an activity row.
+ */
+export function BoardPointers({ sessionId, items, anchorIds }: { sessionId: string; items: readonly AttentionItem[]; anchorIds: readonly string[] }) {
+    if (items.length === 0) return null;
     const open = (item: AttentionItem) => useAttentionStore.getState().focusItem(sessionId, item.id);
-    return <div className="brf-ptrs">{here.map((item) => <BoardPointer key={item.id} item={item} onOpen={open} />)}</div>;
+    return <div className="brf-ptrs" data-board-for={anchorIds.join(' ')}>{items.map((item) => <BoardPointer key={item.id} item={item} onOpen={open} />)}</div>;
 }

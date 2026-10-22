@@ -27,7 +27,9 @@
   .brf-card:not(.is-selected):hover { box-shadow: 0 0 0 1px var(--line-2); }
 }
 .brf-r1 { display: flex; align-items: center; gap: 6px; }
-.brf-title { flex: 1; min-width: 0; font-size: var(--fs-13); font-weight: 500; line-height: 1.35; color: var(--text); overflow-wrap: anywhere; }
+/* QA5 O1: break between words (a long URL / path still wraps), at most two lines, then an ellipsis; the full title is the hover title. */
+.brf-title { flex: 1; min-width: 0; font-size: var(--fs-13); font-weight: 500; line-height: 1.35; color: var(--text); overflow-wrap: break-word; word-break: normal;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .brf-card.is-done .brf-title { color: var(--text-faint); font-weight: 400; }
 .brf-r2 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--sp-2); margin-top: 4px; font-size: var(--fs-11); color: var(--text-faint); }
 .brf-link { font-family: var(--font-mono); font-size: var(--fs-11); line-height: 17px; padding: 0 5px; border-radius: var(--r-xs); background: var(--fill-soft); }
