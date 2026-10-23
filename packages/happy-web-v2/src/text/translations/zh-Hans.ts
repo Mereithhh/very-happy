@@ -2818,6 +2818,28 @@ export const zhHans: TranslationStructure = {
         entryShort: '大更新',
         entryCount: ({ count }: { count: number }) => `${count} 条未看`,
         releases: {
+            oct24a: {
+                title: 'iPhone Duo 与折叠屏：展开有侧栏条和抽屉，合起有返回按钮、避开四边',
+                summary: '介于手机和桌面之间宽度的触屏（如展开的 iPhone Duo）改为窄侧栏条 + 抽屉式侧栏，折叠、展开时手上的操作都保留。合起时外屏右侧状态栏下不再压着按钮，手机上每个二级页都有返回。',
+                duoTitle: '展开：侧栏条 + 抽屉',
+                duoBody: '触屏宽度小于 1100 px 时侧栏收成一条窄栏，点开后项目树从左侧滑出盖在对话上，点外面、按 Esc 或跳转后自动收起。折叠、展开不会重载页面：打开的弹窗和里面的输入、汇报板、输入框草稿、聊天滚动位置都保持不变。',
+                duoAlt: '横向展开的 iPhone Duo：项目树抽屉打开，盖在负责人会话上',
+                safeAreaTitle: '合起：避开状态栏，每页都能返回',
+                safeAreaBody: '应用现在按屏幕四边的安全区排版，iPhone Duo 外屏右侧状态栏下不再有按钮、弹层或提示。团队页、项目页及其列表、笔记、项目设置和「新功能」在手机上左上角都有返回按钮。',
+                safeAreaAlt: '两个合起的 iPhone Duo 外屏，右侧是状态栏：团队页和负责人会话，左上角都有返回按钮',
+                targets: '触屏上页头、侧栏条和抽屉里的按钮点击区都不小于 44 px。',
+                header: '会话页头按自身宽度收紧，窄栏里先收起文字，按钮不会挤出屏幕。',
+                diag: '设置 → 诊断 → 屏幕四边安全区：显示系统在每条边占用的区域，按钮被挡时可复制报告反馈。',
+                todos: '待办页的来源标签在窄屏上不再被压成一条细线。',
+            },
+            oct24r: {
+                title: 'CLI 0.2.184：单个 Claude 会话可以换服务商和模型',
+                summary: '用 `very-happy session provider` 可以给某个 Claude（SDK）会话单独绑定一个兼容 Anthropic 接口的服务商和模型，同机其他会话仍用默认配置。另外，成员清理失败后也能重新接活了。',
+                provider: '在 `~/.happy/providers.json` 里加一个 profile（baseUrl、apiKeyFile、models），然后运行 `very-happy session provider <sessionId> <profile> --model <模型>`，会话原地重启、历史保留；`very-happy session provider <sessionId> default` 改回默认，`--list` 查看现有绑定。目前只有命令行，需要在运行该会话的机器上执行。',
+                compact: '绑定后的会话压缩时用绑定的模型，不再回落到之前的 Anthropic 模型；profile 里写的 `contextWindow` 作为它的上下文上限。',
+                deepseek: '暂不建议把 deepseek 用于带完整工具集的会话：它的上游会拒绝部分工具的 JSON Schema。kimi-k3 可以正常使用。',
+                cleanup: '团队：成员会话已经停止、但清理失败时，成员可以在新 worktree 里接新任务，不会一直卡在「启动中」；如果会话仍占着 worktree，派活时会直接说明原因。',
+            },
             oct23b: {
                 title: '汇报板：负责人要你处理的事集中在一处',
                 summary: '负责人会话新增汇报板。负责人提出的决定、待办和卡住的事会一直留在这里，直到你处理；你问负责人的问题会跟踪到有回答为止；负责人的汇报也收在同一个列表里，不用再翻消息流去找。',

@@ -139,6 +139,42 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-24-foldable-safe-area',
+    date: '2026-10-24',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct24a.title',
+    summaryKey: 'changelog.releases.oct24a.summary',
+    highlights: [
+      {
+        key: 'duo',
+        titleKey: 'changelog.releases.oct24a.duoTitle',
+        bodyKey: 'changelog.releases.oct24a.duoBody',
+        image: changelogShots('2026-10-24', 'duo', SHOT_SIZE, 'changelog.releases.oct24a.duoAlt'),
+      },
+      {
+        key: 'safeArea',
+        titleKey: 'changelog.releases.oct24a.safeAreaTitle',
+        bodyKey: 'changelog.releases.oct24a.safeAreaBody',
+        image: changelogShots('2026-10-24', 'safearea', SHOT_SIZE, 'changelog.releases.oct24a.safeAreaAlt'),
+      },
+    ],
+    itemKeys: [
+      'changelog.releases.oct24a.targets',
+      'changelog.releases.oct24a.header',
+      'changelog.releases.oct24a.diag',
+      'changelog.releases.oct24a.todos',
+    ],
+  },
+  {
+    id: '2026-10-24-cli-session-provider',
+    cliVersion: '0.2.184',
+    date: '2026-10-24',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct24r.title',
+    summaryKey: 'changelog.releases.oct24r.summary',
+    itemKeys: ['changelog.releases.oct24r.provider', 'changelog.releases.oct24r.compact', 'changelog.releases.oct24r.deepseek', 'changelog.releases.oct24r.cleanup'],
+  },
+  {
     id: '2026-10-23-briefing-board',
     date: '2026-10-23',
     buildVersion: __APP_VERSION__,
