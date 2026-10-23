@@ -32,7 +32,8 @@ import './layout.css';
 import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 import { useTranslation } from '@/i18n/useTranslation';
 
-export function AppLayout() {
+/** `rootPath`: where the phone list lives — `/` in the app; the DEV device harness mounts the shell elsewhere. */
+export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
   const { t } = useTranslation();
   // Singleton terminal sync (daemon pushes + legacy-poll fallback) — lives at
   // layout level so it keeps running with the sidebar collapsed/unmounted
@@ -61,7 +62,7 @@ export function AppLayout() {
   useEffect(() => prefetchSessionDetailWhenIdle(), []);
   const isDesktop = useIsDesktop();
   const location = useLocation();
-  const atRoot = location.pathname === '/' || location.pathname === '';
+  const atRoot = location.pathname === rootPath || location.pathname === `${rootPath}/` || location.pathname === '';
   const dataReady = useIsDataReady();
   const allMachines = useAllMachines({ includeOffline: true });
   const sessions = useSessions();

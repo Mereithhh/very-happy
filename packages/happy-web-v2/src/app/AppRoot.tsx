@@ -255,6 +255,9 @@ const TeamsQaHarness = import.meta.env.DEV
 const LocationTrailHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/LocationTrailHarness').then((m) => ({ default: m.LocationTrailHarness })))
   : null;
+const DeviceShellHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/DeviceShellHarness').then((m) => ({ default: m.DeviceShellHarness })))
+  : null;
 const TerminalKeyboardHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/TerminalKeyboardHarness').then((m) => ({ default: m.TerminalKeyboardHarness })))
   : null;
@@ -324,6 +327,19 @@ const router = createBrowserRouter(
     ...(TeamsQaHarness ? [{ path: '/dev/teams-qa', element: <Lazy><TeamsQaHarness /></Lazy> }] : []),
     ...(LocationTrailHarness ? ['session/:sessionId', 'team/:teamId', 'project/:projectId'].map((path) => ({ path: `/dev/location-trail/${path}`, element: <Lazy><LocationTrailHarness /></Lazy> })) : []),
     ...(RobustnessHarness ? [{ path: '/dev/robustness', element: <Lazy><RobustnessHarness /></Lazy> }] : []),
+    // B-795: the real AppLayout (sidebar / rail / single-pane) around real screens, for device captures.
+    // Settings is single-pane in the app (no sidebar), so captures use `/dev/settings` above.
+    ...(DeviceShellHarness
+      ? [{
+          path: '/dev/device',
+          element: <Lazy><DeviceShellHarness /></Lazy>,
+          children: [
+            { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
+            { path: 'teams/:teamId', element: <Lazy><TeamsScreen /></Lazy> },
+            { path: 'projects/:projectId', element: <Lazy><ProjectScreen /></Lazy> },
+          ],
+        }]
+      : []),
     ...(TerminalKeyboardHarness
       ? [{ path: '/dev/terminal-keyboard', element: <Lazy><TerminalKeyboardHarness /></Lazy> }]
       : []),

@@ -14,10 +14,11 @@ import { sync } from '@/sync/sync';
 import { setTeamNavigationDevOverride } from '@/screens/sessions/useTeamNavigation';
 import { buildLeadFixture } from './leadSessionFixture';
 import { markItemSeen, useAttentionStore } from '@/sync/attentionStore';
-import { ATTENTION_SESSION_CAPABILITY, type AttentionItem } from '@slopus/happy-wire';
+import { ATTENTION_SESSION_CAPABILITY, type AttentionItem, type TeamState } from '@slopus/happy-wire';
 import '@/screens/session/session.css';
 
-const SESSION_ID = 'dev-board';
+export const BOARD_SESSION_ID = 'dev-board';
+const SESSION_ID = BOARD_SESSION_ID;
 const BASE = Date.now() - 50 * 60_000;
 const at = (min: number) => BASE + min * 60_000;
 let seq = 0;
@@ -149,38 +150,52 @@ function installAttentionApi(data: Map<string, AttentionItem>, off: boolean): ()
     return () => { window.fetch = real; };
 }
 
+/** This session is the team lead (B-1's 「只看我和负责人」 toggle; on phones it sits in the board strip). */
+export function boardTeam(now = Date.now()): TeamState {
+    const team = buildLeadFixture({ now }).team;
+    return { ...team, name: L(team.name, 'Redesign squad (example)'), bots: team.bots.map((b) => (b.root ? { ...b, sessionId: SESSION_ID } : b)) };
+}
+
+/** Seeds the board session, its transcript and the in-page board API. Returns the
+ *  lead's team (the caller installs the team override) and a cleanup. */
+export function seedBoardSession(): { team: TeamState; cleanup: () => void } {
+    const now = Date.now();
+    storage.getState().applySessions([{
+        id: SESSION_ID, seq: 1, createdAt: BASE, updatedAt: now, active: true, activeAt: now,
+        metadata: { machineId: 'dev-machine', path: '/repo', host: 'dev-box', flavor: 'claude', summary: { text: L('网站改版 · 负责人', 'Website redesign · lead'), updatedAt: now },
+            capabilities: ['claude-steer-v1', 'claude-live-permission-v1', ATTENTION_SESSION_CAPABILITY] },
+        metadataVersion: 1,
+        agentState: { controlledByUser: false, requests: {} },
+        agentStateVersion: 1,
+        thinking: false, presence: 'online', modelMode: 'sonnet',
+    } as unknown as Session]);
+    storage.getState().applyMessages(SESSION_ID, messages());
+    storage.getState().applyMessagesLoaded(SESSION_ID);
+    const data = new Map(items().map((i) => [i.id, i]));
+    const restoreFetch = installAttentionApi(data, new URLSearchParams(location.search).has('off'));
+    // A local stand-in so the REST client sends (only `/v1/attention-items` is answered).
+    setCurrentAuth({ isAuthenticated: true, credentials: { token: 'dev-board', secret: '' }, login: async () => false, logout: async () => {} } as never);
+    useAttentionStore.setState({ disabled: false });
+    markItemSeen('r1');
+    // No sync keys here: record the board's chat message instead of sending it.
+    const realSend = sync.sendMessage;
+    sync.sendMessage = (async (sid: string, text: string, opts?: { localId?: string }) => {
+        ((window as unknown as { __boardSends?: unknown[] }).__boardSends ??= []).push({ sid, text, localId: opts?.localId });
+        return opts?.localId;
+    }) as typeof sync.sendMessage;
+    return {
+        team: boardTeam(now),
+        cleanup: () => { sync.sendMessage = realSend; restoreFetch(); useAttentionStore.getState().clear(SESSION_ID); },
+    };
+}
+
 export function BoardHarness() {
     const [ready, setReady] = useState(false);
     useEffect(() => {
-        const now = Date.now();
-        storage.getState().applySessions([{
-            id: SESSION_ID, seq: 1, createdAt: BASE, updatedAt: now, active: true, activeAt: now,
-            metadata: { machineId: 'dev-machine', path: '/repo', host: 'dev-box', flavor: 'claude', summary: { text: L('网站改版 · 负责人', 'Website redesign · lead'), updatedAt: now },
-                capabilities: ['claude-steer-v1', 'claude-live-permission-v1', ATTENTION_SESSION_CAPABILITY] },
-            metadataVersion: 1,
-            agentState: { controlledByUser: false, requests: {} },
-            agentStateVersion: 1,
-            thinking: false, presence: 'online', modelMode: 'sonnet',
-        } as unknown as Session]);
-        storage.getState().applyMessages(SESSION_ID, messages());
-        storage.getState().applyMessagesLoaded(SESSION_ID);
-        const data = new Map(items().map((i) => [i.id, i]));
-        const restoreFetch = installAttentionApi(data, new URLSearchParams(location.search).has('off'));
-        // A local stand-in so the REST client sends (only `/v1/attention-items` is answered).
-        setCurrentAuth({ isAuthenticated: true, credentials: { token: 'dev-board', secret: '' }, login: async () => false, logout: async () => {} } as never);
-        useAttentionStore.setState({ disabled: false });
-        markItemSeen('r1');
-        // No sync keys here: record the board's chat message instead of sending it.
-        const realSend = sync.sendMessage;
-        sync.sendMessage = (async (sid: string, text: string, opts?: { localId?: string }) => {
-            ((window as unknown as { __boardSends?: unknown[] }).__boardSends ??= []).push({ sid, text, localId: opts?.localId });
-            return opts?.localId;
-        }) as typeof sync.sendMessage;
-        // This session is the team lead (B-1's 「只看我和负责人」 toggle; on phones it sits in the board strip).
-        const team = buildLeadFixture({ now }).team;
-        setTeamNavigationDevOverride([{ ...team, name: L(team.name, 'Redesign squad (example)'), bots: team.bots.map((b) => (b.root ? { ...b, sessionId: SESSION_ID } : b)) }]);
+        const { team, cleanup } = seedBoardSession();
+        setTeamNavigationDevOverride([team]);
         setReady(true);
-        return () => { setTeamNavigationDevOverride(null); sync.sendMessage = realSend; restoreFetch(); useAttentionStore.getState().clear(SESSION_ID); };
+        return () => { setTeamNavigationDevOverride(null); cleanup(); };
     }, []);
     return ready ? <SessionDetailScreen /> : null;
 }
