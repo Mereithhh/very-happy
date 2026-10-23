@@ -19,6 +19,51 @@ function cssFiles(dir: string): string[] {
     });
 }
 
+type Rule = { file: string; selectors: string[]; body: string };
+
+function cssRules(): Rule[] {
+    return cssFiles(SRC).flatMap((path) => {
+        const file = relative(SRC, path);
+        const css = readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+        return [...css.matchAll(/([^{};]+)\{([^{}]*)\}/g)].map((m) => ({ file, selectors: m[1].split(',').map((x) => x.trim()), body: m[2] }));
+    });
+}
+
+const flush = (value: string) => /^(0|0px|auto)$/.test(value.replace(/!important/, '').trim());
+
+/**
+ * Side-edge declarations that ignore the inset on their side: `left` must read
+ * `--sa-l`, `right` `--sa-r`; a centred box (`50%`), a horizontal `inset` and a
+ * `calc(100vw - …)` width need both. Flush edges (`0`, `auto`) are full-bleed boxes
+ * that pad the inset instead.
+ */
+function sideMisses(body: string): string[] {
+    const out: string[] = [];
+    const needs = (decl: string, value: string, sides: string[]) => {
+        if (sides.some((side) => !value.includes(`var(--sa-${side})`))) out.push(decl);
+    };
+    for (const [, prop, raw] of body.matchAll(/(?:^|[;\s])(left|right|inset|width|max-width)\s*:\s*([^;]+)/g)) {
+        const value = raw.replace(/!important/, '').trim();
+        const decl = `${prop}: ${value}`;
+        if (prop === 'width' || prop === 'max-width') { if (value.includes('calc(100vw')) needs(decl, value, ['l', 'r']); continue; }
+        if (prop === 'inset') {
+            const parts = value.split(/\s+(?![^(]*\))/);
+            const sides = parts.length === 1 ? [parts[0]] : parts.length < 4 ? [parts[1]] : [parts[1], parts[3]];
+            if (sides.some((v) => !flush(v))) needs(decl, value, ['l', 'r']);
+            continue;
+        }
+        if (flush(value)) continue;
+        needs(decl, value, value.includes('50%') ? ['l', 'r'] : [prop === 'left' ? 'l' : 'r']);
+    }
+    return out;
+}
+
+/** Selectors (any rule) that make a box `position: fixed`. */
+const fixedSelectors = (rules: Rule[]) => new Set(rules.filter((r) => /position:\s*fixed/.test(r.body)).flatMap((r) => r.selectors));
+/** The same element: the fixed selector itself or it narrowed by attribute / class / state (`.wn-card[data-featured]`). */
+const isFixed = (fixed: Set<string>, selector: string) =>
+    [...fixed].some((f) => selector === f || (selector.startsWith(f) && /^([[.]|:(?!:))/.test(selector.slice(f.length)) && !/[\s>+~]/.test(selector.slice(f.length))));
+
 describe('four-sided safe area', () => {
     it('defines one mirror per side from env()', () => {
         const base = read('styles/base.css');
@@ -50,5 +95,52 @@ describe('four-sided safe area', () => {
 
     it('toasts centre between the side insets', () => {
         expect(read('ui/ui.css')).toContain('left: calc(50% + (var(--sa-l) - var(--sa-r)) / 2);');
+    });
+
+    it('every fixed box offset from a side edge reads that side inset', () => {
+        // dev/ and diag/ are not shipped screens; the landing grid bleeds past the viewport on purpose.
+        const exempt = (r: Rule) => /^(dev|diag)\//.test(r.file) || r.selectors.includes('.pub-page::after');
+        const rules = cssRules();
+        const fixed = fixedSelectors(rules);
+        const offenders = rules
+            .filter((r) => !exempt(r) && r.selectors.some((x) => isFixed(fixed, x)))
+            .filter((r) => sideMisses(r.body).length > 0)
+            .map((r) => `${r.file} ${r.selectors.join(', ')} → ${sideMisses(r.body).join('; ')}`);
+        expect(offenders).toEqual([]);
+    });
+
+    it('a ✕ on an edge-to-edge fixed sheet clears the side insets', () => {
+        const rules = cssRules();
+        const fixed = fixedSelectors(rules);
+        const edgeToEdge = (body: string) => /(?:^|[;\s])(?:left|right)\s*:\s*0(?:px)?\s*(?:;|$)|width:\s*100(?:%|vw)/.test(body);
+        const offenders: string[] = [];
+        for (const file of new Set(rules.map((r) => r.file))) {
+            const inFile = rules.filter((r) => r.file === file);
+            const sheets = inFile.filter((r) => r.selectors.some((x) => isFixed(fixed, x)) && edgeToEdge(r.body));
+            if (sheets.length === 0) continue;
+            const closers = new Set(inFile.filter((r) => /position:\s*absolute/.test(r.body)).flatMap((r) => r.selectors).filter((x) => /close\b|__close|-x$/.test(x)));
+            for (const sel of closers) {
+                const own = inFile.filter((r) => r.selectors.includes(sel));
+                // The phone override is the rule that must read the inset; the desktop card is already clear of it.
+                if (!own.some((r) => /right:[^;]*var\(--sa-r\)/.test(r.body))) offenders.push(`${file} ${sel}`);
+            }
+        }
+        expect(offenders).toEqual([]);
+    });
+
+    it('the release-notes ✕ clears the right inset on the phone sheet (B-796b)', () => {
+        const css = read('app/changelogNotice.css');
+        const phone = css.slice(css.indexOf('@media (max-width: 520px)'));
+        expect(phone).toContain('.wn-close { right: calc(var(--sp-3) + var(--sa-r)); }');
+    });
+
+    it('sideMisses checks each side declaration against its own inset', () => {
+        expect(sideMisses('inset: 0; left: auto; right: 0 !important; width: 100%')).toEqual([]);
+        expect(sideMisses('right: var(--sp-3); top: 4px')).toEqual(['right: var(--sp-3)']);
+        expect(sideMisses('right: max(var(--sp-4), var(--sa-l))')).toHaveLength(1);
+        expect(sideMisses('inset: 0 calc(8px + var(--sa-r)) 0 8px')).toHaveLength(1);
+        expect(sideMisses('left: calc(50% + var(--sa-l) / 2)')).toHaveLength(1);
+        expect(sideMisses('width: min(360px, calc(100vw - 32px - var(--sa-l) - var(--sa-r)))')).toEqual([]);
+        expect(sideMisses('width: min(360px, calc(100vw - 32px))')).toHaveLength(1);
     });
 });

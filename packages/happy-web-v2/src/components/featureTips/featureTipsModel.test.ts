@@ -62,6 +62,12 @@ describe('feature tips (B-588)', () => {
       expect(placeTip({ left: 300, top: 100, width: 60, height: 30 }, size, viewport, [])).toEqual({ left: 102, top: 138, side: 'bottom' });
     });
 
+    it('stays between the side safe-area insets (B-796b: iPhone Duo cover status column)', () => {
+      // right inset 84: the tip's right edge stops at 390 - 84 - 8.
+      expect(placeTip({ left: 300, top: 100, width: 60, height: 30 }, size, { ...viewport, insetRight: 84 }, [])?.left).toBe(390 - 84 - 8 - size.width);
+      expect(placeTip({ left: 0, top: 100, width: 60, height: 30 }, size, { ...viewport, insetLeft: 40 }, [])?.left).toBe(48);
+    });
+
     it('flips above when below would hit the composer', () => {
       const composer = { left: 0, top: 650, width: 390, height: 150 };
       expect(placeTip({ left: 20, top: 580, width: 80, height: 28 }, size, viewport, [composer])).toEqual({ left: 20, top: 482, side: 'top' });

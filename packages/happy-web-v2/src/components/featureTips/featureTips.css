@@ -4,7 +4,7 @@
   position: fixed;
   z-index: 950;
   box-sizing: border-box;
-  width: min(280px, calc(100vw - 16px));
+  width: min(280px, calc(100vw - 16px - var(--sa-l) - var(--sa-r)));
   padding: var(--sp-3) var(--sp-8) var(--sp-3) var(--sp-3);
   border: 1px solid var(--line-2);
   border-radius: var(--r-md);

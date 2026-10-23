@@ -5,8 +5,13 @@
  *  `/dev/device/teams/<id>`, `/dev/device/projects/<id>` (stripped from prod
  *  builds); settings is single-pane in the app, so it is `/dev/settings`. Data comes from the board and location-trail
  *  harness seeds; reads are answered in-page and nothing is sent. Device
- *  presets live in `scripts/dev/device-shots.mjs`. */
+ *  presets live in `scripts/dev/device-shots.mjs`.
+ *  B-796b: `#whats-new` also mounts the release-notes pager (AppRoot mounts it
+ *  beside the shell) and `#toasts` raises one of each toast kind, so the
+ *  side-inset sweep covers the overlays that live outside the shell. */
 import { useEffect, useState } from 'react';
+import { ChangelogNotice } from '@/app/ChangelogNotice';
+import { useToast } from '@/ui';
 import { storage } from '@/sync/storage';
 import type { Machine } from '@/sync/storageTypes';
 import { setTeamNavigationDevOverride } from '@/screens/sessions/useTeamNavigation';
@@ -15,8 +20,11 @@ import { boardTeam, seedBoardSession } from './BoardHarness';
 import { seedLocationTrail } from './LocationTrailHarness';
 import '@/screens/session/session.css';
 
+let toastsRaised = false; // StrictMode runs the seed effect twice
+
 export function DeviceShellHarness() {
   const [ready, setReady] = useState(false);
+  const toast = useToast();
   useEffect(() => {
     const now = Date.now();
     // Location-trail first: its fetch stub 404s unknown `/v1/` paths, so the
@@ -25,7 +33,14 @@ export function DeviceShellHarness() {
     const board = seedBoardSession();
     storage.getState().applyMachines([{ id: 'dev-machine', seq: 2, createdAt: now, updatedAt: now, active: true, activeAt: now, metadata: { host: 'dev-box', platform: 'linux', teamLaunchVersion: 1 }, metadataVersion: 1, daemonState: null, daemonStateVersion: 1 } as unknown as Machine]);
     setReady(true);
+    if (location.hash === '#toasts' && !toastsRaised) {
+      toastsRaised = true;
+      toast.success('已复制到剪贴板');
+      toast.error('发送失败：连接已断开，请稍后重试');
+      toast.action('有新版本可用 — 点此刷新', () => {});
+    }
     return () => { setTeamNavigationDevOverride(null); board.cleanup(); };
   }, []);
-  return ready ? <AppLayout rootPath="/dev/device" /> : null;
+  if (!ready) return null;
+  return <><AppLayout rootPath="/dev/device" />{location.hash === '#whats-new' && <ChangelogNotice />}</>;
 }

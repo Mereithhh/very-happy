@@ -1,7 +1,7 @@
 /* B-728: look (scrim, card, head, ×, footer, phone sheet) comes from styles/dialog.css (.vh-dialog*);
    this family keeps only its Radix positioning, layer and motion. */
 .so-overlay { position: fixed; inset: 0; z-index: 4200; animation: so-fade var(--motion-fast); }
-.so-dialog { position: fixed; z-index: 4201; top: 50%; left: 50%; width: min(420px, calc(100vw - 32px)); max-height: min(680px, calc(100dvh - 32px)); transform: translate(-50%, -50%); animation: so-enter var(--motion-fast); }
+.so-dialog { position: fixed; z-index: 4201; top: 50%; left: calc(50% + (var(--sa-l) - var(--sa-r)) / 2); width: min(420px, calc(100vw - 32px - var(--sa-l) - var(--sa-r))); max-height: min(680px, calc(100dvh - 32px)); transform: translate(-50%, -50%); animation: so-enter var(--motion-fast); }
 .so-description { margin: var(--sp-1) 0 0; color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; }
 .so-fields { display: grid; gap: var(--sp-4); margin-top: var(--sp-5); }
 .so-field { display: grid; gap: var(--sp-2); }
