@@ -38,7 +38,22 @@ describe('B-794 provider binding', () => {
             ANTHROPIC_DEFAULT_HAIKU_MODEL: 'kimi-k3',
             ANTHROPIC_SMALL_FAST_MODEL: 'kimi-k3',
             CLAUDE_CODE_SUBAGENT_MODEL: 'kimi-k3',
+            CLAUDE_CODE_NO_MODEL_FALLBACK: '1',
         });
+    });
+
+    it('B-794b: a model with a contextWindow sets CLAUDE_CODE_MAX_CONTEXT_TOKENS; inherited one is stripped', () => {
+        const p = parseProvidersFile({ profiles: { hub: { baseUrl: 'https://h', apiKeyFile: 'k', models: [{ id: 'kimi-k3', contextWindow: 262144 }, 'deepseek', { id: 'bad', contextWindow: -1 }] } } });
+        expect(p.profiles.hub.models).toEqual(['kimi-k3', 'deepseek', 'bad']);
+        expect(p.profiles.hub.contextWindows).toEqual({ 'kimi-k3': 262144 });
+        const kimi = resolveSessionProvider('s', { providers: p, bindings: { s: { profile: 'hub', model: 'kimi-k3' } }, readKey: () => 'k' })!;
+        expect(kimi.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe('262144');
+        const ds = resolveSessionProvider('s', { providers: p, bindings: { s: { profile: 'hub', model: 'deepseek' } }, readKey: () => 'k' })!;
+        expect(ds.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBeUndefined();
+        const env: Record<string, string | undefined> = { CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1000000' };
+        applyProviderEnv(env, ds);
+        expect(env.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBeUndefined();
+        expect(env.CLAUDE_CODE_NO_MODEL_FALLBACK).toBe('1');
     });
 
     it('applyProviderEnv strips inherited credentials and keeps unrelated env', () => {
