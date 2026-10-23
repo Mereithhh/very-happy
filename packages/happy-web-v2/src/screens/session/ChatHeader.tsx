@@ -34,7 +34,8 @@ import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ActionDropdownMenu, Spinner, type MenuItemDef } from '@/ui';
 import { useIsTablet } from '@/app/useMediaQuery';
-import { planChatHeaderActions, type ChatHeaderActionKey } from './chatHeaderLayout';
+import { chatHeaderCompact, planChatHeaderActions, type ChatHeaderActionKey } from './chatHeaderLayout';
+import { useElementWidth } from '@/app/useElementWidth';
 import { useImeGuard } from '@/utils/ime';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { RelayBadge } from '@/components/RelayBadge';
@@ -98,7 +99,8 @@ export function ChatHeader({
     const [draft, setDraft] = useState('');
     const [saving, setSaving] = useState(false);
     const ime = useImeGuard();
-    const isTablet = useIsTablet();
+    const headerRef = useRef<HTMLElement>(null);
+    const compact = chatHeaderCompact(useElementWidth(headerRef), useIsTablet());
 
     const meta = session?.metadata;
     const title = meta?.summary?.text?.trim() || t('session.newChat');
@@ -149,7 +151,7 @@ export function ChatHeader({
     // session's only chrome, and three rigid icon buttons next to the relay pill
     // left the title 8-12 characters at 360-390px.
     const plan = planChatHeaderActions({
-        compact: !isTablet,
+        compact,
         hasBtw: !!onToggleBtw,
         hasFiles: !!onToggleFiles,
     });
@@ -250,7 +252,7 @@ export function ChatHeader({
     };
 
     return (
-        <header className="ch">
+        <header className="ch" ref={headerRef}>
             <BackButton />
             <div className="ch-main">
                 {editing ? (
@@ -274,7 +276,7 @@ export function ChatHeader({
                         </button>
                     </div>
                 ) : trail.ancestors.length > 0 ? (
-                    <LocationTrail segments={visibleTrail(trail.ancestors, !isTablet)} label={trailCopy(zh).label} className="ch-trail">{titleButton}</LocationTrail>
+                    <LocationTrail segments={visibleTrail(trail.ancestors, compact)} label={trailCopy(zh).label} className="ch-trail">{titleButton}</LocationTrail>
                 ) : titleButton}
 
             </div>
@@ -291,7 +293,7 @@ export function ChatHeader({
                 place the input measured 4px wide at 360px — unusable. */}
             {!editing && (
                 <div className="ch-status">
-                    <PrStatusChip sessionId={sessionId} compact={!isTablet} />
+                    <PrStatusChip sessionId={sessionId} compact={compact} />
                     <RelayBadge status={relayStatus} />
                 </div>
             )}

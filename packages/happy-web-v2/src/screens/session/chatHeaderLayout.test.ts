@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planChatHeaderActions } from './chatHeaderLayout';
+import { CHAT_HEADER_WIDE_MIN, chatHeaderCompact, planChatHeaderActions } from './chatHeaderLayout';
 
 describe('planChatHeaderActions', () => {
     it('collapses every icon on a phone so the session title gets the width', () => {
@@ -24,5 +24,18 @@ describe('planChatHeaderActions', () => {
             const plan = planChatHeaderActions({ compact, hasBtw: false, hasFiles: false });
             expect([...plan.inline, ...plan.overflow]).toContain('notes');
         }
+    });
+});
+
+describe('chatHeaderCompact (B-795)', () => {
+    it('follows the header width once measured, not the viewport', () => {
+        // 626px unfolded foldable: tablet viewport, but the header is too narrow for five icons.
+        expect(chatHeaderCompact(626, true)).toBe(true);
+        expect(chatHeaderCompact(CHAT_HEADER_WIDE_MIN, false)).toBe(false);
+        expect(chatHeaderCompact(838, true)).toBe(false);
+    });
+    it('falls back to the viewport test before the first measure', () => {
+        expect(chatHeaderCompact(null, true)).toBe(false);
+        expect(chatHeaderCompact(null, false)).toBe(true);
     });
 });

@@ -24,6 +24,7 @@
   height: 34px;
 }
 @media (pointer: coarse) {
+  .app-rail .nc-bell-btn,
   .nc-bell-btn.sb-footer-bell {
     width: 44px;
     height: 44px;

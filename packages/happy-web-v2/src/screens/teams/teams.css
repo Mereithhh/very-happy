@@ -160,6 +160,8 @@
 .teams-back { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; min-height: 32px; font-size: 13px; }
 .teams-heading-actions, .teams-work-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .teams-heading-actions a { font-size: 13px; color: var(--text-dim); }
+/* B-795: icon-only heading buttons (⋯, refresh) are full touch targets */
+@media (pointer: coarse) { .teams-heading-actions button { min-width: 44px; min-height: 44px; } }
 .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)), .teams-talk { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .teams-tabs { display: flex; gap: 16px; margin-top: 20px; border-bottom: 1px solid var(--line); }
 .teams-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 12px 0; color: var(--text-dim); }

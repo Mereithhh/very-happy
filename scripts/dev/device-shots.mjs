@@ -16,9 +16,12 @@
  * 截图只截真实视口。每张图同时打印：
  *   - overflowX：文档横向溢出像素（应为 0）
  *   - outside：右边缘越出视口的可见元素（应为空）
- *   - smallTargets：粗指针下宽或高 < 44px 的可见按钮（只报告，部分为内联图标）
+ *   - hoverOnly：触屏上占位却透明（只有 hover 才显示）的按钮（应为空）
+ *   - smallTargets：粗指针下宽或高 < 44px 的可见按钮（只报告：量的是盒子，
+ *     不含 ::after 扩出的热区；行内文字链接按 WCAG 2.5.8 例外处理）
  * `--fold` 在会话页、汇报板、团队页、项目页和新建对话弹窗上做 466×678 ↔ 890×626
- * 往返，断言弹窗仍开、composer 草稿仍在、聊天滚动位置保持、没有整页重载。
+ * 往返，断言弹窗（含输入内容）仍在、汇报板仍开、composer 草稿仍在、聊天滚动位置保持、
+ * 没有整页重载；再验 890×626 的侧栏抽屉（rail 打开，遮罩 / Esc / 收起按钮 / 导航关闭）。
  * 退出码：任何断言失败为 1。
  */
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
@@ -39,7 +42,8 @@ export const PAGES = {
     // A lead session opens in 「只看我和负责人」 by default (B-766 B-1).
     session: { path: '/session/dev-board' },
     board: { path: '/session/dev-board', prepare: 'board' },
-    sidebar: { path: '/', prepare: 'sidebar' },
+    // Phones show the list at the root; the drawer (medium touch) opens over a session.
+    sidebar: { path: (d) => (d.width < 800 ? '/' : '/session/dev-board'), prepare: 'sidebar' },
     team: { path: '/teams/team-pay' },
     project: { path: '/projects/pj-pay' },
     // Settings never shows the sidebar in the app (single pane), so it is captured outside the shell.
@@ -127,6 +131,10 @@ async function prepare(page, kind) {
         const strip = page.locator('.brf-strip-btn').first();
         if (await strip.count() && await strip.isVisible()) await strip.click();
         else await page.locator('.brf-hbtn').first().click();
+    } else if (kind === 'sidebar') {
+        // Medium touch screens: the sidebar tree lives in the drawer behind the rail.
+        const rail = page.locator('.app-rail-btn[aria-expanded="false"]').first();
+        if (await rail.count()) await rail.click();
     }
     await page.waitForTimeout(500);
 }
@@ -163,7 +171,23 @@ function measure() {
             if (r.width < 44 || r.height < 44) smallTargets.push(`${label(el)} ${Math.round(r.width)}×${Math.round(r.height)}`);
         }
     }
-    return { overflowX: doc.scrollWidth - doc.clientWidth, outside, smallTargets: smallTargets.length, smallSample: smallTargets.slice(0, 12), shell: document.querySelector('.app-shell')?.className ?? null };
+    // Hover-only controls: laid out on screen but transparent until a hover that touch never sends.
+    const hoverOnly = [];
+    if (!matchMedia('(hover: hover)').matches) {
+        for (const el of document.querySelectorAll('button, [role="button"]')) {
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0 || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > vw) continue;
+            if (el.closest('[aria-hidden="true"], .app-sidebar--parked, .app-sidebar--drawer:not(.is-open)')) continue;
+            let faded = false;
+            for (let n = el; n && n !== document.body; n = n.parentElement) {
+                const cs = getComputedStyle(n);
+                if (cs.display === 'none' || cs.visibility === 'hidden') { faded = false; break; }
+                if (Number(cs.opacity) === 0) faded = true;
+            }
+            if (faded) hoverOnly.push(label(el));
+        }
+    }
+    return { overflowX: doc.scrollWidth - doc.clientWidth, outside, hoverOnly, smallTargets: smallTargets.length, smallSample: smallTargets.slice(0, 12), shell: document.querySelector('.app-shell')?.className ?? null };
 }
 
 async function captureAll(browser) {
@@ -173,7 +197,7 @@ async function captureAll(browser) {
             for (const name of pages) {
                 const p = PAGES[name];
                 if (!p) throw new Error(`unknown page ${name}`);
-                await goto(page, p.path, p.url);
+                await goto(page, typeof p.path === 'function' ? p.path(d) : p.path, p.url);
                 await assertCoarse(page, d, `${device}/${name}`);
                 if (p.prepare) await prepare(page, p.prepare);
                 const m = await page.evaluate(measure);
@@ -181,6 +205,7 @@ async function captureAll(browser) {
                 console.log(`── ${tag} (${d.width}×${d.height}) overflowX=${m.overflowX} small=${m.smallTargets} shell="${m.shell}"`);
                 if (m.overflowX > 0) fail(`${tag}: document overflows horizontally by ${m.overflowX}px`);
                 if (m.outside.length) fail(`${tag}: outside viewport: ${m.outside.join(', ')}`);
+                if (m.hoverOnly.length) fail(`${tag}: hover-only controls on a touch screen: ${m.hoverOnly.join(', ')}`);
                 if (args.includes('--verbose') && m.smallSample.length) console.log(`  small: ${m.smallSample.join(' | ')}`);
                 if (outDir) writeFileSync(join(outDir, `${tag}.png`), await shot(page, cdp, d));
             }
@@ -230,6 +255,9 @@ async function foldRoundTrip(browser) {
                 await page.waitForTimeout(300);
             }
             if (c.dialog) {
+                // Medium touch screens keep the sidebar in a drawer behind the rail's first button.
+                const rail = page.locator('.app-rail-btn[aria-expanded="false"]').first();
+                if (await rail.count()) { await rail.click(); await page.waitForTimeout(400); }
                 await page.locator('.sb-new-main, .sb-new-icon').first().click(); // desktop row / phone header ＋
                 const item = page.getByRole('menuitem').first(); // the phone ＋ is a create menu
                 if (await item.count()) await item.click();
@@ -239,6 +267,10 @@ async function foldRoundTrip(browser) {
             const boardOpen = () => page.evaluate(() => !!document.querySelector('.brf-panel, .brf-sheet'));
             const before = { dialog: await dialogOpen(), board: await boardOpen() };
             if (c.dialog && !before.dialog) fail(`${start}/${c.name}: dialog did not open`);
+            // The dialog's own state must survive too, not just "a dialog is open".
+            const dialogText = 'fold/path';
+            const dialogInput = page.locator('[role="dialog"] input[type="text"], [role="dialog"] input:not([type])').first();
+            if (c.dialog && await dialogInput.count()) await dialogInput.fill(dialogText);
             const other = start === 'duo-folded' ? unfolded : folded;
             const back = DEVICES[start];
             const tag = `${start}→${other === unfolded ? 'open' : 'folded'}→back ${c.name}`;
@@ -246,7 +278,10 @@ async function foldRoundTrip(browser) {
                 await resize(page, cdp, d);
                 if (outDir) writeFileSync(join(outDir, `fold-${start}-${c.name.replace(/\W+/g, '_')}-${step}.png`), await shot(page, cdp, d));
                 if (!await page.evaluate(() => window.__noReload === 1)) fail(`${tag}: page reloaded at ${step}`);
-                if (before.dialog && !await dialogOpen()) fail(`${tag}: dialog closed at ${step}`);
+                // The 汇报板 changes home on the phone line (sheet ↔ aside); it must stay open, not stay a dialog.
+                if (c.prepare === 'board') { if (!await boardOpen()) fail(`${tag}: board closed at ${step}`); }
+                else if (before.dialog && !await dialogOpen()) fail(`${tag}: dialog closed at ${step}`);
+                if (c.dialog && await dialogInput.inputValue().catch(() => null) !== dialogText) fail(`${tag}: dialog input lost at ${step}`);
                 if (hasComposer) {
                     const v = await page.locator('textarea').first().inputValue().catch(() => null);
                     if (v !== draft) fail(`${tag}: composer draft lost at ${step} (got ${JSON.stringify(v)})`);
@@ -262,15 +297,46 @@ async function foldRoundTrip(browser) {
                 if (!ok) fail(`${tag}: scroll anchor ${scrollBefore.anchor} left the viewport`);
             }
             if (errors.length) fail(`${tag}: pageerror ${errors.join(' | ')}`);
-            console.log(`── fold ${tag}: dialog=${before.dialog} board=${before.board} → board now=${await boardOpen()}`);
+            console.log(`── fold ${tag}: dialog=${before.dialog} board=${before.board} → board now=${await boardOpen()} scrollAnchor=${scrollBefore?.anchor ?? "-"} draft=${hasComposer}`);
             await context.close();
         }
     }
 }
 
+/** Medium touch screens: the sidebar is a rail + overlay drawer (appShellMode.ts). */
+async function drawerChecks(browser) {
+    const { page, context, errors } = await openDevice(browser, 'duo-open-land', 'light');
+    await goto(page, '/session/dev-board');
+    const isOpen = () => page.evaluate(() => !!document.querySelector('.app-sidebar--drawer.is-open'));
+    const railBtn = page.locator('.app-rail-btn').first();
+    const step = async (name, act, want) => {
+        await act();
+        await page.waitForTimeout(350);
+        const got = await isOpen();
+        if (got !== want) fail(`drawer ${name}: open=${got}, want ${want}`);
+        else console.log(`── drawer ${name}: open=${got}`);
+    };
+    if (await isOpen()) fail('drawer: starts open (content-first expected)');
+    await step('rail opens', () => railBtn.click(), true);
+    await step('scrim closes', () => page.mouse.click(860, 300), false);
+    await step('rail reopens', () => railBtn.click(), true);
+    await step('Escape closes', () => page.keyboard.press('Escape'), false);
+    await step('rail reopens', () => railBtn.click(), true);
+    await step('sidebar collapse button closes', () => page.locator('.app-sidebar--drawer .sb-icon-btn[aria-label*="侧"], .app-sidebar--drawer .sb-icon-btn[aria-label*="idebar"]').last().click(), false);
+    await step('rail reopens', () => railBtn.click(), true);
+    // Sidebar rows link to the app's absolute routes (outside the harness), so drive an in-shell route change.
+    await step('navigating closes', () => page.evaluate(() => {
+        history.pushState({}, '', '/dev/device/projects/pj-pay');
+        dispatchEvent(new PopStateEvent('popstate'));
+    }), false);
+    if (!await page.locator('.app-shell').count()) fail('drawer: shell gone after navigation');
+    if (errors.length) fail(`drawer pageerror: ${errors.join(' | ')}`);
+    await context.close();
+}
+
 const browser = await chromium.launch({ executablePath: exe });
 try {
-    if (args.includes('--fold')) await foldRoundTrip(browser);
+    if (args.includes('--fold')) { await foldRoundTrip(browser); await drawerChecks(browser); }
     else await captureAll(browser);
 } finally {
     await browser.close();

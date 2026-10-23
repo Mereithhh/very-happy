@@ -117,6 +117,10 @@
     width: 44px;
     height: 44px;
   }
+  /* B-795: touch targets follow the pointer, not a phone width — a 626px or
+     890px unfolded foldable is still a finger (the ≤600px block below). */
+  .ch .vh-back { width: 44px; height: 44px; }
+  .ch-title-btn, .ch-identity-trigger { min-height: 44px; }
 }
 
 .ch-identity { position:relative; flex:none; font-size:var(--fs-11); min-width:0; z-index:4; }

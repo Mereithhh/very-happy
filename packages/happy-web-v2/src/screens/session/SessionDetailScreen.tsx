@@ -11,6 +11,7 @@ import { useSession, useMessage, useLocalSetting, storage } from '@/sync/storage
 import { sync } from '@/sync/sync';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { useMediaQuery } from '@/app/useMediaQuery';
+import { boardFoldAction } from './board/boardFold';
 import { useFilesPanelWidth } from '@/screens/files/useFilesPanelWidth';
 import { useTranslation } from '@/i18n/useTranslation';
 import { EmptyState, Button, OrbitLoader, toast } from '@/ui';
@@ -182,7 +183,17 @@ export function SessionDetailScreen() {
             else if (panelTabRef.current !== 'board') setPanelRef.current('board', panelTabRef.current !== null);
         });
     }, [id]);
-    useEffect(() => { if (!boardPhone) setBoardSheet(false); }, [boardPhone]);
+    // B-795: a fold / unfold moves an open board to its other home instead of closing it.
+    const boardPhonePrev = useRef(boardPhone);
+    useEffect(() => {
+        const prev = boardPhonePrev.current;
+        boardPhonePrev.current = boardPhone;
+        const action = boardFoldAction(prev, boardPhone, { sheetOpen: boardSheet, panelIsBoard: panelTabRef.current === 'board' });
+        if (action === 'sheet-to-panel' && boardAllowed) setPanelRef.current('board', true); // a fold is not a navigation: replace
+        else if (action === 'panel-to-sheet') { setPanelRef.current(null, true); setBoardSheet(true); }
+        if (!boardPhone) setBoardSheet(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on the phone ↔ wide crossing only
+    }, [boardPhone]);
     // A sub-agent card anywhere in the transcript opens the drawer on itself.
     // Replace (not push) while the drawer is already open, so switching cards
     // does not stack history entries the back button has to walk through.
