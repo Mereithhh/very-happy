@@ -79,7 +79,7 @@ if (outDir) mkdirSync(outDir, { recursive: true });
 let failures = 0;
 const fail = (msg) => { failures++; console.log(`  ✗ ${msg}`); };
 
-async function open(browser, device, theme) {
+async function openDevice(browser, device, theme) {
     const d = DEVICES[device];
     if (!d) throw new Error(`unknown device ${device}`);
     const context = await browser.newContext({
@@ -169,7 +169,7 @@ function measure() {
 async function captureAll(browser) {
     for (const device of devices) {
         for (const theme of themes) {
-            const { context, page, cdp, d, errors } = await open(browser, device, theme);
+            const { context, page, cdp, d, errors } = await openDevice(browser, device, theme);
             for (const name of pages) {
                 const p = PAGES[name];
                 if (!p) throw new Error(`unknown page ${name}`);
@@ -193,7 +193,7 @@ async function captureAll(browser) {
 /** Resize like a fold/unfold: the viewport jumps; the page must not reload or drop state. */
 async function foldRoundTrip(browser) {
     const folded = DEVICES['duo-folded'];
-    const open = DEVICES['duo-open-land'];
+    const unfolded = DEVICES['duo-open-land'];
     const resize = async (page, cdp, d) => {
         await page.setViewportSize({ width: d.width, height: d.height });
         await page.waitForTimeout(600);
@@ -209,7 +209,7 @@ async function foldRoundTrip(browser) {
     ];
     for (const start of ['duo-open-land', 'duo-folded']) {
         for (const c of cases) {
-            const ctx = await open(browser, start, 'light');
+            const ctx = await openDevice(browser, start, 'light');
             const { page, cdp, context, errors } = ctx;
             await goto(page, start === 'duo-folded' && c.foldedPath ? c.foldedPath : c.path);
             if (c.prepare) await prepare(page, c.prepare);
@@ -230,16 +230,18 @@ async function foldRoundTrip(browser) {
                 await page.waitForTimeout(300);
             }
             if (c.dialog) {
-                await page.locator('.sb-new-main').first().click();
+                await page.locator('.sb-new-main, .sb-new-icon').first().click(); // desktop row / phone header ＋
+                const item = page.getByRole('menuitem').first(); // the phone ＋ is a create menu
+                if (await item.count()) await item.click();
                 await page.waitForTimeout(600);
             }
             const dialogOpen = () => page.evaluate(() => !!document.querySelector('[role="dialog"]'));
             const boardOpen = () => page.evaluate(() => !!document.querySelector('.brf-panel, .brf-sheet'));
             const before = { dialog: await dialogOpen(), board: await boardOpen() };
             if (c.dialog && !before.dialog) fail(`${start}/${c.name}: dialog did not open`);
-            const other = start === 'duo-folded' ? open : folded;
+            const other = start === 'duo-folded' ? unfolded : folded;
             const back = DEVICES[start];
-            const tag = `${start}→${other === open ? 'open' : 'folded'}→back ${c.name}`;
+            const tag = `${start}→${other === unfolded ? 'open' : 'folded'}→back ${c.name}`;
             for (const [step, d] of [['flip', other], ['back', back]]) {
                 await resize(page, cdp, d);
                 if (outDir) writeFileSync(join(outDir, `fold-${start}-${c.name.replace(/\W+/g, '_')}-${step}.png`), await shot(page, cdp, d));
