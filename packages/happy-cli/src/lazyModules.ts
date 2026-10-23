@@ -33,6 +33,7 @@ export const LAZY_MODULES: ReadonlyArray<readonly [name: string, load: () => Pro
     ['commands/send', () => import('@/commands/send')],
     ['commands/server', () => import('@/commands/server')],
     ['commands/sessions', () => import('@/commands/sessions')],
+    ['commands/sessionProvider', () => import('@/commands/sessionProvider')],
     ['commands/spawn', () => import('@/commands/spawn')],
     ['commands/teams', () => import('@/commands/teams')],
     ['commands/todo', () => import('@/commands/todo')],

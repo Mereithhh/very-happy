@@ -19,6 +19,7 @@ import { spawnOriginTags } from '@/utils/createSessionMetadata';
 import { PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY } from '@slopus/happy-wire';
 import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { configuration } from '@/configuration';
+import { applyProviderEnv, loadSessionProvider } from './providerBinding';
 import { checkDaemonHibernation, notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { getInitialMachineMetadata } from '@/daemon/machineMetadata';
 import { projectPath } from '../projectPath';
@@ -612,6 +613,26 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // refuse `teams permissions` (teams/permissions.ts) — not this feature's call.
     options = { ...options, claudeEnvVars: { ...options.claudeEnvVars, VH_PEER_SESSION_ID: response.id } };
 
+    // B-794: a per-session provider binding (claude/providerBinding.ts). It
+    // rewrites THIS wrapper's env before any Claude Code child exists, so only
+    // this session moves; unbound sessions never enter this branch. A binding
+    // that cannot be honoured is surfaced in the chat and the session runs on
+    // the default provider rather than dying (a crash would archive it).
+    let providerPinnedModel: string | undefined;
+    try {
+        const provider = loadSessionProvider(configuration.happyHomeDir, response.id);
+        if (provider) {
+            applyProviderEnv(process.env, provider);
+            options = { ...options, model: provider.model };
+            providerPinnedModel = provider.model;
+            logger.debug(`[START] B-794 provider binding: profile=${provider.profile} model=${provider.model} baseUrl=${provider.baseUrl}`);
+        }
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        logger.debug(`[START] B-794 provider binding failed: ${reason}`);
+        session.sendSessionEvent({ type: 'message', message: `Provider binding ignored: ${reason}` });
+    }
+
     // Remote-mode session scanner: catches user-typed prompts that
     // appeared in the Claude JSONL while we weren't looking — typically
     // because the user opened `claude --resume <id>` in a terminal next
@@ -871,7 +892,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         claudeArgs: options.claudeArgs,
         setting: settings?.claudePrewarm,
     };
-    const prewarmCtx = () => ({ sandboxEnabled, isAssistantVariant, staleModeSnapshot: false });
+    const prewarmCtx = () => ({ sandboxEnabled, isAssistantVariant, staleModeSnapshot: false, pinnedModel: providerPinnedModel });
     const predictFirstMessageMode = () => prewarmCache
         ? resolveMessageMode(currentModeState(), prewarmPredictionMeta(prewarmCache), prewarmCtx()).mode
         : null;
@@ -1007,7 +1028,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
         const previousPermissionMode = currentPermissionMode;
         const predictedFirstMode = firstMessageScored ? null : predictFirstMessageMode();
-        const resolved = resolveMessageMode(currentModeState(), message.meta, { sandboxEnabled, isAssistantVariant, staleModeSnapshot });
+        const resolved = resolveMessageMode(currentModeState(), message.meta, { sandboxEnabled, isAssistantVariant, staleModeSnapshot, pinnedModel: providerPinnedModel });
         if ('publishPermissionMode' in resolved) {
             publishPermissionMode(resolved.publishPermissionMode);
             const ignoredDefaultDowngrade =
