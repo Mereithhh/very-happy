@@ -11,6 +11,8 @@
   display: flex;
   flex-direction: column;
   height: var(--app-h);
+  padding-right: var(--sa-r);
+  padding-left: var(--sa-l);
   background: var(--bg-0);
   color: var(--text);
   overflow: hidden;
@@ -27,7 +29,7 @@
   width: 100%;
   max-width: 560px;
   margin: 0 auto;
-  padding: 0 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: 0 16px calc(12px + var(--sa-b));
 }
 
 /* ── header ── */

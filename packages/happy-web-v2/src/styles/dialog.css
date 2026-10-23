@@ -97,12 +97,13 @@
   :root .vh-dialog {
     width: 100%;
     max-width: none;
-    max-height: calc(100dvh - max(12px, env(safe-area-inset-top)));
+    max-height: calc(100dvh - max(12px, var(--sa-t)));
     border-width: 1px 0 0;
     border-radius: var(--r-lg) var(--r-lg) 0 0;
-    padding: var(--sp-4) var(--sp-4) 0;
+    /* edge to edge: the side insets (B-796, iPhone Duo cover status column) pad the content */
+    padding: var(--sp-4) calc(var(--sp-4) + var(--sa-r)) 0 calc(var(--sp-4) + var(--sa-l));
   }
-  :root .vh-dialog--flush { padding: 0; }
+  :root .vh-dialog--flush { padding: 0 var(--sa-r) 0 var(--sa-l); }
   /* wrapper-type families (Modal, new-session): the backdrop lays the sheet on the bottom edge */
   :root .vh-dialog-overlay:has(> .vh-dialog) {
     align-items: flex-end;
@@ -110,14 +111,14 @@
     padding: 0;
   }
   /* form dialogs fill the screen: inputs stay at the top, above the keyboard */
-  :root .vh-dialog--tall { height: calc(100dvh - max(12px, env(safe-area-inset-top))); }
+  :root .vh-dialog--tall { height: calc(100dvh - max(12px, var(--sa-t))); }
   :root .vh-dialog-foot {
     position: sticky;
     bottom: 0;
     z-index: 1;
     flex-wrap: nowrap;
-    margin: auto calc(-1 * var(--sp-4)) 0;
-    padding: var(--sp-3) var(--sp-4) max(var(--sp-3), env(safe-area-inset-bottom));
+    margin: auto calc(-1 * (var(--sp-4) + var(--sa-r))) 0 calc(-1 * (var(--sp-4) + var(--sa-l)));
+    padding: var(--sp-3) calc(var(--sp-4) + var(--sa-r)) max(var(--sp-3), var(--sa-b)) calc(var(--sp-4) + var(--sa-l));
     background: var(--bg-1);
     border-top: var(--hairline) solid var(--line);
   }
@@ -129,6 +130,6 @@
     content: '';
     display: block;
     flex: none;
-    height: max(var(--sp-4), env(safe-area-inset-bottom));
+    height: max(var(--sp-4), var(--sa-b));
   }
 }

@@ -39,7 +39,7 @@
    styling — the generic button rules below skip them. */
 .teams-screen input,
 .teams-screen textarea,
-.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)) {
+.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *, .vh-back)) {
   font: inherit;
   color: var(--text);
   /* B-614 (CDS): controls are fill-only — the cards and dialogs around them own
@@ -53,17 +53,17 @@
   max-width: 100%;
   transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-micro) var(--ease-out);
 }
-@media (hover: hover) and (pointer: fine) { .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):not(:disabled):hover { background: var(--fill-soft-hover); } }
-.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):not(:disabled):active { transform: scale(0.98); }
+@media (hover: hover) and (pointer: fine) { .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *, .vh-back)):not(:disabled):hover { background: var(--fill-soft-hover); } }
+.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *, .vh-back)):not(:disabled):active { transform: scale(0.98); }
 .teams-screen textarea {
   min-height: 80px;
   resize: vertical;
 }
-.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)) {
+.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *, .vh-back)) {
   cursor: pointer;
   align-self: end;
 }
-.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):disabled {
+.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *, .vh-back)):disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -162,7 +162,7 @@
 .teams-heading-actions a { font-size: 13px; color: var(--text-dim); }
 /* B-795: icon-only heading buttons (⋯, refresh) are full touch targets */
 @media (pointer: coarse) { .teams-heading-actions button { min-width: 44px; min-height: 44px; } }
-.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)), .teams-talk { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *, .vh-back)), .teams-talk { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .teams-tabs { display: flex; gap: 16px; margin-top: 20px; border-bottom: 1px solid var(--line); }
 .teams-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 12px 0; color: var(--text-dim); }
 @media (hover: hover) and (pointer: fine) { .teams-tabs button:not(:disabled):hover { background: none; color: var(--text); } }
@@ -213,7 +213,7 @@
   .teams-screen .teams-task-preview:not(:disabled):hover, .teams-list-card:hover { background: var(--bg-1); box-shadow: var(--panel-shadow-hover); transform: translateY(-1.5px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):not(:disabled):active { transform: none; }
+  .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *, .vh-back)):not(:disabled):active { transform: none; }
   @media (hover: hover) and (pointer: fine) { .teams-screen .teams-task-preview:not(:disabled):hover, .teams-list-card:hover { transform: none; } }
 }
 .teams-task-preview strong { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
@@ -274,7 +274,7 @@
   /* phone sheet: the native dialog sits on the bottom edge; submit stays reachable */
   .teams-dialog { margin: auto 0 0; }
   .teams-dialog form > button:last-child,
-  .teams-dialog > button:last-child { position: sticky; bottom: max(var(--sp-3), env(safe-area-inset-bottom)); justify-self: stretch; align-self: stretch; min-height: 48px; box-shadow: 0 0 0 var(--sp-3) var(--bg-1); }
+  .teams-dialog > button:last-child { position: sticky; bottom: max(var(--sp-3), var(--sa-b)); justify-self: stretch; align-self: stretch; min-height: 48px; box-shadow: 0 0 0 var(--sp-3) var(--bg-1); }
   .teams-list-card { padding: 18px; }
 }
 /* First use follows the ordinary conversation visual language. */
@@ -309,7 +309,7 @@
 @media (pointer: coarse) { .teams-screen input, .teams-screen textarea { font-size: var(--fs-16); } }
 
 @media (pointer: coarse) {
- .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)), .teams-screen input:not(:where(.vh-picker-proxy)), .teams-talk, .teams-back, .teams-screen summary { min-height:44px; }
+ .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *, .vh-back)), .teams-screen input:not(:where(.vh-picker-proxy)), .teams-talk, .teams-back, .teams-screen summary { min-height:44px; }
 }
 
 .team-chat-intro { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); }

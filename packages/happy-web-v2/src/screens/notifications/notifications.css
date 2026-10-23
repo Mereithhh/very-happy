@@ -236,8 +236,10 @@
     max-height: none;
     border: none;
     border-radius: 0;
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-top: var(--sa-t);
+    padding-right: var(--sa-r);
+    padding-bottom: var(--sa-b);
+    padding-left: var(--sa-l);
   }
   .nc-close {
     display: inline-flex;

@@ -1,5 +1,5 @@
 .image-preview-overlay { position:fixed; inset:0; z-index:4600; background:var(--scrim); animation:image-preview-appear var(--motion-fast); }
-.image-preview { position:fixed; z-index:4601; inset:24px; display:flex; flex-direction:column; min-width:0; min-height:0; overflow:hidden; border:1px solid var(--line); border-radius:var(--r-lg); background:var(--bg-1); color:var(--text); box-shadow:var(--shadow-modal); font-family:var(--font-sans); animation:image-preview-appear var(--motion-fast); }
+.image-preview { position:fixed; z-index:4601; inset:max(24px, var(--sa-t)) calc(24px + var(--sa-r)) max(24px, var(--sa-b)) calc(24px + var(--sa-l)); display:flex; flex-direction:column; min-width:0; min-height:0; overflow:hidden; border:1px solid var(--line); border-radius:var(--r-lg); background:var(--bg-1); color:var(--text); box-shadow:var(--shadow-modal); font-family:var(--font-sans); animation:image-preview-appear var(--motion-fast); }
 .image-preview:focus { outline:none; }
 .image-preview-header { display:flex; align-items:center; gap:var(--sp-1); min-width:0; flex:none; min-height:48px; padding:4px 8px 4px 16px; border-bottom:1px solid var(--line); }
 .image-preview-title { flex:1; min-width:0; margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--conversation-size-base); font-weight:500; line-height:1.5; }
@@ -26,6 +26,6 @@
 .image-preview-dimensions { position:absolute; right:16px; color:var(--text-faint); font-family:var(--font-mono); font-size:var(--fs-11); }
 @keyframes image-preview-appear { from { opacity:0; } }
 @media(max-width:800px) { .image-preview-dimensions { display:none; } }
-@media(max-width:600px) { .image-preview { inset:0; border:0; border-radius:0; } .image-preview-header { padding-top:max(4px,env(safe-area-inset-top)); } .image-preview-footer { padding-bottom:max(4px,env(safe-area-inset-bottom)); } }
+@media(max-width:600px) { .image-preview { inset:0; border:0; border-radius:0; padding:0 var(--sa-r) 0 var(--sa-l); } .image-preview-header { padding-top:max(4px,var(--sa-t)); } .image-preview-footer { padding-bottom:max(4px,var(--sa-b)); } }
 @media(pointer:coarse) { .image-preview-button { min-width:44px; height:44px; } .image-preview-button--original { min-width:48px; } .image-preview-retry { min-height:44px; } .image-preview-header, .image-preview-footer { min-height:52px; } }
 @media(prefers-reduced-motion:reduce) { .image-preview, .image-preview-overlay { animation:none; } .image-preview-image.is-animating { transition:none; } }

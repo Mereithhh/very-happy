@@ -16,4 +16,4 @@
 .runtime-checkpoint { display:grid; gap:var(--sp-2); margin:var(--sp-3) 0; }
 .runtime-checkpoint .vh-select-trigger { width:100%; }
 .runtime-preview { overflow-wrap:anywhere; }
-@media(max-width:600px) { .runtime-controls { width:100%; padding:0; max-height:90dvh; } .runtime-body { padding-bottom:max(var(--sp-4), env(safe-area-inset-bottom)); } }
+@media(max-width:600px) { .runtime-controls { width:100%; padding:0; max-height:90dvh; } .runtime-body { padding-bottom:max(var(--sp-4), var(--sa-b)); } }

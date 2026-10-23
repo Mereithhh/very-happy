@@ -3,7 +3,7 @@
   align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
-  padding-top: max(var(--sp-2), env(safe-area-inset-top));
+  padding-top: max(var(--sp-2), var(--sa-t));
   background: var(--bg-0);
   min-height: 44px;
 }

@@ -92,6 +92,13 @@ export function backParentPath(
   if (p.startsWith('/session/')) return hub;
   if (p === '/terminal') return '/'; // the picker is a chooser, not a hub child
   if (p.startsWith('/terminal/')) return hub;
+  // B-796: every secondary page walks up its own hierarchy (a phone has no sidebar to fall back on).
+  if (/^\/projects\/[^/]+\/settings$/.test(p)) return p.slice(0, -'/settings'.length);
+  if (p.startsWith('/projects/')) return '/projects';
+  if (/^\/automations\/[^/]+\/edit$/.test(p)) return p.slice(0, -'/edit'.length);
+  if (p.startsWith('/automations/')) return '/automations';
+  const panel = /^(\/machine\/[^/]+)\/panel\/[^/]+$/.exec(p);
+  if (panel) return panel[1];
   // Machines are only listed inside Settings → Diagnostics.
   if (p.startsWith('/machine/')) return '/settings/machines';
   if (p === '/settings') return '/';

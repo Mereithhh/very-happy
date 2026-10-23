@@ -18,7 +18,7 @@ describe('public mobile header', () => {
     expect(mobile).toContain('.pub-header .pub-nav-secondary { display: none; }');
     expect(mobile).toContain('.pub-header .pub-nav-login { display: inline-flex; }');
     expect(mobile).not.toMatch(/nav a:nth-child/);
-    expect(styles).toContain('env(safe-area-inset-right)');
-    expect(styles).toContain('env(safe-area-inset-left)');
+    expect(styles).toContain('var(--sa-r)');
+    expect(styles).toContain('var(--sa-l)');
   });
 });

@@ -58,7 +58,7 @@ describe('toasts over a dialog on phones (B-774)', () => {
   it('the phone rule places the stack at the measured top, after the default top', () => {
     const css = readFileSync(join(process.cwd(), 'src/ui/ui.css'), 'utf8');
     const phone = css.slice(css.indexOf('@media (max-width: 600px), (pointer: coarse) {\n  .vh-toasts {'));
-    const top = phone.indexOf('top: calc(env(safe-area-inset-top)');
+    const top = phone.indexOf('top: calc(var(--sa-t)');
     const below = phone.search(/\.vh-toasts\.vh-toasts--below-dialog-head \{\s*top: var\(--vh-toast-top\);\s*\}/);
     expect(top).toBeGreaterThan(0);
     expect(below).toBeGreaterThan(top);

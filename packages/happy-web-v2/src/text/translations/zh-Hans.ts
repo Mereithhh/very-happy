@@ -5298,6 +5298,8 @@ export const zhHans: TranslationStructure = {
         developerFooter: '仅本设备生效的排障开关。非排障时请保持关闭。',
         viewportDiag: '视口与安全区',
         viewportDiagDescription: '屏幕、安全区与 app 高度实测值，用于反馈底部留白等布局问题',
+        safeAreaDiag: '屏幕四边安全区',
+        safeAreaDiagDescription: '系统在每条屏幕边缘占用的区域（如 iPhone Duo 外屏右侧状态栏），用于反馈按钮被遮挡',
         verboseLogging: '详细网络日志',
         verboseLoggingDescription: '记录所有 socket 请求与响应',
         consoleLogging: '控制台输出',

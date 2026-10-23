@@ -1,7 +1,7 @@
 .pwa-install {
   position: fixed;
-  right: max(var(--sp-4), env(safe-area-inset-right));
-  bottom: max(var(--sp-4), env(safe-area-inset-bottom));
+  right: max(var(--sp-4), var(--sa-r));
+  bottom: max(var(--sp-4), var(--sa-b));
   z-index: 1000;
   width: min(430px, calc(100vw - 2 * var(--sp-4)));
   display: grid;
@@ -86,9 +86,9 @@
 
 @media (max-width: 520px) {
   .pwa-install {
-    right: max(var(--sp-3), env(safe-area-inset-right));
-    bottom: max(var(--sp-3), env(safe-area-inset-bottom));
-    left: max(var(--sp-3), env(safe-area-inset-left));
+    right: max(var(--sp-3), var(--sa-r));
+    bottom: max(var(--sp-3), var(--sa-b));
+    left: max(var(--sp-3), var(--sa-l));
     width: auto;
     grid-template-columns: 44px minmax(0, 1fr);
     gap: var(--sp-3);

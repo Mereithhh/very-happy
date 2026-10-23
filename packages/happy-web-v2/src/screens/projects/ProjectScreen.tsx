@@ -1,6 +1,7 @@
+import { BackButton } from '@/app/BackButton';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FolderKanban, Settings2, Send, UsersRound, Zap, Undo2, Plus, Link2, LogOut } from 'lucide-react';
+import { FolderKanban, Settings2, Send, UsersRound, Zap, Undo2, Plus, Link2, LogOut } from 'lucide-react';
 import { ActionDropdownMenu } from '@/ui/Menu';
 import { Modal } from '@/modal';
 import { linkableTeams, teamMoveSource } from './projectChoice';
@@ -67,7 +68,7 @@ export function ProjectScreen() {
   if (state !== 'ready' || !detail) {
     return (
       <main className="pj-screen">
-        <Link className="pj-back" to="/"><ArrowLeft size={16} />{c.back}</Link>
+        <BackButton />
         <p className="pj-muted">{state === 'missing' ? c.notFound : state === 'unavailable' ? c.unavailable : c.loading}</p>
       </main>
     );
@@ -78,7 +79,7 @@ export function ProjectScreen() {
       <header className="pj-head">
         <div className="pj-head-text">
           {/* B-763: 项目 › 名称 — the Projects list is the one ancestor (phones show the same two segments). */}
-          <LocationTrail className="pj-trail" segments={projectTrail(trail)} label={trail.label}><span className="pj-trail-current">{project.name}</span></LocationTrail>
+          <div className="vh-back-row pj-trail"><BackButton narrow /><LocationTrail segments={projectTrail(trail)} label={trail.label}><span className="pj-trail-current">{project.name}</span></LocationTrail></div>
           <h1><FolderKanban size={22} aria-hidden />{project.name}</h1>
           {project.goal && <p className="pj-goal">{project.goal}</p>}
         </div>

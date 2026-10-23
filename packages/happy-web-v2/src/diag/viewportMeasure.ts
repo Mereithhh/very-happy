@@ -47,7 +47,7 @@ function measureUnits(): Record<string, number | null> {
     return out;
 }
 
-function measureSafeArea(): ViewportSnapshot['safeArea'] {
+export function measureSafeArea(): ViewportSnapshot['safeArea'] {
     const el = probe({
         paddingTop: 'env(safe-area-inset-top, 0px)',
         paddingRight: 'env(safe-area-inset-right, 0px)',

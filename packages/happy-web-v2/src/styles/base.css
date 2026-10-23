@@ -12,6 +12,19 @@ body,
   height: 100%;
 }
 
+/* B-796: the safe-area insets, read through these mirrors only (never a bare
+   env(safe-area-inset-*)). All four sides count: the iPhone Duo cover display
+   keeps its clock / camera / status icons in a column on the RIGHT edge in
+   portrait (inset right ≈ 84pt, top 0), and landscape phones inset left/right.
+   One name per side also lets device-shots.mjs simulate an inset in Chromium,
+   which has no env() override. Live values: /dev/safe-area. */
+:root {
+  --sa-t: env(safe-area-inset-top, 0px);
+  --sa-r: env(safe-area-inset-right, 0px);
+  --sa-b: env(safe-area-inset-bottom, 0px);
+  --sa-l: env(safe-area-inset-left, 0px);
+}
+
 /* Full-screen shells size against --app-h, never a bare 100dvh/100%.
    iOS 26 home-screen web apps (viewport-fit=cover + black-translucent) report
    100dvh / 100svh / 100% / innerHeight short by the TOP safe-area inset
@@ -305,6 +318,21 @@ pre,
     background: var(--bg-2);
     color: var(--text);
   }
+}
+/* B-796: the arrow leading a header row (project / team / list pages): the
+   glyph lines up with the text below it; the title keeps the remaining width. */
+.vh-back-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.vh-back-row > .vh-back { margin-left: -8px; }
+.vh-back-row > :not(.vh-back) { min-width: 0; }
+/* the phone / narrow-touch layout only — the same line where the sidebar leaves the screen */
+.vh-back--narrow { display: none; }
+@media (max-width: 599px), (pointer: coarse) and (max-width: 1099px) {
+  .vh-back--narrow { display: inline-flex; }
 }
 /* touch: finger-sized target, inherited from the old .ch-back rule */
 @media (pointer: coarse) {

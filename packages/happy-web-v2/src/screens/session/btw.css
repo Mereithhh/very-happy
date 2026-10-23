@@ -15,7 +15,7 @@
   align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
-  padding-top: max(var(--sp-2), env(safe-area-inset-top));
+  padding-top: max(var(--sp-2), var(--sa-t));
   border-bottom: 1px solid var(--line);
 }
 .btw-head-icon {
@@ -143,7 +143,7 @@
 
 .btw-foot {
   flex: none;
-  padding: var(--sp-2) var(--sp-3) max(var(--sp-3), env(safe-area-inset-bottom));
+  padding: var(--sp-2) var(--sp-3) max(var(--sp-3), var(--sa-b));
 
 }
 .btw-composer {

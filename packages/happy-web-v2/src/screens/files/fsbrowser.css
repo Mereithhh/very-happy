@@ -339,12 +339,14 @@
   inset: 0;
   z-index: 80; /* above both hosts (term-files / sd-files are 60) and scrims */
   background: var(--bg-0);
+  padding-right: var(--sa-r);
+  padding-left: var(--sa-l);
 }
 /* Fullscreen owns the whole viewport, so its top bar must clear the notch
    (the hosts' own heads normally do this). */
 .fsb--full > .fsb-bar,
 .fsb--full > .fsb-viewer-head {
-  padding-top: max(var(--sp-1), env(safe-area-inset-top));
+  padding-top: max(var(--sp-1), var(--sa-t));
 }
 
 /* The directory stays beside a preview when the actual pane has room. */
@@ -365,7 +367,7 @@
 @media (pointer:coarse), (max-width:600px) { .fsb-filter input { font-size:16px; min-height:36px; } }
 
 .fsb-shell.fsb--full > .fsb-split > .fsb > .fsb-bar,
-.fsb-shell.fsb--full > .fsb-split > .fsb-viewer > .fsb-viewer-head { padding-top:max(var(--sp-1),env(safe-area-inset-top)); }
+.fsb-shell.fsb--full > .fsb-split > .fsb-viewer > .fsb-viewer-head { padding-top:max(var(--sp-1),var(--sa-t)); }
 
 .fsb-viewer-body > .cv { border:0; border-radius:0; background:transparent; box-shadow:none; --cv-surface:var(--bg-0); } /* B-614: the preview IS the canvas (B-448), no card lift */
 /* A file is the document surface, not a chat code card. Keep one inset,

@@ -3,7 +3,7 @@
  * --scrim; ≤600px it becomes a bottom sheet. A fixed-scale island (tokens.css):
  * the body uses --conversation-size-base, not the chat text-size tier. */
 .msg-reader-overlay { position: fixed; inset: 0; z-index: 4300; background: var(--scrim); animation: msg-reader-fade var(--motion-fast); }
-.msg-reader { position: fixed; z-index: 4301; top: 50%; left: 50%; display: flex; flex-direction: column; width: min(760px, calc(100vw - 32px)); max-height: min(820px, calc(100dvh - 32px)); min-width: 0; min-height: 0; overflow: hidden; transform: translate(-50%, -50%); background: var(--bg-1); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-modal); font-family: var(--font-sans); font-size: var(--conversation-size-base); line-height: var(--conversation-leading); animation: msg-reader-enter var(--motion-fast); }
+.msg-reader { position: fixed; z-index: 4301; top: 50%; left: 50%; display: flex; flex-direction: column; width: min(760px, calc(100vw - 32px - var(--sa-l) - var(--sa-r))); margin-left: calc((var(--sa-l) - var(--sa-r)) / 2); max-height: min(820px, calc(100dvh - 32px)); min-width: 0; min-height: 0; overflow: hidden; transform: translate(-50%, -50%); background: var(--bg-1); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-modal); font-family: var(--font-sans); font-size: var(--conversation-size-base); line-height: var(--conversation-leading); animation: msg-reader-enter var(--motion-fast); }
 .msg-reader-head { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line); flex: none; min-width: 0; }
 .msg-reader-head > svg { flex: none; margin-top: 2px; color: var(--text-faint); }
 .msg-reader-heading { display: flex; flex: 1; flex-direction: column; gap: var(--sp-1); min-width: 0; }
@@ -39,10 +39,10 @@
 @keyframes msg-reader-sheet { from { opacity: 0; transform: translateY(18px); } }
 @media (pointer: coarse) { .msg-reader-action, .msg-reader-toolbar .vh-copy, .msg-reader-link, .msg-reader-raw-toggle { min-width: 44px; min-height: 44px; } }
 @media (max-width: 600px) {
-  .msg-reader { top: auto; right: 0; bottom: 0; left: 0; width: 100%; max-height: min(88dvh, 820px); transform: none; border-right: 0; border-bottom: 0; border-left: 0; border-radius: var(--r-lg) var(--r-lg) 0 0; animation-name: msg-reader-sheet; }
+  .msg-reader { top: auto; right: 0; bottom: 0; left: 0; width: 100%; max-height: min(88dvh, 820px); transform: none; border-right: 0; border-bottom: 0; border-left: 0; border-radius: var(--r-lg) var(--r-lg) 0 0; padding: 0 var(--sa-r) 0 var(--sa-l); animation-name: msg-reader-sheet; }
   .msg-reader-head { padding: var(--sp-3); gap: var(--sp-2); }
   .msg-reader-body { padding: var(--sp-3); }
-  .msg-reader-foot { padding: var(--sp-1) var(--sp-3) max(var(--sp-2), env(safe-area-inset-bottom)); }
+  .msg-reader-foot { padding: var(--sp-1) var(--sp-3) max(var(--sp-2), var(--sa-b)); }
 }
 @media (prefers-reduced-motion: reduce) { .msg-reader-overlay, .msg-reader { animation: none; } }
 

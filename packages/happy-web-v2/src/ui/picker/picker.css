@@ -127,7 +127,7 @@
   display: flex;
   flex-direction: column;
   max-height: min(80dvh, 640px);
-  padding: 0 var(--sp-2) max(var(--sp-2), env(safe-area-inset-bottom));
+  padding: 0 calc(var(--sp-2) + var(--sa-r)) max(var(--sp-2), var(--sa-b)) calc(var(--sp-2) + var(--sa-l));
   border-radius: var(--r-lg) var(--r-lg) 0 0;
   background: var(--surface-popover);
   box-shadow: var(--shadow-popover);

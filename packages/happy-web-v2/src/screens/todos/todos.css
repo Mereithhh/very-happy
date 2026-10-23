@@ -22,7 +22,7 @@
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-5);
-  padding-top: max(var(--sp-3), env(safe-area-inset-top));
+  padding-top: max(var(--sp-3), var(--sa-t));
   border-bottom: 1px solid var(--line);
   background: var(--bg-1);
 }
@@ -390,6 +390,9 @@
 .td-source-tabs { margin-left: auto; }
 /* B-728 (UI-P1-14): source / status switches are .vh-segmented; secondary actions are soft fill, no frame */
 .td-source-tabs.vh-segmented { flex-wrap: nowrap; gap: 0; }
+/* B-796: text-only tabs need no container query, and the size containment it brings gives the
+   track a zero intrinsic width — beside the title it collapsed to 4px and clipped both labels. */
+.td-source-tabs.vh-segmented { container-type: normal; flex: none; }
 .td-action {
   min-width: 32px; min-height: 32px; padding: 5px 10px;
   border: 1px solid transparent; border-radius: var(--r-sm);

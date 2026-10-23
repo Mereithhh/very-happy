@@ -133,6 +133,7 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: 'diagnostics.machines', section: 'diagnostics', title: 'diagnostics.machinesAndDaemons', keywords: ['daemon', 'cli', 'machine', 'version', '守护进程', '电脑', '版本'] },
   { id: 'diagnostics.verboseLogging', section: 'diagnostics', title: 'diagnostics.verboseLogging', description: 'diagnostics.verboseLoggingDescription', keywords: ['debug', 'log', 'verbose', '日志', '调试'] },
   { id: 'diagnostics.consoleLogging', section: 'diagnostics', title: 'diagnostics.consoleLogging', description: 'diagnostics.consoleLoggingDescription', keywords: ['console', 'log', 'devtools', '控制台', '日志'] },
+  { id: 'diagnostics.safeAreaDiag', section: 'diagnostics', title: 'diagnostics.safeAreaDiag', description: 'diagnostics.safeAreaDiagDescription', keywords: ['safe area', 'inset', 'status bar', 'iphone duo', 'fold', '安全区', '状态栏', '折叠', '遮挡'] },
   { id: 'diagnostics.viewportDiag', section: 'diagnostics', title: 'diagnostics.viewportDiag', description: 'diagnostics.viewportDiagDescription', keywords: ['viewport', 'safe area', 'pwa', 'iphone', '视口', '留白', '白条', '安全区'] },
 ];
 

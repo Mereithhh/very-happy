@@ -10,7 +10,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 8vh var(--sp-4) var(--sp-4);
+  padding: 8vh calc(var(--sp-4) + var(--sa-r)) var(--sp-4) calc(var(--sp-4) + var(--sa-l));
   background: var(--scrim);
 }
 
@@ -255,8 +255,10 @@
     height: 100%;
     border-radius: 0;
     box-shadow: none;
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-top: var(--sa-t);
+    padding-right: var(--sa-r);
+    padding-bottom: var(--sa-b);
+    padding-left: var(--sa-l);
   }
   .ss-search { padding-left: var(--sp-3); }
   .ss-filters { padding: var(--sp-2) var(--sp-3); }

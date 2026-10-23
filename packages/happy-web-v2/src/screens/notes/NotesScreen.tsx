@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Archive, ArrowLeft, Minimize2, Plus } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
+import { BackButton } from '@/app/BackButton';
 import { useAuth } from '@/auth/AuthContext';
 import { useMediaQuery } from '@/app/useMediaQuery';
 import { useNotes, setNotesCredentials } from '@/sync/notesStore';
@@ -46,6 +47,8 @@ export function NotesScreen() {
     const listPane = (
         <div className="notes-screen-list">
             <div className="notes-screen-toolbar">
+                {/* B-796: phones get the shared back arrow (the ⤡ exit stays for the dock) */}
+                <BackButton narrow />
                 <input
                     className="notes-screen-filter"
                     value={filter}

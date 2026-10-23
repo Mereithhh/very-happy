@@ -5,9 +5,9 @@
    top, below the 44px header and the safe area. Browsers without :has() keep
    the default corner (the pre-B-588 behaviour). */
 body:has(.sd-foot, .term-screen, .mri) :is(.pwa-install, .notif-optin, .signin-nudge) {
-  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  top: calc(var(--sa-t) + 56px);
   bottom: auto;
-  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 72px);
+  max-height: calc(100dvh - var(--sa-t) - 72px);
   overflow-y: auto;
 }
 
@@ -16,7 +16,7 @@ body:has(.sd-foot, .term-screen, .mri) :is(.pwa-install, .notif-optin, .signin-n
    dropping the decorative notification preview (the copy above explains it). */
 @media (max-width: 520px), (pointer: coarse) {
   body:has(.sd-foot, .term-screen, .mri) :is(.pwa-install, .notif-optin, .signin-nudge) {
-    top: calc(env(safe-area-inset-top, 0px) + 68px);
+    top: calc(var(--sa-t) + 68px);
   }
   body:has(.sd-foot, .term-screen, .mri) .notif-optin-preview { display: none; }
 }

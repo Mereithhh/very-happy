@@ -5,7 +5,7 @@
   overflow-y: auto;
   background: var(--bg-0);
   color: var(--text);
-  padding: calc(env(safe-area-inset-top, 0px) + var(--sp-3)) var(--sp-4) var(--sp-4);
+  padding: calc(var(--sa-t) + var(--sp-3)) var(--sp-4) var(--sp-4);
 }
 .vd-head {
   display: flex;
@@ -105,7 +105,7 @@
 
 .vd-panel {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 4px);
+  top: calc(var(--sa-t) + 4px);
   left: 4px;
   right: 4px;
   max-height: 38vh;

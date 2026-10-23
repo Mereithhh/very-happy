@@ -56,7 +56,7 @@
    composer keeps its last line above the home indicator. Not while the
    keyboard is up: the pinned layout ends at the keyboard, not the edge. */
 .sd-foot {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: var(--sa-b);
 }
 .sd[data-keyboard-open='true'] .sd-foot {
   padding-bottom: 0;
@@ -145,6 +145,8 @@
     width: 100%;
     max-width: 100%;
     z-index: 60;
+    padding-right: var(--sa-r);
+    padding-left: var(--sa-l);
   }
   .sd-files-scrim {
     display: block;

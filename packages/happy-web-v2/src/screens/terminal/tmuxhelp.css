@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--sp-4);
+  padding: max(var(--sp-4), var(--sa-t)) calc(var(--sp-4) + var(--sa-r)) max(var(--sp-4), var(--sa-b)) calc(var(--sp-4) + var(--sa-l));
 }
 /* B-728: scrim, card, head and × come from styles/dialog.css (.vh-dialog*) */
 .tmux-card {

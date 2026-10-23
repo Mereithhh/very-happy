@@ -299,6 +299,8 @@ Happy Bot 保留在历史记录与搜索别名中；既有设置键无需随显�
 - 响应式断点和侧栏折叠只调整布局，不重建当前页面或笔记宿主；未提交的表单、当前子页与阅读位置应保留。路由内容保持稳定的 React 层级和 key，不能在桌面/手机分别复制 Outlet。
 - 外壳分四档（`src/app/appShellMode.ts`，B-795）：桌面双栏（细指针，或 ≥1100px 的触屏）；**触屏中等宽度**（满足双栏条件但 <1100px：展开的 iPhone Duo 890×626、Galaxy Fold、竖屏 iPad）用 rail + 浮层抽屉，正文优先，导航、点遮罩、Esc 都关；手机列表/单页。折叠让侧栏离开布局时侧栏「停放」不卸载，里面的弹窗与状态保留到下一次导航；汇报板在顶部 sheet 与侧栏面板之间迁移而不是关闭。header 的紧凑与否看自身宽度（<720px），不看视口。
 - 设备回归：`node scripts/dev/device-shots.mjs`（预设 duo-folded 466×678、duo-open-land 890×626、duo-open-port 626×890、phone、desktop；`--fold` 做折叠 ↔ 展开往返断言），页面来自 DEV `/dev/device/*` 的真实外壳。
+- Safe area 四边都算（B-796）：iPhone Duo 外屏竖屏把时间/相机/状态图标放在**右侧竖列**（第三方实测 inset 上 0 · 右 84 · 下 34 · 左 0），横屏手机也有左右 inset。样式只经 `base.css` 的 `--sa-t/r/b/l` 读 inset，不直接写 `env(safe-area-inset-*)`（`safeAreaSides.test.ts` 守护）；外壳 `.app-shell` 统一留左右，顶/底由各自 header/footer 留，fixed 浮层（sheet、全屏面板、toast、居中弹窗）自己四向留白，背景可铺到 inset 下但可点控件不能进。`device-shots --devices duo-folded-inset` 注入 `--sa-*` 并画出状态列，`inInset` 断言无控件落入；真机数值看 设置 → 诊断 → 屏幕四边安全区（`/dev/safe-area`，生产可用）。
+- 手机布局（<600，或 <1100 的粗指针）每个二级页左上角都有统一 `BackButton`（有应用内历史就后退，否则按 `appBack.ts` 的层级上一级）；宽屏已有位置路径的页用 `narrow` 只在窄屏出现。`device-shots --pages secondary` 逐页断言。
 
 ### 工作台预览补充（2026-09-10）
 

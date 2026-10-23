@@ -9,7 +9,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-3) var(--sp-4);
-  padding-top: max(var(--sp-3), env(safe-area-inset-top));
+  padding-top: max(var(--sp-3), var(--sa-t));
 }
 .sb-brand {
   display: flex;
@@ -426,7 +426,7 @@
   align-items: center;
   gap: var(--sp-1);
   padding: var(--sp-2);
-  padding-bottom: max(var(--sp-2), env(safe-area-inset-bottom));
+  padding-bottom: max(var(--sp-2), var(--sa-b));
 }
 .sb-footer-btn {
   display: flex;
@@ -545,7 +545,7 @@
 @media (pointer: coarse) {
   [data-radix-popper-content-wrapper]:has(> .vh-menu--sheet) {
     position: fixed !important;
-    inset: auto 12px calc(12px + env(safe-area-inset-bottom)) 12px !important;
+    inset: auto calc(12px + var(--sa-r)) calc(12px + var(--sa-b)) calc(12px + var(--sa-l)) !important;
     transform: none !important;
     min-width: 0 !important;
   }

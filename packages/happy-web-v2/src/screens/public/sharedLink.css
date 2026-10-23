@@ -56,7 +56,7 @@
   font-size: var(--chat-fs-secondary);
   color: var(--text-faint);
 }
-.slk-foot { padding: var(--sp-4) 0 max(var(--sp-6), env(safe-area-inset-bottom)); }
+.slk-foot { padding: var(--sp-4) 0 max(var(--sp-6), var(--sa-b)); }
 .slk-state {
   flex: 1;
   display: flex;

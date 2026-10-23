@@ -37,7 +37,7 @@
 .wd-task:focus-within .wd-task-more { display:flex; }
 @media (hover: hover) and (pointer: fine) { .wd-task:hover .wd-task-more { display:flex; } }
 @media (hover: hover) and (pointer: fine) { .wd-task-more:hover { color:var(--text); } }
-.wd-sidebar-foot { display:flex; align-items:center; min-height:48px; gap:6px; padding:6px 4px max(6px,env(safe-area-inset-bottom)); }
+.wd-sidebar-foot { display:flex; align-items:center; min-height:48px; gap:6px; padding:6px 4px max(6px,var(--sa-b)); }
 .wd-sidebar-foot > button:first-child { display:flex; align-items:center; gap:9px; flex:1; padding:8px; border-radius:var(--r-sm); text-align:left; color:var(--text-dim); }
 @media (hover: hover) and (pointer: fine) { .wd-sidebar-foot > button:hover { background:var(--bg-3); } }
 .wd-main { min-width:0; min-height:0; display:flex; flex-direction:column; }
@@ -71,7 +71,7 @@
 .wd-answer-actions button { display:grid; place-items:center; width:26px; height:26px; border-radius:var(--r-sm); }
 @media (hover: hover) and (pointer: fine) { .wd-answer-actions button:hover { color:var(--text); background:var(--bg-3); } }
 .wd-answer-actions span { font-size:10px; }
-.wd-compose-wrap { flex:none; padding:0 32px max(10px,env(safe-area-inset-bottom)); }
+.wd-compose-wrap { flex:none; padding:0 32px max(10px,var(--sa-b)); }
 .wd-compose-inner { max-width:784px; margin:0 auto; }
 .wd-composer { border-radius:18px; background:var(--bg-1); border:1px solid transparent; padding:10px; }
 .wd-composer:focus-within { border-color:var(--line); }

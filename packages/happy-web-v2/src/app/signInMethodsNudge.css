@@ -2,8 +2,8 @@
    outline, ink/canvas primary, quiet "later". Placement lives in floatingCards.css. */
 .signin-nudge {
   position: fixed;
-  right: max(var(--sp-4), env(safe-area-inset-right));
-  bottom: max(var(--sp-4), env(safe-area-inset-bottom));
+  right: max(var(--sp-4), var(--sa-r));
+  bottom: max(var(--sp-4), var(--sa-b));
   z-index: 1000;
   width: min(360px, calc(100vw - 2 * var(--sp-4)));
   box-sizing: border-box;
@@ -53,7 +53,7 @@
   .signin-nudge__primary, .signin-nudge__later { min-height: 44px; }
 }
 @media (max-width: 520px) {
-  .signin-nudge { right: max(var(--sp-4), env(safe-area-inset-right)); left: max(var(--sp-4), env(safe-area-inset-left)); width: auto; }
+  .signin-nudge { right: max(var(--sp-4), var(--sa-r)); left: max(var(--sp-4), var(--sa-l)); width: auto; }
   .signin-nudge__actions { flex-direction: column; }
   .signin-nudge__primary, .signin-nudge__later { width: 100%; }
 }
