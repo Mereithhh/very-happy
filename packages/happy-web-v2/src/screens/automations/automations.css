@@ -13,7 +13,7 @@
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-5);
-  padding-top: max(var(--sp-3), env(safe-area-inset-top));
+  padding-top: max(var(--sp-3), var(--sa-t));
   border-bottom: 1px solid var(--line);
   background: var(--bg-1);
   min-width: 0;

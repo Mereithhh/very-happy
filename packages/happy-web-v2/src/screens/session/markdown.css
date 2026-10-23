@@ -384,7 +384,7 @@
 .md-tbl-full {
   position: fixed;
   z-index: 4601;
-  inset: 24px;
+  inset: max(24px, var(--sa-t)) calc(24px + var(--sa-r)) max(24px, var(--sa-b)) calc(24px + var(--sa-l));
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -457,7 +457,7 @@
     inset: 0;
     border: 0;
     border-radius: 0;
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    padding: var(--sa-t) var(--sa-r) var(--sa-b) var(--sa-l);
   }
   .md-tbl-full-close { width: 44px; height: 44px; }
 }

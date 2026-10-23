@@ -1,6 +1,7 @@
+import { BackButton } from '@/app/BackButton';
 import { useCallback, useEffect, useId, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Archive, ArchiveRestore, ArrowLeft, FolderOpen, History, Link2, LogOut, Pencil, Plus, Star, Trash2, Unlink, UsersRound } from 'lucide-react';
+import { Archive, ArchiveRestore, FolderOpen, History, Link2, LogOut, Pencil, Plus, Star, Trash2, Unlink, UsersRound } from 'lucide-react';
 import { PROJECT_LIMITS, type ProjectDetailResponse, type ProjectInstructionsRevisionView, type ProjectView } from '@slopus/happy-wire';
 import { applyLocalMembership, projectsApi, ProjectsApiError, refreshProjects, useProjects } from '@/sync/projects';
 import { useAllMachines, useAllSessions } from '@/sync/storage';
@@ -64,7 +65,7 @@ export function ProjectSettingsScreen() {
   if (state !== 'ready' || !detail) {
     return (
       <main className="pj-screen">
-        <Link className="pj-back" to="/"><ArrowLeft size={16} />{c.back}</Link>
+        <BackButton />
         <p className="pj-muted">{state === 'missing' ? c.notFound : state === 'unavailable' ? c.unavailable : c.loading}</p>
       </main>
     );
@@ -75,8 +76,7 @@ export function ProjectSettingsScreen() {
     <main className="pj-screen pj-settings-page" data-testid="project-settings">
       <header className="pj-head">
         <div className="pj-head-text">
-          <Link className="pj-back" to={`/projects/${encodeURIComponent(project.id)}`}><ArrowLeft size={16} />{c.backTo(project.name)}</Link>
-          <h1>{c.settings}</h1>
+          <div className="vh-back-row"><BackButton /><h1>{c.settings}</h1></div>
         </div>
       </header>
       <nav className="pj-settings-nav" aria-label={c.settings}>

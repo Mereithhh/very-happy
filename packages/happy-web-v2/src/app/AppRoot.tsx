@@ -76,6 +76,7 @@ const ChangelogScreen = lazy(() => import('@/screens/changelog/ChangelogScreen')
 const WhatsNewScreen = lazy(() => import('@/screens/whatsnew/WhatsNewScreen').then((m) => ({ default: m.WhatsNewScreen })));
 // B-599: iOS standalone viewport diagnostics — no auth, reached from 设置 → 诊断.
 const ViewportDiagScreen = lazy(() => import('@/diag/ViewportDiagScreen').then((m) => ({ default: m.ViewportDiagScreen })));
+const SafeAreaDiagScreen = lazy(() => import('@/diag/SafeAreaDiagScreen').then((m) => ({ default: m.SafeAreaDiagScreen })));
 const VhDiagOverlay = lazy(() => import('@/diag/VhDiagOverlay').then((m) => ({ default: m.VhDiagOverlay })));
 
 function Lazy({ children, fullViewport = true, centered = false }: { children: ReactNode; fullViewport?: boolean; centered?: boolean }) {
@@ -337,6 +338,21 @@ const router = createBrowserRouter(
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
             { path: 'teams/:teamId', element: <Lazy><TeamsScreen /></Lazy> },
             { path: 'projects/:projectId', element: <Lazy><ProjectScreen /></Lazy> },
+            // B-796: every secondary page, for the phone back-button / side-inset sweep.
+            { path: 'teams', element: <Lazy><TeamsScreen /></Lazy> },
+            { path: 'projects', element: <Lazy><ProjectsListScreen /></Lazy> },
+            { path: 'projects/:projectId/settings', element: <Lazy><ProjectSettingsScreen /></Lazy> },
+            { path: 'automations', element: <Lazy><AutomationsScreen /></Lazy> },
+            { path: 'automations/new', element: <Lazy><AutomationFormScreen /></Lazy> },
+            { path: 'todos', element: <Lazy><TodosScreen /></Lazy> },
+            { path: 'people', element: <Lazy><PeopleScreen /></Lazy> },
+            { path: 'notes', element: <Lazy><NotesScreen /></Lazy> },
+            { path: 'board', element: <Lazy><TaskBoardScreen /></Lazy> },
+            { path: 'help', element: <HelpScreen /> },
+            { path: 'terminal', element: <Lazy><TerminalPickerScreen /></Lazy> },
+            { path: 'machine/connect', element: <Lazy><ConnectMachineScreen /></Lazy> },
+            { path: 'machine/:id', element: <Lazy><MachineScreen /></Lazy> },
+            { path: 'settings/*', element: <Lazy><SettingsRoutes basePath="/dev/device/settings" /></Lazy> },
           ],
         }]
       : []),
@@ -371,6 +387,8 @@ const router = createBrowserRouter(
     { path: '/changelog', element: <Lazy><ChangelogScreen /></Lazy> },
     { path: '/whats-new', element: <Lazy><WhatsNewScreen /></Lazy> },
     { path: '/diag/viewport', element: <Lazy><ViewportDiagScreen /></Lazy> },
+    // B-796: in production too (not DEV-gated) — the Owner opens it on the device from 设置 → 诊断.
+    { path: '/dev/safe-area', element: <Lazy><SafeAreaDiagScreen /></Lazy> },
     { path: '/welcome', element: BRAND.landingEnabled ? <LandingScreen /> : <Navigate to="/login" replace /> },
     { path: '/docs', element: <DocsScreen /> },
     { path: '/docs/:slug', element: <DocsScreen /> },

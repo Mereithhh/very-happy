@@ -12,7 +12,7 @@
   max-width: 860px;
   margin: 0 auto;
   padding: var(--sp-6) var(--sp-5);
-  padding-bottom: max(var(--sp-8), env(safe-area-inset-bottom));
+  padding-bottom: max(var(--sp-8), var(--sa-b));
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);

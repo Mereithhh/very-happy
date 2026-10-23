@@ -30,10 +30,10 @@ describe('full-screen shell height (iOS 26 standalone bottom gap)', () => {
 
     it('session composer clears the home indicator except while the keyboard is pinned', () => {
         const session = read('../screens/session/session.css');
-        expect(session).toMatch(/\.sd-foot \{\s*padding-bottom: env\(safe-area-inset-bottom, 0px\);/);
+        expect(session).toMatch(/\.sd-foot \{\s*padding-bottom: var\(--sa-b\);/);
         expect(session).toMatch(/\.sd\[data-keyboard-open='true'\] \.sd-foot \{\s*padding-bottom: 0;/);
         // B-601: only `.sd-foot` reserves the inset; the composer adding its own
         // (old inline max(sp-3, env(...))) left a ~34pt extra band on iPhone.
-        expect(read('../screens/session/AgentInput.tsx')).not.toMatch(/safe-area-inset-bottom/);
+        expect(read('../screens/session/AgentInput.tsx')).not.toMatch(/safe-area-inset-bottom|--sa-b/);
     });
 });

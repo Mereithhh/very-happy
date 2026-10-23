@@ -3,13 +3,15 @@
  * device-shots —— 在真实 Chromium 里按**设备预设**截 Web 主要页面，并量溢出 / 触控尺寸。
  *
  * 页面来自 DEV harness `/dev/device/*`（B-795）：真实 AppLayout（侧栏 / rail / 单栏切换）
- * 包着真实会话页（汇报板负责人会话）、团队页、项目页和设置页，数据全是本地示例。
+ * 包着真实会话页（汇报板负责人会话）、团队页、项目页和设置页，数据全是本地示例；
+ * `--pages secondary` 扫一遍其余二级页（B-796：手机上每页左上角都要有返回）。
  * 所以先起 Web dev server（不需要后端）：
  *
  *   pnpm -C packages/happy-web-v2 exec vite --port 8795 --strictPort
  *   node scripts/dev/device-shots.mjs --base http://127.0.0.1:8795 --out <dir> \
  *        [--devices duo-folded,duo-open-land] [--pages session,board] [--themes light,dark]
  *   node scripts/dev/device-shots.mjs --base … --fold      # 折叠 ↔ 展开切换回归
+ *   node scripts/dev/device-shots.mjs --base … --devices duo-folded-inset   # 外屏右侧状态列（B-796）
  *
  * 粗指针设备在 page 创建后用 CDP 打开原生触屏，并在每张截图后核验
  * `matchMedia('(pointer: coarse)')` 仍为真（见 dev skill：长页截图会重置触屏模拟）。
@@ -17,6 +19,7 @@
  *   - overflowX：文档横向溢出像素（应为 0）
  *   - outside：右边缘越出视口的可见元素（应为空）
  *   - hoverOnly：触屏上占位却透明（只有 hover 才显示）的按钮（应为空）
+ *   - inInset：带 safeArea 的预设下，落进侧边 inset（系统状态列）里的可点控件（应为空）
  *   - smallTargets：粗指针下宽或高 < 44px 的可见按钮（只报告：量的是盒子，
  *     不含 ::after 扩出的热区；行内文字链接按 WCAG 2.5.8 例外处理）
  * `--fold` 在会话页、汇报板、团队页、项目页和新建对话弹窗上做 466×678 ↔ 890×626
@@ -31,6 +34,11 @@ import { join } from 'node:path';
 /** iPhone Duo（2026-10）CSS 视口为公开估算值（DPR 3 假设），Apple 未公布浏览器值。 */
 export const DEVICES = {
     'duo-folded': { width: 466, height: 678, dpr: 3, coarse: true, label: 'iPhone Duo 合起 5.4"' },
+    // B-796: the cover display in portrait keeps the clock / camera / status icons in a column on the
+    // RIGHT edge (third-party measurements: insets top 0 · right 84 · bottom 34 · left 0 pt). Chromium
+    // has no env(safe-area-inset-*) override, so the preset sets the app's `--sa-*` mirrors and draws
+    // the column (system material look) over the page; `inInset` lists controls left under it.
+    'duo-folded-inset': { width: 466, height: 678, dpr: 3, coarse: true, label: 'iPhone Duo 合起 + 右侧状态列', safeArea: { top: 0, right: 84, bottom: 34, left: 0 } },
     'duo-open-land': { width: 890, height: 626, dpr: 3, coarse: true, label: 'iPhone Duo 展开横屏 7.6"' },
     'duo-open-port': { width: 626, height: 890, dpr: 3, coarse: true, label: 'iPhone Duo 展开竖屏 7.6"' },
     'phone': { width: 390, height: 844, dpr: 3, coarse: true, label: 'iPhone 6.1"' },
@@ -46,16 +54,29 @@ export const PAGES = {
     sidebar: { path: (d) => (d.width < 800 ? '/' : '/session/dev-board'), prepare: 'sidebar' },
     team: { path: '/teams/team-pay' },
     project: { path: '/projects/pj-pay' },
-    // Settings never shows the sidebar in the app (single pane), so it is captured outside the shell.
-    settings: { url: '/dev/settings' },
+    // Single pane in the app (no sidebar), but inside the shell (B-796: the shell pads the side insets).
+    settings: { path: '/settings' },
 };
+
+/** B-796 sweep: every secondary page inside the shell (`--pages secondary`); a phone must show a back control on each. */
+export const SECONDARY = {
+    'teams-list': '/teams', 'projects-list': '/projects', 'project-settings': '/projects/pj-pay/settings',
+    automations: '/automations', 'automation-new': '/automations/new', todos: '/todos', people: '/people',
+    notes: '/notes', 'task-board': '/board', help: '/help', 'terminal-picker': '/terminal', 'machine-connect': '/machine/connect',
+    machine: '/machine/dev-machine', 'settings-account': '/settings/account', 'settings-appearance': '/settings/appearance',
+};
+for (const [name, path] of Object.entries(SECONDARY)) PAGES[name] = { path, back: true };
+PAGES.team.back = true;
+PAGES.project.back = true;
+PAGES.session.back = true;
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => (args.includes(`--${name}`) ? args[args.indexOf(`--${name}`) + 1] : fallback);
 const base = opt('base', 'http://127.0.0.1:8795');
 const outDir = opt('out', null);
 const devices = opt('devices', 'duo-folded,duo-open-land,duo-open-port').split(',');
-const pages = opt('pages', Object.keys(PAGES).join(',')).split(',');
+const PRIMARY = ['session', 'board', 'sidebar', 'team', 'project', 'settings'];
+const pages = opt('pages', PRIMARY.join(',')).split(',').flatMap((p) => (p === 'secondary' ? Object.keys(SECONDARY) : [p]));
 const themes = opt('themes', 'light,dark').split(',');
 const locale = opt('locale', 'zh-CN');
 
@@ -96,6 +117,7 @@ async function openDevice(browser, device, theme) {
         localStorage.setItem('vh-notif-optin-dismissed-v1', '1');
         localStorage.setItem('vh.featureTips.seen.v1', JSON.stringify(['quick-open@1', 'prompt-rail@1', 'review-all@1', 'session-peek@1']));
     });
+    if (d.safeArea) await context.addInitScript(simulateSafeArea, d.safeArea);
     const page = await context.newPage();
     let cdp = null;
     if (d.coarse) {
@@ -105,6 +127,24 @@ async function openDevice(browser, device, theme) {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message.slice(0, 200)));
     return { context, page, cdp, d, errors };
+}
+
+/** Runs in the page: `--sa-*` (styles/base.css) stand in for env(safe-area-inset-*); the column mimics iOS's. */
+function simulateSafeArea(sa) {
+    const install = () => {
+        const style = document.createElement('style');
+        style.dataset.simSafeArea = '';
+        style.textContent = `:root { --sa-t: ${sa.top}px !important; --sa-r: ${sa.right}px !important; --sa-b: ${sa.bottom}px !important; --sa-l: ${sa.left}px !important; }`
+            + `#sim-status-column { position: fixed; z-index: 2147483647; top: 0; right: 0; bottom: 0; width: ${sa.right}px; pointer-events: none; display: flex; flex-direction: column; align-items: center; padding-top: 28px; gap: 6px; font: 600 15px -apple-system, system-ui, sans-serif; color: #000; }`
+            + `#sim-status-column > i { width: 46px; height: 120px; border-radius: 23px; background: rgb(255 255 255 / 0.55); backdrop-filter: blur(14px); display: flex; flex-direction: column; align-items: center; justify-content: center; font-style: normal; }`;
+        document.head.appendChild(style);
+        const col = document.createElement('div');
+        col.id = 'sim-status-column';
+        col.setAttribute('aria-hidden', 'true');
+        col.innerHTML = '<i>●<br>10:59<br>◔</i>';
+        document.body.appendChild(col);
+    };
+    if (document.body) install(); else document.addEventListener('DOMContentLoaded', install);
 }
 
 async function assertCoarse(page, d, where) {
@@ -139,7 +179,7 @@ async function prepare(page, kind) {
     await page.waitForTimeout(500);
 }
 
-function measure() {
+function measure(sa) {
     const vw = innerWidth;
     const doc = document.scrollingElement;
     const visible = (el) => {
@@ -187,7 +227,20 @@ function measure() {
             if (faded) hoverOnly.push(label(el));
         }
     }
-    return { overflowX: doc.scrollWidth - doc.clientWidth, outside, hoverOnly, smallTargets: smallTargets.length, smallSample: smallTargets.slice(0, 12), shell: document.querySelector('.app-shell')?.className ?? null };
+    // Controls the user can't reach: under a simulated side inset (the system column draws over it).
+    const inInset = [];
+    if (sa && (sa.left || sa.right)) {
+        for (const el of document.querySelectorAll('button, [role="button"], a[href], [role="tab"], input, textarea')) {
+            const r = visible(el);
+            if (!r || r.bottom < 0 || r.top > innerHeight || el.closest('[aria-hidden="true"], .app-sidebar--parked, .app-sidebar--drawer:not(.is-open)')) continue;
+            if (r.right > vw - sa.right + 1 || r.left < sa.left - 1) inInset.push(`${label(el)} ${Math.round(r.left)}–${Math.round(r.right)}`);
+            if (inInset.length > 8) break;
+        }
+    }
+    // A visible back control in the page's top band (unified BackButton or a header back link).
+    const back = [...document.querySelectorAll('.app-detail .vh-back, .app-detail a[class*="back"], .app-detail button[class*="back"]')]
+        .map((el) => visible(el)).find((r) => r && r.top < 140 && r.left < vw / 2) ?? null;
+    return { overflowX: doc.scrollWidth - doc.clientWidth, outside, hoverOnly, inInset, back: back ? `${Math.round(back.left)},${Math.round(back.top)}` : null, smallTargets: smallTargets.length, smallSample: smallTargets.slice(0, 12), shell: document.querySelector('.app-shell')?.className ?? null };
 }
 
 async function captureAll(browser) {
@@ -200,11 +253,13 @@ async function captureAll(browser) {
                 await goto(page, typeof p.path === 'function' ? p.path(d) : p.path, p.url);
                 await assertCoarse(page, d, `${device}/${name}`);
                 if (p.prepare) await prepare(page, p.prepare);
-                const m = await page.evaluate(measure);
+                const m = await page.evaluate(measure, d.safeArea ?? null);
                 const tag = `${device}-${name}-${theme}`;
-                console.log(`── ${tag} (${d.width}×${d.height}) overflowX=${m.overflowX} small=${m.smallTargets} shell="${m.shell}"`);
+                console.log(`── ${tag} (${d.width}×${d.height}) overflowX=${m.overflowX} small=${m.smallTargets} shell="${m.shell}" back=${m.back ?? '-'}`);
+                if (p.back && d.width < 600 && !m.back) fail(`${tag}: no back control at the top-left on a phone`);
                 if (m.overflowX > 0) fail(`${tag}: document overflows horizontally by ${m.overflowX}px`);
                 if (m.outside.length) fail(`${tag}: outside viewport: ${m.outside.join(', ')}`);
+                if (m.inInset.length) fail(`${tag}: controls under the safe-area inset: ${m.inInset.join(', ')}`);
                 if (m.hoverOnly.length) fail(`${tag}: hover-only controls on a touch screen: ${m.hoverOnly.join(', ')}`);
                 if (args.includes('--verbose') && m.smallSample.length) console.log(`  small: ${m.smallSample.join(' | ')}`);
                 if (outDir) writeFileSync(join(outDir, `${tag}.png`), await shot(page, cdp, d));

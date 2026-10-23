@@ -106,7 +106,8 @@ describe('B-757 project settings page', () => {
     expect($$('main[data-testid=project-settings] > section').map((s) => s.id)).toEqual(
       ['pj-settings-basics', 'pj-settings-context', 'pj-settings-folders', 'pj-settings-teams', 'pj-settings-sessions', 'pj-settings-danger']);
     expect($$('.pj-settings-nav a').map((a) => a.getAttribute('href'))).toEqual(['#basics', '#context', '#folders', '#teams', '#sessions', '#danger']);
-    expect($('.pj-back')!.getAttribute('href')).toBe('/projects/p1');
+    // B-796: the shared back arrow (history first, else appBack's parent: /projects/p1 — see appBack.test.ts)
+    expect($('.pj-head .vh-back')).not.toBeNull();
   });
 
   it('basics: save is off until something changed; writes the trimmed name and description', async () => {

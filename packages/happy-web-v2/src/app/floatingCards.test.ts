@@ -9,7 +9,7 @@ const css = readFileSync(new URL('./floatingCards.css', import.meta.url), 'utf8'
 it('moves both onboarding cards to the top on pages with a composer or terminal', () => {
   const rule = css.match(/body:has\(\.sd-foot, \.term-screen, \.mri\) :is\(\.pwa-install, \.notif-optin, \.signin-nudge\)\s*\{([^}]+)\}/)?.[1];
   expect(rule).toBeDefined();
-  expect(rule).toContain('top: calc(env(safe-area-inset-top, 0px) + 56px);');
+  expect(rule).toContain('top: calc(var(--sa-t) + 56px);');
   expect(rule).toContain('bottom: auto;');
 });
 
@@ -28,7 +28,7 @@ it('both cards load the shared rule', () => {
 
 it('keeps the card short on phones with a composer (decorative preview dropped, below the taller header)', () => {
   const phone = css.slice(css.indexOf('@media (max-width: 520px), (pointer: coarse)'));
-  expect(phone).toContain('top: calc(env(safe-area-inset-top, 0px) + 68px);');
+  expect(phone).toContain('top: calc(var(--sa-t) + 68px);');
   expect(phone).toMatch(/body:has\(\.sd-foot, \.term-screen, \.mri\) \.notif-optin-preview \{ display: none; \}/);
 });
 

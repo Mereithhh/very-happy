@@ -6,8 +6,8 @@
  * and fall back to stills under reduced motion.
  */
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowDown, ArrowRight, Check, Clipboard, PackageOpen } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowDown, ArrowRight, Check, ChevronLeft, Clipboard, PackageOpen } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { usePublicI18n } from '@/i18n/publicI18n';
 import { ChangelogShotImage, ChangelogTopics } from '@/app/ChangelogHighlights';
@@ -25,6 +25,10 @@ export function WhatsNewScreen() {
   const c = copy.whatsNew;
   const pair = whatsNewReleases();
   const [copied, setCopied] = useState(false);
+  const navigate = useNavigate();
+  // B-796: opened from inside the app (or the installed app) → a way back; a shared link keeps the public header only.
+  const historyIdx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+  const inApp = historyIdx > 0 || window.matchMedia?.('(display-mode: standalone)').matches === true;
   useEffect(() => { document.title = c.pageTitle; }, [c.pageTitle]);
   if (!pair) return null;
   const { web, cli } = pair;
@@ -41,6 +45,7 @@ export function WhatsNewScreen() {
       <PublicHeader />
       <main id="main-content">
         <section className="wnp-hero" aria-labelledby="wnp-title">
+          {inApp && <button type="button" className="vh-back wnp-back" aria-label={t('common.back')} onClick={() => (historyIdx > 0 ? navigate(-1) : navigate('/'))}><ChevronLeft size={18} /></button>}
           <div className="eyebrow wnp-eyebrow">{c.eyebrow} · <time dateTime={web.date}>{date}</time>{web.major && <MajorBadge />}</div>
           <h1 id="wnp-title">{t(web.titleKey)}</h1>
           <p>{t(web.summaryKey)}</p>

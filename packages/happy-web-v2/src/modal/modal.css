@@ -11,7 +11,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--sp-4);
+  padding: max(var(--sp-4), var(--sa-t)) calc(var(--sp-4) + var(--sa-r)) max(var(--sp-4), var(--sa-b)) calc(var(--sp-4) + var(--sa-l));
   /* B-728: scrim and the card's look come from styles/dialog.css (no blur) */
   animation: vh-fade var(--motion-fast);
 }
@@ -76,7 +76,7 @@
      sheet's field); alerts and confirms use the shared phone sheet. */
   :root .vh-modal-backdrop.is-prompt {
     align-items: flex-start;
-    padding: max(12dvh, env(safe-area-inset-top)) var(--sp-4) var(--sp-4);
+    padding: max(12dvh, var(--sa-t)) calc(var(--sp-4) + var(--sa-r)) var(--sp-4) calc(var(--sp-4) + var(--sa-l));
   }
   :root .vh-modal-backdrop.is-prompt > .vh-modal-card {
     border-width: 1px;

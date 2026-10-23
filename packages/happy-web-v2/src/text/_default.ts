@@ -5460,6 +5460,8 @@ export const en = {
         developerFooter: 'Troubleshooting toggles for this device only. Leave off unless you are debugging.',
         viewportDiag: 'Viewport & safe area',
         viewportDiagDescription: 'Screen, safe-area and app-height numbers for layout bug reports',
+        safeAreaDiag: 'Safe area edges',
+        safeAreaDiagDescription: 'Where the system draws on each screen edge (e.g. the iPhone Duo side status bar)',
         verboseLogging: 'Verbose network logging',
         verboseLoggingDescription: 'Log all socket requests and responses',
         consoleLogging: 'Console output',

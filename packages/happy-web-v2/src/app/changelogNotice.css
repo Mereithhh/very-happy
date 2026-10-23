@@ -11,8 +11,8 @@
   position: fixed;
   z-index: 4101;
   top: 50%;
-  left: 50%;
-  width: min(520px, calc(100vw - 2 * var(--sp-4)));
+  left: calc(50% + (var(--sa-l) - var(--sa-r)) / 2);
+  width: min(520px, calc(100vw - 2 * var(--sp-4) - var(--sa-l) - var(--sa-r)));
   max-height: min(720px, calc(100dvh - 2 * var(--sp-4)));
   overflow: auto;
   transform: translate(-50%, -50%);
@@ -113,12 +113,11 @@
     max-height: min(84dvh, 720px);
     transform: none;
     border-radius: var(--r-lg) var(--r-lg) 0 0;
-    padding: var(--sp-4);
-    padding-bottom: max(var(--sp-4), env(safe-area-inset-bottom));
+    padding: var(--sp-4) calc(var(--sp-4) + var(--sa-r)) max(var(--sp-4), var(--sa-b)) calc(var(--sp-4) + var(--sa-l));
     animation-name: wn-enter-mobile;
   }
   .wn-done, .wn-prev { min-height: 46px; }
-  .wn-nav[data-paged] { bottom: calc(-1 * max(var(--sp-4), env(safe-area-inset-bottom))); margin-inline: calc(-1 * var(--sp-4)); margin-bottom: calc(-1 * max(var(--sp-4), env(safe-area-inset-bottom))); padding: var(--sp-3) var(--sp-4) max(var(--sp-4), env(safe-area-inset-bottom)); }
+  .wn-nav[data-paged] { bottom: calc(-1 * max(var(--sp-4), var(--sa-b))); margin-inline: calc(-1 * (var(--sp-4) + var(--sa-l))) calc(-1 * (var(--sp-4) + var(--sa-r))); margin-bottom: calc(-1 * max(var(--sp-4), var(--sa-b))); padding: var(--sp-3) calc(var(--sp-4) + var(--sa-r)) max(var(--sp-4), var(--sa-b)) calc(var(--sp-4) + var(--sa-l)); }
 }
 
 @keyframes wn-enter-mobile { from { opacity: 0; transform: translateY(var(--sp-4)); } }

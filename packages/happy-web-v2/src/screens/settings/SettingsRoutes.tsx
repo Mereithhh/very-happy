@@ -2552,6 +2552,13 @@ function Diagnostics() {
             onClick={() => navigate('/diag/viewport')}
           />
           <Item
+            settingId="diagnostics.safeAreaDiag"
+            title={t('diagnostics.safeAreaDiag')}
+            subtitle={t('diagnostics.safeAreaDiagDescription')}
+            right={<ChevronRight size={16} />}
+            onClick={() => navigate('/dev/safe-area')}
+          />
+          <Item
             settingId="diagnostics.verboseLogging"
             title={t('diagnostics.verboseLogging')}
             subtitle={t('diagnostics.verboseLoggingDescription')}

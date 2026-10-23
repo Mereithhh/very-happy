@@ -1,0 +1,93 @@
+/* B-796 /dev/safe-area: inset bands + edge probes (diagnostic page, not app chrome). */
+.sad-page {
+  position: relative;
+  min-height: var(--app-h);
+  background: var(--bg-0);
+  color: var(--text);
+}
+.sad-band {
+  position: fixed;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--danger) 28%, transparent);
+  pointer-events: none;
+  /* raw env(), never --sa-*: this page shows what the system reports */
+}
+.sad-band span {
+  padding: 1px 4px;
+  border-radius: var(--r-sm);
+  background: var(--danger);
+  color: var(--danger-ink);
+  font: var(--fs-10)/1.3 var(--font-mono);
+  white-space: nowrap;
+}
+.sad-band--top { top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px); }
+.sad-band--bottom { bottom: 0; left: 0; right: 0; height: env(safe-area-inset-bottom, 0px); }
+.sad-band--left { top: 0; bottom: 0; left: 0; width: env(safe-area-inset-left, 0px); }
+.sad-band--right { top: 0; bottom: 0; right: 0; width: env(safe-area-inset-right, 0px); }
+.sad-band--left span, .sad-band--right span { writing-mode: vertical-rl; }
+/* a zero band still prints its number at the edge */
+.sad-band--top span { position: absolute; top: 0; left: 50%; transform: translateX(-50%); }
+.sad-band--bottom span { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); }
+.sad-band--left span { position: absolute; left: 0; top: 50%; }
+.sad-band--right span { position: absolute; right: 0; top: 50%; }
+
+.sad-probe {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 var(--sp-2);
+  border-bottom: 1px dashed var(--line-2);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.sad-probe i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--text);
+}
+.sad-probe--raw { padding-top: 0; }
+.sad-probe--safe {
+  margin: 0 var(--sa-r) 0 var(--sa-l);
+}
+.sad-page > .sad-probe--raw { margin-top: env(safe-area-inset-top, 0px); }
+.sad-body {
+  padding: var(--sp-3) calc(var(--sp-4) + var(--sa-r)) max(var(--sp-4), var(--sa-b)) calc(var(--sp-4) + var(--sa-l));
+}
+.sad-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3) -8px;
+}
+.sad-head h1 {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: var(--fs-16);
+  font-weight: 600;
+}
+.sad-hint {
+  margin: 0 0 var(--sp-3);
+  color: var(--text-dim);
+  font-size: var(--fs-13);
+}
+.sad-pre {
+  margin: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  font: var(--fs-11)/1.5 var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+}

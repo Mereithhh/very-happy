@@ -32,7 +32,7 @@ export function AppShell({ mode, width, sidebar, rail, notes, children, onResize
         // Hidden states use size + visibility, never display:none / transform / inert: the
         // sidebar's dialogs render inline (position: fixed) and must stay usable (layout.css).
         <aside key="sidebar" className={`app-sidebar${sidebarClass}`}
-          style={drawer ? { width: `min(${width}px, calc(100vw - var(--app-rail-w) - 24px))` } : undefined}>
+          style={drawer ? { width: `calc(min(${width}px, 100vw - var(--app-rail-w) - 24px - var(--sa-l) - var(--sa-r)) + var(--sa-l))` } : undefined}>
           {sidebar}
         </aside>
       )}

@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--sp-4);
+  padding: max(var(--sp-4), var(--sa-t)) calc(var(--sp-4) + var(--sa-r)) max(var(--sp-4), var(--sa-b)) calc(var(--sp-4) + var(--sa-l));
 }
 /* The backdrop is `position: fixed` with no scroll of its own, so a card
    taller than the viewport used to push its own actions row off-screen with
@@ -259,7 +259,7 @@
 @media (pointer: coarse) {
   .ns-backdrop {
     align-items: flex-start;
-    padding-top: max(10dvh, env(safe-area-inset-top));
+    padding-top: max(10dvh, var(--sa-t));
   }
   .ns-input {
     font-size: var(--fs-16);

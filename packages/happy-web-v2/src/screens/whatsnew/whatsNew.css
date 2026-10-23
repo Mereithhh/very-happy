@@ -2,6 +2,8 @@
    keep deliberate brand expression); captures sit on a fill mat, no outlines. */
 .wnp-page main { width: min(1180px, calc(100% - 2 * var(--sp-8))); margin: 0 auto; }
 .wnp-hero { padding: clamp(48px, 8vh, 96px) 0 var(--sp-12); }
+.wnp-hero:has(> .wnp-back) { padding-top: var(--sp-4); }
+.wnp-back { display: flex; margin: 0 0 var(--sp-6) -8px; }
 .wnp-hero h1 { max-width: 980px; margin: var(--sp-4) 0 var(--sp-5); font-size: clamp(var(--fs-32), 5.6vw, 72px); line-height: 1; letter-spacing: -.045em; text-wrap: balance; }
 .wnp-hero > p { max-width: 760px; margin: 0; color: var(--text-dim); font-size: clamp(var(--fs-16), 1.6vw, var(--fs-20)); line-height: 1.6; text-wrap: pretty; }
 .wnp-eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }

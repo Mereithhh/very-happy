@@ -6,13 +6,13 @@
 .pp-header {
   display: flex; align-items: center; gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-5);
-  padding-top: max(var(--sp-3), env(safe-area-inset-top));
+  padding-top: max(var(--sp-3), var(--sa-t));
   border-bottom: 1px solid var(--line);
   background: var(--bg-1);
 }
 .pp-title { font-weight: 600; font-size: var(--fs-14); color: var(--text); }
 .pp-count { margin-left: auto; color: var(--text-faint); font-size: var(--fs-11); }
-.pp-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-4) var(--sp-5) calc(var(--sp-8) + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: var(--sp-6); max-width: 720px; width: 100%; margin: 0 auto; }
+.pp-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-4) var(--sp-5) calc(var(--sp-8) + var(--sa-b)); display: flex; flex-direction: column; gap: var(--sp-6); max-width: 720px; width: 100%; margin: 0 auto; }
 .pp-section { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pp-section-title { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-11); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); }
 .pp-badge { font-size: var(--fs-10); line-height: 16px; padding: 0 6px; border-radius: var(--r-pill); color: var(--danger); border: 1px solid var(--danger); background: var(--danger-dim); }

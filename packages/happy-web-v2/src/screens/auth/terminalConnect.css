@@ -2,7 +2,7 @@
   min-height: var(--app-h);
   display: grid;
   place-items: center;
-  padding: var(--sp-5);
+  padding: max(var(--sp-5), var(--sa-t)) calc(var(--sp-5) + var(--sa-r)) max(var(--sp-5), var(--sa-b)) calc(var(--sp-5) + var(--sa-l));
   background: var(--bg-0);
 }
 .tc-card {

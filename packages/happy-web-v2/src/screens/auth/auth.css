@@ -9,10 +9,10 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: var(--sp-5);
-  padding-top: max(var(--sp-5), env(safe-area-inset-top));
-  padding-right: max(var(--sp-5), env(safe-area-inset-right));
-  padding-bottom: max(var(--sp-5), env(safe-area-inset-bottom));
-  padding-left: max(var(--sp-5), env(safe-area-inset-left));
+  padding-top: max(var(--sp-5), var(--sa-t));
+  padding-right: max(var(--sp-5), var(--sa-r));
+  padding-bottom: max(var(--sp-5), var(--sa-b));
+  padding-left: max(var(--sp-5), var(--sa-l));
 }
 .auth-page ::selection {
   background: var(--accent-dim);
@@ -386,10 +386,10 @@
 @media (max-width: 720px), (max-height: 700px) {
   .auth-page {
     align-items: flex-start;
-    padding-top: max(var(--sp-3), env(safe-area-inset-top));
-    padding-right: max(var(--sp-3), env(safe-area-inset-right));
-    padding-bottom: max(var(--sp-3), env(safe-area-inset-bottom));
-    padding-left: max(var(--sp-3), env(safe-area-inset-left));
+    padding-top: max(var(--sp-3), var(--sa-t));
+    padding-right: max(var(--sp-3), var(--sa-r));
+    padding-bottom: max(var(--sp-3), var(--sa-b));
+    padding-left: max(var(--sp-3), var(--sa-l));
   }
   .auth-card { margin-block: auto; padding: var(--sp-6) var(--sp-4); }
   .auth-card--login {

@@ -1,7 +1,7 @@
 .relay-move {
   position: fixed;
-  top: max(var(--sp-4), env(safe-area-inset-top));
-  right: max(var(--sp-4), env(safe-area-inset-right));
+  top: max(var(--sp-4), var(--sa-t));
+  right: max(var(--sp-4), var(--sa-r));
   z-index: 890;
   width: min(460px, calc(100vw - 2 * var(--sp-4)));
   max-height: calc(100dvh - 2 * var(--sp-4));
@@ -33,7 +33,7 @@
 }
 .relay-move__actions button:disabled { opacity: .6; cursor: default; }
 @media (max-width: 520px) {
-  .relay-move { left: max(var(--sp-3), env(safe-area-inset-left)); right: max(var(--sp-3), env(safe-area-inset-right)); top: max(var(--sp-3), env(safe-area-inset-top)); width: auto; }
+  .relay-move { left: max(var(--sp-3), var(--sa-l)); right: max(var(--sp-3), var(--sa-r)); top: max(var(--sp-3), var(--sa-t)); width: auto; }
   .relay-move__actions { align-items: stretch; flex-direction: column; }
   .relay-move__actions button { justify-content: center; width: 100%; min-height: 44px; }
 }

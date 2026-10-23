@@ -32,6 +32,18 @@ describe('backParentPath', () => {
     ['/terminal/m1', '?tid=t1', null, '/'],
     ['/terminal/m1', '?tid=t1', 'board', '/board'],
     ['/machine/m1', '', null, '/settings/machines'],
+    // B-796: secondary pages walk up their own hierarchy
+    ['/projects', '', null, '/'],
+    ['/projects/p1', '', 'board', '/projects'],
+    ['/projects/p1/settings', '', null, '/projects/p1'],
+    ['/automations', '', null, '/'],
+    ['/automations/new', '', null, '/automations'],
+    ['/automations/a1', '', null, '/automations'],
+    ['/automations/a1/edit', '', null, '/automations/a1'],
+    ['/machine/m1/panel/x', '', null, '/machine/m1'],
+    ['/todos', '', null, '/'],
+    ['/people', '', null, '/'],
+    ['/notes', '', null, '/'],
     ['/machine/m1', '', 'board', '/settings/machines'], // IA wins over origin
     ['/settings', '', null, '/'],
     ['/settings/', '', null, '/'],

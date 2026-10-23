@@ -1,5 +1,5 @@
-.chg-page { min-height: 100dvh; overflow: auto; background: var(--bg-0); color: var(--text); padding-bottom: max(var(--sp-8), env(safe-area-inset-bottom)); }
-.chg-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: var(--sp-3); min-height: 48px; padding: max(var(--sp-3), env(safe-area-inset-top)) var(--sp-4) var(--sp-3); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg-1) 92%, transparent); backdrop-filter: blur(12px); }
+.chg-page { min-height: 100dvh; overflow: auto; background: var(--bg-0); color: var(--text); padding: 0 var(--sa-r) max(var(--sp-8), var(--sa-b)) var(--sa-l); }
+.chg-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: var(--sp-3); min-height: 48px; padding: max(var(--sp-3), var(--sa-t)) var(--sp-4) var(--sp-3); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg-1) 92%, transparent); backdrop-filter: blur(12px); }
 .chg-header span { display: block; color: var(--text-faint); font: var(--fs-10)/1.3 var(--font-mono); letter-spacing: .07em; text-transform: uppercase; }
 .chg-header h1 { margin: 2px 0 0; font-size: var(--fs-16); }
 .chg-timeline { width: min(720px, calc(100% - 2 * var(--sp-4))); margin: var(--sp-6) auto; display: grid; gap: var(--sp-5); }

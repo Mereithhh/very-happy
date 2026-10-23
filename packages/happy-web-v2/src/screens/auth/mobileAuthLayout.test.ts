@@ -22,10 +22,10 @@ describe('mobile auth layout', () => {
 
   it('respects every iOS standalone safe area on compact screens', () => {
     const compact = styles.slice(styles.indexOf('@media (max-width: 720px), (max-height: 700px)'));
-    expect(compact).toContain('env(safe-area-inset-top)');
-    expect(compact).toContain('env(safe-area-inset-right)');
-    expect(compact).toContain('env(safe-area-inset-bottom)');
-    expect(compact).toContain('env(safe-area-inset-left)');
+    expect(compact).toContain('var(--sa-t)');
+    expect(compact).toContain('var(--sa-r)');
+    expect(compact).toContain('var(--sa-b)');
+    expect(compact).toContain('var(--sa-l)');
     expect(compact).toContain('.auth-card { margin-block: auto;');
   });
 

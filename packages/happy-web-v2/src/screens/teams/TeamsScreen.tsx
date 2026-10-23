@@ -1,3 +1,4 @@
+import { BackButton } from '@/app/BackButton';
 import { useEffect, useId, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { teamCleanupIssues, type TeamAction, type TeamState } from "@slopus/happy-wire";
@@ -15,7 +16,7 @@ import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
 import "./teams.css";
 import { TeamSchedules } from "./TeamSchedules";
 import { t as tr } from "@/text";
-import { Bot, UsersRound, ArrowLeft, Settings2, Clock3, LayoutDashboard, Plus, RefreshCw, Archive, Check, FolderInput, MoreHorizontal } from "lucide-react";
+import { Bot, UsersRound, Settings2, Clock3, LayoutDashboard, Plus, RefreshCw, Archive, Check, FolderInput, MoreHorizontal } from "lucide-react";
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
@@ -200,9 +201,9 @@ function TeamsContent() {
       <header className="teams-heading">
         <div>{team
           // B-763: 项目 › 团队 (or 团队 › X for a team in no project); every ancestor is a link.
-          ? <LocationTrail className="teams-trail" segments={visibleTrail(teamTrail(team, projectsSnap.projects, trailCopy(zh)), !isTablet)} label={trailCopy(zh).label}><span className="teams-trail-current">{team.name}</span></LocationTrail>
-          : <Link className="teams-back" to={teamId ? "/teams" : "/"}><ArrowLeft size={16} />{teamId ? c.title : tr("teams.sessions")}</Link>}
-          <h1><UsersRound size={26} aria-hidden />{team?.name ?? c.title}</h1>
+          ? <div className="vh-back-row teams-trail"><BackButton narrow /><LocationTrail segments={visibleTrail(teamTrail(team, projectsSnap.projects, trailCopy(zh)), !isTablet)} label={trailCopy(zh).label}><span className="teams-trail-current">{team.name}</span></LocationTrail></div>
+          : null}
+          <h1 className="vh-back-row">{!team && <BackButton />}<UsersRound size={26} aria-hidden />{team?.name ?? c.title}</h1>
           {team && <TeamProjectLine team={team} />}
           <p>{team ? <><span data-live={machineOnline}>{machineOnline ? c.online : c.offline}</span> · {executionMachine ? machineLabel(executionMachine) : c.unnamedMachine}</> : c.intro}</p>
           {team?.archivedAt !== undefined && <p role="status">{tr("teams.archived")} · {new Date(team.archivedAt).toLocaleString()}</p>}

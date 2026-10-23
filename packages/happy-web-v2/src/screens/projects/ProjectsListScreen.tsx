@@ -1,6 +1,7 @@
+import { BackButton } from '@/app/BackButton';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FolderKanban, MoreHorizontal, Plus, Settings2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { FolderKanban, MoreHorizontal, Plus, Settings2 } from 'lucide-react';
 import type { ProjectView } from '@slopus/happy-wire';
 import { ActionContextMenu, ActionDropdownMenu } from '@/ui';
 import { projectsApi, useProjects } from '@/sync/projects';
@@ -87,8 +88,7 @@ export function ProjectsListScreen() {
     <main className="pj-screen pjl-screen">
       <header className="pj-head">
         <div className="pj-head-text">
-          <Link className="pj-back" to="/"><ArrowLeft size={16} />{c.back}</Link>
-          <h1><FolderKanban size={22} aria-hidden />{c.title}</h1>
+          <div className="vh-back-row"><BackButton /><h1><FolderKanban size={22} aria-hidden />{c.title}</h1></div>
         </div>
         {snap.status === 'ready' && <button type="button" className="pj-primary pjl-create" onClick={() => setCreating(true)}><Plus size={14} />{c.create}</button>}
       </header>
