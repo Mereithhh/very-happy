@@ -21,6 +21,9 @@ import { ProjectScreen } from '@/screens/projects/ProjectScreen';
 import { useIsTablet } from '@/app/useMediaQuery';
 
 const NOW = Date.now();
+/** Fixture language follows the browser locale, like BoardHarness (captures run zh-CN and en-US). */
+const ZH = typeof navigator === 'undefined' || navigator.language.toLowerCase().startsWith('zh');
+const t = (zh: string, en: string) => (ZH ? zh : en);
 const session = (id: string, title: string, i: number): Session => ({
   id, seq: i, createdAt: NOW - i * 60_000, updatedAt: NOW - i * 60_000, active: true, activeAt: NOW - i * 60_000,
   metadata: { path: '/home/dev/demo', flavor: 'claude', host: 'devbox', machineId: 'm1', summary: { text: title, updatedAt: NOW } } as unknown as Session['metadata'],
@@ -28,13 +31,13 @@ const session = (id: string, title: string, i: number): Session => ({
 });
 const bot = (id: string, name: string, sessionId: string, root = false) => ({ id, name, sessionId, root, generation: 1, managed: true, assistant: 'claude', directory: null, lastEvent: 'idle', lastEventAt: NOW }) as TeamState['bots'][number];
 const TEAMS: TeamState[] = [
-  { id: 'team-pay', name: '支付研发队', machineId: 'm1', version: 1, createdAt: NOW - 7200_000, tasks: [], messages: [], operations: [],
-    bots: [bot('pay-lead', 'Lead', 's-lead', true), bot('pay-fe', '前端-1', 's-fe'), bot('pay-be', '后端-1', 's-be')] },
-  { id: 'team-solo', name: '临时调研队', machineId: 'm1', version: 1, createdAt: NOW - 600_000, tasks: [], messages: [], operations: [],
+  { id: 'team-pay', name: t('支付研发队', 'Payments squad'), machineId: 'm1', version: 1, createdAt: NOW - 7200_000, tasks: [], messages: [], operations: [],
+    bots: [bot('pay-lead', 'Lead', 's-lead', true), bot('pay-fe', t('前端-1', 'Frontend-1'), 's-fe'), bot('pay-be', t('后端-1', 'Backend-1'), 's-be')] },
+  { id: 'team-solo', name: t('临时调研队', 'Research spike'), machineId: 'm1', version: 1, createdAt: NOW - 600_000, tasks: [], messages: [], operations: [],
     bots: [bot('solo-lead', 'Lead', 's-solo', true)] },
 ];
-const project = (id: string, name: string, teamIds: string[], createdAt: number): ProjectView => ({ id, name, goal: '示例项目：把退款与结算拆成独立服务。', instructions: '', instructionsVersion: 0, instructionsUpdatedBy: null, instructionsUpdatedAt: null, folders: [{ machineId: 'm1', path: '/home/dev/demo', primary: true }], defaults: {}, archivedAt: null, createdAt, updatedAt: createdAt, teamIds, automationIds: [] });
-const PROJECTS = [project('pj-pay', '支付重构（示例）', ['team-pay'], NOW - 9000_000), project('pj-web', '官网改版（示例）', [], NOW - 8000_000)];
+const project = (id: string, name: string, teamIds: string[], createdAt: number): ProjectView => ({ id, name, goal: t('示例项目：把退款与结算拆成独立服务。', 'Example project: split refunds and settlement into their own services.'), instructions: '', instructionsVersion: 0, instructionsUpdatedBy: null, instructionsUpdatedAt: null, folders: [{ machineId: 'm1', path: '/home/dev/demo', primary: true }], defaults: {}, archivedAt: null, createdAt, updatedAt: createdAt, teamIds, automationIds: [] });
+const PROJECTS = [project('pj-pay', t('支付重构（示例）', 'Payments revamp (example)'), ['team-pay'], NOW - 9000_000), project('pj-web', t('官网改版（示例）', 'Website redesign (example)'), [], NOW - 8000_000)];
 const MEMBERS = [{ projectId: 'pj-pay', sessionId: 's-plain', via: 'explicit', machineId: null, createdAt: NOW }];
 
 /** Seeds the stores and answers the team / project reads in-page. `extraTeams`
@@ -44,8 +47,9 @@ export function seedLocationTrail(extraTeams: TeamState[] = []) {
   setCurrentAuth({ credentials: { token: 'dev-harness', secret: 'x' } } as never);
   storage.getState().applyMachines([{ id: 'm1', seq: 1, createdAt: NOW, updatedAt: NOW, active: true, activeAt: NOW, metadata: { host: 'devbox', platform: 'linux', teamLaunchVersion: 1 }, metadataVersion: 1, daemonState: null, daemonStateVersion: 1 } as unknown as Machine]);
   storage.getState().applySessions([
-    session('s-lead', '拆分网关并分派', 1), session('s-fe', '结算页改造', 2), session('s-be', '退款接口迁移：把旧的同步回调换成队列消费，并补齐幂等键', 3),
-    session('s-plain', '排查退款回调超时', 4), session('s-loose', '临时脚本', 5), session('s-solo', '调研三家网关的限流', 6),
+    session('s-lead', t('拆分网关并分派', 'Split the gateway and assign'), 1), session('s-fe', t('结算页改造', 'Checkout page rework'), 2),
+    session('s-be', t('退款接口迁移：把旧的同步回调换成队列消费，并补齐幂等键', 'Refund API migration: move the old sync callbacks to a queue consumer and add idempotency keys'), 3),
+    session('s-plain', t('排查退款回调超时', 'Debug refund callback timeouts'), 4), session('s-loose', t('临时脚本', 'Scratch script'), 5), session('s-solo', t('调研三家网关的限流', 'Compare three gateways’ rate limits'), 6),
   ]);
   setTeamNavigationDevOverride(teams);
   setProjectsDevOverride({ status: 'ready', projects: PROJECTS, members: MEMBERS });

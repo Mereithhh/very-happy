@@ -2678,6 +2678,28 @@ export const en = {
         entryShort: 'Major update',
         entryCount: ({ count }: { count: number }) => `${count} unread`,
         releases: {
+            oct24a: {
+                title: 'iPhone Duo and foldables: a rail and drawer when unfolded, back buttons and safe edges when folded',
+                summary: 'Touch screens between phone and desktop width, such as an unfolded iPhone Duo, now get a slim rail with the sidebar as a drawer, and folding or unfolding keeps what you were doing. On the folded cover screen nothing sits under the side status column, and every phone page has a way back.',
+                duoTitle: 'Unfolded: rail plus drawer',
+                duoBody: 'Below 1100 px on a touch screen the sidebar folds into a rail; tap it and the project tree slides over the conversation, closing on a tap outside, Esc or navigation. Folding and unfolding keeps open dialogs and what you typed in them, the Briefing, the composer draft and the chat scroll position, without reloading the page.',
+                duoAlt: 'An unfolded iPhone Duo in landscape: the sidebar drawer with the project tree open over a lead conversation',
+                safeAreaTitle: 'Folded: clear of the status column, back on every page',
+                safeAreaBody: 'The app now respects the safe area on all four edges, so on the iPhone Duo cover screen buttons, sheets and toasts stay clear of the status column on the right. Team and project pages, their lists, notes, project settings and What’s new show a back button in the top-left on phones.',
+                safeAreaAlt: 'Two folded iPhone Duo screens with the status column on the right: a team page and a lead conversation, each with a back button in the top-left',
+                targets: 'On touch screens, buttons in the headers, rail and drawer are at least 44 px to tap.',
+                header: 'The conversation header compacts by its own width, so a narrow pane drops labels before buttons run off the edge.',
+                diag: 'Settings → Diagnostics → Safe area edges shows what the system reserves on each edge, with a report you can copy when a button is covered.',
+                todos: 'The source tabs on the to-dos page no longer collapse to a sliver on narrow screens.',
+            },
+            oct24r: {
+                title: 'CLI 0.2.184: run one Claude session on another provider and model',
+                summary: 'A Claude (SDK) session can be bound to its own Anthropic-compatible provider and model with `very-happy session provider`, while every other session on the machine stays on the default. A member whose cleanup failed can also take new work again.',
+                provider: 'Add a profile to `~/.happy/providers.json` (baseUrl, apiKeyFile, models), then run `very-happy session provider <sessionId> <profile> --model <model>`. The session restarts in place with its history; `very-happy session provider <sessionId> default` switches it back and `--list` shows the bindings. Command line only for now, on the machine that runs the session.',
+                compact: 'A bound session compacts on the bound model, not the previous Anthropic one, and uses the model’s `contextWindow` from the profile as its context limit.',
+                deepseek: 'deepseek is not recommended yet for sessions with the full tool set: its upstream rejects some tool schemas. kimi-k3 works.',
+                cleanup: 'Teams: when cleaning up a member fails after its session was stopped, the member can take new work in a fresh worktree instead of staying “starting” forever; if the session still holds the worktree, delegating to it says why.',
+            },
             oct23b: {
                 title: 'Briefing: one place for what your team lead needs from you',
                 summary: 'A lead conversation now has a Briefing (汇报板). Decisions, to-dos and blocks the lead raises wait there until you settle them, the questions you asked are tracked until they are answered, and the lead’s reports collect in one list, so you no longer scroll the transcript to find them.',
