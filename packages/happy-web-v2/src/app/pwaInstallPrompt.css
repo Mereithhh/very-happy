@@ -3,7 +3,7 @@
   right: max(var(--sp-4), var(--sa-r));
   bottom: max(var(--sp-4), var(--sa-b));
   z-index: 1000;
-  width: min(430px, calc(100vw - 2 * var(--sp-4)));
+  width: min(430px, calc(100vw - 2 * var(--sp-4) - var(--sa-l) - var(--sa-r)));
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--sp-4);

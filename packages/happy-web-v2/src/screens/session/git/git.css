@@ -45,7 +45,7 @@
 }
 
 /* ── dialog (builds on sessionOptionsDialog.css .so-*) ──────────────────── */
-.so-dialog.gd { width: min(520px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: var(--sp-4); }
+.so-dialog.gd { width: min(520px, calc(100vw - 32px - var(--sa-l) - var(--sa-r))); display: flex; flex-direction: column; gap: var(--sp-4); }
 .so-dialog.gd > .vh-dialog-foot { margin-top: 0; } /* the card's gap already spaces it */
 .gd-branch {
   margin: var(--sp-1) 0 0;

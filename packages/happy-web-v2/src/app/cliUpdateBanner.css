@@ -3,7 +3,7 @@
   top: max(var(--sp-4), var(--sa-t));
   right: max(var(--sp-4), var(--sa-r));
   z-index: 900;
-  width: min(460px, calc(100vw - 2 * var(--sp-4)));
+  width: min(460px, calc(100vw - 2 * var(--sp-4) - var(--sa-l) - var(--sa-r)));
   max-height: calc(100dvh - 2 * var(--sp-4));
   overflow-y: auto;
   display: grid;

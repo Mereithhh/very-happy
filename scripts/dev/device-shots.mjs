@@ -4,7 +4,8 @@
  *
  * 页面来自 DEV harness `/dev/device/*`（B-795）：真实 AppLayout（侧栏 / rail / 单栏切换）
  * 包着真实会话页（汇报板负责人会话）、团队页、项目页和设置页，数据全是本地示例；
- * `--pages secondary` 扫一遍其余二级页（B-796：手机上每页左上角都要有返回）。
+ * `--pages secondary` 扫一遍其余二级页（B-796：手机上每页左上角都要有返回）；
+ * `--pages overlays` 扫壳外浮层：更新弹窗、通知面板、各类 toast（B-796b：✕ 不得落进侧边 inset）。
  * 所以先起 Web dev server（不需要后端）：
  *
  *   pnpm -C packages/happy-web-v2 exec vite --port 8795 --strictPort
@@ -58,6 +59,16 @@ export const PAGES = {
     settings: { path: '/settings' },
 };
 
+/** B-796b: overlays outside the shell (the release-notes ✕ sat under the Duo status column in production). */
+export const OVERLAYS = {
+    // The harness mounts the pager on `#whats-new`; a fresh profile has one unread release, so its last page shows the ✕.
+    'whats-new': { path: '/session/dev-board#whats-new', prepare: 'whats-new' },
+    notifications: { path: (d) => (d.width < 800 ? '/' : '/session/dev-board'), prepare: 'notifications' },
+    // success / error / sticky action toast (with its ✕), raised by the harness on `#toasts`.
+    toasts: { path: '/session/dev-board#toasts', prepare: 'toasts' },
+};
+Object.assign(PAGES, OVERLAYS);
+
 /** B-796 sweep: every secondary page inside the shell (`--pages secondary`); a phone must show a back control on each. */
 export const SECONDARY = {
     'teams-list': '/teams', 'projects-list': '/projects', 'project-settings': '/projects/pj-pay/settings',
@@ -76,7 +87,8 @@ const base = opt('base', 'http://127.0.0.1:8795');
 const outDir = opt('out', null);
 const devices = opt('devices', 'duo-folded,duo-open-land,duo-open-port').split(',');
 const PRIMARY = ['session', 'board', 'sidebar', 'team', 'project', 'settings'];
-const pages = opt('pages', PRIMARY.join(',')).split(',').flatMap((p) => (p === 'secondary' ? Object.keys(SECONDARY) : [p]));
+const GROUPS = { secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS) };
+const pages = opt('pages', PRIMARY.join(',')).split(',').flatMap((p) => GROUPS[p] ?? [p]);
 const themes = opt('themes', 'light,dark').split(',');
 const locale = opt('locale', 'zh-CN');
 
@@ -161,6 +173,8 @@ async function shot(page, cdp, d) {
 
 async function goto(page, path, url) {
     await page.goto(`${base}${url ?? `/dev/device${path}`}`, { waitUntil: 'domcontentloaded' });
+    // A hash-only change (`#toasts` after the same session path) does not reload the harness.
+    if ((url ?? path).includes('#')) await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.app-shell, .settings-workspace', { timeout: 20_000 });
     await page.waitForTimeout(900);
 }
@@ -175,6 +189,21 @@ async function prepare(page, kind) {
         // Medium touch screens: the sidebar tree lives in the drawer behind the rail.
         const rail = page.locator('.app-rail-btn[aria-expanded="false"]').first();
         if (await rail.count()) await rail.click();
+    } else if (kind === 'whats-new') {
+        await page.waitForSelector('.wn-card', { timeout: 10_000 });
+        // Locked pages hide the ✕; page forward to the last one, where it shows.
+        for (let i = 0; i < 12 && !await page.locator('.wn-close').count(); i++) {
+            await page.locator('.wn-nav .wn-done').click();
+            await page.waitForTimeout(250);
+        }
+        if (!await page.locator('.wn-close').count()) throw new Error('device-shots: release notes never reached the page with ✕');
+    } else if (kind === 'notifications') {
+        const rail = page.locator('.app-rail-btn[aria-expanded="false"]').first();
+        if (!await page.locator('.nc-bell-btn:visible').count() && await rail.count()) { await rail.click(); await page.waitForTimeout(400); }
+        await page.locator('.nc-bell-btn:visible').first().click();
+        await page.waitForSelector('.nc-panel', { timeout: 10_000 });
+    } else if (kind === 'toasts') {
+        await page.waitForSelector('.vh-toast-x', { timeout: 10_000 });
     }
     await page.waitForTimeout(500);
 }
@@ -230,7 +259,7 @@ function measure(sa) {
     // Controls the user can't reach: under a simulated side inset (the system column draws over it).
     const inInset = [];
     if (sa && (sa.left || sa.right)) {
-        for (const el of document.querySelectorAll('button, [role="button"], a[href], [role="tab"], input, textarea')) {
+        for (const el of document.querySelectorAll('button, [role="button"], a[href], [role="tab"], input, textarea, .vh-toast')) {
             const r = visible(el);
             if (!r || r.bottom < 0 || r.top > innerHeight || el.closest('[aria-hidden="true"], .app-sidebar--parked, .app-sidebar--drawer:not(.is-open)')) continue;
             if (r.right > vw - sa.right + 1 || r.left < sa.left - 1) inInset.push(`${label(el)} ${Math.round(r.left)}–${Math.round(r.right)}`);

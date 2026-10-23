@@ -85,17 +85,20 @@ export function intersects(a: Box, b: Box): boolean {
  * Below the anchor, else above; horizontally aligned to the anchor's start and
  * clamped into the viewport. A side that leaves the viewport or overlaps any
  * `avoid` box (the composer) is rejected; both rejected → null (do not show).
+ * `insetLeft` / `insetRight` (B-796b): side safe-area insets — the tip stays
+ * between them (the iPhone Duo cover display draws a status column on the right).
  */
 export function placeTip(
   anchor: Box,
   size: { width: number; height: number },
-  viewport: { width: number; height: number },
+  viewport: { width: number; height: number; insetLeft?: number; insetRight?: number },
   avoid: readonly Box[],
   gap = 8,
   margin = 8,
 ): { left: number; top: number; side: 'bottom' | 'top' } | null {
-  const maxLeft = Math.max(margin, viewport.width - size.width - margin);
-  const left = Math.min(Math.max(anchor.left, margin), maxLeft);
+  const minLeft = (viewport.insetLeft ?? 0) + margin;
+  const maxLeft = Math.max(minLeft, viewport.width - (viewport.insetRight ?? 0) - size.width - margin);
+  const left = Math.min(Math.max(anchor.left, minLeft), maxLeft);
   const candidates: Array<{ top: number; side: 'bottom' | 'top' }> = [
     { top: anchor.top + anchor.height + gap, side: 'bottom' },
     { top: anchor.top - gap - size.height, side: 'top' },

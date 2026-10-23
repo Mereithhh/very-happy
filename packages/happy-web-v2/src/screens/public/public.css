@@ -319,7 +319,7 @@
 .docs-missing { width: min(760px, calc(100% - 2 * var(--sp-8))); min-height: calc(100dvh - 149px); margin: 0 auto; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }
 .docs-missing p { color: var(--text-dim); }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-.pub-skip { position: fixed; top: 0; left: var(--sp-4); z-index: 100; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line); background: var(--bg-2); color: var(--text); transform: translateY(-120%); }
+.pub-skip { position: fixed; top: 0; left: calc(var(--sp-4) + var(--sa-l)); z-index: 100; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line); background: var(--bg-2); color: var(--text); transform: translateY(-120%); }
 .pub-skip:focus { transform: translateY(var(--sp-2)); }
 @keyframes pub-blink { 50% { opacity: 0; } }
 @keyframes pub-field-drift { to { transform: translate3d(72px, 72px, 0); } }

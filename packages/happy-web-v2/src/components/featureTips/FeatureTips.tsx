@@ -112,6 +112,19 @@ function toBox(r: DOMRect): Box {
   return { left: r.left, top: r.top, width: r.width, height: r.height };
 }
 
+/** B-796b: the viewport between the side safe-area insets — the app shell pads
+ *  exactly those (`--sa-l` / `--sa-r`), so its computed padding is the inset in px. */
+function tipViewport() {
+  const shell = document.querySelector('.app-shell');
+  const cs = shell ? getComputedStyle(shell) : null;
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    insetLeft: cs ? parseFloat(cs.paddingLeft) || 0 : 0,
+    insetRight: cs ? parseFloat(cs.paddingRight) || 0 : 0,
+  };
+}
+
 function visibleAnchor(id: FeatureTipId): HTMLElement | null {
   let best: { el: HTMLElement; top: number } | null = null;
   for (const el of Array.from(anchors.get(id) ?? [])) {
@@ -178,9 +191,9 @@ export function FeatureTipHost() {
   if (ready && anchors.size > 0 && !document.querySelector(BLOCKING_OVERLAYS)) {
     // First unseen tip (in order) whose anchor is on screen AND that has room
     // next to it — a tip that cannot be placed must not block the next one.
-    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const viewport = tipViewport();
     const avoid = avoidBoxes();
-    const estimate = { width: Math.min(280, viewport.width - 16), height: lastHeight.current };
+    const estimate = { width: Math.min(280, viewport.width - viewport.insetLeft - viewport.insetRight - 16), height: lastHeight.current };
     const seenNow = seenSet();
     for (const def of FEATURE_TIPS) {
       if (!pickTip([def], seenNow, new Set([def.id]))) continue;
@@ -200,7 +213,7 @@ export function FeatureTipHost() {
     }
     const size = { width: el.offsetWidth, height: el.offsetHeight };
     lastHeight.current = size.height;
-    const next = placeTip(toBox(anchor.getBoundingClientRect()), size, { width: window.innerWidth, height: window.innerHeight }, avoidBoxes());
+    const next = placeTip(toBox(anchor.getBoundingClientRect()), size, tipViewport(), avoidBoxes());
     if (next?.left !== pos?.left || next?.top !== pos?.top || next?.side !== pos?.side) setPos(next);
   });
 
