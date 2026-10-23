@@ -37,14 +37,17 @@ const project = (id: string, name: string, teamIds: string[], createdAt: number)
 const PROJECTS = [project('pj-pay', '支付重构（示例）', ['team-pay'], NOW - 9000_000), project('pj-web', '官网改版（示例）', [], NOW - 8000_000)];
 const MEMBERS = [{ projectId: 'pj-pay', sessionId: 's-plain', via: 'explicit', machineId: null, createdAt: NOW }];
 
-function seed() {
+/** Seeds the stores and answers the team / project reads in-page. `extraTeams`
+ *  join the fixed ones (the device harness adds the 汇报板 lead's team). */
+export function seedLocationTrail(extraTeams: TeamState[] = []) {
+  const teams = [...TEAMS, ...extraTeams];
   setCurrentAuth({ credentials: { token: 'dev-harness', secret: 'x' } } as never);
   storage.getState().applyMachines([{ id: 'm1', seq: 1, createdAt: NOW, updatedAt: NOW, active: true, activeAt: NOW, metadata: { host: 'devbox', platform: 'linux', teamLaunchVersion: 1 }, metadataVersion: 1, daemonState: null, daemonStateVersion: 1 } as unknown as Machine]);
   storage.getState().applySessions([
     session('s-lead', '拆分网关并分派', 1), session('s-fe', '结算页改造', 2), session('s-be', '退款接口迁移：把旧的同步回调换成队列消费，并补齐幂等键', 3),
     session('s-plain', '排查退款回调超时', 4), session('s-loose', '临时脚本', 5), session('s-solo', '调研三家网关的限流', 6),
   ]);
-  setTeamNavigationDevOverride(TEAMS);
+  setTeamNavigationDevOverride(teams);
   setProjectsDevOverride({ status: 'ready', projects: PROJECTS, members: MEMBERS });
   storage.getState().applyReady();
   // Team / project page reads, answered locally (nothing leaves the page).
@@ -53,8 +56,8 @@ function seed() {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
     const team = url.match(/\/v1\/teams\/([^/?]+)$/);
-    if (team) return json({ team: TEAMS.find((t) => t.id === decodeURIComponent(team[1])) });
-    if (/\/v1\/teams(\?|$)/.test(url)) return json({ teams: TEAMS });
+    if (team) return json({ team: teams.find((t) => t.id === decodeURIComponent(team[1])) });
+    if (/\/v1\/teams(\?|$)/.test(url)) return json({ teams });
     const pj = url.match(/\/v1\/projects\/([^/?]+)$/);
     if (pj) {
       const p = PROJECTS.find((x) => x.id === decodeURIComponent(pj[1]))!;
@@ -71,7 +74,7 @@ export function LocationTrailHarness() {
   const id = params.sessionId ?? params.teamId ?? params.projectId;
   const [ready, setReady] = useState(false);
   const wide = useIsTablet();
-  useEffect(() => { seed(); setReady(true); }, []);
+  useEffect(() => { seedLocationTrail(); setReady(true); }, []);
   if (!ready || !id) return null;
   const main = kind === 'session'
     ? <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}><ChatHeader sessionId={id} /><p style={{ padding: 24, color: 'var(--text-dim)' }}>（示例对话）</p></div>

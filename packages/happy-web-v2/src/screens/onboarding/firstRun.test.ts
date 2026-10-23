@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { shouldShowFirstRun, shouldShowWorkspaceGuide } from './firstRun';
+import { appShellMode } from '@/app/appShellMode';
 import { CLOUD_BOOTSTRAP_COMMAND, firstMachineBootstrapCommand, firstMachineCommands } from './firstMachineCommands';
 
 describe('shouldShowFirstRun', () => {
@@ -23,7 +24,11 @@ describe('shouldShowWorkspaceGuide', () => {
     expect(shouldShowWorkspaceGuide(true, 1, 0, 0)).toBe(true);
     expect(shouldShowWorkspaceGuide(true, 1, 1, 0)).toBe(false);
     expect(shouldShowWorkspaceGuide(true, 1, 0, 1)).toBe(false);
-    expect(layout).toContain('atRoot && !firstRun && !workspaceGuide');
+    // The phone root shows the guide (single pane) instead of the list while it applies (rule: appShellMode.ts).
+    expect(layout).toContain('appShellMode({ settings, desktop: isDesktop, touchDrawer, collapsed, atRoot, firstRun, workspaceGuide })');
+    const phoneRoot = { settings: false, desktop: false, touchDrawer: false, collapsed: false, atRoot: true, firstRun: false };
+    expect(appShellMode({ ...phoneRoot, workspaceGuide: true })).toBe('single');
+    expect(appShellMode({ ...phoneRoot, workspaceGuide: false })).toBe('list');
   });
 });
 

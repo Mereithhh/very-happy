@@ -1,4 +1,5 @@
 .app-shell {
+  --app-rail-w: 46px;
   display: grid;
   grid-template-columns: 260px 6px 1fr;
   height: var(--app-h);
@@ -67,6 +68,12 @@ body.vh-col-resizing iframe {
     background: var(--bg-2);
   }
 }
+/* touch: the rail is the drawer's only entry, so its controls get a full 44px target (B-795) */
+@media (pointer: coarse) {
+  .app-shell { --app-rail-w: 52px; }
+  .app-rail-btn { width: 44px; height: 44px; }
+}
+
 .app-sidebar {
   background: var(--surface-sidebar); /* B-614: its own surface, distinct from the canvas */
   display: flex;
@@ -82,6 +89,54 @@ body.vh-col-resizing iframe {
   overflow: hidden;
   background: var(--bg-0);
 }
+/* B-795 drawer (medium touch screens, appShellMode.ts): the sidebar floats over
+   the content from the left edge. Hidden states move/shrink the box and use
+   visibility — never display:none or transform — because the sidebar's dialogs
+   (新建会话, rename, share …) render inline as position:fixed overlays: a
+   transform would re-anchor them to the aside and display:none would drop them.
+   An open dialog therefore stays visible through `.vh-dialog-overlay` below. */
+.app-sidebar--drawer {
+  position: fixed;
+  z-index: 1000;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  max-width: 100vw;
+  box-shadow: var(--shadow-modal);
+  visibility: hidden;
+  margin-left: -100%;
+  transition: margin-left var(--motion-med), visibility 0s linear var(--dur-base);
+}
+.app-sidebar--drawer.is-open {
+  visibility: visible;
+  margin-left: 0;
+  transition: margin-left var(--motion-med), visibility 0s;
+}
+.app-drawer-scrim {
+  position: fixed;
+  z-index: 999;
+  inset: 0;
+  background: var(--scrim);
+}
+/* folded while the sidebar was on screen: kept mounted, zero-size, until the route changes */
+.app-sidebar--parked {
+  position: fixed;
+  z-index: 1200;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+}
+.app-sidebar--drawer .vh-dialog-overlay,
+.app-sidebar--parked .vh-dialog-overlay {
+  visibility: visible;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar--drawer,
+  .app-sidebar--drawer.is-open { transition: none; }
+}
+
 /* main row: the detail pane + the notes dock (B-094) sharing one grid cell,
    so the dock squeezes the active screen instead of floating over it */
 .app-main-row {

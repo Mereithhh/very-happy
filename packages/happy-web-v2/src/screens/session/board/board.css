@@ -87,7 +87,7 @@
 /* ── phone: summary strip + top sheet ── */
 .brf-mobile { position: relative; z-index: 40; flex: none; }
 .brf-strip { display: flex; align-items: center; gap: var(--sp-2); min-height: 40px; padding: 0 var(--sp-3); border-bottom: 1px solid var(--line); background: var(--bg-0); }
-.brf-strip-btn { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: var(--sp-3); border: 0; background: none; color: var(--text-dim); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
+.brf-strip-btn { flex: 1; min-width: 0; align-self: stretch; min-height: 40px; display: flex; align-items: center; gap: var(--sp-3); border: 0; background: none; color: var(--text-dim); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
 .brf-strip-n { white-space: nowrap; }
 .brf-strip-n b { font: 600 var(--fs-12) var(--font-mono); color: var(--text-dim); }
 .brf-strip-n.is-hot b { color: var(--warn); }
@@ -99,6 +99,8 @@
 .brf-sheet .brf-tabs { padding-top: var(--sp-2); }
 .brf-sheet-grab { flex: none; height: 24px; display: grid; place-items: center; border: 0; background: none; cursor: pointer; }
 .brf-sheet-grab i { width: 36px; height: 4px; border-radius: 2px; background: var(--line-2); }
+/* B-795: the strip and the sheet's close handle are the board's only touch controls — full 44px */
+@media (pointer: coarse) { .brf-strip, .brf-strip-btn { min-height: 44px; } .brf-sheet-grab { height: 44px; } }
 @keyframes brf-sheet-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .brf-sheet { animation: none; } }
 .brf-inferred { font-size: var(--fs-11); line-height: 17px; padding: 0 5px; border-radius: var(--r-xs); background: var(--fill-soft); color: var(--text-dim); }

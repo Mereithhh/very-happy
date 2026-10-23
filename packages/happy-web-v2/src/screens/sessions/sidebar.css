@@ -475,6 +475,8 @@
 @media (pointer: coarse) {
   .sb-footer-btn { min-height: 44px; }
   .sb-footer-notes, .sb-footer-icon, .sb-theme-toggle { min-width: 44px; height: 44px; }
+  /* B-795: the icon-only settings button of a narrow footer (≤299px: phones, the drawer) */
+  .sb-footer-settings { min-width: 44px; }
 }
 
 /* shared Radix dropdown menu */
@@ -708,7 +710,11 @@
 .sb-tree-chevron > svg { transition: transform var(--motion-fast); }
 .sb-tree-chevron > svg.is-open { transform: rotate(90deg); }
 @media (hover: hover) and (pointer: fine) { .sb-tree-chevron:hover { background: var(--fill-hover); color: var(--text); } }
-@media (pointer: coarse) { .sb-tree-chevron { height: 40px; } }
+/* B-795: the slot stays 28px wide (tree indent); on touch the hit area grows to 44 × 44 around it */
+@media (pointer: coarse) {
+  .sb-tree-chevron { position: relative; height: 40px; }
+  .sb-tree-chevron::after { position: absolute; inset: -2px -8px; content: ''; }
+}
 /* 需要你 badge (waiting + unread) on every level; a count when nothing needs you. */
 .sb-tree-badge {
   flex: none; min-width: 18px; padding: 0 5px; border-radius: var(--r-pill);

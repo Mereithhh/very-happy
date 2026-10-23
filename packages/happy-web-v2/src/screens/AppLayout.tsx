@@ -1,9 +1,10 @@
 import { AttentionOpenReporter } from '@/screens/projects/AttentionOpenReporter';
 import { SessionSearch } from '@/screens/search/SessionSearchPanel';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { PanelLeft } from 'lucide-react';
-import { useIsDesktop } from '@/app/useMediaQuery';
+import { useIsDesktop, useMediaQuery } from '@/app/useMediaQuery';
+import { appShellMode, nextSidebarParked, TOUCH_DRAWER_MQ } from '@/app/appShellMode';
 import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs';
 import { Sidebar } from '@/screens/sessions/Sidebar';
 import { MajorUpdateEntry } from '@/app/MajorUpdateEntry';
@@ -27,12 +28,13 @@ import { useAllMachines, useIsDataReady, useSessions } from '@/sync/storage';
 import { shouldShowFirstRun, shouldShowWorkspaceGuide } from '@/screens/onboarding/firstRun';
 import { useSessionInvites } from '@/sync/sessionSharesStore';
 import { useTerminalSessions } from '@/sync/terminalSessions';
-import { AppShell, type AppShellMode } from './AppShell';
+import { AppShell } from './AppShell';
 import './layout.css';
 import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 import { useTranslation } from '@/i18n/useTranslation';
 
-export function AppLayout() {
+/** `rootPath`: where the phone list lives — `/` in the app; the DEV device harness mounts the shell elsewhere. */
+export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
   const { t } = useTranslation();
   // Singleton terminal sync (daemon pushes + legacy-poll fallback) — lives at
   // layout level so it keeps running with the sidebar collapsed/unmounted
@@ -61,7 +63,7 @@ export function AppLayout() {
   useEffect(() => prefetchSessionDetailWhenIdle(), []);
   const isDesktop = useIsDesktop();
   const location = useLocation();
-  const atRoot = location.pathname === '/' || location.pathname === '';
+  const atRoot = location.pathname === rootPath || location.pathname === `${rootPath}/` || location.pathname === '';
   const dataReady = useIsDataReady();
   const allMachines = useAllMachines({ includeOffline: true });
   const sessions = useSessions();
@@ -70,7 +72,8 @@ export function AppLayout() {
   const inviteCount = useSessionInvites().length;
   const firstRun = shouldShowFirstRun(dataReady, allMachines.length, (sessions?.length ?? 0) + inviteCount);
   const workspaceGuide = shouldShowWorkspaceGuide(dataReady, allMachines.length, sessions?.length ?? 0, terminalCount);
-  const { width, collapsed, setWidth, setCollapsed } = useSidebarPrefs();
+  const { width, collapsed, setWidth, setCollapsed, drawerOpen, setDrawer, setDrawerOpen } = useSidebarPrefs();
+  const touchDrawer = useMediaQuery(TOUCH_DRAWER_MQ);
   const draggingRef = useRef(false);
 
   const onDragStart = useCallback(
@@ -101,16 +104,34 @@ export function AppLayout() {
   }, [setWidth]);
 
   const settings = location.pathname === '/settings' || location.pathname.startsWith('/settings/');
-  const mode: AppShellMode = settings ? 'single'
-    : isDesktop ? (collapsed ? 'collapsed' : 'expanded')
-    : atRoot && !firstRun && !workspaceGuide ? 'list' : 'single';
+  const mode = appShellMode({ settings, desktop: isDesktop, touchDrawer, collapsed, atRoot, firstRun, workspaceGuide });
+  const drawer = mode === 'drawer';
+  useEffect(() => setDrawer(drawer), [drawer, setDrawer]);
+  // The drawer is a way to pick the next screen: any navigation closes it.
+  useEffect(() => setDrawerOpen(false), [location.pathname, setDrawerOpen]);
+  useEffect(() => {
+    if (!drawer || !drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) setDrawerOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawer, drawerOpen, setDrawerOpen]);
+  // B-795: a fold that drops the sidebar on the same route parks it (see nextSidebarParked).
+  const [parked, setParked] = useState(false);
+  const [shellKey, setShellKey] = useState({ mode, pathname: location.pathname });
+  if (shellKey.mode !== mode || shellKey.pathname !== location.pathname) {
+    const next = { mode, pathname: location.pathname };
+    setShellKey(next);
+    setParked(nextSidebarParked(parked, shellKey, next));
+  }
 
   return (
     <>
-      <AppShell mode={mode} width={width} onResizeStart={onDragStart}
+      <AppShell mode={mode} width={width} onResizeStart={onDragStart} parked={parked}
+        drawerOpen={drawerOpen} onDrawerClose={() => setDrawerOpen(false)}
         sidebar={<RecoverableBoundary region="sidebar"><Sidebar /></RecoverableBoundary>}
         rail={<>
-          <button className="app-rail-btn" onClick={() => setCollapsed(false)} aria-label={t('files.expandSidebar')} title={t('files.expandSidebar')}>
+          <button className="app-rail-btn" onClick={() => (drawer ? setDrawerOpen(!drawerOpen) : setCollapsed(false))}
+            aria-label={t('files.expandSidebar')} title={t('files.expandSidebar')} aria-expanded={drawer ? drawerOpen : undefined}>
             <PanelLeft size={18} />
           </button>
           <NotificationBell />

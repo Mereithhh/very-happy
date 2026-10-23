@@ -25,3 +25,15 @@ export function planChatHeaderActions(input: {
     if (!input.compact) return { inline: available, overflow: [] };
     return { inline: [], overflow: available };
 }
+
+/**
+ * B-795: the header's own width decides compact, not the viewport. A 626px
+ * unfolded foldable (or a 630px detail pane beside a sidebar) cleared the old
+ * ≥600px viewport test and put five icons, the agent and the relay pill next to
+ * a title cut to one character. Below this width the header uses the phone plan.
+ */
+export const CHAT_HEADER_WIDE_MIN = 720;
+
+export function chatHeaderCompact(headerWidth: number | null, viewportTablet: boolean): boolean {
+    return headerWidth === null ? !viewportTablet : headerWidth < CHAT_HEADER_WIDE_MIN;
+}
