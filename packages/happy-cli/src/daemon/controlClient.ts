@@ -193,6 +193,20 @@ export async function resumeDaemonSession(
   return { success: false, error: typeof result?.error === 'string' ? result.error : 'unexpected daemon response' };
 }
 
+/** B-794: restart a live session in place via the local daemon. Never throws. */
+export async function restartDaemonSession(sessionId: string): Promise<{ success: boolean; sessionId?: string; error?: string }> {
+  const result = await daemonPost('/restart-session', { sessionId });
+  if (result?.error) {
+    const raw: string = String(result.error);
+    const error = ROUTE_NOT_FOUND_RE.test(raw)
+      ? 'daemon too old to restart sessions (no /restart-session route); upgrade very-happy-cli and run `very-happy daemon start`'
+      : raw.replace(/^Request failed: \/restart-session, /, '');
+    return { success: false, error };
+  }
+  if (result?.success === true && typeof result.sessionId === 'string') return { success: true, sessionId: result.sessionId };
+  return { success: false, error: 'unexpected daemon response' };
+}
+
 /**
  * B-069: report a stable session state transition to the local daemon
  * (`completed` = turn ended and idle, `needs_input` = blocked on a permission

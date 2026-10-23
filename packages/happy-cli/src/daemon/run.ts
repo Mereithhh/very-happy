@@ -1440,7 +1440,7 @@ export async function startDaemon(): Promise<void> {
       })));
     };
 
-    const restartSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
+    const restartSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }): Promise<SpawnSessionResult> => {
       let gate = resumeGates.get(happySessionId);
       if (!gate) {
         gate = createSpawnGate<SpawnSessionResult>();
@@ -1457,7 +1457,7 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    const restartSessionImpl = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
+    const restartSessionImpl = async (happySessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }): Promise<SpawnSessionResult> => {
       try {
         const prior = restartCounts.get(happySessionId) ?? 0;
         const decision = decideRestart(prior, DEFAULT_MAX_RESTARTS);
@@ -1523,7 +1523,10 @@ export async function startDaemon(): Promise<void> {
 
         const model = sanitizeResumeModel(options?.model);
         if (model) args.push('--model', model);
-        const permissionMode = sanitizeSpawnPermissionMode(options?.permissionMode);
+        // B-794: a local restart (`very-happy session provider`) keeps the
+        // mode the last wrapper published, like the B-707 resume path.
+        const permissionMode = sanitizeSpawnPermissionMode(options?.permissionMode
+          ?? (options?.keepPublishedPermissionMode ? publishedRelaunchPermissionMode(metadata) : undefined));
         if (permissionMode) args.push('--permission-mode', permissionMode);
 
         // Count the attempt now that we are actually spawning (a pre-flight
@@ -1716,6 +1719,7 @@ export async function startDaemon(): Promise<void> {
       stopSession,
       spawnSession,
       resumeSession, // B-501: `very-happy send --resume`
+      restartSession, // B-794: `very-happy session provider`
       requestShutdown: () => requestShutdown('happy-cli'),
       onHappySessionWebhook,
       onSessionStateEvent,

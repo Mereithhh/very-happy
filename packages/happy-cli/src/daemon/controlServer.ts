@@ -72,6 +72,7 @@ export function startDaemonControlServer({
   stopSession,
   spawnSession,
   resumeSession,
+  restartSession,
   requestShutdown,
   onHappySessionWebhook,
   onSessionStateEvent,
@@ -99,6 +100,8 @@ export function startDaemonControlServer({
    *  runs (`very-happy send --resume`). Optional so older wirings/tests keep
    *  working (→ 503). */
   resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }) => Promise<SpawnSessionResult>;
+  /** B-794: stop + relaunch a live session in place (the `restart-session` machine RPC's local twin). */
+  restartSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata, encryption?: SessionEncryptionData) => void;
   /** B-069: a session reported a stable state transition (turn done /
@@ -470,6 +473,38 @@ export function startDaemonControlServer({
         case 'requestToApproveDirectoryCreation':
           reply.code(500);
           return { success: false, error: `Cannot resume: working directory ${result.directory} needs to be created first` };
+        case 'error':
+          reply.code(500);
+          return { success: false, error: result.errorMessage };
+      }
+    });
+
+    // B-794: restart a session in place (history kept via --resume), keeping
+    // its published permission mode — `very-happy session provider` uses it so
+    // a new provider binding takes effect.
+    typed.post('/restart-session', {
+      schema: {
+        body: z.object({ sessionId: z.string().min(1).max(200) }),
+        response: {
+          200: z.object({ success: z.boolean(), sessionId: z.string().optional(), error: z.string().optional() }),
+          500: z.object({ success: z.boolean(), error: z.string().optional() }),
+          503: z.object({ success: z.boolean(), error: z.string().optional() }),
+        }
+      }
+    }, async (request, reply) => {
+      const { sessionId } = request.body;
+      if (!restartSession) {
+        reply.code(503);
+        return { success: false, error: 'daemon is still starting up' };
+      }
+      logger.debug(`[CONTROL SERVER] Restart session request: ${sessionId}`);
+      const result = await restartSession(sessionId, { keepPublishedPermissionMode: true });
+      switch (result.type) {
+        case 'success':
+          return { success: true, sessionId: result.sessionId };
+        case 'requestToApproveDirectoryCreation':
+          reply.code(500);
+          return { success: false, error: `Cannot restart: working directory ${result.directory} needs to be created first` };
         case 'error':
           reply.code(500);
           return { success: false, error: result.errorMessage };

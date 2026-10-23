@@ -159,6 +159,15 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       failCommand(error)
     }
     return;
+  } else if ((subcommand === 'session' || subcommand === 'sessions') && args[1] === 'provider') {
+    // B-794: per-session Claude provider binding.
+    try {
+      const { handleSessionProviderCommand } = await import('./commands/sessionProvider');
+      await handleSessionProviderCommand(args.slice(2));
+    } catch (error) {
+      failCommand(error)
+    }
+    process.exit(process.exitCode ?? 0);
   } else if (subcommand === 'sessions') {
     try {
       const { handleSessionsCommand } = await import('./commands/sessions');

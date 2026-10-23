@@ -37,6 +37,12 @@ export type ResolveMessageModeContext = {
      * than the latest explicit switch (RPC / approval) — ignore it.
      */
     staleModeSnapshot: boolean;
+    /**
+     * B-794: the session is bound to a provider (providerBinding.ts) — its
+     * model wins over any per-message model and no fallback model is passed
+     * (an Anthropic fallback id would not exist on the bound provider).
+     */
+    pinnedModel?: string;
 };
 
 export type ResolvedMessageMode = {
@@ -77,6 +83,10 @@ export function resolveMessageMode(
     if (has(meta, 'fallbackModel')) next.fallbackModel = meta!.fallbackModel || undefined;
     if (has(meta, 'appendSystemPrompt')) next.appendSystemPrompt = meta!.appendSystemPrompt || undefined;
     if (has(meta, 'allowedTools')) next.allowedTools = meta!.allowedTools || undefined;
+    if (ctx.pinnedModel) {
+        next.model = ctx.pinnedModel;
+        next.fallbackModel = undefined;
+    }
     if (has(meta, 'disallowedTools')) {
         // B-063: a per-message override may deny MORE, never lift the
         // assistant's dispatcher denylist.
