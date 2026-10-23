@@ -4,6 +4,7 @@
  * Machine-local, file-backed — never synced, never in session metadata:
  *
  *   $HAPPY_HOME_DIR/providers.json         { profiles: { <id>: { name?, baseUrl, apiKeyFile, models? } } }
+ *     models[] entries are ids or { id, contextWindow } (B-794b)
  *   $HAPPY_HOME_DIR/session-providers.json { <happySessionId>: { profile, model } }
  *
  * The session's wrapper reads its own binding once at startup (runClaude) and
@@ -21,6 +22,8 @@ export type ProviderProfile = {
     baseUrl: string;
     apiKeyFile: string;
     models?: string[];
+    /** B-794b: model id → its real context window (Claude Code assumes 200k for ids it does not know). */
+    contextWindows?: Record<string, number>;
 };
 
 export type ProvidersFile = { profiles: Record<string, ProviderProfile> };
@@ -37,6 +40,7 @@ export const PROVIDER_STRIPPED_ENV_KEYS = [
     'CLAUDE_CODE_USE_VERTEX',
     'ANTHROPIC_CUSTOM_HEADERS',
     'ANTHROPIC_SMALL_FAST_MODEL',
+    'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
 ] as const;
 
 export type ResolvedProvider = {
@@ -74,11 +78,22 @@ export function parseProvidersFile(raw: unknown): ProvidersFile {
             if (!p || typeof p !== 'object') continue;
             const { name, baseUrl, apiKeyFile, models } = p as Record<string, unknown>;
             if (typeof baseUrl !== 'string' || !/^https?:\/\//.test(baseUrl) || typeof apiKeyFile !== 'string' || !apiKeyFile) continue;
+            const ids: string[] = [];
+            const contextWindows: Record<string, number> = {};
+            for (const m of Array.isArray(models) ? models : []) {
+                if (typeof m === 'string') ids.push(m);
+                else if (m && typeof m === 'object' && typeof (m as { id?: unknown }).id === 'string') {
+                    const { id: modelId, contextWindow } = m as { id: string; contextWindow?: unknown };
+                    ids.push(modelId);
+                    if (typeof contextWindow === 'number' && Number.isInteger(contextWindow) && contextWindow > 0) contextWindows[modelId] = contextWindow;
+                }
+            }
             profiles[id] = {
                 ...(typeof name === 'string' ? { name } : {}),
                 baseUrl: baseUrl.replace(/\/+$/, ''),
                 apiKeyFile,
-                ...(Array.isArray(models) ? { models: models.filter((m): m is string => typeof m === 'string') } : {}),
+                ...(Array.isArray(models) ? { models: ids } : {}),
+                ...(Object.keys(contextWindows).length > 0 ? { contextWindows } : {}),
             };
         }
     }
@@ -109,8 +124,17 @@ export function readSessionProviders(happyHomeDir: string): SessionProvidersFile
  * opus/sonnet/haiku aliases, subagents, background small-fast calls) points
  * at the bound model so no request falls back to an Anthropic model id the
  * hub would route elsewhere.
+ *
+ * B-794b, compaction: when the context is over the bound model's window,
+ * Claude Code compacts with the transcript's last `requestedModel` if that is
+ * a known model with a larger window (`compact_larger_model`) — after a switch
+ * that is the old Anthropic model, so the summary ran on claude-opus-5-5.
+ * CLAUDE_CODE_NO_MODEL_FALLBACK=1 turns every model substitution off, that
+ * one included. CLAUDE_CODE_MAX_CONTEXT_TOKENS gives an unrecognized id its
+ * real window, so auto-compact stops firing at the assumed 200k.
  */
 export function buildProviderEnv(profile: ProviderProfile, model: string, token: string): Record<string, string> {
+    const contextWindow = profile.contextWindows?.[model];
     return {
         ANTHROPIC_BASE_URL: profile.baseUrl,
         ANTHROPIC_AUTH_TOKEN: token,
@@ -120,6 +144,8 @@ export function buildProviderEnv(profile: ProviderProfile, model: string, token:
         ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
         ANTHROPIC_SMALL_FAST_MODEL: model,
         CLAUDE_CODE_SUBAGENT_MODEL: model,
+        CLAUDE_CODE_NO_MODEL_FALLBACK: '1',
+        ...(contextWindow ? { CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(contextWindow) } : {}),
     };
 }
 

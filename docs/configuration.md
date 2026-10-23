@@ -448,6 +448,54 @@ same configuration applies when you run the agent in a terminal there:
 - Audit trail: `$HAPPY_HOME_DIR/model-config-audit.jsonl` records the action,
   files, key names and the key mode — never key values.
 
+### Per-session Claude provider (B-794)
+
+One Claude (SDK/remote) session can run on another Anthropic-compatible endpoint
+and model while every other session on the machine stays on the default. Machine
+local, CLI only:
+
+```json
+// $HAPPY_HOME_DIR/providers.json (0600)
+{
+  "profiles": {
+    "llmhub": {
+      "name": "LLM Hub",
+      "baseUrl": "https://llm-hub.example.com",
+      "apiKeyFile": "~/.config/llm-hub/key",
+      "models": [
+        { "id": "kimi-k3", "contextWindow": 262144 },
+        "deepseek-v4-1-flash-1017"
+      ]
+    }
+  }
+}
+```
+
+```sh
+very-happy session provider <sessionId> llmhub --model kimi-k3   # bind + restart in place (history kept)
+very-happy session provider <sessionId> default                  # unbind + restart
+very-happy session provider --list
+```
+
+- Bindings live in `$HAPPY_HOME_DIR/session-providers.json`. The session's
+  wrapper reads its binding at start, strips inherited `ANTHROPIC_API_KEY` /
+  `CLAUDE_CODE_OAUTH_*`, and sets `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`
+  (read from `apiKeyFile`, never logged or synced) and the bound model in every
+  model slot (main, opus/sonnet/haiku aliases, subagent, small-fast). The bound
+  model wins over the composer's model picker.
+- Compaction (B-794b): `CLAUDE_CODE_NO_MODEL_FALLBACK=1` is set, so Claude Code
+  never compacts on the transcript's previous (larger-window) Anthropic model —
+  without it, the first compaction after switching a long session ran on
+  `claude-opus-5-5`. `contextWindow` becomes `CLAUDE_CODE_MAX_CONTEXT_TOKENS`;
+  without it Claude Code assumes 200k for an id it does not know and
+  auto-compacts there.
+- A history with Anthropic thinking blocks resumes on another provider (and
+  back) without errors in tests through LLM Hub; a session far over the new
+  model's window compacts on its first turn.
+- **deepseek is not recommended for sessions with the full tool set** yet: its
+  upstream rejects some tool JSON Schemas (`invalid JSON Schema` 400). Prefer
+  kimi-k3 until the hub normalises schemas.
+
 ### Machine web panels and "needs you" (B-510)
 
 A machine can declare local web pages a person may need to look at — a noVNC
