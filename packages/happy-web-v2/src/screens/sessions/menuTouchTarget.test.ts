@@ -8,7 +8,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const css = readFileSync(new URL('./sidebar.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+// B-798: the shared menu styles moved from sidebar.css to ui/menu.css.
+const css = readFileSync(new URL('../../ui/menu.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
 /** Top-level rules as [mediaPrelude | null, selector, body] in source order. */
 function rules(src: string): Array<[string | null, string, string]> {
@@ -46,6 +47,7 @@ describe('B-653 menu rows are 44px on touch', () => {
 
   it('no per-menu touch override is left behind (the fix is global)', () => {
     expect(css).not.toContain('sb-touch-menu');
+    expect(readFileSync(new URL('./sidebar.css', import.meta.url), 'utf8')).not.toContain('sb-touch-menu');
     expect(readFileSync(new URL('./Sidebar.tsx', import.meta.url), 'utf8')).not.toContain('sb-touch-menu');
   });
 });

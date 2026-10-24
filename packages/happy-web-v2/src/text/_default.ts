@@ -2040,7 +2040,6 @@ export const en = {
         // B-091 priority marker (the `priority` convention tag)
         markPriority: 'Mark as priority',
         unmarkPriority: 'Clear priority',
-        markPriorityLevel: ({ level }: { level: string }) => `Priority ${level}`,
         // 已结束终端 (B-084): archived view's closed-terminal records
         closedTerminals: 'Closed terminals',
         closedTerminalReopen: 'New terminal in this directory',

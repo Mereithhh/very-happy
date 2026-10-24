@@ -61,7 +61,7 @@
 }
 
 /* touch: header icons and filter segments get finger-sized hit areas (menu
- * rows: see .vh-menu-item below); the palette search icon appears (no ⌘K on a touch keyboard). */
+ * rows: .vh-menu-item in ui/menu.css); the palette search icon appears (no ⌘K on a touch keyboard). */
 @media (pointer: coarse) {
   .sb-icon-btn {
     width: 44px;
@@ -477,96 +477,6 @@
   .sb-footer-notes, .sb-footer-icon, .sb-theme-toggle { min-width: 44px; height: 44px; }
   /* B-795: the icon-only settings button of a narrow footer (≤299px: phones, the drawer) */
   .sb-footer-settings { min-width: 44px; }
-}
-
-/* shared Radix dropdown menu */
-.vh-menu {
-  min-width: 160px;
-  /* B-614 (CDS): a floating closed object — popover surface + popover shadow
-     (light: outer ring + drop; dark: inset chamfer + drop). */
-  background: var(--surface-popover);
-  border: 0;
-  border-radius: var(--r-md);
-  padding: 4px;
-  box-shadow: var(--shadow-popover);
-  z-index: 1500;
-}
-.vh-menu-item {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: 8px 10px;
-  font-size: var(--fs-13);
-  color: var(--text);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  outline: none;
-}
-/* B-653: every menu row is a 44px touch target (design-language §4). Must stay
- * AFTER the base rule: the old coarse `padding: 11px` sat above it at equal
- * specificity, so the base padding won and touch rows rendered 34.8px. */
-@media (pointer: coarse) {
-  .vh-menu-item {
-    min-height: 44px;
-  }
-}
-.vh-menu-item[data-highlighted],
-.vh-menu-item:focus-visible {
-  background: var(--fill-selected);
-  outline: none;
-  box-shadow: none;
-}
-.vh-menu-item.is-danger {
-  color: var(--danger);
-}
-.vh-menu-item[data-disabled] {
-  color: var(--text-faint);
-  pointer-events: none;
-}
-/* every action item carries a 16px icon: dim by default, red on danger
- * items (inherits the item's danger color), faint when disabled */
-.vh-menu-ico {
-  flex-shrink: 0;
-  color: var(--text-dim);
-}
-.vh-menu-item.is-danger .vh-menu-ico,
-.vh-menu-item[data-disabled] .vh-menu-ico {
-  color: inherit;
-}
-.vh-menu-sep {
-  height: var(--hairline);
-  background: var(--line);
-  margin: 4px 6px;
-}
-/* B-762 (spec B-760 §5.3): a sidebar tree row's long-press menu is a bottom
-   sheet on touch — full width above the home indicator, headed by the row's
-   name, with the page dimmed behind it. Fine pointers keep the popover. */
-.vh-menu-sheet-title { display: none; }
-@media (pointer: coarse) {
-  [data-radix-popper-content-wrapper]:has(> .vh-menu--sheet) {
-    position: fixed !important;
-    inset: auto calc(12px + var(--sa-r)) calc(12px + var(--sa-b)) calc(12px + var(--sa-l)) !important;
-    transform: none !important;
-    min-width: 0 !important;
-  }
-  .vh-menu--sheet {
-    width: 100%;
-    max-height: 70dvh;
-    overflow-y: auto;
-    padding: var(--sp-2);
-    border-radius: var(--r-lg);
-    box-shadow: 0 0 0 100vmax var(--scrim), var(--shadow-popover);
-  }
-  .vh-menu--sheet .vh-menu-sheet-title {
-    display: block;
-    padding: 10px 12px 6px;
-    color: var(--text-faint);
-    font-size: var(--fs-13);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .vh-menu--sheet .vh-menu-item { min-height: 48px; font-size: var(--fs-15); }
 }
 
 .sb-row-badge {
