@@ -1,0 +1,46 @@
+/* B-799: offline / recovered bar (NetworkBanner.tsx). Its surface runs under
+   the top inset; its text sits below it and clear of the side insets. The
+   shell moves down by the bar's own height so headers keep their buttons. */
+:root { --net-bar-h: 24px; }
+
+.net-bar {
+  position: fixed;
+  z-index: 1050; /* above the drawer (1000), below menus (1500), toasts and modals */
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--sa-t) + var(--net-bar-h));
+  padding: var(--sa-t) calc(var(--sa-r) + 12px) 0 calc(var(--sa-l) + 12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: var(--fs-12);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 1;
+  transition: opacity var(--motion-med);
+}
+.net-bar > span { overflow: hidden; text-overflow: ellipsis; }
+.net-bar--offline {
+  color: var(--warn);
+  background: linear-gradient(var(--warn-dim), var(--warn-dim)), var(--bg-0);
+  border-bottom: 1px solid var(--line);
+}
+.net-bar--recovered {
+  color: var(--accent);
+  background: linear-gradient(var(--accent-dim), var(--accent-dim)), var(--bg-0);
+  border-bottom: 1px solid var(--line);
+}
+.net-bar--syncing {
+  color: var(--text-dim);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+}
+.net-bar.is-leaving { opacity: 0; }
+
+/* the bar's row: the shell (and the drawer floating over it) start below it */
+html[data-net-bar] .app-shell { padding-top: var(--net-bar-h); }
+html[data-net-bar] .app-sidebar--drawer { top: var(--net-bar-h); }

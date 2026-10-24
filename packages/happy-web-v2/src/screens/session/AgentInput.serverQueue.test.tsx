@@ -69,6 +69,7 @@ vi.mock('@/sync/promptQueue', async () => ({
 }));
 
 import { AgentInput } from './AgentInput';
+import { networkStore } from '@/sync/networkStatus';
 
 let host: HTMLDivElement;
 let root: Root;
@@ -306,5 +307,25 @@ describe('AgentInput server-side prompt queue (B-509)', () => {
         expect(mocks.submit).toHaveBeenCalledTimes(1);
         expect(mocks.restoreSession).toHaveBeenCalledExactlyOnceWith('session');
         expect(mocks.send).not.toHaveBeenCalled();
+    });
+});
+
+describe('AgentInput offline send (B-799)', () => {
+    afterEach(() => { networkStore.setState({ phase: 'online' }); });
+
+    it('offline: the send button stays usable in its 「离线排队」 state and the text still queues', async () => {
+        render();
+        expect(sendButton().dataset.offlineSend).toBeUndefined();
+        act(() => networkStore.setState({ phase: 'offline' }));
+        expect(sendButton().dataset.offlineSend).toBe('queue');
+        expect(sendButton().disabled).toBe(false);
+        expect(sendButton().getAttribute('aria-label')).toBe('session.chat.sendOfflineQueue · session.chat.sendOfflineHint');
+        expect(host.querySelector('textarea')!.placeholder).toBe('session.chat.sendOfflinePlaceholder');
+        expect(host.querySelector('.ci-hint')!.textContent).toBe('session.chat.sendOfflineHint');
+        await clickSend();
+        expect(mocks.submit).toHaveBeenCalledExactlyOnceWith('session', 'Queue me', { model: null, effort: 'high' });
+        // 「已恢复」 is not offline: the button is the ordinary one again.
+        act(() => networkStore.setState({ phase: 'recovered' }));
+        expect(sendButton().dataset.offlineSend).toBeUndefined();
     });
 });

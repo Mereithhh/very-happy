@@ -33,6 +33,7 @@ import './layout.css';
 import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useRootScrollLock } from '@/app/viewportVars';
+import { NetworkBanner } from '@/app/NetworkBanner';
 
 /** `rootPath`: where the phone list lives — `/` in the app; the DEV device harness mounts the shell elsewhere. */
 export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
@@ -129,6 +130,8 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
 
   return (
     <>
+      {/* B-799: 「已离线，正在重连…」 / 「已恢复」 — its own row above the shell */}
+      <NetworkBanner />
       <AppShell mode={mode} width={width} onResizeStart={onDragStart} parked={parked}
         drawerOpen={drawerOpen} onDrawerClose={() => setDrawerOpen(false)}
         sidebar={<RecoverableBoundary region="sidebar"><Sidebar /></RecoverableBoundary>}
