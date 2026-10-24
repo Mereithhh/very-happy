@@ -308,7 +308,7 @@ export function NewSessionModal({
                   >
                     <span className="ns-preset-path">{p.label || p.path}</span>
                     <button
-                      className="ns-preset-x"
+                      className="ns-preset-x vh-hit"
                       title={t('common.delete')}
                       onClick={(e) => {
                         e.stopPropagation();

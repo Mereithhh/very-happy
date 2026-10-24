@@ -131,7 +131,7 @@ export function SubagentDetail({ message, abortedAt = null }: { message: ToolCal
                 <Fold label={t('tools.fullView.output')}>
                     <div className="sa-prompt vh-copyhost" title={messageTimestamp(message.tool.completedAt, lang)}>
                         <pre className="sa-prompt-text">{out}</pre>
-                        <CopyButton text={out} className="vh-copy--overlay" />
+                        <CopyButton text={out} className="vh-copy--overlay vh-hit" />
                     </div>
                 </Fold>
             )}

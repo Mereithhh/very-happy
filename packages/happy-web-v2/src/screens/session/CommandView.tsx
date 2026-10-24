@@ -41,7 +41,7 @@ export function CommandView({
                         ? <div className="cmd-highlight" dangerouslySetInnerHTML={{ __html: highlight.html }} />
                         : command}</div>
                 </div>
-                <CopyButton text={command} className="vh-copy--overlay" />
+                <CopyButton text={command} className="vh-copy--overlay vh-hit" />
             </div>
             {hasOutput && (
                 <div className="vh-copyhost">
@@ -50,7 +50,7 @@ export function CommandView({
                         {stderr?.trim() ? <pre className="cmd-stream cmd-stream--err">{stderr}</pre> : null}
                         {error?.trim() ? <pre className="cmd-stream cmd-stream--err">{error}</pre> : null}
                     </div>
-                    <CopyButton text={() => commandOutputText({ stdout, stderr, error })} className="vh-copy--overlay" />
+                    <CopyButton text={() => commandOutputText({ stdout, stderr, error })} className="vh-copy--overlay vh-hit" />
                 </div>
             )}
         </div>

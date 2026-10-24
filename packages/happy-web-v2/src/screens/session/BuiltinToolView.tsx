@@ -31,7 +31,7 @@ function RawOutput({ text, label }: { text: string; label: string }) {
                 {open && (
                     <div className="tv-out vh-copyhost">
                         <pre className="tv-results">{text}</pre>
-                        <CopyButton text={text} className="vh-copy--overlay" />
+                        <CopyButton text={text} className="vh-copy--overlay vh-hit" />
                     </div>
                 )}
             </div>

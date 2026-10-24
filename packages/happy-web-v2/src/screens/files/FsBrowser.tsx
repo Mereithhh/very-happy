@@ -12,7 +12,7 @@
  * overlays) never double-wraps. Esc exits fullscreen only — capture-phase, so
  * host Esc handlers don't also fire.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowDownAZ, Clock, Eye, EyeOff, FileText, Folder, Link as LinkIcon, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import { machineFsList, type FsEntry, type FsFailure } from '@/sync/fsOps';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -25,6 +25,7 @@ import {
     fsBreadcrumbs,
     joinFsPath,
     resolveFsSortMode,
+    revealLastCrumb,
     sortFsEntries,
     visibleFsEntries,
 } from './fsBrowseModel';
@@ -164,13 +165,15 @@ function FsBrowserContent({
 
     const rows = entries ? visibleFsEntries(sortFsEntries(entries, sortMode), showHidden) : null;
     const crumbs = fsBreadcrumbs(path);
+    const crumbsRef = useRef<HTMLElement>(null);
+    useLayoutEffect(() => revealLastCrumb(crumbsRef.current), [path]);
 
     return (
         <div className={`fsb-shell${file ? ' has-preview' : ''}${fullscreen ? ' fsb--full' : ''}`}>
         <div className="fsb-split">
         <div className="fsb">
             <div className="fsb-bar">
-                <nav className="fsb-crumbs mono" aria-label={t('fsBrowser.breadcrumbs')}>
+                <nav ref={crumbsRef} className="fsb-crumbs mono" aria-label={t('fsBrowser.breadcrumbs')}>
                     {crumbs.map((c, i) => (
                         <span key={c.path} className="fsb-crumb-seg">
                             {i > 1 && <span className="fsb-crumb-sep" aria-hidden>/</span>}

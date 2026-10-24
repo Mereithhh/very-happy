@@ -113,6 +113,10 @@
     padding: 10px var(--sp-2);
   }
 }
+/* B-798 (P1-6): one-line rows (默认 / 计划模式 / 接受编辑) were 39px tall on touch */
+@media (pointer: coarse) {
+  .mm-item { min-height: var(--hit); }
+}
 
 .mm-icon { display: none; flex: none; }
 .mm-note { padding: var(--sp-2); font-size: var(--fs-11); color: var(--text-dim); }

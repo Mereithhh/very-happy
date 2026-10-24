@@ -62,6 +62,9 @@
  *    item, 120ms snap. Items are buttons with aria-pressed / aria-selected /
  *    aria-current; an optional .vh-segmented-label hides on inactive items
  *    with an icon when the track is ≤254px wide. ── */
+/* B-798 (P1-4): size containment gives the track a zero intrinsic width, so a text-only
+   segmented inside a flex row (待办「待处理 / 已完成」) collapsed to 24px and its labels
+   overlapped. Only icon segments use the ≤254px query below — text-only tracks opt out. */
 .vh-segmented {
   container-type: inline-size;
   display: inline-flex;
@@ -111,9 +114,27 @@
   .vh-segmented > :is(button, a):not([aria-pressed='true'], [aria-selected='true'], [aria-current='page'], .is-active):has(svg) .vh-segmented-label { display: none; }
   .vh-segmented > :is(button, a):not([aria-pressed='true'], [aria-selected='true'], [aria-current='page'], .is-active):has(svg) { flex: 0 0 auto; padding: 0 var(--sp-2); }
 }
+.vh-segmented:not(:has(svg)) { container-type: normal; }
 /* B-728 (UI-P1-07): finger-sized segments on touch */
 @media (pointer: coarse) {
-  .vh-segmented > :is(button, a) { min-height: 44px; }
+  .vh-segmented > :is(button, a) { min-height: var(--hit); }
+}
+
+/* ── B-798 (U3): .vh-hit keeps a small visual (switch, ✕, chip, checkbox) and widens
+ *    only the touch target to --hit with a centred ::after. The host must not clip
+ *    (no overflow:hidden) and must not use its own ::after; a host that is already
+ *    positioned keeps its own position (zero-specificity default). ── */
+:where(.vh-hit) { position: relative; }
+@media (pointer: coarse) {
+  .vh-hit::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, var(--hit));
+    height: max(100%, var(--hit));
+    transform: translate(-50%, -50%);
+  }
 }
 
 /* ── typography details (CDS §1.5) ───────────────────────────────────────── */

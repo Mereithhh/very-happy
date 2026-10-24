@@ -40,3 +40,9 @@
   gap: 5px;
   margin-top: 2px;
 }
+
+/* B-798 (P1-6): 「添加标签」 was a 29px field on touch; chips size themselves (tagchip.css). */
+@media (pointer: coarse) {
+  .rn-tags { padding: 0 8px; }
+  .rn-tag-input { min-height: var(--hit); }
+}

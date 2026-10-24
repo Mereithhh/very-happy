@@ -162,7 +162,7 @@ export function DiffView({
             {/* copies a minimal unified patch built from the SAME rows rendered
              * below (single hunk, no file headers — Edit inputs don't reliably
              * carry paths), so the clipboard matches what's on screen. */}
-            <CopyButton text={() => unifiedPatchText(rows)} className="vh-copy--overlay" />
+            <CopyButton text={() => unifiedPatchText(rows)} className="vh-copy--overlay vh-hit" />
             <div className="dv-stat">
                 <span className="dv-add">+{stats.added}</span>
                 <span className="dv-del">−{stats.removed}</span>

@@ -561,6 +561,8 @@
   opacity: 0.4;
   cursor: default;
 }
+/* B-798 (P1-6): 恢复 / 重新打开 / pending ✕ were 34 wide on touch */
+@media (pointer: coarse) { .sb-closed-reopen { width: var(--hit); } }
 
 .sb-order-hint {
   display: flex;
