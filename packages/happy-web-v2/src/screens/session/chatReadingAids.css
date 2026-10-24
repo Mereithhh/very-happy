@@ -128,9 +128,14 @@
 .cl-rail-preview-reply { margin-top: var(--sp-1) !important; color: var(--text-dim); }
 
 /* B-579 narrow / touch: previous / next prompt, stacked right above the
-   jump-to-latest button (36px fine, 44px coarse — see chatlist.css). */
+   jump-to-latest button (36px fine, 44px coarse — see chatlist.css).
+   B-798 P1-7: z-index above the transcript's own layers (code-block copy
+   overlay z 1, sticky table heads z 2) — `.cl-scroll` is no stacking context,
+   so at auto a copy button scrolled under the nav took its taps. The nav only
+   shows while scrolled up, so whatever it covers scrolls out from under it. */
 .cl-promptnav {
   position: absolute;
+  z-index: 5;
   right: var(--sp-4);
   bottom: calc(var(--sp-4) + 36px + var(--sp-2));
   display: flex;

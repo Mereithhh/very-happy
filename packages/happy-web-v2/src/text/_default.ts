@@ -645,6 +645,8 @@ export const en = {
     },
 
     session: {
+        // B-798 P1-9: phone header ⋯ entry holding agent · machine · path · relay
+        infoTitle: 'Session info',
         infoAgent: 'Agent',
         infoHost: 'Host',
         infoPath: 'Path',
@@ -730,6 +732,9 @@ export const en = {
         newChat: 'New chat',
         setTitle: 'Set title',
         renameTitle: 'Rename session',
+        // B-798 P1-8: a link to a session this account cannot see
+        notFoundTitle: 'This session does not exist or was deleted',
+        loadFailedTitle: 'Could not load this session',
         renamePlaceholder: 'Session title',
         // Fork / duplicate / rewind flow (Claude only)
         forkAction: 'Fork session',

@@ -2,7 +2,8 @@ import { ClaudeRuntimeDialog } from './ClaudeRuntimeDialog';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { useLocalSetting } from '@/sync/storage';
 import { useNavigate } from 'react-router-dom';
-import { Bot, Moon } from 'lucide-react';
+import { Bot, Info, Moon } from 'lucide-react';
+import { SessionInfoDialog } from './SessionInfoDialog';
 import { useProjects } from '@/sync/projects';
 import { buildSessionMenu, sessionMenuAvailability, withSessionTools } from '@/app/sessionMenu';
 import { copySessionLink, leaveSessionProject, stopSessionTurn } from '@/app/sessionMenuActions';
@@ -34,7 +35,7 @@ import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ActionDropdownMenu, Spinner, type MenuItemDef } from '@/ui';
 import { useIsTablet } from '@/app/useMediaQuery';
-import { chatHeaderCompact, planChatHeaderActions, type ChatHeaderActionKey } from './chatHeaderLayout';
+import { chatHeaderCompact, chatHeaderFoldsIdentity, planChatHeaderActions, type ChatHeaderActionKey } from './chatHeaderLayout';
 import { useElementWidth } from '@/app/useElementWidth';
 import { useImeGuard } from '@/utils/ime';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
@@ -78,6 +79,7 @@ export function ChatHeader({
     const [shareOpen, setShareOpen] = useState(false);
     const [moveProjectOpen, setMoveProjectOpen] = useState(false);
     const [tagsOpen, setTagsOpen] = useState(false);
+    const [infoOpen, setInfoOpen] = useState(false);
     const projectsSnap = useProjects();
     // B-619: shared WITH me → every owner-only control disappears (the server refuses them anyway).
     const sharedWithMe = !!session && isSharedWithMe(session);
@@ -100,7 +102,11 @@ export function ChatHeader({
     const [saving, setSaving] = useState(false);
     const ime = useImeGuard();
     const headerRef = useRef<HTMLElement>(null);
-    const compact = chatHeaderCompact(useElementWidth(headerRef), useIsTablet());
+    const headerWidth = useElementWidth(headerRef);
+    const viewportTablet = useIsTablet();
+    const compact = chatHeaderCompact(headerWidth, viewportTablet);
+    // B-798 P1-9: a phone-width header folds agent · machine and the relay badge into ⋯ 「会话信息」.
+    const foldIdentity = chatHeaderFoldsIdentity(headerWidth, viewportTablet);
 
     const meta = session?.metadata;
     const title = meta?.summary?.text?.trim() || t('session.newChat');
@@ -188,6 +194,7 @@ export function ChatHeader({
             <Pencil size={13} className="ch-title-pencil" />
         </button>
     );
+    const infoItems: MenuItemDef[] = foldIdentity ? [{ key: 'session-info', label: t('session.infoTitle'), icon: Info, onSelect: () => setInfoOpen(true) }] : [];
     const overflowHasActive = plan.overflow.some(
         (key) => (key === 'btw' && btwOpen) || (key === 'files' && filesOpen),
     );
@@ -280,7 +287,7 @@ export function ChatHeader({
                 ) : titleButton}
 
             </div>
-            {!editing && <div className="ch-identity"><Popover.Root>
+            {!editing && !foldIdentity && <div className="ch-identity"><Popover.Root>
                 <Popover.Trigger asChild><button type="button" className="ch-identity-trigger" title={[agent, host, cwd].filter(Boolean).join(' · ')}>
                     <span className="ch-agent">{agent}</span>
                     {host && <span className="ch-host">{host}</span>}
@@ -294,13 +301,13 @@ export function ChatHeader({
             {!editing && (
                 <div className="ch-status">
                     <PrStatusChip sessionId={sessionId} compact={compact} />
-                    <RelayBadge status={relayStatus} />
+                    {!foldIdentity && <RelayBadge status={relayStatus} />}
                 </div>
             )}
             {!editing && plan.inline.map(renderAction)}
             {!editing && boardAction}
-            {!editing && (plan.overflow.length > 0 || canStartTeam || canControlRuntime || canKeepAwake || sessionItems.length > 0) && (
-                <ActionDropdownMenu sheetTitle={title} items={[...plan.overflow.map(menuItem), ...withSessionTools(sessionItems, [...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : [])]).map((item, i) => (i === 0 && plan.overflow.length > 0 ? { ...item, separatorBefore: true } : item))]}>
+            {!editing && (infoItems.length > 0 || plan.overflow.length > 0 || canStartTeam || canControlRuntime || canKeepAwake || sessionItems.length > 0) && (
+                <ActionDropdownMenu sheetTitle={title} items={[...plan.overflow.map(menuItem), ...infoItems, ...withSessionTools(sessionItems, [...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : [])]).map((item, i) => (i === 0 && plan.overflow.length + infoItems.length > 0 ? { ...item, separatorBefore: true } : item))]}>
                     <button
                         type="button"
                         className={`ch-icon${overflowHasActive ? ' is-active' : ''}`}
@@ -312,6 +319,7 @@ export function ChatHeader({
                 </ActionDropdownMenu>
             )}
             {canControlRuntime && <ClaudeRuntimeDialog key={sessionId} sessionId={sessionId} open={runtimeOpen} onOpenChange={setRuntimeOpen}/>}
+            {foldIdentity && <SessionInfoDialog open={infoOpen} onOpenChange={setInfoOpen} agent={agent} host={host} cwd={cwd} relay={relayStatus} />}
             {canShare && <ShareDialog key={`share:${sessionId}`} sessionId={sessionId} open={shareOpen} onOpenChange={setShareOpen} />}
             {moveProjectOpen && <MoveToProjectModal initialSessionId={sessionId} candidates={[]} onClose={() => setMoveProjectOpen(false)} />}
             {tagsOpen && session && <HeaderTagsModal session={session} title={meta?.summary?.text ?? ''} onClose={() => setTagsOpen(false)} />}

@@ -7,7 +7,7 @@ import { PermissionCard } from './PermissionCard';
 import { messageActionsCopy } from './messageActionsCopy';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { useSession, useMessage, useLocalSetting, storage } from '@/sync/storage';
+import { useSession, useMessage, useLocalSetting, useIsDataReady, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { useMediaQuery } from '@/app/useMediaQuery';
@@ -51,6 +51,8 @@ import { ChatBackdrop } from './ChatBackdrop';
 import { BoardHeaderButton, BoardMobile } from './board/BoardMobile';
 import { loadAttentionItems, useAttentionStore } from '@/sync/attentionStore';
 import { useSessionBoard } from './board/useSessionBoard';
+import { BackButton } from '@/app/BackButton';
+import { sessionGate, shouldLookUpSession, type SessionLookup } from './sessionLookup';
 import './session.css';
 
 export function SessionDetailScreen() {
@@ -256,6 +258,23 @@ export function SessionDetailScreen() {
     }, [foreignPending]);
     const pendingInitialDraft = useMemo(() => (pendingId ? pendingDraft(pendingId) : ''), [pendingId]);
 
+    // B-798 P1-8: an id the loaded list does not have → ask the server for it
+    // (old sessions fall outside the list's 150 rows); only a 404 is 「不存在」.
+    const dataReady = useIsDataReady();
+    const [lookup, setLookup] = useState<{ id: string | undefined; state: SessionLookup; attempt: number }>({ id, state: 'idle', attempt: 0 });
+    const lookupState: SessionLookup = lookup.id === id ? lookup.state : 'idle';
+    const lookupAttempt = lookup.id === id ? lookup.attempt : 0;
+    useEffect(() => {
+        if (!id || !shouldLookUpSession({ dataReady, inStore: !!session, pending: !!pending, lookup: lookupState })) return;
+        let live = true;
+        setLookup({ id, state: 'checking', attempt: lookupAttempt });
+        sync.fetchSessionById(id)
+            .then((result) => { if (live) setLookup({ id, state: result === 'missing' ? 'missing' : 'idle', attempt: lookupAttempt }); })
+            .catch(() => { if (live) setLookup({ id, state: 'failed', attempt: lookupAttempt }); });
+        return () => { live = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- lookupState is read, not watched: the 'checking' write must not cancel its own request
+    }, [id, dataReady, !!session, !!pending, lookupAttempt]);
+
     // Trigger the initial message fetch + mark this session as the one being
     // viewed (drives message sync, read state, and web-resume refresh).
     // Skipped while pending: there is no session to fetch or mark read.
@@ -289,13 +308,25 @@ export function SessionDetailScreen() {
         );
     }
 
-    // Session not yet in storage (still syncing or unknown id).
+    // Session not yet in storage: still syncing, being looked up, or gone (B-798 P1-8).
     if (!session && !pending) {
+        const gate = sessionGate({ dataReady, lookup: lookupState });
         return (
-            <div className="sd-loading">
-                <OrbitLoader size="compact" label={t('session.chat.loadingMessages')} />
-                <span className="sd-loading__id mono">Session {id}</span>
-                <Button variant="ghost" onClick={() => navigate('/')}>{t('common.back')}</Button>
+            <div className="sd-loading" data-gate={gate}>
+                <BackButton />
+                {gate === 'loading' ? (
+                    <>
+                        <OrbitLoader size="compact" label={t('session.chat.loadingMessages')} />
+                        {import.meta.env.DEV && <span className="sd-loading__id mono">Session {id}</span>}
+                    </>
+                ) : (
+                    <EmptyState
+                        title={gate === 'missing' ? t('session.notFoundTitle') : t('session.loadFailedTitle')}
+                        actions={gate === 'missing'
+                            ? <Button onClick={() => navigate('/', { replace: true })}>{t('common.home')}</Button>
+                            : <Button onClick={() => setLookup({ id, state: 'idle', attempt: lookupAttempt + 1 })}>{t('common.retry')}</Button>}
+                    />
+                )}
             </div>
         );
     }

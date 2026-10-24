@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHAT_HEADER_WIDE_MIN, chatHeaderCompact, planChatHeaderActions } from './chatHeaderLayout';
+import { CHAT_HEADER_IDENTITY_MIN, CHAT_HEADER_WIDE_MIN, chatHeaderCompact, chatHeaderFoldsIdentity, planChatHeaderActions } from './chatHeaderLayout';
 
 describe('planChatHeaderActions', () => {
     it('collapses every icon on a phone so the session title gets the width', () => {
@@ -37,5 +37,22 @@ describe('chatHeaderCompact (B-795)', () => {
     it('falls back to the viewport test before the first measure', () => {
         expect(chatHeaderCompact(null, true)).toBe(false);
         expect(chatHeaderCompact(null, false)).toBe(true);
+    });
+});
+
+// B-798 P1-9: phone headers fold agent · machine + relay into ⋯ so the trail and title stay readable.
+describe('chatHeaderFoldsIdentity', () => {
+    it('folds on phone and Duo-cover widths (390, 466)', () => {
+        expect(chatHeaderFoldsIdentity(390, false)).toBe(true);
+        expect(chatHeaderFoldsIdentity(466, false)).toBe(true);
+        expect(chatHeaderFoldsIdentity(CHAT_HEADER_IDENTITY_MIN - 1, true)).toBe(true);
+    });
+    it('keeps them on the bar from 480px of header up (unfolded foldables, tablets)', () => {
+        expect(chatHeaderFoldsIdentity(CHAT_HEADER_IDENTITY_MIN, false)).toBe(false);
+        expect(chatHeaderFoldsIdentity(626, false)).toBe(false);
+    });
+    it('falls back to the viewport before the header is measured', () => {
+        expect(chatHeaderFoldsIdentity(null, false)).toBe(true);
+        expect(chatHeaderFoldsIdentity(null, true)).toBe(false);
     });
 });

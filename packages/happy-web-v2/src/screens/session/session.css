@@ -72,6 +72,9 @@
   gap: var(--sp-3);
   background: var(--bg-0);
 }
+/* B-798 P1-8: the shared back control, where the header's would be (side safe areas, B-796b). */
+.sd-loading { position: relative; }
+.sd-loading > .vh-back { position: absolute; top: max(var(--sp-2), var(--sa-t)); left: calc(var(--sp-3) + var(--sa-l)); }
 .sd-loading__id {
   max-width: min(440px, calc(100vw - var(--sp-8)));
   overflow: hidden;

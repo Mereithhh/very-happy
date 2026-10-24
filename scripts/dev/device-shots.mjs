@@ -59,6 +59,12 @@ export const PAGES = {
     project: { path: '/projects/pj-pay' },
     // Single pane in the app (no sidebar), but inside the shell (B-796: the shell pads the side insets).
     settings: { path: '/settings' },
+    // B-798 PR F (`--pages touch`): an ordinary session (no all-zero board strip), the prompt nav over a
+    // tool-output copy overlay (the nav must take the tap), 「会话信息」 from a phone header's ⋯, and a 404 id.
+    plain: { path: '/session/dev-plain' },
+    'prompt-nav': { path: '/session/dev-plain', prepare: 'prompt-nav' },
+    'session-info': { path: '/session/dev-plain', prepare: 'session-info' },
+    'session-missing': { path: '/session/dev-missing', ready: '.sd-loading .vh-empty' },
 };
 
 /** B-796b: overlays outside the shell (the release-notes ✕ sat under the Duo status column in production). */
@@ -96,7 +102,7 @@ const base = opt('base', 'http://127.0.0.1:8795');
 const outDir = opt('out', null);
 const devices = opt('devices', 'duo-folded,duo-open-land,duo-open-port').split(',');
 const PRIMARY = ['session', 'board', 'sidebar', 'team', 'project', 'settings'];
-const GROUPS = { secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS), menus: Object.keys(MENUS) };
+const GROUPS = { secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS), menus: Object.keys(MENUS), touch: ['session', 'plain', 'prompt-nav', 'session-info', 'session-missing'] };
 const pages = opt('pages', PRIMARY.join(',')).split(',').flatMap((p) => GROUPS[p] ?? [p]);
 const themes = opt('themes', 'light,dark').split(',');
 const locale = opt('locale', 'zh-CN');
@@ -180,11 +186,12 @@ async function shot(page, cdp, d) {
     return Buffer.from(data, 'base64');
 }
 
-async function goto(page, path, url) {
+async function goto(page, path, url, ready) {
     await page.goto(`${base}${url ?? `/dev/device${path}`}`, { waitUntil: 'domcontentloaded' });
     // A hash-only change (`#toasts` after the same session path) does not reload the harness.
     if ((url ?? path).includes('#')) await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.app-shell, .settings-workspace', { timeout: 20_000 });
+    if (ready) await page.waitForSelector(ready, { timeout: 10_000 }).catch(() => fail(`${path}: ${ready} never appeared`));
     await page.waitForTimeout(900);
 }
 
@@ -213,6 +220,29 @@ async function prepare(page, kind) {
         await page.waitForSelector('.nc-panel', { timeout: 10_000 });
     } else if (kind === 'toasts') {
         await page.waitForSelector('.vh-toast-x', { timeout: 10_000 });
+    } else if (kind === 'prompt-nav') {
+        // Open the folded turns (their Bash cards carry the copy overlays), scroll up (the nav shows only away
+        // from the bottom), then put a tool-output copy overlay right under the nav.
+        await page.evaluate(() => document.querySelectorAll('.cl-inner .ta-head[aria-expanded="false"]').forEach((b) => b.click()));
+        await page.waitForTimeout(400);
+        await page.evaluate(() => { const s = document.querySelector('.cl-scroll'); s.scrollTop = s.scrollHeight / 2; s.dispatchEvent(new Event('scroll')); });
+        await page.waitForSelector('.cl-promptnav', { timeout: 10_000 });
+        await page.evaluate(() => {
+            const s = document.querySelector('.cl-scroll');
+            const nav = document.querySelector('.cl-promptnav').getBoundingClientRect();
+            const target = nav.top + nav.height * 0.75;
+            const overlays = [...s.querySelectorAll('.vh-copy--overlay')];
+            const best = overlays.map((el) => { const r = el.getBoundingClientRect(); return { d: r.top + r.height / 2 - target }; })
+                .sort((a, b) => Math.abs(a.d) - Math.abs(b.d))[0];
+            if (best) { s.scrollTop += best.d; s.dispatchEvent(new Event('scroll')); }
+        });
+        await page.waitForTimeout(400);
+    } else if (kind === 'session-info') {
+        await page.locator('.ch button[aria-haspopup="menu"]').last().click();
+        await page.waitForSelector('[role="menu"]', { timeout: 5_000 });
+        const info = page.locator('[role="menuitem"]', { hasText: /会话信息|Session info/ });
+        // Wide headers keep agent · machine and the relay badge on the bar: no entry, the open menu is the capture.
+        if (await info.count()) { await info.click(); await page.waitForSelector('.ch-info-dialog', { timeout: 5_000 }); }
     }
     await page.waitForTimeout(500);
 }
@@ -278,7 +308,24 @@ function measure(sa) {
     // A visible back control in the page's top band (unified BackButton or a header back link).
     const back = [...document.querySelectorAll('.app-detail .vh-back, .app-detail a[class*="back"], .app-detail button[class*="back"]')]
         .map((el) => visible(el)).find((r) => r && r.top < 140 && r.left < vw / 2) ?? null;
-    return { overflowX: doc.scrollWidth - doc.clientWidth, outside, hoverOnly, inInset, back: back ? `${Math.round(back.left)},${Math.round(back.top)}` : null, smallTargets: smallTargets.length, smallSample: smallTargets.slice(0, 12), shell: document.querySelector('.app-shell')?.className ?? null };
+    // B-798 P1-7: what a tap on each prompt-nav button actually hits (null when the nav is not shown).
+    const navHits = [...document.querySelectorAll('.cl-promptnav-btn')].map((btn) => {
+        const r = btn.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        if (!hit) return 'none';
+        if (btn.contains(hit)) return 'nav';
+        const owner = hit.closest('button, a') ?? hit;
+        return `${owner.tagName.toLowerCase()}.${(owner.getAttribute('class') ?? '').split(' ').join('.')}`;
+    });
+    const overlaysUnderNav = (() => {
+        const nav = document.querySelector('.cl-promptnav')?.getBoundingClientRect();
+        if (!nav) return 0;
+        return [...document.querySelectorAll('.vh-copy--overlay')].filter((el) => {
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.left < nav.right && r.right > nav.left && r.top < nav.bottom && r.bottom > nav.top;
+        }).length;
+    })();
+    return { navHits, overlaysUnderNav, overflowX: doc.scrollWidth - doc.clientWidth, outside, hoverOnly, inInset, back: back ? `${Math.round(back.left)},${Math.round(back.top)}` : null, smallTargets: smallTargets.length, smallSample: smallTargets.slice(0, 12), shell: document.querySelector('.app-shell')?.className ?? null };
 }
 
 /** Runs in the page with the menu open: scroll each item into view inside the menu, then it must sit on screen (insets excluded) and be the element under its own centre. */
@@ -350,7 +397,7 @@ async function captureAll(browser) {
             for (const name of pages) {
                 const p = PAGES[name];
                 if (!p) throw new Error(`unknown page ${name}`);
-                await goto(page, typeof p.path === 'function' ? p.path(d) : p.path, p.url);
+                await goto(page, typeof p.path === 'function' ? p.path(d) : p.path, p.url, p.ready);
                 await assertCoarse(page, d, `${device}/${name}`);
                 if (p.prepare) await prepare(page, p.prepare);
                 const m = await page.evaluate(measure, d.safeArea ?? null);
@@ -358,6 +405,8 @@ async function captureAll(browser) {
                 console.log(`── ${tag} (${d.width}×${d.height}) overflowX=${m.overflowX} small=${m.smallTargets} shell="${m.shell}" back=${m.back ?? '-'}`);
                 if (p.back && d.width < 600 && !m.back) fail(`${tag}: no back control at the top-left on a phone`);
                 if (m.overflowX > 0) fail(`${tag}: document overflows horizontally by ${m.overflowX}px`);
+                if (m.navHits.length) console.log(`  prompt nav: hits=${m.navHits.join(',')} overlaysUnder=${m.overlaysUnderNav}`);
+                if (m.navHits.some((h) => h !== 'nav')) fail(`${tag}: a prompt-nav tap lands on ${m.navHits.filter((h) => h !== 'nav').join(', ')}`);
                 if (m.outside.length) fail(`${tag}: outside viewport: ${m.outside.join(', ')}`);
                 if (m.inInset.length) fail(`${tag}: controls under the safe-area inset: ${m.inInset.join(', ')}`);
                 if (m.hoverOnly.length) fail(`${tag}: hover-only controls on a touch screen: ${m.hoverOnly.join(', ')}`);

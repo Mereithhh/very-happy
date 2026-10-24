@@ -69,6 +69,16 @@ export function boardCounts(items: readonly AttentionItem[], seen: ReadonlySet<s
     return { need, asked, fresh };
 }
 
+/**
+ * B-798 P2-1: the phone summary strip costs a 44px row. Show it in the lead's
+ * conversation (it also carries the 「全部 | 只看我和负责人」 switch) or when
+ * there is something to count; an ordinary session with 「等你 0 · 未结 0 ·
+ * 新汇报 0」 keeps the row — the header's 汇报板 button still opens the sheet.
+ */
+export function boardStripVisible(lead: boolean, counts: BoardCounts): boolean {
+    return lead || counts.need + counts.asked + counts.fresh > 0;
+}
+
 /** Red dot on a card: something the Owner has not looked at that is addressed to them. */
 export function isUnread(item: AttentionItem, seen: ReadonlySet<string>): boolean {
     return isLive(item) && boardGroup(item) !== 'asked' && !seen.has(item.id);

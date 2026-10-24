@@ -175,3 +175,8 @@
   /* the parent already names the team; the room goes to the task */
   .ch-trail .ch-member { display: none; }
 }
+
+/* B-798 P1-9: 「会话信息」 — the folded identity + relay facts. */
+.ch-info-list { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--sp-2) var(--sp-3); margin: 0; font-size: var(--fs-13); }
+.ch-info-list dt { color: var(--text-faint); }
+.ch-info-list dd { margin: 0; overflow-wrap: anywhere; }

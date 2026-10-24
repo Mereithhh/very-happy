@@ -87,7 +87,7 @@ import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta, type MessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { preserveSessionBatchActivityFromStore } from './sessionSnapshot';
-import { decodeSessionRows } from './sessionDecode';
+import { decodeSessionRows, type EncryptedSessionRow } from './sessionDecode';
 import { applyNewSessionUpdate } from './newSessionUpdate';
 import { newSessionTimingInStore } from '@/app/newSessionTiming';
 import { downloadEncryptedAttachment, requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
@@ -1522,6 +1522,29 @@ class Sync {
         this.applySessions(mergedSessions);
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
 
+    }
+
+    /**
+     * B-798 P1-8: one session by id. The list above stops at the newest 150
+     * rows, so a link to an older (or unknown) session never reached the store
+     * and the page spun forever. 404 = not this account's (nor shared with it).
+     */
+    public fetchSessionById = async (sessionId: string): Promise<'found' | 'missing'> => {
+        if (!this.credentials) throw new Error('Not signed in');
+        const response = await fetch(`${getServerUrl()}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+            headers: {
+                'Authorization': `Bearer ${this.credentials.token}`,
+                'X-Happy-Client': getHappyClientId(),
+            }
+        });
+        if (response.status === 404) return 'missing';
+        if (!response.ok) throw new Error(`Failed to fetch session: ${response.status}`);
+        // Same projection as a /v1/sessions row (archivedAt, share ride along).
+        const data = await response.json() as { session: EncryptedSessionRow & { archivedAt?: number | null; share?: SessionShareInfo } };
+        const decoded = await decodeSessionRows(this.encryption, [data.session]);
+        if (decoded.length === 0) throw new Error('Session could not be decoded');
+        this.applySessions(preserveSessionBatchActivityFromStore(decoded, storage.getState().sessions));
+        return 'found';
     }
 
     public refreshMachines = async () => {

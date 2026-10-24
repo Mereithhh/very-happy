@@ -87,7 +87,7 @@
 /* ── phone: summary strip + top sheet ── */
 .brf-mobile { position: relative; z-index: 40; flex: none; }
 .brf-strip { display: flex; align-items: center; gap: var(--sp-2); min-height: 40px; padding: 0 var(--sp-3); border-bottom: 1px solid var(--line); background: var(--bg-0); }
-.brf-strip-btn { flex: 1; min-width: 0; align-self: stretch; min-height: 40px; display: flex; align-items: center; gap: var(--sp-3); border: 0; background: none; color: var(--text-dim); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
+.brf-strip-btn { flex: 1; min-width: 0; overflow: hidden; align-self: stretch; min-height: 40px; display: flex; align-items: center; gap: var(--sp-3); border: 0; background: none; color: var(--text-dim); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
 .brf-strip-n { white-space: nowrap; }
 .brf-strip-n b { font: 600 var(--fs-12) var(--font-mono); color: var(--text-dim); }
 .brf-strip-n.is-hot b { color: var(--warn); }

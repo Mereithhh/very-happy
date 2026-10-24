@@ -867,6 +867,7 @@ export const zhHans: TranslationStructure = {
     },
 
     session: {
+        infoTitle: '会话信息',
         infoAgent: 'Agent',
         infoHost: '主机',
         infoPath: '路径',
@@ -941,6 +942,8 @@ export const zhHans: TranslationStructure = {
         newChat: '新对话',
         setTitle: '设置标题',
         renameTitle: '重命名会话',
+        notFoundTitle: '会话不存在或已被删除',
+        loadFailedTitle: '无法加载这个会话',
         renamePlaceholder: '会话标题',
         forkAction: '分叉会话',
         forkSubtitle: '在相同上下文中开启新会话继续',
