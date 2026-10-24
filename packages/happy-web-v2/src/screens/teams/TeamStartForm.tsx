@@ -27,6 +27,7 @@ import { CollapsePanel } from '@/ui/CollapsePanel';
 import { useProjects } from '@/sync/projects';
 import { ProjectPicker } from '@/screens/projects/ProjectPicker';
 import { teamProjectFromChoice, type ProjectChoice } from '@/screens/projects/projectChoice';
+import { teamNameFromGoal } from './teamPresentation';
 import { startBlocker } from './teamStartState';
 
 export type TeamLaunchInput = { goal: string; directory: string; assistant: 'claude' | 'codex' | 'pi-acp'; model?: string };
@@ -114,7 +115,7 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
     const path = directory.trim();
     const home = machine?.metadata?.homeDir;
     const resolvedPath = home && (path === '~' || path.startsWith('~/')) ? home.replace(/\/$/, '') + path.slice(1) : path;
-    const title = name.trim() || goal.trim().split('\n')[0].slice(0, 128);
+    const title = name.trim() || teamNameFromGoal(goal);
     if (!goal.trim() || !path || !title) return;
     setBusy(true); setError('');
     let launchDirectory = resolvedPath;
@@ -163,9 +164,9 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
       {newFolder && newProblem && <p className="team-start-blocker" role="status">{folderCopy.problem[newProblem]}</p>}
       {picking && machine && <div className="team-folder-browser"><FsBrowser machineId={machineId} initialPath={directory || machine.metadata?.homeDir || '/'} onPickDir={path => { setDirectory(path); setPicking(false); }} /></div>}
       {/* B-698: the launch harness/model also become the team's defaults for new members (server reducer). */}
-      <div className="team-start-options"><TeamHarnessModelFields machineId={machineId} assistant={assistant} model={model} onAssistant={setAssistant} onModel={setModel} harnessLabel={c.leadAndMembers} /><label>{c.name}<input name="name" value={name} onChange={e => setName(e.target.value)} maxLength={128} /></label></div>
+      <div className="team-start-options"><TeamHarnessModelFields machineId={machineId} assistant={assistant} model={model} onAssistant={setAssistant} onModel={setModel} harnessLabel={c.leadAndMembers} /><label>{c.name}<input name="name" value={name} onChange={e => setName(e.target.value)} maxLength={128} placeholder={teamNameFromGoal(goal)} /></label></div>
       </CollapsePanel></div>
-      {projectsReady && <div className="team-start-project"><label htmlFor="team-start-project">{c.teamProject}</label><ProjectPicker id="team-start-project" value={projectChoice} onChange={setProjectChoice} projects={projectsSnap.projects} newName={name.trim() || goal.trim().split('\n')[0].slice(0, 128)} noneLabel={c.teamProjectNone} /><p className="team-start-assurance">{c.teamProjectHint}</p></div>}
+      {projectsReady && <div className="team-start-project"><label htmlFor="team-start-project">{c.teamProject}</label><ProjectPicker id="team-start-project" value={projectChoice} onChange={setProjectChoice} projects={projectsSnap.projects} newName={name.trim() || teamNameFromGoal(goal)} noneLabel={c.teamProjectNone} /><p className="team-start-assurance">{c.teamProjectHint}</p></div>}
     </fieldset>
     {!ready && <p role="status">{machine ? isMachineOnline(machine) ? c.upgrade : c.offline : c.machineRequired} <Link to={machine ? `/machine/${machine.id}` : '/machine/connect'}>{c.machineSettings} →</Link></p>}
     {intent && <p role="status">{zh ? '已有启动请求，已恢复原来的目标和设置。继续会查询或完成同一次启动，不会创建第二个团队。' : 'Your original goal and settings are restored. Continue the saved launch without creating another team.'}</p>}

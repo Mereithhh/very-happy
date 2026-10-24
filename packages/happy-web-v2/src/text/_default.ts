@@ -1568,6 +1568,8 @@ export const en = {
         // Used by EmptyDetailPane component
         pickUpTitle: 'Pick up where you left off',
         pickUpDescription: 'Select a conversation on the left, or start a new one on any connected machine.',
+        pickUpDescriptionListHidden: 'Open the conversation list to pick one, or start a new one on any connected machine.',
+        showList: 'Conversations',
         newSession: 'New session',
         openWebTerminal: 'Open web terminal',
     },
@@ -1805,6 +1807,7 @@ export const en = {
     renameModal: {
         titleLabel: 'Title',
         tagsLabel: 'Tags',
+        tagsTitle: 'Name and tags',
         tagPlaceholder: 'Add tag…',
     },
 
@@ -4209,6 +4212,7 @@ export const en = {
         directShellDismiss: "Dismiss",
         // Runtime-neutral because Web terminals may use tmux or direct PTY.
         closeTitle: 'Close terminal?',
+        closeTerminal: 'Close terminal',
         // B-474: the machine is offline — the row can be dropped, nothing killed.
         offlineCloseTitle: 'Machine is offline',
         offlineCloseMessage: ({ machine }: { machine: string }) => `${machine} is not connected, so this terminal cannot be closed on it — nothing will be terminated. It can be removed from the list instead. If the machine comes back and the session is still running, the terminal reappears.`,

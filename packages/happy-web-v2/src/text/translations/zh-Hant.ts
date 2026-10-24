@@ -554,6 +554,8 @@ export const zhHant: PartialTranslationStructure = {
         // Used by EmptyDetailPane component
         pickUpTitle: '繼續上次的工作',
         pickUpDescription: '在左側選擇一個工作階段，或在任意已連線的機器上新建一個。',
+        pickUpDescriptionListHidden: '開啟工作階段列表選擇一個，或在任意已連線的機器上新建一個。',
+        showList: '工作階段列表',
         newSession: '新建工作階段',
         openWebTerminal: '開啟網頁終端機',
     },
@@ -634,6 +636,7 @@ export const zhHant: PartialTranslationStructure = {
     renameModal: {
         titleLabel: '標題',
         tagsLabel: '標籤',
+        tagsTitle: '名稱與標籤',
         tagPlaceholder: '新增標籤…',
     },
 

@@ -1736,6 +1736,8 @@ export const zhHans: TranslationStructure = {
         // Used by EmptyDetailPane component
         pickUpTitle: '继续上次的工作',
         pickUpDescription: '在左侧选择一个会话，或在任意已连接的机器上新建一个。',
+        pickUpDescriptionListHidden: '打开会话列表选择一个会话，或在任意已连接的机器上新建一个。',
+        showList: '会话列表',
         newSession: '新建会话',
         openWebTerminal: '打开网页终端',
     },
@@ -1973,6 +1975,7 @@ export const zhHans: TranslationStructure = {
     renameModal: {
         titleLabel: '标题',
         tagsLabel: '标签',
+        tagsTitle: '名称与标签',
         tagPlaceholder: '添加标签…',
     },
 
@@ -4346,6 +4349,7 @@ export const zhHans: TranslationStructure = {
         directShellDismiss: "知道了",
         // 同时适用 tmux 与 direct PTY 终端。
         closeTitle: '关闭终端？',
+        closeTerminal: '关闭终端',
         offlineCloseTitle: '机器已离线',
         offlineCloseMessage: ({ machine }: { machine: string }) => `${machine} 没有连接，无法在它上面关闭这个终端——不会终止任何东西。可以先把它从列表里移除；如果这台机器恢复上线、会话还在，这个终端会重新出现。`,
         offlineCloseConfirm: '从列表移除',

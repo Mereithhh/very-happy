@@ -335,6 +335,8 @@ const router = createBrowserRouter(
           path: '/dev/device',
           element: <Lazy><DeviceShellHarness /></Lazy>,
           children: [
+            // B-798 P2-12: the root detail pane (wide shells), as in the app.
+            { index: true, element: <EmptyDetail /> },
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
             { path: 'teams/:teamId', element: <Lazy><TeamsScreen /></Lazy> },
             { path: 'projects/:projectId', element: <Lazy><ProjectScreen /></Lazy> },

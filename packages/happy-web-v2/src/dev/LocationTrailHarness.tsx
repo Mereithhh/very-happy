@@ -60,7 +60,11 @@ export function seedLocationTrail(extraTeams: TeamState[] = []) {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
     const team = url.match(/\/v1\/teams\/([^/?]+)$/);
-    if (team) return json({ team: teams.find((t) => t.id === decodeURIComponent(team[1])) });
+    if (team) {
+      const found = teams.find((t) => t.id === decodeURIComponent(team[1]));
+      // B-798: an unknown id answers like the server (404 team_not_found).
+      return found ? json({ team: found }) : new Response(JSON.stringify({ error: 'team_not_found' }), { status: 404, headers: { 'content-type': 'application/json' } });
+    }
     if (/\/v1\/teams(\?|$)/.test(url)) return json({ teams });
     const pj = url.match(/\/v1\/projects\/([^/?]+)$/);
     if (pj) {
