@@ -24,6 +24,9 @@ installChatTextSize();
 // B-728: focus rings follow the last input modality (keyboard vs pointer).
 import { installInputModality } from './app/inputModality';
 installInputModality();
+// B-797: --app-h clamped to the visible height; iOS keyboard → --vv-h / --vv-top.
+import { installViewportVars } from './app/viewportVars';
+installViewportVars();
 import { installPasteCapture } from './utils/pasteCapture';
 // First paste listener of the app: snapshot pasted text before anything can
 // see the pasteboard change (Wispr Flow; see utils/pasteCapture).

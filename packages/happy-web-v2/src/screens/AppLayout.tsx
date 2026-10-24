@@ -32,6 +32,7 @@ import { AppShell } from './AppShell';
 import './layout.css';
 import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 import { useTranslation } from '@/i18n/useTranslation';
+import { useRootScrollLock } from '@/app/viewportVars';
 
 /** `rootPath`: where the phone list lives — `/` in the app; the DEV device harness mounts the shell elsewhere. */
 export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
@@ -40,6 +41,8 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
   // layout level so it keeps running with the sidebar collapsed/unmounted
   // (mobile detail, /board).
   useTerminalSync();
+  // B-797: the shell never scrolls the document (iPhone Duo cover: 100lvh ran 21px past the web view).
+  useRootScrollLock();
   // ⌘N (PWA) / ⌥N (normal tab) → new terminal. Layout level for the same
   // reason: must work with the sidebar collapsed/unmounted.
   useNewTerminalShortcuts();

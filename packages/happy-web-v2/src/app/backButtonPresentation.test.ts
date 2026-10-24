@@ -16,4 +16,8 @@ describe('mobile back button presentation', () => {
   it('marks the back control as a direct tap target', () => {
     expect(baseCss).toMatch(/\.vh-back \{[\s\S]*?touch-action: manipulation;/);
   });
+
+  it('B-797: a touch back target meets the 44pt iOS floor', () => {
+    expect(baseCss).toMatch(/@media \(pointer: coarse\) \{\s*\.vh-back \{\s*width: 44px;\s*height: 44px;/);
+  });
 });

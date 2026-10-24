@@ -138,3 +138,33 @@
 .vd-box--sd-foot .vd-box-label { right: auto; left: 0; }
 .vd-box--ci .vd-box-label { bottom: auto; top: 0; }
 .vd-box--ci-status .vd-box-label { right: auto; left: 0; bottom: 100%; }
+
+/* B-797 keyboard test: at the top so it stays above the keyboard */
+.vd-head > .vh-back { margin-left: -8px; }
+.vd-kb {
+  display: grid;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.vd-kb-label {
+  color: var(--text-dim);
+  font-size: var(--fs-13);
+}
+.vd-kb-input {
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  /* 16px: no iOS focus auto-zoom (which would shrink vv and fake a keyboard) */
+  font-size: var(--fs-16);
+}
+.vd-kb-live {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+}
