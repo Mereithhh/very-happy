@@ -12,7 +12,6 @@
 export const SMALL_TARGET_ALLOWLIST = new Map([
     ['a.settings-return', 'B-798 follow-up（设置页「返回工作台」高 36，E 后仍在）'],
     ['a.vh-trail-link', 'B-798 follow-up（面包屑段宽 37，E 后仍在）'],
-    ['button.bd-card-done', 'B-798 PR D（看板 ✓）'],
     ['button.bd-btn', 'B-798 follow-up（任务看板工具栏）'],
     ['button.bd-toggle-btn', 'B-798 follow-up（任务看板视图切换）'],
     ['a in .team-project-line', 'B-798 follow-up（团队页的「打开项目」链接）'],
