@@ -14,7 +14,6 @@ const SRC = fileURLToPath(new URL('..', import.meta.url));
 
 /** `<file relative to src> <items expression>` → the PR expected to add the ⋯. */
 const TOUCH_PARITY_ALLOWLIST = new Map<string, string>([
-  ['screens/sessions/SidebarTeamRow.tsx items', 'B-798 PR C'],
   ['screens/notes/NotesList.tsx menuFor(note)', 'B-798 PR D'],
   ['screens/board/BoardCard.tsx menuItems', 'B-798 PR D'],
   ['screens/workspace/WorkspaceTabsView.tsx items', 'B-798 PR D'],

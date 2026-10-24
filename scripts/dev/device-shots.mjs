@@ -274,7 +274,26 @@ function measure(sa) {
         };
         const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
         if (!owns(cx, cy)) return null; // covered (under a sheet, panel or scrim): not a target right now
-        const reach = (dx, dy) => { let n = 0; while (n < 30 && owns(cx + dx * (n + 1), cy + dy * (n + 1))) n++; return n; };
+        // A control cut by the viewport or by its scroller's edge (scrolled half into view) is not a small
+        // target: the edge counts as reach.
+        let clip = { left: 0, top: 0, right: vw, bottom: innerHeight };
+        for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+            const cs = getComputedStyle(p);
+            if (!/(auto|scroll|hidden|clip)/.test(cs.overflowX + cs.overflowY)) continue;
+            const pr = p.getBoundingClientRect();
+            clip = { left: Math.max(clip.left, pr.left), top: Math.max(clip.top, pr.top), right: Math.min(clip.right, pr.right), bottom: Math.min(clip.bottom, pr.bottom) };
+        }
+        const offscreen = (x, y) => x < clip.left || y < clip.top || x >= clip.right - 1 || y >= clip.bottom - 1;
+        const reach = (dx, dy) => {
+            let n = 0;
+            while (n < 30) {
+                const x = cx + dx * (n + 1), y = cy + dy * (n + 1);
+                if (offscreen(x, y)) return 30;
+                if (!owns(x, y)) break;
+                n++;
+            }
+            return n;
+        };
         return { width: reach(-1, 0) + reach(1, 0) + 1, height: reach(0, -1) + reach(0, 1) + 1 };
     };
     // Stable allowlist key: tag + first class, or tag + the nearest classed ancestor's first class.

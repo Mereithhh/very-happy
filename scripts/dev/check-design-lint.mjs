@@ -457,7 +457,6 @@ export function findTouchHiddenReveals(code) {
  * 只减不增：修好的条目要删掉（node 测试会报「已不存在」），新增问题不许进名单。
  */
 export const REVEAL_ALLOWLIST = new Set([
-    'screens/sessions/sidebar.css .sb-tree-project-acts', // B-798 PR C
 ]);
 
 /** ⑧ 交互类名（最后一个复合选择器里的类以这些词结尾）。 */

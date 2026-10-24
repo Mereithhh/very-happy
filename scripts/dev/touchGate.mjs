@@ -10,15 +10,11 @@
 
 /** @type {Map<string, string>} key → owner / reason */
 export const SMALL_TARGET_ALLOWLIST = new Map([
-    ['a in .pj-settings-nav', 'B-798 PR E（项目设置导航）'],
-    ['a.settings-return', 'B-798 PR E（设置页）'],
-    ['button.set-header__back', 'B-798 PR E（设置页 32px 图标按钮）'],
-    ['button.set-switch', 'B-798 PR E（设置开关）'],
-    ['a.vh-trail-link', 'B-798 PR E（面包屑段）'],
+    ['a.settings-return', 'B-798 follow-up（设置页「返回工作台」高 36，E 后仍在）'],
+    ['a.vh-trail-link', 'B-798 follow-up（面包屑段宽 37，E 后仍在）'],
     ['button.bd-card-done', 'B-798 PR D（看板 ✓）'],
     ['button.bd-btn', 'B-798 follow-up（任务看板工具栏）'],
     ['button.bd-toggle-btn', 'B-798 follow-up（任务看板视图切换）'],
-    ['button.vh-toast-x', 'B-798 follow-up（toast ✕）'],
     ['a in .team-project-line', 'B-798 follow-up（团队页的「打开项目」链接）'],
     ['a in .teams-heading-actions', 'B-798 follow-up（团队页标题旁的指南链接）'],
     ['button.sb-tree-link', '空项目提示里的句中文字按钮（WCAG 2.5.8 inline 例外，排版为 inline-flex）'],
@@ -26,7 +22,6 @@ export const SMALL_TARGET_ALLOWLIST = new Map([
 
 /** @type {Map<string, string>} */
 export const HIDDEN_ACTION_ALLOWLIST = new Map([
-    ['button.sb-project-act', 'B-798 PR C（侧栏项目组头 ＋ / ⋯）'],
     ['button.nc-head-btn', '通知面板的 ✕ 只在全屏（手机）形态显示；浮层形态用 Esc / 点外部关闭'],
 ]);
 
