@@ -82,7 +82,9 @@ time it comes up. Open it with the board button in the session header (its
 badge counts only what waits on you); on a wide screen it is a tab in the right
 panel (`?panel=board`), on a phone a one-line summary under the header —
 *Needs you 2 · Open 2 · New 1* — that drops the board down from the top, with
-the *All | Me & lead* switch at the end of the same row.
+the *All | Me & lead* switch at the end of the same row. The summary shows in
+the lead's conversation, or anywhere it has something to count; elsewhere the
+header's board button opens the same sheet.
 
 - **Needs you** — decisions (pick an option to decide), to-dos, and blocks the
   lead raised with `request_human`. An item marked *Auto-detected* was drafted
