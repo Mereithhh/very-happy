@@ -2837,6 +2837,12 @@ export const zhHans: TranslationStructure = {
         entryShort: '大更新',
         entryCount: ({ count }: { count: number }) => `${count} 条未看`,
         releases: {
+            oct25d: {
+                title: '断网后同步更快',
+                summary: '网络断开或手机从后台回来时，消息同步更快，多数情况下 1～2 秒内补齐。',
+                catchUp: '网络断开或手机从后台回来后，缺的消息补齐更快，多数情况下 1～2 秒内完成。',
+                retry: '连接没恢复时点「重试」会立刻重连。',
+            },
             oct25c: {
                 title: '消息不再卡住',
                 summary: '回到 Very Happy 后，会话几秒内补齐，期间显示「同步中」。排队的消息开始执行后不再消失，编辑重发后新消息立即出现，后台请求也大幅减少。',

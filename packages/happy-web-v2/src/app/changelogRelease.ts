@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-25-faster-catch-up',
+    date: '2026-10-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct25d.title',
+    summaryKey: 'changelog.releases.oct25d.summary',
+    itemKeys: ['changelog.releases.oct25d.catchUp', 'changelog.releases.oct25d.retry'],
+  },
+  {
     id: '2026-10-25-messages-unstuck',
     date: '2026-10-25',
     buildVersion: __APP_VERSION__,

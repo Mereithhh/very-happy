@@ -2699,6 +2699,12 @@ export const en = {
         entryShort: 'Major update',
         entryCount: ({ count }: { count: number }) => `${count} unread`,
         releases: {
+            oct25d: {
+                title: 'Faster catch-up after a dropped connection',
+                summary: 'When the network drops or you bring the phone back from the background, messages catch up faster — in most cases within 1–2 seconds.',
+                catchUp: 'After the network drops or the phone comes back from the background, missing messages fill in faster, usually within 1–2 seconds.',
+                retry: 'If the connection has not recovered, tapping Retry reconnects right away.',
+            },
             oct25c: {
                 title: 'Messages no longer get stuck',
                 summary: 'Come back to Very Happy and a session catches up within seconds, with Syncing… shown while it does. Queued messages stay in view once they start running, an edited and resent message shows up right away, and the page makes far fewer requests in the background.',
