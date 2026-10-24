@@ -617,20 +617,24 @@ async function drawerChecks(browser) {
 }
 
 /**
- * B-800 edge gestures, driven by native CDP touch events one frame at a time (the gesture code reads
- * `touches` / `timeStamp`, so the pacing of the moves is the velocity it sees).
+ * B-800 edge gestures, driven by native CDP touch events one frame at a time. Each event carries an
+ * explicit `timestamp` (`frameMs` apart) — the gesture reads `timeStamp` for velocity, and the CDP
+ * round-trip jitter of a loaded runner would otherwise turn a flick into a slow drag.
  */
 async function drag(cdp, page, from, to, { steps = 12, frameMs = 16, onMid } = {}) {
     const at = (p) => [{ x: p.x, y: p.y, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(from) });
+    // +1 s: a timestamp already in the past makes Chromium drop the later events of the stroke.
+    const t0 = Date.now() / 1000 + 1;
+    const ts = (i) => t0 + (i * frameMs) / 1000;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(from), timestamp: ts(0) });
     for (let i = 1; i <= steps; i++) {
         const p = { x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps };
         await page.waitForTimeout(frameMs);
-        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(p) });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(p), timestamp: ts(i) });
         if (i === Math.round(steps / 2) && onMid) await onMid();
     }
     await page.waitForTimeout(frameMs);
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp: ts(steps + 1) });
     await page.waitForTimeout(450);
 }
 
