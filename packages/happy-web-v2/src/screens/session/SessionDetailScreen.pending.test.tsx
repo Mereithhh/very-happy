@@ -44,7 +44,7 @@ vi.mock('@/sync/storage', () => {
         useIsDataReady: () => useSyncExternalStore(h.subscribe, () => h.dataReady),
     };
 });
-vi.mock('@/sync/sync', () => ({ sync: { onSessionVisible: h.visible, fetchSessionById: h.lookup } }));
+vi.mock('@/sync/sync', () => ({ sync: { onSessionEnter: h.visible, fetchSessionById: h.lookup } }));
 vi.mock('@/app/BackButton', () => ({ BackButton: () => <button data-back /> }));
 vi.mock('@/sync/pendingSessionsRuntime', async () => {
     const core = await vi.importActual<typeof import('@/sync/pendingSessions')>('@/sync/pendingSessions');

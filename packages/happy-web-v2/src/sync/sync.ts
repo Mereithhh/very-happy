@@ -115,6 +115,7 @@ import {
     settledOutboxRecords,
     SendDeadlines,
 } from './outbox';
+import { AnchorBuffer, planLiveMessage } from './liveMessagePlan';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -209,6 +210,8 @@ class Sync {
     private resumeListeners = new Set<() => void>();
     private sendAbortControllers = new Map<string, AbortController>();
     private sessionLastSeq = new Map<string, number>();
+    /** B-805: live messages of sessions whose latest page has not landed yet. */
+    private anchorBuffer = new AnchorBuffer<NormalizedMessage>();
     // Lowest seq value we have already fetched and applied for a session.
     // Used as the cursor for backward pagination when the reader asks for
     // older history (B-616: on demand only, no background fill). Set after
@@ -425,7 +428,7 @@ class Sync {
         this.sessionsSync.invalidate();
         const current = storage.getState().currentViewingSessionId;
         if (current) {
-            this.onSessionVisible(current, { restartFetch: true });
+            this.onSessionEnter(current, { restartFetch: true });
         }
         this.machinesSync.invalidate();
         this.artifactsSync.invalidate();
@@ -515,34 +518,44 @@ class Sync {
 
 
     /**
+     * B-805: the user entered this session (screen mount), or the link came
+     * back (resume / reconnect / recovered / control returned): catch its
+     * messages up — the initial page, or forward from lastSeq — then run the
+     * heartbeat duties. Live messages do NOT come through here; they ping
+     * `onSessionHeartbeat` and fetch only on a seq gap (liveMessagePlan.ts).
+     *
      * `restartFetch` (B-803): tab resume / socket reconnect / recovered — a
      * catch-up still in flight is probably stuck on the dead link, so abort it
      * and fetch again now instead of coalescing behind it.
      */
-    onSessionVisible = (sessionId: string, opts?: { restartFetch?: boolean }) => {
+    onSessionEnter = (sessionId: string, opts?: { restartFetch?: boolean }) => {
         if (opts?.restartFetch) {
             this.restartMessagesSync(sessionId);
         } else {
             this.getMessagesSync(sessionId).invalidate();
         }
-        // T-014: there is deliberately NO git-status refresh here. This method
-        // is called for EVERY incoming message of ANY session (the "Ping
-        // session" below), so a refresh here fanned 4 `bash` RPCs out to every
-        // running agent — 110–170 RPC/min from one idle tab, 100% of the
-        // measured load — for a `pathGitStatus` nobody rendered. The Files
-        // panel fetches its own git state on open (useSessionFiles).
-
-        // Notify voice assistant about session visibility
+        this.onSessionHeartbeat(sessionId);
         const session = storage.getState().sessions[sessionId];
-        if (session) {
-            // B-619: a session shared WITH me has no relay / RPC path — the machine is
-            // not this account's; warming its relay only yields diagnostics 422s.
-            if (session.metadata?.machineId && !session.share) {
-                apiSocket.prepareMachineRelay(session.metadata.machineId);
-            }
-            if (!session.share) this.alignPermissionModeIfNeeded(sessionId);
-            voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
+        if (session) voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
+    }
+
+    /**
+     * B-805: per-incoming-message ping of ANY session — no network fetch. It
+     * keeps the machine relay warm and the yolo alignment (self-throttled)
+     * current. T-014: there is deliberately NO git-status refresh here either;
+     * it fanned 4 `bash` RPCs out to every running agent — 110–170 RPC/min
+     * from one idle tab — for a `pathGitStatus` nobody rendered. The Files
+     * panel fetches its own git state on open (useSessionFiles).
+     */
+    private onSessionHeartbeat = (sessionId: string) => {
+        const session = storage.getState().sessions[sessionId];
+        if (!session) return;
+        // B-619: a session shared WITH me has no relay / RPC path — the machine is
+        // not this account's; warming its relay only yields diagnostics 422s.
+        if (session.metadata?.machineId && !session.share) {
+            apiSocket.prepareMachineRelay(session.metadata.machineId);
         }
+        if (!session.share) this.alignPermissionModeIfNeeded(sessionId);
     }
 
     // B-262 A6: upgrade-only alignment. A session the user explicitly put in
@@ -1672,6 +1685,7 @@ class Sync {
             this.sendDeadlines.delete(localId);
         }
         this.sessionLastSeq.delete(sessionId);
+        this.anchorBuffer.clear(sessionId);
         this.sessionOldestSeq.delete(sessionId);
         this.sessionMessageLocks.delete(sessionId);
         this.messagesDeferredOffline.delete(sessionId);
@@ -2607,6 +2621,8 @@ class Sync {
             // top of the loaded history in view or presses 「加载更早」 —
             // B-616: there is deliberately NO background loop filling the
             // history in (sync/historyWindow.ts).
+            // B-805: live updates from here on join the buffer the page drains.
+            this.anchorBuffer.open(sessionId);
             await this.fetchInitialLatestPage(sessionId, encryption, signal);
         } else {
             // Forward incremental sync. Used after reconnect, invalidate,
@@ -2670,12 +2686,19 @@ class Sync {
         throwIfAborted(signal);
 
         await this.getSessionMessageLock(sessionId).inLock(() => {
+            // Anchor both ends so future incremental forward sync resumes from
+            // maxSeq, and loadOlderMessages can page backward from minSeq.
+            const anchor = mergeFetchedLastSeq(this.sessionLastSeq.get(sessionId), maxSeq);
+            // B-805: live updates that arrived while the page was loading land
+            // in the same commit; lastSeq then runs through them (a hole = a
+            // gap). Under the lock, so none can slip between drain and anchor.
+            const buffered = this.anchorBuffer.drain(sessionId, anchor);
+            window.push(...buffered.messages);
             if (window.length > 0) {
                 this.applyMessages(sessionId, window);
             }
-            // Anchor both ends so future incremental forward sync resumes from
-            // maxSeq, and loadOlderMessages can page backward from minSeq.
-            this.sessionLastSeq.set(sessionId, mergeFetchedLastSeq(this.sessionLastSeq.get(sessionId), maxSeq));
+            this.sessionLastSeq.set(sessionId, anchor);
+            this.advanceSessionLastSeq(sessionId, buffered.seqs);
             if (minSeq !== Number.POSITIVE_INFINITY) {
                 this.sessionOldestSeq.set(sessionId, minSeq);
             }
@@ -2870,13 +2893,13 @@ class Sync {
             this.feedSync.invalidate();
             // The viewed session's messages must be refetched HERE: nothing
             // else does it after a reconnect (web-v2 has no screen reacting to
-            // realtimeStatus; SessionDetailScreen only calls onSessionVisible
+            // realtimeStatus; SessionDetailScreen only calls onSessionEnter
             // on mount). Without this, an agent that finished while the link
             // was down never shows its last messages — no new socket event
             // arrives to trigger the seq-gap refetch. Bounded: forward from
             // the last known seq.
             const viewing = storage.getState().currentViewingSessionId;
-            if (viewing) this.onSessionVisible(viewing, { restartFetch: true });
+            if (viewing) this.onSessionEnter(viewing, { restartFetch: true });
             // B-799 / B-802: a send that failed during the outage may sit in a
             // backoff sleep of up to 10s — cut it short, the link is back now.
             // Send queues only (one wake per reconnect); pollers keep invalidate().
@@ -2895,7 +2918,7 @@ class Sync {
             this.sessionsSync.invalidate();
             this.machinesSync.invalidate();
             const viewing = storage.getState().currentViewingSessionId;
-            if (viewing) this.onSessionVisible(viewing, { restartFetch: true });
+            if (viewing) this.onSessionEnter(viewing, { restartFetch: true });
         });
     }
 
@@ -3033,25 +3056,33 @@ class Sync {
                         this.fetchSessions();
                     }
 
-                    // Fast-path only on consecutive seq values, otherwise fetch from server.
-                    const currentLastSeq = this.sessionLastSeq.get(updateData.body.sid);
+                    // B-805: the update is authoritative — fetch from the
+                    // server only on a seq gap (liveMessagePlan.ts). `echo`:
+                    // the regional relay delivered this id/seq before the
+                    // central socket; it is already reduced.
+                    const sid = updateData.body.sid;
                     const incomingSeq = updateData.body.message.seq;
-                    if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
-                        this.enqueueMessages(updateData.body.sid, [lastMessage]);
-                        this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
-                    } else if (currentLastSeq !== undefined && incomingSeq <= currentLastSeq) {
-                        // The regional session relay can deliver this same
-                        // authoritative id/seq before the central update
-                        // socket. It is already reduced; do not turn the echo
-                        // into a redundant history fetch.
-                    } else {
-                        this.getMessagesSync(updateData.body.sid).invalidate();
+                    const action = planLiveMessage(this.sessionLastSeq.get(sid), incomingSeq);
+                    if (action === 'defer') {
+                        // No latest page yet: the session's first update asks
+                        // for it once; the rest wait for it in the buffer.
+                        if (this.anchorBuffer.add(sid, incomingSeq, lastMessage)) {
+                            this.getMessagesSync(sid).invalidate();
+                        }
+                    } else if (action === 'apply') {
+                        // A decrypted message that does not normalize has
+                        // nothing to reduce (the forward fetch drops it too);
+                        // the run stays contiguous either way.
+                        if (lastMessage) this.enqueueMessages(sid, [lastMessage]);
+                        this.sessionLastSeq.set(sid, incomingSeq);
+                    } else if (action === 'refetch') {
+                        this.getMessagesSync(sid).invalidate();
                     }
                 }
             }
 
-            // Ping session
-            this.onSessionVisible(updateData.body.sid);
+            // Ping session — relay warm + yolo alignment, no fetch (B-805).
+            this.onSessionHeartbeat(updateData.body.sid);
 
         } else if (updateData.body.t === 'new-session') {
             log.log('🆕 New session update received');
@@ -3140,9 +3171,10 @@ class Sync {
                     // This catches up on any messages that were exchanged while desktop had control
                     const wasControlledByUser = session.agentState?.controlledByUser;
                     const isNowControlledByUser = agentState?.controlledByUser;
-                    if (!wasControlledByUser && isNowControlledByUser) {
+                    // B-805: a session this tab never opened stays stale — opening it fetches.
+                    if (!wasControlledByUser && isNowControlledByUser && this.messagesSync.has(updateData.body.id)) {
                         log.log(`🔄 Control returned to mobile for session ${updateData.body.id}, re-fetching messages`);
-                        this.onSessionVisible(updateData.body.id);
+                        this.onSessionEnter(updateData.body.id);
                     }
                 }
             } else if (!isSessionDeleted(updateData.body.id)) {

@@ -172,7 +172,7 @@ export function AssistantScreen() {
 
     // lazy message fetch — same mechanism as the chat screen
     useEffect(() => {
-        if (sessionId) sync.onSessionVisible(sessionId);
+        if (sessionId) sync.onSessionEnter(sessionId);
     }, [sessionId]);
 
     // ── conversation data ──
