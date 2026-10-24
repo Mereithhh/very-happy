@@ -16,7 +16,7 @@ describe('AgentInput queue controls', () => {
         expect(source).toContain('const supportsSteer = wrapperSupportsSteer(flavor, metadata?.capabilities)');
         expect(source).toContain("aria-label={t('session.chat.queueIntervene')}");
         expect(source).toContain("await sendQueuedItem(item, 'steer')");
-        expect(source).toContain("aria-label={sending ? t('session.chat.sending') : gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}");
+        expect(source).toContain("aria-label={sending ? t('session.chat.sending') : offlineLabel ?? (gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send'))}");
         expect(source).toContain("onClick={() => void doSend('queue')}");
         expect(source).toContain("delivery: 'queue' | 'steer' = 'queue'");
         expect(source).not.toContain('sessionSteer');

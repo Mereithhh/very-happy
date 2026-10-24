@@ -15,6 +15,11 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
+    // B-799: the thin top bar (app/NetworkBanner.tsx).
+    network: {
+        offline: 'Offline — reconnecting…',
+        recovered: 'Back online',
+    },
     relayBadge: {
         route: "Data route",
         state: "Connection",
@@ -774,6 +779,11 @@ export const en = {
             sendDelete: 'Delete',
             sent: 'Sent',
             sendingOffline: 'Sends when the connection is back',
+            // B-799: the send button while the device is offline (it queues, it does not refuse).
+            sendOfflineQueue: 'Queue while offline',
+            sendOfflineHint: 'Sends automatically when you are back online',
+            sendOfflinePlaceholder: 'Offline · messages send automatically when you are back online',
+            sendOfflineAttachments: 'Offline · attachments need a connection to upload',
             deliverOnResume: 'Saved · delivered when the session is back online',
             queueAdding: 'Adding to queue…',
             queueWaitingNetwork: 'Offline · joins the queue when the connection is back',

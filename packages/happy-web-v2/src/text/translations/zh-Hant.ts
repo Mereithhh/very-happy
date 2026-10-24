@@ -17,6 +17,11 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: PartialTranslationStructure = {
+    // B-799
+    network: {
+        offline: '已離線，正在重新連線…',
+        recovered: '已恢復',
+    },
     board: {
         title: '任務看板',
         filterLabel: '看板',
