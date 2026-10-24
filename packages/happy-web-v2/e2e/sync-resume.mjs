@@ -56,6 +56,18 @@
  *   UNOPENED records for a session no tab has opened → each tab loads its
  *         latest page at most once (board previews / subagent counts read
  *         it) and does 0 after_seq; opening it in tab1 shows every record.
+ * B-808 (edit and resend, opened from history):
+ *   EDIT  for the first / last / middle of three seeded turns, a fresh tab1
+ *         page opens the session from history and edits that prompt through
+ *         the ✏️ UI (the `conversation-rewind` RPC is stubbed ok — no agent;
+ *         the tombstone and the new prompt are the real writes), then tab2
+ *         stores the "agent" reply → without a reload the new prompt is
+ *         visible ≤ 2s after submit and the reply ≤ 2s after it was stored;
+ *         the edited prompt and everything after it are gone; tab1, tab2 and
+ *         a fresh load show the same transcript. The proxy holds tab1's
+ *         `new-message` frames 400ms so the POST ack lands first, as in
+ *         production. `own-turn` (control): tab1 first sends a prompt itself.
+ *         `--only EDIT` with B-808 reverted fails every case.
  * Prints one line per measurement (`MEASURE <scenario> <ms|never>`) for the
  * before/after table. Exit code 1 on any failed check.
  */
@@ -118,6 +130,7 @@ async function stopServer() {
 const proxy = (() => {
     let mode = 'pass';
     let stallMatch = null;
+    let delayMatch = null;
     const links = new Set();
     const srv = net.createServer((client) => {
         const upstream = net.connect(Number(viteUrl.port), viteUrl.hostname);
@@ -138,7 +151,20 @@ const proxy = (() => {
             }
             if (!link.stalled) upstream.write(chunk);
         });
-        upstream.on('data', (chunk) => { if (!link.stalled) client.write(chunk); });
+        // B-808 `delayDown`: a downstream chunk containing the text holds it and
+        // everything after it on that link for `ms` (order kept) — a slow update
+        // socket, so a POST response on another link lands first.
+        let held = null;
+        upstream.on('data', (chunk) => {
+            if (link.stalled) return;
+            if (held) { held.push(chunk); return; }
+            if (delayMatch && !link.exempt && chunk.toString('latin1').includes(delayMatch.text)) {
+                held = [chunk];
+                setTimeout(() => { const out = held; held = null; for (const c of out) if (!link.stalled) client.write(c); }, delayMatch.ms);
+                return;
+            }
+            client.write(chunk);
+        });
         // A dead path tells the browser nothing: upstream closing must not reach a stalled link.
         const end = () => { links.delete(link); client.destroy(); upstream.destroy(); };
         const upstreamEnd = () => { if (link.stalled) { upstream.destroy(); return; } end(); };
@@ -153,10 +179,11 @@ const proxy = (() => {
         blackhole() { mode = 'blackhole'; for (const l of links) if (!l.exempt) l.stalled = true; },
         healNew() { mode = 'pass'; },
         stallNext(text) { stallMatch = text; },
+        delayDown(text, ms) { delayMatch = text ? { text, ms } : null; },
         resetStalled() {
             for (const l of [...links]) if (l.stalled) { l.client.resetAndDestroy?.() ?? l.client.destroy(); l.upstream.destroy(); }
         },
-        pass() { mode = 'pass'; stallMatch = null; this.resetStalled(); },
+        pass() { mode = 'pass'; stallMatch = null; delayMatch = null; this.resetStalled(); },
         stalledCount: () => [...links].filter((l) => l.stalled).length,
     };
 })();
@@ -238,16 +265,18 @@ async function probeOnce(page, sessionId, token) {
         const { sync } = await import('/src/sync/sync.ts');
         const messages = storage.getState().sessionMessages[sessionId]?.messages ?? [];
         const inStore = messages.some((m) => typeof m.text === 'string' && m.text.includes(token));
+        // B-808: shown with its server seq — not just the optimistic copy.
+        const confirmed = messages.some((m) => typeof m.text === 'string' && m.text.includes(token) && typeof m.seq === 'number');
         const onScreen = location.pathname.endsWith(sessionId);
         const inDom = onScreen ? (document.querySelector('.cl-inner')?.textContent ?? '').includes(token) : null;
-        return { inStore, inDom, lastSeq: sync.sessionLastSeq.get(sessionId) ?? null, socket: storage.getState().socketStatus };
+        return { inStore, confirmed, inDom, lastSeq: sync.sessionLastSeq.get(sessionId) ?? null, socket: storage.getState().socketStatus };
     }, { sessionId, token });
 }
 /** ms until `token` is in tab's transcript (store + DOM), or null after `holdMs`. */
-async function timeUntilVisible(page, sessionId, token, holdMs, t0 = Date.now()) {
+async function timeUntilVisible(page, sessionId, token, holdMs, t0 = Date.now(), { confirmed = false } = {}) {
     while (Date.now() - t0 < holdMs) {
         const p = await probe(page, sessionId, token);
-        if (p.inStore && p.inDom !== false) return Date.now() - t0;
+        if ((confirmed ? p.confirmed : p.inStore) && p.inDom !== false) return Date.now() - t0;
         await sleep(100);
     }
     return null;
@@ -323,6 +352,45 @@ async function agentSay(page, sessionId, texts, gapMs) {
         }
     }, { sessionId, texts, gapMs });
 }
+/** B-808: the "user" (another device) stores prompt records one by one, like `agentSay`. */
+async function userSay(page, sessionId, texts) {
+    await page.evaluate(async ({ sessionId, texts }) => {
+        const { sync } = await import('/src/sync/sync.ts');
+        const { apiSocket } = await import('/src/sync/apiSocket.ts');
+        let encryption = null;
+        for (let i = 0; i < 100 && !(encryption = sync.encryption.getSessionEncryption(sessionId)); i++) await new Promise((r) => setTimeout(r, 100));
+        for (const text of texts) {
+            const content = await encryption.encryptRawRecord({ role: 'user', content: { type: 'text', text } });
+            const res = await apiSocket.request(`/v3/sessions/${sessionId}/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: [{ localId: crypto.randomUUID(), content }] }),
+            });
+            if (!res.ok) throw new Error(`user POST ${res.status}`);
+        }
+    }, { sessionId, texts });
+}
+async function createSessions(page, paths) {
+    return page.evaluate(async (paths) => {
+        const { sync } = await import('/src/sync/sync.ts');
+        const { apiSocket } = await import('/src/sync/apiSocket.ts');
+        const { encodeBase64 } = await import('/src/encryption/base64.ts');
+        for (let i = 0; i < 100 && !sync.encryption; i++) await new Promise((r) => setTimeout(r, 200));
+        const ids = [];
+        for (const path of paths) {
+            const enc = await sync.encryption.openEncryption(null);
+            // `prompt-queue-v1`: the composer's queue lives on the server (B-509) — A4's dock.
+            const [metadata] = await enc.encrypt([{ path, host: 'e2e', flavor: 'claude', capabilities: ['prompt-queue-v1'] }]);
+            const res = await apiSocket.request('/v1/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tag: crypto.randomUUID(), metadata: encodeBase64(metadata, 'base64'), agentState: null, dataEncryptionKey: null }),
+            });
+            ids.push((await res.json()).session.id);
+        }
+        return ids;
+    }, paths);
+}
 /** User/agent texts in the tab's reduced transcript, oldest first, that start with `prefix`. */
 const transcript = (page, sessionId, prefix) => page.evaluate(async ({ sessionId, prefix }) => {
     const { storage } = await import('/src/sync/storage.ts');
@@ -388,25 +456,7 @@ try {
 
     step('create three sessions in-page (S3: never opened by any tab)');
     await page2.waitForFunction(() => import('/src/sync/sync.ts').then(({ sync }) => !!sync.encryption), null, { timeout: 30_000, polling: 300 });
-    const [S1, S2, S3] = await page2.evaluate(async () => {
-        const { sync } = await import('/src/sync/sync.ts');
-        const { apiSocket } = await import('/src/sync/apiSocket.ts');
-        const { encodeBase64 } = await import('/src/encryption/base64.ts');
-        for (let i = 0; i < 100 && !sync.encryption; i++) await new Promise((r) => setTimeout(r, 200));
-        const ids = [];
-        for (const path of ['/tmp/b803-e2e-1', '/tmp/b803-e2e-2', '/tmp/b805-e2e-unopened']) {
-            const enc = await sync.encryption.openEncryption(null);
-            // `prompt-queue-v1`: the composer's queue lives on the server (B-509) — A4's dock.
-            const [metadata] = await enc.encrypt([{ path, host: 'e2e', flavor: 'claude', capabilities: ['prompt-queue-v1'] }]);
-            const res = await apiSocket.request('/v1/sessions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tag: crypto.randomUUID(), metadata: encodeBase64(metadata, 'base64'), agentState: null, dataEncryptionKey: null }),
-            });
-            ids.push((await res.json()).session.id);
-        }
-        return ids;
-    });
+    const [S1, S2, S3] = await createSessions(page2, ['/tmp/b803-e2e-1', '/tmp/b803-e2e-2', '/tmp/b805-e2e-unopened']);
     await openSession(page2, BASE, S1);
     await send(page2, token('seed'));
     await sleep(500);
@@ -709,6 +759,88 @@ try {
         const ms = await waitTranscript(page1, S3, prefix, 5, 10_000);
         check(ms !== null && JSON.stringify(await transcript(page1, S3, prefix)) === JSON.stringify(texts), 'UNOPENED opening it shows every record in order', fmt(ms));
         await nav(page1, S1);
+    }
+
+    // ── B-808 EDIT: edit and resend in a tab that opened the session from history ──
+    if (want('EDIT')) {
+        // `own-turn`: control — tab1 first runs a turn itself, then edits that prompt.
+        for (const [which, index] of [['first', 0], ['last', 2], ['middle', 1], ['own-turn', 3]]) {
+            step(`EDIT ${which}: tab1 opens a 3-turn session from history, edits prompt #${index + 1}`);
+            const prefix = token(`edit${which}`);
+            const [S] = await createSessions(page2, [`/tmp/b808-e2e-${which}`]);
+            const seeded = [];
+            for (let turn = 1; turn <= 3; turn++) {
+                const prompt = `${prefix}-q${turn}`;
+                const answer = `${prefix}-a${turn}`;
+                await userSay(page2, S, [prompt]);
+                await agentSay(page2, S, [answer], 0);
+                seeded.push(prompt, answer);
+            }
+            await nav(page2, S);
+            check(await waitTranscript(page2, S, prefix, 6, 10_000) !== null, `EDIT ${which} tab2 holds the 3 seeded turns`);
+            const page = await ctx1.newPage();
+            page.on('pageerror', (e) => console.log(`tab1/${which} pageerror`, e.message));
+            try {
+                await openSession(page, PROXY_BASE, S);
+                check(await waitTranscript(page, S, prefix, 6, 15_000) !== null, `EDIT ${which} tab1 loaded the 3 turns from history`);
+                if (index === 3) {
+                    const prompt = `${prefix}-q4`;
+                    const answer = `${prefix}-a4`;
+                    await send(page, prompt);
+                    await waitTranscript(page, S, prefix, 7, 5_000);
+                    await agentSay(page2, S, [answer], 0);
+                    check(await waitTranscript(page, S, prefix, 8, 5_000) !== null, `EDIT ${which} tab1 ran its own turn`);
+                    seeded.push(prompt, answer);
+                    await sleep(500);
+                }
+                // No agent here: the wrapper's rewind is stubbed ok. The tombstone and the new prompt are real writes.
+                await page.evaluate(() => import('/src/sync/apiSocket.ts').then(({ apiSocket }) => {
+                    const original = apiSocket.sessionRPC.bind(apiSocket);
+                    apiSocket.sessionRPC = (sid, method, params, opts) => (method === 'conversation-rewind' ? Promise.resolve({ ok: true }) : original(sid, method, params, opts));
+                }));
+                const target = seeded[index * 2];
+                const bubble = page.locator('.msg--user').filter({ hasText: target });
+                await bubble.scrollIntoViewIfNeeded();
+                await bubble.hover();
+                await bubble.getByRole('button', { name: '编辑', exact: true }).click();
+                const editor = page.locator('.msg-edit-inline textarea');
+                const edited = `${prefix}-edited`;
+                await editor.fill(edited);
+                // Production order (QA6 r2dbg): the POST response beats the update
+                // socket's `new-message`. Locally either can win, so make it so.
+                proxy.delayDown('"new-message"', 400);
+                const t0 = Date.now();
+                await page.locator('.msg-edit-inline').getByRole('button', { name: '发送', exact: true }).click();
+                const promptMs = await timeUntilVisible(page, S, edited, HOLD_MS, t0, { confirmed: true });
+                measure(`EDIT-${which}-prompt`, promptMs);
+                check(promptMs !== null && promptMs <= LIVE_LIMIT_MS, `EDIT ${which} the edited prompt is visible ≤ ${LIVE_LIMIT_MS}ms, no reload`, fmt(promptMs));
+                // The "agent" answers once the new prompt is stored.
+                const reply = `${prefix}-reply`;
+                const t1 = Date.now();
+                await agentSay(page2, S, [reply], 0);
+                const replyMs = await timeUntilVisible(page, S, reply, HOLD_MS, t1);
+                measure(`EDIT-${which}-reply`, replyMs);
+                check(replyMs !== null && replyMs <= LIVE_LIMIT_MS, `EDIT ${which} the reply is visible ≤ ${LIVE_LIMIT_MS}ms, no reload`, fmt(replyMs));
+                const expected = [...seeded.slice(0, index * 2), edited, reply];
+                await waitTranscript(page2, S, prefix, expected.length, 5_000);
+                await sleep(500);
+                const list1 = await transcript(page, S, prefix);
+                const list2 = await transcript(page2, S, prefix);
+                const fresh = await ctx2.newPage();
+                await openSession(fresh, BASE, S);
+                await waitTranscript(fresh, S, prefix, expected.length, 15_000);
+                const server = await transcript(fresh, S, prefix);
+                await fresh.close();
+                check(JSON.stringify(list1) === JSON.stringify(expected), `EDIT ${which} tab1 shows the rewritten transcript`, JSON.stringify(list1.map((t) => t.slice(prefix.length))));
+                check(JSON.stringify(list2) === JSON.stringify(expected), `EDIT ${which} tab2 shows the same`, JSON.stringify(list2.map((t) => t.slice(prefix.length))));
+                check(JSON.stringify(server) === JSON.stringify(expected), `EDIT ${which} a fresh load shows the same`, JSON.stringify(server.map((t) => t.slice(prefix.length))));
+                await shot(page, `EDIT-${which}`);
+            } finally {
+                proxy.delayDown(null);
+                await page.close();
+            }
+        }
+        await nav(page2, S1);
     }
 } catch (error) {
     failures += 1;
