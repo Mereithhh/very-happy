@@ -436,7 +436,7 @@
 .notes-list-pin {
     position: absolute;
     top: 6px;
-    right: 6px;
+    right: 32px; /* B-798: the row's ⋯ sits at the edge */
     z-index: 1;
     display: none;
     align-items: center;
@@ -475,5 +475,37 @@
  .notes-screen-new, .notes-meta-btn, .notes-insert-btn, .notes-screen-back, .notes-bind-chip, .notes-list-pin { min-height:44px; }
  .notes-screen-new, .notes-meta-btn, .notes-list-pin { min-width:44px; }
  .notes-editor-ta, .notes-screen-filter { font-size:var(--fs-16); }
- .notes-list-item:has(.notes-list-pin) .notes-list-row { padding-right:56px; min-height:56px; }
+ .notes-list-item:has(.notes-list-pin) .notes-list-row { padding-right:100px; min-height:56px; }
+ .notes-list-pin { right:52px; }
+}
+
+/* B-798 (U1/U3): the row's ⋯ — same items as the long-press menu. Visible by
+   default; only fine-pointer hover devices hide it until hover/focus. */
+.notes-list-row { padding-right:34px; }
+.notes-list-more {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    color: var(--text-dim);
+    background: transparent;
+    cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+    .notes-list-more { opacity: 0; }
+    .notes-list-item:hover .notes-list-more,
+    .notes-list-more:focus-visible,
+    .notes-list-more[data-state='open'] { opacity: 1; }
+    .notes-list-more:hover,
+    .notes-list-more[data-state='open'] { background: var(--bg-3); color: var(--text); }
+}
+@media (pointer: coarse) {
+    .notes-list-more { top: 6px; right: 4px; width: 44px; height: 44px; }
+    .notes-list-row { padding-right:56px; min-height:56px; }
 }

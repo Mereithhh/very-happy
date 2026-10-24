@@ -3,13 +3,14 @@
  * display title (explicit wins, B-119), tag chips, binding chip, compact mono
  * age, filter passthrough, archived view (B-118), and the per-row context
  * menu (right-click / touch long-press via Radix, B-120): pin, rename+tags,
- * archive/unarchive, delete.
+ * archive/unarchive, delete. B-798: the same items behind a visible ⋯ per row —
+ * long-press is a shortcut, never the only way in.
  */
 import { useState } from 'react';
-import { Archive, ArchiveRestore, Link2, Pencil, Pin, StickyNote, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Link2, MoreHorizontal, Pencil, Pin, StickyNote, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Modal } from '@/modal';
-import { ActionContextMenu, TagChip, type MenuItemDef } from '@/ui';
+import { ActionContextMenu, ActionDropdownMenu, TagChip, type MenuItemDef } from '@/ui';
 import { useNotes } from '@/sync/notesStore';
 import { noteDisplayTitle, sortNotes, type NoteRecord } from '@/sync/notes';
 import { RenameModal } from '@/screens/sessions/RenameModal';
@@ -88,6 +89,7 @@ export function NotesList({ filter, activeId, onOpen, onPin, pinLabel, archivedV
         <ul className="notes-list" role="listbox">
             {notes.map((note) => {
                 const title = noteDisplayTitle(note);
+                const items = menuFor(note);
                 return (
                     <li key={note.id} className="notes-list-item">
                         {onPin && (
@@ -101,7 +103,7 @@ export function NotesList({ filter, activeId, onOpen, onPin, pinLabel, archivedV
                                 <Pin size={11} />
                             </button>
                         )}
-                        <ActionContextMenu items={menuFor(note)}>
+                        <ActionContextMenu items={items}>
                             <button
                                 type="button"
                                 className={`notes-list-row${note.id === activeId ? ' is-active' : ''}`}
@@ -122,6 +124,16 @@ export function NotesList({ filter, activeId, onOpen, onPin, pinLabel, archivedV
                                 </span>
                             </button>
                         </ActionContextMenu>
+                        <ActionDropdownMenu items={items} align="end" sideOffset={4}>
+                            <button
+                                type="button"
+                                className="notes-list-more"
+                                aria-label={`${t('common.moreActions')}: ${title || t('notes.untitled')}`}
+                                title={t('common.moreActions')}
+                            >
+                                <MoreHorizontal size={13} />
+                            </button>
+                        </ActionDropdownMenu>
                     </li>
                 );
             })}
