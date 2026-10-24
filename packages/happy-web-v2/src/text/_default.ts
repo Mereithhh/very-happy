@@ -2696,6 +2696,22 @@ export const en = {
         entryShort: 'Major update',
         entryCount: ({ count }: { count: number }) => `${count} unread`,
         releases: {
+            oct25b: {
+                title: 'Calm when offline, smoother edge swipes, no more empty sessions',
+                summary: 'When the connection drops, a bar at the top says so and messages wait to go out on their own. On touch screens with the sidebar as a drawer, swipe from the edge to open it and swipe back to close it. The quick New session opens a draft and only creates the session when you send the first message.',
+                offlineTitle: 'Offline bar, and messages that wait',
+                offlineBody: 'When the connection drops, a thin bar at the top says Offline — reconnecting…, then Back online before it fades. Offline, the send button becomes Queue while offline: messages go out on their own once you are back, even after more than 15 seconds offline.',
+                offlineAlt: 'Two phone screens of the same session: the top bar says Offline — reconnecting… with a queued composer, then Back online',
+                drawerTitle: 'Swipe from the edge to open the sidebar',
+                drawerBody: 'Where the sidebar is a drawer (unfolded iPhone Duo, tablets in portrait), swipe right from the left edge and it follows your finger; swipe left on it, or tap outside, to close it. Vertical scrolling in the list is left alone.',
+                drawerAlt: 'An unfolded foldable in landscape with the sidebar drawer open over a session',
+                draftTitle: 'New session starts as a draft',
+                draftBody: 'The quick New session (sidebar +, a project head’s +, ⌘N) opens a draft where you can change agent, machine and folder. The session is created when you send the first message, and leaving the draft leaves nothing behind in the sidebar; tap New session again to get your text back.',
+                draftAlt: 'A phone showing a New session draft with agent, machine and folder fields above the message box',
+                browserBack: 'Edge swipe back: in a browser tab Very Happy no longer takes over the edge swipe, so the browser’s own swipe back works as usual. Only the app added to the Home Screen swipes back from the edge itself.',
+                attachments: 'Messages with attachments wait for the connection; text messages are queued and sent as soon as you reconnect.',
+                draftFail: 'If starting the session fails, your first message stays on the page marked Not sent, with Retry and Edit.',
+            },
             oct25a: {
                 title: 'Easier on phones: ⋯ always there, menus as bottom sheets, Back that leads home',
                 summary: 'On phones and other touch screens you no longer need a long-press to find actions: every list row shows its ⋯, menus open as a bottom sheet that scrolls, Back after a link walks up to Home, and small controls are at least 44 px to tap.',
