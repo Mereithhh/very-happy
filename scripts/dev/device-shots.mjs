@@ -230,7 +230,12 @@ async function prepare(page, kind) {
     } else if (kind === 'sync' || kind === 'sync-slow') {
         // Seeds the stores the real sync path drives (sync.ts → catchUpStatus / promptQueue). On a build
         // without B-804 the imports or fields are missing and the page shows what it showed before.
-        await page.evaluate(async (slow) => {
+        // Queue texts follow --locale so the en captures don't show Chinese prompts.
+        const en = locale.startsWith('en');
+        const texts = en
+            ? { queued: 'Run lint again and check for new warnings', dispatched: 'Run the unit tests once the type errors are fixed' }
+            : { queued: '再跑一遍 lint，确认没有新的警告', dispatched: '把类型错误修完后跑一下单测' };
+        await page.evaluate(async ({ slow, texts }) => {
             const sid = 'dev-plain';
             const { storage } = await import('/src/sync/storage.ts');
             const session = storage.getState().sessions[sid];
@@ -239,8 +244,8 @@ async function prepare(page, kind) {
             const { promptQueueStore } = await import('/src/sync/promptQueue.ts');
             promptQueueStore.setState((s) => ({ sessions: { ...s.sessions, [sid]: {
                 status: 'ready',
-                items: [{ id: 'q2', localId: 'l2', position: 1, text: '再跑一遍 lint，确认没有新的警告', modeMeta: {}, createdAt: Date.now() }],
-                dispatched: [{ localId: 'l1', text: '把类型错误修完后跑一下单测' }],
+                items: [{ id: 'q2', localId: 'l2', position: 1, text: texts.queued, modeMeta: {}, createdAt: Date.now() }],
+                dispatched: [{ localId: 'l1', text: texts.dispatched }],
             } } }));
             try {
                 const { networkStore } = await import('/src/sync/networkStatus.ts');
@@ -248,7 +253,7 @@ async function prepare(page, kind) {
                 networkStore.setState({ syncing: [`messages:${sid}`] });
                 catchUpStore.setState({ sessions: { [sid]: slow ? 'slow' : 'syncing' } });
             } catch { /* before B-804 */ }
-        }, kind === 'sync-slow');
+        }, { slow: kind === 'sync-slow', texts });
         await page.waitForTimeout(400);
     } else if (kind === 'board') {
         // The user's path: phones drop the top sheet from the summary strip; wider screens use the header button (aside tab).

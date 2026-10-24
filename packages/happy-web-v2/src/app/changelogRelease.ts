@@ -139,6 +139,26 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-25-messages-unstuck',
+    date: '2026-10-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct25c.title',
+    summaryKey: 'changelog.releases.oct25c.summary',
+    highlights: [
+      {
+        key: 'sync',
+        titleKey: 'changelog.releases.oct25c.syncTitle',
+        bodyKey: 'changelog.releases.oct25c.syncBody',
+        image: changelogShots('2026-10-25c', 'sync', SHOT_SIZE, 'changelog.releases.oct25c.syncAlt'),
+      },
+    ],
+    itemKeys: [
+      'changelog.releases.oct25c.queue',
+      'changelog.releases.oct25c.resend',
+      'changelog.releases.oct25c.requests',
+    ],
+  },
+  {
     id: '2026-10-25-offline-gestures-draft',
     date: '2026-10-25',
     buildVersion: __APP_VERSION__,
