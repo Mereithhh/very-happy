@@ -1467,7 +1467,8 @@ export function Sidebar() {
               return sections.map((sec) => (
                 <div key={sec.id} className={`sb-section${sec.project ? ' sb-section--project' : ''}${sec.area ? ' sb-section--area' : ''}`}>
                   {/* B-762 (spec B-760 §5.1): a project is the tree's level-1 node — chevron (fold) ·
-                      FolderKanban · name (opens the project) · 需要你 badge or session count; hover ＋ / ⋯,
+                      FolderKanban · name (opens the project) · 需要你 badge or session count · ＋ / ⋯ (hover on desktop,
+                      always on touch — B-798),
                       right-click / long-press = the project menu (a bottom sheet on touch). */}
                   {sec.project && (() => {
                     const project = sec.project;
@@ -1487,16 +1488,16 @@ export function Sidebar() {
                                 ? <span className="sb-tree-badge" role="img" title={t('sidebar.treeAttention', { count: sec.attention }) as string} aria-label={t('sidebar.treeAttention', { count: sec.attention }) as string}>{sec.attention}</span>
                                 : <span className="sb-tree-count mono">{sec.count}</span>}
                             </button>
-                            <span className="sb-tree-project-acts">
+                            <span className="sb-tree-acts">
                             <button
-                              type="button" className="sb-project-act" disabled={creatingChat}
+                              type="button" className="sb-tree-act" disabled={creatingChat}
                               title={`${projectCopy.newSession}：${sec.label}`}
                               aria-label={`${projectCopy.newSession}: ${sec.label}`}
                               onPointerDown={prefetchSessionDetail}
                               onClick={() => newProjectSession(project)}
                             ><Plus size={14} /></button>
                             <ActionDropdownMenu items={projectItems(project)} align="end" sideOffset={4} sheetTitle={project.name}>
-                              <button type="button" className="sb-project-act" title={projectCopy.actions} aria-label={`${projectCopy.actions}: ${sec.label}`}><MoreHorizontal size={14} /></button>
+                              <button type="button" className="sb-tree-act" title={projectCopy.actions} aria-label={`${projectCopy.actions}: ${sec.label}`}><MoreHorizontal size={14} /></button>
                             </ActionDropdownMenu>
                             </span>
                           </div>

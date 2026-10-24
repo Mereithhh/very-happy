@@ -1,8 +1,7 @@
 /**
  * B-759: a sidebar team row. The row (click, Enter) opens the team page, the
  * chevron only folds the member list, and the expanded 「负责人」 row opens the
- * lead. The context menu holds team page / lead / settings / fold — no hover
- * button.
+ * lead. The context menu holds team page / lead / settings / fold.
  *
  * B-762 (spec B-760 §5.1): a level-2 node of the project tree (level 1 under
  * 不在项目中) — one line, UsersRound 15, the 需要你 badge of its members (else
@@ -11,11 +10,14 @@
  * long-press menu is a bottom sheet headed by the team name.
  *
  * B-763 adds 「换项目…」: B-726's team project picker, in a dialog.
+ *
+ * B-798 (U1): a ⋯ at the row's end opens the same items — always visible on
+ * touch, on hover with a fine pointer — so long-press is only a shortcut.
  */
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import type { TeamState } from '@slopus/happy-wire';
-import { ChevronRight, ChevronDown, FolderInput, LayoutDashboard, MessageSquare, Settings2, UsersRound } from 'lucide-react';
-import { ActionContextMenu, Spinner, type MenuItemDef } from '@/ui';
+import { ChevronRight, ChevronDown, FolderInput, LayoutDashboard, MessageSquare, MoreHorizontal, Settings2, UsersRound } from 'lucide-react';
+import { ActionContextMenu, ActionDropdownMenu, Spinner, type MenuItemDef } from '@/ui';
 import { useProjects } from '@/sync/projects';
 import { useTranslation } from '@/i18n/useTranslation';
 import { teamProjectMenu } from '@/screens/projects/projectChoice';
@@ -30,6 +32,8 @@ export interface SidebarTeamRowCopy {
   openLead: string;
   settings: string;
   running: string;
+  /** B-798: the row's ⋯ (aria-label prefix) */
+  actions: string;
 }
 
 export function SidebarTeamRow(props: {
@@ -85,6 +89,11 @@ export function SidebarTeamRow(props: {
               : <span className="sb-tree-count">{props.countLabel}</span>}
             {props.badge}
           </button>
+          <span className="sb-tree-acts">
+            <ActionDropdownMenu items={items} align="end" sideOffset={4} sheetTitle={team.name}>
+              <button type="button" className="sb-tree-act sb-team-menu" title={copy.actions} aria-label={`${copy.actions}: ${team.name}`}><MoreHorizontal size={14} /></button>
+            </ActionDropdownMenu>
+          </span>
         </div>
       </div>
     </ActionContextMenu>
