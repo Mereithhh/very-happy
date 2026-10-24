@@ -166,7 +166,9 @@ export function advanceLastSeq(current: number | undefined, seqs: readonly numbe
  * `lastSeq` may only move over seqs whose messages are reflected locally:
  * confirmed tracked items, and untracked batch items (tombstones, reduced when
  * enqueued). A seq we did not apply must not be skipped over, or its echo is
- * dropped as "already reduced" (review B-513).
+ * dropped as "already reduced" (review B-513). An optimistic `transcript-drop`
+ * is reduced without its seq, so its `untracked` ack must close the range
+ * (B-808) — the skipped echo would have.
  */
 export function interpretSendResponse(
     stored: readonly { id: string; seq: number; localId: string | null }[],
@@ -175,18 +177,21 @@ export function interpretSendResponse(
 ): {
     ackedIds: Set<string>;
     acks: { localId: string; seq: number; id: string }[];
+    untracked: { localId: string; seq: number }[];
     lastSeqCandidates: number[];
 } {
     const ackedIds = new Set<string>();
     const acks: { localId: string; seq: number; id: string }[] = [];
+    const untracked: { localId: string; seq: number }[] = [];
     const lastSeqCandidates: number[] = [];
     for (const message of stored) {
         if (typeof message.localId !== 'string' || !batchIds.has(message.localId)) continue;
         ackedIds.add(message.localId);
         if (trackedIds.has(message.localId)) acks.push({ localId: message.localId, seq: message.seq, id: message.id });
+        else untracked.push({ localId: message.localId, seq: message.seq });
         lastSeqCandidates.push(message.seq);
     }
-    return { ackedIds, acks, lastSeqCandidates };
+    return { ackedIds, acks, untracked, lastSeqCandidates };
 }
 
 /**

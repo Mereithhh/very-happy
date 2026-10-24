@@ -889,8 +889,8 @@ export const storage = create<StorageState>()((set, get) => {
             const existing = state.sessionMessages[sessionId];
             // No reducer state (never loaded, or deleted): nothing is on screen.
             if (!existing) return state;
-            const { messages, removed } = applySendStateUpdate(existing.reducerState, update);
-            if (messages.length === 0 && removed.length === 0) return state;
+            const { messages, removed, rangesChanged } = applySendStateUpdate(existing.reducerState, update);
+            if (messages.length === 0 && removed.length === 0 && !rangesChanged) return state;
             const messagesMap = { ...existing.messagesMap };
             for (const id of removed) delete messagesMap[id];
             for (const message of messages) messagesMap[message.id] = message;

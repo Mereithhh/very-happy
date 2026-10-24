@@ -233,9 +233,10 @@ export type ReducerState = {
     /**
      * B-528: conversation ranges hidden by `transcript-drop` tombstones, by
      * tombstone id. `toSeq: null` = open-ended until the tombstone's own echo
-     * brings its seq (the optimistic local copy has none).
+     * brings its seq (the optimistic local copy has none) — or, B-808, the
+     * send ack for its `localId` does (`closeDropRanges`).
      */
-    dropRanges: Map<string, { fromSeq: number; toSeq: number | null }>;
+    dropRanges: Map<string, { fromSeq: number; toSeq: number | null; localId: string | null }>;
     /** B-332: tombstone reasons by localKey. Only CLI-originated tombstones carry one. */
     canceledQueuedReasons: Map<string, string>;
     /**
@@ -525,7 +526,7 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
         const toSeq = msg.content.toSeq ?? (typeof msg.seq === 'number' ? msg.seq : null);
         const previous = state.dropRanges.get(msg.id);
         if (previous && previous.toSeq !== null && toSeq === null) continue;
-        state.dropRanges.set(msg.id, { fromSeq: msg.content.fromSeq, toSeq });
+        state.dropRanges.set(msg.id, { fromSeq: msg.content.fromSeq, toSeq, localId: msg.localId ?? null });
     }
 
     // First, trace all messages to identify sidechains
@@ -1769,6 +1770,13 @@ export type SendStateUpdate = {
     failures?: readonly { localId: string; restorable: boolean }[];
     /** Failed items taken back into the composer. */
     withdraw?: readonly string[];
+    /**
+     * B-808: server seqs of acked batch items that carry no send state
+     * (tombstones). An open-ended `transcript-drop` range closes here: the ack
+     * moves lastSeq past the tombstone, so its live echo is skipped as
+     * already reduced and would never close it.
+     */
+    stored?: readonly { localId: string; seq: number }[];
 };
 
 /**
@@ -1791,10 +1799,28 @@ function markSending(state: ReducerState, localIds: readonly string[], changed: 
     }
 }
 
-/** B-513: apply outbox outcomes; returns the re-converted rows plus ids to drop from the view. */
-export function applySendStateUpdate(state: ReducerState, update: SendStateUpdate): { messages: Message[]; removed: string[] } {
+/** B-808: close open-ended drop ranges whose tombstone the server stored; true when one closed. */
+function closeDropRanges(state: ReducerState, stored: readonly { localId: string; seq: number }[]): boolean {
+    let closed = false;
+    for (const { localId, seq } of stored) {
+        for (const range of state.dropRanges.values()) {
+            if (range.toSeq !== null || range.localId !== localId) continue;
+            range.toSeq = seq;
+            closed = true;
+        }
+    }
+    return closed;
+}
+
+/**
+ * B-513: apply outbox outcomes; returns the re-converted rows plus ids to drop
+ * from the view. `rangesChanged`: a drop range narrowed, so rows it hid must
+ * come back (B-808).
+ */
+export function applySendStateUpdate(state: ReducerState, update: SendStateUpdate): { messages: Message[]; removed: string[]; rangesChanged: boolean } {
     const changed = new Set<string>();
     const removed: string[] = [];
+    const rangesChanged = closeDropRanges(state, update.stored ?? []);
     if (update.sending) markSending(state, update.sending, changed);
     for (const ack of update.acks ?? []) {
         confirmLocalId(state, ack.localId, ack.seq, ack.id, changed);
@@ -1825,7 +1851,7 @@ export function applySendStateUpdate(state: ReducerState, update: SendStateUpdat
         const message = convertReducerMessageToMessage(existing, state);
         if (message) messages.push(message);
     }
-    return { messages, removed };
+    return { messages, removed, rangesChanged };
 }
 
 function sendStateFields(reducerMsg: ReducerMessage, state: ReducerState): { sendState?: SendState; sendRestorable?: true } {

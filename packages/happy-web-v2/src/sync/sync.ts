@@ -2618,8 +2618,8 @@ class Sync {
             this.outboxRecords.delete(ack.localId);
             this.sendDeadlines.delete(ack.localId);
         }
-        if (outcome.acks.length > 0) {
-            storage.getState().applyOutboxResult(sessionId, { acks: outcome.acks });
+        if (outcome.acks.length > 0 || outcome.untracked.length > 0) {
+            storage.getState().applyOutboxResult(sessionId, { acks: outcome.acks, stored: outcome.untracked });
             markSendConfirmed(outcome.acks.map((ack) => ack.localId));
         }
         if (outcome.lastSeqCandidates.length > 0) this.advanceSessionLastSeq(sessionId, outcome.lastSeqCandidates);

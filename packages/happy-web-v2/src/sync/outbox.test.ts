@@ -185,6 +185,8 @@ describe('B-513 review: interpretSendResponse', () => {
         const out = interpretSendResponse(stored, new Set(['file', 'text', 'tomb']), new Set(['file', 'text']));
         expect([...out.ackedIds]).toEqual(['file', 'text', 'tomb']);
         expect(out.acks.map((a) => a.localId)).toEqual(['file', 'text']);
+        // B-808: the tombstone's seq is handed back so its drop range closes.
+        expect(out.untracked).toEqual([{ localId: 'tomb', seq: 13 }]);
         expect(out.lastSeqCandidates).toEqual([11, 12, 13]);
     });
 
