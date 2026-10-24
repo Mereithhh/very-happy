@@ -129,6 +129,10 @@ export interface PendingSessionDeps {
     readDraft(pendingId: string): string;
     /** B-801: keep a left draft page's text on this device for the next 「新会话」. */
     stashNewChatDraft(text: string): void;
+    /** B-801: take that text back (and clear it) — a left draft page is reopened. */
+    takeNewChatDraft(): string;
+    /** B-801: put text into a pending id's draft key (its composer's initial text). */
+    writeDraft(pendingId: string, text: string): void;
     /** A cancelled spawn still created this session — stop it (user intent). */
     killSession(sessionId: string): void;
     /** Success side effects: recent path, task-board attach, project join, timing.
@@ -312,6 +316,8 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
     /** discarded while their spawn was in flight — a late success is killed */
     const cancelled = new Set<string>();
     const shownWaiters = new Map<string, Array<() => void>>();
+    /** B-801: drafts this tab left (back / forward to their URL reopens them). */
+    const leftDrafts = new Map<string, PendingSessionRecord>();
     let viewing: string | null = null;
     let version = 0;
 
@@ -693,7 +699,22 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
             if (current?.state !== 'draft' || viewing === pendingId) return false;
             const text = deps.readDraft(pendingId);
             if (text.trim()) deps.stashNewChatDraft(text);
+            leftDrafts.set(pendingId, current);
             return store.discard(pendingId);
+        },
+        /** B-801: the user came back (history) to a draft page this tab left. */
+        canReopenDraft: (pendingId: string): boolean => leftDrafts.has(pendingId) && !records.has(pendingId),
+        /** Put a left draft back where it was, with its stashed text in the composer. */
+        reopenDraft(pendingId: string): boolean {
+            const left = leftDrafts.get(pendingId);
+            if (!left || records.has(pendingId)) return false;
+            leftDrafts.delete(pendingId);
+            const text = deps.takeNewChatDraft();
+            if (text.trim()) deps.writeDraft(pendingId, text);
+            records = new Map(records).set(pendingId, { ...left, ownerTab: deps.tabId });
+            persist([pendingId]);
+            notify();
+            return true;
         },
         /** B-801: a new 「新会话」 replaces this tab's open drafts; returns their text. */
         takeDrafts(): string {

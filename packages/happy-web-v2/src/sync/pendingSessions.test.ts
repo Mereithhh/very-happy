@@ -32,6 +32,7 @@ function harness(opts: { saved?: unknown; backing?: Backing; tabId?: string; ali
     const spawns: Array<{ options: Parameters<PendingSessionDeps['spawn']>[0]; result: ReturnType<typeof deferred<SpawnSessionResult>> }> = [];
     const events: string[] = [];
     const drafts: Record<string, string> = {};
+    const stash = { text: '' };
     let seq = 0;
     const tabId = opts.tabId ?? 'tab-a';
     alive.add(tabId);
@@ -54,7 +55,9 @@ function harness(opts: { saved?: unknown; backing?: Backing; tabId?: string; ali
         migrateDraft: vi.fn(),
         clearKeys: vi.fn((id: string) => { delete drafts[id]; }),
         readDraft: (id: string) => drafts[id] ?? '',
-        stashNewChatDraft: vi.fn(),
+        stashNewChatDraft: vi.fn((text: string) => { stash.text = text; }),
+        takeNewChatDraft: () => { const text = stash.text; stash.text = ''; return text; },
+        writeDraft: (id: string, text: string) => { drafts[id] = text; },
         killSession: vi.fn(),
         onSpawned: vi.fn(),
         notifyFailure: vi.fn(),
@@ -550,6 +553,21 @@ describe('B-801 draft new sessions', () => {
         expect(h.deps.clearKeys).toHaveBeenCalledWith(record.pendingId);
         expect(h.spawns).toHaveLength(0);
         expect(h.deps.killSession).not.toHaveBeenCalled();
+    });
+
+    it('coming back (history) to a left draft reopens it with its text; a send then starts it', () => {
+        const h = harness();
+        const record = h.store.create({ ...input, draft: true });
+        h.store.setTarget(record.pendingId, { path: '/chosen' });
+        h.drafts[record.pendingId] = 'half typed';
+        h.store.leaveDraft(record.pendingId);
+        expect(h.store.canReopenDraft(record.pendingId)).toBe(true);
+        expect(h.store.reopenDraft(record.pendingId)).toBe(true);
+        expect(h.store.get(record.pendingId)).toMatchObject({ state: 'draft', path: '/chosen', ownerTab: 'tab-a' });
+        expect(h.drafts[record.pendingId]).toBe('half typed');
+        expect(h.store.canReopenDraft(record.pendingId)).toBe(false);
+        expect(h.store.append(record.pendingId, 'go')).toBe(true);
+        expect(h.spawns[0].options).toMatchObject({ directory: '/chosen' });
     });
 
     it('leaving an empty draft stashes nothing; leaving a started one changes nothing', () => {

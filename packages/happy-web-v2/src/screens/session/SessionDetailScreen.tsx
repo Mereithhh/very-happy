@@ -263,6 +263,11 @@ export function SessionDetailScreen() {
         if (foreignPending) void pendingSessions.resume();
     }, [foreignPending]);
     const pendingInitialDraft = useMemo(() => (pendingId ? pendingDraft(pendingId) : ''), [pendingId]);
+    // B-801: back / forward to a draft page this tab left → the same draft again, text included.
+    const reopenable = isPendingSessionId(routeId) && !pending && pendingSessions.canReopenDraft(routeId!);
+    useEffect(() => {
+        if (reopenable) pendingSessions.reopenDraft(routeId!);
+    }, [reopenable, routeId]);
 
     // B-798 P1-8: an id the loaded list does not have → ask the server for it
     // (old sessions fall outside the list's 150 rows); only a 404 is 「不存在」.
@@ -305,6 +310,7 @@ export function SessionDetailScreen() {
     }
 
     // A pending id without a record: discarded, or opened in another browser.
+    if (reopenable) return null;
     if (isPendingSessionId(routeId) && !pending) {
         return (
             <EmptyState

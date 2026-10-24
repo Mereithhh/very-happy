@@ -77,7 +77,8 @@ B-798 走查 P2-14：快捷「新会话」（侧栏 ＋、项目组头 ＋、⌘
 - 快捷路径 `pendingSessions.create({ draft: true })` 建 `state:'draft'`、`deferred:true` 的记录，**不发 spawn**、侧栏不出行（`PendingSessionRows` 只列 spawning / needs-approval / failed）；页头显示「草稿」，正文是 agent / 机器 / 目录选择（`setTarget`，只在 draft 态生效；换 agent 时按新 agent 的默认权限、清空 model/effort）+ 项目归属一句话，model / 权限 / effort 仍在输入框。
 - 首条消息 `append` 把记录切到 `spawning`，该消息是 outbox 唯一一条，之后与 B-516 完全相同（乐观上屏「发送中…」→ spawn → 落地后按序送达）。spawn RPC 不带首条消息（daemon `spawn-happy-session` 无 initial prompt 参数），所以新 web × 任意 CLI 都是「先 spawn 再发送」，**无需改 CLI**。
 - `deferred` 记录失败时**不把 outbox 退回输入框**：消息留在页上标「未发送」，「重试」重新 spawn 并送达它；「返回修改」回到 draft 态，消息回输入框、目标可改。草稿首条消息不可从 outbox 删除。
-- 离开草稿页（路由切走 / ⌘W）= `leaveDraft`：草稿文本存进本设备 `new-chat-draft-v1`，记录与其键删除，什么都不留下；在页上（StrictMode 重挂、快速返回）不删。再点「新会话」时，本标签页仍开着的草稿被 `takeDrafts` 接走（文本带过来），否则从设备暂存恢复；显式预填（命令面板）优先，暂存保留。关标签页留下的 draft 记录不可见，24 h 过期；属主消失时被接管但不启动。
+- 离开草稿页（路由切走 / ⌘W）= `leaveDraft`：草稿文本存进本设备 `new-chat-draft-v1`，记录与其键删除，什么都不留下；在页上（StrictMode 重挂、快速返回）不删。再点「新会话」时，本标签页仍开着的草稿被 `takeDrafts` 接走（文本带过来），否则从设备暂存恢复；显式预填（命令面板）优先，暂存保留。关标签页留下的 draft 记录不可见，24 h 过期；属主消失时被接管但不启动。同一标签页用浏览器后退/前进回到刚离开的草稿 URL，草稿原地复原（`reopenDraft`，取回暂存文本），不显示「已不存在」。
+- 首条消息从发出起就在 pending 记录的 outbox 里（localStorage，按记录读-改-写），不在组件 state：spawn 期间切走会话，store 照常 spawn 并送达；回到 pending URL 时已落地则跳真会话。
 - 范围外保持原样：新建会话弹窗（显式「创建」）、项目页输入框、任务看板派发、团队、自动化。
 
 ### B-515 Claude 预热（先量后做，CLI 内部，无协议变更）

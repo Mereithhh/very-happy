@@ -57,7 +57,7 @@ vi.mock('@/sync/pendingSessionsRuntime', async () => {
         subscribeSessions: h.subscribe,
         sendMessage: async (_id, text) => { h.sent.push(text); return 'receipt'; },
         writePermissionMode: () => {}, writeModelMode: () => {}, writeEffortLevel: () => {},
-        restoreText: () => {}, clearKeys: () => {}, readDraft: (id) => h.drafts[id] ?? '', stashNewChatDraft: (text) => h.stash(text), onSpawned: () => {}, notifyFailure: () => {},
+        restoreText: () => {}, clearKeys: () => {}, readDraft: (id) => h.drafts[id] ?? '', stashNewChatDraft: (text) => h.stash(text), takeNewChatDraft: () => '', writeDraft: () => {}, onSpawned: () => {}, notifyFailure: () => {},
         load: () => structuredClone(h.table), save: (records) => { h.table = structuredClone(records); }, now: () => 1, newId: () => `n${++n}`, sessionWaitMs: 60_000,
     });
     return {
@@ -172,6 +172,12 @@ describe('SessionDetailScreen pending page (B-516)', () => {
         expect(pendingSessions.get(record.pendingId)).toBeUndefined();
         expect(h.stash).toHaveBeenCalledWith('half typed');
         expect(h.spawn).toBeNull();
+        // back to the left draft's URL: the same draft again, not 「已不存在」
+        await act(async () => { nav(-1); });
+        await flush();
+        expect(pendingSessions.get(record.pendingId)?.state).toBe('draft');
+        expect(host.querySelector('[data-pending-header="draft"]')).not.toBeNull();
+        expect(host.querySelector('[data-empty]')).toBeNull();
     });
 
     it('renders the pending layout at once, skips viewing-session calls, and lands without remounting the composer', async () => {
