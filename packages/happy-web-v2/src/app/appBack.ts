@@ -15,7 +15,8 @@
  *  2. **Hierarchical parent otherwise.** Deep link, PWA cold start or a full
  *     reload all land you on a detail view with an EMPTY in-app stack; going
  *     "back" would leave the app. Then we walk up the information architecture
- *     instead (see `backParentPath`).
+ *     instead (see `backParentPath`), REPLACING the current entry so the
+ *     stack stays empty and the next press keeps climbing (`backNavigation`).
  *  3. **Nothing at the root.** `/` has no parent — the control hides.
  *
  * Why an own depth counter and not `document.referrer` / `history.length`:
@@ -114,6 +115,30 @@ export function resolveBackTarget(ctx: BackContext): BackTarget {
 }
 
 /**
+ * How a resolved target is handed to `navigate`. The parent fallback MUST
+ * replace: it runs exactly when the in-app stack is empty (deep link / cold
+ * start), and a PUSH there would bump the depth to 1 — the parent's own back
+ * would then `navigate(-1)` straight into the deep link again, ping-ponging
+ * child ↔ parent forever with no way home (B-798 P0-2). Replacing keeps the
+ * depth at 0, so each press walks one level up the IA until `/`.
+ */
+export function backNavigation(
+  target: BackTarget,
+): { delta: -1 } | { to: string; replace: true } | null {
+  if (target.kind === 'history') return { delta: -1 };
+  if (target.kind === 'path') return { to: target.to, replace: true };
+  return null;
+}
+
+/** In-app depth after one router transition. REPLACE keeps the depth: it swaps
+ *  the current entry, it does not add one. */
+export function nextNavDepth(depth: number, navType: 'PUSH' | 'POP' | 'REPLACE'): number {
+  if (navType === 'PUSH') return depth + 1;
+  if (navType === 'POP') return Math.max(0, depth - 1);
+  return depth;
+}
+
+/**
  * Back chord: `⌘[` (mac, matching Safari/Chrome) and `Alt+←` (everywhere).
  *
  * Editable targets: `Alt+←` is "move one word left" in every text field AND in
@@ -185,12 +210,9 @@ function useNavHistoryTracker(): void {
   useEffect(() => {
     if (first.current) {
       first.current = false;
-    } else if (navType === 'PUSH') {
-      navDepth += 1;
-    } else if (navType === 'POP') {
-      navDepth = Math.max(0, navDepth - 1);
+    } else {
+      navDepth = nextNavDepth(navDepth, navType);
     }
-    // REPLACE keeps the depth: it swaps the current entry, it does not add one.
     const hub = navHubFor(location.pathname);
     if (hub) setNavOrigin(hub);
     // location.key changes once per history entry — the right granularity.
@@ -225,15 +247,11 @@ export function useAppBack(): AppBack {
       depth: getNavDepth(),
       origin: getNavOrigin(),
     });
-    if (target.kind === 'history') {
-      navigate(-1);
-      return true;
-    }
-    if (target.kind === 'path') {
-      navigate(target.to);
-      return true;
-    }
-    return false;
+    const nav = backNavigation(target);
+    if (!nav) return false;
+    if ('delta' in nav) navigate(nav.delta);
+    else navigate(nav.to, { replace: nav.replace });
+    return true;
   }, [navigate]);
 
   return {

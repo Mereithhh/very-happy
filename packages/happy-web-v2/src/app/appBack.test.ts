@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   backParentPath,
   resolveBackTarget,
+  backNavigation,
+  nextNavDepth,
   matchBackChord,
   navHubFor,
   type BackOrigin,
@@ -126,6 +128,66 @@ describe('resolveBackTarget', () => {
 // ---------------------------------------------------------------------------
 // chord
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// deep link → repeated back must reach home (B-798 P0-2)
+// ---------------------------------------------------------------------------
+
+/** A browser history stack driven by the real resolver + navigation mapping +
+ *  depth tracker: what pressing the in-app back control N times does. */
+function pressBackRepeatedly(deepLink: string, presses: number): string[] {
+  const stack = [deepLink];
+  let index = 0;
+  let depth = 0; // fresh document — the deep-link / cold-start case
+  const visited = [deepLink];
+  for (let i = 0; i < presses; i++) {
+    const [pathname, search = ''] = stack[index].split(/(?=\?)/);
+    const target = resolveBackTarget({ pathname, search, depth, origin: null });
+    const nav = backNavigation(target);
+    if (!nav) break;
+    if ('delta' in nav) {
+      index += nav.delta;
+      depth = nextNavDepth(depth, 'POP');
+    } else if (nav.replace) {
+      stack[index] = nav.to;
+      depth = nextNavDepth(depth, 'REPLACE');
+    } else {
+      stack.splice(index + 1, stack.length, nav.to);
+      index += 1;
+      depth = nextNavDepth(depth, 'PUSH');
+    }
+    visited.push(stack[index]);
+  }
+  return visited;
+}
+
+describe('backNavigation', () => {
+  it('maps history to -1 and the parent fallback to a REPLACE', () => {
+    expect(backNavigation({ kind: 'history' })).toEqual({ delta: -1 });
+    expect(backNavigation({ kind: 'path', to: '/settings' })).toEqual({ to: '/settings', replace: true });
+    expect(backNavigation({ kind: 'none' })).toBe(null);
+  });
+
+  it('depth: PUSH +1, POP −1 (floored), REPLACE unchanged', () => {
+    expect(nextNavDepth(0, 'PUSH')).toBe(1);
+    expect(nextNavDepth(2, 'POP')).toBe(1);
+    expect(nextNavDepth(0, 'POP')).toBe(0);
+    expect(nextNavDepth(3, 'REPLACE')).toBe(3);
+  });
+
+  const deepLinks: Array<[string, string[]]> = [
+    ['/settings/account', ['/settings/account', '/settings', '/']],
+    ['/teams/demo', ['/teams/demo', '/teams', '/']],
+    ['/projects/p1/settings', ['/projects/p1/settings', '/projects/p1', '/projects', '/']],
+    ['/machine/m1', ['/machine/m1', '/settings/machines', '/settings', '/']],
+    ['/session/abc', ['/session/abc', '/']],
+  ];
+  for (const [link, path] of deepLinks) {
+    it(`deep link ${link}: repeated back climbs to / and stops — no child ↔ parent loop`, () => {
+      expect(pressBackRepeatedly(link, 10)).toEqual(path);
+    });
+  }
+});
 
 describe('matchBackChord', () => {
   function ev(over: Partial<Parameters<typeof matchBackChord>[0]> = {}) {

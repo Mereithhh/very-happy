@@ -301,7 +301,7 @@ Happy Bot 保留在历史记录与搜索别名中；既有设置键无需随显�
 - 设备回归：`node scripts/dev/device-shots.mjs`（预设 duo-folded 466×678、duo-open-land 890×626、duo-open-port 626×890、phone、desktop；`--fold` 做折叠 ↔ 展开往返断言），页面来自 DEV `/dev/device/*` 的真实外壳。
 - Safe area 四边都算（B-796）：iPhone Duo 外屏竖屏把时间/相机/状态图标放在**右侧竖列**（第三方实测 inset 上 0 · 右 84 · 下 34 · 左 0），横屏手机也有左右 inset。样式只经 `base.css` 的 `--sa-t/r/b/l` 读 inset，不直接写 `env(safe-area-inset-*)`（`safeAreaSides.test.ts` 守护）；外壳 `.app-shell` 统一留左右，顶/底由各自 header/footer 留，fixed 浮层（sheet、全屏面板、toast、居中弹窗）自己四向留白，背景可铺到 inset 下但可点控件不能进。`device-shots --devices duo-folded-inset` 注入 `--sa-*` 并画出状态列，`inInset` 断言无控件落入；真机数值看 设置 → 诊断 → 屏幕四边安全区（`/dev/safe-area`，生产可用）。
 - 视口高度与软键盘（B-797）：全屏外壳只用 `--app-h`。CSS 给首帧值，`app/viewportVars.ts` 把它夹到 `innerHeight + 顶部 inset`（iPhone Duo 外屏 PWA 的 100lvh=678 比 657 的 web view 高 21px，根文档会被拖出空白与顶部模糊；普通 iPhone black-translucent 的 innerHeight+inset 正好等于 100lvh，仍铺满）。app 屏挂 `useRootScrollLock`，根文档永不滚动，只有内部容器滚；公开页（landing/docs）保留页面滚动。iOS 键盘只缩 visualViewport：键盘弹出时写 `--vv-h`/`--vv-top`、`<html data-keyboard-open>`，#root 与弹窗遮罩跟随可见区，`--sa-b` 归零；不用 `scrollTo` 抵消 iOS 平移。触屏返回键 44×44，统一在左上。模拟回归：`scripts/dev/ios-viewport-sim.mjs`（Playwright WebKit）；真机数值看 设置 → 诊断 → 视口诊断 的键盘测试区。
-- 手机布局（<600，或 <1100 的粗指针）每个二级页左上角都有统一 `BackButton`（有应用内历史就后退，否则按 `appBack.ts` 的层级上一级）；宽屏已有位置路径的页用 `narrow` 只在窄屏出现。`device-shots --pages secondary` 逐页断言。
+- 手机布局（<600，或 <1100 的粗指针）每个二级页左上角都有统一 `BackButton`（有应用内历史就后退，否则按 `appBack.ts` 的层级上一级，并以 replace 替换当前条目，深链进入后连按返回逐级回到首页而不会在子页和父页间往返，B-798）；宽屏已有位置路径的页用 `narrow` 只在窄屏出现。`device-shots --pages secondary` 逐页断言。
 
 ### 工作台预览补充（2026-09-10）
 
