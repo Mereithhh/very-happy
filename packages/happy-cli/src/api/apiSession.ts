@@ -906,12 +906,34 @@ export class ApiSessionClient extends EventEmitter {
                     if (batch.some((item) => !storedLocalIds.has(item.localId))) {
                         throw new Error('Central persistence response omitted a session message');
                     }
-                    this.noteHandledSeqs(stored.map((message) => message.seq));
-                    for (const item of batch) {
-                        if (this.routedInboundLocalIds.has(item.localId)) continue;
+                    const seqOf = new Map(stored.map((message) => [message.localId, message.seq]));
+                    let deferred = 0;
+                    for (const item of [...batch].sort((a, b) => seqOf.get(a.localId)! - seqOf.get(b.localId)!)) {
+                        const seq = seqOf.get(item.localId)!;
+                        if (this.routedInboundLocalIds.has(item.localId)) {
+                            this.noteHandledSeqs([seq]);
+                            continue;
+                        }
+                        // B-806b: above an unfilled gap (a Web message stored
+                        // before ours whose update has not been applied) it
+                        // waits for the catch-up fetch, which routes both in
+                        // seq order. Routing it now would hand the agent the
+                        // later message first, and an exit stamp (= lastSeq,
+                        // below it) would replay it to the next wrapper — run
+                        // twice. lastSeq 0 = history not read yet (a skipping
+                        // first fetch would drop it): route as before.
+                        if (this.lastSeq > 0 && seq > this.lastSeq + 1) {
+                            deferred += 1;
+                            continue;
+                        }
+                        this.noteHandledSeqs([seq]);
                         const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(item.content));
                         this.routeIncomingMessage(body, item.localId);
                         this.rememberRoutedInbound(item.localId);
+                    }
+                    if (deferred > 0) {
+                        logger.debug(`[API] Relay-delivered message(s) above a seq gap wait for catch-up: ${deferred}`);
+                        this.receiveSync.invalidate();
                     }
                     callback({ ok: true, messages: stored });
                 } catch (error) {

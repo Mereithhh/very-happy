@@ -1394,6 +1394,64 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect((client as any).routedInboundLocalIds.has('local-gap')).toBe(true);
     });
 
+    it('B-806b: a relay message above a seq gap waits for the catch-up fetch and reaches the agent after the earlier Web message', async () => {
+        const { client, onUserMessage, deliver } = await connectRelayForTest();
+        (client as any).lastSeq = 10;
+        (client as any).awaitingInitialFetch = false;
+
+        // Web tab B (central fallback) stored seq 11 while our socket was down;
+        // tab A's message came through the relay and our persist got seq 12.
+        const earlier = encryptContent(session, { role: 'user', content: { type: 'text', text: 'N via central' } });
+        const later = encryptContent(session, { role: 'user', content: { type: 'text', text: 'M via relay' } });
+        mockAxiosPost.mockResolvedValueOnce({
+            data: { messages: [{ id: 'stored-12', seq: 12, localId: 'relay-12', createdAt: 12, updatedAt: 12 }] },
+        });
+        let resolveGet!: (value: unknown) => void;
+        mockAxiosGet.mockReturnValueOnce(new Promise((resolve) => { resolveGet = resolve; }));
+        const ack = vi.fn();
+        await deliver({ sessionId: session.id, messages: [{ localId: 'relay-12', content: later }] }, ack);
+
+        expect(ack).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+        await waitForCheck(() => {
+            expect(mockAxiosGet).toHaveBeenCalledTimes(1);
+        });
+        expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(10);
+        // Not routed yet, and an exit stamp now (messageCursor) would replay both, not run M twice.
+        expect(onUserMessage).not.toHaveBeenCalled();
+        expect(client.messageCursor).toBe(10);
+
+        resolveGet({
+            data: {
+                messages: [
+                    { id: 'stored-11', seq: 11, localId: 'web-11', content: { t: 'encrypted', c: earlier }, createdAt: 11, updatedAt: 11 },
+                    { id: 'stored-12', seq: 12, localId: 'relay-12', content: { t: 'encrypted', c: later }, createdAt: 12, updatedAt: 12 },
+                ],
+                hasMore: false,
+            },
+        });
+        await waitForCheck(() => {
+            expect(onUserMessage).toHaveBeenCalledTimes(2);
+        });
+        expect(onUserMessage.mock.calls.map((call) => call[0].content.text)).toEqual(['N via central', 'M via relay']);
+        expect(client.messageCursor).toBe(12);
+
+        // The central echo of M arriving late is not a second route.
+        emitSocketEvent('update', echoUpdate(12, later, 'relay-12'));
+        expect(onUserMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('B-806b: before the history is read (cursor 0, skipping first fetch) a relay message is still routed at once', async () => {
+        const { client, onUserMessage, deliver } = await connectRelayForTest();
+        client.skipExistingMessages();
+        const encrypted = encryptContent(session, { role: 'user', content: { type: 'text', text: 'first relay message' } });
+        mockAxiosPost.mockResolvedValueOnce({
+            data: { messages: [{ id: 'stored-7', seq: 7, localId: 'relay-7', createdAt: 7, updatedAt: 7 }] },
+        });
+        await deliver({ sessionId: session.id, messages: [{ localId: 'relay-7', content: encrypted }] }, vi.fn());
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+        expect(onUserMessage.mock.calls[0][0].content.text).toBe('first relay message');
+    });
+
     it('B-460 logs a user-role envelope that fails UserMessageSchema instead of dropping it silently', async () => {
         const client = new ApiSessionClient('fake-token', session);
         const onUserMessage = vi.fn();
