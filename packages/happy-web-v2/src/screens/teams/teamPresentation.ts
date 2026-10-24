@@ -62,3 +62,32 @@ export function teamMessageRoute(team: TeamState, localId: string | null): { fro
   const message = team.messages.find(m => localId.startsWith(`teams-message-${m.id}-`) && /^\d+$/.test(localId.slice(`teams-message-${m.id}-`.length)));
   return message ? { from: bot(message.senderBotId), to: bot(message.recipientBotId) } : undefined;
 }
+/**
+ * B-798 P2-5: a failed team read is not always "teams are off". The server
+ * answers 404 `teams_disabled` for the switch and 404 `team_not_found` for a
+ * missing / foreign id — only the former may say the feature is unavailable.
+ * 403 and a bare 404 (no code: route missing on an older server) keep the
+ * unavailable explanation.
+ */
+export function teamLoadFailure(status: number, code: string): 'unavailable' | 'notFound' | 'error' {
+  if (status === 404 && code === 'team_not_found') return 'notFound';
+  if (status === 403 || status === 404) return 'unavailable';
+  return 'error';
+}
+/**
+ * B-798 P2-4: the default team name when the name field is left blank. The
+ * whole first goal line made the heading a paragraph. A first line of up to
+ * 40 characters is kept; a longer one shortens to its first sentence, then its
+ * first clause, then a 40-character cut with an ellipsis.
+ */
+export function teamNameFromGoal(goal: string): string {
+  const MAX = 40;
+  const fits = (s: string) => Array.from(s).length <= MAX;
+  const line = goal.trim().split('\n')[0].trim();
+  if (fits(line)) return line;
+  const sentence = line.split(/(?<=[。！？!?；;])|(?<=\.)\s+/)[0].replace(/[。！？!?；;.]$/, '').trim();
+  if (sentence && fits(sentence)) return sentence;
+  const clause = line.split(/(?<=[，,：:])/)[0].replace(/[，,：:]$/, '').trim();
+  if (Array.from(clause).length >= 8 && fits(clause)) return clause;
+  return `${Array.from(line).slice(0, MAX - 1).join('').trimEnd()}…`;
+}

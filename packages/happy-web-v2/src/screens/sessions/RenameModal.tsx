@@ -17,6 +17,12 @@ import { DialogHead } from '@/ui/DialogHead';
  *
  * Presentation-only: the caller persists via onSave(title, tags).
  */
+/** B-798 P2-8: opened from 「标签…」 the same dialog is titled for what it edits —
+ *  「重命名」 there read as the wrong action. Title-only daemons keep 「重命名」. */
+export function renameDialogTitleKey(focusTags: boolean | undefined, tags: string[] | undefined): 'common.rename' | 'renameModal.tagsTitle' {
+  return focusTags && tags !== undefined ? 'renameModal.tagsTitle' : 'common.rename';
+}
+
 export function RenameModal({
   defaultTitle,
   tags,
@@ -94,7 +100,7 @@ export function RenameModal({
           }
         }}
       >
-        <DialogHead title={t('common.rename')} titleId="rn-dialog-title" onClose={onClose} />
+        <DialogHead title={t(renameDialogTitleKey(focusTags, tags))} titleId="rn-dialog-title" onClose={onClose} />
 
         <label className="ns-label">{t('renameModal.titleLabel')}</label>
         <input

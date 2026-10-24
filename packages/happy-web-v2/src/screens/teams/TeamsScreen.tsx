@@ -20,7 +20,7 @@ import { Bot, UsersRound, Settings2, Clock3, LayoutDashboard, Plus, RefreshCw, A
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
-import { teamLaunchPhase, teamTextPreviewLines } from "./teamPresentation";
+import { teamLaunchPhase, teamLoadFailure, teamTextPreviewLines } from "./teamPresentation";
 import { AdoptTeamForm } from "./AdoptTeamForm";
 import { TeamStartForm } from "./TeamStartForm";
 import { useFirstUseCopy } from "./firstUseCopy";
@@ -39,6 +39,7 @@ import { TeamTaskMessages, TeamTaskSummary } from "./TeamTaskDetail";
 import { useWorkspaceCopy } from "./workspaceCopy";
 import { OperationError } from "./OperationError";
 import { sync } from "@/sync/sync";
+import { Modal } from "@/modal";
 import {
   canReconcileOperation,
   attentionOperations,
@@ -65,7 +66,12 @@ function TeamsContent() {
   const [changingProject, setChangingProject] = useState(false);
   const c = useWorkspaceCopy();
   const first = useFirstUseCopy();
-  const [archiving, setArchiving] = useState(false);
+  // B-798 P2-7: the app's standard confirm (title, explanation, 取消 + action),
+  // not a full-height TeamDialog sheet with only ✕ to back out.
+  async function confirmArchive() {
+    if (!await Modal.confirm(tr('teams.archive'), tr('teams.archiveDescription'), { confirmText: tr('teams.archive'), destructive: true })) return;
+    await act({ type: 'archive' });
+  }
   const [startingExisting, setStartingExisting] = useState(false);
   const [view, setView] = useState<"overview" | "schedules" | "settings">("overview");
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
@@ -104,16 +110,19 @@ function TeamsContent() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
+  const [notFound, setNotFound] = useState(false);
   const [followLead, setFollowLead] = useState(searchParams.get("starting") === "1");
   const [pending, setPending] = useState<{
     action: TeamAction;
     requestId: string;
   } | null>(null);
   function fail(e: unknown) {
-    if (e instanceof TeamsApiError && [403, 404].includes(e.status)) setUnavailable(true);
+    const kind = e instanceof TeamsApiError ? teamLoadFailure(e.status, e.code) : "error";
+    if (kind === "unavailable") setUnavailable(true);
+    if (kind === "notFound") setNotFound(true);
     setError(
-      e instanceof TeamsApiError && [403, 404].includes(e.status)
-        ? first.unavailable
+      kind === "unavailable" ? first.unavailable
+        : kind === "notFound" ? first.notFound
         : tr("teams.failed", {
             reason: e instanceof Error ? e.message : "network_error",
           }),
@@ -126,6 +135,7 @@ function TeamsContent() {
         setTeam((previous) => newestTeam(previous, next));
       } else setTeams((await listTeams()).teams);
       setUnavailable(false);
+      setNotFound(false);
     } catch (e) {
       fail(e);
     } finally { setLoading(false); }
@@ -133,6 +143,7 @@ function TeamsContent() {
   useEffect(() => {
     setTeam(null);
     setError("");
+    setNotFound(false);
     void load();
     const timer = window.setInterval(() => {
       if (!document.hidden) void load();
@@ -203,14 +214,14 @@ function TeamsContent() {
           // B-763: 项目 › 团队 (or 团队 › X for a team in no project); every ancestor is a link.
           ? <div className="vh-back-row teams-trail"><BackButton narrow /><LocationTrail segments={visibleTrail(teamTrail(team, projectsSnap.projects, trailCopy(zh)), !isTablet)} label={trailCopy(zh).label}><span className="teams-trail-current">{team.name}</span></LocationTrail></div>
           : null}
-          <h1 className="vh-back-row">{!team && <BackButton />}<UsersRound size={26} aria-hidden />{team?.name ?? c.title}</h1>
+          <h1 className="vh-back-row">{!team && <BackButton />}<UsersRound size={26} aria-hidden /><span className="teams-heading-name" title={team?.name}>{team?.name ?? c.title}</span></h1>
           {team && <TeamProjectLine team={team} />}
           <p>{team ? <><span data-live={machineOnline}>{machineOnline ? c.online : c.offline}</span> · {executionMachine ? machineLabel(executionMachine) : c.unnamedMachine}</> : c.intro}</p>
           {team?.archivedAt !== undefined && <p role="status">{tr("teams.archived")} · {new Date(team.archivedAt).toLocaleString()}</p>}
         </div>
         <div className="teams-heading-actions">
           <Link to="/help">{c.guide}</Link>
-          {team && team.archivedAt === undefined && <button disabled={disabled} onClick={() => setArchiving(true)}><Archive size={16}/>{tr('teams.archive')}</button>}
+          {team && team.archivedAt === undefined && <button disabled={disabled} onClick={() => void confirmArchive()}><Archive size={16}/>{tr('teams.archive')}</button>}
           {team && <TeamHeadingMenu label={tr("common.moreActions")} items={[
             ...(teamProjectMenu(team, projectsSnap, { zh }) ? [{ key: "change-project", label: teamProjectMenu(team, projectsSnap, { zh })!, icon: FolderInput, onSelect: () => setChangingProject(true) }] : []),
             { key: "settings", label: c.settings, icon: Settings2, onSelect: () => setView("settings") },
@@ -219,13 +230,10 @@ function TeamsContent() {
         </div>
       </header>
       {changingProject && team && <ChangeTeamProjectModal team={team} onClose={() => setChangingProject(false)} />}
-      {archiving && team && <TeamDialog title={tr('teams.archive')} onClose={() => setArchiving(false)}>
-        <p>{tr('teams.archiveDescription')}</p>
-        <button disabled={disabled} onClick={async () => { await act({type:'archive'}); setArchiving(false); }}>{tr('teams.archive')}</button>
-      </TeamDialog>}
       {/* B-728 (UI-P1-12): "not enabled for this account" is an explanation, not a red error */}
       {unavailable && <div className="teams-empty" role="status"><UsersRound size={36} aria-hidden /><h2>{first.unavailable}</h2></div>}
-      {error && !unavailable && (
+      {notFound && !team && <div className="teams-empty" role="status"><UsersRound size={36} aria-hidden /><h2>{first.notFound}</h2><p>{first.notFoundHint}</p><Link to="/teams">{first.allTeams} →</Link></div>}
+      {error && !unavailable && !(notFound && !team) && (
         <p role="alert" className="teams-error">
           {error}
           {pending && (
@@ -460,7 +468,7 @@ function TeamsContent() {
               <p>{tr("teams.archiveDescription")}</p>
               <button
                 disabled={disabled}
-                onClick={() => setArchiving(true)}
+                onClick={() => void confirmArchive()}
               >
                 {tr("teams.archive")}
               </button>

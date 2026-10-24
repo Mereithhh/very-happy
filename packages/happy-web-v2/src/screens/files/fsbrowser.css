@@ -406,7 +406,6 @@
 @container (max-width: 560px) {
   .fsb-viewer-head { flex-wrap:wrap; }
   .fsb-viewer-path { flex-basis:calc(100% - 52px); }
-  .fsb-viewer-close { order:1; }
   .fsb-viewer-actions { order:2; margin-left:auto; max-width:100%; flex-wrap:wrap; }
   .fsb-copy-content span { display:none; }
 }

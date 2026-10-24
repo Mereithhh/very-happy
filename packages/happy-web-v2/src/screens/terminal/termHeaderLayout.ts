@@ -28,7 +28,8 @@ export type TermHeaderActionKey =
     | 'presets'
     | 'files'
     | 'refit'
-    | 'tmuxHelp';
+    | 'tmuxHelp'
+    | 'close';
 
 export type TermHeaderLayoutInput = {
     /** Viewport too narrow for the full cluster (see the measurement above). */
@@ -40,6 +41,8 @@ export type TermHeaderLayoutInput = {
     /** Fine pointer — where the keyboard-first presets picker is offered. */
     showPresets: boolean;
     hasTmuxSession: boolean;
+    /** An open terminal (`?tid=`) that this page can close. */
+    canClose?: boolean;
 };
 
 export type TermHeaderLayout = {
@@ -67,6 +70,9 @@ export function planTermHeaderActions(input: TermHeaderLayoutInput): TermHeaderL
     const staysInline = (key: TermHeaderActionKey) => key === 'structured' || key === 'presets';
     return {
         inline: available.filter(staysInline),
-        overflow: available.filter((key) => !staysInline(key)),
+        // B-798 P2-13: a phone has no sidebar row ⋯ or ⌘W beside the terminal,
+        // so 「关闭终端」 closes the menu (last, after a separator). Desktop keeps
+        // those routes and an untouched bar.
+        overflow: [...available.filter((key) => !staysInline(key)), ...(input.canClose ? ['close' as const] : [])],
     };
 }

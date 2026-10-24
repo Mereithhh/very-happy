@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { planTermHeaderActions } from './termHeaderLayout';
 
@@ -54,9 +55,27 @@ describe('planTermHeaderActions', () => {
         expect(plan.overflow).toEqual(['notes', 'select', 'files', 'refit']);
     });
 
+    it('B-798 P2-13: an open terminal on a phone can be closed from ⋯ (last item); desktop bar untouched', () => {
+        expect(planTermHeaderActions(input({ canClose: true })).overflow).toEqual(['notes', 'select', 'files', 'refit', 'tmuxHelp', 'close']);
+        expect(planTermHeaderActions(input({ canClose: false })).overflow).not.toContain('close');
+        const wide = planTermHeaderActions(input({ compact: false, canClose: true }));
+        expect(wide.inline).not.toContain('close');
+        expect(wide.overflow).toHaveLength(0);
+    });
+
     it('leaves no trigger at all when nothing collapsible exists', () => {
         // (not reachable today — notes/files/refit are unconditional — but the
         // caller renders the "⋯" only when overflow is non-empty)
         expect(planTermHeaderActions(input({ compact: false })).overflow).toHaveLength(0);
+    });
+});
+
+describe('terminal page ⋯ 关闭终端 wiring (B-798 P2-13)', () => {
+    const screen = readFileSync(new URL('./WebTerminalScreen.tsx', import.meta.url), 'utf8');
+    it('offers close only with an open terminal id', () => {
+        expect(screen).toContain('canClose: !!machineId && !!tid,');
+    });
+    it('closes through the shared confirm and leaves the page before the kill', () => {
+        expect(screen).toContain("onSelect: () => void confirmCloseTerminal(machineId, tid, () => navigate('/'))");
     });
 });

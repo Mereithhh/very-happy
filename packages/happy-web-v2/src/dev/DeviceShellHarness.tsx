@@ -34,7 +34,9 @@ export function DeviceShellHarness() {
     const now = Date.now();
     // Location-trail first: its fetch stub 404s unknown `/v1/` paths, so the
     // board's `/v1/attention-items` stub must wrap it, not the other way round.
-    seedLocationTrail([boardTeam(now)]);
+    // B-798 P2-4: a team named after a whole goal line (the default before short names).
+    const longName = { ...boardTeam(now), id: 'team-long', name: '[QA] B-798 走查用：负责人只回复一句「收到」然后对根任务 team_submit 结果「OK」，不要创建任何成员、不要改文件。' };
+    seedLocationTrail([boardTeam(now), longName]);
     const board = seedBoardSession();
     seedPlainSession();
     // No sync credentials here: look ids up through the page's own `/v1/` stub (404 for anything unknown).

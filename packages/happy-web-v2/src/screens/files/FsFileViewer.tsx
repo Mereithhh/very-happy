@@ -18,7 +18,7 @@
  * fullscreen toggle (owned by FsBrowser).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Code, Eye, ClipboardCopy, Download, PanelRightOpen, Maximize2, Minimize2, RefreshCw, X } from 'lucide-react';
+import { ChevronLeft, Code, Eye, ClipboardCopy, Download, PanelRightOpen, Maximize2, Minimize2, RefreshCw, X } from 'lucide-react';
 import { machineFsRead, type FsFailure } from '@/sync/fsOps';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
@@ -363,6 +363,11 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
             onPointerDownCapture={() => { lastInteraction.current = Date.now(); }}
             onWheelCapture={() => { lastInteraction.current = Date.now(); }}>
             <div className="fsb-viewer-head">
+                {/* B-798 P2-3: 「返回」 is a ‹ before the path, not a third ✕ beside
+                    the tab and panel close buttons. */}
+                <button type="button" className="fsb-iconbtn fsb-viewer-close" onClick={onClose} aria-label={t('common.back')} title={t('common.back')}>
+                    <ChevronLeft size={16} />
+                </button>
                 <span className="fsb-viewer-path" title={path}>{path}</span>
                 <div className="fsb-viewer-actions">
                 {(kind === 'markdown' || kind === 'html') && state.phase === 'text' && (
@@ -390,9 +395,6 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
                     {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                 </button>
                 </div>
-                <button type="button" className="fsb-iconbtn fsb-viewer-close" onClick={onClose} aria-label={t('common.back')} title={t('common.back')}>
-                    <X size={15} />
-                </button>
             </div>
             {headDownload.state.phase !== 'idle' && headDownload.state.phase !== 'reading' && (
                 <div className="fsb-download-status"><DownloadFeedback state={headDownload.state} zh={zh} /></div>

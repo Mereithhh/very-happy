@@ -24,7 +24,7 @@ export function TeamDialog({ title, onClose, children }: { title: string; onClos
     else node.focus();
     return () => node.close();
   }, [turn]);
-  return <dialog ref={ref} tabIndex={-1} className="vh-dialog vh-dialog--tall teams-dialog" aria-label={title} onCancel={onClose}>
+  return <dialog ref={ref} tabIndex={-1} className="vh-dialog vh-dialog--tall teams-dialog" role="dialog" aria-modal="true" aria-label={title} onCancel={onClose}>
     <div className="vh-dialog-head teams-dialog-heading"><h2 className="vh-dialog-title">{title}</h2><button type="button" className="vh-dialog-close" aria-label={c.close} onClick={onClose}><X size={18} /></button></div>
     {children}
   </dialog>;

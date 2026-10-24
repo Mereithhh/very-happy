@@ -16,6 +16,21 @@
   border-radius: var(--r-sm);
   color: var(--text-dim);
 }
+/* B-798 P2-3: closing the whole panel sits apart from the tab strip's ✕ / + —
+   a hairline divider, not a third identical ✕ in the same row. */
+.fp-close-panel {
+  position: relative;
+  margin-left: var(--sp-1);
+}
+.fp-close-panel::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--sp-1) / 2 - 0.5px);
+  top: 25%;
+  bottom: 25%;
+  width: 1px;
+  background: var(--line);
+}
 @media (hover: hover) and (pointer: fine) {
   .fp-icon:hover {
     background: var(--bg-2);

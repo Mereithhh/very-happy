@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
-import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, RefreshCw, MoreHorizontal, Search } from 'lucide-react';
+import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, RefreshCw, MoreHorizontal, Search, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { sync as appSync } from '@/sync/sync';
@@ -61,7 +61,7 @@ import { onInsertToInput } from '@/app/insertToInput';
 import { storage, useMachine, useSettings, useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentState, useTerminalAgentStates } from '@/sync/terminalAgentState';
-import { collectAllTags, saveRowRename } from '@/app/rowActions';
+import { collectAllTags, confirmCloseTerminal, saveRowRename } from '@/app/rowActions';
 import { RenameModal } from '@/screens/sessions/RenameModal';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForTerminal } from '@/sync/activityOverlay';
@@ -2589,6 +2589,7 @@ export function WebTerminalScreen() {
     showSelect: !isDesktop,
     showPresets: !IS_COARSE_POINTER,
     hasTmuxSession,
+    canClose: !!machineId && !!tid,
   });
   // Toggles that moved into the menu still have to LOOK on when they are on,
   // or a collapsed "select mode" reads as if it silently turned itself off.
@@ -2609,6 +2610,12 @@ export function WebTerminalScreen() {
         return { key, label: t('terminal.refitWidth'), icon: RefreshCw, onSelect: () => refitWidthRef.current?.(true) };
       case 'tmuxHelp':
         return { key, label: t('tmuxHelp.title'), icon: HelpCircle, onSelect: () => setShowHelp(true) };
+      // Leave BEFORE the kill (same as the sidebar row and ⌘W): a mounted
+      // terminal screen would re-open the id and recreate the killed session.
+      case 'close':
+        return machineId && tid
+          ? { key, label: t('terminal.closeTerminal'), icon: X, separatorBefore: true, onSelect: () => void confirmCloseTerminal(machineId, tid, () => navigate('/')) }
+          : null;
       // Spelled out rather than a `default`, so adding a TermHeaderActionKey
       // without deciding its menu form is a compile error (TS2366) instead of a
       // control that silently vanishes on mobile — the B-293 failure shape.
@@ -2718,6 +2725,8 @@ export function WebTerminalScreen() {
             <HelpCircle size={18} />
           </button>
         );
+      case 'close':
+        return null; // menu-only, see termHeaderLayout.ts
     }
   };
 

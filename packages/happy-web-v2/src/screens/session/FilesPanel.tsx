@@ -238,7 +238,7 @@ function FilesPanelContent({
                 onMove={(id, target) => setFileTabs(state => moveWorkspaceTab(state, id.slice(5), target.slice(5)))}
                 actions={<>
                     {active && effectiveTab !== 'browse' && <button type="button" className="fp-icon" onClick={() => void refresh()} aria-label={t('session.chat.refresh')} title={t('session.chat.refresh')}><RefreshCw size={14} className={isFetching ? 'fp-spin' : undefined}/></button>}
-                    <button type="button" className="fp-icon" onClick={onClose} aria-label={t('session.chat.closeFiles')} title={t('session.chat.closeFiles')}><X size={16}/></button>
+                    <button type="button" className="fp-icon fp-close-panel" onClick={onClose} aria-label={t('session.chat.closeFiles')} title={t('session.chat.closeFiles')}><X size={16}/></button>
                 </>}
             />
             <DiffCommentsBar sessionId={sessionId} onSent={panelInline ? undefined : onClose}/>
