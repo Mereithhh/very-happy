@@ -2685,6 +2685,23 @@ export const en = {
         entryShort: 'Major update',
         entryCount: ({ count }: { count: number }) => `${count} unread`,
         releases: {
+            oct25a: {
+                title: 'Easier on phones: ⋯ always there, menus as bottom sheets, Back that leads home',
+                summary: 'On phones and other touch screens you no longer need a long-press to find actions: every list row shows its ⋯, menus open as a bottom sheet that scrolls, Back after a link walks up to Home, and small controls are at least 44 px to tap.',
+                touchTitle: '⋯ and + always visible, no long-press',
+                touchBody: 'In the sidebar’s By project view, project heads always show + (new session) and ⋯, and team rows get a ⋯. Board cards, note rows and the active workspace tab have one too, with the same actions as long-press, including Move to top and Close other tabs.',
+                touchAlt: 'Two phone screens: the sidebar with + and ⋯ on every project head and row, and a session’s ⋯ open as a bottom sheet',
+                sheetTitle: 'Menus open as a bottom sheet and scroll',
+                sheetBody: 'On a phone, tapping ⋯ and long-pressing open the same bottom sheet, titled with what it acts on. Long menus no longer run off the screen; they scroll. The session menu shows priority as one P0 / P1 / P2 row.',
+                sheetAlt: 'Two phone screens: a lead conversation, and its ⋯ menu as a bottom sheet with notes, files, share, rename, tags, priority P0 / P1 / P2 and archive',
+                back: 'Back walks up to Home: After opening a settings page, a team or project settings from a link or notification, pressing Back repeatedly now climbs to Home instead of bouncing between two pages.',
+                targets: 'Tap targets of at least 44 px: Settings switches, icon buttons, the usage range, project-settings navigation, the permission menu, the new-session and tag dialogs and the directory picker all take a 44 px tap; the board’s ✓ is full size too. The to-do Open / Completed filter no longer overlaps, and the directory picker keeps the current folder in view.',
+                sessionPage: 'Session page: the previous / next prompt buttons are no longer covered by code copy buttons, ordinary sessions drop the all-zero Briefing strip, and the Just me & the lead switch has labels.',
+                session: 'Narrow session headers move agent, machine and relay into ⋯ → Session info; header tools are grouped before Stop and Archive.',
+                missing: 'A session or team that does not exist now says so instead of loading forever, and older sessions open from links.',
+                teams: 'Teams: long names wrap to two lines and new teams default to a short name from the goal; archiving uses the standard confirm. The Tags dialog is titled Name and tags, and file preview’s back is a ‹.',
+                terminal: 'Phone terminal: the ⋯ menu can close the terminal and the key bar keeps clear of the screen edge. The unfolded iPhone Duo home has a Conversations button.',
+            },
             oct24a: {
                 title: 'iPhone Duo and foldables: a rail and drawer when unfolded, back buttons and safe edges when folded',
                 summary: 'Touch screens between phone and desktop width, such as an unfolded iPhone Duo, now get a slim rail with the sidebar as a drawer, and folding or unfolding keeps what you were doing. On the folded cover screen nothing sits under the side status column, and every phone page has a way back.',
