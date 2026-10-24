@@ -6,7 +6,7 @@ import { harnessForFlavor, machineSupportsModelConfig, withCustomModels } from '
 import { modelConfigStore, useCustomPickerModels } from '@/sync/modelConfigStore';
 import { onMessageQuote } from './messageQuote';
 import { mergeRestoredDraft, onComposerRestore } from './composerRestore';
-import { PendingQueueRow } from './SendStatusView';
+import { DispatchedQueueRow, PendingQueueRow } from './SendStatusView';
 import { appendMessageQuote, insertMessageQuoteAt } from './messageActionsModel';
 /**
  * AgentInput — the composer. A rounded auto-growing textarea + circular send
@@ -976,8 +976,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     // B-509: one list for the composer. Server items first (the wrapper runs
     // them in this order); tab-local items (old wrapper, or attachments) after.
     // B-722: rows the server has not confirmed yet follow the server items (that is where they land).
-    const queueRows: Array<{ id: string; text: string; draftBlock: string; source: 'server' | 'local' | 'pending'; pendingState?: PendingPrompt['state'] }> = (serverQueue
+    const dispatchedCount = serverQueue ? serverQueueState.dispatched?.length ?? 0 : 0;
+    // B-804: rows the wrapper already took come first — they run before anything still queued.
+    const queueRows: Array<{ id: string; text: string; draftBlock: string; source: 'server' | 'local' | 'pending' | 'dispatched'; pendingState?: PendingPrompt['state'] }> = (serverQueue
         ? [
+            ...(serverQueueState.dispatched ?? []).map((row) => ({ id: row.localId, text: row.text, source: 'dispatched' as const })),
             ...serverQueueState.items.map((item) => ({ id: item.id, text: item.text, source: 'server' as const })),
             ...(serverQueueState.pending ?? []).map((row) => ({ id: row.localId, text: row.text, source: 'pending' as const, pendingState: row.state })),
             ...queued.filter((item) => !!item.attachments?.length).map((item) => ({ id: item.id, text: item.text, source: 'local' as const })),
@@ -1230,6 +1233,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                     </div>}
                     <div className="ci-queue-list">
                         {queueRows.map((row, index) => {
+                            if (row.source === 'dispatched') return <DispatchedQueueRow key={`dispatched:${row.id}`} text={row.text} />;
                             if (row.source === 'pending') {
                                 return <PendingQueueRow
                                     key={`pending:${row.id}`}
@@ -1305,10 +1309,10 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                                             <DropdownMenu.Portal>
                                                 <DropdownMenu.Content className="pm-content" side="top" align="end" sideOffset={8}>
                                                     <DropdownMenu.Item className="pm-item" onSelect={() => { setEditingId(row.id); setEditingText(row.text); }}><Pencil size={14} />{t('session.chat.queueEdit')}</DropdownMenu.Item>
-                                                    {row.source === 'server' && index > 0 && (
+                                                    {row.source === 'server' && index > dispatchedCount && (
                                                         <DropdownMenu.Item className="pm-item" onSelect={() => void moveServerQueued(row.id, -1)}><ChevronUp size={14} />{t('session.chat.queueMoveUp')}</DropdownMenu.Item>
                                                     )}
-                                                    {row.source === 'server' && index < serverQueueState.items.length - 1 && (
+                                                    {row.source === 'server' && index - dispatchedCount < serverQueueState.items.length - 1 && (
                                                         <DropdownMenu.Item className="pm-item" onSelect={() => void moveServerQueued(row.id, 1)}><ChevronDown size={14} />{t('session.chat.queueMoveDown')}</DropdownMenu.Item>
                                                     )}
                                                     <DropdownMenu.Label className="pm-head">{row.source === 'server' ? t('session.chat.queueServerHint') : t('session.chat.queueDeviceHint')}</DropdownMenu.Label>

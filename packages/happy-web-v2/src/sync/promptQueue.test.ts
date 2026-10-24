@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createPromptQueueStore, movedOrder, retryWaitingPrompts, supportsServerPromptQueue, type PromptQueueWireItem } from './promptQueue';
+import { createPromptQueueStore, handOffRows, movedOrder, reloadPromptQueue, retryWaitingPrompts, supportsServerPromptQueue, type PromptQueueWireItem } from './promptQueue';
 
 type Call = { path: string; method: string; body?: unknown };
 
@@ -9,6 +9,10 @@ function harness(opts?: {
     /** B-722: awaited before a POST/PATCH is answered — hold it open or make it throw. */
     gate?: (method: string) => Promise<void>;
     online?: () => boolean;
+    /** B-804: awaited before a GET is answered (its answer is read when it starts). */
+    getGate?: () => Promise<void>;
+    inTranscript?: (sessionId: string, localId: string) => boolean;
+    onDispatched?: (sessionId: string, localIds: string[]) => void;
 }) {
     const calls: Call[] = [];
     let items: PromptQueueWireItem[] = [];
@@ -44,7 +48,9 @@ function harness(opts?: {
                 items = items.map((item) => item.id === id ? { ...item, content: { t: 'encrypted', c: body.content } } : item);
                 return { status: 200, json: async () => ({ items }) };
             }
-            return { status: 200, json: async () => ({ items: opts?.items ? opts.items() : items }) };
+            const answer = opts?.items ? opts.items() : items;
+            if (opts?.getGate) await opts.getGate();
+            return { status: 200, json: async () => ({ items: answer }) };
         },
         encrypt: async (_sessionId, text, modeMeta) => `enc:${text}|${JSON.stringify(modeMeta)}`,
         decrypt: async (_sessionId, encrypted) => {
@@ -56,6 +62,8 @@ function harness(opts?: {
         newLocalId: () => `local-${++nextId}`,
         isOnline: opts?.online,
         now: () => 42,
+        inTranscript: opts?.inTranscript,
+        onDispatched: opts?.onDispatched,
     });
     return { store, calls, setItems: (next: PromptQueueWireItem[]) => { items = next; }, wire };
 }
@@ -246,5 +254,88 @@ describe('B-722 optimistic queue rows', () => {
         fail = true;
         await expect(h.store.getState().updateText('s1', 'id-local-1', 'lost')).rejects.toThrow('offline');
         expect(h.store.getState().sessions.s1.items[0].text).toBe('after');
+    });
+});
+
+describe('B-804 dock hand-off and queue reload', () => {
+    const flush = async () => { for (let i = 0; i < 6; i += 1) await Promise.resolve(); };
+    it('an item the wrapper took stays as 「执行中」 until the transcript holds its localId — never in neither place', async () => {
+        const transcript = new Set<string>();
+        const verified: string[][] = [];
+        const h = harness({ inTranscript: (_sid, localId) => transcript.has(localId), onDispatched: (_sid, ids) => verified.push(ids) });
+        await h.store.getState().applySnapshot('s1', [h.wire('a', 'first', 1), h.wire('b', 'second', 2)], 1);
+        // The wrapper dispatched `a`: the snapshot drops it, the transcript is still behind (dead GET).
+        await h.store.getState().applySnapshot('s1', [h.wire('b', 'second', 1)], 2);
+        let state = h.store.getState().sessions.s1;
+        expect(state.items.map((item) => item.localId)).toEqual(['b']);
+        expect(state.dispatched).toEqual([{ localId: 'a', text: 'first' }]);
+        expect(verified).toEqual([['a']]);
+        // Unrelated messages land: still not there, the row stays.
+        h.store.getState().settleDispatched('s1');
+        expect(h.store.getState().sessions.s1.dispatched).toHaveLength(1);
+        // Its message reaches the transcript: the row goes in the same step.
+        transcript.add('a');
+        h.store.getState().settleDispatched('s1');
+        state = h.store.getState().sessions.s1;
+        expect(state.dispatched).toBeUndefined();
+    });
+
+    it('no hand-off row when the transcript already has it, or when this tab removed the item itself', async () => {
+        const h = harness({ inTranscript: (_sid, localId) => localId === 'seen' });
+        h.setItems([h.wire('seen', 'x', 1), h.wire('mine', 'y', 2)]);
+        await h.store.getState().load('s1');
+        await h.store.getState().remove('s1', 'id-mine');
+        await h.store.getState().applySnapshot('s1', [], 5);
+        expect(h.store.getState().sessions.s1.dispatched).toBeUndefined();
+        expect(handOffRows([{ id: 'i', localId: 'l', position: 1, text: 't', modeMeta: {}, createdAt: 1 }], new Set(), new Set(), () => false)).toEqual([{ localId: 'l', text: 't' }]);
+    });
+
+    it('a row the transcript never gets (deleted elsewhere) goes once a fetch started after the hand-off verified it', async () => {
+        const h = harness();
+        await h.store.getState().applySnapshot('s1', [h.wire('a', 'first', 1)], 1);
+        await h.store.getState().applySnapshot('s1', [], 2);
+        expect(h.store.getState().sessions.s1.dispatched).toHaveLength(1);
+        h.store.getState().settleDispatched('s1', ['other']);
+        expect(h.store.getState().sessions.s1.dispatched).toHaveLength(1);
+        h.store.getState().settleDispatched('s1', ['a']);
+        expect(h.store.getState().sessions.s1.dispatched).toBeUndefined();
+    });
+
+    it('an older load answer never overwrites a newer socket snapshot', async () => {
+        let release!: () => void;
+        let hold = true;
+        const h = harness({ getGate: () => hold ? new Promise<void>((resolve) => { release = resolve; }) : Promise.resolve() });
+        h.setItems([h.wire('a', 'old', 1)]);
+        hold = false;
+        await h.store.getState().load('s1');
+        hold = true;
+        // The GET reads the server while `a` is still queued…
+        const loading = h.store.getState().load('s1');
+        await flush();
+        // …the wrapper dispatches `a` and enqueues nothing; the socket snapshot arrives first.
+        await h.store.getState().applySnapshot('s1', [h.wire('b', 'new', 1)], 7);
+        release();
+        await loading;
+        expect(h.store.getState().sessions.s1.items.map((item) => item.localId)).toEqual(['b']);
+        // A load that started after the snapshot is applied as usual.
+        hold = false;
+        h.setItems([h.wire('c', 'later', 1)]);
+        await h.store.getState().load('s1');
+        expect(h.store.getState().sessions.s1.items.map((item) => item.localId)).toEqual(['c']);
+    });
+
+    it('reload (resume / reconnect) re-reads a mirrored queue, and leaves a never-loaded or unsupported one alone', async () => {
+        const h = harness();
+        await reloadPromptQueue('s1', h.store);
+        expect(h.calls).toHaveLength(0);
+        await h.store.getState().load('s1');
+        h.setItems([h.wire('a', 'x', 1)]);
+        await reloadPromptQueue('s1', h.store);
+        expect(h.calls.map((call) => call.method)).toEqual(['GET', 'GET']);
+        expect(h.store.getState().sessions.s1.items).toHaveLength(1);
+        const old = harness({ status: 404 });
+        await old.store.getState().load('s1');
+        await reloadPromptQueue('s1', old.store);
+        expect(old.calls).toHaveLength(1);
     });
 });

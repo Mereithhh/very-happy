@@ -203,14 +203,16 @@ describe('B-803 wiring in sync.ts / apiSocket.ts', () => {
         return src.slice(at, at + length);
     }
 
+    // B-804: the three edges go through catchUpViewedSession(), which restarts (and shows the catch-up).
     it('tab resume restarts the viewed session catch-up', () => {
-        expect(block(sync, 'private onWebResume = () => {', 600)).toContain('this.onSessionEnter(current, { restartFetch: true });');
+        expect(block(sync, 'private onWebResume = () => {', 600)).toContain('this.catchUpViewedSession();');
+        expect(block(sync, 'private catchUpViewedSession() {', 400)).toContain('this.onSessionEnter(viewing, { restartFetch: true });');
     });
 
     it('socket reconnect and recovered restart it too', () => {
         const reconnected = block(sync, 'apiSocket.onReconnected(() => {');
-        expect(reconnected.slice(0, reconnected.indexOf('apiSocket.onRecovered('))).toContain('if (viewing) this.onSessionEnter(viewing, { restartFetch: true });');
-        expect(block(sync, 'apiSocket.onRecovered(() => {', 500)).toContain('if (viewing) this.onSessionEnter(viewing, { restartFetch: true });');
+        expect(reconnected.slice(0, reconnected.indexOf('apiSocket.onRecovered('))).toContain('this.catchUpViewedSession();');
+        expect(block(sync, 'apiSocket.onRecovered(() => {', 500)).toContain('this.catchUpViewedSession();');
     });
 
     it('onSessionEnter routes restartFetch to restart(), and back-online restarts deferred catch-ups', () => {

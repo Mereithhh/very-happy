@@ -22,6 +22,8 @@ export const zhHant: PartialTranslationStructure = {
         offline: '已離線，正在重新連線…',
         recovered: '已恢復',
         syncing: '同步中…',
+        syncingMessages: '同步訊息中…',
+        unstable: '連線不穩定',
     },
     board: {
         title: '任務看板',
