@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
-import { ArrowUpRight, ArrowUpToLine, Archive, Check, CircleHelp, MessageSquare, Pencil, TerminalSquare, X } from 'lucide-react';
+import { ArrowUpRight, ArrowUpToLine, Archive, Check, CircleHelp, MessageSquare, MoreHorizontal, Pencil, TerminalSquare, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { StatusDot, ActionContextMenu, type MenuItemDef, type Status } from '@/ui';
+import { StatusDot, ActionContextMenu, ActionDropdownMenu, type MenuItemDef, type Status } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -93,7 +93,8 @@ export function BoardCard({
     }
   }, [item.kind, item.key, item.machineId]);
 
-  // Card actions as data — right-click (fine pointers) / long-press (touch).
+  // Card actions as data — right-click (fine pointers) / long-press (touch)
+  // and the card's ⋯ (B-798 U1: long-press is a shortcut, never the only way).
   // Archive/delete flows are the sidebar's, via rowActions.
   const menuItems: MenuItemDef[] = [
     {
@@ -183,6 +184,20 @@ export function BoardCard({
             <Check size={13} />
           </button>
           <KindIcon size={14} className="bd-card-kind" aria-hidden />
+          {/* B-798: same items as the long-press menu. The wrapper keeps clicks
+              inside the (portalled) menu from bubbling to the card's navigate. */}
+          <span className="bd-card-more-wrap" onClick={(e) => e.stopPropagation()}>
+            <ActionDropdownMenu items={menuItems} align="end" sideOffset={4}>
+              <button
+                type="button"
+                className="bd-card-more"
+                title={t('common.moreActions')}
+                aria-label={`${t('common.moreActions')}: ${title}`}
+              >
+                <MoreHorizontal size={14} />
+              </button>
+            </ActionDropdownMenu>
+          </span>
         </div>
         <div className="bd-card-meta mono">
           <span className="bd-card-machine">{item.machineName}</span>

@@ -5,7 +5,7 @@ import { expect, it, vi } from 'vitest';
 vi.mock('@/i18n/useTranslation',()=>({useTranslation:()=>({lang:'en'})}));
 vi.mock('@/ui',()=>({ActionContextMenu:({children}:{children:ReactNode})=>children}));
 import { WorkspaceTabs } from './WorkspaceTabs';
-it('renders only a close action and keeps keyboard reorder available without action menus',async()=>{
+it('renders only a close action (plus the active tab\'s touch ⋯, B-798) and keeps keyboard reorder available',async()=>{
  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
  const scroll=HTMLElement.prototype.scrollIntoView; HTMLElement.prototype.scrollIntoView=vi.fn();
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
@@ -13,7 +13,8 @@ it('renders only a close action and keeps keyboard reorder available without act
  try {
   await act(async()=>root.render(<WorkspaceTabs tabs={[{id:'a',title:'First'},{id:'b',title:'Second'}]} active="b" onSelect={vi.fn()} onClose={close} onMove={move}/>));
   for(const tab of host.querySelectorAll('.workspace-tab')) {
-   const actions=tab.querySelectorAll('button:not([role=tab])');expect(actions).toHaveLength(1);expect(actions[0].className).toBe('workspace-tab-close');
+   const actions=[...tab.querySelectorAll('button:not([role=tab])')].map(b=>b.className);
+   expect(actions).toEqual(tab.classList.contains('is-active')?['workspace-tab-close','workspace-tab-more']:['workspace-tab-close']);
   }
   const tab=host.querySelector('[data-tab-id="b"]')!;
   await act(async()=>tab.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',altKey:true,shiftKey:true,bubbles:true})));
