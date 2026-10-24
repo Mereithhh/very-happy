@@ -3,13 +3,17 @@
  * 「等你 2 · 未结 2 · 新汇报 1 ⌄」 that drops the 汇报板 down as a TOP sheet
  * (the strip is at the top, so the gesture direction matches; DESIGN §3 A).
  * D6: B-1's view toggle shares this row through `trailing`.
+ * B-798 P2-1: the strip only in the lead's conversation or with a count (see
+ * `boardStripVisible`); without it the header button still drops the sheet.
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronDown, ClipboardList } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Segmented } from '@/ui/Segmented';
 import { boardCopy } from './boardCopy';
-import { boardCounts, type BoardTab } from './boardModel';
+import { boardCounts, boardStripVisible, type BoardTab } from './boardModel';
+import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
+import { teamSessionMembership } from '@/screens/sessions/teamNavigation';
 import { useBoardItemsOrEmpty, useSeenItemIds } from '@/sync/attentionStore';
 import { BoardList } from './BoardList';
 import './board.css';
@@ -26,6 +30,7 @@ export function BoardMobile({ sessionId, open, onOpenChange, trailing }: {
     const seen = useSeenItemIds(items);
     const [tab, setTab] = useState<BoardTab>('open');
     const c = boardCounts(items, seen);
+    const lead = teamSessionMembership(useTeamNavigation()).get(sessionId)?.bot.root === true;
     useEffect(() => {
         if (!open) return;
         const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onOpenChange(false); };
@@ -35,7 +40,7 @@ export function BoardMobile({ sessionId, open, onOpenChange, trailing }: {
     const sheetId = `brf-sheet-${sessionId}`;
     return (
         <div className={`brf-mobile${open ? ' is-open' : ''}`}>
-            <div className="brf-strip">
+            {boardStripVisible(lead, c) && <div className="brf-strip">
                 <button type="button" className="brf-strip-btn" aria-expanded={open} aria-controls={sheetId}
                     aria-label={`${copy.strip.label}: ${copy.strip.need} ${c.need}, ${copy.strip.asked} ${c.asked}, ${copy.strip.fresh} ${c.fresh}`}
                     onClick={() => onOpenChange(!open)}>
@@ -46,7 +51,7 @@ export function BoardMobile({ sessionId, open, onOpenChange, trailing }: {
                     <ChevronDown size={14} className="brf-strip-chev" aria-hidden />
                 </button>
                 {trailing}
-            </div>
+            </div>}
             {open && (
                 <>
                     <div className="brf-sheet-scrim" onClick={() => onOpenChange(false)} aria-hidden />

@@ -20,6 +20,8 @@ const h = vi.hoisted(() => {
         composer: { mounts: 0, unmounts: 0, props: [] as Array<{ sessionId: string; pending?: unknown; agentFlavor?: string }> },
         spawn: null as null | ((r: SpawnSessionResult) => void),
         table: [] as unknown[],
+        dataReady: false,
+        lookup: vi.fn<(id: string) => Promise<'found' | 'missing'>>(),
     };
 });
 
@@ -37,9 +39,11 @@ vi.mock('@/sync/storage', () => {
         useSession: (id: string) => useSyncExternalStore(h.subscribe, () => h.sessions[id] ?? null),
         useMessage: () => null,
         useLocalSetting: () => false,
+        useIsDataReady: () => useSyncExternalStore(h.subscribe, () => h.dataReady),
     };
 });
-vi.mock('@/sync/sync', () => ({ sync: { onSessionVisible: h.visible } }));
+vi.mock('@/sync/sync', () => ({ sync: { onSessionVisible: h.visible, fetchSessionById: h.lookup } }));
+vi.mock('@/app/BackButton', () => ({ BackButton: () => <button data-back /> }));
 vi.mock('@/sync/pendingSessionsRuntime', async () => {
     const core = await vi.importActual<typeof import('@/sync/pendingSessions')>('@/sync/pendingSessions');
     let n = 0;
@@ -97,8 +101,8 @@ vi.mock('@/app/useMediaQuery', () => ({ useMediaQuery: () => false }));
 vi.mock('@/screens/files/useFilesPanelWidth', () => ({ useFilesPanelWidth: () => ({ width: 300, onHandleMouseDown: () => {} }) }));
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ t: (key: string) => key, lang: 'en' }) }));
 vi.mock('@/ui', () => ({
-    EmptyState: ({ title }: { title: string }) => <div data-empty={title} />,
-    Button: (p: { children?: unknown }) => <button>{p.children as string}</button>,
+    EmptyState: ({ title, actions }: { title: string; actions?: unknown }) => <div data-empty={title}>{actions as never}</div>,
+    Button: (p: { children?: unknown; onClick?: () => void }) => <button data-action={p.children as string} onClick={p.onClick}>{p.children as string}</button>,
     OrbitLoader: () => <div data-loader />,
 }));
 vi.mock('@/app/sessionRestore', () => ({ canOfferRestore: () => false }));
@@ -137,6 +141,7 @@ beforeEach(() => {
     vi.clearAllMocks();
     for (const key of Object.keys(h.sessions)) delete h.sessions[key];
     h.sent.length = 0;
+    h.dataReady = false;
     h.composer = { mounts: 0, unmounts: 0, props: [] };
     host = document.createElement('div');
     document.body.append(host);
@@ -219,5 +224,45 @@ describe('SessionDetailScreen pending page (B-516)', () => {
         await flush();
         expect(host.querySelector('[data-empty="pendingSession.goneTitle"]')).not.toBeNull();
         expect(host.querySelector('[data-composer]')).toBeNull();
+    });
+});
+
+// B-798 P1-8: an id the loaded list lacks is looked up; only the server's 404 ends the spinner.
+describe('SessionDetailScreen unknown id (B-798 P1-8)', () => {
+    it('waits for the list, then shows 「会话不存在」 on a 404 with the shared back control', async () => {
+        h.lookup.mockResolvedValue('missing');
+        renderAt('/session/doesnotexist');
+        await flush();
+        expect(h.lookup).not.toHaveBeenCalled();
+        expect(host.querySelector('[data-loader]')).not.toBeNull();
+        await act(async () => { h.dataReady = true; h.emit(); });
+        await flush();
+        expect(h.lookup).toHaveBeenCalledTimes(1);
+        expect(h.lookup).toHaveBeenCalledWith('doesnotexist');
+        expect(host.querySelector('[data-empty="session.notFoundTitle"]')).not.toBeNull();
+        expect(host.querySelector('[data-loader]')).toBeNull();
+        expect(host.querySelector('[data-back]')).not.toBeNull();
+        expect(host.textContent).not.toContain('Session doesnotexist');
+    });
+
+    it('an old session outside the list window loads instead of spinning', async () => {
+        h.dataReady = true;
+        h.lookup.mockImplementation(async (id) => { h.sessions[id] = { id, metadata: {} }; h.emit(); return 'found'; });
+        renderAt('/session/old1');
+        await flush();
+        expect(host.querySelector('[data-chat-list="old1"]')).not.toBeNull();
+    });
+
+    it('a failed lookup offers a retry that asks again', async () => {
+        h.dataReady = true;
+        h.lookup.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce('missing');
+        renderAt('/session/x1');
+        await flush();
+        expect(host.querySelector('[data-empty="session.loadFailedTitle"]')).not.toBeNull();
+        expect(host.querySelector('[data-loader]')).toBeNull();
+        await act(async () => { (host.querySelector('[data-action="common.retry"]') as HTMLButtonElement).click(); });
+        await flush();
+        expect(h.lookup).toHaveBeenCalledTimes(2);
+        expect(host.querySelector('[data-empty="session.notFoundTitle"]')).not.toBeNull();
     });
 });

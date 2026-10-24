@@ -35,6 +35,7 @@ vi.mock('@/sync/storage', () => {
         useSession: () => useSyncExternalStore(sessionStore.subscribe, sessionStore.get),
         useMessage: () => null,
         useLocalSetting: () => false,
+        useIsDataReady: () => false,
         storage,
     };
 });

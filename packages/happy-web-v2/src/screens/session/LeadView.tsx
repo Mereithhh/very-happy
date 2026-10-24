@@ -4,7 +4,7 @@
  * 「已答 ↗」 chip. Rules live in leadView.ts.
  */
 import { createContext, useContext } from 'react';
-import { ArrowUpRight, ChevronDown, ListFilter, MessagesSquare } from 'lucide-react';
+import { ArrowUpRight, ChevronDown } from 'lucide-react';
 import type { LeadFold, LeadViewMode } from './leadView';
 import { setLeadView, useLeadView } from './leadViewPrefs';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -30,18 +30,19 @@ export function AnsweredChip({ messageId }: { messageId: string }) {
 
 /**
  * `.vh-segmented` markup (ui/Segmented) with a full and a phone label per
- * option. `compact` = icons only (W-1's phone summary strip, D6: one row).
+ * option. `compact` = the phone labels only (W-1's phone summary strip, D6:
+ * one row). B-798 P2-2: it was two bare icons, and touch has no tooltip.
  */
 export function LeadViewToggle({ sessionId, compact = false }: { sessionId: string; compact?: boolean }) {
     const copy = useLeadViewCopy();
     const mode = useLeadView(sessionId);
-    const option = (value: LeadViewMode, full: string, short: string, Icon: typeof ListFilter) => <button type="button" aria-pressed={mode === value} title={full}
+    const option = (value: LeadViewMode, full: string, short: string) => <button type="button" aria-pressed={mode === value} title={full}
         aria-label={compact ? full : undefined} onClick={() => { if (mode !== value) setLeadView(sessionId, value); }}>
-        {compact ? <Icon size={14} aria-hidden /> : <><span className="lv-label-full">{full}</span><span className="lv-label-short">{short}</span></>}
+        {compact ? <span className="lv-label-compact">{short}</span> : <><span className="lv-label-full">{full}</span><span className="lv-label-short">{short}</span></>}
     </button>;
     return <div role="group" aria-label={copy.label} className={`vh-segmented lv-toggle${compact ? ' lv-toggle--compact' : ''}`}>
-        {option('all', copy.all, copy.allShort, MessagesSquare)}
-        {option('owner', copy.owner, copy.ownerShort, ListFilter)}
+        {option('all', copy.all, copy.allShort)}
+        {option('owner', copy.owner, copy.ownerShort)}
     </div>;
 }
 

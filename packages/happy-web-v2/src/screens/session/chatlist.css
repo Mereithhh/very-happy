@@ -187,6 +187,7 @@
 }
 .cl-jump {
   position: absolute;
+  z-index: 5; /* B-798 P1-7: same layer as .cl-promptnav, above in-transcript overlays */
   right: var(--sp-4);
   bottom: var(--sp-4);
   display: inline-flex;

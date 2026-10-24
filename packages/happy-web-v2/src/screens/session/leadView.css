@@ -62,7 +62,8 @@
 .lv-toggle > button { flex: none; }
 .lv-label-short { display: none; }
 .lv-toggle--compact > button { padding-inline: var(--sp-2); }
-/* B-795: icon-only segments are touch targets of their own */
+/* B-795: strip segments are touch targets of their own (B-798 P2-2: now labelled, not icons) */
+.lv-label-compact { white-space: nowrap; }
 @media (pointer: coarse) { .lv-toggle--compact > button { min-width: 44px; justify-content: center; } }
 .session-team-context:has(.lv-toggle) a.session-team-context-progress { margin-left: auto; }
 .session-team-context a.session-team-context-progress + .lv-toggle { margin-left: 0; }

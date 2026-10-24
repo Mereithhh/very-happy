@@ -37,3 +37,15 @@ export const CHAT_HEADER_WIDE_MIN = 720;
 export function chatHeaderCompact(headerWidth: number | null, viewportTablet: boolean): boolean {
     return headerWidth === null ? !viewportTablet : headerWidth < CHAT_HEADER_WIDE_MIN;
 }
+
+/**
+ * B-798 P1-9: a phone header held back, trail, title, agent · machine, relay,
+ * 汇报板 and ⋯ — the trail read 「[QA] …」 and the title 「QA走查…」. Below
+ * this header width the identity and the relay badge (diagnostics, not
+ * navigation) fold into ⋯ as 「会话信息」, leaving 上一级 › 当前 the room.
+ */
+export const CHAT_HEADER_IDENTITY_MIN = 480;
+
+export function chatHeaderFoldsIdentity(headerWidth: number | null, viewportTablet: boolean): boolean {
+    return headerWidth === null ? !viewportTablet : headerWidth < CHAT_HEADER_IDENTITY_MIN;
+}

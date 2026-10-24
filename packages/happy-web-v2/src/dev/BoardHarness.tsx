@@ -129,12 +129,15 @@ function installAttentionApi(data: Map<string, AttentionItem>, off: boolean): ()
     const real = window.fetch;
     window.fetch = async (input, init) => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-        const path = new URL(url, location.href).pathname;
+        const parsed = new URL(url, location.href);
+        const path = parsed.pathname;
         if (!path.startsWith('/v1/attention-items')) return real(input, init);
         const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
         if (off) return json(404, { error: 'owner_board_disabled' });
         const m = path.match(/^\/v1\/attention-items\/([^/]+)\/owner-respond$/);
-        if (!m) return json(200, { items: [...data.values()] });
+        // B-798: only the asked session's items (the device shell also hosts an ordinary session).
+        const sid = parsed.searchParams.get('sessionId');
+        if (!m) return json(200, { items: [...data.values()].filter((i) => !sid || i.sessionId === sid) });
         const item = data.get(decodeURIComponent(m[1]));
         if (!item) return json(404, { error: 'not_found' });
         const body = JSON.parse(String(init?.body ?? '{}')) as { action: string; choice?: string };

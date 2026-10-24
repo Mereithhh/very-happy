@@ -8,7 +8,10 @@
  *  presets live in `scripts/dev/device-shots.mjs`.
  *  B-796b: `#whats-new` also mounts the release-notes pager (AppRoot mounts it
  *  beside the shell) and `#toasts` raises one of each toast kind, so the
- *  side-inset sweep covers the overlays that live outside the shell. */
+ *  side-inset sweep covers the overlays that live outside the shell.
+ *  B-798 PR F: `session/dev-plain` is an ordinary session (seedPlainSession) and
+ *  any unknown session id answers 404, so `session/dev-missing` shows the
+ *  not-found state (the lookup goes through the in-page `/v1/` stub). */
 import { useEffect, useState } from 'react';
 import { ChangelogNotice } from '@/app/ChangelogNotice';
 import { useToast } from '@/ui';
@@ -18,6 +21,8 @@ import { setTeamNavigationDevOverride } from '@/screens/sessions/useTeamNavigati
 import { AppLayout } from '@/screens/AppLayout';
 import { boardTeam, seedBoardSession } from './BoardHarness';
 import { seedLocationTrail } from './LocationTrailHarness';
+import { seedPlainSession } from './plainSessionSeed';
+import { sync } from '@/sync/sync';
 import '@/screens/session/session.css';
 
 let toastsRaised = false; // StrictMode runs the seed effect twice
@@ -31,6 +36,14 @@ export function DeviceShellHarness() {
     // board's `/v1/attention-items` stub must wrap it, not the other way round.
     seedLocationTrail([boardTeam(now)]);
     const board = seedBoardSession();
+    seedPlainSession();
+    // No sync credentials here: look ids up through the page's own `/v1/` stub (404 for anything unknown).
+    const realLookup = sync.fetchSessionById;
+    sync.fetchSessionById = async (id) => {
+      const res = await fetch(`/v1/sessions/${encodeURIComponent(id)}`);
+      if (res.status === 404) return 'missing';
+      throw new Error(`lookup ${res.status}`);
+    };
     storage.getState().applyMachines([{ id: 'dev-machine', seq: 2, createdAt: now, updatedAt: now, active: true, activeAt: now, metadata: { host: 'dev-box', platform: 'linux', teamLaunchVersion: 1 }, metadataVersion: 1, daemonState: null, daemonStateVersion: 1 } as unknown as Machine]);
     setReady(true);
     if (location.hash === '#toasts' && !toastsRaised) {
@@ -39,7 +52,7 @@ export function DeviceShellHarness() {
       toast.error('发送失败：连接已断开，请稍后重试');
       toast.action('有新版本可用 — 点此刷新', () => {});
     }
-    return () => { setTeamNavigationDevOverride(null); board.cleanup(); };
+    return () => { setTeamNavigationDevOverride(null); board.cleanup(); sync.fetchSessionById = realLookup; };
   }, []);
   if (!ready) return null;
   return <><AppLayout rootPath="/dev/device" />{location.hash === '#whats-new' && <ChangelogNotice />}</>;

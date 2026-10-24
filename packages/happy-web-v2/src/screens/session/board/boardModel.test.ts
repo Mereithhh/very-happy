@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AttentionItem } from '@slopus/happy-wire';
-import { blockedBanner, choiceLabel, displayTitle, optionMarker, recommendationTag, sessionHasBoard, boardCounts, boardGroup, buildBoard, followUpQuote, isUnread, itemStatus, repliesTo, resolveAction, RECENT_ANSWERED } from './boardModel';
+import { blockedBanner, boardStripVisible, choiceLabel, displayTitle, optionMarker, recommendationTag, sessionHasBoard, boardCounts, boardGroup, buildBoard, followUpQuote, isUnread, itemStatus, repliesTo, resolveAction, RECENT_ANSWERED } from './boardModel';
 
 let n = 0;
 function item(over: Partial<AttentionItem>): AttentionItem {
@@ -157,5 +157,20 @@ describe('card text (QA5 O1)', () => {
         expect(recommendationTag({ source: 'automation' }, { recommended: true })).toBe('plain');
         expect(recommendationTag({ source: 'lead' }, {})).toBeNull();
         expect(recommendationTag({ source: 'team' }, { recommended: false })).toBeNull();
+    });
+});
+
+describe('B-798 P2-1 boardStripVisible', () => {
+    const none = { need: 0, asked: 0, fresh: 0 };
+    it('hides the all-zero strip in an ordinary session', () => {
+        expect(boardStripVisible(false, none)).toBe(false);
+    });
+    it('keeps it in the lead conversation (it carries the view switch)', () => {
+        expect(boardStripVisible(true, none)).toBe(true);
+    });
+    it('shows it whenever any count is non-zero', () => {
+        expect(boardStripVisible(false, { ...none, need: 1 })).toBe(true);
+        expect(boardStripVisible(false, { ...none, asked: 1 })).toBe(true);
+        expect(boardStripVisible(false, { ...none, fresh: 1 })).toBe(true);
     });
 });
