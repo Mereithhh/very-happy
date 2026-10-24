@@ -38,6 +38,16 @@
  *        visible ≤ 2s after coming back.
  *   TABS tab1 and tab2 interleave 6 sends → both show all of them and end on
  *        the same lastSeq ≤ 2s after the last send.
+ * B-805 (PR-3; live messages cost no history GET — counted per tab):
+ *   TURN  tab2 (the "agent") stores TURN_RECORDS agent records 150ms apart
+ *         while tab1 views the session → tab1 shows them all, in order, with
+ *         0 after_seq GETs.
+ *   BURST tab1 and tab2 alternate 50 sends as fast as the composer takes
+ *         them → both show exactly 50, same order, matching a fresh load
+ *         (server seq order); 0 after_seq GETs in either tab.
+ *   UNOPENED records for a session no tab has opened → each tab loads its
+ *         latest page at most once (board previews / subagent counts read
+ *         it) and does 0 after_seq; opening it in tab1 shows every record.
  * Prints one line per measurement (`MEASURE <scenario> <ms|never>`) for the
  * before/after table. Exit code 1 on any failed check.
  */
@@ -61,6 +71,8 @@ const HOLD_MS = Number(opt('hold-ms', '30000'));
 const ONLY = opt('only', null)?.split(',') ?? null;
 const CATCH_UP_LIMIT_MS = TIMEOUT_MS + 2_000;
 const LIVE_LIMIT_MS = 2_000;
+const TURN_RECORDS = 30;
+const BURST_SENDS = 50;
 if (OUT) mkdirSync(OUT, { recursive: true });
 if (!DATA_DIR) {
     console.error('--data-dir <migrated standalone data dir> is required');
@@ -165,6 +177,11 @@ function measure(name, ms) {
     measures.push([name, ms]);
     console.log(`MEASURE ${name} ${ms === null ? 'never' : `${ms}ms`}`);
 }
+/** B-805: a request count for the before/after table. */
+function count(name, n) {
+    measures.push([name, n]);
+    console.log(`MEASURE ${name} ${n}`);
+}
 const fmt = (ms) => (ms === null ? `never (>${HOLD_MS}ms)` : `${ms}ms`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const want = (name) => !ONLY || ONLY.includes(name);
@@ -239,9 +256,59 @@ async function setHidden(page, hidden) {
     }, hidden);
 }
 /** Fire a catch-up GET in tab1 now (what any incoming message does today). */
-const pokeCatchUp = (page, sessionId) => page.evaluate((id) => import('/src/sync/sync.ts').then(({ sync }) => sync.onSessionVisible(id)), sessionId);
+const pokeCatchUp = (page, sessionId) => page.evaluate((id) => import('/src/sync/sync.ts').then(({ sync }) => sync.onSessionEnter(id)), sessionId);
 const closeSocket = (page) => page.evaluate(() => import('/src/sync/apiSocket.ts').then(({ apiSocket }) => apiSocket['socket']?.io?.engine?.close()));
 const token = (tag) => `${tag}x${randomBytes(3).toString('hex')}`;
+
+/** B-805: history GETs a tab issues, per session and kind (`after` = after_seq, `before` = latest page). */
+function countHistoryGets(page) {
+    const counts = new Map();
+    page.on('request', (request) => {
+        if (request.method() !== 'GET') return;
+        const match = /\/v3\/sessions\/([^/]+)\/messages\?(after_seq|before_seq)=/.exec(request.url());
+        if (match) counts.set(`${match[1]}:${match[2] === 'after_seq' ? 'after' : 'before'}`, (counts.get(`${match[1]}:${match[2] === 'after_seq' ? 'after' : 'before'}`) ?? 0) + 1);
+    });
+    return { get: (sid, kind) => counts.get(`${sid}:${kind}`) ?? 0, reset: () => counts.clear() };
+}
+/** The "CLI": store agent text records one by one, `gapMs` apart (pushed to every tab as `new-message`). */
+async function agentSay(page, sessionId, texts, gapMs) {
+    await page.evaluate(async ({ sessionId, texts, gapMs }) => {
+        const { sync } = await import('/src/sync/sync.ts');
+        const { apiSocket } = await import('/src/sync/apiSocket.ts');
+        let encryption = null;
+        for (let i = 0; i < 100 && !(encryption = sync.encryption.getSessionEncryption(sessionId)); i++) await new Promise((r) => setTimeout(r, 100));
+        for (const text of texts) {
+            const record = {
+                role: 'agent',
+                content: { type: 'output', data: { type: 'assistant', uuid: crypto.randomUUID(), parentUuid: null, message: { role: 'assistant', model: 'e2e', content: [{ type: 'text', text }] } } },
+            };
+            const content = await encryption.encryptRawRecord(record);
+            const res = await apiSocket.request(`/v3/sessions/${sessionId}/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: [{ localId: crypto.randomUUID(), content }] }),
+            });
+            if (!res.ok) throw new Error(`agent POST ${res.status}`);
+            await new Promise((r) => setTimeout(r, gapMs));
+        }
+    }, { sessionId, texts, gapMs });
+}
+/** User/agent texts in the tab's reduced transcript, oldest first, that start with `prefix`. */
+const transcript = (page, sessionId, prefix) => page.evaluate(async ({ sessionId, prefix }) => {
+    const { storage } = await import('/src/sync/storage.ts');
+    const messages = storage.getState().sessionMessages[sessionId]?.messages ?? [];
+    return [...messages].reverse()
+        .map((m) => (m.kind === 'user-text' || m.kind === 'agent-text' ? m.text : null))
+        .filter((text) => typeof text === 'string' && text.startsWith(prefix));
+}, { sessionId, prefix });
+async function waitTranscript(page, sessionId, prefix, n, timeoutMs) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeoutMs) {
+        if ((await transcript(page, sessionId, prefix)).length >= n) return Date.now() - t0;
+        await sleep(100);
+    }
+    return null;
+}
 
 /**
  * After a scenario: if tab1 never caught up (pre-fix behaviour), RST the dead
@@ -289,15 +356,15 @@ try {
     await page2.locator('form.auth-password-form button[type="submit"]').click();
     await waitConnected(page2);
 
-    step('create two sessions in-page');
+    step('create three sessions in-page (S3: never opened by any tab)');
     await page2.waitForFunction(() => import('/src/sync/sync.ts').then(({ sync }) => !!sync.encryption), null, { timeout: 30_000, polling: 300 });
-    const [S1, S2] = await page2.evaluate(async () => {
+    const [S1, S2, S3] = await page2.evaluate(async () => {
         const { sync } = await import('/src/sync/sync.ts');
         const { apiSocket } = await import('/src/sync/apiSocket.ts');
         const { encodeBase64 } = await import('/src/encryption/base64.ts');
         for (let i = 0; i < 100 && !sync.encryption; i++) await new Promise((r) => setTimeout(r, 200));
         const ids = [];
-        for (const path of ['/tmp/b803-e2e-1', '/tmp/b803-e2e-2']) {
+        for (const path of ['/tmp/b803-e2e-1', '/tmp/b803-e2e-2', '/tmp/b805-e2e-unopened']) {
             const enc = await sync.encryption.openEncryption(null);
             const [metadata] = await enc.encrypt([{ path, host: 'e2e', flavor: 'claude' }]);
             const res = await apiSocket.request('/v1/sessions', {
@@ -326,6 +393,8 @@ try {
     page1.on('framenavigated', (f) => { if (f === page1.mainFrame()) console.log(`    tab1 navigated → ${f.url().replace(PROXY_BASE, '')}`); });
     page1.on('requestfailed', (r) => { if (!/\/v3\/|\/v1\/|socket\.io/.test(r.url())) console.log(`    tab1 request failed ${r.url().replace(PROXY_BASE, '')} ${r.failure()?.errorText}`); });
     await openSession(page1, PROXY_BASE, S1);
+    const gets1 = countHistoryGets(page1);
+    const gets2 = countHistoryGets(page2);
     await sleep(1_500);
     await shot(page1, '0-tab1-ready');
 
@@ -464,6 +533,79 @@ try {
         check(ok && ms <= LIVE_LIMIT_MS, `TABS both tabs show all 6 and agree on lastSeq ≤ ${LIVE_LIMIT_MS}ms`, `${fmt(ms)} lastSeq=${JSON.stringify(seqs)}`);
         await shot(page1, 'TABS-tab1');
         await shot(page2, 'TABS-tab2');
+    }
+
+    // ── B-805 TURN: an agent turn costs the viewing tab no after_seq ──
+    if (want('TURN')) {
+        step(`TURN tab2 stores ${TURN_RECORDS} agent records 150ms apart; tab1 views the session`);
+        gets1.reset();
+        gets2.reset();
+        const prefix = token('turn');
+        const texts = Array.from({ length: TURN_RECORDS }, (_, i) => `${prefix}-${String(i + 1).padStart(3, '0')}`);
+        await agentSay(page2, S1, texts, 150);
+        const ms = await waitTranscript(page1, S1, prefix, TURN_RECORDS, HOLD_MS);
+        await sleep(1_500);
+        const seen = await transcript(page1, S1, prefix);
+        check(ms !== null && JSON.stringify(seen) === JSON.stringify(texts), `TURN tab1 shows all ${TURN_RECORDS} records in order`, `${seen.length}`);
+        const after = gets1.get(S1, 'after');
+        count('TURN-after_seq-GETs-tab1', after);
+        count('TURN-after_seq-GETs-tab2', gets2.get(S1, 'after'));
+        check(after === 0, 'TURN tab1 issued 0 after_seq GETs for the turn', `${after}`);
+    }
+
+    // ── B-805 BURST: two tabs alternate 50 sends ──────────────────────
+    if (want('BURST')) {
+        step(`BURST tab1 and tab2 alternate ${BURST_SENDS} sends`);
+        gets1.reset();
+        gets2.reset();
+        const prefix = token('burst');
+        const sent = [[], []];
+        for (let i = 1; i <= BURST_SENDS; i++) {
+            const text = `${prefix}-${String(i).padStart(3, '0')}`;
+            sent[i % 2].push(text);
+            await send(i % 2 ? page1 : page2, text);
+        }
+        const a = await waitTranscript(page1, S1, prefix, BURST_SENDS, HOLD_MS);
+        const b = await waitTranscript(page2, S1, prefix, BURST_SENDS, HOLD_MS);
+        await sleep(2_000);
+        const list1 = await transcript(page1, S1, prefix);
+        const list2 = await transcript(page2, S1, prefix);
+        check(a !== null && b !== null && list1.length === BURST_SENDS && list2.length === BURST_SENDS && new Set(list1).size === BURST_SENDS,
+            `BURST both tabs show exactly ${BURST_SENDS}, no duplicates`, `tab1=${list1.length} tab2=${list2.length}`);
+        check(JSON.stringify(list1) === JSON.stringify(list2), 'BURST same order in both tabs');
+        const keeps = (own) => JSON.stringify(list1.filter((t) => own.includes(t))) === JSON.stringify(own);
+        check(keeps(sent[0]) && keeps(sent[1]), 'BURST each tab\'s sends keep their send order');
+        const fresh = await ctx2.newPage();
+        await openSession(fresh, BASE, S1);
+        await waitTranscript(fresh, S1, prefix, BURST_SENDS, 15_000);
+        const server = await transcript(fresh, S1, prefix);
+        await fresh.close();
+        check(JSON.stringify(server) === JSON.stringify(list1), 'BURST tabs match a fresh load (server seq order)');
+        count('BURST-after_seq-GETs-tab1', gets1.get(S1, 'after'));
+        count('BURST-after_seq-GETs-tab2', gets2.get(S1, 'after'));
+        check(gets1.get(S1, 'after') === 0 && gets2.get(S1, 'after') === 0, 'BURST 0 after_seq GETs in either tab', `${gets1.get(S1, 'after')}/${gets2.get(S1, 'after')}`);
+    }
+
+    // ── B-805 UNOPENED: a session nobody opened ───────────────────────
+    if (want('UNOPENED')) {
+        step('UNOPENED 5 records for a session no tab has opened');
+        gets1.reset();
+        gets2.reset();
+        const prefix = token('unopened');
+        const texts = Array.from({ length: 5 }, (_, i) => `${prefix}-${i + 1}`);
+        await agentSay(page2, S3, texts, 150);
+        await sleep(2_000);
+        const pages = [gets1.get(S3, 'before'), gets2.get(S3, 'before')];
+        const forwards = [gets1.get(S3, 'after'), gets2.get(S3, 'after')];
+        count('UNOPENED-page-GETs', pages.join('/'));
+        count('UNOPENED-after_seq-GETs', forwards.join('/'));
+        check(pages.every((n) => n <= 1) && forwards.every((n) => n === 0), 'UNOPENED each tab: at most one page load, 0 after_seq', `before=${pages} after=${forwards}`);
+        const held = await transcript(page1, S3, prefix);
+        check(JSON.stringify(held) === JSON.stringify(texts), 'UNOPENED tab1 already holds every record (board previews / subagent counts)', `${held.length}`);
+        await nav(page1, S3);
+        const ms = await waitTranscript(page1, S3, prefix, 5, 10_000);
+        check(ms !== null && JSON.stringify(await transcript(page1, S3, prefix)) === JSON.stringify(texts), 'UNOPENED opening it shows every record in order', fmt(ms));
+        await nav(page1, S1);
     }
 } catch (error) {
     failures += 1;

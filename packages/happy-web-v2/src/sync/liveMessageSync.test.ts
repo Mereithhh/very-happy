@@ -8,6 +8,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
 import { ANCHOR_BUFFER_LIMIT, AnchorBuffer, planLiveMessage } from './liveMessagePlan';
+import { SYNC_READ_TIMEOUT_MS } from './requestDeadline';
 
 let sync: typeof import('./sync').sync;
 let storage: typeof import('./storage').storage;
@@ -21,6 +22,10 @@ let gets: string[];
 let counter = 0;
 /** While set, a latest-page (before_seq) request answers with the server state AT REQUEST TIME only once released. */
 let pageGate: Promise<void> | null;
+/** B-803 deadline each history GET was issued with. */
+let timeouts: Array<number | undefined>;
+/** Page requests that fail like a timed-out read before the server answers. */
+let failPages: number;
 
 beforeAll(async () => {
     installBrowserTestGlobals();
@@ -37,12 +42,15 @@ beforeEach(() => {
     server = new Map();
     gets = [];
     pageGate = null;
+    timeouts = [];
+    failPages = 0;
     const encryption = {
         decryptMessage: async (message: ServerMessage) => decrypt(message),
         decryptMessages: async (messages: ServerMessage[]) => messages.map(decrypt),
     };
     (sync as unknown as { encryption: unknown }).encryption = { getSessionEncryption: (id: string) => (server.has(id) ? encryption : null) };
-    vi.spyOn(apiSocket, 'request').mockImplementation(async (path) => {
+    vi.spyOn(apiSocket, 'request').mockImplementation(async (path, init) => {
+        timeouts.push((init as { timeoutMs?: number } | undefined)?.timeoutMs);
         const url = new URL(String(path), 'http://x');
         const sid = url.pathname.split('/')[3];
         const all = server.get(sid) ?? [];
@@ -52,6 +60,10 @@ beforeEach(() => {
             ? all.filter((m) => m.seq > Number(after))
             : [...all].reverse();
         if (after === null && pageGate) await pageGate;
+        if (after === null && failPages > 0) {
+            failPages -= 1;
+            throw new DOMException('read deadline', 'TimeoutError');
+        }
         return new Response(JSON.stringify({ messages, hasMore: false }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
 });
@@ -179,6 +191,18 @@ describe('B-805 live new-message: no GET per message', () => {
         await settle();
         expect(gets).toEqual([`${sid}?before`]);
         expect(texts(sid)).toHaveLength(11);
+    });
+
+    it('the one-time prefetch runs under the B-803 read deadline; a timed-out one retries with the buffer intact', async () => {
+        const sid = newSession();
+        store(sid, 'm1');
+        failPages = 1;
+        await deliver(sid, store(sid, 'm2'));
+        await deliver(sid, store(sid, 'm3'));
+        await vi.waitFor(() => expect(texts(sid)).toEqual(['m1', 'm2', 'm3']), { timeout: 5_000 });
+
+        expect(gets).toEqual([`${sid}?before`, `${sid}?before`]); // the failed one + its retry, no after_seq
+        expect(timeouts).toEqual([SYNC_READ_TIMEOUT_MS, SYNC_READ_TIMEOUT_MS]);
     });
 
     it('updates arriving while the viewed session\'s first page loads cost no after_seq', async () => {
