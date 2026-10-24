@@ -63,5 +63,11 @@ describe('B-798 sidebar tree row actions on touch', () => {
   it('the project head’s ⋯ and the team row’s ⋯ open the same items as their long-press menu', () => {
     expect(sidebar).toMatch(/<ActionContextMenu items=\{projectItems\(project\)\}[\s\S]*?<span className="sb-tree-acts">[\s\S]*?<ActionDropdownMenu items=\{projectItems\(project\)\}/);
     expect(teamRow).toMatch(/<ActionContextMenu items=\{items\}[\s\S]*?<span className="sb-tree-acts">\s*<ActionDropdownMenu items=\{items\}/);
+ 
+  });
+
+  it('on a phone both ⋯ open the same titled bottom sheet as long-press (B-798 B: sheetTitle)', () => {
+    expect(sidebar).toMatch(/<ActionDropdownMenu items=\{projectItems\(project\)\}[^>]*sheetTitle=\{project\.name\}/);
+    expect(teamRow).toMatch(/<ActionDropdownMenu items=\{items\}[^>]*sheetTitle=\{team\.name\}/);
   });
 });
