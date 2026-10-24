@@ -14,6 +14,7 @@
  *   node scripts/dev/device-shots.mjs --base http://127.0.0.1:8795 --out <dir> \
  *        [--devices duo-folded,duo-open-land] [--pages session,board] [--themes light,dark]
  *   node scripts/dev/device-shots.mjs --base … --fold      # 折叠 ↔ 展开切换回归
+ *   node scripts/dev/device-shots.mjs --base … --gestures  # 边缘手势：抽屉跟手开合 / standalone 返回 / 横滚排除（B-800）
  *   node scripts/dev/device-shots.mjs --base … --devices duo-folded-inset   # 外屏右侧状态列（B-796）
  *
  * 粗指针设备在 page 创建后用 CDP 打开原生触屏，并在每张截图后核验
@@ -31,6 +32,10 @@
  * `--fold` 在会话页、汇报板、团队页、项目页和新建对话弹窗上做 466×678 ↔ 890×626
  * 往返，断言弹窗（含输入内容）仍在、汇报板仍开、composer 草稿仍在、聊天滚动位置保持、
  * 没有整页重载；再验 890×626 的侧栏抽屉（rail 打开，遮罩 / Esc / 收起按钮 / 导航关闭）。
+ * `--gestures`（B-800）用 CDP 原生触屏（Input.dispatchTouchEvent）逐帧拖动，断言：890×626 抽屉从左边缘右滑
+ * 跟手打开（拖到一半抽屉位于半开处）、左滑关闭、慢拖不过阈值回弹、短促快滑按速度打开、浏览器下最外 16px 让给系统；
+ * 390×844 手机会话页浏览器内边缘右滑不接管，standalone（navigator.standalone）下跟手出返回箭头并回到列表，
+ * 在代码块 / 横向滚动区里横滑不触发。
  * 退出码：任何断言失败为 1。
  */
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
@@ -611,9 +616,144 @@ async function drawerChecks(browser) {
     await context.close();
 }
 
+/**
+ * B-800 edge gestures, driven by native CDP touch events one frame at a time (the gesture code reads
+ * `touches` / `timeStamp`, so the pacing of the moves is the velocity it sees).
+ */
+async function drag(cdp, page, from, to, { steps = 12, frameMs = 16, onMid } = {}) {
+    const at = (p) => [{ x: p.x, y: p.y, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(from) });
+    for (let i = 1; i <= steps; i++) {
+        const p = { x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps };
+        await page.waitForTimeout(frameMs);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(p) });
+        if (i === Math.round(steps / 2) && onMid) await onMid();
+    }
+    await page.waitForTimeout(frameMs);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(450);
+}
+
+async function gestureChecks(browser) {
+    const check = (name, ok, detail = '') => (ok ? console.log(`── gesture ${name}: ok ${detail}`) : fail(`gesture ${name} ${detail}`));
+
+    // ── drawer shell (unfolded Duo, browser tab) ──
+    {
+        const { page, cdp, context, errors } = await openDevice(browser, 'duo-open-land', 'light');
+        await goto(page, '/session/dev-board');
+        const isOpen = () => page.evaluate(() => !!document.querySelector('.app-sidebar--drawer.is-open'));
+        const y = 300;
+        let mid = null;
+        await drag(cdp, page, { x: 24, y }, { x: 360, y: y + 8 }, {
+            steps: 20, frameMs: 30,
+            onMid: async () => {
+                mid = await page.evaluate(() => { const a = document.querySelector('.app-sidebar--drawer'); return { ml: parseFloat(a.style.marginLeft), w: a.offsetWidth, scrim: Number(document.querySelector('.app-drawer-scrim').style.opacity) }; });
+                if (outDir) writeFileSync(join(outDir, 'gesture-drawer-mid.png'), await shot(page, cdp, DEVICES['duo-open-land']));
+            },
+        });
+        check('drawer follows the finger', mid && mid.ml > -mid.w && mid.ml < 0 && mid.scrim > 0 && mid.scrim < 1, JSON.stringify(mid));
+        if (outDir) writeFileSync(join(outDir, 'gesture-drawer-open.png'), await shot(page, cdp, DEVICES['duo-open-land']));
+        check('edge swipe right opens the drawer', await isOpen());
+        check('inline drag styles cleared after release', await page.evaluate(() => document.querySelector('.app-sidebar--drawer').style.marginLeft === ''));
+        await drag(cdp, page, { x: 220, y }, { x: 20, y: y - 6 }, { steps: 14, frameMs: 30 });
+        check('swipe left on the drawer closes it', !await isOpen());
+        await drag(cdp, page, { x: 24, y }, { x: 84, y }, { steps: 20, frameMs: 40 });
+        check('a short slow drag snaps back closed', !await isOpen());
+        await drag(cdp, page, { x: 24, y }, { x: 120, y }, { steps: 3, frameMs: 8 });
+        check('a short fast flick opens it', await isOpen());
+        await drag(cdp, page, { x: 220, y }, { x: 140, y }, { steps: 20, frameMs: 40 });
+        check('a short slow drag on the open drawer snaps back open', await isOpen());
+        await drag(cdp, page, { x: 220, y }, { x: 230, y: y + 200 }, { steps: 12, frameMs: 20 });
+        check('a vertical stroke on the drawer (list scroll) leaves it open', await isOpen());
+        // A slow runner can turn that stroke into a row long-press: its menu (not the scrim) takes the next tap.
+        if (await page.locator('.vh-menu[data-state="open"]').count()) { await page.keyboard.press('Escape'); await page.waitForTimeout(300); }
+        await page.mouse.click(860, 300);
+        await page.waitForTimeout(400);
+        check('scrim tap closes it', !await isOpen());
+        await drag(cdp, page, { x: 6, y }, { x: 360, y }, { steps: 20, frameMs: 30 });
+        check('browser tab: the outermost strip stays the browser\'s', !await isOpen());
+        await drag(cdp, page, { x: 30, y: 200 }, { x: 30, y: 500 }, { steps: 12, frameMs: 20 });
+        check('a vertical stroke from the rail does not open it', !await isOpen());
+        if (errors.length) fail(`gesture drawer pageerror: ${errors.join(' | ')}`);
+        await context.close();
+    }
+
+    // ── drawer with a 47px left inset (landscape notch) + reduced motion ──
+    {
+        const { page, cdp, context, errors } = await openDevice(browser, 'duo-open-land', 'dark');
+        await context.addInitScript(simulateSafeArea, { top: 0, right: 0, bottom: 0, left: 47 });
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await goto(page, '/session/dev-board');
+        const isOpen = () => page.evaluate(() => !!document.querySelector('.app-sidebar--drawer.is-open'));
+        await drag(cdp, page, { x: 8, y: 300 }, { x: 360, y: 300 }, { steps: 20, frameMs: 30 });
+        check('inset 47: a browser-strip start (x=8) stays the browser\'s', !await isOpen());
+        await drag(cdp, page, { x: 60, y: 300 }, { x: 360, y: 300 }, { steps: 20, frameMs: 30 });
+        check('inset 47: a start on the rail past the inset opens', await isOpen());
+        const dur = await page.evaluate(() => [getComputedStyle(document.querySelector('.app-sidebar--drawer')).transitionDuration, getComputedStyle(document.querySelector('.app-drawer-scrim')).transitionDuration]);
+        check('reduced motion: drawer and scrim settle without a transition', dur.every((d) => d.split(',').every((x) => parseFloat(x) === 0)), dur.join(' / '));
+        if (outDir) writeFileSync(join(outDir, 'gesture-drawer-inset-dark.png'), await shot(page, cdp, DEVICES['duo-open-land']));
+        if (errors.length) fail(`gesture inset pageerror: ${errors.join(' | ')}`);
+        await context.close();
+    }
+
+    // ── phone: session page, browser tab vs standalone ──
+    for (const standalone of [false, true]) {
+        const { page, cdp, context, errors } = await openDevice(browser, 'phone', 'light');
+        if (standalone) await context.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true }));
+        await goto(page, '');
+        const open = async () => {
+            await page.evaluate(() => window.__vhDevNavigate('/dev/device/session/dev-plain'));
+            await page.waitForSelector('.app-detail .cl-scroll', { timeout: 15_000 });
+            await page.waitForTimeout(600);
+        };
+        await open();
+        const path = () => page.evaluate(() => location.pathname);
+        const tag = standalone ? 'standalone' : 'browser';
+        let cue = null;
+        await drag(cdp, page, { x: 6, y: 420 }, { x: 200, y: 428 }, {
+            steps: 16, frameMs: 30,
+            onMid: async () => {
+                cue = await page.evaluate(() => { const c = document.querySelector('.vh-edge-back'); return c ? Number(c.style.getPropertyValue('--edge-progress')) : null; });
+                if (outDir && standalone) writeFileSync(join(outDir, 'gesture-back-cue.png'), await shot(page, cdp, DEVICES.phone));
+            },
+        });
+        if (standalone) {
+            check(`${tag}: back cue follows the finger`, cue !== null && cue > 0, `progress=${cue}`);
+            check(`${tag}: edge swipe right = back to the list`, await path() === '/dev/device', await path());
+            check(`${tag}: cue removed after release`, !await page.locator('.vh-edge-back').count());
+            for (const [what, html] of [
+                ['code block', '<pre style="margin:0;padding:24px 8px;overflow-x:auto;white-space:pre">' + 'const x = 1; '.repeat(40) + '</pre>'],
+                ['horizontal scroller', '<div style="overflow-x:auto"><div style="width:2000px;height:60px">wide</div></div>'],
+            ]) {
+                await open();
+                await page.evaluate((h) => {
+                    const el = document.createElement('div');
+                    el.id = 'gesture-hscroll';
+                    el.style.cssText = 'position:fixed;left:0;top:380px;width:300px;z-index:5000;background:var(--bg-2)';
+                    el.innerHTML = h;
+                    document.querySelector('.app-detail').appendChild(el);
+                }, html);
+                await drag(cdp, page, { x: 6, y: 410 }, { x: 220, y: 412 }, { steps: 16, frameMs: 30 });
+                check(`${tag}: swiping inside a ${what} does not go back`, await path() === '/dev/device/session/dev-plain', await path());
+            }
+            await page.evaluate(() => document.getElementById('gesture-hscroll')?.remove());
+            await drag(cdp, page, { x: 6, y: 300 }, { x: 40, y: 600 }, { steps: 12, frameMs: 20 });
+            check(`${tag}: a vertical stroke from the edge does not go back`, await path() === '/dev/device/session/dev-plain');
+            await drag(cdp, page, { x: 60, y: 420 }, { x: 300, y: 420 }, { steps: 16, frameMs: 30 });
+            check(`${tag}: a swipe away from the edge does not go back`, await path() === '/dev/device/session/dev-plain');
+        } else {
+            check(`${tag}: no cue (the browser owns the edge)`, cue === null);
+            check(`${tag}: edge swipe right is not taken over`, await path() === '/dev/device/session/dev-plain', await path());
+        }
+        if (errors.length) fail(`gesture ${tag} pageerror: ${errors.join(' | ')}`);
+        await context.close();
+    }
+}
+
 const browser = await chromium.launch({ executablePath: exe });
 try {
-    if (args.includes('--fold')) { await foldRoundTrip(browser); await drawerChecks(browser); }
+    if (args.includes('--gestures')) await gestureChecks(browser);
+    else if (args.includes('--fold')) { await foldRoundTrip(browser); await drawerChecks(browser); }
     else await captureAll(browser);
 } finally {
     await browser.close();

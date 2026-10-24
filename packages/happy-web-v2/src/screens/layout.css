@@ -129,6 +129,15 @@ body.vh-col-resizing iframe {
   z-index: 999;
   inset: 0;
   background: var(--scrim);
+  opacity: 0;
+  visibility: hidden;
+  /* hidden = unhittable via visibility; no pointer-events here (an open menu sets body's to none, B-800) */
+  transition: opacity var(--motion-med), visibility 0s linear var(--dur-base);
+}
+.app-drawer-scrim.is-open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--motion-med), visibility 0s;
 }
 /* folded while the sidebar was on screen: kept mounted, zero-size, until the route changes */
 .app-sidebar--parked {
@@ -146,7 +155,9 @@ body.vh-col-resizing iframe {
 }
 @media (prefers-reduced-motion: reduce) {
   .app-sidebar--drawer,
-  .app-sidebar--drawer.is-open { transition: none; }
+  .app-sidebar--drawer.is-open,
+  .app-drawer-scrim,
+  .app-drawer-scrim.is-open { transition: none; }
 }
 
 /* main row: the detail pane + the notes dock (B-094) sharing one grid cell,

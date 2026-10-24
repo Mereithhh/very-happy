@@ -6,6 +6,7 @@ import { PanelLeft } from 'lucide-react';
 import { useIsDesktop, useMediaQuery } from '@/app/useMediaQuery';
 import { appShellMode, nextSidebarParked, TOUCH_DRAWER_MQ } from '@/app/appShellMode';
 import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs';
+import { useDrawerSwipe } from '@/app/drawerSwipe';
 import { Sidebar } from '@/screens/sessions/Sidebar';
 import { MajorUpdateEntry } from '@/app/MajorUpdateEntry';
 import { CommandPalette } from '@/screens/command/CommandPalette';
@@ -110,6 +111,8 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
   const mode = appShellMode({ settings, desktop: isDesktop, touchDrawer, collapsed, atRoot, firstRun, workspaceGuide });
   const drawer = mode === 'drawer';
   useEffect(() => setDrawer(drawer), [drawer, setDrawer]);
+  // B-800: edge swipe right opens the drawer, swipe left on it closes (follows the finger).
+  useDrawerSwipe(drawer);
   // The drawer is a way to pick the next screen: any navigation closes it.
   useEffect(() => setDrawerOpen(false), [location.pathname, setDrawerOpen]);
   useEffect(() => {

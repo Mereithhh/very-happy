@@ -195,11 +195,12 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 
 相邻组件指同一领域、行为有重叠、在同一流程里前后出现的组件，比如消息操作栏和排队 dock，或者下拉菜单和右键菜单。它们要读起来像同一个设计：图标、快捷键约定、提交和取消语义都一致，用户在两者之间切换时看不出接缝。要和相邻组件不同，必须有理由：要么相邻组件本身错了，就两边一起改；要么新组件的角色确实不同，就明确定下来。没有相邻组件时，对齐周围界面的按钮尺寸、图标粗细和语气；不要从用户根本不会联系起来的页面硬找「相邻组件」。
 
-### 触屏行内操作与命中区（B-798 U1–U3）
+### 触屏行内操作、命中区与边缘手势（B-798 U1–U3，B-800 U4）
 
 - **U1 长按只是快捷方式。** 任何 `ActionContextMenu`（长按 / 右键）在同一行都要有常驻可见的 ⋯（`ActionDropdownMenu`，同一份 `items`），触屏 44×44；行上最高频的动作（如侧栏组头的新建 ＋）触屏常驻。写法是**默认可见，只在 `@media (hover: hover) and (pointer: fine)` 里隐藏、hover 时再显示**（`.sb-workspace-new`、`.sb-tree-acts`、/projects 行），不要反过来「默认隐藏、hover 显示」。暂不做左滑行动作（Web 手势与系统边缘返回、横向滚动冲突）。确有别的触屏入口时（如 diff 行点按开评论），在隐藏规则上写 `design-lint-allow: <理由>`，或在 `ActionContextMenu` 上方三行内写 `touch-parity-allow: <理由>`。
 - **U2 菜单形态统一。** 所有 ⋯ 菜单限高可滚；手机窄屏上点 ⋯ 与长按是同一个带标题的底部 sheet（`sheetTitle`，B-798 PR B）。
 - **U3 命中区 44px。** 触屏下可点控件不小于 44×44；视觉要小时用绝对定位的 `::after` 负 inset 扩热区，视觉尺寸不变。句中的行内文字链接按 WCAG 2.5.8 例外。
+- **U4 边缘手势（B-800，`src/app/edgeGesture.ts`）。** 抽屉档从左边缘（rail）右滑拉开抽屉、在抽屉/遮罩上左滑收起，抽屉跟手，松手按距离（40%）或速度（flick）决定。返回手势只在 standalone PWA 接管（iOS 主屏应用没有系统返回）：会话页、二级页左边缘右滑 = `appBack`，箭头跟手、到阈值变实心；浏览器标签页里不接管，交给 Safari / Chrome 自己的边缘返回，抽屉档在浏览器里也把最外 16px（物理）让给系统。所有判定从 `--sa-l` 之后量；起点在可横向滚动的元素（代码块、表格、终端按键条、面包屑、标签条，或 `[data-no-edge-swipe]`）里一律不触发；纵向笔画锁轴后放弃。`prefers-reduced-motion` 下松手直接到位（跟手位移本身是直接操作，保留）。回归：`node scripts/dev/device-shots.mjs --gestures`。
 - 防回归：lint `hover-reveal-needs-touch`、`touch-target`（见下节）；`src/ui/touchParity.test.ts` 要求每个 `ActionContextMenu` 在同文件有同一 `items` 的 `ActionDropdownMenu`；`device-shots` 在粗指针预设下把 `smallTargets`（< 44px）和 `hiddenActions`（有 aria-label 却 0×0、所在行在屏上）作为门禁。三处存量名单（`REVEAL_ALLOWLIST`、`TOUCH_PARITY_ALLOWLIST`、`scripts/dev/touchGate.mjs`）只减不增，每条写归属，修好就删（前两份的过期条目会让测试失败）。
 
 ### 改动行 lint

@@ -11,8 +11,11 @@
  *  side-inset sweep covers the overlays that live outside the shell.
  *  B-798 PR F: `session/dev-plain` is an ordinary session (seedPlainSession) and
  *  any unknown session id answers 404, so `session/dev-missing` shows the
- *  not-found state (the lookup goes through the in-page `/v1/` stub). */
+ *  not-found state (the lookup goes through the in-page `/v1/` stub).
+ *  B-800: global back (⌘[ / edge swipe) is mounted too, for `--gestures`. */
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useGlobalBackNav } from '@/app/appBack';
 import { ChangelogNotice } from '@/app/ChangelogNotice';
 import { useToast } from '@/ui';
 import { storage } from '@/sync/storage';
@@ -30,6 +33,13 @@ let toastsRaised = false; // StrictMode runs the seed effect twice
 export function DeviceShellHarness() {
   const [ready, setReady] = useState(false);
   const toast = useToast();
+  // B-800: the app mounts global back above the shell (AppRoot); the edge-gesture checks drive it here,
+  // pushing in-shell entries through `__vhDevNavigate` (sidebar rows link to the app's absolute routes).
+  useGlobalBackNav();
+  const navigate = useNavigate();
+  useEffect(() => {
+    (window as unknown as { __vhDevNavigate?: typeof navigate }).__vhDevNavigate = navigate;
+  }, [navigate]);
   useEffect(() => {
     const now = Date.now();
     // Location-trail first: its fetch stub 404s unknown `/v1/` paths, so the

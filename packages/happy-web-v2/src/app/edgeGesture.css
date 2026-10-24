@@ -1,0 +1,30 @@
+/* B-800 standalone edge-back cue (edgeSwipeBack.ts): a chevron that follows the
+   finger out of the left edge and fills (ink on canvas) once a release goes back. */
+.vh-edge-back {
+  --edge-progress: 0;
+  position: fixed;
+  z-index: 2147483000;
+  width: 40px;
+  height: 40px;
+  margin-top: -20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  background: var(--bg-2);
+  color: var(--text);
+  box-shadow: var(--shadow-modal);
+  pointer-events: none;
+  opacity: var(--edge-progress);
+  transform: translateX(calc(-44px + var(--edge-progress) * 56px));
+}
+.vh-edge-back.is-armed {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg-0);
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vh-edge-back.is-armed { transition: none; }
+}
