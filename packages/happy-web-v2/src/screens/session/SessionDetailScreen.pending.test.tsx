@@ -22,6 +22,8 @@ const h = vi.hoisted(() => {
         table: [] as unknown[],
         dataReady: false,
         lookup: vi.fn<(id: string) => Promise<'found' | 'missing'>>(),
+        drafts: {} as Record<string, string>,
+        stash: vi.fn(),
     };
 });
 
@@ -55,7 +57,7 @@ vi.mock('@/sync/pendingSessionsRuntime', async () => {
         subscribeSessions: h.subscribe,
         sendMessage: async (_id, text) => { h.sent.push(text); return 'receipt'; },
         writePermissionMode: () => {}, writeModelMode: () => {}, writeEffortLevel: () => {},
-        restoreText: () => {}, clearKeys: () => {}, onSpawned: () => {}, notifyFailure: () => {},
+        restoreText: () => {}, clearKeys: () => {}, readDraft: (id) => h.drafts[id] ?? '', stashNewChatDraft: (text) => h.stash(text), onSpawned: () => {}, notifyFailure: () => {},
         load: () => structuredClone(h.table), save: (records) => { h.table = structuredClone(records); }, now: () => 1, newId: () => `n${++n}`, sessionWaitMs: 60_000,
     });
     return {
@@ -153,6 +155,25 @@ afterEach(() => {
 });
 
 describe('SessionDetailScreen pending page (B-516)', () => {
+    it('B-801: leaving a draft page drops the draft and stashes its text; a remount keeps it', async () => {
+        h.spawn = null;
+        const record = pendingSessions.create({ machineId: 'm', path: '/repo', agent: 'claude', permissionMode: null, source: 'quick', draft: true });
+        h.drafts[record.pendingId] = 'half typed';
+        h.sessions.elsewhere = { id: 'elsewhere', metadata: {} };
+        renderAt(`/session/${record.pendingId}`);
+        await flush();
+        expect(host.querySelector('[data-pending-header="draft"]')).not.toBeNull();
+        // StrictMode-style remount of the same page: still there
+        renderAt(`/session/${record.pendingId}`);
+        await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+        expect(pendingSessions.get(record.pendingId)).toBeDefined();
+        await act(async () => { nav('/session/elsewhere'); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+        expect(pendingSessions.get(record.pendingId)).toBeUndefined();
+        expect(h.stash).toHaveBeenCalledWith('half typed');
+        expect(h.spawn).toBeNull();
+    });
+
     it('renders the pending layout at once, skips viewing-session calls, and lands without remounting the composer', async () => {
         const record = pendingSessions.create({ machineId: 'm', path: '/repo', agent: 'codex', permissionMode: 'default', source: 'quick', firstMessage: 'hi' });
         const shown = vi.fn();

@@ -78,6 +78,8 @@ export const PAGES = {
     // B-799 (`--pages offline`): the top bar while offline, and 「已恢复」 right after.
     offline: { path: '/session/dev-plain', prepare: 'offline' },
     recovered: { path: '/session/dev-plain', prepare: 'recovered' },
+    // B-801: a 「新会话」 draft page (agent / machine / directory fields + composer; nothing spawned).
+    draft: { path: '/session/dev-board#draft', ready: '[data-testid="draft-target"]' },
 };
 
 /** B-796b: overlays outside the shell (the release-notes ✕ sat under the Duo status column in production). */
@@ -118,7 +120,7 @@ const base = opt('base', 'http://127.0.0.1:8795');
 const outDir = opt('out', null);
 const devices = opt('devices', 'duo-folded,duo-open-land,duo-open-port').split(',');
 const PRIMARY = ['session', 'board', 'sidebar', 'team', 'project', 'settings'];
-const GROUPS = { offline: ['offline', 'recovered'], secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS), menus: Object.keys(MENUS), touch: ['session', 'plain', 'prompt-nav', 'session-info', 'session-missing'] };
+const GROUPS = { offline: ['offline', 'recovered'], secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS), menus: Object.keys(MENUS), touch: ['session', 'plain', 'prompt-nav', 'session-info', 'session-missing', 'draft'] };
 const pages = opt('pages', PRIMARY.join(',')).split(',').flatMap((p) => GROUPS[p] ?? [p]);
 const themes = opt('themes', 'light,dark').split(',');
 const locale = opt('locale', 'zh-CN');

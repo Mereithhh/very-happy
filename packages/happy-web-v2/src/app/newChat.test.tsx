@@ -3,14 +3,15 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
- create: vi.fn(), waitShown: vi.fn(), forRoute: vi.fn(), configure: vi.fn(), navigate: vi.fn(), decide: vi.fn(),
+ create: vi.fn(), takeDrafts: vi.fn(() => ''), updateDraft: vi.fn(), stash: { text: '' }, waitShown: vi.fn(), forRoute: vi.fn(), configure: vi.fn(), navigate: vi.fn(), decide: vi.fn(),
  decision: {kind:'spawn',machineId:'m',directory:'/repo'} as {kind:string;machineId?:string;directory?:string},
 }));
-vi.mock('@/sync/storage', () => ({ storage: {getState: () => ({machines:{},sessions:{viewed:{metadata:{machineId:'target',path:'/viewed'}}},settings:{},localSettings:{}})} }));
+vi.mock('@/sync/storage', () => ({ storage: {getState: () => ({machines:{},sessions:{viewed:{metadata:{machineId:'target',path:'/viewed'}}},settings:{},localSettings:{},updateSessionDraft:mocks.updateDraft})} }));
 vi.mock('@/sync/sync', () => ({sync:{applySettings:vi.fn()}}));
-vi.mock('@/sync/pendingSessionsRuntime', () => ({ pendingSessions: { create: mocks.create, waitShown: mocks.waitShown, forRoute: mocks.forRoute } }));
+vi.mock('@/sync/pendingSessionsRuntime', () => ({ pendingSessions: { create: mocks.create, takeDrafts: mocks.takeDrafts, waitShown: mocks.waitShown, forRoute: mocks.forRoute } }));
 vi.mock('@/sync/agentDefaults', () => ({normalizeAgentKey:()=> 'claude',resolveNewSessionPermissionMode:()=> 'default'}));
 vi.mock('@/utils/quickChat', () => ({decideQuickChat:(args:unknown)=>{mocks.decide(args);return mocks.decision;},pushRecentMachinePath:()=>[]}));
+vi.mock('@/sync/persistence', () => ({ loadNewChatDraft: () => mocks.stash.text, saveNewChatDraft: (text: string | null) => { mocks.stash.text = text ?? ''; } }));
 vi.mock('./recentMachinePath', () => ({ recordRecentMachinePath: vi.fn() }));
 vi.mock('./prefetchSessionDetail', () => ({ prefetchSessionDetail: vi.fn() }));
 vi.mock('@/screens/sessions/useTeamNavigation', () => ({ teamNavigationSnapshot: () => [] }));
@@ -22,6 +23,28 @@ beforeEach(() => {
  mocks.decision = {kind:'spawn',machineId:'m',directory:'/repo'};
  mocks.create.mockImplementation((input: object) => ({ ...input, pendingId: 'pending-1' }));
  mocks.forRoute.mockReturnValue(undefined);
+ mocks.takeDrafts.mockReturnValue('');
+ mocks.stash.text = '';
+});
+
+it('B-801: the quick path opens a draft (no spawn) and brings back the text of a left or replaced draft', async () => {
+ mocks.waitShown.mockResolvedValue(undefined);
+ mocks.stash.text = 'left earlier';
+ await createChatOrConfigure(mocks.navigate, mocks.configure);
+ expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({ draft: true, source: 'quick' }));
+ expect(mocks.updateDraft).toHaveBeenLastCalledWith('pending-1', 'left earlier');
+ expect(mocks.stash.text).toBe(''); // moved into the new draft, not kept twice
+ // a draft still open in this tab is replaced: its text wins over the stash
+ mocks.stash.text = 'older';
+ mocks.takeDrafts.mockReturnValueOnce('open draft text');
+ await createChatOrConfigure(mocks.navigate, mocks.configure);
+ expect(mocks.updateDraft).toHaveBeenLastCalledWith('pending-1', 'open draft text');
+ // an explicit prefill (command palette) wins; the carried text stays stashed
+ mocks.updateDraft.mockClear();
+ mocks.stash.text = 'stashed';
+ await createChatOrConfigure(mocks.navigate, mocks.configure, { draft: 'from palette' });
+ expect(mocks.updateDraft).toHaveBeenLastCalledWith('pending-1', 'from palette');
+ expect(mocks.stash.text).toBe('stashed');
 });
 
 it('B-516: opens the pending page at once and holds the global lock only until it is shown', async () => {

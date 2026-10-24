@@ -7,6 +7,8 @@ import { newChatLocation } from '@/utils/newChatLocation';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { RecentMachinePath } from '@/utils/quickChat';
 import { pendingSessions } from '@/sync/pendingSessionsRuntime';
+import { loadNewChatDraft, saveNewChatDraft } from '@/sync/persistence';
+import { flushPendingDrafts } from './draftFlush';
 import { newSessionTimingStart } from './newSessionTiming';
 import { prefetchSessionDetail } from './prefetchSessionDetail';
 
@@ -33,7 +35,12 @@ import { teamNavigationSnapshot } from '@/screens/sessions/useTeamNavigation';
  *
  * B-516: creation is optimistic — a pending record is created and the pending
  * session page opens at once; the spawn, a directory-creation approval and the
- * first messages are handled there (sync/pendingSessions.ts). The global lock
+ * first messages are handled there (sync/pendingSessions.ts).
+ *
+ * B-801: the quick path opens a DRAFT: nothing is spawned until the first
+ * message is sent from it, so a 「新会话」 click that is never used leaves no
+ * session behind. A draft this tab still has open is replaced (its text
+ * carries over); a left draft's text comes back from the device stash. The global lock
  * below only covers "until the pending page is on screen"; duplicate spawns
  * are prevented per pending id by the store.
  */
@@ -82,7 +89,7 @@ export async function createChatOrConfigure(
         recents: state.settings.recentMachinePaths ?? [],
         alwaysAsk: state.settings.newSessionAlwaysAsk === true,
     });
-    // B-723 (O5): the quick path creates a session at once, with no first
+    // B-723 (O5): the quick path opens a new chat (B-801: a draft) with no first
     // message — only ever as the direct result of a click / key press. Anything
     // else (a late async call, a replayed handler) gets the dialog instead of
     // an empty 「新对话」 nobody asked for.
@@ -101,17 +108,24 @@ export async function createChatOrConfigure(
             agent,
             state.localSettings.newSessionReviewFirst,
         );
+        // The open draft page's composer may hold text its debounce has not saved yet.
+        flushPendingDrafts();
+        const carried = pendingSessions.takeDrafts() || loadNewChatDraft();
         const record = pendingSessions.create({
             machineId: decision.machineId,
             path: decision.directory,
             agent,
             permissionMode,
             source: 'quick',
+            draft: true,
             ...(context?.projectId ? { onSpawnedProject: { projectId: context.projectId } } : {}),
         });
         // The pending page reads its initial composer text from the draft
         // store (pendingDraft), and migrateDraft carries it to the real id.
-        if (context?.draft?.trim()) state.updateSessionDraft(record.pendingId, context.draft);
+        // An explicit prefill wins; the carried text then stays stashed.
+        const initial = context?.draft?.trim() ? context.draft : carried;
+        if (initial.trim()) state.updateSessionDraft(record.pendingId, initial);
+        saveNewChatDraft(initial === carried ? null : carried);
         navigate(`/session/${record.pendingId}`);
         await pendingSessions.waitShown(record.pendingId, SHOWN_LOCK_MAX_MS);
     } finally {

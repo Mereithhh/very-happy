@@ -12,7 +12,8 @@
  *  B-798 PR F: `session/dev-plain` is an ordinary session (seedPlainSession) and
  *  any unknown session id answers 404, so `session/dev-missing` shows the
  *  not-found state (the lookup goes through the in-page `/v1/` stub).
- *  B-800: global back (⌘[ / edge swipe) is mounted too, for `--gestures`. */
+ *  B-800: global back (⌘[ / edge swipe) is mounted too, for `--gestures`.
+ *  B-801: `#draft` opens a 「新会话」 draft page. */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalBackNav } from '@/app/appBack';
@@ -26,6 +27,7 @@ import { boardTeam, seedBoardSession } from './BoardHarness';
 import { seedLocationTrail } from './LocationTrailHarness';
 import { seedPlainSession } from './plainSessionSeed';
 import { sync } from '@/sync/sync';
+import { pendingSessions } from '@/sync/pendingSessionsRuntime';
 import '@/screens/session/session.css';
 
 let toastsRaised = false; // StrictMode runs the seed effect twice
@@ -62,6 +64,12 @@ export function DeviceShellHarness() {
     };
     storage.getState().applyMachines([{ id: 'dev-machine', seq: 2, createdAt: now, updatedAt: now, active: true, activeAt: now, metadata: { host: 'dev-box', platform: 'linux', teamLaunchVersion: 1 }, metadataVersion: 1, daemonState: null, daemonStateVersion: 1 } as unknown as Machine]);
     setReady(true);
+    // B-801: `#draft` opens a 「新会话」 draft page (the store's real draft record; nothing is spawned).
+    if (location.hash === '#draft' && !pendingSessions.list().some((r) => r.state === 'draft')) {
+      const record = pendingSessions.create({ machineId: 'dev-machine', path: '/repo/app', agent: 'claude', permissionMode: 'default', source: 'quick', draft: true });
+      history.replaceState(null, '', `/dev/device/session/${record.pendingId}#draft`);
+      dispatchEvent(new PopStateEvent('popstate'));
+    }
     if (location.hash === '#toasts' && !toastsRaised) {
       toastsRaised = true;
       toast.success('已复制到剪贴板');

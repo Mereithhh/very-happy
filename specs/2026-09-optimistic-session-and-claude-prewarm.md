@@ -70,6 +70,16 @@ Owner 2026-09-30：「按照你的顺序来」（先发 B-512，再做乐观跳�
 - 落地时 pending 页未挂载：pending 草稿并入 realId 草稿并清 pending 键；过期记录（landed 24 h、needs-approval 24 h、failed 7 d）加载时连同键一起清掉；spawn 进行中放弃 → 若随后成功则 kill（失败则 archive）该会话。
 - pending 页不写通知 seen-key（`targetKeyOfPath` 忽略 `pending-` id）；笔记在拿到 realId 前不绑定。
 
+### B-801 快捷新会话先进草稿（仅 web，无协议变更）
+
+B-798 走查 P2-14：快捷「新会话」（侧栏 ＋、项目组头 ＋、⌘N、首页/帮助页入口，即 `createChatOrConfigure` 的快捷路径）原来点一下就 spawn，空会话堆在侧栏。现在：
+
+- 快捷路径 `pendingSessions.create({ draft: true })` 建 `state:'draft'`、`deferred:true` 的记录，**不发 spawn**、侧栏不出行（`PendingSessionRows` 只列 spawning / needs-approval / failed）；页头显示「草稿」，正文是 agent / 机器 / 目录选择（`setTarget`，只在 draft 态生效；换 agent 时按新 agent 的默认权限、清空 model/effort）+ 项目归属一句话，model / 权限 / effort 仍在输入框。
+- 首条消息 `append` 把记录切到 `spawning`，该消息是 outbox 唯一一条，之后与 B-516 完全相同（乐观上屏「发送中…」→ spawn → 落地后按序送达）。spawn RPC 不带首条消息（daemon `spawn-happy-session` 无 initial prompt 参数），所以新 web × 任意 CLI 都是「先 spawn 再发送」，**无需改 CLI**。
+- `deferred` 记录失败时**不把 outbox 退回输入框**：消息留在页上标「未发送」，「重试」重新 spawn 并送达它；「返回修改」回到 draft 态，消息回输入框、目标可改。草稿首条消息不可从 outbox 删除。
+- 离开草稿页（路由切走 / ⌘W）= `leaveDraft`：草稿文本存进本设备 `new-chat-draft-v1`，记录与其键删除，什么都不留下；在页上（StrictMode 重挂、快速返回）不删。再点「新会话」时，本标签页仍开着的草稿被 `takeDrafts` 接走（文本带过来），否则从设备暂存恢复；显式预填（命令面板）优先，暂存保留。关标签页留下的 draft 记录不可见，24 h 过期；属主消失时被接管但不启动。
+- 范围外保持原样：新建会话弹窗（显式「创建」）、项目页输入框、任务看板派发、团队、自动化。
+
 ### B-515 Claude 预热（先量后做，CLI 内部，无协议变更）
 
 **阶段 0（本批必做）测量**：首轮 result 消息自带 `time_to_request_ms` / `time_to_request_from_spawn_ms` / `ttft_ms`（`sdk.d.ts:5530-5555`）——wrapper 日志里记录冷启动首轮这三项；并在隔离 HAPPY_HOME_DIR 下探测空闲进程调用 `mcpServerStatus()` 能否提前完成延迟启动。**只有测得可省 ≥0.8 s（在 B-516 立即发送场景下）才进入阶段 1**，否则 B-515 关闭为「不做」并记录数据。
@@ -104,6 +114,7 @@ Owner 2026-09-30：「按照你的顺序来」（先发 B-512，再做乐观跳�
 | 组合 | 行为 |
 |---|---|
 | 新 web × 任意 daemon | 乐观打开纯 web 生效，spawn RPC 不变 |
+| 新 web（B-801）× 任意 daemon | 草稿 → 首条消息时 spawn → 再发送，spawn RPC 不变 |
 | 任意 web × 新 CLI | 预热（若阶段 1 实施）纯 CLI 内部 |
 
 发布顺序互不依赖：web（B-516）先发；CLI 阶段 0 打点随下个 CLI 版本，阶段 1 视数据。回滚：web 回上一槽；CLI 回上一 npm 版本或 `claudePrewarm: off`。

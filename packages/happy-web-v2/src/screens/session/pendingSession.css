@@ -96,3 +96,39 @@
   .ps-card-actions > * { flex: 1 1 auto; min-height: 44px; }
   .ps-head-sub { max-width: 60vw; }
 }
+
+/* B-801: draft page — target fields before the first send. */
+.ps-draft-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding-top: var(--sp-1);
+}
+.ps-draft-label {
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+}
+.ps-draft-dir {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--sp-3);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
+  color: var(--text);
+  font-size: var(--fs-13);
+}
+.ps-draft-dir:focus {
+  outline: none;
+  border-color: var(--line-heavy);
+  box-shadow: var(--focus-ring);
+}
+@media (pointer: coarse) { .ps-draft-dir { height: 44px; } }
+@media (pointer: coarse) and (max-width: 600px) { .ps-draft-dir { font-size: 16px; } }
+.ps-draft-project { font-size: var(--fs-12); }
+@media (max-width: 600px) {
+  .ps-draft-grid { grid-template-columns: minmax(0, 1fr); gap: var(--sp-1); }
+  .ps-draft-label:not(:first-child) { padding-top: var(--sp-1); }
+}

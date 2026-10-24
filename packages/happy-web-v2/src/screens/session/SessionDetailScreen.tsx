@@ -232,7 +232,13 @@ export function SessionDetailScreen() {
         pendingSessions.markShown(pendingId);
         newSessionTimingPendingShown();
         pendingSessions.setViewing(pendingId);
-        return () => pendingSessions.setViewing(null);
+        return () => {
+            pendingSessions.setViewing(null);
+            // B-801: leaving a draft leaves nothing behind (its text is stashed for
+            // the next 「新会话」). After the composer's unmount flush; a remount
+            // that shows the same draft again (StrictMode, quick back) keeps it.
+            setTimeout(() => { pendingSessions.leaveDraft(pendingId); }, 0);
+        };
     }, [pendingId]);
     // Only THIS page, while it still shows the pending id, moves on to the
     // real session (replace, search kept). A user who left is never pulled back.
@@ -346,7 +352,7 @@ export function SessionDetailScreen() {
         isGone: () => !pendingSessions.get(pending.pendingId),
         blockedHint: foreignPending
             ? t('pendingSession.otherTab')
-            : pending.state === 'failed' ? t('pendingSession.retryFirst') : undefined,
+            : pending.state === 'failed' ? (pending.deferred ? t('pendingSession.failedDraftKept') : t('pendingSession.retryFirst')) : undefined,
     } : undefined;
 
     return (

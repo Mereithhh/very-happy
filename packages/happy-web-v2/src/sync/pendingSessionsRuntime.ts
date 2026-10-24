@@ -12,7 +12,7 @@ import { storage } from './storage';
 import { sync } from './sync';
 import { machineSpawnNewSession, sessionArchive, sessionKill } from './ops';
 import { holdTabLiveness, isTabAlive, withTabLock } from './tabLiveness';
-import { loadPendingSessions, loadQueuedMessages, loadSessionDrafts, savePendingSessions, saveQueuedMessages } from './persistence';
+import { loadPendingSessions, loadQueuedMessages, loadSessionDrafts, saveNewChatDraft, savePendingSessions, saveQueuedMessages } from './persistence';
 import { useBoardTasks } from './boardTasks';
 import { normalizeAgentKey } from './agentDefaults';
 import {
@@ -96,6 +96,8 @@ export const pendingSessions = createPendingSessionStore({
         });
     },
     clearKeys: clearPendingSessionKeys,
+    readDraft,
+    stashNewChatDraft: saveNewChatDraft,
     killSession(sessionId) {
         void (async () => {
             const killed = await sessionKill(sessionId);
