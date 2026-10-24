@@ -22,13 +22,22 @@ export class InvalidateSync {
     private _invalidated = false;
     private _invalidatedDouble = false;
     private _stopped = false;
-    private _command: () => Promise<void>;
+    private _command: (signal: AbortSignal) => Promise<void>;
     private _pendings: (() => void)[] = [];
     private _wake: (() => void) | null = null;
+    // B-803: the running attempt's controller, and a restart that has not
+    // started its fresh attempt yet.
+    private _controller: AbortController | null = null;
+    private _restartPending = false;
     // Same policy as the shared backoff, but its sleep can be cut short by invalidateNow().
     private _backoff = createBackoff({
         onError: (e) => { console.warn(e); },
         sleep: (ms) => new Promise<void>((resolve) => {
+            // An attempt aborted by restart() retries at once, not after backoff.
+            if (this._restartPending) {
+                resolve();
+                return;
+            }
             const timer = setTimeout(done, ms);
             function done() {
                 clearTimeout(timer);
@@ -41,8 +50,31 @@ export class InvalidateSync {
         }),
     });
 
-    constructor(command: () => Promise<void>) {
+    constructor(command: (signal: AbortSignal) => Promise<void>) {
         this._command = command;
+    }
+
+    /**
+     * B-803: abort the attempt in flight (its signal fires) and start a fresh
+     * one now — no coalescing behind it, no backoff sleep. For edges where the
+     * in-flight request is likely stuck on a dead connection: tab resume,
+     * socket reconnect/recover, network back. Idle → same as invalidate().
+     */
+    restart() {
+        if (this._stopped) {
+            return;
+        }
+        if (!this._invalidated) {
+            this.invalidate();
+            return;
+        }
+        if (this._wake) {
+            // Between attempts (backoff sleep): just cut it short.
+            this._wake();
+            return;
+        }
+        this._restartPending = true;
+        this._controller?.abort(new DOMException('Superseded by restart', 'AbortError'));
     }
 
     /**
@@ -111,7 +143,14 @@ export class InvalidateSync {
             if (this._stopped) {
                 return;
             }
-            await this._command();
+            this._restartPending = false;
+            const controller = new AbortController();
+            this._controller = controller;
+            try {
+                await this._command(controller.signal);
+            } finally {
+                if (this._controller === controller) this._controller = null;
+            }
         }, this._backoff);
         this._wake = null;
         if (outcome === 'stop') this.stop();
@@ -119,8 +158,10 @@ export class InvalidateSync {
             this._notifyPendings();
             return;
         }
-        if (this._invalidatedDouble) {
+        if (this._invalidatedDouble || this._restartPending) {
+            // restart() raced a run that finished anyway: run once more.
             this._invalidatedDouble = false;
+            this._restartPending = false;
             this._doSync();
         } else {
             this._invalidated = false;

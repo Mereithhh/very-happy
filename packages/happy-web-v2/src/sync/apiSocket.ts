@@ -1,4 +1,5 @@
 import { connectionDiagnostics, startConnectionStage, connectionFailureOutcome, diagnosticRegion, type DiagnosticRegion } from './connectionDiagnostics';
+import { fetchWithDeadline } from './requestDeadline';
 import { isAuthLatched } from '@/auth/authLatch';
 import { io, Socket } from 'socket.io-client';
 import { AppState, Platform } from 'react-native';
@@ -659,7 +660,12 @@ class ApiSocket {
     // HTTP Requests
     //
 
-    async request(path: string, options?: RequestInit): Promise<Response> {
+    /**
+     * `timeoutMs` (B-803): abort after that long, headers and body included,
+     * combined with any caller `signal`. Catch-up reads pass
+     * SYNC_READ_TIMEOUT_MS; writes keep their own deadlines (send outbox).
+     */
+    async request(path: string, options?: RequestInit & { timeoutMs?: number }): Promise<Response> {
         if (!this.config) {
             throw new Error('SyncSocket not initialized');
         }
@@ -676,7 +682,7 @@ class ApiSocket {
             ...options?.headers
         };
 
-        return fetch(url, {
+        return fetchWithDeadline(fetch, url, {
             ...options,
             headers
         });

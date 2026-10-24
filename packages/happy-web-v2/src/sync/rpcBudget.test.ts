@@ -43,7 +43,7 @@ describe('no automatic git-status RPC fan-out (T-014)', () => {
 
     it('onSessionVisible is still fired per incoming message (its other duties stand), so it must stay RPC-free', () => {
         const source = read('./sync.ts');
-        const start = source.indexOf('onSessionVisible = (sessionId: string) => {');
+        const start = source.indexOf('onSessionVisible = (sessionId: string, opts?: { restartFetch?: boolean }) => {');
         expect(start).toBeGreaterThan(-1);
         const body = source.slice(start, source.indexOf('\n    }\n', start));
         expect(body).not.toMatch(/sessionRPC|machineRPC|sessionBash/);

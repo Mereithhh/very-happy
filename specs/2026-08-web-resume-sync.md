@@ -170,3 +170,13 @@ ping + 60s 的僵尸连接在回前台的第一次 emit 就会被关掉并自动
 探活结算还必须属于同一可见性代次且页面仍可见；快速 hidden→visible 不共享旧代次的在途探活。
 这是防止后台计时导致主动断线、旧探活干扰新前台的必要条件。唯一入口不变；细节与实测见
 `specs/2026-09-resume-recovery-followup.md`。
+
+## 2026-10-25 补充（B-803，B-802 PR-1）
+
+消息补拉不能无限挂起（B-802 根因：补拉无超时，且整个网络往返持有会话消息锁，回前台/重连只合并到死请求后面）：
+
+- 补拉读请求（after/before_seq、`/v1/sessions`、prompt-queue GET）带 `SYNC_READ_TIMEOUT_MS`（10s，含 body），超时按原 backoff 重试（`requestDeadline.ts`）。
+- 锁外取数、锁内合并；`sessionLastSeq` 只增不减（`messageCatchUp.ts`）。
+- `onWebResume`、`onReconnected`、`onRecovered` 及 B-799 网络恢复对当前会话调用 `InvalidateSync.restart()`：取消在途补拉并立即重发；普通 `invalidate()` 仍合并。
+- 离线（`isNetworkOffline()`）不发补拉，恢复时重启被推迟的会话。唯一 resume 入口不变。
+- 端到端：`packages/happy-web-v2/e2e/sync-resume.mjs`（死链路代理，B3/B6/LIVE/NET/A1/TABS）。
