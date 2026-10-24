@@ -2699,6 +2699,16 @@ export const en = {
         entryShort: 'Major update',
         entryCount: ({ count }: { count: number }) => `${count} unread`,
         releases: {
+            oct25c: {
+                title: 'Messages no longer get stuck',
+                summary: 'Come back to Very Happy and a session catches up within seconds, with Syncing… shown while it does. Queued messages stay in view once they start running, an edited and resent message shows up right away, and the page makes far fewer requests in the background.',
+                syncTitle: 'Catches up within seconds, and says so',
+                syncBody: 'When you return to the tab or the app, the session catches up within a few seconds. Meanwhile a Syncing… line sits at the top and above the message box; if the connection is poor it says Connection unstable with a Retry button instead of waiting forever.',
+                syncAlt: 'A phone showing a session with Syncing… at the top, Syncing messages… above the message box, and a queued message marked Running',
+                queue: 'A queued message that starts running stays in the queue marked Running until it appears in the conversation, instead of vanishing.',
+                resend: 'After you edit a message and send it again, the new message and its reply show up right away, without reloading the page.',
+                requests: 'An open session makes far fewer requests in the background, so long or busy sessions stay lighter.',
+            },
             oct25b: {
                 title: 'Calm when offline, smoother edge swipes, no more empty sessions',
                 summary: 'When the connection drops, a bar at the top says so and messages wait to go out on their own. On touch screens with the sidebar as a drawer, swipe from the edge to open it and swipe back to close it. The quick New session opens a draft and only creates the session when you send the first message.',
