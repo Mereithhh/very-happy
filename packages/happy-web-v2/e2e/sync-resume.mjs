@@ -15,15 +15,25 @@
  * way a sleeping phone sees them — bytes go nowhere, no FIN, no RST:
  *   blackhole   every link (existing and new) stalls
  *   healNew     new links pass; the stalled ones stay stalled (pooled dead sockets)
- *   stallMatch  the next request whose head contains <text> rides a dead link
+ *   stallNext   the next <n> requests whose head contains <text> ride dead links
  *   resetStalled  RST the stalled links (what an OS TCP timeout eventually does)
- * Vite's HMR socket is exempt (a reset would full-reload the page).
+ * Vite's HMR socket is exempt (a reset would full-reload the page); tab1 must
+ * never reload — every full document load after the first is logged as
+ * `tab1 navigated (full page load)` and fails the run.
+ *
+ * --h2 (production shape: veryhappy.dev is CloudFront h2 + Alt-Svc h3): a
+ * local TLS h2 front sits between the proxy and Vite, so all of tab1's REST
+ * rides ONE connection and the WebSockets their own HTTP/1.1 ones. The proxy
+ * sees only ciphertext there, so request matching (stallNext) is off and the
+ * scenarios that need it (B3, LIVE, POOL, NET's socket-close half) are skipped.
  *
  * No daemon/agent is needed: a message tab2 sends is stored by the server and
  * pushed to tab1 as a `new-message` update with the next seq, exactly like an
  * agent reply would be.
  *
  * Scenarios (B-802 REPORT §4 PR-1; T = --timeout-ms, the catch-up deadline):
+ *   HEALTHY (B-803b) HEALTHY_RUNS catch-ups on a healthy link → each is ONE
+ *        after_seq GET (no hedge fired) and answers < HEDGE_AFTER_MS.
  *   B3   a forward GET is in flight when the link dies; tab1 goes to the
  *        background, tab2 sends; back in the foreground → caught up ≤ T + 2s.
  *   B6   the link dies in the background; the resume GET itself rides a dead
@@ -40,6 +50,13 @@
  *   LIVE a catch-up GET hangs while tab1 is in the foreground; a message
  *        tab2 sends meanwhile is visible in tab1 ≤ 2s (the session lock is not
  *        held across the request).
+ *   POOL (B-803b) several pooled links are dead on resume: the whole link
+ *        dies while hidden, tab2 sends, and the resume GET plus the next
+ *        POOL_DEAD - 1 after_seq requests (hedges, the reconnect restart) each
+ *        ride a dead link → caught up ≤ T + 2s.
+ *   H2POOL (B-803b, --h2 only) both connection pools hold an h2 session when
+ *        the link dies in the background → caught up ≤ H2_BOTH_POOLS_DEAD_LIMIT_MS
+ *        (Chrome's h2 PING bound; one dead pool is B6, ~2s).
  *   NET  dead link for 15s while visible (tab2 sends), then RST + heal; and a
  *        forced socket close → caught up ≤ T + 2s.
  *   A1   tab1 sends then switches session at 0ms and back → its message is
@@ -71,11 +88,13 @@
  * Prints one line per measurement (`MEASURE <scenario> <ms|never>`) for the
  * before/after table. Exit code 1 on any failed check.
  */
-import { existsSync, mkdirSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import http from 'node:http';
+import http2 from 'node:http2';
 import net from 'node:net';
 import { chromium } from 'playwright-core';
 
@@ -89,17 +108,34 @@ const PROXY_PORT = Number(opt('proxy-port', '8798'));
 const TIMEOUT_MS = Number(opt('timeout-ms', '10000'));
 const HOLD_MS = Number(opt('hold-ms', '30000'));
 const ONLY = opt('only', null)?.split(',') ?? null;
+const DEBUG = args.includes('--debug');
+// Production (veryhappy.dev behind CloudFront) speaks h2 (and offers h3): one
+// multiplexed connection per origin, the socket.io WebSocket on its own
+// HTTP/1.1 connection. --h2 puts a local TLS h2 front between the dead-link
+// proxy and Vite so tab1 sees that shape: every REST read rides ONE pooled
+// connection, and blackhole kills it as a whole.
+const H2 = args.includes('--h2');
+const H2_PORT = PROXY_PORT - 1;
 const CATCH_UP_LIMIT_MS = TIMEOUT_MS + 2_000;
 const LIVE_LIMIT_MS = 2_000;
+// --h2 with BOTH connection pools (default + credentials-omit, hedgedRead.ts)
+// holding a dead session: no browser-side way around them, Chrome drops them
+// when its h2 PING goes unanswered (~10–14s measured). A known bound until the
+// catch-up can ride the reconnected socket (B-807); asserted against regression.
+const H2_BOTH_POOLS_DEAD_LIMIT_MS = 16_000;
 const TURN_RECORDS = 30;
 const BURST_SENDS = 50;
+const POOL_DEAD = 3;
+const HEALTHY_RUNS = 20;
+const HEDGE_AFTER_MS = 2_000; // src/sync/hedgedRead.ts
+const SYNCING_SHOW_MS = 300; // CATCH_UP_SHOW_MS, src/sync/catchUpStatus.ts
 if (OUT) mkdirSync(OUT, { recursive: true });
 if (!DATA_DIR) {
     console.error('--data-dir <migrated standalone data dir> is required');
     process.exit(2);
 }
 const viteUrl = new URL(BASE);
-const PROXY_BASE = `http://127.0.0.1:${PROXY_PORT}`;
+const PROXY_BASE = `${H2 ? 'https' : 'http'}://127.0.0.1:${PROXY_PORT}`;
 
 // ── standalone server (same as e2e/offline.mjs) ───────────────────────
 const serverDir = resolve(import.meta.dirname, '../../happy-server');
@@ -131,11 +167,14 @@ const proxy = (() => {
     let mode = 'pass';
     let stallMatch = null;
     let delayMatch = null;
+    let stallLeft = 0;
+    let linkSeq = 0;
     const links = new Set();
     const srv = net.createServer((client) => {
-        const upstream = net.connect(Number(viteUrl.port), viteUrl.hostname);
-        const link = { client, upstream, stalled: mode === 'blackhole', exempt: false };
+        const upstream = H2 ? net.connect(H2_PORT, '127.0.0.1') : net.connect(Number(viteUrl.port), viteUrl.hostname);
+        const link = { id: ++linkSeq, client, upstream, stalled: mode === 'blackhole', exempt: false };
         links.add(link);
+        if (DEBUG && H2) console.log(`    [+${((Date.now() - started) / 1000).toFixed(1)}s proxy] link#${link.id} connect${link.stalled ? ' DEAD' : ''}`);
         let first = true;
         client.on('data', (chunk) => {
             const head = chunk.toString('latin1', 0, Math.min(chunk.length, 400));
@@ -146,9 +185,11 @@ const proxy = (() => {
             }
             // keep-alive reuse: every request head on this link is checked
             if (stallMatch && !link.stalled && !link.exempt && head.includes(stallMatch)) {
-                stallMatch = null;
+                if (--stallLeft <= 0) stallMatch = null;
                 link.stalled = true;
             }
+            if (/^(GET|POST|PUT|DELETE) /.test(head)) link.last = head.slice(0, Math.min(80, head.indexOf(' HTTP/')));
+            if (DEBUG && /^(GET|POST|PUT|DELETE) /.test(head)) console.log(`    [+${((Date.now() - started) / 1000).toFixed(1)}s proxy] link#${link.id}${link.stalled ? ' DEAD' : ''} ${head.slice(0, head.indexOf(' HTTP/'))}`);
             if (!link.stalled) upstream.write(chunk);
         });
         // B-808 `delayDown`: a downstream chunk containing the text holds it and
@@ -177,16 +218,71 @@ const proxy = (() => {
         listen: () => new Promise((r) => srv.listen(PROXY_PORT, '127.0.0.1', r)),
         close: () => new Promise((r) => { for (const l of links) { l.client.destroy(); l.upstream.destroy(); } srv.close(r); }),
         blackhole() { mode = 'blackhole'; for (const l of links) if (!l.exempt) l.stalled = true; },
-        healNew() { mode = 'pass'; },
-        stallNext(text) { stallMatch = text; },
+        healNew() {
+            mode = 'pass';
+            if (DEBUG) console.log(`    [proxy] heal: ${this.stalledCount()} stalled links stay dead: ${[...links].filter((l) => l.stalled).map((l) => `#${l.id} ${l.last ?? '(idle since connect)'}`).join(' | ')}; exempt ${[...links].filter((l) => l.exempt).length}, open ${links.size}`);
+        },
+        stallNext(text, n = 1) { stallMatch = text; stallLeft = n; },
+        stallsLeft: () => (stallMatch ? stallLeft : 0),
         delayDown(text, ms) { delayMatch = text ? { text, ms } : null; },
+        /** --h2: the TLS front saw Vite's HMR upgrade on this upstream port (the proxy itself only sees ciphertext). */
+        exemptUpstreamPort(port) {
+            for (const l of links) if (l.upstream.localPort === port) { l.exempt = true; l.stalled = false; }
+        },
         resetStalled() {
             for (const l of [...links]) if (l.stalled) { l.client.resetAndDestroy?.() ?? l.client.destroy(); l.upstream.destroy(); }
         },
-        pass() { mode = 'pass'; stallMatch = null; delayMatch = null; this.resetStalled(); },
+        pass() { mode = 'pass'; stallMatch = null; stallLeft = 0; delayMatch = null; this.resetStalled(); },
         stalledCount: () => [...links].filter((l) => l.stalled).length,
     };
 })();
+
+// ── --h2: local TLS front (proxy → h2 server → Vite over HTTP/1.1) ─────
+const HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade', 'http2-settings', 'te']);
+const h2front = H2 ? (() => {
+    const dir = mkdtempSync(join(tmpdir(), 'vh-e2e-h2-'));
+    execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=127.0.0.1',
+        '-addext', 'subjectAltName=IP:127.0.0.1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'cert.pem')], { stdio: 'ignore' });
+    const agent = new http.Agent({ keepAlive: true });
+    const srv = http2.createSecureServer({ key: readFileSync(join(dir, 'key.pem')), cert: readFileSync(join(dir, 'cert.pem')), allowHTTP1: true });
+    srv.on('request', (req, res) => {
+        const headers = {};
+        for (const [k, v] of Object.entries(req.headers)) if (!k.startsWith(':') && !HOP_HEADERS.has(k)) headers[k] = v;
+        headers.host = req.headers[':authority'] ?? req.headers.host;
+        const up = http.request({ host: viteUrl.hostname, port: viteUrl.port, method: req.method, path: req.url, headers, agent }, (upRes) => {
+            const out = {};
+            for (const [k, v] of Object.entries(upRes.headers)) if (!HOP_HEADERS.has(k)) out[k] = v;
+            res.writeHead(upRes.statusCode, out);
+            upRes.pipe(res);
+        });
+        up.on('error', () => res.destroy());
+        res.on('close', () => { if (!res.writableFinished) up.destroy(); });
+        req.pipe(up);
+    });
+    // WebSockets (socket.io, Vite HMR) come as HTTP/1.1 upgrades on their own connection, like on CloudFront.
+    srv.on('upgrade', (req, socket, head) => {
+        if (String(req.headers['sec-websocket-protocol'] ?? '').includes('vite-hmr')) proxy.exemptUpstreamPort(socket.remotePort);
+        const up = net.connect(Number(viteUrl.port), viteUrl.hostname, () => {
+            let raw = `${req.method} ${req.url} HTTP/1.1\r\n`;
+            for (let i = 0; i < req.rawHeaders.length; i += 2) raw += `${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}\r\n`;
+            up.write(`${raw}\r\n`);
+            if (head?.length) up.write(head);
+            up.pipe(socket);
+            socket.pipe(up);
+        });
+        const end = () => { up.destroy(); socket.destroy(); };
+        up.on('error', end);
+        socket.on('error', end);
+        up.on('close', end);
+        socket.on('close', end);
+    });
+    const sessions = new Set();
+    srv.on('session', (session) => { sessions.add(session); session.on('close', () => sessions.delete(session)); });
+    return {
+        listen: () => new Promise((r) => srv.listen(H2_PORT, '127.0.0.1', r)),
+        close: () => new Promise((r) => { for (const session of sessions) session.destroy(); srv.close(() => r()); setTimeout(r, 2_000); }),
+    };
+})() : null;
 
 function findChromium() {
     for (const dir of [join(homedir(), 'Library/Caches/ms-playwright'), join(homedir(), '.cache/ms-playwright')]) {
@@ -220,7 +316,14 @@ function count(name, n) {
 }
 const fmt = (ms) => (ms === null ? `never (>${HOLD_MS}ms)` : `${ms}ms`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const want = (name) => !ONLY || ONLY.includes(name);
+const NEEDS_PLAINTEXT = new Set(['B3', 'LIVE', 'POOL']);
+const H2_ONLY = new Set(['H2POOL']);
+const want = (name) => {
+    if (ONLY && !ONLY.includes(name)) return false;
+    if (!H2 && H2_ONLY.has(name)) return false;
+    if (H2 && NEEDS_PLAINTEXT.has(name)) { console.log(`  - ${name} skipped under --h2 (needs request matching)`); return false; }
+    return true;
+};
 
 // ── page helpers ──────────────────────────────────────────────────────
 async function dismissDialogs(page) {
@@ -308,11 +411,14 @@ const onScreen = (page, token) => page.evaluate((token) => ({
 /** B-804: sample 「同步中」 (top bar / chat line) every 100ms until stop(); first / last time seen, from `t0`. */
 function watchSyncing(page, t0) {
     let running = true;
-    const seen = { first: null, last: null };
+    const seen = { first: null, last: null, samples: [] };
     const done = (async () => {
         while (running) {
             const s = await page.evaluate(() => document.querySelector('.net-bar')?.getAttribute('data-net-phase') === 'syncing' || !!document.querySelector('.chat-sync')).catch(() => false);
             if (s) { seen.first ??= Date.now() - t0; seen.last = Date.now() - t0; }
+            // B-803b: what the chat line said, for "shown the whole time" checks
+            const phase = await page.evaluate(() => document.querySelector('.chat-sync')?.getAttribute('data-sync-phase') ?? (document.querySelector('.net-bar')?.getAttribute('data-net-phase') === 'syncing' ? 'syncing' : null)).catch(() => null);
+            seen.samples.push({ at: Date.now() - t0, shown: s, phase });
             await sleep(100);
         }
     })();
@@ -430,8 +536,12 @@ async function settle(name, page1, page2, sessionId, lastToken) {
 // ── run ───────────────────────────────────────────────────────────────
 await startServer();
 await proxy.listen();
-const browser = await chromium.launch({ executablePath: findChromium(), args: ['--disable-background-timer-throttling'] });
-const ctxOpts = { serviceWorkers: 'block', viewport: { width: 1280, height: 860 }, locale: 'zh-CN' };
+await h2front?.listen();
+const browser = await chromium.launch({
+    executablePath: findChromium(),
+    args: ['--disable-background-timer-throttling', ...(H2 ? ['--ignore-certificate-errors'] : [])],
+});
+const ctxOpts = { serviceWorkers: 'block', viewport: { width: 1280, height: 860 }, locale: 'zh-CN', ignoreHTTPSErrors: H2 };
 const ctx2 = await browser.newContext(ctxOpts);
 await ctx2.addInitScript(() => { try { localStorage.setItem('vh-pwa-install-never-v1', '1'); } catch { /* ignore */ } });
 const page2 = await ctx2.newPage();
@@ -444,8 +554,10 @@ try {
     const username = `b803${randomBytes(4).toString('hex')}`;
     await page2.goto(`${BASE}/signup`);
     const toggle = page2.locator('.auth-method-toggle');
-    await page2.locator('input[autocomplete="username"]').or(toggle).first().waitFor({ timeout: 60_000 });
-    if (!(await page2.locator('input[autocomplete="username"]').isVisible())) await toggle.click();
+    const usernameInput = page2.locator('input[autocomplete="username"]');
+    await usernameInput.or(toggle).first().waitFor({ timeout: 60_000 });
+    // The toggle can render a moment before the form it would reveal; clicking it then hides the form.
+    if (!(await usernameInput.isVisible())) await usernameInput.waitFor({ timeout: 1_500 }).catch(() => toggle.click());
     await page2.locator('input[autocomplete="username"]').fill(username);
     const pw = `pw-${randomBytes(6).toString('hex')}`;
     const pws = page2.locator('input[autocomplete="new-password"]');
@@ -469,15 +581,69 @@ try {
         sessionStorage.setItem('b803-seeded', '1');
         for (const [k, v] of Object.entries(entries)) localStorage.setItem(k, v);
     }, storageDump);
+    // dev mode loads ~1000 modules: keep room for the REST entries the protocol check reads
+    await ctx1.addInitScript(() => performance.setResourceTimingBufferSize(100_000));
+    if (DEBUG) await ctx1.addInitScript(() => {
+        const orig = window.fetch;
+        window.fetch = function (input, init) {
+            const url = String(input?.url ?? input);
+            if (!/after_seq|before_seq|prompt-queue|\/v1\/sessions$/.test(url)) return orig.apply(this, arguments);
+            const short = url.replace(/^.*?\/v[13]\//, '/').slice(0, 60);
+            console.log(`[fetch] start ${short}${init?.credentials === 'omit' ? ' (omit)' : ''}`);
+            const p = orig.apply(this, arguments);
+            p.then((r) => console.log(`[fetch] ${r.status} ${short}`), (e) => console.log(`[fetch] fail ${short} ${e?.name}:${e?.message}`));
+            return p;
+        };
+    });
     const page1 = await ctx1.newPage();
-    page1.on('pageerror', (e) => console.log('tab1 pageerror', e.message));
-    page1.on('framenavigated', (f) => { if (f === page1.mainFrame()) console.log(`    tab1 navigated → ${f.url().replace(PROXY_BASE, '')}`); });
+    let tab1PageErrors = 0;
+    page1.on('pageerror', (e) => { tab1PageErrors += 1; console.log('tab1 pageerror', DEBUG ? e.stack : e.message); });
+    if (DEBUG) page1.on('console', (m) => { if (/\[fetch\]|B-803|SyncSocket|liveness|restart/i.test(m.text())) console.log(`    [+${((Date.now() - started) / 1000).toFixed(1)}s tab1] ${m.text().slice(0, 200)}`); });
+    // Full document loads only (an in-app route change is not a reload).
+    let tab1Loaded = false;
+    let tab1Reloads = 0;
+    page1.on('domcontentloaded', () => {
+        if (!tab1Loaded) return;
+        tab1Reloads += 1;
+        console.log(`    tab1 navigated (full page load) → ${page1.url().replace(PROXY_BASE, '')}`);
+    });
     page1.on('requestfailed', (r) => { if (!/\/v3\/|\/v1\/|socket\.io/.test(r.url())) console.log(`    tab1 request failed ${r.url().replace(PROXY_BASE, '')} ${r.failure()?.errorText}`); });
     await openSession(page1, PROXY_BASE, S1);
+    tab1Loaded = true;
+    const timeOrigin = await page1.evaluate(() => performance.timeOrigin);
+    // The connection shape tab1 really got (h2 = production; http/1.1 = a keep-alive pool).
+    const protocols = await page1.evaluate(() => [...new Set(performance.getEntriesByType('resource')
+        .filter((e) => /\/v[13]\//.test(e.name) && e.nextHopProtocol).map((e) => e.nextHopProtocol))]);
+    console.log(`    tab1 REST protocol: ${protocols.join(',')}`);
+    check(protocols.length === 1 && protocols[0] === (H2 ? 'h2' : 'http/1.1'), `tab1 REST rides ${H2 ? 'h2' : 'http/1.1'}`, protocols.join(','));
     const gets1 = countHistoryGets(page1);
     const gets2 = countHistoryGets(page2);
     await sleep(1_500);
     await shot(page1, '0-tab1-ready');
+
+    // ── HEALTHY: hedging never fires on a healthy link ─────────────────
+    if (want('HEALTHY')) {
+        step(`HEALTHY ${HEALTHY_RUNS} catch-ups on a healthy link`);
+        gets1.reset();
+        const durations = await page1.evaluate(async ({ sid, n }) => {
+            const { sync } = await import('/src/sync/sync.ts');
+            const out = [];
+            for (let i = 0; i < n; i++) {
+                const t = performance.now();
+                await sync['getMessagesSync'](sid).invalidateAndAwait();
+                out.push(Math.round(performance.now() - t));
+            }
+            return out;
+        }, { sid: S1, n: HEALTHY_RUNS });
+        await sleep(HEDGE_AFTER_MS + 500);
+        const sorted = [...durations].sort((a, b) => a - b);
+        const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1];
+        measure('HEALTHY-p95', p95);
+        measure('HEALTHY-max', sorted.at(-1));
+        count('HEALTHY-after_seq-GETs', gets1.get(S1, 'after'));
+        check(sorted.at(-1) < HEDGE_AFTER_MS, `HEALTHY every catch-up answered < ${HEDGE_AFTER_MS}ms`, `p95 ${p95}ms, max ${sorted.at(-1)}ms`);
+        check(gets1.get(S1, 'after') === HEALTHY_RUNS, `HEALTHY exactly ${HEALTHY_RUNS} after_seq GETs (0 hedges)`, `${gets1.get(S1, 'after')}`);
+    }
 
     // ── B3: GET in flight when the link dies, then background ─────────
     if (want('B3')) {
@@ -520,11 +686,17 @@ try {
         await sleep(2_500);
         const seen = await syncing.stop();
         measure('B6-syncing-shown', seen.first);
-        check(seen.first !== null && seen.first <= 1_000, 'B6 「同步中」 shows ≤ 1000ms after the resume', fmt(seen.first));
-        const goneAfter = ms === null || seen.last === null ? null : Math.max(0, seen.last - ms);
+        // B-803b: a catch-up that lands before CATCH_UP_SHOW_MS (300ms, catchUpStatus.ts) shows
+        // nothing by design; `ms` is sampled every ~100ms, hence the slack.
+        const tooFastToShow = ms !== null && ms <= SYNCING_SHOW_MS + 400;
+        check(seen.first !== null ? seen.first <= 1_000 : tooFastToShow, 'B6 「同步中」 shows ≤ 1000ms after the resume (unless caught up before it is due)', seen.first === null && tooFastToShow ? `not due: caught up in ${ms}ms` : fmt(seen.first));
+        const goneAfter = ms === null ? null : seen.last === null ? (tooFastToShow ? 0 : null) : Math.max(0, seen.last - ms);
         measure('B6-syncing-gone-after-catch-up', goneAfter);
         check(goneAfter !== null && goneAfter <= 2_000 && !(await onScreen(page1, tok))?.syncing, 'B6 「同步中」 gone ≤ 2000ms after catching up', fmt(goneAfter));
-        // another device sends after the resume: visible ≤ 2s
+        // another device sends after the resume: visible ≤ 2s. Live delivery
+        // rides the socket, whose own recovery (liveness probe ≤ 5s, then a
+        // reconnect) is a separate clock — send once it is back.
+        await waitConnected(page1, 15_000).catch(() => {});
         const tok2 = token('B6b');
         const t1 = Date.now();
         await send(page2, tok2);
@@ -594,8 +766,60 @@ try {
         measure('A4-gap-frames', gaps.length);
         measure('A4-settled', settledMs);
         check(gaps.length === 0, 'A4 the prompt is always in the dock or the transcript (every DOM change)', gaps.length ? `${gaps.length} gaps, first at +${gaps[0].at}ms: ${gaps[0].body}` : '');
-        check(settledMs !== null && settledMs <= CATCH_UP_LIMIT_MS + 1_500, `A4 in the transcript with the dock empty ≤ ${CATCH_UP_LIMIT_MS + 1_500}ms after the resume (incl. the 1.5s away)`, fmt(settledMs));
+        // --h2: B6 ran first, so both pools hold a (now dead) session — the H2POOL bound applies.
+        const a4Limit = (H2 ? Math.max(CATCH_UP_LIMIT_MS, H2_BOTH_POOLS_DEAD_LIMIT_MS) : CATCH_UP_LIMIT_MS) + 1_500;
+        check(settledMs !== null && settledMs <= a4Limit, `A4 in the transcript with the dock empty ≤ ${a4Limit}ms after the resume (incl. the 1.5s away)`, fmt(settledMs));
         await settle('A4', page1, page2, S1, tok);
+    }
+
+    // ── POOL: several dead pooled links on resume ─────────────────────
+    if (want('POOL')) {
+        step(`POOL the link dies in the background; the resume GET and the next ${POOL_DEAD - 1} after_seq ride dead links`);
+        proxy.stallNext('after_seq', POOL_DEAD);
+        proxy.blackhole();
+        await setHidden(page1, true);
+        const tok = token('POOL');
+        await send(page2, tok);
+        await sleep(30_000);
+        proxy.healNew();
+        const t0 = Date.now();
+        await setHidden(page1, false);
+        const ms = await timeUntilVisible(page1, S1, tok, HOLD_MS, t0);
+        measure('POOL', ms);
+        check(proxy.stallsLeft() === 0, `POOL ${POOL_DEAD} after_seq requests really rode dead links`, `left=${proxy.stallsLeft()}`);
+        check(ms !== null && ms <= CATCH_UP_LIMIT_MS, `POOL caught up ≤ ${CATCH_UP_LIMIT_MS}ms after resume`, fmt(ms));
+        await shot(page1, 'POOL');
+        await settle('POOL', page1, page2, S1, tok);
+    }
+
+    // ── H2POOL: both connection pools dead on resume (--h2) ───────────
+    if (want('H2POOL')) {
+        step('H2POOL both connection pools hold an h2 session when the link dies in the background');
+        // Put a session on the credentials-omit pool too (what an earlier won hedge leaves behind).
+        await page1.evaluate(() => fetch('/health', { credentials: 'omit', cache: 'no-store' }).then((r) => r.status));
+        proxy.blackhole();
+        await setHidden(page1, true);
+        const tok = token('H2POOL');
+        await send(page2, tok);
+        await sleep(30_000);
+        const dead = proxy.stalledCount();
+        proxy.healNew();
+        const t0 = Date.now();
+        const syncing = watchSyncing(page1, t0);
+        await setHidden(page1, false);
+        const ms = await timeUntilVisible(page1, S1, tok, HOLD_MS, t0);
+        const seen = await syncing.stop();
+        measure('H2POOL', ms);
+        // The user waits up to ~14s here: 「同步消息中…」 / 「连接不稳定 · 重试」 must say so the whole time.
+        const during = seen.samples.filter((x) => x.at >= 1_000 && ms !== null && x.at <= ms - 300);
+        const blank = during.filter((x) => !x.shown);
+        const phases = [...new Set(seen.samples.map((x) => x.phase).filter(Boolean))];
+        console.log(`    H2POOL indicator: first ${seen.first}ms, phases ${phases.join('→') || '-'}, ${during.length} samples, ${blank.length} blank`);
+        check(seen.first !== null && seen.first <= 1_000, 'H2POOL 「同步中」 shows ≤ 1000ms after the resume', fmt(seen.first));
+        check(during.length > 0 && blank.length === 0, 'H2POOL the sync line stays on screen until caught up', blank.length ? `blank at +${blank[0].at}ms` : `${during.length} samples`);
+        check(dead >= 3, 'H2POOL both h2 sessions (and the socket) were dead', `dead links=${dead}`);
+        check(ms !== null && ms <= H2_BOTH_POOLS_DEAD_LIMIT_MS, `H2POOL caught up ≤ ${H2_BOTH_POOLS_DEAD_LIMIT_MS}ms (Chrome h2 PING bound)`, fmt(ms));
+        await settle('H2POOL', page1, page2, S1, tok);
     }
 
     // ── LIVE: a hung catch-up does not block live messages ───────────
@@ -630,18 +854,20 @@ try {
         check(ms !== null && ms <= CATCH_UP_LIMIT_MS, `NET caught up ≤ ${CATCH_UP_LIMIT_MS}ms after the link is back`, fmt(ms));
         await settle('NET', page1, page2, S1, tok);
 
-        step('NET forced socket close with a GET hanging');
-        proxy.stallNext('after_seq');
-        await pokeCatchUp(page1, S1);
-        await sleep(300);
-        await closeSocket(page1);
-        const tok2 = token('NETb');
-        const t1 = Date.now();
-        await send(page2, tok2);
-        const ms2 = await timeUntilVisible(page1, S1, tok2, HOLD_MS, t1);
-        measure('NET-socket-close', ms2);
-        check(ms2 !== null && ms2 <= CATCH_UP_LIMIT_MS, `NET caught up ≤ ${CATCH_UP_LIMIT_MS}ms after a forced socket close`, fmt(ms2));
-        await settle('NET2', page1, page2, S1, tok2);
+        if (!H2) {
+            step('NET forced socket close with a GET hanging');
+            proxy.stallNext('after_seq');
+            await pokeCatchUp(page1, S1);
+            await sleep(300);
+            await closeSocket(page1);
+            const tok2 = token('NETb');
+            const t1 = Date.now();
+            await send(page2, tok2);
+            const ms2 = await timeUntilVisible(page1, S1, tok2, HOLD_MS, t1);
+            measure('NET-socket-close', ms2);
+            check(ms2 !== null && ms2 <= CATCH_UP_LIMIT_MS, `NET caught up ≤ ${CATCH_UP_LIMIT_MS}ms after a forced socket close`, fmt(ms2));
+            await settle('NET2', page1, page2, S1, tok2);
+        }
     }
 
     // ── A1: send, switch away at 0ms, come back ───────────────────────
@@ -842,12 +1068,15 @@ try {
         }
         await nav(page2, S1);
     }
+    check(tab1PageErrors === 0, 'tab1 raised no page error (e.g. an unhandled 「Superseded by restart」)', `${tab1PageErrors}`);
+    check(tab1Reloads === 0 && await page1.evaluate(() => performance.timeOrigin) === timeOrigin, 'tab1 never reloaded the page', `${tab1Reloads} full page load(s)`);
 } catch (error) {
     failures += 1;
     console.error(error);
 } finally {
     await browser.close().catch(() => {});
     await proxy.close().catch(() => {});
+    await h2front?.close().catch(() => {});
     await stopServer();
 }
 console.log(`MEASURES ${JSON.stringify(Object.fromEntries(measures))}`);

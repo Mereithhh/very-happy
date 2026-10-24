@@ -104,6 +104,12 @@ class ApiSocket {
     private recoveredListeners: Set<() => void> = new Set();
     private livenessInFlight: Promise<LivenessResult> | null = null;
     private livenessEpoch = -1;
+    /**
+     * B-803b: resume epoch in which the control socket's current connect
+     * attempt began — at connect(), or when the manager's reconnect loop
+     * started or moved on (disconnect, connect_error).
+     */
+    private connectAttemptEpoch = -1;
     private livenessAfterHandover = false;
     private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
     private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
@@ -143,6 +149,7 @@ class ApiSocket {
         this.updateStatus('connecting');
 
         this.socket = this.createControlSocket();
+        this.connectAttemptEpoch = getResumeVisibilityEpoch();
 
         this.setupEventHandlers(this.socket);
     }
@@ -539,10 +546,22 @@ class ApiSocket {
         // Step 2: let that close chain (all synchronous inside one microtask) run.
         await Promise.resolve();
         // Step 3.
-        const probe = decideProbe({ connectedAfterEmit: socket.connected, handoverInFlight: this.handoverInFlight !== null });
+        const probe = decideProbe({
+            connectedAfterEmit: socket.connected,
+            handoverInFlight: this.handoverInFlight !== null,
+            attemptFromEarlierEpoch: this.connectAttemptEpoch !== epoch,
+        });
         // Relays are probed in parallel with the control socket; they don't
         // depend on its verdict (terminal output rides the relay when connected).
         const relays = this.probeRelays(epoch);
+        if (probe === 'reconnect') {
+            // B-803b: still connecting on a handshake (or backoff) begun while
+            // hidden — likely on a dead path; open a fresh attempt now.
+            if (this.isVerboseLogging()) console.log('🔌 SyncSocket: stale connect attempt on resume — reconnecting now');
+            this.forceReconnect(socket);
+            await relays;
+            return 'reconnected';
+        }
         if (probe === 'skip') {
             if (this.handoverInFlight) this.livenessAfterHandover = true;
             await relays;
@@ -575,12 +594,32 @@ class ApiSocket {
             // in-flight acks (never replayed: a daemon may have executed the
             // call). `connect()` opens immediately; the resulting `connect`
             // carries recovered=false → onReconnected does the full refetch.
-            socket.disconnect();
-            socket.connect();
+            this.forceReconnect(socket);
             result = 'reconnected';
         }
         await relays;
         return result;
+    }
+
+    /**
+     * B-803b: the user pressed 「重试」 while the control socket is not
+     * connected — the manager may sit in a handshake on a dead path (20s
+     * connect timeout) or a backoff wait; open a fresh attempt now. A
+     * connected socket is left to the liveness probe. Returns whether it
+     * reconnected.
+     */
+    reconnectIfDown(): boolean {
+        const socket = this.socket;
+        if (!socket || socket.connected || this.handoverInFlight) return false;
+        if (this.isVerboseLogging()) console.log('🔌 SyncSocket: retry with the socket down — reconnecting now');
+        this.forceReconnect(socket);
+        return true;
+    }
+
+    private forceReconnect(socket: Socket) {
+        socket.disconnect();
+        socket.connect();
+        this.connectAttemptEpoch = getResumeVisibilityEpoch();
     }
 
     /**
@@ -877,6 +916,8 @@ class ApiSocket {
                 console.log('🔌 SyncSocket: Disconnected', reason);
             }
             diagnostic = startConnectionStage('control', undefined, undefined, undefined, 'central');
+            // The manager starts its reconnect (backoff wait, then an attempt) now.
+            this.connectAttemptEpoch = getResumeVisibilityEpoch();
             this.updateStatus('disconnected');
         });
 
@@ -889,6 +930,7 @@ class ApiSocket {
             diagnostic.finish(connectionFailureOutcome(error));
             // Each retry needs a fresh attempt after the previous terminal result.
             diagnostic = startConnectionStage('control', undefined, undefined, undefined, 'central');
+            this.connectAttemptEpoch = getResumeVisibilityEpoch();
             this.updateStatus('error');
         });
 

@@ -103,6 +103,11 @@ describe('B-804 wiring in sync.ts', () => {
         expect(body('retryMessagesCatchUp = (', 'private wirePromptQueueTranscript')).toContain('this.restartMessagesSync(sessionId);');
     });
 
+    // B-803b (QA6 P1-1): with the socket down, 「重试」 did nothing for it — the probe skips a reconnecting manager.
+    it('「重试」 with the socket down opens a fresh connect attempt, else probes', () => {
+        expect(body('retryMessagesCatchUp = (', 'private wirePromptQueueTranscript')).toContain('if (!apiSocket.reconnectIfDown()) void apiSocket.checkLiveness();');
+    });
+
     it('a seq gap shows the catch-up too', () => {
         expect(sync).toMatch(/if \(gap\) \{\s*this\.getMessagesSync\(sessionId\)\.invalidate\(\);\s*this\.trackMessagesCatchUp\(sessionId\);/);
         expect(sync).toMatch(/\} else if \(action === 'refetch'\) \{\s*this\.getMessagesSync\(sid\)\.invalidate\(\);\s*\/\/ B-804[^\n]*\n\s*this\.trackMessagesCatchUp\(sid\);/);

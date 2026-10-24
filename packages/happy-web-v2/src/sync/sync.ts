@@ -45,6 +45,7 @@ import { applyPromptQueueUpdate, promptQueueTranscript, reloadPromptQueue, retry
 import { forgetCatchUp, trackCatchUp } from './catchUpStatus';
 import { isNetworkOffline, startNetworkMonitor } from './networkStatus';
 import { fetchWithDeadline, SYNC_READ_TIMEOUT_MS } from './requestDeadline';
+import { hedgedRead } from './hedgedRead';
 import { catchUpForward, mergeFetchedLastSeq, throwIfAborted } from './messageCatchUp';
 import { NormalizedMessage, normalizeRawMessage, RawRecord, type SessionEventPayload } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
@@ -368,12 +369,17 @@ class Sync {
                     };
                 },
                 subscribe: (onChange) => {
+                    // B-803b: catch-ups deferred while the browser was offline go out
+                    // as soon as it is back (the viewed one also via the resume edge).
+                    const onOnline = () => this.restartDeferredCatchUps({ deferredOnly: true });
+                    window.addEventListener('online', onOnline);
                     window.addEventListener('online', onChange);
                     window.addEventListener('offline', onChange);
                     const unsubscribe = storage.subscribe((state, prev) => {
                         if (state.socketStatus !== prev.socketStatus) onChange();
                     });
                     return () => {
+                        window.removeEventListener('online', onOnline);
                         window.removeEventListener('online', onChange);
                         window.removeEventListener('offline', onChange);
                         unsubscribe();
@@ -392,8 +398,8 @@ class Sync {
      * B-803: back online — catch-ups skipped while offline (and the viewed
      * session's, which may be stuck in a backoff sleep) go out now.
      */
-    private restartDeferredCatchUps() {
-        const viewing = storage.getState().currentViewingSessionId;
+    private restartDeferredCatchUps(opts?: { deferredOnly?: boolean }) {
+        const viewing = opts?.deferredOnly ? null : storage.getState().currentViewingSessionId;
         const ids = new Set(this.messagesDeferredOffline);
         if (viewing) ids.add(viewing);
         this.messagesDeferredOffline.clear();
@@ -613,12 +619,17 @@ class Sync {
         trackCatchUp(sessionId, this.getMessagesSync(sessionId).awaitQueue());
     }
 
-    /** B-804: 「连接不稳定 · 重试」 — abort the stuck attempt and go again now (B-803 restart), and probe the socket. */
+    /**
+     * B-804: 「连接不稳定 · 重试」 — abort the stuck attempt and go again now
+     * (B-803 restart), and probe the socket. B-803b: a socket that is not
+     * connected gets a fresh connect attempt instead (the probe would leave
+     * the manager's possibly dead attempt alone).
+     */
     retryMessagesCatchUp = (sessionId: string) => {
         this.restartMessagesSync(sessionId);
         this.trackMessagesCatchUp(sessionId);
         void reloadPromptQueue(sessionId);
-        void apiSocket.checkLiveness();
+        if (!apiSocket.reconnectIfDown()) void apiSocket.checkLiveness();
     };
 
     /**
@@ -1611,20 +1622,26 @@ class Sync {
         const API_ENDPOINT = getServerUrl();
         // B-803: bounded — a list GET stuck on a dead link must not hold
         // sessionsSync (and every resume/reconnect refresh coalesced behind it).
-        const response = await fetchWithDeadline(fetch, `${API_ENDPOINT}/v1/sessions`, {
-            headers: {
-                'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json',
-                'X-Happy-Client': getHappyClientId(),
-            },
-            timeoutMs: SYNC_READ_TIMEOUT_MS,
+        // B-803b: hedged like the message pages (hedgedRead.ts).
+        const token = this.credentials.token;
+        const data = await hedgedRead(async (signal, pool) => {
+            const response = await fetchWithDeadline(fetch, `${API_ENDPOINT}/v1/sessions`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'X-Happy-Client': getHappyClientId(),
+                },
+                timeoutMs: SYNC_READ_TIMEOUT_MS,
+                signal,
+                ...pool,
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch sessions: ${response.status}`);
+            }
+
+            return await response.json();
         });
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch sessions: ${response.status}`);
-        }
-
-        const data = await response.json();
         const sessions = data.sessions as Array<{
             id: string;
             tag: string;
@@ -2639,10 +2656,13 @@ class Sync {
     }
 
     private fetchMessages = async (sessionId: string, signal: AbortSignal = new AbortController().signal) => {
-        // B-803: offline (B-799 judgment) → no catch-up at all: every attempt
-        // would only time out and back off. The network monitor's onRecovered
-        // (and the socket reconnect) restarts it.
-        if (isNetworkOffline()) {
+        // B-803: the browser itself offline → no catch-up at all: every
+        // attempt would only fail and back off. The `online` event, the
+        // network monitor's onRecovered and the socket reconnect restart it.
+        // B-803b: NOT the socket-down half of the B-799 judgment — REST often
+        // works while the socket is still stuck reconnecting (8s after a
+        // resume the bar says 「离线」, and the catch-up waited for the socket).
+        if (!isBrowserOnline()) {
             log.log(`💬 fetchMessages: offline, deferring ${sessionId} until the network is back`);
             this.messagesDeferredOffline.add(sessionId);
             return;
@@ -2686,10 +2706,12 @@ class Sync {
     }
 
     /** One page of history older than `beforeSeq` (the server returns it newest-first). */
-    private fetchHistoryPage = async (sessionId: string, beforeSeq: number, signal?: AbortSignal) => {
+    private fetchHistoryPage = (sessionId: string, beforeSeq: number, signal?: AbortSignal) => hedgedRead(async (attemptSignal, pool) => {
+        // B-803b: hedged — a page stuck on a dead pooled connection gets a
+        // parallel attempt on another one after HEDGE_AFTER_MS (hedgedRead.ts).
         const response = await apiSocket.request(
             `/v3/sessions/${sessionId}/messages?before_seq=${beforeSeq}&limit=${HISTORY_PAGE_SIZE}`,
-            { signal, timeoutMs: SYNC_READ_TIMEOUT_MS },
+            { signal: attemptSignal, timeoutMs: SYNC_READ_TIMEOUT_MS, ...pool },
         );
         if (!response.ok) {
             throw new Error(`Failed to fetch history before seq ${beforeSeq} for ${sessionId}: ${response.status}`);
@@ -2697,7 +2719,7 @@ class Sync {
         const data = await response.json() as V3GetSessionMessagesResponse;
         const messages = Array.isArray(data.messages) ? data.messages : [];
         return { messages, hasMore: !!data.hasMore && messages.length > 0 };
-    }
+    }, { signal })
 
     private fetchInitialLatestPage = async (
         sessionId: string,
@@ -2759,17 +2781,17 @@ class Sync {
     ) => {
         const lock = this.getSessionMessageLock(sessionId);
         await catchUpForward<NormalizedMessage>({
-            fetchPage: async (afterSeq, pageSignal) => {
+            fetchPage: (afterSeq, pageSignal) => hedgedRead(async (attemptSignal, pool) => {
                 const response = await apiSocket.request(
                     `/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=${HISTORY_PAGE_SIZE}`,
-                    { signal: pageSignal, timeoutMs: SYNC_READ_TIMEOUT_MS },
+                    { signal: attemptSignal, timeoutMs: SYNC_READ_TIMEOUT_MS, ...pool },
                 );
                 if (!response.ok) {
                     throw new Error(`Failed to forward-sync ${sessionId}: ${response.status}`);
                 }
                 const data = await response.json() as V3GetSessionMessagesResponse;
                 return { messages: Array.isArray(data.messages) ? data.messages : [], hasMore: !!data.hasMore };
-            },
+            }, { signal: pageSignal }),
             normalize: (page) => this.normalizeFetchedMessages(encryption, page.messages as ApiMessage[]),
             withLock: (fn) => lock.inLock(fn),
             apply: (messages) => this.applyMessages(sessionId, messages),
