@@ -644,14 +644,17 @@
 .sb-tree-project-main > svg { flex: none; color: var(--text); }
 .sb-tree-project-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-tree-project-main:focus-visible { outline: none; background: var(--fill-hover); border-radius: var(--r-sm); }
-/* ＋ / ⋯ appear on hover over the badge's place, so the badge column stays aligned with the team rows. */
-.sb-tree-project { position: relative; }
-.sb-tree-project-acts { display: none; position: absolute; top: 50%; right: 2px; transform: translateY(-50%); align-items: center; gap: 2px; padding-left: 6px; border-radius: var(--r-sm); background: var(--surface-sidebar); }
+/* Row actions (project ＋ / ⋯, team ⋯). B-798 (U1): visible by default — long-press is only a
+   shortcut, never the only way in. Only a fine hover pointer hides them until hover, over the
+   badge's place, so the badge column stays aligned with the team rows. */
+.sb-tree-project, .sb-team-row { position: relative; }
+.sb-tree-acts { display: inline-flex; flex: none; align-items: center; }
 @media (hover: hover) and (pointer: fine) {
+  .sb-tree-acts { display: none; position: absolute; top: 50%; right: 2px; transform: translateY(-50%); gap: 2px; padding-left: 6px; border-radius: var(--r-sm); background: var(--surface-sidebar); }
   .sb-tree-project:not(.is-selected):hover { background: var(--fill-hover); }
-  .sb-tree-project:hover .sb-tree-project-acts, .sb-tree-project:focus-within .sb-tree-project-acts, .sb-tree-project-acts:has([data-state="open"]) { display: inline-flex; }
+  .sb-tree-project:hover .sb-tree-acts, .sb-tree-project:focus-within .sb-tree-acts,
+  .sb-team-row:hover .sb-tree-acts, .sb-team-row:focus-within .sb-tree-acts, .sb-tree-acts:has([data-state="open"]) { display: inline-flex; }
 }
-/* §5.3: touch has no hover — ＋ / ⋯ go away, long-press opens the bottom sheet. */
 @media (pointer: coarse) {
   .sb-tree-project-main { min-height: 44px; }
 }
@@ -894,14 +897,15 @@
 .sb-footer, .sb-ratelimit { position: relative; }
 
 /* ----- B-756 / B-762 project actions and owner chips ----- */
-/* ＋ / ⋯ on a tree project node (revealed on hover, see .sb-tree-project-acts). */
-.sb-project-act {
+/* ＋ / ⋯ on a tree project or team node (see .sb-tree-acts); 44px on touch (U3). */
+.sb-tree-act {
   display: inline-grid; place-items: center; flex: none;
   width: 28px; height: 28px; border-radius: var(--r-sm); color: var(--text-faint);
 }
-.sb-project-act:focus-visible { background: var(--fill-selected); color: var(--text); }
-.sb-project-act:disabled { opacity: 0.45; }
-@media (hover: hover) and (pointer: fine) { .sb-project-act:hover { background: var(--fill-selected); color: var(--text); } }
+.sb-tree-act:focus-visible { background: var(--fill-selected); color: var(--text); }
+.sb-tree-act:disabled { opacity: 0.45; }
+@media (hover: hover) and (pointer: fine) { .sb-tree-act:hover { background: var(--fill-selected); color: var(--text); } }
+@media (pointer: coarse) { .sb-tree-act { width: 44px; height: 44px; } }
 /* Owner chip (team or project) on a session row in the list lenses: quiet, like the
    shared-owner chip, pushed to the row's end. It gives way before the title does,
    but B-772 (QA4 O4): never below ~3 characters of its name (icon 10 + gap 3 +

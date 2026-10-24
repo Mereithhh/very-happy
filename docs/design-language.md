@@ -343,8 +343,8 @@ hairline 引导线（`--line`）区分，父级比子级重：项目 FolderKanba
 UsersRound 15 · 13.5px 500，负责人/成员 14px 图标单行。每级同一个 chevron 槽（桌面 18px、
 触屏 28px），缩进 14 / 12px。每级右侧是「需要你」徽标（`--warn-dim` 底 + `--warn` 字，
 等你处理 + 未读），没有时显示数量；运行中只用状态位，不汇总进徽标。「负责人」小标签用中性
-`--fill-soft`，`--accent` 仍只表示 live。触屏不显示 hover 的 ＋ / ⋯，长按树节点出底部菜单
-（`ActionContextMenu sheetTitle`）。「按标签 / 最近」是会话清单，每行一个所属 chip。
+`--fill-soft`，`--accent` 仍只表示 live。项目头的 ＋ / ⋯ 和团队行的 ⋯ 桌面悬停显示、触屏常驻
+（44px，B-798）；长按树节点出底部菜单（`ActionContextMenu sheetTitle`）只是快捷方式。「按标签 / 最近」是会话清单，每行一个所属 chip。
 更新提醒放在侧栏底部；详情沿用统一的中性表面、品牌标识和清晰版本层级。
 Changelog 的显式确认与关闭分开，保留历史入口、跨版本信息及 CLI 升级提示。
 
