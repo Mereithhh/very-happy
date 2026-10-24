@@ -29,6 +29,14 @@
  *   B6   the link dies in the background; the resume GET itself rides a dead
  *        pooled link; tab2 sends while hidden and again after the resume →
  *        caught up ≤ T + 2s, and the post-resume message visible ≤ 2s.
+ *        B-804: 「同步中」 (top bar or the chat's line) shows ≤ 1s after the
+ *        resume and is gone ≤ 2s after catching up.
+ *   A4   (B-804, symptom A) a prompt waits in the server queue (dock); tab1
+ *        goes to the background on a dead link and the queue head is dispatched
+ *        (the wrapper's pop, over REST); the resume GET rides a dead link; switch
+ *        session and back → sampled every 250ms the prompt is always in the dock
+ *        or the transcript, and ends in the transcript with the dock empty
+ *        ≤ T + 2s after the resume.
  *   LIVE a catch-up GET hangs while tab1 is in the foreground; a message
  *        tab2 sends meanwhile is visible in tab1 ≤ 2s (the session lock is not
  *        held across the request).
@@ -120,7 +128,8 @@ const proxy = (() => {
             const head = chunk.toString('latin1', 0, Math.min(chunk.length, 400));
             if (first) {
                 first = false;
-                if (head.includes('vite-hmr')) { link.exempt = true; link.stalled = false; }
+                // the upgrade header can sit past the first 400 bytes (cookies, UA)
+                if (chunk.toString('latin1').includes('vite-hmr')) { link.exempt = true; link.stalled = false; }
             }
             // keep-alive reuse: every request head on this link is checked
             if (stallMatch && !link.stalled && !link.exempt && head.includes(stallMatch)) {
@@ -259,6 +268,27 @@ async function setHidden(page, hidden) {
 const pokeCatchUp = (page, sessionId) => page.evaluate((id) => import('/src/sync/sync.ts').then(({ sync }) => sync.onSessionEnter(id)), sessionId);
 const closeSocket = (page) => page.evaluate(() => import('/src/sync/apiSocket.ts').then(({ apiSocket }) => apiSocket['socket']?.io?.engine?.close()));
 const token = (tag) => `${tag}x${randomBytes(3).toString('hex')}`;
+/** B-804: what tab shows of `token` and of the catch-up right now. */
+const onScreen = (page, token) => page.evaluate((token) => ({
+    dock: [...document.querySelectorAll('.ci-queue-item')].find((e) => e.textContent.includes(token))?.getAttribute('data-queue-item-source') ?? null,
+    transcript: (document.querySelector('.cl-inner')?.textContent ?? '').includes(token),
+    syncing: document.querySelector('.net-bar')?.getAttribute('data-net-phase') === 'syncing' || !!document.querySelector('.chat-sync'),
+    route: location.pathname.slice(-6),
+    body: (document.querySelector('.sd-body')?.textContent ?? '').slice(0, 80),
+}), token).catch(() => null);
+/** B-804: sample 「同步中」 (top bar / chat line) every 100ms until stop(); first / last time seen, from `t0`. */
+function watchSyncing(page, t0) {
+    let running = true;
+    const seen = { first: null, last: null };
+    const done = (async () => {
+        while (running) {
+            const s = await page.evaluate(() => document.querySelector('.net-bar')?.getAttribute('data-net-phase') === 'syncing' || !!document.querySelector('.chat-sync')).catch(() => false);
+            if (s) { seen.first ??= Date.now() - t0; seen.last = Date.now() - t0; }
+            await sleep(100);
+        }
+    })();
+    return { stop: async () => { running = false; await done; return seen; } };
+}
 
 /** B-805: history GETs a tab issues, per session and kind (`after` = after_seq, `before` = latest page). */
 function countHistoryGets(page) {
@@ -366,7 +396,8 @@ try {
         const ids = [];
         for (const path of ['/tmp/b803-e2e-1', '/tmp/b803-e2e-2', '/tmp/b805-e2e-unopened']) {
             const enc = await sync.encryption.openEncryption(null);
-            const [metadata] = await enc.encrypt([{ path, host: 'e2e', flavor: 'claude' }]);
+            // `prompt-queue-v1`: the composer's queue lives on the server (B-509) — A4's dock.
+            const [metadata] = await enc.encrypt([{ path, host: 'e2e', flavor: 'claude', capabilities: ['prompt-queue-v1'] }]);
             const res = await apiSocket.request('/v1/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -430,10 +461,19 @@ try {
         await sleep(30_000);
         proxy.healNew();
         const t0 = Date.now();
+        const syncing = watchSyncing(page1, t0);
         await setHidden(page1, false);
         const ms = await timeUntilVisible(page1, S1, tok, HOLD_MS, t0);
         measure('B6', ms);
         check(ms !== null && ms <= CATCH_UP_LIMIT_MS, `B6 caught up ≤ ${CATCH_UP_LIMIT_MS}ms after resume`, fmt(ms));
+        // B-804: the catch-up was visible, and is gone ≤ 2s after it landed.
+        await sleep(2_500);
+        const seen = await syncing.stop();
+        measure('B6-syncing-shown', seen.first);
+        check(seen.first !== null && seen.first <= 1_000, 'B6 「同步中」 shows ≤ 1000ms after the resume', fmt(seen.first));
+        const goneAfter = ms === null || seen.last === null ? null : Math.max(0, seen.last - ms);
+        measure('B6-syncing-gone-after-catch-up', goneAfter);
+        check(goneAfter !== null && goneAfter <= 2_000 && !(await onScreen(page1, tok))?.syncing, 'B6 「同步中」 gone ≤ 2000ms after catching up', fmt(goneAfter));
         // another device sends after the resume: visible ≤ 2s
         const tok2 = token('B6b');
         const t1 = Date.now();
@@ -443,6 +483,69 @@ try {
         check(ms2 !== null && ms2 <= LIVE_LIMIT_MS, `B6 a message sent after the resume is visible ≤ ${LIVE_LIMIT_MS}ms`, fmt(ms2));
         await shot(page1, 'B6');
         await settle('B6', page1, page2, S1, tok2);
+    }
+
+    // ── A4: dock → transcript hand-off across background + dead link + session switch ──
+    if (want('A4')) {
+        step('A4 queued prompt dispatched in the background; resume GET on a dead link; switch session and back');
+        const tok = token('A4');
+        await page1.evaluate(({ sid, text }) => import('/src/sync/promptQueue.ts').then(({ enqueuePrompt }) => enqueuePrompt(sid, text, {})), { sid: S1, text: tok });
+        await page1.waitForFunction((t) => [...document.querySelectorAll('.ci-queue-item')].some((e) => e.textContent.includes(t)), tok, { timeout: 10_000 });
+        await shot(page1, 'A4-0-docked');
+        proxy.stallNext('after_seq');
+        proxy.blackhole();
+        await setHidden(page1, true);
+        await sleep(2_000);
+        const authToken = await page2.evaluate(() => import('/src/sync/sync.ts').then(({ sync }) => sync['credentials'].token));
+        const popped = await (await fetch(`http://127.0.0.1:${PORT}/v1/sessions/${S1}/prompt-queue/dispatch`, { method: 'POST', headers: { Authorization: `Bearer ${authToken}` } })).json();
+        check(!!popped.dispatched, 'A4 the server dispatched the queue head (wrapper pop)', JSON.stringify(popped.dispatched ?? popped));
+        await sleep(5_000);
+        proxy.healNew();
+        const t0 = Date.now();
+        // Every DOM change (not a sampling interval) is checked in-page: a frame with the prompt in neither
+        // the dock nor the transcript is a gap, however short.
+        await page1.evaluate((t) => {
+            const state = { gaps: [], dock: new Set(), transcriptSeen: false, checks: 0 };
+            const check = () => {
+                state.checks += 1;
+                const row = [...document.querySelectorAll('.ci-queue-item')].find((e) => e.textContent.includes(t));
+                const inTranscript = (document.querySelector('.cl-inner')?.textContent ?? '').includes(t);
+                if (row) state.dock.add(row.getAttribute('data-queue-item-source'));
+                if (inTranscript) state.transcriptSeen = true;
+                if (!row && !inTranscript && state.gaps.length < 20) state.gaps.push({ at: Math.round(performance.now() - state.t0), route: location.pathname.slice(-6), body: (document.querySelector('.sd-body')?.textContent ?? '').slice(0, 60) });
+            };
+            state.t0 = performance.now();
+            state.observer = new MutationObserver(check);
+            state.observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+            window.__a4 = state;
+        }, tok);
+        await setHidden(page1, false);
+        const settledAt = async (untilMs) => {
+            while (Date.now() - t0 < untilMs) {
+                const s = await onScreen(page1, tok);
+                if (s?.transcript && !s.dock) return Date.now() - t0;
+                await sleep(100);
+            }
+            return null;
+        };
+        await sleep(4_000);
+        await shot(page1, 'A4-1-foreground');
+        await nav(page1, S2);
+        await sleep(1_500);
+        await nav(page1, S1);
+        const settledMs = await settledAt(HOLD_MS);
+        await sleep(500);
+        await shot(page1, 'A4-2-settled');
+        const seen = await page1.evaluate(() => { const s = window.__a4; s.observer.disconnect(); return { gaps: s.gaps, dock: [...s.dock], transcriptSeen: s.transcriptSeen, checks: s.checks }; });
+        // The switch away to S2 is not a gap: the prompt belongs to S1's screen.
+        const gaps = seen.gaps.filter((g) => !S2.endsWith(g.route));
+        console.log(`    A4 ${seen.checks} DOM checks: dock states ${seen.dock.join('→') || '-'}, transcript ${seen.transcriptSeen}, gaps on S1 ${gaps.length}`);
+        if (process.env.VH_E2E_DEBUG) for (const g of gaps) console.log('    gap', JSON.stringify(g));
+        measure('A4-gap-frames', gaps.length);
+        measure('A4-settled', settledMs);
+        check(gaps.length === 0, 'A4 the prompt is always in the dock or the transcript (every DOM change)', gaps.length ? `${gaps.length} gaps, first at +${gaps[0].at}ms: ${gaps[0].body}` : '');
+        check(settledMs !== null && settledMs <= CATCH_UP_LIMIT_MS + 1_500, `A4 in the transcript with the dock empty ≤ ${CATCH_UP_LIMIT_MS + 1_500}ms after the resume (incl. the 1.5s away)`, fmt(settledMs));
+        await settle('A4', page1, page2, S1, tok);
     }
 
     // ── LIVE: a hung catch-up does not block live messages ───────────
