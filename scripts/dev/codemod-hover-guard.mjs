@@ -13,6 +13,7 @@
  *   - 不自动改、只报告（需要人工判断）：
  *       coarse     写在 (pointer: coarse)/(hover: none) 里的 hover —— 等于只对触屏生效；
  *       reveal     hover 时改 opacity/visibility/display —— 包进守卫后触屏永远看不到，需「默认可见、只在守卫里隐藏」；
+ *                  触屏确实看不到的那一种由 check-design-lint ⑦ hover-reveal-needs-touch 拦截（B-798）；
  *       focus-mix  拆出来的 :focus-visible 半边带 box-shadow/outline 声明 —— 可能把焦点环一起抹掉（UI-P1-04）。
  *
  * 用法：

@@ -86,6 +86,7 @@
 
 /* desktop "+" — revealed on row hover / keyboard focus, sits over the
  * old-line-number cell like a gutter affordance */
+/* design-lint-allow: touch has its own entry — tapping a row opens the comment sheet (.rdv--touch) */
 .rdv-plus {
   position: absolute;
   left: 2px;

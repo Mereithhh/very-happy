@@ -102,6 +102,7 @@ triage（分独立/冲突域）
 | happy-cli | `pnpm build` + unit 全绿（daemon.integration "second daemon" 为已知环境例外）+ `node dist/index.mjs --version` 运行冒烟（build 绿 ≠ 运行不崩，有 CJS 事故先例） |
 | happy-server | `tsc --noEmit` + `vitest run` 全绿（**零新 npm 依赖**——bind-mount 约束） |
 | 设计 lint（web 新增行） | `node scripts/dev/check-design-lint.mjs --base origin/main` 零发现（CI 以 PR base 跑；规则与豁免见 [design-language §6](design-language.md)「改动行 lint」，脚本单测 `node --test scripts/dev/check-design-lint.test.mjs`） |
+| 触屏门禁（web UI 改动，B-798） | `node scripts/dev/device-shots.mjs` 在 phone / duo-folded-inset / duo-open-land / duo-open-port 上零失败：`smallTargets` < 44px 与 `hiddenActions` 0×0 隐藏操作只许是 `scripts/dev/touchGate.mjs` 名单里的（规则见 [design-language §6](design-language.md)「触屏行内操作与命中区」） |
 
 通用纪律：
 - **事故必附回归测试**：修复不带覆盖该机制的测试不许合并。**源码断言型测试

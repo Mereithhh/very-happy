@@ -23,8 +23,11 @@
  *   - outside：右边缘越出视口的可见元素（应为空）
  *   - hoverOnly：触屏上占位却透明（只有 hover 才显示）的按钮（应为空）
  *   - inInset：带 safeArea 的预设下，落进侧边 inset（系统状态列）里的可点控件（应为空）
- *   - smallTargets：粗指针下宽或高 < 44px 的可见按钮（只报告：量的是盒子，
- *     不含 ::after 扩出的热区；行内文字链接按 WCAG 2.5.8 例外处理）
+ *   - smallTargets：粗指针下实际命中区宽或高 < 44px 的可见按钮（B-798 起是门禁：不在 touchGate.mjs 的
+ *     SMALL_TARGET_ALLOWLIST 里就失败；命中区用 elementFromPoint 从中心往外走，.vh-hit 等 ::after 热区计入、
+ *     被遮挡/裁剪的部分不计；display:inline 的行内文字链接按 WCAG 2.5.8 例外放行）
+ *   - hiddenActions：粗指针下有 aria-label、却排成 0×0 的按钮，而它所在的行在屏幕上（B-798：hover 才显示、
+ *     触屏只能长按）。门禁，名单是 HIDDEN_ACTION_ALLOWLIST
  * `--fold` 在会话页、汇报板、团队页、项目页和新建对话弹窗上做 466×678 ↔ 890×626
  * 往返，断言弹窗（含输入内容）仍在、汇报板仍开、composer 草稿仍在、聊天滚动位置保持、
  * 没有整页重载；再验 890×626 的侧栏抽屉（rail 打开，遮罩 / Esc / 收起按钮 / 导航关闭）。
@@ -129,6 +132,7 @@ if (!exe) {
     process.exit(2);
 }
 const { chromium } = await import('playwright-core');
+const { SMALL_TARGET_ALLOWLIST, HIDDEN_ACTION_ALLOWLIST, notAllowed } = await import('./touchGate.mjs');
 if (outDir) mkdirSync(outDir, { recursive: true });
 
 let failures = 0;
@@ -260,6 +264,46 @@ function measure(sa) {
         if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) return null;
         return r;
     };
+    // The effective hit area: walk out from the centre with elementFromPoint while the point still lands on the
+    // control (B-798 E: .vh-hit's centred ::after, negative-inset ::after, and anything covering or clipping it all count).
+    const hitBox = (el, r) => {
+        const owns = (x, y) => {
+            if (x < 0 || y < 0 || x >= vw || y >= innerHeight) return false;
+            const h = document.elementFromPoint(x, y);
+            return !!h && (h === el || el.contains(h) || [...(el.labels ?? [])].some((l) => l.contains(h)));
+        };
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        if (!owns(cx, cy)) return null; // covered (under a sheet, panel or scrim): not a target right now
+        // A control cut by the viewport or by its scroller's edge (scrolled half into view) is not a small
+        // target: the edge counts as reach.
+        let clip = { left: 0, top: 0, right: vw, bottom: innerHeight };
+        for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+            const cs = getComputedStyle(p);
+            if (!/(auto|scroll|hidden|clip)/.test(cs.overflowX + cs.overflowY)) continue;
+            const pr = p.getBoundingClientRect();
+            clip = { left: Math.max(clip.left, pr.left), top: Math.max(clip.top, pr.top), right: Math.min(clip.right, pr.right), bottom: Math.min(clip.bottom, pr.bottom) };
+        }
+        const offscreen = (x, y) => x < clip.left || y < clip.top || x >= clip.right - 1 || y >= clip.bottom - 1;
+        const reach = (dx, dy) => {
+            let n = 0;
+            while (n < 30) {
+                const x = cx + dx * (n + 1), y = cy + dy * (n + 1);
+                if (offscreen(x, y)) return 30;
+                if (!owns(x, y)) break;
+                n++;
+            }
+            return n;
+        };
+        return { width: reach(-1, 0) + reach(1, 0) + 1, height: reach(0, -1) + reach(0, 1) + 1 };
+    };
+    // Stable allowlist key: tag + first class, or tag + the nearest classed ancestor's first class.
+    const firstClass = (el) => String(el.getAttribute('class') ?? '').trim().split(/\s+/)[0];
+    const keyOf = (el) => {
+        if (firstClass(el)) return `${el.tagName.toLowerCase()}.${firstClass(el)}`;
+        let p = el.parentElement;
+        while (p && !firstClass(p)) p = p.parentElement;
+        return `${el.tagName.toLowerCase()}${p ? ` in .${firstClass(p)}` : ''}`;
+    };
     const label = (el) => (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || el.className || el.tagName).toString().trim().replace(/\s+/g, ' ').slice(0, 40);
     const outside = [];
     for (const el of document.querySelectorAll('body *')) {
@@ -279,7 +323,28 @@ function measure(sa) {
         for (const el of document.querySelectorAll('button, [role="button"], a[href], [role="tab"], [role="switch"]')) {
             const r = visible(el);
             if (!r || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > vw) continue;
-            if (r.width < 44 || r.height < 44) smallTargets.push(`${label(el)} ${Math.round(r.width)}×${Math.round(r.height)}`);
+            // WCAG 2.5.8 inline exception: a link or text button inside a sentence.
+            if (getComputedStyle(el).display === 'inline') continue;
+            const hit = hitBox(el, r);
+            if (!hit || (hit.width >= 44 && hit.height >= 44)) continue;
+            if (r.width < 44 || r.height < 44) smallTargets.push({ key: keyOf(el), text: `${label(el)} ${Math.round(r.width)}×${Math.round(r.height)} hit ${hit.width}×${hit.height}` });
+        }
+    }
+    // B-798: labelled actions laid out as 0×0 (display:none until a hover touch never sends) inside a row that is on screen.
+    const hiddenActions = [];
+    if (matchMedia('(pointer: coarse)').matches) {
+        for (const el of document.querySelectorAll('button[aria-label], [role="button"][aria-label]')) {
+            const r = el.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) continue;
+            if (el.closest('[aria-hidden="true"], [hidden], [inert], .app-sidebar--parked, .app-sidebar--drawer:not(.is-open)')) continue;
+            let host = el.parentElement;
+            for (let i = 0; host && i < 3; i++, host = host.parentElement) {
+                const hr = host.getBoundingClientRect();
+                if (hr.width > 0 && hr.height > 0) break;
+            }
+            const hr = host?.getBoundingClientRect();
+            if (!hr || hr.width === 0 || hr.height === 0 || hr.bottom < 0 || hr.top > innerHeight || hr.right < 0 || hr.left > vw) continue;
+            hiddenActions.push({ key: keyOf(el), text: label(el) });
         }
     }
     // Hover-only controls: laid out on screen but transparent until a hover that touch never sends.
@@ -328,7 +393,7 @@ function measure(sa) {
             return r.width > 0 && r.left < nav.right && r.right > nav.left && r.top < nav.bottom && r.bottom > nav.top;
         }).length;
     })();
-    return { navHits, overlaysUnderNav, overflowX: doc.scrollWidth - doc.clientWidth, outside, hoverOnly, inInset, back: back ? `${Math.round(back.left)},${Math.round(back.top)}` : null, smallTargets: smallTargets.length, smallSample: smallTargets.slice(0, 12), shell: document.querySelector('.app-shell')?.className ?? null };
+    return { navHits, overlaysUnderNav, overflowX: doc.scrollWidth - doc.clientWidth, outside, hoverOnly, inInset, back: back ? `${Math.round(back.left)},${Math.round(back.top)}` : null, smallTargets, hiddenActions, shell: document.querySelector('.app-shell')?.className ?? null };
 }
 
 /** Runs in the page with the menu open: scroll each item into view inside the menu, then it must sit on screen (insets excluded) and be the element under its own centre. */
@@ -405,7 +470,7 @@ async function captureAll(browser) {
                 if (p.prepare) await prepare(page, p.prepare);
                 const m = await page.evaluate(measure, d.safeArea ?? null);
                 const tag = `${device}-${name}-${theme}`;
-                console.log(`── ${tag} (${d.width}×${d.height}) overflowX=${m.overflowX} small=${m.smallTargets} shell="${m.shell}" back=${m.back ?? '-'}`);
+                console.log(`── ${tag} (${d.width}×${d.height}) overflowX=${m.overflowX} small=${m.smallTargets.length} shell="${m.shell}" back=${m.back ?? '-'}`);
                 if (p.back && d.width < 600 && !m.back) fail(`${tag}: no back control at the top-left on a phone`);
                 if (m.overflowX > 0) fail(`${tag}: document overflows horizontally by ${m.overflowX}px`);
                 if (m.navHits.length) console.log(`  prompt nav: hits=${m.navHits.join(',')} overlaysUnder=${m.overlaysUnderNav}`);
@@ -413,7 +478,11 @@ async function captureAll(browser) {
                 if (m.outside.length) fail(`${tag}: outside viewport: ${m.outside.join(', ')}`);
                 if (m.inInset.length) fail(`${tag}: controls under the safe-area inset: ${m.inInset.join(', ')}`);
                 if (m.hoverOnly.length) fail(`${tag}: hover-only controls on a touch screen: ${m.hoverOnly.join(', ')}`);
-                if (args.includes('--verbose') && m.smallSample.length) console.log(`  small: ${m.smallSample.join(' | ')}`);
+                if (args.includes('--verbose') && m.smallTargets.length) console.log(`  small: ${m.smallTargets.map(t => `${t.text} (${t.key})`).join(' | ')}`);
+                const small = notAllowed(m.smallTargets, SMALL_TARGET_ALLOWLIST);
+                if (small.length) fail(`${tag}: touch targets under 44px (not in SMALL_TARGET_ALLOWLIST): ${small.map(t => `${t.text} (${t.key})`).join(', ')}`);
+                const hidden = notAllowed(m.hiddenActions, HIDDEN_ACTION_ALLOWLIST);
+                if (hidden.length) fail(`${tag}: labelled actions laid out 0×0 on touch (long-press only?): ${hidden.map(t => `${t.text} (${t.key})`).join(', ')}`);
                 if (p.menus) await checkMenus(page, cdp, d, tag, p.menus);
                 else if (outDir) writeFileSync(join(outDir, `${tag}.png`), await shot(page, cdp, d));
             }

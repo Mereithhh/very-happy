@@ -97,6 +97,7 @@ jobs:
           node --test scripts/release/check-recommended.test.mjs
           node --test scripts/dev/check-design-lint.test.mjs
           node --test scripts/dev/codemod-hover-guard.test.mjs
+          node --test scripts/dev/touchGate.test.mjs
           node --test scripts/land-pr.test.mjs
           node --test scripts/ops/resource-budget.test.mjs
 
