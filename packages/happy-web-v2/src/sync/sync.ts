@@ -43,6 +43,8 @@ import { isRunningOnMac } from '@/utils/platform';
 import { buildOutboundUserRecord } from './outboundUserRecord';
 import { applyPromptQueueUpdate, retryWaitingPrompts } from './promptQueue';
 import { isNetworkOffline, startNetworkMonitor } from './networkStatus';
+import { fetchWithDeadline, SYNC_READ_TIMEOUT_MS } from './requestDeadline';
+import { catchUpForward, mergeFetchedLastSeq, throwIfAborted } from './messageCatchUp';
 import { NormalizedMessage, normalizeRawMessage, RawRecord, type SessionEventPayload } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { migrateTerminalCommands } from './shortcutPresets';
@@ -224,6 +226,8 @@ class Sync {
     private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
     private sessionQueueProcessing = new Set<string>();
     private sessionMessageLocks = new Map<string, AsyncLock>();
+    /** B-803: sessions whose catch-up was skipped while offline; restarted on recovery. */
+    private messagesDeferredOffline = new Set<string>();
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
     private settingsSync: InvalidateSync;
@@ -374,9 +378,22 @@ class Sync {
                 onRecovered: () => {
                     this.flushOutboxesNow();
                     retryWaitingPrompts();
+                    this.restartDeferredCatchUps();
                 },
             });
         });
+    }
+
+    /**
+     * B-803: back online — catch-ups skipped while offline (and the viewed
+     * session's, which may be stuck in a backoff sleep) go out now.
+     */
+    private restartDeferredCatchUps() {
+        const viewing = storage.getState().currentViewingSessionId;
+        const ids = new Set(this.messagesDeferredOffline);
+        if (viewing) ids.add(viewing);
+        this.messagesDeferredOffline.clear();
+        for (const sessionId of ids) this.restartMessagesSync(sessionId);
     }
 
     /** B-799: back online — queued sends go out now, not after the rest of their backoff sleep. */
@@ -408,7 +425,7 @@ class Sync {
         this.sessionsSync.invalidate();
         const current = storage.getState().currentViewingSessionId;
         if (current) {
-            this.onSessionVisible(current);
+            this.onSessionVisible(current, { restartFetch: true });
         }
         this.machinesSync.invalidate();
         this.artifactsSync.invalidate();
@@ -497,8 +514,17 @@ class Sync {
     }
 
 
-    onSessionVisible = (sessionId: string) => {
-        this.getMessagesSync(sessionId).invalidate();
+    /**
+     * `restartFetch` (B-803): tab resume / socket reconnect / recovered — a
+     * catch-up still in flight is probably stuck on the dead link, so abort it
+     * and fetch again now instead of coalescing behind it.
+     */
+    onSessionVisible = (sessionId: string, opts?: { restartFetch?: boolean }) => {
+        if (opts?.restartFetch) {
+            this.restartMessagesSync(sessionId);
+        } else {
+            this.getMessagesSync(sessionId).invalidate();
+        }
         // T-014: there is deliberately NO git-status refresh here. This method
         // is called for EVERY incoming message of ANY session (the "Ping
         // session" below), so a refresh here fanned 4 `bash` RPCs out to every
@@ -558,7 +584,7 @@ class Sync {
     private getMessagesSync(sessionId: string): InvalidateSync {
         let sync = this.messagesSync.get(sessionId);
         if (!sync) {
-            sync = new InvalidateSync(() => this.fetchMessages(sessionId));
+            sync = new InvalidateSync((signal) => this.fetchMessages(sessionId, signal));
             this.messagesSync.set(sessionId, sync);
         }
         return sync;
@@ -1529,12 +1555,15 @@ class Sync {
         if (!this.credentials) return;
 
         const API_ENDPOINT = getServerUrl();
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
+        // B-803: bounded — a list GET stuck on a dead link must not hold
+        // sessionsSync (and every resume/reconnect refresh coalesced behind it).
+        const response = await fetchWithDeadline(fetch, `${API_ENDPOINT}/v1/sessions`, {
             headers: {
                 'Authorization': `Bearer ${this.credentials.token}`,
                 'Content-Type': 'application/json',
                 'X-Happy-Client': getHappyClientId(),
-            }
+            },
+            timeoutMs: SYNC_READ_TIMEOUT_MS,
         });
 
         if (!response.ok) {
@@ -1645,6 +1674,7 @@ class Sync {
         this.sessionLastSeq.delete(sessionId);
         this.sessionOldestSeq.delete(sessionId);
         this.sessionMessageLocks.delete(sessionId);
+        this.messagesDeferredOffline.delete(sessionId);
         this.sessionMessageQueue.delete(sessionId);
         this.sessionQueueProcessing.delete(sessionId);
 
@@ -2549,49 +2579,56 @@ class Sync {
         }
     }
 
-    private fetchMessages = async (sessionId: string) => {
-        log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
-        const lock = this.getSessionMessageLock(sessionId);
-        await lock.inLock(async () => {
-            const encryption = this.encryption.getSessionEncryption(sessionId);
-            if (!encryption) {
-                log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
-                throw new Error(`Session encryption not ready for ${sessionId}`);
-            }
+    private fetchMessages = async (sessionId: string, signal: AbortSignal = new AbortController().signal) => {
+        // B-803: offline (B-799 judgment) → no catch-up at all: every attempt
+        // would only time out and back off. The network monitor's onRecovered
+        // (and the socket reconnect) restarts it.
+        if (isNetworkOffline()) {
+            log.log(`💬 fetchMessages: offline, deferring ${sessionId} until the network is back`);
+            this.messagesDeferredOffline.add(sessionId);
+            return;
+        }
+        this.messagesDeferredOffline.delete(sessionId);
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
+            throw new Error(`Session encryption not ready for ${sessionId}`);
+        }
 
-            const knownLastSeq = this.sessionLastSeq.get(sessionId);
-            const isInitialLoad = knownLastSeq === undefined;
-            if (isInitialLoad) {
-                // Initial load. Pull only the most recent page (extended to
-                // the newest turn's opener, bounded) so the user can start
-                // chatting immediately. Older history is fetched one page at
-                // a time through loadOlderMessages() when the reader parks
-                // the top of the loaded history in view or presses
-                // 「加载更早」 — B-616: there is deliberately NO background
-                // loop filling the history in (sync/historyWindow.ts).
-                //
-                // Previously this method walked forward from seq=0 until every
-                // page had been fetched and decrypted, which blocked the chat
-                // from displaying anything for sessions with thousands of
-                // messages. The user's reported pain point was "opening a long
-                // session feels frozen" — this is the fix.
-                await this.fetchInitialLatestPage(sessionId, encryption);
-            } else {
-                // Forward incremental sync. Used after reconnect, invalidate,
-                // or any subsequent visit. Only pulls messages newer than what
-                // we already have, so it's bounded and fast in normal use.
-                await this.fetchForwardSince(sessionId, encryption, knownLastSeq);
-            }
+        // B-803: no lock here. Requests and decryption run outside the
+        // session message lock; only the merge takes it (messageCatchUp.ts).
+        const knownLastSeq = this.sessionLastSeq.get(sessionId);
+        const isInitialLoad = knownLastSeq === undefined;
+        if (isInitialLoad) {
+            // Initial load. Pull only the most recent page (extended to
+            // the newest turn's opener, bounded) so the user can start
+            // chatting immediately. Older history is fetched one page at
+            // a time through loadOlderMessages() when the reader parks the
+            // top of the loaded history in view or presses 「加载更早」 —
+            // B-616: there is deliberately NO background loop filling the
+            // history in (sync/historyWindow.ts).
+            await this.fetchInitialLatestPage(sessionId, encryption, signal);
+        } else {
+            // Forward incremental sync. Used after reconnect, invalidate,
+            // or any subsequent visit. Only pulls messages newer than what
+            // we already have, so it's bounded and fast in normal use.
+            await this.fetchForwardSince(sessionId, encryption, knownLastSeq, signal);
+        }
 
-            storage.getState().applyMessagesLoaded(sessionId);
-            log.log(`💬 fetchMessages completed for session ${sessionId}`);
-        });
+        storage.getState().applyMessagesLoaded(sessionId);
+        log.log(`💬 fetchMessages completed for session ${sessionId}`);
+    }
+
+    /** B-803: abort a catch-up stuck on a dead connection and go again now. */
+    private restartMessagesSync(sessionId: string) {
+        this.getMessagesSync(sessionId).restart();
     }
 
     /** One page of history older than `beforeSeq` (the server returns it newest-first). */
-    private fetchHistoryPage = async (sessionId: string, beforeSeq: number) => {
+    private fetchHistoryPage = async (sessionId: string, beforeSeq: number, signal?: AbortSignal) => {
         const response = await apiSocket.request(
-            `/v3/sessions/${sessionId}/messages?before_seq=${beforeSeq}&limit=${HISTORY_PAGE_SIZE}`
+            `/v3/sessions/${sessionId}/messages?before_seq=${beforeSeq}&limit=${HISTORY_PAGE_SIZE}`,
+            { signal, timeoutMs: SYNC_READ_TIMEOUT_MS },
         );
         if (!response.ok) {
             throw new Error(`Failed to fetch history before seq ${beforeSeq} for ${sessionId}: ${response.status}`);
@@ -2603,7 +2640,8 @@ class Sync {
 
     private fetchInitialLatestPage = async (
         sessionId: string,
-        encryption: ReturnType<Encryption['getSessionEncryption']> & {}
+        encryption: ReturnType<Encryption['getSessionEncryption']> & {},
+        signal: AbortSignal,
     ) => {
         // B-616 (historyWindow.ts): the newest page, extended backwards only
         // until the window starts at a turn opener (at most
@@ -2617,7 +2655,7 @@ class Sync {
         let maxSeq = 0;
         let minSeq = Number.POSITIVE_INFINITY;
         for (;;) {
-            const page = await this.fetchHistoryPage(sessionId, beforeSeq);
+            const page = await this.fetchHistoryPage(sessionId, beforeSeq, signal);
             for (const message of page.messages) {
                 if (message.seq > maxSeq) maxSeq = message.seq;
                 if (message.seq < minSeq) minSeq = message.seq;
@@ -2629,49 +2667,48 @@ class Sync {
             beforeSeq = minSeq;
             extraPagesFetched += 1;
         }
+        throwIfAborted(signal);
 
-        if (window.length > 0) {
-            this.applyMessages(sessionId, window);
-        }
-
-        // Anchor both ends so future incremental forward sync resumes from
-        // maxSeq, and loadOlderMessages can page backward from minSeq.
-        this.sessionLastSeq.set(sessionId, maxSeq);
-        if (minSeq !== Number.POSITIVE_INFINITY) {
-            this.sessionOldestSeq.set(sessionId, minSeq);
-        }
-        storage.getState().applyOlderMessagesPagination(sessionId, { hasMore });
+        await this.getSessionMessageLock(sessionId).inLock(() => {
+            if (window.length > 0) {
+                this.applyMessages(sessionId, window);
+            }
+            // Anchor both ends so future incremental forward sync resumes from
+            // maxSeq, and loadOlderMessages can page backward from minSeq.
+            this.sessionLastSeq.set(sessionId, mergeFetchedLastSeq(this.sessionLastSeq.get(sessionId), maxSeq));
+            if (minSeq !== Number.POSITIVE_INFINITY) {
+                this.sessionOldestSeq.set(sessionId, minSeq);
+            }
+            storage.getState().applyOlderMessagesPagination(sessionId, { hasMore });
+        });
     }
 
     private fetchForwardSince = async (
         sessionId: string,
         encryption: ReturnType<Encryption['getSessionEncryption']> & {},
-        fromSeq: number
+        fromSeq: number,
+        signal: AbortSignal,
     ) => {
-        let afterSeq = fromSeq;
-        while (true) {
-            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=${HISTORY_PAGE_SIZE}`);
-            if (!response.ok) {
-                throw new Error(`Failed to forward-sync ${sessionId}: ${response.status}`);
-            }
-            const data = await response.json() as V3GetSessionMessagesResponse;
-            const messages = Array.isArray(data.messages) ? data.messages : [];
-
-            await this.applyFetchedMessages(sessionId, encryption, messages);
-
-            let maxSeq = afterSeq;
-            for (const message of messages) {
-                if (message.seq > maxSeq) maxSeq = message.seq;
-            }
-            this.sessionLastSeq.set(sessionId, maxSeq);
-
-            if (!data.hasMore) break;
-            if (maxSeq === afterSeq) {
-                log.log(`💬 fetchForwardSince: pagination stalled for ${sessionId}, stopping to avoid infinite loop`);
-                break;
-            }
-            afterSeq = maxSeq;
-        }
+        const lock = this.getSessionMessageLock(sessionId);
+        await catchUpForward<NormalizedMessage>({
+            fetchPage: async (afterSeq, pageSignal) => {
+                const response = await apiSocket.request(
+                    `/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=${HISTORY_PAGE_SIZE}`,
+                    { signal: pageSignal, timeoutMs: SYNC_READ_TIMEOUT_MS },
+                );
+                if (!response.ok) {
+                    throw new Error(`Failed to forward-sync ${sessionId}: ${response.status}`);
+                }
+                const data = await response.json() as V3GetSessionMessagesResponse;
+                return { messages: Array.isArray(data.messages) ? data.messages : [], hasMore: !!data.hasMore };
+            },
+            normalize: (page) => this.normalizeFetchedMessages(encryption, page.messages as ApiMessage[]),
+            withLock: (fn) => lock.inLock(fn),
+            apply: (messages) => this.applyMessages(sessionId, messages),
+            getLastSeq: () => this.sessionLastSeq.get(sessionId),
+            setLastSeq: (seq) => this.sessionLastSeq.set(sessionId, seq),
+            onStalled: () => log.log(`💬 fetchForwardSince: pagination stalled for ${sessionId}, stopping to avoid infinite loop`),
+        }, fromSeq, signal);
     }
 
     private applyFetchedMessages = async (
@@ -2731,21 +2768,24 @@ class Sync {
         storage.getState().applyOlderMessagesLoading(sessionId, true);
         const lock = this.getSessionMessageLock(sessionId);
         try {
-            await lock.inLock(async () => {
-                const encryption = this.encryption.getSessionEncryption(sessionId);
-                if (!encryption) {
-                    log.log(`💬 loadOlderMessages: encryption not ready for ${sessionId}`);
+            const encryption = this.encryption.getSessionEncryption(sessionId);
+            if (!encryption) {
+                log.log(`💬 loadOlderMessages: encryption not ready for ${sessionId}`);
+                return;
+            }
+            // B-803: fetch + decrypt outside the session lock (bounded by
+            // SYNC_READ_TIMEOUT_MS); merge under it only if the cursor did
+            // not move meanwhile (a reload re-anchored it).
+            const beforeSeq = oldestSeq;
+            const page = await this.fetchHistoryPage(sessionId, beforeSeq);
+            const normalized = await this.normalizeFetchedMessages(encryption, page.messages);
+            await lock.inLock(() => {
+                if (this.sessionOldestSeq.get(sessionId) !== beforeSeq) {
                     return;
                 }
-                // Re-read the cursor inside the lock. A concurrent
-                // socket-pushed update or reload could have changed it.
-                const beforeSeq = this.sessionOldestSeq.get(sessionId);
-                if (beforeSeq === undefined || beforeSeq <= 1) {
-                    return;
+                if (normalized.length > 0) {
+                    this.applyMessages(sessionId, normalized);
                 }
-                const page = await this.fetchHistoryPage(sessionId, beforeSeq);
-
-                await this.applyFetchedMessages(sessionId, encryption, page.messages);
 
                 let minSeq = beforeSeq;
                 for (const message of page.messages) {
@@ -2836,7 +2876,7 @@ class Sync {
             // arrives to trigger the seq-gap refetch. Bounded: forward from
             // the last known seq.
             const viewing = storage.getState().currentViewingSessionId;
-            if (viewing) this.onSessionVisible(viewing);
+            if (viewing) this.onSessionVisible(viewing, { restartFetch: true });
             // B-799 / B-802: a send that failed during the outage may sit in a
             // backoff sleep of up to 10s — cut it short, the link is back now.
             // Send queues only (one wake per reconnect); pollers keep invalidate().
@@ -2855,7 +2895,7 @@ class Sync {
             this.sessionsSync.invalidate();
             this.machinesSync.invalidate();
             const viewing = storage.getState().currentViewingSessionId;
-            if (viewing) this.onSessionVisible(viewing);
+            if (viewing) this.onSessionVisible(viewing, { restartFetch: true });
         });
     }
 

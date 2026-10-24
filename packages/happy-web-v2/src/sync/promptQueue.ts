@@ -18,6 +18,7 @@ import { create } from 'zustand';
 import type { MessageModeMeta } from './messageMeta';
 import type { Metadata } from './storageTypes';
 import { readOutboundUserRecord } from './outboundUserRecord';
+import { SYNC_READ_TIMEOUT_MS } from './requestDeadline';
 import { isNetworkOffline } from './networkStatus';
 import type { ApiPromptQueueUpdate } from './apiTypes';
 
@@ -286,6 +287,8 @@ export const promptQueueStore = createPromptQueueStore({
         const response = await apiSocket.request(path, {
             ...init,
             headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
+            // B-803: reads are bounded; writes keep their own handling.
+            timeoutMs: !init?.method || init.method === 'GET' ? SYNC_READ_TIMEOUT_MS : undefined,
         });
         return response;
     },
