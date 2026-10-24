@@ -282,6 +282,11 @@ function useBackShortcuts(goBack: () => boolean): void {
   }, []);
 }
 
+/** Read at touchstart, so it follows the live URL rather than the last render. */
+function canGoBackNow(): boolean {
+  return backParentPath(window.location.pathname, window.location.search, null) !== null;
+}
+
 /**
  * Installs every global back trigger. Mounted once, above all authenticated
  * screens (including the chromeless assistant, which lives outside AppLayout).
@@ -290,5 +295,5 @@ export function useGlobalBackNav(): void {
   useNavHistoryTracker();
   const { goBack } = useAppBack();
   useBackShortcuts(goBack);
-  useEdgeSwipeBack(goBack);
+  useEdgeSwipeBack(goBack, canGoBackNow);
 }

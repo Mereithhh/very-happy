@@ -1,13 +1,17 @@
 /**
- * Mobile left-edge swipe → global back.
+ * Left-edge swipe → global back, in a standalone PWA only (B-054, B-800).
  *
- * Hand-written (no gesture library — zero new deps, same house rule the
- * sidebar resize handle and the terminal's touch-scroll shim follow). Touch
- * events, capture phase, PASSIVE: we never preventDefault, so nothing that
- * already listens (xterm's touch-scroll shim, native scrolling, selection) is
- * starved. The gesture only decides, at touchend, whether the finger drew a
- * back swipe; if it did we navigate, if it did not the app behaves exactly as
- * before.
+ * Why standalone only: a Home-Screen web app on iOS has no system back
+ * gesture, so the edge swipe is ours to give. In a browser tab Safari's own
+ * edge-back already pops history; answering the same stroke a second time made
+ * one swipe go back twice. The browser keeps it (see edgeGesture.ts). In the
+ * B-795 drawer shell the edge opens the drawer instead (drawerSwipe.ts).
+ *
+ * Hand-written (no gesture library — zero new deps). Touch events, capture
+ * phase, PASSIVE: we never preventDefault, so nothing that already listens
+ * (xterm's touch-scroll shim, native scrolling, selection) is starved. While
+ * the finger moves, a chevron follows it from the edge and fills once a release
+ * would go back; release decides by distance or flick velocity.
  *
  * ── Terminal conflict, and the trade-off taken ────────────────────────────
  * `.term-host` spans the full viewport width on mobile, so a left-edge start
@@ -16,44 +20,53 @@
  *
  *  1. **Select mode is absolute veto.** When the terminal is in select mode
  *     (`.term-host.is-selecting`) the user is deliberately dragging to select
- *     text — the gesture does not arm at all. Select mode is an explicit,
- *     visible toggle, so this is a user-legible rule, not a heuristic.
+ *     text — the gesture does not arm at all.
  *  2. **Stricter geometry on terminal routes.** Narrower start zone (14px vs
  *     24px), longer travel (96px vs 64px) and a tighter slope (0.35 vs 0.7).
  *     A scroll-back drag is near-vertical and rarely begins in the leftmost
- *     14px, so it cannot be mistaken for a back swipe; the cost is that the
- *     back swipe itself must be a deliberate, clearly horizontal stroke there.
+ *     14px, so it cannot be mistaken for a back swipe.
  *
  * Residual, accepted: a qualifying terminal edge swipe ALSO feeds xterm's
  * wheel shim, but a horizontal stroke has ~no vertical delta, so it scrolls by
- * zero lines — visually a no-op. And it is far past the 12px tap threshold, so
- * it never summons the soft keyboard.
- *
- * Horizontally scrollable content (code blocks, wide tables in chat) vetoes
- * the gesture too — panning those must stay possible.
+ * zero lines — visually a no-op.
  */
 import { useEffect, useRef } from 'react';
-
-// Same probe the other touch-first gates use.
-const IS_COARSE_POINTER =
-  typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true;
+import {
+  edgeGestureFor,
+  inEdgeZone,
+  isInHorizontalScroller,
+  isStandalone,
+  IS_COARSE_POINTER,
+  lockAxis,
+  safeAreaLeft,
+  shouldCommit,
+  strokeMayArm,
+  terminalIsSelecting,
+  releaseVelocity,
+  type AxisLock,
+  type CommitRule,
+  type Sample,
+} from '@/app/edgeGesture';
+import './edgeGesture.css';
 
 export interface SwipeConfig {
-  /** how close to the left screen edge the finger must land, px */
+  /** how far past the safe-area inset the finger may land, px */
   edgeZone: number;
-  /** minimum rightward travel to accept, px */
+  /** rightward travel that goes back on a slow release, px */
   minDistance: number;
   /** |dy| may not exceed this fraction of dx (0.7 ≈ 35°) */
   maxSlopeRatio: number;
-  /** a slower stroke is a drag/scroll, not a flick, ms */
-  maxDuration: number;
+  /** flick: velocity (px/ms) and the travel it still needs */
+  flick: number;
+  flickMinTravel: number;
 }
 
 export const SWIPE_DEFAULT: SwipeConfig = {
   edgeZone: 24,
   minDistance: 64,
   maxSlopeRatio: 0.7,
-  maxDuration: 700,
+  flick: 0.5,
+  flickMinTravel: 32,
 };
 
 /** See the module header: xterm owns the same pixels, so the terminal demands
@@ -62,7 +75,8 @@ export const SWIPE_TERMINAL: SwipeConfig = {
   edgeZone: 14,
   minDistance: 96,
   maxSlopeRatio: 0.35,
-  maxDuration: 500,
+  flick: 0.7,
+  flickMinTravel: 56,
 };
 
 export function swipeConfigFor(pathname: string): SwipeConfig {
@@ -70,108 +84,105 @@ export function swipeConfigFor(pathname: string): SwipeConfig {
   return pathname.startsWith('/terminal/') ? SWIPE_TERMINAL : SWIPE_DEFAULT;
 }
 
-export interface SwipePoint {
-  x: number;
-  y: number;
-  t: number;
+export function backCommitRule(cfg: SwipeConfig): CommitRule {
+  return { fraction: 1, flick: cfg.flick, flickMinTravel: cfg.flickMinTravel };
 }
 
-/** Everything that can veto arming the gesture, as data (pure + tested). */
-export interface EdgeSwipeStart {
-  x: number;
-  /** number of active touch points — pinch/two-finger gestures are not ours */
-  touchCount: number;
-  /** the terminal is in explicit text-selection mode */
-  terminalSelecting: boolean;
-  /** the touch landed inside something that pans horizontally */
-  horizontallyScrollable: boolean;
+/** Release verdict for a back stroke: `dx` from the start, `vx` px/ms. */
+export function backShouldCommit(dx: number, vx: number, cfg: SwipeConfig): boolean {
+  return shouldCommit(dx, vx, cfg.minDistance, backCommitRule(cfg));
 }
 
-export function canStartEdgeSwipe(s: EdgeSwipeStart, cfg: SwipeConfig): boolean {
-  if (s.touchCount !== 1) return false;
-  if (s.terminalSelecting) return false;
-  if (s.horizontallyScrollable) return false;
-  return s.x >= 0 && s.x <= cfg.edgeZone;
-}
+const CHEVRON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>';
 
-export type SwipeVerdict = 'accept' | 'reject';
-
-export function classifySwipe(start: SwipePoint, end: SwipePoint, cfg: SwipeConfig): SwipeVerdict {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const dt = end.t - start.t;
-  if (dt > cfg.maxDuration) return 'reject';
-  if (dx < cfg.minDistance) return 'reject'; // also rejects leftward strokes
-  if (Math.abs(dy) > cfg.maxSlopeRatio * dx) return 'reject';
-  return 'accept';
-}
-
-// ---------------------------------------------------------------------------
-// DOM side
-// ---------------------------------------------------------------------------
-
-/** Walks a few ancestors looking for a pannable horizontal scroller. */
-function isInHorizontalScroller(target: EventTarget | null): boolean {
-  let el = target as Element | null;
-  for (let i = 0; el && i < 6; i += 1) {
-    if (el.scrollWidth - el.clientWidth > 4) {
-      const overflowX = getComputedStyle(el).overflowX;
-      if (overflowX === 'auto' || overflowX === 'scroll') return true;
-    }
-    el = el.parentElement;
-  }
-  return false;
-}
-
-function terminalIsSelecting(): boolean {
-  // Read from the DOM rather than plumbing state out of WebTerminalScreen —
-  // the class is already the rendered truth and this keeps that file untouched.
-  return document.querySelector('.term-host.is-selecting') !== null;
-}
-
-export function useEdgeSwipeBack(goBack: () => boolean): void {
+export function useEdgeSwipeBack(goBack: () => boolean, canGoBack: () => boolean): void {
   const backRef = useRef(goBack);
   backRef.current = goBack;
+  const canRef = useRef(canGoBack);
+  canRef.current = canGoBack;
 
   useEffect(() => {
     if (!IS_COARSE_POINTER) return; // no touch → no gesture, no listeners
 
-    let start: SwipePoint | null = null;
+    let start: { x: number; y: number; safeLeft: number } | null = null;
     let cfg = SWIPE_DEFAULT;
+    let axis: AxisLock = 'pending';
+    let samples: Sample[] = [];
+    let cue: HTMLDivElement | null = null;
+
+    const hideCue = () => {
+      cue?.remove();
+      cue = null;
+    };
+    const showCue = (y: number, dx: number, safeLeft: number) => {
+      if (!cue) {
+        cue = document.createElement('div');
+        cue.className = 'vh-edge-back';
+        cue.setAttribute('aria-hidden', 'true');
+        cue.innerHTML = CHEVRON;
+        document.body.appendChild(cue);
+      }
+      const progress = Math.min(1, Math.max(0, dx / cfg.minDistance));
+      cue.style.top = `${y}px`;
+      cue.style.left = `${safeLeft}px`;
+      cue.style.setProperty('--edge-progress', String(progress));
+      cue.classList.toggle('is-armed', progress >= 1);
+    };
+
+    const reset = () => {
+      start = null;
+      axis = 'pending';
+      samples = [];
+      hideCue();
+    };
 
     const onTouchStart = (e: TouchEvent) => {
-      start = null;
+      reset();
       const p = e.touches[0];
       if (!p) return;
+      const gesture = edgeGestureFor({
+        // The rendered shell, not useSidebarPrefs: this module sits under appBack, which loads without storage.
+        drawerMode: document.querySelector('.app-sidebar--drawer') !== null,
+        standalone: isStandalone(),
+        canGoBack: canRef.current(),
+      });
+      if (gesture !== 'back') return;
       cfg = swipeConfigFor(window.location.pathname);
-      const ok = canStartEdgeSwipe(
-        {
-          x: p.clientX,
-          touchCount: e.touches.length,
-          terminalSelecting: terminalIsSelecting(),
-          horizontallyScrollable: isInHorizontalScroller(e.target),
-        },
-        cfg,
-      );
-      if (ok) start = { x: p.clientX, y: p.clientY, t: e.timeStamp };
+      const safeLeft = safeAreaLeft();
+      // Zone first: the scroller walk only runs for touches that start at the edge.
+      if (!inEdgeZone(p.clientX, safeLeft, { from: -safeLeft, to: cfg.edgeZone })) return;
+      const ok = strokeMayArm({
+        touchCount: e.touches.length,
+        terminalSelecting: terminalIsSelecting(),
+        horizontallyScrollable: isInHorizontalScroller(e.target),
+      });
+      if (!ok) return;
+      start = { x: p.clientX, y: p.clientY, safeLeft };
+      samples = [{ x: p.clientX, t: e.timeStamp }];
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (start && e.touches.length > 1) start = null; // became a pinch
+      if (!start) return;
+      if (e.touches.length > 1) return reset(); // became a pinch
+      const p = e.touches[0];
+      if (!p) return;
+      const dx = p.clientX - start.x;
+      samples.push({ x: p.clientX, t: e.timeStamp });
+      if (samples.length > 12) samples.shift();
+      if (axis === 'pending') axis = lockAxis(dx, p.clientY - start.y, 1, cfg.maxSlopeRatio);
+      if (axis === 'vertical') return reset();
+      if (axis === 'horizontal') showCue(start.y, dx, start.safeLeft);
     };
 
     const onTouchEnd = (e: TouchEvent) => {
       const s = start;
-      start = null;
-      if (!s) return;
+      const locked = axis === 'horizontal';
       const p = e.changedTouches[0];
-      if (!p) return;
-      if (classifySwipe(s, { x: p.clientX, y: p.clientY, t: e.timeStamp }, cfg) !== 'accept') return;
+      const vx = releaseVelocity(samples, e.timeStamp);
+      reset();
+      if (!s || !p || !locked) return;
+      if (!backShouldCommit(p.clientX - s.x, vx, cfg)) return;
       backRef.current();
-    };
-
-    const onTouchCancel = () => {
-      start = null;
     };
 
     // capture + passive: we observe, we never preventDefault.
@@ -179,12 +190,13 @@ export function useEdgeSwipeBack(goBack: () => boolean): void {
     window.addEventListener('touchstart', onTouchStart, opts);
     window.addEventListener('touchmove', onTouchMove, opts);
     window.addEventListener('touchend', onTouchEnd, opts);
-    window.addEventListener('touchcancel', onTouchCancel, opts);
+    window.addEventListener('touchcancel', reset, opts);
     return () => {
+      reset();
       window.removeEventListener('touchstart', onTouchStart, true);
       window.removeEventListener('touchmove', onTouchMove, true);
       window.removeEventListener('touchend', onTouchEnd, true);
-      window.removeEventListener('touchcancel', onTouchCancel, true);
+      window.removeEventListener('touchcancel', reset, true);
     };
   }, []);
 }

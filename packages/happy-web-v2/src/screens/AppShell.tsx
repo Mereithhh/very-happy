@@ -38,7 +38,8 @@ export function AppShell({ mode, width, sidebar, rail, notes, children, onResize
       )}
       {railed && <div key="rail" className="app-rail">{rail}</div>}
       {expanded && <div key="resize" className="app-resize-handle" onMouseDown={onResizeStart} role="separator" aria-orientation="vertical" />}
-      {drawer && drawerOpen && <div key="scrim" className="app-drawer-scrim" onClick={onDrawerClose} aria-hidden />}
+      {/* Always mounted in drawer mode: the edge swipe (drawerSwipe.ts) fades it in with the finger. */}
+      {drawer && <div key="scrim" className={`app-drawer-scrim${drawerOpen ? ' is-open' : ''}`} onClick={onDrawerClose} aria-hidden />}
       <div key="content" className="app-main-row" style={list ? { display: 'contents' } : undefined}>
         {!list && <main key="detail" className="app-detail">{children}</main>}
         <Fragment key="notes">{notes}</Fragment>
