@@ -21,6 +21,7 @@ export const zhHans: TranslationStructure = {
     network: {
         offline: '已离线，正在重连…',
         recovered: '已恢复',
+        syncing: '同步中…',
     },
     relayBadge: {
         route: "数据通道",

@@ -5,9 +5,9 @@
  * `--net-bar-h` while it shows, so it never covers a page header's buttons.
  */
 import { useEffect, useState } from 'react';
-import { CloudOff, Wifi } from 'lucide-react';
+import { CloudOff, RefreshCw, Wifi } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
-import { useNetworkPhase, type NetworkPhase } from '@/sync/networkStatus';
+import { useBannerPhase, type BannerPhase } from '@/sync/networkStatus';
 import './networkBanner.css';
 
 /** Fade-out length after 「已恢复」 (matches --dur-base). */
@@ -15,12 +15,12 @@ export const NETWORK_BANNER_FADE_MS = 200;
 
 export function NetworkBanner() {
     const { t } = useTranslation();
-    const phase = useNetworkPhase();
-    // The last non-online phase stays on screen while the bar fades out.
-    const [shown, setShown] = useState<Exclude<NetworkPhase, 'online'> | null>(phase === 'online' ? null : phase);
-    const leaving = phase === 'online' && shown !== null;
+    const phase = useBannerPhase();
+    // The last phase stays on screen while the bar fades out.
+    const [shown, setShown] = useState<BannerPhase>(phase);
+    const leaving = phase === null && shown !== null;
     useEffect(() => {
-        if (phase !== 'online') {
+        if (phase !== null) {
             setShown(phase);
             return;
         }
@@ -34,9 +34,10 @@ export function NetworkBanner() {
         return () => { delete root.dataset.netBar; };
     }, [shown]);
     if (!shown) return null;
-    const offline = shown === 'offline';
+    const Icon = shown === 'offline' ? CloudOff : shown === 'syncing' ? RefreshCw : Wifi;
+    const label = shown === 'offline' ? t('network.offline') : shown === 'syncing' ? t('network.syncing') : t('network.recovered');
     return <div className={`net-bar net-bar--${shown}${leaving ? ' is-leaving' : ''}`} role="status" aria-live="polite" data-net-phase={shown}>
-        {offline ? <CloudOff size={13} aria-hidden /> : <Wifi size={13} aria-hidden />}
-        <span>{offline ? t('network.offline') : t('network.recovered')}</span>
+        <Icon size={13} aria-hidden />
+        <span>{label}</span>
     </div>;
 }

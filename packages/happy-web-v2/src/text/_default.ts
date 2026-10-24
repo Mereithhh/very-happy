@@ -19,6 +19,7 @@ export const en = {
     network: {
         offline: 'Offline — reconnecting…',
         recovered: 'Back online',
+        syncing: 'Syncing…',
     },
     relayBadge: {
         route: "Data route",

@@ -106,7 +106,38 @@ export function stepNetwork(state: NetworkState, input: NetworkInput): NetworkSt
     return { ...base, phase: 'online', recoveredAt: null };
 }
 
-export const networkStore = create<{ phase: NetworkPhase }>(() => ({ phase: 'online' }));
+export const networkStore = create<{ phase: NetworkPhase; syncing: readonly string[] }>(() => ({ phase: 'online', syncing: [] }));
+
+/**
+ * Hook for B-802 (not wired yet): a catch-up after a reconnect / resume can hold
+ * the bar on 「同步中…」 until its data is in. Each holder passes its own reason
+ * and calls the returned release (idempotent). Offline still wins over it.
+ */
+export function beginNetworkSync(reason: string): () => void {
+    networkStore.setState((s) => ({ syncing: [...s.syncing, reason] }));
+    let released = false;
+    return () => {
+        if (released) return;
+        released = true;
+        networkStore.setState((s) => {
+            const at = s.syncing.indexOf(reason);
+            return at < 0 ? s : { syncing: [...s.syncing.slice(0, at), ...s.syncing.slice(at + 1)] };
+        });
+    };
+}
+
+/** What the top bar shows: offline > syncing > recovered > nothing. */
+export type BannerPhase = 'offline' | 'syncing' | 'recovered' | null;
+
+export function bannerPhase(phase: NetworkPhase, syncing: boolean): BannerPhase {
+    if (phase === 'offline') return 'offline';
+    if (syncing) return 'syncing';
+    return phase === 'recovered' ? 'recovered' : null;
+}
+
+export function useBannerPhase(): BannerPhase {
+    return networkStore((s) => bannerPhase(s.phase, s.syncing.length > 0));
+}
 
 /** True while the app judges the device offline (the bar shows 「已离线」). */
 export function isNetworkOffline(): boolean {

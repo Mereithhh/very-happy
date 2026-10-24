@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+    bannerPhase,
+    beginNetworkSync,
     BROWSER_OFFLINE_AFTER_MS,
     INITIAL_NETWORK_STATE,
     isNetworkOffline,
@@ -172,5 +174,26 @@ describe('offline wiring (B-799)', () => {
         expect(sync).toContain("socketConnected: state.socketStatus === 'connected',");
         expect(sync).toContain('everConnected: state.socketLastConnectedAt != null,');
         expect(sync).toContain("visible: document.visibilityState === 'visible',");
+    });
+});
+
+describe('「同步中」 hook for B-802', () => {
+    it('offline beats syncing beats recovered; online and idle shows nothing', () => {
+        expect(bannerPhase('offline', true)).toBe('offline');
+        expect(bannerPhase('online', true)).toBe('syncing');
+        expect(bannerPhase('recovered', true)).toBe('syncing');
+        expect(bannerPhase('recovered', false)).toBe('recovered');
+        expect(bannerPhase('online', false)).toBeNull();
+    });
+
+    it('holders are counted per call; release is idempotent', () => {
+        const a = beginNetworkSync('resume');
+        const b = beginNetworkSync('resume');
+        expect(networkStore.getState().syncing).toEqual(['resume', 'resume']);
+        a();
+        a();
+        expect(networkStore.getState().syncing).toEqual(['resume']);
+        b();
+        expect(networkStore.getState().syncing).toEqual([]);
     });
 });

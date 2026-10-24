@@ -34,6 +34,11 @@
   background: linear-gradient(var(--accent-dim), var(--accent-dim)), var(--bg-0);
   border-bottom: 1px solid var(--line);
 }
+.net-bar--syncing {
+  color: var(--text-dim);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+}
 .net-bar.is-leaving { opacity: 0; }
 
 /* the bar's row: the shell (and the drawer floating over it) start below it */

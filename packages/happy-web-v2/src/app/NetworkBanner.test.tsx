@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 import { NetworkBanner, NETWORK_BANNER_FADE_MS } from './NetworkBanner';
-import { networkStore } from '@/sync/networkStatus';
+import { beginNetworkSync, networkStore } from '@/sync/networkStatus';
 
 let host: HTMLDivElement;
 let root: Root;
@@ -52,6 +52,24 @@ describe('NetworkBanner (B-799)', () => {
         act(() => { vi.advanceTimersByTime(NETWORK_BANNER_FADE_MS * 2); });
         expect(bar()!.classList.contains('is-leaving')).toBe(false);
         expect(bar()!.dataset.netPhase).toBe('offline');
+    });
+});
+
+describe('NetworkBanner 「同步中」 (B-802 hook)', () => {
+    it('shows 「同步中…」 while a catch-up holds it, offline still wins, release fades it out', () => {
+        act(() => root.render(<NetworkBanner />));
+        let release = () => {};
+        act(() => { release = beginNetworkSync('test'); });
+        expect(bar()!.dataset.netPhase).toBe('syncing');
+        expect(bar()!.textContent).toBe('network.syncing');
+        act(() => networkStore.setState({ phase: 'offline' }));
+        expect(bar()!.dataset.netPhase).toBe('offline');
+        act(() => networkStore.setState({ phase: 'online' }));
+        expect(bar()!.dataset.netPhase).toBe('syncing');
+        act(() => release());
+        expect(bar()!.classList.contains('is-leaving')).toBe(true);
+        act(() => { vi.advanceTimersByTime(NETWORK_BANNER_FADE_MS); });
+        expect(bar()).toBeNull();
     });
 });
 
