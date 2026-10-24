@@ -51,7 +51,7 @@ describe('B-568 composer wiring', () => {
         expect(input).toContain("else if (caret === 'blur') taRef.current?.blur();");
     });
     it('the placeholder switches while reconnecting', () => {
-        expect(input).toContain("placeholder={reconnecting ? t('session.reconnectingPlaceholder') : t('session.inputPlaceholder')}");
+        expect(input).toContain("placeholder={networkOffline ? t('session.chat.sendOfflinePlaceholder') : reconnecting ? t('session.reconnectingPlaceholder') : t('session.inputPlaceholder')}");
     });
     it('the reconnect hint reads the existing socketStatus only (AGENTS 13)', () => {
         const hook = read('./useReconnectingHint.ts');

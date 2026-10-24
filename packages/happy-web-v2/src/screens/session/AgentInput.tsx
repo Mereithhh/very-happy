@@ -140,6 +140,8 @@ import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 import { yieldForSendFeedback } from './sendFeedback';
 import { focusAfterSend, isSoftKeyboardOpen, type SendOutcome } from './composerSendFocus';
 import { useReconnectingHint } from './useReconnectingHint';
+import { useNetworkPhase } from '@/sync/networkStatus';
+import { offlineSendState } from './offlineSend';
 import { applyFileMention, fileMentionDismissKey, fileMentionQuery } from './fileMention';
 import { useFileMentionSuggestions } from './useFileMentionSuggestions';
 import { highlightRuns } from '../quickopen/quickOpenScore';
@@ -279,6 +281,9 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const hasPendingPermission = Object.keys(session?.agentState?.requests ?? {}).length > 0;
     // B-568: socket down ≥1.5s → the placeholder says so (input stays usable).
     const reconnecting = useReconnectingHint();
+    // B-799: offline (the top bar shows) → text sends queue in the outbox and go
+    // out on their own; a send with attachments waits for the network (upload first).
+    const networkOffline = useNetworkPhase() === 'offline';
     // B-283: `/btw` is a WEB command (never sent to the CLI) — list it first on
     // any Claude session; the panel itself explains when the wrapper is too old.
     const slashSuggestions = dismissedSlashText === text
@@ -1188,7 +1193,10 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     };
 
     const hasDraft = text.trim().length > 0 || attachments.length > 0 || processingAttachments;
-    const canSend = hasDraft && !sending && !processingAttachments;
+    const offlineSend = offlineSendState(networkOffline, attachments.length > 0);
+    const canSend = hasDraft && !sending && !processingAttachments && offlineSend !== 'blocked';
+    const offlineLabel = offlineSend === 'blocked' ? t('session.chat.sendOfflineAttachments')
+        : offlineSend === 'queue' ? `${t('session.chat.sendOfflineQueue')} · ${t('session.chat.sendOfflineHint')}` : null;
 
     // B-601: no safe-area padding here — `.sd-foot` (session.css) owns the
     // home-indicator gap; a second one doubled the band under the composer.
@@ -1426,7 +1434,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                     className="ci-textarea"
                     value={text}
                     rows={1}
-                    placeholder={reconnecting ? t('session.reconnectingPlaceholder') : t('session.inputPlaceholder')}
+                    placeholder={networkOffline ? t('session.chat.sendOfflinePlaceholder') : reconnecting ? t('session.reconnectingPlaceholder') : t('session.inputPlaceholder')}
                     onChange={(e) => { draftRef.current = e.target.value; setText(e.target.value); setCaret(e.target.selectionStart); }}
                     // B-035: caret for the `@` token. Not onSelect: React derives it from
                     // selectionchange, which can fire inside insertComposerText before its
@@ -1501,14 +1509,15 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                             </button>
                         ) : <button
                             type="button"
-                            className="ci-send"
+                            className={`ci-send${offlineSend ? ' ci-send--offline' : ''}`}
                             onClick={() => void doSend('queue')}
                             disabled={!canSend}
                             aria-busy={sending || processingAttachments}
-                            aria-label={sending ? t('session.chat.sending') : gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
-                            title={gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
+                            data-offline-send={offlineSend ?? undefined}
+                            aria-label={sending ? t('session.chat.sending') : offlineLabel ?? (gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send'))}
+                            title={offlineLabel ?? (gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send'))}
                         >
-                            {sending || processingAttachments ? <Spinner size={16} /> : <ArrowUp size={18} />}
+                            {sending || processingAttachments ? <Spinner size={16} /> : offlineSend ? <CloudOff size={17} /> : <ArrowUp size={18} />}
                         </button>}
                     </div>
                 </div>
@@ -1521,7 +1530,9 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                     <span className="ci-meter-tokens">{!contextKnown && context.compacted ? t('session.chat.contextCompacted') : `${contextTotal === null ? contextTokens : `${contextTokens} / ${contextTotal}`} tokens`}</span>
                 </div>
                 <span className="ci-hint">
-                    {isWorking
+                    {offlineSend === 'blocked' ? t('session.chat.sendOfflineAttachments')
+                        : offlineSend === 'queue' ? t('session.chat.sendOfflineHint')
+                        : isWorking
                         ? supportsSteer ? t('session.chat.queueSteerHint') : t('session.chat.queueHint')
                         : isSoftKeyboardDevice() ? t('session.chat.touchEnterHint')
                         : enterToSend ? t('session.chat.enterToSend') : t('session.chat.shiftEnterToSend')}

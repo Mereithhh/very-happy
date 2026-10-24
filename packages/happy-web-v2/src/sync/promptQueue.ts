@@ -18,6 +18,7 @@ import { create } from 'zustand';
 import type { MessageModeMeta } from './messageMeta';
 import type { Metadata } from './storageTypes';
 import { readOutboundUserRecord } from './outboundUserRecord';
+import { isNetworkOffline } from './networkStatus';
 import type { ApiPromptQueueUpdate } from './apiTypes';
 
 export const PROMPT_QUEUE_CAPABILITY = 'prompt-queue-v1';
@@ -291,7 +292,8 @@ export const promptQueueStore = createPromptQueueStore({
     encrypt: (sessionId, text, modeMeta) => import('./sync').then(({ sync }) => sync.encryptQueuedPrompt(sessionId, text, modeMeta)),
     decrypt: (sessionId, encrypted) => import('./sync').then(({ sync }) => sync.decryptQueuedPrompt(sessionId, encrypted)),
     newLocalId: () => crypto.randomUUID(),
-    isOnline: () => typeof navigator === 'undefined' || navigator.onLine !== false,
+    // B-799: the app's offline judgment counts too (socket gone with navigator.onLine still true).
+    isOnline: () => (typeof navigator === 'undefined' || navigator.onLine !== false) && !isNetworkOffline(),
 });
 
 /** B-722: rows that waited for the network go out as soon as the device is back online. */

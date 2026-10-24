@@ -41,7 +41,8 @@ import { getNotificationPrefs } from './notificationPrefs';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { buildOutboundUserRecord } from './outboundUserRecord';
-import { applyPromptQueueUpdate } from './promptQueue';
+import { applyPromptQueueUpdate, retryWaitingPrompts } from './promptQueue';
+import { isNetworkOffline, startNetworkMonitor } from './networkStatus';
 import { NormalizedMessage, normalizeRawMessage, RawRecord, type SessionEventPayload } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { migrateTerminalCommands } from './shortcutPresets';
@@ -332,6 +333,56 @@ class Sync {
             window.addEventListener('focus', broadcast);
             window.addEventListener('blur', broadcast);
             attachResumeListeners({ doc: document, win: window }, () => this.onWebResume());
+            this.startNetworkMonitor();
+        }
+    }
+
+    /**
+     * B-799: the app-wide offline judgment (top bar, composer, send deadlines).
+     * Started after module init (storage must exist; tests that stub storage
+     * without a socket store get no monitor and stay 「online」).
+     */
+    private startNetworkMonitor() {
+        queueMicrotask(() => {
+            try {
+                if (typeof storage?.getState !== 'function' || typeof storage.subscribe !== 'function') return;
+            } catch {
+                return; // a test's storage mock without this export
+            }
+            startNetworkMonitor({
+                read: () => {
+                    const state = storage.getState();
+                    return {
+                        browserOnline: isBrowserOnline(),
+                        socketConnected: state.socketStatus === 'connected',
+                        everConnected: state.socketLastConnectedAt != null,
+                        visible: document.visibilityState === 'visible',
+                    };
+                },
+                subscribe: (onChange) => {
+                    window.addEventListener('online', onChange);
+                    window.addEventListener('offline', onChange);
+                    const unsubscribe = storage.subscribe((state, prev) => {
+                        if (state.socketStatus !== prev.socketStatus) onChange();
+                    });
+                    return () => {
+                        window.removeEventListener('online', onChange);
+                        window.removeEventListener('offline', onChange);
+                        unsubscribe();
+                    };
+                },
+                onRecovered: () => {
+                    this.flushOutboxesNow();
+                    retryWaitingPrompts();
+                },
+            });
+        });
+    }
+
+    /** B-799: back online — queued sends go out now, not after the rest of their backoff sleep. */
+    private flushOutboxesNow() {
+        for (const [sessionId, pending] of this.pendingOutbox) {
+            if (pending.length > 0) this.getSendSync(sessionId).invalidateNow();
         }
     }
 
@@ -827,7 +878,10 @@ class Sync {
     }
 
     private tickSendDeadlines = () => {
-        const expired = this.sendDeadlines.tick(Date.now(), isBrowserOnline());
+        // B-799: the budget also pauses while the app judges the device offline
+        // (socket gone for SOCKET_OFFLINE_AFTER_MS with navigator.onLine still
+        // true — captive Wi-Fi, a dead uplink): the send waits, it does not fail.
+        const expired = this.sendDeadlines.tick(Date.now(), isBrowserOnline() && !isNetworkOffline());
         const bySession = new Map<string, string[]>();
         for (const localId of expired) {
             const sessionId = this.outboxRecords.get(localId)?.sessionId;
@@ -2783,8 +2837,11 @@ class Sync {
             // the last known seq.
             const viewing = storage.getState().currentViewingSessionId;
             if (viewing) this.onSessionVisible(viewing);
+            // B-799 / B-802: a send that failed during the outage may sit in a
+            // backoff sleep of up to 10s — cut it short, the link is back now.
+            // Send queues only (one wake per reconnect); pollers keep invalidate().
             for (const sync of this.sendSync.values()) {
-                sync.invalidate();
+                sync.invalidateNow();
             }
         });
 

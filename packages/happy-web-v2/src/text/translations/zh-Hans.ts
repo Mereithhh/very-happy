@@ -17,6 +17,12 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
+    // B-799
+    network: {
+        offline: '已离线，正在重连…',
+        recovered: '已恢复',
+        syncing: '同步中…',
+    },
     relayBadge: {
         route: "数据通道",
         state: "连接状态",
@@ -982,6 +988,11 @@ export const zhHans: TranslationStructure = {
             sendDelete: '删除',
             sent: '已发送',
             sendingOffline: '连接恢复后发送',
+            // B-799
+            sendOfflineQueue: '离线排队',
+            sendOfflineHint: '联网后自动发送',
+            sendOfflinePlaceholder: '已离线 · 消息联网后自动发送',
+            sendOfflineAttachments: '已离线 · 附件需要联网上传',
             deliverOnResume: '已保存 · 会话恢复后送达',
             queueAdding: '加入队列中…',
             queueWaitingNetwork: '离线 · 连接恢复后加入队列',

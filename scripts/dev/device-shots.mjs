@@ -6,6 +6,8 @@
  * 包着真实会话页（汇报板负责人会话）、团队页、项目页和设置页，数据全是本地示例；
  * `--pages secondary` 扫一遍其余二级页（B-796：手机上每页左上角都要有返回）；
  * `--pages overlays` 扫壳外浮层：更新弹窗、通知面板、各类 toast（B-796b：✕ 不得落进侧边 inset）。
+ * `--pages offline` 断网（context.setOffline）后截「已离线，正在重连…」顶部细条和「已恢复」（B-799）：
+ * 细条底边必须在壳内所有可见按钮的上方（不挡页头），文字不进侧边 inset。
  * `--pages menus` 打开会话页 ⋯ 和侧栏首 / 末行 ⋯（B-798）：每个菜单项都要能滚进视口（扣掉 safe-area）
  * 并且点得到（elementFromPoint 命中该项），粗指针 ≤600px 必须是底部 sheet，更宽的是限高弹出菜单。
  * 所以先起 Web dev server（不需要后端）：
@@ -73,6 +75,9 @@ export const PAGES = {
     'prompt-nav': { path: '/session/dev-plain', prepare: 'prompt-nav' },
     'session-info': { path: '/session/dev-plain', prepare: 'session-info' },
     'session-missing': { path: '/session/dev-missing', ready: '.sd-loading .vh-empty' },
+    // B-799 (`--pages offline`): the top bar while offline, and 「已恢复」 right after.
+    offline: { path: '/session/dev-plain', prepare: 'offline' },
+    recovered: { path: '/session/dev-plain', prepare: 'recovered' },
 };
 
 /** B-796b: overlays outside the shell (the release-notes ✕ sat under the Duo status column in production). */
@@ -113,7 +118,7 @@ const base = opt('base', 'http://127.0.0.1:8795');
 const outDir = opt('out', null);
 const devices = opt('devices', 'duo-folded,duo-open-land,duo-open-port').split(',');
 const PRIMARY = ['session', 'board', 'sidebar', 'team', 'project', 'settings'];
-const GROUPS = { secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS), menus: Object.keys(MENUS), touch: ['session', 'plain', 'prompt-nav', 'session-info', 'session-missing'] };
+const GROUPS = { offline: ['offline', 'recovered'], secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS), menus: Object.keys(MENUS), touch: ['session', 'plain', 'prompt-nav', 'session-info', 'session-missing'] };
 const pages = opt('pages', PRIMARY.join(',')).split(',').flatMap((p) => GROUPS[p] ?? [p]);
 const themes = opt('themes', 'light,dark').split(',');
 const locale = opt('locale', 'zh-CN');
@@ -199,6 +204,7 @@ async function shot(page, cdp, d) {
 }
 
 async function goto(page, path, url, ready) {
+    await page.context().setOffline(false); // B-799: a previous `offline` capture
     await page.goto(`${base}${url ?? `/dev/device${path}`}`, { waitUntil: 'domcontentloaded' });
     // A hash-only change (`#toasts` after the same session path) does not reload the harness.
     if ((url ?? path).includes('#')) await page.reload({ waitUntil: 'domcontentloaded' });
@@ -208,7 +214,14 @@ async function goto(page, path, url, ready) {
 }
 
 async function prepare(page, kind) {
-    if (kind === 'board') {
+    if (kind === 'offline' || kind === 'recovered') {
+        await page.context().setOffline(true);
+        await page.waitForSelector('.net-bar[data-net-phase="offline"]', { timeout: 8_000 });
+        if (kind === 'recovered') {
+            await page.context().setOffline(false);
+            await page.waitForSelector('.net-bar[data-net-phase="recovered"]', { timeout: 8_000 });
+        }
+    } else if (kind === 'board') {
         // The user's path: phones drop the top sheet from the summary strip; wider screens use the header button (aside tab).
         const strip = page.locator('.brf-strip-btn').first();
         if (await strip.count() && await strip.isVisible()) await strip.click();
@@ -475,6 +488,43 @@ async function captureAll(browser) {
                 if (p.prepare) await prepare(page, p.prepare);
                 const m = await page.evaluate(measure, d.safeArea ?? null);
                 const tag = `${device}-${name}-${theme}`;
+                if (p.prepare === 'offline' || p.prepare === 'recovered') {
+                    // B-799: the bar has its own row — no visible shell button may start above its bottom edge,
+                    // and its text stays clear of the side insets.
+                    const nb = await page.evaluate((sa) => {
+                        const bar = document.querySelector('.net-bar');
+                        if (!bar) return null;
+                        const r = bar.getBoundingClientRect();
+                        const text = bar.querySelector('span').getBoundingClientRect();
+                        // The on-screen part of a button: clipped by every scrolling / overflow-hidden ancestor
+                        // (chat rows scrolled out of the list are not "under the bar").
+                        const shown = (el) => {
+                            let { top, bottom, left, right } = el.getBoundingClientRect();
+                            for (let a = el.parentElement; a && bottom > top && right > left; a = a.parentElement) {
+                                const cs = getComputedStyle(a);
+                                if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+                                const ar = a.getBoundingClientRect();
+                                top = Math.max(top, ar.top); bottom = Math.min(bottom, ar.bottom);
+                                left = Math.max(left, ar.left); right = Math.min(right, ar.right);
+                            }
+                            return bottom > top && right > left ? { top, bottom } : null;
+                        };
+                        const covered = [...document.querySelectorAll('.app-shell button')].filter((b) => {
+                            if (getComputedStyle(b).visibility === 'hidden') return false;
+                            const v = shown(b);
+                            return v !== null && v.top < r.bottom - 0.5 && v.bottom > 0;
+                        }).map((b) => b.getAttribute('aria-label') || b.textContent.trim().slice(0, 20));
+                        const headerTop = Math.min(...[...document.querySelectorAll('.app-shell button')].map(shown).filter(Boolean).map((v) => v.top));
+                        const left = sa?.left ?? 0, right = innerWidth - (sa?.right ?? 0);
+                        return { bottom: r.bottom, firstButtonTop: headerTop, covered, textInInset: text.left < left || text.right > right, phase: bar.dataset.netPhase, label: bar.textContent };
+                    }, d.safeArea ?? null);
+                    console.log(`  net bar: ${JSON.stringify(nb)}`);
+                    if (!nb) fail(`${tag}: no net bar`);
+                    else {
+                        if (nb.covered.length) fail(`${tag}: net bar covers shell buttons: ${nb.covered.join(', ')}`);
+                        if (nb.textInInset) fail(`${tag}: net bar text runs into the side inset`);
+                    }
+                }
                 console.log(`── ${tag} (${d.width}×${d.height}) overflowX=${m.overflowX} small=${m.smallTargets.length} shell="${m.shell}" back=${m.back ?? '-'}`);
                 if (p.back && d.width < 600 && !m.back) fail(`${tag}: no back control at the top-left on a phone`);
                 if (m.overflowX > 0) fail(`${tag}: document overflows horizontally by ${m.overflowX}px`);
