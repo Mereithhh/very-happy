@@ -174,3 +174,24 @@ export function PendingQueueRow({ text, state, onRetry, onRestore, onDelete }: {
         </div>
     );
 }
+
+/**
+ * B-804: a queued prompt the wrapper already took — off the server queue, not
+ * in the transcript yet. It stays in the dock as 「执行中」 until its message
+ * shows up there, so it is never visible in neither place.
+ */
+export function DispatchedQueueRow({ text }: { text: string }) {
+    const { t } = useTranslation();
+    return (
+        <div className="ci-queue-item ci-queue-item--pending ci-queue-item--running" data-queue-item-source="dispatched" aria-busy>
+            <ListEnd className="ci-queue-index" size={17} aria-hidden />
+            <div className="ci-queue-body">
+                <span className="ci-queue-text">{stripEditedDrafts(text) || t('session.chat.attachmentOnly')}</span>
+                <span className="ci-queue-status ci-queue-status--running" role="status" aria-live="polite" data-send-state="running">
+                    <Spinner size={12} />
+                    <span>{t('session.chat.queueRunning')}</span>
+                </span>
+            </div>
+        </div>
+    );
+}

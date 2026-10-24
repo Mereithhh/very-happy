@@ -20,6 +20,8 @@ export const en = {
         offline: 'Offline — reconnecting…',
         recovered: 'Back online',
         syncing: 'Syncing…',
+        syncingMessages: 'Syncing messages…',
+        unstable: 'Connection unstable',
     },
     relayBadge: {
         route: "Data route",
@@ -787,6 +789,7 @@ export const en = {
             sendOfflineAttachments: 'Offline · attachments need a connection to upload',
             deliverOnResume: 'Saved · delivered when the session is back online',
             queueAdding: 'Adding to queue…',
+            queueRunning: 'Running',
             queueWaitingNetwork: 'Offline · joins the queue when the connection is back',
             queueAddFailed: 'Not added to the queue',
             queueAfterRestore: 'Saved here — delivered in order once the session is restored',

@@ -41,7 +41,8 @@ import { getNotificationPrefs } from './notificationPrefs';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { buildOutboundUserRecord } from './outboundUserRecord';
-import { applyPromptQueueUpdate, retryWaitingPrompts } from './promptQueue';
+import { applyPromptQueueUpdate, promptQueueTranscript, reloadPromptQueue, retryWaitingPrompts, settleDispatchedPrompts } from './promptQueue';
+import { forgetCatchUp, trackCatchUp } from './catchUpStatus';
 import { isNetworkOffline, startNetworkMonitor } from './networkStatus';
 import { fetchWithDeadline, SYNC_READ_TIMEOUT_MS } from './requestDeadline';
 import { catchUpForward, mergeFetchedLastSeq, throwIfAborted } from './messageCatchUp';
@@ -426,10 +427,7 @@ class Sync {
     private onWebResume = () => {
         log.log('🌐 Tab resumed from background — re-syncing');
         this.sessionsSync.invalidate();
-        const current = storage.getState().currentViewingSessionId;
-        if (current) {
-            this.onSessionEnter(current, { restartFetch: true });
-        }
+        this.catchUpViewedSession();
         this.machinesSync.invalidate();
         this.artifactsSync.invalidate();
         for (const listener of this.resumeListeners) {
@@ -478,6 +476,7 @@ class Sync {
 
         // Subscribe to updates
         this.subscribeToUpdates();
+        this.wirePromptQueueTranscript();
 
         // Sync initial PostHog opt-out state with stored settings
         if (tracking) {
@@ -592,6 +591,48 @@ class Sync {
         apiSocket.sessionRPC(sessionId, 'set-permission-mode', { mode: 'bypassPermissions' }, { timeoutMs: 20_000 })
             .then(() => log.log(`🔐 yolo alignment applied for ${sessionId}`))
             .catch((error) => log.log(`🔐 yolo alignment skipped for ${sessionId}: ${error instanceof Error ? error.message : String(error)}`));
+    }
+
+    /**
+     * B-804: resume / reconnect / recovered — the viewed session's messages and
+     * prompt queue are re-read (anything sent into the dead link is gone for
+     * good), and the messages catch-up is shown while it takes a while.
+     */
+    private catchUpViewedSession() {
+        const viewing = storage.getState().currentViewingSessionId;
+        if (!viewing) return;
+        // B-803: a catch-up still in flight is probably stuck on the dead link — abort it, go again now.
+        this.onSessionEnter(viewing, { restartFetch: true });
+        this.trackMessagesCatchUp(viewing);
+        void reloadPromptQueue(viewing);
+    }
+
+    /** B-804: show the viewed session's pending messages catch-up (top bar + chat line, after 300ms). */
+    private trackMessagesCatchUp(sessionId: string) {
+        if (storage.getState().currentViewingSessionId !== sessionId) return;
+        trackCatchUp(sessionId, this.getMessagesSync(sessionId).awaitQueue());
+    }
+
+    /** B-804: 「连接不稳定 · 重试」 — abort the stuck attempt and go again now (B-803 restart), and probe the socket. */
+    retryMessagesCatchUp = (sessionId: string) => {
+        this.restartMessagesSync(sessionId);
+        this.trackMessagesCatchUp(sessionId);
+        void reloadPromptQueue(sessionId);
+        void apiSocket.checkLiveness();
+    };
+
+    /**
+     * B-804: the dock's hand-off rows (promptQueue.ts) look the localId up in
+     * the transcript; a row the transcript never gets is dropped once a fetch
+     * started after the hand-off has finished without it.
+     */
+    private wirePromptQueueTranscript() {
+        promptQueueTranscript.has = (sessionId, localId) => storage.getState().sessionMessages[sessionId]?.reducerState.localIds.has(localId) === true;
+        promptQueueTranscript.verify = (sessionId, localIds) => {
+            const messages = this.getMessagesSync(sessionId);
+            messages.invalidate();
+            void messages.awaitQueue().then(() => settleDispatchedPrompts(sessionId, localIds));
+        };
     }
 
     private getMessagesSync(sessionId: string): InvalidateSync {
@@ -1674,6 +1715,7 @@ class Sync {
         clearDiffCommentDrafts(sessionId);
 
         this.messagesSync.delete(sessionId);
+        forgetCatchUp(sessionId);
         this.sendSync.delete(sessionId);
         this.pendingOutbox.delete(sessionId);
         // B-513: send states die with the reducer state deleteSession dropped;
@@ -2481,7 +2523,10 @@ class Sync {
     private advanceSessionLastSeq(sessionId: string, seqs: readonly number[]) {
         const { next, gap } = advanceLastSeq(this.sessionLastSeq.get(sessionId), seqs);
         if (next !== undefined) this.sessionLastSeq.set(sessionId, next);
-        if (gap) this.getMessagesSync(sessionId).invalidate();
+        if (gap) {
+            this.getMessagesSync(sessionId).invalidate();
+            this.trackMessagesCatchUp(sessionId);
+        }
     }
 
     private flushOutbox = async (sessionId: string) => {
@@ -2898,8 +2943,7 @@ class Sync {
             // was down never shows its last messages — no new socket event
             // arrives to trigger the seq-gap refetch. Bounded: forward from
             // the last known seq.
-            const viewing = storage.getState().currentViewingSessionId;
-            if (viewing) this.onSessionEnter(viewing, { restartFetch: true });
+            this.catchUpViewedSession();
             // B-799 / B-802: a send that failed during the outage may sit in a
             // backoff sleep of up to 10s — cut it short, the link is back now.
             // Send queues only (one wake per reconnect); pollers keep invalidate().
@@ -2917,8 +2961,7 @@ class Sync {
             apiSocket.sendAppState(getCurrentAppState());
             this.sessionsSync.invalidate();
             this.machinesSync.invalidate();
-            const viewing = storage.getState().currentViewingSessionId;
-            if (viewing) this.onSessionEnter(viewing, { restartFetch: true });
+            this.catchUpViewedSession();
         });
     }
 
@@ -3077,6 +3120,8 @@ class Sync {
                         this.sessionLastSeq.set(sid, incomingSeq);
                     } else if (action === 'refetch') {
                         this.getMessagesSync(sid).invalidate();
+                        // B-804: a gap in the viewed session — say so if it takes a while.
+                        this.trackMessagesCatchUp(sid);
                     }
                 }
             }
@@ -3698,6 +3743,7 @@ class Sync {
     private applyMessages = (sessionId: string, messages: NormalizedMessage[], sendingLocalIds?: readonly string[]) => {
         const result = storage.getState().applyMessages(sessionId, messages, sendingLocalIds ? { sendingLocalIds } : undefined);
         if (this.outboxRecords.size > 0) this.pruneOutboxRecords(sessionId);
+        settleDispatchedPrompts(sessionId);
         let m: Message[] = [];
         for (let messageId of result.changed) {
             const message = storage.getState().sessionMessages[sessionId].messagesMap[messageId];

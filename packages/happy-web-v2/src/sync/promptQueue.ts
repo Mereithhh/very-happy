@@ -49,11 +49,23 @@ export type PendingPrompt = {
     state: 'sending' | 'waiting' | 'failed';
 };
 
+/**
+ * B-804: a queue item the wrapper took (it left the server snapshot without
+ * this tab removing it) whose message is not in the transcript yet. The dock
+ * keeps it as 「执行中」 so the prompt is never in neither place.
+ */
+export type DispatchedPrompt = {
+    localId: string;
+    text: string;
+};
+
 export type PromptQueueSessionState = {
     items: PromptQueueEntry[];
     status: PromptQueueStatus;
     /** B-722: optimistic rows, oldest first; absent = none. */
     pending?: PendingPrompt[];
+    /** B-804: hand-off rows, oldest first; absent = none. */
+    dispatched?: DispatchedPrompt[];
     /** Highest socket-update seq applied; snapshots arriving out of order are dropped. */
     snapshotSeq?: number;
 };
@@ -68,6 +80,10 @@ export type PromptQueueDeps = {
     /** B-722: false while the device reports offline (a failure then waits instead of failing). */
     isOnline?: () => boolean;
     now?: () => number;
+    /** B-804: the session's transcript already holds a message with this localId. */
+    inTranscript?: (sessionId: string, localId: string) => boolean;
+    /** B-804: new hand-off rows appeared — fetch the transcript, then settleDispatched with what was asked. */
+    onDispatched?: (sessionId: string, localIds: string[]) => void;
 };
 
 interface PromptQueueStoreState {
@@ -90,6 +106,12 @@ interface PromptQueueStoreState {
     move: (sessionId: string, id: string, delta: -1 | 1) => Promise<void>;
     /** `seq` = the socket update's account seq; an older snapshot than one already applied is ignored. */
     applySnapshot: (sessionId: string, items: PromptQueueWireItem[], seq?: number) => Promise<void>;
+    /**
+     * B-804: drop hand-off rows whose message reached the transcript; with
+     * `verified`, also those localIds a transcript fetch started after the
+     * hand-off did not find (deleted on another device, not run).
+     */
+    settleDispatched: (sessionId: string, verified?: readonly string[]) => void;
 }
 
 export const EMPTY_PROMPT_QUEUE: PromptQueueSessionState = Object.freeze({ items: [], status: 'idle' }) as PromptQueueSessionState;
@@ -112,6 +134,22 @@ export function movedOrder(ids: string[], id: string, delta: -1 | 1): string[] {
 /** Error codes the prompt-queue routes themselves answer with (store.ts PromptQueueError). */
 export function isPromptQueueErrorCode(code: string | null): boolean {
     return code !== null && (code.startsWith('prompt_queue_') || code === 'session_not_found');
+}
+
+/**
+ * B-804, pure: the items that left the server list without this tab removing
+ * them and whose message the transcript does not hold yet — the wrapper took
+ * them, the dock keeps them as 「执行中」.
+ */
+export function handOffRows(
+    previous: readonly PromptQueueEntry[],
+    listed: ReadonlySet<string>,
+    removedHere: ReadonlySet<string>,
+    inTranscript: (localId: string) => boolean,
+): DispatchedPrompt[] {
+    return previous
+        .filter((item) => !listed.has(item.localId) && !removedHere.has(item.id) && !inTranscript(item.localId))
+        .map((item) => ({ localId: item.localId, text: item.text }));
 }
 
 function isWireItem(value: unknown): value is PromptQueueWireItem {
@@ -146,17 +184,29 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
             }
             return entries;
         };
-        const applyItems = async (sessionId: string, raw: unknown) => {
+        // B-804: every applied list bumps its session's epoch; a GET that started
+        // before an apply answers with an older view and is dropped (load()).
+        const epochs = new Map<string, number>();
+        // Item ids this tab removed itself (delete, send now, intervene): not a hand-off.
+        const removedHere = new Set<string>();
+        const applyItems = async (sessionId: string, raw: unknown, guard?: () => boolean) => {
             const items = Array.isArray(raw) ? raw.filter(isWireItem) : [];
             const decoded = await decode(sessionId, items);
+            if (guard && !guard()) return;
+            epochs.set(sessionId, (epochs.get(sessionId) ?? 0) + 1);
             // B-722: the server row replaces its optimistic one in the same update — never both, never a gap.
             const listed = new Set(decoded.map((item) => item.localId));
-            const pending = get().sessions[sessionId]?.pending;
+            const current = get().sessions[sessionId];
+            const pending = current?.pending;
+            const handedOff = handOffRows(current?.items ?? [], listed, removedHere, (localId) => deps.inTranscript?.(sessionId, localId) === true);
+            const dispatched = [...(current?.dispatched ?? []).filter((row) => !listed.has(row.localId)), ...handedOff];
             patch(sessionId, {
                 items: decoded,
                 status: 'ready',
                 ...(pending?.some((row) => listed.has(row.localId)) ? { pending: pending.filter((row) => !listed.has(row.localId)) } : {}),
+                ...(dispatched.length !== (current?.dispatched?.length ?? 0) ? { dispatched: dispatched.length > 0 ? dispatched : undefined } : {}),
             });
+            if (handedOff.length > 0) deps.onDispatched?.(sessionId, handedOff.map((row) => row.localId));
         };
         const setPending = (sessionId: string, update: (rows: PendingPrompt[]) => PendingPrompt[]) => {
             const next = update(get().sessions[sessionId]?.pending ?? []);
@@ -199,9 +249,11 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
                 const current = get().sessions[sessionId];
                 if (current?.status === 'unsupported') return;
                 if (!current || current.status === 'idle' || current.status === 'error') patch(sessionId, { status: 'loading' });
+                const startEpoch = epochs.get(sessionId) ?? 0;
                 try {
                     const body = await call(sessionId, '');
-                    if (body) await applyItems(sessionId, body.items);
+                    // B-804: a snapshot (or a newer load) applied meanwhile is newer than this answer.
+                    if (body) await applyItems(sessionId, body.items, () => (epochs.get(sessionId) ?? 0) === startEpoch);
                 } catch {
                     patch(sessionId, { status: get().sessions[sessionId]?.items.length ? 'ready' : 'error' });
                 }
@@ -256,6 +308,7 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
                 }
             },
             remove: async (sessionId, id) => {
+                removedHere.add(id);
                 const body = await call(sessionId, `/${id}`, { method: 'DELETE' });
                 if (!body) return false;
                 await applyItems(sessionId, body.items);
@@ -277,9 +330,25 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
                 }
                 await applyItems(sessionId, items);
             },
+            settleDispatched: (sessionId, verified) => {
+                const rows = get().sessions[sessionId]?.dispatched;
+                if (!rows) return;
+                const gone = new Set(verified ?? []);
+                const next = rows.filter((row) => !gone.has(row.localId) && deps.inTranscript?.(sessionId, row.localId) !== true);
+                if (next.length !== rows.length) patch(sessionId, { dispatched: next.length > 0 ? next : undefined });
+            },
         };
     });
 }
+
+/**
+ * B-804: the transcript side of the dock hand-off, set by sync.ts (which owns
+ * the messages; importing storage here would close an import cycle).
+ */
+export const promptQueueTranscript: {
+    has: (sessionId: string, localId: string) => boolean;
+    verify: (sessionId: string, localIds: string[]) => void;
+} = { has: () => false, verify: () => {} };
 
 export const promptQueueStore = createPromptQueueStore({
     request: async (path, init) => {
@@ -297,6 +366,8 @@ export const promptQueueStore = createPromptQueueStore({
     newLocalId: () => crypto.randomUUID(),
     // B-799: the app's offline judgment counts too (socket gone with navigator.onLine still true).
     isOnline: () => (typeof navigator === 'undefined' || navigator.onLine !== false) && !isNetworkOffline(),
+    inTranscript: (sessionId, localId) => promptQueueTranscript.has(sessionId, localId),
+    onDispatched: (sessionId, localIds) => promptQueueTranscript.verify(sessionId, localIds),
 });
 
 /** B-722: rows that waited for the network go out as soon as the device is back online. */
@@ -316,6 +387,17 @@ export function usePromptQueue(sessionId: string): PromptQueueSessionState {
 }
 
 export const loadPromptQueue = (sessionId: string) => promptQueueStore.getState().load(sessionId);
+/**
+ * B-804: resume / reconnect / recovered — re-read a queue this tab already
+ * mirrors (a snapshot sent into a dead link is gone for good). A session whose
+ * dock never loaded (or has no server queue) is left alone.
+ */
+export function reloadPromptQueue(sessionId: string, store: ReturnType<typeof createPromptQueueStore> = promptQueueStore): Promise<void> {
+    const status = store.getState().sessions[sessionId]?.status;
+    if (status !== 'ready' && status !== 'error') return Promise.resolve();
+    return store.getState().load(sessionId);
+}
+export const settleDispatchedPrompts = (sessionId: string, verified?: readonly string[]) => promptQueueStore.getState().settleDispatched(sessionId, verified);
 export const enqueuePrompt = (sessionId: string, text: string, modeMeta: MessageModeMeta, localId?: string) => promptQueueStore.getState().enqueue(sessionId, text, modeMeta, localId);
 export const submitPrompt = (sessionId: string, text: string, modeMeta: MessageModeMeta) => promptQueueStore.getState().submit(sessionId, text, modeMeta);
 export const retryPendingPrompt = (sessionId: string, localId: string) => promptQueueStore.getState().retryPending(sessionId, localId);

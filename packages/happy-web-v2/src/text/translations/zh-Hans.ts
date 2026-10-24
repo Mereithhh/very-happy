@@ -22,6 +22,8 @@ export const zhHans: TranslationStructure = {
         offline: '已离线，正在重连…',
         recovered: '已恢复',
         syncing: '同步中…',
+        syncingMessages: '同步消息中…',
+        unstable: '连接不稳定',
     },
     relayBadge: {
         route: "数据通道",
@@ -995,6 +997,7 @@ export const zhHans: TranslationStructure = {
             sendOfflineAttachments: '已离线 · 附件需要联网上传',
             deliverOnResume: '已保存 · 会话恢复后送达',
             queueAdding: '加入队列中…',
+            queueRunning: '执行中',
             queueWaitingNetwork: '离线 · 连接恢复后加入队列',
             queueAddFailed: '未加入队列',
             queueAfterRestore: '已存在这里，会话恢复后按顺序送达',
