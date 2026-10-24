@@ -36,6 +36,7 @@ import { PromptQueueDrain, type PromptQueueDispatchOutcome } from '@/utils/promp
 import type { PromptQueueDispatchResponse } from '@slopus/happy-wire';
 import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
 import { notifyDaemonBackgroundTasks, notifyDaemonTurnEvent } from '@/daemon/controlClient';
+import { advanceInboundCursor } from './inboundCursor';
 
 const guardOptions = { log: (message: string) => logger.debug(message) };
 
@@ -166,6 +167,8 @@ export class ApiSessionClient extends EventEmitter {
     private readonly receiveSync: InvalidateSync;
     private readonly directInboundLocalIds = new Set<string>();
     private readonly routedInboundLocalIds = new Set<string>();
+    /** B-806: seqs above `lastSeq` our own POSTs confirmed (see inboundCursor.ts). */
+    private readonly handledSeqs = new Set<number>();
     private handoverInFlight: Promise<void> | null = null;
 
     /** B-265 reconnect: the message cursor was seeded from the server, so
@@ -302,8 +305,9 @@ export class ApiSessionClient extends EventEmitter {
                     // check-then-mark `routedInboundLocalIds` synchronously, so
                     // the message is routed exactly once whichever arrives first.
                     const relayAccepted = !!localId && this.directInboundLocalIds.delete(localId);
-                    if (localId && this.routedInboundLocalIds.has(localId)) {
+                    if ((localId && this.routedInboundLocalIds.has(localId)) || this.isOwnOutbound(messageSeq, localId)) {
                         this.lastSeq = messageSeq;
+                        this.advanceCursorThroughHandled();
                         return;
                     }
                     if (relayAccepted) {
@@ -314,6 +318,7 @@ export class ApiSessionClient extends EventEmitter {
                     this.routeIncomingMessage(body, localId);
                     if (localId) this.rememberRoutedInbound(localId);
                     this.lastSeq = messageSeq;
+                    this.advanceCursorThroughHandled();
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
                         this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
@@ -694,6 +699,10 @@ export class ApiSessionClient extends EventEmitter {
                 }
 
                 if (skipRouting) continue;
+                // B-806: the cursor only moves through handled seqs, so anything
+                // at or below it was routed while this page was in flight (or is
+                // our own output); our output above it is held at a gap.
+                if (message.seq <= this.lastSeq || this.isOwnOutbound(message.seq, message.localId)) continue;
 
                 // B-460: same rule as the socket echo — a relay-accepted
                 // localId is only skipped when it was actually routed.
@@ -723,7 +732,7 @@ export class ApiSessionClient extends EventEmitter {
                 }
             }
 
-            this.lastSeq = Math.max(this.lastSeq, maxSeq);
+            this.lastSeq = advanceInboundCursor(Math.max(this.lastSeq, maxSeq), this.handledSeqs).next;
             const hasMore = !!response.data.hasMore;
             if (hasMore && maxSeq === afterSeq) {
                 logger.debug('[API] fetchMessages pagination stalled, stopping to avoid infinite loop', {
@@ -767,10 +776,7 @@ export class ApiSessionClient extends EventEmitter {
             );
 
             const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
-            const maxSeq = messages.reduce((acc, message) => (
-                message.seq > acc ? message.seq : acc
-            ), this.lastSeq);
-            this.lastSeq = maxSeq;
+            this.noteHandledSeqs(messages.map((message) => message.seq));
             this.pushCommittedMessagesToRelay(batch, messages);
             this.pendingOutbox.splice(0, batch.length);
         }
@@ -791,6 +797,30 @@ export class ApiSessionClient extends EventEmitter {
             await this.sendSync.invalidateAndAwait();
         }
         return true;
+    }
+
+    /**
+     * B-806: an ack proves only OUR messages exist. Hold them as handled and
+     * move the cursor through a contiguous run; a gap below them (a Web
+     * message whose update has not been applied) is filled by a fetch.
+     */
+    private noteHandledSeqs(seqs: readonly number[]) {
+        for (const seq of seqs) {
+            if (typeof seq === 'number' && seq > this.lastSeq) this.handledSeqs.add(seq);
+        }
+        this.advanceCursorThroughHandled();
+    }
+
+    private advanceCursorThroughHandled() {
+        const { next, gap } = advanceInboundCursor(this.lastSeq, this.handledSeqs);
+        this.lastSeq = next;
+        if (gap) this.receiveSync.invalidate();
+    }
+
+    /** Our own output (acked, or still in flight) seen on the inbound path: never routed. */
+    private isOwnOutbound(seq: number, localId: string | null | undefined): boolean {
+        if (this.handledSeqs.has(seq)) return true;
+        return !!localId && this.pendingOutbox.some((item) => item.localId === localId);
     }
 
     private rememberRoutedInbound(localId: string) {
@@ -876,7 +906,7 @@ export class ApiSessionClient extends EventEmitter {
                     if (batch.some((item) => !storedLocalIds.has(item.localId))) {
                         throw new Error('Central persistence response omitted a session message');
                     }
-                    this.lastSeq = stored.reduce((max, message) => Math.max(max, message.seq), this.lastSeq);
+                    this.noteHandledSeqs(stored.map((message) => message.seq));
                     for (const item of batch) {
                         if (this.routedInboundLocalIds.has(item.localId)) continue;
                         const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(item.content));
