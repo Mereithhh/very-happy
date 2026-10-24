@@ -2837,8 +2837,11 @@ class Sync {
             // the last known seq.
             const viewing = storage.getState().currentViewingSessionId;
             if (viewing) this.onSessionVisible(viewing);
+            // B-799 / B-802: a send that failed during the outage may sit in a
+            // backoff sleep of up to 10s — cut it short, the link is back now.
+            // Send queues only (one wake per reconnect); pollers keep invalidate().
             for (const sync of this.sendSync.values()) {
-                sync.invalidate();
+                sync.invalidateNow();
             }
         });
 

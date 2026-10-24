@@ -170,6 +170,11 @@ describe('offline wiring (B-799)', () => {
         expect(sync).toContain('if (pending.length > 0) this.getSendSync(sessionId).invalidateNow();');
     });
 
+    it('a plain socket reconnect also wakes queued sends out of their backoff sleep', () => {
+        const reconnected = sync.slice(sync.indexOf('apiSocket.onReconnected('), sync.indexOf('apiSocket.onRecovered('));
+        expect(reconnected).toMatch(/for \(const sync of this\.sendSync\.values\(\)\) \{\s*sync\.invalidateNow\(\);/);
+    });
+
     it('the monitor reads the socket status and its ever-connected fact from storage', () => {
         expect(sync).toContain("socketConnected: state.socketStatus === 'connected',");
         expect(sync).toContain('everConnected: state.socketLastConnectedAt != null,');
