@@ -47,8 +47,8 @@ The sidebar's default view, **By project (structure)**, is a tree (B-762):
   conversations is open. Your own clicks on the chevrons are remembered on this
   device, and opening a conversation always reveals it.
 - Selecting a project's name opens the project page; a team's name opens its
-  team page; the chevron only folds. Hovering a project shows ＋ (new session in
-  it) and ⋯; right-click (long-press on a phone, as a bottom sheet) offers
+  team page; the chevron only folds. A project shows ＋ (new session in it) and ⋯
+  on hover, always on touch screens; a team row has its own ⋯; right-click (long-press on a phone, as a bottom sheet) offers
   **New session**, **Start a team here**, **Project settings**, **Rename** and
   **Archive project**. An empty project says so, with **New chat** and **Start a
   team** links.
