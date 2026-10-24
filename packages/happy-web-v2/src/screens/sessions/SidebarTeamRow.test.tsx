@@ -5,6 +5,7 @@
  * the lead and team settings live in the context menu; no hover board button.
  * B-762: a one-line tree node — 需要你 badge (else 「N 人」), a spinner while a
  * member runs, 「未放进项目」 outside every project; ←/→ belong to the tree.
+ * B-798: a ⋯ at the row's end opens the same menu, so long-press is not the only way in.
  */
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -15,7 +16,7 @@ import { teamLeadSessionId, teamRowTarget } from './teamNavigation';
 const { SidebarTeamRow } = await import('./SidebarTeamRow');
 const { setProjectsDevOverride } = await import('@/sync/projects');
 
-const copy = { expand: 'Expand team', collapse: 'Collapse team', openBoard: 'Open team page', openTeam: 'Open team', openLead: 'Chat with the lead', settings: 'Team settings', running: 'A member is running' };
+const copy = { expand: 'Expand team', collapse: 'Collapse team', openBoard: 'Open team page', openTeam: 'Open team', openLead: 'Chat with the lead', settings: 'Team settings', running: 'A member is running', actions: 'Team actions' };
 const team = (sessionIds: (string | null)[], rootIndex = 0): TeamState => ({
   id: 'team-1', name: 'VeryHappy', machineId: 'm', version: 1, createdAt: 1, tasks: [], operations: [], messages: [],
   bots: sessionIds.map((sessionId, i) => ({ id: `bot-${i}`, sessionId, name: i === rootIndex ? 'Lead' : `Member ${i}`, generation: 1, root: i === rootIndex, managed: true, assistant: 'claude', directory: null })),
@@ -85,10 +86,21 @@ describe('SidebarTeamRow (B-759)', () => {
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
-  it('no hover-only board button: the row has just the chevron and the main button', async () => {
+  it('no hover-only board button: the row has the chevron, the main button and the ⋯', async () => {
     const { el } = await render(team(['lead']));
     expect(el.querySelector('.sb-team-board')).toBeNull();
     expect([...el.querySelectorAll('.sb-team-row > button')].map(b => b.className)).toEqual(['sb-tree-chevron sb-team-toggle', 'sb-team-main']);
+    expect([...el.querySelectorAll('.sb-team-row > .sb-tree-acts > button')].map(b => b.getAttribute('aria-label'))).toEqual(['Team actions: VeryHappy']);
+  });
+
+  it('B-798: the row’s ⋯ opens the same items as long-press / right-click', async () => {
+    const { el, onNavigate } = await render(team(['lead']));
+    const more = el.querySelector<HTMLButtonElement>('.sb-team-menu')!;
+    await act(async () => { more.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+    const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    expect(items.map(i => i.textContent?.trim())).toEqual(['Open team page', 'Chat with the lead', 'Team settings', 'Expand team']);
+    await act(async () => items[2].click());
+    expect(onNavigate).toHaveBeenLastCalledWith('/teams/team-1?view=settings');
   });
 
   it('the context menu offers team page, lead, settings and fold — in that order', async () => {
