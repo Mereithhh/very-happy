@@ -237,8 +237,23 @@
     height: 44px;
     margin: -11px 0; /* 44px target, head row keeps its height */
   }
-  .bd-card-head {
-    gap: 4px;
+  /* 44px target, the drawn ✓ box stays card-sized */
+  .bd-card-done {
+    position: relative;
+    border-color: transparent;
+    background: transparent;
+  }
+  .bd-card-done::before {
+    content: '';
+    position: absolute;
+    inset: 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--bg-1);
+    z-index: -1;
+  }
+  .bd-card-done {
+    isolation: isolate;
   }
   .bd-card-more {
     margin-right: -8px;
