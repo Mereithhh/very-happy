@@ -5472,6 +5472,19 @@ export const en = {
         sidebarFailed: 'Failed to start',
         retryFirst: 'Retry starting the session first — your text stays here.',
         otherTab: 'This new session is being started in another tab.',
+        // B-801: draft page (nothing is created until the first message)
+        draft: 'Draft',
+        draftHint: 'Nothing is created until you send the first message.',
+        draftTitle: 'New session',
+        draftAgent: 'Agent',
+        draftMachine: 'Machine',
+        draftDirectory: 'Directory',
+        draftOffline: 'Offline',
+        sending: 'Sending…',
+        notSent: 'Not sent',
+        backToDraft: 'Edit',
+        machineOffline: 'The machine is offline — retry once its daemon is back.',
+        failedDraftKept: 'Your message has not been sent — retry, or edit it and the target.',
     },
 
     diagnostics: {

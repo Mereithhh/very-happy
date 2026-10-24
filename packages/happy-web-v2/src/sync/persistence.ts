@@ -184,6 +184,25 @@ export function savePendingSessions(records: unknown[]) {
     else mmkv.set(PENDING_SESSIONS_KEY, JSON.stringify(records));
 }
 
+// B-801: the text of a 「新会话」 draft page the user left, for the next one (this device only).
+const NEW_CHAT_DRAFT_KEY = 'new-chat-draft-v1';
+
+export function loadNewChatDraft(): string {
+    const raw = mmkv.getString(NEW_CHAT_DRAFT_KEY);
+    if (!raw) return '';
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed.text === 'string' ? parsed.text : '';
+    } catch {
+        return '';
+    }
+}
+
+export function saveNewChatDraft(text: string | null) {
+    if (!text?.trim()) mmkv.delete(NEW_CHAT_DRAFT_KEY);
+    else mmkv.set(NEW_CHAT_DRAFT_KEY, JSON.stringify({ text, updatedAt: Date.now() }));
+}
+
 export function loadNewSessionDraft(): NewSessionDraft | null {
     const raw = mmkv.getString(NEW_SESSION_DRAFT_KEY);
     if (!raw) {

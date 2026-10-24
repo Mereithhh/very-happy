@@ -5308,6 +5308,19 @@ export const zhHans: TranslationStructure = {
         sidebarFailed: '启动失败',
         retryFirst: '请先重试启动会话，文本会留在这里。',
         otherTab: '这个新会话正在另一个标签页中启动。',
+        // B-801: 草稿页（发出第一条消息前不创建会话）
+        draft: '草稿',
+        draftHint: '发出第一条消息时才会创建会话。',
+        draftTitle: '新会话',
+        draftAgent: 'Agent',
+        draftMachine: '机器',
+        draftDirectory: '目录',
+        draftOffline: '离线',
+        sending: '发送中…',
+        notSent: '未发送',
+        backToDraft: '返回修改',
+        machineOffline: '这台机器离线——daemon 重新上线后再重试。',
+        failedDraftKept: '消息还没发出——可以重试，或返回修改消息和目标。',
     },
 
     diagnostics: {

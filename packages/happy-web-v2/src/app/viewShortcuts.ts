@@ -47,6 +47,7 @@ import { Modal } from '@/modal';
 import { t } from '@/i18n/useTranslation';
 import { storage, useLocalSetting } from '@/sync/storage';
 import { pendingSessions } from '@/sync/pendingSessionsRuntime';
+import { flushPendingDrafts } from './draftFlush';
 import {
   closeViewAction,
   closeViewTarget,
@@ -114,6 +115,13 @@ async function archiveOrCloseTarget(
       // being delivered; the chord waits for the real session page.
       const record = pendingSessions.get(target.sessionId)!;
       if (record.realId) return;
+      // B-801: a draft has started nothing — close it like leaving its page (text stashed).
+      if (record.state === 'draft') {
+        flushPendingDrafts();
+        pendingSessions.setViewing(null);
+        if (pendingSessions.leaveDraft(target.sessionId)) navigate('/');
+        return;
+      }
       if (confirmFirst) {
         const ok = await Modal.confirm(t('pendingSession.discardTitle'), t('pendingSession.discardMessage'), {
           confirmText: t('common.discard'),

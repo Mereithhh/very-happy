@@ -232,7 +232,13 @@ export function SessionDetailScreen() {
         pendingSessions.markShown(pendingId);
         newSessionTimingPendingShown();
         pendingSessions.setViewing(pendingId);
-        return () => pendingSessions.setViewing(null);
+        return () => {
+            pendingSessions.setViewing(null);
+            // B-801: leaving a draft leaves nothing behind (its text is stashed for
+            // the next 「新会话」). After the composer's unmount flush; a remount
+            // that shows the same draft again (StrictMode, quick back) keeps it.
+            setTimeout(() => { pendingSessions.leaveDraft(pendingId); }, 0);
+        };
     }, [pendingId]);
     // Only THIS page, while it still shows the pending id, moves on to the
     // real session (replace, search kept). A user who left is never pulled back.
@@ -257,6 +263,11 @@ export function SessionDetailScreen() {
         if (foreignPending) void pendingSessions.resume();
     }, [foreignPending]);
     const pendingInitialDraft = useMemo(() => (pendingId ? pendingDraft(pendingId) : ''), [pendingId]);
+    // B-801: back / forward to a draft page this tab left → the same draft again, text included.
+    const reopenable = isPendingSessionId(routeId) && !pending && pendingSessions.canReopenDraft(routeId!);
+    useEffect(() => {
+        if (reopenable) pendingSessions.reopenDraft(routeId!);
+    }, [reopenable, routeId]);
 
     // B-798 P1-8: an id the loaded list does not have → ask the server for it
     // (old sessions fall outside the list's 150 rows); only a 404 is 「不存在」.
@@ -299,6 +310,7 @@ export function SessionDetailScreen() {
     }
 
     // A pending id without a record: discarded, or opened in another browser.
+    if (reopenable) return null;
     if (isPendingSessionId(routeId) && !pending) {
         return (
             <EmptyState
@@ -346,7 +358,7 @@ export function SessionDetailScreen() {
         isGone: () => !pendingSessions.get(pending.pendingId),
         blockedHint: foreignPending
             ? t('pendingSession.otherTab')
-            : pending.state === 'failed' ? t('pendingSession.retryFirst') : undefined,
+            : pending.state === 'failed' ? (pending.deferred ? t('pendingSession.failedDraftKept') : t('pendingSession.retryFirst')) : undefined,
     } : undefined;
 
     return (

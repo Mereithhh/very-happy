@@ -31,6 +31,8 @@ function harness(opts: { saved?: unknown; backing?: Backing; tabId?: string; ali
     const sessionListeners = new Set<() => void>();
     const spawns: Array<{ options: Parameters<PendingSessionDeps['spawn']>[0]; result: ReturnType<typeof deferred<SpawnSessionResult>> }> = [];
     const events: string[] = [];
+    const drafts: Record<string, string> = {};
+    const stash = { text: '' };
     let seq = 0;
     const tabId = opts.tabId ?? 'tab-a';
     alive.add(tabId);
@@ -51,7 +53,11 @@ function harness(opts: { saved?: unknown; backing?: Backing; tabId?: string; ali
         writeEffortLevel: vi.fn((id: string, level: string | null) => { events.push(`effort:${id}:${level}`); }),
         restoreText: vi.fn(),
         migrateDraft: vi.fn(),
-        clearKeys: vi.fn(),
+        clearKeys: vi.fn((id: string) => { delete drafts[id]; }),
+        readDraft: (id: string) => drafts[id] ?? '',
+        stashNewChatDraft: vi.fn((text: string) => { stash.text = text; }),
+        takeNewChatDraft: () => { const text = stash.text; stash.text = ''; return text; },
+        writeDraft: (id: string, text: string) => { drafts[id] = text; },
         killSession: vi.fn(),
         onSpawned: vi.fn(),
         notifyFailure: vi.fn(),
@@ -65,7 +71,7 @@ function harness(opts: { saved?: unknown; backing?: Backing; tabId?: string; ali
     const addSession = (id: string) => { sessions.add(id); sessionListeners.forEach((l) => l()); };
     const states: string[] = [];
     store.subscribe(() => { for (const r of store.list()) states.push(`${r.pendingId}:${r.state}`); });
-    return { store, deps, spawns, events, addSession, states, backing, alive, persisted: () => backing.table as PendingSessionRecord[] };
+    return { store, deps, spawns, events, drafts, addSession, states, backing, alive, persisted: () => backing.table as PendingSessionRecord[] };
 }
 
 const input = { machineId: 'm1', path: '/repo', agent: 'claude' as const, permissionMode: 'default', source: 'quick' };
@@ -456,5 +462,148 @@ describe('pending draft migration on landing (B-516 review)', () => {
         migratePendingDraft('pending-1', 'real1', x);
         expect(x.drafts).toEqual({ 'pending-1': 'still editing' });
         expect(x.clearKeys).not.toHaveBeenCalled();
+    });
+});
+
+describe('B-801 draft new sessions', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('a draft spawns nothing until its first send; that message is spawned with and delivered first', async () => {
+        const h = harness();
+        const record = h.store.create({ ...input, draft: true, firstMessage: 'ignored' });
+        expect(h.store.get(record.pendingId)).toMatchObject({ state: 'draft', deferred: true, outbox: [] });
+        expect(h.spawns).toHaveLength(0);
+        expect(h.persisted()[0]).toMatchObject({ state: 'draft' });
+        // target is still editable; an agent change resets that agent's model choice
+        h.store.setMode(record.pendingId, 'modelMode', 'opus');
+        h.store.setTarget(record.pendingId, { machineId: 'm2', path: '/other', agent: 'codex', permissionMode: 'safe-yolo' });
+        expect(h.store.get(record.pendingId)).toMatchObject({ machineId: 'm2', path: '/other', agent: 'codex', permissionMode: 'safe-yolo', modelMode: undefined });
+        expect(h.store.append(record.pendingId, '  hello  ')).toBe(true);
+        expect(h.store.get(record.pendingId)).toMatchObject({ state: 'spawning', outbox: [{ text: 'hello' }] });
+        expect(h.spawns).toHaveLength(1);
+        expect(h.spawns[0].options).toMatchObject({ machineId: 'm2', directory: '/other', agent: 'codex', permissionMode: 'safe-yolo' });
+        // after the first send the target is fixed
+        h.store.setTarget(record.pendingId, { path: '/late' });
+        expect(h.store.get(record.pendingId)?.path).toBe('/other');
+        h.spawns[0].result.resolve({ type: 'success', sessionId: 'real1' });
+        h.addSession('real1');
+        await flush();
+        expect(h.events.filter((e) => e.startsWith('send:'))).toEqual(['send:real1:hello']);
+        expect(h.store.get(record.pendingId)).toMatchObject({ state: 'landed', realId: 'real1' });
+    });
+
+    it('an empty send does not start a draft', () => {
+        const h = harness();
+        const record = h.store.create({ ...input, draft: true });
+        expect(h.store.append(record.pendingId, '   ')).toBe(false);
+        expect(h.spawns).toHaveLength(0);
+        expect(h.store.get(record.pendingId)?.state).toBe('draft');
+    });
+
+    it('a failed spawn keeps the message queued (not returned), and retry spawns again and delivers it', async () => {
+        const h = harness();
+        const record = h.store.create({ ...input, draft: true });
+        h.store.append(record.pendingId, 'hello');
+        h.spawns[0].result.resolve({ type: 'error', errorMessage: 'no such agent' });
+        await flush();
+        expect(h.store.get(record.pendingId)).toMatchObject({ state: 'failed', failure: 'spawn-error', error: 'no such agent', outbox: [{ text: 'hello' }] });
+        expect(h.deps.restoreText).not.toHaveBeenCalled();
+        expect(h.deps.notifyFailure).toHaveBeenCalled();
+        // the queued message cannot be removed out from under the retry
+        h.store.removeOutboxItem(record.pendingId, h.store.get(record.pendingId)!.outbox[0].id);
+        expect(h.store.get(record.pendingId)?.outbox).toHaveLength(1);
+        h.store.retry(record.pendingId);
+        expect(h.spawns).toHaveLength(2);
+        h.spawns[1].result.resolve({ type: 'success', sessionId: 'real2' });
+        h.addSession('real2');
+        await flush();
+        expect(h.events).toContain('send:real2:hello');
+        expect(h.store.get(record.pendingId)?.state).toBe('landed');
+    });
+
+    it('back to draft puts the message into the composer and makes the target editable again', async () => {
+        const h = harness();
+        const record = h.store.create({ ...input, draft: true });
+        h.store.append(record.pendingId, 'hello');
+        h.spawns[0].result.resolve({ type: 'requestToApproveDirectoryCreation', directory: '/repo' });
+        await flush();
+        h.store.declineDirectory(record.pendingId);
+        expect(h.store.get(record.pendingId)).toMatchObject({ state: 'failed', failure: 'directory-declined', outbox: [{ text: 'hello' }] });
+        h.store.backToDraft(record.pendingId);
+        expect(h.store.get(record.pendingId)).toMatchObject({ state: 'draft', outbox: [], failure: undefined, approvedNewDirectoryCreation: false });
+        expect(h.deps.restoreText).toHaveBeenCalledWith(record.pendingId, 'hello', record.pendingId);
+        h.store.setTarget(record.pendingId, { path: '/fixed' });
+        h.store.append(record.pendingId, 'hello again');
+        expect(h.spawns[1].options).toMatchObject({ directory: '/fixed', approvedNewDirectoryCreation: false });
+    });
+
+    it('leaving a draft discards it and stashes its text; a draft on screen is kept', () => {
+        const h = harness();
+        const record = h.store.create({ ...input, draft: true });
+        h.drafts[record.pendingId] = 'half typed';
+        h.store.setViewing(record.pendingId);
+        expect(h.store.leaveDraft(record.pendingId)).toBe(false); // remounted / still shown
+        expect(h.store.get(record.pendingId)).toBeDefined();
+        h.store.setViewing(null);
+        expect(h.store.leaveDraft(record.pendingId)).toBe(true);
+        expect(h.store.get(record.pendingId)).toBeUndefined();
+        expect(h.persisted()).toEqual([]);
+        expect(h.deps.stashNewChatDraft).toHaveBeenCalledWith('half typed');
+        expect(h.deps.clearKeys).toHaveBeenCalledWith(record.pendingId);
+        expect(h.spawns).toHaveLength(0);
+        expect(h.deps.killSession).not.toHaveBeenCalled();
+    });
+
+    it('coming back (history) to a left draft reopens it with its text; a send then starts it', () => {
+        const h = harness();
+        const record = h.store.create({ ...input, draft: true });
+        h.store.setTarget(record.pendingId, { path: '/chosen' });
+        h.drafts[record.pendingId] = 'half typed';
+        h.store.leaveDraft(record.pendingId);
+        expect(h.store.canReopenDraft(record.pendingId)).toBe(true);
+        expect(h.store.reopenDraft(record.pendingId)).toBe(true);
+        expect(h.store.get(record.pendingId)).toMatchObject({ state: 'draft', path: '/chosen', ownerTab: 'tab-a' });
+        expect(h.drafts[record.pendingId]).toBe('half typed');
+        expect(h.store.canReopenDraft(record.pendingId)).toBe(false);
+        expect(h.store.append(record.pendingId, 'go')).toBe(true);
+        expect(h.spawns[0].options).toMatchObject({ directory: '/chosen' });
+    });
+
+    it('leaving an empty draft stashes nothing; leaving a started one changes nothing', () => {
+        const h = harness();
+        const empty = h.store.create({ ...input, draft: true });
+        expect(h.store.leaveDraft(empty.pendingId)).toBe(true);
+        expect(h.deps.stashNewChatDraft).not.toHaveBeenCalled();
+        const started = h.store.create({ ...input, draft: true });
+        h.store.append(started.pendingId, 'go');
+        expect(h.store.leaveDraft(started.pendingId)).toBe(false);
+        expect(h.store.get(started.pendingId)?.state).toBe('spawning');
+    });
+
+    it('a new 「新会话」 takes over this tab\'s open drafts and their text', () => {
+        const h = harness();
+        const a = h.store.create({ ...input, draft: true });
+        const b = h.store.create({ ...input, draft: true });
+        const started = h.store.create({ ...input, draft: true });
+        h.store.append(started.pendingId, 'go');
+        h.drafts[a.pendingId] = 'one';
+        h.drafts[b.pendingId] = '';
+        expect(h.store.takeDrafts()).toBe('one');
+        expect(h.store.list().map((r) => r.pendingId)).toEqual([started.pendingId]);
+    });
+
+    it('a draft whose tab closed is taken over without being started; an expired one is dropped on load', async () => {
+        const backing: Backing = { table: [], lock: Promise.resolve() };
+        const a = harness({ backing, tabId: 'tab-a' });
+        const record = a.store.create({ ...input, draft: true });
+        const b = harness({ backing, tabId: 'tab-b' });
+        await b.store.resume();
+        expect(b.store.get(record.pendingId)).toMatchObject({ state: 'draft', ownerTab: 'tab-b' });
+        expect(b.spawns).toHaveLength(0);
+        const old = { ...(backing.table as PendingSessionRecord[])[0], createdAt: -25 * 60 * 60 * 1000 };
+        const c = harness({ saved: [old], tabId: 'tab-c' });
+        expect(c.store.get(record.pendingId)).toBeUndefined();
+        expect(c.deps.clearKeys).toHaveBeenCalledWith(record.pendingId);
     });
 });

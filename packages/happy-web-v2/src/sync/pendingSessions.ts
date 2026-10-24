@@ -7,12 +7,20 @@
  * directory-approval round trip, and delivering whatever the user typed in the
  * meantime (the outbox) to the real session in order.
  *
- *   spawning ──success──▶ landing ──outbox flushed──▶ landed
+ *   draft ──first send──▶ spawning ──success──▶ landing ──outbox flushed──▶ landed
+ *     ▲                     │  ▲
+ *     └──back to draft──┐   │  │
  *      │  ▲                  (never fails: a session that does not show up,
  *      │  └─approve─┐         or a send without receipt, turns the remaining
  *      ├──dir?──▶ needs-approval   outbox into the real session's draft)
  *      └──error──▶ failed ──retry──▶ spawning
  *                     └──adopt(lost ack only)──▶ landing
+ *
+ * B-801: the quick 「新会话」 path creates a DRAFT — no spawn, no sidebar row,
+ * target (agent / machine / directory) still editable. The first send moves it
+ * to `spawning` with that message in the outbox. A record that started as a
+ * draft (`deferred`) keeps its outbox on failure (retry re-sends it), and
+ * leaving a draft page discards it, stashing its text for the next 「新会话」.
  *
  * Invariants (each has a test in pendingSessions.test.ts):
  *  - one spawn in flight per pendingId; a discarded record ignores its result,
@@ -35,7 +43,7 @@
 import type { SpawnSessionOptions, SpawnSessionResult } from './ops';
 
 export type PendingAgent = NonNullable<SpawnSessionOptions['agent']>;
-export type PendingState = 'spawning' | 'needs-approval' | 'failed' | 'landing' | 'landed';
+export type PendingState = 'draft' | 'spawning' | 'needs-approval' | 'failed' | 'landing' | 'landed';
 /**
  * `lost-ack`: the RPC itself failed (timeout / relay) — the daemon may still
  * have created the session. `spawn-error`: the daemon answered with an error.
@@ -64,6 +72,9 @@ export interface PendingSessionRecord {
     /** B-648: created from a project (page / group ＋) — join it before the first message is delivered. */
     onSpawnedProject?: { projectId: string };
     source: string;
+    /** B-801: started as a draft — the user's first message is in the outbox
+     *  and stays there through a failure (retry re-sends it). */
+    deferred?: boolean;
     createdAt: number;
     /** Client time the latest spawn RPC was sent (lost-ack adoption window). */
     spawnDispatchedAt?: number;
@@ -114,6 +125,14 @@ export interface PendingSessionDeps {
     migrateDraft(pendingId: string, realId: string): void;
     /** Delete every per-session key left under a pending id (draft, queue, mode). */
     clearKeys(pendingId: string): void;
+    /** B-801: the composer text a pending id holds (its draft key). */
+    readDraft(pendingId: string): string;
+    /** B-801: keep a left draft page's text on this device for the next 「新会话」. */
+    stashNewChatDraft(text: string): void;
+    /** B-801: take that text back (and clear it) — a left draft page is reopened. */
+    takeNewChatDraft(): string;
+    /** B-801: put text into a pending id's draft key (its composer's initial text). */
+    writeDraft(pendingId: string, text: string): void;
     /** A cancelled spawn still created this session — stop it (user intent). */
     killSession(sessionId: string): void;
     /** Success side effects: recent path, task-board attach, project join, timing.
@@ -134,6 +153,8 @@ export const PENDING_ID_PREFIX = 'pending-';
 const LANDED_KEEP_MS = 24 * 60 * 60 * 1000;
 const APPROVAL_KEEP_MS = 24 * 60 * 60 * 1000;
 const FAILED_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
+/** A draft left behind by a closed tab (its text is in the draft key until then). */
+const DRAFT_KEEP_MS = 24 * 60 * 60 * 1000;
 /** A lost-ack session is created within seconds of the spawn RPC. */
 export const ADOPT_WINDOW_MS = 90_000;
 /** Tolerance for server (session.createdAt) vs client (dispatch) clock skew. */
@@ -228,6 +249,7 @@ function isExpired(record: PendingSessionRecord, now: number): boolean {
     if (record.state === 'landed') return now - (record.landedAt ?? record.createdAt) > LANDED_KEEP_MS;
     if (record.state === 'needs-approval') return now - record.createdAt > APPROVAL_KEEP_MS;
     if (record.state === 'failed') return now - record.createdAt > FAILED_KEEP_MS;
+    if (record.state === 'draft') return now - record.createdAt > DRAFT_KEEP_MS;
     return false;
 }
 
@@ -268,11 +290,22 @@ export interface PendingCreateInput {
     permissionMode: string | null;
     source: string;
     firstMessage?: string;
+    /** B-801: open as a draft — nothing is spawned until the first send. */
+    draft?: boolean;
     onSpawnedTask?: { taskId: string };
     onSpawnedProject?: { projectId: string };
 }
 
 export type PendingModeField = 'permissionMode' | 'modelMode' | 'effortLevel';
+
+/** B-801: what a draft page may still change before the first send. */
+export interface PendingTargetChange {
+    machineId?: string;
+    path?: string;
+    agent?: PendingAgent;
+    /** Required with an agent change: the new agent's default. */
+    permissionMode?: string | null;
+}
 
 export function createPendingSessionStore(deps: PendingSessionDeps) {
     let records = new Map<string, PendingSessionRecord>();
@@ -283,6 +316,8 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
     /** discarded while their spawn was in flight — a late success is killed */
     const cancelled = new Set<string>();
     const shownWaiters = new Map<string, Array<() => void>>();
+    /** B-801: drafts this tab left (back / forward to their URL reopens them). */
+    const leftDrafts = new Map<string, PendingSessionRecord>();
     let viewing: string | null = null;
     let version = 0;
 
@@ -333,8 +368,11 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
     function fail(pendingId: string, failure: PendingFailure, error?: string) {
         const current = records.get(pendingId);
         if (!current || current.realId) return; // never after success
-        const text = outboxText(current.outbox);
-        const next = patch(pendingId, { state: 'failed', failure, error, outbox: [], textReturned: !!text || current.textReturned === true });
+        // B-801: a draft's first message stays queued on its page — retry re-sends it.
+        const text = current.deferred ? '' : outboxText(current.outbox);
+        const next = patch(pendingId, current.deferred
+            ? { state: 'failed', failure, error }
+            : { state: 'failed', failure, error, outbox: [], textReturned: !!text || current.textReturned === true });
         if (text) deps.restoreText(pendingId, text);
         // Interrupted = found after a reload; the sidebar row says so, no toast.
         if (next && failure !== 'interrupted' && viewing !== pendingId) deps.notifyFailure(next);
@@ -519,6 +557,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 const current = records.get(record.pendingId);
                 if (!current || mine(current)) continue;
                 patch(record.pendingId, { ownerTab: deps.tabId });
+                // A draft just changes hands (B-801): nothing was started.
                 if (current.state === 'spawning') fail(record.pendingId, 'interrupted');
                 else if (current.state === 'landing') void deliver(record.pendingId);
             }
@@ -550,7 +589,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
 
         create(input: PendingCreateInput): PendingSessionRecord {
             const pendingId = `${PENDING_ID_PREFIX}${deps.newId()}`;
-            const first = input.firstMessage?.trim();
+            const first = input.draft ? undefined : input.firstMessage?.trim();
             const record: PendingSessionRecord = {
                 pendingId,
                 ownerTab: deps.tabId,
@@ -560,15 +599,16 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 permissionMode: input.permissionMode,
                 source: input.source,
                 createdAt: deps.now(),
-                state: 'spawning',
+                state: input.draft ? 'draft' : 'spawning',
                 outbox: first ? [{ id: deps.newId(), text: first }] : [],
+                ...(input.draft ? { deferred: true } : {}),
                 ...(input.onSpawnedTask ? { onSpawnedTask: input.onSpawnedTask } : {}),
                 ...(input.onSpawnedProject ? { onSpawnedProject: input.onSpawnedProject } : {}),
             };
             records = new Map(records).set(pendingId, record);
             persist([pendingId]);
             notify();
-            void runSpawn(pendingId);
+            if (!input.draft) void runSpawn(pendingId);
             return record;
         },
 
@@ -577,13 +617,20 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
             const current = owned(pendingId);
             const value = text.trim();
             if (!current || !value) return false;
+            if (current.state === 'draft') {
+                // B-801: the first message is what creates the session.
+                patch(pendingId, { state: 'spawning', outbox: [{ id: deps.newId(), text: value }] });
+                void runSpawn(pendingId);
+                return true;
+            }
             if (current.state !== 'spawning' && current.state !== 'needs-approval' && current.state !== 'landing') return false;
             patch(pendingId, { outbox: [...current.outbox, { id: deps.newId(), text: value }] });
             return true;
         },
         removeOutboxItem(pendingId: string, itemId: string): void {
             const current = owned(pendingId);
-            if (!current || current.state === 'landed') return;
+            // A draft's message is what is being started (B-801): back to draft takes it back.
+            if (!current || current.state === 'landed' || current.deferred) return;
             patch(pendingId, { outbox: current.outbox.filter((item) => item.id !== itemId) });
         },
 
@@ -616,6 +663,69 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 approvedNewDirectoryCreation: current.failure === 'directory-declined' ? false : current.approvedNewDirectoryCreation,
             });
             void runSpawn(pendingId);
+        },
+        /** B-801: a draft page changes its target before the first send. */
+        setTarget(pendingId: string, change: PendingTargetChange): void {
+            const current = owned(pendingId);
+            if (current?.state !== 'draft') return;
+            const next: Partial<PendingSessionRecord> = {};
+            if (change.machineId !== undefined) next.machineId = change.machineId;
+            if (change.path !== undefined) next.path = change.path;
+            if (change.agent !== undefined && change.agent !== current.agent) {
+                // Model / effort keys belong to one agent; the new one starts from its defaults.
+                Object.assign(next, { agent: change.agent, modelMode: undefined, effortLevel: undefined });
+                if (change.permissionMode !== undefined) next.permissionMode = change.permissionMode;
+            }
+            if (Object.keys(next).length > 0) patch(pendingId, next);
+        },
+        /** B-801: a failed draft goes back to editing — its message returns to the composer. */
+        backToDraft(pendingId: string): void {
+            const current = owned(pendingId);
+            if (current?.state !== 'failed' || !current.deferred) return;
+            const text = outboxText(current.outbox);
+            patch(pendingId, {
+                state: 'draft', outbox: [], error: undefined, failure: undefined,
+                approvedNewDirectoryCreation: false, spawnDispatchedAt: undefined,
+            });
+            if (text) deps.restoreText(pendingId, text, pendingId);
+        },
+        /**
+         * B-801: the draft page was left. Nothing stays behind: its text moves to
+         * the device's new-chat stash, the record and its keys go. Ignored while
+         * the page is (again) on screen — a StrictMode remount, a quick back.
+         */
+        leaveDraft(pendingId: string): boolean {
+            const current = owned(pendingId);
+            if (current?.state !== 'draft' || viewing === pendingId) return false;
+            const text = deps.readDraft(pendingId);
+            if (text.trim()) deps.stashNewChatDraft(text);
+            leftDrafts.set(pendingId, current);
+            return store.discard(pendingId);
+        },
+        /** B-801: the user came back (history) to a draft page this tab left. */
+        canReopenDraft: (pendingId: string): boolean => leftDrafts.has(pendingId) && !records.has(pendingId),
+        /** Put a left draft back where it was, with its stashed text in the composer. */
+        reopenDraft(pendingId: string): boolean {
+            const left = leftDrafts.get(pendingId);
+            if (!left || records.has(pendingId)) return false;
+            leftDrafts.delete(pendingId);
+            const text = deps.takeNewChatDraft();
+            if (text.trim()) deps.writeDraft(pendingId, text);
+            records = new Map(records).set(pendingId, { ...left, ownerTab: deps.tabId });
+            persist([pendingId]);
+            notify();
+            return true;
+        },
+        /** B-801: a new 「新会话」 replaces this tab's open drafts; returns their text. */
+        takeDrafts(): string {
+            const texts: string[] = [];
+            for (const record of [...records.values()]) {
+                if (!mine(record) || record.state !== 'draft') continue;
+                const text = deps.readDraft(record.pendingId);
+                if (text.trim()) texts.push(text);
+                store.discard(record.pendingId);
+            }
+            return texts.join('\n');
         },
         /** Lost ack: take over a session the daemon did create. */
         adopt(pendingId: string, sessionId: string): void {
