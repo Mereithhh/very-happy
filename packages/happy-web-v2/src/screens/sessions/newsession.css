@@ -264,6 +264,22 @@
   .ns-input {
     font-size: var(--fs-16);
   }
+  /* B-798 (P1-6): finger-sized dialog controls — agent chips were 31, the
+     directory chips ~24, 「连接新机器」 32 and the bookmark button 40×43. The
+     chip ✕ keeps its glyph and takes .vh-hit; the chip's right padding keeps
+     that 44px ring inside the chip. */
+  .ns-agent,
+  .ns-preset,
+  .ns-connect-link {
+    min-height: var(--hit);
+  }
+  .ns-preset:has(> .ns-preset-x) {
+    padding-right: 14px;
+  }
+  .ns-save {
+    min-width: var(--hit);
+    min-height: var(--hit);
+  }
 }
 
 /* ── B-273: attach an existing tmux session ─────────────────────────────── */

@@ -347,6 +347,10 @@
   --conversation-size-base: var(--fs-14);
   --conversation-leading: 1.6;
 
+  /* B-798 (U3): the touch hit-area floor (Apple HIG 44pt). Coarse-pointer controls
+     size their box to it, or keep a smaller visual and extend with .vh-hit. */
+  --hit: 44px;
+
   /* spacing (4px base) */
   --sp-1: 4px;
   --sp-2: 8px;

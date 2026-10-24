@@ -7,6 +7,7 @@ import {
     joinFsPath,
     parentFsPath,
     resolveFsSortMode,
+    revealLastCrumb,
     sortFsEntries,
     visibleFsEntries,
 } from './fsBrowseModel';
@@ -117,5 +118,19 @@ describe('resolveFsSortMode', () => {
         expect(resolveFsSortMode('mtime')).toBe('mtime');
         expect(resolveFsSortMode(undefined)).toBe('mtime');
         expect(resolveFsSortMode('junk')).toBe('mtime');
+    });
+});
+
+describe('revealLastCrumb (B-798 P1-5)', () => {
+    it('scrolls an overflowing trail to its end so the current folder shows', () => {
+        const el = { scrollLeft: 0, scrollWidth: 520, clientWidth: 200 };
+        revealLastCrumb(el);
+        expect(el.scrollLeft).toBe(320);
+    });
+    it('leaves a trail that fits alone, and tolerates a missing element', () => {
+        const el = { scrollLeft: 0, scrollWidth: 180, clientWidth: 200 };
+        revealLastCrumb(el);
+        expect(el.scrollLeft).toBe(0);
+        expect(() => revealLastCrumb(null)).not.toThrow();
     });
 });

@@ -327,7 +327,7 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
                     <span className="ns-preset-path">{p.label || p.path}</span>
                     {p.saved && (
                       <button
-                        className="ns-preset-x"
+                        className="ns-preset-x vh-hit"
                         title={t('common.delete')}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -417,7 +417,7 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
                   </span>
                   {c.removable && (
                     <button
-                      className="ns-preset-x"
+                      className="ns-preset-x vh-hit"
                       title={t('common.delete')}
                       onClick={(e) => {
                         e.stopPropagation();

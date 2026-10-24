@@ -130,8 +130,9 @@ member runs. The chevron (or → / ←) expands the member list without navigati
 its **Lead** row (crown) opens the lead's conversation, member rows read
 *name · task*. A team starts folded and opens while its page or one of its
 conversations is open; your own folding is remembered on this device. The row's
-right-click menu (a bottom sheet on a phone's long-press) offers **Open team
-page**, **Chat with the lead**, **Team settings** and expand / collapse.
+⋯ (on hover with a mouse, always shown on touch) and its right-click menu (a
+bottom sheet on a phone's long-press) offer **Open team page**, **Chat with the
+lead**, **Team settings** and expand / collapse.
 In **By tag** and **Recent** there are no team rows: the lead's conversation is
 listed with a team chip, and a member's only while it waits for you.
 Members no longer in use fold into one **N inactive** row, both under the expanded

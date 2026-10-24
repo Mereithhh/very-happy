@@ -169,9 +169,11 @@
 .rva-placeholder { background: var(--bg-0); }
 
 @media (pointer: coarse) {
+  /* B-798 (P1-6): .rva-viewed matches the base .rva-viewed.vh-checkbox (two classes),
+     otherwise the base min-height 30px out-ranks this override */
   .rva-tool,
   .rva-toggle,
-  .rva-viewed,
+  .rva-viewed.vh-checkbox,
   .rva-nav-item { min-height: 44px; }
   .rva-tool { height: 44px; }
   .rva-open { width: 44px; height: 44px; }

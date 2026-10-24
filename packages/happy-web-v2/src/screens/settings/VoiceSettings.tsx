@@ -101,7 +101,7 @@ export function VoiceSettings() {
         previewUrl ? (
             <button
                 type="button"
-                className="set-header__back"
+                className="set-icon-btn"
                 aria-label={t('settingsVoice.preview')}
                 title={t('settingsVoice.preview')}
                 onClick={(e) => {
@@ -300,7 +300,7 @@ export function VoiceSettings() {
                         subtitle={t('settingsVoice.readTextRepliesHint')}
                         right={
                             <Switch.Root
-                                className="set-switch"
+                                className="set-switch vh-hit"
                                 checked={readTextReplies}
                                 onCheckedChange={setReadTextReplies}
                                 aria-label={t('settingsVoice.readTextReplies')}
@@ -315,7 +315,7 @@ export function VoiceSettings() {
                         subtitle={t('settingsVoice.pttSoundHint')}
                         right={
                             <Switch.Root
-                                className="set-switch"
+                                className="set-switch vh-hit"
                                 checked={pttSound}
                                 onCheckedChange={setPttSound}
                                 aria-label={t('settingsVoice.pttSound')}
@@ -330,7 +330,7 @@ export function VoiceSettings() {
                         subtitle={t('settingsVoice.skipPermissionsHint')}
                         right={
                             <Switch.Root
-                                className="set-switch"
+                                className="set-switch vh-hit"
                                 checked={skipPermissions}
                                 onCheckedChange={setSkipPermissions}
                                 aria-label={t('settingsVoice.skipPermissions')}

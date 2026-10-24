@@ -66,6 +66,12 @@ export function fsBreadcrumbs(path: string): FsCrumb[] {
     return crumbs;
 }
 
+/** B-798 (P1-5): the trail scrolls horizontally and the CURRENT folder is its last
+ *  crumb — keep the end in view (the toolbar beside it covered the tail on phones). */
+export function revealLastCrumb(el: { scrollLeft: number; scrollWidth: number; clientWidth: number } | null): void {
+    if (el && el.scrollWidth > el.clientWidth) el.scrollLeft = el.scrollWidth - el.clientWidth;
+}
+
 /** Human-readable byte size: 512 → "512 B", 2048 → "2.0 KB", … */
 export function formatFsSize(bytes: number | undefined): string {
     if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return '';
