@@ -160,7 +160,7 @@ function Toggle({
 }) {
   return (
     <Switch.Root
-      className="set-switch"
+      className="set-switch vh-hit"
       checked={checked}
       onCheckedChange={onChange}
       disabled={disabled}
@@ -1418,7 +1418,7 @@ function Snippets() {
               right={
                 <button
                   type="button"
-                  className="set-header__back"
+                  className="set-icon-btn"
                   aria-label={t('common.delete')}
                   onClick={(e) => {
                     e.stopPropagation();

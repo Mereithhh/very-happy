@@ -170,13 +170,27 @@
 
 /* touch: bump hit targets (same rationale as files.css) */
 @media (pointer: coarse) {
+  /* B-798 (P1-5): every directory-picker control reaches the 44px floor (was
+     crumbs ~21, toolbar 36, rows 37, retry 27) */
   .fsb-iconbtn {
-    width: 36px;
-    height: 36px;
+    width: var(--hit);
+    height: var(--hit);
   }
   .fsb-row {
     padding-top: 9px;
     padding-bottom: 9px;
+    min-height: var(--hit);
+  }
+  .fsb-crumb {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--hit);
+    min-height: var(--hit);
+    padding: 0 var(--sp-2);
+  }
+  .fsb-retry {
+    min-height: var(--hit);
   }
 }
 
@@ -329,6 +343,9 @@
 .fsb-pickbtn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+@media (pointer: coarse) {
+  .fsb-pickbtn { min-height: var(--hit); } /* B-798 (P1-5): 「用这个目录」 was 29 */
 }
 
 /* Fullscreen: promotes the browser/viewer root into a viewport overlay (both

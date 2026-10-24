@@ -72,7 +72,7 @@ function OutputText({ text }: { text: string }) {
     return (
         <div className="tv-out vh-copyhost">
             <pre className="tv-results">{text}</pre>
-            <CopyButton text={text} className="vh-copy--overlay" />
+            <CopyButton text={text} className="vh-copy--overlay vh-hit" />
         </div>
     );
 }

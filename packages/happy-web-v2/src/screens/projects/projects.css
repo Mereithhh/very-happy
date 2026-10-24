@@ -267,7 +267,7 @@ a.pj-list-main:focus-visible { outline: none; box-shadow: var(--focus-ring); bor
   .pj-list-row[data-testid=project-member] .pj-btn-label { display: none; }
 }
 @media (pointer: coarse) {
-  .pj-settings-nav a { height: 36px; }
+  .pj-settings-nav a { height: var(--hit); } /* B-798 (P1-6): was 36 */
   .pj-instr-input { font-size: 16px; }
   .pj-settings-page .vh-input { padding: 11px 0; font-size: 16px; }
   .pj-list-row { min-height: 48px; }

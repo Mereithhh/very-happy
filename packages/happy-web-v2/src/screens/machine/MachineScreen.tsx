@@ -293,7 +293,7 @@ export function MachineScreen() {
               </Badge>
             )}
             <StatusDot status={online ? 'connected' : 'offline'} pulse={online} />
-            <button type="button" className="set-header__back" onClick={rename} disabled={renaming} aria-busy={renaming} aria-label={t('common.rename')}>
+            <button type="button" className="set-icon-btn" onClick={rename} disabled={renaming} aria-busy={renaming} aria-label={t('common.rename')}>
               {renaming ? <Spinner size={14} /> : <Pencil size={16} />}
             </button>
         </>} />

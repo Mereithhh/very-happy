@@ -226,7 +226,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           {t.sticky && (
             <button
               type="button"
-              className="vh-toast-x"
+              className="vh-toast-x vh-hit"
               aria-label={translate('common.close')}
               onClick={(e) => {
                 e.stopPropagation();

@@ -238,7 +238,7 @@ function AgentText({
                     <CollapsePanel id={thinkingId} open={open} className="msg-thinking-body vh-copyhost">
                         <Markdown text={content} />
                         {/* copies the thinking source text (wrapper stripped) */}
-                        <CopyButton text={content} className="vh-copy--overlay" label={t('message.copyMessage')} />
+                        <CopyButton text={content} className="vh-copy--overlay vh-hit" label={t('message.copyMessage')} />
                     </CollapsePanel>
                 </div>
             </div>

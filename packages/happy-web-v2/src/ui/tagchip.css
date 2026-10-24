@@ -137,3 +137,22 @@
     opacity: 1;
   }
 }
+/* B-798 (P1-6): on touch an editable chip is a 44px token and its ✕ owns a full
+   44px square at the chip's end — a ring around the 11px glyph would spill onto
+   the neighbouring chip and delete the wrong tag. Clickable chips grow too. */
+@media (pointer: coarse) {
+  .vh-tag:has(> .vh-tag-x),
+  .vh-tag--btn {
+    min-height: var(--hit);
+  }
+  .vh-tag:has(> .vh-tag-x) {
+    padding: 0 0 0 12px;
+  }
+  /* the -1px block margins let the 44px ✕ cover the chip's 1px borders */
+  .vh-tag-x {
+    justify-content: center;
+    min-width: var(--hit);
+    min-height: var(--hit);
+    margin: -1px 0;
+  }
+}
