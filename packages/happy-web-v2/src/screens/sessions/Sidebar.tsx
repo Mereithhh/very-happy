@@ -1495,7 +1495,7 @@ export function Sidebar() {
                               onPointerDown={prefetchSessionDetail}
                               onClick={() => newProjectSession(project)}
                             ><Plus size={14} /></button>
-                            <ActionDropdownMenu items={projectItems(project)} align="end" sideOffset={4}>
+                            <ActionDropdownMenu items={projectItems(project)} align="end" sideOffset={4} sheetTitle={project.name}>
                               <button type="button" className="sb-project-act" title={projectCopy.actions} aria-label={`${projectCopy.actions}: ${sec.label}`}><MoreHorizontal size={14} /></button>
                             </ActionDropdownMenu>
                             </span>
@@ -2198,7 +2198,7 @@ function SidebarRow({
           {restoring ? <Spinner size={14} /> : <RotateCcw size={16} />}
         </button>
       )}
-      <ActionDropdownMenu items={menuItems} align="end" sideOffset={4}>
+      <ActionDropdownMenu items={menuItems} align="end" sideOffset={4} sheetTitle={sheetTitle}>
         <button className="sb-row-menu" aria-label={t('common.moreActions')} onClick={(e) => e.stopPropagation()}>
           <MoreHorizontal size={16} />
         </button>

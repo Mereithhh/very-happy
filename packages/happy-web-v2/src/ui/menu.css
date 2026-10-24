@@ -1,0 +1,139 @@
+/* Shared action menu panel (ui/Menu.tsx: ⋯ dropdown + right-click / long-press).
+ * Moved here from screens/sessions/sidebar.css (B-798) so every screen that
+ * renders a menu gets the same panel without importing the sidebar. */
+.vh-menu {
+  min-width: 160px;
+  /* B-798 (P0-1): never taller than the room Radix measured beside the trigger
+     (both DropdownMenu and ContextMenu publish it through the popper); a long
+     menu scrolls inside itself instead of running off the screen. */
+  max-height: var(--radix-popper-available-height, 80dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* B-614 (CDS): a floating closed object — popover surface + popover shadow
+     (light: outer ring + drop; dark: inset chamfer + drop). */
+  background: var(--surface-popover);
+  border: 0;
+  border-radius: var(--r-md);
+  padding: 4px;
+  box-shadow: var(--shadow-popover);
+  z-index: 1500;
+}
+.vh-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 8px 10px;
+  font-size: var(--fs-13);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  outline: none;
+}
+/* B-653: every menu row is a 44px touch target (design-language §4). Must stay
+ * AFTER the base rule: the old coarse `padding: 11px` sat above it at equal
+ * specificity, so the base padding won and touch rows rendered 34.8px. */
+@media (pointer: coarse) {
+  .vh-menu-item {
+    min-height: 44px;
+  }
+}
+.vh-menu-item[data-highlighted],
+.vh-menu-item:focus-visible {
+  background: var(--fill-selected);
+  outline: none;
+  box-shadow: none;
+}
+.vh-menu-item.is-danger {
+  color: var(--danger);
+}
+.vh-menu-item[data-disabled] {
+  color: var(--text-faint);
+  pointer-events: none;
+}
+/* every action item carries a 16px icon: dim by default, red on danger
+ * items (inherits the item's danger color), faint when disabled */
+.vh-menu-ico {
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+.vh-menu-item.is-danger .vh-menu-ico,
+.vh-menu-item[data-disabled] .vh-menu-ico {
+  color: inherit;
+}
+.vh-menu-sep {
+  height: var(--hairline);
+  background: var(--line);
+  margin: 4px 6px;
+}
+/* B-798 (U2 step 3): one row of mutually exclusive choices (session 优先级
+   P0 / P1 / P2) — the label on the left, the choices as compact checkbox items. */
+.vh-menu-choices {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 2px 4px 2px 10px;
+}
+.vh-menu-choices-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+  color: var(--text);
+  white-space: nowrap;
+}
+.vh-menu-choices-row {
+  display: flex;
+  gap: 2px;
+}
+.vh-menu-choices .vh-menu-item.vh-menu-choice {
+  justify-content: center;
+  min-width: 36px;
+  padding: 6px 8px;
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  background: var(--fill-soft);
+}
+.vh-menu-choices .vh-menu-item.vh-menu-choice[data-state='checked'] {
+  background: var(--fill-selected);
+  color: var(--text);
+  font-weight: 600;
+}
+@media (pointer: coarse) {
+  .vh-menu-choices .vh-menu-item.vh-menu-choice { min-width: 44px; min-height: 44px; }
+}
+/* B-762 (spec B-760 §5.3) + B-798 (U2): on touch the menu is a bottom sheet —
+   full width above the home indicator, headed by the row's name when it has
+   one, with the page dimmed behind it. Menu.tsx decides when (`menuIsSheet`):
+   every ⋯ and long-press menu on a narrow touch screen, plus the titled
+   long-press menus (sidebar tree rows) on any touch screen. */
+.vh-menu-sheet-title { display: none; }
+@media (pointer: coarse) {
+  [data-radix-popper-content-wrapper]:has(> .vh-menu--sheet) {
+    position: fixed !important;
+    inset: auto calc(12px + var(--sa-r)) calc(12px + var(--sa-b)) calc(12px + var(--sa-l)) !important;
+    transform: none !important;
+    min-width: 0 !important;
+  }
+  .vh-menu--sheet {
+    width: 100%;
+    max-height: 70dvh;
+    overflow-y: auto;
+    padding: var(--sp-2);
+    border-radius: var(--r-lg);
+    box-shadow: 0 0 0 100vmax var(--scrim), var(--shadow-popover);
+  }
+  .vh-menu--sheet .vh-menu-sheet-title {
+    display: block;
+    padding: 10px 12px 6px;
+    color: var(--text-faint);
+    font-size: var(--fs-13);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vh-menu--sheet .vh-menu-item { min-height: 48px; font-size: var(--fs-15); }
+  .vh-menu--sheet .vh-menu-choices-label { font-size: var(--fs-15); }
+  .vh-menu--sheet .vh-menu-choices .vh-menu-item.vh-menu-choice { min-width: 52px; font-size: var(--fs-14); }
+}
