@@ -216,6 +216,52 @@ describe('ApiSocket resume liveness', () => {
         apiSocket.disconnect();
     });
 
+    // B-803b (e2e B6): the socket died while hidden and its reconnect attempt
+    // went into the dead path; it only failed at socket.io's 20s connect
+    // timeout, 18s after the resume.
+    it('reconnects at once when still connecting on an attempt begun while hidden', async () => {
+        const { apiSocket, control } = await load();
+        const visibility = await visibilityHarness();
+        const disconnected = control.on.mock.calls.find((c: any[]) => c[0] === 'disconnect')![1];
+        visibility.set('hidden');
+        control.connected = false;
+        disconnected('ping timeout');
+        visibility.set('visible');
+        await expect(apiSocket.checkLiveness()).resolves.toBe('reconnected');
+        expect(state.centralAck).not.toHaveBeenCalledWith('ping');
+        expect(control.disconnect).toHaveBeenCalledTimes(1);
+        expect(control.connect).toHaveBeenCalledTimes(1);
+        expect(control.disconnect.mock.invocationCallOrder[0]).toBeLessThan(control.connect.mock.invocationCallOrder[0]);
+        visibility.detach();
+        apiSocket.disconnect();
+    });
+
+    it('「重试」: reconnectIfDown opens a fresh attempt only while the socket is down', async () => {
+        const { apiSocket, control } = await load();
+        expect(apiSocket.reconnectIfDown()).toBe(false);
+        expect(control.disconnect).not.toHaveBeenCalled();
+        control.connected = false;
+        expect(apiSocket.reconnectIfDown()).toBe(true);
+        expect(control.disconnect).toHaveBeenCalledTimes(1);
+        expect(control.connect).toHaveBeenCalledTimes(1);
+        expect(control.disconnect.mock.invocationCallOrder[0]).toBeLessThan(control.connect.mock.invocationCallOrder[0]);
+        apiSocket.disconnect();
+    });
+
+    it('leaves a reconnect that began in this foreground to the manager', async () => {
+        const { apiSocket, control } = await load();
+        const visibility = await visibilityHarness();
+        const disconnected = control.on.mock.calls.find((c: any[]) => c[0] === 'disconnect')![1];
+        visibility.set('hidden');
+        visibility.set('visible');
+        control.connected = false;
+        disconnected('transport close');
+        await expect(apiSocket.checkLiveness()).resolves.toBe('skipped');
+        expect(control.disconnect).not.toHaveBeenCalled();
+        visibility.detach();
+        apiSocket.disconnect();
+    });
+
     it('forces exactly one disconnect+connect when the ping gets no ack and the socket still claims to be connected', async () => {
         const { apiSocket, control } = await load();
         state.centralAck.mockImplementation(async (event: string) => {

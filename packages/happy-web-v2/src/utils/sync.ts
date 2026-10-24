@@ -38,15 +38,17 @@ export class InvalidateSync {
                 resolve();
                 return;
             }
-            const timer = setTimeout(done, ms);
-            function done() {
+            // B-803b: a sleep that ends on its own must clear `_wake` too —
+            // otherwise a restart() during the next attempt takes the
+            // "still sleeping" branch and never aborts that attempt.
+            const done = () => {
                 clearTimeout(timer);
+                if (this._wake === wake) this._wake = null;
                 resolve();
-            }
-            this._wake = () => {
-                this._wake = null;
-                done();
             };
+            const wake = () => done();
+            const timer = setTimeout(done, ms);
+            this._wake = wake;
         }),
     });
 

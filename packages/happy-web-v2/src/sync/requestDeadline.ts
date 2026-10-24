@@ -78,7 +78,14 @@ export async function fetchWithDeadline(
  * polyfill, or a test double): the caller's await must end at the deadline.
  */
 export function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-    if (signal.aborted) return Promise.reject(abortReason(signal));
+    if (signal.aborted) {
+        // B-803b: the caller already started `promise` (a fetch on this
+        // aborted signal) — it rejects too; handle it, or a restart that lands
+        // between the credentials read and the fetch surfaces as an unhandled
+        // 「Superseded by restart」 page error.
+        promise.catch(() => {});
+        return Promise.reject(abortReason(signal));
+    }
     return new Promise<T>((resolve, reject) => {
         const onAbort = () => reject(abortReason(signal));
         signal.addEventListener('abort', onAbort, { once: true });

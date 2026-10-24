@@ -115,6 +115,48 @@ describe('B-803 catch-up restart: a stuck GET is aborted and re-issued at once',
         await vi.advanceTimersByTimeAsync(1);
         expect(h.fetcher.calls).toHaveLength(2);
     });
+
+    // B-803b: the sleep that ended on its own left `_wake` set, so restart()
+    // took the "still sleeping" branch and never aborted the retry (e2e B3:
+    // the resume did nothing; the catch-up waited for the socket reconnect).
+    it('restart() aborts a retry that started after a backoff sleep ended on its own', async () => {
+        const h = harness();
+        h.sync.invalidate();
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(SYNC_READ_TIMEOUT_MS);
+        // The backoff sleep (≤ 250ms) runs out by itself; the retry is in flight.
+        await vi.advanceTimersByTimeAsync(300);
+        expect(h.fetcher.calls).toHaveLength(2);
+        const retry = h.fetcher.calls[1];
+        h.sync.restart();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(retry.signal.aborted).toBe(true);
+        expect(h.fetcher.calls).toHaveLength(3);
+    });
+});
+
+// B-803b (QA6 P2-1): a restart that lands between the credentials read and
+// the fetch hands fetchWithDeadline an aborted signal; the fetch it already
+// started rejects too and must not surface as an unhandled page error.
+describe('B-803b an already-aborted read leaves no unhandled rejection', () => {
+    it('fetchWithDeadline on an aborted signal rejects once, and the started fetch is handled', async () => {
+        vi.useRealTimers();
+        const unhandled: unknown[] = [];
+        const onUnhandled = (reason: unknown) => unhandled.push(reason);
+        process.on('unhandledRejection', onUnhandled);
+        try {
+            // Like the browser's: a fetch on an aborted signal rejects at once.
+            const browserFetch = ((_url: string, init?: RequestInit) => Promise.reject(init!.signal!.reason)) as unknown as typeof fetch;
+            const outer = new AbortController();
+            outer.abort(new DOMException('Superseded by restart', 'AbortError'));
+            await expect(fetchWithDeadline(browserFetch, '/messages?after_seq=1', { signal: outer.signal, timeoutMs: SYNC_READ_TIMEOUT_MS }))
+                .rejects.toMatchObject({ message: 'Superseded by restart' });
+            await new Promise((r) => setTimeout(r, 20));
+            expect(unhandled).toEqual([]);
+        } finally {
+            process.off('unhandledRejection', onUnhandled);
+        }
+    });
 });
 
 describe('B-803 lock is not held across the network', () => {
@@ -219,6 +261,10 @@ describe('B-803 wiring in sync.ts / apiSocket.ts', () => {
         expect(block(sync, 'onSessionEnter = (sessionId: string, opts', 300)).toContain('if (opts?.restartFetch) {\n            this.restartMessagesSync(sessionId);');
         expect(block(sync, 'private restartMessagesSync(sessionId: string) {', 200)).toContain('this.getMessagesSync(sessionId).restart();');
         expect(block(sync, 'onRecovered: () => {', 300)).toContain('this.restartDeferredCatchUps();');
+        // B-803b: the browser's own `online` event releases the deferred ones (the socket may still be down).
+        const subscribe = block(sync, 'subscribe: (onChange) => {', 900);
+        expect(subscribe).toContain("const onOnline = () => this.restartDeferredCatchUps({ deferredOnly: true });\n                    window.addEventListener('online', onOnline);");
+        expect(subscribe).toContain("window.removeEventListener('online', onOnline);");
     });
 
     it('the messages InvalidateSync passes its abort signal into fetchMessages', () => {
@@ -226,9 +272,16 @@ describe('B-803 wiring in sync.ts / apiSocket.ts', () => {
     });
 
     it('offline: no catch-up request, the session is remembered for recovery', () => {
-        const fetchMessages = block(sync, 'private fetchMessages = async', 800);
-        expect(fetchMessages).toContain('if (isNetworkOffline()) {');
+        const fetchMessages = block(sync, 'private fetchMessages = async', 1_200);
+        expect(fetchMessages).toContain('if (!isBrowserOnline()) {');
         expect(fetchMessages).toContain('this.messagesDeferredOffline.add(sessionId);\n            return;');
+    });
+
+    // B-803b: 8s of socket-down after a resume made the bar say 「离线」, and the
+    // catch-up then waited for the socket although REST worked (e2e B6 17–19s).
+    it('a socket that is still reconnecting does not defer the catch-up', () => {
+        const fetchMessages = block(sync, 'private fetchMessages = async', 1_200);
+        expect(fetchMessages.slice(0, fetchMessages.indexOf('this.messagesDeferredOffline.add('))).not.toContain('isNetworkOffline()');
     });
 
     it('fetchMessages does not wrap the network in the session lock', () => {
@@ -236,11 +289,20 @@ describe('B-803 wiring in sync.ts / apiSocket.ts', () => {
         expect(fetchMessages.slice(0, fetchMessages.indexOf('private restartMessagesSync'))).not.toContain('inLock');
     });
 
-    it('catch-up reads carry the timeout', () => {
-        expect(block(sync, 'private fetchHistoryPage = async', 400)).toContain('{ signal, timeoutMs: SYNC_READ_TIMEOUT_MS }');
-        expect(block(sync, 'private fetchForwardSince = async', 800)).toContain('{ signal: pageSignal, timeoutMs: SYNC_READ_TIMEOUT_MS }');
-        expect(block(sync, 'private fetchSessions = async', 800)).toContain('timeoutMs: SYNC_READ_TIMEOUT_MS,');
+    it('catch-up reads carry the timeout, and every page read is hedged on another connection (B-803b)', () => {
+        const history = block(sync, 'private fetchHistoryPage = (sessionId: string, beforeSeq: number, signal?: AbortSignal) => hedgedRead(async (attemptSignal, pool) => {', 1_100);
+        expect(history).toContain('{ signal: attemptSignal, timeoutMs: SYNC_READ_TIMEOUT_MS, ...pool },');
+        expect(history).toContain('}, { signal })');
+        const forward = block(sync, 'private fetchForwardSince = async', 1_400);
+        expect(forward).toContain('fetchPage: (afterSeq, pageSignal) => hedgedRead(async (attemptSignal, pool) => {');
+        expect(forward).toContain('{ signal: attemptSignal, timeoutMs: SYNC_READ_TIMEOUT_MS, ...pool },');
+        expect(forward).toContain('}, { signal: pageSignal }),');
+        const sessions = block(sync, 'private fetchSessions = async', 1_200);
+        expect(sessions).toContain('const data = await hedgedRead(async (signal, pool) => {');
+        expect(sessions).toContain('timeoutMs: SYNC_READ_TIMEOUT_MS,\n                signal,\n                ...pool,');
         expect(queue).toContain("timeoutMs: !init?.method || init.method === 'GET' ? SYNC_READ_TIMEOUT_MS : undefined,");
+        // the queue READ is hedged (the dock hand-off waits for it); writes go out once
+        expect(queue).toContain("if (init?.method && init.method !== 'GET') return send();\n        return hedgedRead((signal, pool) => send({ signal, ...pool }));");
         expect(block(api, 'async request(path: string', 800)).toContain('return fetchWithDeadline(fetch, url, {');
     });
 });

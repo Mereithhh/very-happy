@@ -19,6 +19,7 @@ import type { MessageModeMeta } from './messageMeta';
 import type { Metadata } from './storageTypes';
 import { readOutboundUserRecord } from './outboundUserRecord';
 import { SYNC_READ_TIMEOUT_MS } from './requestDeadline';
+import { hedgedRead } from './hedgedRead';
 import { isNetworkOffline } from './networkStatus';
 import type { ApiPromptQueueUpdate } from './apiTypes';
 
@@ -353,13 +354,17 @@ export const promptQueueTranscript: {
 export const promptQueueStore = createPromptQueueStore({
     request: async (path, init) => {
         const { apiSocket } = await import('./apiSocket');
-        const response = await apiSocket.request(path, {
+        const send = (extra?: RequestInit) => apiSocket.request(path, {
             ...init,
+            ...extra,
             headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
             // B-803: reads are bounded; writes keep their own handling.
             timeoutMs: !init?.method || init.method === 'GET' ? SYNC_READ_TIMEOUT_MS : undefined,
         });
-        return response;
+        // B-803b: the queue read is hedged too (hedgedRead.ts) — the dock's
+        // hand-off waits for it after a resume (e2e --h2 A4). Writes are not.
+        if (init?.method && init.method !== 'GET') return send();
+        return hedgedRead((signal, pool) => send({ signal, ...pool }));
     },
     encrypt: (sessionId, text, modeMeta) => import('./sync').then(({ sync }) => sync.encryptQueuedPrompt(sessionId, text, modeMeta)),
     decrypt: (sessionId, encrypted) => import('./sync').then(({ sync }) => sync.decryptQueuedPrompt(sessionId, encrypted)),

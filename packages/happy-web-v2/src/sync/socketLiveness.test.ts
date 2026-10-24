@@ -10,6 +10,15 @@ describe('decideProbe', () => {
     });
     it('probes a socket that still claims to be connected', () => {
         expect(decideProbe({ connectedAfterEmit: true, handoverInFlight: false })).toBe('probe');
+        expect(decideProbe({ connectedAfterEmit: true, handoverInFlight: false, attemptFromEarlierEpoch: true })).toBe('probe');
+    });
+    // B-803b: a handshake begun while hidden waits out socket.io's 20s connect timeout on a dead path.
+    it('reconnects now when still connecting on an attempt begun before this foreground', () => {
+        expect(decideProbe({ connectedAfterEmit: false, handoverInFlight: false, attemptFromEarlierEpoch: true })).toBe('reconnect');
+    });
+    it('leaves an attempt of this foreground (e.g. the one the emit just triggered) and handover alone', () => {
+        expect(decideProbe({ connectedAfterEmit: false, handoverInFlight: false, attemptFromEarlierEpoch: false })).toBe('skip');
+        expect(decideProbe({ connectedAfterEmit: false, handoverInFlight: true, attemptFromEarlierEpoch: true })).toBe('skip');
     });
 });
 
