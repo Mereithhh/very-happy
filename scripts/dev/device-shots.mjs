@@ -23,9 +23,9 @@
  *   - outside：右边缘越出视口的可见元素（应为空）
  *   - hoverOnly：触屏上占位却透明（只有 hover 才显示）的按钮（应为空）
  *   - inInset：带 safeArea 的预设下，落进侧边 inset（系统状态列）里的可点控件（应为空）
- *   - smallTargets：粗指针下宽或高 < 44px 的可见按钮（B-798 起是门禁：不在 touchGate.mjs 的
- *     SMALL_TARGET_ALLOWLIST 里就失败；绝对定位 ::before/::after 扩出的热区计入，display:inline 的
- *     行内文字链接按 WCAG 2.5.8 例外放行）
+ *   - smallTargets：粗指针下实际命中区宽或高 < 44px 的可见按钮（B-798 起是门禁：不在 touchGate.mjs 的
+ *     SMALL_TARGET_ALLOWLIST 里就失败；命中区用 elementFromPoint 从中心往外走，.vh-hit 等 ::after 热区计入、
+ *     被遮挡/裁剪的部分不计；display:inline 的行内文字链接按 WCAG 2.5.8 例外放行）
  *   - hiddenActions：粗指针下有 aria-label、却排成 0×0 的按钮，而它所在的行在屏幕上（B-798：hover 才显示、
  *     触屏只能长按）。门禁，名单是 HIDDEN_ACTION_ALLOWLIST
  * `--fold` 在会话页、汇报板、团队页、项目页和新建对话弹窗上做 466×678 ↔ 890×626
@@ -264,17 +264,18 @@ function measure(sa) {
         if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) return null;
         return r;
     };
-    // An absolutely positioned ::before / ::after with negative insets widens the hit area (the .vh-hit pattern).
+    // The effective hit area: walk out from the centre with elementFromPoint while the point still lands on the
+    // control (B-798 E: .vh-hit's centred ::after, negative-inset ::after, and anything covering or clipping it all count).
     const hitBox = (el, r) => {
-        let { width, height } = r;
-        for (const which of ['::before', '::after']) {
-            const cs = getComputedStyle(el, which);
-            if (cs.content === 'none' || cs.position !== 'absolute' || cs.pointerEvents === 'none') continue;
-            const px = (v) => (v.endsWith('px') ? parseFloat(v) : 0);
-            width = Math.max(width, r.width - px(cs.left) - px(cs.right), px(cs.width));
-            height = Math.max(height, r.height - px(cs.top) - px(cs.bottom), px(cs.height));
-        }
-        return { width, height };
+        const owns = (x, y) => {
+            if (x < 0 || y < 0 || x >= vw || y >= innerHeight) return false;
+            const h = document.elementFromPoint(x, y);
+            return !!h && (h === el || el.contains(h) || [...(el.labels ?? [])].some((l) => l.contains(h)));
+        };
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        if (!owns(cx, cy)) return null; // covered (under a sheet, panel or scrim): not a target right now
+        const reach = (dx, dy) => { let n = 0; while (n < 30 && owns(cx + dx * (n + 1), cy + dy * (n + 1))) n++; return n; };
+        return { width: reach(-1, 0) + reach(1, 0) + 1, height: reach(0, -1) + reach(0, 1) + 1 };
     };
     // Stable allowlist key: tag + first class, or tag + the nearest classed ancestor's first class.
     const firstClass = (el) => String(el.getAttribute('class') ?? '').trim().split(/\s+/)[0];
@@ -306,8 +307,8 @@ function measure(sa) {
             // WCAG 2.5.8 inline exception: a link or text button inside a sentence.
             if (getComputedStyle(el).display === 'inline') continue;
             const hit = hitBox(el, r);
-            if (hit.width >= 44 && hit.height >= 44) continue;
-            if (r.width < 44 || r.height < 44) smallTargets.push({ key: keyOf(el), text: `${label(el)} ${Math.round(r.width)}×${Math.round(r.height)}` });
+            if (!hit || (hit.width >= 44 && hit.height >= 44)) continue;
+            if (r.width < 44 || r.height < 44) smallTargets.push({ key: keyOf(el), text: `${label(el)} ${Math.round(r.width)}×${Math.round(r.height)} hit ${hit.width}×${hit.height}` });
         }
     }
     // B-798: labelled actions laid out as 0×0 (display:none until a hover touch never sends) inside a row that is on screen.
