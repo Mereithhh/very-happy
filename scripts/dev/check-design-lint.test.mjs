@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findNativeControls, findRawColors, findUnguardedHovers, isFieldFocusSelector, lintFile, parseAddedLines, scanAllHover } from './check-design-lint.mjs';
+import { REVEAL_ALLOWLIST, WEB_SRC, findNativeControls, findRawColors, findSmallTouchTargets, findTouchHiddenReveals, findUnguardedHovers, isFieldFocusSelector, lintFile, parseAddedLines, scanAllHover, scanAllReveal } from './check-design-lint.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'check-design-lint.mjs');
 
@@ -224,4 +224,58 @@ test('hover-unguarded: only new lines are checked, and design-lint-allow exempts
 test('the whole web src has zero unguarded :hover rules (B-728 — new code must stay guarded)', () => {
     const hits = scanAllHover();
     assert.deepEqual(hits.map(h => `${h.file}:${h.line}`), []);
+});
+
+const FINE = '@media (hover: hover) and (pointer: fine)';
+
+test('hover-reveal-needs-touch: hidden outside the guard + revealed on hover = invisible on touch (B-798 U1)', () => {
+    // the B-762 sidebar project ＋ / ⋯ shape (P1-1)
+    const bad = `.acts { display: none; }\n${FINE} {\n  .row:hover .acts, .row:focus-within .acts { display: inline-flex; }\n}`;
+    assert.deepEqual(lintAll('a.css', bad), [['hover-reveal-needs-touch', 1], ['hover-reveal-needs-touch', 3]]);
+    // either end of the pair on a new line is enough
+    assert.deepEqual(lintFile('a.css', bad, new Set([1])).map(f => f.rule), ['hover-reveal-needs-touch']);
+    assert.deepEqual(lintFile('a.css', bad, new Set([2])), []);
+    // opacity / visibility hide the same way
+    assert.deepEqual(findTouchHiddenReveals(`.m { opacity: 0; }\n${FINE} { .r:hover .m { opacity: 1; } }`).map(h => h.key), ['.m']);
+    assert.deepEqual(findTouchHiddenReveals(`.m { visibility: hidden; }\n${FINE} { .r:hover .m { visibility: visible; } }`).map(h => h.key), ['.m']);
+});
+
+test('hover-reveal-needs-touch: visible by default, or shown again on coarse / hover:none, passes', () => {
+    // the fix: hide only inside the fine-hover guard
+    assert.deepEqual(lintAll('a.css', `.acts { display: inline-flex; }\n${FINE} {\n  .acts { display: none; }\n  .row:hover .acts { display: inline-flex; }\n}`), []);
+    assert.deepEqual(lintAll('a.css', `.m { opacity: 0; }\n${FINE} { .r:hover .m { opacity: 1; } }\n@media (pointer: coarse) { .m { opacity: 1; } }`), []);
+    assert.deepEqual(lintAll('a.css', `.m { opacity: 0; }\n${FINE} { .r:hover .m { opacity: 1; } }\n@media (hover: none) { .r .m { opacity: 1; } }`), []);
+    // a different property never undoes the hide: display:none at a width + opacity reveal is not a pair
+    assert.deepEqual(lintAll('a.css', `@media (hover: hover) { .p { opacity: 0; } .b:hover .p { opacity: 1; } }\n@media (max-width: 600px) { .p { display: none; } }`), []);
+    // state hides (.x.is-off, .x[hidden], .x:empty) are not the base style
+    assert.deepEqual(lintAll('a.css', `.x.is-off { display: none; }\n.x:empty { display: none; }\n${FINE} { .r:hover .x { display: block; } }`), []);
+    // the coarse show must name the hidden class
+    assert.deepEqual(findTouchHiddenReveals(`.m { opacity: 0; }\n${FINE} { .r:hover .m { opacity: 1; } }\n@media (pointer: coarse) { .other { opacity: 1; } }`).length, 1);
+});
+
+test('hover-reveal-needs-touch: design-lint-allow on the hiding rule exempts', () => {
+    assert.deepEqual(lintAll('a.css', `/* design-lint-allow: touch taps the row instead */\n.m { opacity: 0; }\n${FINE} { .r:hover .m { opacity: 1; } }`), []);
+});
+
+test('the whole web src: touch-hidden hover reveals only from REVEAL_ALLOWLIST, and no stale entries (B-798)', () => {
+    const hits = scanAllReveal();
+    assert.deepEqual(hits.filter(h => !h.allowed).map(h => `${h.file}:${h.line} ${h.key}`), []);
+    const live = new Set(hits.map(h => `${h.file.slice(WEB_SRC.length)} ${h.key}`));
+    assert.deepEqual([...REVEAL_ALLOWLIST].filter(k => !live.has(k)), [], 'fixed — remove it from REVEAL_ALLOWLIST');
+});
+
+test('touch-target: interactive classes under 44px on coarse are reported (B-798 U3)', () => {
+    assert.deepEqual(lintAll('a.css', '@media (pointer: coarse) {\n  .x-btn { min-height: 36px; }\n  .row-act { width: 40px; height: 40px; }\n}'),
+        [['touch-target', 2], ['touch-target', 3], ['touch-target', 3]]);
+    assert.deepEqual(findSmallTouchTargets('@media (pointer: coarse) { .x .vh-menu-item { height: 32px; } }').length, 1);
+});
+
+test('touch-target: 44px, desktop sizes, non-interactive classes, icons and ::after hit areas pass', () => {
+    assert.deepEqual(lintAll('a.css', '@media (pointer: coarse) { .x-btn { min-height: 44px; width: 48px; } }'), []);
+    assert.deepEqual(lintAll('a.css', '.x-btn { height: 28px; }'), []);
+    assert.deepEqual(lintAll('a.css', '@media (pointer: coarse) { .x-label { height: 20px; } .x-btn svg { width: 18px; } }'), []);
+    assert.deepEqual(lintAll('a.css', '@media (pointer: coarse) { .x-btn { height: 2px; } }'), []);
+    assert.deepEqual(lintAll('a.css', '.x-chevron::after { content: ""; position: absolute; inset: -8px; }\n@media (pointer: coarse) { .x-chevron { height: 40px; } }'), []);
+    // hover-capable coarse devices still count; hover:none alone is not a size context
+    assert.deepEqual(findSmallTouchTargets('@media (hover: none) { .x-btn { height: 32px; } }').length, 0);
 });

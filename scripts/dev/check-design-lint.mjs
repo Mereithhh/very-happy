@@ -21,6 +21,13 @@
  *                    ui/Summary。白名单只有组件自身（NATIVE_CONTROL_OWNERS）；字符串字面量里的同名文本不算。
  *   ⑥ hover-unguarded  :hover 规则不在 @media (hover: hover) 里（或写在 pointer: coarse 里）（B-728）。
  *                    这条另有全仓模式 `--all-hover`（CI 的 node 测试跑它，存量必须为 0）。
+ *   ⑦ hover-reveal-needs-touch  hover / focus-within 才显示的控件（hover 守卫外 display:none / opacity:0 /
+ *                    visibility:hidden，守卫内显示），在 (pointer: coarse) / (hover: none) 下也必须可见（B-798 U1）。
+ *                    改动行涉及隐藏规则或显示规则任一行即报；全仓模式 `--all-reveal`，存量只许是
+ *                    REVEAL_ALLOWLIST 里的（CI 的 node 测试跑它，名单只减不增）。
+ *   ⑧ touch-target   (pointer: coarse) 块里给交互类（按钮 / 操作 / 菜单项 / 标签页 / chip / 开关…）写
+ *                    16–43px 的 height / min-height / width / min-width（B-798 U3）：触屏命中区至少 44px，
+ *                    视觉小的用 ::after 扩热区。
  * 宁可漏报不误报：tsx 只认明显的色值字符串；③④⑥ 只查 css。
  *
  * 豁免：同一行或上一行写 `design-lint-allow: <理由>`（css 用块注释，tsx 用 // 或 JSX 注释），
@@ -30,6 +37,7 @@
  *   node scripts/dev/check-design-lint.mjs                    # base=origin/main, head=HEAD
  *   node scripts/dev/check-design-lint.mjs --base <ref> [--head <ref>]
  *   node scripts/dev/check-design-lint.mjs --all-hover         # 全仓扫描未守卫的 :hover
+ *   node scripts/dev/check-design-lint.mjs --all-reveal        # 全仓扫描触屏看不到的 hover 显示控件（含 allowlist 内的）
  * 退出码：0 无发现；1 有发现；2 参数或 git 错误。
  */
 import { execFileSync } from 'node:child_process';
@@ -331,6 +339,154 @@ export function findHoverRules(code) {
     return out;
 }
 
+/** 全部样式规则及其外层 @media：{ selector, parts, body, selStart, open, end, media: string[] }。 */
+export function parseRulesWithMedia(code) {
+    const out = [];
+    const stack = [];
+    let segStart = 0;
+    for (let i = 0; i < code.length; i++) {
+        const ch = code[i];
+        if (ch === '{') {
+            const rawSeg = code.slice(segStart, i);
+            stack.push({ selector: rawSeg.trim(), selStart: segStart + rawSeg.length - rawSeg.trimStart().length, open: i });
+            segStart = i + 1;
+        } else if (ch === '}') {
+            const open = stack.pop();
+            if (open && !open.selector.startsWith('@')) {
+                out.push({
+                    selector: open.selector, parts: splitSelectorList(open.selector), body: code.slice(open.open + 1, i),
+                    selStart: open.selStart, open: open.open, end: i,
+                    media: stack.filter(s => s.selector.startsWith('@media')).map(s => s.selector),
+                });
+            }
+            segStart = i + 1;
+        } else if (ch === ';') {
+            segStart = i + 1;
+        }
+    }
+    return out;
+}
+
+const TOUCH_MEDIA_RE = /pointer\s*:\s*coarse|(?:any-)?hover\s*:\s*none/;
+const isTouchMedia = (media) => media.some(m => TOUCH_MEDIA_RE.test(m) && !isHoverGuard(m));
+const isGuardMedia = (media) => media.some(isHoverGuard);
+
+/** 选择器分支的最后一个复合选择器（去掉带括号的伪类参数），没有伪元素时返回 { classes, pseudo }。 */
+export function subjectOf(part) {
+    let depth = 0;
+    let last = '';
+    for (const ch of part) {
+        if (ch === '(' || ch === '[') depth++;
+        else if (ch === ')' || ch === ']') depth--;
+        if (depth === 0 && /[\s>+~]/.test(ch)) { last = ''; continue; }
+        last += ch;
+    }
+    if (/::/.test(last)) return null;
+    const flat = last.replace(/:[\w-]+\((?:[^()]|\([^()]*\))*\)/g, '').replace(/\[[^\]]*\]/g, '');
+    return { classes: [...flat.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map(m => m[1]), pseudo: /:[\w-]/.test(flat) };
+}
+
+/**
+ * 声明体里的显隐，按属性：{ display?, visibility?, opacity? }，值为 'hide'（none / hidden / 0）或 'show'。
+ * 按属性配对：display:none 只能被 display 显示规则撤销，opacity:0 只能被 opacity 撤销。
+ */
+export function visibilityOf(body) {
+    const out = {};
+    for (const decl of body.split(';')) {
+        const m = /^\s*(display|visibility|opacity)\s*:\s*([^!]+?)\s*(?:!important\s*)?$/.exec(decl);
+        if (!m) continue;
+        const [, prop, value] = m;
+        const hidden = prop === 'display' ? value === 'none' : prop === 'visibility' ? value === 'hidden' : /^0*(?:\.0*)?%?$/.test(value);
+        out[prop] = hidden ? 'hide' : 'show';
+    }
+    return out;
+}
+
+const REVEAL_TRIGGER_RE = /:(?:hover|focus-within)(?![\w-])/;
+const subset = (a, b) => a.every(c => b.includes(c));
+
+/**
+ * ⑦ hover-reveal-needs-touch（B-798 U1）：守卫里由 :hover / :focus-within 显示的控件，若在守卫外被隐藏，
+ * 触屏下必须另有 (pointer: coarse) / (hover: none) 规则让它可见。推荐写法是反过来：默认可见，只在
+ * `@media (hover: hover) and (pointer: fine)` 里隐藏（.sb-workspace-new、.sb-tree-acts）。
+ * 返回 [{ key, line, hideLine, message }]（code 已去注释），key = 「被隐藏的类」用于 allowlist。
+ */
+export function findTouchHiddenReveals(code) {
+    const rules = parseRulesWithMedia(code);
+    const hides = [];
+    const touchShows = [];
+    for (const r of rules) {
+        const vis = visibilityOf(r.body);
+        for (const [prop, v] of Object.entries(vis)) {
+            for (const part of r.parts) {
+                const subj = subjectOf(part);
+                if (!subj || subj.classes.length === 0) continue;
+                if (v === 'hide' && !isGuardMedia(r.media) && !isTouchMedia(r.media) && !subj.pseudo && !/[:[]/.test(part)) hides.push({ prop, classes: subj.classes, rule: r });
+                if (v === 'show' && isTouchMedia(r.media)) touchShows.push({ prop, classes: subj.classes });
+            }
+        }
+    }
+    const out = [];
+    const seen = new Set();
+    for (const r of rules) {
+        if (!isGuardMedia(r.media)) continue;
+        const vis = visibilityOf(r.body);
+        for (const part of r.parts) {
+            if (!REVEAL_TRIGGER_RE.test(stripNot(part))) continue;
+            const subj = subjectOf(part);
+            if (!subj || subj.classes.length === 0) continue;
+            for (const hide of hides) {
+                if (vis[hide.prop] !== 'show' || !subset(hide.classes, subj.classes)) continue;
+                if (touchShows.some(show => show.prop === hide.prop && subset(hide.classes, show.classes))) continue;
+                const key = hide.classes.map(c => `.${c}`).join('');
+                const line = lineAt(code, r.selStart + Math.max(0, r.selector.indexOf(part)));
+                if (seen.has(`${key}@${line}`)) continue;
+                seen.add(`${key}@${line}`);
+                out.push({
+                    key, line, hideLine: lineAt(code, hide.rule.selStart),
+                    message: `「${key}」在 hover 守卫外隐藏、只靠「${part.replace(/\s+/g, ' ')}」显示：触屏永远看不到（B-798 U1）。改成默认可见、只在 ${HOVER_GUARD} 里隐藏，或在 (pointer: coarse) 下显示`,
+                });
+            }
+        }
+    }
+    return out;
+}
+
+/**
+ * B-798 存量：hover 才显示、触屏看不到的控件（`--all-reveal` 的允许名单，key = 相对 WEB_SRC 的文件 + 被隐藏的类）。
+ * 只减不增：修好的条目要删掉（node 测试会报「已不存在」），新增问题不许进名单。
+ */
+export const REVEAL_ALLOWLIST = new Set([
+    'screens/sessions/sidebar.css .sb-tree-project-acts', // B-798 PR C
+]);
+
+/** ⑧ 交互类名（最后一个复合选择器里的类以这些词结尾）。 */
+const INTERACTIVE_CLASS_RE = /(?:^|[-_])(?:btn|button|act|action|toggle|close|chevron|menu|item|tab|chip|back|trigger|switch|link|more|new|add)$/i;
+const SIZE_DECL_RE = /(?:^|[\s;{])((?:min-)?(?:height|width))\s*:\s*(\d+(?:\.\d+)?)px/g;
+
+/** ⑧ touch-target：返回 [{ line, message }]（code 已去注释）。同文件给该类写了 ::after / ::before 的视为已扩热区。 */
+export function findSmallTouchTargets(code) {
+    const out = [];
+    const rules = parseRulesWithMedia(code);
+    const expanded = new Set(rules.flatMap(r => r.parts.filter(p => /::?(?:after|before)\b/.test(p))
+        .flatMap(p => [...p.replace(/::?(?:after|before)\b.*$/, '').matchAll(/\.(-?[_a-zA-Z][\w-]*)(?![\w-])/g)].map(m => m[1]).slice(-1))));
+    for (const r of rules) {
+        if (!isTouchMedia(r.media) || !r.media.some(m => /pointer\s*:\s*coarse/.test(m))) continue;
+        const parts = r.parts.filter((part) => {
+            const subj = subjectOf(part);
+            return subj && subj.classes.some(c => INTERACTIVE_CLASS_RE.test(c)) && !subj.classes.some(c => expanded.has(c));
+        });
+        if (!parts.length) continue;
+        for (const m of r.body.matchAll(SIZE_DECL_RE)) {
+            const px = Number(m[2]);
+            if (px < 16 || px >= 44) continue;
+            const at = r.open + 1 + m.index + m[0].indexOf(m[1]);
+            out.push({ line: lineAt(code, at), message: `「${parts.join(', ').replace(/\s+/g, ' ')}」触屏 ${m[1]}: ${m[2]}px < 44px（B-798 U3）：命中区至少 44px，视觉要小就用 ::after 扩热区` });
+        }
+    }
+    return out;
+}
+
 /** code 偏移 → 1-based 行号 */
 function lineAt(code, offset) {
     let n = 1;
@@ -383,6 +539,8 @@ export function lintFile(rel, source, added) {
     const findings = [];
     let rules = null;
     let hoverHits = null;
+    let revealHits = null;
+    let targetHits = null;
     const lineOffsets = [];
     { let off = 0; for (const l of code) { lineOffsets.push(off); off += l.length + 1; } }
 
@@ -423,6 +581,13 @@ export function lintFile(rel, source, added) {
         }
         if (kind === 'css' && hoverHits === null) hoverHits = new Map(findUnguardedHoversRaw(code.join('\n')).map(h => [h.line, h]));
         if (kind === 'css' && hoverHits.has(n)) problems.push({ rule: 'hover-unguarded', message: hoverHits.get(n).message });
+        if (kind === 'css') {
+            // either end of the pair can carry the design-lint-allow
+            revealHits ??= findTouchHiddenReveals(code.join('\n')).filter(h => !allowReason(raw[h.line - 1], raw[h.line - 2])?.reason && !allowReason(raw[h.hideLine - 1], raw[h.hideLine - 2])?.reason);
+            for (const h of revealHits) if (h.line === n || h.hideLine === n) problems.push({ rule: 'hover-reveal-needs-touch', message: h.message });
+            targetHits ??= findSmallTouchTargets(code.join('\n'));
+            for (const h of targetHits) if (h.line === n) problems.push({ rule: 'touch-target', message: h.message });
+        }
         if (problems.length === 0) continue;
         const allow = allowReason(raw[n - 1], raw[n - 2]);
         if (allow?.reason) continue;
@@ -455,6 +620,29 @@ export function scanAllHover(repoRoot = join(dirname(fileURLToPath(import.meta.u
     return hits.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
 }
 
+/** 全仓扫描 ⑦：返回 [{ file, key, line, message, allowed }]，allowed = 在 REVEAL_ALLOWLIST 里。 */
+export function scanAllReveal(repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')) {
+    const root = join(repoRoot, WEB_SRC);
+    const hits = [];
+    const walk = (dir) => {
+        for (const ent of readdirSync(dir, { withFileTypes: true })) {
+            const p = join(dir, ent.name);
+            if (ent.isDirectory()) { if (ent.name !== 'node_modules') walk(p); continue; }
+            if (!ent.name.endsWith('.css')) continue;
+            const rel = relative(root, p).split(sep).join('/');
+            if (EXEMPT_FILES.has(rel)) continue;
+            const source = readFileSync(p, 'utf8');
+            const raw = source.split('\n');
+            for (const h of findTouchHiddenReveals(codeLines(source, 'css').join('\n'))) {
+                if (allowReason(raw[h.line - 1], raw[h.line - 2])?.reason || allowReason(raw[h.hideLine - 1], raw[h.hideLine - 2])?.reason) continue;
+                hits.push({ file: WEB_SRC + rel, ...h, allowed: REVEAL_ALLOWLIST.has(`${rel} ${h.key}`) });
+            }
+        }
+    };
+    walk(root);
+    return hits.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+}
+
 function git(args) {
     return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 }
@@ -480,6 +668,8 @@ function parseArgs(argv) {
             opts[a.slice(2)] = v;
         } else if (a === '--all-hover') {
             opts.allHover = true;
+        } else if (a === '--all-reveal') {
+            opts.allReveal = true;
         } else if (a === '-h' || a === '--help') {
             opts.help = true;
         } else {
@@ -495,7 +685,7 @@ async function main() {
         console.error(`check-design-lint: ${e.message}`); process.exit(2);
     }
     if (opts.help) {
-        console.log('usage: node scripts/dev/check-design-lint.mjs [--base <ref>] [--head <ref>] | --all-hover');
+        console.log('usage: node scripts/dev/check-design-lint.mjs [--base <ref>] [--head <ref>] | --all-hover | --all-reveal');
         return;
     }
     if (opts.allHover) {
@@ -503,6 +693,13 @@ async function main() {
         for (const h of hits) console.log(`${h.file}:${h.line}: [hover-unguarded] ${h.message}\n    > ${h.source}`);
         console.log(`check-design-lint --all-hover: ${hits.length} 处未守卫的 :hover`);
         process.exit(hits.length ? 1 : 0);
+    }
+    if (opts.allReveal) {
+        const hits = scanAllReveal();
+        for (const h of hits) console.log(`${h.file}:${h.line}: [hover-reveal-needs-touch${h.allowed ? ' · allowlist' : ''}] ${h.message}`);
+        const fresh = hits.filter(h => !h.allowed).length;
+        console.log(`check-design-lint --all-reveal: ${hits.length} 处（${fresh} 处不在 REVEAL_ALLOWLIST）`);
+        process.exit(fresh ? 1 : 0);
     }
     let findings;
     try { findings = run(opts); } catch (e) {
