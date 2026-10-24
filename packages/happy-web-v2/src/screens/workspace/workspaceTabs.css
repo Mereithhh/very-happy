@@ -6,16 +6,17 @@
 .workspace-tab-label { min-width:0; padding:8px 10px; font-size:var(--fs-13); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .workspace-tab-close { display:grid; place-items:center; flex:none; width:28px; border-radius:var(--r-md); color:var(--text-faint); }
 @media (hover: hover) and (pointer: fine) { .workspace-tab-close:hover { background:var(--bg-2); color:var(--text); } }
-.workspace-tab-more { display:grid; place-items:center; flex:none; width:28px; height:28px; border-radius:var(--r-md); color:var(--text-faint); }
-@media (hover: hover) and (pointer: fine) { .workspace-tab-more:hover { background:var(--bg-2); color:var(--text); } }
-.workspace-tab-more[data-state='open'] { background:var(--bg-2); color:var(--text); }
+.workspace-tab-more { display:grid; place-items:center; flex:none; width:28px; border-radius:var(--r-md); color:var(--text-faint); }
+.workspace-tab-more[data-state='open'] { background:var(--bg-3); color:var(--text); }
+/* B-798: desktop keeps right-click only — each tab stays label + ✕ (design-language 文件与右侧标签) */
+@media (hover: hover) and (pointer: fine) { .workspace-tab-more { display:none; } }
 .workspace-tab-actions { display:flex; align-items:center; flex:none; padding-inline:4px; }
 @media (pointer:coarse) {
  .workspace-tabs { min-height:44px; }
  .workspace-tab { max-width:280px; }
  .workspace-tab-label, .workspace-tab-close { min-height:44px; }
  .workspace-tab-close { width:44px; }
- .workspace-tab-more { width:44px; height:44px; }
+ .workspace-tab-more { width:44px; min-height:44px; }
 }
 
 .workspace-tab, .workspace-tab-close { transition:background-color 140ms ease, color 140ms ease; }

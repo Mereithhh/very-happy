@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 /**
  * B-798 (U1/U3): a long-press menu is a shortcut, never the only way in. Board
- * cards, note rows and the workspace tab strip each carry a visible ⋯ whose
- * items are the long-press menu's own, and the touch targets are 44px.
+ * cards and note rows each carry a visible ⋯ whose items are the long-press
+ * menu's own; on touch the ACTIVE workspace tab does too (Lead 10-24: desktop
+ * tabs stay label + ✕). Touch targets are 44px.
  */
 import { readFileSync } from 'node:fs';
 import { act, type ReactElement, type ReactNode } from 'react';
@@ -85,11 +86,12 @@ describe('B-798 visible ⋯ mirrors the long-press menu', () => {
     } finally { await unmount(); }
   });
 
-  it('workspace tabs: the strip ⋯ carries the active tab\'s long-press items', async () => {
+  it('workspace tabs: only the active tab carries a ⋯, with its long-press items', async () => {
     const tabs = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }, { id: 'c', title: 'C', closable: false }];
     const { host, unmount } = await render(<WorkspaceTabsView zh={false} tabs={tabs} active="c" onSelect={vi.fn()} onClose={vi.fn()} onMove={vi.fn()} />);
     try {
-      const more = host.querySelector('.workspace-tab-more')!;
+      expect(host.querySelectorAll('.workspace-tab-more')).toHaveLength(1);
+      const more = host.querySelector('.workspace-tab.is-active .workspace-tab-more')!;
       expect(more.getAttribute('aria-label')).toBe('Tab actions: C');
       const dd = menus.dd[Number(more.getAttribute('data-dd'))];
       expect(keys(dd)).toEqual(keys(menus.ctx[2]));
@@ -135,9 +137,14 @@ describe('B-798 touch targets and visibility', () => {
     ['./workspace/workspaceTabs.css', '.workspace-tab-more'],
   ])('%s %s: 44×44 under pointer: coarse; hidden only on fine-pointer hover devices', (file, cls) => {
     const all = rules(file);
-    const sized = all.filter(([m, sel, body]) => coarse(m) && selects(sel, cls) && /(^|;|\s)width:\s*44px/.test(body) && /(^|;|\s)height:\s*44px/.test(body));
+    const sized = all.filter(([m, sel, body]) => coarse(m) && selects(sel, cls) && /(^|;|\s)width:\s*44px/.test(body) && /(^|;|\s)(min-)?height:\s*44px/.test(body));
     expect(sized.length).toBeGreaterThan(0);
     const hides = all.filter(([, sel, body]) => selects(sel, cls) && /opacity:\s*0\s*(;|$)|display:\s*none/.test(body));
     for (const [m] of hides) expect(fineHover(m)).toBe(true);
+  });
+
+  it('workspace tab ⋯ is touch-only: fine-pointer hover devices hide it outright', () => {
+    const off = rules('./workspace/workspaceTabs.css').filter(([m, sel, body]) => fineHover(m) && selects(sel, '.workspace-tab-more') && /display:\s*none/.test(body));
+    expect(off.length).toBeGreaterThan(0);
   });
 });

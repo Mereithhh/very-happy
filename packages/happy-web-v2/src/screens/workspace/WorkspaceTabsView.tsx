@@ -4,7 +4,7 @@ import { ActionContextMenu, ActionDropdownMenu, type MenuItemDef } from '@/ui/Me
 import type { WorkspaceTab } from './workspaceTabModel';
 import './workspaceTabs.css';
 
-/** A tab's actions — the long-press/right-click menu and the strip's ⋯ (B-798) share this list. */
+/** A tab's actions — the long-press/right-click menu and the active tab's touch ⋯ (B-798) share this list. */
 export function workspaceTabMenuItems({ zh, tabs, tab, onClose, onCloseOthers }: {
   zh: boolean; tabs: WorkspaceTab[]; tab: WorkspaceTab;
   onClose: (id: string) => void; onCloseOthers?: (id: string) => void;
@@ -42,10 +42,6 @@ export function WorkspaceTabsView({ zh, tabs, active, onSelect, onClose, onMove,
       : Math.max(0, item.right - viewport.right);
     strip.scrollLeft += offset;
   }, [active]);
-  // B-798 (U1): long-press is a shortcut, not the only way to 「关闭其他标签」 —
-  // the strip ends with a visible ⋯ for the active tab, offered when it can act.
-  const activeTab = tabs.find(t => t.id === active);
-  const activeItems = activeTab ? workspaceTabMenuItems({ zh, tabs, tab: activeTab, onClose, onCloseOthers }) : [];
   return <div className="workspace-tabs" ref={root}>
     <div className="workspace-tabstrip" role="tablist" aria-label={zh ? '工作区标签' : 'Workspace tabs'}>
       {tabs.map((tab, index) => {
@@ -71,12 +67,14 @@ export function WorkspaceTabsView({ zh, tabs, active, onSelect, onClose, onMove,
               if (e.key === 'Delete' && tab.closable !== false) { e.preventDefault(); onClose(tab.id); const target = tabs[index + 1] ?? tabs[index - 1]; if (target) focus(target.id); }
             }}>{tab.title}</button>
           {tab.closable !== false && <button className="workspace-tab-close" aria-label={`${zh ? '关闭' : 'Close'} ${tab.title}`} onClick={() => onClose(tab.id)}><X size={12}/></button>}
+          {/* B-798 (U1): long-press is a shortcut, not the only way to 「关闭其他标签」 — on touch the
+              ACTIVE tab carries a ⋯ with its long-press items (CSS hides it on fine pointers). */}
+          {active === tab.id && items.some(i => !i.disabled) && <ActionDropdownMenu items={items} align="end" sideOffset={4}>
+            <button type="button" className="workspace-tab-more" title={zh ? '标签操作' : 'Tab actions'} aria-label={`${zh ? '标签操作' : 'Tab actions'}: ${tab.title}`}><MoreHorizontal size={14}/></button>
+          </ActionDropdownMenu>}
         </div></ActionContextMenu>;
       })}
     </div>
-    {activeTab && activeItems.some(i => !i.disabled) && <ActionDropdownMenu items={activeItems} align="end" sideOffset={4}>
-      <button type="button" className="workspace-tab-more" title={zh ? '标签操作' : 'Tab actions'} aria-label={`${zh ? '标签操作' : 'Tab actions'}: ${activeTab.title}`}><MoreHorizontal size={14}/></button>
-    </ActionDropdownMenu>}
     {actions && <div className="workspace-tab-actions">{actions}</div>}
   </div>;
 }
