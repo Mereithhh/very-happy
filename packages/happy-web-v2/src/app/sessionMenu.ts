@@ -12,10 +12,13 @@ import { PRIORITY_LEVELS, priorityTag, type PriorityLevel } from '@/utils/tags';
  *
  * Order: 分享… · 重命名 · 标签 · 移到项目 / 从项目移出 · 优先级 · 复制链接 · 恢复 ·
  * 上移/下移 · 停止 · 归档 (or 关闭 for a terminal).
+ *
+ * B-798 (U2 step 3): 优先级 is ONE row with P0 / P1 / P2 choices (it used to be
+ * three rows, and the 13–16 row menus ran off a phone screen).
  */
 export type SessionMenuKey =
   | 'share' | 'rename' | 'tags' | 'move-project' | 'leave-project'
-  | `priority-${PriorityLevel}` | 'copy-link' | 'restore' | 'move-up' | 'move-down' | 'stop' | 'archive';
+  | 'priority' | 'copy-link' | 'restore' | 'move-up' | 'move-down' | 'stop' | 'archive';
 
 type T = (key: any, params?: any) => string;
 
@@ -43,8 +46,8 @@ export interface SessionMenuInput {
 
 export function sessionMenuCopy(zh: boolean) {
   return zh
-    ? { tags: '标签…', copyLink: '复制链接', stop: '停止' }
-    : { tags: 'Tags…', copyLink: 'Copy link', stop: 'Stop' };
+    ? { tags: '标签…', copyLink: '复制链接', stop: '停止', priority: '优先级' }
+    : { tags: 'Tags…', copyLink: 'Copy link', stop: 'Stop', priority: 'Priority' };
 }
 
 export function buildSessionMenu(input: SessionMenuInput): MenuItemDef[] {
@@ -57,18 +60,21 @@ export function buildSessionMenu(input: SessionMenuInput): MenuItemDef[] {
   if (input.project?.move && input.onMoveToProject) items.push({ key: 'move-project', label: input.project.move, icon: FolderKanban, onSelect: input.onMoveToProject });
   if (input.project?.leave && input.onLeaveProject) items.push({ key: 'leave-project', label: input.project.leave.label, icon: FolderMinus, onSelect: input.onLeaveProject });
   if (input.priority) {
-    // B-522: P0/P1/P2 as checkable items; the current one unchecks (clears).
+    // B-522: P0/P1/P2 as checkable choices; the current one unchecks (clears).
     const { level: current, onSet } = input.priority;
-    for (const level of PRIORITY_LEVELS) {
-      items.push({
+    items.push({
+      key: 'priority',
+      label: sessionMenuCopy(input.zh).priority,
+      icon: Flag,
+      separatorBefore: true,
+      choices: PRIORITY_LEVELS.map((level) => ({
         key: `priority-${level}`,
-        label: t('sidebar.markPriorityLevel', { level: priorityTag(level) }),
-        icon: Flag,
+        label: priorityTag(level),
         checked: current === level,
-        separatorBefore: level === 0,
         onSelect: () => onSet(current === level ? null : level),
-      });
-    }
+      })),
+      onSelect: () => onSet(null),
+    });
   }
   if (input.onCopyLink) items.push({ key: 'copy-link', label: copy.copyLink, icon: Link2, separatorBefore: !input.priority, onSelect: input.onCopyLink });
   if (input.restore) items.push({ key: 'restore', label: t('restore.restore'), icon: RotateCcw, disabled: input.restore.disabled, onSelect: input.restore.onSelect });
@@ -92,6 +98,21 @@ export function buildSessionMenu(input: SessionMenuInput): MenuItemDef[] {
     });
   }
   return items;
+}
+
+/**
+ * B-798 (U2 step 3): the session header ⋯ appends its own tools (Claude 运行控制,
+ * 组建团队, 保持唤醒) as ONE group placed before the 停止 / 归档 tail, so the
+ * destructive end stays last and the tools are not scattered after it.
+ */
+const SESSION_TAIL: readonly string[] = ['stop', 'archive'];
+export function withSessionTools(items: MenuItemDef[], tools: MenuItemDef[]): MenuItemDef[] {
+  if (tools.length === 0) return items;
+  const tail = items.findIndex((item) => SESSION_TAIL.includes(item.key));
+  const at = tail < 0 ? items.length : tail;
+  const group = tools.map((tool, i) => (i === 0 ? { ...tool, separatorBefore: at > 0 } : { ...tool, separatorBefore: false }));
+  const rest = items.slice(at).map((item, i) => (i === 0 ? { ...item, separatorBefore: true } : item));
+  return [...items.slice(0, at), ...group, ...rest];
 }
 
 /** Absolute link to a sidebar row (session or terminal href), for 「复制链接」. */

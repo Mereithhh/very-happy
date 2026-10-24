@@ -6,6 +6,8 @@
  * 包着真实会话页（汇报板负责人会话）、团队页、项目页和设置页，数据全是本地示例；
  * `--pages secondary` 扫一遍其余二级页（B-796：手机上每页左上角都要有返回）；
  * `--pages overlays` 扫壳外浮层：更新弹窗、通知面板、各类 toast（B-796b：✕ 不得落进侧边 inset）。
+ * `--pages menus` 打开会话页 ⋯ 和侧栏首 / 末行 ⋯（B-798）：每个菜单项都要能滚进视口（扣掉 safe-area）
+ * 并且点得到（elementFromPoint 命中该项），粗指针 ≤600px 必须是底部 sheet，更宽的是限高弹出菜单。
  * 所以先起 Web dev server（不需要后端）：
  *
  *   pnpm -C packages/happy-web-v2 exec vite --port 8795 --strictPort
@@ -77,6 +79,13 @@ export const SECONDARY = {
     machine: '/machine/dev-machine', 'settings-account': '/settings/account', 'settings-appearance': '/settings/appearance',
 };
 for (const [name, path] of Object.entries(SECONDARY)) PAGES[name] = { path, back: true };
+
+/** B-798 (P0-1): long ⋯ menus ran off the Duo cover / phone and could not scroll; `menus` = trigger selector, first and last match are opened. */
+export const MENUS = {
+    'menu-session': { path: '/session/dev-board', menus: '.ch button.ch-icon[aria-haspopup="menu"]' },
+    'menu-sidebar': { path: (d) => (d.width < 800 ? '/' : '/session/dev-board'), prepare: 'sidebar', menus: '.sb-row-menu' },
+};
+Object.assign(PAGES, MENUS);
 PAGES.team.back = true;
 PAGES.project.back = true;
 PAGES.session.back = true;
@@ -87,7 +96,7 @@ const base = opt('base', 'http://127.0.0.1:8795');
 const outDir = opt('out', null);
 const devices = opt('devices', 'duo-folded,duo-open-land,duo-open-port').split(',');
 const PRIMARY = ['session', 'board', 'sidebar', 'team', 'project', 'settings'];
-const GROUPS = { secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS) };
+const GROUPS = { secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS), menus: Object.keys(MENUS) };
 const pages = opt('pages', PRIMARY.join(',')).split(',').flatMap((p) => GROUPS[p] ?? [p]);
 const themes = opt('themes', 'light,dark').split(',');
 const locale = opt('locale', 'zh-CN');
@@ -272,6 +281,68 @@ function measure(sa) {
     return { overflowX: doc.scrollWidth - doc.clientWidth, outside, hoverOnly, inInset, back: back ? `${Math.round(back.left)},${Math.round(back.top)}` : null, smallTargets: smallTargets.length, smallSample: smallTargets.slice(0, 12), shell: document.querySelector('.app-shell')?.className ?? null };
 }
 
+/** Runs in the page with the menu open: scroll each item into view inside the menu, then it must sit on screen (insets excluded) and be the element under its own centre. */
+function menuReach(sa) {
+    const menu = document.querySelector('.vh-menu[data-state="open"]');
+    if (!menu) return null;
+    const inset = { top: 0, right: 0, bottom: 0, left: 0, ...(sa ?? {}) };
+    const coarse = matchMedia('(pointer: coarse)').matches;
+    const items = [...menu.querySelectorAll('[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]')];
+    const unreachable = [];
+    const short = [];
+    for (const it of items) {
+        it.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        const r = it.getBoundingClientRect();
+        const name = (it.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 24);
+        const onScreen = r.top >= inset.top - 0.5 && r.bottom <= innerHeight - inset.bottom + 0.5 && r.left >= inset.left - 0.5 && r.right <= innerWidth - inset.right + 0.5;
+        const hit = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+        if (!onScreen || !hit || !it.contains(hit)) unreachable.push(`${name} ${Math.round(r.top)}–${Math.round(r.bottom)}`);
+        if (coarse && (r.height < 43.5 || r.width < 43.5)) short.push(`${name} ${Math.round(r.width)}×${Math.round(r.height)}`);
+    }
+    menu.scrollTop = 0;
+    const box = menu.getBoundingClientRect();
+    return {
+        count: items.length, unreachable, short, sheet: menu.classList.contains('vh-menu--sheet'),
+        scrolls: menu.scrollHeight > menu.clientHeight + 1, box: `${Math.round(box.top)}–${Math.round(box.bottom)}`,
+    };
+}
+
+async function checkMenus(page, cdp, d, tag, selector) {
+    const triggers = page.locator(`${selector}:visible`);
+    const n = await triggers.count();
+    if (!n) return fail(`${tag}: no menu trigger ${selector}`);
+    for (const idx of [...new Set([0, n - 1])]) {
+        const trigger = triggers.nth(idx);
+        await trigger.scrollIntoViewIfNeeded();
+        const where = `${tag} ⋯#${idx}`;
+        if (cdp) {
+            // A real finger: the menu opens on touch-down, so the sheet can land under it; the release must not pick the item there.
+            const b = await trigger.boundingBox();
+            const at = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+            await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+            await page.waitForTimeout(80);
+            await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        } else await trigger.click();
+        await page.waitForTimeout(450); // open animation + the release's click
+        if (!await page.locator('.vh-menu[data-state="open"]').count() || await page.locator('[role="dialog"], [role="alertdialog"]').count()) {
+            fail(`${where}: the tap that opened the menu also picked an item (or it never opened)`);
+            await page.keyboard.press('Escape');
+            continue;
+        }
+        const m = await page.evaluate(menuReach, d.safeArea ?? null);
+        console.log(`  ${where}: ${m.count} items box=${m.box} sheet=${m.sheet} scrolls=${m.scrolls}`);
+        if (!m.count) fail(`${where}: empty menu`);
+        if (m.unreachable.length) fail(`${where}: items not reachable: ${m.unreachable.join(', ')}`);
+        if (m.short.length) fail(`${where}: items under 44px on touch: ${m.short.join(', ')}`);
+        const wantSheet = d.coarse && d.width <= 600;
+        if (m.sheet !== wantSheet) fail(`${where}: expected ${wantSheet ? 'a bottom sheet' : 'a popover'} at ${d.width}px`);
+        if (outDir) writeFileSync(join(outDir, `${tag}-${idx}.png`), await shot(page, cdp, d));
+        await page.keyboard.press('Escape');
+        await page.waitForSelector('.vh-menu[data-state="open"]', { state: 'detached', timeout: 5_000 }).catch(() => fail(`${where}: menu did not close on Escape`));
+        await page.waitForTimeout(200);
+    }
+}
+
 async function captureAll(browser) {
     for (const device of devices) {
         for (const theme of themes) {
@@ -291,7 +362,8 @@ async function captureAll(browser) {
                 if (m.inInset.length) fail(`${tag}: controls under the safe-area inset: ${m.inInset.join(', ')}`);
                 if (m.hoverOnly.length) fail(`${tag}: hover-only controls on a touch screen: ${m.hoverOnly.join(', ')}`);
                 if (args.includes('--verbose') && m.smallSample.length) console.log(`  small: ${m.smallSample.join(' | ')}`);
-                if (outDir) writeFileSync(join(outDir, `${tag}.png`), await shot(page, cdp, d));
+                if (p.menus) await checkMenus(page, cdp, d, tag, p.menus);
+                else if (outDir) writeFileSync(join(outDir, `${tag}.png`), await shot(page, cdp, d));
             }
             if (errors.length) fail(`${device}/${theme} pageerror: ${errors.join(' | ')}`);
             await context.close();

@@ -4,7 +4,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { buildSessionMenu, sessionLink, sessionMenuAvailability, type SessionMenuInput } from './sessionMenu';
+import { buildSessionMenu, sessionLink, sessionMenuAvailability, withSessionTools, type SessionMenuInput } from './sessionMenu';
+import type { MenuItemDef } from '@/ui';
 
 const t = (key: string, params?: { level?: string }) => (params?.level ? `${key}:${params.level}` : key);
 const noop = () => {};
@@ -21,10 +22,10 @@ const keys = (input: SessionMenuInput) => buildSessionMenu(input).map((i) => i.k
 
 describe('buildSessionMenu', () => {
   it('lists share, rename, tags, project, priority, copy link, stop and archive in one fixed order', () => {
-    expect(keys(full())).toEqual(['share', 'rename', 'tags', 'move-project', 'leave-project', 'priority-0', 'priority-1', 'priority-2', 'copy-link', 'stop', 'archive']);
+    expect(keys(full())).toEqual(['share', 'rename', 'tags', 'move-project', 'leave-project', 'priority', 'copy-link', 'stop', 'archive']);
   });
   it('an absent handler hides its item (shared / archived / idle sessions)', () => {
-    expect(keys(full({ onShare: undefined, onStop: undefined, onLeaveProject: undefined }))).toEqual(['rename', 'tags', 'move-project', 'priority-0', 'priority-1', 'priority-2', 'copy-link', 'archive']);
+    expect(keys(full({ onShare: undefined, onStop: undefined, onLeaveProject: undefined }))).toEqual(['rename', 'tags', 'move-project', 'priority', 'copy-link', 'archive']);
     expect(keys({ t, zh: false, onCopyLink: noop })).toEqual(['copy-link']);
   });
   it('project entries need both the label (projects ready) and the handler', () => {
@@ -41,13 +42,17 @@ describe('buildSessionMenu', () => {
     expect(onStop).toHaveBeenCalledTimes(1);
     expect(items.find((i) => i.key === 'share')!.label).toBe('share.menu');
   });
-  it('priority items are checkable and the current level clears', () => {
+  it('B-798: priority is ONE row of checkable P0/P1/P2 choices and the current level clears', () => {
     const onSet = vi.fn();
     const items = buildSessionMenu(full({ priority: { level: 1, onSet } }));
-    expect(items.filter((i) => i.key.startsWith('priority-')).map((i) => i.checked)).toEqual([false, true, false]);
-    items.find((i) => i.key === 'priority-1')!.onSelect();
-    items.find((i) => i.key === 'priority-0')!.onSelect();
+    const row = items.find((i) => i.key === 'priority')!;
+    expect(items.filter((i) => i.key.startsWith('priority'))).toHaveLength(1);
+    expect(row.choices!.map((c) => [c.label, c.checked])).toEqual([['P0', false], ['P1', true], ['P2', false]]);
+    expect(row.separatorBefore).toBe(true);
+    row.choices!.find((c) => c.key === 'priority-1')!.onSelect();
+    row.choices!.find((c) => c.key === 'priority-0')!.onSelect();
     expect(onSet.mock.calls).toEqual([[null], [0]]);
+    expect(buildSessionMenu(full({ zh: true })).find((i) => i.key === 'priority')!.label).toBe('优先级');
   });
   it('a terminal closes (neutral) instead of archiving (danger)', () => {
     const archive = buildSessionMenu(full()).find((i) => i.key === 'archive')!;
@@ -106,6 +111,31 @@ describe('one builder for both surfaces', () => {
   });
   it('the row menu feeds both its ⋯ dropdown and its right-click / long-press menu', () => {
     expect(sidebar).toContain('<ActionContextMenu items={menuItems} sheetTitle={sheetTitle}>');
-    expect(sidebar).toContain('<ActionDropdownMenu items={menuItems} align="end" sideOffset={4}>');
+    expect(sidebar).toContain('<ActionDropdownMenu items={menuItems} align="end" sideOffset={4} sheetTitle={sheetTitle}>');
+  });
+  it('B-798: the header ⋯ is a titled sheet on phones and groups its tools before stop / archive', () => {
+    expect(header).toContain('<ActionDropdownMenu sheetTitle={title} items={[...plan.overflow.map(menuItem), ...withSessionTools(sessionItems, [');
+    expect(header).toMatch(/key:'runtime-controls'[^\n]*key:'keep-awake'[^\n]*key:'team-adopt'/);
+    // the project group ⋯ heads its sheet like its long-press menu
+    expect(sidebar).toContain('<ActionDropdownMenu items={projectItems(project)} align="end" sideOffset={4} sheetTitle={project.name}>');
+  });
+});
+
+describe('B-798 withSessionTools (session header ⋯ grouping)', () => {
+  const tool = (key: string): MenuItemDef => ({ key, label: key, icon: (() => null) as unknown as MenuItemDef['icon'], onSelect: noop });
+  const tools = [tool('runtime-controls'), tool('keep-awake'), tool('team-adopt')];
+  it('puts the header tools in one group before the stop / archive tail', () => {
+    const items = withSessionTools(buildSessionMenu(full()), tools);
+    expect(items.map((i) => i.key)).toEqual(['share', 'rename', 'tags', 'move-project', 'leave-project', 'priority', 'copy-link', 'runtime-controls', 'keep-awake', 'team-adopt', 'stop', 'archive']);
+    expect(items.filter((i) => i.separatorBefore).map((i) => i.key)).toEqual(['priority', 'runtime-controls', 'stop']);
+  });
+  it('without stop the archive starts its own group; without a tail the tools go last', () => {
+    const noStop = withSessionTools(buildSessionMenu(full({ onStop: undefined })), tools);
+    expect(noStop.slice(-4).map((i) => [i.key, !!i.separatorBefore])).toEqual([['runtime-controls', true], ['keep-awake', false], ['team-adopt', false], ['archive', true]]);
+    const shared = withSessionTools(buildSessionMenu({ t, zh: false, onCopyLink: noop }), tools);
+    expect(shared.map((i) => i.key)).toEqual(['copy-link', 'runtime-controls', 'keep-awake', 'team-adopt']);
+    expect(withSessionTools([], tools)[0].separatorBefore).toBe(false);
+    const base = buildSessionMenu(full());
+    expect(withSessionTools(base, [])).toBe(base);
   });
 });

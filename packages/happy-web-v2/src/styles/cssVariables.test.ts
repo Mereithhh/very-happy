@@ -39,6 +39,8 @@ const EXTERNAL = new Set([
     '--radix-dropdown-menu-trigger-width',
     '--radix-popover-content-available-height',
     '--radix-popover-trigger-width',
+    // B-798: set by @radix-ui/react-popper on every menu's wrapper (dropdown + context menu)
+    '--radix-popper-available-height',
 ]);
 
 /**

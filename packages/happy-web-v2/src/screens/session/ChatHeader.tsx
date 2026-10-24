@@ -4,7 +4,7 @@ import { useLocalSetting } from '@/sync/storage';
 import { useNavigate } from 'react-router-dom';
 import { Bot, Moon } from 'lucide-react';
 import { useProjects } from '@/sync/projects';
-import { buildSessionMenu, sessionMenuAvailability } from '@/app/sessionMenu';
+import { buildSessionMenu, sessionMenuAvailability, withSessionTools } from '@/app/sessionMenu';
 import { copySessionLink, leaveSessionProject, stopSessionTurn } from '@/app/sessionMenuActions';
 import { confirmArchiveSession, nextSessionPathAfterClose, collectAllTags, saveRowRename } from '@/app/rowActions';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
@@ -300,7 +300,7 @@ export function ChatHeader({
             {!editing && plan.inline.map(renderAction)}
             {!editing && boardAction}
             {!editing && (plan.overflow.length > 0 || canStartTeam || canControlRuntime || canKeepAwake || sessionItems.length > 0) && (
-                <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...sessionItems.map((item, i) => (i === 0 && plan.overflow.length > 0 ? { ...item, separatorBefore: true } : item)), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : [])]}>
+                <ActionDropdownMenu sheetTitle={title} items={[...plan.overflow.map(menuItem), ...withSessionTools(sessionItems, [...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : [])]).map((item, i) => (i === 0 && plan.overflow.length > 0 ? { ...item, separatorBefore: true } : item))]}>
                     <button
                         type="button"
                         className={`ch-icon${overflowHasActive ? ' is-active' : ''}`}

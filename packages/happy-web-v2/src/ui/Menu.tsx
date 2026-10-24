@@ -10,6 +10,10 @@
  *  - ActionContextMenu: right-click (or touch long-press, Radix default)
  *    anywhere on the wrapped element opens the SAME items at the pointer.
  *
+ * B-798 (U2): both are capped to the room on screen and scroll (ui/menu.css),
+ * and on a narrow touch screen both open as the SAME bottom sheet
+ * (`menuIsSheet`), so ⋯ and long-press look and behave alike on a phone.
+ *
  * Keeping items as data means icon, label, danger tone and disabled state
  * are maintained in one place per menu — the two surfaces can't drift.
  *
@@ -17,10 +21,12 @@
  * are selection lists with a check column, not action lists.
  */
 import { Fragment, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useMediaQuery } from '@/app/useMediaQuery';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import type { LucideIcon } from 'lucide-react';
 import { isTerminalInputElement } from '@/screens/terminal/termInputElement';
+import './menu.css';
 
 /**
  * Focus give-back for the web terminal.
@@ -57,6 +63,13 @@ function giveFocusBackToTerminal(e: Event) {
   }
 }
 
+export interface MenuChoiceDef {
+  key: string;
+  label: string;
+  checked: boolean;
+  onSelect: () => void;
+}
+
 export interface MenuItemDef {
   key: string;
   label: string;
@@ -75,6 +88,12 @@ export interface MenuItemDef {
    * header buttons.
    */
   checked?: boolean;
+  /**
+   * B-798 (U2 step 3): present ⇒ ONE row of mutually exclusive choices (the
+   * session's 优先级 P0 / P1 / P2): `label` + `icon` head the row and each
+   * choice is its own menuitemcheckbox. `onSelect` of the row is then unused.
+   */
+  choices?: MenuChoiceDef[];
   onSelect: () => void;
 }
 
@@ -87,6 +106,101 @@ function ItemIcon({ item }: { item: MenuItemDef }) {
   return <Icon size={16} className="vh-menu-ico" aria-hidden />;
 }
 
+/** B-798 (U2): where a ⋯ menu turns into the bottom sheet — a touch screen no wider than a phone (Duo cover 466). */
+export const MENU_SHEET_MQ = '(pointer: coarse) and (max-width: 600px)';
+
+/**
+ * B-798 (U2): which action menus open as the bottom sheet. On a narrow touch
+ * screen every one does — ⋯ and long-press alike, titled or not. A titled
+ * long-press menu (B-762: sidebar tree rows) stays a sheet on any touch screen.
+ */
+export function menuIsSheet(surface: 'dropdown' | 'context', opts: { titled: boolean; coarse: boolean; narrowCoarse: boolean }): boolean {
+  if (opts.narrowCoarse) return true;
+  return surface === 'context' && opts.titled && opts.coarse;
+}
+
+export function menuClassName(sheet: boolean, contentClassName?: string): string {
+  return ['vh-menu', sheet ? 'vh-menu--sheet' : '', contentClassName ?? ''].filter(Boolean).join(' ');
+}
+
+/** Breathing room Radix keeps between a popover menu and the screen edge (the scroll cap is measured inside it). */
+const COLLISION_PADDING = 8;
+
+/** The Radix parts both surfaces render items with — one item renderer for two menus. */
+type MenuParts = {
+  Item: typeof DropdownMenu.Item;
+  CheckboxItem: typeof DropdownMenu.CheckboxItem;
+  Separator: typeof DropdownMenu.Separator;
+  Group: typeof DropdownMenu.Group;
+  Label: typeof DropdownMenu.Label;
+};
+const DROPDOWN_PARTS: MenuParts = DropdownMenu;
+const CONTEXT_PARTS = ContextMenu as unknown as MenuParts;
+
+function MenuItems({ items, parts: P, title }: { items: MenuItemDef[]; parts: MenuParts; title?: string }) {
+  return (
+    <>
+      {title && <P.Label className="vh-menu-sheet-title">{title}</P.Label>}
+      {items.map((item) => (
+        <Fragment key={item.key}>
+          {item.separatorBefore && <P.Separator className="vh-menu-sep" />}
+          {item.choices ? (
+            <P.Group className="vh-menu-choices" aria-label={item.label}>
+              <span className="vh-menu-choices-label" aria-hidden><ItemIcon item={item} /> {item.label}</span>
+              <span className="vh-menu-choices-row">
+                {item.choices.map((choice) => (
+                  <P.CheckboxItem
+                    key={choice.key}
+                    className="vh-menu-item vh-menu-choice"
+                    disabled={item.disabled}
+                    checked={choice.checked}
+                    onSelect={choice.onSelect}
+                  >
+                    {choice.label}
+                  </P.CheckboxItem>
+                ))}
+              </span>
+            </P.Group>
+          ) : item.checked === undefined ? (
+            <P.Item className={itemClass(item)} disabled={item.disabled} onSelect={item.onSelect}>
+              <ItemIcon item={item} /> {item.label}
+            </P.Item>
+          ) : (
+            <P.CheckboxItem className={itemClass(item)} disabled={item.disabled} checked={item.checked} onSelect={item.onSelect}>
+              <ItemIcon item={item} /> {item.label}
+            </P.CheckboxItem>
+          )}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+function useMenuSheet(surface: 'dropdown' | 'context', titled: boolean): boolean {
+  const narrowCoarse = useMediaQuery(MENU_SHEET_MQ);
+  const coarse = useMediaQuery('(pointer: coarse)');
+  return menuIsSheet(surface, { titled, coarse, narrowCoarse });
+}
+
+/** Wires the release guard to a trigger: its pointerdown handler and the menu's onOpenChange. */
+function useReleaseClickGuard() {
+  const [guard] = useState(() => createLongPressReleaseGuard());
+  const contentRef = useRef<HTMLDivElement>(null);
+  const onPointerDown = (e: ReactPointerEvent) => {
+    if (e.pointerType === 'mouse') return;
+    guard.press();
+    const end = () => {
+      document.removeEventListener('pointerup', end, true);
+      document.removeEventListener('pointercancel', end, true);
+      if (guard.release()) dropReleaseClick(() => contentRef.current);
+    };
+    document.addEventListener('pointerup', end, true);
+    document.addEventListener('pointercancel', end, true);
+  };
+  const onOpenChange = (open: boolean) => (open ? guard.opened() : guard.closed());
+  return { contentRef, onPointerDown, onOpenChange };
+}
+
 /** "More actions" dropdown — `children` is the trigger button. */
 export function ActionDropdownMenu({
   items,
@@ -96,6 +210,7 @@ export function ActionDropdownMenu({
   matchTriggerWidth = false,
   contentMinWidth,
   contentClassName,
+  sheetTitle,
 }: {
   items: MenuItemDef[];
   children: React.ReactElement;
@@ -106,50 +221,31 @@ export function ActionDropdownMenu({
   contentMinWidth?: number;
   /** extra class on the menu panel — e.g. to stack above a higher layer (B-559) */
   contentClassName?: string;
+  /** B-798: heads the bottom sheet a narrow touch screen opens (pass the same name as the row's long-press menu). */
+  sheetTitle?: string;
 }) {
+  const sheet = useMenuSheet('dropdown', !!sheetTitle);
+  const { contentRef, onPointerDown, onOpenChange } = useReleaseClickGuard();
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>{children}</DropdownMenu.Trigger>
+    <DropdownMenu.Root onOpenChange={onOpenChange}>
+      <DropdownMenu.Trigger asChild onPointerDown={onPointerDown}>{children}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className={contentClassName ? `vh-menu ${contentClassName}` : 'vh-menu'}
-          style={matchTriggerWidth ? { minWidth: 'var(--radix-dropdown-menu-trigger-width, 0px)' } : contentMinWidth ? { minWidth: contentMinWidth } : undefined}
+          ref={contentRef}
+          className={menuClassName(sheet, contentClassName)}
+          style={sheet ? undefined : matchTriggerWidth ? { minWidth: 'var(--radix-dropdown-menu-trigger-width, 0px)' } : contentMinWidth ? { minWidth: contentMinWidth } : undefined}
           align={align}
           sideOffset={sideOffset}
+          collisionPadding={COLLISION_PADDING}
           onCloseAutoFocus={giveFocusBackToTerminal}
         >
-          {items.map((item) => (
-            <Fragment key={item.key}>
-              {item.separatorBefore && <DropdownMenu.Separator className="vh-menu-sep" />}
-              {item.checked === undefined ? (
-                <DropdownMenu.Item
-                  className={itemClass(item)}
-                  disabled={item.disabled}
-                  onSelect={item.onSelect}
-                >
-                  <ItemIcon item={item} /> {item.label}
-                </DropdownMenu.Item>
-              ) : (
-                <DropdownMenu.CheckboxItem
-                  className={itemClass(item)}
-                  disabled={item.disabled}
-                  checked={item.checked}
-                  onSelect={item.onSelect}
-                >
-                  <ItemIcon item={item} /> {item.label}
-                </DropdownMenu.CheckboxItem>
-              )}
-            </Fragment>
-          ))}
+          <MenuItems items={items} parts={DROPDOWN_PARTS} title={sheet ? sheetTitle : undefined} />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
   );
 }
 
-/** Right-click menu — wraps `children` as the context target. The menu only
- *  attaches to chrome elements (rows, cards, lane headers); surfaces with
- *  their own contextmenu semantics (the terminal canvas) are never wrapped. */
 /**
  * B-774 (QA5 O6): a touch long-press opens the menu while the finger is still
  * down; lifting it fires the browser's compat click at that spot, which is now
@@ -157,6 +253,9 @@ export function ActionDropdownMenu({
  * the long press renamed instead of showing the menu. Only the first click
  * right after that release (`RELEASE_CLICK_MS`) is the release's own: dropped
  * when it lands in the menu, ignored elsewhere; any later tap selects as usual.
+ *
+ * B-798: the ⋯ dropdown opens on pointerdown for touch too, and its bottom sheet
+ * can sit under the finger the same way, so both surfaces use the guard.
  *
  * Pure state: `release()` says whether the press that just ended opened the menu.
  */
@@ -191,6 +290,9 @@ function dropReleaseClick(menu: () => HTMLElement | null): void {
   document.addEventListener('click', onClick, true);
 }
 
+/** Right-click menu — wraps `children` as the context target. The menu only
+ *  attaches to chrome elements (rows, cards, lane headers); surfaces with
+ *  their own contextmenu semantics (the terminal canvas) are never wrapped. */
 export function ActionContextMenu({
   items,
   children,
@@ -203,49 +305,14 @@ export function ActionContextMenu({
   /** B-762: on touch the long-press menu becomes a bottom sheet headed by this name (sidebar tree rows). */
   sheetTitle?: string;
 }) {
-  const className = ['vh-menu', sheetTitle ? 'vh-menu--sheet' : '', contentClassName ?? ''].filter(Boolean).join(' ');
-  const [guard] = useState(() => createLongPressReleaseGuard());
-  const contentRef = useRef<HTMLDivElement>(null);
-  const onTriggerPointerDown = (e: ReactPointerEvent) => {
-    if (e.pointerType === 'mouse') return;
-    guard.press();
-    const end = () => {
-      document.removeEventListener('pointerup', end, true);
-      document.removeEventListener('pointercancel', end, true);
-      if (guard.release()) dropReleaseClick(() => contentRef.current);
-    };
-    document.addEventListener('pointerup', end, true);
-    document.addEventListener('pointercancel', end, true);
-  };
+  const sheet = useMenuSheet('context', !!sheetTitle);
+  const { contentRef, onPointerDown, onOpenChange } = useReleaseClickGuard();
   return (
-    <ContextMenu.Root onOpenChange={(open) => (open ? guard.opened() : guard.closed())}>
-      <ContextMenu.Trigger asChild onPointerDown={onTriggerPointerDown}>{children}</ContextMenu.Trigger>
+    <ContextMenu.Root onOpenChange={onOpenChange}>
+      <ContextMenu.Trigger asChild onPointerDown={onPointerDown}>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content ref={contentRef} className={className} onCloseAutoFocus={giveFocusBackToTerminal}>
-          {sheetTitle && <ContextMenu.Label className="vh-menu-sheet-title">{sheetTitle}</ContextMenu.Label>}
-          {items.map((item) => (
-            <Fragment key={item.key}>
-              {item.separatorBefore && <ContextMenu.Separator className="vh-menu-sep" />}
-              {item.checked === undefined ? (
-                <ContextMenu.Item
-                  className={itemClass(item)}
-                  disabled={item.disabled}
-                  onSelect={item.onSelect}
-                >
-                  <ItemIcon item={item} /> {item.label}
-                </ContextMenu.Item>
-              ) : (
-                <ContextMenu.CheckboxItem
-                  className={itemClass(item)}
-                  disabled={item.disabled}
-                  checked={item.checked}
-                  onSelect={item.onSelect}
-                >
-                  <ItemIcon item={item} /> {item.label}
-                </ContextMenu.CheckboxItem>
-              )}
-            </Fragment>
-          ))}
+        <ContextMenu.Content ref={contentRef} className={menuClassName(sheet, contentClassName)} collisionPadding={COLLISION_PADDING} onCloseAutoFocus={giveFocusBackToTerminal}>
+          <MenuItems items={items} parts={CONTEXT_PARTS} title={sheet ? sheetTitle : undefined} />
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>

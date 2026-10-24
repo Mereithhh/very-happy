@@ -2194,7 +2194,6 @@ export const zhHans: TranslationStructure = {
         openWorkspaceChanges: '查看工作区改动',
         markPriority: '标记优先',
         unmarkPriority: '取消优先',
-        markPriorityLevel: ({ level }: { level: string }) => `优先级 ${level}`,
         closedTerminals: '已结束终端',
         closedTerminalReopen: '在同目录开新终端',
         closedTerminalResume: '在原目录继续这个会话',
