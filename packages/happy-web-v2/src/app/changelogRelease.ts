@@ -139,6 +139,36 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-25-mobile-touch',
+    date: '2026-10-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct25a.title',
+    summaryKey: 'changelog.releases.oct25a.summary',
+    highlights: [
+      {
+        key: 'touch',
+        titleKey: 'changelog.releases.oct25a.touchTitle',
+        bodyKey: 'changelog.releases.oct25a.touchBody',
+        image: changelogShots('2026-10-25', 'touch', SHOT_SIZE, 'changelog.releases.oct25a.touchAlt'),
+      },
+      {
+        key: 'sheet',
+        titleKey: 'changelog.releases.oct25a.sheetTitle',
+        bodyKey: 'changelog.releases.oct25a.sheetBody',
+        image: changelogShots('2026-10-25', 'sheet', SHOT_SIZE, 'changelog.releases.oct25a.sheetAlt'),
+      },
+    ],
+    itemKeys: [
+      'changelog.releases.oct25a.back',
+      'changelog.releases.oct25a.targets',
+      'changelog.releases.oct25a.sessionPage',
+      'changelog.releases.oct25a.session',
+      'changelog.releases.oct25a.missing',
+      'changelog.releases.oct25a.teams',
+      'changelog.releases.oct25a.terminal',
+    ],
+  },
+  {
     id: '2026-10-24-foldable-safe-area',
     date: '2026-10-24',
     buildVersion: __APP_VERSION__,

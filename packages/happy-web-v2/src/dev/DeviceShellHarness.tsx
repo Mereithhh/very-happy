@@ -35,7 +35,11 @@ export function DeviceShellHarness() {
     // Location-trail first: its fetch stub 404s unknown `/v1/` paths, so the
     // board's `/v1/attention-items` stub must wrap it, not the other way round.
     // B-798 P2-4: a team named after a whole goal line (the default before short names).
-    const longName = { ...boardTeam(now), id: 'team-long', name: '[QA] B-798 走查用：负责人只回复一句「收到」然后对根任务 team_submit 结果「OK」，不要创建任何成员、不要改文件。' };
+    // Follows the browser locale like LocationTrailHarness, so en captures stay English.
+    const longGoal = typeof navigator !== 'undefined' && !navigator.language.toLowerCase().startsWith('zh')
+      ? 'Move refunds to the new ledger: migrate the three refund paths, reconcile last month and keep the old API answering until clients switch'
+      : '退款迁到新账本：三条退款链路逐一迁移，核对上月流水，客户端切换前旧接口继续可用';
+    const longName = { ...boardTeam(now), id: 'team-long', name: longGoal };
     seedLocationTrail([boardTeam(now), longName]);
     const board = seedBoardSession();
     seedPlainSession();
