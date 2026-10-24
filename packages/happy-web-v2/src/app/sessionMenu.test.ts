@@ -114,7 +114,8 @@ describe('one builder for both surfaces', () => {
     expect(sidebar).toContain('<ActionDropdownMenu items={menuItems} align="end" sideOffset={4} sheetTitle={sheetTitle}>');
   });
   it('B-798: the header ⋯ is a titled sheet on phones and groups its tools before stop / archive', () => {
-    expect(header).toContain('<ActionDropdownMenu sheetTitle={title} items={[...plan.overflow.map(menuItem), ...withSessionTools(sessionItems, [');
+    // B-798 F: a phone-width header's 「会话信息」 sits between the panel toggles and the session actions
+    expect(header).toContain('<ActionDropdownMenu sheetTitle={title} items={[...plan.overflow.map(menuItem), ...infoItems, ...withSessionTools(sessionItems, [');
     expect(header).toMatch(/key:'runtime-controls'[^\n]*key:'keep-awake'[^\n]*key:'team-adopt'/);
     // the project group ⋯ heads its sheet like its long-press menu
     expect(sidebar).toContain('<ActionDropdownMenu items={projectItems(project)} align="end" sideOffset={4} sheetTitle={project.name}>');
