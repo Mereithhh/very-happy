@@ -204,17 +204,17 @@ describe('B-803 wiring in sync.ts / apiSocket.ts', () => {
     }
 
     it('tab resume restarts the viewed session catch-up', () => {
-        expect(block(sync, 'private onWebResume = () => {', 600)).toContain('this.onSessionVisible(current, { restartFetch: true });');
+        expect(block(sync, 'private onWebResume = () => {', 600)).toContain('this.onSessionEnter(current, { restartFetch: true });');
     });
 
     it('socket reconnect and recovered restart it too', () => {
         const reconnected = block(sync, 'apiSocket.onReconnected(() => {');
-        expect(reconnected.slice(0, reconnected.indexOf('apiSocket.onRecovered('))).toContain('if (viewing) this.onSessionVisible(viewing, { restartFetch: true });');
-        expect(block(sync, 'apiSocket.onRecovered(() => {', 500)).toContain('if (viewing) this.onSessionVisible(viewing, { restartFetch: true });');
+        expect(reconnected.slice(0, reconnected.indexOf('apiSocket.onRecovered('))).toContain('if (viewing) this.onSessionEnter(viewing, { restartFetch: true });');
+        expect(block(sync, 'apiSocket.onRecovered(() => {', 500)).toContain('if (viewing) this.onSessionEnter(viewing, { restartFetch: true });');
     });
 
-    it('onSessionVisible routes restartFetch to restart(), and back-online restarts deferred catch-ups', () => {
-        expect(block(sync, 'onSessionVisible = (sessionId: string, opts', 300)).toContain('if (opts?.restartFetch) {\n            this.restartMessagesSync(sessionId);');
+    it('onSessionEnter routes restartFetch to restart(), and back-online restarts deferred catch-ups', () => {
+        expect(block(sync, 'onSessionEnter = (sessionId: string, opts', 300)).toContain('if (opts?.restartFetch) {\n            this.restartMessagesSync(sessionId);');
         expect(block(sync, 'private restartMessagesSync(sessionId: string) {', 200)).toContain('this.getMessagesSync(sessionId).restart();');
         expect(block(sync, 'onRecovered: () => {', 300)).toContain('this.restartDeferredCatchUps();');
     });

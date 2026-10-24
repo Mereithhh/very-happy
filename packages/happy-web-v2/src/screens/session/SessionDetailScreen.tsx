@@ -292,7 +292,7 @@ export function SessionDetailScreen() {
     useEffect(() => {
         if (!id || pendingMode) return;
         storage.getState().setCurrentViewingSession(id);
-        sync.onSessionVisible(id);
+        sync.onSessionEnter(id);
         return () => {
             if (storage.getState().currentViewingSessionId === id) {
                 storage.getState().setCurrentViewingSession(null);
