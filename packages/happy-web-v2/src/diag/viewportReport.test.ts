@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatElementLine, formatViewportReport, gapToScreenBottom, parseVhDiagParam, px, type ViewportSnapshot } from './viewportReport';
+import { formatElementLine, formatKeyboardLine, formatViewportReport, gapToScreenBottom, parseVhDiagParam, px, type ViewportSnapshot } from './viewportReport';
 
 const snap: ViewportSnapshot = {
     at: '2026-10-14T00:00:00.000Z',
@@ -67,5 +67,12 @@ describe('viewport diag report', () => {
         expect(parseVhDiagParam('?vhdiag=0')).toBe(false);
         expect(parseVhDiagParam('?other=1')).toBeNull();
         expect(parseVhDiagParam('')).toBeNull();
+    });
+
+    it('B-797 keyboard line: visual viewport, scroll and where --app-h comes from', () => {
+        expect(formatKeyboardLine({ vvHeight: 380.4, vvOffsetTop: 120, scrollY: 0, innerHeight: 657, appH: 380, appHOverride: '380px', keyboardOpen: true, rootLock: true }))
+            .toBe('keyboard: vv.h=380.4 vv.top=120 scrollY=0 inner=657 · --app-h=380 (js 380px) open=yes root-lock=yes');
+        expect(formatKeyboardLine({ vvHeight: null, vvOffsetTop: null, scrollY: 21, innerHeight: 657, appH: 678, appHOverride: '', keyboardOpen: false, rootLock: false }))
+            .toContain('vv.h=n/a vv.top=n/a scrollY=21 inner=657 · --app-h=678 (css) open=no root-lock=no');
     });
 });

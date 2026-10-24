@@ -773,3 +773,10 @@
   .as-header-machine { min-width: 0; }
   .as-header-title { flex: none; }
 }
+/* B-797: touch — the header icons (back first) meet the 44pt iOS floor */
+@media (pointer: coarse) {
+  .as-icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+}

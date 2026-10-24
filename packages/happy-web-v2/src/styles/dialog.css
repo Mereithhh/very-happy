@@ -22,7 +22,7 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  max-height: calc(100dvh - 32px);
+  max-height: calc(var(--vv-h, 100dvh) - 32px);
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--bg-1);
@@ -97,7 +97,7 @@
   :root .vh-dialog {
     width: 100%;
     max-width: none;
-    max-height: calc(100dvh - max(12px, var(--sa-t)));
+    max-height: calc(var(--vv-h, 100dvh) - max(12px, var(--sa-t)));
     border-width: 1px 0 0;
     border-radius: var(--r-lg) var(--r-lg) 0 0;
     /* edge to edge: the side insets (B-796, iPhone Duo cover status column) pad the content */
@@ -111,7 +111,7 @@
     padding: 0;
   }
   /* form dialogs fill the screen: inputs stay at the top, above the keyboard */
-  :root .vh-dialog--tall { height: calc(100dvh - max(12px, var(--sa-t))); }
+  :root .vh-dialog--tall { height: calc(var(--vv-h, 100dvh) - max(12px, var(--sa-t))); }
   :root .vh-dialog-foot {
     position: sticky;
     bottom: 0;
@@ -132,4 +132,14 @@
     flex: none;
     height: max(var(--sp-4), var(--sa-b));
   }
+}
+
+/* B-797: iOS overlays the soft keyboard on the layout viewport, so a fixed
+   `inset: 0` backdrop (and the bottom sheet it lays out) would end under the
+   keyboard. While it is up (app/viewportVars.ts) the wrappers cover only the
+   visible area: the sheet's fields and sticky footer sit on the keyboard. */
+html[data-keyboard-open] :is(.vh-dialog-overlay, .vh-modal-layer) {
+  top: var(--vv-top, 0px);
+  bottom: auto;
+  height: var(--vv-h, 100dvh);
 }

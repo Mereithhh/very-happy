@@ -3,7 +3,7 @@
  * each viewport unit / safe-area inset by sizing hidden probe elements, since
  * none of 100lvh, env(), or the resolved --app-h are exposed to JS directly.
  */
-import type { ElementSnapshot, ViewportSnapshot } from './viewportReport';
+import type { ElementSnapshot, KeyboardSnapshot, ViewportSnapshot } from './viewportReport';
 
 const UNIT_PROBES: Array<[label: string, height: string]> = [
     ['100vh', '100vh'],
@@ -101,6 +101,24 @@ export function collectViewportSnapshot(): ViewportSnapshot {
             viewport: metaContent('meta[name="viewport"]'),
             statusBarStyle: metaContent('meta[name="apple-mobile-web-app-status-bar-style"]'),
         },
+    };
+}
+
+export function collectKeyboardSnapshot(): KeyboardSnapshot {
+    const vv = window.visualViewport;
+    const root = document.documentElement;
+    const el = probe({ height: 'var(--app-h)' });
+    const appH = el.getBoundingClientRect().height;
+    el.remove();
+    return {
+        vvHeight: vv ? vv.height : null,
+        vvOffsetTop: vv ? vv.offsetTop : null,
+        scrollY: window.scrollY,
+        innerHeight: window.innerHeight,
+        appH: appH > 0 ? appH : null,
+        appHOverride: root.style.getPropertyValue('--app-h').trim(),
+        keyboardOpen: root.dataset.keyboardOpen === 'true',
+        rootLock: root.dataset.rootLock === 'true',
     };
 }
 

@@ -35,7 +35,11 @@ body,
    B-643 switched new installs to status-bar-style=default (the page starts
    below the bar, no top inset), where a standalone app has no retractable UA
    chrome and 100lvh equals the web view height; the rule stays for installs
-   still on black-translucent until they are re-added. */
+   still on black-translucent until they are re-added.
+   B-797: this CSS value is the first paint only. app/viewportVars.ts clamps
+   it to innerHeight + top inset (the iPhone Duo cover display: 100lvh 678 vs
+   a 657 web view → the document scrolled 21px) and, while the iOS keyboard is
+   up, sets it to the visible height. */
 :root {
   --app-h: 100dvh;
 }
@@ -71,6 +75,29 @@ body {
 /* iOS: use dynamic viewport so the keyboard/toolbar doesn't clip the composer */
 #root {
   min-height: var(--app-h);
+}
+
+/* B-797: app shells never scroll the document (useRootScrollLock); only their
+   inner containers do. Public pages (landing / docs) keep page scroll. */
+html[data-root-lock],
+html[data-root-lock] body {
+  overflow: hidden;
+}
+/* iOS soft keyboard (viewportVars.ts): the app follows the visual viewport —
+   pinned to its offset and height, so the composer sits on the keyboard and
+   iOS's reveal-pan cannot drag the page into blank space. The home-indicator
+   inset is under the keyboard, so it reserves nothing meanwhile. */
+html[data-keyboard-open] {
+  --sa-b: 0px;
+}
+html[data-root-lock][data-keyboard-open] #root {
+  position: fixed;
+  top: var(--vv-top, 0px);
+  left: 0;
+  right: 0;
+  height: var(--vv-h, var(--app-h));
+  min-height: 0;
+  overflow: hidden;
 }
 
 body {
@@ -334,12 +361,14 @@ pre,
 @media (max-width: 599px), (pointer: coarse) and (max-width: 1099px) {
   .vh-back--narrow { display: inline-flex; }
 }
-/* touch: finger-sized target, inherited from the old .ch-back rule */
+/* touch: finger-sized target — B-797: the 44pt iOS floor (it was 40px, inherited
+   from the old .ch-back rule); the glyph stays put in a leading row. */
 @media (pointer: coarse) {
   .vh-back {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
+  .vh-back-row > .vh-back { margin-left: -13px; }
   .vh-back:active {
     background: var(--bg-2);
     color: var(--text);

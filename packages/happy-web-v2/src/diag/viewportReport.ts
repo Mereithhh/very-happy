@@ -106,3 +106,24 @@ export function parseVhDiagParam(search: string): boolean | null {
     if (raw === null) return null;
     return raw === '1' || raw === 'true' || raw === 'on';
 }
+
+/** B-797: the live keyboard numbers (Viewport 诊断 → 键盘测试). */
+export interface KeyboardSnapshot {
+    vvHeight: number | null;
+    vvOffsetTop: number | null;
+    scrollY: number;
+    innerHeight: number;
+    /** what `var(--app-h)` resolves to, in px. */
+    appH: number | null;
+    /** the inline override viewportVars.ts wrote (empty = CSS value). */
+    appHOverride: string;
+    keyboardOpen: boolean;
+    rootLock: boolean;
+}
+
+export function formatKeyboardLine(k: KeyboardSnapshot): string {
+    return [
+        `keyboard: vv.h=${px(k.vvHeight)} vv.top=${px(k.vvOffsetTop)} scrollY=${px(k.scrollY)} inner=${px(k.innerHeight)}`,
+        `--app-h=${px(k.appH)} (${k.appHOverride ? `js ${k.appHOverride}` : 'css'}) open=${k.keyboardOpen ? 'yes' : 'no'} root-lock=${k.rootLock ? 'yes' : 'no'}`,
+    ].join(' · ');
+}
