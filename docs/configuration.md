@@ -263,6 +263,20 @@ share a database-backed per-account rate bucket. Feed notification ciphertext is
 at 256 bytes, and repeat-key updates replace a row atomically while charging only
 the stored-byte delta.
 
+Session sync v1 (B-811, `sync-hello` / `session-subscribe` for web sockets;
+design in the B-807 spec) has its own switches. `SYNC_SUBSCRIBE_DISABLED=1` is
+the kill switch: both events answer `{ ok:false, error:'disabled' }` at once
+without touching the database, and web clients fall back to the legacy REST
+catch-up; it takes effect on slot restart, no image change. `SYNC_SUBSCRIBE_ACCOUNTS`
+(comma-separated account IDs) limits `ok` answers to those accounts for a staged
+rollout. `SYNC_GAP_THRESHOLD` (default 500) is how far behind a client may be
+before it gets the latest page instead of the increment, and
+`SYNC_HELLO_MAX_CONCURRENCY` (default 32) bounds concurrent snapshot reads per
+process; a request that waits more than 3s for a slot gets `unavailable` with
+a 500–1500ms `retryAfterMs`. Each socket may hold 16 subscriptions and send 20
+hello/subscribe per 10s, and one ack carries at most 512KB of messages. Live
+delivery still uses `update/new-message`; these switches never change it.
+
 See [deployment.md](deployment.md) for the full list and persistence guidance.
 
 ## CLI
