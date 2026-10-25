@@ -22,6 +22,21 @@ function locks(): LockManagerLike | null {
 }
 
 let channel: BroadcastChannel | null = null;
+let thisTab: string | null = null;
+
+/**
+ * This page load's tab id, announced alive from first use. One id per load:
+ * pending sessions (B-516) and the persistent outbox (B-814) share it, so a
+ * reload makes both kinds of records orphans together.
+ */
+export function thisTabId(): string {
+    if (!thisTab) {
+        const uuid = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto?.randomUUID?.();
+        thisTab = uuid ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        holdTabLiveness(thisTab);
+    }
+    return thisTab;
+}
 
 /** Start announcing this tab as alive. Idempotent per tab id. */
 export function holdTabLiveness(tabId: string): void {

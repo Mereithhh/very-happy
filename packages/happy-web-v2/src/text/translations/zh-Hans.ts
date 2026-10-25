@@ -988,6 +988,10 @@ export const zhHans: TranslationStructure = {
             sendRestore: '放回输入框',
             // B-722
             sendDelete: '删除',
+            // B-814
+            sendNotSent: '未发送',
+            sendResend: '重发',
+            sendDiscard: '丢弃',
             sent: '已发送',
             sendingOffline: '连接恢复后发送',
             // B-799

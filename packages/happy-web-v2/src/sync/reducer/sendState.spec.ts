@@ -147,6 +147,39 @@ describe('B-513 send state in the reducer', () => {
         expect(view.byLocalId('l1')).not.toHaveProperty('sendState');
     });
 
+    it('B-814: a stale failure shows as stale until a retry; a fresh failure of the retry is not stale; an echo confirms it', () => {
+        const state = createReducer();
+        const view = new View(state);
+        view.push(sendOptimistic(state, userMessage('l1')));
+        view.update({ failures: [{ localId: 'l1', restorable: false, stale: true }] });
+        expect(view.byLocalId('l1')).toMatchObject({ sendState: 'failed', sendStale: true });
+        expect(view.byLocalId('l1')).not.toHaveProperty('sendRestorable');
+        view.update({ sending: ['l1'] });
+        expect(view.byLocalId('l1')).toMatchObject({ sendState: 'sending' });
+        expect(view.byLocalId('l1')).not.toHaveProperty('sendStale');
+        view.update({ failures: [{ localId: 'l1', restorable: false }] });
+        expect(view.byLocalId('l1')).toMatchObject({ sendState: 'failed' });
+        expect(view.byLocalId('l1')).not.toHaveProperty('sendStale');
+        view.update({ sending: ['l1'] });
+        view.update({ failures: [{ localId: 'l1', restorable: false, stale: true }] });
+        view.reduce([userMessage('l1', { id: 'srv', seq: 9 })]);
+        expect(view.rows.size).toBe(1);
+        expect(view.byLocalId('l1')).not.toHaveProperty('sendState');
+        expect(view.byLocalId('l1')).not.toHaveProperty('sendStale');
+    });
+
+    it('B-814: discarding a stale failure withdraws it; a late echo brings it back confirmed', () => {
+        const state = createReducer();
+        const view = new View(state);
+        view.push(sendOptimistic(state, userMessage('l1')));
+        view.update({ failures: [{ localId: 'l1', restorable: false, stale: true }] });
+        view.update({ withdraw: ['l1'] });
+        expect(view.byLocalId('l1')).toBeUndefined();
+        view.reduce([userMessage('l1', { id: 'srv', seq: 9 })]);
+        expect(view.byLocalId('l1')).toBeDefined();
+        expect(view.byLocalId('l1')).not.toHaveProperty('sendState');
+    });
+
     it('retry is idempotent: failed -> sending (twice) -> one confirmed row', () => {
         const state = createReducer();
         const view = new View(state);

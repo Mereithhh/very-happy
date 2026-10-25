@@ -10,9 +10,11 @@ export type TurnSendStatus = {
     localId: string;
     /** Only a text-only turn that provably never reached storage can be taken back. */
     restorable: boolean;
+    /** B-814: restored from an earlier page load, too old to re-send on its own — 「未发送 · 重发 / 丢弃」. */
+    stale: boolean;
 };
 
-type SendItem = { localId: string | null; sendState?: SendState; sendRestorable?: true };
+type SendItem = { localId: string | null; sendState?: SendState; sendRestorable?: true; sendStale?: true };
 
 /**
  * failed > sending: one failed item makes the turn failed. `restorable` comes
@@ -32,6 +34,7 @@ export function turnSendStatus(text: SendItem, attachments: readonly SendItem[] 
             && attachments.length === 0
             && text.sendState === 'failed'
             && text.sendRestorable === true,
+        stale: pick.sendState === 'failed' && items.some((item) => item.sendState === 'failed' && item.sendStale === true),
     };
 }
 

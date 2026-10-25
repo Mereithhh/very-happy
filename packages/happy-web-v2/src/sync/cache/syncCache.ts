@@ -16,6 +16,7 @@ import type { ApiMessage } from '@/sync/apiTypes';
 import { accountFingerprint } from '@/sync/accountFingerprint';
 import { deleteDatabase, IdbBlockedError, IdbTimeoutError, isQuotaError, openDatabase, req, txDone, withTimeout } from './idb';
 import { pickEvictions, pickQuotaEvictions, type LruEntry } from './lru';
+import { OutboxStore } from './outboxStore';
 import {
     CACHE_MAX_MESSAGES,
     extendDownward,
@@ -37,6 +38,8 @@ const FLUSH_ROWS = 50;
 const CLEANUP_EVERY_MS = 60_000;
 /** A load never waits longer than this for the database to open — the network path is not held up. */
 const LOAD_OPEN_WAIT_MS = 500;
+/** B-814: an outbox write waits a little longer for the open (it is what survives a reload). */
+const OUTBOX_OPEN_WAIT_MS = 1_500;
 /** Rows above a hole wait in memory for it to fill; past this many they are given up (the run just stays shorter). */
 const MAX_WAITING_ROWS = 100;
 /**
@@ -402,12 +405,21 @@ export class SyncCache {
         this.db = null;
     }
 
-    private async readyDb(): Promise<IDBDatabase | null> {
+    /**
+     * B-814: the same database for the persistent outbox (outboxStore.ts) —
+     * null while writes are off (switched off, disabled, read-only on quota).
+     */
+    outboxDatabase(waitMs = LOAD_OPEN_WAIT_MS): Promise<IDBDatabase | null> {
+        if (!this.writesEnabled) return Promise.resolve(null);
+        return this.readyDb(waitMs);
+    }
+
+    private async readyDb(waitMs = LOAD_OPEN_WAIT_MS): Promise<IDBDatabase | null> {
         if (!this.dbPromise) return null;
         let timer: ReturnType<typeof setTimeout> | null = null;
         const db = await Promise.race([
             this.dbPromise,
-            new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), LOAD_OPEN_WAIT_MS); }),
+            new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), waitMs); }),
         ]);
         if (timer) clearTimeout(timer);
         return db && this.db === db ? db : null;
@@ -807,6 +819,9 @@ export function hasIndexedDb(): IDBFactory | undefined {
 
 /** The app's cache (one per tab). */
 export const syncCache = new SyncCache({ factory: hasIndexedDb });
+
+/** B-814: the app's persistent outbox, in the cache's database (opened with it, cleared with it). */
+export const outboxStore = new OutboxStore({ db: () => syncCache.outboxDatabase(OUTBOX_OPEN_WAIT_MS) });
 
 /** Logout: close this tab's connection first so the delete is not blocked by it. */
 export async function clearSyncCacheOnLogout(): Promise<void> {

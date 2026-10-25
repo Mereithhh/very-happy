@@ -106,8 +106,12 @@ export interface PendingSessionDeps {
     hasSession(id: string): boolean;
     /** Called on every session-store change; returns an unsubscribe. */
     subscribeSessions(listener: () => void): () => void;
-    /** Resolves with a receipt (truthy) once the message is in the local outbox. */
-    sendMessage(sessionId: string, text: string): Promise<unknown>;
+    /**
+     * Resolves with a receipt (truthy) once the message is in the local
+     * outbox — persistent one included (B-814). `localId` is the outbox
+     * item's id: a re-send after a reload is the same input, deduped.
+     */
+    sendMessage(sessionId: string, text: string, localId: string): Promise<unknown>;
     writePermissionMode(sessionId: string, mode: string | null): void;
     writeModelMode(sessionId: string, mode: string | null): void;
     writeEffortLevel(sessionId: string, level: string | null): void;
@@ -505,7 +509,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 }
                 let receipt: unknown;
                 try {
-                    receipt = await deps.sendMessage(realId, head.text);
+                    receipt = await deps.sendMessage(realId, head.text, head.id);
                 } catch (error) {
                     console.warn('[pending-session] outbox send failed', error);
                     receipt = undefined;

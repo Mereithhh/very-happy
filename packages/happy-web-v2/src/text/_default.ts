@@ -780,6 +780,10 @@ export const en = {
             sendRestore: 'Back to input',
             // B-722: send / save states (aria-live status text).
             sendDelete: 'Delete',
+            // B-814: restored after a reload, too old to re-send on its own.
+            sendNotSent: 'Not sent',
+            sendResend: 'Resend',
+            sendDiscard: 'Discard',
             sent: 'Sent',
             sendingOffline: 'Sends when the connection is back',
             // B-799: the send button while the device is offline (it queues, it does not refuse).

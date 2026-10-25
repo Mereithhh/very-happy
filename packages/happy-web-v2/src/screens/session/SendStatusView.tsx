@@ -117,6 +117,21 @@ export function SendFailedActions({ sessionId, status }: { sessionId: string; st
     };
     // B-722: drop it outright — only when no attempt could have stored it.
     const discard = () => { sync.takeBackFailedMessage(sessionId, status.localId); };
+    if (status.stale) {
+        // B-814: from an earlier page load, past the 10-minute window — the user decides.
+        return <span className="msg-send-failed" role="status" aria-live="polite" data-send-state="stale">
+            <AlertCircle size={13} aria-hidden />
+            <span>{t('session.chat.sendNotSent')}</span>
+            <span className="msg-send-sep" aria-hidden>·</span>
+            <button type="button" className="msg-send-action" onClick={() => sync.retrySend(sessionId, status.localId)}>
+                {t('session.chat.sendResend')}
+            </button>
+            <span className="msg-send-sep" aria-hidden>·</span>
+            <button type="button" className="msg-send-action" onClick={() => sync.discardStaleMessage(sessionId, status.localId)}>
+                {t('session.chat.sendDiscard')}
+            </button>
+        </span>;
+    }
     return <span className="msg-send-failed" role="status" aria-live="polite" data-send-state="failed">
         <AlertCircle size={13} aria-hidden />
         <span>{t('session.chat.sendFailed')}</span>
