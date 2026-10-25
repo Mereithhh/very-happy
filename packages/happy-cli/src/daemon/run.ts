@@ -96,7 +96,7 @@ import { createTeamWorker } from './teams/worker';
 import { TEAM_RETRY_CAPABILITY_VERSION } from './teams/spawnRetry';
 import { createAutomationRunner } from './automations/runner';
 import { daemonExitCode, HANDOVER_EXIT_CODE, type ShutdownSource } from './shutdownExit';
-import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob } from './daemonSupervisor';
+import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob, probeSystemdKillMode, wrappersSurviveHandover, handoverWaitsForSessions } from './daemonSupervisor';
 
 import { shellescape } from '@/utils/shellescape';
 
@@ -1768,6 +1768,13 @@ export async function startDaemon(): Promise<void> {
     const daemonSupervisor = detectDaemonSupervisor(process.env, process.platform, launchdJob);
     const lineage = daemonLineage(daemonSupervisor, process.env, process.platform, launchdJob);
     logger.debug(`[DAEMON RUN] Supervisor: ${daemonSupervisor} (lineage ${lineage}${launchdJob ? `, launchd job pid ${launchdJob.jobPid ?? '-'}` : ''})`);
+    // B-817b: whether the handover may leave mid-turn (see wrappersSurviveHandover).
+    const systemdKillMode = daemonSupervisor === 'systemd' ? await probeSystemdKillMode() : null;
+    const handoverSparesWrappers = wrappersSurviveHandover({
+      supervisor: daemonSupervisor, env: process.env, platform: process.platform, pid: process.pid, ppid: process.ppid,
+      inContainer: existsSync('/.dockerenv') || existsSync('/run/.containerenv'), systemdKillMode,
+    });
+    logger.debug(`[DAEMON RUN] Handover spares wrappers: ${handoverSparesWrappers}${daemonSupervisor === 'systemd' ? ` (KillMode ${systemdKillMode ?? 'unknown'})` : ''}`);
     let fileState: DaemonLocallyPersistedState = {
       pid: process.pid,
       httpPort: controlPort,
@@ -2115,8 +2122,11 @@ export async function startDaemon(): Promise<void> {
       // straight through the few seconds without a daemon — and once the bundle
       // is replaced, waiting only keeps old daemon code running on new files.
       // What still holds it is work this process owns and would lose. A relay
-      // move (B-635) keeps its original gate; it is not an upgrade.
-      const sessionsHold = () => !bundleReplaced && (turnActivity.hasActiveTurn() || backgroundTasks.hasAny());
+      // move (B-635) keeps its original gate, also when it coincides with a
+      // replaced bundle; it is not an upgrade. B-817b: so does an exit that
+      // would take the wrappers with it (a hand-written systemd unit with the
+      // default KillMode=control-group, a container's init).
+      const sessionsHold = () => handoverWaitsForSessions({ bundleReplaced, relayMove: !!relayMove, sparesWrappers: handoverSparesWrappers }) && (turnActivity.hasActiveTurn() || backgroundTasks.hasAny());
       if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !harnessInstaller?.isRunning() && !sessionsHold()) {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would

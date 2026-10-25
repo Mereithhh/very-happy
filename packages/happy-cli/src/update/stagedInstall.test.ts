@@ -120,6 +120,46 @@ describe('installCliStaged (B-817)', () => {
         expect(readdirSync(root).sort()).toEqual(['.package-lock.json', 'very-happy-cli']);
     });
 
+    it('keeps old chunks inside dist/ subdirectories too (B-817b)', async () => {
+        mkdirSync(join(live, 'dist', 'codex', 'deep'), { recursive: true });
+        writeFileSync(join(live, 'dist', 'codex', 'lazy-OLD333.mjs'), '// old sub chunk');
+        writeFileSync(join(live, 'dist', 'codex', 'deep', 'more-OLD444.mjs'), '// old deep chunk');
+        const d = deps({}, (args) => {
+            const target = args.find((arg) => arg.startsWith('--prefix='))!.slice('--prefix='.length);
+            const pkg = join(target, 'lib', 'node_modules', 'very-happy-cli');
+            writePackage(pkg, '0.2.185', ['api-NEW222.mjs']);
+            mkdirSync(join(pkg, 'dist', 'codex'));
+            writeFileSync(join(pkg, 'dist', 'codex', 'lazy-NEW555.mjs'), '// new sub chunk');
+            return { code: 0, stdout: '' };
+        });
+        const report = await installCliStaged('0.2.185', d);
+        expect(report.outcome).toBe(0);
+        expect(readFileSync(join(live, 'dist', 'codex', 'lazy-OLD333.mjs'), 'utf8')).toContain('old sub chunk');
+        expect(readFileSync(join(live, 'dist', 'codex', 'deep', 'more-OLD444.mjs'), 'utf8')).toContain('old deep chunk');
+        expect(readFileSync(join(live, 'dist', 'codex', 'lazy-NEW555.mjs'), 'utf8')).toContain('new sub chunk');
+        expect(report.keptChunks).toBe(4); // api-OLD111, shared-SAME00 (not in this build), two sub chunks
+    });
+
+    it('a failed chunk copy or first rename defers with its own reason; the live tree is untouched (B-817b)', async () => {
+        const copyFail = deps({ fs: { ...fsp, copyFile: vi.fn(async () => { throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' }); }) } as never });
+        expect((await installCliStaged('0.2.185', copyFail)).outcome).toEqual({ deferred: 'staged_copy_failed' });
+        expect(JSON.parse(readFileSync(join(live, 'package.json'), 'utf8')).version).toBe('0.2.184');
+        expect(readdirSync(root).sort()).toEqual(['.package-lock.json', 'very-happy-cli']);
+        const retireFail = deps({ fs: { ...fsp, rename: vi.fn(async () => { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); }) } as never });
+        expect((await installCliStaged('0.2.185', retireFail)).outcome).toEqual({ deferred: 'staged_retire_failed' });
+        expect(JSON.parse(readFileSync(join(live, 'package.json'), 'utf8')).version).toBe('0.2.184');
+        expect(readdirSync(root).sort()).toEqual(['.package-lock.json', 'very-happy-cli']);
+    });
+
+    it('a failed rollback is blocked, names the retired tree and never deletes it (B-817b)', async () => {
+        let n = 0;
+        const d = deps({ fs: { ...fsp, rename: vi.fn(async (from: string, to: string) => { if (++n >= 2) throw Object.assign(new Error('ENOTEMPTY'), { code: 'ENOTEMPTY' }); return fsp.rename(from, to); }) } as never });
+        const retired = join(root, '.very-happy-cli-retired-0.2.184-42');
+        expect((await installCliStaged('0.2.185', d)).outcome).toEqual({ blocked: 'staged_rollback_failed', retiredDir: retired });
+        expect(JSON.parse(readFileSync(join(retired, 'package.json'), 'utf8')).version).toBe('0.2.184');
+        expect(existsSync(live)).toBe(false);
+    });
+
     it('a version npm did not actually install is unverified, not installed', async () => {
         const d = deps({}, (args) => {
             const target = args.find((arg) => arg.startsWith('--prefix='))!.slice('--prefix='.length);

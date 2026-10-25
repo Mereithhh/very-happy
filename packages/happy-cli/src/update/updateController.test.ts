@@ -278,6 +278,17 @@ describe('busy machines (B-817)', () => {
     expect(deps.install).toHaveBeenCalledTimes(1); expect(last(deps)?.state).toBe('installed');
   });
 
+  it('a staged rollback failure closes the fence as manual_required, not npm_install_failed (B-817b)', async () => {
+    const { deps, controller, advance } = busySetup(0);
+    deps.installWhileBusy.mockResolvedValue({ blocked: 'staged_rollback_failed', retiredDir: '/x/.very-happy-cli-retired-1' });
+    await controller.refresh();
+    expect(last(deps)).toMatchObject({ state: 'manual_required', detail: 'staged_rollback_failed' });
+    expect(deps.publish.mock.lastCall?.[0]).toMatchObject({ retrySupported: false, manualUpdateSupported: false });
+    deps.idle.mockReturnValue(true); advance(60_000); await controller.tick(); await controller.refresh();
+    expect(deps.install).not.toHaveBeenCalled(); expect(deps.installWhileBusy).toHaveBeenCalledTimes(1);
+    expect(await controller.request('0.2.123')).toEqual({ error: 'manual_recovery_required' });
+  });
+
   it('never installs while busy during a harness install', async () => {
     const { deps, controller } = busySetup(0); deps.installFenced.mockReturnValue(true);
     await controller.refresh(); await controller.tick();

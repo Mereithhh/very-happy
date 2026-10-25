@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { daemonLineage, detectDaemonSupervisor, kickstartLaunchdJob, probeLaunchdJob, SYSTEMD_RESTART_HINT } from './daemonSupervisor';
+import { daemonLineage, detectDaemonSupervisor, handoverWaitsForSessions, kickstartLaunchdJob, parseSystemdUnit, probeLaunchdJob, probeSystemdKillMode, SYSTEMD_RESTART_HINT, wrappersSurviveHandover, type HandoverSurvivalEvidence } from './daemonSupervisor';
 import { HANDOVER_EXIT_CODE } from './shutdownExit';
 
 /**
@@ -198,5 +198,83 @@ describe('daemon run wiring (B-505 systemd / B-770 launchd handover)', () => {
         // the bin shim must not re-exec into a child: systemd's main PID has to
         // be the daemon itself, or KillMode=process signals only the shim.
         expect(unit).toMatch(/ExecStart=.*node --no-warnings --no-deprecation .*very-happy daemon start-sync/);
+    });
+});
+
+/**
+ * B-817b regression (#762 review M1). B-817 let the handover leave mid-turn
+ * once the bundle is replaced. `INVOCATION_ID` alone reads `systemd` for ANY
+ * unit; a hand-written one has KillMode=control-group, and exit 75 SIGTERMs
+ * every wrapper in the cgroup (the 2026-09-25 incident, now mid-turn after a
+ * 15 min busy grace). Such hosts, and a container's init, keep the turn gate.
+ */
+describe('wrappersSurviveHandover (B-817b)', () => {
+    const base: HandoverSurvivalEvidence = { supervisor: 'none', env: {}, platform: 'linux', pid: 4242, ppid: 4000, inContainer: false, systemdKillMode: null };
+    const survives = (over: Partial<HandoverSurvivalEvidence>) => wrappersSurviveHandover({ ...base, ...over });
+
+    it('a hand-written systemd unit (INVOCATION_ID only, default KillMode) keeps the gate', () => {
+        const env = { INVOCATION_ID: 'abc' };
+        expect(detectDaemonSupervisor(env, 'linux')).toBe('systemd');
+        expect(survives({ supervisor: 'systemd', env, systemdKillMode: 'control-group' })).toBe(false);
+        expect(survives({ supervisor: 'systemd', env, systemdKillMode: 'mixed' })).toBe(false);
+        // KillMode unreadable and nothing explicit: unproven
+        expect(survives({ supervisor: 'systemd', env, systemdKillMode: null })).toBe(false);
+    });
+
+    it('systemd skips the gate only with KillMode=process read back, or the explicit unit setting when unreadable', () => {
+        expect(survives({ supervisor: 'systemd', env: { INVOCATION_ID: 'abc' }, systemdKillMode: 'process' })).toBe(true);
+        expect(survives({ supervisor: 'systemd', env: { INVOCATION_ID: 'abc' }, systemdKillMode: 'none' })).toBe(true);
+        expect(survives({ supervisor: 'systemd', env: { HAPPY_DAEMON_SUPERVISOR: 'systemd' }, systemdKillMode: null })).toBe(true);
+        // a read-back control-group beats a copied env line
+        expect(survives({ supervisor: 'systemd', env: { HAPPY_DAEMON_SUPERVISOR: 'systemd' }, systemdKillMode: 'control-group' })).toBe(false);
+    });
+
+    it('launchd and a plain shell daemon spare the wrappers', () => {
+        expect(survives({ supervisor: 'launchd', platform: 'darwin' })).toBe(true);
+        expect(survives({ supervisor: 'none' })).toBe(true);
+        expect(survives({ supervisor: 'none', platform: 'darwin' })).toBe(true);
+        // ppid 1 outside a container is an ordinary re-parented daemon
+        expect(survives({ supervisor: 'none', ppid: 1 })).toBe(true);
+    });
+
+    it('a container init (PID 1, or the direct child of tini) and unverified Windows keep the gate', () => {
+        expect(survives({ supervisor: 'none', pid: 1 })).toBe(false);
+        expect(survives({ supervisor: 'none', inContainer: true, ppid: 1 })).toBe(false);
+        expect(survives({ supervisor: 'none', inContainer: true, ppid: 77 })).toBe(true);
+        expect(survives({ supervisor: 'none', platform: 'win32' })).toBe(false);
+    });
+});
+
+describe('handoverWaitsForSessions (B-817/B-817b)', () => {
+    it('only a replaced bundle with a wrapper-sparing exit and no relay move leaves mid-turn', () => {
+        expect(handoverWaitsForSessions({ bundleReplaced: true, relayMove: false, sparesWrappers: true })).toBe(false);
+        expect(handoverWaitsForSessions({ bundleReplaced: true, relayMove: false, sparesWrappers: false })).toBe(true);
+        expect(handoverWaitsForSessions({ bundleReplaced: false, relayMove: true, sparesWrappers: true })).toBe(true);
+        // S5: a relay move coinciding with a replaced bundle keeps its gate
+        expect(handoverWaitsForSessions({ bundleReplaced: true, relayMove: true, sparesWrappers: true })).toBe(true);
+    });
+});
+
+describe('probeSystemdKillMode (B-817b)', () => {
+    it('finds the owning unit in cgroup v2 and v1, user or system manager', () => {
+        expect(parseSystemdUnit('0::/user.slice/user-1000.slice/user@1000.service/app.slice/very-happy-daemon.service\n'))
+            .toEqual({ unit: 'very-happy-daemon.service', user: true });
+        expect(parseSystemdUnit('0::/system.slice/happy.service')).toEqual({ unit: 'happy.service', user: false });
+        expect(parseSystemdUnit('12:pids:/x\n1:name=systemd:/system.slice/run-r3f.service\n')).toEqual({ unit: 'run-r3f.service', user: false });
+        // a login session / shell scope is no unit of ours
+        expect(parseSystemdUnit('0::/user.slice/user-1000.slice/session-4.scope')).toBeNull();
+        expect(parseSystemdUnit('0::/user.slice/user-1000.slice/user@1000.service/app.slice/tmux-spawn-1.scope')).toBeNull();
+        expect(parseSystemdUnit('0::/')).toBeNull();
+    });
+
+    it('asks the right manager for KillMode; anything else reads as unknown', async () => {
+        const calls: string[][] = [];
+        const exec = async (file: string, args: string[]) => { calls.push([file, ...args]); return 'process\n'; };
+        expect(await probeSystemdKillMode(async () => '0::/user.slice/user-1000.slice/user@1000.service/app.slice/vh.service', exec)).toBe('process');
+        expect(calls).toEqual([['systemctl', '--user', 'show', '-p', 'KillMode', '--value', 'vh.service']]);
+        expect(await probeSystemdKillMode(async () => '0::/system.slice/vh.service', async () => 'control-group')).toBe('control-group');
+        expect(calls.length).toBe(1);
+        expect(await probeSystemdKillMode(async () => '0::/system.slice/vh.service', async () => '')).toBeNull();
+        expect(await probeSystemdKillMode(async () => { throw new Error('ENOENT'); }, exec)).toBeNull();
     });
 });

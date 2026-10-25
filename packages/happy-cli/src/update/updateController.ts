@@ -122,6 +122,13 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
                 publish('waiting_idle', target, code.deferred);
                 return;
             }
+            if (code && typeof code === 'object' && 'blocked' in code) {
+                // B-817b: the live tree is gone and the old one sits at
+                // retiredDir; close the fence until a person restores it.
+                blocked = true;
+                publish('manual_required', target, code.blocked);
+                return;
+            }
             if (code && typeof code === 'object') {
                 // B-489: npm is not running and nothing is half-written, so the
                 // fence stays open (unlike 'blocked'); only the outcome is reported.

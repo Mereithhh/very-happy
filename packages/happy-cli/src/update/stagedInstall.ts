@@ -22,7 +22,7 @@
  * for a genuinely idle machine and the classic in-place install.
  */
 import { constants } from 'node:fs';
-import { access, copyFile, lstat, readFile, readdir, readlink, rename, rm } from 'node:fs/promises';
+import { access, copyFile, lstat, mkdir, readFile, readdir, readlink, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { projectPath } from '@/projectPath';
 import { autoUpdateInstallArgs } from './autoUpdate';
@@ -30,20 +30,25 @@ import { parseExactVersion } from './cliUpdate';
 import { globalPrefixForPackage } from './installLocation';
 import { ownedCliLink, runNpm, type InstallOutcome } from './npmInstall';
 
-export type StagedInstallOutcome = InstallOutcome | { deferred: string };
+/**
+ * `deferred`: the live tree is untouched; wait for an idle machine.
+ * `blocked`: the live path could not be restored after a failed swap — the old
+ * tree is left at `retiredDir` for a person to move back; nothing installs again.
+ */
+export type StagedInstallOutcome = InstallOutcome | { deferred: string } | { blocked: 'staged_rollback_failed'; retiredDir: string };
 
 export interface StagedInstallDependencies {
     npm: typeof runNpm;
     fs: {
         lstat: typeof lstat; readlink: typeof readlink; readFile: typeof readFile; readdir: typeof readdir;
-        copyFile: typeof copyFile; rename: typeof rename; rm: typeof rm; access: typeof access;
+        copyFile: typeof copyFile; mkdir: typeof mkdir; rename: typeof rename; rm: typeof rm; access: typeof access;
     };
     platform: string;
     runningPackageDir?: string;
     now: () => number;
 }
 const defaults: StagedInstallDependencies = {
-    npm: runNpm, fs: { lstat, readlink, readFile, readdir, copyFile, rename, rm, access }, platform: process.platform,
+    npm: runNpm, fs: { lstat, readlink, readFile, readdir, copyFile, mkdir, rename, rm, access }, platform: process.platform,
     runningPackageDir: projectPath(), now: Date.now,
 };
 
@@ -84,16 +89,26 @@ async function binsUnchanged(stagedDir: string, liveDir: string, prefix: string,
     return null;
 }
 
-/** Copies every old `dist/` file the new build does not have. Returns how many. */
-async function keepOldChunks(liveDir: string, stagedDir: string, deps: StagedInstallDependencies): Promise<number> {
-    const live = await deps.fs.readdir(join(liveDir, 'dist')).catch(() => [] as string[]);
-    const staged = new Set(await deps.fs.readdir(join(stagedDir, 'dist')).catch(() => [] as string[]));
+/**
+ * Copies every old `dist/` file the new build does not have, subdirectories
+ * included (no assumption about where the bundler puts hashed chunks).
+ * Symlinks are skipped. Returns how many.
+ */
+async function keepOldChunks(liveDir: string, stagedDir: string, deps: StagedInstallDependencies, sub = 'dist'): Promise<number> {
+    const live = await deps.fs.readdir(join(liveDir, sub)).catch(() => [] as string[]);
+    const staged = new Set(await deps.fs.readdir(join(stagedDir, sub)).catch(() => [] as string[]));
     let kept = 0;
     for (const name of live) {
-        if (staged.has(name) || basename(name) !== name) continue;
-        const from = join(liveDir, 'dist', name);
-        if (!await isFile(from, deps)) continue;
-        await deps.fs.copyFile(from, join(stagedDir, 'dist', name), constants.COPYFILE_EXCL);
+        if (basename(name) !== name) continue;
+        const from = join(liveDir, sub, name);
+        const stat = await deps.fs.lstat(from).catch(() => null);
+        if (stat?.isDirectory()) {
+            if (!staged.has(name)) await deps.fs.mkdir(join(stagedDir, sub, name));
+            kept += await keepOldChunks(liveDir, stagedDir, deps, join(sub, name));
+            continue;
+        }
+        if (staged.has(name) || !stat?.isFile()) continue;
+        await deps.fs.copyFile(from, join(stagedDir, sub, name), constants.COPYFILE_EXCL);
         kept++;
     }
     return kept;
@@ -134,13 +149,23 @@ export async function installCliStaged(version: string, deps: StagedInstallDepen
         if (staged?.name !== 'very-happy-cli' || staged.version !== parsed.exact) return { outcome: { deferred: 'staged_package_unverified' } };
         const binProblem = await binsUnchanged(stagedDir, liveDir, prefix, deps);
         if (binProblem) return { outcome: { deferred: binProblem } };
-        const keptChunks = await keepOldChunks(liveDir, stagedDir, deps);
+        // Each failure below is classified on its own: until the first rename
+        // succeeds the live tree is untouched (deferred, not a failed install).
+        let keptChunks: number;
+        try { keptChunks = await keepOldChunks(liveDir, stagedDir, deps); } catch {
+            return { outcome: { deferred: 'staged_copy_failed' } };
+        }
         // The only moment the live path is absent: between these two renames.
-        await deps.fs.rename(liveDir, retiredDir);
+        try { await deps.fs.rename(liveDir, retiredDir); } catch {
+            return { outcome: { deferred: 'staged_retire_failed' } };
+        }
         try {
             await deps.fs.rename(stagedDir, liveDir);
         } catch {
-            await deps.fs.rename(retiredDir, liveDir);
+            try { await deps.fs.rename(retiredDir, liveDir); } catch {
+                // Never deleted by the finally below (`swapped` stays false).
+                return { outcome: { blocked: 'staged_rollback_failed', retiredDir }, keptChunks };
+            }
             return { outcome: { deferred: 'staged_swap_failed' } };
         }
         swapped = true;

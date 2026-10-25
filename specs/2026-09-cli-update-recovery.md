@@ -266,18 +266,32 @@ Rules:
    npm installs into `<root>/.very-happy-cli-stage-<v>`; the staged tree is
    verified (name, exact version, the same two bins at the same relative
    targets as the live symlinks); every old `dist/` file the new build lacks is
-   copied in; then `rename(live → .very-happy-cli-retired-…)`,
+   copied in, subdirectories included; then `rename(live → .very-happy-cli-retired-…)`,
    `rename(staged → live)` (rolled back if the second fails). Bins are never
    unlinked. Stage, retired tree and the stale hidden lockfile are removed.
-   Anything it cannot prove (Windows, a changed bin map, an unverified package,
-   a failed swap) is `{ deferred }` → `waiting_idle` with that detail, and the
-   target waits for a real idle moment (no second staged try). npm exit codes
+   Anything it cannot prove (Windows, a changed bin map, an unverified package)
+   or a step that fails before the live tree changed (`staged_copy_failed`,
+   `staged_retire_failed`, a rolled-back `staged_swap_failed`) is `{ deferred }`
+   → `waiting_idle` with that detail, and the target waits for a real idle
+   moment (no second staged try). A rollback that itself fails is
+   `manual_required` / `staged_rollback_failed`: the fence closes and the daemon
+   log names the retired tree to move back (it is never deleted). npm exit codes
    stay terminal `failed`, as everywhere else. The harness installer (B-719)
    fences this path too.
 3. Handover after a replaced bundle waits only for work the daemon process owns
    (team reconcile tick, automation scripts/gates, an npm install, a harness
-   install). Turns and background tasks no longer hold it. A relay move (B-635)
-   keeps its old gate.
+   install) — **if the way this daemon leaves provably spares the wrappers**
+   (B-817b, `wrappersSurviveHandover`): unsupervised (spawn successor, exit 0)
+   and not a container's init (PID 1, or the direct child of one in a
+   container); launchd (B-770); systemd whose unit `KillMode` reads back as
+   `process` (`/proc/self/cgroup` → `systemctl [--user] show -p KillMode`), or,
+   when it cannot be read, the shipped unit's explicit
+   `HAPPY_DAEMON_SUPERVISOR=systemd`. Anything else — notably a hand-written
+   unit with the default `KillMode=control-group`, where exit 75 SIGTERMs every
+   wrapper in the cgroup (2026-09-25), and Windows (unverified) — keeps the old
+   rule: turns and background tasks hold the handover; the staged install
+   itself still proceeds. A relay move (B-635) keeps its old gate, also when it
+   coincides with a replaced bundle.
 
 Expected worst case on a busy machine: policy seen (announcement ≤ ~3 min, hourly
 fallback) + 15 min grace + ~15 s install + ≤ 1 heartbeat (60 s) ≈ 20 min.
@@ -291,6 +305,16 @@ machines on an older CLI keep the old rule until one install reaches them.
 Known costs: the staged install needs a second copy of the package (~630 MB)
 on disk for a few seconds; kept chunks accumulate across consecutive busy
 installs (~6 MB per version) until an idle in-place install rewrites the tree.
+Between the two renames (one `await`, measured ≤ 2 ms) the whole live tree is
+absent, not just `package.json`.
+
+Known limitation (not fixed, #762 review S4): a handover leaves the machine
+without a daemon for ~3–10 s (systemd `RestartSec=3` + start). A turn that calls
+the daemon in that window gets ECONNREFUSED: `spawn-session` (team_delegate),
+`/peers`, `/clipboard`, `/file-preview`, `/terminal-title`, `very-happy sessions
+…`, `/session-event`. MCP tools return the error to the agent; a lost turn
+start/end is repaired by the next lease renewal / lease expiry. Before B-817
+only idle machines handed over, so nothing was exposed.
 
 Verification: unit tests (`updateController` busy grace/deferral/fence/target
 reset, `stagedInstall` on a real temp tree incl. rollback and bin-map changes,

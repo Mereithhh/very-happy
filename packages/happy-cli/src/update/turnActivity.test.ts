@@ -64,7 +64,7 @@ describe('daemon wiring (B-466)', () => {
         expect(run).toContain('if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !harnessInstaller?.isRunning() && !sessionsHold()) {');
         expect(run).toContain('if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || harnessInstaller?.isRunning() || sessionsHold()) return;');
         // B-817: sessions hold only a relay move, never a replaced bundle
-        expect(run).toContain('const sessionsHold = () => !bundleReplaced && (turnActivity.hasActiveTurn() || backgroundTasks.hasAny());');
+        expect(run).toContain('const sessionsHold = () => handoverWaitsForSessions({ bundleReplaced, relayMove: !!relayMove, sparesWrappers: handoverSparesWrappers }) && (turnActivity.hasActiveTurn() || backgroundTasks.hasAny());');
         expect(run).not.toMatch(/idle: \(\) =>[^\n]*hasLiveTerminals/);
         expect(run).not.toMatch(/idle: \(\) =>[^\n]*pidToTrackedSession\.size/);
         // an exited wrapper releases its mark
