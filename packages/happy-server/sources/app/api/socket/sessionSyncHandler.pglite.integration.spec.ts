@@ -107,7 +107,11 @@ describe('atomicity: snapshot ∪ push is gap-free (§9.1-1, §9.1-10)', () => {
                 // Head and page come from one snapshot.
                 const seqs: number[] = result.messages.map((m: { seq: number }) => m.seq);
                 expect(seqs.every((seq) => seq > afterSeq && seq <= result.headSeq), `round ${round} page within (afterSeq, head]`).toBe(true);
-                if (!result.hasMore) expect(seqs.length ? Math.max(...seqs) : afterSeq, `round ${round} head`).toBe(Math.max(afterSeq, result.headSeq));
+                // r1 §4.2: a complete answer holds every DB row in (afterSeq, head] (max ≤ head, holes allowed).
+                if (!result.hasMore) {
+                    const inRange = (await harness.committedSeqs(fixture.sessionId, afterSeq)).filter((seq) => seq <= result.headSeq);
+                    expect(seqs, `round ${round} head`).toEqual(inRange);
+                }
 
                 const expected = await harness.committedSeqs(fixture.sessionId, afterSeq);
                 const seen = () => [...new Set([...seqs, ...(client.pushes.get(fixture.sessionId) ?? [])])].filter((s) => s > afterSeq).sort((a, b) => a - b);
@@ -137,7 +141,7 @@ describe('atomicity: snapshot ∪ push is gap-free (§9.1-1, §9.1-10)', () => {
 });
 
 describe('one statement: head and page agree under concurrent writes (§9.1-2)', () => {
-    it('every snapshot taken while writers commit has page ⊆ (afterSeq, head] and, when complete, ends at head', async () => {
+    it('every snapshot taken while writers commit has page ⊆ (afterSeq, head] and, when complete, holds every row in that range', async () => {
         const random = harness.seededRandom(811_900);
         let writing = true;
         const writer = (async () => {
@@ -153,12 +157,39 @@ describe('one statement: head and page agree under concurrent writes (§9.1-2)',
             const seqs = read!.messages.map((m) => m.seq);
             expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
             expect(seqs.every((seq) => seq > afterSeq && seq <= read!.head)).toBe(true);
-            if (!read!.hasMore) expect(seqs.length ? seqs.at(-1) : afterSeq).toBe(Math.max(afterSeq, read!.head));
+            if (!read!.hasMore) {
+                expect(seqs).toEqual((await harness.committedSeqs(fixture.sessionId, afterSeq)).filter((seq) => seq <= read!.head));
+            }
             reads += 1;
         }
         await writer;
         expect(reads).toBeGreaterThan(10);
     }, 120_000);
+});
+
+describe('seq holes are returned as-is (§4.2.1, §9.1-2a)', () => {
+    it('Session.seq=12 with rows 1–4, 6–10: head 12, hasMore false, rows per range, Session.seq untouched', async () => {
+        const session = await db.session.create({ data: { accountId: fixture.ownerId, tag: crypto.randomUUID(), metadata: 'm', seq: 12 } });
+        await db.sessionMessage.createMany({ data: [1, 2, 3, 4, 6, 7, 8, 9, 10].map((seq) => ({
+            sessionId: session.id, seq, localId: `hole-${seq}`, content: { t: 'encrypted' as const, c: `c${seq}` },
+        })) });
+        const client = await harness.connectClient(server.url, { userId: fixture.ownerId });
+        try {
+            const ack = await hello(client, [null, 4, 10, 12].map((afterSeq) => ({ sid: session.id, afterSeq })));
+            expect(ack.ok).toBe(true);
+            const expected = [[1, 2, 3, 4, 6, 7, 8, 9, 10], [6, 7, 8, 9, 10], [], []];
+            ack.results.forEach((result: any, i: number) => {
+                expect(result).toMatchObject({ ok: true, headSeq: 12, hasMore: false });
+                expect(result).not.toHaveProperty('gapTooLarge');
+                expect(result.messages.map((m: any) => m.seq)).toEqual(expected[i]);
+            });
+            const sub = await harness.emitWithAck(client.socket, 'session-subscribe', { v: 1, sid: session.id, afterSeq: 10 });
+            expect(sub).toEqual({ sid: session.id, ok: true, headSeq: 12, messages: [], hasMore: false });
+        } finally {
+            client.socket.close();
+        }
+        expect(await harness.sessionHead(session.id)).toBe(12);
+    });
 });
 
 describe('gap threshold and cold page on a real database (§9.1-3)', () => {
