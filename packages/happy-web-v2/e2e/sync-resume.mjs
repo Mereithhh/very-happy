@@ -1227,8 +1227,9 @@ try {
          * (performance.now(), i.e. ms since navigation start) when the composer
          * appears and when each of `marks` is first in the transcript DOM.
          */
-        const coldOpen = async (ctx, sid, marks, { timeoutMs = 30_000 } = {}) => {
+        const coldOpen = async (ctx, sid, marks, { timeoutMs = 30_000, prepare = null } = {}) => {
             const page = await ctx.newPage();
+            if (prepare) await prepare(page);
             page.on('pageerror', (e) => console.log('phone pageerror', e.message));
             if (DEBUG) {
                 page.on('requestfailed', (r) => console.log(`    phone request failed ${r.url().replace(PROXY_BASE, '')} ${r.failure()?.errorText}`));
@@ -1374,15 +1375,29 @@ try {
                 }, ST);
                 await victim.page.close();
                 check(corrupted === 3, 'TAMPER corrupted one of the 3 cached rows', `${corrupted}`);
-                const opened = await coldOpen(phone, ST, tamperTexts);
+                // B-819: a key that beats a still-opening database skips the cache (network first). Hold the
+                // session list (the keys) until the database is open, so this open takes the cache-read path
+                // for sure and the corruption must be detected — not just "not shown".
+                let heldList = false;
+                const holdKeysUntilCacheOpen = (page) => page.route((url) => url.pathname === '/v1/sessions', async (route) => {
+                    const t = Date.now();
+                    while (Date.now() - t < 10_000) {
+                        // Open, and the key-wait read of ST finished (a hit or a miss is counted): it is what renders.
+                        const read = await page.evaluate(() => import('/src/sync/cache/syncCache.ts').then(({ syncCache }) => {
+                            const stats = syncCache.stats();
+                            return stats.state === 'ready' && stats.hits + stats.misses >= 1;
+                        })).catch(() => false);
+                        if (read) { heldList = true; break; }
+                        await sleep(25);
+                    }
+                    await route.continue().catch(() => {});
+                });
+                const opened = await coldOpen(phone, ST, tamperTexts, { prepare: holdKeysUntilCacheOpen });
                 const statsAfter = await cacheStats(opened.page);
+                check(heldList, 'TAMPER the cache was read before the session keys arrived (cache-read path)');
                 const shown = await transcript(opened.page, ST, tamperPrefix);
                 check(JSON.stringify(shown) === JSON.stringify(tamperTexts), 'TAMPER the corrupted session shows the server transcript', JSON.stringify(shown));
-                // B-819: when the key beats a still-opening database the network page is used and the late
-                // cache read is discarded (it still counts a hit), so the drop count is only informational
-                // here; the check above (exactly the server transcript) is the guard, and the decrypt-drop
-                // path is unit-tested (syncCacheFlow §5.4.2 row 3).
-                console.log(`    TAMPER cache after the open: drops ${JSON.stringify(statsAfter?.drops)} hits ${statsAfter?.hits}${(statsAfter?.drops?.decrypt ?? 0) >= 1 ? '' : ' (not read before the key: network first)'}`);
+                check((statsAfter?.drops?.decrypt ?? 0) >= 1, 'TAMPER its cache was read, found corrupt (decrypt) and dropped, not used', `drops ${JSON.stringify(statsAfter?.drops)} hits ${statsAfter?.hits}`);
                 await nav(opened.page, SC);
                 await waitTranscript(opened.page, SC, coldPrefix, COLD_RECORDS, 15_000);
                 const statsOther = await cacheStats(opened.page);
