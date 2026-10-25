@@ -325,9 +325,12 @@ describe('B-814 takeover after a reload (§5.5.3)', () => {
     it('a turn (attachment + text) is re-sent together, in its order', async () => {
         const sid = newSession();
         const file = { role: 'session', content: { type: 'session', data: { id: 'e1', time: 1, role: 'user', ev: { t: 'file', ref: 'r', name: 'a.png', size: 1, mimeType: 'image/png' } } } };
+        // One createdAt for the whole turn, as persistOutbox writes it: two Date.now()
+        // reads could straddle a millisecond and sort the text first (flaky, B-815b).
+        const createdAt = Date.now() - 60_000;
         await outboxStore.put([
-            { ...orphan(sid, 'turn-text', 'with a picture'), group: 'turn', order: 1 },
-            { ...orphan(sid, 'turn-file', ''), body: cipher(file), group: 'turn', order: 0 },
+            { ...orphan(sid, 'turn-text', 'with a picture', { createdAt }), group: 'turn', order: 1 },
+            { ...orphan(sid, 'turn-file', '', { createdAt }), body: cipher(file), group: 'turn', order: 0 },
         ]);
         await reclaim();
         await settle();
