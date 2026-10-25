@@ -139,6 +139,25 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-25-unsent-messages-kept',
+    date: '2026-10-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct25f.title',
+    summaryKey: 'changelog.releases.oct25f.summary',
+    highlights: [
+      {
+        key: 'outbox',
+        titleKey: 'changelog.releases.oct25f.outboxTitle',
+        bodyKey: 'changelog.releases.oct25f.outboxBody',
+        image: changelogShots('2026-10-25f', 'outbox', SHOT_SIZE, 'changelog.releases.oct25f.outboxAlt'),
+      },
+    ],
+    itemKeys: [
+      'changelog.releases.oct25f.queue',
+      'changelog.releases.oct25f.bigAccounts',
+    ],
+  },
+  {
     id: '2026-10-25-cli-busy-auto-upgrade',
     cliVersion: '0.2.186',
     date: '2026-10-25',
