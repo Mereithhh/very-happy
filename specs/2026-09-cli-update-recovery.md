@@ -232,3 +232,93 @@ machines already stuck, because they cannot receive the CLI half automatically.
 Not covered: machines already stuck need one manual update (the Web now says so);
 installs where the running copy's prefix is not writable need a person; the extra
 copy left in the other npm tree is only warned about by `doctor`.
+
+## Busy machines upgrade too (B-817, 2026-10-25)
+
+Evidence: CLI 0.2.185 shipped at 10:58; mac-office (no sessions) upgraded at
+11:02, dev-sg (a team plus the owner's sessions, never all quiet at once) sat on
+`waiting_idle` for the rest of the day. B-466 made "idle" mean "no turn and no
+background task in flight on the whole machine"; a busy machine never sees that.
+
+What the two gates actually protected (measured, not assumed):
+
+- **Install.** `npm i -g` reifies in place. On 0.2.184 → 0.2.185 in an isolated
+  prefix, `scripts/`, `dist/` and `package.json` were all absent for ~4.3 s of a
+  13 s install, and `installCliSafely` unlinks the `very-happy` /
+  `very-happy-mcp` bins for the whole npm run. Inside a turn that window breaks
+  an agent's `very-happy …` Bash call, the SessionStart hook forwarder on a
+  compaction, and any lazy chunk import by a running wrapper (`claudeLocalLauncher`
+  on a mode switch, `/btw`). After it, old hashed `dist/` chunks are gone for good.
+- **Handover.** Nothing in a turn depends on the daemon: wrappers are detached
+  (own process group; systemd `KillMode=process`, launchd re-adopt since B-770),
+  talk to the relay themselves, re-read `daemon.state.json` on every control
+  call, and renew turn / background-task leases every 60 s, so the new daemon
+  re-learns both within a minute and re-adopts the processes
+  (`startedBy: recovered after daemon restart`). Once the bundle is replaced,
+  holding the handover protects nothing — it only keeps old daemon code running
+  on new files.
+
+Rules:
+
+1. Idle machine: unchanged — classic in-place `installCliSafely`.
+2. Busy for `busyGraceMs` (default 15 min, `HAPPY_CLI_UPDATE_BUSY_GRACE_MS`
+   0–24 h) for the same target: `installCliStaged` (`update/stagedInstall.ts`).
+   npm installs into `<root>/.very-happy-cli-stage-<v>`; the staged tree is
+   verified (name, exact version, the same two bins at the same relative
+   targets as the live symlinks); every old `dist/` file the new build lacks is
+   copied in, subdirectories included; then `rename(live → .very-happy-cli-retired-…)`,
+   `rename(staged → live)` (rolled back if the second fails). Bins are never
+   unlinked. Stage, retired tree and the stale hidden lockfile are removed.
+   Anything it cannot prove (Windows, a changed bin map, an unverified package)
+   or a step that fails before the live tree changed (`staged_copy_failed`,
+   `staged_retire_failed`, a rolled-back `staged_swap_failed`) is `{ deferred }`
+   → `waiting_idle` with that detail, and the target waits for a real idle
+   moment (no second staged try). A rollback that itself fails is
+   `manual_required` / `staged_rollback_failed`: the fence closes and the daemon
+   log names the retired tree to move back (it is never deleted). npm exit codes
+   stay terminal `failed`, as everywhere else. The harness installer (B-719)
+   fences this path too.
+3. Handover after a replaced bundle waits only for work the daemon process owns
+   (team reconcile tick, automation scripts/gates, an npm install, a harness
+   install) — **if the way this daemon leaves provably spares the wrappers**
+   (B-817b, `wrappersSurviveHandover`): unsupervised (spawn successor, exit 0)
+   and not a container's init (PID 1, or the direct child of one in a
+   container); launchd (B-770); systemd whose unit `KillMode` reads back as
+   `process` (`/proc/self/cgroup` → `systemctl [--user] show -p KillMode`), or,
+   when it cannot be read, the shipped unit's explicit
+   `HAPPY_DAEMON_SUPERVISOR=systemd`. Anything else — notably a hand-written
+   unit with the default `KillMode=control-group`, where exit 75 SIGTERMs every
+   wrapper in the cgroup (2026-09-25), and Windows (unverified) — keeps the old
+   rule: turns and background tasks hold the handover; the staged install
+   itself still proceeds. A relay move (B-635) keeps its old gate, also when it
+   coincides with a replaced bundle.
+
+Expected worst case on a busy machine: policy seen (announcement ≤ ~3 min, hourly
+fallback) + 15 min grace + ~15 s install + ≤ 1 heartbeat (60 s) ≈ 20 min.
+
+Compatibility: no wire or server change. New detail strings (`while_busy`,
+`staged_*`, `live_bin_*`) ride the existing opaque `autoUpdate.detail`; old Web
+ignores them. Old wrappers keep working across the swap (their chunks are kept;
+everything else they load was loaded at start). Deploy order does not matter;
+machines on an older CLI keep the old rule until one install reaches them.
+
+Known costs: the staged install needs a second copy of the package (~630 MB)
+on disk for a few seconds; kept chunks accumulate across consecutive busy
+installs (~6 MB per version) until an idle in-place install rewrites the tree.
+Between the two renames (one `await`, measured ≤ 2 ms) the whole live tree is
+absent, not just `package.json`.
+
+Known limitation (not fixed, #762 review S4): a handover leaves the machine
+without a daemon for ~3–10 s (systemd `RestartSec=3` + start). A turn that calls
+the daemon in that window gets ECONNREFUSED: `spawn-session` (team_delegate),
+`/peers`, `/clipboard`, `/file-preview`, `/terminal-title`, `very-happy sessions
+…`, `/session-event`. MCP tools return the error to the agent; a lost turn
+start/end is repaired by the next lease renewal / lease expiry. Before B-817
+only idle machines handed over, so nothing was exposed.
+
+Verification: unit tests (`updateController` busy grace/deferral/fence/target
+reset, `stagedInstall` on a real temp tree incl. rollback and bin-map changes,
+wiring source assertions, all mutation-checked) and an isolated e2e on dev-sg
+(transient systemd unit with `KillMode=process`, local standalone server + fake
+registry, 3 sessions: one in a 26-step turn calling `very-happy --version`, one
+with a background Bash task, one idle) — see PR #762.

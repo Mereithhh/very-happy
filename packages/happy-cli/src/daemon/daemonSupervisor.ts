@@ -1,4 +1,5 @@
 import { execFile, spawnSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { classifyLineage, parseLaunchctlPid, HAPPY_DAEMON_LAUNCHD_LABEL, type ClaudeAuthLineage } from './claudeAuth/claudeAuthProbe';
 
 /**
@@ -104,6 +105,95 @@ export async function probeLaunchdJob(exec: (file: string, args: string[]) => Pr
         pid = ppid;
     }
     return { jobPid, ancestorPids };
+}
+
+/**
+ * B-817b — may the handover leave while a turn or background task is running?
+ *
+ * B-817 stopped holding the handover for turns once the bundle is replaced:
+ * wrappers are detached and re-adopted, so a turn runs straight through. That
+ * is only true when the way this process leaves does not take the wrappers
+ * with it, and `detectDaemonSupervisor` reads `systemd` from `INVOCATION_ID`
+ * alone — any unit, `systemd-run` or distro template. The CLI ships no unit;
+ * a hand-written one has the default `KillMode=control-group`, and exit 75
+ * then SIGTERMs every wrapper in the cgroup (2026-09-25, above). Before B-817
+ * that only cost idle wrappers; without the gate it would end turns.
+ *
+ * So the gate is skipped only where the exit provably spares the wrappers:
+ * - `none`: the old daemon spawns its successor and exits 0, wrappers are in
+ *   their own sessions — unless this process is a container's init (PID 1)
+ *   or the direct child of one (tini, `docker run --init`): the container
+ *   ends with it. Windows is unverified and keeps the gate.
+ * - `launchd`: the job's exit reaps only its own process group (B-770).
+ * - `systemd` with the unit's `KillMode` read back as `process` (or `none`).
+ *   When it cannot be read, an explicit `HAPPY_DAEMON_SUPERVISOR=systemd`
+ *   (only set by the shipped unit, which pairs it with `KillMode=process`)
+ *   is accepted; a read-back `control-group`/`mixed` always wins over it.
+ */
+export interface HandoverSurvivalEvidence {
+    supervisor: DaemonSupervisor;
+    env: NodeJS.ProcessEnv;
+    platform: NodeJS.Platform;
+    pid: number;
+    ppid: number;
+    /** `/.dockerenv` or `/run/.containerenv` exists. */
+    inContainer: boolean;
+    /** The unit's `KillMode` from `systemctl show`, or null when unknown. */
+    systemdKillMode: string | null;
+}
+
+export function wrappersSurviveHandover(e: HandoverSurvivalEvidence): boolean {
+    if (e.supervisor === 'launchd') return true;
+    if (e.supervisor === 'systemd') {
+        const killMode = e.systemdKillMode?.trim().toLowerCase();
+        if (killMode) return killMode === 'process' || killMode === 'none';
+        return e.env.HAPPY_DAEMON_SUPERVISOR?.trim().toLowerCase() === 'systemd';
+    }
+    if (e.platform === 'win32') return false;
+    if (e.pid === 1) return false;
+    if (e.inContainer && e.ppid === 1) return false;
+    return true;
+}
+
+/**
+ * Whether running turns/background tasks hold the handover. Only a replaced
+ * bundle (not a relay move, not both at once) whose exit spares the wrappers
+ * may leave mid-turn.
+ */
+export function handoverWaitsForSessions(o: { bundleReplaced: boolean; relayMove: boolean; sparesWrappers: boolean }): boolean {
+    return !o.bundleReplaced || o.relayMove || !o.sparesWrappers;
+}
+
+/**
+ * The systemd unit owning this process, from `/proc/self/cgroup` (v2 `0::`
+ * line, else v1 `name=systemd`). A user-manager unit sits under
+ * `user@<uid>.service/`, which decides `systemctl --user`.
+ */
+export function parseSystemdUnit(cgroup: string): { unit: string; user: boolean } | null {
+    const lines = cgroup.split('\n');
+    const path = lines.find((line) => line.startsWith('0::'))?.slice(3)
+        ?? lines.find((line) => line.split(':')[1] === 'name=systemd')?.split(':').slice(2).join(':');
+    if (!path) return null;
+    const segments = path.trim().split('/').filter(Boolean);
+    let index = -1;
+    for (let i = segments.length - 1; i >= 0; i--) {
+        if (segments[i].endsWith('.service')) { index = i; break; }
+    }
+    if (index < 0) return null;
+    const unit = segments[index];
+    if (!/^[A-Za-z0-9:_.@\\-]+\.service$/.test(unit) || /^user@\d+\.service$/.test(unit)) return null;
+    return { unit, user: segments.slice(0, index).some((segment) => /^user@\d+\.service$/.test(segment)) };
+}
+
+/** linux only; any failure reads as "unknown" (null), which keeps the turn gate unless the unit said so explicitly. */
+export async function probeSystemdKillMode(
+    readCgroup: () => Promise<string> = () => readFile('/proc/self/cgroup', 'utf8'),
+    exec: (file: string, args: string[]) => Promise<string> = execText,
+): Promise<string | null> {
+    const owner = parseSystemdUnit(await readCgroup().catch(() => ''));
+    if (!owner) return null;
+    const out = (await exec('systemctl', [...(owner.user ? ['--user'] : []), 'show', '-p', 'KillMode', '--value', owner.unit])).trim();
+    return /^[a-z-]+$/.test(out) ? out : null;
 }
 
 /** The manual, supervisor-owned restart for a host whose daemon reads `systemd`. */

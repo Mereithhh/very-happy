@@ -82,8 +82,10 @@ describe('daemon / wrapper wiring (B-507)', () => {
     it('install AND handover also wait for "no background task in flight"', () => {
         // B-719: …and while an owner-requested harness install writes the same npm tree.
         expect(run).toContain('idle: () => !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny() && !harnessInstaller?.isRunning(),');
-        expect(run).toContain('if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !harnessInstaller?.isRunning() && !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny()) {');
-        expect(run).toContain('if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || harnessInstaller?.isRunning() || turnActivity.hasActiveTurn() || backgroundTasks.hasAny()) return;');
+        expect(run).toContain('if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !harnessInstaller?.isRunning() && !sessionsHold()) {');
+        expect(run).toContain('if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || harnessInstaller?.isRunning() || sessionsHold()) return;');
+        // B-817: sessions hold only a relay move, never a replaced bundle
+        expect(run).toContain('const sessionsHold = () => handoverWaitsForSessions({ bundleReplaced, relayMove: !!relayMove, sparesWrappers: handoverSparesWrappers }) && (turnActivity.hasActiveTurn() || backgroundTasks.hasAny());');
         // an exited wrapper releases its set; the control server feeds the tracker and /list reads it
         expect(run).toContain('if (session?.happySessionId) backgroundTasks.forget(session.happySessionId);');
         expect(run).toContain('onSessionBackgroundTasks: (sessionId, tasks) => backgroundTasks.apply(sessionId, tasks),');

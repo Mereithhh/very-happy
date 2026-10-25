@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createUpdateController } from './updateController';
+import { createUpdateController, DEFAULT_BUSY_INSTALL_GRACE_MS, resolveBusyInstallGrace } from './updateController';
+import type { StagedInstallOutcome } from './stagedInstall';
 import type { CliUpdateState } from '@/api/types';
 import type { InstallOutcome } from './npmInstall';
 const policy: CliUpdateState = { currentVersion: '0.2.122', recommendedVersion: '0.2.123', minimumVersion: null, autoUpdateVersion: '0.2.123', checkedAt: 1000, status: 'available' };
@@ -220,5 +221,107 @@ describe('B-718 machine page facts', () => {
     expect(controller.currentTarget()).toBeNull();
     await controller.refresh();
     expect(controller.currentTarget()).toBe('0.2.123');
+  });
+});
+
+describe('busy machines (B-817)', () => {
+  function busySetup(grace = 15 * 60_000) {
+    let clock = 1000;
+    const deps = {
+      policy: vi.fn(async () => policy), enabled: vi.fn(async () => true), idle: vi.fn(() => false),
+      install: vi.fn(async (): Promise<InstallOutcome> => 0), installWhileBusy: vi.fn(async (): Promise<StagedInstallOutcome> => 0),
+      installFenced: vi.fn(() => false), busyGraceMs: grace, publish: vi.fn(), now: () => clock,
+    };
+    return { deps, controller: createUpdateController(deps), advance: (ms: number) => { clock += ms; } };
+  }
+  const last = (deps: { publish: ReturnType<typeof vi.fn> }) => deps.publish.mock.lastCall?.[0].autoUpdate;
+
+  it('waits for idle inside the grace period, then installs through the staged path', async () => {
+    const { deps, controller, advance } = busySetup();
+    await controller.refresh();
+    expect(last(deps)?.state).toBe('waiting_idle');
+    advance(15 * 60_000 - 1); await controller.tick();
+    expect(deps.installWhileBusy).not.toHaveBeenCalled();
+    advance(1); await controller.tick();
+    expect(deps.installWhileBusy).toHaveBeenCalledWith('0.2.123');
+    expect(deps.install).not.toHaveBeenCalled();
+    expect(deps.publish.mock.calls.map(([s]) => [s.autoUpdate?.state, s.autoUpdate?.detail])).toContainEqual(['installing', 'while_busy']);
+    expect(last(deps)?.state).toBe('installed');
+  });
+
+  it('without an explicit grace the default 15 minutes applies', async () => {
+    const { deps, advance } = busySetup();
+    const { busyGraceMs: _omit, ...rest } = deps;
+    const defaulted = createUpdateController(rest);
+    await defaulted.refresh();
+    advance(DEFAULT_BUSY_INSTALL_GRACE_MS - 1); await defaulted.tick();
+    expect(deps.installWhileBusy).not.toHaveBeenCalled();
+    advance(1); await defaulted.tick();
+    expect(deps.installWhileBusy).toHaveBeenCalledTimes(1);
+  });
+
+  it('an idle machine keeps the classic install, whatever the grace', async () => {
+    const { deps, controller } = busySetup(0); deps.idle.mockReturnValue(true);
+    await controller.refresh();
+    expect(deps.install).toHaveBeenCalledTimes(1); expect(deps.installWhileBusy).not.toHaveBeenCalled();
+  });
+
+  it('a deferred staged install waits for a real idle moment and does not retry staged', async () => {
+    const { deps, controller, advance } = busySetup(0);
+    deps.installWhileBusy.mockResolvedValue({ deferred: 'staged_bin_map_changed' });
+    await controller.refresh();
+    expect(last(deps)).toMatchObject({ state: 'waiting_idle', detail: 'staged_bin_map_changed' });
+    advance(60_000); await controller.tick(); await controller.tick();
+    expect(deps.installWhileBusy).toHaveBeenCalledTimes(1);
+    expect(last(deps)).toMatchObject({ state: 'waiting_idle', detail: 'staged_bin_map_changed' });
+    deps.idle.mockReturnValue(true); await controller.tick();
+    expect(deps.install).toHaveBeenCalledTimes(1); expect(last(deps)?.state).toBe('installed');
+  });
+
+  it('a staged rollback failure closes the fence as manual_required, not npm_install_failed (B-817b)', async () => {
+    const { deps, controller, advance } = busySetup(0);
+    deps.installWhileBusy.mockResolvedValue({ blocked: 'staged_rollback_failed', retiredDir: '/x/.very-happy-cli-retired-1' });
+    await controller.refresh();
+    expect(last(deps)).toMatchObject({ state: 'manual_required', detail: 'staged_rollback_failed' });
+    expect(deps.publish.mock.lastCall?.[0]).toMatchObject({ retrySupported: false, manualUpdateSupported: false });
+    deps.idle.mockReturnValue(true); advance(60_000); await controller.tick(); await controller.refresh();
+    expect(deps.install).not.toHaveBeenCalled(); expect(deps.installWhileBusy).toHaveBeenCalledTimes(1);
+    expect(await controller.request('0.2.123')).toEqual({ error: 'manual_recovery_required' });
+  });
+
+  it('never installs while busy during a harness install', async () => {
+    const { deps, controller } = busySetup(0); deps.installFenced.mockReturnValue(true);
+    await controller.refresh(); await controller.tick();
+    expect(deps.installWhileBusy).not.toHaveBeenCalled(); expect(last(deps)?.state).toBe('waiting_idle');
+    deps.installFenced.mockReturnValue(false); await controller.tick();
+    expect(deps.installWhileBusy).toHaveBeenCalledTimes(1);
+  });
+
+  it('a new target restarts the grace period', async () => {
+    const { deps, controller, advance } = busySetup();
+    await controller.refresh();
+    advance(14 * 60_000);
+    deps.policy.mockResolvedValue({ ...policy, recommendedVersion: '0.2.124', autoUpdateVersion: '0.2.124', checkedAt: 1000 + 14 * 60_000 });
+    await controller.refresh();
+    advance(2 * 60_000); await controller.tick();
+    expect(deps.installWhileBusy).not.toHaveBeenCalled();
+    advance(13 * 60_000); await controller.tick();
+    expect(deps.installWhileBusy).toHaveBeenCalledWith('0.2.124');
+  });
+
+  it('a staged npm failure is terminal like any other failure', async () => {
+    const { deps, controller } = busySetup(0); deps.installWhileBusy.mockResolvedValue(1);
+    await controller.refresh(); await controller.tick();
+    expect(deps.installWhileBusy).toHaveBeenCalledTimes(1); expect(last(deps)?.state).toBe('failed');
+  });
+});
+
+describe('resolveBusyInstallGrace', () => {
+  it('defaults to 15 minutes and accepts only sane integers', () => {
+    expect(resolveBusyInstallGrace(undefined)).toBe(DEFAULT_BUSY_INSTALL_GRACE_MS);
+    expect(DEFAULT_BUSY_INSTALL_GRACE_MS).toBe(15 * 60_000);
+    expect(resolveBusyInstallGrace('0')).toBe(0);
+    expect(resolveBusyInstallGrace('30000')).toBe(30_000);
+    for (const bad of ['', '-1', '1.5', 'soon', String(25 * 60 * 60_000)]) expect(resolveBusyInstallGrace(bad)).toBe(DEFAULT_BUSY_INSTALL_GRACE_MS);
   });
 });

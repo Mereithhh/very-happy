@@ -1,6 +1,19 @@
 import type { CliUpdateState } from '@/api/types';
 import { compareExactVersions } from './cliUpdate';
 import type { InstallOutcome } from './npmInstall';
+import type { StagedInstallOutcome } from './stagedInstall';
+
+/**
+ * B-817: how long a busy machine waits for an idle moment before installing
+ * through the staged path anyway. Busy machines (a team plus the owner's own
+ * sessions) were never idle and sat on `waiting_idle` for hours.
+ */
+export const DEFAULT_BUSY_INSTALL_GRACE_MS = 15 * 60_000;
+export function resolveBusyInstallGrace(raw: string | undefined): number {
+    if (raw === undefined || raw.trim() === '') return DEFAULT_BUSY_INSTALL_GRACE_MS;
+    const value = Number(raw);
+    return Number.isInteger(value) && value >= 0 && value <= 24 * 60 * 60_000 ? value : DEFAULT_BUSY_INSTALL_GRACE_MS;
+}
 
 /** B-718: the last install this machine completed, kept across the handover it causes. */
 export interface LastCliInstall { from: string; to: string; at: number; source: 'auto' | 'manual' }
@@ -10,6 +23,15 @@ export interface UpdateControllerDependencies {
     enabled: () => Promise<boolean>;
     idle: () => boolean;
     install: (version: string) => Promise<InstallOutcome>;
+    /**
+     * B-817: an install that never leaves the live tree incomplete
+     * (`stagedInstall.ts`), used once the machine has been busy for
+     * `busyGraceMs`. `{ deferred }` = this target waits for a real idle moment.
+     */
+    installWhileBusy?: (version: string) => Promise<StagedInstallOutcome>;
+    /** Something that must never overlap any npm write (B-719 harness install). */
+    installFenced?: () => boolean;
+    busyGraceMs?: number;
     publish: (state: CliUpdateState) => void;
     now?: () => number;
     /**
@@ -32,6 +54,10 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
     let lastPublished = '';
     // B-718: reported so the Web can show on/off; unknown until first read.
     let autoUpdateEnabled: boolean | undefined;
+    // B-817: since when the current target has been waiting on a busy machine,
+    // and the target whose staged install already said "not here".
+    let busySince: { version: string; at: number } | null = null;
+    let busyDeferred: { version: string; reason: string } | null = null;
     let lastInstall: LastCliInstall | null = (() => { try { return deps.lastInstall?.read() ?? null; } catch { return null; } })();
     const now = deps.now ?? Date.now;
     function snapshot(): CliUpdateState {
@@ -79,12 +105,30 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         if (!target) { publish('unapproved', null); return; }
         const order = compareExactVersions(policy.currentVersion, target);
         if (order !== -1) { publish(order === null ? 'policy_stale' : 'current', target); return; }
-        if (!deps.idle()) { publish('waiting_idle', target); return; }
+        let whileBusy = false;
+        if (!deps.idle()) {
+            if (busySince?.version !== target) busySince = { version: target, at: now() };
+            whileBusy = !!deps.installWhileBusy && busyDeferred?.version !== target && !deps.installFenced?.()
+                && now() - busySince.at >= (deps.busyGraceMs ?? DEFAULT_BUSY_INSTALL_GRACE_MS);
+            if (!whileBusy) { publish('waiting_idle', target, busyDeferred?.version === target ? busyDeferred.reason : undefined); return; }
+        }
         // Set before awaiting install. No RPC or timer can create a second install.
         running = true;
-        publish('installing', target);
+        publish('installing', target, whileBusy ? 'while_busy' : undefined);
         try {
-            const code = await deps.install(target);
+            const code = whileBusy ? await deps.installWhileBusy!(target) : await deps.install(target);
+            if (code && typeof code === 'object' && 'deferred' in code) {
+                busyDeferred = { version: target, reason: code.deferred };
+                publish('waiting_idle', target, code.deferred);
+                return;
+            }
+            if (code && typeof code === 'object' && 'blocked' in code) {
+                // B-817b: the live tree is gone and the old one sits at
+                // retiredDir; close the fence until a person restores it.
+                blocked = true;
+                publish('manual_required', target, code.blocked);
+                return;
+            }
             if (code && typeof code === 'object') {
                 // B-489: npm is not running and nothing is half-written, so the
                 // fence stays open (unlike 'blocked'); only the outcome is reported.

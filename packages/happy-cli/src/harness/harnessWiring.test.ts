@@ -13,7 +13,9 @@ describe('harness install ↔ CLI update wiring (B-719)', () => {
     });
     it('the CLI install and both handover gates wait for a harness install', () => {
         expect(run).toContain('&& !harnessInstaller?.isRunning(),');
-        expect(run).toContain('!updateController.isRunning() && !harnessInstaller?.isRunning() && !turnActivity.hasActiveTurn()');
-        expect(run).toContain('updateController.isRunning() || harnessInstaller?.isRunning() || turnActivity.hasActiveTurn()');
+        expect(run).toContain('!updateController.isRunning() && !harnessInstaller?.isRunning() && !sessionsHold()');
+        expect(run).toContain('updateController.isRunning() || harnessInstaller?.isRunning() || sessionsHold()) return;');
+        // B-817: the staged install while busy is fenced too
+        expect(run).toContain('installFenced: () => !!harnessInstaller?.isRunning(),');
     });
 });
