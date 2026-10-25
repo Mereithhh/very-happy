@@ -8,6 +8,7 @@
  * `--pages overlays` 扫壳外浮层：更新弹窗、通知面板、各类 toast（B-796b：✕ 不得落进侧边 inset）。
  * `--pages offline` 断网（context.setOffline）后截「已离线，正在重连…」顶部细条和「已恢复」（B-799）：
  * 细条底边必须在壳内所有可见按钮的上方（不挡页头），文字不进侧边 inset。
+ * `--pages outbox` 截一条上次页面留下、超过 10 分钟的未发消息：「未发送 · 重发 · 丢弃」（B-814）。
  * `--pages menus` 打开会话页 ⋯ 和侧栏首 / 末行 ⋯（B-798）：每个菜单项都要能滚进视口（扣掉 safe-area）
  * 并且点得到（elementFromPoint 命中该项），粗指针 ≤600px 必须是底部 sheet，更宽的是限高弹出菜单。
  * 所以先起 Web dev server（不需要后端）：
@@ -82,6 +83,8 @@ export const PAGES = {
     // wrapper took shown as 「执行中」 in the dock; `sync-slow` is the line past the deadline (「连接不稳定 · 重试」).
     sync: { path: '/session/dev-plain', prepare: 'sync' },
     'sync-slow': { path: '/session/dev-plain', prepare: 'sync-slow' },
+    // B-814 (`--pages outbox`): a message restored from an earlier page load, past the 10-minute window — 「未发送 · 重发 / 丢弃」.
+    outbox: { path: '/session/dev-plain', prepare: 'outbox' },
     // B-801: a 「新会话」 draft page (agent / machine / directory fields + composer; nothing spawned).
     draft: { path: '/session/dev-board#draft', ready: '[data-testid="draft-target"]' },
 };
@@ -254,6 +257,19 @@ async function prepare(page, kind) {
                 catchUpStore.setState({ sessions: { [sid]: slow ? 'slow' : 'syncing' } });
             } catch { /* before B-804 */ }
         }, { slow: kind === 'sync-slow', texts });
+        await page.waitForTimeout(400);
+    } else if (kind === 'outbox') {
+        // The same storage path outbox adoption drives: an optimistic row marked sending, then a stale failure.
+        const text = locale.startsWith('en') ? 'Then update the changelog for the build fix' : '然后把构建修复写进 changelog';
+        await page.evaluate(async (text) => {
+            const sid = 'dev-plain';
+            const { storage } = await import('/src/sync/storage.ts');
+            const localId = 'outbox-stale-1';
+            storage.getState().applyMessages(sid, [{ role: 'user', id: localId, localId, createdAt: Date.now() - 25 * 60_000, isSidechain: false,
+                content: { type: 'text', text } }], { sendingLocalIds: [localId] });
+            storage.getState().applyOutboxResult(sid, { failures: [{ localId, restorable: false, stale: true }] });
+        }, text);
+        await page.waitForSelector('[data-send-state="stale"]', { timeout: 8_000 });
         await page.waitForTimeout(400);
     } else if (kind === 'board') {
         // The user's path: phones drop the top sheet from the summary strip; wider screens use the header button (aside tab).
