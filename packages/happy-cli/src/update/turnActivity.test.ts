@@ -59,10 +59,12 @@ describe('daemon wiring (B-466)', () => {
     const apiSession = readFileSync(join(__dirname, '..', 'api', 'apiSession.ts'), 'utf8');
     const controlServer = readFileSync(join(__dirname, '..', 'daemon', 'controlServer.ts'), 'utf8');
 
-    it('gates install AND handover on "no turn in flight", not on wrappers or terminals', () => {
+    it('gates install on "no turn in flight" (handover only for a relay move, B-817), not on wrappers or terminals', () => {
         expect(run).toContain('idle: () => !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny() && !harnessInstaller?.isRunning(),');
-        expect(run).toContain('if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !harnessInstaller?.isRunning() && !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny()) {');
-        expect(run).toContain('if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || harnessInstaller?.isRunning() || turnActivity.hasActiveTurn() || backgroundTasks.hasAny()) return;');
+        expect(run).toContain('if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !harnessInstaller?.isRunning() && !sessionsHold()) {');
+        expect(run).toContain('if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || harnessInstaller?.isRunning() || sessionsHold()) return;');
+        // B-817: sessions hold only a relay move, never a replaced bundle
+        expect(run).toContain('const sessionsHold = () => !bundleReplaced && (turnActivity.hasActiveTurn() || backgroundTasks.hasAny());');
         expect(run).not.toMatch(/idle: \(\) =>[^\n]*hasLiveTerminals/);
         expect(run).not.toMatch(/idle: \(\) =>[^\n]*pidToTrackedSession\.size/);
         // an exited wrapper releases its mark

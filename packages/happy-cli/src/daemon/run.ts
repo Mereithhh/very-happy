@@ -66,7 +66,8 @@ import { describeMachineIdentityConflict, detectMachineIdentityConflict } from '
 import { decideHandover, type HandoverPreflight } from './handoverPreflight';
 import { serialTask } from '@/update/serialTask';
 import { installCliSafely } from '@/update/npmInstall';
-import { createUpdateController } from '@/update/updateController';
+import { createUpdateController, resolveBusyInstallGrace } from '@/update/updateController';
+import { installCliStaged } from '@/update/stagedInstall';
 import { lastInstallStore } from '@/update/lastInstall';
 import { createPolicyAnnouncementHandler } from '@/update/policyAnnouncement';
 import { createHarnessInstaller } from '@/harness/harnessInstaller';
@@ -1973,6 +1974,15 @@ export async function startDaemon(): Promise<void> {
       // whose turn ended but still has background tasks is busy too.
       idle: () => !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny() && !harnessInstaller?.isRunning(),
       install: installCliSafely,
+      // B-817: a machine that is never idle installs after the grace period
+      // through the staged path, which never leaves the live tree incomplete.
+      installWhileBusy: async (version) => {
+        const report = await installCliStaged(version);
+        logger.warn(`[DAEMON RUN] CLI update: staged install while busy -> ${JSON.stringify(report.outcome)} keptChunks=${report.keptChunks ?? 0}`);
+        return report.outcome;
+      },
+      installFenced: () => !!harnessInstaller?.isRunning(),
+      busyGraceMs: resolveBusyInstallGrace(process.env.HAPPY_CLI_UPDATE_BUSY_GRACE_MS),
       lastInstall: lastInstallStore(configuration.happyHomeDir),
       publish: (state) => {
         cliUpdateStateRef = state;
@@ -2099,7 +2109,15 @@ export async function startDaemon(): Promise<void> {
         }
       }
       const relayMove = pendingRelayMove;
-      if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !harnessInstaller?.isRunning() && !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny()) {
+      // B-817: turns and background tasks no longer hold the handover. Wrappers
+      // are detached and talk to the relay themselves, re-read daemon.state.json
+      // on every call and renew their turn/task leases every 60s, so a turn runs
+      // straight through the few seconds without a daemon — and once the bundle
+      // is replaced, waiting only keeps old daemon code running on new files.
+      // What still holds it is work this process owns and would lose. A relay
+      // move (B-635) keeps its original gate; it is not an upgrade.
+      const sessionsHold = () => !bundleReplaced && (turnActivity.hasActiveTurn() || backgroundTasks.hasAny());
+      if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !harnessInstaller?.isRunning() && !sessionsHold()) {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would
         // ask the OS to start the latest daemon instead of hand-rolling respawn/kill behavior here.
@@ -2121,7 +2139,7 @@ export async function startDaemon(): Promise<void> {
           // still-finishing install is picked up moments later.
           return;
         }
-        if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || harnessInstaller?.isRunning() || turnActivity.hasActiveTurn() || backgroundTasks.hasAny()) return;
+        if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || harnessInstaller?.isRunning() || sessionsHold()) return;
         lastHandoverHold = null;
         logger.debug(relayMove
           ? `[DAEMON RUN] Relay moved to ${relayMove.serverUrl}; handing off to a new daemon on the new settings`
