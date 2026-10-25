@@ -53,6 +53,21 @@ describe('B-818 response compression', () => {
         expect(responseCompressionEnabled({ HTTP_COMPRESSION: 'on' })).toBe(true);
     });
 
+    it('HTTP_COMPRESSION=off registers nothing', async () => {
+        const saved = process.env.HTTP_COMPRESSION;
+        process.env.HTTP_COMPRESSION = 'off';
+        try {
+            const app = await appWithRoutes();
+            try {
+                const res = await app.inject({ url: '/big', headers: { 'accept-encoding': 'br, gzip' } });
+                expect(res.headers['content-encoding']).toBeUndefined();
+                expect(JSON.parse(res.body).sessions).toHaveLength(40);
+            } finally { await app.close(); }
+        } finally {
+            if (saved === undefined) delete process.env.HTTP_COMPRESSION; else process.env.HTTP_COMPRESSION = saved;
+        }
+    });
+
     it('a big JSON response goes out br (or gzip) and decodes to the same body', async () => {
         const app = await appWithRoutes();
         try {
