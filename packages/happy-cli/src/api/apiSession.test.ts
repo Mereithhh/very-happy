@@ -984,6 +984,102 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockAxiosGet.mock.calls[1][1].params.after_seq).toBe(5);
     });
 
+    it('B-806: own POST ack ahead of a gap Web update does not skip the Web message (catch-up fetch)', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        const onMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+        client.on('message', onMessage);
+        (client as any).lastSeq = 10;
+
+        // Web's central fallback stored seq 11; our output got 12 and its ack
+        // arrives before 11's update (or while the socket is down).
+        const webMessage = { role: 'user', content: { type: 'text', text: 'from web via central' } };
+        const ownOutput = { role: 'agent', content: { type: 'codex', data: { type: 'own' } }, meta: { sentFrom: 'cli' } };
+        mockAxiosPost.mockResolvedValueOnce({
+            data: { messages: [{ id: 'msg-12', seq: 12, localId: 'own-12', createdAt: 12, updatedAt: 12 }] }
+        });
+        mockAxiosGet.mockResolvedValueOnce({
+            data: {
+                messages: [
+                    { id: 'msg-11', seq: 11, localId: 'web-11', content: { t: 'encrypted', c: encryptContent(session, webMessage) }, createdAt: 11, updatedAt: 11 },
+                    { id: 'msg-12', seq: 12, localId: 'own-12', content: { t: 'encrypted', c: encryptContent(session, ownOutput) }, createdAt: 12, updatedAt: 12 },
+                ],
+                hasMore: false
+            }
+        });
+
+        client.sendCodexMessage({ type: 'own' });
+
+        await waitForCheck(() => {
+            expect(mockAxiosGet).toHaveBeenCalledTimes(1);
+        });
+        expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(10);
+        await waitForCheck(() => {
+            expect(onUserMessage).toHaveBeenCalledTimes(1);
+        });
+        expect(onUserMessage).toHaveBeenCalledWith(expect.objectContaining({ content: { type: 'text', text: 'from web via central' } }));
+        expect(onMessage).not.toHaveBeenCalled();
+        expect((client as any).lastSeq).toBe(12);
+
+        // The late update for 11 is not routed a second time.
+        const late = createNewMessageUpdate(11, encryptContent(session, webMessage));
+        (late.body as any).message.localId = 'web-11';
+        emitSocketEvent('update', late);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('B-806: a gap Web update arriving after our ack is routed by the fast path and the cursor closes over our seq', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+        (client as any).lastSeq = 10;
+        // The gap fetch is still in flight when 11's update lands.
+        mockAxiosGet.mockImplementationOnce(() => new Promise(() => undefined));
+        mockAxiosPost.mockResolvedValueOnce({
+            data: { messages: [{ id: 'msg-12', seq: 12, localId: 'own-12', createdAt: 12, updatedAt: 12 }] }
+        });
+
+        client.sendCodexMessage({ type: 'own' });
+        await waitForCheck(() => {
+            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+            expect((client as any).pendingOutbox).toHaveLength(0);
+        });
+        expect((client as any).lastSeq).toBe(10);
+
+        const webMessage = { role: 'user', content: { type: 'text', text: 'late update' } };
+        emitSocketEvent('update', createNewMessageUpdate(11, encryptContent(session, webMessage)));
+
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+        expect((client as any).lastSeq).toBe(12);
+    });
+
+    it('B-806: a fetch page that lands after the cursor moved past it routes nothing again', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const onMessage = vi.fn();
+        client.on('message', onMessage);
+        (client as any).lastSeq = 10;
+        let resolveGet: (value: unknown) => void = () => undefined;
+        mockAxiosGet.mockImplementationOnce(() => new Promise((resolve) => { resolveGet = resolve; }));
+
+        const fetching = (client as any).fetchMessages();
+        // Meanwhile the fast path handled 11 and 12.
+        (client as any).lastSeq = 12;
+        resolveGet({
+            data: {
+                messages: [
+                    { id: 'msg-12', seq: 12, localId: 'own-12', content: { t: 'encrypted', c: encryptContent(session, { role: 'agent', content: { type: 'codex', data: {} } }) }, createdAt: 12, updatedAt: 12 },
+                ],
+                hasMore: false
+            }
+        });
+        await fetching;
+
+        expect(onMessage).not.toHaveBeenCalled();
+        expect((client as any).lastSeq).toBe(12);
+    });
+
     it('updates lastSeq after successful outbox flush and never moves it backward', async () => {
         const client = new ApiSessionClient('fake-token', session);
         (client as any).lastSeq = 10;
@@ -1296,6 +1392,64 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(onUserMessage.mock.calls[0][0].content.text).toBe('gap then fetch');
         expect((client as any).lastSeq).toBe(3);
         expect((client as any).routedInboundLocalIds.has('local-gap')).toBe(true);
+    });
+
+    it('B-806b: a relay message above a seq gap waits for the catch-up fetch and reaches the agent after the earlier Web message', async () => {
+        const { client, onUserMessage, deliver } = await connectRelayForTest();
+        (client as any).lastSeq = 10;
+        (client as any).awaitingInitialFetch = false;
+
+        // Web tab B (central fallback) stored seq 11 while our socket was down;
+        // tab A's message came through the relay and our persist got seq 12.
+        const earlier = encryptContent(session, { role: 'user', content: { type: 'text', text: 'N via central' } });
+        const later = encryptContent(session, { role: 'user', content: { type: 'text', text: 'M via relay' } });
+        mockAxiosPost.mockResolvedValueOnce({
+            data: { messages: [{ id: 'stored-12', seq: 12, localId: 'relay-12', createdAt: 12, updatedAt: 12 }] },
+        });
+        let resolveGet!: (value: unknown) => void;
+        mockAxiosGet.mockReturnValueOnce(new Promise((resolve) => { resolveGet = resolve; }));
+        const ack = vi.fn();
+        await deliver({ sessionId: session.id, messages: [{ localId: 'relay-12', content: later }] }, ack);
+
+        expect(ack).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+        await waitForCheck(() => {
+            expect(mockAxiosGet).toHaveBeenCalledTimes(1);
+        });
+        expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(10);
+        // Not routed yet, and an exit stamp now (messageCursor) would replay both, not run M twice.
+        expect(onUserMessage).not.toHaveBeenCalled();
+        expect(client.messageCursor).toBe(10);
+
+        resolveGet({
+            data: {
+                messages: [
+                    { id: 'stored-11', seq: 11, localId: 'web-11', content: { t: 'encrypted', c: earlier }, createdAt: 11, updatedAt: 11 },
+                    { id: 'stored-12', seq: 12, localId: 'relay-12', content: { t: 'encrypted', c: later }, createdAt: 12, updatedAt: 12 },
+                ],
+                hasMore: false,
+            },
+        });
+        await waitForCheck(() => {
+            expect(onUserMessage).toHaveBeenCalledTimes(2);
+        });
+        expect(onUserMessage.mock.calls.map((call) => call[0].content.text)).toEqual(['N via central', 'M via relay']);
+        expect(client.messageCursor).toBe(12);
+
+        // The central echo of M arriving late is not a second route.
+        emitSocketEvent('update', echoUpdate(12, later, 'relay-12'));
+        expect(onUserMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('B-806b: before the history is read (cursor 0, skipping first fetch) a relay message is still routed at once', async () => {
+        const { client, onUserMessage, deliver } = await connectRelayForTest();
+        client.skipExistingMessages();
+        const encrypted = encryptContent(session, { role: 'user', content: { type: 'text', text: 'first relay message' } });
+        mockAxiosPost.mockResolvedValueOnce({
+            data: { messages: [{ id: 'stored-7', seq: 7, localId: 'relay-7', createdAt: 7, updatedAt: 7 }] },
+        });
+        await deliver({ sessionId: session.id, messages: [{ localId: 'relay-7', content: encrypted }] }, vi.fn());
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+        expect(onUserMessage.mock.calls[0][0].content.text).toBe('first relay message');
     });
 
     it('B-460 logs a user-role envelope that fails UserMessageSchema instead of dropping it silently', async () => {
