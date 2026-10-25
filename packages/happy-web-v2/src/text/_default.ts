@@ -2709,6 +2709,12 @@ export const en = {
                 replies: 'The lead’s replies and the options it asks you to choose from stay visible; the member’s message and the lead’s tool work still fold into one row you can expand.',
                 via: 'A small line such as “Replying to Member A’s submission” shows what the lead is answering.',
             },
+            oct25s: {
+                title: 'CLI 0.2.186: busy machines update too',
+                summary: 'A machine that is always busy now also updates to the new version on its own, without interrupting the sessions running on it.',
+                busy: 'A machine that never goes idle no longer waits forever for an update — it installs the new version after a short wait.',
+                sessions: 'Updating does not interrupt running sessions: turns and background tasks keep going while the new version is installed.',
+            },
             oct25r: {
                 title: 'CLI 0.2.185: messages you send are no longer missed',
                 summary: 'If the network blips while the agent is working, a message you send from the web still reaches the agent.',
