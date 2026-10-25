@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createPromptQueueStore, handOffRows, movedOrder, reloadPromptQueue, retryWaitingPrompts, supportsServerPromptQueue, type PromptQueueWireItem } from './promptQueue';
+import { createPromptQueueStore, handOffRows, PromptQueueHttpError, type PendingPromptPersistence, movedOrder, reloadPromptQueue, retryWaitingPrompts, supportsServerPromptQueue, type PromptQueueWireItem } from './promptQueue';
 
 type Call = { path: string; method: string; body?: unknown };
 
@@ -13,6 +13,7 @@ function harness(opts?: {
     getGate?: () => Promise<void>;
     inTranscript?: (sessionId: string, localId: string) => boolean;
     onDispatched?: (sessionId: string, localIds: string[]) => void;
+    persist?: PendingPromptPersistence;
 }) {
     const calls: Call[] = [];
     let items: PromptQueueWireItem[] = [];
@@ -64,6 +65,7 @@ function harness(opts?: {
         now: () => 42,
         inTranscript: opts?.inTranscript,
         onDispatched: opts?.onDispatched,
+        persist: opts?.persist,
     });
     return { store, calls, setItems: (next: PromptQueueWireItem[]) => { items = next; }, wire };
 }
@@ -199,30 +201,33 @@ describe('B-722 optimistic queue rows', () => {
         for (const state of seen) expect([...state.items, ...state.pending].filter((id) => id === 'local-1')).toHaveLength(1);
     });
 
-    it('a failure online marks the row failed (kept for Retry with its localId); offline it waits and goes out when the network is back', async () => {
-        let fail = true;
+    it('a refusal marks the row failed (kept for Retry with its localId); offline it waits and goes out when the network is back', async () => {
+        let fail: Error | null = new PromptQueueHttpError('prompt_queue_full');
         let online = true;
-        const h = harness({ gate: async () => { if (fail) throw new Error('network'); }, online: () => online });
-        await expect(h.store.getState().submit('s1', 'one', {})).rejects.toThrow('network');
-        expect(h.store.getState().sessions.s1.pending?.map((row) => row.state)).toEqual(['failed']);
+        const h = harness({ gate: async () => { if (fail) throw fail; }, online: () => online });
+        await expect(h.store.getState().submit('s1', 'one', {})).rejects.toThrow('prompt_queue_full');
+        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.state, row.retryable])).toEqual([['failed', undefined]]);
 
         online = false;
+        fail = new Error('network');
         await expect(h.store.getState().submit('s1', 'two', {})).rejects.toThrow('network');
-        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.text, row.state])).toEqual([['one', 'failed'], ['two', 'waiting']]);
-
-        // Back online: only the waiting row is retried automatically, with its own localId.
-        fail = false;
+        // B-815: unanswered while the app still thinks it is online — failed, but it goes out on its own.
         online = true;
+        await expect(h.store.getState().submit('s1', 'three', {})).rejects.toThrow('network');
+        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.text, row.state, row.retryable])).toEqual([['one', 'failed', undefined], ['two', 'waiting', undefined], ['three', 'failed', true]]);
+
+        // Back online: the waiting row and the unanswered one are retried automatically, with their own localIds; the refused one is not.
+        fail = null;
         retryWaitingPrompts(h.store);
         await flush();
         await flush();
-        expect(h.calls.filter((call) => call.method === 'POST').map((call) => (call.body as { localId: string }).localId)).toEqual(['local-1', 'local-2', 'local-2']);
-        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['two']);
+        expect(h.calls.filter((call) => call.method === 'POST').map((call) => (call.body as { localId: string }).localId)).toEqual(['local-1', 'local-2', 'local-3', 'local-2', 'local-3']);
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['two', 'three']);
         expect(h.store.getState().sessions.s1.pending?.map((row) => row.text)).toEqual(['one']);
 
         // Retry by hand: same localId (idempotent on the server).
         expect(await h.store.getState().retryPending('s1', 'local-1')).toBe('queued');
-        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['two', 'one']);
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['two', 'three', 'one']);
         expect(h.store.getState().sessions.s1.pending).toBeUndefined();
     });
 
@@ -337,5 +342,75 @@ describe('B-804 dock hand-off and queue reload', () => {
         await old.store.getState().load('s1');
         await reloadPromptQueue('s1', old.store);
         expect(old.calls).toHaveLength(1);
+    });
+});
+
+describe('B-815 unaccepted rows in the persistent outbox', () => {
+    function recorder() {
+        const log: string[] = [];
+        const persist: PendingPromptPersistence = {
+            save: async (_sid, row, retried) => { log.push(`save ${row.localId} ${row.content} ${retried ? 'retry' : 'keep-clock'}`); },
+            fail: (ids) => { log.push(`fail ${ids.join(',')}`); },
+            forget: (ids) => { log.push(`forget ${ids.join(',')}`); },
+        };
+        return { log, persist };
+    }
+
+    it('saved before the POST, forgotten once the server lists it; a retry re-POSTs the same bytes and restarts the clock', async () => {
+        const { log, persist } = recorder();
+        let fail: Error | null = new Error('down');
+        const h = harness({ persist, gate: async (method) => { log.push(method); if (fail) throw fail; } });
+        await h.store.getState().submit('s1', 'hello', {}).catch(() => {});
+        // Unanswered: stays queued on disk (re-sent by whoever holds it).
+        expect(log).toEqual(['save local-1 enc:hello|{} keep-clock', 'POST']);
+        fail = new PromptQueueHttpError('prompt_queue_full');
+        log.length = 0;
+        await h.store.getState().retryPending('s1', 'local-1').catch(() => {});
+        // Refused: failed on disk — only the user re-sends it.
+        expect(log).toEqual(['save local-1 enc:hello|{} retry', 'POST', 'fail local-1']);
+        fail = null;
+        log.length = 0;
+        await h.store.getState().retryPending('s1', 'local-1');
+        expect(log).toEqual(['save local-1 enc:hello|{} retry', 'POST', 'forget local-1', 'forget local-1']);
+        expect(h.calls.filter((c) => c.method === 'POST').map((c) => (c.body as { content: string }).content)).toEqual(['enc:hello|{}', 'enc:hello|{}', 'enc:hello|{}']);
+    });
+
+    it('offline it waits — never marked failed on disk (whoever holds it re-sends it); the automatic retry keeps the clock', async () => {
+        const { log, persist } = recorder();
+        let online = false;
+        const h = harness({ persist, online: () => online, gate: async () => { if (!online) throw new Error('offline'); } });
+        await h.store.getState().submit('s1', 'later', {}).catch(() => {});
+        expect(log).toEqual(['save local-1 enc:later|{} keep-clock']);
+        online = true;
+        log.length = 0;
+        retryWaitingPrompts(h.store);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(log[0]).toBe('save local-1 enc:later|{} keep-clock');
+    });
+
+    it('an old server (unsupported): a submitted row is forgotten (the tab-local queue owns it); an adopted one waits failed for the user', async () => {
+        const { log, persist } = recorder();
+        const h = harness({ persist, status: 404 });
+        expect(await h.store.getState().submit('s1', 'old', {})).toBe('unsupported');
+        expect(log).toEqual(['save local-1 enc:old|{} keep-clock', 'forget local-1']);
+        log.length = 0;
+        h.store.getState().adoptPending('s1', [{ localId: 'adopted', text: 'kept', modeMeta: {}, createdAt: 1, content: 'enc:kept|{}', stale: false }]);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(log).toEqual(['fail adopted']);
+        expect(h.store.getState().sessions.s1.pending).toMatchObject([{ localId: 'adopted', state: 'failed' }]);
+    });
+
+    it('adoptPending: fresh rows are enqueued with their own localId and bytes, stale ones wait failed, held localIds are skipped', async () => {
+        const h = harness();
+        h.setItems([h.wire('on-server', 'queued', 1)]);
+        await h.store.getState().load('s1');
+        h.store.getState().adoptPending('s1', [
+            { localId: 'fresh', text: 'fresh', modeMeta: {}, createdAt: 1, content: 'enc:fresh', stale: false },
+            { localId: 'old', text: 'old', modeMeta: {}, createdAt: 2, content: 'enc:old', stale: true },
+            { localId: 'on-server', text: 'queued', modeMeta: {}, createdAt: 3, content: 'enc:queued', stale: false },
+        ]);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([{ localId: 'fresh', content: 'enc:fresh' }]);
+        expect(h.store.getState().sessions.s1.pending).toEqual([{ localId: 'old', text: 'old', modeMeta: {}, createdAt: 2, content: 'enc:old', state: 'failed' }]);
     });
 });

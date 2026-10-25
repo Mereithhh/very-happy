@@ -22,6 +22,9 @@ import { SYNC_READ_TIMEOUT_MS } from './requestDeadline';
 import { hedgedRead } from './hedgedRead';
 import { isNetworkOffline } from './networkStatus';
 import type { ApiPromptQueueUpdate } from './apiTypes';
+import { outboxStore } from './cache/syncCache';
+import { createQueueOutboxPersistence } from './promptQueueOutbox';
+import { thisTabId } from './tabLiveness';
 
 export const PROMPT_QUEUE_CAPABILITY = 'prompt-queue-v1';
 
@@ -48,6 +51,43 @@ export type PendingPrompt = {
     modeMeta: MessageModeMeta;
     createdAt: number;
     state: 'sending' | 'waiting' | 'failed';
+    /** B-815: the encrypted record once made — every retry POSTs these same bytes. */
+    content?: string;
+    /**
+     * B-815: `failed` on the way (no answer: the link died before the app
+     * judged the device offline), not refused by the server — goes out again
+     * on its own when the link is back, like `waiting`.
+     */
+    retryable?: true;
+};
+
+/**
+ * B-815: the persistent-outbox side of the rows above (sync.ts wires it to
+ * the B-814 outbox store, `kind: 'queue'`) — a reload or a closed tab no
+ * longer loses a prompt the server has not accepted yet. Best effort: a
+ * failure here never fails the enqueue.
+ */
+export type PendingPromptPersistence = {
+    /**
+     * Before the POST (resolves within a bounded wait, durable or not).
+     * `retried`: the user's Retry — it restarts the 10-minute clock.
+     */
+    save: (sessionId: string, row: PendingPrompt & { content: string }, retried: boolean) => Promise<void>;
+    /** Refused by the server (or not encryptable): only the user re-sends it, also after a reload. */
+    fail: (localIds: string[]) => void;
+    /** Accepted by the server, discarded, or handed to the tab-local queue. */
+    forget: (localIds: string[]) => void;
+};
+
+/** B-815: a prompt a closed / reloaded tab left unaccepted, taken over by this one. */
+export type AdoptedPrompt = {
+    localId: string;
+    text: string;
+    modeMeta: MessageModeMeta;
+    createdAt: number;
+    content: string;
+    /** Too old (or failed before): shown failed, waits for the user. Else re-enqueued now. */
+    stale: boolean;
 };
 
 /**
@@ -85,6 +125,8 @@ export type PromptQueueDeps = {
     inTranscript?: (sessionId: string, localId: string) => boolean;
     /** B-804: new hand-off rows appeared — fetch the transcript, then settleDispatched with what was asked. */
     onDispatched?: (sessionId: string, localIds: string[]) => void;
+    /** B-815: mirror unaccepted rows into the persistent outbox. */
+    persist?: PendingPromptPersistence;
 };
 
 interface PromptQueueStoreState {
@@ -99,7 +141,7 @@ interface PromptQueueStoreState {
      */
     submit: (sessionId: string, text: string, modeMeta: MessageModeMeta) => Promise<'queued' | 'unsupported'>;
     /** B-722: re-send a failed/waiting row with its own localId (idempotent on the server). */
-    retryPending: (sessionId: string, localId: string) => Promise<'queued' | 'unsupported' | 'gone'>;
+    retryPending: (sessionId: string, localId: string, auto?: boolean) => Promise<'queued' | 'unsupported' | 'gone'>;
     /** B-722: drop a failed/waiting row (delete, or 放回输入框); returns it. */
     discardPending: (sessionId: string, localId: string) => PendingPrompt | null;
     updateText: (sessionId: string, id: string, text: string) => Promise<boolean>;
@@ -113,6 +155,13 @@ interface PromptQueueStoreState {
      * hand-off did not find (deleted on another device, not run).
      */
     settleDispatched: (sessionId: string, verified?: readonly string[]) => void;
+    /**
+     * B-815: rows taken over from the persistent outbox go back into the dock
+     * in the given order (oldest first) under their own localId (the server
+     * dedupes): fresh ones are re-enqueued at once, stale ones wait as failed.
+     * A localId the dock already holds is skipped.
+     */
+    adoptPending: (sessionId: string, rows: readonly AdoptedPrompt[]) => void;
 }
 
 export const EMPTY_PROMPT_QUEUE: PromptQueueSessionState = Object.freeze({ items: [], status: 'idle' }) as PromptQueueSessionState;
@@ -131,6 +180,9 @@ export function movedOrder(ids: string[], id: string, delta: -1 | 1): string[] {
     [next[index], next[target]] = [next[target], next[index]];
     return next;
 }
+
+/** B-815: the server answered and refused — as opposed to a request that never got an answer. */
+export class PromptQueueHttpError extends Error {}
 
 /** Error codes the prompt-queue routes themselves answer with (store.ts PromptQueueError). */
 export function isPromptQueueErrorCode(code: string | null): boolean {
@@ -199,12 +251,14 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
             const listed = new Set(decoded.map((item) => item.localId));
             const current = get().sessions[sessionId];
             const pending = current?.pending;
+            const accepted = pending?.filter((row) => listed.has(row.localId)).map((row) => row.localId) ?? [];
+            if (accepted.length > 0) deps.persist?.forget(accepted);
             const handedOff = handOffRows(current?.items ?? [], listed, removedHere, (localId) => deps.inTranscript?.(sessionId, localId) === true);
             const dispatched = [...(current?.dispatched ?? []).filter((row) => !listed.has(row.localId)), ...handedOff];
             patch(sessionId, {
                 items: decoded,
                 status: 'ready',
-                ...(pending?.some((row) => listed.has(row.localId)) ? { pending: pending.filter((row) => !listed.has(row.localId)) } : {}),
+                ...(accepted.length > 0 ? { pending: pending!.filter((row) => !listed.has(row.localId)) } : {}),
                 ...(dispatched.length !== (current?.dispatched?.length ?? 0) ? { dispatched: dispatched.length > 0 ? dispatched : undefined } : {}),
             });
             if (handedOff.length > 0) deps.onDispatched?.(sessionId, handedOff.map((row) => row.localId));
@@ -213,16 +267,43 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
             const next = update(get().sessions[sessionId]?.pending ?? []);
             patch(sessionId, { pending: next.length > 0 ? next : undefined });
         };
-        const sendPending = async (sessionId: string, row: PendingPrompt): Promise<'queued' | 'unsupported'> => {
+        const sendPending = async (sessionId: string, row: PendingPrompt, how: 'submit' | 'retry' | 'auto' | 'adopt'): Promise<'queued' | 'unsupported'> => {
             try {
-                const result = await get().enqueue(sessionId, row.text, row.modeMeta, row.localId);
+                if (get().sessions[sessionId]?.status === 'unsupported') {
+                    if (how === 'adopt') throw new PromptQueueHttpError('prompt queue unsupported');
+                    setPending(sessionId, (rows) => rows.filter((other) => other.localId !== row.localId));
+                    return 'unsupported';
+                }
+                let content = row.content;
+                if (!content) {
+                    content = await deps.encrypt(sessionId, row.text, row.modeMeta) ?? undefined;
+                    if (!content) throw new PromptQueueHttpError('Session encryption is not ready');
+                    const made = content;
+                    setPending(sessionId, (rows) => rows.map((other) => other.localId === row.localId ? { ...other, content: made } : other));
+                }
+                // B-815: on disk before it is on the wire — a reload in between leaves a trace.
+                await deps.persist?.save(sessionId, { ...row, content }, how === 'retry');
+                const body = await post(sessionId, row.localId, content);
+                if (!body && how === 'adopt') {
+                    // Taken over from a reload, but the server no longer queues: it waits for the user (放回输入框).
+                    throw new PromptQueueHttpError('prompt queue unsupported');
+                }
                 // 'unsupported': the caller moves it to the tab-local queue; 'queued': the
                 // snapshot already dropped it (kept defensively for a snapshot without it).
                 setPending(sessionId, (rows) => rows.filter((other) => other.localId !== row.localId));
-                return result;
+                deps.persist?.forget([row.localId]);
+                return body ? 'queued' : 'unsupported';
             } catch (error) {
                 const state = deps.isOnline && !deps.isOnline() ? 'waiting' : 'failed';
-                setPending(sessionId, (rows) => rows.map((other) => other.localId === row.localId ? { ...other, state } : other));
+                const refused = error instanceof PromptQueueHttpError;
+                setPending(sessionId, (rows) => rows.map((other) => {
+                    if (other.localId !== row.localId) return other;
+                    const { retryable: _, ...rest } = other;
+                    return state === 'failed' && !refused ? { ...rest, state, retryable: true } : { ...rest, state };
+                }));
+                // Unanswered stays queued on disk (B-814: a transport failure is retried):
+                // whoever holds it re-sends it on its own. Refused waits for the user.
+                if (refused) deps.persist?.fail([row.localId]);
                 throw error;
             }
         };
@@ -240,9 +321,15 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
                     patch(sessionId, { status: 'unsupported' });
                     return null;
                 }
-                throw new Error(code ?? `HTTP ${response.status}`);
+                throw new PromptQueueHttpError(code ?? `HTTP ${response.status}`);
             }
             return response.json() as Promise<{ items?: unknown; removed?: boolean }>;
+        };
+        /** POST one encrypted record; null = no server queue here (status is now `unsupported`). */
+        const post = async (sessionId: string, localId: string, content: string) => {
+            const body = await call(sessionId, '', { method: 'POST', body: JSON.stringify({ localId, content }) });
+            if (body) await applyItems(sessionId, body.items);
+            return body;
         };
         return {
             sessions: {},
@@ -263,27 +350,25 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
                 if (get().sessions[sessionId]?.status === 'unsupported') return 'unsupported';
                 const content = await deps.encrypt(sessionId, text, modeMeta);
                 if (!content) throw new Error('Session encryption is not ready');
-                const body = await call(sessionId, '', { method: 'POST', body: JSON.stringify({ localId: localId ?? deps.newLocalId(), content }) });
-                if (!body) return 'unsupported';
-                await applyItems(sessionId, body.items);
-                return 'queued';
+                return await post(sessionId, localId ?? deps.newLocalId(), content) ? 'queued' : 'unsupported';
             },
             submit: (sessionId, text, modeMeta) => {
                 if (get().sessions[sessionId]?.status === 'unsupported') return Promise.resolve('unsupported');
                 const row: PendingPrompt = { localId: deps.newLocalId(), text, modeMeta, createdAt: deps.now?.() ?? Date.now(), state: 'sending' };
                 setPending(sessionId, (rows) => [...rows, row]);
-                return sendPending(sessionId, row);
+                return sendPending(sessionId, row, 'submit');
             },
-            retryPending: async (sessionId, localId) => {
+            retryPending: async (sessionId, localId, auto) => {
                 const row = get().sessions[sessionId]?.pending?.find((other) => other.localId === localId);
                 if (!row || row.state === 'sending') return 'gone';
                 setPending(sessionId, (rows) => rows.map((other) => other.localId === localId ? { ...other, state: 'sending' } : other));
-                return sendPending(sessionId, { ...row, state: 'sending' });
+                return sendPending(sessionId, { ...row, state: 'sending' }, auto ? 'auto' : 'retry');
             },
             discardPending: (sessionId, localId) => {
                 const row = get().sessions[sessionId]?.pending?.find((other) => other.localId === localId) ?? null;
                 if (!row || row.state === 'sending') return null;
                 setPending(sessionId, (rows) => rows.filter((other) => other.localId !== localId));
+                deps.persist?.forget([localId]);
                 return row;
             },
             updateText: async (sessionId, id, text) => {
@@ -338,6 +423,28 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
                 const next = rows.filter((row) => !gone.has(row.localId) && deps.inTranscript?.(sessionId, row.localId) !== true);
                 if (next.length !== rows.length) patch(sessionId, { dispatched: next.length > 0 ? next : undefined });
             },
+            adoptPending: (sessionId, adopted) => {
+                const current = get().sessions[sessionId];
+                const held = new Set([
+                    ...(current?.pending ?? []).map((row) => row.localId),
+                    ...(current?.items ?? []).map((item) => item.localId),
+                    ...(current?.dispatched ?? []).map((row) => row.localId),
+                ]);
+                const fresh = [...adopted]
+                    .filter((row) => !held.has(row.localId))
+                    .map((row): PendingPrompt => ({
+                        localId: row.localId, text: row.text, modeMeta: row.modeMeta, createdAt: row.createdAt,
+                        content: row.content, state: row.stale ? 'failed' : 'sending',
+                    }));
+                if (fresh.length === 0) return;
+                setPending(sessionId, (rows) => [...rows, ...fresh]);
+                // One at a time, oldest first: the server appends in arrival order.
+                void (async () => {
+                    for (const row of fresh) {
+                        if (row.state === 'sending') await sendPending(sessionId, row, 'adopt').catch(() => {});
+                    }
+                })();
+            },
         };
     });
 }
@@ -373,13 +480,18 @@ export const promptQueueStore = createPromptQueueStore({
     isOnline: () => (typeof navigator === 'undefined' || navigator.onLine !== false) && !isNetworkOffline(),
     inTranscript: (sessionId, localId) => promptQueueTranscript.has(sessionId, localId),
     onDispatched: (sessionId, localIds) => promptQueueTranscript.verify(sessionId, localIds),
+    persist: createQueueOutboxPersistence({ store: outboxStore, tabId: thisTabId }),
 });
 
-/** B-722: rows that waited for the network go out as soon as the device is back online. */
+/**
+ * B-722: rows that waited for the network go out as soon as the device is back
+ * online. B-815: also those that failed on the way (link back / reconnected).
+ */
 export function retryWaitingPrompts(store: ReturnType<typeof createPromptQueueStore> = promptQueueStore): void {
     for (const [sessionId, state] of Object.entries(store.getState().sessions)) {
         for (const row of state.pending ?? []) {
-            if (row.state === 'waiting') void store.getState().retryPending(sessionId, row.localId).catch(() => {});
+            // Not the user's Retry: the 10-minute clock keeps running (B-815).
+            if (row.state === 'waiting' || (row.state === 'failed' && row.retryable)) void store.getState().retryPending(sessionId, row.localId, true).catch(() => {});
         }
     }
 }
@@ -402,6 +514,7 @@ export function reloadPromptQueue(sessionId: string, store: ReturnType<typeof cr
     if (status !== 'ready' && status !== 'error') return Promise.resolve();
     return store.getState().load(sessionId);
 }
+export const adoptPendingPrompts = (sessionId: string, rows: readonly AdoptedPrompt[]) => promptQueueStore.getState().adoptPending(sessionId, rows);
 export const settleDispatchedPrompts = (sessionId: string, verified?: readonly string[]) => promptQueueStore.getState().settleDispatched(sessionId, verified);
 export const enqueuePrompt = (sessionId: string, text: string, modeMeta: MessageModeMeta, localId?: string) => promptQueueStore.getState().enqueue(sessionId, text, modeMeta, localId);
 export const submitPrompt = (sessionId: string, text: string, modeMeta: MessageModeMeta) => promptQueueStore.getState().submit(sessionId, text, modeMeta);
