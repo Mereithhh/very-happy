@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
-import { ANCHOR_BUFFER_LIMIT, AnchorBuffer, planLiveMessage } from './liveMessagePlan';
+import { ANCHOR_BUFFER_LIMIT, AnchorBuffer, contiguousRun, planLiveMessage } from './liveMessagePlan';
 import { SYNC_READ_TIMEOUT_MS } from './requestDeadline';
 
 let sync: typeof import('./sync').sync;
@@ -275,6 +275,15 @@ describe('B-805 AnchorBuffer', () => {
         expect(buffer.drain('s', 4)).toEqual({ messages: ['a', 'c'], seqs: [5, 6, 7] });
         // Drained: the next update asks again (a reload of the page would be a new session state).
         expect(buffer.add('s', 8, 'd')).toBe(true);
+    });
+
+    it('B-813 B1: a contiguous drain stops at the first hole past the anchor (the rest is the catch-up\'s)', () => {
+        const buffer = new AnchorBuffer<string>();
+        for (const [seq, m] of [[9, 'i'], [4, 'd'], [5, null], [6, 'f'], [3, 'old']] as const) buffer.add('s', seq, m);
+        expect(buffer.drain('s', 3, { contiguous: true })).toEqual({ messages: ['d', 'f'], seqs: [4, 5, 6] });
+        buffer.add('s', 9, 'i');
+        expect(buffer.drain('s', 3, { contiguous: true })).toEqual({ messages: [], seqs: [] });
+        expect(contiguousRun([{ seq: 4 }, { seq: 4 }, { seq: 5 }, { seq: 7 }], 3)).toEqual([{ seq: 4 }, { seq: 4 }, { seq: 5 }]);
     });
 
     it('drops updates past the limit without recording them, so they surface as a gap', () => {

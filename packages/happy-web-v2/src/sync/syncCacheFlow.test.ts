@@ -131,6 +131,37 @@ async function visit(sid: string) {
     await syncCache.flush();
 }
 
+/** Every batch the reducer receives for `sid`, as server seqs. */
+function recordApplied(sid: string): number[][] {
+    const batches: number[][] = [];
+    const s = sync as unknown as { applyMessages: (id: string, messages: Array<{ seq?: number }>, ...rest: unknown[]) => void };
+    const original = s.applyMessages;
+    vi.spyOn(s, 'applyMessages').mockImplementation((id, messages, ...rest) => {
+        if (id === sid) batches.push(messages.map((m) => m.seq!));
+        original(id, messages, ...rest);
+    });
+    return batches;
+}
+
+/** Each batch ascending, and every batch past everything applied before it (iron rule 15 across batches). */
+function expectMonotonic(batches: number[][]) {
+    let max = 0;
+    for (const batch of batches) {
+        for (const seq of batch) {
+            expect(seq, JSON.stringify(batches)).toBeGreaterThan(max);
+            max = seq;
+        }
+    }
+}
+
+const isPrefix = (part: string[], whole: string[]) => part.every((text, i) => whole[i] === text);
+
+async function pushLive(sid: string, message: ServerMessage) {
+    await (sync as unknown as { handleUpdate: (u: unknown) => Promise<void> }).handleUpdate({
+        id: `u-${message.id}`, seq: message.seq, createdAt: message.createdAt, body: { t: 'new-message', sid, message },
+    });
+}
+
 function gate() {
     let release!: () => void;
     afterGate = new Promise<void>((resolve) => { release = resolve; });
@@ -167,11 +198,14 @@ describe('B-813 cold start: cache first, then catch up from its lastSeq', () => 
         // Network still pending: the cached transcript is already there.
         expect(texts(sid)).toEqual(['m1', 'm2', 'm3']);
         expect(storage.getState().sessionMessages[sid]?.isLoaded).toBe(true);
+        const applied = recordApplied(sid);
         release();
         await settle();
         expect(texts(sid)).toEqual(serverTexts(sid));
         expect(gets).toEqual([`${sid}?after`]);
         expect(afterSeqs).toEqual([2]);
+        // §9.2-6(c): the probe page starts at the cached newest row; only what is past it merges.
+        expect(applied).toEqual([[4, 5]]);
 
         // The catch-up extended the cache: the next reload starts at 5.
         await syncCache.flush();
@@ -232,6 +266,81 @@ describe('B-813 cold start: cache first, then catch up from its lastSeq', () => 
         await settle();
         expect(texts(sid)).toEqual(['m1', 'm2', 'm3', 'm4']);
         expect(afterSeqs).toEqual([3]);
+    });
+});
+
+describe('B-813 review B1: live updates buffered during boot never render across the cache hole', () => {
+    it('stale cache m1..m3, server m1..m9, m9 pushed during boot → the transcript is always a server prefix, seqs only go up', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        for (let i = 4; i <= 9; i++) store(sid, `m${i}`);
+        reload(sid);
+        const applied = recordApplied(sid);
+        const release = gate();
+        await pushLive(sid, server.get(sid)!.at(-1)!);
+        sync.onSessionEnter(sid);
+        await settle();
+        // Before: ["m1","m2","m3","m9"] — m4..m8 silently missing until the catch-up.
+        expect(texts(sid)).toEqual(['m1', 'm2', 'm3']);
+        expect(isPrefix(texts(sid), serverTexts(sid))).toBe(true);
+        release();
+        await settle();
+        expect(texts(sid)).toEqual(serverTexts(sid));
+        // Before: [[1,2,3,9],[4,5,6,7,8,9]].
+        expect(applied).toEqual([[1, 2, 3], [4, 5, 6, 7, 8, 9]]);
+        expectMonotonic(applied);
+    });
+
+    it('the buffered run that does continue the cache applies with it; the part past a hole waits for the catch-up', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        for (let i = 4; i <= 7; i++) store(sid, `m${i}`);
+        reload(sid);
+        const applied = recordApplied(sid);
+        const release = gate();
+        const [m4, m5, , m7] = server.get(sid)!.slice(3);
+        for (const message of [m7, m4, m5]) await pushLive(sid, message);
+        sync.onSessionEnter(sid);
+        await settle();
+        expect(texts(sid)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5']);
+        release();
+        await settle();
+        expect(texts(sid)).toEqual(serverTexts(sid));
+        expect(applied).toEqual([[1, 2, 3, 4, 5], [6, 7]]);
+        expectMonotonic(applied);
+    });
+});
+
+describe('B-813 review S2: a session anchored while the cache was read keeps its anchor', () => {
+    it('the cached run does not overwrite lastSeq or the transcript; the session loads as if there were no cache', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        for (let i = 4; i <= 5; i++) store(sid, `m${i}`);
+        reload(sid);
+        const s = sync as unknown as { sessionLastSeq: Map<string, number>; sessionOldestSeq: Map<string, number> };
+        const load = syncCache.load.bind(syncCache);
+        // Another path (e.g. a restarted load that got the latest page first) anchors the session at 5 meanwhile.
+        vi.spyOn(syncCache, 'load').mockImplementation(async (...args) => {
+            const hit = await load(...args);
+            s.sessionLastSeq.set(sid, 5);
+            s.sessionOldestSeq.set(sid, 1);
+            return hit;
+        });
+        const applied = recordApplied(sid);
+        const release = gate();
+        sync.onSessionEnter(sid);
+        await settle();
+        expect(s.sessionLastSeq.get(sid)).toBe(5);
+        expect(applied.some((batch) => batch.join() === '1,2,3')).toBe(false);
+        expect(isPrefix(texts(sid), serverTexts(sid))).toBe(true);
+        release();
+        await settle();
+        expect(s.sessionLastSeq.get(sid)).toBe(5);
+        expect(texts(sid)).toEqual(serverTexts(sid));
+        expect(applied.some((batch) => batch.join() === '1,2,3')).toBe(false);
     });
 });
 

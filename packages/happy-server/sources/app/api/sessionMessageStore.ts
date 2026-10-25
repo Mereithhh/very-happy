@@ -117,6 +117,12 @@ export async function storeSessionMessagesInTx(tx: Tx, options: StoreSessionMess
             count: newMessages.length,
             bytes: incomingBytes,
         });
+        // Invariant (B-813, pinned by sessionMessageStore.seqOrder.spec.ts): a session's seqs are
+        // allocated in this transaction AFTER the Session row's FOR UPDATE lock above, so writers to
+        // one session commit in seq order — an `after_seq` read never misses a lower seq that commits
+        // later. The Web message cache depends on it: a range result counts as complete coverage and
+        // a point push at or below the cached lastSeq is ignored. Allocating outside the lock (as
+        // upstream 86af26d4 did) would leave rows the cache never fetches, with no check to notice.
         const seqs = await allocateSessionSeqBatch(options.sessionId, newMessages.length, tx);
         const createdMessagesWithoutUpdates: StoredSessionMessage[] = [];
         for (let index = 0; index < encoded.length; index += 1) {

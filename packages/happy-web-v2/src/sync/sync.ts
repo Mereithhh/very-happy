@@ -2873,7 +2873,11 @@ class Sync {
         let applied = false;
         await this.getSessionMessageLock(sessionId).inLock(() => {
             if (this.sessionLastSeq.get(sessionId) !== undefined) return;
-            const buffered = this.anchorBuffer.drain(sessionId, hit.lastSeq);
+            // B1: a cached lastSeq is usually behind the server, so a live update
+            // buffered during boot may sit past a hole. Only the run that continues
+            // the cache applies; the rest comes back in order with the catch-up
+            // (as B-805's refetch on a gap: the transcript never shows a hole).
+            const buffered = this.anchorBuffer.drain(sessionId, hit.lastSeq, { contiguous: true });
             const window = [...normalized, ...buffered.messages];
             if (window.length > 0) this.applyMessages(sessionId, window);
             this.sessionLastSeq.set(sessionId, hit.lastSeq);
@@ -2915,11 +2919,13 @@ class Sync {
             });
             return false;
         }
+        // From what is already applied: the cached run plus the buffered updates that continued it.
+        const fromSeq = Math.max(hit.lastSeq, this.sessionLastSeq.get(sessionId) ?? hit.lastSeq);
         let first: { messages: ApiMessage[]; hasMore: boolean } | null = {
-            messages: probe.messages.filter((message) => message.seq > hit.lastSeq),
+            messages: probe.messages.filter((message) => message.seq > fromSeq),
             hasMore: probe.hasMore,
         };
-        await this.fetchForwardSince(sessionId, encryption, hit.lastSeq, signal, (afterSeq, pageSignal) => {
+        await this.fetchForwardSince(sessionId, encryption, fromSeq, signal, (afterSeq, pageSignal) => {
             if (!first) return this.fetchForwardPage(sessionId, afterSeq, pageSignal);
             const page = first;
             first = null;

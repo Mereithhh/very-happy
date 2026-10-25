@@ -8,8 +8,9 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiMessage } from '@/sync/apiTypes';
-import { CACHE_DB_PREFIX, CACHE_SCHEMA, CACHE_SWITCH_KEY, SyncCache, clearSyncCaches, type StoredRow } from './syncCache';
+import { CACHE_DB_PREFIX, CACHE_SCHEMA, CACHE_SWITCH_KEY, SyncCache, clearSyncCaches, type SessionRecord, type StoredRow } from './syncCache';
 import { CACHE_MAX_SESSIONS } from './lru';
+import { validateSegment } from './segment';
 
 const ACCOUNT = 'account-1';
 
@@ -68,6 +69,21 @@ async function rawTx<T>(factory: IDBFactory, stores: string[], fn: (tx: IDBTrans
 }
 
 const allRows = (factory: IDBFactory) => rawTx<StoredRow[]>(factory, ['messages'], (tx) => tx.objectStore('messages').getAll());
+const allRecords = (factory: IDBFactory) => rawTx<SessionRecord[]>(factory, ['sessions'], (tx) => tx.objectStore('sessions').getAll());
+
+/** §9.2-6(a): every session record matches its rows on disk — count and the load-time segment check. */
+async function expectConsistent(factory: IDBFactory) {
+    const stored = (await allRows(factory))!;
+    const records = (await allRecords(factory))!;
+    for (const record of records) {
+        const own = stored.filter((r) => r.sid === record.sid).sort((a, b) => a.seq - b.seq);
+        const inRange = own.filter((r) => r.seq >= record.oldestSeq && r.seq <= record.lastSeq);
+        expect(record.count, record.sid).toBe(own.length);
+        expect(validateSegment(record, inRange, () => true, { inRange: inRange.length, total: own.length }), record.sid).toEqual({ ok: true });
+    }
+    // No orphan rows: a session's rows go with its record.
+    expect(new Set(stored.map((r) => r.sid))).toEqual(new Set(records.map((r) => r.sid)));
+}
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -90,6 +106,10 @@ describe('B-813 cache round trip (§5.4)', () => {
             expect(Object.keys(r.content).sort()).toEqual(['c', 't']);
             expect(r.content.t).toBe('encrypted');
         }
+        // §9.2-6(d), spec r2: no key material next to the ciphertext.
+        const [record] = (await allRecords(factory))!;
+        expect(Object.keys(record).sort()).toEqual(['bytes', 'cachedAt', 'count', 'headSeqSeen', 'lastAccessAt', 'lastSeq', 'oldestSeq', 'sid']);
+        expect(Object.keys(record)).not.toContain('dek');
     });
 
     it('refuses anything that is not a ciphertext row', async () => {
@@ -209,6 +229,9 @@ describe('B-813 the contiguous run', () => {
         cache.offerLatest('s', rows(50, 60));
         await cache.flush();
         expect((await allRows(factory))!.map((r) => r.seq)).toEqual(rows(50, 60).map((r) => r.seq));
+        // §9.2-6(a): the reset rewrote the count with the rows.
+        expect((await allRecords(factory))!.map((r) => [r.oldestSeq, r.lastSeq, r.count])).toEqual([[50, 60, 11]]);
+        await expectConsistent(factory);
     });
 });
 
@@ -228,6 +251,12 @@ describe('B-813 LRU (§5.4.1: 30 sessions, 40MB; outbox sessions stay)', () => {
         expect(await h.cache.load('s3')).toBeNull();
         expect(await h.cache.load('s4')).not.toBeNull();
         expect(h.cache.stats().evicted).toBe(3);
+        // §9.2-6(a): an evicted session's record and rows went together; the rest still match.
+        const sids = (await allRecords(h.factory))!.map((r) => r.sid);
+        expect(sids).toHaveLength(CACHE_MAX_SESSIONS);
+        expect(sids).not.toContain('s1');
+        expect((await allRows(h.factory))!.some((r) => ['s1', 's2', 's3'].includes(r.sid))).toBe(false);
+        await expectConsistent(h.factory);
     });
 
     it('a session loaded only for board previews (not viewed) goes first', async () => {
@@ -534,5 +563,51 @@ describe('B-813 switches and logout', () => {
         expect(deleted).toHaveLength(1);
         vi.restoreAllMocks();
         expect(await factory.databases()).toEqual([]);
+    });
+});
+
+describe('B-813 two tabs on one database (review S5)', () => {
+    it('A appends, B writes from a stale view, A runs the LRU — every step leaves count = rows and a valid run', async () => {
+        const factory = new IDBFactory();
+        const a = await opened(harness(factory));
+        const b = await opened(harness(factory));
+        a.cache.offerLatest('s', rows(1, 10), { viewed: true });
+        await a.cache.flush();
+        await expectConsistent(factory);
+
+        // B opened the session earlier: its view of the run is 1..6.
+        b.cache.offerLatest('s', rows(1, 6), { viewed: true });
+        // A appends while B's stale writes are queued; both flush together.
+        a.cache.offerNewer('s', rows(11, 14), { afterSeq: 10 });
+        a.cache.offerNewer('s', [row(15)]);
+        b.cache.offerNewer('s', rows(5, 8), { afterSeq: 4 });
+        b.cache.offerNewer('s', [row(7)]);
+        await Promise.all([a.cache.flush(), b.cache.flush()]);
+        await expectConsistent(factory);
+
+        // B appends rows A already wrote (a stale range and a stale push): nothing counts twice.
+        b.cache.offerNewer('s', rows(3, 15), { afterSeq: 2 });
+        b.cache.offerNewer('s', [row(16)]);
+        a.cache.offerNewer('s', rows(16, 18), { afterSeq: 15 });
+        await Promise.all([b.cache.flush(), a.cache.flush()]);
+        await expectConsistent(factory);
+        const hit = await a.cache.load('s');
+        expect(hit!.rows.map((r) => r.seq)).toEqual(Array.from({ length: hit!.rows.length }, (_, i) => hit!.oldestSeq + i));
+
+        // Enough sessions for A's LRU to evict, while B keeps writing to 's' and to a victim.
+        for (let i = 0; i < CACHE_MAX_SESSIONS + 2; i++) {
+            a.now.t = 10_000 + i;
+            a.cache.offerLatest(`v${i}`, rows(1, 3, `v${i}`), { viewed: true });
+        }
+        await a.cache.flush();
+        b.cache.offerNewer('v0', rows(4, 5, 'v0'), { afterSeq: 3 });
+        b.cache.offerNewer('s', rows(19, 20), { afterSeq: 18 });
+        await Promise.all([a.cache.cleanupNow(), b.cache.flush()]);
+        await expectConsistent(factory);
+        await Promise.all([b.cache.flush(), a.cache.cleanupNow()]);
+        await expectConsistent(factory);
+        expect((await allRecords(factory))!.length).toBeLessThanOrEqual(CACHE_MAX_SESSIONS);
+        expect(a.cache.stats().drops).toEqual({});
+        expect(b.cache.stats().drops).toEqual({});
     });
 });

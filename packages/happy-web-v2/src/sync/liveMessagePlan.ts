@@ -61,11 +61,16 @@ export class AnchorBuffer<M> {
         if (!this.buffers.has(sessionId)) this.buffers.set(sessionId, []);
     }
 
-    /** The page anchored lastSeq at `anchor`: what to apply (seq-ascending) and every seq seen past it. */
-    drain(sessionId: string, anchor: number): { messages: M[]; seqs: number[] } {
+    /**
+     * The page anchored lastSeq at `anchor`: what to apply (seq-ascending) and every seq seen past it.
+     * `contiguous` (B-813 B1): only the run from anchor + 1 without a hole; the rest is dropped — the
+     * anchor is older than the server's head (a cached run), so the forward fetch brings them in order.
+     */
+    drain(sessionId: string, anchor: number, options: { contiguous?: boolean } = {}): { messages: M[]; seqs: number[] } {
         const buffer = this.buffers.get(sessionId) ?? [];
         this.buffers.delete(sessionId);
-        const after = buffer.filter((entry) => entry.seq > anchor).sort((a, b) => a.seq - b.seq);
+        let after = buffer.filter((entry) => entry.seq > anchor).sort((a, b) => a.seq - b.seq);
+        if (options.contiguous) after = contiguousRun(after, anchor);
         return {
             messages: after.flatMap((entry) => (entry.message ? [entry.message] : [])),
             seqs: after.map((entry) => entry.seq),
@@ -75,4 +80,15 @@ export class AnchorBuffer<M> {
     clear(sessionId: string) {
         this.buffers.delete(sessionId);
     }
+}
+
+/** The leading entries of a seq-ascending list that continue `anchor` without a hole (a repeated seq is no hole). */
+export function contiguousRun<E extends { seq: number }>(entries: readonly E[], anchor: number): E[] {
+    let last = anchor;
+    let end = 0;
+    while (end < entries.length && entries[end].seq <= last + 1) {
+        last = Math.max(last, entries[end].seq);
+        end += 1;
+    }
+    return entries.slice(0, end);
 }
