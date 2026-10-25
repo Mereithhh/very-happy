@@ -104,6 +104,50 @@ export const sessionStreamFramesCounter = new Counter({
     registers: [register]
 });
 
+// B-811: session sync v1 (sync-hello / session-subscribe). `result` is
+// 'ok' or the wire error code — a closed set, so cardinality stays bounded.
+export const syncHelloCounter = new Counter({
+    name: 'sync_hello_total',
+    help: 'sync-hello acks by result',
+    labelNames: ['result'] as const,
+    registers: [register]
+});
+
+export const syncSubscribeCounter = new Counter({
+    name: 'sync_subscribe_total',
+    help: 'session-subscribe acks by result',
+    labelNames: ['result'] as const,
+    registers: [register]
+});
+
+export const syncSnapshotDuration = new Histogram({
+    name: 'sync_snapshot_duration_seconds',
+    help: 'DB time of one hello/subscribe snapshot (head batch + per-session statements)',
+    labelNames: ['op'] as const,
+    buckets: [0.002, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.25, 0.5, 1, 1.5],
+    registers: [register]
+});
+
+export const syncHelloQueueWait = new Histogram({
+    name: 'sync_hello_queue_wait_seconds',
+    help: 'Wait for a snapshot gate slot (SYNC_HELLO_MAX_CONCURRENCY)',
+    labelNames: ['op'] as const,
+    buckets: [0, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 3],
+    registers: [register]
+});
+
+export const syncGapTooLargeCounter = new Counter({
+    name: 'sync_gap_too_large_total',
+    help: 'Subscriptions answered with the latest page because headSeq - afterSeq exceeded the gap threshold',
+    registers: [register]
+});
+
+export const syncSubscriptionsGauge = new Gauge({
+    name: 'sync_subscriptions',
+    help: 'Sync subscriptions currently held by sockets on this replica',
+    registers: [register]
+});
+
 export const httpRequestsCounter = new Counter({
     name: 'http_requests_total',
     help: 'Total number of HTTP requests',

@@ -17,6 +17,7 @@ import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { terminalHandler } from "./socket/terminalHandler";
 import { clipboardHandler } from "./socket/clipboardHandler";
 import { sessionStreamHandler } from "./socket/sessionStreamHandler";
+import { sessionSyncHandler } from "./socket/sessionSyncHandler";
 import { filePreviewHandler } from "./socket/filePreviewHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
@@ -491,6 +492,9 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
         terminalHandler(userId, socket, io, connection, terminalRateLimiter);
         clipboardHandler(userId, socket, io, connection, terminalRateLimiter);
         sessionStreamHandler(userId, socket, io, connection, sessionStreamRateLimiter);
+        // B-811: after eventRouter.addConnection above, so a web socket is
+        // already in its user-scoped push room before any snapshot read.
+        sessionSyncHandler(userId, socket, connection);
         filePreviewHandler(userId, socket, io, connection, terminalRateLimiter);
 
     });

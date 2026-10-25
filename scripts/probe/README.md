@@ -317,3 +317,27 @@ pane/命令编号不同）。解码器不得依赖任何版本特有形状。
   同一条判据），所以 `unescapeOctal()` 一份实现两处用。
 - **行尾是裸 LF 不是 CRLF**（管道传输，tmux 用 `EVBUFFER_EOL_LF` 读写）。
 - **向 control client 的 stdin 写空行 = detach**：脚本的 `send()` 里有硬断言挡着。
+
+## sync-hello-canary.mjs —— 会话同步 v1 的只读金丝雀（B-811）
+
+B-807 阶段 1 的上线门槛：server 暗发布 `sync-hello` / `session-subscribe` 之后，对真站只读地发
+hello，确认 ack 正确、时延达标，并在一次蓝绿切流期间持续成功。不开浏览器，不写任何数据：只
+`GET /v2/sessions` 取最新的 ≤16 个会话 id，再在一条 user-scoped socket 上轮流发冷 hello
+（`afterSeq:null, limit:1`）、热 hello（`afterSeq`=上次的 head）和 subscribe/unsubscribe。握手带
+`appState: background`，避免服务端把这条 socket 当成前台，从而压住推送通知。
+
+```sh
+node scripts/probe/sync-hello-canary.mjs                        # veryhappy.dev，20 轮，token 取 ~/.happy/access.key
+node scripts/probe/sync-hello-canary.mjs --watch --interval 1000 # 蓝绿切流时一直跑，Ctrl-C 出汇总（断线自动重连并继续）
+node scripts/probe/sync-hello-canary.mjs --json                 # 机器可读
+node scripts/probe/sync-hello-canary.mjs --help                 # 全部选项（--server / --token / --sessions / --p95-ms）
+```
+
+**退出码**：`0` 全部 ok 且客户端 RTT P95 ≤ `--p95-ms`（默认 300）· `1` 有失败、超时或快照自相矛盾 ·
+`2` 跑不出结论（鉴权或连接失败）· `3` 服务端回 `disabled`（开关打开，或账号不在灰度名单）·
+`4` 完全没有 ack，说明服务端是没有 handler 的旧镜像。
+
+脚本量的是客户端 RTT，包含网络。服务端快照时延（门槛 P95 < 30ms）看 Prometheus：
+`histogram_quantile(0.95, sum by (le) (rate(sync_snapshot_duration_seconds_bucket[5m])))`，
+结果分布看 `sync_hello_total{result}`。汇总里 `cold head≠newest seq` 统计的是 head 大于最新一条消息
+seq 的会话（历史 seq 空洞）。这个数非 0 时，5b 的「hasMore=false ⇒ head==max(seq)」判据要放宽。
