@@ -1,6 +1,6 @@
 # 会话消息同步 v1：快照对账订阅 + 本机持久化（PR-5 / PR-6）
 
-> 状态：已批准（Owner 2026-10-25，6 项取舍按推荐，见 §16），实施中：5a #754、6a #756 已合入、5b B-812、6b B-814；修订见 §15（当前 r4）
+> 状态：已批准（Owner 2026-10-25，6 项取舍按推荐，见 §16），实施中：5a #754、6a #756 已合入、5b B-812、6b B-814；修订见 §15（当前 r7）
 > 日期：2026-10-25 ｜ 关联 backlog：B-807（本 spec）；前置 B-803/B-804/B-805（止血 PR-1～3）；相关 B-802、B-799、B-801、B-806、B-711、B-494、B-513、B-516、B-722
 > 出处：B-802 调研报告（下称 REPORT）§4.2 与设计评审（下称 DESIGN-REVIEW）§5～6；两份记录在会话临时目录，不进 repo
 > 基线：`origin/main@bc28d577`（含 #740 B-799、#741 B-801）。B-802 报告里的行号基于 `e273b309`，本文新增的行号基于 `bc28d577`。
@@ -40,7 +40,7 @@
 ### 1.2 目标（可验证）
 
 - G1：回前台、重连、蓝绿切换后，当前会话在**网络可用时 ≤ 1.5s**（P95，本地 e2e 可控代理 RTT=150ms）追平；链路死掉时 ≤ 6s（5s ack 超时 + 重连）。比 PR-1 的「10s + 重试」更短。
-- G2：进入 `live` 必须有服务端 head 作证，不再是推断：ack `ok` 且 `hasMore=false`，并且 `headSeq ≥ 本次请求的 afterSeq`。此时 Web 把 lastSeq 直接推进到 `headSeq`（`lastSeq := max(lastSeq, headSeq)`），承认 `(max(messages.seq), headSeq]` 之间可能有永远不存在的 seq（历史空洞，§4.2.1）。**不要求** `max(messages.seq) == headSeq`。
+- G2：进入 `live` 必须有服务端 head 作证，不再是推断：ack `ok` 且 `hasMore=false`，并且 `headSeq ≥ 本次请求的 afterSeq`。此时 Web 把 lastSeq 直接推进到 `headSeq`（`lastSeq := max(lastSeq, headSeq)`），承认 `(max(messages.seq), headSeq]` 之间可能有永远不存在的 seq（历史空洞，§4.2.1）。**不要求** `max(messages.seq) == headSeq`。r7：唯一例外是 REST 兜底或 hedge 完成后进入的 live（legacy 强度，没有 head 证明，§5.3），由下一次 120s 对账补上 head 校验。
 - G2a：存在 seq 空洞的老会话也必须能进入 `live`，每次触发只发 1 次 subscribe，不循环重试（§9 有测试）。
 - G3：补拉只剩一个调度入口 `SessionSyncScheduler`，所有触发源都只把事件交给它。
 - G4：冷启动或刷新时，有缓存的会话在 **≤ 300ms**（从 app 可交互算起，中端 Android）渲染缓存，再对账。
@@ -298,7 +298,8 @@ mergeSessionMessages(sid, batch: SyncMessage[] | SendAck[], source, meta?: { hea
 1. **代次过滤**：`meta.generation < state.generation` 的 snapshot、latest-page、rest 结果直接丢弃。这些是被取消的旧请求，晚到不能覆盖新状态。push、send-ack、relay-committed 不受代次限制，它们是实时事实。
 2. **排序与去重**：入口处 `sortIncomingBySeq`（铁律 15）。已知 id 或已知 seq 跳过；localId 与乐观消息匹配时确认回显（复用 `reducer.ts` 现有逻辑，B-802 基线 :514-563）。
 3. **lastSeq**：按来源分两类推进（seq 空洞见 §4.2.1）。
-   - **点状来源**（push、send-ack、relay-committed、cache）：只沿**连续段**推进，复用 B-513 的 `advanceLastSeq`（`W/sync/outbox.ts:150`）。越过 lastSeq+1 的进入规则 4 的重排缓冲。
+   - **点状来源**（push、send-ack、relay-committed）：只沿**连续段**推进，复用 B-513 的 `advanceLastSeq`（`W/sync/outbox.ts:150`）。越过 lastSeq+1 的进入规则 4 的重排缓冲。
+   - **cache（r7）**：按**锚定在存储 lastSeq 上的范围**处理，不按点状处理。缓存段本身就是「已被服务端范围结果完整覆盖」的连续段（§5.4，可含历史空洞），渲染后 lastSeq 取存储的 lastSeq；随后的 subscribe 从 `lastRowSeq−1` 发起，用来校验锚点（§5.4.2）。按点状处理时，带空洞的缓存段会永远补不上。
    - **范围来源**（snapshot、rest、latest-page、older-page）：服务端返回的是「该范围内存在的全部消息」，范围内缺的 seq 视为不存在，不算 gap。snapshot、rest 把 lastSeq 推进到 `max(本批 seq)`；`hasMore=false` 时再按规则 5 推进到 `headSeq`。older-page 把 oldestSeq 下移到 `min(本批 seq)`。
    - `latest-page` 重置窗口：`lastSeq = headSeq`（不是 `max(本批 seq)`，原因同规则 5），`oldestSeq = min`，丢弃旧窗口（只发生在 cold 或 gapTooLarge 时）。
    - 范围推进后，重排缓冲里 `seq ≤ 新 lastSeq` 的条目直接合并并清除，对应的 gap 计时器取消。
@@ -307,7 +308,7 @@ mergeSessionMessages(sid, batch: SyncMessage[] | SendAck[], source, meta?: { hea
    - `headSeq < meta.afterSeq`：本地超前于服务端（DB 恢复、会话重建），这个会话的缓存作废，按 cold（`afterSeq=null`）重拉，§6.2 第 10 行。这是**唯一**的「head 不一致」判定。
    - 否则，`hasMore=false` 时 `lastSeq := max(lastSeq, headSeq)`，这就是 **live 的证据**，状态机据此进入 `live`。`max(messages.seq) < headSeq` 是历史空洞（§4.2.1），不是不一致，不重试。
    - ack 回来时 lastSeq 已经大于 `headSeq`（推送先到，§4.2 末条）属于正常竞态：lastSeq 不回退，照常进入 `live`。
-6. **副作用只对「新事实」生效**：turn-start/turn-end 推导 thinking、`recordHeartbeat`、`applySessions` 侧栏更新（`W/sync/sync.ts:2950-2990`），只在 source ∈ {push, snapshot, rest} 且 seq > 合并前的 lastSeq 时执行。`cache` 和 `older-page` 绝不触发，否则冷启动时一条陈旧的 turn-start 会让会话看起来一直在思考。
+6. **副作用只对「新事实」生效**：turn-start/turn-end 推导 thinking、`recordHeartbeat`、`applySessions` 侧栏更新（`W/sync/sync.ts:2950-2990`），**只在 source = push** 且 seq 高于该会话**独立的副作用高水位**（`effectedSeq`，只由 push 推进）时执行（r7）。不用「合并前的 lastSeq」：范围结果先到、把 lastSeq 推过某条消息时，随后到达的同一条 push 仍要触发副作用。snapshot、rest 不触发，与 PR-5b 之前一致（`applyFetchedMessages` 只 apply、不推导）。`cache` 和 `older-page` 绝不触发，否则冷启动时一条陈旧的 turn-start 会让会话看起来一直在思考。
 7. **写缓存**：合并成功后，把 applied 的消息异步交给 `SyncCache.put`（§5.4），不 await，不阻塞 UI。
 
 **迁移约束**：现有 `handleUpdate` new-message 分支（`W/sync/sync.ts:2909`）、`fetchMessages`、`applyFetchedMessages`、发送 ack、relay committed、loadOlder，统一改成调用 `mergeSessionMessages`。PR-5b 加一条源码断言测试：`sync.ts` 中 `storage.getState().applyMessages`（或等价写 store 的调用）只能出现在 `sessionMerge` 里，并用 mutation-check 验证这条断言。
@@ -318,7 +319,7 @@ mergeSessionMessages(sid, batch: SyncMessage[] | SendAck[], source, meta?: { hea
 
 | 触发 | 动作 |
 |---|---|
-| `connect`（含 recovered、交接 candidate） | `sync-hello(subs = 当前订阅集)`，`reason=connect/handover` |
+| `connect`（含 recovered、交接 candidate） | `sync-hello(subs = 当前订阅集)`，`reason=connect/handover`。**不 hedge**（r7）：切流风暴时不能放大成 REST。交接时 reconnected listener 返回这次 hello，旧 socket 等它结束才断开（§4.6） |
 | `resumeSync` 边沿（铁律 13：只从 `sync.onWebResume` 进入） | 订阅模式：`sync-hello(reason=resume)`，ack 本身就是活性证明；ack 超时则调 `checkLiveness()`。legacy 模式：沿用 PR-1 的 restart |
 | 打开会话 | 如果不在订阅集里，加入并 `session-subscribe(afterSeq = 缓存的 lastSeq ?? null)` |
 | 离开会话 | 保留订阅 **5 分钟**（来回切换不必重拉），超时后退订；订阅集最多 8 个，按最近查看时间淘汰 |
@@ -329,6 +330,8 @@ mergeSessionMessages(sid, batch: SyncMessage[] | SendAck[], source, meta?: { hea
 | live 且可见，每 120s | `session-subscribe(afterSeq=lastSeq)`（§4.2 的兜底） |
 | 离线（`isNetworkOffline()`） | 什么都不发，转 `stale(offline)`；恢复在线后由 connect 或 resume 触发 |
 | 用户点「重试」 | 代次 +1，立即 hello |
+| resume / retry / online 的 hello **600ms** 未答（r7） | 正在看的会话并行发一次 REST 补拉（hedge），hello 继续等；ack 超时（5s）的 REST 兜底在 hedge 刚完成时跳过。依据 e2e B6（5.2s → 0.4s） |
+| 连接回来（connect、recovered、resume）或控制权回到本端（r7） | 不论 subscribe 还是 legacy 模式，都执行正在看的会话的**会话侧职责**（`touchViewedSession`：预热 machine relay、yolo 对齐、voice focus）。消息补拉仍由调度器负责。agent 卡在权限请求、没有新推送时，yolo 对齐只能靠这一步 |
 
 **未订阅的会话**仍然通过 legacy `update/new-message` 收消息，用于侧栏、未读和 thinking；PR-3 之后只标 stale，不预取。打开这个会话时才 subscribe。
 
@@ -343,7 +346,7 @@ phase ∈ cold | loading | live | syncing | stale
 |---|---|---|---|
 | (none) | OPEN，没有缓存 | loading | 发 subscribe(null) |
 | (none) | OPEN，缓存命中 | syncing | 先渲染缓存（source=cache），再发 subscribe(lastSeq) |
-| loading/syncing | ACK ok，`!hasMore` 且 `headSeq ≥ 请求 afterSeq`（cold 请求恒成立） | **live** | 先 `lastSeq := max(lastSeq, headSeq)`，再进入 live。live 只有这一条进入路径（G2）。`max(messages.seq) < headSeq` 的空洞会话同样走这里，不重试（G2a） |
+| loading/syncing | ACK ok，`!hasMore` 且 `headSeq ≥ 请求 afterSeq`（cold 请求恒成立） | **live** | 先 `lastSeq := max(lastSeq, headSeq)`，再进入 live。这是有 head 证明的进入路径（G2）；另一条见下面「REST 兜底完成」一行（r7）。`max(messages.seq) < headSeq` 的空洞会话同样走这里，不重试（G2a） |
 | loading/syncing | ACK ok，`headSeq < 请求 afterSeq` | loading | 作废该会话缓存，发 subscribe(null)，§6.2 第 10 行 |
 | loading/syncing | ACK ok，`hasMore` | 不变 | 继续拉 |
 | loading/syncing | ACK `gapTooLarge` | syncing→live | 重置窗口，按最新页处理，然后照常校验 head |
@@ -353,6 +356,7 @@ phase ∈ cold | loading | live | syncing | stale
 | 任意 | SOCKET_DOWN 或 OFFLINE | stale(reason) | 保留数据 |
 | syncing | ACK 超时（5s） | stale(timeout) | 调 `checkLiveness()`；连接恢复后自动重试 |
 | syncing | ACK `unavailable` 连续 3 次 | stale(server) | REST 兜底一次（PR-1 路径，10s 超时） |
+| loading/syncing、stale(server/timeout) | REST 兜底或 hedge 完成（r7） | **live**（legacy 强度） | REST 不带 head，不算 G2 的证明；下一次 120s 对账补 head 校验。stale(offline) 不因此进入 live |
 | stale | CONNECT、ONLINE 或 RETRY | syncing | 代次 +1 |
 | 任意 | ACK `disabled` 或首次 hello 2s 无 ack | mode=legacy | 当前连接期间保持 legacy，phase 按 PR-1～3 的旧逻辑 |
 | 任意 | ACK `not_found` | (removed) | 交给现有的删除或无权限路径 |
@@ -442,6 +446,7 @@ OutboxRow = {
   ownerTabId: string;              // B-516 tabLiveness 的 tab id（`thisTabId()`，与 pendingSessions 共用）
   group: string;                   // 一轮用户输入（附件 + 文本），一起重试
   order: number;                   // 轮内顺序
+  kind?: 'queue';                  // r5（B-815）：缺省 = 消息 POST；'queue' = 服务端 prompt queue 未接受的 prompt，见 §5.5.7
 }
 ```
 
@@ -486,6 +491,22 @@ r4 落实：首条消息的 localId 等于它在 pendingSessions 里的 item id�
 #### 5.5.6 持久化不可用时（r4）
 
 `vh.sync.cache=off`、缓存被禁用（打开失败、卡死）或配额只读时，outbox **也不持久化**，退回内存，行为等于 PR-6b 之前。outbox 与消息缓存共用同一个库和同一套开关，不单独开库：「关缓存」要求删库（§6.1），配额只读时也不该继续写；也不为 outbox 另做一套恢复路径。注意：配额只读时 delete 同样失效，已落盘的行会留到下次加载，由接管时「先拉最新页」和服务端去重兜底（#759 review S2 建议放开 delete）。
+
+#### 5.5.7 服务端 prompt queue 的未接受行（r5/r6，B-815）
+
+agent 忙时 composer 走 B-509 `submitPrompt`，不经过消息 outbox；服务端还没接受的 dock 行（「加入队列中 / 离线 · 连接恢复后加入队列 / 未加入队列」）原来只在内存里，刷新即丢（QA8 U2，生产 915a97a2 可复现）。
+
+- **同库同 store，`kind: 'queue'`**，不另开 store：另开要升库版本，旧标签页持连接时 `onupgradeneeded` 会被阻塞（`IdbBlockedError`）；同 store 直接复用接管锁、tabLiveness、10 分钟规则、cache=off / 配额 / 登出清库。`group = localId`、`order = 0`。
+- **生命周期**：首次 POST 前先加密，`update`（无行则建）落盘，最多等 1s；服务端快照列出该 localId 或 POST 成功 → 删行；放回输入框、删除、退回 tab 本地队列（旧服务端 404）→ 删行。**服务端拒绝**（4xx，或带 `prompt_queue_*` / `session_not_found` code 的答复，或加密不可用）→ `failed`；**没有答复**（链路断，以及不带我方 code 的 5xx：发布时网关的 502/503/504）→ 保持 `queued`，与 §5.5.2「没有 ack 一律当 queued」一致（r6，#761 review S2）。用户点「重试」重置 10 分钟（盘上与内存同时重置）；断网恢复 / 重连的自动重试不重置。
+- **页内**：没有答复的失败行在 dock 仍显示「未加入队列」，但标 `retryable`，与 `waiting` 一起在 `online`、网络恢复和 socket 重连时自动重试（composer 的「发送的消息会在恢复后送出」由此成立）。QA8 原始形态（断网未满判离线阈值、不刷新）既没有 `online` 也没有恢复边沿，只靠 socket 重连这一路（`queueOutboxFlow.test.ts` 驱动 Sync 真实的 reconnect handler 钉住）。
+  - **自动重试同样守 10 分钟（r6，S3）**：`createdAt` 距今超过 10 分钟的 `waiting` / `retryable` 行不自动发，转为 `failed`（盘上同步 `failed`），显示「未加入队列 · 重试」，等用户；与接管的年龄规则同一常量（`OUTBOX_AUTO_RESEND_MS`）、同一边界（恰好 10 分钟仍自动发）。
+  - **服务端不再排队（旧服务端 404，`unsupported`，r6，S4）**：只有 composer 的首次提交会把行交给 tab 本地队列（同时删盘上行）；用户重试、自动重试与接管的行都不会被静默移走，保持 `failed` 留在 dock（此时 dock 在 tab 本地队列之前照样显示它），用户可「放回输入框」后按 tab 本地队列发送。
+- **接管**：接管流程与 §5.5.3 共用；按 `kind` 分流，`queue` 行**只**重新入队（`POST /prompt-queue`，同 localId），绝不作为消息 POST；消息行绝不进 dock。处理前先拉最新页并 `load` 服务端队列：localId 已在 transcript（已被 wrapper 执行）或在服务端队列（已接受）→ 删行。其余按 §5.5.3 年龄规则：≤10 分钟的 `queued` 回到 dock 并立即入队；更早或已 `failed` 的回到 dock 显示「未加入队列 · 重试」，等用户。
+- **幂等边界（r6，#761 review S1，以 `happy-server/sources/app/promptQueue/store.ts` 为准）**：
+  - `enqueuePrompt` **只对仍在队列中的 localId 去重**（命中返回 `created:false`）。dispatch 会删掉队列行，所以**已出队的 localId 再入队会新建一条队列项，返回 `created:true`**。
+  - 真正防止二次执行的是 **dispatch**：`dispatchPromptQueueHead` 经 `storeSessionMessagesInTx` 按 (sessionId, localId) 对消息表去重，localId 已有消息时不新建、不广播，返回 `dispatched.created:false`，CLI（`promptQueueDrain.ts`）视为已路由，不再执行。所以重复入队最多多一条队列项，agent 只执行一次。
+  - **已知限制：dock 可能出现幽灵队列项**。触发窗口：原 POST 实际已被接受但答复丢了（`retryable`）→ 该项被 dispatch → 之后客户端才自动重试或接管，且最新页里还没看到这条消息（接管前的 transcript 检查没拦住）。这条项占队列名额（MAX_ITEMS），可被编辑但编辑不生效，wrapper 空闲 dispatch 时静默消失。根治需要 server `enqueuePrompt` 在同一事务里也查消息表（localId 已有消息 → `created:false` 不建行），向后兼容，另记 backlog，本 PR 不做。
+- **兼容**：B-814 版本（不认 `kind`）的标签页若接管到 `queue` 行，会把它当消息发出：仍只有一份、agent 只执行一次，只是不经过队列。只在发布窗口新旧标签页并存时出现，可以接受。
 
 ### 5.6 文件落点（Web）
 
@@ -559,7 +580,7 @@ server 与 Web 同镜像（铁律 5），所以 PR-5a（server）合入后，先
 |---|---|---|---|---|
 | 0 | — | PR-1～3 上线（前提）；记录基线：`after_seq` GET/分钟、回前台追平时间（e2e B3/B6）、首屏时间 | — | QA 用 `e2e/sync-resume.mjs` 验收通过 |
 | 1 | **5a** server + wire | hello、subscribe 的 handler，限额，指标；Web 不调用 | 用 canary 脚本对生产 hello，确认 ack 和 `sync_snapshot_duration` P95 < 30ms | 1 次蓝绿切流期间，canary hello 持续成功 |
-| 2 | **5b** Web 订阅 | 合并入口、状态机、调度器；`SYNC_SUBSCRIBE_ACCOUNTS=<Owner>` 灰度 | Owner 账号使用 2–3 天；`sync_hello_total{result!=ok}` < 1%；没有新的「消息看不见」反馈 | 去掉账号名单，全量 |
+| 2 | **5b** Web 订阅 | 合并入口、状态机、调度器；`SYNC_SUBSCRIBE_ACCOUNTS=<Owner>` 灰度 | Owner 账号使用 2–3 天；`sync_hello_total{result=~"unavailable\|rate_limited\|invalid_request"}` 占比 < 1%（r7：**排除 `disabled`**，灰度期间名单外账号每次 connect 都记一次 `result=disabled`，`result!=ok` 会接近 100%）；没有新的「消息看不见」反馈 | 去掉账号名单，全量 |
 | 3 | **6a** 消息缓存 | 读写缓存加损坏恢复；默认开启 | 首屏时间、缓存命中率（Web 本地计数，可在调试面板查看）、`QuotaExceeded` 次数 | 一周内没有缓存相关缺陷 |
 | 4 | **6b** 持久 outbox | 刷新后 pending 仍在；10 分钟规则 | 真机：iOS 杀后台后 pending 恢复 | — |
 | 5 | **6c** 内存 LRU | 驱逐非活跃会话的 reducer 状态 | 长时间使用后的内存占用（Chrome heap snapshot） | — |
@@ -704,7 +725,7 @@ UI 部分（状态条）沿用 PR-2 已经通过的 device-shots 和 design lint
 1. **合并入口改造面大（5b）** → 先抽纯函数并做属性测试，再逐个入口迁移；源码断言保证没有旁路；`vh.sync.mode=legacy` 可在本机立即回退，server 开关可全局回退。
 2. **重排缓冲 400ms 会掩盖真实的 gap** → 只延迟补齐，不丢消息；到期一定补拉。指标记录缓冲到期次数。
 3. **切流时 hello 风暴** → 并发闸门、`retryAfterMs` 随机化；e2e 中的 300 socket 场景；与 B-711 分开观测（`sync_hello_queue_wait`）。
-4. **缓存让旧数据「看起来是新的」** → 有缓存时进入 `syncing` 而不是 `live`，「同步中」条照常显示，live 只能由 head 证明（G2）。
+4. **缓存让旧数据「看起来是新的」** → 有缓存时进入 `syncing` 而不是 `live`，「同步中」条照常显示，live 只能由 head 证明（G2；r7 的 REST 兜底 live 为 legacy 强度，120s 内对账）。
 5. **outbox 自动重发执行了过时的指令** → 10 分钟规则；超过的记录交给用户决定（§16 取舍 2）。
 6. **共享电脑上残留聊天缓存** → 退出登录时删库；r2 起不缓存 DEK，IDB 中只有密文（§5.4）。
 7. **iOS 非 PWA 7 天未访问后 IDB 被清除** → 只影响速度；outbox 的保证写明「尽力而为」。
@@ -736,6 +757,9 @@ UI 部分（状态条）沿用 PR-2 已经通过的 device-shots 和 design lint
 | r3 | 2026-10-25 | spec 作者（#756 review 建议 S7；已采纳） | **只改文档**。§9.3「离线刷新」的预期从「缓存照常显示」改为「显示 B-799 离线条，不报错；缓存在网络恢复、会话列表返回后才显示」。原写法与 r2「不缓存 DEK」冲突：离线时 `/v2/sessions` 拿不到，DEK 不可用，缓存无法解密；6a 实现中 `fetchMessages` 离线直接返回（`W/sync/sync.ts`）。离线可读缓存需要缓存 DEK，已在 r2 §7 否决，不在本 spec 范围 |
 | 入库 | 2026-10-25 | spec 作者 | 正文与 r3 相同；去掉本机路径与内部称呼，补 §16 Owner 决定，状态改为实施中。同 PR 在 [web-resume-sync](2026-08-web-resume-sync.md) 与 [zero-downtime-release](2026-08-zero-downtime-release.md) 加交叉引用，并改正后者「现状事实」里过期的 recovery 描述 |
 | r4 | 2026-10-25 | spec 作者（#759 review，PR-6b 实现提出的三处出入；已采纳） | **只改文档**。(1) **不存 `displayText` 明文**：与 r2「IDB 只留密文」一致，接管时解密 `body` 重建气泡，解不开就删行（§5.5.1）。(2) **只存 `queued`/`failed`**，ack 时删行；不存 `sending`/`sent`/`seq`；`sent` 的确认改为「接管前先拉最新页，localId 已在 transcript 里就删行」（§5.5.1～5.5.3）。(3) **`cache=off`、缓存禁用或配额只读时 outbox 也不持久化**，退回内存（新增 §5.5.6，§6.1 同步）。同时写明实现中的既定细节：POST 最多等 IDB 1s，超时照发；单链串行保证 delete 不早于 put；锁内重读、写盘成功才算接管，每 15s 一轮；已 failed 的行不论多新都不自动重发；用户重发重置 10 分钟计时；B-801 用 `whenOutboxPersisted` 之后才移除 localStorage 记录（§5.5.2～5.5.4）。新增要求（review B1）：会话不在本页 store 时不能当作已删除，先 `fetchSessionById`，只有 404 才删行，出错或无密钥时保留，下一轮再处理；§5.4.2「会话被删除」一行改为直接删除、不提示。§9.2-7 用例同步 |
+| r5 | 2026-10-25 | B-815（QA8 U2：agent 忙时离线入队后刷新即丢） | 新增 §5.5.7：服务端 prompt queue 未接受的行进同一 `outbox` store，`kind: 'queue'`；接管按 kind 分流（队列行只重新入队、消息行不进 dock），与 10 分钟规则、多标签页接管一致；没有答复的失败保持 `queued`、页内自动重试，服务端拒绝才 `failed` |
+| r6 | 2026-10-25 | B-815（#761 review M1/S1–S4） | §5.5.7：幂等边界改按 server 实现写（enqueue 只对在队列中的 localId 去重，已出队再入队 `created:true`；不二次执行靠 dispatch 按消息表 localId 去重），写入「幽灵队列项」已知限制；不带我方 code 的 5xx 归为没有答复（可重试）；页内自动重试同守 10 分钟；`unsupported` 时只有首次提交退回 tab 本地队列，重试/接管的行保持 `failed` 留在 dock |
+| r7 | 2026-10-25 | B-812b（#757 review REVIEW-757 §2/§3/§5、S1/S10、M1；已采纳） | **只改文档，协议不变**，把 PR-5b 实现与原文的三处偏离写回 spec：(1) §5.1 规则 3：`cache` 不是点状来源，按锚定在存储 lastSeq 上的范围处理；(2) 规则 6：副作用只对 push 生效，按独立的副作用高水位 `effectedSeq` 去重，不用合并前的 lastSeq；(3) §5.3：REST 兜底或 hedge 完成也进入 live（legacy 强度），live 不再是「唯一一条路径」，§1.2 G2、§12-4 同步。另补：§5.2 resume/retry/online 的 hello 600ms hedge，connect/recovered/handover 不 hedge；连接回来与控制权回到本端时不分模式执行会话侧职责（`touchViewedSession`，M1）。§8 阶段 2 门槛排除 `disabled` |
 
 ## 16. Owner 决定（2026-10-25，6 项均按推荐）
 

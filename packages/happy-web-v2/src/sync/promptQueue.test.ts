@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createPromptQueueStore, handOffRows, movedOrder, reloadPromptQueue, retryWaitingPrompts, supportsServerPromptQueue, type PromptQueueWireItem } from './promptQueue';
+import { OUTBOX_AUTO_RESEND_MS } from './cache/outboxStore';
+import { createPromptQueueStore, handOffRows, isRefusedStatus, PromptQueueHttpError, type PendingPromptPersistence, movedOrder, reloadPromptQueue, retryWaitingPrompts, supportsServerPromptQueue, type PromptQueueWireItem } from './promptQueue';
 
 type Call = { path: string; method: string; body?: unknown };
 
@@ -13,6 +14,10 @@ function harness(opts?: {
     getGate?: () => Promise<void>;
     inTranscript?: (sessionId: string, localId: string) => boolean;
     onDispatched?: (sessionId: string, localIds: string[]) => void;
+    persist?: PendingPromptPersistence;
+    now?: () => number;
+    /** B-815: answers only writes with this status (GETs stay 200). */
+    writeStatus?: () => number | null;
 }) {
     const calls: Call[] = [];
     let items: PromptQueueWireItem[] = [];
@@ -27,6 +32,8 @@ function harness(opts?: {
             calls.push({ path, method, body });
             if (opts?.gate && (method === 'POST' || method === 'PATCH')) await opts.gate(method);
             // Production's SPA fallback answers an unknown /v1 path with `{error:'Not found'}` (spaFallback.ts) — the exact body.
+            const writeStatus = method !== 'GET' ? opts?.writeStatus?.() : null;
+            if (writeStatus) return { status: writeStatus, json: async () => (writeStatus >= 500 ? (() => { throw new Error('html'); })() : { error: 'nope' }) };
             if (opts?.status) return { status: opts.status, json: async () => ({ error: opts.status === 404 ? 'Not found' : 'nope' }) };
             if (method === 'POST' && path.endsWith('/prompt-queue')) {
                 items = [...items, wire(body.localId, String(body.content).replace(/^enc:/, ''), items.length + 1)];
@@ -61,9 +68,10 @@ function harness(opts?: {
         },
         newLocalId: () => `local-${++nextId}`,
         isOnline: opts?.online,
-        now: () => 42,
+        now: opts?.now ?? (() => 42),
         inTranscript: opts?.inTranscript,
         onDispatched: opts?.onDispatched,
+        persist: opts?.persist,
     });
     return { store, calls, setItems: (next: PromptQueueWireItem[]) => { items = next; }, wire };
 }
@@ -199,30 +207,33 @@ describe('B-722 optimistic queue rows', () => {
         for (const state of seen) expect([...state.items, ...state.pending].filter((id) => id === 'local-1')).toHaveLength(1);
     });
 
-    it('a failure online marks the row failed (kept for Retry with its localId); offline it waits and goes out when the network is back', async () => {
-        let fail = true;
+    it('a refusal marks the row failed (kept for Retry with its localId); offline it waits and goes out when the network is back', async () => {
+        let fail: Error | null = new PromptQueueHttpError('prompt_queue_full');
         let online = true;
-        const h = harness({ gate: async () => { if (fail) throw new Error('network'); }, online: () => online });
-        await expect(h.store.getState().submit('s1', 'one', {})).rejects.toThrow('network');
-        expect(h.store.getState().sessions.s1.pending?.map((row) => row.state)).toEqual(['failed']);
+        const h = harness({ gate: async () => { if (fail) throw fail; }, online: () => online });
+        await expect(h.store.getState().submit('s1', 'one', {})).rejects.toThrow('prompt_queue_full');
+        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.state, row.retryable])).toEqual([['failed', undefined]]);
 
         online = false;
+        fail = new Error('network');
         await expect(h.store.getState().submit('s1', 'two', {})).rejects.toThrow('network');
-        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.text, row.state])).toEqual([['one', 'failed'], ['two', 'waiting']]);
-
-        // Back online: only the waiting row is retried automatically, with its own localId.
-        fail = false;
+        // B-815: unanswered while the app still thinks it is online — failed, but it goes out on its own.
         online = true;
+        await expect(h.store.getState().submit('s1', 'three', {})).rejects.toThrow('network');
+        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.text, row.state, row.retryable])).toEqual([['one', 'failed', undefined], ['two', 'waiting', undefined], ['three', 'failed', true]]);
+
+        // Back online: the waiting row and the unanswered one are retried automatically, with their own localIds; the refused one is not.
+        fail = null;
         retryWaitingPrompts(h.store);
         await flush();
         await flush();
-        expect(h.calls.filter((call) => call.method === 'POST').map((call) => (call.body as { localId: string }).localId)).toEqual(['local-1', 'local-2', 'local-2']);
-        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['two']);
+        expect(h.calls.filter((call) => call.method === 'POST').map((call) => (call.body as { localId: string }).localId)).toEqual(['local-1', 'local-2', 'local-3', 'local-2', 'local-3']);
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['two', 'three']);
         expect(h.store.getState().sessions.s1.pending?.map((row) => row.text)).toEqual(['one']);
 
         // Retry by hand: same localId (idempotent on the server).
         expect(await h.store.getState().retryPending('s1', 'local-1')).toBe('queued');
-        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['two', 'one']);
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['two', 'three', 'one']);
         expect(h.store.getState().sessions.s1.pending).toBeUndefined();
     });
 
@@ -337,5 +348,166 @@ describe('B-804 dock hand-off and queue reload', () => {
         await old.store.getState().load('s1');
         await reloadPromptQueue('s1', old.store);
         expect(old.calls).toHaveLength(1);
+    });
+});
+
+describe('B-815 unaccepted rows in the persistent outbox', () => {
+    function recorder() {
+        const log: string[] = [];
+        const persist: PendingPromptPersistence = {
+            save: async (_sid, row, retried) => { log.push(`save ${row.localId} ${row.content} ${retried ? 'retry' : 'keep-clock'}`); },
+            fail: (ids) => { log.push(`fail ${ids.join(',')}`); },
+            forget: (ids) => { log.push(`forget ${ids.join(',')}`); },
+        };
+        return { log, persist };
+    }
+
+    it('saved before the POST, forgotten once the server lists it; a retry re-POSTs the same bytes and restarts the clock', async () => {
+        const { log, persist } = recorder();
+        let fail: Error | null = new Error('down');
+        const h = harness({ persist, gate: async (method) => { log.push(method); if (fail) throw fail; } });
+        await h.store.getState().submit('s1', 'hello', {}).catch(() => {});
+        // Unanswered: stays queued on disk (re-sent by whoever holds it).
+        expect(log).toEqual(['save local-1 enc:hello|{} keep-clock', 'POST']);
+        fail = new PromptQueueHttpError('prompt_queue_full');
+        log.length = 0;
+        await h.store.getState().retryPending('s1', 'local-1').catch(() => {});
+        // Refused: failed on disk — only the user re-sends it.
+        expect(log).toEqual(['save local-1 enc:hello|{} retry', 'POST', 'fail local-1']);
+        fail = null;
+        log.length = 0;
+        await h.store.getState().retryPending('s1', 'local-1');
+        expect(log).toEqual(['save local-1 enc:hello|{} retry', 'POST', 'forget local-1', 'forget local-1']);
+        expect(h.calls.filter((c) => c.method === 'POST').map((c) => (c.body as { content: string }).content)).toEqual(['enc:hello|{}', 'enc:hello|{}', 'enc:hello|{}']);
+    });
+
+    it('offline it waits — never marked failed on disk (whoever holds it re-sends it); the automatic retry keeps the clock', async () => {
+        const { log, persist } = recorder();
+        let online = false;
+        const h = harness({ persist, online: () => online, gate: async () => { if (!online) throw new Error('offline'); } });
+        await h.store.getState().submit('s1', 'later', {}).catch(() => {});
+        expect(log).toEqual(['save local-1 enc:later|{} keep-clock']);
+        online = true;
+        log.length = 0;
+        retryWaitingPrompts(h.store);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(log[0]).toBe('save local-1 enc:later|{} keep-clock');
+    });
+
+    it('an old server (unsupported): a submitted row is forgotten (the tab-local queue owns it); an adopted one waits failed for the user', async () => {
+        const { log, persist } = recorder();
+        const h = harness({ persist, status: 404 });
+        expect(await h.store.getState().submit('s1', 'old', {})).toBe('unsupported');
+        expect(log).toEqual(['save local-1 enc:old|{} keep-clock', 'forget local-1']);
+        log.length = 0;
+        h.store.getState().adoptPending('s1', [{ localId: 'adopted', text: 'kept', modeMeta: {}, createdAt: 1, content: 'enc:kept|{}', stale: false }]);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(log).toEqual(['fail adopted']);
+        expect(h.store.getState().sessions.s1.pending).toMatchObject([{ localId: 'adopted', state: 'failed' }]);
+    });
+
+    it('adoptPending: fresh rows are enqueued with their own localId and bytes, stale ones wait failed, held localIds are skipped', async () => {
+        const h = harness();
+        h.setItems([h.wire('on-server', 'queued', 1)]);
+        await h.store.getState().load('s1');
+        h.store.getState().adoptPending('s1', [
+            { localId: 'fresh', text: 'fresh', modeMeta: {}, createdAt: 1, content: 'enc:fresh', stale: false },
+            { localId: 'old', text: 'old', modeMeta: {}, createdAt: 2, content: 'enc:old', stale: true },
+            { localId: 'on-server', text: 'queued', modeMeta: {}, createdAt: 3, content: 'enc:queued', stale: false },
+        ]);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([{ localId: 'fresh', content: 'enc:fresh' }]);
+        expect(h.store.getState().sessions.s1.pending).toEqual([{ localId: 'old', text: 'old', modeMeta: {}, createdAt: 2, content: 'enc:old', state: 'failed' }]);
+    });
+
+    const flush = async () => { for (let i = 0; i < 10; i += 1) await new Promise((r) => setTimeout(r, 0)); };
+
+    it('a gateway 5xx (deploy) is unanswered, not refused: retryable, queued on disk; 4xx and our own codes are refused', async () => {
+        expect([502, 503, 504, 500].map((status) => isRefusedStatus(status, null))).toEqual([false, false, false, false]);
+        expect(isRefusedStatus(503, 'prompt_queue_full')).toBe(true);
+        expect(isRefusedStatus(409, 'prompt_queue_full')).toBe(true);
+        expect(isRefusedStatus(400, null)).toBe(true);
+        const { log, persist } = recorder();
+        let status: number | null = 502;
+        const h = harness({ persist, writeStatus: () => status });
+        await expect(h.store.getState().submit('s1', 'deploying', {})).rejects.toThrow('HTTP 502');
+        expect(h.store.getState().sessions.s1.pending).toMatchObject([{ state: 'failed', retryable: true }]);
+        expect(log).toEqual(['save local-1 enc:deploying|{} keep-clock']);
+        status = null;
+        retryWaitingPrompts(h.store);
+        await flush();
+        await flush();
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['deploying']);
+        expect(h.store.getState().sessions.s1.pending).toBeUndefined();
+        status = 409;
+        await expect(h.store.getState().submit('s1', 'refused', {})).rejects.toThrow(PromptQueueHttpError);
+        expect(h.store.getState().sessions.s1.pending).toMatchObject([{ text: 'refused', state: 'failed' }]);
+        expect(h.store.getState().sessions.s1.pending![0].retryable).toBeUndefined();
+    });
+
+    it('the in-page automatic retry keeps the takeover\'s 10 minutes: older rows wait failed (「未加入队列 · 重试」) and only the user re-sends them', async () => {
+        const { log, persist } = recorder();
+        let clock = 1_000;
+        let online = false;
+        let down = true;
+        const h = harness({ persist, now: () => clock, online: () => online, gate: async () => { if (down) throw new Error('offline'); } });
+        await h.store.getState().submit('s1', 'waited', {}).catch(() => {});
+        online = true;
+        await h.store.getState().submit('s1', 'on the way', {}).catch(() => {});
+        down = false;
+        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.state, row.retryable])).toEqual([['waiting', undefined], ['failed', true]]);
+        clock += OUTBOX_AUTO_RESEND_MS + 1;
+        online = true;
+        log.length = 0;
+        const before = h.calls.length;
+        retryWaitingPrompts(h.store);
+        await flush();
+        expect(h.calls.length).toBe(before);
+        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.text, row.state, row.retryable])).toEqual([['waited', 'failed', undefined], ['on the way', 'failed', undefined]]);
+        expect(log).toEqual(['fail local-1', 'fail local-2']);
+        // Not retryable any more: the next reconnect leaves them alone.
+        retryWaitingPrompts(h.store);
+        await flush();
+        expect(h.calls.length).toBe(before);
+        // The user's Retry sends it and restarts the clock in memory too.
+        expect(await h.store.getState().retryPending('s1', 'local-1')).toBe('queued');
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['waited']);
+        online = false;
+        down = true;
+        await h.store.getState().retryPending('s1', 'local-2').catch(() => {});
+        expect(h.store.getState().sessions.s1.pending).toMatchObject([{ localId: 'local-2', state: 'waiting', createdAt: clock }]);
+    });
+
+    it('auto retry at exactly 10 minutes still goes out (same edge as takeoverAction)', async () => {
+        let clock = 0;
+        let online = false;
+        const h = harness({ now: () => clock, online: () => online, gate: async () => { if (!online) throw new Error('offline'); } });
+        await h.store.getState().submit('s1', 'edge', {}).catch(() => {});
+        clock = OUTBOX_AUTO_RESEND_MS;
+        online = true;
+        retryWaitingPrompts(h.store);
+        await flush();
+        await flush();
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['edge']);
+    });
+
+    it('the server stopped queueing (unsupported): a retried or automatically retried row stays in the dock failed — never dropped', async () => {
+        const { log, persist } = recorder();
+        let status: number | null = null;
+        let online = false;
+        const h = harness({ persist, online: () => online, gate: async () => { if (!online) throw new Error('offline'); }, writeStatus: () => status });
+        await h.store.getState().submit('s1', 'kept', {}).catch(() => {});
+        await h.store.getState().submit('s1', 'kept too', {}).catch(() => {});
+        online = true;
+        // The POST itself answers the old server's 404 (status flips to unsupported).
+        status = 404;
+        log.length = 0;
+        await expect(h.store.getState().retryPending('s1', 'local-1', true)).rejects.toThrow('prompt queue unsupported');
+        expect(h.store.getState().sessions.s1.status).toBe('unsupported');
+        // Already unsupported: the early branch keeps it too (the user's Retry and the automatic one).
+        await expect(h.store.getState().retryPending('s1', 'local-2')).rejects.toThrow('prompt queue unsupported');
+        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.text, row.state])).toEqual([['kept', 'failed'], ['kept too', 'failed']]);
+        expect(log.filter((entry) => entry.startsWith('forget'))).toEqual([]);
+        expect(log.filter((entry) => entry.startsWith('fail'))).toEqual(['fail local-1', 'fail local-2']);
     });
 });

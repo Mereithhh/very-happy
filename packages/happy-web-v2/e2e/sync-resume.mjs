@@ -117,6 +117,21 @@
  *   OUTBOX_DRAFT (B-801) a pending session's first message: the spawn RPC is
  *         stubbed (a REST-created session); the message's POST fails and the
  *         page reloads right after it landed → exactly once.
+ * B-815 (server prompt queue prompts in the same outbox; "the agent is busy" =
+ * a session-scoped socket (the wrapper's kind) sends `session-alive thinking`
+ * every 2s like a wrapper mid-turn, "the
+ * agent runs it" = the wrapper's REST pop `/prompt-queue/dispatch`; "offline"
+ * = every request to the server aborted + the socket closed, Vite still up):
+ *   QUEUE_OFFLINE_REFRESH (QA8 U2) the agent is busy; the link dies; 2.5s later
+ *         (before 「已离线」) the composer sends → the dock says 「未加入队列」
+ *         and the outbox holds a `queue` row; the page reloads still offline,
+ *         then the network comes back → the server queue gets it exactly once
+ *         under its localId, the pop runs it once (one message), the dock
+ *         ends empty, the outbox ends empty, no message POST carried it.
+ *   QUEUE_OFFLINE_TABS two pages; the offline one sends while the agent is
+ *         busy → the other leaves it alone while that tab is open (3s); it
+ *         closes → the other takes it over (≤ the 15s reclaim pass) and
+ *         enqueues it exactly once; one message after the pop; dock and outbox empty.
  * Prints one line per measurement (`MEASURE <scenario> <ms|never>`) for the
  * before/after table. Exit code 1 on any failed check.
  */
@@ -129,6 +144,7 @@ import http from 'node:http';
 import http2 from 'node:http2';
 import net from 'node:net';
 import { chromium } from 'playwright-core';
+import { io } from 'socket.io-client';
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => (args.includes(`--${name}`) ? args[args.indexOf(`--${name}`) + 1] : fallback);
@@ -1308,7 +1324,7 @@ try {
     }
 
     // ── B-814: the persistent outbox (a fresh browser context, straight to Vite) ──
-    if (want('OUTBOX_REFRESH') || want('OUTBOX_STALE') || want('OUTBOX_TABS') || want('OUTBOX_DRAFT')) {
+    if (want('OUTBOX_REFRESH') || want('OUTBOX_STALE') || want('OUTBOX_TABS') || want('OUTBOX_DRAFT') || want('QUEUE_OFFLINE_REFRESH') || want('QUEUE_OFFLINE_TABS')) {
         const ctx = await browser.newContext(ctxOpts);
         await ctx.addInitScript((entries) => {
             if (sessionStorage.getItem('b803-seeded')) return;
@@ -1372,7 +1388,97 @@ try {
             await openSession(page, BASE, sid);
             return page;
         };
-        const [SO, SS, SD] = await createSessions(page2, ['/tmp/b814-refresh', '/tmp/b814-stale', '/tmp/b814-tabs']);
+        const [SO, SS, SD, SQ, SQT] = await createSessions(page2, ['/tmp/b814-refresh', '/tmp/b814-stale', '/tmp/b814-tabs', '/tmp/b815-refresh', '/tmp/b815-tabs']);
+        // ── B-815 helpers ──
+        // In dev the app talks same-origin; Vite proxies /v1 /v2 /v3 (and the socket) to the server.
+        const serverRe = (url) => /^\/(v[123]|health)(\/|$)/.test(url.pathname);
+        const serverWsRe = (url) => url.pathname.startsWith('/v1/');
+        /** A page whose link to the server can be cut (`net.offline = true`) while Vite keeps serving the shell. */
+        const openCuttable = async (sid) => {
+            const page = await ctx.newPage();
+            const net = { offline: false, enqueues: [] };
+            page.on('pageerror', (e) => console.log('queue pageerror', e.message));
+            await page.route(serverRe, (route) => {
+                const request = route.request();
+                if (request.method() === 'POST' && /\/prompt-queue$/.test(new URL(request.url()).pathname)) {
+                    net.enqueues.push({ offline: net.offline, localId: JSON.parse(request.postData() ?? '{}').localId });
+                }
+                return net.offline ? route.abort('internetdisconnected') : route.fallback();
+            });
+            await page.routeWebSocket(serverWsRe, (ws) => { if (net.offline) ws.close(); else ws.connectToServer(); });
+            await openSession(page, BASE, sid);
+            return { page, net };
+        };
+        const cut = async ({ page, net }) => {
+            net.offline = true;
+            await page.evaluate(() => import('/src/sync/apiSocket.ts').then(({ apiSocket }) => apiSocket.socket?.io?.engine?.close?.())).catch(() => {});
+        };
+        const authToken = await page2.evaluate(() => import('/src/sync/sync.ts').then(({ sync }) => sync['credentials'].token));
+        const rest = async (path, method = 'GET') => (await fetch(`http://127.0.0.1:${PORT}${path}`, { method, headers: { Authorization: `Bearer ${authToken}` } })).json();
+        const serverQueue = async (sid) => (await rest(`/v1/sessions/${sid}/prompt-queue`)).items ?? [];
+        /**
+         * The wrapper mid-turn: a session-scoped socket (only the session's own
+         * connection may report its liveness) beats `session-alive thinking`
+         * every 2s, so the composer queues instead of sending.
+         */
+        const wrappers = new Map();
+        const busy = async (sid) => {
+            const sock = io(`http://127.0.0.1:${PORT}`, { path: '/v1/updates', transports: ['websocket'], auth: { token: authToken, clientType: 'session-scoped', sessionId: sid } });
+            await new Promise((resolve, reject) => { sock.once('connect', resolve); sock.once('connect_error', reject); });
+            const beat = () => sock.emit('session-alive', { sid, time: Date.now(), thinking: true });
+            beat();
+            wrappers.set(sid, { sock, timer: setInterval(beat, 2_000) });
+        };
+        const idle = async (sid) => {
+            const wrapper = wrappers.get(sid);
+            if (!wrapper) return;
+            wrappers.delete(sid);
+            clearInterval(wrapper.timer);
+            wrapper.sock.emit('session-alive', { sid, time: Date.now(), thinking: false });
+            await sleep(300);
+            wrapper.sock.close();
+        };
+        const isBusy = (page, sid) => page.evaluate((sid) => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().sessions[sid]?.thinking === true), sid);
+        const dockRows = (page, text) => page.evaluate((text) => [...document.querySelectorAll('.ci-queue-item')]
+            .filter((e) => e.textContent.includes(text))
+            .map((e) => `${e.getAttribute('data-queue-item-source')}:${e.querySelector('[data-send-state]')?.getAttribute('data-send-state') ?? '-'}`), text);
+        /** The wrapper pops the queue until it is empty; returns what it popped. */
+        const drain = async (sid) => {
+            const popped = [];
+            for (let i = 0; i < 10; i++) {
+                const { dispatched } = await rest(`/v1/sessions/${sid}/prompt-queue/dispatch`, 'POST');
+                if (!dispatched) break;
+                popped.push(dispatched);
+            }
+            return popped;
+        };
+        const waitFor = async (fn, timeoutMs, everyMs = 200) => {
+            const t0 = Date.now();
+            while (Date.now() - t0 < timeoutMs) { if (await fn()) return Date.now() - t0; await sleep(everyMs); }
+            return null;
+        };
+        /** Server queue has it (by localId) exactly once, the pop runs it once, the dock and the outbox end empty. */
+        const settleQueued = async (name, page, sid, text, localId, posts) => {
+            const queuedMs = await waitFor(async () => (await serverQueue(sid)).some((item) => item.localId === localId), 45_000);
+            measure(`${name}-enqueued`, queuedMs);
+            check(queuedMs !== null, `${name}: the server queue has it under its localId`, fmt(queuedMs));
+            const items = (await serverQueue(sid)).filter((item) => item.localId === localId);
+            check(items.length === 1, `${name}: in the server queue exactly once`, JSON.stringify(items.map((i) => i.id)));
+            await idle(sid);
+            const popped = await drain(sid);
+            check(popped.length === 1 && popped[0].localId === localId && popped[0].created === true, `${name}: the agent runs it once (one pop, a new message)`, JSON.stringify(popped));
+            const shown = await timeUntilVisible(page, sid, text, 10_000, Date.now(), { confirmed: true });
+            check(shown !== null, `${name}: the page shows it in the transcript`, fmt(shown));
+            await sleep(2_000);
+            const onServer = await serverTexts(sid, text);
+            check(onServer.length === 1, `${name}: on the server exactly once`, JSON.stringify(onServer));
+            check((await transcript(page, sid, text)).length === 1, `${name}: one bubble`);
+            const leftover = await waitFor(async () => (await dockRows(page, text)).length === 0, 10_000);
+            check(leftover !== null, `${name}: the dock does not keep it`, JSON.stringify(await dockRows(page, text)));
+            check((await outboxRows(page)).length === 0, `${name}: the outbox is empty again`, JSON.stringify(await outboxRows(page)));
+            check(posts.flat().every((id) => id !== localId), `${name}: never POSTed as a message`, JSON.stringify(posts));
+            check((await serverQueue(sid)).length === 0 && (await drain(sid)).length === 0, `${name}: nothing left in the server queue`);
+        };
         try {
             if (want('OUTBOX_REFRESH')) {
                 for (const mode of ['before', 'after']) {
@@ -1527,6 +1633,67 @@ try {
                 check((await serverTexts(sid, text)).length === 1, 'OUTBOX_DRAFT on the server exactly once', JSON.stringify(await serverTexts(sid, text)));
                 check((await transcript(page, sid, text)).length === 1, 'OUTBOX_DRAFT one bubble');
                 await page.close();
+            }
+
+            if (want('QUEUE_OFFLINE_REFRESH')) {
+                step('QUEUE_OFFLINE_REFRESH (QA8 U2) agent busy, link dies, composer sends (→ server queue), reload offline, network back');
+                const tab = await openCuttable(SQ);
+                const { page, net } = tab;
+                const posts = [];
+                page.on('request', (request) => { if (isPost(request)) posts.push(localIdsOf(request)); });
+                await busy(SQ);
+                check(await waitFor(() => isBusy(page, SQ), 10_000) !== null, 'QUEUE_OFFLINE_REFRESH the page sees the agent busy');
+                await cut(tab);
+                await sleep(2_500); // before 「已离线」 (8s): QA8's exact shape
+                const text = token('queue-offline-refresh');
+                await send(page, text);
+                check(await waitRows(page, 1), 'QUEUE_OFFLINE_REFRESH the prompt is in IndexedDB before the page goes away');
+                const [row] = await outboxRows(page);
+                check(row?.kind === 'queue' && row?.state === 'queued', 'QUEUE_OFFLINE_REFRESH its row is a queued `queue` row', JSON.stringify(row && { kind: row.kind, state: row.state }));
+                const before = await dockRows(page, text);
+                check(before.length === 1 && before[0].startsWith('pending:'), 'QUEUE_OFFLINE_REFRESH the dock shows it unaccepted (pending)', JSON.stringify(before));
+                await shot(page, 'queue-offline-1-sent');
+                await page.reload();
+                // Offline from the first request: with nothing cached the session may not open yet.
+                await page.locator('textarea.ci-textarea').waitFor({ timeout: 15_000 }).catch(() => {});
+                await sleep(4_000);
+                console.log(`    QUEUE_OFFLINE_REFRESH after the reload, still offline: dock ${JSON.stringify(await dockRows(page, text))}, outbox ${(await outboxRows(page)).length}`);
+                await shot(page, 'queue-offline-2-reloaded');
+                check((await outboxRows(page)).length === 1, 'QUEUE_OFFLINE_REFRESH the row survives the reload');
+                check(net.enqueues.every((e) => e.offline), 'QUEUE_OFFLINE_REFRESH nothing reached the server while offline', JSON.stringify(net.enqueues));
+                // Without B-815 the row never existed: its localId is the one the offline POST carried.
+                const localId = row?.localId ?? net.enqueues[0]?.localId;
+                net.offline = false;
+                await page.locator('textarea.ci-textarea').waitFor({ timeout: 60_000 });
+                await settleQueued('QUEUE_OFFLINE_REFRESH', page, SQ, text, localId, posts);
+                const online = net.enqueues.filter((e) => !e.offline);
+                check(online.length >= 1 && online.every((e) => e.localId === localId), 'QUEUE_OFFLINE_REFRESH re-enqueued by this page under its own localId once the network came back', JSON.stringify(net.enqueues));
+                await shot(page, 'queue-offline-3-settled');
+                await page.close();
+            }
+
+            if (want('QUEUE_OFFLINE_TABS')) {
+                step('QUEUE_OFFLINE_TABS two pages; the offline one queues a prompt while the agent is busy; it closes → the other enqueues it, exactly once');
+                const owner = await openCuttable(SQT);
+                const other = await openCuttable(SQT);
+                const posts = [];
+                for (const { page } of [owner, other]) page.on('request', (request) => { if (isPost(request)) posts.push(localIdsOf(request)); });
+                await busy(SQT);
+                check(await waitFor(() => isBusy(owner.page, SQT), 10_000) !== null, 'QUEUE_OFFLINE_TABS the sender sees the agent busy');
+                await cut(owner);
+                await sleep(2_500);
+                const text = token('queue-offline-tabs');
+                await send(owner.page, text);
+                check(await waitRows(owner.page, 1), 'QUEUE_OFFLINE_TABS the row is in IndexedDB');
+                const [row] = await outboxRows(owner.page);
+                check(row?.kind === 'queue', 'QUEUE_OFFLINE_TABS it is a `queue` row', JSON.stringify(row && row.kind));
+                await sleep(3_000);
+                check(other.net.enqueues.length === 0 && (await serverQueue(SQT)).length === 0, 'QUEUE_OFFLINE_TABS the other page leaves it alone while its tab is open', JSON.stringify(other.net.enqueues));
+                const localId = row?.localId ?? owner.net.enqueues[0]?.localId;
+                await owner.page.close();
+                await settleQueued('QUEUE_OFFLINE_TABS', other.page, SQT, text, localId, posts);
+                check(other.net.enqueues.length >= 1 && other.net.enqueues.every((e) => e.localId === localId), 'QUEUE_OFFLINE_TABS the other page enqueued it under its localId', JSON.stringify(other.net.enqueues));
+                await other.page.close();
             }
         } finally {
             await ctx.close();
