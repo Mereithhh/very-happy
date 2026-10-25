@@ -1376,7 +1376,11 @@ try {
                 const statsAfter = await cacheStats(opened.page);
                 const shown = await transcript(opened.page, ST, tamperPrefix);
                 check(JSON.stringify(shown) === JSON.stringify(tamperTexts), 'TAMPER the corrupted session shows the server transcript', JSON.stringify(shown));
-                check((statsAfter?.drops?.decrypt ?? 0) >= 1 && (statsAfter?.misses ?? 0) >= 0, 'TAMPER its cache was dropped (decrypt), not used', JSON.stringify(statsAfter?.drops));
+                // B-819: when the key beats a still-opening database the network page is used and the late
+                // cache read is discarded (it still counts a hit), so the drop count is only informational
+                // here; the check above (exactly the server transcript) is the guard, and the decrypt-drop
+                // path is unit-tested (syncCacheFlow §5.4.2 row 3).
+                console.log(`    TAMPER cache after the open: drops ${JSON.stringify(statsAfter?.drops)} hits ${statsAfter?.hits}${(statsAfter?.drops?.decrypt ?? 0) >= 1 ? '' : ' (not read before the key: network first)'}`);
                 await nav(opened.page, SC);
                 await waitTranscript(opened.page, SC, coldPrefix, COLD_RECORDS, 15_000);
                 const statsOther = await cacheStats(opened.page);
