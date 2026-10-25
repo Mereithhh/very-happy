@@ -44,6 +44,9 @@ describe('B-813 segment rules (spec r1)', () => {
         expect(validateSegment({ oldestSeq: 1, lastSeq: 3, count: 3 }, run(1, 3), valid, { inRange: 4, total: 4 })).toEqual({ ok: false, reason: 'range' });
         expect(validateSegment(info, holey, valid, { inRange: 9, total: 10 })).toEqual({ ok: false, reason: 'range' });
         expect(validateSegment({ oldestSeq: 5, lastSeq: 3, count: 0 }, [], valid)).toEqual({ ok: false, reason: 'range' });
+        // spec r2: the rows we wrote are all still there — one lost locally is corruption, a server hole is not
+        expect(validateSegment(info, holey.filter((row) => row.seq !== 5), valid)).toEqual({ ok: false, reason: 'count' });
+        expect(validateSegment({ ...info, count: 8 }, holey.filter((row) => row.seq !== 5), valid)).toEqual({ ok: true });
     });
 
     it('checkCacheAnchor: §5.4.2 rows 5–6', () => {

@@ -387,9 +387,35 @@ describe('B-813 §5.4.2 corruption and inconsistency — every row ends in "no c
         const hit = await h.cache.load('s');
         expect(hit!.rows).toHaveLength(9);
         expect([hit!.oldestSeq, hit!.lastSeq, hit!.lastRowSeq]).toEqual([1, 12, 12]);
-        // a row going missing later reads the same way: fewer rows is never corruption
+        expect(h.cache.stats().drops).toEqual({});
+    });
+
+    it('spec r2: a row the cache wrote and lost locally → that session is dropped (after_seq would never bring it back)', async () => {
+        const h = await opened();
+        const holey = rows(1, 12).filter((r) => ![3, 7, 11].includes(r.seq));
+        h.cache.offerLatest('s', holey);
+        await h.cache.flush();
+        expect((await h.cache.load('s'))!.rows).toHaveLength(9);
         await rawTx(h.factory, ['messages'], (tx) => tx.objectStore('messages').delete(['s', 5]));
-        expect((await h.cache.load('s'))!.rows).toHaveLength(8);
+        expect(await h.cache.load('s')).toBeNull();
+        expect(h.cache.stats().drops.count).toBe(1);
+    });
+
+    it('spec r2: the written-row count stays exact through appends, older pages and trimming', async () => {
+        const h = await opened();
+        const holey = rows(1, 400).filter((r) => r.seq % 4 !== 0);
+        h.cache.offerLatest('s', holey.slice(-100));
+        await h.cache.flush();
+        h.cache.offerOlder('s', holey.slice(-250, -100), { beforeSeq: holey.at(-100)!.seq });
+        h.cache.offerNewer('s', [row(401), row(402), row(403)], { afterSeq: 399 });
+        h.cache.offerNewer('s', [row(404)]);
+        await h.cache.flush();
+        h.cache.offerOlder('s', holey.slice(0, -250), { beforeSeq: holey.at(-250)!.seq });
+        await h.cache.flush();
+        const hit = await h.cache.load('s');
+        expect(hit!.rows).toHaveLength(300);
+        const record = await rawTx<{ count: number }>(h.factory, ['sessions'], (tx) => tx.objectStore('sessions').get('s'));
+        expect(record!.count).toBe((await allRows(h.factory))!.length);
         expect(h.cache.stats().drops).toEqual({});
     });
 
@@ -399,18 +425,6 @@ describe('B-813 §5.4.2 corruption and inconsistency — every row ends in "no c
         await h.cache.flush();
         await rawTx(h.factory, ['messages'], (tx) => tx.objectStore('messages').put({ ...row(2), sid: 's' }));
         expect(await h.cache.load('s')).toBeNull();
-        expect(h.cache.stats().drops.range).toBe(1);
-    });
-
-    it('row 4 (r1): more rows than the range can hold → that session is dropped', async () => {
-        const h = await opened();
-        h.cache.offerLatest('s', rows(1, 5));
-        await h.cache.flush();
-        await rawTx(h.factory, ['sessions'], (tx) => tx.objectStore('sessions').put({ sid: 's', oldestSeq: 2, lastSeq: 4, headSeqSeen: 5, count: 5, bytes: 1, lastAccessAt: 1, cachedAt: 1 }));
-        // rows 1 and 5 now lie outside; shrink further so only the count rule can catch it
-        await rawTx(h.factory, ['messages'], (tx) => { tx.objectStore('messages').delete(['s', 1]); tx.objectStore('messages').delete(['s', 5]); });
-        await rawTx(h.factory, ['sessions'], (tx) => tx.objectStore('sessions').put({ sid: 's', oldestSeq: 3, lastSeq: 4, headSeqSeen: 4, count: 3, bytes: 1, lastAccessAt: 1, cachedAt: 1 }));
-        expect(await h.cache.load('s')).toBeNull(); // row 2 is outside [3, 4]
         expect(h.cache.stats().drops.range).toBe(1);
     });
 

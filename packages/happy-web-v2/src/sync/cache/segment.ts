@@ -71,15 +71,16 @@ export function extendDownward<R extends CachedRow>(oldestSeq: number, rows: rea
     return sortUniqueBySeq(rows).filter((row) => row.seq < oldestSeq).slice(-room);
 }
 
-export type CorruptReason = 'schema' | 'range' | 'duplicate';
+export type CorruptReason = 'schema' | 'range' | 'duplicate' | 'count';
 
 /**
  * §5.4.2 (r1): the rows read for `info` (the newest ≤300 in
  * `[oldestSeq, lastSeq]`, ascending) must lie inside the range, once each;
  * the session may have no row outside it and no more rows than the range
  * can hold. FEWER rows than the range is long is a
- * historical seq hole (§4.2.1), not corruption. `rowIsValid` is the
- * SyncMessage schema check.
+ * historical seq hole (§4.2.1), not corruption — but the session must hold
+ * exactly the `count` rows the cache wrote. `rowIsValid` is the SyncMessage
+ * schema check.
  */
 export function validateSegment<R extends CachedRow>(
     info: SegmentInfo,
@@ -98,6 +99,10 @@ export function validateSegment<R extends CachedRow>(
         if (i > 0 && rows[i].seq <= rows[i - 1].seq) return { ok: false, reason: 'duplicate' };
     }
     if (counts.total > counts.inRange || counts.inRange > info.lastSeq - info.oldestSeq + 1) return { ok: false, reason: 'range' };
+    // Lead 10-25 (spec r2): `count` is how many rows WE wrote, in the same transaction. A row
+    // lost locally would never come back through after_seq — so any difference is corruption.
+    // (Server seq holes are never rows to begin with: they do not touch this.)
+    if (counts.total !== info.count) return { ok: false, reason: 'count' };
     return { ok: true };
 }
 

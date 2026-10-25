@@ -312,6 +312,19 @@ describe('B-813 §5.4.2: a wrong cache costs one cold load, never a wrong transc
         expect((await syncCache.load(sid))).toMatchObject({ lastSeq: 9, lastRowSeq: 9 });
     });
 
+    it('spec r2: a row the cache wrote and then lost → cold load, the transcript is complete', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        await rawCacheTx((tx) => tx.objectStore('messages').delete([sid, 2]));
+        reload(sid);
+        gets = [];
+        sync.onSessionEnter(sid);
+        await settle();
+        expect(texts(sid)).toEqual(['m1', 'm2', 'm3']);
+        expect(gets).toEqual([`${sid}?before`]);
+    });
+
     it('row 4 (r1): a cached row outside its range → cold load', async () => {
         const sid = newSession();
         for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
