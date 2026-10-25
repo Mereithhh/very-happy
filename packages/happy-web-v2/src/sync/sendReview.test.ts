@@ -99,6 +99,11 @@ describe('sync.ts send wiring (review #1 #2 #4 #5)', () => {
         expect(flush).not.toContain('classifySendError(error, isBrowserOnline())');
     });
 
+    it('B-808: hands tombstone acks to the reducer so an edit range closes', () => {
+        expect(flush).toContain('applyOutboxResult(sessionId, { acks: outcome.acks, stored: outcome.untracked })');
+        expect(flush).toContain('if (outcome.acks.length > 0 || outcome.untracked.length > 0) {');
+    });
+
     it('advances lastSeq only over what interpretSendResponse says was applied', () => {
         expect(flush).toContain('this.advanceSessionLastSeq(sessionId, outcome.lastSeqCandidates)');
         expect(flush).not.toMatch(/advanceSessionLastSeq\(sessionId, stored/);
@@ -112,5 +117,26 @@ describe('sync.ts send wiring (review #1 #2 #4 #5)', () => {
     it('every reducer apply prunes confirmed retry records', () => {
         const apply = source.slice(source.indexOf('    private applyMessages = '), source.indexOf('    private applySessions = '));
         expect(apply).toContain('if (this.outboxRecords.size > 0) this.pruneOutboxRecords(sessionId);');
+    });
+});
+
+describe('B-808: edit tombstone ack restores the hidden rows', () => {
+    const msg = (id: string, seq: number, role: 'user' | 'agent'): NormalizedMessage => (role === 'user'
+        ? { id, localId: null, createdAt: 1000 + seq, seq, role, content: { type: 'text', text: id }, isSidechain: false }
+        : { id, localId: null, createdAt: 1000 + seq, seq, role, isSidechain: false, content: [{ type: 'text', text: id, uuid: id, parentUUID: null }] } as NormalizedMessage);
+
+    it('rebuilds the visible list when only a drop range closed', () => {
+        storage.getState().applyMessages('edit', [msg('u1', 1, 'user'), msg('a1', 2, 'agent')]);
+        storage.getState().applyMessagesLoaded('edit');
+        storage.getState().applyMessages('edit', [{
+            id: 'env-1', localId: 'tomb-1', createdAt: 5000, role: 'event', isSidechain: false,
+            content: { type: 'transcript-drop', fromSeq: 1, reason: 'edit' },
+        }]);
+        // The new prompt and reply arrive live while the range is still open.
+        storage.getState().applyMessages('edit', [msg('u2', 4, 'user'), msg('a2', 5, 'agent')]);
+        expect(storage.getState().sessionMessages.edit.messages).toHaveLength(0);
+
+        storage.getState().applyOutboxResult('edit', { stored: [{ localId: 'tomb-1', seq: 3 }] });
+        expect(storage.getState().sessionMessages.edit.messages.map((m) => m.seq)).toEqual([5, 4]);
     });
 });

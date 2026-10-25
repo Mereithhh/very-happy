@@ -139,6 +139,66 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-25-faster-catch-up',
+    date: '2026-10-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct25d.title',
+    summaryKey: 'changelog.releases.oct25d.summary',
+    itemKeys: ['changelog.releases.oct25d.catchUp', 'changelog.releases.oct25d.retry'],
+  },
+  {
+    id: '2026-10-25-messages-unstuck',
+    date: '2026-10-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct25c.title',
+    summaryKey: 'changelog.releases.oct25c.summary',
+    highlights: [
+      {
+        key: 'sync',
+        titleKey: 'changelog.releases.oct25c.syncTitle',
+        bodyKey: 'changelog.releases.oct25c.syncBody',
+        image: changelogShots('2026-10-25c', 'sync', SHOT_SIZE, 'changelog.releases.oct25c.syncAlt'),
+      },
+    ],
+    itemKeys: [
+      'changelog.releases.oct25c.queue',
+      'changelog.releases.oct25c.resend',
+      'changelog.releases.oct25c.requests',
+    ],
+  },
+  {
+    id: '2026-10-25-offline-gestures-draft',
+    date: '2026-10-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct25b.title',
+    summaryKey: 'changelog.releases.oct25b.summary',
+    highlights: [
+      {
+        key: 'offline',
+        titleKey: 'changelog.releases.oct25b.offlineTitle',
+        bodyKey: 'changelog.releases.oct25b.offlineBody',
+        image: changelogShots('2026-10-25b', 'offline', SHOT_SIZE, 'changelog.releases.oct25b.offlineAlt'),
+      },
+      {
+        key: 'drawer',
+        titleKey: 'changelog.releases.oct25b.drawerTitle',
+        bodyKey: 'changelog.releases.oct25b.drawerBody',
+        image: changelogShots('2026-10-25b', 'drawer', SHOT_SIZE, 'changelog.releases.oct25b.drawerAlt'),
+      },
+      {
+        key: 'draft',
+        titleKey: 'changelog.releases.oct25b.draftTitle',
+        bodyKey: 'changelog.releases.oct25b.draftBody',
+        image: changelogShots('2026-10-25b', 'draft', SHOT_SIZE, 'changelog.releases.oct25b.draftAlt'),
+      },
+    ],
+    itemKeys: [
+      'changelog.releases.oct25b.browserBack',
+      'changelog.releases.oct25b.attachments',
+      'changelog.releases.oct25b.draftFail',
+    ],
+  },
+  {
     id: '2026-10-25-mobile-touch',
     date: '2026-10-25',
     buildVersion: __APP_VERSION__,

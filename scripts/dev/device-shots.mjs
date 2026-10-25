@@ -78,6 +78,10 @@ export const PAGES = {
     // B-799 (`--pages offline`): the top bar while offline, and 「已恢复」 right after.
     offline: { path: '/session/dev-plain', prepare: 'offline' },
     recovered: { path: '/session/dev-plain', prepare: 'recovered' },
+    // B-804 (`--pages sync`): the messages catch-up — top 「同步中…」, the chat's bottom line, and a queued prompt the
+    // wrapper took shown as 「执行中」 in the dock; `sync-slow` is the line past the deadline (「连接不稳定 · 重试」).
+    sync: { path: '/session/dev-plain', prepare: 'sync' },
+    'sync-slow': { path: '/session/dev-plain', prepare: 'sync-slow' },
     // B-801: a 「新会话」 draft page (agent / machine / directory fields + composer; nothing spawned).
     draft: { path: '/session/dev-board#draft', ready: '[data-testid="draft-target"]' },
 };
@@ -120,7 +124,7 @@ const base = opt('base', 'http://127.0.0.1:8795');
 const outDir = opt('out', null);
 const devices = opt('devices', 'duo-folded,duo-open-land,duo-open-port').split(',');
 const PRIMARY = ['session', 'board', 'sidebar', 'team', 'project', 'settings'];
-const GROUPS = { offline: ['offline', 'recovered'], secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS), menus: Object.keys(MENUS), touch: ['session', 'plain', 'prompt-nav', 'session-info', 'session-missing', 'draft'] };
+const GROUPS = { offline: ['offline', 'recovered'], sync: ['sync', 'sync-slow'], secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS), menus: Object.keys(MENUS), touch: ['session', 'plain', 'prompt-nav', 'session-info', 'session-missing', 'draft'] };
 const pages = opt('pages', PRIMARY.join(',')).split(',').flatMap((p) => GROUPS[p] ?? [p]);
 const themes = opt('themes', 'light,dark').split(',');
 const locale = opt('locale', 'zh-CN');
@@ -223,6 +227,34 @@ async function prepare(page, kind) {
             await page.context().setOffline(false);
             await page.waitForSelector('.net-bar[data-net-phase="recovered"]', { timeout: 8_000 });
         }
+    } else if (kind === 'sync' || kind === 'sync-slow') {
+        // Seeds the stores the real sync path drives (sync.ts → catchUpStatus / promptQueue). On a build
+        // without B-804 the imports or fields are missing and the page shows what it showed before.
+        // Queue texts follow --locale so the en captures don't show Chinese prompts.
+        const en = locale.startsWith('en');
+        const texts = en
+            ? { queued: 'Run lint again and check for new warnings', dispatched: 'Run the unit tests once the type errors are fixed' }
+            : { queued: '再跑一遍 lint，确认没有新的警告', dispatched: '把类型错误修完后跑一下单测' };
+        await page.evaluate(async ({ slow, texts }) => {
+            const sid = 'dev-plain';
+            const { storage } = await import('/src/sync/storage.ts');
+            const session = storage.getState().sessions[sid];
+            const capabilities = [...(session.metadata?.capabilities ?? []), 'prompt-queue-v1'];
+            storage.setState((s) => ({ sessions: { ...s.sessions, [sid]: { ...session, metadata: { ...session.metadata, capabilities } } } }));
+            const { promptQueueStore } = await import('/src/sync/promptQueue.ts');
+            promptQueueStore.setState((s) => ({ sessions: { ...s.sessions, [sid]: {
+                status: 'ready',
+                items: [{ id: 'q2', localId: 'l2', position: 1, text: texts.queued, modeMeta: {}, createdAt: Date.now() }],
+                dispatched: [{ localId: 'l1', text: texts.dispatched }],
+            } } }));
+            try {
+                const { networkStore } = await import('/src/sync/networkStatus.ts');
+                const { catchUpStore } = await import('/src/sync/catchUpStatus.ts');
+                networkStore.setState({ syncing: [`messages:${sid}`] });
+                catchUpStore.setState({ sessions: { [sid]: slow ? 'slow' : 'syncing' } });
+            } catch { /* before B-804 */ }
+        }, { slow: kind === 'sync-slow', texts });
+        await page.waitForTimeout(400);
     } else if (kind === 'board') {
         // The user's path: phones drop the top sheet from the summary strip; wider screens use the header button (aside tab).
         const strip = page.locator('.brf-strip-btn').first();

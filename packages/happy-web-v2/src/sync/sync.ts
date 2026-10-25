@@ -41,8 +41,12 @@ import { getNotificationPrefs } from './notificationPrefs';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { buildOutboundUserRecord } from './outboundUserRecord';
-import { applyPromptQueueUpdate, retryWaitingPrompts } from './promptQueue';
+import { applyPromptQueueUpdate, promptQueueTranscript, reloadPromptQueue, retryWaitingPrompts, settleDispatchedPrompts } from './promptQueue';
+import { forgetCatchUp, trackCatchUp } from './catchUpStatus';
 import { isNetworkOffline, startNetworkMonitor } from './networkStatus';
+import { fetchWithDeadline, SYNC_READ_TIMEOUT_MS } from './requestDeadline';
+import { hedgedRead } from './hedgedRead';
+import { catchUpForward, mergeFetchedLastSeq, throwIfAborted } from './messageCatchUp';
 import { NormalizedMessage, normalizeRawMessage, RawRecord, type SessionEventPayload } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { migrateTerminalCommands } from './shortcutPresets';
@@ -113,6 +117,7 @@ import {
     settledOutboxRecords,
     SendDeadlines,
 } from './outbox';
+import { AnchorBuffer, planLiveMessage } from './liveMessagePlan';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -207,6 +212,8 @@ class Sync {
     private resumeListeners = new Set<() => void>();
     private sendAbortControllers = new Map<string, AbortController>();
     private sessionLastSeq = new Map<string, number>();
+    /** B-805: live messages of sessions whose latest page has not landed yet. */
+    private anchorBuffer = new AnchorBuffer<NormalizedMessage>();
     // Lowest seq value we have already fetched and applied for a session.
     // Used as the cursor for backward pagination when the reader asks for
     // older history (B-616: on demand only, no background fill). Set after
@@ -224,6 +231,8 @@ class Sync {
     private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
     private sessionQueueProcessing = new Set<string>();
     private sessionMessageLocks = new Map<string, AsyncLock>();
+    /** B-803: sessions whose catch-up was skipped while offline; restarted on recovery. */
+    private messagesDeferredOffline = new Set<string>();
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
     private settingsSync: InvalidateSync;
@@ -360,12 +369,17 @@ class Sync {
                     };
                 },
                 subscribe: (onChange) => {
+                    // B-803b: catch-ups deferred while the browser was offline go out
+                    // as soon as it is back (the viewed one also via the resume edge).
+                    const onOnline = () => this.restartDeferredCatchUps({ deferredOnly: true });
+                    window.addEventListener('online', onOnline);
                     window.addEventListener('online', onChange);
                     window.addEventListener('offline', onChange);
                     const unsubscribe = storage.subscribe((state, prev) => {
                         if (state.socketStatus !== prev.socketStatus) onChange();
                     });
                     return () => {
+                        window.removeEventListener('online', onOnline);
                         window.removeEventListener('online', onChange);
                         window.removeEventListener('offline', onChange);
                         unsubscribe();
@@ -374,9 +388,22 @@ class Sync {
                 onRecovered: () => {
                     this.flushOutboxesNow();
                     retryWaitingPrompts();
+                    this.restartDeferredCatchUps();
                 },
             });
         });
+    }
+
+    /**
+     * B-803: back online — catch-ups skipped while offline (and the viewed
+     * session's, which may be stuck in a backoff sleep) go out now.
+     */
+    private restartDeferredCatchUps(opts?: { deferredOnly?: boolean }) {
+        const viewing = opts?.deferredOnly ? null : storage.getState().currentViewingSessionId;
+        const ids = new Set(this.messagesDeferredOffline);
+        if (viewing) ids.add(viewing);
+        this.messagesDeferredOffline.clear();
+        for (const sessionId of ids) this.restartMessagesSync(sessionId);
     }
 
     /** B-799: back online — queued sends go out now, not after the rest of their backoff sleep. */
@@ -406,10 +433,7 @@ class Sync {
     private onWebResume = () => {
         log.log('🌐 Tab resumed from background — re-syncing');
         this.sessionsSync.invalidate();
-        const current = storage.getState().currentViewingSessionId;
-        if (current) {
-            this.onSessionVisible(current);
-        }
+        this.catchUpViewedSession();
         this.machinesSync.invalidate();
         this.artifactsSync.invalidate();
         for (const listener of this.resumeListeners) {
@@ -458,6 +482,7 @@ class Sync {
 
         // Subscribe to updates
         this.subscribeToUpdates();
+        this.wirePromptQueueTranscript();
 
         // Sync initial PostHog opt-out state with stored settings
         if (tracking) {
@@ -497,26 +522,45 @@ class Sync {
     }
 
 
-    onSessionVisible = (sessionId: string) => {
-        this.getMessagesSync(sessionId).invalidate();
-        // T-014: there is deliberately NO git-status refresh here. This method
-        // is called for EVERY incoming message of ANY session (the "Ping
-        // session" below), so a refresh here fanned 4 `bash` RPCs out to every
-        // running agent — 110–170 RPC/min from one idle tab, 100% of the
-        // measured load — for a `pathGitStatus` nobody rendered. The Files
-        // panel fetches its own git state on open (useSessionFiles).
-
-        // Notify voice assistant about session visibility
-        const session = storage.getState().sessions[sessionId];
-        if (session) {
-            // B-619: a session shared WITH me has no relay / RPC path — the machine is
-            // not this account's; warming its relay only yields diagnostics 422s.
-            if (session.metadata?.machineId && !session.share) {
-                apiSocket.prepareMachineRelay(session.metadata.machineId);
-            }
-            if (!session.share) this.alignPermissionModeIfNeeded(sessionId);
-            voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
+    /**
+     * B-805: the user entered this session (screen mount), or the link came
+     * back (resume / reconnect / recovered / control returned): catch its
+     * messages up — the initial page, or forward from lastSeq — then run the
+     * heartbeat duties. Live messages do NOT come through here; they ping
+     * `onSessionHeartbeat` and fetch only on a seq gap (liveMessagePlan.ts).
+     *
+     * `restartFetch` (B-803): tab resume / socket reconnect / recovered — a
+     * catch-up still in flight is probably stuck on the dead link, so abort it
+     * and fetch again now instead of coalescing behind it.
+     */
+    onSessionEnter = (sessionId: string, opts?: { restartFetch?: boolean }) => {
+        if (opts?.restartFetch) {
+            this.restartMessagesSync(sessionId);
+        } else {
+            this.getMessagesSync(sessionId).invalidate();
         }
+        this.onSessionHeartbeat(sessionId);
+        const session = storage.getState().sessions[sessionId];
+        if (session) voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
+    }
+
+    /**
+     * B-805: per-incoming-message ping of ANY session — no network fetch. It
+     * keeps the machine relay warm and the yolo alignment (self-throttled)
+     * current. T-014: there is deliberately NO git-status refresh here either;
+     * it fanned 4 `bash` RPCs out to every running agent — 110–170 RPC/min
+     * from one idle tab — for a `pathGitStatus` nobody rendered. The Files
+     * panel fetches its own git state on open (useSessionFiles).
+     */
+    private onSessionHeartbeat = (sessionId: string) => {
+        const session = storage.getState().sessions[sessionId];
+        if (!session) return;
+        // B-619: a session shared WITH me has no relay / RPC path — the machine is
+        // not this account's; warming its relay only yields diagnostics 422s.
+        if (session.metadata?.machineId && !session.share) {
+            apiSocket.prepareMachineRelay(session.metadata.machineId);
+        }
+        if (!session.share) this.alignPermissionModeIfNeeded(sessionId);
     }
 
     // B-262 A6: upgrade-only alignment. A session the user explicitly put in
@@ -555,10 +599,57 @@ class Sync {
             .catch((error) => log.log(`🔐 yolo alignment skipped for ${sessionId}: ${error instanceof Error ? error.message : String(error)}`));
     }
 
+    /**
+     * B-804: resume / reconnect / recovered — the viewed session's messages and
+     * prompt queue are re-read (anything sent into the dead link is gone for
+     * good), and the messages catch-up is shown while it takes a while.
+     */
+    private catchUpViewedSession() {
+        const viewing = storage.getState().currentViewingSessionId;
+        if (!viewing) return;
+        // B-803: a catch-up still in flight is probably stuck on the dead link — abort it, go again now.
+        this.onSessionEnter(viewing, { restartFetch: true });
+        this.trackMessagesCatchUp(viewing);
+        void reloadPromptQueue(viewing);
+    }
+
+    /** B-804: show the viewed session's pending messages catch-up (top bar + chat line, after 300ms). */
+    private trackMessagesCatchUp(sessionId: string) {
+        if (storage.getState().currentViewingSessionId !== sessionId) return;
+        trackCatchUp(sessionId, this.getMessagesSync(sessionId).awaitQueue());
+    }
+
+    /**
+     * B-804: 「连接不稳定 · 重试」 — abort the stuck attempt and go again now
+     * (B-803 restart), and probe the socket. B-803b: a socket that is not
+     * connected gets a fresh connect attempt instead (the probe would leave
+     * the manager's possibly dead attempt alone).
+     */
+    retryMessagesCatchUp = (sessionId: string) => {
+        this.restartMessagesSync(sessionId);
+        this.trackMessagesCatchUp(sessionId);
+        void reloadPromptQueue(sessionId);
+        if (!apiSocket.reconnectIfDown()) void apiSocket.checkLiveness();
+    };
+
+    /**
+     * B-804: the dock's hand-off rows (promptQueue.ts) look the localId up in
+     * the transcript; a row the transcript never gets is dropped once a fetch
+     * started after the hand-off has finished without it.
+     */
+    private wirePromptQueueTranscript() {
+        promptQueueTranscript.has = (sessionId, localId) => storage.getState().sessionMessages[sessionId]?.reducerState.localIds.has(localId) === true;
+        promptQueueTranscript.verify = (sessionId, localIds) => {
+            const messages = this.getMessagesSync(sessionId);
+            messages.invalidate();
+            void messages.awaitQueue().then(() => settleDispatchedPrompts(sessionId, localIds));
+        };
+    }
+
     private getMessagesSync(sessionId: string): InvalidateSync {
         let sync = this.messagesSync.get(sessionId);
         if (!sync) {
-            sync = new InvalidateSync(() => this.fetchMessages(sessionId));
+            sync = new InvalidateSync((signal) => this.fetchMessages(sessionId, signal));
             this.messagesSync.set(sessionId, sync);
         }
         return sync;
@@ -1529,19 +1620,28 @@ class Sync {
         if (!this.credentials) return;
 
         const API_ENDPOINT = getServerUrl();
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
-            headers: {
-                'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json',
-                'X-Happy-Client': getHappyClientId(),
+        // B-803: bounded — a list GET stuck on a dead link must not hold
+        // sessionsSync (and every resume/reconnect refresh coalesced behind it).
+        // B-803b: hedged like the message pages (hedgedRead.ts).
+        const token = this.credentials.token;
+        const data = await hedgedRead(async (signal, pool) => {
+            const response = await fetchWithDeadline(fetch, `${API_ENDPOINT}/v1/sessions`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'X-Happy-Client': getHappyClientId(),
+                },
+                timeoutMs: SYNC_READ_TIMEOUT_MS,
+                signal,
+                ...pool,
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch sessions: ${response.status}`);
             }
+
+            return await response.json();
         });
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch sessions: ${response.status}`);
-        }
-
-        const data = await response.json();
         const sessions = data.sessions as Array<{
             id: string;
             tag: string;
@@ -1632,6 +1732,7 @@ class Sync {
         clearDiffCommentDrafts(sessionId);
 
         this.messagesSync.delete(sessionId);
+        forgetCatchUp(sessionId);
         this.sendSync.delete(sessionId);
         this.pendingOutbox.delete(sessionId);
         // B-513: send states die with the reducer state deleteSession dropped;
@@ -1643,8 +1744,10 @@ class Sync {
             this.sendDeadlines.delete(localId);
         }
         this.sessionLastSeq.delete(sessionId);
+        this.anchorBuffer.clear(sessionId);
         this.sessionOldestSeq.delete(sessionId);
         this.sessionMessageLocks.delete(sessionId);
+        this.messagesDeferredOffline.delete(sessionId);
         this.sessionMessageQueue.delete(sessionId);
         this.sessionQueueProcessing.delete(sessionId);
 
@@ -2437,7 +2540,10 @@ class Sync {
     private advanceSessionLastSeq(sessionId: string, seqs: readonly number[]) {
         const { next, gap } = advanceLastSeq(this.sessionLastSeq.get(sessionId), seqs);
         if (next !== undefined) this.sessionLastSeq.set(sessionId, next);
-        if (gap) this.getMessagesSync(sessionId).invalidate();
+        if (gap) {
+            this.getMessagesSync(sessionId).invalidate();
+            this.trackMessagesCatchUp(sessionId);
+        }
     }
 
     private flushOutbox = async (sessionId: string) => {
@@ -2529,8 +2635,8 @@ class Sync {
             this.outboxRecords.delete(ack.localId);
             this.sendDeadlines.delete(ack.localId);
         }
-        if (outcome.acks.length > 0) {
-            storage.getState().applyOutboxResult(sessionId, { acks: outcome.acks });
+        if (outcome.acks.length > 0 || outcome.untracked.length > 0) {
+            storage.getState().applyOutboxResult(sessionId, { acks: outcome.acks, stored: outcome.untracked });
             markSendConfirmed(outcome.acks.map((ack) => ack.localId));
         }
         if (outcome.lastSeqCandidates.length > 0) this.advanceSessionLastSeq(sessionId, outcome.lastSeqCandidates);
@@ -2549,49 +2655,63 @@ class Sync {
         }
     }
 
-    private fetchMessages = async (sessionId: string) => {
-        log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
-        const lock = this.getSessionMessageLock(sessionId);
-        await lock.inLock(async () => {
-            const encryption = this.encryption.getSessionEncryption(sessionId);
-            if (!encryption) {
-                log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
-                throw new Error(`Session encryption not ready for ${sessionId}`);
-            }
+    private fetchMessages = async (sessionId: string, signal: AbortSignal = new AbortController().signal) => {
+        // B-803: the browser itself offline → no catch-up at all: every
+        // attempt would only fail and back off. The `online` event, the
+        // network monitor's onRecovered and the socket reconnect restart it.
+        // B-803b: NOT the socket-down half of the B-799 judgment — REST often
+        // works while the socket is still stuck reconnecting (8s after a
+        // resume the bar says 「离线」, and the catch-up waited for the socket).
+        if (!isBrowserOnline()) {
+            log.log(`💬 fetchMessages: offline, deferring ${sessionId} until the network is back`);
+            this.messagesDeferredOffline.add(sessionId);
+            return;
+        }
+        this.messagesDeferredOffline.delete(sessionId);
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
+            throw new Error(`Session encryption not ready for ${sessionId}`);
+        }
 
-            const knownLastSeq = this.sessionLastSeq.get(sessionId);
-            const isInitialLoad = knownLastSeq === undefined;
-            if (isInitialLoad) {
-                // Initial load. Pull only the most recent page (extended to
-                // the newest turn's opener, bounded) so the user can start
-                // chatting immediately. Older history is fetched one page at
-                // a time through loadOlderMessages() when the reader parks
-                // the top of the loaded history in view or presses
-                // 「加载更早」 — B-616: there is deliberately NO background
-                // loop filling the history in (sync/historyWindow.ts).
-                //
-                // Previously this method walked forward from seq=0 until every
-                // page had been fetched and decrypted, which blocked the chat
-                // from displaying anything for sessions with thousands of
-                // messages. The user's reported pain point was "opening a long
-                // session feels frozen" — this is the fix.
-                await this.fetchInitialLatestPage(sessionId, encryption);
-            } else {
-                // Forward incremental sync. Used after reconnect, invalidate,
-                // or any subsequent visit. Only pulls messages newer than what
-                // we already have, so it's bounded and fast in normal use.
-                await this.fetchForwardSince(sessionId, encryption, knownLastSeq);
-            }
+        // B-803: no lock here. Requests and decryption run outside the
+        // session message lock; only the merge takes it (messageCatchUp.ts).
+        const knownLastSeq = this.sessionLastSeq.get(sessionId);
+        const isInitialLoad = knownLastSeq === undefined;
+        if (isInitialLoad) {
+            // Initial load. Pull only the most recent page (extended to
+            // the newest turn's opener, bounded) so the user can start
+            // chatting immediately. Older history is fetched one page at
+            // a time through loadOlderMessages() when the reader parks the
+            // top of the loaded history in view or presses 「加载更早」 —
+            // B-616: there is deliberately NO background loop filling the
+            // history in (sync/historyWindow.ts).
+            // B-805: live updates from here on join the buffer the page drains.
+            this.anchorBuffer.open(sessionId);
+            await this.fetchInitialLatestPage(sessionId, encryption, signal);
+        } else {
+            // Forward incremental sync. Used after reconnect, invalidate,
+            // or any subsequent visit. Only pulls messages newer than what
+            // we already have, so it's bounded and fast in normal use.
+            await this.fetchForwardSince(sessionId, encryption, knownLastSeq, signal);
+        }
 
-            storage.getState().applyMessagesLoaded(sessionId);
-            log.log(`💬 fetchMessages completed for session ${sessionId}`);
-        });
+        storage.getState().applyMessagesLoaded(sessionId);
+        log.log(`💬 fetchMessages completed for session ${sessionId}`);
+    }
+
+    /** B-803: abort a catch-up stuck on a dead connection and go again now. */
+    private restartMessagesSync(sessionId: string) {
+        this.getMessagesSync(sessionId).restart();
     }
 
     /** One page of history older than `beforeSeq` (the server returns it newest-first). */
-    private fetchHistoryPage = async (sessionId: string, beforeSeq: number) => {
+    private fetchHistoryPage = (sessionId: string, beforeSeq: number, signal?: AbortSignal) => hedgedRead(async (attemptSignal, pool) => {
+        // B-803b: hedged — a page stuck on a dead pooled connection gets a
+        // parallel attempt on another one after HEDGE_AFTER_MS (hedgedRead.ts).
         const response = await apiSocket.request(
-            `/v3/sessions/${sessionId}/messages?before_seq=${beforeSeq}&limit=${HISTORY_PAGE_SIZE}`
+            `/v3/sessions/${sessionId}/messages?before_seq=${beforeSeq}&limit=${HISTORY_PAGE_SIZE}`,
+            { signal: attemptSignal, timeoutMs: SYNC_READ_TIMEOUT_MS, ...pool },
         );
         if (!response.ok) {
             throw new Error(`Failed to fetch history before seq ${beforeSeq} for ${sessionId}: ${response.status}`);
@@ -2599,11 +2719,12 @@ class Sync {
         const data = await response.json() as V3GetSessionMessagesResponse;
         const messages = Array.isArray(data.messages) ? data.messages : [];
         return { messages, hasMore: !!data.hasMore && messages.length > 0 };
-    }
+    }, { signal })
 
     private fetchInitialLatestPage = async (
         sessionId: string,
-        encryption: ReturnType<Encryption['getSessionEncryption']> & {}
+        encryption: ReturnType<Encryption['getSessionEncryption']> & {},
+        signal: AbortSignal,
     ) => {
         // B-616 (historyWindow.ts): the newest page, extended backwards only
         // until the window starts at a turn opener (at most
@@ -2617,7 +2738,7 @@ class Sync {
         let maxSeq = 0;
         let minSeq = Number.POSITIVE_INFINITY;
         for (;;) {
-            const page = await this.fetchHistoryPage(sessionId, beforeSeq);
+            const page = await this.fetchHistoryPage(sessionId, beforeSeq, signal);
             for (const message of page.messages) {
                 if (message.seq > maxSeq) maxSeq = message.seq;
                 if (message.seq < minSeq) minSeq = message.seq;
@@ -2629,49 +2750,55 @@ class Sync {
             beforeSeq = minSeq;
             extraPagesFetched += 1;
         }
+        throwIfAborted(signal);
 
-        if (window.length > 0) {
-            this.applyMessages(sessionId, window);
-        }
-
-        // Anchor both ends so future incremental forward sync resumes from
-        // maxSeq, and loadOlderMessages can page backward from minSeq.
-        this.sessionLastSeq.set(sessionId, maxSeq);
-        if (minSeq !== Number.POSITIVE_INFINITY) {
-            this.sessionOldestSeq.set(sessionId, minSeq);
-        }
-        storage.getState().applyOlderMessagesPagination(sessionId, { hasMore });
+        await this.getSessionMessageLock(sessionId).inLock(() => {
+            // Anchor both ends so future incremental forward sync resumes from
+            // maxSeq, and loadOlderMessages can page backward from minSeq.
+            const anchor = mergeFetchedLastSeq(this.sessionLastSeq.get(sessionId), maxSeq);
+            // B-805: live updates that arrived while the page was loading land
+            // in the same commit; lastSeq then runs through them (a hole = a
+            // gap). Under the lock, so none can slip between drain and anchor.
+            const buffered = this.anchorBuffer.drain(sessionId, anchor);
+            window.push(...buffered.messages);
+            if (window.length > 0) {
+                this.applyMessages(sessionId, window);
+            }
+            this.sessionLastSeq.set(sessionId, anchor);
+            this.advanceSessionLastSeq(sessionId, buffered.seqs);
+            if (minSeq !== Number.POSITIVE_INFINITY) {
+                this.sessionOldestSeq.set(sessionId, minSeq);
+            }
+            storage.getState().applyOlderMessagesPagination(sessionId, { hasMore });
+        });
     }
 
     private fetchForwardSince = async (
         sessionId: string,
         encryption: ReturnType<Encryption['getSessionEncryption']> & {},
-        fromSeq: number
+        fromSeq: number,
+        signal: AbortSignal,
     ) => {
-        let afterSeq = fromSeq;
-        while (true) {
-            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=${HISTORY_PAGE_SIZE}`);
-            if (!response.ok) {
-                throw new Error(`Failed to forward-sync ${sessionId}: ${response.status}`);
-            }
-            const data = await response.json() as V3GetSessionMessagesResponse;
-            const messages = Array.isArray(data.messages) ? data.messages : [];
-
-            await this.applyFetchedMessages(sessionId, encryption, messages);
-
-            let maxSeq = afterSeq;
-            for (const message of messages) {
-                if (message.seq > maxSeq) maxSeq = message.seq;
-            }
-            this.sessionLastSeq.set(sessionId, maxSeq);
-
-            if (!data.hasMore) break;
-            if (maxSeq === afterSeq) {
-                log.log(`💬 fetchForwardSince: pagination stalled for ${sessionId}, stopping to avoid infinite loop`);
-                break;
-            }
-            afterSeq = maxSeq;
-        }
+        const lock = this.getSessionMessageLock(sessionId);
+        await catchUpForward<NormalizedMessage>({
+            fetchPage: (afterSeq, pageSignal) => hedgedRead(async (attemptSignal, pool) => {
+                const response = await apiSocket.request(
+                    `/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=${HISTORY_PAGE_SIZE}`,
+                    { signal: attemptSignal, timeoutMs: SYNC_READ_TIMEOUT_MS, ...pool },
+                );
+                if (!response.ok) {
+                    throw new Error(`Failed to forward-sync ${sessionId}: ${response.status}`);
+                }
+                const data = await response.json() as V3GetSessionMessagesResponse;
+                return { messages: Array.isArray(data.messages) ? data.messages : [], hasMore: !!data.hasMore };
+            }, { signal: pageSignal }),
+            normalize: (page) => this.normalizeFetchedMessages(encryption, page.messages as ApiMessage[]),
+            withLock: (fn) => lock.inLock(fn),
+            apply: (messages) => this.applyMessages(sessionId, messages),
+            getLastSeq: () => this.sessionLastSeq.get(sessionId),
+            setLastSeq: (seq) => this.sessionLastSeq.set(sessionId, seq),
+            onStalled: () => log.log(`💬 fetchForwardSince: pagination stalled for ${sessionId}, stopping to avoid infinite loop`),
+        }, fromSeq, signal);
     }
 
     private applyFetchedMessages = async (
@@ -2731,21 +2858,24 @@ class Sync {
         storage.getState().applyOlderMessagesLoading(sessionId, true);
         const lock = this.getSessionMessageLock(sessionId);
         try {
-            await lock.inLock(async () => {
-                const encryption = this.encryption.getSessionEncryption(sessionId);
-                if (!encryption) {
-                    log.log(`💬 loadOlderMessages: encryption not ready for ${sessionId}`);
+            const encryption = this.encryption.getSessionEncryption(sessionId);
+            if (!encryption) {
+                log.log(`💬 loadOlderMessages: encryption not ready for ${sessionId}`);
+                return;
+            }
+            // B-803: fetch + decrypt outside the session lock (bounded by
+            // SYNC_READ_TIMEOUT_MS); merge under it only if the cursor did
+            // not move meanwhile (a reload re-anchored it).
+            const beforeSeq = oldestSeq;
+            const page = await this.fetchHistoryPage(sessionId, beforeSeq);
+            const normalized = await this.normalizeFetchedMessages(encryption, page.messages);
+            await lock.inLock(() => {
+                if (this.sessionOldestSeq.get(sessionId) !== beforeSeq) {
                     return;
                 }
-                // Re-read the cursor inside the lock. A concurrent
-                // socket-pushed update or reload could have changed it.
-                const beforeSeq = this.sessionOldestSeq.get(sessionId);
-                if (beforeSeq === undefined || beforeSeq <= 1) {
-                    return;
+                if (normalized.length > 0) {
+                    this.applyMessages(sessionId, normalized);
                 }
-                const page = await this.fetchHistoryPage(sessionId, beforeSeq);
-
-                await this.applyFetchedMessages(sessionId, encryption, page.messages);
 
                 let minSeq = beforeSeq;
                 for (const message of page.messages) {
@@ -2830,13 +2960,12 @@ class Sync {
             this.feedSync.invalidate();
             // The viewed session's messages must be refetched HERE: nothing
             // else does it after a reconnect (web-v2 has no screen reacting to
-            // realtimeStatus; SessionDetailScreen only calls onSessionVisible
+            // realtimeStatus; SessionDetailScreen only calls onSessionEnter
             // on mount). Without this, an agent that finished while the link
             // was down never shows its last messages — no new socket event
             // arrives to trigger the seq-gap refetch. Bounded: forward from
             // the last known seq.
-            const viewing = storage.getState().currentViewingSessionId;
-            if (viewing) this.onSessionVisible(viewing);
+            this.catchUpViewedSession();
             // B-799 / B-802: a send that failed during the outage may sit in a
             // backoff sleep of up to 10s — cut it short, the link is back now.
             // Send queues only (one wake per reconnect); pollers keep invalidate().
@@ -2854,8 +2983,7 @@ class Sync {
             apiSocket.sendAppState(getCurrentAppState());
             this.sessionsSync.invalidate();
             this.machinesSync.invalidate();
-            const viewing = storage.getState().currentViewingSessionId;
-            if (viewing) this.onSessionVisible(viewing);
+            this.catchUpViewedSession();
         });
     }
 
@@ -2993,25 +3121,35 @@ class Sync {
                         this.fetchSessions();
                     }
 
-                    // Fast-path only on consecutive seq values, otherwise fetch from server.
-                    const currentLastSeq = this.sessionLastSeq.get(updateData.body.sid);
+                    // B-805: the update is authoritative — fetch from the
+                    // server only on a seq gap (liveMessagePlan.ts). `echo`:
+                    // the regional relay delivered this id/seq before the
+                    // central socket; it is already reduced.
+                    const sid = updateData.body.sid;
                     const incomingSeq = updateData.body.message.seq;
-                    if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
-                        this.enqueueMessages(updateData.body.sid, [lastMessage]);
-                        this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
-                    } else if (currentLastSeq !== undefined && incomingSeq <= currentLastSeq) {
-                        // The regional session relay can deliver this same
-                        // authoritative id/seq before the central update
-                        // socket. It is already reduced; do not turn the echo
-                        // into a redundant history fetch.
-                    } else {
-                        this.getMessagesSync(updateData.body.sid).invalidate();
+                    const action = planLiveMessage(this.sessionLastSeq.get(sid), incomingSeq);
+                    if (action === 'defer') {
+                        // No latest page yet: the session's first update asks
+                        // for it once; the rest wait for it in the buffer.
+                        if (this.anchorBuffer.add(sid, incomingSeq, lastMessage)) {
+                            this.getMessagesSync(sid).invalidate();
+                        }
+                    } else if (action === 'apply') {
+                        // A decrypted message that does not normalize has
+                        // nothing to reduce (the forward fetch drops it too);
+                        // the run stays contiguous either way.
+                        if (lastMessage) this.enqueueMessages(sid, [lastMessage]);
+                        this.sessionLastSeq.set(sid, incomingSeq);
+                    } else if (action === 'refetch') {
+                        this.getMessagesSync(sid).invalidate();
+                        // B-804: a gap in the viewed session — say so if it takes a while.
+                        this.trackMessagesCatchUp(sid);
                     }
                 }
             }
 
-            // Ping session
-            this.onSessionVisible(updateData.body.sid);
+            // Ping session — relay warm + yolo alignment, no fetch (B-805).
+            this.onSessionHeartbeat(updateData.body.sid);
 
         } else if (updateData.body.t === 'new-session') {
             log.log('🆕 New session update received');
@@ -3100,9 +3238,10 @@ class Sync {
                     // This catches up on any messages that were exchanged while desktop had control
                     const wasControlledByUser = session.agentState?.controlledByUser;
                     const isNowControlledByUser = agentState?.controlledByUser;
-                    if (!wasControlledByUser && isNowControlledByUser) {
+                    // B-805: a session this tab never opened stays stale — opening it fetches.
+                    if (!wasControlledByUser && isNowControlledByUser && this.messagesSync.has(updateData.body.id)) {
                         log.log(`🔄 Control returned to mobile for session ${updateData.body.id}, re-fetching messages`);
-                        this.onSessionVisible(updateData.body.id);
+                        this.onSessionEnter(updateData.body.id);
                     }
                 }
             } else if (!isSessionDeleted(updateData.body.id)) {
@@ -3626,6 +3765,7 @@ class Sync {
     private applyMessages = (sessionId: string, messages: NormalizedMessage[], sendingLocalIds?: readonly string[]) => {
         const result = storage.getState().applyMessages(sessionId, messages, sendingLocalIds ? { sendingLocalIds } : undefined);
         if (this.outboxRecords.size > 0) this.pruneOutboxRecords(sessionId);
+        settleDispatchedPrompts(sessionId);
         let m: Message[] = [];
         for (let messageId of result.changed) {
             const message = storage.getState().sessionMessages[sessionId].messagesMap[messageId];

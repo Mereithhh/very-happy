@@ -39,7 +39,7 @@ vi.mock('@/sync/storage', () => {
         storage,
     };
 });
-vi.mock('@/sync/sync', () => ({ sync: { onSessionVisible: () => {} } }));
+vi.mock('@/sync/sync', () => ({ sync: { onSessionEnter: () => {} } }));
 vi.mock('@/app/useKeyboardViewportPin', () => ({ useKeyboardViewportPin: () => {} }));
 vi.mock('@/app/useMediaQuery', () => ({ useMediaQuery: () => false }));
 vi.mock('@/screens/files/useFilesPanelWidth', () => ({ useFilesPanelWidth: () => ({ width: 300, onHandleMouseDown: () => {} }) }));

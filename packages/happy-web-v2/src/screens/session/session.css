@@ -163,3 +163,38 @@
 .session-workspace-pane { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
 .session-workspace-pane[hidden] { display:none; }
 .btw-head--embedded { border-bottom:0; padding-block:var(--sp-2); }
+
+/* B-804: the chat's catch-up line (ChatSyncStatus.tsx) — one quiet row under the transcript. */
+.chat-sync {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 var(--sp-3);
+  color: var(--text-dim);
+  font: var(--chat-fs-caption)/1.4 var(--font-sans);
+  white-space: nowrap;
+}
+.chat-sync > svg { flex: none; }
+.chat-sync--slow { color: var(--warn); }
+.chat-sync-sep { color: var(--text-dim); }
+.chat-sync-retry {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+/* 44×44 touch target around the inline word */
+.chat-sync-retry::after { position: absolute; top: 50%; left: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%); content: ''; }
+.chat-sync-retry:focus-visible { outline: none; border-radius: var(--r-kbd); box-shadow: var(--focus-ring); }
+@media (hover: hover) and (pointer: fine) { .chat-sync-retry:hover { text-decoration: underline; } }
+@media (prefers-reduced-motion: no-preference) {
+  .chat-sync-icon { animation: chat-sync-spin 1.2s linear infinite; }
+}
+@keyframes chat-sync-spin { to { transform: rotate(360deg); } }

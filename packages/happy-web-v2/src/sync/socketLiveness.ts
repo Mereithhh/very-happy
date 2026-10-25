@@ -21,11 +21,18 @@
 /** 蜂窝无线电唤醒 0.5–2s + RTT；3s 会误判，误判代价是 reject 所有在途 ack + 全量重拉。 */
 export const LIVENESS_PROBE_MS = 5_000;
 
-export type ProbeDecision = 'probe' | 'skip';
+export type ProbeDecision = 'probe' | 'skip' | 'reconnect';
 
-export function decideProbe(input: { connectedAfterEmit: boolean; handoverInFlight: boolean }): ProbeDecision {
-    if (!input.connectedAfterEmit) return 'skip'; // manager 自动重连在跑；不碰 io.open()
+/**
+ * `attemptFromEarlierEpoch`（B-803b）：未连上，且 manager 当前这次连接尝试（或退避等待）
+ * 开始于本次回前台之前——后台死链路上发起的握手要等 socket.io 20s connect timeout
+ * 才失败（e2e B6：回前台后 socket 18s 才回来）。这种尝试不可信，立即重开一次
+ * （与探活失败同一 `disconnect(); connect()`）。本前台周期内刚开始的尝试（包括第 1 步
+ * emit 刚关掉 engine 触发的重连）不动。
+ */
+export function decideProbe(input: { connectedAfterEmit: boolean; handoverInFlight: boolean; attemptFromEarlierEpoch?: boolean }): ProbeDecision {
     if (input.handoverInFlight) return 'skip';    // handover 落定后再补一次
+    if (!input.connectedAfterEmit) return input.attemptFromEarlierEpoch ? 'reconnect' : 'skip'; // 否则 manager 自动重连在跑；不碰 io.open()
     return 'probe';
 }
 

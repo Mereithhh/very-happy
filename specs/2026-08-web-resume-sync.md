@@ -74,7 +74,8 @@ ping + 60s 的僵尸连接在回前台的第一次 emit 就会被关掉并自动
 
 控制 socket，同一宏任务内固定顺序：`sendAppState()`（一次 emit）→ `await Promise.resolve()` → 读
 `socket.connected`：
-- `!connected` 或 `handoverInFlight` → `skip`（manager 自动重连在跑；handover 落定后补跑一次）。
+- `!connected` 或 `handoverInFlight` → `skip`（manager 自动重连在跑；handover 落定后补跑一次）。例外（B-803b）：
+  `!connected` 且当前连接尝试始于本次回前台之前（后台死链路上的握手）→ 立即 `disconnect(); connect()`。
 - `connected` → `socket.timeout(5000).emitWithAck('ping')`（无 payload）。ack → alive。否则（超时或
   reject 一律）**再校验** `this.socket===socket && socket.connected && !handoverInFlight` 才 `disconnect();
   connect()`；否则 none。并发调用共享同一次运行（每次 resume 至多一次动作）。
@@ -170,3 +171,38 @@ ping + 60s 的僵尸连接在回前台的第一次 emit 就会被关掉并自动
 探活结算还必须属于同一可见性代次且页面仍可见；快速 hidden→visible 不共享旧代次的在途探活。
 这是防止后台计时导致主动断线、旧探活干扰新前台的必要条件。唯一入口不变；细节与实测见
 `specs/2026-09-resume-recovery-followup.md`。
+
+## 2026-10-25 补充（B-803，B-802 PR-1）
+
+消息补拉不能无限挂起（B-802 根因：补拉无超时，且整个网络往返持有会话消息锁，回前台/重连只合并到死请求后面）：
+
+- 补拉读请求（after/before_seq、`/v1/sessions`、prompt-queue GET）带 `SYNC_READ_TIMEOUT_MS`（10s，含 body），超时按原 backoff 重试（`requestDeadline.ts`）。
+- 锁外取数、锁内合并；`sessionLastSeq` 只增不减（`messageCatchUp.ts`）。
+- `onWebResume`、`onReconnected`、`onRecovered` 及 B-799 网络恢复对当前会话调用 `InvalidateSync.restart()`：取消在途补拉并立即重发；普通 `invalidate()` 仍合并。
+- 离线（`isNetworkOffline()`）不发补拉，恢复时重启被推迟的会话。唯一 resume 入口不变。（B-803b 收窄为只看浏览器离线，见下。）
+- 端到端：`packages/happy-web-v2/e2e/sync-resume.mjs`（死链路代理，B3/B6/LIVE/NET/A1/TABS）。
+
+## 2026-10-25 补充（B-803b：多条死连接 / h2 形状）
+
+生产 `veryhappy.dev`（CloudFront）走 h2，并通告 `Alt-Svc: h3`：所有 REST 共用一条连接，WebSocket 另走 HTTP/1.1。
+本地 HTTP/1.1 则是 keep-alive 连接池。B-803 完整跑的 B6 是 17–19s，根因有三：
+
+- **补拉只在浏览器自身离线（`navigator.onLine === false`）时推迟**，由 `online` 事件释放。socket 没连上不算离线：resume 后
+  socket 8s 没回来时，B-799 判「离线」，超时后的重试被推迟到 socket 恢复，但这段时间 REST 一直可用。
+- **`InvalidateSync` 退避 sleep 自然到期要清 `_wake`**。否则之后同一轮的 `restart()` 走「还在 sleep」分支，不中止在途请求。
+- **resume 时 socket 若仍卡在后台开始的连接尝试里，立即重开**（§B 例外）。否则要等 socket.io 20s 的 connect timeout。
+- **消息页读请求 hedging**（`hedgedRead.ts`）：2s 无响应就在另一条连接上并行再发，最多 4 条，先到先用，其余 abort，
+  每条都保留自己 10s 的 deadline。要绕开死连接，两个选项缺一不可：
+  - `cache: 'no-store'`：Chrome 会把同 URL 的 GET 排在缓存锁后面，否则 hedge 根本不上网络；
+  - 奇数次尝试 `credentials: 'omit'`：连接池按 credentials 分开，h2 下才能绕开那条死会话。API 只用 Bearer，不依赖 cookie。
+  不加 omit 时，h2 下的上限约 10.8s，取决于 Chrome 的 h2 PING 判死。
+  - 记住上次赢 hedge 的池，后续读请求先走它：默认池的 h2 会话死了之后，reconnect 补拉和缺口补拉不再每次多等 2s。
+  - 两个池都挂着死会话时（上一次在前台发生过 hedge），浏览器侧没有别的连接池可用，上限回到 Chrome PING 判死，实测约 10–14s。
+    这一项等 B-807 让补拉走刚重连的 socket 再解决。
+  - hedge 覆盖消息页（after/before_seq）、`/v1/sessions`、prompt-queue GET；写请求不 hedge。
+- 「连接不稳定 · 重试」：socket 没连上时立即重开一次连接尝试（`apiSocket.reconnectIfDown()`），否则探活。
+- `raceAbort` 遇到已 abort 的 signal 时，也要接住已经发出的 fetch。否则 restart 正好落在读 credentials 和发起 fetch 之间时，
+  会出现未处理的「Superseded by restart」。
+- e2e：新增 `--h2`（本地 TLS h2 前端，核对 `nextHopProtocol`）、`POOL`（resume 后连续 3 个 after_seq 落在死连接上）、
+  `HEALTHY`（健康链路 20 次补拉都只有 1 个 GET）、`H2POOL`（--h2 下两个池都死，按 PING 上限 16s 断言）。
+  整页 reload 只按完整文档加载计数，tab1 出现 pageerror 也算失败。

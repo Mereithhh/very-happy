@@ -53,6 +53,7 @@ import { loadAttentionItems, useAttentionStore } from '@/sync/attentionStore';
 import { useSessionBoard } from './board/useSessionBoard';
 import { BackButton } from '@/app/BackButton';
 import { sessionGate, shouldLookUpSession, type SessionLookup } from './sessionLookup';
+import { ChatSyncStatus } from './ChatSyncStatus';
 import './session.css';
 
 export function SessionDetailScreen() {
@@ -292,7 +293,7 @@ export function SessionDetailScreen() {
     useEffect(() => {
         if (!id || pendingMode) return;
         storage.getState().setCurrentViewingSession(id);
-        sync.onSessionVisible(id);
+        sync.onSessionEnter(id);
         return () => {
             if (storage.getState().currentViewingSessionId === id) {
                 storage.getState().setCurrentViewingSession(null);
@@ -406,6 +407,7 @@ export function SessionDetailScreen() {
                     {/* B-752: calm ASCII field behind the transcript (fixed, not scrolled). */}
                     <ChatBackdrop sessionId={id} />
                     {session ? <ChatList key={id} sessionId={id} showLiveStatus={!mirror} /> : <PendingSessionBody record={pending!} />}
+                    {session && <ChatSyncStatus sessionId={id} />}
                 </div>
                 {!mirror && !sharedWithMe && (
                     <div className="sd-foot">

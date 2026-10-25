@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
         items: Array<{ id: string; localId: string; position: number; text: string; modeMeta: object; createdAt: number }>;
         status: string;
         pending?: Array<{ localId: string; text: string; modeMeta: object; createdAt: number; state: 'sending' | 'waiting' | 'failed' }>;
+        dispatched?: Array<{ localId: string; text: string }>;
     },
     send: vi.fn(), paint: vi.fn(), restoreSession: vi.fn(), draft: vi.fn(), toast: vi.fn(), toastShow: vi.fn(), abort: vi.fn(), saveQueue: vi.fn(),
     enqueue: vi.fn(), submit: vi.fn(), retryPending: vi.fn(), discardPending: vi.fn(), load: vi.fn(), remove: vi.fn(), move: vi.fn(), updateText: vi.fn(),
@@ -191,6 +192,20 @@ describe('AgentInput server-side prompt queue (B-509)', () => {
         await act(async () => { row.querySelector<HTMLButtonElement>('[aria-label="session.chat.sendRestore"]')!.click(); });
         expect(mocks.discardPending).toHaveBeenCalledWith('session', 'p1');
         expect(host.querySelector<HTMLTextAreaElement>('.ci-textarea')!.value).toBe('Queue me');
+    });
+
+    it('B-804: a prompt the wrapper took shows as 「执行中」 first, without actions, and server-row moves still count server rows only', async () => {
+        mocks.queueState = { status: 'ready', pending: undefined, dispatched: [{ localId: 'd1', text: 'running now' }], items: [
+            { id: 'q1', localId: 'l1', position: 1, text: 'next', modeMeta: {}, createdAt: 1 },
+            { id: 'q2', localId: 'l2', position: 2, text: 'last', modeMeta: {}, createdAt: 2 },
+        ] };
+        render();
+        const rows = host.querySelectorAll<HTMLElement>('.ci-queue-item');
+        expect([...rows].map((row) => row.getAttribute('data-queue-item-source'))).toEqual(['dispatched', 'server', 'server']);
+        expect(rows[0].querySelector('.ci-queue-text')!.textContent).toBe('running now');
+        expect(rows[0].querySelector('[data-send-state="running"]')!.textContent).toBe('session.chat.queueRunning');
+        expect(rows[0].querySelector('button')).toBeNull();
+        expect(host.querySelector('.ci-queue-count')!.textContent).toBe('3');
     });
 
     it('B-722: a sending / offline row says where the prompt is, and the restore-first dock says where it goes', async () => {
