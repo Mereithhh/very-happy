@@ -10,6 +10,7 @@ import { markProgrammaticReload } from '@/app/programmaticReload';
 import { revokeCloudLogin } from '@/auth/cloudAuth';
 import { isAuthLatched, resetAuthLatch } from '@/auth/authLatch';
 import { clearNotificationStateOnLogout } from '@/screens/notifications/logoutCleanup';
+import { clearSyncCacheOnLogout } from '@/sync/cache/syncCache';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -64,6 +65,8 @@ export function AuthProvider({ children, initialCredentials }: { children: React
             await revokeCloudLogin(credentials);
         }
         clearPersistence();
+        // B-813: the local message cache (Owner 10-25: 退出登录时全部清空).
+        await clearSyncCacheOnLogout();
         // B-559: app-icon badge, SW count and mark-unread overlay belong to this account.
         clearNotificationStateOnLogout();
         await TokenStorage.removeCredentials();

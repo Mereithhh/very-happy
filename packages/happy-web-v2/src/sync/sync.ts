@@ -47,6 +47,8 @@ import { isNetworkOffline, startNetworkMonitor } from './networkStatus';
 import { fetchWithDeadline, SYNC_READ_TIMEOUT_MS } from './requestDeadline';
 import { hedgedRead } from './hedgedRead';
 import { catchUpForward, mergeFetchedLastSeq, throwIfAborted } from './messageCatchUp';
+import { syncCache, type CacheHit } from './cache/syncCache';
+import { checkCacheAnchor } from './cache/segment';
 import { NormalizedMessage, normalizeRawMessage, RawRecord, type SessionEventPayload } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { migrateTerminalCommands } from './shortcutPresets';
@@ -219,6 +221,10 @@ class Sync {
     // older history (B-616: on demand only, no background fill). Set after
     // the initial latest-page fetch and advanced downward by loadOlderMessages.
     private sessionOldestSeq = new Map<string, number>();
+    /** B-813: cached runs rendered but not yet checked against the server (the check survives a failed attempt). */
+    private unverifiedCacheHits = new Map<string, CacheHit>();
+    /** B-813: cached runs read while the session's key was still loading (the read overlaps the session list). */
+    private cachePrefetch = new Map<string, Promise<CacheHit | null>>();
     private pendingOutbox = new Map<string, OutboxMessage[]>();
     private outboxRecords = new Map<string, OutboxRecord>();
     private outboxOrder = 0;
@@ -479,6 +485,9 @@ class Sync {
         // listening, not because the wrapper stopped. Injected rather than
         // imported so heartbeatLease stays free of a storage import cycle.
         setHeartbeatSocketStatusReader(() => storage.getState().socketStatus);
+
+        // B-813: this account's message cache opens while the session list loads.
+        void syncCache.open(this.serverID);
 
         // Subscribe to updates
         this.subscribeToUpdates();
@@ -1746,6 +1755,9 @@ class Sync {
         this.sessionLastSeq.delete(sessionId);
         this.anchorBuffer.clear(sessionId);
         this.sessionOldestSeq.delete(sessionId);
+        syncCache.dropSession(sessionId, 'deleted');
+        this.unverifiedCacheHits.delete(sessionId);
+        this.cachePrefetch.delete(sessionId);
         this.sessionMessageLocks.delete(sessionId);
         this.messagesDeferredOffline.delete(sessionId);
         this.sessionMessageQueue.delete(sessionId);
@@ -2670,6 +2682,10 @@ class Sync {
         this.messagesDeferredOffline.delete(sessionId);
         const encryption = this.encryption.getSessionEncryption(sessionId);
         if (!encryption) {
+            // B-813: no key before the session list lands — read the cached run meanwhile.
+            if (!this.sessionLastSeq.has(sessionId) && !this.cachePrefetch.has(sessionId) && syncCache.mayHave(sessionId)) {
+                this.cachePrefetch.set(sessionId, syncCache.load(sessionId, { viewed: storage.getState().currentViewingSessionId === sessionId }));
+            }
             log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
             throw new Error(`Session encryption not ready for ${sessionId}`);
         }
@@ -2688,7 +2704,23 @@ class Sync {
             // history in (sync/historyWindow.ts).
             // B-805: live updates from here on join the buffer the page drains.
             this.anchorBuffer.open(sessionId);
-            await this.fetchInitialLatestPage(sessionId, encryption, signal);
+            // B-813: a cached run renders now; the catch-up then checks it
+            // against the server and extends it. Any doubt → the cold path.
+            const hit = await this.applyCachedMessages(sessionId, encryption, signal);
+            let caughtUp = false;
+            if (hit) {
+                this.unverifiedCacheHits.set(sessionId, hit);
+                const forward = this.fetchForwardAfterCache(sessionId, encryption, hit, signal);
+                // A cached transcript is not "live" (spec B-807 risk 4): 「同步中」 until it caught up.
+                if (storage.getState().currentViewingSessionId === sessionId) trackCatchUp(sessionId, forward);
+                caughtUp = await forward;
+            }
+            if (!caughtUp) await this.fetchInitialLatestPage(sessionId, encryption, signal);
+        } else if (this.unverifiedCacheHits.has(sessionId)) {
+            // The check after a cache hit failed (timeout, restart): run it again, not a plain forward.
+            if (!(await this.fetchForwardAfterCache(sessionId, encryption, this.unverifiedCacheHits.get(sessionId)!, signal))) {
+                await this.fetchInitialLatestPage(sessionId, encryption, signal);
+            }
         } else {
             // Forward incremental sync. Used after reconnect, invalidate,
             // or any subsequent visit. Only pulls messages newer than what
@@ -2732,6 +2764,7 @@ class Sync {
         // the first paint shows whole turns and tool results meet their
         // calls in the same commit.
         const window: NormalizedMessage[] = [];
+        const rows: ApiMessage[] = [];
         let beforeSeq = SEQ_BACKWARD_INITIAL_SENTINEL;
         let hasMore = false;
         let extraPagesFetched = 0;
@@ -2744,6 +2777,7 @@ class Sync {
                 if (message.seq < minSeq) minSeq = message.seq;
             }
             window.push(...await this.normalizeFetchedMessages(encryption, page.messages));
+            rows.push(...page.messages);
             hasMore = page.hasMore;
             if (!shouldExtendInitialWindow({ hasMore, hasTurnStart: windowHasTurnStart(window), extraPagesFetched })) break;
             if (!(minSeq > 1)) break;
@@ -2771,6 +2805,7 @@ class Sync {
             }
             storage.getState().applyOlderMessagesPagination(sessionId, { hasMore });
         });
+        syncCache.offerLatest(sessionId, rows, { viewed: storage.getState().currentViewingSessionId === sessionId });
     }
 
     private fetchForwardSince = async (
@@ -2778,20 +2813,12 @@ class Sync {
         encryption: ReturnType<Encryption['getSessionEncryption']> & {},
         fromSeq: number,
         signal: AbortSignal,
+        fetchPage: (afterSeq: number, signal: AbortSignal) => Promise<{ messages: ApiMessage[]; hasMore: boolean }>
+            = (afterSeq, pageSignal) => this.fetchForwardPage(sessionId, afterSeq, pageSignal),
     ) => {
         const lock = this.getSessionMessageLock(sessionId);
         await catchUpForward<NormalizedMessage>({
-            fetchPage: (afterSeq, pageSignal) => hedgedRead(async (attemptSignal, pool) => {
-                const response = await apiSocket.request(
-                    `/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=${HISTORY_PAGE_SIZE}`,
-                    { signal: attemptSignal, timeoutMs: SYNC_READ_TIMEOUT_MS, ...pool },
-                );
-                if (!response.ok) {
-                    throw new Error(`Failed to forward-sync ${sessionId}: ${response.status}`);
-                }
-                const data = await response.json() as V3GetSessionMessagesResponse;
-                return { messages: Array.isArray(data.messages) ? data.messages : [], hasMore: !!data.hasMore };
-            }, { signal: pageSignal }),
+            fetchPage,
             normalize: (page) => this.normalizeFetchedMessages(encryption, page.messages as ApiMessage[]),
             withLock: (fn) => lock.inLock(fn),
             apply: (messages) => this.applyMessages(sessionId, messages),
@@ -2800,6 +2827,127 @@ class Sync {
             onStalled: () => log.log(`💬 fetchForwardSince: pagination stalled for ${sessionId}, stopping to avoid infinite loop`),
         }, fromSeq, signal);
     }
+
+    /**
+     * B-813: render the session's cached run (spec B-807 §5.4) — the same
+     * merge as a latest page, before any request. null = miss; a run that
+     * does not decrypt is dropped (§5.4.2) and the cold path runs instead.
+     */
+    private applyCachedMessages = async (
+        sessionId: string,
+        encryption: ReturnType<Encryption['getSessionEncryption']> & {},
+        signal: AbortSignal,
+    ): Promise<CacheHit | null> => {
+        const prefetched = this.cachePrefetch.get(sessionId);
+        this.cachePrefetch.delete(sessionId);
+        // No cached run → not even one IndexedDB read before the network request.
+        if (!prefetched && !syncCache.mayHave(sessionId)) return null;
+        const hit = await (prefetched ?? syncCache.load(sessionId, { viewed: storage.getState().currentViewingSessionId === sessionId }));
+        if (!hit) return null;
+        // The first paint is the window a latest page would give (B-616): the
+        // newest page, extended by whole pages to a turn opener. The older
+        // cached rows stay unread; 「加载更早」 pages from the server as before.
+        const normalized: NormalizedMessage[] = [];
+        let start = hit.rows.length;
+        let extraPages = 0;
+        try {
+            for (;;) {
+                const end = start;
+                start = Math.max(0, end - HISTORY_PAGE_SIZE);
+                const page = hit.rows.slice(start, end);
+                const decrypted = await encryption.decryptMessages(page);
+                if (decrypted.some((message) => !message || message.content === null)) throw new Error('cached row does not decrypt');
+                normalized.unshift(...await this.normalizeFetchedMessages(encryption, page));
+                if (!shouldExtendInitialWindow({ hasMore: start > 0, hasTurnStart: windowHasTurnStart(normalized), extraPagesFetched: extraPages })) break;
+                extraPages += 1;
+            }
+        } catch (error) {
+            log.log(`💬 cache: ${sessionId} dropped (${error instanceof Error ? error.message : String(error)})`);
+            // The server's copies of these ids must not hit the failed decryptions.
+            encryption.forgetMessages(hit.rows.map((row) => row.id));
+            syncCache.dropSession(sessionId, 'decrypt');
+            return null;
+        }
+        const oldestSeq = hit.rows[start].seq;
+        throwIfAborted(signal);
+        let applied = false;
+        await this.getSessionMessageLock(sessionId).inLock(() => {
+            if (this.sessionLastSeq.get(sessionId) !== undefined) return;
+            // B1: a cached lastSeq is usually behind the server, so a live update
+            // buffered during boot may sit past a hole. Only the run that continues
+            // the cache applies; the rest comes back in order with the catch-up
+            // (as B-805's refetch on a gap: the transcript never shows a hole).
+            const buffered = this.anchorBuffer.drain(sessionId, hit.lastSeq, { contiguous: true });
+            const window = [...normalized, ...buffered.messages];
+            if (window.length > 0) this.applyMessages(sessionId, window);
+            this.sessionLastSeq.set(sessionId, hit.lastSeq);
+            this.advanceSessionLastSeq(sessionId, buffered.seqs);
+            this.sessionOldestSeq.set(sessionId, oldestSeq);
+            storage.getState().applyOlderMessagesPagination(sessionId, { hasMore: oldestSeq > 1 });
+            applied = true;
+        });
+        if (!applied) return null;
+        storage.getState().applyMessagesLoaded(sessionId);
+        log.log(`💬 cache: ${sessionId} rendered cached seq ${oldestSeq}–${hit.lastSeq}`);
+        return hit;
+    }
+
+    /**
+     * B-813: the catch-up after a cache hit. Its first request asks from
+     * lastRowSeq - 1, so the server's first row must be the cached newest row
+     * (§5.4.2: missing = the server is behind the cache, another id = not
+     * this history). false = the cached transcript was discarded; load cold.
+     */
+    private fetchForwardAfterCache = async (
+        sessionId: string,
+        encryption: ReturnType<Encryption['getSessionEncryption']> & {},
+        hit: CacheHit,
+        signal: AbortSignal,
+    ): Promise<boolean> => {
+        const probe = await this.fetchForwardPage(sessionId, Math.max(0, hit.lastRowSeq - 1), signal);
+        throwIfAborted(signal);
+        const verdict = checkCacheAnchor(probe.messages, hit.lastRowSeq, hit.lastId);
+        this.unverifiedCacheHits.delete(sessionId);
+        if (verdict !== 'ok') {
+            log.log(`💬 cache: ${sessionId} contradicted by the server (${verdict}), reloading`);
+            syncCache.dropSession(sessionId, verdict);
+            await this.getSessionMessageLock(sessionId).inLock(() => {
+                storage.getState().resetSessionMessages(sessionId);
+                this.sessionLastSeq.delete(sessionId);
+                this.sessionOldestSeq.delete(sessionId);
+                this.anchorBuffer.open(sessionId);
+            });
+            return false;
+        }
+        // From what is already applied: the cached run plus the buffered updates that continued it.
+        const fromSeq = Math.max(hit.lastSeq, this.sessionLastSeq.get(sessionId) ?? hit.lastSeq);
+        let first: { messages: ApiMessage[]; hasMore: boolean } | null = {
+            messages: probe.messages.filter((message) => message.seq > fromSeq),
+            hasMore: probe.hasMore,
+        };
+        await this.fetchForwardSince(sessionId, encryption, fromSeq, signal, (afterSeq, pageSignal) => {
+            if (!first) return this.fetchForwardPage(sessionId, afterSeq, pageSignal);
+            const page = first;
+            first = null;
+            return Promise.resolve(page);
+        });
+        return true;
+    }
+
+    /** One forward page (`after_seq`), hedged; every row also goes to the cache. */
+    private fetchForwardPage = (sessionId: string, afterSeq: number, signal: AbortSignal) => hedgedRead(async (attemptSignal, pool) => {
+        const response = await apiSocket.request(
+            `/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=${HISTORY_PAGE_SIZE}`,
+            { signal: attemptSignal, timeoutMs: SYNC_READ_TIMEOUT_MS, ...pool },
+        );
+        if (!response.ok) {
+            throw new Error(`Failed to forward-sync ${sessionId}: ${response.status}`);
+        }
+        const data = await response.json() as V3GetSessionMessagesResponse;
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+        syncCache.offerNewer(sessionId, messages, { afterSeq });
+        return { messages, hasMore: !!data.hasMore };
+    }, { signal })
 
     private applyFetchedMessages = async (
         sessionId: string,
@@ -2883,6 +3031,7 @@ class Sync {
                 }
                 if (page.messages.length > 0) {
                     this.sessionOldestSeq.set(sessionId, minSeq);
+                    syncCache.offerOlder(sessionId, page.messages, { beforeSeq });
                 }
                 storage.getState().applyOlderMessagesPagination(sessionId, { hasMore: page.hasMore });
             });
@@ -3054,6 +3203,9 @@ class Sync {
                     return;
                 }
             }
+
+            // B-813: the row as the server sent it (ciphertext) extends the cached run.
+            if (updateData.body.message) syncCache.offerNewer(updateData.body.sid, [updateData.body.message]);
 
             // Decrypt message
             let lastMessage: NormalizedMessage | null = null;

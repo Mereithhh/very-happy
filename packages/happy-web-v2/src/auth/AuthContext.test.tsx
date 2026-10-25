@@ -8,6 +8,7 @@
  * hidden until the next (visible-only) 60 s tick. The provider must publish
  * the credentials before any descendant effect runs.
  */
+import 'fake-indexeddb/auto';
 import { act, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -25,6 +26,7 @@ vi.mock('@/screens/notifications/logoutCleanup', () => ({ clearNotificationState
 vi.mock('@/auth/tokenStorage', () => ({ TokenStorage: { setCredentials: vi.fn(), removeCredentials: vi.fn() } }));
 
 import { AuthProvider, getCurrentAuth, setCurrentAuth } from './AuthContext';
+import { CACHE_DB_PREFIX, syncCache } from '@/sync/cache/syncCache';
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -78,4 +80,30 @@ it('B-559: logout clears the notification badge / SW count / mark-unread overlay
   }
   expect(clearNotificationStateOnLogout).toHaveBeenCalledOnce();
   expect(reload).toHaveBeenCalled();
+});
+
+it('B-813: logout deletes every local message cache database (Owner 10-25: 退出登录时全部清空)', async () => {
+  // This tab's cache is open and holds a session's ciphertext rows.
+  await syncCache.open('account-a');
+  syncCache.offerLatest('s1', [{ id: 'm1', seq: 1, localId: null, content: { t: 'encrypted', c: 'Y2lwaGVy' }, createdAt: 1, updatedAt: 1 }], { viewed: true });
+  await syncCache.flush();
+  expect((await syncCache.load('s1'))?.lastSeq).toBe(1);
+  // Another account signed in earlier on this browser left one too.
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open(`${CACHE_DB_PREFIX}otheraccount0000`, 1);
+    request.onsuccess = () => { request.result.close(); resolve(); };
+    request.onerror = () => reject(request.error);
+  });
+  const names = async () => (await indexedDB.databases()).map((db) => db.name).filter((name) => name?.startsWith(CACHE_DB_PREFIX));
+  expect(await names()).toHaveLength(2);
+
+  await act(async () => root.render(<AuthProvider initialCredentials={{ token: 'tok', secret: 'sec' }}><span /></AuthProvider>));
+  const loc = window.location;
+  Object.defineProperty(window, 'location', { configurable: true, value: { ...loc, reload: vi.fn() } });
+  try {
+    await act(async () => { await getCurrentAuth()!.logout(); });
+  } finally {
+    Object.defineProperty(window, 'location', { configurable: true, value: loc });
+  }
+  expect(await names()).toEqual([]);
 });
