@@ -69,7 +69,7 @@ import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { teamSessionMembership } from '@/screens/sessions/teamNavigation';
 import { leadViewEntries, leadViewKeys, ownerAnswers, turnOpenerIds, turnOrigin } from './leadView';
 import { useLeadView } from './leadViewPrefs';
-import { LeadAnswerContext, LeadFoldRow } from './LeadView';
+import { LeadAnswerContext, LeadFoldRow, LeadVia } from './LeadView';
 import type { ChatRow } from './chatTurns';
 
 export function ChatList({
@@ -826,7 +826,9 @@ export function ChatList({
                         </div>
                     )}
                     {entries
-                        ? entries.map((entry) => entry.type === 'row' ? renderRow(entry.row) : (
+                        ? entries.map((entry) => entry.type === 'row' ? (entry.via
+                            ? <Fragment key={`via-${entry.row.key}`}><LeadVia origin={entry.via} />{renderRow(entry.row)}</Fragment>
+                            : renderRow(entry.row)) : (
                             <Fragment key={entry.key}>
                                 <LeadFoldRow fold={entry} open={openFolds.has(entry.key)} onToggle={() => toggleFold(entry.key)} />
                                 {openFolds.has(entry.key) && entry.rows.map(renderRow)}

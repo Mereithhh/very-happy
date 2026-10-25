@@ -39,6 +39,14 @@
 .lv-fold:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint); }
 @media (pointer: coarse) { .lv-fold { min-height: 44px; } }
 
+/* B-809: one quiet line above a lead reply that a member / system message triggered. */
+.lv-via {
+  margin-bottom: calc(var(--chat-space) * -1);
+  color: var(--text-faint);
+  font: var(--chat-fs-caption)/1.4 var(--font-sans);
+  overflow-wrap: anywhere;
+}
+
 /* Owner bubble: 「已答 ↗」 before the time (always visible, unlike the hover actions). */
 .lv-answered {
   display: inline-flex;

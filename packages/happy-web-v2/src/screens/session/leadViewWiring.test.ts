@@ -17,6 +17,8 @@ describe('lead view wiring', () => {
         const chat = read('./ChatList.tsx');
         expect(chat).toContain('return membership?.bot.root ? membership.team : undefined;');
         expect(chat).toContain("(leadTeam && leadView === 'owner'\n            ? leadViewEntries(rows, turnOpenerIds(shownChronological), origin, (row) => rowMessageIds(row).some((id) => anchors.has(id)))\n            : null)");
+        // B-809: a lead reply to a member / system turn renders under its origin line.
+        expect(chat).toContain("? <Fragment key={`via-${entry.row.key}`}><LeadVia origin={entry.via} />{renderRow(entry.row)}</Fragment>");
         // Follow / unseen badge read the keys on screen.
         expect(chat).toContain('(entries ? leadViewKeys(entries, openFolds) : rows.map((row) => row.key))');
     });
