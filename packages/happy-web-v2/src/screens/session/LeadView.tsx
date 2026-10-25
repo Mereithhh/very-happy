@@ -1,11 +1,12 @@
 /**
  * B-766 B-1 — 「只看我和负责人」 pieces: the view switch (team context row of
- * a lead session), the folded-run summary row, and the owner bubble's
- * 「已答 ↗」 chip. Rules live in leadView.ts.
+ * a lead session), the folded-run summary row, the owner bubble's 「已答 ↗」
+ * chip, and (B-809) the 「回复 成员 A 的提交」 line above a lead reply that a
+ * member / system message triggered. Rules live in leadView.ts.
  */
 import { createContext, useContext } from 'react';
 import { ArrowUpRight, ChevronDown } from 'lucide-react';
-import type { LeadFold, LeadViewMode } from './leadView';
+import type { LeadFold, LeadViewMode, TurnOrigin } from './leadView';
 import { setLeadView, useLeadView } from './leadViewPrefs';
 import { useTranslation } from '@/i18n/useTranslation';
 import { foldSummary, leadViewCopy } from './leadViewCopy';
@@ -44,6 +45,11 @@ export function LeadViewToggle({ sessionId, compact = false }: { sessionId: stri
         {option('all', copy.all, copy.allShort)}
         {option('owner', copy.owner, copy.ownerShort)}
     </div>;
+}
+
+/** B-809: what the lead's reply below answers (the folded run above holds it). */
+export function LeadVia({ origin }: { origin: TurnOrigin }) {
+    return <div className="lv-via">{useLeadViewCopy().via(origin)}</div>;
 }
 
 /** Visible member chips on the summary row; the rest become 「+n」. */

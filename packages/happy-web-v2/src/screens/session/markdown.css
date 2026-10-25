@@ -183,6 +183,8 @@
   cursor: pointer;
   transition: border-color var(--motion-fast), background var(--motion-fast);
 }
+/* B-809: an answer option is a touch target of its own (design-language §6, ≥ 44px). */
+@media (pointer: coarse) { .md-option--clickable { min-height: 44px; } }
 @media (hover: hover) and (pointer: fine) {
   .md-option--clickable:hover {
     border-color: var(--text-faint);
