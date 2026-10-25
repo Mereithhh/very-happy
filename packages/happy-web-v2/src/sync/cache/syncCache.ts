@@ -407,10 +407,12 @@ export class SyncCache {
 
     /**
      * B-814: the same database for the persistent outbox (outboxStore.ts) —
-     * null while writes are off (switched off, disabled, read-only on quota).
+     * null while writes are off (switched off, disabled, read-only on quota) —
+     * except a delete on quota: it frees space (an acked row left behind would
+     * come back as 「未发送」 on the next load).
      */
-    outboxDatabase(waitMs = LOAD_OPEN_WAIT_MS): Promise<IDBDatabase | null> {
-        if (!this.writesEnabled) return Promise.resolve(null);
+    outboxDatabase(waitMs = LOAD_OPEN_WAIT_MS, purpose: 'write' | 'delete' = 'write'): Promise<IDBDatabase | null> {
+        if (!this.writesEnabled && !(purpose === 'delete' && this.readsEnabled)) return Promise.resolve(null);
         return this.readyDb(waitMs);
     }
 
@@ -821,7 +823,7 @@ export function hasIndexedDb(): IDBFactory | undefined {
 export const syncCache = new SyncCache({ factory: hasIndexedDb });
 
 /** B-814: the app's persistent outbox, in the cache's database (opened with it, cleared with it). */
-export const outboxStore = new OutboxStore({ db: () => syncCache.outboxDatabase(OUTBOX_OPEN_WAIT_MS) });
+export const outboxStore = new OutboxStore({ db: (purpose) => syncCache.outboxDatabase(OUTBOX_OPEN_WAIT_MS, purpose) });
 
 /** Logout: close this tab's connection first so the delete is not blocked by it. */
 export async function clearSyncCacheOnLogout(): Promise<void> {

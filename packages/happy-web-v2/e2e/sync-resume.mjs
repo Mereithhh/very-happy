@@ -1061,7 +1061,8 @@ try {
                     await send(page, prompt);
                     // The agent answers a prompt the server holds — not its optimistic bubble
                     // (B-814: the POST now waits for its outbox row, a few ms).
-                    await timeUntilVisible(page, S, prompt, 5_000, Date.now(), { confirmed: true });
+                    const confirmedMs = await timeUntilVisible(page, S, prompt, 5_000, Date.now(), { confirmed: true });
+                    check(confirmedMs !== null, `EDIT ${which} q4 confirmed by the server`);
                     await agentSay(page2, S, [answer], 0);
                     check(await waitTranscript(page, S, prefix, 8, 5_000) !== null, `EDIT ${which} tab1 ran its own turn`);
                     seeded.push(prompt, answer);

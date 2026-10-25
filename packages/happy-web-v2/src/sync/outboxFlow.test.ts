@@ -35,6 +35,8 @@ let postStatus: number;
 let relayed: number;
 let encrypts: number;
 let counter = 0;
+/** Sessions whose key has not loaded (getSessionEncryption → null). */
+let keyless: Set<string>;
 
 beforeAll(async () => {
     installBrowserTestGlobals();
@@ -54,6 +56,7 @@ beforeEach(async () => {
     relayed = 0;
     encrypts = 0;
     tabs.alive = new Set(['tab-me']);
+    keyless = new Set();
     const encryption = {
         encryptRawRecord: async (record: unknown) => { encrypts += 1; return cipher(record); },
         decryptRaw: async (body: string) => plain(body),
@@ -61,7 +64,7 @@ beforeEach(async () => {
         decryptMessages: async (ms: ServerMessage[]) => ms.map(decrypt),
         forgetMessages: () => {},
     };
-    (sync as unknown as { encryption: unknown }).encryption = { getSessionEncryption: (id: string) => (server.has(id) ? encryption : null), removeSessionEncryption: () => {} };
+    (sync as unknown as { encryption: unknown }).encryption = { getSessionEncryption: (id: string) => (server.has(id) && !keyless.has(id) ? encryption : null), removeSessionEncryption: () => {} };
     vi.spyOn(apiSocket, 'deliverSessionMessages').mockImplementation(async () => { relayed += 1; return null as never; });
     vi.spyOn(apiSocket, 'request').mockImplementation(async (path, init) => {
         const url = new URL(String(path), 'http://x');
@@ -170,6 +173,20 @@ describe('B-814 write-through', () => {
         const [row] = await outboxStore.all();
         expect(row).toMatchObject({ localId, sid, state: 'failed', ownerTabId: 'tab-me' });
         expect(plain(row.body).content.text).toBe('rejected');
+    });
+
+    it('B-814b S4: a retry persists the row the first send never got onto disk', async () => {
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+        const sid = newSession();
+        postStatus = 400;
+        const localId = (await sync.sendMessage(sid, 'persist timed out')) as string;
+        await settle();
+        await outboxStore.remove([localId]); // as if the 1s persist budget had run out
+        postStatus = 503; // the retry does not get through either
+        expect(sync.retrySend(sid, localId)).toBe(true);
+        await settle();
+        expect(await outboxStore.all()).toMatchObject([{ localId, sid, state: 'queued', ownerTabId: 'tab-me' }]);
+        sync.onSessionDeleted(sid); // stop its 503 retries from leaking into the next case
     });
 
     it('stores only ciphertext — no plaintext field on the row', async () => {
@@ -317,14 +334,130 @@ describe('B-814 takeover after a reload (§5.5.3)', () => {
         expect(posts.flatMap((p) => p.localIds)).toEqual(['turn-file', 'turn-text']);
     });
 
-    it('a deleted session takes its rows with it', async () => {
-        const sid = newSession();
-        await outboxStore.put([orphan('gone-session', 'g-1', 'nowhere to go')]);
-        await reclaim();
-        await settle();
-        expect(await outboxStore.all()).toEqual([]);
-        expect(posts).toEqual([]);
-        void sid;
+    describe('B-814b: a session missing from the store is looked up, never assumed deleted', () => {
+        /** A session the server has but this page's store does not (yet). */
+        function unlistedSession(): string {
+            const sid = newSession();
+            storage.setState((state) => {
+                const { [sid]: _omitted, ...sessions } = state.sessions;
+                return { sessions };
+            });
+            return sid;
+        }
+        const listed = (sid: string) => storage.setState((state) => ({
+            sessions: { ...state.sessions, [sid]: { id: sid, presence: 'online', thinking: false, active: true, metadata: { flavor: 'claude', path: '/tmp/x', host: 'h', machineId: 'm1' }, agentState: null } as never },
+        }));
+        /** fetchSessionById as the server answers it: `found` puts it in the store. */
+        function lookup(answers: Array<'found' | 'missing' | Error>) {
+            return vi.spyOn(sync, 'fetchSessionById').mockImplementation(async (sid) => {
+                const answer = answers.shift() ?? 'found';
+                if (answer instanceof Error) throw answer;
+                if (answer === 'found') listed(sid);
+                return answer;
+            });
+        }
+
+        it('older than the newest 150 (not in the list): fetched by id, then re-sent once', async () => {
+            const sid = unlistedSession();
+            const fetchById = lookup(['found']);
+            await outboxStore.put([orphan(sid, 'old-session-1', 'to an old session')]);
+            await reclaim();
+            await settle();
+            expect(fetchById).toHaveBeenCalledWith(sid);
+            expect(posts.map((p) => p.localIds)).toEqual([['old-session-1']]);
+            expect(serverTexts(sid)).toEqual(['history', 'to an old session']);
+            expect(await outboxStore.all()).toEqual([]);
+        });
+
+        it('its row could not be decoded: the rows stay, and the next pass sends them', async () => {
+            vi.spyOn(console, 'log').mockImplementation(() => {});
+            const sid = unlistedSession();
+            lookup([new Error('Session could not be decoded'), 'found']);
+            await outboxStore.put([orphan(sid, 'undecoded-1', 'kept while undecodable')]);
+            await reclaim();
+            await settle();
+            expect(posts).toEqual([]);
+            expect((await outboxStore.all()).map((r) => [r.localId, r.ownerTabId])).toEqual([['undecoded-1', 'tab-me']]);
+            await reclaim();
+            await settle();
+            expect(posts.map((p) => p.localIds)).toEqual([['undecoded-1']]);
+            expect(serverTexts(sid).filter((t) => t === 'kept while undecodable')).toHaveLength(1);
+        });
+
+        it('the list load gave up (empty store) and the lookup fails too: kept, recovered on the next pass', async () => {
+            vi.spyOn(console, 'log').mockImplementation(() => {});
+            const sid = unlistedSession();
+            const before = storage.getState().sessions;
+            storage.setState({ sessions: {} });
+            lookup([new Error('Failed to fetch'), 'found']);
+            await outboxStore.put([orphan(sid, 'gave-up-1', 'list never loaded')]);
+            await reclaim();
+            await settle();
+            expect(posts).toEqual([]);
+            expect((await outboxStore.all()).map((r) => r.localId)).toEqual(['gave-up-1']);
+            await reclaim();
+            await settle();
+            expect(posts.map((p) => p.localIds)).toEqual([['gave-up-1']]);
+            storage.setState((state) => ({ sessions: { ...before, ...state.sessions } }));
+        });
+
+        it('a real 404: the session is gone, so are its rows — nothing sent', async () => {
+            const sid = unlistedSession();
+            server.delete(sid);
+            lookup(['missing']);
+            await outboxStore.put([orphan(sid, 'g-1', 'nowhere to go')]);
+            await reclaim();
+            await settle();
+            expect(await outboxStore.all()).toEqual([]);
+            expect(posts).toEqual([]);
+        });
+
+        it('the key has not loaded yet: not dropped, not stuck — the next pass sends it', async () => {
+            const sid = newSession();
+            keyless.add(sid);
+            await outboxStore.put([orphan(sid, 'keyless-1', 'waiting for the key')]);
+            await reclaim();
+            await settle();
+            expect(posts).toEqual([]);
+            expect((await outboxStore.all()).map((r) => r.localId)).toEqual(['keyless-1']);
+            keyless.delete(sid);
+            await reclaim();
+            await settle();
+            expect(posts.map((p) => p.localIds)).toEqual([['keyless-1']]);
+            expect(await outboxStore.all()).toEqual([]);
+        });
+
+        it('a row that waited past 10 minutes for its key is not sent on its own — 「未发送」', async () => {
+            const sid = newSession();
+            keyless.add(sid);
+            await outboxStore.put([orphan(sid, 'late-key-1', 'key came late', { createdAt: Date.now() - 9 * 60_000 })]);
+            await reclaim();
+            await settle();
+            keyless.delete(sid);
+            const realNow = Date.now;
+            vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 2 * 60_000); // two passes later
+            await reclaim();
+            await settle();
+            vi.mocked(Date.now).mockRestore();
+            expect(posts).toEqual([]);
+            expect(bubbles(sid).at(-1)).toMatchObject({ text: 'key came late', sendState: 'failed', sendStale: true });
+        });
+
+        it('a session deleted while its rows wait is not sent to', async () => {
+            const sid = newSession();
+            keyless.add(sid);
+            await outboxStore.put([orphan(sid, 'del-1', 'then deleted')]);
+            await reclaim();
+            await settle();
+            sync.onSessionDeleted(sid);
+            keyless.delete(sid);
+            const fetchById = vi.spyOn(sync, 'fetchSessionById');
+            await reclaim();
+            await settle();
+            expect(fetchById).not.toHaveBeenCalled(); // forgotten, not looked up again
+            expect(posts).toEqual([]);
+            expect(await outboxStore.all()).toEqual([]);
+        });
     });
 
     it('a real reload in the middle of a send: the input reaches the server exactly once', async () => {

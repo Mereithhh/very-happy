@@ -49,8 +49,11 @@ export type OutboxRow = {
 };
 
 export type OutboxStoreDeps = {
-    /** The account's open database, or null (no IndexedDB / cache off / disabled). */
-    db: () => Promise<IDBDatabase | null>;
+    /**
+     * The account's open database, or null (no IndexedDB / cache off / disabled).
+     * `delete`: also while quota made the cache read-only — a delete frees space.
+     */
+    db: (purpose: 'write' | 'delete') => Promise<IDBDatabase | null>;
     now?: () => number;
 };
 
@@ -88,20 +91,27 @@ export class OutboxStore {
         return this.run('put', (store) => { for (const row of rows) store.put(row); }).then((ok) => ok !== null);
     }
 
-    /** Change stored rows in place; a localId with no row is skipped (it was never persisted). */
-    update(localIds: readonly string[], change: (row: OutboxRow) => OutboxRow): Promise<void> {
+    /**
+     * Change stored rows in place. A localId with no row (it was never
+     * persisted) gets `missing(localId)` instead, or is skipped on null.
+     */
+    update(localIds: readonly string[], change: (row: OutboxRow) => OutboxRow, missing?: (localId: string) => OutboxRow | null): Promise<void> {
         if (localIds.length === 0) return Promise.resolve();
         return this.run('update', async (store) => {
             for (const localId of localIds) {
                 const row = await req<unknown>(store.get(localId));
                 if (isOutboxRow(row)) store.put(change(row));
+                else {
+                    const created = missing?.(localId);
+                    if (created) store.put(created);
+                }
             }
         }).then(() => {});
     }
 
     remove(localIds: readonly string[]): Promise<void> {
         if (localIds.length === 0) return Promise.resolve();
-        return this.run('delete', (store) => { for (const localId of localIds) store.delete(localId); }).then(() => {});
+        return this.run('delete', (store) => { for (const localId of localIds) store.delete(localId); }, 'delete').then(() => {});
     }
 
     /** Every row; malformed ones are deleted on the way. */
@@ -160,10 +170,10 @@ export class OutboxStore {
         return taken;
     }
 
-    private run<T>(what: string, body: (store: IDBObjectStore) => T | Promise<T>): Promise<Awaited<T> | null> {
+    private run<T>(what: string, body: (store: IDBObjectStore) => T | Promise<T>, purpose: 'write' | 'delete' = 'write'): Promise<Awaited<T> | null> {
         const op = this.chain.then(async (): Promise<Awaited<T> | null> => {
             if (this.stuck) return null;
-            const db = await this.deps.db().catch(() => null);
+            const db = await this.deps.db(purpose).catch(() => null);
             if (!db) return null;
             try {
                 return await withTimeout((async () => {

@@ -48,7 +48,7 @@ import { fetchWithDeadline, SYNC_READ_TIMEOUT_MS } from './requestDeadline';
 import { hedgedRead } from './hedgedRead';
 import { catchUpForward, mergeFetchedLastSeq, throwIfAborted } from './messageCatchUp';
 import { outboxStore, syncCache, type CacheHit } from './cache/syncCache';
-import type { OutboxRow } from './cache/outboxStore';
+import { takeoverAction, type OutboxRow } from './cache/outboxStore';
 import { planOutboxAdoption } from './outboxAdoption';
 import { isTabAlive, thisTabId, withTabLock } from './tabLiveness';
 import { checkCacheAnchor } from './cache/segment';
@@ -253,6 +253,8 @@ class Sync {
     private inFlightOutbox = new Map<string, ReadonlySet<string>>();
     /** B-814: a takeover pass of the persistent outbox in progress. */
     private outboxReclaim: Promise<void> | null = null;
+    /** B-814b: rows this tab took over but could not adopt yet (session not loaded, no key, lookup failed) — retried every pass. */
+    private outboxDeferred = new Map<string, OutboxRow[]>();
     private outboxReclaimTimer: ReturnType<typeof setInterval> | null = null;
     private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
     private sessionQueueProcessing = new Set<string>();
@@ -564,9 +566,20 @@ class Sync {
         if (this.outboxReclaim) return this.outboxReclaim;
         this.outboxReclaim = (async () => {
             const rows = await outboxStore.takeOver(thisTabId(), isTabAlive, (fn) => withTabLock('vh-outbox-claim', fn));
-            const bySession = new Map<string, OutboxRow[]>();
+            // Deferred rows were claimed passes ago: the 10-minute rule counts until now.
+            const now = Date.now();
+            const bySession = new Map([...this.outboxDeferred].map(([sessionId, deferred]) => [sessionId, deferred.map((row): OutboxRow => ({
+                ...row, state: takeoverAction(row, now) === 'resend' ? 'queued' : 'failed',
+            }))]));
+            this.outboxDeferred.clear();
+            // Deferred rows are owned here already: takeOver never returns them twice.
             for (const row of rows) bySession.set(row.sid, [...(bySession.get(row.sid) ?? []), row]);
-            for (const [sessionId, sessionRows] of bySession) await this.adoptOutboxRows(sessionId, sessionRows);
+            for (const [sessionId, sessionRows] of bySession) {
+                await this.adoptOutboxRows(sessionId, sessionRows).catch((error) => {
+                    log.log(`📨 outbox adoption of ${sessionId} failed (${error instanceof Error ? error.message : String(error)})`);
+                    this.outboxDeferred.set(sessionId, [...sessionRows]);
+                });
+            }
         })().catch((error) => {
             log.log(`📨 outbox takeover failed (${error instanceof Error ? error.message : String(error)})`);
         }).finally(() => { this.outboxReclaim = null; });
@@ -575,12 +588,25 @@ class Sync {
 
     private async adoptOutboxRows(sessionId: string, rows: readonly OutboxRow[]) {
         if (!storage.getState().sessions[sessionId]) {
-            // §5.4.2: the session is gone — so are its unsent inputs.
-            void outboxStore.remove(rows.map((row) => row.localId));
-            return;
+            // B-814b: not in the store is not deleted — the list stops at the newest
+            // 150 rows, skips rows it cannot decode, and a given-up load leaves it
+            // empty. Only a 404 says the session (§5.4.2: and its inputs) is gone.
+            const found = await this.fetchSessionById(sessionId).catch(() => null);
+            if (found === 'missing') {
+                void outboxStore.remove(rows.map((row) => row.localId));
+                return;
+            }
+            if (found === null || !storage.getState().sessions[sessionId]) {
+                this.outboxDeferred.set(sessionId, [...rows]);
+                return;
+            }
         }
         const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) return; // owned here now; the next load takes them over again
+        if (!encryption) {
+            // Owned here now, so no other pass takes them over: the next one of ours retries.
+            this.outboxDeferred.set(sessionId, [...rows]);
+            return;
+        }
         // The latest page first: a copy the server already stored is then
         // recognised by its localId instead of showing up a second time.
         await settleWithin(this.getMessagesSync(sessionId).invalidateAndAwait(), OUTBOX_ADOPT_PAGE_WAIT_MS);
@@ -1160,7 +1186,16 @@ class Sync {
         const localIds = members.map((member) => member.localId);
         // B-814: the user's retry restarts the 10-minute clock; the row is the outbox's again.
         const retriedAt = Date.now();
-        void outboxStore.update(localIds, (row) => ({ ...row, state: 'queued', createdAt: retriedAt, attempts: row.attempts + 1, ownerTabId: thisTabId() }));
+        // A row the first send never got onto disk (persist timed out) is written now.
+        const ownerTabId = thisTabId();
+        const byLocalId = new Map(members.map((member) => [member.localId, member]));
+        void outboxStore.update(localIds, (row) => ({ ...row, state: 'queued', createdAt: retriedAt, attempts: row.attempts + 1, ownerTabId }), (id) => {
+            const member = byLocalId.get(id);
+            return member?.content ? {
+                localId: id, sid: sessionId, body: member.content, createdAt: retriedAt, state: 'queued',
+                attempts: 1, ownerTabId, group: member.group, order: member.order,
+            } : null;
+        });
         if (members.some((member) => !member.content)) {
             // B-722: its encryption failed — encrypt again, then send as usual.
             const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -1917,6 +1952,7 @@ class Sync {
         forgetCatchUp(sessionId);
         this.sendSync.delete(sessionId);
         this.pendingOutbox.delete(sessionId);
+        this.outboxDeferred.delete(sessionId);
         // B-513: send states die with the reducer state deleteSession dropped;
         // drop the retry records and deadlines too.
         this.sendAbortControllers.get(sessionId)?.abort();

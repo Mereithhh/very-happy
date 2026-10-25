@@ -5,7 +5,7 @@
  */
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SyncCache } from './syncCache';
 import { OUTBOX_AUTO_RESEND_MS, OutboxStore, takeoverAction, type OutboxRow } from './outboxStore';
 
@@ -22,7 +22,7 @@ async function harness(factory = new IDBFactory(), account = 'account-1') {
     const now = { t: 1_000_000 };
     const cache = new SyncCache({ factory: () => factory, now: () => now.t, localStorage: memoryStorage, idle: () => {} });
     await cache.open(account);
-    const store = new OutboxStore({ db: () => cache.outboxDatabase(), now: () => now.t });
+    const store = new OutboxStore({ db: (purpose) => cache.outboxDatabase(undefined, purpose), now: () => now.t });
     return { cache, store, now, factory };
 }
 
@@ -61,6 +61,10 @@ describe('OutboxStore', () => {
         await store.update(['a', 'missing'], (r) => ({ ...r, state: 'failed' }));
         expect((await store.all()).find((r) => r.localId === 'a')?.state).toBe('failed');
         expect((await store.all()).some((r) => r.localId === 'missing')).toBe(false);
+        // B-814b S4: a row the first send never persisted is written by a retry.
+        await store.update(['a', 'late'], (r) => ({ ...r, attempts: r.attempts + 1 }), (id) => (id === 'late' ? row('late') : null));
+        expect((await store.all()).map((r) => [r.localId, r.attempts]).sort()).toEqual([['a', 1], ['b', 0], ['late', 0]]);
+        await store.remove(['late']);
         await store.remove(['a']);
         expect((await store.all()).map((r) => r.localId)).toEqual(['b']);
     });
@@ -98,6 +102,28 @@ describe('OutboxStore', () => {
         expect(await store.put([row('a')])).toBe(false);
         expect(await store.all()).toEqual([]);
         await expect(store.remove(['a'])).resolves.toBeUndefined();
+    });
+
+    it('B-814b S2: quota made the cache read-only — new rows are refused, but an ack still deletes its row', async () => {
+        const { store, cache } = await harness();
+        await store.put([row('acked'), row('kept')]);
+        const message = (seq: number) => ({ id: `m${seq}`, seq, localId: null, content: { t: 'encrypted' as const, c: `Y2lwaGVy${seq}` }, createdAt: seq, updatedAt: seq });
+        cache.offerLatest('s1', [message(1)], { viewed: true });
+        await cache.flush();
+        const put = IDBObjectStore.prototype.put;
+        vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore['put']>) {
+            if (this.name === 'messages') throw new DOMException('quota', 'QuotaExceededError');
+            return put.apply(this, args);
+        });
+        cache.offerNewer('s1', [message(2)]);
+        await cache.flush();
+        vi.restoreAllMocks();
+        expect(cache.stats().readOnly).toBe(true);
+        expect(await store.put([row('new')])).toBe(false);
+        await store.remove(['acked']);
+        const db = (await cache.outboxDatabase(undefined, 'delete'))!;
+        const keys = db.transaction('outbox', 'readonly').objectStore('outbox').getAllKeys();
+        expect(await new Promise((resolve) => { keys.onsuccess = () => resolve(keys.result); })).toEqual(['kept']);
     });
 
     it('the cache\'s session-deleted drop removes that session\'s outbox rows', async () => {
