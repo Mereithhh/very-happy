@@ -11,7 +11,7 @@ import { randomUUID } from 'expo-crypto';
 import { storage } from './storage';
 import { sync } from './sync';
 import { machineSpawnNewSession, sessionArchive, sessionKill } from './ops';
-import { holdTabLiveness, isTabAlive, withTabLock } from './tabLiveness';
+import { isTabAlive, thisTabId, withTabLock } from './tabLiveness';
 import { loadNewChatDraft, loadPendingSessions, loadQueuedMessages, loadSessionDrafts, saveNewChatDraft, savePendingSessions, saveQueuedMessages } from './persistence';
 import { useBoardTasks } from './boardTasks';
 import { normalizeAgentKey } from './agentDefaults';
@@ -35,8 +35,7 @@ const RECLAIM_INTERVAL_MS = 30_000;
 const PENDING_STORAGE_SUFFIX = ':pending-sessions-v1';
 
 /** This page load's identity; records it creates are owned by it. */
-const TAB_ID = randomUUID();
-holdTabLiveness(TAB_ID);
+const TAB_ID = thisTabId();
 
 let navigator: ((to: string) => void) | null = null;
 
@@ -77,7 +76,12 @@ export const pendingSessions = createPendingSessionStore({
     },
     hasSession: (id) => !!storage.getState().sessions[id],
     subscribeSessions: (listener) => storage.subscribe(listener),
-    sendMessage: (id, text) => sync.sendMessage(id, text, { source: 'chat' }),
+    async sendMessage(id, text, localId) {
+        const receipt = await sync.sendMessage(id, text, { source: 'chat', localId });
+        // B-814 §5.5.4: the item leaves this record only once the outbox has it on disk.
+        await sync.whenOutboxPersisted(id);
+        return receipt;
+    },
     writePermissionMode: (id, mode) => storage.getState().updateSessionPermissionMode(id, mode),
     writeModelMode: (id, mode) => storage.getState().updateSessionModelMode(id, mode),
     writeEffortLevel: (id, level) => storage.getState().updateSessionEffortLevel(id, level),

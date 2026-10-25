@@ -99,6 +99,24 @@
  *         session's cache still hits.
  *   QUOTA the origin's storage quota is forced to 1 byte (CDP) → every
  *         transcript loads from the network, complete, twice in a row.
+ * B-814 (PR-6b, the persistent outbox; a fourth context straight to Vite;
+ * page.route makes every message POST fail on the way — retried, never
+ * answered — until the page goes away):
+ *   OUTBOX_REFRESH a message is sent, its POST fails on the way; the page
+ *         reloads → it is on the server exactly once, under its localId.
+ *         Twice: once the server never saw the POST (re-sent once), once it
+ *         stored it and only the answer was lost (the latest page already holds
+ *         that localId: recognised, not sent again). The outbox ends empty.
+ *   OUTBOX_STALE the unsent messages' rows are aged past 10 minutes, then the
+ *         page reloads → 「未发送 · 重发 / 丢弃」, nothing sent for 3s; 重发 →
+ *         on the server once; a second one 丢弃 → gone, never on the server.
+ *   OUTBOX_TABS two pages of one browser on the session; the first sends with
+ *         its POSTs failing → the second does not send it while the first is
+ *         open (3s); the first closes → the second takes it over (≤ the 15s
+ *         reclaim pass) and sends it, exactly once.
+ *   OUTBOX_DRAFT (B-801) a pending session's first message: the spawn RPC is
+ *         stubbed (a REST-created session); the message's POST fails and the
+ *         page reloads right after it landed → exactly once.
  * Prints one line per measurement (`MEASURE <scenario> <ms|never>`) for the
  * before/after table. Exit code 1 on any failed check.
  */
@@ -1041,7 +1059,10 @@ try {
                     const prompt = `${prefix}-q4`;
                     const answer = `${prefix}-a4`;
                     await send(page, prompt);
-                    await waitTranscript(page, S, prefix, 7, 5_000);
+                    // The agent answers a prompt the server holds — not its optimistic bubble
+                    // (B-814: the POST now waits for its outbox row, a few ms).
+                    const confirmedMs = await timeUntilVisible(page, S, prompt, 5_000, Date.now(), { confirmed: true });
+                    check(confirmedMs !== null, `EDIT ${which} q4 confirmed by the server`);
                     await agentSay(page2, S, [answer], 0);
                     check(await waitTranscript(page, S, prefix, 8, 5_000) !== null, `EDIT ${which} tab1 ran its own turn`);
                     seeded.push(prompt, answer);
@@ -1283,6 +1304,232 @@ try {
                     await ctx.close();
                 }
             }
+        }
+    }
+
+    // ── B-814: the persistent outbox (a fresh browser context, straight to Vite) ──
+    if (want('OUTBOX_REFRESH') || want('OUTBOX_STALE') || want('OUTBOX_TABS') || want('OUTBOX_DRAFT')) {
+        const ctx = await browser.newContext(ctxOpts);
+        await ctx.addInitScript((entries) => {
+            if (sessionStorage.getItem('b803-seeded')) return;
+            sessionStorage.setItem('b803-seeded', '1');
+            for (const [k, v] of Object.entries(entries)) localStorage.setItem(k, v);
+        }, storageDump);
+        const isPost = (request) => request.method() === 'POST' && /\/v3\/sessions\/[^/]+\/messages$/.test(request.url());
+        const localIdsOf = (request) => JSON.parse(request.postData() ?? '{}').messages?.map((m) => m.localId) ?? [];
+        /**
+         * Every message POST of this page fails on the way (the app keeps
+         * retrying it, as on a dead link): `before` = the server never sees it,
+         * `after` = the server stores it and only the answer is lost. Aborted,
+         * not left hanging: a hanging intercepted request would be let through
+         * when the page closes.
+         */
+        const holdPosts = async (page, mode) => {
+            const held = [];
+            await page.route('**/v3/sessions/*/messages', async (route) => {
+                if (!isPost(route.request())) return route.fallback();
+                held.push(localIdsOf(route.request()));
+                if (mode === 'after') await route.fetch().catch(() => {});
+                await route.abort('connectionreset').catch(() => {});
+            });
+            return held;
+        };
+        /** From now on, let this page's message POSTs through and record them. */
+        const passPosts = async (page) => {
+            await page.unroute('**/v3/sessions/*/messages');
+            const seen = [];
+            await page.route('**/v3/sessions/*/messages', async (route) => {
+                if (isPost(route.request())) seen.push(localIdsOf(route.request()));
+                await route.fallback();
+            });
+            return seen;
+        };
+        /** Sent from the page's own send path (not the composer, which may queue a second prompt on the server). */
+        const sendDirect = (page, sid, text) => page.evaluate(({ sid, text }) => import('/src/sync/sync.ts').then(({ sync }) => sync.sendMessage(sid, text, { source: 'chat' })), { sid, text });
+        const outboxRows = (page) => page.evaluate(() => import('/src/sync/cache/syncCache.ts').then(({ outboxStore }) => outboxStore.all()));
+        const waitRows = async (page, n, timeoutMs = 5_000) => {
+            const t0 = Date.now();
+            while (Date.now() - t0 < timeoutMs) { if ((await outboxRows(page)).length >= n) return true; await sleep(50); }
+            return false;
+        };
+        /** What the server holds: every message of `sid`, decrypted by tab2, oldest first. */
+        const serverTexts = (sid, prefix) => page2.evaluate(async ({ sid, prefix }) => {
+            const { sync } = await import('/src/sync/sync.ts');
+            const { apiSocket } = await import('/src/sync/apiSocket.ts');
+            const res = await apiSocket.request(`/v3/sessions/${sid}/messages?after_seq=0&limit=500`);
+            const { messages } = await res.json();
+            const decrypted = await sync.encryption.getSessionEncryption(sid).decryptMessages(messages);
+            return decrypted.map((m) => m?.content?.content?.text).filter((t) => typeof t === 'string' && t.startsWith(prefix));
+        }, { sid, prefix });
+        const waitServer = async (sid, prefix, n, timeoutMs) => {
+            const t0 = Date.now();
+            while (Date.now() - t0 < timeoutMs) { if ((await serverTexts(sid, prefix)).length >= n) return Date.now() - t0; await sleep(200); }
+            return null;
+        };
+        const openFresh = async (sid) => {
+            const page = await ctx.newPage();
+            page.on('pageerror', (e) => console.log('outbox pageerror', e.message));
+            await openSession(page, BASE, sid);
+            return page;
+        };
+        const [SO, SS, SD] = await createSessions(page2, ['/tmp/b814-refresh', '/tmp/b814-stale', '/tmp/b814-tabs']);
+        try {
+            if (want('OUTBOX_REFRESH')) {
+                for (const mode of ['before', 'after']) {
+                    step(`OUTBOX_REFRESH the POST fails (${mode === 'before' ? 'never reached the server' : 'stored, answer lost'}), then the page reloads`);
+                    const page = await openFresh(SO);
+                    const held = await holdPosts(page, mode);
+                    const text = token(`outbox-refresh-${mode}`);
+                    await send(page, text);
+                    check(await waitRows(page, 1), `OUTBOX_REFRESH ${mode}: the row is in IndexedDB before the page goes away`);
+                    const t1 = Date.now();
+                    while (held.length === 0 && Date.now() - t1 < 5_000) await sleep(50);
+                    check(held.length === 1, `OUTBOX_REFRESH ${mode}: its POST was on the wire`, JSON.stringify(held));
+                    const posts = await passPosts(page);
+                    const t0 = Date.now();
+                    await page.reload();
+                    await page.locator('textarea.ci-textarea').waitFor({ timeout: 60_000 });
+                    const ms = await timeUntilVisible(page, SO, text, 20_000, t0, { confirmed: true });
+                    measure(`OUTBOX_REFRESH-${mode}`, ms);
+                    check(ms !== null, `OUTBOX_REFRESH ${mode}: after the reload it is shown confirmed`, fmt(ms));
+                    await sleep(1_500);
+                    const onServer = await serverTexts(SO, text);
+                    check(onServer.length === 1, `OUTBOX_REFRESH ${mode}: on the server exactly once`, JSON.stringify(onServer));
+                    check((await transcript(page, SO, text)).length === 1, `OUTBOX_REFRESH ${mode}: one bubble`);
+                    // `after`: the latest page already holds it (same localId) — nothing left to send.
+                    check(mode === 'before'
+                        ? posts.length === 1 && posts[0].length === 1 && posts[0][0] === held[0][0]
+                        : posts.length <= 1 && posts.flat().every((id) => id === held[0][0]),
+                        `OUTBOX_REFRESH ${mode}: ${mode === 'before' ? 're-sent once, with the same localId' : 'not re-sent under another localId (the stored copy is recognised)'}`, JSON.stringify(posts));
+                    check((await outboxRows(page)).length === 0, `OUTBOX_REFRESH ${mode}: the outbox is empty again`);
+                    await page.close();
+                }
+            }
+
+            if (want('OUTBOX_STALE')) {
+                step('OUTBOX_STALE unsent messages aged past 10 minutes → 「未发送 · 重发 / 丢弃」 after the reload');
+                const page = await openFresh(SS);
+                await holdPosts(page, 'before');
+                const keep = token('outbox-stale-keep');
+                const drop = token('outbox-stale-drop');
+                await sendDirect(page, SS, keep);
+                await sendDirect(page, SS, drop);
+                check(await waitRows(page, 2), 'OUTBOX_STALE both rows are in IndexedDB');
+                // Eleven minutes ago, as far as the outbox can tell.
+                await page.evaluate(async () => {
+                    const { outboxStore } = await import('/src/sync/cache/syncCache.ts');
+                    const rows = await outboxStore.all();
+                    await outboxStore.put(rows.map((row) => ({ ...row, createdAt: Date.now() - 11 * 60_000 })));
+                });
+                const posts = await passPosts(page);
+                await page.reload();
+                await page.locator('textarea.ci-textarea').waitFor({ timeout: 60_000 });
+                let stale = null;
+                for (let i = 0; i < 100 && stale === null; i++) {
+                    const n = await page.locator('[data-send-state="stale"]').count();
+                    if (n >= 2) stale = n; else await sleep(100);
+                }
+                await shot(page, 'outbox-stale');
+                check(stale === 2, 'OUTBOX_STALE both show 「未发送」 with 重发 / 丢弃', `${stale}`);
+                const labels = await page.locator('[data-send-state="stale"]').first().innerText();
+                check(/未发送/.test(labels) && /重发/.test(labels) && /丢弃/.test(labels), 'OUTBOX_STALE the row reads 「未发送 · 重发 · 丢弃」', JSON.stringify(labels));
+                await sleep(3_000);
+                check(posts.length === 0 && (await serverTexts(SS, 'outbox-stale')).length === 0, 'OUTBOX_STALE nothing is sent on its own', JSON.stringify(posts));
+                // 重发 the first, 丢弃 the second (rows are newest last on screen).
+                const clickIn = async (text, label) => page.evaluate(({ text, label }) => {
+                    for (const status of document.querySelectorAll('[data-send-state="stale"]')) {
+                        let node = status;
+                        while (node && !(node.textContent ?? '').includes(text)) node = node.parentElement;
+                        if (!node) continue;
+                        const button = [...status.querySelectorAll('button')].find((b) => b.textContent === label);
+                        if (button) { button.click(); return true; }
+                    }
+                    return false;
+                }, { text, label });
+                check(await clickIn(keep, '重发'), 'OUTBOX_STALE 重发 clicked');
+                const resent = await waitServer(SS, keep, 1, 10_000);
+                check(resent !== null, 'OUTBOX_STALE 重发 → on the server', fmt(resent));
+                check(await clickIn(drop, '丢弃'), 'OUTBOX_STALE 丢弃 clicked');
+                await sleep(2_000);
+                check((await serverTexts(SS, keep)).length === 1, 'OUTBOX_STALE the resent one is there exactly once');
+                check((await serverTexts(SS, drop)).length === 0, 'OUTBOX_STALE the discarded one never reached the server');
+                check((await transcript(page, SS, drop)).length === 0, 'OUTBOX_STALE the discarded one is gone from the transcript');
+                check((await outboxRows(page)).length === 0, 'OUTBOX_STALE the outbox is empty again');
+                await page.close();
+            }
+
+            if (want('OUTBOX_TABS')) {
+                step('OUTBOX_TABS two pages; the sender\'s POSTs fail; it closes → the other takes over, exactly once');
+                const owner = await openFresh(SD);
+                const other = await openFresh(SD);
+                const otherPosts = await passPosts(other);
+                await holdPosts(owner, 'before');
+                const text = token('outbox-tabs');
+                await send(owner, text);
+                check(await waitRows(owner, 1), 'OUTBOX_TABS the row is in IndexedDB');
+                await sleep(3_000);
+                check(otherPosts.length === 0, 'OUTBOX_TABS the other page leaves it alone while its tab is open', JSON.stringify(otherPosts));
+                await owner.close();
+                const ms = await waitServer(SD, text, 1, 40_000);
+                measure('OUTBOX_TABS-takeover', ms);
+                check(ms !== null, 'OUTBOX_TABS the other page takes it over and sends it (≤ reclaim interval + send)', fmt(ms));
+                await sleep(2_000);
+                check((await serverTexts(SD, text)).length === 1, 'OUTBOX_TABS on the server exactly once');
+                check(otherPosts.flat().length === 1, 'OUTBOX_TABS one POST from the other page', JSON.stringify(otherPosts));
+                const shown = await timeUntilVisible(other, SD, text, 5_000, Date.now(), { confirmed: true });
+                check(shown !== null && (await transcript(other, SD, text)).length === 1, 'OUTBOX_TABS the other page shows it once');
+                check((await outboxRows(other)).length === 0, 'OUTBOX_TABS the outbox is empty again');
+                await other.close();
+            }
+
+            if (want('OUTBOX_DRAFT')) {
+                step('OUTBOX_DRAFT (B-801) a pending session\'s first message, POST failing, page reloaded right after it landed');
+                const page = await ctx.newPage();
+                page.on('pageerror', (e) => console.log('outbox pageerror', e.message));
+                await page.goto(`${BASE}/`);
+                await waitConnected(page, 60_000);
+                await dismissDialogs(page);
+                await holdPosts(page, 'before');
+                const text = token('outbox-draft');
+                const sid = await page.evaluate(async (text) => {
+                    const { apiSocket } = await import('/src/sync/apiSocket.ts');
+                    const { sync } = await import('/src/sync/sync.ts');
+                    const { storage } = await import('/src/sync/storage.ts');
+                    const { encodeBase64 } = await import('/src/encryption/base64.ts');
+                    const { pendingSessions } = await import('/src/sync/pendingSessionsRuntime.ts');
+                    let created = null;
+                    // No daemon here: the spawn RPC creates the session over REST, like a daemon would.
+                    apiSocket.machineRPC = async () => {
+                        const enc = await sync.encryption.openEncryption(null);
+                        const [metadata] = await enc.encrypt([{ path: '/tmp/b814-draft', host: 'e2e', flavor: 'claude' }]);
+                        const res = await apiSocket.request('/v1/sessions', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ tag: crypto.randomUUID(), metadata: encodeBase64(metadata, 'base64'), agentState: null, dataEncryptionKey: null }),
+                        });
+                        created = (await res.json()).session.id;
+                        return { type: 'success', sessionId: created };
+                    };
+                    const record = pendingSessions.create({ machineId: 'e2e-machine', path: '/tmp/b814-draft', agent: 'claude', permissionMode: 'default', source: 'quick', firstMessage: text });
+                    for (let i = 0; i < 300; i++) {
+                        const current = pendingSessions.get(record.pendingId);
+                        if (current?.state === 'landed' && created && storage.getState().sessionMessages[created]) return created;
+                        await new Promise((r) => setTimeout(r, 50));
+                    }
+                    throw new Error(`pending session did not land: ${JSON.stringify(pendingSessions.get(record.pendingId))}`);
+                }, text);
+                check(await waitRows(page, 1), 'OUTBOX_DRAFT the first message is in the outbox before its record let go of it');
+                await passPosts(page);
+                await page.goto(`${BASE}/session/${sid}`);
+                await page.locator('textarea.ci-textarea').waitFor({ timeout: 60_000 });
+                const ms = await timeUntilVisible(page, sid, text, 20_000, Date.now(), { confirmed: true });
+                check(ms !== null, 'OUTBOX_DRAFT after the reload the first message is shown confirmed', fmt(ms));
+                await sleep(1_500);
+                check((await serverTexts(sid, text)).length === 1, 'OUTBOX_DRAFT on the server exactly once', JSON.stringify(await serverTexts(sid, text)));
+                check((await transcript(page, sid, text)).length === 1, 'OUTBOX_DRAFT one bubble');
+                await page.close();
+            }
+        } finally {
+            await ctx.close();
         }
     }
 

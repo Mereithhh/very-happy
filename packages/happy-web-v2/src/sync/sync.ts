@@ -47,7 +47,10 @@ import { isNetworkOffline, startNetworkMonitor } from './networkStatus';
 import { fetchWithDeadline, SYNC_READ_TIMEOUT_MS } from './requestDeadline';
 import { hedgedRead } from './hedgedRead';
 import { catchUpForward, mergeFetchedLastSeq, throwIfAborted } from './messageCatchUp';
-import { syncCache, type CacheHit } from './cache/syncCache';
+import { outboxStore, syncCache, type CacheHit } from './cache/syncCache';
+import { takeoverAction, type OutboxRow } from './cache/outboxStore';
+import { planOutboxAdoption } from './outboxAdoption';
+import { isTabAlive, thisTabId, withTabLock } from './tabLiveness';
 import { checkCacheAnchor } from './cache/segment';
 import { NormalizedMessage, normalizeRawMessage, RawRecord, type SessionEventPayload } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
@@ -173,6 +176,20 @@ type OutboxRecord = {
 };
 
 const SEND_DEADLINE_TICK_MS = 500;
+/** B-814: a POST waits at most this long for its outbox row to be durable, then goes anyway. */
+const OUTBOX_PERSIST_WAIT_MS = 1_000;
+/** B-814: how often a tab looks for outbox rows whose tab has gone away (B-516 uses 30s). */
+const OUTBOX_RECLAIM_INTERVAL_MS = 15_000;
+/** B-814: adopting rows waits this long for the session's latest page (a stored copy confirms them). */
+const OUTBOX_ADOPT_PAGE_WAIT_MS = 10_000;
+
+/** Resolves when `promise` settles or after `ms`, whichever is first; never rejects. */
+function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, ms);
+        promise.then(() => { clearTimeout(timer); resolve(); }, () => { clearTimeout(timer); resolve(); });
+    });
+}
 const ATTACHMENT_UPLOAD_CONCURRENCY = 3;
 
 function isBrowserOnline(): boolean {
@@ -234,6 +251,11 @@ class Sync {
     private sendDeadlineTimer: ReturnType<typeof setInterval> | null = null;
     /** localIds of the request currently on the wire, per session. */
     private inFlightOutbox = new Map<string, ReadonlySet<string>>();
+    /** B-814: a takeover pass of the persistent outbox in progress. */
+    private outboxReclaim: Promise<void> | null = null;
+    /** B-814b: rows this tab took over but could not adopt yet (session not loaded, no key, lookup failed) — retried every pass. */
+    private outboxDeferred = new Map<string, OutboxRow[]>();
+    private outboxReclaimTimer: ReturnType<typeof setInterval> | null = null;
     private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
     private sessionQueueProcessing = new Set<string>();
     private sessionMessageLocks = new Map<string, AsyncLock>();
@@ -527,7 +549,144 @@ class Sync {
             console.error('Failed to load sessions:', error);
             // Still mark ready so the UI doesn't stay on a blank screen forever
             storage.getState().applyReady();
+        }).finally(() => {
+            // B-814: inputs a closed / reloaded tab left unsent — needs the session list and keys.
+            void this.reclaimOutbox();
+            this.outboxReclaimTimer ??= setInterval(() => { void this.reclaimOutbox(); }, OUTBOX_RECLAIM_INTERVAL_MS);
         });
+    }
+
+    /**
+     * B-814 (spec §5.5.3): take over persisted inputs whose tab is gone (this
+     * tab's previous load included) — exactly one tab takes each — and send or
+     * show them. Runs after the session list loaded, then every
+     * OUTBOX_RECLAIM_INTERVAL_MS for tabs closed while this one stays open.
+     */
+    private reclaimOutbox(): Promise<void> {
+        if (this.outboxReclaim) return this.outboxReclaim;
+        this.outboxReclaim = (async () => {
+            const rows = await outboxStore.takeOver(thisTabId(), isTabAlive, (fn) => withTabLock('vh-outbox-claim', fn));
+            // Deferred rows were claimed passes ago: the 10-minute rule counts until now.
+            const now = Date.now();
+            const bySession = new Map([...this.outboxDeferred].map(([sessionId, deferred]) => [sessionId, deferred.map((row): OutboxRow => ({
+                ...row, state: takeoverAction(row, now) === 'resend' ? 'queued' : 'failed',
+            }))]));
+            this.outboxDeferred.clear();
+            // Deferred rows are owned here already: takeOver never returns them twice.
+            for (const row of rows) bySession.set(row.sid, [...(bySession.get(row.sid) ?? []), row]);
+            for (const [sessionId, sessionRows] of bySession) {
+                await this.adoptOutboxRows(sessionId, sessionRows).catch((error) => {
+                    log.log(`📨 outbox adoption of ${sessionId} failed (${error instanceof Error ? error.message : String(error)})`);
+                    this.outboxDeferred.set(sessionId, [...sessionRows]);
+                });
+            }
+        })().catch((error) => {
+            log.log(`📨 outbox takeover failed (${error instanceof Error ? error.message : String(error)})`);
+        }).finally(() => { this.outboxReclaim = null; });
+        return this.outboxReclaim;
+    }
+
+    private async adoptOutboxRows(sessionId: string, rows: readonly OutboxRow[]) {
+        if (!storage.getState().sessions[sessionId]) {
+            // B-814b: not in the store is not deleted — the list stops at the newest
+            // 150 rows, skips rows it cannot decode, and a given-up load leaves it
+            // empty. Only a 404 says the session (§5.4.2: and its inputs) is gone.
+            const found = await this.fetchSessionById(sessionId).catch(() => null);
+            if (found === 'missing') {
+                void outboxStore.remove(rows.map((row) => row.localId));
+                return;
+            }
+            if (found === null || !storage.getState().sessions[sessionId]) {
+                this.outboxDeferred.set(sessionId, [...rows]);
+                return;
+            }
+        }
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            // Owned here now, so no other pass takes them over: the next one of ours retries.
+            this.outboxDeferred.set(sessionId, [...rows]);
+            return;
+        }
+        // The latest page first: a copy the server already stored is then
+        // recognised by its localId instead of showing up a second time.
+        await settleWithin(this.getMessagesSync(sessionId).invalidateAndAwait(), OUTBOX_ADOPT_PAGE_WAIT_MS);
+        const candidates = await Promise.all(rows.map(async (row) => ({
+            row,
+            raw: await encryption.decryptRaw(row.body).catch(() => null) as RawRecord | null,
+        })));
+        await this.inOutboxOrder(sessionId, () => {
+            const reducerState = storage.getState().sessionMessages[sessionId]?.reducerState;
+            const plan = planOutboxAdoption(candidates, {
+                tracked: (localId) => this.outboxRecords.has(localId),
+                inTranscript: (localId) => reducerState?.localIds.has(localId) === true,
+            });
+            if (plan.drop.length > 0) void outboxStore.remove(plan.drop);
+            for (const { row, raw } of [...plan.resend, ...plan.stale]) {
+                this.outboxRecords.set(row.localId, {
+                    sessionId,
+                    localId: row.localId,
+                    content: row.body,
+                    group: row.group,
+                    order: this.outboxOrder++,
+                    // The page that sent it died not knowing — never offered back to the composer.
+                    mayHaveStored: true,
+                    attemptInFlight: false,
+                    raw: raw!,
+                });
+                const normalized = normalizeRawMessage(row.localId, row.localId, row.createdAt, raw!);
+                if (normalized) this.applyOptimistic(sessionId, normalized);
+            }
+            if (plan.stale.length > 0) {
+                storage.getState().applyOutboxResult(sessionId, {
+                    failures: plan.stale.map(({ row }) => ({ localId: row.localId, restorable: false, stale: true })),
+                });
+            }
+            if (plan.resend.length > 0) {
+                const localIds = plan.resend.map(({ row }) => row.localId);
+                log.log(`📨 outbox: re-sending ${localIds.length} input(s) of ${sessionId} left by a closed tab`);
+                this.sendDeadlines.start(localIds, Date.now());
+                this.ensureSendDeadlineTicker();
+                let pending = this.pendingOutbox.get(sessionId);
+                if (!pending) {
+                    pending = [];
+                    this.pendingOutbox.set(sessionId, pending);
+                }
+                // HTTP only, like a user retry: a restarted wrapper could route a relayed copy twice.
+                for (const { row } of plan.resend) pending.push({ localId: row.localId, content: row.body, httpOnly: true });
+                this.getSendSync(sessionId).invalidateNow();
+            }
+        });
+    }
+
+    /**
+     * B-814: mirror inputs that are about to be POSTed into IndexedDB. The
+     * POST waits for it (§5.5.2: a send whose page dies before the row is
+     * written would leave no trace here), but never longer than
+     * OUTBOX_PERSIST_WAIT_MS. Untracked items (tombstones) are not kept.
+     */
+    private persistOutbox(sessionId: string, items: readonly OutboxMessage[]): Promise<void> {
+        const now = Date.now();
+        const ownerTabId = thisTabId();
+        const rows: OutboxRow[] = [];
+        for (const item of items) {
+            const record = this.outboxRecords.get(item.localId);
+            if (!record || !item.content) continue;
+            rows.push({
+                localId: item.localId, sid: sessionId, body: item.content, createdAt: now, state: 'queued',
+                attempts: 0, ownerTabId, group: record.group, order: record.order,
+            });
+        }
+        if (rows.length === 0) return Promise.resolve();
+        return settleWithin(outboxStore.put(rows), OUTBOX_PERSIST_WAIT_MS);
+    }
+
+    /**
+     * B-801 × B-814: resolves once every input this session's sends handed
+     * over so far is encrypted and persisted (or gave up trying) — a pending
+     * session's first message leaves its localStorage record only then.
+     */
+    whenOutboxPersisted(sessionId: string): Promise<void> {
+        return this.outboxEncryptChain.get(sessionId) ?? Promise.resolve();
     }
 
 
@@ -884,7 +1043,10 @@ class Sync {
                 restorable: groupSize === 1 && !record.mayHaveStored && !record.attemptInFlight,
             });
         }
-        if (failures.length > 0) storage.getState().applyOutboxResult(sessionId, { failures });
+        if (failures.length > 0) {
+            storage.getState().applyOutboxResult(sessionId, { failures });
+            void outboxStore.update(failures.map((failure) => failure.localId), (row) => ({ ...row, state: 'failed' }));
+        }
     }
 
     private trackOutboxItems(sessionId: string, localIds: readonly string[], contents: readonly string[], group: string, raws?: readonly RawRecord[]) {
@@ -951,12 +1113,16 @@ class Sync {
                 }
             });
             if (ready.length === 0) return;
+            await this.persistOutbox(sessionId, ready);
+            // Its deadline (or a withdraw) may have ended it while the row was written.
+            const live = ready.filter((item) => this.sendDeadlines.has(item.localId));
+            if (live.length === 0) return;
             let pending = this.pendingOutbox.get(sessionId);
             if (!pending) {
                 pending = [];
                 this.pendingOutbox.set(sessionId, pending);
             }
-            pending.push(...ready);
+            pending.push(...live);
             this.getSendSync(sessionId).invalidateNow();
             this.maybeStartBackgroundSendWatchdog();
         });
@@ -970,6 +1136,7 @@ class Sync {
         const settled = settledOutboxRecords(this.outboxRecords.values(), sessionId, reducerState.sendStates,
             (localId) => this.sendDeadlines.has(localId) || pending.some((item) => item.localId === localId));
         for (const localId of settled) this.outboxRecords.delete(localId);
+        if (settled.length > 0) void outboxStore.remove(settled);
     }
 
     private ensureSendDeadlineTicker() {
@@ -1017,6 +1184,18 @@ class Sync {
             .sort((a, b) => a.order - b.order);
         if (members.length === 0) return false;
         const localIds = members.map((member) => member.localId);
+        // B-814: the user's retry restarts the 10-minute clock; the row is the outbox's again.
+        const retriedAt = Date.now();
+        // A row the first send never got onto disk (persist timed out) is written now.
+        const ownerTabId = thisTabId();
+        const byLocalId = new Map(members.map((member) => [member.localId, member]));
+        void outboxStore.update(localIds, (row) => ({ ...row, state: 'queued', createdAt: retriedAt, attempts: row.attempts + 1, ownerTabId }), (id) => {
+            const member = byLocalId.get(id);
+            return member?.content ? {
+                localId: id, sid: sessionId, body: member.content, createdAt: retriedAt, state: 'queued',
+                attempts: 1, ownerTabId, group: member.group, order: member.order,
+            } : null;
+        });
         if (members.some((member) => !member.content)) {
             // B-722: its encryption failed — encrypt again, then send as usual.
             const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -1056,7 +1235,28 @@ class Sync {
         if (!message || message.kind !== 'user-text' || message.sendState !== 'failed' || !message.sendRestorable) return null;
         storage.getState().applyOutboxResult(sessionId, { withdraw: [localId] });
         this.outboxRecords.delete(localId);
+        void outboxStore.remove([localId]);
         return message.text;
+    }
+
+    /**
+     * B-814: 「丢弃」 on an input restored from an earlier page load — the whole
+     * failed turn leaves this device. It may still have reached the server
+     * (that page died not knowing); then its echo brings it back, like a
+     * taken-back message's would.
+     */
+    discardStaleMessage(sessionId: string, localId: string): boolean {
+        const record = this.outboxRecords.get(localId);
+        const reducerState = storage.getState().sessionMessages[sessionId]?.reducerState;
+        if (!record || record.sessionId !== sessionId || !reducerState) return false;
+        const localIds = [...this.outboxRecords.values()]
+            .filter((other) => other.group === record.group && reducerState.sendStates.get(other.localId) === 'failed')
+            .map((member) => member.localId);
+        if (localIds.length === 0) return false;
+        storage.getState().applyOutboxResult(sessionId, { withdraw: localIds });
+        for (const id of localIds) this.outboxRecords.delete(id);
+        void outboxStore.remove(localIds);
+        return true;
     }
 
     private async handleBackgroundSendTimeout() {
@@ -1257,6 +1457,13 @@ class Sync {
         const group = randomUUID();
         const turnItems: OutboxMessage[] = [];
         const localId = options?.localId ?? randomUUID();
+        // B-814: this exact input is already ours (a pending session's first
+        // message re-sent after a reload that also restored it from the
+        // persistent outbox) — never a second bubble; a failed one is retried.
+        if (options?.localId && this.outboxRecords.get(localId)?.sessionId === sessionId) {
+            if (storage.getState().sessionMessages[sessionId]?.reducerState.sendStates.get(localId) === 'failed') this.retrySend(sessionId, localId);
+            return localId;
+        }
         // Create user message content with metadata (B-509: one builder shared
         // with the server-side prompt queue, so a queued prompt is the same record).
         const content: RawRecord = buildOutboundUserRecord({
@@ -1361,7 +1568,8 @@ class Sync {
 
         // The whole turn enters the outbox at once, behind any text-only turn
         // shown earlier that is still being encrypted (B-722).
-        void this.inOutboxOrder(sessionId, () => {
+        void this.inOutboxOrder(sessionId, async () => {
+            await this.persistOutbox(sessionId, turnItems);
             let pending = this.pendingOutbox.get(sessionId);
             if (!pending) {
                 pending = [];
@@ -1744,6 +1952,7 @@ class Sync {
         forgetCatchUp(sessionId);
         this.sendSync.delete(sessionId);
         this.pendingOutbox.delete(sessionId);
+        this.outboxDeferred.delete(sessionId);
         // B-513: send states die with the reducer state deleteSession dropped;
         // drop the retry records and deadlines too.
         this.sendAbortControllers.get(sessionId)?.abort();
@@ -2647,6 +2856,8 @@ class Sync {
             this.outboxRecords.delete(ack.localId);
             this.sendDeadlines.delete(ack.localId);
         }
+        // B-814 §5.5.2: confirmed — the ack's seq is merged just below, so `sent` ends here.
+        if (outcome.acks.length > 0) void outboxStore.remove(outcome.acks.map((ack) => ack.localId));
         if (outcome.acks.length > 0 || outcome.untracked.length > 0) {
             storage.getState().applyOutboxResult(sessionId, { acks: outcome.acks, stored: outcome.untracked });
             markSendConfirmed(outcome.acks.map((ack) => ack.localId));

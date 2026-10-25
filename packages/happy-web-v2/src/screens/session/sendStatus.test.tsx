@@ -6,8 +6,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UserTextMessage } from '@/sync/typesMessage';
 
-const mocks = vi.hoisted(() => ({ retry: vi.fn(), takeBack: vi.fn() }));
-vi.mock('@/sync/sync', () => ({ sync: { sendMessage: vi.fn(), retrySend: mocks.retry, takeBackFailedMessage: mocks.takeBack } }));
+const mocks = vi.hoisted(() => ({ retry: vi.fn(), takeBack: vi.fn(), discard: vi.fn() }));
+vi.mock('@/sync/sync', () => ({ sync: { sendMessage: vi.fn(), retrySend: mocks.retry, takeBackFailedMessage: mocks.takeBack, discardStaleMessage: mocks.discard } }));
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ lang: 'en', t: (key: string) => key }) }));
 vi.mock('@/ui/Toast', () => ({ toast: { success: vi.fn() } }));
 import { MessageActions } from './MessageActions';
@@ -22,11 +22,11 @@ const base = { kind: 'user-text', id: 'msg', localId: 'l1', seq: 7, text: 'hello
 describe('turnSendStatus', () => {
     it('failed beats sending across text and attachments', () => {
         expect(turnSendStatus({ ...base, sendState: 'sending' }, [{ localId: 'f1', sendState: 'failed' }]))
-            .toEqual({ state: 'failed', localId: 'f1', restorable: false });
+            .toEqual({ state: 'failed', localId: 'f1', restorable: false, stale: false });
         expect(turnSendStatus({ ...base, sendState: 'sending' }, [{ localId: 'f1' }]))
-            .toEqual({ state: 'sending', localId: 'l1', restorable: false });
+            .toEqual({ state: 'sending', localId: 'l1', restorable: false, stale: false });
         expect(turnSendStatus(base, [{ localId: 'f1', sendState: 'sending' }]))
-            .toEqual({ state: 'sending', localId: 'f1', restorable: false });
+            .toEqual({ state: 'sending', localId: 'f1', restorable: false, stale: false });
         expect(turnSendStatus(base)).toBeNull();
     });
 
@@ -34,6 +34,13 @@ describe('turnSendStatus', () => {
         expect(turnSendStatus({ ...base, sendState: 'failed', sendRestorable: true })?.restorable).toBe(true);
         expect(turnSendStatus({ ...base, sendState: 'failed', sendRestorable: true }, [{ localId: 'f1' }])?.restorable).toBe(false);
         expect(turnSendStatus({ ...base, sendState: 'failed' })?.restorable).toBe(false);
+    });
+
+    it('B-814: a restored failure past the 10-minute window is stale, as a whole turn; never while sending', () => {
+        expect(turnSendStatus({ ...base, sendState: 'failed', sendStale: true })?.stale).toBe(true);
+        expect(turnSendStatus({ ...base, sendState: 'failed' }, [{ localId: 'f1', sendState: 'failed', sendStale: true }])?.stale).toBe(true);
+        expect(turnSendStatus({ ...base, sendState: 'failed' })?.stale).toBe(false);
+        expect(turnSendStatus({ ...base, sendState: 'sending', sendStale: true })?.stale).toBe(false);
     });
 });
 
@@ -140,6 +147,19 @@ describe('MessageActions send states', () => {
         expect(labels()).toEqual(['message.copyMessage', 'session.chat.sendRetry']);
         act(() => { (host.querySelector('.msg-send-action') as HTMLButtonElement).click(); });
         expect(mocks.retry).toHaveBeenCalledWith('s1', 'l1');
+    });
+
+    it('B-814: restored past the 10-minute window — 「未发送 · 重发 / 丢弃」, both by localId, discard even when not restorable', () => {
+        render({ ...base, sendState: 'failed', sendStale: true });
+        const status = host.querySelector('[data-send-state="stale"]')!;
+        expect(status.textContent).toContain('session.chat.sendNotSent');
+        expect(labels()).toEqual(['message.copyMessage', 'session.chat.sendResend', 'session.chat.sendDiscard']);
+        const [resend, discard] = [...host.querySelectorAll('.msg-send-action')] as HTMLButtonElement[];
+        act(() => { resend.click(); });
+        expect(mocks.retry).toHaveBeenCalledWith('s1', 'l1');
+        act(() => { discard.click(); });
+        expect(mocks.discard).toHaveBeenCalledWith('s1', 'l1');
+        expect(mocks.takeBack).not.toHaveBeenCalled();
     });
 
     it('offers put-back only when restorable AND a composer is mounted, and hands the text over', () => {
