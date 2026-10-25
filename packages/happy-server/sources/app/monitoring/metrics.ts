@@ -22,15 +22,15 @@ export async function createMetricsServer() {
             const combinedMetrics = prismaMetrics + '\n' + appMetrics;
             
             reply.type('text/plain; version=0.0.4; charset=utf-8');
-            reply.send(combinedMetrics);
+            return reply.send(combinedMetrics);
         } catch (error) {
             log({ module: 'metrics', level: 'error', error }, 'Error generating metrics');
-            reply.code(500).send('Internal Server Error');
+            return reply.code(500).send('Internal Server Error');
         }
     });
 
     app.get('/health', async (_request, reply) => {
-        reply.send({ status: 'ok', timestamp: new Date().toISOString() });
+        return reply.send({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
     return app;

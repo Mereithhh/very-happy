@@ -104,6 +104,24 @@ if (/^COPY packages\/(happy-server|happy-web-v2) \.\/packages\//m.test(dockerfil
 if (!/server-container-smoke:[\s\S]*smoke-server-container\.sh/.test(workflows['quality.yml'] ?? '')) {
   errors.push('quality.yml: executable container migration/persistence smoke is required');
 }
+// B-820: images install production dependencies only from the lockfile.
+for (const [name, source] of [
+  ['Dockerfile.server', dockerfile],
+  ['Dockerfile.relay', readFileSync(new URL('../../Dockerfile.relay', import.meta.url), 'utf8')],
+]) {
+  const instructions = source.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n');
+  if (/\bdeploy\b[^\n]*--legacy|force-legacy-deploy/i.test(instructions)
+    || !/pnpm install --frozen-lockfile --prod --config\.node-linker=isolated/.test(instructions)) {
+    errors.push(`${name}: production dependencies must come from a frozen lockfile install, never legacy deploy`);
+  }
+}
+for (const [job, script] of [['server-container-smoke', 'smoke-server-container.sh'], ['relay-container-smoke', 'smoke-relay-container.sh']]) {
+  const body = readFileSync(new URL(`./${script}`, import.meta.url), 'utf8');
+  if (!new RegExp(`${job}:[\\s\\S]*?${script.replace('.', '\\.')}`).test(workflows['quality.yml'] ?? '')
+    || !/node scripts\/ci\/check-image-lockfile\.mjs --image "\$IMAGE"/.test(body)) {
+    errors.push(`quality.yml: ${job} must run ${script} with the image/lockfile gate`);
+  }
+}
 if (!/SERVER_IMAGE:\?SERVER_IMAGE digest is required/.test(deployScript)
   || !/very-happy-server@sha256/.test(deployScript)
   || !/deploy-blue-green-remote\.sh/.test(deployScript)) {

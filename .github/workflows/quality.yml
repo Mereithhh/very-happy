@@ -61,6 +61,17 @@ jobs:
       - name: Gate - changelog cliVersion is not invented
         run: node scripts/release/check-changelog-versions.mjs
 
+  relay-container-smoke:
+    name: relay container / lockfile / health
+    # B-820: Dockerfile.relay ships its own dependency tree; keep it pinned to
+    # pnpm-lock.yaml and bootable on every PR, like the server image.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: bash scripts/ci/smoke-relay-container.sh
+
   design-lint:
     name: design lint (PR added lines)
     # B-581：只查本 PR 新增的 web .css/.tsx 行（裸色值 / 对话区写死字号 / 无替代的
@@ -94,6 +105,7 @@ jobs:
           node --test scripts/changelog/generate-draft.test.mjs
           node --test scripts/changelog/check-release.test.mjs
           node --test scripts/ci/cli-smoke-evidence.test.mjs
+          node --test scripts/ci/check-image-lockfile.test.mjs
           node --test scripts/release/check-recommended.test.mjs
           node --test scripts/dev/check-design-lint.test.mjs
           node --test scripts/dev/codemod-hover-guard.test.mjs

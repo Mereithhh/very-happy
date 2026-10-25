@@ -290,7 +290,7 @@ export function connectRoutes(app: Fastify) {
             update: { updatedAt: new Date(), token: encrypted },
             create: { accountId: userId, vendor: request.params.vendor, token: encrypted }
         });
-        reply.send({ success: true });
+        return reply.send({ success: true });
     });
 
     app.get('/v1/connect/:vendor/token', {
@@ -333,7 +333,7 @@ export function connectRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         await db.serviceAccountToken.delete({ where: { accountId_vendor: { accountId: userId, vendor: request.params.vendor } } });
-        reply.send({ success: true });
+        return reply.send({ success: true });
     });
 
     app.get('/v1/connect/tokens', {

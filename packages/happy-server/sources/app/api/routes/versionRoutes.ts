@@ -27,7 +27,7 @@ export function versionRoutes(app: Fastify) {
         },
     }, async (_request, reply) => {
         reply.header('cache-control', 'public, max-age=60');
-        reply.send(await cliPolicy.get());
+        return reply.send(await cliPolicy.get());
     });
 
     app.post('/v1/version', {
@@ -49,24 +49,20 @@ export function versionRoutes(app: Fastify) {
         // Check ios
         if (platform.toLowerCase() === 'ios') {
             if (semver.satisfies(version, IOS_UP_TO_DATE)) {
-                reply.send({ updateUrl: null });
-            } else {
-                reply.send({ updateUrl: 'https://apps.apple.com/us/app/happy-claude-code-client/id6748571505' });
+                return reply.send({ updateUrl: null });
             }
-            return;
+            return reply.send({ updateUrl: 'https://apps.apple.com/us/app/happy-claude-code-client/id6748571505' });
         }
 
         // Check android
         if (platform.toLowerCase() === 'android') {
             if (semver.satisfies(version, ANDROID_UP_TO_DATE)) {
-                reply.send({ updateUrl: null });
-            } else {
-                reply.send({ updateUrl: 'https://play.google.com/store/apps/details?id=com.ex3ndr.happy' });
+                return reply.send({ updateUrl: null });
             }
-            return;
+            return reply.send({ updateUrl: 'https://play.google.com/store/apps/details?id=com.ex3ndr.happy' });
         }
 
         // Fallbacke
-        reply.send({ updateUrl: null });
+        return reply.send({ updateUrl: null });
     });
 }
