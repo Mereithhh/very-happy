@@ -157,6 +157,13 @@ describe('sync-hello', () => {
         }
     });
 
+    // Review S1: `reason` is diagnostics only — an overlong one must not turn the hello into invalid_request (→ legacy).
+    it('an overlong reason is accepted', async () => {
+        const { ctx } = makeCtx({ sessions: { a: own([1]) } });
+        const ack = await handleSyncHello(ctx, { v: 1, subs: [{ sid: 'a', afterSeq: 0 }], reason: 'x'.repeat(500) });
+        expect(ack).toMatchObject({ ok: true, results: [{ sid: 'a', ok: true }] });
+    });
+
     it('a hello rebuilds the subscription table', async () => {
         const { ctx } = makeCtx({ sessions: { a: own([1]), b: own([1]), c: own([1]) } });
         await handleSyncHello(ctx, { v: 1, subs: [{ sid: 'a', afterSeq: 0 }, { sid: 'b', afterSeq: 0 }] });
@@ -303,6 +310,40 @@ describe('concurrency gate (§4.4, §9.1-5)', () => {
         }));
         expect(admitted).toEqual(range(1, 200));
         expect(gate.active).toBe(0);
+    });
+
+    // Review M1: the gate bounds concurrent snapshot STATEMENTS (spec §4.4), not requests —
+    // a 16-sub cold hello under one slot used to run 16 statements at once (Promise.all).
+    it('gate(1): a 16-sub cold hello (owners and grantees) and a parallel subscribe never run more than one statement at a time', async () => {
+        const sessions: Record<string, { accountId: string; seqs: number[] }> = {};
+        for (let i = 0; i < 16; i += 1) sessions[`s${i}`] = { accountId: i % 4 === 0 ? 'other' : 'u1', seqs: range(1, 5) };
+        let running = 0;
+        let peak = 0;
+        const track = async <T>(work: () => Promise<T>): Promise<T> => {
+            running += 1;
+            peak = Math.max(peak, running);
+            try {
+                await new Promise((resolve) => setTimeout(resolve, 1));
+                return await work();
+            } finally {
+                running -= 1;
+            }
+        };
+        const { client } = fakeDb(sessions);
+        const tracked = { $queryRawUnsafe: (...args: any[]) => track(() => (client.$queryRawUnsafe as any)(...args)) } as any;
+        const gate = createSnapshotGate(1);
+        const { ctx } = makeCtx({ gate, client: tracked, sessions, access: () => ({ role: 'grantee' }) });
+        // Grant lookups are statements too.
+        ctx.deps.resolveAccess = (userId, sid) => track(async () => ({ role: 'grantee', userId, sid }) as any);
+        const subs = Object.keys(sessions).map((sid) => ({ sid, afterSeq: null }));
+        const [hello, subscribe] = await Promise.all([
+            handleSyncHello(ctx, { v: 1, subs }),
+            handleSessionSubscribe(ctx, { v: 1, sid: 's1', afterSeq: 2 }),
+        ]);
+        expect(hello.ok).toBe(true);
+        expect((hello as any).results.every((r: any) => r.ok && r.messages.length === 5)).toBe(true);
+        expect(subscribe).toMatchObject({ ok: true, messages: [{ seq: 3 }, { seq: 4 }, { seq: 5 }] });
+        expect(peak).toBe(1);
     });
 
     it('a release is idempotent', async () => {

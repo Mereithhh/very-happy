@@ -42,6 +42,23 @@ describe('buildSubResult', () => {
 });
 
 describe('applyAckBudget (spec §4.4, §9.1-6)', () => {
+    // Review S5: a sub whose share of the budget is gone gets an EMPTY page with hasMore —
+    // there is no "last seq" to continue from, so the client re-subscribes with the
+    // afterSeq of its request (and a latest page loses oldestSeq: nothing was kept).
+    it('budget spent before a sub: an increment comes back empty + hasMore, a latest page empty + hasMore without oldestSeq', () => {
+        const first: SyncSubResultOk = { sid: 'a', ok: true, headSeq: 3, messages: [1, 2, 3].map((s) => message(s, 10)), hasMore: false };
+        const increment: SyncSubResultOk = { sid: 'b', ok: true, headSeq: 9, messages: [8, 9].map((s) => message(s, 10)), hasMore: false };
+        const latest: SyncSubResultOk = { sid: 'c', ok: true, headSeq: 40, messages: [39, 40].map((s) => message(s, 10)), hasMore: false, oldestSeq: 39 };
+        const budget = [1, 2, 3].reduce((total, s) => total + syncMessageBytes(message(s, 10)), 0);
+        const [a, b, c] = applyAckBudget([first, increment, latest], budget);
+        expect(a).toEqual(first);
+        expect(b).toEqual({ ...increment, messages: [], hasMore: true });
+        expect(c.messages).toEqual([]);
+        expect(c.hasMore).toBe(true);
+        expect(c).not.toHaveProperty('oldestSeq');
+        expect(c.headSeq).toBe(40);
+    });
+
     const inc = (sid: string, seqs: number[], size = 10): SyncSubResultOk => ({
         sid, ok: true, headSeq: seqs.at(-1) ?? 0, messages: seqs.map((s) => message(s, size)), hasMore: false,
     });

@@ -79,6 +79,8 @@ describe('atomicity: snapshot ∪ push is gap-free (§9.1-1, §9.1-10)', () => {
         for (let round = 0; round < rounds; round += 1) {
             const random = harness.seededRandom(seed + round);
             const asGrantee = round % 5 === 4;
+            // Review M2: session-subscribe rests on the same join-before-read proof as hello.
+            const viaSubscribe = round % 2 === 1;
             const userId = asGrantee ? fixture.granteeId : fixture.ownerId;
             const head = await harness.sessionHead(fixture.sessionId);
             const afterSeq = Math.max(0, head - Math.floor(random() * 3));
@@ -98,11 +100,17 @@ describe('atomicity: snapshot ∪ push is gap-free (§9.1-1, §9.1-10)', () => {
             await harness.sleep(Math.floor(random() * 10));
             const client = await harness.connectClient(server.url, { userId });
             try {
-                const ack = await hello(client, [{ sid: fixture.sessionId, afterSeq }]);
-                await writing;
-                expect(ack.ok, `round ${round}`).toBe(true);
-                const result = ack.results[0];
-                expect(result.ok, `round ${round}`).toBe(true);
+                let result;
+                if (viaSubscribe) {
+                    result = await harness.emitWithAck(client.socket, 'session-subscribe', { v: 1, sid: fixture.sessionId, afterSeq });
+                    await writing;
+                } else {
+                    const ack = await hello(client, [{ sid: fixture.sessionId, afterSeq }]);
+                    await writing;
+                    expect(ack.ok, `round ${round}`).toBe(true);
+                    result = ack.results[0];
+                }
+                expect(result.ok, `round ${round} (${viaSubscribe ? 'subscribe' : 'hello'})`).toBe(true);
 
                 // Head and page come from one snapshot.
                 const seqs: number[] = result.messages.map((m: { seq: number }) => m.seq);
@@ -116,7 +124,7 @@ describe('atomicity: snapshot ∪ push is gap-free (§9.1-1, §9.1-10)', () => {
                 const expected = await harness.committedSeqs(fixture.sessionId, afterSeq);
                 const seen = () => [...new Set([...seqs, ...(client.pushes.get(fixture.sessionId) ?? [])])].filter((s) => s > afterSeq).sort((a, b) => a - b);
                 for (let wait = 0; wait < 300 && seen().length < expected.length; wait += 1) await harness.sleep(10);
-                expect(seen(), `round ${round} seed ${seed + round} (${asGrantee ? 'grantee' : 'owner'}) writes=${JSON.stringify(writes)}`).toEqual(expected);
+                expect(seen(), `round ${round} seed ${seed + round} (${asGrantee ? 'grantee' : 'owner'}, ${viaSubscribe ? 'subscribe' : 'hello'}) writes=${JSON.stringify(writes)}`).toEqual(expected);
             } finally {
                 client.socket.close();
             }
@@ -125,7 +133,7 @@ describe('atomicity: snapshot ∪ push is gap-free (§9.1-1, §9.1-10)', () => {
         hooks.afterSnapshot = undefined;
     }
 
-    it('200 random interleavings of all four writers, owner and grantee, handler-owned join', async () => {
+    it('200 random interleavings of all four writers, owner and grantee, hello and subscribe, handler-owned join', async () => {
         serverOptions.joinMode = 'lazy';
         await runRounds(200, 811_000);
     }, 240_000);

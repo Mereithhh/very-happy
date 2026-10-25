@@ -68,7 +68,8 @@ export const syncHelloRequestSchema = z.object({
   v: z.number().int(),
   subs: z.array(syncSubRequestSchema).max(SYNC_HELLO_MAX_REQUEST_SUBS),
   /** 'connect' | 'resume' | 'handover' | 'retry' — diagnostics only. */
-  reason: z.string().max(32).optional(),
+  /** Diagnostics only, never acted on: any length is accepted (review S1 — a hello must not fail over it). */
+  reason: z.string().optional(),
 });
 export type SyncHelloRequest = z.infer<typeof syncHelloRequestSchema>;
 
@@ -105,7 +106,11 @@ export const syncSubResultOkSchema = z.object({
   headSeq: z.number().int(),
   /** seq ascending. The latest page when afterSeq was null or gapTooLarge. */
   messages: z.array(syncMessageSchema),
-  /** More forward messages exist: continue with afterSeq = last seq. */
+  /**
+   * More forward messages exist: continue with afterSeq = the last seq here —
+   * or, when `messages` is empty (the ack's byte budget was spent on earlier
+   * subs), with the afterSeq of the request.
+   */
   hasMore: z.boolean(),
   gapTooLarge: z.literal(true).optional(),
   /** Smallest seq in `messages` when they are the latest page. */

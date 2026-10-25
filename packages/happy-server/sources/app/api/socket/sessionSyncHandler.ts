@@ -204,10 +204,14 @@ function userRoom(userId: string) {
     return `user:${userId}:user-scoped`;
 }
 
-/** Spec §4.2 precondition: in the push room BEFORE the snapshot starts. */
-export function ensureInUserRoom(socket: Pick<Socket, 'rooms' | 'join'>, userId: string) {
+/**
+ * Spec §4.2 precondition: in the push room BEFORE the snapshot starts. Awaited:
+ * socket.io types join as `Promise<void> | void` — today's adapters add
+ * synchronously, an async one must not let the read start first (review S4).
+ */
+export async function ensureInUserRoom(socket: Pick<Socket, 'rooms' | 'join'>, userId: string) {
     const room = userRoom(userId);
-    if (!socket.rooms.has(room)) void socket.join(room);
+    if (!socket.rooms.has(room)) await socket.join(room);
 }
 
 function clampLimit(limit: number | undefined) {
@@ -252,6 +256,10 @@ async function underGate<T>(deps: SessionSyncDeps, op: 'hello' | 'subscribe', wo
 /**
  * Resolve every sub against one batched head read, then run the §4.2
  * statement only for subs that have something past afterSeq (or are cold).
+ * One statement at a time (review M1): the gate slot this runs under is the
+ * spec's "concurrent snapshot query", so a 16-sub cold hello must not fan out
+ * into 16 parallel statements (32 slots × 16 would swamp Prisma's
+ * connection_limit). 16 primary-key / index reads fit the 1.5s deadline.
  * Owner check rides the head row; anything else goes through
  * resolveSessionAccess, the REST GET's own predicate (grantee / revoked /
  * expired). Unknown and forbidden are both `not_found` (§4.5).
@@ -264,22 +272,33 @@ async function snapshotSubs(
     const config = deps.config();
     await deps.hooks?.beforeSnapshot?.();
     const heads = await readSessionHeads(deps.client, [...new Set(subs.map((sub) => sub.sid))]);
-    const results = await Promise.all(subs.map(async (sub): Promise<SyncSubResultOk | { sid: string; ok: false; error: SyncSubError }> => {
+    const results: Array<SyncSubResultOk | { sid: string; ok: false; error: SyncSubError }> = [];
+    for (const sub of subs) {
         const head = heads.get(sub.sid);
-        if (!head) return { sid: sub.sid, ok: false, error: 'not_found' };
+        if (!head) {
+            results.push({ sid: sub.sid, ok: false, error: 'not_found' });
+            continue;
+        }
         if (head.accountId !== userId && !await deps.resolveAccess(userId, sub.sid)) {
-            return { sid: sub.sid, ok: false, error: 'not_found' };
+            results.push({ sid: sub.sid, ok: false, error: 'not_found' });
+            continue;
         }
         const plan = planSnapshot(head.seq, sub.afterSeq, config.gapThreshold);
-        if (plan.kind === 'none') return buildSubResult(sub.sid, plan, head.seq, null);
+        if (plan.kind === 'none') {
+            results.push(buildSubResult(sub.sid, plan, head.seq, null));
+            continue;
+        }
         const limit = clampLimit(sub.limit);
         const snapshot = plan.kind === 'increment'
             ? await readSessionSnapshot(deps.client, { sessionId: sub.sid, afterSeq: sub.afterSeq!, limit })
             : await readSessionSnapshot(deps.client, { sessionId: sub.sid, afterSeq: null, limit });
-        if (!snapshot) return { sid: sub.sid, ok: false, error: 'not_found' };
+        if (!snapshot) {
+            results.push({ sid: sub.sid, ok: false, error: 'not_found' });
+            continue;
+        }
         if (plan.kind === 'latest' && plan.gapTooLarge) syncGapTooLargeCounter.inc();
-        return buildSubResult(sub.sid, plan, head.seq, snapshot);
-    }));
+        results.push(buildSubResult(sub.sid, plan, head.seq, snapshot));
+    }
     await deps.hooks?.afterSnapshot?.();
     return results;
 }
@@ -329,7 +348,7 @@ export async function handleSyncHello(ctx: SessionSyncContext, raw: unknown): Pr
     if (!parsed.success || parsed.data.v < 1) return { ok: false, error: 'invalid_request' };
 
     const honoured = parsed.data.subs.slice(0, SYNC_MAX_SUBS);
-    ensureInUserRoom(ctx.socket, ctx.userId);
+    await ensureInUserRoom(ctx.socket, ctx.userId);
     let snapshots;
     try {
         snapshots = await underGate(ctx.deps, 'hello', () => snapshotSubs(ctx.deps, ctx.userId, honoured));
@@ -383,7 +402,7 @@ export async function handleSessionSubscribe(ctx: SessionSyncContext, raw: unkno
     const table = subsTable(ctx);
     if (!table.has(sid) && table.size >= SYNC_MAX_SUBS) return { sid, ok: false, error: 'too_many_subscriptions' };
 
-    ensureInUserRoom(ctx.socket, ctx.userId);
+    await ensureInUserRoom(ctx.socket, ctx.userId);
     let result;
     try {
         [result] = await underGate(ctx.deps, 'subscribe', () => snapshotSubs(ctx.deps, ctx.userId, [{ sid, afterSeq, limit }]));
