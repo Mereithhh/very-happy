@@ -1281,7 +1281,9 @@ try {
                     step(`COLD ${vp} ${COLD_RUNS}× cache on / off, ${COLD_RECORDS} records, proxy RTT ${CACHE_RTT_MS}ms`);
                     const runs = { on: [], off: [] };
                     for (let run = 0; run < COLD_RUNS; run++) {
-                        for (const mode of ['on', 'off']) {
+                        // B-819: alternate which mode opens first — an A/A run (cache off in both slots) showed
+                        // the first open of a pair ~120ms slower on the phone context under --h2.
+                        for (const mode of run % 2 === 0 ? ['on', 'off'] : ['off', 'on']) {
                             // Warm (unmeasured): the cache holds the session's run.
                             proxy.rtt(0);
                             const warm = await coldOpen(device, SC, [lastCold]);
