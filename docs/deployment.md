@@ -84,7 +84,7 @@ dependency surface. Do not install the upstream-owned
 - `LOGIN_SESSION_TTL_DAYS`: Web email/Google/password session lifetime, from 1 to 365 days (default `30`).
 - `MAX_PENDING_GOOGLE_LOGIN_CHALLENGES`: cross-replica cap for outstanding,
   five-minute Google login nonce rows (default `10000`).
-- `TRUST_PROXY`: trusted reverse-proxy hop count (for example `1`) or comma-separated proxy IP/CIDR allowlist. Never set it to an unrestricted boolean; correct client IPs are required for auth rate limiting.
+- `TRUST_PROXY`: comma-separated IP/CIDR allowlist of the reverse proxy the server sees as its socket peer (for example `172.18.0.1` for a Docker-gateway Caddy, or `loopback`/`uniquelocal`). Hop counts such as `1` are rejected at startup: they cannot validate the peer and Fastify 5.12+ treats them as trusting nobody. Never set it to an unrestricted boolean; correct client IPs are required for auth rate limiting.
 - Access-key storage guards: `MAX_ACCESS_KEY_WRITES_PER_ACCOUNT_PER_MINUTE`
   (default `120`), `MAX_ACCESS_KEYS_PER_ACCOUNT` (default `2000`), and
   `MAX_ACCESS_KEY_BYTES_PER_ACCOUNT` (default `8388608`). Keep finite values on
@@ -218,7 +218,7 @@ For the maintainer Cloud, the origin configuration is:
 ```env
 GOOGLE_CLIENT_ID=<maintainer-owned-web-client-id>
 GOOGLE_ALLOWED_ORIGINS=https://veryhappy.dev
-TRUST_PROXY=1
+TRUST_PROXY=172.18.0.1
 ```
 
 The same origin must be listed under **Authorized JavaScript origins** in Google Cloud Console. This flow uses the GIS popup ID-token callback, so it does not require an Authorized redirect URI. The origin is where the browser opens the Web UI (scheme and any non-default port included, with no path), which may differ from an API origin. Self-hosters must create their own Web OAuth client rather than copying the official Client ID. For local development, authorize and allowlist `http://localhost:8082`; non-loopback origins must use HTTPS. Changing these environment variables requires restarting the server with the new environment (container deployments normally recreate the container).

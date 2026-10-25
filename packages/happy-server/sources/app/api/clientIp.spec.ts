@@ -30,7 +30,6 @@ describe('trusted peer boundary', () => {
         expect(list('1.2.3.4')).toBe(false);
         expect(list(undefined)).toBe(false);
         expect(compileTrustedPeer(false)('172.18.0.1')).toBe(false);
-        expect(compileTrustedPeer(1)('203.0.113.1')).toBe(true);
     });
 });
 

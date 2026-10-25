@@ -43,6 +43,10 @@ if [[ "${VH_SERVER_SKIP_BUILD:-0}" != "1" ]]; then
     'test ! -e /repo/node_modules/electron && test ! -e /repo/node_modules/node-pty'
   # B-820: every installed package must be a version pnpm-lock.yaml pins.
   node scripts/ci/check-image-lockfile.mjs --image "$IMAGE"
+  # The Prisma Client the server resolves at runtime must be the generated one
+  # for the packaged schema (an uninitialized stub ships no schema.prisma).
+  docker run --rm --entrypoint sh -w /repo/packages/happy-server "$IMAGE" -c \
+    'client="$(node -p "require(\"path\").dirname(require.resolve(\".prisma/client/default\", { paths: [require(\"path\").dirname(require.resolve(\"@prisma/client/package.json\"))] }))")" && echo "runtime prisma client: $client" && cmp prisma/schema.prisma "$client/schema.prisma"'
   docker run --rm --entrypoint sh "$IMAGE" -c \
     'test -s /repo/LICENSE && test -s /repo/NOTICE && grep -q "slopus/happy" /repo/NOTICE'
   IMAGE_SIZE="$(docker image inspect "$IMAGE" --format '{{.Size}}')"

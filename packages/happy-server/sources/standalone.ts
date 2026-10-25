@@ -377,7 +377,7 @@ Environment variables:
   RESEND_API_KEY       Required when AUTH_EMAIL_PROVIDER=resend
   CLOUDFLARE_EMAIL_ACCOUNT_ID / CLOUDFLARE_EMAIL_API_TOKEN  Required for Cloudflare
   AUTH_PASSWORD_LOGIN_DISABLED  true disables password signup/login/credential changes
-  TRUST_PROXY        Trusted proxy hop count or IP/CIDR list (never unrestricted)
+  TRUST_PROXY        Trusted proxy IP/CIDR list (never unrestricted, no hop counts)
   RELAY_ID / RELAY_REGION / RELAY_TOKEN_SECRET  Required in relay mode
 `);
             process.exit(command === "--help" || command === "-h" ? 0 : 1);

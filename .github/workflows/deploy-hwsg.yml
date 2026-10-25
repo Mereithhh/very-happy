@@ -125,6 +125,14 @@ jobs:
           cache-from: type=gha,scope=server
           cache-to: type=gha,mode=max,scope=server
 
+      # B-820: gate the exact pushed digest (not only the PR-built image)
+      # against pnpm-lock.yaml before anything deploys or promotes it.
+      - name: Gate - pushed server image deps match pnpm-lock.yaml
+        if: steps.server_build.outcome == 'success'
+        run: >-
+          node scripts/ci/check-image-lockfile.mjs --image
+          ghcr.io/mereithhh/very-happy-server@${{ steps.server_build.outputs.digest }}
+
       - name: Set up SSH
         if: inputs.target != 'publish'
         # 私钥只落在 job 级 runner.temp；known_hosts 的 keyscan 只是预热，

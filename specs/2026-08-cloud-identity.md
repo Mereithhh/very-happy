@@ -135,14 +135,14 @@ Happy login session。容量/邀请码等后续拒绝会烧掉 nonce，Web 在�
 Google challenge/login 只接受 `Origin` 命中 `GOOGLE_ALLOWED_ORIGINS` 的浏览器请求；配置 Google Client ID
 时该 allowlist 必须存在，否则 server 启动失败。非 loopback origin 强制 HTTPS。它是浏览器边界的纵深防御，
 不能替代 token/nonce 验证。认证限流使用数据库原子 bucket，跨 server replica 共享；反向代理部署必须通过
-`TRUST_PROXY` 明确信任 hop 数或 IP/CIDR，禁止无条件信任任意 `X-Forwarded-For`。
+`TRUST_PROXY` 明确信任代理 IP/CIDR，禁止无条件信任任意 `X-Forwarded-For`。hop 数已不再支持（B-820b：Fastify 5.12 起数字 trustProxy 一律不信任，启动直接报错）。
 
 环境变量：
 
 ```text
 GOOGLE_CLIENT_ID=<web oauth client id>
 GOOGLE_ALLOWED_ORIGINS=https://happy.mereith.com
-TRUST_PROXY=1
+TRUST_PROXY=172.18.0.1
 ```
 
 Official Cloud supplies its Web OAuth client ID through `GOOGLE_CLIENT_ID`; the
