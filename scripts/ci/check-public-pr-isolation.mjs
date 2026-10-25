@@ -86,8 +86,24 @@ for (const name of ['deploy-hwsg.yml', 'publish.yml', 'runner-probe.yml']) {
 if (!/^CMD .*standalone\.ts migrate.*standalone\.ts serve/m.test(dockerfile)) {
   errors.push('Dockerfile.server: startup must migrate before serving');
 }
-if (!/prisma format --schema=prisma\/schema\.prisma[\s\\]+&& cmp packages\/happy-server\/prisma\/schema\.prisma node_modules\/\.prisma\/client\/schema\.prisma/.test(dockerfile)) {
-  errors.push('Dockerfile.server: packaged Prisma schema must be canonicalized and byte-match the generated Client');
+// B-820b: guard the Client the runtime resolves (generated in prod-deps), not
+// a builder copy the server never loads.
+const prodDepsStage = dockerfile.match(/^FROM toolchain AS prod-deps$([\s\S]*?)^FROM /m)?.[1] ?? '';
+if (!/prisma format --schema=prisma\/schema\.prisma[\s\\]+&& client="\$\(node -p "require\('path'\)\.dirname\(require\.resolve\('\.prisma\/client\/default', \{ paths: \[require\('path'\)\.dirname\(require\.resolve\('@prisma\/client\/package\.json'\)\)\] \}\)\)"\)"[\s\S]*?&& cmp prisma\/schema\.prisma "\$client\/schema\.prisma"/.test(prodDepsStage)
+  || !/^COPY --from=prod-deps \/repo\/packages\/happy-server\/prisma /m.test(dockerfile)
+  || /\.prisma\/client node_modules\/\.prisma\/client/.test(dockerfile)) {
+  errors.push('Dockerfile.server: packaged Prisma schema must be canonicalized and byte-match the generated Client the runtime resolves');
+}
+for (const [name, image, deployStep] of [
+  ['deploy-hwsg.yml', 'very-happy-server@', /\n      - name: Deploy\n/],
+  ['deploy-relays.yml', '"\\$RELAY_IMAGE"', /\n  deploy:\n/],
+]) {
+  const source = workflows[name] ?? '';
+  const gate = source.search(new RegExp(`check-image-lockfile\\.mjs --image\\s+\\S*${image}`));
+  const deploy = source.search(deployStep);
+  if (gate < 0 || deploy < 0 || gate > deploy) {
+    errors.push(`${name}: the pushed image must pass check-image-lockfile before it deploys`);
+  }
 }
 if (!/^ENV DATA_DIR=\/data$/m.test(dockerfile) || !/^EXPOSE 3005$/m.test(dockerfile)) {
   errors.push('Dockerfile.server: public persistence and port contract changed');
