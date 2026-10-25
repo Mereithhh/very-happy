@@ -2,6 +2,7 @@
 
 > 状态：Implemented，待生产 Groundwork / Shadow / 首次切流验收
 > 日期：2026-08-26 ｜ 关联 backlog：B-214
+> 相关：切流窗口内的会话消息对账见 [会话消息同步 v1](2026-10-session-sync-subscribe-and-cache.md) §4.6（B-807）
 
 ## 背景
 
@@ -104,7 +105,7 @@ Socket.IO Server 的双向 server-side ack，以及 shell 回滚 phase fixture�
 | 当前脚本备份旧 Compose/digest，但切换动作仍是 `force-recreate happy-server` | `scripts/ci/deploy-server-remote.sh:37-94` |
 | 失败路径会恢复旧 Compose、旧镜像并重验 local/public health | `scripts/ci/deploy-server-remote.sh:50-87` |
 | Socket.IO 已在 `REDIS_URL` 存在时启用 Redis streams adapter | `packages/happy-server/sources/app/api/socket.ts:64-88` |
-| brief-disconnect event replay 已验证但 `connectionStateRecovery` 仍注释关闭 | `packages/happy-server/sources/app/api/socket.ts:47-59` |
+| `connectionStateRecovery` 已开启（30s 窗口，恢复房间成员并重放错过的事件）；B-494 对恢复扫描量设上限，超限返回 `recovered=false` 走完整重同步（2026-10 更正，原写「仍注释关闭」已过期） | `packages/happy-server/sources/app/api/socket.ts:80-96`；`socket/boundedStreamsAdapter.ts` |
 | RPC 使用 cluster adapter 的 `fetchSockets()`，空 room 有 15 秒 reconnect grace | `packages/happy-server/sources/app/api/socket/rpcHandler.ts:8-34,293-335` |
 | relay assignment lease 是单进程 `Map`，TTL 75 秒，不适合直接多副本 | `packages/happy-server/sources/app/relay/relayRegistry.ts:3-37` |
 | Server 收到 SIGTERM 后调用 `app.close()`，但尚无显式 release drain/handover 状态 | `packages/happy-server/sources/app/api/api.ts:189-198` |
