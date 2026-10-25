@@ -2,14 +2,20 @@
  * B-811 (B-807 spec §4.2–4.3): the snapshot read behind `sync-hello` and
  * `session-subscribe`.
  *
- * Correctness rests on ONE statement: `Session.seq` (the head) and the
- * messages come from the same READ COMMITTED statement snapshot, so a message
- * is either visible in it together with the head that counts it, or it commits
- * after the snapshot began — and then its post-commit `update/new-message`
- * emit reaches the caller, which joined its user-scoped room before the read.
- * Reading head and messages in two statements would let a commit land between
- * them (head ≠ page), so never split this query. No transaction is opened,
- * which keeps it pgbouncer transaction-pooling friendly.
+ * Correctness rests on ONE statement per session: `Session.seq` (the head) and
+ * that session's messages come from the same READ COMMITTED statement
+ * snapshot, so a message is either visible in it together with the head that
+ * counts it, or it commits after the snapshot began — and then its post-commit
+ * `update/new-message` emit reaches the caller, which joined its user-scoped
+ * room before the read. Reading head and messages in two statements would let
+ * a commit land between them (head ≠ page), so never split this query. No
+ * transaction is opened, which keeps it pgbouncer transaction-pooling friendly.
+ *
+ * B-821: the statement is batched — every latest-page read of a hello is ONE
+ * statement, every increment read ONE more (`unnest … JOIN "Session" … LEFT
+ * JOIN LATERAL`). Each row still carries its own session's head from the same
+ * statement snapshot, so the per-session proof holds unchanged; batching only
+ * removes the ~4.5ms fixed cost each extra statement paid in production.
  */
 import type { SyncMessage, SyncSubResultOk } from '@slopus/happy-wire';
 
@@ -49,7 +55,8 @@ export function planSnapshot(head: number, afterSeq: number | null, gapThreshold
     return { kind: 'increment' };
 }
 
-type SnapshotRow = {
+export type SnapshotRow = {
+    idx: number;
     head: number;
     id: string | null;
     seq: number | null;
@@ -59,24 +66,32 @@ type SnapshotRow = {
     updatedAt: Date | string | null;
 };
 
-const INCREMENT_SQL = `
-WITH h AS (SELECT "seq" AS head FROM "Session" WHERE "id" = $1)
-SELECT h.head, m."id", m."seq", m."content", m."localId", m."createdAt", m."updatedAt"
-FROM h LEFT JOIN LATERAL (
+/**
+ * `idx` is the 1-based position of the read in the batch: the same session may
+ * be asked for twice in one hello (different afterSeq/limit), so rows are keyed
+ * by position, not by session id. A session whose row is gone joins nothing and
+ * yields no row at all → `null` (not_found).
+ */
+const LATEST_BATCH_SQL = `
+SELECT r.idx::int AS idx, s."seq" AS head, m."id", m."seq", m."content", m."localId", m."createdAt", m."updatedAt"
+FROM unnest($1::text[], $2::int[]) WITH ORDINALITY AS r(sid, lim, idx)
+JOIN "Session" s ON s."id" = r.sid
+LEFT JOIN LATERAL (
     SELECT "id", "seq", "content", "localId", "createdAt", "updatedAt"
     FROM "SessionMessage"
-    WHERE "sessionId" = $1 AND "seq" > $2
-    ORDER BY "seq" ASC LIMIT $3
+    WHERE "sessionId" = r.sid
+    ORDER BY "seq" DESC LIMIT r.lim
 ) m ON true`;
 
-const LATEST_SQL = `
-WITH h AS (SELECT "seq" AS head FROM "Session" WHERE "id" = $1)
-SELECT h.head, m."id", m."seq", m."content", m."localId", m."createdAt", m."updatedAt"
-FROM h LEFT JOIN LATERAL (
+const INCREMENT_BATCH_SQL = `
+SELECT r.idx::int AS idx, s."seq" AS head, m."id", m."seq", m."content", m."localId", m."createdAt", m."updatedAt"
+FROM unnest($1::text[], $2::int[], $3::int[]) WITH ORDINALITY AS r(sid, after_seq, lim, idx)
+JOIN "Session" s ON s."id" = r.sid
+LEFT JOIN LATERAL (
     SELECT "id", "seq", "content", "localId", "createdAt", "updatedAt"
     FROM "SessionMessage"
-    WHERE "sessionId" = $1
-    ORDER BY "seq" DESC LIMIT $2
+    WHERE "sessionId" = r.sid AND "seq" > r.after_seq
+    ORDER BY "seq" ASC LIMIT r.lim
 ) m ON true`;
 
 function toMillis(value: Date | string): number {
@@ -102,38 +117,87 @@ export interface SessionSnapshot {
     hasMore: boolean;
 }
 
+export interface LatestRead { sessionId: string; limit: number }
+export interface IncrementRead { sessionId: string; afterSeq: number; limit: number }
+
 /**
- * The §4.2 single-statement read. `null` = the session row is gone (deleted
- * between the auth check and this read). Increments fetch limit+1 rows to
- * learn hasMore; the latest page has nothing further forward by definition.
+ * Split a batch statement's rows back into one snapshot per read (aligned with
+ * the input; `null` = that session row is gone). Rows arrive in no particular
+ * order — there is deliberately no outer ORDER BY (an Incremental Sort over
+ * 16 × 500 rows cost ~5ms) — so pages are sorted here, seq ascending.
+ * Increments fetched limit+1 rows to learn hasMore; the latest page has
+ * nothing further forward by definition.
  */
+export function splitSnapshotRows(
+    rows: SnapshotRow[],
+    reads: Array<{ limit: number; afterSeq?: number }>,
+    kind: 'latest' | 'increment',
+): Array<SessionSnapshot | null> {
+    const snapshots: Array<SessionSnapshot | null> = reads.map(() => null);
+    for (const row of rows) {
+        const index = Number(row.idx) - 1;
+        if (!(index >= 0 && index < reads.length)) continue;
+        const snapshot = snapshots[index] ?? (snapshots[index] = { head: Number(row.head), messages: [], hasMore: false });
+        if (row.id !== null) snapshot.messages.push(toSyncMessage(row));
+    }
+    return snapshots.map((snapshot, index) => {
+        if (!snapshot) return null;
+        snapshot.messages.sort((a, b) => a.seq - b.seq);
+        if (kind === 'latest') return snapshot;
+        const limit = reads[index].limit;
+        if (snapshot.messages.length <= limit) return snapshot;
+        return { head: snapshot.head, messages: snapshot.messages.slice(0, limit), hasMore: true };
+    });
+}
+
+/** Every latest page (cold / gapTooLarge) of one hello in ONE statement (§4.2, §4.4). */
+export async function readLatestPages(client: SnapshotClient, reads: LatestRead[]): Promise<Array<SessionSnapshot | null>> {
+    if (reads.length === 0) return [];
+    const rows = await client.$queryRawUnsafe<SnapshotRow[]>(
+        LATEST_BATCH_SQL,
+        reads.map((read) => read.sessionId),
+        reads.map((read) => read.limit),
+    );
+    return splitSnapshotRows(rows, reads, 'latest');
+}
+
+/** Every increment of one hello in ONE statement (§4.2, §4.4). */
+export async function readIncrements(client: SnapshotClient, reads: IncrementRead[]): Promise<Array<SessionSnapshot | null>> {
+    if (reads.length === 0) return [];
+    const rows = await client.$queryRawUnsafe<SnapshotRow[]>(
+        INCREMENT_BATCH_SQL,
+        reads.map((read) => read.sessionId),
+        reads.map((read) => read.afterSeq),
+        reads.map((read) => read.limit + 1),
+    );
+    return splitSnapshotRows(rows, reads, 'increment');
+}
+
+/** One session through the batch statements (N = 1). `null` = the session row is gone. */
 export async function readSessionSnapshot(
     client: SnapshotClient,
     params: { sessionId: string; afterSeq: number; limit: number } | { sessionId: string; afterSeq: null; limit: number },
 ): Promise<SessionSnapshot | null> {
-    const rows = params.afterSeq === null
-        ? await client.$queryRawUnsafe<SnapshotRow[]>(LATEST_SQL, params.sessionId, params.limit)
-        : await client.$queryRawUnsafe<SnapshotRow[]>(INCREMENT_SQL, params.sessionId, params.afterSeq, params.limit + 1);
-    if (rows.length === 0) return null;
-    const head = Number(rows[0].head);
-    const messages = rows.filter((row) => row.id !== null).map(toSyncMessage);
-    if (params.afterSeq === null) {
-        messages.reverse();
-        return { head, messages, hasMore: false };
-    }
-    const hasMore = messages.length > params.limit;
-    return { head, messages: hasMore ? messages.slice(0, params.limit) : messages, hasMore };
+    const [snapshot] = params.afterSeq === null
+        ? await readLatestPages(client, [{ sessionId: params.sessionId, limit: params.limit }])
+        : await readIncrements(client, [{ sessionId: params.sessionId, afterSeq: params.afterSeq, limit: params.limit }]);
+    return snapshot;
 }
 
-/** Shape a snapshot into the wire result (spec §3.3). */
+/**
+ * Shape a snapshot into the wire result (spec §3.3). `head` is the planning
+ * head from the head batch; a page reports the head ITS OWN statement read.
+ */
 export function buildSubResult(sid: string, plan: SnapshotPlan, head: number, snapshot: SessionSnapshot | null): SyncSubResultOk {
     if (plan.kind === 'none' || !snapshot) {
         return { sid, ok: true, headSeq: head, messages: [], hasMore: false };
     }
+    // §4.2: the head batch is an earlier statement — pairing its head with this page tears.
+    head = snapshot.head;
     if (plan.kind === 'increment') {
-        return { sid, ok: true, headSeq: snapshot.head, messages: snapshot.messages, hasMore: snapshot.hasMore };
+        return { sid, ok: true, headSeq: head, messages: snapshot.messages, hasMore: snapshot.hasMore };
     }
-    const result: SyncSubResultOk = { sid, ok: true, headSeq: snapshot.head, messages: snapshot.messages, hasMore: false };
+    const result: SyncSubResultOk = { sid, ok: true, headSeq: head, messages: snapshot.messages, hasMore: false };
     if (plan.gapTooLarge) result.gapTooLarge = true;
     if (snapshot.messages.length > 0) result.oldestSeq = snapshot.messages[0].seq;
     return result;

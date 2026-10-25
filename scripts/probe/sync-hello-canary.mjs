@@ -23,8 +23,8 @@
  *   3  服务端回 disabled（开关 SYNC_SUBSCRIBE_DISABLED=1，或账号不在 SYNC_SUBSCRIBE_ACCOUNTS）
  *   4  没有任何 ack（服务端还没有 handler：旧镜像）
  *
- * 服务端 snapshot 时延（阶段 1 门槛 P95 < 30ms）看 Prometheus：
- *   histogram_quantile(0.95, sum by (le) (rate(sync_snapshot_duration_seconds_bucket[5m])))
+ * 服务端 snapshot 时延（阶段 1 门槛：cold、warm 各自 P95 < 30ms）看 Prometheus：
+ *   histogram_quantile(0.95, sum by (le, shape) (rate(sync_snapshot_duration_seconds_bucket{op="hello"}[5m])))
  * 本脚本量的是客户端 RTT（含网络），两者一起看。
  */
 import { readFileSync } from 'node:fs';
