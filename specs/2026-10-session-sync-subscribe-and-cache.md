@@ -1,6 +1,6 @@
 # 会话消息同步 v1：快照对账订阅 + 本机持久化（PR-5 / PR-6）
 
-> 状态：已批准（Owner 2026-10-25，6 项取舍按推荐，见 §16），实施中：5a #754、6a #756 已合入、5b B-812、6b B-814；修订见 §15（当前 r3）
+> 状态：已批准（Owner 2026-10-25，6 项取舍按推荐，见 §16），实施中：5a #754、6a #756 已合入、5b B-812、6b B-814；修订见 §15（当前 r4）
 > 日期：2026-10-25 ｜ 关联 backlog：B-807（本 spec）；前置 B-803/B-804/B-805（止血 PR-1～3）；相关 B-802、B-799、B-801、B-806、B-711、B-494、B-513、B-516、B-722
 > 出处：B-802 调研报告（下称 REPORT）§4.2 与设计评审（下称 DESIGN-REVIEW）§5～6；两份记录在会话临时目录，不进 repo
 > 基线：`origin/main@bc28d577`（含 #740 B-799、#741 B-801）。B-802 报告里的行号基于 `e273b309`，本文新增的行号基于 `bc28d577`。
@@ -421,7 +421,7 @@ outbox 中的消息在任何 phase 都显示（§5.5），不受同步状态影�
 | 锚点校验 `mismatch`：`seq=lastRowSeq` 那一行的 `id ≠ lastId` | 同上 |
 | ack 显示 `headSeq < 请求 afterSeq`（§5.1-5，即缓存的 lastSeq 超前于服务端） | 删除该会话的缓存，cold 重拉 |
 | 同一 seq 的服务端 id 与缓存 id 不同（ack 增量与缓存重叠时检查） | 删除该会话的缓存，cold 重拉 |
-| 会话被删除，或收到 `not_found` | 删除该会话的缓存和 outbox（outbox 先转 failed 并提示，见 §5.5） |
+| 会话被删除，或收到 `not_found` | 删除该会话的缓存和 outbox（r4：会话已不存在，直接删除，不再先转 failed 提示）。**「不在本页会话列表里」不等于已删除**，outbox 的处理见 §5.5.3 |
 | 任何一次缓存读写超过 2s | 视为卡死，本页禁用缓存 |
 
 每种恢复路径都有单测（fake-indexeddb 注入坏数据），e2e 覆盖「篡改一个会话的缓存后刷新」。
@@ -435,40 +435,57 @@ OutboxRow = {
   localId: string;                 // 主键，等于服务端幂等键
   sid: string;
   body: string;                    // 已加密的 POST 内容，重发时字节完全相同
-  displayText: string;             // 用于渲染乐观气泡（与 B-722 现有乐观消息同源）
-  createdAt: number;
-  state: 'queued' | 'sending' | 'sent' | 'failed';
-  seq?: number;                    // sent 后由 send-ack 写入
-  attempts: number;
+  createdAt: number;               // 写入时刻；用户点「重发」时重置为当时（重新计 10 分钟）
+  state: 'queued' | 'failed';      // r4：只存这两种，见 §5.5.2
+  attempts: number;                // 用户重试次数
   lastError?: string;
-  ownerTabId: string;              // B-516 tabLiveness 的 tab id
-  group?: string;                  // 与现有 outboxRecords 的 group 一致
+  ownerTabId: string;              // B-516 tabLiveness 的 tab id（`thisTabId()`，与 pendingSessions 共用）
+  group: string;                   // 一轮用户输入（附件 + 文本），一起重试
+  order: number;                   // 轮内顺序
 }
 ```
 
+- **r4：不存 `displayText` 明文**。r0 为渲染乐观气泡列了这个字段，但它与 r2「IDB 只留服务端可解的密文」冲突：单拿到 IDB 文件就能读出未发出的输入。接管时等会话密钥加载后解密 `body`，重建气泡（与消息缓存相同）；解不开的行删掉（既不能显示，也不可信）。
+- **r4：不存 `seq`**，因为 `sent` 不落盘（§5.5.2）。
+
 #### 5.5.2 生命周期
 
-`queued(offline) → sending → sent(seq) → (合并看到同一 localId 或 seq) 删除`，失败为 `failed`。
+内存里仍是 B-722 的 `sending → (ack) 删除 / failed`。IDB 里只镜像 `queued` 和 `failed`（r4）：
 
-- 顺序：先按 B-722 在点击栈里画出乐观气泡，再加密，再写 IDB，最后 POST。IDB 写入不阻塞首帧，但 **POST 必须在 IDB 写入完成之后发出**。否则 POST 成功了、页面却在写入前被杀，刷新后这条消息在本地就完全没有记录；虽然服务端已有，不会丢，但用户会短暂看不到。实现上二者在同一个微任务链里，延迟约 1–5ms。
+`入队 → put(queued) → POST → ack：删行` ；最终失败：`update(failed)` ；放回输入框、丢弃、合并看到同一 localId（推送先于 ack）：删行。
+
+- **r4：不存 `sending`/`sent`**。r0 的 `sent(seq)` 要等「合并看到同一 localId 或 seq」才删。实现里 ack 的 seq 在同一步经 `applyOutboxResult` 合并，`sent` 存在的时间不超过这一步，所以 ack 时直接删行。落盘的 `sending` 也没有用处：接管方只关心「是否已知到达服务端」。没有 ack 的行一律当作 `queued`，重发由服务端按 localId 去重。
+- 顺序：先按 B-722 在点击栈里画出乐观气泡，再加密，再写 IDB，最后 POST。IDB 写入不阻塞首帧。**POST 等 IDB 写入完成再发，但最多等 1s（r4），超时照发**：IDB 卡住不能拖住发送，超时的那条在本次加载中只在内存里，等同于 PR-6b 之前的行为。否则 POST 成功了、页面却在写入前被杀，刷新后这条消息在本地就完全没有记录；虽然服务端已有，不会丢，但用户会短暂看不到。正常情况下二者在同一条 `inOutboxOrder` 链里，延迟约 1–5ms。
+- put、update、delete 在同一个 tab 内按调用顺序提交（单链串行），所以 ack 触发的 delete 不会排到它的 put 之前。
 - 状态只在边沿写 IDB，不按心跳频繁写。
 
 #### 5.5.3 启动与多标签页
 
-- 启动时读出 `outbox` 里所有记录，按 `ownerTabId` 检查存活（`tabLiveness.isTabAlive`）。存活标签页的记录不动，那个标签页自己负责。主人已不在的记录，用 `withTabLock` 接管，模式与 B-516 `pendingSessionsRuntime.ts:62` 相同。
+- 会话列表加载后跑一次接管，之后每 15s 跑一次（接管同账号其他已关闭标签页留下的行）。先在锁外读出 `outbox`，如果有不属于本 tab 的行，就进入 `withTabLock('vh-outbox-claim')`，**在锁内重读**，按 `ownerTabId` 检查存活（`tabLiveness.isTabAlive`）。存活标签页的记录不动，由那个标签页自己负责。主人已不在的记录（包括本页刷新前的旧 tab id），在锁内把 `ownerTabId` 写成本 tab，写盘成功才算接管，模式与 B-516 `pendingSessionsRuntime.ts:62` 相同。这样每行只有一个 tab 接管。
+- **接管前提（r4，#759 review B1）**：只接管当下能处理的行，即会话已在本页 store 里、会话密钥可用。
+  - 会话不在 store 里时，**不能当作已删除**：`/v1/sessions` 只返回最新的 150 个会话，解不开的会话行会被跳过，列表加载也可能放弃一轮。先 `fetchSessionById`，只有返回 404（`missing`）才删这个会话的行；出错就保留，等下一轮。
+  - 密钥暂不可用时也保留不动，等下一轮再处理。已被本 tab 占有但还没进 `outboxRecords` 的行，下一轮照常处理，不能一直搁在那里。
+- **接管前先拉该会话的最新页**（最多等 10s）：如果这个 localId 已在 transcript 里（POST 已成功、只是 ack 随页面一起丢了），直接删行，不重发也不显示。拉页失败时继续往下走：`queued` 行重发后由服务端去重，所以是安全的。这一条替代 r0 的「`sent` 记录启动时 subscribe 后删除」（r4）。
 - 接管后的处理按年龄（取舍见 §16 取舍 2）：
-  - `createdAt` 距今 ≤ **10 分钟**：自动重发，复用同一个 localId；服务端已存在时返回原 seq 且不再 emit（`sessionMessageStore.ts:87-107`），所以不会重复。
-  - 超过 10 分钟：转 `failed`，气泡显示「未发送 · 重发 / 丢弃」。理由是 agent 指令有时效性，一小时前的「继续」不应该在用户不知情时被执行。
-- `sent` 状态的记录：等合并看到同一 localId 或 seq 后删除。启动时直接 subscribe 这些记录所属的会话，确认后删除。
+  - `queued` 且 `createdAt` 距今 ≤ **10 分钟**：自动重发，复用同一个 localId，只走 HTTP（同 B-513 重试，避免重启后的 wrapper 收到 relay 副本两次）。服务端已存在时返回原 seq，且不再 emit（`sessionMessageStore.ts:87-107`），所以不会重复。
+  - 超过 10 分钟，**或者已经是 `failed`（不论多新，r4）**：显示「未发送 · 重发 / 丢弃」，不自动发送。理由是 agent 指令有时效性，一小时前的「继续」不应该在用户不知情时被执行；已失败的那条用户在原页面已经看到过失败。
+  - 「重发」：同一 localId 重新入队，`createdAt` 重置为当时（用户已确认）。「丢弃」：把整轮从本机移除。如果服务端其实已存（原页面死时不知道），往上翻还能看到。已存但不在最新页的 stale 行会显示「未发送」，此时点重发由服务端去重，回到原 seq，可以接受。
 - 其他标签页**不显示**本标签页的 pending（与今天一致）。消息被服务端接受后，所有标签页都通过推送看到。
+- 没有 Web Locks 时，回退到 BroadcastChannel ping：被冻结的标签页可能被误判为已关闭，出现两次 POST。两次 localId 相同，服务端去重，transcript 不会重复。可以接受。
 
 #### 5.5.4 与 B-801 待建会话对齐
 
 待建会话的首条消息仍由 `pendingSessions`（localStorage）负责。spawn 成功、拿到 sid 后，首条消息进入正常 outbox 时才写 IDB，localId 保持不变。PR-6b 不改 B-801 的存储，只加一条 e2e：「草稿首发后立刻刷新」，断言消息恰好出现一次。
 
+r4 落实：首条消息的 localId 等于它在 pendingSessions 里的 item id（刷新前后不变）；`sync.whenOutboxPersisted(sid)`（该会话加密 + 落盘链的链尾，最多 1s）resolve 之后，才把它从 localStorage 记录移除。刷新落在两者之间时，两条路径带的是同一个 localId，先到的一方建气泡，后到的一方被已跟踪的 localId 短路处理，服务端只有一条。IDB 超过 1s 未写完时照样移除，这条输入暂时只在内存里，与 PR-6b 之前相同。
+
 #### 5.5.5 在内存中的位置
 
-`pendingOutbox`、`outboxRecords`（`W/sync/sync.ts:215-216`）仍然是运行时的权威副本，IDB 只是它的持久镜像（write-through）。启动时用 IDB 填充它们。这样 PR-6b 对 B-722 的发送状态 UI 是零改动。
+`pendingOutbox`、`outboxRecords`（`W/sync/sync.ts:215-216`）仍然是运行时的权威副本，IDB 只是它的持久镜像（write-through）。启动时用 IDB 填充它们。这样 PR-6b 对 B-722 的发送状态 UI 是零改动。（r4：唯一新增的是 stale 失败行的「未发送 · 重发 / 丢弃」文案和「丢弃」动作，样式沿用 `msg-send-failed`。）
+
+#### 5.5.6 持久化不可用时（r4）
+
+`vh.sync.cache=off`、缓存被禁用（打开失败、卡死）或配额只读时，outbox **也不持久化**，退回内存，行为等于 PR-6b 之前。outbox 与消息缓存共用同一个库和同一套开关，不单独开库：「关缓存」要求删库（§6.1），配额只读时也不该继续写；也不为 outbox 另做一套恢复路径。注意：配额只读时 delete 同样失效，已落盘的行会留到下次加载，由接管时「先拉最新页」和服务端去重兜底（#759 review S2 建议放开 delete）。
 
 ### 5.6 文件落点（Web）
 
@@ -493,7 +510,7 @@ OutboxRow = {
 | `SYNC_SUBSCRIBE_DISABLED=1` | server env | hello 和 subscribe 立即回 `{ok:false, error:'disabled'}`，Web 全部进入 legacy。**这是主开关**，改 env 后重启槽即可，不需要换镜像 |
 | `SYNC_SUBSCRIBE_ACCOUNTS=<id,…>` | server env | 设置后，只有名单内账号拿到 `ok:true`，其余账号视同 disabled。灰度用 |
 | `SYNC_GAP_THRESHOLD`、`SYNC_HELLO_MAX_CONCURRENCY` | server env | §4.3、§4.4 |
-| `vh.sync.cache=off` | Web localStorage（仅本机，不进 synced settings，见铁律 1） | 关闭 IDB 读写，并删除库 |
+| `vh.sync.cache=off` | Web localStorage（仅本机，不进 synced settings，见铁律 1） | 关闭 IDB 读写，并删除库；持久 outbox 同时退回内存（r4，§5.5.6） |
 | `vh.sync.mode=legacy` | Web localStorage | 本机强制 legacy，用于排查 |
 
 ### 6.2 兼容矩阵（每行都有 §9 的测试）
@@ -576,7 +593,7 @@ server 与 Web 同镜像（铁律 5），所以 PR-5a（server）合入后，先
 4. 重排缓冲：先到 N+2，400ms 内再到 N+1 → 不发请求；超过 400ms → 发 1 次 subscribe。
 5. legacy 回退：hello 2s 无 ack → legacy；ack 晚到被忽略；`disabled` → legacy。未知错误码（如 `error:'foo'`）折算为 `unavailable`，走退避，连续 3 次转 `stale` 并 REST 兜底一次（r2）。空页且 `hasMore:true` 时，下一次 subscribe 的 afterSeq 等于原请求的 afterSeq（冷请求仍为 `null`）（r2）。
 6. 缓存：写入、读出往返；连续段维护；LRU 淘汰顺序；有 outbox 的会话不被淘汰；Quota 错误；§5.4.2 每一行的损坏注入。r2 补充：(a) 每种改段操作（flush、扩展、重置、裁剪、LRU 删除）之后 `sessions.count` 等于实际行数；(b) 删掉一行但不改 count → 判损坏、删缓存、走网络；有空洞但 count 一致 → 正常命中；(c) 锚点校验：fake REST 对 `after_seq=lastRowSeq-1` 回缺这一行 → `behind`，回同 seq 不同 id → `mismatch`，两者都删缓存、cold 重拉恰好 1 次；`ok` 时只把 `seq > lastSeq` 的部分合并为增量；(d) `sessions` 记录中没有 `dek` 字段，冷启动要等会话列表返回后才解密。
-7. outbox：write-through；10 分钟规则（fake 时钟）；接管只接管主人已死的记录；`sent` 记录的确认与删除。
+7. outbox：write-through（落盘在 POST 之前，超过 1s 照发）；ack 删行；10 分钟规则（fake 时钟），已 failed 的行不自动重发；接管只接管主人已死的记录，锁内重读，双 tab 竞争每行只有一个接管；接管前最新页已有该 localId → 删行不重发；行里没有明文字段；会话不在列表时 `fetchSessionById` found → 照常处理、missing → 删行、出错 → 保留到下一轮（r4）。
 8. 源码断言：store 的写入只出现在 `sessionMerge`，用 mutation-check 验证。
 9. **head 大于最新消息 seq 的老会话能进入 live，不循环**：fake socket 对 `subscribe(afterSeq=10)` 回 `{headSeq:12, messages:[], hasMore:false}`。断言：phase 进入 `live`，`lastSeq=12`；之后 fake 时钟推进 119s，subscribe/hello 总共只发了 1 次（即最初那次，120s 兜底之前没有额外请求）；没有进入 `stale`，没有 REST 兜底。同一用例再跑 cold 变体（`afterSeq=null` 返回 1–10、`headSeq=12`）和中间空洞变体（push 先到 N+2 越过空洞 N+1 → 400ms 后恰好 1 次 subscribe → 空 ack → live，不再请求）。mutation-check：把规则 5 改回「`max(messages.seq)==headSeq` 才 live」，本用例必须失败。
 10. **head 不一致只认 `headSeq < 请求 afterSeq`**：(a) `subscribe(afterSeq=10)` 回 `headSeq=8` → 作废缓存，恰好 1 次 `subscribe(null)`，随后 live，不循环；(b) 竞态：`subscribe(afterSeq=10)` 发出后，push seq 11 先于 ack（`headSeq=10`）到达 → 不作废缓存，lastSeq 保持 11，进入 live。
@@ -718,6 +735,7 @@ UI 部分（状态条）沿用 PR-2 已经通过的 device-shots 和 design lint
 | r2 | 2026-10-25 | spec 作者（#754 review 建议 S2/S3/S5/S6/S8，以及 B-813 实现时的决定；已采纳） | **只改文档，不改协议和 head 判定**。来自 #754 review：S2 `subs` schema 硬上限 64，超过整体回 `invalid_request`（§3.2、§4.4）；S3 未知错误码一律折算为 `unavailable`（§3.4）；S5 体积预算耗尽时可能回「空页且 `hasMore=true`」，继续拉取沿用请求的 afterSeq（§3.3 注释、§4.4）；S6 快照 deadline 1.5s，槽位等语句结束才释放（§4.4）；S8 Grafana Sync 面板记为阶段 1 后续项（§4.7）。来自 B-813：(1) 6a 走 legacy REST，拿不到 head，`CacheHit` 额外带 `lastRowSeq/lastId`，用 `after_seq=lastRowSeq-1` 做锚点校验，缺行判 `behind`、id 不同判 `mismatch`，两者都删缓存 cold 重拉（§5.4、§5.4.2）；(2) 段落落盘时同事务写 rowCount（`sessions.count`），读取时实际行数 ≠ rowCount 判本地损坏、改走网络，以此区分历史空洞和本地丢行（§5.4、§5.4.2）；(3) **不缓存 DEK**，推翻 r0 的「推荐缓存」：安全上 IDB 只留密文，且实测冷启动瓶颈在应用启动和渲染，缓存 DEK 只省约 1 个 RTT（§5.4 schema 去掉 `dek`，§7 新增否决行，§0 第 3 条、§10.2、§12-6 同步）。测试：§9.1-5、§9.1-6、§9.2-5、§9.2-6 补充对应用例，§13 同步 |
 | r3 | 2026-10-25 | spec 作者（#756 review 建议 S7；已采纳） | **只改文档**。§9.3「离线刷新」的预期从「缓存照常显示」改为「显示 B-799 离线条，不报错；缓存在网络恢复、会话列表返回后才显示」。原写法与 r2「不缓存 DEK」冲突：离线时 `/v2/sessions` 拿不到，DEK 不可用，缓存无法解密；6a 实现中 `fetchMessages` 离线直接返回（`W/sync/sync.ts`）。离线可读缓存需要缓存 DEK，已在 r2 §7 否决，不在本 spec 范围 |
 | 入库 | 2026-10-25 | spec 作者 | 正文与 r3 相同；去掉本机路径与内部称呼，补 §16 Owner 决定，状态改为实施中。同 PR 在 [web-resume-sync](2026-08-web-resume-sync.md) 与 [zero-downtime-release](2026-08-zero-downtime-release.md) 加交叉引用，并改正后者「现状事实」里过期的 recovery 描述 |
+| r4 | 2026-10-25 | spec 作者（#759 review，PR-6b 实现提出的三处出入；已采纳） | **只改文档**。(1) **不存 `displayText` 明文**：与 r2「IDB 只留密文」一致，接管时解密 `body` 重建气泡，解不开就删行（§5.5.1）。(2) **只存 `queued`/`failed`**，ack 时删行；不存 `sending`/`sent`/`seq`；`sent` 的确认改为「接管前先拉最新页，localId 已在 transcript 里就删行」（§5.5.1～5.5.3）。(3) **`cache=off`、缓存禁用或配额只读时 outbox 也不持久化**，退回内存（新增 §5.5.6，§6.1 同步）。同时写明实现中的既定细节：POST 最多等 IDB 1s，超时照发；单链串行保证 delete 不早于 put；锁内重读、写盘成功才算接管，每 15s 一轮；已 failed 的行不论多新都不自动重发；用户重发重置 10 分钟计时；B-801 用 `whenOutboxPersisted` 之后才移除 localStorage 记录（§5.5.2～5.5.4）。新增要求（review B1）：会话不在本页 store 时不能当作已删除，先 `fetchSessionById`，只有 404 才删行，出错或无密钥时保留，下一轮再处理；§5.4.2「会话被删除」一行改为直接删除、不提示。§9.2-7 用例同步 |
 
 ## 16. Owner 决定（2026-10-25，6 项均按推荐）
 
