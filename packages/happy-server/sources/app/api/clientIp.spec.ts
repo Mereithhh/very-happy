@@ -103,4 +103,22 @@ describe('Fastify integration', () => {
         expect(incoming.map((line) => line.req.remoteAddress)).toEqual(['203.0.113.9', '198.51.100.66']);
         await app.close();
     });
+
+    it('B-820b: under the production TRUST_PROXY=172.18.0.1 rate limits bucket per real client, never per proxy or spoofed header', async () => {
+        const trustProxy = resolveTrustProxy('172.18.0.1');
+        configureClientIpTrust(trustProxy);
+        const app = fastify({ trustProxy });
+        app.get('/key', async (request) => ({ key: clientRateLimitKey(request) }));
+        const key = async (remoteAddress: string, realClientIp: string) => (await app.inject({
+            method: 'GET', url: '/key', remoteAddress, headers: { 'x-real-client-ip': realClientIp },
+        })).json().key;
+        // Via Caddy (the Docker gateway): two clients, two buckets; IPv6 per /64.
+        expect(await key('172.18.0.1', '203.0.113.9')).toBe('203.0.113.9');
+        expect(await key('172.18.0.1', '203.0.113.10')).toBe('203.0.113.10');
+        expect(await key('172.18.0.1', '2001:db8:1:2::5')).toBe('2001:db8:1:2::/64');
+        // Not the proxy: a spoofed header never picks the bucket.
+        expect(await key('198.51.100.66', '203.0.113.9')).toBe('198.51.100.66');
+        expect(await key('198.51.100.66', '203.0.113.10')).toBe('198.51.100.66');
+        await app.close();
+    });
 });

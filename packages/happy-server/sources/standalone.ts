@@ -22,6 +22,7 @@ import * as path from "path";
 import { runPostgresMigrations } from './storage/postgresMigrations';
 import { createPGlite } from "./storage/pgliteLoader";
 import { safeErrorMetadata } from './utils/logSafety';
+import { startupConfigErrorMessage } from './utils/startupConfigError';
 
 const dataDir = process.env.DATA_DIR || "./data";
 const pgliteDir = process.env.PGLITE_DIR || path.join(dataDir, "pglite");
@@ -322,13 +323,13 @@ if (isDirectInvocation) {
             break;
         case "serve":
             serve().catch(e => {
-                console.error('Server failed to start', safeErrorMetadata(e));
+                console.error('Server failed to start', startupConfigErrorMessage(e) ?? safeErrorMetadata(e));
                 process.exit(1);
             });
             break;
         case "relay":
             serveRelay().catch(e => {
-                console.error('Relay failed to start', safeErrorMetadata(e));
+                console.error('Relay failed to start', startupConfigErrorMessage(e) ?? safeErrorMetadata(e));
                 process.exit(1);
             });
             break;

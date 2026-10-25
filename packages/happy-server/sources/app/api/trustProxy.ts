@@ -1,6 +1,10 @@
+import { StartupConfigError } from '@/utils/startupConfigError';
+
 export type TrustedProxyConfig = false | string[];
 
-const TRUST_PROXY_FORMAT = 'TRUST_PROXY must be a comma-separated trusted proxy IP/CIDR list (or loopback/linklocal/uniquelocal)';
+const TRUST_PROXY_FORMAT = 'TRUST_PROXY must list the reverse proxy peers to trust as comma-separated IPs/CIDRs, '
+    + 'e.g. TRUST_PROXY=172.18.0.1 (Caddy via the Docker gateway), TRUST_PROXY=10.0.0.0/8,192.168.1.10, '
+    + 'or the named ranges TRUST_PROXY=loopback,uniquelocal (also linklocal)';
 
 /**
  * Parses an explicit proxy IP/CIDR allowlist. Deliberately rejects booleans so
@@ -13,11 +17,13 @@ export function resolveTrustProxy(value: string | undefined): TrustedProxyConfig
     const trimmed = value?.trim();
     if (!trimmed) return false;
     if (/^\d+$/.test(trimmed)) {
-        throw new Error(`${TRUST_PROXY_FORMAT}; hop counts like "${trimmed}" are no longer supported`);
+        throw new StartupConfigError(`TRUST_PROXY="${trimmed}" is a hop count, which is no longer supported: Fastify >= 5.12 `
+            + 'cannot validate the immediate peer from a hop count and trusts nobody, so every client would share '
+            + `the proxy's IP and rate-limit bucket. ${TRUST_PROXY_FORMAT}.`);
     }
     const addresses = trimmed.split(',').map((item) => item.trim()).filter(Boolean);
     if (addresses.length === 0 || addresses.some((item) => item === 'true' || item === '*')) {
-        throw new Error(TRUST_PROXY_FORMAT);
+        throw new StartupConfigError(`${TRUST_PROXY_FORMAT}. Unrestricted trust (true/*) is never allowed.`);
     }
     return addresses;
 }
