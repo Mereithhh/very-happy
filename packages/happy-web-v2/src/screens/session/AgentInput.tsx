@@ -985,7 +985,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             ...(serverQueueState.pending ?? []).map((row) => ({ id: row.localId, text: row.text, source: 'pending' as const, pendingState: row.state })),
             ...queued.filter((item) => !!item.attachments?.length).map((item) => ({ id: item.id, text: item.text, source: 'local' as const })),
         ]
-        : queued.map((item) => ({ id: item.id, text: item.text, source: 'local' as const })))
+        : [
+            // B-815: a retried / taken-over row the server stopped queueing waits failed here for 放回输入框.
+            ...(serverQueueState.pending ?? []).map((row) => ({ id: row.localId, text: row.text, source: 'pending' as const, pendingState: row.state })),
+            ...queued.map((item) => ({ id: item.id, text: item.text, source: 'local' as const })),
+        ])
         // B-642: the attached-drafts block is for the model; the dock shows and edits the user's text.
         .map((row) => ({ ...row, ...splitEditedDraftsRow(row.text) }));
 

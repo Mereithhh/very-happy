@@ -23,6 +23,7 @@ import { hedgedRead } from './hedgedRead';
 import { isNetworkOffline } from './networkStatus';
 import type { ApiPromptQueueUpdate } from './apiTypes';
 import { outboxStore } from './cache/syncCache';
+import { OUTBOX_AUTO_RESEND_MS } from './cache/outboxStore';
 import { createQueueOutboxPersistence } from './promptQueueOutbox';
 import { thisTabId } from './tabLiveness';
 
@@ -140,8 +141,12 @@ interface PromptQueueStoreState {
      * error, kept for Retry). Rejects like `enqueue`; the row stays.
      */
     submit: (sessionId: string, text: string, modeMeta: MessageModeMeta) => Promise<'queued' | 'unsupported'>;
-    /** B-722: re-send a failed/waiting row with its own localId (idempotent on the server). */
-    retryPending: (sessionId: string, localId: string, auto?: boolean) => Promise<'queued' | 'unsupported' | 'gone'>;
+    /**
+     * B-722: re-send a failed/waiting row with its own localId (idempotent on the server).
+     * B-815 `auto` (online / reconnect, not the user): a row older than the
+     * takeover's 10 minutes is not sent — `expired`, failed until the user retries.
+     */
+    retryPending: (sessionId: string, localId: string, auto?: boolean) => Promise<'queued' | 'unsupported' | 'gone' | 'expired'>;
     /** B-722: drop a failed/waiting row (delete, or 放回输入框); returns it. */
     discardPending: (sessionId: string, localId: string) => PendingPrompt | null;
     updateText: (sessionId: string, id: string, text: string) => Promise<boolean>;
@@ -183,6 +188,15 @@ export function movedOrder(ids: string[], id: string, delta: -1 | 1): string[] {
 
 /** B-815: the server answered and refused — as opposed to a request that never got an answer. */
 export class PromptQueueHttpError extends Error {}
+
+/**
+ * B-815: a 5xx that is not one of our codes (a gateway 502/503/504 during a
+ * deploy) is a request that got no real answer — retried like a dead link,
+ * safe because every retry carries the same localId.
+ */
+export function isRefusedStatus(status: number, code: string | null): boolean {
+    return status < 500 || isPromptQueueErrorCode(code);
+}
 
 /** Error codes the prompt-queue routes themselves answer with (store.ts PromptQueueError). */
 export function isPromptQueueErrorCode(code: string | null): boolean {
@@ -270,8 +284,12 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
         const sendPending = async (sessionId: string, row: PendingPrompt, how: 'submit' | 'retry' | 'auto' | 'adopt'): Promise<'queued' | 'unsupported'> => {
             try {
                 if (get().sessions[sessionId]?.status === 'unsupported') {
-                    if (how === 'adopt') throw new PromptQueueHttpError('prompt queue unsupported');
+                    // Only the composer's submit moves a row to the tab-local queue; a
+                    // retried / adopted one would vanish from the dock (nobody takes the
+                    // 'unsupported'), so it waits for the user (放回输入框) instead.
+                    if (how !== 'submit') throw new PromptQueueHttpError('prompt queue unsupported');
                     setPending(sessionId, (rows) => rows.filter((other) => other.localId !== row.localId));
+                    deps.persist?.forget([row.localId]);
                     return 'unsupported';
                 }
                 let content = row.content;
@@ -284,8 +302,8 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
                 // B-815: on disk before it is on the wire — a reload in between leaves a trace.
                 await deps.persist?.save(sessionId, { ...row, content }, how === 'retry');
                 const body = await post(sessionId, row.localId, content);
-                if (!body && how === 'adopt') {
-                    // Taken over from a reload, but the server no longer queues: it waits for the user (放回输入框).
+                if (!body && how !== 'submit') {
+                    // Retried or taken over, but the server no longer queues: it waits for the user (放回输入框).
                     throw new PromptQueueHttpError('prompt queue unsupported');
                 }
                 // 'unsupported': the caller moves it to the tab-local queue; 'queued': the
@@ -321,6 +339,7 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
                     patch(sessionId, { status: 'unsupported' });
                     return null;
                 }
+                if (!isRefusedStatus(response.status, code)) throw new Error(code ?? `HTTP ${response.status}`);
                 throw new PromptQueueHttpError(code ?? `HTTP ${response.status}`);
             }
             return response.json() as Promise<{ items?: unknown; removed?: boolean }>;
@@ -361,8 +380,22 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
             retryPending: async (sessionId, localId, auto) => {
                 const row = get().sessions[sessionId]?.pending?.find((other) => other.localId === localId);
                 if (!row || row.state === 'sending') return 'gone';
-                setPending(sessionId, (rows) => rows.map((other) => other.localId === localId ? { ...other, state: 'sending' } : other));
-                return sendPending(sessionId, { ...row, state: 'sending' }, auto ? 'auto' : 'retry');
+                const now = deps.now?.() ?? Date.now();
+                // Same rule as a takeover (outboxStore takeoverAction): an agent instruction
+                // is not run behind the user's back after 10 minutes.
+                if (auto && now - row.createdAt > OUTBOX_AUTO_RESEND_MS) {
+                    setPending(sessionId, (rows) => rows.map((other) => {
+                        if (other.localId !== localId) return other;
+                        const { retryable: _, ...rest } = other;
+                        return { ...rest, state: 'failed' };
+                    }));
+                    deps.persist?.fail([localId]);
+                    return 'expired';
+                }
+                // The user's Retry restarts the 10-minute clock here as on disk (promptQueueOutbox save).
+                const next: PendingPrompt = { ...row, state: 'sending', ...(auto ? {} : { createdAt: now }) };
+                setPending(sessionId, (rows) => rows.map((other) => other.localId === localId ? next : other));
+                return sendPending(sessionId, next, auto ? 'auto' : 'retry');
             },
             discardPending: (sessionId, localId) => {
                 const row = get().sessions[sessionId]?.pending?.find((other) => other.localId === localId) ?? null;
@@ -491,6 +524,8 @@ export function retryWaitingPrompts(store: ReturnType<typeof createPromptQueueSt
     for (const [sessionId, state] of Object.entries(store.getState().sessions)) {
         for (const row of state.pending ?? []) {
             // Not the user's Retry: the 10-minute clock keeps running (B-815).
+            // Never 'unsupported' (sendPending keeps a non-submit row), so nothing to hand on;
+            // 'expired' already shows 「未加入队列 · 重试」.
             if (row.state === 'waiting' || (row.state === 'failed' && row.retryable)) void store.getState().retryPending(sessionId, row.localId, true).catch(() => {});
         }
     }

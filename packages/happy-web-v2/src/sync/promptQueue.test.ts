@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createPromptQueueStore, handOffRows, PromptQueueHttpError, type PendingPromptPersistence, movedOrder, reloadPromptQueue, retryWaitingPrompts, supportsServerPromptQueue, type PromptQueueWireItem } from './promptQueue';
+import { OUTBOX_AUTO_RESEND_MS } from './cache/outboxStore';
+import { createPromptQueueStore, handOffRows, isRefusedStatus, PromptQueueHttpError, type PendingPromptPersistence, movedOrder, reloadPromptQueue, retryWaitingPrompts, supportsServerPromptQueue, type PromptQueueWireItem } from './promptQueue';
 
 type Call = { path: string; method: string; body?: unknown };
 
@@ -14,6 +15,9 @@ function harness(opts?: {
     inTranscript?: (sessionId: string, localId: string) => boolean;
     onDispatched?: (sessionId: string, localIds: string[]) => void;
     persist?: PendingPromptPersistence;
+    now?: () => number;
+    /** B-815: answers only writes with this status (GETs stay 200). */
+    writeStatus?: () => number | null;
 }) {
     const calls: Call[] = [];
     let items: PromptQueueWireItem[] = [];
@@ -28,6 +32,8 @@ function harness(opts?: {
             calls.push({ path, method, body });
             if (opts?.gate && (method === 'POST' || method === 'PATCH')) await opts.gate(method);
             // Production's SPA fallback answers an unknown /v1 path with `{error:'Not found'}` (spaFallback.ts) — the exact body.
+            const writeStatus = method !== 'GET' ? opts?.writeStatus?.() : null;
+            if (writeStatus) return { status: writeStatus, json: async () => (writeStatus >= 500 ? (() => { throw new Error('html'); })() : { error: 'nope' }) };
             if (opts?.status) return { status: opts.status, json: async () => ({ error: opts.status === 404 ? 'Not found' : 'nope' }) };
             if (method === 'POST' && path.endsWith('/prompt-queue')) {
                 items = [...items, wire(body.localId, String(body.content).replace(/^enc:/, ''), items.length + 1)];
@@ -62,7 +68,7 @@ function harness(opts?: {
         },
         newLocalId: () => `local-${++nextId}`,
         isOnline: opts?.online,
-        now: () => 42,
+        now: opts?.now ?? (() => 42),
         inTranscript: opts?.inTranscript,
         onDispatched: opts?.onDispatched,
         persist: opts?.persist,
@@ -412,5 +418,96 @@ describe('B-815 unaccepted rows in the persistent outbox', () => {
         await new Promise((r) => setTimeout(r, 0));
         expect(h.calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([{ localId: 'fresh', content: 'enc:fresh' }]);
         expect(h.store.getState().sessions.s1.pending).toEqual([{ localId: 'old', text: 'old', modeMeta: {}, createdAt: 2, content: 'enc:old', state: 'failed' }]);
+    });
+
+    const flush = async () => { for (let i = 0; i < 10; i += 1) await new Promise((r) => setTimeout(r, 0)); };
+
+    it('a gateway 5xx (deploy) is unanswered, not refused: retryable, queued on disk; 4xx and our own codes are refused', async () => {
+        expect([502, 503, 504, 500].map((status) => isRefusedStatus(status, null))).toEqual([false, false, false, false]);
+        expect(isRefusedStatus(503, 'prompt_queue_full')).toBe(true);
+        expect(isRefusedStatus(409, 'prompt_queue_full')).toBe(true);
+        expect(isRefusedStatus(400, null)).toBe(true);
+        const { log, persist } = recorder();
+        let status: number | null = 502;
+        const h = harness({ persist, writeStatus: () => status });
+        await expect(h.store.getState().submit('s1', 'deploying', {})).rejects.toThrow('HTTP 502');
+        expect(h.store.getState().sessions.s1.pending).toMatchObject([{ state: 'failed', retryable: true }]);
+        expect(log).toEqual(['save local-1 enc:deploying|{} keep-clock']);
+        status = null;
+        retryWaitingPrompts(h.store);
+        await flush();
+        await flush();
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['deploying']);
+        expect(h.store.getState().sessions.s1.pending).toBeUndefined();
+        status = 409;
+        await expect(h.store.getState().submit('s1', 'refused', {})).rejects.toThrow(PromptQueueHttpError);
+        expect(h.store.getState().sessions.s1.pending).toMatchObject([{ text: 'refused', state: 'failed' }]);
+        expect(h.store.getState().sessions.s1.pending![0].retryable).toBeUndefined();
+    });
+
+    it('the in-page automatic retry keeps the takeover\'s 10 minutes: older rows wait failed (「未加入队列 · 重试」) and only the user re-sends them', async () => {
+        const { log, persist } = recorder();
+        let clock = 1_000;
+        let online = false;
+        let down = true;
+        const h = harness({ persist, now: () => clock, online: () => online, gate: async () => { if (down) throw new Error('offline'); } });
+        await h.store.getState().submit('s1', 'waited', {}).catch(() => {});
+        online = true;
+        await h.store.getState().submit('s1', 'on the way', {}).catch(() => {});
+        down = false;
+        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.state, row.retryable])).toEqual([['waiting', undefined], ['failed', true]]);
+        clock += OUTBOX_AUTO_RESEND_MS + 1;
+        online = true;
+        log.length = 0;
+        const before = h.calls.length;
+        retryWaitingPrompts(h.store);
+        await flush();
+        expect(h.calls.length).toBe(before);
+        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.text, row.state, row.retryable])).toEqual([['waited', 'failed', undefined], ['on the way', 'failed', undefined]]);
+        expect(log).toEqual(['fail local-1', 'fail local-2']);
+        // Not retryable any more: the next reconnect leaves them alone.
+        retryWaitingPrompts(h.store);
+        await flush();
+        expect(h.calls.length).toBe(before);
+        // The user's Retry sends it and restarts the clock in memory too.
+        expect(await h.store.getState().retryPending('s1', 'local-1')).toBe('queued');
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['waited']);
+        online = false;
+        down = true;
+        await h.store.getState().retryPending('s1', 'local-2').catch(() => {});
+        expect(h.store.getState().sessions.s1.pending).toMatchObject([{ localId: 'local-2', state: 'waiting', createdAt: clock }]);
+    });
+
+    it('auto retry at exactly 10 minutes still goes out (same edge as takeoverAction)', async () => {
+        let clock = 0;
+        let online = false;
+        const h = harness({ now: () => clock, online: () => online, gate: async () => { if (!online) throw new Error('offline'); } });
+        await h.store.getState().submit('s1', 'edge', {}).catch(() => {});
+        clock = OUTBOX_AUTO_RESEND_MS;
+        online = true;
+        retryWaitingPrompts(h.store);
+        await flush();
+        await flush();
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['edge']);
+    });
+
+    it('the server stopped queueing (unsupported): a retried or automatically retried row stays in the dock failed — never dropped', async () => {
+        const { log, persist } = recorder();
+        let status: number | null = null;
+        let online = false;
+        const h = harness({ persist, online: () => online, gate: async () => { if (!online) throw new Error('offline'); }, writeStatus: () => status });
+        await h.store.getState().submit('s1', 'kept', {}).catch(() => {});
+        await h.store.getState().submit('s1', 'kept too', {}).catch(() => {});
+        online = true;
+        // The POST itself answers the old server's 404 (status flips to unsupported).
+        status = 404;
+        log.length = 0;
+        await expect(h.store.getState().retryPending('s1', 'local-1', true)).rejects.toThrow('prompt queue unsupported');
+        expect(h.store.getState().sessions.s1.status).toBe('unsupported');
+        // Already unsupported: the early branch keeps it too (the user's Retry and the automatic one).
+        await expect(h.store.getState().retryPending('s1', 'local-2')).rejects.toThrow('prompt queue unsupported');
+        expect(h.store.getState().sessions.s1.pending?.map((row) => [row.text, row.state])).toEqual([['kept', 'failed'], ['kept too', 'failed']]);
+        expect(log.filter((entry) => entry.startsWith('forget'))).toEqual([]);
+        expect(log.filter((entry) => entry.startsWith('fail'))).toEqual(['fail local-1', 'fail local-2']);
     });
 });

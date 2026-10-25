@@ -1,6 +1,6 @@
 # 会话消息同步 v1：快照对账订阅 + 本机持久化（PR-5 / PR-6）
 
-> 状态：已批准（Owner 2026-10-25，6 项取舍按推荐，见 §16），实施中：5a #754、6a #756 已合入、5b B-812、6b B-814；修订见 §15（当前 r5）
+> 状态：已批准（Owner 2026-10-25，6 项取舍按推荐，见 §16），实施中：5a #754、6a #756 已合入、5b B-812、6b B-814；修订见 §15（当前 r6）
 > 日期：2026-10-25 ｜ 关联 backlog：B-807（本 spec）；前置 B-803/B-804/B-805（止血 PR-1～3）；相关 B-802、B-799、B-801、B-806、B-711、B-494、B-513、B-516、B-722
 > 出处：B-802 调研报告（下称 REPORT）§4.2 与设计评审（下称 DESIGN-REVIEW）§5～6；两份记录在会话临时目录，不进 repo
 > 基线：`origin/main@bc28d577`（含 #740 B-799、#741 B-801）。B-802 报告里的行号基于 `e273b309`，本文新增的行号基于 `bc28d577`。
@@ -488,14 +488,20 @@ r4 落实：首条消息的 localId 等于它在 pendingSessions 里的 item id�
 
 `vh.sync.cache=off`、缓存被禁用（打开失败、卡死）或配额只读时，outbox **也不持久化**，退回内存，行为等于 PR-6b 之前。outbox 与消息缓存共用同一个库和同一套开关，不单独开库：「关缓存」要求删库（§6.1），配额只读时也不该继续写；也不为 outbox 另做一套恢复路径。注意：配额只读时 delete 同样失效，已落盘的行会留到下次加载，由接管时「先拉最新页」和服务端去重兜底（#759 review S2 建议放开 delete）。
 
-#### 5.5.7 服务端 prompt queue 的未接受行（r5，B-815）
+#### 5.5.7 服务端 prompt queue 的未接受行（r5/r6，B-815）
 
 agent 忙时 composer 走 B-509 `submitPrompt`，不经过消息 outbox；服务端还没接受的 dock 行（「加入队列中 / 离线 · 连接恢复后加入队列 / 未加入队列」）原来只在内存里，刷新即丢（QA8 U2，生产 915a97a2 可复现）。
 
 - **同库同 store，`kind: 'queue'`**，不另开 store：另开要升库版本，旧标签页持连接时 `onupgradeneeded` 会被阻塞（`IdbBlockedError`）；同 store 直接复用接管锁、tabLiveness、10 分钟规则、cache=off / 配额 / 登出清库。`group = localId`、`order = 0`。
-- **生命周期**：首次 POST 前先加密，`update`（无行则建）落盘，最多等 1s；服务端快照列出该 localId 或 POST 成功 → 删行；放回输入框、删除、退回 tab 本地队列（旧服务端 404）→ 删行。**服务端拒绝**（有 HTTP 答复，或加密不可用）→ `failed`；**没有答复**（链路断）→ 保持 `queued`，与 §5.5.2「没有 ack 一律当 queued」一致。用户点「重试」重置 10 分钟；断网恢复 / 重连的自动重试不重置。
-- **页内**：没有答复的失败行在 dock 仍显示「未加入队列」，但标 `retryable`，与 `waiting` 一起在 `online`、网络恢复和 socket 重连时自动重试（composer 的「发送的消息会在恢复后送出」由此成立）。
-- **接管**：接管流程与 §5.5.3 共用；按 `kind` 分流，`queue` 行**只**重新入队（`POST /prompt-queue`，同 localId），绝不作为消息 POST；消息行绝不进 dock。处理前先拉最新页并 `load` 服务端队列：localId 已在 transcript（已被 wrapper 执行）或在服务端队列（已接受）→ 删行。其余按 §5.5.3 年龄规则：≤10 分钟的 `queued` 回到 dock 并立即入队；更早或已 `failed` 的回到 dock 显示「未加入队列 · 重试」，等用户。服务端按 localId 去重（`enqueuePrompt`），已出队的同 localId 再入队时 dispatch 不会新建消息（`created:false`，wrapper 不再路由），所以重复入队也不会执行两次。
+- **生命周期**：首次 POST 前先加密，`update`（无行则建）落盘，最多等 1s；服务端快照列出该 localId 或 POST 成功 → 删行；放回输入框、删除、退回 tab 本地队列（旧服务端 404）→ 删行。**服务端拒绝**（4xx，或带 `prompt_queue_*` / `session_not_found` code 的答复，或加密不可用）→ `failed`；**没有答复**（链路断，以及不带我方 code 的 5xx：发布时网关的 502/503/504）→ 保持 `queued`，与 §5.5.2「没有 ack 一律当 queued」一致（r6，#761 review S2）。用户点「重试」重置 10 分钟（盘上与内存同时重置）；断网恢复 / 重连的自动重试不重置。
+- **页内**：没有答复的失败行在 dock 仍显示「未加入队列」，但标 `retryable`，与 `waiting` 一起在 `online`、网络恢复和 socket 重连时自动重试（composer 的「发送的消息会在恢复后送出」由此成立）。QA8 原始形态（断网未满判离线阈值、不刷新）既没有 `online` 也没有恢复边沿，只靠 socket 重连这一路（`queueOutboxFlow.test.ts` 驱动 Sync 真实的 reconnect handler 钉住）。
+  - **自动重试同样守 10 分钟（r6，S3）**：`createdAt` 距今超过 10 分钟的 `waiting` / `retryable` 行不自动发，转为 `failed`（盘上同步 `failed`），显示「未加入队列 · 重试」，等用户；与接管的年龄规则同一常量（`OUTBOX_AUTO_RESEND_MS`）、同一边界（恰好 10 分钟仍自动发）。
+  - **服务端不再排队（旧服务端 404，`unsupported`，r6，S4）**：只有 composer 的首次提交会把行交给 tab 本地队列（同时删盘上行）；用户重试、自动重试与接管的行都不会被静默移走，保持 `failed` 留在 dock（此时 dock 在 tab 本地队列之前照样显示它），用户可「放回输入框」后按 tab 本地队列发送。
+- **接管**：接管流程与 §5.5.3 共用；按 `kind` 分流，`queue` 行**只**重新入队（`POST /prompt-queue`，同 localId），绝不作为消息 POST；消息行绝不进 dock。处理前先拉最新页并 `load` 服务端队列：localId 已在 transcript（已被 wrapper 执行）或在服务端队列（已接受）→ 删行。其余按 §5.5.3 年龄规则：≤10 分钟的 `queued` 回到 dock 并立即入队；更早或已 `failed` 的回到 dock 显示「未加入队列 · 重试」，等用户。
+- **幂等边界（r6，#761 review S1，以 `happy-server/sources/app/promptQueue/store.ts` 为准）**：
+  - `enqueuePrompt` **只对仍在队列中的 localId 去重**（命中返回 `created:false`）。dispatch 会删掉队列行，所以**已出队的 localId 再入队会新建一条队列项，返回 `created:true`**。
+  - 真正防止二次执行的是 **dispatch**：`dispatchPromptQueueHead` 经 `storeSessionMessagesInTx` 按 (sessionId, localId) 对消息表去重，localId 已有消息时不新建、不广播，返回 `dispatched.created:false`，CLI（`promptQueueDrain.ts`）视为已路由，不再执行。所以重复入队最多多一条队列项，agent 只执行一次。
+  - **已知限制：dock 可能出现幽灵队列项**。触发窗口：原 POST 实际已被接受但答复丢了（`retryable`）→ 该项被 dispatch → 之后客户端才自动重试或接管，且最新页里还没看到这条消息（接管前的 transcript 检查没拦住）。这条项占队列名额（MAX_ITEMS），可被编辑但编辑不生效，wrapper 空闲 dispatch 时静默消失。根治需要 server `enqueuePrompt` 在同一事务里也查消息表（localId 已有消息 → `created:false` 不建行），向后兼容，另记 backlog，本 PR 不做。
 - **兼容**：B-814 版本（不认 `kind`）的标签页若接管到 `queue` 行，会把它当消息发出：仍只有一份、agent 只执行一次，只是不经过队列。只在发布窗口新旧标签页并存时出现，可以接受。
 
 ### 5.6 文件落点（Web）
@@ -748,6 +754,7 @@ UI 部分（状态条）沿用 PR-2 已经通过的 device-shots 和 design lint
 | 入库 | 2026-10-25 | spec 作者 | 正文与 r3 相同；去掉本机路径与内部称呼，补 §16 Owner 决定，状态改为实施中。同 PR 在 [web-resume-sync](2026-08-web-resume-sync.md) 与 [zero-downtime-release](2026-08-zero-downtime-release.md) 加交叉引用，并改正后者「现状事实」里过期的 recovery 描述 |
 | r4 | 2026-10-25 | spec 作者（#759 review，PR-6b 实现提出的三处出入；已采纳） | **只改文档**。(1) **不存 `displayText` 明文**：与 r2「IDB 只留密文」一致，接管时解密 `body` 重建气泡，解不开就删行（§5.5.1）。(2) **只存 `queued`/`failed`**，ack 时删行；不存 `sending`/`sent`/`seq`；`sent` 的确认改为「接管前先拉最新页，localId 已在 transcript 里就删行」（§5.5.1～5.5.3）。(3) **`cache=off`、缓存禁用或配额只读时 outbox 也不持久化**，退回内存（新增 §5.5.6，§6.1 同步）。同时写明实现中的既定细节：POST 最多等 IDB 1s，超时照发；单链串行保证 delete 不早于 put；锁内重读、写盘成功才算接管，每 15s 一轮；已 failed 的行不论多新都不自动重发；用户重发重置 10 分钟计时；B-801 用 `whenOutboxPersisted` 之后才移除 localStorage 记录（§5.5.2～5.5.4）。新增要求（review B1）：会话不在本页 store 时不能当作已删除，先 `fetchSessionById`，只有 404 才删行，出错或无密钥时保留，下一轮再处理；§5.4.2「会话被删除」一行改为直接删除、不提示。§9.2-7 用例同步 |
 | r5 | 2026-10-25 | B-815（QA8 U2：agent 忙时离线入队后刷新即丢） | 新增 §5.5.7：服务端 prompt queue 未接受的行进同一 `outbox` store，`kind: 'queue'`；接管按 kind 分流（队列行只重新入队、消息行不进 dock），与 10 分钟规则、多标签页接管一致；没有答复的失败保持 `queued`、页内自动重试，服务端拒绝才 `failed` |
+| r6 | 2026-10-25 | B-815（#761 review M1/S1–S4） | §5.5.7：幂等边界改按 server 实现写（enqueue 只对在队列中的 localId 去重，已出队再入队 `created:true`；不二次执行靠 dispatch 按消息表 localId 去重），写入「幽灵队列项」已知限制；不带我方 code 的 5xx 归为没有答复（可重试）；页内自动重试同守 10 分钟；`unsupported` 时只有首次提交退回 tab 本地队列，重试/接管的行保持 `failed` 留在 dock |
 
 ## 16. Owner 决定（2026-10-25，6 项均按推荐）
 

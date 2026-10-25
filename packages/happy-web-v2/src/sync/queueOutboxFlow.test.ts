@@ -44,10 +44,15 @@ let down: boolean;
 let enqueueStatus: number;
 let online: boolean;
 let counter = 0;
+const onlineListeners: Array<() => void> = [];
 let itemCounter = 0;
 
 beforeAll(async () => {
     installBrowserTestGlobals();
+    // The page's real `online` listeners (promptQueue.ts registers one at import).
+    (globalThis as unknown as { window: { addEventListener: unknown } }).window.addEventListener = (type: string, listener: () => void) => {
+        if (type === 'online') onlineListeners.push(listener);
+    };
     Object.defineProperty(globalThis, 'navigator', { value: { get onLine() { return online; } }, configurable: true });
     ({ sync } = await import('./sync'));
     ({ storage } = await import('./storage'));
@@ -176,6 +181,18 @@ async function reload(sid: string) {
     await outboxStore.put(rows.filter((row) => row.sid === sid).map((row) => ({ ...row, ownerTabId: 'tab-previous-load' })));
 }
 
+/** A non-recovered socket reconnect, as apiSocket's `connect` handler fires it, through Sync's own handler. */
+let subscribed = false;
+async function socketReconnected() {
+    if (!subscribed) {
+        (sync as unknown as { subscribeToUpdates: () => void }).subscribeToUpdates();
+        subscribed = true;
+    }
+    const listeners = (apiSocket as unknown as { reconnectedListeners: Set<() => void> }).reconnectedListeners;
+    expect(listeners.size).toBeGreaterThan(0);
+    for (const listener of listeners) listener();
+}
+
 const reclaim = () => (sync as unknown as { reclaimOutbox: () => Promise<void> }).reclaimOutbox();
 const dock = (sid: string) => queue.promptQueueStore.getState().sessions[sid]?.pending ?? [];
 const transcriptTexts = (sid: string) => (storage.getState().sessionMessages[sid]?.messages ?? [])
@@ -289,13 +306,35 @@ describe('B-815 takeover after a reload', () => {
         expect(await outboxStore.all()).toEqual([]);
     });
 
-    it('「未加入队列」 on the way, no reload: it goes out on its own when the link is back', async () => {
+    it('QA8 exact shape, no reload: 「未加入队列」 (link died before the app judged it offline) goes out on the socket reconnect — once', async () => {
         const sid = newSession();
-        await submitOffline(sid, 'same page', false);
+        const localId = await submitOffline(sid, 'same page', false);
         down = false;
-        queue.retryWaitingPrompts(); // what reconnect / recovery calls
+        // No `online` event and no recovered edge (never judged offline): only Sync's reconnect handler.
+        await socketReconnected();
         await settle();
+        expect(enqueues.filter((e) => e.localId === localId)).toHaveLength(1);
         expect(queuedTexts(sid)).toEqual(['same page']);
+        expect(messagePosts.flat()).not.toContain(localId);
+        expect(dock(sid)).toEqual([]);
+        expect(await outboxStore.all()).toEqual([]);
+        // Dispatched later: run once; a second reconnect sends nothing more.
+        expect(dispatchHead(sid)).toEqual({ localId, created: true });
+        await socketReconnected();
+        await settle();
+        expect(enqueues.filter((e) => e.localId === localId)).toHaveLength(1);
+        expect(serverTexts(sid)).toEqual(['history', 'same page']);
+    });
+
+    it('judged offline, no reload: the waiting row goes out on the browser\'s `online` event — once', async () => {
+        const sid = newSession();
+        const localId = await submitOffline(sid, 'back online');
+        down = false;
+        online = true;
+        for (const listener of onlineListeners) listener();
+        await settle();
+        expect(enqueues.filter((e) => e.localId === localId)).toHaveLength(1);
+        expect(queuedTexts(sid)).toEqual(['back online']);
         expect(dock(sid)).toEqual([]);
         expect(await outboxStore.all()).toEqual([]);
     });
