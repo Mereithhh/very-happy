@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-25-cli-busy-auto-upgrade',
+    cliVersion: '0.2.186',
+    date: '2026-10-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct25s.title',
+    summaryKey: 'changelog.releases.oct25s.summary',
+    itemKeys: ['changelog.releases.oct25s.busy', 'changelog.releases.oct25s.sessions'],
+  },
+  {
     id: '2026-10-25-lead-view-replies',
     date: '2026-10-25',
     buildVersion: __APP_VERSION__,
