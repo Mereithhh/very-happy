@@ -46,6 +46,12 @@ export type OutboxRow = {
     /** One user turn (attachments + text): retried together, in `order`. */
     group: string;
     order: number;
+    /**
+     * B-815: absent = a message POST (/v3/sessions/:id/messages); `queue` = a
+     * prompt for the server prompt queue (B-509) the server has not accepted
+     * yet — re-enqueued, never sent as a message. Same store, same takeover.
+     */
+    kind?: 'queue';
 };
 
 export type OutboxStoreDeps = {
@@ -72,7 +78,8 @@ export function isOutboxRow(value: unknown): value is OutboxRow {
         && (row.state === 'queued' || row.state === 'failed')
         && typeof row.ownerTabId === 'string'
         && typeof row.group === 'string'
-        && typeof row.order === 'number';
+        && typeof row.order === 'number'
+        && (row.kind === undefined || row.kind === 'queue');
 }
 
 export class OutboxStore {

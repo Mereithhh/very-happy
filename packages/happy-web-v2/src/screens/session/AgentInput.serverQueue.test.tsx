@@ -194,6 +194,19 @@ describe('AgentInput server-side prompt queue (B-509)', () => {
         expect(host.querySelector<HTMLTextAreaElement>('.ci-textarea')!.value).toBe('Queue me');
     });
 
+    it('B-815: the server stopped queueing — a row it kept failed (retried / taken over) still shows with 放回输入框, next to the tab-local queue', async () => {
+        mocks.queues = { session: [{ id: 'local-1', text: 'tab local', createdAt: 1, modeMeta: {} }] };
+        mocks.queueState = { items: [], status: 'unsupported', pending: [{ localId: 'p1', text: 'kept', modeMeta: {}, createdAt: 1, state: 'failed' }] };
+        mocks.discardPending.mockReturnValue({ localId: 'p1', text: 'kept', modeMeta: {}, createdAt: 1, state: 'failed' });
+        mocks.session.draft = '';
+        render();
+        const rows = host.querySelectorAll<HTMLElement>('.ci-queue-item');
+        expect([...rows].map((row) => row.getAttribute('data-queue-item-source'))).toEqual(['pending', 'local']);
+        await act(async () => { rows[0].querySelector<HTMLButtonElement>('[aria-label="session.chat.sendRestore"]')!.click(); });
+        expect(mocks.discardPending).toHaveBeenCalledWith('session', 'p1');
+        expect(host.querySelector<HTMLTextAreaElement>('.ci-textarea')!.value).toBe('kept');
+    });
+
     it('B-804: a prompt the wrapper took shows as 「执行中」 first, without actions, and server-row moves still count server rows only', async () => {
         mocks.queueState = { status: 'ready', pending: undefined, dispatched: [{ localId: 'd1', text: 'running now' }], items: [
             { id: 'q1', localId: 'l1', position: 1, text: 'next', modeMeta: {}, createdAt: 1 },

@@ -40,8 +40,10 @@ import { syncWebPush } from './webPush';
 import { getNotificationPrefs } from './notificationPrefs';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
-import { buildOutboundUserRecord } from './outboundUserRecord';
-import { applyPromptQueueUpdate, promptQueueTranscript, reloadPromptQueue, retryWaitingPrompts, settleDispatchedPrompts } from './promptQueue';
+import { buildOutboundUserRecord, readOutboundUserRecord } from './outboundUserRecord';
+import { adoptPendingPrompts, applyPromptQueueUpdate, loadPromptQueue, promptQueueStore, promptQueueTranscript, reloadPromptQueue, retryWaitingPrompts, settleDispatchedPrompts } from './promptQueue';
+import { isQueueRow } from './promptQueueOutbox';
+import type { SessionEncryption } from './encryption/sessionEncryption';
 import { forgetCatchUp, trackCatchUp } from './catchUpStatus';
 import { isNetworkOffline, startNetworkMonitor } from './networkStatus';
 import { fetchWithDeadline, SYNC_READ_TIMEOUT_MS } from './requestDeadline';
@@ -610,7 +612,12 @@ class Sync {
         // The latest page first: a copy the server already stored is then
         // recognised by its localId instead of showing up a second time.
         await settleWithin(this.getMessagesSync(sessionId).invalidateAndAwait(), OUTBOX_ADOPT_PAGE_WAIT_MS);
-        const candidates = await Promise.all(rows.map(async (row) => ({
+        // B-815: prompts for the server queue go back to the dock — never out as messages.
+        const queueRows = rows.filter(isQueueRow);
+        if (queueRows.length > 0) await this.adoptQueueRows(sessionId, queueRows, encryption);
+        const messageRows = rows.filter((row) => !isQueueRow(row));
+        if (messageRows.length === 0) return;
+        const candidates = await Promise.all(messageRows.map(async (row) => ({
             row,
             raw: await encryption.decryptRaw(row.body).catch(() => null) as RawRecord | null,
         })));
@@ -656,6 +663,36 @@ class Sync {
                 this.getSendSync(sessionId).invalidateNow();
             }
         });
+    }
+
+    /**
+     * B-815: prompts a gone tab left unaccepted by the server queue. One the
+     * server already holds (queued, or run: its message is in the latest page)
+     * is dropped; the rest re-enter the dock under their localId — fresh ones
+     * re-enqueued now (the server dedupes by localId), stale ones failed.
+     */
+    private async adoptQueueRows(sessionId: string, rows: readonly OutboxRow[], encryption: SessionEncryption) {
+        // The server's queue first: a row it accepted (the answer died with the page) is listed there.
+        await settleWithin(loadPromptQueue(sessionId), OUTBOX_ADOPT_PAGE_WAIT_MS);
+        const candidates = await Promise.all(rows.map(async (row) => ({
+            row,
+            raw: readOutboundUserRecord(await encryption.decryptRaw(row.body).catch(() => null)),
+        })));
+        const queue = promptQueueStore.getState().sessions[sessionId];
+        const reducerState = storage.getState().sessionMessages[sessionId]?.reducerState;
+        const plan = planOutboxAdoption(candidates, {
+            tracked: (localId) => queue?.pending?.some((row) => row.localId === localId) === true,
+            inTranscript: (localId) => reducerState?.localIds.has(localId) === true
+                || queue?.items.some((item) => item.localId === localId) === true
+                || queue?.dispatched?.some((row) => row.localId === localId) === true,
+        });
+        if (plan.drop.length > 0) void outboxStore.remove(plan.drop);
+        const adopted = [...plan.resend.map((c) => ({ c, stale: false })), ...plan.stale.map((c) => ({ c, stale: true }))]
+            .map(({ c: { row, raw }, stale }) => ({ localId: row.localId, text: raw!.text, modeMeta: raw!.modeMeta, createdAt: row.createdAt, content: row.body, stale }));
+        if (adopted.length > 0) {
+            log.log(`📨 outbox: ${plan.resend.length} queued prompt(s) of ${sessionId} left by a closed tab back to the dock (${plan.stale.length} stale)`);
+            adoptPendingPrompts(sessionId, adopted);
+        }
     }
 
     /**
@@ -3326,6 +3363,8 @@ class Sync {
             // arrives to trigger the seq-gap refetch. Bounded: forward from
             // the last known seq.
             this.catchUpViewedSession();
+            // B-815: queue prompts that failed on the dead link go out now.
+            retryWaitingPrompts();
             // B-799 / B-802: a send that failed during the outage may sit in a
             // backoff sleep of up to 10s — cut it short, the link is back now.
             // Send queues only (one wake per reconnect); pollers keep invalidate().
