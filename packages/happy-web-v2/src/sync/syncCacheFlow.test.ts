@@ -32,6 +32,8 @@ let forgotten: string[];
 let decryptGate: Promise<void> | null;
 /** after_seq answers with the history as it was when the request ARRIVED (a gated answer is late, not newer). */
 let snapshotAtRequest: boolean;
+/** When set, an after_seq page holds at most this many rows (hasMore = more remain). */
+let forwardPageLimit: number | null;
 
 beforeAll(async () => {
     installBrowserTestGlobals();
@@ -56,6 +58,7 @@ beforeEach(async () => {
     forgotten = [];
     decryptGate = null;
     snapshotAtRequest = false;
+    forwardPageLimit = null;
     const encryption = {
         decryptMessage: async (message: ServerMessage) => decrypt(message),
         decryptMessages: async (messages: ServerMessage[]) => {
@@ -80,8 +83,13 @@ beforeEach(async () => {
                 throw new DOMException('read deadline', 'TimeoutError');
             }
         }
-        const messages = early ?? (after !== null ? all.filter((m) => m.seq > Number(after)) : [...all].reverse());
-        return new Response(JSON.stringify({ messages, hasMore: false }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        let messages = early ?? (after !== null ? all.filter((m) => m.seq > Number(after)) : [...all].reverse());
+        let hasMore = false;
+        if (after !== null && forwardPageLimit !== null && messages.length > forwardPageLimit) {
+            messages = messages.slice(0, forwardPageLimit);
+            hasMore = true;
+        }
+        return new Response(JSON.stringify({ messages, hasMore }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     await syncCache.open(`flow-account-${++counter}`);
 });
@@ -313,6 +321,26 @@ describe('B-819 (QA8 F2): the anchor probe overlaps the cache render and the key
         expect(afterSeqs).toEqual([2]);
         // The probe answered while the run decrypted: checked first, then ONE commit up to the newest message.
         expect(applied).toEqual([[1, 2, 3, 4]]);
+    });
+
+    it('a probe merged with the render that says hasMore → the catch-up goes on from its newest row', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        for (let i = 4; i <= 6; i++) store(sid, `m${i}`);
+        reload(sid);
+        afterSeqs = [];
+        forwardPageLimit = 2; // the probe (after 2) gets m3, m4 and hasMore
+        const applied = recordApplied(sid);
+        const release = gateDecrypt();
+        sync.onSessionEnter(sid);
+        await settle();
+        expect(afterSeqs).toEqual([2]);
+        release();
+        await settle();
+        expect(texts(sid)).toEqual(serverTexts(sid));
+        expect(afterSeqs).toEqual([2, 4]);
+        expect(applied).toEqual([[1, 2, 3, 4], [5, 6]]);
     });
 
     it('a probe that answered before the render and contradicts the cache → the stale run is never painted, cold page', async () => {
