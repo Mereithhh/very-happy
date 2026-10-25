@@ -2699,6 +2699,12 @@ export const en = {
         entryShort: 'Major update',
         entryCount: ({ count }: { count: number }) => `${count} unread`,
         releases: {
+            oct25r: {
+                title: 'CLI 0.2.185: messages you send are no longer missed',
+                summary: 'If the network blips while the agent is working, a message you send from the web still reaches the agent.',
+                missed: 'When the connection drops briefly while the agent is producing output, a message you send in the meantime is no longer skipped by the agent.',
+                echo: 'The agent’s own replies are no longer handed back to it as if you had sent them.',
+            },
             oct25d: {
                 title: 'Faster catch-up after a dropped connection',
                 summary: 'When the network drops or you bring the phone back from the background, messages catch up faster — in most cases within 1–2 seconds.',

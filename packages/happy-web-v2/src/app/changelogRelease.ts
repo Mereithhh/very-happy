@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-25-cli-no-missed-messages',
+    cliVersion: '0.2.185',
+    date: '2026-10-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct25r.title',
+    summaryKey: 'changelog.releases.oct25r.summary',
+    itemKeys: ['changelog.releases.oct25r.missed', 'changelog.releases.oct25r.echo'],
+  },
+  {
     id: '2026-10-25-faster-catch-up',
     date: '2026-10-25',
     buildVersion: __APP_VERSION__,

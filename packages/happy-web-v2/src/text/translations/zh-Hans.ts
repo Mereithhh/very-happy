@@ -2837,6 +2837,12 @@ export const zhHans: TranslationStructure = {
         entryShort: '大更新',
         entryCount: ({ count }: { count: number }) => `${count} 条未看`,
         releases: {
+            oct25r: {
+                title: 'CLI 0.2.185：你发的消息不会再漏掉',
+                summary: '网络短暂断开时，你在网页上插的话也能送到 agent。',
+                missed: 'agent 正在输出时如果网络短暂断开，你这期间发的消息不会再被 agent 漏掉。',
+                echo: 'agent 自己的回复不会再被当成你发的消息转回给它。',
+            },
             oct25d: {
                 title: '断网后同步更快',
                 summary: '网络断开或手机从后台回来时，消息同步更快，多数情况下 1～2 秒内补齐。',
