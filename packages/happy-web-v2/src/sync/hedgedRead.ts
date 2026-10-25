@@ -13,6 +13,13 @@
  * connection (hedgedRequestInit) and keep the first that succeeds; the rest
  * are aborted. A slow but live link is never cut short: every attempt keeps
  * its own full deadline. Only for idempotent reads.
+ *
+ * B-818: only until the first response headers. The attempt whose headers
+ * arrive first (`init.onResponse`, wired through fetchWithDeadline) is
+ * committed: no further hedge starts, the attempts still waiting are aborted,
+ * and its outcome is the read's. A big body (the 1.8MB session list) is
+ * downloading, not dead — hedges racing it for the same bandwidth meant none
+ * finished on slow 4G (B-816 Q1).
  */
 
 export const HEDGE_AFTER_MS = 2_000;
@@ -34,10 +41,12 @@ export const HEDGE_MAX_ATTEMPTS = 4;
  *    per-host pool. Our API authenticates with the Bearer header only; no
  *    cookie is needed.
  */
-export type HedgedRequestInit = Pick<RequestInit, 'cache' | 'credentials'>;
-export function hedgePoolInit(pool: 0 | 1): HedgedRequestInit {
+export type HedgePoolInit = Pick<RequestInit, 'cache' | 'credentials'>;
+export function hedgePoolInit(pool: 0 | 1): HedgePoolInit {
     return pool === 1 ? { cache: 'no-store', credentials: 'omit' } : { cache: 'no-store' };
 }
+/** What an attempt spreads into its request: the pool, and the headers-arrived callback (B-818). */
+export type HedgedRequestInit = HedgePoolInit & { onResponse: () => void };
 
 /**
  * Attempts alternate pools, starting with the one whose attempt last won a
@@ -80,6 +89,7 @@ export function hedgedRead<T>(
         let running = 0;
         let settled = false;
         let timer: unknown = null;
+        let committed: AbortController | null = null;
 
         const finish = () => {
             settled = true;
@@ -97,8 +107,15 @@ export function hedgedRead<T>(
             abortAll(reason);
             reject(reason);
         };
+        const commit = (controller: AbortController) => {
+            if (settled || committed) return;
+            committed = controller;
+            if (timer !== null) clearTimer(timer);
+            timer = null;
+            abortAll(new DOMException('Superseded by a responding attempt', 'AbortError'), controller);
+        };
         const schedule = () => {
-            if (controllers.length >= maxAttempts) return;
+            if (committed || controllers.length >= maxAttempts) return;
             timer = setTimer(() => {
                 timer = null;
                 if (!settled) launch();
@@ -112,7 +129,7 @@ export function hedgedRead<T>(
             running += 1;
             let result: Promise<T>;
             try {
-                result = attempt(controller.signal, hedgePoolInit(pool), index);
+                result = attempt(controller.signal, { ...hedgePoolInit(pool), onResponse: () => commit(controller) }, index);
             } catch (error) {
                 result = Promise.reject(error);
             }
@@ -127,7 +144,9 @@ export function hedgedRead<T>(
                 },
                 (error) => {
                     running -= 1;
-                    if (settled || running > 0) return;
+                    if (settled) return;
+                    // Committed: only that attempt's outcome counts (the rest were aborted for it).
+                    if (committed ? committed !== controller : running > 0) return;
                     finish();
                     reject(error);
                 },

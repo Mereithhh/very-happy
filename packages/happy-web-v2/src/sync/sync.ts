@@ -228,6 +228,8 @@ class Sync {
     private credentials!: AuthCredentials;
     public encryptionCache = new EncryptionCache();
     private sessionsSync: InvalidateSync;
+    /** B-818: resolves #init's first-list wait (see there); set per #init, cleared once called. */
+    private onSessionsListLoaded: (() => void) | null = null;
     private messagesSync = new Map<string, InvalidateSync>();
     private sendSync = new Map<string, InvalidateSync>();
     private resumeListeners = new Set<() => void>();
@@ -527,6 +529,14 @@ class Sync {
             }
         }
 
+        // B-818: the first socket connect (recovered=false → onReconnected)
+        // invalidates sessionsSync again while this first list GET is still
+        // out, so its queue holds a second full list fetch — kept (it closes
+        // the window between this GET's snapshot and the socket subscribing),
+        // but the UI must not wait for it: awaitQueue() alone made entering
+        // cost two full downloads (2 × 1.8MB for the biggest account, slow 4G).
+        const firstListLoaded = new Promise<void>((resolve) => { this.onSessionsListLoaded = resolve; });
+
         // Invalidate sync
         log.log('🔄 #init: Invalidating all syncs');
         this.sessionsSync.invalidate();
@@ -545,7 +555,7 @@ class Sync {
         // Mark UI ready as soon as sessions load. Machines sync may hang
         // when encryption keys are unavailable (e.g. V1 auth fallback) —
         // let it resolve in the background instead of blocking the UI.
-        this.sessionsSync.awaitQueue().then(() => {
+        Promise.race([firstListLoaded, this.sessionsSync.awaitQueue()]).then(() => {
             storage.getState().applyReady();
         }).catch((error) => {
             console.error('Failed to load sessions:', error);
@@ -1929,6 +1939,8 @@ class Sync {
         );
         this.applySessions(mergedSessions);
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
+        this.onSessionsListLoaded?.();
+        this.onSessionsListLoaded = null;
 
     }
 

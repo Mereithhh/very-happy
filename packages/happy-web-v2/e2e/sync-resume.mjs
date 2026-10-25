@@ -132,6 +132,16 @@
  *         busy → the other leaves it alone while that tab is open (3s); it
  *         closes → the other takes it over (≤ the 15s reclaim pass) and
  *         enqueues it exactly once; one message after the pop; dock and outbox empty.
+ * B-818 (B-816 Q1; a fifth account, its own contexts, through the proxy):
+ *   FAT_SLOW FAT_SESSIONS sessions with ~1.8MB of metadata (the biggest
+ *         production account's list); a returning visit over slow 4G — the
+ *         proxy shares FAT_DOWN_BPS (1.6Mbps) among every API / socket.io
+ *         response and adds FAT_RTT_MS — on desktop and on a phone (mobile
+ *         viewport, CPU ×4) → the composer shows and the session list is
+ *         ready (isDataReady) ≤ FAT_LIMIT_MS every run
+ *         (before B-818: never; each list GET cut at 10s while hedges split
+ *         the link). Prints every /v1/sessions GET (start→end, outcome, bytes,
+ *         content-encoding).
  * Prints one line per measurement (`MEASURE <scenario> <ms|never>`) for the
  * before/after table. Exit code 1 on any failed check.
  */
@@ -181,6 +191,15 @@ const CACHE_RTT_MS = Number(opt('cache-rtt-ms', '150')); // spec B-807 §9.3: pr
 const COLD_RECORDS = 200;
 const COLD_RUNS = Number(opt('cold-runs', '5'));
 const COLD_RENDER_LIMIT_MS = 300; // spec B-807 G4, from the app being interactive
+// B-818 FAT_SLOW: the biggest production account's list (150 sessions, 1.77MB of
+// metadata, B-816) over Lighthouse slow 4G (1.6Mbps down, 150ms RTT).
+const FAT_SESSIONS = 150;
+const FAT_METADATA_PAD = 8_600; // plaintext chars per session → ~12KB base64 ciphertext, ~1.8MB per list
+const FAT_DOWN_BPS = 200_000;
+const FAT_RTT_MS = 150;
+const FAT_RUNS = Number(opt('fat-runs', '2'));
+const FAT_HOLD_MS = Number(opt('fat-hold-ms', '60000'));
+const FAT_LIMIT_MS = 15_000; // fixed: desktop ~9.5s, phone ~12s; waiting for the second list fetch again: 16–20s
 if (OUT) mkdirSync(OUT, { recursive: true });
 if (!DATA_DIR) {
     console.error('--data-dir <migrated standalone data dir> is required');
@@ -228,6 +247,39 @@ const proxy = (() => {
     let latencyMs = 0;
     const later = (link, fn) => (latencyMs > 0 && link.api && !link.exempt ? setTimeout(fn, latencyMs) : fn());
     const links = new Set();
+    // B-818: one shared downlink of `downBps` bytes/s for API + socket.io traffic (FAT_SLOW,
+    // Lighthouse slow 4G). Links take turns per TCP-segment-sized slice, so parallel
+    // responses (hedges) split the bandwidth the way they do on a phone's one radio link.
+    let downBps = 0;
+    const shaped = new Map(); // link → queued downstream chunks
+    let shapeTimer = null;
+    let budget = 0;
+    const SHAPE_TICK_MS = 10;
+    const SHAPE_SLICE = 1460;
+    const shapedLink = (link) => downBps > 0 && link.api && !link.exempt;
+    const shapeEnqueue = (link, chunk) => {
+        let queue = shaped.get(link);
+        if (!queue) shaped.set(link, (queue = []));
+        queue.push(chunk);
+        shapeTimer ??= setInterval(shapePump, SHAPE_TICK_MS);
+    };
+    function shapePump() {
+        budget = Math.min(budget + (downBps * SHAPE_TICK_MS) / 1000, downBps / 10);
+        while (budget >= 1 && shaped.size) {
+            for (const [link, queue] of shaped) {
+                if (budget < 1) break;
+                if (link.stalled || link.closed || queue.length === 0) { shaped.delete(link); link.onDrained?.(); continue; }
+                const head = queue[0];
+                const n = Math.min(head.length, SHAPE_SLICE, Math.floor(budget));
+                const piece = head.subarray(0, n);
+                if (n === head.length) queue.shift(); else queue[0] = head.subarray(n);
+                budget -= n;
+                later(link, () => { if (!link.stalled) link.client.write(piece); });
+                if (queue.length === 0) { shaped.delete(link); link.onDrained?.(); }
+            }
+        }
+        if (!shaped.size) { clearInterval(shapeTimer); shapeTimer = null; budget = 0; }
+    }
     const srv = net.createServer((client) => {
         const upstream = H2 ? net.connect(H2_PORT, '127.0.0.1') : net.connect(Number(viteUrl.port), viteUrl.hostname);
         const link = { id: ++linkSeq, client, upstream, stalled: mode === 'blackhole', exempt: false };
@@ -263,12 +315,18 @@ const proxy = (() => {
                 setTimeout(() => { const out = held; held = null; for (const c of out) if (!link.stalled) client.write(c); }, delayMatch.ms);
                 return;
             }
+            if (shapedLink(link)) { shapeEnqueue(link, chunk); return; }
             later(link, () => { if (!link.stalled) client.write(chunk); });
         });
         // A dead path tells the browser nothing: upstream closing must not reach a stalled link.
-        const end = () => { links.delete(link); client.destroy(); upstream.destroy(); };
+        const end = () => { links.delete(link); link.closed = true; shaped.delete(link); client.destroy(); upstream.destroy(); };
         // B-813: bytes still held back by the RTT reach the browser before the close does.
-        const upstreamEnd = () => { if (link.stalled) { upstream.destroy(); return; } if (latencyMs > 0 && link.api) setTimeout(end, latencyMs + 5); else end(); };
+        const upstreamEnd = () => {
+            if (link.stalled) { upstream.destroy(); return; }
+            // B-818: bytes still queued behind the shaped downlink go first.
+            if (shaped.has(link)) { link.onDrained = upstreamEnd; return; }
+            if (latencyMs > 0 && link.api) setTimeout(end, latencyMs + 5); else end();
+        };
         client.on('close', end);
         client.on('error', end);
         upstream.on('close', upstreamEnd);
@@ -285,6 +343,16 @@ const proxy = (() => {
         stallNext(text, n = 1) { stallMatch = text; stallLeft = n; },
         /** B-813: RTT for API / socket.io requests through the proxy (0 = off). */
         rtt(ms) { latencyMs = ms; },
+        /** B-818: shared downlink bandwidth for API / socket.io responses, bytes/s (0 = off). */
+        bandwidth(bytesPerSec) {
+            downBps = bytesPerSec;
+            if (downBps > 0) return;
+            // Off: what is still queued goes out now, nothing carries over to the next run.
+            for (const [link, queue] of shaped) for (const chunk of queue) later(link, () => { if (!link.stalled && !link.closed) link.client.write(chunk); });
+            const drained = [...shaped.keys()];
+            shaped.clear();
+            for (const link of drained) link.onDrained?.();
+        },
         stallsLeft: () => (stallMatch ? stallLeft : 0),
         delayDown(text, ms) { delayMatch = text ? { text, ms } : null; },
         /** --h2: the TLS front saw Vite's HMR upgrade on this upstream port (the proxy itself only sees ciphertext). */
@@ -595,6 +663,24 @@ async function settle(name, page1, page2, sessionId, lastToken) {
     if (a.lastSeq !== b.lastSeq) await sleep(1_000);
 }
 
+/** A fresh account, signed in on `page` (straight to Vite). */
+async function signUp(page) {
+    const username = `b803${randomBytes(4).toString('hex')}`;
+    await page.goto(`${BASE}/signup`);
+    const toggle = page.locator('.auth-method-toggle');
+    const usernameInput = page.locator('input[autocomplete="username"]');
+    await usernameInput.or(toggle).first().waitFor({ timeout: 60_000 });
+    // The toggle can render a moment before the form it would reveal; clicking it then hides the form.
+    if (!(await usernameInput.isVisible())) await usernameInput.waitFor({ timeout: 1_500 }).catch(() => toggle.click());
+    await page.locator('input[autocomplete="username"]').fill(username);
+    const pw = `pw-${randomBytes(6).toString('hex')}`;
+    const pws = page.locator('input[autocomplete="new-password"]');
+    await pws.nth(0).fill(pw);
+    await pws.nth(1).fill(pw);
+    await page.locator('form.auth-password-form button[type="submit"]').click();
+    await waitConnected(page);
+}
+
 // ── run ───────────────────────────────────────────────────────────────
 await startServer();
 await proxy.listen();
@@ -613,20 +699,7 @@ const shot = async (page, name) => { if (OUT) await page.screenshot({ path: join
 
 try {
     step('sign up (tab2, direct)');
-    const username = `b803${randomBytes(4).toString('hex')}`;
-    await page2.goto(`${BASE}/signup`);
-    const toggle = page2.locator('.auth-method-toggle');
-    const usernameInput = page2.locator('input[autocomplete="username"]');
-    await usernameInput.or(toggle).first().waitFor({ timeout: 60_000 });
-    // The toggle can render a moment before the form it would reveal; clicking it then hides the form.
-    if (!(await usernameInput.isVisible())) await usernameInput.waitFor({ timeout: 1_500 }).catch(() => toggle.click());
-    await page2.locator('input[autocomplete="username"]').fill(username);
-    const pw = `pw-${randomBytes(6).toString('hex')}`;
-    const pws = page2.locator('input[autocomplete="new-password"]');
-    await pws.nth(0).fill(pw);
-    await pws.nth(1).fill(pw);
-    await page2.locator('form.auth-password-form button[type="submit"]').click();
-    await waitConnected(page2);
+    await signUp(page2);
 
     step('create three sessions in-page (S3: never opened by any tab)');
     await page2.waitForFunction(() => import('/src/sync/sync.ts').then(({ sync }) => !!sync.encryption), null, { timeout: 30_000, polling: 300 });
@@ -1697,6 +1770,114 @@ try {
             }
         } finally {
             await ctx.close();
+        }
+    }
+
+    // ── B-818 FAT_SLOW: a big account's cold start over slow 4G ──────────
+    if (want('FAT_SLOW')) {
+        step(`FAT_SLOW a second account with ${FAT_SESSIONS} sessions (~1.8MB of metadata)`);
+        const seedCtx = await browser.newContext(ctxOpts);
+        await seedCtx.addInitScript(() => { try { localStorage.setItem('vh-pwa-install-never-v1', '1'); } catch { /* ignore */ } });
+        const seedPage = await seedCtx.newPage();
+        await signUp(seedPage);
+        await seedPage.waitForLoadState('load');
+        const fatIds = await seedPage.evaluate(async ({ n, pad }) => {
+            const { sync } = await import('/src/sync/sync.ts');
+            const { apiSocket } = await import('/src/sync/apiSocket.ts');
+            const { encodeBase64 } = await import('/src/encryption/base64.ts');
+            for (let i = 0; i < 150 && !sync.encryption; i++) await new Promise((r) => setTimeout(r, 200));
+            const ids = [];
+            let bytes = 0;
+            for (let i = 0; i < n; i++) {
+                const enc = await sync.encryption.openEncryption(null);
+                // The weight of a real row: tools / slashCommands / skills / models lists.
+                const tools = Array.from({ length: 86 }, (_, k) => `mcp__server_${k}__tool_${i}_${'x'.repeat(Math.max(0, Math.floor(pad / 86) - 24))}`);
+                const [metadata] = await enc.encrypt([{ path: `/tmp/b818-fat-${i}`, host: 'e2e', flavor: 'claude', tools }]);
+                const encoded = encodeBase64(metadata, 'base64');
+                bytes += encoded.length;
+                const res = await apiSocket.request('/v1/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tag: crypto.randomUUID(), metadata: encoded, agentState: null, dataEncryptionKey: null }),
+                });
+                if (!res.ok) throw new Error(`seed POST ${res.status}`);
+                ids.push((await res.json()).session.id);
+            }
+            return { ids, bytes };
+        }, { n: FAT_SESSIONS, pad: FAT_METADATA_PAD });
+        console.log(`    seeded ${fatIds.ids.length} sessions, metadata ${(fatIds.bytes / 1e6).toFixed(2)}MB`);
+        const fatDump = await seedPage.evaluate(() => Object.fromEntries(Object.entries(localStorage)));
+        await seedCtx.close();
+        const newest = fatIds.ids.at(-1);
+        const devices = {
+            desktop: { ...ctxOpts },
+            phone: { ...ctxOpts, viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
+        };
+        const results = { desktop: [], phone: [] };
+        for (const device of ['desktop', 'phone']) {
+            for (let run = 1; run <= FAT_RUNS; run++) {
+                step(`FAT_SLOW ${device} run ${run}: returning visit, ${FAT_DOWN_BPS * 8 / 1e6}Mbps / ${FAT_RTT_MS}ms RTT${device === 'phone' ? ' / CPU ×4' : ''}`);
+                const ctx = await browser.newContext(devices[device]);
+                await ctx.addInitScript((entries) => {
+                    if (sessionStorage.getItem('b803-seeded')) return;
+                    sessionStorage.setItem('b803-seeded', '1');
+                    for (const [k, v] of Object.entries(entries)) localStorage.setItem(k, v);
+                }, fatDump);
+                const page = await ctx.newPage();
+                if (device === 'phone') await (await ctx.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: 4 });
+                // Warm the dev server's module graph unthrottled (production boots from the SW cache).
+                await page.goto(`${PROXY_BASE}/`, { waitUntil: 'commit' });
+                await page.waitForFunction(() => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().isDataReady === true), null, { timeout: 60_000, polling: 200 }).catch(() => {});
+                const lists = [];
+                const t0ref = { t: 0 };
+                page.on('request', (r) => { if (/\/v1\/sessions$/.test(r.url()) && r.method() === 'GET') lists.push({ at: Date.now() - t0ref.t, r, outcome: 'pending' }); });
+                page.on('requestfinished', async (r) => {
+                    const row = lists.find((x) => x.r === r);
+                    if (!row) return;
+                    row.done = Date.now() - t0ref.t;
+                    row.outcome = 'ok';
+                    const response = await r.response().catch(() => null);
+                    row.encoding = response?.headers()['content-encoding'] ?? 'identity';
+                    row.bytes = (await r.sizes().catch(() => null))?.responseBodySize ?? null;
+                });
+                page.on('requestfailed', (r) => { const row = lists.find((x) => x.r === r); if (row) { row.done = Date.now() - t0ref.t; row.outcome = r.failure()?.errorText ?? 'failed'; } });
+                // When the socket first connects relative to the list (a connect while the list GET is out queues a second full one).
+                let socketAt = null;
+                proxy.rtt(FAT_RTT_MS);
+                proxy.bandwidth(FAT_DOWN_BPS);
+                t0ref.t = Date.now();
+                await page.goto(`${PROXY_BASE}/session/${newest}`, { waitUntil: 'commit' });
+                const socketWatch = (async () => {
+                    while (socketAt === null && Date.now() - t0ref.t < FAT_HOLD_MS) {
+                        if (await page.evaluate(() => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().socketStatus === 'connected')).catch(() => false)) socketAt = Date.now() - t0ref.t;
+                        else await sleep(100);
+                    }
+                })();
+                const entered = await page.locator('textarea.ci-textarea').waitFor({ state: 'visible', timeout: FAT_HOLD_MS }).then(() => Date.now() - t0ref.t, () => null);
+                // The session list (sidebar, home, palette, teams) waits for isDataReady (sync.ts #init).
+                let ready = null;
+                while (Date.now() - t0ref.t < FAT_HOLD_MS) {
+                    if (await page.evaluate(() => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().isDataReady === true)).catch(() => false)) { ready = Date.now() - t0ref.t; break; }
+                    await sleep(100);
+                }
+                await socketWatch;
+                proxy.bandwidth(0);
+                proxy.rtt(0);
+                results[device].push(entered === null || ready === null ? null : Math.max(entered, ready));
+                measure(`FAT_SLOW-${device}-${run}`, entered);
+                measure(`FAT_SLOW-${device}-${run}-list-ready`, ready);
+                const summary = lists.map((x) => `+${x.at}→${x.done ?? '…'}ms ${x.outcome}${x.bytes ? ` ${(x.bytes / 1e6).toFixed(2)}MB ${x.encoding}` : ''}`);
+                console.log(`    /v1/sessions GETs (${lists.length}): ${summary.join(' | ')}; socket connected +${socketAt ?? '—'}ms`);
+                count(`FAT_SLOW-${device}-${run}-list-GETs`, lists.length);
+                await shot(page, `FAT_SLOW-${device}-${run}`);
+                await ctx.close();
+            }
+        }
+        for (const device of ['desktop', 'phone']) {
+            const sorted = results[device].map((ms) => ms ?? Infinity).sort((a, b) => a - b);
+            const median = sorted[Math.floor((sorted.length - 1) / 2)];
+            measure(`FAT_SLOW-${device}-median`, Number.isFinite(median) ? median : null);
+            check(results[device].every((ms) => ms !== null && ms <= FAT_LIMIT_MS), `FAT_SLOW ${device} enters (composer shown and session list ready) ≤ ${FAT_LIMIT_MS}ms on slow 4G every run`, results[device].map(fmt).join(', '));
         }
     }
 

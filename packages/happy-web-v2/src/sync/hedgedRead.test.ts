@@ -5,13 +5,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HEDGE_AFTER_MS, HEDGE_MAX_ATTEMPTS, hedgedRead, hedgePoolInit, resetHedgePreference, type HedgedRequestInit } from './hedgedRead';
 
-type Attempt = { index: number; init: HedgedRequestInit; signal: AbortSignal; resolve: (v: string) => void; reject: (e: unknown) => void };
+type Attempt = { index: number; init: HedgedRequestInit; signal: AbortSignal; resolve: (v: string) => void; reject: (e: unknown) => void; headers: () => void };
 
 function attempts() {
     const list: Attempt[] = [];
     const run = (signal: AbortSignal, init: HedgedRequestInit, index: number) => new Promise<string>((resolve, reject) => {
         signal.addEventListener('abort', () => reject(signal.reason), { once: true });
-        list.push({ index, init, signal, resolve, reject });
+        list.push({ index, init, signal, resolve, reject, headers: init.onResponse });
     });
     return { list, run };
 }
@@ -96,6 +96,56 @@ describe('hedgedRead', () => {
         expect(a.list.every((x) => x.signal.aborted)).toBe(true);
         await vi.advanceTimersByTimeAsync(HEDGE_AFTER_MS * 10);
         expect(a.list).toHaveLength(2);
+    });
+});
+
+describe('B-818: hedging stops at the first response headers', () => {
+    it('headers before HEDGE_AFTER_MS: a long body download never gets a hedge', async () => {
+        const a = attempts();
+        const read = hedgedRead(a.run);
+        await vi.advanceTimersByTimeAsync(300);
+        a.list[0].headers();
+        expect(vi.getTimerCount()).toBe(0);
+        // ~9s of a 1.8MB body at 200KB/s
+        await vi.advanceTimersByTimeAsync(HEDGE_AFTER_MS * 5);
+        expect(a.list).toHaveLength(1);
+        a.list[0].resolve('the whole list');
+        await expect(read).resolves.toBe('the whole list');
+    });
+
+    it('a hedge whose headers arrive first commits: the waiting attempts are aborted, no further hedge', async () => {
+        const a = attempts();
+        const read = hedgedRead(a.run);
+        await vi.advanceTimersByTimeAsync(HEDGE_AFTER_MS);
+        expect(a.list).toHaveLength(2);
+        a.list[1].headers();
+        expect(a.list[0].signal.aborted).toBe(true);
+        expect(a.list[1].signal.aborted).toBe(false);
+        await vi.advanceTimersByTimeAsync(HEDGE_AFTER_MS * 5);
+        expect(a.list).toHaveLength(2);
+        a.list[1].resolve('second');
+        await expect(read).resolves.toBe('second');
+    });
+
+    it('after the commit only the committed attempt decides; its failure rejects at once (caller backs off)', async () => {
+        const a = attempts();
+        const read = hedgedRead(a.run);
+        await vi.advanceTimersByTimeAsync(HEDGE_AFTER_MS);
+        a.list[0].headers();
+        expect(a.list[1].signal.aborted).toBe(true);
+        a.list[0].reject(new DOMException('Response body stalled for 10000ms', 'TimeoutError'));
+        await expect(read).rejects.toThrow('stalled');
+    });
+
+    it('a second onResponse (a late attempt) changes nothing', async () => {
+        const a = attempts();
+        const read = hedgedRead(a.run);
+        await vi.advanceTimersByTimeAsync(HEDGE_AFTER_MS);
+        a.list[0].headers();
+        a.list[1].headers();
+        expect(a.list[0].signal.aborted).toBe(false);
+        a.list[0].resolve('first');
+        await expect(read).resolves.toBe('first');
     });
 });
 
