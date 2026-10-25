@@ -297,4 +297,4 @@ reset, `stagedInstall` on a real temp tree incl. rollback and bin-map changes,
 wiring source assertions, all mutation-checked) and an isolated e2e on dev-sg
 (transient systemd unit with `KillMode=process`, local standalone server + fake
 registry, 3 sessions: one in a 26-step turn calling `very-happy --version`, one
-with a background Bash task, one idle) — see PR #B-817.
+with a background Bash task, one idle) — see PR #762.
