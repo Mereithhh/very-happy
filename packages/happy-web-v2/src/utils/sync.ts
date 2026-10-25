@@ -90,6 +90,15 @@ export class InvalidateSync {
         this._wake?.();
     }
 
+    /**
+     * B-819: only cut a backoff sleep short — no new run, no abort. For a
+     * retry that waited on something which has just arrived (a session key
+     * the session list brought): the attempt it was sleeping toward goes now.
+     */
+    wake() {
+        this._wake?.();
+    }
+
     invalidate() {
         if (this._stopped) {
             return;

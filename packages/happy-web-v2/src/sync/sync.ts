@@ -48,8 +48,8 @@ import { forgetCatchUp, trackCatchUp } from './catchUpStatus';
 import { isNetworkOffline, startNetworkMonitor } from './networkStatus';
 import { fetchWithDeadline, SYNC_READ_TIMEOUT_MS } from './requestDeadline';
 import { hedgedRead } from './hedgedRead';
-import { catchUpForward, mergeFetchedLastSeq, throwIfAborted } from './messageCatchUp';
-import { outboxStore, syncCache, type CacheHit } from './cache/syncCache';
+import { catchUpForward, mergeFetchedLastSeq, pageMaxSeq, throwIfAborted } from './messageCatchUp';
+import { OPEN_BLOCKED_MS, outboxStore, syncCache, type CacheHit } from './cache/syncCache';
 import { takeoverAction, type OutboxRow } from './cache/outboxStore';
 import { planOutboxAdoption } from './outboxAdoption';
 import { isTabAlive, thisTabId, withTabLock } from './tabLiveness';
@@ -125,6 +125,11 @@ import {
     SendDeadlines,
 } from './outbox';
 import { AnchorBuffer, planLiveMessage } from './liveMessagePlan';
+import { cacheProbeAfterSeq, isUsableCacheProbe, type CacheProbe } from './cacheProbe';
+import { routedSessionId } from './routedSession';
+
+/** B-819: what rendering a cached run did; `merged` = the anchor probe was checked and applied in the same commit. */
+type CacheRender = { droppedMax: number; merged: { hasMore: boolean } | null };
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -245,7 +250,17 @@ class Sync {
     /** B-813: cached runs rendered but not yet checked against the server (the check survives a failed attempt). */
     private unverifiedCacheHits = new Map<string, CacheHit>();
     /** B-813: cached runs read while the session's key was still loading (the read overlaps the session list). */
-    private cachePrefetch = new Map<string, Promise<CacheHit | null>>();
+    private cachePrefetch = new Map<string, { load: Promise<CacheHit | null>; settled: boolean }>();
+    /**
+     * B-819: the anchor probe of a cached run, asked as soon as the run was
+     * read — it needs only the run's newest row, not the session key — so it
+     * overlaps the session list and the cache render instead of following them.
+     */
+    private cacheProbes = new Map<string, CacheProbe>();
+    /** B-819: catch-ups that failed for want of the session key; the session list wakes their backoff. */
+    private messagesAwaitingKeys = new Set<string>();
+    /** B-819: the session a cold open landed on (URL), viewed before its screen mounted. */
+    private routedSession: string | null = null;
     private pendingOutbox = new Map<string, OutboxMessage[]>();
     private outboxRecords = new Map<string, OutboxRecord>();
     private outboxOrder = 0;
@@ -514,6 +529,8 @@ class Sync {
 
         // B-813: this account's message cache opens while the session list loads.
         void syncCache.open(this.serverID);
+        // B-819: …and the session in the URL starts its catch-up with it.
+        this.startRoutedCatchUp(globalThis.location?.pathname);
 
         // Subscribe to updates
         this.subscribeToUpdates();
@@ -2016,6 +2033,9 @@ class Sync {
         syncCache.dropSession(sessionId, 'deleted');
         this.unverifiedCacheHits.delete(sessionId);
         this.cachePrefetch.delete(sessionId);
+        this.cacheProbes.get(sessionId)?.controller.abort();
+        this.cacheProbes.delete(sessionId);
+        this.messagesAwaitingKeys.delete(sessionId);
         this.sessionMessageLocks.delete(sessionId);
         this.messagesDeferredOffline.delete(sessionId);
         this.sessionMessageQueue.delete(sessionId);
@@ -2941,11 +2961,21 @@ class Sync {
         }
         this.messagesDeferredOffline.delete(sessionId);
         const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (encryption) this.messagesAwaitingKeys.delete(sessionId);
         if (!encryption) {
             // B-813: no key before the session list lands — read the cached run meanwhile.
             if (!this.sessionLastSeq.has(sessionId) && !this.cachePrefetch.has(sessionId) && syncCache.mayHave(sessionId)) {
-                this.cachePrefetch.set(sessionId, syncCache.load(sessionId, { viewed: storage.getState().currentViewingSessionId === sessionId }));
+                // Off the critical path (the key is not here yet): it may wait for the database to open.
+                const load = syncCache.load(sessionId, { viewed: this.isViewed(sessionId), openWaitMs: OPEN_BLOCKED_MS });
+                const prefetch = { load, settled: false };
+                this.cachePrefetch.set(sessionId, prefetch);
+                // B-819: and its anchor probe, alongside the session list.
+                void load.then((hit) => {
+                    prefetch.settled = true;
+                    if (hit && this.cachePrefetch.get(sessionId) === prefetch) this.startCacheProbe(sessionId, hit);
+                }, () => { prefetch.settled = true; });
             }
+            this.messagesAwaitingKeys.add(sessionId);
             log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
             throw new Error(`Session encryption not ready for ${sessionId}`);
         }
@@ -2966,14 +2996,34 @@ class Sync {
             this.anchorBuffer.open(sessionId);
             // B-813: a cached run renders now; the catch-up then checks it
             // against the server and extends it. Any doubt → the cold path.
-            const hit = await this.applyCachedMessages(sessionId, encryption, signal);
+            // B-819: the check's request is already out (or goes out now) while
+            // the run decrypts and renders — not one round trip after it.
+            const hit = await this.readCachedRun(sessionId);
             let caughtUp = false;
             if (hit) {
-                this.unverifiedCacheHits.set(sessionId, hit);
-                const forward = this.fetchForwardAfterCache(sessionId, encryption, hit, signal);
-                // A cached transcript is not "live" (spec B-807 risk 4): 「同步中」 until it caught up.
-                if (storage.getState().currentViewingSessionId === sessionId) trackCatchUp(sessionId, forward);
-                caughtUp = await forward;
+                const probe = this.takeCacheProbe(sessionId, hit, signal);
+                let rendered: CacheRender | null = null;
+                try {
+                    rendered = await this.applyCachedMessages(sessionId, encryption, hit, signal, () => probe.answer ?? null);
+                } finally {
+                    if (!rendered) probe.controller.abort();
+                }
+                if (rendered?.merged) {
+                    // The probe answered while the run decrypted: checked and merged in that one commit.
+                    const lastSeq = this.sessionLastSeq.get(sessionId) ?? hit.lastSeq;
+                    if (rendered.merged.hasMore || rendered.droppedMax > lastSeq) {
+                        const forward = this.fetchForwardSince(sessionId, encryption, lastSeq, signal);
+                        if (storage.getState().currentViewingSessionId === sessionId) trackCatchUp(sessionId, forward);
+                        await forward;
+                    }
+                    caughtUp = true;
+                } else if (rendered) {
+                    this.unverifiedCacheHits.set(sessionId, hit);
+                    const forward = this.fetchForwardAfterCache(sessionId, encryption, hit, signal, { probe: probe.page, reach: rendered.droppedMax });
+                    // A cached transcript is not "live" (spec B-807 risk 4): 「同步中」 until it caught up.
+                    if (storage.getState().currentViewingSessionId === sessionId) trackCatchUp(sessionId, forward);
+                    caughtUp = await forward;
+                }
             }
             if (!caughtUp) await this.fetchInitialLatestPage(sessionId, encryption, signal);
         } else if (this.unverifiedCacheHits.has(sessionId)) {
@@ -2990,6 +3040,22 @@ class Sync {
 
         storage.getState().applyMessagesLoaded(sessionId);
         log.log(`💬 fetchMessages completed for session ${sessionId}`);
+    }
+
+    /**
+     * B-819: a cold open on /session/:id — start that session's catch-up now,
+     * alongside the session list, not when its screen mounts (~900ms after
+     * the keys in QA8's runs). Without the key it reads the cache and sends
+     * the anchor probe; the list's keys wake it (wakeMessagesAwaitingKeys).
+     */
+    private startRoutedCatchUp(pathname: string | undefined) {
+        const sessionId = routedSessionId(pathname);
+        this.routedSession = sessionId;
+        if (sessionId) this.getMessagesSync(sessionId).invalidate();
+    }
+
+    private isViewed(sessionId: string): boolean {
+        return storage.getState().currentViewingSessionId === sessionId || this.routedSession === sessionId;
     }
 
     /** B-803: abort a catch-up stuck on a dead connection and go again now. */
@@ -3088,22 +3154,80 @@ class Sync {
         }, fromSeq, signal);
     }
 
+    /** B-813: the session's cached run — read while the key was loading, or now. null = miss. */
+    private readCachedRun = async (sessionId: string): Promise<CacheHit | null> => {
+        const pending = this.cachePrefetch.get(sessionId);
+        this.cachePrefetch.delete(sessionId);
+        if (pending && !pending.settled) {
+            // B-819: the key is here and the cache is still opening (QA8's loaded machine: the
+            // IndexedDB open alone took 500–700ms, longer than the latest page) — waiting would make
+            // the cache slower than no cache. Go to the network now; the page lands in the cache.
+            log.log(`💬 cache: ${sessionId} not read yet when the key came — network first`);
+            return null;
+        }
+        const prefetched = pending?.load;
+        // No cached run → not even one IndexedDB read before the network request.
+        if (!prefetched && !syncCache.mayHave(sessionId)) return null;
+        const viewed = this.isViewed(sessionId);
+        const hit = await (prefetched ?? syncCache.load(sessionId, { viewed }));
+        if (hit || !prefetched) return hit ?? null;
+        // B-819: a prefetch that missed only because the database was still
+        // opening — it is open now and lists this session: read it once more.
+        return syncCache.mayHave(sessionId) ? syncCache.load(sessionId, { viewed }) : null;
+    }
+
+    /** B-819: ask the cached run's anchor probe now; `takeCacheProbe` hands it to the catch-up. */
+    private startCacheProbe(sessionId: string, hit: CacheHit): CacheProbe {
+        this.cacheProbes.get(sessionId)?.controller.abort();
+        const controller = new AbortController();
+        const page = this.fetchForwardPage(sessionId, cacheProbeAfterSeq(hit), controller.signal);
+        page.catch(() => {});
+        const probe: CacheProbe = { hit, page, controller, startedAt: Date.now() };
+        this.cacheProbes.set(sessionId, probe);
+        return probe;
+    }
+
+    /**
+     * B-819: the probe for `hit` — the one asked during the key wait if it is
+     * for this run and fresh, else a new one now. It belongs to this attempt:
+     * a restart (B-803, `signal`) aborts it; a failed early probe is asked again once.
+     */
+    private takeCacheProbe(sessionId: string, hit: CacheHit, signal: AbortSignal): CacheProbe {
+        const early = this.cacheProbes.get(sessionId);
+        this.cacheProbes.delete(sessionId);
+        let probe: CacheProbe;
+        if (early && isUsableCacheProbe(early, hit, Date.now())) {
+            probe = { ...early, page: early.page.catch(() => this.fetchForwardPage(sessionId, cacheProbeAfterSeq(hit), early.controller.signal)) };
+        } else {
+            early?.controller.abort();
+            probe = this.startCacheProbe(sessionId, hit);
+            this.cacheProbes.delete(sessionId);
+        }
+        if (signal.aborted) probe.controller.abort(signal.reason);
+        else signal.addEventListener('abort', () => probe.controller.abort(signal.reason), { once: true });
+        probe.answer = null;
+        probe.page.then((page) => { probe.answer = page; }, () => {});
+        return probe;
+    }
+
     /**
      * B-813: render the session's cached run (spec B-807 §5.4) — the same
-     * merge as a latest page, before any request. null = miss; a run that
-     * does not decrypt is dropped (§5.4.2) and the cold path runs instead.
+     * merge as a latest page, before any request answers. null = not
+     * rendered; a run that does not decrypt is dropped (§5.4.2) and the cold
+     * path runs instead. `droppedMax`: the highest buffered live update left
+     * out past a hole (B1) — the catch-up must reach it.
+     * `answered` (B-819): the anchor probe's page if it is already here once the
+     * run decrypted — then it is checked first (a contradicted run is never
+     * shown: null, cold path) and its newer rows land in the SAME commit as
+     * the run, so the newest message costs no second render.
      */
     private applyCachedMessages = async (
         sessionId: string,
         encryption: ReturnType<Encryption['getSessionEncryption']> & {},
+        hit: CacheHit,
         signal: AbortSignal,
-    ): Promise<CacheHit | null> => {
-        const prefetched = this.cachePrefetch.get(sessionId);
-        this.cachePrefetch.delete(sessionId);
-        // No cached run → not even one IndexedDB read before the network request.
-        if (!prefetched && !syncCache.mayHave(sessionId)) return null;
-        const hit = await (prefetched ?? syncCache.load(sessionId, { viewed: storage.getState().currentViewingSessionId === sessionId }));
-        if (!hit) return null;
+        answered: () => { messages: ApiMessage[]; hasMore: boolean } | null = () => null,
+    ): Promise<CacheRender | null> => {
         // The first paint is the window a latest page would give (B-616): the
         // newest page, extended by whole pages to a turn opener. The older
         // cached rows stay unread; 「加载更早」 pages from the server as before.
@@ -3129,18 +3253,37 @@ class Sync {
             return null;
         }
         const oldestSeq = hit.rows[start].seq;
+        const page = answered();
+        let merged: CacheRender['merged'] = null;
+        let newer: NormalizedMessage[] = [];
+        let anchor = hit.lastSeq;
+        if (page) {
+            const verdict = checkCacheAnchor(page.messages, hit.lastRowSeq, hit.lastId);
+            if (verdict !== 'ok') {
+                log.log(`💬 cache: ${sessionId} contradicted by the server (${verdict}) before it rendered`);
+                syncCache.dropSession(sessionId, verdict);
+                return null;
+            }
+            // A range result: everything in (lastRowSeq - 1, max] — holes included.
+            newer = await this.normalizeFetchedMessages(encryption, page.messages.filter((message) => message.seq > hit.lastSeq));
+            anchor = pageMaxSeq(page, hit.lastSeq);
+            merged = { hasMore: page.hasMore };
+        }
         throwIfAborted(signal);
         let applied = false;
+        let droppedMax = 0;
         await this.getSessionMessageLock(sessionId).inLock(() => {
             if (this.sessionLastSeq.get(sessionId) !== undefined) return;
             // B1: a cached lastSeq is usually behind the server, so a live update
             // buffered during boot may sit past a hole. Only the run that continues
-            // the cache applies; the rest comes back in order with the catch-up
-            // (as B-805's refetch on a gap: the transcript never shows a hole).
-            const buffered = this.anchorBuffer.drain(sessionId, hit.lastSeq, { contiguous: true });
-            const window = [...normalized, ...buffered.messages];
+            // the cache (and the probe page, when merged) applies; the rest comes
+            // back in order with the catch-up (as B-805's refetch on a gap: the
+            // transcript never shows a hole).
+            const buffered = this.anchorBuffer.drain(sessionId, anchor, { contiguous: true });
+            droppedMax = buffered.droppedMax;
+            const window = [...normalized, ...newer, ...buffered.messages];
             if (window.length > 0) this.applyMessages(sessionId, window);
-            this.sessionLastSeq.set(sessionId, hit.lastSeq);
+            this.sessionLastSeq.set(sessionId, anchor);
             this.advanceSessionLastSeq(sessionId, buffered.seqs);
             this.sessionOldestSeq.set(sessionId, oldestSeq);
             storage.getState().applyOlderMessagesPagination(sessionId, { hasMore: oldestSeq > 1 });
@@ -3148,8 +3291,8 @@ class Sync {
         });
         if (!applied) return null;
         storage.getState().applyMessagesLoaded(sessionId);
-        log.log(`💬 cache: ${sessionId} rendered cached seq ${oldestSeq}–${hit.lastSeq}`);
-        return hit;
+        log.log(`💬 cache: ${sessionId} rendered cached seq ${oldestSeq}–${hit.lastSeq}${merged ? ` + checked page to ${anchor}` : ''}`);
+        return { droppedMax, merged };
     }
 
     /**
@@ -3157,14 +3300,18 @@ class Sync {
      * lastRowSeq - 1, so the server's first row must be the cached newest row
      * (§5.4.2: missing = the server is behind the cache, another id = not
      * this history). false = the cached transcript was discarded; load cold.
+     * `early.probe` (B-819): that request, asked before the run rendered;
+     * `early.reach`: a seq the catch-up must get to although that request may
+     * predate it (a buffered update left out past a hole).
      */
     private fetchForwardAfterCache = async (
         sessionId: string,
         encryption: ReturnType<Encryption['getSessionEncryption']> & {},
         hit: CacheHit,
         signal: AbortSignal,
+        early: { probe?: Promise<{ messages: ApiMessage[]; hasMore: boolean }>; reach?: number } = {},
     ): Promise<boolean> => {
-        const probe = await this.fetchForwardPage(sessionId, Math.max(0, hit.lastRowSeq - 1), signal);
+        const probe = await (early.probe ?? this.fetchForwardPage(sessionId, cacheProbeAfterSeq(hit), signal));
         throwIfAborted(signal);
         const verdict = checkCacheAnchor(probe.messages, hit.lastRowSeq, hit.lastId);
         this.unverifiedCacheHits.delete(sessionId);
@@ -3191,6 +3338,9 @@ class Sync {
             first = null;
             return Promise.resolve(page);
         });
+        // B-819: the probe may predate a live update the render left out — fetch on to it.
+        const reached = this.sessionLastSeq.get(sessionId) ?? fromSeq;
+        if ((early.reach ?? 0) > reached) await this.fetchForwardSince(sessionId, encryption, reached, signal);
         return true;
     }
 
@@ -4202,6 +4352,20 @@ class Sync {
         storage.getState().applySessions(sessions);
         const newActive = storage.getState().getActiveSessions();
         this.applySessionDiff(active, newActive);
+        this.wakeMessagesAwaitingKeys();
+    }
+
+    /**
+     * B-819: a catch-up that failed for want of its session key sleeps in
+     * backoff (up to seconds by the time a slow list lands). The key is here
+     * now: go at once — the cold open's first paint waited on that sleep.
+     */
+    private wakeMessagesAwaitingKeys() {
+        for (const sessionId of [...this.messagesAwaitingKeys]) {
+            if (!this.encryption.getSessionEncryption(sessionId)) continue;
+            this.messagesAwaitingKeys.delete(sessionId);
+            this.messagesSync.get(sessionId)?.wake();
+        }
     }
 
     private applySessionDiff = (active: Session[], newActive: Session[]) => {

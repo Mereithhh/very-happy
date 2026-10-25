@@ -8,7 +8,8 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiMessage } from '@/sync/apiTypes';
-import { CACHE_DB_PREFIX, CACHE_SCHEMA, CACHE_SWITCH_KEY, SyncCache, clearSyncCaches, type SessionRecord, type StoredRow } from './syncCache';
+import { CACHE_DB_PREFIX, CACHE_OP_TIMEOUT_MS, CACHE_SCHEMA, CACHE_SWITCH_KEY, CACHE_WRITE_TIMEOUT_LIMIT, SyncCache, clearSyncCaches, type SessionRecord, type StoredRow } from './syncCache';
+import { OutboxStore, type OutboxRow } from './outboxStore';
 import { CACHE_MAX_SESSIONS } from './lru';
 import { validateSegment } from './segment';
 
@@ -509,7 +510,7 @@ describe('B-813 §5.4.2 corruption and inconsistency — every row ends in "no c
         expect(await h.cache.load('s')).toBeNull();
     });
 
-    it('row 8: the QuotaExceeded retry gets stuck > 2s → the cache is off for this page', async () => {
+    it('row 8 (B-819): the QuotaExceeded retry gets stuck > 2s → that batch is skipped, the cache stays on', async () => {
         const h = await opened();
         const put = IDBObjectStore.prototype.put;
         let quotaThrown = false;
@@ -523,18 +524,106 @@ describe('B-813 §5.4.2 corruption and inconsistency — every row ends in "no c
         });
         h.cache.offerLatest('s', rows(1, 3));
         await h.cache.flush(); // real time: the eviction before the retry hangs for its 2s deadline
-        expect(h.cache.stats()).toMatchObject({ state: 'disabled', disabledReason: 'stuck write', quotaErrors: 1 });
+        expect(h.cache.stats()).toMatchObject({ state: 'ready', writeTimeouts: 1, quotaErrors: 1 });
     }, 10_000);
+});
 
-    it('row 8: a write that takes > 2s → the cache is off for this page', async () => {
-        const h = await opened();
-        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-        vi.spyOn(IDBObjectStore.prototype, 'get').mockImplementation(() => ({}) as IDBRequest);
-        h.cache.offerLatest('s', rows(1, 3));
+describe('B-819 (QA8 F3): a slow write skips its batch — never the whole cache, never the outbox', () => {
+    /** Every `sessions` get of a write batch hangs (a loaded device under a burst), until released. */
+    function stallBatches() {
+        const get = IDBObjectStore.prototype.get;
+        let on = true;
+        vi.spyOn(IDBObjectStore.prototype, 'get').mockImplementation(function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore['get']>) {
+            return on && this.name === 'sessions' ? ({}) as IDBRequest : get.apply(this, args);
+        });
+        return () => { on = false; };
+    }
+    async function timedOutFlush(h: Harness) {
         const flushing = h.cache.flush();
-        await vi.advanceTimersByTimeAsync(2_100);
+        await vi.advanceTimersByTimeAsync(CACHE_OP_TIMEOUT_MS + 100);
         await flushing;
-        expect(h.cache.stats()).toMatchObject({ state: 'disabled', disabledReason: 'stuck write' });
+    }
+    const outboxRow = (localId: string): OutboxRow => ({
+        localId, sid: 's', body: `cipher-${localId}`, createdAt: 1, state: 'queued', attempts: 0, ownerTabId: 't', group: localId, order: 0,
+    });
+
+    it('one batch past 2s is skipped; the next batch writes and reads keep working', async () => {
+        const h = await opened();
+        h.cache.offerLatest('s', rows(1, 3));
+        await h.cache.flush();
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const release = stallBatches();
+        h.cache.offerLatest('t', rows(1, 2, 't'));
+        await timedOutFlush(h);
+        // Before B-819: { state: 'disabled', disabledReason: 'stuck write' } — for the rest of the page.
+        expect(h.cache.stats()).toMatchObject({ state: 'ready', writeTimeouts: 1 });
+        release();
+        vi.useRealTimers();
+        h.cache.offerLatest('u', rows(1, 2, 'u'));
+        await h.cache.flush();
+        expect((await allRecords(h.factory))!.map((r) => r.sid).sort()).toEqual(['s', 'u']);
+        expect(await h.cache.load('s')).not.toBeNull();
+        await expectConsistent(h.factory);
+        // A batch that wrote resets the count: two more slow ones later still only skip.
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const again = stallBatches();
+        for (const sid of ['v', 'w']) {
+            h.cache.offerLatest(sid, rows(1, 2, sid));
+            await timedOutFlush(h);
+        }
+        again();
+        expect(h.cache.stats()).toMatchObject({ state: 'ready', writeTimeouts: 3 });
+    });
+
+    it(`${CACHE_WRITE_TIMEOUT_LIMIT} batches in a row → the message cache is off; the outbox in the same database still writes`, async () => {
+        const h = await opened();
+        const outbox = new OutboxStore({ db: (purpose) => h.cache.outboxDatabase(undefined, purpose) });
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const release = stallBatches();
+        for (let i = 0; i < CACHE_WRITE_TIMEOUT_LIMIT; i++) {
+            expect(h.cache.stats().state).toBe('ready');
+            h.cache.offerLatest(`s${i}`, rows(1, 2, `s${i}`));
+            await timedOutFlush(h);
+        }
+        expect(h.cache.stats()).toMatchObject({ state: 'disabled', disabledReason: 'stuck write', writeTimeouts: CACHE_WRITE_TIMEOUT_LIMIT });
+        release();
+        vi.useRealTimers();
+        // Before B-819: false — the outbox went down with the message cache, and a reload lost what was sent here.
+        expect(await outbox.put([outboxRow('l1')])).toBe(true);
+        expect((await outbox.all()).map((r) => r.localId)).toEqual(['l1']);
+        expect(outbox.stats()).toMatchObject({ stuck: false, timeouts: 0 });
+    });
+
+    it('a skipped batch keeps its drop: a run found behind the server is never served again', async () => {
+        const h = await opened();
+        h.cache.offerLatest('s', rows(1, 3));
+        await h.cache.flush();
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const release = stallBatches();
+        h.cache.dropSession('s', 'behind');
+        h.cache.offerLatest('t', rows(1, 2, 't')); // same batch; its get hangs
+        await timedOutFlush(h);
+        expect(h.cache.stats().writeTimeouts).toBe(1);
+        expect(h.cache.mayHave('s')).toBe(false);
+        release();
+        vi.useRealTimers();
+        await h.cache.flush();
+        expect((await allRecords(h.factory))!.map((r) => r.sid)).not.toContain('s');
+        expect(await h.cache.load('s')).toBeNull();
+    });
+
+    it('a message batch leaves the outbox store out of its transaction — unless it clears a deleted session\'s rows', async () => {
+        const h = await opened();
+        const transaction = vi.spyOn(IDBDatabase.prototype, 'transaction');
+        h.cache.offerLatest('s', rows(1, 2));
+        await h.cache.flush();
+        h.cache.dropSession('t', 'deleted');
+        await h.cache.flush();
+        const scopes = transaction.mock.calls
+            .filter(([, mode]) => mode === 'readwrite')
+            .map(([stores]) => [...(typeof stores === 'string' ? [stores] : stores)].sort().join());
+        // Before B-819: every batch locked `outbox` too, so outbox writes queued behind a slow message batch.
+        expect(scopes).toEqual(['messages,sessions', 'messages,outbox,sessions']);
     });
 });
 

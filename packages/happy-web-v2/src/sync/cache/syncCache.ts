@@ -31,8 +31,15 @@ export const CACHE_DB_PREFIX = 'vh-sync-';
 export const CACHE_SCHEMA = 1;
 const DB_VERSION = 1;
 export const OPEN_BLOCKED_MS = 3_000;
-/** §5.4.2: any read or write slower than this = the cache is stuck; off for this page. */
+/** §5.4.2: a read slower than this = the cache is stuck; off for this page. A write that slow only skips its batch (B-819). */
 export const CACHE_OP_TIMEOUT_MS = 2_000;
+/**
+ * B-819 (QA8 F3): this many write batches in a row past CACHE_OP_TIMEOUT_MS =
+ * stuck for real — the message cache stops writing for this page. One slow
+ * batch under a burst on a loaded machine (QA8: 100 rows/s over 40 sessions,
+ * load 6–11) only loses that batch. Never the outbox: it has its own budget.
+ */
+export const CACHE_WRITE_TIMEOUT_LIMIT = 3;
 const FLUSH_DELAY_MS = 250;
 const FLUSH_ROWS = 50;
 const CLEANUP_EVERY_MS = 60_000;
@@ -96,6 +103,8 @@ export type SyncCacheStats = {
     drops: Partial<Record<DropReason, number>>;
     flushes: number;
     writeErrors: number;
+    /** B-819: write batches skipped because they ran past CACHE_OP_TIMEOUT_MS (rows lost to the cache, not to the transcript). */
+    writeTimeouts: number;
     quotaErrors: number;
     evicted: number;
     rebuilt: number;
@@ -201,9 +210,16 @@ export class SyncCache {
     private known: Set<string> | null = null;
     private openedKnown: Set<string> | null = null;
     private writesEnabled = true;
+    /**
+     * B-819: the outbox's own switch. Off only when the database is off for
+     * this page as a whole (switched off, quota read-only) — a stuck MESSAGE
+     * read or write turns the message cache off and leaves the outbox alone.
+     */
+    private outboxWritable = true;
+    private consecutiveWriteTimeouts = 0;
     private readonly counters: SyncCacheStats = {
         state: 'idle', readOnly: false, disabledReason: null, hits: 0, misses: 0, drops: {},
-        flushes: 0, writeErrors: 0, quotaErrors: 0, evicted: 0, rebuilt: 0,
+        flushes: 0, writeErrors: 0, writeTimeouts: 0, quotaErrors: 0, evicted: 0, rebuilt: 0,
     };
 
     constructor(deps: SyncCacheDeps) {
@@ -241,6 +257,8 @@ export class SyncCache {
         this.pendingRows = 0;
         this.readsEnabled = true;
         this.writesEnabled = true;
+        this.outboxWritable = true;
+        this.consecutiveWriteTimeouts = 0;
         this.known = null;
         this.openedKnown = null;
         this.counters.disabledReason = null;
@@ -248,6 +266,7 @@ export class SyncCache {
             this.counters.state = 'off';
             this.readsEnabled = false;
             this.writesEnabled = false;
+            this.outboxWritable = false;
             this.dbPromise = Promise.resolve(null);
             void clearSyncCaches(this.deps.factory(), this.deps.localStorage());
             return this.dbPromise.then(() => {});
@@ -272,10 +291,12 @@ export class SyncCache {
     /**
      * §5.4: the cached run of `sid`, validated; null on a miss or any problem.
      * `viewed`: the user opened it — it counts as recently viewed for the LRU.
+     * `openWaitMs` (B-819): how long to wait for the database to open — short
+     * on the network path; a prefetch during the key wait may wait longer.
      */
-    async load(sid: string, opts: { viewed?: boolean } = {}): Promise<CacheHit | null> {
+    async load(sid: string, opts: { viewed?: boolean; openWaitMs?: number } = {}): Promise<CacheHit | null> {
         if (!this.mayHave(sid)) return this.miss();
-        const db = await this.readyDb();
+        const db = await this.readyDb(opts.openWaitMs);
         if (!db || !this.readsEnabled || this.pending.get(sid)?.drop) return this.miss();
         let record: SessionRecord | undefined;
         let rows: StoredRow[];
@@ -389,6 +410,11 @@ export class SyncCache {
         try { return this.deps.localStorage()?.getItem(CACHE_SWITCH_KEY) === 'off'; } catch { return false; }
     }
 
+    /**
+     * The message cache off for this page. B-819: the connection stays open —
+     * the outbox shares it and keeps working (before, a stuck message write
+     * silently took the persistent outbox down with it: QA8 F3).
+     */
     private disable(reason: string) {
         this.readsEnabled = false;
         this.writesEnabled = false;
@@ -396,7 +422,7 @@ export class SyncCache {
         this.counters.disabledReason = reason;
         this.pending.clear();
         this.pendingRows = 0;
-        this.closeDb();
+        if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
     }
 
     private closeDb() {
@@ -407,12 +433,14 @@ export class SyncCache {
 
     /**
      * B-814: the same database for the persistent outbox (outboxStore.ts) —
-     * null while writes are off (switched off, disabled, read-only on quota) —
+     * null while the outbox may not write (switched off, read-only on quota) —
      * except a delete on quota: it frees space (an acked row left behind would
-     * come back as 「未发送」 on the next load).
+     * come back as 「未发送」 on the next load). B-819: a message cache
+     * disabled as stuck does not close it to the outbox.
      */
     outboxDatabase(waitMs = LOAD_OPEN_WAIT_MS, purpose: 'write' | 'delete' = 'write'): Promise<IDBDatabase | null> {
-        if (!this.writesEnabled && !(purpose === 'delete' && this.readsEnabled)) return Promise.resolve(null);
+        if (this.counters.state === 'off') return Promise.resolve(null);
+        if (purpose === 'write' && !this.outboxWritable) return Promise.resolve(null);
         return this.readyDb(waitMs);
     }
 
@@ -543,7 +571,7 @@ export class SyncCache {
         try {
             waiting = await this.writeWithTimeout(db, batch);
         } catch (error) {
-            if (error instanceof IdbTimeoutError) { this.disable('stuck write'); return; }
+            if (error instanceof IdbTimeoutError) { this.skipTimedOutBatch(batch); return; }
             if (!isQuotaError(error)) { this.counters.writeErrors += 1; return; }
             // §5.4.1: QuotaExceeded → drop the older half, retry once; then read-only for this page.
             this.counters.quotaErrors += 1;
@@ -551,13 +579,15 @@ export class SyncCache {
                 await withTimeout(this.cleanup(db, 'quota'), CACHE_OP_TIMEOUT_MS, 'quota eviction');
                 waiting = await this.writeWithTimeout(db, batch);
             } catch (retryError) {
-                if (retryError instanceof IdbTimeoutError) { this.disable('stuck write'); return; }
+                if (retryError instanceof IdbTimeoutError) { this.skipTimedOutBatch(batch); return; }
                 if (isQuotaError(retryError)) this.counters.quotaErrors += 1;
                 this.writesEnabled = false;
+                this.outboxWritable = false;
                 this.pending.clear();
                 return;
             }
         }
+        this.consecutiveWriteTimeouts = 0;
         for (const [sid, rest] of waiting) {
             if (rest.points.length === 0 && rest.ranges.length === 0) continue;
             const entry = this.entry(sid);
@@ -568,14 +598,52 @@ export class SyncCache {
         if (this.deps.now() - this.lastCleanupAt > CLEANUP_EVERY_MS) this.scheduleCleanup();
     }
 
-    private writeWithTimeout(db: IDBDatabase, batch: Map<string, Pending>) {
-        return withTimeout(this.writeBatch(db, batch), CACHE_OP_TIMEOUT_MS, 'write');
+    /** A batch past the budget is aborted, so it is skipped for sure (not committed later, behind the next one). */
+    private async writeWithTimeout(db: IDBDatabase, batch: Map<string, Pending>) {
+        const started: { tx: IDBTransaction | null } = { tx: null };
+        try {
+            return await withTimeout(this.writeBatch(db, batch, started), CACHE_OP_TIMEOUT_MS, 'write');
+        } catch (error) {
+            if (error instanceof IdbTimeoutError) {
+                try { started.tx?.abort(); } catch { /* already finished */ }
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * B-819 (QA8 F3): a write batch ran past the budget — skip it, keep the
+     * cache. Its rows are only missing from the cache (the run stays shorter;
+     * a later range or latest page fills it). Its drops are kept for the next
+     * flush: a run found corrupt or behind must not be served again.
+     * CACHE_WRITE_TIMEOUT_LIMIT in a row → the message cache is off for this page.
+     */
+    private skipTimedOutBatch(batch: Map<string, Pending>) {
+        this.counters.writeTimeouts += 1;
+        this.consecutiveWriteTimeouts += 1;
+        console.warn(`[sync-cache] write batch skipped: over ${CACHE_OP_TIMEOUT_MS}ms (${this.consecutiveWriteTimeouts} in a row)`);
+        if (this.consecutiveWriteTimeouts >= CACHE_WRITE_TIMEOUT_LIMIT) {
+            this.disable('stuck write');
+            return;
+        }
+        for (const [sid, entry] of batch) {
+            if (!entry.drop) continue;
+            const next = this.entry(sid);
+            next.drop = next.drop ? { outbox: next.drop.outbox || entry.drop.outbox } : entry.drop;
+        }
+        if (this.pending.size > 0) this.scheduleFlush();
     }
 
     /** One readwrite transaction for the whole batch; returns rows still waiting above a hole. */
-    private async writeBatch(db: IDBDatabase, batch: Map<string, Pending>): Promise<Map<string, Waiting>> {
-        const tx = db.transaction(['sessions', 'messages', 'outbox'], 'readwrite');
+    private async writeBatch(db: IDBDatabase, batch: Map<string, Pending>, started: { tx: IDBTransaction | null } = { tx: null }): Promise<Map<string, Waiting>> {
+        // B-819: the outbox store only when a drop clears it — otherwise a slow
+        // message batch would queue every outbox transaction behind it.
+        const scope = [...batch.values()].some((entry) => entry.drop?.outbox) ? ['sessions', 'messages', 'outbox'] : ['sessions', 'messages'];
+        const tx = db.transaction(scope, 'readwrite');
+        started.tx = tx;
         const done = txDone(tx);
+        // Aborted on a timeout while a request still hangs: nobody awaits `done` then.
+        done.catch(() => {});
         const sessions = tx.objectStore('sessions');
         const messages = tx.objectStore('messages');
         const waiting = new Map<string, Waiting>();

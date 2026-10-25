@@ -7,7 +7,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it, vi } from 'vitest';
 import { SyncCache } from './syncCache';
-import { OUTBOX_AUTO_RESEND_MS, OutboxStore, takeoverAction, type OutboxRow } from './outboxStore';
+import { OUTBOX_AUTO_RESEND_MS, OUTBOX_TIMEOUT_LIMIT, OutboxStore, takeoverAction, type OutboxRow } from './outboxStore';
 
 function memoryStorage() {
     const map = new Map<string, string>();
@@ -124,6 +124,33 @@ describe('OutboxStore', () => {
         const db = (await cache.outboxDatabase(undefined, 'delete'))!;
         const keys = db.transaction('outbox', 'readonly').objectStore('outbox').getAllKeys();
         expect(await new Promise((resolve) => { keys.onsuccess = () => resolve(keys.result); })).toEqual(['kept']);
+    });
+
+    it('B-819: one slow operation is not persisted, the next one is; only a run of them stops the outbox (with a metric)', async () => {
+        const { cache } = await harness();
+        const real = (await cache.outboxDatabase())!;
+        let slow = 0;
+        const hung = { transaction: () => ({ objectStore: () => ({ put: () => {} }), abort: () => {} }) } as unknown as IDBDatabase;
+        const store = new OutboxStore({ db: async () => (slow > 0 ? (slow--, hung) : real) });
+        const timedOut = async (localId: string) => {
+            const op = store.put([row(localId)]);
+            await vi.advanceTimersByTimeAsync(2_100);
+            return op;
+        };
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        slow = 1;
+        expect(await timedOut('slow')).toBe(false);
+        vi.useRealTimers();
+        // Before B-819: false — the first timeout stopped the outbox for the page.
+        expect(await store.put([row('next')])).toBe(true);
+        expect(store.stats()).toMatchObject({ timeouts: 1, stuck: false });
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        slow = OUTBOX_TIMEOUT_LIMIT;
+        for (let i = 0; i < OUTBOX_TIMEOUT_LIMIT; i++) expect(await timedOut(`run-${i}`)).toBe(false);
+        vi.useRealTimers();
+        expect(store.stats()).toMatchObject({ timeouts: 1 + OUTBOX_TIMEOUT_LIMIT, stuck: true });
+        expect(await store.put([row('after')])).toBe(false);
+        expect((await store.all()).map((r) => r.localId)).toEqual([]);
     });
 
     it('the cache\'s session-deleted drop removes that session\'s outbox rows', async () => {
