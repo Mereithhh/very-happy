@@ -65,15 +65,19 @@ export class AnchorBuffer<M> {
      * The page anchored lastSeq at `anchor`: what to apply (seq-ascending) and every seq seen past it.
      * `contiguous` (B-813 B1): only the run from anchor + 1 without a hole; the rest is dropped — the
      * anchor is older than the server's head (a cached run), so the forward fetch brings them in order.
+     * `droppedMax` (B-819): the highest seq dropped that way (0 = none) — the forward fetch must reach
+     * it, even when its first page was asked before these updates arrived.
      */
-    drain(sessionId: string, anchor: number, options: { contiguous?: boolean } = {}): { messages: M[]; seqs: number[] } {
+    drain(sessionId: string, anchor: number, options: { contiguous?: boolean } = {}): { messages: M[]; seqs: number[]; droppedMax: number } {
         const buffer = this.buffers.get(sessionId) ?? [];
         this.buffers.delete(sessionId);
-        let after = buffer.filter((entry) => entry.seq > anchor).sort((a, b) => a.seq - b.seq);
-        if (options.contiguous) after = contiguousRun(after, anchor);
+        const sorted = buffer.filter((entry) => entry.seq > anchor).sort((a, b) => a.seq - b.seq);
+        const after = options.contiguous ? contiguousRun(sorted, anchor) : sorted;
+        const droppedMax = after.length < sorted.length ? sorted[sorted.length - 1].seq : 0;
         return {
             messages: after.flatMap((entry) => (entry.message ? [entry.message] : [])),
             seqs: after.map((entry) => entry.seq),
+            droppedMax,
         };
     }
 

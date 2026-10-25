@@ -17,8 +17,13 @@ import { IdbTimeoutError, req, txDone, withTimeout } from './idb';
 
 /** Owner 10-25: a takeover re-sends inputs at most this old; older ones wait for the user. */
 export const OUTBOX_AUTO_RESEND_MS = 10 * 60_000;
-/** Same budget as the message cache (§5.4.2): slower = stuck. */
+/** Same budget as the message cache (§5.4.2): slower = that operation is not persisted. */
 const OUTBOX_OP_TIMEOUT_MS = 2_000;
+/** B-819: this many operations in a row past the budget = stuck; the outbox stops for this page. */
+export const OUTBOX_TIMEOUT_LIMIT = 3;
+
+/** B-819 (QA8 F3): what the outbox did on this page — a silent stop used to be invisible. */
+export type OutboxStats = { ops: number; failures: number; timeouts: number; stuck: boolean };
 
 /**
  * `queued`: not known to have reached the server — re-sent by whoever takes
@@ -87,9 +92,15 @@ export class OutboxStore {
     /** Operations commit in call order (a put and the delete its ack triggers must not swap). */
     private chain: Promise<unknown> = Promise.resolve();
     private stuck = false;
+    private consecutiveTimeouts = 0;
+    private readonly counters = { ops: 0, failures: 0, timeouts: 0 };
 
     constructor(deps: OutboxStoreDeps) {
         this.deps = { now: Date.now, ...deps };
+    }
+
+    stats(): OutboxStats {
+        return { ...this.counters, stuck: this.stuck };
     }
 
     /** Write (or overwrite) rows. True when they are durable. */
@@ -182,8 +193,9 @@ export class OutboxStore {
             if (this.stuck) return null;
             const db = await this.deps.db(purpose).catch(() => null);
             if (!db) return null;
+            this.counters.ops += 1;
             try {
-                return await withTimeout((async () => {
+                const result = await withTimeout((async () => {
                     const tx = db.transaction('outbox', 'readwrite');
                     const done = txDone(tx);
                     try {
@@ -196,8 +208,16 @@ export class OutboxStore {
                         throw error;
                     }
                 })(), OUTBOX_OP_TIMEOUT_MS, `outbox ${what}`);
+                this.consecutiveTimeouts = 0;
+                return result;
             } catch (error) {
-                if (error instanceof IdbTimeoutError) this.stuck = true;
+                this.counters.failures += 1;
+                if (error instanceof IdbTimeoutError) {
+                    // B-819: one slow operation is not persisted; only a run of them means stuck.
+                    this.counters.timeouts += 1;
+                    this.consecutiveTimeouts += 1;
+                    if (this.consecutiveTimeouts >= OUTBOX_TIMEOUT_LIMIT) this.stuck = true;
+                }
                 console.warn(`[outbox] ${what} failed`, error);
                 return null;
             }

@@ -90,10 +90,12 @@
  *   COLD  a 200-record session: a fresh page opens it COLD_RUNS times with
  *         the cache and COLD_RUNS times with `vh.sync.cache=off` (today's
  *         path), each time after tab2 added a message → with the cache the
- *         newest cached record is on screen sooner (median, from navigation
- *         start) than the network page brings it; the new message is caught
- *         up (补齐) ≤ 5s; medians of both printed (`COLD-*`). On a build
- *         without the cache only the `off`-equivalent numbers are meaningful.
+ *         newest cached record is on screen no later (median, from navigation
+ *         start, ±50ms — B-819) than the network page brings it; the new message is caught
+ *         up (补齐) ≤ 5s, and (B-819, QA8 F2) no later than without the cache
+ *         (median, ±COLD_CAUGHT_UP_SLACK_MS) — h1 and --h2; medians of both
+ *         printed (`COLD-<desktop|phone>-*`). Desktop and a phone viewport. On a
+ *         build without the cache only the `off`-equivalent numbers are meaningful.
  *   TAMPER one session's cached row is corrupted, then a fresh page opens it
  *         → its transcript equals the server's (cold path), the other
  *         session's cache still hits.
@@ -200,6 +202,7 @@ const FAT_RTT_MS = 150;
 const FAT_RUNS = Number(opt('fat-runs', '2'));
 const FAT_HOLD_MS = Number(opt('fat-hold-ms', '60000'));
 const FAT_LIMIT_MS = 15_000; // fixed: desktop ~9.5s, phone ~12s; waiting for the second list fetch again: 16–20s
+const COLD_CAUGHT_UP_SLACK_MS = 50; // B-819: medians of 5 opens, h1 and --h2
 if (OUT) mkdirSync(OUT, { recursive: true });
 if (!DATA_DIR) {
     console.error('--data-dir <migrated standalone data dir> is required');
@@ -1208,8 +1211,8 @@ try {
     }
     // ── B-813: the IndexedDB message cache ("the phone after a restart") ──
     if (want('COLD') || want('TAMPER') || want('QUOTA')) {
-        const phoneContext = async () => {
-            const ctx = await browser.newContext(ctxOpts);
+        const phoneContext = async (extra = {}) => {
+            const ctx = await browser.newContext({ ...ctxOpts, ...extra });
             await ctx.addInitScript((entries) => {
                 if (sessionStorage.getItem('b803-seeded')) return;
                 sessionStorage.setItem('b803-seeded', '1');
@@ -1224,8 +1227,9 @@ try {
          * (performance.now(), i.e. ms since navigation start) when the composer
          * appears and when each of `marks` is first in the transcript DOM.
          */
-        const coldOpen = async (ctx, sid, marks, { timeoutMs = 30_000 } = {}) => {
+        const coldOpen = async (ctx, sid, marks, { timeoutMs = 30_000, prepare = null } = {}) => {
             const page = await ctx.newPage();
+            if (prepare) await prepare(page);
             page.on('pageerror', (e) => console.log('phone pageerror', e.message));
             if (DEBUG) {
                 page.on('requestfailed', (r) => console.log(`    phone request failed ${r.url().replace(PROXY_BASE, '')} ${r.failure()?.errorText}`));
@@ -1267,54 +1271,76 @@ try {
             await agentSay(page2, SC, coldTexts.slice(i + 1, i + 10), 0);
         }
         const lastCold = `${coldPrefix}-${COLD_RECORDS}-`;
+        // Messages COLD appends to SC after the seeded records: they push that many cold records out of the newest page.
+        let coldExtraWrites = 0;
         const phone = await phoneContext();
         try {
             if (want('COLD')) {
-                step(`COLD ${COLD_RUNS}× cache on / off, ${COLD_RECORDS} records, proxy RTT ${CACHE_RTT_MS}ms`);
-                const runs = { on: [], off: [] };
-                for (let run = 0; run < COLD_RUNS; run++) {
-                    for (const mode of ['on', 'off']) {
-                        // Warm (unmeasured): the cache holds the session's run.
-                        proxy.rtt(0);
-                        const warm = await coldOpen(phone, SC, [lastCold]);
-                        await warm.page.evaluate((mode) => { if (mode === 'off') localStorage.setItem('vh.sync.cache', 'off'); else localStorage.removeItem('vh.sync.cache'); }, mode);
-                        await sleep(300);
-                        await flushCache(warm.page);
-                        await warm.page.close();
-                        // While no phone page is open, "another device" writes — the cold open must catch it up.
-                        const fresh = token(`cold-new-${mode}`);
-                        await userSay(page2, SC, [fresh]);
-                        proxy.rtt(CACHE_RTT_MS);
-                        const { page, marks } = await coldOpen(phone, SC, [lastCold, fresh]);
-                        const stats = await cacheStats(page);
-                        proxy.rtt(0);
-                        const entry = { app: marks.composer ?? null, cached: marks[lastCold] ?? null, caughtUp: marks[fresh] ?? null, hits: stats?.hits ?? null };
-                        runs[mode].push(entry);
-                        console.log(`    COLD ${mode} #${run + 1}: composer ${entry.app}ms, last record ${entry.cached}ms, new message ${entry.caughtUp}ms (cache hits ${entry.hits})`);
-                        await page.evaluate(() => localStorage.removeItem('vh.sync.cache'));
-                        await page.close();
+                // B-819: desktop and a phone viewport (QA8 measured both), 5 runs each by default.
+                const devices = [['desktop', phone], ['phone', await phoneContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 })]];
+                for (const [vp, device] of devices) {
+                    step(`COLD ${vp} ${COLD_RUNS}× cache on / off, ${COLD_RECORDS} records, proxy RTT ${CACHE_RTT_MS}ms`);
+                    const runs = { on: [], off: [] };
+                    for (let run = 0; run < COLD_RUNS; run++) {
+                        // B-819: alternate which mode opens first — an A/A run (cache off in both slots) showed
+                        // the first open of a pair ~120ms slower on the phone context under --h2.
+                        for (const mode of run % 2 === 0 ? ['on', 'off'] : ['off', 'on']) {
+                            // Warm (unmeasured): the cache holds the session's run.
+                            proxy.rtt(0);
+                            const warm = await coldOpen(device, SC, [lastCold]);
+                            await warm.page.evaluate((mode) => { if (mode === 'off') localStorage.setItem('vh.sync.cache', 'off'); else localStorage.removeItem('vh.sync.cache'); }, mode);
+                            await sleep(300);
+                            await flushCache(warm.page);
+                            await warm.page.close();
+                            // While no phone page is open, "another device" writes — the cold open must catch it up.
+                            const fresh = token(`cold-new-${mode}`);
+                            await userSay(page2, SC, [fresh]);
+                            coldExtraWrites += 1;
+                            proxy.rtt(CACHE_RTT_MS);
+                            const { page, marks } = await coldOpen(device, SC, [lastCold, fresh]);
+                            const stats = await cacheStats(page);
+                            proxy.rtt(0);
+                            const entry = { app: marks.composer ?? null, cached: marks[lastCold] ?? null, caughtUp: marks[fresh] ?? null, hits: stats?.hits ?? null };
+                            runs[mode].push(entry);
+                            console.log(`    COLD ${vp} ${mode} #${run + 1}: composer ${entry.app}ms, last record ${entry.cached}ms, new message ${entry.caughtUp}ms (cache hits ${entry.hits})`);
+                            await page.evaluate(() => localStorage.removeItem('vh.sync.cache'));
+                            await page.close();
+                        }
                     }
+                    for (const mode of ['on', 'off']) {
+                        measure(`COLD-${vp}-${mode}-composer`, median(runs[mode].map((r) => r.app)));
+                        measure(`COLD-${vp}-${mode}-last-record`, median(runs[mode].map((r) => r.cached)));
+                        measure(`COLD-${vp}-${mode}-caught-up`, median(runs[mode].map((r) => r.caughtUp)));
+                        measure(`COLD-${vp}-${mode}-record-after-composer`, median(runs[mode].map((r) => (r.cached !== null && r.app !== null ? r.cached - r.app : null))));
+                    }
+                    const on = runs.on;
+                    const hasCache = on.every((r) => r.hits !== null);
+                    if (!hasCache) {
+                        console.log(`  - COLD ${vp}: this build has no message cache (baseline run) — only the numbers above`);
+                    } else {
+                        check(on.every((r) => r.hits >= 1), `COLD ${vp} every cache-on open was a cache hit`, JSON.stringify(on.map((r) => r.hits)));
+                        // Informational: the composer's own time varies ±250ms between runs (session list), so this
+                        // difference is noisy; spec G4 (≤300ms on a mid-range Android) is a real-device item.
+                        const afterComposer = on.map((r) => (r.cached !== null && r.app !== null ? r.cached - r.app : null));
+                        console.log(`    COLD ${vp} cached record after the composer: ${JSON.stringify(afterComposer)} (G4 target ${COLD_RENDER_LIMIT_MS}ms, real device)`);
+                        check(on.every((r) => r.caughtUp !== null && r.caughtUp <= 5_000), `COLD ${vp} the message written meanwhile is caught up (补齐) ≤ 5s`, JSON.stringify(on.map((r) => r.caughtUp)));
+                        // B-819: since the catch-up starts with the session list (not at screen mount), at this RTT
+                        // both paths have the transcript in the store before SessionDetailScreen mounts, so both
+                        // paint on its first frame (record-after-composer 0 for both) and a strict "sooner" is a
+                        // coin toss. The cache wins where the network page lands after the mount (slow links:
+                        // --cache-rtt-ms 800). Not later than without, ±COLD_CAUGHT_UP_SLACK_MS.
+                        const onCached = median(on.map((r) => r.cached));
+                        const offCached = median(runs.off.map((r) => r.cached));
+                        check(onCached !== null && offCached !== null && onCached <= offCached + COLD_CAUGHT_UP_SLACK_MS, `COLD ${vp} with the cache the transcript is up no later than without (±${COLD_CAUGHT_UP_SLACK_MS}ms)`, `${onCached}ms vs ${offCached}ms`);
+                        // B-819 (QA8 F2): the cache must not cost the newest message a round trip — its anchor
+                        // probe overlaps the render. Not slower than the network path, ±COLD_CAUGHT_UP_SLACK_MS.
+                        const onCaught = median(on.map((r) => r.caughtUp));
+                        const offCaught = median(runs.off.map((r) => r.caughtUp));
+                        check(onCaught !== null && offCaught !== null && onCaught <= offCaught + COLD_CAUGHT_UP_SLACK_MS, `COLD ${vp} with the cache the new message is caught up no later than without (±${COLD_CAUGHT_UP_SLACK_MS}ms)`, `${onCaught}ms vs ${offCaught}ms`);
+                    }
+                    check(runs.off.every((r) => r.caughtUp !== null), `COLD ${vp} without the cache every open shows the new message too`);
                 }
-                for (const mode of ['on', 'off']) {
-                    measure(`COLD-${mode}-composer`, median(runs[mode].map((r) => r.app)));
-                    measure(`COLD-${mode}-last-record`, median(runs[mode].map((r) => r.cached)));
-                    measure(`COLD-${mode}-caught-up`, median(runs[mode].map((r) => r.caughtUp)));
-                    measure(`COLD-${mode}-record-after-composer`, median(runs[mode].map((r) => (r.cached !== null && r.app !== null ? r.cached - r.app : null))));
-                }
-                const on = runs.on;
-                const hasCache = on.every((r) => r.hits !== null);
-                if (!hasCache) {
-                    console.log('  - COLD: this build has no message cache (baseline run) — only the numbers above');
-                } else {
-                    check(on.every((r) => r.hits >= 1), 'COLD every cache-on open was a cache hit', JSON.stringify(on.map((r) => r.hits)));
-                    // Informational: the composer's own time varies ±250ms between runs (session list), so this
-                    // difference is noisy; spec G4 (≤300ms on a mid-range Android) is a real-device item.
-                    const afterComposer = on.map((r) => (r.cached !== null && r.app !== null ? r.cached - r.app : null));
-                    console.log(`    COLD cached record after the composer: ${JSON.stringify(afterComposer)} (G4 target ${COLD_RENDER_LIMIT_MS}ms, real device)`);
-                    check(on.every((r) => r.caughtUp !== null && r.caughtUp <= 5_000), 'COLD the message written meanwhile is caught up (补齐) ≤ 5s', JSON.stringify(on.map((r) => r.caughtUp)));
-                    check(median(on.map((r) => r.cached)) < median(runs.off.map((r) => r.cached)), 'COLD with the cache the transcript is up sooner than without', `${median(on.map((r) => r.cached))}ms vs ${median(runs.off.map((r) => r.cached))}ms`);
-                }
-                check(runs.off.every((r) => r.caughtUp !== null), 'COLD without the cache every open shows the new message too');
+                await devices[1][1].close();
             }
 
             if (want('TAMPER')) {
@@ -1349,11 +1375,29 @@ try {
                 }, ST);
                 await victim.page.close();
                 check(corrupted === 3, 'TAMPER corrupted one of the 3 cached rows', `${corrupted}`);
-                const opened = await coldOpen(phone, ST, tamperTexts);
+                // B-819: a key that beats a still-opening database skips the cache (network first). Hold the
+                // session list (the keys) until the database is open, so this open takes the cache-read path
+                // for sure and the corruption must be detected — not just "not shown".
+                let heldList = false;
+                const holdKeysUntilCacheOpen = (page) => page.route((url) => url.pathname === '/v1/sessions', async (route) => {
+                    const t = Date.now();
+                    while (Date.now() - t < 10_000) {
+                        // Open, and the key-wait read of ST finished (a hit or a miss is counted): it is what renders.
+                        const read = await page.evaluate(() => import('/src/sync/cache/syncCache.ts').then(({ syncCache }) => {
+                            const stats = syncCache.stats();
+                            return stats.state === 'ready' && stats.hits + stats.misses >= 1;
+                        })).catch(() => false);
+                        if (read) { heldList = true; break; }
+                        await sleep(25);
+                    }
+                    await route.continue().catch(() => {});
+                });
+                const opened = await coldOpen(phone, ST, tamperTexts, { prepare: holdKeysUntilCacheOpen });
                 const statsAfter = await cacheStats(opened.page);
+                check(heldList, 'TAMPER the cache was read before the session keys arrived (cache-read path)');
                 const shown = await transcript(opened.page, ST, tamperPrefix);
                 check(JSON.stringify(shown) === JSON.stringify(tamperTexts), 'TAMPER the corrupted session shows the server transcript', JSON.stringify(shown));
-                check((statsAfter?.drops?.decrypt ?? 0) >= 1 && (statsAfter?.misses ?? 0) >= 0, 'TAMPER its cache was dropped (decrypt), not used', JSON.stringify(statsAfter?.drops));
+                check((statsAfter?.drops?.decrypt ?? 0) >= 1, 'TAMPER its cache was read, found corrupt (decrypt) and dropped, not used', `drops ${JSON.stringify(statsAfter?.drops)} hits ${statsAfter?.hits}`);
                 await nav(opened.page, SC);
                 await waitTranscript(opened.page, SC, coldPrefix, COLD_RECORDS, 15_000);
                 const statsOther = await cacheStats(opened.page);
@@ -1382,7 +1426,8 @@ try {
                         const stats = await cacheStats(page);
                         const shown = await transcript(page, SC, coldPrefix);
                         console.log(`    QUOTA ${quotaSize}B round ${round}: ${shown.length} records, last at ${marks[lastCold] ?? 'never'}ms, cache ${JSON.stringify(stats)}`);
-                        check(marks[lastCold] !== undefined && shown.length >= 90 && shown.at(-1)?.startsWith(lastCold),
+                        // The newest page (100 rows) minus what COLD appended after the cold records (B-819: two viewports).
+                        check(marks[lastCold] !== undefined && shown.length >= 100 - coldExtraWrites && shown.at(-1)?.startsWith(lastCold),
                             `QUOTA ${quotaSize}B round ${round}: the transcript loads from the network`, `${shown.length} records in ${Date.now() - t0}ms`);
                         check(stats !== null && stats.hits === 0 && (stats.quotaErrors > 0 || stats.state === 'disabled' || stats.readOnly),
                             `QUOTA ${quotaSize}B round ${round}: the cache hit the quota and served nothing`, `state ${stats?.state} readOnly ${stats?.readOnly} quotaErrors ${stats?.quotaErrors} writeErrors ${stats?.writeErrors} ${stats?.disabledReason ?? ''}`);

@@ -27,6 +27,10 @@ let counter = 0;
 let afterGate: Promise<void> | null;
 let failAfter: number;
 let forgotten: string[];
+/** While set, every decryption waits for it (a slow device renders the cached run slowly; the network is not held). */
+let decryptGate: Promise<void> | null;
+/** after_seq answers with the history as it was when the request ARRIVED (a gated answer is late, not newer). */
+let snapshotAtRequest: boolean;
 
 beforeAll(async () => {
     installBrowserTestGlobals();
@@ -49,9 +53,14 @@ beforeEach(async () => {
     afterGate = null;
     failAfter = 0;
     forgotten = [];
+    decryptGate = null;
+    snapshotAtRequest = false;
     const encryption = {
         decryptMessage: async (message: ServerMessage) => decrypt(message),
-        decryptMessages: async (messages: ServerMessage[]) => messages.map(decrypt),
+        decryptMessages: async (messages: ServerMessage[]) => {
+            if (decryptGate) await decryptGate;
+            return messages.map(decrypt);
+        },
         forgetMessages: (ids: string[]) => { forgotten.push(...ids); },
     };
     (sync as unknown as { encryption: unknown }).encryption = { getSessionEncryption: (id: string) => (server.has(id) ? encryption : null), removeSessionEncryption: () => {} };
@@ -61,6 +70,7 @@ beforeEach(async () => {
         const all = server.get(sid) ?? [];
         const after = url.searchParams.get('after_seq');
         gets.push(`${sid}?${after !== null ? 'after' : 'before'}`);
+        const early = snapshotAtRequest && after !== null ? all.filter((m) => m.seq > Number(after)) : null;
         if (after !== null) {
             afterSeqs.push(Number(after));
             if (afterGate) await afterGate;
@@ -69,7 +79,7 @@ beforeEach(async () => {
                 throw new DOMException('read deadline', 'TimeoutError');
             }
         }
-        const messages = after !== null ? all.filter((m) => m.seq > Number(after)) : [...all].reverse();
+        const messages = early ?? (after !== null ? all.filter((m) => m.seq > Number(after)) : [...all].reverse());
         return new Response(JSON.stringify({ messages, hasMore: false }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     await syncCache.open(`flow-account-${++counter}`);
@@ -166,6 +176,12 @@ function gate() {
     let release!: () => void;
     afterGate = new Promise<void>((resolve) => { release = resolve; });
     return () => { afterGate = null; release(); };
+}
+
+function gateDecrypt() {
+    let release!: () => void;
+    decryptGate = new Promise<void>((resolve) => { release = resolve; });
+    return () => { decryptGate = null; release(); };
 }
 
 async function rawCacheTx(fn: (tx: IDBTransaction) => void) {
@@ -269,6 +285,226 @@ describe('B-813 cold start: cache first, then catch up from its lastSeq', () => 
     });
 });
 
+describe('B-819 (QA8 F2): the anchor probe overlaps the cache render and the key wait', () => {
+    it('the probe request is out while the cached run is still decrypting — not one round trip after the render', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        store(sid, 'm4');
+        reload(sid);
+        afterSeqs = [];
+        const applied = recordApplied(sid);
+        const release = gateDecrypt();
+        sync.onSessionEnter(sid);
+        await settle();
+        // Before B-819: [] — the probe waited for the render.
+        expect(afterSeqs).toEqual([2]);
+        expect(texts(sid)).toEqual([]);
+        release();
+        await settle();
+        expect(texts(sid)).toEqual(serverTexts(sid));
+        expect(afterSeqs).toEqual([2]);
+        // The probe answered while the run decrypted: checked first, then ONE commit up to the newest message.
+        expect(applied).toEqual([[1, 2, 3, 4]]);
+    });
+
+    it('a probe that answered before the render and contradicts the cache → the stale run is never painted, cold page', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        server.set(sid, []);
+        for (let i = 1; i <= 4; i++) store(sid, `n${i}`, `recreated-${i}`);
+        reload(sid);
+        gets = [];
+        const mismatches = syncCache.stats().drops.mismatch ?? 0;
+        const applied = recordApplied(sid);
+        const release = gateDecrypt();
+        sync.onSessionEnter(sid);
+        await settle();
+        release();
+        await settle();
+        expect(texts(sid)).toEqual(['n1', 'n2', 'n3', 'n4']);
+        // One batch: the cold page (newest-first from the server). Before: the cached m1..m3 painted, then reset.
+        expect(applied.map((batch) => [...batch].sort())).toEqual([[1, 2, 3, 4]]);
+        expect(gets).toEqual([`${sid}?after`, `${sid}?before`]);
+        expect(syncCache.stats().drops.mismatch).toBe(mismatches + 1);
+    });
+
+    it('while the key loads, the probe goes out with the cache read; the session list wakes the catch-up at once', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        store(sid, 'm4');
+        reload(sid);
+        afterSeqs = [];
+        const sessionEncryption = (sync as unknown as { encryption: { getSessionEncryption: (id: string) => unknown } }).encryption;
+        const getKey = sessionEncryption.getSessionEncryption;
+        let keyReady = false;
+        sessionEncryption.getSessionEncryption = (id: string) => (keyReady ? getKey(id) : null);
+        try {
+            sync.onSessionEnter(sid); // no key: fails, sleeps in backoff (≥125ms)
+            await settle();
+            // Before B-819: [] — nothing asked until the key was there and the run rendered.
+            expect(afterSeqs).toEqual([2]);
+            expect(texts(sid)).toEqual([]);
+            // The session list lands: keys first, then applySessions (fetchSessions).
+            keyReady = true;
+            (sync as unknown as { applySessions: (s: unknown[]) => void }).applySessions([storage.getState().sessions[sid]]);
+            await settle();
+            // Before B-819: still [] here — the retry slept out its backoff.
+            expect(texts(sid)).toEqual(serverTexts(sid));
+            // The early probe served the catch-up: no second request.
+            expect(afterSeqs).toEqual([2]);
+        } finally {
+            sessionEncryption.getSessionEncryption = getKey;
+        }
+    });
+
+    it('a prefetch that missed only because the database was still opening is read again once the key is here', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        reload(sid);
+        const sessionEncryption = (sync as unknown as { encryption: { getSessionEncryption: (id: string) => unknown } }).encryption;
+        const getKey = sessionEncryption.getSessionEncryption;
+        let keyReady = false;
+        sessionEncryption.getSessionEncryption = (id: string) => (keyReady ? getKey(id) : null);
+        const load = syncCache.load.bind(syncCache);
+        // The early read finds the database not open yet (a cold page under load) → null.
+        const spy = vi.spyOn(syncCache, 'load').mockImplementationOnce(async () => null).mockImplementation(load);
+        gets = [];
+        try {
+            sync.onSessionEnter(sid);
+            await settle();
+            keyReady = true;
+            (sync as unknown as { applySessions: (x: unknown[]) => void }).applySessions([storage.getState().sessions[sid]]);
+            await settle();
+            expect(texts(sid)).toEqual(['m1', 'm2', 'm3']);
+            // Before: the miss was reused — no cache, a cold page instead.
+            expect(spy).toHaveBeenCalledTimes(2);
+            expect(gets).toEqual([`${sid}?after`]);
+        } finally {
+            sessionEncryption.getSessionEncryption = getKey;
+        }
+    });
+
+    it('a key that arrives while the cache is still opening does not wait for it: the network page, no cache read awaited', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        store(sid, 'm4');
+        reload(sid);
+        const sessionEncryption = (sync as unknown as { encryption: { getSessionEncryption: (id: string) => unknown } }).encryption;
+        const getKey = sessionEncryption.getSessionEncryption;
+        let keyReady = false;
+        sessionEncryption.getSessionEncryption = (id: string) => (keyReady ? getKey(id) : null);
+        let openDb!: () => void;
+        const opening = new Promise<void>((resolve) => { openDb = resolve; });
+        const load = syncCache.load.bind(syncCache);
+        // A slow device: the database open (inside load) has not finished when the session list lands.
+        vi.spyOn(syncCache, 'load').mockImplementationOnce(async (...args) => { await opening; return load(...args); });
+        gets = [];
+        try {
+            sync.onSessionEnter(sid);
+            await settle();
+            keyReady = true;
+            (sync as unknown as { applySessions: (x: unknown[]) => void }).applySessions([storage.getState().sessions[sid]]);
+            await settle();
+            // Before: nothing until the database opened — the cache made the open slower than no cache.
+            expect(texts(sid)).toEqual(serverTexts(sid));
+            expect(gets).toEqual([`${sid}?before`]);
+        } finally {
+            openDb();
+            sessionEncryption.getSessionEncryption = getKey;
+        }
+    });
+
+    it('a cold open on /session/:id starts the catch-up with the session list — rendered when the keys land, before the screen mounts', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        store(sid, 'm4');
+        reload(sid);
+        afterSeqs = [];
+        const sessionEncryption = (sync as unknown as { encryption: { getSessionEncryption: (id: string) => unknown } }).encryption;
+        const getKey = sessionEncryption.getSessionEncryption;
+        let keyReady = false;
+        sessionEncryption.getSessionEncryption = (id: string) => (keyReady ? getKey(id) : null);
+        const s = sync as unknown as { startRoutedCatchUp: (path: string) => void; applySessions: (x: unknown[]) => void; routedSession: string | null };
+        try {
+            s.startRoutedCatchUp(`/session/${sid}`); // what #init does with location.pathname
+            await settle();
+            // Before B-819: nothing until SessionDetailScreen mounted and called onSessionEnter.
+            expect(afterSeqs).toEqual([2]);
+            keyReady = true;
+            s.applySessions([storage.getState().sessions[sid]]);
+            await settle();
+            expect(texts(sid)).toEqual(serverTexts(sid));
+            expect(afterSeqs).toEqual([2]);
+        } finally {
+            sessionEncryption.getSessionEncryption = getKey;
+            s.routedSession = null;
+        }
+    });
+
+    it('B1: a live update buffered after the probe answered, past a hole, is still caught up — prefix only, seqs only go up', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        store(sid, 'm4');
+        store(sid, 'm5');
+        reload(sid);
+        afterSeqs = [];
+        const applied = recordApplied(sid);
+        const release = gateDecrypt();
+        sync.onSessionEnter(sid);
+        await settle();
+        expect(afterSeqs).toEqual([2]); // answered: m3..m5, hasMore false
+        store(sid, 'm6');
+        const m7 = store(sid, 'm7');
+        await pushLive(sid, m7); // m6's push never came: m7 is buffered past a hole
+        expect(texts(sid)).toEqual([]);
+        release();
+        await settle();
+        // Without the follow-up the transcript stopped at m5 (the probe predates m6/m7, the render dropped m7).
+        expect(texts(sid)).toEqual(serverTexts(sid));
+        expect(applied).toEqual([[1, 2, 3, 4, 5], [6, 7]]);
+        expectMonotonic(applied);
+        expect(afterSeqs).toEqual([2, 5]);
+    });
+});
+
+describe('B-819 B1: a probe answering AFTER the render still reaches a buffered update it predates', () => {
+    it('render drops m7 past the hole; the probe (asked before m6/m7) brings m4–m5; the catch-up goes on to m7', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        store(sid, 'm4');
+        store(sid, 'm5');
+        reload(sid);
+        afterSeqs = [];
+        snapshotAtRequest = true;
+        const applied = recordApplied(sid);
+        const releaseDecrypt = gateDecrypt();
+        const releaseProbe = gate();
+        sync.onSessionEnter(sid);
+        await settle();
+        expect(afterSeqs).toEqual([2]); // the probe's answer is fixed now: m3..m5
+        store(sid, 'm6');
+        await pushLive(sid, store(sid, 'm7')); // buffered past a hole
+        releaseDecrypt();
+        await settle();
+        expect(texts(sid)).toEqual(['m1', 'm2', 'm3']); // not across the hole
+        releaseProbe();
+        await settle();
+        // Without the follow-up: stuck at m5 until some later event.
+        expect(texts(sid)).toEqual(serverTexts(sid));
+        expect(applied).toEqual([[1, 2, 3], [4, 5], [6, 7]]);
+        expectMonotonic(applied);
+        expect(afterSeqs).toEqual([2, 5]);
+    });
+});
+
 describe('B-813 review B1: live updates buffered during boot never render across the cache hole', () => {
     it('stale cache m1..m3, server m1..m9, m9 pushed during boot → the transcript is always a server prefix, seqs only go up', async () => {
         const sid = newSession();
@@ -366,10 +602,11 @@ describe('B-813 §5.4.2: a wrong cache costs one cold load, never a wrong transc
         server.set(sid, []);
         for (let i = 1; i <= 3; i++) store(sid, `n${i}`, `recreated-${i}`);
         reload(sid);
+        const mismatches = syncCache.stats().drops.mismatch ?? 0;
         sync.onSessionEnter(sid);
         await settle();
         expect(texts(sid)).toEqual(['n1', 'n2', 'n3']);
-        expect(syncCache.stats().drops.mismatch).toBe(1);
+        expect(syncCache.stats().drops.mismatch).toBe(mismatches + 1);
         await syncCache.flush();
         expect((await syncCache.load(sid))?.lastId).toBe('recreated-3');
     });
@@ -397,7 +634,8 @@ describe('B-813 §5.4.2: a wrong cache costs one cold load, never a wrong transc
         sync.onSessionEnter(sid);
         await settle();
         expect(texts(sid)).toEqual(['m1', 'm2', 'm3']);
-        expect(gets).toEqual([`${sid}?before`]);
+        // B-819: the anchor probe went out alongside the render and is discarded; the transcript is the cold page.
+        expect(gets.filter((get) => get.endsWith('before'))).toEqual([`${sid}?before`]);
         expect(syncCache.stats().drops.decrypt).toBe(1);
         expect(forgotten).toContain(`${sid}-m2`);
     });

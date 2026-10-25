@@ -272,7 +272,7 @@ describe('B-805 AnchorBuffer', () => {
         buffer.add('s', 5, 'a');
         buffer.add('s', 6, null);
         buffer.add('s', 4, 'old');
-        expect(buffer.drain('s', 4)).toEqual({ messages: ['a', 'c'], seqs: [5, 6, 7] });
+        expect(buffer.drain('s', 4)).toEqual({ messages: ['a', 'c'], seqs: [5, 6, 7], droppedMax: 0 });
         // Drained: the next update asks again (a reload of the page would be a new session state).
         expect(buffer.add('s', 8, 'd')).toBe(true);
     });
@@ -280,9 +280,9 @@ describe('B-805 AnchorBuffer', () => {
     it('B-813 B1: a contiguous drain stops at the first hole past the anchor (the rest is the catch-up\'s)', () => {
         const buffer = new AnchorBuffer<string>();
         for (const [seq, m] of [[9, 'i'], [4, 'd'], [5, null], [6, 'f'], [3, 'old']] as const) buffer.add('s', seq, m);
-        expect(buffer.drain('s', 3, { contiguous: true })).toEqual({ messages: ['d', 'f'], seqs: [4, 5, 6] });
+        expect(buffer.drain('s', 3, { contiguous: true })).toEqual({ messages: ['d', 'f'], seqs: [4, 5, 6], droppedMax: 9 });
         buffer.add('s', 9, 'i');
-        expect(buffer.drain('s', 3, { contiguous: true })).toEqual({ messages: [], seqs: [] });
+        expect(buffer.drain('s', 3, { contiguous: true })).toEqual({ messages: [], seqs: [], droppedMax: 9 });
         expect(contiguousRun([{ seq: 4 }, { seq: 4 }, { seq: 5 }, { seq: 7 }], 3)).toEqual([{ seq: 4 }, { seq: 4 }, { seq: 5 }]);
     });
 
