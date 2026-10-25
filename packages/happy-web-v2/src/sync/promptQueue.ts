@@ -18,7 +18,7 @@ import { create } from 'zustand';
 import type { MessageModeMeta } from './messageMeta';
 import type { Metadata } from './storageTypes';
 import { readOutboundUserRecord } from './outboundUserRecord';
-import { SYNC_READ_TIMEOUT_MS } from './requestDeadline';
+import { SYNC_READ_TIMEOUT_MS, type DeadlineRequestInit } from './requestDeadline';
 import { hedgedRead } from './hedgedRead';
 import { isNetworkOffline } from './networkStatus';
 import type { ApiPromptQueueUpdate } from './apiTypes';
@@ -494,7 +494,7 @@ export const promptQueueTranscript: {
 export const promptQueueStore = createPromptQueueStore({
     request: async (path, init) => {
         const { apiSocket } = await import('./apiSocket');
-        const send = (extra?: RequestInit) => apiSocket.request(path, {
+        const send = (extra?: DeadlineRequestInit) => apiSocket.request(path, {
             ...init,
             ...extra,
             headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,

@@ -1,5 +1,6 @@
 import { spaFallback } from './spaFallback';
 import { webStaticOptions } from './staticCache';
+import { enableResponseCompression } from './responseCompression';
 import { startBusinessAudit, stopBusinessAudit } from '@/app/audit/producer';
 import { auditLoginFailure } from '@/app/audit/requestAudit';
 import { teamRoutes } from './routes/teamRoutes';
@@ -87,6 +88,9 @@ export async function startApi(opts: StartApiOptions = {}) {
         allowedHeaders: '*',
         methods: ['GET', 'POST', 'PUT', 'DELETE']
     });
+
+    // B-818: JSON API responses go out br/gzip (responseCompression.ts).
+    enableResponseCompression(app);
 
     // Required for local-mode attachment uploads (PUT /v1/sessions/:id/attachments/:file).
     // Fastify v5 rejects unknown media types with 415 before reaching the handler.

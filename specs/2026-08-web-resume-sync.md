@@ -177,7 +177,7 @@ ping + 60s 的僵尸连接在回前台的第一次 emit 就会被关掉并自动
 
 消息补拉不能无限挂起（B-802 根因：补拉无超时，且整个网络往返持有会话消息锁，回前台/重连只合并到死请求后面）：
 
-- 补拉读请求（after/before_seq、`/v1/sessions`、prompt-queue GET）带 `SYNC_READ_TIMEOUT_MS`（10s，含 body），超时按原 backoff 重试（`requestDeadline.ts`）。
+- 补拉读请求（after/before_seq、`/v1/sessions`、prompt-queue GET）带 `SYNC_READ_TIMEOUT_MS`（10s，含 body），超时按原 backoff 重试（`requestDeadline.ts`）。（B-818 改为两段，见下。）
 - 锁外取数、锁内合并；`sessionLastSeq` 只增不减（`messageCatchUp.ts`）。
 - `onWebResume`、`onReconnected`、`onRecovered` 及 B-799 网络恢复对当前会话调用 `InvalidateSync.restart()`：取消在途补拉并立即重发；普通 `invalidate()` 仍合并。
 - 离线（`isNetworkOffline()`）不发补拉，恢复时重启被推迟的会话。唯一 resume 入口不变。（B-803b 收窄为只看浏览器离线，见下。）
@@ -207,3 +207,21 @@ ping + 60s 的僵尸连接在回前台的第一次 emit 就会被关掉并自动
 - e2e：新增 `--h2`（本地 TLS h2 前端，核对 `nextHopProtocol`）、`POOL`（resume 后连续 3 个 after_seq 落在死连接上）、
   `HEALTHY`（健康链路 20 次补拉都只有 1 个 GET）、`H2POOL`（--h2 下两个池都死，按 PING 上限 16s 断言）。
   整页 reload 只按完整文档加载计数，tab1 出现 pageerror 也算失败。
+
+## 2026-10-25 补充（B-818：大响应 + 弱网，B-816 Q1）
+
+B-803/B-803b 的「整包 10s + 2s hedge」在大响应上自相矛盾：最大账号 `/v1/sessions` 约 1.8MB，slow 4G（1.6Mbps）光下载就要 ~9s，
+2/4/6s 起跑的 hedge 再分走带宽，没有一份能在 10s 内读完，全部 abort → backoff → 重来，冷启动永远进不去。改为：
+
+- **超时两段**（`requestDeadline.ts`）：`SYNC_READ_TIMEOUT_MS`（10s）只管到响应头（首字节）；响应头到了之后改为「无进展」计时，
+  连续 `idleTimeoutMs`（默认同 10s）没收到新字节才判超时（`RequestTimeoutError.phase = 'idle'`）。body 被包一层流，每个 chunk 重置计时，
+  deadline 触发时流立即以超时错误结束（底层 body 不理 abort 也一样）。死连接收不到响应头，恢复时间不变。
+- **hedge 只在首字节之前**（`hedgedRead.ts`）：第一个拿到响应头的尝试被「提交」，不再发新 hedge，其余还在等的尝试立即 abort，
+  结果只看被提交的那一个（它失败就直接 reject，交给调用方 backoff）。回调经 `init.onResponse` → `fetchWithDeadline` 传递。
+- **API 压缩**（server `responseCompression.ts`）：JSON 响应 ≥1KB 时按 `Accept-Encoding` 用 br（quality 4）或 gzip，随镜像发布；
+  `HTTP_COMPRESSION=off` 关闭。CloudFront 默认 behavior 为 CachingDisabled + AllViewer 源请求策略、`Compress=false`：
+  `Accept-Encoding` 原样转给源站，已编码的响应原样透传，不需要改 CloudFront。
+- **冷启动不等第二遍列表**（`sync.ts #init`）：首个 socket connect（`recovered=false`）走 `onReconnected`，在首个列表 GET 还在途时再
+  invalidate 一次，`InvalidateSync` 把它排成第二次完整拉取；`applyReady` 原先等 `awaitQueue()`，即两遍下载。现在首个列表落地即 ready，
+  第二遍保留（覆盖首个 GET 快照与 socket 订阅之间的窗口），改增量留给 Q4。
+- 端到端：`sync-resume.mjs` FAT_SLOW（150 会话 / ~1.8MB，代理共享 1.6Mbps 下行 + 150ms RTT，desktop 与 phone CPU ×4）。
