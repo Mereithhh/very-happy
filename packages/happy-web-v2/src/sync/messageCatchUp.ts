@@ -24,9 +24,8 @@ export type ForwardCatchUpDeps<M> = {
     normalize: (page: CatchUpPage) => Promise<M[]>;
     /** The session message lock. Held only while merging, never across a request. */
     withLock: (fn: () => void) => Promise<void>;
-    apply: (messages: M[]) => void;
-    getLastSeq: () => number | undefined;
-    setLastSeq: (seq: number) => void;
+    /** B-812: the merge entry (a range source: lastSeq moves to the page's newest seq, never back). */
+    merge: (messages: M[], page: CatchUpPage) => void;
     onStalled?: () => void;
 };
 
@@ -51,10 +50,7 @@ export async function catchUpForward<M>(deps: ForwardCatchUpDeps<M>, fromSeq: nu
         // attempt merges instead.
         throwIfAborted(signal);
         const maxSeq = pageMaxSeq(page, afterSeq);
-        await deps.withLock(() => {
-            if (normalized.length > 0) deps.apply(normalized);
-            deps.setLastSeq(mergeFetchedLastSeq(deps.getLastSeq(), maxSeq));
-        });
+        await deps.withLock(() => deps.merge(normalized, page));
         if (!page.hasMore) return;
         if (maxSeq === afterSeq) {
             deps.onStalled?.();

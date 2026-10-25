@@ -47,8 +47,8 @@ import type { SessionEncryption } from './encryption/sessionEncryption';
 import { forgetCatchUp, trackCatchUp } from './catchUpStatus';
 import { isNetworkOffline, startNetworkMonitor } from './networkStatus';
 import { fetchWithDeadline, SYNC_READ_TIMEOUT_MS } from './requestDeadline';
-import { hedgedRead, hedgePoolInit } from './hedgedRead';
-import { catchUpForward, mergeFetchedLastSeq, pageMaxSeq, throwIfAborted } from './messageCatchUp';
+import { armHedgeBurst, hedgedRead, hedgePoolInit } from './hedgedRead';
+import { catchUpForward, throwIfAborted } from './messageCatchUp';
 import { OPEN_BLOCKED_MS, outboxStore, syncCache, type CacheHit } from './cache/syncCache';
 import { takeoverAction, type OutboxRow } from './cache/outboxStore';
 import { planOutboxAdoption } from './outboxAdoption';
@@ -111,7 +111,6 @@ import { queuedAtForSend } from './queuedInput';
 import { subscribeAuthLatch } from '@/auth/authLatch';
 import type { UnsentMessage } from '@/auth/authExpiry';
 import {
-    advanceLastSeq,
     assertResponseOk,
     beginSendAttempt,
     interpretSendResponse,
@@ -120,12 +119,19 @@ import {
     settledOutboxRecords,
     SendDeadlines,
 } from './outbox';
-import { AnchorBuffer, planLiveMessage } from './liveMessagePlan';
+import { SYNC_ACK_TIMEOUT_MS, type SyncSubResultOk } from '@slopus/happy-wire';
+import { createCursor, expireReorder, planMerge, resetCursor, type MergeItem, type MergeMeta, type MergePlan, type MergeSource, type SessionCursor } from './sessionMerge';
+import { SessionSyncScheduler, type HelloReason, type SubscribeRequest } from './sessionSyncScheduler';
+import type { AckOutcome, SessionSyncState } from './sessionSyncState';
 import { cacheProbeAfterSeq, isUsableCacheProbe, type CacheProbe } from './cacheProbe';
 import { routedSessionId } from './routedSession';
 
-/** B-819: what rendering a cached run did; `merged` = the anchor probe was checked and applied in the same commit. */
-type CacheRender = { droppedMax: number; merged: { hasMore: boolean } | null };
+/**
+ * B-819: what rendering a cached run did; `merged` = the anchor probe was checked and applied in
+ * the same commit. (B-812: a buffered live update left out past a hole waits in the merge cursor's
+ * reorder buffer, whose expiry asks the catch-up — B-819's `droppedMax` reach is that.)
+ */
+type CacheRender = { merged: { hasMore: boolean } | null };
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -138,6 +144,21 @@ type V3GetSessionMessagesResponse = {
 // 2_147_483_647. We use that exact upper bound to keep the request safely
 // within int4 while still being effectively "infinite" for any session.
 const SEQ_BACKWARD_INITIAL_SENTINEL = 2_147_483_647;
+
+/** B-812: subscribe mode shows 「连接不稳定 · 重试」 once a catch-up is stale for 3s (spec §5.3: 5s ack deadline + 3s). */
+const SUBSCRIBE_SLOW_MS = SYNC_ACK_TIMEOUT_MS + 3_000;
+
+const itemMessages = (items: readonly MergeItem<NormalizedMessage>[]): NormalizedMessage[] =>
+    items.flatMap((item) => (item.message ? [item.message] : []));
+
+/** B-812 (spec §6.1): `vh.sync.mode=legacy` in this browser's localStorage forces the REST path (diagnosis). */
+function forcedLegacySyncMode(): boolean {
+    try {
+        return typeof localStorage !== 'undefined' && localStorage.getItem('vh.sync.mode') === 'legacy';
+    } catch {
+        return false;
+    }
+}
 
 type V3PostSessionMessagesResponse = {
     messages: Array<{
@@ -193,6 +214,13 @@ function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
         promise.then(() => { clearTimeout(timer); resolve(); }, () => { clearTimeout(timer); resolve(); });
     });
 }
+/** A one-shot signal: `promise` resolves on the first `resolve()`; `settled` tells whether it has. */
+function deferredSignal() {
+    let resolve!: () => void;
+    const signal = { settled: false, promise: new Promise<void>((r) => { resolve = r; }), resolve: () => {} };
+    signal.resolve = () => { signal.settled = true; resolve(); };
+    return signal;
+}
 const ATTACHMENT_UPLOAD_CONCURRENCY = 3;
 
 function isBrowserOnline(): boolean {
@@ -235,20 +263,30 @@ class Sync {
     private sessionListSnapshot: SessionListSnapshot | null = null;
     /** B-823: this page's socket has connected once (later connects are reconnects). */
     private socketConnectedOnce = false;
-    /** B-818: resolves #init's first-list wait (see there); set per #init, cleared once called. */
-    private onSessionsListLoaded: (() => void) | null = null;
+    /**
+     * B-818 / B-812 S12: settles when the first session list of this load has
+     * been applied (re-armed per #init). Neither ready (#init) nor a subscribe ack /
+     * cold open waiting for a key (awaitSessionEncryption) waits for the full
+     * fetch a resume / reconnect may queue behind it.
+     */
+    private firstSessionsList = deferredSignal();
     private messagesSync = new Map<string, InvalidateSync>();
     private sendSync = new Map<string, InvalidateSync>();
     private resumeListeners = new Set<() => void>();
     private sendAbortControllers = new Map<string, AbortController>();
-    private sessionLastSeq = new Map<string, number>();
-    /** B-805: live messages of sessions whose latest page has not landed yet. */
-    private anchorBuffer = new AnchorBuffer<NormalizedMessage>();
-    // Lowest seq value we have already fetched and applied for a session.
-    // Used as the cursor for backward pagination when the reader asks for
-    // older history (B-616: on demand only, no background fill). Set after
-    // the initial latest-page fetch and advanced downward by loadOlderMessages.
-    private sessionOldestSeq = new Map<string, number>();
+    /**
+     * B-812: per-session merge cursor — lastSeq (forward catch-up resumes
+     * there), oldestSeq (B-616 backward pagination, on demand only), the
+     * reorder buffer of live items past a hole (and of B-805's items before
+     * the first page). Written by mergeSessionMessages only (sessionMerge.ts).
+     */
+    private cursors = new Map<string, SessionCursor<NormalizedMessage>>();
+    private reorderTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    /** B-812: the one catch-up scheduler — hello / subscribe / REST (sessionSyncScheduler.ts). */
+    readonly syncScheduler: SessionSyncScheduler;
+    /** B-812: subscribe-mode catch-up shown in the chat (resolves the trackCatchUp promise). */
+    private syncTracking = new Map<string, () => void>();
+    private syncPhases = new Map<string, SessionSyncState['phase']>();
     /** B-813: cached runs rendered but not yet checked against the server (the check survives a failed attempt). */
     private unverifiedCacheHits = new Map<string, CacheHit>();
     /** B-813: cached runs read while the session's key was still loading (the read overlaps the session list). */
@@ -277,8 +315,6 @@ class Sync {
     /** B-814b: rows this tab took over but could not adopt yet (session not loaded, no key, lookup failed) — retried every pass. */
     private outboxDeferred = new Map<string, OutboxRow[]>();
     private outboxReclaimTimer: ReturnType<typeof setInterval> | null = null;
-    private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
-    private sessionQueueProcessing = new Set<string>();
     private sessionMessageLocks = new Map<string, AsyncLock>();
     /** B-803: sessions whose catch-up was skipped while offline; restarted on recovery. */
     private messagesDeferredOffline = new Set<string>();
@@ -305,6 +341,7 @@ class Sync {
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
         this.sessionsCatchUpSync = new InvalidateSync(this.catchUpSessionsSinceList);
+        this.syncScheduler = this.createSyncScheduler();
         this.settingsSync = new InvalidateSync(this.syncSettings);
         this.profileSync = new InvalidateSync(this.fetchProfile);
         this.purchasesSync = new InvalidateSync(this.syncPurchases);
@@ -421,7 +458,10 @@ class Sync {
                     // B-803b: catch-ups deferred while the browser was offline go out
                     // as soon as it is back (the viewed one also via the resume edge).
                     const onOnline = () => this.restartDeferredCatchUps({ deferredOnly: true });
+                    // B-812: offline → subscribed sessions stale(offline); online → hello on a live socket.
+                    const onOffline = () => this.syncScheduler.offline();
                     window.addEventListener('online', onOnline);
+                    window.addEventListener('offline', onOffline);
                     window.addEventListener('online', onChange);
                     window.addEventListener('offline', onChange);
                     const unsubscribe = storage.subscribe((state, prev) => {
@@ -429,6 +469,7 @@ class Sync {
                     });
                     return () => {
                         window.removeEventListener('online', onOnline);
+                        window.removeEventListener('offline', onOffline);
                         window.removeEventListener('online', onChange);
                         window.removeEventListener('offline', onChange);
                         unsubscribe();
@@ -452,7 +493,11 @@ class Sync {
         const ids = new Set(this.messagesDeferredOffline);
         if (viewing) ids.add(viewing);
         this.messagesDeferredOffline.clear();
-        for (const sessionId of ids) this.restartMessagesSync(sessionId);
+        for (const sessionId of ids) {
+            if (this.syncScheduler.drives(sessionId)) continue; // the scheduler's hello catches it up
+            this.restartMessagesSync(sessionId);
+        }
+        this.syncScheduler.online();
     }
 
     /** B-799: back online — queued sends go out now, not after the rest of their backoff sleep. */
@@ -482,7 +527,14 @@ class Sync {
     private onWebResume = () => {
         log.log('🌐 Tab resumed from background — re-syncing');
         this.sessionsSync.invalidate();
-        this.catchUpViewedSession();
+        // B-812: subscribe mode → one sync-hello (its ack is the liveness proof);
+        // legacy / socket down → the REST catch-up (catchUpViewedSession). A REST
+        // catch-up still in flight is probably stuck on the dead link (B-803):
+        // restarted now in either mode (e2e B3: it waited for the hello hedge).
+        this.restartStuckCatchUp();
+        this.syncScheduler.resume();
+        this.touchViewedSession();
+        this.reloadViewedPromptQueue();
         this.machinesSync.invalidate();
         this.artifactsSync.invalidate();
         for (const listener of this.resumeListeners) {
@@ -552,7 +604,8 @@ class Sync {
         // whole queue: a resume or reconnect can queue another full fetch
         // behind it (B-823: the first connect's own catch-up is incremental,
         // catchUpSessionsSinceList), and entering must not wait for that.
-        const firstListLoaded = new Promise<void>((resolve) => { this.onSessionsListLoaded = resolve; });
+        this.firstSessionsList = deferredSignal();
+        const firstListLoaded = this.firstSessionsList.promise;
 
         // Invalidate sync
         log.log('🔄 #init: Invalidating all syncs');
@@ -755,22 +808,27 @@ class Sync {
 
 
     /**
-     * B-805: the user entered this session (screen mount), or the link came
-     * back (resume / reconnect / recovered / control returned): catch its
-     * messages up — the initial page, or forward from lastSeq — then run the
-     * heartbeat duties. Live messages do NOT come through here; they ping
-     * `onSessionHeartbeat` and fetch only on a seq gap (liveMessagePlan.ts).
-     *
-     * `restartFetch` (B-803): tab resume / socket reconnect / recovered — a
-     * catch-up still in flight is probably stuck on the dead link, so abort it
-     * and fetch again now instead of coalescing behind it.
+     * B-805: the user entered this session (screen mount): catch its messages
+     * up — the initial page, or forward from lastSeq — then run the session
+     * duties (touchViewedSession). Live messages do NOT come through here;
+     * they ping `onSessionHeartbeat` and fetch only on a seq gap (sessionMerge.ts).
      */
-    onSessionEnter = (sessionId: string, opts?: { restartFetch?: boolean }) => {
-        if (opts?.restartFetch) {
-            this.restartMessagesSync(sessionId);
-        } else {
-            this.getMessagesSync(sessionId).invalidate();
-        }
+    onSessionEnter = (sessionId: string) => {
+        // B-812: the scheduler subscribes it (subscribe mode) or invalidates the REST sync.
+        this.syncScheduler.open(sessionId);
+        this.touchViewedSession(sessionId);
+    }
+
+    /**
+     * B-812 M1: the session-side duties of an enter — warm the machine relay,
+     * the yolo alignment (v1 CLIs accept it only while a request is pending, and
+     * an agent stuck on one sends no push to trigger it), voice focus. Run on
+     * enter and, in EVERY sync mode, when the link comes back (reconnect /
+     * recovered / resume) or control returns; the messages catch-up itself is
+     * the scheduler's.
+     */
+    private touchViewedSession(sessionId = storage.getState().currentViewingSessionId) {
+        if (!sessionId) return;
         this.onSessionHeartbeat(sessionId);
         const session = storage.getState().sessions[sessionId];
         if (session) voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
@@ -832,20 +890,23 @@ class Sync {
     }
 
     /**
-     * B-804: resume / reconnect / recovered — the viewed session's messages and
-     * prompt queue are re-read (anything sent into the dead link is gone for
-     * good), and the messages catch-up is shown while it takes a while.
+     * B-804: legacy resume / retry / online — the viewed session's messages are
+     * re-read (anything sent into the dead link is gone for good), and the
+     * catch-up is shown while it takes a while. The session duties are the
+     * caller's (touchViewedSession, B-812 M1).
      */
-    private catchUpViewedSession(opts: { restart: boolean } = { restart: true }) {
+    private catchUpViewedSession() {
         const viewing = storage.getState().currentViewingSessionId;
         if (!viewing) return;
         // B-803: a catch-up still in flight is probably stuck on the dead link — abort it, go again now.
-        // B-823: except on the page's first connect — no link was lost, the boot's first page is
-        // healthy; aborting it re-downloaded the whole latest page (112KB) on the critical path.
-        // A coalesced run still follows it (forward from lastSeq: the snapshot-to-subscribe window).
-        this.onSessionEnter(viewing, { restartFetch: opts.restart });
+        this.restartMessagesSync(viewing);
         this.trackMessagesCatchUp(viewing);
-        void reloadPromptQueue(viewing);
+    }
+
+    /** B-804: resume / reconnect / recovered / retry — the prompt queue is re-read whatever path the messages take. */
+    private reloadViewedPromptQueue() {
+        const viewing = storage.getState().currentViewingSessionId;
+        if (viewing) void reloadPromptQueue(viewing);
     }
 
     /** B-804: show the viewed session's pending messages catch-up (top bar + chat line, after 300ms). */
@@ -861,9 +922,13 @@ class Sync {
      * the manager's possibly dead attempt alone).
      */
     retryMessagesCatchUp = (sessionId: string) => {
+        void reloadPromptQueue(sessionId);
+        // B-812: subscribe mode on a live socket — generation + 1, hello now.
+        if (this.syncScheduler.retry(sessionId)) return;
+        // QA7 O-1: the restarted read must not wait HEDGE_AFTER_MS on a dead pooled connection first.
+        armHedgeBurst();
         this.restartMessagesSync(sessionId);
         this.trackMessagesCatchUp(sessionId);
-        void reloadPromptQueue(sessionId);
         if (!apiSocket.reconnectIfDown()) void apiSocket.checkLiveness();
     };
 
@@ -875,6 +940,12 @@ class Sync {
     private wirePromptQueueTranscript() {
         promptQueueTranscript.has = (sessionId, localId) => storage.getState().sessionMessages[sessionId]?.reducerState.localIds.has(localId) === true;
         promptQueueTranscript.verify = (sessionId, localIds) => {
+            // B-812: over the socket when the scheduler drives the session.
+            const viaSocket = this.syncScheduler.catchUp(sessionId);
+            if (viaSocket) {
+                void viaSocket.then(() => settleDispatchedPrompts(sessionId, localIds));
+                return;
+            }
             const messages = this.getMessagesSync(sessionId);
             messages.invalidate();
             void messages.awaitQueue().then(() => settleDispatchedPrompts(sessionId, localIds));
@@ -899,21 +970,6 @@ class Sync {
         return sync;
     }
 
-    private enqueueMessages(sessionId: string, messages: NormalizedMessage[]) {
-        if (messages.length === 0) {
-            return;
-        }
-
-        let queue = this.sessionMessageQueue.get(sessionId);
-        if (!queue) {
-            queue = [];
-            this.sessionMessageQueue.set(sessionId, queue);
-        }
-        queue.push(...messages);
-
-        this.scheduleQueuedMessagesProcessing(sessionId);
-    }
-
     /**
      * B-513: an optimistic input is reduced synchronously, marked `sending`.
      * It must not queue behind the per-session lock — `fetchMessages` holds
@@ -922,7 +978,12 @@ class Sync {
      * another apply; a single optimistic item keeps arrival order (铁律 15).
      */
     private applyOptimistic(sessionId: string, message: NormalizedMessage) {
-        this.applyMessages(sessionId, [message], message.localId ? [message.localId] : undefined);
+        this.writeMessagesToStore(sessionId, [message], message.localId ? [message.localId] : undefined);
+    }
+
+    /** B-812: a local-only record (no server seq, e.g. a send-failure notice) — not a merge source. */
+    private applyLocalMessages(sessionId: string, messages: NormalizedMessage[]) {
+        if (messages.length > 0) this.writeMessagesToStore(sessionId, messages);
     }
 
     private getSessionMessageLock(sessionId: string): AsyncLock {
@@ -932,31 +993,6 @@ class Sync {
             this.sessionMessageLocks.set(sessionId, lock);
         }
         return lock;
-    }
-
-    private scheduleQueuedMessagesProcessing(sessionId: string) {
-        if (this.sessionQueueProcessing.has(sessionId)) {
-            return;
-        }
-
-        this.sessionQueueProcessing.add(sessionId);
-        const lock = this.getSessionMessageLock(sessionId);
-        void lock.inLock(() => {
-            while (true) {
-                const pending = this.sessionMessageQueue.get(sessionId);
-                if (!pending || pending.length === 0) {
-                    break;
-                }
-                const batch = pending.splice(0, pending.length);
-                this.applyMessages(sessionId, batch);
-            }
-        }).finally(() => {
-            this.sessionQueueProcessing.delete(sessionId);
-            const pending = this.sessionMessageQueue.get(sessionId);
-            if (pending && pending.length > 0) {
-                this.scheduleQueuedMessagesProcessing(sessionId);
-            }
-        });
     }
 
     private hasPendingOutboxMessages() {
@@ -1053,7 +1089,7 @@ class Sync {
         const now = Date.now();
 
         for (const sessionId of sessionIds) {
-            this.enqueueMessages(sessionId, [{
+            this.applyLocalMessages(sessionId, [{
                 id: randomUUID(),
                 localId: null,
                 createdAt: now,
@@ -1724,7 +1760,7 @@ class Sync {
         };
         const encrypted = await encryption.encryptRawRecord(content);
         const normalized = normalizeRawMessage(localId, localId, now, content);
-        if (normalized) this.enqueueMessages(sessionId, [normalized]);
+        if (normalized) this.applyLocalMessages(sessionId, [normalized]);
         let pending = this.pendingOutbox.get(sessionId);
         if (!pending) {
             pending = [];
@@ -1885,8 +1921,7 @@ class Sync {
         this.applySessions(mergedSessions);
         this.sessionListSnapshot = sessionListSnapshot(sessions, parseServedAt(date));
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
-        this.onSessionsListLoaded?.();
-        this.onSessionsListLoaded = null;
+        this.firstSessionsList.resolve();
 
     }
 
@@ -2015,9 +2050,11 @@ class Sync {
             this.outboxRecords.delete(localId);
             this.sendDeadlines.delete(localId);
         }
-        this.sessionLastSeq.delete(sessionId);
-        this.anchorBuffer.clear(sessionId);
-        this.sessionOldestSeq.delete(sessionId);
+        this.cursors.delete(sessionId);
+        const reorderTimer = this.reorderTimers.get(sessionId);
+        if (reorderTimer) clearTimeout(reorderTimer);
+        this.reorderTimers.delete(sessionId);
+        this.syncScheduler.forget(sessionId);
         syncCache.dropSession(sessionId, 'deleted');
         this.unverifiedCacheHits.delete(sessionId);
         this.cachePrefetch.delete(sessionId);
@@ -2026,8 +2063,6 @@ class Sync {
         this.messagesAwaitingKeys.delete(sessionId);
         this.sessionMessageLocks.delete(sessionId);
         this.messagesDeferredOffline.delete(sessionId);
-        this.sessionMessageQueue.delete(sessionId);
-        this.sessionQueueProcessing.delete(sessionId);
 
         log.log(`🗑️ Session ${sessionId} deleted from local storage`);
     }
@@ -2764,21 +2799,6 @@ class Sync {
     // native-shaped callers (create, refreshPurchases) need no special case.
     private syncPurchases = async () => {};
 
-    /**
-     * B-513: advance `sessionLastSeq` through a contiguous run only. A gap
-     * (e.g. our ack is N+2 while agent message N+1 is still in flight) would
-     * otherwise make the live-update path drop N+1 as "already reduced" —
-     * fetch the history instead.
-     */
-    private advanceSessionLastSeq(sessionId: string, seqs: readonly number[]) {
-        const { next, gap } = advanceLastSeq(this.sessionLastSeq.get(sessionId), seqs);
-        if (next !== undefined) this.sessionLastSeq.set(sessionId, next);
-        if (gap) {
-            this.getMessagesSync(sessionId).invalidate();
-            this.trackMessagesCatchUp(sessionId);
-        }
-    }
-
     private flushOutbox = async (sessionId: string) => {
         const pending = this.pendingOutbox.get(sessionId);
         if (!pending || pending.length === 0) {
@@ -2874,7 +2894,10 @@ class Sync {
             storage.getState().applyOutboxResult(sessionId, { acks: outcome.acks, stored: outcome.untracked });
             markSendConfirmed(outcome.acks.map((ack) => ack.localId));
         }
-        if (outcome.lastSeqCandidates.length > 0) this.advanceSessionLastSeq(sessionId, outcome.lastSeqCandidates);
+        // B-513: our acks prove only our seqs — a point source (contiguous run; a hole waits the reorder window).
+        if (outcome.lastSeqCandidates.length > 0) {
+            this.mergeSessionMessages(sessionId, outcome.lastSeqCandidates.map((seq) => ({ seq, message: null })), 'send-ack');
+        }
 
         // Only drop the queue this request drained: a deadline may have removed
         // it meanwhile and a new send created a fresh one under the same key.
@@ -2907,7 +2930,7 @@ class Sync {
         if (encryption) this.messagesAwaitingKeys.delete(sessionId);
         if (!encryption) {
             // B-813: no key before the session list lands — read the cached run meanwhile.
-            if (!this.sessionLastSeq.has(sessionId) && !this.cachePrefetch.has(sessionId) && syncCache.mayHave(sessionId)) {
+            if (this.lastSeqOf(sessionId) === undefined && !this.cachePrefetch.has(sessionId) && syncCache.mayHave(sessionId)) {
                 // Off the critical path (the key is not here yet): it may wait for the database to open.
                 const load = syncCache.load(sessionId, { viewed: this.isViewed(sessionId), openWaitMs: OPEN_BLOCKED_MS });
                 const prefetch = { load, settled: false };
@@ -2925,7 +2948,7 @@ class Sync {
 
         // B-803: no lock here. Requests and decryption run outside the
         // session message lock; only the merge takes it (messageCatchUp.ts).
-        const knownLastSeq = this.sessionLastSeq.get(sessionId);
+        const knownLastSeq = this.lastSeqOf(sessionId);
         const isInitialLoad = knownLastSeq === undefined;
         if (isInitialLoad) {
             // Initial load. Pull only the most recent page (extended to
@@ -2936,7 +2959,7 @@ class Sync {
             // B-616: there is deliberately NO background loop filling the
             // history in (sync/historyWindow.ts).
             // B-805: live updates from here on join the buffer the page drains.
-            this.anchorBuffer.open(sessionId);
+            this.cursor(sessionId).anchorRequested = true;
             // B-813: a cached run renders now; the catch-up then checks it
             // against the server and extends it. Any doubt → the cold path.
             // B-819: the check's request is already out (or goes out now) while
@@ -2953,8 +2976,8 @@ class Sync {
                 }
                 if (rendered?.merged) {
                     // The probe answered while the run decrypted: checked and merged in that one commit.
-                    const lastSeq = this.sessionLastSeq.get(sessionId) ?? hit.lastSeq;
-                    if (rendered.merged.hasMore || rendered.droppedMax > lastSeq) {
+                    const lastSeq = this.lastSeqOf(sessionId) ?? hit.lastSeq;
+                    if (rendered.merged.hasMore) {
                         const forward = this.fetchForwardSince(sessionId, encryption, lastSeq, signal);
                         if (storage.getState().currentViewingSessionId === sessionId) trackCatchUp(sessionId, forward);
                         await forward;
@@ -2962,7 +2985,7 @@ class Sync {
                     caughtUp = true;
                 } else if (rendered) {
                     this.unverifiedCacheHits.set(sessionId, hit);
-                    const forward = this.fetchForwardAfterCache(sessionId, encryption, hit, signal, { probe: probe.page, reach: rendered.droppedMax });
+                    const forward = this.fetchForwardAfterCache(sessionId, encryption, hit, signal, { probe: probe.page });
                     // A cached transcript is not "live" (spec B-807 risk 4): 「同步中」 until it caught up.
                     if (storage.getState().currentViewingSessionId === sessionId) trackCatchUp(sessionId, forward);
                     caughtUp = await forward;
@@ -3032,23 +3055,21 @@ class Sync {
         // INITIAL_TURN_START_PAGES extra requests), applied as ONE batch so
         // the first paint shows whole turns and tool results meet their
         // calls in the same commit.
-        const window: NormalizedMessage[] = [];
+        const window: MergeItem<NormalizedMessage>[] = [];
         const rows: ApiMessage[] = [];
         let beforeSeq = SEQ_BACKWARD_INITIAL_SENTINEL;
         let hasMore = false;
         let extraPagesFetched = 0;
-        let maxSeq = 0;
         let minSeq = Number.POSITIVE_INFINITY;
         for (;;) {
             const page = await this.fetchHistoryPage(sessionId, beforeSeq, signal);
             for (const message of page.messages) {
-                if (message.seq > maxSeq) maxSeq = message.seq;
                 if (message.seq < minSeq) minSeq = message.seq;
             }
-            window.push(...await this.normalizeFetchedMessages(encryption, page.messages));
+            window.push(...await this.normalizeToItems(encryption, page.messages));
             rows.push(...page.messages);
             hasMore = page.hasMore;
-            if (!shouldExtendInitialWindow({ hasMore, hasTurnStart: windowHasTurnStart(window), extraPagesFetched })) break;
+            if (!shouldExtendInitialWindow({ hasMore, hasTurnStart: windowHasTurnStart(itemMessages(window)), extraPagesFetched })) break;
             if (!(minSeq > 1)) break;
             beforeSeq = minSeq;
             extraPagesFetched += 1;
@@ -3056,22 +3077,10 @@ class Sync {
         throwIfAborted(signal);
 
         await this.getSessionMessageLock(sessionId).inLock(() => {
-            // Anchor both ends so future incremental forward sync resumes from
-            // maxSeq, and loadOlderMessages can page backward from minSeq.
-            const anchor = mergeFetchedLastSeq(this.sessionLastSeq.get(sessionId), maxSeq);
             // B-805: live updates that arrived while the page was loading land
-            // in the same commit; lastSeq then runs through them (a hole = a
-            // gap). Under the lock, so none can slip between drain and anchor.
-            const buffered = this.anchorBuffer.drain(sessionId, anchor);
-            window.push(...buffered.messages);
-            if (window.length > 0) {
-                this.applyMessages(sessionId, window);
-            }
-            this.sessionLastSeq.set(sessionId, anchor);
-            this.advanceSessionLastSeq(sessionId, buffered.seqs);
-            if (minSeq !== Number.POSITIVE_INFINITY) {
-                this.sessionOldestSeq.set(sessionId, minSeq);
-            }
+            // in the same commit (the merge drains its reorder buffer); a hole
+            // left over is a gap after the reorder window.
+            this.mergeSessionMessages(sessionId, window, 'latest-page');
             storage.getState().applyOlderMessagesPagination(sessionId, { hasMore });
         });
         syncCache.offerLatest(sessionId, rows, { viewed: storage.getState().currentViewingSessionId === sessionId });
@@ -3086,13 +3095,11 @@ class Sync {
             = (afterSeq, pageSignal) => this.fetchForwardPage(sessionId, afterSeq, pageSignal),
     ) => {
         const lock = this.getSessionMessageLock(sessionId);
-        await catchUpForward<NormalizedMessage>({
+        await catchUpForward<MergeItem<NormalizedMessage>>({
             fetchPage,
-            normalize: (page) => this.normalizeFetchedMessages(encryption, page.messages as ApiMessage[]),
+            normalize: (page) => this.normalizeToItems(encryption, page.messages as ApiMessage[]),
             withLock: (fn) => lock.inLock(fn),
-            apply: (messages) => this.applyMessages(sessionId, messages),
-            getLastSeq: () => this.sessionLastSeq.get(sessionId),
-            setLastSeq: (seq) => this.sessionLastSeq.set(sessionId, seq),
+            merge: (items, page) => { this.mergeSessionMessages(sessionId, items, 'rest', { hasMore: page.hasMore }); },
             onStalled: () => log.log(`💬 fetchForwardSince: pagination stalled for ${sessionId}, stopping to avoid infinite loop`),
         }, fromSeq, signal);
     }
@@ -3174,7 +3181,7 @@ class Sync {
         // The first paint is the window a latest page would give (B-616): the
         // newest page, extended by whole pages to a turn opener. The older
         // cached rows stay unread; 「加载更早」 pages from the server as before.
-        const normalized: NormalizedMessage[] = [];
+        const items: MergeItem<NormalizedMessage>[] = [];
         let start = hit.rows.length;
         let extraPages = 0;
         try {
@@ -3184,8 +3191,8 @@ class Sync {
                 const page = hit.rows.slice(start, end);
                 const decrypted = await encryption.decryptMessages(page);
                 if (decrypted.some((message) => !message || message.content === null)) throw new Error('cached row does not decrypt');
-                normalized.unshift(...await this.normalizeFetchedMessages(encryption, page));
-                if (!shouldExtendInitialWindow({ hasMore: start > 0, hasTurnStart: windowHasTurnStart(normalized), extraPagesFetched: extraPages })) break;
+                items.unshift(...await this.normalizeToItems(encryption, page));
+                if (!shouldExtendInitialWindow({ hasMore: start > 0, hasTurnStart: windowHasTurnStart(itemMessages(items)), extraPagesFetched: extraPages })) break;
                 extraPages += 1;
             }
         } catch (error) {
@@ -3198,8 +3205,7 @@ class Sync {
         const oldestSeq = hit.rows[start].seq;
         const page = answered();
         let merged: CacheRender['merged'] = null;
-        let newer: NormalizedMessage[] = [];
-        let anchor = hit.lastSeq;
+        let newer: MergeItem<NormalizedMessage>[] | null = null;
         if (page) {
             const verdict = checkCacheAnchor(page.messages, hit.lastRowSeq, hit.lastId);
             if (verdict !== 'ok') {
@@ -3208,34 +3214,26 @@ class Sync {
                 return null;
             }
             // A range result: everything in (lastRowSeq - 1, max] — holes included.
-            newer = await this.normalizeFetchedMessages(encryption, page.messages.filter((message) => message.seq > hit.lastSeq));
-            anchor = pageMaxSeq(page, hit.lastSeq);
+            newer = await this.normalizeToItems(encryption, page.messages.filter((message) => message.seq > hit.lastSeq));
             merged = { hasMore: page.hasMore };
         }
         throwIfAborted(signal);
         let applied = false;
-        let droppedMax = 0;
         await this.getSessionMessageLock(sessionId).inLock(() => {
-            if (this.sessionLastSeq.get(sessionId) !== undefined) return;
-            // B1: a cached lastSeq is usually behind the server, so a live update
-            // buffered during boot may sit past a hole. Only the run that continues
-            // the cache (and the probe page, when merged) applies; the rest comes
-            // back in order with the catch-up (as B-805's refetch on a gap: the
-            // transcript never shows a hole).
-            const buffered = this.anchorBuffer.drain(sessionId, anchor, { contiguous: true });
-            droppedMax = buffered.droppedMax;
-            const window = [...normalized, ...newer, ...buffered.messages];
-            if (window.length > 0) this.applyMessages(sessionId, window);
-            this.sessionLastSeq.set(sessionId, anchor);
-            this.advanceSessionLastSeq(sessionId, buffered.seqs);
-            this.sessionOldestSeq.set(sessionId, oldestSeq);
+            if (this.lastSeqOf(sessionId) !== undefined) return;
+            // B-812: the cached run is a stored range result anchored at its lastSeq
+            // (holes included). B1 (B-813): live updates buffered during boot apply only
+            // where they continue it; past a hole they wait for the catch-up's range.
+            // B-819: the anchor probe's page, checked above, joins it in the same commit — a
+            // range result from lastRowSeq - 1 (holes included), so the run anchors at its newest row.
+            this.mergeSessionMessages(sessionId, newer ? [...items, ...newer] : items, 'cache', { headSeq: hit.lastSeq });
             storage.getState().applyOlderMessagesPagination(sessionId, { hasMore: oldestSeq > 1 });
             applied = true;
         });
         if (!applied) return null;
         storage.getState().applyMessagesLoaded(sessionId);
-        log.log(`💬 cache: ${sessionId} rendered cached seq ${oldestSeq}–${hit.lastSeq}${merged ? ` + checked page to ${anchor}` : ''}`);
-        return { droppedMax, merged };
+        log.log(`💬 cache: ${sessionId} rendered cached seq ${oldestSeq}–${hit.lastSeq}${merged ? ` + checked page to ${this.lastSeqOf(sessionId)}` : ''}`);
+        return { merged };
     }
 
     /**
@@ -3243,16 +3241,16 @@ class Sync {
      * lastRowSeq - 1, so the server's first row must be the cached newest row
      * (§5.4.2: missing = the server is behind the cache, another id = not
      * this history). false = the cached transcript was discarded; load cold.
-     * `early.probe` (B-819): that request, asked before the run rendered;
-     * `early.reach`: a seq the catch-up must get to although that request may
-     * predate it (a buffered update left out past a hole).
+     * `early.probe` (B-819): that request, asked before the run rendered. A
+     * live update it predates and the render left out past a hole waits in the
+     * merge cursor's reorder buffer; its expiry asks the catch-up (B-812).
      */
     private fetchForwardAfterCache = async (
         sessionId: string,
         encryption: ReturnType<Encryption['getSessionEncryption']> & {},
         hit: CacheHit,
         signal: AbortSignal,
-        early: { probe?: Promise<{ messages: ApiMessage[]; hasMore: boolean }>; reach?: number } = {},
+        early: { probe?: Promise<{ messages: ApiMessage[]; hasMore: boolean }> } = {},
     ): Promise<boolean> => {
         const probe = await (early.probe ?? this.fetchForwardPage(sessionId, cacheProbeAfterSeq(hit), signal));
         throwIfAborted(signal);
@@ -3263,14 +3261,15 @@ class Sync {
             syncCache.dropSession(sessionId, verdict);
             await this.getSessionMessageLock(sessionId).inLock(() => {
                 storage.getState().resetSessionMessages(sessionId);
-                this.sessionLastSeq.delete(sessionId);
-                this.sessionOldestSeq.delete(sessionId);
-                this.anchorBuffer.open(sessionId);
+                const cursor = this.cursor(sessionId);
+                resetCursor(cursor);
+                cursor.anchorRequested = true;
+                this.armReorderTimer(sessionId, cursor);
             });
             return false;
         }
         // From what is already applied: the cached run plus the buffered updates that continued it.
-        const fromSeq = Math.max(hit.lastSeq, this.sessionLastSeq.get(sessionId) ?? hit.lastSeq);
+        const fromSeq = Math.max(hit.lastSeq, this.lastSeqOf(sessionId) ?? hit.lastSeq);
         let first: { messages: ApiMessage[]; hasMore: boolean } | null = {
             messages: probe.messages.filter((message) => message.seq > fromSeq),
             hasMore: probe.hasMore,
@@ -3281,9 +3280,6 @@ class Sync {
             first = null;
             return Promise.resolve(page);
         });
-        // B-819: the probe may predate a live update the render left out — fetch on to it.
-        const reached = this.sessionLastSeq.get(sessionId) ?? fromSeq;
-        if ((early.reach ?? 0) > reached) await this.fetchForwardSince(sessionId, encryption, reached, signal);
         return true;
     }
 
@@ -3302,40 +3298,25 @@ class Sync {
         return { messages, hasMore: !!data.hasMore };
     }, { signal })
 
-    private applyFetchedMessages = async (
-        sessionId: string,
+    /**
+     * Decrypt + normalize fetched messages into merge items, carrying the
+     * server `seq` through — it is the primary ordering key for rendering
+     * (backward pages come newest-first and one transaction's writes share a
+     * createdAt). Every seq is kept: `message: null` when nothing renders, so
+     * a point source still counts it as seen and a range still covers it.
+     */
+    private normalizeToItems = async (
         encryption: ReturnType<Encryption['getSessionEncryption']> & {},
         messages: ApiMessage[]
-    ) => {
-        const normalizedMessages = await this.normalizeFetchedMessages(encryption, messages);
-        if (normalizedMessages.length > 0) {
-            this.applyMessages(sessionId, normalizedMessages);
-        }
-    }
-
-    /** Decrypt + normalize a fetched page, carrying the server `seq` through. */
-    private normalizeFetchedMessages = async (
-        encryption: ReturnType<Encryption['getSessionEncryption']> & {},
-        messages: ApiMessage[]
-    ): Promise<NormalizedMessage[]> => {
+    ): Promise<MergeItem<NormalizedMessage>[]> => {
         if (messages.length === 0) return [];
         const decryptedMessages = await encryption.decryptMessages(messages);
-        const normalizedMessages: NormalizedMessage[] = [];
-        for (let i = 0; i < decryptedMessages.length; i++) {
+        return messages.map((raw, i) => {
             const decrypted = decryptedMessages[i];
-            if (!decrypted) continue;
-            const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-            if (normalized) {
-                // Carry the server sequence number through — it is the primary
-                // ordering key for rendering. Backward pagination delivers
-                // pages newest-first and batched writes share one createdAt
-                // (single DB transaction), so createdAt alone cannot
-                // reconstruct conversation order.
-                normalized.seq = decrypted.seq;
-                normalizedMessages.push(normalized);
-            }
-        }
-        return normalizedMessages;
+            const normalized = decrypted ? normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content) : null;
+            if (normalized && decrypted) normalized.seq = decrypted.seq;
+            return { seq: raw.seq, message: normalized ?? null };
+        });
     }
 
     /**
@@ -3347,7 +3328,7 @@ class Sync {
      * session.
      */
     loadOlderMessages = async (sessionId: string) => {
-        const oldestSeq = this.sessionOldestSeq.get(sessionId);
+        const oldestSeq = this.cursors.get(sessionId)?.oldestSeq;
         if (oldestSeq === undefined || oldestSeq <= 1) {
             return;
         }
@@ -3369,23 +3350,13 @@ class Sync {
             // not move meanwhile (a reload re-anchored it).
             const beforeSeq = oldestSeq;
             const page = await this.fetchHistoryPage(sessionId, beforeSeq);
-            const normalized = await this.normalizeFetchedMessages(encryption, page.messages);
+            const items = await this.normalizeToItems(encryption, page.messages);
             await lock.inLock(() => {
-                if (this.sessionOldestSeq.get(sessionId) !== beforeSeq) {
+                if (this.cursors.get(sessionId)?.oldestSeq !== beforeSeq) {
                     return;
                 }
-                if (normalized.length > 0) {
-                    this.applyMessages(sessionId, normalized);
-                }
-
-                let minSeq = beforeSeq;
-                for (const message of page.messages) {
-                    if (message.seq < minSeq) minSeq = message.seq;
-                }
-                if (page.messages.length > 0) {
-                    this.sessionOldestSeq.set(sessionId, minSeq);
-                    syncCache.offerOlder(sessionId, page.messages, { beforeSeq });
-                }
+                this.mergeSessionMessages(sessionId, items, 'older-page');
+                if (page.messages.length > 0) syncCache.offerOlder(sessionId, page.messages, { beforeSeq });
                 storage.getState().applyOlderMessagesPagination(sessionId, { hasMore: page.hasMore });
             });
         } finally {
@@ -3444,6 +3415,17 @@ class Sync {
             void this.handleRelayCommittedMessages(data);
         });
 
+        // B-812: the socket went away — subscribe-mode sessions go stale until the next connect's hello.
+        apiSocket.onStatusChange((status) => {
+            if (status !== 'connected' && this.syncScheduler.getMode() !== 'down') this.syncScheduler.disconnected();
+        });
+        // B-812: leaving a session keeps its subscription for a while (scheduler retention).
+        storage.subscribe((state, prev) => {
+            if (state.currentViewingSessionId !== prev.currentViewingSessionId) {
+                this.syncScheduler.view(prev.currentViewingSessionId ?? null, state.currentViewingSessionId ?? null);
+            }
+        });
+
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {
             log.log('🔌 Socket reconnected');
@@ -3470,22 +3452,29 @@ class Sync {
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
             this.feedSync.invalidate();
-            // The viewed session's messages must be refetched HERE: nothing
-            // else does it after a reconnect (web-v2 has no screen reacting to
-            // realtimeStatus; SessionDetailScreen only calls onSessionEnter
-            // on mount). Without this, an agent that finished while the link
-            // was down never shows its last messages — no new socket event
-            // arrives to trigger the seq-gap refetch. Bounded: forward from
-            // the last known seq.
-            this.catchUpViewedSession({ restart: !firstConnect });
-            // B-815: queue prompts that failed on the dead link go out now.
-            retryWaitingPrompts();
             // B-799 / B-802: a send that failed during the outage may sit in a
             // backoff sleep of up to 10s — cut it short, the link is back now.
             // Send queues only (one wake per reconnect); pollers keep invalidate().
             for (const sync of this.sendSync.values()) {
                 sync.invalidateNow();
             }
+            this.reloadViewedPromptQueue();
+            // B-823: not on the page's first connect — no link was lost, the boot's first
+            // page is healthy; aborting it re-downloaded the latest page on the critical path.
+            if (!firstConnect) this.restartStuckCatchUp();
+            this.touchViewedSession();
+            // The viewed session's messages must be caught up HERE: nothing
+            // else does it after a reconnect (web-v2 has no screen reacting to
+            // realtimeStatus; SessionDetailScreen only calls onSessionEnter
+            // on mount). Without this, an agent that finished while the link
+            // was down never shows its last messages — no new socket event
+            // arrives to trigger the seq-gap refetch. B-812: one sync-hello for
+            // every subscription (subscribe mode), else the REST catch-up
+            // (catchUpViewedSession). Returned so a release handover keeps the
+            // old socket until the candidate's hello settled (spec §4.6).
+            // B-815: queue prompts that failed on the dead link go out now.
+            retryWaitingPrompts();
+            return this.syncScheduler.connect('connect');
         });
 
         // Recovered reconnect (connectionStateRecovery replayed the gap the
@@ -3497,7 +3486,10 @@ class Sync {
             apiSocket.sendAppState(getCurrentAppState());
             this.sessionsSync.invalidate();
             this.machinesSync.invalidate();
-            this.catchUpViewedSession();
+            this.reloadViewedPromptQueue();
+            this.restartStuckCatchUp();
+            this.touchViewedSession();
+            void this.syncScheduler.connect('recovered');
         });
     }
 
@@ -3534,8 +3526,8 @@ class Sync {
             });
         }
         if (messages.length === 0) return;
-        await this.applyFetchedMessages(payload.sessionId, encryption, messages);
-        this.advanceSessionLastSeq(payload.sessionId, messages.map((message) => message.seq));
+        const items = await this.normalizeToItems(encryption, messages);
+        this.mergeSessionMessages(payload.sessionId, items, 'relay-committed');
     }
 
     private handleUpdate = async (update: unknown) => {
@@ -3579,7 +3571,7 @@ class Sync {
                 if (decrypted) {
                     lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
                     if (lastMessage) {
-                        // Primary ordering key for rendering (see applyFetchedMessages).
+                        // Primary ordering key for rendering (see normalizeToItems).
                         lastMessage.seq = decrypted.seq;
                     }
 
@@ -3613,18 +3605,28 @@ class Sync {
                         ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started') ||
                         (contentType === 'session' && sessionEventType === 'turn-start');
                     
-                    if (isTaskComplete || isTaskStarted) {
-                        console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
-                        // B-322: this is the SECOND writer of `thinking`, and it
-                        // carries no heartbeat. Without stamping here, a turn that
-                        // starts from a lifecycle event would look instantly stale
-                        // and flash "not live" at the top of every turn.
-                        recordHeartbeat(updateData.body.sid, isTaskStarted);
-                    }
-
-                    // Update session
-                    const session = storage.getState().sessions[updateData.body.sid];
-                    if (session) {
+                    // B-805: the update is authoritative — the server is asked only
+                    // on a seq gap. B-812: through the merge entry (point source):
+                    // contiguous → reduced now; echo (the relay delivered it first)
+                    // → dropped; past a hole → the reorder buffer, a gap after
+                    // 400ms; no first page yet → buffered until it lands.
+                    const sid = updateData.body.sid;
+                    const plan = this.mergeSessionMessages(sid, [{ seq: updateData.body.message.seq, message: lastMessage }], 'push');
+                    const session = storage.getState().sessions[sid];
+                    if (!session) {
+                        // Fetch sessions again if we don't have this session
+                        this.fetchSessions();
+                    } else if (plan.effects.length > 0) {
+                        // B-812 rule 6: side effects only for a fact this tab has not
+                        // acted on yet (a replayed or duplicate push is not one).
+                        if (isTaskComplete || isTaskStarted) {
+                            console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
+                            // B-322: this is the SECOND writer of `thinking`, and it
+                            // carries no heartbeat. Without stamping here, a turn that
+                            // starts from a lifecycle event would look instantly stale
+                            // and flash "not live" at the top of every turn.
+                            recordHeartbeat(sid, isTaskStarted);
+                        }
                         this.applySessions([{
                             ...session,
                             updatedAt: updateData.createdAt,
@@ -3632,35 +3634,7 @@ class Sync {
                             // Update thinking state based on task lifecycle events
                             ...(isTaskComplete ? { thinking: false } : {}),
                             ...(isTaskStarted ? { thinking: true } : {})
-                        }])
-                    } else {
-                        // Fetch sessions again if we don't have this session
-                        this.fetchSessions();
-                    }
-
-                    // B-805: the update is authoritative — fetch from the
-                    // server only on a seq gap (liveMessagePlan.ts). `echo`:
-                    // the regional relay delivered this id/seq before the
-                    // central socket; it is already reduced.
-                    const sid = updateData.body.sid;
-                    const incomingSeq = updateData.body.message.seq;
-                    const action = planLiveMessage(this.sessionLastSeq.get(sid), incomingSeq);
-                    if (action === 'defer') {
-                        // No latest page yet: the session's first update asks
-                        // for it once; the rest wait for it in the buffer.
-                        if (this.anchorBuffer.add(sid, incomingSeq, lastMessage)) {
-                            this.getMessagesSync(sid).invalidate();
-                        }
-                    } else if (action === 'apply') {
-                        // A decrypted message that does not normalize has
-                        // nothing to reduce (the forward fetch drops it too);
-                        // the run stays contiguous either way.
-                        if (lastMessage) this.enqueueMessages(sid, [lastMessage]);
-                        this.sessionLastSeq.set(sid, incomingSeq);
-                    } else if (action === 'refetch') {
-                        this.getMessagesSync(sid).invalidate();
-                        // B-804: a gap in the viewed session — say so if it takes a while.
-                        this.trackMessagesCatchUp(sid);
+                        }]);
                     }
                 }
             }
@@ -3756,9 +3730,10 @@ class Sync {
                     const wasControlledByUser = session.agentState?.controlledByUser;
                     const isNowControlledByUser = agentState?.controlledByUser;
                     // B-805: a session this tab never opened stays stale — opening it fetches.
-                    if (!wasControlledByUser && isNowControlledByUser && this.messagesSync.has(updateData.body.id)) {
+                    if (!wasControlledByUser && isNowControlledByUser && (this.messagesSync.has(updateData.body.id) || this.syncScheduler.isSubscribed(updateData.body.id))) {
                         log.log(`🔄 Control returned to mobile for session ${updateData.body.id}, re-fetching messages`);
-                        this.onSessionEnter(updateData.body.id);
+                        if (!this.syncScheduler.catchUp(updateData.body.id)) this.getMessagesSync(updateData.body.id).invalidate();
+                        this.touchViewedSession(updateData.body.id);
                     }
                 }
             } else if (!isSessionDeleted(updateData.body.id)) {
@@ -4279,7 +4254,297 @@ class Sync {
     // Apply store
     //
 
-    private applyMessages = (sessionId: string, messages: NormalizedMessage[], sendingLocalIds?: readonly string[]) => {
+    //
+    // B-812: merge entry + catch-up scheduler (B-807 spec §5.1–5.3)
+    //
+
+    private cursor(sessionId: string): SessionCursor<NormalizedMessage> {
+        let cursor = this.cursors.get(sessionId);
+        if (!cursor) {
+            cursor = createCursor();
+            this.cursors.set(sessionId, cursor);
+        }
+        return cursor;
+    }
+
+    private lastSeqOf(sessionId: string): number | undefined {
+        return this.cursors.get(sessionId)?.lastSeq;
+    }
+
+    /**
+     * B-812 (spec §5.1): the single merge entry of a session's messages — live
+     * push, send ack, relay commit, socket snapshot, REST catch-up, latest and
+     * older pages. Synchronous: callers that went to the network merge inside
+     * the session lock, and nothing awaits between the cursor decision and the
+     * store write, so no other merge interleaves.
+     */
+    private mergeSessionMessages(sessionId: string, items: MergeItem<NormalizedMessage>[], source: MergeSource, meta: Omit<MergeMeta, 'now'> = {}): MergePlan<NormalizedMessage> {
+        const cursor = this.cursor(sessionId);
+        const plan = planMerge(cursor, items, source, { ...meta, now: Date.now() });
+        // A window that is not contiguous with the new page goes — unless unsent
+        // inputs live in it (their bubbles must not vanish; the page still anchors).
+        if (plan.resetWindow && !this.hasPendingOutbox(sessionId)) storage.getState().resetSessionMessages(sessionId);
+        if (plan.apply.length > 0) this.writeMessagesToStore(sessionId, plan.apply);
+        // B-805: a never-opened session's first update asks for its latest page once.
+        if (plan.needAnchor && !this.syncScheduler.drives(sessionId)) this.getMessagesSync(sessionId).invalidate();
+        this.armReorderTimer(sessionId, cursor);
+        return plan;
+    }
+
+    private hasPendingOutbox(sessionId: string): boolean {
+        if ((this.pendingOutbox.get(sessionId)?.length ?? 0) > 0) return true;
+        for (const record of this.outboxRecords.values()) if (record.sessionId === sessionId) return true;
+        return false;
+    }
+
+    /** Rule 4: a hole still open when the reorder window closes is a gap → one catch-up. */
+    private armReorderTimer(sessionId: string, cursor: SessionCursor<NormalizedMessage>) {
+        const existing = this.reorderTimers.get(sessionId);
+        if (cursor.reorderDeadline === undefined) {
+            if (existing) clearTimeout(existing);
+            this.reorderTimers.delete(sessionId);
+            return;
+        }
+        if (existing) return;
+        this.reorderTimers.set(sessionId, setTimeout(() => {
+            this.reorderTimers.delete(sessionId);
+            if (this.cursors.get(sessionId) !== cursor) return;
+            const gap = expireReorder(cursor, Date.now());
+            if (!gap) {
+                this.armReorderTimer(sessionId, cursor);
+                return;
+            }
+            log.log(`💬 seq gap ${gap.from}..${gap.to} in ${sessionId} after the reorder window`);
+            if (!this.syncScheduler.gap(sessionId)) {
+                this.getMessagesSync(sessionId).invalidate();
+                // B-804: a gap in the viewed session — say so if it takes a while.
+                this.trackMessagesCatchUp(sessionId);
+            }
+        }, Math.max(0, cursor.reorderDeadline - Date.now())));
+    }
+
+    /** headSeq behind the request (spec §6.2-10) or a cold restart: forget the window and cursor. */
+    private invalidateSessionWindow(sessionId: string) {
+        // §5.4.2: local state ahead of the server — the cached run goes too.
+        this.unverifiedCacheHits.delete(sessionId);
+        syncCache.dropSession(sessionId, 'behind');
+        const cursor = this.cursor(sessionId);
+        resetCursor(cursor);
+        this.armReorderTimer(sessionId, cursor);
+        if (!this.hasPendingOutbox(sessionId)) storage.getState().resetSessionMessages(sessionId);
+    }
+
+    /**
+     * B-812 S12: the session's key — now, or once the FIRST session list of
+     * this load landed (not a full fetch a resume / reconnect queued behind
+     * it: one more 1.8MB download on slow 4G for the biggest account). A
+     * session the first list did not carry (created since) waits for the
+     * first connect's changedSince catch-up (B-823), then the list queue.
+     */
+    private async awaitSessionEncryption(sessionId: string) {
+        const now = this.encryption.getSessionEncryption(sessionId);
+        if (now) return now;
+        if (!this.firstSessionsList.settled) await Promise.race([this.firstSessionsList.promise, this.sessionsSync.awaitQueue()]);
+        const listed = this.encryption.getSessionEncryption(sessionId);
+        if (listed) return listed;
+        await this.sessionsCatchUpSync.awaitQueue();
+        await this.sessionsSync.awaitQueue();
+        return this.encryption.getSessionEncryption(sessionId) ?? null;
+    }
+
+    /**
+     * B-813 × B-812: a cold open in subscribe mode renders the cached run first;
+     * the subscribe that follows asks from its newest row - 1 to check it
+     * (requestAfterSeq / applySubscribeResult).
+     */
+    private prepareColdOpen = async (sessionId: string): Promise<void> => {
+        if (this.lastSeqOf(sessionId) !== undefined || !syncCache.mayHave(sessionId)) return;
+        const encryption = await this.awaitSessionEncryption(sessionId);
+        if (!encryption) return;
+        // B-819: the run read while the key loaded (a prefetch still opening the database → cold).
+        const hit = await this.readCachedRun(sessionId);
+        if (!hit) return;
+        if (await this.applyCachedMessages(sessionId, encryption, hit, new AbortController().signal)) this.unverifiedCacheHits.set(sessionId, hit);
+    };
+
+    /** One ok sync-hello / session-subscribe result → decrypt → the merge entry. */
+    private applySubscribeResult = async (sessionId: string, result: SyncSubResultOk, request: SubscribeRequest): Promise<AckOutcome> => {
+        const encryption = await this.awaitSessionEncryption(sessionId);
+        if (!encryption) throw new Error(`Session encryption not ready for ${sessionId}`);
+        const latest = request.afterSeq === null || result.gapTooLarge === true;
+        // B-813 §5.4.2: the cached run's newest row must be the server's row of that seq.
+        const hit = this.unverifiedCacheHits.get(sessionId);
+        if (hit && !latest && request.afterSeq === Math.max(0, hit.lastRowSeq - 1) && (result.messages.length > 0 || !result.hasMore)) {
+            const verdict = checkCacheAnchor(result.messages as ApiMessage[], hit.lastRowSeq, hit.lastId);
+            this.unverifiedCacheHits.delete(sessionId);
+            if (verdict !== 'ok') {
+                log.log(`💬 cache: ${sessionId} contradicted by the server (${verdict}), reloading`);
+                syncCache.dropSession(sessionId, verdict);
+                return { t: 'head-behind' };
+            }
+        }
+        if (latest) this.unverifiedCacheHits.delete(sessionId);
+        // A budget-exhausted latest page (empty, hasMore) has nothing to anchor: ask again (cold).
+        if (latest && result.messages.length === 0 && result.hasMore) return { t: 'more' };
+        const rows = result.messages as ApiMessage[];
+        let items = await this.normalizeToItems(encryption, rows);
+        let hasMoreOlder = items.length > 0 && items[0].seq > 1;
+        let olderRows: ApiMessage[] = [];
+        if (latest) ({ items, hasMoreOlder, olderRows } = await this.extendLatestWindow(sessionId, encryption, items, hasMoreOlder));
+        let plan: MergePlan<NormalizedMessage> | null = null;
+        await this.getSessionMessageLock(sessionId).inLock(() => {
+            const cursor = this.cursor(sessionId);
+            // Rule 1: generations are the scheduler's (a re-subscribed session starts over at 0).
+            cursor.generation = this.syncScheduler.phase(sessionId)?.generation ?? request.generation;
+            plan = this.mergeSessionMessages(sessionId, items, latest ? 'latest-page' : 'snapshot', {
+                generation: request.generation,
+                afterSeq: request.afterSeq,
+                headSeq: result.headSeq,
+                hasMore: result.hasMore,
+                gapTooLarge: result.gapTooLarge === true,
+            });
+            if (latest && plan.outcome === 'merged') storage.getState().applyOlderMessagesPagination(sessionId, { hasMore: hasMoreOlder });
+        });
+        const merged = plan as MergePlan<NormalizedMessage> | null;
+        if (!merged) return { t: 'superseded' };
+        if (merged.outcome === 'superseded') return { t: 'superseded' };
+        if (merged.outcome === 'head-behind') return { t: 'head-behind' };
+        if (merged.outcome === 'invalid') return { t: 'invalid' };
+        // B-813: the server's rows extend (or, for a latest page, restart) the cached run.
+        if (latest) syncCache.offerLatest(sessionId, [...olderRows, ...rows], { viewed: storage.getState().currentViewingSessionId === sessionId });
+        else syncCache.offerNewer(sessionId, rows, { afterSeq: request.afterSeq! });
+        storage.getState().applyMessagesLoaded(sessionId);
+        return merged.live ? { t: 'live' } : { t: 'more' };
+    };
+
+    /** B-616 first-paint window for a socket latest page: extend backwards to a turn opener (REST, bounded). */
+    private async extendLatestWindow(
+        sessionId: string,
+        encryption: ReturnType<Encryption['getSessionEncryption']> & {},
+        items: MergeItem<NormalizedMessage>[],
+        hasMore: boolean,
+    ): Promise<{ items: MergeItem<NormalizedMessage>[]; hasMoreOlder: boolean; olderRows: ApiMessage[] }> {
+        let window = items;
+        let olderRows: ApiMessage[] = [];
+        let extraPagesFetched = 0;
+        while (window.length > 0 && window[0].seq > 1
+            && shouldExtendInitialWindow({ hasMore, hasTurnStart: windowHasTurnStart(itemMessages(window)), extraPagesFetched })) {
+            const page = await this.fetchHistoryPage(sessionId, window[0].seq);
+            const older = await this.normalizeToItems(encryption, page.messages);
+            hasMore = page.hasMore;
+            extraPagesFetched += 1;
+            if (older.length === 0) break;
+            window = [...older.sort((a, b) => a.seq - b.seq), ...window];
+            olderRows = [...[...page.messages].sort((a, b) => a.seq - b.seq), ...olderRows];
+        }
+        return { items: window, hasMoreOlder: hasMore, olderRows };
+    }
+
+    /**
+     * B-803 at connect / resume, whatever the mode turns out to be: a REST
+     * catch-up in flight on the link that just died is restarted now (as before B-812).
+     */
+    private restartStuckCatchUp() {
+        const viewing = storage.getState().currentViewingSessionId;
+        if (viewing && this.messagesSync.get(viewing)?.isRunning()) this.restartMessagesSync(viewing);
+    }
+
+    /** The legacy reaction to a trigger the scheduler does not take over the socket. */
+    private legacyCatchUp(reason: HelloReason | 'open', sessionId?: string) {
+        if (reason === 'open') {
+            if (sessionId) this.getMessagesSync(sessionId).invalidate();
+            return;
+        }
+        if (reason === 'connect' || reason === 'recovered' || reason === 'handover') {
+            // Decided up to 2s after the connect (no ack from an old server): a catch-up running
+            // now is let land instead of aborted again (e2e OLDSERVER: the first screen lost ~350ms
+            // to that restart). A coalesced forward run still follows it: on the first connect it
+            // is the boot's read (B-823 skips the restart), which predates joining the room.
+            const viewing = storage.getState().currentViewingSessionId;
+            if (!viewing) return;
+            this.getMessagesSync(viewing).invalidate();
+            this.trackMessagesCatchUp(viewing);
+            return;
+        }
+        this.catchUpViewedSession();
+    }
+
+    /** Subscribe-mode phases → the B-804 chat line (同步中 / 连接不稳定 · 重试), spec §5.3 UI mapping. */
+    private onSyncPhase(sessionId: string, state: SessionSyncState | null) {
+        const previous = this.syncPhases.get(sessionId);
+        if (state) this.syncPhases.set(sessionId, state.phase);
+        else this.syncPhases.delete(sessionId);
+        const catchingUp = state !== null && (state.phase === 'syncing' || (state.phase === 'stale' && state.staleReason !== 'offline'));
+        if (catchingUp) {
+            // A fresh attempt after stale (retry / reconnect) starts the line over: 「同步中」, the slow clock again.
+            if (state.phase === 'syncing' && (!this.syncTracking.has(sessionId) || previous === 'stale')
+                && storage.getState().currentViewingSessionId === sessionId) {
+                this.syncTracking.get(sessionId)?.();
+                let release!: () => void;
+                const done = new Promise<void>((resolve) => { release = resolve; });
+                this.syncTracking.set(sessionId, release);
+                trackCatchUp(sessionId, done, { slowMs: SUBSCRIBE_SLOW_MS });
+            }
+            return;
+        }
+        const release = this.syncTracking.get(sessionId);
+        this.syncTracking.delete(sessionId);
+        release?.();
+    }
+
+    private createSyncScheduler(): SessionSyncScheduler {
+        return new SessionSyncScheduler({
+            emit: (event, payload, timeoutMs) => apiSocket.emitWithTimeout(event, payload, timeoutMs),
+            connected: () => apiSocket.isControlConnected(),
+            lastSeq: (sid) => this.lastSeqOf(sid),
+            coldLimit: HISTORY_PAGE_SIZE,
+            prepareCold: (sid) => this.prepareColdOpen(sid),
+            requestAfterSeq: (sid) => {
+                const hit = this.unverifiedCacheHits.get(sid);
+                return hit ? Math.max(0, hit.lastRowSeq - 1) : undefined;
+            },
+            applyResult: (sid, result, request) => this.applySubscribeResult(sid, result, request),
+            invalidate: (sid) => this.invalidateSessionWindow(sid),
+            rest: (sid) => {
+                // The socket answered nothing: REST, and do not wait on a dead pooled connection first.
+                armHedgeBurst();
+                this.restartMessagesSync(sid);
+                this.trackMessagesCatchUp(sid);
+                return this.getMessagesSync(sid).awaitQueue();
+            },
+            legacy: (reason, sid) => this.legacyCatchUp(reason as HelloReason | 'open', sid),
+            checkLiveness: () => { void apiSocket.checkLiveness(); },
+            offline: () => !isBrowserOnline(),
+            visible: () => typeof document === 'undefined' || document.visibilityState === 'visible',
+            viewing: () => storage.getState().currentViewingSessionId ?? null,
+            forcedLegacy: forcedLegacySyncMode,
+            lastMode: () => {
+                try {
+                    const mode = localStorage.getItem('vh.sync.lastMode');
+                    return mode === 'legacy' || mode === 'subscribe' ? mode : null;
+                } catch {
+                    return null;
+                }
+            },
+            noteMode: (mode) => {
+                try { localStorage.setItem('vh.sync.lastMode', mode); } catch { /* private mode: no hint */ }
+            },
+            onPhase: (sid, state) => this.onSyncPhase(sid, state),
+            onRemoved: () => this.sessionsSync.invalidate(),
+            now: () => Date.now(),
+            setTimer: (fn, ms) => setTimeout(fn, ms),
+            clearTimer: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
+            random: () => Math.random(),
+            log: (message) => log.log(message),
+        });
+    }
+
+    /**
+     * The one store write of a session's messages. Called by
+     * mergeSessionMessages (every server source) and applyOptimistic (a local
+     * input, no seq) only — asserted in sessionMerge.test.ts.
+     */
+    private writeMessagesToStore = (sessionId: string, messages: NormalizedMessage[], sendingLocalIds?: readonly string[]) => {
         const result = storage.getState().applyMessages(sessionId, messages, sendingLocalIds ? { sendingLocalIds } : undefined);
         if (this.outboxRecords.size > 0) this.pruneOutboxRecords(sessionId);
         settleDispatchedPrompts(sessionId);

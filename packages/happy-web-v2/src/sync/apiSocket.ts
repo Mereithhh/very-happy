@@ -195,7 +195,8 @@ class ApiSocket {
     // Listener Management
     //
 
-    onReconnected = (listener: () => void) => {
+    /** A returned promise holds a release handover until it settles (B-812: the candidate's sync-hello). */
+    onReconnected = (listener: () => void | Promise<void>) => {
         this.reconnectedListeners.add(listener);
         return () => this.reconnectedListeners.delete(listener);
     };
@@ -681,6 +682,23 @@ class ApiSocket {
         }
         this.socket!.emit(event, data);
         return true;
+    }
+
+    /** B-812: the control socket is connected right now (a hello / subscribe can go out). */
+    isControlConnected(): boolean {
+        return this.socket?.connected === true;
+    }
+
+    /**
+     * B-812: emit on the control socket with an ack deadline. Rejects on the
+     * deadline, when the connection drops, or when there is no connected
+     * socket (nothing is buffered for a later connect — that connect says
+     * hello itself).
+     */
+    emitWithTimeout<T = unknown>(event: string, data: unknown, timeoutMs: number): Promise<T> {
+        const socket = this.socket;
+        if (!socket?.connected) return Promise.reject(new Error('Socket not connected'));
+        return socket.timeout(timeoutMs).emitWithAck(event, data) as Promise<T>;
     }
 
     async emitWithAck<T = any>(event: string, data: any): Promise<T> {

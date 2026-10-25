@@ -79,7 +79,9 @@ describe('sync fetches history on demand only (B-616)', () => {
 
     it('the initial window is extended to a turn start and applied as one batch', () => {
         const initial = source.slice(source.indexOf('private fetchInitialLatestPage'), source.indexOf('private fetchForwardSince'));
-        expect(initial).toContain('shouldExtendInitialWindow({ hasMore, hasTurnStart: windowHasTurnStart(window), extraPagesFetched })');
-        expect(initial.match(/this\.applyMessages\(/g)).toHaveLength(1);
+        expect(initial).toContain('shouldExtendInitialWindow({ hasMore, hasTurnStart: windowHasTurnStart(itemMessages(window)), extraPagesFetched })');
+        // B-812: one merge (the latest-page source) for the whole window.
+        expect(initial.match(/this\.mergeSessionMessages\(/g)).toHaveLength(1);
+        expect(initial).toContain("this.mergeSessionMessages(sessionId, window, 'latest-page');");
     });
 });

@@ -42,16 +42,20 @@ function setPhase(sessionId: string, phase: CatchUpPhase | null) {
     });
 }
 
-function armSlow(sessionId: string, entry: Tracking) {
+function armSlow(sessionId: string, entry: Tracking, slowMs: number) {
     if (entry.slowTimer) clearTimeout(entry.slowTimer);
     entry.slowTimer = setTimeout(() => {
         entry.slowTimer = null;
         setPhase(sessionId, 'slow');
-    }, CATCH_UP_SLOW_MS);
+    }, slowMs);
 }
 
-/** Track one catch-up of `sessionId`; `done` settles when its data is in (or it gave up). */
-export function trackCatchUp(sessionId: string, done: Promise<unknown>): void {
+/**
+ * Track one catch-up of `sessionId`; `done` settles when its data is in (or it gave up).
+ * `slowMs` (B-812): subscribe mode turns 「连接不稳定」 after the 5s ack deadline + 3s.
+ */
+export function trackCatchUp(sessionId: string, done: Promise<unknown>, opts?: { slowMs?: number }): void {
+    const slowMs = opts?.slowMs ?? CATCH_UP_SLOW_MS;
     let entry = tracking.get(sessionId);
     if (!entry) {
         const created: Tracking = { generation: 0, showTimer: null, slowTimer: null, release: null };
@@ -66,7 +70,7 @@ export function trackCatchUp(sessionId: string, done: Promise<unknown>): void {
         // A retry (or a fresh resume) while slow: back to 「同步中」, a full deadline again.
         setPhase(sessionId, 'syncing');
     }
-    armSlow(sessionId, entry);
+    armSlow(sessionId, entry, slowMs);
     const generation = ++entry.generation;
     const finish = () => {
         const current = tracking.get(sessionId);

@@ -62,20 +62,23 @@ describe('no automatic git-status RPC fan-out (T-014)', () => {
 
     it('control returning to the user refetches only a session this tab opened (B-805)', () => {
         const source = read('./sync.ts');
-        expect(source).toContain('if (!wasControlledByUser && isNowControlledByUser && this.messagesSync.has(updateData.body.id)) {');
+        // B-812: or one the scheduler subscribed (opened in this tab, retained).
+        expect(source).toContain('if (!wasControlledByUser && isNowControlledByUser && (this.messagesSync.has(updateData.body.id) || this.syncScheduler.isSubscribed(updateData.body.id))) {');
     });
 
     it('entering a session fetches its messages exactly once (a REST fetch, not a daemon RPC)', () => {
         const source = read('./sync.ts');
-        const start = source.indexOf('onSessionEnter = (sessionId: string, opts?: { restartFetch?: boolean }) => {');
+        const start = source.indexOf('onSessionEnter = (sessionId: string) => {');
         expect(start).toBeGreaterThan(-1);
         const body = source.slice(start, source.indexOf('\n    }\n', start));
         expect(body).not.toMatch(/sessionRPC|machineRPC|sessionBash/);
-        expect(body.match(/\.invalidate\(\)/g)).toHaveLength(1);
-        expect(body).toContain('this.getMessagesSync(sessionId).invalidate()');
-        // B-803: resume / reconnect / recovered restart a stuck catch-up instead.
-        expect(body).toContain('this.restartMessagesSync(sessionId);');
-        // Relay warm-up and yolo alignment still run on enter (and resume).
-        expect(body).toContain('this.onSessionHeartbeat(sessionId);');
+        // B-812: the scheduler subscribes it, or invalidates the REST sync (legacy mode) — once.
+        expect(body.match(/\.invalidate\(\)|syncScheduler\.open\(|restartMessagesSync\(/g)).toHaveLength(1);
+        expect(body).toContain('this.syncScheduler.open(sessionId);');
+        // Relay warm-up and yolo alignment still run on enter (and on every link-back edge, M1).
+        expect(body).toContain('this.touchViewedSession(sessionId);');
+        const touch = source.slice(source.indexOf('private touchViewedSession('), source.indexOf('\n    }\n', source.indexOf('private touchViewedSession(')));
+        expect(touch).not.toMatch(/sessionRPC|machineRPC|sessionBash|invalidate\(|restartMessagesSync/);
+        expect(touch).toContain('this.onSessionHeartbeat(sessionId);');
     });
 });

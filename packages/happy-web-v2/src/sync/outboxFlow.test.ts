@@ -138,7 +138,7 @@ const serverTexts = (sid: string) => server.get(sid)!.map((m) => plain(m.content
 /** A reload as far as this session goes: memory forgets it, IndexedDB keeps it. */
 function reload(sid: string) {
     const s = sync as unknown as Record<string, Map<string, unknown>>;
-    for (const key of ['sessionLastSeq', 'sessionOldestSeq', 'messagesSync', 'sendSync', 'pendingOutbox', 'unverifiedCacheHits']) s[key].delete(sid);
+    for (const key of ['cursors', 'messagesSync', 'sendSync', 'pendingOutbox', 'unverifiedCacheHits']) s[key].delete(sid);
     for (const [localId, record] of [...s.outboxRecords]) if ((record as { sessionId: string }).sessionId === sid) s.outboxRecords.delete(localId);
     storage.getState().resetSessionMessages(sid);
 }
