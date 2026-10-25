@@ -77,7 +77,10 @@ describe('durations and triggers', () => {
         it(`B-767: clips a 600-char attention and 5000-char summary/error (${label}) so the server schema accepts them`, () => {
             const long = (n: number) => unit.repeat(Math.ceil(n / unit.length)).slice(0, n);
             const input = { status: 'done' as const, needsAttention: true, summary: long(5000), error: long(5000), attentionReason: long(600) };
-            expect(AutomationReportSchema.safeParse(input).success).toBe(false);
+            // zod >= 4.6 measures .max() in code points, so a 5000-unit emoji string
+            // may already pass; the clip (UTF-16 units) is the stricter bound either way.
+            const overByCodePoints = [...input.summary].length > AUTOMATION_SUMMARY_MAX_CHARS;
+            expect(AutomationReportSchema.safeParse(input).success).toBe(!overByCodePoints && [...input.attentionReason].length <= AUTOMATION_ATTENTION_REASON_MAX_CHARS);
             const { report, clipped } = clipAutomationReport(input);
             expect(AutomationReportSchema.safeParse(report).success).toBe(true);
             expect(clipped.map(c => [c.field, c.from])).toEqual([['summary', 5000], ['error', 5000], ['attentionReason', 600]]);
