@@ -247,6 +247,11 @@ export type ReducerState = {
     sendStates: Map<string, SendState>;
     /** B-513: failed localIds whose attempts provably never stored the message. */
     sendRestorable: Set<string>;
+    /**
+     * B-814: failed localIds restored from an earlier page load, too old to
+     * re-send on their own (「未发送 · 重发 / 丢弃」). Read only while failed.
+     */
+    sendStale: Set<string>;
     /** B-513: acks that arrived before their optimistic message reached the reducer. */
     acked: Map<string, { seq: number; realID: string | null }>;
     /** B-513: failed items the user took back into the composer; a late echo re-surfaces them. */
@@ -287,6 +292,7 @@ export function createReducer(): ReducerState {
         canceledQueuedReasons: new Map(),
         sendStates: new Map(),
         sendRestorable: new Set(),
+        sendStale: new Set(),
         acked: new Map(),
         withdrawn: new Set(),
     }
@@ -1767,7 +1773,7 @@ export type SendStateUpdate = {
     /** Newly enqueued (not yet in the reducer) or retried localIds. */
     sending?: readonly string[];
     acks?: readonly { localId: string; seq: number; id: string | null }[];
-    failures?: readonly { localId: string; restorable: boolean }[];
+    failures?: readonly { localId: string; restorable: boolean; stale?: boolean }[];
     /** Failed items taken back into the composer. */
     withdraw?: readonly string[];
     /**
@@ -1791,6 +1797,7 @@ function markSending(state: ReducerState, localIds: readonly string[], changed: 
         if (mid && state.sendStates.get(localId) !== 'failed') continue;
         state.sendStates.set(localId, 'sending');
         state.sendRestorable.delete(localId);
+        state.sendStale.delete(localId);
         const message = mid ? state.messages.get(mid) : undefined;
         if (message) {
             changed.add(message.id);
@@ -1830,6 +1837,8 @@ export function applySendStateUpdate(state: ReducerState, update: SendStateUpdat
         if (state.sendStates.get(failure.localId) !== 'sending') continue;
         state.sendStates.set(failure.localId, 'failed');
         if (failure.restorable) state.sendRestorable.add(failure.localId);
+        if (failure.stale) state.sendStale.add(failure.localId);
+        else state.sendStale.delete(failure.localId);
         const mid = state.localIds.get(failure.localId);
         if (mid && state.messages.has(mid)) changed.add(mid);
     }
@@ -1837,6 +1846,7 @@ export function applySendStateUpdate(state: ReducerState, update: SendStateUpdat
         if (state.sendStates.get(localId) !== 'failed') continue;
         state.sendStates.delete(localId);
         state.sendRestorable.delete(localId);
+        state.sendStale.delete(localId);
         state.withdrawn.add(localId);
         const mid = state.localIds.get(localId);
         if (mid && state.messages.has(mid)) {
@@ -1854,14 +1864,17 @@ export function applySendStateUpdate(state: ReducerState, update: SendStateUpdat
     return { messages, removed, rangesChanged };
 }
 
-function sendStateFields(reducerMsg: ReducerMessage, state: ReducerState): { sendState?: SendState; sendRestorable?: true } {
+function sendStateFields(reducerMsg: ReducerMessage, state: ReducerState): { sendState?: SendState; sendRestorable?: true; sendStale?: true } {
     const localId = reducerMsg.localId;
     if (!localId) return {};
     const sendState = state.sendStates.get(localId);
     if (!sendState) return {};
-    return sendState === 'failed' && state.sendRestorable.has(localId)
-        ? { sendState, sendRestorable: true }
-        : { sendState };
+    if (sendState !== 'failed') return { sendState };
+    return {
+        sendState,
+        ...(state.sendRestorable.has(localId) ? { sendRestorable: true as const } : {}),
+        ...(state.sendStale.has(localId) ? { sendStale: true as const } : {}),
+    };
 }
 
 function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: ReducerState): Message | null {

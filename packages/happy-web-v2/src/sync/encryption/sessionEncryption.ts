@@ -96,6 +96,11 @@ export class SessionEncryption {
     /**
      * Single message convenience method
      */
+    /** B-813: drop these ids from the decrypted-message cache (see EncryptionCache.deleteCachedMessages). */
+    forgetMessages(messageIds: readonly string[]): void {
+        this.cache.deleteCachedMessages(messageIds);
+    }
+
     async decryptMessage(message: ApiMessage | null | undefined): Promise<DecryptedMessage | null> {
         if (!message) {
             return null;

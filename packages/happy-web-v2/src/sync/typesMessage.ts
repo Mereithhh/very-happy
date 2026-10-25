@@ -57,6 +57,8 @@ export type MessageOrdering = {
     sendState?: SendState;
     /** B-513: failed, and no attempt could have stored it — safe to take back into the composer. */
     sendRestorable?: true;
+    /** B-814: failed, restored from an earlier page load past the 10-minute auto re-send window. */
+    sendStale?: true;
 }
 
 export type SendState = 'sending' | 'failed';

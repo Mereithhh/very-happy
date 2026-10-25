@@ -85,6 +85,38 @@
  *         `new-message` frames 400ms so the POST ack lands first, as in
  *         production. `own-turn` (control): tab1 first sends a prompt itself.
  *         `--only EDIT` with B-808 reverted fails every case.
+ * B-813 (PR-6a, the IndexedDB message cache; a third context "the phone after
+ * a restart" through the proxy with RTT = CACHE_RTT_MS):
+ *   COLD  a 200-record session: a fresh page opens it COLD_RUNS times with
+ *         the cache and COLD_RUNS times with `vh.sync.cache=off` (today's
+ *         path), each time after tab2 added a message → with the cache the
+ *         newest cached record is on screen sooner (median, from navigation
+ *         start) than the network page brings it; the new message is caught
+ *         up (补齐) ≤ 5s; medians of both printed (`COLD-*`). On a build
+ *         without the cache only the `off`-equivalent numbers are meaningful.
+ *   TAMPER one session's cached row is corrupted, then a fresh page opens it
+ *         → its transcript equals the server's (cold path), the other
+ *         session's cache still hits.
+ *   QUOTA the origin's storage quota is forced to 1 byte (CDP) → every
+ *         transcript loads from the network, complete, twice in a row.
+ * B-814 (PR-6b, the persistent outbox; a fourth context straight to Vite;
+ * page.route makes every message POST fail on the way — retried, never
+ * answered — until the page goes away):
+ *   OUTBOX_REFRESH a message is sent, its POST fails on the way; the page
+ *         reloads → it is on the server exactly once, under its localId.
+ *         Twice: once the server never saw the POST (re-sent once), once it
+ *         stored it and only the answer was lost (the latest page already holds
+ *         that localId: recognised, not sent again). The outbox ends empty.
+ *   OUTBOX_STALE the unsent messages' rows are aged past 10 minutes, then the
+ *         page reloads → 「未发送 · 重发 / 丢弃」, nothing sent for 3s; 重发 →
+ *         on the server once; a second one 丢弃 → gone, never on the server.
+ *   OUTBOX_TABS two pages of one browser on the session; the first sends with
+ *         its POSTs failing → the second does not send it while the first is
+ *         open (3s); the first closes → the second takes it over (≤ the 15s
+ *         reclaim pass) and sends it, exactly once.
+ *   OUTBOX_DRAFT (B-801) a pending session's first message: the spawn RPC is
+ *         stubbed (a REST-created session); the message's POST fails and the
+ *         page reloads right after it landed → exactly once.
  * Prints one line per measurement (`MEASURE <scenario> <ms|never>`) for the
  * before/after table. Exit code 1 on any failed check.
  */
@@ -129,6 +161,10 @@ const POOL_DEAD = 3;
 const HEALTHY_RUNS = 20;
 const HEDGE_AFTER_MS = 2_000; // src/sync/hedgedRead.ts
 const SYNCING_SHOW_MS = 300; // CATCH_UP_SHOW_MS, src/sync/catchUpStatus.ts
+const CACHE_RTT_MS = Number(opt('cache-rtt-ms', '150')); // spec B-807 §9.3: proxy RTT 150ms
+const COLD_RECORDS = 200;
+const COLD_RUNS = Number(opt('cold-runs', '5'));
+const COLD_RENDER_LIMIT_MS = 300; // spec B-807 G4, from the app being interactive
 if (OUT) mkdirSync(OUT, { recursive: true });
 if (!DATA_DIR) {
     console.error('--data-dir <migrated standalone data dir> is required');
@@ -169,6 +205,12 @@ const proxy = (() => {
     let delayMatch = null;
     let stallLeft = 0;
     let linkSeq = 0;
+    // B-813: the whole RTT on the way back, per chunk, on API and socket.io traffic only;
+    // order kept (equal timeouts fire in creation order). Requests go up at once, so a
+    // keep-alive link Vite is about to close never eats a delayed request. Not on the app's
+    // own modules: Vite dev serves ~1000 of them; production boots from the HTTP / SW cache.
+    let latencyMs = 0;
+    const later = (link, fn) => (latencyMs > 0 && link.api && !link.exempt ? setTimeout(fn, latencyMs) : fn());
     const links = new Set();
     const srv = net.createServer((client) => {
         const upstream = H2 ? net.connect(H2_PORT, '127.0.0.1') : net.connect(Number(viteUrl.port), viteUrl.hostname);
@@ -189,6 +231,7 @@ const proxy = (() => {
                 link.stalled = true;
             }
             if (/^(GET|POST|PUT|DELETE) /.test(head)) link.last = head.slice(0, Math.min(80, head.indexOf(' HTTP/')));
+            if (/^(GET|POST|PUT|DELETE|OPTIONS|PATCH) /.test(head)) link.api = /^\S+ \/(v\d|socket\.io)\//.test(head);
             if (DEBUG && /^(GET|POST|PUT|DELETE) /.test(head)) console.log(`    [+${((Date.now() - started) / 1000).toFixed(1)}s proxy] link#${link.id}${link.stalled ? ' DEAD' : ''} ${head.slice(0, head.indexOf(' HTTP/'))}`);
             if (!link.stalled) upstream.write(chunk);
         });
@@ -204,11 +247,12 @@ const proxy = (() => {
                 setTimeout(() => { const out = held; held = null; for (const c of out) if (!link.stalled) client.write(c); }, delayMatch.ms);
                 return;
             }
-            client.write(chunk);
+            later(link, () => { if (!link.stalled) client.write(chunk); });
         });
         // A dead path tells the browser nothing: upstream closing must not reach a stalled link.
         const end = () => { links.delete(link); client.destroy(); upstream.destroy(); };
-        const upstreamEnd = () => { if (link.stalled) { upstream.destroy(); return; } end(); };
+        // B-813: bytes still held back by the RTT reach the browser before the close does.
+        const upstreamEnd = () => { if (link.stalled) { upstream.destroy(); return; } if (latencyMs > 0 && link.api) setTimeout(end, latencyMs + 5); else end(); };
         client.on('close', end);
         client.on('error', end);
         upstream.on('close', upstreamEnd);
@@ -223,6 +267,8 @@ const proxy = (() => {
             if (DEBUG) console.log(`    [proxy] heal: ${this.stalledCount()} stalled links stay dead: ${[...links].filter((l) => l.stalled).map((l) => `#${l.id} ${l.last ?? '(idle since connect)'}`).join(' | ')}; exempt ${[...links].filter((l) => l.exempt).length}, open ${links.size}`);
         },
         stallNext(text, n = 1) { stallMatch = text; stallLeft = n; },
+        /** B-813: RTT for API / socket.io requests through the proxy (0 = off). */
+        rtt(ms) { latencyMs = ms; },
         stallsLeft: () => (stallMatch ? stallLeft : 0),
         delayDown(text, ms) { delayMatch = text ? { text, ms } : null; },
         /** --h2: the TLS front saw Vite's HMR upgrade on this upstream port (the proxy itself only sees ciphertext). */
@@ -1013,7 +1059,10 @@ try {
                     const prompt = `${prefix}-q4`;
                     const answer = `${prefix}-a4`;
                     await send(page, prompt);
-                    await waitTranscript(page, S, prefix, 7, 5_000);
+                    // The agent answers a prompt the server holds — not its optimistic bubble
+                    // (B-814: the POST now waits for its outbox row, a few ms).
+                    const confirmedMs = await timeUntilVisible(page, S, prompt, 5_000, Date.now(), { confirmed: true });
+                    check(confirmedMs !== null, `EDIT ${which} q4 confirmed by the server`);
                     await agentSay(page2, S, [answer], 0);
                     check(await waitTranscript(page, S, prefix, 8, 5_000) !== null, `EDIT ${which} tab1 ran its own turn`);
                     seeded.push(prompt, answer);
@@ -1068,6 +1117,422 @@ try {
         }
         await nav(page2, S1);
     }
+    // ── B-813: the IndexedDB message cache ("the phone after a restart") ──
+    if (want('COLD') || want('TAMPER') || want('QUOTA')) {
+        const phoneContext = async () => {
+            const ctx = await browser.newContext(ctxOpts);
+            await ctx.addInitScript((entries) => {
+                if (sessionStorage.getItem('b803-seeded')) return;
+                sessionStorage.setItem('b803-seeded', '1');
+                for (const [k, v] of Object.entries(entries)) localStorage.setItem(k, v);
+            }, storageDump);
+            return ctx;
+        };
+        const cacheStats = (page) => page.evaluate(() => import('/src/sync/cache/syncCache.ts').then(({ syncCache }) => syncCache.stats(), () => null));
+        const flushCache = (page) => page.evaluate(() => import('/src/sync/cache/syncCache.ts').then(({ syncCache }) => syncCache.flush(), () => null));
+        /**
+         * A fresh page opens `sid` through the proxy. A MutationObserver stamps
+         * (performance.now(), i.e. ms since navigation start) when the composer
+         * appears and when each of `marks` is first in the transcript DOM.
+         */
+        const coldOpen = async (ctx, sid, marks, { timeoutMs = 30_000 } = {}) => {
+            const page = await ctx.newPage();
+            page.on('pageerror', (e) => console.log('phone pageerror', e.message));
+            if (DEBUG) {
+                page.on('requestfailed', (r) => console.log(`    phone request failed ${r.url().replace(PROXY_BASE, '')} ${r.failure()?.errorText}`));
+                page.on('console', (m) => { if (m.type() === 'error' || m.text().includes('💬 cache')) console.log(`    phone console ${m.text().slice(0, 300)}`); });
+            }
+            await page.addInitScript((marks) => {
+                const seen = (window.__vhMarks = {});
+                const check = () => {
+                    const now = Math.round(performance.now());
+                    if (seen.composer === undefined && document.querySelector('textarea.ci-textarea')) seen.composer = now;
+                    const text = document.querySelector('.cl-inner')?.textContent ?? '';
+                    for (const mark of marks) if (seen[mark] === undefined && text.includes(mark)) seen[mark] = now;
+                };
+                new MutationObserver(check).observe(document, { childList: true, subtree: true, characterData: true });
+            }, marks);
+            await page.goto(`${PROXY_BASE}/session/${sid}`, { waitUntil: 'commit' });
+            const t0 = Date.now();
+            let result = {};
+            while (Date.now() - t0 < timeoutMs) {
+                result = await page.evaluate(() => ({ ...window.__vhMarks })).catch(() => ({}));
+                if (marks.every((mark) => result[mark] !== undefined)) break;
+                await sleep(50);
+            }
+            if (DEBUG) {
+                console.log(`    [coldOpen ${sid.slice(-6)}] ${JSON.stringify(result)} url=${page.url()} body=${JSON.stringify((await page.evaluate(() => document.body?.innerText ?? '').catch((e) => e.message)).slice(0, 200))}`);
+                await shot(page, `cold-${Date.now()}`);
+            }
+            await dismissDialogs(page);
+            return { page, marks: result };
+        };
+        const median = (xs) => { const v = xs.filter((x) => typeof x === 'number').sort((a, b) => a - b); return v.length ? v[Math.floor((v.length - 1) / 2)] : null; };
+        const filler = 'x'.repeat(800); // production ciphertext P50 ≈ 1.1KB (spec B-807 §10)
+        const [SC, ST] = await createSessions(page2, ['/tmp/b813-cold', '/tmp/b813-tamper']);
+        const coldPrefix = token('cold');
+        const coldTexts = Array.from({ length: COLD_RECORDS }, (_, i) => `${coldPrefix}-${i + 1}-${filler}`);
+        // Turns of one prompt + nine agent records, so both paths paint the same B-616 window.
+        for (let i = 0; i < COLD_RECORDS; i += 10) {
+            await userSay(page2, SC, [coldTexts[i]]);
+            await agentSay(page2, SC, coldTexts.slice(i + 1, i + 10), 0);
+        }
+        const lastCold = `${coldPrefix}-${COLD_RECORDS}-`;
+        const phone = await phoneContext();
+        try {
+            if (want('COLD')) {
+                step(`COLD ${COLD_RUNS}× cache on / off, ${COLD_RECORDS} records, proxy RTT ${CACHE_RTT_MS}ms`);
+                const runs = { on: [], off: [] };
+                for (let run = 0; run < COLD_RUNS; run++) {
+                    for (const mode of ['on', 'off']) {
+                        // Warm (unmeasured): the cache holds the session's run.
+                        proxy.rtt(0);
+                        const warm = await coldOpen(phone, SC, [lastCold]);
+                        await warm.page.evaluate((mode) => { if (mode === 'off') localStorage.setItem('vh.sync.cache', 'off'); else localStorage.removeItem('vh.sync.cache'); }, mode);
+                        await sleep(300);
+                        await flushCache(warm.page);
+                        await warm.page.close();
+                        // While no phone page is open, "another device" writes — the cold open must catch it up.
+                        const fresh = token(`cold-new-${mode}`);
+                        await userSay(page2, SC, [fresh]);
+                        proxy.rtt(CACHE_RTT_MS);
+                        const { page, marks } = await coldOpen(phone, SC, [lastCold, fresh]);
+                        const stats = await cacheStats(page);
+                        proxy.rtt(0);
+                        const entry = { app: marks.composer ?? null, cached: marks[lastCold] ?? null, caughtUp: marks[fresh] ?? null, hits: stats?.hits ?? null };
+                        runs[mode].push(entry);
+                        console.log(`    COLD ${mode} #${run + 1}: composer ${entry.app}ms, last record ${entry.cached}ms, new message ${entry.caughtUp}ms (cache hits ${entry.hits})`);
+                        await page.evaluate(() => localStorage.removeItem('vh.sync.cache'));
+                        await page.close();
+                    }
+                }
+                for (const mode of ['on', 'off']) {
+                    measure(`COLD-${mode}-composer`, median(runs[mode].map((r) => r.app)));
+                    measure(`COLD-${mode}-last-record`, median(runs[mode].map((r) => r.cached)));
+                    measure(`COLD-${mode}-caught-up`, median(runs[mode].map((r) => r.caughtUp)));
+                    measure(`COLD-${mode}-record-after-composer`, median(runs[mode].map((r) => (r.cached !== null && r.app !== null ? r.cached - r.app : null))));
+                }
+                const on = runs.on;
+                const hasCache = on.every((r) => r.hits !== null);
+                if (!hasCache) {
+                    console.log('  - COLD: this build has no message cache (baseline run) — only the numbers above');
+                } else {
+                    check(on.every((r) => r.hits >= 1), 'COLD every cache-on open was a cache hit', JSON.stringify(on.map((r) => r.hits)));
+                    // Informational: the composer's own time varies ±250ms between runs (session list), so this
+                    // difference is noisy; spec G4 (≤300ms on a mid-range Android) is a real-device item.
+                    const afterComposer = on.map((r) => (r.cached !== null && r.app !== null ? r.cached - r.app : null));
+                    console.log(`    COLD cached record after the composer: ${JSON.stringify(afterComposer)} (G4 target ${COLD_RENDER_LIMIT_MS}ms, real device)`);
+                    check(on.every((r) => r.caughtUp !== null && r.caughtUp <= 5_000), 'COLD the message written meanwhile is caught up (补齐) ≤ 5s', JSON.stringify(on.map((r) => r.caughtUp)));
+                    check(median(on.map((r) => r.cached)) < median(runs.off.map((r) => r.cached)), 'COLD with the cache the transcript is up sooner than without', `${median(on.map((r) => r.cached))}ms vs ${median(runs.off.map((r) => r.cached))}ms`);
+                }
+                check(runs.off.every((r) => r.caughtUp !== null), 'COLD without the cache every open shows the new message too');
+            }
+
+            if (want('TAMPER')) {
+                step('TAMPER corrupt one session\'s cached row, then open both from a fresh page');
+                const tamperPrefix = token('tamper');
+                const tamperTexts = [1, 2, 3].map((i) => `${tamperPrefix}-${i}`);
+                await userSay(page2, ST, tamperTexts);
+                for (const sid of [SC, ST]) {
+                    const warm = await coldOpen(phone, sid, sid === SC ? [lastCold] : tamperTexts);
+                    await sleep(300);
+                    await flushCache(warm.page);
+                    await warm.page.close();
+                }
+                const victim = await coldOpen(phone, SC, [lastCold]);
+                const corrupted = await victim.page.evaluate(async (sid) => {
+                    const names = (await indexedDB.databases()).map((d) => d.name).filter((n) => n?.startsWith('vh-sync-'));
+                    const db = await new Promise((resolve, reject) => { const r = indexedDB.open(names[0]); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+                    const done = await new Promise((resolve) => {
+                        const tx = db.transaction('messages', 'readwrite');
+                        const store = tx.objectStore('messages');
+                        const range = IDBKeyRange.bound([sid, 0], [sid, Infinity]);
+                        const req = store.getAll(range);
+                        req.onsuccess = () => {
+                            const rows = req.result;
+                            const row = rows[1];
+                            store.put({ ...row, content: { t: 'encrypted', c: 'Z2FyYmFnZQ==' } });
+                            tx.oncomplete = () => resolve(rows.length);
+                        };
+                    });
+                    db.close();
+                    return done;
+                }, ST);
+                await victim.page.close();
+                check(corrupted === 3, 'TAMPER corrupted one of the 3 cached rows', `${corrupted}`);
+                const opened = await coldOpen(phone, ST, tamperTexts);
+                const statsAfter = await cacheStats(opened.page);
+                const shown = await transcript(opened.page, ST, tamperPrefix);
+                check(JSON.stringify(shown) === JSON.stringify(tamperTexts), 'TAMPER the corrupted session shows the server transcript', JSON.stringify(shown));
+                check((statsAfter?.drops?.decrypt ?? 0) >= 1 && (statsAfter?.misses ?? 0) >= 0, 'TAMPER its cache was dropped (decrypt), not used', JSON.stringify(statsAfter?.drops));
+                await nav(opened.page, SC);
+                await waitTranscript(opened.page, SC, coldPrefix, COLD_RECORDS, 15_000);
+                const statsOther = await cacheStats(opened.page);
+                check((statsOther?.hits ?? 0) >= 1, 'TAMPER the other session still opens from the cache', `hits ${statsOther?.hits}`);
+                await opened.page.close();
+            }
+        } finally {
+            proxy.rtt(0);
+            await phone.close();
+        }
+
+        if (want('QUOTA')) {
+            // 1 byte: the database cannot even be created; 60KB: it opens, the newest page (~120KB of ciphertext) does not fit.
+            for (const quotaSize of (opt("quota-sizes", "1,60000")).split(",").map(Number)) {
+                step(`QUOTA storage quota forced to ${quotaSize} bytes → the network path, twice`);
+                const ctx = await phoneContext();
+                try {
+                    const probePage = await ctx.newPage();
+                    const cdp = await ctx.newCDPSession(probePage);
+                    await cdp.send('Storage.overrideQuotaForOrigin', { origin: PROXY_BASE, quotaSize });
+                    for (const round of [1, 2]) {
+                        const t0 = Date.now();
+                        const { page, marks } = await coldOpen(ctx, SC, [lastCold]);
+                        await sleep(1_000);
+                        await flushCache(page);
+                        const stats = await cacheStats(page);
+                        const shown = await transcript(page, SC, coldPrefix);
+                        console.log(`    QUOTA ${quotaSize}B round ${round}: ${shown.length} records, last at ${marks[lastCold] ?? 'never'}ms, cache ${JSON.stringify(stats)}`);
+                        check(marks[lastCold] !== undefined && shown.length >= 90 && shown.at(-1)?.startsWith(lastCold),
+                            `QUOTA ${quotaSize}B round ${round}: the transcript loads from the network`, `${shown.length} records in ${Date.now() - t0}ms`);
+                        check(stats !== null && stats.hits === 0 && (stats.quotaErrors > 0 || stats.state === 'disabled' || stats.readOnly),
+                            `QUOTA ${quotaSize}B round ${round}: the cache hit the quota and served nothing`, `state ${stats?.state} readOnly ${stats?.readOnly} quotaErrors ${stats?.quotaErrors} writeErrors ${stats?.writeErrors} ${stats?.disabledReason ?? ''}`);
+                        await page.close();
+                    }
+                    await probePage.close();
+                } finally {
+                    await ctx.close();
+                }
+            }
+        }
+    }
+
+    // ── B-814: the persistent outbox (a fresh browser context, straight to Vite) ──
+    if (want('OUTBOX_REFRESH') || want('OUTBOX_STALE') || want('OUTBOX_TABS') || want('OUTBOX_DRAFT')) {
+        const ctx = await browser.newContext(ctxOpts);
+        await ctx.addInitScript((entries) => {
+            if (sessionStorage.getItem('b803-seeded')) return;
+            sessionStorage.setItem('b803-seeded', '1');
+            for (const [k, v] of Object.entries(entries)) localStorage.setItem(k, v);
+        }, storageDump);
+        const isPost = (request) => request.method() === 'POST' && /\/v3\/sessions\/[^/]+\/messages$/.test(request.url());
+        const localIdsOf = (request) => JSON.parse(request.postData() ?? '{}').messages?.map((m) => m.localId) ?? [];
+        /**
+         * Every message POST of this page fails on the way (the app keeps
+         * retrying it, as on a dead link): `before` = the server never sees it,
+         * `after` = the server stores it and only the answer is lost. Aborted,
+         * not left hanging: a hanging intercepted request would be let through
+         * when the page closes.
+         */
+        const holdPosts = async (page, mode) => {
+            const held = [];
+            await page.route('**/v3/sessions/*/messages', async (route) => {
+                if (!isPost(route.request())) return route.fallback();
+                held.push(localIdsOf(route.request()));
+                if (mode === 'after') await route.fetch().catch(() => {});
+                await route.abort('connectionreset').catch(() => {});
+            });
+            return held;
+        };
+        /** From now on, let this page's message POSTs through and record them. */
+        const passPosts = async (page) => {
+            await page.unroute('**/v3/sessions/*/messages');
+            const seen = [];
+            await page.route('**/v3/sessions/*/messages', async (route) => {
+                if (isPost(route.request())) seen.push(localIdsOf(route.request()));
+                await route.fallback();
+            });
+            return seen;
+        };
+        /** Sent from the page's own send path (not the composer, which may queue a second prompt on the server). */
+        const sendDirect = (page, sid, text) => page.evaluate(({ sid, text }) => import('/src/sync/sync.ts').then(({ sync }) => sync.sendMessage(sid, text, { source: 'chat' })), { sid, text });
+        const outboxRows = (page) => page.evaluate(() => import('/src/sync/cache/syncCache.ts').then(({ outboxStore }) => outboxStore.all()));
+        const waitRows = async (page, n, timeoutMs = 5_000) => {
+            const t0 = Date.now();
+            while (Date.now() - t0 < timeoutMs) { if ((await outboxRows(page)).length >= n) return true; await sleep(50); }
+            return false;
+        };
+        /** What the server holds: every message of `sid`, decrypted by tab2, oldest first. */
+        const serverTexts = (sid, prefix) => page2.evaluate(async ({ sid, prefix }) => {
+            const { sync } = await import('/src/sync/sync.ts');
+            const { apiSocket } = await import('/src/sync/apiSocket.ts');
+            const res = await apiSocket.request(`/v3/sessions/${sid}/messages?after_seq=0&limit=500`);
+            const { messages } = await res.json();
+            const decrypted = await sync.encryption.getSessionEncryption(sid).decryptMessages(messages);
+            return decrypted.map((m) => m?.content?.content?.text).filter((t) => typeof t === 'string' && t.startsWith(prefix));
+        }, { sid, prefix });
+        const waitServer = async (sid, prefix, n, timeoutMs) => {
+            const t0 = Date.now();
+            while (Date.now() - t0 < timeoutMs) { if ((await serverTexts(sid, prefix)).length >= n) return Date.now() - t0; await sleep(200); }
+            return null;
+        };
+        const openFresh = async (sid) => {
+            const page = await ctx.newPage();
+            page.on('pageerror', (e) => console.log('outbox pageerror', e.message));
+            await openSession(page, BASE, sid);
+            return page;
+        };
+        const [SO, SS, SD] = await createSessions(page2, ['/tmp/b814-refresh', '/tmp/b814-stale', '/tmp/b814-tabs']);
+        try {
+            if (want('OUTBOX_REFRESH')) {
+                for (const mode of ['before', 'after']) {
+                    step(`OUTBOX_REFRESH the POST fails (${mode === 'before' ? 'never reached the server' : 'stored, answer lost'}), then the page reloads`);
+                    const page = await openFresh(SO);
+                    const held = await holdPosts(page, mode);
+                    const text = token(`outbox-refresh-${mode}`);
+                    await send(page, text);
+                    check(await waitRows(page, 1), `OUTBOX_REFRESH ${mode}: the row is in IndexedDB before the page goes away`);
+                    const t1 = Date.now();
+                    while (held.length === 0 && Date.now() - t1 < 5_000) await sleep(50);
+                    check(held.length === 1, `OUTBOX_REFRESH ${mode}: its POST was on the wire`, JSON.stringify(held));
+                    const posts = await passPosts(page);
+                    const t0 = Date.now();
+                    await page.reload();
+                    await page.locator('textarea.ci-textarea').waitFor({ timeout: 60_000 });
+                    const ms = await timeUntilVisible(page, SO, text, 20_000, t0, { confirmed: true });
+                    measure(`OUTBOX_REFRESH-${mode}`, ms);
+                    check(ms !== null, `OUTBOX_REFRESH ${mode}: after the reload it is shown confirmed`, fmt(ms));
+                    await sleep(1_500);
+                    const onServer = await serverTexts(SO, text);
+                    check(onServer.length === 1, `OUTBOX_REFRESH ${mode}: on the server exactly once`, JSON.stringify(onServer));
+                    check((await transcript(page, SO, text)).length === 1, `OUTBOX_REFRESH ${mode}: one bubble`);
+                    // `after`: the latest page already holds it (same localId) — nothing left to send.
+                    check(mode === 'before'
+                        ? posts.length === 1 && posts[0].length === 1 && posts[0][0] === held[0][0]
+                        : posts.length <= 1 && posts.flat().every((id) => id === held[0][0]),
+                        `OUTBOX_REFRESH ${mode}: ${mode === 'before' ? 're-sent once, with the same localId' : 'not re-sent under another localId (the stored copy is recognised)'}`, JSON.stringify(posts));
+                    check((await outboxRows(page)).length === 0, `OUTBOX_REFRESH ${mode}: the outbox is empty again`);
+                    await page.close();
+                }
+            }
+
+            if (want('OUTBOX_STALE')) {
+                step('OUTBOX_STALE unsent messages aged past 10 minutes → 「未发送 · 重发 / 丢弃」 after the reload');
+                const page = await openFresh(SS);
+                await holdPosts(page, 'before');
+                const keep = token('outbox-stale-keep');
+                const drop = token('outbox-stale-drop');
+                await sendDirect(page, SS, keep);
+                await sendDirect(page, SS, drop);
+                check(await waitRows(page, 2), 'OUTBOX_STALE both rows are in IndexedDB');
+                // Eleven minutes ago, as far as the outbox can tell.
+                await page.evaluate(async () => {
+                    const { outboxStore } = await import('/src/sync/cache/syncCache.ts');
+                    const rows = await outboxStore.all();
+                    await outboxStore.put(rows.map((row) => ({ ...row, createdAt: Date.now() - 11 * 60_000 })));
+                });
+                const posts = await passPosts(page);
+                await page.reload();
+                await page.locator('textarea.ci-textarea').waitFor({ timeout: 60_000 });
+                let stale = null;
+                for (let i = 0; i < 100 && stale === null; i++) {
+                    const n = await page.locator('[data-send-state="stale"]').count();
+                    if (n >= 2) stale = n; else await sleep(100);
+                }
+                await shot(page, 'outbox-stale');
+                check(stale === 2, 'OUTBOX_STALE both show 「未发送」 with 重发 / 丢弃', `${stale}`);
+                const labels = await page.locator('[data-send-state="stale"]').first().innerText();
+                check(/未发送/.test(labels) && /重发/.test(labels) && /丢弃/.test(labels), 'OUTBOX_STALE the row reads 「未发送 · 重发 · 丢弃」', JSON.stringify(labels));
+                await sleep(3_000);
+                check(posts.length === 0 && (await serverTexts(SS, 'outbox-stale')).length === 0, 'OUTBOX_STALE nothing is sent on its own', JSON.stringify(posts));
+                // 重发 the first, 丢弃 the second (rows are newest last on screen).
+                const clickIn = async (text, label) => page.evaluate(({ text, label }) => {
+                    for (const status of document.querySelectorAll('[data-send-state="stale"]')) {
+                        let node = status;
+                        while (node && !(node.textContent ?? '').includes(text)) node = node.parentElement;
+                        if (!node) continue;
+                        const button = [...status.querySelectorAll('button')].find((b) => b.textContent === label);
+                        if (button) { button.click(); return true; }
+                    }
+                    return false;
+                }, { text, label });
+                check(await clickIn(keep, '重发'), 'OUTBOX_STALE 重发 clicked');
+                const resent = await waitServer(SS, keep, 1, 10_000);
+                check(resent !== null, 'OUTBOX_STALE 重发 → on the server', fmt(resent));
+                check(await clickIn(drop, '丢弃'), 'OUTBOX_STALE 丢弃 clicked');
+                await sleep(2_000);
+                check((await serverTexts(SS, keep)).length === 1, 'OUTBOX_STALE the resent one is there exactly once');
+                check((await serverTexts(SS, drop)).length === 0, 'OUTBOX_STALE the discarded one never reached the server');
+                check((await transcript(page, SS, drop)).length === 0, 'OUTBOX_STALE the discarded one is gone from the transcript');
+                check((await outboxRows(page)).length === 0, 'OUTBOX_STALE the outbox is empty again');
+                await page.close();
+            }
+
+            if (want('OUTBOX_TABS')) {
+                step('OUTBOX_TABS two pages; the sender\'s POSTs fail; it closes → the other takes over, exactly once');
+                const owner = await openFresh(SD);
+                const other = await openFresh(SD);
+                const otherPosts = await passPosts(other);
+                await holdPosts(owner, 'before');
+                const text = token('outbox-tabs');
+                await send(owner, text);
+                check(await waitRows(owner, 1), 'OUTBOX_TABS the row is in IndexedDB');
+                await sleep(3_000);
+                check(otherPosts.length === 0, 'OUTBOX_TABS the other page leaves it alone while its tab is open', JSON.stringify(otherPosts));
+                await owner.close();
+                const ms = await waitServer(SD, text, 1, 40_000);
+                measure('OUTBOX_TABS-takeover', ms);
+                check(ms !== null, 'OUTBOX_TABS the other page takes it over and sends it (≤ reclaim interval + send)', fmt(ms));
+                await sleep(2_000);
+                check((await serverTexts(SD, text)).length === 1, 'OUTBOX_TABS on the server exactly once');
+                check(otherPosts.flat().length === 1, 'OUTBOX_TABS one POST from the other page', JSON.stringify(otherPosts));
+                const shown = await timeUntilVisible(other, SD, text, 5_000, Date.now(), { confirmed: true });
+                check(shown !== null && (await transcript(other, SD, text)).length === 1, 'OUTBOX_TABS the other page shows it once');
+                check((await outboxRows(other)).length === 0, 'OUTBOX_TABS the outbox is empty again');
+                await other.close();
+            }
+
+            if (want('OUTBOX_DRAFT')) {
+                step('OUTBOX_DRAFT (B-801) a pending session\'s first message, POST failing, page reloaded right after it landed');
+                const page = await ctx.newPage();
+                page.on('pageerror', (e) => console.log('outbox pageerror', e.message));
+                await page.goto(`${BASE}/`);
+                await waitConnected(page, 60_000);
+                await dismissDialogs(page);
+                await holdPosts(page, 'before');
+                const text = token('outbox-draft');
+                const sid = await page.evaluate(async (text) => {
+                    const { apiSocket } = await import('/src/sync/apiSocket.ts');
+                    const { sync } = await import('/src/sync/sync.ts');
+                    const { storage } = await import('/src/sync/storage.ts');
+                    const { encodeBase64 } = await import('/src/encryption/base64.ts');
+                    const { pendingSessions } = await import('/src/sync/pendingSessionsRuntime.ts');
+                    let created = null;
+                    // No daemon here: the spawn RPC creates the session over REST, like a daemon would.
+                    apiSocket.machineRPC = async () => {
+                        const enc = await sync.encryption.openEncryption(null);
+                        const [metadata] = await enc.encrypt([{ path: '/tmp/b814-draft', host: 'e2e', flavor: 'claude' }]);
+                        const res = await apiSocket.request('/v1/sessions', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ tag: crypto.randomUUID(), metadata: encodeBase64(metadata, 'base64'), agentState: null, dataEncryptionKey: null }),
+                        });
+                        created = (await res.json()).session.id;
+                        return { type: 'success', sessionId: created };
+                    };
+                    const record = pendingSessions.create({ machineId: 'e2e-machine', path: '/tmp/b814-draft', agent: 'claude', permissionMode: 'default', source: 'quick', firstMessage: text });
+                    for (let i = 0; i < 300; i++) {
+                        const current = pendingSessions.get(record.pendingId);
+                        if (current?.state === 'landed' && created && storage.getState().sessionMessages[created]) return created;
+                        await new Promise((r) => setTimeout(r, 50));
+                    }
+                    throw new Error(`pending session did not land: ${JSON.stringify(pendingSessions.get(record.pendingId))}`);
+                }, text);
+                check(await waitRows(page, 1), 'OUTBOX_DRAFT the first message is in the outbox before its record let go of it');
+                await passPosts(page);
+                await page.goto(`${BASE}/session/${sid}`);
+                await page.locator('textarea.ci-textarea').waitFor({ timeout: 60_000 });
+                const ms = await timeUntilVisible(page, sid, text, 20_000, Date.now(), { confirmed: true });
+                check(ms !== null, 'OUTBOX_DRAFT after the reload the first message is shown confirmed', fmt(ms));
+                await sleep(1_500);
+                check((await serverTexts(sid, text)).length === 1, 'OUTBOX_DRAFT on the server exactly once', JSON.stringify(await serverTexts(sid, text)));
+                check((await transcript(page, sid, text)).length === 1, 'OUTBOX_DRAFT one bubble');
+                await page.close();
+            }
+        } finally {
+            await ctx.close();
+        }
+    }
+
     check(tab1PageErrors === 0, 'tab1 raised no page error (e.g. an unhandled 「Superseded by restart」)', `${tab1PageErrors}`);
     check(tab1Reloads === 0 && await page1.evaluate(() => performance.timeOrigin) === timeOrigin, 'tab1 never reloaded the page', `${tab1Reloads} full page load(s)`);
 } catch (error) {

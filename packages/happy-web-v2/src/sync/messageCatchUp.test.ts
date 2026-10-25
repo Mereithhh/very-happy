@@ -294,9 +294,11 @@ describe('B-803 wiring in sync.ts / apiSocket.ts', () => {
         expect(history).toContain('{ signal: attemptSignal, timeoutMs: SYNC_READ_TIMEOUT_MS, ...pool },');
         expect(history).toContain('}, { signal })');
         const forward = block(sync, 'private fetchForwardSince = async', 1_400);
-        expect(forward).toContain('fetchPage: (afterSeq, pageSignal) => hedgedRead(async (attemptSignal, pool) => {');
-        expect(forward).toContain('{ signal: attemptSignal, timeoutMs: SYNC_READ_TIMEOUT_MS, ...pool },');
-        expect(forward).toContain('}, { signal: pageSignal }),');
+        expect(forward).toContain('= (afterSeq, pageSignal) => this.fetchForwardPage(sessionId, afterSeq, pageSignal),');
+        // B-813: the page read itself (also the cache check after a cache hit)
+        const page = block(sync, 'private fetchForwardPage = (sessionId: string, afterSeq: number, signal: AbortSignal) => hedgedRead(async (attemptSignal, pool) => {', 800);
+        expect(page).toContain('{ signal: attemptSignal, timeoutMs: SYNC_READ_TIMEOUT_MS, ...pool },');
+        expect(page).toContain('}, { signal })');
         const sessions = block(sync, 'private fetchSessions = async', 1_200);
         expect(sessions).toContain('const data = await hedgedRead(async (signal, pool) => {');
         expect(sessions).toContain('timeoutMs: SYNC_READ_TIMEOUT_MS,\n                signal,\n                ...pool,');

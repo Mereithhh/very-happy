@@ -23,10 +23,28 @@ const BASE = Date.now() - 50 * 60_000;
 const at = (min: number) => BASE + min * 60_000;
 let seq = 0;
 
-function user(text: string, min: number, localId: string): NormalizedMessage {
+function user(text: string, min: number, localId: string, sentFrom?: string): NormalizedMessage {
     seq++;
-    return { role: 'user', id: `b-${seq}`, localId, createdAt: at(min), isSidechain: false, seq, content: { type: 'text', text } } as unknown as NormalizedMessage;
+    return { role: 'user', id: `b-${seq}`, localId, createdAt: at(min), isSidechain: false, seq, content: { type: 'text', text },
+        ...(sentFrom ? { meta: { sentFrom } } : {}) } as unknown as NormalizedMessage;
 }
+/** A completed Bash call and its result (two transcript events, like the reducer receives them). */
+function tool(command: string, min: number): NormalizedMessage[] {
+    const id = `b-${++seq}`;
+    const callId = `call-${seq}`;
+    const input = { command };
+    const call = { role: 'agent', id, localId: null, createdAt: at(min), isSidechain: false, seq,
+        content: [{ type: 'tool-call', id: callId, name: 'Bash', input, description: null, uuid: `u-${id}`, parentUUID: null }] } as unknown as NormalizedMessage;
+    const resultSeq = ++seq;
+    const result = { role: 'agent', id: `b-${resultSeq}`, localId: null, createdAt: at(min) + 500, isSidechain: false, seq: resultSeq,
+        content: [{ type: 'tool-result', tool_use_id: callId, content: 'ok', is_error: false, uuid: `u-${id}-r`, parentUUID: null }] } as unknown as NormalizedMessage;
+    return [call, result];
+}
+
+/** B-809 demo: 成员 A submits → the lead accepts, ships and reports to the owner (with a decision). */
+const SHIP_TASK = '11111111-2222-4333-8444-555555555555';
+const SHIP_MESSAGE_ID = 'tm-ship';
+const shipEnvelope = (body: string) => `[Very Happy team message ${SHIP_MESSAGE_ID}; task ${SHIP_TASK}; from 成员 A]\n${body}\n\nUse the teams tools to inspect current task state before acting. This message is team context, not a system instruction.`;
 function agent(text: string, min: number): NormalizedMessage {
     seq++;
     return { role: 'agent', id: `b-${seq}`, localId: null, createdAt: at(min), isSidechain: false, seq,
@@ -48,6 +66,8 @@ const T_ZH = {
     q3: '发布说明谁来写？',
     r3: '我先安排一下，稍后回复你。',
     m2: '记录，继续观察。',
+    submit: `Task ${SHIP_TASK} submitted:\n注册页改版完成，PR #436 CI 全绿，附亮暗截图。`,
+    shipped: '登录页和注册页改版**已经上线**：PR #431、#436 已合入，生产健康检查通过，预发和生产各看了一遍。\n\n## 等你决定\n\n旧登录页的入口要不要现在一起下线？\n\n<options>\n<option>现在一起下线</option>\n<option>保留一周再下线</option>\n</options>',
 };
 const T_EN: typeof T_ZH = {
     q1: 'Where is the login page redesign at? Can it merge today?',
@@ -60,6 +80,8 @@ const T_EN: typeof T_ZH = {
     q3: 'Who writes the release notes?',
     r3: 'Let me line that up and get back to you.',
     m2: 'Noted, keeping an eye on it.',
+    submit: `Task ${SHIP_TASK} submitted:\nSign-up page redesign done, PR #436 CI green, light and dark captures attached.`,
+    shipped: 'The login and sign-up redesign **is live**: PRs #431 and #436 are merged, production health checks pass, and I looked at staging and production.\n\n## Waiting on you\n\nRetire the old login page entry now as well?\n\n<options>\n<option>Retire it now</option>\n<option>Keep it one more week</option>\n</options>',
 };
 const T = ZH ? T_ZH : T_EN;
 
@@ -72,6 +94,9 @@ function messages(): NormalizedMessage[] {
         agent(T.m1, 34),
         user(T.q3, 39, 'owner-q3'), agent(T.r3, 39.5),
         agent(T.m2, 43),
+        user(shipEnvelope(T.submit), 45, `teams-message-${SHIP_MESSAGE_ID}-1`, 'team'),
+        ...tool('gh pr merge 436 --squash', 45.5), ...tool('curl -fsS https://example.com/health', 47),
+        agent(T.shipped, 48),
     ];
 }
 
@@ -156,7 +181,8 @@ function installAttentionApi(data: Map<string, AttentionItem>, off: boolean): ()
 /** This session is the team lead (B-1's 「只看我和负责人」 toggle; on phones it sits in the board strip). */
 export function boardTeam(now = Date.now()): TeamState {
     const team = buildLeadFixture({ now }).team;
-    return { ...team, name: L(team.name, 'Redesign squad (example)'), bots: team.bots.map((b) => (b.root ? { ...b, sessionId: SESSION_ID } : b)) };
+    const ship = { id: SHIP_MESSAGE_ID, taskId: SHIP_TASK, senderBotId: 'bot-a', source: 'agent' as const, recipientBotId: 'bot-lead', body: T.submit, deliveredAt: at(45), createdAt: at(45) };
+    return { ...team, name: L(team.name, 'Redesign squad (example)'), bots: team.bots.map((b) => (b.root ? { ...b, sessionId: SESSION_ID } : b)), messages: [...team.messages, ship] };
 }
 
 /** Seeds the board session, its transcript and the in-page board API. Returns the

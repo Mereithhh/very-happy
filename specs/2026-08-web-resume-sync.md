@@ -2,6 +2,7 @@
 
 > 状态：Shipped（`main@d0b9719c` #105，2026-08-31）
 > 日期：2026-08-31 ｜ 关联 backlog：B-259 ｜ 出处：Owner 实报「移动端从后台切回前台，终端 session 不刷新、普通会话进度不更新，有时要手动刷新页面」；方案经 3 轮对抗 review（记录见会话临时目录 `web-resume-sync/plan-v1..v3.md`、`review-r1..r3.md`，不进 repo）
+> 后续：会话消息的回前台/重连补拉由 [会话消息同步 v1](2026-10-session-sync-subscribe-and-cache.md)（B-807）收敛为 socket 对账订阅；resume 仍只从本 spec 的 `resumeSync` → `sync.onWebResume` 进入
 
 ## 背景
 

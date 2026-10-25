@@ -780,6 +780,10 @@ export const en = {
             sendRestore: 'Back to input',
             // B-722: send / save states (aria-live status text).
             sendDelete: 'Delete',
+            // B-814: restored after a reload, too old to re-send on its own.
+            sendNotSent: 'Not sent',
+            sendResend: 'Resend',
+            sendDiscard: 'Discard',
             sent: 'Sent',
             sendingOffline: 'Sends when the connection is back',
             // B-799: the send button while the device is offline (it queues, it does not refuse).
@@ -2699,6 +2703,12 @@ export const en = {
         entryShort: 'Major update',
         entryCount: ({ count }: { count: number }) => `${count} unread`,
         releases: {
+            oct25e: {
+                title: 'Lead replies stay visible in “Just me & the lead”',
+                summary: 'In a lead session’s “Just me & the lead” view, what the lead writes to you is no longer folded away, even when a member’s message started the turn.',
+                replies: 'The lead’s replies and the options it asks you to choose from stay visible; the member’s message and the lead’s tool work still fold into one row you can expand.',
+                via: 'A small line such as “Replying to Member A’s submission” shows what the lead is answering.',
+            },
             oct25r: {
                 title: 'CLI 0.2.185: messages you send are no longer missed',
                 summary: 'If the network blips while the agent is working, a message you send from the web still reaches the agent.',

@@ -988,6 +988,10 @@ export const zhHans: TranslationStructure = {
             sendRestore: '放回输入框',
             // B-722
             sendDelete: '删除',
+            // B-814
+            sendNotSent: '未发送',
+            sendResend: '重发',
+            sendDiscard: '丢弃',
             sent: '已发送',
             sendingOffline: '连接恢复后发送',
             // B-799
@@ -2837,6 +2841,12 @@ export const zhHans: TranslationStructure = {
         entryShort: '大更新',
         entryCount: ({ count }: { count: number }) => `${count} 条未看`,
         releases: {
+            oct25e: {
+                title: '「只看我和负责人」不再藏起负责人的回复',
+                summary: '负责人会话的「只看我和负责人」视图里，负责人写给你的话不再被折叠，即使这一轮是成员消息触发的。',
+                replies: '负责人的回复和让你选择的选项都直接显示；成员消息和负责人的工具操作仍折叠成一行，可以展开。',
+                via: '回复上方会有一行小字，比如「回复 成员 A 的提交」，说明负责人在回应什么。',
+            },
             oct25r: {
                 title: 'CLI 0.2.185：你发的消息不会再漏掉',
                 summary: '网络短暂断开时，你在网页上插的话也能送到 agent。',

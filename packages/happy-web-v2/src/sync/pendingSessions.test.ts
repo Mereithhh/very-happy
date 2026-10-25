@@ -291,6 +291,8 @@ describe('pending session store (B-516)', () => {
         await second.store.resume(); // idempotent
         expect(second.deps.sendMessage).toHaveBeenCalledTimes(1);
         expect(second.deps.migrateDraft).toHaveBeenCalledWith(landing.pendingId, 'real2');
+        // B-814 §5.5.4: delivered under the outbox item's id — the same localId a send before the reload used.
+        expect(second.deps.sendMessage).toHaveBeenCalledWith('real2', 'draft 2', saved[1].outbox[0].id);
     });
 
     it('adopts only after a possibly lost ack, within a short window around the dispatch, without touching its mode', async () => {

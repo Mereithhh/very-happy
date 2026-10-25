@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-25-lead-view-replies',
+    date: '2026-10-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct25e.title',
+    summaryKey: 'changelog.releases.oct25e.summary',
+    itemKeys: ['changelog.releases.oct25e.replies', 'changelog.releases.oct25e.via'],
+  },
+  {
     id: '2026-10-25-cli-no-missed-messages',
     cliVersion: '0.2.185',
     date: '2026-10-25',

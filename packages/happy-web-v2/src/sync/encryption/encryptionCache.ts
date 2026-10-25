@@ -104,6 +104,11 @@ export class EncryptionCache {
         this.evictOldest(this.messageCache, this.maxMessages);
     }
 
+    /** B-813: forget messages decrypted from a corrupt local cache, so the server's copy is decrypted afresh. */
+    deleteCachedMessages(messageIds: readonly string[]): void {
+        for (const id of messageIds) this.messageCache.delete(id);
+    }
+
     /**
      * Get cached machine metadata
      */
