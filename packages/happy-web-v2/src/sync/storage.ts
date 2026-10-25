@@ -231,6 +231,8 @@ interface StorageState {
     /** B-513: outbox outcomes (acks / failures / retries / take-backs) re-convert only the affected rows. */
     applyOutboxResult: (sessionId: string, update: SendStateUpdate) => void;
     applyMessagesLoaded: (sessionId: string) => void;
+    /** B-813: forget a session's transcript (a cached run the server contradicted) so it reloads cold. */
+    resetSessionMessages: (sessionId: string) => void;
     applyOlderMessagesPagination: (sessionId: string, info: { hasMore: boolean }) => void;
     applyOlderMessagesLoading: (sessionId: string, isLoading: boolean) => void;
     applySettings: (settings: Settings, version: number) => void;
@@ -905,6 +907,11 @@ export const storage = create<StorageState>()((set, get) => {
                     },
                 },
             };
+        }),
+        resetSessionMessages: (sessionId: string) => set((state) => {
+            if (!state.sessionMessages[sessionId]) return state;
+            const { [sessionId]: _dropped, ...sessionMessages } = state.sessionMessages;
+            return { ...state, sessionMessages };
         }),
         applyMessagesLoaded: (sessionId: string) => set((state) => {
             const existingSession = state.sessionMessages[sessionId];
