@@ -27,7 +27,7 @@ vi.mock('./authExpiredNotice.css', () => ({}));
 
 import { AuthExpiredNotice } from './AuthExpiredNotice';
 import { resetAuthLatch, tripAuthLatch } from '@/auth/authLatch';
-import { OVERLAY_PRIORITY, criticalOverlayActive, requestOverlay, resetOverlayQueueForTest } from './overlayQueue';
+import { OVERLAY_PRIORITY, overlayHeldAbove, requestOverlay, resetOverlayQueueForTest } from './overlayQueue';
 
 let host: HTMLDivElement; let root: Root;
 beforeEach(() => {
@@ -114,9 +114,9 @@ describe('AuthExpiredNotice (B-825)', () => {
         state.verdicts = ['valid'];
         const notes = requestOverlay('release-notes', OVERLAY_PRIORITY.notice);
         await act(async () => root.render(<AuthExpiredNotice />));
-        expect(criticalOverlayActive()).toBe(false);
+        expect(overlayHeldAbove(OVERLAY_PRIORITY.interaction)).toBe(false);
         await act(async () => tripAuthLatch({ status: 401, path: '/v1/kv' }));
-        expect(criticalOverlayActive()).toBe(true);
+        expect(overlayHeldAbove(OVERLAY_PRIORITY.interaction)).toBe(true);
         await flush();
         expect(dialog()?.parentElement).toBe(document.body);
         expect(dialog()?.open).toBe(true);
@@ -126,7 +126,7 @@ describe('AuthExpiredNotice (B-825)', () => {
         await act(async () => { dialog()!.dispatchEvent(cancel); });
         expect(cancel.defaultPrevented).toBe(true);
         await act(async () => root.unmount());
-        expect(criticalOverlayActive()).toBe(false);
+        expect(overlayHeldAbove(OVERLAY_PRIORITY.interaction)).toBe(false);
         root = createRoot(host);
         notes();
     });

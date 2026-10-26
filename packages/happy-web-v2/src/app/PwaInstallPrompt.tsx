@@ -23,7 +23,7 @@ import {
   type PwaInstallGuide,
 } from './pwaInstallPolicy';
 import { setPwaInstallPromptVisible } from './pwaInstallVisibility';
-import { useCriticalOverlayActive } from './overlayQueue';
+import { OVERLAY_PRIORITY, useOverlayHeldAbove } from './overlayQueue';
 import './pwaInstallPrompt.css';
 import './floatingCards.css';
 
@@ -60,8 +60,9 @@ export function PwaInstallPrompt() {
   const { copy: publicCopy } = usePublicI18n();
   const copy = guide ? { ...publicCopy.pwa, body: guide === 'native' ? publicCopy.pwa.nativeBody : publicCopy.pwa.manualBody } : null;
   const appleGuide = guide ? isAppleInstallGuide(guide) : false;
-  // B-830: stand down (not dismissed) while the sign-in expiry dialog is up.
-  const deferred = useCriticalOverlayActive();
+  // B-830 / B-831: stand down (not dismissed) while the sign-in expiry
+  // dialog, a Modal.* or another dialog above notice level holds the turn.
+  const deferred = useOverlayHeldAbove(OVERLAY_PRIORITY.notice);
 
   useEffect(() => {
     const standaloneQuery = window.matchMedia('(display-mode: standalone)');

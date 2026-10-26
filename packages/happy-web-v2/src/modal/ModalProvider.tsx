@@ -11,7 +11,7 @@ import { Modal } from './ModalManager';
 import { t } from '@/text';
 import type { ModalConfig, ModalContextValue } from './types';
 import { useImeGuard, isImeGuardedEvent } from '@/utils/ime';
-import { useCriticalOverlayActive } from '@/app/overlayQueue';
+import { OVERLAY_PRIORITY, useOverlayTurn } from '@/app/overlayQueue';
 import './modal.css';
 
 /**
@@ -40,9 +40,12 @@ function nextId() {
 
 export function ModalProvider({ children }: { children: ReactNode }) {
   const [modals, setModals] = useState<ModalConfig[]>([]);
-  // B-830: while the sign-in expiry dialog is up, alerts / confirms wait
-  // (hidden, still pending) and stop capturing Esc / Enter from it.
-  const deferred = useCriticalOverlayActive();
+  // B-831: alerts / confirms / prompts are `interaction` overlays — the
+  // release notes give way to them (unread, back afterwards) instead of
+  // keeping them under their backdrop. B-830: while the sign-in expiry dialog
+  // (critical) is up they wait, hidden and still pending, and stop capturing
+  // Esc / Enter from it.
+  const deferred = !useOverlayTurn(modals.length > 0, OVERLAY_PRIORITY.interaction);
 
   const showModal = useCallback((config: Omit<ModalConfig, 'id'>) => {
     const id = nextId();
