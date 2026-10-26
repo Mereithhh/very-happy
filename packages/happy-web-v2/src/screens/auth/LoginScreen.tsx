@@ -5,6 +5,7 @@ import { CloudAuthError, loadPublicAuthConfig, loginWithGoogle, type PublicAuthC
 import { useAuth } from '@/auth/AuthContext';
 import { Button, Input, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
+import { CreditLine } from '@/ui/CreditLine';
 import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { GoogleLoginButton } from './GoogleLoginButton';
 import { OidcLoginButton } from './OidcLoginButton';
@@ -207,6 +208,7 @@ export function LoginScreen() {
               <span aria-hidden="true">·</span>
               <Link to="/terms">{t('authCommon.terms')}</Link>
             </div>
+            <CreditLine where="login" builtBy={t('credit.builtBy')} sourceLabel={t('credit.sourceOnGitHub')} />
           </footer>
         </section>
       </main>

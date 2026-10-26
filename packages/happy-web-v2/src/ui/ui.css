@@ -391,6 +391,7 @@
   cursor: pointer;
   transition: background var(--motion-fast);
 }
+a.vh-item { text-decoration: none; }
 @media (hover: hover) and (pointer: fine) {
   .vh-item.is-interactive:hover {
     background: var(--bg-2);

@@ -29,7 +29,8 @@
 .help-topic__detail h3 { margin: 0 0 var(--sp-1); font-size: var(--fs-12); }
 .help-topic__detail p { margin: 0; color: var(--text-dim); font-size: var(--fs-12); line-height: 1.55; }
 .help-topic__detail kbd { align-self: center; white-space: nowrap; padding: var(--sp-1) var(--sp-2); border: 1px solid var(--line-2); border-radius: var(--r-sm); color: var(--text-faint); background: var(--bg-2); font: var(--fs-10) var(--font-mono); }
-.help-screen__docs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin-top: var(--sp-5); padding-bottom: var(--sp-5); }
+.help-screen__docs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin-top: var(--sp-5); }
+.help-screen__credit { justify-content: flex-start; padding: var(--sp-3) 0 var(--sp-5); border-top: 1px solid var(--line); margin-top: var(--sp-3); }
 .help-screen__docs > span { margin-right: auto; color: var(--text-faint); font: var(--fs-10) var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
 .help-screen__docs button { min-height: 44px; display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); font-size: var(--fs-12); }
 @media (hover: hover) and (pointer: fine) { .help-screen__docs button:hover { color: var(--text); } }

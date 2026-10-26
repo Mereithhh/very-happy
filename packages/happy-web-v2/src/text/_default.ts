@@ -5314,6 +5314,23 @@ export const en = {
         terms: 'Terms',
     },
 
+    // Author credit + Settings → About (Owner 10-27). Links live in app/attribution.ts.
+    credit: {
+        builtBy: 'Built by Mereith',
+        sourceOnGitHub: 'Very Happy source code on GitHub',
+        madeWith: 'Made with Very Happy',
+    },
+    settingsAbout: {
+        version: 'Version',
+        versionSubtitle: 'Web build of this page',
+        author: 'Author',
+        source: 'Source code',
+        sourceSubtitle: 'Open source on GitHub',
+        reportIssue: 'Report an issue',
+        reportIssueSubtitle: 'Bugs and ideas go to GitHub Issues',
+        github: 'GitHub',
+    },
+
     // Account signup screen (web).
     signup: {
         pageTitle: 'Create account — Very Happy',

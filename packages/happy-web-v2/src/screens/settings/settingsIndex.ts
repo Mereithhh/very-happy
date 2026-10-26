@@ -47,6 +47,7 @@ export const SETTINGS_SECTION_TITLES: Record<string, SettingsText> = {
   shared: 'share.settings.title',
   usage: 'settings.usage',
   diagnostics: 'diagnostics.title',
+  about: 'settings.about',
   password: 'settingsAccount.password',
   email: 'emailAuth.email',
   google: { en: 'Google', zh: 'Google' },
@@ -127,6 +128,11 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: 'models.machine', section: 'models', title: 'modelConfig.machine', description: 'modelConfig.subtitle', keywords: ['model', 'provider', 'base url', 'baseurl', 'api key', 'gateway', 'custom model', 'claude', 'codex', 'gemini', 'pi', 'anthropic_base_url', 'config.toml', 'settings.json', '模型', '自定义模型', '网关', '密钥', '供应商'] },
   { id: 'machines.connect', section: 'machines', title: 'connectMachine.groupTitle', keywords: ['connect', 'add machine', 'install', 'pair', '连接', '添加电脑', '配对', '安装'] },
   { id: 'machines.list', section: 'machines', title: 'settingsMachines.listTitle', description: 'settingsMachines.footer', keywords: ['machines', 'computers', 'daemon', '电脑', '机器'] },
+  // ── about ──
+  { id: 'about.version', section: 'about', title: 'settingsAbout.version', description: 'settingsAbout.versionSubtitle', keywords: ['version', 'build', 'sha', 'commit', 'about', '版本', '构建', '关于'] },
+  { id: 'about.author', section: 'about', title: 'settingsAbout.author', description: 'credit.builtBy', keywords: ['author', 'mereith', 'developer', 'built by', 'about', '作者', '开发者', '关于'] },
+  { id: 'about.source', section: 'about', title: 'settingsAbout.source', description: 'settingsAbout.sourceSubtitle', keywords: ['github', 'source', 'open source', 'repository', 'repo', '源码', '源代码', '开源', '仓库'] },
+  { id: 'about.issue', section: 'about', title: 'settingsAbout.reportIssue', description: 'settingsAbout.reportIssueSubtitle', keywords: ['issue', 'bug', 'feedback', 'report', 'github', '反馈', '问题', '报错', '建议'] },
   // ── diagnostics ──
   { id: 'diagnostics.webBuild', section: 'diagnostics', title: 'diagnostics.webBuild', keywords: ['version', 'build', 'update', 'reload', '版本', '构建', '更新'] },
   { id: 'diagnostics.relay', section: 'diagnostics', title: 'diagnostics.relay', keywords: ['relay', 'socket', 'connection', 'offline', '中继', '连接', '断线'] },

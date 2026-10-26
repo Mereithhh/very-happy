@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Spinner } from './Spinner';
+import { EXTERNAL_LINK } from '@/app/attribution';
 
 /**
  * Settings/list row primitives (the v1 ItemList/ItemGroup/Item system, web).
@@ -29,6 +30,8 @@ interface ItemProps {
   left?: ReactNode;
   right?: ReactNode;
   onClick?: () => void;
+  /** Off-site link: the row renders as an `<a>` that opens a new tab (noopener noreferrer). */
+  href?: string;
   selected?: boolean;
   destructive?: boolean;
   multiline?: boolean;
@@ -45,6 +48,7 @@ export function Item({
   left,
   right,
   onClick,
+  href,
   selected,
   destructive,
   multiline,
@@ -52,8 +56,9 @@ export function Item({
   disabled = false,
   settingId,
 }: ItemProps) {
-  const interactive = !!onClick;
-  const Cmp: any = interactive ? 'button' : 'div';
+  const interactive = !!onClick || !!href;
+  const Cmp: any = href ? 'a' : interactive ? 'button' : 'div';
+  const linkProps = href ? { href, ...EXTERNAL_LINK } : { type: interactive ? 'button' : undefined, disabled: interactive ? disabled || loading : undefined };
   return (
     <Cmp
       className={[
@@ -66,8 +71,7 @@ export function Item({
         .filter(Boolean)
         .join(' ')}
       onClick={onClick}
-      type={interactive ? 'button' : undefined}
-      disabled={interactive ? disabled || loading : undefined}
+      {...linkProps}
       aria-busy={loading || undefined}
       data-setting-id={settingId}
     >

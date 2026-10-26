@@ -12,6 +12,7 @@ import { TeamsStory } from './TeamsStory';
 import { SchedulerTopologyProof } from './SchedulerTopologyProof';
 import { WhyVeryHappy } from './WhyVeryHappy';
 import { DAEMON_START_COMMAND, GITHUB_URL, INSTALL_COMMAND, LOGIN_COMMAND } from './publicContent';
+import { EXTERNAL_LINK } from '@/app/attribution';
 import { usePublicI18n } from '@/i18n/publicI18n';
 import { CHANGELOG_RELEASES } from '@/app/changelogRelease';
 import { ChangelogHighlights } from '@/app/ChangelogHighlights';
@@ -163,6 +164,6 @@ export function LandingScreen() {
     <MobileContinuityProof />
     <CoreFeatureProofs />
     <KeyboardWorkflowProof compact />
-    <section className="pub-final"><AsciiField preset="band" className="pub-final-ascii" /><div><div className="eyebrow">{c.finalEyebrow}</div><h2>{c.finalTitleA}<br /><span>{c.finalTitleB}</span></h2><p>{c.finalBody}</p></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}login`}>{c.primaryCta} <ArrowRight size={16} /></a><a className="pub-button" href={GITHUB_URL}><Github size={16} /> {c.viewSource}</a></div></section>
+    <section className="pub-final"><AsciiField preset="band" className="pub-final-ascii" /><div><div className="eyebrow">{c.finalEyebrow}</div><h2>{c.finalTitleA}<br /><span>{c.finalTitleB}</span></h2><p>{c.finalBody}</p></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}login`}>{c.primaryCta} <ArrowRight size={16} /></a><a className="pub-button" href={GITHUB_URL} {...EXTERNAL_LINK}><Github size={16} /> {c.viewSource}</a></div></section>
   </main><PublicFooter /></div>;
 }

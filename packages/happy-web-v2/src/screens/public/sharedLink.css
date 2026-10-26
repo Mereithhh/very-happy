@@ -56,7 +56,9 @@
   font-size: var(--chat-fs-secondary);
   color: var(--text-faint);
 }
-.slk-foot { padding: var(--sp-4) 0 max(var(--sp-6), var(--sa-b)); }
+.slk-foot { padding: var(--sp-4) 0 var(--sp-2); }
+/* Author credit under the transcript (scrolls with it) or at the bottom of a state page. */
+.slk-credit { padding: 0 var(--sp-4) max(var(--sp-6), var(--sa-b)); }
 .slk-state {
   flex: 1;
   display: flex;

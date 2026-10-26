@@ -109,7 +109,7 @@ export const SECONDARY = {
     machine: '/machine/dev-machine', 'settings-account': '/settings/account', 'settings-appearance': '/settings/appearance',
     // B-798 E: switch rows, row icon buttons and the usage range segmented (touch targets).
     'settings-notifications': '/settings/notifications', 'settings-snippets': '/settings/snippets',
-    'settings-voice': '/settings/voice', 'settings-usage': '/settings/usage',
+    'settings-voice': '/settings/voice', 'settings-usage': '/settings/usage', 'settings-about': '/settings/about',
 };
 for (const [name, path] of Object.entries(SECONDARY)) PAGES[name] = { path, back: true };
 

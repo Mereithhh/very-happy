@@ -6,7 +6,8 @@ const regionalRealtimeDiagram = '/architecture/regional-realtime-plane.svg';
 const sessionDataFlowDiagram = '/architecture/session-data-flow.svg';
 const systemTopologyDiagram = '/architecture/system-topology.svg';
 
-export const GITHUB_URL = 'https://github.com/Mereithhh/very-happy';
+import { REPO_URL } from '@/app/attribution';
+export const GITHUB_URL = REPO_URL;
 export const INSTALL_COMMAND = 'npm install -g very-happy-cli';
 export const BOOTSTRAP_COMMAND = `(\n  set -eu\n  vh_installer=$(mktemp)\n  trap 'rm -f "$vh_installer"' \\\n    EXIT HUP INT TERM\n  curl -fsSL \\\n    https://veryhappy.dev/install.sh \\\n    -o "$vh_installer"\n  sh "$vh_installer"\n)`;
 export const LOGIN_COMMAND = 'very-happy auth login';

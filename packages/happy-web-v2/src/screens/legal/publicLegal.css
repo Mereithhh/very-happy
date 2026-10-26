@@ -5,5 +5,8 @@
 .legal-card h2 { margin: var(--sp-8) 0 var(--sp-2); font-size: var(--fs-16); }
 .legal-card p { margin: 0 0 var(--sp-3); color: var(--text-dim); line-height: 1.7; }
 .legal-card a { color: var(--text); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
-.legal-card footer { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-10); padding-top: var(--sp-5); border-top: 1px solid var(--line); color: var(--text-faint); font-size: var(--fs-12); }
+.legal-card footer { display: grid; gap: var(--sp-2); margin-top: var(--sp-10); padding-top: var(--sp-5); border-top: 1px solid var(--line); color: var(--text-faint); font-size: var(--fs-12); }
+.legal-card footer > nav { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.legal-credit { justify-content: flex-start; }
+.legal-card .legal-credit a { color: var(--text-dim); text-decoration: none; }
 @media (max-width: 599px) { .legal-page { padding: 0; } .legal-card { border: 0; border-radius: 0; } .legal-card h1 { font-size: var(--fs-28); } }

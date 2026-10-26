@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import {
   Archive, ArrowRight, AtSign, Bell, ChevronDown, Clipboard, Download, Eye, FileDiff, FileSearch, FileUp, FolderKanban, FolderOpen, GitBranch, GitPullRequest,
   Keyboard, Layers3, ListChecks, MessageSquare, MessageSquarePlus, MessageSquareQuote, Moon, Navigation, PencilLine, Play, PlusCircle, Search,
-  Settings, ShieldCheck, StickyNote, TerminalSquare, Text, Type, Zap,
+  Info, Settings, ShieldCheck, StickyNote, TerminalSquare, Text, Type, Zap,
 } from 'lucide-react';
 import { Button } from '@/ui';
+import { CreditLine } from '@/ui/CreditLine';
 import { useTranslation } from '@/i18n/useTranslation';
 import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { createChatOrConfigure, useNewChatPending } from '@/app/newChat';
@@ -111,7 +112,9 @@ export function HelpScreen() {
           <button type="button" onClick={() => navigate('/settings/machines')}>{lang.startsWith('zh') ? '机器与 CLI 更新' : 'Machines and CLI updates'} <ArrowRight size={13} /></button>
           <button type="button" onClick={() => navigate('/docs/quickstart')}>{t('workspaceGuide.quickStart')} <ArrowRight size={13} /></button>
           <button type="button" onClick={() => navigate('/docs/keyboard')}>{t('workspaceGuide.keyboardGuide')} <ArrowRight size={13} /></button>
+          <button type="button" onClick={() => navigate('/settings/about')}><Info size={14} />{t('settings.about')}</button>
         </nav>
+        <CreditLine where="help" className="help-screen__credit" builtBy={t('credit.builtBy')} sourceLabel={t('credit.sourceOnGitHub')} />
       </div>
       {showNewChat && <NewSessionModal onClose={() => setShowNewChat(false)} />}
     </main>
