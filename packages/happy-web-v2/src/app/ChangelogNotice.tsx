@@ -13,6 +13,7 @@ import {
 import { changelogPages, pageReleaseIds, pendingChangelogReleases, type ChangelogPage } from './changelogPager';
 import { acknowledgeAllChangelog, changelogReadState, markChangelogReleasesRead, onChangelogOpenRequest } from './changelogReadStore';
 import { enteredByDeepLink } from './entryKind';
+import { userHasInteracted } from './afterFirstScreen';
 import './changelogNotice.css';
 import { BRAND } from './brand';
 import { ChangelogHighlights, ChangelogShotImage } from './ChangelogHighlights';
@@ -51,7 +52,10 @@ export function ChangelogNotice() {
     setOpen(true);
   }, []);
   useEffect(() => {
-    if (!enteredByDeepLink()) start();
+    // B-823: mounted after the first screen now — if the person is already
+    // typing or tapping, the notes wait (unread) for the next visit or the
+    // sidebar entry instead of grabbing focus mid-sentence.
+    if (!enteredByDeepLink() && !userHasInteracted()) start();
   }, [start]);
   useEffect(() => onChangelogOpenRequest(start), [start]);
 

@@ -19,16 +19,16 @@ const store = new Map<string, string>();
 const { t, setLanguage } = await import('./index');
 
 describe('B-637 t() follows the brand', () => {
-  it('renames the product in plain strings and in parametrised strings', () => {
-    setLanguage('en');
+  it('renames the product in plain strings and in parametrised strings', async () => {
+    await setLanguage('en');
     expect(t('onboarding.intro')).toBe('Apodex Vibe runs the coding agent on your computer and lets this Web UI control it through your account.');
     expect(t('notifications.testPushTitle')).toBe('Apodex Vibe · Test notification');
     expect(t('onboarding.intro')).not.toContain('very happy');
   });
 
-  it('applies to translations too', () => {
-    setLanguage('zh-Hans');
+  it('applies to translations too', async () => {
+    await setLanguage('zh-Hans');
     expect(t('onboarding.intro')).toBe('Apodex Vibe 在你的电脑上运行 coding agent，再通过当前账号让这个 Web 界面控制它。');
-    setLanguage('en');
+    await setLanguage('en');
   });
 });

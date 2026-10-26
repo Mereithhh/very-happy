@@ -27,18 +27,14 @@ import { FirstRunScreen } from '@/screens/onboarding/FirstRunScreen';
 import { useSessionInvites } from '@/sync/sessionSharesStore';
 import { shouldShowFirstRun } from '@/screens/onboarding/firstRun';
 import { subscribeFirstMachineConnected } from '@/screens/onboarding/firstMachineWelcome';
-import { PrivacyScreen, TermsScreen } from '@/screens/legal/PublicLegalScreen';
 import { TerminalConnectScreen } from '@/screens/auth/TerminalConnectScreen';
-import { LandingScreen } from '@/screens/public/LandingScreen';
 import { BRAND } from './brand';
-import { DocsScreen } from '@/screens/public/DocsScreen';
-import { PwaInstallPrompt } from './PwaInstallPrompt';
 import { CliUpdateBanner } from './CliUpdateBanner';
 import { MigrationBanner } from './MigrationBanner';
 import { useTranslation } from '@/i18n/useTranslation';
 import { RouteLoading } from './RouteLoading';
 import { dismissPrepaintSplashWhenRouteReady } from './prepaintSplash';
-import { ChangelogNotice } from './ChangelogNotice';
+import { useAfterFirstScreen } from './afterFirstScreen';
 import { AuthExpiredNotice } from './AuthExpiredNotice';
 import { installAuthGuards } from './authGuards';
 import './appFonts';
@@ -77,6 +73,18 @@ const WhatsNewScreen = lazy(() => import('@/screens/whatsnew/WhatsNewScreen').th
 // B-599: iOS standalone viewport diagnostics — no auth, reached from 设置 → 诊断.
 const ViewportDiagScreen = lazy(() => import('@/diag/ViewportDiagScreen').then((m) => ({ default: m.ViewportDiagScreen })));
 const SafeAreaDiagScreen = lazy(() => import('@/diag/SafeAreaDiagScreen').then((m) => ({ default: m.SafeAreaDiagScreen })));
+// B-823 (B-816 Q2): the marketing pages, docs and legal copy are ~210KB of
+// the shared startup chunk a signed-in cold start never shows; they load when
+// their route is opened (PublicRoot keeps its own static copies).
+const LandingScreen = lazy(() => import('@/screens/public/LandingScreen').then((m) => ({ default: m.LandingScreen })));
+const DocsScreen = lazy(() => import('@/screens/public/DocsScreen').then((m) => ({ default: m.DocsScreen })));
+const PrivacyScreen = lazy(() => import('@/screens/legal/PublicLegalScreen').then((m) => ({ default: m.PrivacyScreen })));
+const TermsScreen = lazy(() => import('@/screens/legal/PublicLegalScreen').then((m) => ({ default: m.TermsScreen })));
+// B-823 (B-816 Q5): mounted after the first screen (afterFirstScreen.ts) —
+// the release notes carry every release's copy (changelogRelease.ts) and open
+// a focus-trapped dialog; the install card is an invitation, not the app.
+const ChangelogNotice = lazy(() => import('./ChangelogNotice').then((m) => ({ default: m.ChangelogNotice })));
+const PwaInstallPrompt = lazy(() => import('./PwaInstallPrompt').then((m) => ({ default: m.PwaInstallPrompt })));
 const VhDiagOverlay = lazy(() => import('@/diag/VhDiagOverlay').then((m) => ({ default: m.VhDiagOverlay })));
 
 function Lazy({ children, fullViewport = true, centered = false }: { children: ReactNode; fullViewport?: boolean; centered?: boolean }) {
@@ -100,15 +108,25 @@ function RequireAuth() {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  return <><Outlet /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
+  return <><Outlet /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
 }
 
 function RootGate() {
   const { isAuthenticated } = useAuth();
   useGlobalBackNav();
   // B-624: a white-labelled relay has no marketing page — straight to login.
-  if (!isAuthenticated) return BRAND.landingEnabled ? <LandingScreen /> : <Navigate to="/login" replace />;
-  return <><AppLayout /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
+  if (!isAuthenticated) return BRAND.landingEnabled ? <Lazy><LandingScreen /></Lazy> : <Navigate to="/login" replace />;
+  return <><AppLayout /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
+}
+
+function DeferredChangelogNotice() {
+  if (!useAfterFirstScreen()) return null;
+  return <Suspense fallback={null}><ChangelogNotice /></Suspense>;
+}
+
+function DeferredPwaInstallPrompt() {
+  if (!useAfterFirstScreen()) return null;
+  return <Suspense fallback={null}><PwaInstallPrompt /></Suspense>;
 }
 
 /** B-315: the auto-update reload is silent by design — it must not ask
@@ -384,16 +402,16 @@ const router = createBrowserRouter(
     { path: '/login/oidc', element: <Lazy><OidcReturnScreen /></Lazy> },
     // B-627: arrival from a retiring relay's move banner, ticket in the query.
     { path: '/login/migrate', element: <Lazy><MigrateLoginScreen /></Lazy> },
-    { path: '/privacy', element: <PrivacyScreen /> },
-    { path: '/terms', element: <TermsScreen /> },
+    { path: '/privacy', element: <Lazy><PrivacyScreen /></Lazy> },
+    { path: '/terms', element: <Lazy><TermsScreen /></Lazy> },
     { path: '/changelog', element: <Lazy><ChangelogScreen /></Lazy> },
     { path: '/whats-new', element: <Lazy><WhatsNewScreen /></Lazy> },
     { path: '/diag/viewport', element: <Lazy><ViewportDiagScreen /></Lazy> },
     // B-796: in production too (not DEV-gated) — the Owner opens it on the device from 设置 → 诊断.
     { path: '/dev/safe-area', element: <Lazy><SafeAreaDiagScreen /></Lazy> },
-    { path: '/welcome', element: BRAND.landingEnabled ? <LandingScreen /> : <Navigate to="/login" replace /> },
-    { path: '/docs', element: <DocsScreen /> },
-    { path: '/docs/:slug', element: <DocsScreen /> },
+    { path: '/welcome', element: BRAND.landingEnabled ? <Lazy><LandingScreen /></Lazy> : <Navigate to="/login" replace /> },
+    { path: '/docs', element: <Lazy><DocsScreen /></Lazy> },
+    { path: '/docs/:slug', element: <Lazy><DocsScreen /></Lazy> },
     {
       path: '/',
       element: <RootGate />,
@@ -504,7 +522,7 @@ export function AppRoot() {
               <RouterProvider router={router} />
             </AuthProvider>
           )}
-          <PwaInstallPrompt />
+          <DeferredPwaInstallPrompt />
           <VhDiagGate />
         </ModalProvider>
       </ToastProvider>

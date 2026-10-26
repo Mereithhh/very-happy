@@ -1,15 +1,6 @@
 import { en, type Translations, type PartialTranslationStructure } from './_default';
-import { ru } from './translations/ru';
-import { pl } from './translations/pl';
-import { es } from './translations/es';
-import { it } from './translations/it';
-import { pt } from './translations/pt';
-import { ca } from './translations/ca';
-import { zhHans } from './translations/zh-Hans';
-import { zhHant } from './translations/zh-Hant';
-import { ja } from './translations/ja';
 import { loadSettings } from '@/sync/persistence';
-import { type SupportedLanguage, DEFAULT_LANGUAGE } from './_all';
+import { type SupportedLanguage, DEFAULT_LANGUAGE, SUPPORTED_LANGUAGE_CODES } from './_all';
 import { brandText } from '@/app/brand';
 import { announceLanguageChange, browserLanguageTags, LANGUAGE_CHANGE_EVENT, resolveLanguageFromTags, setDocumentLanguage } from '@/i18n/localeCore';
 
@@ -85,19 +76,49 @@ export { SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, DEFAULT_LANGUAGE, getLan
  * PartialTranslationStructure: they only carry real translations, and any
  * missing key falls back to English inside t(). Adding a new key only
  * requires touching _default.ts and zh-Hans.ts.
+ *
+ * B-823: only English ships in the entry chunk. Every other language is its
+ * own chunk, loaded on demand (≈450KB of the startup path was nine languages
+ * nobody reads at once). main.tsx renders after `languageReady`, so the first
+ * frame is already in the viewer's language; until a chunk lands t() answers
+ * in English rather than a raw key.
  */
-const translations: Record<SupportedLanguage, PartialTranslationStructure> = {
-    en,
-    ru,
-    pl,
-    es,
-    it,
-    pt,
-    ca,
-    'zh-Hans': zhHans,
-    'zh-Hant': zhHant,
-    ja,
+type LazyLanguage = Exclude<SupportedLanguage, 'en'>;
+const languageLoaders: Record<LazyLanguage, () => Promise<PartialTranslationStructure>> = {
+    ru: () => import('./translations/ru').then((m) => m.ru),
+    pl: () => import('./translations/pl').then((m) => m.pl),
+    es: () => import('./translations/es').then((m) => m.es),
+    it: () => import('./translations/it').then((m) => m.it),
+    pt: () => import('./translations/pt').then((m) => m.pt),
+    ca: () => import('./translations/ca').then((m) => m.ca),
+    'zh-Hans': () => import('./translations/zh-Hans').then((m) => m.zhHans),
+    'zh-Hant': () => import('./translations/zh-Hant').then((m) => m.zhHant),
+    ja: () => import('./translations/ja').then((m) => m.ja),
 };
+const translations: Partial<Record<SupportedLanguage, PartialTranslationStructure>> = { en };
+const pendingLoads = new Map<SupportedLanguage, Promise<void>>();
+
+function isSupportedLanguage(language: string): language is SupportedLanguage {
+    return (SUPPORTED_LANGUAGE_CODES as readonly string[]).includes(language);
+}
+
+/**
+ * Fetch a language's strings (once). A failed chunk is forgotten so the next
+ * call retries; the caller keeps answering in English meanwhile.
+ */
+export function loadLanguage(language: SupportedLanguage): Promise<void> {
+    if (translations[language]) return Promise.resolve();
+    let pending = pendingLoads.get(language);
+    if (!pending) {
+        pending = languageLoaders[language as LazyLanguage]().then((strings) => {
+            translations[language] = strings;
+        }).finally(() => {
+            pendingLoads.delete(language);
+        });
+        pendingLoads.set(language, pending);
+    }
+    return pending;
+}
 
 //
 // Resolve language
@@ -108,7 +129,7 @@ let currentLanguage: SupportedLanguage = DEFAULT_LANGUAGE;
 // Read from settings
 let settings = loadSettings();
 let found = false;
-if (settings.settings.preferredLanguage && settings.settings.preferredLanguage in translations) {
+if (settings.settings.preferredLanguage && isSupportedLanguage(settings.settings.preferredLanguage)) {
     currentLanguage = settings.settings.preferredLanguage as SupportedLanguage;
     found = true;
     console.log(`[i18n] Using preferred language: ${currentLanguage}`);
@@ -118,12 +139,20 @@ if (settings.settings.preferredLanguage && settings.settings.preferredLanguage i
 if (!found) {
     const tags = browserLanguageTags();
     console.log(`[i18n] Device locales:`, tags);
-    currentLanguage = resolveLanguageFromTags(tags, Object.keys(translations) as SupportedLanguage[], DEFAULT_LANGUAGE);
+    currentLanguage = resolveLanguageFromTags(tags, SUPPORTED_LANGUAGE_CODES, DEFAULT_LANGUAGE);
     console.log(`[i18n] Using device locale: ${currentLanguage}`);
 }
 
 console.log(`[i18n] Final language: ${currentLanguage}`);
 setDocumentLanguage(currentLanguage);
+
+/**
+ * B-823: the boot language's strings. Never rejects — a chunk that failed to
+ * load leaves the first render in English instead of blocking it.
+ */
+export const languageReady: Promise<void> = loadLanguage(currentLanguage).catch((error) => {
+    console.warn(`[i18n] Failed to load ${currentLanguage}, showing English`, error);
+});
 
 /**
  * Main translation function with strict typing
@@ -152,7 +181,7 @@ export function t<K extends TranslationKey>(
 ): string {
     try {
         // Get current language translations
-        const currentTranslations = translations[currentLanguage];
+        const currentTranslations = translations[currentLanguage] ?? en;
 
         // Navigate to the value using dot notation
         const keys = key.split('.');
@@ -213,28 +242,47 @@ export function getCurrentLanguage(): SupportedLanguage {
 // setLanguage updates it and notifies subscribers so React can re-render.
 //
 const languageListeners = new Set<() => void>();
+/** The latest switch wins: a slow chunk must not override a later choice. */
+let languageRequest = 0;
+
+function switchLanguage(lang: SupportedLanguage, announce: boolean): Promise<void> {
+    const request = ++languageRequest;
+    const apply = () => {
+        if (request !== languageRequest) return;
+        currentLanguage = lang;
+        if (announce) announceLanguageChange(lang);
+        else setDocumentLanguage(lang);
+        languageListeners.forEach((l) => l());
+    };
+    if (translations[lang]) {
+        apply();
+        return Promise.resolve();
+    }
+    return loadLanguage(lang).catch(() => {}).then(apply);
+}
 
 if (typeof window !== 'undefined') {
     window.addEventListener(LANGUAGE_CHANGE_EVENT, (event) => {
-        const language = (event as CustomEvent<string>).detail as SupportedLanguage;
-        if (!(language in translations) || language === currentLanguage) return;
-        currentLanguage = language;
-        setDocumentLanguage(language);
-        languageListeners.forEach((listener) => listener());
+        const language = (event as CustomEvent<string>).detail;
+        if (!isSupportedLanguage(language) || language === currentLanguage) return;
+        void switchLanguage(language, false);
     });
 }
 
-export function setLanguage(lang: SupportedLanguage): void {
-    if (!(lang in translations)) return;
-    currentLanguage = lang;
-    announceLanguageChange(lang);
-    languageListeners.forEach((l) => l());
+/**
+ * Switch the UI language. Resolves once the new strings are in place: an
+ * already-loaded language switches synchronously, any other when its chunk
+ * lands (or to the English fallback if it cannot be loaded).
+ */
+export function setLanguage(lang: SupportedLanguage): Promise<void> {
+    if (!isSupportedLanguage(lang)) return Promise.resolve();
+    return switchLanguage(lang, true);
 }
 
 export function getDeviceLanguage(): SupportedLanguage {
     return resolveLanguageFromTags(
         browserLanguageTags(),
-        Object.keys(translations) as SupportedLanguage[],
+        SUPPORTED_LANGUAGE_CODES,
         DEFAULT_LANGUAGE,
     );
 }

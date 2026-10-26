@@ -469,9 +469,6 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.1.8
         version: 1.2.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
-      '@revenuecat/purchases-js':
-        specifier: ^1.24.3
-        version: 1.53.1
       '@slopus/happy-wire':
         specifier: workspace:*
         version: link:../happy-wire
@@ -2865,9 +2862,6 @@ packages:
 
   '@radix-ui/rect@1.1.1':
     resolution: {integrity: sha512-HPwpGIzkl28mWyZqG52jiqDJ12waP11Pa1lGoiyUkIEuMLBP0oeK/C89esbXrxsky5we7dfd8U58nm0SgAWpVw==}
-
-  '@revenuecat/purchases-js@1.53.1':
-    resolution: {integrity: sha512-7RMz5AE6rVtGORALYmTyauQ7fJh+/HPGAmDSrqsb2UcQS8pf/JvPbKP0iITCKeXnksTeN3D8+SKVyYMOio6mJQ==}
 
   '@rolldown/pluginutils@1.0.0-beta.27':
     resolution: {integrity: sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA==}
@@ -9069,8 +9063,6 @@ snapshots:
       '@types/react-dom': 19.2.3(@types/react@19.2.14)
 
   '@radix-ui/rect@1.1.1': {}
-
-  '@revenuecat/purchases-js@1.53.1': {}
 
   '@rolldown/pluginutils@1.0.0-beta.27': {}
 

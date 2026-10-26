@@ -29,22 +29,22 @@ const { zhHans } = await import('./translations/zh-Hans');
 afterEach(() => setLanguage('en'));
 
 describe('t() English fallback for partial languages', () => {
-  it('falls back to the English string for a key a minor language omits', () => {
+  it('falls back to the English string for a key a minor language omits', async () => {
     // machine.noMachines exists in en and zh-Hans, and is intentionally absent
     // from the partial minor-language files.
     expect((ja as any).machine?.noMachines).toBeUndefined();
-    setLanguage('ja');
+    await setLanguage('ja');
     expect(t('machine.noMachines')).toBe(en.machine.noMachines);
     expect(t('machine.noMachines')).toBe('No machines connected');
   });
 
-  it('serves the real translation when the language has one', () => {
+  it('serves the real translation when the language has one', async () => {
     expect((zhHans as any).machine?.noMachines).toBe('没有已连接的机器');
-    setLanguage('zh-Hans');
+    await setLanguage('zh-Hans');
     expect(t('machine.noMachines')).toBe('没有已连接的机器');
   });
 
-  it('every en string key resolves to a non-key string in every partial language', () => {
+  it('every en string key resolves to a non-key string in every partial language', async () => {
     // Walk all en leaves; for string keys, t() must return real text (either
     // the language's own translation or the English fallback), never the raw
     // dotted key. This covers all pruned placeholder sections at once.
@@ -59,7 +59,7 @@ describe('t() English fallback for partial languages', () => {
     expect(keys.length).toBeGreaterThan(500);
 
     for (const lang of ['ru', 'pl', 'es', 'it', 'pt', 'ca', 'ja', 'zh-Hant'] as const) {
-      setLanguage(lang);
+      await setLanguage(lang);
       expect(getCurrentLanguage()).toBe(lang);
       for (const key of keys) {
         const value = (t as any)(key);
@@ -69,21 +69,21 @@ describe('t() English fallback for partial languages', () => {
     }
   });
 
-  it('falls back for parameterized (function) keys too', () => {
+  it('falls back for parameterized (function) keys too', async () => {
     // tmuxHelp was an all-English section in ru and got pruned entirely.
     expect((ru as any).tmuxHelp).toBeUndefined();
-    setLanguage('ru');
+    await setLanguage('ru');
     expect(t('tmuxHelp.title')).toBe(en.tmuxHelp.title);
     // Function key present in en, absent in ja's partial file.
     if ((ja as any).machine?.activeSessions === undefined) {
-      setLanguage('ja');
+      await setLanguage('ja');
       expect(t('machine.activeSessions', { count: 3 })).toBe(en.machine.activeSessions({ count: 3 }));
     }
   });
 
-  it('never exposes the retired E2E trust claim or old CLI package in any locale', () => {
+  it('never exposes the retired E2E trust claim or old CLI package in any locale', async () => {
     for (const lang of ['en', 'ru', 'pl', 'es', 'it', 'pt', 'ca', 'ja', 'zh-Hans', 'zh-Hant'] as const) {
-      setLanguage(lang);
+      await setLanguage(lang);
       const copy = [
         t('settings.aboutFooter'),
         t('terminal.endToEndEncrypted'),
@@ -99,9 +99,9 @@ describe('t() English fallback for partial languages', () => {
     }
   });
 
-  it('routes voice quota errors to the Very Happy issue tracker in every locale', () => {
+  it('routes voice quota errors to the Very Happy issue tracker in every locale', async () => {
     for (const lang of ['en', 'ru', 'pl', 'es', 'it', 'pt', 'ca', 'ja', 'zh-Hans', 'zh-Hant'] as const) {
-      setLanguage(lang);
+      await setLanguage(lang);
       const copy = t('errors.voiceConversationLimitReached');
       expect(copy, lang).toContain('github.com/Mereithhh/very-happy/issues');
       expect(copy, lang).not.toContain('github.com/nicepkg/happy/issues');

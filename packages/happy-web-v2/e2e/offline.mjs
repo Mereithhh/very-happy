@@ -171,6 +171,8 @@ try {
     await page.goto(`${BASE}/session/${sessionId}`);
     await page.locator('textarea.ci-textarea').waitFor({ timeout: 30_000 });
     await page.waitForFunction(() => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().socketStatus === 'connected'), null, { timeout: 30_000, polling: 300 });
+    // B-823: the release notes open after the first screen (afterFirstScreen.ts).
+    await page.locator('.wn-card').waitFor({ timeout: 4_000 }).catch(() => {});
     for (const name of ['知道了', '暂不', 'Got it', 'Not now']) {
         for (const b of await page.getByRole('button', { name, exact: true }).all()) await b.click({ timeout: 1_000 }).catch(() => {});
     }

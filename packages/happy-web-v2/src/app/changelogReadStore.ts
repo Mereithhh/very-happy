@@ -64,18 +64,29 @@ export function usePendingChangelog(): ChangelogRelease[] {
 // --- "open the notes now" requests (the sidebar entry) -----------------------
 
 const openListeners = new Set<() => void>();
+/** B-823: a request made before the (deferred, lazy) notice mounted waits for it. */
+let openPending = false;
 
 export function requestChangelogOpen(): void {
+  if (openListeners.size === 0) {
+    openPending = true;
+    return;
+  }
   for (const l of openListeners) l();
 }
 
 export function onChangelogOpenRequest(listener: () => void): () => void {
   openListeners.add(listener);
+  if (openPending) {
+    openPending = false;
+    listener();
+  }
   return () => { openListeners.delete(listener); };
 }
 
 /** test-only */
 export function resetChangelogReadStoreForTest(): void {
   state = null;
+  openPending = false;
   for (const l of listeners) l();
 }

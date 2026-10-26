@@ -139,7 +139,7 @@ triage（分独立/冲突域）
     版本的历史导入都跳过），不用再手工跑 merge-base。
 - **版本**：CLI = semver patch（推 tag 自动发 npm）；同一 tag 先发布六个
   `very-happy-tools-<arch>-<os>` 平台包，再发布带精确 optionalDependency 版本的
-  `very-happy-cli` 主包，部分成功后 workflow 可幂等重跑；web = bundle salt 随每次部署；server 随源同步。
+  `very-happy-cli` 主包，部分成功后 workflow 可幂等重跑；web = 资源只按内容 hash 命名（B-823 起不再加版本盐，内容未变的 chunk 跨发布沿用缓存；入口名随任何改动变化，供 stale-bundle 检测）；server 随源同步。
 - **发布顺序**：默认 server → web → CLI（tag → npm 200 →「等 smoke 绿 → `promote` 移 `latest`」→ relay
   一分钟缓存刷新、CI 等待推荐一致 → 各机空闲时自动升级到同一个 promote 后的 `latest`）。**推荐版本与自动安装版本都不再需要手动 pin**（铁律 6 / B-348 / B-503，`CLI_AUTO_UPDATE_VERSION=latest`）；精确 pin 只用于 hold/回滚；`vh-update` 只用来
   让某一台机器立刻跟上；

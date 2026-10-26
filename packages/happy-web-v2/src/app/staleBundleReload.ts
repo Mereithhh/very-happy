@@ -10,9 +10,9 @@
  * server is serving a NEWER shell than the one running, reload.
  *
  * Mechanism: the shell's identity is the hashed entry script
- * (`/assets/index-<hash>-<salt>.js`). We fetch `/index.html` with a
- * cache-busting query — the query defeats both the HTTP cache and the workbox
- * precache match (its ignoreURLParametersMatching only covers utm_*), and a
+ * (`/assets/index-<hash>.js`; its hash changes with any chunk it reaches,
+ * B-823). We fetch `/index.html` with a cache-busting query — the query
+ * defeats both the HTTP cache and the workbox precache match (its ignoreURLParametersMatching only covers utm_*), and a
  * `fetch()` is not a navigation so it also escapes the navigateFallback route;
  * the response therefore comes from the network — and compare the entry script
  * name. Mismatch → hand the page over to the new service worker, then one
@@ -155,7 +155,7 @@ async function checkOnce(own: string, force = false): Promise<void> {
  * Flush synchronously first, then leave the receipt that tells the next boot to
  * say what happened.
  */
-function prepareForUpdateReload(): void {
+export function prepareForUpdateReload(): void {
   flushPendingDrafts();
   try { sessionStorage.setItem(UPDATED_NOTICE_KEY, '1'); } catch { /* private mode */ }
 }

@@ -460,6 +460,15 @@ const want = (name) => {
 
 // ── page helpers ──────────────────────────────────────────────────────
 async function dismissDialogs(page) {
+    // B-823: the release notes and the invitation cards mount after the first
+    // screen (afterFirstScreen.ts) — wait for that, and for the notes' lazy
+    // chunk, or they open later on top of the next step.
+    await page.waitForFunction(() => import('/src/app/afterFirstScreen.ts').then((m) => m.isAfterFirstScreen()), null, { timeout: 15_000, polling: 100 }).catch(() => {});
+    const notesPending = await page.evaluate(async () => {
+        const [{ pendingChangelogReleases }, { changelogReadState }] = await Promise.all([import('/src/app/changelogPager.ts'), import('/src/app/changelogReadStore.ts')]);
+        return pendingChangelogReleases(changelogReadState()).length > 0;
+    }).catch(() => false);
+    if (notesPending) await page.locator('.wn-card').waitFor({ timeout: 10_000 }).catch(() => {});
     for (const name of ['知道了', '暂不', 'Got it', 'Not now']) {
         for (const b of await page.getByRole('button', { name, exact: true }).all()) await b.click({ timeout: 1_000 }).catch(() => {});
     }

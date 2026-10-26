@@ -43,11 +43,13 @@ import { installPwaPromptCapture } from './app/pwaInstallCapture.ts';
 import { installChunkRecovery } from './app/chunkRecovery';
 import { ChunkFailure } from './app/ChunkFailure';
 import { flushPendingDrafts } from './app/draftFlush';
-import { installStaleBundleReload, recoverChunkLoad } from './app/staleBundleReload.ts';
+import { installStaleBundleReload, prepareForUpdateReload, recoverChunkLoad } from './app/staleBundleReload.ts';
+import { installSwUpdateReload } from './app/swUpdateReload';
 import { markProgrammaticReload } from './app/programmaticReload.ts';
 import { shouldUsePublicRoot } from './app/rootSelection.ts';
 import { applyBrandToDocument, BRAND } from './app/brand.ts';
 import { dismissPrepaintSplash } from './app/prepaintSplash.ts';
+import { languageReady } from './text';
 
 // Capture Chrome's one-shot install event before the public/authenticated root
 // and their lazy chunks load. PwaInstallPrompt consumes the retained event.
@@ -58,6 +60,14 @@ installPwaPromptCapture();
 // its skipWaiting + clientsClaim settings also let already-installed, older
 // versions move to this worker without user intervention.
 navigator.serviceWorker?.addEventListener('controllerchange', () => markProgrammaticReload());
+// B-823: …and the reload onto the new shell does not depend on workbox-window
+// having seen the new worker arrive (swUpdateReload.ts).
+installSwUpdateReload({
+  container: navigator.serviceWorker,
+  controlledAtBoot: Boolean(navigator.serviceWorker?.controller),
+  beforeReload: () => { prepareForUpdateReload(); markProgrammaticReload(); },
+  reload: () => window.location.reload(),
+});
 registerSW({
   immediate: true,
   onRegisteredSW: (_swUrl, registration) => {
@@ -104,7 +114,9 @@ const rootModule = usePublicRoot
   ? import('./app/PublicRoot.tsx').then((m) => m.PublicRoot)
   : import('./app/AppRoot.tsx').then((m) => m.AppRoot);
 
-void rootModule.then((RootComponent) => {
+// B-823: the viewer's language is its own chunk now, fetched alongside the
+// root; the first frame waits for both so it never flashes English.
+void Promise.all([rootModule, languageReady]).then(([RootComponent]) => {
   createRoot(root).render(
     <StrictMode>
       <RootComponent />
