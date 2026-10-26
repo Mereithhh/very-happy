@@ -152,6 +152,15 @@ export const SettingsSchema = z.object({
     // default lives in settingsDefaults, and any unknown/missing value is
     // read as 'recent' (sidebarRecentSort.resolveSidebarSort).
     sidebarSort: z.enum(['recent', 'manual']).describe('Sidebar 列表 order: recent activity (default) or the manual sidebarOrder'),
+    // B-836 feedback prompt card — synced so 以后再说 / 不再提示 / a submission on
+    // one device holds on the others (app/feedback/feedbackPolicy.ts). Flat,
+    // field-level LWW; NO zod .default() (ghost-pending footgun) — defaults
+    // live in settingsDefaults.
+    feedbackActiveDays: z.number().int().min(0).describe('Distinct local days the app was opened (counts toward the first feedback prompt)'),
+    feedbackLastActiveDay: z.string().nullable().describe('Local day (YYYY-MM-DD) last counted in feedbackActiveDays'),
+    feedbackPromptShownAt: z.number().nullable().describe('Epoch ms the feedback prompt card last showed'),
+    feedbackPromptOptOut: z.boolean().describe('Never show the feedback prompt card again (the form stays in Settings)'),
+    feedbackLastSubmittedAt: z.number().nullable().describe('Epoch ms of the last feedback submission'),
 });
 
 //
@@ -225,6 +234,11 @@ export const settingsDefaults: Settings = {
     pinnedRows: [],
     sidebarOrder: [],
     sidebarSort: 'recent',
+    feedbackActiveDays: 0,
+    feedbackLastActiveDay: null,
+    feedbackPromptShownAt: null,
+    feedbackPromptOptOut: false,
+    feedbackLastSubmittedAt: null,
 };
 Object.freeze(settingsDefaults);
 

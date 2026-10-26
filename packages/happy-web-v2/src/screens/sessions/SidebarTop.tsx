@@ -5,14 +5,14 @@
  * 2026-10-sidebar-header §B-713).
  */
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { ChevronDown, CircleHelp, Contact, FolderKanban, FolderPlus, LayoutGrid, ListChecks, Plus, Settings, StickyNote, UsersRound, Zap } from 'lucide-react';
+import { ChevronDown, CircleHelp, Contact, FolderKanban, FolderPlus, LayoutGrid, ListChecks, MessageSquareHeart, Plus, Settings, StickyNote, UsersRound, Zap } from 'lucide-react';
 import { ActionDropdownMenu, QuickThemeToggle, Spinner, type MenuItemDef } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { MIN_LIST_ROWS, moreMenuEntries, navAttentionTotal, navMenuLabel, settleCapabilityRows, splitCapabilities, type SidebarActionRow, type SidebarChip, type SidebarNavEntry, type SidebarNavKey } from './sidebarNavEntries';
 
-const navIcon = { projects: FolderKanban, teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact } as const;
+const navIcon = { projects: FolderKanban, teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact, feedback: MessageSquareHeart } as const;
 
 /** Capability entries as menu items (「更多能力 ▾」 / phone 「更多 ▾」), each with its count. */
 export function capabilityMenuItems(entries: readonly SidebarNavEntry[], names: Record<SidebarNavKey, string>, onNavigate: (path: string) => void): MenuItemDef[] {
@@ -98,9 +98,11 @@ export function SidebarActionRows(props: {
   const newRowRef = useRef<HTMLDivElement | null>(null);
   const [capsEl, setCapsEl] = useState<HTMLDivElement | null>(null);
   const [newRowWidth, setNewRowWidth] = useState<number>();
-  const fit = useCapabilityFit(props.listRef, capsEl, props.capabilities.length);
+  // B-836: phone-only entries (反馈) never take a desktop row — 帮助 in the footer reaches them.
+  const rowEntries = props.capabilities.filter((e) => !e.phoneOnly);
+  const fit = useCapabilityFit(props.listRef, capsEl, rowEntries.length);
   if (props.actions.length === 0) return null;
-  const { shown, folded } = splitCapabilities(props.capabilities, fit);
+  const { shown, folded } = splitCapabilities(rowEntries, fit);
   const foldedAttention = navAttentionTotal(folded);
   return (
     <div className="sb-actions">

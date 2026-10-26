@@ -26,9 +26,9 @@ export function PrivacyScreen() {
     <h2>保留期限</h2>
     <p>只要账户存在或仍有运维需要，数据就可能继续保留；安全日志可能保留一段有限时间。公共演示实例可能被重置，数据也可能在不另行通知的情况下删除。</p>
     <h2>你的选择</h2>
-    <p>你可以退出登录，也可以通过仓库的<a href={PRIVATE_CONTACT_URL}>私密报告渠道</a>申请删除账户和数据。如果该渠道不可用，请仅创建一个公开 issue 请求私密联系方式，不要附带账户详情或会话内容。撤销 Google 授权会阻止未来的 Google 授权，但不会自动退出现有 very happy 会话或删除数据。</p>
+    <p>你可以退出登录，也可以通过仓库的<a href={PRIVATE_CONTACT_URL} {...EXTERNAL_LINK}>私密报告渠道</a>申请删除账户和数据。如果该渠道不可用，请仅创建一个公开 issue 请求私密联系方式，不要附带账户详情或会话内容。撤销 Google 授权会阻止未来的 Google 授权，但不会自动退出现有 very happy 会话或删除数据。</p>
     <h2>联系我们</h2>
-    <p>隐私问题或删除请求请使用<a href={PRIVATE_CONTACT_URL}>私密报告渠道</a>。</p>
+    <p>隐私问题或删除请求请使用<a href={PRIVATE_CONTACT_URL} {...EXTERNAL_LINK}>私密报告渠道</a>。</p>
   </LegalPage>;
   return (
     <LegalPage title="Privacy Policy">
@@ -45,9 +45,9 @@ export function PrivacyScreen() {
       <h2>Retention</h2>
       <p>Data is retained while your account or an operational need exists; security logs may be kept for a limited period. The public demo may be reset and data may be deleted without notice.</p>
       <h2>Your choices</h2>
-      <p>You may log out or request account and data deletion through the repository&apos;s <a href={PRIVATE_CONTACT_URL}>private reporting channel</a>. If it is unavailable, open a public issue asking for a private contact channel and include no account details or session content. Revoking Google access stops future Google authorization but does not itself log out existing very happy sessions or delete your data.</p>
+      <p>You may log out or request account and data deletion through the repository&apos;s <a href={PRIVATE_CONTACT_URL} {...EXTERNAL_LINK}>private reporting channel</a>. If it is unavailable, open a public issue asking for a private contact channel and include no account details or session content. Revoking Google access stops future Google authorization but does not itself log out existing very happy sessions or delete your data.</p>
       <h2>Contact</h2>
-      <p>For privacy questions or deletion requests, use the <a href={PRIVATE_CONTACT_URL}>private reporting channel</a>.</p>
+      <p>For privacy questions or deletion requests, use the <a href={PRIVATE_CONTACT_URL} {...EXTERNAL_LINK}>private reporting channel</a>.</p>
     </LegalPage>
   );
 }
@@ -66,7 +66,7 @@ export function TermsScreen() {
     <h2>暂停与可用性</h2>
     <p>为保护容量、安全、用户或服务，我们可能限制或暂停访问，也可能停止托管实例。在法律允许的范围内，运营方不对使用演示服务造成的数据丢失、工作中断或间接损失承担责任。</p>
     <h2>联系我们</h2>
-    <p>需要提供私密账户详情的问题，请使用<a href={PRIVATE_CONTACT_URL}>私密报告渠道</a>；其他问题请使用仓库 issue tracker。</p>
+    <p>需要提供私密账户详情的问题，请使用<a href={PRIVATE_CONTACT_URL} {...EXTERNAL_LINK}>私密报告渠道</a>；其他问题请使用仓库 issue tracker。</p>
   </LegalPage>;
   return (
     <LegalPage title="Terms of Service">
@@ -81,7 +81,7 @@ export function TermsScreen() {
       <h2>Suspension and availability</h2>
       <p>We may limit or suspend access to protect capacity, security, users, or the service. We may discontinue the hosted instance. To the extent permitted by law, the operator is not liable for lost data, interrupted work, or indirect damages arising from use of the demo.</p>
       <h2>Contact</h2>
-      <p>For questions that require private account details, use the <a href={PRIVATE_CONTACT_URL}>private reporting channel</a>; otherwise use the repository issue tracker.</p>
+      <p>For questions that require private account details, use the <a href={PRIVATE_CONTACT_URL} {...EXTERNAL_LINK}>private reporting channel</a>; otherwise use the repository issue tracker.</p>
     </LegalPage>
   );
 }

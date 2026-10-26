@@ -74,11 +74,13 @@ describe('B-823 deferred mounts wiring', () => {
     const root = read('AppRoot.tsx');
     expect(root).toMatch(/function DeferredChangelogNotice\(\) \{\n  if \(!useAfterFirstScreen\(\)\) return null;/);
     expect(root).toMatch(/function DeferredPwaInstallPrompt\(\) \{\n  if \(!useAfterFirstScreen\(\)\) return null;/);
+    // B-836: the feedback prompt card, too (lazy chunk, after the first screen).
+    expect(root).toMatch(/function DeferredFeedbackPrompt\(\) \{\n  if \(!useAfterFirstScreen\(\)\) return null;/);
     // Both signed-in shells (deep link / home) mount the deferred notice, never the eager one.
-    expect(root).toContain('return <><Outlet /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><BundleUpdatedNotice />');
-    expect(root).toContain('return <><AppLayout /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><BundleUpdatedNotice />');
+    expect(root).toContain('return <><Outlet /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><BundleUpdatedNotice />');
+    expect(root).toContain('return <><AppLayout /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><BundleUpdatedNotice />');
     expect(root).toContain('<DeferredPwaInstallPrompt />\n          <VhDiagGate />');
-    expect(root).not.toMatch(/^import .*(ChangelogNotice|PwaInstallPrompt|LandingScreen|DocsScreen|PublicLegalScreen)'/m);
+    expect(root).not.toMatch(/^import .*(ChangelogNotice|PwaInstallPrompt|FeedbackPrompt|LandingScreen|DocsScreen|PublicLegalScreen)'/m);
     expect(read('../screens/AppLayout.tsx')).toContain('{afterFirstScreen && <NotificationOptInCard />}');
     expect(read('DeferredMajorUpdateEntry.tsx')).toContain('if (!useAfterFirstScreen()) return null;');
     expect(read('../screens/sessions/Sidebar.tsx')).toContain('<DeferredMajorUpdateEntry />');

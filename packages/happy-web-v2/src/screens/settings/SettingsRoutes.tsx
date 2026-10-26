@@ -28,6 +28,7 @@ import {
   ClipboardList,
   FileText,
   Info,
+  MessageSquareHeart,
   Cpu,
   Share2,
 } from 'lucide-react';
@@ -136,6 +137,7 @@ import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel'
 import { VoiceSettings } from './VoiceSettings';
 import { MachinesSettings } from './MachinesSettings';
 import { SharedSettings } from './SharedSettings';
+import { FeedbackInbox, FeedbackSettings } from './FeedbackSettings';
 import { ModelProviderSettings } from './ModelProviderSettings';
 import { resetFeatureTips } from '@/components/featureTips/FeatureTips';
 import { CodeView } from '@/screens/session/CodeView';
@@ -215,6 +217,13 @@ function Overview() {
             left={<FileText size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/changelog')}
+          />
+          <Item
+            title={t('feedback.title')}
+            subtitle={t('feedback.subtitle')}
+            left={<MessageSquareHeart size={18} />}
+            right={<ChevronRight size={16} />}
+            onClick={() => navigate('/settings/feedback')}
           />
           <Item
             title={t('settings.about')}
@@ -2713,6 +2722,8 @@ export function SettingsRoutes({ basePath }: { basePath?: string } = {}) {
       <Route path="profile" element={<ProfileSettings />} />
       <Route path="email" element={<EmailIdentity />} />
       <Route path="google" element={<GoogleIdentity />} />
+      <Route path="feedback" element={<FeedbackSettings />} />
+      <Route path="feedback/inbox" element={<FeedbackInbox />} />
     </Routes></SettingsWorkspace>
   );
 }
