@@ -147,3 +147,58 @@ it('帮助 sits in the footer next to 设置', async () => {
   await act(async () => help.click());
   expect(onHelp).toHaveBeenCalledTimes(1);
 });
+
+/**
+ * B-828 (Xu CHEN 10-26 flicker): the sidebar stays mounted across desktop → phone
+ * → desktop (B-795), which rebuilds the 能力 block. The fit used to keep measuring
+ * the block it captured at mount — detached, height 0 — so more rows measured as
+ * less room and the rows flipped on every frame until a remount (设置 and back).
+ * happy-dom has no layout: heights are stubbed so the sidebar keeps a fixed total
+ * (list + block), and a detached element measures 0 like in a browser.
+ */
+it('desktop → phone → desktop: the rows settle on the rebuilt block instead of flipping every frame (B-828)', async () => {
+  const pitch = 34;
+  const total = minList + 4 * pitch + 10; // all four rows fit, with 10px to spare
+  const proto = HTMLElement.prototype;
+  const original = Object.getOwnPropertyDescriptor(proto, 'offsetHeight');
+  Object.defineProperty(proto, 'offsetHeight', {
+    configurable: true,
+    get(this: HTMLElement) {
+      if (!this.isConnected) return 0;
+      if (this.classList.contains('sb-caps')) return this.children.length * pitch;
+      if (this.classList.contains('sb-nav-btn')) return pitch - 2;
+      return 0;
+    },
+  });
+  try {
+    const list = document.createElement('div');
+    Object.defineProperty(list, 'clientHeight', { configurable: true, get: () => total - (document.querySelector<HTMLElement>('.sb-caps')?.offsetHeight ?? 0) });
+    const listRef = { current: list };
+    const rows = (actions: readonly ('new-session' | 'new-project' | 'new-team')[]) => (
+      <div className="sb">
+        <SidebarActionRows actions={actions} creatingChat={false} createItems={[]} capabilities={entries} capabilityNames={names} listRef={listRef} onNewChat={() => {}} onNewProject={() => {}} onNewTeam={() => {}} onNavigate={() => {}} />
+      </div>
+    );
+    const frames = (n: number) => act(async () => { for (let i = 0; i < n; i++) await new Promise((r) => requestAnimationFrame(() => r(null))); });
+    const caps = () => [...document.querySelectorAll('.sb-caps [data-cap]')].map((b) => b.getAttribute('data-cap'));
+
+    await render(rows(desktop.actions));
+    await frames(4);
+    expect(caps()).toEqual(['teams', 'automations', 'todos', 'people']);
+
+    await act(async () => root!.render(rows(phone.actions)));
+    expect(document.querySelector('.sb-caps')).toBeNull();
+    await act(async () => root!.render(rows(desktop.actions)));
+
+    let flips = 0;
+    const mo = new MutationObserver(() => { flips += 1; });
+    mo.observe(document.querySelector('.sb-caps')!, { childList: true });
+    await frames(12);
+    mo.disconnect();
+    expect(caps()).toEqual(['teams', 'automations', 'todos', 'people']);
+    expect(flips).toBe(0);
+  } finally {
+    if (original) Object.defineProperty(proto, 'offsetHeight', original);
+    else delete (proto as unknown as Record<string, unknown>).offsetHeight;
+  }
+});

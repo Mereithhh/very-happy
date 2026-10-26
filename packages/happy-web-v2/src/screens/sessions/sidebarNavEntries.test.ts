@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { NEW_TEAM_PATH, fitCapabilityRows, navAttentionTotal, navMenuLabel, orderCreateMenu, sidebarNavEntries, sidebarTopModel, splitCapabilities } from './sidebarNavEntries';
+import { CAPABILITY_FIT_SLACK, NEW_TEAM_PATH, fitCapabilityRows, navAttentionTotal, navMenuLabel, orderCreateMenu, settleCapabilityRows, sidebarNavEntries, sidebarTopModel, splitCapabilities } from './sidebarNavEntries';
 
 const all = { teamsVisible: true, automationsVisible: true, automationAttention: 0, incomingPeople: 0 };
 
@@ -114,5 +114,28 @@ describe('Sidebar wiring (B-641, B-676, B-713)', () => {
   it('every entry goes through the shared list (no hard-wired nav buttons)', () => {
     expect(src).not.toContain("onClick={() => navigate('/todos')}");
     expect(src).not.toContain("onClick={() => navigate('/teams')}");
+  });
+});
+
+describe('capability fit hysteresis (B-828)', () => {
+  const pitch = 34;
+  it('folds at once when the room shrinks', () => {
+    expect(settleCapabilityRows({ current: 4, spare: 4 * pitch - 1, rowPitch: pitch, total: 4 })).toBe(2);
+    expect(settleCapabilityRows({ current: 4, spare: 10, rowPitch: pitch, total: 4 })).toBe(0);
+  });
+  it('unfolds only with CAPABILITY_FIT_SLACK px to spare beyond the threshold', () => {
+    expect(settleCapabilityRows({ current: 2, spare: 4 * pitch, rowPitch: pitch, total: 4 })).toBe(2);
+    expect(settleCapabilityRows({ current: 2, spare: 4 * pitch + CAPABILITY_FIT_SLACK - 1, rowPitch: pitch, total: 4 })).toBe(2);
+    expect(settleCapabilityRows({ current: 2, spare: 4 * pitch + CAPABILITY_FIT_SLACK, rowPitch: pitch, total: 4 })).toBe(4);
+    expect(settleCapabilityRows({ current: 0, spare: 1000, rowPitch: pitch, total: 4 })).toBe(4);
+  });
+  it('a measurement wobbling ±1px on a threshold settles instead of flipping', () => {
+    let current = 4;
+    const seen = new Set<number>();
+    for (let i = 0; i < 20; i++) {
+      current = settleCapabilityRows({ current, spare: 4 * pitch + (i % 2 ? 1 : -1), rowPitch: pitch, total: 4 });
+      if (i > 0) seen.add(current);
+    }
+    expect([...seen]).toEqual([2]);
   });
 });

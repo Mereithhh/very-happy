@@ -10,7 +10,7 @@ import { ActionDropdownMenu, QuickThemeToggle, Spinner, type MenuItemDef } from 
 import { useTranslation } from '@/i18n/useTranslation';
 import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
-import { MIN_LIST_ROWS, fitCapabilityRows, moreMenuEntries, navAttentionTotal, navMenuLabel, splitCapabilities, type SidebarActionRow, type SidebarChip, type SidebarNavEntry, type SidebarNavKey } from './sidebarNavEntries';
+import { MIN_LIST_ROWS, moreMenuEntries, navAttentionTotal, navMenuLabel, settleCapabilityRows, splitCapabilities, type SidebarActionRow, type SidebarChip, type SidebarNavEntry, type SidebarNavKey } from './sidebarNavEntries';
 
 const navIcon = { projects: FolderKanban, teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact } as const;
 
@@ -42,21 +42,25 @@ export function listHeightForRows(list: HTMLElement, fallbackPitch: number): num
  * B-713: how many capability rows fit while the list keeps MIN_LIST_ROWS rows
  * on screen. Re-measured whenever the sidebar resizes (window resize, notices)
  * or its content changes (list mounts late, groups fold), coalesced per frame.
+ * B-828: `block` is the live 能力 block element (a callback ref), never an
+ * element captured at mount. The sidebar stays mounted across desktop → phone
+ * → desktop (B-795), which rebuilds the block; measuring the detached old one
+ * (height 0) drops the block from the invariant below, so more rows measured
+ * as less room and the rows flipped on every frame until a remount.
  */
-function useCapabilityFit(listRef: RefObject<HTMLElement | null>, blockRef: RefObject<HTMLElement | null>, total: number): number {
+function useCapabilityFit(listRef: RefObject<HTMLElement | null>, block: HTMLElement | null, total: number): number {
   const [shown, setShown] = useState(total);
   useLayoutEffect(() => {
-    const block = blockRef.current;
     const root = block?.closest<HTMLElement>('.sb') ?? block?.parentElement;
     if (!block || !root) return;
     const measure = () => {
       const list = listRef.current;
-      if (!list) return;
+      if (!list || !block.isConnected) return;
       const capRow = block.querySelector<HTMLElement>('.sb-nav-btn');
       const rowPitch = (capRow?.offsetHeight || 32) + 2;
       // list + block height is invariant while rows move between them
       const spare = list.clientHeight + block.offsetHeight - listHeightForRows(list, rowPitch);
-      setShown(fitCapabilityRows({ spare, rowPitch, total }));
+      setShown((current) => settleCapabilityRows({ current, spare, rowPitch, total }));
     };
     measure();
     let frame = 0;
@@ -70,7 +74,7 @@ function useCapabilityFit(listRef: RefObject<HTMLElement | null>, blockRef: RefO
     const mo = typeof MutationObserver === 'undefined' ? null : new MutationObserver(schedule);
     mo?.observe(root, { childList: true, subtree: true });
     return () => { ro?.disconnect(); mo?.disconnect(); if (frame) cancelAnimationFrame(frame); };
-  }, [listRef, blockRef, total]);
+  }, [listRef, block, total]);
   return Math.min(shown, total);
 }
 
@@ -92,9 +96,9 @@ export function SidebarActionRows(props: {
 }) {
   const { t, lang } = useTranslation();
   const newRowRef = useRef<HTMLDivElement | null>(null);
-  const capsRef = useRef<HTMLDivElement | null>(null);
+  const [capsEl, setCapsEl] = useState<HTMLDivElement | null>(null);
   const [newRowWidth, setNewRowWidth] = useState<number>();
-  const fit = useCapabilityFit(props.listRef, capsRef, props.capabilities.length);
+  const fit = useCapabilityFit(props.listRef, capsEl, props.capabilities.length);
   if (props.actions.length === 0) return null;
   const { shown, folded } = splitCapabilities(props.capabilities, fit);
   const foldedAttention = navAttentionTotal(folded);
@@ -120,7 +124,7 @@ export function SidebarActionRows(props: {
           <UsersRound size={17} /><span>{t('sidebar.newTeam')}</span>
         </button>
       )}
-      {props.capabilities.length > 0 && <div className="sb-caps" ref={capsRef} role="group" aria-label={t('sidebar.capabilities')}>
+      {props.capabilities.length > 0 && <div className="sb-caps" ref={setCapsEl} role="group" aria-label={t('sidebar.capabilities')}>
         {shown.map((e) => {
           const Icon = navIcon[e.key];
           return (
