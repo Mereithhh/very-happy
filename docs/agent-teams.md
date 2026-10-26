@@ -58,14 +58,22 @@ device.
 In *Just me & the lead* your messages and the lead's turns that answer them stay
 as they are. Everything the lead writes stays visible too, whoever triggered it:
 the lead talks to members through `team_message`, so its text is written to you
-("it is live", the options of a decision). What folds is the inbound member
+("it is live", the options of a decision). That is every paragraph, in order —
+also text written between two tool calls ("the deploy failed, go with the
+minimal fix" before a `team_message`) and text of a turn that is still running.
+What folds is the inbound member
 messages and system notices and the lead's tool work around them: each run
 becomes one dashed line such as *1 member message · lead handled 1 turn* with
 chips for the members who wrote; click it to expand the run in place
 (**Collapse N** folds it again). A lead reply below such a line starts with a
-small *Replying to Member A's submission* / *Replying to a system notice*. Member
-traffic the lead does not answer in text lands inside the last line, so it does
-not move a reader who scrolled back; the ↓ counter counts what is on screen. Your message shows **Answered ↗** once
+small *Replying to Member A's submission* / *Replying to a system notice* (on the
+first paragraph of the turn; the tool work between later paragraphs folds into
+its own *lead handled 1 turn* line). The newest batch of member messages — the
+last folded line with nothing from you after it — also shows the members'
+messages under the line, six lines each with **Show full text** to read the whole
+message in place (**Show less** folds it back); older lines stay closed. Member
+traffic lands at the bottom, so it does not move a reader who scrolled back; the
+↓ counter counts what is on screen — the lead's paragraphs, not its tool work. Your message shows **Answered ↗** once
 the lead has written text in reply to it; click it to jump to that answer, which
 is briefly highlighted.
 

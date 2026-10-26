@@ -65,10 +65,26 @@ export type LeadFixture = {
     ownerIds: string[];
 };
 
-/** `extra` appends a burst of member traffic (the flood the reader must not be scrolled by). */
-export function buildLeadFixture(opts: { now?: number; extra?: number } = {}): LeadFixture {
-    const tokens = SEQUENCE.split(' ').map((t) => ({ kind: t[0], gap: Math.max(1, Number(t.slice(1))) }));
+/** B-833: a member's long submission, then the lead's turn on it — text, team_message, text, tool, text. */
+export const LIVE_TAIL: FixtureToken[] = [
+    { kind: 'U', gap: 30, text: '提交：PR 已开，CI 全绿。\n\n改动：\n- 负责人每段文字都直接显示\n- 最新一批成员消息显示 6 行预览\n- 工具仍然折叠\n\n验证：单测、mutation、device-shots 改前改后对比。\n\n风险：只改 Web，没有协议改动。' },
+    { kind: 'T', gap: 4 },
+    { kind: 'L', gap: 3, text: '部署失败了，同意最小修法。' },
+    { kind: 'T', gap: 2 },
+    { kind: 'L', gap: 3, text: '已经让成员 A 按最小修法重推。' },
+    { kind: 'T', gap: 6 },
+    { kind: 'L', gap: 4, text: '重推成功，已经上线。' },
+];
+export type FixtureToken = { kind: string; gap: number; text?: string };
+
+/**
+ * `extra` appends a burst of member traffic (the flood the reader must not be scrolled by);
+ * `tail` appends scripted tokens (B-833: `LIVE_TAIL`, one step at a time).
+ */
+export function buildLeadFixture(opts: { now?: number; extra?: number; tail?: readonly FixtureToken[] } = {}): LeadFixture {
+    const tokens: FixtureToken[] = SEQUENCE.split(' ').map((t) => ({ kind: t[0], gap: Math.max(1, Number(t.slice(1))) }));
     for (let i = 0; i < (opts.extra ?? 0); i++) tokens.push({ kind: 'U', gap: 20 }, { kind: 'T', gap: 4 }, { kind: 'L', gap: 5 });
+    tokens.push(...(opts.tail ?? []));
     const total = tokens.reduce((sum, t) => sum + t.gap, 0);
     // The last lead text of an owner turn is its visible answer; earlier ones are progress lines.
     const finalLead = new Set<number>();
@@ -115,7 +131,7 @@ export function buildLeadFixture(opts: { now?: number; extra?: number } = {}): L
             }
             case 'M': case 'U': case 'A': {
                 const pool = MEMBER_TEXT[token.kind];
-                teamMessage('member', pool[members % pool.length]);
+                teamMessage('member', token.text ?? pool[members % pool.length]);
                 inOwnerTurn = false;
                 break;
             }
@@ -133,8 +149,8 @@ export function buildLeadFixture(opts: { now?: number; extra?: number } = {}): L
             }
             case 'L': {
                 const id = `lead-${++seq}`;
-                const text = finalLead.has(index) ? ANSWER_TEXT[(owners - 1) % ANSWER_TEXT.length]
-                    : inOwnerTurn ? '先看一下当前状态。' : LEAD_NOISE_TEXT[seq % LEAD_NOISE_TEXT.length];
+                const text = token.text ?? (finalLead.has(index) ? ANSWER_TEXT[(owners - 1) % ANSWER_TEXT.length]
+                    : inOwnerTurn ? '先看一下当前状态。' : LEAD_NOISE_TEXT[seq % LEAD_NOISE_TEXT.length]);
                 messages.push({ kind: 'agent-text', id, localId: null, createdAt: at, seq, text } as Message);
                 normalized.push({ ...base, role: 'agent', id, createdAt: at, seq, content: [{ type: 'text', text, uuid: `u-${id}`, parentUUID: null }] } as unknown as NormalizedMessage);
                 break;

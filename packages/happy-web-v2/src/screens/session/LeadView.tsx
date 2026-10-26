@@ -3,13 +3,15 @@
  * a lead session), the folded-run summary row, the owner bubble's 「已答 ↗」
  * chip, and (B-809) the 「回复 成员 A 的提交」 line above a lead reply that a
  * member / system message triggered. Rules live in leadView.ts.
+ * B-833: the newest batch's member messages under its fold row.
  */
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { ArrowUpRight, ChevronDown } from 'lucide-react';
 import type { LeadFold, LeadViewMode, TurnOrigin } from './leadView';
 import { setLeadView, useLeadView } from './leadViewPrefs';
 import { useTranslation } from '@/i18n/useTranslation';
 import { foldSummary, leadViewCopy } from './leadViewCopy';
+import { TeamCardPreviewContext } from './teamCardPreview';
 import './leadView.css';
 
 function useLeadViewCopy() {
@@ -50,6 +52,18 @@ export function LeadViewToggle({ sessionId, compact = false }: { sessionId: stri
 /** B-809: what the lead's reply below answers (the folded run above holds it). */
 export function LeadVia({ origin }: { origin: TurnOrigin }) {
     return <div className="lv-via">{useLeadViewCopy().via(origin)}</div>;
+}
+
+/** B-833: preview lines of a member message under the newest fold (the card's own default is 3). */
+export const FOLD_PREVIEW_LINES = 6;
+
+/** B-833: the newest batch's member messages, as their cards, under the fold row — tools stay folded. */
+export function LeadFoldPreview({ children }: { children: ReactNode }) {
+    const copy = useLeadViewCopy();
+    const preview = useMemo(() => ({ lines: FOLD_PREVIEW_LINES, expand: copy.expandFull, collapse: copy.collapseFull }), [copy.expandFull, copy.collapseFull]);
+    return <TeamCardPreviewContext.Provider value={preview}>
+        <div className="lv-preview">{children}</div>
+    </TeamCardPreviewContext.Provider>;
 }
 
 /** Visible member chips on the summary row; the rest become 「+n」. */

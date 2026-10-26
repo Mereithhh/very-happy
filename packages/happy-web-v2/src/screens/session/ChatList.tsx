@@ -67,9 +67,9 @@ import { useChatJump } from '@/screens/search/useChatJump';
 import { requestChatJump } from '@/screens/search/chatJump';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { teamSessionMembership } from '@/screens/sessions/teamNavigation';
-import { leadViewEntries, leadViewKeys, ownerAnswers, turnOpenerIds, turnOrigin } from './leadView';
+import { leadViewEntries, leadViewKeys, ownerAnswers, previewFolds, turnOpenerIds, turnOrigin } from './leadView';
 import { useLeadView } from './leadViewPrefs';
-import { LeadAnswerContext, LeadFoldRow, LeadVia } from './LeadView';
+import { LeadAnswerContext, LeadFoldPreview, LeadFoldRow, LeadVia } from './LeadView';
 import type { ChatRow } from './chatTurns';
 
 export function ChatList({
@@ -200,6 +200,10 @@ export function ChatList({
         [entries, openFolds, rows],
     );
     const rowKeys = useMemo(() => (entries ? leadViewKeys(entries, openFolds) : rows.map((row) => row.key)), [entries, openFolds, rows]);
+    // B-833: the newest batch of member messages shows their text under its fold row; a batch
+    // that showed it keeps it until the owner writes (previewFolds), so it never collapses mid-read.
+    const previewedRef = useRef<ReadonlySet<string>>(new Set());
+    const previewed = useMemo(() => (previewedRef.current = entries ? previewFolds(entries, previewedRef.current) : new Set()), [entries]);
     // B-578: 「继续」 only while nothing runs or waits — same liveness verdict
     // as the transcript, and a queued prompt already is the continuation.
     const canOfferContinue = !sessionLive && queuedMessages.length === 0;
@@ -831,7 +835,9 @@ export function ChatList({
                             : renderRow(entry.row)) : (
                             <Fragment key={entry.key}>
                                 <LeadFoldRow fold={entry} open={openFolds.has(entry.key)} onToggle={() => toggleFold(entry.key)} />
-                                {openFolds.has(entry.key) && entry.rows.map(renderRow)}
+                                {openFolds.has(entry.key)
+                                    ? entry.rows.map(renderRow)
+                                    : previewed.has(entry.key) && <LeadFoldPreview>{entry.preview.map(renderRow)}</LeadFoldPreview>}
                             </Fragment>
                         ))
                         : rows.map(renderRow)}
