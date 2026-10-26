@@ -9,6 +9,8 @@ export interface WebDocumentOptions {
     brand: HtmlBrand | null;
     /** Runtime config `serverUrl` (CSP connect-src). */
     serverUrl?: unknown;
+    /** Regional relay origins (CSP connect-src). */
+    relayOrigins?: readonly string[];
     cspMode: CspMode;
 }
 
@@ -50,7 +52,7 @@ export function webDocumentOnSend(opts: WebDocumentOptions) {
             ? applyBrandToManifest(html, opts.brand)
             : transformIndexHtml(html, opts.injectScript, opts.brand, origin);
         if (isHtml) {
-            reply.headers(htmlSecurityHeaders({ html: result, serverUrl: opts.serverUrl, requestOrigin: origin }, opts.cspMode, (name) => reply.getHeader(name)));
+            reply.headers(htmlSecurityHeaders({ html: result, serverUrl: opts.serverUrl, requestOrigin: origin, relayOrigins: opts.relayOrigins }, opts.cspMode, (name) => reply.getHeader(name)));
         }
         reply.header('content-length', Buffer.byteLength(result));
         return result;

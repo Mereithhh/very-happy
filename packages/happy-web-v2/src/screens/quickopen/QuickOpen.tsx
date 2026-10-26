@@ -32,6 +32,7 @@ import '../command/commandpalette.css';
 import './quickopen.css';
 import { dismissFeatureTip } from '@/components/featureTips/FeatureTips';
 import { listArrowDelta } from '@/utils/listArrowKey';
+import { OVERLAY_PRIORITY, useOverlayTurn } from '@/app/overlayQueue';
 
 export function QuickOpen({ sessionId }: { sessionId: string }) {
     const [open, setOpen] = useState(false);
@@ -61,7 +62,10 @@ export function QuickOpen({ sessionId }: { sessionId: string }) {
         return () => { window.removeEventListener('keydown', onKey, true); window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onPalette); };
     }, []);
     useEffect(() => { setOpen(false); }, [sessionId]);
-    if (!open) return null;
+    // B-831: page-blocking — takes an `interaction` turn (overlayQueue), so the
+    // release notes step aside and a sign-in expiry dialog is never stacked on it.
+    const turn = useOverlayTurn(open, OVERLAY_PRIORITY.interaction);
+    if (!open || !turn) return null;
     return <QuickOpenPanel sessionId={sessionId} onClose={() => setOpen(false)} />;
 }
 

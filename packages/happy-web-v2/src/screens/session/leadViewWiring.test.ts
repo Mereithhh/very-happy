@@ -21,6 +21,9 @@ describe('lead view wiring', () => {
         expect(chat).toContain("? <Fragment key={`via-${entry.row.key}`}><LeadVia origin={entry.via} />{renderRow(entry.row)}</Fragment>");
         // Follow / unseen badge read the keys on screen.
         expect(chat).toContain('(entries ? leadViewKeys(entries, openFolds) : rows.map((row) => row.key))');
+        // B-833: a closed fold shows its member preview only when previewFolds picked it; an open one shows its rows.
+        expect(chat).toContain('(previewedRef.current = entries ? previewFolds(entries, previewedRef.current) : new Set())');
+        expect(chat).toContain(': previewed.has(entry.key) && <LeadFoldPreview>{entry.preview.map(renderRow)}</LeadFoldPreview>}');
     });
     it('anchors agent answers for 「已答 ↗」', () => {
         expect(read('./MessageView.tsx')).toContain('<div className="msg msg--agent" data-message-id={message.id}>');

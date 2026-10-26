@@ -19,3 +19,13 @@
 .team-message-actions { display: flex; align-items: center; flex-wrap: wrap; column-gap: calc(var(--chat-space) * 5); min-width: 0; }
 .team-message-actions > a { display: inline-flex; align-items: center; gap: calc(var(--chat-space) * 1.5); min-height: calc(var(--chat-space) * 8); color: var(--text); font-size: var(--chat-fs-control); }
 @media (pointer: coarse) { .team-message-actions > a { min-height: 44px; } }
+/* B-833: in-place 「展开全文」 under a longer preview (lead view, newest batch). */
+.team-message-full { min-width: 0; color: var(--text); font-size: var(--chat-fs-body); }
+.team-message-more { display: inline-flex; align-items: center; align-self: flex-start; gap: var(--chat-space); min-height: calc(var(--chat-space) * 8); padding: 0; border: 0; background: none; color: var(--text-dim); font: var(--chat-fs-secondary)/1.4 var(--font-sans); cursor: pointer; }
+.team-message-more-chevron { color: var(--text-faint); transition: transform var(--dur-snap) var(--ease-snap); }
+.team-message-more[aria-expanded="true"] .team-message-more-chevron { transform: rotate(180deg); }
+@media (hover: hover) and (pointer: fine) { .team-message-more:hover { color: var(--text); } }
+.team-message-more:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--text-faint); border-radius: var(--r-sm); }
+@media (pointer: coarse) { .team-message-more { min-height: 44px; } }
+/* B-833: the preview is a touch target of its own (a one-line preview was 18px tall). */
+@media (pointer: coarse) { .team-message-open { min-height: 44px; justify-content: center; } }

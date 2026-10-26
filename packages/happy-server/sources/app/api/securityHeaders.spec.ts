@@ -49,6 +49,31 @@ describe('B-825 CSP', () => {
         expect(directive(policy, 'script-src')).toBe(directive(contentSecurityPolicy({ html: HTML }), 'script-src'));
     });
 
+    it('B-832: img-src / media-src allow loopback http (agent-served screenshots), not all of http:', () => {
+        for (const policy of [contentSecurityPolicy({ html: HTML, serverUrl: 'same-origin' }), reportOnlyContentSecurityPolicy({ html: HTML, serverUrl: 'same-origin', requestOrigin: 'https://veryhappy.dev' })]) {
+            for (const name of ['img-src', 'media-src']) {
+                const sources = directive(policy, name)!.split(' ');
+                expect(sources, name).toEqual(expect.arrayContaining(['http://localhost:*', 'http://127.0.0.1:*', 'https:']));
+                expect(sources, name).not.toContain('http:');
+                // Not valid CSP (no IPv6 literal host sources): Chromium logs an error and ignores it.
+                expect(sources.some((source) => source.includes('[')), name).toBe(false);
+            }
+        }
+    });
+
+    it('B-832 regional relays: report-only allows their https + wss origins; an http relay is allowed by the enforced policy too', () => {
+        const relayOrigins = ['https://relay-sg.veryhappy.dev', 'https://relay-us.veryhappy.dev/', 'not a url'];
+        const connect = directive(reportOnlyContentSecurityPolicy({ html: HTML, serverUrl: 'same-origin', requestOrigin: 'https://veryhappy.dev', relayOrigins }), 'connect-src')!;
+        for (const origin of ['https://relay-sg.veryhappy.dev', 'wss://relay-sg.veryhappy.dev', 'https://relay-us.veryhappy.dev', 'wss://relay-us.veryhappy.dev']) {
+            expect(connect.split(' '), origin).toContain(origin);
+        }
+        expect(connect).not.toContain('not a url');
+        // https relays need nothing extra while https:/wss: are open.
+        expect(directive(contentSecurityPolicy({ html: HTML, serverUrl: 'same-origin', relayOrigins }), 'connect-src')).toBe("connect-src 'self' https: wss: blob: data:");
+        const lan = contentSecurityPolicy({ html: HTML, serverUrl: 'http://192.168.1.5:3005', relayOrigins: ['http://192.168.1.6:3010', 'http://192.168.1.5:3005'] });
+        expect(directive(lan, 'connect-src')).toBe("connect-src 'self' https: wss: blob: data: http://192.168.1.5:3005 ws://192.168.1.5:3005 http://192.168.1.6:3010 ws://192.168.1.6:3010");
+    });
+
     it('modes: enforce sends both, report-only only the report header, off none; other headers always', () => {
         const ctx = { html: HTML, serverUrl: 'same-origin' };
         const enforce = htmlSecurityHeaders(ctx, 'enforce');

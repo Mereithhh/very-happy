@@ -22,9 +22,19 @@
  *   R. a Radix menu the person opened (not in the overlay queue, holds
  *      `body { pointer-events: none }`) is up when a misfired 401 lands → the
  *      dialog (native top layer) still takes the first click.
- * Every case also checks the dialog is not aria-hidden, and on desktop that
- * Tab reaches its button (no focus trap underneath).
- * Exit code 1 on any failed check.
+ *   A. (B-831) release notes open on a locked page, then a Modal.alert is
+ *      raised (FirstMachineWelcome, sync errors…) → the notes step aside, the
+ *      alert's button takes the first click / tap, and the notes come back
+ *      on the same page, unread.
+ *   B. (B-831) a Modal.confirm is up first, then the notes are asked to
+ *      open → they wait; the confirm takes the first click, the notes follow.
+ *   C. (B-831) release notes open (locked), then the ⌘K palette is opened
+ *      (programmatic open on phone) → the notes step aside, the palette's
+ *      search field takes typing; closing it brings the notes back unread.
+ * Every case also checks the dialog is not aria-hidden, and that focus is not
+ * held elsewhere: on desktop Tab reaches the expiry dialog's button (N/M/R);
+ * Modal.* takes no focus itself, so A/B check the notes' trap is not holding it.
+ * `--cases NMRABC` picks cases (default: all). Exit code 1 on any failed check.
  */
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -38,6 +48,7 @@ const BASE = opt('base', 'http://127.0.0.1:8825');
 const SERVER = opt('server', 'http://127.0.0.1:3299');
 const OUT = opt('out', null);
 const ONLY = opt('only', null);
+const CASES = opt('cases', 'NMRABC');
 if (OUT) mkdirSync(OUT, { recursive: true });
 
 const DEVICES = {
@@ -199,13 +210,19 @@ async function tabReaches(page, selector) {
     return page.evaluate(() => { const a = document.activeElement; return `focus stuck on ${a?.tagName.toLowerCase()}.${String(a?.className ?? '').split(' ')[0]}`; });
 }
 
+/**
+ * Modal.* does not take focus (Esc / Enter are handled at window level), so
+ * the B-831 cases check that the notes' focus trap is not holding it instead.
+ */
+const focusTrappedInNotes = (page) => page.evaluate(() => !!document.activeElement?.closest('.wn-card'));
+
 const shot = async (page, name) => { if (OUT) await page.screenshot({ path: join(OUT, `${name}.png`) }); };
 const press = (page, device, selector) => (device === 'phone' ? page.locator(selector).tap({ timeout: 3_000 }) : page.locator(selector).click({ timeout: 3_000 }));
 
 try {
     for (const device of Object.keys(DEVICES).filter((d) => !ONLY || d === ONLY)) {
+        if (CASES.includes('N')) {
         step(`N/${device}. release notes open, then the token is revoked (unsent input waiting)`);
-        {
             const context = await newContext(device);
             const page = await context.newPage();
             await signUp(page);
@@ -241,8 +258,8 @@ try {
             await context.close();
         }
 
+        if (CASES.includes('M')) {
         step(`M/${device}. a misfired 401 first, then the notes are asked to open`);
-        {
             const context = await newContext(device);
             const page = await context.newPage();
             await signUp(page);
@@ -267,8 +284,8 @@ try {
             await context.close();
         }
 
+        if (CASES.includes('R')) {
         step(`R/${device}. a menu the person opened (Radix, outside the queue) is up when the 401 lands`);
-        {
             const context = await newContext(device);
             const page = await context.newPage();
             await signUp(page);
@@ -294,6 +311,101 @@ try {
             const reloaded = page.waitForEvent('load', { timeout: 10_000 }).then(() => true, () => false);
             const pressed = await press(page, device, button).then(() => 'ok', (e) => e.message.split('\n')[0]);
             check(pressed === 'ok' && (await reloaded), `one ${device === 'phone' ? 'tap' : 'click'} reloads the page`, pressed);
+            await context.close();
+        }
+
+        if (CASES.includes('A') || CASES.includes('B') || CASES.includes('C')) {
+            const context = await newContext(device);
+            const page = await context.newPage();
+            await signUp(page);
+            await page.goto(`${BASE}/`);
+            await page.waitForFunction(() => import('/src/sync/sync.ts').then(({ sync }) => !!sync.encryption), null, { timeout: 30_000, polling: 300 });
+            await clearBootOverlays(page);
+            const tapOrClick = device === 'phone' ? 'tap' : 'click';
+            const unread = () => page.evaluate(() => [localStorage.getItem('vh.changelog.seen'), localStorage.getItem('vh.changelog.read')]);
+
+            if (CASES.includes('A')) {
+                step(`A/${device}. release notes open (locked), then a Modal.alert is raised`);
+                await openReleaseNotes(page);
+                await page.locator('.wn-card[data-locked]').waitFor({ timeout: 10_000 });
+                const progress = await page.locator('.wn-progress').textContent().catch(() => '');
+                check(true, 'the release notes are open on a locked page', progress);
+                const before = await unread();
+                await page.evaluate(() => import('/src/modal/ModalManager.ts').then(({ Modal }) => {
+                    window.__b831Pressed = 0;
+                    Modal.alert('B-831 alert', 'raised while the release notes are open', [{ text: 'B831-OK', onPress: () => { window.__b831Pressed += 1; } }]);
+                }));
+                await page.locator('.vh-modal-card').waitFor({ timeout: 5_000 });
+                await sleep(500);
+                await shot(page, `A-${device}-alert`);
+                const button = '.vh-modal-card .vh-modal-btn';
+                const hit = await hitTest(page, button);
+                check(!hit.notesVisible, 'the release notes gave way (not rendered)', JSON.stringify(hit));
+                check(hit.hitsTarget, 'the alert button is what the pointer hits', JSON.stringify(hit));
+                check(!hit.ariaHiddenAncestor, 'the alert is not aria-hidden', JSON.stringify(hit));
+                check(!(await focusTrappedInNotes(page)), 'focus is not locked inside the release notes');
+                const pressed = await press(page, device, button).then(() => 'ok', (e) => e.message.split('\n')[0]);
+                const count = await page.evaluate(() => window.__b831Pressed);
+                check(pressed === 'ok' && count === 1, `one ${tapOrClick} answers the alert`, `${pressed}, onPress×${count}`);
+                const back = await page.locator('.wn-card[data-locked]').waitFor({ timeout: 5_000 }).then(() => true, () => false);
+                check(back, 'the release notes come back afterwards');
+                const progressAfter = await page.locator('.wn-progress').textContent().catch(() => '');
+                check(progressAfter === progress, 'on the same page', `${progress} → ${progressAfter}`);
+                const after = await unread();
+                check(JSON.stringify(after) === JSON.stringify(before), 'nothing was marked read while they stood aside', `${JSON.stringify(before)} → ${JSON.stringify(after)}`);
+                await shot(page, `A-${device}-notes-back`);
+                // Whatever is left (an unanswered alert on a failing build) must not leak into B.
+                await page.evaluate(() => import('/src/modal/ModalManager.ts').then(({ Modal }) => Modal.hideAll()));
+                await clearBootOverlays(page);
+            }
+
+            if (CASES.includes('B')) {
+                step(`B/${device}. a Modal.confirm is up, then the notes are asked to open`);
+                await page.evaluate(() => import('/src/modal/ModalManager.ts').then(({ Modal }) => {
+                    window.__b831Answer = 'pending';
+                    void Modal.confirm('B-831 confirm', 'raised before the release notes', { confirmText: 'B831-YES' }).then((v) => { window.__b831Answer = v; });
+                }));
+                await page.locator('.vh-modal-card').waitFor({ timeout: 5_000 });
+                await openReleaseNotes(page);
+                await sleep(1_500);
+                await shot(page, `B-${device}-confirm`);
+                const button = '.vh-modal-card .vh-modal-btn.is-primary';
+                const hit = await hitTest(page, button);
+                check(!hit.notesVisible, 'the release notes wait while the confirm is up', JSON.stringify(hit));
+                check(hit.hitsTarget, 'the confirm button is what the pointer hits', JSON.stringify(hit));
+                check(!hit.ariaHiddenAncestor, 'the confirm is not aria-hidden', JSON.stringify(hit));
+                check(!(await focusTrappedInNotes(page)), 'focus is not locked inside the release notes');
+                const pressed = await press(page, device, button).then(() => 'ok', (e) => e.message.split('\n')[0]);
+                const answer = await page.evaluate(() => window.__b831Answer);
+                check(pressed === 'ok' && answer === true, `one ${tapOrClick} confirms`, `${pressed}, answer=${answer}`);
+                const notes = await page.locator('.wn-card').waitFor({ timeout: 5_000 }).then(() => true, () => false);
+                check(notes, 'the release notes follow once the confirm is answered');
+                await clearBootOverlays(page);
+            }
+
+            if (CASES.includes('C')) {
+                step(`C/${device}. release notes open (locked), then the command palette is opened`);
+                await openReleaseNotes(page);
+                await page.locator('.wn-card[data-locked]').waitFor({ timeout: 10_000 });
+                const before = await unread();
+                if (device === 'desktop') await page.keyboard.press('ControlOrMeta+k');
+                else await page.evaluate(() => window.dispatchEvent(new Event('vh:command-palette-open')));
+                await page.locator('.cp-search-input').waitFor({ timeout: 5_000 }).catch(() => {});
+                await sleep(500);
+                await shot(page, `C-${device}-palette`);
+                const hit = await hitTest(page, '.cp-search-input');
+                check(hit.found && !hit.notesVisible, 'the release notes gave way to the palette', JSON.stringify(hit));
+                check(hit.hitsTarget, 'the palette search field is what the pointer hits', JSON.stringify(hit));
+                const pressed = await press(page, device, '.cp-search-input').then(() => 'ok', (e) => e.message.split('\n')[0]);
+                if (pressed === 'ok') await page.keyboard.type('b831');
+                const typed = await page.locator('.cp-search-input').inputValue({ timeout: 1_000 }).catch(() => '');
+                check(pressed === 'ok' && typed === 'b831', 'it takes typing', `${pressed}, value=${JSON.stringify(typed)}`);
+                await page.keyboard.press('Escape');
+                const back = await page.locator('.wn-card[data-locked]').waitFor({ timeout: 5_000 }).then(() => true, () => false);
+                check(back, 'closing the palette brings the release notes back');
+                const after = await unread();
+                check(JSON.stringify(after) === JSON.stringify(before), 'still unread', `${JSON.stringify(before)} → ${JSON.stringify(after)}`);
+            }
             await context.close();
         }
     }
