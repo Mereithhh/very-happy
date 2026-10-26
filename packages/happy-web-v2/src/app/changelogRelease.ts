@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-26-sign-in-again-not-blocked',
+    date: '2026-10-26',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct26c.title',
+    summaryKey: 'changelog.releases.oct26c.summary',
+    itemKeys: ['changelog.releases.oct26c.signIn', 'changelog.releases.oct26c.notice'],
+  },
+  {
     id: '2026-10-26-faster-start-security',
     date: '2026-10-26',
     buildVersion: __APP_VERSION__,

@@ -63,6 +63,7 @@ import { PaletteStatusMark } from './PaletteStatusMark';
 import { listArrowDelta } from '@/utils/listArrowKey';
 import { openSessionSearch, SESSION_SEARCH_HINT } from '@/screens/search/sessionSearchEvents';
 import './commandpalette.css';
+import { OVERLAY_PRIORITY, useOverlayTurn } from '@/app/overlayQueue';
 
 /**
  * Programmatic open — the palette owns its open state; UI entry points that
@@ -136,6 +137,9 @@ export function CommandPalette() {
   }, []);
   // B-576: ⌘P quick open takes over — one modal at a time.
   useEffect(() => onQuickOpen(() => setOpen(false)), []);
+  // B-831: page-blocking — takes an `interaction` turn (overlayQueue), so the
+  // release notes step aside and a sign-in expiry dialog is never stacked on it.
+  const turn = useOverlayTurn(open, OVERLAY_PRIORITY.interaction);
 
   const dialogs = useMemo<PaletteDialogs>(() => ({
     newChat: (target, draft) => setNewChatDialog({ target, draft }),
@@ -149,7 +153,7 @@ export function CommandPalette() {
     <>
       {/* Mounted only while open: the panel subscribes to the board's
           derivation (useBoardItems), which must not run while closed. */}
-      {open && <CommandPalettePanel onClose={close} dialogs={dialogs} />}
+      {open && turn && <CommandPalettePanel onClose={close} dialogs={dialogs} />}
 
       {newChatDialog && (
         <NewSessionModal

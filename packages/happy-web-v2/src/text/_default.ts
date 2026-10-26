@@ -2718,6 +2718,12 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            oct26c: {
+                title: 'Sign in again works on the first tap',
+                summary: 'When your sign-in expires, “Sign in again” works on the first tap and is no longer covered by the update notes.',
+                signIn: 'The “Signed out” and “Connection problem” dialogs now stay on top of the update notes, the install card, the notification card and other dialogs. “Sign in again” or “Reload page” works on the first tap, and you can also reach it with the Tab key.',
+                notice: 'Update notes that were set aside stay unread: they do not pop up right after you sign in again, and you can find them in the sidebar or the next time you open the app.',
+            },
             oct26b: {
                 title: 'Opens faster, plus security hardening',
                 summary: 'The app opens faster, an expired sign-in no longer clears this device by mistake, and the sidebar no longer flickers after a Mac wakes up.',
