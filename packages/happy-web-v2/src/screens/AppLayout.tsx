@@ -8,7 +8,8 @@ import { appShellMode, nextSidebarParked, TOUCH_DRAWER_MQ } from '@/app/appShell
 import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs';
 import { useDrawerSwipe } from '@/app/drawerSwipe';
 import { Sidebar } from '@/screens/sessions/Sidebar';
-import { MajorUpdateEntry } from '@/app/MajorUpdateEntry';
+import { DeferredMajorUpdateEntry } from '@/app/DeferredMajorUpdateEntry';
+import { useAfterFirstScreen } from '@/app/afterFirstScreen';
 import { CommandPalette } from '@/screens/command/CommandPalette';
 import { ClipboardHistoryPanel } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { FsPreviewOverlay } from '@/screens/files/FsPreviewOverlay';
@@ -66,6 +67,8 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
   usePendingSessionBridge(navigate);
   // …and the session page chunk is warm before the first "new chat".
   useEffect(() => prefetchSessionDetailWhenIdle(), []);
+  // B-823 (B-816 Q5): invitations wait until the first screen is up.
+  const afterFirstScreen = useAfterFirstScreen();
   const isDesktop = useIsDesktop();
   const location = useLocation();
   const atRoot = location.pathname === rootPath || location.pathname === `${rootPath}/` || location.pathname === '';
@@ -144,7 +147,7 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
             <PanelLeft size={18} />
           </button>
           <NotificationBell />
-          <MajorUpdateEntry compact />
+          <DeferredMajorUpdateEntry compact />
         </>}
         notes={<NotesDock />}
       >
@@ -155,7 +158,7 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
       {/* B-559: inbox unread → PWA app-icon badge (mounted once; the bell is mounted twice) */}
       <AppBadgeSync />
       {/* B-570: non-blocking "turn on notifications" invitation (logged-in app only) */}
-      <NotificationOptInCard />
+      {afterFirstScreen && <NotificationOptInCard />}
       {/* B-668: email-code-only accounts: add a password or Google (dismissible) */}
       <SignInMethodsNudge />
       {/* B-588: at most one one-time feature tip app-wide */}

@@ -40,8 +40,8 @@ const pristine = storage.getState();
 
 let root: Root | null = null;
 let host: HTMLElement | null = null;
-beforeEach(() => {
-  setLanguage('zh-Hans');
+beforeEach(async () => {
+  await setLanguage('zh-Hans');
   storage.setState(pristine, true);
   localStorage.removeItem(COLLAPSED_GROUPS_STORAGE_KEY);
 });

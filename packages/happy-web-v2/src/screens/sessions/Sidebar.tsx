@@ -82,7 +82,7 @@ import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamBot, TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
-import { MajorUpdateEntry } from '@/app/MajorUpdateEntry';
+import { DeferredMajorUpdateEntry } from '@/app/DeferredMajorUpdateEntry';
 import { sidebarNavEntries, orderCreateMenu, sidebarTopModel, NEW_TEAM_PATH, type SidebarNavKey } from './sidebarNavEntries';
 import { SidebarActionRows, SidebarChipRow, SidebarFooter } from './SidebarTop';
 import {
@@ -1777,7 +1777,7 @@ export function Sidebar() {
       {/* B-555: tightest subscription window (renders nothing until reported) */}
       <SidebarRateLimit />
       {/* B-715: unread big updates — persistent entry above the footer (B-713 owns the footer row). */}
-      <MajorUpdateEntry />
+      <DeferredMajorUpdateEntry />
       <SidebarFooter onSettings={() => navigate('/settings')} onHelp={() => navigate('/help')} onToggleNotes={toggleNotesPanel} />
 
       {showNew && <NewSessionModal initialLocation={newLocation} onClose={() => setShowNew(false)} />}

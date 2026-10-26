@@ -111,6 +111,10 @@ function minimalPdf(text) {
 
 const shot = async (page, name) => { if (OUT) await page.screenshot({ path: join(OUT, `${name}.png`) }); };
 async function dismissOverlays(page) {
+    // B-823: the release notes open after the first screen (afterFirstScreen.ts)
+    // — and not at all once the page saw a key/pointer press. Give them their
+    // moment, or they land on the next click.
+    await page.locator('.wn-card').waitFor({ timeout: 4_000 }).catch(() => {});
     for (const name of ['Got it', 'Not now', '知道了', '暂不']) {
         for (const b of await page.getByRole('button', { name, exact: true }).all()) await b.click({ timeout: 1_000 }).catch(() => {});
     }

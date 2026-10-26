@@ -57,7 +57,6 @@ import {
   PALETTE_SETTINGS_LIMIT,
   type PaletteGroup,
 } from './paletteModel';
-import { displayText, searchSettings, sectionTitle, settingHref } from '@/screens/settings/settingsIndex';
 import { isWebPushSupported } from '@/sync/webPush';
 import { getNotificationPermission } from '@/sync/webNotifications';
 import { PaletteStatusMark } from './PaletteStatusMark';
@@ -167,8 +166,29 @@ export function CommandPalette() {
   );
 }
 
+/**
+ * B-823: the settings index reads every key in English and Chinese, which
+ * pulled the whole zh-Hans table into the startup chunk for everyone. It is
+ * loaded when the palette first opens; settings hits join the results then.
+ */
+type SettingsIndexModule = typeof import('@/screens/settings/settingsIndex');
+let settingsIndexLoad: Promise<SettingsIndexModule> | null = null;
+function useSettingsIndex(): SettingsIndexModule | null {
+  const [index, setIndex] = useState<SettingsIndexModule | null>(null);
+  useEffect(() => {
+    let live = true;
+    (settingsIndexLoad ??= import('@/screens/settings/settingsIndex')).then(
+      (mod) => { if (live) setIndex(mod); },
+      () => { settingsIndexLoad = null; },
+    );
+    return () => { live = false; };
+  }, []);
+  return index;
+}
+
 function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void; dialogs: PaletteDialogs }) {
   const { t, lang } = useTranslation();
+  const settingsIndex = useSettingsIndex();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -549,15 +569,15 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
     // appended as one 「设置」 section; Enter deep-links to the row.
     const settingsText = paletteSettingsQuery(query);
     const webPush = isWebPushSupported() && getNotificationPermission() !== 'unsupported';
-    const settingsRows: CommandItem[] = settingsText
-      ? searchSettings(settingsText, { webPush }).slice(0, PALETTE_SETTINGS_LIMIT).map(({ entry }) => ({
+    const settingsRows: CommandItem[] = settingsText && settingsIndex
+      ? settingsIndex.searchSettings(settingsText, { webPush }).slice(0, PALETTE_SETTINGS_LIMIT).map(({ entry }) => ({
           key: `setting:${entry.id}`,
           group: 'settings' as const,
-          title: displayText(entry.title, lang, t),
-          subtitle: displayText(sectionTitle(entry.section), lang, t),
+          title: settingsIndex.displayText(entry.title, lang, t),
+          subtitle: settingsIndex.displayText(settingsIndex.sectionTitle(entry.section), lang, t),
           icon: <Settings size={16} />,
           haystack: '',
-          run: () => navigate(settingHref(entry)),
+          run: () => navigate(settingsIndex.settingHref(entry)),
         }))
       : [];
     const matched = orderPaletteItems([...filterPaletteItems(items, query), ...settingsRows]);
@@ -575,7 +595,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       // on its own.
       run: () => void createChatOrConfigure(navigate, (target) => dialogs.newChat(target, draft), { location, draft }),
     }];
-  }, [items, needsYouItems, query, t, lang, navigate, dialogs, location]);
+  }, [items, needsYouItems, query, t, lang, navigate, dialogs, location, settingsIndex]);
 
   const keys = useMemo(() => filtered.map((it) => it.key), [filtered]);
   const activeIndex = resolveActiveIndex(keys, active);
