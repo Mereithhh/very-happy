@@ -18,7 +18,7 @@
 2. **PR-5 订阅协议，推荐 v1「对账式订阅」**：新增 socket RPC `sync-hello`（批量）和 `session-subscribe`（单会话）。服务端在**一条 SQL 语句的同一快照**里读出 head 和 `seq>afterSeq` 的增量，作为 ack 返回。实时推送**沿用现有 `update/new-message`**，不新增推送事件。
    - **原子性**：Web socket 从连接建立起就在 `user:<uid>:user-scoped` 房间里（`S/app/events/eventRouter.ts:277-278`），所有 new-message 都是事务提交之后才 emit（`S/app/api/routes/v3SessionRoutes.ts:161-196`、`S/app/promptQueue/store.ts:211-212` `afterTx`）。所以「快照语句开始之后才提交的消息，一定会推到这个 socket」。在快照开始前已提交的消息，一定在快照里。两者之间没有缝隙，最多重复一条，由 seq 去重。
    - **为什么不一步做到 DESIGN-REVIEW 原方案的专属订阅房间（`session-messages` + `session-head`）**：Web 侧栏的 thinking 状态依赖每条 new-message 的明文生命周期事件（`W/sync/sync.ts:2909-2990`）。服务端不解密内容，单靠 head 通知做不了这个。专属房间还会让每条消息多一次 Redis XADD，把 B-494 的 recovery 时间窗压缩一半。这两个事件的 wire 在 §2.4 定义并预留，作为 v2，触发条件写在 §7。
-3. **PR-6 IndexedDB**：按账号分库，存每会话最近 300 条**密文**和连续段游标，另存持久 outbox；不缓存会话 DEK（r2，§5.4）。冷启动先用缓存渲染，再用 `sync-hello` 对账。LRU 上限为 30 个会话、40MB。缓存任何不一致都按会话清除并回到首屏路径，缓存只影响速度，不影响正确性。
+3. **PR-6 IndexedDB**：按账号分库，存每会话最近 300 条**密文**和连续段游标，另存持久 outbox；不缓存会话 DEK（r2，§5.4；**已被 B-824 推翻**：Owner 2026-10-26 决定在独立库里缓存会话列表原样行与 wrapped DEK、支持离线翻看，见 [会话列表快照 spec](2026-10-session-list-snapshot-and-slim.md)）。冷启动先用缓存渲染，再用 `sync-hello` 对账。LRU 上限为 30 个会话、40MB。缓存任何不一致都按会话清除并回到首屏路径，缓存只影响速度，不影响正确性。
 4. **Web 单一合并入口** `mergeSessionMessages(sid, batch, source)`，加每会话状态机 `cold → loading → live ⇄ syncing → stale`。所有来源（缓存、ack、推送、发送 ack、relay committed、翻页、REST 兜底）都只走这一个入口。
 5. **工作量**：约 9–13 个 agent 工作日，可两条线并行，日历时间约 1.5–2 周（依据见 §11）。分 6 个 PR，每个都可以单独回滚。除可选的 PR-7 外，**全程不发 CLI**。
 
@@ -605,7 +605,7 @@ server 与 Web 同镜像（铁律 5），所以 PR-5a（server）合入后，先
 | 继续用 REST，只加 head 探针（`GET /v1/sessions/:id` 的 seq） | 否 | 仍然受 R1（HTTP 连接池死连接）影响；需要 2 个请求，不是原子的 |
 | 账号级 seq 全局游标（Discord 式） | 否 | DESIGN-REVIEW §5.4 |
 | 缓存解密后的明文 | 否 | 体积和安全都更差；解密 300 条只需要几十毫秒，不值得 |
-| 缓存 DEK（r0 推荐） | 否（r2） | 安全：IDB 只留密文；收益小：实测冷启动瓶颈在应用启动和渲染，只省约 1 个 RTT（§5.4） |
+| 缓存 DEK（r0 推荐） | 否（r2）→ **已推翻**（B-824，Owner 2026-10-26） | r2 理由：安全上 IDB 只留密文；收益小，只省约 1 个 RTT（§5.4）。B-816 用生产构建复测后推翻：大账号列表约 1.8MB，回访必须等它；离线刷新永远进不了会话。现在缓存列表原样行与 wrapped DEK，缓解与理由见 [会话列表快照 spec](2026-10-session-list-snapshot-and-slim.md) §3.3、§6 |
 | 用 `idb-keyval` | 否 | 只有单 store，没有范围查询和索引 |
 | outbox 进 localStorage | 否 | 同步 API 会阻塞主线程；约 5MB 配额；无法和消息缓存放在同一个事务里 |
 
@@ -806,7 +806,7 @@ UI 部分（状态条）沿用 PR-2 已经通过的 device-shots 和 design lint
 
 | # | 取舍 | 决定 | 落点 |
 |---|---|---|---|
-| 1 | 本机是否保存聊天记录 | 保存最近看过的 30 个会话、每会话最近 300 条，退出登录全部清除（r2 起只存密文、不缓存 DEK，离线不可读） | §5.4、§5.4.1 |
+| 1 | 本机是否保存聊天记录 | 保存最近看过的 30 个会话、每会话最近 300 条，退出登录全部清除（r2 起只存密文、不缓存 DEK，离线不可读；**2026-10-26 Owner 改为缓存会话列表与 wrapped DEK、离线可翻看**，401/已下线清空、30 天未同步作废，见 [会话列表快照 spec](2026-10-session-list-snapshot-and-slim.md)） | §5.4、§5.4.1 |
 | 2 | 刷新/关页后未发出的消息是否自动补发 | 10 分钟内自动补发（localId 幂等）；更早的显示「未发送 · 重发 / 丢弃」 | §5.5.3 |
 | 3 | 离开很久（> 500 条新消息） | 直接显示最新页，向上翻页加载更早内容 | §4.3 |
 | 4 | 上线方式 | 先只对 Owner 账号灰度 2–3 天，再全量；服务端开关可一键回到 legacy | §6.1、§8 |
