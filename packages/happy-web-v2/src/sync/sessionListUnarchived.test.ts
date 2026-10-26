@@ -49,12 +49,18 @@ describe('sync.ts wiring', () => {
         expect(body).toContain("if (!this.credentials || this.unarchivedSessionsList.settled) return;");
         expect(body).toContain("sessionListRequest(getServerUrl(), token, 'unarchived')");
         expect(body).toContain('this.applySessions(preserveSessionBatchActivityFromStore(decoded, storage.getState().sessions));');
+        expect(body).toContain('const fresh = rowsToDecode(rows, storage.getState().sessions);\n        const decoded = await decodeSessionRows(this.encryption, fresh);');
         expect(body).toContain('this.unarchivedSessionsList.resolve();');
+        // The response is "in" before any row is decoded: that is what ready waits for.
+        expect(body.indexOf('this.unarchivedSessionsArrived.resolve();')).toBeGreaterThan(0);
+        expect(body.indexOf('this.unarchivedSessionsArrived.resolve();')).toBeLessThan(body.indexOf('const decoded = await decodeSessionRows('));
     });
 
-    it('ready waits for it, bounded, after the first list', () => {
-        expect(src).toContain('.then(() => settleWithin(unarchivedListLoaded, UNARCHIVED_READY_WAIT_MS)).then(() => {\n            storage.getState().applyReady();');
+    it('ready waits for its response to arrive (not for its rows to be applied), bounded, after the first list', () => {
+        expect(src).toContain('.then(() => settleWithin(unarchivedListArrived, UNARCHIVED_READY_WAIT_MS)).then(() => settleWithin(unarchivedListLoaded, UNARCHIVED_APPLY_WAIT_MS)).then(() => {\n            storage.getState().applyReady();');
+        expect(src).toContain('const UNARCHIVED_APPLY_WAIT_MS = 300;');
+        expect(src).toContain('const unarchivedListArrived = this.unarchivedSessionsArrived.promise;');
         expect(src).toContain('const UNARCHIVED_READY_WAIT_MS = 2_000;');
-        expect(src).toContain('this.unarchivedSessionsList = deferredSignal();\n        const firstListLoaded');
+        expect(src).toContain('this.unarchivedSessionsArrived = deferredSignal();\n        const firstListLoaded');
     });
 });

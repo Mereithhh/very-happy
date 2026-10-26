@@ -32,13 +32,13 @@
  *              61 → 21 → 31; the server listed only the 150 newest rows).
  * Exit code 1 on any failed check.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { extname, join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { request as httpRequest } from 'node:http';
+import { createServer as createHttpServer, request as httpRequest } from 'node:http';
 import { createServer as createTcpServer, connect as tcpConnect } from 'node:net';
 import { chromium } from 'playwright-core';
 
@@ -73,6 +73,11 @@ const FAT_PAD = DIST === 'none' ? 0 : 8_600; // plaintext chars → ~12KB base64
 const WEAK_DOWN_BPS = 200_000;
 const WEAK_RTT_MS = 150;
 const WEAK_LIMIT_MS = 15_000;
+const FILL_LIMIT_MS = 2_000;
+const COLD_RUNS = Number(opt('cold-runs', '3'));
+// --dist <dir>: serve a production build (vite build) on --base's port, with the API and
+// socket proxied to the server — dev-mode React (and its module graph) is not what a phone runs.
+const DIST_DIR = opt('dist', null);
 const WEAK_PROXY_PORT = Number(opt('weak-proxy-port', String(Number(new URL(opt('base', 'http://127.0.0.1:8799')).port) + 2))); // B-818 FAT_LIMIT_MS: the list is ready ≤ 15s
 if (OUT) mkdirSync(OUT, { recursive: true });
 if (!DATA_DIR) {
@@ -134,6 +139,38 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * last request line): the app's modules come from the SW cache in production,
  * and Vite dev would add an RTT per source module.
  */
+/** --dist: the build on BASE's port; /v1 /v2 /v3 /health /socket.io (and its upgrade) go to the server. */
+const distServer = (() => {
+    if (!DIST_DIR) return { listen: async () => {}, close: async () => {} };
+    const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json', '.wasm': 'application/wasm' };
+    const api = /^\/(v\d+|health|socket\.io)(\/|\?|$)/;
+    const server = createHttpServer((req, res) => {
+        if (api.test(req.url)) {
+            const up = httpRequest({ host: '127.0.0.1', port: PORT, path: req.url, method: req.method, headers: req.headers }, (r) => { res.writeHead(r.statusCode, r.headers); r.pipe(res); });
+            up.on('error', () => { res.writeHead(502); res.end(); });
+            req.pipe(up);
+            return;
+        }
+        const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+        let file = join(DIST_DIR, path);
+        if (!file.startsWith(DIST_DIR) || !existsSync(file) || statSync(file).isDirectory()) file = join(DIST_DIR, 'index.html');
+        res.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream', 'Cache-Control': file.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache' });
+        res.end(readFileSync(file));
+    });
+    server.on('upgrade', (req, socket, head) => {
+        const up = tcpConnect(Number(PORT), '127.0.0.1', () => {
+            up.write(`${req.method} ${req.url} HTTP/1.1\r\n${Object.entries(req.headers).map(([k, v]) => `${k}: ${v}`).join('\r\n')}\r\n\r\n`);
+            if (head?.length) up.write(head);
+            up.pipe(socket); socket.pipe(up);
+        });
+        up.on('error', () => socket.destroy()); socket.on('error', () => up.destroy());
+    });
+    return {
+        listen: () => new Promise((r) => server.listen(Number(new URL(BASE).port), '127.0.0.1', r)),
+        close: () => new Promise((r) => { server.closeAllConnections?.(); server.close(() => r()); }),
+    };
+})();
+
 const weakProxy = (() => {
     let on = false;
     let linkFreeAt = 0;
@@ -345,6 +382,7 @@ try {
         await pg.close();
     }
     await startServer();
+    await distServer.listen();
     await weakProxy.listen();
     let expected;
     let bearer;
@@ -450,61 +488,65 @@ try {
         console.log(`    /v1/sessions ${encoding}: ${(bytes / 1e6).toFixed(2)}MB${rows !== null ? `, ${rows} rows` : ''} (${Date.now() - t}ms locally)`);
     }
 
-    // A returning visit in a fresh context (same account): fast link, then slow 4G.
-    // Slow 4G = every REST response held for RTT + its br size / WEAK_DOWN_BPS
-    // (B-818's link; per response, not shared; the socket and the app's modules
-    // are not throttled — production boots its modules from the SW cache).
+    // A returning visit in a fresh context (same account): a working link, then slow 4G.
+    // Measured from the DOM only (works on a production build, --dist): `shown` = the
+    // first frame with sidebar rows (the list renders only once the data is ready),
+    // `whole` = the first frame with every unarchived session, both from navigation
+    // start. COLD_RUNS each; the median is what the checks use (a loaded machine).
+    const median = (xs) => { const v = xs.filter((x) => x !== null).sort((a, b) => a - b); return v.length === xs.length ? v[Math.floor((v.length - 1) / 2)] : null; };
     for (const link of ['fast', 'slow4g']) {
-        step(`COLD ${link} (${DEVICE}): a fresh tab of the same account`);
-        const ctx = await browser.newContext(ctxOpts);
-        await ctx.addInitScript((a) => { try { if (!sessionStorage.getItem('sbm-seeded')) { sessionStorage.setItem('sbm-seeded', '1'); localStorage.setItem('auth_credentials', a); localStorage.setItem('vh-pwa-install-never-v1', '1'); } } catch { /* ignore */ } }, auth);
-        await ctx.addInitScript(SAMPLER);
-        const p = await ctx.newPage();
-        // Warm the dev server's module graph unthrottled.
-        await p.goto(`${BASE}/`);
-        await p.waitForFunction(() => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().isDataReady === true), null, { timeout: 120_000, polling: 200 });
-        if (DEVICE === 'phone') await (await ctx.newCDPSession(p)).send('Emulation.setCPUThrottlingRate', { rate: 4 });
-        // slow4g: the same reload, through the throttling proxy (its own origin, so its own storage).
-        const origin = link === 'slow4g' ? `http://127.0.0.1:${WEAK_PROXY_PORT}` : BASE;
-        if (link === 'slow4g') {
+        const runs = [];
+        for (let run = 1; run <= COLD_RUNS; run++) {
+            step(`COLD ${link} #${run} (${DEVICE}${DIST_DIR ? ', production build' : ''}): a fresh tab of the same account`);
+            const ctx = await browser.newContext(ctxOpts);
+            await ctx.addInitScript((a) => { try { if (!sessionStorage.getItem('sbm-seeded')) { sessionStorage.setItem('sbm-seeded', '1'); localStorage.setItem('auth_credentials', a); localStorage.setItem('vh-pwa-install-never-v1', '1'); } } catch { /* ignore */ } }, auth);
+            if (DIST_DIR) await ctx.addInitScript(() => { window.__HAPPY_CONFIG__ = { serverUrl: 'same-origin' }; });
+            await ctx.addInitScript(SAMPLER);
+            const p = await ctx.newPage();
+            // slow4g: through the throttling proxy (its own origin, so its own storage).
+            const origin = link === 'slow4g' ? `http://127.0.0.1:${WEAK_PROXY_PORT}` : BASE;
+            // Warm the HTTP cache / module graph unthrottled (production boots from the SW cache).
             await p.goto(`${origin}/`);
-            await p.waitForFunction(() => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().isDataReady === true), null, { timeout: 180_000, polling: 200 });
-            weakProxy.throttle(true);
+            await p.waitForFunction(() => (window.__sbCount?.() ?? 0) > 0, null, { timeout: 180_000, polling: 200 });
+            if (DEVICE === 'phone') await (await ctx.newCDPSession(p)).send('Emulation.setCPUThrottlingRate', { rate: 4 });
+            if (link === 'slow4g') weakProxy.throttle(true);
+            const lists = [];
+            const t0 = Date.now();
+            p.on('request', (r) => { if (/\/v1\/sessions(\?|$)/.test(r.url()) && r.method() === 'GET') lists.push({ r, url: r.url().replace(/^.*\/v1/, '/v1'), at: Date.now() - t0, outcome: 'pending' }); });
+            p.on('requestfinished', async (r) => { const x = lists.find((l) => l.r === r); if (!x) return; x.done = Date.now() - t0; x.outcome = 'ok'; x.bytes = (await r.sizes().catch(() => null))?.responseBodySize ?? null; });
+            p.on('requestfailed', (r) => { const x = lists.find((l) => l.r === r); if (x) { x.done = Date.now() - t0; x.outcome = r.failure()?.errorText ?? 'failed'; } });
+            await p.reload({ waitUntil: 'commit' });
+            while (Date.now() - t0 < 75_000) {
+                const n = await p.evaluate(() => window.__sbCount?.() ?? 0).catch(() => 0);
+                if (n >= expected) break;
+                await sleep(100);
+            }
+            await sleep(500);
+            const { samples: s, origin0 } = await p.evaluate(() => ({ samples: window.__sbSamples ?? [], origin0: Math.round(performance.timeOrigin) }));
+            weakProxy.throttle(false);
+            if (OUT) await p.screenshot({ path: join(OUT, `cold-${link}-${run}.png`) }).catch(() => {});
+            await ctx.close();
+            const shownAt = s.find(([, n]) => n > 0);
+            const wholeAt = s.find(([, n]) => n >= expected);
+            const r = { shown: shownAt ? shownAt[0] - origin0 : null, firstShown: shownAt?.[1] ?? null, whole: wholeAt ? wholeAt[0] - origin0 : null, samples: s };
+            runs.push(r);
+            console.log(`    ${link} #${run}: rows shown +${r.shown ?? '—'}ms (${r.firstShown}), whole (${expected}) +${r.whole ?? '—'}ms; ${timeline(s.map(([t, n]) => [t - origin0, n]))}; GETs ${lists.map((x) => `${x.url} +${x.at}→${x.done ?? '…'}ms ${x.outcome}${x.bytes ? ` ${(x.bytes / 1e6).toFixed(2)}MB` : ''}`).join(' | ')}`);
+            let prevN = 0;
+            const dropAt = s.find(([, n]) => { const d = n < prevN; prevN = n; return d && n > 0; });
+            check(!dropAt, `COLD ${link} #${run}: the count never drops`, timeline(s.map(([t, n]) => [t - origin0, n])));
         }
-        const lists = [];
-        p.on('request', (r) => { if (/\/v1\/sessions(\?|$)/.test(r.url()) && r.method() === 'GET') lists.push({ r, url: r.url().replace(/^.*\/v1/, '/v1'), at: Date.now() - t0, outcome: 'pending' }); });
-        p.on('requestfinished', async (r) => { const x = lists.find((l) => l.r === r); if (!x) return; x.done = Date.now() - t0; x.outcome = 'ok'; x.bytes = (await r.sizes().catch(() => null))?.responseBodySize ?? null; });
-        p.on('requestfailed', (r) => { const x = lists.find((l) => l.r === r); if (x) { x.done = Date.now() - t0; x.outcome = r.failure()?.errorText ?? 'failed'; } });
-        const t0 = Date.now();
-        await p.reload({ waitUntil: 'commit' });
-        let ready = null;
-        let whole = null;
-        while (Date.now() - t0 < 75_000) {
-            const st = await p.evaluate(() => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().isDataReady === true)).catch(() => false);
-            if (st && ready === null) ready = Date.now() - t0;
-            const n = await p.evaluate(() => window.__sbCount?.() ?? 0).catch(() => 0);
-            if (n >= expected) { whole = Date.now() - t0; break; }
-            await sleep(100);
-        }
-        if (OUT) await p.screenshot({ path: join(OUT, `cold-${link}.png`) }).catch(() => {});
-        console.log(`    ${link} state:`, JSON.stringify(await p.evaluate(() => import('/src/sync/storage.ts').then(({ storage }) => { const st = storage.getState(); return { url: location.href, ready: st.isDataReady, socket: st.socketStatus, sessions: Object.keys(st.sessions).length, unarchived: Object.values(st.sessions).filter((x) => x.archivedAt == null).length, live: Object.values(st.sessions).filter((x) => x.active).length }; })).catch((e) => String(e))));
-        console.log(`    ${link} list GETs: ${lists.map((x) => `${x.url} +${x.at}→${x.done ?? '…'}ms ${x.outcome}${x.bytes ? ` ${(x.bytes / 1e6).toFixed(2)}MB` : ''}`).join(' | ')}`);
-        const s = await p.evaluate(() => window.__sbSamples ?? []);
-        const firstShown = s.find(([, n]) => n > 0)?.[1] ?? null;
-        console.log(`    ${link}: list ready +${ready ?? '—'}ms, sidebar whole (${expected}) +${whole ?? '—'}ms, first list shown ${firstShown}; ${timeline(s)}`);
-        allResults.push({ name: `COLD-${link}`, ready, whole, firstShown, samples: s, weight });
-        // A working link: the first list shown is the whole list. Slow 4G (B-818): the
-        // page gets in ≤ WEAK_LIMIT_MS on the first list, and the rest only adds rows.
-        if (link === 'fast') check(firstShown === expected, `COLD fast: the first list shown is the whole list (no 先少后多)`, `first ${firstShown}, expected ${expected}`);
+        const shown = median(runs.map((r) => r.shown));
+        const whole = median(runs.map((r) => r.whole));
+        console.log(`    ${link} median of ${COLD_RUNS}: rows shown +${shown ?? '—'}ms, whole +${whole ?? '—'}ms`);
+        allResults.push({ name: `COLD-${link}`, shown, whole, runs, weight });
+        // Lead 10-27: on a working link the rest may land just after the first rows
+        // (decoded in idle batches), but the sidebar is whole ≤ FILL_LIMIT_MS after them.
+        // Slow 4G (B-818): in ≤ WEAK_LIMIT_MS on the first list; the rest only adds rows.
+        if (link === 'fast') check(whole !== null && shown !== null && whole - shown <= FILL_LIMIT_MS, `COLD fast: the sidebar is whole ≤ ${FILL_LIMIT_MS}ms after its first rows (median)`, `whole ${whole === null || shown === null ? '—' : `+${whole - shown}`}ms after them`);
         else {
-            check(ready !== null && ready <= WEAK_LIMIT_MS, `COLD slow4g: a big account still gets in — list ready ≤ ${WEAK_LIMIT_MS}ms`, `${ready ?? '—'}ms`);
+            check(shown !== null && shown <= WEAK_LIMIT_MS, `COLD slow4g: a big account still gets in — rows shown ≤ ${WEAK_LIMIT_MS}ms (median)`, `${shown ?? '—'}ms`);
             check(whole !== null, 'COLD slow4g: the sidebar ends whole', `${whole ?? '—'}ms`);
         }
-        let prevN = 0;
-        const dropAt = s.find(([, n]) => { const d = n < prevN && n >= 0; prevN = n; return d && n > 0; });
-        check(!dropAt, `COLD ${link}: the count never drops`, timeline(s));
-        weakProxy.throttle(false);
-        await ctx.close();
     }
 
     if (OUT) writeFileSync(join(OUT, `samples-${DEVICE}-${MODE}.json`), JSON.stringify({ device: DEVICE, mode: MODE, results: allResults }, null, 1));
@@ -515,6 +557,7 @@ try {
     await browser.close();
     await stopServer();
     await weakProxy.close();
+    await distServer.close();
 }
 console.log(failures === 0 ? 'PASS' : `FAIL (${failures})`);
 process.exit(failures === 0 ? 0 : 1);

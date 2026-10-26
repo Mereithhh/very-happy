@@ -93,6 +93,7 @@ import { resolveMessageModeMeta, type MessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { preserveSessionBatchActivityFromStore } from './sessionSnapshot';
 import { decodeSessionRows, type EncryptedSessionRow } from './sessionDecode';
+import { rowsToDecode } from './unarchivedApply';
 import { adoptSessionListPrefetch, sessionListRequest, takeSessionListPrefetch, type SessionListResponse } from './sessionListPrefetch';
 import { catchUpSessionList, DELTA_PAGE_LIMIT, mergeSessionListSnapshot, parseServedAt, sessionListSnapshot, type SessionListSnapshot } from './sessionListDelta';
 import { applyNewSessionUpdate } from './newSessionUpdate';
@@ -207,13 +208,17 @@ const OUTBOX_RECLAIM_INTERVAL_MS = 15_000;
 /** B-814: adopting rows waits this long for the session's latest page (a stored copy confirms them). */
 const OUTBOX_ADOPT_PAGE_WAIT_MS = 10_000;
 /**
- * Owner 10-27: ready waits this long after the first list for the
- * `scope=unarchived` read (fetchUnarchivedSessions) — on a working link the
- * sidebar's first list is then the whole list, not the 150-row window that
- * fills in afterwards (先少后多). On slow 4G a big account's read takes longer
- * and the page gets in on the window first (B-818), the rest merging in.
+ * Owner 10-27: after the first list, ready waits up to UNARCHIVED_READY_WAIT_MS
+ * for the `scope=unarchived` response to arrive, then up to
+ * UNARCHIVED_APPLY_WAIT_MS for its rows to be decoded and merged
+ * (fetchUnarchivedSessions). A desktop does both inside the budget, so its
+ * first sidebar is the whole list; a phone (the Owner's ~380 rows are ~1.5s of
+ * decode + render there) gets in on the window at about the old time and the
+ * rest lands in one merge right after — never a drop. On slow 4G a big
+ * account's read takes longer and the page gets in on the window first (B-818).
  */
 const UNARCHIVED_READY_WAIT_MS = 2_000;
+const UNARCHIVED_APPLY_WAIT_MS = 300;
 
 /** Resolves when `promise` settles or after `ms`, whichever is first; never rejects. */
 function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
@@ -280,6 +285,8 @@ class Sync {
     private firstSessionsList = deferredSignal();
     /** Owner 10-27: settles when this load's `scope=unarchived` read has been applied (re-armed per #init). */
     private unarchivedSessionsList = deferredSignal();
+    /** Owner 10-27: settles when that read's response is in, before its rows are applied — what ready waits for. */
+    private unarchivedSessionsArrived = deferredSignal();
     private unarchivedSessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
     private sendSync = new Map<string, InvalidateSync>();
@@ -618,7 +625,9 @@ class Sync {
         // catchUpSessionsSinceList), and entering must not wait for that.
         this.firstSessionsList = deferredSignal();
         this.unarchivedSessionsList = deferredSignal();
+        this.unarchivedSessionsArrived = deferredSignal();
         const firstListLoaded = this.firstSessionsList.promise;
+        const unarchivedListArrived = this.unarchivedSessionsArrived.promise;
         const unarchivedListLoaded = this.unarchivedSessionsList.promise;
 
         // Invalidate sync
@@ -639,7 +648,7 @@ class Sync {
         // Mark UI ready as soon as sessions load. Machines sync may hang
         // when encryption keys are unavailable (e.g. V1 auth fallback) —
         // let it resolve in the background instead of blocking the UI.
-        Promise.race([firstListLoaded, this.sessionsSync.awaitQueue()]).then(() => settleWithin(unarchivedListLoaded, UNARCHIVED_READY_WAIT_MS)).then(() => {
+        Promise.race([firstListLoaded, this.sessionsSync.awaitQueue()]).then(() => settleWithin(unarchivedListArrived, UNARCHIVED_READY_WAIT_MS)).then(() => settleWithin(unarchivedListLoaded, UNARCHIVED_APPLY_WAIT_MS)).then(() => {
             storage.getState().applyReady();
         }).catch((error) => {
             console.error('Failed to load sessions:', error);
@@ -1967,10 +1976,15 @@ class Sync {
         });
         if (!this.credentials || this.credentials.token !== token) return;
         const rows = data.sessions ?? [];
-        const decoded = await decodeSessionRows(this.encryption, rows);
-        this.applySessions(preserveSessionBatchActivityFromStore(decoded, storage.getState().sessions));
+        this.unarchivedSessionsArrived.resolve();
+        // Rows the first list already brought at the same versions are not decoded again.
+        // One merge, not batches: every store write re-renders the whole sidebar.
+        const fresh = rowsToDecode(rows, storage.getState().sessions);
+        const decoded = await decodeSessionRows(this.encryption, fresh);
+        if (!this.credentials || this.credentials.token !== token) return;
+        if (decoded.length > 0) this.applySessions(preserveSessionBatchActivityFromStore(decoded, storage.getState().sessions));
         if (this.sessionListSnapshot) this.sessionListSnapshot = mergeSessionListSnapshot(this.sessionListSnapshot, rows);
-        log.log(`📥 unarchived sessions: ${decoded.length} rows`);
+        log.log(`📥 unarchived sessions: ${rows.length} rows, ${fresh.length} applied`);
         this.unarchivedSessionsList.resolve();
     }
 
