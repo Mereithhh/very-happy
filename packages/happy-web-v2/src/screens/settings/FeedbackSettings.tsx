@@ -62,7 +62,9 @@ function FeedbackRow({ item, onToggleRead }: { item: FeedbackAdminItem; onToggle
     const { t, lang } = useTranslation();
     const [busy, setBusy] = useState(false);
     const [open, setOpen] = useState(false);
-    const who = [item.account.displayName, item.account.email ?? (item.account.username ? `@${item.account.username}` : null)].filter(Boolean).join(' · ');
+    // Name plus whatever tells two people apart: email, else the @handle when it is not already the name.
+    const handle = item.account.username && item.account.username !== item.account.displayName ? `@${item.account.username}` : null;
+    const who = [item.account.displayName, item.account.email ?? handle].filter(Boolean).join(' · ');
     return (
         <article className="fb-inbox-row" data-read={item.readAt !== null} data-rating={item.rating}>
             <header className="fb-inbox-head">

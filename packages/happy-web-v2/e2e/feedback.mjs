@@ -101,6 +101,8 @@ async function newContext(device, credentials = null) {
     await context.addInitScript((creds) => {
         try {
             localStorage.setItem('vh-pwa-install-never-v1', '1');
+            // The onboarding cards own the prompt's corner and it waits for them (unit-tested); keep them out of the way.
+            localStorage.setItem('vh-notif-optin-dismissed-v1', '1');
             if (creds && !localStorage.getItem('auth_credentials')) localStorage.setItem('auth_credentials', creds);
         } catch { /* ignore */ }
     }, credentials);
@@ -147,7 +149,28 @@ async function boot(page, path = '/') {
     for (const name of ['知道了', '暂不']) {
         for (const b of await page.getByRole('button', { name, exact: true }).all()) await b.click({ timeout: 1_000 }).catch(() => {});
     }
+    // A fresh password account gets the sign-in methods card in the prompt's corner; the prompt waits for it (by design).
+    await page.locator('.signin-nudge__close').click({ timeout: 3_000 }).catch(() => {});
 }
+
+/** One session, so the phone's root is the session list (with the chip row), not the first-run page. */
+async function createSession(page) {
+    await page.waitForFunction(() => import('/src/sync/sync.ts').then(({ sync }) => !!sync.encryption), null, { timeout: 30_000, polling: 300 });
+    return page.evaluate(async () => {
+        const { sync } = await import('/src/sync/sync.ts');
+        const { apiSocket } = await import('/src/sync/apiSocket.ts');
+        const { encodeBase64 } = await import('/src/encryption/base64.ts');
+        const enc = await sync.encryption.openEncryption(null);
+        const [metadata] = await enc.encrypt([{ path: '/tmp/b836-e2e', host: 'e2e', flavor: 'claude' }]);
+        const res = await apiSocket.request('/v1/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag: crypto.randomUUID(), metadata: encodeBase64(metadata, 'base64'), agentState: null, dataEncryptionKey: null }),
+        });
+        return (await res.json()).session.id;
+    });
+}
+const sortedJson = (value) => JSON.stringify(value, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v));
 
 const settings = (page) => page.evaluate(() => import('/src/sync/storage.ts').then(({ storage }) => {
     const s = storage.getState().settings;
@@ -178,6 +201,8 @@ try {
     await startServer({ VH_FEEDBACK_ADMIN_ACCOUNT_IDS: admin.id, MAX_FEEDBACK_PER_ACCOUNT_PER_HOUR: '3' });
 
     step('1. entries (phone)');
+    await boot(userPage, '/');
+    await createSession(userPage);
     await boot(userPage, '/help');
     await tap(userPage, userPage.locator('[data-action="feedback"]'));
     await userPage.waitForURL(/\/settings\/feedback$/, { timeout: 10_000 });
@@ -214,13 +239,24 @@ try {
     await userPage.getByText('已发送，谢谢反馈').waitFor({ timeout: 10_000 }).then(() => check(true, 'sent toast'), () => check(false, 'sent toast'));
     let rows = (await adminList(admin.token)).items;
     check(rows[0]?.text === 'E2E: 手机上切回会话时最新消息要等几秒' && rows[0]?.rating === 'bad', 'server stored the form row');
-    check(JSON.stringify(rows[0]?.diagnostics) === JSON.stringify(shown), 'stored diagnostics equal what the form showed');
+    check(sortedJson(rows[0]?.diagnostics) === sortedJson(shown), 'stored diagnostics equal what the form showed');
 
     step('3. prompt card (phone): due → one tap → details');
     await applySettings(userPage, { feedbackActiveDays: 5, feedbackPromptShownAt: null, feedbackLastSubmittedAt: null, feedbackPromptOptOut: false });
     await boot(userPage, '/');
     const card = userPage.locator('.fb-prompt');
-    await card.waitFor({ timeout: PROMPT_WAIT_MS }).then(() => check(true, 'prompt card appears once due'), () => check(false, 'prompt card appears once due'));
+    await card.waitFor({ timeout: PROMPT_WAIT_MS }).then(() => check(true, 'prompt card appears once due'), async () => {
+        const why = await userPage.evaluate(async () => ({
+            corner: [...document.querySelectorAll('.pwa-install, .notif-optin, .signin-nudge, .cli-update, .mrb')].map((e) => e.className),
+            pending: (await import('/src/app/changelogReadStore.ts')).changelogReadState(),
+            deepLink: (await import('/src/app/entryKind.ts')).enteredByDeepLink(),
+            holder: (await import('/src/app/overlayQueue.ts')).currentOverlay(),
+            path: location.pathname,
+        }));
+        console.log('  prompt debug:', JSON.stringify(why), JSON.stringify(await settings(userPage)));
+        await shot(userPage, '3-phone-no-prompt');
+        check(false, 'prompt card appears once due');
+    });
     await shot(userPage, '3-phone-prompt');
     check(typeof (await settings(userPage)).shownAt === 'number', 'showing recorded in synced settings');
     await tap(userPage, card.locator('.fb-rating-btn[data-rating="good"]'));
@@ -264,7 +300,7 @@ try {
     await entry.click();
     await adminPage.locator('.fb-inbox-row').first().waitFor({ timeout: 15_000 });
     const who = await adminPage.locator('.fb-inbox-row .fb-inbox-who').first().textContent();
-    check(who.includes(user.username), 'rows name the sender, not a bare id', who);
+    check(who.includes(user.username) && !who.includes('@'), 'rows name the sender, not a bare id', who);
     await shot(adminPage, '6-desktop-inbox');
     await adminPage.locator('.fb-inbox-row').first().getByRole('button', { name: '标为已读' }).click();
     await adminPage.getByText(/收到的反馈 · 2 条未读/).first().waitFor({ timeout: 10_000 }).then(() => check(true, 'mark read lowers the count'), () => check(false, 'mark read lowers the count'));
