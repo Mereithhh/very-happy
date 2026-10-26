@@ -8,7 +8,6 @@
 export type FeedbackRating = 'good' | 'ok' | 'bad';
 export const FEEDBACK_RATINGS: readonly FeedbackRating[] = ['good', 'ok', 'bad'];
 export const FEEDBACK_TEXT_MAX = 2000;
-export const FEEDBACK_ISSUES_URL = 'https://github.com/Mereithhh/very-happy/issues/new';
 
 /** First prompt after this many distinct days with the app open. */
 export const FEEDBACK_PROMPT_MIN_ACTIVE_DAYS = 5;

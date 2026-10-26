@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { Github } from 'lucide-react';
 import { Button, useToast } from '@/ui';
+import { EXTERNAL_LINK, NEW_ISSUE_URL } from '@/app/attribution';
 import { useTranslation } from '@/i18n/useTranslation';
 import { sync } from '@/sync/sync';
 import { getServerInfo } from '@/sync/serverConfig';
@@ -8,7 +9,7 @@ import { FeedbackApiError, postFeedback } from '@/sync/apiFeedback';
 import { DiagnosticsPicker } from './DiagnosticsPicker';
 import { RatingButtons } from './RatingButtons';
 import { feedbackLastRoute, useFeedbackDiagnostics } from './feedbackDiagnostics';
-import { FEEDBACK_ISSUES_URL, FEEDBACK_TEXT_MAX, type FeedbackRating } from './feedbackPolicy';
+import { FEEDBACK_TEXT_MAX, type FeedbackRating } from './feedbackPolicy';
 
 export function feedbackErrorMessage(t: ReturnType<typeof useTranslation>['t'], error: unknown): string {
   return error instanceof FeedbackApiError && error.code === 'feedback_rate_limited' ? t('feedback.rateLimited') : t('feedback.failed');
@@ -70,8 +71,8 @@ export function FeedbackForm({ initialRating = null }: { initialRating?: Feedbac
       <DiagnosticsPicker diagnostics={diagnostics} included={includeDiagnostics} onIncludedChange={setIncludeDiagnostics} />
       <div className="fb-actions">
         <Button type="submit" variant="primary" loading={busy} disabled={!rating}>{t('feedback.submit')}</Button>
-        <a className="fb-github" href={FEEDBACK_ISSUES_URL} target="_blank" rel="noreferrer noopener">
-          {t('feedback.github')}<ExternalLink size={12} aria-hidden="true" />
+        <a className="fb-github" href={NEW_ISSUE_URL} {...EXTERNAL_LINK}>
+          <Github size={13} aria-hidden />{t('feedback.github')}
         </a>
       </div>
       <p className="fb-privacy">{t('feedback.privacy', { server })}</p>

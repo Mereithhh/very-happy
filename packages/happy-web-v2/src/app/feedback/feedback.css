@@ -74,8 +74,8 @@
 .fb-diag-json[data-included="false"] { text-decoration: line-through; opacity: .6; }
 
 .fb-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
-.fb-github { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--text-faint); font-size: var(--fs-12); text-decoration: underline; text-underline-offset: 2px; }
-@media (hover: hover) and (pointer: fine) { .fb-github:hover { color: var(--text); } }
+.fb-github { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--text-faint); font-size: var(--fs-12); text-decoration: none; text-underline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .fb-github:hover { color: var(--text); text-decoration: underline; } }
 .fb-privacy { margin: 0; color: var(--text-faint); font-size: var(--fs-12); line-height: 1.5; }
 
 /* ── prompt card: same corner and surface as the notification opt-in card ── */

@@ -4662,7 +4662,7 @@ export const zhHans: TranslationStructure = {
         sent: '已发送，谢谢反馈',
         rateLimited: '提交太频繁了，请稍后再试',
         failed: '发送失败，请重试',
-        github: '也可以在 GitHub 提 issue',
+        github: 'Bug 和建议也可以提到 GitHub Issues',
         privacy: ({ server }: { server: string }) => `只保存在当前服务器（${server}），不会发到别处。`,
         inboxTitle: '收到的反馈',
         inboxEntry: ({ count }: { count: number }) => count > 0 ? `收到的反馈 · ${count} 条未读` : '收到的反馈',

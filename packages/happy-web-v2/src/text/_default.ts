@@ -4827,7 +4827,7 @@ export const en = {
         sent: 'Thanks, feedback sent',
         rateLimited: 'Too many in a short time. Try again later.',
         failed: "Couldn't send. Try again.",
-        github: 'You can also open an issue on GitHub',
+        github: 'Bugs and ideas can also go to GitHub Issues',
         privacy: ({ server }: { server: string }) => `Stored only on this server (${server}); never sent anywhere else.`,
         inboxTitle: 'Feedback received',
         inboxEntry: ({ count }: { count: number }) => count > 0 ? `Feedback received · ${count} unread` : 'Feedback received',

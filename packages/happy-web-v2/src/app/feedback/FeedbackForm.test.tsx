@@ -25,6 +25,7 @@ vi.mock('./feedback.css', () => ({}));
 
 import { FeedbackForm } from './FeedbackForm';
 import { FeedbackApiError } from '@/sync/apiFeedback';
+import { EXTERNAL_LINK, NEW_ISSUE_URL } from '@/app/attribution';
 
 let host: HTMLDivElement; let root: Root;
 beforeEach(() => {
@@ -85,7 +86,10 @@ describe('FeedbackForm (B-836)', () => {
 
     it('links to GitHub issues and names the server the feedback stays on', async () => {
         await act(async () => root.render(<FeedbackForm />));
-        expect(host.querySelector<HTMLAnchorElement>('a.fb-github')!.href).toBe('https://github.com/Mereithhh/very-happy/issues/new');
+        const github = host.querySelector<HTMLAnchorElement>('a.fb-github')!;
+        expect(github.href).toBe(NEW_ISSUE_URL);
+        expect(github.target).toBe(EXTERNAL_LINK.target);
+        expect(github.rel).toBe(EXTERNAL_LINK.rel);
         expect(host.querySelector('.fb-privacy')!.textContent).toBe('feedback.privacy:relay.example');
     });
 });
