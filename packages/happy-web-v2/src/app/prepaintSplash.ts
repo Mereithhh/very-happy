@@ -1,4 +1,5 @@
 import { markProgrammaticReload } from '@/app/programmaticReload';
+import { markFirstScreenShown } from '@/app/afterFirstScreen';
 import {
   decideSplashStall,
   serializeSplashStallGuard,
@@ -17,9 +18,13 @@ export function dismissPrepaintSplash(
   if (new URLSearchParams(search).has('vh-loader-preview')) return false;
 
   const splash = doc.getElementById('vh-splash');
-  if (!splash || splash.dataset.dismissing === 'true') return false;
+  if (!splash || splash.dataset.dismissing === 'true') {
+    markFirstScreenShown();
+    return false;
+  }
 
   splash.dataset.dismissing = 'true';
+  markFirstScreenShown();
   splash.style.opacity = '0';
   schedule(() => splash.remove(), 340);
   return true;

@@ -157,6 +157,20 @@ describe('B-715 release-notes pager', () => {
     expect(title()).toBe('changelog.releases.big1.title');
   });
 
+  it('B-823: deferred past the first screen, it does not open on its own once the person started typing/tapping', async () => {
+    const first = await import('./afterFirstScreen');
+    first.resetAfterFirstScreenForTest(undefined, { interacted: true });
+    try {
+      mount();
+      expect(card()).toBeNull();
+      // Still reachable from the sidebar entry, unread.
+      act(() => button('changelog.entryShort')!.click());
+      expect(title()).toBe('changelog.releases.big1.title');
+    } finally {
+      first.resetAfterFirstScreenForTest();
+    }
+  });
+
   it('the sidebar entry counts unread majors and disappears once they are read', () => {
     entry.setEnteredByDeepLinkForTest(true);
     mount();

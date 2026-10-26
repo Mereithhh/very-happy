@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite';
 import { startupSplash } from './build/startupSplash';
+import { startupPreload } from './build/startupPreload';
+import { createVendorChunks } from './build/vendorChunks';
 import react from '@vitejs/plugin-react';
 import { navigationFallbackDenylist } from './src/app/swNavigation';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -18,6 +20,7 @@ export default defineConfig({
   plugins: [
     react(),
     startupSplash(),
+    startupPreload(),
     VitePWA({
       registerType: 'autoUpdate',
       // main.tsx imports virtual:pwa-register explicitly. The generated
@@ -108,17 +111,21 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // Salt filenames with the app version so a new release always mints fresh
-        // asset URLs — even for content-stable chunks (libsodium). Guards against
-        // a poisoned immutable cache surviving a redeploy.
-        entryFileNames: `assets/[name]-[hash]-${APP_VERSION.replace(/\W/g, '')}.js`,
-        chunkFileNames: `assets/[name]-[hash]-${APP_VERSION.replace(/\W/g, '')}.js`,
-        assetFileNames: `assets/[name]-[hash]-${APP_VERSION.replace(/\W/g, '')}[extname]`,
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          crypto: ['libsodium-wrappers', 'tweetnacl'],
-          xterm: ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links'],
-        },
+        // B-823 (B-816 Q3): content hash only. The version salt (876e71a3)
+        // re-minted every URL on every release, so a deploy cost a full
+        // re-download even of content-stable chunks (libsodium, react, the
+        // languages). It guarded against an immutable cache poisoned by HTML
+        // served for a missing asset during a file swap; that cannot happen
+        // any more: a missing /assets file is a no-store 404 (server
+        // spaFallback.ts), the SW asset cache keeps only 200s, and a release
+        // is one immutable image. A changed module still changes every
+        // importer's hash up to the entry, which the stale-bundle check
+        // (staleBundleReload.ts) compares.
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+        // B-823: libraries in release-stable chunks (build/vendorChunks.ts).
+        manualChunks: createVendorChunks(r('.')),
       },
     },
   },
