@@ -11,6 +11,7 @@ import { Modal } from './ModalManager';
 import { t } from '@/text';
 import type { ModalConfig, ModalContextValue } from './types';
 import { useImeGuard, isImeGuardedEvent } from '@/utils/ime';
+import { useCriticalOverlayActive } from '@/app/overlayQueue';
 import './modal.css';
 
 /**
@@ -39,6 +40,9 @@ function nextId() {
 
 export function ModalProvider({ children }: { children: ReactNode }) {
   const [modals, setModals] = useState<ModalConfig[]>([]);
+  // B-830: while the sign-in expiry dialog is up, alerts / confirms wait
+  // (hidden, still pending) and stop capturing Esc / Enter from it.
+  const deferred = useCriticalOverlayActive();
 
   const showModal = useCallback((config: Omit<ModalConfig, 'id'>) => {
     const id = nextId();
@@ -78,7 +82,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
   //            must never be one stray Enter away from happening. `prompt` owns
   //            its own Enter inside the input, so it is excluded too.
   useEffect(() => {
-    if (modals.length === 0) return;
+    if (modals.length === 0 || deferred) return;
     const top = modals[modals.length - 1];
     const onKeyDown = (e: KeyboardEvent) => {
       if (isImeGuardedEvent(e)) return;
@@ -99,7 +103,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [modals, hideModal]);
+  }, [modals, hideModal, deferred]);
 
   const value = useMemo<ModalContextValue>(
     () => ({ state: { modals }, showModal, hideModal, hideAllModals, dismissTopModal }),
@@ -109,7 +113,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
   return (
     <ModalContext.Provider value={value}>
       {children}
-      {modals.length > 0 && (
+      {modals.length > 0 && !deferred && (
         <div className="vh-modal-layer">
           {modals.map((m) => (
             <ModalCard

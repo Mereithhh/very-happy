@@ -23,6 +23,7 @@ import {
   type PwaInstallGuide,
 } from './pwaInstallPolicy';
 import { setPwaInstallPromptVisible } from './pwaInstallVisibility';
+import { useCriticalOverlayActive } from './overlayQueue';
 import './pwaInstallPrompt.css';
 import './floatingCards.css';
 
@@ -59,6 +60,8 @@ export function PwaInstallPrompt() {
   const { copy: publicCopy } = usePublicI18n();
   const copy = guide ? { ...publicCopy.pwa, body: guide === 'native' ? publicCopy.pwa.nativeBody : publicCopy.pwa.manualBody } : null;
   const appleGuide = guide ? isAppleInstallGuide(guide) : false;
+  // B-830: stand down (not dismissed) while the sign-in expiry dialog is up.
+  const deferred = useCriticalOverlayActive();
 
   useEffect(() => {
     const standaloneQuery = window.matchMedia('(display-mode: standalone)');
@@ -126,7 +129,7 @@ export function PwaInstallPrompt() {
   }, [guide]);
 
   useEffect(() => {
-    if (!guide) return;
+    if (!guide || deferred) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       writeStorage(PWA_INSTALL_SNOOZE_KEY, pwaInstallSnoozeUntil(Date.now()));
@@ -135,9 +138,9 @@ export function PwaInstallPrompt() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [guide]);
+  }, [guide, deferred]);
 
-  if (!guide || !copy) return null;
+  if (!guide || !copy || deferred) return null;
 
   const dismiss = () => {
     setInstallEvent(null);

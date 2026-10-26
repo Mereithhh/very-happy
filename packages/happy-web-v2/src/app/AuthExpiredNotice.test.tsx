@@ -27,11 +27,15 @@ vi.mock('./authExpiredNotice.css', () => ({}));
 
 import { AuthExpiredNotice } from './AuthExpiredNotice';
 import { resetAuthLatch, tripAuthLatch } from '@/auth/authLatch';
+import { OVERLAY_PRIORITY, criticalOverlayActive, requestOverlay, resetOverlayQueueForTest } from './overlayQueue';
 
 let host: HTMLDivElement; let root: Root;
 beforeEach(() => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) { this.removeAttribute('open'); };
     resetAuthLatch();
+    resetOverlayQueueForTest();
     state.unsent = [];
     state.logout.mockClear();
     state.verdicts = ['expired'];
@@ -39,16 +43,19 @@ beforeEach(() => {
     state.confirm.mockImplementation(async () => state.verdicts.shift() ?? 'unknown');
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); resetAuthLatch(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); resetAuthLatch(); resetOverlayQueueForTest(); });
 
 const flush = async () => { for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve(); }); };
-const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent === text);
+// B-830: the dialog is portalled to <body>, outside `host`.
+const dialog = () => document.querySelector<HTMLDialogElement>('dialog.vh-auth-expired');
+const button = (text: string) => [...document.body.querySelectorAll('button')].find((b) => b.textContent === text);
 
 describe('AuthExpiredNotice (B-825)', () => {
     it('renders nothing and signs nobody out while the latch is open', async () => {
         await act(async () => root.render(<AuthExpiredNotice />));
         await flush();
         expect(host.innerHTML).toBe('');
+        expect(dialog()).toBeNull();
         expect(state.logout).not.toHaveBeenCalled();
     });
 
@@ -69,8 +76,8 @@ describe('AuthExpiredNotice (B-825)', () => {
         await act(async () => tripAuthLatch({ status: 401, path: '/v1/kv' }));
         await flush();
         expect(state.logout).not.toHaveBeenCalled();
-        expect(host.textContent).toContain('authExpired.unsentBody:3');
-        const items = [...host.querySelectorAll('[data-testid="auth-expired-unsent"] li')].map((li) => li.textContent);
+        expect(dialog()!.textContent).toContain('authExpired.unsentBody:3');
+        const items = [...dialog()!.querySelectorAll('[data-testid="auth-expired-unsent"] li')].map((li) => li.textContent);
         expect(items).toEqual(['first draft', 'authExpired.unsentNoText', 'second']);
         expect(button('authExpired.copyUnsent')?.getAttribute('data-copy')).toBe('first draft\n\nsecond');
 
@@ -86,8 +93,8 @@ describe('AuthExpiredNotice (B-825)', () => {
         await flush();
         expect(state.confirm).toHaveBeenCalledTimes(1);
         expect(state.logout).not.toHaveBeenCalled();
-        expect(host.querySelector('[data-phase="valid"]')).not.toBeNull();
-        expect(host.textContent).toContain('authExpired.misfireTitle');
+        expect(dialog()?.dataset.phase).toBe('valid');
+        expect(dialog()!.textContent).toContain('authExpired.misfireTitle');
     });
 
     it('no answer (offline / 5xx): nothing wiped; asked again when back online, then signed out', async () => {
@@ -96,10 +103,31 @@ describe('AuthExpiredNotice (B-825)', () => {
         await act(async () => tripAuthLatch({ status: 401, path: '/v1/kv' }));
         await flush();
         expect(state.logout).not.toHaveBeenCalled();
-        expect(host.querySelector('[data-phase="unknown"]')).not.toBeNull();
+        expect(dialog()?.dataset.phase).toBe('unknown');
         await act(async () => window.dispatchEvent(new Event('online')));
         await flush();
         expect(state.confirm).toHaveBeenCalledTimes(2);
         expect(state.logout).toHaveBeenCalledTimes(1);
+    });
+
+    it('B-830: from the moment the latch trips it is the critical overlay, a native modal <dialog> on <body>', async () => {
+        state.verdicts = ['valid'];
+        const notes = requestOverlay('release-notes', OVERLAY_PRIORITY.notice);
+        await act(async () => root.render(<AuthExpiredNotice />));
+        expect(criticalOverlayActive()).toBe(false);
+        await act(async () => tripAuthLatch({ status: 401, path: '/v1/kv' }));
+        expect(criticalOverlayActive()).toBe(true);
+        await flush();
+        expect(dialog()?.parentElement).toBe(document.body);
+        expect(dialog()?.open).toBe(true);
+        expect(dialog()?.getAttribute('role')).toBe('alertdialog');
+        // Esc does not dismiss it.
+        const cancel = new Event('cancel', { cancelable: true });
+        await act(async () => { dialog()!.dispatchEvent(cancel); });
+        expect(cancel.defaultPrevented).toBe(true);
+        await act(async () => root.unmount());
+        expect(criticalOverlayActive()).toBe(false);
+        root = createRoot(host);
+        notes();
     });
 });
