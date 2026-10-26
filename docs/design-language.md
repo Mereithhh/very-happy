@@ -174,16 +174,19 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 
 如果需要绕着某个组件改样式，把 Popover 改得像 Dialog，或者反过来，就该换组件了：两者的焦点语义不同，后来的人会被误导。
 
-### 自己弹出的浮层轮流出现（B-697 / B-830）
+### 自己弹出的浮层轮流出现（B-697 / B-830 / B-831）
 
 Radix 模态层（Dialog、默认的 DropdownMenu / ContextMenu）打开时会做三件事：给 `body` 加 `pointer-events: none`、锁定焦点、把其余节点标成 `aria-hidden`。原生 `showModal()` 会进入 top layer，并把其余部分设为 inert。所以两个模态同时出现时，画在上面的那个可能点不到，z-index 解决不了。
 
 - **规则**：凡是自己弹出、或会挡住整页的浮层，都要通过 `app/overlayQueue.ts` 的 `useOverlayTurn` 排队，同一时间只渲染持有者。
-  - 优先级：`critical`（登录失效 / 确认弹窗 `AuthExpiredNotice`）> `interaction`（用户要求打开的，如 `?task=` 深链的 `TeamDialog`）> `notice`（应用主动弹的，如更新日志）。
-  - 高优先级出现时，低优先级的直接关闭，不记为已读或已关闭；高优先级消失后再回来。`critical` 的消失指刷新或重新登录。同优先级先到先得。
-- **`critical` 期间**：`Modal.*`、安装卡片和通知卡片隐藏让位，不算 dismiss（`useCriticalOverlayActive`）。`Modal.*` 的 promise 保持挂起，也不抢 Esc / Enter。
+  - 优先级：`critical`（登录失效 / 确认弹窗 `AuthExpiredNotice`）> `interaction`（用户要求打开或必须回答的：`?task=` 深链的 `TeamDialog`、`Modal.alert/confirm/prompt`、⌘K 命令面板、会话搜索、⌘P 快速打开、`open_preview` 推送的预览浮层）> `notice`（应用主动弹的，如更新日志）。
+  - 高优先级出现时，低优先级的直接关闭，不记为已读或已关闭；高优先级消失后再回来。`critical` 的消失指刷新或重新登录。
+  - 同优先级后到的先显示（B-831）：从 `TeamDialog` 里弹出的 `Modal.confirm` 叠在上面，`TeamDialog` 暂时收起，回答后再回来。先到先得会让这个 confirm 藏在等它的对话框后面。
+- **非独占的卡片**（安装卡片、通知卡片、登录方式提示，都属 `notice` 级）：只要有高于 `notice` 的浮层持有队列就隐藏让位，不算 dismiss（`useOverlayHeldAbove(OVERLAY_PRIORITY.notice)`）。
+- **`Modal.*` 不持有队列时**（被 `critical` 或更新的 `interaction` 压住）：隐藏，promise 保持挂起，也不抢 Esc / Enter。
 - **`AuthExpiredNotice` 的实现**：用原生 modal `<dialog>`，portal 到 `<body>`，加 `pointer-events: auto`。用户自己打开的菜单或对话框不在队列里，会留在下面并变成 inert，不会抢点击。
-- **新增浮层**：选一个优先级接入队列，不要靠更高的 z-index 盖过别人。回归用 `e2e/auth-dialog-priority.mjs` 跑 desktop + phone。
+- **新增浮层**：选一个优先级接入队列，不要靠更高的 z-index 盖过别人。回归用 `e2e/auth-dialog-priority.mjs` 跑 desktop + phone（N/M/R：登录失效；A/B/C：更新日志 + `Modal.*` / 命令面板）。
+- **仍不在队列里的**：用户点开的 Radix 菜单 / 对话框和行内 `.ns-backdrop` 对话框（更新日志锁页时点不到它们，登录失效弹窗在 top layer 上盖过它们）；横幅、Toast、功能提示等不挡页面的提示。
 
 ### 选择控件（B-714）
 
