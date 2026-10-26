@@ -3,6 +3,7 @@ import { attachSocketDiagnostics } from './utils/socketDiagnostics';
 import { Server, type Socket } from 'socket.io';
 import { AccountTerminalRateLimiter, relayPayloadBytes, resolveRpcRelayLimit, resolveTerminalRelayLimit, rpcRateLimitAck } from './app/api/socket/terminalRateLimit';
 import { verifyRelayToken, type RelayTokenClaims } from './app/relay/relayToken';
+import { HEALTH_ROUTE_OPTIONS } from './app/api/utils/healthRoute';
 
 type RelaySocket = Socket & { data: { relayClaims?: RelayTokenClaims } };
 
@@ -82,14 +83,14 @@ export function relayRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     };
 }
 
-export async function startRelayServer(env: NodeJS.ProcessEnv = process.env) {
+export async function startRelayServer(env: NodeJS.ProcessEnv = process.env, opts: { logStream?: NodeJS.WritableStream } = {}) {
     const config = relayRuntimeConfig(env);
-    const app = fastify({ logger: true });
+    const app = fastify({ logger: opts.logStream ? { stream: opts.logStream } : true });
     await app.register(import('@fastify/cors'), {
         origin: '*',
         methods: ['GET', 'OPTIONS'],
     });
-    app.get('/health', async () => ({ ok: true, relayId: config.relayId, region: config.region, version: config.version }));
+    app.get('/health', HEALTH_ROUTE_OPTIONS, async () => ({ ok: true, relayId: config.relayId, region: config.region, version: config.version }));
 
     const payloadLimit = Number.parseInt(env.SOCKET_MAX_PAYLOAD_BYTES || '', 10);
     const io = new Server(app.server, {

@@ -18,7 +18,7 @@ commits or tags to it and do not use it as a deployment source.
 | Production artifact | Complete `ghcr.io/mereithhh/very-happy-server@sha256:<digest>` image (linux/amd64 only — the host must stay x86), including Web V2 |
 | Database | **RDS PostgreSQL 16** `vh-pg` (db.m7g.large, single-AZ, private subnet, 7-day automated backups, deletion protection), reached through **PgBouncer** (`vh-pgbouncer`, transaction pooling, `127.0.0.1:6432`, logical db `happy`). Runtime uses transaction pooling; Prisma migrations use the separate `happy_migrations` alias with session pooling. Neither connects to RDS directly |
 | Redis | **ElastiCache** `vh-redis` (Redis 7.1, cache.m7g.large since B-484, private subnet, parameter group `vh-redis7` = `default.redis7` + `maxmemory-policy allkeys-lru`), socket.io Redis streams adapter |
-| Host base services | `/opt/happy/docker-compose.yml` runs `vh-pgbouncer` only; release slots in `/opt/happy/release/docker-compose.yml` join the same `happy_default` network |
+| Host base services | `/opt/happy/docker-compose.yml` runs `vh-pgbouncer` only; its source is [`ops/production/docker-compose.base.yml`](../ops/production/docker-compose.base.yml) (installed by every release, never applied by it). Release slots in `/opt/happy/release/docker-compose.yml` join the same `happy_default` network |
 | Daemon | published `very-happy-cli` on `mac-office` / `mac-main` (launchd) and `dev-sg` (Linux dev machine, systemd user unit — [`ops/dev-sg/README.md`](../ops/dev-sg/README.md)) |
 | Singapore relay | `sg-hw`, `https://relay-sg.veryhappy.dev`, Docker + Caddy on `hw-sg` |
 | US relay | `us-fb`, `https://relay-us.veryhappy.dev`, Docker + Caddy on `dmit-la` (Los Angeles). Moved off `fb-us`/k8sus on 2026-09-11 (B-459); the k3s deployment there is scaled to 0 and kept only as a rollback |
@@ -225,6 +225,36 @@ connections with a 5s lock timeout and 60s statement timeout by default
 (`MIGRATION_PGOPTIONS` may be reviewed/overridden); the serving process does not
 inherit those migration-only timeouts.
 
+### Container log rotation (B-827)
+
+Every production container uses the `json-file` driver with `max-size: 50m` and
+`max-file: "5"` (≤250 MB each). Without it Docker keeps one unbounded log:
+`very-happy-relay-us` filled the 20 GB `dmit-la` disk in six weeks (mostly
+`/health`), `happy-server-blue` reached 8.9 GB. `/health` on server and relay
+logs at warn level, so probes no longer write access-log lines.
+
+- [`scripts/ci/check-log-rotation.sh`](../scripts/ci/check-log-rotation.sh)
+  renders each compose file (`config --no-interpolate`) and refuses any service
+  without the driver, `max-size` or `max-file`. It runs in Quality Gates
+  (`test-log-rotation.sh`, with mutation cases), on the runner before each relay
+  and server deploy, and on vh-sg after the deploy lock, for the release compose
+  and the base compose. Exit code 3, before any container is touched.
+- Log options apply only when a container is **recreated**. A server release
+  recreates only the candidate slot, so the first release after B-827 rotates
+  one slot and the next release the other. A relay deploy recreates its relay.
+  Until both slots are recreated, a hand-run `docker compose ... up -d` against
+  the release compose sees a changed config and **recreates the running slot**;
+  use `start`/`stop` for manual slot operations.
+- The release installs `ops/production/docker-compose.base.yml` to
+  `/opt/happy/docker-compose.yml` (previous copy under
+  `/opt/happy/release/base-compose-backups/`) but never runs `up` on it.
+  `vh-pgbouncer` rotates only after a deliberate
+  `docker compose -f /opt/happy/docker-compose.yml up -d vh-pgbouncer`, which
+  drops every pooled connection; schedule it.
+- Check the running state with
+  `docker inspect -f '{{.Name}} {{json .HostConfig.LogConfig}}' $(docker ps -q)`;
+  the release log prints a `note:` for each container still unrotated.
+
 ### Post-deploy browser smoke (B-024)
 
 `.github/workflows/e2e-smoke.yml` runs as the `smoke` job of **Deploy
@@ -369,7 +399,7 @@ exist. Both regions are plain Docker + Caddy hosts with the same layout
 `127.0.0.1:3011` because port 3010 belongs to another service, `dmit-la` uses
 `127.0.0.1:3010`. The deploy removes every other relay image tag on the host
 after the new container is healthy, because each image is ~1.5 GB and the
-hosts have 20 GB disks. Post-deploy
+disks are small (`dmit-la` 20 GB, `hw-sg` 40 GB shared with other services). Post-deploy
 health checks require both the configured relay id and the exact commit SHA in
 `version`; a healthy old pod is not accepted as a successful rollout.
 

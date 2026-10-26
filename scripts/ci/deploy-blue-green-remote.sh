@@ -12,6 +12,7 @@ STATE_FILE="$RELEASE_DIR/state.env"
 SLOT_ENV="$RELEASE_DIR/slots.env"
 RELEASE_COMPOSE="$RELEASE_DIR/docker-compose.yml"
 LEGACY_OVERRIDE="$RELEASE_DIR/legacy-release.override.yml"
+BASE_COMPOSE=/opt/happy/docker-compose.yml
 CADDY_FILE=/etc/caddy/Caddyfile
 ACTIVE_INCLUDE="$RELEASE_DIR/active-upstream.caddy"
 PUBLIC_ORIGIN=https://veryhappy.dev
@@ -41,7 +42,7 @@ if [ "$VH_RELEASE_LIBRARY_ONLY" != 1 ]; then
     [[ "$VERSION" =~ ^[0-9a-f]{40}$ ]]
     case "$ROLLOUT" in groundwork|shadow|switch) ;; *) echo "invalid rollout mode: $ROLLOUT" >&2; exit 2 ;; esac
 
-    for command in curl docker caddy systemctl awk sed grep mktemp od sort head df sha256sum wc tr install seq find xargs cut; do
+    for command in curl docker caddy systemctl awk sed grep mktemp od sort head df sha256sum wc tr install seq find xargs cut jq cmp cp date; do
         command -v "$command" >/dev/null 2>&1 || { echo "missing production dependency: $command" >&2; exit 2; }
     done
 fi
@@ -146,6 +147,33 @@ initialize_release_files() {
         od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "$RELEASE_DIR/admin-token"
     fi
     [ "$(wc -c < "$RELEASE_DIR/admin-token" | tr -d ' ')" -ge 64 ]
+}
+
+# B-827: the repo owns the base compose (vh-pgbouncer). Install it without
+# `up`, so the running pooler is untouched; the previous copy is kept so a hand
+# edit on the host can be recovered. The legacy layout still carries its
+# happy-server in that file, so it is left alone there.
+sync_base_compose() {
+    grep -qx 'MODE=bluegreen' "$STATE_FILE" 2>/dev/null || return 0
+    cmp -s "$REPO_ROOT/ops/production/docker-compose.base.yml" "$BASE_COMPOSE" && return 0
+    if [ -f "$BASE_COMPOSE" ]; then
+        install -d -m 700 "$RELEASE_DIR/base-compose-backups"
+        cp -a "$BASE_COMPOSE" "$RELEASE_DIR/base-compose-backups/docker-compose.$(date -u +%Y%m%dT%H%M%SZ).yml"
+    fi
+    install -m 644 "$REPO_ROOT/ops/production/docker-compose.base.yml" "$BASE_COMPOSE"
+    echo "installed $BASE_COMPOSE; vh-pgbouncer picks it up only when recreated" >&2
+}
+
+# B-827: refuse to (re)create containers whose json log is not rotated, and
+# name the running ones that still are not (they rotate once recreated).
+check_log_rotation() {
+    local files=("$RELEASE_COMPOSE") name
+    grep -qx 'MODE=bluegreen' "$STATE_FILE" 2>/dev/null && files+=("$BASE_COMPOSE")
+    bash "$REPO_ROOT/scripts/ci/check-log-rotation.sh" "${files[@]}" >&2 || exit 3
+    for name in happy-server-blue happy-server-green vh-pgbouncer; do
+        docker inspect -f '{{index .HostConfig.LogConfig.Config "max-size"}}' "$name" 2>/dev/null | grep -q . \
+            || echo "note: $name has no rotated log yet (not present or not recreated since B-827)" >&2
+    done
 }
 
 load_state() {
@@ -633,6 +661,8 @@ if [ "$VH_RELEASE_LIBRARY_ONLY" != 1 ]; then
     # while an earlier attempt is still running; a retry must not race it.
     exec 9>"$RELEASE_DIR/deploy.lock"
     flock -n 9 || { echo "another deployment is still running on this host (lock $RELEASE_DIR/deploy.lock); wait for it or kill -TERM the stale deploy-blue-green-remote.sh" >&2; exit 6; }
+    sync_base_compose
+    check_log_rotation
     PHASE=before-switch
 
     case "$ROLLOUT" in
