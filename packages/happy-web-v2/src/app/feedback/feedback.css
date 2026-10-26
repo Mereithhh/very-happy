@@ -146,6 +146,10 @@
 
 /* ── admin inbox (Settings → 发送反馈 → 收到的反馈) ── */
 .fb-inbox { display: flex; flex-direction: column; gap: var(--sp-3); max-width: 720px; }
+.fb-inbox-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); }
+/* Wrap the two groups onto their own lines on a phone instead of shrinking them into ellipses. */
+.fb-inbox-filters > .vh-segmented { flex: none; }
+.fb-inbox-filters > .vh-segmented > button { flex: 1 0 auto; }
 .fb-inbox-empty { margin: 0; color: var(--text-faint); font-size: var(--fs-13); }
 .fb-inbox-row {
   display: flex;

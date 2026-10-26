@@ -14,6 +14,7 @@ import { ItemList, ItemGroup, Item, Button, Segmented } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { FeedbackForm } from '@/app/feedback/FeedbackForm';
 import { fetchFeedbackAdminAccess, listFeedback, markFeedbackRead, type FeedbackAdminItem } from '@/sync/apiFeedback';
+import type { FeedbackRating } from '@/app/feedback/feedbackPolicy';
 import '@/app/feedback/feedback.css';
 
 function useFeedbackAdmin(): boolean {
@@ -86,10 +87,16 @@ function FeedbackRow({ item, onToggleRead }: { item: FeedbackAdminItem; onToggle
     );
 }
 
+/** 未读 / 全部 and the rating filter stack: both go to the server in one query (QA16 P2-2). */
+export function feedbackInboxQuery(filter: 'all' | 'unread', rating: FeedbackRating | 'all', cursor: string | null) {
+    return { cursor, unread: filter === 'unread', rating: rating === 'all' ? null : rating };
+}
+
 /** Settings → 发送反馈 → 收到的反馈: admin-only list, newest first. Non-admins get the server's 404. */
 export function FeedbackInbox() {
     const { t } = useTranslation();
     const [filter, setFilter] = useState<'all' | 'unread'>('unread');
+    const [rating, setRating] = useState<FeedbackRating | 'all'>('all');
     const [items, setItems] = useState<FeedbackAdminItem[] | null>(null);
     const [cursor, setCursor] = useState<string | null>(null);
     const [unread, setUnread] = useState(0);
@@ -97,12 +104,12 @@ export function FeedbackInbox() {
     const [loadingMore, setLoadingMore] = useState(false);
 
     const load = useCallback(async (from: string | null) => {
-        const page = await listFeedback({ cursor: from, unread: filter === 'unread' });
+        const page = await listFeedback(feedbackInboxQuery(filter, rating, from));
         setItems((prev) => (from && prev ? [...prev, ...page.items] : page.items));
         setCursor(page.nextCursor);
         setUnread(page.unreadCount);
         setError(false);
-    }, [filter]);
+    }, [filter, rating]);
     useEffect(() => { setItems(null); load(null).catch(() => setError(true)); }, [load]);
 
     const toggleRead = async (item: FeedbackAdminItem) => {
@@ -115,8 +122,12 @@ export function FeedbackInbox() {
         <Page>
             <Header title={t('feedback.inboxTitle')} subtitle={t('feedback.inboxEntry', { count: unread })} />
             <div className="fb-inbox">
-                <Segmented label={t('feedback.inboxTitle')} value={filter} onChange={setFilter}
-                    options={[{ value: 'unread', label: t('feedback.filterUnread') }, { value: 'all', label: t('feedback.filterAll') }]} />
+                <div className="fb-inbox-filters">
+                    <Segmented label={t('feedback.filterReadLabel')} value={filter} onChange={setFilter}
+                        options={[{ value: 'unread', label: t('feedback.filterUnread') }, { value: 'all', label: t('feedback.filterAll') }]} />
+                    <Segmented label={t('feedback.filterRatingLabel')} value={rating} onChange={setRating}
+                        options={[{ value: 'all', label: t('feedback.filterAllRatings') }, ...(['good', 'ok', 'bad'] as const).map((value) => ({ value, label: t(RATING_KEY[value]) }))]} />
+                </div>
                 {error ? <p className="fb-inbox-empty">{t('feedback.loadFailed')}</p>
                     : items === null ? <p className="fb-inbox-empty">{t('common.loading')}</p>
                     : items.length === 0 ? <p className="fb-inbox-empty">{t('feedback.inboxEmpty')}</p>

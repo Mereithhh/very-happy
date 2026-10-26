@@ -14,7 +14,8 @@
  *   3. prompt card (phone): appears once due, one tap submits, details amend the same row
  *   4. cross-device: the user's desktop tab does not ask again (synced shownAt)
  *   5. rate limit: past MAX_FEEDBACK_PER_ACCOUNT_PER_HOUR the form says so
- *   6. admin (desktop): 收到的反馈 lists the rows with the sender's name, mark read
+ *   6. admin (desktop): 收到的反馈 lists the rows with the sender's name, mark read;
+ *      the rating filter stacks with 未读 / 全部, and its segments are ≥44px on a phone (QA16 P2-2)
  *   7. 不再提示 holds after a reload
  * Exit code 1 on any failed check.
  */
@@ -304,6 +305,43 @@ try {
     await shot(adminPage, '6-desktop-inbox');
     await adminPage.locator('.fb-inbox-row').first().getByRole('button', { name: '标为已读' }).click();
     await adminPage.getByText(/收到的反馈 · 2 条未读/).first().waitFor({ timeout: 10_000 }).then(() => check(true, 'mark read lowers the count'), () => check(false, 'mark read lowers the count'));
+
+    step('6b. inbox rating filter × 未读 / 全部');
+    // Rows now: bad (form), good (prompt), ok (third, just marked read).
+    const ratings = async (page) => page.locator('.fb-inbox-row').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-rating')).sort().join(','));
+    const pick = async (page, group, name) => {
+        await tap(page, page.getByRole('group', { name: group }).getByRole('button', { name, exact: true }));
+        await sleep(1200);
+    };
+    const expectRows = async (page, want, label) => {
+        const got = await page.waitForFunction((w) => [...document.querySelectorAll('.fb-inbox-row')].map((r) => r.getAttribute('data-rating')).sort().join(',') === w, want, { timeout: 10_000 })
+            .then(() => want, async () => ratings(page));
+        check(got === want, label, got);
+    };
+    await pick(adminPage, '评分', '不好用');
+    await expectRows(adminPage, 'bad', '未读 + 不好用 → only the unread bad row');
+    await pick(adminPage, '评分', '一般');
+    await expectRows(adminPage, '', '未读 + 一般 → none (the ok row is read)');
+    await pick(adminPage, '已读状态', '全部');
+    await expectRows(adminPage, 'ok', '全部 + 一般 → the read ok row');
+    await shot(adminPage, '6b-desktop-inbox-filter');
+    await pick(adminPage, '评分', '全部评分');
+    await expectRows(adminPage, 'bad,good,ok', '全部 + 全部评分 → all three');
+    const adminPhoneCtx = await newContext('phone', await adminPage.evaluate(() => localStorage.getItem('auth_credentials')));
+    const adminPhone = await adminPhoneCtx.newPage();
+    await boot(adminPhone, '/settings/feedback/inbox');
+    await adminPhone.locator('.fb-inbox-row').first().waitFor({ timeout: 15_000 });
+    const segs = await adminPhone.locator('.fb-inbox-filters [role="group"] button').evaluateAll((bs) => bs.map((b) => { const r = b.getBoundingClientRect(); return { text: b.textContent, h: Math.round(r.height), w: Math.round(r.width) }; }));
+    const coarse = await adminPhone.evaluate(() => matchMedia('(pointer: coarse)').matches);
+    check(coarse && segs.length === 6 && segs.every((b) => b.h >= 44 && b.w >= 44), 'phone filter segments are ≥44×44 (pointer: coarse)', JSON.stringify(segs));
+    check(await adminPhone.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'phone inbox has no horizontal overflow');
+    const clipped = await adminPhone.locator('.fb-inbox-filters .vh-segmented-label').evaluateAll((ls) => ls.filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent));
+    check(clipped.length === 0, 'phone filter labels are not truncated', JSON.stringify(clipped));
+    await pick(adminPhone, '评分', '好用');
+    await expectRows(adminPhone, 'good', 'phone: 未读 + 好用 → the prompt row');
+    await shot(adminPhone, '6b-phone-inbox-filter');
+    await adminPhoneCtx.close();
+
     await userPage.goto(`${BASE}/settings/feedback/inbox`);
     await sleep(2500);
     check((await userPage.locator('.fb-inbox-row').count()) === 0, 'a non-admin sees no rows at /settings/feedback/inbox');

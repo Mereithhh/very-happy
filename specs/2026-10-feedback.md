@@ -74,7 +74,7 @@ synced settings 的扁平字段：`feedbackActiveDays`、`feedbackLastActiveDay`
   - `POST /v1/feedback/admin/:id/read {read}`
   
   非 admin 访问 admin 接口统一返回 404 `not_found`，和旧 server 一样。
-- **admin**：`VH_FEEDBACK_ADMIN_ACCOUNT_IDS`（逗号或空格分隔）。不设置时没人能看。admin 在列表里看到的是账号名或邮箱，不是裸 id。
+- **admin**：`VH_FEEDBACK_ADMIN_ACCOUNT_IDS`（逗号或空格分隔）。不设置时没人能看。admin 在列表里看到的是账号名或邮箱，不是裸 id。收件箱（`/settings/feedback/inbox`）顶部两组筛选可叠加：「未读 / 全部」和「全部评分 / 好用 / 一般 / 不好用」，一起作为 `unread` + `rating` 发给 list 接口；手机上两组各占一行时也不截断，触控高 ≥44px。
 - **限流与防刷**：
   - 每账号每小时 5 条、每天 20 条（`MAX_FEEDBACK_PER_ACCOUNT_PER_HOUR` / `_PER_DAY`），超出返回 429 `feedback_rate_limited`。
   - 同一账号 10 分钟内提交相同评分加相同文字时，直接返回原记录（`deduped: true`），不扣额度，也不推送。
