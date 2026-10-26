@@ -153,8 +153,29 @@ if (!/permissions:\s*\n\s+contents: read\s*\n\s+packages: write/.test(workflows[
   )) {
   errors.push('deploy-hwsg.yml: main-only complete server image publication to GHCR is required');
 }
+// Prisma Client consistency (Release13): resolve the client the way the server
+// does; a hard-coded hoisted /repo/node_modules/.prisma path broke the preflight
+// once images moved to the isolated linker (B-820). Production preflight and
+// CI smoke must run the same in-image check file.
+const smokeServerScript = readFileSync(new URL('./smoke-server-container.sh', import.meta.url), 'utf8');
+const runsPrismaCheckFile = /docker run --rm -i --entrypoint sh -w \/repo\/packages\/happy-server "\$IMAGE" -s \\\s*< "?(\$REPO_ROOT\/)?scripts\/ci\/image-prisma-client-check\.sh"?/;
+const resolvesPrismaClient = /require\.resolve\(\\?["']\.prisma\/client\/default\\?["']/;
+const prismaCheckFile = readFileSync(new URL('./image-prisma-client-check.sh', import.meta.url), 'utf8');
+if (!resolvesPrismaClient.test(prismaCheckFile)) {
+  errors.push('image-prisma-client-check.sh: must resolve the runtime Prisma Client with require.resolve');
+}
+if (!runsPrismaCheckFile.test(blueGreenDeployScript)
+  || !/scripts\/ci\/image-prisma-client-check\.sh/.test(deployScript)
+  || !runsPrismaCheckFile.test(smokeServerScript)) {
+  errors.push('Prisma check: deploy-blue-green-remote.sh and smoke-server-container.sh must run image-prisma-client-check.sh, and deploy-hwsg.sh must ship it');
+}
+for (const [name, script] of [['deploy-blue-green-remote.sh', blueGreenDeployScript], ['deploy-server-remote.sh', remoteServerDeployScript], ['image-prisma-client-check.sh', prismaCheckFile]]) {
+  if (/\/repo\/node_modules\/\.prisma\/client/.test(script)) {
+    errors.push(`${name}: hard-coded /repo/node_modules/.prisma/client path is forbidden (isolated linker, resolve it)`);
+  }
+}
 if (!/docker pull "\$IMAGE"/.test(remoteServerDeployScript)
-  || !/node_modules\/\.prisma\/client\/schema\.prisma/.test(remoteServerDeployScript)
+  || !resolvesPrismaClient.test(remoteServerDeployScript)
   || !/docker compose up -d --force-recreate happy-server/.test(remoteServerDeployScript)) {
   errors.push('deploy-server-remote.sh: pull, Prisma consistency check, and forced recreate are required');
 }
@@ -162,7 +183,6 @@ if (/docker compose restart happy-server/.test(remoteServerDeployScript)) {
   errors.push('deploy-server-remote.sh: source-only container restart is forbidden');
 }
 if (!/(docker pull|pull_image) "\$IMAGE"/.test(blueGreenDeployScript)
-  || !/node_modules\/\.prisma\/client\/schema\.prisma/.test(blueGreenDeployScript)
   || !/groundwork\|shadow\|switch/.test(blueGreenDeployScript)
   || !/\/_vh\/release\/canary/.test(blueGreenDeployScript)
   || !/\/_vh\/release\/cancel/.test(blueGreenDeployScript)

@@ -72,6 +72,7 @@ deploy_complete_image() {
     ssh ${SSH_OPTS} "${REMOTE}" "install -d -m 700 '$remote_dir'"
     tar -czf - \
         scripts/ci/deploy-blue-green-remote.sh \
+        scripts/ci/image-prisma-client-check.sh \
         ops/production/docker-compose.blue-green.yml \
         ops/production/legacy-release.override.yml \
         ops/production/Caddyfile.blue-green \
