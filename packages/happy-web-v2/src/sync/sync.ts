@@ -1985,9 +1985,9 @@ class Sync {
     }
 
     /**
-     * B-798 P1-8: one session by id. The list above stops at the newest 150
-     * rows, so a link to an older (or unknown) session never reached the store
-     * and the page spun forever. 404 = not this account's (nor shared with it).
+     * B-798 P1-8: one session by id. The list above windows archived history
+     * (newest 150 rows + every unarchived one), so a link to an older archived
+     * (or unknown) session never reached the store and the page spun forever. 404 = not this account's (nor shared with it).
      */
     public fetchSessionById = async (sessionId: string): Promise<'found' | 'missing'> => {
         if (!this.credentials) throw new Error('Not signed in');

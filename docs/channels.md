@@ -435,7 +435,8 @@ Scope: `list` (without flags) / `stop` / `archive` ask the local daemon;
 `read` needs the session key, which is in `~/.happy/sessions.json` for
 sessions this machine's daemon spawned (pruned after 14 days) — any other
 session of the account is read through its own machine as described above.
-`list --all` widens the listing to the account over REST (newest 150) and, for
+`list --all` widens the listing to the account over REST (the newest 150 plus
+every unarchived session) and, for
 rows this machine cannot decrypt, asks the online machines to fill them in:
 every row carries `decryptable` (this machine's own key), `readable`
 (decrypted here or by its machine), and for proxied rows `via` (the answering
@@ -450,7 +451,8 @@ able to distinguish "stopped it" from "there was nothing to stop".
 
 #### `sessions list --all` — the whole account, with an honest limit
 
-`list --all` asks the server (`GET /v1/sessions`, newest 150) instead of the
+`list --all` asks the server (`GET /v1/sessions`: the newest 150 rows plus every
+unarchived one, up to 500 more) instead of the
 local daemon, so it sees sessions on **every** machine of the account — but it
 can only *read* the ones this machine holds a key for. The server stores each
 session's `metadata` and `agentState` encrypted with that session's key, and
