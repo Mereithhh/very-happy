@@ -4,6 +4,9 @@
  * session, neutral text). Route `/dev/lead-view/session/dev-lead`, stripped
  * from prod builds. `window.__leadFlood(n)` appends n member submissions with
  * the lead's replies — the inflow the reader must not be scrolled by.
+ * B-833: `window.__leadLive(n)` appends the first n steps of `LIVE_TAIL` (a
+ * member's long submission, then the lead's turn on it) with the session
+ * live while n < its length (or as `live` says) — the lead's text landing mid-turn.
  * Everything is local; nothing is sent.
  */
 import { useEffect, useState } from 'react';
@@ -11,7 +14,7 @@ import { storage } from '@/sync/storage';
 import type { Machine, Session } from '@/sync/storageTypes';
 import { setTeamNavigationDevOverride } from '@/screens/sessions/useTeamNavigation';
 import { SessionDetailScreen } from '@/screens/session/SessionDetailScreen';
-import { buildLeadFixture, LEAD_SESSION_ID } from './leadSessionFixture';
+import { buildLeadFixture, LEAD_SESSION_ID, LIVE_TAIL } from './leadSessionFixture';
 import '@/screens/session/session.css';
 
 const NOW = Date.now();
@@ -21,12 +24,13 @@ export function LeadViewHarness() {
     useEffect(() => {
         const fixture = buildLeadFixture({ now: NOW });
         storage.getState().applyMachines([{ id: 'dev-machine', seq: 1, createdAt: NOW, updatedAt: NOW, active: true, activeAt: NOW, metadata: { host: 'devbox', platform: 'linux', teamLaunchVersion: 1 }, metadataVersion: 1, daemonState: null, daemonStateVersion: 1 } as unknown as Machine]);
-        storage.getState().applySessions([{
+        const applySession = (thinking: boolean) => storage.getState().applySessions([{
             id: LEAD_SESSION_ID, seq: 1, createdAt: NOW, updatedAt: NOW, active: true, activeAt: NOW,
             metadata: { machineId: 'dev-machine', path: '/repo', host: 'devbox', flavor: 'claude', summary: { text: '登录页改版（示例）', updatedAt: NOW }, capabilities: ['claude-steer-v1'] },
             metadataVersion: 1, agentState: { controlledByUser: false, requests: {} }, agentStateVersion: 1,
-            thinking: false, thinkingAt: 0, presence: 'online',
+            thinking, thinkingAt: thinking ? Date.now() : 0, presence: 'online',
         } as unknown as Session]);
+        applySession(false);
         setTeamNavigationDevOverride([fixture.team]);
         storage.getState().applyMessages(LEAD_SESSION_ID, fixture.normalized);
         storage.getState().applyMessagesLoaded(LEAD_SESSION_ID);
@@ -37,6 +41,14 @@ export function LeadViewHarness() {
             const next = buildLeadFixture({ now: Date.now(), extra });
             setTeamNavigationDevOverride([next.team]);
             storage.getState().applyMessages(LEAD_SESSION_ID, next.normalized.slice(fixture.normalized.length));
+        };
+        let shown = fixture.normalized.length;
+        (window as unknown as { __leadLive: (n: number, live?: boolean) => void }).__leadLive = (n: number, live = n < LIVE_TAIL.length) => {
+            const next = buildLeadFixture({ now: Date.now(), tail: LIVE_TAIL.slice(0, n) });
+            setTeamNavigationDevOverride([next.team]);
+            applySession(live);
+            storage.getState().applyMessages(LEAD_SESSION_ID, next.normalized.slice(shown));
+            shown = next.normalized.length;
         };
         setReady(true);
         return () => setTeamNavigationDevOverride(null);

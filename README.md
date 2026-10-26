@@ -63,7 +63,7 @@ Run `very-happy install-pi-tools` once, then launch `pi` directly inside a Very 
 </a>
 
 - **Projects, teams and members in one tree**: the Projects view of the sidebar nests project › team › lead and members, with a badge for what needs you at every level. Session headers, team pages and project pages show breadcrumbs, and a team can move to another project from its menu.
-- **Just me & the lead**: a lead's conversation opens on your messages and the lead's answers; member and system traffic folds into one line, and Answered ↗ jumps to the reply.
+- **Just me & the lead**: a lead's conversation opens on your messages and the lead's answers; member and system traffic folds into one line (every paragraph the lead writes stays, also mid-turn and while it is still working; the newest member messages show a preview), and Answered ↗ jumps to the reply.
 - **Tool cards show their results**: command output, file contents, search results and MCP replies; failures in red, output over 32 KB cut and marked (CLI 0.2.183).
 - **Quieter teams**: an idle member no longer interrupts the lead; idle members are summed up on the lead's next team message, with a reminder only after 30 minutes idle without a submit.
 - Also: Tags and Recent list conversations with a team or project chip; linking a team from another project asks first; a pushed preview waits behind a notice instead of pulling you out of a dialog; `auto report` clips long fields instead of failing; on a Mac, automatic CLI updates stay under launchd (CLI 0.2.183).

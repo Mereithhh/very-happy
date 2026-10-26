@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { UsersRound, ArrowUpRight } from 'lucide-react';
+import { useContext, useRef, useState } from 'react';
+import { UsersRound, ArrowUpRight, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
@@ -9,6 +9,8 @@ import { AgentChip, AgentRoute } from './AgentChip';
 import { agentKindLabel, agentKindOf } from './agentIdentity';
 import { useFirstUseCopy } from '@/screens/teams/firstUseCopy';
 import { MessageReader, PreviewLines, type MessageReaderLink } from './MessageReader';
+import { Markdown } from './Markdown';
+import { TeamCardPreviewContext } from './teamCardPreview';
 import { MessageTime } from './MessageTime';
 import { cardClickOpens } from './cardClick';
 import type { TeamBot, TeamState } from '@slopus/happy-wire';
@@ -43,6 +45,8 @@ export function TeamMessageCardView({ content, team, localId, createdAt, executi
     const { t } = useTranslation();
     const copy = useFirstUseCopy();
     const [open, setOpen] = useState(false);
+    const inline = useContext(TeamCardPreviewContext);
+    const [full, setFull] = useState(false);
     const openRef = useRef<HTMLButtonElement>(null);
     const task = team && teamMessageTask(team, localId ?? null);
     const route = team && teamMessageRoute(team, localId);
@@ -55,11 +59,12 @@ export function TeamMessageCardView({ content, team, localId, createdAt, executi
     const status = team && task && <TeamTaskStatePill className="team-message-status" state={teamTaskState(team, task, execution)} />;
     // An assignment's body IS the goal; every other kind names the task it is about.
     const goal = task && content.kind !== 'assigned' ? capChars(teamTextPreviewLines(task.goal).join(' '), 160) : null;
-    const preview = plainPreviewLines(content.body.trim() ? content.body : t('teams.genericMessage'), 3);
+    const preview = plainPreviewLines(content.body.trim() ? content.body : t('teams.genericMessage'), inline?.lines ?? 3);
+    const expanded = inline !== null && full;
     const taskLink = team && task ? `/teams/${encodeURIComponent(team.id)}?task=${encodeURIComponent(task.id)}` : null;
     const links: MessageReaderLink[] = taskLink ? [{ to: taskLink, label: copy.inspect }] : [];
     return <div className="msg msg--team">
-        <div className="team-message-work team-message-card" onClick={(e) => { if (cardClickOpens(e)) setOpen(true); }}>
+        <div className="team-message-work team-message-card" onClick={(e) => { if (!expanded && cardClickOpens(e)) setOpen(true); }}>
             <div className="team-message-work-heading">
                 <UsersRound size={16} aria-hidden />
                 <span className="team-message-kind">{content.kind === 'message' && !task ? t('teams.collaborationMessage') : kindLabel}</span>
@@ -67,10 +72,16 @@ export function TeamMessageCardView({ content, team, localId, createdAt, executi
                 {status}
                 <MessageTime createdAt={createdAt} />
             </div>
-            <button ref={openRef} type="button" className="team-message-open" aria-haspopup="dialog" aria-expanded={open} aria-label={`${t('session.messageReader.open')}: ${content.preview}`} onClick={() => setOpen(true)}>
+            {expanded ? <>
+                {goal && <strong className="team-message-goal">{goal}</strong>}
+                <div className="team-message-full"><Markdown text={content.body || content.raw} /></div>
+            </> : <button ref={openRef} type="button" className="team-message-open" aria-haspopup="dialog" aria-expanded={open} aria-label={`${t('session.messageReader.open')}: ${content.preview}`} onClick={() => setOpen(true)}>
                 {goal && <strong className="team-message-goal">{goal}</strong>}
                 <PreviewLines {...preview} />
-            </button>
+            </button>}
+            {inline && preview.truncated && <button type="button" className="team-message-more" aria-expanded={expanded} onClick={() => setFull((v) => !v)}>
+                {expanded ? inline.collapse : inline.expand}<ChevronDown size={14} className="team-message-more-chevron" aria-hidden />
+            </button>}
             {taskLink && <div className="team-message-actions">
                 <Link to={taskLink}>{copy.inspect}<ArrowUpRight size={15} /></Link>
             </div>}

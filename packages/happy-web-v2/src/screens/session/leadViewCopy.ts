@@ -16,6 +16,8 @@ export function leadViewCopy(zh: boolean) {
         collapse: (n: number) => `收起 ${n} 条`,
         answered: '已答',
         jumpToAnswer: '跳到负责人的回答',
+        expandFull: '展开全文',
+        collapseFull: '收起',
         via: ({ source, sender, submit }: TurnOrigin) => source === 'system' ? '回复系统通知'
             : !sender ? '回复成员消息' : submit ? `回复 ${sender} 的提交` : `回复 ${sender}`,
     } : {
@@ -32,6 +34,8 @@ export function leadViewCopy(zh: boolean) {
         collapse: (n: number) => `Collapse ${n}`,
         answered: 'Answered',
         jumpToAnswer: 'Jump to the lead’s answer',
+        expandFull: 'Show full text',
+        collapseFull: 'Show less',
         via: ({ source, sender, submit }: TurnOrigin) => source === 'system' ? 'Replying to a system notice'
             : !sender ? 'Replying to a member message' : submit ? `Replying to ${sender}’s submission` : `Replying to ${sender}`,
     };
