@@ -4,7 +4,10 @@
  * stable error code (`feedback_rate_limited`, `not_found`, …).
  */
 import { z } from 'zod';
-import { apiSocket } from './apiSocket';
+import { getCurrentAuth } from '@/auth/AuthContext';
+import { assertNotAuthFailure } from '@/auth/authLatch';
+import { getHappyClientId } from './apiSocket';
+import { getServerUrl } from './serverConfig';
 import type { FeedbackDiagnostics, FeedbackRating } from '@/app/feedback/feedbackPolicy';
 
 export class FeedbackApiError extends Error {
@@ -33,8 +36,15 @@ export type FeedbackAdminItem = z.infer<typeof FeedbackAdminItemSchema>;
 const FeedbackListSchema = z.object({ items: z.array(FeedbackAdminItemSchema), nextCursor: z.string().nullable(), unreadCount: z.number() });
 export type FeedbackList = z.infer<typeof FeedbackListSchema>;
 
+/** Same transport as apiAttention (no socket needed — the device harness answers it in-page). */
 async function call<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
-    const response = await apiSocket.request(path, init);
+    const credentials = getCurrentAuth()?.credentials;
+    if (!credentials) throw new FeedbackApiError('unauthorized', 401);
+    const response = await fetch(`${getServerUrl()}${path}`, {
+        ...init,
+        headers: { Authorization: `Bearer ${credentials.token}`, 'X-Happy-Client': getHappyClientId(), ...init?.headers },
+    });
+    assertNotAuthFailure(response, 'apiFeedback');
     if (!response.ok) {
         let code = `http_${response.status}`;
         try {

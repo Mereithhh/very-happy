@@ -89,6 +89,11 @@ export const PAGES = {
     'outbox-failed': { path: '/session/dev-plain', prepare: 'outbox-failed' },
     // B-801: a 「新会话」 draft page (agent / machine / directory fields + composer; nothing spawned).
     draft: { path: '/session/dev-board#draft', ready: '[data-testid="draft-target"]' },
+    // B-836 (`--pages feedback`): the form with its diagnostics open, the admin inbox, and the prompt card before / after a tap.
+    feedback: { path: '/settings/feedback', ready: '.fb-form', prepare: 'feedback-diag', back: true },
+    'feedback-inbox': { path: '/settings/feedback/inbox', ready: '.fb-inbox-row', back: true },
+    'feedback-prompt': { path: '/session/dev-board#feedback-prompt', ready: '.fb-prompt' },
+    'feedback-prompt-details': { path: '/session/dev-board#feedback-prompt', ready: '.fb-prompt', prepare: 'feedback-details' },
 };
 
 /** B-796b: overlays outside the shell (the release-notes ✕ sat under the Duo status column in production). */
@@ -129,7 +134,7 @@ const base = opt('base', 'http://127.0.0.1:8795');
 const outDir = opt('out', null);
 const devices = opt('devices', 'duo-folded,duo-open-land,duo-open-port').split(',');
 const PRIMARY = ['session', 'board', 'sidebar', 'team', 'project', 'settings'];
-const GROUPS = { offline: ['offline', 'recovered'], sync: ['sync', 'sync-slow'], outbox: ['outbox', 'outbox-failed'], secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS), menus: Object.keys(MENUS), touch: ['session', 'plain', 'prompt-nav', 'session-info', 'session-missing', 'draft'] };
+const GROUPS = { feedback: ['feedback', 'feedback-inbox', 'feedback-prompt', 'feedback-prompt-details'], offline: ['offline', 'recovered'], sync: ['sync', 'sync-slow'], outbox: ['outbox', 'outbox-failed'], secondary: Object.keys(SECONDARY), overlays: Object.keys(OVERLAYS), menus: Object.keys(MENUS), touch: ['session', 'plain', 'prompt-nav', 'session-info', 'session-missing', 'draft'] };
 const pages = opt('pages', PRIMARY.join(',')).split(',').flatMap((p) => GROUPS[p] ?? [p]);
 const themes = opt('themes', 'light,dark').split(',');
 const locale = opt('locale', 'zh-CN');
@@ -225,7 +230,14 @@ async function goto(page, path, url, ready) {
 }
 
 async function prepare(page, kind) {
-    if (kind === 'offline' || kind === 'recovered') {
+    if (kind === 'feedback-diag') {
+        await page.click('.fb-rating-btn[data-rating="ok"]');
+        await page.click('.fb-diag-toggle');
+        await page.waitForSelector('.fb-diag-json');
+    } else if (kind === 'feedback-details') {
+        await page.click('.fb-prompt .fb-rating-btn[data-rating="bad"]');
+        await page.waitForSelector('.fb-prompt textarea', { timeout: 5_000 });
+    } else if (kind === 'offline' || kind === 'recovered') {
         await page.context().setOffline(true);
         await page.waitForSelector('.net-bar[data-net-phase="offline"]', { timeout: 8_000 });
         if (kind === 'recovered') {

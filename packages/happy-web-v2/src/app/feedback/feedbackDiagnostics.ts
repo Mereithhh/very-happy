@@ -9,7 +9,7 @@ import { useLocation } from 'react-router-dom';
 import { useAllMachines } from '@/sync/storage';
 import { buildFeedbackDiagnostics, type FeedbackDiagnostics } from './feedbackPolicy';
 
-let lastRoute = '/';
+let lastRoute: string | null = null;
 
 export function isFeedbackRoute(pathname: string): boolean {
   return /^\/(?:settings\/)?feedback(?:\/|$)/.test(pathname);
@@ -22,8 +22,9 @@ export function useRecordFeedbackRoute(): void {
   }, [pathname]);
 }
 
+/** The page before the form; on a cold open of the form itself, the form's own path. */
 export function feedbackLastRoute(): string {
-  return lastRoute;
+  return lastRoute ?? (typeof location === 'undefined' ? '/' : location.pathname);
 }
 
 function pointerKind(): 'fine' | 'coarse' | 'none' {

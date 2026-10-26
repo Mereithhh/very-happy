@@ -13,7 +13,9 @@
  *  any unknown session id answers 404, so `session/dev-missing` shows the
  *  not-found state (the lookup goes through the in-page `/v1/` stub).
  *  B-800: global back (⌘[ / edge swipe) is mounted too, for `--gestures`.
- *  B-801: `#draft` opens a 「新会话」 draft page. */
+ *  B-801: `#draft` opens a 「新会话」 draft page.
+ *  B-836: `/v1/feedback*` answers in-page (this account is a feedback admin) and
+ *  `#feedback-prompt` shows the feedback prompt card. */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalBackNav } from '@/app/appBack';
@@ -26,6 +28,8 @@ import { AppLayout } from '@/screens/AppLayout';
 import { boardTeam, seedBoardSession } from './BoardHarness';
 import { seedLocationTrail } from './LocationTrailHarness';
 import { seedPlainSession } from './plainSessionSeed';
+import { installFeedbackApi } from './feedbackHarness';
+import { FeedbackPromptCard } from '@/app/feedback/FeedbackPrompt';
 import { sync } from '@/sync/sync';
 import { pendingSessions } from '@/sync/pendingSessionsRuntime';
 import '@/screens/session/session.css';
@@ -55,6 +59,8 @@ export function DeviceShellHarness() {
     seedLocationTrail([boardTeam(now), longName]);
     const board = seedBoardSession();
     seedPlainSession();
+    // B-836: outermost, so `/v1/feedback*` never reaches the location-trail 404 stub.
+    const feedback = installFeedbackApi();
     // No sync credentials here: look ids up through the page's own `/v1/` stub (404 for anything unknown).
     const realLookup = sync.fetchSessionById;
     sync.fetchSessionById = async (id) => {
@@ -76,8 +82,9 @@ export function DeviceShellHarness() {
       toast.error('发送失败：连接已断开，请稍后重试');
       toast.action('有新版本可用 — 点此刷新', () => {});
     }
-    return () => { setTeamNavigationDevOverride(null); board.cleanup(); sync.fetchSessionById = realLookup; };
+    return () => { setTeamNavigationDevOverride(null); board.cleanup(); feedback(); sync.fetchSessionById = realLookup; };
   }, []);
   if (!ready) return null;
-  return <><AppLayout rootPath="/dev/device" />{location.hash === '#whats-new' && <ChangelogNotice />}</>;
+  // B-836: `#feedback-prompt` shows the prompt card straight away (its timing and queue are unit-tested).
+  return <><AppLayout rootPath="/dev/device" />{location.hash === '#whats-new' && <ChangelogNotice />}{location.hash === '#feedback-prompt' && <FeedbackPromptCard pathname={location.pathname} onClose={() => {}} />}</>;
 }

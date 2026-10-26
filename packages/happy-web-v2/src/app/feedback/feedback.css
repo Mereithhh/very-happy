@@ -129,7 +129,8 @@
 }
 
 @media (max-width: 520px), (pointer: coarse) {
-  .fb-rating-btn, .fb-prompt-later, .fb-diag-toggle { min-height: 44px; }
+  .fb-rating-btn, .fb-prompt-later, .fb-diag-toggle, .fb-github { min-height: 44px; }
+  .fb-prompt-later { min-width: 44px; padding: 0 var(--sp-3); }
   .fb-prompt-close { width: 44px; height: 44px; top: 0; right: 0; }
   /* 16px keeps iOS from zooming into the field */
   .fb-textarea { font-size: var(--fs-16); }
