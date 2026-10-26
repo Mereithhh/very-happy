@@ -534,24 +534,6 @@ input.set-value:focus {
   opacity: 0.5;
 }
 
-.set-about-modal {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--sp-4);
-}
-.set-about-modal .vh-orbit-widget {
-  align-self: center;
-}
-.set-about-modal p {
-  margin: 0;
-  color: var(--text-dim);
-  font-size: var(--fs-13);
-  line-height: 1.6;
-  text-align: center;
-}
-
 /* Shared settings shell: one category sidebar, all real route contents. */
 .settings-workspace { height:100%; min-height:0; width:100%; container-type:inline-size; }
 /* B-611: the nav paints its column via the layout so .vh-scroll-fade on the nav fades rows, not the bg-1 column */

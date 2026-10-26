@@ -166,6 +166,13 @@ try {
     await page.goto(`${APP}/settings`);
     await page.waitForLoadState('networkidle');
     await shot(page, '03-settings');
+    // Author credit (Owner 10-27): Settings → About and Help render under the policy.
+    await page.goto(`${APP}/settings/about`);
+    await page.locator('[data-setting-id="about.source"]').waitFor({ timeout: 30_000 })
+        .then(() => check(true, 'settings → about rendered'), () => check(false, 'settings → about rendered'));
+    await page.goto(`${APP}/help`);
+    await page.locator('[data-credit="help"]').waitFor({ timeout: 30_000 })
+        .then(() => check(true, 'help: author credit rendered'), () => check(false, 'help: author credit rendered'));
 
     step('pair a CLI daemon (pairing page under CSP) and start it');
     const credentials = await page.evaluate(() => localStorage.getItem('auth_credentials'));
@@ -335,6 +342,7 @@ try {
         .then(() => check(true, 'share page rendered the conversation'), () => check(false, 'share page rendered the conversation'));
     await sharePage.locator('pre.shiki').first().waitFor({ timeout: 30_000 }).then(() => check(true, 'share page: code highlighted'), () => check(false, 'share page: code highlighted'));
     await sharePage.locator('.mmd-svg svg').first().waitFor({ timeout: 30_000 }).then(() => check(true, 'share page: Mermaid rendered'), () => check(false, 'share page: Mermaid rendered'));
+    check(await sharePage.locator('[data-credit="share"]').count() === 1, 'share page: author credit rendered');
     await shot(sharePage, '07-share');
     await share.close();
 

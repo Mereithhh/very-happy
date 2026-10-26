@@ -454,6 +454,10 @@ Very Happy 服务器可以恢复账号密钥。传输/存储加密并不代表�
 
 ## 来源与许可证
 
+Very Happy 由 [Mereithhh（JoJo）](https://github.com/Mereithhh) 开发。Bug 和建议请
+[提 issue](https://github.com/Mereithhh/very-happy/issues/new)。应用内 **设置 → 关于** 可查看
+当前 Web 构建版本、源码与反馈入口。
+
 Very Happy 是 [slopus/happy](https://github.com/slopus/happy) 的友好型深度修改分支，并保留
 上游版权与 MIT 条款。详见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。Claude Code、Codex、
 Gemini、OpenCode、OpenClaw 及其他具名 Agent 均是各自所有者的产品或项目；Very Happy 与

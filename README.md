@@ -570,6 +570,10 @@ and the supported Very Happy client/security scope.
 
 ## Attribution and license
 
+Very Happy is built by [Mereithhh (JoJo)](https://github.com/Mereithhh). Bugs and ideas:
+[open an issue](https://github.com/Mereithhh/very-happy/issues/new). In the app,
+**Settings → About** shows the running Web build, the source and the issue link.
+
 Very Happy is a friendly, deeply modified fork of
 [slopus/happy](https://github.com/slopus/happy) and retains upstream copyright
 and MIT terms. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Claude Code, Codex,

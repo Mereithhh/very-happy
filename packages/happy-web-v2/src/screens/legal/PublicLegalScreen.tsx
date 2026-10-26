@@ -4,6 +4,8 @@ import { usePublicI18n } from '@/i18n/publicI18n';
 import { useEffect } from 'react';
 import './publicLegal.css';
 import { BRAND } from '@/app/brand';
+import { EXTERNAL_LINK, REPO_URL } from '@/app/attribution';
+import { CreditLine } from '@/ui/CreditLine';
 
 const UPDATED = 'August 24, 2026';
 const PRIVATE_CONTACT_URL = 'https://github.com/Mereithhh/very-happy/security/advisories/new';
@@ -93,7 +95,10 @@ function LegalPage({ title, children }: { title: string; children: React.ReactNo
         <Link className="legal-brand" to="/welcome"><VeryHappyMark size={32} /><span>very happy</span></Link>
         <h1>{title}</h1>
         {children}
-        <footer><Link to="/privacy">{copy.shell.privacy}</Link><span>·</span><Link to="/terms">{copy.shell.terms}</Link><span>·</span><a href="https://github.com/Mereithhh/very-happy">{copy.shell.source}</a></footer>
+        <footer>
+          <nav><Link to="/privacy">{copy.shell.privacy}</Link><span>·</span><Link to="/terms">{copy.shell.terms}</Link><span>·</span><a href={REPO_URL} {...EXTERNAL_LINK}>{copy.shell.source}</a></nav>
+          <CreditLine where="legal-footer" className="legal-credit" builtBy={copy.shell.builtBy} sourceLabel={copy.shell.sourceOnGitHub} />
+        </footer>
       </article>
     </main>
   );

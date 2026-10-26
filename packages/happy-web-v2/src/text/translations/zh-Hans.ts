@@ -2856,6 +2856,13 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            oct27: {
+                title: '「只看我和负责人」不再折叠负责人说的话',
+                summary: '「只看我和负责人」里，负责人写的每段话都直接显示，最新的成员消息直接显示前几行；更新说明开着时，其他弹窗也能直接点。',
+                leadView: '「只看我和负责人」里，负责人写的每段话都直接显示，包括两次工具调用之间写的，和还在进行中那一轮已经写出的；工具和思考过程仍然折叠。最新一批成员消息直接显示前 6 行，点「展开全文」就地看完整内容。',
+                dialogs: '更新说明开着时，弹出的提示框、确认框、⌘K 面板、打开文件（⌘P）、会话搜索或文件预览，第一下就能点到：更新说明先让开，处理完回到原来那一页，仍算未读。',
+                images: 'Markdown 文件预览里引用本机服务（localhost / 127.0.0.1）的图片恢复显示。',
+            },
             oct26c: {
                 title: '登录过期时，「重新登录」一点就能用',
                 summary: '登录过期时，「重新登录」一点就能用，不会再被更新说明挡住。',
@@ -5155,6 +5162,24 @@ export const zhHans: TranslationStructure = {
         docs: '文档',
         privacy: '隐私',
         terms: '条款',
+    },
+
+    // Author credit + Settings → About (Owner 10-27). Links live in app/attribution.ts.
+    credit: {
+        builtBy: '由 Mereithhh（JoJo）开发',
+        byAuthor: '由 Mereithhh（JoJo）开发',
+        sourceOnGitHub: 'GitHub 上的 Very Happy 源码',
+        madeWith: '使用 Very Happy 制作',
+    },
+    settingsAbout: {
+        version: '版本',
+        versionSubtitle: '当前页面的 Web 构建',
+        author: '作者',
+        source: '源代码',
+        sourceSubtitle: '在 GitHub 开源',
+        reportIssue: '反馈问题',
+        reportIssueSubtitle: 'Bug 和建议请提到 GitHub Issues',
+        github: 'GitHub',
     },
 
     // Account signup screen (web).

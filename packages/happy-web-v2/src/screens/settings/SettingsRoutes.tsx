@@ -140,8 +140,9 @@ import { ModelProviderSettings } from './ModelProviderSettings';
 import { resetFeatureTips } from '@/components/featureTips/FeatureTips';
 import { CodeView } from '@/screens/session/CodeView';
 import { SettingsPage as Page, SettingsHeader as Header, SettingsWorkspace } from './SettingsLayout';
+import { AboutSettings } from './AboutSettings';
+import { shortBuildId } from '@/app/attribution';
 import { ProfileSettings } from './ProfileSettings';
-import { BRAND } from '@/app/brand';
 
 const MIN_PASSWORD = 8;
 
@@ -174,22 +175,6 @@ function Toggle({
 // ===================================================================
 // Overview
 // ===================================================================
-
-function AboutModal({ onClose }: { onClose: () => void }) {
-  const { t } = useTranslation();
-  return (
-    <div className="set-about-modal">
-      <OrbitLoader
-        size="medium"
-        label={`${t('common.version')} ${__APP_VERSION__}`}
-        showWordmark
-        presentation
-      />
-      <p>{t('settings.aboutFooter')}</p>
-      <Button variant="secondary" fullWidth onClick={onClose}>{t('common.close')}</Button>
-    </div>
-  );
-}
 
 function Overview() {
   const navigate = useNavigate();
@@ -233,10 +218,10 @@ function Overview() {
           />
           <Item
             title={t('settings.about')}
-            subtitle={`${BRAND.name} · v${__APP_VERSION__}`}
+            subtitle={`${t('credit.builtBy')} · ${shortBuildId(__APP_VERSION__)}`}
             left={<Info size={18} />}
             right={<ChevronRight size={16} />}
-            onClick={() => Modal.show({ component: AboutModal })}
+            onClick={() => navigate('/settings/about')}
           />
           <Item
             title={t('settings.account')}
@@ -2723,6 +2708,7 @@ export function SettingsRoutes({ basePath }: { basePath?: string } = {}) {
       <Route path="shared" element={<SharedSettings />} />
       <Route path="usage" element={<Usage />} />
       <Route path="diagnostics" element={<Diagnostics />} />
+      <Route path="about" element={<AboutSettings />} />
       <Route path="password" element={<Password />} />
       <Route path="profile" element={<ProfileSettings />} />
       <Route path="email" element={<EmailIdentity />} />

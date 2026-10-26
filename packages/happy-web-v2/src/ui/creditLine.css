@@ -1,0 +1,26 @@
+/* Author credit (ui/CreditLine.tsx): one quiet line of faint text, links one step brighter. */
+.vh-credit {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  column-gap: var(--sp-2);
+  color: var(--text-faint);
+  font-size: var(--fs-11);
+  line-height: 1.4;
+}
+.vh-credit a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 28px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+.vh-credit a:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint); border-radius: var(--r-sm); }
+@media (hover: hover) and (pointer: fine) { .vh-credit a:hover { color: var(--text); text-decoration: underline; } }
+/* Touch: each link is a 44×44 target (design-language §6 U3). */
+@media (pointer: coarse) {
+  .vh-credit a { min-height: var(--hit); min-width: var(--hit); justify-content: center; }
+}
