@@ -15,7 +15,8 @@ export async function teamRequest(path: string, method: string, token: string, s
     }).catch(() => { throw new Error('Teams connection failed; outcome may be unknown. Reuse the request ID when retrying.'); });
     if (!response.ok) {
         // B-730: the one refusal the model must read verbatim. Only allow-listed, length-capped fields leave this function.
-        const body = response.status === 409 ? await response.json().catch(() => null) : null;
+        // B-822: every 4xx names its code — a full team used to answer 429 and read as rate limiting.
+        const body = response.status >= 400 && response.status < 500 ? await response.json().catch(() => null) : null;
         if (body?.error === 'session_in_other_team') throw new SessionInOtherTeamError(typeof body.teamId === 'string' ? body.teamId : '', typeof body.teamName === 'string' ? body.teamName : '');
         throw new Error(teamRefusalMessage(response.status, body));
     }
@@ -33,8 +34,16 @@ export function teamRefusalMessage(status: number, body: unknown): string {
         const reason = field('cleanupError', 300);
         return `Teams request refused (bot_cleanup_failed): the cleanup of member "${field('botName', 128) || 'this member'}" failed${reason ? ` (${reason})` : ''} and still holds its session, so new work for it could not start. Only the owner can retry that cleanup or mark it handled on the team page (需要处理). Delegate to another member (omit assigneeBotId) meanwhile. 该成员的清理失败且仍占用会话，派给它的任务无法启动；请改派给其他成员，并请 Owner 在团队页「需要处理」重试清理或标记已处理。`;
     }
+    if (code.endsWith('_limit')) {
+        // B-822: 409 from current servers, 429 from older ones — either way a capacity limit, not throttling.
+        const count = (key: string) => { const value = (body as Record<string, unknown>)[key]; return typeof value === 'number' && Number.isFinite(value) ? value : null; };
+        const used = count('used'), limit = count('limit');
+        return `Teams request refused (${code}${used !== null && limit !== null ? `: ${used}/${limit}` : ''}): ${TEAM_LIMIT_EXPLANATION}`;
+    }
     return `Teams request failed (HTTP ${status}: ${code})`;
 }
+/** B-822: shown for every `*_limit` refusal. */
+export const TEAM_LIMIT_EXPLANATION = 'a team capacity limit was reached. This is not rate limiting: retrying or waiting will not help. Closed tasks, their delivered messages and finished operations are archived automatically, so what is left is open work — accept, cancel or hand off finished tasks (team_inspect shows `capacity`), or ask the user to archive this team and start a new one. 团队容量已满，不是限流，重试无效：请验收/取消已完成的任务，或请用户归档本团队后新建。';
 export class TeamConnectionPreflightError extends Error {}
 /** B-730: nothing was created or joined, so a Web adopt may change its request (confirm a transfer). */
 export class SessionInOtherTeamError extends TeamConnectionPreflightError {

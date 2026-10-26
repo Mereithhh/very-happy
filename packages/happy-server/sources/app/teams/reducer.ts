@@ -2,7 +2,8 @@ import { teamBotActivity, teamCleanupHoldsSession, teamCleanupIssues, teamMember
 
 export type TeamActor = { kind: 'owner' } | { kind: 'agent'; botId: string; generation: number };
 export { TeamError, requireTeam } from './errors';
-import { requireTeam, TeamError } from './errors';
+import { requireCapacity, requireTeam, TeamError } from './errors';
+import { TEAM_LIMITS, teamCapacity, warnCapacity } from './compaction';
 import { applyScheduleAction, acknowledgeScheduleMessage } from './schedules';
 import { idleDigest, idleMembersFor } from './teamIdle';
 export function inTaskTree(state: TeamState, task: TeamTask, ancestorId: string): boolean {
@@ -60,7 +61,8 @@ export function actorCanReadTask(state: TeamState, actor: TeamActor, task: TeamT
     return state.tasks.some(t => (t.assigneeBotId === actor.botId || t.ownerBotId === actor.botId) && inTaskTree(state, task, t.id));
 }
 export function teamView(state: TeamState, actor: TeamActor): TeamState {
-    const view = withMemberActivity(scopedTeamView(state, actor), state);
+    // B-822: capacity is the whole record's, whoever reads it (the limits refuse writes for everyone).
+    const view = { ...withMemberActivity(scopedTeamView(state, actor), state), capacity: teamCapacity(state) };
     return actor.kind === 'agent' ? { ...view, idleMembers: idleMembersFor(state, actor.botId), cleanupIssues: cleanupIssuesFor(state, view) } : view;
 }
 /** B-775: what the reader must know about a member cleanup that failed — agents cannot
@@ -125,13 +127,13 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         if (!recipientBotId) return;
         // `quiet`: the caller tells the recipient itself (the briefing board's「退回」sends the owner's chat line, B-766 S-1d).
         if (ctx.quiet) return;
-        requireTeam(s.messages.length < 2000, 'team_message_limit', 429);
+        requireCapacity(s.messages.length < TEAM_LIMITS.messages, 'team_message_limit', s.messages.length, TEAM_LIMITS.messages);
         // B-769: idle members are reported here, on a message that wakes the recipient anyway.
         const digest = idleDigest(s, recipientBotId, now, actor.kind === 'agent' ? [actor.botId] : []);
         s.messages.push({ id: id(), taskId: t.id, senderBotId: actor.kind === 'agent' ? actor.botId : null, recipientBotId, body: body + digest, deliveredAt: null, createdAt: now });
     };
     const operation = (t: TeamTask, bot: TeamBot, type: 'spawn' | 'stop', attemptId = t.currentAttemptId) => {
-        requireTeam(s.operations.length < 1000, 'team_operation_limit', 429);
+        requireCapacity(s.operations.length < TEAM_LIMITS.operations, 'team_operation_limit', s.operations.length, TEAM_LIMITS.operations);
         // B-706: a launch creates its worktree from the bot's source repository, never
         // from the previous launch's worktree (bot.directory after a completed spawn).
         const directory = type === 'spawn' ? teamBotRepository(s, bot) : bot.directory;
@@ -202,7 +204,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             // Close every task before cleanup so shared bots have no remaining work.
             for (const task of s.tasks) {
                 if (!['done', 'cancelled'].includes(task.status)) {
-                    task.status = 'cancelled';
+                    task.status = 'cancelled'; task.closedAt = now;
                     const attempt = task.attempts.find(a => a.id === task.currentAttemptId);
                     if (attempt) attempt.status = 'cancelled';
                 }
@@ -232,7 +234,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                     task.attempts.push({ id: task.currentAttemptId, botId: bot.id, generation: bot.generation, goalVersion: task.goalVersion, status: 'running', result: null });
                 }
             } else {
-                requireTeam(s.bots.length < 32, 'team_bot_limit', 429);
+                requireCapacity(s.bots.length < 32, 'team_bot_limit', s.bots.length, 32);
                 bot = { id: id(), name: action.name, sessionId: action.sessionId, generation: 1, root: true, managed: false, assistant: 'claude', directory: null };
                 s.bots.push(bot);
             }
@@ -240,14 +242,14 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             break;
         }
         case 'delegate': {
-            requireTeam(s.tasks.length < 200, 'team_task_limit', 429);
+            requireCapacity(s.tasks.length < TEAM_LIMITS.tasks, 'team_task_limit', s.tasks.length, TEAM_LIMITS.tasks);
             const parent = action.parentTaskId ? getTask(action.parentTaskId) : undefined;
             if (actor.kind === 'agent') requireTeam(parent ? parent.assigneeBotId === actor.botId : currentBot?.root, 'delegation_denied', 403);
             if (parent) requireTeam(!['done', 'cancelled', 'submitted'].includes(parent.status), 'parent_not_running');
             if (parent) {
                 let depth = 1; let p: TeamTask | undefined = parent;
                 while (p?.parentTaskId) { depth++; p = s.tasks.find(t => t.id === p!.parentTaskId); }
-                requireTeam(depth < 8, 'team_depth_limit', 429);
+                requireCapacity(depth < 8, 'team_depth_limit', depth, 8);
             }
             let bot = action.assigneeBotId ? s.bots.find(b => b.id === action.assigneeBotId) : undefined;
             if (action.assigneeBotId) requireTeam(bot, 'bot_not_found', 404);
@@ -267,8 +269,9 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                     if (action.botName && action.botName !== bot.name) { bot.previousNames = [...(bot.previousNames ?? []), bot.name].slice(-16); bot.name = action.botName; }
                 } else {
                     // B-692: the limit counts members, not stopped bots; the total bounds the record.
-                    requireTeam(s.bots.filter(b => teamBotActivity(s, b, { now }) !== 'inactive').length < 32, 'team_bot_limit', 429);
-                    requireTeam(s.bots.length < 128, 'team_bot_record_limit', 429);
+                    const members = s.bots.filter(b => teamBotActivity(s, b, { now }) !== 'inactive').length;
+                    requireCapacity(members < 32, 'team_bot_limit', members, 32);
+                    requireCapacity(s.bots.length < 128, 'team_bot_record_limit', s.bots.length, 128);
                     bot = fresh;
                     s.bots.push(bot);
                 }
@@ -321,7 +324,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         }
         case 'accept': {
             const t = getTask(action.taskId); controls(t); requireTeam(t.currentAttemptId === action.attemptId && t.goalVersion === action.goalVersion, 'stale_attempt'); requireTeam(t.status === 'submitted', 'task_not_submitted');
-            t.status = 'done'; t.attempts.find(a => a.id === t.currentAttemptId)!.status = 'accepted'; cleanup(t); break;
+            t.status = 'done'; t.closedAt = now; t.attempts.find(a => a.id === t.currentAttemptId)!.status = 'accepted'; cleanup(t); break;
         }
         case 'return': {
             const t = getTask(action.taskId); controls(t); requireTeam(t.currentAttemptId === action.attemptId && t.goalVersion === action.goalVersion, 'stale_attempt'); requireTeam(t.status === 'submitted', 'task_not_submitted');
@@ -334,7 +337,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         case 'cancel': {
             const t = getTask(action.taskId); controls(t); requireTeam(t.currentAttemptId === action.attemptId && t.goalVersion === action.goalVersion, 'stale_attempt'); requireTeam(!['done', 'cancelled'].includes(t.status), 'task_already_closed');
             const descendants = s.tasks.filter(child => inTaskTree(s, child, t.id) && !['done', 'cancelled'].includes(child.status));
-            for (const child of descendants) { child.status = 'cancelled'; child.attempts.find(a => a.id === child.currentAttemptId)!.status = 'cancelled'; }
+            for (const child of descendants) { child.status = 'cancelled'; child.closedAt = now; child.attempts.find(a => a.id === child.currentAttemptId)!.status = 'cancelled'; }
             for (const child of descendants) { msg(child, child.assigneeBotId, `Cancelled: ${action.reason}`); cleanup(child); }
             break;
         }
@@ -476,6 +479,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         }
     }
     s.version++;
-    requireTeam(JSON.stringify(s).length <= 2_000_000, 'team_size_limit', 429);
+    let bytes = JSON.stringify(s).length;
+    if (warnCapacity(s, bytes, now, id)) bytes = JSON.stringify(s).length;
+    requireCapacity(bytes <= TEAM_LIMITS.bytes, 'team_size_limit', bytes, TEAM_LIMITS.bytes);
     return { team: s, credentialBotId, operationId, taskId, scheduleId };
 }
