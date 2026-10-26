@@ -21,6 +21,7 @@ deploy_docker() {
         *) echo "unknown region $region" >&2; return 2 ;;
     esac
     local remote="${user}@${host}"
+    bash scripts/ci/check-log-rotation.sh "ops/relay/docker-compose.$region.yml"
     local ssh_opts=("${SSH_OPTS[@]}" -p "$port")
     local scp_opts=("${SSH_OPTS[@]}" -P "$port")
     ssh "${ssh_opts[@]}" "$remote" \

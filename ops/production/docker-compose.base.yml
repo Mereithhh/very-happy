@@ -1,0 +1,31 @@
+# Base infrastructure for very-happy on vh-sg. Release slots live in
+# /opt/happy/release/docker-compose.yml and join the same external network.
+# PostgreSQL = RDS vh-pg, Redis = ElastiCache vh-redis (both outside Docker).
+#
+# B-827: this file is the source of /opt/happy/docker-compose.yml. Each server
+# release installs it there (the previous copy is kept under
+# /opt/happy/release/base-compose-backups/) but never runs `up`: vh-pgbouncer
+# only picks up a change here when it is next recreated by hand.
+services:
+  vh-pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: vh-pgbouncer
+    restart: unless-stopped
+    volumes:
+      - /opt/pgbouncer:/etc/pgbouncer:ro
+    ports:
+      - "127.0.0.1:6432:6432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U vh || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
+networks:
+  default:
+    external: true
+    name: happy_default

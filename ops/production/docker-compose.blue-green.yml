@@ -5,6 +5,13 @@ x-happy-server: &happy-server
     - ${VH_PRODUCTION_ENV_FILE:-/opt/happy/.env}
   restart: unless-stopped
   stop_grace_period: 2m
+  # B-827: an unrotated json log grew to 8.9 GB on happy-server-blue.
+  # scripts/ci/check-log-rotation.sh refuses a deploy without max-size.
+  logging:
+    driver: json-file
+    options:
+      max-size: 50m
+      max-file: "5"
   networks:
     - happy
   volumes:
