@@ -25,7 +25,10 @@ export function enableAuthentication(app: Fastify) {
                 ? verified.extras.loginSessionId
                 : undefined;
         } catch (error) {
-            return reply.code(401).send({ error: 'Authentication failed' });
+            // B-825: the token could not be checked (login-session store down) —
+            // a 401 here would make Web wipe a valid login. Retryable instead.
+            log({ module: 'auth-decorator', level: 'error', error }, 'Auth check unavailable');
+            return reply.code(503).header('retry-after', '5').send({ error: 'auth_unavailable' });
         }
     });
 }

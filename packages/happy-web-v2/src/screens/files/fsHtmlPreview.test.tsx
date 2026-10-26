@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+// @vitest-environment-options {"settings":{"navigation":{"disableChildFrameNavigation":true}}}
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
@@ -19,6 +20,7 @@ vi.mock('@/sync/fsOps', () => ({
 }));
 
 import { FsFileViewer } from './FsFileViewer';
+import { HTML_PREVIEW_URL } from './HtmlPreviewFrame';
 
 it('renders an .html file in a sandboxed iframe (no allow-same-origin) and toggles to source', async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -34,7 +36,16 @@ it('renders an .html file in a sandboxed iframe (no allow-same-origin) and toggl
         const sandbox = frame!.getAttribute('sandbox') ?? '';
         expect(sandbox).toContain('allow-scripts');
         expect(sandbox).not.toContain('allow-same-origin'); // the security-critical assertion
-        expect(frame!.getAttribute('srcdoc')).toContain('NEEDLE_HTML');
+        // B-825: not srcdoc (it would inherit the app's CSP) — the preview frame
+        // page asks for the HTML, and only the frame's own window gets an answer.
+        expect(frame!.getAttribute('srcdoc')).toBeNull();
+        expect(frame!.getAttribute('src')).toBe(HTML_PREVIEW_URL);
+        const frameWindow = (frame as HTMLIFrameElement).contentWindow!;
+        const posted = vi.spyOn(frameWindow, 'postMessage').mockImplementation(() => {});
+        await act(async () => window.dispatchEvent(new MessageEvent('message', { data: { type: 'vh-html-preview-ready' }, source: window })));
+        expect(posted).not.toHaveBeenCalled(); // not from the frame
+        await act(async () => window.dispatchEvent(new MessageEvent('message', { data: { type: 'vh-html-preview-ready' }, source: frameWindow })));
+        expect(posted).toHaveBeenCalledWith({ type: 'vh-html-preview', html: HTML }, '*');
         expect(host.querySelector('[data-code]')).toBeNull(); // rendered, not source
 
         // Toggle to source: the iframe is replaced by the raw HTML in CodeView.

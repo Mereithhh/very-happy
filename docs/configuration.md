@@ -16,6 +16,7 @@ state. Never commit production values.
 | `MAX_CREDENTIAL_CHANGES_PER_ACCOUNT_PER_MINUTE` | Shared database-backed password/username change rate; `0` disables only for a trusted private relay | `5` |
 | `TRUST_PROXY` | Trusted proxy IP/CIDR allowlist (`loopback`/`linklocal`/`uniquelocal` allowed; hop counts are rejected at startup since Fastify 5.12 fails them closed) | Exact topology; never unrestricted trust. Only a peer matching it may supply `X-Real-Client-IP` (the edge-resolved client IP, B-491) |
 | `PORT` | HTTP/WebSocket port | `3005` |
+| `CSP_MODE` | B-825: Content-Security-Policy of the bundled Web app. `enforce` sends the enforced policy (scripts only from this origin + SHA-256 of the exact inline scripts sent, no `unsafe-inline`/`unsafe-eval`) plus a stricter Report-Only stage (connect-src limited to known origins); `report-only` sends the enforced policy as Report-Only (blocks nothing); `off` sends none. Violations go to `POST /v1/csp-report` (counter `csp_violations_total`, sanitized log line) | `enforce`; switch to `report-only` only to stop blocking while a reported break is fixed |
 | `METRICS_ENABLED` / `METRICS_HOST` / `METRICS_PORT` | Prometheus endpoint | Disabled by default; enable explicitly on `127.0.0.1:9090` |
 | `AUTH_ALLOW_LEGACY_PAIRING` | Temporarily accept pairing without a one-time claim secret | Unset/`false`; enable only during the documented CLI rollout |
 | `AUTH_PAIRING_TTL_MINUTES` | Pairing request lifetime, bounded to 1–60 minutes | `10` |

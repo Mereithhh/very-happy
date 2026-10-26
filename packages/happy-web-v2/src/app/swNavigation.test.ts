@@ -25,4 +25,9 @@ describe('service worker document navigation', () => {
     expect(bypassesShell('/sessions')).toBe(false);
     expect(bypassesShell('/settings/shared')).toBe(false);
   });
+  it('B-825: the HTML preview frame comes from the network with its own CSP', () => {
+    expect(bypassesShell('/html-preview.html')).toBe(true);
+    expect(bypassesShell('/happy.v2/html-preview.html', '/happy.v2/')).toBe(true);
+    expect(bypassesShell('/html-previewXhtml')).toBe(false);
+  });
 });

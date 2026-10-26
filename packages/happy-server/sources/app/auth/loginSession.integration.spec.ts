@@ -116,4 +116,17 @@ describe('persistent Cloud login session', () => {
         await expect(auth.verifyToken(second.token)).resolves.toMatchObject({ userId: 'account-capped' });
         await expect(auth.verifyToken(newest.token)).resolves.toMatchObject({ userId: 'account-capped' });
     });
+    it('B-825: a failed login-session lookup propagates instead of reading as an invalid token', async () => {
+        const issued = await auth.createLoginToken('account-db-down');
+        for (const cached of [false, true]) {
+            if (!cached) (auth as any).tokenCache.clear();
+            else await auth.verifyToken(issued.token);
+            dbMock.$queryRawUnsafe.mockImplementationOnce(async () => { throw new Error('connection terminated'); });
+            await expect(auth.verifyToken(issued.token)).rejects.toThrow('connection terminated');
+        }
+        // The store is back: the same token is still valid.
+        await expect(auth.verifyToken(issued.token)).resolves.toMatchObject({ userId: 'account-db-down' });
+        // A token that does not verify at all is still just invalid.
+        await expect(auth.verifyToken('not-a-token')).resolves.toBeNull();
+    });
 });

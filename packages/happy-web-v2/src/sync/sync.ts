@@ -114,6 +114,7 @@ import {
 } from '@/screens/onboarding/firstMachineWelcome';
 import { queuedAtForSend } from './queuedInput';
 import { subscribeAuthLatch } from '@/auth/authLatch';
+import type { UnsentMessage } from '@/auth/authExpiry';
 import {
     advanceLastSeq,
     assertResponseOk,
@@ -1062,6 +1063,34 @@ class Sync {
                 }
             }]);
         }
+    }
+
+    /**
+     * B-825: every input the server has not confirmed — what an auth-expiry
+     * wipe would delete: this tab's (queued or failed, oldest first; text from
+     * the plain record kept for retries) and the persistent outbox rows no tab
+     * has adopted yet (a page closed before it could send them; with a dead
+     * token this load never gets to adopt them). Their text is shown only when
+     * the session key is already loaded; attachments have none.
+     */
+    async unsentOutboxMessages(): Promise<UnsentMessage[]> {
+        const unsent: UnsentMessage[] = [...this.outboxRecords.values()]
+            .sort((a, b) => a.order - b.order)
+            .map((record) => ({
+                sessionId: record.sessionId,
+                localId: record.localId,
+                text: readOutboundUserRecord(record.raw)?.text ?? null,
+            }));
+        const rows = await outboxStore.all().catch(() => [] as OutboxRow[]);
+        const untracked = rows
+            .filter((row) => !this.outboxRecords.has(row.localId))
+            .sort((a, b) => a.createdAt - b.createdAt || a.order - b.order);
+        for (const row of untracked) {
+            const encryption = this.encryption?.getSessionEncryption(row.sid);
+            const raw = encryption ? await encryption.decryptRaw(row.body).catch(() => null) : null;
+            unsent.push({ sessionId: row.sid, localId: row.localId, text: readOutboundUserRecord(raw)?.text ?? null });
+        }
+        return unsent;
     }
 
     /** Abort every in-flight send and fail everything still queued. Returns the affected sessions. */

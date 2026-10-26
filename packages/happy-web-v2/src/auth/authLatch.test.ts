@@ -49,6 +49,17 @@ describe('fetch auth guard (B-490)', () => {
         expect(inner).toHaveBeenCalledTimes(1);
     });
 
+    it('B-825: 5xx, 503 auth_unavailable, 403 and network errors never latch (nothing is wiped)', async () => {
+        for (const status of [500, 502, 503, 504, 403, 429]) {
+            const guarded = wrapFetchWithAuthGuard(async () => new Response('{"error":"auth_unavailable"}', { status }), deps);
+            const res = await guarded(`${SERVER}/v1/sessions`, bearer('tok-current'));
+            expect(res.status).toBe(status);
+        }
+        const offline = wrapFetchWithAuthGuard(async () => { throw new TypeError('Failed to fetch'); }, deps);
+        await expect(offline(`${SERVER}/v1/sessions`, bearer('tok-current'))).rejects.toThrow('Failed to fetch');
+        expect(isAuthLatched()).toBe(false);
+    });
+
     it('does not latch for a stale token, anonymous requests or other origins', async () => {
         const inner = vi.fn(async () => new Response('{}', { status: 401 }));
         const guarded = wrapFetchWithAuthGuard(inner, deps);

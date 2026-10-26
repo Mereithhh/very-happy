@@ -5368,9 +5368,12 @@ export const en = {
 
     authExpired: {
         title: 'Signed out',
-        body: 'The server no longer accepts this browser\'s sign-in, so syncing has stopped. Sign in again to continue.',
+        body: 'The server no longer accepts this browser\'s sign-in, so syncing has stopped. This browser\'s account key and local message cache are being removed. Sign in again to continue.',
         signIn: 'Sign in again',
-        reload: 'Reload page',
+        unsentBody: ({ count }: { count: number }) => `The server no longer accepts this browser's sign-in. ${count === 1 ? 'This message was' : `These ${count} messages were`} not sent. Signing in again removes this browser's account key and local message cache, including ${count === 1 ? 'it' : 'them'} — copy what you need first.`,
+        unsentNoText: 'Content not shown (an attachment, or readable only after signing in)',
+        copyUnsent: 'Copy unsent messages',
+        discardAndSignIn: 'Remove local data and sign in',
     },
     emailLink: {
         title: 'Link email sign-in',
