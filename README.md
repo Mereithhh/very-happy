@@ -355,6 +355,9 @@ package. See [Self-hosting](docs/deployment.md).
 > longer accepts a hop count such as `TRUST_PROXY=1`; the server refuses to
 > start with one. Set the IP/CIDR your reverse proxy connects from, e.g.
 > `TRUST_PROXY=172.18.0.1`. Details in [Upgrading](docs/upgrading.md#2026-10-26-trust_proxy-no-longer-accepts-a-hop-count-b-820).
+> The bundled Web app now enforces a Content-Security-Policy; if a script your
+> proxy injects breaks, use `CSP_MODE=report-only`. Add a Docker log size limit
+> ([Upgrading](docs/upgrading.md#2026-10-26-content-security-policy-enforced-log-size-limits-b-825-b-827)).
 
 ## Move at thought speed
 

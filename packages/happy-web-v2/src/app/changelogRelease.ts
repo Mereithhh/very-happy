@@ -139,6 +139,20 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-26-faster-start-security',
+    date: '2026-10-26',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct26b.title',
+    summaryKey: 'changelog.releases.oct26b.summary',
+    itemKeys: [
+      'changelog.releases.oct26b.faster',
+      'changelog.releases.oct26b.authExpiry',
+      'changelog.releases.oct26b.security',
+      'changelog.releases.oct26b.sidebar',
+      'changelog.releases.oct26b.selfHost',
+    ],
+  },
+  {
     id: '2026-10-26-server-security-update',
     date: '2026-10-26',
     buildVersion: __APP_VERSION__,

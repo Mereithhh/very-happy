@@ -15,6 +15,49 @@ with an explicit compatibility matrix. After a server upgrade, restart/reconnect
 daemons so RPC registrations are current. After a Web swap, restart the static
 server and verify the hashed JS asset returns JavaScript, not SPA HTML.
 
+### 2026-10-26: Content-Security-Policy enforced, log size limits (B-825, B-827)
+
+The bundled Web app now sends a Content-Security-Policy and other browser
+security headers (`X-Frame-Options: SAMEORIGIN`, `Referrer-Policy`,
+`Permissions-Policy`, `nosniff`). The enforced policy covers scripts only:
+scripts load from this origin and the exact inline scripts the server sends
+(by hash), and the app can no longer be framed by another site
+(`frame-ancestors 'self'`). Resource directives stay open to any https origin
+and are tightened in a separate Report-Only policy. Violations are reported to
+`POST /v1/csp-report` (counter `csp_violations_total`, no request content
+stored). HTML file previews moved to their own sandboxed document,
+`/html-preview.html`.
+
+Most installs need no change. If a reverse proxy injects its own inline script
+(analytics, a challenge page) or you embed Very Happy in another site, that now
+breaks: set `CSP_MODE=report-only` to stop blocking while you fix it (or `off`
+to send no policy), then recreate the container. See
+[configuration](configuration.md).
+
+Docker keeps container logs in one unbounded file unless told otherwise; one of
+our own servers filled a 20 GB disk this way. Add a size limit to the server
+container (`/health` probes no longer write access-log lines either):
+
+```yaml
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
+```
+
+For `docker run`, add `--log-opt max-size=50m --log-opt max-file=5`. Log options
+apply only when the container is recreated.
+
+中文：内置网页端现在会下发内容安全策略（CSP）和其他浏览器安全头。强制部分只管脚本：
+脚本只能来自本站和服务端实际下发的内联脚本（按 hash 放行），且不能再被其他网站用 iframe
+嵌入；资源类指令仍对任意 https 来源开放，收紧版本走 Report-Only。违规上报到
+`POST /v1/csp-report`。HTML 文件预览改为独立的沙箱页面 `/html-preview.html`。大多数部署
+无需改动；如果反向代理会注入自己的内联脚本，或你把 Very Happy 嵌在别的网站里，请设置
+`CSP_MODE=report-only`（或 `off`）并重建容器。另外 Docker 默认不轮转容器日志，请给 server
+容器加上日志大小上限（上面的 `logging` 配置，或 `docker run` 加
+`--log-opt max-size=50m --log-opt max-file=5`），重建容器后生效。
+
 ### 2026-10-26: `TRUST_PROXY` no longer accepts a hop count (B-820)
 
 Self-host breaking change. `TRUST_PROXY` no longer accepts a number (hop count,

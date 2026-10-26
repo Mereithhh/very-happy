@@ -2718,6 +2718,15 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            oct26b: {
+                title: 'Opens faster, plus security hardening',
+                summary: 'The app opens faster, an expired sign-in no longer clears this device by mistake, and the sidebar no longer flickers after a Mac wakes up.',
+                faster: 'Opens faster: less to download at startup and after each update, and your session list is ready sooner.',
+                authExpiry: 'When your sign-in looks expired, it is checked with the server once more before this device\'s local data is cleared, so a temporary server or network error no longer signs you out. Messages that were not sent yet are shown first so you can copy them.',
+                security: 'Security hardening: the web app now sends a Content-Security-Policy and other browser security headers, and HTML file previews run in an isolated sandbox.',
+                sidebar: 'Fixed the sidebar flickering after a Mac wakes from sleep or the window goes narrow and back.',
+                selfHost: 'Self-hosting: the bundled web app now enforces a Content-Security-Policy and can no longer be embedded by other sites. If a script your proxy injects stops working, set CSP_MODE=report-only and recreate the container. Docker does not rotate container logs by default; add a size limit as described in the upgrading notes.',
+            },
             oct26a: {
                 title: 'Security update: server dependencies',
                 summary: 'Server dependencies are upgraded to versions with the security fixes, and the server now runs exactly the versions it was tested with.',

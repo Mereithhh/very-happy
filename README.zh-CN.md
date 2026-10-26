@@ -291,6 +291,8 @@ very-happy daemon start
 > **自托管升级注意（2026-10-26，breaking）：** `TRUST_PROXY` 不再接受跳数（例如
 > `TRUST_PROXY=1`），配置成数字时服务端会拒绝启动。请改为反向代理连到服务端时的 IP/CIDR，
 > 例如 `TRUST_PROXY=172.18.0.1`。详见[升级说明](docs/upgrading.md#2026-10-26-trust_proxy-no-longer-accepts-a-hop-count-b-820)。
+> 内置网页端现在强制执行内容安全策略（CSP），反向代理注入的脚本失效时可设 `CSP_MODE=report-only`；
+> 另请给 Docker 容器加日志大小上限（[升级说明](docs/upgrading.md#2026-10-26-content-security-policy-enforced-log-size-limits-b-825-b-827)）。
 
 ## 像思考一样快
 

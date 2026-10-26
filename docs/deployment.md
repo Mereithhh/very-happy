@@ -268,6 +268,7 @@ For a small standalone installation:
 ```bash
 docker run -d --name very-happy-server --restart unless-stopped \
   -p 127.0.0.1:3005:3005 \
+  --log-opt max-size=50m --log-opt max-file=5 \
   -e HANDY_MASTER_SECRET='replace-with-a-high-entropy-secret' \
   -e SIGNUP_MODE=invite \
   -e SIGNUP_INVITE_CODES='replace-with-one-time-bootstrap-code' \
@@ -315,6 +316,11 @@ services:
       - 127.0.0.1:3005:3005
     volumes:
       - happy-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
 volumes:
   postgres-data:
   happy-data:
