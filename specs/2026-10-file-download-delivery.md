@@ -169,6 +169,19 @@ http MCP 补推 zip/docx/png/12 MB/60 MB。Playwright 自启 Chromium（独立 p
 - 文件被移走后点工具卡下载：「The file no longer exists…」。机器离线由组件测试覆盖。
 - 从 /settings 推送：B-526 跟随回会话并停靠侧栏，下载条与自动下载照常。
 
+## 回归 e2e（2026-10-27，Owner 反馈「点下载没反应」排查）
+
+`packages/happy-web-v2/e2e/file-download.mjs`（手动跑，搭法同 `e2e/csp.mjs`：built web + standalone + 真 daemon）：
+desktop 与 phone（iPhone 13 coarse）× md/png/pdf/zip × 2 KB/3 MB/24 MB，覆盖侧栏预览头部 ⬇、「点这里保存」
+链接、对话工具卡 inline「下载」与其保存链接、「Previews」抽屉、带 sessionId 的推送（停靠侧栏）和无会话推送
+（overlay 下载条），每次都要求 Playwright `download` 事件，且文件名、大小、sha256 与源文件一致。
+
+那次排查的结论：生产 756b26d1 + relay + 真 daemon 在 Chromium 与真 Google Chrome 153（新 profile，浏览器
+自己的手势与多次下载限制生效）上都能下载，v13→v16 没有回归。唯一复现出「点了没反应」的是一个开着
+「下载前询问保存位置」的 Chrome profile：一个没人处理的 GTK「Save File」对话框挂了几天，之后的下载都排在它
+后面。应用侧显示「已开始下载」，浏览器只写了临时文件。遇到同样症状，先看浏览器有没有挂着的保存对话框或
+下载提示。
+
 ## 验收标准
 
 - [ ] CLI：三处注册点有 `download`；目录/不存在拒绝、>50 MiB 提示；载荷仅 download 时带 `intent`；单测。
