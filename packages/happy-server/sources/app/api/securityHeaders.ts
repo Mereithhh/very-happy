@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto';
  *    servers, relays, machine panels, sound packs and Markdown images at run
  *    time, so connect/img/frame/media stay open to any https origin.
  *  - A Report-Only policy narrows connect-src to the origins the app itself
- *    knows. Its reports (/v1/csp-report) show which other origins real users
+ *    knows (API, this origin, the HAPPY_RELAYS_JSON relays). Its reports (/v1/csp-report) show which other origins real users
  *    reach before that is enforced.
  *  `CSP_MODE=report-only` sends the enforced policy as Report-Only too (no
  *  blocking at all); `off` sends none. Default: enforce.
@@ -31,6 +31,14 @@ export const CSP_REPORT_PATH = '/v1/csp-report';
 const FONT_CDN = 'https://veryhappy-fonts.pages.dev';
 /** Google Identity Services button (web-v2 GoogleLoginButton.tsx), only loaded when configured. */
 const GOOGLE_GSI = 'https://accounts.google.com';
+/**
+ * B-832: images/media an agent serves on this device (`http://localhost:5173/shot.png`
+ * in Markdown). Loopback is not mixed content, so these loaded before the CSP did.
+ * Only loopback, never all of `http:`. `http://[::1]:*` is not listed: CSP host
+ * sources have no IPv6 literal syntax, so Chromium ignores it with a console error
+ * on every load ("contains an invalid source") and the image is still blocked.
+ */
+const LOOPBACK_HTTP = ['http://localhost:*', 'http://127.0.0.1:*'];
 /** Voice (web-v2 assistant/asrStream.ts, ttsStream.ts). */
 const ELEVENLABS = ['https://api.elevenlabs.io', 'wss://api.elevenlabs.io'];
 
@@ -64,6 +72,10 @@ function socketOrigin(origin: string): string {
     return origin.replace(/^http/, 'ws');
 }
 
+function relayOrigins(ctx: { relayOrigins?: readonly string[] }): string[] {
+    return (ctx.relayOrigins ?? []).map(originOf).filter((origin): origin is string => origin !== null);
+}
+
 export interface CspContext {
     /** The final HTML (hashes come from it). */
     html: string;
@@ -71,6 +83,8 @@ export interface CspContext {
     serverUrl?: unknown;
     /** Public origin of this request (`https://veryhappy.dev`), when known. */
     requestOrigin?: string | null;
+    /** B-832: regional relay origins (HAPPY_RELAYS_JSON); the app opens `/v1/relay` sockets to them. */
+    relayOrigins?: readonly string[];
 }
 
 function directives(entries: Array<[string, string[]]>): string {
@@ -79,17 +93,18 @@ function directives(entries: Array<[string, string[]]>): string {
 
 /** The enforced policy (see the module comment for what it does and does not restrict). */
 export function contentSecurityPolicy(ctx: CspContext): string {
-    const server = originOf(ctx.serverUrl);
-    // An http API (local self-host) needs its own scheme; https/wss are open anyway.
-    const plainServer = server?.startsWith('http:') ? [server, socketOrigin(server)] : [];
+    // An http API or relay (local self-host) needs its own scheme; https/wss are open anyway.
+    const plainServer = [originOf(ctx.serverUrl), ...relayOrigins(ctx)]
+        .filter((origin): origin is string => origin?.startsWith('http:') === true)
+        .flatMap((origin) => [origin, socketOrigin(origin)]);
     return directives([
         ['default-src', ["'self'"]],
         ['script-src', ["'self'", ...inlineScriptHashes(ctx.html), "'wasm-unsafe-eval'", `${GOOGLE_GSI}/gsi/client`]],
         ['style-src', ["'self'", "'unsafe-inline'", FONT_CDN, `${GOOGLE_GSI}/gsi/style`]],
         ['font-src', ["'self'", 'data:', FONT_CDN]],
-        ['img-src', ["'self'", 'data:', 'blob:', 'https:']],
-        ['media-src', ["'self'", 'data:', 'blob:', 'https:']],
-        ['connect-src', ["'self'", 'https:', 'wss:', 'blob:', 'data:', ...plainServer]],
+        ['img-src', ["'self'", 'data:', 'blob:', 'https:', ...LOOPBACK_HTTP]],
+        ['media-src', ["'self'", 'data:', 'blob:', 'https:', ...LOOPBACK_HTTP]],
+        ['connect-src', ["'self'", 'https:', 'wss:', 'blob:', 'data:', ...new Set(plainServer)]],
         // Machine panels and the browser preview frame user URLs, some on http://localhost.
         ['frame-src', ["'self'", 'https:', 'http:', 'blob:']],
         ['worker-src', ["'self'", 'blob:']],
@@ -108,7 +123,7 @@ export function contentSecurityPolicy(ctx: CspContext): string {
 export function reportOnlyContentSecurityPolicy(ctx: CspContext): string {
     const server = originOf(ctx.serverUrl);
     const self = ctx.requestOrigin ? originOf(ctx.requestOrigin) : null;
-    const known = [server, self].filter((origin): origin is string => origin !== null);
+    const known = [server, self, ...relayOrigins(ctx)].filter((origin): origin is string => origin !== null);
     const connect = ["'self'", ...new Set(known.flatMap((origin) => [origin, socketOrigin(origin)])), GOOGLE_GSI, ...ELEVENLABS, 'blob:', 'data:'];
     return contentSecurityPolicy(ctx)
         .replace(/connect-src [^;]*/, `connect-src ${connect.join(' ')}`)

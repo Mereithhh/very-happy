@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { TeamState } from '@slopus/happy-wire';
 import type { Message, UserTextMessage } from '@/sync/typesMessage';
+import type { ChatRow } from './chatTurns';
 import { buildLeadFixture } from '@/dev/leadSessionFixture';
 import { buildChatRows } from './chatTurns';
 import { isBottomEdgeChange, unseenRows } from './chatFollow';
-import { leadViewEntries, leadViewKeys, ownerAnswers, turnOpenerIds, turnOrigin, type LeadViewEntry } from './leadView';
+import { leadViewEntries, leadViewKeys, ownerAnswers, previewFolds, splitLeadText, turnOpenerIds, turnOrigin, type LeadFold, type LeadViewEntry } from './leadView';
 import { DEFAULT_LEAD_VIEW, LEAD_VIEW_LIMIT, leadViewFor, parseLeadViewPrefs, withLeadView } from './leadViewPrefs';
 import { foldSummary, leadViewCopy } from './leadViewCopy';
 
@@ -117,7 +118,7 @@ describe('leadViewEntries on a real long lead session (structure of the B-766 sa
         expect(entries[0].type === 'fold' && [entries[0].senders, entries[0].members, entries[0].leadTurns]).toEqual([['成员 A', '成员 C'], 3, 2]);
     });
 
-    it('counts a lead turn only once, however many rows the lead wrote', () => {
+    it('counts a lead turn only once, however many rows the lead wrote; every lead text stays (B-833)', () => {
         const rows = buildChatRows([
             { kind: 'user-text', id: 'o', localId: null, createdAt: 1, text: 'q', meta: { sentFrom: 'web' } },
             { kind: 'agent-text', id: 'a', localId: null, createdAt: 2, text: 'answer' },
@@ -128,11 +129,11 @@ describe('leadViewEntries on a real long lead session (structure of the B-766 sa
         ] as Message[], false);
         const all = rows.map((r) => r.key);
         const entries = leadViewEntries(rows, new Set(['o', 'm', 's']), (m) => turnOrigin(m, team));
-        // B-809: the member turn's progress line folds, its last text (x2) stays.
-        expect(entries.map((e) => (e.type === 'fold' ? 'fold' : e.row.key))).toEqual(['o', 'a', 'fold', 'x2', 'fold']);
+        // B-833: both lead texts of the member turn stay (B-809 kept only the last, x2); no tool ran, so no lead turn is folded.
+        expect(entries.map((e) => (e.type === 'fold' ? 'fold' : e.row.key))).toEqual(['o', 'a', 'fold', 'x1', 'x2', 'fold']);
         const fold = entries[2];
-        expect(fold.type === 'fold' && [fold.members, fold.system, fold.leadTurns]).toEqual([1, 0, 1]);
-        expect(fold.type === 'fold' && fold.rows.map((r) => r.key)).toEqual(['m', 'activity-m']);
+        expect(fold.type === 'fold' && [fold.members, fold.system, fold.leadTurns]).toEqual([1, 0, 0]);
+        expect(fold.type === 'fold' && fold.rows.map((r) => r.key)).toEqual(['m']);
         expect(all).toEqual(['o', 'a', 'm', 'activity-m', 'x2', 's']);
     });
 
@@ -199,13 +200,15 @@ describe('B-809 — the lead’s text never folds, whoever triggered the turn', 
             { kind: 'user-text', id: 'm', localId: null, createdAt: 1, text: env('tm-submit', '成员 A', `Task ${TASK} submitted:\nPR green`), meta: { sentFrom: 'team' } },
             text('think', 2, 'checking', true), tool('t1', 3), text('progress', 4, '先合 PR。'), tool('t2', 5), text('a', 6, SHIPPED),
         ], submitTeam);
-        expect(shape(entries)).toEqual(['fold:m,activity-m', 'via(member)>a']);
-        const reply = entries[1];
-        expect(reply.type === 'row' && reply.via).toEqual({ source: 'member', sender: '成员 A', submit: true });
+        // B-833: the progress line between the tools is the lead's text too — it stays, in its place.
+        expect(shape(entries)).toEqual(['fold:m,activity-m', 'via(member)>progress', 'fold:activity-m:after-progress', 'a']);
+        const reply = entries[3];
+        expect(entries[1].type === 'row' && entries[1].via).toEqual({ source: 'member', sender: '成员 A', submit: true });
+        expect(reply.type === 'row' && reply.via).toBeUndefined();
         expect(reply.type === 'row' && reply.row.type === 'message' && reply.row.message.kind === 'agent-text' && reply.row.message.text).toBe(SHIPPED);
         // The options under 「等你决定」 are the live suggestions (clickable), not folded away.
         expect(reply.type === 'row' && reply.row.type === 'message' && reply.row.optionsActive).toBe(true);
-        expect(leadViewCopy(true).via(reply.type === 'row' ? reply.via! : { source: 'owner' })).toBe('回复 成员 A 的提交');
+        expect(leadViewCopy(true).via(entries[1].type === 'row' ? entries[1].via! : { source: 'owner' })).toBe('回复 成员 A 的提交');
         expect(leadViewCopy(false).via({ source: 'member', sender: '成员 A', submit: true })).toBe('Replying to 成员 A’s submission');
     });
 
@@ -216,7 +219,8 @@ describe('B-809 — the lead’s text never folds, whoever triggered the turn', 
             { kind: 'user-text', id: 'n', localId: null, createdAt: 4, text: '<task-notification><summary>done</summary><status>completed</status></task-notification>', meta: { sentFrom: 'cli' } },
             tool('t2', 5), text('b', 6, '后台构建通过。'),
         ]);
-        expect(shape(entries)).toEqual(['fold:s,activity-s', 'via(system)>a', 'fold:activity-n', 'via(system)>b']);
+        // The notification that heads its activity row becomes its own (folded) line.
+        expect(shape(entries)).toEqual(['fold:s,activity-s', 'via(system)>a', 'fold:n,activity-n', 'via(system)>b']);
         expect(leadViewCopy(true).via({ source: 'system' })).toBe('回复系统通知');
     });
 
@@ -225,7 +229,8 @@ describe('B-809 — the lead’s text never folds, whoever triggered the turn', 
             { kind: 'user-text', id: 'm', localId: null, createdAt: 1, text: env('tm-member', '成员 A'), meta: { sentFrom: 'team' } },
             text('a', 2, '收到。'), tool('t', 3, 'mcp__happy__team_message'), text('b', 4, '已经转给成员 B。'),
         ]);
-        expect(shape(entries)).toEqual(['fold:m,activity-m', 'via(member)>b']);
+        // B-833: 「收到。」 before the team_message stays; the team_message folds between the two texts.
+        expect(shape(entries)).toEqual(['fold:m', 'via(member)>a', 'fold:activity-m:after-a', 'b']);
         expect(entries[1].type === 'row' && entries[1].via).toEqual({ source: 'member', sender: '成员 A' });
         expect(leadViewCopy(true).via({ source: 'member', sender: '成员 A' })).toBe('回复 成员 A');
         expect(leadViewCopy(true).via({ source: 'member' })).toBe('回复成员消息');
@@ -247,12 +252,134 @@ describe('B-809 — the lead’s text never folds, whoever triggered the turn', 
         ] as Message[];
         const rows = buildChatRows(list, false, { turnDiffs: true, keepTurnsOpen: new Set(['m']) });
         const entries = leadViewEntries(rows, turnOpenerIds(list), (m) => turnOrigin(m, team));
-        expect(shape(entries)).toEqual(['fold:m', 'via(member)>activity-m']);
+        // B-833: the held answer is its own row here — the same rows as once the turn is released.
+        expect(shape(entries)).toEqual(['fold:m,activity-m', 'via(member)>a']);
+        const released = leadViewEntries(buildChatRows(list, false, { turnDiffs: true }), turnOpenerIds(list), (m) => turnOrigin(m, team));
+        expect(shape(released)).toEqual(shape(entries));
+        const answer = entries[1];
+        expect(answer.type === 'row' && answer.row.type === 'message' && [answer.row.showMeta, answer.row.optionsActive]).toEqual([true, true]);
     });
 
     it('reads the submit notice from the envelope when the record is gone', () => {
         expect(turnOrigin(msg(env('tm-gone', '成员 C', `Task ${TASK} submitted:\ndone`), 'team'), team)).toEqual({ source: 'member', sender: '成员 C', submit: true });
         expect(turnOrigin(msg(env('tm-gone', '成员 C', `Task ${TASK} is submitted: not the notice`), 'team'), team)).toEqual({ source: 'member', sender: '成员 C' });
+    });
+});
+
+describe('B-833 — every lead text stays, the live turn too; the newest batch previews the members’ text', () => {
+    const tool = (id: string, at: number, name = 'Bash') => ({ kind: 'tool-call', id, localId: null, createdAt: at, children: [],
+        tool: { name, state: 'completed', input: {}, createdAt: at, startedAt: at, completedAt: at, description: null } });
+    const text = (id: string, at: number, body: string, isThinking = false) => ({ kind: 'agent-text', id, localId: null, createdAt: at, text: body, ...(isThinking ? { isThinking } : {}) });
+    const member = (id: string, at: number, record = 'tm-member', from = '成员 A', body = 'body') => ({ kind: 'user-text', id, localId: null, createdAt: at, text: env(record, from, body), meta: { sentFrom: 'team' } });
+    const owner = (id: string, at: number) => ({ kind: 'user-text', id, localId: null, createdAt: at, text: '怎么样了？', meta: { sentFrom: 'web' } });
+    const view = (messages: unknown[], live = false) => {
+        const list = messages as Message[];
+        const rows = buildChatRows(list, live, { turnDiffs: true });
+        return { rows, entries: leadViewEntries(rows, turnOpenerIds(list), (m) => turnOrigin(m, team)) };
+    };
+    const shape = (entries: LeadViewEntry[]) => entries.map((e) => (e.type === 'fold' ? `fold:${e.rows.map((r) => r.key).join(',')}` : `${e.via ? 'via>' : ''}${e.row.key}`));
+    const texts = (entries: LeadViewEntry[]) => entries.flatMap((e) => (e.type === 'row' && e.row.type === 'message' && e.row.message.kind === 'agent-text' ? [e.row.message.id] : []));
+    const folded = (entries: LeadViewEntry[]) => entries.flatMap((e) => (e.type === 'fold' ? e.rows.flatMap((r) => (r.type === 'activity' ? r.messages.map((m) => m.id) : r.type === 'message' ? [r.message.id] : [])) : []));
+    // The real shape of a lead turn: submit → text → team_message → text → tool → last text.
+    const LEAD_TURN = [
+        member('m', 1, 'tm-member', '成员 A', 'Task x submitted:\nPR green'),
+        text('think', 2, 'checking', true), text('t1', 3, '部署失败了，同意最小修法。'), tool('msg', 4, 'mcp__happy__team_message'),
+        text('t2', 5, '已经让成员 A 按最小修法重推。'), tool('bash', 6), text('t3', 7, '重推成功，已经上线。'),
+    ];
+
+    it('a finished member turn: each lead text in order, `via` on the first only; thinking and tools fold', () => {
+        const { rows, entries } = view(LEAD_TURN);
+        expect(shape(entries)).toEqual(['fold:m,activity-m', 'via>t1', 'fold:activity-m:after-t1', 't2', 'fold:activity-m:after-t2', 't3']);
+        expect(texts(entries)).toEqual(['t1', 't2', 't3']);
+        expect(folded(entries)).toEqual(['m', 'think', 'msg', 'bash']);
+        // 「全部消息」 is untouched: the turn is still one activity row and its answer.
+        expect(rows.map((r) => r.key)).toEqual(['m', 'activity-m', 't3']);
+        expect(rows[1].type === 'activity' && rows[1].messages.map((m) => m.id)).toEqual(['think', 't1', 'msg', 't2', 'bash']);
+        // A text with work after it is a progress line (no actions), like in 「全部消息」.
+        const t1 = entries[1];
+        expect(t1.type === 'row' && t1.row.type === 'message' && t1.row.showActions).toBe(false);
+    });
+
+    it('the live turn shows its text as it lands; keys only append, and the finished turn keeps them (nothing remounts)', () => {
+        const steps = LEAD_TURN.map((_, i) => view(LEAD_TURN.slice(0, i + 1), true).entries);
+        const done = view(LEAD_TURN, false).entries;
+        // Every step's text is on screen in a live session (B-809 folded all of it until the turn ended).
+        expect(texts(steps[2])).toEqual(['t1']);
+        expect(texts(steps[4])).toEqual(['t1', 't2']);
+        expect(texts(steps[6])).toEqual(['t1', 't2', 't3']);
+        // The visible keys of each step stay, in order, in the next step and in the finished turn.
+        const keys = (entries: LeadViewEntry[]) => entries.map((e) => (e.type === 'fold' ? e.key : e.row.key));
+        for (let i = 1; i < steps.length; i++) expect(keys(steps[i]).slice(0, keys(steps[i - 1]).length)).toEqual(keys(steps[i - 1]));
+        expect(keys(done)).toEqual(keys(steps[steps.length - 1]));
+        // Unseen count: a new text is +1; the tools after it are not news.
+        const at = (i: number) => leadViewKeys(steps[i], new Set());
+        expect(unseenRows(at(2).at(-1)!, at(3))).toBe(0); // team_message after t1
+        expect(unseenRows(at(3).at(-1)!, at(4))).toBe(1); // t2
+        expect(unseenRows(at(4).at(-1)!, at(5))).toBe(0); // the tool after t2
+        expect(unseenRows(at(5).at(-1)!, at(6))).toBe(1); // t3
+        // An opened work-only fold does show its rows.
+        const work = steps[5].filter((e): e is LeadFold => e.type === 'fold' && e.members === 0).at(-1);
+        expect(work && leadViewKeys(steps[5], new Set([work.key])).slice(-2)).toEqual([work?.key, 'activity-m:after-t2']);
+        // The newest segment is the live one.
+        const last = work?.rows.at(-1);
+        expect(last?.type === 'activity' && last.live).toBe(true);
+    });
+
+    it('a notification-triggered live turn: the notification is its own line, the lead text after it stays', () => {
+        const { entries } = view([
+            { kind: 'user-text', id: 'n', localId: null, createdAt: 1, text: '<task-notification><summary>done</summary><status>completed</status></task-notification>', meta: { sentFrom: 'cli' } },
+            tool('t', 2), text('a', 3, '后台构建通过，继续发布。'), tool('t2', 4),
+        ], true);
+        expect(shape(entries)).toEqual(['fold:n,activity-n', 'via>a', 'fold:activity-n:after-a']);
+        const fold = entries[0];
+        expect(fold.type === 'fold' && [fold.system, fold.leadTurns]).toEqual([1, 1]);
+    });
+
+    it('splitLeadText: thinking stays in the work, a held answer becomes its row, a leaf row is untouched', () => {
+        const row = { type: 'activity', key: 'activity-x', live: false, messages: [text('th', 1, 'hmm', true), tool('t', 2)] } as ChatRow;
+        expect(splitLeadText(row)).toEqual([{ ...row, durationSeconds: undefined }]);
+        const held = { type: 'activity', key: 'activity-y', live: false, messages: [tool('t', 1), text('ans', 2, 'done')], answer: { id: 'ans', showMeta: true, showActions: true, optionsActive: false } } as ChatRow;
+        const pieces = splitLeadText(held);
+        expect(pieces.map((p) => p.key)).toEqual(['activity-y', 'ans']);
+        expect(pieces.some((p) => p.type === 'activity' && p.answer)).toBe(false);
+        expect(pieces[1].type === 'message' && pieces[1].showMeta).toBe(true);
+        const message = { type: 'message', key: 'k', message: text('k', 1, 'x'), showMeta: false } as ChatRow;
+        expect(splitLeadText(message)).toEqual([message]);
+    });
+
+    it('the newest batch previews its member messages — consecutive ones all, in order; older folds stay closed', () => {
+        const { entries } = view([
+            owner('o', 1), text('oa', 2, '好。'),
+            member('m1', 3), tool('t1', 4), text('r1', 5, '收到。'),
+            member('m2', 6, 'tm-member', '成员 A', '提交：第一行\n2\n3\n4\n5\n6\n7\n8'), tool('t2', 7),
+            member('m3', 8, 'tm-gone', '成员 C', '提交：另一份报告'),
+            { kind: 'user-text', id: 's', localId: null, createdAt: 9, text: env('tm-system', 'System', 'idle'), meta: { sentFrom: 'team' } },
+        ]);
+        const folds = entries.filter((e): e is LeadFold => e.type === 'fold');
+        expect(folds.map((f) => f.preview.map((r) => r.key))).toEqual([['m1'], ['m2', 'm3']]);
+        expect([...previewFolds(entries, new Set())]).toEqual([folds[1].key]);
+        // A batch the owner already answered after shows nothing.
+        const answered = view([member('m1', 1), text('r1', 2, '收到。'), owner('o', 3)]).entries;
+        expect(previewFolds(answered, new Set()).size).toBe(0);
+        // A system-only newest batch has nothing to preview, and does not reach back to an older member batch.
+        const system = view([member('m1', 1), text('r1', 2, '收到。'), { kind: 'user-text', id: 's', localId: null, createdAt: 3, text: env('tm-system', 'System', 'idle'), meta: { sentFrom: 'team' } }]).entries;
+        expect(previewFolds(system, new Set()).size).toBe(0);
+    });
+
+    it('a previewed batch keeps its preview when a newer one lands, until the owner writes', () => {
+        const first = view([owner('o', 1), member('m1', 2), text('r1', 3, '收到。')]).entries;
+        const shown = previewFolds(first, new Set());
+        expect(shown.size).toBe(1);
+        const second = view([owner('o', 1), member('m1', 2), text('r1', 3, '收到。'), member('m2', 4)]).entries;
+        // The older batch no longer is the newest, but the reader may be on it: it stays open; the new one opens too.
+        const both = previewFolds(second, shown);
+        expect(both.size).toBe(2);
+        expect([...both]).toContain([...shown][0]);
+        // Without that history only the newest previews (a fresh mount).
+        expect(previewFolds(second, new Set()).size).toBe(1);
+        // The owner writes: every preview retires.
+        const replied = view([owner('o', 1), member('m1', 2), text('r1', 3, '收到。'), member('m2', 4), owner('o2', 5)]).entries;
+        expect(previewFolds(replied, both).size).toBe(0);
     });
 });
 

@@ -82,3 +82,6 @@
   .lv-label-full { display: none; }
   .lv-label-short { display: inline; }
 }
+
+/* B-833: the newest batch's member messages under its fold row (their cards, 6-line preview). */
+.lv-preview { display: flex; flex-direction: column; gap: calc(var(--chat-space) * 3); min-width: 0; }
