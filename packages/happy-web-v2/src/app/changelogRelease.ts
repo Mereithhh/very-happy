@@ -144,7 +144,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.oct26a.title',
     summaryKey: 'changelog.releases.oct26a.summary',
-    itemKeys: ['changelog.releases.oct26a.deps', 'changelog.releases.oct26a.selfHost'],
+    itemKeys: ['changelog.releases.oct26a.deps', 'changelog.releases.oct26a.teams', 'changelog.releases.oct26a.selfHost'],
   },
   {
     id: '2026-10-25-unsent-messages-kept',

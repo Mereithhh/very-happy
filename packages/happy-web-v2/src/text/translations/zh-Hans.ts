@@ -2860,6 +2860,7 @@ export const zhHans: TranslationStructure = {
                 title: '安全更新：服务端依赖升级',
                 summary: '服务端依赖升级到已修复安全问题的版本，并且只运行经过测试的锁定版本。',
                 deps: '安全更新：服务端依赖（Fastify、zod、axios、sharp 等）升级到已修复的版本。',
+                teams: '团队长期运行不再被容量上限卡住；已结束的旧任务会自动归档，团队页不再显示。',
                 selfHost: '自托管：TRUST_PROXY 不再接受跳数（如 1），请改为反向代理连到服务端时的 IP/CIDR，例如 172.18.0.1；填数字时服务端会拒绝启动，并在日志里给出改法。',
             },
             oct25s: {
