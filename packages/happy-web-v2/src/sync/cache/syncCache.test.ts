@@ -8,7 +8,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiMessage } from '@/sync/apiTypes';
-import { CACHE_DB_PREFIX, CACHE_OP_TIMEOUT_MS, CACHE_SCHEMA, CACHE_SWITCH_KEY, CACHE_WRITE_TIMEOUT_LIMIT, SyncCache, clearSyncCaches, type SessionRecord, type StoredRow } from './syncCache';
+import { CACHE_DB_PREFIX, CACHE_OP_TIMEOUT_MS, CACHE_SCHEMA, CACHE_SWITCH_KEY, CACHE_WRITE_TIMEOUT_LIMIT, SyncCache, clearSyncCaches, PURGE_PENDING_KEY, type SessionRecord, type StoredRow } from './syncCache';
 import { OutboxStore, type OutboxRow } from './outboxStore';
 import { CACHE_MAX_SESSIONS } from './lru';
 import { validateSegment } from './segment';
@@ -653,6 +653,39 @@ describe('B-813 switches and logout', () => {
         vi.restoreAllMocks();
         expect(await factory.databases()).toEqual([]);
     });
+});
+
+describe('B-824 §6.1 / B-825: a purge another tab blocks is never kept silently', () => {
+    it('records the blocked database, opens no cache while it is pending, and deletes it before the next open', async () => {
+        const factory = new IDBFactory();
+        const storage = memoryStorage();
+        const first = await opened(harness(factory, storage));
+        first.cache.offerLatest('s', rows(1, 3), { viewed: true });
+        await first.cache.flush();
+        first.cache.close();
+        // A frozen tab keeps a connection and never answers versionchange.
+        const blocker = await rawDb(factory);
+        const [name] = (await factory.databases()).map((db) => db.name!);
+
+        expect(await clearSyncCaches(factory, storage)).toEqual([]);
+        expect(JSON.parse(storage.getItem(PURGE_PENDING_KEY)!)).toEqual([name]);
+
+        // Still blocked: this page runs without a cache instead of reading the old rows.
+        const blocked = await opened(harness(factory, storage));
+        expect(blocked.cache.stats().state).toBe('disabled');
+        expect(blocked.cache.stats().disabledReason).toContain('purge pending');
+        expect(await blocked.cache.load('s')).toBeNull();
+        expect(await blocked.cache.outboxDatabase(100)).toBeNull();
+        blocked.cache.close();
+
+        // The other tab let go: the next open deletes first, then starts empty.
+        blocker.close();
+        const next = await opened(harness(factory, storage));
+        expect(next.cache.stats().state).toBe('ready');
+        expect(storage.getItem(PURGE_PENDING_KEY)).toBeNull();
+        expect(await next.cache.load('s')).toBeNull();
+        next.cache.close();
+    }, 20_000);
 });
 
 describe('B-813 two tabs on one database (review S5)', () => {

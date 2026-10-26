@@ -17,8 +17,8 @@
 // nothing loads for users who never open a terminal, and the main bundle is
 // untouched. The woff2 are served with `Access-Control-Allow-Origin: *` and
 // immutable caching; the stylesheet's own @font-face `src` urls are relative,
-// so they resolve against the CDN. very-happy sets no CSP, so no allowlist edit
-// is needed. xterm measures the cell from the ASCII glyph and Maple's Han is
+// so they resolve against the CDN. B-825: the CDN origin is in the server's
+// CSP style-src and font-src (happy-server securityHeaders.ts). xterm measures the cell from the ASCII glyph and Maple's Han is
 // 2x by construction, so a not-yet-fetched rare-Han slice only causes a brief
 // tofu on that glyph's first paint, never a misaligned grid.
 

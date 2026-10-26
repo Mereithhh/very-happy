@@ -173,40 +173,45 @@ class AuthModule {
             throw new Error('Auth module not initialized');
         }
         
+        // B-825: only a token that fails verification or names a revoked /
+        // expired login session is invalid (null → 401, and Web wipes the
+        // account's local data). A failed login-session lookup is the server's
+        // problem: it propagates, and callers answer 503 instead of signing the
+        // browser out.
+        let verified: Awaited<ReturnType<AuthTokens['verifier']['verify']>>;
         try {
-            const verified = await this.tokens.verifier.verify(token);
-            if (!verified) {
-                return null;
-            }
-            
-            const userId = verified.user as string;
-            const extras = verified.extras;
-            if (!(await this.isLoginSessionValid(token, userId, extras))) {
-                return null;
-            }
-            
-            // Evict oldest entries if cache is at capacity
-            if (this.tokenCache.size >= MAX_CACHE_SIZE) {
-                const oldest = [...this.tokenCache.entries()]
-                    .sort((a, b) => a[1].cachedAt - b[1].cachedAt)
-                    .slice(0, Math.floor(MAX_CACHE_SIZE * 0.2));
-                for (const [key] of oldest) {
-                    this.tokenCache.delete(key);
-                }
-            }
-
-            this.tokenCache.set(token, {
-                userId,
-                extras,
-                cachedAt: Date.now()
-            });
-            
-            return { userId, extras };
-            
+            verified = await this.tokens.verifier.verify(token);
         } catch (error) {
             log({ module: 'auth', level: 'error', error }, 'Token verification failed');
             return null;
         }
+        if (!verified) {
+            return null;
+        }
+
+        const userId = verified.user as string;
+        const extras = verified.extras;
+        if (!(await this.isLoginSessionValid(token, userId, extras))) {
+            return null;
+        }
+        
+        // Evict oldest entries if cache is at capacity
+        if (this.tokenCache.size >= MAX_CACHE_SIZE) {
+            const oldest = [...this.tokenCache.entries()]
+                .sort((a, b) => a[1].cachedAt - b[1].cachedAt)
+                .slice(0, Math.floor(MAX_CACHE_SIZE * 0.2));
+            for (const [key] of oldest) {
+                this.tokenCache.delete(key);
+            }
+        }
+
+        this.tokenCache.set(token, {
+            userId,
+            extras,
+            cachedAt: Date.now()
+        });
+        
+        return { userId, extras };
     }
     
     invalidateUserTokens(userId: string): void {

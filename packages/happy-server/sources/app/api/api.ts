@@ -39,8 +39,9 @@ import { v3SessionRoutes } from "./routes/v3SessionRoutes";
 import { attachmentRoutes } from "./routes/attachmentRoutes";
 import { isLocalStorage, getLocalFilesDir } from "@/storage/files";
 import * as path from "path";
-import { runtimeConfigScript, transformIndexHtml, applyBrandToManifest, readHtmlBrand } from './htmlConfigInjection';
-import { requestOrigin } from './requestOrigin';
+import { runtimeConfigScript, readHtmlBrand } from './htmlConfigInjection';
+import { parseCspMode } from './securityHeaders';
+import { webDocumentOnSend } from './webDocumentOnSend';
 import * as fs from "fs";
 import { resolveTrustProxy, type TrustedProxyConfig } from './trustProxy';
 import { configureClientIpTrust, requestLogSerializer } from './clientIp';
@@ -49,6 +50,7 @@ import { relayRoutes } from './routes/relayRoutes';
 import { sessionShareRoutes } from './routes/sessionShareRoutes';
 import { sessionShareLinkRoutes } from './routes/sessionShareLinkRoutes';
 import { connectionDiagnosticsRoutes } from './routes/connectionDiagnosticsRoutes';
+import { cspReportRoutes } from './routes/cspReportRoutes';
 import { relayFeatureConfig } from '@/app/relay/relayConfig';
 
 export interface StartApiOptions {
@@ -167,6 +169,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     sessionShareRoutes(typed);
     sessionShareLinkRoutes(typed);
     connectionDiagnosticsRoutes(typed);
+    cspReportRoutes(typed);
 
     // Static webapp (self-host mode)
     if (opts.staticDir) {
@@ -181,35 +184,8 @@ export async function startApi(opts: StartApiOptions = {}) {
             app.register(fastifyStatic, { root: opts.brandAssetsDir, prefix: '/brand/', decorateReply: false, maxAge: 3_600_000 });
         }
         const brand = readHtmlBrand(opts.injectHtmlConfig);
-        if (injectScript || brand) {
-            app.addHook('onSend', async (request, reply, payload) => {
-                const contentType = reply.getHeader('content-type');
-                if (typeof contentType !== 'string') return payload;
-                const isHtml = contentType.includes('text/html');
-                const isManifest = brand !== null && contentType.includes('application/manifest+json');
-                if (!isHtml && !isManifest) return payload;
-                let html: string;
-                if (typeof payload === 'string') {
-                    html = payload;
-                } else if (Buffer.isBuffer(payload)) {
-                    html = payload.toString('utf8');
-                } else if (payload && typeof (payload as any).pipe === 'function') {
-                    // stream — read it
-                    const chunks: Buffer[] = [];
-                    for await (const chunk of payload as any) {
-                        chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-                    }
-                    html = Buffer.concat(chunks).toString('utf8');
-                } else {
-                    return payload;
-                }
-                const injected = isManifest
-                    ? applyBrandToManifest(html, brand)
-                    : transformIndexHtml(html, injectScript, brand, requestOrigin(request));
-                reply.header('content-length', Buffer.byteLength(injected));
-                return injected;
-            });
-        }
+        // B-825: runtime config + brand injection, and the CSP / security headers of every HTML document.
+        app.addHook('onSend', webDocumentOnSend({ injectScript, brand, serverUrl: opts.injectHtmlConfig?.serverUrl, cspMode: parseCspMode(process.env.CSP_MODE) }));
         app.setNotFoundHandler(spaFallback(opts.staticDir, injectScript, brand));
     }
 

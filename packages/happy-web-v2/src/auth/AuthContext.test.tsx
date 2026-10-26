@@ -107,3 +107,30 @@ it('B-813: logout deletes every local message cache database (Owner 10-25: é€€å‡
   }
   expect(await names()).toEqual([]);
 });
+
+it('B-825: the auth-expiry sign-out (latched) removes the account key and every cache without calling the server', async () => {
+  const { TokenStorage } = await import('@/auth/tokenStorage');
+  const { revokeCloudLogin } = await import('@/auth/cloudAuth');
+  const { tripAuthLatch, resetAuthLatch } = await import('@/auth/authLatch');
+  vi.mocked(TokenStorage.removeCredentials).mockClear();
+  vi.mocked(revokeCloudLogin).mockClear();
+  await syncCache.open('account-expired');
+  syncCache.offerLatest('s1', [{ id: 'm1', seq: 1, localId: null, content: { t: 'encrypted', c: 'Y2lwaGVy' }, createdAt: 1, updatedAt: 1 }], { viewed: true });
+  await syncCache.flush();
+  const names = async () => (await indexedDB.databases()).map((db) => db.name).filter((name) => name?.startsWith(CACHE_DB_PREFIX));
+  expect(await names()).toHaveLength(1);
+
+  await act(async () => root.render(<AuthProvider initialCredentials={{ token: 'tok', secret: 'sec' }}><span /></AuthProvider>));
+  tripAuthLatch({ status: 401, path: '/v1/kv' });
+  const loc = window.location;
+  Object.defineProperty(window, 'location', { configurable: true, value: { ...loc, reload: vi.fn() } });
+  try {
+    await act(async () => { await getCurrentAuth()!.logout(); });
+  } finally {
+    Object.defineProperty(window, 'location', { configurable: true, value: loc });
+    resetAuthLatch();
+  }
+  expect(revokeCloudLogin).not.toHaveBeenCalled();
+  expect(TokenStorage.removeCredentials).toHaveBeenCalledOnce();
+  expect(await names()).toEqual([]);
+});

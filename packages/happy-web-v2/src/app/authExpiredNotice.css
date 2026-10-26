@@ -21,3 +21,23 @@
 .vh-auth-expired-title { margin: 0 0 8px; font-size: var(--fs-16); font-weight: 600; }
 .vh-auth-expired-body { margin: 0 0 16px; color: var(--text-dim); font-size: var(--fs-13); line-height: 1.5; }
 .vh-auth-expired-actions { display: flex; flex-direction: column; gap: 8px; }
+/* B-825: unsent inputs the expiry wipe would delete. */
+.vh-auth-expired-unsent {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  max-height: min(40vh, 240px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.vh-auth-expired-unsent-item {
+  padding: 8px 10px;
+  font-size: var(--fs-13);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.vh-auth-expired-unsent-item + .vh-auth-expired-unsent-item { border-top: 1px solid var(--line); }
+.vh-auth-expired-unsent-empty { color: var(--text-dim); }
+.vh-auth-expired-copy { display: flex; justify-content: flex-end; margin: 0 0 16px; }

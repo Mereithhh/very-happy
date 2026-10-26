@@ -4,26 +4,20 @@
  */
 import axios from 'axios';
 import {
+    confirmAuthExpired,
+    getUnguardedFetch,
     installAxiosAuthGuard,
     installFetchAuthGuard,
+    type AuthExpiryVerdict,
     subscribeAuthLatch,
+    tripAuthLatch,
     type AuthGuardDeps,
 } from '@/auth/authLatch';
+import { isCredentialsRemovedEvent, storedAccountToken } from '@/auth/authExpiry';
 import { getServerUrl } from '@/sync/serverConfig';
 import { apiSocket } from '@/sync/apiSocket';
 
-const AUTH_KEY = 'auth_credentials'; // tokenStorage.ts (web)
-
-function currentToken(): string | null {
-    try {
-        const raw = localStorage.getItem(AUTH_KEY);
-        if (!raw) return null;
-        const token = (JSON.parse(raw) as { token?: unknown }).token;
-        return typeof token === 'string' ? token : null;
-    } catch {
-        return null;
-    }
-}
+const currentToken = storedAccountToken;
 
 function isServerUrl(url: string): boolean {
     try {
@@ -46,4 +40,37 @@ export function installAuthGuards(): void {
     // with a dead token that is just another retry loop. connect() refuses
     // while latched, so wake-ups/handovers can't revive it either.
     subscribeAuthLatch(() => apiSocket.disconnect());
+    // B-825: another tab signed out or wiped an expired login. This tab's
+    // token is gone with it; without the latch its 401s would not count
+    // (currentToken() is null) and it would keep the decrypted account on
+    // screen and retry forever.
+    window.addEventListener('storage', (event) => {
+        if (currentToken() === null && isCredentialsRemovedEvent(event)) {
+            tripAuthLatch({ status: 401, path: 'signed-out-in-another-tab' });
+        }
+    });
+}
+
+const CONFIRM_TIMEOUT_MS = 5_000;
+
+/**
+ * B-825 / B-824 §6.2: ask the server once more, past the latch guard, whether
+ * the current token is dead. No token left (another tab signed out) = expired.
+ */
+export function confirmCurrentTokenExpired(): Promise<AuthExpiryVerdict> {
+    const token = currentToken();
+    if (!token) return Promise.resolve('expired');
+    return confirmAuthExpired(async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), CONFIRM_TIMEOUT_MS);
+        try {
+            return await getUnguardedFetch()(`${getServerUrl()}/v1/account/profile`, {
+                headers: { Authorization: `Bearer ${token}` },
+                cache: 'no-store',
+                signal: controller.signal,
+            });
+        } finally {
+            clearTimeout(timer);
+        }
+    });
 }

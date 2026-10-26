@@ -17,6 +17,9 @@
  *    re-login prompt (AuthExpiredNotice). Only a reload/login clears it.
  *  - 403 is non-retryable but does NOT latch: it also means "not allowed for
  *    this resource" (teams, reauth_required) with a perfectly valid token.
+ *  - B-825: the socket handshake's `Invalid authentication token` on the
+ *    current token trips it too (apiSocket.ts). Before anything is wiped the
+ *    verdict is confirmed once (`confirmAuthExpired`).
  *
  * Pure module (no React, no app imports) so the policy is unit-testable.
  */
@@ -181,11 +184,48 @@ export function installAxiosAuthGuard(axios: AxiosLike, deps: AuthGuardDeps): vo
 }
 
 let fetchGuardInstalled = false;
+let unguardedFetch: FetchFn | null = null;
 
 /** Idempotent: patch `target.fetch` once. */
 export function installFetchAuthGuard(target: { fetch: FetchFn }, deps: AuthGuardDeps): void {
     if (fetchGuardInstalled) return;
     fetchGuardInstalled = true;
     const inner = target.fetch.bind(target);
+    unguardedFetch = inner;
     target.fetch = wrapFetchWithAuthGuard(inner, deps);
+}
+
+/** The fetch underneath the guard — only for the expiry confirmation below. */
+export function getUnguardedFetch(): FetchFn {
+    return unguardedFetch ?? ((input, init) => fetch(input, init));
+}
+
+//
+// B-825 / B-824 §6.2: confirm before wiping
+//
+
+/**
+ * `expired`: the server rejected the current token again (401) — wipe.
+ * `valid`: it accepted it — the latch was a misfire (log it; the page still
+ * needs a reload). `unknown`: no answer (offline, timeout, 5xx, 403) — keep
+ * the latch and ask again on the next online edge. One server-side glitch
+ * (a wrong master secret during a blue/green switch) must not wipe every
+ * browser's local data.
+ */
+export type AuthExpiryVerdict = 'expired' | 'valid' | 'unknown';
+
+export async function confirmAuthExpired(probe: () => Promise<{ status: number }>): Promise<AuthExpiryVerdict> {
+    try {
+        const { status } = await probe();
+        if (status === 401) return 'expired';
+        if (status >= 200 && status < 300) return 'valid';
+        return 'unknown';
+    } catch {
+        return 'unknown';
+    }
+}
+
+/** The socket handshake's answer to a token the server does not accept (happy-server socket.ts). */
+export function isSocketTokenRejection(error: unknown): boolean {
+    return (error as { message?: unknown } | null)?.message === 'Invalid authentication token';
 }

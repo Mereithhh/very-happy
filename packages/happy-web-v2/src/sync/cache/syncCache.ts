@@ -487,6 +487,8 @@ export class SyncCache {
     private async openFor(accountId: string): Promise<IDBDatabase | null> {
         const factory = this.deps.factory();
         if (!factory) throw new Error('no indexedDB');
+        // B-824 §6.1: a purge left databases behind — delete them before opening any; no cache until then.
+        if (!(await processPurgePending(factory, this.deps.localStorage()))) throw new Error('purge pending');
         const hash = await accountHash(accountId);
         const name = `${CACHE_DB_PREFIX}${hash}`;
         this.register(name);
@@ -854,29 +856,75 @@ function parseRegistry(raw: string | null): string[] {
 }
 
 /**
- * Logout (Owner 10-25: 退出登录时全部清空) and `vh.sync.cache=off`: delete
- * every `vh-sync-*` database this browser has. Best effort, never throws.
+ * B-824 §6.1 / B-825: names of `vh-sync-*` databases a purge could not delete
+ * (another tab held a connection past OPEN_BLOCKED_MS). They hold account
+ * data the next sign-in of the same account could decrypt, so they must go:
+ * the next `open` deletes them before it opens anything, and runs without a
+ * cache while any is left.
+ */
+export const PURGE_PENDING_KEY = 'vh.sync.purgePending';
+
+function readPurgePending(storage: Pick<Storage, 'getItem'> | undefined): string[] {
+    try { return parseRegistry(storage?.getItem(PURGE_PENDING_KEY) ?? null); } catch { return []; }
+}
+
+function writePurgePending(storage: Pick<Storage, 'setItem' | 'removeItem'> | undefined, names: readonly string[]) {
+    try {
+        if (names.length === 0) storage?.removeItem(PURGE_PENDING_KEY);
+        else storage?.setItem(PURGE_PENDING_KEY, JSON.stringify([...new Set(names)]));
+    } catch { /* storage blocked: nothing more we can do here */ }
+}
+
+async function deleteAll(factory: IDBFactory, names: Iterable<string>): Promise<{ deleted: string[]; blocked: string[] }> {
+    const deleted: string[] = [];
+    const blocked: string[] = [];
+    await Promise.all([...new Set(names)].map(async (name) => {
+        try {
+            // A blocked delete stays queued, and a later request for the same name
+            // waits behind it without ever seeing `blocked` — bound the wait too.
+            await withTimeout(deleteDatabase(factory, name, OPEN_BLOCKED_MS), OPEN_BLOCKED_MS + 1_000, `delete ${name}`);
+            deleted.push(name);
+        } catch {
+            blocked.push(name);
+        }
+    }));
+    return { deleted, blocked };
+}
+
+/**
+ * Logout (Owner 10-25: 退出登录时全部清空), auth expiry (B-825) and
+ * `vh.sync.cache=off`: delete every `vh-sync-*` database this browser has.
+ * A database another tab keeps open is recorded in PURGE_PENDING_KEY (B-824
+ * §6.1) instead of being kept silently. Best effort, never throws.
  */
 export async function clearSyncCaches(
     factory: IDBFactory | undefined,
-    storage: Pick<Storage, 'getItem' | 'removeItem'> | undefined,
+    storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | undefined,
 ): Promise<string[]> {
     if (!factory) return [];
-    const names = new Set<string>();
+    const names = new Set<string>(readPurgePending(storage));
     try { for (const name of parseRegistry(storage?.getItem(REGISTRY_KEY) ?? null)) names.add(name); } catch { /* ignore */ }
     try {
         const listed = await factory.databases?.();
         for (const db of listed ?? []) if (db.name?.startsWith(CACHE_DB_PREFIX)) names.add(db.name);
     } catch { /* Safari < 14 has no databases() — the registry covers it */ }
-    const deleted: string[] = [];
-    await Promise.all([...names].map(async (name) => {
-        try {
-            await deleteDatabase(factory, name, OPEN_BLOCKED_MS);
-            deleted.push(name);
-        } catch { /* blocked: the next open of that account finds it intact, logout already dropped the key */ }
-    }));
+    const { deleted, blocked } = await deleteAll(factory, names);
+    writePurgePending(storage, blocked);
     try { storage?.removeItem(REGISTRY_KEY); } catch { /* ignore */ }
     return deleted;
+}
+
+/** B-824 §6.1: delete what an earlier purge could not. True = nothing is left pending. */
+export async function processPurgePending(
+    factory: IDBFactory | undefined,
+    storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | undefined,
+): Promise<boolean> {
+    const pending = readPurgePending(storage);
+    if (pending.length === 0) return true;
+    if (!factory) return false;
+    const { blocked } = await deleteAll(factory, pending);
+    writePurgePending(storage, blocked);
+    return blocked.length === 0;
 }
 
 export function hasIndexedDb(): IDBFactory | undefined {

@@ -1,6 +1,7 @@
 import { connectionDiagnostics, startConnectionStage, connectionFailureOutcome, diagnosticRegion, type DiagnosticRegion } from './connectionDiagnostics';
 import { fetchWithDeadline, type DeadlineRequestInit } from './requestDeadline';
-import { isAuthLatched } from '@/auth/authLatch';
+import { isAuthLatched, isSocketTokenRejection, tripAuthLatch } from '@/auth/authLatch';
+import { storedAccountToken } from '@/auth/authExpiry';
 import { io, Socket } from 'socket.io-client';
 import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
@@ -925,6 +926,11 @@ class ApiSocket {
         // Error events
         socket.on('connect_error', (error) => {
             if (this.socket !== socket) return;
+            // B-825 / B-824 §6.2: the handshake rejected the CURRENT token — the same
+            // "signed out" as a 401 (a rotated-away token is just a stale socket).
+            if (isSocketTokenRejection(error) && this.config?.token === storedAccountToken()) {
+                tripAuthLatch({ status: 401, path: 'socket' });
+            }
             if (this.isVerboseLogging()) {
                 console.error('🔌 SyncSocket: Connection error', error);
             }

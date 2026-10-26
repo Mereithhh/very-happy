@@ -253,7 +253,15 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
             return;
         }
 
-        const verified = await auth.verifyToken(token);
+        let verified: Awaited<ReturnType<typeof auth.verifyToken>>;
+        try {
+            verified = await auth.verifyToken(token);
+        } catch (error) {
+            // B-825: store down ≠ bad token; the client just retries.
+            log({ module: 'websocket', level: 'error', error }, 'Token check unavailable');
+            next(new Error('Authentication unavailable'));
+            return;
+        }
         if (!verified) {
             log({ module: 'websocket' }, `Invalid token provided`);
             next(new Error('Invalid authentication token'));

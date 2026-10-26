@@ -1,3 +1,5 @@
+// B-825: before any Zod schema exists (see the module).
+import './zodJitless';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';

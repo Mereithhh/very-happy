@@ -35,6 +35,7 @@ import {
     previewMimeOf,
 } from './fsPreviewModel';
 import { SpreadsheetPreview } from './SpreadsheetPreview';
+import { HtmlPreviewFrame } from './HtmlPreviewFrame';
 import { fsFailureText } from './fsFailureText';
 import { DownloadFeedback, FileDownloadAction } from './FileDownloadAction';
 import { useFileDownload } from './useFileDownload';
@@ -329,20 +330,14 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
                     // Crucially NO `allow-same-origin`: the file is written by the
                     // agent (or whoever it ran), so its scripts run in an opaque
                     // origin and cannot read this app's cookies, localStorage, or
-                    // DOM. `srcDoc` keeps it fully inline — machine-local relative
-                    // asset paths do not resolve here (the frame has no origin),
-                    // which is the expected limit of a single-file preview; the
-                    // source toggle in the head shows the raw HTML.
+                    // DOM. Machine-local relative asset paths do not resolve here
+                    // (the frame has no origin), which is the expected limit of a
+                    // single-file preview; the source toggle in the head shows the
+                    // raw HTML. B-825: not srcDoc — that would inherit the app's CSP.
                     return (
                         <div className="fsb-viewer-body fsb-viewer-body--html">
                             {truncNotice}
-                            <iframe
-                                className="fsb-html"
-                                title={path}
-                                srcDoc={state.text}
-                                sandbox="allow-scripts allow-popups allow-forms allow-modals"
-                                referrerPolicy="no-referrer"
-                            />
+                            <HtmlPreviewFrame html={state.text} title={path} />
                         </div>
                     );
                 }

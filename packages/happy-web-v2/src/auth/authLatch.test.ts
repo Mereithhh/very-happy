@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     AuthFailedError,
     assertNotAuthFailure,
+    confirmAuthExpired,
+    isSocketTokenRejection,
     getAuthLatch,
     installAxiosAuthGuard,
     isAuthFailure,
@@ -47,6 +49,17 @@ describe('fetch auth guard (B-490)', () => {
         expect(isAuthLatched()).toBe(true);
         await expect(guarded(new Request(`${SERVER}/v1/feed`, bearer('tok-current')))).rejects.toBeInstanceOf(AuthFailedError);
         expect(inner).toHaveBeenCalledTimes(1);
+    });
+
+    it('B-825: 5xx, 503 auth_unavailable, 403 and network errors never latch (nothing is wiped)', async () => {
+        for (const status of [500, 502, 503, 504, 403, 429]) {
+            const guarded = wrapFetchWithAuthGuard(async () => new Response('{"error":"auth_unavailable"}', { status }), deps);
+            const res = await guarded(`${SERVER}/v1/sessions`, bearer('tok-current'));
+            expect(res.status).toBe(status);
+        }
+        const offline = wrapFetchWithAuthGuard(async () => { throw new TypeError('Failed to fetch'); }, deps);
+        await expect(offline(`${SERVER}/v1/sessions`, bearer('tok-current'))).rejects.toThrow('Failed to fetch');
+        expect(isAuthLatched()).toBe(false);
     });
 
     it('does not latch for a stale token, anonymous requests or other origins', async () => {
@@ -102,5 +115,23 @@ describe('isAuthFailure / assertNotAuthFailure', () => {
         expect(() => assertNotAuthFailure({ status: 401 }, 'x')).toThrow(AuthFailedError);
         expect(() => assertNotAuthFailure({ status: 403 }, 'x')).toThrow(AuthFailedError);
         expect(() => assertNotAuthFailure({ status: 500 }, 'x')).not.toThrow();
+    });
+});
+
+describe('B-825 / B-824 §6.2: confirm before wiping', () => {
+    it('only a second 401 is "expired"; 2xx is a misfire; everything else is unknown', async () => {
+        expect(await confirmAuthExpired(async () => ({ status: 401 }))).toBe('expired');
+        expect(await confirmAuthExpired(async () => ({ status: 200 }))).toBe('valid');
+        for (const status of [403, 429, 500, 502, 503]) expect(await confirmAuthExpired(async () => ({ status }))).toBe('unknown');
+        expect(await confirmAuthExpired(async () => { throw new TypeError('Failed to fetch'); })).toBe('unknown');
+        expect(await confirmAuthExpired(async () => { throw new DOMException('aborted', 'AbortError'); })).toBe('unknown');
+    });
+
+    it('recognises the socket handshake rejecting the token, nothing else', () => {
+        expect(isSocketTokenRejection(new Error('Invalid authentication token'))).toBe(true);
+        for (const message of ['Authentication unavailable', 'Missing authentication token', 'xhr poll error', 'Socket connection limit reached']) {
+            expect(isSocketTokenRejection(new Error(message))).toBe(false);
+        }
+        expect(isSocketTokenRejection(null)).toBe(false);
     });
 });
