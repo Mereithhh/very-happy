@@ -40,7 +40,13 @@ if [[ "${VH_SERVER_SKIP_BUILD:-0}" != "1" ]]; then
   printf '%s\n' "$ENV_SENTINEL" >"$ENV_SENTINEL_FILE"
   mkdir -p "$DATA_SENTINEL_DIR"
   printf '%s\n' "$ENV_SENTINEL" >"$DATA_SENTINEL_DIR/pglite-session-sentinel"
-  docker build -f Dockerfile.server -t "$IMAGE" .
+  # Built like deploy-hwsg.yml (VH_VERSION = commit SHA): the deploy finds the
+  # release by an entry script ending in -<sha>.js. Release14 shipped an image
+  # without it and the candidate never became ready.
+  RELEASE_VERSION="$(git rev-parse HEAD)"
+  docker build -f Dockerfile.server --build-arg VH_VERSION="$RELEASE_VERSION" -t "$IMAGE" .
+  # The candidate readiness the production deploy waits for (same conditions).
+  bash scripts/ci/smoke-release-readiness.sh "$IMAGE" "$RELEASE_VERSION"
   docker run --rm --entrypoint sh "$IMAGE" -c \
     "! grep -R '$ENV_SENTINEL' /repo >/dev/null 2>&1"
   docker run --rm --entrypoint sh "$IMAGE" -c \

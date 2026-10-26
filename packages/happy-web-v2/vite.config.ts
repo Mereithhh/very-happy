@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { startupSplash } from './build/startupSplash';
 import { startupPreload } from './build/startupPreload';
 import { createVendorChunks } from './build/vendorChunks';
+import { releaseEntryFileNames } from './build/releaseEntry';
 import react from '@vitejs/plugin-react';
 import { navigationFallbackDenylist } from './src/app/swNavigation';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -121,7 +122,9 @@ export default defineConfig({
         // is one immutable image. A changed module still changes every
         // importer's hash up to the entry, which the stale-bundle check
         // (staleBundleReload.ts) compares.
-        entryFileNames: 'assets/[name]-[hash].js',
+        // The entry alone keeps the release version: the deploy identifies a
+        // build by it (build/releaseEntry.ts).
+        entryFileNames: releaseEntryFileNames(APP_VERSION),
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash][extname]',
         // B-823: libraries in release-stable chunks (build/vendorChunks.ts).

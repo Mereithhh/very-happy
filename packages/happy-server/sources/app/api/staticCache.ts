@@ -4,8 +4,8 @@ import type { FastifyStaticOptions } from '@fastify/static';
 /**
  * Cache policy for files served from the bundled Web V2 build.
  *
- * Everything Vite emits under `assets/` is named
- * `<name>-<content hash>-<commit>.<ext>` (web-v2 `vite.config.ts`), so a URL
+ * Everything Vite emits under `assets/` is named `<name>-<content hash>.<ext>`
+ * (the entry also `-<commit>`; web-v2 `vite.config.ts`), so a URL
  * there never changes meaning and can be cached for a year by browsers and
  * CloudFront (its `/assets/*` behavior uses CachingOptimized, which honours the
  * origin max-age; with the default `max-age=0` it re-fetched every asset from
