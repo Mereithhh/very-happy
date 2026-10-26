@@ -67,13 +67,17 @@ deploy_complete_image() {
     fi
     [[ "$image" =~ ^ghcr\.io/mereithhh/very-happy-server@sha256:[0-9a-f]{64}$ ]]
 
+    bash scripts/ci/check-log-rotation.sh ops/production/docker-compose.blue-green.yml ops/production/docker-compose.base.yml
     echo "== server + web: deploy $image =="
     remote_dir="/tmp/vh-deploy-$deploy_sha"
     ssh ${SSH_OPTS} "${REMOTE}" "install -d -m 700 '$remote_dir'"
     tar -czf - \
         scripts/ci/deploy-blue-green-remote.sh \
         scripts/ci/image-prisma-client-check.sh \
+        scripts/ci/check-log-rotation.sh \
+        scripts/ci/log-rotation.jq \
         ops/production/docker-compose.blue-green.yml \
+        ops/production/docker-compose.base.yml \
         ops/production/legacy-release.override.yml \
         ops/production/Caddyfile.blue-green \
         | ssh ${SSH_OPTS} "${REMOTE}" "tar -xzf - -C '$remote_dir'"

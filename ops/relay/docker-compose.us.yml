@@ -3,6 +3,13 @@ services:
     image: ${RELAY_IMAGE:?RELAY_IMAGE is required}
     container_name: very-happy-relay-us
     restart: unless-stopped
+    # B-827: the unrotated json log (mostly /health) filled relay-us's 20 GB
+    # disk. scripts/ci/check-log-rotation.sh refuses a deploy without max-size.
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
     env_file:
       - .env
     environment:

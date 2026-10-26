@@ -48,6 +48,8 @@ jobs:
       - run: bash scripts/ci/smoke-server-container.sh
       - name: Gate - blue-green release state machine
         run: bash scripts/ci/test-blue-green-state-machine.sh
+      - name: Gate - production containers rotate their logs (B-827)
+        run: bash scripts/ci/test-log-rotation.sh
       # B-348: needs the tags, which the default shallow checkout omits.
       # B-347's half also walks history (is this entry's commit inside the tag
       # it claims), so the clone has to stop being shallow — with --depth=1 the

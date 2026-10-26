@@ -2,6 +2,7 @@ import { db } from "@/storage/db";
 import { Fastify } from "../types";
 import { httpRequestsCounter, httpRequestDurationHistogram, getMetricsLabelsFromRequest } from "@/app/monitoring/metrics2";
 import { log } from "@/utils/log";
+import { HEALTH_ROUTE_OPTIONS } from "./healthRoute";
 
 export function enableMonitoring(app: Fastify) {
     // Add metrics hooks
@@ -24,7 +25,7 @@ export function enableMonitoring(app: Fastify) {
         httpRequestDurationHistogram.observe({ method, route, status, ...labels }, duration);
     });
 
-    app.get('/health', async (request, reply) => {
+    app.get('/health', HEALTH_ROUTE_OPTIONS, async (request, reply) => {
         try {
             // Test database connectivity
             await db.$queryRaw`SELECT 1`;
