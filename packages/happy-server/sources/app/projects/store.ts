@@ -389,9 +389,13 @@ async function teamFolder(tx: Tx, accountId: string, team: TeamRow, fallback?: s
         SELECT "state"->>'directory' AS "directory" FROM "TeamOperation"
         WHERE "teamId"=${team.id} AND "state"->>'type'='spawn' AND "state"->>'botId'=${root.id} AND "state"->>'directory' IS NOT NULL
         ORDER BY "createdAt" ASC, "id" ASC LIMIT 1` : [];
+    // B-822: a spawn compaction archived still names its worktree's repository.
     const sourceOf = async (operationId: string) => (await tx.$queryRaw<{ directory: string | null }[]>`
         SELECT o."state"->>'directory' AS "directory" FROM "TeamOperation" o JOIN "AgentTeam" t ON t."id"=o."teamId"
-        WHERE o."id"=${operationId} AND t."accountId"=${accountId} AND t."machineId"=${team.machineId} AND o."state"->>'type'='spawn'`)[0]?.directory ?? null;
+        WHERE o."id"=${operationId} AND t."accountId"=${accountId} AND t."machineId"=${team.machineId} AND o."state"->>'type'='spawn'
+        UNION ALL
+        SELECT a."state"->>'directory' AS "directory" FROM "TeamArchive" a JOIN "AgentTeam" t ON t."id"=a."teamId"
+        WHERE a."kind"='operation' AND a."id"=${operationId} AND t."accountId"=${accountId} AND t."machineId"=${team.machineId} AND a."state"->>'type'='spawn'`)[0]?.directory ?? null;
     for (const candidate of [team.state?.creationLaunch?.directory, spawns[0]?.directory, root?.directory, fallback]) {
         if (!candidate) continue;
         const path = await resolveTeamWorktreePath(candidate, sourceOf);

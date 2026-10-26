@@ -440,4 +440,103 @@ describe('agent teams persistent transactions and scoped credentials', () => {
             expect((await store.readTeam(old.id, { accountId })).bots[0].sessionId).toBe(sessionId);
         });
     });
+
+    describe('B-822 compaction', () => {
+        const act = (teamId: string, requestId: string, action: Parameters<typeof store.actOnTeam>[2]['action']) => store.actOnTeam(teamId, { accountId }, { requestId, action });
+        it('moves closed work to TeamArchive after 24 h; open work, undelivered messages and the repository spawn stay', async () => {
+            const team = await store.createTeam(accountId, { name: 'Compaction', machineId });
+            await act(team.id, 'join', { type: 'join', name: 'Lead', sessionId });
+            const workerSession = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+            let state = (await act(team.id, 'delegate-a', { type: 'delegate', goal: 'A', acceptance: ['a'], directory: '/repo' })).team;
+            const spawn = state.operations.at(-1)!;
+            const taskA = state.tasks.at(-1)!;
+            state = (await act(team.id, 'claim-a', { type: 'claim-operation', operationId: spawn.id, machineId, teamLaunchVersion: 1 })).team;
+            state = (await act(team.id, 'complete-a', { type: 'complete-operation', operationId: spawn.id, machineId, claimId: state.operations.find(o => o.id === spawn.id)!.claimId!, sessionId: workerSession })).team;
+            state = (await act(team.id, 'message-a', { type: 'message', taskId: taskA.id, body: 'hi' })).team;
+            const delivered = state.messages.at(-1)!;
+            const worker = state.bots.find(b => b.id === spawn.botId)!;
+            await act(team.id, 'deliver-a', { type: 'message-delivered', messageId: delivered.id, recipientBotId: worker.id, generation: worker.generation, sessionId: workerSession });
+            await act(team.id, 'submit-a', { type: 'submit', taskId: taskA.id, attemptId: taskA.currentAttemptId, goalVersion: 1, result: 'done' });
+            state = (await act(team.id, 'accept-a', { type: 'accept', taskId: taskA.id, attemptId: taskA.currentAttemptId, goalVersion: 1 })).team;
+            const stop = state.operations.at(-1)!;
+            state = (await act(team.id, 'claim-stop', { type: 'claim-operation', operationId: stop.id, machineId })).team;
+            await act(team.id, 'complete-stop', { type: 'complete-operation', operationId: stop.id, machineId, claimId: state.operations.find(o => o.id === stop.id)!.claimId! });
+            state = (await act(team.id, 'delegate-b', { type: 'delegate', goal: 'B', acceptance: ['b'], directory: '/repo' })).team;
+            const taskB = state.tasks.at(-1)!;
+            state = (await act(team.id, 'message-b', { type: 'message', taskId: taskB.id, body: 'waiting' })).team;
+            const undelivered = state.messages.at(-1)!;
+            const archived = async () => (await db.$queryRaw<{ kind: string; id: string }[]>`SELECT "kind","id" FROM "TeamArchive" WHERE "teamId"=${team.id} ORDER BY "kind","id"`);
+            await act(team.id, 'early', { type: 'set-defaults', defaults: { maxParallel: 3 } });
+            expect(await archived()).toEqual([]); // closed only minutes ago
+            const later = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 25 * 60 * 60 * 1000);
+            try {
+                state = (await act(team.id, 'later', { type: 'set-defaults', defaults: { maxParallel: 4 } })).team;
+            } finally { later.mockRestore(); }
+            const kinds = await archived();
+            expect(kinds).toEqual(expect.arrayContaining([{ kind: 'task', id: taskA.id }, { kind: 'message', id: delivered.id }, { kind: 'operation', id: stop.id }]));
+            expect(kinds.some(k => k.id === spawn.id || k.id === taskB.id || k.id === undelivered.id)).toBe(false);
+            const live = await store.readTeam(team.id, { accountId });
+            expect(live.tasks.map(t => t.id)).toEqual([taskB.id]);
+            expect(live.messages.map(m => m.id)).toContain(undelivered.id);
+            expect(live.messages.map(m => m.id)).not.toContain(delivered.id);
+            expect(live.operations.map(o => o.id)).toContain(spawn.id);
+            expect(live.operations.map(o => o.id)).not.toContain(stop.id);
+            expect(live.compacted).toMatchObject({ tasks: 1, operations: 1 });
+            expect(live.capacity?.metrics.tasks).toEqual({ used: 1, limit: 200 });
+            const rows = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "TeamMessage" WHERE "id"=${delivered.id}`;
+            expect(Number(rows[0].count)).toBe(0);
+        });
+        it('unblocks a team already over 2 MB (the incident) on its next write, in one transaction', async () => {
+            const team = await store.createTeam(accountId, { name: 'Incident', machineId });
+            await act(team.id, 'join', { type: 'join', name: 'Lead', sessionId });
+            const loaded = await store.readTeam(team.id, { accountId });
+            const lead = loaded.bots[0];
+            const old = Date.now() - 3 * 24 * 60 * 60 * 1000;
+            const pad = 'x'.repeat(1000);
+            const tasks = Array.from({ length: 169 }, (_, i) => ({ id: `t${i}`, parentTaskId: null, goal: `goal ${i} ${pad}${pad}`, acceptance: ['a'], goalVersion: 1, ownerBotId: lead.id, assigneeBotId: 'w', status: i < 160 ? 'done' : 'running', attempts: [{ id: `a${i}`, botId: 'w', generation: 1, goalVersion: 1, status: i < 160 ? 'accepted' : 'running', result: i < 160 ? pad : null }], currentAttemptId: `a${i}`, cleanup: i < 160 ? 'done' : 'none' }));
+            const worker = { id: 'w', name: 'Worker', root: false, managed: true, sessionId: null, generation: 1, assistant: 'claude', directory: '/repo' };
+            const { state: stored } = await store.teamStoreTesting.load(db as any, team.id, accountId);
+            await db.$executeRaw`UPDATE "AgentTeam" SET "state"=${JSON.stringify({ ...stored, messages: undefined, operations: undefined, projectId: undefined, bots: [...stored.bots, worker], tasks })}::jsonb WHERE "id"=${team.id}`;
+            for (let i = 0; i < 996; i++) {
+                const taskId = `t${i % 169}`;
+                const open = i % 169 >= 160;
+                const m = { id: `m${i}`, taskId, senderBotId: null, recipientBotId: lead.id, body: pad, deliveredAt: open && i > 990 ? null : old, createdAt: old };
+                await db.$executeRaw`INSERT INTO "TeamMessage" ("id","teamId","state") VALUES (${m.id},${team.id},${JSON.stringify(m)}::jsonb)`;
+            }
+            for (let i = 0; i < 330; i++) {
+                const taskId = `t${i % 169}`;
+                const o = { id: `o${i}`, teamId: team.id, machineId, taskId, botId: 'w', attemptId: `a${i % 169}`, generation: 1, type: i % 2 ? 'stop' : 'spawn', status: i % 169 >= 160 ? 'claimed' : 'completed', claimId: 'c', claimedAt: old, error: null, sessionId: null, directory: '/repo', assistant: 'claude', prompt: pad, createdAt: old + i };
+                await db.$executeRaw`INSERT INTO "TeamOperation" ("id","teamId","state") VALUES (${o.id},${team.id},${JSON.stringify(o)}::jsonb)`;
+            }
+            const before = await store.readTeam(team.id, { accountId });
+            expect(before.capacity!.metrics.bytes.used).toBeGreaterThan(2_000_000);
+            const started = Date.now();
+            const after = (await act(team.id, 'after-incident', { type: 'message', taskId: 't165', body: 'still working?' })).team;
+            expect(Date.now() - started).toBeLessThan(5000);
+            expect(after.capacity!.metrics.bytes.used).toBeLessThan(400_000);
+            expect(after.tasks.map(t => t.id)).toEqual(Array.from({ length: 9 }, (_, i) => `t${160 + i}`));
+            expect(after.operations.filter(o => o.status === 'claimed')).toHaveLength(before.operations.filter(o => o.status === 'claimed').length);
+            expect(after.operations.find(o => o.id === 'o0')).toBeDefined(); // the worker's repository spawn
+            expect(after.messages.filter(m => m.deliveredAt === null).map(m => m.id)).toEqual([...before.messages.filter(m => m.deliveredAt === null).map(m => m.id), after.messages.at(-1)!.id]);
+            const archivedRows = await db.$queryRaw<{ kind: string; count: bigint }[]>`SELECT "kind", count(*) AS count FROM "TeamArchive" WHERE "teamId"=${team.id} GROUP BY "kind" ORDER BY "kind"`;
+            expect(Object.fromEntries(archivedRows.map(r => [r.kind, Number(r.count)]))).toEqual({ message: after.compacted!.messages, operation: after.compacted!.operations, task: 160 });
+        });
+        it('refuses to drop an undelivered message, an open task or an operation that may still act', async () => {
+            const team = await store.createTeam(accountId, { name: 'Guards', machineId });
+            await act(team.id, 'join', { type: 'join', name: 'Lead', sessionId });
+            const state = (await act(team.id, 'delegate', { type: 'delegate', goal: 'open', acceptance: ['a'], directory: '/repo' })).team;
+            await act(team.id, 'message', { type: 'message', taskId: state.tasks.at(-1)!.id, body: 'pending' });
+            const { inTx } = await import('@/storage/inTx');
+            const drop = (mutate: (team: import('@slopus/happy-wire').TeamState) => void) => inTx(async tx => {
+                const row = await store.teamStoreTesting.load(tx, team.id, accountId);
+                const next = structuredClone(row.state); next.version++; mutate(next);
+                await store.teamStoreTesting.persistTransition(tx, row, next);
+            });
+            await expect(drop(t => { t.messages = []; })).rejects.toMatchObject({ code: 'unsafe_message_prune' });
+            await expect(drop(t => { t.tasks = []; })).rejects.toMatchObject({ code: 'unsafe_task_prune' });
+            await expect(drop(t => { t.operations = []; })).rejects.toMatchObject({ code: 'unsafe_operation_prune' });
+            const live = await store.readTeam(team.id, { accountId });
+            expect([live.tasks.length, live.messages.length, live.operations.length]).toEqual([1, 1, 1]);
+        });
+    });
 });

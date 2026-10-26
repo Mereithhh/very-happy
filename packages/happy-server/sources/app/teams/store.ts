@@ -8,6 +8,8 @@ import { inTx, type Tx } from '@/storage/inTx';
 import { encryptString, decryptString } from '@/modules/encrypt';
 import { advanceSchedules } from './schedules';
 import { escalateIdleMembers } from './teamIdle';
+import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable } from './compaction';
+import { requireCapacity } from './errors';
 import { otherTeamBinding, reduceTeam, requireTeam, sessionInOtherTeamMessage, teamView, transferSessionOut, TeamError, type TeamActor } from './reducer';
 
 type Principal = { accountId: string; actor: TeamActor; credentialId?: string };
@@ -31,25 +33,60 @@ async function load(tx: Tx, teamId: string, accountId?: string): Promise<Row> {
     row.state = { ...row.state, version: row.version, operations: ops.map(o => o.state), messages: msgs.map(m => m.state), projectId: row.projectId ?? undefined };
     return row;
 }
+/**
+ * B-822: a record missing from `team` is archived (`TeamArchive`) — only when the compaction
+ * predicates allow it against the state it leaves; the DELETEs re-check the stored row. Finished
+ * schedule messages are still dropped outright (their own retention, schedules.pruneScheduleMessages).
+ */
 async function persistTransition(tx: Tx, row: Row, team: TeamState): Promise<void> {
     const state = JSON.stringify({ ...team, messages: undefined, operations: undefined, projectId: undefined });
     const updated = await tx.$executeRaw`UPDATE "AgentTeam" SET "version"=${team.version},"state"=${state}::jsonb,"updatedAt"=now() WHERE "id"=${row.id} AND "accountId"=${row.accountId} AND "version"=${row.version}`;
     requireTeam(updated === 1, 'team_version_conflict');
+    const oldOperations = new Map(row.state.operations.map(op => [op.id, JSON.stringify(op)]));
     for (const op of team.operations) {
-        if (JSON.stringify(row.state.operations.find(old => old.id === op.id)) === JSON.stringify(op)) continue;
         const encoded = JSON.stringify(op);
+        if (oldOperations.get(op.id) === encoded) continue;
         await tx.$executeRaw`INSERT INTO "TeamOperation" ("id","teamId","state") VALUES (${op.id},${row.id},${encoded}::jsonb) ON CONFLICT ("id") DO UPDATE SET "state"=EXCLUDED."state"`;
     }
+    const oldMessages = new Map(row.state.messages.map(message => [message.id, JSON.stringify(message)]));
     for (const message of team.messages) {
-        if (JSON.stringify(row.state.messages.find(old => old.id === message.id)) === JSON.stringify(message)) continue;
         const encoded = JSON.stringify(message);
+        if (oldMessages.get(message.id) === encoded) continue;
         await tx.$executeRaw`INSERT INTO "TeamMessage" ("id","teamId","state") VALUES (${message.id},${row.id},${encoded}::jsonb) ON CONFLICT ("id") DO UPDATE SET "state"=EXCLUDED."state"`;
     }
-    for (const old of row.state.messages) {
-        if (team.messages.some(message => message.id === old.id)) continue;
-        requireTeam(old.scheduleId && (old.deliveredAt !== null || old.cancelledAt !== undefined), 'unsafe_message_prune');
+    // Batched: the first compaction of a team that ran for days moves thousands of rows (10 s transaction budget).
+    const archive = async (kind: 'task' | 'message' | 'operation', records: { id: string }[]) => {
+        if (!records.length) return;
+        const encoded = JSON.stringify(records);
+        await tx.$executeRaw`INSERT INTO "TeamArchive" ("teamId","kind","id","state") SELECT ${row.id}, ${kind}, e->>'id', e FROM jsonb_array_elements(${encoded}::jsonb) AS e ON CONFLICT ("teamId","kind","id") DO UPDATE SET "state"=EXCLUDED."state"`;
+    };
+    const ids = (records: { id: string }[]) => JSON.stringify(records.map(r => r.id));
+    const taskIds = new Set(team.tasks.map(t => t.id));
+    const tasks = row.state.tasks.filter(old => !taskIds.has(old.id));
+    for (const old of tasks) requireTeam(taskArchivable(old, team), 'unsafe_task_prune');
+    await archive('task', tasks);
+    const repository = repositorySpawnIds(row.state);
+    const operationIds = new Set(team.operations.map(o => o.id));
+    const operations = row.state.operations.filter(old => !operationIds.has(old.id));
+    for (const old of operations) requireTeam(operationArchivable(old, team, repository), 'unsafe_operation_prune');
+    if (operations.length) {
+        await archive('operation', operations);
+        const removed = await tx.$executeRaw`DELETE FROM "TeamOperation" WHERE "teamId"=${row.id} AND "id" IN (SELECT jsonb_array_elements_text(${ids(operations)}::jsonb)) AND ("state"->>'status'='completed' OR ("state"->>'status'='failed' AND "state"->>'error'='task_closed_before_spawn'))`;
+        requireTeam(removed === operations.length, 'operation_prune_conflict');
+    }
+    const messageIds = new Set(team.messages.map(m => m.id));
+    const gone = row.state.messages.filter(old => !messageIds.has(old.id));
+    for (const old of gone.filter(m => m.scheduleId)) {
+        requireTeam(old.deliveredAt !== null || old.cancelledAt !== undefined, 'unsafe_message_prune');
         const removed = await tx.$executeRaw`DELETE FROM "TeamMessage" WHERE "teamId"=${row.id} AND "id"=${old.id} AND "state"->>'scheduleId' IS NOT NULL AND ("state"->>'deliveredAt' IS NOT NULL OR "state"->>'cancelledAt' IS NOT NULL)`;
         requireTeam(removed === 1, 'message_prune_conflict');
+    }
+    const messages = gone.filter(m => !m.scheduleId);
+    for (const old of messages) requireTeam(messageArchivable(old, team), 'unsafe_message_prune');
+    if (messages.length) {
+        await archive('message', messages);
+        const removed = await tx.$executeRaw`DELETE FROM "TeamMessage" WHERE "teamId"=${row.id} AND "id" IN (SELECT jsonb_array_elements_text(${ids(messages)}::jsonb)) AND ("state"->>'deliveredAt' IS NOT NULL OR "state"->>'cancelledAt' IS NOT NULL)`;
+        requireTeam(removed === messages.length, 'message_prune_conflict');
     }
 }
 async function principal(tx: Tx, teamId: string, auth: { accountId: string } | { token: string }): Promise<Principal> {
@@ -114,7 +151,7 @@ export async function createTeam(accountId: string, input: { name: string; machi
         const leadSessionId = input.sessionId ?? input.project?.inheritFromSessionId;
         if (leadSessionId && !input.transfer) await guardSessionTeam(tx, accountId, leadSessionId, teamId, false);
         const count = await tx.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'archivedAt' IS NULL`;
-        requireTeam(Number(count[0].count) < 32, 'team_limit', 429);
+        requireCapacity(Number(count[0].count) < 32, 'team_limit', Number(count[0].count), 32);
         const team: TeamState = { permissionMode: 'bypassPermissions', id: teamId, name: input.name, machineId: input.machineId, version: 0, bots: [], tasks: [], messages: [], operations: [], createdAt: Date.now(), ...(input.launch ? { creationLaunch: input.launch } : {}) };
         const state = JSON.stringify({ ...team, messages: undefined, operations: undefined });
         await tx.$executeRaw`INSERT INTO "AgentTeam" ("id","accountId","machineId","state") VALUES (${team.id},${accountId},${team.machineId},${state}::jsonb)`;
@@ -182,7 +219,9 @@ export async function actOnTeam(teamId: string, auth: { accountId: string } | { 
             }
         }
         if (action.type === 'join' && p.actor.kind === 'owner' && row.state.archivedAt === undefined) await guardSessionTeam(tx, p.accountId, action.sessionId, teamId, action.transfer === true);
-        const reduced = reduceTeam(row.state, p.actor, action, { now: Date.now(), id: randomUUID, quiet: opts.quiet });
+        const now = Date.now();
+        // B-822: closed work moves to the archive before the action, so a team at a limit is unblocked by its next write.
+        const reduced = reduceTeam(compactTeam(row.state, now), p.actor, action, { now, id: randomUUID, quiet: opts.quiet });
         await persistTransition(tx, row, reduced.team);
         // B-766: a root task's submit has no recipient in the reducer — it becomes a「待你验收」briefing item instead.
         await applyTeamTransitionsTx(tx, p.accountId, row.state, reduced.team);
@@ -207,7 +246,7 @@ export async function tickTeamSchedules(accountId: string, machineId: string): P
             fired += await inTx(async tx => {
                 const row = await load(tx, id, accountId);
                 const now = Date.now();
-                const next = advanceSchedules(row.state, now);
+                const next = advanceSchedules(compactTeam(row.state, now), now);
                 // B-769: the same per-machine 5 s tick (old daemons included) wakes owners of long-idle members.
                 const idle = escalateIdleMembers(next.team, now, randomUUID);
                 if (next.fired || idle.fired) await persistTransition(tx, row, idle.team);
@@ -220,3 +259,6 @@ export async function tickTeamSchedules(accountId: string, machineId: string): P
     }
     return { fired, errors };
 }
+
+/** B-822: the persistence guards are tested against hand-made unsafe removals. */
+export const teamStoreTesting = { load, persistTransition };
