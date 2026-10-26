@@ -2722,6 +2722,7 @@ export const en = {
                 title: 'Security update: server dependencies',
                 summary: 'Server dependencies are upgraded to versions with the security fixes, and the server now runs exactly the versions it was tested with.',
                 deps: 'Security update: server dependencies (Fastify, zod, axios, sharp and others) are upgraded to their fixed versions.',
+                teams: 'Long-running teams no longer get stuck on capacity limits; finished older tasks are archived automatically and no longer shown on the Teams page.',
                 selfHost: 'Self-hosting: TRUST_PROXY no longer accepts a hop count such as 1. Set the IP/CIDR your reverse proxy connects from, e.g. 172.18.0.1; with a number the server refuses to start and logs how to fix it.',
             },
             oct25s: {
