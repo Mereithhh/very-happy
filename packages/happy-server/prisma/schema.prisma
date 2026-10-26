@@ -71,6 +71,7 @@ model Account {
     SessionGrantsGiven    SessionGrant[] @relation("SessionGrantGrantedBy")
     SessionShareLinks     SessionShareLink[]
     AttentionItems        AttentionItem[]
+    Feedback              Feedback[]
 }
 
 model AccountCredential {
@@ -978,4 +979,28 @@ model AttentionItem {
     @@unique([sessionId, key])
     @@index([accountId, state, needsOwner])
     @@index([accountId, updatedAt])
+}
+
+//
+// Feedback (B-836)
+//
+
+/// In-app feedback. Read only by the accounts listed in `VH_FEEDBACK_ADMIN_ACCOUNT_IDS`.
+model Feedback {
+    id          String    @id @default(cuid())
+    accountId   String
+    account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    /// 1 = bad, 2 = ok, 3 = good
+    rating      Int       @db.SmallInt
+    text        String?
+    /// Whitelisted client diagnostics (versions, browser, route pattern, time) — never session content.
+    diagnostics Json?
+    /// `manual` (the form) or `prompt` (the occasional card)
+    source      String
+    readAt      DateTime?
+    createdAt   DateTime  @default(now())
+    updatedAt   DateTime  @default(now()) @updatedAt
+
+    @@index([createdAt(sort: Desc)])
+    @@index([accountId, createdAt])
 }
