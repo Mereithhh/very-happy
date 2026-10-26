@@ -15,7 +15,7 @@ const sha = (text: string) => `'sha256-${createHash('sha256').update(text).diges
 let cleanup: Array<() => Promise<void> | void> = [];
 afterEach(async () => { for (const fn of cleanup.splice(0)) await fn(); });
 
-async function webApp(cspMode: 'enforce' | 'report-only' | 'off' = 'enforce') {
+async function webApp(cspMode: 'enforce' | 'report-only' | 'off' = 'enforce', relayOrigins?: string[]) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vh-csp-test-'));
     fs.writeFileSync(path.join(dir, 'index.html'), `<html><head><script>${THEME}</script></head><body>shell</body></html>`);
     fs.writeFileSync(path.join(dir, 'html-preview.html'), '<html><head><script src="html-preview.js"></script></head></html>');
@@ -24,7 +24,7 @@ async function webApp(cspMode: 'enforce' | 'report-only' | 'off' = 'enforce') {
     const config = { serverUrl: 'same-origin' };
     const injectScript = runtimeConfigScript(config);
     app.register((await import('@fastify/static')).default, webStaticOptions(dir));
-    app.addHook('onSend', webDocumentOnSend({ injectScript, brand: null, serverUrl: config.serverUrl, cspMode }));
+    app.addHook('onSend', webDocumentOnSend({ injectScript, brand: null, serverUrl: config.serverUrl, relayOrigins, cspMode }));
     app.setNotFoundHandler(spaFallback(dir, injectScript, null));
     cleanup.push(() => app.close(), () => fs.rmSync(dir, { recursive: true, force: true }));
     const configText = /<script id="vh-runtime-config">([\s\S]*?)<\/script>/.exec(injectScript)![1];
@@ -48,6 +48,20 @@ describe('B-825 Web documents carry a CSP matching what they contain', () => {
             expect(res.headers['x-content-type-options'], url).toBe('nosniff');
             expect(Number(res.headers['content-length']), url).toBe(Buffer.byteLength(res.body));
         }
+    });
+
+    it('the Report-Only connect-src carries the configured relays (served documents, not just the builder)', async () => {
+        const { app } = await webApp('enforce', ['https://relay-sg.veryhappy.dev', 'https://relay-us.veryhappy.dev']);
+        const res = await app.inject({ url: '/terminal/cmvpe72j702e7qn2ulflthf88', headers: { host: 'veryhappy.dev', 'x-forwarded-proto': 'https' } });
+        const connect = String(res.headers['content-security-policy-report-only']).split('; ').find((d) => d.startsWith('connect-src '))!;
+        expect(connect).toContain('https://veryhappy.dev wss://veryhappy.dev');
+        expect(connect).toContain('https://relay-sg.veryhappy.dev wss://relay-sg.veryhappy.dev https://relay-us.veryhappy.dev wss://relay-us.veryhappy.dev');
+    });
+
+    it('startApi wires the HAPPY_RELAYS_JSON relays it parsed at startup into the document hook', () => {
+        const api = fs.readFileSync(path.join(__dirname, 'api.ts'), 'utf8');
+        expect(api).toContain('const relays = relayFeatureConfig();');
+        expect(api).toMatch(/webDocumentOnSend\(\{[^}]*relayOrigins: relays\.candidates\.map\(\(relay\) => relay\.url\)/);
     });
 
     it('share pages keep no-referrer and get the same CSP', async () => {
