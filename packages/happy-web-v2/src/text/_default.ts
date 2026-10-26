@@ -2718,6 +2718,12 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            oct26a: {
+                title: 'Security update: server dependencies',
+                summary: 'Server dependencies are upgraded to versions with the security fixes, and the server now runs exactly the versions it was tested with.',
+                deps: 'Security update: server dependencies (Fastify, zod, axios, sharp and others) are upgraded to their fixed versions.',
+                selfHost: 'Self-hosting: TRUST_PROXY no longer accepts a hop count such as 1. Set the IP/CIDR your reverse proxy connects from, e.g. 172.18.0.1; with a number the server refuses to start and logs how to fix it.',
+            },
             oct25s: {
                 title: 'CLI 0.2.186: busy machines update too',
                 summary: 'A machine that is always busy now also updates to the new version on its own, without interrupting the sessions running on it.',

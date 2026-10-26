@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-26-server-security-update',
+    date: '2026-10-26',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct26a.title',
+    summaryKey: 'changelog.releases.oct26a.summary',
+    itemKeys: ['changelog.releases.oct26a.deps', 'changelog.releases.oct26a.selfHost'],
+  },
+  {
     id: '2026-10-25-unsent-messages-kept',
     date: '2026-10-25',
     buildVersion: __APP_VERSION__,

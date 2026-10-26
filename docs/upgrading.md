@@ -15,6 +15,32 @@ with an explicit compatibility matrix. After a server upgrade, restart/reconnect
 daemons so RPC registrations are current. After a Web swap, restart the static
 server and verify the hashed JS asset returns JavaScript, not SPA HTML.
 
+### 2026-10-26: `TRUST_PROXY` no longer accepts a hop count (B-820)
+
+Self-host breaking change. `TRUST_PROXY` no longer accepts a number (hop count,
+e.g. `TRUST_PROXY=1`). Since Fastify 5.12 a hop count trusts no proxy at all, so
+every user would appear as the proxy's IP and share one rate-limit bucket. The
+server now refuses to start with a numeric value and logs how to fix it. Set the
+IP/CIDR your reverse proxy connects from instead, e.g. `TRUST_PROXY=172.18.0.1`
+(Caddy via the Docker gateway), `TRUST_PROXY=10.0.0.0/8,192.168.1.10`, or the
+named ranges `TRUST_PROXY=loopback,uniquelocal`. Deployments without
+`TRUST_PROXY`, or already using an IP list, are unaffected (veryhappy.dev already
+uses `172.18.0.1`).
+
+To find the address, look at the peer your reverse proxy connects from (for a
+Docker-published port this is usually the network gateway, e.g.
+`docker network inspect <network> --format '{{(index .IPAM.Config 0).Gateway}}'`).
+Change `.env` before deploying the new image and recreate the container; a
+plain restart keeps the old environment.
+
+中文：自托管 breaking：`TRUST_PROXY` 不再接受数字（跳数，例如 `TRUST_PROXY=1`）。
+Fastify 5.12 起按跳数信任已不再生效（直接视为不信任任何代理），所有用户会被算成代理的
+IP、共用同一个限流桶。现在配置成数字时服务端会拒绝启动，并在日志里给出改法。请改为反向
+代理连到服务端时的 IP/CIDR，例如 `TRUST_PROXY=172.18.0.1`（经 Docker 网关的 Caddy）、
+`TRUST_PROXY=10.0.0.0/8,192.168.1.10`，或命名网段 `TRUST_PROXY=loopback,uniquelocal`。
+未设置 `TRUST_PROXY` 或已经使用 IP 列表的部署不受影响（官方 veryhappy.dev 已使用
+`172.18.0.1`）。请在部署新镜像前改好 `.env` 并重建容器，单纯 restart 不会重新读取环境。
+
 ### Pairing claim-secret rollout
 
 The claim-secret protocol is fail-closed and older CLIs cannot create a new
