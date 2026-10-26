@@ -4,7 +4,7 @@
  * public footers, the share page, login, Settings → About and Help. Pure module (no React,
  * no i18n) so the anonymous public root can import it without the app bundle.
  */
-export const AUTHOR_NAME = 'Mereith';
+export const AUTHOR_NAME = 'Mereithhh (JoJo)';
 export const AUTHOR_URL = 'https://github.com/Mereithhh';
 export const REPO_URL = 'https://github.com/Mereithhh/very-happy';
 export const NEW_ISSUE_URL = `${REPO_URL}/issues/new`;

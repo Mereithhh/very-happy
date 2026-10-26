@@ -28,7 +28,7 @@ const en = {
     footerTagline: 'Very Happy · work anywhere, keep the thread', footerLabel: 'Footer navigation',
     switchToLight: 'Switch to light theme', switchToDark: 'Switch to dark theme',
     security: 'Security', privacy: 'Privacy', terms: 'Terms', source: 'Source',
-    builtBy: 'Built by Mereith', sourceOnGitHub: 'Very Happy source code on GitHub',
+    builtBy: 'Built by Mereithhh (JoJo)', sourceOnGitHub: 'Very Happy source code on GitHub',
   },
   landing: {
     pageTitle: 'Very Happy — Your coding agent hub. Work anywhere.',
@@ -112,7 +112,7 @@ const zhHans: PublicCopy = {
     footerTagline: 'Very Happy · 随处工作，保持上下文', footerLabel: '页脚导航',
     switchToLight: '切换到浅色主题', switchToDark: '切换到深色主题',
     security: '安全', privacy: '隐私', terms: '条款', source: '源码',
-    builtBy: '由 Mereith 开发', sourceOnGitHub: 'GitHub 上的 Very Happy 源码',
+    builtBy: '由 Mereithhh（JoJo）开发', sourceOnGitHub: 'GitHub 上的 Very Happy 源码',
   },
   landing: {
     pageTitle: 'Very Happy — 你的 coding agent hub，随时随地接续工作',

@@ -49,6 +49,7 @@ describe('credit placements', () => {
     const share = src('screens/public/SharedLinkScreen.tsx');
     expect(share).toMatch(/<\/p>\n\s+\{credit\}\n/);
     expect(share).toContain("{phase !== 'ready' && credit}");
+    expect(share).toContain("builtBy={t('credit.byAuthor')}");
     expect(share).toContain("lead={BRAND.landingEnabled ? <Link to=\"/welcome\">{t('credit.madeWith')}</Link>");
   });
 

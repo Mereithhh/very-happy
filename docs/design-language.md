@@ -466,7 +466,7 @@ Changelog 的显式确认与关闭分开，保留历史入口、跨版本信息�
 Landing、文档入口、登录与整屏启动承担品牌识别，不使用工作台紧凑字号压缩营销标题。
 保持醒目的排版、Very Happy 反白 ^_^ 块、机器/Agent 汇聚与有节奏的动效；主题、字族、按钮与基础材质保持统一。允许有语义的连接图与局部背景纹理，不以整页廉价光晕替代设计。
 截图必须来自本次真实实现的页面（示例数据需标注），覆盖会话/终端/团队与移动端；文档站、Landing 与 README 共用经过审阅的资产，不能保留旧界面冒充新版。
-作者署名（Owner 10-27）：公开页脚、法律页、登录页、分享页与帮助页底部统一用 `ui/CreditLine`（「由 Mereith 开发 · GitHub」，分享页前缀「使用 Very Happy 制作」），一行 `--fs-11` 的 `--text-faint` 文字，链接 `--text-dim`，触屏每个链接 44×44；设置 → 关于列出版本短 sha、作者、源码与反馈问题。链接常量只在 `app/attribution.ts`，外链一律 `EXTERNAL_LINK`（新标签页 + `noopener noreferrer`）。不进工作区主体和 composer 附近。
+作者署名（Owner 10-27）：公开页脚、法律页、登录页、分享页与帮助页底部统一用 `ui/CreditLine`（「由 Mereithhh（JoJo）开发 · GitHub」，英文「Built by Mereithhh (JoJo)」；分享页「Made with Very Happy · by Mereithhh (JoJo) · GitHub」/「使用 Very Happy 制作 · 由 Mereithhh（JoJo）开发 · GitHub」；Mereithhh 拼写以 GitHub 用户名为准），一行 `--fs-11` 的 `--text-faint` 文字，链接 `--text-dim`，触屏每个链接 44×44；设置 → 关于列出版本短 sha、作者、源码与反馈问题。链接常量只在 `app/attribution.ts`，外链一律 `EXTERNAL_LINK`（新标签页 + `noopener noreferrer`）。不进工作区主体和 composer 附近。
 更新通知允许使用 Owner 指定语气：“直接抄一手 Codex UI，这个最好看嘿嘿。”同时明确真实变化与 Very Happy 自有能力，不宣称未完成的功能。
 
 ### ASCII 景深背景（B-720）

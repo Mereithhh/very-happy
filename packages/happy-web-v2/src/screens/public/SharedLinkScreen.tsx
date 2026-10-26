@@ -119,7 +119,7 @@ export function SharedLinkScreen() {
             where="share"
             className="slk-credit"
             lead={BRAND.landingEnabled ? <Link to="/welcome">{t('credit.madeWith')}</Link> : <span>{t('credit.madeWith')}</span>}
-            builtBy={t('credit.builtBy')}
+            builtBy={t('credit.byAuthor')}
             sourceLabel={t('credit.sourceOnGitHub')}
         />
     );

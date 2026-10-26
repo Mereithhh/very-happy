@@ -570,7 +570,7 @@ and the supported Very Happy client/security scope.
 
 ## Attribution and license
 
-Very Happy is built by [Mereith](https://github.com/Mereithhh). Bugs and ideas:
+Very Happy is built by [Mereithhh (JoJo)](https://github.com/Mereithhh). Bugs and ideas:
 [open an issue](https://github.com/Mereithhh/very-happy/issues/new). In the app,
 **Settings → About** shows the running Web build, the source and the issue link.
 

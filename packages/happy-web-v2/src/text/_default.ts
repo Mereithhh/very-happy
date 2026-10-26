@@ -5316,7 +5316,9 @@ export const en = {
 
     // Author credit + Settings → About (Owner 10-27). Links live in app/attribution.ts.
     credit: {
-        builtBy: 'Built by Mereith',
+        builtBy: 'Built by Mereithhh (JoJo)',
+        // share page: 「Made with Very Happy · by Mereithhh (JoJo) · GitHub」
+        byAuthor: 'by Mereithhh (JoJo)',
         sourceOnGitHub: 'Very Happy source code on GitHub',
         madeWith: 'Made with Very Happy',
     },

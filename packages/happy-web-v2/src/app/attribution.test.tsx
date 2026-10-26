@@ -1,5 +1,5 @@
 /**
- * Owner 10-27 author credit: 「由 Mereith 开发 · GitHub」 on the public footers, share page,
+ * Owner 10-27 author credit: 「由 Mereithhh（JoJo）开发 · GitHub」 on the public footers, share page,
  * login and Help, plus Settings → About. Behavioural renders (renderToStaticMarkup) of the
  * shared pieces, and the copy in en + zh-Hans with English fallback for the other languages.
  */
@@ -38,7 +38,7 @@ describe('attribution links', () => {
 
 describe('CreditLine', () => {
   it('links the byline to the author and GitHub to the repo, both in a new tab without opener/referrer', () => {
-    const html = renderToStaticMarkup(<CreditLine where="login" builtBy="Built by Mereith" sourceLabel="Very Happy source code on GitHub" />);
+    const html = renderToStaticMarkup(<CreditLine where="login" builtBy="Built by Mereithhh (JoJo)" sourceLabel="Very Happy source code on GitHub" />);
     expect(html).toContain('data-credit="login"');
     const [author, repo] = anchors(html);
     expect(author).toContain(`href="${AUTHOR_URL}"`);
@@ -48,13 +48,13 @@ describe('CreditLine', () => {
       expect(a).toContain('target="_blank"');
       expect(a).toContain('rel="noopener noreferrer"');
     }
-    expect(html).toContain('>Built by Mereith</a>');
+    expect(html).toContain('>Built by Mereithhh (JoJo)</a>');
     expect(html).toMatch(/<svg[^>]*>.*<\/svg>GitHub<\/a>/);
   });
 
   it('puts the share page lead first, separated like the rest', () => {
-    const html = renderToStaticMarkup(<MemoryRouter><CreditLine where="share" lead={<span>Made with Very Happy</span>} builtBy="Built by Mereith" sourceLabel="src" /></MemoryRouter>);
-    expect(html.indexOf('Made with Very Happy')).toBeLessThan(html.indexOf('Built by Mereith'));
+    const html = renderToStaticMarkup(<MemoryRouter><CreditLine where="share" lead={<span>Made with Very Happy</span>} builtBy="Built by Mereithhh (JoJo)" sourceLabel="src" /></MemoryRouter>);
+    expect(html.indexOf('Made with Very Happy')).toBeLessThan(html.indexOf('Built by Mereithhh (JoJo)'));
     expect(html.match(/vh-credit__sep/g)).toHaveLength(2);
   });
 });
@@ -71,13 +71,15 @@ describe('Item href (Settings → About rows)', () => {
 });
 
 describe('credit copy', () => {
-  it('says 由 Mereith 开发 / Built by Mereith in both apps, English for other languages', () => {
-    expect(getPublicCopy('en').shell.builtBy).toBe('Built by Mereith');
-    expect(getPublicCopy('zh-Hans').shell.builtBy).toBe('由 Mereith 开发');
-    expect(getPublicCopy('ja').shell.builtBy).toBe('Built by Mereith');
-    expect(en.credit.builtBy).toBe('Built by Mereith');
-    expect(zhHans.credit.builtBy).toBe('由 Mereith 开发');
+  it('says 由 Mereithhh（JoJo）开发 / Built by Mereithhh (JoJo) in both apps, English for other languages', () => {
+    expect(getPublicCopy('en').shell.builtBy).toBe('Built by Mereithhh (JoJo)');
+    expect(getPublicCopy('zh-Hans').shell.builtBy).toBe('由 Mereithhh（JoJo）开发');
+    expect(getPublicCopy('ja').shell.builtBy).toBe('Built by Mereithhh (JoJo)');
+    expect(en.credit.builtBy).toBe('Built by Mereithhh (JoJo)');
+    expect(zhHans.credit.builtBy).toBe('由 Mereithhh（JoJo）开发');
     expect(en.credit.madeWith).toBe('Made with Very Happy');
+    expect(en.credit.byAuthor).toBe('by Mereithhh (JoJo)');
+    expect(zhHans.credit.byAuthor).toBe('由 Mereithhh（JoJo）开发');
     expect(zhHans.credit.madeWith).toBe('使用 Very Happy 制作');
     for (const copy of [en.settingsAbout, zhHans.settingsAbout]) for (const value of Object.values(copy)) expect(value).toBeTruthy();
   });

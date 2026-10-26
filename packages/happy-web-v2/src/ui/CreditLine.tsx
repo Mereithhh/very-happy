@@ -4,7 +4,7 @@ import { AUTHOR_URL, EXTERNAL_LINK, REPO_URL } from '@/app/attribution';
 import './creditLine.css';
 
 /**
- * 「由 Mereith 开发 · GitHub」 — the author credit shared by the public footers, the share
+ * 「由 Mereithhh（JoJo）开发 · GitHub」 — the author credit shared by the public footers, the share
  * page and login. Labels come from the caller (public pages use publicI18n, the app uses
  * t()), so this file pulls in neither. `lead` goes first (the share page's 「Made with Very Happy」).
  * `where` names the placement for screenshots / tests (`data-credit`).

@@ -5159,7 +5159,8 @@ export const zhHans: TranslationStructure = {
 
     // Author credit + Settings → About (Owner 10-27). Links live in app/attribution.ts.
     credit: {
-        builtBy: '由 Mereith 开发',
+        builtBy: '由 Mereithhh（JoJo）开发',
+        byAuthor: '由 Mereithhh（JoJo）开发',
         sourceOnGitHub: 'GitHub 上的 Very Happy 源码',
         madeWith: '使用 Very Happy 制作',
     },
