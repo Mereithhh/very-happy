@@ -14,6 +14,7 @@ import { allocateUserSeq } from '@/storage/seq';
 import { noteSessionArchived } from '@/app/automations/attentionLifecycle';
 import { noteAttentionSessionArchived } from '@/app/attention/store';
 import { fanoutSessionUpdateToGrantees, listSharedSessionRows, resolveSessionAccess, sharedSessionRowFor } from '@/app/session/sessionShares';
+import { sessionListRows } from '@/app/session/sessionListRows';
 
 /** B-265: one projection for the list and the by-id read, so the web sees the
  *  same shape (incl. the server-owned `archivedAt`) on both paths. */
@@ -80,15 +81,16 @@ export function sessionRoutes(app: Fastify) {
     // Sessions API
     app.get('/v1/sessions', {
         preHandler: app.authenticate,
+        schema: {
+            querystring: z.object({
+                // Owner 10-27: `unarchived` = every unarchived row instead of the 150 newest (sessionListRows.ts).
+                scope: z.enum(['recent', 'unarchived']).optional(),
+            }).optional(),
+        },
     }, async (request, reply) => {
         const userId = request.userId;
 
-        const sessions = await db.session.findMany({
-            where: { accountId: userId },
-            orderBy: { updatedAt: 'desc' },
-            take: 150,
-            select: sessionProjection,
-        });
+        const sessions = await sessionListRows(db, userId, sessionProjection, request.query?.scope ?? 'recent');
 
         // B-619: sessions shared WITH this account ride along in the same list,
         // keyed for the grantee and with machine-private metadata removed.
