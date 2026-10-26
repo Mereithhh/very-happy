@@ -38,6 +38,7 @@ import { onFsPreviewOpen, type FsPreviewRequest } from '@/sync/filePreviewOpen';
 import { FsFileViewer } from './FsFileViewer';
 import { setDownloadIntent } from './downloadIntent';
 import { currentAutoDownloadEnv, shouldAutoDownload } from './fileDownload';
+import { OVERLAY_PRIORITY, useOverlayTurn } from '@/app/overlayQueue';
 import './fsbrowser.css';
 import './filepreview.css';
 
@@ -184,12 +185,15 @@ export function FsPreviewOverlay() {
      * 于是 Esc 也就自然属于 overlay，不需要全局 capture 那个 hack。
      */
     const panelRef = useRef<HTMLDivElement | null>(null);
+    // B-831: an unasked-for, page-blocking push — it takes an `interaction`
+    // turn (overlayQueue) instead of opening under the release notes' lock.
+    const turn = useOverlayTurn(!!request, OVERLAY_PRIORITY.interaction);
     useEffect(() => {
-        if (!request) return;
+        if (!request || !turn) return;
         panelRef.current?.focus();
-    }, [request]);
+    }, [request, turn]);
 
-    if (!request || typeof document === 'undefined') return null;
+    if (!request || !turn || typeof document === 'undefined') return null;
     const pinTarget = previewPinTarget(request, location, id => storage.getState().sessions[id]?.metadata?.machineId);
 
     return createPortal(

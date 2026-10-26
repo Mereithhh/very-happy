@@ -8,6 +8,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { SIGN_IN_METHODS_NUDGE_HINT, shouldShowSignInMethodsNudge } from './signInMethodsNudgePolicy';
 import './signInMethodsNudge.css';
 import './floatingCards.css';
+import { OVERLAY_PRIORITY, useOverlayHeldAbove } from './overlayQueue';
 
 /**
  * B-668: a non-blocking card for accounts that can sign in with email codes
@@ -24,6 +25,9 @@ export function SignInMethodsNudge() {
   const [dismissedHints, setDismissedHints] = useLocalSettingMutable('dismissedHints');
   const [methods, setMethods] = useState<AccountLoginMethods | null>(null);
   const [offers, setOffers] = useState({ password: false, google: false });
+  // B-831: like the install / notification cards — stand down (not dismissed)
+  // while a dialog above notice level holds the overlay turn.
+  const deferred = useOverlayHeldAbove(OVERLAY_PRIORITY.notice);
 
   // Re-read on leaving Settings, so a password or Google link made there
   // removes the card without a reload.
@@ -45,7 +49,7 @@ export function SignInMethodsNudge() {
     dismissedAt: dismissedHints[SIGN_IN_METHODS_NUDGE_HINT],
     pathname,
   });
-  if (!visible) return null;
+  if (!visible || deferred) return null;
 
   const dismiss = () => setDismissedHints({ ...dismissedHints, [SIGN_IN_METHODS_NUDGE_HINT]: Date.now() });
 

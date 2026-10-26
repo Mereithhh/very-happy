@@ -60,6 +60,7 @@ import {
     type TimeFilter,
 } from './sessionSearch';
 import './sessionsearch.css';
+import { OVERLAY_PRIORITY, useOverlayTurn } from '@/app/overlayQueue';
 
 const LOCAL_DEBOUNCE_MS = 120;
 const MAX_ROWS = 60;
@@ -86,10 +87,13 @@ export function SessionSearch() {
         return () => window.removeEventListener(SESSION_SEARCH_OPEN_EVENT, onOpen);
     }, []);
     useEffect(() => onQuickOpen(() => setOpen(false)), []);
+    // B-831: page-blocking — takes an `interaction` turn (overlayQueue), so the
+    // release notes step aside and a sign-in expiry dialog is never stacked on it.
+    const turn = useOverlayTurn(open, OVERLAY_PRIORITY.interaction);
 
     return (
         <>
-            {open && (
+            {open && turn && (
                 <SessionSearchPanel
                     onClose={() => setOpen(false)}
                     onImport={(t) => { setOpen(false); setImportTarget(t); }}
