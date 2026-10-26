@@ -107,11 +107,8 @@ pull_image() {
 
 verify_image() {
     pull_image "$IMAGE"
-    docker run --rm --entrypoint sh "$IMAGE" -c '
-      package_schema=$(sha256sum /repo/packages/happy-server/prisma/schema.prisma | cut -d " " -f 1)
-      client_schema=$(sha256sum /repo/node_modules/.prisma/client/schema.prisma | cut -d " " -f 1)
-      test "$package_schema" = "$client_schema"
-    '
+    docker run --rm -i --entrypoint sh -w /repo/packages/happy-server "$IMAGE" -s \
+      < "$REPO_ROOT/scripts/ci/image-prisma-client-check.sh"
 }
 
 migration_tree_digest() {

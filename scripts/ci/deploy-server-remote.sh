@@ -41,10 +41,13 @@ echo "== server: pull immutable image =="
 docker pull "$IMAGE"
 
 echo "== server: verify packaged Prisma schema matches generated client =="
-docker run --rm --entrypoint sh "$IMAGE" -c '
-  package_schema=$(sha256sum /repo/packages/happy-server/prisma/schema.prisma | cut -d " " -f 1)
-  client_schema=$(sha256sum /repo/node_modules/.prisma/client/schema.prisma | cut -d " " -f 1)
-  test "$package_schema" = "$client_schema"
+# Same resolution as scripts/ci/image-prisma-client-check.sh (inline: this
+# script is piped as `bash -s`, so it cannot read a sibling file).
+docker run --rm --entrypoint sh -w /repo/packages/happy-server "$IMAGE" -c '
+  client=$(node -p "require(\"path\").dirname(require.resolve(\".prisma/client/default\", { paths: [require(\"path\").dirname(require.resolve(\"@prisma/client/package.json\"))] }))")
+  package_schema=$(sha256sum prisma/schema.prisma | cut -d " " -f 1)
+  client_schema=$(sha256sum "$client/schema.prisma" | cut -d " " -f 1)
+  test -n "$package_schema" && test "$package_schema" = "$client_schema"
 '
 
 mkdir -p /opt/happy-rollbacks
