@@ -36,7 +36,7 @@ describe('B-825 CSP reports', () => {
         ...(sourceFile === undefined ? {} : { 'source-file': sourceFile }), 'status-code': 200, 'script-sample': '',
     } });
 
-    it('classifies captured enforce connect-src reports without keeping the URL', () => {
+    it('B-832: classifies captured enforce connect-src reports without keeping the URL', () => {
         const [extension] = parseCspReports(report('ws://localhost:35729/livereload', 'chrome-extension'));
         expect(extension).toEqual({ directive: 'connect-src', disposition: 'enforce', blocked: 'ws://localhost:35729', page: '/terminal/:id', scheme: 'ws', host: 'loopback', port: 'custom', source: 'extension' });
         const [app] = parseCspReports(report('http://127.0.0.1:38811/app-loopback', 'https://veryhappy.dev/assets/index-6c54afa6.js'));

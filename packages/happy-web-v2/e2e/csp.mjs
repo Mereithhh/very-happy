@@ -19,13 +19,16 @@
  * Covers: landing, login, signup, home, settings, a session with Shiki code +
  * Mermaid, the anonymous share page, the CLI pairing page, a real web terminal
  * (xterm, daemon on a private tmux socket) and the HTML file preview frame
- * (its inline script must run). Exit code 1 on any failed check.
+ * (its inline script must run), and — B-832 — a Markdown file preview whose
+ * image an agent serves on loopback (`http://127.0.0.1:<port>/shot.png`, another
+ * origin than the app) must load. Exit code 1 on any failed check.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import { chromium } from 'playwright-core';
 
 const args = process.argv.slice(2);
@@ -120,6 +123,12 @@ async function dismissOverlays(page) {
     }
 }
 
+// B-832: a dev server on this device serving a screenshot (a 1×1 PNG), on its own port.
+const SHOT_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+const shotServer = createServer((_req, res) => res.writeHead(200, { 'content-type': 'image/png' }).end(SHOT_PNG));
+await new Promise((r) => shotServer.listen(0, '127.0.0.1', r));
+const SHOT_URL = `http://127.0.0.1:${shotServer.address().port}/shot.png`;
+
 let daemonStarted = false;
 try {
     const app = await watchedContext('app');
@@ -197,12 +206,14 @@ try {
     // A valid one-page PDF (objects + byte-exact xref).
     const pdfPath = join(htmlDir, 'doc.pdf');
     writeFileSync(pdfPath, minimalPdf('PDF OK'));
+    const mdPath = join(htmlDir, 'notes.md');
+    writeFileSync(mdPath, `# Notes\n\n![local screenshot](${SHOT_URL})\n`);
     const dev = await browser.newContext();
     await dev.addInitScript((creds) => { localStorage.setItem('auth_credentials', creds); localStorage.setItem('vh-pwa-install-never-v1', '1'); }, credentials);
     const devPage = await dev.newPage();
     await devPage.goto(`${DEV}/`);
     await devPage.waitForFunction(() => import('/src/sync/sync.ts').then(({ sync }) => !!sync.encryption), null, { timeout: 60_000, polling: 300 });
-    const seeded = await devPage.evaluate(async ({ machineId, htmlDir, htmlPath, pdfPath }) => {
+    const seeded = await devPage.evaluate(async ({ machineId, htmlDir, htmlPath, pdfPath, mdPath }) => {
         const { sync } = await import('/src/sync/sync.ts');
         const { apiSocket } = await import('/src/sync/apiSocket.ts');
         const { encodeBase64 } = await import('/src/encryption/base64.ts');
@@ -228,7 +239,7 @@ try {
             '```ts\nconst answer: number = 40 + 2;\nexport function hello(name: string) { return `hi ${name}`; }\n```',
             'and a diagram:',
             '```mermaid\ngraph TD\n  A[Web] --> B[Server]\n  B --> C[Daemon]\n```',
-            `Open [the report](${htmlPath}) or [the pdf](${pdfPath}).`,
+            `Open [the report](${htmlPath}) or [the pdf](${pdfPath}) or [the notes](${mdPath}).`,
         ].join('\n\n');
         const record = { role: 'agent', content: { type: 'output', data: { type: 'assistant', uuid: crypto.randomUUID(), parentUuid: null, message: { role: 'assistant', model: 'e2e', content: [{ type: 'text', text }] } } } };
         const content = await encryption.encryptRawRecord(record);
@@ -236,7 +247,7 @@ try {
         const link = await apiSocket.request(`/v1/sessions/${sessionId}/share-links`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope: 'live', expiresInDays: 7 }) });
         const linkBody = link.ok ? await link.json() : null;
         return { sessionId, posted: posted.status, link: link.status, linkId: linkBody?.link?.id, secret: linkBody?.secret };
-    }, { machineId, htmlDir, htmlPath, pdfPath });
+    }, { machineId, htmlDir, htmlPath, pdfPath, mdPath });
     await dev.close();
     check(seeded.posted === 200 && seeded.link === 200, 'session message and share link created', JSON.stringify({ posted: seeded.posted, link: seeded.link }));
 
@@ -285,6 +296,19 @@ try {
     await shot(page, '05b-pdf-preview');
     await page.keyboard.press('Escape');
 
+    step('B-832: Markdown preview shows an image served on loopback http');
+    await page.locator('.md-link--file').nth(2).click();
+    const mdImg = page.locator('img.md-img');
+    await mdImg.first().waitFor({ timeout: 30_000 }).catch(() => {});
+    let loaded = false;
+    for (let i = 0; i < 20 && !loaded; i++) {
+        loaded = await mdImg.first().evaluate((img) => img.complete && img.naturalWidth > 0).catch(() => false);
+        if (!loaded) await sleep(250);
+    }
+    check(loaded, 'loopback http image in a .md preview loaded (img-src allows http://127.0.0.1:*)', SHOT_URL);
+    await shot(page, '05c-md-loopback-image');
+    await page.keyboard.press('Escape');
+
     step('web terminal (xterm)');
     await page.goto(`${APP}/terminal`);
     const online = page.locator('.vh-itemgroup').first().locator('button.vh-item.is-interactive');
@@ -328,6 +352,7 @@ try {
     failures += 1;
 } finally {
     await browser.close();
+    shotServer.close();
     if (daemonStarted) spawnSync(process.execPath, [CLI, 'daemon', 'stop'], { env: cliEnv, encoding: 'utf8', timeout: 30_000 });
     spawnSync('tmux', ['-S', join(WORK, 'tmux.sock'), 'kill-server'], { encoding: 'utf8' });
 }

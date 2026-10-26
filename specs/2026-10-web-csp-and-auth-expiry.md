@@ -47,7 +47,7 @@
 ### CSP（`sources/app/api/securityHeaders.ts`，挂在 `webDocumentOnSend`）
 
 - 对**实际发送的 HTML**计算每段无 `src` 内联脚本的 SHA-256 放入 `script-src`，主题脚本与 runtime config 都覆盖，品牌/配置变化自动跟随。
-- 强制策略：`default-src 'self'`；`script-src 'self' <hashes> 'wasm-unsafe-eval' https://accounts.google.com/gsi/client`；`style-src 'self' 'unsafe-inline' <字体 CDN> <GSI style>`（React/xterm/mermaid 内联样式需要）；`font-src`、`img-src … https:`、`media-src … https:`、`connect-src 'self' https: wss: blob: data:`（http API 或 http relay 时加该 origin 与 ws）、`frame-src 'self' https: http: blob:`、`worker-src 'self' blob:`、`object-src 'none'`、`base-uri 'self'`、`form-action 'self'`、`frame-ancestors 'self'`、`report-uri /v1/csp-report`。
+- 强制策略：`default-src 'self'`；`script-src 'self' <hashes> 'wasm-unsafe-eval' https://accounts.google.com/gsi/client`；`style-src 'self' 'unsafe-inline' <字体 CDN> <GSI style>`（React/xterm/mermaid 内联样式需要）；`font-src`、`img-src … https: http://localhost:* http://127.0.0.1:*`、`media-src` 同（B-832：agent 在本机起服务的截图，loopback 不算 mixed content，CSP 前能显示；只放 loopback，不放 `http:`；`http://[::1]:*` 不是合法 host-source，Chromium 会报 invalid source 并忽略，故不写）、`connect-src 'self' https: wss: blob: data:`（http API 或 http relay 时加该 origin 与 ws）、`frame-src 'self' https: http: blob:`、`worker-src 'self' blob:`、`object-src 'none'`、`base-uri 'self'`、`form-action 'self'`、`frame-ancestors 'self'`、`report-uri /v1/csp-report`。
 - 第二阶段（Report-Only 同时下发）：`connect-src` 收窄到 runtime `serverUrl`、请求 origin、`HAPPY_RELAYS_JSON` 里的 relay（均含 ws/wss；生产即 relay-sg / relay-us，从配置取、不写死官方域名）、Google GSI、ElevenLabs；去掉 Report-Only 不支持的 `frame-ancestors`。
 - HTML 文件预览改为 `<iframe src="/html-preview.html" sandbox="allow-scripts …">`（无 allow-same-origin），postMessage 传 HTML；该文档单独下发 `sandbox allow-scripts allow-popups allow-forms allow-modals; default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'self'`，直接打开也是不透明源。SW `navigateFallbackDenylist` 排除此路径。
 - 其他头：所有响应 `X-Content-Type-Options: nosniff`；HTML 加 `X-Frame-Options: SAMEORIGIN`、`Referrer-Policy: strict-origin-when-cross-origin`（分享页保留 `no-referrer`）、`Permissions-Policy: camera=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), midi=(), microphone=(self)`。
@@ -60,13 +60,14 @@
 
 脚本类指令（script-src / object-src / base-uri / frame-ancestors）是 CSP 防 XSS 的核心，且全部来源都在本仓库内、可完整枚举，已在生产形态构建上逐路径实测零违规，所以直接强制。资源类指令依赖用户运行时配置，测试无法穷举，先给宽松强制 + 严格 Report-Only，靠 `/v1/csp-report` 观察一周左右零报告后再把 Report-Only 的 connect-src 升为强制。
 
-### 上线后两次 enforce connect-src 拦截（10-26，第十四版）的排查结论
+### B-832：上线后两次 enforce connect-src 拦截（10-26，第十四版）的排查结论
 
 生产 `csp_violations_total{directive=connect-src,disposition=enforce,blocked=origin}=2`（/session/:id、/terminal/:id 各一次），日志 URL 已脱敏，来源不可直接得知。
 
 - 被拦的只能是明文 `http:`/`ws:`。其中**非 loopback** 的明文请求在 https 页面上本来就被 Mixed Content 拦截（本地 Chromium 实测：CSP 先报告，请求本就发不出），所以 CSP 对它们不造成新的功能损失；**唯一新被拦的是 loopback**（`http://localhost`、`127.0.0.1`、`ws://localhost`，浏览器视为可信源，不算 mixed content）。
 - 应用代码里会发起 loopback/明文连接的路径，逐一核对：语音 asr/tts 固定 `wss://api.elevenlabs.io`；relay 只接受 https 配置（生产 relay-sg/us 均 https）；附件 local 模式的 URL 由 X-Forwarded-Proto 拼出，生产 Report-Only 头里 self 为 `https://veryhappy.dev`，证明代理传的是 https；机器面板 / 浏览器预览只是 iframe（frame-src 放行 http:，没有 fetch 探活）；PWA/SW 的请求受 SW 自己的策略约束，与文档无关；Google 登录走 https；终端链接只是导航；自定义 server URL / 远程日志 URL 只能手动写 localStorage，Web 没有入口。只有「用户手动点下载 http 图片」这类显式操作会触发，且这类图片在 img-src 下本来就不显示。
 - 本地复现（`~/code/github/skills/tmp/vh-team-csp-connect/`，https 页面 + 生产同款头 + MV3 扩展）：扩展 **main-world** 注入脚本的 `ws://localhost:35729`、`http://127.0.0.1` 被拦，报告的 `source-file` 为 `chrome-extension`；扩展 isolated-world 的 fetch **不受**页面 CSP 约束（请求到达）；页面自身脚本的明文请求被拦，`source-file` 为 bundle URL。
+- 同时发现 img-src 回归：用户 .md 文件预览（`trustContent`，agent 正文里的图片本就只渲染成标签）引用 `http://localhost:…` 的图片被拦，B-832 已放行 loopback 并由 `e2e/csp.mjs` 覆盖。
 - 结论（可能性排序）：①浏览器扩展 / userscript 的 main-world 注入（LiveReload、本地 companion 探活之类）；②开发者在 Owner 自己的浏览器里手动覆盖了 server/log URL；③用户显式下载 http 图片。没有发现应用默认路径的真实功能受损。新加的分类字段下次可直接区分 `source=extension` 与 `source=self`、`host=loopback` 与 private。
 
 ## 兼容矩阵与发布顺序

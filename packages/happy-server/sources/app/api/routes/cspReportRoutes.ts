@@ -11,7 +11,7 @@ import { CSP_REPORT_PATH } from '../securityHeaders';
  * log line that carries only the directive, the blocked origin and the page
  * path — never the query, the sample or the full blocked URL (tokens, ids).
  *
- * The log redacts every URL (logSafety), so each violation also carries a
+ * B-832: the log redacts every URL (logSafety), so each violation also carries a
  * URL-free classification (metric labels + log fields): the blocked scheme,
  * whether its host is loopback / private / public, whether the port is the
  * scheme default, and who made the request (`source`): this app's own bundle
