@@ -254,7 +254,7 @@ describe('B-803 wiring in sync.ts / apiSocket.ts', () => {
     });
 
     it('socket reconnect and recovered restart it too', () => {
-        const reconnected = block(sync, 'apiSocket.onReconnected(() => {');
+        const reconnected = block(sync, 'apiSocket.onReconnected(() => {', 4_000);
         expect(reconnected.slice(0, reconnected.indexOf('apiSocket.onRecovered('))).toContain("this.syncScheduler.connect('connect')");
         expect(block(sync, 'apiSocket.onRecovered(() => {', 500)).toContain("this.syncScheduler.connect('recovered')");
     });

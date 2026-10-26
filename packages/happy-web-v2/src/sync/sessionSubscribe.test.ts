@@ -693,6 +693,7 @@ describe('B-812 deadlines, errors, reconcile, retention', () => {
     it('S12: an ack for a session whose key is not here yet merges once the FIRST session list landed, not after the queued second list fetch', async () => {
         const internals = sync as unknown as {
             sessionsSync: { awaitQueue: () => Promise<void> };
+            sessionsCatchUpSync: { awaitQueue: () => Promise<void> };
             firstSessionsList: { settled: boolean; promise: Promise<void>; resolve: () => void };
             encryption: { getSessionEncryption: (id: string) => unknown };
         };
@@ -709,6 +710,10 @@ describe('B-812 deadlines, errors, reconcile, retention', () => {
         let finishQueue!: () => void;
         const queued = new Promise<void>((r) => { finishQueue = r; });
         const queue = vi.spyOn(internals.sessionsSync, 'awaitQueue').mockImplementation(() => queued);
+        // B-823: the first connect's changedSince catch-up, likewise.
+        let finishCatchUp!: () => void;
+        const caughtUp = new Promise<void>((r) => { finishCatchUp = r; });
+        vi.spyOn(internals.sessionsCatchUpSync, 'awaitQueue').mockImplementation(() => caughtUp);
         try {
             await connect();
             view(sid);
@@ -721,7 +726,20 @@ describe('B-812 deadlines, errors, reconcile, retention', () => {
             expect(texts(sid)).toEqual(['m1']);
             expect(phase(sid)).toBe('live');
             expect(queue).toHaveBeenCalled();
-            // After the first list: a session it did not carry still waits for the queue (as before).
+            // After the first list: a session it did not carry waits for the first connect's
+            // changedSince catch-up (B-823), which carries it — not for the full list queue.
+            keys = false;
+            const created = newSession();
+            store(created, 'c1');
+            view(created);
+            await flush();
+            expect(texts(created)).toEqual([]);
+            keys = true;
+            finishCatchUp();
+            await flush();
+            expect(texts(created)).toEqual(['c1']);
+            expect(subscribes(created)).toHaveLength(1);
+            // Neither carried it (the catch-up fell back to a full list): it waits for the queue (as before).
             keys = false;
             const late = newSession();
             store(late, 'l1');
@@ -873,7 +891,7 @@ describe('B-812 wiring in sync.ts', () => {
     it('S12: fetchSessions signals the first list once it is applied', async () => {
         const { readFileSync } = await import('node:fs');
         const source = readFileSync(new URL('./sync.ts', import.meta.url), 'utf8');
-        expect(source).toMatch(/this\.applySessions\(mergedSessions\);\s*log\.log\(`📥 fetchSessions completed[^\n]*\n\s*this\.firstSessionsList\.resolve\(\);/);
+        expect(source).toMatch(/this\.applySessions\(mergedSessions\);\s*this\.sessionListSnapshot = [^\n]*\n\s*log\.log\(`📥 fetchSessions completed[^\n]*\n\s*this\.firstSessionsList\.resolve\(\);/);
     });
 
     it('the viewed-session edge reaches the scheduler (retention), and socket loss marks subscriptions stale', async () => {
@@ -959,6 +977,44 @@ describe('B-812 M1: the session duties survive every link-back edge in every mod
         release!();
         await all;
         expect(settled).toBe(true);
+    });
+
+    it('B-823: the page\'s first connect keeps the boot\'s catch-up (a forward run follows it); a later connect restarts it', async () => {
+        serverMode = 'disabled';
+        const sid = viewedSession();
+        const internals = sync as unknown as {
+            socketConnectedOnce: boolean;
+            sessionsSync: { invalidate: () => void };
+            sessionsCatchUpSync: { invalidate: () => void };
+            getMessagesSync: (id: string) => { invalidate: () => void };
+        };
+        vi.spyOn(internals.sessionsSync, 'invalidate').mockImplementation(() => {});
+        vi.spyOn(internals.sessionsCatchUpSync, 'invalidate').mockImplementation(() => {});
+        internals.socketConnectedOnce = false;
+        let release!: () => void;
+        restGate = new Promise<void>((resolve) => { release = resolve; });
+        internals.getMessagesSync(sid).invalidate(); // the boot's first page, before the socket joined
+        await flush();
+        const boot = gets.length;
+        expect(boot).toBeGreaterThan(0);
+        expect(gets.every((get) => get === `${sid}?before`)).toBe(true);
+        await reconnected();
+        expect(restSignals.some((signal) => signal.aborted)).toBe(false);
+        expect(gets).toHaveLength(boot);
+        release();
+        await flush();
+        expect(texts(sid)).toEqual(['m1']);
+        expect(gets.slice(boot)).toEqual([`${sid}?after`]);
+        // A reconnect after an outage: the read in flight may be stuck on the dead link — restarted.
+        restGate = new Promise<void>((resolve) => { release = resolve; });
+        restSignals = [];
+        internals.getMessagesSync(sid).invalidate();
+        await flush();
+        await reconnected();
+        expect(restSignals.some((signal) => signal.aborted)).toBe(true);
+        release();
+        await flush();
+        expect(texts(sid)).toEqual(['m1']);
     });
 
     it('control returned to this device: the session duties run with the catch-up (subscribe and legacy)', async () => {

@@ -3459,9 +3459,7 @@ class Sync {
                 sync.invalidateNow();
             }
             this.reloadViewedPromptQueue();
-            // B-823: not on the page's first connect — no link was lost, the boot's first
-            // page is healthy; aborting it re-downloaded the latest page on the critical path.
-            if (!firstConnect) this.restartStuckCatchUp();
+            this.restartStuckCatchUp({ firstConnect });
             this.touchViewedSession();
             // The viewed session's messages must be caught up HERE: nothing
             // else does it after a reconnect (web-v2 has no screen reacting to
@@ -4348,6 +4346,8 @@ class Sync {
         const listed = this.encryption.getSessionEncryption(sessionId);
         if (listed) return listed;
         await this.sessionsCatchUpSync.awaitQueue();
+        const caughtUp = this.encryption.getSessionEncryption(sessionId);
+        if (caughtUp) return caughtUp;
         await this.sessionsSync.awaitQueue();
         return this.encryption.getSessionEncryption(sessionId) ?? null;
     }
@@ -4443,10 +4443,16 @@ class Sync {
     /**
      * B-803 at connect / resume, whatever the mode turns out to be: a REST
      * catch-up in flight on the link that just died is restarted now (as before B-812).
+     * B-823: not on the page's first connect — no link was lost, the boot's first page
+     * is healthy (aborting it re-downloaded the latest page on the critical path); a
+     * coalesced forward run follows it instead (the read predates joining the room).
      */
-    private restartStuckCatchUp() {
+    private restartStuckCatchUp(opts?: { firstConnect?: boolean }) {
         const viewing = storage.getState().currentViewingSessionId;
-        if (viewing && this.messagesSync.get(viewing)?.isRunning()) this.restartMessagesSync(viewing);
+        const messages = viewing ? this.messagesSync.get(viewing) : undefined;
+        if (!viewing || !messages?.isRunning()) return;
+        if (opts?.firstConnect) messages.invalidate();
+        else this.restartMessagesSync(viewing);
     }
 
     /** The legacy reaction to a trigger the scheduler does not take over the socket. */
@@ -4457,12 +4463,12 @@ class Sync {
         }
         if (reason === 'connect' || reason === 'recovered' || reason === 'handover') {
             // Decided up to 2s after the connect (no ack from an old server): a catch-up running
-            // now is let land instead of aborted again (e2e OLDSERVER: the first screen lost ~350ms
-            // to that restart). A coalesced forward run still follows it: on the first connect it
-            // is the boot's read (B-823 skips the restart), which predates joining the room.
+            // now started after restartStuckCatchUp — let it land instead of aborting it again
+            // (e2e OLDSERVER: the first screen lost ~350ms to that restart).
             const viewing = storage.getState().currentViewingSessionId;
             if (!viewing) return;
-            this.getMessagesSync(viewing).invalidate();
+            const messages = this.getMessagesSync(viewing);
+            if (!messages.isRunning()) messages.invalidate();
             this.trackMessagesCatchUp(viewing);
             return;
         }

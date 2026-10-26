@@ -95,12 +95,14 @@ describe('B-804 wiring in sync.ts', () => {
         expect(resume).toContain('this.reloadViewedPromptQueue();');
         // B-803 in subscribe mode too: a REST catch-up stuck on the dead link is restarted at once.
         expect(resume).toMatch(/this\.restartStuckCatchUp\(\);\s*this\.syncScheduler\.resume\(\);/);
-        expect(body('private restartStuckCatchUp() {', 'private legacyCatchUp(')).toContain('if (viewing && this.messagesSync.get(viewing)?.isRunning()) this.restartMessagesSync(viewing);');
+        const stuck = body('private restartStuckCatchUp(', 'private legacyCatchUp(');
+        expect(stuck).toContain('if (!viewing || !messages?.isRunning()) return;');
+        expect(stuck).toContain('if (opts?.firstConnect) messages.invalidate();\n        else this.restartMessagesSync(viewing);');
         const reconnected = body('apiSocket.onReconnected(', 'apiSocket.onRecovered(');
         expect(reconnected).toContain("return this.syncScheduler.connect('connect');");
         expect(reconnected).toContain('this.reloadViewedPromptQueue();');
         // B-823: the page's first connect keeps the boot's catch-up (no restart).
-        expect(reconnected).toContain('if (!firstConnect) this.restartStuckCatchUp();');
+        expect(reconnected).toContain('this.restartStuckCatchUp({ firstConnect });');
         const recovered = body('apiSocket.onRecovered(', 'private handleRelayCommittedMessages');
         expect(recovered).toContain("void this.syncScheduler.connect('recovered');");
         expect(recovered).toContain('this.reloadViewedPromptQueue();');
