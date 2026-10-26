@@ -337,7 +337,8 @@ node scripts/probe/sync-hello-canary.mjs --help                 # 全部选项�
 `2` 跑不出结论（鉴权或连接失败）· `3` 服务端回 `disabled`（开关打开，或账号不在灰度名单）·
 `4` 完全没有 ack，说明服务端是没有 handler 的旧镜像。
 
-脚本量的是客户端 RTT，包含网络。服务端快照时延（门槛 P95 < 30ms）看 Prometheus：
-`histogram_quantile(0.95, sum by (le) (rate(sync_snapshot_duration_seconds_bucket[5m])))`，
+脚本量的是客户端 RTT，包含网络。服务端快照时延（门槛：cold、warm **各自** P95 < 30ms，spec §8）看 Prometheus：
+`histogram_quantile(0.95, sum by (le, shape) (rate(sync_snapshot_duration_seconds_bucket{op="hello"}[5m])))`，
+脚本交替发 cold（`afterSeq:null`）和 warm hello，正好落进 `shape="cold"` 与 `shape="warm"` 两条线；
 结果分布看 `sync_hello_total{result}`。汇总里 `cold head≠newest seq` 统计的是 head 大于最新一条消息
 seq 的会话（历史 seq 空洞）。这个数非 0 时，5b 的「hasMore=false ⇒ head==max(seq)」判据要放宽。

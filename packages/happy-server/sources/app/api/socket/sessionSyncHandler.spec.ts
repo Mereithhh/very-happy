@@ -6,12 +6,14 @@ import {
     handleSessionUnsubscribe,
     handleSyncHello,
     resolveSessionSyncConfig,
+    resolveSnapshotConcurrency,
     sessionSyncHandler,
+    snapshotShape,
     type SessionSyncContext,
     type SessionSyncDeps,
 } from './sessionSyncHandler';
 
-/** In-memory stand-in for the two statements the snapshot module issues. */
+/** In-memory stand-in for the three statements the snapshot module issues (head batch, latest batch, increment batch). */
 function fakeDb(sessions: Record<string, { accountId: string; seqs: number[] }>) {
     const calls: string[] = [];
     const client = {
@@ -22,15 +24,20 @@ function fakeDb(sessions: Record<string, { accountId: string; seqs: number[] }>)
                     id, seq: Math.max(0, ...sessions[id].seqs), accountId: sessions[id].accountId,
                 }));
             }
-            calls.push('snapshot');
-            const session = sessions[values[0]];
-            if (!session) return [];
-            const head = Math.max(0, ...session.seqs);
-            const row = (seq: number) => ({ head, id: `m${seq}`, seq, content: { c: String(seq) }, localId: null, createdAt: new Date(1), updatedAt: new Date(2) });
-            const rows = sql.includes('"seq" > $2')
-                ? session.seqs.filter((seq) => seq > values[1]).sort((a, b) => a - b).slice(0, values[2]).map(row)
-                : [...session.seqs].sort((a, b) => b - a).slice(0, values[1]).map(row);
-            return rows.length > 0 ? rows : [{ head, id: null, seq: null, content: null, localId: null, createdAt: null, updatedAt: null }];
+            const increment = sql.includes('"seq" > r.after_seq');
+            calls.push(increment ? 'increment' : 'latest');
+            const [sids, second, third] = values as [string[], number[], number[]];
+            // Rows come back in reverse batch order: the module must not rely on row order.
+            return sids.flatMap((sid, i): any[] => {
+                const session = sessions[sid];
+                if (!session) return [];
+                const head = Math.max(0, ...session.seqs);
+                const row = (seq: number) => ({ idx: i + 1, head, id: `m${seq}`, seq, content: { c: String(seq) }, localId: null, createdAt: new Date(1), updatedAt: new Date(2) });
+                const rows = increment
+                    ? session.seqs.filter((seq) => seq > second[i]).sort((x, y) => x - y).slice(0, third[i]).map(row)
+                    : [...session.seqs].sort((x, y) => y - x).slice(0, second[i]).map(row);
+                return rows.length > 0 ? rows : [{ idx: i + 1, head, id: null, seq: null, content: null, localId: null, createdAt: null, updatedAt: null }];
+            }).reverse();
         }),
     };
     return { client, calls };
@@ -89,6 +96,37 @@ describe('sync-hello', () => {
         expect(calls).toEqual(['heads']);
     });
 
+    // B-821 (spec §4.4): statements per hello are bounded, not one per sub.
+    it('a 16-sub cold hello is 2 statements; a mixed hello at most 3 — whatever the sub count', async () => {
+        const sessions = Object.fromEntries(range(1, 16).map((i) => [`s${i}`, own(range(1, 30))]));
+        const cold = makeCtx({ sessions });
+        const coldAck = await handleSyncHello(cold.ctx, { v: 1, subs: range(1, 16).map((i) => ({ sid: `s${i}`, afterSeq: null, limit: 2 })) });
+        expect(coldAck.ok && coldAck.results.every((r) => r.ok && r.messages.length === 2)).toBe(true);
+        expect(cold.calls).toEqual(['heads', 'latest']);
+
+        const mixed = makeCtx({ sessions, env: { SYNC_GAP_THRESHOLD: '10' } });
+        const subs = range(1, 16).map((i) => ({ sid: `s${i}`, afterSeq: [null, 25, 30, 5][i % 4], limit: 3 }));
+        const mixedAck = await handleSyncHello(mixed.ctx, { v: 1, subs });
+        if (!mixedAck.ok) throw new Error('unreachable');
+        expect(mixed.calls).toEqual(['heads', 'latest', 'increment']);
+        // Every sub still gets ITS answer, in request order.
+        mixedAck.results.forEach((result: any, i) => {
+            const afterSeq = subs[i].afterSeq;
+            expect(result.sid).toBe(subs[i].sid);
+            const expected = afterSeq === null || afterSeq === 5 ? [28, 29, 30] : afterSeq === 25 ? [26, 27, 28] : [];
+            expect(result.messages.map((m: any) => m.seq)).toEqual(expected);
+            expect(!!result.gapTooLarge).toBe(afterSeq === 5);
+        });
+    });
+
+    it('the same session asked twice in one hello gets two independent answers from one statement', async () => {
+        const { ctx, calls } = makeCtx({ sessions: { a: own(range(1, 10)) } });
+        const ack = await handleSyncHello(ctx, { v: 1, subs: [{ sid: 'a', afterSeq: 2, limit: 2 }, { sid: 'a', afterSeq: 7, limit: 5 }] });
+        if (!ack.ok) throw new Error('unreachable');
+        expect(ack.results.map((r: any) => [r.messages.map((m: any) => m.seq), r.hasMore])).toEqual([[[3, 4], true], [[8, 9, 10], false]]);
+        expect(calls).toEqual(['heads', 'increment']);
+    });
+
     it('cold returns the latest page ascending with oldestSeq; limit clamps to 500', async () => {
         const { ctx, client } = makeCtx({ sessions: { a: own(range(1, 800)) } });
         const ack = await handleSyncHello(ctx, { v: 1, subs: [{ sid: 'a', afterSeq: null, limit: 3 }, { sid: 'a', afterSeq: null, limit: 10_000 }] });
@@ -98,7 +136,7 @@ describe('sync-hello', () => {
         expect(small).toMatchObject({ oldestSeq: 798, hasMore: false, headSeq: 800 });
         expect(small).not.toHaveProperty('gapTooLarge');
         expect(big.messages).toHaveLength(500);
-        expect(client.$queryRawUnsafe.mock.calls.some((call: any[]) => call[2] === 500)).toBe(true);
+        expect(client.$queryRawUnsafe.mock.calls.some((call: any[]) => Array.isArray(call[2]) && call[2].includes(500))).toBe(true);
     });
 
     it('gapTooLarge: 500 behind is an increment, 501 behind is the latest page', async () => {
@@ -280,6 +318,51 @@ describe('rate limit (§4.4)', () => {
     });
 });
 
+describe('gate size follows Prisma connection_limit (B-821, §4.4)', () => {
+    const url = (query: string) => `postgresql://u:p@pool:6432/happy?pgbouncer=true${query}`;
+
+    it('defaults to half the pool, at least 1', () => {
+        expect(resolveSnapshotConcurrency({ DATABASE_URL: url('&connection_limit=20') })).toBe(10);
+        expect(resolveSnapshotConcurrency({ DATABASE_URL: url('&connection_limit=16') })).toBe(8);
+        expect(resolveSnapshotConcurrency({ DATABASE_URL: url('&connection_limit=1') })).toBe(1);
+    });
+
+    it('an explicit SYNC_HELLO_MAX_CONCURRENCY is honoured but never exceeds connection_limit', () => {
+        expect(resolveSnapshotConcurrency({ DATABASE_URL: url('&connection_limit=20'), SYNC_HELLO_MAX_CONCURRENCY: '6' })).toBe(6);
+        expect(resolveSnapshotConcurrency({ DATABASE_URL: url('&connection_limit=20'), SYNC_HELLO_MAX_CONCURRENCY: '32' })).toBe(20);
+    });
+
+    it('no connection_limit (local / PGlite): 10, or the explicit value', () => {
+        expect(resolveSnapshotConcurrency({})).toBe(10);
+        expect(resolveSnapshotConcurrency({ DATABASE_URL: url('') })).toBe(10);
+        expect(resolveSnapshotConcurrency({ DATABASE_URL: 'not a url' })).toBe(10);
+        expect(resolveSnapshotConcurrency({ SYNC_HELLO_MAX_CONCURRENCY: '32' })).toBe(32);
+        expect(resolveSessionSyncConfig({ DATABASE_URL: url('&connection_limit=20') }).maxConcurrency).toBe(10);
+    });
+});
+
+describe('snapshot shape label (B-821, §4.7)', () => {
+    it('cold = every sub afterSeq null, warm = none, mixed = both; an empty hello is warm', () => {
+        expect(snapshotShape([{ afterSeq: null }, { afterSeq: null }])).toBe('cold');
+        expect(snapshotShape([{ afterSeq: 0 }, { afterSeq: 9 }])).toBe('warm');
+        expect(snapshotShape([{ afterSeq: null }, { afterSeq: 9 }])).toBe('mixed');
+        expect(snapshotShape([])).toBe('warm');
+    });
+
+    it('the duration histogram is observed with op and shape', async () => {
+        const metrics = await import('@/app/monitoring/metrics2');
+        const observe = vi.spyOn(metrics.syncSnapshotDuration, 'observe');
+        try {
+            const { ctx } = makeCtx({ sessions: { a: own([1, 2]) } });
+            await handleSyncHello(ctx, { v: 1, subs: [{ sid: 'a', afterSeq: null }, { sid: 'a', afterSeq: 1 }] });
+            await handleSessionSubscribe(ctx, { v: 1, sid: 'a', afterSeq: null });
+            expect(observe.mock.calls.map((call) => call[0])).toEqual([{ op: 'hello', shape: 'mixed' }, { op: 'subscribe', shape: 'cold' }]);
+        } finally {
+            observe.mockRestore();
+        }
+    });
+});
+
 describe('concurrency gate (§4.4, §9.1-5)', () => {
     it('admits up to the limit, then serves waiters strictly FIFO', async () => {
         const gate = createSnapshotGate(2);
@@ -314,7 +397,8 @@ describe('concurrency gate (§4.4, §9.1-5)', () => {
 
     // Review M1: the gate bounds concurrent snapshot STATEMENTS (spec §4.4), not requests —
     // a 16-sub cold hello under one slot used to run 16 statements at once (Promise.all).
-    it('gate(1): a 16-sub cold hello (owners and grantees) and a parallel subscribe never run more than one statement at a time', async () => {
+    // B-821: the latest and increment batches of one hello are statements too — still one at a time.
+    it('gate(1): a 16-sub cold + increment hello (owners and grantees) and a parallel subscribe never run more than one statement at a time', async () => {
         const sessions: Record<string, { accountId: string; seqs: number[] }> = {};
         for (let i = 0; i < 16; i += 1) sessions[`s${i}`] = { accountId: i % 4 === 0 ? 'other' : 'u1', seqs: range(1, 5) };
         let running = 0;
@@ -335,13 +419,13 @@ describe('concurrency gate (§4.4, §9.1-5)', () => {
         const { ctx } = makeCtx({ gate, client: tracked, sessions, access: () => ({ role: 'grantee' }) });
         // Grant lookups are statements too.
         ctx.deps.resolveAccess = (userId, sid) => track(async () => ({ role: 'grantee', userId, sid }) as any);
-        const subs = Object.keys(sessions).map((sid) => ({ sid, afterSeq: null }));
+        const subs = Object.keys(sessions).map((sid, i) => ({ sid, afterSeq: i % 2 === 0 ? null : 2 }));
         const [hello, subscribe] = await Promise.all([
             handleSyncHello(ctx, { v: 1, subs }),
             handleSessionSubscribe(ctx, { v: 1, sid: 's1', afterSeq: 2 }),
         ]);
         expect(hello.ok).toBe(true);
-        expect((hello as any).results.every((r: any) => r.ok && r.messages.length === 5)).toBe(true);
+        expect((hello as any).results.map((r: any) => r.ok && r.messages.length)).toEqual(subs.map((sub) => sub.afterSeq === null ? 5 : 3));
         expect(subscribe).toMatchObject({ ok: true, messages: [{ seq: 3 }, { seq: 4 }, { seq: 5 }] });
         expect(peak).toBe(1);
     });

@@ -122,8 +122,10 @@ export const syncSubscribeCounter = new Counter({
 
 export const syncSnapshotDuration = new Histogram({
     name: 'sync_snapshot_duration_seconds',
-    help: 'DB time of one hello/subscribe snapshot (head batch + per-session statements)',
-    labelNames: ['op'] as const,
+    // Per request, not per statement: slot held → all ≤3 statements settled (B-821, spec §4.7/§8).
+    // shape = cold (every sub afterSeq:null) | warm (none) | mixed; cold and warm each P95 < 30ms.
+    help: 'DB time of one hello/subscribe snapshot (head batch + batched latest/increment statements), by request shape',
+    labelNames: ['op', 'shape'] as const,
     buckets: [0.002, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.25, 0.5, 1, 1.5],
     registers: [register]
 });

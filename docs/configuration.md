@@ -271,8 +271,11 @@ catch-up; it takes effect on slot restart, no image change. `SYNC_SUBSCRIBE_ACCO
 (comma-separated account IDs) limits `ok` answers to those accounts for a staged
 rollout. `SYNC_GAP_THRESHOLD` (default 500) is how far behind a client may be
 before it gets the latest page instead of the increment, and
-`SYNC_HELLO_MAX_CONCURRENCY` (default 32) bounds concurrent snapshot reads per
-process; a request that waits more than 3s for a slot gets `unavailable` with
+`SYNC_HELLO_MAX_CONCURRENCY` bounds concurrent snapshot reads per process. Its
+default is half of the `connection_limit` in `DATABASE_URL` (10 for the
+production 20; 10 when the URL has none), and any value is capped at
+`connection_limit` so waiting happens in the gate, where it is measured, rather
+than inside Prisma's pool. A request that waits more than 3s for a slot gets `unavailable` with
 a 500–1500ms `retryAfterMs`. Each socket may hold 16 subscriptions and send 20
 hello/subscribe per 10s, and one ack carries at most 512KB of messages. Live
 delivery still uses `update/new-message`; these switches never change it.

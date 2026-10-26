@@ -2709,6 +2709,15 @@ export const en = {
                 replies: 'The lead’s replies and the options it asks you to choose from stay visible; the member’s message and the lead’s tool work still fold into one row you can expand.',
                 via: 'A small line such as “Replying to Member A’s submission” shows what the lead is answering.',
             },
+            oct25f: {
+                title: 'Unsent messages survive a reload',
+                summary: 'Reload the page, or let the phone close it in the background, and messages that had not gone out are still there and are sent again on their own, without duplicates. Messages queued while the agent is busy are kept too, and accounts with many sessions now get in on a weak network.',
+                outboxTitle: 'Reload the page, keep what you typed',
+                outboxBody: 'A message that had not gone out when the page reloaded — or when the phone closed it in the background — is still in the conversation and is sent again on its own, never twice. If it has waited more than 10 minutes, it is marked Not sent and you choose Resend or Discard.',
+                outboxAlt: 'A phone showing a session whose last message is marked Not sent, with Resend and Discard next to it',
+                queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
+                bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
+            },
             oct25s: {
                 title: 'CLI 0.2.186: busy machines update too',
                 summary: 'A machine that is always busy now also updates to the new version on its own, without interrupting the sessions running on it.',

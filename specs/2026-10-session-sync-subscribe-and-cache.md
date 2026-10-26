@@ -194,6 +194,26 @@ FROM h LEFT JOIN LATERAL (
 -- 冷/最新页：内层改 ORDER BY seq DESC LIMIT $3，结果在应用层反转
 ```
 
+**批量形式（r9，B-821，实现以此为准）**：一个 hello 里所有最新页（cold、gapTooLarge）合成**一条**语句，所有增量合成**另一条**。上面的单会话 SQL 是 N=1 的特例，subscribe 也走批量函数（N=1）：
+
+```sql
+-- 批量最新页：$1 = sid[]，$2 = limit[]
+SELECT r.idx::int AS idx, s."seq" AS head, m."id", m."seq", m."content", m."localId", m."createdAt", m."updatedAt"
+FROM unnest($1::text[], $2::int[]) WITH ORDINALITY AS r(sid, lim, idx)
+JOIN "Session" s ON s."id" = r.sid
+LEFT JOIN LATERAL (
+  SELECT "id","seq","content","localId","createdAt","updatedAt" FROM "SessionMessage"
+  WHERE "sessionId" = r.sid ORDER BY "seq" DESC LIMIT r.lim
+) m ON true;
+-- 批量增量：unnest($1::text[], $2::int[] /* afterSeq[] */, $3::int[] /* limit+1 */) AS r(sid, after_seq, lim, idx)，
+-- 内层改成 "seq" > r.after_seq ORDER BY "seq" ASC LIMIT r.lim
+```
+
+- 结果按 `idx`（读请求在批里的位置）拆回，不按 sid：同一个 hello 可以对同一会话发两条不同 afterSeq/limit 的 sub。
+- 不写外层 `ORDER BY`（16 × 500 行的 Incremental Sort 约 5ms），应用层按 seq 排序。
+- 每一行带的是**它自己那条语句**读到的 `Session.seq`；head 批量读（§4.4 的第 ① 条）只用来鉴权和定 plan，**不能**拿来当页的 head，否则两条语句之间提交的消息会让页越过 head。
+- 批量语句里每个会话的 head 和页仍来自同一个语句快照，下面的证明对每个会话照样成立（N 个会话还共用同一个快照，比逐条更强）。会话行被删除时 `JOIN` 不产生任何行，按 `not_found` 处理。
+
 **证明**（每会话的情况）：
 
 - 消息 M 的提交时刻 tc，快照开始时刻 ts。M 的 emit 时刻 te 一定晚于 tc（emit 在提交之后）。
@@ -234,7 +254,7 @@ FROM h LEFT JOIN LATERAL (
 
 | 项 | 默认 | 理由 |
 |---|---|---|
-| `SYNC_HELLO_MAX_CONCURRENCY`（每槽） | 32 | 每槽并发执行的快照查询数。切流时 300–400 个连接同时 hello，排队不打穿 pgbouncer 连接池 |
+| `SYNC_HELLO_MAX_CONCURRENCY`（每槽） | `DATABASE_URL` 的 `connection_limit` 的一半（生产 20 → **10**；URL 没写时 10）；显式值也封顶到 `connection_limit` | 每槽同时执行的快照**语句**数（一个槽位同一时刻只跑一条语句，M1），也就是 sync 最多占用的 Prisma 连接数。r9 依据：① 超过 `connection_limit` 的请求会在 Prisma 连接池里排队，吃掉 1.5s deadline，却不计入 `sync_hello_queue_wait`；② 另一半连接留给消息写入（它们的提交产生推送）、REST 和鉴权，hello 风暴不能占满整个池；③ 吞吐不降：批量后 cold hello 每槽约 10–20ms，10 槽 ≈ 500–1000 hello/s，300–400 个连接的切流风暴 < 1s 排完，远低于 3s 排队超时；原来 32 槽 × 约 45ms ≈ 700 hello/s |
 | 排队超时 | 3s | 超过就回 `unavailable`，`retryAfterMs` = 500–1500ms 随机，把风暴摊开 |
 | 快照 deadline（`snapshotTimeoutMs`） | 1.5s | 从拿到闸门槽位开始，覆盖一次 hello/subscribe 的全部快照语句。超时回 `unavailable`；槽位要等 DB 语句真正结束才释放，否则 DB 变慢时闸门会放进无上限的并发查询 |
 | per-socket 速率 | 20 次 / 10s（hello 和 subscribe 合计） | 正常使用远低于这个值；防止客户端 bug 造成循环 |
@@ -242,7 +262,15 @@ FROM h LEFT JOIN LATERAL (
 | 每 sub `limit` | 默认 200，上限 500 | 与 REST 一致 |
 | `subs` 数组长度 | schema 硬上限 64 | 超过回整体 `invalid_request`；17–64 个时按 §3.2 逐条回 `too_many_subscriptions`。防止超大请求在 schema 解析阶段就占用资源 |
 
-hello 的 DB 代价：先用一条 `SELECT id, seq FROM "Session" WHERE id = ANY($1)` 批量拿到所有 head（≤16 个 id，走主键），**只对 `head > afterSeq` 的 sub** 再跑 §4.2 的增量语句。切流时绝大多数客户端没有增量，每个 hello 约等于 1 次主键查询。
+hello 的 DB 代价（r9）：**一个 hello 最多 3 条语句，与 sub 数无关**：
+
+1. head 批量读 `SELECT id, seq, accountId FROM "Session" WHERE id = ANY($1)`（≤16 个 id，走主键），用于鉴权和定 plan；
+2. 所有 `latest`（cold、gapTooLarge）sub 合并成一条 §4.2 批量最新页语句；
+3. 所有 `increment` sub 合并成一条 §4.2 批量增量语句。
+
+没有对应 sub 的那条不发：纯 cold 的 hello 是 2 条，切流时绝大多数客户端没有增量，只有第 1 条。三条串行执行，一个闸门槽位同一时刻只有一条语句在执行（M1）。已知例外：非 owner sub 的 grant 校验（`resolveSessionAccess`）仍是每个 sub 逐条执行，全是 grantee 的 16-sub hello 可能超过 30ms，后续可批量化。
+
+依据（B-821 调查）：生产每条 raw 语句在应用里有约 4.5ms 的固定开销（Prisma 引擎加 PgBouncer 往返），DB 执行只占 0.04ms；逐条执行时 8-sub cold hello = 9 条 ≈ 44ms。批量后同形状在本地按每条 +4ms 建模为 P50 约 10–12ms（改前 44–59ms）。
 
 ### 4.5 鉴权与撤销
 
@@ -264,9 +292,9 @@ hello 的 DB 代价：先用一条 `SELECT id, seq FROM "Session" WHERE id = ANY
 |---|---|
 | `WR/syncProtocol.ts`（新） | §3 的 zod schema 和类型，从 `WR/index.ts` 导出 |
 | `S/app/api/socket/sessionSyncHandler.ts`（新） | hello、subscribe、unsubscribe 的 handler；并发闸门；速率限制；指标 |
-| `S/app/session/sessionSyncSnapshot.ts`（新，纯函数加一条 SQL） | §4.2 的快照读和 §4.3 的 gap 判定，可单独测试 |
+| `S/app/session/sessionSyncSnapshot.ts`（新，纯函数加两条批量 SQL，r9） | §4.2 的快照读和 §4.3 的 gap 判定，可单独测试 |
 | `S/app/api/socket.ts` | 只对 user-scoped 连接注册 handler（与 `sessionStreamHandler` 等并列） |
-| `S/app/monitoring/metrics2.ts` | `sync_hello_total{result}`、`sync_subscribe_total{result}`、`sync_snapshot_duration_seconds`、`sync_gap_too_large_total`、`sync_subscriptions`（gauge）、`sync_hello_queue_wait_seconds` |
+| `S/app/monitoring/metrics2.ts` | `sync_hello_total{result}`、`sync_subscribe_total{result}`、`sync_snapshot_duration_seconds{op,shape}`、`sync_gap_too_large_total`、`sync_subscriptions`（gauge）、`sync_hello_queue_wait_seconds{op}`。`shape`（r9）按**请求**分类，基数固定为 3：`cold` = 所有 sub 都是 `afterSeq:null`，`warm` = 没有一个是，`mixed` = 两者都有；空 hello 记 `warm`。subscribe 同样按它唯一的 sub 记 `cold`/`warm`。按请求而不是按 plan 分类，是因为超时的样本拿不到 plan，也要能归类 |
 
 **后续项（r2 记录，未在 5a 实现）**：Grafana 新增 Sync 面板，展示上面这组指标。它是阶段 1 的观察项（§8 门槛「`sync_snapshot_duration` P95 < 30ms」），应随阶段 1 上线一起做，否则只能手写 PromQL 去看。读图注意：`sync_hello_queue_wait_seconds` 的 bucket 上限是 3s，排队超时的样本全部落在 `+Inf`，这是预期行为。
 | `docs/monitoring` 看板 | 新增一行 Sync 面板（metrics skill） |
@@ -588,12 +616,14 @@ server 与 Web 同镜像（铁律 5），所以 PR-5a（server）合入后，先
 | 阶段 | PR | 内容 | 上线后观察 | 进入下一阶段的门槛 |
 |---|---|---|---|---|
 | 0 | — | PR-1～3 上线（前提）；记录基线：`after_seq` GET/分钟、回前台追平时间（e2e B3/B6）、首屏时间 | — | QA 用 `e2e/sync-resume.mjs` 验收通过 |
-| 1 | **5a** server + wire | hello、subscribe 的 handler，限额，指标；Web 不调用 | 用 canary 脚本对生产 hello，确认 ack 和 `sync_snapshot_duration` P95 < 30ms | 1 次蓝绿切流期间，canary hello 持续成功 |
+| 1 | **5a** server + wire | hello、subscribe 的 handler，限额，指标；Web 不调用 | 用 canary 脚本对生产 hello，确认 ack，并且 `sync_snapshot_duration_seconds{op="hello"}` 的 P95 < 30ms（r9 定义见表下） | 1 次蓝绿切流期间，canary hello 持续成功 |
 | 2 | **5b** Web 订阅 | 合并入口、状态机、调度器；`SYNC_SUBSCRIBE_ACCOUNTS=<Owner>` 灰度 | Owner 账号使用 2–3 天；`sync_hello_total{result=~"unavailable\|rate_limited\|invalid_request"}` 占比 < 1%（r7：**排除 `disabled`**，灰度期间名单外账号每次 connect 都记一次 `result=disabled`，`result!=ok` 会接近 100%）；没有新的「消息看不见」反馈 | 去掉账号名单，全量 |
 | 3 | **6a** 消息缓存 | 读写缓存加损坏恢复；默认开启 | 首屏时间、缓存命中率（Web 本地计数，可在调试面板查看）、`QuotaExceeded` 次数 | 一周内没有缓存相关缺陷 |
 | 4 | **6b** 持久 outbox | 刷新后 pending 仍在；10 分钟规则 | 真机：iOS 杀后台后 pending 恢复 | — |
 | 5 | **6c** 内存 LRU | 驱逐非活跃会话的 reducer 状态 | 长时间使用后的内存占用（Chrome heap snapshot） | — |
 | 6（可选） | 7 | CLI 改用 subscribe、outbox 落盘；删除 Web legacy 中已不用的补拉入口 | 另立 spec | — |
+
+**阶段 1 时延门槛的定义（r9）**：`sync_snapshot_duration_seconds` 是**单个 hello/subscribe** 一个样本，从拿到闸门槽位开始，到全部快照语句结束（或 1.5s deadline 触发）为止，包括 head 批量读、grant 校验和 §4.4 的批量语句；不包括排队（另看 `sync_hello_queue_wait_seconds`）、ack 预算裁剪、序列化和网络。它不是按语句计：按语句计会让「16 条串行语句 ≈ 72ms」也显示为达标。canary 必须同时包含 cold（`afterSeq:null`）和 warm 两类 hello，**两类各自**的 P95 都要 < 30ms，按 `shape` 标签分开看：`histogram_quantile(0.95, sum by (le, shape) (rate(sync_snapshot_duration_seconds_bucket{op="hello"}[5m])))`。
 
 每个阶段都单独发 server/Web 镜像。阶段 2 之后，legacy 路径保留至少 2 个版本，作为 `disabled` 时的回退。
 
@@ -603,17 +633,17 @@ server 与 Web 同镜像（铁律 5），所以 PR-5a（server）合入后，先
 
 ### 9.1 Server（vitest + 真 Postgres，沿用 server 现有的测试基建）
 
-1. **原子性**：在 handler 的「join 之后、快照之前」和「快照之后、ack 之前」注入可控延迟；并发写 N 条消息（多个 POST、prompt-queue 出队、share 写入四种 emit 源都覆盖）。断言：客户端收到的 `ack.messages ∪ push` 的 seq 集合等于 DB 中 `seq > afterSeq` 的全集，没有缺口。用随机交错跑 200 轮（属性测试）。
+1. **原子性**：在 handler 的「join 之后、快照之前」、「head 批量读之后、页语句之前」（r9；每 3 轮在这里提交一次写入，确保这个窗口一定被命中）和「快照之后、ack 之前」注入可控延迟；hello 轮次同时带同一会话的增量 sub、最新页 sub 和一个不存在的 sid，使两条批量语句都在同一 hello 里被验证；并发写 N 条消息（多个 POST、prompt-queue 出队、share 写入四种 emit 源都覆盖）。断言：客户端收到的 `ack.messages ∪ push` 的 seq 集合等于 DB 中 `seq > afterSeq` 的全集，没有缺口。用随机交错跑 200 轮（属性测试）。
 2. `head` 与 `messages` 的一致性：`hasMore=false ⇒` DB 中 `afterSeq < seq ≤ head` 的行全部返回，且 `max(seq) ≤ head`；`messages` 中没有 `seq > head` 或 `seq ≤ afterSeq` 的行。
 2a. **seq 空洞 fixture**：直接写库构造 `Session.seq=12`、消息 seq 为 1–4、6–10（5 为中间空洞，11–12 为尾部空洞）。断言：`afterSeq=null`、`afterSeq=4`、`afterSeq=10`、`afterSeq=12` 都返回 `ok:true`、`headSeq=12`、`hasMore=false`，messages 分别为全部 9 行、6–10、空、空；server 不修改 `Session.seq`（请求前后读库相等）。
 3. gapTooLarge 阈值边界（499、500、501）；冷请求（`afterSeq=null`）返回最新页且为升序。
 4. 鉴权：owner、grantee、撤销后、已删除、跨账号，都返回正确结果；`not_found` 不泄露「存在但无权限」。
-5. 限额：第 17 个 sub、速率超限、并发闸门排队超时都回正确错误码；并发闸门**不会**饿死（公平 FIFO）。`subs` 65 个时整体回 `invalid_request`，64 个时逐条回 `too_many_subscriptions`（r2）。快照超过 1.5s deadline 时回 `unavailable`，且闸门槽位要等 DB 语句结束才释放（注入慢查询，断言在途语句数不超过闸门上限）（r2）。
+5. 限额：第 17 个 sub、速率超限、并发闸门排队超时都回正确错误码；并发闸门**不会**饿死（公平 FIFO）。`subs` 65 个时整体回 `invalid_request`，64 个时逐条回 `too_many_subscriptions`（r2）。快照超过 1.5s deadline 时回 `unavailable`，且闸门槽位要等 DB 语句结束才释放（注入慢查询，断言在途语句数不超过闸门上限）（r2）。r9：闸门为 1 时，cold + increment 混合的 16-sub hello 与并发 subscribe 的峰值在途语句数为 1；16-sub cold hello 恰好 2 条语句，混合 hello 恰好 3 条；闸门大小按 `connection_limit` 推导并封顶。
 6. 体积截断：超过 512KB 时，`hasMore` 和截断位置正确。预算被前面的 sub 用完时，后续 sub 回 `messages:[]`、`hasMore:true`（最新页不带 `oldestSeq`）；用原请求的 afterSeq 重新 subscribe 能拿到完整结果（r2）。
 7. 开关：`DISABLED`、`ACCOUNTS` 名单。
 8. 非 user-scoped 连接返回 `unsupported_client`。
 9. **跨槽**：两个 server 进程共用 Postgres 和 Redis（沿用 `deploy/integration-tests/missed-events.mjs` 的结构）。A 槽 hello，B 槽写入，断言推送到达且快照无缝。
-10. mutation-check：去掉「快照读放在 join 之后」的保证（例如把 handler 改成先读后注册的变体），或者去掉 head 与 messages 同语句读取，测试 1 必须失败。
+10. mutation-check：去掉「快照读放在 join 之后」的保证（例如把 handler 改成先读后注册的变体），或者去掉 head 与 messages 同语句读取，测试 1 必须失败。r9 的批量语句额外要求：删掉「页用自己语句的 head」（`head = snapshot.head;`，改用 head 批量读的 head）、删掉批量增量语句的 `WHERE "sessionId" = r.sid` 或 `JOIN "Session"`，测试 1 必须失败；删掉批量最新页的 `WHERE "sessionId" = r.sid`，测试 2a/3 必须失败；把两条批量语句改成并发，或改回每个 sub 一条，§9.1-5 的对应用例必须失败。
 
 ### 9.2 Web 单测（vitest，fake timers + fake socket + fake-indexeddb）
 
@@ -770,6 +800,7 @@ UI 部分（状态条）沿用 PR-2 已经通过的 device-shots 和 design lint
 | r6 | 2026-10-25 | B-815（#761 review M1/S1–S4） | §5.5.7：幂等边界改按 server 实现写（enqueue 只对在队列中的 localId 去重，已出队再入队 `created:true`；不二次执行靠 dispatch 按消息表 localId 去重），写入「幽灵队列项」已知限制；不带我方 code 的 5xx 归为没有答复（可重试）；页内自动重试同守 10 分钟；`unsupported` 时只有首次提交退回 tab 本地队列，重试/接管的行保持 `failed` 留在 dock |
 | r7 | 2026-10-25 | B-812b（#757 review REVIEW-757 §2/§3/§5、S1/S10、M1；已采纳） | **只改文档，协议不变**，把 PR-5b 实现与原文的三处偏离写回 spec：(1) §5.1 规则 3：`cache` 不是点状来源，按锚定在存储 lastSeq 上的范围处理；(2) 规则 6：副作用只对 push 生效，按独立的副作用高水位 `effectedSeq` 去重，不用合并前的 lastSeq；(3) §5.3：REST 兜底或 hedge 完成也进入 live（legacy 强度），live 不再是「唯一一条路径」，§1.2 G2、§12-4 同步。另补：§5.2 resume/retry/online 的 hello 600ms hedge，connect/recovered/handover 不 hedge；连接回来与控制权回到本端时不分模式执行会话侧职责（`touchViewedSession`，M1）。§8 阶段 2 门槛排除 `disabled` |
 | r8 | 2026-10-25 | B-819（QA8 F2/F3） | §5.4「探针与渲染并行」：锚点探针随缓存读出即发（DEK 等待期间、渲染期间）；渲染时已答复就先校验、与缓存同一次提交（矛盾的缓存不再先画出来），否则仍在渲染后锁内合并；`droppedMax` 兜住早于探针的缓冲消息；会话列表落地唤醒等 DEK 的补拉；冷打开时 URL 里的会话随 `#init` 启动补拉，不等页面挂载。§5.4.2 / §5.5.6：缓存写超时只跳过当前批（连续 3 批才禁用），删除留到下一批；消息缓存卡死不再关闭连接和 outbox，消息批次事务不含 `outbox` store，outbox 超时单独计数（连续 3 次才停）；新增指标 `writeTimeouts`、`outboxStore.stats()`。e2e COLD 加桌面/phone 两个视口与「最新出现不晚于 off（±50ms）」断言，h1 / `--h2` 都跑 |
+| r9 | 2026-10-25 | B-821（B-811c cold hello 调查，方案 B） | **协议不变，只改 server 实现与口径**。(1) §4.2 补批量形式：一个 hello 的最新页、增量各合成一条 `unnest … WITH ORDINALITY` + `JOIN "Session"` + `LEFT JOIN LATERAL` 语句，按 `idx` 拆回，页的 head 取自己语句读到的值；逐会话原子性证明不变。(2) §4.4：每个 hello ≤3 条语句，与 sub 数无关；闸门默认值从 32 改为 `connection_limit` 的一半（生产 10），显式值封顶到 `connection_limit`，依据写在表里。(3) §4.7：`sync_snapshot_duration_seconds` 加 `shape`（cold/warm/mixed，按请求分类）。(4) §8：门槛定义为按请求计、不含排队，cold 与 warm 的 P95 各自 < 30ms。(5) §9.1-1/5/10 补对应测试与变异项。依据：生产单条 raw 语句固定开销约 4.5ms，8-sub cold hello 9 条串行 ≈ 44ms；批量后本地按每条 +4ms 建模，8-sub cold（canary 形状）P50 44→10ms |
 
 ## 16. Owner 决定（2026-10-25，6 项均按推荐）
 
