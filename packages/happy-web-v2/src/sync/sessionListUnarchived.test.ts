@@ -49,11 +49,13 @@ describe('sync.ts wiring', () => {
         expect(body).toContain("if (!this.credentials || this.unarchivedSessionsList.settled) return;");
         expect(body).toContain("sessionListRequest(getServerUrl(), token, 'unarchived')");
         expect(body).toContain('this.applySessions(preserveSessionBatchActivityFromStore(decoded, storage.getState().sessions));');
-        expect(body).toContain('const fresh = rowsToDecode(rows, storage.getState().sessions);\n        const decoded = await decodeSessionRows(this.encryption, fresh);');
+        expect(body).toContain('const fresh = rowsToDecode(rows, storage.getState().sessions);\n        const decoded = await decodeInChunks(fresh, (chunk) => decodeSessionRows(this.encryption, chunk));');
         expect(body).toContain('this.unarchivedSessionsList.resolve();');
         // The response is "in" before any row is decoded: that is what ready waits for.
         expect(body.indexOf('this.unarchivedSessionsArrived.resolve();')).toBeGreaterThan(0);
-        expect(body.indexOf('this.unarchivedSessionsArrived.resolve();')).toBeLessThan(body.indexOf('const decoded = await decodeSessionRows('));
+        expect(body.indexOf('this.unarchivedSessionsArrived.resolve();')).toBeLessThan(body.indexOf('const decoded = await decodeInChunks('));
+        // One merge for the whole read.
+        expect(body.match(/this\.applySessions\(/g)).toHaveLength(1);
     });
 
     it('ready waits for its response to arrive (not for its rows to be applied), bounded, after the first list', () => {

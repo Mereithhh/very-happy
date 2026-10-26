@@ -93,7 +93,7 @@ import { resolveMessageModeMeta, type MessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { preserveSessionBatchActivityFromStore } from './sessionSnapshot';
 import { decodeSessionRows, type EncryptedSessionRow } from './sessionDecode';
-import { rowsToDecode } from './unarchivedApply';
+import { decodeInChunks, rowsToDecode } from './unarchivedApply';
 import { adoptSessionListPrefetch, sessionListRequest, takeSessionListPrefetch, type SessionListResponse } from './sessionListPrefetch';
 import { catchUpSessionList, DELTA_PAGE_LIMIT, mergeSessionListSnapshot, parseServedAt, sessionListSnapshot, type SessionListSnapshot } from './sessionListDelta';
 import { applyNewSessionUpdate } from './newSessionUpdate';
@@ -1977,10 +1977,11 @@ class Sync {
         if (!this.credentials || this.credentials.token !== token) return;
         const rows = data.sessions ?? [];
         this.unarchivedSessionsArrived.resolve();
-        // Rows the first list already brought at the same versions are not decoded again.
-        // One merge, not batches: every store write re-renders the whole sidebar.
+        // Rows the first list already brought at the same versions are not decoded again; the
+        // rest decode in chunks (the window renders between them) and merge once — every
+        // store write re-renders the whole sidebar.
         const fresh = rowsToDecode(rows, storage.getState().sessions);
-        const decoded = await decodeSessionRows(this.encryption, fresh);
+        const decoded = await decodeInChunks(fresh, (chunk) => decodeSessionRows(this.encryption, chunk));
         if (!this.credentials || this.credentials.token !== token) return;
         if (decoded.length > 0) this.applySessions(preserveSessionBatchActivityFromStore(decoded, storage.getState().sessions));
         if (this.sessionListSnapshot) this.sessionListSnapshot = mergeSessionListSnapshot(this.sessionListSnapshot, rows);
