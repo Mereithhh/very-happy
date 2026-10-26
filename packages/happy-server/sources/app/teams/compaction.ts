@@ -11,9 +11,11 @@ import type { TeamCapacity, TeamCapacityMetric, TeamMessage, TeamOperation, Team
 export const TEAM_LIMITS: Record<TeamCapacityMetric, number> = { bytes: 2_000_000, messages: 2000, operations: 1000, tasks: 200 };
 /** Closed work stays visible this long before it is archived. */
 export const TEAM_COMPACT_AGE_MS = 24 * 60 * 60 * 1000;
-/** Above this share of any limit, compaction stops waiting for the age (then 1 h, then none). */
+/** Above this share of any limit, compaction stops waiting for the age (then 1 h, then the grace). */
 export const TEAM_COMPACT_PRESSURE = 0.5;
-const AGE_TIERS = [TEAM_COMPACT_AGE_MS, 60 * 60 * 1000, 0];
+/** Even under pressure closed work stays this long, so a lead still reads a child it just accepted. */
+export const TEAM_COMPACT_MIN_AGE_MS = 10 * 60 * 1000;
+const AGE_TIERS = [TEAM_COMPACT_AGE_MS, 60 * 60 * 1000, TEAM_COMPACT_MIN_AGE_MS];
 export const TEAM_CAPACITY_WARN = 0.8;
 const TEAM_CAPACITY_CLEAR = 0.7;
 
@@ -36,9 +38,19 @@ export function messageArchivable(m: TeamMessage, team: Pick<TeamState, 'tasks'>
     const task = team.tasks.find(t => t.id === m.taskId);
     return !task || closed(task);
 }
-/** `repository`: `repositorySpawnIds` of the state before the removal. */
-export function operationArchivable(o: TeamOperation, team: Pick<TeamState, 'tasks'>, repository: Set<string>): boolean {
-    if (!inert(o) || repository.has(o.id)) return false;
+/** The daemon still reads a spawn whose wrapper is bound — its member's current (generation, session),
+ *  which recoverScope rebuilds the scope from — or that an unfinished stop cleans up (its worktree
+ *  receipt is found by the same triple, worker.ts). */
+function spawnInUse(o: TeamOperation, team: Pick<TeamState, 'bots' | 'operations'>): boolean {
+    if (o.type !== 'spawn') return false;
+    const same = (b: { generation: number; sessionId: string | null }) => o.sessionId !== null && b.generation === o.generation && b.sessionId === o.sessionId;
+    const bot = team.bots.find(b => b.id === o.botId);
+    if (bot && same(bot)) return true;
+    return team.operations.some(stop => stop.type === 'stop' && stop.status !== 'completed' && stop.botId === o.botId && same(stop));
+}
+/** `team`: the state the operation would leave; `repository`: `repositorySpawnIds` of the state before the removal. */
+export function operationArchivable(o: TeamOperation, team: Pick<TeamState, 'tasks' | 'bots' | 'operations'>, repository: Set<string>): boolean {
+    if (!inert(o) || repository.has(o.id) || spawnInUse(o, team)) return false;
     const task = team.tasks.find(t => t.id === o.taskId);
     return !task || closed(task);
 }
@@ -75,26 +87,34 @@ function capacityWarning(metrics: TeamCapacity['metrics'], full: TeamCapacityMet
  * younger closed work too. Returns `input` itself when nothing moves (no write needed).
  */
 export function compactTeam(input: TeamState, now: number): TeamState {
-    let team = input;
+    let team = stampLegacyClosedAt(input, now);
     for (const [tier, age] of AGE_TIERS.entries()) {
         if (tier > 0 && !underPressure(team)) break;
         team = compactOnce(team, now - age, now);
     }
     return team;
 }
+/**
+ * Tasks closed before B-822 carry no closedAt. The first time compaction sees one it gets `now`, so a
+ * task closed shortly before the deploy keeps its full 24 h — except under pressure, where its last
+ * message / operation stands in (the incident team must be unblocked by its next write).
+ */
+function stampLegacyClosedAt(team: TeamState, now: number): TeamState {
+    if (!team.tasks.some(t => closed(t) && t.closedAt === undefined)) return team;
+    const pressure = underPressure(team);
+    const lastActivity = new Map<string, number>();
+    const touch = (taskId: string | null, at: number) => { if (taskId) lastActivity.set(taskId, Math.max(lastActivity.get(taskId) ?? 0, at)); };
+    for (const m of team.messages) touch(m.taskId, Math.max(m.createdAt, m.deliveredAt ?? 0, m.cancelledAt ?? 0));
+    for (const o of team.operations) touch(o.taskId, Math.max(o.createdAt, o.claimedAt ?? 0));
+    return { ...team, tasks: team.tasks.map(t => closed(t) && t.closedAt === undefined ? { ...t, closedAt: pressure ? lastActivity.get(t.id) ?? 0 : now } : t) };
+}
 function underPressure(team: TeamState): boolean {
     const counted = team.messages.length >= TEAM_LIMITS.messages * TEAM_COMPACT_PRESSURE || team.operations.length >= TEAM_LIMITS.operations * TEAM_COMPACT_PRESSURE || team.tasks.length >= TEAM_LIMITS.tasks * TEAM_COMPACT_PRESSURE;
     return counted || JSON.stringify(team).length >= TEAM_LIMITS.bytes * TEAM_COMPACT_PRESSURE;
 }
 function compactOnce(team: TeamState, cutoff: number, now: number): TeamState {
-    const lastActivity = new Map<string, number>();
-    const touch = (taskId: string | null, at: number) => { if (taskId) lastActivity.set(taskId, Math.max(lastActivity.get(taskId) ?? 0, at)); };
-    for (const m of team.messages) touch(m.taskId, Math.max(m.createdAt, m.deliveredAt ?? 0, m.cancelledAt ?? 0));
-    for (const o of team.operations) touch(o.taskId, Math.max(o.createdAt, o.claimedAt ?? 0));
-    // Tasks closed before B-822 carry no closedAt: their last message / operation stands in.
-    const closedAt = (t: TeamTask) => t.closedAt ?? lastActivity.get(t.id) ?? 0;
-    const tasks = new Set(team.tasks.filter(t => closedAt(t) <= cutoff && taskArchivable(t, team)).map(t => t.id));
-    const remaining = { tasks: team.tasks.filter(t => !tasks.has(t.id)) };
+    const tasks = new Set(team.tasks.filter(t => (t.closedAt ?? now) <= cutoff && taskArchivable(t, team)).map(t => t.id));
+    const remaining = { tasks: team.tasks.filter(t => !tasks.has(t.id)), bots: team.bots, operations: team.operations };
     const repository = repositorySpawnIds(team);
     const messages = new Set(team.messages.filter(m => Math.max(m.deliveredAt ?? 0, m.cancelledAt ?? 0, m.createdAt) <= cutoff && messageArchivable(m, remaining)).map(m => m.id));
     const operations = new Set(team.operations.filter(o => o.createdAt <= cutoff && operationArchivable(o, remaining, repository)).map(o => o.id));

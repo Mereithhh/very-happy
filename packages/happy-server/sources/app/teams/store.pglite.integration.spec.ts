@@ -521,6 +521,34 @@ describe('agent teams persistent transactions and scoped credentials', () => {
             const archivedRows = await db.$queryRaw<{ kind: string; count: bigint }[]>`SELECT "kind", count(*) AS count FROM "TeamArchive" WHERE "teamId"=${team.id} GROUP BY "kind" ORDER BY "kind"`;
             expect(Object.fromEntries(archivedRows.map(r => [r.kind, Number(r.count)]))).toEqual({ message: after.compacted!.messages, operation: after.compacted!.operations, task: 160 });
         });
+        it('keeps the spawn a waiting stop cleans up when the daemon claims that stop (P1 repro: reused bot, task > 24 h)', async () => {
+            const team = await store.createTeam(accountId, { name: 'Reused', machineId });
+            await act(team.id, 'join', { type: 'join', name: 'Lead', sessionId });
+            const { state: stored } = await store.teamStoreTesting.load(db as any, team.id, accountId);
+            const lead = stored.bots[0];
+            const s1 = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+            const s2 = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+            const now = Date.now(); const hour = 60 * 60 * 1000;
+            const worker = { id: 'w', name: 'Worker', root: false, managed: true, sessionId: s2, generation: 2, assistant: 'claude', directory: '/wt2' };
+            const task = (id: string, closedAt: number, cleanup: string) => ({ id, parentTaskId: null, goal: id, acceptance: ['a'], goalVersion: 1, ownerBotId: lead.id, assigneeBotId: 'w', status: 'done', attempts: [{ id: `${id}-a`, botId: 'w', generation: id === 'A' ? 1 : 2, goalVersion: 1, status: 'accepted', result: 'r' }], currentAttemptId: `${id}-a`, cleanup, closedAt });
+            await db.$executeRaw`UPDATE "AgentTeam" SET "state"=${JSON.stringify({ ...stored, messages: undefined, operations: undefined, projectId: undefined, bots: [...stored.bots, worker], tasks: [task('A', now - 90 * hour, 'done'), task('B', now - 60_000, 'pending')] })}::jsonb WHERE "id"=${team.id}`;
+            const op = (id: string, taskId: string, type: string, status: string, generation: number, opSession: string, createdAt: number) => ({ id, teamId: team.id, machineId, taskId, botId: 'w', attemptId: `${taskId}-a`, generation, type, status, claimId: status === 'pending' ? null : 'c', claimedAt: status === 'pending' ? null : createdAt, error: null, sessionId: opSession, directory: '/repo', assistant: 'claude', prompt: '', createdAt });
+            for (const o of [op('spawn-gen1', 'A', 'spawn', 'completed', 1, s1, now - 100 * hour), op('spawn-gen2', 'B', 'spawn', 'completed', 2, s2, now - 50 * hour), op('stop-B', 'B', 'stop', 'pending', 2, s2, now - 60_000)]) {
+                await db.$executeRaw`INSERT INTO "TeamOperation" ("id","teamId","state") VALUES (${o.id},${team.id},${JSON.stringify(o)}::jsonb)`;
+            }
+            const claimed = await act(team.id, 'claim-stop-b', { type: 'claim-operation', operationId: 'stop-B', machineId });
+            expect(claimed.operation?.status).toBe('claimed');
+            // worker.ts: exactly one spawn with the stop's (botId, generation, sessionId), or the worktree leaks.
+            expect(claimed.team.operations.filter(o => o.type === 'spawn' && o.botId === 'w' && o.generation === 2 && o.sessionId === s2)).toHaveLength(1);
+            const archived = await db.$queryRaw<{ id: string }[]>`SELECT "id" FROM "TeamArchive" WHERE "teamId"=${team.id} AND "kind"='operation'`;
+            expect(archived.map(r => r.id)).not.toContain('spawn-gen2');
+            const { inTx } = await import('@/storage/inTx');
+            await expect(inTx(async tx => {
+                const row = await store.teamStoreTesting.load(tx, team.id, accountId);
+                const next = structuredClone(row.state); next.version++; next.operations = next.operations.filter(o => o.id !== 'spawn-gen2');
+                await store.teamStoreTesting.persistTransition(tx, row, next);
+            })).rejects.toMatchObject({ code: 'unsafe_operation_prune' });
+        });
         it('refuses to drop an undelivered message, an open task or an operation that may still act', async () => {
             const team = await store.createTeam(accountId, { name: 'Guards', machineId });
             await act(team.id, 'join', { type: 'join', name: 'Lead', sessionId });

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { TeamAction, TeamMessage, TeamOperation, TeamState, TeamTask } from '@slopus/happy-wire';
 import { reduceTeam, teamBotRepository, teamView, TeamError, type TeamActor } from './reducer';
-import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, teamCapacity, warnCapacity, TEAM_COMPACT_AGE_MS, TEAM_LIMITS } from './compaction';
+import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, teamCapacity, warnCapacity, TEAM_COMPACT_AGE_MS, TEAM_COMPACT_MIN_AGE_MS, TEAM_LIMITS } from './compaction';
 import { TEAM_CAPACITY_HINT } from './errors';
 
 const HOUR = 60 * 60 * 1000;
@@ -25,7 +25,7 @@ describe('B-822 compaction safety predicates', () => {
     });
 
     it('never archives an operation that may still act, of an open task, or the bot\'s repository spawn', () => {
-        const team = { tasks: [task('done'), task('open', { status: 'submitted' })], operations: [operation('repo', 'done', { type: 'spawn', directory: '/repo' }), operation('later', 'done', { type: 'spawn', directory: '/repo' })] };
+        const team = { bots: [], tasks: [task('done'), task('open', { status: 'submitted' })], operations: [operation('repo', 'done', { type: 'spawn', directory: '/repo' }), operation('later', 'done', { type: 'spawn', directory: '/repo' })] };
         const repository = repositorySpawnIds(team);
         expect([...repository]).toEqual(['repo']);
         expect(operationArchivable(team.operations[1], team, repository)).toBe(true);
@@ -33,6 +33,33 @@ describe('B-822 compaction safety predicates', () => {
         for (const status of ['pending', 'claimed', 'unknown', 'failed'] as const) expect(operationArchivable(operation('o', 'done', { status }), team, repository)).toBe(false);
         expect(operationArchivable(operation('o', 'done', { status: 'failed', error: 'task_closed_before_spawn' }), team, repository)).toBe(true);
         expect(operationArchivable(operation('o', 'open'), team, repository)).toBe(false);
+    });
+
+    // P1 repro (review of #771): a reused managed bot's later spawn (not its repository spawn) ran > 24 h,
+    // its task was just accepted and the stop waits — the daemon finds the worktree by exactly this spawn.
+    const reused = (stop: Partial<TeamOperation>, bot: { sessionId: string | null; generation: number }): TeamState => ({
+        ...base(),
+        bots: [{ id: 'lead', name: 'Lead', root: true, managed: true, sessionId: 'L1', generation: 1, assistant: 'claude', directory: '/repo' }, { id: 'w', name: 'W', root: false, managed: true, assistant: 'claude', directory: '/wt2', ...bot }],
+        tasks: [task('A', { closedAt: 10 * HOUR }), task('B', { closedAt: 100 * HOUR - 60_000, cleanup: 'pending' })],
+        operations: [
+            operation('spawn-gen1', 'A', { type: 'spawn', generation: 1, sessionId: 'S1', directory: '/repo', createdAt: HOUR }),
+            operation('spawn-gen2', 'B', { type: 'spawn', generation: 2, sessionId: 'S2', directory: '/repo', createdAt: 50 * HOUR }),
+            operation('stop-B', 'B', { type: 'stop', generation: 2, sessionId: 'S2', createdAt: 100 * HOUR - 60_000, ...stop }),
+        ],
+    });
+    const origins = (team: TeamState) => team.operations.filter(c => c.type === 'spawn' && c.botId === 'w' && c.generation === 2 && c.sessionId === 'S2');
+    it('keeps the spawn a bound wrapper or an unfinished stop still reads (worker.ts stop origins / recoverScope)', () => {
+        const pending = reused({ status: 'pending', claimId: null, claimedAt: null }, { sessionId: 'S2', generation: 2 });
+        expect(origins(compactTeam(pending, 100 * HOUR))).toHaveLength(1);
+        // Bound, no stop at all (recoverScope rebuilds a running member's scope from it).
+        const bound = { ...pending, tasks: [pending.tasks[0], task('B', { status: 'running', closedAt: undefined, cleanup: 'none' }), task('C', { closedAt: 60 * HOUR })], operations: pending.operations.slice(0, 2).map(o => ({ ...o, taskId: o.id === 'spawn-gen2' ? 'C' : o.taskId })) };
+        expect(origins(compactTeam(bound, 100 * HOUR))).toHaveLength(1);
+        // B-775: the session was released but its cleanup failed — the owner's retry still needs the spawn.
+        for (const status of ['claimed', 'failed', 'unknown'] as const) expect(origins(compactTeam(reused({ status }, { sessionId: null, generation: 2 }), 100 * HOUR))).toHaveLength(1);
+        expect(operationArchivable(pending.operations[1], pending, repositorySpawnIds(pending))).toBe(false);
+        // Once the stop completed and the bot let go of that binding, the spawn is closed work again.
+        const done = reused({ status: 'completed' }, { sessionId: null, generation: 2 });
+        expect(origins(compactTeam({ ...done, tasks: [done.tasks[0], task('B', { closedAt: 70 * HOUR })] }, 100 * HOUR))).toHaveLength(0);
     });
 
     it('never archives an open task, one whose cleanup waits, one with an open descendant, a live operation or an undelivered message', () => {
@@ -62,18 +89,31 @@ describe('B-822 compaction policy', () => {
         expect(compactTeam(compacted, now)).toBe(compacted); // nothing left: no write
     });
 
-    it('a task closed before B-822 (no closedAt) ages from its last message or operation', () => {
+    it('a task closed before B-822 (no closedAt) gets a full 24 h from when compaction first sees it', () => {
         const legacy = task('legacy', { closedAt: undefined });
         const team = { ...base(), tasks: [legacy], messages: [message('m', 'legacy', { createdAt: 5 * HOUR, deliveredAt: 6 * HOUR })] };
-        expect(compactTeam(team, 6 * HOUR + TEAM_COMPACT_AGE_MS - 1).tasks).toHaveLength(1);
-        expect(compactTeam(team, 6 * HOUR + TEAM_COMPACT_AGE_MS).tasks).toHaveLength(0);
+        const seen = 100 * HOUR;
+        const first = compactTeam(team, seen);
+        expect(first.tasks).toEqual([{ ...legacy, closedAt: seen }]);
+        expect(compactTeam(first, seen + TEAM_COMPACT_AGE_MS - 1).tasks).toHaveLength(1);
+        expect(compactTeam(first, seen + TEAM_COMPACT_AGE_MS).tasks).toHaveLength(0);
+    });
+
+    it('under pressure a legacy task ages from its last message or operation (the stuck team is unblocked at once)', () => {
+        const tasks = Array.from({ length: 120 }, (_, i) => task(`t${i}`, { closedAt: undefined }));
+        const team = { ...base(), tasks, messages: tasks.map(t => message(`m-${t.id}`, t.id, { createdAt: 5 * HOUR, deliveredAt: 6 * HOUR })) };
+        const compacted = compactTeam(team, 6 * HOUR + TEAM_COMPACT_MIN_AGE_MS);
+        expect(compacted.tasks).toHaveLength(0);
+        expect(compacted.messages).toHaveLength(0);
     });
 
     it('under pressure (≥ 50% of a limit) takes younger closed work too, never open work', () => {
         const tasks = Array.from({ length: 120 }, (_, i) => task(`t${i}`, { closedAt: 100 * HOUR }));
         tasks.push(task('open', { status: 'running', closedAt: undefined }));
         const team = { ...base(), tasks, messages: [message('undelivered', 'open', { deliveredAt: null })] };
-        const compacted = compactTeam(team, 100 * HOUR + 1);
+        // Even under pressure, a just-closed child stays for the grace (the lead reads what it accepted).
+        expect(compactTeam(team, 100 * HOUR + TEAM_COMPACT_MIN_AGE_MS - 1).tasks).toHaveLength(121);
+        const compacted = compactTeam(team, 100 * HOUR + TEAM_COMPACT_MIN_AGE_MS);
         expect(compacted.tasks.map(t => t.id)).toEqual(['open']);
         expect(compacted.messages.map(m => m.id)).toEqual(['undelivered']);
     });

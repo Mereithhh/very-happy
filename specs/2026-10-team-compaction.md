@@ -26,10 +26,10 @@
 | 记录 | 可以归档的条件 | 拒绝码 |
 | --- | --- | --- |
 | 消息 | 已送达或已取消；不是 schedule 消息（schedule 消息仍沿用自己的保留规则，直接删除）；taskId 为 null，或任务已 done/cancelled，或任务已被归档。DELETE 再校验已送达或已取消 | `unsafe_message_prune` |
-| operation | completed，或者 `failed` + `task_closed_before_spawn`；不是该 bot 的源仓库 spawn（第一个带 directory 的 spawn，永远保留）；任务已结束或已归档。DELETE 再校验状态 | `unsafe_operation_prune` |
+| operation | completed，或者 `failed` + `task_closed_before_spawn`；不是该 bot 的源仓库 spawn（第一个带 directory 的 spawn，永远保留）；不是 daemon 仍要读的 spawn——`(botId, generation, sessionId)` 等于该 bot 当前绑定的 spawn（`recoverScope` 按它重建 scope），以及任何未 completed 的 stop 以同一三元组指向的 spawn（`worker.ts` stop 按它找 worktree 回执，找不到就 `Original worktree ownership is unknown`，B-775 的「重试清理」同样依赖）；任务已结束或已归档。DELETE 再校验状态 | `unsafe_operation_prune` |
 | 任务 | done/cancelled；cleanup 不是 pending/failed；没有未结束的后代任务；它的 operation 都已无后续动作，消息都已送达或已取消 | `unsafe_task_prune` |
 
-**策略**（`compactTeam`，纯函数）：任务关闭、消息送达或取消、operation 创建满 **24 小时**后归档。任意一项用量 ≥ 50% 时放宽到 1 小时，仍 ≥ 50% 时去掉年龄要求。任务新增 `closedAt` 字段（accept、cancel、archive 时写入）；B-822 之前关闭的任务没有这个字段，用它最后一条消息或 operation 的时间代替。`team.compacted` 记录累计归档数量和最近一次归档时间。
+**策略**（`compactTeam`，纯函数）：任务关闭、消息送达或取消、operation 创建满 **24 小时**后归档。任意一项用量 ≥ 50% 时放宽到 1 小时，仍 ≥ 50% 时降到最小宽限 **10 分钟**（不再降到 0：刚 accept 的子任务在父任务仍开放时，Lead 下一次写入前就看不到结果；10 分钟内关闭的工作撑不满剩下 50%）。没有选「父任务开放就保留已关闭子任务」：Lead 的根任务长期开放，事故团队的子任务大多挂在它下面，这样压缩基本失效。任务新增 `closedAt` 字段（accept、cancel、archive 时写入）；B-822 之前关闭的任务没有这个字段，压缩**第一次看到时**补成 now（随下一次写入落库），即部署后再给 24 小时；只有当时已处于压力档才用它最后一条消息或 operation 的时间（事故团队必须在下一次写入就解卡）。`team.compacted` 记录累计归档数量和最近一次归档时间。
 
 **执行位置**：`actOnTeam` 在 `reduceTeam` **之前**先压缩，所以已经撞上限的团队，下一次写入就会解卡；`tickTeamSchedules` 在 advance 之前也压缩一次（只有触发了 schedule 才写库）。在写入之前压缩，「已送达」就一定是数据库快照里的状态，和 schedule prune 的「只删快照里已经结束的行」同一语义。
 
@@ -61,12 +61,13 @@
 | --- | --- |
 | 新 server + 旧 CLI | 上限错误返回 409 + code，旧 CLI 显示 `HTTP 409: team_size_limit`。MCP 仍返回完整视图（旧 CLI 没有精简视图，但压缩已经限制了体积） |
 | 旧 server + 新 CLI | 429 + code 走容量提示；没有 `capacity` 和 `compacted` 字段，精简视图照常工作 |
-| 回滚到旧镜像 | `TeamArchive` 被忽略；已归档的记录看不到；保留下来的源仓库 spawn 指向已归档的任务，只在 reconcile / complete 这类路径才会按 op 去查任务，而这些路径要求 op 未完成，所以不会触发 |
+| 回滚到旧镜像 | **只回滚镜像，保留 `TeamArchive` 表，不 DROP**：归档行已从实时表删除，DROP 会永久丢失它们。旧镜像忽略这张表，已归档的记录看不到；保留下来的源仓库 spawn 指向已归档的任务，只在 reconcile / complete 这类路径才会按 op 去查任务，而这些路径要求 op 未完成，所以不会触发 |
+| daemon（任意版本）的 stop / recoverScope | 按 `(botId, generation, sessionId)` 或 spawn id 读 `team.operations` 里的 spawn；当前绑定与未完成 stop 指向的 spawn 不归档，所以不受影响 |
 
 迁移 `20261026120000_team_archive` 只新增一张表（发布时按 operations 的 migration review 流程确认）。先 server/Web，后 CLI；两者之间没有硬依赖。
 
 ## 验收
 
-- `compaction.spec.ts`：安全规则逐条测试；24 小时 / 压力分档；legacy 任务的年龄；80% 只提醒一次、降到 70% 以下后可再次提醒；上限错误为 409 + details。长跑 fixture：520 个周期（2080 条消息、1040 个 operation、520 个任务，跨 11 天），开启压缩时四项用量峰值都低于 80%；未结束的根任务、卡住的任务和它已认领的 spawn、源仓库都保留。关闭压缩时同样的流程撞上限（复现事故）。
-- `store.pglite.integration.spec.ts`：24 小时后真的写进 `TeamArchive`，并从实时表里删除；未送达的消息、未结束的任务、源仓库 spawn 都保留；手工构造不安全的删除，三种情况都被拒绝。
+- `compaction.spec.ts`：安全规则逐条测试；24 小时 / 压力分档；legacy 任务的年龄；80% 只提醒一次、降到 70% 以下后可再次提醒；上限错误为 409 + details。复用 bot 的非首个 spawn 跑了 >24h、任务刚 accept、stop pending / claimed / failed / unknown，或会话仍绑定时，spawn 保留（P1 复现）；legacy 任务首次见到补 closedAt、压力档下用代理时间；压力档最小宽限 10 分钟。长跑 fixture：520 个周期（2080 条消息、1040 个 operation、520 个任务，跨 11 天），开启压缩时四项用量峰值都低于 80%；未结束的根任务、卡住的任务和它已认领的 spawn、源仓库都保留。关闭压缩时同样的流程撞上限（复现事故）。
+- `store.pglite.integration.spec.ts`：24 小时后真的写进 `TeamArchive`，并从实时表里删除；未送达的消息、未结束的任务、源仓库 spawn 都保留；手工构造不安全的删除，三种情况都被拒绝；P1 复现场景下 daemon claim stop 这一次写入不会归档它要找的 spawn，手工删除该 spawn 被 `unsafe_operation_prune` 拒绝。
 - CLI：`refusal.test.ts`（409 和 429 两种情况）、`toolView.test.ts`、`tools.test.ts`（精简视图、taskId、full、不重复压缩）。

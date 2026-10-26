@@ -85,7 +85,7 @@ async function persistTransition(tx: Tx, row: Row, team: TeamState): Promise<voi
     for (const old of messages) requireTeam(messageArchivable(old, team), 'unsafe_message_prune');
     if (messages.length) {
         await archive('message', messages);
-        const removed = await tx.$executeRaw`DELETE FROM "TeamMessage" WHERE "teamId"=${row.id} AND "id" IN (SELECT jsonb_array_elements_text(${ids(messages)}::jsonb)) AND ("state"->>'deliveredAt' IS NOT NULL OR "state"->>'cancelledAt' IS NOT NULL)`;
+        const removed = await tx.$executeRaw`DELETE FROM "TeamMessage" WHERE "teamId"=${row.id} AND "id" IN (SELECT jsonb_array_elements_text(${ids(messages)}::jsonb)) AND "state"->>'scheduleId' IS NULL AND ("state"->>'deliveredAt' IS NOT NULL OR "state"->>'cancelledAt' IS NOT NULL)`;
         requireTeam(removed === messages.length, 'message_prune_conflict');
     }
 }
