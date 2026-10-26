@@ -70,7 +70,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     // Parse once at startup so a configured relay fleet with a missing/weak
     // signing secret fails before accepting traffic instead of surfacing as a
     // request-time 500.
-    relayFeatureConfig();
+    const relays = relayFeatureConfig();
 
     // Start API
     const configuredBodyLimit = configuredResourceLimit('HTTP_BODY_LIMIT_BYTES', 1024 * 1024);
@@ -185,7 +185,7 @@ export async function startApi(opts: StartApiOptions = {}) {
         }
         const brand = readHtmlBrand(opts.injectHtmlConfig);
         // B-825: runtime config + brand injection, and the CSP / security headers of every HTML document.
-        app.addHook('onSend', webDocumentOnSend({ injectScript, brand, serverUrl: opts.injectHtmlConfig?.serverUrl, cspMode: parseCspMode(process.env.CSP_MODE) }));
+        app.addHook('onSend', webDocumentOnSend({ injectScript, brand, serverUrl: opts.injectHtmlConfig?.serverUrl, relayOrigins: relays.candidates.map((relay) => relay.url), cspMode: parseCspMode(process.env.CSP_MODE) }));
         app.setNotFoundHandler(spaFallback(opts.staticDir, injectScript, brand));
     }
 
