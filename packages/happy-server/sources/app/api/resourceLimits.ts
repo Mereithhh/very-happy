@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
 
-export type AccountResource = 'access_key' | 'account_settings' | 'artifact' | 'attachment' | 'feed' | 'kv' | 'machine_state' | 'message' | 'project' | 'project_presence' | 'profile' | 'push_token' | 'relationship' | 'session_state' | 'usage_report';
+export type AccountResource = 'access_key' | 'account_settings' | 'artifact' | 'attachment' | 'feed' | 'feedback' | 'kv' | 'machine_state' | 'message' | 'project' | 'project_presence' | 'profile' | 'push_token' | 'relationship' | 'session_state' | 'usage_report';
 export type AccountResourceLimitKind = 'bytes' | 'count' | 'rate';
 
 /** Stable, machine-readable failure shared by HTTP and Socket.IO writers. */

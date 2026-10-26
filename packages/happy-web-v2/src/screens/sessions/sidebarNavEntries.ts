@@ -7,7 +7,7 @@
  * computed here once. B-756: 项目 (the /projects list) leads once the projects
  * API answered — same gate as 新建项目.
  */
-export type SidebarNavKey = 'projects' | 'teams' | 'automations' | 'todos' | 'people';
+export type SidebarNavKey = 'projects' | 'teams' | 'automations' | 'todos' | 'people' | 'feedback';
 
 export interface SidebarNavEntry {
   key: SidebarNavKey;
@@ -16,6 +16,8 @@ export interface SidebarNavEntry {
   attention: number;
   /** B-762: 项目 carries the tree's 需要你 total in the tree's warn tone (the others stay danger) */
   tone?: 'warn';
+  /** B-836: only in the phone's 「更多 ▾」 — desktop reaches it from the always-visible 帮助 footer and Settings, so it never takes a row */
+  phoneOnly?: boolean;
 }
 
 export function sidebarNavEntries(input: {
@@ -33,6 +35,7 @@ export function sidebarNavEntries(input: {
   if (input.automationsVisible) entries.push({ key: 'automations', path: '/automations', attention: Math.max(0, input.automationAttention) });
   entries.push({ key: 'todos', path: '/todos', attention: 0 });
   entries.push({ key: 'people', path: '/people', attention: Math.max(0, input.incomingPeople) });
+  entries.push({ key: 'feedback', path: '/settings/feedback', attention: 0, phoneOnly: true });
   return entries;
 }
 

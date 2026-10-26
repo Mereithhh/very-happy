@@ -182,6 +182,7 @@ Radix 模态层（Dialog、默认的 DropdownMenu / ContextMenu）打开时会�
   - 优先级：`critical`（登录失效 / 确认弹窗 `AuthExpiredNotice`）> `interaction`（用户要求打开或必须回答的：`?task=` 深链的 `TeamDialog`、`Modal.alert/confirm/prompt`、⌘K 命令面板、会话搜索、⌘P 快速打开、`open_preview` 推送的预览浮层）> `notice`（应用主动弹的，如更新日志）。
   - 高优先级出现时，低优先级的直接关闭，不记为已读或已关闭；高优先级消失后再回来。`critical` 的消失指刷新或重新登录。
   - 同优先级后到的先显示（B-831）：从 `TeamDialog` 里弹出的 `Modal.confirm` 叠在上面，`TeamDialog` 暂时收起，回答后再回来。先到先得会让这个 confirm 藏在等它的对话框后面。
+  - 反馈提示卡（B-836 `FeedbackPrompt`）是 `notice`：只在没有未读更新日志时才想弹，弹出后若更新日志或任何 `interaction` / `critical` 浮层来了就收起让位，之后回来；同角落的引导卡（安装 / 通知 / 登录方式）或顶部横幅在时，它先等着不弹（JS 判定 + `floatingCards.css` 兜底），避免「记为已展示却被遮住」。
 - **非独占的卡片**（安装卡片、通知卡片、登录方式提示，都属 `notice` 级）：只要有高于 `notice` 的浮层持有队列就隐藏让位，不算 dismiss（`useOverlayHeldAbove(OVERLAY_PRIORITY.notice)`）。
 - **`Modal.*` 不持有队列时**（被 `critical` 或更新的 `interaction` 压住）：隐藏，promise 保持挂起，也不抢 Esc / Enter。
 - **`AuthExpiredNotice` 的实现**：用原生 modal `<dialog>`，portal 到 `<body>`，加 `pointer-events: auto`。用户自己打开的菜单或对话框不在队列里，会留在下面并变成 inert，不会抢点击。

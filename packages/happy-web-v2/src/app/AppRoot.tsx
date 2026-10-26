@@ -85,6 +85,7 @@ const TermsScreen = lazy(() => import('@/screens/legal/PublicLegalScreen').then(
 // a focus-trapped dialog; the install card is an invitation, not the app.
 const ChangelogNotice = lazy(() => import('./ChangelogNotice').then((m) => ({ default: m.ChangelogNotice })));
 const PwaInstallPrompt = lazy(() => import('./PwaInstallPrompt').then((m) => ({ default: m.PwaInstallPrompt })));
+const FeedbackPrompt = lazy(() => import('./feedback/FeedbackPrompt').then((m) => ({ default: m.FeedbackPrompt })));
 const VhDiagOverlay = lazy(() => import('@/diag/VhDiagOverlay').then((m) => ({ default: m.VhDiagOverlay })));
 
 function Lazy({ children, fullViewport = true, centered = false }: { children: ReactNode; fullViewport?: boolean; centered?: boolean }) {
@@ -108,7 +109,7 @@ function RequireAuth() {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  return <><Outlet /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
+  return <><Outlet /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
 }
 
 function RootGate() {
@@ -116,12 +117,18 @@ function RootGate() {
   useGlobalBackNav();
   // B-624: a white-labelled relay has no marketing page — straight to login.
   if (!isAuthenticated) return BRAND.landingEnabled ? <Lazy><LandingScreen /></Lazy> : <Navigate to="/login" replace />;
-  return <><AppLayout /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
+  return <><AppLayout /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
 }
 
 function DeferredChangelogNotice() {
   if (!useAfterFirstScreen()) return null;
   return <Suspense fallback={null}><ChangelogNotice /></Suspense>;
+}
+
+/** B-836: counts active days and now and then asks for a one-tap rating (notice level, after the first screen). */
+function DeferredFeedbackPrompt() {
+  if (!useAfterFirstScreen()) return null;
+  return <Suspense fallback={null}><FeedbackPrompt /></Suspense>;
 }
 
 function DeferredPwaInstallPrompt() {
@@ -430,6 +437,8 @@ const router = createBrowserRouter(
           element: <AppLayout />,
           children: [
             { path: 'help', element: <HelpScreen /> },
+            // B-836: short link for docs / the help card.
+            { path: 'feedback', element: <Navigate to="/settings/feedback" replace /> },
             { path: 'teams', element: <Lazy><TeamsScreen /></Lazy> },
             { path: 'teams/:teamId', element: <Lazy><TeamsScreen /></Lazy> },
             // B-648: project page

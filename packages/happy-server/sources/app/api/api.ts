@@ -7,6 +7,7 @@ import { teamRoutes } from './routes/teamRoutes';
 import { projectRoutes } from './routes/projectRoutes';
 import { automationRoutes } from './routes/automationRoutes';
 import { attentionRoutes } from './routes/attentionRoutes';
+import { feedbackRoutes } from './routes/feedbackRoutes';
 import { promptQueueRoutes } from './routes/promptQueueRoutes';
 import fastify from "fastify";
 import { log, logger } from "@/utils/log";
@@ -146,6 +147,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     teamRoutes(typed);
     projectRoutes(typed);
     attentionRoutes(typed);
+    feedbackRoutes(typed);
     automationRoutes(typed);
     promptQueueRoutes(typed);
     accountRoutes(typed);

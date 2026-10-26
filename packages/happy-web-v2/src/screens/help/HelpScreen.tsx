@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Archive, ArrowRight, AtSign, Bell, ChevronDown, Clipboard, Download, Eye, FileDiff, FileSearch, FileUp, FolderKanban, FolderOpen, GitBranch, GitPullRequest,
-  Keyboard, Layers3, ListChecks, MessageSquare, MessageSquarePlus, MessageSquareQuote, Moon, Navigation, PencilLine, Play, PlusCircle, Search,
+  Keyboard, Layers3, ListChecks, MessageSquare, MessageSquareHeart, MessageSquarePlus, MessageSquareQuote, Moon, Navigation, PencilLine, Play, PlusCircle, Search,
   Info, Settings, ShieldCheck, StickyNote, TerminalSquare, Text, Type, Zap,
 } from 'lucide-react';
 import { Button } from '@/ui';
@@ -63,6 +63,8 @@ export function HelpScreen() {
             <Button variant="primary" onClick={() => navigate('/machine/connect')} leftIcon={<PlusCircle size={16} />}>{t('connectMachine.title')}</Button>
             <Button variant="secondary" loading={creatingChat} onPointerDown={prefetchSessionDetail} onClick={() => void createChatOrConfigure(navigate, () => setShowNewChat(true))} leftIcon={<MessageSquarePlus size={16} />}>{t('workspaceGuide.createChat')}</Button>
             <Button variant="secondary" onClick={() => createTerminalOrPick(navigate)} leftIcon={<TerminalSquare size={16} />}>{t('workspaceGuide.createTerminal')}</Button>
+            {/* B-836: the feedback form, one tap from 帮助 on every layout */}
+            <Button variant="ghost" data-action="feedback" onClick={() => navigate('/settings/feedback')} leftIcon={<MessageSquareHeart size={16} />}>{t('feedback.title')}</Button>
           </div>
         </section>
 
