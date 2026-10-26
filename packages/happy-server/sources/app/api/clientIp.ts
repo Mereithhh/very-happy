@@ -33,7 +33,6 @@ const NAMED_RANGES: Record<string, string[]> = {
 /** Mirrors Fastify's trustProxy semantics for the immediate peer only; unknown entries never match. */
 export function compileTrustedPeer(config: TrustedProxyConfig): PeerCheck {
     if (config === false) return () => false;
-    if (typeof config === 'number') return (peer) => config >= 1 && peer !== undefined;
     const list = new BlockList();
     for (const entry of config.flatMap((item) => NAMED_RANGES[item] ?? [item])) {
         const [address, prefix] = entry.split('/');

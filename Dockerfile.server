@@ -1,5 +1,5 @@
-# Stage 1: install dependencies with workspace context
-FROM node:20@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS deps
+# Stage 0: toolchain shared by the build and production dependency installs
+FROM node:20@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS toolchain
 
 # Install build dependencies
 RUN apt-get -o Acquire::Retries=3 update \
@@ -12,6 +12,9 @@ WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY scripts ./scripts
 COPY patches ./patches
+
+# Stage 1: install dependencies with workspace context
+FROM toolchain AS deps
 
 RUN mkdir -p packages/happy-server packages/happy-wire packages/happy-web-v2
 
@@ -47,20 +50,36 @@ COPY packages/happy-web-v2/build/startupSplash.ts packages/happy-web-v2/build/st
 RUN pnpm --filter @slopus/happy-wire build
 RUN VH_VERSION="$VH_VERSION" pnpm --filter @slopus/happy-web-v2 exec vite build
 RUN rm -rf packages/happy-server/webapp && cp -a packages/happy-web-v2/dist packages/happy-server/webapp
-# Prisma generate stores a canonically formatted schema beside the generated
-# Client. Format the packaged copy the same way, then fail the image build if
-# schema and Client ever stop being the same release unit.
-RUN pnpm --filter very-happy-server exec prisma format --schema=prisma/schema.prisma \
-    && cmp packages/happy-server/prisma/schema.prisma node_modules/.prisma/client/schema.prisma
 # The image intentionally runs the TypeScript source through the workspace tsx
 # runtime below; validate it here without invoking the optional Bun package build.
 RUN pnpm --filter very-happy-server exec tsc --noEmit
-RUN pnpm --filter very-happy-server deploy --prod --legacy /runtime \
-    && rm -rf /runtime/node_modules/.prisma/client \
-    && mkdir -p /runtime/node_modules/.prisma \
-    && cp -a /repo/node_modules/.prisma/client /runtime/node_modules/.prisma/client
 
-# Stage 3: runtime
+# Stage 3: production dependencies, installed only from pnpm-lock.yaml.
+# B-820: never `pnpm deploy --legacy` here. Under node-linker=hoisted the legacy
+# deploy ignores the lockfile and re-resolves every range from the registry, so
+# images shipped versions nobody had locked; pnpm 10.11's lockfile-based deploy
+# rejects this workspace's overrides. A frozen filtered install fails the build
+# whenever a manifest and the lockfile disagree.
+FROM toolchain AS prod-deps
+RUN mkdir -p packages/happy-server packages/happy-wire
+COPY packages/happy-server/package.json packages/happy-server/
+COPY packages/happy-wire/package.json packages/happy-wire/
+COPY packages/happy-server/prisma packages/happy-server/prisma
+RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile --prod --config.node-linker=isolated \
+        --filter very-happy-server...
+COPY --from=builder /repo/packages/happy-wire/dist packages/happy-wire/dist
+# The runtime loads the Client that @prisma/client's postinstall generated in
+# this stage (resolved from the isolated store, not /repo/node_modules/.prisma).
+# Prisma generate stores a canonically formatted schema beside that Client.
+# Format the packaged copy the same way, then fail the image build if schema
+# and the Client the server actually loads ever stop being the same release unit.
+RUN cd packages/happy-server \
+    && ./node_modules/.bin/prisma format --schema=prisma/schema.prisma \
+    && client="$(node -p "require('path').dirname(require.resolve('.prisma/client/default', { paths: [require('path').dirname(require.resolve('@prisma/client/package.json'))] }))")" \
+    && echo "prisma client: $client" \
+    && cmp prisma/schema.prisma "$client/schema.prisma"
+
+# Stage 4: runtime
 FROM node:20@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS runner
 
 WORKDIR /repo
@@ -72,8 +91,17 @@ ENV DATA_DIR=/data
 ENV HOST=0.0.0.0
 
 # Copy necessary files from the builder stage
-COPY --from=builder /runtime/node_modules /repo/node_modules
-COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
+# Dependencies come only from prod-deps (builder holds the full dev tree).
+# The happy-server -> ../../../happy-wire workspace link resolves because the
+# layout matches /repo.
+COPY --from=prod-deps /repo/node_modules /repo/node_modules
+COPY --from=prod-deps /repo/packages/happy-wire /repo/packages/happy-wire
+COPY --from=prod-deps /repo/packages/happy-server/node_modules /repo/packages/happy-server/node_modules
+COPY --from=builder /repo/packages/happy-server/package.json /repo/packages/happy-server/tsconfig.json /repo/packages/happy-server/
+COPY --from=prod-deps /repo/packages/happy-server/prisma /repo/packages/happy-server/prisma
+COPY --from=builder /repo/packages/happy-server/scripts /repo/packages/happy-server/scripts
+COPY --from=builder /repo/packages/happy-server/sources /repo/packages/happy-server/sources
+COPY --from=builder /repo/packages/happy-server/webapp /repo/packages/happy-server/webapp
 COPY LICENSE NOTICE /repo/
 
 # Expose the port the app will run on

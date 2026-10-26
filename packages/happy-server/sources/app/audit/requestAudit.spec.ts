@@ -16,8 +16,8 @@ describe('audit request origin', () => {
         expect(response.body).not.toContain('never-record');
         await app.close();
     });
-    it('uses the configured single-hop peer boundary, never claims forwarded CF identity', async () => {
-        const app = fastify({ trustProxy: 1 });
+    it('uses the configured proxy peer boundary, never claims forwarded CF identity', async () => {
+        const app = fastify({ trustProxy: ['172.18.0.1'] });
         app.get('/test', async (request) => requestAuditContext(request));
         const response = await app.inject({ method: 'GET', url: '/test', remoteAddress: '172.18.0.1', headers: {
             'x-forwarded-for': '198.51.100.99, 203.0.113.20', 'cf-connecting-ip': '198.51.100.50',

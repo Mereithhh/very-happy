@@ -1,6 +1,6 @@
 # Regional relay image: database-free and intentionally separate from the
 # control/web image in Dockerfile.server.
-FROM node:20@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS deps
+FROM node:20@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS toolchain
 
 RUN apt-get -o Acquire::Retries=3 update \
     && apt-get -o Acquire::Retries=3 install -y --no-install-recommends python3 make g++ \
@@ -15,22 +15,32 @@ RUN mkdir -p packages/happy-server packages/happy-wire
 COPY packages/happy-server/package.json packages/happy-server/
 COPY packages/happy-wire/package.json packages/happy-wire/
 COPY packages/happy-server/prisma packages/happy-server/prisma
+
+FROM toolchain AS deps
 RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile --filter very-happy-server...
 
 FROM deps AS builder
 COPY packages/happy-wire/tsconfig.json packages/happy-wire/
 COPY packages/happy-wire/src packages/happy-wire/src
-COPY packages/happy-server/tsconfig.json packages/happy-server/
-COPY packages/happy-server/sources packages/happy-server/sources
-COPY packages/happy-server/scripts packages/happy-server/scripts
-RUN pnpm --filter @slopus/happy-wire build \
-    && pnpm --filter very-happy-server deploy --prod --legacy /runtime
+RUN pnpm --filter @slopus/happy-wire build
+
+# B-820: production dependencies come only from pnpm-lock.yaml (frozen, fails
+# on any manifest/lockfile mismatch). See Dockerfile.server for why this is not
+# `pnpm deploy --legacy`.
+FROM toolchain AS prod-deps
+RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile --prod --config.node-linker=isolated \
+        --filter very-happy-server...
+COPY --from=builder /repo/packages/happy-wire/dist packages/happy-wire/dist
 
 FROM node:20@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS runner
-WORKDIR /app
+# Same /repo layout as the install so pnpm's relative workspace and store
+# links (happy-server -> ../../../happy-wire, node_modules/.pnpm) resolve.
+WORKDIR /repo
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3010
-COPY --from=builder /runtime/node_modules /app/node_modules
-COPY --from=builder /repo/packages/happy-server/sources /app/sources
+COPY --from=prod-deps /repo/node_modules /repo/node_modules
+COPY --from=prod-deps /repo/packages/happy-wire /repo/packages/happy-wire
+COPY --from=prod-deps /repo/packages/happy-server/node_modules /repo/packages/happy-server/node_modules
+COPY packages/happy-server/sources /repo/packages/happy-server/sources
 USER node
 EXPOSE 3010
-CMD ["/app/node_modules/.bin/tsx", "/app/sources/standalone.ts", "relay"]
+CMD ["/repo/node_modules/.bin/tsx", "/repo/packages/happy-server/sources/standalone.ts", "relay"]

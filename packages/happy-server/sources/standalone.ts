@@ -22,6 +22,7 @@ import * as path from "path";
 import { runPostgresMigrations } from './storage/postgresMigrations';
 import { createPGlite } from "./storage/pgliteLoader";
 import { safeErrorMetadata } from './utils/logSafety';
+import { startupConfigErrorMessage } from './utils/startupConfigError';
 
 const dataDir = process.env.DATA_DIR || "./data";
 const pgliteDir = process.env.PGLITE_DIR || path.join(dataDir, "pglite");
@@ -322,13 +323,13 @@ if (isDirectInvocation) {
             break;
         case "serve":
             serve().catch(e => {
-                console.error('Server failed to start', safeErrorMetadata(e));
+                console.error('Server failed to start', startupConfigErrorMessage(e) ?? safeErrorMetadata(e));
                 process.exit(1);
             });
             break;
         case "relay":
             serveRelay().catch(e => {
-                console.error('Relay failed to start', safeErrorMetadata(e));
+                console.error('Relay failed to start', startupConfigErrorMessage(e) ?? safeErrorMetadata(e));
                 process.exit(1);
             });
             break;
@@ -377,7 +378,7 @@ Environment variables:
   RESEND_API_KEY       Required when AUTH_EMAIL_PROVIDER=resend
   CLOUDFLARE_EMAIL_ACCOUNT_ID / CLOUDFLARE_EMAIL_API_TOKEN  Required for Cloudflare
   AUTH_PASSWORD_LOGIN_DISABLED  true disables password signup/login/credential changes
-  TRUST_PROXY        Trusted proxy hop count or IP/CIDR list (never unrestricted)
+  TRUST_PROXY        Trusted proxy IP/CIDR list (never unrestricted, no hop counts)
   RELAY_ID / RELAY_REGION / RELAY_TOKEN_SECRET  Required in relay mode
 `);
             process.exit(command === "--help" || command === "-h" ? 0 : 1);

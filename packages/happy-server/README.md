@@ -111,7 +111,7 @@ guides.
 | `MAX_PENDING_EMAIL_LOGIN_CHALLENGES` | No | `10000` | Global cap for unconsumed email challenges |
 | `AUTH_EMAIL_GLOBAL_DAILY_SEND_LIMIT` / `AUTH_EMAIL_GLOBAL_MONTHLY_SEND_LIMIT` | No | `200` / `3000` | Shared delivery budgets across replicas; keep finite to bound abuse and spend |
 | `AUTH_PASSWORD_LOGIN_DISABLED` | No | `false` | Set to `true` only after email or Google login is working; rejects password login, signup, and credential changes |
-| `TRUST_PROXY` | Behind proxy | - | Positive trusted hop count or comma-separated proxy IP/CIDR allowlist used to recover real client IPs safely |
+| `TRUST_PROXY` | Behind proxy | - | Comma-separated proxy IP/CIDR allowlist (or `loopback`/`linklocal`/`uniquelocal`) used to recover real client IPs safely; hop counts are rejected |
 | `MAX_SESSION_STATE_WRITE_UNITS_PER_ACCOUNT_PER_MINUTE` / `MAX_SESSION_STATE_BYTES_PER_ACCOUNT` | No | `600` / `268435456` | Session metadata/state weighted writes and stored bytes; one unit per started 64 KiB |
 | `MAX_MACHINE_STATE_WRITE_UNITS_PER_ACCOUNT_PER_MINUTE` / `MAX_MACHINE_STATE_BYTES_PER_ACCOUNT` | No | `240` / `16777216` | Machine metadata/state weighted writes and stored bytes; one unit per started 64 KiB |
 | `MAX_ACCESS_KEY_WRITES_PER_ACCOUNT_PER_MINUTE` | No | `120` | Shared database-backed access-key create/update rate |

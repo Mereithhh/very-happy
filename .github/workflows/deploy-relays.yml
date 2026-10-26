@@ -43,6 +43,10 @@ jobs:
           tags: ${{ env.RELAY_IMAGE }}
           cache-from: type=gha,scope=relay
           cache-to: type=gha,mode=max,scope=relay
+      # B-820: gate the exact pushed image against pnpm-lock.yaml before any
+      # region deploys it.
+      - name: Gate - pushed relay image deps match pnpm-lock.yaml
+        run: node scripts/ci/check-image-lockfile.mjs --image "$RELAY_IMAGE"
 
   deploy:
     needs: build

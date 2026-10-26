@@ -28,14 +28,14 @@ export function enableMonitoring(app: Fastify) {
         try {
             // Test database connectivity
             await db.$queryRaw`SELECT 1`;
-            reply.send({
+            return reply.send({
                 status: 'ok',
                 timestamp: new Date().toISOString(),
                 service: 'happy-server'
             });
         } catch (error) {
             log({ module: 'health', level: 'error', error }, 'Health check failed');
-            reply.code(503).send({
+            return reply.code(503).send({
                 status: 'error',
                 timestamp: new Date().toISOString(),
                 service: 'happy-server',
