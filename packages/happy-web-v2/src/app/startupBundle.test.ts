@@ -26,9 +26,9 @@ describe('B-823 startup bundle cuts', () => {
     expect(palette).toContain("(settingsIndexLoad ??= import('@/screens/settings/settingsIndex'))");
   });
 
-  it('asset names are content-hashed only (no release salt)', () => {
+  it('chunks and assets are content-hashed only; the entry keeps the release version (deploy contract)', () => {
     const config = read('vite.config.ts');
-    expect(config).toContain("entryFileNames: 'assets/[name]-[hash].js',");
+    expect(config).toContain('entryFileNames: releaseEntryFileNames(APP_VERSION),');
     expect(config).toContain("chunkFileNames: 'assets/[name]-[hash].js',");
     expect(config).toContain("assetFileNames: 'assets/[name]-[hash][extname]',");
     expect(config).toContain('startupPreload(),');

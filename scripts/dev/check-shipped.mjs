@@ -11,7 +11,8 @@
  *     看起来就像改动没上去。本脚本做**传递闭包**。
  *  ② **拼出来的文件名拿到 200 也可能是假的**：不存在的 /assets/... 会被 SPA
  *     回退成 index.html，HTTP 200 + 一份 HTML，grep 自然是 0。所以本地 dist 里的
- *     chunk 名**不能照抄到线上**（`__APP_VERSION__` 参与内容哈希，CI 和本地不同名），
+ *     chunk 名**不能照抄到线上**（`__APP_VERSION__` 参与内容哈希，CI 和本地不同名；
+ *     只有入口带 `-<sha>`，其余 chunk/CSS 只带内容哈希，见 check-shipped-assets.mjs），
  *     而且任何看起来像 HTML 的响应都必须当作「这个资产不存在」报出来，不能计入未命中。
  *  ③ **needle 不能用函数名或变量名**：生产构建会把它们压掉，`shouldDeferMermaid` 这种
  *     一定 MISSING 而功能其实上线了（2026-09-04 实踩）。能钉住的是 **CSS 类名**与
@@ -32,6 +33,8 @@
  *
  * 每个 needle 都命中才 exit 0；任何一个没命中即非 0。
  */
+
+import { linkedStylesheets, liveEntry, referencedAssets } from './check-shipped-assets.mjs';
 
 const args = process.argv.slice(2);
 const needles = [];
@@ -66,14 +69,14 @@ const indexRes = await fetch(origin + '/', { redirect: 'follow' });
 if (!indexRes.ok) { console.error(`GET ${origin}/ -> ${indexRes.status}`); process.exit(1); }
 const indexHtml = await indexRes.text();
 
-const entry = (indexHtml.match(/assets\/index-[A-Za-z0-9_-]+-[0-9a-f]{40}\.js/) ?? [])[0];
-if (!entry) { console.error('could not find a salted entry asset in the served index.html'); process.exit(1); }
-const sha = entry.match(/[0-9a-f]{40}/)[0];
+const live = liveEntry(indexHtml);
+if (!live) { console.error('could not find a salted entry asset in the served index.html'); process.exit(1); }
+const { entry, sha } = live;
 
 // Seed with the entry plus every stylesheet the document links: CSS is not
 // referenced from JS in this build, so a CSS-only change lives nowhere else.
 const seen = new Set();
-const queue = [entry, ...new Set(Array.from(indexHtml.matchAll(/assets\/[A-Za-z0-9_-]+-[0-9a-f]{40}\.css/g), (m) => m[0]))];
+const queue = [entry, ...linkedStylesheets(indexHtml)];
 const hits = new Map(needles.map((n) => [n, []]));
 const phantom = [];
 let fetched = 0;
@@ -89,8 +92,8 @@ while (queue.length > 0) {
     // Transitive walk (trap ①): a route chunk is usually referenced by another
     // chunk, not by the entry.
     if (name.endsWith('.js')) {
-        for (const m of res.body.matchAll(/assets\/[A-Za-z0-9_-]+-[0-9a-f]{40}\.(?:js|css)/g)) {
-            if (!seen.has(m[0])) queue.push(m[0]);
+        for (const name of referencedAssets(res.body)) {
+            if (!seen.has(name)) queue.push(name);
         }
     }
 }
