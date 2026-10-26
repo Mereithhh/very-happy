@@ -134,16 +134,18 @@ describe('B-818 fetchWithDeadline: headers deadline + body idle deadline', () =>
 describe('B-818 wiring in sync.ts', () => {
     const sync = readFileSync(resolve(__dirname, 'sync.ts'), 'utf8');
 
-    it('the UI is ready after the FIRST session list, not after the queued second fetch the first socket connect adds', () => {
+    it('the UI is ready after the FIRST session list, not after a full fetch queued behind it', () => {
         const init = sync.slice(sync.indexOf('async #init() {'), sync.indexOf('async #init() {') + 4_000);
         expect(init).toContain('const firstListLoaded = new Promise<void>((resolve) => { this.onSessionsListLoaded = resolve; });');
         expect(init).toContain('Promise.race([firstListLoaded, this.sessionsSync.awaitQueue()]).then(() => {\n            storage.getState().applyReady();');
-        const fetchSessions = sync.slice(sync.indexOf('private fetchSessions = async () => {'), sync.indexOf('public fetchSessionById'));
-        expect(fetchSessions).toContain('this.applySessions(mergedSessions);\n        log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);\n        this.onSessionsListLoaded?.();');
+        const fetchSessions = sync.slice(sync.indexOf('private fetchSessions = async () => {'), sync.indexOf('private catchUpSessionsSinceList'));
+        expect(fetchSessions).toContain('this.applySessions(mergedSessions);\n        this.sessionListSnapshot = sessionListSnapshot(sessions, parseServedAt(date));\n        log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);\n        this.onSessionsListLoaded?.();');
     });
 
     it('every hedged read hands the attempt init (onResponse) to its request', () => {
-        const fetchSessions = sync.slice(sync.indexOf('private fetchSessions = async () => {'), sync.indexOf('public fetchSessionById'));
-        expect(fetchSessions).toMatch(/hedgedRead\(async \(signal, pool\) => \{[\s\S]*?signal,\n\s*\.\.\.pool,\n\s*\}\);/);
+        const fetchSessions = sync.slice(sync.indexOf('private fetchSessions = async () => {'), sync.indexOf('private catchUpSessionsSinceList'));
+        expect(fetchSessions).toMatch(/hedgedRead\(async \(signal, pool, index\): Promise<SessionListResponse> => \{[\s\S]*?signal,\n\s*\.\.\.pool,\n\s*\}\);/);
+        // B-823: the boot prefetch is the first attempt and commits through the same onResponse.
+        expect(fetchSessions).toContain('if (index === 0 && prefetched) return adoptSessionListPrefetch(prefetched, signal, pool.onResponse);');
     });
 });

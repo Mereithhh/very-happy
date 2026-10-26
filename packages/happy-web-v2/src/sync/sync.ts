@@ -47,7 +47,7 @@ import type { SessionEncryption } from './encryption/sessionEncryption';
 import { forgetCatchUp, trackCatchUp } from './catchUpStatus';
 import { isNetworkOffline, startNetworkMonitor } from './networkStatus';
 import { fetchWithDeadline, SYNC_READ_TIMEOUT_MS } from './requestDeadline';
-import { hedgedRead } from './hedgedRead';
+import { hedgedRead, hedgePoolInit } from './hedgedRead';
 import { catchUpForward, mergeFetchedLastSeq, pageMaxSeq, throwIfAborted } from './messageCatchUp';
 import { OPEN_BLOCKED_MS, outboxStore, syncCache, type CacheHit } from './cache/syncCache';
 import { takeoverAction, type OutboxRow } from './cache/outboxStore';
@@ -100,6 +100,8 @@ import { resolveMessageModeMeta, type MessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { preserveSessionBatchActivityFromStore } from './sessionSnapshot';
 import { decodeSessionRows, type EncryptedSessionRow } from './sessionDecode';
+import { adoptSessionListPrefetch, sessionListRequest, takeSessionListPrefetch, type SessionListResponse } from './sessionListPrefetch';
+import { catchUpSessionList, DELTA_PAGE_LIMIT, parseServedAt, sessionListSnapshot, type SessionListSnapshot } from './sessionListDelta';
 import { applyNewSessionUpdate } from './newSessionUpdate';
 import { newSessionTimingInStore } from '@/app/newSessionTiming';
 import { downloadEncryptedAttachment, requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
@@ -234,6 +236,12 @@ class Sync {
     private credentials!: AuthCredentials;
     public encryptionCache = new EncryptionCache();
     private sessionsSync: InvalidateSync;
+    /** B-823: the first socket connect's incremental list catch-up (sessionListDelta.ts). */
+    private sessionsCatchUpSync: InvalidateSync;
+    /** B-823: what the last full list showed (ids → updatedAt), the catch-up's baseline. */
+    private sessionListSnapshot: SessionListSnapshot | null = null;
+    /** B-823: this page's socket has connected once (later connects are reconnects). */
+    private socketConnectedOnce = false;
     /** B-818: resolves #init's first-list wait (see there); set per #init, cleared once called. */
     private onSessionsListLoaded: (() => void) | null = null;
     private messagesSync = new Map<string, InvalidateSync>();
@@ -304,6 +312,7 @@ class Sync {
 
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
+        this.sessionsCatchUpSync = new InvalidateSync(this.catchUpSessionsSinceList);
         this.settingsSync = new InvalidateSync(this.syncSettings);
         this.profileSync = new InvalidateSync(this.fetchProfile);
         this.purchasesSync = new InvalidateSync(this.syncPurchases);
@@ -547,12 +556,10 @@ class Sync {
             }
         }
 
-        // B-818: the first socket connect (recovered=false → onReconnected)
-        // invalidates sessionsSync again while this first list GET is still
-        // out, so its queue holds a second full list fetch — kept (it closes
-        // the window between this GET's snapshot and the socket subscribing),
-        // but the UI must not wait for it: awaitQueue() alone made entering
-        // cost two full downloads (2 × 1.8MB for the biggest account, slow 4G).
+        // B-818: the UI is ready on the first list, not on sessionsSync's
+        // whole queue: a resume or reconnect can queue another full fetch
+        // behind it (B-823: the first connect's own catch-up is incremental,
+        // catchUpSessionsSinceList), and entering must not wait for that.
         const firstListLoaded = new Promise<void>((resolve) => { this.onSessionsListLoaded = resolve; });
 
         // Invalidate sync
@@ -837,11 +844,14 @@ class Sync {
      * prompt queue are re-read (anything sent into the dead link is gone for
      * good), and the messages catch-up is shown while it takes a while.
      */
-    private catchUpViewedSession() {
+    private catchUpViewedSession(opts: { restart: boolean } = { restart: true }) {
         const viewing = storage.getState().currentViewingSessionId;
         if (!viewing) return;
         // B-803: a catch-up still in flight is probably stuck on the dead link — abort it, go again now.
-        this.onSessionEnter(viewing, { restartFetch: true });
+        // B-823: except on the page's first connect — no link was lost, the boot's first page is
+        // healthy; aborting it re-downloaded the whole latest page (112KB) on the critical path.
+        // A coalesced run still follows it (forward from lastSeq: the snapshot-to-subscribe window).
+        this.onSessionEnter(viewing, { restartFetch: opts.restart });
         this.trackMessagesCatchUp(viewing);
         void reloadPromptQueue(viewing);
     }
@@ -1934,13 +1944,13 @@ class Sync {
         // sessionsSync (and every resume/reconnect refresh coalesced behind it).
         // B-803b: hedged like the message pages (hedgedRead.ts).
         const token = this.credentials.token;
-        const data = await hedgedRead(async (signal, pool) => {
-            const response = await fetchWithDeadline(fetch, `${API_ENDPOINT}/v1/sessions`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'X-Happy-Client': getHappyClientId(),
-                },
+        // B-823: the boot prefetch (main.tsx) is this read's first attempt.
+        const prefetched = takeSessionListPrefetch(token);
+        const { data, date } = await hedgedRead(async (signal, pool, index): Promise<SessionListResponse> => {
+            if (index === 0 && prefetched) return adoptSessionListPrefetch(prefetched, signal, pool.onResponse);
+            const request = sessionListRequest(API_ENDPOINT, token);
+            const response = await fetchWithDeadline(fetch, request.url, {
+                headers: request.headers,
                 timeoutMs: SYNC_READ_TIMEOUT_MS,
                 signal,
                 ...pool,
@@ -1950,9 +1960,9 @@ class Sync {
                 throw new Error(`Failed to fetch sessions: ${response.status}`);
             }
 
-            return await response.json();
+            return { data: await response.json(), date: response.headers.get('date') };
         });
-        const sessions = data.sessions as Array<{
+        const sessions = (data as { sessions: unknown }).sessions as Array<{
             id: string;
             tag: string;
             seq: number;
@@ -1984,10 +1994,70 @@ class Sync {
             storage.getState().sessions,
         );
         this.applySessions(mergedSessions);
+        this.sessionListSnapshot = sessionListSnapshot(sessions, parseServedAt(date));
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
         this.onSessionsListLoaded?.();
         this.onSessionsListLoaded = null;
 
+    }
+
+    /**
+     * B-823: the first connect's catch-up (sessionListDelta.ts). Runs after
+     * the first full list; any doubt (no baseline, a failed read, too many
+     * changes) falls back to that full list.
+     */
+    private catchUpSessionsSinceList = async () => {
+        if (!this.credentials) return;
+        await this.sessionsSync.awaitQueue();
+        await catchUpSessionList({
+            snapshot: this.sessionListSnapshot,
+            listChanged: (changedSince) => this.readChangedSessions(changedSince),
+            readRows: (ids) => this.readSessionRows(ids),
+            apply: async (rows) => {
+                const decoded = await decodeSessionRows(this.encryption, rows);
+                this.applySessions(preserveSessionBatchActivityFromStore(decoded, storage.getState().sessions));
+            },
+            fullList: () => this.sessionsSync.invalidate(),
+            log: (line) => log.log(line),
+        });
+    }
+
+    /** B-823: one page of the account's rows changed since `changedSince` (ids + updatedAt only are used). */
+    private async readChangedSessions(changedSince: number): Promise<{ rows: Array<{ id: string; updatedAt: number }>; hasNext: boolean }> {
+        const response = await fetchWithDeadline(fetch, `${getServerUrl()}/v2/sessions?changedSince=${changedSince}&limit=${DELTA_PAGE_LIMIT}`, {
+            headers: {
+                'Authorization': `Bearer ${this.credentials.token}`,
+                'X-Happy-Client': getHappyClientId(),
+            },
+            timeoutMs: SYNC_READ_TIMEOUT_MS,
+            ...hedgePoolInit(0),
+        });
+        if (!response.ok) throw new Error(`Failed to list changed sessions: ${response.status}`);
+        const data = await response.json() as { sessions?: Array<{ id: string; updatedAt: number }>; hasNext?: boolean };
+        return { rows: data.sessions ?? [], hasNext: data.hasNext === true };
+    }
+
+    /** B-823: the list projection of a few sessions by id; a 404 (gone, unshared) is skipped. */
+    private async readSessionRows(ids: readonly string[]): Promise<Array<EncryptedSessionRow & { archivedAt?: number | null; share?: SessionShareInfo }>> {
+        const rows: Array<EncryptedSessionRow & { archivedAt?: number | null; share?: SessionShareInfo }> = [];
+        const queue = [...ids];
+        const worker = async () => {
+            for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+                const response = await fetchWithDeadline(fetch, `${getServerUrl()}/v1/sessions/${encodeURIComponent(id)}`, {
+                    headers: {
+                        'Authorization': `Bearer ${this.credentials.token}`,
+                        'X-Happy-Client': getHappyClientId(),
+                    },
+                    timeoutMs: SYNC_READ_TIMEOUT_MS,
+                    ...hedgePoolInit(0),
+                });
+                if (response.status === 404) continue;
+                if (!response.ok) throw new Error(`Failed to fetch session: ${response.status}`);
+                rows.push((await response.json() as { session: EncryptedSessionRow & { archivedAt?: number | null; share?: SessionShareInfo } }).session);
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(4, ids.length) }, worker));
+        return rows;
     }
 
     /**
@@ -3539,7 +3609,17 @@ class Sync {
             // covers the very first connect; this covers reconnects).
             apiSocket.sendAppState(getCurrentAppState());
 
-            this.sessionsSync.invalidate();
+            // B-823: the first connect closes the window between the first
+            // list's snapshot and joining the room with a changedSince
+            // catch-up, not a second full download (QA9 P2-3); a reconnect
+            // after an outage still re-reads the whole list.
+            const firstConnect = !this.socketConnectedOnce;
+            this.socketConnectedOnce = true;
+            if (firstConnect) {
+                this.sessionsCatchUpSync.invalidate();
+            } else {
+                this.sessionsSync.invalidate();
+            }
             this.machinesSync.invalidate();
             log.log('🔌 Socket reconnected: Invalidating artifacts sync');
             this.artifactsSync.invalidate();
@@ -3553,7 +3633,7 @@ class Sync {
             // was down never shows its last messages — no new socket event
             // arrives to trigger the seq-gap refetch. Bounded: forward from
             // the last known seq.
-            this.catchUpViewedSession();
+            this.catchUpViewedSession({ restart: !firstConnect });
             // B-815: queue prompts that failed on the dead link go out now.
             retryWaitingPrompts();
             // B-799 / B-802: a send that failed during the outage may sit in a

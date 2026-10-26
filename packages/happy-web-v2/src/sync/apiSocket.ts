@@ -4,7 +4,7 @@ import { isAuthLatched, isSocketTokenRejection, tripAuthLatch } from '@/auth/aut
 import { storedAccountToken } from '@/auth/authExpiry';
 import { io, Socket } from 'socket.io-client';
 import { AppState, Platform } from 'react-native';
-import Constants from 'expo-constants';
+import { getHappyClientId } from './happyClientId';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { Encryption } from './encryption/encryption';
 import { storage } from './storage';
@@ -24,14 +24,8 @@ const RELAY_PREFLIGHT_MS = 3_000;
 /** B-513: a relay delivery ack slower than this falls back to central HTTP (localId dedupes). */
 const SESSION_DELIVERY_ACK_MS = 1_500;
 
-export function getHappyClientId(): string {
-    let platform: string = Platform.OS; // 'ios' | 'android' | 'web'
-    if (platform === 'web' && typeof window !== 'undefined' && '__TAURI__' in window) {
-        platform = 'desktop';
-    }
-    const version = Constants.expoConfig?.version || '0.0.0';
-    return `${platform}/${version}`;
-}
+// B-823: its own module so the boot prefetch (sessionListPrefetch.ts) can send it without loading the socket.
+export { getHappyClientId } from './happyClientId';
 
 /**
  * Compute the current "active" or "background" state for the current platform.

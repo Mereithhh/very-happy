@@ -224,4 +224,16 @@ B-803/B-803b 的「整包 10s + 2s hedge」在大响应上自相矛盾：最大�
 - **冷启动不等第二遍列表**（`sync.ts #init`）：首个 socket connect（`recovered=false`）走 `onReconnected`，在首个列表 GET 还在途时再
   invalidate 一次，`InvalidateSync` 把它排成第二次完整拉取；`applyReady` 原先等 `awaitQueue()`，即两遍下载。现在首个列表落地即 ready，
   第二遍保留（覆盖首个 GET 快照与 socket 订阅之间的窗口），改增量留给 Q4。
+- **B-823 首连增量补拉**（`sessionListDelta.ts`，取代上一条的第二遍完整拉取，QA9 P2-3）：首个 connect 不再 invalidate `sessionsSync`，
+  改为等首个完整列表落地后：`GET /v2/sessions?changedSince=<cursor>` 列出本账号 `updatedAt` 晚于 cursor 的行（Session 的写都走 Prisma
+  `@updatedAt`：metadata / agentState / seq / 活跃 / 归档）；快照里同一 `updatedAt` 的行跳过，其余逐个 `GET /v1/sessions/:id`
+  重读（列表同款投影，含 archivedAt / share）；共享给我的行不在 v2 结果里（按 owner 过滤），快照里有的逐个重读。cursor 只用 server 时钟：
+  列表响应的 `Date` 头 − 10s（整秒截断 + 事务从打戳到提交），读不到（跨源自托管）时用快照最新 `updatedAt` − 60s，取两者较晚者。
+  重读 >20 个、v2 有下一页或任何失败 → 退回一次完整列表，所以不弱于原来的第二遍。之后的 connect（断线重连）和 `onRecovered` 照旧完整拉取。
+  已知差异：窗口内被**删除**的行与原第二遍一样看不到（列表只合并不删除，B-807「不在列表 ≠ 已删除」）；窗口内**新被共享给本账号**的行
+  （两条查询都不含）要到下一次 resume / 重连的完整列表才出现——原第二遍能拿到，是唯一新增的有界缺口。
+- **B-823 启动预取**（`sessionListPrefetch.ts`）：`main.tsx` 选中登录态 root 后立即用已存 token 发 `/v1/sessions`（只发请求，不解析不解密），
+  首个 `fetchSessions` 把它当作 hedgedRead 的第 0 个尝试（同一 `onResponse` 提交语义；不同 token、超过 30s、已被取过则丢弃并 abort）。
+  两者共用 `sessionListRequest()`（B-824 在这里换成增量读）。预取早于 AppRoot 安装 auth guard，所以自己用同一个
+  `wrapFetchWithAuthGuard` 包一层：已 latch 时不发，存储 token 收到 401 即 latch。
 - 端到端：`sync-resume.mjs` FAT_SLOW（150 会话 / ~1.8MB，代理共享 1.6Mbps 下行 + 150ms RTT，desktop 与 phone CPU ×4）。

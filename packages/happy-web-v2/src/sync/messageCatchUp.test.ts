@@ -248,12 +248,13 @@ describe('B-803 wiring in sync.ts / apiSocket.ts', () => {
     // B-804: the three edges go through catchUpViewedSession(), which restarts (and shows the catch-up).
     it('tab resume restarts the viewed session catch-up', () => {
         expect(block(sync, 'private onWebResume = () => {', 600)).toContain('this.catchUpViewedSession();');
-        expect(block(sync, 'private catchUpViewedSession() {', 400)).toContain('this.onSessionEnter(viewing, { restartFetch: true });');
+        // B-823: restart unless the caller says otherwise (only the page's first connect does).
+        expect(block(sync, 'private catchUpViewedSession(opts: { restart: boolean } = { restart: true }) {', 700)).toContain('this.onSessionEnter(viewing, { restartFetch: opts.restart });');
     });
 
     it('socket reconnect and recovered restart it too', () => {
         const reconnected = block(sync, 'apiSocket.onReconnected(() => {');
-        expect(reconnected.slice(0, reconnected.indexOf('apiSocket.onRecovered('))).toContain('this.catchUpViewedSession();');
+        expect(reconnected.slice(0, reconnected.indexOf('apiSocket.onRecovered('))).toContain('this.catchUpViewedSession({ restart: !firstConnect });');
         expect(block(sync, 'apiSocket.onRecovered(() => {', 500)).toContain('this.catchUpViewedSession();');
     });
 
@@ -299,8 +300,8 @@ describe('B-803 wiring in sync.ts / apiSocket.ts', () => {
         const page = block(sync, 'private fetchForwardPage = (sessionId: string, afterSeq: number, signal: AbortSignal) => hedgedRead(async (attemptSignal, pool) => {', 800);
         expect(page).toContain('{ signal: attemptSignal, timeoutMs: SYNC_READ_TIMEOUT_MS, ...pool },');
         expect(page).toContain('}, { signal })');
-        const sessions = block(sync, 'private fetchSessions = async', 1_200);
-        expect(sessions).toContain('const data = await hedgedRead(async (signal, pool) => {');
+        const sessions = block(sync, 'private fetchSessions = async', 1_500);
+        expect(sessions).toContain('const { data, date } = await hedgedRead(async (signal, pool, index): Promise<SessionListResponse> => {');
         expect(sessions).toContain('timeoutMs: SYNC_READ_TIMEOUT_MS,\n                signal,\n                ...pool,');
         expect(queue).toContain("timeoutMs: !init?.method || init.method === 'GET' ? SYNC_READ_TIMEOUT_MS : undefined,");
         // the queue READ is hedged (the dock hand-off waits for it); writes go out once
