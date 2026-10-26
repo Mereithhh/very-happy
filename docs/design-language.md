@@ -174,6 +174,17 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 
 如果需要绕着某个组件改样式，把 Popover 改得像 Dialog，或者反过来，就该换组件了：两者的焦点语义不同，后来的人会被误导。
 
+### 自己弹出的浮层轮流出现（B-697 / B-830）
+
+Radix 模态层（Dialog、默认的 DropdownMenu / ContextMenu）打开时会做三件事：给 `body` 加 `pointer-events: none`、锁定焦点、把其余节点标成 `aria-hidden`。原生 `showModal()` 会进入 top layer，并把其余部分设为 inert。所以两个模态同时出现时，画在上面的那个可能点不到，z-index 解决不了。
+
+- **规则**：凡是自己弹出、或会挡住整页的浮层，都要通过 `app/overlayQueue.ts` 的 `useOverlayTurn` 排队，同一时间只渲染持有者。
+  - 优先级：`critical`（登录失效 / 确认弹窗 `AuthExpiredNotice`）> `interaction`（用户要求打开的，如 `?task=` 深链的 `TeamDialog`）> `notice`（应用主动弹的，如更新日志）。
+  - 高优先级出现时，低优先级的直接关闭，不记为已读或已关闭；高优先级消失后再回来。`critical` 的消失指刷新或重新登录。同优先级先到先得。
+- **`critical` 期间**：`Modal.*`、安装卡片和通知卡片隐藏让位，不算 dismiss（`useCriticalOverlayActive`）。`Modal.*` 的 promise 保持挂起，也不抢 Esc / Enter。
+- **`AuthExpiredNotice` 的实现**：用原生 modal `<dialog>`，portal 到 `<body>`，加 `pointer-events: auto`。用户自己打开的菜单或对话框不在队列里，会留在下面并变成 inert，不会抢点击。
+- **新增浮层**：选一个优先级接入队列，不要靠更高的 z-index 盖过别人。回归用 `e2e/auth-dialog-priority.mjs` 跑 desktop + phone。
+
 ### 选择控件（B-714）
 
 产品界面不用原生 `<select>` / `<option>` / `<datalist>` / `input[type=checkbox]` / `<summary>` 三角：系统下拉在 iOS、Android、桌面各是一套，不能搜索、分组、写禁用原因，也不跟主题。design lint `native-control` 拦新增，白名单只有 `ui/Checkbox.tsx`、`ui/Summary.tsx` 自身。

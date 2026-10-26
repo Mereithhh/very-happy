@@ -26,6 +26,7 @@ import {
 } from './notificationOnboarding';
 import { useToast } from '@/ui';
 import { shouldDeferPwaInstall } from '@/app/pwaInstallPolicy';
+import { useCriticalOverlayActive } from '@/app/overlayQueue';
 import './notificationOptInCard.css';
 import '@/app/floatingCards.css';
 
@@ -66,6 +67,8 @@ export function NotificationOptInCard() {
   const { credentials } = useAuth();
   const location = useLocation();
   const installVisible = usePwaInstallPromptVisible();
+  // B-830: stand down (not dismissed) while the sign-in expiry dialog is up.
+  const deferred = useCriticalOverlayActive();
   const [revealed, setRevealed] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -93,7 +96,7 @@ export function NotificationOptInCard() {
     installPromptVisible: installVisible,
     onNotificationSettings: location.pathname.startsWith('/settings/notifications'),
   });
-  if (!offer) return null;
+  if (!offer || deferred) return null;
 
   const dismiss = () => {
     writeDismissed();
