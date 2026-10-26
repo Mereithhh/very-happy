@@ -12,7 +12,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectMemberView, ProjectView, TeamState } from '@slopus/happy-wire';
 import { sidebarTreeScene, type SceneKind } from '@/dev/sidebarTreeScene';
 
@@ -37,6 +37,16 @@ const { ThemeProvider } = await import('@/ui/theme');
 const { Sidebar } = await import('./Sidebar');
 const { COLLAPSED_GROUPS_STORAGE_KEY } = await import('./sidebarCollapsedGroups');
 const pristine = storage.getState();
+
+// B-828: the 能力 rows now re-measure once the list is mounted; happy-dom has no
+// layout, so give the list a tall desktop height (every capability row fits).
+beforeAll(() => {
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+    configurable: true,
+    get(this: HTMLElement) { return this.classList.contains('sb-list') ? 2000 : 0; },
+  });
+});
+afterAll(() => { delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientHeight; });
 
 let root: Root | null = null;
 let host: HTMLElement | null = null;

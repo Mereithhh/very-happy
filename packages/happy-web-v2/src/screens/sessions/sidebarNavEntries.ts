@@ -95,6 +95,22 @@ export function fitCapabilityRows(input: { spare: number; rowPitch: number; tota
   return Math.max(0, Math.min(total - 1, Math.floor(spare / rowPitch) - 1));
 }
 
+/** B-828: px of spare height a capability row must clear beyond its pitch before it comes back. */
+export const CAPABILITY_FIT_SLACK = 4;
+
+/**
+ * B-828: the next fit, with hysteresis — folding applies at once, unfolding
+ * only once the rows fit with CAPABILITY_FIT_SLACK to spare, so a measurement
+ * sitting on a threshold (sub-pixel rounding of the heights the fit reads)
+ * cannot flip the rows back and forth on every frame.
+ */
+export function settleCapabilityRows(input: { current: number; spare: number; rowPitch: number; total: number; slack?: number }): number {
+  const next = fitCapabilityRows(input);
+  if (next <= input.current) return next;
+  const withSlack = fitCapabilityRows({ ...input, spare: input.spare - (input.slack ?? CAPABILITY_FIT_SLACK) });
+  return Math.max(Math.max(0, input.current), withSlack);
+}
+
 /** Phone 「更多 ▾」: every capability that is not already a chip (no 项目 / 团队 twice). */
 export function moreMenuEntries<T extends { key: string }>(entries: readonly T[], chips: readonly SidebarChip[]): T[] {
   return entries.filter((e) => !(chips as readonly string[]).includes(e.key));
