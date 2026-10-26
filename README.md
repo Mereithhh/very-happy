@@ -351,6 +351,11 @@ the relay that issued them. The supported public self-host path is the pinned
 repository Docker build—not the upstream-owned `happy-server-self-host` npm
 package. See [Self-hosting](docs/deployment.md).
 
+> **Upgrading a self-hosted server (2026-10-26, breaking):** `TRUST_PROXY` no
+> longer accepts a hop count such as `TRUST_PROXY=1`; the server refuses to
+> start with one. Set the IP/CIDR your reverse proxy connects from, e.g.
+> `TRUST_PROXY=172.18.0.1`. Details in [Upgrading](docs/upgrading.md#2026-10-26-trust_proxy-no-longer-accepts-a-hop-count-b-820).
+
 ## Move at thought speed
 
 <p>

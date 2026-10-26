@@ -2856,6 +2856,12 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            oct26a: {
+                title: '安全更新：服务端依赖升级',
+                summary: '服务端依赖升级到已修复安全问题的版本，并且只运行经过测试的锁定版本。',
+                deps: '安全更新：服务端依赖（Fastify、zod、axios、sharp 等）升级到已修复的版本。',
+                selfHost: '自托管：TRUST_PROXY 不再接受跳数（如 1），请改为反向代理连到服务端时的 IP/CIDR，例如 172.18.0.1；填数字时服务端会拒绝启动，并在日志里给出改法。',
+            },
             oct25s: {
                 title: 'CLI 0.2.186：繁忙的机器也能自动升级',
                 summary: '机器一直在忙时也能自动升级到新版本，升级不会打断正在跑的会话。',

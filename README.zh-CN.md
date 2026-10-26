@@ -288,6 +288,10 @@ very-happy daemon start
 自托管路径是仓库中固定版本的 Docker 构建，而不是上游维护的 `happy-server-self-host` npm
 包。详见[自托管](docs/deployment.md)。
 
+> **自托管升级注意（2026-10-26，breaking）：** `TRUST_PROXY` 不再接受跳数（例如
+> `TRUST_PROXY=1`），配置成数字时服务端会拒绝启动。请改为反向代理连到服务端时的 IP/CIDR，
+> 例如 `TRUST_PROXY=172.18.0.1`。详见[升级说明](docs/upgrading.md#2026-10-26-trust_proxy-no-longer-accepts-a-hop-count-b-820)。
+
 ## 像思考一样快
 
 <p>
