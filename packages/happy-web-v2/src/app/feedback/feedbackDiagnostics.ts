@@ -27,7 +27,11 @@ export function feedbackLastRoute(): string {
   return lastRoute ?? (typeof location === 'undefined' ? '/' : location.pathname);
 }
 
+// Also rendered on the server side of the settings-index test (Node 20 has no navigator / window).
+const hasWindow = () => typeof window !== 'undefined' && typeof navigator !== 'undefined';
+
 function pointerKind(): 'fine' | 'coarse' | 'none' {
+  if (!hasWindow()) return 'none';
   try {
     if (window.matchMedia('(pointer: coarse)').matches) return 'coarse';
     if (window.matchMedia('(pointer: fine)').matches) return 'fine';
@@ -42,9 +46,9 @@ export function useFeedbackDiagnostics(pathname: string, stamp: number): Feedbac
   return useMemo(() => buildFeedbackDiagnostics({
     webVersion: __APP_VERSION__,
     cliVersions,
-    userAgent: navigator.userAgent,
-    language: navigator.language,
-    viewport: { width: window.innerWidth, height: window.innerHeight },
+    userAgent: hasWindow() ? navigator.userAgent : '',
+    language: hasWindow() ? navigator.language : '',
+    viewport: hasWindow() ? { width: window.innerWidth, height: window.innerHeight } : { width: 0, height: 0 },
     pointer: pointerKind(),
     pathname,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? '',
