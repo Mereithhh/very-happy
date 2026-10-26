@@ -90,13 +90,13 @@ describe('B-804 wiring in sync.ts', () => {
 
     it('resume, reconnect and recovered all catch the viewed session up (messages shown + prompt queue reloaded)', () => {
         expect(body('private onWebResume = () => {', 'void apiSocket.checkLiveness();')).toContain('this.catchUpViewedSession();');
-        expect(body('apiSocket.onReconnected(', 'apiSocket.onRecovered(')).toContain('this.catchUpViewedSession();');
+        expect(body('apiSocket.onReconnected(', 'apiSocket.onRecovered(')).toContain('this.catchUpViewedSession({ restart: !firstConnect });');
         expect(body('apiSocket.onRecovered(', 'private handleRelayCommittedMessages')).toContain('this.catchUpViewedSession();');
-        const catchUp = body('private catchUpViewedSession() {', 'private trackMessagesCatchUp(');
+        const catchUp = body('private catchUpViewedSession(opts: { restart: boolean } = { restart: true }) {', 'private trackMessagesCatchUp(');
         expect(catchUp).toContain('this.trackMessagesCatchUp(viewing);');
         expect(catchUp).toContain('void reloadPromptQueue(viewing);');
         // B-803: resume/reconnect/recovered abort a stuck catch-up instead of coalescing behind it.
-        expect(catchUp).toContain('this.onSessionEnter(viewing, { restartFetch: true });');
+        expect(catchUp).toContain('this.onSessionEnter(viewing, { restartFetch: opts.restart });');
     });
 
     it('「重试」 restarts the stuck catch-up (B-803 restart), not a plain invalidate', () => {

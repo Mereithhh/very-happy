@@ -41,6 +41,7 @@ import './app/entryKind';
 import './app/presenceBoot';
 import { installPwaPromptCapture } from './app/pwaInstallCapture.ts';
 import { installChunkRecovery } from './app/chunkRecovery';
+import { startSessionListPrefetch } from './sync/sessionListPrefetch';
 import { ChunkFailure } from './app/ChunkFailure';
 import { flushPendingDrafts } from './app/draftFlush';
 import { installStaleBundleReload, prepareForUpdateReload, recoverChunkLoad } from './app/staleBundleReload.ts';
@@ -107,6 +108,10 @@ const routePath = basePath && window.location.pathname.startsWith(basePath)
   : window.location.pathname;
 applyBrandToDocument(BRAND);
 const usePublicRoot = shouldUsePublicRoot(routePath, hasStoredCredentials, BRAND.landingEnabled);
+
+// B-823 (B-816 Q4): a signed-in boot asks for the session list now, while the
+// startup chunks still load; the first fetchSessions adopts this request.
+if (!usePublicRoot) startSessionListPrefetch();
 
 // This boundary is the anonymous performance contract: public visitors never
 // import account crypto, sync, realtime, or the authenticated application shell.

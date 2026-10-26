@@ -19,6 +19,7 @@ import { LeadViewStripToggle, SessionTeamContext } from './SessionTeamContext';
 import { ChatHeader } from './ChatHeader';
 import { ChatList } from './ChatList';
 import { AgentInput, type PendingComposer } from './AgentInput';
+import { useAfterSplashPaint } from '@/app/afterSplashPaint';
 import { PendingSessionBody, PendingSessionHeader } from './PendingSessionParts';
 import { composerKey, isPendingSessionId, landingRedirect } from '@/sync/pendingSessions';
 import { clearPendingSessionKeys, pendingDraft, pendingSessions, usePendingRecord } from '@/sync/pendingSessionsRuntime';
@@ -56,11 +57,18 @@ import { sessionGate, shouldLookUpSession, type SessionLookup } from './sessionL
 import { ChatSyncStatus } from './ChatSyncStatus';
 import './session.css';
 
+/** The transcript's frame (ChatList's own empty layout) for the one cold-start paint before it renders. */
+function ColdTranscriptPlaceholder() {
+    return <div className="cl cl--loading"><div className="cl-scroll"><div className="cl-inner" /></div></div>;
+}
+
 export function SessionDetailScreen() {
     const { id: routeId } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
     const { t, lang } = useTranslation();
+    // B-823 (QA9 O-2): under the cold-start splash the composer commits first, the transcript after that paint.
+    const transcriptNow = useAfterSplashPaint();
     // B-516 single tree: a pending record (optimistic new session) renders this
     // same layout. `id` is the effective id — the pending id until the outbox
     // is flushed, then its real id (the composer only switches then, so a new
@@ -406,7 +414,9 @@ export function SessionDetailScreen() {
                 <div className="sd-body">
                     {/* B-752: calm ASCII field behind the transcript (fixed, not scrolled). */}
                     <ChatBackdrop sessionId={id} />
-                    {session ? <ChatList key={id} sessionId={id} showLiveStatus={!mirror} /> : <PendingSessionBody record={pending!} />}
+                    {session
+                        ? (transcriptNow ? <ChatList key={id} sessionId={id} showLiveStatus={!mirror} /> : <ColdTranscriptPlaceholder />)
+                        : <PendingSessionBody record={pending!} />}
                     {session && <ChatSyncStatus sessionId={id} />}
                 </div>
                 {!mirror && !sharedWithMe && (
