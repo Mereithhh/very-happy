@@ -19,12 +19,18 @@
  * `team_message` (a tool call), so its text is written to the owner (「已经
  * 上线」, the 「等你决定」 options). The first such row of a turn carries the
  * turn's origin (`via`) for a one-line 「回复 成员 A 的提交」 above it.
+ * B-833: that is EVERY lead text of the turn, not only the last one — a
+ * member / system turn's activity row is cut at each of the lead's texts
+ * (`splitLeadText`): mid-turn text (「同意最小修法」 before a team_message) and
+ * the live turn's text so far stay on screen in their place; the tools,
+ * progress lines and thinking between them fold. The newest batch of member
+ * messages shows their text as a preview under its fold row (`previewFolds`).
  * `keep` is the extension point for other rows that must stay visible inside
  * a folded run (the lead's 「已上板」 pointer).
  */
 import type { TeamMessage, TeamState } from '@slopus/happy-wire';
 import type { Message, UserTextMessage } from '@/sync/typesMessage';
-import { extractUserAttachments, opensTurn, renderableAgentText, type ChatRow } from './chatTurns';
+import { activityDurationSeconds, extractUserAttachments, opensTurn, renderableAgentText, type ChatRow } from './chatTurns';
 import { parseTaskNotification } from './harness';
 import { stripTeamEnvelope } from './teamMessage';
 
@@ -118,9 +124,15 @@ export type LeadFold = {
     leadTurns: number;
     /** Distinct member names, in order of appearance. */
     senders: string[];
+    /** B-833: the member messages that opened turns in this run — the newest batch's preview. */
+    preview: ChatRow[];
 };
-/** `via`: on the first lead text of a member / system turn — who it answers. */
-export type LeadViewEntry = { type: 'row'; row: ChatRow; via?: TurnOrigin } | LeadFold;
+/**
+ * `via`: on the first lead text of a member / system turn — who it answers.
+ * `owner`: the row belongs to an owner turn (or precedes every turn) — the
+ * newest-batch preview stops there.
+ */
+export type LeadViewEntry = { type: 'row'; row: ChatRow; via?: TurnOrigin; owner?: true } | LeadFold;
 
 function rowOpener(row: ChatRow, openers: ReadonlySet<string>): UserTextMessage | null {
     if (row.type === 'message' && row.message.kind === 'user-text' && openers.has(row.message.id)) return row.message;
@@ -141,6 +153,61 @@ function isLeadReply(row: ChatRow, openers: ReadonlySet<string>): boolean {
     return m.kind === 'user-text' && row.key.endsWith(':answer') && !openers.has(m.id);
 }
 
+const isLeadText = (m: Message): boolean => m.kind === 'agent-text' && !m.isThinking && renderableAgentText(m);
+
+/**
+ * B-833: a member / system turn's activity row, cut at the lead's own text.
+ * The texts become message rows keyed by message id — the key the turn's
+ * final text keeps as its answer row once the turn ends, so nothing remounts
+ * when it does. The work between them stays in activity rows that fold; a
+ * segment's key comes from the text before it, so a live row only appends.
+ * A task notification heading the row becomes its own line (keyed by its id).
+ * A held answer (B-615) becomes its row too, with the props it is held with:
+ * cut this way, a held turn and the released one are the same rows, so the
+ * release changes nothing here (inside the activity row it was hidden — the
+ * live segment it lands in was folded, and remounts closed). Empty segments
+ * are dropped.
+ */
+export function splitLeadText(row: ChatRow): ChatRow[] {
+    if (row.type !== 'activity') return [row];
+    const held = row.answer;
+    const out: ChatRow[] = [];
+    if (row.trigger) out.push({ type: 'message', key: row.trigger.id, message: row.trigger, showMeta: false });
+    let segment: Message[] = [];
+    let segmentKey = row.key;
+    let split = false;
+    const flush = (last: boolean) => {
+        if (segment.length === 0) return;
+        out.push({
+            type: 'activity',
+            key: segmentKey,
+            messages: segment,
+            live: last && row.live,
+            durationSeconds: last && !split ? row.durationSeconds : activityDurationSeconds(segment),
+            ...(row.abortedAt !== undefined ? { abortedAt: row.abortedAt } : {}),
+        });
+    };
+    row.messages.forEach((message, index) => {
+        if (!isLeadText(message)) {
+            segment.push(message);
+            return;
+        }
+        flush(false);
+        if (message.id === held?.id) {
+            out.push({ type: 'message', key: message.id, message, showMeta: held.showMeta, ...(held.showActions ? {} : { showActions: false }), ...(held.optionsActive ? { optionsActive: true } : {}) });
+        } else {
+            // As in buildLeafRows: a text with work after it is a progress line, not an answer (no actions).
+            const toolFollows = row.messages.slice(index + 1).some((m) => m.kind === 'tool-call');
+            out.push({ type: 'message', key: message.id, message, showMeta: false, ...(toolFollows ? { showActions: false } : {}) });
+        }
+        segment = [];
+        segmentKey = `${row.key}:after-${message.id}`;
+        split = true;
+    });
+    flush(true);
+    return out;
+}
+
 export function leadViewEntries(
     rows: readonly ChatRow[],
     openers: ReadonlySet<string>,
@@ -154,17 +221,16 @@ export function leadViewEntries(
         if (fold) out.push(fold);
         fold = null;
     };
-    for (const row of rows) {
-        const opener = rowOpener(row, openers);
-        let info: TurnOrigin | null = null;
-        if (opener) {
-            info = origin(opener);
-            turn = { origin: info, countedIn: null, captioned: false };
+    const place = (row: ChatRow, info: TurnOrigin | null) => {
+        if (!turn || turn.origin.source === 'owner') {
+            close();
+            out.push({ type: 'row', row, owner: true });
+            return;
         }
-        if (!turn || turn.origin.source === 'owner' || keep(row)) {
+        if (keep(row)) {
             close();
             out.push({ type: 'row', row });
-            continue;
+            return;
         }
         if (isLeadReply(row, openers)) {
             close();
@@ -172,35 +238,79 @@ export function leadViewEntries(
             const lead = row.type === 'activity' || (row.type === 'message' && row.message.kind === 'agent-text');
             out.push({ type: 'row', row, ...(lead && !turn.captioned ? { via: turn.origin } : {}) });
             if (lead) turn.captioned = true;
-            continue;
+            return;
         }
-        const run: LeadFold = fold ?? { type: 'fold', key: `fold-${row.key}`, rows: [], members: 0, system: 0, leadTurns: 0, senders: [] };
+        const run: LeadFold = fold ?? { type: 'fold', key: `fold-${row.key}`, rows: [], members: 0, system: 0, leadTurns: 0, senders: [], preview: [] };
         fold = run;
         run.rows.push(row);
         if (info) {
-            if (info.source === 'member') run.members++;
-            else run.system++;
+            if (info.source === 'member') {
+                run.members++;
+                run.preview.push(row);
+            } else run.system++;
             if (info.sender && !run.senders.includes(info.sender)) run.senders.push(info.sender);
         }
         // A notification-triggered activity row is both the opener and the lead's work.
-        if ((!opener || row.type === 'activity') && turn.countedIn !== run) {
+        if ((!info || row.type === 'activity') && turn.countedIn !== run) {
             turn.countedIn = run;
             run.leadTurns++;
         }
+    };
+    for (const row of rows) {
+        const opener = rowOpener(row, openers);
+        if (opener) turn = { origin: origin(opener), countedIn: null, captioned: false };
+        if (!turn || turn.origin.source === 'owner') {
+            place(row, null);
+            continue;
+        }
+        // B-833: cut at the lead's text; the opener is the first piece (a notification heads its activity row).
+        splitLeadText(row).forEach((piece, i) => place(piece, opener && i === 0 ? turn!.origin : null));
     }
     close();
     return out;
 }
 
-/** Keys of what is on screen — the follow / unseen-count logic reads these, so noise folding into a run does not count as new. */
+/** A fold of the lead's own work only (no inbound message): what it hides is noise, never news. */
+const workOnly = (fold: LeadFold) => fold.members === 0 && fold.system === 0;
+
+/**
+ * B-833: the folds that show their member messages as a preview — the newest
+ * batch (the last fold with an inbound message, nothing from the owner after
+ * it), plus folds that showed one before (`shown`) while still nothing from
+ * the owner came after them: a batch keeps its preview when a newer one
+ * lands, so text being read never collapses under the reader. The owner's
+ * next message (sent from the live end) retires them all.
+ */
+export function previewFolds(entries: readonly LeadViewEntry[], shown: ReadonlySet<string>): Set<string> {
+    const out = new Set<string>();
+    let newest = true;
+    for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i];
+        if (entry.type === 'row') {
+            if (entry.owner) break;
+            continue;
+        }
+        if (workOnly(entry)) continue;
+        if ((newest || shown.has(entry.key)) && entry.preview.length > 0) out.add(entry.key);
+        newest = false;
+    }
+    return out;
+}
+
+/**
+ * Keys of what is on screen — the follow / unseen-count logic reads these, so
+ * noise folding into a run does not count as new. B-833: neither does a
+ * closed fold of the lead's own work (the tools after its text) — the text
+ * above it is the news, and it is counted already.
+ */
 export function leadViewKeys(entries: readonly LeadViewEntry[], expanded: ReadonlySet<string>): string[] {
     const keys: string[] = [];
     for (const entry of entries) {
         if (entry.type === 'row') keys.push(entry.row.key);
-        else {
+        else if (expanded.has(entry.key)) {
             keys.push(entry.key);
-            if (expanded.has(entry.key)) for (const row of entry.rows) keys.push(row.key);
-        }
+            for (const row of entry.rows) keys.push(row.key);
+        } else if (!workOnly(entry)) keys.push(entry.key);
     }
     return keys;
 }
