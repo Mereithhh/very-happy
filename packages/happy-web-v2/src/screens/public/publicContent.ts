@@ -565,6 +565,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         { type: 'p', text: 'Sessions, terminal traffic, account metadata, logs, attachments, notifications, and integration data may pass through or persist on the relay depending on the feature. Operators should document retention, backups, subprocessors, and incident response for their deployment.' },
         { type: 'p', text: 'Email-code login stores the normalized address on the trusted relay. The configured mail provider receives the destination, sender, and one-time code under that provider\'s own processing and retention terms.' },
         { type: 'p', text: 'A terminal file handoff traverses the trusted relay and lands on the selected machine under ~/.happy/uploads/terminal/. The current client caps each file at 8 MB, transfers bounded chunks, and only pastes a path quoted for the daemon default shell; it does not execute the file or press Enter. Native Windows path insertion requires the current daemon to distinguish cmd from PowerShell.' },
+        { type: 'p', text: 'Feedback sent from Settings → Send feedback or the occasional feedback card is stored only in the relay you use, with your account id; nothing goes to veryhappy.dev or any third party. The optional diagnostics are shown in full before sending (Web and CLI versions, browser, the page as a pattern such as /session/:id, time) and never include session content. On a self-hosted relay only the accounts listed in VH_FEEDBACK_ADMIN_ACCOUNT_IDS can read it.' },
       ] },
     ],
   },

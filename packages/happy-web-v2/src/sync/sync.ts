@@ -93,8 +93,9 @@ import { resolveMessageModeMeta, type MessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { preserveSessionBatchActivityFromStore } from './sessionSnapshot';
 import { decodeSessionRows, type EncryptedSessionRow } from './sessionDecode';
+import { decodeInChunks, rowsToDecode } from './unarchivedApply';
 import { adoptSessionListPrefetch, sessionListRequest, takeSessionListPrefetch, type SessionListResponse } from './sessionListPrefetch';
-import { catchUpSessionList, DELTA_PAGE_LIMIT, parseServedAt, sessionListSnapshot, type SessionListSnapshot } from './sessionListDelta';
+import { catchUpSessionList, DELTA_PAGE_LIMIT, mergeSessionListSnapshot, parseServedAt, sessionListSnapshot, type SessionListSnapshot } from './sessionListDelta';
 import { applyNewSessionUpdate } from './newSessionUpdate';
 import { newSessionTimingInStore } from '@/app/newSessionTiming';
 import { downloadEncryptedAttachment, requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
@@ -206,6 +207,18 @@ const OUTBOX_PERSIST_WAIT_MS = 1_000;
 const OUTBOX_RECLAIM_INTERVAL_MS = 15_000;
 /** B-814: adopting rows waits this long for the session's latest page (a stored copy confirms them). */
 const OUTBOX_ADOPT_PAGE_WAIT_MS = 10_000;
+/**
+ * Owner 10-27: after the first list, ready waits up to UNARCHIVED_READY_WAIT_MS
+ * for the `scope=unarchived` response to arrive, then up to
+ * UNARCHIVED_APPLY_WAIT_MS for its rows to be decoded and merged
+ * (fetchUnarchivedSessions). A desktop does both inside the budget, so its
+ * first sidebar is the whole list; a phone (the Owner's ~380 rows are ~1.5s of
+ * decode + render there) gets in on the window at about the old time and the
+ * rest lands in one merge right after — never a drop. On slow 4G a big
+ * account's read takes longer and the page gets in on the window first (B-818).
+ */
+const UNARCHIVED_READY_WAIT_MS = 2_000;
+const UNARCHIVED_APPLY_WAIT_MS = 300;
 
 /** Resolves when `promise` settles or after `ms`, whichever is first; never rejects. */
 function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
@@ -270,6 +283,11 @@ class Sync {
      * fetch a resume / reconnect may queue behind it.
      */
     private firstSessionsList = deferredSignal();
+    /** Owner 10-27: settles when this load's `scope=unarchived` read has been applied (re-armed per #init). */
+    private unarchivedSessionsList = deferredSignal();
+    /** Owner 10-27: settles when that read's response is in, before its rows are applied — what ready waits for. */
+    private unarchivedSessionsArrived = deferredSignal();
+    private unarchivedSessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
     private sendSync = new Map<string, InvalidateSync>();
     private resumeListeners = new Set<() => void>();
@@ -341,6 +359,7 @@ class Sync {
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
         this.sessionsCatchUpSync = new InvalidateSync(this.catchUpSessionsSinceList);
+        this.unarchivedSessionsSync = new InvalidateSync(this.fetchUnarchivedSessions);
         this.syncScheduler = this.createSyncScheduler();
         this.settingsSync = new InvalidateSync(this.syncSettings);
         this.profileSync = new InvalidateSync(this.fetchProfile);
@@ -605,7 +624,11 @@ class Sync {
         // behind it (B-823: the first connect's own catch-up is incremental,
         // catchUpSessionsSinceList), and entering must not wait for that.
         this.firstSessionsList = deferredSignal();
+        this.unarchivedSessionsList = deferredSignal();
+        this.unarchivedSessionsArrived = deferredSignal();
         const firstListLoaded = this.firstSessionsList.promise;
+        const unarchivedListArrived = this.unarchivedSessionsArrived.promise;
+        const unarchivedListLoaded = this.unarchivedSessionsList.promise;
 
         // Invalidate sync
         log.log('🔄 #init: Invalidating all syncs');
@@ -625,7 +648,7 @@ class Sync {
         // Mark UI ready as soon as sessions load. Machines sync may hang
         // when encryption keys are unavailable (e.g. V1 auth fallback) —
         // let it resolve in the background instead of blocking the UI.
-        Promise.race([firstListLoaded, this.sessionsSync.awaitQueue()]).then(() => {
+        Promise.race([firstListLoaded, this.sessionsSync.awaitQueue()]).then(() => settleWithin(unarchivedListArrived, UNARCHIVED_READY_WAIT_MS)).then(() => settleWithin(unarchivedListLoaded, UNARCHIVED_APPLY_WAIT_MS)).then(() => {
             storage.getState().applyReady();
         }).catch((error) => {
             console.error('Failed to load sessions:', error);
@@ -1922,7 +1945,48 @@ class Sync {
         this.sessionListSnapshot = sessionListSnapshot(sessions, parseServedAt(date));
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
         this.firstSessionsList.resolve();
+        // Owner 10-27: the list above is the 150 newest rows; once per load, read every unarchived one.
+        if (!this.unarchivedSessionsList.settled) this.unarchivedSessionsSync.invalidate();
 
+    }
+
+    /**
+     * Owner 10-27 (「侧边栏的会话会突然变少，然后再加载回完整的 list」): the
+     * first list is the 150 newest rows, and on a big account live sessions
+     * fall outside them (the Owner's window held 38 of 381 unarchived rows), so
+     * every fresh load started short and filled in as updates trickled. Once
+     * per load, after that list, every unarchived row (`scope=unarchived`,
+     * ≤500, running first) is read and merged — never replacing anything. Not
+     * on resume / reconnect: those lists stay the window, and rows already
+     * here stay (the store only merges).
+     */
+    private fetchUnarchivedSessions = async () => {
+        if (!this.credentials || this.unarchivedSessionsList.settled) return;
+        const token = this.credentials.token;
+        const request = sessionListRequest(getServerUrl(), token, 'unarchived');
+        const data = await hedgedRead(async (signal, pool) => {
+            const response = await fetchWithDeadline(fetch, request.url, {
+                headers: request.headers,
+                timeoutMs: SYNC_READ_TIMEOUT_MS,
+                signal,
+                ...pool,
+            });
+            if (!response.ok) throw new Error(`Failed to fetch unarchived sessions: ${response.status}`);
+            return await response.json() as { sessions?: Array<EncryptedSessionRow & { archivedAt?: number | null; share?: SessionShareInfo }> };
+        });
+        if (!this.credentials || this.credentials.token !== token) return;
+        const rows = data.sessions ?? [];
+        this.unarchivedSessionsArrived.resolve();
+        // Rows the first list already brought at the same versions are not decoded again; the
+        // rest decode in chunks (the window renders between them) and merge once — every
+        // store write re-renders the whole sidebar.
+        const fresh = rowsToDecode(rows, storage.getState().sessions);
+        const decoded = await decodeInChunks(fresh, (chunk) => decodeSessionRows(this.encryption, chunk));
+        if (!this.credentials || this.credentials.token !== token) return;
+        if (decoded.length > 0) this.applySessions(preserveSessionBatchActivityFromStore(decoded, storage.getState().sessions));
+        if (this.sessionListSnapshot) this.sessionListSnapshot = mergeSessionListSnapshot(this.sessionListSnapshot, rows);
+        log.log(`📥 unarchived sessions: ${rows.length} rows, ${fresh.length} applied`);
+        this.unarchivedSessionsList.resolve();
     }
 
     /**
@@ -1986,7 +2050,8 @@ class Sync {
 
     /**
      * B-798 P1-8: one session by id. The list above stops at the newest 150
-     * rows, so a link to an older (or unknown) session never reached the store
+     * rows (and the once-per-load unarchived read skips archived ones), so a
+     * link to an older archived (or unknown) session never reached the store
      * and the page spun forever. 404 = not this account's (nor shared with it).
      */
     public fetchSessionById = async (sessionId: string): Promise<'found' | 'missing'> => {

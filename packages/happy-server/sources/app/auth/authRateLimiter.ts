@@ -75,6 +75,39 @@ export async function allowAuthRequest(
     return rows.length > 0;
 }
 
+const REFUSED = Symbol('auth-rate-refused');
+
+/**
+ * All-or-nothing over several windows (e.g. per hour AND per day). Calling
+ * `allowAuthRequest` once per window charges the earlier windows before a
+ * later one refuses, so a client retrying against a full hourly bucket drains
+ * its daily one with requests that were all refused (B-836 QA16: 5 accepted +
+ * 15 refused left day=20, and the account was locked out for the day).
+ *
+ * Every charge runs in one transaction and a refusal rolls them all back. Each
+ * UPSERT holds its row lock until commit, so a concurrent caller waits on the
+ * first shared bucket and then re-checks against the committed count — it can
+ * neither overspend nor observe a charge that is about to be rolled back.
+ * Callers must list buckets in a fixed order so two of them cannot deadlock.
+ */
+export async function allowAuthRequests(
+    buckets: ReadonlyArray<{ key: string; max: number; windowMs: number; cost?: number }>,
+    nowMs = Date.now(),
+): Promise<boolean> {
+    try {
+        await db.$transaction(async (tx) => {
+            for (const bucket of buckets) {
+                const allowed = await allowAuthRequest(bucket.key, bucket, tx, nowMs);
+                if (!allowed) throw REFUSED;
+            }
+        });
+        return true;
+    } catch (error) {
+        if (error === REFUSED) return false;
+        throw error;
+    }
+}
+
 export interface AuthRateBucket {
     key: string;
     max: number;

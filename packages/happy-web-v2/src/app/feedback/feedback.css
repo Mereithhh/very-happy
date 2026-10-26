@@ -1,0 +1,170 @@
+/* B-836 in-app feedback — the form (Settings → 发送反馈), the prompt card and
+   the shared rating row. Compact workspace surface; ink for the chosen
+   rating, no accent (that one means live). */
+
+.fb-rating { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
+.fb-rating-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: 40px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-1);
+  color: var(--text-dim);
+  font-size: var(--fs-13);
+}
+.fb-rating-btn[aria-pressed="true"] { border-color: var(--text); background: var(--text); color: var(--bg-0); font-weight: 600; }
+.fb-rating-btn:disabled { cursor: wait; opacity: .6; }
+@media (hover: hover) and (pointer: fine) {
+  .fb-rating-btn:not([aria-pressed="true"]):not(:disabled):hover { color: var(--text); background: var(--bg-2); }
+}
+
+.fb-form { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-4); }
+.fb-field { position: relative; display: flex; flex-direction: column; gap: var(--sp-2); }
+.fb-label { color: var(--text); font-size: var(--fs-13); font-weight: 600; }
+.fb-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 96px;
+  padding: var(--sp-2) var(--sp-3);
+  resize: vertical;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-13);
+  line-height: 1.5;
+}
+.fb-count { align-self: flex-end; color: var(--text-faint); font-size: var(--fs-11); }
+
+.fb-diag { display: flex; flex-direction: column; gap: var(--sp-1); }
+.fb-diag-label { font-size: var(--fs-13); color: var(--text); }
+.fb-diag-hint { margin: 0; color: var(--text-faint); font-size: var(--fs-12); line-height: 1.5; }
+.fb-diag-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  align-self: flex-start;
+  min-height: 28px;
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+}
+.fb-diag-toggle[aria-expanded="true"] .fb-diag-chevron { transform: rotate(180deg); }
+@media (hover: hover) and (pointer: fine) { .fb-diag-toggle:hover { color: var(--text); background: var(--bg-2); } }
+.fb-diag-json {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  font-size: var(--fs-11);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.fb-diag-json[data-included="false"] { text-decoration: line-through; opacity: .6; }
+
+.fb-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.fb-github { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--text-faint); font-size: var(--fs-12); text-decoration: none; text-underline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .fb-github:hover { color: var(--text); text-decoration: underline; } }
+.fb-privacy { margin: 0; color: var(--text-faint); font-size: var(--fs-12); line-height: 1.5; }
+
+/* ── prompt card: same corner and surface as the notification opt-in card ── */
+.fb-prompt {
+  position: fixed;
+  right: max(var(--sp-4), var(--sa-r));
+  bottom: max(var(--sp-4), var(--sa-b));
+  z-index: 1000;
+  width: min(360px, calc(100vw - 2 * var(--sp-4) - var(--sa-l) - var(--sa-r)));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  color: var(--text);
+  box-shadow: var(--shadow-modal);
+  animation: fb-prompt-enter 200ms cubic-bezier(.2, .8, .2, 1) both;
+}
+.fb-prompt-close {
+  position: absolute;
+  top: var(--sp-1);
+  right: var(--sp-1);
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--text-faint);
+}
+@media (hover: hover) and (pointer: fine) { .fb-prompt-close:hover { color: var(--text); background: var(--bg-2); } }
+.fb-prompt-head { display: flex; align-items: center; gap: var(--sp-2); padding-right: var(--sp-8); color: var(--text-dim); }
+.fb-prompt h2 { margin: 0; color: var(--text); font-size: var(--fs-14); font-weight: 600; letter-spacing: -.01em; }
+.fb-prompt p { margin: 0; color: var(--text-dim); font-size: var(--fs-13); line-height: 1.5; }
+.fb-prompt .fb-textarea { min-height: 72px; }
+.fb-prompt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.fb-prompt-later {
+  min-height: 32px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+}
+@media (hover: hover) and (pointer: fine) { .fb-prompt-later:hover { color: var(--text); background: var(--bg-2); } }
+
+@keyframes fb-prompt-enter {
+  from { opacity: 0; transform: translate3d(0, 16px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@media (max-width: 520px), (pointer: coarse) {
+  .fb-rating-btn, .fb-prompt-later, .fb-diag-toggle, .fb-github { min-height: 44px; }
+  .fb-prompt-later { min-width: 44px; padding: 0 var(--sp-3); }
+  .fb-prompt-close { width: 44px; height: 44px; top: 0; right: 0; }
+  /* 16px keeps iOS from zooming into the field */
+  .fb-textarea { font-size: var(--fs-16); }
+}
+
+@media (max-width: 520px) {
+  .fb-prompt { right: max(var(--sp-4), var(--sa-r)); left: max(var(--sp-4), var(--sa-l)); width: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fb-prompt { animation: none; }
+}
+
+/* ── admin inbox (Settings → 发送反馈 → 收到的反馈) ── */
+.fb-inbox { display: flex; flex-direction: column; gap: var(--sp-3); max-width: 720px; }
+.fb-inbox-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); }
+/* Wrap the two groups onto their own lines on a phone instead of shrinking them into ellipses. */
+.fb-inbox-filters > .vh-segmented { flex: none; }
+.fb-inbox-filters > .vh-segmented > button { flex: 1 0 auto; }
+.fb-inbox-empty { margin: 0; color: var(--text-faint); font-size: var(--fs-13); }
+.fb-inbox-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+.fb-inbox-row[data-read="false"] { border-color: var(--line-heavy); }
+.fb-inbox-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-3); font-size: var(--fs-12); }
+.fb-inbox-rating { color: var(--text); font-weight: 600; }
+.fb-inbox-row[data-rating="bad"] .fb-inbox-rating { color: var(--danger); }
+.fb-inbox-who { min-width: 0; color: var(--text-dim); overflow-wrap: anywhere; }
+.fb-inbox-meta { margin-left: auto; color: var(--text-faint); }
+.fb-inbox-text { margin: 0; color: var(--text); font-size: var(--fs-13); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fb-inbox-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }

@@ -11,7 +11,10 @@ describe('sidebarNavEntries (B-641)', () => {
       ['automations', '/automations'],
       ['todos', '/todos'],
       ['people', '/people'],
+      ['feedback', '/settings/feedback'],
     ]);
+    // B-836: 反馈 is only in the phone's 更多 — never a desktop row
+    expect(sidebarNavEntries(all).filter((e) => e.phoneOnly).map((e) => e.key)).toEqual(['feedback']);
   });
 
   it('B-756: 项目 leads the entries once the projects API answered, and opens the /projects list', () => {
@@ -21,7 +24,7 @@ describe('sidebarNavEntries (B-641)', () => {
 
   it('keeps the existing visibility gates for teams and automations', () => {
     const keys = sidebarNavEntries({ ...all, teamsVisible: false, automationsVisible: false }).map((e) => e.key);
-    expect(keys).toEqual(['todos', 'people']);
+    expect(keys).toEqual(['todos', 'people', 'feedback']);
   });
 
   it('a folded entry never hides a pending decision: the ⋯ total sums every count', () => {
@@ -80,7 +83,7 @@ describe('capability rows fit the available height (B-713)', () => {
     expect(fitCapabilityRows({ spare: 500, rowPitch: pitch, total: 0 })).toBe(0);
   });
   it('split keeps priority order: 团队 > 自动化 > 待办 > 联系人', () => {
-    const keys = sidebarNavEntries(all).map((e) => e.key);
+    const keys = sidebarNavEntries(all).filter((e) => !e.phoneOnly).map((e) => e.key);
     expect(splitCapabilities(keys, 2)).toEqual({ shown: ['teams', 'automations'], folded: ['todos', 'people'] });
     expect(splitCapabilities(keys, 9)).toEqual({ shown: keys, folded: [] });
     expect(splitCapabilities(keys, -1)).toEqual({ shown: [], folded: keys });
