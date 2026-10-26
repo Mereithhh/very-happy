@@ -35,13 +35,14 @@
 
 ## 设计
 
-### 鉴权失效
+### 鉴权失效（与 B-824 spec `specs/2026-10-session-list-snapshot-and-slim.md` §6.1–6.2 对齐）
 
 - server：`verifyToken` 只把「验签失败 / 登录会话不存在、吊销、过期、hash 不符」当无效；登录会话表读取失败向上抛。HTTP `authenticate` 捕获后回 `503 {error:'auth_unavailable'}` + `Retry-After: 5`；socket 中间件回 `Authentication unavailable`。
-- Web：沿用 latch 的判定（不另起判定）。`AuthExpiredNotice` 在 latch 后取 `sync.unsentOutboxMessages()`（本页 `outboxRecords` + 持久化 outbox 中尚未被任何标签页接管的行，能解密就给文本）：
-  - 为空 → 立即 `logout()`（本地清理 + reload 到登录页，记住返回位置）。
-  - 非空 → 弹窗列出、提供「复制未发送的消息」，用户点「清除本机数据并重新登录」才清。用户不点就关页：下次打开同一死 token → 再次 401 → 同一弹窗（持久化 outbox 仍在），不会静默丢。
-- 多标签页：另一标签页删除凭据时触发 `storage` 事件，本页（`currentToken()` 已为 null）直接 trip latch，走同一流程。
+- 触发（latch，`authLatch.ts`）：当前 token 的 REST/axios 401；socket 握手 `connect_error` 为 `Invalid authentication token` 且握手用的是当前 token（`apiSocket.ts`，`path: 'socket'`）；另一标签页删除凭据（`storage` 事件）。403 不触发。
+- **确认一次再清**：latch 后绕过守卫发 `GET /v1/account/profile`（当前 token，5s 超时，`authGuards.confirmCurrentTokenExpired`）：401 → 清；2xx → 误判，不清（记日志，提示刷新）；网络错误/超时/5xx/403 → 不清，等下一次 `online` 或 30s 后再确认。凭据已不在（别的标签页登出）直接视为已失效。
+- 确认失效后，`AuthExpiredNotice` 取 `sync.unsentOutboxMessages()`（本页 `outboxRecords` + 持久化 outbox 中尚未被接管的行）：为空 → 立即清理并回登录页；非空 → 列出并可复制，用户点「清除本机数据并重新登录」才清（Lead 10-26 要求保留此提示；B-824 §6.4 的「立即清空」以此为准）。
+- **唯一清理入口** `purgeLocalAccountData(reason)`（`src/auth/purgeLocalAccountData.ts`）：关闭并删除全部 `vh-sync-*` → `clearPersistence()` → 通知状态 → 最后删 `auth_credentials`。logout 的本地部分也调它。B-824 往里加快照游标等自己的项。
+- **删库被挡住**（另一标签页持有连接）：库名写入 `localStorage['vh.sync.purgePending']`；`SyncCache` 打开任何库之前先删待删列表，没删成本页无缓存运行（消息缓存与 outbox 都不读）。被挡住的删除请求会一直排队，同名后续请求排在它后面既不触发 `blocked` 也不结束，所以每次删除另设总超时。
 
 ### CSP（`sources/app/api/securityHeaders.ts`，挂在 `webDocumentOnSend`）
 
@@ -67,14 +68,17 @@
 ## 风险
 
 1. 未覆盖到的运行时路径被强制策略拦截（Google 登录按钮、语音、机器面板）→ 这些来源已在策略内；`/v1/csp-report` 可见；`CSP_MODE=report-only` 一键停拦。
-2. 弹窗未确认时主密钥仍在本机 → 接受：为了不丢用户输入；token 已死，主密钥离开 token 也无法访问 server；下次打开即再次提示。
+2. 弹窗未确认时主密钥仍在本机 → 接受：为了不丢用户输入（Lead 要求）；token 已死，主密钥离开 token 也无法访问 server；下次打开即再次提示。
 3. server 在 DB 故障期间持续 503 → 客户端按可重试错误退避，不清数据（e2e C 场景）。
+4. 确认请求被同一服务端故障也回 401（例如 master secret 配错）→ 仍会清；这是 B-824 §6.2 接受的边界，概率由「两次独立请求都 401」限制。
 
 ## 验收标准
 
-- [x] 401（当前 token）且无待发 → 自动清主密钥与 `vh-sync-*`、回登录页（单测 + e2e B）
+- [x] 401（当前 token）且确认 401、无待发 → 自动清主密钥与 `vh-sync-*`、回登录页（单测 + e2e B）
 - [x] 有待发 → 弹窗列出并可复制，确认前不清（单测 + e2e A）
-- [x] 503/500/网络错误不清（单测 + e2e C）；另一标签页登出联动（e2e D）
+- [x] 503/500/网络错误不清（单测 + e2e C）；伪造 401 但 token 有效 → 不清（e2e C2）；确认无应答 → 不清，恢复在线后再确认（单测 + e2e C3）
+- [x] socket 握手拒绝 token → latch(socket) → 确认 → 清（e2e E）；另一标签页登出联动（e2e D）
+- [x] 删库被挡 → 记 purgePending，下次打开先删、删完前不读缓存（单测）
 - [x] server：登录会话表故障 → 503 不是 401（单测）
 - [x] 生产构建下 landing/login/signup/home/settings/会话（Shiki+Mermaid）/分享页/CLI 配对页/xterm 终端/HTML 预览/PDF 预览零 CSP violation（`e2e/csp.mjs`）
 

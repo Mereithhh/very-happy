@@ -12,9 +12,11 @@
  * the cache deletes the persistent outbox (B-814), so dropping them silently
  * would lose the user's text.
  *
- * What counts as confirmed is the latch's rule, not this module's: a 401 on
- * the current token from our own server. Network errors and 5xx never trip it
- * (server: `auth_unavailable` 503 when the token store cannot be read).
+ * What counts as confirmed: the latch (a 401 on the current token from our
+ * own server, or the socket handshake rejecting it) AND a second 401 from
+ * `GET /v1/account/profile` (authLatch `confirmAuthExpired`). Network errors
+ * and 5xx never trip it (server: `auth_unavailable` 503 when the token store
+ * cannot be read).
  *
  * Pure module (no React, no app imports).
  */
@@ -42,6 +44,18 @@ export function unsentMessagesClipboardText(unsent: readonly UnsentMessage[]): s
 
 /** The `localStorage` key holding the account token + secret (tokenStorage.ts, web). */
 export const AUTH_CREDENTIALS_KEY = 'auth_credentials';
+
+/** The account token stored right now (null when signed out); never throws. */
+export function storedAccountToken(): string | null {
+    try {
+        const raw = localStorage.getItem(AUTH_CREDENTIALS_KEY);
+        if (!raw) return null;
+        const token = (JSON.parse(raw) as { token?: unknown }).token;
+        return typeof token === 'string' ? token : null;
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Another tab removed the credentials (its sign-out or its own expiry wipe):

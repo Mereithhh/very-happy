@@ -18,6 +18,11 @@
  *   C. 503 / 5xx / network errors on every API call → no dialog, nothing wiped,
  *      the app works again once the server answers.
  *   D. another tab signs out → this tab drops its account too.
+ *   E. the socket handshake rejects the token (REST unreachable) → latch on
+ *      the socket path → confirmed by /v1/account/profile → wiped.
+ *   C2/C3 (B-824 §6.2 confirmation): a 401 the server does not stand by
+ *      (token still valid) wipes nothing; with the confirmation unanswered the
+ *      page waits and asks again when back online.
  * Exit code 1 on any failed check.
  */
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
@@ -251,6 +256,38 @@ try {
             await page.unroute(/\/v[123]\//, handler);
         }
         check((await touchServer(page)) === 200, 'the server answers again: the same token works');
+
+        step('C2. a 401 the server does not confirm (token still valid) is a misfire');
+        await page.route('**/v1/sessions', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"Invalid token"}' }));
+        check((await touchServer(page)) === 401, 'a forged 401 trips the latch');
+        await waitFor(async () => (await page.locator('.vh-auth-expired[data-phase="valid"]').count()) > 0, 10_000, 'misfire dialog');
+        let state = await localState(page);
+        check(state.credentials && state.caches.length === 1, 'confirmed valid: key and cache kept', JSON.stringify(state));
+        await shot(page, 'C2-misfire');
+        await context.close();
+    }
+
+    step('C3. the confirmation gets no answer: wait, ask again when back online');
+    {
+        const context = await newContext();
+        const page = await context.newPage();
+        await signUp(page);
+        const sessionId = await createSession(page);
+        await page.goto(`${BASE}/session/${sessionId}`);
+        await page.locator('textarea.ci-textarea').waitFor({ timeout: 30_000 });
+        await waitFor(async () => (await localState(page)).caches.length === 1, 15_000, 'cache opened');
+        check((await revokeOnServer(page)) === 200, 'token revoked on the server');
+        const profileDown = (route) => route.abort('internetdisconnected');
+        await page.route('**/v1/account/profile', profileDown);
+        await touchServer(page);
+        await waitFor(async () => (await page.locator('.vh-auth-expired[data-phase="unknown"]').count()) > 0, 15_000, 'unconfirmed dialog');
+        let state = await localState(page);
+        check(state.credentials && state.caches.length === 1, 'unconfirmed: nothing wiped yet', JSON.stringify(state));
+        await shot(page, 'C3-unconfirmed');
+        await page.unroute('**/v1/account/profile', profileDown);
+        await page.evaluate(() => window.dispatchEvent(new Event('online')));
+        state = await waitFor(async () => { const s = await localState(page); return !s.credentials && s.anonymous ? s : null; }, 20_000, 'signed out after the online edge');
+        check(state.caches.length === 0, 'back online: confirmed 401 → key and caches gone', JSON.stringify(state));
         await context.close();
     }
 
@@ -267,6 +304,28 @@ try {
         const state = await waitFor(async () => { const s = await localState(second); return !s.credentials && s.anonymous ? s : null; }, 20_000, 'other tab signed out',
             async () => ({ url: second.url(), ...(await localState(second)), text: await second.evaluate(() => document.body.innerText.slice(0, 160)) }));
         check(state.caches.length === 0, 'the other tab dropped the account too (anonymous page, no cache)', JSON.stringify(state));
+        await context.close();
+    }
+    // ── E ────────────────────────────────────────────────────────────
+    step('E. the socket handshake rejects the token');
+    {
+        const context = await newContext();
+        const page = await context.newPage();
+        const logs = [];
+        page.on('console', (m) => logs.push(m.text()));
+        await signUp(page);
+        const sessionId = await createSession(page);
+        await page.goto(`${BASE}/session/${sessionId}`);
+        await page.locator('textarea.ci-textarea').waitFor({ timeout: 30_000 });
+        await waitFor(async () => (await localState(page)).caches.length === 1, 15_000, 'cache opened');
+        check((await revokeOnServer(page)) === 200, 'token revoked on the server');
+        // REST unreachable (no 401 from there) — only the socket can tell.
+        await page.route(/\/v[123]\/(?!account\/profile)/, (route) => (route.request().resourceType() === 'websocket' ? route.continue() : route.abort('connectionreset')));
+        await page.evaluate(() => import('/src/sync/apiSocket.ts').then(({ apiSocket }) => apiSocket['socket']?.io?.engine?.close()));
+        const state = await waitFor(async () => { const s = await localState(page); return !s.credentials && s.anonymous ? s : null; }, 30_000, 'signed out via the socket',
+            async () => ({ ...(await localState(page)), logs: logs.filter((l) => l.includes('[auth]')) }));
+        check(logs.some((l) => l.includes('401 on socket')), 'the latch tripped on the socket handshake', logs.filter((l) => l.includes('[auth]')).join(' | '));
+        check(state.caches.length === 0, 'key and caches gone', JSON.stringify(state));
         await context.close();
     }
 } catch (error) {

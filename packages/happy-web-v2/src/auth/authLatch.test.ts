@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     AuthFailedError,
     assertNotAuthFailure,
+    confirmAuthExpired,
+    isSocketTokenRejection,
     getAuthLatch,
     installAxiosAuthGuard,
     isAuthFailure,
@@ -113,5 +115,23 @@ describe('isAuthFailure / assertNotAuthFailure', () => {
         expect(() => assertNotAuthFailure({ status: 401 }, 'x')).toThrow(AuthFailedError);
         expect(() => assertNotAuthFailure({ status: 403 }, 'x')).toThrow(AuthFailedError);
         expect(() => assertNotAuthFailure({ status: 500 }, 'x')).not.toThrow();
+    });
+});
+
+describe('B-825 / B-824 §6.2: confirm before wiping', () => {
+    it('only a second 401 is "expired"; 2xx is a misfire; everything else is unknown', async () => {
+        expect(await confirmAuthExpired(async () => ({ status: 401 }))).toBe('expired');
+        expect(await confirmAuthExpired(async () => ({ status: 200 }))).toBe('valid');
+        for (const status of [403, 429, 500, 502, 503]) expect(await confirmAuthExpired(async () => ({ status }))).toBe('unknown');
+        expect(await confirmAuthExpired(async () => { throw new TypeError('Failed to fetch'); })).toBe('unknown');
+        expect(await confirmAuthExpired(async () => { throw new DOMException('aborted', 'AbortError'); })).toBe('unknown');
+    });
+
+    it('recognises the socket handshake rejecting the token, nothing else', () => {
+        expect(isSocketTokenRejection(new Error('Invalid authentication token'))).toBe(true);
+        for (const message of ['Authentication unavailable', 'Missing authentication token', 'xhr poll error', 'Socket connection limit reached']) {
+            expect(isSocketTokenRejection(new Error(message))).toBe(false);
+        }
+        expect(isSocketTokenRejection(null)).toBe(false);
     });
 });

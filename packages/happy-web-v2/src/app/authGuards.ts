@@ -4,27 +4,20 @@
  */
 import axios from 'axios';
 import {
+    confirmAuthExpired,
+    getUnguardedFetch,
     installAxiosAuthGuard,
     installFetchAuthGuard,
+    type AuthExpiryVerdict,
     subscribeAuthLatch,
     tripAuthLatch,
     type AuthGuardDeps,
 } from '@/auth/authLatch';
-import { AUTH_CREDENTIALS_KEY, isCredentialsRemovedEvent } from '@/auth/authExpiry';
+import { isCredentialsRemovedEvent, storedAccountToken } from '@/auth/authExpiry';
 import { getServerUrl } from '@/sync/serverConfig';
 import { apiSocket } from '@/sync/apiSocket';
 
-
-function currentToken(): string | null {
-    try {
-        const raw = localStorage.getItem(AUTH_CREDENTIALS_KEY);
-        if (!raw) return null;
-        const token = (JSON.parse(raw) as { token?: unknown }).token;
-        return typeof token === 'string' ? token : null;
-    } catch {
-        return null;
-    }
-}
+const currentToken = storedAccountToken;
 
 function isServerUrl(url: string): boolean {
     try {
@@ -54,6 +47,30 @@ export function installAuthGuards(): void {
     window.addEventListener('storage', (event) => {
         if (currentToken() === null && isCredentialsRemovedEvent(event)) {
             tripAuthLatch({ status: 401, path: 'signed-out-in-another-tab' });
+        }
+    });
+}
+
+const CONFIRM_TIMEOUT_MS = 5_000;
+
+/**
+ * B-825 / B-824 §6.2: ask the server once more, past the latch guard, whether
+ * the current token is dead. No token left (another tab signed out) = expired.
+ */
+export function confirmCurrentTokenExpired(): Promise<AuthExpiryVerdict> {
+    const token = currentToken();
+    if (!token) return Promise.resolve('expired');
+    return confirmAuthExpired(async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), CONFIRM_TIMEOUT_MS);
+        try {
+            return await getUnguardedFetch()(`${getServerUrl()}/v1/account/profile`, {
+                headers: { Authorization: `Bearer ${token}` },
+                cache: 'no-store',
+                signal: controller.signal,
+            });
+        } finally {
+            clearTimeout(timer);
         }
     });
 }

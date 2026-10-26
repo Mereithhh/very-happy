@@ -5374,6 +5374,13 @@ export const en = {
         unsentNoText: 'Content not shown (an attachment, or readable only after signing in)',
         copyUnsent: 'Copy unsent messages',
         discardAndSignIn: 'Remove local data and sign in',
+        reload: 'Reload page',
+        checkingTitle: 'Checking your sign-in…',
+        checkingBody: 'The server rejected a request from this browser. Confirming whether the sign-in is still valid before anything on this device changes.',
+        unconfirmedTitle: 'Cannot reach the server',
+        unconfirmedBody: 'The sign-in could not be confirmed. This is retried automatically when the connection is back; nothing on this device is removed until then.',
+        misfireTitle: 'Connection problem',
+        misfireBody: 'The server refused a request, but this browser is still signed in. Reload the page to continue.',
     },
     emailLink: {
         title: 'Link email sign-in',

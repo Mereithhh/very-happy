@@ -5215,6 +5215,13 @@ export const zhHans: TranslationStructure = {
         unsentNoText: '无法显示内容（附件，或需登录后才能解密）',
         copyUnsent: '复制未发送的消息',
         discardAndSignIn: '清除本机数据并重新登录',
+        reload: '重新加载页面',
+        checkingTitle: '正在确认登录状态…',
+        checkingBody: '服务器拒绝了此浏览器的一次请求，正在确认登录是否仍然有效。确认之前不会改动本机数据。',
+        unconfirmedTitle: '暂时连不上服务器',
+        unconfirmedBody: '无法确认登录状态。网络恢复后会自动再确认，在此之前不会删除本机数据。',
+        misfireTitle: '连接异常',
+        misfireBody: '服务器拒绝了一次请求，但此浏览器的登录仍然有效。重新加载页面即可继续。',
     },
     emailLink: {
         title: '关联邮箱登录',
