@@ -649,6 +649,7 @@ model AgentTeam {
     requests TeamRequest[]
     operations TeamOperation[]
     messages TeamMessage[]
+    archive TeamArchive[]
     accountId String
     machineId String
     version Int @default(0)
@@ -703,6 +704,17 @@ model TeamMessage {
     state Json
     createdAt DateTime @default(now())
     @@index([teamId])
+}
+
+/// B-822: records compaction moved out of a team's live state (`kind`: task | message | operation). Never loaded with the team.
+model TeamArchive {
+    teamId String
+    team AgentTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+    kind String
+    id String
+    state Json
+    archivedAt DateTime @default(now())
+    @@id([teamId, kind, id])
 }
 
 //

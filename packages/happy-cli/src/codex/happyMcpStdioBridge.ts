@@ -168,7 +168,8 @@ async function main() {
   };
   registerTeamsTools(server, undefined, {
     initialize: (input) => forwardTeam(input.teamId ? 'team_join' : 'team_create', input),
-    inspect: () => forwardTeam('team_inspect', {}),
+    // B-822: the raw view; the bridge's own team_inspect applies taskId / full / the compact view.
+    inspect: () => forwardTeam('team_inspect', { full: true }),
     action: (action, requestId) => {
       const { type, ...args } = action;
       return forwardTeam(`team_${String(type).replaceAll('-', '_')}`, { ...args, requestId });
