@@ -118,8 +118,6 @@ describe('server-owned session lifecycle routes', () => {
     it('projects archivedAt + seq on the list and the by-id read; by-id is account-scoped', async () => {
         const app = await createApp();
         dbMock.session.findMany.mockImplementationOnce(async () => [{ ...row }]);
-        // sessionListRows: the unarchived rows outside the window (none here).
-        dbMock.session.findMany.mockImplementationOnce(async () => []);
         const list = await app.inject({ method: 'GET', url: '/v1/sessions' });
         expect(list.json().sessions[0]).toMatchObject({ id: row.id, seq: 42, active: true, archivedAt: null, activeAt: 0 });
 

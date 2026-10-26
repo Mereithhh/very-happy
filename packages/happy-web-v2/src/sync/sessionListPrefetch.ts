@@ -47,11 +47,14 @@ export interface SessionListResponse {
 
 /**
  * The one way to ask for the session list (prefetch and fetchSessions alike;
- * B-824 swaps the URL for its incremental read here).
+ * B-824 swaps the URL for its incremental read here). `unarchived` (Owner
+ * 10-27): every unarchived row instead of the 150 newest — read once per page
+ * load after the first list (sync.ts fetchUnarchivedSessions); an old server
+ * ignores the parameter and answers with the window, which merges harmlessly.
  */
-export function sessionListRequest(serverUrl: string, token: string): { url: string; headers: Record<string, string> } {
+export function sessionListRequest(serverUrl: string, token: string, scope: 'recent' | 'unarchived' = 'recent'): { url: string; headers: Record<string, string> } {
     return {
-        url: `${serverUrl}/v1/sessions`,
+        url: scope === 'unarchived' ? `${serverUrl}/v1/sessions?scope=unarchived` : `${serverUrl}/v1/sessions`,
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',

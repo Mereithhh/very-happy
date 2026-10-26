@@ -12,9 +12,10 @@ import type { Fastify } from '@/app/api/types';
  * Owner 10-27 (sidebar sessions drop, then come back): on a big account the
  * live sessions outside the 150 newest rows were missing from every fresh
  * page load's list. Through the real `GET /v1/sessions` route on PGlite:
- * live rows older than a window full of archived ones are still listed.
+ * `scope=unarchived` lists live rows older than a window full of archived
+ * ones; the default list is unchanged.
  */
-describe('GET /v1/sessions lists every unarchived row (pglite)', () => {
+describe('GET /v1/sessions: the window, and scope=unarchived (pglite)', () => {
     const parent = join(homedir(), 'code/github/skills/tmp/session-list-tests');
     mkdirSync(parent, { recursive: true });
     const root = mkdtempSync(join(parent, 'db-'));
@@ -59,25 +60,31 @@ describe('GET /v1/sessions lists every unarchived row (pglite)', () => {
     }, 120000);
     afterAll(async () => { await app?.close(); await db?.$disconnect(); rmSync(root, { recursive: true, force: true }); });
 
-    it('returns the 150 newest rows plus every unarchived row outside them, once each', async () => {
+    it('the default list stays the 150 newest rows (old Web / CLI unchanged)', async () => {
         const res = await app.inject({ method: 'GET', url: '/v1/sessions' });
         expect(res.statusCode).toBe(200);
         const ids: string[] = res.json().sessions.map((s: { id: string }) => s.id);
-        expect(new Set(ids).size).toBe(ids.length);
-        // Window: 20 live + the 130 newest archived.
+        expect(ids.length).toBe(150);
         for (const id of [...liveNew, ...archived.slice(-130)]) expect(ids).toContain(id);
-        // Outside the window: archived history stays windowed, live rows do not.
-        for (const id of liveOld) expect(ids).toContain(id);
-        for (const id of archived.slice(0, 40)) expect(ids).not.toContain(id);
-        expect(ids).not.toContain(otherLive);
-        expect(ids.length).toBe(150 + 40);
+        for (const id of liveOld) expect(ids).not.toContain(id);
     });
 
-    it('caps the unarchived rows outside the window, newest first', async () => {
+    it('scope=unarchived returns every unarchived row — the ones outside the window too — and nothing else', async () => {
+        const res = await app.inject({ method: 'GET', url: '/v1/sessions?scope=unarchived' });
+        expect(res.statusCode).toBe(200);
+        const ids: string[] = res.json().sessions.map((s: { id: string }) => s.id);
+        expect(new Set(ids).size).toBe(ids.length);
+        expect([...ids].sort()).toEqual([...liveOld, ...liveNew].sort());
+        expect(ids).not.toContain(otherLive);
+        expect((await app.inject({ method: 'GET', url: '/v1/sessions?scope=bogus' })).statusCode).toBe(400);
+    });
+
+    it('scope=unarchived past the cap: running ones first, then newest', async () => {
         const { sessionListRows } = await import('./sessionListRows');
-        const rows = await sessionListRows(db, accountId, { id: true }, { recent: 150, unarchived: 10 });
-        const ids = rows.map((r) => r.id);
-        expect(ids.length).toBe(160);
-        expect(ids.slice(150)).toEqual(liveOld.slice(-10).reverse());
+        // The two oldest live rows are running; the rest went offline (unarchived, active=false).
+        // Raw SQL: a Prisma update would restamp updatedAt.
+        for (const id of [...liveOld.slice(2), ...liveNew]) await db.$executeRaw`UPDATE "Session" SET active = false WHERE id = ${id}`;
+        const rows = await sessionListRows(db, accountId, { id: true }, 'unarchived', { unarchived: 10 });
+        expect(rows.map((r) => r.id)).toEqual([liveOld[1], liveOld[0], ...liveNew.slice(-8).reverse()]);
     });
 });

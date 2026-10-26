@@ -60,7 +60,7 @@
 
 | 事实 | 位置 |
 |---|---|
-| `/v1/sessions`：本账号按 `updatedAt desc` 取 150 行，加上窗口外全部未归档的行（≤500，10-27 侧栏变少修复，`S/app/session/sessionListRows.ts`），再加共享给本账号的行；投影含 `id, seq, createdAt, updatedAt, active, activeAt, archivedAt, metadata, metadataVersion, agentState, agentStateVersion, dataEncryptionKey(base64)`，共享行另有 `share` 且 metadata 已脱敏重加密 | `S/app/api/routes/sessionRoutes.ts:19-60,81-108` |
+| `/v1/sessions`：本账号按 `updatedAt desc` 取 150 行 + 共享给本账号的行（`?scope=unarchived` 改为本账号全部未归档行，≤500，active 优先再按 `updatedAt`，Web 每次页面加载在首个列表后读一次，见 10-27 侧栏先少后多修复 `S/app/session/sessionListRows.ts`）；投影含 `id, seq, createdAt, updatedAt, active, activeAt, archivedAt, metadata, metadataVersion, agentState, agentStateVersion, dataEncryptionKey(base64)`，共享行另有 `share` 且 metadata 已脱敏重加密 | `S/app/api/routes/sessionRoutes.ts:19-60,81-108` |
 | `/v1/sessions/:id`：与列表同一投影，grantee 走 grant | `sessionRoutes.ts:110-128` |
 | `/v2/sessions?changedSince=`：按 `id desc` 分页（≤200），只按 `updatedAt > changedSince` 过滤；**不含 `archivedAt`、不含共享行、看不到删除** | `sessionRoutes.ts:182-273` |
 | `Session.updatedAt` 是 Prisma `@updatedAt`：seq 分配（每条消息）、metadata/agentState 写入、归档/反归档、活跃度更新都走 Prisma `update/updateMany`，都会刷新它；唯一的 raw `UPDATE "Session"` 只写 `lastHappyClient` | `packages/happy-server/prisma/schema.prisma:246-264`；`S/storage/seq.ts:36-40`；`sessionRoutes.ts:429,477,502`；`S/app/presence/sessionCache.ts:218`；`S/app/api/socket/clientVersion.ts:56` |
@@ -103,7 +103,7 @@
 - `accountHash` 与消息缓存同一算法（`sha256(accountId)` 前 16 位）。打开时 `meta.accountHash` 不等于当前账号就删库。
 - `lastReconciledAt`：最近一次**成功对账**（§4.3 成员摘要全部一致）的本机时间，用于 30 天作废（§6.3）。
 - `cursor`：最近一次对账响应给的游标（§4.1），同时镜像到 `localStorage['vh.sync.listCursor.<accountHash>']`，让 B-823 Q4 的预取在 IDB 打开前就能带上（§5.1）。游标只是时间戳，不敏感；清理时一起删。
-- 容量：`rows` 只镜像当前列表窗口（本账号 ≤150 + 窗口外未归档 ≤500 + 共享行），上限 800 行，超过时按 `updatedAt` 从旧到新删。大账号约 1.8MB（Part B 后约 0.2MB），不计入消息缓存的 40MB。
+- 容量：`rows` 只镜像当前列表窗口（本账号 ≤150 + 共享行），上限 400 行，超过时按 `updatedAt` 从旧到新删。大账号约 1.8MB（Part B 后约 0.2MB），不计入消息缓存的 40MB。
 - 写入：对账结果合并后，在一个 readwrite 事务里批量 put/delete，并在同一事务更新 `meta`。写入 2s 超时只跳过这一次（下次对账重写），连续 3 次才本页禁用快照写，规则同 SYNC §5.4.2 r8。
 
 ### 3.3 wrapped DEK 的存法与理由
@@ -139,7 +139,7 @@
   cursor: string }          // 下次的 since
 ```
 
-- **窗口定义与 `/v1/sessions` 完全相同**：本账号按 `updatedAt desc` 取 150 行，加上窗口外全部未归档的行（≤500，`sessionListRows`），再加共享给本账号的行。未归档集合必须完整：只取 150 行时，大账号的活会话会被挤出窗口，每次新页面加载都先少后多（10-27 Owner 反馈）。所以快照、增量与旧接口对同一时刻给出同一集合。
+- **窗口定义与 `/v1/sessions` 完全相同**：本账号按 `updatedAt desc` 取 150 行，加上共享给本账号的行。注意（10-27）：大账号的活会话会掉出这 150 行（Owner 381 个未归档里只有 38 个在窗口内），所以 Web 每次页面加载另读一次 `?scope=unarchived`；快照落地时应把这部分一并存下，否则快照首屏仍会先少后多。所以快照、增量与旧接口对同一时刻给出同一集合。
 - **`full=false` 的变化行**：`members` 里 `updatedAt > since − 5s` 的行（5s 重叠窗口，吸收「`updatedAt` 由应用时钟写入、提交稍晚」造成的乱序）。实现：先查一次窗口的 `id, updatedAt`（只取两列，走 `accountId + updatedAt`；索引是否存在由实现者核对，缺失时补索引属于 server 迁移，单独评审），再只对变化的 id 取完整投影；共享行只对变化的行做脱敏重加密（`redactedMetadataFor` 要解密，是共享行的主要开销）。
 - **`cursor`**：`String(max(members.updatedAt))`，不透明，客户端只回传不解析。`since` 不是数字、或比当前时间新超过 1 天，服务端回 `full=true`。
 - **为什么不复用 `/v2/sessions?changedSince`**：它按 id 分页、上限 200、没有 `archivedAt` 和共享行、看不到删除和撤销（§2），既不能替代 `/v1/sessions`，也无法证明快照完整。
@@ -154,7 +154,7 @@
 1. **版本不回退**：同一会话，`metadataVersion`、`agentStateVersion`、`seq` 各自取较大者对应的值，不能被更旧的行覆盖。实时推送可能先于对账响应到达，对账行不能把推送已经更新的字段改旧。（实现者先核对 `applySessions` 现状是否已经保证；没有就在合并纯函数里补上，并写表驱动测试。）
 2. **成员收敛**：`full=true` 时，`rows` 里不在本次 `sessions` 中的行删除；`full=false` 时，不在 `members` 里的行删除。被删的行：
    - 带 `share` 的（撤销共享或会话被删）：同一事务删除该行（含 wrapped DEK），并调用消息缓存的「按会话删除」，删掉它的消息缓存和 outbox 行（访问权已失去，留着没有意义）。内存 store 同时移除该会话。
-   - 本账号的：只从快照删除（可能只是归档后掉出 150 窗口，也可能被删除；未归档的行不会掉出窗口）。内存 store 维持今天的行为（今天全量拉取也不移除 store 里的旧会话）。消息缓存不立即删，由 LRU 淘汰；用户打开它时，SYNC §5.4.2 的 `not_found` 路径会删。这与 SYNC「不在列表里 ≠ 已删除」一致。
+   - 本账号的：只从快照删除（可能只是掉出 150 窗口，也可能被删除）。内存 store 维持今天的行为（今天全量拉取也不移除 store 里的旧会话）。消息缓存不立即删，由 LRU 淘汰；用户打开它时，SYNC §5.4.2 的 `not_found` 路径会删。这与 SYNC「不在列表里 ≠ 已删除」一致。
 
 ### 4.3 成员摘要校验（正确性的来源）
 

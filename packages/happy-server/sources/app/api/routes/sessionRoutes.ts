@@ -81,11 +81,16 @@ export function sessionRoutes(app: Fastify) {
     // Sessions API
     app.get('/v1/sessions', {
         preHandler: app.authenticate,
+        schema: {
+            querystring: z.object({
+                // Owner 10-27: `unarchived` = every unarchived row instead of the 150 newest (sessionListRows.ts).
+                scope: z.enum(['recent', 'unarchived']).optional(),
+            }).optional(),
+        },
     }, async (request, reply) => {
         const userId = request.userId;
 
-        // The 150 newest rows plus every unarchived one (sessionListRows.ts).
-        const sessions = await sessionListRows(db, userId, sessionProjection);
+        const sessions = await sessionListRows(db, userId, sessionProjection, request.query?.scope ?? 'recent');
 
         // B-619: sessions shared WITH this account ride along in the same list,
         // keyed for the grantee and with machine-private metadata removed.

@@ -32,11 +32,14 @@
  *              61 → 21 → 31; the server listed only the 150 newest rows).
  * Exit code 1 on any failed check.
  */
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { request as httpRequest } from 'node:http';
+import { createServer as createTcpServer, connect as tcpConnect } from 'node:net';
 import { chromium } from 'playwright-core';
 
 const args = process.argv.slice(2);
@@ -47,9 +50,30 @@ const DATA_DIR = opt('data-dir', null);
 const PORT = opt('port', '3199');
 const DEVICE = opt('device', 'desktop');
 const MODE = opt('mode', 'subscribe');
-const LIVE_OLD = Number(opt('live-old', '40'));
-const ARCHIVED = Number(opt('archived', '170'));
-const LIVE_NEW = Number(opt('live-new', '20'));
+// --shape owner: the biggest production account (10-27: 2832 rows, 381 unarchived,
+// 343 of them outside the 150 newest) — ARCHIVED_OLD light archived rows first,
+// and every row the list returns carries real-weight metadata (~12KB, B-818 FAT).
+const SHAPE = opt('shape', 'small');
+const OWNER = SHAPE === 'owner';
+const ARCHIVED_OLD = Number(opt('archived-old', OWNER ? '2307' : '0'));
+const LIVE_OLD = Number(opt('live-old', OWNER ? '343' : '40'));
+const ARCHIVED = Number(opt('archived', OWNER ? '112' : '170'));
+const LIVE_NEW = Number(opt('live-new', OWNER ? '38' : '20'));
+// --save-auth <file>: write the seeded account's credentials + expected count;
+// --reuse-auth <file>: skip sign-up, seeding and the long-lived-tab scenarios on an
+// already seeded --data-dir and run only LIST WEIGHT + COLD (server-side A/B on one dataset).
+const SAVE_AUTH = opt('save-auth', null);
+const REUSE_AUTH = opt('reuse-auth', null);
+// --dist fat (default for owner): every listed row ~12KB of ciphertext (B-818 FAT_SLOW).
+// --dist real: production's distribution (10-27, the Owner's 381 unarchived rows:
+// mean 3.6KB, p90 11.6KB, max 16.2KB) — 9 in 10 rows 2–4KB, 1 in 10 11–16KB.
+const DIST = opt('dist', OWNER ? 'fat' : 'none');
+const FAT_PAD = DIST === 'none' ? 0 : 8_600; // plaintext chars → ~12KB base64 ciphertext per row
+// WEAK: a returning visit over Lighthouse slow 4G (B-818: 1.6Mbps down, 150ms RTT).
+const WEAK_DOWN_BPS = 200_000;
+const WEAK_RTT_MS = 150;
+const WEAK_LIMIT_MS = 15_000;
+const WEAK_PROXY_PORT = Number(opt('weak-proxy-port', String(Number(new URL(opt('base', 'http://127.0.0.1:8799')).port) + 2))); // B-818 FAT_LIMIT_MS: the list is ready ≤ 15s
 if (OUT) mkdirSync(OUT, { recursive: true });
 if (!DATA_DIR) {
     console.error('--data-dir <migrated standalone data dir> is required');
@@ -60,7 +84,7 @@ let server = null;
 async function startServer() {
     server = spawn(resolve(serverDir, '../../node_modules/.bin/tsx'), ['--env-file=.env.dev', './sources/standalone.ts', 'serve'], {
         cwd: serverDir,
-        env: { ...process.env, DATA_DIR, PORT, METRICS_PORT: String(Number(PORT) + 6000), SIGNUP_MODE: 'open', ...(MODE === 'legacy' ? { SYNC_SUBSCRIBE_DISABLED: '1' } : {}) },
+        env: { ...process.env, DATA_DIR, PORT, METRICS_PORT: String(Number(PORT) + 6000), SIGNUP_MODE: 'open', MAX_SESSIONS_PER_ACCOUNT: '0', MAX_SESSION_STATE_WRITE_UNITS_PER_ACCOUNT_PER_MINUTE: '1000000', ...(MODE === 'legacy' ? { SYNC_SUBSCRIBE_DISABLED: '1' } : {}) },
         stdio: 'ignore',
     });
     for (let i = 0; i < 150; i++) {
@@ -101,6 +125,59 @@ function check(ok, what, detail = '') {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * slow 4G in front of Vite (which proxies the API and the socket): while
+ * throttled, every server→browser byte shares one WEAK_DOWN_BPS downlink and
+ * every chunk in either direction waits WEAK_RTT_MS / 2. Headers arrive as
+ * soon as they are sent; a big body streams (B-818's idle deadline applies).
+ * Only API / socket.io traffic is throttled (a connection's mode follows its
+ * last request line): the app's modules come from the SW cache in production,
+ * and Vite dev would add an RTT per source module.
+ */
+const weakProxy = (() => {
+    let on = false;
+    let linkFreeAt = 0;
+    const target = new URL(BASE);
+    const relay = (from, to, down, conn) => {
+        let queue = Promise.resolve();
+        from.on('data', (chunk) => {
+            if (!down) {
+                const line = /^[A-Z]+ (\S+) HTTP/.exec(chunk.subarray(0, 512).toString('latin1'));
+                if (line) conn.api = /^\/(v\d+|socket\.io)\//.test(line[1]);
+            }
+            if (!on || !conn.api) { to.write(chunk); return; }
+            from.pause();
+            queue = queue.then(async () => {
+                let delay = WEAK_RTT_MS / 2;
+                if (down) {
+                    const now = Date.now();
+                    linkFreeAt = Math.max(linkFreeAt, now) + (chunk.length / WEAK_DOWN_BPS) * 1000;
+                    delay = Math.max(delay, linkFreeAt - now);
+                }
+                await sleep(delay);
+                if (!to.destroyed) to.write(chunk);
+                from.resume();
+            });
+        });
+        // Close only once the queued (delayed) chunks are out — a destroy here truncates the body.
+        const finish = () => { queue.then(() => { if (!to.destroyed) to.end(); }); };
+        from.on('end', finish);
+        from.on('close', finish);
+        from.on('error', () => to.destroy());
+    };
+    const server = createTcpServer((client) => {
+        const upstream = tcpConnect(Number(target.port), target.hostname);
+        const conn = { api: false };
+        relay(client, upstream, false, conn);
+        relay(upstream, client, true, conn);
+    });
+    return {
+        listen: () => new Promise((r) => server.listen(WEAK_PROXY_PORT, '127.0.0.1', r)),
+        close: () => new Promise((r) => server.close(() => r())),
+        throttle: (value) => { on = value; linkFreeAt = 0; },
+    };
+})();
+
 /** In-page: one sample per animation frame of the sidebar's session-row count. */
 const SAMPLER = () => {
     const w = window;
@@ -138,6 +215,7 @@ await context.addInitScript(() => { try { localStorage.setItem('vh-pwa-install-n
 await context.addInitScript(SAMPLER);
 const page = await context.newPage();
 page.on('pageerror', (e) => console.log('pageerror', e.message));
+if (process.env.VH_E2E_DEBUG) { page.on('response', (r) => { if (r.status() >= 400) console.log('HTTP', r.status(), r.request().method(), r.url()); }); page.on('framenavigated', (f) => { if (f === page.mainFrame()) console.log('NAV', f.url()); }); }
 
 const samples = () => page.evaluate(() => window.__sbSamples ?? []);
 const resetSamples = () => page.evaluate(() => { window.__sbSamples = []; });
@@ -190,7 +268,9 @@ async function signUp(p) {
     await p.goto(`${BASE}/signup`);
     const toggle = p.locator('.auth-method-toggle');
     await p.locator('input[autocomplete="username"]').or(toggle).first().waitFor({ timeout: 60_000 });
-    if (!(await p.locator('input[autocomplete="username"]').isVisible())) await toggle.click();
+    // The toggle can render a moment before the form it would reveal; clicking it then hides the form (sync-resume.mjs).
+    const usernameInput = p.locator('input[autocomplete="username"]');
+    if (!(await usernameInput.isVisible())) await usernameInput.waitFor({ timeout: 1_500 }).catch(() => toggle.click());
     await p.locator('input[autocomplete="username"]').fill(username);
     const pw = `pw-${randomBytes(6).toString('hex')}`;
     const pws = p.locator('input[autocomplete="new-password"]');
@@ -202,8 +282,8 @@ async function signUp(p) {
 }
 
 /** Create `n` sessions in-page; `archive` archives each right after it is created. */
-function createSessions(p, prefix, n, archive = false) {
-    return p.evaluate(async ({ prefix, n, archive }) => {
+function createSessions(p, prefix, n, archive = false, pad = 0) {
+    return p.evaluate(async ({ prefix, n, archive, pad, dist }) => {
         const { sync } = await import('/src/sync/sync.ts');
         const { apiSocket } = await import('/src/sync/apiSocket.ts');
         const { encodeBase64 } = await import('/src/encryption/base64.ts');
@@ -211,19 +291,32 @@ function createSessions(p, prefix, n, archive = false) {
         const ids = [];
         const one = async (i) => {
             const enc = await sync.encryption.openEncryption(null);
-            const [metadata] = await enc.encrypt([{ path: `/tmp/sbm/${prefix}-${i}`, host: 'e2e', flavor: 'claude', summary: { text: `${prefix} ${i}`, updatedAt: Date.now() } }]);
+            // The weight of a real row: tools / slashCommands / skills / models lists.
+            // dist real: a per-row size from a fixed sequence (repeatable runs); ciphertext ≈ 4/3 × plaintext.
+            const rowPad = !pad ? 0 : dist !== 'real' ? pad
+                : i % 10 === 7 ? Math.round((11_000 + ((i * 2654435761) % 5_000)) * 0.75) - 250
+                : Math.round((2_000 + ((i * 40503) % 2_000)) * 0.75) - 250;
+            const tools = rowPad > 0 ? Array.from({ length: 86 }, (_, k) => `t${k}_${i}_${'x'.repeat(Math.max(0, Math.floor(rowPad / 86) - 10))}`) : undefined;
+            const [metadata] = await enc.encrypt([{ path: `/tmp/sbm/${prefix}-${i}`, host: 'e2e', flavor: 'claude', summary: { text: `${prefix} ${i}`, updatedAt: Date.now() }, ...(tools ? { tools } : {}) }]);
             const res = await apiSocket.request('/v1/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tag: crypto.randomUUID(), metadata: encodeBase64(metadata, 'base64'), agentState: null, dataEncryptionKey: null }),
             });
+            if (!res.ok) throw new Error(`seed POST ${res.status}`);
             const id = (await res.json()).session.id;
             if (archive) await apiSocket.request(`/v1/sessions/${id}/archive`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
             ids.push(id);
         };
-        for (let i = 0; i < n; i += 8) await Promise.all(Array.from({ length: Math.min(8, n - i) }, (_, j) => one(i + j)));
+        // A loaded machine drops the odd request (Failed to fetch): retry a row, never skip it.
+        const retried = async (i) => {
+            for (let attempt = 1; ; attempt++) {
+                try { return await one(i); } catch (error) { if (attempt >= 5) throw error; await new Promise((r) => setTimeout(r, 500 * attempt)); }
+            }
+        };
+        for (let i = 0; i < n; i += 16) await Promise.all(Array.from({ length: Math.min(16, n - i) }, (_, j) => retried(i + j)));
         return ids;
-    }, { prefix, n, archive });
+    }, { prefix, n, archive, pad, dist: DIST });
 }
 const setHidden = (p, hidden) => p.evaluate((hidden) => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (hidden ? 'hidden' : 'visible') });
@@ -240,15 +333,36 @@ async function dismissDialogs() {
 }
 
 try {
+    if (REUSE_AUTH) {
+        // The seeded rows sat past the server's 10-minute presence timeout, whose
+        // write also restamps updatedAt (every live row jumps into the window).
+        // Put the fixture back before the server opens the DB: unarchived rows
+        // running (the sidebar's list view shows active || hibernated), updatedAt
+        // back in seeding order. No other column is touched.
+        const { PGlite } = createRequire(join(serverDir, 'package.json'))('@electric-sql/pglite');
+        const pg = new PGlite(join(DATA_DIR, 'pglite'));
+        await pg.query(`UPDATE "Session" SET "updatedAt" = COALESCE("archivedAt", "createdAt"), active = ("archivedAt" IS NULL), "lastActiveAt" = CASE WHEN "archivedAt" IS NULL THEN now() ELSE "lastActiveAt" END`);
+        await pg.close();
+    }
     await startServer();
+    await weakProxy.listen();
+    let expected;
+    let bearer;
+    let auth;
+    if (REUSE_AUTH) {
+        ({ auth, expected } = JSON.parse(readFileSync(REUSE_AUTH, 'utf8')));
+        bearer = JSON.parse(auth).token;
+    } else {
     step(`sign up (${DEVICE}, ${MODE})`);
     await signUp(page);
-    step(`seed: ${LIVE_OLD} live, ${ARCHIVED} archived, ${LIVE_NEW} live`);
-    const oldIds = await createSessions(page, 'old', LIVE_OLD);
-    await createSessions(page, 'arch', ARCHIVED, true);
-    await createSessions(page, 'new', LIVE_NEW);
+    step(`seed (${SHAPE}): ${ARCHIVED_OLD} archived, ${LIVE_OLD} live, ${ARCHIVED} archived, ${LIVE_NEW} live`);
+    if (ARCHIVED_OLD) await createSessions(page, 'archold', ARCHIVED_OLD, true);
+    const oldIds = await createSessions(page, 'old', LIVE_OLD, false, FAT_PAD);
+    await createSessions(page, 'arch', ARCHIVED, true, FAT_PAD);
+    await createSessions(page, 'new', LIVE_NEW, false, FAT_PAD);
+    step('seeded');
 
-    let expected = LIVE_OLD + LIVE_NEW;
+    expected = LIVE_OLD + LIVE_NEW;
     // The tab that created them holds every session (the store merges each one in) — no reload here.
     await dismissDialogs();
     await openSidebar();
@@ -261,7 +375,7 @@ try {
     await tab2.evaluate((t) => localStorage.setItem('auth_credentials', t), token);
     await tab2.goto(`${BASE}/`);
     await tab2.waitForFunction(() => import('/src/sync/sync.ts').then(({ sync }) => !!sync.encryption), null, { timeout: 60_000, polling: 300 });
-    const bearer = JSON.parse(token).token;
+    bearer = JSON.parse(token).token;
     /** A message on a session tab1 may not hold: the server bumps its updatedAt, tab1 refetches the list. */
     const touch = (ids) => Promise.all(ids.map((id) => fetch(`http://127.0.0.1:${PORT}/v3/sessions/${id}/messages`, {
         method: 'POST',
@@ -316,6 +430,83 @@ try {
         shown = assertNoDrop(`RELOAD#${round}`, await samples(), shown, expected);
     }
 
+    auth = await page.evaluate(() => localStorage.getItem('auth_credentials'));
+    if (SAVE_AUTH) writeFileSync(SAVE_AUTH, JSON.stringify({ auth, expected }));
+    }
+
+    step('LIST WEIGHT (raw bytes on the wire per encoding)');
+    const weight = {};
+    for (const encoding of ['br', 'gzip', 'identity']) {
+        const t = Date.now();
+        const { bytes, body } = await new Promise((resolveIt, reject) => {
+            httpRequest({ host: '127.0.0.1', port: PORT, path: '/v1/sessions', headers: { Authorization: `Bearer ${bearer}`, 'Accept-Encoding': encoding } }, (res) => {
+                const chunks = [];
+                res.on('data', (c) => chunks.push(c));
+                res.on('end', () => { const b = Buffer.concat(chunks); resolveIt({ bytes: b.length, body: b }); });
+            }).on('error', reject).end();
+        });
+        weight[encoding] = bytes;
+        const rows = encoding === 'identity' ? JSON.parse(body.toString()).sessions.length : null;
+        console.log(`    /v1/sessions ${encoding}: ${(bytes / 1e6).toFixed(2)}MB${rows !== null ? `, ${rows} rows` : ''} (${Date.now() - t}ms locally)`);
+    }
+
+    // A returning visit in a fresh context (same account): fast link, then slow 4G.
+    // Slow 4G = every REST response held for RTT + its br size / WEAK_DOWN_BPS
+    // (B-818's link; per response, not shared; the socket and the app's modules
+    // are not throttled — production boots its modules from the SW cache).
+    for (const link of ['fast', 'slow4g']) {
+        step(`COLD ${link} (${DEVICE}): a fresh tab of the same account`);
+        const ctx = await browser.newContext(ctxOpts);
+        await ctx.addInitScript((a) => { try { if (!sessionStorage.getItem('sbm-seeded')) { sessionStorage.setItem('sbm-seeded', '1'); localStorage.setItem('auth_credentials', a); localStorage.setItem('vh-pwa-install-never-v1', '1'); } } catch { /* ignore */ } }, auth);
+        await ctx.addInitScript(SAMPLER);
+        const p = await ctx.newPage();
+        // Warm the dev server's module graph unthrottled.
+        await p.goto(`${BASE}/`);
+        await p.waitForFunction(() => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().isDataReady === true), null, { timeout: 120_000, polling: 200 });
+        if (DEVICE === 'phone') await (await ctx.newCDPSession(p)).send('Emulation.setCPUThrottlingRate', { rate: 4 });
+        // slow4g: the same reload, through the throttling proxy (its own origin, so its own storage).
+        const origin = link === 'slow4g' ? `http://127.0.0.1:${WEAK_PROXY_PORT}` : BASE;
+        if (link === 'slow4g') {
+            await p.goto(`${origin}/`);
+            await p.waitForFunction(() => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().isDataReady === true), null, { timeout: 180_000, polling: 200 });
+            weakProxy.throttle(true);
+        }
+        const lists = [];
+        p.on('request', (r) => { if (/\/v1\/sessions(\?|$)/.test(r.url()) && r.method() === 'GET') lists.push({ r, url: r.url().replace(/^.*\/v1/, '/v1'), at: Date.now() - t0, outcome: 'pending' }); });
+        p.on('requestfinished', async (r) => { const x = lists.find((l) => l.r === r); if (!x) return; x.done = Date.now() - t0; x.outcome = 'ok'; x.bytes = (await r.sizes().catch(() => null))?.responseBodySize ?? null; });
+        p.on('requestfailed', (r) => { const x = lists.find((l) => l.r === r); if (x) { x.done = Date.now() - t0; x.outcome = r.failure()?.errorText ?? 'failed'; } });
+        const t0 = Date.now();
+        await p.reload({ waitUntil: 'commit' });
+        let ready = null;
+        let whole = null;
+        while (Date.now() - t0 < 75_000) {
+            const st = await p.evaluate(() => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().isDataReady === true)).catch(() => false);
+            if (st && ready === null) ready = Date.now() - t0;
+            const n = await p.evaluate(() => window.__sbCount?.() ?? 0).catch(() => 0);
+            if (n >= expected) { whole = Date.now() - t0; break; }
+            await sleep(100);
+        }
+        if (OUT) await p.screenshot({ path: join(OUT, `cold-${link}.png`) }).catch(() => {});
+        console.log(`    ${link} state:`, JSON.stringify(await p.evaluate(() => import('/src/sync/storage.ts').then(({ storage }) => { const st = storage.getState(); return { url: location.href, ready: st.isDataReady, socket: st.socketStatus, sessions: Object.keys(st.sessions).length, unarchived: Object.values(st.sessions).filter((x) => x.archivedAt == null).length, live: Object.values(st.sessions).filter((x) => x.active).length }; })).catch((e) => String(e))));
+        console.log(`    ${link} list GETs: ${lists.map((x) => `${x.url} +${x.at}→${x.done ?? '…'}ms ${x.outcome}${x.bytes ? ` ${(x.bytes / 1e6).toFixed(2)}MB` : ''}`).join(' | ')}`);
+        const s = await p.evaluate(() => window.__sbSamples ?? []);
+        const firstShown = s.find(([, n]) => n > 0)?.[1] ?? null;
+        console.log(`    ${link}: list ready +${ready ?? '—'}ms, sidebar whole (${expected}) +${whole ?? '—'}ms, first list shown ${firstShown}; ${timeline(s)}`);
+        allResults.push({ name: `COLD-${link}`, ready, whole, firstShown, samples: s, weight });
+        // A working link: the first list shown is the whole list. Slow 4G (B-818): the
+        // page gets in ≤ WEAK_LIMIT_MS on the first list, and the rest only adds rows.
+        if (link === 'fast') check(firstShown === expected, `COLD fast: the first list shown is the whole list (no 先少后多)`, `first ${firstShown}, expected ${expected}`);
+        else {
+            check(ready !== null && ready <= WEAK_LIMIT_MS, `COLD slow4g: a big account still gets in — list ready ≤ ${WEAK_LIMIT_MS}ms`, `${ready ?? '—'}ms`);
+            check(whole !== null, 'COLD slow4g: the sidebar ends whole', `${whole ?? '—'}ms`);
+        }
+        let prevN = 0;
+        const dropAt = s.find(([, n]) => { const d = n < prevN && n >= 0; prevN = n; return d && n > 0; });
+        check(!dropAt, `COLD ${link}: the count never drops`, timeline(s));
+        weakProxy.throttle(false);
+        await ctx.close();
+    }
+
     if (OUT) writeFileSync(join(OUT, `samples-${DEVICE}-${MODE}.json`), JSON.stringify({ device: DEVICE, mode: MODE, results: allResults }, null, 1));
 } catch (error) {
     console.error(error);
@@ -323,6 +514,7 @@ try {
 } finally {
     await browser.close();
     await stopServer();
+    await weakProxy.close();
 }
 console.log(failures === 0 ? 'PASS' : `FAIL (${failures})`);
 process.exit(failures === 0 ? 0 : 1);
