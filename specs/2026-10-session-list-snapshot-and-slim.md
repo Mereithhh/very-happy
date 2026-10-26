@@ -60,7 +60,7 @@
 
 | 事实 | 位置 |
 |---|---|
-| `/v1/sessions`：本账号按 `updatedAt desc` 取 150 行 + 共享给本账号的行；投影含 `id, seq, createdAt, updatedAt, active, activeAt, archivedAt, metadata, metadataVersion, agentState, agentStateVersion, dataEncryptionKey(base64)`，共享行另有 `share` 且 metadata 已脱敏重加密 | `S/app/api/routes/sessionRoutes.ts:19-60,81-108` |
+| `/v1/sessions`：本账号按 `updatedAt desc` 取 150 行 + 共享给本账号的行（`?scope=unarchived` 改为本账号全部未归档行，≤500，active 优先再按 `updatedAt`，Web 每次页面加载在首个列表后读一次，见 10-27 侧栏先少后多修复 `S/app/session/sessionListRows.ts`）；投影含 `id, seq, createdAt, updatedAt, active, activeAt, archivedAt, metadata, metadataVersion, agentState, agentStateVersion, dataEncryptionKey(base64)`，共享行另有 `share` 且 metadata 已脱敏重加密 | `S/app/api/routes/sessionRoutes.ts:19-60,81-108` |
 | `/v1/sessions/:id`：与列表同一投影，grantee 走 grant | `sessionRoutes.ts:110-128` |
 | `/v2/sessions?changedSince=`：按 `id desc` 分页（≤200），只按 `updatedAt > changedSince` 过滤；**不含 `archivedAt`、不含共享行、看不到删除** | `sessionRoutes.ts:182-273` |
 | `Session.updatedAt` 是 Prisma `@updatedAt`：seq 分配（每条消息）、metadata/agentState 写入、归档/反归档、活跃度更新都走 Prisma `update/updateMany`，都会刷新它；唯一的 raw `UPDATE "Session"` 只写 `lastHappyClient` | `packages/happy-server/prisma/schema.prisma:246-264`；`S/storage/seq.ts:36-40`；`sessionRoutes.ts:429,477,502`；`S/app/presence/sessionCache.ts:218`；`S/app/api/socket/clientVersion.ts:56` |
@@ -139,7 +139,7 @@
   cursor: string }          // 下次的 since
 ```
 
-- **窗口定义与 `/v1/sessions` 完全相同**：本账号按 `updatedAt desc` 取 150 行，加上共享给本账号的行。所以快照、增量与旧接口对同一时刻给出同一集合。
+- **窗口定义与 `/v1/sessions` 完全相同**：本账号按 `updatedAt desc` 取 150 行，加上共享给本账号的行。注意（10-27）：大账号的活会话会掉出这 150 行（Owner 381 个未归档里只有 38 个在窗口内），所以 Web 每次页面加载另读一次 `?scope=unarchived`；快照落地时应把这部分一并存下，否则快照首屏仍会先少后多。所以快照、增量与旧接口对同一时刻给出同一集合。
 - **`full=false` 的变化行**：`members` 里 `updatedAt > since − 5s` 的行（5s 重叠窗口，吸收「`updatedAt` 由应用时钟写入、提交稍晚」造成的乱序）。实现：先查一次窗口的 `id, updatedAt`（只取两列，走 `accountId + updatedAt`；索引是否存在由实现者核对，缺失时补索引属于 server 迁移，单独评审），再只对变化的 id 取完整投影；共享行只对变化的行做脱敏重加密（`redactedMetadataFor` 要解密，是共享行的主要开销）。
 - **`cursor`**：`String(max(members.updatedAt))`，不透明，客户端只回传不解析。`since` 不是数字、或比当前时间新超过 1 天，服务端回 `full=true`。
 - **为什么不复用 `/v2/sessions?changedSince`**：它按 id 分页、上限 200、没有 `archivedAt` 和共享行、看不到删除和撤销（§2），既不能替代 `/v1/sessions`，也无法证明快照完整。

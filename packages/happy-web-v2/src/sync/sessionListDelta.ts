@@ -76,6 +76,23 @@ export function sessionListSnapshot(rows: ReadonlyArray<{ id: string; updatedAt:
     return { owned, shared, newestUpdatedAt, servedAt };
 }
 
+/**
+ * Owner 10-27: the once-per-load `scope=unarchived` read joins the baseline,
+ * so the catch-up does not re-read those rows as unknown. Only `owned` grows
+ * (a row already there keeps the newer stamp); the cursor bounds stay the
+ * first list's — rows read later must not move the cursor past changes the
+ * first list missed.
+ */
+export function mergeSessionListSnapshot(snapshot: SessionListSnapshot, rows: ReadonlyArray<{ id: string; updatedAt: number; share?: unknown }>): SessionListSnapshot {
+    const owned = new Map(snapshot.owned);
+    for (const row of rows) {
+        if (row.share) continue;
+        const known = owned.get(row.id);
+        if (known === undefined || row.updatedAt > known) owned.set(row.id, row.updatedAt);
+    }
+    return { ...snapshot, owned };
+}
+
 /** `changedSince` for the catch-up: the later of the two safe bounds (the route wants a positive integer). */
 export function changedSinceCursor(snapshot: SessionListSnapshot): number {
     const byRows = snapshot.newestUpdatedAt - CHANGED_SINCE_SKEW_MS;
