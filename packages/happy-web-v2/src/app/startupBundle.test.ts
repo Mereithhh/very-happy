@@ -3,7 +3,7 @@
  * static import. Build-level numbers (startup JS 1251KB → ~830KB br) are in
  * the PR; these guard the individual cuts.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -32,5 +32,12 @@ describe('B-823 startup bundle cuts', () => {
     expect(config).toContain("chunkFileNames: 'assets/[name]-[hash].js',");
     expect(config).toContain("assetFileNames: 'assets/[name]-[hash][extname]',");
     expect(config).toContain('startupPreload(),');
+  });
+
+  it('the server image copies every build-time helper vite.config.ts imports (startupPreload, vendorChunks)', () => {
+    const dockerfile = read('../../Dockerfile.server');
+    expect(dockerfile).toContain('COPY packages/happy-web-v2/build packages/happy-web-v2/build');
+    const config = read('vite.config.ts');
+    for (const [, path] of config.matchAll(/from '\.\/(build\/[^']+)'/g)) expect(existsSync(resolve(W, `${path}.ts`)), path).toBe(true);
   });
 });
