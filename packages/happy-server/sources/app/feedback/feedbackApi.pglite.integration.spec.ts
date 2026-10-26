@@ -143,9 +143,14 @@ describe('feedback REST through startApi (pglite)', () => {
     });
 
     it('an admin sending feedback does not push themselves', async () => {
+        // A fresh admin, so the 5-minute push window of the first one cannot hide a self-push.
+        const { auth } = await import('@/app/auth/auth');
+        const soloId = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
+        process.env.VH_FEEDBACK_ADMIN_ACCOUNT_IDS = soloId;
         pushed.length = 0;
-        expect((await call('POST', '/v1/feedback', { rating: 'good', text: 'self' }, adminToken)).status).toBe(200);
+        expect((await call('POST', '/v1/feedback', { rating: 'good', text: 'self' }, await auth.createToken(soloId))).status).toBe(200);
         await sleep(100);
         expect(pushed).toEqual([]);
+        process.env.VH_FEEDBACK_ADMIN_ACCOUNT_IDS = adminId;
     });
 });

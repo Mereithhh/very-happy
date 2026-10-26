@@ -1292,6 +1292,7 @@ export function Sidebar() {
     automations: t('automations.sidebarEntry'),
     todos: t('todos.title'),
     people: t('people.title'),
+    feedback: t('feedback.title'),
   };
   const newTeam = () => navigate(NEW_TEAM_PATH);
   // B-756: 新建会话 into a project — its primary folder, joined before the first message.

@@ -31,3 +31,18 @@ body:has(.cli-update, .mrb) :is(.pwa-install, .notif-optin, .signin-nudge) { dis
    above. It is rarer (email-code-only accounts) and protects the next login,
    so the invitations wait for it to be answered instead of stacking on it. */
 body:has(.signin-nudge) :is(.pwa-install, .notif-optin) { display: none; }
+
+/* B-836: the feedback prompt is the least urgent card in this corner — it
+   moves to the top on input pages like the others, and waits while any
+   onboarding card (install / notifications / sign-in methods) is up or a
+   banner owns the top edge. */
+body:has(.sd-foot, .term-screen, .mri) .fb-prompt {
+  top: calc(var(--sa-t) + 56px);
+  bottom: auto;
+  max-height: calc(100dvh - var(--sa-t) - 72px);
+  overflow-y: auto;
+}
+@media (max-width: 520px), (pointer: coarse) {
+  body:has(.sd-foot, .term-screen, .mri) .fb-prompt { top: calc(var(--sa-t) + 68px); }
+}
+body:has(.pwa-install, .notif-optin, .signin-nudge, .cli-update, .mrb) .fb-prompt { display: none; }

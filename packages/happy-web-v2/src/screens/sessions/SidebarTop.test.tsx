@@ -16,7 +16,7 @@ vi.mock('@/ui', async (importOriginal) => ({ ...(await importOriginal<typeof imp
 const { SidebarActionRows, SidebarChipRow, SidebarFooter, capabilityMenuItems } = await import('./SidebarTop');
 const { moreMenuEntries, sidebarNavEntries, sidebarTopModel } = await import('./sidebarNavEntries');
 
-const names = { projects: 'Projects', teams: 'Teams', automations: 'Automations', todos: 'Todos', people: 'People' };
+const names = { projects: 'Projects', teams: 'Teams', automations: 'Automations', todos: 'Todos', people: 'People', feedback: 'Send feedback' };
 const entries = sidebarNavEntries({ teamsVisible: true, automationsVisible: true, automationAttention: 2, incomingPeople: 1 });
 const desktop = sidebarTopModel({ isDesktop: true, projectsReady: true, teamsVisible: true });
 const phone = sidebarTopModel({ isDesktop: false, projectsReady: true, teamsVisible: true });
@@ -112,7 +112,7 @@ it('no spare height: everything folds into 更多能力 — the list keeps its 8
 
 it('the fold menu lists the folded entries with counts and routes', () => {
   const onNavigate = vi.fn();
-  const items = capabilityMenuItems(entries.slice(1), names, onNavigate);
+  const items = capabilityMenuItems(entries.slice(1).filter((e) => !e.phoneOnly), names, onNavigate);
   expect(items.map((i) => i.label)).toEqual(['Automations · 2', 'Todos', 'People · 1']);
   expect(items.map((i) => i.key)).not.toContain('help');
   items[0].onSelect?.();
@@ -135,7 +135,9 @@ it('phone: no action rows; chips 项目 · 团队 open their lists (B-756), 更�
   await act(async () => (chips[1] as HTMLButtonElement).click());
   expect(onNavigate.mock.calls).toEqual([['/projects'], ['/teams']]);
   // 更多 never repeats a chip
-  expect(moreMenuEntries(phoneEntries, phone.chips).map((e) => e.key)).toEqual(['automations', 'todos', 'people']);
+  // B-836: 发送反馈 is reachable from the phone's 更多 (desktop: 帮助 footer + Settings)
+  expect(moreMenuEntries(phoneEntries, phone.chips).map((e) => e.key)).toEqual(['automations', 'todos', 'people', 'feedback']);
+  expect(capabilityMenuItems(moreMenuEntries(phoneEntries, phone.chips), names, onNavigate).at(-1)?.label).toBe('Send feedback');
 });
 
 it('帮助 sits in the footer next to 设置', async () => {
