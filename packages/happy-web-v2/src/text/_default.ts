@@ -2718,6 +2718,13 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            oct27: {
+                title: 'Everything the lead writes stays in “Just me & the lead”',
+                summary: 'In “Just me & the lead”, every paragraph the lead writes stays on screen and the newest member messages show their first lines; dialogs also work on the first click while the update notes are open.',
+                leadView: '“Just me & the lead” keeps every paragraph the lead writes, including text between tool calls and text from a turn that is still running; tools and thinking still fold. The newest member messages show their first six lines, and “Show full text” opens the whole message in place.',
+                dialogs: 'If an alert, a confirmation, the ⌘K palette, Open file (⌘P), session search or a file preview appears while the update notes are open, the notes step aside so it works on the first click, then come back on the same page, still unread.',
+                images: 'Images served from this device (localhost / 127.0.0.1) show again in Markdown file previews.',
+            },
             oct26c: {
                 title: 'Sign in again works on the first tap',
                 summary: 'When your sign-in expires, “Sign in again” works on the first tap and is no longer covered by the update notes.',
