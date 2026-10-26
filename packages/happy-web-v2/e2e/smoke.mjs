@@ -50,12 +50,20 @@ try {
     step('sidebar');
     await page.locator('.sb .sb-header').waitFor({ state: 'visible', timeout: T });
     // One-time onboarding / what's-new overlays would swallow the next clicks.
-    for (const name of ['Got it', 'Not now']) {
-        for (const b of await page.getByRole('button', { name, exact: true }).all()) await b.click({ timeout: 2_000 }).catch(() => {});
-    }
+    // B-823: the release notes open after the first screen, and not at all on
+    // a page that already saw typing (the login form above) — so they can
+    // arrive with the NEXT page load instead. Dismiss after every load.
+    const dismissOverlays = async () => {
+        await page.locator('.wn-card').waitFor({ timeout: 4_000 }).catch(() => {});
+        for (const name of ['Got it', 'Not now']) {
+            for (const b of await page.getByRole('button', { name, exact: true }).all()) await b.click({ timeout: 2_000 }).catch(() => {});
+        }
+    };
+    await dismissOverlays();
 
     step('open a web terminal');
     await page.goto(`${config.url}/terminal`, { timeout: T });
+    await dismissOverlays();
     // Terminal picker: the first group lists machines; only ONLINE ones are buttons.
     const online = page.locator('.vh-itemgroup').first().locator('button.vh-item.is-interactive');
     const pick = config.machine ? online.filter({ hasText: config.machine }).first() : online.first();
