@@ -22,6 +22,8 @@
  *   R. a Radix menu the person opened (not in the overlay queue, holds
  *      `body { pointer-events: none }`) is up when a misfired 401 lands → the
  *      dialog (native top layer) still takes the first click.
+ * Every case also checks the dialog is not aria-hidden, and on desktop that
+ * Tab reaches its button (no focus trap underneath).
  * Exit code 1 on any failed check.
  */
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
@@ -188,6 +190,15 @@ const hitTest = (page, selector) => page.evaluate((sel) => {
     };
 }, selector);
 
+/** Tab (up to 8 presses) until the button has focus: keyboard users must reach it, not a focus trap underneath. */
+async function tabReaches(page, selector) {
+    for (let i = 0; i < 8; i++) {
+        if (await page.evaluate((sel) => document.activeElement === document.querySelector(sel), selector)) return 'focused';
+        await page.keyboard.press('Tab');
+    }
+    return page.evaluate(() => { const a = document.activeElement; return `focus stuck on ${a?.tagName.toLowerCase()}.${String(a?.className ?? '').split(' ')[0]}`; });
+}
+
 const shot = async (page, name) => { if (OUT) await page.screenshot({ path: join(OUT, `${name}.png`) }); };
 const press = (page, device, selector) => (device === 'phone' ? page.locator(selector).tap({ timeout: 3_000 }) : page.locator(selector).click({ timeout: 3_000 }));
 
@@ -220,6 +231,7 @@ try {
             check(!hit.notesVisible, 'the release notes gave way (not rendered)', JSON.stringify(hit));
             check(hit.hitsTarget, '「放弃并重新登录」 is what the pointer hits', JSON.stringify(hit));
             check(!hit.ariaHiddenAncestor, 'the dialog is not aria-hidden');
+            if (device === 'desktop') { const f = await tabReaches(page, button); check(f === 'focused', 'Tab reaches 「放弃并重新登录」', f); }
             const pressed = await press(page, device, button).then(() => 'ok', (e) => e.message.split('\n')[0]);
             check(pressed === 'ok', `one ${device === 'phone' ? 'tap' : 'click'} on 「放弃并重新登录」`, pressed);
             const login = await waitFor(() => page.evaluate(() => (!localStorage.getItem('auth_credentials') && !!document.querySelector('input[autocomplete="username"], .auth-method-toggle')) || null), 15_000, 'login page').catch((e) => e.message);
@@ -247,6 +259,8 @@ try {
             const hit = await hitTest(page, button);
             check(!hit.notesVisible, 'the release notes stay away while the dialog is up', JSON.stringify(hit));
             check(hit.hitsTarget, '「重新加载页面」 is what the pointer hits', JSON.stringify(hit));
+            check(!hit.ariaHiddenAncestor, 'the dialog is not aria-hidden');
+            if (device === 'desktop') { const f = await tabReaches(page, button); check(f === 'focused', 'Tab reaches 「重新加载页面」', f); }
             const reloaded = page.waitForEvent('load', { timeout: 10_000 }).then(() => true, () => false);
             const pressed = await press(page, device, button).then(() => 'ok', (e) => e.message.split('\n')[0]);
             check(pressed === 'ok' && (await reloaded), `one ${device === 'phone' ? 'tap' : 'click'} reloads the page`, pressed);
@@ -276,6 +290,7 @@ try {
             const hit = await hitTest(page, button);
             check(hit.hitsTarget, '「重新加载页面」 is what the pointer hits over the open menu', JSON.stringify(hit));
             check(!hit.ariaHiddenAncestor, 'the dialog is not aria-hidden by the menu');
+            if (device === 'desktop') { const f = await tabReaches(page, button); check(f === 'focused', 'Tab reaches 「重新加载页面」 past the menu', f); }
             const reloaded = page.waitForEvent('load', { timeout: 10_000 }).then(() => true, () => false);
             const pressed = await press(page, device, button).then(() => 'ok', (e) => e.message.split('\n')[0]);
             check(pressed === 'ok' && (await reloaded), `one ${device === 'phone' ? 'tap' : 'click'} reloads the page`, pressed);
