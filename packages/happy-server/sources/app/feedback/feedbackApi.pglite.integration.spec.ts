@@ -118,6 +118,10 @@ describe('feedback REST through startApi (pglite)', () => {
         // Two rows so far this hour (the dedupe resend was free).
         expect((await call('POST', '/v1/feedback', { rating: 'ok', text: 'third' })).status).toBe(200);
         expect(await call('POST', '/v1/feedback', { rating: 'ok', text: 'fourth' })).toEqual({ status: 429, body: { error: 'feedback_rate_limited' } });
+        expect(await call('POST', '/v1/feedback', { rating: 'ok', text: 'fifth' })).toEqual({ status: 429, body: { error: 'feedback_rate_limited' } });
+        // QA16: the refused retries must not have been charged to the day window either.
+        const bucket = async (window: 'day' | 'hour') => (await db.authRateLimitBucket.findUnique({ where: { key: `resource-write:feedback-${window}:${userId}` } }))?.count;
+        expect([await bucket('day'), await bucket('hour')]).toEqual([3, 3]);
         expect((await call('POST', '/v1/feedback', { rating: 'ok', text: 'third' })).body.deduped).toBe(true);
     });
 

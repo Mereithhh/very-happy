@@ -1,6 +1,6 @@
 import { Prisma, type Feedback } from '@prisma/client';
 import { configuredResourceLimit } from '@/app/api/resourceLimits';
-import { allowAuthRequest } from '@/app/auth/authRateLimiter';
+import { allowAuthRequests } from '@/app/auth/authRateLimiter';
 import { dispatchDeviceEventPush } from '@/app/push/pushDispatch';
 import { displayNameOf, identityOf } from '@/app/social/accountDirectory';
 import { db } from '@/storage/db';
@@ -17,19 +17,16 @@ const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
 
 /**
- * Two fixed windows on the shared DB limiter: per hour and per day. A refused
- * request is not charged (B-307), so a client retrying against a full
- * bucket does not push its own reset further out.
+ * Two fixed windows on the shared DB limiter: per hour and per day, charged
+ * all-or-nothing. A refused request is charged to neither (B-307), so a client
+ * retrying against a full hour bucket does not spend its day budget.
  */
 async function enforceFeedbackRate(accountId: string): Promise<void> {
     const windows = [
         { key: `resource-write:feedback-day:${accountId}`, max: configuredResourceLimit('MAX_FEEDBACK_PER_ACCOUNT_PER_DAY', 20), windowMs: DAY_MS },
         { key: `resource-write:feedback-hour:${accountId}`, max: configuredResourceLimit('MAX_FEEDBACK_PER_ACCOUNT_PER_HOUR', 5), windowMs: HOUR_MS },
-    ];
-    for (const w of windows) {
-        if (w.max === 0) continue;
-        if (!(await allowAuthRequest(w.key, { max: w.max, windowMs: w.windowMs }))) throw new FeedbackError('feedback_rate_limited', 429);
-    }
+    ].filter(w => w.max !== 0);
+    if (!(await allowAuthRequests(windows))) throw new FeedbackError('feedback_rate_limited', 429);
 }
 
 export type FeedbackView = {
