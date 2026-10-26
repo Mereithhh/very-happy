@@ -2718,6 +2718,13 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            oct27a: {
+                title: 'Send feedback, and a full sidebar after reloading',
+                summary: 'You can now send feedback from inside the app, and accounts with many sessions see the whole sidebar again after a reload or an update.',
+                sidebar: 'Accounts with many sessions no longer lose most of the sidebar after a reload or an update; the full list fills in within a second or two.',
+                feedback: 'New “Send feedback” in Settings, on the Help page and under More on phones: pick a rating, add a note if you like, and optionally attach diagnostics (no session content). An occasional card also asks how things are going; you can dismiss it for good.',
+                about: 'New Settings → About shows the version, author, source code and a link to file an issue; public pages, sign-in and shared links now credit the author with a link to GitHub.',
+            },
             oct27: {
                 title: 'Everything the lead writes stays in “Just me & the lead”',
                 summary: 'In “Just me & the lead”, every paragraph the lead writes stays on screen and the newest member messages show their first lines; dialogs also work on the first click while the update notes are open.',

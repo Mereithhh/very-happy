@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-27-feedback-and-full-sidebar',
+    date: '2026-10-27',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct27a.title',
+    summaryKey: 'changelog.releases.oct27a.summary',
+    itemKeys: ['changelog.releases.oct27a.sidebar', 'changelog.releases.oct27a.feedback', 'changelog.releases.oct27a.about'],
+  },
+  {
     id: '2026-10-27-lead-view-and-dialogs',
     date: '2026-10-27',
     buildVersion: __APP_VERSION__,
