@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
-import { ANCHOR_BUFFER_LIMIT, AnchorBuffer, contiguousRun, planLiveMessage } from './liveMessagePlan';
+import { REORDER_WINDOW_MS } from './sessionMerge';
 import { SYNC_READ_TIMEOUT_MS } from './requestDeadline';
 
 let sync: typeof import('./sync').sync;
@@ -145,9 +145,11 @@ describe('B-805 live new-message: no GET per message', () => {
         store(sid, 'm2'); // its update is lost
         await deliver(sid, store(sid, 'm3'));
         await settle();
+        // B-812 rule 4: the hole waits the reorder window first (out-of-order emits across slots).
+        expect(gets).toEqual([]);
 
-        expect(gets).toEqual([`${sid}?after`]);
-        expect(texts(sid)).toEqual(['m1', 'm2', 'm3']);
+        await vi.waitFor(() => expect(gets).toEqual([`${sid}?after`]), { timeout: REORDER_WINDOW_MS + 1_000 });
+        await vi.waitFor(() => expect(texts(sid)).toEqual(['m1', 'm2', 'm3']));
 
         // Back on a contiguous run: no more GETs.
         gets = [];
@@ -228,8 +230,8 @@ describe('B-805 live new-message: no GET per message', () => {
         release();
         await settle();
 
-        expect(gets).toEqual([`${sid}?before`, `${sid}?after`]);
-        expect(texts(sid)).toEqual(['m1', 'm2', 'm3']);
+        await vi.waitFor(() => expect(gets).toEqual([`${sid}?before`, `${sid}?after`]), { timeout: REORDER_WINDOW_MS + 1_000 });
+        await vi.waitFor(() => expect(texts(sid)).toEqual(['m1', 'm2', 'm3']));
     });
 
     it('entering a session again catches up forward (the resume / reconnect path)', async () => {
@@ -244,53 +246,5 @@ describe('B-805 live new-message: no GET per message', () => {
         await settle();
         expect(gets).toEqual([`${sid}?after`]);
         expect(texts(sid)).toEqual(['m1', 'm2']);
-    });
-});
-
-describe('B-805 planLiveMessage', () => {
-    it('applies the next seq, drops echoes, refetches gaps, defers without an anchor', () => {
-        expect(planLiveMessage(10, 11)).toBe('apply');
-        expect(planLiveMessage(10, 10)).toBe('echo');
-        expect(planLiveMessage(10, 3)).toBe('echo');
-        expect(planLiveMessage(10, 12)).toBe('refetch');
-        expect(planLiveMessage(undefined, 5)).toBe('defer');
-    });
-});
-
-describe('B-805 AnchorBuffer', () => {
-    it('asks for the page on the first update only, also once the request is already open', () => {
-        const buffer = new AnchorBuffer<string>();
-        expect(buffer.add('s', 5, 'a')).toBe(true);
-        expect(buffer.add('s', 6, 'b')).toBe(false);
-        buffer.open('t');
-        expect(buffer.add('t', 1, 'x')).toBe(false);
-    });
-
-    it('drains past the anchor in seq order; unrenderable updates count as seen, not applied', () => {
-        const buffer = new AnchorBuffer<string>();
-        buffer.add('s', 7, 'c');
-        buffer.add('s', 5, 'a');
-        buffer.add('s', 6, null);
-        buffer.add('s', 4, 'old');
-        expect(buffer.drain('s', 4)).toEqual({ messages: ['a', 'c'], seqs: [5, 6, 7], droppedMax: 0 });
-        // Drained: the next update asks again (a reload of the page would be a new session state).
-        expect(buffer.add('s', 8, 'd')).toBe(true);
-    });
-
-    it('B-813 B1: a contiguous drain stops at the first hole past the anchor (the rest is the catch-up\'s)', () => {
-        const buffer = new AnchorBuffer<string>();
-        for (const [seq, m] of [[9, 'i'], [4, 'd'], [5, null], [6, 'f'], [3, 'old']] as const) buffer.add('s', seq, m);
-        expect(buffer.drain('s', 3, { contiguous: true })).toEqual({ messages: ['d', 'f'], seqs: [4, 5, 6], droppedMax: 9 });
-        buffer.add('s', 9, 'i');
-        expect(buffer.drain('s', 3, { contiguous: true })).toEqual({ messages: [], seqs: [], droppedMax: 9 });
-        expect(contiguousRun([{ seq: 4 }, { seq: 4 }, { seq: 5 }, { seq: 7 }], 3)).toEqual([{ seq: 4 }, { seq: 4 }, { seq: 5 }]);
-    });
-
-    it('drops updates past the limit without recording them, so they surface as a gap', () => {
-        const buffer = new AnchorBuffer<number>();
-        for (let seq = 1; seq <= ANCHOR_BUFFER_LIMIT + 3; seq += 1) buffer.add('s', seq, seq);
-        const { seqs } = buffer.drain('s', 0);
-        expect(seqs).toHaveLength(ANCHOR_BUFFER_LIMIT);
-        expect(seqs.at(-1)).toBe(ANCHOR_BUFFER_LIMIT);
     });
 });

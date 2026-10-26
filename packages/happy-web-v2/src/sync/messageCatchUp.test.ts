@@ -16,7 +16,7 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InvalidateSync } from '@/utils/sync';
 import { AsyncLock } from '@/utils/lock';
-import { catchUpForward, mergeFetchedLastSeq, type CatchUpPage } from './messageCatchUp';
+import { catchUpForward, mergeFetchedLastSeq, pageMaxSeq, type CatchUpPage } from './messageCatchUp';
 import { createRequestDeadline, fetchWithDeadline, RequestTimeoutError, SYNC_READ_TIMEOUT_MS } from './requestDeadline';
 
 type Msg = { seq: number };
@@ -48,9 +48,10 @@ function harness(opts?: { lastSeq?: number }) {
         },
         normalize: async (page) => page.messages.map((m) => ({ seq: m.seq })),
         withLock: (fn) => lock.inLock(fn),
-        apply: (messages) => { for (const m of messages) applied.push(m.seq); },
-        getLastSeq: () => lastSeq,
-        setLastSeq: (seq) => { lastSeq = seq; },
+        merge: (messages, page) => {
+            for (const m of messages) applied.push(m.seq);
+            lastSeq = mergeFetchedLastSeq(lastSeq, pageMaxSeq(page, lastSeq ?? 0));
+        },
     }, lastSeq!, signal);
     const sync = new InvalidateSync(run);
     /** The live socket fast path: applies under the same lock, advances lastSeq. */
@@ -246,25 +247,26 @@ describe('B-803 wiring in sync.ts / apiSocket.ts', () => {
     }
 
     // B-804: the three edges go through catchUpViewedSession(), which restarts (and shows the catch-up).
+    // B-812: the edges reach catchUpViewedSession() through the scheduler's legacy path.
     it('tab resume restarts the viewed session catch-up', () => {
-        expect(block(sync, 'private onWebResume = () => {', 600)).toContain('this.catchUpViewedSession();');
-        // B-823: restart unless the caller says otherwise (only the page's first connect does).
-        expect(block(sync, 'private catchUpViewedSession(opts: { restart: boolean } = { restart: true }) {', 700)).toContain('this.onSessionEnter(viewing, { restartFetch: opts.restart });');
+        expect(block(sync, 'private onWebResume = () => {', 600)).toContain('this.syncScheduler.resume();');
+        expect(block(sync, 'private catchUpViewedSession() {', 400)).toContain('this.restartMessagesSync(viewing);');
     });
 
     it('socket reconnect and recovered restart it too', () => {
-        const reconnected = block(sync, 'apiSocket.onReconnected(() => {');
-        expect(reconnected.slice(0, reconnected.indexOf('apiSocket.onRecovered('))).toContain('this.catchUpViewedSession({ restart: !firstConnect });');
-        expect(block(sync, 'apiSocket.onRecovered(() => {', 500)).toContain('this.catchUpViewedSession();');
+        const reconnected = block(sync, 'apiSocket.onReconnected(() => {', 4_000);
+        expect(reconnected.slice(0, reconnected.indexOf('apiSocket.onRecovered('))).toContain("this.syncScheduler.connect('connect')");
+        expect(block(sync, 'apiSocket.onRecovered(() => {', 500)).toContain("this.syncScheduler.connect('recovered')");
     });
 
-    it('onSessionEnter routes restartFetch to restart(), and back-online restarts deferred catch-ups', () => {
-        expect(block(sync, 'onSessionEnter = (sessionId: string, opts', 300)).toContain('if (opts?.restartFetch) {\n            this.restartMessagesSync(sessionId);');
+    it('the legacy link-back catch-up restarts (not coalesces), and back-online restarts deferred catch-ups', () => {
+        expect(block(sync, 'private catchUpViewedSession() {', 400)).toMatch(/this\.restartMessagesSync\(viewing\);\s*this\.trackMessagesCatchUp\(viewing\);/);
         expect(block(sync, 'private restartMessagesSync(sessionId: string) {', 200)).toContain('this.getMessagesSync(sessionId).restart();');
         expect(block(sync, 'onRecovered: () => {', 300)).toContain('this.restartDeferredCatchUps();');
         // B-803b: the browser's own `online` event releases the deferred ones (the socket may still be down).
-        const subscribe = block(sync, 'subscribe: (onChange) => {', 900);
-        expect(subscribe).toContain("const onOnline = () => this.restartDeferredCatchUps({ deferredOnly: true });\n                    window.addEventListener('online', onOnline);");
+        const subscribe = block(sync, 'subscribe: (onChange) => {', 1_200);
+        expect(subscribe).toContain("const onOnline = () => this.restartDeferredCatchUps({ deferredOnly: true });");
+        expect(subscribe).toContain("window.addEventListener('online', onOnline);");
         expect(subscribe).toContain("window.removeEventListener('online', onOnline);");
     });
 

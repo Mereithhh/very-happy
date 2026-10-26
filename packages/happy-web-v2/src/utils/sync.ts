@@ -99,6 +99,11 @@ export class InvalidateSync {
         this._wake?.();
     }
 
+    /** B-812: a round is running or queued (an attempt may be on the wire). */
+    isRunning(): boolean {
+        return this._invalidated;
+    }
+
     invalidate() {
         if (this._stopped) {
             return;

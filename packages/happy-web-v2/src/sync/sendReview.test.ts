@@ -105,8 +105,9 @@ describe('sync.ts send wiring (review #1 #2 #4 #5)', () => {
     });
 
     it('advances lastSeq only over what interpretSendResponse says was applied', () => {
-        expect(flush).toContain('this.advanceSessionLastSeq(sessionId, outcome.lastSeqCandidates)');
-        expect(flush).not.toMatch(/advanceSessionLastSeq\(sessionId, stored/);
+        // B-812: a point source of the merge entry (contiguous run only).
+        expect(flush).toContain("this.mergeSessionMessages(sessionId, outcome.lastSeqCandidates.map((seq) => ({ seq, message: null })), 'send-ack');");
+        expect(flush).not.toMatch(/mergeSessionMessages\(sessionId, stored/);
     });
 
     it('retry wakes the send loop instead of waiting out an old backoff', () => {
@@ -115,7 +116,7 @@ describe('sync.ts send wiring (review #1 #2 #4 #5)', () => {
     });
 
     it('every reducer apply prunes confirmed retry records', () => {
-        const apply = source.slice(source.indexOf('    private applyMessages = '), source.indexOf('    private applySessions = '));
+        const apply = source.slice(source.indexOf('    private writeMessagesToStore = '), source.indexOf('    private applySessions = '));
         expect(apply).toContain('if (this.outboxRecords.size > 0) this.pruneOutboxRecords(sessionId);');
     });
 });

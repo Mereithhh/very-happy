@@ -144,6 +144,31 @@
  *         (before B-818: never; each list GET cut at 10s while hedges split
  *         the link). Prints every /v1/sessions GET (start→end, outcome, bytes,
  *         content-encoding).
+ * B-812 (B-807 PR-5b, socket subscribe; spec §9.3):
+ *   --sync subscribe (default) | legacy | outside — the server's switch:
+ *        legacy = SYNC_SUBSCRIBE_DISABLED=1, outside = an account that is not
+ *        on SYNC_SUBSCRIBE_ACCOUNTS. legacy/outside must behave exactly like
+ *        production before B-812 (every scenario above passes unchanged).
+ *   --database-url / --redis-url: Postgres + Redis instead of PGlite; the
+ *        script then runs TWO slots (blue :PORT+10, green :PORT+11, release
+ *        coordination on) behind a Caddy-like front on PORT (vh_slot= pins,
+ *        otherwise the active slot). Needed by HOLE / BLUEGREEN / OLDSERVER.
+ *   --old-server-dir <repo checkout without B-811>: the old release for OLDSERVER.
+ *   R1   (B-807 R1) the HTTP pool is dead but the socket is alive, and the
+ *        push of a message sent while hidden is lost → subscribe: caught up
+ *        over the socket ≤ 1.5s after the resume; legacy: the REST path.
+ *   HOLE a session with a tail seq hole (Session.seq += 2 by SQL): a fresh
+ *        tab is live ≤ 1.5s, 「同步中」 gone, ≤ 1 subscribe/hello for it in
+ *        the next 10s, and the next message (seq 13) shows live without a
+ *        catch-up request.
+ *   BLUEGREEN drain blue → the tabs hand over to green (make-before-break)
+ *        → front switched → blue disconnected and stopped, while the "agent"
+ *        posts every 250ms: nothing missing or out of order, tab1's hello
+ *        acked on green, 「同步中」 shown ≤ 3s in total.
+ *   OLDSERVER the candidate is an OLD release (no sync-hello handler): legacy
+ *        2s after the handover's hello, messages keep flowing, nothing missing;
+ *        a fresh page's first screen on the old server is not slower than on
+ *        the new one + 200ms (median of FIRST_SCREEN_RUNS).
  * Prints one line per measurement (`MEASURE <scenario> <ms|never>`) for the
  * before/after table. Exit code 1 on any failed check.
  */
@@ -176,6 +201,25 @@ const DEBUG = args.includes('--debug');
 // connection, and blackhole kills it as a whole.
 const H2 = args.includes('--h2');
 const H2_PORT = PROXY_PORT - 1;
+// B-812: the server switch for the socket subscribe protocol, and the two-slot setup.
+const SYNC_MODE = opt('sync', 'subscribe');
+if (!['subscribe', 'legacy', 'outside'].includes(SYNC_MODE)) {
+    console.error('--sync must be subscribe, legacy or outside');
+    process.exit(2);
+}
+const SUBSCRIBE = SYNC_MODE === 'subscribe';
+const DATABASE_URL = opt('database-url', null);
+const REDIS_URL = opt('redis-url', null);
+const OLD_SERVER_DIR = opt('old-server-dir', null);
+const SLOTS = !!(DATABASE_URL && REDIS_URL);
+const SLOT_PORT = { blue: Number(PORT) + 10, green: Number(PORT) + 11 };
+const RELEASE_TOKEN = randomBytes(24).toString('hex');
+// Spec §9.3 (B-807 G1): with a live socket the resume catch-up rides it (≤ 1.5s);
+// with the socket dead too: the 5s ack deadline + reconnect (≤ 6s).
+const SUBSCRIBE_LIVE_LIMIT_MS = 1_500;
+const SUBSCRIBE_DEAD_LIMIT_MS = 6_000;
+const FIRST_SCREEN_RUNS = 5;
+const REORDER_SLACK_MS = 1_000; // > REORDER_WINDOW_MS (src/sync/sessionMerge.ts): a gap would have fired
 const CATCH_UP_LIMIT_MS = TIMEOUT_MS + 2_000;
 const LIVE_LIMIT_MS = 2_000;
 // --h2 with BOTH connection pools (default + credentials-omit, hedgedRead.ts)
@@ -212,35 +256,123 @@ const viteUrl = new URL(BASE);
 const PROXY_BASE = `${H2 ? 'https' : 'http'}://127.0.0.1:${PROXY_PORT}`;
 
 // ── standalone server (same as e2e/offline.mjs) ───────────────────────
+// B-812: one PGlite server on PORT, or (--database-url + --redis-url) two
+// release slots behind the front below — the vh-sg shape (docs/operations.md).
 const serverDir = resolve(import.meta.dirname, '../../happy-server');
-let server = null;
-async function startServer() {
-    server = spawn(resolve(serverDir, '../../node_modules/.bin/tsx'), ['--env-file=.env.dev', './sources/standalone.ts', 'serve'], {
-        cwd: serverDir,
-        env: { ...process.env, DATA_DIR, PORT, METRICS_PORT: String(Number(PORT) + 6000), SIGNUP_MODE: 'open' },
-        stdio: 'ignore',
-    });
-    for (let i = 0; i < 150; i++) {
-        try { if ((await fetch(`http://127.0.0.1:${PORT}/health`)).ok) return; } catch { /* starting */ }
+const syncEnv = SYNC_MODE === 'legacy' ? { SYNC_SUBSCRIBE_DISABLED: '1' } : SYNC_MODE === 'outside' ? { SYNC_SUBSCRIBE_ACCOUNTS: 'acct-not-on-the-list' } : {};
+const dbEnv = DATABASE_URL ? { DB_PROVIDER: 'postgres', DATABASE_URL } : {};
+const servers = new Map(); // slot ('single' | 'blue' | 'green') → { proc, sha, dir }
+const gitSha = (dir) => execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD']).toString().trim();
+async function waitHealth(port) {
+    for (let i = 0; i < 300; i++) {
+        try { if ((await fetch(`http://127.0.0.1:${port}/health`)).ok) return; } catch { /* starting */ }
         await new Promise((r) => setTimeout(r, 200));
     }
-    throw new Error('server did not come up');
+    throw new Error(`server :${port} did not come up`);
+}
+async function startSlot(slot, dir = serverDir) {
+    const port = slot === 'single' ? Number(PORT) : SLOT_PORT[slot];
+    const sha = gitSha(dir);
+    const releaseEnv = slot === 'single' ? {} : { VH_RELEASE_SLOT: slot, VH_RELEASE_SHA: sha, VH_RELEASE_ADMIN_TOKEN: RELEASE_TOKEN, REDIS_URL, VH_RELEASE_ADAPTER_WARMUP_MS: '1000' };
+    const proc = spawn(resolve(dir, '../../node_modules/.bin/tsx'), ['--env-file=.env.dev', './sources/standalone.ts', 'serve'], {
+        cwd: dir,
+        env: { ...process.env, DATA_DIR, PORT: String(port), METRICS_PORT: String(port + 6000), SIGNUP_MODE: 'open', ...dbEnv, ...syncEnv, ...releaseEnv },
+        stdio: DEBUG ? 'inherit' : 'ignore',
+    });
+    servers.set(slot, { proc, sha, dir });
+    await waitHealth(port);
+}
+async function stopSlot(slot) {
+    const entry = servers.get(slot);
+    if (!entry) return;
+    servers.delete(slot);
+    const exited = new Promise((r) => entry.proc.once('exit', r));
+    entry.proc.kill('SIGTERM');
+    await Promise.race([exited, new Promise((r) => setTimeout(r, 5_000))]);
+    if (entry.proc.exitCode === null) entry.proc.kill('SIGKILL');
+}
+async function startServer() {
+    if (!SLOTS) return startSlot('single');
+    await Promise.all([startSlot('blue'), startSlot('green')]);
+    await front.listen();
 }
 async function stopServer() {
-    if (!server) return;
-    const proc = server;
-    server = null;
-    const exited = new Promise((r) => proc.once('exit', r));
-    proc.kill('SIGTERM');
-    await Promise.race([exited, new Promise((r) => setTimeout(r, 5_000))]);
-    if (proc.exitCode === null) proc.kill('SIGKILL');
+    await Promise.all([...servers.keys()].map(stopSlot));
+    await front?.close();
 }
+/** POST /_vh/release/<action> on a slot (what scripts/release does on vh-sg). */
+async function release(slot, action, body) {
+    const res = await fetch(`http://127.0.0.1:${SLOT_PORT[slot]}/_vh/release/${action}`, {
+        method: 'POST',
+        headers: { 'x-vh-release-token': RELEASE_TOKEN, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) throw new Error(`release ${action} on ${slot}: ${res.status} ${await res.text()}`);
+    return res.json();
+}
+
+// ── B-812: Caddy-like front for the two slots (ops/production/Caddyfile.blue-green) ──
+// Per request: `?vh_slot=` pins (falling back to the other slot), otherwise the active slot.
+const front = SLOTS ? (() => {
+    let active = 'blue';
+    const other = (slot) => (slot === 'blue' ? 'green' : 'blue');
+    const order = (url) => {
+        const pinned = /[?&]vh_slot=(blue|green)/.exec(url ?? '')?.[1];
+        return pinned ? [pinned, other(pinned)] : [active];
+    };
+    const agent = new http.Agent({ keepAlive: false });
+    const srv = http.createServer((req, res) => {
+        const chunks = [];
+        req.on('data', (c) => chunks.push(c));
+        req.on('end', () => {
+            const body = Buffer.concat(chunks);
+            const slots = order(req.url);
+            const attempt = (i) => {
+                const up = http.request({ host: '127.0.0.1', port: SLOT_PORT[slots[i]], method: req.method, path: req.url, headers: req.headers, agent }, (upRes) => {
+                    res.writeHead(upRes.statusCode, upRes.headers);
+                    upRes.pipe(res);
+                });
+                up.on('error', () => { if (i + 1 < slots.length && !res.headersSent) attempt(i + 1); else res.destroy(); });
+                res.on('close', () => { if (!res.writableFinished) up.destroy(); });
+                up.end(body);
+            };
+            attempt(0);
+        });
+    });
+    srv.on('upgrade', (req, socket, head) => {
+        const slots = order(req.url);
+        const attempt = (i) => {
+            const up = net.connect(SLOT_PORT[slots[i]], '127.0.0.1', () => {
+                let raw = `${req.method} ${req.url} HTTP/1.1\r\n`;
+                for (let k = 0; k < req.rawHeaders.length; k += 2) raw += `${req.rawHeaders[k]}: ${req.rawHeaders[k + 1]}\r\n`;
+                up.write(`${raw}\r\n`);
+                if (head?.length) up.write(head);
+                up.pipe(socket);
+                socket.pipe(up);
+            });
+            let connected = false;
+            up.once('connect', () => { connected = true; });
+            up.on('error', () => { if (!connected && i + 1 < slots.length) attempt(i + 1); else socket.destroy(); });
+            up.on('close', () => socket.destroy());
+            socket.on('error', () => up.destroy());
+            socket.on('close', () => up.destroy());
+        };
+        attempt(0);
+    });
+    return {
+        listen: () => new Promise((r) => srv.listen(Number(PORT), '127.0.0.1', r)),
+        close: () => new Promise((r) => { srv.closeAllConnections?.(); srv.close(() => r()); setTimeout(r, 2_000); }),
+        setActive(slot) { active = slot; },
+        active: () => active,
+    };
+})() : null;
 
 // ── dead-link TCP proxy (tab1 → proxy → Vite) ─────────────────────────
 const proxy = (() => {
     let mode = 'pass';
     let stallMatch = null;
     let delayMatch = null;
+    let dropMatch = null;
     let stallLeft = 0;
     let linkSeq = 0;
     // B-813: the whole RTT on the way back, per chunk, on API and socket.io traffic only;
@@ -313,6 +445,13 @@ const proxy = (() => {
         upstream.on('data', (chunk) => {
             if (link.stalled) return;
             if (held) { held.push(chunk); return; }
+            // B-812 `dropDown`: a lost push — the next downstream chunk (one socket.io
+            // frame) containing the text never reaches the browser.
+            if (dropMatch && !link.exempt && dropMatch.left > 0 && chunk.toString('latin1').includes(dropMatch.text)) {
+                dropMatch.left -= 1;
+                if (DEBUG) console.log(`    [proxy] dropped a downstream frame with ${dropMatch.text}`);
+                return;
+            }
             if (delayMatch && !link.exempt && chunk.toString('latin1').includes(delayMatch.text)) {
                 held = [chunk];
                 setTimeout(() => { const out = held; held = null; for (const c of out) if (!link.stalled) client.write(c); }, delayMatch.ms);
@@ -358,6 +497,8 @@ const proxy = (() => {
         },
         stallsLeft: () => (stallMatch ? stallLeft : 0),
         delayDown(text, ms) { delayMatch = text ? { text, ms } : null; },
+        dropDown(text, n = 1) { dropMatch = text ? { text, left: n } : null; },
+        dropsLeft: () => dropMatch?.left ?? 0,
         /** --h2: the TLS front saw Vite's HMR upgrade on this upstream port (the proxy itself only sees ciphertext). */
         exemptUpstreamPort(port) {
             for (const l of links) if (l.upstream.localPort === port) { l.exempt = true; l.stalled = false; }
@@ -365,7 +506,7 @@ const proxy = (() => {
         resetStalled() {
             for (const l of [...links]) if (l.stalled) { l.client.resetAndDestroy?.() ?? l.client.destroy(); l.upstream.destroy(); }
         },
-        pass() { mode = 'pass'; stallMatch = null; stallLeft = 0; delayMatch = null; this.resetStalled(); },
+        pass() { mode = 'pass'; stallMatch = null; stallLeft = 0; delayMatch = null; dropMatch = null; this.resetStalled(); },
         stalledCount: () => [...links].filter((l) => l.stalled).length,
     };
 })();
@@ -449,10 +590,14 @@ function count(name, n) {
 }
 const fmt = (ms) => (ms === null ? `never (>${HOLD_MS}ms)` : `${ms}ms`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const NEEDS_PLAINTEXT = new Set(['B3', 'LIVE', 'POOL']);
+const NEEDS_PLAINTEXT = new Set(['B3', 'LIVE', 'POOL', 'R1']);
 const H2_ONLY = new Set(['H2POOL']);
+// B-812: SQL on the server's database / two release slots.
+const NEEDS_SLOTS = new Set(['HOLE', 'BLUEGREEN', 'OLDSERVER']);
 const want = (name) => {
     if (ONLY && !ONLY.includes(name)) return false;
+    if (NEEDS_SLOTS.has(name) && !SLOTS) { console.log(`  - ${name} skipped (needs --database-url and --redis-url)`); return false; }
+    if (name === 'OLDSERVER' && !OLD_SERVER_DIR) { console.log('  - OLDSERVER skipped (needs --old-server-dir)'); return false; }
     if (!H2 && H2_ONLY.has(name)) return false;
     if (H2 && NEEDS_PLAINTEXT.has(name)) { console.log(`  - ${name} skipped under --h2 (needs request matching)`); return false; }
     return true;
@@ -514,7 +659,7 @@ async function probeOnce(page, sessionId, token) {
         const confirmed = messages.some((m) => typeof m.text === 'string' && m.text.includes(token) && typeof m.seq === 'number');
         const onScreen = location.pathname.endsWith(sessionId);
         const inDom = onScreen ? (document.querySelector('.cl-inner')?.textContent ?? '').includes(token) : null;
-        return { inStore, confirmed, inDom, lastSeq: sync.sessionLastSeq.get(sessionId) ?? null, socket: storage.getState().socketStatus };
+        return { inStore, confirmed, inDom, lastSeq: sync['cursors'].get(sessionId)?.lastSeq ?? null, socket: storage.getState().socketStatus };
     }, { sessionId, token });
 }
 /** ms until `token` is in tab's transcript (store + DOM), or null after `holdMs`. */
@@ -538,8 +683,12 @@ async function setHidden(page, hidden) {
         document.dispatchEvent(new Event('visibilitychange'));
     }, hidden);
 }
-/** Fire a catch-up GET in tab1 now (what any incoming message does today). */
-const pokeCatchUp = (page, sessionId) => page.evaluate((id) => import('/src/sync/sync.ts').then(({ sync }) => sync.onSessionEnter(id)), sessionId);
+/**
+ * Fire a REST catch-up GET in tab1 now. B-812: through the REST sync itself —
+ * in subscribe mode onSessionEnter would subscribe over the socket instead, and
+ * these scenarios are about a hung REST read (the legacy path and the fallback).
+ */
+const pokeCatchUp = (page, sessionId) => page.evaluate((id) => import('/src/sync/sync.ts').then(({ sync }) => sync['restartMessagesSync'](id)), sessionId);
 const closeSocket = (page) => page.evaluate(() => import('/src/sync/apiSocket.ts').then(({ apiSocket }) => apiSocket['socket']?.io?.engine?.close()));
 const token = (tag) => `${tag}x${randomBytes(3).toString('hex')}`;
 /** B-804: what tab shows of `token` and of the catch-up right now. */
@@ -577,6 +726,56 @@ function countHistoryGets(page) {
     });
     return { get: (sid, kind) => counts.get(`${sid}:${kind}`) ?? 0, reset: () => counts.clear() };
 }
+/**
+ * B-812: the tab's sync-hello / session-subscribe frames on the control socket
+ * (`42<id>[event, payload]` out, `43<id>[ack]` back), with the socket URL —
+ * a handover candidate carries `vh_slot=` in it.
+ */
+function trackSyncFrames(page) {
+    const log = [];
+    page.on('websocket', (ws) => {
+        const url = ws.url();
+        if (!url.includes('/v1/updates')) return;
+        const pending = new Map();
+        ws.on('framesent', ({ payload }) => {
+            const m = /^42(\d+)(\[[\s\S]*)$/.exec(String(payload));
+            if (!m) return;
+            let packet;
+            try { packet = JSON.parse(m[2]); } catch { return; }
+            if (packet[0] !== 'sync-hello' && packet[0] !== 'session-subscribe') return;
+            const entry = { event: packet[0], at: Date.now(), url, payload: packet[1], ack: null, ackAt: null };
+            pending.set(m[1], entry);
+            log.push(entry);
+        });
+        ws.on('framereceived', ({ payload }) => {
+            const m = /^43(\d+)(\[[\s\S]*)$/.exec(String(payload));
+            const entry = m && pending.get(m[1]);
+            if (!entry) return;
+            try { entry.ack = JSON.parse(m[2])[0]; } catch { entry.ack = 'unparsed'; }
+            entry.ackAt = Date.now();
+        });
+    });
+    const touches = (entry, sid) => (entry.event === 'session-subscribe' ? entry.payload?.sid === sid : (entry.payload?.subs ?? []).some((sub) => sub.sid === sid));
+    return { log, reset: () => { log.length = 0; }, forSid: (sid, since = 0) => log.filter((e) => e.at >= since && touches(e, sid)) };
+}
+/** B-812: the tab's catch-up mode and the session's sync phase (sessionSyncScheduler.ts). */
+const syncState = (page, sessionId) => page.evaluate((sid) => import('/src/sync/sync.ts').then(({ sync }) => ({
+    mode: sync.syncScheduler.getMode(),
+    phase: sid ? (sync.syncScheduler.phase(sid)?.phase ?? null) : null,
+    stats: { ...sync.syncScheduler.stats },
+})), sessionId ?? null).catch(() => null);
+async function waitFor(fn, timeoutMs, everyMs = 50) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeoutMs) {
+        if (await fn()) return Date.now() - t0;
+        await sleep(everyMs);
+    }
+    return null;
+}
+/** Total ms 「同步中」 (or its slow form) was on screen in a watchSyncing() sample run. */
+const shownMs = (seen) => seen.samples.reduce((sum, x, i, all) => sum + (x.shown && i > 0 ? x.at - all[i - 1].at : 0), 0);
+const sql = (statement) => execFileSync('psql', [DATABASE_URL, '-v', 'ON_ERROR_STOP=1', '-At', '-c', statement]).toString().trim();
+
 /** The "CLI": store agent text records one by one, `gapMs` apart (pushed to every tab as `new-message`). */
 async function agentSay(page, sessionId, texts, gapMs) {
     await page.evaluate(async ({ sessionId, texts, gapMs }) => {
@@ -743,6 +942,7 @@ try {
         };
     });
     const page1 = await ctx1.newPage();
+    const frames1 = trackSyncFrames(page1);
     let tab1PageErrors = 0;
     page1.on('pageerror', (e) => { tab1PageErrors += 1; console.log('tab1 pageerror', DEBUG ? e.stack : e.message); });
     if (DEBUG) page1.on('console', (m) => { if (/\[fetch\]|B-803|SyncSocket|liveness|restart/i.test(m.text())) console.log(`    [+${((Date.now() - started) / 1000).toFixed(1)}s tab1] ${m.text().slice(0, 200)}`); });
@@ -767,6 +967,14 @@ try {
     const gets2 = countHistoryGets(page2);
     await sleep(1_500);
     await shot(page1, '0-tab1-ready');
+    // B-812: the mode the server's switch put this tab in (legacy/outside = production before B-812).
+    const ready = await syncState(page1, S1);
+    console.log(`    tab1 catch-up mode: ${ready?.mode}, S1 phase ${ready?.phase}`);
+    check(ready?.mode === (SUBSCRIBE ? 'subscribe' : 'legacy'), `tab1 catch-up mode is ${SUBSCRIBE ? 'subscribe' : 'legacy'} (--sync ${SYNC_MODE})`, ready?.mode);
+    if (SUBSCRIBE) check(ready?.phase === 'live', 'tab1 S1 is live (the hello / subscribe ack proved its head)', ready?.phase);
+    if (!SUBSCRIBE) check(frames1.log.every((e) => !e.ack?.ok), 'no subscribe ack is ok outside subscribe mode', JSON.stringify(frames1.log.map((e) => e.ack)));
+    // Spec §9.3: dead link + dead socket → ≤ 6s in subscribe mode; PR-1's T + 2s otherwise.
+    const RESUME_LIMIT_MS = SUBSCRIBE ? SUBSCRIBE_DEAD_LIMIT_MS : CATCH_UP_LIMIT_MS;
 
     // ── HEALTHY: hedging never fires on a healthy link ─────────────────
     if (want('HEALTHY')) {
@@ -808,7 +1016,7 @@ try {
         await setHidden(page1, false);
         const ms = await timeUntilVisible(page1, S1, tok, HOLD_MS, t0);
         measure('B3', ms);
-        check(ms !== null && ms <= CATCH_UP_LIMIT_MS, `B3 caught up ≤ ${CATCH_UP_LIMIT_MS}ms after resume`, fmt(ms));
+        check(ms !== null && ms <= RESUME_LIMIT_MS, `B3 caught up ≤ ${RESUME_LIMIT_MS}ms after resume`, fmt(ms));
         await shot(page1, 'B3');
         await settle('B3', page1, page2, S1, tok);
     }
@@ -828,7 +1036,7 @@ try {
         await setHidden(page1, false);
         const ms = await timeUntilVisible(page1, S1, tok, HOLD_MS, t0);
         measure('B6', ms);
-        check(ms !== null && ms <= CATCH_UP_LIMIT_MS, `B6 caught up ≤ ${CATCH_UP_LIMIT_MS}ms after resume`, fmt(ms));
+        check(ms !== null && ms <= RESUME_LIMIT_MS, `B6 caught up ≤ ${RESUME_LIMIT_MS}ms after resume`, fmt(ms));
         // B-804: the catch-up was visible, and is gone ≤ 2s after it landed.
         await sleep(2_500);
         const seen = await syncing.stop();
@@ -843,6 +1051,9 @@ try {
         // another device sends after the resume: visible ≤ 2s. Live delivery
         // rides the socket, whose own recovery (liveness probe ≤ 5s, then a
         // reconnect) is a separate clock — send once it is back.
+        // B-812: `socketStatus` still says connected for the socket that died while hidden; the
+        // resume's liveness probe (≤ 5s, shared in-flight run) decides — wait for it, then for the socket.
+        await page1.evaluate(() => import('/src/sync/apiSocket.ts').then(({ apiSocket }) => apiSocket.checkLiveness())).catch(() => {});
         await waitConnected(page1, 15_000).catch(() => {});
         const tok2 = token('B6b');
         const t1 = Date.now();
@@ -914,7 +1125,9 @@ try {
         measure('A4-settled', settledMs);
         check(gaps.length === 0, 'A4 the prompt is always in the dock or the transcript (every DOM change)', gaps.length ? `${gaps.length} gaps, first at +${gaps[0].at}ms: ${gaps[0].body}` : '');
         // --h2: B6 ran first, so both pools hold a (now dead) session — the H2POOL bound applies.
-        const a4Limit = (H2 ? Math.max(CATCH_UP_LIMIT_MS, H2_BOTH_POOLS_DEAD_LIMIT_MS) : CATCH_UP_LIMIT_MS) + 1_500;
+        // B-812: the transcript half rides the socket in subscribe mode, but the dock half is the
+        // prompt-queue REST read (not part of PR-5b) — under --h2 it still waits for the dead pools.
+        const a4Limit = (H2 ? Math.max(CATCH_UP_LIMIT_MS, H2_BOTH_POOLS_DEAD_LIMIT_MS) : SUBSCRIBE ? SUBSCRIBE_DEAD_LIMIT_MS : CATCH_UP_LIMIT_MS) + 1_500;
         check(settledMs !== null && settledMs <= a4Limit, `A4 in the transcript with the dock empty ≤ ${a4Limit}ms after the resume (incl. the 1.5s away)`, fmt(settledMs));
         await settle('A4', page1, page2, S1, tok);
     }
@@ -933,8 +1146,10 @@ try {
         await setHidden(page1, false);
         const ms = await timeUntilVisible(page1, S1, tok, HOLD_MS, t0);
         measure('POOL', ms);
-        check(proxy.stallsLeft() === 0, `POOL ${POOL_DEAD} after_seq requests really rode dead links`, `left=${proxy.stallsLeft()}`);
-        check(ms !== null && ms <= CATCH_UP_LIMIT_MS, `POOL caught up ≤ ${CATCH_UP_LIMIT_MS}ms after resume`, fmt(ms));
+        // B-812: in subscribe mode the resume catch-up is a sync-hello — REST reads happen only as the fallback.
+        if (!SUBSCRIBE) check(proxy.stallsLeft() === 0, `POOL ${POOL_DEAD} after_seq requests really rode dead links`, `left=${proxy.stallsLeft()}`);
+        else count('POOL-dead-after_seq-left', proxy.stallsLeft());
+        check(ms !== null && ms <= RESUME_LIMIT_MS, `POOL caught up ≤ ${RESUME_LIMIT_MS}ms after resume`, fmt(ms));
         await shot(page1, 'POOL');
         await settle('POOL', page1, page2, S1, tok);
     }
@@ -959,13 +1174,19 @@ try {
         measure('H2POOL', ms);
         // The user waits up to ~14s here: 「同步消息中…」 / 「连接不稳定 · 重试」 must say so the whole time.
         const during = seen.samples.filter((x) => x.at >= 1_000 && ms !== null && x.at <= ms - 300);
+        // B-812: caught up before the window opens (subscribe mode: ~0.5s) — nothing left to show.
+        const nothingToShow = ms !== null && ms <= 1_300;
         const blank = during.filter((x) => !x.shown);
         const phases = [...new Set(seen.samples.map((x) => x.phase).filter(Boolean))];
         console.log(`    H2POOL indicator: first ${seen.first}ms, phases ${phases.join('→') || '-'}, ${during.length} samples, ${blank.length} blank`);
-        check(seen.first !== null && seen.first <= 1_000, 'H2POOL 「同步中」 shows ≤ 1000ms after the resume', fmt(seen.first));
-        check(during.length > 0 && blank.length === 0, 'H2POOL the sync line stays on screen until caught up', blank.length ? `blank at +${blank[0].at}ms` : `${during.length} samples`);
+        // Like B6: a catch-up that lands before CATCH_UP_SHOW_MS shows nothing by design.
+        const h2TooFast = ms !== null && ms <= SYNCING_SHOW_MS + 400;
+        check(seen.first !== null ? seen.first <= 1_000 : h2TooFast, 'H2POOL 「同步中」 shows ≤ 1000ms after the resume (unless caught up before it is due)', seen.first === null && h2TooFast ? `not due: caught up in ${ms}ms` : fmt(seen.first));
+        check(nothingToShow || (during.length > 0 && blank.length === 0), 'H2POOL the sync line stays on screen until caught up', nothingToShow ? `caught up in ${ms}ms` : blank.length ? `blank at +${blank[0].at}ms` : `${during.length} samples`);
         check(dead >= 3, 'H2POOL both h2 sessions (and the socket) were dead', `dead links=${dead}`);
-        check(ms !== null && ms <= H2_BOTH_POOLS_DEAD_LIMIT_MS, `H2POOL caught up ≤ ${H2_BOTH_POOLS_DEAD_LIMIT_MS}ms (Chrome h2 PING bound)`, fmt(ms));
+        // B-812: subscribe mode leaves the dead pools alone — ≤ 6s (spec §9.3); the PING bound only binds the REST path.
+        const h2Limit = SUBSCRIBE ? SUBSCRIBE_DEAD_LIMIT_MS : H2_BOTH_POOLS_DEAD_LIMIT_MS;
+        check(ms !== null && ms <= h2Limit, `H2POOL caught up ≤ ${h2Limit}ms${SUBSCRIBE ? ' (socket hello)' : ' (Chrome h2 PING bound)'}`, fmt(ms));
         await settle('H2POOL', page1, page2, S1, tok);
     }
 
@@ -1933,6 +2154,275 @@ try {
             measure(`FAT_SLOW-${device}-median`, Number.isFinite(median) ? median : null);
             check(results[device].every((ms) => ms !== null && ms <= FAT_LIMIT_MS), `FAT_SLOW ${device} enters (composer shown and session list ready) ≤ ${FAT_LIMIT_MS}ms on slow 4G every run`, results[device].map(fmt).join(', '));
         }
+    }
+
+    // ── B-812 R1: HTTP pool dead, socket alive, the push lost ─────────
+    if (want('R1')) {
+        step('R1 every REST read rides a dead pooled link, the socket is alive, the push of a message sent while hidden is lost');
+        await sleep(1_000);
+        proxy.stallNext('after_seq', 6);
+        await setHidden(page1, true);
+        const tok = token('R1');
+        proxy.dropDown('"t":"new-message"', 1);
+        await send(page2, tok);
+        await sleep(3_000);
+        const dropped = proxy.dropsLeft() === 0;
+        frames1.reset();
+        const t0 = Date.now();
+        await setHidden(page1, false);
+        const ms = await timeUntilVisible(page1, S1, tok, HOLD_MS, t0);
+        measure('R1', ms);
+        check(dropped, 'R1 the push of the hidden-time message really was lost');
+        if (SUBSCRIBE) {
+            const hello = frames1.log.find((e) => e.event === 'sync-hello');
+            measure('R1-hello-ack', hello?.ackAt ? hello.ackAt - hello.at : null);
+            check(ms !== null && ms <= SUBSCRIBE_LIVE_LIMIT_MS, `R1 caught up over the socket ≤ ${SUBSCRIBE_LIVE_LIMIT_MS}ms after the resume (no HTTP pool)`, fmt(ms));
+        } else {
+            check(ms !== null, 'R1 caught up (REST path)', fmt(ms));
+        }
+        await settle('R1', page1, page2, S1, tok);
+    }
+
+    // ── B-812 HOLE: an old session with a tail seq hole ───────────────
+    if (want('HOLE')) {
+        step('HOLE 10 messages, then Session.seq += 2 by SQL (spec §4.2.1); a fresh tab opens it');
+        const [S] = await createSessions(page2, ['/tmp/b812-hole']);
+        const prefix = token('hole');
+        await userSay(page2, S, Array.from({ length: 10 }, (_, i) => `${prefix}-${String(i + 1).padStart(2, '0')}`));
+        const before = Number(sql(`SELECT seq FROM "Session" WHERE id = '${S}'`));
+        sql(`UPDATE "Session" SET seq = seq + 2 WHERE id = '${S}'`);
+        const head = Number(sql(`SELECT seq FROM "Session" WHERE id = '${S}'`));
+        const maxRow = Number(sql(`SELECT max(seq) FROM "SessionMessage" WHERE "sessionId" = '${S}'`));
+        check(before === 10 && head === 12 && maxRow === 10, 'HOLE Session.seq 12 > max(SessionMessage.seq) 10', `before=${before} head=${head} max=${maxRow}`);
+        const page3 = await ctx1.newPage();
+        page3.on('pageerror', (e) => { tab1PageErrors += 1; console.log('tab3 pageerror', e.message); });
+        if (DEBUG) page3.on('console', (m) => { if (/\[fetch\]|cache|sync:/i.test(m.text())) console.log(`    [+${((Date.now() - started) / 1000).toFixed(1)}s tab3] ${m.text().slice(0, 200)}`); });
+        const frames3 = trackSyncFrames(page3);
+        const gets3 = countHistoryGets(page3);
+        await page3.goto(`${PROXY_BASE}/session/${S}`);
+        let mountedAt = null;
+        let liveAt = null;
+        const t0 = Date.now();
+        while (Date.now() - t0 < 60_000 && (mountedAt === null || (SUBSCRIBE && liveAt === null))) {
+            if (mountedAt === null && await page3.locator('textarea.ci-textarea').isVisible().catch(() => false)) mountedAt = Date.now();
+            if (SUBSCRIBE && liveAt === null && (await syncState(page3, S))?.phase === 'live') liveAt = Date.now();
+            await sleep(50);
+        }
+        await dismissDialogs(page3);
+        const shown = await waitTranscript(page3, S, prefix, 10, 15_000);
+        check(shown !== null, 'HOLE the fresh tab shows the 10 messages', fmt(shown));
+        if (SUBSCRIBE) {
+            const liveMs = liveAt !== null && mountedAt !== null ? Math.max(0, liveAt - mountedAt) : null;
+            measure('HOLE-live-after-mount', liveMs);
+            check(liveMs !== null && liveMs <= SUBSCRIBE_LIVE_LIMIT_MS, `HOLE live ≤ ${SUBSCRIBE_LIVE_LIMIT_MS}ms after the session screen mounted`, fmt(liveMs));
+            const seq = (await probe(page3, S, prefix)).lastSeq;
+            check(seq === 12, 'HOLE lastSeq moved to the head (12) across the hole', `${seq}`);
+        }
+        await sleep(600);
+        check(!(await onScreen(page3, prefix))?.syncing, 'HOLE 「同步中」 is gone');
+        const since = Date.now();
+        await sleep(10_000);
+        const requests = frames3.forSid(S, since).length;
+        const forwards = gets3.get(S, 'after');
+        count('HOLE-requests-10s', `${requests} socket / ${forwards} after_seq`);
+        // Legacy (as before B-812) with a B-813 cached run: the cache probe plus one forward from the
+        // open overlapping the connect catch-up — bounded, not a loop.
+        const forwardBound = SUBSCRIBE ? 0 : 2;
+        check(requests <= 1 && forwards <= forwardBound, `HOLE ≤ 1 subscribe/hello (and ≤ ${forwardBound} after_seq) for it in the next 10s — no retry loop`, `${requests} / ${forwards}`);
+        const frameMark = Date.now();
+        gets3.reset();
+        const t1 = Date.now();
+        await userSay(page2, S, [`${prefix}-13`]);
+        const liveMsg = await timeUntilVisible(page3, S, `${prefix}-13`, HOLD_MS, t1);
+        measure('HOLE-next-message', liveMsg);
+        check(liveMsg !== null && liveMsg <= LIVE_LIMIT_MS, `HOLE the next message (seq 13) shows live ≤ ${LIVE_LIMIT_MS}ms`, fmt(liveMsg));
+        await sleep(REORDER_SLACK_MS);
+        if (SUBSCRIBE) {
+            check(frames3.forSid(S, frameMark).length === 0 && gets3.get(S, 'after') === 0, 'HOLE seq 13 is contiguous after the head: no catch-up request', `${frames3.forSid(S, frameMark).length} / ${gets3.get(S, 'after')}`);
+        } else {
+            // Spec §6.2-11: legacy behaves as before B-812 — REST anchors at the newest row (10), so 13
+            // is a gap: exactly one after_seq, then contiguous (no loop).
+            check(gets3.get(S, 'after') === 1, 'HOLE (legacy, as before B-812) seq 13 costs exactly one after_seq', `${gets3.get(S, 'after')}`);
+        }
+        await page3.close();
+    }
+
+    /** The "agent" posts a record every `everyMs` until stopped; only stored ones count as sent. */
+    function startAgent(page, sid, prefix, everyMs) {
+        const sent = [];
+        let running = true;
+        let failed = 0;
+        const done = (async () => {
+            for (let i = 1; running; i += 1) {
+                const text = `${prefix}-${String(i).padStart(3, '0')}`;
+                try { await agentSay(page, sid, [text], 0); sent.push(text); } catch { failed += 1; }
+                await sleep(everyMs);
+            }
+        })();
+        return { sent, stop: async () => { running = false; await done; return failed; } };
+    }
+    const controlSlot = (page) => page.evaluate(() => import('/src/sync/apiSocket.ts').then(({ apiSocket }) => {
+        const query = apiSocket['socket']?.io?.opts?.query;
+        return { slot: query?.vh_slot ?? null, connected: apiSocket['socket']?.connected === true };
+    })).catch(() => null);
+    /**
+     * A fresh page (tab1's context) until `tok` shows in S's transcript: the first screen.
+     * `legacy`: `vh.sync.mode=legacy` (spec §6.1) — the pre-B-812 REST path, the baseline.
+     */
+    async function firstScreen(sid, tok, { legacy = false, hint = 'tab1' } = {}) {
+        // The context's seeding script copies tab2's localStorage into every new page; keep this
+        // browser's own negotiated-mode hint (vh.sync.lastMode, written by tab1) like a real reload would.
+        const lastMode = hint === 'tab1' ? await page1.evaluate(() => localStorage.getItem('vh.sync.lastMode')).catch(() => null) : hint;
+        const page = await ctx1.newPage();
+        await page.addInitScript((mode) => { try { if (mode) localStorage.setItem('vh.sync.lastMode', mode); else localStorage.removeItem('vh.sync.lastMode'); } catch { /* ignore */ } }, lastMode);
+        if (legacy) await page.addInitScript(() => { try { localStorage.setItem('vh.sync.mode', 'legacy'); } catch { /* ignore */ } });
+        // Measured in-page from the session screen's mount to `tok` in the transcript: the dev
+        // server's module loading (~2s, ±300ms) is not what the comparison is about.
+        await page.addInitScript((t) => {
+            const state = { mount: null, shown: null };
+            window.__fs = state;
+            const check = () => {
+                if (state.mount === null && document.querySelector('textarea.ci-textarea')) state.mount = performance.now();
+                if (state.shown === null && (document.querySelector('.cl-inner')?.textContent ?? '').includes(t)) state.shown = performance.now();
+            };
+            new MutationObserver(check).observe(document, { subtree: true, childList: true, characterData: true });
+        }, tok);
+        if (DEBUG) page.on('console', (m) => { if (/\[fetch\]|sync:|SyncSocket/i.test(m.text())) console.log(`    [+${((Date.now() - started) / 1000).toFixed(2)}s fs${legacy ? '-legacy' : ''}] ${m.text().slice(0, 160)}`); });
+        await page.goto(`${PROXY_BASE}/session/${sid}`);
+        await page.waitForFunction(() => window.__fs?.shown != null && window.__fs?.mount != null, null, { timeout: 60_000, polling: 50 }).catch(() => {});
+        const fs = await page.evaluate(() => window.__fs).catch(() => null);
+        const ms = fs?.shown != null && fs?.mount != null ? Math.round(Math.max(0, fs.shown - fs.mount)) : null;
+        if (DEBUG) console.log(`    [fs${legacy ? '-legacy' : ''}] mount ${Math.round(fs?.mount ?? -1)} shown ${Math.round(fs?.shown ?? -1)} lastMode ${await page.evaluate(() => localStorage.getItem('vh.sync.lastMode')).catch(() => '?')}`);
+        // localStorage is shared with tab1: never leave the switch behind for its next connect.
+        if (legacy) await page.evaluate(() => localStorage.removeItem('vh.sync.mode')).catch(() => {});
+        await page.close();
+        return ms;
+    }
+    const median = (xs) => { const v = xs.filter((x) => x !== null).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; };
+    async function handOver(from, to) {
+        const epoch = `e2e-${Date.now()}`;
+        const t0 = Date.now();
+        await release(from, 'drain', { epoch, toRelease: servers.get(to).sha, candidateSlot: to, deadline: Date.now() + 30_000 });
+        const handed = await waitFor(async () => (await controlSlot(page1))?.slot === to, 15_000);
+        front.setActive(to);
+        await release(from, 'disconnect');
+        await stopSlot(from);
+        return { t0, handed };
+    }
+
+    // ── B-812 BLUEGREEN: drain → handover → switch → stop the old slot ──
+    if (want('BLUEGREEN')) {
+        const from = front.active();
+        const to = from === 'blue' ? 'green' : 'blue';
+        step(`BLUEGREEN ${from} → ${to} while the agent posts every 250ms`);
+        if (!servers.has(to)) await startSlot(to);
+        frames1.reset();
+        const prefix = token('bg');
+        const agent = startAgent(page2, S1, prefix, 250);
+        await sleep(1_500);
+        const t0 = Date.now();
+        const syncing = watchSyncing(page1, t0);
+        const { handed } = await handOver(from, to);
+        await sleep(3_000);
+        const failed = await agent.stop();
+        const caught = await waitTranscript(page1, S1, prefix, agent.sent.length, 15_000);
+        await sleep(1_000);
+        const seen = await syncing.stop();
+        const list1 = await transcript(page1, S1, prefix);
+        measure('BLUEGREEN-handover', handed);
+        count('BLUEGREEN-sent', `${agent.sent.length} (+${failed} refused)`);
+        check(handed !== null, `BLUEGREEN tab1's control socket moved to ${to}`, fmt(handed));
+        check(caught !== null && JSON.stringify(list1) === JSON.stringify(agent.sent), 'BLUEGREEN every stored message is shown, in order, across the switch', `${list1.length}/${agent.sent.length}`);
+        const state = await syncState(page1, S1);
+        if (SUBSCRIBE) {
+            const acked = frames1.log.filter((e) => e.event === 'sync-hello' && e.url.includes(`vh_slot=${to}`) && e.ack?.ok === true);
+            check(acked.length >= 1, `BLUEGREEN tab1's hello was acked by the new slot (${to})`, `${acked.length} acked hello(s) on vh_slot=${to}`);
+            check(state?.mode === 'subscribe' && state?.phase === 'live', 'BLUEGREEN tab1 stays in subscribe mode, S1 live', JSON.stringify(state));
+        } else {
+            check(state?.mode === 'legacy', 'BLUEGREEN tab1 stays legacy', JSON.stringify(state));
+        }
+        const shown = shownMs(seen);
+        measure('BLUEGREEN-syncing-shown-total', shown);
+        check(shown <= 3_000, 'BLUEGREEN 「同步中」 on screen ≤ 3000ms in total', `${shown}ms`);
+        await shot(page1, 'BLUEGREEN');
+        await settle('BLUEGREEN', page1, page2, S1, list1.at(-1) ?? prefix);
+    }
+
+    // ── B-812 OLDSERVER: the candidate slot runs the old release ──────
+    if (want('OLDSERVER')) {
+        const from = front.active();
+        const to = from === 'blue' ? 'green' : 'blue';
+        step(`OLDSERVER ${from} (new) → ${to} (old release, no sync-hello handler)`);
+        const fsTok = token('fs');
+        await userSay(page2, S1, [fsTok]);
+        // Baseline = today's path (REST first page) on the new server; the subscribe-mode first screen for reference.
+        const baseline = [];
+        const subscribed = [];
+        for (let i = 0; i < FIRST_SCREEN_RUNS; i += 1) {
+            baseline.push(await firstScreen(S1, fsTok, { legacy: true }));
+            subscribed.push(await firstScreen(S1, fsTok));
+        }
+        await stopSlot(to);
+        await startSlot(to, resolve(OLD_SERVER_DIR, 'packages/happy-server'));
+        frames1.reset();
+        const prefix = token('old');
+        const agent = startAgent(page2, S1, prefix, 250);
+        await sleep(1_000);
+        let legacyAt = null;
+        let watching = true;
+        const legacyWatch = (async () => {
+            while (watching && legacyAt === null) {
+                if ((await syncState(page1))?.mode === 'legacy') legacyAt = Date.now();
+                await sleep(50);
+            }
+        })();
+        const { handed } = await handOver(from, to);
+        await waitFor(async () => legacyAt !== null, 10_000);
+        watching = false;
+        await legacyWatch;
+        if (DEBUG) console.log(`    [old] tab1 lastMode after legacy: ${await page1.evaluate(() => localStorage.getItem('vh.sync.lastMode'))}`);
+        await sleep(3_000);
+        const failed = await agent.stop();
+        const caught = await waitTranscript(page1, S1, prefix, agent.sent.length, 15_000);
+        const list1 = await transcript(page1, S1, prefix);
+        const state = await syncState(page1, S1);
+        const onOld = frames1.log.filter((e) => e.event === 'sync-hello' && e.url.includes(`vh_slot=${to}`));
+        measure('OLDSERVER-handover', handed);
+        count('OLDSERVER-sent', `${agent.sent.length} (+${failed} refused)`);
+        check(handed !== null, `OLDSERVER tab1's control socket moved to ${to}`, fmt(handed));
+        check(state?.mode === 'legacy', 'OLDSERVER tab1 is in legacy mode on the old server', JSON.stringify(state));
+        if (SUBSCRIBE) {
+            check(onOld.length >= 1 && onOld.every((e) => e.ack === null), 'OLDSERVER the hello on the old slot got no ack (no handler)', `${onOld.length} hello(s), acks ${JSON.stringify(onOld.map((e) => e.ack))}`);
+            const helloToLegacy = onOld.length && legacyAt !== null ? legacyAt - onOld[0].at : null;
+            measure('OLDSERVER-hello-to-legacy', helloToLegacy);
+            check(helloToLegacy !== null && helloToLegacy >= 1_900 && helloToLegacy <= 3_000, 'OLDSERVER legacy ~2s after the unanswered hello (SYNC_FIRST_HELLO_TIMEOUT_MS)', fmt(helloToLegacy));
+        }
+        check(caught !== null && JSON.stringify(list1) === JSON.stringify(agent.sent), 'OLDSERVER every stored message is shown, in order', `${list1.length}/${agent.sent.length}`);
+        // On the old server: the new Web (hello → 2s → legacy, REST first page after 200ms in
+        // parallel, spec §6.3) against today's Web behaviour on the SAME server (forced legacy).
+        // `firstContact`: a browser whose last connection was to a new server (hint subscribe) —
+        // the one load that pays the §6.3 200ms; after it the hint says legacy (tab1 has it now).
+        // localStorage is shared by the context's pages: read tab1's hint once, before any page rewrites it.
+        const tab1Hint = await page1.evaluate(() => localStorage.getItem('vh.sync.lastMode')).catch(() => null);
+        check(tab1Hint === 'legacy', 'OLDSERVER tab1 remembered the legacy connection (vh.sync.lastMode)', `${tab1Hint}`);
+        const old = [];
+        const oldBaseline = [];
+        const firstContact = [];
+        for (let i = 0; i < FIRST_SCREEN_RUNS; i += 1) {
+            old.push(await firstScreen(S1, fsTok, { hint: tab1Hint }));
+            oldBaseline.push(await firstScreen(S1, fsTok, { legacy: true }));
+            firstContact.push(await firstScreen(S1, fsTok, { hint: 'subscribe' }));
+        }
+        measure('OLDSERVER-first-screen-baseline-rest', median(baseline));
+        measure('OLDSERVER-first-screen-new-subscribe', median(subscribed));
+        measure('OLDSERVER-first-screen-old-server', median(old));
+        measure('OLDSERVER-first-screen-old-server-baseline-rest', median(oldBaseline));
+        measure('OLDSERVER-first-screen-old-server-first-contact', median(firstContact));
+        console.log(`    first screen: new server REST ${JSON.stringify(baseline)} / new server subscribe ${JSON.stringify(subscribed)} / old server ${JSON.stringify(old)} / old server REST ${JSON.stringify(oldBaseline)} / old server first contact ${JSON.stringify(firstContact)}`);
+        // Reported, not asserted: the one load per browser that pays §6.3's 200ms by design.
+        count('OLDSERVER-first-contact-extra-ms', median(firstContact) !== null && median(oldBaseline) !== null ? median(firstContact) - median(oldBaseline) : 'n/a');
+        check(median(old) !== null && median(oldBaseline) !== null && median(old) <= median(oldBaseline) + 200, 'OLDSERVER first screen on the old server ≤ today\'s path on the same server + 200ms (median)', `${median(old)} vs ${median(oldBaseline)}`);
+        await settle('OLDSERVER', page1, page2, S1, list1.at(-1) ?? prefix);
     }
 
     check(tab1PageErrors === 0, 'tab1 raised no page error (e.g. an unhandled 「Superseded by restart」)', `${tab1PageErrors}`);

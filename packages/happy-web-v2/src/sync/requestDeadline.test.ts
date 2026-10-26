@@ -136,10 +136,10 @@ describe('B-818 wiring in sync.ts', () => {
 
     it('the UI is ready after the FIRST session list, not after a full fetch queued behind it', () => {
         const init = sync.slice(sync.indexOf('async #init() {'), sync.indexOf('async #init() {') + 4_000);
-        expect(init).toContain('const firstListLoaded = new Promise<void>((resolve) => { this.onSessionsListLoaded = resolve; });');
+        expect(init).toContain('this.firstSessionsList = deferredSignal();\n        const firstListLoaded = this.firstSessionsList.promise;');
         expect(init).toContain('Promise.race([firstListLoaded, this.sessionsSync.awaitQueue()]).then(() => {\n            storage.getState().applyReady();');
         const fetchSessions = sync.slice(sync.indexOf('private fetchSessions = async () => {'), sync.indexOf('private catchUpSessionsSinceList'));
-        expect(fetchSessions).toContain('this.applySessions(mergedSessions);\n        this.sessionListSnapshot = sessionListSnapshot(sessions, parseServedAt(date));\n        log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);\n        this.onSessionsListLoaded?.();');
+        expect(fetchSessions).toContain('this.applySessions(mergedSessions);\n        this.sessionListSnapshot = sessionListSnapshot(sessions, parseServedAt(date));\n        log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);\n        this.firstSessionsList.resolve();');
     });
 
     it('every hedged read hands the attempt init (onResponse) to its request', () => {

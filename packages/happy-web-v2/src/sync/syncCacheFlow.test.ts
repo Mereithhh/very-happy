@@ -11,6 +11,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
 import type { StoredRow } from './cache/syncCache';
+import { REORDER_WINDOW_MS } from './sessionMerge';
 
 let sync: typeof import('./sync').sync;
 let storage: typeof import('./storage').storage;
@@ -31,6 +32,8 @@ let forgotten: string[];
 let decryptGate: Promise<void> | null;
 /** after_seq answers with the history as it was when the request ARRIVED (a gated answer is late, not newer). */
 let snapshotAtRequest: boolean;
+/** When set, an after_seq page holds at most this many rows (hasMore = more remain). */
+let forwardPageLimit: number | null;
 
 beforeAll(async () => {
     installBrowserTestGlobals();
@@ -55,6 +58,7 @@ beforeEach(async () => {
     forgotten = [];
     decryptGate = null;
     snapshotAtRequest = false;
+    forwardPageLimit = null;
     const encryption = {
         decryptMessage: async (message: ServerMessage) => decrypt(message),
         decryptMessages: async (messages: ServerMessage[]) => {
@@ -79,8 +83,13 @@ beforeEach(async () => {
                 throw new DOMException('read deadline', 'TimeoutError');
             }
         }
-        const messages = early ?? (after !== null ? all.filter((m) => m.seq > Number(after)) : [...all].reverse());
-        return new Response(JSON.stringify({ messages, hasMore: false }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        let messages = early ?? (after !== null ? all.filter((m) => m.seq > Number(after)) : [...all].reverse());
+        let hasMore = false;
+        if (after !== null && forwardPageLimit !== null && messages.length > forwardPageLimit) {
+            messages = messages.slice(0, forwardPageLimit);
+            hasMore = true;
+        }
+        return new Response(JSON.stringify({ messages, hasMore }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     await syncCache.open(`flow-account-${++counter}`);
 });
@@ -117,6 +126,12 @@ async function settle() {
     for (let i = 0; i < 30; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** B-812: past the reorder window (real timers), then settled. */
+async function reorderWindow() {
+    await new Promise((resolve) => setTimeout(resolve, REORDER_WINDOW_MS + 20));
+    await settle();
+}
+
 const texts = (sid: string) => (storage.getState().sessionMessages[sid]?.messages ?? [])
     .filter((m) => m.kind === 'user-text')
     .map((m) => (m as { text: string }).text)
@@ -126,11 +141,10 @@ const serverTexts = (sid: string) => server.get(sid)!.map((m) => JSON.parse(m.co
 /** A page reload, as far as this session is concerned: memory forgets it, IndexedDB keeps it. */
 function reload(sid: string) {
     const s = sync as unknown as Record<string, { delete?: (k: string) => void; clear?: (k: string) => void }>;
-    s.sessionLastSeq.delete!(sid);
-    s.sessionOldestSeq.delete!(sid);
+    // B-812: lastSeq / oldestSeq / the pre-anchor buffer live in the merge cursor.
+    s.cursors.delete!(sid);
     s.messagesSync.delete!(sid);
     s.unverifiedCacheHits.delete!(sid);
-    s.anchorBuffer.clear!(sid);
     storage.getState().resetSessionMessages(sid);
 }
 
@@ -144,9 +158,10 @@ async function visit(sid: string) {
 /** Every batch the reducer receives for `sid`, as server seqs. */
 function recordApplied(sid: string): number[][] {
     const batches: number[][] = [];
-    const s = sync as unknown as { applyMessages: (id: string, messages: Array<{ seq?: number }>, ...rest: unknown[]) => void };
-    const original = s.applyMessages;
-    vi.spyOn(s, 'applyMessages').mockImplementation((id, messages, ...rest) => {
+    // B-812: the one store writer (mergeSessionMessages / optimistic inputs).
+    const s = sync as unknown as { writeMessagesToStore: (id: string, messages: Array<{ seq?: number }>, ...rest: unknown[]) => void };
+    const original = s.writeMessagesToStore;
+    vi.spyOn(s, 'writeMessagesToStore').mockImplementation((id, messages, ...rest) => {
         if (id === sid) batches.push(messages.map((m) => m.seq!));
         original(id, messages, ...rest);
     });
@@ -308,6 +323,26 @@ describe('B-819 (QA8 F2): the anchor probe overlaps the cache render and the key
         expect(applied).toEqual([[1, 2, 3, 4]]);
     });
 
+    it('a probe merged with the render that says hasMore → the catch-up goes on from its newest row', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        await visit(sid);
+        for (let i = 4; i <= 6; i++) store(sid, `m${i}`);
+        reload(sid);
+        afterSeqs = [];
+        forwardPageLimit = 2; // the probe (after 2) gets m3, m4 and hasMore
+        const applied = recordApplied(sid);
+        const release = gateDecrypt();
+        sync.onSessionEnter(sid);
+        await settle();
+        expect(afterSeqs).toEqual([2]);
+        release();
+        await settle();
+        expect(texts(sid)).toEqual(serverTexts(sid));
+        expect(afterSeqs).toEqual([2, 4]);
+        expect(applied).toEqual([[1, 2, 3, 4], [5, 6]]);
+    });
+
     it('a probe that answered before the render and contradicts the cache → the stale run is never painted, cold page', async () => {
         const sid = newSession();
         for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
@@ -466,6 +501,9 @@ describe('B-819 (QA8 F2): the anchor probe overlaps the cache render and the key
         expect(texts(sid)).toEqual([]);
         release();
         await settle();
+        expect(texts(sid)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5']); // never across the hole
+        // B-812: m7 waits in the reorder buffer (spec §5.1-4); its expiry asks the catch-up.
+        await reorderWindow();
         // Without the follow-up the transcript stopped at m5 (the probe predates m6/m7, the render dropped m7).
         expect(texts(sid)).toEqual(serverTexts(sid));
         expect(applied).toEqual([[1, 2, 3, 4, 5], [6, 7]]);
@@ -497,6 +535,9 @@ describe('B-819 B1: a probe answering AFTER the render still reaches a buffered 
         expect(texts(sid)).toEqual(['m1', 'm2', 'm3']); // not across the hole
         releaseProbe();
         await settle();
+        expect(texts(sid)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5']);
+        // B-812: m7 waits in the reorder buffer (spec §5.1-4); its expiry asks the catch-up.
+        await reorderWindow();
         // Without the follow-up: stuck at m5 until some later event.
         expect(texts(sid)).toEqual(serverTexts(sid));
         expect(applied).toEqual([[1, 2, 3], [4, 5], [6, 7]]);
@@ -556,7 +597,12 @@ describe('B-813 review S2: a session anchored while the cache was read keeps its
         await visit(sid);
         for (let i = 4; i <= 5; i++) store(sid, `m${i}`);
         reload(sid);
-        const s = sync as unknown as { sessionLastSeq: Map<string, number>; sessionOldestSeq: Map<string, number> };
+        // B-812: the merge cursor (sessionMerge.ts).
+        const cursors = (sync as unknown as { cursors: Map<string, { lastSeq?: number; oldestSeq?: number }> }).cursors;
+        const s = {
+            sessionLastSeq: { get: (id: string) => cursors.get(id)?.lastSeq, set: (id: string, seq: number) => { (cursors.get(id) ?? cursors.set(id, { generation: 0, pending: new Map(), anchorRequested: false } as never).get(id)!).lastSeq = seq; } },
+            sessionOldestSeq: { set: (id: string, seq: number) => { cursors.get(id)!.oldestSeq = seq; } },
+        };
         const load = syncCache.load.bind(syncCache);
         // Another path (e.g. a restarted load that got the latest page first) anchors the session at 5 meanwhile.
         vi.spyOn(syncCache, 'load').mockImplementation(async (...args) => {
@@ -725,5 +771,159 @@ describe('B-813 §5.4.2: a wrong cache costs one cold load, never a wrong transc
         expect(Date.now() - t0).toBeLessThan(3_000);
         expect(gets).toEqual([`${sid}?before`]);
         expect(syncCache.stats().state).toBe('disabled');
+    });
+});
+
+// B-812 × B-813: in subscribe mode the cache still renders first; the subscribe
+// that follows asks from the cached newest row - 1, so its ack checks that row
+// (§5.4.2) the way the REST probe does on the legacy path.
+describe('B-812 subscribe mode with the cache', () => {
+    type Emit = { event: string; payload: any };
+    let emits: Emit[];
+    let holdAcks: Array<() => void> | null;
+
+    function snapshot(sub: { sid: string; afterSeq: number | null; limit?: number }) {
+        const all = server.get(sub.sid) ?? [];
+        const head = all.at(-1)?.seq ?? 0;
+        if (sub.afterSeq === null) return { sid: sub.sid, ok: true, headSeq: head, messages: all.slice(-(sub.limit ?? 200)), hasMore: false, ...(all.length ? { oldestSeq: all.slice(-(sub.limit ?? 200))[0].seq } : {}) };
+        return { sid: sub.sid, ok: true, headSeq: head, messages: all.filter((m) => m.seq > sub.afterSeq!), hasMore: false };
+    }
+
+    beforeEach(async () => {
+        emits = [];
+        holdAcks = null;
+        vi.spyOn(apiSocket, 'isControlConnected').mockReturnValue(true);
+        vi.spyOn(apiSocket, 'emitWithTimeout').mockImplementation((event, payload) => new Promise((resolve) => {
+            emits.push({ event, payload });
+            const p = payload as any;
+            const answer = () => resolve((event === 'sync-hello'
+                ? { ok: true, v: 1, serverTime: 0, limits: { maxSubs: 16, maxLimit: 500, gapThreshold: 500 }, results: p.subs.map(snapshot) }
+                : event === 'session-subscribe' ? snapshot(p) : { ok: true }) as never);
+            if (holdAcks && event === 'session-subscribe') holdAcks.push(answer);
+            else answer();
+        }));
+        const done = sync.syncScheduler.connect('connect');
+        await settle();
+        await done;
+    });
+
+    afterEach(() => {
+        sync.syncScheduler.disconnected();
+    });
+
+    const subscribes = (sid: string) => emits.filter((e) => e.event === 'session-subscribe' && e.payload.sid === sid);
+    const phase = (sid: string) => sync.syncScheduler.phase(sid)?.phase ?? null;
+
+    it('reload: the cached run renders before the ack, the subscribe asks from its newest row - 1, then live — 0 REST', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        sync.onSessionEnter(sid);
+        await settle();
+        await syncCache.flush();
+        expect(subscribes(sid).map((e) => e.payload.afterSeq)).toEqual([null]);
+        expect(texts(sid)).toEqual(['m1', 'm2', 'm3']);
+        for (let i = 4; i <= 5; i++) store(sid, `m${i}`);
+        reload(sid);
+        sync.syncScheduler.forget(sid);
+        emits = [];
+        gets = [];
+        holdAcks = [];
+        sync.onSessionEnter(sid);
+        await settle();
+        expect(texts(sid)).toEqual(['m1', 'm2', 'm3']); // the cache, before any answer
+        expect(subscribes(sid).map((e) => e.payload.afterSeq)).toEqual([2]);
+        expect(phase(sid)).toBe('syncing');
+        for (const answer of holdAcks) answer();
+        holdAcks = null;
+        await settle();
+        expect(texts(sid)).toEqual(serverTexts(sid));
+        expect(phase(sid)).toBe('live');
+        expect(gets).toEqual([]);
+    });
+
+    it('a forward ack writes its rows back to the cache: the next reload renders them and asks from the new newest row - 1 (G1-20)', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        sync.onSessionEnter(sid);
+        await settle();
+        await syncCache.flush();
+        for (let i = 4; i <= 5; i++) store(sid, `m${i}`);
+        reload(sid);
+        sync.syncScheduler.forget(sid);
+        emits = [];
+        sync.onSessionEnter(sid);
+        await settle();
+        await syncCache.flush();
+        expect(subscribes(sid).map((e) => e.payload.afterSeq)).toEqual([2]); // the forward snapshot, not a cold page
+        expect(texts(sid)).toEqual(serverTexts(sid));
+        reload(sid);
+        sync.syncScheduler.forget(sid);
+        emits = [];
+        gets = [];
+        holdAcks = [];
+        sync.onSessionEnter(sid);
+        await settle();
+        expect(texts(sid)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5']); // from the cache, before any answer
+        expect(subscribes(sid).map((e) => e.payload.afterSeq)).toEqual([4]);
+        for (const answer of holdAcks) answer();
+        holdAcks = null;
+        await settle();
+        expect(phase(sid)).toBe('live');
+        expect(gets).toEqual([]);
+    });
+
+    it('a cold open while the hello is still out (page load) renders the cache at once, then subscribes from it', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        sync.onSessionEnter(sid);
+        await settle();
+        await syncCache.flush();
+        store(sid, 'm4');
+        reload(sid);
+        sync.syncScheduler.forget(sid);
+        // A new connection whose hello is not answered yet.
+        let answerHello!: () => void;
+        const original = (apiSocket.emitWithTimeout as any).getMockImplementation();
+        (apiSocket.emitWithTimeout as any).mockImplementation((event: string, payload: unknown, ms: number) => {
+            if (event !== 'sync-hello') return original(event, payload, ms);
+            return new Promise((resolve) => { answerHello = () => resolve(original(event, payload, ms)); });
+        });
+        const connecting = sync.syncScheduler.connect('connect');
+        await settle();
+        emits = [];
+        gets = [];
+        sync.onSessionEnter(sid);
+        await settle();
+        expect(sync.syncScheduler.getMode()).toBe('negotiating');
+        expect(texts(sid)).toEqual(['m1', 'm2', 'm3']); // the cache, no network yet
+        expect(gets).toEqual([]);
+        answerHello();
+        await connecting;
+        await settle();
+        expect(subscribes(sid).map((e) => e.payload.afterSeq)).toEqual([2]);
+        expect(texts(sid)).toEqual(serverTexts(sid));
+        expect(phase(sid)).toBe('live');
+        expect(gets).toEqual([]);
+    });
+
+    it('§5.4.2 row 6 over the socket: the server row at the cached seq has another id → cache dropped, one cold subscribe, transcript = server', async () => {
+        const sid = newSession();
+        for (let i = 1; i <= 3; i++) store(sid, `m${i}`);
+        sync.onSessionEnter(sid);
+        await settle();
+        await syncCache.flush();
+        // The history was rewritten behind the cache: seq 3 is another message now.
+        server.set(sid, server.get(sid)!.slice(0, 2));
+        store(sid, 'm3-other', 'other-id');
+        store(sid, 'm4');
+        reload(sid);
+        sync.syncScheduler.forget(sid);
+        emits = [];
+        sync.onSessionEnter(sid);
+        await settle();
+        await settle();
+        expect(subscribes(sid).map((e) => e.payload.afterSeq)).toEqual([2, null]);
+        expect(texts(sid)).toEqual(['m1', 'm2', 'm3-other', 'm4']);
+        expect(phase(sid)).toBe('live');
     });
 });

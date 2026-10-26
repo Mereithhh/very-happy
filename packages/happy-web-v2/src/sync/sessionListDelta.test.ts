@@ -158,9 +158,9 @@ describe('B-823 wiring in sync.ts', () => {
     it('the first connect runs the catch-up; every later connect re-reads the full list', () => {
         const reconnected = body('apiSocket.onReconnected(', 'this.machinesSync.invalidate();');
         expect(reconnected).toContain('const firstConnect = !this.socketConnectedOnce;\n            this.socketConnectedOnce = true;\n            if (firstConnect) {\n                this.sessionsCatchUpSync.invalidate();\n            } else {\n                this.sessionsSync.invalidate();\n            }');
-        // The viewed session: a reconnect aborts a possibly stuck catch-up; the first connect coalesces behind the boot's page.
-        expect(body('apiSocket.onReconnected(', 'apiSocket.onRecovered(')).toContain('this.catchUpViewedSession({ restart: !firstConnect });');
-        expect(body('private catchUpViewedSession(', 'private trackMessagesCatchUp(')).toContain('this.onSessionEnter(viewing, { restartFetch: opts.restart });');
+        // The viewed session: a reconnect aborts a possibly stuck catch-up; the first connect coalesces behind the boot's page
+        // (B-812: restartStuckCatchUp; behaviour in sessionSubscribe.test.ts).
+        expect(body('apiSocket.onReconnected(', 'apiSocket.onRecovered(')).toContain('this.restartStuckCatchUp({ firstConnect });');
         // Recovered reconnects keep their full list (spec §C).
         expect(body('apiSocket.onRecovered(', 'private handleRelayCommittedMessages')).toContain('this.sessionsSync.invalidate();');
     });

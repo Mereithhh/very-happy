@@ -3,7 +3,7 @@
  * `dead` never answers (only its abort settles it), `live` answers when told.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HEDGE_AFTER_MS, HEDGE_MAX_ATTEMPTS, hedgedRead, hedgePoolInit, resetHedgePreference, type HedgedRequestInit } from './hedgedRead';
+import { armHedgeBurst, HEDGE_AFTER_MS, HEDGE_BURST_MS, HEDGE_MAX_ATTEMPTS, hedgedRead, hedgePoolInit, resetHedgePreference, type HedgedRequestInit } from './hedgedRead';
 
 type Attempt = { index: number; init: HedgedRequestInit; signal: AbortSignal; resolve: (v: string) => void; reject: (e: unknown) => void; headers: () => void };
 
@@ -187,5 +187,92 @@ describe('connection pools: each hedge must reach another connection', () => {
         void hedgedRead(b.run);
         expect(b.list[0].init.credentials).toBeUndefined();
         b.list[0].resolve('ok');
+    });
+});
+
+// QA7 O-1: 「重试」 restarted the read onto a dead h1 keep-alive; the hedge came
+// HEDGE_AFTER_MS later, and a second restart in that window started over (~4.2s).
+describe('hedgedRead burst after 「重试」 (QA7 O-1)', () => {
+    it('inside the burst window both pools go out at once; the live one answers without waiting HEDGE_AFTER_MS', async () => {
+        armHedgeBurst();
+        const a = attempts();
+        const read = hedgedRead(a.run);
+        await vi.advanceTimersByTimeAsync(0);
+        // B-818: each attempt's init also carries its onResponse (commit) hook.
+        expect(a.list.map(({ init: { onResponse: _commit, ...pool } }) => pool)).toEqual([hedgePoolInit(0), hedgePoolInit(1)]);
+        a.list[1].resolve('fresh connection');
+        await expect(read).resolves.toBe('fresh connection');
+        expect(a.list[0].signal.aborted).toBe(true);
+    });
+
+    it('a restart inside the window (the reconnect after the retry) is immediate again — the clock does not start over', async () => {
+        armHedgeBurst();
+        const first = attempts();
+        const controller = new AbortController();
+        const stale = hedgedRead(first.run, { signal: controller.signal });
+        await vi.advanceTimersByTimeAsync(HEDGE_AFTER_MS - 1);
+        controller.abort(new DOMException('Superseded by restart', 'AbortError'));
+        await expect(stale).rejects.toThrow();
+        const second = attempts();
+        const read = hedgedRead(second.run);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(second.list).toHaveLength(2);
+        second.list[1].resolve('ok');
+        await expect(read).resolves.toBe('ok');
+    });
+
+    it('B-818 × O-1: in a burst both pools go out; the first headers commit, the other is aborted, no third attempt', async () => {
+        armHedgeBurst();
+        const a = attempts();
+        const read = hedgedRead(a.run);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(a.list).toHaveLength(2);
+        a.list[1].headers(); // the fresh connection answers first; its body is still downloading
+        expect(a.list[0].signal.aborted).toBe(true);
+        expect(a.list[1].signal.aborted).toBe(false);
+        expect(vi.getTimerCount()).toBe(0);
+        await vi.advanceTimersByTimeAsync(HEDGE_AFTER_MS * 5);
+        expect(a.list).toHaveLength(2);
+        a.list[1].resolve('fresh connection');
+        await expect(read).resolves.toBe('fresh connection');
+    });
+
+    it('B-818 × O-1: headers on the first attempt before the burst timer fires → the second pool never goes out', async () => {
+        armHedgeBurst();
+        const a = attempts();
+        const read = hedgedRead(a.run);
+        a.list[0].headers();
+        await vi.advanceTimersByTimeAsync(HEDGE_AFTER_MS);
+        expect(a.list).toHaveLength(1);
+        a.list[0].resolve('first');
+        await expect(read).resolves.toBe('first');
+    });
+
+    it('headers reported inside the attempt call itself (a cached response) commit before anything is scheduled — in a burst too', async () => {
+        for (const burst of [false, true]) {
+            if (burst) armHedgeBurst();
+            const a = attempts();
+            const read = hedgedRead((signal, init, index) => {
+                const result = a.run(signal, init, index);
+                init.onResponse();
+                return result;
+            });
+            expect(vi.getTimerCount()).toBe(0);
+            await vi.advanceTimersByTimeAsync(HEDGE_AFTER_MS * 3);
+            expect(a.list).toHaveLength(1);
+            a.list[0].resolve('cached');
+            await expect(read).resolves.toBe('cached');
+        }
+    });
+
+    it('after the window the normal schedule is back (a healthy read stays one request)', async () => {
+        armHedgeBurst();
+        await vi.advanceTimersByTimeAsync(HEDGE_BURST_MS);
+        const a = attempts();
+        const read = hedgedRead(a.run);
+        await vi.advanceTimersByTimeAsync(40);
+        expect(a.list).toHaveLength(1);
+        a.list[0].resolve('page');
+        await expect(read).resolves.toBe('page');
     });
 });

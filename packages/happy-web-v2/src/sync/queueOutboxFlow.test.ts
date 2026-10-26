@@ -168,7 +168,9 @@ async function settle() {
 /** A reload as far as this session goes: memory forgets it (messages and the dock), IndexedDB keeps it. */
 async function reload(sid: string) {
     const s = sync as unknown as Record<string, Map<string, unknown>>;
-    for (const key of ['sessionLastSeq', 'sessionOldestSeq', 'messagesSync', 'sendSync', 'pendingOutbox', 'unverifiedCacheHits']) s[key].delete(sid);
+    // B-812: lastSeq / oldestSeq live in the merge cursor; the scheduler forgets the subscription.
+    for (const key of ['cursors', 'messagesSync', 'sendSync', 'pendingOutbox', 'unverifiedCacheHits']) s[key].delete(sid);
+    sync.syncScheduler.forget(sid);
     for (const [localId, record] of [...s.outboxRecords]) if ((record as { sessionId: string }).sessionId === sid) s.outboxRecords.delete(localId);
     storage.getState().resetSessionMessages(sid);
     queue.promptQueueStore.setState((state) => {

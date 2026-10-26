@@ -57,7 +57,20 @@ export type HedgedRequestInit = HedgePoolInit & { onResponse: () => void };
  * A later hedge won by the other pool switches back.
  */
 let preferredPool: 0 | 1 = 0;
-export function resetHedgePreference() { preferredPool = 0; }
+export function resetHedgePreference() { preferredPool = 0; burstUntil = 0; }
+
+/**
+ * QA7 O-1: after 「重试」 (or a socket that answered nothing) the pooled
+ * connection the next read would take is likely dead too — with the plain
+ * schedule the restarted read waited HEDGE_AFTER_MS on it, and a second
+ * restart inside that window started the clock over (h1: caught up after
+ * ~4.2s although the socket was back in 0.1s). Within a burst window the
+ * second pool's attempt starts together with the first.
+ */
+let burstUntil = 0;
+export const HEDGE_BURST_MS = 2 * HEDGE_AFTER_MS;
+export function armHedgeBurst(now = Date.now(), ms = HEDGE_BURST_MS) { burstUntil = Math.max(burstUntil, now + ms); }
+export function hedgeBurstActive(now = Date.now()) { return now < burstUntil; }
 
 export type HedgeOptions = {
     signal?: AbortSignal | null;
@@ -65,6 +78,7 @@ export type HedgeOptions = {
     maxAttempts?: number;
     setTimer?: (fn: () => void, ms: number) => unknown;
     clearTimer?: (timer: unknown) => void;
+    now?: () => number;
 };
 
 /**
@@ -82,6 +96,7 @@ export function hedgedRead<T>(
     const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
     const clearTimer = opts.clearTimer ?? ((timer) => clearTimeout(timer as ReturnType<typeof setTimeout>));
     const outer = opts.signal ?? null;
+    const burst = hedgeBurstActive(opts.now?.() ?? Date.now());
     if (outer?.aborted) return Promise.reject(outer.reason ?? new DOMException('Aborted', 'AbortError'));
 
     return new Promise<T>((resolve, reject) => {
@@ -116,10 +131,12 @@ export function hedgedRead<T>(
         };
         const schedule = () => {
             if (committed || controllers.length >= maxAttempts) return;
+            // O-1: in a burst the second pool goes out with the first.
+            const delay = burst && controllers.length === 1 ? 0 : hedgeAfterMs;
             timer = setTimer(() => {
                 timer = null;
                 if (!settled) launch();
-            }, hedgeAfterMs);
+            }, delay);
         };
         const launch = () => {
             const controller = new AbortController();
