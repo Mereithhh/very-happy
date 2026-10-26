@@ -274,6 +274,10 @@
 .pub-start-choice a { width: 32px; height: 44px; display: grid; place-items: center; color: var(--text-dim); }
 .pub-footer { min-height: 80px; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-5); padding: var(--sp-5) clamp(var(--sp-4), 5vw, var(--sp-12)); border-top: 1px solid var(--line); color: var(--text-faint); font-size: var(--fs-11); }
 .pub-footer a { min-height: 44px; display: inline-flex; align-items: center; color: var(--text-dim); }
+/* The safe-area rule above (.pub-page > footer, more specific) used to zero this gutter; keep both. */
+.pub-page > .pub-footer { padding-left: max(clamp(var(--sp-4), 5vw, var(--sp-12)), var(--sa-l)); padding-right: max(clamp(var(--sp-4), 5vw, var(--sp-12)), var(--sa-r)); }
+.pub-footer-brand { display: grid; gap: var(--sp-1); }
+.pub-credit { justify-content: flex-start; font-size: inherit; }
 
 .docs-page { background: linear-gradient(90deg, color-mix(in srgb, var(--bg-1) 96%, transparent) 0, color-mix(in srgb, var(--bg-1) 96%, transparent) max(calc((100% - 1240px) / 2 + 235px), 235px), color-mix(in srgb, var(--bg-0) 94%, transparent) max(calc((100% - 1240px) / 2 + 235px), 235px)); }
 .docs-page::before { background: radial-gradient(circle at 80% 3%, color-mix(in srgb, var(--bd-glow) 56%, transparent), transparent 25%), var(--bg-0); }

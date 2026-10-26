@@ -5164,6 +5164,24 @@ export const zhHans: TranslationStructure = {
         terms: '条款',
     },
 
+    // Author credit + Settings → About (Owner 10-27). Links live in app/attribution.ts.
+    credit: {
+        builtBy: '由 Mereithhh（JoJo）开发',
+        byAuthor: '由 Mereithhh（JoJo）开发',
+        sourceOnGitHub: 'GitHub 上的 Very Happy 源码',
+        madeWith: '使用 Very Happy 制作',
+    },
+    settingsAbout: {
+        version: '版本',
+        versionSubtitle: '当前页面的 Web 构建',
+        author: '作者',
+        source: '源代码',
+        sourceSubtitle: '在 GitHub 开源',
+        reportIssue: '反馈问题',
+        reportIssueSubtitle: 'Bug 和建议请提到 GitHub Issues',
+        github: 'GitHub',
+    },
+
     // Account signup screen (web).
     signup: {
         pageTitle: '创建账户 — Very Happy',

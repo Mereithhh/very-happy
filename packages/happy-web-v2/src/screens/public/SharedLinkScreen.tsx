@@ -16,6 +16,7 @@ import { ReadOnlyTranscriptContext } from '@/screens/session/readOnlyTranscript'
 import { useTranslation } from '@/i18n/useTranslation';
 import { mergeRecords, messagesFromRecords, phaseForStatus, pollFailureClears, pollIntervalMs, secretFromHash, type SharedLinkPhase, type SharedLinkRecord } from './sharedLink';
 import { ensureShareLinkMeta } from './sharedLink';
+import { CreditLine } from '@/ui/CreditLine';
 import '@/screens/session/chatlist.css';
 import './sharedLink.css';
 
@@ -112,6 +113,17 @@ export function SharedLinkScreen() {
     const title = info?.session.title || t('share.page.untitled');
     useEffect(() => { document.title = `${phase === 'ready' ? title : t('share.page.untitled')} — ${BRAND.name}`; }, [phase, title, t]);
 
+    // Visitors see this page more than any other: say what made it and who built it, on every phase.
+    const credit = (
+        <CreditLine
+            where="share"
+            className="slk-credit"
+            lead={BRAND.landingEnabled ? <Link to="/welcome">{t('credit.madeWith')}</Link> : <span>{t('credit.madeWith')}</span>}
+            builtBy={t('credit.byAuthor')}
+            sourceLabel={t('credit.sourceOnGitHub')}
+        />
+    );
+
     return (
         <div className="slk">
             <header className="slk-head">
@@ -143,6 +155,7 @@ export function SharedLinkScreen() {
                                 {t('share.page.masked')}
                                 {info?.expiresAt ? ` · ${t('share.page.expires', { time: formatTime(info.expiresAt) })}` : ''}
                             </p>
+                            {credit}
                         </div>
                     </div>
                 </main>
@@ -158,6 +171,7 @@ export function SharedLinkScreen() {
                     />
                 </main>
             )}
+            {phase !== 'ready' && credit}
         </div>
     );
 }
