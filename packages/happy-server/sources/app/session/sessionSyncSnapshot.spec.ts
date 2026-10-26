@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SyncMessage, SyncSubResultOk } from '@slopus/happy-wire';
-import { applyAckBudget, buildSubResult, planSnapshot, syncMessageBytes } from './sessionSyncSnapshot';
+import { applyAckBudget, buildSubResult, planSnapshot, splitSnapshotRows, syncMessageBytes, type SnapshotRow } from './sessionSyncSnapshot';
 
 const message = (seq: number, size = 10): SyncMessage => ({
     id: `m${seq}`, seq, content: { t: 'encrypted', c: 'x'.repeat(size) }, localId: null, createdAt: 1, updatedAt: 1,
@@ -21,6 +21,40 @@ describe('planSnapshot (spec §4.3)', () => {
     it('caught up (or ahead after a restore) answers from the head alone', () => {
         expect(planSnapshot(5, 5, 500)).toEqual({ kind: 'none' });
         expect(planSnapshot(5, 9, 500)).toEqual({ kind: 'none' });
+    });
+});
+
+describe('splitSnapshotRows (B-821 batch statements)', () => {
+    const row = (idx: number, head: number, seq: number | null): SnapshotRow => ({
+        idx, head, id: seq === null ? null : `m${seq}`, seq, content: seq === null ? null : { c: String(seq) }, localId: null,
+        createdAt: seq === null ? null : new Date(1), updatedAt: seq === null ? null : new Date(2),
+    });
+
+    it('keys rows by batch position: the same session twice gets two pages; rows in any order come back seq-ascending', () => {
+        const rows = [row(2, 9, 9), row(1, 9, 7), row(2, 9, 8), row(1, 9, 9), row(1, 9, 8)];
+        const [first, second] = splitSnapshotRows(rows, [{ limit: 3 }, { limit: 2 }], 'latest');
+        expect(first!.messages.map((m) => m.seq)).toEqual([7, 8, 9]);
+        expect(second!.messages.map((m) => m.seq)).toEqual([8, 9]);
+        expect([first!.head, second!.head, first!.hasMore]).toEqual([9, 9, false]);
+    });
+
+    it('a session with no rows at all is gone (null); an empty LATERAL page is head only', () => {
+        const out = splitSnapshotRows([row(1, 4, null), row(3, 0, null)], [{ limit: 5 }, { limit: 5 }, { limit: 5 }], 'latest');
+        expect(out).toEqual([{ head: 4, messages: [], hasMore: false }, null, { head: 0, messages: [], hasMore: false }]);
+    });
+
+    it('increments: limit+1 rows → hasMore and the tail cut; exactly limit → complete', () => {
+        const rows = [row(1, 20, 13), row(1, 20, 11), row(1, 20, 12), row(2, 20, 19), row(2, 20, 20)];
+        const [cut, whole] = splitSnapshotRows(rows, [{ limit: 2, afterSeq: 10 }, { limit: 2, afterSeq: 18 }], 'increment');
+        expect(cut).toMatchObject({ head: 20, hasMore: true });
+        expect(cut!.messages.map((m) => m.seq)).toEqual([11, 12]);
+        expect(whole).toMatchObject({ head: 20, hasMore: false });
+        expect(whole!.messages.map((m) => m.seq)).toEqual([19, 20]);
+    });
+
+    it('each page keeps the head of its own row (heads are never mixed across reads)', () => {
+        const [a, b] = splitSnapshotRows([row(1, 5, 5), row(2, 40, 40)], [{ limit: 1 }, { limit: 1 }], 'latest');
+        expect([a!.head, b!.head]).toEqual([5, 40]);
     });
 });
 

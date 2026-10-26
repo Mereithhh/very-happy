@@ -13,7 +13,8 @@
  * handler's correctness never depends on registration order elsewhere.
  *
  * Storm protection (§4.4, B-711/B-494): a per-slot FIFO gate bounds concurrent
- * snapshot reads (queue wait > 3s → `unavailable` with a jittered retryAfter),
+ * snapshot reads (queue wait > 3s → `unavailable` with a jittered retryAfter;
+ * slots ≤ half of Prisma's connection_limit, B-821),
  * a per-socket sliding window bounds hello+subscribe, and one ack carries at
  * most 512KB of messages.
  */
@@ -44,9 +45,14 @@ import {
     applyAckBudget,
     buildSubResult,
     planSnapshot,
+    readIncrements,
+    readLatestPages,
     readSessionHeads,
-    readSessionSnapshot,
+    type IncrementRead,
+    type LatestRead,
+    type SessionSnapshot,
     type SnapshotClient,
+    type SnapshotPlan,
 } from '@/app/session/sessionSyncSnapshot';
 import {
     syncGapTooLargeCounter,
@@ -78,13 +84,44 @@ function positiveInt(value: string | undefined, fallback: number): number {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+/** `connection_limit` from a Prisma postgres URL, or null when absent/unparsable. */
+export function databaseConnectionLimit(url: string | undefined): number | null {
+    if (!url) return null;
+    try {
+        const value = new URL(url).searchParams.get('connection_limit');
+        const parsed = Number.parseInt(value ?? '', 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+/** Gate size when DATABASE_URL carries no connection_limit (local / PGlite; production requires one). */
+const FALLBACK_SNAPSHOT_SLOTS = 10;
+
+/**
+ * B-821 (spec §4.4): one slot runs one statement at a time (M1), so slots =
+ * the most pool connections sync snapshots can hold. Default = half of
+ * Prisma's `connection_limit` — the other half stays for message writes (whose
+ * commits produce the pushes), REST and auth, so a hello storm can never take
+ * the whole pool. A larger SYNC_HELLO_MAX_CONCURRENCY is capped at
+ * connection_limit: beyond it requests would queue inside Prisma's pool,
+ * burning the 1.5s snapshot deadline unseen by `sync_hello_queue_wait`.
+ */
+export function resolveSnapshotConcurrency(env: NodeJS.ProcessEnv): number {
+    const poolLimit = databaseConnectionLimit(env.DATABASE_URL);
+    const fallback = poolLimit ? Math.max(1, Math.floor(poolLimit / 2)) : FALLBACK_SNAPSHOT_SLOTS;
+    const requested = positiveInt(env.SYNC_HELLO_MAX_CONCURRENCY, fallback);
+    return poolLimit ? Math.min(requested, poolLimit) : requested;
+}
+
 export function resolveSessionSyncConfig(env: NodeJS.ProcessEnv = process.env): SessionSyncConfig {
     const accounts = (env.SYNC_SUBSCRIBE_ACCOUNTS ?? '').split(',').map((id) => id.trim()).filter(Boolean);
     return {
         disabled: env.SYNC_SUBSCRIBE_DISABLED === '1',
         accounts: accounts.length > 0 ? new Set(accounts) : null,
         gapThreshold: positiveInt(env.SYNC_GAP_THRESHOLD, SYNC_DEFAULT_GAP_THRESHOLD),
-        maxConcurrency: positiveInt(env.SYNC_HELLO_MAX_CONCURRENCY, 32),
+        maxConcurrency: resolveSnapshotConcurrency(env),
         queueTimeoutMs: 3_000,
         snapshotTimeoutMs: 1_500,
         rateLimit: { max: 20, windowMs: 10_000 },
@@ -171,6 +208,8 @@ export interface SessionSyncDeps {
     /** Test-only interleaving points (spec §9.1-1). */
     hooks?: {
         beforeSnapshot?: () => Promise<void> | void;
+        /** Between the head batch and the page statements — where a split head/page read would tear. */
+        afterHeads?: () => Promise<void> | void;
         afterSnapshot?: () => Promise<void> | void;
     };
 }
@@ -230,12 +269,26 @@ function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
+ * `sync_snapshot_duration_seconds{shape}` (spec §4.7, §8): by request, not by
+ * plan, so it is known even when the snapshot times out — cold = every sub has
+ * `afterSeq:null`, warm = none has, mixed = both. Cold and warm are gated
+ * separately (P95 < 30ms each).
+ */
+export type SnapshotShape = 'cold' | 'warm' | 'mixed';
+
+export function snapshotShape(subs: Array<{ afterSeq: number | null }>): SnapshotShape {
+    const cold = subs.filter((sub) => sub.afterSeq === null).length;
+    if (cold === 0) return 'warm';
+    return cold === subs.length ? 'cold' : 'mixed';
+}
+
+/**
  * Hold one gate slot for the whole snapshot of a hello/subscribe. The slot is
  * released when the DB work actually settles, even if the ack already went
  * out as `unavailable` on the deadline — otherwise a slow DB would let the
  * gate admit unbounded concurrent queries.
  */
-async function underGate<T>(deps: SessionSyncDeps, op: 'hello' | 'subscribe', work: () => Promise<T>): Promise<T> {
+async function underGate<T>(deps: SessionSyncDeps, op: 'hello' | 'subscribe', shape: SnapshotShape, work: () => Promise<T>): Promise<T> {
     const config = deps.config();
     const queuedAt = deps.now();
     const release = await deps.gate.acquire(config.queueTimeoutMs);
@@ -249,58 +302,69 @@ async function underGate<T>(deps: SessionSyncDeps, op: 'hello' | 'subscribe', wo
     try {
         return await withDeadline(running, config.snapshotTimeoutMs);
     } finally {
-        syncSnapshotDuration.observe({ op }, Math.max(0, deps.now() - startedAt) / 1000);
+        syncSnapshotDuration.observe({ op, shape }, Math.max(0, deps.now() - startedAt) / 1000);
     }
 }
 
+type SubOutcome = SyncSubResultOk | { sid: string; ok: false; error: SyncSubError };
+
 /**
- * Resolve every sub against one batched head read, then run the §4.2
- * statement only for subs that have something past afterSeq (or are cold).
- * One statement at a time (review M1): the gate slot this runs under is the
- * spec's "concurrent snapshot query", so a 16-sub cold hello must not fan out
- * into 16 parallel statements (32 slots × 16 would swamp Prisma's
- * connection_limit). 16 primary-key / index reads fit the 1.5s deadline.
- * Owner check rides the head row; anything else goes through
+ * Resolve every sub against one batched head read, then read the pages of the
+ * subs that have something past afterSeq (or are cold) in at most two more
+ * statements: one for every latest page, one for every increment (B-821,
+ * spec §4.4: ≤ 3 statements per hello whatever the sub count). One statement
+ * at a time (review M1): the gate slot this runs under is the spec's
+ * "concurrent snapshot query", so a slot never holds more than one pool
+ * connection. Owner check rides the head row; anything else goes through
  * resolveSessionAccess, the REST GET's own predicate (grantee / revoked /
- * expired). Unknown and forbidden are both `not_found` (§4.5).
+ * expired) — still one call per non-owner sub, the known exception to the
+ * statement bound. Unknown and forbidden are both `not_found` (§4.5).
  */
 async function snapshotSubs(
     deps: SessionSyncDeps,
     userId: string,
     subs: SyncSubRequest[],
-): Promise<Array<SyncSubResultOk | { sid: string; ok: false; error: SyncSubError }>> {
+): Promise<SubOutcome[]> {
     const config = deps.config();
     await deps.hooks?.beforeSnapshot?.();
     const heads = await readSessionHeads(deps.client, [...new Set(subs.map((sub) => sub.sid))]);
-    const results: Array<SyncSubResultOk | { sid: string; ok: false; error: SyncSubError }> = [];
-    for (const sub of subs) {
+    await deps.hooks?.afterHeads?.();
+    const results: Array<SubOutcome | null> = subs.map(() => null);
+    const latest: Array<{ index: number; plan: SnapshotPlan; head: number; read: LatestRead }> = [];
+    const increments: Array<{ index: number; plan: SnapshotPlan; head: number; read: IncrementRead }> = [];
+    for (const [index, sub] of subs.entries()) {
         const head = heads.get(sub.sid);
         if (!head) {
-            results.push({ sid: sub.sid, ok: false, error: 'not_found' });
+            results[index] = { sid: sub.sid, ok: false, error: 'not_found' };
             continue;
         }
         if (head.accountId !== userId && !await deps.resolveAccess(userId, sub.sid)) {
-            results.push({ sid: sub.sid, ok: false, error: 'not_found' });
+            results[index] = { sid: sub.sid, ok: false, error: 'not_found' };
             continue;
         }
         const plan = planSnapshot(head.seq, sub.afterSeq, config.gapThreshold);
-        if (plan.kind === 'none') {
-            results.push(buildSubResult(sub.sid, plan, head.seq, null));
-            continue;
-        }
         const limit = clampLimit(sub.limit);
-        const snapshot = plan.kind === 'increment'
-            ? await readSessionSnapshot(deps.client, { sessionId: sub.sid, afterSeq: sub.afterSeq!, limit })
-            : await readSessionSnapshot(deps.client, { sessionId: sub.sid, afterSeq: null, limit });
-        if (!snapshot) {
-            results.push({ sid: sub.sid, ok: false, error: 'not_found' });
-            continue;
-        }
-        if (plan.kind === 'latest' && plan.gapTooLarge) syncGapTooLargeCounter.inc();
-        results.push(buildSubResult(sub.sid, plan, head.seq, snapshot));
+        if (plan.kind === 'none') results[index] = buildSubResult(sub.sid, plan, head.seq, null);
+        else if (plan.kind === 'increment') increments.push({ index, plan, head: head.seq, read: { sessionId: sub.sid, afterSeq: sub.afterSeq!, limit } });
+        else latest.push({ index, plan, head: head.seq, read: { sessionId: sub.sid, limit } });
     }
+    // The page's head is the one its own statement read (buildSubResult); the head batch only planned.
+    const settle = (batch: Array<{ index: number; plan: SnapshotPlan; head: number }>, snapshots: Array<SessionSnapshot | null>) => {
+        batch.forEach(({ index, plan, head }, position) => {
+            const sid = subs[index].sid;
+            const snapshot = snapshots[position];
+            if (!snapshot) {
+                results[index] = { sid, ok: false, error: 'not_found' };
+                return;
+            }
+            if (plan.kind === 'latest' && plan.gapTooLarge) syncGapTooLargeCounter.inc();
+            results[index] = buildSubResult(sid, plan, head, snapshot);
+        });
+    };
+    settle(latest, await readLatestPages(deps.client, latest.map((entry) => entry.read)));
+    settle(increments, await readIncrements(deps.client, increments.map((entry) => entry.read)));
     await deps.hooks?.afterSnapshot?.();
-    return results;
+    return results as SubOutcome[];
 }
 
 function budgetResults<T extends { ok: boolean }>(results: T[], budget: number): T[] {
@@ -351,7 +415,7 @@ export async function handleSyncHello(ctx: SessionSyncContext, raw: unknown): Pr
     await ensureInUserRoom(ctx.socket, ctx.userId);
     let snapshots;
     try {
-        snapshots = await underGate(ctx.deps, 'hello', () => snapshotSubs(ctx.deps, ctx.userId, honoured));
+        snapshots = await underGate(ctx.deps, 'hello', snapshotShape(honoured), () => snapshotSubs(ctx.deps, ctx.userId, honoured));
     } catch (error) {
         if (!(error instanceof SyncOpError)) log({ module: 'session-sync', userId: ctx.userId, error }, 'sync-hello snapshot failed');
         return { ok: false, error: 'unavailable', ...(error instanceof SyncOpError && error.retryAfterMs ? { retryAfterMs: error.retryAfterMs } : {}) };
@@ -405,7 +469,7 @@ export async function handleSessionSubscribe(ctx: SessionSyncContext, raw: unkno
     await ensureInUserRoom(ctx.socket, ctx.userId);
     let result;
     try {
-        [result] = await underGate(ctx.deps, 'subscribe', () => snapshotSubs(ctx.deps, ctx.userId, [{ sid, afterSeq, limit }]));
+        [result] = await underGate(ctx.deps, 'subscribe', snapshotShape([{ afterSeq }]), () => snapshotSubs(ctx.deps, ctx.userId, [{ sid, afterSeq, limit }]));
     } catch (error) {
         if (!(error instanceof SyncOpError)) log({ module: 'session-sync', userId: ctx.userId, error }, 'session-subscribe snapshot failed');
         return { sid, ok: false, error: 'unavailable', ...(error instanceof SyncOpError && error.retryAfterMs ? { retryAfterMs: error.retryAfterMs } : {}) };

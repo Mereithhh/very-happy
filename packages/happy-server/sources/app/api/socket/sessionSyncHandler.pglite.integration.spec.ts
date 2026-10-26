@@ -44,6 +44,7 @@ beforeAll(async () => {
         random: Math.random,
         hooks: {
             beforeSnapshot: () => hooks.beforeSnapshot?.(),
+            afterHeads: () => hooks.afterHeads?.(),
             afterSnapshot: () => hooks.afterSnapshot?.(),
         },
     };
@@ -85,8 +86,15 @@ describe('atomicity: snapshot ∪ push is gap-free (§9.1-1, §9.1-10)', () => {
             const head = await harness.sessionHead(fixture.sessionId);
             const afterSeq = Math.max(0, head - Math.floor(random() * 3));
             const beforeDelay = Math.floor(random() * 12);
+            // B-821: writes land between the head batch and the page statements — a page whose
+            // head came from the head batch (not its own statement) tears here.
+            const betweenDelay = Math.floor(random() * 12);
             const afterDelay = Math.floor(random() * 12);
             hooks.beforeSnapshot = async () => { await harness.sleep(beforeDelay); };
+            // Every third round also commits one write INSIDE that window, so it is hit for sure.
+            const writeBetween = round % 3 === 0
+                ? harness.WRITER_KINDS[Math.floor(random() * harness.WRITER_KINDS.length)]
+                : null;
             hooks.afterSnapshot = async () => { await harness.sleep(afterDelay); };
 
             const writes = Array.from({ length: 1 + Math.floor(random() * 4) }, () => ({
@@ -97,6 +105,14 @@ describe('atomicity: snapshot ∪ push is gap-free (§9.1-1, §9.1-10)', () => {
                 await harness.sleep(delay);
                 await writers.write(kind);
             }));
+            hooks.afterHeads = async () => {
+                await harness.sleep(betweenDelay);
+                if (!writeBetween) return;
+                // After the round's other writes: one account's serializable writers racing each
+                // other exhaust inTx's retries on a busy real Postgres — not what is under test.
+                await writing;
+                await writers.write(writeBetween);
+            };
             await harness.sleep(Math.floor(random() * 10));
             const client = await harness.connectClient(server.url, { userId });
             try {
@@ -105,10 +121,22 @@ describe('atomicity: snapshot ∪ push is gap-free (§9.1-1, §9.1-10)', () => {
                     result = await harness.emitWithAck(client.socket, 'session-subscribe', { v: 1, sid: fixture.sessionId, afterSeq });
                     await writing;
                 } else {
-                    const ack = await hello(client, [{ sid: fixture.sessionId, afterSeq }]);
+                    // One hello drives BOTH batch statements (increment + latest page of the same
+                    // session) plus a gone sid, so the per-session proof is tested inside a batch.
+                    const ack = await hello(client, [
+                        { sid: fixture.sessionId, afterSeq },
+                        { sid: 'gone-session', afterSeq: null },
+                        { sid: fixture.sessionId, afterSeq: null, limit: 5 },
+                    ]);
                     await writing;
                     expect(ack.ok, `round ${round}`).toBe(true);
                     result = ack.results[0];
+                    expect(ack.results[1]).toEqual({ sid: 'gone-session', ok: false, error: 'not_found' });
+                    const latest = ack.results[2];
+                    expect(latest.ok, `round ${round} latest`).toBe(true);
+                    // The latest page is exactly the newest 5 rows at ITS head (same statement snapshot).
+                    const atHead = (await harness.committedSeqs(fixture.sessionId, 0)).filter((seq) => seq <= latest.headSeq).slice(-5);
+                    expect(latest.messages.map((m: { seq: number }) => m.seq), `round ${round} latest page at head ${latest.headSeq}`).toEqual(atHead);
                 }
                 expect(result.ok, `round ${round} (${viaSubscribe ? 'subscribe' : 'hello'})`).toBe(true);
 
@@ -124,12 +152,13 @@ describe('atomicity: snapshot ∪ push is gap-free (§9.1-1, §9.1-10)', () => {
                 const expected = await harness.committedSeqs(fixture.sessionId, afterSeq);
                 const seen = () => [...new Set([...seqs, ...(client.pushes.get(fixture.sessionId) ?? [])])].filter((s) => s > afterSeq).sort((a, b) => a - b);
                 for (let wait = 0; wait < 300 && seen().length < expected.length; wait += 1) await harness.sleep(10);
-                expect(seen(), `round ${round} seed ${seed + round} (${asGrantee ? 'grantee' : 'owner'}, ${viaSubscribe ? 'subscribe' : 'hello'}) writes=${JSON.stringify(writes)}`).toEqual(expected);
+                expect(seen(), `round ${round} seed ${seed + round} (${asGrantee ? 'grantee' : 'owner'}, ${viaSubscribe ? 'subscribe' : 'hello'}) writes=${JSON.stringify(writes)} between=${writeBetween}`).toEqual(expected);
             } finally {
                 client.socket.close();
             }
         }
         hooks.beforeSnapshot = undefined;
+        hooks.afterHeads = undefined;
         hooks.afterSnapshot = undefined;
     }
 
@@ -149,7 +178,7 @@ describe('atomicity: snapshot ∪ push is gap-free (§9.1-1, §9.1-10)', () => {
 });
 
 describe('one statement: head and page agree under concurrent writes (§9.1-2)', () => {
-    it('every snapshot taken while writers commit has page ⊆ (afterSeq, head] and, when complete, holds every row in that range', async () => {
+    it('every batched snapshot taken while writers commit has page ⊆ (afterSeq, head] and, when complete, holds every row in that range', async () => {
         const random = harness.seededRandom(811_900);
         let writing = true;
         const writer = (async () => {
@@ -159,14 +188,22 @@ describe('one statement: head and page agree under concurrent writes (§9.1-2)',
         let reads = 0;
         while (writing) {
             const head = await harness.sessionHead(fixture.sessionId);
-            const afterSeq = Math.max(0, head - Math.floor(random() * 4));
-            const read = await snapshot.readSessionSnapshot(db, { sessionId: fixture.sessionId, afterSeq, limit: 500 });
-            expect(read).not.toBeNull();
-            const seqs = read!.messages.map((m) => m.seq);
-            expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
-            expect(seqs.every((seq) => seq > afterSeq && seq <= read!.head)).toBe(true);
-            if (!read!.hasMore) {
-                expect(seqs).toEqual((await harness.committedSeqs(fixture.sessionId, afterSeq)).filter((seq) => seq <= read!.head));
+            const afterSeqs = [0, 1, 2].map(() => Math.max(0, head - Math.floor(random() * 4)));
+            // B-821: several reads of the same session in ONE increment statement and ONE latest statement.
+            const increments = await snapshot.readIncrements(db, afterSeqs.map((afterSeq) => ({ sessionId: fixture.sessionId, afterSeq, limit: 500 })));
+            const pages = await snapshot.readLatestPages(db, [3, 8].map((limit) => ({ sessionId: fixture.sessionId, limit })));
+            for (const [i, read] of increments.entries()) {
+                const afterSeq = afterSeqs[i];
+                expect(read).not.toBeNull();
+                const seqs = read!.messages.map((m) => m.seq);
+                expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+                expect(seqs.every((seq) => seq > afterSeq && seq <= read!.head)).toBe(true);
+                if (!read!.hasMore) {
+                    expect(seqs).toEqual((await harness.committedSeqs(fixture.sessionId, afterSeq)).filter((seq) => seq <= read!.head));
+                }
+            }
+            for (const [i, page] of pages.entries()) {
+                expect(page!.messages.map((m) => m.seq)).toEqual((await harness.committedSeqs(fixture.sessionId, 0)).filter((seq) => seq <= page!.head).slice(-[3, 8][i]));
             }
             reads += 1;
         }
