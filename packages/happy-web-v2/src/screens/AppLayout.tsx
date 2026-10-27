@@ -25,6 +25,7 @@ import { useCloseViewShortcuts, useUnloadGuard } from '@/app/viewShortcuts';
 import { useNotificationGenerator } from '@/app/useNotificationGenerator';
 import { useSeenTracker } from '@/app/useSeenTracker';
 import { usePendingSessionBridge } from '@/sync/pendingSessionsRuntime';
+import { noteDispatchRoute, setDispatchNavigator } from '@/sync/dispatchFeedback';
 import { prefetchSessionDetailWhenIdle } from '@/app/prefetchSessionDetail';
 import { useAllMachines, useIsDataReady, useSessions } from '@/sync/storage';
 import { shouldShowFirstRun, shouldShowWorkspaceGuide } from '@/screens/onboarding/firstRun';
@@ -71,6 +72,9 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
   const afterFirstScreen = useAfterFirstScreen();
   const isDesktop = useIsDesktop();
   const location = useLocation();
+  // Dispatch feedback: the toast's 打开 routes; opening a session clears its 「新」 mark.
+  useEffect(() => setDispatchNavigator(navigate), [navigate]);
+  useEffect(() => { noteDispatchRoute(location.pathname); }, [location.pathname]);
   const atRoot = location.pathname === rootPath || location.pathname === `${rootPath}/` || location.pathname === '';
   const dataReady = useIsDataReady();
   const allMachines = useAllMachines({ includeOffline: true });

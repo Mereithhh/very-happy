@@ -33,7 +33,7 @@
 - 最大思考强度为 Owner 明确指定的彩色动效例外：仅最高有效档使用 `--effort-max-gradient` 的流动轨道与能量扫光，档位文字保持高反差，不把 off/default 显示成最大；不复用 live accent、不改变布局，不使用强闪烁。遵循本次确认的持续动态效果，系统减少动态效果时显示静态彩条。
 - 用户消息使用独立 `--message-user-bg/text`：亮色为低饱和灰蓝、暗色为深灰蓝，表达作者身份而非实时状态。气泡右对齐、四角一致 18px（`--r-bubble`）、内边距 10/16，只有底色、无描边与阴影；宽度随内容收缩，长文本断行，展开渐隐匹配同一底色。操作留在气泡下方，触屏展开按钮至少 44px。
 - warn 只表达对应状态；组件 CSS/TSX 禁止裸色值。
-- `--major` / `--major-dim`（B-715）只表示「大更新」：更新通知、`/changelog`、`/whats-new` 的大更新徽标与侧栏「大更新 · N 条未看」入口。紫色，亮暗各一套，文字满足 AA；不表达状态，不用于其他强调。
+- `--major` / `--major-dim`（B-715）只表示「新内容」：更新通知、`/changelog`、`/whats-new` 的大更新徽标与侧栏「大更新 · N 条未看」入口，以及用户刚派发、还没打开过的会话（侧栏行「新」、折叠分组/团队标题「新 N」、揭示时约 3 秒的描边高亮，`sync/dispatchFeedback.ts`）。紫色，亮暗各一套，文字满足 AA；不表达状态，不用于其他强调。
 - `--search-hit`（B-650）只表示搜索命中：会话搜索结果里的 `<mark>` 与跳转后对话里的命中高亮（`::highlight(vh-search-hit)`）。低饱和黄底、文字保持 `--text`，不表达状态，不用于其他强调。
 - `--danger` = 错误与破坏性操作，**外加一处经审的扩展**：侧边栏「未读」徽点
   （`.sb-row-unread-dot`）。理由是 accent 已被 live 占死、warn 已被
@@ -170,6 +170,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 | 对话里的卡片正文（团队消息、跨会话消息、委派/提交工具卡的 goal/body/result） | 收起态只放纯文本预览（`utils/markdownPreview.ts`，前 3 行、去掉 markdown 符号和 `[Very Happy … message]` 协议头尾），整张卡可点；点开用 `MessageReader`（Radix Dialog，桌面居中、≤600px 底部 sheet）完整渲染 Markdown，带复制、跳任务/会话、折叠的原始消息（B-716） | 卡里直接渲染 Markdown 或裸文本、`<details>` 折叠原文、自造浮层 |
 | 长期查看的辅助内容，或有自己时间线的内容 | 右侧工作区标签（`screens/workspace/`）或 session aside 抽屉，窄屏自动全屏 | 居中模态框 |
 | 一闪而过的确认（已复制、已保存） | `toast`（`ui/Toast.tsx`） | Dialog、常驻横幅 |
+| 用户派发、但没被带进去的新会话（团队新建任务、自动化立即运行、离开后才启动的新会话） | `announceDispatched`（`sync/dispatchFeedback.ts`）：toast「已创建 X 的会话 · 打开」+ 侧栏揭示 +「新」；失败 `announceDispatchFailed` 带原因 | 自动跳转（打断正在看的内容）、只靠列表自己出现 |
 | 需要阅读、重试或复制的状态和错误 | 行内文字 + `StatusDot` / `Badge` / `.tg-error`；空状态用 `EmptyState` | toast，它会自己消失 |
 
 如果需要绕着某个组件改样式，把 Popover 改得像 Dialog，或者反过来，就该换组件了：两者的焦点语义不同，后来的人会被误导。

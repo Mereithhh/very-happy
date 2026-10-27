@@ -238,6 +238,33 @@
 .sb-row.is-selected { background: var(--fill-selected); } /* B-614 (CDS): selected = alpha-2 fill, no ring */
 .sb-row.is-selected .sb-row-title, .sb-row--attention .sb-row-title { font-weight: 600; }
 .sb-row--unread .sb-row-title { font-weight: 500; }
+/* dispatchFeedback: a session the user just started. 「新」 until opened once; the
+   revealed row flashes ~3 s (Sidebar clears the class). Own hue (--major, the
+   「新内容」 mark): --accent means live, warn/danger are states. */
+.sb-row-new,
+.sb-group-new {
+  flex: none;
+  font-size: var(--fs-11);
+  line-height: 1.5;
+  padding: 0 5px;
+  border-radius: 4px;
+  color: var(--major);
+  background: var(--major-dim);
+  white-space: nowrap;
+  font-weight: 600;
+}
+.sb-group-new { margin-left: var(--sp-1); }
+.sb-row--flash {
+  box-shadow: inset 0 0 0 1px var(--major);
+  animation: sb-row-flash 3s ease-out;
+}
+@keyframes sb-row-flash {
+  0%, 60% { background: var(--major-dim); }
+  100% { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sb-row--flash { animation: none; background: var(--major-dim); }
+}
 /* --text-faint sits at only ~2.4:1 on dark --bg-3, so the selected row lifts
  * its metadata / kebab / offline dot one ink step — legibility and the
  * "text brightens when selected" cue in the same move. */

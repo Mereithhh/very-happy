@@ -177,6 +177,9 @@ export const useAutomations = create<AutomationsState>((set, get) => {
     async rerun(automationId) {
       const { run } = await runAutomationNow(automationId).catch(fail);
       applyRun(run);
+      // The session starts later: toast + sidebar reveal once it exists (dispatchFeedback).
+      // Loaded on use: it reaches the toast / session store, which this store's tests do not mount.
+      void import('./automationRunWatch').then((m) => m.watchAutomationRun(run), () => {});
       return run;
     },
     async pause(automationId) {

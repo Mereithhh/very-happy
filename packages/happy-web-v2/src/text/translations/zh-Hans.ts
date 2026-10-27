@@ -5217,6 +5217,18 @@ export const zhHans: TranslationStructure = {
         terms: '条款',
     },
 
+    dispatch: {
+        created: ({ name }: { name: string }) => `已创建 ${name} 的会话`,
+        createdUnnamed: '已创建新会话',
+        delivered: ({ name }: { name: string }) => `已把任务发给 ${name}`,
+        open: '打开',
+        failed: ({ name, reason }: { name: string; reason: string }) => `${name} 的会话没能创建：${reason}`,
+        failedUnnamed: ({ reason }: { reason: string }) => `会话没能创建：${reason}`,
+        newBadge: '新',
+        newBadgeHint: '刚创建，还没打开过',
+        groupNew: ({ count }: { count: number }) => `${count} 个新`,
+    },
+
     // Author credit + Settings → About (Owner 10-27). Links live in app/attribution.ts.
     credit: {
         builtBy: '由 Mereithhh（JoJo）开发',

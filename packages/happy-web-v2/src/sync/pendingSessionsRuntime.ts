@@ -26,6 +26,7 @@ import { hasComposer, mergeRestoredDraft, restoreToComposer } from '@/screens/se
 import { recordRecentMachinePath } from '@/app/recentMachinePath';
 import { newSessionTimingCancel, newSessionTimingRpcReturned, newSessionTimingRpcSent } from '@/app/newSessionTiming';
 import { toast } from '@/ui/Toast';
+import { announceDispatched, isViewingSession } from './dispatchFeedback';
 import { t } from '@/text';
 
 /** Spawn is ~1 s; a real session that has not reached the store after this goes to its draft. */
@@ -33,6 +34,10 @@ const SESSION_WAIT_MS = 30_000;
 /** How often a tab looks for pending records whose owner tab has gone away. */
 const RECLAIM_INTERVAL_MS = 30_000;
 const PENDING_STORAGE_SUFFIX = ':pending-sessions-v1';
+
+function basenameOf(path: string): string {
+    return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
+}
 
 /** This page load's identity; records it creates are owned by it. */
 const TAB_ID = thisTabId();
@@ -121,6 +126,8 @@ export const pendingSessions = createPendingSessionStore({
         // B-651 ①: where sessions are dispatched from, and whether they land in a project.
         reportProjectUx({ kind: 'dispatch', entry: dispatchEntryOf(record.source), inProject: !!record.onSpawnedProject });
         if (record.onSpawnedTask) useBoardTasks.getState().attachSession(record.onSpawnedTask.taskId, realId);
+        // Left the pending page before the session started: say where it went (dispatchFeedback).
+        if (!isViewingSession(record.pendingId) && !isViewingSession(realId)) announceDispatched({ sessionId: realId, name: basenameOf(record.path) });
         // B-648: join the project before the first message goes out (held back by the store).
         if (record.onSpawnedProject) {
             const { projectId } = record.onSpawnedProject;

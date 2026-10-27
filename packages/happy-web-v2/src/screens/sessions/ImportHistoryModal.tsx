@@ -21,6 +21,7 @@
  * account's write limits. Each row shows its own state so a long run stays
  * legible.
  */
+import { markFresh } from '@/sync/dispatchFeedback';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Search } from 'lucide-react';
@@ -268,6 +269,8 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
   useEffect(() => {
     if (running || summary.total === 0) return;
     if (summary.done + summary.failed !== summary.total) return;
+    // A batch lands in the sidebar unopened: mark every imported session 「新」 (dispatchFeedback).
+    if (summary.failed > 0 || !summary.singleSessionId) markFresh([...rowStates.values()].flatMap((st) => (st.kind === 'done' && st.sessionId ? [st.sessionId] : [])));
     if (summary.failed > 0) {
       toast.error(t('importClaudeHistory.batchPartial', { done: summary.done, failed: summary.failed }));
       return;
