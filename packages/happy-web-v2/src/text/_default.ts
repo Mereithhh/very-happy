@@ -2718,6 +2718,13 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            oct27b: {
+                title: 'New sessions you start no longer get lost in the list',
+                summary: 'After you start a session from the web, you get a prompt to open it and the sidebar marks it, so it no longer gets lost in the list.',
+                started: 'Creating a team task, retrying a launch, handing a task off, pressing Run now on an automation, or leaving a new chat before it starts now shows “Started a session for X · Open”.',
+                sidebar: 'The sidebar scrolls to the new session and highlights it, and marks it “New” until you open it; folded groups show how many new sessions they hold.',
+                failure: 'If a session can’t start, the message explains why in your language, with a Details link. While the update notes are open, the prompt waits until you close them.',
+            },
             oct27a: {
                 title: 'Send feedback, and a full sidebar after reloading',
                 summary: 'You can now send feedback from inside the app, and accounts with many sessions see the whole sidebar again after a reload or an update.',
