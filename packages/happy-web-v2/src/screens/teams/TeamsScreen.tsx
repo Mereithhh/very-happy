@@ -9,6 +9,7 @@ import {
   listTeams,
   TeamsApiError,
 } from "@/sync/teams";
+import { watchTeamDispatch } from "@/sync/teamDispatchWatch";
 import { storage, useAllMachines } from "@/sync/storage";
 import { useShallow } from "zustand/react/shallow";
 import { botHistorySessionId } from "@/screens/sessions/teamNavigation";
@@ -164,7 +165,10 @@ function TeamsContent() {
     setPending(p);
     setBusy(true);
     try {
+      const before = team;
       const next = (await actOnTeam(teamId, p.action, p.requestId)).team;
+      // 新任务 / 重试 / 转交: toast + sidebar reveal once the member's session exists.
+      watchTeamDispatch(before, next, p.action);
       setTeam((previous) => newestTeam(previous, next));
       void refreshTeamNavigation();
       setPending(null);

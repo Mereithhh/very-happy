@@ -22,7 +22,8 @@ import { useGlobalBackNav } from '@/app/appBack';
 import { ChangelogNotice } from '@/app/ChangelogNotice';
 import { useToast } from '@/ui';
 import { storage } from '@/sync/storage';
-import type { Machine } from '@/sync/storageTypes';
+import type { Machine, Session } from '@/sync/storageTypes';
+import { announceDispatched } from '@/sync/dispatchFeedback';
 import { setTeamNavigationDevOverride } from '@/screens/sessions/useTeamNavigation';
 import { AppLayout } from '@/screens/AppLayout';
 import { boardTeam, seedBoardSession } from './BoardHarness';
@@ -75,6 +76,19 @@ export function DeviceShellHarness() {
       const record = pendingSessions.create({ machineId: 'dev-machine', path: '/repo/app', agent: 'claude', permissionMode: 'default', source: 'quick', draft: true });
       history.replaceState(null, '', `/dev/device/session/${record.pendingId}#draft`);
       dispatchEvent(new PopStateEvent('popstate'));
+    }
+    // Dispatch feedback (Owner 10-27): a big list, then a session the user just started lands
+    // far down it — toast 「已创建 … · 打开」, the sidebar scrolls to the row, flashes it, 「新」.
+    if (location.hash === '#dispatch' && !toastsRaised) {
+      toastsRaised = true;
+      const filler = Array.from({ length: 36 }, (_, i) => ({
+        id: `dev-filler-${i}`, seq: 1, createdAt: now - 3 * 3600_000, updatedAt: now - (i + 2) * 60_000, active: true, activeAt: now - (i + 2) * 60_000,
+        metadata: { machineId: 'dev-machine', path: `/repo/svc-${i % 6}`, host: 'dev-box', flavor: 'claude', summary: { text: `Task ${i + 1}`, updatedAt: now } },
+        metadataVersion: 1, agentState: null, agentStateVersion: 1, thinking: false, presence: 'online',
+      }));
+      const fresh = { ...filler[0], id: 'dev-dispatched', updatedAt: now - 2 * 3600_000, activeAt: now - 2 * 3600_000, metadata: { ...filler[0].metadata, path: '/repo/svc-0', summary: { text: 'Write the release notes', updatedAt: now } } };
+      storage.getState().applySessions([...filler, fresh] as unknown as Session[]);
+      setTimeout(() => announceDispatched({ sessionId: 'dev-dispatched', name: 'Dev-A2' }), 600);
     }
     if (location.hash === '#toasts' && !toastsRaised) {
       toastsRaised = true;

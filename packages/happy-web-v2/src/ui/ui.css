@@ -605,6 +605,12 @@ a.vh-item { text-decoration: none; }
   box-shadow: var(--focus-ring);
 }
 
+/* QA17 P2-3: desktop — held while it would cover a centred notice card's
+   buttons (Toast.tsx toastHeldByCard); shown once the card closes. */
+.vh-toasts.vh-toasts--held {
+  visibility: hidden;
+}
+
 @media (max-width: 600px), (pointer: coarse) {
   .vh-toasts {
     top: calc(var(--sa-t) + var(--sp-2));

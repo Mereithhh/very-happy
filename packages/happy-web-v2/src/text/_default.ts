@@ -5374,6 +5374,22 @@ export const en = {
         terms: 'Terms',
     },
 
+    // Feedback after a user-started dispatch (Owner 10-27: 「创建出来了，就是不明显」).
+    dispatch: {
+        created: ({ name }: { name: string }) => `Started a session for ${name}`,
+        createdUnnamed: 'New session started',
+        delivered: ({ name }: { name: string }) => `Task sent to ${name}`,
+        open: 'Open',
+        failed: ({ name, reason }: { name: string; reason: string }) => `Could not start a session for ${name}: ${reason}`,
+        failedUnnamed: ({ reason }: { reason: string }) => `Could not start the session: ${reason}`,
+        skipped: ({ name, reason }: { name: string; reason: string }) => `${name} did not run this time: ${reason}`,
+        unknownReason: 'unknown reason',
+        details: 'Details',
+        newBadge: 'New',
+        newBadgeHint: 'Started just now — not opened yet',
+        groupNew: ({ count }: { count: number }) => `${count} new`,
+    },
+
     // Author credit + Settings → About (Owner 10-27). Links live in app/attribution.ts.
     credit: {
         builtBy: 'Built by Mereithhh (JoJo)',

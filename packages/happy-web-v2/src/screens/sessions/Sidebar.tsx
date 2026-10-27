@@ -74,6 +74,8 @@ import { isMirrorSession } from '@/assistant/assistantSession';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
 import { useTeamNavigation } from './useTeamNavigation';
+import { consumeDispatchReveal, liveReveal, useDispatchFeedback } from '@/sync/dispatchFeedback';
+import { freshRowCount, isFreshRow, planDispatchReveal, teamFreshCount } from './sidebarDispatchReveal';
 import { botHistorySessionId, groupTeamNavigation, missingTeamSessionIds, teamInactiveGroupId, teamMemberCount, teamMemberInactive, teamSessionMembership, teamSessionSuperseded, unstartedTeamMembers } from './teamNavigation';
 import { SidebarTeamRow } from './SidebarTeamRow';
 import { newSessionInProject, projectMenuItems } from '@/screens/projects/projectActions';
@@ -1167,6 +1169,53 @@ export function Sidebar() {
     return () => cancelAnimationFrame(raf);
   }, [revealSeq, sections, displayRows, isCurrentRow, collapsedGroups, view, selectView, dataReady]);
 
+  // ----- reveal a session the user just dispatched (dispatchFeedback.ts) -----
+  // One shot per announcement: open its team node / folded group for this
+  // route only (memory-only, like the reveal above), scroll the row into the
+  // list, then hand over to the ~3 s highlight. Waits while the row has not
+  // arrived yet (a member's session lands seconds after the spawn).
+  const fresh = useDispatchFeedback((st) => st.fresh);
+  const dispatchReveal = useDispatchFeedback((st) => st.reveal);
+  const highlightedSessionId = useDispatchFeedback((st) => st.highlight?.sessionId ?? null);
+  const [revealRetry, setRevealRetry] = useState(0);
+  useEffect(() => {
+    const reveal = liveReveal(dispatchReveal, Date.now());
+    // Wait for the projects read: it switches the list to the tree, where a member row nests under its team.
+    if (!reveal || displayRows === null || projectsSnap.status === 'loading') return;
+    const step = planDispatchReveal({ sessionId: reveal.sessionId, teams: liveTeams, expandedTeams, teamGroupId: teamTreeGroupId, sections });
+    if (step.kind === 'wait') return;
+    if (step.kind === 'expand') {
+      setRevealExpanded((cur) => (cur.has(step.groupId) ? cur : new Set([...cur, step.groupId])));
+      return; // next render scrolls
+    }
+    const key = step.key;
+    /** 'missing' while the list is hidden (phone detail) — the reveal waits for it. */
+    const scrollToRow = (): 'missing' | 'visible' | 'scrolled' => {
+      const list = listRef.current;
+      const el = list?.querySelector<HTMLElement>(`[data-dragkey="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(key) : key}"]`);
+      if (!list || !el || !el.offsetParent) return 'missing';
+      const lr = list.getBoundingClientRect();
+      // Phone detail pages keep the list mounted but off screen: not seen yet.
+      if (lr.width === 0 || lr.right <= 0 || lr.left >= window.innerWidth || getComputedStyle(list).visibility === 'hidden') return 'missing';
+      const er = el.getBoundingClientRect();
+      const top = nearestScrollTop({ containerTop: lr.top, containerHeight: list.clientHeight, scrollTop: list.scrollTop, rowTop: er.top, rowHeight: er.height });
+      if (top === null) return 'visible';
+      list.scrollTop = top;
+      return 'scrolled';
+    };
+    // The row can still move right after it lands (a member's row re-nests once
+    // the team binding arrives): done only when it is still in view a beat later.
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const raf = requestAnimationFrame(() => {
+      if (scrollToRow() === 'missing') return;
+      settle = setTimeout(() => {
+        if (scrollToRow() === 'visible') consumeDispatchReveal(reveal.seq);
+        else setRevealRetry((n) => n + 1);
+      }, 400);
+    });
+    return () => { cancelAnimationFrame(raf); clearTimeout(settle); };
+  }, [dispatchReveal, revealRetry, sections, displayRows, liveTeams, expandedTeams, projectsSnap.status]);
+
   // Quick create: spawns directly with the remembered machine/directory and
   // the settings defaults; falls back to the full dialog only when it can't
   // decide (or always-ask is on). Shared by the desktop 新建会话 button and the
@@ -1485,6 +1534,7 @@ export function Sidebar() {
                             <button type="button" className="sb-tree-project-main" data-tree-item aria-current={selected ? 'page' : undefined} onClick={() => navigate(projectPath(project.id))}>
                               <FolderKanban size={16} aria-hidden />
                               <span className="sb-tree-project-name">{sec.label}</span>
+                              {!sec.open && <FreshHint count={freshRowCount(sec.allRows, fresh)} />}
                               {sec.attention
                                 ? <span className="sb-tree-badge" role="img" title={t('sidebar.treeAttention', { count: sec.attention }) as string} aria-label={t('sidebar.treeAttention', { count: sec.attention }) as string}>{sec.attention}</span>
                                 : <span className="sb-tree-count mono">{sec.count}</span>}
@@ -1515,6 +1565,7 @@ export function Sidebar() {
                           <button type="button" className="sb-tree-area-toggle" data-tree-item data-tree-toggle aria-expanded={sec.open} onClick={() => toggleTreeGroup(sec.id, sec.open)}>
                             <ChevronRight size={11} className={`sb-section-chevron${sec.open ? ' is-open' : ''}`} />
                             <span>{sec.label}</span><span className="mono">{sec.count}</span>
+                            {!sec.open && <FreshHint count={freshRowCount(sec.allRows, fresh)} />}
                           </button>
                         ) : <span className="sb-tree-area-label">{sec.label}</span>}
                         <span className="sb-tree-area-rule" aria-hidden />
@@ -1547,6 +1598,7 @@ export function Sidebar() {
                         <ChevronRight size={11} className={`sb-section-chevron${sec.open ? ' is-open' : ''}`} />
                         <span className="sb-section-label">{sec.label}</span>
                         <span className="sb-section-count mono">{sec.count}</span>
+                        {!sec.open && <FreshHint count={freshRowCount(sec.allRows, fresh)} />}
                         {!sec.open && <GroupSummary summary={summarizeGroup(sec.allRows.map(rowStatusOf))} zh={zh} />}
                         {/* folded: the summary needs the room; machine · path stays in the head's tooltip */}
                         {sec.detail && sec.open && <span className="sb-section-detail">{sec.detail}</span>}
@@ -1618,6 +1670,7 @@ export function Sidebar() {
                         running={runningTeams.has(team.id)}
                         unplacedLabel={unplaced ? teamCopy.unplaced : undefined}
                         copy={teamCopy}
+                        badge={open ? undefined : <FreshHint count={teamFreshCount(team, fresh)} />}
                         onToggle={() => toggleTreeGroup(teamTreeGroupId(team.id), open)}
                         onNavigate={navigate}
                       />;
@@ -1673,6 +1726,8 @@ export function Sidebar() {
                           hideFirstTag={groupMode === 'tag' && orderable && !!r.tags?.[0]}
                           sheetTitle={treeNode ? r.title : undefined}
                           peekTipAnchor={peekTipAnchor}
+                          fresh={isFreshRow(r, fresh)}
+                          flash={!!r.sessionId && r.sessionId === highlightedSessionId}
                         />
                       </div>
                     );
@@ -1834,6 +1889,14 @@ function collapsibleSection(id: string, label: string, rows: Row[], collapsed: R
   return { id, label, count: rows.filter((r) => !r.teamEmptyHint).length, rows: open ? rows : [], allRows: rows, collapsible: true, open };
 }
 
+/** dispatchFeedback: a folded group / team hides new conversations — say how many. */
+function FreshHint({ count }: { count: number }) {
+  const { t } = useTranslation();
+  if (count <= 0) return null;
+  const label = t('dispatch.groupNew', { count }) as string;
+  return <span className="sb-group-new" role="img" aria-label={label} title={label}>{t('dispatch.newBadge')}{count > 1 ? ` ${count}` : ''}</span>;
+}
+
 /** B-580: a folded group's header still shows the states that need the user. */
 function GroupSummary({ summary, zh }: { summary: GroupStatusSummary; zh: boolean }) {
   const parts = [
@@ -1872,6 +1935,8 @@ function SidebarRow({
   sheetTitle,
   hideFirstTag,
   peekTipAnchor,
+  fresh,
+  flash,
 }: {
   row: Row;
   execution: AgentExecution;
@@ -1910,6 +1975,10 @@ function SidebarRow({
   hideFirstTag?: boolean;
   /** B-588: this row hosts the one-time 「会话预览」 tip */
   peekTipAnchor?: boolean;
+  /** dispatchFeedback: started by the user and not opened yet → 「新」 */
+  fresh?: boolean;
+  /** dispatchFeedback: just revealed — highlighted ~3 s */
+  flash?: boolean;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -2096,7 +2165,7 @@ function SidebarRow({
       ref={rowRef}
       className={`sb-row${selected ? ' is-selected' : ''}${
         signal === 'attention' ? ' sb-row--attention' : signal === 'unread' ? ' sb-row--unread' : ''
-      }`}
+      }${flash ? ' sb-row--flash' : ''}`}
       {...(peekable ? { ...peek.rowHandlers, onKeyDown: peek.onKeyDown } : {})}
     >
       {peekable && (
@@ -2138,6 +2207,7 @@ function SidebarRow({
               : row.teamRole === 'member'
                 ? <span className="sb-row-title">{row.teamLabel}<span className="sb-row-task"> · {row.title}</span></span>
                 : <span className="sb-row-title">{row.teamLabel ? `${row.teamLabel} · ` : ''}{row.title}</span>}
+            {fresh && <span className="sb-row-new" title={t('dispatch.newBadgeHint')}>{t('dispatch.newBadge')}</span>}
             {/* B-150: this tmux session and its processes are NEW — only the
                 directory and the claude conversation carried over. Worth saying
                 once, so a fresh scrollback isn't read as lost work. */}

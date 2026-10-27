@@ -40,6 +40,7 @@ interface ToastOptions {
 
 interface ToastItem {
   id: number;
+  durationMs: number;
   tone: ToastTone;
   message: string;
   onAction?: () => void;
@@ -89,6 +90,18 @@ export function toastTopOverDialog(dialog: { top: number }, head: { bottom: numb
   return Math.round((head ? head.bottom : dialog.top) + gap);
 }
 
+/**
+ * QA17 P2-3: on a wide screen the stack sits at the bottom centre — over the
+ * primary button of a centred notice card (更新日志「下一条」). A card marked
+ * `data-toast-avoid` that the stack overlaps holds the stack (hidden, timers
+ * paused) until the card closes. Moving it instead does not work: a centred
+ * card leaves the same margin above as below, so there is no free spot. Pure.
+ */
+type Box = { top: number; bottom: number; left: number; right: number };
+export function toastHeldByCard(card: Box, stack: Box): boolean {
+  return stack.top < card.bottom && stack.bottom > card.top && stack.left < card.right && stack.right > card.left;
+}
+
 // module-level bridge so non-React code (data layer) can toast too
 let externalShow: ToastApi['show'] | null = null;
 export const toast: ToastApi = {
@@ -111,6 +124,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const regionRef = useRef<HTMLDivElement>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [belowHead, setBelowHead] = useState<number | null>(null);
+  const [held, setHeld] = useState(false);
+  const heldRef = useRef(false);
+  heldRef.current = held;
+  const itemsRef = useRef<ToastItem[]>([]);
+  itemsRef.current = items;
   // the stack's own top before any shift (env(safe-area-inset-top) + gap), measured unshifted
   const defaultTop = useRef<number | null>(null);
   const hasItems = items.length > 0;
@@ -119,6 +137,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const region = regionRef.current;
     const dialog = openModalDialog(document);
     const phone = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px), (pointer: coarse)').matches;
+    const card = phone ? null : document.querySelector<HTMLElement>('[data-toast-avoid]');
+    setHeld(!!region && !!card && toastHeldByCard(card.getBoundingClientRect(), region.getBoundingClientRect()));
     if (!region || !dialog || !phone) { setBelowHead(null); return; }
     const rect = region.getBoundingClientRect();
     if (belowHead === null || defaultTop.current === null) defaultTop.current = rect.top;
@@ -126,7 +146,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setBelowHead(toastTopOverDialog(dialog.getBoundingClientRect(), head, { top: defaultTop.current, height: rect.height }));
   };
   useEffect(() => {
-    if (!hasItems || typeof document === 'undefined') { setHost(null); setBelowHead(null); return; }
+    if (!hasItems || typeof document === 'undefined') { setHost(null); setBelowHead(null); setHeld(false); return; }
     const pick = () => { setHost(topModalDialog(document)); placeRef.current(); };
     pick();
     // a sheet / dialog animates in: measure again once it has settled
@@ -158,16 +178,25 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const show = useCallback(
     (message: string, tone: ToastTone = 'info', opts?: ToastOptions) => {
       const id = ++seq;
-      setItems((prev) => [...prev, { id, tone, message, onAction: opts?.onAction, sticky: opts?.sticky, button: opts?.button }]);
-      if (!opts?.sticky) {
-        timers.current.set(
-          id,
-          setTimeout(() => dismiss(id), opts?.durationMs ?? toastDurationMs(tone)),
-        );
-      }
+      const durationMs = opts?.durationMs ?? toastDurationMs(tone);
+      setItems((prev) => [...prev, { id, durationMs, tone, message, onAction: opts?.onAction, sticky: opts?.sticky, button: opts?.button }]);
+      if (!opts?.sticky && !heldRef.current) timers.current.set(id, setTimeout(() => dismiss(id), durationMs));
     },
     [dismiss],
   );
+
+  // QA17 P2-3: a held stack is not on screen — its toasts get their full time once it shows.
+  useEffect(() => {
+    if (held) {
+      for (const tm of timers.current.values()) clearTimeout(tm);
+      timers.current.clear();
+      return;
+    }
+    for (const item of itemsRef.current) {
+      if (item.sticky || timers.current.has(item.id)) continue;
+      timers.current.set(item.id, setTimeout(() => dismiss(item.id), item.durationMs));
+    }
+  }, [held, dismiss]);
 
   useEffect(() => {
     externalShow = show;
@@ -193,7 +222,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const region = (
     <div
       ref={regionRef}
-      className={`vh-toasts${belowHead !== null ? ' vh-toasts--below-dialog-head' : ''}`}
+      className={`vh-toasts${belowHead !== null ? ' vh-toasts--below-dialog-head' : ''}${held ? ' vh-toasts--held' : ''}`}
       style={belowHead !== null ? ({ '--vh-toast-top': `${belowHead}px` } as CSSProperties) : undefined}
       role="region"
       aria-live="polite"

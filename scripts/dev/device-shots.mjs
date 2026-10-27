@@ -103,6 +103,9 @@ export const OVERLAYS = {
     notifications: { path: (d) => (d.width < 800 ? '/' : '/session/dev-board'), prepare: 'notifications' },
     // success / error / sticky action toast (with its ✕), raised by the harness on `#toasts`.
     toasts: { path: '/session/dev-board#toasts', prepare: 'toasts' },
+    // Dispatch feedback (Owner 10-27): toast 「已创建 … · 打开」 over a 37-row list whose new row the sidebar
+    // scrolled to, flashes and marks 「新」 (phones: on the list, where the sidebar is).
+    dispatch: { path: (d) => (d.width < 800 ? '/#dispatch' : '/session/dev-board#dispatch'), prepare: 'dispatch' },
 };
 Object.assign(PAGES, OVERLAYS);
 
@@ -307,6 +310,10 @@ async function prepare(page, kind) {
         if (!await page.locator('.nc-bell-btn:visible').count() && await rail.count()) { await rail.click(); await page.waitForTimeout(400); }
         await page.locator('.nc-bell-btn:visible').first().click();
         await page.waitForSelector('.nc-panel', { timeout: 10_000 });
+    } else if (kind === 'dispatch') {
+        // Before the feature there is no toast: shoot what the page shows instead of failing.
+        await page.waitForSelector('.vh-toast--button', { timeout: 6_000 }).catch(() => {});
+        await page.waitForTimeout(500);
     } else if (kind === 'toasts') {
         await page.waitForSelector('.vh-toast-x', { timeout: 10_000 });
     } else if (kind === 'prompt-nav') {
