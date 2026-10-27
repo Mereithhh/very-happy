@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { AutomationRun, AutomationRunSource } from '@slopus/happy-wire';
 import { Badge, StatusDot, toast } from '@/ui';
-import { useTranslation, type TranslationKey } from '@/i18n/useTranslation';
+import { t as translate, useTranslation, type TranslationKey } from '@/i18n/useTranslation';
 import { useMachine, useSession } from '@/sync/storage';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { getSessionName } from '@/utils/sessionUtils';
@@ -78,6 +78,18 @@ export function useSourceLabel(): (source: AutomationRunSource | string) => stri
     const key = SOURCE_KEY[source as AutomationRunSource];
     return key ? (t(key) as string) : String(source);
   };
+}
+
+/**
+ * Why a run started nothing, in the user's language, for a toast (dispatch
+ * feedback after 立即运行): known codes get their wording, anything else the
+ * generic 「运行失败」/「已跳过」 — the raw text stays on the run's page.
+ */
+export function runProblemSummary(run: Pick<AutomationRun, 'status' | 'attentionReason' | 'error'>): string {
+  const skip = skipReasonKind(run);
+  if (skip) return translate(skip === 'other' ? 'automations.statusSkipped' : SKIP_KEY[skip]) as string;
+  const kind = attentionKind(run);
+  return translate(kind === 'other' || kind === 'needs_input' ? 'automations.reasonFailed' : REASON_KEY[kind]) as string;
 }
 
 /** the attention sentence for a run — vocabulary reasons get wording, others show verbatim */

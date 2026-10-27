@@ -15,21 +15,30 @@
  *
  * The daemon runs with HOME=<work>/home and no Claude/Anthropic credentials in
  * its env: spawned agents start (the session exists) and then fail to reach
- * the API — nothing runs on a real account.
+ * the API — nothing runs on a real account. On exit the daemon is stopped and
+ * every process still carrying this run's HAPPY_HOME_DIR / HOME (the spawned
+ * wrappers outlive `daemon stop` by design, B-505) is terminated, plus the
+ * private tmux socket's server.
  *
- * Seeds --sessions conversations across 6 folders, scrolls the sidebar away
- * from the top, then per device, for every entry that starts a session
- * without entering it:
+ * Seeds --sessions hibernated conversations across 6 folders (a big account is
+ * mostly hibernated; plain seeded sessions turn inactive and leave the list
+ * within minutes), scrolls the sidebar away from the top, then per device, for
+ * every entry that starts a session without entering it:
  *   TEAM      Teams page 新建任务 → a new member's session (async team spawn)
  *   AUTO      Automation 立即运行 → the run's session (async run)
  *   PENDING   新会话: send the first message, leave before it starts
- *   FAIL      (desktop) 新建任务 into a directory the daemon cannot create → error toast with the reason
+ *   FAIL      (desktop) 新建任务 into a missing repository → one error toast, worded like the
+ *             board (not the daemon's English), 8 s, 「详情」 (QA17 P2-1)
+ *   RETRY     (desktop) reload (the page's watch is gone), restore the repository, 重试启动
+ *             → 「已创建」 toast, reveal, 「新」 (QA17 P1-1)
+ *   NOTICE    (desktop) a toast that would cover a centred notice card (更新日志) waits until
+ *             it closes, then shows for its full time (QA17 P2-3)
  * and asserts: the toast 「已创建 <名字> 的会话 · 打开」 appears, the sidebar shows
  * the new row in view, flashing, with 「新」 (phones: on the list), 打开 opens
  * the session and the 「新」 is gone afterwards; on a phone the toast is clear
  * of the composer and its button is ≥44px. Exit code 1 on any failed check.
  */
-import { existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -206,14 +215,14 @@ try {
             const dataKey = crypto.getRandomValues(new Uint8Array(32));
             const sealedKey = await sync.encryption.encryptEncryptionKey(dataKey);
             const enc = await sync.encryption.openEncryption(dataKey);
-            const [metadata] = await enc.encrypt([{ path: `${repo}/svc-${i % 6}`, host: 'e2e', machineId, flavor: 'claude', summary: { text: `Seeded task ${i + 1}`, updatedAt: Date.now() } }]);
+            const [metadata] = await enc.encrypt([{ path: `${repo}/svc-${i % 6}`, host: 'e2e', machineId, flavor: 'claude', hibernation: { at: Date.now() }, summary: { text: `Seeded task ${i + 1}`, updatedAt: Date.now() } }]);
             const res = await apiSocket.request('/v1/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag: crypto.randomUUID(), metadata: encodeBase64(metadata, 'base64'), agentState: null, dataEncryptionKey: encodeBase64(sealedKey, 'base64') }) });
             if (res.ok) ok++;
         }
         await sync.refreshSessions?.();
         return ok;
     }, { machineId, repo, n: SESSIONS });
-    check(seeded === SESSIONS, `${SESSIONS} conversations seeded`, String(seeded));
+    check(seeded === SESSIONS, `${SESSIONS} hibernated conversations seeded`, String(seeded));
     await setup.close();
 
     const { team } = await api(token, '/v1/teams', { name: 'E2E team', machineId, requestId: randomUUID() });
@@ -360,18 +369,84 @@ try {
         }
 
         if (!phone) {
-            step(`${device}: FAIL 新建任务 into a directory the daemon cannot create`);
+            step(`${device}: FAIL 新建任务 into a missing repository`);
+            const later = join(WORK, 'later-repo');
             await p.goto(`${APP}/teams/${team.id}`);
             await p.getByRole('button', { name: '新建任务' }).click();
             await p.locator('textarea[name="goal"]').fill('E2E failing task');
             await p.locator('textarea[name="acceptance"]').fill('done');
-            await p.locator('input[name="directory"]').fill('/proc/vh-e2e-nope/sub');
+            await p.locator('input[name="directory"]').fill(later);
             await p.locator('input[name="botName"]').fill('Dev-fail');
             await p.locator('form button.teams-primary').click();
             const err = p.locator('.vh-toast--error', { hasText: 'Dev-fail' }).last();
-            const shown = await err.waitFor({ timeout: BEFORE ? 30_000 : 120_000 }).then(() => true, () => false);
-            check(shown, `${device} fail: error toast with the reason`, shown ? await err.textContent() : 'none');
+            const shown = await err.waitFor({ timeout: BEFORE ? 30_000 : 120_000 }).then(() => Date.now(), () => 0);
+            const errText = shown ? await err.locator('.vh-toast-text').textContent().catch(() => err.textContent()) : 'none';
+            check(!!shown, `${device} fail: error toast`, errText);
             await shot(p, `${device}-fail-toast`);
+            if (!BEFORE) {
+                check(/团队仓库不存在/.test(errText ?? '') && !/[A-Za-z]{6,}/.test((errText ?? '').replace('Dev-fail', '')), `${device} fail: the board's wording, not the daemon's English`, errText);
+                check((await err.locator('.vh-toast-btn').textContent().catch(() => '')) === '详情', `${device} fail: 「详情」 button`);
+                await sleep(6_000);
+                check(await err.isVisible(), `${device} fail: still visible after 6 s (8 s like success)`);
+                await err.waitFor({ state: 'detached', timeout: 10_000 }).catch(() => {});
+                check(Date.now() - shown < 12_000, `${device} fail: gone after ~8 s`, `${Date.now() - shown} ms`);
+            }
+
+            if (!BEFORE) {
+                step(`${device}: RETRY — reload, restore the repository, 重试启动`);
+                // Wait for the daemon's next automatic attempt to fail too, then act inside its 30 s backoff.
+                const failedOp = async () => (await api(token, `/v1/teams/${team.id}`)).team.operations.filter((o) => o.type === 'spawn' && o.status === 'failed').find((o) => /later-repo/.test(o.error ?? ''));
+                let op = await failedOp();
+                for (let i = 0; i < 60 && !/automatic retry 3\//.test(op?.error ?? ''); i++) { await sleep(500); op = await failedOp(); }
+                check(!!op, `${device} retry: launch failed on the server`, `${op?.status} ${op?.error?.slice(-60)}`);
+                const fails = await p.locator('.vh-toast--error', { hasText: 'Dev-fail' }).count();
+                check(fails === 0, `${device} retry: automatic attempts did not toast again`, String(fails));
+                spawnSync('git', ['init', '-q', later]);
+                spawnSync('git', ['-C', later, '-c', 'user.email=e2e@local', '-c', 'user.name=e2e', 'commit', '-q', '--allow-empty', '-m', 'init']);
+                const taskId = (await api(token, `/v1/teams/${team.id}`)).team.tasks.find((k) => k.currentAttemptId === op?.attemptId)?.id;
+                // A fresh page load: nothing from the 新建任务 above is still being watched.
+                await p.goto(`${APP}/teams/${team.id}?task=${taskId}`);
+                const retry = p.locator('dialog[open]').getByRole('button', { name: /重试启动/ }).first();
+                await retry.waitFor({ timeout: 20_000 });
+                if (!(await p.locator('.sb-list').isVisible().catch(() => false))) await p.locator('.sb-list').waitFor({ timeout: 20_000 });
+                await scrollSidebarAway(p);
+                await retry.click();
+                await p.keyboard.press('Escape').catch(() => {});
+                await verify('retry', 'Dev-fail', 'Dev-fail');
+                const after = (await api(token, `/v1/teams/${team.id}`)).team.operations.find((o) => o.id === op?.id);
+                check(after?.status === 'completed' && !!after.sessionId, `${device} retry: the retried launch completed on the server`, `${after?.status} ${after?.sessionId ?? ''}`);
+                check(await p.locator('.vh-toast--error', { hasText: 'Dev-fail' }).count() === 0, `${device} retry: the old failure was not toasted again`);
+            }
+
+            if (!BEFORE) {
+                step(`${device}: NOTICE — a toast that would cover a centred notice card waits for it`);
+                const probe = await p.evaluate(async () => {
+                    const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+                    const settle = async () => { for (let i = 0; i < 30; i++) await frame(); };
+                    // A centred card like 更新日志 tall enough that its bottom button meets the stack (bottom centre).
+                    const card = document.createElement('div');
+                    card.setAttribute('data-toast-avoid', '');
+                    Object.assign(card.style, { position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '520px', height: `${innerHeight - 40}px`, zIndex: '4101', background: '#888' });
+                    document.body.append(card);
+                    await settle();
+                    const { announceDispatched } = await import('/src/sync/dispatchFeedback.ts');
+                    announceDispatched({ sessionId: 'notice-probe', name: 'Notice probe' });
+                    await settle();
+                    const c = card.getBoundingClientRect();
+                    const button = document.elementFromPoint(c.left + c.width / 2, c.bottom - 12);
+                    const held = getComputedStyle(document.querySelector('.vh-toasts')).visibility === 'hidden';
+                    await new Promise((r) => setTimeout(r, 9_000)); // longer than the toast's 8 s
+                    const stillQueued = !!document.querySelector('.vh-toast');
+                    card.remove();
+                    await settle();
+                    const t = [...document.querySelectorAll('.vh-toast')].pop()?.getBoundingClientRect();
+                    const shown = getComputedStyle(document.querySelector('.vh-toasts')).visibility !== 'hidden' && !!t && t.height > 0;
+                    return { held, cardButtonReachable: button === card, stillQueued, shown, card: { top: Math.round(c.top), bottom: Math.round(c.bottom) }, toast: t && { top: Math.round(t.top), bottom: Math.round(t.bottom) } };
+                });
+                check(probe.held && probe.cardButtonReachable, `${device} notice: the card's bottom button stays reachable (toast held)`, JSON.stringify(probe));
+                check(probe.stillQueued && probe.shown, `${device} notice: the held toast did not expire unseen and shows once the card closes`, JSON.stringify(probe));
+                await p.evaluate(() => import('/src/sync/dispatchFeedback.ts').then((m) => m.noteDispatchRoute('/session/notice-probe')));
+            }
         }
         await ctx.close();
     }
@@ -380,6 +455,31 @@ try {
 } finally {
     if (daemonStarted) spawnSync(process.execPath, [CLI, 'daemon', 'stop'], { env: cliEnv, encoding: 'utf8', timeout: 30_000 });
     await browser.close();
+    reapOrphans();
+}
+
+/**
+ * QA17 O-3: `daemon stop` leaves the wrappers it spawned running (infra stops never end
+ * sessions, B-505). Stop exactly the processes whose environment carries this run's
+ * HAPPY_HOME_DIR or HOME — never by name: other runs' daemons share this machine.
+ */
+function reapOrphans() {
+    const mine = (pid) => {
+        try {
+            const env = readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0');
+            return env.includes(`HAPPY_HOME_DIR=${cliEnv.HAPPY_HOME_DIR}`) || env.includes(`HOME=${HOME}`);
+        } catch { return false; }
+    };
+    const scan = () => (existsSync('/proc') ? readdirSync('/proc').filter((d) => /^\d+$/.test(d) && Number(d) !== process.pid && mine(d)).map(Number) : []);
+    spawnSync('tmux', ['-S', cliEnv.VH_TMUX_SOCKET, 'kill-server'], { stdio: 'ignore' });
+    let left = scan();
+    const found = left.length;
+    for (const pid of left) { try { process.kill(pid, 'SIGTERM'); } catch { /* gone */ } }
+    for (let i = 0; i < 20 && left.length; i++) { spawnSync('sleep', ['0.25']); left = scan(); }
+    for (const pid of left) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } }
+    left = scan();
+    console.log(`${left.length ? '  ✗' : '  ✓'} no process left from this run — ${found} spawned wrapper process(es) stopped${left.length ? `; still running: ${left.join(' ')}` : ''}`);
+    if (left.length) failures += 1;
 }
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

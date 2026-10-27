@@ -26,7 +26,8 @@ describe('dispatch feedback wiring', () => {
     it('AppLayout gives the toast a navigator and clears 「新」 on open', () => {
         const layout = src('screens/AppLayout.tsx');
         expect(layout).toContain('useEffect(() => setDispatchNavigator(navigate), [navigate]);');
-        expect(layout).toContain('useEffect(() => { noteDispatchRoute(location.pathname); }, [location.pathname]);');
+        expect(layout).toContain('useEffect(() => { noteDispatchRoute(location.pathname, routeTerminalMirror); }, [location.pathname, routeTerminalMirror]);');
+        expect(layout).toContain('state.terminals.find((tm) => tm.id === routeTerminalId)?.mirrorSessionId ?? null');
     });
     it('Sidebar: row 「新」 + flash, folded group / project / area / team hints, one-shot reveal', () => {
         const sidebar = src('screens/sessions/Sidebar.tsx');
@@ -35,8 +36,8 @@ describe('dispatch feedback wiring', () => {
         expect(sidebar).toContain("{fresh && <span className=\"sb-row-new\"");
         expect(sidebar).toContain("}${flash ? ' sb-row--flash' : ''}`}");
         expect(sidebar).toContain('{!sec.open && <FreshHint count={freshRowCount(sec.allRows, fresh)} />}\n                        {!sec.open && <GroupSummary');
-        expect(sidebar).toContain('<span className="sb-tree-project-name">{sec.label}</span>\n                              {!sec.open && <FreshHint');
-        expect(sidebar).toContain('<span>{sec.label}</span><span className="mono">{sec.count}</span>\n                            {!sec.open && <FreshHint');
+        expect(sidebar).toContain('<span className="sb-tree-project-name">{sec.label}</span>\n                              {!sec.open && <FreshHint count={freshRowCount(sec.allRows, fresh)} />}');
+        expect(sidebar).toContain('<span>{sec.label}</span><span className="mono">{sec.count}</span>\n                            {!sec.open && <FreshHint count={freshRowCount(sec.allRows, fresh)} />}');
         expect(sidebar).toContain('badge={open ? undefined : <FreshHint count={teamFreshCount(team, fresh)} />}');
         expect(sidebar).toContain('consumeDispatchReveal(reveal.seq);');
         expect(sidebar).toContain("if (lr.width === 0 || lr.right <= 0 || lr.left >= window.innerWidth || getComputedStyle(list).visibility === 'hidden') return 'missing';");

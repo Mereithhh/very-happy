@@ -9,7 +9,9 @@
  *     route only, scrolls it into its own list and highlights it ~3 s;
  *   - a 「新」 mark that stays (device-local, survives a reload) until the
  *     session is opened once; a folded group's header counts them.
- * `announceDispatchFailed` is the error toast with the reason.
+ * `announceDispatchFailed` is the error toast with the reason, worded by the
+ * caller in the user's language; its 「详情」 opens the page that keeps the raw
+ * text (team board / automation run).
  *
  * Entries whose meaning is "click and go in" (new chat, fork, team start)
  * navigate as before and do not call this.
@@ -53,6 +55,16 @@ export function sessionIdOfPath(pathname: string): string | null {
     try { return decodeURIComponent(m[1]); } catch { return m[1]; }
 }
 
+/**
+ * The terminal a `/terminal/<machineId>?tid=<id>` route opens, or null. Its
+ * mirrored session (the sidebar row's `sessionId`) counts as opened too
+ * (QA17 P2-5). Pure.
+ */
+export function terminalIdOfRoute(pathname: string, search: string): string | null {
+    if (!/^\/terminal\/[^/]+\/?$/.test(pathname)) return null;
+    return new URLSearchParams(search).get('tid') || null;
+}
+
 /** The reveal still waiting to be shown, or null once consumed / lapsed. Pure. */
 export function liveReveal(reveal: DispatchReveal | null, now: number): DispatchReveal | null {
     return reveal && now - reveal.at < DISPATCH_REVEAL_TTL_MS ? reveal : null;
@@ -93,9 +105,14 @@ export function setDispatchNavigator(navigate: ((to: string) => void) | null): (
     return () => { if (navigator === navigate) navigator = null; };
 }
 let currentPath = typeof location !== 'undefined' ? location.pathname : '';
+/** The mirrored session of the terminal on screen (`/terminal/…?tid=`), if any. */
+let currentMirror: string | null = null;
+function openedSessionId(): string | null {
+    return sessionIdOfPath(currentPath) ?? currentMirror;
+}
 /** The route on screen is this session's page (as of the last route change). */
 export function isViewingSession(sessionId: string): boolean {
-    return sessionIdOfPath(currentPath) === sessionId;
+    return openedSessionId() === sessionId;
 }
 export function sessionHref(sessionId: string): string {
     return `/session/${encodeURIComponent(sessionId)}`;
@@ -111,7 +128,7 @@ export function announceDispatched(opts: { sessionId: string; name?: string | nu
     const { sessionId } = opts;
     const name = opts.name?.trim();
     const delivered = opts.kind === 'delivered';
-    const alreadyHere = sessionIdOfPath(currentPath) === sessionId;
+    const alreadyHere = isViewingSession(sessionId);
     set({
         fresh: delivered || alreadyHere ? state.fresh : pruneFresh({ ...state.fresh, [sessionId]: now }, now),
         reveal: { sessionId, seq: ++seq, at: now },
@@ -133,10 +150,21 @@ export function markFresh(sessionIds: readonly string[], now = Date.now()): void
     writeStored(state.fresh as Record<string, number>);
 }
 
-export function announceDispatchFailed(opts: { name?: string | null; reason?: string | null }): void {
+/**
+ * `reason` is already in the user's language (QA17 P2-1: not the daemon's raw
+ * English); `skipped` = the run started nothing on purpose (「本次没有运行」, not
+ * 「没能创建」). Stays as long as the success toast.
+ */
+export function announceDispatchFailed(opts: { name?: string | null; reason?: string | null; href?: string | null; skipped?: boolean }): void {
     const name = opts.name?.trim();
-    const reason = opts.reason?.trim() || 'unknown_error';
-    toast.error(name ? t('dispatch.failed', { name, reason }) : t('dispatch.failedUnnamed', { reason }));
+    const reason = opts.reason?.trim() || t('dispatch.unknownReason');
+    const message = opts.skipped ? t('dispatch.skipped', { name: name || '—', reason })
+        : name ? t('dispatch.failed', { name, reason }) : t('dispatch.failedUnnamed', { reason });
+    const href = opts.href;
+    toast.show(message, 'error', {
+        ...(href ? { button: { label: t('dispatch.details'), onClick: () => navigator?.(href) } } : {}),
+        durationMs: DISPATCH_TOAST_MS,
+    });
 }
 
 /** The Sidebar showed the row: start the highlight and drop the reveal. */
@@ -149,10 +177,15 @@ export function consumeDispatchReveal(revealSeq: number, now = Date.now()): void
     }, DISPATCH_HIGHLIGHT_MS);
 }
 
-/** Route bridge: opening a session once clears its 「新」 mark. */
-export function noteDispatchRoute(pathname: string): void {
+/**
+ * Route bridge: opening a session once clears its 「新」 mark — on its own page
+ * or through the terminal it mirrors (`terminalMirror`: that terminal's
+ * mirrorSessionId; it may arrive after the route does).
+ */
+export function noteDispatchRoute(pathname: string, terminalMirror: string | null = null): void {
     currentPath = pathname;
-    const id = sessionIdOfPath(pathname);
+    currentMirror = terminalMirror;
+    const id = openedSessionId();
     if (!id || !(id in state.fresh)) return;
     const { [id]: _opened, ...rest } = state.fresh;
     set({ fresh: rest });
@@ -163,5 +196,6 @@ export function noteDispatchRoute(pathname: string): void {
 export function resetDispatchFeedbackForTests(fresh: Record<string, number> = {}): void {
     seq = 0;
     currentPath = '';
+    currentMirror = null;
     state = { fresh, reveal: null, highlight: null };
 }

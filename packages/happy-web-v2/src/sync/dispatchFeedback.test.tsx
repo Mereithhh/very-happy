@@ -7,7 +7,7 @@ import { ToastProvider } from '@/ui/Toast';
 import {
     DISPATCH_HIGHLIGHT_MS, DISPATCH_REVEAL_TTL_MS, DISPATCH_TOAST_MS, FRESH_MAX, FRESH_TTL_MS,
     announceDispatched, announceDispatchFailed, consumeDispatchReveal, getDispatchFeedbackState, liveReveal,
-    markFresh, noteDispatchRoute, pruneFresh, resetDispatchFeedbackForTests, sessionIdOfPath, setDispatchNavigator,
+    markFresh, noteDispatchRoute, pruneFresh, resetDispatchFeedbackForTests, sessionIdOfPath, setDispatchNavigator, terminalIdOfRoute,
 } from './dispatchFeedback';
 
 describe('dispatch feedback', () => {
@@ -67,12 +67,34 @@ describe('dispatch feedback', () => {
         expect(getDispatchFeedbackState().reveal?.sessionId).toBe('here');
     });
 
-    it('failure toasts the reason', async () => {
-        await act(async () => announceDispatchFailed({ name: 'Dev-A2', reason: 'machine_offline' }));
+    it('failure toasts the (caller-worded) reason as long as success; 详情 opens the page with the raw text', async () => {
+        const navigate = vi.fn();
+        const off = setDispatchNavigator(navigate);
+        await act(async () => announceDispatchFailed({ name: 'Dev-A2', reason: 'The member failed to start.', href: '/teams/t1' }));
         const el = host.querySelector('.vh-toast--error') as HTMLElement;
-        expect(el.textContent).toBe('Could not start a session for Dev-A2: machine_offline');
+        expect(el.querySelector('.vh-toast-text')?.textContent).toBe('Could not start a session for Dev-A2: The member failed to start.');
+        await act(async () => { vi.advanceTimersByTime(DISPATCH_TOAST_MS - 1); });
+        expect(host.querySelector('.vh-toast--error')).not.toBeNull();
+        const btn = el.querySelector('button.vh-toast-btn') as HTMLButtonElement;
+        expect(btn.textContent).toBe('Details');
+        await act(async () => btn.click());
+        expect(navigate).toHaveBeenCalledWith('/teams/t1');
         await act(async () => announceDispatchFailed({ reason: '' }));
-        expect(host.querySelectorAll('.vh-toast--error')[1].textContent).toBe('Could not start the session: unknown_error');
+        expect(host.querySelector('.vh-toast--error')?.textContent).toBe('Could not start the session: unknown reason');
+        await act(async () => announceDispatchFailed({ name: 'nightly', reason: 'Previous run still active', skipped: true }));
+        expect(host.querySelectorAll('.vh-toast--error')[1].textContent).toBe('nightly did not run this time: Previous run still active');
+        off();
+    });
+
+    it('QA17 P2-5: opening the mirrored session through its terminal clears 「新」', async () => {
+        await act(async () => announceDispatched({ sessionId: 'm1', name: 'x', now: 1 }));
+        noteDispatchRoute('/terminal/mac', null); // terminal list not loaded yet
+        expect('m1' in getDispatchFeedbackState().fresh).toBe(true);
+        noteDispatchRoute('/terminal/mac', 'm1');
+        expect(getDispatchFeedbackState().fresh).toEqual({});
+        expect(terminalIdOfRoute('/terminal/mac', '?tid=t9&fresh=1')).toBe('t9');
+        expect(terminalIdOfRoute('/terminal', '?tid=t9')).toBeNull();
+        expect(terminalIdOfRoute('/terminal/mac', '')).toBeNull();
     });
 
     it('markFresh (batch import) marks without a toast and skips the open session', async () => {

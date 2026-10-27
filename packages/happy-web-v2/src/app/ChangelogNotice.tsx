@@ -119,6 +119,8 @@ export function ChangelogNotice() {
         <Dialog.Overlay className="wn-backdrop" />
         <Dialog.Content
           className="wn-card"
+          // QA17 P2-3: a toast that would cover this card waits until it closes (Toast.tsx toastHeldByCard).
+          data-toast-avoid
           aria-describedby="wn-description"
           data-multiple={(page?.kind === 'minor' && page.releases.length > 1) || undefined}
           data-featured={major?.featured || undefined}

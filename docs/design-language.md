@@ -170,7 +170,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 | 对话里的卡片正文（团队消息、跨会话消息、委派/提交工具卡的 goal/body/result） | 收起态只放纯文本预览（`utils/markdownPreview.ts`，前 3 行、去掉 markdown 符号和 `[Very Happy … message]` 协议头尾），整张卡可点；点开用 `MessageReader`（Radix Dialog，桌面居中、≤600px 底部 sheet）完整渲染 Markdown，带复制、跳任务/会话、折叠的原始消息（B-716） | 卡里直接渲染 Markdown 或裸文本、`<details>` 折叠原文、自造浮层 |
 | 长期查看的辅助内容，或有自己时间线的内容 | 右侧工作区标签（`screens/workspace/`）或 session aside 抽屉，窄屏自动全屏 | 居中模态框 |
 | 一闪而过的确认（已复制、已保存） | `toast`（`ui/Toast.tsx`） | Dialog、常驻横幅 |
-| 用户派发、但没被带进去的新会话（团队新建任务、自动化立即运行、离开后才启动的新会话） | `announceDispatched`（`sync/dispatchFeedback.ts`）：toast「已创建 X 的会话 · 打开」+ 侧栏揭示 +「新」；失败 `announceDispatchFailed` 带原因 | 自动跳转（打断正在看的内容）、只靠列表自己出现 |
+| 用户派发、但没被带进去的新会话（团队新建任务、自动化立即运行、离开后才启动的新会话） | `announceDispatched`（`sync/dispatchFeedback.ts`）：toast「已创建 X 的会话 · 打开」+ 侧栏揭示 +「新」；失败 `announceDispatchFailed`：原因用看板上同一句本地化文案，原始报错留在「详情」跳去的看板/运行页，与成功同样停留 8 秒。桌面上 toast 若会盖住居中的通知卡（更新日志，`data-toast-avoid`），先暂缓、卡片关闭后再显示并重新计时 | 自动跳转（打断正在看的内容）、只靠列表自己出现 |
 | 需要阅读、重试或复制的状态和错误 | 行内文字 + `StatusDot` / `Badge` / `.tg-error`；空状态用 `EmptyState` | toast，它会自己消失 |
 
 如果需要绕着某个组件改样式，把 Popover 改得像 Dialog，或者反过来，就该换组件了：两者的焦点语义不同，后来的人会被误导。
