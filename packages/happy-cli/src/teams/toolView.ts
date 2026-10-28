@@ -57,17 +57,19 @@ const clip = (text: string, max: number) => text.length > max ? `${text.slice(0,
  * goalVersion, schedule version) plus the small team signals (capacity, idle members, cleanup issues);
  * the team view stays on team_inspect.
  */
-export function teamActionReceipt(result: any): Record<string, unknown> {
+/** `actedTaskId`: the task the write named. The server returns `taskId` only for a task it created (delegate). */
+export function teamActionReceipt(result: any, actedTaskId?: string): Record<string, unknown> {
     // Not a team view (an error shape, or a receipt forwarded by a Codex stdio bridge): pass through untouched.
     if (!Array.isArray(result?.team?.tasks)) return result;
     const { team, operation, ...rest } = result as { team: TeamState; operation?: TeamOperation } & Record<string, unknown>;
     const { tasks = [], operations = [], schedules = [] } = team;
-    const taskId = typeof rest.taskId === 'string' ? rest.taskId : undefined;
+    const taskId = typeof rest.taskId === 'string' ? rest.taskId : actedTaskId;
     const task = taskId ? tasks.find(t => t.id === taskId) : undefined;
     const schedule = typeof rest.scheduleId === 'string' ? schedules.find(s => s.id === rest.scheduleId) : undefined;
     const taskOperations = taskId ? operations.filter(o => o.taskId === taskId && o.status !== 'completed') : [];
     return {
         ...rest,
+        ...(taskId ? { taskId } : {}),
         ...(task ? { task: taskReceipt(task) } : {}),
         ...(operation ? { operation: withoutPrompt(operation) } : {}),
         ...(taskOperations.length ? { taskOperations: taskOperations.map(withoutPrompt) } : {}),

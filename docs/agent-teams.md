@@ -356,7 +356,9 @@ the board; a session adopted as lead mid-run gets them after its next restart.
   wake anyone: it is listed in the owner's next team message ("Meanwhile idle:
   …") and in `team_inspect` as `idleMembers`. Only an idle stretch of 30 minutes
   with the task still not submitted wakes the owner, once per stretch. Your own
-  chat with the lead and push notifications are unaffected.
+  chat with the lead and push notifications are unaffected. A lead should end
+  its turn and wait for these notifications rather than poll with `sleep`
+  loops: a turn that is still running holds them back (the lead playbook says so).
 - A submitted result requires the owner's acceptance. Returning it creates a new
   attempt. Acceptance/return/cancellation/handoff reference the displayed attempt
   and goal version, so old pages cannot silently act on newer work.

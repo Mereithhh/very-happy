@@ -26,7 +26,7 @@ export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: s
         { taskId: id.optional().describe('Return this task in full: all attempts, messages and operations'), full: z.boolean().optional().describe('Return the whole team view (can be very large)') },
         async (args) => { const result = await client.inspect(); return args.full ? result : args.taskId ? teamTaskToolView(result.team, args.taskId) : compact(result); });
     const action = (name: string, description: string, fields: Record<string, z.ZodTypeAny>) => register(`team_${name}`, description,
-        { requestId, ...fields }, async ({ requestId: key, ...args }) => teamActionReceipt(await client.action({ type: name, ...args, ...(name === 'delegate' && args.directory === undefined ? { directory: process.cwd() } : {}) }, key)));
+        { requestId, ...fields }, async ({ requestId: key, ...args }) => teamActionReceipt(await client.action({ type: name, ...args, ...(name === 'delegate' && args.directory === undefined ? { directory: process.cwd() } : {}) }, key), args.taskId));
     action('delegate', 'Delegate a goal with acceptance criteria. Use parentTaskId for subdelegation. Existing assigneeBotId or a managed worker may execute it.', {
         goal: text, acceptance: z.array(text).min(1).max(32), parentTaskId: id.optional(), assigneeBotId: id.optional(), botName: id.optional(), directory: z.string().min(1).optional(), assistant: z.enum(['claude', 'codex', 'pi-acp']).optional(), model: z.string().trim().min(1).max(256).optional(),
     });

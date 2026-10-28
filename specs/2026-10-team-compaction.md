@@ -58,7 +58,7 @@
 **B-840 修订：写操作只回回执。** 在 dev-sg 的真实落盘样本上（10-26～10-28，n=182），精简视图下写操作的返回中位数仍约 70k 字符，最大 186k；它们每次都留在调用方上下文和 prompt cache 里，Lead 平均上下文因此达 50 万 token。调用方已经知道自己发了什么，所以 delegate / message / submit / accept / return / cancel / handoff / schedule_* 改为返回回执（`toolView.ts` `teamActionReceipt`），只保留下一步需要的字段：
 
 - `taskId`、`scheduleId`、`scheduleRecordRetained`，以及服务端回传的 `operation`（去掉 prompt）；
-- `task`：被操作任务的状态、assignee、`currentAttemptId`、`goalVersion`、cleanup 和当前 attempt 的 id/status/generation，goal 截到 200 字，不回显 result；
+- `task`：被操作任务（服务端只在新建任务时回 `taskId`，其余写操作按调用参数里的 `taskId` 定位；QA19 P2-1）的状态、assignee、`currentAttemptId`、`goalVersion`、cleanup 和当前 attempt 的 id/status/generation，goal 截到 200 字，不回显 result；
 - `taskOperations`：这个任务还没完成的 operation（去掉 prompt）；`schedule`：被操作的 schedule 记录（含 version，供 pause/resume/cancel 使用）；
 - `team`：id、name、version、`openTasks` 计数、`capacity`，以及非空时的 `idleMembers`、`cleanupIssues`；
 - `hint`：团队视图请调用 team_inspect。
