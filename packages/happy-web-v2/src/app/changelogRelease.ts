@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-28-release-notes-always-reachable',
+    date: '2026-10-28',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct28a.title',
+    summaryKey: 'changelog.releases.oct28a.summary',
+    itemKeys: ['changelog.releases.oct28a.refresh', 'changelog.releases.oct28a.toast', 'changelog.releases.oct28a.entry'],
+  },
+  {
     id: '2026-10-28-cli-lower-cost',
     cliVersion: '0.2.187',
     date: '2026-10-28',

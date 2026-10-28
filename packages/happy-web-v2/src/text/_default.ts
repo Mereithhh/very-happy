@@ -2723,6 +2723,13 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            oct28a: {
+                title: 'Release notes no longer go unseen',
+                summary: 'Refreshing a session page shows new release notes too; when they can\'t pop up on their own, a reminder appears and the sidebar keeps a way in.',
+                refresh: 'Refreshing a session page with a side panel open now shows new release notes as well.',
+                toast: 'When you arrive from a notification or link, or are already typing, the notes don\'t pop up over your work; a small reminder lets you open them instead.',
+                entry: 'The bottom of the sidebar shows "Release notes · N unread" until you have read them.',
+            },
             oct28: {
                 title: 'CLI 0.2.187: teams and long sessions cost much less',
                 summary: 'Claude sessions now keep their prompt cache for 1 hour, and team tools return short answers, so teams and long-running sessions use far fewer tokens.',
