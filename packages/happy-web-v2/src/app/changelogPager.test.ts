@@ -81,7 +81,14 @@ describe('B-715 deep-link entry', () => {
   it.each([
     ['/teams/t1', '?task=abc', true],
     ['/session/abc', '?vh_presence=1', true],
-    ['/', '?panel=files', true],
+    // B-842: UI state written while working (the session aside) is not an action.
+    ['/session/abc', '?panel=files', false],
+    ['/session/abc', '?panel=agent&sub=m1', false],
+    ['/session/abc', '?panel=machine&wp=w1', false],
+    ['/session/abc', '?panel=changes&review=1', true],
+    ['/teams/t1', '?new=1', true],
+    ['/teams/t1', '?fromSession=s1', true],
+    ['/terminal/t1', '?fresh=1&cmd=abc', true],
     ['/terminal/connect', '', true],
     ['/machine/connect', '', true],
     ['/', '', false],
