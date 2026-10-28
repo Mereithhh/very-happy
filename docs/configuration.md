@@ -434,7 +434,10 @@ including inside its `env` block:
 
 Other Claude Code switches (`FORCE_PROMPT_CACHING_5M`,
 `CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL`, `subagentPromptCacheTtl`) are respected
-the same way. Running sessions keep the value they started with. A gateway must
+the same way. Running sessions keep the value they started with: after changing
+the TTL in a settings file's `env` block, restart the session for it to take
+effect (deleting such a key mid-session also drops the one-hour value until the
+restart — Claude Code removes the variable from the running process). A gateway must
 pass `cache_control.ttl` through for the hour to take effect; a gateway that
 drops it silently falls back to five minutes. Codex, pi and other agents are
 not affected. Rules: `packages/happy-cli/src/claude/utils/promptCacheTtl.ts`.
