@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AssistantToolRegistrar } from '@/assistant/assistantTools';
 import { createTeamsClient } from './client';
-import { teamTaskToolView, teamToolView } from './toolView';
+import { teamActionReceipt, teamTaskToolView, teamToolView } from './toolView';
 
 export const TEAM_TOOL_NAMES = ['team_create', 'team_join', 'team_inspect', 'team_delegate', 'team_message', 'team_submit', 'team_accept', 'team_return', 'team_cancel', 'team_handoff', 'team_schedule_create', 'team_schedule_pause', 'team_schedule_resume', 'team_schedule_cancel'] as const;
 const id = z.string().min(1).max(128);
@@ -18,6 +18,7 @@ export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: s
         { name: id, machineId: id.optional(), requestId, projectId: id.optional().describe('Existing project to put the team in'), noProject: z.boolean().optional().describe('Create the team without a project') }, (args) => client.initialize(args));
     register('team_join', 'Join an existing team as a root bot using this session owner’s account. Scoped workers cannot elevate their role.',
         { teamId: id, name: id, botId: id.optional().describe('Existing root bot to reconnect; preserves its identity'), requestId }, (args) => client.initialize(args));
+    // B-840: writes answer with teamActionReceipt (ids, capacity, idle members); the team view stays here.
     // B-822: a compact view by default (closed tasks summarized, recent messages); detail on request.
     // A Codex stdio bridge forwards to the owning process, whose answer is already compact (`omitted`).
     const compact = (result: any) => result?.team && !result.team.omitted ? { ...result, team: teamToolView(result.team) } : result;
@@ -25,7 +26,7 @@ export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: s
         { taskId: id.optional().describe('Return this task in full: all attempts, messages and operations'), full: z.boolean().optional().describe('Return the whole team view (can be very large)') },
         async (args) => { const result = await client.inspect(); return args.full ? result : args.taskId ? teamTaskToolView(result.team, args.taskId) : compact(result); });
     const action = (name: string, description: string, fields: Record<string, z.ZodTypeAny>) => register(`team_${name}`, description,
-        { requestId, ...fields }, async ({ requestId: key, ...args }) => compact(await client.action({ type: name, ...args, ...(name === 'delegate' && args.directory === undefined ? { directory: process.cwd() } : {}) }, key)));
+        { requestId, ...fields }, async ({ requestId: key, ...args }) => teamActionReceipt(await client.action({ type: name, ...args, ...(name === 'delegate' && args.directory === undefined ? { directory: process.cwd() } : {}) }, key), args.taskId));
     action('delegate', 'Delegate a goal with acceptance criteria. Use parentTaskId for subdelegation. Existing assigneeBotId or a managed worker may execute it.', {
         goal: text, acceptance: z.array(text).min(1).max(32), parentTaskId: id.optional(), assigneeBotId: id.optional(), botName: id.optional(), directory: z.string().min(1).optional(), assistant: z.enum(['claude', 'codex', 'pi-acp']).optional(), model: z.string().trim().min(1).max(256).optional(),
     });
@@ -36,8 +37,8 @@ export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: s
     action('return', 'Return your task for further work with a concrete reason.', { taskId: id, reason: text, ...current });
     action('cancel', 'Cancel an owned task and its dependent work. Cleanup may remain pending.', { taskId: id, reason: text, ...current });
     action('handoff', 'Move an owned task to another bot; prior execution authority is superseded.', { taskId: id, assigneeBotId: id, ...current });
-    register('team_schedule_create', 'Create a persistent one-time or fixed-interval reminder for your own root bot. Delivery wakes the bound session; it does not prove task completion. Use epoch milliseconds, and inspect before retrying.', { requestId, name: id, botId: id, body: text, runAt: z.number().int().nonnegative(), intervalMs: z.number().int().min(60_000).optional() }, async ({ requestId: key, ...args }) => compact(await client.action({ type: 'schedule-create', ...args }, key)));
+    register('team_schedule_create', 'Create a persistent one-time or fixed-interval reminder for your own root bot. Delivery wakes the bound session; it does not prove task completion. Use epoch milliseconds, and inspect before retrying.', { requestId, name: id, botId: id, body: text, runAt: z.number().int().nonnegative(), intervalMs: z.number().int().min(60_000).optional() }, async ({ requestId: key, ...args }) => teamActionReceipt(await client.action({ type: 'schedule-create', ...args }, key)));
     for (const operation of ['pause', 'resume', 'cancel'] as const) {
-        register(`team_schedule_${operation}`, `${operation} your root bot’s schedule using its current version from team_inspect. An already in-flight message may still arrive.`, { requestId, scheduleId: id, version: z.number().int().positive() }, async ({ requestId: key, ...args }) => compact(await client.action({ type: `schedule-${operation}`, ...args }, key)));
+        register(`team_schedule_${operation}`, `${operation} your root bot’s schedule using its current version from team_inspect. An already in-flight message may still arrive.`, { requestId, scheduleId: id, version: z.number().int().positive() }, async ({ requestId: key, ...args }) => teamActionReceipt(await client.action({ type: `schedule-${operation}`, ...args }, key)));
     }
 }
