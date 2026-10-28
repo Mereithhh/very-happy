@@ -71,6 +71,13 @@ reuse the production `~/.happy` while testing.
 the real daemon. It is useful for intentional local installation, not an isolated
 test command.
 
+A command must not call `process.exit()` right after printing: piped stdout is
+asynchronous on POSIX, so the exit drops whatever did not fit in the pipe
+(2026-10-29: `sessions list --json | …` was cut at 8 KiB with exit code 0, while
+`> file` was complete). Finish with `return exitAfterFlush(code)`
+(`src/utils/exitAfterFlush.ts`), or set `process.exitCode` and return when
+nothing else keeps the process alive.
+
 ## End-to-end against a real daemon (local, disposable)
 
 For changes that span CLI + Web (a real Claude/Codex turn, an RPC, a tombstone):
