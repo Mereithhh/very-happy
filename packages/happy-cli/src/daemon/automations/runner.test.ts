@@ -270,6 +270,8 @@ describe('automation runner: sticky and send', () => {
         const runner = start(client); await settled(runner);
         expect(client.deleteSticky).toHaveBeenCalledWith('a1', 'conv-c9');
         expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ agent: 'codex', permissionMode: 'yolo' }));
+        // B-840: a sticky spawn is woken again, so it is flagged for the 1h prompt-cache default.
+        expect(spawn.mock.calls[0][0].environmentVariables).toMatchObject({ VH_AUTOMATION_RUN_ID: 'r1', VH_AUTOMATION_STICKY: '1' });
         expect(client.report).toHaveBeenCalledWith('r1', { claimId: 'claim-1', status: 'running', sessionId: 's1', stickyKey: 'conv-c9' });
     });
     it('keeps the session + sticky binding on renewals until the running report is accepted', async () => {

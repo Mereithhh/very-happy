@@ -293,6 +293,7 @@ See [deployment.md](deployment.md) for the full list and persistence guidance.
 | `HAPPY_HOME_DIR` | Credentials, settings, logs, daemon state, and local server data | `~/.happy` |
 | `HAPPY_DISABLE_CAFFEINATE` | Disable the macOS sleep-prevention helper when `true`/`1`/`yes` | unset |
 | `HAPPY_EXPERIMENTAL` | Enable explicitly experimental CLI paths | unset |
+| `HAPPY_CLAUDE_PROMPT_CACHE_TTL` | `auto` stops Very Happy from asking Claude Code for a 1-hour prompt cache and leaves Claude Code's own choice (see [Claude prompt cache TTL](#claude-prompt-cache-ttl)) | unset (= `1h`) |
 | `HAPPY_CODEX_IDLE_RELEASE_MS` | How long a Codex session may sit idle before its `codex app-server` child is stopped (the thread is kept and resumed on the next message, so `~/.codex` is not held open by silent sessions). `0` keeps the process for the session's lifetime | `300000` (5 min) |
 
 Cloud users need no endpoint variables. For self-hosting, set both URL variables
@@ -390,6 +391,53 @@ may work while Doctor remains conservative. See Anthropic's
 [cloud provider](https://code.claude.com/docs/en/team), and
 [legal/compliance](https://code.claude.com/docs/en/legal-and-compliance)
 documentation for the current provider rules.
+
+### Claude prompt cache TTL
+
+Claude Code caches the conversation prefix so the next turn re-reads it at a
+tenth of the input price. It picks the cache lifetime itself: one hour for a
+Claude subscription within its limits, **five minutes** for an API key, a
+gateway, Bedrock, Vertex, Foundry or an over-quota subscription. A five-minute
+cache expires while a session waits for a teammate, a review or you, and the
+next turn writes the whole context again — for a long team lead that is most
+of the bill.
+
+Since CLI 0.2.187 every Claude session the daemon starts (web-created, team
+lead and members, sticky automations, and the local terminal mode) asks for a
+**one-hour** main-conversation cache by setting
+`CLAUDE_CODE_PROMPT_CACHE_TTL=1h`. Two cases are left alone:
+
+- **One-shot automation runs** (no sticky key) keep Claude Code's own choice:
+  they finish in one burst and are not woken again, so the dearer write never
+  pays back.
+- **Subagents** keep Claude Code's own choice (Very Happy does not set
+  `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`); they are short bursts too.
+
+Cost trade-off: a one-hour cache write costs 2× the input price, a five-minute
+write 1.25×, a read 0.1×. One hour pays off when the same prefix is read again
+5–60 minutes later. Replaying one week of a busy dev machine's transcripts at
+API prices, the input-side cost changed by −48% for team leads, −19% for
+members, −16% for interactive sessions and +10% for one-shot automation runs.
+Subscription users already get one hour, so the default changes nothing for them.
+
+Your own choice always wins and Very Happy then sets nothing. Any of these
+counts, in the daemon's environment, the session's environment, or a Claude
+settings file (`$CLAUDE_CONFIG_DIR/settings.json`, the project's
+`.claude/settings.json` / `.claude/settings.local.json`, or managed settings),
+including inside its `env` block:
+
+| To | Set |
+|---|---|
+| Force five minutes | `CLAUDE_CODE_PROMPT_CACHE_TTL=5m` or `"promptCacheTtl": "5m"` |
+| Keep Claude Code's automatic choice | `HAPPY_CLAUDE_PROMPT_CACHE_TTL=auto` in the daemon's environment, then restart the daemon |
+| Also use one hour for subagents | `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` or `ENABLE_PROMPT_CACHING_1H=1` |
+
+Other Claude Code switches (`FORCE_PROMPT_CACHING_5M`,
+`CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL`, `subagentPromptCacheTtl`) are respected
+the same way. Running sessions keep the value they started with. A gateway must
+pass `cache_control.ttl` through for the hour to take effect; a gateway that
+drops it silently falls back to five minutes. Codex, pi and other agents are
+not affected. Rules: `packages/happy-cli/src/claude/utils/promptCacheTtl.ts`.
 
 The OpenClaw adapter reads `OPENCLAW_GATEWAY_URL`,
 `OPENCLAW_GATEWAY_TOKEN`, and `OPENCLAW_GATEWAY_PASSWORD` when set; otherwise it

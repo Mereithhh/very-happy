@@ -204,6 +204,14 @@ The automation page shows each automation's last result and next run; the
 detail page keeps the recent run timeline with source (schedule / fire /
 manual), duration, summary or error, and session links.
 
+## Claude prompt cache
+
+A sticky automation's Claude session is woken again by later runs, so it gets
+the one-hour prompt cache like other Very Happy sessions (CLI ≥ 0.2.187). A
+one-shot run keeps Claude Code's own TTL: it finishes in one burst and never
+re-reads the cache after five minutes, so the dearer one-hour write would only
+cost more. See [Claude prompt cache TTL](configuration.md#claude-prompt-cache-ttl).
+
 ## Validation boundary
 
 - Each automation runs on exactly the machine it names. There is no automatic

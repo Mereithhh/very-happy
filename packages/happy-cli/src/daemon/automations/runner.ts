@@ -373,7 +373,8 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
             catch (error) { await failNow(claimed, 'spawn', `Worktree preparation failed: ${error instanceof Error ? error.message : String(error)}`, 'worktree_failed'); return; }
         }
         persist({ runId: run.id, automationId: automation.id, kind: 'spawn', phase: 'starting', claimId: run.claimId, stickyKey, ...(action.worktree ? { directory } : {}) });
-        const spawned = await deps.spawn({ directory, agent, permissionMode, spawnedBy: AUTOMATION_SPAWNED_BY, environmentVariables: env });
+        // VH_AUTOMATION_STICKY: later runs wake this session again, so it keeps the 1h prompt-cache default (B-840).
+        const spawned = await deps.spawn({ directory, agent, permissionMode, spawnedBy: AUTOMATION_SPAWNED_BY, environmentVariables: stickyKey ? { ...env, VH_AUTOMATION_STICKY: '1' } : env });
         if (spawned.type !== 'success') {
             await failNow(claimed, 'spawn', spawned.type === 'error' ? spawned.errorMessage : 'Directory approval required', 'spawn_failed');
             return;
