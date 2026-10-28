@@ -283,6 +283,17 @@ falling back to another bot. Cancel active or paused schedules before archiving.
 External task-source mapping and its completion policy still belong to that
 source adapter; a schedule by itself does not import or complete Todo items.
 
+## Prompt cache and cost
+
+The lead and members sit idle between turns while they wait for each other, so
+Very Happy (CLI ≥ 0.2.187) asks Claude Code for a **one-hour** prompt cache
+instead of the five minutes it uses for API keys and gateways. Waking after a
+long wait then re-reads the cached context instead of writing it all again; on
+our own team this cut the lead's input cost by about half. Your own TTL
+setting always wins, and `HAPPY_CLAUDE_PROMPT_CACHE_TTL=auto` on the daemon turns
+the default off. Details, cost trade-off and every switch:
+[Claude prompt cache TTL](configuration.md#claude-prompt-cache-ttl).
+
 ## Briefing board (汇报板)
 
 On a server with the briefing board (B-766), the lead session gets four tools

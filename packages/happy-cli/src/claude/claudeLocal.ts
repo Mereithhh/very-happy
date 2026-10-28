@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { logger } from "@/ui/logger";
 import { ensureLocalProxyBypass } from "./utils/proxyBypass";
 import { pinSmallFastModel } from "./utils/smallFastModel";
+import { applyPromptCacheTtlDefault } from "./utils/promptCacheTtl";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { getProjectPath } from "./utils/path";
@@ -270,6 +271,8 @@ export async function claudeLocal(opts: {
             // Keep background/utility calls (built-in session-title generation
             // etc.) on haiku instead of the main model. Main model unaffected.
             pinSmallFastModel(env);
+            // B-840: same 1h prompt-cache default as remote mode (promptCacheTtl.ts).
+            applyPromptCacheTtlDefault(env, opts.path);
 
             if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {
                 ensureLocalProxyBypass(env);

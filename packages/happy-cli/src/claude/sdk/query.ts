@@ -7,6 +7,7 @@ import { query as sdkQuery, type Options, type Query } from '@anthropic-ai/claud
 import type { QueryOptions, QueryPrompt } from './types'
 import { ensureLocalProxyBypass } from '../utils/proxyBypass'
 import { pinSmallFastModel } from '../utils/smallFastModel'
+import { applyPromptCacheTtlDefault } from '../utils/promptCacheTtl'
 import { resolveHappyEntrypoint } from './happyEntrypoint'
 import { scheduleClaudeTreeReap } from '../claudeProcessTree'
 
@@ -121,6 +122,8 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
     // Keep background/utility calls (built-in session-title generation etc.)
     // on haiku instead of the session's main model. Main model is unaffected.
     pinSmallFastModel(env)
+    // B-840: 1h prompt cache unless the user chose a TTL (see promptCacheTtl.ts).
+    applyPromptCacheTtlDefault(env, opts?.cwd)
     if (opts?.mcpServers && Object.keys(opts.mcpServers).length > 0) {
         ensureLocalProxyBypass(env)
     }

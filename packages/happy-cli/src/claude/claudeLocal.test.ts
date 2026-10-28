@@ -8,12 +8,14 @@ const {
     mockInitializeSandbox,
     mockWrapCommand,
     mockSandboxCleanup,
+    mockReadFileSync,
 } = vi.hoisted(() => ({
     mockSpawn: vi.fn(),
     mockClaudeFindLastSession: vi.fn(),
     mockInitializeSandbox: vi.fn(),
     mockWrapCommand: vi.fn(),
     mockSandboxCleanup: vi.fn(),
+    mockReadFileSync: vi.fn((_path: string): string => { throw new Error('ENOENT') }),
 }));
 
 vi.mock('cross-spawn', () => ({
@@ -42,7 +44,8 @@ vi.mock('./utils/systemPrompt', () => ({
 
 vi.mock('node:fs', () => ({
     mkdirSync: vi.fn(),
-    existsSync: vi.fn(() => true)
+    existsSync: vi.fn(() => true),
+    readFileSync: mockReadFileSync,
 }));
 
 vi.mock('./utils/claudeCheckSession', () => ({
@@ -155,6 +158,24 @@ describe('claudeLocal --continue handling', () => {
         expect(spawnArgs).toContain('--session-id');
         expect(spawnArgs).not.toContain('--continue');
         expect(spawnArgs).not.toContain('--resume');
+    });
+
+    it('passes the 1h prompt-cache default to the local claude unless the session env chose a TTL (B-840)', async () => {
+        mockClaudeFindLastSession.mockReturnValue(null);
+        for (const key of ['CLAUDE_CODE_PROMPT_CACHE_TTL', 'CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL', 'CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL', 'ENABLE_PROMPT_CACHING_1H', 'FORCE_PROMPT_CACHING_5M', 'HAPPY_CLAUDE_PROMPT_CACHE_TTL', 'HAPPY_SPAWNED_BY']) vi.stubEnv(key, '');
+        try {
+            const base = { abort: new AbortController().signal, sessionId: null, path: '/tmp', onSessionFound, claudeArgs: [] };
+            await claudeLocal({ ...base, claudeEnvVars: { CLAUDE_CONFIG_DIR: '/nonexistent-vh-b841' } });
+            expect(mockSpawn.mock.calls[0][2].env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('1h');
+            await claudeLocal({ ...base, claudeEnvVars: { CLAUDE_CONFIG_DIR: '/nonexistent-vh-b841', CLAUDE_CODE_PROMPT_CACHE_TTL: '5m' } });
+            expect(mockSpawn.mock.calls[1][2].env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('5m');
+            // The session's own project settings (read from its path) also win.
+            mockReadFileSync.mockImplementation((path: string) => { if (path === '/repo-b841/.claude/settings.json') return '{"promptCacheTtl":"5m"}'; throw new Error('ENOENT') });
+            await claudeLocal({ ...base, path: '/repo-b841', claudeEnvVars: { CLAUDE_CONFIG_DIR: '/nonexistent-vh-b841' } });
+            expect(mockSpawn.mock.calls[2][2].env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('');
+        } finally {
+            vi.unstubAllEnvs();
+        }
     });
 
     it('should handle --resume with specific session ID without conflict', async () => {

@@ -6,6 +6,9 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (importOriginal) => ({
     query: sdkQuery,
 }));
 
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { query } from './query';
 
 describe('Claude SDK query adapter', () => {
@@ -85,6 +88,48 @@ describe('Claude SDK query adapter', () => {
         expect(env.ANTHROPIC_BASE_URL).toBe('https://hub.example');
         expect(env.HAPPY_MANAGED).toBe('1');
         expect(env.PATH).toBe(process.env.PATH);
+    });
+
+    describe('prompt cache TTL default (B-840)', () => {
+        const ttlKeys = ['CLAUDE_CODE_PROMPT_CACHE_TTL', 'CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL', 'CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL', 'ENABLE_PROMPT_CACHING_1H', 'FORCE_PROMPT_CACHING_5M', 'HAPPY_CLAUDE_PROMPT_CACHE_TTL', 'HAPPY_SPAWNED_BY'];
+        beforeEach(() => {
+            for (const key of ttlKeys) vi.stubEnv(key, '');
+            vi.stubEnv('CLAUDE_CONFIG_DIR', '/nonexistent-vh-b841');
+        });
+        afterEach(() => vi.unstubAllEnvs());
+
+        it('asks the spawned Claude for a 1h main-conversation cache', () => {
+            query({ prompt: 'hello', options: { cwd: '/nonexistent-vh-b841-repo' } });
+            const env = sdkQuery.mock.calls[0][0].options.env;
+            expect(env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('1h');
+            expect(env.CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL).toBe('');
+        });
+
+        it('keeps a TTL chosen in the session cwd project settings, and never touches process.env', () => {
+            const repo = mkdtempSync(join(tmpdir(), 'vh-b841-'));
+            try {
+                mkdirSync(join(repo, '.claude'));
+                writeFileSync(join(repo, '.claude', 'settings.json'), JSON.stringify({ promptCacheTtl: '5m' }));
+                query({ prompt: 'hello', options: { cwd: repo } });
+                expect(sdkQuery.mock.calls[0][0].options.env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('');
+                query({ prompt: 'hello', options: { cwd: join(repo, 'elsewhere') } });
+                expect(sdkQuery.mock.calls[1][0].options.env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('1h');
+                expect(process.env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('');
+            } finally {
+                rmSync(repo, { recursive: true, force: true });
+            }
+        });
+
+        it('keeps a user TTL from the session env', () => {
+            query({ prompt: 'hello', options: { env: { CLAUDE_CODE_PROMPT_CACHE_TTL: '5m' } } });
+            expect(sdkQuery.mock.calls[0][0].options.env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('5m');
+        });
+
+        it('injects nothing when the daemon opted out', () => {
+            vi.stubEnv('HAPPY_CLAUDE_PROMPT_CACHE_TTL', 'auto');
+            query({ prompt: 'hello' });
+            expect(sdkQuery.mock.calls[0][0].options.env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('');
+        });
     });
 
     it('leaves fork options undefined for ordinary queries', () => {
