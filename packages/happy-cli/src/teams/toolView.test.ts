@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TeamMessage, TeamOperation, TeamState, TeamTask } from '@slopus/happy-wire';
-import { TEAM_VIEW_RECENT_MESSAGES, teamTaskToolView, teamToolView } from './toolView';
+import { TEAM_VIEW_RECENT_MESSAGES, teamActionReceipt, teamTaskToolView, teamToolView } from './toolView';
 
 const task = (id: string, status: TeamTask['status']): TeamTask => ({ id, parentTaskId: null, goal: 'g'.repeat(5000), acceptance: ['a'], goalVersion: 2, ownerBotId: 'lead', assigneeBotId: 'w', status, attempts: [{ id: `${id}-old`, botId: 'w', generation: 1, goalVersion: 1, status: 'superseded', result: 'r'.repeat(5000) }, { id: `${id}-cur`, botId: 'w', generation: 1, goalVersion: 2, status: status === 'done' ? 'accepted' : 'submitted', result: 'evidence'.repeat(500) }], currentAttemptId: `${id}-cur`, cleanup: 'done' });
 const message = (i: number, delivered: boolean): TeamMessage => ({ id: `m${i}`, taskId: 'open', senderBotId: null, recipientBotId: 'lead', body: `body ${i}`, deliveredAt: delivered ? i : null, createdAt: i });
@@ -41,5 +41,41 @@ describe('B-822 compact team view for the team_* tools', () => {
         expect(detail.operations.map((o: any) => o.id)).toEqual(['finished', 'stuck']);
         expect(detail.operations[0].prompt).toHaveLength(5000);
         expect((teamTaskToolView(team(), 'gone') as any).error).toContain('archived');
+    });
+});
+
+describe('B-840 receipt for team_* writes', () => {
+    it('answers with the ids the caller needs next and the small team signals, not the team view', () => {
+        const state = { ...team(), idleMembers: [{ botId: 'w', name: 'W', since: 1, taskIds: ['open'] }], cleanupIssues: [], schedules: [{ id: 'sch', name: 'S', botId: 'lead', machineId: 'm', body: 'b', status: 'active' as const, version: 4, nextRunAt: 9, fireCount: 0, createdAt: 1 }] };
+        const receipt = teamActionReceipt({ team: state, taskId: 'open', operation: op('spawned', 'pending') }) as any;
+        expect(receipt.taskId).toBe('open');
+        expect(receipt.task).toMatchObject({ id: 'open', status: 'submitted', currentAttemptId: 'open-cur', goalVersion: 2, assigneeBotId: 'w', attempts: 2 });
+        expect(receipt.task.currentAttempt).toEqual({ id: 'open-cur', botId: 'w', status: 'submitted', goalVersion: 2, generation: 1 });
+        expect(receipt.task.goal.length).toBeLessThan(250); // the caller wrote it; no echo
+        expect(JSON.stringify(receipt)).not.toContain('evidence'); // nor its submission
+        expect(receipt.operation.id).toBe('spawned');
+        expect(receipt.operation.prompt).toBeUndefined();
+        expect(receipt.taskOperations.map((o: any) => o.id)).toEqual(['stuck']);
+        expect(receipt.taskOperations[0].prompt).toBeUndefined();
+        expect(receipt.team).toEqual({ id: 't', name: 'T', version: 3, openTasks: 1, capacity: state.capacity, idleMembers: state.idleMembers });
+        expect(receipt.hint).toContain('team_inspect');
+        expect(JSON.stringify(receipt).length).toBeLessThan(2000);
+        const scheduled = teamActionReceipt({ team: state, scheduleId: 'sch', scheduleRecordRetained: true }) as any;
+        expect(scheduled.schedule.version).toBe(4);
+        expect(scheduled.scheduleRecordRetained).toBe(true);
+        expect(scheduled.task).toBeUndefined();
+    });
+    it('stays small however large the team grows', () => {
+        const big = team();
+        big.tasks = Array.from({ length: 150 }, (_, i) => task(`t${i}`, i % 3 ? 'done' : 'running'));
+        big.messages = Array.from({ length: 1500 }, (_, i) => message(i, i % 10 !== 0));
+        const receipt = teamActionReceipt({ team: big, taskId: 't3' });
+        expect(JSON.stringify(receipt).length).toBeLessThan(2000);
+        expect(JSON.stringify(teamToolView(big)).length).toBeGreaterThan(100_000);
+    });
+    it('passes through anything that is not a team view', () => {
+        const forwarded = { taskId: 'x', team: { id: 't', name: 'T', version: 1, openTasks: 0 }, hint: 'Receipt only.' };
+        expect(teamActionReceipt(forwarded)).toBe(forwarded);
+        expect(teamActionReceipt(undefined)).toBeUndefined();
     });
 });

@@ -42,6 +42,7 @@ describe('managed team entry instructions', () => {
         expect(TEAM_LEAD_PLAYBOOK).toContain('Do not write code yourself');
         expect(TEAM_LEAD_PLAYBOOK).toContain('link this team to a project');
         expect(TEAM_LEAD_PLAYBOOK).toContain('recipientBotId');
+        expect(TEAM_LEAD_PLAYBOOK).toContain('never poll with sleep loops'); // QA19 O-1: a sleep loop holds back member notifications
         expect(TEAM_MEMBER_RULES).toContain('Do only what your task asks');
         expect(TEAM_MEMBER_RULES).toMatch(/overlaps another member's or needs a wider scope, tell your lead/);
         // Short by design: it rides in front of every lead's first turn.
