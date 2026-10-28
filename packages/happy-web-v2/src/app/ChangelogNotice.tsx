@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowLeft, ArrowRight, Check, Clipboard, PackageOpen, Sparkles, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -10,7 +10,7 @@ import {
   changelogCliNotices,
   changelogCliTarget,
 } from './changelogRelease';
-import { changelogPages, pageReleaseIds, pendingChangelogReleases, type ChangelogPage } from './changelogPager';
+import { changelogAutoAction, changelogPages, pageReleaseIds, pendingChangelogReleases, type ChangelogPage } from './changelogPager';
 import { acknowledgeAllChangelog, changelogReadState, markChangelogReleasesRead, onChangelogOpenRequest } from './changelogReadStore';
 import { enteredByDeepLink } from './entryKind';
 import { userHasInteracted } from './afterFirstScreen';
@@ -18,9 +18,11 @@ import './changelogNotice.css';
 import { BRAND } from './brand';
 import { ChangelogHighlights, ChangelogShotImage } from './ChangelogHighlights';
 import { MajorBadge } from './MajorBadge';
-import { OVERLAY_PRIORITY, useOverlayTurn } from './overlayQueue';
+import { OVERLAY_PRIORITY, useOverlayHeldAbove, useOverlayTurn } from './overlayQueue';
 
 const NO_PAGES: readonly ChangelogPage[] = [];
+/** B-842: long enough to notice and reach — the sidebar entry stays after it. */
+export const CHANGELOG_HINT_MS = 10_000;
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 /**
@@ -30,7 +32,9 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
  * last page the dialog cannot be dismissed — no ✕, Esc and the backdrop do
  * nothing — and each finished page is recorded, so a reload resumes at the
  * first unread one. Deep-link loads never open it on their own (B-697); the
- * sidebar entry (MajorUpdateEntry) opens it on request.
+ * sidebar entry (MajorUpdateEntry) opens it on request. B-842: held back (deep
+ * link, or the person already typing), it leaves a non-blocking toast
+ * 「有 N 条更新说明 · 查看」 for this visit instead of nothing.
  */
 export function ChangelogNotice() {
   const { t, lang } = useTranslation();
@@ -51,12 +55,30 @@ export function ChangelogNotice() {
     setIndex(0);
     setOpen(true);
   }, []);
+  // B-823: mounted after the first screen now — if the person is already
+  // typing or tapping, the notes do not grab focus mid-sentence. B-842: they
+  // leave a toast instead (once, after any dialog above `notice` is gone), so
+  // this visit still shows that something is unread; the sidebar entry stays.
+  const [auto] = useState(() => changelogAutoAction({
+    pending: pendingChangelogReleases(changelogReadState()).length,
+    deepLink: enteredByDeepLink(),
+    interacted: userHasInteracted(),
+  }));
+  const heldAbove = useOverlayHeldAbove(OVERLAY_PRIORITY.notice);
+  const hinted = useRef(false);
   useEffect(() => {
-    // B-823: mounted after the first screen now — if the person is already
-    // typing or tapping, the notes wait (unread) for the next visit or the
-    // sidebar entry instead of grabbing focus mid-sentence.
-    if (!enteredByDeepLink() && !userHasInteracted()) start();
-  }, [start]);
+    if (auto === 'open') start();
+  }, [auto, start]);
+  useEffect(() => {
+    if (auto !== 'hint' || hinted.current || heldAbove || open) return;
+    const count = pendingChangelogReleases(changelogReadState()).length;
+    if (count === 0) return;
+    hinted.current = true;
+    toast.show(t('changelog.hint', { count }), 'info', {
+      button: { label: t('changelog.hintOpen'), onClick: start },
+      durationMs: CHANGELOG_HINT_MS,
+    });
+  }, [auto, heldAbove, open, start, t, toast]);
   useEffect(() => onChangelogOpenRequest(start), [start]);
 
   const releases = useMemo(() => pages.flatMap((page) => (page.kind === 'major' ? [page.release] : page.releases)), [pages]);

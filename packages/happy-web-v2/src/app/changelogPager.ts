@@ -62,9 +62,37 @@ export function pageReleaseIds(page: ChangelogPage): string[] {
   return page.kind === 'major' ? [page.release.id] : page.releases.map((release) => release.id);
 }
 
-/** Major releases still unread — what the sidebar entry counts. */
+/** Major releases still unread. */
 export function unreadMajorCount(pending: readonly ChangelogRelease[]): number {
   return pending.filter((release) => release.major).length;
+}
+
+/**
+ * What the sidebar entry shows (B-842): every unread release has a way in, not
+ * only the major ones — a minor release whose pager was held back (deep link,
+ * the person already typing) used to be visible nowhere until the next
+ * ordinary load. A major release keeps the filled 「大更新」 row and counts the
+ * majors; minor-only shows a quiet 「更新说明」 row counting all of them.
+ */
+export type ChangelogEntry = { kind: 'major'; count: number } | { kind: 'minor'; count: number };
+
+export function changelogEntry(pending: readonly ChangelogRelease[]): ChangelogEntry | null {
+  const major = unreadMajorCount(pending);
+  if (major > 0) return { kind: 'major', count: major };
+  return pending.length > 0 ? { kind: 'minor', count: pending.length } : null;
+}
+
+/**
+ * B-842: on load the pager opens by itself only on an ordinary entry (B-697:
+ * not a deep link) where the person has not started typing / tapping yet
+ * (B-823). Held back, it leaves a non-blocking hint for this visit instead
+ * (a toast 「有 N 条更新说明 · 查看」) — the sidebar entry stays after it.
+ */
+export type ChangelogAutoAction = 'open' | 'hint' | 'none';
+
+export function changelogAutoAction(opts: { pending: number; deepLink: boolean; interacted: boolean }): ChangelogAutoAction {
+  if (opts.pending === 0) return 'none';
+  return opts.deepLink || opts.interacted ? 'hint' : 'open';
 }
 
 /**

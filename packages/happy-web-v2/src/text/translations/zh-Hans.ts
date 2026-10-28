@@ -2840,6 +2840,10 @@ export const zhHans: TranslationStructure = {
         entryLabel: ({ count }: { count: number }) => `大更新 · ${count} 条未看`,
         entryShort: '大更新',
         entryCount: ({ count }: { count: number }) => `${count} 条未看`,
+        notesEntryLabel: ({ count }: { count: number }) => `更新说明 · ${count} 条未看`,
+        notesEntryShort: '更新说明',
+        hint: ({ count }: { count: number }) => `有 ${count} 条更新说明`,
+        hintOpen: '查看',
         releases: {
             oct25e: {
                 title: '「只看我和负责人」不再藏起负责人的回复',

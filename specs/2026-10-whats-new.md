@@ -201,3 +201,23 @@ ChangelogRelease.highlights?: readonly ChangelogHighlight[];  // 有亮点时 it
 ## 留真机验证项
 
 无。弹窗在 Chromium 桌面 / 移动模拟（`pointer: coarse`）下已验证；iOS Safari 的 `<details>` 和 lazy 图片是标准行为，没有自定义手势。
+
+## 增补（B-842：任何未读更新说明都有可见入口）
+
+Owner 10-28「刷新页面也没有收到通知」。生产形态复现（`e2e/changelog-entry.mjs`，before = 72d23279）：只剩一条**小版本**未读时，
+
+| 进入方式 | 修复前 | 修复后 |
+| --- | --- | --- |
+| 普通刷新 `/` | 弹窗 | 弹窗（不变） |
+| 会话页开着侧栏刷新（`?panel=files/board/notes…`，工作时 `replace` 写进 URL） | 被当成深链：无弹窗、无入口、无任何提示 | 界面状态参数不再算深链：照常自动弹出 |
+| 动作链接进入（`?task=`、推送点击 `vh_presence`、`?new=`…） | 无弹窗、无入口 | 不弹窗（B-697 不变）；toast「有 1 条更新说明 · 查看」+ 侧栏低调入口 |
+| 刷新后立即按键/点按（B-823 `userHasInteracted`） | 同上，什么都看不到 | 同上 |
+| 其他浮层占用（`?task=`、⌘K…） | 打开它们本身就是 query 或按键，落入上两条 | toast 等 `interaction`/`critical` 浮层释放后才出 |
+| SW 旧壳 | Chromium 上不成立：`skipWaiting`+`clientsClaim`，F5 先拿旧壳、约 1s 后 `controllerchange` 自动换新 entry；两个 tab 同样 | — |
+
+根因两层：① `entryKind` 把任何 query 都当深链，会话页开着侧栏时 URL 恒带 `?panel=`，Owner 在会话页刷新永远不弹；② 被抑制时设计上靠侧栏入口，但入口只数**未读大更新**（`unreadMajorCount`），小版本被抑制后哪里都没有。
+
+- 侧栏入口改数全部未读：有大更新照旧（`--major-dim` 底「大更新 · N 条未看」，rail `--danger` 点）；只有小版本时是低调行「✨ 更新说明　N 条未看」（无底色、`--text-dim` 字、图标 `--major`，rail 点用 `--major`），触屏仍 44px。全部读完才消失。
+- 被抑制（深链或已操作）时，同次访问给一条不挡操作的 toast「有 N 条更新说明 · 查看」（10s，按钮打开分页弹窗），一次访问只出一次，`overlayHeldAbove(notice)` 时等待。选 toast 而不是「空闲 20–30s 后再弹」：分页弹窗是 Radix modal、多页时锁定不可关，在用户读输出的空闲时段突然抢焦点，回来一按键就落进弹窗；toast 不抢焦点、不挡输入，侧栏入口在 toast 消失后继续兜底。
+- 深链判定收窄（Lead 10-28）：只有界面状态参数 `panel` / `sub` / `wp`（`sessionPanelState.ts`）不算深链，其他任何参数仍算——宁可少弹。B-697 本意（动作链接不弹）不变。上文「`?panel=` = 深链」一句以此为准。
+- 纯函数：`changelogEntry`、`changelogAutoAction`（`changelogPager.ts`）。

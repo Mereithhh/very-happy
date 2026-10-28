@@ -9,6 +9,8 @@ import {
   pendingChangelogReleases,
   type ChangelogReadState,
   unreadMajorCount,
+  changelogEntry,
+  changelogAutoAction,
 } from './changelogPager';
 import { isDeepLinkEntry } from './entryKind';
 
@@ -79,7 +81,14 @@ describe('B-715 deep-link entry', () => {
   it.each([
     ['/teams/t1', '?task=abc', true],
     ['/session/abc', '?vh_presence=1', true],
-    ['/', '?panel=files', true],
+    // B-842: UI state written while working (the session aside) is not an action.
+    ['/session/abc', '?panel=files', false],
+    ['/session/abc', '?panel=agent&sub=m1', false],
+    ['/session/abc', '?panel=machine&wp=w1', false],
+    ['/session/abc', '?panel=changes&review=1', true],
+    ['/teams/t1', '?new=1', true],
+    ['/teams/t1', '?fromSession=s1', true],
+    ['/terminal/t1', '?fresh=1&cmd=abc', true],
     ['/terminal/connect', '', true],
     ['/machine/connect', '', true],
     ['/', '', false],
@@ -91,5 +100,22 @@ describe('B-715 deep-link entry', () => {
   it('honours a base path', () => {
     expect(isDeepLinkEntry({ pathname: '/app/machine/connect', search: '' }, '/app')).toBe(true);
     expect(isDeepLinkEntry({ pathname: '/app/', search: '' }, '/app')).toBe(false);
+  });
+});
+
+describe('B-842 sidebar entry + held-back hint', () => {
+  it('counts majors when there are any, else every unread release; nothing unread → no entry', () => {
+    expect(changelogEntry(pendingChangelogReleases({ seen: 'r0', read: [] }, R))).toEqual({ kind: 'major', count: 2 });
+    expect(changelogEntry(pendingChangelogReleases({ seen: 'r0', read: ['r2-major', 'r4-major'] }, R))).toEqual({ kind: 'minor', count: 2 });
+    expect(changelogEntry(pendingChangelogReleases({ seen: 'r2-major', read: ['r4-major'] }, R))).toEqual({ kind: 'minor', count: 1 });
+    expect(changelogEntry([])).toBeNull();
+  });
+
+  it('opens on an ordinary load, hints when held back by a deep link or early input, nothing when read', () => {
+    expect(changelogAutoAction({ pending: 1, deepLink: false, interacted: false })).toBe('open');
+    expect(changelogAutoAction({ pending: 1, deepLink: true, interacted: false })).toBe('hint');
+    expect(changelogAutoAction({ pending: 1, deepLink: false, interacted: true })).toBe('hint');
+    expect(changelogAutoAction({ pending: 0, deepLink: true, interacted: true })).toBe('none');
+    expect(changelogAutoAction({ pending: 0, deepLink: false, interacted: false })).toBe('none');
   });
 });
