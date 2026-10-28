@@ -2702,6 +2702,11 @@ export const en = {
         entryLabel: ({ count }: { count: number }) => `Major update · ${count} unread`,
         entryShort: 'Major update',
         entryCount: ({ count }: { count: number }) => `${count} unread`,
+        // B-842: minor-only unread notes (quiet sidebar row) + the held-back hint
+        notesEntryLabel: ({ count }: { count: number }) => `Release notes · ${count} unread`,
+        notesEntryShort: 'Release notes',
+        hint: ({ count }: { count: number }) => count === 1 ? '1 new release note' : `${count} new release notes`,
+        hintOpen: 'View',
         releases: {
             oct25e: {
                 title: 'Lead replies stay visible in “Just me & the lead”',

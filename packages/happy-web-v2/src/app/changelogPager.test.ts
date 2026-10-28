@@ -9,6 +9,8 @@ import {
   pendingChangelogReleases,
   type ChangelogReadState,
   unreadMajorCount,
+  changelogEntry,
+  changelogAutoAction,
 } from './changelogPager';
 import { isDeepLinkEntry } from './entryKind';
 
@@ -91,5 +93,22 @@ describe('B-715 deep-link entry', () => {
   it('honours a base path', () => {
     expect(isDeepLinkEntry({ pathname: '/app/machine/connect', search: '' }, '/app')).toBe(true);
     expect(isDeepLinkEntry({ pathname: '/app/', search: '' }, '/app')).toBe(false);
+  });
+});
+
+describe('B-842 sidebar entry + held-back hint', () => {
+  it('counts majors when there are any, else every unread release; nothing unread → no entry', () => {
+    expect(changelogEntry(pendingChangelogReleases({ seen: 'r0', read: [] }, R))).toEqual({ kind: 'major', count: 2 });
+    expect(changelogEntry(pendingChangelogReleases({ seen: 'r0', read: ['r2-major', 'r4-major'] }, R))).toEqual({ kind: 'minor', count: 2 });
+    expect(changelogEntry(pendingChangelogReleases({ seen: 'r2-major', read: ['r4-major'] }, R))).toEqual({ kind: 'minor', count: 1 });
+    expect(changelogEntry([])).toBeNull();
+  });
+
+  it('opens on an ordinary load, hints when held back by a deep link or early input, nothing when read', () => {
+    expect(changelogAutoAction({ pending: 1, deepLink: false, interacted: false })).toBe('open');
+    expect(changelogAutoAction({ pending: 1, deepLink: true, interacted: false })).toBe('hint');
+    expect(changelogAutoAction({ pending: 1, deepLink: false, interacted: true })).toBe('hint');
+    expect(changelogAutoAction({ pending: 0, deepLink: true, interacted: true })).toBe('none');
+    expect(changelogAutoAction({ pending: 0, deepLink: false, interacted: false })).toBe('none');
   });
 });

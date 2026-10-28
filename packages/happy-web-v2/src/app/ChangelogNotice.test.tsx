@@ -15,7 +15,13 @@ vi.mock('@/i18n/useTranslation', () => ({
   }),
 }));
 vi.mock('@/sync/storage', () => ({ useAllMachines: () => [] }));
-vi.mock('@/ui', () => ({ useToast: () => ({ success: () => {}, error: () => {} }), useTheme: () => ({ resolved: 'light' }) }));
+const toasts: { message: string; button?: { label: string; onClick: () => void }; durationMs?: number }[] = [];
+const toastApi = {
+  success: () => {},
+  error: () => {},
+  show: (message: string, _tone?: string, opts?: { button?: { label: string; onClick: () => void }; durationMs?: number }) => { toasts.push({ message, ...opts }); },
+};
+vi.mock('@/ui', () => ({ useToast: () => toastApi, useTheme: () => ({ resolved: 'light' }) }));
 vi.mock('@/screens/search/sessionSearchEvents', () => ({ openSessionSearch: () => {} }));
 
 const rel = (id: string, block: string, major = false): ChangelogRelease => ({
@@ -54,6 +60,7 @@ beforeEach(() => {
   localStorage.setItem('vh.changelog.seen', 'old');
   entry.setEnteredByDeepLinkForTest(false);
   store.resetChangelogReadStoreForTest();
+  toasts.length = 0;
 });
 
 afterEach(async () => {
@@ -178,7 +185,78 @@ describe('B-715 release-notes pager', () => {
     act(() => button('changelog.next')!.click());
     expect(document.querySelector('.vh-major-entry')?.getAttribute('aria-label')).toBe('changelog.entryLabel:{"count":1}');
     act(() => button('changelog.next')!.click());
-    // Both majors read; only the minor page is left — the entry is gone.
+    // B-842: both majors read, the minor page is left — the entry turns quiet instead of disappearing.
+    const quiet = document.querySelector('.vh-major-entry') as HTMLButtonElement;
+    expect(quiet.dataset.kind).toBe('minor');
+    expect(quiet.getAttribute('aria-label')).toBe('changelog.notesEntryLabel:{"count":1}');
+    act(() => button('changelog.doneAll')!.click());
     expect(document.querySelector('.vh-major-entry')).toBeNull();
+  });
+});
+
+// B-842 (Owner 10-28 「刷新页面也没有收到通知」): a minor release held back by a
+// deep link (a session page refreshed with `?panel=…` open) or by early typing
+// was visible nowhere — the sidebar entry counted majors only.
+describe('B-842 every unread release has a way in', () => {
+  const minorOnly = () => { localStorage.setItem('vh.changelog.seen', 'big-1'); localStorage.setItem('vh.changelog.read', JSON.stringify(['big-2'])); };
+
+  it('deep link + only a minor release unread: quiet sidebar entry and a toast, both open the notes', () => {
+    minorOnly();
+    entry.setEnteredByDeepLinkForTest(true);
+    mount();
+    expect(card()).toBeNull();
+    const quiet = document.querySelector('.vh-major-entry') as HTMLButtonElement;
+    expect(quiet.dataset.kind).toBe('minor');
+    expect(quiet.textContent).toContain('changelog.notesEntryShort');
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].message).toBe('changelog.hint:{"count":1}');
+    expect(toasts[0].button?.label).toBe('changelog.hintOpen');
+    act(() => toasts[0].button!.onClick());
+    expect(title()).toBe('changelog.releases.small.title');
+    act(() => button('changelog.done')!.click());
+    expect(document.querySelector('.vh-major-entry')).toBeNull();
+  });
+
+  it('typing before the notes mounted: no pager, but the toast and the entry are there', async () => {
+    const first = await import('./afterFirstScreen');
+    first.resetAfterFirstScreenForTest(undefined, { interacted: true });
+    try {
+      minorOnly();
+      mount();
+      expect(card()).toBeNull();
+      expect(toasts.map((x) => x.message)).toEqual(['changelog.hint:{"count":1}']);
+      act(() => button('changelog.notesEntryShort')!.click());
+      expect(title()).toBe('changelog.releases.small.title');
+    } finally {
+      first.resetAfterFirstScreenForTest();
+    }
+  });
+
+  it('an ordinary load opens the pager and leaves no toast', () => {
+    mount();
+    expect(card()).not.toBeNull();
+    expect(toasts).toHaveLength(0);
+  });
+
+  it('nothing unread: no toast and no entry, even on a deep link', () => {
+    localStorage.setItem('vh.changelog.seen', 'big-2');
+    entry.setEnteredByDeepLinkForTest(true);
+    mount();
+    expect(card()).toBeNull();
+    expect(toasts).toHaveLength(0);
+    expect(document.querySelector('.vh-major-entry')).toBeNull();
+  });
+
+  it('the toast waits while a dialog above `notice` holds the turn (a `?task=` deep link), then shows once', async () => {
+    const queue = await import('./overlayQueue');
+    const release = queue.requestOverlay('team-dialog', queue.OVERLAY_PRIORITY.interaction);
+    minorOnly();
+    entry.setEnteredByDeepLinkForTest(true);
+    mount();
+    expect(toasts).toHaveLength(0);
+    act(() => release());
+    expect(toasts).toHaveLength(1);
+    act(() => { queue.requestOverlay('again', queue.OVERLAY_PRIORITY.interaction)(); });
+    expect(toasts).toHaveLength(1);
   });
 });

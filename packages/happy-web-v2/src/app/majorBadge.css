@@ -12,5 +12,14 @@
 .vh-major-rail { position: relative; color: var(--major); }
 /* Same 「未读」 dot as the session rows (design-language: --danger unread extension). */
 .vh-major-rail-dot { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
+/* B-842: minor-only unread notes — the same row, quiet: no fill, dim text, only
+   the icon keeps the 「新内容」 hue (--major); the rail dot is --major too, not
+   the --danger 「未读」 dot a major update gets. */
+.vh-major-entry[data-kind="minor"] { background: transparent; color: var(--text-dim); font-weight: 500; }
+.vh-major-entry[data-kind="minor"] > svg { color: var(--major); }
+.vh-major-entry[data-kind="minor"] .vh-major-entry-count { color: var(--text-faint); }
+@media (hover: hover) and (pointer: fine) { .vh-major-entry[data-kind="minor"]:hover { background: var(--fill-hover); color: var(--text); } }
+.vh-major-rail[data-kind="minor"] { color: var(--text-dim); }
+.vh-major-rail[data-kind="minor"] .vh-major-rail-dot { background: var(--major); }
 /* Phone list: the whole entry is at most one session row (44px), so it never hides more than one row (Lead, B-715). */
 @media (pointer: coarse) { .vh-major-entry-row { padding-top: 0; } .vh-major-entry { min-height: 44px; } }
