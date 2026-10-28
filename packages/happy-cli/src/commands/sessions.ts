@@ -40,9 +40,14 @@
  * 1 — a caller asking to stop something must be able to tell "stopped it" from
  * "there was nothing to stop". `approve`/`deny` on a request that is not
  * pending, or on a session with no wrapper online, also exit 1.
+ *
+ * The body returns its exit code and the one exit waits for stdout/stderr to
+ * drain (`exitAfterFlush`): a `process.exit()` right after printing cut piped
+ * `--json` output at the pipe capacity, exit code 0 (2026-10-29).
  */
 
 import chalk from 'chalk'
+import { exitAfterFlush } from '@/utils/exitAfterFlush'
 import {
     archiveSession,
     DEFAULT_RECENT_LIMIT,
@@ -435,18 +440,23 @@ function formatSummaryLine(summary: SessionSummary): string {
 }
 
 export async function handleSessionsCommand(args: string[]): Promise<never> {
+    return exitAfterFlush(await runSessionsCommand(args))
+}
+
+/** The command itself; resolves to the exit code instead of exiting. */
+async function runSessionsCommand(args: string[]): Promise<number> {
     let options: SessionsCommandOptions
     try {
         options = parseSessionsArgs(args)
     } catch (error) {
         console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error))
         console.error(`Run ${chalk.cyan('very-happy sessions --help')} for usage.`)
-        process.exit(1)
+        return 1
     }
 
     if (options.action === 'help') {
         console.log(SESSIONS_HELP)
-        process.exit(0)
+        return 0
     }
 
     try {
@@ -481,7 +491,7 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                     console.log(chalk.dim(`${foreign} session(s) belong to a machine that is not reachable right now${why}.`))
                 }
             }
-            process.exit(0)
+            return 0
         }
 
         if (options.action === 'list' && options.machine) {
@@ -495,7 +505,7 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                 console.log(chalk.dim(`machine ${listing.host} (${listing.machineId})`))
                 for (const summary of sessions) console.log(formatSummaryLine(summary))
             }
-            process.exit(0)
+            return 0
         }
 
         if (options.action === 'list') {
@@ -507,7 +517,7 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
             } else {
                 for (const summary of sessions) console.log(formatSummaryLine(summary))
             }
-            process.exit(0)
+            return 0
         }
 
         if (options.action === 'peers' || options.action === 'message') {
@@ -523,7 +533,7 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                 else if (!listing.project) console.log(`Not in a project (${self.sessionId}).`)
                 else if (listing.peers.length === 0) console.log(`No other sessions in project "${listing.project.name}".`)
                 else for (const peer of listing.peers) console.log([peer.sessionId, `[${peer.state ?? '?'}]`, peer.title ? `title="${peer.title}"` : '', peer.agent ? `agent=${peer.agent}` : '', peer.machine ? `machine=${peer.machine}` : '', peer.doing ? `doing="${peer.doing}"` : '', peer.url].filter(Boolean).join(' '))
-                process.exit(0)
+                return 0
             }
             if (options.action === 'peers') {
                 const scope = options.scope === 'project' ? undefined : options.scope
@@ -546,7 +556,7 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                         for (const edit of peer.edits) console.log(chalk.dim(`    ${edit.tool} ${edit.path} (${Math.round((Date.now() - edit.at) / 60_000)}m ago)`))
                     }
                 }
-                process.exit(0)
+                return 0
             }
             const target = options.sessionId as string
             try {
@@ -555,7 +565,7 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                 else if (result.delivered) console.log(`Message ${result.messageId} delivered to ${target}${result.machine ? ` on ${result.machine.host}` : ''}\n${result.url}`)
                 else if (result.status === 'offline-stored') console.log(`Message ${result.messageId} ${result.note ?? 'stored'} (${target} is not running; same project)\n${result.url}`)
                 else console.error(chalk.yellow('Not delivered:'), result.error ?? `session is ${result.status}`, result.stored ? '(stored server-side, unread)' : '')
-                process.exit(peerMessageExitCode(result))
+                return peerMessageExitCode(result)
             } catch (error) {
                 if (options.json) console.log(JSON.stringify({ delivered: false, to: target, error: error instanceof Error ? error.message : String(error) }))
                 throw error
@@ -609,7 +619,7 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                 const turn = result.turn
                 console.log(chalk.dim(`--- latest turn: ${turn.ended ? `ended (${turn.status ?? 'unknown'})` : 'running'}${turn.error ? ` — ${turn.error}` : ''} ---`))
             }
-            process.exit(timedOut ? 2 : 0)
+            return timedOut ? 2 : 0
         }
 
         if (options.action === 'stop') {
@@ -619,11 +629,11 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                 // and nothing was stopped. Exit 1 so a script can tell.
                 if (options.json) console.log(JSON.stringify({ sessionId, stopped: false }))
                 console.error(chalk.red('Error:'), `Session ${sessionId} is not among the daemon's running sessions.`)
-                process.exit(1)
+                return 1
             }
             if (options.json) console.log(JSON.stringify({ sessionId, stopped: true }))
             else console.log(`Stopped ${sessionId}`)
-            process.exit(0)
+            return 0
         }
 
         if (options.action === 'approve' || options.action === 'deny') {
@@ -653,7 +663,7 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                     ? ` — the request is still pending; re-run in ~${Math.ceil(result.outcome.retryAfterMs / 1000)}s`
                     : ''
                 console.error(chalk.red('Error:'), `${options.action} of ${requestId} on ${sessionId} was not delivered (${result.outcome.status}): ${result.outcome.message}${hint}`)
-                process.exit(1)
+                return 1
             }
             if (options.json) {
                 console.log(JSON.stringify(result))
@@ -661,15 +671,15 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                 const verb = options.action === 'approve' ? 'Approved' : 'Denied'
                 console.log(`${verb} ${requestId} on ${sessionId} (${result.payload.decision})${result.settled ? '' : ' — wrapper acknowledged, but the request was still listed as pending when we stopped waiting'}`)
             }
-            process.exit(0)
+            return 0
         }
 
         await archiveSession(sessionId)
         if (options.json) console.log(JSON.stringify({ sessionId, archived: true }))
         else console.log(`Archived ${sessionId}`)
-        process.exit(0)
+        return 0
     } catch (error) {
         console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error))
-        process.exit(1)
+        return 1
     }
 }

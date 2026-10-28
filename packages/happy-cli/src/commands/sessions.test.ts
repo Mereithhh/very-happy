@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { parseSessionsArgs, peerMessageExitCode, permissionFailureRecord, SESSIONS_HELP } from './sessions'
 
@@ -181,5 +183,17 @@ describe('peerMessageExitCode (B-646 follow-up)', () => {
 
     it('help describes the same-project exception', () => {
         expect(SESSIONS_HELP).toContain('offline-stored')
+    })
+})
+
+describe('exit path (2026-10-29: piped --json cut at the pipe capacity)', () => {
+    it('no branch calls process.exit itself — the single exit waits for stdout/stderr to drain', () => {
+        // sessionsPipedExit.test.ts proves the drained exit end to end on `list`;
+        // this keeps every other branch on it. Comment lines are skipped (the header explains the rule).
+        const code = readFileSync(fileURLToPath(new URL('./sessions.ts', import.meta.url)), 'utf8')
+            .split('\n')
+            .filter((line) => !/^\s*(\*|\/\/|\/\*)/.test(line))
+            .join('\n')
+        expect(code).not.toMatch(/\bprocess\.exit\s*\(/)
     })
 })

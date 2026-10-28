@@ -34,6 +34,7 @@ import { missingPiPrerequisites, parsePiRunnerArgs, piAdapterMissingHint, piSetu
 import { commandOnPath } from '@/utils/detectCLI'
 import { CLAUDE_OPTIONS_HELP, DAEMON_STOP_HELP } from './commands/helpFacts'
 import { errorReason, installExitReasonFallback, recordExitReason } from './utils/exitReason'
+import { exitAfterFlush } from './utils/exitAfterFlush'
 
 
 export async function main(): Promise<void> {
@@ -167,7 +168,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     } catch (error) {
       failCommand(error)
     }
-    process.exit(process.exitCode ?? 0);
+    return exitAfterFlush(process.exitCode ?? 0);
   } else if (subcommand === 'sessions') {
     try {
       const { handleSessionsCommand } = await import('./commands/sessions');
@@ -955,8 +956,9 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       } catch (e) {
         console.log(chalk.yellow('Could not retrieve claude help. Make sure claude is installed.'))
       }
-      
-      process.exit(0)
+
+      // With claude's own help appended this is ~27 KB, more than a pipe may hold.
+      return exitAfterFlush(0)
     }
 
     // Show version
