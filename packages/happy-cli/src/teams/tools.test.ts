@@ -18,7 +18,7 @@ describe('public scoped team tools', () => {
         await calls.get('team_schedule_pause')!({ requestId: 'pause-r', scheduleId: 'schedule', version: 2 });
         expect(client.action).toHaveBeenLastCalledWith({ type: 'schedule-pause', scheduleId: 'schedule', version: 2 }, 'pause-r');
     });
-    it('B-822: team_inspect is compact by default, one task with taskId, everything with full; actions return the compact team', async () => {
+    it('B-822/B-840: team_inspect is compact by default, one task with taskId, everything with full; actions return a receipt', async () => {
         const calls = new Map<string, Function>();
         const team = { id: 't', name: 'T', machineId: 'm', version: 1, createdAt: 1, bots: [], messages: [], operations: [], tasks: [{ id: 'x', parentTaskId: null, goal: 'g', acceptance: ['a'], goalVersion: 1, ownerBotId: null, assigneeBotId: 'b', status: 'done', attempts: [], currentAttemptId: 'a', cleanup: 'done' }] };
         const client = { initialize: vi.fn(), inspect: vi.fn().mockResolvedValue({ team }), action: vi.fn().mockResolvedValue({ team, taskId: 'x' }) };
@@ -29,9 +29,18 @@ describe('public scoped team tools', () => {
         expect((await read('team_inspect', { taskId: 'x' })).task).toEqual(team.tasks[0]);
         const accepted = await read('team_accept', { requestId: 'r', taskId: 'x', attemptId: 'a', goalVersion: 1 });
         expect(accepted.taskId).toBe('x');
-        expect(accepted.team.omitted).toBeDefined();
-        // Already compact (forwarded by a Codex bridge): passed through untouched.
-        client.action.mockResolvedValueOnce({ team: accepted.team });
-        expect((await read('team_accept', { requestId: 'r2', taskId: 'x', attemptId: 'a', goalVersion: 1 })).team).toEqual(accepted.team);
+        expect(accepted.task).toMatchObject({ id: 'x', status: 'done', currentAttemptId: 'a', goalVersion: 1 });
+        expect(accepted.team).toEqual({ id: 't', name: 'T', version: 1, openTasks: 0 });
+        expect(accepted.team.tasks).toBeUndefined();
+        // Already a receipt (forwarded by a Codex bridge): passed through untouched.
+        client.action.mockResolvedValueOnce(accepted);
+        expect(await read('team_accept', { requestId: 'r2', taskId: 'x', attemptId: 'a', goalVersion: 1 })).toEqual(accepted);
+        // Every write tool answers with a receipt, never the team view.
+        for (const name of ['team_delegate', 'team_message', 'team_submit', 'team_return', 'team_cancel', 'team_handoff', 'team_schedule_create', 'team_schedule_pause', 'team_schedule_resume', 'team_schedule_cancel']) {
+            client.action.mockResolvedValueOnce({ team, taskId: 'x' });
+            const answer = await read(name, { requestId: `w-${name}` });
+            expect(answer.team.tasks, name).toBeUndefined();
+            expect(answer.hint, name).toContain('team_inspect');
+        }
     });
 });

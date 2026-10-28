@@ -363,6 +363,12 @@ the board; a session adopted as lead mid-run gets them after its next restart.
 - Cancelling closes the unfinished subtree. Before a parent is submitted or
   handed off, its child work must be resolved. Child completion alone does not
   prove that the parent goal is satisfied.
+- Team write tools (`team_delegate`, `team_message`, `team_submit`,
+  `team_accept`, `team_return`, `team_cancel`, `team_handoff`, `team_schedule_*`)
+  answer with a short receipt: the task's status, current attempt and goal
+  version, the schedule version, capacity and idle members. Use `team_inspect`
+  for the team view (`taskId` for one task in full). Keeping writes small keeps
+  long-running leads' context and prompt-cache writes down.
 - A message marked delivered is not a processing acknowledgement from the model.
   Inspect the session and result instead of assuming a notification was handled.
 - Cleanup stops only team-created managed workers. User-linked sessions are not

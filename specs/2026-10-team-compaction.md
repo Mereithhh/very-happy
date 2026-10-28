@@ -55,12 +55,23 @@
 
 `team_inspect { taskId }` 返回单个任务的全部内容，`{ full: true }` 返回完整视图。Codex stdio bridge 转发时用 `full: true` 取原始视图，再在本地生成精简视图；已经带 `omitted` 的视图不会再压一次。Web 和 HTTP API 的返回不变。
 
+**B-840 修订：写操作只回回执。** 在 dev-sg 的真实落盘样本上（10-26～10-28，n=182），精简视图下写操作的返回中位数仍约 70k 字符，最大 186k；它们每次都留在调用方上下文和 prompt cache 里，Lead 平均上下文因此达 50 万 token。调用方已经知道自己发了什么，所以 delegate / message / submit / accept / return / cancel / handoff / schedule_* 改为返回回执（`toolView.ts` `teamActionReceipt`），只保留下一步需要的字段：
+
+- `taskId`、`scheduleId`、`scheduleRecordRetained`，以及服务端回传的 `operation`（去掉 prompt）；
+- `task`：被操作任务的状态、assignee、`currentAttemptId`、`goalVersion`、cleanup 和当前 attempt 的 id/status/generation，goal 截到 200 字，不回显 result；
+- `taskOperations`：这个任务还没完成的 operation（去掉 prompt）；`schedule`：被操作的 schedule 记录（含 version，供 pause/resume/cancel 使用）；
+- `team`：id、name、version、`openTasks` 计数、`capacity`，以及非空时的 `idleMembers`、`cleanupIssues`；
+- `hint`：团队视图请调用 team_inspect。
+
+同一批样本上回执中位数为 0.3–4.8k 字符（submit 0.3k，delegate 4.8k），最大 5.3k。`team_inspect` 不变。Codex stdio bridge 转发写操作时，拿到的已经是回执（`team` 里没有 `tasks` 数组），会原样透传。
+
 ## 兼容与发布顺序
 
 | 组合 | 行为 |
 | --- | --- |
 | 新 server + 旧 CLI | 上限错误返回 409 + code，旧 CLI 显示 `HTTP 409: team_size_limit`。MCP 仍返回完整视图（旧 CLI 没有精简视图，但压缩已经限制了体积） |
 | 旧 server + 新 CLI | 429 + code 走容量提示；没有 `capacity` 和 `compacted` 字段，精简视图照常工作 |
+| B-840 新 CLI（任意 server） | 写操作返回回执；字段都来自现有响应，不需要 server 配合。旧 server 不返回 `capacity`、`idleMembers` 时，回执里就没有这几项。依赖写操作返回值读团队状态的 prompt 需改为调用 team_inspect（内置的 Lead/成员说明本来就要求先 inspect） |
 | 回滚到旧镜像 | **只回滚镜像，保留 `TeamArchive` 表，不 DROP**：归档行已从实时表删除，DROP 会永久丢失它们。旧镜像忽略这张表，已归档的记录看不到；保留下来的源仓库 spawn 指向已归档的任务，只在 reconcile / complete 这类路径才会按 op 去查任务，而这些路径要求 op 未完成，所以不会触发 |
 | daemon（任意版本）的 stop / recoverScope | 按 `(botId, generation, sessionId)` 或 spawn id 读 `team.operations` 里的 spawn；当前绑定与未完成 stop 指向的 spawn 不归档，所以不受影响 |
 
@@ -70,4 +81,4 @@
 
 - `compaction.spec.ts`：安全规则逐条测试；24 小时 / 压力分档；legacy 任务的年龄；80% 只提醒一次、降到 70% 以下后可再次提醒；上限错误为 409 + details。复用 bot 的非首个 spawn 跑了 >24h、任务刚 accept、stop pending / claimed / failed / unknown，或会话仍绑定时，spawn 保留（P1 复现）；legacy 任务首次见到补 closedAt、压力档下用代理时间；压力档最小宽限 10 分钟。长跑 fixture：520 个周期（2080 条消息、1040 个 operation、520 个任务，跨 11 天），开启压缩时四项用量峰值都低于 80%；未结束的根任务、卡住的任务和它已认领的 spawn、源仓库都保留。关闭压缩时同样的流程撞上限（复现事故）。
 - `store.pglite.integration.spec.ts`：24 小时后真的写进 `TeamArchive`，并从实时表里删除；未送达的消息、未结束的任务、源仓库 spawn 都保留；手工构造不安全的删除，三种情况都被拒绝；P1 复现场景下 daemon claim stop 这一次写入不会归档它要找的 spawn，手工删除该 spawn 被 `unsafe_operation_prune` 拒绝。
-- CLI：`refusal.test.ts`（409 和 429 两种情况）、`toolView.test.ts`、`tools.test.ts`（精简视图、taskId、full、不重复压缩）。
+- CLI：`refusal.test.ts`（409 和 429 两种情况）、`toolView.test.ts`、`tools.test.ts`（精简视图、taskId、full、不重复压缩；B-840：每个写工具都返回回执、回执不随团队规模增长、bridge 转发的回执原样透传）。

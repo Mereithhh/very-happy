@@ -1,4 +1,4 @@
-import type { TeamState, TeamTask } from '@slopus/happy-wire';
+import type { TeamOperation, TeamState, TeamTask } from '@slopus/happy-wire';
 
 /**
  * B-822: what the team_* tools hand the model. A lead's view is the whole team and every call
@@ -48,3 +48,42 @@ function closedTaskSummary(task: TeamTask) {
     return { id: task.id, parentTaskId: task.parentTaskId, status: task.status, goal: clip(task.goal, CLOSED_GOAL_CHARS), assigneeBotId: task.assigneeBotId, ownerBotId: task.ownerBotId, currentAttemptId: task.currentAttemptId, goalVersion: task.goalVersion, cleanup: task.cleanup, attempts: task.attempts.length, ...(accepted?.result ? { result: clip(accepted.result, CLOSED_GOAL_CHARS) } : {}), ...(task.closedAt ? { closedAt: task.closedAt } : {}) };
 }
 const clip = (text: string, max: number) => text.length > max ? `${text.slice(0, max)}…` : text;
+
+/**
+ * B-840: what a team_* write (delegate, message, submit, accept, return, cancel, handoff, schedule_*)
+ * hands the model. Even the compact view was 30–190k characters per write on dev-sg (p50 ≈ 70k for a
+ * lead), and every write's answer stays in the caller's context and prompt cache. The caller already
+ * knows what it sent, so a write answers with the ids it needs next (task, current attempt,
+ * goalVersion, schedule version) plus the small team signals (capacity, idle members, cleanup issues);
+ * the team view stays on team_inspect.
+ */
+export function teamActionReceipt(result: any): Record<string, unknown> {
+    // Not a team view (an error shape, or a receipt forwarded by a Codex stdio bridge): pass through untouched.
+    if (!Array.isArray(result?.team?.tasks)) return result;
+    const { team, operation, ...rest } = result as { team: TeamState; operation?: TeamOperation } & Record<string, unknown>;
+    const { tasks = [], operations = [], schedules = [] } = team;
+    const taskId = typeof rest.taskId === 'string' ? rest.taskId : undefined;
+    const task = taskId ? tasks.find(t => t.id === taskId) : undefined;
+    const schedule = typeof rest.scheduleId === 'string' ? schedules.find(s => s.id === rest.scheduleId) : undefined;
+    const taskOperations = taskId ? operations.filter(o => o.taskId === taskId && o.status !== 'completed') : [];
+    return {
+        ...rest,
+        ...(task ? { task: taskReceipt(task) } : {}),
+        ...(operation ? { operation: withoutPrompt(operation) } : {}),
+        ...(taskOperations.length ? { taskOperations: taskOperations.map(withoutPrompt) } : {}),
+        ...(schedule ? { schedule } : {}),
+        team: {
+            id: team.id, name: team.name, version: team.version,
+            openTasks: tasks.filter(t => !closed(t)).length,
+            ...(team.capacity ? { capacity: team.capacity } : {}),
+            ...(team.idleMembers?.length ? { idleMembers: team.idleMembers } : {}),
+            ...(team.cleanupIssues?.length ? { cleanupIssues: team.cleanupIssues } : {}),
+        },
+        hint: 'Receipt only. Call team_inspect for the team view, or team_inspect with taskId for one task in full.',
+    };
+}
+function taskReceipt(task: TeamTask) {
+    const current = task.attempts.find(a => a.id === task.currentAttemptId);
+    return { id: task.id, parentTaskId: task.parentTaskId, status: task.status, goal: clip(task.goal, CLOSED_GOAL_CHARS), assigneeBotId: task.assigneeBotId, ownerBotId: task.ownerBotId, currentAttemptId: task.currentAttemptId, goalVersion: task.goalVersion, cleanup: task.cleanup, attempts: task.attempts.length, ...(current ? { currentAttempt: { id: current.id, botId: current.botId, status: current.status, goalVersion: current.goalVersion, generation: current.generation } } : {}) };
+}
+const withoutPrompt = ({ prompt: _prompt, ...op }: TeamOperation) => op;
