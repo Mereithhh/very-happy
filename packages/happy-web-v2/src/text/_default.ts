@@ -2718,6 +2718,12 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            oct28: {
+                title: 'CLI 0.2.187: teams and long sessions cost much less',
+                summary: 'Claude sessions now keep their prompt cache for 1 hour, and team tools return short answers, so teams and long-running sessions use far fewer tokens.',
+                cache: 'Teams and long sessions cost noticeably less: Claude sessions use a 1-hour prompt cache by default, so waking up after a long wait no longer re-sends the whole context. Your own cache setting still takes precedence.',
+                teamTools: 'Team tools answer with a short receipt, so the lead\'s and members\' context no longer fills up with the full team state.',
+            },
             oct27b: {
                 title: 'New sessions you start no longer get lost in the list',
                 summary: 'After you start a session from the web, you get a prompt to open it and the sidebar marks it, so it no longer gets lost in the list.',
