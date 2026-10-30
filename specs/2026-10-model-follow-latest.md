@@ -91,6 +91,7 @@ sentinel 永不上线：web `resolveMessageModeMeta`、`resolveDefaultModelMode`
 - **选择器只有一个跟随项**（key `latest`，选中后会话与账号都不记具体模型）。它取代「X（默认）」和「X 当前最新」两项，名字按解析结果：
   「跟随最新（X）」/「跟随本机配置（X）」/「本机默认（升级 CLI 后跟随最新）」（会话 wrapper 证明不了更新的模型，例如旧 CLI 没上报 `configuredModel`：如实说跑的是机器默认，P2-1）/「跟随最新（取决于机器）」（没有会话也没有机器）。
   X 本身的条目只在被明确选中（固定）时保留。`default` 只给 Claude 保留，叫「本机默认」（意思是跟随 /model，跟随最新会覆盖它）；Codex/Gemini 的跟随已经尊重本机配置，`default` 只在当前就选着它时出现。原始 key「default model」不再展示（设置页同样改名为「本机默认」）。
+  X 指跟随项实际要跑的模型（`followEntryModel`）：本机配置钉了模型时是钉的那个，不是同档最新。钉配置的机器上，这个模型也会作为机器的自定义模型（B-688，读自 config.toml）出现，同样按此规则只在被固定时列出（`customModelsBesideFollow`，B-844d / QA23 P2-3）。
 - **设置页「当前」按机器解析**（P2-2/P2-3）：每台机器取该智能体**最新创建**的会话，用 `resolveLatestForAgent(table, agent, 会话 metadata)` 解析，与发送时 `resolveMessageModeMeta` 走的是同一个函数（capability + catalog + configuredModel），不读表头。机器按名称排序，账号级的值：各机一致时显示该值，不一致时显示「跟随最新（因机器而异）」，没有会话时显示「跟随最新（取决于机器）」；展开后的说明逐台列出。这样新建会话只会改变**那台**机器的值，账号级的值不再随「最新会话在哪台机器」来回跳。
 
 ### 单一来源

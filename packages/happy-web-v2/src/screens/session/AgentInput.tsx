@@ -56,7 +56,7 @@ import {
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
 import { useLatestModelTable } from '@/sync/latestModels';
-import { followLatestState, followLatestDescriptionKey, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
+import { customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
 import { LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
 import type { LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
@@ -386,12 +386,12 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             ? withFollowLatestOption(baseModels, {
                 flavor,
                 follow: { name: followName, description: t(followLatestDescriptionKey(followState, normalizeAgentKey(flavor) === 'claude')) },
-                latestModel,
+                latestModel: followEntryModel(followState),
                 selectedKey: followingLatest ? LATEST_MODEL_MODE : modelKey,
                 machineDefault: { name: t('session.chat.machineDefaultModel'), description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') },
             })
             : relabelDefaultModel(baseModels, defaultModelLabel),
-        customModels,
+        offersFollowLatest ? customModelsBesideFollow(customModels, followEntryModel(followState), followingLatest ? LATEST_MODEL_MODE : modelKey) : customModels,
         t('modelConfig.customModelDescription'),
     );
     const permModes = getAvailablePermissionModes(flavor, metadata, t as any);

@@ -26,6 +26,15 @@ export function followLatestState(resolution: LatestModelResolution, resolvedFor
     return resolvedForSession ? { kind: 'machineDefault' } : { kind: 'dependsOnMachine' };
 }
 
+/**
+ * The model the follow entry runs, which the picker lists only once (QA23
+ * P2-3): a machine-config pin wins over the tier's latest, so on a pinned
+ * machine the pinned model, not the latest, collapses into the entry.
+ */
+export function followEntryModel(state: FollowLatestState): string | null {
+    return state.kind === 'machineConfig' || state.kind === 'latest' ? state.model : null;
+}
+
 export function sameFollowLatestState(a: FollowLatestState, b: FollowLatestState): boolean {
     if (a.kind !== b.kind) return false;
     return !('model' in a) || a.model === (b as typeof a).model;
@@ -42,7 +51,7 @@ export function sameFollowLatestState(a: FollowLatestState, b: FollowLatestState
 export function withFollowLatestOption(options: readonly ModelMode[], input: {
     flavor: string | null | undefined;
     follow: { name: string; description: string | null };
-    /** What `latest` resolves to now (LatestModelResolution.model). */
+    /** What the follow entry runs now (followEntryModel): listed only through it unless pinned. */
     latestModel: string | null;
     /** The displayed explicit choice, `latest` when following. */
     selectedKey: string | null | undefined;
@@ -60,6 +69,16 @@ export function withFollowLatestOption(options: readonly ModelMode[], input: {
         out.push(option);
     }
     return out;
+}
+
+/**
+ * QA23 P2-3: the machine's own config model (custom picker models, B-688) is
+ * what a machine-config follow entry runs — listing it again duplicated the
+ * entry. Same rule as withFollowLatestOption: kept only when it is the
+ * explicit selection.
+ */
+export function customModelsBesideFollow(custom: readonly string[], followModel: string | null, selectedKey: string | null | undefined): readonly string[] {
+    return followModel ? custom.filter((key) => key !== followModel || key === selectedKey) : custom;
 }
 
 /** What the picker key means when sent to storage: `latest` = no explicit pick. */
