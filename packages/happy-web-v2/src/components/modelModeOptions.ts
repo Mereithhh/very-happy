@@ -8,6 +8,8 @@ export type ModeOption = {
     key: string;
     name: string;
     description?: string | null;
+    /** Listed but not pickable here (B-849a2: Claude 「本机配置」 mid-session). */
+    disabled?: boolean;
 };
 
 export type PermissionMode = ModeOption;

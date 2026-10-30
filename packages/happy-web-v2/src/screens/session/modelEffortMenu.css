@@ -41,6 +41,9 @@
 .me-model-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .me-model-name { font-size: var(--fs-13); overflow-wrap: anywhere; }
 .me-model--on .me-model-name { font-weight: 600; }
+.me-model--off { cursor: default; }
+.me-model--off .me-model-name { color: var(--text-dim); }
+@media (hover: hover) and (pointer: fine) { .me-model--off:hover { background: transparent; } }
 .me-model-desc { font-size: var(--fs-11); color: var(--text-dim); overflow-wrap: anywhere; }
 .me-model-check { flex: none; color: var(--text); }
 .me-more {

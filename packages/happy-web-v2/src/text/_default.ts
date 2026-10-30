@@ -977,7 +977,8 @@ export const en = {
             modelLatestDescriptionUpgradeCli: 'Follows latest once the Very Happy CLI is updated',
             machineDefaultModel: 'Machine config',
             machineConfigModel: ({ model }: { model: string }) => `Machine config · ${model}`,
-            machineDefaultModelDescription: 'Send no model: use Claude\'s own setting on this machine (/model)',
+            machineDefaultModelDescription: 'Send no model: Claude follows its own settings on this machine (settings.json / /model)',
+            machineDefaultModelMidSession: 'New sessions only: switching here mid-session would keep the model Claude is running',
             machineDefaultModelDescriptionOther: 'Send no model: use the agent\'s own config on this machine',
             modelPicker: {
                 title: 'Run setup',

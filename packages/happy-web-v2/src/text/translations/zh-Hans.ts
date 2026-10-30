@@ -1184,7 +1184,8 @@ export const zhHans: TranslationStructure = {
             modelLatestDescriptionUpgradeCli: '升级 Very Happy CLI 后才会跟随最新',
             machineDefaultModel: '本机配置',
             machineConfigModel: ({ model }: { model: string }) => `本机配置 · ${model}`,
-            machineDefaultModelDescription: '不指定模型，用这台机器上 Claude 自己的设置（/model）',
+            machineDefaultModelDescription: '不指定模型，按这台机器 Claude 自己的设置（settings.json / /model）',
+            machineDefaultModelMidSession: '仅新建会话可选：会话中途切过来，Claude 会沿用当前模型',
             machineDefaultModelDescriptionOther: '不指定模型，用这台机器上 agent 自己的配置',
             modelPicker: {
                 title: '运行配置',

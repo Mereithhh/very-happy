@@ -133,8 +133,10 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
     const id = useId();
     const rows = (list: ModeOption[]): ReactNode => list.map((option) => {
         const selected = option.key === selectedKey;
-        return <button key={option.key} type="button" role="radio" aria-checked={selected}
-            className={`me-model${selected ? ' me-model--on' : ''}`} onClick={() => onChoose(option.key)}>
+        // B-849a2: a listed entry that would not take effect here says why instead of being picked.
+        const disabled = !!option.disabled && !selected;
+        return <button key={option.key} type="button" role="radio" aria-checked={selected} aria-disabled={disabled || undefined}
+            className={`me-model${selected ? ' me-model--on' : ''}${disabled ? ' me-model--off' : ''}`} onClick={disabled ? undefined : () => onChoose(option.key)}>
             <span className="me-model-text">
                 <span className="me-model-name">{option.name}</span>
                 {option.description && <span className="me-model-desc">{option.description}</span>}

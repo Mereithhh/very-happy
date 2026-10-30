@@ -134,3 +134,22 @@ describe('B-849a phone: one bottom sheet', () => {
         }
     });
 });
+
+describe('B-849a2: a disabled entry explains itself instead of being picked', () => {
+    it('cannot be chosen unless it is the current selection', () => {
+        const onChange = vi.fn();
+        const options = [{ key: 'default', name: 'Machine config', description: 'New sessions only', disabled: true }, models[0]];
+        const render = (value: string) => act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={options} value={value} onChange={onChange}
+            effort={{ label: 'Thinking', options: levels, value: 'low', onChange: vi.fn() }} />));
+        render('model-a');
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        const row = () => document.querySelector<HTMLButtonElement>('.me-panel .me-models [role="radio"]')!;
+        expect(row().getAttribute('aria-disabled')).toBe('true');
+        expect(row().classList.contains('me-model--off')).toBe(true);
+        act(() => row().click());
+        expect(onChange).not.toHaveBeenCalled();
+        render('default');
+        expect(row().getAttribute('aria-disabled')).toBeNull();
+        expect(row().getAttribute('aria-checked')).toBe('true');
+    });
+});

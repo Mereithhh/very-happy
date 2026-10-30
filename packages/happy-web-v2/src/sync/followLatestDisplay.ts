@@ -77,14 +77,14 @@ export function withFollowLatestOption(options: readonly ModelMode[], input: {
     latestModel: string | null;
     /** The displayed explicit choice, `latest` when following. */
     selectedKey: string | null | undefined;
-    machineDefault: { name: string; description: string | null };
+    machineDefault: { name: string; description: string | null; disabled?: boolean };
 }): ModelMode[] {
     const keepDefault = !MACHINE_CONFIG_AGENTS.includes(normalizeAgentKey(input.flavor)) || input.selectedKey === 'default';
     const out: ModelMode[] = [{ key: LATEST_MODEL_MODE, name: input.follow.name, description: input.follow.description }];
     for (const option of options) {
         if (option.key === LATEST_MODEL_MODE) continue;
         if (option.key === 'default') {
-            if (keepDefault) out.push({ ...option, name: input.machineDefault.name, description: input.machineDefault.description });
+            if (keepDefault) out.push({ ...option, name: input.machineDefault.name, description: input.machineDefault.description, ...(input.machineDefault.disabled ? { disabled: true } : {}) });
             continue;
         }
         if (option.key === input.latestModel && input.selectedKey !== option.key) continue;
@@ -164,4 +164,32 @@ export function followLatestDescriptionKey(
 ): 'session.chat.modelLatestDescription' | 'session.chat.modelLatestDescriptionClaude' | 'session.chat.modelLatestDescriptionUpgradeCli' {
     if (state.kind === 'machineDefault') return 'session.chat.modelLatestDescriptionUpgradeCli';
     return isClaude ? 'session.chat.modelLatestDescriptionClaude' : 'session.chat.modelLatestDescription';
+}
+
+/**
+ * B-849a2 (QA26 P1): what Claude's 「本机配置」 (`default`, no model sent) may
+ * name, and whether a pick of it here would take effect.
+ *
+ * Claude Code runs the machine's own `~/.claude/settings.json` `model` (or
+ * `/model`) — not the catalog's `default` entry (that said Fable 5.1 while
+ * dev-sg ran opus[1m]). The wrapper does not report that setting yet
+ * (`configuredModel` for Claude is PR-B), so the entry names a model only from
+ * facts: a reported `configuredModel`, or — when this session has been on
+ * 「本机配置」 — the model it really runs (`currentModelCode`, 1M included).
+ *
+ * Sending no model mid-session does not move Claude off the model it runs
+ * (it keeps the previous turn's), so in an existing session the entry is
+ * selectable only while it is already the selection; a new session (draft)
+ * may always pick it.
+ */
+export function claudeMachineConfigEntry(input: {
+    inSession: boolean;
+    /** The session's model key (`default` = 「本机配置」). */
+    selectedKey: string | null | undefined;
+    configuredModel?: string | null;
+    running?: string | null;
+}): { model: string | null; selectable: boolean } {
+    const onIt = input.inSession && input.selectedKey === 'default';
+    const model = (onIt ? input.running || input.configuredModel : input.configuredModel) || null;
+    return { model, selectable: !input.inSession || onIt };
 }

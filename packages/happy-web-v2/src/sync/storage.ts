@@ -548,12 +548,10 @@ export const storage = create<StorageState>()((set, get) => {
 
                 // Restore model mode / effort level from MMKV on first load — server
                 // does not sync these, and they used to reset on every app restart (#1028).
-                const savedModelMode = savedModelModes[session.id] ?? null;
-                const existingModelModeRaw = state.sessions[session.id]?.modelMode ?? null;
-                const existingModelMode = existingModelModeRaw === 'default' && savedModelMode !== 'default'
-                    ? null
-                    : existingModelModeRaw;
-                const resolvedModelMode = existingModelMode ?? savedModelMode ?? session.modelMode ?? null;
+                // B-849a2 (QA26 d7): `default` is a real pick (Claude 「本机配置」),
+                // kept like any other — clearing it on a later batch (whose
+                // saved map is empty) flipped a landed draft to follow-latest.
+                const resolvedModelMode = state.sessions[session.id]?.modelMode ?? savedModelModes[session.id] ?? session.modelMode ?? null;
                 const existingEffortLevel = state.sessions[session.id]?.effortLevel ?? null;
                 const resolvedEffortLevel = existingEffortLevel ?? savedEffortLevels[session.id] ?? session.effortLevel ?? null;
 

@@ -55,11 +55,11 @@ import {
     supportsClaudeOpus55,
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
-import { layoutModelPicker, withLongContextTwins } from './modelPickerLayout';
+import { LONG_CONTEXT_SUFFIX, layoutModelPicker, withLongContextTwins } from './modelPickerLayout';
 import { autoEffortName, localizeModelDescriptions, namedEffortOptions } from './runSetupCopy';
 import { useNavigate } from 'react-router-dom';
 import { useLatestModelTable } from '@/sync/latestModels';
-import { customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, launcherReportsRunFacts, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
+import { claudeMachineConfigEntry, customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, launcherReportsRunFacts, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
 import { LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
 import { forkCatalogSource, type LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
@@ -396,13 +396,21 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const followState = followLatestState(latestResolution, !!session, { runFactsUnknown: !session && !launcherReportsRunFacts(flavor, launcherContext) });
     const catalogModels = session ? catalogMetadata?.models : launcherCatalogs[0]?.models;
     const resolvedModelOf = (key: string) => catalogModels?.find((model) => model.code === key)?.resolvedModel ?? null;
-    // 「本机配置」 always names the model it runs when the wrapper says (Claude:
-    // the catalog's `default` entry; Codex: the machine's config / default).
-    const machineConfigId = normalizeAgentKey(flavor) === 'claude'
-        ? resolvedModelOf('default')
+    // 「本机配置」 names a model only from wrapper facts. Codex: the machine's
+    // config / default. Claude (B-849a2): its settings.json model is not
+    // reported yet, so only what a session on this entry really runs (1M too);
+    // mid-session it is not pickable — no model sent keeps the current one.
+    const claudeMachineConfig = normalizeAgentKey(flavor) === 'claude'
+        ? claudeMachineConfigEntry({ inSession: !!session, selectedKey: explicitModelMode, configuredModel: session ? metadata?.configuredModel : launcherContext?.configuredModel, running: metadata?.currentModelCode })
+        : null;
+    const machineConfigId = claudeMachineConfig
+        ? claudeMachineConfig.model
         : (metadata?.configuredModel ?? metadata?.defaultModelCode ?? null);
     const namedModels = baseModels.filter((option) => option.key !== 'default' && option.key !== LATEST_MODEL_MODE);
-    const nameOfModel = (id: string) => (namedModels.find((option) => option.key === id) ?? namedModels.find((option) => resolvedModelOf(option.key) === id))?.name ?? compactResolvedModelCode(id);
+    const nameOfBaseModel = (id: string) => (namedModels.find((option) => option.key === id) ?? namedModels.find((option) => resolvedModelOf(option.key) === id))?.name ?? compactResolvedModelCode(id);
+    const nameOfModel = (id: string) => id.endsWith(LONG_CONTEXT_SUFFIX)
+        ? `${nameOfBaseModel(id.slice(0, -LONG_CONTEXT_SUFFIX.length))} · ${t('session.chat.modelPicker.longContext')}`
+        : nameOfBaseModel(id);
     const machineConfigName = machineConfigId ? t('session.chat.machineConfigModel', { model: nameOfModel(machineConfigId) }) : t('session.chat.machineDefaultModel');
     const followName = followState.kind === 'machineConfig'
         ? t('session.chat.followMachineConfig', { model: nameOfModel(followState.model) })
@@ -418,7 +426,9 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                 follow: { name: followName, description: t(followLatestDescriptionKey(followState, normalizeAgentKey(flavor) === 'claude')) },
                 latestModel: followEntryModel(followState),
                 selectedKey: followingLatest ? LATEST_MODEL_MODE : modelKey,
-                machineDefault: { name: machineConfigName, description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') },
+                machineDefault: claudeMachineConfig && !claudeMachineConfig.selectable
+                    ? { name: machineConfigName, description: t('session.chat.machineDefaultModelMidSession'), disabled: true }
+                    : { name: machineConfigName, description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') },
             })
             : relabelDefaultModel(baseModels, defaultModelLabel),
         offersFollowLatest ? customModelsBesideFollow(customModels, followEntryModel(followState), followingLatest ? LATEST_MODEL_MODE : modelKey) : customModels,
