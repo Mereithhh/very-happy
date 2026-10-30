@@ -957,6 +957,7 @@ export const en = {
             sessionSettingsDescription: 'Permission changes can apply immediately while Claude runs; other changes apply to the next message.',
             defaultModelUnknown: 'CLI default',
             defaultModelResolved: ({ model }: { model: string }) => `${model} (default)`,
+            modelRunningOther: ({ model }: { model: string }) => `This session is running ${model}; your next message from here switches it`,
             followMachineConfig: ({ model }: { model: string }) => `Follow machine config (${model})`,
             followLatestOption: ({ model }: { model: string }) => `Follow latest (${model})`,
             followLatestUpgradeCli: 'Machine default (follows latest after a CLI upgrade)',

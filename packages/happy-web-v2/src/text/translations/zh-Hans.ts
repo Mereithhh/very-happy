@@ -1165,6 +1165,7 @@ export const zhHans: TranslationStructure = {
             sessionSettingsDescription: 'Claude 运行中可即时切换权限；其他更改会应用到下一条消息。',
             defaultModelUnknown: 'CLI 默认',
             defaultModelResolved: ({ model }: { model: string }) => `${model}（默认）`,
+            modelRunningOther: ({ model }: { model: string }) => `这个会话当前在跑 ${model}；从这里发下一条消息时会切过去`,
             followMachineConfig: ({ model }: { model: string }) => `跟随本机配置（${model}）`,
             followLatestOption: ({ model }: { model: string }) => `跟随最新（${model}）`,
             followLatestUpgradeCli: '本机默认（升级 CLI 后跟随最新）',

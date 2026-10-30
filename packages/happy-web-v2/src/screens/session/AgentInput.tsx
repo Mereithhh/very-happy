@@ -61,7 +61,7 @@ import { LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
 import type { LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
-import { deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
+import { deriveCodexRunningModel, deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
     advanceQueueDeliveryPhase,
@@ -466,11 +466,23 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     })();
     // B-292: the selector value is client intent and flips on tap; this is the
     // only thing on screen that reports what the agent is actually running.
-    const modelSubtitle = deriveRunningModelSubtitle({
-        isClaude: publishesModeFacts,
-        selectedKey: modelKey,
-        running: metadata?.currentModelCode,
-    });
+    // B-844d: Codex reports its thread's real model; say so when the selection differs.
+    const codexRunning = normalizeAgentKey(flavor) === 'codex'
+        ? deriveCodexRunningModel({
+            stickyModel: metadata?.stickyModel,
+            running: metadata?.currentModelCode,
+            intended: followingLatest
+                ? ('model' in followState ? followState.model : metadata?.defaultModelCode)
+                : modelKey === 'default' ? metadata?.defaultModelCode : modelKey,
+        })
+        : undefined;
+    const modelSubtitle = codexRunning
+        ? t('session.chat.modelRunningOther', { model: compactResolvedModelCode(codexRunning) })
+        : deriveRunningModelSubtitle({
+            isClaude: publishesModeFacts,
+            selectedKey: modelKey,
+            running: metadata?.currentModelCode,
+        });
     // context meter — always visible when we have a usage snapshot.
     const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage, metadata?.currentModelCode);
     const contextKnown = context.tokens !== null;

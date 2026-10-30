@@ -47,7 +47,7 @@ import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { unsupportedEffortReason } from './effortSupport';
-import { resolveCodexTurnModel } from './turnModel';
+import { codexModelFacts, resolveCodexTurnModel } from './turnModel';
 import { codexStderrTailOf, describeCodexFailure, describeCodexRetry, describeThrownTurnError } from './codexFailureText';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
@@ -330,17 +330,27 @@ export async function runCodex(opts: {
     // turns really run (QA22c P2-1: the picker showed the catalog's `low`
     // while every turn ran this wrapper's `medium`). No effort → Codex's own
     // default for the model, which the web then reads from the catalog.
+    // B-844d: both model facts come from the thread's real model (the client
+    // tracks thread/start|resume and accepted turn models), so they survive a
+    // restarted wrapper (`send --resume`) and an abort.
     let reportedStickyModel: string | null = null;
+    let reportedCurrentModel: string | undefined;
     let reportedEffort: string | undefined = DEFAULT_CODEX_EFFORT;
     const reportModeFacts = () => {
-        const next = currentModel ?? null;
+        const facts = codexModelFacts({ threadModel: client.threadModel, pendingModel: currentModel, machineDefault: machineDefaultModel });
         const effort = currentEffort;
-        if (next === reportedStickyModel && effort === reportedEffort) return;
-        reportedStickyModel = next;
+        if (facts.stickyModel === reportedStickyModel && facts.currentModelCode === reportedCurrentModel && effort === reportedEffort) return;
+        reportedStickyModel = facts.stickyModel;
+        reportedCurrentModel = facts.currentModelCode;
         reportedEffort = effort;
         session.updateMetadata((metadata) => {
-            const { currentThoughtLevelCode: _previous, ...rest } = metadata;
-            return { ...rest, stickyModel: next, ...(effort ? { currentThoughtLevelCode: effort } : {}) };
+            const { currentThoughtLevelCode: _previous, currentModelCode: _model, ...rest } = metadata;
+            return {
+                ...rest,
+                stickyModel: facts.stickyModel,
+                ...(facts.currentModelCode ? { currentModelCode: facts.currentModelCode } : {}),
+                ...(effort ? { currentThoughtLevelCode: effort } : {}),
+            };
         });
     };
 
@@ -349,7 +359,8 @@ export async function runCodex(opts: {
         // keeps it (and the published `metadata.permissionMode` stays true). Resetting it here
         // ran the next meta-less send (CLI send, team wake) on `default` while the session
         // still reported read-only / yolo.
-        currentModel = DEFAULT_CODEX_MODEL;
+        // B-844d: the model is not reset — the Codex thread keeps it across an
+        // abort anyway, so forgetting it here only made the published facts lie.
         currentEffort = DEFAULT_CODEX_EFFORT;
         reportModeFacts();
         currentAppendSystemPrompt = undefined;
@@ -413,8 +424,10 @@ export async function runCodex(opts: {
 
             // Resolve model; explicit null resets to default (undefined)
             let messageModel = currentModel;
+            let messageModelReset = false;
             if (message.meta?.hasOwnProperty('model')) {
                 messageModel = message.meta.model || undefined;
+                messageModelReset = !messageModel;
                 currentModel = messageModel;
                 reportModeFacts();
                 logger.debug('[Codex] Model override updated', logValueMetadata(message.meta.model));
@@ -457,6 +470,7 @@ export async function runCodex(opts: {
             const enhancedMode: EnhancedMode = {
                 permissionMode: messagePermissionMode || 'default',
                 model: messageModel,
+                ...(messageModelReset ? { modelReset: true } : {}),
                 appendSystemPrompt: messageAppendSystemPrompt,
                 effort: messageEffort,
             };
@@ -982,6 +996,9 @@ export async function runCodex(opts: {
             first = false;
             appendSystemPromptInjected = true;
         }
+        // B-844d: a resumed/imported thread already runs a model — publish it
+        // (and whether it is sticky) before the first turn.
+        reportModeFacts();
 
         const forkCodexThreadId = process.env.HAPPY_FORK_CODEX_THREAD_ID;
         if (!reconnectSessionId && forkCodexThreadId) {
@@ -1170,8 +1187,8 @@ export async function runCodex(opts: {
                     sandboxManagedByHappy,
                 );
 
-                const turnModel = resolveCodexTurnModel(message.mode.model, machineDefaultModel);
-                const effortRefusal = unsupportedEffortReason(discoveredModels, turnModel, message.mode.effort);
+                const turnModel = resolveCodexTurnModel(message.mode, machineDefaultModel);
+                const effortRefusal = unsupportedEffortReason(discoveredModels, turnModel ?? client.threadModel ?? machineDefaultModel, message.mode.effort);
                 if (effortRefusal) {
                     throw new Error(effortRefusal);
                 }
@@ -1189,6 +1206,7 @@ export async function runCodex(opts: {
                         ...currentMetadata,
                         codexThreadId: startedThread.threadId,
                     }));
+                    reportModeFacts();
                 }
 
                 const includeAppendSystemPrompt = Boolean(
@@ -1211,6 +1229,7 @@ export async function runCodex(opts: {
                     sandbox: executionPolicy.sandbox,
                     effort: message.mode.effort,
                 });
+                reportModeFacts();
                 first = false;
                 if (includeAppendSystemPrompt) {
                     appendSystemPromptInjected = true;
