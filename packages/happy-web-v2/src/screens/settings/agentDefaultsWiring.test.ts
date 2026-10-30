@@ -21,7 +21,7 @@ describe('Settings → Agents renders pi as its own row', () => {
 describe('session selectors write through the session flavor', () => {
     it('AgentInput persists picks with setAgentDefaultOverride(…, flavor, …) so an acp session lands in the pi slot', () => {
         expect(agentInput).toContain('agentDefaultOverrides: setAgentDefaultOverride(currentOverrides, flavor, field, overrideValue),');
-        expect(agentInput).toContain("const overrideValue = field === 'modelMode' ? modelOverrideAfterSessionPick(flavor, key, latestModel) : key;");
+        expect(agentInput).toContain("const overrideValue = field === 'modelMode' ? modelOverrideAfterSessionPick(flavor, key, latestModel ?? 'default') : key;");
         expect(agentInput).toContain('const agentDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, flavor);');
         // honesty subtitles cover pi too (it publishes permissionMode + currentModelCode); steer/live-RPC stay Claude-only
         expect(agentInput).toContain('const publishesModeFacts = isClaudeFlavor || isPiAgent(flavor);');

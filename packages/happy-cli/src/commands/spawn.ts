@@ -286,7 +286,7 @@ const defaultFirstMessageDeps: FirstMessageDeps = {
  * (message NOT sent) if a capable wrapper never confirms; a wrapper without
  * the capability gets the old immediate send plus a warning.
  */
-export type FirstMessageMetadata = Pick<Metadata, 'capabilities' | 'models'>
+export type FirstMessageMetadata = Pick<Metadata, 'capabilities' | 'models' | 'configuredModel'>
 
 /**
  * B-844: Codex/Gemini publish their model catalog right after connecting,
@@ -305,7 +305,7 @@ export async function waitForModelCatalog(
     const now = knobs.now ?? Date.now
     let current = initial
     const deadline = now() + timeoutMs
-    while (!(current?.models && current.models.length > 0) && now() < deadline) {
+    while (!(current?.models && current.models.length > 0) && current?.configuredModel === undefined && now() < deadline) {
         await sleep(pollMs)
         try {
             const read = await readMetadata() as FirstMessageMetadata | null
@@ -505,6 +505,7 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
                 agent, permissionMode, explicitModel: options.model,
                 capabilities: metadata?.capabilities ?? null,
                 catalog: metadata?.models ?? null,
+                configuredModel: metadata?.configuredModel,
                 latestTable,
             }), { fork: forkSource !== null, waitForCatalog: waitsForModelCatalog(agent, options.model) })
         } catch (error) {

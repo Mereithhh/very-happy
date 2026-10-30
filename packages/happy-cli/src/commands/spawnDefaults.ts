@@ -60,6 +60,8 @@ export function resolveFirstMessageMeta(input: {
     explicitModel?: string
     capabilities?: string[] | null
     catalog?: readonly CatalogEntryLike[] | null
+    /** metadata.configuredModel: string = pinned by the machine's agent config, null = none, undefined = unknown. */
+    configuredModel?: string | null
     latestTable?: LatestModelTable | null
 }): FirstMessageMeta {
     const meta: FirstMessageMeta = {
@@ -72,6 +74,7 @@ export function resolveFirstMessageMeta(input: {
             kind: 'session',
             capabilities: input.capabilities ?? null,
             catalog: input.catalog ?? null,
+            configuredModel: input.configuredModel,
         }).model
         // Claude always states its model (null = machine default); the others
         // only send one their catalog proves, otherwise the machine decides.

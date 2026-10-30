@@ -25,6 +25,13 @@ describe('waitForModelCatalog', () => {
         expect(read).toHaveBeenCalledTimes(3)
     })
 
+    it('a reported machine config ends the wait even without a catalog', async () => {
+        const read = vi.fn(async () => ({ configuredModel: 'gpt-5.6-sol' }))
+        const result = await waitForModelCatalog(read, undefined, { ...clock(), pollMs: 100, timeoutMs: 5_000 })
+        expect(result?.configuredModel).toBe('gpt-5.6-sol')
+        expect(read).toHaveBeenCalledTimes(1)
+    })
+
     it('gives up at the deadline and keeps the last metadata (no model is sent)', async () => {
         const read = vi.fn(async () => { throw new Error('flaky') })
         const initial = { capabilities: ['x'] }

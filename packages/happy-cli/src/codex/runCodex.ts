@@ -73,7 +73,14 @@ import { reportSessionEditToDaemon } from '@/daemon/controlClient';
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
  * Returns null if the event represents a successful/clean completion.
  */
-const DEFAULT_CODEX_MODEL = 'gpt-5.5';
+/**
+ * B-844: no wrapper-side model default. A turn without an explicit model runs
+ * what the machine's Codex config (config.toml / profile) or Codex itself
+ * picks — the web sends one only for an explicit pick, or for "follow latest"
+ * when the config pins nothing. The hardcoded gpt-5.5 here (ported 05-22)
+ * silently overrode every config.toml model.
+ */
+const DEFAULT_CODEX_MODEL: string | undefined = undefined;
 const DEFAULT_CODEX_EFFORT: ReasoningEffort = 'medium';
 
 /**
@@ -888,15 +895,27 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect done');
         try {
             discoveredModels = await client.listModels();
-            if (discoveredModels.length > 0) {
+            // B-844: a model pinned in the machine's Codex config wins over
+            // "follow latest" and is what `default` really runs. Unknown
+            // (no config/read) leaves the field absent.
+            let configured: { model: string | null } | null = null;
+            try {
+                configured = { model: await client.readConfiguredModel(process.cwd()) };
+            } catch (error) {
+                logger.debug('[Codex] config/read unavailable', safeCodexErrorMetadata(error));
+            }
+            if (discoveredModels.length > 0 || configured) {
                 session.updateMetadata((metadata) => ({
                     ...metadata,
-                    models: discoveredModels.map((model) => ({
-                        code: model.model, value: model.displayName, description: model.description,
-                        reasoningEfforts: model.supportedReasoningEfforts.map((option) => option.reasoningEffort),
-                        defaultReasoningEffort: model.defaultReasoningEffort,
-                    })),
-                    defaultModelCode: discoveredModels.find((model) => model.isDefault)?.model,
+                    ...(discoveredModels.length > 0 ? {
+                        models: discoveredModels.map((model) => ({
+                            code: model.model, value: model.displayName, description: model.description,
+                            reasoningEfforts: model.supportedReasoningEfforts.map((option) => option.reasoningEffort),
+                            defaultReasoningEffort: model.defaultReasoningEffort,
+                        })),
+                    } : {}),
+                    defaultModelCode: configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model,
+                    ...(configured ? { configuredModel: configured.model } : {}),
                 }));
             }
         } catch (error) {

@@ -96,9 +96,20 @@ export type CatalogEntryLike = { code: string; value?: string; resolvedModel?: s
  * - `none`: no machine (settings page): newest known.
  */
 export type LatestModelContext =
-    | { kind: 'session'; capabilities?: readonly string[] | null; catalog?: readonly CatalogEntryLike[] | null }
-    | { kind: 'machine'; cliVersion?: string | null; agentVersion?: string | null; catalog?: readonly CatalogEntryLike[] | null }
-    | { kind: 'none'; catalog?: readonly CatalogEntryLike[] | null };
+    | { kind: 'session'; capabilities?: readonly string[] | null; catalog?: readonly CatalogEntryLike[] | null; configuredModel?: string | null }
+    | { kind: 'machine'; cliVersion?: string | null; agentVersion?: string | null; catalog?: readonly CatalogEntryLike[] | null; configuredModel?: string | null }
+    | { kind: 'none'; catalog?: readonly CatalogEntryLike[] | null; configuredModel?: string | null };
+
+/**
+ * Agents whose machine configuration may name a model (Codex config.toml /
+ * profile, Gemini settings). Following latest never overrides it: a model the
+ * user wrote on the machine wins, and a custom provider may not serve the
+ * newest catalog id. Only an explicit pick in Very Happy does (B-844 review).
+ * The wrapper reports it as `metadata.configuredModel`: a string = pinned on
+ * the machine, null = nothing pinned, absent = an older wrapper that cannot
+ * tell — then nothing is sent either, as before follow-latest.
+ */
+export const MACHINE_CONFIG_AGENTS: readonly string[] = ['codex', 'gemini'];
 
 export type LatestModelResolution = {
     /** Concrete id to send, or null = the machine's own default (send nothing). */
@@ -109,6 +120,8 @@ export type LatestModelResolution = {
     label: string | null;
     /** True when this machine/wrapper cannot run `newest`. */
     limited: boolean;
+    /** The model the machine's own configuration pins; `model` is then null. */
+    configured: string | null;
 };
 
 function compilePattern(source: string): RegExp | null {
@@ -193,7 +206,7 @@ export function resolveLatestModel(
     ctx: LatestModelContext,
 ): LatestModelResolution {
     const tier = getLatestModelTier(table, agent);
-    if (!tier) return { model: null, newest: null, label: null, limited: false };
+    if (!tier) return { model: null, newest: null, label: null, limited: false, configured: null };
     const catalogIds = catalogTierIds(tier, ctx.catalog);
     const labels = new Map<string, string>();
     const known: string[] = [];
@@ -217,8 +230,16 @@ export function resolveLatestModel(
         }
         return best?.id ?? null;
     };
-    const model = newestOf(runnable);
     const newest = newestOf(known);
+    if (MACHINE_CONFIG_AGENTS.includes(agent ?? '')) {
+        const configured = typeof ctx.configuredModel === 'string' && ctx.configuredModel.trim() ? ctx.configuredModel.trim() : null;
+        // A live session whose wrapper does not report its machine config
+        // proves nothing about it: send nothing (pre-follow-latest behavior).
+        if (configured || (ctx.kind === 'session' && ctx.configuredModel === undefined)) {
+            return { model: null, newest, label: configured, limited: false, configured };
+        }
+    }
+    const model = newestOf(runnable);
     const sameVersion = model !== null && newest !== null
         && compareTierVersions(tierVersion(tier, model)!, tierVersion(tier, newest)!) === 0;
     return {
@@ -226,6 +247,7 @@ export function resolveLatestModel(
         newest,
         label: model ? labels.get(model) ?? model : null,
         limited: newest !== null && !sameVersion,
+        configured: null,
     };
 }
 

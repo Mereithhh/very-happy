@@ -54,14 +54,21 @@ describe('resolveFirstMessageMeta', () => {
         expect(resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'default', explicitModel: 'claude-sonnet-5', capabilities: capable }).model).toBe('claude-sonnet-5')
         expect(resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'default', explicitModel: 'default', capabilities: capable }).model).toBeNull()
         expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', explicitModel: 'gpt-6-sol' }).model).toBe('gpt-6-sol')
-        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', explicitModel: 'latest', catalog: CODEX_166 }).model).toBe('gpt-6.1-sol')
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', explicitModel: 'latest', catalog: CODEX_166, configuredModel: null }).model).toBe('gpt-6.1-sol')
         expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', explicitModel: 'latest' }).model).toBeNull()
     })
 
     it('codex: latest = newest sol the published catalog lists; no catalog → only the permission mode', () => {
-        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_166 })).toEqual({ permissionMode: 'yolo', model: 'gpt-6.1-sol' })
-        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_154 })).toEqual({ permissionMode: 'yolo', model: 'gpt-5.6-sol' })
-        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo' })).toEqual({ permissionMode: 'yolo' })
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_166, configuredModel: null })).toEqual({ permissionMode: 'yolo', model: 'gpt-6.1-sol' })
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_154, configuredModel: null })).toEqual({ permissionMode: 'yolo', model: 'gpt-5.6-sol' })
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', configuredModel: null })).toEqual({ permissionMode: 'yolo' })
+    })
+
+    it('codex: a model pinned in the machine config (or an unknown config) is never overridden', () => {
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_166, configuredModel: 'gpt-5.6-sol' })).toEqual({ permissionMode: 'yolo' })
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_166 })).toEqual({ permissionMode: 'yolo' })
+        // An explicit --model still wins over the machine config.
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', explicitModel: 'gpt-6-sol', configuredModel: 'gpt-5.6-sol' }).model).toBe('gpt-6-sol')
     })
 
     it('never sends the sentinel itself', () => {

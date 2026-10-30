@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SandboxConfig } from '@/persistence';
 
@@ -141,6 +142,33 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(await client.listModels()).toEqual([astra, luna]);
         expect(request).toHaveBeenNthCalledWith(1, 'model/list', { limit: 100, cursor: null, includeHidden: false });
         expect(request).toHaveBeenNthCalledWith(2, 'model/list', { limit: 100, cursor: 'page2', includeHidden: false });
+    });
+
+    it('B-844: config/read reports the model the machine config pins (null = none)', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const request = vi.spyOn(client as any, 'request')
+            .mockResolvedValueOnce({ config: { model: 'gpt-5.6-sol', model_provider: 'llmhub' } })
+            .mockResolvedValueOnce({ config: { model: null } })
+            .mockRejectedValueOnce(new Error('Method not found'));
+        expect(await client.readConfiguredModel('/repo')).toBe('gpt-5.6-sol');
+        expect(request).toHaveBeenCalledWith('config/read', { cwd: '/repo' }, 10_000);
+        expect(await client.readConfiguredModel('/repo')).toBeNull();
+        await expect(client.readConfiguredModel('/repo')).rejects.toThrow('Method not found');
+    });
+
+    it('B-844: runCodex publishes configuredModel only when config/read answered', () => {
+        const source = readFileSync(new URL('./runCodex.ts', import.meta.url), 'utf8');
+        expect(source).toContain('configured = { model: await client.readConfiguredModel(process.cwd()) };');
+        expect(source).toContain('defaultModelCode: configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model,');
+        expect(source).toContain('...(configured ? { configuredModel: configured.model } : {}),');
+    });
+
+    it('B-844: the wrapper has no model default of its own (machine config decides)', () => {
+        const source = readFileSync(new URL('./runCodex.ts', import.meta.url), 'utf8');
+        expect(source).toContain('const DEFAULT_CODEX_MODEL: string | undefined = undefined;');
+        expect(source).toContain('let currentModel: string | undefined = DEFAULT_CODEX_MODEL;');
+        expect(source).not.toMatch(/DEFAULT_CODEX_MODEL[^=\n]*= '/);
     });
 
     it('wraps transport when sandbox is enabled', async () => {

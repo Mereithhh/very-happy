@@ -115,11 +115,14 @@ export type LauncherMachineContext = {
     agentVersion?: string | null;
     /** Catalog a recent session of this agent on this machine published. */
     catalog?: readonly CatalogEntryLike[] | null;
+    /** That session's metadata.configuredModel (machine agent config pin). */
+    configuredModel?: string | null;
 };
 
 export type ModelResolveMetadata = {
     capabilities?: string[] | null;
     models?: readonly CatalogEntryLike[] | null;
+    configuredModel?: string | null;
 };
 
 /**
@@ -131,8 +134,8 @@ export function latestModelContext(
     metadata: ModelResolveMetadata | null | undefined,
     machine?: LauncherMachineContext | null,
 ): LatestModelContext {
-    if (metadata) return { kind: 'session', capabilities: metadata.capabilities ?? null, catalog: metadata.models ?? null };
-    if (machine) return { kind: 'machine', cliVersion: machine.cliVersion ?? null, agentVersion: machine.agentVersion ?? null, catalog: machine.catalog ?? null };
+    if (metadata) return { kind: 'session', capabilities: metadata.capabilities ?? null, catalog: metadata.models ?? null, configuredModel: metadata.configuredModel };
+    if (machine) return { kind: 'machine', cliVersion: machine.cliVersion ?? null, agentVersion: machine.agentVersion ?? null, catalog: machine.catalog ?? null, configuredModel: machine.configuredModel };
     return { kind: 'none' };
 }
 

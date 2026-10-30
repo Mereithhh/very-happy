@@ -10,11 +10,15 @@ import { machineCliVersion, type StaleWrapperMachineLike } from '@/app/staleWrap
  */
 export type LauncherCatalogSource = {
     updatedAt: number;
-    metadata?: Pick<Metadata, 'flavor' | 'machineId' | 'models' | 'defaultModelCode'> | null;
+    /** Ordering key: the newest STARTED session reflects the machine's current
+     *  CLI/Codex and config; updatedAt moves on any status change (a daemon
+     *  restart touches every old session). */
+    createdAt?: number;
+    metadata?: Pick<Metadata, 'flavor' | 'machineId' | 'models' | 'defaultModelCode' | 'configuredModel'> | null;
 };
 
 /**
- * Newest catalog first, at most one per machine: a machine whose CLI or
+ * Newest-started catalog first, at most one per machine: a machine whose CLI or
  * Codex was upgraded publishes a newer list from its next session, and that
  * list replaces the machine's older ones. `machineId` narrows to one machine
  * (new-session dialog); without it every machine contributes (settings).
@@ -27,7 +31,8 @@ export function collectRecentCatalogs(
     const agent = normalizeAgentKey(flavor);
     const seenMachines = new Set<string>();
     const out: Metadata[] = [];
-    for (const session of [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)) {
+    const started = (session: LauncherCatalogSource) => session.createdAt ?? session.updatedAt;
+    for (const session of [...sessions].sort((a, b) => started(b) - started(a))) {
         const metadata = session.metadata;
         if (!metadata?.models?.length || normalizeAgentKey(metadata.flavor) !== agent) continue;
         const machine = metadata.machineId ?? '';
@@ -51,6 +56,7 @@ export function launcherMachineContext(
         cliVersion: machineCliVersion(machine),
         agentVersion: agent === 'claude' ? null : installed,
         catalog: catalog?.models ?? null,
+        configuredModel: catalog?.configuredModel,
     };
 }
 

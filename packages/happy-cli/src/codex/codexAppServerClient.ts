@@ -1577,6 +1577,18 @@ export class CodexAppServerClient {
         return models;
     }
 
+    /**
+     * B-844: the model Codex's effective configuration pins (config.toml,
+     * profile, CLI overrides) via `config/read`; null = nothing pinned.
+     * Throws when this Codex has no `config/read` — the caller then reports
+     * nothing (unknown) and the web sends no model.
+     */
+    async readConfiguredModel(cwd: string): Promise<string | null> {
+        const response = await this.request('config/read', { cwd }, 10_000) as { config?: { model?: unknown } };
+        const model = response?.config?.model;
+        return typeof model === 'string' && model.trim() ? model.trim() : null;
+    }
+
     private request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown> {
         const timeout = timeoutMs ?? CodexAppServerClient.REQUEST_TIMEOUT_MS;
         return new Promise((resolve, reject) => {

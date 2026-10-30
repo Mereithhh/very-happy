@@ -74,7 +74,7 @@ import {
 import { collectPiModelOptions } from '@/sync/piModelOptions';
 import { collectRecentCatalogs } from '@/sync/launcherModels';
 import { useLatestModelTable } from '@/sync/latestModels';
-import { isLatestModelMode, resolveLatestModel } from '@slopus/happy-wire';
+import { MACHINE_CONFIG_AGENTS, isLatestModelMode, resolveLatestModel } from '@slopus/happy-wire';
 import {
   getHardcodedPermissionModes,
   getLauncherModelModes,
@@ -1051,8 +1051,9 @@ function AgentField({
   override: string | undefined;
   codeDefault: string | null;
   onPick: (value: string | null) => void;
-  /** B-844: the code default is "follow latest"; `current` = what it resolves to now. */
-  followLatest?: { current: string | null };
+  /** B-844: the code default is "follow latest"; `current` = what it resolves to now,
+   *  `configured` = the model the most recent machine's own agent config pins (wins). */
+  followLatest?: { current: string | null; configured?: string | null };
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -1069,7 +1070,9 @@ function AgentField({
             {followLatest
               ? (override
                 ? t('settingsAgents.pinnedTo', { model: current?.name ?? override })
-                : t('settingsAgents.followLatestValue', { model: latestName! }))
+                : followLatest.configured
+                  ? t('settingsAgents.followMachineConfigValue', { model: followLatest.configured })
+                  : t('settingsAgents.followLatestValue', { model: latestName! }))
               : <>
                 {current?.name ?? resolvedValue ?? t('settingsAgents.useCodeDefault')}
                 {!override && (t('settingsAgents.codeDefaultSuffix'))}
@@ -1083,7 +1086,9 @@ function AgentField({
           <Item
             title={followLatest ? t('settingsAgents.followLatest') : t('settingsAgents.useCodeDefault')}
             subtitle={followLatest
-              ? t('settingsAgents.followLatestCurrent', { model: latestName! })
+              ? (followLatest.configured
+                ? t('settingsAgents.followLatestMachineConfig', { configured: followLatest.configured, model: latestName! })
+                : t('settingsAgents.followLatestCurrent', { model: latestName! }))
               : codeDefault ? options.find((o) => o.key === codeDefault)?.name ?? codeDefault : undefined}
             selected={!override}
             right={!override ? <Check size={16} /> : undefined}
@@ -1241,7 +1246,12 @@ function Agents() {
           const latestNow = followsLatestByDefault
             ? resolveLatestModel(latestTable, agent, { kind: 'none', catalog: catalogs.flatMap((metadata) => metadata.models ?? []) }).model
             : null;
-          const effectiveModel = isLatestModelMode(resolved.modelMode) ? latestNow ?? 'default' : resolved.modelMode;
+          // B-844 review: Codex/Gemini follow the machine's own config when it pins a
+          // model; show the newest machine's pin (catalogs are newest first).
+          const configuredOnMachine = MACHINE_CONFIG_AGENTS.includes(agent) && typeof catalogs[0]?.configuredModel === 'string'
+            ? catalogs[0].configuredModel
+            : null;
+          const effectiveModel = isLatestModelMode(resolved.modelMode) ? (configuredOnMachine ? 'default' : latestNow ?? 'default') : resolved.modelMode;
           const effortOptions = getEffortLevelsForModel(agent, effectiveModel);
           return (
             <ItemGroup key={agent} settingId={`agents.${agent}`} title={agent}>
@@ -1261,7 +1271,7 @@ function Agents() {
                   override={getAgentDefaultOverrideValue(overrides, agent, 'modelMode')}
                   codeDefault={codeDefaults.modelMode}
                   onPick={(v) => pick(agent, 'modelMode', v)}
-                  followLatest={followsLatestByDefault ? { current: latestNow } : undefined}
+                  followLatest={followsLatestByDefault ? { current: latestNow, configured: configuredOnMachine } : undefined}
                 />
               )}
               {effortOptions.length > 0 && (

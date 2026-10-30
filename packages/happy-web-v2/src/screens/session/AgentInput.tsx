@@ -50,6 +50,7 @@ import {
     resolveAgentDefaultConfig,
     resolveDefaultModelMode,
     resolveLatestForAgent,
+    isFollowingLatestModel,
     modelOverrideAfterSessionPick,
     setAgentDefaultOverride,
     type AgentDefaultField,
@@ -347,13 +348,20 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const launcherCatalogs = (!session && pending?.launcher?.catalogs) || NO_CATALOGS;
     const launcherContext = session ? null : pending?.launcher?.context ?? null;
     const modelMetadata = session ? (metadata ?? {}) : null;
-    const latestModel = resolveLatestForAgent(latestTable, flavor, modelMetadata, launcherContext).model;
+    const latestResolution = resolveLatestForAgent(latestTable, flavor, modelMetadata, launcherContext);
+    const latestModel = latestResolution.model;
+    // B-844 review: following latest on a machine whose agent config pins a
+    // model runs that model — say so instead of the catalog's newest.
+    const followsMachineConfig = !pending?.modelMode && !session?.modelMode
+        && isFollowingLatestModel(agentDefaultOverrides, flavor) && latestResolution.configured !== null;
     const modelKey = pending?.modelMode ?? session?.modelMode ?? resolveDefaultModelMode(agentDefaultOverrides, flavor, modelMetadata, { table: latestTable, machine: launcherContext });
     const resolvedDefaultModel = metadata?.defaultModelCode
         ?? (modelKey === 'default' ? usage?.model : undefined);
-    const defaultModelLabel = resolvedDefaultModel
-        ? t('session.chat.defaultModelResolved', { model: compactResolvedModelCode(resolvedDefaultModel) })
-        : t('session.chat.defaultModelUnknown');
+    const defaultModelLabel = followsMachineConfig
+        ? t('session.chat.followMachineConfig', { model: latestResolution.configured! })
+        : resolvedDefaultModel
+            ? t('session.chat.defaultModelResolved', { model: compactResolvedModelCode(resolvedDefaultModel) })
+            : t('session.chat.defaultModelUnknown');
     // B-688: the session machine's custom models (its harness config files) join the picker.
     const configMachineId = metadata?.machineId ?? '';
     const configMachine = useMachine(configMachineId);
@@ -1188,7 +1196,9 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         const currentOverrides = storage.getState().settings.agentDefaultOverrides;
         // B-844: picking the model "latest" resolves to keeps the account on
         // follow-latest; only another model becomes the remembered default.
-        const overrideValue = field === 'modelMode' ? modelOverrideAfterSessionPick(flavor, key, latestModel) : key;
+        // With nothing provably newer (machine config pin, old wrapper), what
+        // follow-latest runs is the machine default.
+        const overrideValue = field === 'modelMode' ? modelOverrideAfterSessionPick(flavor, key, latestModel ?? 'default') : key;
         sync.applySettings({
             agentDefaultOverrides: setAgentDefaultOverride(currentOverrides, flavor, field, overrideValue),
         });

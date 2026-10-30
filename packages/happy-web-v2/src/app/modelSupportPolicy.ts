@@ -21,7 +21,7 @@ import {
     supportsClaudeOpus55,
     type AgentDefaultOverrides,
 } from '@/sync/agentDefaults';
-import { getLatestModelTier, isLatestModelMode, resolveLatestModel, type LatestModelTable } from '@slopus/happy-wire';
+import { MACHINE_CONFIG_AGENTS, getLatestModelTier, isLatestModelMode, resolveLatestModel, type LatestModelTable } from '@slopus/happy-wire';
 
 /**
  * First very-happy-cli whose wrapper can run Opus 5.5: it bundles
@@ -50,6 +50,7 @@ export interface ModelSupportSessionLike {
         flavor?: string | null;
         capabilities?: string[] | null;
         models?: Array<{ code: string }> | null;
+        configuredModel?: string | null;
     } | null;
 }
 
@@ -101,10 +102,14 @@ export function wantedModel(
         ?? getAgentDefaultOverride(overrides, flavor).modelMode
         ?? getCodeAgentDefaults(flavor).modelMode;
     if (!isLatestModelMode(wanted)) return wanted;
+    // The machine's own config pins a model (or the wrapper cannot tell):
+    // nothing is sent, so there is no newer model to nag about.
+    if (MACHINE_CONFIG_AGENTS.includes(flavor ?? '') && session.metadata?.configuredModel !== null) return 'default';
     const newest = resolveLatestModel(latestTable, flavor ?? 'claude', {
         kind: 'session',
         capabilities: session.metadata?.capabilities ?? null,
         catalog: session.metadata?.models ?? null,
+        configuredModel: session.metadata?.configuredModel,
     }).newest;
     return newest ?? 'default';
 }

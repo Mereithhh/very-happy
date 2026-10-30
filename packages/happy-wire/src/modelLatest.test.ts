@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     BUNDLED_LATEST_MODELS,
     LATEST_MODEL_MODE,
+    MACHINE_CONFIG_AGENTS,
     compareTierVersions,
     isResolvedLatestModel,
     parseLatestModelTable,
@@ -107,15 +108,15 @@ describe('resolveLatestModel — claude (same tier only)', () => {
 
 describe('resolveLatestModel — codex', () => {
     it('Codex 0.166 catalog → gpt-6.1-sol', () => {
-        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_166 })).toMatchObject({ model: 'gpt-6.1-sol', limited: false });
+        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_166, configuredModel: null })).toMatchObject({ model: 'gpt-6.1-sol', limited: false });
     });
 
     it('Codex 0.154 catalog lacks gpt-6.x-sol → newest sol it lists (no 400)', () => {
-        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_154 })).toMatchObject({ model: 'gpt-5.6-sol', newest: 'gpt-6.1-sol', limited: true });
+        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_154, configuredModel: null })).toMatchObject({ model: 'gpt-5.6-sol', newest: 'gpt-6.1-sol', limited: true });
     });
 
     it('a session without a catalog proves nothing → machine default', () => {
-        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: [] }).model).toBeNull();
+        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: [], configuredModel: null }).model).toBeNull();
     });
 
     it('machine context gates by the installed Codex version', () => {
@@ -125,11 +126,40 @@ describe('resolveLatestModel — codex', () => {
     });
 });
 
+describe('machine configuration wins over follow-latest (codex / gemini)', () => {
+    it('a model pinned in the machine config → send nothing, report it', () => {
+        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_166, configuredModel: 'gpt-5.6-sol' }))
+            .toMatchObject({ model: null, configured: 'gpt-5.6-sol', label: 'gpt-5.6-sol', limited: false, newest: 'gpt-6.1-sol' });
+        expect(resolveLatestModel(null, 'gemini', { kind: 'session', catalog: [{ code: 'gemini-3.1-pro-preview' }], configuredModel: 'gemini-2.5-flash' }).model).toBeNull();
+        expect(resolveLatestModel(null, 'codex', { kind: 'machine', agentVersion: '0.166.0', configuredModel: 'gpt-5.6-sol' }).configured).toBe('gpt-5.6-sol');
+    });
+
+    it('nothing pinned (null) → newest of the tier as before', () => {
+        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_166, configuredModel: null }))
+            .toMatchObject({ model: 'gpt-6.1-sol', configured: null });
+    });
+
+    it('a session wrapper that does not report its config sends nothing; the launcher label still guesses', () => {
+        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_166 }).model).toBeNull();
+        expect(resolveLatestModel(null, 'codex', { kind: 'machine', agentVersion: '0.166.0' }).model).toBe('gpt-6.1-sol');
+    });
+
+    it('applies to codex and gemini only', () => {
+        expect(MACHINE_CONFIG_AGENTS).toEqual(['codex', 'gemini']);
+        expect(resolveLatestModel(null, 'gemini', { kind: 'session', catalog: [{ code: 'gemini-3.1-pro-preview' }] }).model).toBeNull();
+        expect(resolveLatestModel(null, 'gemini', { kind: 'session', catalog: [{ code: 'gemini-3.1-pro-preview' }], configuredModel: null }).model).toBe('gemini-3.1-pro-preview');
+    });
+
+    it('Claude keeps following latest regardless (its default was always sent)', () => {
+        expect(resolveLatestModel(null, 'claude', { kind: 'session', capabilities: [CLAUDE_OPUS_55_CAPABILITY], configuredModel: 'sonnet' }).model).toBe('claude-opus-5-5');
+    });
+});
+
 describe('resolveLatestModel — gemini', () => {
     it('picks the newest pro from the session catalog, else machine default', () => {
         const catalog = [{ code: 'gemini-2.5-pro' }, { code: 'gemini-3.1-pro-preview' }, { code: 'gemini-3-flash-preview' }];
-        expect(resolveLatestModel(null, 'gemini', { kind: 'session', catalog }).model).toBe('gemini-3.1-pro-preview');
-        expect(resolveLatestModel(null, 'gemini', { kind: 'session', catalog: [] }).model).toBeNull();
+        expect(resolveLatestModel(null, 'gemini', { kind: 'session', catalog, configuredModel: null }).model).toBe('gemini-3.1-pro-preview');
+        expect(resolveLatestModel(null, 'gemini', { kind: 'session', catalog: [], configuredModel: null }).model).toBeNull();
         expect(resolveLatestModel(null, 'gemini', { kind: 'none' }).model).toBe('gemini-3.1-pro-preview');
     });
 
@@ -144,8 +174,8 @@ describe('isResolvedLatestModel', () => {
         expect(isResolvedLatestModel(null, 'claude', ctx, 'claude-opus-5-5')).toBe(true);
         expect(isResolvedLatestModel(null, 'claude', ctx, 'claude-opus-5-5[1m]')).toBe(false);
         expect(isResolvedLatestModel(null, 'claude', ctx, 'opus')).toBe(false);
-        expect(isResolvedLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_154 }, 'gpt-5.6-sol')).toBe(true);
-        expect(isResolvedLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_166 }, 'gpt-5.6-sol')).toBe(false);
+        expect(isResolvedLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_154, configuredModel: null }, 'gpt-5.6-sol')).toBe(true);
+        expect(isResolvedLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_166, configuredModel: null }, 'gpt-5.6-sol')).toBe(false);
     });
 });
 

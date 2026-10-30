@@ -5,6 +5,7 @@ import {
     migrateFollowLatestOverrides,
     modelOverrideAfterSessionPick,
     resolveDefaultModelMode,
+    resolveLatestForAgent,
 } from './agentDefaults';
 import { resolveMessageModeMeta } from './messageMeta';
 import { collectRecentCatalogs, launcherMachineContext } from './launcherModels';
@@ -35,14 +36,14 @@ describe('resolveDefaultModelMode with the latest sentinel', () => {
     });
 
     it('codex: resolves from the session catalog, then the machine Codex version', () => {
-        expect(resolveDefaultModelMode({}, 'codex', { models: CODEX_166 })).toBe('gpt-6.1-sol');
-        expect(resolveDefaultModelMode({}, 'codex', { models: CODEX_154 })).toBe('gpt-5.6-sol');
-        expect(resolveDefaultModelMode({}, 'codex', {})).toBe('default');
+        expect(resolveDefaultModelMode({}, 'codex', { models: CODEX_166, configuredModel: null })).toBe('gpt-6.1-sol');
+        expect(resolveDefaultModelMode({}, 'codex', { models: CODEX_154, configuredModel: null })).toBe('gpt-5.6-sol');
+        expect(resolveDefaultModelMode({}, 'codex', { configuredModel: null })).toBe('default');
         expect(resolveDefaultModelMode({}, 'codex', null, { machine: { agentVersion: '0.158.0' } })).toBe('gpt-6-sol');
     });
 
     it('a pinned override is returned as is and never re-resolved', () => {
-        expect(resolveDefaultModelMode({ codex: { modelMode: 'gpt-5.5' } }, 'codex', { models: CODEX_166 })).toBe('gpt-5.5');
+        expect(resolveDefaultModelMode({ codex: { modelMode: 'gpt-5.5' } }, 'codex', { models: CODEX_166, configuredModel: null })).toBe('gpt-5.5');
         expect(resolveDefaultModelMode({ claude: { modelMode: 'fable' } }, 'claude', capable)).toBe('fable');
     });
 
@@ -51,8 +52,8 @@ describe('resolveDefaultModelMode with the latest sentinel', () => {
             version: 2,
             agents: { codex: { tier: 'sol', pattern: '^gpt-(\\d+)(?:\\.(\\d+))?-sol$', models: [{ model: 'gpt-6.2-sol', requires: { agentVersion: '0.170.0' } }] } },
         };
-        expect(resolveDefaultModelMode({}, 'codex', { models: CODEX_166 }, { table })).toBe('gpt-6.1-sol');
-        expect(resolveDefaultModelMode({}, 'codex', { models: [...CODEX_166, { code: 'gpt-6.2-sol', value: 'x' }] }, { table })).toBe('gpt-6.2-sol');
+        expect(resolveDefaultModelMode({}, 'codex', { models: CODEX_166, configuredModel: null }, { table })).toBe('gpt-6.1-sol');
+        expect(resolveDefaultModelMode({}, 'codex', { models: [...CODEX_166, { code: 'gpt-6.2-sol', value: 'x' }], configuredModel: null }, { table })).toBe('gpt-6.2-sol');
     });
 
     it('never returns the sentinel', () => {
@@ -71,23 +72,60 @@ describe('resolveMessageModeMeta follows latest', () => {
     });
 
     it('codex sends the newest sol its catalog lists; nothing before the catalog arrives', () => {
-        expect(resolveMessageModeMeta(session({ flavor: 'codex', metadata: { models: CODEX_166 } }), { agentDefaultOverrides: {} }).model).toBe('gpt-6.1-sol');
-        expect(resolveMessageModeMeta(session({ flavor: 'codex', metadata: { models: CODEX_154 } }), { agentDefaultOverrides: {} }).model).toBe('gpt-5.6-sol');
+        expect(resolveMessageModeMeta(session({ flavor: 'codex', metadata: { models: CODEX_166, configuredModel: null } }), { agentDefaultOverrides: {} }).model).toBe('gpt-6.1-sol');
+        expect(resolveMessageModeMeta(session({ flavor: 'codex', metadata: { models: CODEX_154, configuredModel: null } }), { agentDefaultOverrides: {} }).model).toBe('gpt-5.6-sol');
         expect(resolveMessageModeMeta(session({ flavor: 'codex' }), { agentDefaultOverrides: {} })).not.toHaveProperty('model');
     });
 
     it('an override or a session pick still wins; a stray `latest` value is resolved, never sent', () => {
-        expect(resolveMessageModeMeta(session({ flavor: 'codex', metadata: { models: CODEX_166 } }), { agentDefaultOverrides: { codex: { modelMode: 'gpt-5.5' } } }).model).toBe('gpt-5.5');
-        expect(resolveMessageModeMeta(session({ flavor: 'codex', modelMode: 'gpt-6-luna', metadata: { models: CODEX_166 } }), { agentDefaultOverrides: {} }).model).toBe('gpt-6-luna');
-        expect(resolveMessageModeMeta(session({ flavor: 'codex', modelMode: 'latest', metadata: { models: CODEX_166 } }), { agentDefaultOverrides: { codex: { modelMode: 'latest' } } }).model).toBe('gpt-6.1-sol');
+        expect(resolveMessageModeMeta(session({ flavor: 'codex', metadata: { models: CODEX_166, configuredModel: null } }), { agentDefaultOverrides: { codex: { modelMode: 'gpt-5.5' } } }).model).toBe('gpt-5.5');
+        expect(resolveMessageModeMeta(session({ flavor: 'codex', modelMode: 'gpt-6-luna', metadata: { models: CODEX_166, configuredModel: null } }), { agentDefaultOverrides: {} }).model).toBe('gpt-6-luna');
+        expect(resolveMessageModeMeta(session({ flavor: 'codex', modelMode: 'latest', metadata: { models: CODEX_166, configuredModel: null } }), { agentDefaultOverrides: { codex: { modelMode: 'latest' } } }).model).toBe('gpt-6.1-sol');
         expect(resolveMessageModeMeta(session({ flavor: 'codex', modelMode: 'latest' }), { agentDefaultOverrides: {} })).not.toHaveProperty('model');
         expect(resolveMessageModeMeta(session({ modelMode: 'latest', metadata: capable }), { agentDefaultOverrides: {} }).model).toBe('claude-opus-5-5');
     });
 
     it('gemini follows its catalog; pi keeps sending no model', () => {
-        const gemini = session({ flavor: 'gemini', metadata: { models: models(['gemini-2.5-pro', 'gemini-3.1-pro-preview']) } });
+        const gemini = session({ flavor: 'gemini', metadata: { models: models(['gemini-2.5-pro', 'gemini-3.1-pro-preview']), configuredModel: null } });
         expect(resolveMessageModeMeta(gemini, { agentDefaultOverrides: {} }).model).toBe('gemini-3.1-pro-preview');
         expect(resolveMessageModeMeta(session({ flavor: 'acp', metadata: { models: models(['zai/glm-5.3']) } }), { agentDefaultOverrides: {} })).not.toHaveProperty('model');
+    });
+});
+
+describe('machine configuration wins (B-844 review)', () => {
+    it('codex config pins a model → no model sent, picker default = machine config', () => {
+        const pinned = session({ flavor: 'codex', metadata: { models: CODEX_166, configuredModel: 'gpt-5.6-sol' } });
+        expect(resolveMessageModeMeta(pinned, { agentDefaultOverrides: {} })).not.toHaveProperty('model');
+        expect(resolveDefaultModelMode({}, 'codex', { models: CODEX_166, configuredModel: 'gpt-5.6-sol' })).toBe('default');
+        expect(resolveLatestForAgent(null, 'codex', { models: CODEX_166, configuredModel: 'gpt-5.6-sol' }).configured).toBe('gpt-5.6-sol');
+    });
+
+    it('nothing pinned → the newest sol is sent', () => {
+        const free = session({ flavor: 'codex', metadata: { models: CODEX_166, configuredModel: null } });
+        expect(resolveMessageModeMeta(free, { agentDefaultOverrides: {} }).model).toBe('gpt-6.1-sol');
+    });
+
+    it('an older wrapper that cannot report its config keeps the old behavior: no model', () => {
+        expect(resolveMessageModeMeta(session({ flavor: 'codex', metadata: { models: CODEX_166 } }), { agentDefaultOverrides: {} })).not.toHaveProperty('model');
+    });
+
+    it('an explicit pick (session or Settings) still overrides the machine config', () => {
+        const pinned = { models: CODEX_166, configuredModel: 'gpt-5.6-sol' };
+        expect(resolveMessageModeMeta(session({ flavor: 'codex', modelMode: 'gpt-6.1-sol', metadata: pinned }), { agentDefaultOverrides: {} }).model).toBe('gpt-6.1-sol');
+        expect(resolveMessageModeMeta(session({ flavor: 'codex', metadata: pinned }), { agentDefaultOverrides: { codex: { modelMode: 'gpt-6-sol' } } }).model).toBe('gpt-6-sol');
+    });
+
+    it('the launcher label follows the recent session\'s machine config', () => {
+        const ctx = launcherMachineContext(null, 'codex', null);
+        expect(ctx).toBeNull();
+        const machineCtx = launcherMachineContext({ metadata: {} } as any, 'codex', { models: CODEX_166, configuredModel: 'gpt-5.6-sol' } as any);
+        expect(machineCtx?.configuredModel).toBe('gpt-5.6-sol');
+        expect(resolveLatestForAgent(null, 'codex', null, machineCtx).configured).toBe('gpt-5.6-sol');
+    });
+
+    it('no upgrade notice for a session following its machine config', () => {
+        expect(modelSupportNotice(session({ flavor: 'codex', metadata: { models: CODEX_154, configuredModel: 'gpt-5.6-sol' } }), null, {})).toBeNull();
+        expect(modelSupportNotice(session({ flavor: 'codex', metadata: { models: CODEX_154 } }), null, {})).toBeNull();
     });
 });
 
@@ -137,6 +175,14 @@ describe('lists without a session merge live catalogs', () => {
         { updatedAt: 9, metadata: { flavor: 'claude', machineId: 'm1', models: models(['opus']) } },
     ];
 
+    it('orders by session start, not by the last status change', () => {
+        const started = [
+            { createdAt: 1, updatedAt: 99, metadata: { flavor: 'codex', machineId: 'm1', models: CODEX_154, configuredModel: null } },
+            { createdAt: 5, updatedAt: 6, metadata: { flavor: 'codex', machineId: 'm1', models: CODEX_166, configuredModel: 'gpt-5.6-sol' } },
+        ];
+        expect(collectRecentCatalogs(started as any, 'codex', 'm1')[0]?.configuredModel).toBe('gpt-5.6-sol');
+    });
+
     it('one newest catalog per machine, filtered by agent and machine', () => {
         expect(collectRecentCatalogs(sessions as any, 'codex', 'm1').map((m) => m.models!.length)).toEqual([CODEX_166.length]);
         expect(collectRecentCatalogs(sessions as any, 'codex').map((m) => m.machineId)).toEqual(['m1', 'm2']);
@@ -171,15 +217,15 @@ describe('lists without a session merge live catalogs', () => {
 
 describe('B-487 notice for a session following latest', () => {
     it('a Codex whose catalog lacks the newest sol says which version brings it', () => {
-        const notice = modelSupportNotice(session({ flavor: 'codex', metadata: { models: CODEX_154 } }), null, {});
+        const notice = modelSupportNotice(session({ flavor: 'codex', metadata: { models: CODEX_154, configuredModel: null } }), null, {});
         expect(notice).toMatchObject({ kind: 'codex-gpt6', model: 'gpt-6.1-sol', minVersion: '0.160.0', action: 'update' });
-        expect(modelSupportNotice(session({ flavor: 'codex', metadata: { models: CODEX_166 } }), null, {})).toBeNull();
+        expect(modelSupportNotice(session({ flavor: 'codex', metadata: { models: CODEX_166, configuredModel: null } }), null, {})).toBeNull();
     });
 
     it('a pinned model keeps its own notice (not the latest one)', () => {
-        const pinned = session({ flavor: 'codex', modelMode: 'gpt-6-sol', metadata: { models: CODEX_154 } });
+        const pinned = session({ flavor: 'codex', modelMode: 'gpt-6-sol', metadata: { models: CODEX_154, configuredModel: null } });
         expect(modelSupportNotice(pinned, null, {})).toMatchObject({ kind: 'codex-gpt6', model: 'gpt-6-sol', minVersion: '0.155.0' });
-        expect(modelSupportNotice(session({ flavor: 'codex', metadata: { models: CODEX_154 } }), null, { codex: { modelMode: 'gpt-5.5' } })).toBeNull();
+        expect(modelSupportNotice(session({ flavor: 'codex', metadata: { models: CODEX_154, configuredModel: null } }), null, { codex: { modelMode: 'gpt-5.5' } })).toBeNull();
     });
 
     it('an old Claude wrapper following latest still gets the Opus 5.5 notice', () => {

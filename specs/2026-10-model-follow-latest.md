@@ -29,7 +29,8 @@ override，从此新会话永远停在那个 id。
 | 事实 | 位置 |
 |---|---|
 | 代码默认被 web 与 spawn 共用 | `packages/happy-wire/src/agentCodeDefaults.ts`、`packages/happy-cli/src/commands/spawnDefaults.ts` |
-| 非 Claude 只发 override，代码默认从不发送（UI 显示 gpt-5.5，实际跑 Codex 配置/内置默认） | `packages/happy-web-v2/src/sync/messageMeta.ts` |
+| 非 Claude 只发 override，web 侧代码默认从不发送 | `packages/happy-web-v2/src/sync/messageMeta.ts` |
+| 但 Codex wrapper 自己写死 `DEFAULT_CODEX_MODEL = 'gpt-5.5'`（05-22 upstream 移植），没收到 model 时就发 gpt-5.5，**覆盖了 config.toml 的 model**（实测：config 钉 gpt-5.6-sol，rollout 跑 gpt-5.5） | `packages/happy-cli/src/codex/runCodex.ts:76` |
 | 会话内选模型写 account override | `AgentInput.tsx` `setMode` → `setAgentDefaultOverride` |
 | Codex wrapper 上报 `model/list` 为 `metadata.models` + `defaultModelCode` | `packages/happy-cli/src/codex/runCodex.ts:889` |
 | Claude wrapper 上报 SDK `supportedModels()`（alias + `resolvedModel`） | `packages/happy-cli/src/claude/claudeRemote.ts:238` |
@@ -62,6 +63,17 @@ gpt-5.6-sol 均返回 OK。
 
 sentinel 永不上线：web `resolveMessageModeMeta`、`resolveDefaultModelMode`、spawn
 `resolveFirstMessageMeta` 都保证输出具体 id / null。
+
+### 机器配置优先（Codex / Gemini，B-844 review）
+
+跟随最新时，本机 agent 配置里**明确指定的模型优先**；只有在 Very Happy 里明确选了模型（会话内或设置里固定）才覆盖。
+
+- wrapper 上报 `metadata.configuredModel`：字符串 = 本机配置钉的模型；`null` = 没钉；字段不存在 = 旧 wrapper，不知道。
+  - Codex：app-server `config/read`（0.154 与 0.166 实测都有；返回的是生效配置，含 profile / CLI override），同时 `defaultModelCode` 改为该模型，让「默认」项如实显示。
+  - Gemini：`GEMINI_MODEL` 环境变量 → 工作区 `.gemini/settings.json` → `~/.gemini/settings.json`（`model` 为字符串或 `{ name }`）。
+- 解析（`MACHINE_CONFIG_AGENTS = codex, gemini`）：会话上报了钉的模型，或者没上报（旧 wrapper）→ 不发 model，由本机配置决定；上报 `null` → 发同档最新。Claude 不变，它的默认一直都会发出去。
+- Codex wrapper 去掉写死的 gpt-5.5 默认：不带 model 的 turn 交给 Codex 按本机配置或它自己的默认跑。
+- 显示：选择器的「默认」项、设置页的值都写成「跟随本机配置（gpt-5.6-sol）」。设置页按**最新创建**的会话判断（`updatedAt` 会被 daemon 重启刷新，不可靠）。这时 B-487 的升级提示不出现。
 
 ### 单一来源
 
@@ -98,16 +110,17 @@ catalog，且无法表达「这台机器缺能力」；catalog 作为补充参�
 | 组合 | 行为 |
 |---|---|
 | 新 web + 旧 server（无 endpoint） | 404 → 用 bundled 表 |
-| 新 web + 旧 CLI wrapper | 只按 capability/catalog 解析；无能力 → 机器默认（Claude null）+ B-487 提示条；从不发 `latest` |
+| 新 web + 旧 CLI wrapper | Claude：只按 capability/catalog 解析，无能力 → 机器默认（null）+ B-487 提示条。Codex/Gemini：旧 wrapper 不上报 `configuredModel` → 不发 model（旧 Codex wrapper 仍会用它写死的 gpt-5.5，直到 CLI 更新）。从不发 `latest` |
 | 旧 web（缓存 PWA） | 用旧代码默认 Opus 5.5 / 不发 Codex model；可能重新写入具体 id override（接受） |
 | 旧 CLI `spawn` | 旧逻辑（Opus 5.5 或机器默认） |
 | 新 CLI `spawn` + 旧 server | 404 → bundled 表 |
 
-发布：server/Web 同镜像先发；CLI 随后（spawn 解析与新鲜度测试在 CLI 包，但不发 CLI 也不影响网页路径）。
+发布：server/Web 同镜像先发；CLI 随后。Codex 的「本机配置优先」和「跟随最新」都要等 CLI 更新才生效：新 wrapper 上报 `configuredModel`，并去掉写死的 gpt-5.5。CLI 没更新前，Codex 行为和现在一样，都是 gpt-5.5。
 回滚：回滚镜像即可；迁移只删 override，回滚后旧 web 回到旧代码默认（Opus 5.5），不会报错。
 
 ## 风险
 
+0. 自定义 provider 没有 catalog 里最新的模型：只要 config.toml 钉了模型就不会发最新。没钉模型、又用不认识新 id 的 provider 时，首条可能报错。缓解：设置里固定一个模型，或者在 config.toml 里写上 model。
 1. Codex 会话 catalog 到达前的首条网页消息不带 model → 跑 Codex 配置默认。实测 0.154/0.166 首条均已带解析结果（pending 页面等会话 ready 后才发送）；接受。
 2. 用 ChatGPT 登录的旧 Codex：catalog 不含新 sol → 解析到它列出的最新 sol，不会 400；提示条提示升级（`modelSupportPolicy` codex 分支改为读表的 `agentVersion`）。
 3. 运营文件写错：schema/正则校验失败即回落 bundled 并告警。
