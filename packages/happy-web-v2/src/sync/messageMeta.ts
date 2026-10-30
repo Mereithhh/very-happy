@@ -59,13 +59,18 @@ export function resolveMessageModeMeta(
     // default), so the picker and the running model agree. Codex/Gemini
     // following latest send the model their published catalog proves, and
     // nothing (machine default) until it does. `latest` itself never leaves.
+    // B-844c: "nothing" would leave a model this session was sent earlier in
+    // force (the wrapper keeps it), so when the wrapper reports one sticky we
+    // send null — reset to the machine default the picker shows.
     const followsLatest = isLatestModelMode(agentOverrides.modelMode ?? getCodeAgentDefaults(session.metadata?.flavor).modelMode);
     const resolvedDefault = isClaude || followsLatest
         ? resolveDefaultModelMode(settings?.agentDefaultOverrides, session.metadata?.flavor, session.metadata ?? {}, { table: latestTable })
         : agentOverrides.modelMode;
     const modelMode = session.modelMode && !isLatestModelMode(session.modelMode)
         ? session.modelMode
-        : (!isClaude && followsLatest && resolvedDefault === 'default' ? undefined : resolvedDefault);
+        : (!isClaude && followsLatest && resolvedDefault === 'default'
+            ? (typeof session.metadata?.stickyModel === 'string' ? 'default' : undefined)
+            : resolvedDefault);
     if (modelMode !== undefined) {
         meta.model = modelMode === 'default' ? null : modelMode;
     }

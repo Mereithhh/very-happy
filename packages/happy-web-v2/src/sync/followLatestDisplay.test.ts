@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { CLAUDE_OPUS_55_CAPABILITY, LATEST_MODEL_MODE, type LatestModelTable } from '@slopus/happy-wire';
 import {
+    customModelsBesideFollow,
+    followEntryModel,
     followLatestByMachine,
     followLatestState,
     modelPickToStore,
@@ -54,6 +57,32 @@ describe('withFollowLatestOption (P2-4: one entry, no internal key)', () => {
             flavor: 'codex', follow: FOLLOW, latestModel: 'gpt-6.1-sol', selectedKey: 'default', machineDefault: MACHINE_DEFAULT,
         });
         expect(machineDefault.find((o) => o.key === 'default')?.name).toBe('Machine default');
+    });
+
+    it('QA23 P2-3: on a machine-config pin the pinned model collapses into the follow entry; the tier latest stays listed', () => {
+        const pinnedMachine = { flavor: 'codex', models: CODEX_166, defaultModelCode: 'gpt-5.6-sol', configuredModel: 'gpt-5.6-sol' } as any;
+        const state = followLatestState({ model: 'gpt-6.1-sol', label: null, configured: 'gpt-5.6-sol' } as any, true);
+        expect(followEntryModel(state)).toBe('gpt-5.6-sol');
+        const options = withFollowLatestOption(getAvailableModels('codex', pinnedMachine, t), {
+            flavor: 'codex', follow: { name: 'Follow machine config (gpt-5.6-sol)', description: null },
+            latestModel: followEntryModel(state), selectedKey: LATEST_MODEL_MODE, machineDefault: MACHINE_DEFAULT,
+        });
+        expect(options.map((o) => o.key)).not.toContain('gpt-5.6-sol');
+        expect(options.map((o) => o.key)).toContain('gpt-6.1-sol');
+        expect(followEntryModel(followLatestState({ model: 'gpt-6.1-sol', label: null, configured: null } as any, true))).toBe('gpt-6.1-sol');
+        expect(followEntryModel({ kind: 'machineDefault' })).toBeNull();
+    });
+
+    it('QA23 P2-3: the config model among custom picker models is not listed beside the follow entry unless pinned', () => {
+        expect(customModelsBesideFollow(['gpt-5.6-sol', 'my-model'], 'gpt-5.6-sol', LATEST_MODEL_MODE)).toEqual(['my-model']);
+        expect(customModelsBesideFollow(['gpt-5.6-sol', 'my-model'], 'gpt-5.6-sol', 'gpt-5.6-sol')).toEqual(['gpt-5.6-sol', 'my-model']);
+        expect(customModelsBesideFollow(['gpt-5.6-sol'], null, LATEST_MODEL_MODE)).toEqual(['gpt-5.6-sol']);
+    });
+
+    it('AgentInput dedups the model the follow entry runs', () => {
+        const source = readFileSync(new URL('../screens/session/AgentInput.tsx', import.meta.url), 'utf8');
+        expect(source).toContain('latestModel: followEntryModel(followState),');
+        expect(source).toContain('offersFollowLatest ? customModelsBesideFollow(customModels, followEntryModel(followState), followingLatest ? LATEST_MODEL_MODE : modelKey) : customModels,');
     });
 
     it('picking the follow entry stores no explicit model', () => {
@@ -136,5 +165,28 @@ describe('followLatestByMachine (P2-2: same resolution as sends, P2-3: per machi
         expect(summarizeFollowLatest(entries)).toMatchObject({ kind: 'latest', model: 'gpt-6.1-sol' });
         expect(summarizeFollowLatest(followLatestByMachine(null, 'codex', [], MACHINES))).toEqual({ kind: 'dependsOnMachine' });
         expect(followLatestByMachine(null, 'codex', [src('gone', 1, unpinned)], MACHINES)).toEqual([]);
+    });
+});
+
+describe('follow entry descriptions say what really happens (B-844c, QA22c P2-2/P2-3)', () => {
+    it('old CLI: no promise of switching before an upgrade; Claude: no machine-config clause', async () => {
+        const { followLatestDescriptionKey } = await import('./followLatestDisplay');
+        expect(followLatestDescriptionKey({ kind: 'machineDefault' }, false)).toBe('session.chat.modelLatestDescriptionUpgradeCli');
+        expect(followLatestDescriptionKey({ kind: 'machineDefault' }, true)).toBe('session.chat.modelLatestDescriptionUpgradeCli');
+        expect(followLatestDescriptionKey({ kind: 'latest', model: 'claude-opus-5-5' } as any, true)).toBe('session.chat.modelLatestDescriptionClaude');
+        expect(followLatestDescriptionKey({ kind: 'dependsOnMachine' }, true)).toBe('session.chat.modelLatestDescriptionClaude');
+        expect(followLatestDescriptionKey({ kind: 'machineConfig', model: 'gpt-5.6-sol' } as any, false)).toBe('session.chat.modelLatestDescription');
+    });
+
+    it('the picker and Settings use the same wording for the machine-default entry and the follow subtitle', async () => {
+        const { readFileSync } = await import('node:fs');
+        const input = readFileSync(new URL('../screens/session/AgentInput.tsx', import.meta.url), 'utf8');
+        const settings = readFileSync(new URL('../screens/settings/SettingsRoutes.tsx', import.meta.url), 'utf8');
+        expect(input).toContain("description: t(followLatestDescriptionKey(followState, normalizeAgentKey(flavor) === 'claude'))");
+        expect(settings).toContain("? { ...option, name: t('settingsAgents.machineDefault'), description: t(agent === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') }");
+        expect(input).toContain("description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') }");
+        expect(settings).toContain("detail={o.key === 'default' ? undefined : o.key}");
+        expect(settings).toContain("t(followLatest.claude ? 'settingsAgents.followLatestByMachineClaude' : 'settingsAgents.followLatestByMachine'");
+        expect(settings).toContain("machines: perMachine, claude: agent === 'claude' }");
     });
 });
