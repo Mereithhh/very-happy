@@ -445,6 +445,22 @@ export const DaemonStateSchema = z.object({
     detectedAt: z.number(),
   }).passthrough().optional(),
   /**
+   * B-852: automatic restart of wrappers a CLI upgrade left on old code —
+   * capability, machine switch and per-session status (spec
+   * 2026-10-auto-restart-stale-wrappers §4).
+   */
+  autoRestart: z.object({
+    enabled: z.boolean(),
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+    sessions: z.record(z.string(), z.object({
+      state: z.string(),
+      reason: z.string().optional(),
+      since: z.number(),
+      target: z.string(),
+    })),
+  }).passthrough().optional(),
+  /**
    * B-510: web panels declared in this machine's local settings.json
    * (`webPanels`), normalized by webPanels/webPanels.ts. Read-only mirror —
    * nothing on the web/server side can write the local declaration.

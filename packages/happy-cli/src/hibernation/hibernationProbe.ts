@@ -8,6 +8,7 @@ import { logger } from '@/ui/logger';
 import type { Metadata } from '@/api/types';
 import {
     evaluateWrapperIdle,
+    isQuiescent,
     HIBERNATION_UNSUPPORTED_BACKOFF_MS,
     type HibernationStamp,
     type HibernationVerdict,
@@ -208,8 +209,10 @@ export class HibernationProbe {
             const snapshot = this.deps.snapshot();
             const local = evaluateWrapperIdle(snapshot, 1, now);
             // keep-awake is still REPORTED (the daemon latches it, review P2-4);
-            // every other local refusal never bothers the daemon.
-            if (!local.ok && local.reason !== 'keep-awake') {
+            // so is any quiescent session (B-852: the daemon may restart a stale
+            // wrapper — teams, automation and pi included); every other local
+            // refusal never bothers the daemon.
+            if (!local.ok && local.reason !== 'keep-awake' && !isQuiescent(snapshot)) {
                 this.schedule(this.deps.checkMs);
                 return this.deps.checkMs;
             }

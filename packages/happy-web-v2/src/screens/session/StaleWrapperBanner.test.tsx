@@ -93,3 +93,59 @@ it('steps aside for the Opus 5.5 notice, which offers the same restart with the 
     render();
     expect(host.textContent).toContain('staleWrapper.behindNotice');
 });
+
+// B-852: the daemon restarts stale wrappers by itself; the banner only asks a human when needed.
+const autoRestart = (sessions: Record<string, unknown>, extra: Record<string, unknown> = {}) => {
+    const now = Date.now();
+    mock.machine.daemonState = {
+        ...mock.machine.daemonState,
+        startedAt: now - 10 * 60_000,
+        autoRestart: { enabled: true, rpcAvailable: true, detectedAt: now, sessions, ...extra },
+    };
+};
+
+it('B-852: hidden while the daemon is waiting (briefly) or restarting it', () => {
+    autoRestart({ s1: { state: 'waiting', reason: 'recent-activity', since: Date.now() - 60_000, target: '0.2.141' } });
+    render();
+    expect(banner()).toBeNull();
+    autoRestart({ s1: { state: 'restarting', since: Date.now(), target: '0.2.141' } });
+    render();
+    expect(banner()).toBeNull();
+});
+
+it('B-852: after a long wait it says why and keeps the manual restart', () => {
+    autoRestart({ s1: { state: 'waiting', reason: 'background-tasks', since: Date.now() - 61 * 60_000, target: '0.2.141' } });
+    render();
+    expect(host.textContent).toContain('autoRestart.waiting');
+    expect(banner()?.getAttribute('data-auto-restart')).toBe('waiting');
+    act(() => host.querySelector<HTMLButtonElement>('.mrb-term-btn')!.click());
+    expect(mock.restartSession).toHaveBeenCalledExactlyOnceWith('s1');
+});
+
+it('B-852: a failed automatic restart and a never-provable wrapper go back to the button', () => {
+    autoRestart({ s1: { state: 'failed', reason: 'restart-precheck:cwd-missing: /x', since: Date.now(), target: '0.2.141' } });
+    render();
+    expect(host.textContent).toContain('autoRestart.failed');
+    autoRestart({ s1: { state: 'manual', reason: 'no-report', since: Date.now(), target: '0.2.141' } });
+    render();
+    expect(host.textContent).toContain('staleWrapper.criticalNotice');
+});
+
+it('B-852: switch off, or a stamp from an older daemon run → the old banner', () => {
+    autoRestart({}, { enabled: false });
+    render();
+    expect(host.textContent).toContain('staleWrapper.criticalNotice');
+    autoRestart({ s1: { state: 'restarting', since: Date.now(), target: '0.2.141' } }, { detectedAt: 1 });
+    render();
+    expect(host.textContent).toContain('staleWrapper.criticalNotice');
+});
+
+it('B-852: unlisted right after the daemon started → quiet; unlisted later → the old banner', () => {
+    autoRestart({});
+    mock.machine.daemonState.startedAt = Date.now() - 30_000;
+    render();
+    expect(banner()).toBeNull();
+    mock.machine.daemonState.startedAt = Date.now() - 10 * 60_000;
+    render();
+    expect(host.textContent).toContain('staleWrapper.criticalNotice');
+});

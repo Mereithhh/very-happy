@@ -5882,6 +5882,31 @@ export const en = {
     },
 
     // B-587: idle agent hibernation (banner / sidebar / machine page / ⋯ menu)
+    // B-852: automatic restarts after a CLI upgrade (spec 2026-10-auto-restart-stale-wrappers).
+    autoRestart: {
+        updatedLine: ({ version }: { version: string }) => `Updated to Very Happy ${version} — session restarted in place, history kept`,
+        updatedAgentLine: ({ agent, version }: { agent: string; version: string }) => `Updated ${agent} to ${version} — session restarted in place, history kept`,
+        waiting: ({ sessionVersion, machineVersion, why }: { sessionVersion: string; machineVersion: string; why: string }) =>
+            `Still on v${sessionVersion} (the machine has v${machineVersion}). ${why} Restart now if you prefer — the conversation is kept.`,
+        waitingAgent: ({ agent, why }: { agent: string; why: string }) =>
+            `Still on the ${agent} it started with. ${why} Restart now if you prefer — the conversation is kept.`,
+        failed: ({ reason }: { reason: string }) => `Automatic update failed (${reason}). Restart it yourself — the conversation is kept.`,
+        whyTurnActive: 'It is running; it will update itself once idle.',
+        whyPendingRequest: 'It is waiting for your approval; it will update itself after that.',
+        whyQueuedInput: 'Messages are queued; it will update itself once they are done.',
+        whyBackgroundTasks: 'A background task is running; it will update itself once idle.',
+        whyScheduledWakeup: 'A scheduled wakeup is pending; it will update itself after it.',
+        whyRecentActivity: 'It is in use; it will update itself after 10 quiet minutes.',
+        whyAutomationRunning: 'An automation is running in it; it will update itself afterwards.',
+        whyOther: 'It will update itself once idle.',
+        machineTitle: 'Session auto-update',
+        machineFooter: 'After a CLI upgrade, sessions still on the old version are restarted in place (history kept) once they have been idle for 10 minutes: no turn running, nothing waiting for approval, no queued messages, no background tasks. Sessions you use in your own terminal are never touched.',
+        on: 'On',
+        off: 'Off — ask me',
+        saved: 'Session auto-update updated',
+        saveFailed: 'Could not update session auto-update',
+    },
+
     hibernation: {
         notice: 'Hibernated to free memory. Send a message or wake it to continue.',
         waking: 'Waking up…',

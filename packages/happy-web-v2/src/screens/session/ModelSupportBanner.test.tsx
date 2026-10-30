@@ -93,3 +93,37 @@ it('can be dismissed, and says nothing when the model can run', () => {
     render();
     expect(banner()).toBeNull();
 });
+
+// B-852: "restart to use the new model" is the daemon's job now.
+const withAutoRestart = (sessions: Record<string, unknown>) => {
+    const now = Date.now();
+    Object.assign(mock.machine.daemonState, { startedAt: now - 10 * 60_000, autoRestart: { enabled: true, rpcAvailable: true, detectedAt: now, sessions } });
+};
+
+it('B-852: a restart-only Opus notice is hidden while the daemon restarts it; shown with the reason after a long wait', () => {
+    mock.machine.daemonState.startedWithCliVersion = '0.2.149';
+    withAutoRestart({ s1: { state: 'waiting', reason: 'pending-request', since: Date.now() - 60_000, target: '0.2.149' } });
+    render();
+    expect(banner()).toBeNull();
+    withAutoRestart({ s1: { state: 'waiting', reason: 'pending-request', since: Date.now() - 2 * 60 * 60_000, target: '0.2.149' } });
+    render();
+    expect(host.textContent).toContain('autoRestart.waiting');
+    expect(host.querySelector('[data-testid="model-support-restart"]')).not.toBeNull();
+});
+
+it('B-852: an update notice is never hidden (the daemon cannot install it for a restart)', () => {
+    withAutoRestart({ s1: { state: 'waiting', reason: 'recent-activity', since: Date.now(), target: '0.2.148' } });
+    render();
+    expect(banner()?.getAttribute('data-action')).toBe('update');
+});
+
+it('B-852: a Codex restart the daemon has not listed stays manual; a listed one is automatic', () => {
+    mock.session = { archivedAt: null, modelMode: 'gpt-6-sol', metadata: { machineId: 'm1', flavor: 'codex', models: [{ code: 'gpt-5.5' }] } };
+    Object.assign(mock.machine.daemonState, { pid: 7, agentVersionEpoch: 1, agentVersions: { checkedAt: Date.now(), daemonPid: 7, agents: [{ id: 'codex', installed: '0.156.0', latest: '0.156.0', status: 'current' }] } });
+    withAutoRestart({});
+    render();
+    expect(banner()?.getAttribute('data-action')).toBe('restart');
+    withAutoRestart({ s1: { state: 'restarting', since: Date.now(), target: '0.156.0' } });
+    render();
+    expect(banner()).toBeNull();
+});
