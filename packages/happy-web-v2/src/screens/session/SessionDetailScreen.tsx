@@ -89,6 +89,8 @@ export function SessionDetailScreen() {
     });
     // B-587: opening a hibernated session wakes it.
     useHibernationAutoWake(pendingMode ? undefined : id);
+    // B-844: the pending page's model picker reads the target machine (before any early return).
+    const pendingLauncher = useLauncherModelSource(pending?.agent, pendingMode ? pending?.machineId : null);
     const [searchParams, setSearchParams] = useSearchParams();
     const panelTab = readSessionPanel(searchParams.get('panel'));
     const notesOpen = useLocalSetting('notesPanelOpen');
@@ -358,7 +360,6 @@ export function SessionDetailScreen() {
     // a daemon-hosted mirror WILL misfire), which also makes the model /
     // permission / effort menus unreachable. Banners replace the foot's role.
     const mirror = !!session && isMirrorSession(session);
-    const pendingLauncher = useLauncherModelSource(pending?.agent, pendingMode ? pending?.machineId : null);
     const pendingComposer: PendingComposer | undefined = pendingMode && pending ? {
         onSend: (text) => pendingSessions.append(pending.pendingId, text),
         permissionMode: pending.permissionMode,
