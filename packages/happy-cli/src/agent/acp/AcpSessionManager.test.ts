@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isCuid } from '@paralleldrive/cuid2';
 import type { AgentMessage } from '@/agent/core';
@@ -37,6 +39,21 @@ describe('AcpSessionManager turn lifecycle', () => {
     expect(ended).toHaveLength(1);
     expect(ended[0].ev).toEqual({ t: 'turn-end', status: 'failed' });
     expect(ended[0].turn).toBe(started[0].turn);
+  });
+
+  it('B-845b: a failed turn-end carries the agent\'s reason; other statuses never do', () => {
+    const failed = new AcpSessionManager();
+    failed.startTurn();
+    expect(failed.endTurn('failed', 'pi compact failed: Nothing to compact')[0].ev)
+      .toEqual({ t: 'turn-end', status: 'failed', error: 'pi compact failed: Nothing to compact' });
+    const completed = new AcpSessionManager();
+    completed.startTurn();
+    expect(completed.endTurn('completed', 'stray')[0].ev).toEqual({ t: 'turn-end', status: 'completed' });
+  });
+
+  it('B-845b wiring: runAcp ends a failed prompt with its reason', () => {
+    const source = readFileSync(join(__dirname, 'runAcp.ts'), 'utf8');
+    expect(source).toContain("sendEnvelopes(sessionManager.endTurn('failed', failure.error));");
   });
 
   it('emits cancelled turn-end from endTurn()', () => {

@@ -30,6 +30,11 @@ function oneLine(text: string): string {
 export type AcpTurnFailure = {
     /** The service line the session shows. */
     message: string;
+    /**
+     * B-845b: the agent's own reason, carried as the failed `turn-end`'s `error` so
+     * `sessions read` says why (pi's rejected /compact: `data.details` "Nothing to compact").
+     */
+    error: string;
     /** The agent process is gone: the next prompt needs a fresh one. */
     exited: boolean;
 };
@@ -37,7 +42,9 @@ export type AcpTurnFailure = {
 export function describeAcpTurnFailure(agentName: string, error: unknown): AcpTurnFailure {
     if (isAgentExitError(error)) {
         // The web styles this prefix as a process failure (serviceEvent.ts).
-        return { message: `Process exited unexpectedly: ${oneLine(error.message)}`, exited: true };
+        const detail = oneLine(error.message);
+        return { message: `Process exited unexpectedly: ${detail}`, error: detail, exited: true };
     }
-    return { message: `${agentName} error: ${oneLine(detailOf(error))}`, exited: false };
+    const detail = oneLine(detailOf(error));
+    return { message: `${agentName} error: ${detail}`, error: detail, exited: false };
 }

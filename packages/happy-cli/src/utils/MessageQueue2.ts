@@ -203,6 +203,39 @@ export class MessageQueue2<T> {
     }
 
     /**
+     * Push a message that runs as a turn of its own — never joined with the
+     * messages around it — without dropping what is already queued. For agent
+     * commands (`/compact`) that only work when they are the whole prompt.
+     */
+    pushIsolate(message: string, mode: T, attachments?: PendingAttachment[], sourceId?: string): void {
+        if (this.closed) {
+            throw new Error('Cannot push to closed queue');
+        }
+
+        this.queue.push({
+            message,
+            mode,
+            modeHash: this.modeHasher(mode),
+            isolate: true,
+            attachments,
+            sourceId,
+            enqueuedAt: Date.now(),
+        });
+
+        if (this.onMessageHandler) {
+            this.onMessageHandler(message, mode);
+        }
+
+        if (this.waiter) {
+            const waiter = this.waiter;
+            this.waiter = null;
+            waiter(true);
+        }
+
+        logger.debug(`[MessageQueue2] pushIsolate() completed. Queue size: ${this.queue.length}`);
+    }
+
+    /**
      * Push a message to the beginning of the queue with a mode.
      */
     unshift(message: string, mode: T): void {

@@ -55,6 +55,7 @@ import { useSessionBoard } from './board/useSessionBoard';
 import { BackButton } from '@/app/BackButton';
 import { sessionGate, shouldLookUpSession, type SessionLookup } from './sessionLookup';
 import { ChatSyncStatus } from './ChatSyncStatus';
+import { useLauncherModelSource } from '@/sync/useLauncherModelSource';
 import './session.css';
 
 /** The transcript's frame (ChatList's own empty layout) for the one cold-start paint before it renders. */
@@ -88,6 +89,8 @@ export function SessionDetailScreen() {
     });
     // B-587: opening a hibernated session wakes it.
     useHibernationAutoWake(pendingMode ? undefined : id);
+    // B-844: the pending page's model picker reads the target machine (before any early return).
+    const pendingLauncher = useLauncherModelSource(pending?.agent, pendingMode ? pending?.machineId : null);
     const [searchParams, setSearchParams] = useSearchParams();
     const panelTab = readSessionPanel(searchParams.get('panel'));
     const notesOpen = useLocalSetting('notesPanelOpen');
@@ -365,6 +368,7 @@ export function SessionDetailScreen() {
         onMode: (field, value) => pendingSessions.setMode(pending.pendingId, field, value),
         initialDraft: pendingInitialDraft,
         isGone: () => !pendingSessions.get(pending.pendingId),
+        launcher: pendingLauncher,
         blockedHint: foreignPending
             ? t('pendingSession.otherTab')
             : pending.state === 'failed' ? (pending.deferred ? t('pendingSession.failedDraftKept') : t('pendingSession.retryFirst')) : undefined,

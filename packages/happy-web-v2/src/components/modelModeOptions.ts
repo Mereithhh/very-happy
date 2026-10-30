@@ -2,6 +2,7 @@ import type { Metadata } from '@/sync/storageTypes';
 import type { SimpleTranslationKey } from '@/text';
 import { hackModes } from '@/sync/modeHacks';
 import { getCodeAgentDefaults, isPiAgent, supportsClaudeOpus55 } from '@/sync/agentDefaults';
+import { getLatestModelTier, type LatestModelTable } from '@slopus/happy-wire';
 
 export type ModeOption = {
     key: string;
@@ -131,6 +132,9 @@ const CODEX_EXTRA_MODELS: ModelMode[] = [
 export function getCodexModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
+        // Codex 0.160+ bundles gpt-6.1-sol (its default) and gpt-6.1-terra.
+        { key: 'gpt-6.1-sol', name: 'gpt-6.1-sol', description: null },
+        { key: 'gpt-6.1-terra', name: 'gpt-6.1-terra', description: null },
         { key: 'gpt-6-astra', name: 'gpt-6-astra', description: null },
         ...CODEX_EXTRA_MODELS,
         { key: 'gpt-5.6-sol', name: 'gpt-5.6-sol', description: null },
@@ -236,12 +240,59 @@ export function getPiModelModes(): ModelMode[] {
     ];
 }
 
-export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translate): ModelMode[] {
+/**
+ * Models the latest-models table knows (B-844) that a code list lacks — a
+ * flagship the server table added after this bundle shipped stays pickable.
+ * Inserted after the leading `default` entry.
+ */
+export function withLatestTableModels(flavor: AgentFlavor, models: ModelMode[], table: LatestModelTable | null | undefined): ModelMode[] {
+    const tier = getLatestModelTier(table, typeof flavor === 'string' ? flavor : 'claude');
+    if (!tier || isPiAgent(flavor)) return models;
+    const missing = tier.models
+        .filter((entry) => !models.some((model) => model.key === entry.model))
+        .map((entry) => ({ key: entry.model, name: entry.label ?? entry.model, description: null }));
+    if (missing.length === 0) return models;
+    const [first, ...rest] = models;
+    return first?.key === 'default' ? [first, ...missing, ...rest] : [...missing, ...models];
+}
+
+/**
+ * Picker list when there is no session (new-session dialog, settings —
+ * B-844): the live catalogs recent sessions of this agent published (newest
+ * first; per machine in the dialog, account-wide in settings) merged with the
+ * code list and the latest-models table, so a CLI/Codex upgrade shows up
+ * without a web release. Each catalog is decorated exactly like a session's.
+ */
+export function getLauncherModelModes(
+    flavor: AgentFlavor,
+    catalogs: ReadonlyArray<Metadata | null | undefined>,
+    translate: Translate,
+    table?: LatestModelTable | null,
+): ModelMode[] {
+    const out: ModelMode[] = [];
+    const seen = new Set<string>();
+    const add = (models: ModelMode[]) => {
+        for (const model of models) {
+            if (seen.has(model.key)) continue;
+            seen.add(model.key);
+            out.push(model);
+        }
+    };
+    for (const metadata of catalogs) {
+        if (metadata?.models?.length) add(getAvailableModels(flavor, metadata, translate));
+    }
+    add(getHardcodedModelModes(flavor, translate, table));
+    const defaultIndex = out.findIndex((model) => model.key === 'default');
+    if (defaultIndex > 0) out.unshift(...out.splice(defaultIndex, 1));
+    return out;
+}
+
+export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translate, table?: LatestModelTable | null): ModelMode[] {
     if (flavor === 'codex') {
-        return getCodexModelModes();
+        return withLatestTableModels(flavor, getCodexModelModes(), table);
     }
     if (flavor === 'gemini') {
-        return getGeminiModelModes();
+        return withLatestTableModels(flavor, getGeminiModelModes(), table);
     }
     if (flavor === 'openclaw') {
         return getOpenClawModelModes();
@@ -249,7 +300,7 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     if (isPiAgent(flavor)) {
         return getPiModelModes();
     }
-    return getClaudeModelModes();
+    return withLatestTableModels('claude', getClaudeModelModes(), table);
 }
 
 export function getAvailableModels(
@@ -378,7 +429,7 @@ export function getEffortLevelsForModel(
         // and gpt-6-luna follow their 5.6 siblings (luna tops out at max).
         // A connected machine's advertised catalog always takes precedence.
         const key = resolvedKey ?? modelKey;
-        if (/^gpt-(6-(astra|sol|luna)|5\.6-(sol|terra|luna))$/.test(key)) {
+        if (/^gpt-(6(\.\d+)?-(astra|sol|terra|luna)|5\.6-(sol|terra|luna))$/.test(key)) {
             const higher = [...levels, { key: 'max', name: 'max' }];
             return key.endsWith('-luna') ? higher : [...higher, { key: 'ultra', name: 'ultra' }];
         }

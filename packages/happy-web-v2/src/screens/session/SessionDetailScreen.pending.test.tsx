@@ -27,6 +27,7 @@ const h = vi.hoisted(() => {
     };
 });
 
+vi.mock('@/sync/useLauncherModelSource', () => ({ useLauncherModelSource: () => ({ context: null, catalogs: [] }) }));
 vi.mock('@/sync/storage', () => {
     const state = () => ({
         sessions: h.sessions, machines: {}, currentViewingSessionId: null,

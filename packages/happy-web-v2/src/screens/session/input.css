@@ -265,6 +265,7 @@
 @media (hover: hover) and (pointer: fine) { .ci-slash-item:hover { background: var(--fill-selected); } }
 .ci-slash-command { flex: none; font-family: var(--font-mono); color: var(--text); }
 .ci-slash-desc { min-width: 0; overflow: hidden; color: var(--text-dim); font-size: var(--chat-fs-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.ci-slash-item--unavailable .ci-slash-command { color: var(--text-dim); }
 /* B-035 @ file mentions reuse the / list; a long file name may shrink, the directory ellipsizes first. */
 .ci-slash-command--file { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ci-slash-empty { padding: var(--sp-1) var(--sp-2) var(--sp-2); color: var(--text-dim); font: 400 var(--chat-fs-secondary)/1.4 var(--font-sans); }

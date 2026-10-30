@@ -87,7 +87,7 @@ describe('B-531 publishForkBackfillWhenCommitted (wrapper side)', () => {
 describe('B-531 wiring (source assertions, verified with mutation-check)', () => {
     it('both runners advertise the capability', () => {
         expect(code('claude/runClaude.ts')).toContain("PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, PROJECT_SESSION_CAPABILITY],")
-        expect(code('codex/runCodex.ts')).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY],')
+        expect(code('codex/runCodex.ts')).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY],')
     })
 
     it('Claude fork replay publishes the marker after the replay loop and on a failed read', () => {
@@ -112,7 +112,7 @@ describe('B-531 wiring (source assertions, verified with mutation-check)', () =>
 
     it('spawn gates the first message of a fork (and only of a fork)', () => {
         const source = code('commands/spawn.ts')
-        expect(source).toContain('}), { fork: forkSource !== null })')
+        expect(source).toContain('}), { fork: forkSource !== null, waitForCatalog: waitsForModelCatalog(agent, options.model) })')
         const gate = source.indexOf('if (opts.fork) {')
         const wait = source.indexOf('const gate = await waitForForkBackfill({')
         const send = source.indexOf("await deps.sendUserMessage(sessionId, persisted, text, 'cli-spawn', meta)")

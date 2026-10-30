@@ -68,8 +68,15 @@ describe('Settings → Agents (B-370)', () => {
         expect(groups).toEqual(['New chat creation', 'claude', 'codex', 'gemini', 'openclaw', 'pi']);
         const piGroup = html.slice(html.indexOf('eyebrow">pi<'));
         expect(piGroup).toContain('<span class="vh-item__title">Permission</span></span><span class="vh-item__right"><span class="set-value">Auto-run (default)</span>');
-        expect(piGroup).toContain('<span class="vh-item__title">Model</span></span><span class="vh-item__right"><span class="set-value">default model (default)</span>');
+        expect(piGroup).toContain('<span class="vh-item__title">Model</span></span><span class="vh-item__right"><span class="set-value">Machine default (default)</span>');
         expect(piGroup).not.toContain('<span class="vh-item__title">Effort</span>');
+    });
+
+    it('B-844b: with no session to resolve against, follow-latest says it depends on the machine (never the table head)', () => {
+        const html = renderAgents();
+        const codexGroup = html.slice(html.indexOf('eyebrow">codex<'), html.indexOf('eyebrow">gemini<'));
+        expect(codexGroup).toContain('<span class="set-value">Follow latest (depends on the machine)</span>');
+        expect(html).not.toContain('default model');
     });
 
     it('pi model options are the published registry (+ default), never Claude aliases', async () => {

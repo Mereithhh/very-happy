@@ -28,6 +28,7 @@ const sessionStore = vi.hoisted(() => {
     };
 });
 
+vi.mock('@/sync/useLauncherModelSource', () => ({ useLauncherModelSource: () => ({ context: null, catalogs: [] }) }));
 vi.mock('@/sync/storage', () => {
     const state = { machines: {}, sessions: {}, currentViewingSessionId: null, setCurrentViewingSession: () => {} };
     const storage = Object.assign((selector: (s: any) => unknown) => selector(state), { getState: () => state });

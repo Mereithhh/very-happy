@@ -11,6 +11,8 @@
  * not hold.
  */
 
+import { LATEST_MODEL_MODE } from './modelLatest';
+
 export const AGENT_KEYS = ['claude', 'codex', 'gemini', 'openclaw', 'pi'] as const;
 export type AgentKey = typeof AGENT_KEYS[number];
 
@@ -40,13 +42,14 @@ export function isClaudeOpus55Model(model: string): boolean {
 export const AGENT_CODE_DEFAULTS: Readonly<Record<AgentKey, AgentDefaultConfig>> = {
     // The Claude UI key for YOLO is `bypassPermissions`; the CLI also accepts
     // `yolo` and maps it to the Claude SDK's bypass mode.
-    // model defaults to the pinned Opus 5.5 id (not the `opus` alias, whose
-    // target depends on the wrapper's bundled Claude Code). Wrappers that
-    // cannot run it fall back to 'default' (see supportsClaudeOpus55).
-    // effort null = don't send effort.
-    claude: { permissionMode: 'bypassPermissions', modelMode: CLAUDE_OPUS_55_MODEL, effortLevel: null },
-    codex: { permissionMode: 'yolo', modelMode: 'gpt-5.5', effortLevel: 'medium' },
-    gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
+    // model: `latest` (B-844) = the newest model of the agent's tier that the
+    // session's wrapper can run, resolved at send time (modelLatest.ts) and
+    // never sent as is. Today: Claude → claude-opus-5-5 (pinned id, not the
+    // `opus` alias), Codex → gpt-6.1-sol on Codex >= 0.160, Gemini → the
+    // newest pro its session catalog lists. effort null = don't send effort.
+    claude: { permissionMode: 'bypassPermissions', modelMode: LATEST_MODEL_MODE, effortLevel: null },
+    codex: { permissionMode: 'yolo', modelMode: LATEST_MODEL_MODE, effortLevel: 'medium' },
+    gemini: { permissionMode: 'default', modelMode: LATEST_MODEL_MODE, effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
     // pi: the runner keeps Claude's permission vocabulary (B-350 — HAPPY_PERMISSION_MODE +
     // session-modes file, enforced by the pi-side gate; `bypassPermissions` = auto-allow every

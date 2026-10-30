@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SandboxConfig } from '@/persistence';
 
@@ -141,6 +142,71 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(await client.listModels()).toEqual([astra, luna]);
         expect(request).toHaveBeenNthCalledWith(1, 'model/list', { limit: 100, cursor: null, includeHidden: false });
         expect(request).toHaveBeenNthCalledWith(2, 'model/list', { limit: 100, cursor: 'page2', includeHidden: false });
+    });
+
+    it('B-844: config/read reports the model the machine config pins (null = none)', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const request = vi.spyOn(client as any, 'request')
+            .mockResolvedValueOnce({ config: { model: 'gpt-5.6-sol', model_provider: 'llmhub' } })
+            .mockResolvedValueOnce({ config: { model: null } })
+            .mockRejectedValueOnce(new Error('Method not found'));
+        expect(await client.readConfiguredModel('/repo')).toBe('gpt-5.6-sol');
+        expect(request).toHaveBeenCalledWith('config/read', { cwd: '/repo' }, 10_000);
+        expect(await client.readConfiguredModel('/repo')).toBeNull();
+        await expect(client.readConfiguredModel('/repo')).rejects.toThrow('Method not found');
+    });
+
+    it('B-844: runCodex publishes configuredModel only when config/read answered', () => {
+        const source = readFileSync(new URL('./runCodex.ts', import.meta.url), 'utf8');
+        expect(source).toContain('configured = { model: await client.readConfiguredModel(process.cwd()) };');
+        expect(source).toContain('defaultModelCode: configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model,');
+        expect(source).toContain('...(configured ? { configuredModel: configured.model } : {}),');
+    });
+
+    it('B-844: the wrapper has no model default of its own (machine config decides)', () => {
+        const source = readFileSync(new URL('./runCodex.ts', import.meta.url), 'utf8');
+        expect(source).toContain('const DEFAULT_CODEX_MODEL: string | undefined = undefined;');
+        expect(source).toContain('let currentModel: string | undefined = DEFAULT_CODEX_MODEL;');
+        expect(source).not.toMatch(/DEFAULT_CODEX_MODEL[^=\n]*= '/);
+    });
+
+    it('B-844c: runCodex publishes its sticky model and running effort (web resets the model with null)', () => {
+        const source = readFileSync(new URL('./runCodex.ts', import.meta.url), 'utf8');
+        expect(source).toContain('metadata.stickyModel = null;');
+        expect(source).toContain('metadata.currentThoughtLevelCode = DEFAULT_CODEX_EFFORT;');
+        expect(source).toContain('stickyModel: facts.stickyModel,');
+        expect(source).toContain('...(facts.currentModelCode ? { currentModelCode: facts.currentModelCode } : {}),');
+        // Every place that changes currentModel / currentEffort reports it.
+        expect(source).toMatch(/messageModelReset = !messageModel;\n\s*currentModel = messageModel;\n\s*reportModeFacts\(\);/);
+        expect(source).toMatch(/currentEffort = DEFAULT_CODEX_EFFORT;\n\s*reportModeFacts\(\);/);
+        expect(source).toMatch(/currentEffort = undefined;\n\s*reportModeFacts\(\);/);
+        expect(source).toMatch(/currentEffort = messageEffort;\n\s*reportModeFacts\(\);/);
+    });
+
+    it('B-844d: tracks the thread model from resume and accepted turn models; a later resume keeps the last one', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const calls: Array<{ method: string; params: any }> = [];
+        const c = client as any;
+        c.connected = true;
+        c.request = async (method: string, params: any) => {
+            calls.push({ method, params });
+            if (method === 'thread/resume') return { thread: { id: 't1' }, model: 'gpt-6-luna' };
+            if (method === 'turn/start') return { turn: { id: 'turn-1' } };
+            return {};
+        };
+        await client.resumeThread({ threadId: 't1' });
+        expect(calls[0].params.model).toBeNull();
+        expect(client.threadModel).toBe('gpt-6-luna');
+        await client.sendTurn('hi');
+        expect(calls[1].params).not.toHaveProperty('model');
+        expect(client.threadModel).toBe('gpt-6-luna');
+        await client.sendTurn('hi', { model: 'gpt-5.6-sol' });
+        expect(client.threadModel).toBe('gpt-5.6-sol');
+        // idle release / forced restart resume must not put an older model back
+        await client.resumeThread({ threadId: 't1' });
+        expect(calls[3].params.model).toBe('gpt-5.6-sol');
     });
 
     it('wraps transport when sandbox is enabled', async () => {
@@ -2039,5 +2105,49 @@ it('passes native local images alongside the text manifest without expanding san
         threadId: 'image-thread',
         input: [{ type: 'text', text: 'Inspect attached file' }, { type: 'localImage', path: '/private/chat/photo.png' }],
         sandboxPolicy: { type: 'readOnly' },
+    });
+});
+
+describe('compactThreadAndWait (/compact, Owner 10-30)', () => {
+    async function compactClient(status: 'completed' | 'failed') {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        (client as any)._threadId = 'compact-thread';
+        (client as any).connected = true;
+        const notify = (method: string, params: unknown) => (client as any).handleNotification(method, params);
+        // The sequence codex-cli 0.154 sends (probe 10-30): `{}`, then a turn of its own.
+        const request = vi.spyOn(client as any, 'request').mockImplementation(async (method: unknown) => {
+            if (method === 'thread/compact/start') {
+                setTimeout(() => {
+                    notify('turn/started', { threadId: 'compact-thread', turn: { id: 'compact-turn', status: 'inProgress' } });
+                    notify('item/started', { threadId: 'compact-thread', turnId: 'compact-turn', item: { type: 'contextCompaction', id: 'c1' } });
+                    notify('turn/completed', {
+                        threadId: 'compact-thread',
+                        turn: { id: 'compact-turn', status, ...(status === 'failed' ? { error: { message: 'gateway 502' } } : {}) },
+                    });
+                }, 0);
+            }
+            return {};
+        });
+        return { client, request };
+    }
+
+    it('asks Codex to compact the thread itself and waits for that turn to end', async () => {
+        const { client, request } = await compactClient('completed');
+        await expect(client.compactThreadAndWait()).resolves.toEqual({ aborted: false, failed: false });
+        expect(request).toHaveBeenCalledWith('thread/compact/start', { threadId: 'compact-thread' });
+        expect(request).not.toHaveBeenCalledWith('turn/start', expect.anything());
+    });
+
+    it('reports a compaction turn Codex failed', async () => {
+        const { client } = await compactClient('failed');
+        await expect(client.compactThreadAndWait()).resolves.toEqual({ aborted: false, failed: true });
+    });
+
+    it('refuses without a thread instead of sending anything', async () => {
+        const { client, request } = await compactClient('completed');
+        (client as any)._threadId = null;
+        await expect(client.compactThreadAndWait()).rejects.toThrow('No active thread');
+        expect(request).not.toHaveBeenCalledWith('thread/compact/start', expect.anything());
     });
 });

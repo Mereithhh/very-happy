@@ -423,6 +423,19 @@ describe('MessageQueue2', () => {
         expect(batch2?.mode.type).toBe('A');
     });
 
+    it('pushIsolate runs the message alone and keeps what was queued before and after it', async () => {
+        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+        queue.push('before1', { type: 'A' });
+        queue.push('before2', { type: 'A' });
+        queue.pushIsolate('/compact', { type: 'A' }, undefined, 'local-compact');
+        queue.push('after', { type: 'A' });
+
+        expect((await queue.waitForMessagesAndGetAsString())?.message).toBe('before1\nbefore2');
+        const compact = await queue.waitForMessagesAndGetAsString();
+        expect(compact).toMatchObject({ message: '/compact', isolate: true, sourceIds: ['local-compact'] });
+        expect((await queue.waitForMessagesAndGetAsString())?.message).toBe('after');
+    });
+
     it('should stop batching when hitting isolated message', async () => {
         const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
         

@@ -25,6 +25,7 @@ import {
     modelSupportNotice,
     type ModelSupportNotice,
 } from '@/app/modelSupportPolicy';
+import { useLatestModelTable } from '@/sync/latestModels';
 import './mirror.css';
 
 type UpdateState = 'sending' | 'accepted' | 'failed' | 'copied' | 'copyFailed' | null;
@@ -39,7 +40,8 @@ export function useVisibleModelSupportNotice(sessionId: string): { notice: Model
     });
     const overrides = useSetting('agentDefaultOverrides');
     const [dismissedHints] = useLocalSettingMutable('dismissedHints');
-    const notice = modelSupportNotice(session, machine as any, overrides);
+    const latestTable = useLatestModelTable();
+    const notice = modelSupportNotice(session, machine as any, overrides, latestTable);
     if (!notice) return null;
     const hintKey = modelSupportHintKey(sessionId, notice);
     return isModelSupportNoticeVisible(hintKey, dismissedHints) ? { notice, hintKey } : null;

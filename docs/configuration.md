@@ -20,6 +20,7 @@ state. Never commit production values.
 | `METRICS_ENABLED` / `METRICS_HOST` / `METRICS_PORT` | Prometheus endpoint | Disabled by default; enable explicitly on `127.0.0.1:9090` |
 | `AUTH_ALLOW_LEGACY_PAIRING` | Temporarily accept pairing without a one-time claim secret | Unset/`false`; enable only during the documented CLI rollout |
 | `AUTH_PAIRING_TTL_MINUTES` | Pairing request lifetime, bounded to 1–60 minutes | `10` |
+| `VH_LATEST_MODELS_FILE` | B-844: JSON file replacing the bundled "follow latest" model table (`packages/happy-wire/src/latestModels.json` shape) served at `GET /v1/models/latest`. Re-read when its mtime changes (checked at most every 30 s), so a new flagship needs no release or restart; an unreadable/invalid file serves the bundled table and logs a warning. Web caches the answer per device; `very-happy spawn` reads it with a 2 s timeout | Unset (bundled table); set only to roll a new flagship before the next release, after a real `codex exec -m` / Claude session ran it |
 | `CLI_RECOMMENDED_VERSION` | Pin the exact `very-happy-cli` version advertised to daemons | The last fully approved release, or unset |
 | `CLI_AUTO_UPDATE_VERSION` | What a machine may install **by itself**: at once when no agent turn or background task is in flight (B-466), otherwise after the daemon's busy grace (default 15 min, `HAPPY_CLI_UPDATE_BUSY_GRACE_MS` on the daemon) through a staged install that never leaves the live tree incomplete, with no turn interrupted (B-817). `latest` follows the promoted npm `latest` dist-tag through the same registry lookup as the recommendation (B-503); an exact version is a pin/brake; unset means no machine auto-installs anything | `latest` (requires `CLI_VERSION_REGISTRY_LOOKUP=true`); pin an exact version only to hold or roll back |
 | `CLI_MINIMUM_VERSION` | Optional exact version below which Web/CLI show a required-update warning | Unset until an actual compatibility/security floor exists |
@@ -471,6 +472,25 @@ without tmux, authentication, structured sessions, daemon control, and plain Web
 terminals still work. A direct shell may survive a brief browser reconnect while
 the same daemon holds its PTY, but it is not durable/discoverable like tmux and
 ends on daemon restart or idle cleanup.
+
+### `/compact` by session type
+
+A message that is only `/compact` (optionally `/compact <instructions>`; a
+full-width `／`, upper case and a full-width space are accepted) runs the
+agent's compaction. It is never steered into a running turn, joined with other
+queued messages, or prefixed with project / lead-board text, so it works the
+same whether the session is idle, busy, just restarted, or in a project.
+
+| Session | `/compact` |
+| --- | --- |
+| Claude | Claude Code's compaction; instructions are passed on. As the first message after a wrapper restart it compacts the resumed conversation (before QA21 it opened an empty one and the history was lost). When Claude Code declines — e.g. "Not enough messages to compact." — the session shows 「上下文压缩失败：<reason>」 / "Compaction failed: <reason>", never "compacted". |
+| Codex | Codex's own compaction (`thread/compact/start`); needs a CLI that advertises `codex-compact-v1`. Codex takes no instructions — the session says so and compacts anyway. |
+| pi and other ACP agents | Runs when the agent lists `compact` among its commands. |
+| Gemini, OpenClaw, ACP agents without it | Not supported: Very Happy answers "This session type does not support /compact" and nothing reaches the model. |
+
+The composer's command list marks `/compact` as unavailable on sessions that
+cannot run it, and sending it there shows a notice instead of a message (older
+Codex wrappers included — update the CLI and restart the session).
 
 ### Custom models and providers (B-688)
 

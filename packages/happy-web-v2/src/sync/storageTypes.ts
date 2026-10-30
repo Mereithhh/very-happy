@@ -17,6 +17,12 @@ export const MetadataSchema = z.object({
     })).optional(),
     currentModelCode: z.string().optional(),
     defaultModelCode: z.string().optional(),
+    // B-844: model the machine's own agent config pins (Codex config/read,
+    // Gemini settings); null = none; absent = older wrapper (unknown).
+    configuredModel: z.string().nullable().optional(),
+    // B-844c: explicit model the wrapper keeps applying to turns without one
+    // (an earlier pick); null = none; absent = older wrapper (unknown).
+    stickyModel: z.string().nullable().optional(),
     operatingModes: z.array(z.object({
         code: z.string(),
         value: z.string(),

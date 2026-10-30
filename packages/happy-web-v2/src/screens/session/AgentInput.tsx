@@ -33,6 +33,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import {
     getAvailableModels,
     getAvailablePermissionModes,
+    getLauncherModelModes,
     getEffortLevelsForModel,
     compactResolvedModelCode,
     relabelDefaultModel,
@@ -47,12 +48,20 @@ import {
     normalizeAgentKey,
     resolveAgentDefaultConfig,
     resolveDefaultModelMode,
+    resolveLatestForAgent,
+    isFollowingLatestModel,
+    getCodeAgentDefaults,
+    modelOverrideAfterSessionPick,
     setAgentDefaultOverride,
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
+import { useLatestModelTable } from '@/sync/latestModels';
+import { customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
+import { LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
+import type { LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
-import { deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
+import { deriveCodexRunningModel, deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
     advanceQueueDeliveryPhase,
@@ -120,6 +129,7 @@ import { formatTokens } from './format';
 import { getAllCommands } from '@/sync/suggestionCommands';
 import { filterSlashSuggestions, slashCommandText } from './slashSuggestions';
 import { BTW_COMMAND, canOfferBtw, parseBtwCommand } from './btwCommand';
+import { compactSupport, parseCompactCommand } from './compactCommand';
 import { openBtwPanel } from './btwPanelState';
 import {
     COMPOSER_MOBILE_MIN_HEIGHT,
@@ -181,7 +191,12 @@ export interface PendingComposer {
     initialDraft: string;
     /** The record was discarded: the unmount flush must not re-create its draft. */
     isGone?: () => boolean;
+    /** B-844: the machine the session will start on — its versions and recent
+     *  sessions' catalogs decide the model list and what "latest" means. */
+    launcher?: LauncherModelSource;
 }
+
+const NO_CATALOGS: never[] = [];
 
 export function AgentInput({ sessionId, agentFlavor, pending }: {
     sessionId: string;
@@ -330,7 +345,21 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
 
     // selectors
     const agentDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, flavor);
-    const modelKey = pending?.modelMode ?? session?.modelMode ?? resolveDefaultModelMode(agentDefaultOverrides, flavor, session ? (metadata ?? {}) : null);
+    // B-844: no session yet → the target machine and the catalogs its recent
+    // sessions of this agent published stand in for the session's own.
+    const latestTable = useLatestModelTable();
+    const launcherCatalogs = (!session && pending?.launcher?.catalogs) || NO_CATALOGS;
+    const launcherContext = session ? null : pending?.launcher?.context ?? null;
+    const modelMetadata = session ? (metadata ?? {}) : null;
+    const latestResolution = resolveLatestForAgent(latestTable, flavor, modelMetadata, launcherContext);
+    const latestModel = latestResolution.model;
+    const explicitModelMode = pending?.modelMode ?? session?.modelMode;
+    // B-844b: agents whose default is "follow latest" get ONE entry for it (key
+    // `latest`), named by what it runs here; it is selected while nobody
+    // picked a model for this session and the account default follows latest.
+    const offersFollowLatest = isLatestModelMode(getCodeAgentDefaults(flavor).modelMode);
+    const followingLatest = offersFollowLatest && !explicitModelMode && isFollowingLatestModel(agentDefaultOverrides, flavor);
+    const modelKey = explicitModelMode ?? resolveDefaultModelMode(agentDefaultOverrides, flavor, modelMetadata, { table: latestTable, machine: launcherContext });
     const resolvedDefaultModel = metadata?.defaultModelCode
         ?? (modelKey === 'default' ? usage?.model : undefined);
     const defaultModelLabel = resolvedDefaultModel
@@ -343,9 +372,26 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const canConfigureModels = !!configMachineId && !!configHarness && !!configMachine;
     const customModels = useCustomPickerModels(configMachineId, configHarness);
     const [modelEditorOpen, setModelEditorOpen] = useState(false);
+    const baseModels = session ? getAvailableModels(flavor, metadata, t as any) : getLauncherModelModes(flavor, launcherCatalogs, t as any, latestTable);
+    const followState = followLatestState(latestResolution, !!session);
+    const followName = followState.kind === 'machineConfig'
+        ? t('session.chat.followMachineConfig', { model: followState.model })
+        : followState.kind === 'latest'
+            ? t('session.chat.followLatestOption', { model: baseModels.find((option) => option.key === followState.model)?.name ?? followState.label ?? followState.model })
+            : followState.kind === 'machineDefault'
+                ? t('session.chat.followLatestUpgradeCli')
+                : t('session.chat.followLatestDepends');
     const models = withCustomModels(
-        relabelDefaultModel(getAvailableModels(flavor, metadata, t as any), defaultModelLabel),
-        customModels,
+        offersFollowLatest
+            ? withFollowLatestOption(baseModels, {
+                flavor,
+                follow: { name: followName, description: t(followLatestDescriptionKey(followState, normalizeAgentKey(flavor) === 'claude')) },
+                latestModel: followEntryModel(followState),
+                selectedKey: followingLatest ? LATEST_MODEL_MODE : modelKey,
+                machineDefault: { name: t('session.chat.machineDefaultModel'), description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') },
+            })
+            : relabelDefaultModel(baseModels, defaultModelLabel),
+        offersFollowLatest ? customModelsBesideFollow(customModels, followEntryModel(followState), followingLatest ? LATEST_MODEL_MODE : modelKey) : customModels,
         t('modelConfig.customModelDescription'),
     );
     const permModes = getAvailablePermissionModes(flavor, metadata, t as any);
@@ -389,7 +435,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     // B-362: intent → running model (ACP runners publish it) → first option; never show
     // a model the session is not on just because the default key is not in the list.
     const displayedModelKey = selectDisplayedModelKey({
-        selectedKey: modelKey,
+        selectedKey: followingLatest ? LATEST_MODEL_MODE : modelKey,
         running: metadata?.currentModelCode,
         optionKeys: models.map((option) => option.key),
     });
@@ -420,11 +466,23 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     })();
     // B-292: the selector value is client intent and flips on tap; this is the
     // only thing on screen that reports what the agent is actually running.
-    const modelSubtitle = deriveRunningModelSubtitle({
-        isClaude: publishesModeFacts,
-        selectedKey: modelKey,
-        running: metadata?.currentModelCode,
-    });
+    // B-844d: Codex reports its thread's real model; say so when the selection differs.
+    const codexRunning = normalizeAgentKey(flavor) === 'codex'
+        ? deriveCodexRunningModel({
+            stickyModel: metadata?.stickyModel,
+            running: metadata?.currentModelCode,
+            intended: followingLatest
+                ? ('model' in followState ? followState.model : metadata?.defaultModelCode)
+                : modelKey === 'default' ? metadata?.defaultModelCode : modelKey,
+        })
+        : undefined;
+    const modelSubtitle = codexRunning
+        ? t('session.chat.modelRunningOther', { model: compactResolvedModelCode(codexRunning) })
+        : deriveRunningModelSubtitle({
+            isClaude: publishesModeFacts,
+            selectedKey: modelKey,
+            running: metadata?.currentModelCode,
+        });
     // context meter — always visible when we have a usage snapshot.
     const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage, metadata?.currentModelCode);
     const contextKnown = context.tokens !== null;
@@ -571,6 +629,14 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             releaseQueuedAttachments(item);
             return;
         }
+        // Owner 10-30: a session that cannot compact gets Very Happy's answer, not the model's.
+        const compact = parseCompactCommand(item.text);
+        if (compact !== null && compactSupport(session) === 'unsupported') {
+            toast.show(t('session.chat.compactUnsupported'), 'info');
+            releaseQueuedAttachments(item);
+            return;
+        }
+        if (compact !== null) item = { ...item, text: compact };
         await deliverQueuedMessage(() => sync.sendMessage(sessionId, item.text, {
             source: 'chat',
             delivery,
@@ -629,6 +695,14 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             storage.getState().updateSessionDraft(sessionId, null);
             return;
         }
+        // Owner 10-30: `/compact` goes as the bare command (canonical, without the
+        // edited-drafts block) — anything around it turns it into chat — and a
+        // session that cannot compact is told so here instead of by the model.
+        const compactCommand = parseCompactCommand(value);
+        if (compactCommand !== null && compactSupport(session) === 'unsupported') {
+            toast.show(t('session.chat.compactUnsupported'), 'info');
+            return;
+        }
         // Captured BEFORE the async send: did the textarea own focus (⇒ the
         // soft keyboard was up) when the user hit send? On iOS, tapping a
         // button does NOT move focus off the textarea, so this stays true for
@@ -653,8 +727,8 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         const createdAt = Date.now();
         // B-642: snapshot the pending edited drafts at submit time; they are
         // marked as seen by the model only once this submission is accepted.
-        const attachedDrafts = selectPendingDrafts(useEditableDrafts.getState().drafts, sessionId);
-        const sendValue = appendEditedDrafts(value, buildEditedDraftsBlock(attachedDrafts.map(({ rec }) => ({ title: rec.title, base: rec.base, text: rec.text }))));
+        const attachedDrafts = compactCommand !== null ? [] : selectPendingDrafts(useEditableDrafts.getState().drafts, sessionId);
+        const sendValue = compactCommand ?? appendEditedDrafts(value, buildEditedDraftsBlock(attachedDrafts.map(({ rec }) => ({ title: rec.title, base: rec.base, text: rec.text }))));
         let takenAttachments: QueuedMessage['attachments'];
         let draftTaken = false;
         let queueOwnsItem = false;
@@ -1164,8 +1238,13 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         if (pending) pending.onMode(field, key);
         else storage.getState()[fn](sessionId, key);
         const currentOverrides = storage.getState().settings.agentDefaultOverrides;
+        // B-844: picking the model "latest" resolves to keeps the account on
+        // follow-latest; only another model becomes the remembered default.
+        // With nothing provably newer (machine config pin, old wrapper), what
+        // follow-latest runs is the machine default.
+        const overrideValue = field === 'modelMode' ? modelOverrideAfterSessionPick(flavor, key, latestModel ?? 'default') : key;
         sync.applySettings({
-            agentDefaultOverrides: setAgentDefaultOverride(currentOverrides, flavor, field, key),
+            agentDefaultOverrides: setAgentDefaultOverride(currentOverrides, flavor, field, overrideValue),
         });
     };
 
@@ -1361,7 +1440,8 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                             type="button"
                             role="option"
                             aria-selected={index === slashIndex}
-                            className={`ci-slash-item${index === slashIndex ? ' ci-slash-item--active' : ''}`}
+                            aria-disabled={item.unavailable || undefined}
+                            className={`ci-slash-item${index === slashIndex ? ' ci-slash-item--active' : ''}${item.unavailable ? ' ci-slash-item--unavailable' : ''}`}
                             onMouseEnter={() => setSlashIndex(index)}
                             onClick={() => {
                                 const next = slashCommandText(item);
@@ -1371,7 +1451,9 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                             }}
                         >
                             <span className="ci-slash-command">/{item.command}</span>
-                            {item.description && <span className="ci-slash-desc">{item.description}</span>}
+                            {item.command === 'compact'
+                                ? <span className="ci-slash-desc">{item.unavailable ? t('session.chat.compactUnavailable') : t('session.chat.compactDescription')}</span>
+                                : item.description && <span className="ci-slash-desc">{item.description}</span>}
                         </button>
                     ))}
                 </div>
@@ -1478,7 +1560,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                         label={t('session.chat.modelLabel')}
                         options={models}
                         value={displayedModelKey ?? null}
-                        onChange={(key) => setMode('updateSessionModelMode', 'modelMode', key)}
+                        onChange={(key) => setMode('updateSessionModelMode', 'modelMode', modelPickToStore(key))}
                         subtitle={modelSubtitle}
                         effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
                         customize={canConfigureModels ? { label: t('modelConfig.customize'), onSelect: () => setModelEditorOpen(true) } : undefined}

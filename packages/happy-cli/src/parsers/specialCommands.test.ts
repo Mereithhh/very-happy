@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCompact, parseClear, parseSpecialCommand } from './specialCommands';
+import { compactCommandText, parseCompact, parseClear, parseSpecialCommand } from './specialCommands';
 
 describe('parseCompact', () => {
     it('should parse /compact command with argument', () => {
@@ -24,6 +24,27 @@ describe('parseCompact', () => {
         const result = parseCompact('please /compact this');
         expect(result.isCompact).toBe(false);
         expect(result.originalMessage).toBe('please /compact this');
+    });
+});
+
+describe('parseCompact — what a phone keyboard sends', () => {
+    it.each([
+        ['  /compact  ', '/compact'],
+        ['\u3000/compact', '/compact'],
+        ['\uFF0Fcompact', '/compact'],
+        ['/Compact', '/compact'],
+        ['/compact 保留测试结论', '/compact 保留测试结论'],
+        ['/compact\u3000保留测试结论', '/compact 保留测试结论'],
+        ['/compact保留测试结论', '/compact 保留测试结论'],
+        ['/compact\nkeep the plan', '/compact keep the plan'],
+    ])('%j → %j', (input, canonical) => {
+        expect(parseCompact(input)).toEqual({ isCompact: true, originalMessage: canonical });
+        expect(compactCommandText(input)).toBe(canonical);
+    });
+
+    it.each(['/compactx', '/compact-later', '//compact', 'x /compact', '/tmp/compact'])('%j stays chat', (input) => {
+        expect(parseCompact(input).isCompact).toBe(false);
+        expect(compactCommandText(input)).toBeNull();
     });
 });
 

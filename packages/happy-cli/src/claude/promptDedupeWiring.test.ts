@@ -50,7 +50,7 @@ describe('prompt dedupe wiring', () => {
         // `mutation-check` mangles the identifier inside the literal, not the line).
         // B-645: every path goes through `finalize`, which stamps exactly what
         // reaches the SDK — the project prefix/digest included.
-        expect(scope).toContain('const out = await session.projectInjector.decorate(text);\n                            onPromptFinalized?.(out);');
+        expect(scope).toContain('sourceIds: batchSourceIds,\n                            });\n                            onPromptFinalized?.(out);');
         expect(scope).toContain('message: await finalize(parked.message)');
         expect(scope).toContain('await finalize(appendStagedAttachmentsToPrompt(msg.message, staged))');
         expect(scope).toContain('const finalized = await finalize(msg.message);');

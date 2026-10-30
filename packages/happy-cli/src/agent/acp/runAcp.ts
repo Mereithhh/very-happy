@@ -1,6 +1,6 @@
 import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
 import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from './piContextUsage';
-import { buildAcpPrompt } from './acpSlashCommand';
+import { buildAcpPrompt, routeAcpUserText } from './acpSlashCommand';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
 import { configuration } from '@/configuration';
 import { appendStagedAttachmentsToPrompt, stageClaudeAttachments, CLAUDE_ATTACHMENT_KINDS } from '@/claude/utils/attachmentContent';
@@ -57,6 +57,7 @@ import {
 import type { SessionConfigOption, SessionModeState, SessionModelState } from '@agentclientprotocol/sdk';
 import { EditReportThrottle, extractAcpEditPaths } from '@/sessions/editPaths';
 import { reportSessionEditToDaemon } from '@/daemon/controlClient';
+import { readGeminiConfiguredModel } from './geminiConfiguredModel';
 
 const ACP_EVENT_PREVIEW_CHARS = 240;
 const ACP_RAW_PREVIEW_CHARS = 2000;
@@ -533,6 +534,9 @@ export async function runAcp(opts: {
     capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY],
   });
   metadata.attachmentKinds = [];
+  // B-844: report the model the machine's Gemini config pins (null = none),
+  // so the web's "follow latest" leaves it alone.
+  if (opts.agentName === 'gemini') metadata.configuredModel = readGeminiConfiguredModel();
   // B-633: the daemon's resume reattaches to the SAME session row (same as
   // runCodex / runClaude): no new session, the server snapshot seeds the cursor.
   const reconnect = readAcpReconnectEnv(process.env);
@@ -652,6 +656,8 @@ export async function runAcp(opts: {
   let legacyModes: SessionModeState | null = null;
   let legacyModels: SessionModelState | null = null;
   let sawSlashCommands = false;
+  /** The agent's own commands (`available_commands_update`); null until it lists them. */
+  let agentCommands: string[] | null = null;
   let sawModes = false;
   let sawModels = false;
 
@@ -963,6 +969,7 @@ export async function runAcp(opts: {
       const commands = msg.payload as { name: string; description?: string }[];
       const commandNames = commands.map((c) => c.name);
       sawSlashCommands = commands.length > 0;
+      agentCommands = commandNames;
       if (verbose) {
         logAcp('muted', `Outgoing slash commands from ${opts.agentName} (${commands.length}):`);
         for (const command of commands) {
@@ -1167,6 +1174,23 @@ export async function runAcp(opts: {
 
       if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'effort')) {
         currentEffort = message.meta.effort ?? null;
+      }
+
+      // Owner 10-30: a standalone `/compact` runs as a turn of its own — never steered
+      // into a running turn or joined with queued messages, where the agent reads it
+      // as chat — and an agent without compaction gets Very Happy's answer, not the model's.
+      const route = routeAcpUserText(message.content.text, agentCommands);
+      if (route.kind === 'unsupported') {
+        session.sendSessionEvent({ type: 'message', message: route.notice });
+        return;
+      }
+      if (route.kind === 'command') {
+        messageQueue.pushIsolate(route.text, {
+          permissionMode: currentPermissionMode,
+          model: currentModel,
+          effort: currentEffort,
+        }, attachments, message.localKey);
+        return;
       }
 
       // B-632 ①: 「Steer」 on a queued message — into the running pi turn when the
@@ -1400,7 +1424,7 @@ export async function runAcp(opts: {
         // send). Say what the agent said; keep the session; the next message runs anew.
         const failure = describeAcpTurnFailure(opts.agentName, error);
         session.sendSessionEvent({ type: 'message', message: failure.message });
-        sendEnvelopes(sessionManager.endTurn('failed'));
+        sendEnvelopes(sessionManager.endTurn('failed', failure.error));
         streamRelay.endTurn();
         setThinking(false);
         session.sendSessionEvent({ type: 'ready' });

@@ -86,6 +86,12 @@ export type ApprovalHandler = (params: {
 /**
  * Check that `codex app-server` is available.
  */
+/** B-844d: the thread's model from a thread/start|resume|fork response (top-level, else thread.model). */
+export function threadModelOf(result: { model?: unknown; thread?: object } | null | undefined): string | null {
+    const model = result?.model ?? (result?.thread as { model?: unknown } | undefined)?.model;
+    return typeof model === 'string' && model.trim() ? model.trim() : null;
+}
+
 function isAppServerAvailable(): boolean {
     try {
         const version = execSync('codex --version', { encoding: 'utf8', windowsHide: true }).trim();
@@ -190,6 +196,12 @@ export class CodexAppServerClient {
     // Session state
     private _threadId: string | null = null;
     private _turnId: string | null = null;
+    /**
+     * B-844d: the model the thread really runs. Codex keeps a thread's model
+     * (thread/start, thread/resume, a turn/start that named one) for every
+     * later turn that omits it, and reports it on start/resume/fork.
+     */
+    private _threadModel: string | null = null;
     private threadDefaults: {
         model?: string;
         cwd?: string;
@@ -218,6 +230,8 @@ export class CodexAppServerClient {
     private completedTurnIds = new Set<string>();
     /** B-625: turns whose failure has already been forwarded, so a second failed frame is not. */
     private failedTurnIds = new Set<string>();
+    /** The turn the last pending completion was resolved for (runTurnAndWait reads its verdict). */
+    private lastResolvedTurnId: string | null = null;
     // B-625: the app-server speaks for every thread it hosts — the session's own and the
     // children `spawn_agent` opens — so a lifecycle frame (turn/started, turn/completed,
     // thread/status/changed, error, thread/closed) is the session's only when its `threadId`
@@ -271,6 +285,11 @@ export class CodexAppServerClient {
 
     get turnId(): string | null {
         return this._turnId;
+    }
+
+    /** B-844d: the model the current thread runs for turns that name none (null = unknown). */
+    get threadModel(): string | null {
+        return this._threadModel;
     }
 
     setEventHandler(handler: (msg: EventMsg) => void): void {
@@ -845,6 +864,7 @@ export class CodexAppServerClient {
         this.clearThreadStopGrace();
         if (!opts?.preserveThreadState) {
             this._threadId = null;
+            this._threadModel = null;
             this.threadDefaults = null;
         }
 
@@ -973,6 +993,7 @@ export class CodexAppServerClient {
         const result = await this.request('thread/start', params) as NewConversationResponse;
         this._threadId = result.thread.id;
         this._turnId = null;
+        this._threadModel = threadModelOf(result);
         this.rememberThreadDefaults(opts);
         logger.debug('[CodexAppServer] Thread started:', this._threadId);
         return { threadId: result.thread.id, model: result.model };
@@ -1011,6 +1032,7 @@ export class CodexAppServerClient {
         const result = await this.request('thread/resume', params) as ResumeConversationResponse;
         this._threadId = result.thread.id;
         this._turnId = null;
+        this._threadModel = threadModelOf(result);
         this.rememberThreadDefaults({
             model: opts?.model ?? defaults.model,
             cwd: opts?.cwd ?? defaults.cwd,
@@ -1049,6 +1071,7 @@ export class CodexAppServerClient {
         const result = await this.request('thread/fork', params) as ForkConversationResponse;
         this._threadId = result.thread.id;
         this._turnId = null;
+        this._threadModel = threadModelOf(result);
         this.rememberThreadDefaults({
             model: opts.model ?? defaults.model,
             cwd: opts.cwd ?? defaults.cwd,
@@ -1111,6 +1134,7 @@ export class CodexAppServerClient {
         } catch (error) {
             logger.warn('[CodexAppServer] Failed to resume thread after reconnect', error);
             this._threadId = null;
+            this._threadModel = null;
             this.threadDefaults = null;
             return false;
         }
@@ -1129,6 +1153,7 @@ export class CodexAppServerClient {
 
     private resolvePendingTurn(aborted: boolean): void {
         if (!this.pendingTurnCompletion) return;
+        this.lastResolvedTurnId = this.pendingTurnCompletion.turnId;
         this.clearTurnWatchdog();
         this.clearThreadStopGrace();
         this.pendingTurnCompletion.resolve(aborted);
@@ -1282,6 +1307,7 @@ export class CodexAppServerClient {
             return;
         }
 
+        if (!pending.turnId && turnId) pending.turnId = turnId;
         this.resolvePendingTurn(aborted);
     }
 
@@ -1394,6 +1420,12 @@ export class CodexAppServerClient {
         // We don't await completion here — the caller's event handler
         // tracks task_complete / turn_aborted.
         const result = await this.request('turn/start', params) as { turn?: { id?: string | null } };
+        // B-844d: an accepted turn model becomes the thread's model; a later
+        // idle-release/forced-restart resume must not put the start model back.
+        if (opts?.model) {
+            this._threadModel = opts.model;
+            if (this.threadDefaults) this.threadDefaults.model = opts.model;
+        }
         const turnId = result?.turn?.id;
         if (typeof turnId === 'string' && turnId.length > 0) {
             this._turnId = turnId;
@@ -1423,6 +1455,29 @@ export class CodexAppServerClient {
         /** B-625: test hook for the thread-stop grace (see armThreadStopGrace). */
         threadStopGraceMs?: number;
     }): Promise<{ aborted: boolean }> {
+        const { aborted } = await this.runTurnAndWait(() => this.sendTurn(prompt, opts), opts);
+        return { aborted };
+    }
+
+    /**
+     * `/compact`: Codex compacts the thread in a turn of its own
+     * (`thread/compact/start` answers `{}`, then `turn/started` →
+     * `contextCompaction` item → `turn/completed`, probed on codex-cli 0.154).
+     * Waits for that turn like any other; `failed` is the turn's own verdict.
+     */
+    async compactThreadAndWait(opts?: { turnTimeoutMs?: number; threadStopGraceMs?: number }): Promise<{ aborted: boolean; failed: boolean }> {
+        return this.runTurnAndWait(async () => {
+            if (!this._threadId) {
+                throw new Error('No active thread. Call startThread first.');
+            }
+            await this.request('thread/compact/start', { threadId: this._threadId });
+        }, opts);
+    }
+
+    private async runTurnAndWait(start: () => Promise<void>, opts?: {
+        turnTimeoutMs?: number;
+        threadStopGraceMs?: number;
+    }): Promise<{ aborted: boolean; failed: boolean }> {
         // Wait for any in-flight interruptTurn() to complete before starting a new
         // turn. Otherwise the stale turn/interrupt RPC can reach Codex after our
         // turn/start and abort the wrong turn.
@@ -1459,7 +1514,7 @@ export class CodexAppServerClient {
         });
 
         try {
-            await this.sendTurn(prompt, opts);
+            await start();
         } catch (err) {
             this.clearTurnWatchdog();
             this.pendingTurnCompletion = null;
@@ -1470,7 +1525,8 @@ export class CodexAppServerClient {
 
         const aborted = await completion;
         this.clearTurnWatchdog();
-        return { aborted };
+        const turnId = this.lastResolvedTurnId;
+        return { aborted, failed: turnId !== null && this.failedTurnIds.has(turnId) };
     }
 
     private armTurnWatchdog(timeoutMs: number): void {
@@ -1548,6 +1604,7 @@ export class CodexAppServerClient {
         this.resolvePendingTurn(true);
         this._threadId = null;
         this._turnId = null;
+        this._threadModel = null;
         this.threadDefaults = null;
         this.completedTurnIds.clear();
         this.failedTurnIds.clear();
@@ -1575,6 +1632,18 @@ export class CodexAppServerClient {
             if (cursor) seenCursors.add(cursor);
         } while (cursor);
         return models;
+    }
+
+    /**
+     * B-844: the model Codex's effective configuration pins (config.toml,
+     * profile, CLI overrides) via `config/read`; null = nothing pinned.
+     * Throws when this Codex has no `config/read` — the caller then reports
+     * nothing (unknown) and the web sends no model.
+     */
+    async readConfiguredModel(cwd: string): Promise<string | null> {
+        const response = await this.request('config/read', { cwd }, 10_000) as { config?: { model?: unknown } };
+        const model = response?.config?.model;
+        return typeof model === 'string' && model.trim() ? model.trim() : null;
     }
 
     private request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown> {

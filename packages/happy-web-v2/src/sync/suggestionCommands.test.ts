@@ -14,4 +14,9 @@ describe('buildCommandItems', () => {
         const items = buildCommandItems(['', ' /help'], ['///logout', '   ']);
         expect(items.map((item) => item.command)).toEqual(['compact', 'clear', 'mcp', 'skills']);
     });
+
+    it('keeps /compact listed but marks it unavailable where the session cannot compact', () => {
+        expect(buildCommandItems([], [], { compactUnavailable: true }).find((item) => item.command === 'compact')?.unavailable).toBe(true);
+        expect(buildCommandItems([], []).find((item) => item.command === 'compact')?.unavailable).toBeUndefined();
+    });
 });

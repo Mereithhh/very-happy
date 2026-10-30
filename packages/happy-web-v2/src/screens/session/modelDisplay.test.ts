@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
+import { deriveCodexRunningModel, deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
 
 const base = { isClaude: true, selectedKey: 'opus', running: 'claude-opus-5' };
 
@@ -40,5 +40,19 @@ describe('selectDisplayedModelKey (B-362)', () => {
         expect(selectDisplayedModelKey({ selectedKey: 'default', running: undefined, optionKeys: keys })).toBe(keys[0]);
         expect(selectDisplayedModelKey({ selectedKey: 'default', running: 'not-listed', optionKeys: keys })).toBe(keys[0]);
         expect(selectDisplayedModelKey({ selectedKey: undefined, running: undefined, optionKeys: [] })).toBeUndefined();
+    });
+});
+
+describe('deriveCodexRunningModel (B-844d)', () => {
+    it('names the thread model when it differs from the selection (follow config sol, thread kept luna)', () => {
+        expect(deriveCodexRunningModel({ stickyModel: 'gpt-6-luna', running: 'gpt-6-luna', intended: 'gpt-5.6-sol' })).toBe('gpt-6-luna');
+    });
+    it('silent when they agree', () => {
+        expect(deriveCodexRunningModel({ stickyModel: 'gpt-6-luna', running: 'gpt-6-luna', intended: 'gpt-6-luna' })).toBeUndefined();
+        expect(deriveCodexRunningModel({ stickyModel: null, running: 'gpt-5.6-sol', intended: 'gpt-5.6-sol' })).toBeUndefined();
+    });
+    it('silent for wrappers that do not publish model facts, or unknown intent', () => {
+        expect(deriveCodexRunningModel({ stickyModel: undefined, running: 'gpt-6-luna', intended: 'gpt-5.6-sol' })).toBeUndefined();
+        expect(deriveCodexRunningModel({ stickyModel: null, running: 'gpt-6-luna', intended: undefined })).toBeUndefined();
     });
 });

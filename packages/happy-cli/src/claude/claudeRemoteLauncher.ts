@@ -1,5 +1,6 @@
 import { createRuntimeControls, isRuntimeCheckpointReplay } from './runtimeControls';
 import { leadBoardFor } from '@/attention/leadBoard';
+import { finalizeRemotePrompt } from './finalizeRemotePrompt';
 import { createBackgroundTaskTracker } from './backgroundTasks';
 import { notifyDaemonClaudeAuthFailed } from '@/daemon/controlClient';
 import { Session } from "./session";
@@ -589,6 +590,7 @@ export async function claudeRemoteLauncher(
                 // B-515: only the process's first remote launch may prewarm
                 // (take() hands the lease out once).
                 launchPrewarm = session.takeClaudePrewarm();
+                let startArgsUsed = false;
                 const remoteResult = await claudeRemote({
                     prewarm: launchPrewarm ?? undefined,
                     sessionId: session.sessionId,
@@ -616,10 +618,11 @@ export async function claudeRemoteLauncher(
                         const finalize = async (prompt: string): Promise<string> => {
                             // B-766: the turn starts here (owner questions it answers, `this_turn` anchor) and
                             // a lead's prompt carries the open briefing-board items.
-                            const board = leadBoardFor(session.client);
-                            board?.onTurnStart(batchSourceIds);
-                            const text = board ? await board.decorate(prompt) : prompt;
-                            const out = await session.projectInjector.decorate(text);
+                            const out = await finalizeRemotePrompt(prompt, {
+                                board: leadBoardFor(session.client),
+                                project: session.projectInjector,
+                                sourceIds: batchSourceIds,
+                            });
                             onPromptFinalized?.(out);
                             return out;
                         };
@@ -852,10 +855,15 @@ export async function claudeRemoteLauncher(
                         });
                     },
                     signal: abortController.signal,
+                    onStartArgsUsed: () => { startArgsUsed = true; },
                 });
-                
-                // Consume one-time Claude flags after spawn
-                session.consumeOneTimeFlags();
+
+                // Consume one-time Claude flags only once a Claude process ran
+                // on them. A launch that ends first — the first message after a
+                // wrapper restart is isolated (/compact) and parked for the next
+                // launch — must leave `--resume` for that launch, or it starts
+                // an empty conversation and the history is gone (QA21).
+                if (startArgsUsed) session.consumeOneTimeFlags();
                 
                 if (!exitReason && abortController.signal.aborted && !silentRelaunch) {
                     session.client.closeClaudeSessionTurn('cancelled');

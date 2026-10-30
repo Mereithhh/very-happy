@@ -1,4 +1,4 @@
-import { CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY } from '@slopus/happy-wire';
+import { CODEX_COMPACT_CAPABILITY, CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY } from '@slopus/happy-wire';
 import { createProjectInjector } from '@/projects/injector';
 import { sharedProjectsClient } from '@/projects/client';
 import { unlink } from 'node:fs/promises';
@@ -47,6 +47,7 @@ import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { unsupportedEffortReason } from './effortSupport';
+import { codexModelFacts, resolveCodexTurnModel } from './turnModel';
 import { codexStderrTailOf, describeCodexFailure, describeCodexRetry, describeThrownTurnError } from './codexFailureText';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
@@ -57,7 +58,8 @@ import { resumeExistingThread } from './resumeExistingThread';
 import { importCodexThread, IMPORT_CODEX_THREAD_ENV } from './importCodexThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { CODEX_IDLE_RELEASE_ENV, CodexIdleReleaseTimer, resolveCodexIdleReleaseMs, shouldReleaseIdleCodex } from './codexIdleRelease';
-import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
+import { codexCompactCommand, enqueueCodexUserText, isCodexClearText, isCodexControlText } from './codexClearCommand';
+import { runCodexCompact } from './codexCompact';
 import { steerIntoRunningTurn } from './codexSteer';
 import {
     buildCodexTurnPrompt,
@@ -66,6 +68,7 @@ import {
 } from './codexPrompt';
 import { codexEventLogMetadata, logValueMetadata, safeCodexErrorMetadata } from './logMetadata';
 import { DEFAULT_CODEX_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
+import { CODEX_REMOTE_PERMISSION_MODES, codexPublishablePermissionMode } from './codexPermissionMode';
 import { EditReportThrottle, extractCodexPatchPaths } from '@/sessions/editPaths';
 import { reportSessionEditToDaemon } from '@/daemon/controlClient';
 
@@ -73,7 +76,14 @@ import { reportSessionEditToDaemon } from '@/daemon/controlClient';
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
  * Returns null if the event represents a successful/clean completion.
  */
-const DEFAULT_CODEX_MODEL = 'gpt-5.5';
+/**
+ * B-844: no wrapper-side model default. A turn without an explicit model runs
+ * what the machine's Codex config (config.toml / profile) or Codex itself
+ * picks — the web sends one only for an explicit pick, or for "follow latest"
+ * when the config pins nothing. The hardcoded gpt-5.5 here (ported 05-22)
+ * silently overrode every config.toml model.
+ */
+const DEFAULT_CODEX_MODEL: string | undefined = undefined;
 const DEFAULT_CODEX_EFFORT: ReasoningEffort = 'medium';
 
 /**
@@ -152,10 +162,14 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
-        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY],
+        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY],
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
+    // B-844c: no sticky model yet (DEFAULT_CODEX_MODEL is undefined); the
+    // effort a turn without one runs is the wrapper's default, not the catalog's.
+    metadata.stickyModel = null;
+    metadata.currentThoughtLevelCode = DEFAULT_CODEX_EFFORT;
     // B-464: import of a Codex CLI / desktop thread. The original id is stamped
     // from birth (lineage, and the picker's "imported before" label — B-600:
     // never a reason to hide the original, since the fork below can fail);
@@ -311,31 +325,62 @@ export async function runCodex(opts: {
     let currentEffort: ReasoningEffort | undefined = DEFAULT_CODEX_EFFORT;
     let currentAppendSystemPrompt: string | undefined = undefined;
 
+    // B-844c: publish the sticky model so the web can clear it with `model:
+    // null` once its picker follows the machine config again, and the effort
+    // turns really run (QA22c P2-1: the picker showed the catalog's `low`
+    // while every turn ran this wrapper's `medium`). No effort → Codex's own
+    // default for the model, which the web then reads from the catalog.
+    // B-844d: both model facts come from the thread's real model (the client
+    // tracks thread/start|resume and accepted turn models), so they survive a
+    // restarted wrapper (`send --resume`) and an abort.
+    let reportedStickyModel: string | null = null;
+    let reportedCurrentModel: string | undefined;
+    let reportedEffort: string | undefined = DEFAULT_CODEX_EFFORT;
+    const reportModeFacts = () => {
+        const facts = codexModelFacts({ threadModel: client.threadModel, pendingModel: currentModel, machineDefault: machineDefaultModel });
+        const effort = currentEffort;
+        if (facts.stickyModel === reportedStickyModel && facts.currentModelCode === reportedCurrentModel && effort === reportedEffort) return;
+        reportedStickyModel = facts.stickyModel;
+        reportedCurrentModel = facts.currentModelCode;
+        reportedEffort = effort;
+        session.updateMetadata((metadata) => {
+            const { currentThoughtLevelCode: _previous, currentModelCode: _model, ...rest } = metadata;
+            return {
+                ...rest,
+                stickyModel: facts.stickyModel,
+                ...(facts.currentModelCode ? { currentModelCode: facts.currentModelCode } : {}),
+                ...(effort ? { currentThoughtLevelCode: effort } : {}),
+            };
+        });
+    };
+
     const resetCurrentModeDefaults = () => {
-        currentPermissionMode = DEFAULT_CODEX_PERMISSION_MODE;
-        currentModel = DEFAULT_CODEX_MODEL;
+        // B-845b: the permission mode is the user's choice, not a per-turn override — an abort
+        // keeps it (and the published `metadata.permissionMode` stays true). Resetting it here
+        // ran the next meta-less send (CLI send, team wake) on `default` while the session
+        // still reported read-only / yolo.
+        // B-844d: the model is not reset — the Codex thread keeps it across an
+        // abort anyway, so forgetting it here only made the published facts lie.
         currentEffort = DEFAULT_CODEX_EFFORT;
+        reportModeFacts();
         currentAppendSystemPrompt = undefined;
         logger.debug('[Codex] Reset current mode defaults after abort');
     };
 
-    // Valid Codex permission modes from remote messages. Matches the modes
-    // the mobile UI exposes for Codex sessions (see modelModeOptions.ts:
-    // getCodexPermissionModes) and mirrors the Gemini validation pattern at
-    // runGemini.ts:222. Anything outside this set is silently ignored — the
-    // previous code blindly cast `message.meta.permissionMode as PermissionMode`
-    // at runtime, meaning a crafted value like `'totally_unsafe'` would be
-    // accepted and then fall through to the `default` branch in
-    // resolveCodexExecutionPolicy() — or worse, an attacker-chosen valid value
-    // could escalate sandbox scope (issue #1092).
-    const VALID_REMOTE_PERMISSION_MODES: readonly PermissionMode[] = [
-        'default',
-        'read-only',
-        'safe-yolo',
-        'yolo',
-    ];
+    const VALID_REMOTE_PERMISSION_MODES = CODEX_REMOTE_PERMISSION_MODES;
+    // B-845: the mode a resume relaunches with (codexPermissionMode.ts).
+    let publishedPermissionMode: PermissionMode | null = null;
+    const publishPermissionMode = (mode: unknown) => {
+        const publishable = codexPublishablePermissionMode(mode);
+        if (!publishable || publishable === publishedPermissionMode) return;
+        publishedPermissionMode = publishable;
+        session.updateMetadata((currentMetadata) => ({ ...currentMetadata, permissionMode: publishable }));
+    };
+    publishPermissionMode(opts.permissionMode);
 
     let discoveredModels: Awaited<ReturnType<CodexAppServerClient['listModels']>> = [];
+    // B-844c: what a turn without an explicit model runs (see turnModel.ts).
+    let machineDefaultModel: string | undefined;
 
     registerAgentAttachmentDownloads(session);
     const CODEX_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -368,6 +413,7 @@ export async function runCodex(opts: {
                 if (VALID_REMOTE_PERMISSION_MODES.includes(incoming)) {
                     messagePermissionMode = incoming;
                     currentPermissionMode = messagePermissionMode;
+                    publishPermissionMode(incoming);
                     logger.debug('[Codex] Valid permission mode override applied');
                 } else {
                     logger.debug('[Codex] Ignoring invalid permission mode override', logValueMetadata(message.meta.permissionMode));
@@ -378,9 +424,12 @@ export async function runCodex(opts: {
 
             // Resolve model; explicit null resets to default (undefined)
             let messageModel = currentModel;
+            let messageModelReset = false;
             if (message.meta?.hasOwnProperty('model')) {
                 messageModel = message.meta.model || undefined;
+                messageModelReset = !messageModel;
                 currentModel = messageModel;
+                reportModeFacts();
                 logger.debug('[Codex] Model override updated', logValueMetadata(message.meta.model));
             } else {
                 logger.debug('[Codex] User message received without a model override');
@@ -395,10 +444,12 @@ export async function runCodex(opts: {
                 if (incoming === null || incoming === undefined) {
                     messageEffort = undefined;
                     currentEffort = undefined;
+                    reportModeFacts();
                     logger.debug(`[Codex] Effort reset to default`);
                 } else if (typeof incoming === 'string') {
                     messageEffort = incoming as ReasoningEffort;
                     currentEffort = messageEffort;
+                    reportModeFacts();
                     logger.debug('[Codex] Valid effort override applied');
                 } else {
                     logger.debug('[Codex] Ignoring invalid effort override', logValueMetadata(incoming));
@@ -419,10 +470,11 @@ export async function runCodex(opts: {
             const enhancedMode: EnhancedMode = {
                 permissionMode: messagePermissionMode || 'default',
                 model: messageModel,
+                ...(messageModelReset ? { modelReset: true } : {}),
                 appendSystemPrompt: messageAppendSystemPrompt,
                 effort: messageEffort,
             };
-            if (message.meta?.delivery === 'steer' && !isCodexClearText(message.content.text)) {
+            if (message.meta?.delivery === 'steer' && !isCodexControlText(message.content.text)) {
                 if (await steerIntoRunningTurn(steerDeps, message.content.text, attachments, message.localKey)) {
                     logger.debug('[Codex] User message steered into the current turn');
                     return;
@@ -435,8 +487,8 @@ export async function runCodex(opts: {
                 attachments,
                 sourceId: message.localKey,
             });
-            if (enqueueResult === 'clear') {
-                logger.debug('[Codex] /clear command pushed to isolated queue');
+            if (enqueueResult === 'clear' || enqueueResult === 'compact') {
+                logger.debug(`[Codex] /${enqueueResult} command pushed to isolated queue`);
             }
         }).catch((error) => {
             logger.warn('[Codex] Failed to prepare user attachments', safeCodexErrorMetadata(error));
@@ -888,15 +940,28 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect done');
         try {
             discoveredModels = await client.listModels();
-            if (discoveredModels.length > 0) {
+            // B-844: a model pinned in the machine's Codex config wins over
+            // "follow latest" and is what `default` really runs. Unknown
+            // (no config/read) leaves the field absent.
+            let configured: { model: string | null } | null = null;
+            try {
+                configured = { model: await client.readConfiguredModel(process.cwd()) };
+            } catch (error) {
+                logger.debug('[Codex] config/read unavailable', safeCodexErrorMetadata(error));
+            }
+            machineDefaultModel = configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model;
+            if (discoveredModels.length > 0 || configured) {
                 session.updateMetadata((metadata) => ({
                     ...metadata,
-                    models: discoveredModels.map((model) => ({
-                        code: model.model, value: model.displayName, description: model.description,
-                        reasoningEfforts: model.supportedReasoningEfforts.map((option) => option.reasoningEffort),
-                        defaultReasoningEffort: model.defaultReasoningEffort,
-                    })),
-                    defaultModelCode: discoveredModels.find((model) => model.isDefault)?.model,
+                    ...(discoveredModels.length > 0 ? {
+                        models: discoveredModels.map((model) => ({
+                            code: model.model, value: model.displayName, description: model.description,
+                            reasoningEfforts: model.supportedReasoningEfforts.map((option) => option.reasoningEffort),
+                            defaultReasoningEffort: model.defaultReasoningEffort,
+                        })),
+                    } : {}),
+                    defaultModelCode: configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model,
+                    ...(configured ? { configuredModel: configured.model } : {}),
                 }));
             }
         } catch (error) {
@@ -931,6 +996,9 @@ export async function runCodex(opts: {
             first = false;
             appendSystemPromptInjected = true;
         }
+        // B-844d: a resumed/imported thread already runs a model — publish it
+        // (and whether it is sticky) before the first turn.
+        reportModeFacts();
 
         const forkCodexThreadId = process.env.HAPPY_FORK_CODEX_THREAD_ID;
         if (!reconnectSessionId && forkCodexThreadId) {
@@ -1065,6 +1133,8 @@ export async function runCodex(opts: {
                 reasoningProcessor.abort();
                 diffProcessor.reset();
                 appendSystemPromptInjected = false;
+                // B-845: the new thread never saw the project prefix — send it in full again.
+                projectInjector.reset();
                 thinking = false;
                 session.keepAlive(thinking, 'remote');
                 messageBuffer.addMessage('Context was reset', 'status');
@@ -1089,7 +1159,22 @@ export async function runCodex(opts: {
             // Display user messages in the UI
             messageBuffer.addMessage(message.message, 'user');
 
+            const compactCommand = codexCompactCommand(message.message);
             try {
+                if (compactCommand !== null) {
+                    // Owner 10-30: Codex compacts the thread itself; the text never reaches the model.
+                    await client.ensureConnected();
+                    const outcome = await runCodexCompact(compactCommand, {
+                        client,
+                        notify: (text) => {
+                            messageBuffer.addMessage(text, 'status');
+                            session.sendSessionEvent({ type: 'message', message: text });
+                        },
+                    });
+                    logger.debug(`[Codex] /compact ${outcome}`);
+                    continue;
+                }
+
                 // Bring a released/crashed app-server back before reading
                 // client.sandboxEnabled — it is only meaningful for a live process.
                 await client.ensureConnected();
@@ -1102,7 +1187,8 @@ export async function runCodex(opts: {
                     sandboxManagedByHappy,
                 );
 
-                const effortRefusal = unsupportedEffortReason(discoveredModels, message.mode.model, message.mode.effort);
+                const turnModel = resolveCodexTurnModel(message.mode, machineDefaultModel);
+                const effortRefusal = unsupportedEffortReason(discoveredModels, turnModel ?? client.threadModel ?? machineDefaultModel, message.mode.effort);
                 if (effortRefusal) {
                     throw new Error(effortRefusal);
                 }
@@ -1110,7 +1196,7 @@ export async function runCodex(opts: {
                 // Start thread on first turn (thread persists across mode changes)
                 if (!client.hasActiveThread()) {
                     const startedThread = await client.startThread({
-                        model: message.mode.model,
+                        model: turnModel,
                         cwd: process.cwd(),
                         approvalPolicy: executionPolicy.approvalPolicy,
                         sandbox: executionPolicy.sandbox,
@@ -1120,6 +1206,7 @@ export async function runCodex(opts: {
                         ...currentMetadata,
                         codexThreadId: startedThread.threadId,
                     }));
+                    reportModeFacts();
                 }
 
                 const includeAppendSystemPrompt = Boolean(
@@ -1137,11 +1224,12 @@ export async function runCodex(opts: {
                 }) : [];
                 const result = await client.sendTurnAndWait(appendStagedAttachmentsToPrompt(turnPrompt, staged), {
                     images: staged.filter((file) => ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.mimeType)).map((file) => file.path),
-                    model: message.mode.model,
+                    model: turnModel,
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,
                     effort: message.mode.effort,
                 });
+                reportModeFacts();
                 first = false;
                 if (includeAppendSystemPrompt) {
                     appendSystemPromptInjected = true;

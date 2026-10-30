@@ -10,7 +10,8 @@
  *   very-happy spawn --fork <sessionId> [--prompt …] [--json]
  *
  * B-492: defaults match the web launcher — permission mode and first-message
- * model come from happy-wire's AGENT_CODE_DEFAULTS (claude: yolo on Opus 5.5),
+ * model come from happy-wire's AGENT_CODE_DEFAULTS (claude: yolo on the
+ * newest Opus the wrapper runs; B-844 `latest` resolution),
  * overridable with --permission-mode / --model. `--fork` is the web's fork.
  *
  * Implementation notes:
@@ -43,7 +44,10 @@ import { readFileSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { checkIfDaemonRunningAndCleanupStaleState, spawnDaemonSession, stopDaemonSession } from '@/daemon/controlClient'
 import { readPersistedSessions, type PersistedSession } from '@/persistence'
-import { resolveFirstMessageMeta, resolveSpawnPermissionMode, type FirstMessageMeta } from './spawnDefaults'
+import { resolveFirstMessageMeta, resolveSpawnPermissionMode, waitsForModelCatalog, type FirstMessageMeta } from './spawnDefaults'
+import { fetchLatestModelTable } from '@/api/latestModels'
+import { configuration } from '@/configuration'
+import type { Metadata } from '@/api/types'
 import { forkProviderConversation, resolveForkSource, type ForkSource } from './spawnFork'
 import { readSessionMetadata } from '@/sessions/sessionOps'
 import { sendUserMessage, sessionWebUrl, waitForSessionKey } from './sessionMessage'
@@ -206,8 +210,8 @@ ${chalk.bold('Options:')}
                             1-24 chars: [a-z0-9] plus - or _. Shows as a chip in
                             the web list and is searchable as #<name>.
   --permission-mode <m>  Permission mode for the new session: default,
-                            acceptEdits, plan, yolo, bypassPermissions.
-                            Default = the web launcher's: yolo for claude /
+                            acceptEdits, plan, yolo, bypassPermissions (Codex
+                            also read-only, safe-yolo). Default = the web launcher's: yolo for claude /
                             codex / pi, 'default' for gemini / openclaw. A fork
                             keeps its source's mode. 'default' stops at the first
                             un-allowlisted tool until someone approves it (see
@@ -215,10 +219,11 @@ ${chalk.bold('Options:')}
   --agent <name>         Backend to run: claude (default), codex, gemini,
                             openclaw, pi (needs pi-acp on the daemon's PATH).
   --model, -m <id>       Model for the session, sent with the first message
-                            (needs --prompt). Default = the web launcher's:
-                            claude-opus-5-5 for claude (the machine default when
-                            its Claude Code is too old for it); other agents use
-                            their own default. 'default' = the machine default.
+                            (needs --prompt). Default = the web launcher's
+                            'latest': the newest model of the agent's tier this
+                            machine runs (claude: newest Opus; codex: newest
+                            sol its Codex lists; gemini: newest pro), else the
+                            machine default. 'default' = the machine default.
   --fork <sessionId>     Fork an existing session of THIS machine (same as the
                             web's fork): copies its conversation and continues
                             it in a new session, in the same directory and with
@@ -258,6 +263,8 @@ export interface FirstMessageDeps {
     sendUserMessage: typeof sendUserMessage
     /** B-531 knobs, injectable for the ordering test. */
     forkWait?: { timeoutMs?: number; pollMs?: number; sleep?: (ms: number) => Promise<void>; now?: () => number }
+    /** B-844 knobs for the model-catalog wait. */
+    catalogWait?: { timeoutMs?: number; pollMs?: number; sleep?: (ms: number) => Promise<void>; now?: () => number }
     warn?: (message: string) => void
 }
 
@@ -279,11 +286,42 @@ const defaultFirstMessageDeps: FirstMessageDeps = {
  * (message NOT sent) if a capable wrapper never confirms; a wrapper without
  * the capability gets the old immediate send plus a warning.
  */
+export type FirstMessageMetadata = Pick<Metadata, 'capabilities' | 'models' | 'configuredModel'>
+
+/**
+ * B-844: Codex/Gemini publish their model catalog right after connecting,
+ * usually just after the session key lands. `latest` resolves only against
+ * that catalog, so wait for it (bounded); on timeout the first message goes
+ * without a model (machine default) and later web turns resolve it.
+ */
+export async function waitForModelCatalog(
+    readMetadata: () => Promise<unknown>,
+    initial: FirstMessageMetadata | undefined,
+    knobs: NonNullable<FirstMessageDeps['catalogWait']> = {},
+): Promise<FirstMessageMetadata | undefined> {
+    const timeoutMs = knobs.timeoutMs ?? 8_000
+    const pollMs = knobs.pollMs ?? 400
+    const sleep = knobs.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+    const now = knobs.now ?? Date.now
+    let current = initial
+    const deadline = now() + timeoutMs
+    while (!(current?.models && current.models.length > 0) && current?.configuredModel === undefined && now() < deadline) {
+        await sleep(pollMs)
+        try {
+            const read = await readMetadata() as FirstMessageMetadata | null
+            if (read) current = read
+        } catch {
+            // transient read failure: keep polling until the deadline
+        }
+    }
+    return current
+}
+
 export async function sendFirstMessage(
     sessionId: string,
     text: string,
-    metaFor: (capabilities: string[] | null) => FirstMessageMeta,
-    opts: { fork: boolean },
+    metaFor: (metadata: FirstMessageMetadata | undefined) => FirstMessageMeta,
+    opts: { fork: boolean; waitForCatalog?: boolean },
     deps: FirstMessageDeps = defaultFirstMessageDeps,
 ): Promise<FirstMessageMeta> {
     const persisted = await deps.waitForSessionKey(sessionId, 15_000)
@@ -297,7 +335,10 @@ export async function sendFirstMessage(
             deps.warn?.('the forked session runs an older wrapper that cannot confirm its replayed history is uploaded; sending now, so the first message may appear inside that history. Restart the daemon on this CLI version to fix.')
         }
     }
-    const meta = metaFor(persisted.metadata?.capabilities ?? null)
+    const metadata = opts.waitForCatalog
+        ? await waitForModelCatalog(() => deps.readSessionMetadata(sessionId, persisted), persisted.metadata as FirstMessageMetadata | undefined, deps.catalogWait)
+        : persisted.metadata as FirstMessageMetadata | undefined
+    const meta = metaFor(metadata)
     await deps.sendUserMessage(sessionId, persisted, text, 'cli-spawn', meta)
     return meta
 }
@@ -459,9 +500,14 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
     let sentMeta: FirstMessageMeta | null = null
     if (prompt !== undefined) {
         try {
-            sentMeta = await sendFirstMessage(sessionId, prompt, (capabilities) => resolveFirstMessageMeta({
-                agent, permissionMode, explicitModel: options.model, capabilities,
-            }), { fork: forkSource !== null })
+            const latestTable = await fetchLatestModelTable(configuration.serverUrl)
+            sentMeta = await sendFirstMessage(sessionId, prompt, (metadata) => resolveFirstMessageMeta({
+                agent, permissionMode, explicitModel: options.model,
+                capabilities: metadata?.capabilities ?? null,
+                catalog: metadata?.models ?? null,
+                configuredModel: metadata?.configuredModel,
+                latestTable,
+            }), { fork: forkSource !== null, waitForCatalog: waitsForModelCatalog(agent, options.model) })
         } catch (error) {
             promptError = error instanceof Error ? error.message : String(error)
         }

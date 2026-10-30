@@ -51,3 +51,23 @@ export function selectDisplayedModelKey(input: {
     if (running && optionKeys.includes(running)) return running;
     return optionKeys[0];
 }
+
+/**
+ * B-844d: Codex publishes the model its thread really runs
+ * (`metadata.currentModelCode`, with `stickyModel` as the marker of a wrapper
+ * that does). A turn sent without a model — `very-happy send` without
+ * `--model`, a resumed wrapper — keeps that model, so the picker's selection
+ * can differ from what runs until the next message from here applies it.
+ * Returns the running model when it differs from what the selection resolves
+ * to; nothing for older wrappers or when they agree.
+ */
+export function deriveCodexRunningModel(input: {
+    /** metadata.stickyModel — undefined = wrapper does not publish model facts. */
+    stickyModel: string | null | undefined;
+    running: string | null | undefined;
+    /** The model the displayed selection runs (follow entry resolved, `default` → machine default). */
+    intended: string | null | undefined;
+}): string | undefined {
+    if (input.stickyModel === undefined || !input.running || !input.intended) return undefined;
+    return input.running === input.intended ? undefined : input.running;
+}

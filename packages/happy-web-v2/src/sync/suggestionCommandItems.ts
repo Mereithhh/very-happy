@@ -1,6 +1,8 @@
 export interface CommandItem {
     command: string;
     description?: string;
+    /** Listed so the user learns it exists here, but this session cannot run it (/compact). */
+    unavailable?: boolean;
 }
 
 export const IGNORED_COMMANDS = [
@@ -37,8 +39,10 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
 export function buildCommandItems(
     slashCommands: readonly string[] = [],
     skills: readonly string[] = [],
+    opts: { compactUnavailable?: boolean } = {},
 ): CommandItem[] {
-    const commands: CommandItem[] = [...DEFAULT_COMMANDS];
+    const commands: CommandItem[] = DEFAULT_COMMANDS.map((item) =>
+        item.command === 'compact' && opts.compactUnavailable ? { ...item, unavailable: true } : item);
     const seen = new Set(commands.map((item) => item.command));
     const skillNames = new Set(skills.map((raw) => raw.trim().replace(/^\/+/, '')).filter(Boolean));
 
