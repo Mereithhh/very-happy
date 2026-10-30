@@ -153,3 +153,31 @@ describe('B-849a2: a disabled entry explains itself instead of being picked', ()
         expect(row().getAttribute('aria-checked')).toBe('true');
     });
 });
+
+describe('QA26 P2-3: the 1M switch is its whole row', () => {
+    it('the switch carries the label, and tapping the label text toggles it', () => {
+        const onChange = vi.fn();
+        const layout = { primary: [models[0]], more: [], longContext: { on: false, onKey: 'model-a[1m]', offKey: 'model-a' }, selectedInMore: false };
+        act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={models} layout={layout} value="model-a" onChange={onChange}
+            longContextLabel="1M context" longContextHint="Up to 1M tokens"
+            effort={{ label: 'Thinking', options: levels, value: 'low', onChange: vi.fn() }} />));
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        const sw = document.querySelector<HTMLButtonElement>('.me-panel [role="switch"]')!;
+        expect(sw.classList.contains('me-switch-row')).toBe(true);
+        expect(sw.textContent).toContain('1M context');
+        act(() => sw.querySelector<HTMLElement>('.me-switch-text')!.click());
+        expect(onChange).toHaveBeenCalledWith('model-a[1m]');
+    });
+});
+
+describe('QA26 P2-4: 1M on — the base row is checked, the trigger names the 1M pick', () => {
+    it('trigger says the twin, the list checks its base', () => {
+        const options = [{ key: 'model-a', name: 'Model A' }, { key: 'model-a[1m]', name: 'Model A · 1M' }];
+        const layout = { primary: [options[0]], more: [], longContext: { on: true, onKey: 'model-a[1m]', offKey: 'model-a' }, selectedInMore: false };
+        act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={options} layout={layout} value="model-a[1m]" onChange={vi.fn()}
+            longContextLabel="1M" effort={{ label: 'Thinking', options: levels, value: 'low', onChange: vi.fn() }} />));
+        expect(host.querySelector('.me-trigger .mm-v')!.textContent).toBe('Model A · 1M');
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        expect(document.querySelector('.me-panel .me-models [aria-checked="true"]')!.textContent).toBe('Model A');
+    });
+});

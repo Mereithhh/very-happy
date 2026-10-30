@@ -268,3 +268,15 @@ describe('B-849a2 (QA26 P1): Claude 「本机配置」 names only what is known 
         expect(input).toContain("? { name: machineConfigName, description: t('session.chat.machineDefaultModelMidSession'), disabled: true }");
     });
 });
+
+describe('QA26 P2-4: 1M on the followed model still checks a row', () => {
+    it('keeps the base row when its [1m] twin is the selection', () => {
+        const base = [{ key: 'default', name: 'd' }, { key: 'claude-opus-5-5', name: 'Opus 5.5' }, { key: 'sonnet', name: 'Sonnet 5.5' }];
+        const pick = (selectedKey: string) => withFollowLatestOption(base, {
+            flavor: 'claude', follow: { name: 'f', description: null }, latestModel: 'claude-opus-5-5', selectedKey,
+            machineDefault: { name: 'm', description: null },
+        }).map((o) => o.key);
+        expect(pick('claude-opus-5-5[1m]')).toContain('claude-opus-5-5');
+        expect(pick(LATEST_MODEL_MODE)).not.toContain('claude-opus-5-5');
+    });
+});

@@ -1191,6 +1191,7 @@ export const zhHans: TranslationStructure = {
                 title: '运行配置',
                 more: '更多模型',
                 longContext: '1M 上下文',
+                aliasSuffix: '（别名）',
                 longContextHint: '上下文窗口扩到 100 万 token',
                 sessionOnly: '只影响这个会话',
                 setDefault: '设为新会话默认…',
@@ -1219,6 +1220,7 @@ export const zhHans: TranslationStructure = {
             effortAuto: ({ level }: { level: string }) => `自动（${level}）`,
             effortAutoPlain: '自动',
             effortAutoHint: '不指定档位，由 Claude Code 按模型和这台机器的设置决定',
+            effortAutoHintCodex: '不指定档位，新的 Codex 会话从「中」开始',
             effortLevels: {
                 low: '低',
                 medium: '中',
@@ -5603,6 +5605,8 @@ export const zhHans: TranslationStructure = {
     },
     pendingSession: {
         starting: '正在启动…',
+        waitingForModels: ({ machine }: { machine: string }) => `等待 ${machine} 上报模型列表…`,
+        modelsTimeout: ({ machine }: { machine: string }) => `${machine} 还没上报模型列表，首条按这台机器的默认模型发送`,
         connecting: '正在连接…',
         outboxTitle: '待发送',
         sendAfterStart: '会话启动后发送',

@@ -13,7 +13,7 @@ describe('Settings → Agents renders pi as its own row', () => {
     it('iterates agentKeys (which now include pi) and feeds pi the published model list, not Claude aliases', () => {
         expect(settings).toContain('{agentKeys.map((agent) => {');
         expect(settings).toContain("import { collectPiModelOptions } from '@/sync/piModelOptions';");
-        expect(settings).toContain("const modelOptions = localizeModelDescriptions(agent, (agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable))");
+        expect(settings).toContain("const modelOptions = localizeModelDescriptions(agent, localizeModelNames(agent, agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable), t)");
         expect(settings).toContain('collectPiModelOptions(allSessions, [piModelOverride])');
     });
 });

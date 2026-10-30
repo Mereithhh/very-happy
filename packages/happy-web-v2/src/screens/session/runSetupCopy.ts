@@ -80,6 +80,8 @@ export function localizeModelDescriptions(
     if (agent !== 'claude' && agent !== 'codex') return [...options];
     const { translate } = input;
     const newest = new Map<string, number[]>();
+    // QA26 P2-5: an untiered Codex id (gpt-5.5, gpt-5.3-codex) is 「旧版本」 next to a newer tiered one.
+    let newestCodex: number[] | null = null;
     const parsed = options.map((option) => {
         if (option.key === LATEST_MODEL_MODE || option.key === 'default') return null;
         const base = option.key.endsWith(LONG_CONTEXT_SUFFIX) ? option.key.slice(0, -LONG_CONTEXT_SUFFIX.length) : option.key;
@@ -88,6 +90,7 @@ export function localizeModelDescriptions(
         if (family && runnable) {
             const seen = newest.get(family.family);
             if (!seen || compare(family.version, seen) > 0) newest.set(family.family, family.version);
+            if (agent === 'codex' && (!newestCodex || compare(family.version, newestCodex) > 0)) newestCodex = family.version;
         }
         return family;
     });
@@ -100,9 +103,47 @@ export function localizeModelDescriptions(
         let description: string | null = own ? translate(own) : null;
         const newestOfFamily = family ? newest.get(family.family) : undefined;
         if (family && newestOfFamily && compare(family.version, newestOfFamily) < 0) description = translate('session.chat.modelPicker.desc.older');
+        // `gpt-5.3-codex` parses as a family of its own but is no named tier.
+        const untiered = agent === 'codex' && (!family || !DESC_KEYS[family.family]) ? codexVersion(option.key) : null;
+        if (untiered && newestCodex && compare(untiered, newestCodex) < 0) description = translate('session.chat.modelPicker.desc.older');
         if (longContext) description = [description, translate('session.chat.modelPicker.longContextHint')].filter(Boolean).join(' · ');
         return { ...option, description };
     });
+}
+
+function codexVersion(key: string): number[] | null {
+    const match = /^gpt-(\d+(?:\.\d+)?)(?:-|$)/.exec(key);
+    return match ? match[1].split('.').map(Number) : null;
+}
+
+/**
+ * QA26 P2-5: one way to write a model name, whatever the source (Codex's own
+ * `model/list` says 「GPT-6.1 Terra」, the static list `gpt-6.1-sol`): Codex ids
+ * as `GPT-6.1-Terra`; Claude's alias-of-pinned entry with a localized
+ * 「（别名）」 instead of English.
+ */
+export function localizeModelNames(flavor: string | null | undefined, options: readonly ModeOption[], translate: Translate): ModeOption[] {
+    const agent = normalizeAgentKey(flavor);
+    return options.map((option) => {
+        if (option.key === LATEST_MODEL_MODE || option.key === 'default') return option;
+        if (agent === 'codex') {
+            const name = codexModelName(option.key);
+            return name ? { ...option, name } : option;
+        }
+        if (agent === 'claude') {
+            const alias = /^(.+?) \(alias(, 1M context)?\)( · 1M)?$/.exec(option.name);
+            if (alias) return { ...option, name: `${alias[1]}${translate('session.chat.modelPicker.aliasSuffix')}${alias[2] || alias[3] ? ' · 1M' : ''}` };
+        }
+        return option;
+    });
+}
+
+/** `gpt-6.1-terra` → `GPT-6.1-Terra`, `gpt-5.1-codex-max` → `GPT-5.1-Codex-Max`; other ids: null. */
+export function codexModelName(key: string): string | null {
+    const match = /^gpt-(\d+(?:\.\d+)?)((?:-[a-z]+)*)$/.exec(key);
+    if (!match) return null;
+    const rest = match[2].split('-').filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1));
+    return ['GPT', match[1], ...rest].join('-');
 }
 
 function compare(a: number[], b: number[]): number {

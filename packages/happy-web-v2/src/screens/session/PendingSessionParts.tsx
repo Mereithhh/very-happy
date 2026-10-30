@@ -44,7 +44,9 @@ export function PendingSessionHeader({ record }: { record: PendingSessionRecord 
             ? t('pendingSession.sidebarNeedsApproval')
             : record.state === 'landed'
                 ? t('pendingSession.connecting')
-                : t('pendingSession.starting');
+                : record.waitingForModels
+                    ? t('pendingSession.waitingForModels', { machine: machineName })
+                    : t('pendingSession.starting');
     const busy = record.state === 'spawning' || record.state === 'landing' || record.state === 'landed';
     return (
         <header className="ch ps-head" data-pending-state={record.state}>

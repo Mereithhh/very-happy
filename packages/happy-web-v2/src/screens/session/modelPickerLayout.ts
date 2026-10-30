@@ -133,7 +133,8 @@ export function layoutModelPicker(options: readonly ModeOption[], input: {
     if (followFamily) {
         const newest = best.get(followFamily);
         const followVersion = modelFamilyOf(input.flavor, { key: input.followModel!, name: input.followModel! }, input.followModel)?.version;
-        if (newest && followVersion && compareVersions(newest.version, followVersion) <= 0) best.delete(followFamily);
+        // ...unless it is the selection (QA26 P2-4: 1M pinned on the followed model) — then it stays on top, checked.
+        if (newest && followVersion && compareVersions(newest.version, followVersion) <= 0 && newest.option.key !== (selected && baseKey(selected))) best.delete(followFamily);
     }
     const familyPicks = new Set([...best.values()].map((entry) => entry.option.key));
     const order = agent === 'claude' ? CLAUDE_FAMILY_ORDER : null;

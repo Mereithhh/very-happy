@@ -63,7 +63,8 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     const [moreOpen, setMoreOpen] = useState(resolvedLayout.selectedInMore);
     useEffect(() => { if (open) setMoreOpen(resolvedLayout.selectedInMore); }, [open, resolvedLayout.selectedInMore]);
     if (!options.length && !readOnly) return null;
-    const current = options.find((option) => option.key === listedKey) ?? options[0];
+    // The closed entry names the exact pick (「Opus 5.5 · 1M」); the list checks the row it sits under.
+    const current = options.find((option) => option.key === value) ?? options.find((option) => option.key === listedKey) ?? options[0];
     const strength = effort.options.find((option) => option.key === effort.value)?.name;
     const atMax = isMaximumEffort(effort.options, effort.value);
     const choose = (key: string) => { if (key !== value) onChange(key); };
@@ -160,11 +161,12 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
                 </>}
                 {!more && rows(layout.more)}
             </div>}
-        {longContext && !readOnly && <div className="me-switch-row">
+        {/* QA26 P2-3: the whole row is the switch — a ≥44px target on phones, not just the 26px track. */}
+        {longContext && !readOnly && <button type="button" role="switch" aria-checked={longContext.on} className="me-switch-row"
+            onClick={() => longContext.onToggle(!longContext.on)}>
             <span className="me-switch-text"><span>{longContext.label}</span>{longContext.hint && <span className="me-note">{longContext.hint}</span>}</span>
-            <button type="button" role="switch" aria-checked={longContext.on} className="me-switch" aria-label={longContext.label}
-                onClick={() => longContext.onToggle(!longContext.on)}><span className="me-switch-thumb" /></button>
-        </div>}
+            <span className="me-switch" aria-hidden="true"><span className="me-switch-thumb" /></span>
+        </button>}
         {subtitle && <p className="me-note">{subtitle}</p>}
         {notice && <div className="me-notice" role="status">
             <span>{notice.text}</span>

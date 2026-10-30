@@ -73,9 +73,9 @@ import {
   setAgentDefaultOverride,
 } from '@/sync/agentDefaults';
 import { layoutModelPicker } from '@/screens/session/modelPickerLayout';
-import { autoEffortName, localizeModelDescriptions, namedEffortOptions } from '@/screens/session/runSetupCopy';
+import { autoEffortName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from '@/screens/session/runSetupCopy';
 import { collectPiModelOptions } from '@/sync/piModelOptions';
-import { collectRecentCatalogs } from '@/sync/launcherModels';
+import { collectRecentCatalogs, runnableFromCatalogs } from '@/sync/launcherModels';
 import { machineLabel } from '@/utils/machineUtils';
 import { useLatestModelTable } from '@/sync/latestModels';
 import { followLatestByMachine, summarizeFollowLatest, type FollowLatestState, type MachineFollowLatest } from '@/sync/followLatestDisplay';
@@ -1279,7 +1279,7 @@ function Agents() {
           const catalogs = agent === 'pi' ? [] : collectRecentCatalogs(allSessions, agent);
           // The raw `default` key is never shown: it is the machine default.
           const resolvedOf = (key: string) => catalogs.flatMap((catalog) => catalog.models ?? []).find((model) => model.code === key)?.resolvedModel ?? null;
-          const modelOptions = localizeModelDescriptions(agent, (agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable))
+          const modelOptions = localizeModelDescriptions(agent, localizeModelNames(agent, agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable), t)
             .map((option) => option.key === 'default'
               ? { ...option, name: t('settingsAgents.machineDefault'), description: t(agent === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') }
               : option), { resolved: resolvedOf, keep: new Set(['default']), translate: t });
@@ -1292,7 +1292,10 @@ function Agents() {
           const effortOptions = namedEffortOptions(getEffortLevelsForModel(agent, effectiveModel), t);
           // B-849a: the newest per family stays on top, older versions/aliases fold away.
           const overrideModel = getAgentDefaultOverrideValue(overrides, agent, 'modelMode');
-          const moreKeys = new Set(layoutModelPicker(modelOptions, { flavor: agent, selectedKey: overrideModel, resolved: resolvedOf }).more.map((option) => option.key));
+          // QA26 P2-7: Settings has no 1M switch — everything off the top list (1M twins too) folds under 更多模型.
+          const settingsLayout = layoutModelPicker(modelOptions, { flavor: agent, selectedKey: overrideModel, resolved: resolvedOf, runnable: runnableFromCatalogs(agent, catalogs) });
+          const primaryKeys = new Set(settingsLayout.primary.map((option) => option.key));
+          const moreKeys = new Set(modelOptions.filter((option) => !primaryKeys.has(option.key)).map((option) => option.key));
           // B-849a: with 「先审阅改动」 on, a new session starts in review mode — say so here too.
           const newSessionPermission = resolveNewSessionPermissionMode(overrides, agent, reviewFirst);
           const reviewFirstApplies = reviewFirst && getAgentDefaultOverrideValue(overrides, agent, 'permissionMode') === undefined && newSessionPermission !== codeDefaults.permissionMode;

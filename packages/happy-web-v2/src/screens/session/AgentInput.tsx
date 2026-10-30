@@ -2,6 +2,7 @@ import { selectDisplayedEffortKey } from './effortSelection';
 import { wrapperSupportsSteer } from './steerSupport';
 import { supportsSessionAttachments } from '@/sync/attachmentCapabilities';
 import { ModelEffortMenu } from './ModelEffortMenu';
+import { sessionAgentLabel } from './sessionAgentLabel';
 import { harnessForFlavor, machineSupportsModelConfig, withCustomModels } from '@/sync/modelConfigModel';
 import { modelConfigStore, useCustomPickerModels } from '@/sync/modelConfigStore';
 import { onMessageQuote } from './messageQuote';
@@ -56,7 +57,7 @@ import {
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
 import { LONG_CONTEXT_SUFFIX, layoutModelPicker, withLongContextTwins } from './modelPickerLayout';
-import { autoEffortName, localizeModelDescriptions, namedEffortOptions } from './runSetupCopy';
+import { autoEffortName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from './runSetupCopy';
 import { useNavigate } from 'react-router-dom';
 import { useLatestModelTable } from '@/sync/latestModels';
 import { claudeMachineConfigEntry, customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, launcherReportsRunFacts, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
@@ -117,6 +118,8 @@ export const PROMPT_QUEUE_STALE_MS = 30_000;
 // (the CLI validates against low/medium/high/xhigh/max, so this can never
 // collide); picking it clears effortLevel and the wire carries effort:null.
 const EFFORT_DEFAULT_KEY = 'default';
+/** The level a new Codex wrapper starts every thread at (happy-cli DEFAULT_CODEX_EFFORT). */
+const CODEX_WRAPPER_START_EFFORT = 'medium';
 import { PresetsMenu } from './PresetsMenu';
 import {
     useAttachments,
@@ -390,7 +393,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     // B-851b: a fork without its own catalog yet borrows its parent's (same machine + agent).
     const parentMetadata = useSession(metadata?.models?.length ? '' : metadata?.parentSessionId ?? '')?.metadata;
     const catalogMetadata = forkCatalogSource(metadata, parentMetadata);
-    const baseModels = session ? getAvailableModels(flavor, catalogMetadata, t as any) : getLauncherModelModes(flavor, launcherCatalogs, t as any, latestTable);
+    const baseModels = localizeModelNames(flavor, session ? getAvailableModels(flavor, catalogMetadata, t as any) : getLauncherModelModes(flavor, launcherCatalogs, t as any, latestTable), t);
     // B-849a: a draft resolves right away for its machine; one whose CLI cannot
     // report what follow-latest runs says so instead of naming a guess.
     const followState = followLatestState(latestResolution, !!session, { runFactsUnknown: !session && !launcherReportsRunFacts(flavor, launcherContext) });
@@ -475,12 +478,19 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     // says it. Claude Code's own default differs per model and per machine
     // settings (probed 2026-10-31, CC 2.1.304: Opus 5.5 / Sonnet 5.5 → medium,
     // Fable 5.1 → high, a `modelSettings.effortLevel` wins), so no guess.
+    // QA26 P2-5: Codex's 「自动」 only where it is true — a draft with no account
+    // level: a new wrapper starts every thread at medium. In a session the
+    // wrapper reports the level it runs (no level sent keeps it), so that shows.
+    const codexDraftAuto = normalizeAgentKey(flavor) === 'codex' && !session
+        && getAgentDefaultOverride(agentDefaultOverrides, flavor).effortLevel == null;
     const effortOptions = efforts.length === 0 ? [] : isClaudeFlavor
         ? [{ key: EFFORT_DEFAULT_KEY, name: autoEffortName(backendDefaultEffort, t), description: t('session.chat.effortAutoHint') }, ...namedEffortOptions(efforts, t)]
-        : namedEffortOptions(efforts, t);
+        : codexDraftAuto
+            ? [{ key: EFFORT_DEFAULT_KEY, name: autoEffortName(CODEX_WRAPPER_START_EFFORT, t), description: t('session.chat.effortAutoHintCodex') }, ...namedEffortOptions(efforts, t)]
+            : namedEffortOptions(efforts, t);
     const selectedEffortKey = isClaudeFlavor
         ? selectDisplayedEffortKey(effortOptions, [effortKey, metadata?.currentThoughtLevelCode, backendDefaultEffort, EFFORT_DEFAULT_KEY])
-        : selectDisplayedEffortKey(efforts, [
+        : selectDisplayedEffortKey(effortOptions, [
             pending ? pending.effortLevel : session?.effortLevel,
             getAgentDefaultOverride(agentDefaultOverrides, flavor).effortLevel,
             metadata?.currentThoughtLevelCode,
@@ -489,6 +499,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             // (medium), not the catalog's default — an old wrapper that does not
             // report its level shows none rather than that guess.
             normalizeAgentKey(flavor) === 'codex' ? undefined : backendDefaultEffort,
+            codexDraftAuto ? EFFORT_DEFAULT_KEY : undefined,
         ]);
     // B-362: intent → running model (ACP runners publish it) → first option; never show
     // a model the session is not on just because the default key is not in the list.
@@ -1318,7 +1329,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         const modelName = models.find((option) => option.key === displayedModelKey)?.name ?? displayedModelKey ?? '';
         const effortName = effortOptions.find((option) => option.key === selectedEffortKey)?.name;
         const value = [modelName, effortName].filter(Boolean).join(' · ');
-        const ok = await Modal.confirm(t('session.chat.modelPicker.setDefaultTitle'), t('session.chat.modelPicker.setDefaultBody', { agent: normalizeAgentKey(flavor), value }), { confirmText: t('session.chat.modelPicker.setDefaultConfirm') });
+        const ok = await Modal.confirm(t('session.chat.modelPicker.setDefaultTitle'), t('session.chat.modelPicker.setDefaultBody', { agent: sessionAgentLabel(normalizeAgentKey(flavor), normalizeAgentKey(flavor)), value }), { confirmText: t('session.chat.modelPicker.setDefaultConfirm') });
         if (!ok) return;
         let next = storage.getState().settings.agentDefaultOverrides;
         if (!isGemini) next = setAgentDefaultOverride(next, flavor, 'modelMode', displayedModelKey ? modelPickToStore(displayedModelKey) : null);
@@ -1328,7 +1339,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     };
 
     const setEffort = (key: string) => {
-        if (isClaudeFlavor && key === EFFORT_DEFAULT_KEY) {
+        if ((isClaudeFlavor || codexDraftAuto) && key === EFFORT_DEFAULT_KEY) {
             setMode('updateSessionEffortLevel', 'effortLevel', null);
         } else {
             setMode('updateSessionEffortLevel', 'effortLevel', key);

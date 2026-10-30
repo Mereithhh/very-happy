@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
     settings: { agentInputEnterToSend: true, agentDefaultOverrides: {} as Record<string, unknown> },
     send: vi.fn(), draft: vi.fn(), perm: vi.fn(), applySettings: vi.fn(), show: vi.fn(), btw: vi.fn(),
     modeMenus: [] as Array<{ label: string; value: string; onChange: (key: string) => void }>,
-    modelMenus: [] as Array<{ value: string | null; onChange: (key: string) => void; effort: { onChange: (key: string) => void }; footer?: { action?: { onSelect: () => void } } }>,
+    modelMenus: [] as Array<{ value: string | null; onChange: (key: string) => void; effort: { onChange: (key: string) => void; options: Array<{ key: string; name: string }>; value: string | null }; footer?: { action?: { onSelect: () => void } } }>,
     confirm: vi.fn(async () => true),
 }));
 vi.mock('@/sync/sync', () => ({ sync: { sendMessage: mocks.send, applySettings: mocks.applySettings } }));
@@ -160,5 +160,24 @@ describe('AgentInput on a pending page (B-516)', () => {
         expect(mocks.confirm).toHaveBeenCalledTimes(2);
         const written = mocks.applySettings.mock.calls.at(-1)![0].agentDefaultOverrides as Record<string, { modelMode?: string; effortLevel?: string }>;
         expect(written).toEqual({ codex: { modelMode: 'gpt-5.6-terra', effortLevel: 'high' } });
+    });
+
+    it('QA26 P2-5: a Codex draft offers 「自动（中）」 (a new wrapper starts at medium), selected until a level is picked', () => {
+        render();
+        const effort = mocks.modelMenus.at(-1)!.effort;
+        expect(effort.options[0]).toMatchObject({ key: 'default', name: 'session.chat.effortAuto' });
+        expect(effort.value).toBe('default');
+        act(() => effort.onChange('default'));
+        expect(pending.onMode).toHaveBeenLastCalledWith('effortLevel', null);
+    });
+
+    it('QA26 P2-5: no 「自动」 when the account default names a level (that level is what gets sent)', () => {
+        mocks.settings.agentDefaultOverrides = { codex: { effortLevel: 'high' } };
+        try {
+            render();
+            const effort = mocks.modelMenus.at(-1)!.effort;
+            expect(effort.options.map((o) => o.key)).not.toContain('default');
+            expect(effort.value).toBe('high');
+        } finally { mocks.settings.agentDefaultOverrides = {}; }
     });
 });

@@ -117,3 +117,14 @@ describe('run setup copy (B-849a)', () => {
         expect(codex.map((o) => o.description)).toEqual(['session.chat.modelPicker.desc.sol', 'session.chat.modelPicker.desc.sol']);
     });
 });
+
+describe('QA26 P2-4: 1M pinned on the followed model', () => {
+    it('lists the base row on top and checks it, with the switch on', () => {
+        const options = [...claudeOptions, { key: 'claude-opus-5-5', name: 'Opus 5.5' }];
+        const on = layoutModelPicker(options, { flavor: 'claude', selectedKey: 'claude-opus-5-5[1m]', followModel: 'claude-opus-5-5', resolved, runnable });
+        expect(keys(on.primary)).toEqual(['latest', 'default', 'claude-opus-5-5', 'sonnet', 'haiku', 'fable']);
+        expect(listedModelKey(on, 'claude-opus-5-5[1m]')).toBe('claude-opus-5-5');
+        expect(on.longContext).toEqual({ on: true, onKey: 'claude-opus-5-5[1m]', offKey: 'claude-opus-5-5' });
+        expect(on.selectedInMore).toBe(false);
+    });
+});

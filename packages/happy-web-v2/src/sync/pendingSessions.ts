@@ -93,6 +93,8 @@ export interface PendingSessionRecord {
     /** landed via the draft fallback instead of real sends */
     deliveredAsDraft?: boolean;
     landedAt?: number;
+    /** QA26 P2-2: the session exists and the first message waits for its wrapper's model list (the page says so). */
+    waitingForModels?: boolean;
 }
 
 export interface PendingSessionDeps {
@@ -160,6 +162,8 @@ export interface PendingSessionDeps {
     hasModelFacts?(sessionId: string, agent: PendingAgent): boolean;
     /** Upper bound for that wait; the message goes out regardless after it. */
     modelFactsWaitMs?: number;
+    /** QA26 P2-2: the wait ran out — the first message went with the machine's own default model. */
+    notifyModelFactsTimeout?(record: PendingSessionRecord): void;
 }
 
 export const PENDING_ID_PREFIX = 'pending-';
@@ -504,7 +508,12 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 return;
             }
             const hasModelFacts = deps.hasModelFacts;
-            if (hasModelFacts) await waitFor(() => hasModelFacts(realId, start.agent), deps.modelFactsWaitMs ?? 0);
+            if (hasModelFacts && !hasModelFacts(realId, start.agent)) {
+                patch(pendingId, { waitingForModels: true });
+                const arrived = await waitFor(() => hasModelFacts(realId, start.agent), deps.modelFactsWaitMs ?? 0);
+                const waited = patch(pendingId, { waitingForModels: undefined });
+                if (!arrived && waited) deps.notifyModelFactsTimeout?.(waited);
+            }
             const ready = records.get(pendingId);
             if (!ready) return;
             if (!ready.adopted) {

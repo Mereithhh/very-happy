@@ -984,6 +984,7 @@ export const en = {
                 title: 'Run setup',
                 more: 'More models',
                 longContext: '1M context',
+                aliasSuffix: ' (alias)',
                 longContextHint: 'Extends the context window to 1M tokens',
                 sessionOnly: 'Applies to this session only',
                 setDefault: 'Use for new sessions…',
@@ -1012,6 +1013,7 @@ export const en = {
             effortAuto: ({ level }: { level: string }) => `Auto (${level})`,
             effortAutoPlain: 'Auto',
             effortAutoHint: 'Send no level: Claude Code picks it per model and per this machine\'s settings',
+            effortAutoHintCodex: 'Send no level: a new Codex session starts at medium',
             effortLevels: {
                 low: 'Low',
                 medium: 'Medium',
@@ -5771,6 +5773,8 @@ export const en = {
     },
     pendingSession: {
         starting: 'Starting…',
+        waitingForModels: ({ machine }: { machine: string }) => `Waiting for ${machine} to report its models…`,
+        modelsTimeout: ({ machine }: { machine: string }) => `${machine} has not reported its models yet — the first message uses the machine's default model`,
         connecting: 'Connecting…',
         outboxTitle: 'Waiting to send',
         sendAfterStart: 'Sends when the session starts',

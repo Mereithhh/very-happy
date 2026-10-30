@@ -87,7 +87,8 @@ export function withFollowLatestOption(options: readonly ModelMode[], input: {
             if (keepDefault) out.push({ ...option, name: input.machineDefault.name, description: input.machineDefault.description, ...(input.machineDefault.disabled ? { disabled: true } : {}) });
             continue;
         }
-        if (option.key === input.latestModel && input.selectedKey !== option.key) continue;
+        // QA26 P2-4: a pinned `[1m]` twin is listed (and checked) under its base row.
+        if (option.key === input.latestModel && input.selectedKey !== option.key && input.selectedKey !== `${option.key}[1m]`) continue;
         out.push(option);
     }
     return out;
