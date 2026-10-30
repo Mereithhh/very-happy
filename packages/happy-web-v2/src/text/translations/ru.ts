@@ -413,7 +413,6 @@ export const ru: PartialTranslationStructure = {
         forkErrorMissingUuid: 'Выбранная точка отката больше не существует в исходной сессии — попробуйте форк без обрезки.',
         forkErrorMissingMetadata: 'Не хватает метаданных сессии для форка.',
         forkErrorGeneric: 'Не удалось форкнуть сессию.',
-        forkClaudeOnly: 'Форк сейчас поддерживается только для Claude-сессий.',
     },
 
     commandPalette: {

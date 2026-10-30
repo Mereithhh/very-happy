@@ -381,7 +381,6 @@ export const zhHant: PartialTranslationStructure = {
         forkErrorMissingUuid: '選定的回退點已不存在於來源會話中 — 請嘗試不截斷地分叉。',
         forkErrorMissingMetadata: '缺少分叉所需的會話元資料。',
         forkErrorGeneric: '分叉會話失敗。',
-        forkClaudeOnly: '目前僅支援 Claude 會話的分叉。',
         chat: {
             // B-577/B-578/B-579 閱讀輔助
             readingAids: {

@@ -3,8 +3,9 @@ import type { Session } from '@/sync/storageTypes';
 import type { UserTextMessage } from '@/sync/typesMessage';
 import { getSessionForkSource, type ForkSource } from '@/utils/sessionFork';
 
-export type RewindTarget = { source: ForkSource; messageId?: string; pointId: string };
-export type RewindUnavailable = 'unsupported' | 'missingPoint' | 'attachments' | 'pending' | 'running';
+/** `pointId` is absent for prompts sent from the Web; forkFlow resolves it from the machine's transcript. */
+export type RewindTarget = { source: ForkSource; messageId?: string; pointId?: string };
+export type RewindUnavailable = 'unsupported' | 'attachments' | 'pending' | 'running';
 export function getRewindTarget(session: Session | null | undefined, message: UserTextMessage, hasAttachments: boolean, running: boolean): RewindTarget | RewindUnavailable {
     if (!session || !['claude', 'codex'].includes(session.metadata?.flavor ?? 'claude')) return 'unsupported';
     const source = getSessionForkSource(session);
@@ -13,8 +14,7 @@ export function getRewindTarget(session: Session | null | undefined, message: Us
     if (message.inputState || message.cancelReason || message.seq == null) return 'pending';
     if (running) return 'running';
     const pointId = source.kind === 'codex' ? message.codexItemId : message.claudeUuid;
-    if (!pointId) return 'missingPoint';
-    return { source, messageId: message.id, pointId };
+    return { source, messageId: message.id, ...(pointId ? { pointId } : {}) };
 }
 function quoteLines(text: string): string {
     return text.split('\n').map((line) => `> ${line}`).join('\n');

@@ -268,6 +268,12 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         { type: 'p', text: 'Editing never interrupts the agent. On your next message, your final text and a compact diff are attached for the agent to use, shown as a removable chip above the composer.' },
         { type: 'note', text: 'Drafts are the text inside a fenced block whose info string is draft. Claude, Codex, and Gemini sessions are told to use it; a pi session gets an editable box when it writes the fence on its own. While a reply is still streaming, the draft looks like an ordinary code block.' },
       ] },
+      { heading: 'Fork a session', blocks: [
+        { type: 'p', text: 'Fork session in the session header ⋯ starts a new session with the whole conversation so far: same machine, folder, agent, permission mode, model and effort. It opens as soon as it starts; the original session is not changed.' },
+        { type: 'p', text: 'Fork from here, in the actions under one of your messages, starts a new session with everything before that message and puts the message itself in the new message box, so you can change it and send it again.' },
+        { type: 'p', text: 'A forked session shows “Forked from” and the original session’s title under its header; the title opens the original.' },
+        { type: 'note', text: 'Claude and Codex sessions can be forked; other agents show no fork action. Forking runs on the machine that owns the session, so it must be online, and it waits until the current turn ends. Fork from here does not work on messages with attachments yet. With Codex 0.154 or newer on the machine, Fork from here needs the current very-happy CLI; when a machine’s CLI is too old the app says so instead of failing silently.' },
+      ] },
       { heading: 'Mention files with @', blocks: [
         { type: 'p', text: 'Type @ in the message box to search the session’s files — the same list as the Command/Ctrl P file finder, with the same ranking and recent files. Enter or Tab inserts @path, and Claude reads the mentioned file automatically.' },
         { type: 'note', text: 'The list comes from the session’s machine: it needs the machine online and a git repository folder. Otherwise the list says why it is empty.' },
