@@ -26,6 +26,15 @@ export function followLatestState(resolution: LatestModelResolution, resolvedFor
     return resolvedForSession ? { kind: 'machineDefault' } : { kind: 'dependsOnMachine' };
 }
 
+/**
+ * The model the follow entry runs, which the picker lists only once (QA23
+ * P2-3): a machine-config pin wins over the tier's latest, so on a pinned
+ * machine the pinned model, not the latest, collapses into the entry.
+ */
+export function followEntryModel(state: FollowLatestState): string | null {
+    return state.kind === 'machineConfig' || state.kind === 'latest' ? state.model : null;
+}
+
 export function sameFollowLatestState(a: FollowLatestState, b: FollowLatestState): boolean {
     if (a.kind !== b.kind) return false;
     return !('model' in a) || a.model === (b as typeof a).model;
@@ -42,7 +51,7 @@ export function sameFollowLatestState(a: FollowLatestState, b: FollowLatestState
 export function withFollowLatestOption(options: readonly ModelMode[], input: {
     flavor: string | null | undefined;
     follow: { name: string; description: string | null };
-    /** What `latest` resolves to now (LatestModelResolution.model). */
+    /** What the follow entry runs now (followEntryModel): listed only through it unless pinned. */
     latestModel: string | null;
     /** The displayed explicit choice, `latest` when following. */
     selectedKey: string | null | undefined;
@@ -60,6 +69,16 @@ export function withFollowLatestOption(options: readonly ModelMode[], input: {
         out.push(option);
     }
     return out;
+}
+
+/**
+ * QA23 P2-3: the machine's own config model (custom picker models, B-688) is
+ * what a machine-config follow entry runs — listing it again duplicated the
+ * entry. Same rule as withFollowLatestOption: kept only when it is the
+ * explicit selection.
+ */
+export function customModelsBesideFollow(custom: readonly string[], followModel: string | null, selectedKey: string | null | undefined): readonly string[] {
+    return followModel ? custom.filter((key) => key !== followModel || key === selectedKey) : custom;
 }
 
 /** What the picker key means when sent to storage: `latest` = no explicit pick. */
@@ -110,4 +129,17 @@ export function summarizeFollowLatest(entries: readonly MachineFollowLatest[]): 
     if (entries.length === 0) return { kind: 'dependsOnMachine' };
     const [first, ...rest] = entries;
     return rest.every((entry) => sameFollowLatestState(entry.state, first.state)) ? first.state : { kind: 'varies' };
+}
+
+/**
+ * B-844c (QA22c P2-3): what the follow entry's description may promise. An
+ * old CLI does not switch until it is upgraded; Claude has no machine-config
+ * pin for follow-latest to defer to (its default model is always sent).
+ */
+export function followLatestDescriptionKey(
+    state: FollowLatestState,
+    isClaude: boolean,
+): 'session.chat.modelLatestDescription' | 'session.chat.modelLatestDescriptionClaude' | 'session.chat.modelLatestDescriptionUpgradeCli' {
+    if (state.kind === 'machineDefault') return 'session.chat.modelLatestDescriptionUpgradeCli';
+    return isClaude ? 'session.chat.modelLatestDescriptionClaude' : 'session.chat.modelLatestDescription';
 }

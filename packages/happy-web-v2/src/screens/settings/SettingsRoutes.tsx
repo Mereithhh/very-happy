@@ -1056,7 +1056,7 @@ function AgentField({
   /** B-844b: the code default is "follow latest" — what it runs on each machine
    *  (resolved like a send from that machine's newest session) and the
    *  account-level summary of those. */
-  followLatest?: { summary: FollowLatestState | { kind: 'varies' }; machines: MachineFollowLatest[] };
+  followLatest?: { summary: FollowLatestState | { kind: 'varies' }; machines: MachineFollowLatest[]; claude?: boolean };
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -1074,7 +1074,7 @@ function AgentField({
   const followSubtitle = followLatest
     ? (followLatest.machines.length === 0
       ? t('settingsAgents.followLatestNoMachine')
-      : t('settingsAgents.followLatestByMachine', {
+      : t(followLatest.claude ? 'settingsAgents.followLatestByMachineClaude' : 'settingsAgents.followLatestByMachine', {
         list: followLatest.machines.map((entry) => t('settingsAgents.machineEntry', { machine: entry.label, value: stateValue(entry.state, true) })).join(t('settingsAgents.machineListSeparator')),
       }))
     : undefined;
@@ -1116,7 +1116,7 @@ function AgentField({
               key={o.key}
               title={o.name}
               subtitle={o.description ?? undefined}
-              detail={o.key}
+              detail={o.key === 'default' ? undefined : o.key}
               selected={override === o.key}
               right={override === o.key ? <Check size={16} /> : undefined}
               onClick={() => {
@@ -1265,7 +1265,9 @@ function Agents() {
           const catalogs = agent === 'pi' ? [] : collectRecentCatalogs(allSessions, agent);
           // The raw `default` key is never shown: it is the machine default.
           const modelOptions = (agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable))
-            .map((option) => option.key === 'default' ? { ...option, name: t('settingsAgents.machineDefault') } : option);
+            .map((option) => option.key === 'default'
+              ? { ...option, name: t('settingsAgents.machineDefault'), description: t(agent === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') }
+              : option);
           const followsLatestByDefault = isLatestModelMode(codeDefaults.modelMode);
           const perMachine = followsLatestByDefault ? followLatestByMachine(latestTable, agent, allSessions, machineList) : [];
           const followSummary = summarizeFollowLatest(perMachine);
@@ -1291,7 +1293,7 @@ function Agents() {
                   override={getAgentDefaultOverrideValue(overrides, agent, 'modelMode')}
                   codeDefault={codeDefaults.modelMode}
                   onPick={(v) => pick(agent, 'modelMode', v)}
-                  followLatest={followsLatestByDefault ? { summary: followSummary, machines: perMachine } : undefined}
+                  followLatest={followsLatestByDefault ? { summary: followSummary, machines: perMachine, claude: agent === 'claude' } : undefined}
                 />
               )}
               {effortOptions.length > 0 && (

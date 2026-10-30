@@ -171,6 +171,44 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(source).not.toMatch(/DEFAULT_CODEX_MODEL[^=\n]*= '/);
     });
 
+    it('B-844c: runCodex publishes its sticky model and running effort (web resets the model with null)', () => {
+        const source = readFileSync(new URL('./runCodex.ts', import.meta.url), 'utf8');
+        expect(source).toContain('metadata.stickyModel = null;');
+        expect(source).toContain('metadata.currentThoughtLevelCode = DEFAULT_CODEX_EFFORT;');
+        expect(source).toContain('stickyModel: facts.stickyModel,');
+        expect(source).toContain('...(facts.currentModelCode ? { currentModelCode: facts.currentModelCode } : {}),');
+        // Every place that changes currentModel / currentEffort reports it.
+        expect(source).toMatch(/messageModelReset = !messageModel;\n\s*currentModel = messageModel;\n\s*reportModeFacts\(\);/);
+        expect(source).toMatch(/currentEffort = DEFAULT_CODEX_EFFORT;\n\s*reportModeFacts\(\);/);
+        expect(source).toMatch(/currentEffort = undefined;\n\s*reportModeFacts\(\);/);
+        expect(source).toMatch(/currentEffort = messageEffort;\n\s*reportModeFacts\(\);/);
+    });
+
+    it('B-844d: tracks the thread model from resume and accepted turn models; a later resume keeps the last one', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const calls: Array<{ method: string; params: any }> = [];
+        const c = client as any;
+        c.connected = true;
+        c.request = async (method: string, params: any) => {
+            calls.push({ method, params });
+            if (method === 'thread/resume') return { thread: { id: 't1' }, model: 'gpt-6-luna' };
+            if (method === 'turn/start') return { turn: { id: 'turn-1' } };
+            return {};
+        };
+        await client.resumeThread({ threadId: 't1' });
+        expect(calls[0].params.model).toBeNull();
+        expect(client.threadModel).toBe('gpt-6-luna');
+        await client.sendTurn('hi');
+        expect(calls[1].params).not.toHaveProperty('model');
+        expect(client.threadModel).toBe('gpt-6-luna');
+        await client.sendTurn('hi', { model: 'gpt-5.6-sol' });
+        expect(client.threadModel).toBe('gpt-5.6-sol');
+        // idle release / forced restart resume must not put an older model back
+        await client.resumeThread({ threadId: 't1' });
+        expect(calls[3].params.model).toBe('gpt-5.6-sol');
+    });
+
     it('wraps transport when sandbox is enabled', async () => {
         // Dynamic import to ensure mocks are applied
         const { CodexAppServerClient } = await import('./codexAppServerClient');

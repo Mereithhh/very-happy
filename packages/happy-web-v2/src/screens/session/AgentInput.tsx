@@ -56,12 +56,12 @@ import {
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
 import { useLatestModelTable } from '@/sync/latestModels';
-import { followLatestState, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
+import { customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
 import { LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
 import type { LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
-import { deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
+import { deriveCodexRunningModel, deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
     advanceQueueDeliveryPhase,
@@ -385,13 +385,13 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         offersFollowLatest
             ? withFollowLatestOption(baseModels, {
                 flavor,
-                follow: { name: followName, description: t('session.chat.modelLatestDescription') },
-                latestModel,
+                follow: { name: followName, description: t(followLatestDescriptionKey(followState, normalizeAgentKey(flavor) === 'claude')) },
+                latestModel: followEntryModel(followState),
                 selectedKey: followingLatest ? LATEST_MODEL_MODE : modelKey,
-                machineDefault: { name: t('session.chat.machineDefaultModel'), description: t('session.chat.machineDefaultModelDescription') },
+                machineDefault: { name: t('session.chat.machineDefaultModel'), description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') },
             })
             : relabelDefaultModel(baseModels, defaultModelLabel),
-        customModels,
+        offersFollowLatest ? customModelsBesideFollow(customModels, followEntryModel(followState), followingLatest ? LATEST_MODEL_MODE : modelKey) : customModels,
         t('modelConfig.customModelDescription'),
     );
     const permModes = getAvailablePermissionModes(flavor, metadata, t as any);
@@ -466,11 +466,23 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     })();
     // B-292: the selector value is client intent and flips on tap; this is the
     // only thing on screen that reports what the agent is actually running.
-    const modelSubtitle = deriveRunningModelSubtitle({
-        isClaude: publishesModeFacts,
-        selectedKey: modelKey,
-        running: metadata?.currentModelCode,
-    });
+    // B-844d: Codex reports its thread's real model; say so when the selection differs.
+    const codexRunning = normalizeAgentKey(flavor) === 'codex'
+        ? deriveCodexRunningModel({
+            stickyModel: metadata?.stickyModel,
+            running: metadata?.currentModelCode,
+            intended: followingLatest
+                ? ('model' in followState ? followState.model : metadata?.defaultModelCode)
+                : modelKey === 'default' ? metadata?.defaultModelCode : modelKey,
+        })
+        : undefined;
+    const modelSubtitle = codexRunning
+        ? t('session.chat.modelRunningOther', { model: compactResolvedModelCode(codexRunning) })
+        : deriveRunningModelSubtitle({
+            isClaude: publishesModeFacts,
+            selectedKey: modelKey,
+            running: metadata?.currentModelCode,
+        });
     // context meter — always visible when we have a usage snapshot.
     const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage, metadata?.currentModelCode);
     const contextKnown = context.tokens !== null;
