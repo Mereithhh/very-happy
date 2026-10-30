@@ -108,6 +108,14 @@ export async function claudeRemote(opts: {
      * launcher's abort (Stop / exit / switch) ended it, not a fault.
      */
     onCommandsUnconfirmed?: (commands: ClaudeUnconfirmedCommand<ClaudeSentCommand>[], context: { aborted: boolean }) => void,
+    /**
+     * B-853: a message `nextMessage` handed over after this Query's input had
+     * already closed (it ended for a relaunch, or the Query itself ended while
+     * the pull or the model switch was in flight). It never reached Claude
+     * Code; the launcher owns it again and must run it in the next launch or
+     * tombstone it — never drop it.
+     */
+    onUndeliveredMessage?: (message: { message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string }) => void,
     /** B-634 ③: session-scoped retired model ids; a message asking for one runs on the default. */
     retiredModels?: RetiredModels,
     /**
@@ -595,9 +603,21 @@ export async function claudeRemote(opts: {
     // returned as "already waiting", and nothing pulled again — the queued
     // message sat there until the session was restarted.
     let pullingNext = false;
+    // B-853: once the input is closed this Query takes no more prompts. A Query
+    // whose input ended for a relaunch still runs its background tasks, and
+    // each task notification ends a turn of its own — pulling there handed the
+    // message parked for the relaunch to a dead input (`push` throws, `.catch`
+    // swallowed it): the first queued message after a mode change vanished.
+    // `queryClosed` covers the Query ending while a pull was in flight.
+    let queryClosed = false;
+    const inputClosed = () => queryClosed || messages.done;
     const pullNextMessage = () => {
         if (pullingNext) {
             logger.debug('[claudeRemote] Already waiting for the next message');
+            return;
+        }
+        if (inputClosed()) {
+            logger.debug('[claudeRemote] Input closed; the next message belongs to the next launch');
             return;
         }
         pullingNext = true;
@@ -606,6 +626,16 @@ export async function claudeRemote(opts: {
             if (!next) {
                 pullingNext = false;
                 messages.end();
+                return;
+            }
+            const handBack = (message: NonNullable<typeof next>) => {
+                pullingNext = false;
+                logger.debug('[claudeRemote] Query input closed before the pulled message was sent; handing it back to the launcher');
+                if (opts.onUndeliveredMessage) opts.onUndeliveredMessage(message);
+                else logger.warn('[claudeRemote] Pulled message could not be delivered and no owner took it back');
+            };
+            if (inputClosed()) {
+                handBack(next);
                 return;
             }
             // A model change is applied IN PLACE (see claudeLiveModel.ts)
@@ -624,10 +654,21 @@ export async function claudeRemote(opts: {
                     logger.debug(`[claudeRemote] Model switched to ${modelTarget(next.mode.model) ?? 'default'}`);
                 } catch (e) {
                     logger.debug(`[claudeRemote] setModel failed: ${e instanceof Error ? e.message : String(e)}`);
+                    // B-853: the Query is gone, not the model ("Query closed
+                    // before response received") — the message runs in the next
+                    // launch on the model it asked for.
+                    if (inputClosed()) {
+                        handBack(next);
+                        return;
+                    }
                     opts.onCompletionEvent?.(modelSwitchFailureNotice(next.mode.model, e));
                     if (e instanceof TimeoutError) modelUnconfirmed = true;
                     next = { ...next, mode: { ...next.mode, model: mode.model } };
                 }
+            }
+            if (inputClosed()) {
+                handBack(next);
+                return;
             }
             mode = next.mode;
             updateThinking(true);
@@ -896,6 +937,7 @@ export async function claudeRemote(opts: {
             throw e;
         }
     } finally {
+        queryClosed = true;
         updateThinking(false);
         // B-634 ②: whatever the Query ended on (a crash, a teardown), a
         // message Claude Code never started is not answered — say so. Only a

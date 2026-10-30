@@ -5,7 +5,7 @@
  */
 import { memo, useCallback, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Ban, Bot, Brain, Check, ChevronDown, ChevronRight, Play, Square, Terminal } from 'lucide-react';
+import { AlertTriangle, Bot, Brain, Check, ChevronDown, ChevronRight, Play, Square, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage, ToolCallMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { useSession, useSessionThinking, useMachine } from '@/sync/storage';
@@ -28,7 +28,7 @@ import { discardedReasonKey } from './discardedInput';
 import { MessageActions } from './MessageActions';
 import { MessageTime } from './MessageTime';
 import { requestChatFollow } from './chatFollowRequest';
-import { SendFailedActions, SendingIndicator, SentFlash, useSendSpinnerReset } from './SendStatusView';
+import { DiscardedNote, SendFailedActions, SendingIndicator, SentFlash, useSendSpinnerReset } from './SendStatusView';
 import { turnSendStatus } from './sendStatusModel';
 import './message.css';
 import { presentTeamMessage } from './teamMessage';
@@ -158,12 +158,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
                     {t('session.chat.draft.attached', { count: attachedDraftCount })}
                 </span>
             )}
-            {discarded && (
-                <span className="msg-discarded" role="status">
-                    <Ban size={12} aria-hidden />
-                    {t(`session.chat.discarded.${discarded}`)}
-                </span>
-            )}
+            {discarded && <DiscardedNote sessionId={sessionId} reason={discarded} text={text} />}
         </div>
     );
 }
