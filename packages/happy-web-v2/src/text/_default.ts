@@ -2733,6 +2733,20 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            oct30a: {
+                title: 'New sessions follow the latest model',
+                summary: 'New sessions default to the latest model of their tier, a model pinned in the machine\'s own config comes first, and the model picker shows the model that will actually run.',
+                latest: 'New sessions follow the latest model of their tier by default (Claude: latest Opus, Codex: latest sol) and switch automatically when a newer one is out and the machine can run it.',
+                machine: 'If the machine\'s own agent config names a model, that model is used; the picker shows "Follow machine config" with the model name.',
+                settings: 'Settings → Agent defaults lets you choose "Follow latest" or pin a specific model, and shows the actual model per machine.',
+            },
+            oct30: {
+                title: 'CLI 0.2.188: /compact really compacts',
+                summary: '/compact now compacts the context in Claude, Codex and pi sessions, and Codex sessions run the model from the machine\'s config.',
+                compact: '/compact really compacts in Claude, Codex and pi sessions, including when it is queued or sent with other messages; if compaction is refused you see "Compaction failed".',
+                resume: 'Sending /compact as the first message after a session restart no longer loses the history.',
+                codexModel: 'Codex sessions run the model set in the machine\'s config instead of a fixed built-in one.',
+            },
             oct28a: {
                 title: 'Release notes no longer go unseen',
                 summary: 'Refreshing a session page shows new release notes too; when they can\'t pop up on their own, a reminder appears and the sidebar keeps a way in.',

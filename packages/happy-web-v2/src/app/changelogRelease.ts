@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-30-model-follow-latest',
+    date: '2026-10-30',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct30a.title',
+    summaryKey: 'changelog.releases.oct30a.summary',
+    itemKeys: ['changelog.releases.oct30a.latest', 'changelog.releases.oct30a.machine', 'changelog.releases.oct30a.settings'],
+  },
+  {
+    id: '2026-10-30-cli-compact',
+    cliVersion: '0.2.188',
+    date: '2026-10-30',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct30.title',
+    summaryKey: 'changelog.releases.oct30.summary',
+    itemKeys: ['changelog.releases.oct30.compact', 'changelog.releases.oct30.resume', 'changelog.releases.oct30.codexModel'],
+  },
+  {
     id: '2026-10-28-release-notes-always-reachable',
     date: '2026-10-28',
     buildVersion: __APP_VERSION__,

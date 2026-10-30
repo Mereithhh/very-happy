@@ -2870,6 +2870,20 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            oct30a: {
+                title: '新会话默认跟随最新模型',
+                summary: '新会话默认用同档最新模型，本机配置里指定的模型优先，模型选择器如实显示实际会用的模型。',
+                latest: '新会话默认跟随同档最新模型（Claude 取最新 Opus，Codex 取最新 sol），出了新模型且机器能跑时自动切换。',
+                machine: '本机智能体配置里指定了模型时，按本机配置运行，选择器显示「跟随本机配置」和模型名。',
+                settings: '设置 → 智能体默认设置里可以选择「跟随最新」或固定某个模型，并按机器显示实际模型。',
+            },
+            oct30: {
+                title: 'CLI 0.2.188：/compact 会真正压缩上下文',
+                summary: '/compact 在 Claude、Codex、pi 会话里都会真正压缩上下文；Codex 会话按本机配置的模型运行。',
+                compact: '/compact 在 Claude、Codex、pi 会话里都会真正压缩，排队或和其他消息一起发也一样；压缩被拒时会显示「上下文压缩失败」。',
+                resume: '会话重启后第一条就发 /compact，也不会丢历史。',
+                codexModel: 'Codex 会话按本机配置的模型运行，不再固定用内置模型。',
+            },
             oct28a: {
                 title: '更新说明不会再错过',
                 summary: '刷新会话页也能看到更新说明；没能自动弹出时会有提示，侧栏也一直有入口。',
