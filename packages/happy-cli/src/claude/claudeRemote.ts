@@ -937,8 +937,8 @@ export async function claudeRemote(opts: {
             throw e;
         }
     } finally {
-        queryClosed = true;
         updateThinking(false);
+        queryClosed = true;
         // B-634 ②: whatever the Query ended on (a crash, a teardown), a
         // message Claude Code never started is not answered — say so. Only a
         // CLI that emits lifecycle frames can confirm at all; without them
