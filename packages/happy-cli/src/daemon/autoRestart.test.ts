@@ -245,6 +245,16 @@ describe('B-852 createAutoRestart', () => {
         expect(restart).toHaveBeenCalledTimes(1);
     });
 
+    it('offline failure: back online but still behind (e.g. an old binary) → classified afresh, not left failed', async () => {
+        const { scheduler, report, live, now } = offlineSetup();
+        const t0 = now();
+        await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report() });
+        await flush();
+        live.a = { live: true, wrapperVersion: '0.2.188', flavor: 'claude', capabilities: ['auto-restart-v1'] };
+        scheduler.sweep();
+        expect(scheduler.statuses().a).toEqual({ state: 'waiting', reason: 'awaiting-check-in', since: t0, target: '0.2.190' });
+    });
+
     // QA25 P2-3: the switch must not stretch the cadence or restart the clock.
     it('switch off then on keeps the waiting clock', async () => {
         let on = true;
