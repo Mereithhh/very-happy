@@ -378,10 +378,13 @@ export class Session {
     }
 
     /**
-     * Clear the current session ID (used by /clear command)
+     * Clear the current session ID (used by /clear command). The next turn
+     * starts a conversation that never saw the project prefix, so it carries
+     * the full prefix again instead of only a digest (B-845).
      */
     clearSessionId = (): void => {
         this.sessionId = null;
+        this._projectInjector?.reset();
         logger.debug('[Session] Session ID cleared');
     }
 

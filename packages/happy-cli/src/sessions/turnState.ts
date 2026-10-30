@@ -38,6 +38,8 @@ export interface TurnState {
     lastSeq: number
 }
 
+import { compactCommandText, parseClear } from '@/parsers/specialCommands'
+
 type Envelope = { role?: string; ev?: Record<string, any> }
 
 function asRecord(value: unknown): Record<string, any> | null {
@@ -111,6 +113,29 @@ function isSteerPrompt(body: unknown): boolean {
     return !!b && asRecord(b.meta)?.delivery === 'steer'
 }
 
+/**
+ * B-845: a standalone `/compact` or `/clear` runs no model turn. Claude opens
+ * a turn only on the first assistant frame, so neither gets a `turn-start` /
+ * `turn-end`; the wrapper ends it with one of these service lines instead
+ * (claudeRemote, codexCompact, runCodex — every CLI since B-540). Without
+ * them `read --wait` on such a prompt waited out its whole --timeout.
+ */
+function isControlCommand(text: string): boolean {
+    return compactCommandText(text) !== null || parseClear(text).isClear
+}
+
+const COMPACTION_FAILED = 'Compaction failed:'
+
+function controlCommandVerdict(body: unknown): { status: string; error: string | null } | null {
+    const b = asRecord(body)
+    const data = b?.role === 'agent' && b.content?.type === 'event' ? asRecord(b.content.data) : null
+    if (data?.type !== 'message' || typeof data.message !== 'string') return null
+    const text = data.message.trim()
+    if (text === 'Compaction completed' || text === 'Context was reset') return { status: 'completed', error: null }
+    if (text.startsWith(COMPACTION_FAILED)) return { status: 'failed', error: text.slice(COMPACTION_FAILED.length).trim() || null }
+    return null
+}
+
 /** Text of a user prompt body (null when it is not one). */
 export function userPromptText(body: unknown): string | null {
     return isUserPrompt(body) ? (body as { content: { text: string } }).content.text : null
@@ -132,6 +157,8 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
     let startedAfterPrompt = false
     const emitsStarts = entries.some((entry) => sessionEnvelope(entry.body)?.ev?.t === 'turn-start')
     const steerAnchor = userIndex >= 0 && isSteerPrompt(entries[userIndex].body)
+    const anchorText = userIndex >= 0 ? userPromptText(entries[userIndex].body) : null
+    const commandAnchor = anchorText !== null && isControlCommand(anchorText)
 
     for (let i = userIndex + 1; i < entries.length; i++) {
         const body = entries[i].body
@@ -157,6 +184,13 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
             ended = true
             status = typeof env.ev.status === 'string' ? env.ev.status : null
             error = typeof env.ev.error === 'string' ? env.ev.error : null
+            continue
+        }
+        const verdict = commandAnchor && !ended ? controlCommandVerdict(body) : null
+        if (verdict) {
+            ended = true
+            status = verdict.status
+            error = verdict.error
             continue
         }
         const piece = agentPiece(body)

@@ -123,3 +123,45 @@ describe('steered prompts (B-632)', () => {
         expect(turn.ended).toBe(false)
     })
 })
+
+describe('standalone /compact and /clear (B-845)', () => {
+    const service = (message: string) => ({ role: 'agent', content: { id: message, type: 'event', data: { type: 'message', message } } })
+
+    it('a Claude /compact (no turn markers at all) ends on its compaction verdict', () => {
+        expect(analyzeLatestTurn(log(user('/compact'), service('Compaction started')))).toMatchObject({ ended: false })
+        expect(analyzeLatestTurn(log(user('/compact keep the plan'), service('Compaction started'), service('Compaction completed'), service('ready'))))
+            .toMatchObject({ ended: true, status: 'completed', error: null })
+    })
+
+    it('a refused or failed compaction ends as failed with the reason', () => {
+        expect(analyzeLatestTurn(log(user('／compact'), service('Compaction started'), service('Compaction failed: Not enough messages to compact.'))))
+            .toMatchObject({ ended: true, status: 'failed', error: 'Not enough messages to compact.' })
+        expect(analyzeLatestTurn(log(user('/compact'), service('Compaction failed: there is no conversation to compact yet'))))
+            .toMatchObject({ ended: true, status: 'failed', error: 'there is no conversation to compact yet' })
+    })
+
+    it('B-845b: pi refusing /compact — its failed turn-end carries the agent\'s reason', () => {
+        const reason = 'Internal error: pi compact failed: Nothing to compact (session too small)'
+        expect(analyzeLatestTurn(log(user('/compact'), ev({ t: 'turn-start' }), service(`pi error: ${reason}`), ev({ t: 'turn-end', status: 'failed', error: reason }))))
+            .toMatchObject({ ended: true, status: 'failed', error: reason })
+    })
+
+    it('a /clear ends on "Context was reset"', () => {
+        expect(analyzeLatestTurn(log(user('/clear'), service('Context was reset')))).toMatchObject({ ended: true, status: 'completed' })
+    })
+
+    it('a compaction that ran as an agent turn (Codex) keeps its turn-end verdict', () => {
+        expect(analyzeLatestTurn(log(
+            user('/compact'), service('Compaction started'), ev({ t: 'turn-start' }), ev({ t: 'turn-end', status: 'completed' }), service('Compaction completed'),
+        ))).toMatchObject({ ended: true, status: 'completed' })
+        // The verdict line before the agent's own turn finished does not end it early.
+        expect(analyzeLatestTurn(log(
+            user('/compact'), service('Compaction completed'), ev({ t: 'turn-start' }),
+        ))).toMatchObject({ ended: false })
+    })
+
+    it('only a /compact or /clear prompt is ended by these lines', () => {
+        expect(analyzeLatestTurn(log(user('summarize'), ev({ t: 'turn-start' }), service('Compaction completed'))).ended).toBe(false)
+        expect(analyzeLatestTurn(log(user('hi'), service('Context was reset'))).ended).toBe(false)
+    })
+})

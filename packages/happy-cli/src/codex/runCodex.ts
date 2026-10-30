@@ -67,6 +67,7 @@ import {
 } from './codexPrompt';
 import { codexEventLogMetadata, logValueMetadata, safeCodexErrorMetadata } from './logMetadata';
 import { DEFAULT_CODEX_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
+import { CODEX_REMOTE_PERMISSION_MODES, codexPublishablePermissionMode } from './codexPermissionMode';
 import { EditReportThrottle, extractCodexPatchPaths } from '@/sessions/editPaths';
 import { reportSessionEditToDaemon } from '@/daemon/controlClient';
 
@@ -320,28 +321,26 @@ export async function runCodex(opts: {
     let currentAppendSystemPrompt: string | undefined = undefined;
 
     const resetCurrentModeDefaults = () => {
-        currentPermissionMode = DEFAULT_CODEX_PERMISSION_MODE;
+        // B-845b: the permission mode is the user's choice, not a per-turn override — an abort
+        // keeps it (and the published `metadata.permissionMode` stays true). Resetting it here
+        // ran the next meta-less send (CLI send, team wake) on `default` while the session
+        // still reported read-only / yolo.
         currentModel = DEFAULT_CODEX_MODEL;
         currentEffort = DEFAULT_CODEX_EFFORT;
         currentAppendSystemPrompt = undefined;
         logger.debug('[Codex] Reset current mode defaults after abort');
     };
 
-    // Valid Codex permission modes from remote messages. Matches the modes
-    // the mobile UI exposes for Codex sessions (see modelModeOptions.ts:
-    // getCodexPermissionModes) and mirrors the Gemini validation pattern at
-    // runGemini.ts:222. Anything outside this set is silently ignored — the
-    // previous code blindly cast `message.meta.permissionMode as PermissionMode`
-    // at runtime, meaning a crafted value like `'totally_unsafe'` would be
-    // accepted and then fall through to the `default` branch in
-    // resolveCodexExecutionPolicy() — or worse, an attacker-chosen valid value
-    // could escalate sandbox scope (issue #1092).
-    const VALID_REMOTE_PERMISSION_MODES: readonly PermissionMode[] = [
-        'default',
-        'read-only',
-        'safe-yolo',
-        'yolo',
-    ];
+    const VALID_REMOTE_PERMISSION_MODES = CODEX_REMOTE_PERMISSION_MODES;
+    // B-845: the mode a resume relaunches with (codexPermissionMode.ts).
+    let publishedPermissionMode: PermissionMode | null = null;
+    const publishPermissionMode = (mode: unknown) => {
+        const publishable = codexPublishablePermissionMode(mode);
+        if (!publishable || publishable === publishedPermissionMode) return;
+        publishedPermissionMode = publishable;
+        session.updateMetadata((currentMetadata) => ({ ...currentMetadata, permissionMode: publishable }));
+    };
+    publishPermissionMode(opts.permissionMode);
 
     let discoveredModels: Awaited<ReturnType<CodexAppServerClient['listModels']>> = [];
 
@@ -376,6 +375,7 @@ export async function runCodex(opts: {
                 if (VALID_REMOTE_PERMISSION_MODES.includes(incoming)) {
                     messagePermissionMode = incoming;
                     currentPermissionMode = messagePermissionMode;
+                    publishPermissionMode(incoming);
                     logger.debug('[Codex] Valid permission mode override applied');
                 } else {
                     logger.debug('[Codex] Ignoring invalid permission mode override', logValueMetadata(message.meta.permissionMode));
@@ -1085,6 +1085,8 @@ export async function runCodex(opts: {
                 reasoningProcessor.abort();
                 diffProcessor.reset();
                 appendSystemPromptInjected = false;
+                // B-845: the new thread never saw the project prefix — send it in full again.
+                projectInjector.reset();
                 thinking = false;
                 session.keepAlive(thinking, 'remote');
                 messageBuffer.addMessage('Context was reset', 'status');

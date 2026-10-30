@@ -67,7 +67,9 @@ describe('parseSpawnArgs', () => {
         // The daemon logs an invalid mode and spawns WITHOUT the flag, so a typo
         // would hand an unattended dispatcher a session that blocks on approval.
         expect(() => parseSpawnArgs(['--dir', '/tmp', '--permission-mode', 'yolo-please'])).toThrow(/--permission-mode/)
-        expect(() => parseSpawnArgs(['--dir', '/tmp', '--permission-mode', 'read-only'])).toThrow(/--permission-mode/)
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--permission-mode', 'dontAsk'])).toThrow(/--permission-mode/)
+        // B-845: Codex's own modes reach the daemon's argv now.
+        expect(parseSpawnArgs(['--dir', '/tmp', '--permission-mode', 'read-only']).permissionMode).toBe('read-only')
         expect(() => parseSpawnArgs(['--dir', '/tmp', '--permission-mode'])).toThrow(/requires a value/)
     })
 

@@ -210,8 +210,8 @@ ${chalk.bold('Options:')}
                             1-24 chars: [a-z0-9] plus - or _. Shows as a chip in
                             the web list and is searchable as #<name>.
   --permission-mode <m>  Permission mode for the new session: default,
-                            acceptEdits, plan, yolo, bypassPermissions.
-                            Default = the web launcher's: yolo for claude /
+                            acceptEdits, plan, yolo, bypassPermissions (Codex
+                            also read-only, safe-yolo). Default = the web launcher's: yolo for claude /
                             codex / pi, 'default' for gemini / openclaw. A fork
                             keeps its source's mode. 'default' stops at the first
                             un-allowlisted tool until someone approves it (see
