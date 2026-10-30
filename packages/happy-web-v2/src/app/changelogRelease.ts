@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-31-model-follow-switch-back',
+    date: '2026-10-31',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct31a.title',
+    summaryKey: 'changelog.releases.oct31a.summary',
+    itemKeys: ['changelog.releases.oct31a.switchBack', 'changelog.releases.oct31a.running'],
+  },
+  {
+    id: '2026-10-31-cli-codex-keeps-model',
+    cliVersion: '0.2.189',
+    date: '2026-10-31',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct31.title',
+    summaryKey: 'changelog.releases.oct31.summary',
+    itemKeys: ['changelog.releases.oct31.codex', 'changelog.releases.oct31.clear', 'changelog.releases.oct31.readWait'],
+  },
+  {
     id: '2026-10-30-model-follow-latest',
     date: '2026-10-30',
     buildVersion: __APP_VERSION__,

@@ -2733,6 +2733,19 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            oct31a: {
+                title: 'Switching back to "Follow" takes effect right away',
+                summary: 'After pinning a model in a session and switching back to "Follow", the next message runs the model the picker shows.',
+                switchBack: 'After pinning a model in a session and switching back to "Follow", the very next message switches to the model shown in the picker.',
+                running: 'When the model a session is running differs from the selection, the picker notes "This session is running X"; each model is listed only once, and effort shows the value actually in use.',
+            },
+            oct31: {
+                title: 'CLI 0.2.189: Codex keeps its model and permissions',
+                summary: 'Codex sessions keep their model and permission mode after an interruption or a restart; /clear brings back the full project instructions.',
+                codex: 'After an interruption, a restart, or a CLI send without --model, a Codex session keeps its model and permission mode instead of falling back to the defaults.',
+                clear: 'After /clear, Claude and Codex sessions get the full project instructions again.',
+                readWait: 'sessions read --wait no longer hangs on a standalone /compact or /clear, and reports the reason when the command is rejected.',
+            },
             oct30a: {
                 title: 'New sessions follow the latest model',
                 summary: 'New sessions default to the latest model of their tier, a model pinned in the machine\'s own config comes first, and the model picker shows the model that will actually run.',
