@@ -473,6 +473,25 @@ terminals still work. A direct shell may survive a brief browser reconnect while
 the same daemon holds its PTY, but it is not durable/discoverable like tmux and
 ends on daemon restart or idle cleanup.
 
+### `/compact` by session type
+
+A message that is only `/compact` (optionally `/compact <instructions>`; a
+full-width `／`, upper case and a full-width space are accepted) runs the
+agent's compaction. It is never steered into a running turn, joined with other
+queued messages, or prefixed with project / lead-board text, so it works the
+same whether the session is idle, busy, just restarted, or in a project.
+
+| Session | `/compact` |
+| --- | --- |
+| Claude | Claude Code's compaction; instructions are passed on. As the first message after a wrapper restart it compacts the resumed conversation (before QA21 it opened an empty one and the history was lost). When Claude Code declines — e.g. "Not enough messages to compact." — the session shows 「上下文压缩失败：<reason>」 / "Compaction failed: <reason>", never "compacted". |
+| Codex | Codex's own compaction (`thread/compact/start`); needs a CLI that advertises `codex-compact-v1`. Codex takes no instructions — the session says so and compacts anyway. |
+| pi and other ACP agents | Runs when the agent lists `compact` among its commands. |
+| Gemini, OpenClaw, ACP agents without it | Not supported: Very Happy answers "This session type does not support /compact" and nothing reaches the model. |
+
+The composer's command list marks `/compact` as unavailable on sessions that
+cannot run it, and sending it there shows a notice instead of a message (older
+Codex wrappers included — update the CLI and restart the session).
+
 ### Custom models and providers (B-688)
 
 **Settings → Models & providers** (and **Custom…** at the bottom of the composer's

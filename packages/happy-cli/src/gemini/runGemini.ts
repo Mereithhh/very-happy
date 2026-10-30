@@ -6,6 +6,7 @@
  * communication with the Happy server and mobile app.
  */
 
+import { COMPACT_UNSUPPORTED_NOTICE, compactCommandText } from '@/parsers/specialCommands';
 import { render } from 'ink';
 import React from 'react';
 import { randomUUID } from 'node:crypto';
@@ -229,6 +230,11 @@ export async function runGemini(opts: {
   let currentModel: string | undefined = undefined;
 
   session.onUserMessage((message) => {
+    // Owner 10-30: Gemini has no /compact; Very Happy says so instead of the model.
+    if (compactCommandText(message.content.text ?? '') !== null) {
+      session.sendSessionEvent({ type: 'message', message: COMPACT_UNSUPPORTED_NOTICE });
+      return;
+    }
     // Resolve permission mode (validate) - same as Codex
     let messagePermissionMode = currentPermissionMode;
     if (message.meta?.permissionMode) {

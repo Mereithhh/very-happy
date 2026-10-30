@@ -218,6 +218,8 @@ export class CodexAppServerClient {
     private completedTurnIds = new Set<string>();
     /** B-625: turns whose failure has already been forwarded, so a second failed frame is not. */
     private failedTurnIds = new Set<string>();
+    /** The turn the last pending completion was resolved for (runTurnAndWait reads its verdict). */
+    private lastResolvedTurnId: string | null = null;
     // B-625: the app-server speaks for every thread it hosts — the session's own and the
     // children `spawn_agent` opens — so a lifecycle frame (turn/started, turn/completed,
     // thread/status/changed, error, thread/closed) is the session's only when its `threadId`
@@ -1129,6 +1131,7 @@ export class CodexAppServerClient {
 
     private resolvePendingTurn(aborted: boolean): void {
         if (!this.pendingTurnCompletion) return;
+        this.lastResolvedTurnId = this.pendingTurnCompletion.turnId;
         this.clearTurnWatchdog();
         this.clearThreadStopGrace();
         this.pendingTurnCompletion.resolve(aborted);
@@ -1282,6 +1285,7 @@ export class CodexAppServerClient {
             return;
         }
 
+        if (!pending.turnId && turnId) pending.turnId = turnId;
         this.resolvePendingTurn(aborted);
     }
 
@@ -1423,6 +1427,29 @@ export class CodexAppServerClient {
         /** B-625: test hook for the thread-stop grace (see armThreadStopGrace). */
         threadStopGraceMs?: number;
     }): Promise<{ aborted: boolean }> {
+        const { aborted } = await this.runTurnAndWait(() => this.sendTurn(prompt, opts), opts);
+        return { aborted };
+    }
+
+    /**
+     * `/compact`: Codex compacts the thread in a turn of its own
+     * (`thread/compact/start` answers `{}`, then `turn/started` →
+     * `contextCompaction` item → `turn/completed`, probed on codex-cli 0.154).
+     * Waits for that turn like any other; `failed` is the turn's own verdict.
+     */
+    async compactThreadAndWait(opts?: { turnTimeoutMs?: number; threadStopGraceMs?: number }): Promise<{ aborted: boolean; failed: boolean }> {
+        return this.runTurnAndWait(async () => {
+            if (!this._threadId) {
+                throw new Error('No active thread. Call startThread first.');
+            }
+            await this.request('thread/compact/start', { threadId: this._threadId });
+        }, opts);
+    }
+
+    private async runTurnAndWait(start: () => Promise<void>, opts?: {
+        turnTimeoutMs?: number;
+        threadStopGraceMs?: number;
+    }): Promise<{ aborted: boolean; failed: boolean }> {
         // Wait for any in-flight interruptTurn() to complete before starting a new
         // turn. Otherwise the stale turn/interrupt RPC can reach Codex after our
         // turn/start and abort the wrong turn.
@@ -1459,7 +1486,7 @@ export class CodexAppServerClient {
         });
 
         try {
-            await this.sendTurn(prompt, opts);
+            await start();
         } catch (err) {
             this.clearTurnWatchdog();
             this.pendingTurnCompletion = null;
@@ -1470,7 +1497,8 @@ export class CodexAppServerClient {
 
         const aborted = await completion;
         this.clearTurnWatchdog();
-        return { aborted };
+        const turnId = this.lastResolvedTurnId;
+        return { aborted, failed: turnId !== null && this.failedTurnIds.has(turnId) };
     }
 
     private armTurnWatchdog(timeoutMs: number): void {

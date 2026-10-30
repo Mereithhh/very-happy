@@ -18,6 +18,13 @@ import * as z from 'zod';
 export const CODEX_STEER_CAPABILITY = 'codex-steer-v1';
 
 /**
+ * The Codex wrapper runs a standalone `/compact` itself (app-server
+ * `thread/compact/start`) instead of sending the text to the model. Older Codex
+ * wrappers do not, so the web marks /compact unavailable on them (AGENTS #14).
+ */
+export const CODEX_COMPACT_CAPABILITY = 'codex-compact-v1';
+
+/**
  * B-632: the pi wrapper hands a `meta.delivery === 'steer'` message to the running
  * pi turn (pi `sendUserMessage(…, { deliverAs: 'steer' })` through the Very Happy pi
  * extension). Advertised only once that extension has connected.

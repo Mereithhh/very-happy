@@ -100,6 +100,54 @@ describe('claudeRemote', () => {
         expect(callbackOrder).toEqual(['event:Context was reset', 'reset', 'ready']);
     });
 
+    describe('start-up args (--resume) are spent only by a launch that starts Claude (QA21)', () => {
+        const base = () => ({
+            sessionId: null, path: process.cwd(), allowedTools: [], hookSettingsPath: '/unused-test-settings.json',
+            onReady: vi.fn(), canCallTool: async () => ({ behavior: 'allow' }) as any, isAborted: () => false,
+            onSessionFound: vi.fn(), onMessage: vi.fn(),
+        });
+
+        it('a launch whose first message was parked (isolated /compact after a restart) leaves them', async () => {
+            const onStartArgsUsed = vi.fn();
+            await claudeRemote({ ...base(), nextMessage: async () => null, onStartArgsUsed });
+            expect(onStartArgsUsed).not.toHaveBeenCalled();
+            expect(query).not.toHaveBeenCalled();
+        });
+
+        it('the launch that spawns Claude on them reports them used before query()', async () => {
+            const order: string[] = [];
+            vi.mocked(query).mockImplementation(() => { order.push('query'); return { async *[Symbol.asyncIterator]() {} } as any; });
+            let n = 0;
+            await claudeRemote({ ...base(), nextMessage: async () => ++n === 1 ? { message: '/compact', mode } : null,
+                onStartArgsUsed: () => { order.push('used'); } });
+            expect(order).toEqual(['used', 'query']);
+        });
+
+        it('/clear drops them on purpose', async () => {
+            const onStartArgsUsed = vi.fn();
+            await claudeRemote({ ...base(), nextMessage: async () => ({ message: '/clear', mode }), onSessionReset: vi.fn(), onStartArgsUsed });
+            expect(onStartArgsUsed).toHaveBeenCalledOnce();
+            expect(query).not.toHaveBeenCalled();
+        });
+    });
+
+    it('reports a refused /compact as not compacted (status frame carries the verdict; result is success)', async () => {
+        vi.mocked(query).mockReturnValue({
+            async *[Symbol.asyncIterator]() {
+                yield { type: 'system', subtype: 'status', status: 'compacting' };
+                yield { type: 'system', subtype: 'status', status: null, compact_result: 'failed', compact_error: 'Not enough messages to compact.' };
+                yield { type: 'result', subtype: 'success', num_turns: 0, result: '' };
+            },
+        } as any);
+        const onCompletionEvent = vi.fn();
+        let n = 0;
+        await claudeRemote({ sessionId: null, path: process.cwd(), allowedTools: [], hookSettingsPath: '/unused-test-settings.json',
+            nextMessage: async () => ++n === 1 ? { message: '/compact', mode } : null, onReady: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow' }) as any, isAborted: () => false, onSessionFound: vi.fn(), onMessage: vi.fn(),
+            onCompletionEvent });
+        expect(onCompletionEvent.mock.calls.map(([m]) => m)).toEqual(['Compaction started', 'Compaction failed: Not enough messages to compact.']);
+    });
+
     it('opts the remote Query into a later user-requested live bypass', async () => {
         vi.mocked(query).mockReturnValue({
             setPermissionMode: vi.fn(),

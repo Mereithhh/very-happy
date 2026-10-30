@@ -110,8 +110,11 @@ describe('owner board in startHappyServer', () => {
     it('starts the board turn and adds the digest where the Claude launcher finalizes the prompt', () => {
         const launcher = readFileSync(join(__dirname, '../claude/claudeRemoteLauncher.ts'), 'utf8');
         const finalize = launcher.slice(launcher.indexOf('const finalize = async'), launcher.indexOf('const parked = modeGate.takeParked()'));
-        expect(finalize).toContain('board?.onTurnStart(batchSourceIds);');
-        expect(finalize).toContain('const text = board ? await board.decorate(prompt) : prompt;');
+        expect(finalize).toContain('board: leadBoardFor(session.client),');
+        expect(finalize).toContain('sourceIds: batchSourceIds,');
+        const helper = readFileSync(join(__dirname, '../claude/finalizeRemotePrompt.ts'), 'utf8');
+        expect(helper).toContain('deps.board?.onTurnStart(deps.sourceIds);');
+        expect(helper).toContain('const text = deps.board ? await deps.board.decorate(prompt) : prompt;');
         expect(launcher).toContain('batchSourceIds = msg?.sourceIds;');
     });
 });

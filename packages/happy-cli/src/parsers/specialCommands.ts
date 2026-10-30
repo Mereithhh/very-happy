@@ -17,30 +17,34 @@ export interface SpecialCommandResult {
 }
 
 /**
- * Parse /compact command
- * Matches messages starting with "/compact " or exactly "/compact"
+ * `/compact [instructions]` as the user typed it. Accepts what a phone IME
+ * produces — a full-width slash (／), a full-width space, upper case, a
+ * newline or CJK text right after the word — but only when the command opens
+ * the message: "please /compact" and "/compactx" stay chat. The result is the
+ * canonical `/compact` / `/compact <instructions>` the agent understands.
  */
+const COMPACT_RE = /^[/\uFF0F]compact(?![A-Za-z0-9_:-])([\s\S]*)$/i;
+const LEADING_SPACE_RE = /^[\s\u3000\uFEFF\u200B]+/;
+
 export function parseCompact(message: string): CompactCommandResult {
-    const trimmed = message.trim();
-    
-    if (trimmed === '/compact') {
+    const match = message.replace(LEADING_SPACE_RE, '').match(COMPACT_RE);
+    if (!match) {
         return {
-            isCompact: true,
-            originalMessage: trimmed
+            isCompact: false,
+            originalMessage: message
         };
     }
-    
-    if (trimmed.startsWith('/compact ')) {
-        return {
-            isCompact: true,
-            originalMessage: trimmed
-        };
-    }
-    
+    const instructions = match[1].replace(/\u3000/g, ' ').trim();
     return {
-        isCompact: false,
-        originalMessage: message
+        isCompact: true,
+        originalMessage: instructions ? `/compact ${instructions}` : '/compact'
     };
+}
+
+/** The canonical `/compact …` text, or null when the message is not a compact command. */
+export function compactCommandText(message: string): string | null {
+    const result = parseCompact(message);
+    return result.isCompact ? result.originalMessage : null;
 }
 
 /**
@@ -87,3 +91,9 @@ export function parseSpecialCommand(message: string): SpecialCommandResult {
         type: null
     };
 }
+
+/**
+ * What Very Happy answers when a session's agent has no compaction — instead
+ * of passing `/compact` to the model, which then claims it cannot run it.
+ */
+export const COMPACT_UNSUPPORTED_NOTICE = 'This session type does not support /compact';
