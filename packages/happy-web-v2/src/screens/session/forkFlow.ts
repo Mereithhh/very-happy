@@ -103,7 +103,7 @@ async function findPoint(target: RewindTarget): Promise<string> {
         const id = p.uuid ?? p.itemId;
         return id && typeof p.text === 'string' ? [{ id, text: p.text }] : [];
     });
-    const pointId = target.messageId ? resolveForkPoint(confirmedPrompts(source.sessionId), target.messageId, points) : null;
+    const pointId = target.messageId ? resolveForkPoint(confirmedPrompts(source.sessionId), target.messageId, points, source.kind) : null;
     if (!pointId) throw new ForkFailure('missingPoint', 'No matching prompt in the agent transcript');
     return pointId;
 }

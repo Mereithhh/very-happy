@@ -62,6 +62,16 @@ describe('B-851 fork from a prompt sent from the Web (no claude uuid)', () => {
         expect(branch.draft).toBe('second');
         expect([branch.permissionMode, branch.modelMode, branch.effortLevel]).toEqual(['plan', 'opus', 'high']);
     });
+    it('passes the agent kind: a Codex first prompt hidden behind its instructions still cuts by position', async () => {
+        stubMachine({
+            'codex-list-rewind-points': { type: 'success', points: [{ itemId: 'i-first', text: '# AGENTS.md instructions …' }, { itemId: 'i-second', text: 'second' }] },
+            'codex-rewind-before-message': { type: 'success', startFresh: true },
+            'spawn-happy-session': { type: 'success', sessionId: 'branch' },
+        });
+        const session = storage.getState().sessions.parent;
+        await flow.forkFromMessage(session, { source: { kind: 'codex', sessionId: 'parent', machineId: 'm', directory: '/repo', codexThreadId: 't' }, messageId: 'a' } as never, 'first');
+        expect(JSON.stringify(calls.find((c) => c.method === 'codex-rewind-before-message')?.params)).toContain('i-first');
+    });
     it('uses a prompt’s own claude uuid without asking the machine', async () => {
         stubMachine({
             'claude-rewind-before-message': { type: 'success', startFresh: true },

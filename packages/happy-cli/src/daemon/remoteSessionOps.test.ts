@@ -58,6 +58,14 @@ describe('createRemoteSessionOpsHandlers (B-506, target daemon)', () => {
         expect(log).toHaveBeenCalledWith('[REMOTE SESSION OPS] sessions.list from machine=mac-A host=mac cli=0.2.157 session=- target=- → ok (0ms)')
     })
 
+    it('B-851: locate keeps the fork lineage of a session found only in the key file', async () => {
+        const forked = persisted('kid')
+        forked.metadata = { ...forked.metadata, parentSessionId: 'mine', forkedFromMessageId: 'msg-1' } as PersistedSession['metadata']
+        const { handlers } = build({ readPersisted: () => ({ kid: forked }) })
+        const out = await handlers['sessions.list'](req({ ids: ['kid'] }))
+        expect(out).toMatchObject({ ok: true, result: { sessions: [{ id: 'kid', parentSessionId: 'mine', forkedFromMessageId: 'msg-1' }] } })
+    })
+
     it('sessions.list with all = the account rows this machine can decrypt, filtered to the asked ids', async () => {
         const { handlers } = build()
         const out = await handlers['sessions.list'](req({ ids: ['mine', 'foreign'], all: true }))

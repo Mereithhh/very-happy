@@ -74,6 +74,10 @@ export interface SessionSummary {
     tags?: string[]
     /** 'assistant' for the meta-agent itself. */
     variant?: string
+    /** B-851: the session this one was forked from (Web 「分叉会话」 / 「从这里分叉」). */
+    parentSessionId?: string
+    /** B-851: the parent's prompt the fork was cut before (message fork only). */
+    forkedFromMessageId?: string
     url: string
     savedAt?: number
 }
@@ -161,6 +165,14 @@ export function sessionLiveness(live: readonly LiveSessionLike[], sessionId: str
     return child ? livenessOf(child) : { live: false }
 }
 
+/** B-851: fork lineage from decrypted metadata; absent on sessions that were not forked. */
+export function lineageOf(meta: Pick<Metadata, 'parentSessionId' | 'forkedFromMessageId'> | null | undefined): Pick<SessionSummary, 'parentSessionId' | 'forkedFromMessageId'> {
+    return {
+        ...(typeof meta?.parentSessionId === 'string' && meta.parentSessionId ? { parentSessionId: meta.parentSessionId } : {}),
+        ...(typeof meta?.forkedFromMessageId === 'string' && meta.forkedFromMessageId ? { forkedFromMessageId: meta.forkedFromMessageId } : {}),
+    }
+}
+
 function toSummary(
     id: string,
     persisted: PersistedSession | undefined,
@@ -177,6 +189,7 @@ function toSummary(
         ...(meta?.flavor ? { flavor: meta.flavor } : {}),
         ...(meta?.tags?.length ? { tags: [...meta.tags] } : {}),
         ...(meta?.variant ? { variant: meta.variant } : {}),
+        ...lineageOf(meta),
         url: sessionWebUrl(id),
         ...(persisted?.savedAt !== undefined ? { savedAt: persisted.savedAt } : {}),
     }
@@ -295,6 +308,7 @@ export function summarizeAccountSession(
         ...(meta.flavor ? { flavor: meta.flavor } : {}),
         ...(meta.tags?.length ? { tags: [...meta.tags] } : {}),
         ...(meta.variant ? { variant: meta.variant } : {}),
+        ...lineageOf(meta),
         ...(meta.machineId ? { machineId: meta.machineId } : {}),
         ...(persisted.savedAt !== undefined ? { savedAt: persisted.savedAt } : {}),
         pending,

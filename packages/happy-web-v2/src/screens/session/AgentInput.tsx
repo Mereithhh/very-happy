@@ -58,7 +58,7 @@ import {
 import { useLatestModelTable } from '@/sync/latestModels';
 import { customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
 import { LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
-import type { LauncherModelSource } from '@/sync/launcherModels';
+import { forkCatalogSource, type LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
 import { deriveCodexRunningModel, deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
@@ -372,7 +372,8 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const canConfigureModels = !!configMachineId && !!configHarness && !!configMachine;
     const customModels = useCustomPickerModels(configMachineId, configHarness);
     const [modelEditorOpen, setModelEditorOpen] = useState(false);
-    const baseModels = session ? getAvailableModels(flavor, metadata, t as any) : getLauncherModelModes(flavor, launcherCatalogs, t as any, latestTable);
+    const parentMetadata = useSession(metadata?.models?.length ? '' : metadata?.parentSessionId ?? '')?.metadata;
+    const baseModels = session ? getAvailableModels(flavor, forkCatalogSource(metadata, parentMetadata), t as any) : getLauncherModelModes(flavor, launcherCatalogs, t as any, latestTable);
     const followState = followLatestState(latestResolution, !!session);
     const followName = followState.kind === 'machineConfig'
         ? t('session.chat.followMachineConfig', { model: followState.model })
