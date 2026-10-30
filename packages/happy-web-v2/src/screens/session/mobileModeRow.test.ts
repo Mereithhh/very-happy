@@ -5,10 +5,12 @@ const source = readFileSync(new URL('./AgentInput.tsx', import.meta.url), 'utf8'
 const popup = readFileSync(new URL('./ModelEffortMenu.tsx', import.meta.url), 'utf8');
 
 describe('compact model and effort entry', () => {
-    it('owns the slider inside the model popup instead of the composer row', () => {
+    it('owns the effort stops inside the run-setup panel instead of the composer row, without a nested picker', () => {
         expect(source).toMatch(/<ModelEffortMenu\s/);
         expect(source.match(/<ModeMenu\s/g)).toHaveLength(1);
-        expect(source).not.toMatch(/<EffortSlider\s/);
-        expect(popup).toMatch(/<Popover.Content[\s\S]*<Combobox[\s\S]*<EffortSlider \{\.\.\.effort\} \/>/);
+        expect(source).not.toMatch(/<EffortSegments\s/);
+        expect(popup).toMatch(/<EffortSegments \{\.\.\.effort\} \/>/);
+        // B-849a: phones get one sheet; the model list is flat rows, not a Combobox in a popover.
+        expect(popup).not.toMatch(/<Combobox/);
     });
 });

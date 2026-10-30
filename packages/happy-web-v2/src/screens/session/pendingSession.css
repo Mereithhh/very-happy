@@ -128,6 +128,8 @@
 @media (pointer: coarse) { .ps-draft-dir { height: 44px; } }
 @media (pointer: coarse) and (max-width: 600px) { .ps-draft-dir { font-size: 16px; } }
 .ps-draft-project { font-size: var(--fs-12); }
+.ps-draft-landing { font-size: var(--fs-12); color: var(--text); }
+.ps-draft-warn { font-size: var(--fs-12); color: var(--warn); }
 @media (max-width: 600px) {
   .ps-draft-grid { grid-template-columns: minmax(0, 1fr); gap: var(--sp-1); }
   .ps-draft-label:not(:first-child) { padding-top: var(--sp-1); }

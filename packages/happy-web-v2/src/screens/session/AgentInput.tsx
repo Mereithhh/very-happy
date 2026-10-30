@@ -51,12 +51,15 @@ import {
     resolveLatestForAgent,
     isFollowingLatestModel,
     getCodeAgentDefaults,
-    modelOverrideAfterSessionPick,
     setAgentDefaultOverride,
+    supportsClaudeOpus55,
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
+import { layoutModelPicker, withLongContextTwins } from './modelPickerLayout';
+import { autoEffortName, localizeModelDescriptions, namedEffortOptions } from './runSetupCopy';
+import { useNavigate } from 'react-router-dom';
 import { useLatestModelTable } from '@/sync/latestModels';
-import { customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
+import { customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, launcherReportsRunFacts, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
 import { LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
 import { forkCatalogSource, type LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
@@ -194,9 +197,17 @@ export interface PendingComposer {
     /** B-844: the machine the session will start on — its versions and recent
      *  sessions' catalogs decide the model list and what "latest" means. */
     launcher?: LauncherModelSource;
+    /** B-849a: the target machine (its update page from 「升级 CLI」). */
+    machineId?: string;
 }
 
 const NO_CATALOGS: never[] = [];
+
+/** B-849a: 「升级 CLI」 opens the machine page (its CLI update card). Own component: only it needs the router. */
+function UpgradeCliLink({ machineId, label }: { machineId: string; label: string }) {
+    const navigate = useNavigate();
+    return <button type="button" className="me-link" onClick={() => navigate(`/machine/${encodeURIComponent(machineId)}`)}>{label}</button>;
+}
 
 export function AgentInput({ sessionId, agentFlavor, pending }: {
     sessionId: string;
@@ -352,14 +363,18 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const launcherContext = session ? null : pending?.launcher?.context ?? null;
     const modelMetadata = session ? (metadata ?? {}) : null;
     const latestResolution = resolveLatestForAgent(latestTable, flavor, modelMetadata, launcherContext);
-    const latestModel = latestResolution.model;
     const explicitModelMode = pending?.modelMode ?? session?.modelMode;
     // B-844b: agents whose default is "follow latest" get ONE entry for it (key
     // `latest`), named by what it runs here; it is selected while nobody
     // picked a model for this session and the account default follows latest.
     const offersFollowLatest = isLatestModelMode(getCodeAgentDefaults(flavor).modelMode);
-    const followingLatest = offersFollowLatest && !explicitModelMode && isFollowingLatestModel(agentDefaultOverrides, flavor);
-    const modelKey = explicitModelMode ?? resolveDefaultModelMode(agentDefaultOverrides, flavor, modelMetadata, { table: latestTable, machine: launcherContext });
+    // B-848: picking 「跟随最新」 here is this session's own choice (`latest`
+    // stored on the session), not "whatever the account default is".
+    const sessionFollowsLatest = isLatestModelMode(explicitModelMode);
+    const followingLatest = offersFollowLatest && (sessionFollowsLatest || (!explicitModelMode && isFollowingLatestModel(agentDefaultOverrides, flavor)));
+    const modelKey = explicitModelMode && !sessionFollowsLatest
+        ? explicitModelMode
+        : resolveDefaultModelMode(sessionFollowsLatest ? undefined : agentDefaultOverrides, flavor, modelMetadata, { table: latestTable, machine: launcherContext });
     const resolvedDefaultModel = metadata?.defaultModelCode
         ?? (modelKey === 'default' ? usage?.model : undefined);
     const defaultModelLabel = resolvedDefaultModel
@@ -372,29 +387,54 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const canConfigureModels = !!configMachineId && !!configHarness && !!configMachine;
     const customModels = useCustomPickerModels(configMachineId, configHarness);
     const [modelEditorOpen, setModelEditorOpen] = useState(false);
+    // B-851b: a fork without its own catalog yet borrows its parent's (same machine + agent).
     const parentMetadata = useSession(metadata?.models?.length ? '' : metadata?.parentSessionId ?? '')?.metadata;
-    const baseModels = session ? getAvailableModels(flavor, forkCatalogSource(metadata, parentMetadata), t as any) : getLauncherModelModes(flavor, launcherCatalogs, t as any, latestTable);
-    const followState = followLatestState(latestResolution, !!session);
+    const catalogMetadata = forkCatalogSource(metadata, parentMetadata);
+    const baseModels = session ? getAvailableModels(flavor, catalogMetadata, t as any) : getLauncherModelModes(flavor, launcherCatalogs, t as any, latestTable);
+    // B-849a: a draft resolves right away for its machine; one whose CLI cannot
+    // report what follow-latest runs says so instead of naming a guess.
+    const followState = followLatestState(latestResolution, !!session, { runFactsUnknown: !session && !launcherReportsRunFacts(flavor, launcherContext) });
+    const catalogModels = session ? catalogMetadata?.models : launcherCatalogs[0]?.models;
+    const resolvedModelOf = (key: string) => catalogModels?.find((model) => model.code === key)?.resolvedModel ?? null;
+    // 「本机配置」 always names the model it runs when the wrapper says (Claude:
+    // the catalog's `default` entry; Codex: the machine's config / default).
+    const machineConfigId = normalizeAgentKey(flavor) === 'claude'
+        ? resolvedModelOf('default')
+        : (metadata?.configuredModel ?? metadata?.defaultModelCode ?? null);
+    const namedModels = baseModels.filter((option) => option.key !== 'default' && option.key !== LATEST_MODEL_MODE);
+    const nameOfModel = (id: string) => (namedModels.find((option) => option.key === id) ?? namedModels.find((option) => resolvedModelOf(option.key) === id))?.name ?? compactResolvedModelCode(id);
+    const machineConfigName = machineConfigId ? t('session.chat.machineConfigModel', { model: nameOfModel(machineConfigId) }) : t('session.chat.machineDefaultModel');
     const followName = followState.kind === 'machineConfig'
-        ? t('session.chat.followMachineConfig', { model: followState.model })
+        ? t('session.chat.followMachineConfig', { model: nameOfModel(followState.model) })
         : followState.kind === 'latest'
             ? t('session.chat.followLatestOption', { model: baseModels.find((option) => option.key === followState.model)?.name ?? followState.label ?? followState.model })
             : followState.kind === 'machineDefault'
                 ? t('session.chat.followLatestUpgradeCli')
                 : t('session.chat.followLatestDepends');
-    const models = withCustomModels(
+    const pickedModels = withCustomModels(
         offersFollowLatest
             ? withFollowLatestOption(baseModels, {
                 flavor,
                 follow: { name: followName, description: t(followLatestDescriptionKey(followState, normalizeAgentKey(flavor) === 'claude')) },
                 latestModel: followEntryModel(followState),
                 selectedKey: followingLatest ? LATEST_MODEL_MODE : modelKey,
-                machineDefault: { name: t('session.chat.machineDefaultModel'), description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') },
+                machineDefault: { name: machineConfigName, description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') },
             })
             : relabelDefaultModel(baseModels, defaultModelLabel),
         offersFollowLatest ? customModelsBesideFollow(customModels, followEntryModel(followState), followingLatest ? LATEST_MODEL_MODE : modelKey) : customModels,
         t('modelConfig.customModelDescription'),
     );
+    // B-849a: newest per family up top, 1M as a switch, the rest under 「更多模型」, our own descriptions.
+    const runnableModels = catalogModels?.length
+        ? new Set([...catalogModels.map((model) => model.code), ...(normalizeAgentKey(flavor) === 'claude' && (!session || supportsClaudeOpus55(metadata)) ? ['claude-opus-5-5'] : [])])
+        : null;
+    const models = localizeModelDescriptions(flavor, withLongContextTwins(flavor, pickedModels, t('session.chat.modelPicker.longContext')), {
+        resolved: resolvedModelOf,
+        keep: new Set([LATEST_MODEL_MODE, 'default', ...customModels]),
+        runnable: runnableModels,
+        translate: t,
+    });
+    const isGemini = normalizeAgentKey(flavor) === 'gemini';
     const permModes = getAvailablePermissionModes(flavor, metadata, t as any);
     const efforts = getEffortLevelsForModel(flavor, modelKey ?? 'default', metadata);
     const permKey = (pending ? pending.permissionMode : session?.permissionMode) ?? agentDefaults.permissionMode;
@@ -417,21 +457,28 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         isOnline: session?.presence === 'online',
         capabilities: metadata?.capabilities,
     });
-    const effortOptions = efforts.length === 0 ? [] : isClaudeFlavor
-        ? [{ key: EFFORT_DEFAULT_KEY, name: t('session.chat.effortDefault'), description: t('session.chat.effortDefaultDesc') }, ...efforts]
-        : efforts;
     const effectiveModelCode = modelKey === 'default'
         ? metadata?.defaultModelCode ?? metadata?.currentModelCode
         : modelKey;
-    const backendDefaultEffort = metadata?.models?.find((model) => model.code === effectiveModelCode)?.defaultReasoningEffort;
+    const backendDefaultEffort = catalogMetadata?.models?.find((model) => model.code === effectiveModelCode)?.defaultReasoningEffort;
+    // B-849a: named stops; Claude's 「自动」 names the level only when the catalog
+    // says it. Claude Code's own default differs per model and per machine
+    // settings (probed 2026-10-31, CC 2.1.304: Opus 5.5 / Sonnet 5.5 → medium,
+    // Fable 5.1 → high, a `modelSettings.effortLevel` wins), so no guess.
+    const effortOptions = efforts.length === 0 ? [] : isClaudeFlavor
+        ? [{ key: EFFORT_DEFAULT_KEY, name: autoEffortName(backendDefaultEffort, t), description: t('session.chat.effortAutoHint') }, ...namedEffortOptions(efforts, t)]
+        : namedEffortOptions(efforts, t);
     const selectedEffortKey = isClaudeFlavor
         ? selectDisplayedEffortKey(effortOptions, [effortKey, metadata?.currentThoughtLevelCode, backendDefaultEffort, EFFORT_DEFAULT_KEY])
         : selectDisplayedEffortKey(efforts, [
-            session?.effortLevel,
+            pending ? pending.effortLevel : session?.effortLevel,
             getAgentDefaultOverride(agentDefaultOverrides, flavor).effortLevel,
             metadata?.currentThoughtLevelCode,
             isPiAgent(flavor) ? metadata?.currentOperatingModeCode : undefined,
-            backendDefaultEffort,
+            // B-849a: the Codex wrapper starts every thread at its own level
+            // (medium), not the catalog's default — an old wrapper that does not
+            // report its level shows none rather than that guess.
+            normalizeAgentKey(flavor) === 'codex' ? undefined : backendDefaultEffort,
         ]);
     // B-362: intent → running model (ACP runners publish it) → first option; never show
     // a model the session is not on just because the default key is not in the list.
@@ -440,6 +487,18 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         running: metadata?.currentModelCode,
         optionKeys: models.map((option) => option.key),
     });
+    const pickerLayout = layoutModelPicker(models, {
+        flavor,
+        selectedKey: displayedModelKey,
+        followModel: offersFollowLatest ? followEntryModel(followState) : null,
+        resolved: resolvedModelOf,
+        runnable: runnableModels,
+        customKeys: customModels,
+    });
+    // B-849a: an old CLI's Codex/Gemini wrapper does not report its machine
+    // config model, so what follow-latest runs there is unknown — say that.
+    const runFactsUnknown = offersFollowLatest && followState.kind === 'machineDefault' && displayedModelKey === LATEST_MODEL_MODE;
+    const upgradeMachineId = metadata?.machineId ?? pending?.machineId;
     // B-262 A4: honest subtitle — what the CLI has confirmed vs. what we intend.
     const permissionDisplayState = publishesModeFacts
         ? derivePermissionModeDisplay({
@@ -479,11 +538,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         : undefined;
     const modelSubtitle = codexRunning
         ? t('session.chat.modelRunningOther', { model: compactResolvedModelCode(codexRunning) })
-        : deriveRunningModelSubtitle({
-            isClaude: publishesModeFacts,
-            selectedKey: modelKey,
-            running: metadata?.currentModelCode,
-        });
+        : (() => {
+            // B-849a: only when it differs from the entry on screen, and said in words.
+            const running = deriveRunningModelSubtitle({ isClaude: publishesModeFacts, selectedKey: modelKey, running: metadata?.currentModelCode });
+            return running && metadata?.currentModelCode !== modelKey ? t('session.chat.modelRunning', { model: running }) : undefined;
+        })();
     // context meter — always visible when we have a usage snapshot.
     const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage, metadata?.currentModelCode);
     const contextKnown = context.tokens !== null;
@@ -1238,15 +1297,24 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     ) => {
         if (pending) pending.onMode(field, key);
         else storage.getState()[fn](sessionId, key);
-        const currentOverrides = storage.getState().settings.agentDefaultOverrides;
-        // B-844: picking the model "latest" resolves to keeps the account on
-        // follow-latest; only another model becomes the remembered default.
-        // With nothing provably newer (machine config pin, old wrapper), what
-        // follow-latest runs is the machine default.
-        const overrideValue = field === 'modelMode' ? modelOverrideAfterSessionPick(flavor, key, latestModel ?? 'default') : key;
-        sync.applySettings({
-            agentDefaultOverrides: setAgentDefaultOverride(currentOverrides, flavor, field, overrideValue),
-        });
+        // B-848 (B-849a step 1): a pick here changes THIS session only — the
+        // account default for new sessions moves only through the explicit
+        // 「设为新会话默认」 below (or Settings → Agents).
+    };
+
+    // B-848: the one place a composer pick becomes the account default — an
+    // explicit, confirmed act naming the agent and the value.
+    const setAsNewSessionDefault = async () => {
+        const modelName = models.find((option) => option.key === displayedModelKey)?.name ?? displayedModelKey ?? '';
+        const effortName = effortOptions.find((option) => option.key === selectedEffortKey)?.name;
+        const value = [modelName, effortName].filter(Boolean).join(' · ');
+        const ok = await Modal.confirm(t('session.chat.modelPicker.setDefaultTitle'), t('session.chat.modelPicker.setDefaultBody', { agent: normalizeAgentKey(flavor), value }), { confirmText: t('session.chat.modelPicker.setDefaultConfirm') });
+        if (!ok) return;
+        let next = storage.getState().settings.agentDefaultOverrides;
+        if (!isGemini) next = setAgentDefaultOverride(next, flavor, 'modelMode', displayedModelKey ? modelPickToStore(displayedModelKey) : null);
+        if (effortOptions.length > 0) next = setAgentDefaultOverride(next, flavor, 'effortLevel', selectedEffortKey && selectedEffortKey !== EFFORT_DEFAULT_KEY ? selectedEffortKey : null);
+        sync.applySettings({ agentDefaultOverrides: next });
+        toast.show(t('session.chat.modelPicker.setDefaultDone'), 'success');
     };
 
     const setEffort = (key: string) => {
@@ -1558,14 +1626,22 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                     </div>
                     <div className="ci-model-controls">
                     <ModelEffortMenu
-                        label={t('session.chat.modelLabel')}
+                        label={t('session.chat.modelPicker.title')}
+                        modelLabel={t('session.chat.modelLabel')}
                         options={models}
+                        layout={pickerLayout}
                         value={displayedModelKey ?? null}
-                        onChange={(key) => setMode('updateSessionModelMode', 'modelMode', modelPickToStore(key))}
+                        onChange={(key) => setMode('updateSessionModelMode', 'modelMode', key)}
                         subtitle={modelSubtitle}
+                        notice={runFactsUnknown ? { text: t('session.chat.modelPicker.unknownNote'), extra: upgradeMachineId ? <UpgradeCliLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.upgradeCli')} /> : undefined } : undefined}
+                        readOnly={isGemini ? { value: metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.modelPicker.geminiReadOnly'), hint: t('session.chat.modelPicker.geminiReadOnlyHint') } : undefined}
+                        triggerLabel={isGemini ? (metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.machineDefaultModel')) : undefined}
                         effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
+                        longContextLabel={t('session.chat.modelPicker.longContext')}
+                        longContextHint={t('session.chat.modelPicker.longContextHint')}
+                        moreLabel={t('session.chat.modelPicker.more')}
+                        footer={{ note: t('session.chat.modelPicker.sessionOnly'), action: isGemini && effortOptions.length === 0 ? undefined : { label: t('session.chat.modelPicker.setDefault'), onSelect: () => { void setAsNewSessionDefault(); } } }}
                         customize={canConfigureModels ? { label: t('modelConfig.customize'), onSelect: () => setModelEditorOpen(true) } : undefined}
-                        groups={{ catalog: t('modelConfig.groupCatalog'), custom: t('modelConfig.groupCustom'), customKeys: customModels }}
                         onOpen={() => {
                             if (canConfigureModels && machineSupportsModelConfig(configMachine) && configMachine?.active) void modelConfigStore.getState().load(configMachineId);
                         }}

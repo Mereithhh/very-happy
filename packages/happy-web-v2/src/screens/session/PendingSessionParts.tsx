@@ -16,6 +16,8 @@ import { pendingSessions, useAdoptableSession } from '@/sync/pendingSessionsRunt
 import { isMachineOnline } from '@/utils/machineUtils';
 import { isAgentOffered, resolveAgentAvailability, SESSION_AGENTS } from '@/utils/agentAvailability';
 import { resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
+import { launcherReportsRunFacts } from '@/sync/followLatestDisplay';
+import { machineCliVersion } from '@/app/staleWrapperPolicy';
 import { useProjects } from '@/sync/projects';
 import { suggestProjectFor } from '@/screens/projects/projectSuggestion';
 import { draftDirectorySuggestions, draftProjectHint, resolveHomePath } from './draftTarget';
@@ -168,11 +170,16 @@ function DraftTarget({ record }: { record: PendingSessionRecord }) {
     const [directory, setDirectory] = useState(record.path);
     useEffect(() => { setDirectory((typed) => (resolveHomePath(typed.trim(), homeDir) === record.path ? typed : record.path)); }, [record.path, homeDir]);
 
+    // B-849a: a machine whose CLI cannot report what this agent runs is marked
+    // in the list, and the card names where the session lands.
+    const oldCli = (m: (typeof machines)[number]) => !launcherReportsRunFacts(record.agent, { cliVersion: machineCliVersion(m) });
     const machineOptions: SelectOption[] = useMemo(() => [
-        ...machines.filter(isMachineOnline).map((m) => ({ value: m.id, label: machineLabel(m.metadata, m.id) })),
+        ...machines.filter(isMachineOnline).map((m) => ({ value: m.id, label: machineLabel(m.metadata, m.id), ...(oldCli(m) ? { meta: t('pendingSession.draftOldCliTag') } : {}) })),
         ...machines.filter((m) => !isMachineOnline(m)).map((m) => ({ value: m.id, label: machineLabel(m.metadata, m.id), meta: t('pendingSession.draftOffline'), disabled: true })),
         ...(machine ? [] : [{ value: record.machineId, label: record.machineId.slice(0, 8), meta: t('pendingSession.draftOffline'), disabled: true }]),
-    ], [machines, machine, record.machineId, t]);
+    ], [machines, machine, record.machineId, record.agent, t]);
+    const machineName = machine ? machineLabel(machine.metadata, machine.id) : record.machineId.slice(0, 8);
+    const machineVersion = machine ? machineCliVersion(machine) : null;
     const agentOptions: SelectOption[] = SESSION_AGENTS
         .filter((a) => a === record.agent || isAgentOffered(machine?.metadata, a))
         .map((a) => {
@@ -224,6 +231,8 @@ function DraftTarget({ record }: { record: PendingSessionRecord }) {
                     autoCorrect="off"
                 />
             </div>
+            <p className="ps-card-text ps-draft-landing" data-testid="draft-landing">{t('pendingSession.draftLanding', { machine: machineName })}</p>
+            {machine && machineVersion && oldCli(machine) && <p className="ps-card-text ps-draft-warn" role="status" data-testid="draft-old-cli">{t('pendingSession.draftOldCli', { machine: machineName, version: machineVersion })}</p>}
             {projectHint && <p className="ps-card-text ps-draft-project" data-testid="draft-project-hint">{projectHint}</p>}
         </section>
     );

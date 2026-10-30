@@ -6,6 +6,8 @@ import {
     followEntryModel,
     followLatestByMachine,
     followLatestState,
+    launcherReportsRunFacts,
+    RUN_FACTS_CLI_VERSION,
     modelPickToStore,
     summarizeFollowLatest,
     withFollowLatestOption,
@@ -188,5 +190,37 @@ describe('follow entry descriptions say what really happens (B-844c, QA22c P2-2/
         expect(settings).toContain("detail={o.key === 'default' ? undefined : o.key}");
         expect(settings).toContain("t(followLatest.claude ? 'settingsAgents.followLatestByMachineClaude' : 'settingsAgents.followLatestByMachine'");
         expect(settings).toContain("machines: perMachine, claude: agent === 'claude' }");
+    });
+});
+
+describe('B-849a: a draft says when the machine cannot report what follow-latest runs', () => {
+    const resolution = { model: 'gpt-5.6-sol', newest: 'gpt-6.1-sol', label: 'gpt-5.6-sol', limited: true, configured: null };
+    it('evidence first: a catalog without configuredModel means an old wrapper', () => {
+        expect(launcherReportsRunFacts('codex', { cliVersion: '0.2.190', catalog: [{ code: 'gpt-5.6-sol' }], configuredModel: undefined })).toBe(false);
+        expect(launcherReportsRunFacts('codex', { cliVersion: '0.2.187', catalog: [{ code: 'gpt-5.6-sol' }], configuredModel: null })).toBe(true);
+    });
+    it('no session on the machine: the daemon CLI version decides (0.2.188 first reports it)', () => {
+        expect(launcherReportsRunFacts('codex', { cliVersion: '0.2.187' })).toBe(false);
+        expect(launcherReportsRunFacts('gemini', { cliVersion: '0.2.187' })).toBe(false);
+        expect(launcherReportsRunFacts('codex', { cliVersion: RUN_FACTS_CLI_VERSION })).toBe(true);
+        expect(launcherReportsRunFacts('codex', { cliVersion: '0.2.190-dev' })).toBe(true);
+        expect(launcherReportsRunFacts('codex', { cliVersion: null })).toBe(true);
+        // Claude needs no machine-config fact (its latest is capability-gated).
+        expect(launcherReportsRunFacts('claude', { cliVersion: '0.2.100' })).toBe(true);
+        expect(launcherReportsRunFacts('codex', null)).toBe(true);
+    });
+    it('an unknown machine is shown as unknown, never as the table pick', () => {
+        expect(followLatestState(resolution, false, { runFactsUnknown: true })).toEqual({ kind: 'machineDefault' });
+        expect(followLatestState(resolution, false)).toEqual({ kind: 'latest', model: 'gpt-5.6-sol', label: 'gpt-5.6-sol' });
+    });
+    it('copy: one name per default, always with the model; old CLI says unknown', () => {
+        expect(en.session.chat.followLatestOption({ model: 'Opus 5.5' })).toBe('Latest · Opus 5.5');
+        expect(zhHans.session.chat.followLatestOption({ model: 'Opus 5.5' })).toBe('跟随最新 · Opus 5.5');
+        expect(zhHans.session.chat.followMachineConfig({ model: 'gpt-5.6-sol' })).toBe('本机配置 · gpt-5.6-sol');
+        expect(zhHans.session.chat.machineConfigModel({ model: 'Fable 5.1' })).toBe('本机配置 · Fable 5.1');
+        expect(zhHans.session.chat.followLatestUpgradeCli).toBe('实际模型未知 · 升级 CLI');
+        expect(zhHans.settingsAgents.followMachineConfigValue({ model: 'x' })).toBe('本机配置 · x');
+        expect(zhHans.settingsAgents.machineDefault).toBe('本机配置');
+        expect(zhHans.session.chat.effortAuto({ level: '高' })).toBe('自动（高）');
     });
 });

@@ -80,6 +80,38 @@ describe('pending session store (B-516)', () => {
     beforeEach(() => { vi.useFakeTimers(); });
     afterEach(() => { vi.useRealTimers(); });
 
+    // B-849a: a Codex/Gemini first message resolves follow-latest against the
+    // wrapper's catalog + machine config; sent before the wrapper publishes them
+    // it carried no model and the thread ran Codex's own default instead of the
+    // model the draft showed (mac-office: shown gpt-5.6-sol, ran gpt-6-astra).
+    it('B-849a: holds the first message until the wrapper published its model facts, bounded', async () => {
+        const h = harness();
+        let facts = false;
+        h.deps.hasModelFacts = (_id, agent) => agent !== 'codex' || facts;
+        h.deps.modelFactsWaitMs = 8_000;
+        h.store.create({ ...input, agent: 'codex', firstMessage: 'hello' });
+        h.spawns[0].result.resolve({ type: 'success', sessionId: 'real1' });
+        h.addSession('real1');
+        await flush();
+        expect(h.events).not.toContain('send:real1:hello');
+        facts = true;
+        h.addSession('real1'); // metadata update notifies the session store
+        await flush();
+        expect(h.events).toContain('send:real1:hello');
+
+        const late = harness();
+        late.deps.hasModelFacts = () => false;
+        late.deps.modelFactsWaitMs = 8_000;
+        late.store.create({ ...input, agent: 'codex', firstMessage: 'hi' });
+        late.spawns[0].result.resolve({ type: 'success', sessionId: 'real2' });
+        late.addSession('real2');
+        await flush();
+        expect(late.events).not.toContain('send:real2:hi');
+        await vi.advanceTimersByTimeAsync(8_000);
+        await flush();
+        expect(late.events).toContain('send:real2:hi');
+    });
+
     it('B-648: a project join returned by onSpawned holds the first message until it lands', async () => {
         const h = harness();
         const join = deferred<void>();

@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
     settings: { agentInputEnterToSend: true, agentDefaultOverrides: {} as Record<string, unknown> },
     send: vi.fn(), draft: vi.fn(), perm: vi.fn(), applySettings: vi.fn(), show: vi.fn(), btw: vi.fn(),
     modeMenus: [] as Array<{ label: string; value: string; onChange: (key: string) => void }>,
+    modelMenus: [] as Array<{ value: string | null; onChange: (key: string) => void; effort: { onChange: (key: string) => void }; footer?: { action?: { onSelect: () => void } } }>,
+    confirm: vi.fn(async () => true),
 }));
 vi.mock('@/sync/sync', () => ({ sync: { sendMessage: mocks.send, applySettings: mocks.applySettings } }));
 vi.mock('@/sync/ops', () => ({ sessionAbort: vi.fn(), sessionSetPermissionMode: vi.fn() }));
@@ -31,11 +33,11 @@ vi.mock('@/ui', async () => ({
     ...await vi.importActual<typeof import('@/ui/Spinner')>('@/ui/Spinner'),
     useToast: () => ({ error: vi.fn(), show: mocks.show }),
 }));
-vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
+vi.mock('@/modal', () => ({ Modal: { alert: vi.fn(), confirm: mocks.confirm } }));
 vi.mock('./ModeMenu', () => ({
     ModeMenu: (props: { label: string; value: string; onChange: (key: string) => void }) => { mocks.modeMenus.push(props); return null; },
 }));
-vi.mock('./ModelEffortMenu', () => ({ ModelEffortMenu: () => null }));
+vi.mock('./ModelEffortMenu', () => ({ ModelEffortMenu: (props: (typeof mocks.modelMenus)[number]) => { mocks.modelMenus.push(props); return null; } }));
 vi.mock('./PresetsMenu', () => ({ PresetsMenu: () => null }));
 vi.mock('./btwPanelState', () => ({ openBtwPanel: mocks.btw }));
 
@@ -49,6 +51,7 @@ beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks();
     mocks.modeMenus.length = 0;
+    mocks.modelMenus.length = 0;
     pending = {
         onSend: vi.fn(() => true),
         permissionMode: 'plan',
@@ -125,15 +128,37 @@ describe('AgentInput on a pending page (B-516)', () => {
         expect(mocks.draft).toHaveBeenCalledWith('pending-1', 'keep me');
     });
 
-    it('writes mode choices to the pending record and the chosen agent defaults slot, not a session or Claude', () => {
+    // B-848 (B-849a step 1): a pick changes this draft/session only — never the account default.
+    it('writes mode choices to the pending record only, never a session or the account defaults', () => {
         render();
         const menu = mocks.modeMenus.at(-1)!;
         expect(menu.value).toBe('plan');
         act(() => menu.onChange('default'));
         expect(pending.onMode).toHaveBeenCalledWith('permissionMode', 'default');
         expect(mocks.perm).not.toHaveBeenCalled();
-        const written = mocks.applySettings.mock.calls.at(-1)![0].agentDefaultOverrides as Record<string, { permissionMode?: string }>;
-        expect(written.codex?.permissionMode).toBe('default');
-        expect(written.claude).toBeUndefined();
+        const model = mocks.modelMenus.at(-1)!;
+        act(() => model.onChange('gpt-5.6-terra'));
+        expect(pending.onMode).toHaveBeenCalledWith('modelMode', 'gpt-5.6-terra');
+        // 「跟随最新」 is stored as the session's own choice, not as "no pick" (= account default).
+        act(() => model.onChange('latest'));
+        expect(pending.onMode).toHaveBeenLastCalledWith('modelMode', 'latest');
+        act(() => model.effort.onChange('high'));
+        expect(pending.onMode).toHaveBeenLastCalledWith('effortLevel', 'high');
+        expect(mocks.applySettings).not.toHaveBeenCalled();
+    });
+
+    it('「设为新会话默认」 is the explicit, confirmed way to the account default (the session flavor slot)', async () => {
+        pending.modelMode = 'gpt-5.6-terra';
+        pending.effortLevel = 'high';
+        render();
+        const action = mocks.modelMenus.at(-1)!.footer?.action;
+        expect(action).toBeDefined();
+        mocks.confirm.mockResolvedValueOnce(false);
+        await act(async () => { action!.onSelect(); });
+        expect(mocks.applySettings).not.toHaveBeenCalled();
+        await act(async () => { action!.onSelect(); });
+        expect(mocks.confirm).toHaveBeenCalledTimes(2);
+        const written = mocks.applySettings.mock.calls.at(-1)![0].agentDefaultOverrides as Record<string, { modelMode?: string; effortLevel?: string }>;
+        expect(written).toEqual({ codex: { modelMode: 'gpt-5.6-terra', effortLevel: 'high' } });
     });
 });

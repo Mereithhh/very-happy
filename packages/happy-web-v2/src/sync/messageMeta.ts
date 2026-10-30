@@ -62,16 +62,21 @@ export function resolveMessageModeMeta(
     // B-844c: "nothing" would leave a model this session was sent earlier in
     // force (the wrapper keeps it), so when the wrapper reports one sticky we
     // send null — reset to the machine default the picker shows.
-    const followsLatest = isLatestModelMode(agentOverrides.modelMode ?? getCodeAgentDefaults(session.metadata?.flavor).modelMode);
+    // B-848: a session that picked 「跟随最新」 itself follows latest whatever the account default pins.
+    const sessionFollowsLatest = isLatestModelMode(session.modelMode);
+    const followsLatest = sessionFollowsLatest || isLatestModelMode(agentOverrides.modelMode ?? getCodeAgentDefaults(session.metadata?.flavor).modelMode);
     const resolvedDefault = isClaude || followsLatest
-        ? resolveDefaultModelMode(settings?.agentDefaultOverrides, session.metadata?.flavor, session.metadata ?? {}, { table: latestTable })
+        ? resolveDefaultModelMode(sessionFollowsLatest ? undefined : settings?.agentDefaultOverrides, session.metadata?.flavor, session.metadata ?? {}, { table: latestTable })
         : agentOverrides.modelMode;
     const modelMode = session.modelMode && !isLatestModelMode(session.modelMode)
         ? session.modelMode
         : (!isClaude && followsLatest && resolvedDefault === 'default'
             ? (typeof session.metadata?.stickyModel === 'string' ? 'default' : undefined)
             : resolvedDefault);
-    if (modelMode !== undefined) {
+    // B-849a (B-846 short term): Gemini's model is the machine config's — its
+    // wrapper writes any sent model into the machine-wide ~/.gemini config, so
+    // the Web never sends one (the picker is read-only for Gemini).
+    if (modelMode !== undefined && normalizeAgentKey(session.metadata?.flavor) !== 'gemini') {
         meta.model = modelMode === 'default' ? null : modelMode;
     }
 

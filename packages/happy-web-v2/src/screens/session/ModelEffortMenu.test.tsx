@@ -20,7 +20,7 @@ afterEach(() => { act(() => root.unmount()); host.remove(); });
 
 describe('ModelEffortMenu maximum indicator', () => {
     it('shows shared energy on the actual closed composer entry, with unchanged readable labels', () => {
-        act(() => root.render(<ModelEffortMenu label="Model" options={models} value="model-a" onChange={vi.fn()}
+        act(() => root.render(<ModelEffortMenu label="Model" modelLabel="Model" options={models} value="model-a" onChange={vi.fn()}
             effort={{ label: 'Thinking', options: levels, value: 'xhigh', onChange: vi.fn() }} />));
         const trigger = host.querySelector('button')!;
         expect(trigger.getAttribute('aria-label')).toBe('Model');
@@ -32,7 +32,7 @@ describe('ModelEffortMenu maximum indicator', () => {
 
     it('removes energy as the supported range, selected level or selected model changes', () => {
         const render = (value: string | null, supported = levels, model = 'model-a') => act(() => root.render(
-            <ModelEffortMenu label="Model" options={models} value={model} onChange={vi.fn()}
+            <ModelEffortMenu label="Model" modelLabel="Model" options={models} value={model} onChange={vi.fn()}
                 effort={{ label: 'Thinking', options: supported, value, onChange: vi.fn() }} />,
         ));
         render('xhigh');
@@ -51,62 +51,86 @@ describe('ModelEffortMenu maximum indicator', () => {
         expect(host.querySelector('.effort-energy')).toBeNull();
     });
 
-    it('keeps the real popover slider and exact model/effort callbacks usable', async () => {
+    it('opens ONE flat panel: model rows, more models, 1M switch, named effort stops, footer — no nested picker', () => {
         const onModelChange = vi.fn();
         const onEffortChange = vi.fn();
-        act(() => root.render(<ModelEffortMenu label="Model" options={models} value="model-a" onChange={onModelChange}
+        const onDefault = vi.fn();
+        const layout = { primary: [models[0]], more: [models[1]], longContext: { on: false, onKey: 'model-a[1m]', offKey: 'model-a' }, selectedInMore: false };
+        act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={models} layout={layout} value="model-a" onChange={onModelChange}
+            longContextLabel="1M context" moreLabel="More models"
+            footer={{ note: 'This session only', action: { label: 'Use for new sessions…', onSelect: onDefault } }}
             effort={{ label: 'Thinking', options: levels, value: 'xhigh', onChange: onEffortChange }} />));
-        act(() => host.querySelector('button')!.click());
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
         const panel = document.querySelector('.me-panel')!;
-        expect(panel.querySelector('.effort-slider--max .effort-energy')).not.toBeNull();
-        const picker = panel.querySelector<HTMLButtonElement>('[role="combobox"]')!;
-        expect(picker.getAttribute('aria-labelledby')).toBe(panel.querySelector('.me-model-label')!.id);
-        act(() => picker.click());
-        // Radix arms its outside-pointerdown listeners on a 0ms timer.
-        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
-        const option = [...document.querySelectorAll<HTMLElement>('[data-vh-picker-surface] [role="option"]')].find((el) => el.textContent === 'Model B')!;
-        // B-714: the picker is its own portal; a press inside it is not "outside" the model panel.
-        act(() => {
-            option.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
-            option.click();
-        });
-        expect(onModelChange).toHaveBeenCalledExactlyOnceWith('model-b');
-        expect(document.querySelector('.me-panel')).not.toBeNull();
-        const range = panel.querySelector('input')!;
-        const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
-        act(() => {
-            setValue.call(range, '1');
-            range.dispatchEvent(new Event('input', { bubbles: true }));
-            range.dispatchEvent(new Event('change', { bubbles: true }));
-        });
+        expect(panel.querySelector('[role="combobox"]')).toBeNull();
+        const radios = () => [...panel.querySelectorAll<HTMLButtonElement>('.me-models [role="radio"]')].map((el) => el.textContent);
+        expect(radios()).toEqual(['Model A']);
+        act(() => panel.querySelector<HTMLButtonElement>('.me-more')!.click());
+        expect(radios()).toEqual(['Model A', 'Model B']);
+        act(() => [...panel.querySelectorAll<HTMLButtonElement>('.me-models [role="radio"]')][1].click());
+        expect(onModelChange).toHaveBeenLastCalledWith('model-b');
+        act(() => panel.querySelector<HTMLButtonElement>('[role="switch"]')!.click());
+        expect(onModelChange).toHaveBeenLastCalledWith('model-a[1m]');
+        const stops = [...panel.querySelectorAll<HTMLButtonElement>('.effort-seg [role="radio"]')];
+        expect(stops.map((el) => el.textContent)).toEqual(['default', 'low', 'medium', 'xhigh']);
+        expect(panel.querySelector('.effort-seg-stop--on .effort-energy')).not.toBeNull();
+        act(() => stops[1].click());
         expect(onEffortChange).toHaveBeenCalledExactlyOnceWith('low');
-        // control: a real outside press still closes the panel
-        act(() => { document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })); });
+        act(() => panel.querySelector<HTMLButtonElement>('.me-footer .me-link')!.click());
+        expect(onDefault).toHaveBeenCalledOnce();
         expect(document.querySelector('.me-panel')).toBeNull();
+    });
+
+    it('opens with 「更多模型」 expanded when the selected entry lives there', () => {
+        const layout = { primary: [models[0]], more: [models[1]], longContext: null, selectedInMore: true };
+        act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={models} layout={layout} value="model-b" onChange={vi.fn()} moreLabel="More"
+            effort={{ label: 'Thinking', options: [], value: null, onChange: vi.fn() }} />));
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        const checked = document.querySelector('.me-panel [role="radio"][aria-checked="true"]');
+        expect(checked?.textContent).toBe('Model B');
+        expect(document.querySelector('[role="switch"]')).toBeNull();
+    });
+
+    it('each opening starts from the layout: an expanded 更多模型 folds again on the next open', () => {
+        const layout = { primary: [models[0]], more: [models[1]], longContext: null, selectedInMore: false };
+        act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={models} layout={layout} value="model-a" onChange={vi.fn()} moreLabel="More"
+            effort={{ label: 'Thinking', options: [], value: null, onChange: vi.fn() }} />));
+        const trigger = host.querySelector<HTMLButtonElement>('.me-trigger')!;
+        act(() => trigger.click());
+        act(() => document.querySelector<HTMLButtonElement>('.me-more')!.click());
+        expect(document.querySelectorAll('.me-panel [role="radio"]').length).toBe(2);
+        act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+        act(() => trigger.click());
+        expect(document.querySelectorAll('.me-panel [role="radio"]').length).toBe(1);
+    });
+
+    it('read-only model (Gemini): no model rows, the trigger names the machine config', () => {
+        act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={[]} value={null} onChange={vi.fn()} triggerLabel="Machine config"
+            readOnly={{ value: 'Set by the machine config', hint: 'Change it in Settings' }}
+            effort={{ label: 'Thinking', options: [], value: null, onChange: vi.fn() }} />));
+        expect(host.querySelector('.me-trigger')!.textContent).toBe('Machine config');
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        expect(document.querySelector('.me-panel [role="radio"]')).toBeNull();
+        expect(document.querySelector('.me-readonly')!.textContent).toContain('Set by the machine config');
     });
 });
 
-describe('B-714 model picker groups', () => {
-    const open = (el: Element) => act(() => { el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })); });
-    it('with custom models: default ungrouped, then 目录 and 自定义 headings', () => {
-        act(() => root.render(<ModelEffortMenu label="Model" value="default" onChange={vi.fn()}
-            options={[{ key: 'default', name: 'Default' }, ...models, { key: 'gw/opus', name: 'gw/opus' }]}
-            groups={{ catalog: 'Models', custom: 'Custom', customKeys: ['gw/opus'] }}
-            effort={{ label: 'Thinking', options: levels, value: 'low', onChange: vi.fn() }} />));
-        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
-        open(document.querySelector('.me-panel .vh-select-trigger')!);
-        const groups = [...document.querySelectorAll('.vh-picker [role="group"]')];
-        expect(groups.map((g) => g.querySelector('.vh-picker-group-label')?.textContent)).toEqual(['Models', 'Custom']);
-        expect(groups[1].textContent).toContain('gw/opus');
-        expect(document.querySelector('.vh-picker [role="option"]')?.textContent).toContain('Default');
-    });
-
-    it('without custom models there are no headings', () => {
-        act(() => root.render(<ModelEffortMenu label="Model" value="model-a" onChange={vi.fn()} options={models}
-            groups={{ catalog: 'Models', custom: 'Custom', customKeys: [] }}
-            effort={{ label: 'Thinking', options: levels, value: 'low', onChange: vi.fn() }} />));
-        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
-        open(document.querySelector('.me-panel .vh-select-trigger')!);
-        expect(document.querySelectorAll('.vh-picker-group-label').length).toBe(0);
+describe('B-849a phone: one bottom sheet', () => {
+    it('opens a single sheet (no popover, no picker inside it) on a coarse narrow screen', () => {
+        const matchMedia = window.matchMedia;
+        window.matchMedia = ((query: string) => ({ matches: query.includes('pointer: coarse'), media: query, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia;
+        try {
+            act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={models} value="model-a" onChange={vi.fn()}
+                effort={{ label: 'Thinking', options: levels, value: 'low', onChange: vi.fn() }} />));
+            act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+            const sheet = document.querySelector('.me-sheet')!;
+            expect(sheet).not.toBeNull();
+            expect(document.querySelector('.me-panel')).toBeNull();
+            expect(sheet.querySelector('[role="combobox"]')).toBeNull();
+            expect(sheet.querySelectorAll('.me-models [role="radio"]').length).toBe(2);
+            expect(sheet.querySelectorAll('.effort-seg [role="radio"]').length).toBe(4);
+        } finally {
+            window.matchMedia = matchMedia;
+        }
     });
 });

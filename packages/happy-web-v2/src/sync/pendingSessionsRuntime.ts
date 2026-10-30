@@ -15,6 +15,7 @@ import { isTabAlive, thisTabId, withTabLock } from './tabLiveness';
 import { loadNewChatDraft, loadPendingSessions, loadQueuedMessages, loadSessionDrafts, saveNewChatDraft, savePendingSessions, saveQueuedMessages } from './persistence';
 import { useBoardTasks } from './boardTasks';
 import { normalizeAgentKey } from './agentDefaults';
+import { MACHINE_CONFIG_AGENTS } from '@slopus/happy-wire';
 import {
     createPendingSessionStore,
     findAdoptableSession,
@@ -31,6 +32,8 @@ import { t } from '@/text';
 
 /** Spawn is ~1 s; a real session that has not reached the store after this goes to its draft. */
 const SESSION_WAIT_MS = 30_000;
+/** B-849a: a Codex wrapper publishes its catalog a few seconds after spawn. */
+const MODEL_FACTS_WAIT_MS = 15_000;
 /** How often a tab looks for pending records whose owner tab has gone away. */
 const RECLAIM_INTERVAL_MS = 30_000;
 const PENDING_STORAGE_SUFFIX = ':pending-sessions-v1';
@@ -145,6 +148,8 @@ export const pendingSessions = createPendingSessionStore({
     now: () => Date.now(),
     newId: () => randomUUID().replace(/-/g, '').slice(0, 16),
     sessionWaitMs: SESSION_WAIT_MS,
+    hasModelFacts: (id, agent) => !MACHINE_CONFIG_AGENTS.includes(normalizeAgentKey(agent)) || !!storage.getState().sessions[id]?.metadata?.models?.length,
+    modelFactsWaitMs: MODEL_FACTS_WAIT_MS,
 });
 
 export { isPendingSessionId };

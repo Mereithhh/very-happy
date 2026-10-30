@@ -368,6 +368,7 @@ export function SessionDetailScreen() {
         initialDraft: pendingInitialDraft,
         isGone: () => !pendingSessions.get(pending.pendingId),
         launcher: pendingLauncher,
+        machineId: pending.machineId,
         blockedHint: foreignPending
             ? t('pendingSession.otherTab')
             : pending.state === 'failed' ? (pending.deferred ? t('pendingSession.failedDraftKept') : t('pendingSession.retryFirst')) : undefined,

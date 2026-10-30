@@ -151,6 +151,15 @@ export interface PendingSessionDeps {
     newId(): string;
     /** How long a spawned session may take to reach the store before the draft fallback. */
     sessionWaitMs: number;
+    /**
+     * B-849a: the wrapper published what the first message's model is resolved
+     * against (Codex/Gemini: its catalog + machine config). Sent before that,
+     * follow-latest resolves to "nothing" and the thread runs Codex's own
+     * default instead of the model the draft showed.
+     */
+    hasModelFacts?(sessionId: string, agent: PendingAgent): boolean;
+    /** Upper bound for that wait; the message goes out regardless after it. */
+    modelFactsWaitMs?: number;
 }
 
 export const PENDING_ID_PREFIX = 'pending-';
@@ -447,7 +456,11 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
     }
 
     function waitForSession(realId: string): Promise<boolean> {
-        if (deps.hasSession(realId)) return Promise.resolve(true);
+        return waitFor(() => deps.hasSession(realId), deps.sessionWaitMs);
+    }
+
+    function waitFor(ready: () => boolean, ms: number): Promise<boolean> {
+        if (ready()) return Promise.resolve(true);
         return new Promise((resolve) => {
             let done = false;
             const finish = (value: boolean) => {
@@ -458,9 +471,9 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 resolve(value);
             };
             const unsubscribe = deps.subscribeSessions(() => {
-                if (deps.hasSession(realId)) finish(true);
+                if (ready()) finish(true);
             });
-            const timer = setTimeout(() => finish(deps.hasSession(realId)), deps.sessionWaitMs);
+            const timer = setTimeout(() => finish(ready()), ms);
         });
     }
 
@@ -490,6 +503,8 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 landAsDraft(pendingId);
                 return;
             }
+            const hasModelFacts = deps.hasModelFacts;
+            if (hasModelFacts) await waitFor(() => hasModelFacts(realId, start.agent), deps.modelFactsWaitMs ?? 0);
             const ready = records.get(pendingId);
             if (!ready) return;
             if (!ready.adopted) {

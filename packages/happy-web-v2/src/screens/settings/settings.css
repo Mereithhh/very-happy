@@ -614,3 +614,4 @@ input.set-value:focus {
     background: linear-gradient(var(--bg-3), var(--bg-3)) center / 100% 4px no-repeat;
   }
 }
+.set-effort { margin-top: var(--sp-2); }

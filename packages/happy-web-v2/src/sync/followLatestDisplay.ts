@@ -1,7 +1,8 @@
 import { LATEST_MODEL_MODE, MACHINE_CONFIG_AGENTS, type LatestModelResolution, type LatestModelTable } from '@slopus/happy-wire';
 import type { ModelMode } from '@/components/modelModeOptions';
 import type { Metadata } from './storageTypes';
-import { normalizeAgentKey, resolveLatestForAgent } from './agentDefaults';
+import { normalizeAgentKey, resolveLatestForAgent, type LauncherMachineContext } from './agentDefaults';
+import { isCliVersionBelow } from '@/app/cliUpdatePolicy';
 
 /**
  * B-844b: how "follow latest" is shown — one picker entry instead of the
@@ -20,10 +21,31 @@ export type FollowLatestState =
     /** No session or machine to resolve against. */
     | { kind: 'dependsOnMachine' };
 
-export function followLatestState(resolution: LatestModelResolution, resolvedForSession: boolean): FollowLatestState {
+export function followLatestState(resolution: LatestModelResolution, resolvedForSession: boolean, opts?: { runFactsUnknown?: boolean }): FollowLatestState {
+    if (opts?.runFactsUnknown) return { kind: 'machineDefault' };
     if (resolution.configured) return { kind: 'machineConfig', model: resolution.configured };
     if (resolution.model) return { kind: 'latest', model: resolution.model, label: resolution.label };
     return resolvedForSession ? { kind: 'machineDefault' } : { kind: 'dependsOnMachine' };
+}
+
+/**
+ * B-849a: first Very Happy CLI whose Codex/Gemini wrapper reports the
+ * machine's config model (`configuredModel`, B-844 / v0.2.188). Older ones
+ * run their own default, which no Web resolution can name.
+ */
+export const RUN_FACTS_CLI_VERSION = '0.2.188';
+
+/**
+ * Whether a draft (no session yet) on this machine can name what follow-latest
+ * runs. Evidence first: the machine's newest session of the agent published a
+ * catalog without `configuredModel` → its wrapper does not report it. With no
+ * such session, the daemon's CLI version decides (new wrappers are spawned
+ * from it). Claude/pi need no machine-config fact.
+ */
+export function launcherReportsRunFacts(flavor: string | null | undefined, machine: LauncherMachineContext | null | undefined): boolean {
+    if (!MACHINE_CONFIG_AGENTS.includes(normalizeAgentKey(flavor)) || !machine) return true;
+    if (machine.catalog?.length) return machine.configuredModel !== undefined;
+    return !(machine.cliVersion && isCliVersionBelow(machine.cliVersion, RUN_FACTS_CLI_VERSION));
 }
 
 /**

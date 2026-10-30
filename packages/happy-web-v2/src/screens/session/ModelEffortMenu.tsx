@@ -1,63 +1,182 @@
+import * as Dialog from '@radix-ui/react-dialog';
 import * as Popover from '@radix-ui/react-popover';
-import { ChevronDown, SlidersHorizontal, Zap } from 'lucide-react';
-import { useId, useState } from 'react';
-import { EffortEnergy, EffortSlider, isMaximumEffort } from '@/components/EffortSlider';
+import { Check, ChevronDown, ChevronRight, SlidersHorizontal, Zap } from 'lucide-react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
+import { EffortEnergy, EffortSegments, isMaximumEffort } from '@/components/EffortSegments';
 import type { ModeOption } from '@/components/modelModeOptions';
-import { Combobox } from '@/ui/Combobox';
+import { listedModelKey, type ModelPickerLayout } from './modelPickerLayout';
 import './modemenu.css';
 import './modelEffortMenu.css';
 
+/** Same breakpoint as the shared picker's bottom sheet (ui/picker). */
+const SHEET_MQ = '(pointer: coarse) and (max-width: 600px)';
+
+function useSheetMode(): boolean {
+    const query = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(SHEET_MQ).matches;
+    const [sheet, setSheet] = useState(query);
+    useEffect(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+        const mq = window.matchMedia(SHEET_MQ);
+        const update = () => setSheet(mq.matches);
+        update();
+        mq.addEventListener?.('change', update);
+        return () => mq.removeEventListener?.('change', update);
+    }, []);
+    return sheet;
+}
+
+type MenuAction = { label: string; onSelect: () => void };
+
 /**
- * One composer entry owns model selection and that model's exact effort stops.
- * B-688: `customize` adds 「自定义…」 at the bottom (opens the model/provider
- * editor); `onOpen` lets the caller refresh the machine's custom models.
+ * One composer entry for 「运行配置」: model + that model's thinking stops.
+ * B-849a: a flat list (newest per family, then 「更多模型」) instead of a
+ * picker inside the popover — on phones it is ONE bottom sheet, never a sheet
+ * over a popover. `layout` comes from layoutModelPicker; `readOnly` replaces
+ * the model list (Gemini: the machine config decides); `notice` explains an
+ * unknown running model; `footer` says the scope and offers the explicit
+ * 「设为新会话默认」 (a pick here never writes the account default, B-848).
  */
-export function ModelEffortMenu({ label, options, value, onChange, subtitle, effort, customize, onOpen, groups }: {
+export function ModelEffortMenu({ label, modelLabel, options, layout, value, onChange, subtitle, notice, readOnly, effort, longContextLabel, longContextHint, moreLabel, footer, customize, onOpen, triggerLabel }: {
     label: string;
+    modelLabel: string;
     options: ModeOption[];
+    layout?: ModelPickerLayout;
     value: string | null;
     onChange: (key: string) => void;
     subtitle?: string;
+    notice?: { text: string; action?: MenuAction; extra?: ReactNode };
+    readOnly?: { value: string; hint: string };
     effort: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void };
-    customize?: { label: string; onSelect: () => void };
+    longContextLabel?: string;
+    longContextHint?: string;
+    moreLabel?: string;
+    footer?: { note: string; action?: MenuAction };
+    customize?: MenuAction;
     onOpen?: () => void;
-    /** B-714: with custom models present, split the list 「默认 · 目录 · 自定义」 */
-    groups?: { catalog: string; custom: string; customKeys: readonly string[] };
+    /** Closed-entry text when it is not the selected option's name (read-only / unknown). */
+    triggerLabel?: string;
 }) {
-    const id = useId();
     const [open, setOpen] = useState(false);
-    if (!options.length) return null;
-    const current = options.find(option => option.key === value) ?? options[0];
-    const strength = effort.options.find(option => option.key === effort.value)?.name;
+    const sheet = useSheetMode();
+    const resolvedLayout = layout ?? { primary: options, more: [], longContext: null, selectedInMore: false };
+    const listedKey = listedModelKey(resolvedLayout, value) ?? options[0]?.key ?? null;
+    const [moreOpen, setMoreOpen] = useState(resolvedLayout.selectedInMore);
+    useEffect(() => { if (open) setMoreOpen(resolvedLayout.selectedInMore); }, [open, resolvedLayout.selectedInMore]);
+    if (!options.length && !readOnly) return null;
+    const current = options.find((option) => option.key === listedKey) ?? options[0];
+    const strength = effort.options.find((option) => option.key === effort.value)?.name;
     const atMax = isMaximumEffort(effort.options, effort.value);
-    return <Popover.Root open={open} onOpenChange={(next) => { setOpen(next); if (next) onOpen?.(); }}>
-        <Popover.Trigger asChild>
-            <button type="button" className="mm-trigger me-trigger" aria-label={label}>
-                <Zap size={13} aria-hidden="true" />
-                <span className="mm-v">{current.name}</span>
-                {strength && <span className={`me-strength${atMax ? ' me-strength--max' : ''}`}><span>{strength}</span>{atMax && <EffortEnergy />}</span>}
-                <ChevronDown size={12} className="mm-caret" aria-hidden="true" />
-            </button>
-        </Popover.Trigger>
+    const choose = (key: string) => { if (key !== value) onChange(key); };
+    const setOpenAndNotify = (next: boolean) => { setOpen(next); if (next) onOpen?.(); };
+    const runAction = (action: MenuAction) => { setOpen(false); action.onSelect(); };
+
+    const body = <ModelEffortBody
+        modelLabel={modelLabel} layout={resolvedLayout} selectedKey={listedKey} onChoose={choose}
+        subtitle={subtitle} notice={notice} readOnly={readOnly} effort={effort}
+        longContext={resolvedLayout.longContext && longContextLabel ? { ...resolvedLayout.longContext, label: longContextLabel, hint: longContextHint, onToggle: (on) => onChange(on ? resolvedLayout.longContext!.onKey : resolvedLayout.longContext!.offKey) } : null}
+        more={moreLabel ? { label: moreLabel, open: moreOpen, onToggle: () => setMoreOpen((v) => !v) } : null}
+        footer={footer} customize={customize} runAction={runAction} />;
+
+    const trigger = (
+        <button type="button" className="mm-trigger me-trigger" aria-label={label} aria-haspopup="dialog" aria-expanded={open}
+            onClick={sheet ? () => setOpenAndNotify(!open) : undefined}>
+            <Zap size={13} aria-hidden="true" />
+            <span className="mm-v">{triggerLabel ?? current?.name}</span>
+            {strength && <span className={`me-strength${atMax ? ' me-strength--max' : ''}`}><span>{strength}</span>{atMax && <EffortEnergy />}</span>}
+            <ChevronDown size={12} className="mm-caret" aria-hidden="true" />
+        </button>
+    );
+
+    if (sheet) {
+        return <>
+            {trigger}
+            <Dialog.Root open={open} onOpenChange={setOpenAndNotify}>
+                <Dialog.Portal>
+                    <Dialog.Overlay className="vh-picker-scrim" />
+                    <Dialog.Content className="vh-picker-sheet me-sheet" aria-describedby={undefined}>
+                        <div className="vh-picker-sheet-head">
+                            <span className="vh-picker-grab" aria-hidden="true" />
+                            <Dialog.Title className="vh-picker-sheet-title">{label}</Dialog.Title>
+                        </div>
+                        <div className="me-sheet-body">{body}</div>
+                    </Dialog.Content>
+                </Dialog.Portal>
+            </Dialog.Root>
+        </>;
+    }
+    return <Popover.Root open={open} onOpenChange={setOpenAndNotify}>
+        <Popover.Trigger asChild>{trigger}</Popover.Trigger>
         <Popover.Portal>
             <Popover.Content className="me-panel" side="top" sideOffset={8} align="start" collisionPadding={12} aria-label={label}>
-                <span className="me-model-label" id={id}>{label}</span>
-                {/* B-714: the picker portals its own layer; Radix keeps the panel open (React-tree pointer/focus capture). */}
-                <Combobox label={label} labelledBy={id} size="md" className="me-model-picker"
-                    value={current.key} onChange={onChange}
-                    options={options.map(option => ({ value: option.key, label: option.name, description: option.description ?? undefined, group: modelGroup(option.key, groups) }))} />
-                {subtitle && <p className="me-note">{subtitle}</p>}
-                <EffortSlider {...effort} />
-                {customize && <button type="button" className="me-customize" onClick={() => { setOpen(false); customize.onSelect(); }}>
-                    <SlidersHorizontal size={14} aria-hidden="true" />
-                    <span>{customize.label}</span>
-                </button>}
+                <span className="me-title">{label}</span>
+                {body}
             </Popover.Content>
         </Popover.Portal>
     </Popover.Root>;
 }
 
-function modelGroup(key: string, groups: { catalog: string; custom: string; customKeys: readonly string[] } | undefined): string | undefined {
-    if (!groups || groups.customKeys.length === 0 || key === 'default') return undefined;
-    return groups.customKeys.includes(key) ? groups.custom : groups.catalog;
+function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, notice, readOnly, effort, longContext, more, footer, customize, runAction }: {
+    modelLabel: string;
+    layout: ModelPickerLayout;
+    selectedKey: string | null;
+    onChoose: (key: string) => void;
+    subtitle?: string;
+    notice?: { text: string; action?: MenuAction; extra?: ReactNode };
+    readOnly?: { value: string; hint: string };
+    effort: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void };
+    longContext: { on: boolean; label: string; hint?: string; onToggle: (on: boolean) => void } | null;
+    more: { label: string; open: boolean; onToggle: () => void } | null;
+    footer?: { note: string; action?: MenuAction };
+    customize?: MenuAction;
+    runAction: (action: MenuAction) => void;
+}) {
+    const id = useId();
+    const rows = (list: ModeOption[]): ReactNode => list.map((option) => {
+        const selected = option.key === selectedKey;
+        return <button key={option.key} type="button" role="radio" aria-checked={selected}
+            className={`me-model${selected ? ' me-model--on' : ''}`} onClick={() => onChoose(option.key)}>
+            <span className="me-model-text">
+                <span className="me-model-name">{option.name}</span>
+                {option.description && <span className="me-model-desc">{option.description}</span>}
+            </span>
+            {selected && <Check size={15} className="me-model-check" aria-hidden="true" />}
+        </button>;
+    });
+    return <>
+        <span className="me-model-label" id={id}>{modelLabel}</span>
+        {readOnly
+            ? <div className="me-readonly"><span className="me-readonly-value">{readOnly.value}</span><span className="me-note">{readOnly.hint}</span></div>
+            : <div className="me-models" role="radiogroup" aria-labelledby={id}>
+                {rows(layout.primary)}
+                {more && layout.more.length > 0 && <>
+                    <button type="button" className="me-more" aria-expanded={more.open} onClick={more.onToggle}>
+                        <ChevronRight size={14} className="me-more-caret" aria-hidden="true" />
+                        <span>{more.label}</span>
+                        <span className="me-more-count">{layout.more.length}</span>
+                    </button>
+                    {more.open && <div className="me-more-list">{rows(layout.more)}</div>}
+                </>}
+                {!more && rows(layout.more)}
+            </div>}
+        {longContext && !readOnly && <div className="me-switch-row">
+            <span className="me-switch-text"><span>{longContext.label}</span>{longContext.hint && <span className="me-note">{longContext.hint}</span>}</span>
+            <button type="button" role="switch" aria-checked={longContext.on} className="me-switch" aria-label={longContext.label}
+                onClick={() => longContext.onToggle(!longContext.on)}><span className="me-switch-thumb" /></button>
+        </div>}
+        {subtitle && <p className="me-note">{subtitle}</p>}
+        {notice && <div className="me-notice" role="status">
+            <span>{notice.text}</span>
+            {notice.action && <button type="button" className="me-link" onClick={() => runAction(notice.action!)}>{notice.action.label}</button>}
+            {notice.extra}
+        </div>}
+        <EffortSegments {...effort} />
+        {customize && <button type="button" className="me-customize" onClick={() => runAction(customize)}>
+            <SlidersHorizontal size={14} aria-hidden="true" />
+            <span>{customize.label}</span>
+        </button>}
+        {footer && <div className="me-footer">
+            <span>{footer.note}</span>
+            {footer.action && <button type="button" className="me-link" onClick={() => runAction(footer.action!)}>{footer.action.label}</button>}
+        </div>}
+    </>;
 }

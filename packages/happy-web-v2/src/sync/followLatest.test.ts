@@ -85,10 +85,25 @@ describe('resolveMessageModeMeta follows latest', () => {
         expect(resolveMessageModeMeta(session({ modelMode: 'latest', metadata: capable }), { agentDefaultOverrides: {} }).model).toBe('claude-opus-5-5');
     });
 
-    it('gemini follows its catalog; pi keeps sending no model', () => {
+    // B-849a (B-846 short term): the Gemini wrapper writes any sent model into
+    // the machine-wide ~/.gemini config, so the Web never sends one — not the
+    // resolved latest, not an earlier pick, not an account override.
+    it('gemini never sends a model; pi keeps sending no model', () => {
         const gemini = session({ flavor: 'gemini', metadata: { models: models(['gemini-2.5-pro', 'gemini-3.1-pro-preview']), configuredModel: null } });
-        expect(resolveMessageModeMeta(gemini, { agentDefaultOverrides: {} }).model).toBe('gemini-3.1-pro-preview');
+        expect(resolveMessageModeMeta(gemini, { agentDefaultOverrides: {} })).not.toHaveProperty('model');
+        expect(resolveMessageModeMeta({ ...gemini, modelMode: 'gemini-2.5-pro' }, { agentDefaultOverrides: { gemini: { modelMode: 'gemini-2.5-pro' } } })).not.toHaveProperty('model');
         expect(resolveMessageModeMeta(session({ flavor: 'acp', metadata: { models: models(['zai/glm-5.3']) } }), { agentDefaultOverrides: {} })).not.toHaveProperty('model');
+    });
+});
+
+describe('B-848: a session\'s own 「跟随最新」 beats a pinned account default', () => {
+    it('session modelMode `latest` resolves latest even when the account pins another model', () => {
+        const claude = session({ flavor: 'claude', modelMode: 'latest', metadata: { capabilities: [CLAUDE_OPUS_55_CAPABILITY] } });
+        const pinned = { agentDefaultOverrides: { claude: { modelMode: 'claude-sonnet-5' } } };
+        expect(resolveMessageModeMeta(claude, pinned).model).toBe('claude-opus-5-5');
+        expect(resolveMessageModeMeta({ ...claude, modelMode: null }, pinned).model).toBe('claude-sonnet-5');
+        const codex = session({ flavor: 'codex', modelMode: 'latest', metadata: { models: CODEX_166, configuredModel: null } });
+        expect(resolveMessageModeMeta(codex, { agentDefaultOverrides: { codex: { modelMode: 'gpt-5.5' } } }).model).toBe('gpt-6.1-sol');
     });
 });
 
