@@ -2874,6 +2874,19 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            oct31a: {
+                title: '改回「跟随」立即生效',
+                summary: '会话里固定过模型、之后改回「跟随」时，下一条消息就按选择器显示的模型运行。',
+                switchBack: '会话里固定过模型、之后改回「跟随」时，下一条消息就切回选择器显示的模型。',
+                running: '会话实际在跑的模型和所选不一致时，选择器会注明「这个会话当前在跑 X」；同一个模型不再重复列出，强度按实际值显示。',
+            },
+            oct31: {
+                title: 'CLI 0.2.189：Codex 保持原来的模型和权限',
+                summary: 'Codex 会话中断或重启后保持原来的模型和权限；/clear 后重新带上完整项目说明。',
+                codex: 'Codex 会话中断、重启，或用 CLI send 不带 --model 发送后，保持原来的模型和权限模式，不再退回默认。',
+                clear: '/clear 之后，Claude 和 Codex 会话会重新带上完整的项目说明。',
+                readWait: 'sessions read --wait 不再因单独的 /compact 或 /clear 卡住，命令被拒时会给出原因。',
+            },
             oct30a: {
                 title: '新会话默认跟随最新模型',
                 summary: '新会话默认用同档最新模型，本机配置里指定的模型优先，模型选择器如实显示实际会用的模型。',
