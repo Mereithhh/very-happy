@@ -31,3 +31,15 @@ describe('B-845 Codex /clear re-sends the full project prefix', () => {
         expect(clear).toContain('projectInjector.reset();');
     });
 });
+
+describe('B-845b Codex abort keeps the permission mode (published == actual)', () => {
+    it('resetCurrentModeDefaults leaves currentPermissionMode alone', () => {
+        const source = readFileSync(join(__dirname, 'runCodex.ts'), 'utf8');
+        const start = source.indexOf('const resetCurrentModeDefaults = () => {');
+        const reset = source.slice(start, source.indexOf('};', start));
+        expect(reset).toContain("logger.debug('[Codex] Reset current mode defaults after abort');");
+        expect(reset).not.toMatch(/currentPermissionMode\s*=/);
+        // The only writes: the initial flag and an accepted message mode (which is also published).
+        expect(source.match(/currentPermissionMode\s*=(?!=)/g)).toHaveLength(1);
+    });
+});

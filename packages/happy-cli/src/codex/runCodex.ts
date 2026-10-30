@@ -321,7 +321,10 @@ export async function runCodex(opts: {
     let currentAppendSystemPrompt: string | undefined = undefined;
 
     const resetCurrentModeDefaults = () => {
-        currentPermissionMode = DEFAULT_CODEX_PERMISSION_MODE;
+        // B-845b: the permission mode is the user's choice, not a per-turn override — an abort
+        // keeps it (and the published `metadata.permissionMode` stays true). Resetting it here
+        // ran the next meta-less send (CLI send, team wake) on `default` while the session
+        // still reported read-only / yolo.
         currentModel = DEFAULT_CODEX_MODEL;
         currentEffort = DEFAULT_CODEX_EFFORT;
         currentAppendSystemPrompt = undefined;

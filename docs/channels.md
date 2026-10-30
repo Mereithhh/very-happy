@@ -398,6 +398,9 @@ A standalone `/compact` or `/clear` runs no model turn on Claude; its turn ends
 with the wrapper's verdict line instead (B-845): `Compaction completed` /
 `Context was reset` → `status: completed`, `Compaction failed: <reason>` (a
 refused or failed compaction) → `status: failed`, `error: <reason>`.
+An ACP agent (pi, Gemini…) that rejects a prompt ends it `status: failed` with
+the agent's own reason as `error` (B-845b: pi's refused `/compact` reads
+`Internal error: pi compact failed: Nothing to compact (session too small)`).
 
 **Background tasks (B-507).** A turn ending is not the session going quiet:
 an async-launched sub-agent, a `run_in_background` command or a Monitor keeps

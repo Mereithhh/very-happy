@@ -140,6 +140,12 @@ describe('standalone /compact and /clear (B-845)', () => {
             .toMatchObject({ ended: true, status: 'failed', error: 'there is no conversation to compact yet' })
     })
 
+    it('B-845b: pi refusing /compact — its failed turn-end carries the agent\'s reason', () => {
+        const reason = 'Internal error: pi compact failed: Nothing to compact (session too small)'
+        expect(analyzeLatestTurn(log(user('/compact'), ev({ t: 'turn-start' }), service(`pi error: ${reason}`), ev({ t: 'turn-end', status: 'failed', error: reason }))))
+            .toMatchObject({ ended: true, status: 'failed', error: reason })
+    })
+
     it('a /clear ends on "Context was reset"', () => {
         expect(analyzeLatestTurn(log(user('/clear'), service('Context was reset')))).toMatchObject({ ended: true, status: 'completed' })
     })

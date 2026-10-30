@@ -221,7 +221,7 @@ export class AcpSessionManager {
     ];
   }
 
-  endTurn(status: 'completed' | 'failed' | 'cancelled'): SessionEnvelope[] {
+  endTurn(status: 'completed' | 'failed' | 'cancelled', error?: string): SessionEnvelope[] {
     const flushed = this.flush();
     if (!this.currentTurnId) {
       return flushed;
@@ -237,7 +237,7 @@ export class AcpSessionManager {
     return [
       ...flushed,
       ...stops,
-      createEnvelope('agent', { t: 'turn-end', status }, { turn: turnId, time: this.nextTime() }),
+      createEnvelope('agent', { t: 'turn-end', status, ...(status === 'failed' && error ? { error } : {}) }, { turn: turnId, time: this.nextTime() }),
     ];
   }
 

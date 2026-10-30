@@ -1424,7 +1424,7 @@ export async function runAcp(opts: {
         // send). Say what the agent said; keep the session; the next message runs anew.
         const failure = describeAcpTurnFailure(opts.agentName, error);
         session.sendSessionEvent({ type: 'message', message: failure.message });
-        sendEnvelopes(sessionManager.endTurn('failed'));
+        sendEnvelopes(sessionManager.endTurn('failed', failure.error));
         streamRelay.endTurn();
         setThinking(false);
         session.sendSessionEvent({ type: 'ready' });
