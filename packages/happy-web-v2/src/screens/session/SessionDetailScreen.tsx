@@ -55,6 +55,7 @@ import { useSessionBoard } from './board/useSessionBoard';
 import { BackButton } from '@/app/BackButton';
 import { sessionGate, shouldLookUpSession, type SessionLookup } from './sessionLookup';
 import { ChatSyncStatus } from './ChatSyncStatus';
+import { useLauncherModelSource } from '@/sync/useLauncherModelSource';
 import './session.css';
 
 /** The transcript's frame (ChatList's own empty layout) for the one cold-start paint before it renders. */
@@ -357,6 +358,7 @@ export function SessionDetailScreen() {
     // a daemon-hosted mirror WILL misfire), which also makes the model /
     // permission / effort menus unreachable. Banners replace the foot's role.
     const mirror = !!session && isMirrorSession(session);
+    const pendingLauncher = useLauncherModelSource(pending?.agent, pendingMode ? pending?.machineId : null);
     const pendingComposer: PendingComposer | undefined = pendingMode && pending ? {
         onSend: (text) => pendingSessions.append(pending.pendingId, text),
         permissionMode: pending.permissionMode,
@@ -365,6 +367,7 @@ export function SessionDetailScreen() {
         onMode: (field, value) => pendingSessions.setMode(pending.pendingId, field, value),
         initialDraft: pendingInitialDraft,
         isGone: () => !pendingSessions.get(pending.pendingId),
+        launcher: pendingLauncher,
         blockedHint: foreignPending
             ? t('pendingSession.otherTab')
             : pending.state === 'failed' ? (pending.deferred ? t('pendingSession.failedDraftKept') : t('pendingSession.retryFirst')) : undefined,

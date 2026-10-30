@@ -21,6 +21,7 @@ import {
     supportsClaudeOpus55,
     type AgentDefaultOverrides,
 } from '@/sync/agentDefaults';
+import { getLatestModelTier, isLatestModelMode, resolveLatestModel, type LatestModelTable } from '@slopus/happy-wire';
 
 /**
  * First very-happy-cli whose wrapper can run Opus 5.5: it bundles
@@ -88,15 +89,31 @@ function isOpus55(model: string | null | undefined): model is string {
 
 /** The model the user asked this session to run: an explicit pick, else the
  *  synced default, else the code default — deliberately NOT capability-gated
- *  (the gate is what silently drops Opus 5.5 on an old wrapper). */
+ *  (the gate is what silently drops Opus 5.5 on an old wrapper). Following
+ *  latest (B-844) wants the newest model of the tier anyone knows of. */
 export function wantedModel(
     session: Pick<ModelSupportSessionLike, 'modelMode' | 'metadata'>,
     overrides: AgentDefaultOverrides | null | undefined,
+    latestTable: LatestModelTable | null = null,
 ): string {
     const flavor = session.metadata?.flavor;
-    return session.modelMode
+    const wanted = session.modelMode
         ?? getAgentDefaultOverride(overrides, flavor).modelMode
         ?? getCodeAgentDefaults(flavor).modelMode;
+    if (!isLatestModelMode(wanted)) return wanted;
+    const newest = resolveLatestModel(latestTable, flavor ?? 'claude', {
+        kind: 'session',
+        capabilities: session.metadata?.capabilities ?? null,
+        catalog: session.metadata?.models ?? null,
+    }).newest;
+    return newest ?? 'default';
+}
+
+/** First Codex whose bundled catalog carries `model`: the gpt-6 ChatGPT gate
+ *  (B-487), else the latest-models table (B-844). */
+function codexMinVersion(model: string, latestTable: LatestModelTable | null): string | null {
+    if (CODEX_GPT6_MODELS.includes(model)) return CODEX_GPT6_MIN_VERSION;
+    return getLatestModelTier(latestTable, 'codex')?.models.find((entry) => entry.model === model)?.requires?.agentVersion ?? null;
 }
 
 /** Larger of two versions; an unparsable candidate never wins. */
@@ -108,11 +125,12 @@ export function modelSupportNotice(
     session: ModelSupportSessionLike | null | undefined,
     machine: ModelSupportMachineLike | null | undefined,
     overrides: AgentDefaultOverrides | null | undefined,
+    latestTable: LatestModelTable | null = null,
 ): ModelSupportNotice | null {
     const metadata = session?.metadata;
     if (!session || !metadata || session.archivedAt != null) return null;
     if (metadata.flavor === 'terminal-mirror') return null;
-    const model = wantedModel(session, overrides);
+    const model = wantedModel(session, overrides, latestTable);
 
     if ((metadata.flavor ?? 'claude') === 'claude') {
         if (!isOpus55(model) || supportsClaudeOpus55(metadata)) return null;
@@ -129,19 +147,20 @@ export function modelSupportNotice(
     }
 
     if (metadata.flavor === 'codex') {
-        if (!CODEX_GPT6_MODELS.includes(model)) return null;
+        const minVersion = codexMinVersion(model, latestTable);
+        if (!minVersion) return null;
         // No published catalog = a wrapper too old to discover models; its
         // picker never offered these, and nothing tells us what it can run.
         const catalog = metadata.models ?? [];
         if (catalog.length === 0 || catalog.some((entry) => entry.code === model)) return null;
         const installed = readAgentVersions(machine?.daemonState)?.agents.find((agent) => agent.id === 'codex')?.installed ?? null;
-        const installedReady = installed !== null && !isCliVersionBelow(installed, CODEX_GPT6_MIN_VERSION);
+        const installedReady = installed !== null && !isCliVersionBelow(installed, minVersion);
         return {
             kind: 'codex-gpt6',
             model,
             action: installedReady ? 'restart' : 'update',
             installedVersion: installed,
-            minVersion: CODEX_GPT6_MIN_VERSION,
+            minVersion,
         };
     }
     return null;

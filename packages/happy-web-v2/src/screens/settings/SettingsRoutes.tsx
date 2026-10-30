@@ -72,9 +72,12 @@ import {
   setAgentDefaultOverride,
 } from '@/sync/agentDefaults';
 import { collectPiModelOptions } from '@/sync/piModelOptions';
+import { collectRecentCatalogs } from '@/sync/launcherModels';
+import { useLatestModelTable } from '@/sync/latestModels';
+import { isLatestModelMode, resolveLatestModel } from '@slopus/happy-wire';
 import {
   getHardcodedPermissionModes,
-  getHardcodedModelModes,
+  getLauncherModelModes,
   getEffortLevelsForModel,
   type ModeOption,
 } from '@/components/modelModeOptions';
@@ -1039,6 +1042,7 @@ function AgentField({
   override,
   codeDefault,
   onPick,
+  followLatest,
 }: {
   label: string;
   options: ModeOption[];
@@ -1047,10 +1051,14 @@ function AgentField({
   override: string | undefined;
   codeDefault: string | null;
   onPick: (value: string | null) => void;
+  /** B-844: the code default is "follow latest"; `current` = what it resolves to now. */
+  followLatest?: { current: string | null };
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const current = options.find((o) => o.key === resolvedValue);
+  const nameOf = (key: string | null) => (key ? options.find((o) => o.key === key)?.name ?? key : null);
+  const latestName = followLatest ? nameOf(followLatest.current) ?? t('settingsAgents.machineDefault') : null;
 
   return (
     <>
@@ -1058,8 +1066,14 @@ function AgentField({
         title={label}
         right={
           <span className="set-value">
-            {current?.name ?? resolvedValue ?? t('settingsAgents.useCodeDefault')}
-            {!override && (t('settingsAgents.codeDefaultSuffix'))}
+            {followLatest
+              ? (override
+                ? t('settingsAgents.pinnedTo', { model: current?.name ?? override })
+                : t('settingsAgents.followLatestValue', { model: latestName! }))
+              : <>
+                {current?.name ?? resolvedValue ?? t('settingsAgents.useCodeDefault')}
+                {!override && (t('settingsAgents.codeDefaultSuffix'))}
+              </>}
           </span>
         }
         onClick={() => setOpen((v) => !v)}
@@ -1067,8 +1081,10 @@ function AgentField({
       {open && (
         <div className="set-options">
           <Item
-            title={t('settingsAgents.useCodeDefault')}
-            subtitle={codeDefault ? options.find((o) => o.key === codeDefault)?.name ?? codeDefault : undefined}
+            title={followLatest ? t('settingsAgents.followLatest') : t('settingsAgents.useCodeDefault')}
+            subtitle={followLatest
+              ? t('settingsAgents.followLatestCurrent', { model: latestName! })
+              : codeDefault ? options.find((o) => o.key === codeDefault)?.name ?? codeDefault : undefined}
             selected={!override}
             right={!override ? <Check size={16} /> : undefined}
             onClick={() => {
@@ -1154,6 +1170,7 @@ function Agents() {
   );
 
   const translate = useCallback((k: SimpleTranslationKey) => t(k), []);
+  const latestTable = useLatestModelTable();
 
   async function clearAll() {
     const ok = await Modal.confirm(
@@ -1216,8 +1233,16 @@ function Agents() {
           const resolved = resolveAgentDefaultConfig(overrides, agent);
           const codeDefaults = resolveAgentDefaultConfig({}, agent);
           const permOptions = getHardcodedPermissionModes(agent, translate);
-          const modelOptions = agent === 'pi' ? piModelOptions : getHardcodedModelModes(agent, translate);
-          const effortOptions = getEffortLevelsForModel(agent, resolved.modelMode);
+          // B-844: the live catalogs this agent's sessions published (one per
+          // machine, newest first) join the code list and the latest table.
+          const catalogs = agent === 'pi' ? [] : collectRecentCatalogs(allSessions, agent);
+          const modelOptions = agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable);
+          const followsLatestByDefault = isLatestModelMode(codeDefaults.modelMode);
+          const latestNow = followsLatestByDefault
+            ? resolveLatestModel(latestTable, agent, { kind: 'none', catalog: catalogs.flatMap((metadata) => metadata.models ?? []) }).model
+            : null;
+          const effectiveModel = isLatestModelMode(resolved.modelMode) ? latestNow ?? 'default' : resolved.modelMode;
+          const effortOptions = getEffortLevelsForModel(agent, effectiveModel);
           return (
             <ItemGroup key={agent} settingId={`agents.${agent}`} title={agent}>
               <AgentField
@@ -1232,10 +1257,11 @@ function Agents() {
                 <AgentField
                   label={t('settingsAgents.model')}
                   options={modelOptions}
-                  resolvedValue={resolved.modelMode}
+                  resolvedValue={effectiveModel}
                   override={getAgentDefaultOverrideValue(overrides, agent, 'modelMode')}
                   codeDefault={codeDefaults.modelMode}
                   onPick={(v) => pick(agent, 'modelMode', v)}
+                  followLatest={followsLatestByDefault ? { current: latestNow } : undefined}
                 />
               )}
               {effortOptions.length > 0 && (

@@ -1,6 +1,8 @@
 import type { Session } from './storageTypes';
 import type { Settings } from './settings';
-import { getAgentDefaultOverride, isPiAgent, normalizeAgentKey, resolveDefaultModelMode } from './agentDefaults';
+import { getAgentDefaultOverride, getCodeAgentDefaults, isPiAgent, normalizeAgentKey, resolveDefaultModelMode } from './agentDefaults';
+import { getLatestModelTable } from './latestModels';
+import { isLatestModelMode, type LatestModelTable } from '@slopus/happy-wire';
 import { normalizeClaudeOutboundMode } from './permissionModeOutbound';
 import { getEffortLevelsForModel } from '@/components/modelModeOptions';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
@@ -14,6 +16,7 @@ export type MessageModeMeta = {
 export function resolveMessageModeMeta(
     session: Pick<Session, 'permissionMode' | 'modelMode' | 'metadata' | 'effortLevel'>,
     settings?: Pick<Settings, 'agentDefaultOverrides'>,
+    latestTable: LatestModelTable | null = getLatestModelTable(),
 ): MessageModeMeta {
     const agentOverrides = getAgentDefaultOverride(settings?.agentDefaultOverrides, session.metadata?.flavor);
     const meta: MessageModeMeta = {};
@@ -51,10 +54,18 @@ export function resolveMessageModeMeta(
     // "reset to the machine's own default" on the CLI (both fields already
     // decode null → undefined there, on every released version). Omitting the
     // field instead leaves the CLI's sticky per-session state in force.
-    // Claude falls back to the code default (pinned Opus 5.5) when the wrapper
-    // advertises it can run it, so the picker and the running model agree.
-    const modelMode = session.modelMode
-        ?? (isClaude ? resolveDefaultModelMode(settings?.agentDefaultOverrides, session.metadata?.flavor, session.metadata ?? {}) : agentOverrides.modelMode);
+    // Claude falls back to the code default `latest`, resolved for this
+    // wrapper (B-844: newest Opus it proves it runs, else null = machine
+    // default), so the picker and the running model agree. Codex/Gemini
+    // following latest send the model their published catalog proves, and
+    // nothing (machine default) until it does. `latest` itself never leaves.
+    const followsLatest = isLatestModelMode(agentOverrides.modelMode ?? getCodeAgentDefaults(session.metadata?.flavor).modelMode);
+    const resolvedDefault = isClaude || followsLatest
+        ? resolveDefaultModelMode(settings?.agentDefaultOverrides, session.metadata?.flavor, session.metadata ?? {}, { table: latestTable })
+        : agentOverrides.modelMode;
+    const modelMode = session.modelMode && !isLatestModelMode(session.modelMode)
+        ? session.modelMode
+        : (!isClaude && followsLatest && resolvedDefault === 'default' ? undefined : resolvedDefault);
     if (modelMode !== undefined) {
         meta.model = modelMode === 'default' ? null : modelMode;
     }

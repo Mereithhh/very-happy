@@ -33,6 +33,8 @@ import { useTranslation } from '@/i18n/useTranslation';
 import {
     getAvailableModels,
     getAvailablePermissionModes,
+    getLauncherModelModes,
+    markLatestModel,
     getEffortLevelsForModel,
     compactResolvedModelCode,
     relabelDefaultModel,
@@ -47,9 +49,13 @@ import {
     normalizeAgentKey,
     resolveAgentDefaultConfig,
     resolveDefaultModelMode,
+    resolveLatestForAgent,
+    modelOverrideAfterSessionPick,
     setAgentDefaultOverride,
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
+import { useLatestModelTable } from '@/sync/latestModels';
+import type { LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
 import { deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
@@ -181,7 +187,12 @@ export interface PendingComposer {
     initialDraft: string;
     /** The record was discarded: the unmount flush must not re-create its draft. */
     isGone?: () => boolean;
+    /** B-844: the machine the session will start on — its versions and recent
+     *  sessions' catalogs decide the model list and what "latest" means. */
+    launcher?: LauncherModelSource;
 }
+
+const NO_CATALOGS: never[] = [];
 
 export function AgentInput({ sessionId, agentFlavor, pending }: {
     sessionId: string;
@@ -330,7 +341,14 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
 
     // selectors
     const agentDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, flavor);
-    const modelKey = pending?.modelMode ?? session?.modelMode ?? resolveDefaultModelMode(agentDefaultOverrides, flavor, session ? (metadata ?? {}) : null);
+    // B-844: no session yet → the target machine and the catalogs its recent
+    // sessions of this agent published stand in for the session's own.
+    const latestTable = useLatestModelTable();
+    const launcherCatalogs = (!session && pending?.launcher?.catalogs) || NO_CATALOGS;
+    const launcherContext = session ? null : pending?.launcher?.context ?? null;
+    const modelMetadata = session ? (metadata ?? {}) : null;
+    const latestModel = resolveLatestForAgent(latestTable, flavor, modelMetadata, launcherContext).model;
+    const modelKey = pending?.modelMode ?? session?.modelMode ?? resolveDefaultModelMode(agentDefaultOverrides, flavor, modelMetadata, { table: latestTable, machine: launcherContext });
     const resolvedDefaultModel = metadata?.defaultModelCode
         ?? (modelKey === 'default' ? usage?.model : undefined);
     const defaultModelLabel = resolvedDefaultModel
@@ -344,7 +362,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const customModels = useCustomPickerModels(configMachineId, configHarness);
     const [modelEditorOpen, setModelEditorOpen] = useState(false);
     const models = withCustomModels(
-        relabelDefaultModel(getAvailableModels(flavor, metadata, t as any), defaultModelLabel),
+        markLatestModel(
+            relabelDefaultModel(session ? getAvailableModels(flavor, metadata, t as any) : getLauncherModelModes(flavor, launcherCatalogs, t as any, latestTable), defaultModelLabel),
+            latestModel,
+            t('session.chat.modelLatestDescription'),
+        ),
         customModels,
         t('modelConfig.customModelDescription'),
     );
@@ -1164,8 +1186,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         if (pending) pending.onMode(field, key);
         else storage.getState()[fn](sessionId, key);
         const currentOverrides = storage.getState().settings.agentDefaultOverrides;
+        // B-844: picking the model "latest" resolves to keeps the account on
+        // follow-latest; only another model becomes the remembered default.
+        const overrideValue = field === 'modelMode' ? modelOverrideAfterSessionPick(flavor, key, latestModel) : key;
         sync.applySettings({
-            agentDefaultOverrides: setAgentDefaultOverride(currentOverrides, flavor, field, key),
+            agentDefaultOverrides: setAgentDefaultOverride(currentOverrides, flavor, field, overrideValue),
         });
     };
 

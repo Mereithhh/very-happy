@@ -7,19 +7,25 @@
  *    passed to the daemon as `--permission-mode`;
  * 2. the first message's meta — `resolveMessageModeMeta` in
  *    happy-web-v2/src/sync/messageMeta.ts with no session state and no
- *    account overrides: claude always carries `model` (Opus 5.5, or null =
- *    machine default when the wrapper cannot run it) and `effort: null`;
- *    other agents carry only the permission mode.
- * Both read AGENT_CODE_DEFAULTS from happy-wire, the table the web uses.
+ *    account overrides: claude always carries `model` (the code default
+ *    `latest` resolved for this wrapper — B-844 — or null = machine default
+ *    when it can run no known Opus) and `effort: null`; codex/gemini carry
+ *    the resolved `latest` model when their published catalog proves one,
+ *    else only the permission mode.
+ * Both read AGENT_CODE_DEFAULTS from happy-wire, the table the web uses, and
+ * resolve `latest` against the server's latest-models table (bundled copy as
+ * fallback) — `latest` itself is never sent.
  * Account-level overrides (synced settings) are not applied here: they are
  * encrypted with the account content key, which dataKey CLI credentials lack.
  */
 
 import {
     getAgentCodeDefaults,
-    isClaudeOpus55Model,
+    isLatestModelMode,
     normalizeAgentKey,
-    supportsClaudeOpus55,
+    resolveLatestModel,
+    type CatalogEntryLike,
+    type LatestModelTable,
 } from '@slopus/happy-wire'
 
 export interface FirstMessageMeta {
@@ -43,28 +49,46 @@ function outboundPermissionMode(agent: string | undefined, mode: string): string
 
 /**
  * Meta for the first user message of a freshly spawned (or forked) session.
- * `capabilities` are the new session's advertised wrapper capabilities (from
- * its metadata); `explicitModel` is `--model` ('default' = machine default).
+ * `capabilities` / `catalog` are the new session's advertised wrapper
+ * capabilities and published model catalog (from its metadata);
+ * `explicitModel` is `--model` ('default' = machine default, 'latest' =
+ * follow latest); `latestTable` is the server's table (null = bundled).
  */
 export function resolveFirstMessageMeta(input: {
     agent: string | undefined
     permissionMode: string
     explicitModel?: string
     capabilities?: string[] | null
+    catalog?: readonly CatalogEntryLike[] | null
+    latestTable?: LatestModelTable | null
 }): FirstMessageMeta {
     const meta: FirstMessageMeta = {
         permissionMode: outboundPermissionMode(input.agent, input.permissionMode),
     }
-    if (input.explicitModel !== undefined) {
+    const key = normalizeAgentKey(input.agent ?? 'claude')
+    const wanted = input.explicitModel ?? getAgentCodeDefaults(key).modelMode
+    if (isLatestModelMode(wanted)) {
+        const resolved = resolveLatestModel(input.latestTable, key, {
+            kind: 'session',
+            capabilities: input.capabilities ?? null,
+            catalog: input.catalog ?? null,
+        }).model
+        // Claude always states its model (null = machine default); the others
+        // only send one their catalog proves, otherwise the machine decides.
+        if (resolved) meta.model = resolved
+        else if (key === 'claude' || input.explicitModel !== undefined) meta.model = null
+    } else if (input.explicitModel !== undefined) {
         meta.model = input.explicitModel === 'default' ? null : input.explicitModel
+    } else if (key === 'claude') {
+        meta.model = wanted === 'default' ? null : wanted
     }
-    if (normalizeAgentKey(input.agent ?? 'claude') !== 'claude') return meta
-
-    if (meta.model === undefined) {
-        const model = getAgentCodeDefaults('claude').modelMode
-        const runnable = !isClaudeOpus55Model(model) || supportsClaudeOpus55({ capabilities: input.capabilities ?? null })
-        meta.model = runnable && model !== 'default' ? model : null
-    }
-    meta.effort = null
+    if (key === 'claude') meta.effort = null
     return meta
+}
+
+/** Agents whose `latest` resolves from the catalog the wrapper publishes after connecting. */
+export function waitsForModelCatalog(agent: string | undefined, explicitModel: string | undefined): boolean {
+    const key = normalizeAgentKey(agent ?? 'claude')
+    if (key !== 'codex' && key !== 'gemini') return false
+    return isLatestModelMode(explicitModel ?? getAgentCodeDefaults(key).modelMode)
 }

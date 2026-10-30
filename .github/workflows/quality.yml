@@ -113,6 +113,7 @@ jobs:
           node --test scripts/dev/check-shipped-assets.test.mjs
           node --test scripts/dev/codemod-hover-guard.test.mjs
           node --test scripts/dev/touchGate.test.mjs
+          node --test scripts/dev/check-latest-models.test.mjs
           node --test scripts/land-pr.test.mjs
           node --test scripts/ops/resource-budget.test.mjs
 
