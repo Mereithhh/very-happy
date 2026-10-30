@@ -8,6 +8,7 @@ import { storage, useSession } from '@/sync/storage';
 import type { useTranslation } from '@/i18n/useTranslation';
 import {
     failureSummary,
+    offlineAutoRestartFailure,
     readMachineAutoRestart,
     restartBannerMode,
     waitReasonKey,
@@ -35,6 +36,24 @@ export function useRestartBannerMode(sessionId: string, missing: 'grace' | 'manu
     return restartBannerMode(sessionId, readMachineAutoRestart(daemonState), now, missing);
 }
 
+/** QA25 P2-2: the offline session's automatic-update failure, for the Restore banner. */
+export function useOfflineAutoRestartFailure(sessionId: string): { reason: string; retryAt: number | null } | null {
+    const session = useSession(sessionId);
+    const daemonState = storage((s) => {
+        const id = session?.metadata?.machineId;
+        return id ? s.machines[id]?.daemonState : undefined;
+    });
+    return offlineAutoRestartFailure(sessionId, readMachineAutoRestart(daemonState));
+}
+
+/** The Restore banner's line for an offline automatic-update failure. */
+export function offlineAutoRestartText(failure: { reason: string; retryAt: number | null }, t: T): string {
+    const reason = failureSummary(failure.reason) || '?';
+    if (failure.retryAt === null) return t('autoRestart.offlineFailed', { reason });
+    const time = new Date(failure.retryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return t('autoRestart.offlineFailedRetry', { reason, time });
+}
+
 type T = ReturnType<typeof useTranslation>['t'];
 
 const WHY_KEY = {
@@ -55,6 +74,10 @@ export function autoRestartBannerText(
     t: T,
 ): string | null {
     if (mode.kind === 'failed') return t('autoRestart.failed', { reason: failureSummary(mode.reason) || '?' });
+    // QA25 P2-1: say why the daemon leaves it to the user.
+    if (mode.kind === 'manual' && mode.reason === 'local-terminal') {
+        return 'agent' in behind ? t('autoRestart.manualLocalTerminalAgent', { agent: behind.agent }) : t('autoRestart.manualLocalTerminal', behind);
+    }
     if (mode.kind !== 'waiting') return null;
     const why = t(WHY_KEY[waitReasonKey(mode.reason)]);
     return 'agent' in behind ? t('autoRestart.waitingAgent', { agent: behind.agent, why }) : t('autoRestart.waiting', { ...behind, why });

@@ -13,6 +13,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
 import { isNeverRunOffline, restoreSession, useRestoreState, RESTORE_SLOW_SPAWN_MS, type RestoreReason } from '@/app/sessionRestore';
 import { isHibernated } from '@/app/sessionHibernation';
+import { offlineAutoRestartText, useOfflineAutoRestartFailure } from './useRestartBannerMode';
 import './mirror.css';
 
 type TKey = Parameters<ReturnType<typeof useTranslation>['t']>[0];
@@ -24,6 +25,8 @@ export function SessionArchivedBanner({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
     const session = useSession(sessionId);
     const state = useRestoreState(sessionId);
+    // B-852 / QA25 P2-2: an automatic update left it offline — say why.
+    const autoFailure = useOfflineAutoRestartFailure(sessionId);
     const busy = state?.phase === 'spawning' || state?.phase === 'awaiting-online';
     // "machine not responding" hint after RESTORE_SLOW_SPAWN_MS in `spawning`.
     const [now, setNow] = useState(() => Date.now());
@@ -53,6 +56,8 @@ export function SessionArchivedBanner({ sessionId }: { sessionId: string }) {
         text = `${t('restore.failed')}: ${t(restoreReasonKey(state.reason))}${state.reason === 'unknown' && state.message ? ` (${state.message})` : ''}`;
     } else if (hibernated) {
         text = t('hibernation.notice');
+    } else if (autoFailure && session.archivedAt == null) {
+        text = offlineAutoRestartText(autoFailure, t);
     } else {
         // recoverability: archived vs merely-offline get different notices.
         text = session.archivedAt != null ? t('restore.archivedNotice') : isNeverRunOffline(session) ? t('restore.neverRanNotice') : t('restore.offlineNotice');
@@ -61,7 +66,7 @@ export function SessionArchivedBanner({ sessionId }: { sessionId: string }) {
 
     return (
         <div className="mrb" data-testid="session-archived-banner" data-hibernated={hibernated ? '' : undefined}>
-            <div className={`mrb-note${state?.phase === 'failed' ? ' mrb-note--failed' : ''}`} role="status">
+            <div className={`mrb-note${state?.phase === 'failed' || (autoFailure && !hibernated && !busy) ? ' mrb-note--failed' : ''}`} role="status" data-auto-restart-failed={autoFailure ? '' : undefined}>
                 {hibernated ? <Moon size={13} /> : offline ? <Unplug size={13} /> : <Archive size={13} />}
                 <span className="mrb-note-text">{text}</span>
                 <button

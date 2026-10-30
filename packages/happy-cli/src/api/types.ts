@@ -458,6 +458,8 @@ export const DaemonStateSchema = z.object({
       reason: z.string().optional(),
       since: z.number(),
       target: z.string(),
+      offline: z.boolean().optional(),
+      retryAt: z.number().optional(),
     })),
   }).passthrough().optional(),
   /**

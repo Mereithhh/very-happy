@@ -177,6 +177,104 @@ describe('B-852 createAutoRestart', () => {
         expect(published).toHaveLength(1);
     });
 
+    // QA25 P2-1: a terminal wrapper never runs the probe, so it never checks in.
+    it('sweep: a session started in the user\'s terminal is manual at once (local-terminal), even if it was waiting', () => {
+        const { scheduler, live } = setup({}, {
+            lt: { live: true, wrapperVersion: '0.2.188', flavor: 'claude', capabilities: ['agent-hibernation-v1', 'auto-restart-v1'] },
+        });
+        scheduler.sweep();
+        expect(scheduler.statuses().lt).toMatchObject({ state: 'waiting', reason: 'awaiting-check-in' });
+        live.lt = { ...live.lt, startedBy: 'terminal' };
+        scheduler.sweep();
+        expect(scheduler.statuses().lt).toMatchObject({ state: 'manual', reason: 'local-terminal', target: '0.2.190' });
+        expect(scheduler.statuses().a).toMatchObject({ state: 'waiting', reason: 'awaiting-check-in' });
+    });
+
+    // QA25 P2-2: the old wrapper is stopped and the new one never comes up.
+    function offlineSetup(serverSession: AutoRestartDeps['serverSession'] = async () => ({ active: false, archived: false })) {
+        const timers: Array<{ fn: () => void; ms: number }> = [];
+        const restart = vi.fn(async (sessionId: string) => { delete ctx.live[sessionId]; return { ok: false as const, error: 'Agent process exited during startup (code 1)' }; });
+        const ctx = setup({ serverSession, schedule: (fn, ms) => { timers.push({ fn, ms }); }, restart });
+        return { ...ctx, restart, timers };
+    }
+
+    it('offline failure: a failed status with the reason survives the sweep, one retry after the backoff, then left to Restore', async () => {
+        const { scheduler, report, advance, timers, restart } = offlineSetup();
+        await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report() });
+        await flush();
+        const first = scheduler.statuses().a;
+        expect(first).toMatchObject({ state: 'failed', reason: 'Agent process exited during startup (code 1)', offline: true });
+        expect(first?.retryAt).toBeGreaterThan(0);
+        expect(timers).toHaveLength(1);
+        expect(timers[0].ms).toBe(AUTO_RESTART_BACKOFF_MS);
+        scheduler.sweep();
+        scheduler.forget('a');
+        expect(scheduler.statuses().a).toMatchObject({ state: 'failed', offline: true });
+        advance(AUTO_RESTART_BACKOFF_MS);
+        timers.shift()!.fn();
+        await flush(); await flush();
+        expect(restart).toHaveBeenCalledTimes(2);
+        const second = scheduler.statuses().a;
+        expect(second).toMatchObject({ state: 'failed', offline: true, since: first!.since });
+        expect(second?.retryAt).toBeUndefined();
+        expect(timers).toHaveLength(0);
+        scheduler.sweep();
+        expect(scheduler.statuses().a?.state).toBe('failed');
+    });
+
+    it('offline failure: no retry once the user restored or archived it; a Restore clears the record', async () => {
+        for (const server of [{ active: true, archived: false }, { active: false, archived: true }, null]) {
+            const { scheduler, report, advance, timers, restart } = offlineSetup(async () => server);
+            await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report() });
+            await flush();
+            advance(AUTO_RESTART_BACKOFF_MS);
+            timers.shift()!.fn();
+            await flush();
+            expect(restart).toHaveBeenCalledTimes(1);
+            expect(scheduler.statuses().a).toMatchObject({ state: 'failed', offline: true });
+            expect(scheduler.statuses().a?.retryAt).toBeUndefined();
+        }
+        const { scheduler, report, live, timers, restart } = offlineSetup();
+        await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report() });
+        await flush();
+        live.a = { live: true, wrapperVersion: '0.2.190', flavor: 'claude', capabilities: ['auto-restart-v1'] };
+        scheduler.sweep();
+        expect(scheduler.statuses().a).toBeUndefined();
+        timers.shift()!.fn();
+        await flush();
+        expect(restart).toHaveBeenCalledTimes(1);
+    });
+
+    // QA25 P2-3: the switch must not stretch the cadence or restart the clock.
+    it('switch off then on keeps the waiting clock', async () => {
+        let on = true;
+        const { scheduler, report, advance } = setup({ enabled: () => on });
+        scheduler.sweep();
+        const since = scheduler.statuses().a!.since;
+        on = false;
+        advance(20 * 60_000);
+        scheduler.sweep();
+        expect(scheduler.statuses()).toEqual({});
+        await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report({ thinking: true }) });
+        on = true;
+        advance(20 * 60_000);
+        scheduler.sweep();
+        expect(scheduler.statuses().a).toMatchObject({ state: 'waiting', since });
+        await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report({ thinking: true }) });
+        expect(scheduler.statuses().a).toMatchObject({ state: 'waiting', reason: 'turn-active', since });
+    });
+
+    it('a session first seen while the switch is off starts its clock then', async () => {
+        let on = false;
+        const { scheduler, report, advance, now } = setup({ enabled: () => on });
+        const t0 = now();
+        await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report() });
+        advance(30 * 60_000);
+        on = true;
+        scheduler.sweep();
+        expect(scheduler.statuses().a).toMatchObject({ since: t0 });
+    });
+
     it('Codex whose agent binary was updated since it started (B-487) is restarted too', async () => {
         const { scheduler, restart, report } = setup({ installedAgentVersion: (flavor) => (flavor === 'codex' ? '0.155.0' : null) }, {
             b: { live: true, wrapperVersion: '0.2.190', flavor: 'codex', capabilities: ['agent-hibernation-v1', 'auto-restart-v1'] },

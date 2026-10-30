@@ -21,6 +21,10 @@ export interface AutoRestartSessionStatus {
     reason?: string;
     since: number;
     target: string;
+    /** `failed` only: the old wrapper was stopped and the new one never came up — the session is offline. */
+    offline?: boolean;
+    /** offline failure: the daemon retries once by itself at this time; absent = left to Restore. */
+    retryAt?: number;
 }
 
 export interface MachineAutoRestart {
@@ -42,15 +46,24 @@ export function readMachineAutoRestart(daemonState: unknown): MachineAutoRestart
         for (const [id, raw] of Object.entries(ar.sessions as Record<string, unknown>)) {
             const s = raw as Partial<AutoRestartSessionStatus> | null;
             if (!s || typeof s.state !== 'string' || typeof s.since !== 'number' || typeof s.target !== 'string') continue;
-            sessions[id] = { state: s.state, since: s.since, target: s.target, ...(typeof s.reason === 'string' ? { reason: s.reason } : {}) };
+            sessions[id] = {
+                state: s.state, since: s.since, target: s.target,
+                ...(typeof s.reason === 'string' ? { reason: s.reason } : {}),
+                ...(s.offline === true ? { offline: true } : {}),
+                ...(typeof s.retryAt === 'number' ? { retryAt: s.retryAt } : {}),
+            };
         }
     }
     return { enabled: ar.enabled, sessions, startedAt };
 }
 
 export type RestartBannerMode =
-    /** Old daemon, switch off, or the daemon can never prove it idle: the B-462/B-487 banner as before. */
-    | { kind: 'manual' }
+    /**
+     * Old daemon, switch off, or the daemon can never prove it idle: the
+     * B-462/B-487 banner as before; `reason` = the daemon's why (e.g.
+     * `local-terminal`), shown when the banner has words for it.
+     */
+    | { kind: 'manual'; reason?: string }
     /** The daemon is on it (or about to classify it): no banner. */
     | { kind: 'auto' }
     /** Waiting for a long time: say why it has not updated yet; the manual button stays. */
@@ -84,7 +97,18 @@ export function restartBannerMode(
             ? { kind: 'waiting', reason: status.reason ?? '' }
             : { kind: 'auto' };
     }
-    return { kind: 'manual' };
+    return status.reason ? { kind: 'manual', reason: status.reason } : { kind: 'manual' };
+}
+
+/**
+ * QA25 P2-2: an automatic restart stopped the old wrapper and the new one
+ * never came up, so the session is offline and only the Restore banner shows.
+ * That banner says why, and whether the daemon will try once more by itself.
+ */
+export function offlineAutoRestartFailure(sessionId: string, autoRestart: MachineAutoRestart | null): { reason: string; retryAt: number | null } | null {
+    const status = autoRestart?.sessions[sessionId];
+    if (!status || status.state !== 'failed' || status.offline !== true) return null;
+    return { reason: status.reason ?? '', retryAt: status.retryAt ?? null };
 }
 
 /** Waiting reasons the banner explains in words; anything else gets the generic line. */

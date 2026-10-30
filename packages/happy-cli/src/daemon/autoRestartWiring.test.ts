@@ -14,6 +14,16 @@ describe('B-852 auto-restart wiring', () => {
         expect(run).toContain('if (reply.hibernate) return reply;\n        const auto = await autoRestartScheduler.onCheckIn(body);');
         expect(run).toContain('nextCheckMs: Math.min(reply.nextCheckMs ?? AUTO_RESTART_RECHECK_CAP_MS, AUTO_RESTART_RECHECK_CAP_MS, auto.nextCheckMs ?? Infinity) };');
     });
+    it('the 10-minute check-in cap holds with the switch off too (QA25 P2-3)', () => {
+        expect(run).toContain('const auto = await autoRestartScheduler.onCheckIn(body);\n        // Never let a wrapper sleep past the cap');
+        expect(run).not.toContain('if (!autoRestartSetting) return reply;');
+    });
+    it('terminal sessions are told apart by the wrapper\'s own startedBy (QA25 P2-1)', () => {
+        expect(run).toContain('startedBy: metadata?.startedBy ?? null,');
+    });
+    it('the offline retry asks the server whether anyone restored or archived it (QA25 P2-2)', () => {
+        expect(run).toContain('return { active: row.active, archived: row.archivedAt != null };');
+    });
     it('the restart is the manual restart path, keeps the permission mode and tags the new wrapper', () => {
         expect(run).toContain('const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, auto: { kind: staleness.kind, target: staleness.target } });');
         expect(run).toContain('...(options?.auto ? { [AUTO_RESTARTED_ENV]: encodeAutoRestarted(options.auto.kind, options.auto.target) } : {}),');

@@ -131,6 +131,15 @@ it('B-852: a failed automatic restart and a never-provable wrapper go back to th
     expect(host.textContent).toContain('staleWrapper.criticalNotice');
 });
 
+it('QA25 P2-1: a session in the user\'s terminal shows the manual banner at once, saying why', () => {
+    autoRestart({ s1: { state: 'manual', reason: 'local-terminal', since: Date.now(), target: '0.2.141' } });
+    render();
+    expect(host.textContent).toContain('autoRestart.manualLocalTerminal');
+    expect(banner()?.getAttribute('data-auto-restart')).toBe('manual');
+    act(() => host.querySelector<HTMLButtonElement>('.mrb-term-btn')!.click());
+    expect(mock.restartSession).toHaveBeenCalledExactlyOnceWith('s1');
+});
+
 it('B-852: switch off, or a stamp from an older daemon run → the old banner', () => {
     autoRestart({}, { enabled: false });
     render();

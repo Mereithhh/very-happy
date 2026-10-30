@@ -5891,6 +5891,13 @@ export const en = {
         waitingAgent: ({ agent, why }: { agent: string; why: string }) =>
             `Still on the ${agent} it started with. ${why} Restart now if you prefer — the conversation is kept.`,
         failed: ({ reason }: { reason: string }) => `Automatic update failed (${reason}). Restart it yourself — the conversation is kept.`,
+        manualLocalTerminal: ({ sessionVersion, machineVersion }: { sessionVersion: string; machineVersion: string }) =>
+            `Still on v${sessionVersion} (the machine has v${machineVersion}). It runs in your terminal, so it is not updated automatically — restart it to update; the conversation is kept.`,
+        manualLocalTerminalAgent: ({ agent }: { agent: string }) =>
+            `Still on the ${agent} it started with. It runs in your terminal, so it is not updated automatically — restart it to update; the conversation is kept.`,
+        offlineFailed: ({ reason }: { reason: string }) => `Automatic update failed (${reason}) and the session is offline. Restore it to continue — the conversation is kept.`,
+        offlineFailedRetry: ({ reason, time }: { reason: string; time: string }) =>
+            `Automatic update failed (${reason}) and the session is offline. It will try once more around ${time}, or restore it now — the conversation is kept.`,
         whyTurnActive: 'It is running; it will update itself once idle.',
         whyPendingRequest: 'It is waiting for your approval; it will update itself after that.',
         whyQueuedInput: 'Messages are queued; it will update itself once they are done.',

@@ -208,6 +208,10 @@ export interface AutoRestartSessionStatus {
     reason?: string;
     since: number;
     target: string;
+    /** `failed` only: the old wrapper is stopped and no new one came up, so the session is offline (spec §3). */
+    offline?: boolean;
+    /** `failed` + `offline` only: the daemon retries once by itself at this time; absent = left to Restore. */
+    retryAt?: number;
 }
 
 /** Refusals that will never clear on their own for this wrapper: hand it to the user now. */

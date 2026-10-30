@@ -1740,6 +1740,9 @@ export async function startDaemon(): Promise<void> {
         spawnedBy: tracked.spawnedBy ?? null,
         tags: metadata?.tags ?? null,
         variant: tracked.variant ?? (metadata as { variant?: string } | undefined)?.variant ?? null,
+        // The wrapper's own word: tracked.startedBy turns into "persisted" /
+        // "recovered" across the very daemon restart an upgrade does.
+        startedBy: metadata?.startedBy ?? null,
       };
     };
     const autoRestartScheduler = createAutoRestart({
@@ -1789,6 +1792,16 @@ export async function startDaemon(): Promise<void> {
           autoRestartExits.delete(sessionId);
         }
       },
+      // Offline-failure retry guard: nobody restored, archived or resumed it meanwhile.
+      serverSession: async (sessionId) => {
+        const response = await axios.get(`${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+          headers: { Authorization: `Bearer ${credentials.token}` },
+          timeout: 10_000,
+        });
+        const row = (response.data as { session?: { active?: unknown; archivedAt?: unknown } }).session;
+        if (!row || typeof row.active !== 'boolean') return null;
+        return { active: row.active, archived: row.archivedAt != null };
+      },
       publish: (sessions) => { void apiMachineRef?.setAutoRestartSessions(sessions); },
       log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
     });
@@ -1823,9 +1836,9 @@ export async function startDaemon(): Promise<void> {
         const reply = await daemonHibernation.check(body);
         if (reply.hibernate) return reply;
         const auto = await autoRestartScheduler.onCheckIn(body);
-        if (!autoRestartSetting) return reply;
-        // Never let a wrapper sleep past the cap: after the NEXT upgrade it is
-        // looked at within minutes, not at its hibernation point hours away.
+        // Never let a wrapper sleep past the cap — with the switch off too, so
+        // turning it back on (or the NEXT upgrade) gets it looked at within
+        // minutes, not at its hibernation point hours away.
         return { ...reply, nextCheckMs: Math.min(reply.nextCheckMs ?? AUTO_RESTART_RECHECK_CAP_MS, AUTO_RESTART_RECHECK_CAP_MS, auto.nextCheckMs ?? Infinity) };
       },
       listPeers: () => peerCoordinator.list(),

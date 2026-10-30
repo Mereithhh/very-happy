@@ -89,8 +89,14 @@ daemon 本身看不到 wrapper 的内存队列、待审批、后台 shell。唯�
 代码：`packages/happy-cli/src/daemon/autoRestart.ts`。
 
 - 并发上限 `AUTO_RESTART_MAX_CONCURRENT = 1`，间隔 `AUTO_RESTART_MIN_GAP_MS = 15 s`；被错峰挡住的会话回复 `nextCheckMs` = 15–45 s 抖动，wrapper 很快再来。34 个会话最快约 9 分钟走完，实际受各自 5 分钟 check-in 节奏自然打散。
-- 回复的 `nextCheckMs` 取 min(休眠节奏, 自动重启节奏, **10 分钟上限**)：`recent-activity` → 到 10 分钟静止点；其他拒绝 → 休眠节奏。上限 `AUTO_RESTART_RECHECK_CAP_MS` 对**所有** wrapper 生效（开关开启时）：休眠单独会把下次 check-in 排到数小时后（「阈值 − 已空闲」），有了上限，下一次升级后每个 wrapper 10 分钟内一定会被看一次。
+- 回复的 `nextCheckMs` 取 min(休眠节奏, 自动重启节奏, **10 分钟上限**)：`recent-activity` → 到 10 分钟静止点；其他拒绝 → 休眠节奏。上限 `AUTO_RESTART_RECHECK_CAP_MS` 对**所有** wrapper 生效，**开关关闭时也生效**（QA25 P2-3：关闭期间 check-in 的 wrapper 曾拿到休眠节奏，生产默认 6 h，重新打开后长时间不被评估；代价只是关闭时每 10 分钟多一次本机 check-in）：休眠单独会把下次 check-in 排到数小时后（「阈值 − 已空闲」），有了上限，下一次升级后每个 wrapper 10 分钟内一定会被看一次。
 - 每个 (session, 目标版本) 最多 **2 次**尝试；第 1 次失败退避 10 分钟，第 2 次失败放弃（`gave-up`），回到手动按钮并带失败原因。成功后 wrapper 版本 = daemon 版本，不再落后，天然不会再触发；另有按 (session, 目标版本) 的去重兜底，绝不循环。
+- **离线失败**（QA25 P2-2）：旧 wrapper 已停、新 wrapper 没起来（如启动即退出），会话离线、不会再 check-in。规则：
+  1. 立即发布 `failed`（`offline: true`，`reason` = 失败原因），sweep 与 wrapper 退出都不删它；会话重新在线（Restore、手动拉起、daemon 重试成功）时才清除。daemon 重启后不保留（下一次升级重新开始）。
+  2. 第 1 次离线失败后带 `retryAt` = 失败时刻 + 10 分钟（同一退避），到点 daemon 自己重试一次，前提全部成立：开关开；本机没有该会话的 wrapper；server 上该会话 `active=false` 且未归档（用户没有 Restore / 归档 / 在别处续上）；机器名额空闲（否则 15–30 s 后再看）。任一不成立就不重试，去掉 `retryAt`，交给 Restore。
+  3. 第 2 次失败 → `failed` 无 `retryAt`，交给 Restore；绝不第 3 次。
+  4. Web：离线会话的 Restore 横幅显示「自动更新失败（原因），会话已离线。约 HH:mm 会自动再试一次，也可以现在恢复」/ 最后一次后「点恢复继续」，按钮仍是 Restore。
+  - 选择重试而不是直接交给 Restore 的理由：启动失败可能是瞬时的（安装中途、磁盘/网络抖动）；server 侧 active/archived 检查保证不会把用户已处理（恢复/归档）的会话再拉起来。
 - 成功的判定：`restartSession` 返回 success（新 wrapper 已 webhook）且新 wrapper 版本不再落后。
 - 自动重启不计入手动重启的 3 次熔断（各自独立上限），避免自动那一次吃掉用户的手动额度。
 - 决定与占用机器名额（inFlight / lastStartedAt）同步完成，中间没有 await：两个会话同时通过便宜规则时也只会启动一个（单测覆盖）。
@@ -106,8 +112,10 @@ autoRestart: {
   sessions: { [sessionId]: {
     state: 'waiting' | 'restarting' | 'failed' | 'manual',
     reason?: string,         // 最近一次拒绝原因 / 失败原因
-    since: number,           // 首次发现落后的时间
+    since: number,           // 首次发现落后的时间（开关关闭/重开不重置，QA25 P2-3）
     target: string,          // 要更新到的版本
+    offline?: true,          // failed：旧 wrapper 已停、新的没起来（§3 离线失败）
+    retryAt?: number,        // 离线失败：daemon 会在这个时刻自己再试一次；无 = 交给 Restore
   } },
 }
 ```
@@ -115,12 +123,17 @@ autoRestart: {
 `manual` = 该 wrapper 不会上报（旧于 B-587、assistant、终端 local、teams/automation 的旧 wrapper、pi 旧 wrapper），daemon 永远等不到证明，
 直接交给人。
 
+终端会话（QA25 P2-1）：从终端启动的 wrapper（`metadata.startedBy = 'terminal'`）不跑 probe、永远不 check-in，sweep 直接判 `manual`（reason `local-terminal`），不再进 `waiting/awaiting-check-in`。用 wrapper 自己的 `startedBy`，不用 daemon 的 tracked.startedBy（升级时 daemon 重启后会变成 persisted/recovered）。daemon 拉起后切到本地控制（`controlledByUser`）的 Claude 会话仍会 check-in，`uiSession=false` 即判 `local-terminal` → `manual`。
+
+`since` 按 (session, 目标版本) 记一次：开关关闭期间不发布状态，但计时保留；重新打开后沿用原 `since`，不会把 60 分钟长等待横幅往后推。
+
 Web 规则（`happy-web-v2/src/app/autoRestartPolicy.ts` `restartBannerMode`）：
 
 | daemon / 状态 | 横幅 |
 |---|---|
 | 旧 daemon（无 `autoRestart`）或开关关闭 | 原 B-462/B-487 横幅（手动） |
-| `manual` | 原横幅（手动） |
+| `manual` | 原横幅（手动），立即显示；`local-terminal` 时写明「在你的终端里运行，不会自动更新」 |
+| `failed` + `offline`（会话离线） | Restore 横幅写明自动更新失败原因与是否会自动再试（§3） |
 | `failed` | 横幅：「自动更新失败：<原因>」+ 手动重启 |
 | `waiting` 且等待 < 60 分钟、`restarting` | 不显示 |
 | `waiting` 且等待 ≥ 60 分钟 | 横幅说明为什么还没更新（例：「有后台任务在运行，空闲后会自动更新」）+ 手动重启 |
@@ -155,7 +168,7 @@ daemon 重启时给新 wrapper 带 `HAPPY_AUTO_RESTARTED_FROM=<旧版本>`；新
 1. **check-in 与停进程之间的毫秒级竞态**：快照通过后到 SIGTERM 之间若恰有消息到达并开始 turn，turn 会被打断。缓解：10 分钟静止门让概率极低；停前再查 daemon 租约；消息本身不丢（B-679 exitCursor 重放，wrapper ≥ 0.2.180）。接受。
 2. **旧 wrapper check-in 节奏**：旧 daemon 曾回复的 `nextCheckMs` 可能长达「休眠阈值 − 已空闲时长」（默认最多 6 h），这类会话要等到那次 check-in 才会被重启。接受：此前它们会一直旧下去；最迟到休眠点。
 3. **prompt cache**：重启后 Claude `--resume` 重新加载 transcript；若新 wrapper 改了系统提示 / MCP 工具清单，首轮 cache 可能部分失效（实测见 PR）。只发生在空闲 ≥10 分钟之后，此时 5 分钟 TTL 的 cache 本就过期。
-4. **重启失败**：最多 2 次，之后回到手动按钮并显示原因；永不循环。
+4. **重启失败**：最多 2 次，之后回到手动按钮并显示原因；永不循环。旧 wrapper 已停后的失败（会话离线）同样最多 2 次，Restore 横幅显示原因（§3 离线失败）。
 
 ## 实测（2026-10-31，隔离 daemon + standalone server，`HAPPY_AUTO_RESTART_QUIET_MS=90000`）
 

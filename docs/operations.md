@@ -461,6 +461,11 @@ check-in proves it safe: no turn, no pending approval or question, empty queue,
 no background task / sub-agent / scheduled wakeup, not the user's terminal, and
 10 quiet minutes. One restart at a time per machine, ≥15 s apart; two failed
 attempts hand the session back to the web's manual Restart with the reason.
+Sessions started from a terminal are never restarted and show the manual banner
+at once, saying why. If the old wrapper was stopped but the new one failed to
+start, the offline session's Restore banner shows the reason; the daemon tries
+once more after 10 minutes unless the session was restored or archived
+meanwhile, then leaves it to Restore.
 Wrappers from before this change only check in on their own schedule (up to the
 hibernation threshold), so some take hours; Teams / Automations / pi wrappers
 from before it never report and keep the manual banner. The machine page's
