@@ -11,6 +11,8 @@ beforeAll(async () => {
     // spawn records its entry route (spawnOrigin.ts)
     const w = globalThis.window as unknown as { location?: { pathname?: string } };
     w.location = { ...(w.location ?? {}), pathname: '/session/parent' };
+    // Node 20 has no global navigator (spawnOrigin reads userActivation)
+    if (typeof globalThis.navigator === 'undefined') Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true });
     ({ storage } = await import('@/sync/storage'));
     ({ apiSocket } = await import('@/sync/apiSocket'));
     ({ sync } = await import('@/sync/sync'));
