@@ -2041,3 +2041,47 @@ it('passes native local images alongside the text manifest without expanding san
         sandboxPolicy: { type: 'readOnly' },
     });
 });
+
+describe('compactThreadAndWait (/compact, Owner 10-30)', () => {
+    async function compactClient(status: 'completed' | 'failed') {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        (client as any)._threadId = 'compact-thread';
+        (client as any).connected = true;
+        const notify = (method: string, params: unknown) => (client as any).handleNotification(method, params);
+        // The sequence codex-cli 0.154 sends (probe 10-30): `{}`, then a turn of its own.
+        const request = vi.spyOn(client as any, 'request').mockImplementation(async (method: unknown) => {
+            if (method === 'thread/compact/start') {
+                setTimeout(() => {
+                    notify('turn/started', { threadId: 'compact-thread', turn: { id: 'compact-turn', status: 'inProgress' } });
+                    notify('item/started', { threadId: 'compact-thread', turnId: 'compact-turn', item: { type: 'contextCompaction', id: 'c1' } });
+                    notify('turn/completed', {
+                        threadId: 'compact-thread',
+                        turn: { id: 'compact-turn', status, ...(status === 'failed' ? { error: { message: 'gateway 502' } } : {}) },
+                    });
+                }, 0);
+            }
+            return {};
+        });
+        return { client, request };
+    }
+
+    it('asks Codex to compact the thread itself and waits for that turn to end', async () => {
+        const { client, request } = await compactClient('completed');
+        await expect(client.compactThreadAndWait()).resolves.toEqual({ aborted: false, failed: false });
+        expect(request).toHaveBeenCalledWith('thread/compact/start', { threadId: 'compact-thread' });
+        expect(request).not.toHaveBeenCalledWith('turn/start', expect.anything());
+    });
+
+    it('reports a compaction turn Codex failed', async () => {
+        const { client } = await compactClient('failed');
+        await expect(client.compactThreadAndWait()).resolves.toEqual({ aborted: false, failed: true });
+    });
+
+    it('refuses without a thread instead of sending anything', async () => {
+        const { client, request } = await compactClient('completed');
+        (client as any)._threadId = null;
+        await expect(client.compactThreadAndWait()).rejects.toThrow('No active thread');
+        expect(request).not.toHaveBeenCalledWith('thread/compact/start', expect.anything());
+    });
+});

@@ -14,6 +14,7 @@ import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { CanUseTool, OnElicitation, OnUserDialog, PermissionResult } from "./sdk/types";
+import { compactOutcomeEvent, readCompactStatus, type ClaudeCompactStatus } from './compactOutcome';
 import type { JsRuntime } from "./runClaude";
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
 import type { ClaudeSdkMetadata } from './claudeSdkMetadata';
@@ -115,6 +116,14 @@ export async function claudeRemote(opts: {
      * Only passed for a fresh session's first launch (claudePrewarm.ts).
      */
     prewarm?: ClaudePrewarmLease,
+    /**
+     * The start-up args (`--resume <id>` / `--continue`) were acted on: a
+     * Claude process now runs on them, or `/clear` deliberately dropped them.
+     * Never called when the launch ends before that (no message, or the first
+     * message was parked for a relaunch) — the launcher must keep them for the
+     * launch that does start Claude, or that one opens an empty conversation.
+     */
+    onStartArgsUsed?: () => void,
 }) {
 
     // Check if session is valid
@@ -361,12 +370,14 @@ export async function claudeRemote(opts: {
         if (opts.onSessionReset) {
             opts.onSessionReset();
         }
+        opts.onStartArgsUsed?.();
         opts.onReady();
         return;
     }
 
     // Handle /compact command
     let isCompactCommand = false;
+    let compactStatus: ClaudeCompactStatus | null = null;
     if (specialCommand.type === 'compact') {
         logger.debug('[claudeRemote] /compact command detected - will process as normal but with compaction behavior');
         isCompactCommand = true;
@@ -424,6 +435,7 @@ export async function claudeRemote(opts: {
             try { w.offExit?.(); } catch { /* ignore */ }
             warm = null;
             w.lease.adopt();
+            opts.onStartArgsUsed?.();
             adopted = { response: w.response, messages: w.messages, models: hs.models };
             logger.debug(formatPrewarmLine('adopted', {
                 warmForMs: adoptStart - w.startedAt,
@@ -462,6 +474,7 @@ export async function claudeRemote(opts: {
         messages = new PushableAsyncIterable<SDKUserMessage>();
         messages.push(initialUserMessage);
         timingMarks.spawnAt = Date.now();
+        opts.onStartArgsUsed?.();
         response = query({
             prompt: messages,
             options: buildSdkOptions(initial.mode, { settingsPath: opts.hookSettingsPath, abort: opts.signal }),
@@ -741,6 +754,7 @@ export async function claudeRemote(opts: {
             // summary as a normal assistant text message before the result.
             // Mark it so downstream UI/protocol mapping can treat it as
             // housekeeping instead of a real assistant response.
+            if (isCompactCommand) compactStatus = readCompactStatus(message) ?? compactStatus;
             const outboundMessage = isCompactCommand && message.type === 'assistant'
                 ? { ...message, isCompactSummary: true } as SDKMessage
                 : message;
@@ -848,14 +862,11 @@ export async function claudeRemote(opts: {
 
                 // Send completion messages
                 if (isCompactCommand) {
-                    const compactSucceeded = message.subtype === 'success';
-                    logger.debug(`[claudeRemote] Compaction ${compactSucceeded ? 'completed' : 'failed'}`);
-                    if (opts.onCompletionEvent) {
-                        opts.onCompletionEvent(message.subtype === 'success'
-                            ? 'Compaction completed'
-                            : `Compaction failed: ${message.errors?.join('\n') || message.subtype}`);
-                    }
+                    const outcome = compactOutcomeEvent(message, compactStatus);
+                    logger.debug(`[claudeRemote] ${outcome}`);
+                    opts.onCompletionEvent?.(outcome);
                     isCompactCommand = false;
+                    compactStatus = null;
                 }
 
                 // Send ready event

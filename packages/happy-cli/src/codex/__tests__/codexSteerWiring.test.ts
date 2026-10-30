@@ -16,11 +16,11 @@ const source = readFileSync(new URL('../runCodex.ts', import.meta.url), 'utf8')
 describe('Codex steer wiring (B-628)', () => {
     it('advertises codex-steer-v1 so the web offers Steer only to a wrapper that has it', () => {
         expect(CODEX_STEER_CAPABILITY).toBe('codex-steer-v1');
-        expect(source).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY]');
+        expect(source).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY]');
     });
 
     it('tries the running turn first for a delivery=steer message, and queues it otherwise', () => {
-        const steerAt = source.indexOf("if (message.meta?.delivery === 'steer' && !isCodexClearText(message.content.text)) {");
+        const steerAt = source.indexOf("if (message.meta?.delivery === 'steer' && !isCodexControlText(message.content.text)) {");
         expect(steerAt).toBeGreaterThan(0);
         expect(source.slice(steerAt, steerAt + 300)).toContain('if (await steerIntoRunningTurn(steerDeps, message.content.text, attachments, message.localKey)) {');
         expect(source.slice(steerAt, steerAt + 400)).toContain('return;');
