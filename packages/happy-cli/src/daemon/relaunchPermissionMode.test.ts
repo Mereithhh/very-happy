@@ -28,7 +28,10 @@ describe('B-696 automation wake keeps the published permission mode', () => {
     it('other flavors forward as-is; the argv allowlist still applies', () => {
         expect(publishedRelaunchPermissionMode({ flavor: 'codex', permissionMode: 'yolo' })).toBe('yolo');
         expect(publishedRelaunchPermissionMode({ flavor: 'codex' })).toBeUndefined();
-        expect(sanitizeSpawnPermissionMode(publishedRelaunchPermissionMode({ flavor: 'codex', permissionMode: 'safe-yolo' }))).toBeNull();
+        // B-845: Codex's own modes survive the allowlist too.
+        expect(sanitizeSpawnPermissionMode(publishedRelaunchPermissionMode({ flavor: 'codex', permissionMode: 'safe-yolo' }))).toBe('safe-yolo');
+        expect(sanitizeSpawnPermissionMode(publishedRelaunchPermissionMode({ flavor: 'codex', permissionMode: 'read-only' }))).toBe('read-only');
+        expect(sanitizeSpawnPermissionMode(publishedRelaunchPermissionMode({ flavor: 'codex', permissionMode: 'dontAsk' }))).toBeNull();
     });
 
     it('wiring: the automation wake asks for it, explicit modes still win, the result reaches argv', () => {

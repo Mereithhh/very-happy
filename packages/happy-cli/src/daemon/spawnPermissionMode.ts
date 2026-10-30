@@ -7,8 +7,10 @@
  * anything else is dropped (the caller logs and spawns without the flag).
  *
  * The list mirrors what the CLI itself accepts (see
- * `claude/utils/permissionMode.ts` VALID_PERMISSION_MODES) minus the
- * Codex-only aliases the web never sends for Claude spawns.
+ * `claude/utils/permissionMode.ts` VALID_PERMISSION_MODES). B-845: that
+ * includes Codex's `read-only` / `safe-yolo` — a Codex resume relaunches with
+ * the mode its wrapper published, and dropping them resumed it as `default`
+ * (Claude maps them through mapToClaudeMode as before).
  */
 
 export const ALLOWED_SPAWN_PERMISSION_MODES = [
@@ -17,6 +19,8 @@ export const ALLOWED_SPAWN_PERMISSION_MODES = [
     'plan',
     'yolo',
     'bypassPermissions',
+    'read-only',
+    'safe-yolo',
 ] as const;
 
 export type SpawnPermissionMode = (typeof ALLOWED_SPAWN_PERMISSION_MODES)[number];
