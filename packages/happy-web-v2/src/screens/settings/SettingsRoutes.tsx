@@ -73,8 +73,10 @@ import {
 } from '@/sync/agentDefaults';
 import { collectPiModelOptions } from '@/sync/piModelOptions';
 import { collectRecentCatalogs } from '@/sync/launcherModels';
+import { machineLabel } from '@/utils/machineUtils';
 import { useLatestModelTable } from '@/sync/latestModels';
-import { MACHINE_CONFIG_AGENTS, isLatestModelMode, resolveLatestModel } from '@slopus/happy-wire';
+import { followLatestByMachine, summarizeFollowLatest, type FollowLatestState, type MachineFollowLatest } from '@/sync/followLatestDisplay';
+import { isLatestModelMode } from '@slopus/happy-wire';
 import {
   getHardcodedPermissionModes,
   getLauncherModelModes,
@@ -1051,15 +1053,31 @@ function AgentField({
   override: string | undefined;
   codeDefault: string | null;
   onPick: (value: string | null) => void;
-  /** B-844: the code default is "follow latest"; `current` = what it resolves to now,
-   *  `configured` = the model the most recent machine's own agent config pins (wins). */
-  followLatest?: { current: string | null; configured?: string | null };
+  /** B-844b: the code default is "follow latest" — what it runs on each machine
+   *  (resolved like a send from that machine's newest session) and the
+   *  account-level summary of those. */
+  followLatest?: { summary: FollowLatestState | { kind: 'varies' }; machines: MachineFollowLatest[] };
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const current = options.find((o) => o.key === resolvedValue);
-  const nameOf = (key: string | null) => (key ? options.find((o) => o.key === key)?.name ?? key : null);
-  const latestName = followLatest ? nameOf(followLatest.current) ?? t('settingsAgents.machineDefault') : null;
+  const nameOf = (key: string) => options.find((o) => o.key === key)?.name ?? key;
+  const stateValue = (state: FollowLatestState | { kind: 'varies' }, short: boolean) => {
+    switch (state.kind) {
+      case 'latest': return short ? nameOf(state.model) : t('settingsAgents.followLatestValue', { model: nameOf(state.model) });
+      case 'machineConfig': return t('settingsAgents.followMachineConfigValue', { model: state.model });
+      case 'machineDefault': return t('settingsAgents.followLatestUpgradeCliValue');
+      case 'dependsOnMachine': return t('settingsAgents.followLatestDependsValue');
+      case 'varies': return t('settingsAgents.followLatestVariesValue');
+    }
+  };
+  const followSubtitle = followLatest
+    ? (followLatest.machines.length === 0
+      ? t('settingsAgents.followLatestNoMachine')
+      : t('settingsAgents.followLatestByMachine', {
+        list: followLatest.machines.map((entry) => t('settingsAgents.machineEntry', { machine: entry.label, value: stateValue(entry.state, true) })).join(t('settingsAgents.machineListSeparator')),
+      }))
+    : undefined;
 
   return (
     <>
@@ -1070,9 +1088,7 @@ function AgentField({
             {followLatest
               ? (override
                 ? t('settingsAgents.pinnedTo', { model: current?.name ?? override })
-                : followLatest.configured
-                  ? t('settingsAgents.followMachineConfigValue', { model: followLatest.configured })
-                  : t('settingsAgents.followLatestValue', { model: latestName! }))
+                : stateValue(followLatest.summary, false))
               : <>
                 {current?.name ?? resolvedValue ?? t('settingsAgents.useCodeDefault')}
                 {!override && (t('settingsAgents.codeDefaultSuffix'))}
@@ -1086,9 +1102,7 @@ function AgentField({
           <Item
             title={followLatest ? t('settingsAgents.followLatest') : t('settingsAgents.useCodeDefault')}
             subtitle={followLatest
-              ? (followLatest.configured
-                ? t('settingsAgents.followLatestMachineConfig', { configured: followLatest.configured, model: latestName! })
-                : t('settingsAgents.followLatestCurrent', { model: latestName! }))
+              ? followSubtitle
               : codeDefault ? options.find((o) => o.key === codeDefault)?.name ?? codeDefault : undefined}
             selected={!override}
             right={!override ? <Check size={16} /> : undefined}
@@ -1176,6 +1190,14 @@ function Agents() {
 
   const translate = useCallback((k: SimpleTranslationKey) => t(k), []);
   const latestTable = useLatestModelTable();
+  // B-844b: follow-latest is shown per machine, in a stable order (by label),
+  // so the account value no longer flips with whichever machine started the
+  // newest session.
+  const allMachines = useAllMachines({ includeOffline: true });
+  const machineList = useMemo(
+    () => allMachines.map((machine) => ({ id: machine.id, label: machineLabel(machine) })).sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)),
+    [allMachines],
+  );
 
   async function clearAll() {
     const ok = await Modal.confirm(
@@ -1241,17 +1263,15 @@ function Agents() {
           // B-844: the live catalogs this agent's sessions published (one per
           // machine, newest first) join the code list and the latest table.
           const catalogs = agent === 'pi' ? [] : collectRecentCatalogs(allSessions, agent);
-          const modelOptions = agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable);
+          // The raw `default` key is never shown: it is the machine default.
+          const modelOptions = (agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable))
+            .map((option) => option.key === 'default' ? { ...option, name: t('settingsAgents.machineDefault') } : option);
           const followsLatestByDefault = isLatestModelMode(codeDefaults.modelMode);
-          const latestNow = followsLatestByDefault
-            ? resolveLatestModel(latestTable, agent, { kind: 'none', catalog: catalogs.flatMap((metadata) => metadata.models ?? []) }).model
-            : null;
-          // B-844 review: Codex/Gemini follow the machine's own config when it pins a
-          // model; show the newest machine's pin (catalogs are newest first).
-          const configuredOnMachine = MACHINE_CONFIG_AGENTS.includes(agent) && typeof catalogs[0]?.configuredModel === 'string'
-            ? catalogs[0].configuredModel
-            : null;
-          const effectiveModel = isLatestModelMode(resolved.modelMode) ? (configuredOnMachine ? 'default' : latestNow ?? 'default') : resolved.modelMode;
+          const perMachine = followsLatestByDefault ? followLatestByMachine(latestTable, agent, allSessions, machineList) : [];
+          const followSummary = summarizeFollowLatest(perMachine);
+          const effectiveModel = isLatestModelMode(resolved.modelMode)
+            ? (followSummary.kind === 'latest' ? followSummary.model : 'default')
+            : resolved.modelMode;
           const effortOptions = getEffortLevelsForModel(agent, effectiveModel);
           return (
             <ItemGroup key={agent} settingId={`agents.${agent}`} title={agent}>
@@ -1271,7 +1291,7 @@ function Agents() {
                   override={getAgentDefaultOverrideValue(overrides, agent, 'modelMode')}
                   codeDefault={codeDefaults.modelMode}
                   onPick={(v) => pick(agent, 'modelMode', v)}
-                  followLatest={followsLatestByDefault ? { current: latestNow, configured: configuredOnMachine } : undefined}
+                  followLatest={followsLatestByDefault ? { summary: followSummary, machines: perMachine } : undefined}
                 />
               )}
               {effortOptions.length > 0 && (

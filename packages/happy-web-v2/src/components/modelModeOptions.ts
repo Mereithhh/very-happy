@@ -52,12 +52,6 @@ export function compactResolvedModelCode(modelCode: string): string {
     return modelCode.replace(/^claude-/, '');
 }
 
-/** B-844: say which option "latest" currently resolves to (description only). */
-export function markLatestModel(options: ModelMode[], latestKey: string | null, description: string): ModelMode[] {
-    if (!latestKey) return options;
-    return options.map((option) => option.key === latestKey ? { ...option, description } : option);
-}
-
 export function relabelDefaultModel(options: ModelMode[], label: string): ModelMode[] {
     return options.map((option) => option.key === 'default'
         ? { ...option, name: label }
