@@ -13,9 +13,15 @@ import {
     CLAUDE_OPUS_55_CAPABILITY,
     supportsClaudeOpus55,
     isClaudeOpus55Model,
+    isLatestModelMode,
     normalizeAgentKey,
+    resolveLatestModel,
     type AgentKey,
     type AgentDefaultConfig,
+    type CatalogEntryLike,
+    type LatestModelContext,
+    type LatestModelResolution,
+    type LatestModelTable,
 } from '@slopus/happy-wire';
 export { CLAUDE_OPUS_55_MODEL, CLAUDE_OPUS_55_CAPABILITY, supportsClaudeOpus55, normalizeAgentKey };
 export type { AgentKey, AgentDefaultConfig };
@@ -102,24 +108,126 @@ export function resolveAgentDefaultConfig(
     };
 }
 
+/** What the launcher knows about the machine a new session will run on. */
+export type LauncherMachineContext = {
+    cliVersion?: string | null;
+    /** Installed version of the agent CLI (codex) from daemonState.agentVersions. */
+    agentVersion?: string | null;
+    /** Catalog a recent session of this agent on this machine published. */
+    catalog?: readonly CatalogEntryLike[] | null;
+    /** That session's metadata.configuredModel (machine agent config pin). */
+    configuredModel?: string | null;
+};
+
+export type ModelResolveMetadata = {
+    capabilities?: string[] | null;
+    models?: readonly CatalogEntryLike[] | null;
+    configuredModel?: string | null;
+};
+
+/**
+ * Where `latest` is resolved (B-844): a live session decides by its own
+ * capabilities and catalog; without one, the launcher machine's versions and
+ * recent catalog only pick the label; with neither, the newest known model.
+ */
+export function latestModelContext(
+    metadata: ModelResolveMetadata | null | undefined,
+    machine?: LauncherMachineContext | null,
+): LatestModelContext {
+    if (metadata) return { kind: 'session', capabilities: metadata.capabilities ?? null, catalog: metadata.models ?? null, configuredModel: metadata.configuredModel };
+    if (machine) return { kind: 'machine', cliVersion: machine.cliVersion ?? null, agentVersion: machine.agentVersion ?? null, catalog: machine.catalog ?? null, configuredModel: machine.configuredModel };
+    return { kind: 'none' };
+}
+
+export function resolveLatestForAgent(
+    table: LatestModelTable | null | undefined,
+    flavor: string | null | undefined,
+    metadata: ModelResolveMetadata | null | undefined,
+    machine?: LauncherMachineContext | null,
+): LatestModelResolution {
+    return resolveLatestModel(table, normalizeAgentKey(flavor), latestModelContext(metadata, machine));
+}
+
+/** The account default for this agent is "follow latest" (no pinned model). */
+export function isFollowingLatestModel(
+    overrides: AgentDefaultOverrides | null | undefined,
+    flavor: string | null | undefined,
+): boolean {
+    const selected = getAgentDefaultOverride(overrides, flavor).modelMode ?? getCodeAgentDefaults(flavor).modelMode;
+    return isLatestModelMode(selected);
+}
+
 /**
  * Model a session runs when nobody picked one for it: the synced per-agent
- * override, else the code default. Picking a model in any session also writes
- * the override, so pinned Opus 5.5 can arrive from either source; a session
- * whose wrapper cannot run it follows the machine's own default instead of
- * failing every turn. Without session metadata (launcher, settings) the value
- * is shown as is.
+ * override, else the code default `latest` resolved for this wrapper (B-844)
+ * — a concrete id, or 'default' (machine default) when nothing is provably
+ * runnable. A pinned Opus 5.5 override on a wrapper that cannot run it also
+ * follows the machine default instead of failing every turn. Without session
+ * metadata (launcher, settings) `machine` narrows the label; never returns
+ * the sentinel itself.
  */
 export function resolveDefaultModelMode(
     overrides: AgentDefaultOverrides | null | undefined,
     flavor: string | null | undefined,
-    metadata?: { capabilities?: string[] | null } | null,
+    metadata?: ModelResolveMetadata | null,
+    opts?: { table?: LatestModelTable | null; machine?: LauncherMachineContext | null },
 ): string {
     const selected = getAgentDefaultOverride(overrides, flavor).modelMode ?? getCodeAgentDefaults(flavor).modelMode;
+    if (isLatestModelMode(selected)) {
+        return resolveLatestForAgent(opts?.table, flavor, metadata, opts?.machine).model ?? 'default';
+    }
     if (isClaudeOpus55Model(selected) && metadata && !supportsClaudeOpus55(metadata)) return 'default';
     return selected;
 }
 
+/**
+ * Override to store after a model is picked inside a session (B-844): the
+ * model "latest" currently resolves to there means "keep following latest"
+ * (clear the override) — only another model is remembered as the account
+ * default. Pinning the current latest is an explicit Settings → Agents act.
+ */
+export function modelOverrideAfterSessionPick(
+    flavor: string | null | undefined,
+    key: string | null,
+    resolvedLatest: string | null,
+): string | null {
+    if (key === null) return null;
+    if (isLatestModelMode(getCodeAgentDefaults(flavor).modelMode) && resolvedLatest !== null && key === resolvedLatest) return null;
+    return key;
+}
+
+/**
+ * One-time migration (B-844): before "follow latest", picking a model in any
+ * session wrote it as the account default, so most stored model overrides
+ * equal what was newest when they were written. Those that equal today's
+ * latest (frozen below — later table updates must not re-migrate) become
+ * "follow latest"; any other override is a real choice and stays.
+ */
+export const FOLLOW_LATEST_MIGRATION_MODELS: Readonly<Partial<Record<AgentKey, readonly string[]>>> = {
+    claude: ['claude-opus-5-5'],
+    codex: ['gpt-6.1-sol'],
+    gemini: ['gemini-3.1-pro-preview'],
+};
+
+export function migrateFollowLatestOverrides(
+    overrides: AgentDefaultOverrides | null | undefined,
+    migratedAt: number | null | undefined,
+    now: number,
+): { agentDefaultOverrides?: AgentDefaultOverrides; modelFollowLatestMigratedAt: number } | null {
+    if (typeof migratedAt === 'number') return null;
+    let next: AgentDefaultOverrides = overrides ?? {};
+    let changed = false;
+    for (const [agent, models] of Object.entries(FOLLOW_LATEST_MIGRATION_MODELS) as Array<[AgentKey, readonly string[]]>) {
+        const current = getAgentDefaultOverride(next, agent).modelMode;
+        if (current !== undefined && models.includes(current)) {
+            next = setAgentDefaultOverride(next, agent, 'modelMode', null);
+            changed = true;
+        }
+    }
+    return changed
+        ? { agentDefaultOverrides: next, modelFollowLatestMigratedAt: now }
+        : { modelFollowLatestMigratedAt: now };
+}
 
 export function hasAgentDefaultOverride(
     overrides: AgentDefaultOverrides | null | undefined,

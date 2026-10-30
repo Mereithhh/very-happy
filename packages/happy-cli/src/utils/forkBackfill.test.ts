@@ -112,7 +112,7 @@ describe('B-531 wiring (source assertions, verified with mutation-check)', () =>
 
     it('spawn gates the first message of a fork (and only of a fork)', () => {
         const source = code('commands/spawn.ts')
-        expect(source).toContain('}), { fork: forkSource !== null })')
+        expect(source).toContain('}), { fork: forkSource !== null, waitForCatalog: waitsForModelCatalog(agent, options.model) })')
         const gate = source.indexOf('if (opts.fork) {')
         const wait = source.indexOf('const gate = await waitForForkBackfill({')
         const send = source.indexOf("await deps.sendUserMessage(sessionId, persisted, text, 'cli-spawn', meta)")

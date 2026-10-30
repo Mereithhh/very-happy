@@ -57,6 +57,7 @@ import {
 import type { SessionConfigOption, SessionModeState, SessionModelState } from '@agentclientprotocol/sdk';
 import { EditReportThrottle, extractAcpEditPaths } from '@/sessions/editPaths';
 import { reportSessionEditToDaemon } from '@/daemon/controlClient';
+import { readGeminiConfiguredModel } from './geminiConfiguredModel';
 
 const ACP_EVENT_PREVIEW_CHARS = 240;
 const ACP_RAW_PREVIEW_CHARS = 2000;
@@ -533,6 +534,9 @@ export async function runAcp(opts: {
     capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY],
   });
   metadata.attachmentKinds = [];
+  // B-844: report the model the machine's Gemini config pins (null = none),
+  // so the web's "follow latest" leaves it alone.
+  if (opts.agentName === 'gemini') metadata.configuredModel = readGeminiConfiguredModel();
   // B-633: the daemon's resume reattaches to the SAME session row (same as
   // runCodex / runClaude): no new session, the server snapshot seeds the cursor.
   const reconnect = readAcpReconnectEnv(process.env);

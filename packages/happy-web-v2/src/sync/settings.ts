@@ -118,6 +118,10 @@ export const SettingsSchema = z.object({
     newSessionAgent: z.string().describe('Agent used by quick new-chat creation (claude/codex/gemini/openclaw/pi)'),
     newSessionAlwaysAsk: z.boolean().describe('Always open the full options dialog on new chat instead of quick-creating'),
     agentDefaultOverrides: AgentDefaultOverridesSchema.describe('User-selected agent defaults. Missing values use code defaults and are not sent as agent metadata.'),
+    // B-844: set once the stored model overrides that equalled the then-latest
+    // model were turned into "follow latest" (agentDefaults.ts
+    // migrateFollowLatestOverrides). null = not migrated yet. No .default() (rule 1).
+    modelFollowLatestMigratedAt: z.number().nullable().describe('Epoch ms the follow-latest model migration ran (null = not yet)'),
     // Legacy sidebar pinned rows (superseded by sidebarOrder). Kept in the
     // schema for wire compatibility with old clients/stored blobs, and still
     // read/written ONLY while sidebarOrder is empty (pre-materialization):
@@ -231,6 +235,7 @@ export const settingsDefaults: Settings = {
     newSessionAgent: 'claude',
     newSessionAlwaysAsk: false,
     agentDefaultOverrides: {},
+    modelFollowLatestMigratedAt: null,
     pinnedRows: [],
     sidebarOrder: [],
     sidebarSort: 'recent',

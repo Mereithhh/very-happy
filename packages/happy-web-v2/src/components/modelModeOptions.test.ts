@@ -53,7 +53,8 @@ describe('Claude model picker (Fable 5.1)', () => {
         expect(modes.some((m) => m.key === 'fable5')).toBe(false);
         expect(modes[0].key).toBe('default');
         expect(modes[1].key).toBe('claude-opus-5-5');
-        expect(getDefaultModelKey('claude')).toBe('claude-opus-5-5');
+        // B-844: the code default is the follow-latest sentinel, resolved at send time.
+        expect(getDefaultModelKey('claude')).toBe('latest');
         // Every key must survive the daemon's resume-model charset (letters, digits, . _ : - and a trailing [1m]).
         for (const m of modes) expect(m.key).toMatch(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}(\[1m\])?$/);
     });

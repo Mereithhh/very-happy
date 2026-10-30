@@ -591,6 +591,12 @@ export type Metadata = {
   currentModelCode?: string,
   /** Resolved SDK model when no per-message model override was supplied. */
   defaultModelCode?: string,
+  /**
+   * B-844: model the machine's own agent config pins (Codex config.toml /
+   * profile via `config/read`, Gemini settings). null = nothing pinned;
+   * absent = this wrapper cannot tell. "Follow latest" never overrides it.
+   */
+  configuredModel?: string | null,
   operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
   currentOperatingModeCode?: string,
   thoughtLevels?: Array<{ code: string; value: string; description?: string | null }>,

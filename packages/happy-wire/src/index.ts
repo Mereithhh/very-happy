@@ -20,6 +20,7 @@ export * from './contextUsage';
 export * from './agentVersions';
 export * from './harnessInstall';
 export * from './agentCodeDefaults';
+export * from './modelLatest';
 
 export * from './promptQueue';
 

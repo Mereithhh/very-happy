@@ -11,7 +11,7 @@ import { setPermissionEnforcer } from '@/sync/storage';
 import { runYoloEnforcement } from '@/sync/yoloEnforcer';
 import { sanitizeAgentDefaultOverrides } from '@/sync/permissionModeOutbound';
 import { resolveIntentSource, shouldAlignToBypass } from '@/sync/yoloEnforcement';
-import { getAgentDefaultOverride, getCodeAgentDefaults } from '@/sync/agentDefaults';
+import { getAgentDefaultOverride, getCodeAgentDefaults, migrateFollowLatestOverrides } from '@/sync/agentDefaults';
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForSession } from '@/sync/activityOverlay';
@@ -1815,6 +1815,15 @@ class Sync {
         // CLI drop it. Rewrite once, as the FULL overrides object (铁律 1).
         const sanitizedOverrides = sanitizeAgentDefaultOverrides(merged.agentDefaultOverrides);
         if (sanitizedOverrides) this.applySettings({ agentDefaultOverrides: sanitizedOverrides });
+
+        // B-844: one-time — stored model overrides equal to the then-latest
+        // model become "follow latest". Runs on the post-sanitize overrides.
+        const followLatest = migrateFollowLatestOverrides(
+            storage.getState().settings.agentDefaultOverrides,
+            merged.modelFollowLatestMigratedAt,
+            Date.now(),
+        );
+        if (followLatest) this.applySettings(followLatest);
     }
 
     applySettings = (delta: Partial<Settings>) => {
