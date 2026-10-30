@@ -49,4 +49,11 @@ describe('/compact wiring', () => {
         expect(launcher).toContain('const out = await finalizeRemotePrompt(prompt, {');
         expect(read('claude/finalizeRemotePrompt.ts')).toContain("if (command === 'compact' || command === 'clear') return prompt;");
     });
+
+    it('Claude spends one-time start flags (--resume) only after a launch ran Claude on them (QA21)', () => {
+        const launcher = read('claude/claudeRemoteLauncher.ts');
+        expect(launcher).toContain('onStartArgsUsed: () => { startArgsUsed = true; },');
+        expect(launcher).toContain('if (startArgsUsed) session.consumeOneTimeFlags();');
+        expect(launcher.match(/consumeOneTimeFlags\(\)/g)).toHaveLength(1);
+    });
 });

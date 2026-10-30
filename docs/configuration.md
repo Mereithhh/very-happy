@@ -482,7 +482,7 @@ same whether the session is idle, busy, just restarted, or in a project.
 
 | Session | `/compact` |
 | --- | --- |
-| Claude | Claude Code's compaction; instructions are passed on. |
+| Claude | Claude Code's compaction; instructions are passed on. As the first message after a wrapper restart it compacts the resumed conversation (before QA21 it opened an empty one and the history was lost). When Claude Code declines — e.g. "Not enough messages to compact." — the session shows 「上下文压缩失败：<reason>」 / "Compaction failed: <reason>", never "compacted". |
 | Codex | Codex's own compaction (`thread/compact/start`); needs a CLI that advertises `codex-compact-v1`. Codex takes no instructions — the session says so and compacts anyway. |
 | pi and other ACP agents | Runs when the agent lists `compact` among its commands. |
 | Gemini, OpenClaw, ACP agents without it | Not supported: Very Happy answers "This session type does not support /compact" and nothing reaches the model. |
