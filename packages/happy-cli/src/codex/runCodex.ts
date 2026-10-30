@@ -47,6 +47,7 @@ import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { unsupportedEffortReason } from './effortSupport';
+import { resolveCodexTurnModel } from './turnModel';
 import { codexStderrTailOf, describeCodexFailure, describeCodexRetry, describeThrownTurnError } from './codexFailureText';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
@@ -165,6 +166,10 @@ export async function runCodex(opts: {
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
+    // B-844c: no sticky model yet (DEFAULT_CODEX_MODEL is undefined); the
+    // effort a turn without one runs is the wrapper's default, not the catalog's.
+    metadata.stickyModel = null;
+    metadata.currentThoughtLevelCode = DEFAULT_CODEX_EFFORT;
     // B-464: import of a Codex CLI / desktop thread. The original id is stamped
     // from birth (lineage, and the picker's "imported before" label — B-600:
     // never a reason to hide the original, since the fork below can fail);
@@ -320,6 +325,25 @@ export async function runCodex(opts: {
     let currentEffort: ReasoningEffort | undefined = DEFAULT_CODEX_EFFORT;
     let currentAppendSystemPrompt: string | undefined = undefined;
 
+    // B-844c: publish the sticky model so the web can clear it with `model:
+    // null` once its picker follows the machine config again, and the effort
+    // turns really run (QA22c P2-1: the picker showed the catalog's `low`
+    // while every turn ran this wrapper's `medium`). No effort → Codex's own
+    // default for the model, which the web then reads from the catalog.
+    let reportedStickyModel: string | null = null;
+    let reportedEffort: string | undefined = DEFAULT_CODEX_EFFORT;
+    const reportModeFacts = () => {
+        const next = currentModel ?? null;
+        const effort = currentEffort;
+        if (next === reportedStickyModel && effort === reportedEffort) return;
+        reportedStickyModel = next;
+        reportedEffort = effort;
+        session.updateMetadata((metadata) => {
+            const { currentThoughtLevelCode: _previous, ...rest } = metadata;
+            return { ...rest, stickyModel: next, ...(effort ? { currentThoughtLevelCode: effort } : {}) };
+        });
+    };
+
     const resetCurrentModeDefaults = () => {
         // B-845b: the permission mode is the user's choice, not a per-turn override — an abort
         // keeps it (and the published `metadata.permissionMode` stays true). Resetting it here
@@ -327,6 +351,7 @@ export async function runCodex(opts: {
         // still reported read-only / yolo.
         currentModel = DEFAULT_CODEX_MODEL;
         currentEffort = DEFAULT_CODEX_EFFORT;
+        reportModeFacts();
         currentAppendSystemPrompt = undefined;
         logger.debug('[Codex] Reset current mode defaults after abort');
     };
@@ -343,6 +368,8 @@ export async function runCodex(opts: {
     publishPermissionMode(opts.permissionMode);
 
     let discoveredModels: Awaited<ReturnType<CodexAppServerClient['listModels']>> = [];
+    // B-844c: what a turn without an explicit model runs (see turnModel.ts).
+    let machineDefaultModel: string | undefined;
 
     registerAgentAttachmentDownloads(session);
     const CODEX_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -389,6 +416,7 @@ export async function runCodex(opts: {
             if (message.meta?.hasOwnProperty('model')) {
                 messageModel = message.meta.model || undefined;
                 currentModel = messageModel;
+                reportModeFacts();
                 logger.debug('[Codex] Model override updated', logValueMetadata(message.meta.model));
             } else {
                 logger.debug('[Codex] User message received without a model override');
@@ -403,10 +431,12 @@ export async function runCodex(opts: {
                 if (incoming === null || incoming === undefined) {
                     messageEffort = undefined;
                     currentEffort = undefined;
+                    reportModeFacts();
                     logger.debug(`[Codex] Effort reset to default`);
                 } else if (typeof incoming === 'string') {
                     messageEffort = incoming as ReasoningEffort;
                     currentEffort = messageEffort;
+                    reportModeFacts();
                     logger.debug('[Codex] Valid effort override applied');
                 } else {
                     logger.debug('[Codex] Ignoring invalid effort override', logValueMetadata(incoming));
@@ -905,6 +935,7 @@ export async function runCodex(opts: {
             } catch (error) {
                 logger.debug('[Codex] config/read unavailable', safeCodexErrorMetadata(error));
             }
+            machineDefaultModel = configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model;
             if (discoveredModels.length > 0 || configured) {
                 session.updateMetadata((metadata) => ({
                     ...metadata,
@@ -1139,7 +1170,8 @@ export async function runCodex(opts: {
                     sandboxManagedByHappy,
                 );
 
-                const effortRefusal = unsupportedEffortReason(discoveredModels, message.mode.model, message.mode.effort);
+                const turnModel = resolveCodexTurnModel(message.mode.model, machineDefaultModel);
+                const effortRefusal = unsupportedEffortReason(discoveredModels, turnModel, message.mode.effort);
                 if (effortRefusal) {
                     throw new Error(effortRefusal);
                 }
@@ -1147,7 +1179,7 @@ export async function runCodex(opts: {
                 // Start thread on first turn (thread persists across mode changes)
                 if (!client.hasActiveThread()) {
                     const startedThread = await client.startThread({
-                        model: message.mode.model,
+                        model: turnModel,
                         cwd: process.cwd(),
                         approvalPolicy: executionPolicy.approvalPolicy,
                         sandbox: executionPolicy.sandbox,
@@ -1174,7 +1206,7 @@ export async function runCodex(opts: {
                 }) : [];
                 const result = await client.sendTurnAndWait(appendStagedAttachmentsToPrompt(turnPrompt, staged), {
                     images: staged.filter((file) => ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.mimeType)).map((file) => file.path),
-                    model: message.mode.model,
+                    model: turnModel,
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,
                     effort: message.mode.effort,

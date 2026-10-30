@@ -111,3 +111,16 @@ export function summarizeFollowLatest(entries: readonly MachineFollowLatest[]): 
     const [first, ...rest] = entries;
     return rest.every((entry) => sameFollowLatestState(entry.state, first.state)) ? first.state : { kind: 'varies' };
 }
+
+/**
+ * B-844c (QA22c P2-3): what the follow entry's description may promise. An
+ * old CLI does not switch until it is upgraded; Claude has no machine-config
+ * pin for follow-latest to defer to (its default model is always sent).
+ */
+export function followLatestDescriptionKey(
+    state: FollowLatestState,
+    isClaude: boolean,
+): 'session.chat.modelLatestDescription' | 'session.chat.modelLatestDescriptionClaude' | 'session.chat.modelLatestDescriptionUpgradeCli' {
+    if (state.kind === 'machineDefault') return 'session.chat.modelLatestDescriptionUpgradeCli';
+    return isClaude ? 'session.chat.modelLatestDescriptionClaude' : 'session.chat.modelLatestDescription';
+}

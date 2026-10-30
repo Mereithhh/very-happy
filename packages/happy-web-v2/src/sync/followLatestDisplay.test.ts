@@ -138,3 +138,26 @@ describe('followLatestByMachine (P2-2: same resolution as sends, P2-3: per machi
         expect(followLatestByMachine(null, 'codex', [src('gone', 1, unpinned)], MACHINES)).toEqual([]);
     });
 });
+
+describe('follow entry descriptions say what really happens (B-844c, QA22c P2-2/P2-3)', () => {
+    it('old CLI: no promise of switching before an upgrade; Claude: no machine-config clause', async () => {
+        const { followLatestDescriptionKey } = await import('./followLatestDisplay');
+        expect(followLatestDescriptionKey({ kind: 'machineDefault' }, false)).toBe('session.chat.modelLatestDescriptionUpgradeCli');
+        expect(followLatestDescriptionKey({ kind: 'machineDefault' }, true)).toBe('session.chat.modelLatestDescriptionUpgradeCli');
+        expect(followLatestDescriptionKey({ kind: 'latest', model: 'claude-opus-5-5' } as any, true)).toBe('session.chat.modelLatestDescriptionClaude');
+        expect(followLatestDescriptionKey({ kind: 'dependsOnMachine' }, true)).toBe('session.chat.modelLatestDescriptionClaude');
+        expect(followLatestDescriptionKey({ kind: 'machineConfig', model: 'gpt-5.6-sol' } as any, false)).toBe('session.chat.modelLatestDescription');
+    });
+
+    it('the picker and Settings use the same wording for the machine-default entry and the follow subtitle', async () => {
+        const { readFileSync } = await import('node:fs');
+        const input = readFileSync(new URL('../screens/session/AgentInput.tsx', import.meta.url), 'utf8');
+        const settings = readFileSync(new URL('../screens/settings/SettingsRoutes.tsx', import.meta.url), 'utf8');
+        expect(input).toContain("description: t(followLatestDescriptionKey(followState, normalizeAgentKey(flavor) === 'claude'))");
+        expect(settings).toContain("? { ...option, name: t('settingsAgents.machineDefault'), description: t(agent === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') }");
+        expect(input).toContain("description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') }");
+        expect(settings).toContain("detail={o.key === 'default' ? undefined : o.key}");
+        expect(settings).toContain("t(followLatest.claude ? 'settingsAgents.followLatestByMachineClaude' : 'settingsAgents.followLatestByMachine'");
+        expect(settings).toContain("machines: perMachine, claude: agent === 'claude' }");
+    });
+});

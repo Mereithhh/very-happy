@@ -72,6 +72,12 @@ sentinel 永不上线：web `resolveMessageModeMeta`、`resolveDefaultModelMode`
   - Codex：app-server `config/read`（0.154 与 0.166 实测都有；返回的是生效配置，含 profile / CLI override），同时 `defaultModelCode` 改为该模型，让「默认」项如实显示。
   - Gemini：`GEMINI_MODEL` 环境变量 → 工作区 `.gemini/settings.json` → `~/.gemini/settings.json`（`model` 为字符串或 `{ name }`）。
 - 解析（`MACHINE_CONFIG_AGENTS = codex, gemini`）：会话上报了钉的模型，或者没上报（旧 wrapper）→ 不发 model，由本机配置决定；上报 `null` → 发同档最新。Claude 不变，它的默认一直都会发出去。
+- **复位粘住的模型（B-844c，QA22b P2-A）**：wrapper 会对不带 model 的 turn 继续沿用上一次收到的显式 model。所以「跟随」解析成不发 model 时，如果会话之前发过显式 model（例如账号默认曾固定为 gpt-6-luna，后来改回跟随），只是不发就会继续跑 luna，界面却显示「跟随本机配置（gpt-5.6-sol）」。为此 Codex wrapper 上报 `metadata.stickyModel`：字符串 = 正在沿用的显式 model；`null` = 没有；字段不存在 = 旧 wrapper，不知道。是字符串时 Web 发 `model: null`，wrapper 清掉这个 model 并上报 `null`，之后恢复成不发。`stickyModel` 来自 wrapper 状态，因此其它设备的选择、`spawn --model` 留下的 model 也能复位。旧 wrapper 不上报这个字段，行为和原来一样（不发 model）；即使收到 null 也不会报错，所有已发布版本都按 `meta.model || undefined` 复位，schema 是 nullable。
+  - **只发 null 不够（实测）**：Codex app-server 会把 `turn/start` 带过的 model 记成该 thread 的模型，之后不带 model 的 turn 仍沿用它（rollout 序列：luna > 发 null 后仍是 luna > luna）。因此 wrapper 在 turn 没有显式 model 时，显式传本机默认：`config/read` 钉的模型，没有就用 `model/list` 的 `isDefault`（`codex/turnModel.ts`）；两者都不知道才不传。
+  - Claude 没有这个问题：它的默认一直显式发 model（`null` = 本机默认）。
+- **effort 显示（B-844c，QA22c P2-1）**：Codex wrapper 没收到 effort 时固定跑 `medium`，而 catalog 的 `defaultReasoningEffort` 是 `low`，选择器按 catalog 显示成 low。现在 wrapper 用 `currentThoughtLevelCode` 上报实际在跑的 effort，选择器原本就优先读这个字段；effort 被复位（null）时删掉该字段，选择器回到 catalog 默认，这也是 Codex 此时真正会跑的值。
+- **说明文案（B-844c，QA22c P2-2/P2-3）**：设置页「本机默认」项改用和选择器相同的说明，也不再显示原始 key `default`。跟随项的说明按实际行为区分三种：旧 CLI「升级 CLI 后才会自动切换」；Claude 不写「按本机配置」；Codex/Gemini 不变。
+  - Gemini 不在本修复范围（另立条目）：daemon 拉起的是 `gemini/runGemini.ts`，它不上报 `configuredModel`；显式选的模型会写进 `~/.gemini/config.json`，而且总用 `GEMINI_MODEL` 指定模型。发 null 只会退回上一次选的模型，起不到复位作用。
 - Codex wrapper 去掉写死的 gpt-5.5 默认：不带 model 的 turn 交给 Codex 按本机配置或它自己的默认跑。
 - 显示：选择器的跟随项、设置页该机器的值都写成「跟随本机配置（gpt-5.6-sol）」（见下节）。这时 B-487 的升级提示不出现。
 
@@ -119,7 +125,7 @@ catalog，且无法表达「这台机器缺能力」；catalog 作为补充参�
 | 组合 | 行为 |
 |---|---|
 | 新 web + 旧 server（无 endpoint） | 404 → 用 bundled 表 |
-| 新 web + 旧 CLI wrapper | Claude：只按 capability/catalog 解析，无能力 → 机器默认（null）+ B-487 提示条。Codex/Gemini：旧 wrapper 不上报 `configuredModel` → 不发 model（旧 Codex wrapper 仍会用它写死的 gpt-5.5，直到 CLI 更新）。从不发 `latest` |
+| 新 web + 旧 CLI wrapper | Claude：只按 capability/catalog 解析，无能力 → 机器默认（null）+ B-487 提示条。Codex/Gemini：旧 wrapper 不上报 `configuredModel` → 不发 model；不上报 `stickyModel` → 不复位粘住的显式 model（B-844c 需 CLI 更新）（旧 Codex wrapper 仍会用它写死的 gpt-5.5，直到 CLI 更新）。从不发 `latest` |
 | 旧 web（缓存 PWA） | 用旧代码默认 Opus 5.5 / 不发 Codex model；可能重新写入具体 id override（接受） |
 | 旧 CLI `spawn` | 旧逻辑（Opus 5.5 或机器默认） |
 | 新 CLI `spawn` + 旧 server | 404 → bundled 表 |
@@ -141,4 +147,5 @@ catalog，且无法表达「这台机器缺能力」；catalog 作为补充参�
 - [x] 单一来源 + server 下发 + 代码兜底；无会话列表合并实时 catalog
 - [x] 会话内选最新不钉死；设置页区分跟随/固定；迁移规则
 - [x] 防过时检查；单测 + mutation；真实会话核对 model；桌面 + 手机截图
+- [x] B-844c：会话发过显式 model 后改回跟随，wrapper 报 `stickyModel` → Web 发 null 复位，rollout = 界面显示
 - [x] B-844b：选择器单一跟随项、无内部 key；设置页按机器、与发送同源；旧 CLI 如实显示

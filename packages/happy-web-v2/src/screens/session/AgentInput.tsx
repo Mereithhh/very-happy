@@ -56,7 +56,7 @@ import {
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
 import { useLatestModelTable } from '@/sync/latestModels';
-import { followLatestState, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
+import { followLatestState, followLatestDescriptionKey, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
 import { LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
 import type { LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
@@ -385,10 +385,10 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         offersFollowLatest
             ? withFollowLatestOption(baseModels, {
                 flavor,
-                follow: { name: followName, description: t('session.chat.modelLatestDescription') },
+                follow: { name: followName, description: t(followLatestDescriptionKey(followState, normalizeAgentKey(flavor) === 'claude')) },
                 latestModel,
                 selectedKey: followingLatest ? LATEST_MODEL_MODE : modelKey,
-                machineDefault: { name: t('session.chat.machineDefaultModel'), description: t('session.chat.machineDefaultModelDescription') },
+                machineDefault: { name: t('session.chat.machineDefaultModel'), description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') },
             })
             : relabelDefaultModel(baseModels, defaultModelLabel),
         customModels,

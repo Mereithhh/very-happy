@@ -171,6 +171,19 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(source).not.toMatch(/DEFAULT_CODEX_MODEL[^=\n]*= '/);
     });
 
+    it('B-844c: runCodex publishes its sticky model and running effort (web resets the model with null)', () => {
+        const source = readFileSync(new URL('./runCodex.ts', import.meta.url), 'utf8');
+        expect(source).toContain('metadata.stickyModel = null;');
+        expect(source).toContain('metadata.currentThoughtLevelCode = DEFAULT_CODEX_EFFORT;');
+        expect(source).toContain('const next = currentModel ?? null;');
+        expect(source).toContain("return { ...rest, stickyModel: next, ...(effort ? { currentThoughtLevelCode: effort } : {}) };");
+        // Every place that changes currentModel / currentEffort reports it.
+        expect(source).toMatch(/messageModel = message\.meta\.model \|\| undefined;\n\s*currentModel = messageModel;\n\s*reportModeFacts\(\);/);
+        expect(source).toMatch(/currentEffort = DEFAULT_CODEX_EFFORT;\n\s*reportModeFacts\(\);/);
+        expect(source).toMatch(/currentEffort = undefined;\n\s*reportModeFacts\(\);/);
+        expect(source).toMatch(/currentEffort = messageEffort;\n\s*reportModeFacts\(\);/);
+    });
+
     it('wraps transport when sandbox is enabled', async () => {
         // Dynamic import to ensure mocks are applied
         const { CodexAppServerClient } = await import('./codexAppServerClient');

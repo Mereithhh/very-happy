@@ -597,6 +597,14 @@ export type Metadata = {
    * absent = this wrapper cannot tell. "Follow latest" never overrides it.
    */
   configuredModel?: string | null,
+  /**
+   * B-844c: the explicit model this wrapper keeps applying to turns that carry
+   * no `model` (sticky per-session override, e.g. an earlier pick). null =
+   * none, turns run the machine default; absent = this wrapper cannot tell.
+   * The web sends `model: null` to clear it when its picker follows the
+   * machine config.
+   */
+  stickyModel?: string | null,
   operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
   currentOperatingModeCode?: string,
   thoughtLevels?: Array<{ code: string; value: string; description?: string | null }>,

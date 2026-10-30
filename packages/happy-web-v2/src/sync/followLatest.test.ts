@@ -109,6 +109,24 @@ describe('machine configuration wins (B-844 review)', () => {
         expect(resolveMessageModeMeta(session({ flavor: 'codex', metadata: { models: CODEX_166 } }), { agentDefaultOverrides: {} })).not.toHaveProperty('model');
     });
 
+    // B-844c (QA22b P2-A): an earlier explicit model stays in force in the
+    // wrapper; omitting the field would leave it running behind a picker that
+    // says "follow machine config".
+    it('a sticky model from an earlier explicit send is reset with null', () => {
+        const sticky = session({ flavor: 'codex', metadata: { models: CODEX_166, configuredModel: 'gpt-5.6-sol', stickyModel: 'gpt-6-luna' } });
+        expect(resolveMessageModeMeta(sticky, { agentDefaultOverrides: {} }).model).toBeNull();
+        expect(resolveMessageModeMeta(sticky, { agentDefaultOverrides: { codex: { modelMode: 'latest' } } }).model).toBeNull();
+        expect(resolveMessageModeMeta({ ...sticky, modelMode: 'latest' }, { agentDefaultOverrides: {} }).model).toBeNull();
+        // Older wrappers (no configuredModel) that report it are reset too.
+        expect(resolveMessageModeMeta(session({ flavor: 'codex', metadata: { models: CODEX_166, stickyModel: 'gpt-6-luna' } }), { agentDefaultOverrides: {} }).model).toBeNull();
+        // Nothing sticky / wrapper cannot tell → still omitted.
+        const clean = session({ flavor: 'codex', metadata: { models: CODEX_166, configuredModel: 'gpt-5.6-sol', stickyModel: null } });
+        expect(resolveMessageModeMeta(clean, { agentDefaultOverrides: {} })).not.toHaveProperty('model');
+        // Following latest that resolves to a concrete model, or an explicit pick, is unchanged.
+        expect(resolveMessageModeMeta(session({ flavor: 'codex', metadata: { models: CODEX_166, configuredModel: null, stickyModel: 'gpt-6-luna' } }), { agentDefaultOverrides: {} }).model).toBe('gpt-6.1-sol');
+        expect(resolveMessageModeMeta(sticky, { agentDefaultOverrides: { codex: { modelMode: 'gpt-6-luna' } } }).model).toBe('gpt-6-luna');
+    });
+
     it('an explicit pick (session or Settings) still overrides the machine config', () => {
         const pinned = { models: CODEX_166, configuredModel: 'gpt-5.6-sol' };
         expect(resolveMessageModeMeta(session({ flavor: 'codex', modelMode: 'gpt-6.1-sol', metadata: pinned }), { agentDefaultOverrides: {} }).model).toBe('gpt-6.1-sol');
