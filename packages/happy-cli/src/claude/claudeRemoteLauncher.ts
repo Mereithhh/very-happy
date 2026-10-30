@@ -1,5 +1,6 @@
 import { createRuntimeControls, isRuntimeCheckpointReplay } from './runtimeControls';
 import { leadBoardFor } from '@/attention/leadBoard';
+import { finalizeRemotePrompt } from './finalizeRemotePrompt';
 import { createBackgroundTaskTracker } from './backgroundTasks';
 import { notifyDaemonClaudeAuthFailed } from '@/daemon/controlClient';
 import { Session } from "./session";
@@ -616,10 +617,11 @@ export async function claudeRemoteLauncher(
                         const finalize = async (prompt: string): Promise<string> => {
                             // B-766: the turn starts here (owner questions it answers, `this_turn` anchor) and
                             // a lead's prompt carries the open briefing-board items.
-                            const board = leadBoardFor(session.client);
-                            board?.onTurnStart(batchSourceIds);
-                            const text = board ? await board.decorate(prompt) : prompt;
-                            const out = await session.projectInjector.decorate(text);
+                            const out = await finalizeRemotePrompt(prompt, {
+                                board: leadBoardFor(session.client),
+                                project: session.projectInjector,
+                                sourceIds: batchSourceIds,
+                            });
                             onPromptFinalized?.(out);
                             return out;
                         };

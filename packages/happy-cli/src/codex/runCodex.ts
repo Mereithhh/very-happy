@@ -1,4 +1,4 @@
-import { CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY } from '@slopus/happy-wire';
+import { CODEX_COMPACT_CAPABILITY, CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY } from '@slopus/happy-wire';
 import { createProjectInjector } from '@/projects/injector';
 import { sharedProjectsClient } from '@/projects/client';
 import { unlink } from 'node:fs/promises';
@@ -57,7 +57,8 @@ import { resumeExistingThread } from './resumeExistingThread';
 import { importCodexThread, IMPORT_CODEX_THREAD_ENV } from './importCodexThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { CODEX_IDLE_RELEASE_ENV, CodexIdleReleaseTimer, resolveCodexIdleReleaseMs, shouldReleaseIdleCodex } from './codexIdleRelease';
-import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
+import { codexCompactCommand, enqueueCodexUserText, isCodexClearText, isCodexControlText } from './codexClearCommand';
+import { runCodexCompact } from './codexCompact';
 import { steerIntoRunningTurn } from './codexSteer';
 import {
     buildCodexTurnPrompt,
@@ -152,7 +153,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
-        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY],
+        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY],
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
@@ -422,7 +423,7 @@ export async function runCodex(opts: {
                 appendSystemPrompt: messageAppendSystemPrompt,
                 effort: messageEffort,
             };
-            if (message.meta?.delivery === 'steer' && !isCodexClearText(message.content.text)) {
+            if (message.meta?.delivery === 'steer' && !isCodexControlText(message.content.text)) {
                 if (await steerIntoRunningTurn(steerDeps, message.content.text, attachments, message.localKey)) {
                     logger.debug('[Codex] User message steered into the current turn');
                     return;
@@ -435,8 +436,8 @@ export async function runCodex(opts: {
                 attachments,
                 sourceId: message.localKey,
             });
-            if (enqueueResult === 'clear') {
-                logger.debug('[Codex] /clear command pushed to isolated queue');
+            if (enqueueResult === 'clear' || enqueueResult === 'compact') {
+                logger.debug(`[Codex] /${enqueueResult} command pushed to isolated queue`);
             }
         }).catch((error) => {
             logger.warn('[Codex] Failed to prepare user attachments', safeCodexErrorMetadata(error));
@@ -1089,7 +1090,22 @@ export async function runCodex(opts: {
             // Display user messages in the UI
             messageBuffer.addMessage(message.message, 'user');
 
+            const compactCommand = codexCompactCommand(message.message);
             try {
+                if (compactCommand !== null) {
+                    // Owner 10-30: Codex compacts the thread itself; the text never reaches the model.
+                    await client.ensureConnected();
+                    const outcome = await runCodexCompact(compactCommand, {
+                        client,
+                        notify: (text) => {
+                            messageBuffer.addMessage(text, 'status');
+                            session.sendSessionEvent({ type: 'message', message: text });
+                        },
+                    });
+                    logger.debug(`[Codex] /compact ${outcome}`);
+                    continue;
+                }
+
                 // Bring a released/crashed app-server back before reading
                 // client.sandboxEnabled — it is only meaningful for a live process.
                 await client.ensureConnected();

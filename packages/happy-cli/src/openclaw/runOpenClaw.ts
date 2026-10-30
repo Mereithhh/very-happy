@@ -8,6 +8,7 @@
  * to Happy's AgentMessage format, and forwards everything through the session pipeline.
  */
 
+import { COMPACT_UNSUPPORTED_NOTICE, compactCommandText } from '@/parsers/specialCommands';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
@@ -274,6 +275,11 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
 
   session.onUserMessage((message) => {
     if (!message.content.text) return;
+    // Owner 10-30: OpenClaw has no /compact; Very Happy says so instead of the model.
+    if (compactCommandText(message.content.text) !== null) {
+      session.sendSessionEvent({ type: 'message', message: COMPACT_UNSUPPORTED_NOTICE });
+      return;
+    }
     messageQueue.push(message.content.text, {});
   });
   session.keepAlive(thinking, 'remote');

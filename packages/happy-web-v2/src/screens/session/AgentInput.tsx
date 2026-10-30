@@ -120,6 +120,7 @@ import { formatTokens } from './format';
 import { getAllCommands } from '@/sync/suggestionCommands';
 import { filterSlashSuggestions, slashCommandText } from './slashSuggestions';
 import { BTW_COMMAND, canOfferBtw, parseBtwCommand } from './btwCommand';
+import { compactSupport, parseCompactCommand } from './compactCommand';
 import { openBtwPanel } from './btwPanelState';
 import {
     COMPOSER_MOBILE_MIN_HEIGHT,
@@ -571,6 +572,14 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             releaseQueuedAttachments(item);
             return;
         }
+        // Owner 10-30: a session that cannot compact gets Very Happy's answer, not the model's.
+        const compact = parseCompactCommand(item.text);
+        if (compact !== null && compactSupport(session) === 'unsupported') {
+            toast.show(t('session.chat.compactUnsupported'), 'info');
+            releaseQueuedAttachments(item);
+            return;
+        }
+        if (compact !== null) item = { ...item, text: compact };
         await deliverQueuedMessage(() => sync.sendMessage(sessionId, item.text, {
             source: 'chat',
             delivery,
@@ -629,6 +638,14 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             storage.getState().updateSessionDraft(sessionId, null);
             return;
         }
+        // Owner 10-30: `/compact` goes as the bare command (canonical, without the
+        // edited-drafts block) — anything around it turns it into chat — and a
+        // session that cannot compact is told so here instead of by the model.
+        const compactCommand = parseCompactCommand(value);
+        if (compactCommand !== null && compactSupport(session) === 'unsupported') {
+            toast.show(t('session.chat.compactUnsupported'), 'info');
+            return;
+        }
         // Captured BEFORE the async send: did the textarea own focus (⇒ the
         // soft keyboard was up) when the user hit send? On iOS, tapping a
         // button does NOT move focus off the textarea, so this stays true for
@@ -653,8 +670,8 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         const createdAt = Date.now();
         // B-642: snapshot the pending edited drafts at submit time; they are
         // marked as seen by the model only once this submission is accepted.
-        const attachedDrafts = selectPendingDrafts(useEditableDrafts.getState().drafts, sessionId);
-        const sendValue = appendEditedDrafts(value, buildEditedDraftsBlock(attachedDrafts.map(({ rec }) => ({ title: rec.title, base: rec.base, text: rec.text }))));
+        const attachedDrafts = compactCommand !== null ? [] : selectPendingDrafts(useEditableDrafts.getState().drafts, sessionId);
+        const sendValue = compactCommand ?? appendEditedDrafts(value, buildEditedDraftsBlock(attachedDrafts.map(({ rec }) => ({ title: rec.title, base: rec.base, text: rec.text }))));
         let takenAttachments: QueuedMessage['attachments'];
         let draftTaken = false;
         let queueOwnsItem = false;
@@ -1361,7 +1378,8 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                             type="button"
                             role="option"
                             aria-selected={index === slashIndex}
-                            className={`ci-slash-item${index === slashIndex ? ' ci-slash-item--active' : ''}`}
+                            aria-disabled={item.unavailable || undefined}
+                            className={`ci-slash-item${index === slashIndex ? ' ci-slash-item--active' : ''}${item.unavailable ? ' ci-slash-item--unavailable' : ''}`}
                             onMouseEnter={() => setSlashIndex(index)}
                             onClick={() => {
                                 const next = slashCommandText(item);
@@ -1371,7 +1389,9 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                             }}
                         >
                             <span className="ci-slash-command">/{item.command}</span>
-                            {item.description && <span className="ci-slash-desc">{item.description}</span>}
+                            {item.command === 'compact'
+                                ? <span className="ci-slash-desc">{item.unavailable ? t('session.chat.compactUnavailable') : t('session.chat.compactDescription')}</span>
+                                : item.description && <span className="ci-slash-desc">{item.description}</span>}
                         </button>
                     ))}
                 </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAcpPrompt, isAgentSlashCommand } from './acpSlashCommand';
+import { buildAcpPrompt, isAgentSlashCommand, routeAcpUserText } from './acpSlashCommand';
 
 describe('isAgentSlashCommand (B-727)', () => {
     it('recognizes agent commands with and without arguments', () => {
@@ -25,5 +25,22 @@ describe('buildAcpPrompt (B-727: pi /compact reached the model as chat)', () => 
     it('keeps decorating ordinary prompts and adds the todo note once', async () => {
         expect(await buildAcpPrompt('hi', { todoNoteSent: false, todoNote: 'TODO NOTE', decorate })).toEqual({ prompt: '[project prefix]\nhi\n\nTODO NOTE', slashCommand: false });
         expect(await buildAcpPrompt('hi', { todoNoteSent: true, todoNote: 'TODO NOTE', decorate })).toEqual({ prompt: '[project prefix]\nhi', slashCommand: false });
+    });
+});
+
+describe('routeAcpUserText (Owner 10-30: /compact must run or be refused by Very Happy)', () => {
+    const pi = ['compact', 'name', 'session'];
+    it('runs a standalone /compact as its own command, canonicalised', () => {
+        expect(routeAcpUserText('/compact', pi)).toEqual({ kind: 'command', text: '/compact' });
+        expect(routeAcpUserText(' ／compact 保留结论', pi)).toEqual({ kind: 'command', text: '/compact 保留结论' });
+        // Nothing listed yet (agent still starting): pass it on as before.
+        expect(routeAcpUserText('/compact', null)).toEqual({ kind: 'command', text: '/compact' });
+    });
+    it('answers for an agent whose command list has no compaction', () => {
+        expect(routeAcpUserText('/compact', ['compress', 'memory'])).toEqual({ kind: 'unsupported', notice: 'This session type does not support /compact' });
+    });
+    it('keeps other agent commands isolated and prose as prompts', () => {
+        expect(routeAcpUserText('/name Build', pi)).toEqual({ kind: 'command', text: '/name Build' });
+        expect(routeAcpUserText('please /compact', pi)).toEqual({ kind: 'prompt', text: 'please /compact' });
     });
 });
