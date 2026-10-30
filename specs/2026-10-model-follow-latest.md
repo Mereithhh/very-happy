@@ -59,7 +59,7 @@ gpt-5.6-sol 均返回 OK。
 - `session`（有会话）：只认 capability 与会话 catalog（AGENTS 约束 14：能力不看版本）。
 - `machine`（新建会话页，尚无会话）：机器 CLI / Codex 版本 + 该机器最近会话的 catalog；只决定标签，
   真正发送时会话已存在，按 `session` 再解析一次。
-- `none`（设置页）：表头 ∪ 所有机器最近 catalog。
+- `none`（尚无机器可解析）：表头 ∪ catalog；只用于新建会话页没有机器时的标签。设置页不用它（B-844b，见「显示」）。
 
 sentinel 永不上线：web `resolveMessageModeMeta`、`resolveDefaultModelMode`、spawn
 `resolveFirstMessageMeta` 都保证输出具体 id / null。
@@ -73,7 +73,16 @@ sentinel 永不上线：web `resolveMessageModeMeta`、`resolveDefaultModelMode`
   - Gemini：`GEMINI_MODEL` 环境变量 → 工作区 `.gemini/settings.json` → `~/.gemini/settings.json`（`model` 为字符串或 `{ name }`）。
 - 解析（`MACHINE_CONFIG_AGENTS = codex, gemini`）：会话上报了钉的模型，或者没上报（旧 wrapper）→ 不发 model，由本机配置决定；上报 `null` → 发同档最新。Claude 不变，它的默认一直都会发出去。
 - Codex wrapper 去掉写死的 gpt-5.5 默认：不带 model 的 turn 交给 Codex 按本机配置或它自己的默认跑。
-- 显示：选择器的「默认」项、设置页的值都写成「跟随本机配置（gpt-5.6-sol）」。设置页按**最新创建**的会话判断（`updatedAt` 会被 daemon 重启刷新，不可靠）。这时 B-487 的升级提示不出现。
+- 显示：选择器的跟随项、设置页该机器的值都写成「跟随本机配置（gpt-5.6-sol）」（见下节）。这时 B-487 的升级提示不出现。
+
+### 显示（B-844b，QA22 P2-1～P2-4）
+
+纯函数在 web `sync/followLatestDisplay.ts`。
+
+- **选择器只有一个跟随项**（key `latest`，选中后会话与账号都不记具体模型）。它取代「X（默认）」和「X 当前最新」两项，名字按解析结果：
+  「跟随最新（X）」/「跟随本机配置（X）」/「本机默认（升级 CLI 后跟随最新）」（会话 wrapper 证明不了更新的模型，例如旧 CLI 没上报 `configuredModel`：如实说跑的是机器默认，P2-1）/「跟随最新（取决于机器）」（没有会话也没有机器）。
+  X 本身的条目只在被明确选中（固定）时保留。`default` 只给 Claude 保留，叫「本机默认」（意思是跟随 /model，跟随最新会覆盖它）；Codex/Gemini 的跟随已经尊重本机配置，`default` 只在当前就选着它时出现。原始 key「default model」不再展示（设置页同样改名为「本机默认」）。
+- **设置页「当前」按机器解析**（P2-2/P2-3）：每台机器取该智能体**最新创建**的会话，用 `resolveLatestForAgent(table, agent, 会话 metadata)` 解析，与发送时 `resolveMessageModeMeta` 走的是同一个函数（capability + catalog + configuredModel），不读表头。机器按名称排序，账号级的值：各机一致时显示该值，不一致时显示「跟随最新（因机器而异）」，没有会话时显示「跟随最新（取决于机器）」；展开后的说明逐台列出。这样新建会话只会改变**那台**机器的值，账号级的值不再随「最新会话在哪台机器」来回跳。
 
 ### 单一来源
 
@@ -93,7 +102,7 @@ catalog，且无法表达「这台机器缺能力」；catalog 作为补充参�
 
 - 会话里选中 `latest` 当前解析出的那个模型 → 清掉 override（继续跟随）；选其它模型 → 照旧记为账号默认
   （设置页显示「固定为 X」，可一键改回「跟随最新」）。
-- 设置 → 智能体：默认行「跟随最新（当前：X）」；选具体模型 = 固定。
+- 设置 → 智能体：默认行「跟随最新（当前：X）」或按机器的汇总（见「显示」）；选具体模型 = 固定。
 - 一次性迁移：`settings.modelFollowLatestMigratedAt` 为 null 时，把等于迁移时最新的 override
   （claude `claude-opus-5-5`、codex `gpt-6.1-sol`、gemini `gemini-3.1-pro-preview`）删掉，其它保留；
   写入时间戳后永不重跑（之后在设置里固定这些 id 不会被清）。
@@ -132,3 +141,4 @@ catalog，且无法表达「这台机器缺能力」；catalog 作为补充参�
 - [x] 单一来源 + server 下发 + 代码兜底；无会话列表合并实时 catalog
 - [x] 会话内选最新不钉死；设置页区分跟随/固定；迁移规则
 - [x] 防过时检查；单测 + mutation；真实会话核对 model；桌面 + 手机截图
+- [x] B-844b：选择器单一跟随项、无内部 key；设置页按机器、与发送同源；旧 CLI 如实显示

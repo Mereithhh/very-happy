@@ -34,7 +34,6 @@ import {
     getAvailableModels,
     getAvailablePermissionModes,
     getLauncherModelModes,
-    markLatestModel,
     getEffortLevelsForModel,
     compactResolvedModelCode,
     relabelDefaultModel,
@@ -51,11 +50,14 @@ import {
     resolveDefaultModelMode,
     resolveLatestForAgent,
     isFollowingLatestModel,
+    getCodeAgentDefaults,
     modelOverrideAfterSessionPick,
     setAgentDefaultOverride,
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
 import { useLatestModelTable } from '@/sync/latestModels';
+import { followLatestState, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
+import { LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
 import type { LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
@@ -351,18 +353,18 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const modelMetadata = session ? (metadata ?? {}) : null;
     const latestResolution = resolveLatestForAgent(latestTable, flavor, modelMetadata, launcherContext);
     const latestModel = latestResolution.model;
-    // B-844 review: following latest on a machine whose agent config pins a
-    // model runs that model — say so instead of the catalog's newest.
-    const followsMachineConfig = !pending?.modelMode && !session?.modelMode
-        && isFollowingLatestModel(agentDefaultOverrides, flavor) && latestResolution.configured !== null;
-    const modelKey = pending?.modelMode ?? session?.modelMode ?? resolveDefaultModelMode(agentDefaultOverrides, flavor, modelMetadata, { table: latestTable, machine: launcherContext });
+    const explicitModelMode = pending?.modelMode ?? session?.modelMode;
+    // B-844b: agents whose default is "follow latest" get ONE entry for it (key
+    // `latest`), named by what it runs here; it is selected while nobody
+    // picked a model for this session and the account default follows latest.
+    const offersFollowLatest = isLatestModelMode(getCodeAgentDefaults(flavor).modelMode);
+    const followingLatest = offersFollowLatest && !explicitModelMode && isFollowingLatestModel(agentDefaultOverrides, flavor);
+    const modelKey = explicitModelMode ?? resolveDefaultModelMode(agentDefaultOverrides, flavor, modelMetadata, { table: latestTable, machine: launcherContext });
     const resolvedDefaultModel = metadata?.defaultModelCode
         ?? (modelKey === 'default' ? usage?.model : undefined);
-    const defaultModelLabel = followsMachineConfig
-        ? t('session.chat.followMachineConfig', { model: latestResolution.configured! })
-        : resolvedDefaultModel
-            ? t('session.chat.defaultModelResolved', { model: compactResolvedModelCode(resolvedDefaultModel) })
-            : t('session.chat.defaultModelUnknown');
+    const defaultModelLabel = resolvedDefaultModel
+        ? t('session.chat.defaultModelResolved', { model: compactResolvedModelCode(resolvedDefaultModel) })
+        : t('session.chat.defaultModelUnknown');
     // B-688: the session machine's custom models (its harness config files) join the picker.
     const configMachineId = metadata?.machineId ?? '';
     const configMachine = useMachine(configMachineId);
@@ -370,12 +372,25 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const canConfigureModels = !!configMachineId && !!configHarness && !!configMachine;
     const customModels = useCustomPickerModels(configMachineId, configHarness);
     const [modelEditorOpen, setModelEditorOpen] = useState(false);
+    const baseModels = session ? getAvailableModels(flavor, metadata, t as any) : getLauncherModelModes(flavor, launcherCatalogs, t as any, latestTable);
+    const followState = followLatestState(latestResolution, !!session);
+    const followName = followState.kind === 'machineConfig'
+        ? t('session.chat.followMachineConfig', { model: followState.model })
+        : followState.kind === 'latest'
+            ? t('session.chat.followLatestOption', { model: baseModels.find((option) => option.key === followState.model)?.name ?? followState.label ?? followState.model })
+            : followState.kind === 'machineDefault'
+                ? t('session.chat.followLatestUpgradeCli')
+                : t('session.chat.followLatestDepends');
     const models = withCustomModels(
-        markLatestModel(
-            relabelDefaultModel(session ? getAvailableModels(flavor, metadata, t as any) : getLauncherModelModes(flavor, launcherCatalogs, t as any, latestTable), defaultModelLabel),
-            latestModel,
-            t('session.chat.modelLatestDescription'),
-        ),
+        offersFollowLatest
+            ? withFollowLatestOption(baseModels, {
+                flavor,
+                follow: { name: followName, description: t('session.chat.modelLatestDescription') },
+                latestModel,
+                selectedKey: followingLatest ? LATEST_MODEL_MODE : modelKey,
+                machineDefault: { name: t('session.chat.machineDefaultModel'), description: t('session.chat.machineDefaultModelDescription') },
+            })
+            : relabelDefaultModel(baseModels, defaultModelLabel),
         customModels,
         t('modelConfig.customModelDescription'),
     );
@@ -420,7 +435,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     // B-362: intent → running model (ACP runners publish it) → first option; never show
     // a model the session is not on just because the default key is not in the list.
     const displayedModelKey = selectDisplayedModelKey({
-        selectedKey: modelKey,
+        selectedKey: followingLatest ? LATEST_MODEL_MODE : modelKey,
         running: metadata?.currentModelCode,
         optionKeys: models.map((option) => option.key),
     });
@@ -1533,7 +1548,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                         label={t('session.chat.modelLabel')}
                         options={models}
                         value={displayedModelKey ?? null}
-                        onChange={(key) => setMode('updateSessionModelMode', 'modelMode', key)}
+                        onChange={(key) => setMode('updateSessionModelMode', 'modelMode', modelPickToStore(key))}
                         subtitle={modelSubtitle}
                         effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
                         customize={canConfigureModels ? { label: t('modelConfig.customize'), onSelect: () => setModelEditorOpen(true) } : undefined}
