@@ -68,7 +68,7 @@ describe('runCodex wiring (B-844d)', () => {
 
     it('abort does not forget the model', () => {
         const reset = source.match(/const resetCurrentModeDefaults = \(\) => \{([\s\S]*?)\n    \};/)?.[1] ?? '';
-        expect(reset).toContain('currentPermissionMode = DEFAULT_CODEX_PERMISSION_MODE;');
+        expect(reset).toContain('currentEffort = DEFAULT_CODEX_EFFORT;');
         expect(reset).not.toMatch(/currentModel\s*=/);
     });
 
