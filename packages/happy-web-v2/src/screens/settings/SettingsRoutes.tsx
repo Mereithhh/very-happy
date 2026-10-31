@@ -1,7 +1,7 @@
 import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
 import { CHAT_TEXT_SCALE, CHAT_TEXT_SIZES, useChatTextSize } from '@/ui/chatTextSize';
 import { useAsciiMotion } from '@/ui/asciiField/asciiMotionPreference';
-import { EffortSlider } from '@/components/EffortSlider';
+import { EffortSegments } from '@/components/EffortSegments';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import * as Switch from '@radix-ui/react-switch';
@@ -68,11 +68,14 @@ import {
   type AgentKey,
   type AgentDefaultField,
   resolveAgentDefaultConfig,
+  resolveNewSessionPermissionMode,
   getAgentDefaultOverrideValue,
   setAgentDefaultOverride,
 } from '@/sync/agentDefaults';
+import { layoutModelPicker } from '@/screens/session/modelPickerLayout';
+import { autoEffortName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from '@/screens/session/runSetupCopy';
 import { collectPiModelOptions } from '@/sync/piModelOptions';
-import { collectRecentCatalogs } from '@/sync/launcherModels';
+import { collectRecentCatalogs, runnableFromCatalogs } from '@/sync/launcherModels';
 import { machineLabel } from '@/utils/machineUtils';
 import { useLatestModelTable } from '@/sync/latestModels';
 import { followLatestByMachine, summarizeFollowLatest, type FollowLatestState, type MachineFollowLatest } from '@/sync/followLatestDisplay';
@@ -1045,6 +1048,8 @@ function AgentField({
   codeDefault,
   onPick,
   followLatest,
+  defaultSuffix,
+  moreKeys,
 }: {
   label: string;
   options: ModeOption[];
@@ -1057,15 +1062,20 @@ function AgentField({
    *  (resolved like a send from that machine's newest session) and the
    *  account-level summary of those. */
   followLatest?: { summary: FollowLatestState | { kind: 'varies' }; machines: MachineFollowLatest[]; claude?: boolean };
+  /** Replaces 「（默认）」 when the value is not the plain code default (B-849a: review-first). */
+  defaultSuffix?: string;
+  /** B-849a: older versions and aliases, listed behind 「更多模型」. */
+  moreKeys?: ReadonlySet<string>;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const current = options.find((o) => o.key === resolvedValue);
   const nameOf = (key: string) => options.find((o) => o.key === key)?.name ?? key;
   const stateValue = (state: FollowLatestState | { kind: 'varies' }, short: boolean) => {
     switch (state.kind) {
       case 'latest': return short ? nameOf(state.model) : t('settingsAgents.followLatestValue', { model: nameOf(state.model) });
-      case 'machineConfig': return t('settingsAgents.followMachineConfigValue', { model: state.model });
+      case 'machineConfig': return t('settingsAgents.followMachineConfigValue', { model: nameOf(state.model) });
       case 'machineDefault': return t('settingsAgents.followLatestUpgradeCliValue');
       case 'dependsOnMachine': return t('settingsAgents.followLatestDependsValue');
       case 'varies': return t('settingsAgents.followLatestVariesValue');
@@ -1091,7 +1101,7 @@ function AgentField({
                 : stateValue(followLatest.summary, false))
               : <>
                 {current?.name ?? resolvedValue ?? t('settingsAgents.useCodeDefault')}
-                {!override && (t('settingsAgents.codeDefaultSuffix'))}
+                {!override && (defaultSuffix ?? t('settingsAgents.codeDefaultSuffix'))}
               </>}
           </span>
         }
@@ -1103,7 +1113,8 @@ function AgentField({
             title={followLatest ? t('settingsAgents.followLatest') : t('settingsAgents.useCodeDefault')}
             subtitle={followLatest
               ? followSubtitle
-              : codeDefault ? options.find((o) => o.key === codeDefault)?.name ?? codeDefault : undefined}
+              : resolvedValue && !override ? options.find((o) => o.key === resolvedValue)?.name ?? resolvedValue
+                : codeDefault ? options.find((o) => o.key === codeDefault)?.name ?? codeDefault : undefined}
             selected={!override}
             right={!override ? <Check size={16} /> : undefined}
             onClick={() => {
@@ -1111,7 +1122,7 @@ function AgentField({
               setOpen(false);
             }}
           />
-          {options.map((o) => (
+          {options.filter((o) => !moreKeys?.has(o.key) || moreOpen || override === o.key).map((o) => (
             <Item
               key={o.key}
               title={o.name}
@@ -1125,6 +1136,9 @@ function AgentField({
               }}
             />
           ))}
+          {moreKeys && moreKeys.size > 0 && !moreOpen && (
+            <Item title={t('session.chat.modelPicker.more')} detail={String([...moreKeys].filter((key) => key !== override).length)} onClick={() => setMoreOpen(true)} />
+          )}
         </div>
       )}
     </>
@@ -1264,28 +1278,49 @@ function Agents() {
           // machine, newest first) join the code list and the latest table.
           const catalogs = agent === 'pi' ? [] : collectRecentCatalogs(allSessions, agent);
           // The raw `default` key is never shown: it is the machine default.
-          const modelOptions = (agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable))
+          const resolvedOf = (key: string) => catalogs.flatMap((catalog) => catalog.models ?? []).find((model) => model.code === key)?.resolvedModel ?? null;
+          const modelOptions = localizeModelDescriptions(agent, localizeModelNames(agent, agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable), t)
             .map((option) => option.key === 'default'
               ? { ...option, name: t('settingsAgents.machineDefault'), description: t(agent === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') }
-              : option);
+              : option), { resolved: resolvedOf, keep: new Set(['default']), translate: t });
           const followsLatestByDefault = isLatestModelMode(codeDefaults.modelMode);
           const perMachine = followsLatestByDefault ? followLatestByMachine(latestTable, agent, allSessions, machineList) : [];
           const followSummary = summarizeFollowLatest(perMachine);
           const effectiveModel = isLatestModelMode(resolved.modelMode)
             ? (followSummary.kind === 'latest' ? followSummary.model : 'default')
             : resolved.modelMode;
-          const effortOptions = getEffortLevelsForModel(agent, effectiveModel);
+          const effortOptions = namedEffortOptions(getEffortLevelsForModel(agent, effectiveModel), t);
+          // B-849a: the newest per family stays on top, older versions/aliases fold away.
+          const overrideModel = getAgentDefaultOverrideValue(overrides, agent, 'modelMode');
+          // QA26 P2-7: Settings has no 1M switch — everything off the top list (1M twins too) folds under 更多模型.
+          const settingsLayout = layoutModelPicker(modelOptions, { flavor: agent, selectedKey: overrideModel, resolved: resolvedOf, runnable: runnableFromCatalogs(agent, catalogs) });
+          const primaryKeys = new Set(settingsLayout.primary.map((option) => option.key));
+          const moreKeys = new Set(modelOptions.filter((option) => !primaryKeys.has(option.key)).map((option) => option.key));
+          // B-849a: with 「先审阅改动」 on, a new session starts in review mode — say so here too.
+          const newSessionPermission = resolveNewSessionPermissionMode(overrides, agent, reviewFirst);
+          const reviewFirstApplies = reviewFirst && getAgentDefaultOverrideValue(overrides, agent, 'permissionMode') === undefined && newSessionPermission !== codeDefaults.permissionMode;
+          // The Codex wrapper starts every thread at medium; Claude Code's default
+          // depends on the model and the machine's settings (see AgentInput).
+          const autoEffort = autoEffortName(agent === 'codex' ? 'medium' : null, t);
           return (
             <ItemGroup key={agent} settingId={`agents.${agent}`} title={agent}>
               <AgentField
                 label={t('settingsAgents.permission')}
                 options={permOptions}
-                resolvedValue={resolved.permissionMode}
+                resolvedValue={newSessionPermission}
                 override={getAgentDefaultOverrideValue(overrides, agent, 'permissionMode')}
                 codeDefault={codeDefaults.permissionMode}
+                defaultSuffix={reviewFirstApplies ? t('settingsAgents.reviewFirstSuffix') : undefined}
                 onPick={(v) => pick(agent, 'permissionMode', v)}
               />
-              {modelOptions.length > 0 && (
+              {agent === 'gemini' && (
+                <Item
+                  title={t('settingsAgents.model')}
+                  subtitle={t('session.chat.modelPicker.geminiReadOnlyHint')}
+                  right={<span className="set-value">{t('session.chat.modelPicker.geminiReadOnly')}</span>}
+                />
+              )}
+              {agent !== 'gemini' && modelOptions.length > 0 && (
                 <AgentField
                   label={t('settingsAgents.model')}
                   options={modelOptions}
@@ -1294,14 +1329,17 @@ function Agents() {
                   codeDefault={codeDefaults.modelMode}
                   onPick={(v) => pick(agent, 'modelMode', v)}
                   followLatest={followsLatestByDefault ? { summary: followSummary, machines: perMachine, claude: agent === 'claude' } : undefined}
+                  moreKeys={moreKeys}
                 />
               )}
               {effortOptions.length > 0 && (
                 <Item
                   title={t('settingsAgents.effort')}
-                  right={<EffortSlider
+                  subtitle={<EffortSegments
+                    labelHidden
+                    className="set-effort"
                     label={t('settingsAgents.effort')}
-                    options={[{ key: '__code_default__', name: t('settingsAgents.useCodeDefault') }, ...effortOptions]}
+                    options={[{ key: '__code_default__', name: autoEffort }, ...effortOptions]}
                     value={getAgentDefaultOverrideValue(overrides, agent, 'effortLevel') ?? '__code_default__'}
                     onChange={(v) => pick(agent, 'effortLevel', v === '__code_default__' ? null : v)}
                   />}

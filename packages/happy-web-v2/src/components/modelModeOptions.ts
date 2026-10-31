@@ -8,6 +8,8 @@ export type ModeOption = {
     key: string;
     name: string;
     description?: string | null;
+    /** Listed but not pickable here (B-849a2: Claude 「本机配置」 mid-session). */
+    disabled?: boolean;
 };
 
 export type PermissionMode = ModeOption;
@@ -102,21 +104,21 @@ export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
         ...CLAUDE_PINNED_MODELS,
-        { key: 'fable', name: 'fable 5.1', description: 'Most capable for the hardest and longest-running tasks' },
-        { key: 'fable[1m]', name: 'fable 5.1 (1M context)', description: 'Fable 5.1 with the 1M context window for long sessions' },
-        { key: 'best', name: 'best available', description: 'Claude Code chooses the strongest available model' },
-        { key: 'opus', name: 'opus (alias)', description: 'Claude Code opus alias — Opus 5.5 on current wrappers' },
-        { key: 'opus[1m]', name: 'opus (alias, 1M context)', description: 'Claude Code opus alias with the 1M context window' },
-        { key: 'sonnet', name: 'sonnet 5', description: 'Efficient for routine tasks (Claude Code sonnet alias)' },
-        { key: 'sonnet[1m]', name: 'sonnet 5 (1M context)', description: 'Sonnet 5 with the 1M context window for long sessions' },
-        { key: 'haiku', name: 'haiku 4.5', description: 'Fastest for quick answers' },
-        { key: 'opusplan', name: 'opus plan', description: 'opus for planning, sonnet for execution' },
+        { key: 'fable', name: 'Fable 5.1', description: null },
+        { key: 'fable[1m]', name: 'Fable 5.1 · 1M', description: null },
+        { key: 'best', name: 'best', description: null },
+        { key: 'opus', name: 'opus (alias)', description: null },
+        { key: 'opus[1m]', name: 'opus (alias) · 1M', description: null },
+        { key: 'sonnet', name: 'Sonnet 5', description: null },
+        { key: 'sonnet[1m]', name: 'Sonnet 5 · 1M', description: null },
+        { key: 'haiku', name: 'Haiku 4.5', description: null },
+        { key: 'opusplan', name: 'opusplan', description: null },
     ];
 }
 
 const CLAUDE_PINNED_MODELS: ModelMode[] = [
-    { key: 'claude-opus-5-5', name: 'opus 5.5', description: 'Latest Opus — best for everyday, complex tasks' },
-    { key: 'claude-opus-5-5[1m]', name: 'opus 5.5 (1M context)', description: 'Opus 5.5 with the 1M context window for long sessions' },
+    { key: 'claude-opus-5-5', name: 'Opus 5.5', description: null },
+    { key: 'claude-opus-5-5[1m]', name: 'Opus 5.5 · 1M', description: null },
 ];
 
 /**

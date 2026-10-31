@@ -27,6 +27,18 @@ export function machineLabel(machine: Machine): string {
 }
 
 /**
+ * B-849a: what a session names its machine — the machine's display name (the
+ * one the user set), never the wrapper's hostname when the machine is known:
+ * several machines can share a hostname (cloned images, isolated homes).
+ */
+export function sessionMachineName(
+    machine: Pick<Machine, 'id' | 'metadata'> | null | undefined,
+    sessionHost: string | null | undefined,
+): string | undefined {
+    return machine?.metadata?.displayName?.trim() || machine?.metadata?.host || sessionHost || undefined;
+}
+
+/**
  * "Skip the picker?" decision for new-terminal entry points: exactly ONE
  * machine is online → that machine (create the terminal directly); zero or
  * several online → null (send the user to the machine picker instead).

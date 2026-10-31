@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChatHeader } from '@/screens/session/ChatHeader';
 import { AgentInput } from '@/screens/session/AgentInput';
 import { ModelEffortMenu } from '@/screens/session/ModelEffortMenu';
-import { EffortSlider } from '@/components/EffortSlider';
+import { EffortSegments } from '@/components/EffortSegments';
 import { storage } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import { apiSocket } from '@/sync/apiSocket';
@@ -59,8 +59,8 @@ export function ComposerFeedbackHarness() {
             </div>
             {ready && <AgentInput sessionId={id}/>}
             <section data-testid="effort-example" style={{display:'grid',gap:20}}>
-                <EffortSlider label="思考强度" options={levels} value={effort} onChange={setEffort}/>
-                <div><ModelEffortMenu label="模型示例" options={[{key:'example-model',name:'Claude'}]} value="example-model" onChange={() => {}} effort={{label:'思考强度',options:levels,value:effort,onChange:setEffort}}/></div>
+                <EffortSegments label="思考强度" options={levels} value={effort} onChange={setEffort}/>
+                <div><ModelEffortMenu label="运行配置" modelLabel="模型示例" options={[{key:'example-model',name:'Claude'}]} value="example-model" onChange={() => {}} effort={{label:'思考强度',options:levels,value:effort,onChange:setEffort}}/></div>
             </section>
         </div>
     </main>;

@@ -37,17 +37,17 @@ describe('Claude model picker (Fable 5.1)', () => {
         const byKey = Object.fromEntries(modes.map((m) => [m.key, m.name]));
         expect(byKey).toMatchObject({
             default: 'default model',
-            fable: 'fable 5.1',
-            'fable[1m]': 'fable 5.1 (1M context)',
-            'claude-opus-5-5': 'opus 5.5',
-            'claude-opus-5-5[1m]': 'opus 5.5 (1M context)',
+            fable: 'Fable 5.1',
+            'fable[1m]': 'Fable 5.1 · 1M',
+            'claude-opus-5-5': 'Opus 5.5',
+            'claude-opus-5-5[1m]': 'Opus 5.5 · 1M',
             opus: 'opus (alias)',
-            'opus[1m]': 'opus (alias, 1M context)',
-            sonnet: 'sonnet 5',
-            'sonnet[1m]': 'sonnet 5 (1M context)',
-            haiku: 'haiku 4.5',
-            opusplan: 'opus plan',
-            best: 'best available',
+            'opus[1m]': 'opus (alias) · 1M',
+            sonnet: 'Sonnet 5',
+            'sonnet[1m]': 'Sonnet 5 · 1M',
+            haiku: 'Haiku 4.5',
+            opusplan: 'opusplan',
+            best: 'best',
         });
         // fable5 is rejected by Claude Code 2.1.258 (unrecognized_model) — never offer it.
         expect(modes.some((m) => m.key === 'fable5')).toBe(false);
@@ -82,7 +82,7 @@ describe('Claude model picker (Fable 5.1)', () => {
         ];
         const names = Object.fromEntries(getAvailableModels('claude', { models, capabilities: ['claude-opus-5-5-v1'] } as any, t as any).map((m) => [m.key, m.name]));
         expect(names).toMatchObject({
-            'claude-opus-5-5': 'opus 5.5',
+            'claude-opus-5-5': 'Opus 5.5',
             opus: 'opus (alias)',
             'opus[1m]': 'opus (alias, 1M context)',
             sonnet: 'Sonnet 5',

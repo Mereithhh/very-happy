@@ -15,6 +15,7 @@ import { isTabAlive, thisTabId, withTabLock } from './tabLiveness';
 import { loadNewChatDraft, loadPendingSessions, loadQueuedMessages, loadSessionDrafts, saveNewChatDraft, savePendingSessions, saveQueuedMessages } from './persistence';
 import { useBoardTasks } from './boardTasks';
 import { normalizeAgentKey } from './agentDefaults';
+import { MACHINE_CONFIG_AGENTS } from '@slopus/happy-wire';
 import {
     createPendingSessionStore,
     findAdoptableSession,
@@ -31,6 +32,13 @@ import { t } from '@/text';
 
 /** Spawn is ~1 s; a real session that has not reached the store after this goes to its draft. */
 const SESSION_WAIT_MS = 30_000;
+/**
+ * B-849a: a Codex wrapper publishes its catalog ~0.65 s after spawn. QA26 P2-2:
+ * a slow machine (catalog after ~12 s) must not hold the first message much
+ * longer than main did (7.8 s to the session page) — after this it goes with
+ * the machine's own default and a toast says so.
+ */
+const MODEL_FACTS_WAIT_MS = 3_000;
 /** How often a tab looks for pending records whose owner tab has gone away. */
 const RECLAIM_INTERVAL_MS = 30_000;
 const PENDING_STORAGE_SUFFIX = ':pending-sessions-v1';
@@ -145,6 +153,12 @@ export const pendingSessions = createPendingSessionStore({
     now: () => Date.now(),
     newId: () => randomUUID().replace(/-/g, '').slice(0, 16),
     sessionWaitMs: SESSION_WAIT_MS,
+    hasModelFacts: (id, agent) => !MACHINE_CONFIG_AGENTS.includes(normalizeAgentKey(agent)) || !!storage.getState().sessions[id]?.metadata?.models?.length,
+    modelFactsWaitMs: MODEL_FACTS_WAIT_MS,
+    notifyModelFactsTimeout(record) {
+        const meta = storage.getState().machines[record.machineId]?.metadata;
+        toast.show(t('pendingSession.modelsTimeout', { machine: meta?.displayName || meta?.host || record.machineId.slice(0, 8) }), 'info');
+    },
 });
 
 export { isPendingSessionId };
