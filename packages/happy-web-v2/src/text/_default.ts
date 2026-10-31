@@ -987,6 +987,8 @@ export const en = {
                 longContext: '1M context',
                 aliasSuffix: ' (alias)',
                 longContextHint: 'Extends the context window to 1M tokens',
+                unknownModel: ({ model }: { model: string }) => `${model} · unknown model`,
+                unknownModelHint: 'Not in the models this machine reported; messages still send this id',
                 sessionOnly: 'Applies to this session only',
                 setDefault: 'Use for new sessions…',
                 setDefaultTitle: 'Use for new sessions?',

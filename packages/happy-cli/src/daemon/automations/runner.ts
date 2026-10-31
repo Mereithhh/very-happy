@@ -84,7 +84,7 @@ export interface AutomationRunnerDeps {
     runPrecheck?: (options: PrecheckRunOptions) => Promise<PrecheckResult>;
     /** Turn state of `sessionId` anchored on the prompt of `runId`. */
     readTurn?: (sessionId: string, runId: string) => Promise<TurnState>;
-    send?: (sessionId: string, text: string, meta: { localId: string; model?: string | null; permissionMode?: string; effort?: string | null }) => Promise<void>;
+    send?: (sessionId: string, text: string, meta: { localId: string; model?: string | null; permissionMode?: string; effort?: string | null; modelIntent?: string; effortIntent?: string }) => Promise<void>;
     prepareWorktree?: (home: string, repository: string, id: string, origin: 'automation') => Promise<{ directory: string }>;
     now?: () => number;
     tickMs?: number;
@@ -132,7 +132,7 @@ async function defaultReadTurn(sessionId: string, runId: string): Promise<TurnSt
     return analyzeLatestTurn(await readSessionLog(sessionId, persisted, TURN_WINDOW), { anchor: automationRunAnchor(runId) });
 }
 
-async function defaultSend(sessionId: string, text: string, meta: { localId: string; model?: string | null; permissionMode?: string; effort?: string | null }): Promise<void> {
+async function defaultSend(sessionId: string, text: string, meta: { localId: string; model?: string | null; permissionMode?: string; effort?: string | null; modelIntent?: string; effortIntent?: string }): Promise<void> {
     const persisted = await waitForSessionKey(sessionId, 15_000);
     await sendUserMessage(sessionId, persisted, text, 'automation', { ...meta, sentFrom: 'automation' });
 }

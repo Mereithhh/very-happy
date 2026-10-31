@@ -2,7 +2,7 @@ import axios from 'axios';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync, unlinkSync } from 'node:fs';
-import type { TeamOperation, TeamState, TeamResponse, TeamAction } from '@slopus/happy-wire';
+import { MODEL_INTENT_CONFIG, type TeamOperation, type TeamState, type TeamResponse, type TeamAction } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
 import { readPersistedSessions } from '@/persistence';
 import { sendUserMessage, waitForSessionKey } from '@/commands/sessionMessage';
@@ -13,6 +13,16 @@ import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secure
 import { readReceipt, writeReceipt, type TeamEffectReceipt } from './journal';
 import { prepareTeamWorktree, removeTeamWorktree, resolveTeamRepository } from './worktree';
 import { afterStartupFailure, consumeOwnerRetry, ownerRetryPending, spawnGate, startupFailureMessage, TEAM_CLEANUP_RETRY_MS, TEAM_SPAWN_MAX_ATTEMPTS } from './spawnRetry';
+
+/**
+ * B-849b2 (QA28 P2-5): a member's model choice, recorded by the wrapper as the
+ * session's intent. A member without one runs what its machine is configured
+ * for, so that is its choice (`default`, 本机配置) — never the model it
+ * happened to resolve to.
+ */
+export function teamInitialModelMeta(model: string | undefined): { model?: string; modelIntent: string } {
+    return model ? { model, modelIntent: model } : { modelIntent: MODEL_INTENT_CONFIG };
+}
 
 export interface TeamWorkerDeps {
     machineId: string;
@@ -155,7 +165,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                         return;
                     }
                     const key = await waitForSessionKey(receipt.sessionId!, 10_000);
-                    await sendUserMessage(receipt.sessionId!, key, teamInitialPrompt(op.prompt, bot?.root === true, receipt.directory), 'teams', { localId: `teams-initial-${op.id}`, sentFrom: 'team', ...(op.model ? { model: op.model } : {}) });
+                    await sendUserMessage(receipt.sessionId!, key, teamInitialPrompt(op.prompt, bot?.root === true, receipt.directory), 'teams', { localId: `teams-initial-${op.id}`, sentFrom: 'team', ...teamInitialModelMeta(op.model) });
                     receipt = { ...receipt, phase: 'delivered' };
                     writeReceipt(home, receipt);
                 }

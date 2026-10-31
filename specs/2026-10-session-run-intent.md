@@ -59,6 +59,17 @@
 6. **Claude「本机配置」**：wrapper 收到 null 时 `getSettings().effective.model` → `setModel`；带 resume 重建 Query 时在第一条
    prompt 前切到 settings 模型。据此会话中途重新开放「本机配置」（按 `claude-config-model-v1` gate），显示 settings 模型名。
 
+7. **只记 agent 接受的选择**（B-849b2，QA28 P2-4）：agent 不能跑的 effort（Codex 按 wrapper 发布的 catalog 判，
+   Claude 为白名单外的值）不进粘性状态、不写 `effortIntent`；该条消息本身仍失败并说明原因（「未执行」+ 放回输入框），
+   RPC 返回 `unsupported-effort`。wrapper 持有的级别（粘性或从旧意图恢复的）被拒时回滚到上一次真正开跑的级别
+   （它也被拒则用模型默认），意图同步改写——修复前已写坏的意图就此自愈。Web 读取时，catalog 判定会话模型不支持的
+   `effortIntent` / 上报级别按「没有意图」处理（`runPicks.ts effortRunnable`）。
+8. **意图存选择本身，不存解析结果**（B-849b2，QA28 P2-5）：`very-happy spawn` 与自动化的首条消息 meta 带
+   `modelIntent`（未指定 = `latest`，`--model default` = `default`，否则为该 id），Claude 另带 `effortIntent: default`；
+   团队成员有 model 时记该 id，没有时记 `default`（本机配置，即它实际所跑）。`model` 仍是此刻的解析值。
+9. **未知模型如实显示**（B-849b2，QA28 P2-3）：会话意图是选择器没有列出的 id 时，选择器加一项显示这个 id；
+   wrapper 的 catalog 也没有它时标「未知模型」，不落到第一项（「本机配置」）。
+
 ### 兼容矩阵
 
 | Web \ CLI | 旧 CLI | 新 CLI |

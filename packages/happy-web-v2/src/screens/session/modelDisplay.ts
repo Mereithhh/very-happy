@@ -1,3 +1,4 @@
+import { LATEST_MODEL_MODE } from '@slopus/happy-wire';
 import { compactResolvedModelCode } from '@/components/modelModeOptions';
 
 /**
@@ -50,6 +51,22 @@ export function selectDisplayedModelKey(input: {
     if (selectedKey && optionKeys.includes(selectedKey)) return selectedKey;
     if (running && optionKeys.includes(running)) return running;
     return optionKeys[0];
+}
+
+/**
+ * B-849b2 (QA28 P2-3): a session set to a model its picker does not list (CLI
+ * `--model gpt-bogus-9`, a retired id) shows that id — every message sends it
+ * and the agent runs it — instead of falling through to the first entry
+ * (「本机配置」). `latest` / `default` are entries of their own, never added.
+ */
+export function withSelectedModelEntry<T extends { key: string; name: string; description?: string | null }>(
+    options: readonly T[],
+    selectedKey: string | null | undefined,
+    entry: (id: string) => { name: string; description: string | null },
+): (T | { key: string; name: string; description: string | null })[] {
+    if (!selectedKey || selectedKey === 'default' || selectedKey === LATEST_MODEL_MODE) return [...options];
+    if (options.some((option) => option.key === selectedKey)) return [...options];
+    return [...options, { key: selectedKey, ...entry(selectedKey) }];
 }
 
 /**

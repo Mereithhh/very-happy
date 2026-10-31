@@ -36,7 +36,12 @@ describe('capabilities', () => {
 describe('Claude wrapper (runClaude.ts)', () => {
     it('records the intent each message carries, with the sticky model', () => {
         const after = between(claude, 'currentEffort = resolved.next.effort;', 'scoreFirstMessage(');
-        expect(after).toContain('recordRunIntents(session, message.meta, { stickyModel: currentModel ?? null });');
+        expect(after).toContain('recordRunIntents(session, resolved.ignoredEffort !== undefined ? withoutEffort(message.meta) : message.meta, { stickyModel: currentModel ?? null });');
+    });
+    // REGRESSION (QA28 P2-4): an effort Claude ignores is not recorded as the intent.
+    it('the RPC reports an ignored effort as refused', () => {
+        const rpc = between(claude, 'registerRunIntentRpc(session.rpcHandlerManager, session, (request) => {', '\n    });');
+        expect(rpc).toContain("return { facts: { stickyModel: currentModel ?? null }, effortRefused: resolved.ignoredEffort !== undefined };");
     });
     it('the RPC moves the sticky model and effort, never the permission mode', () => {
         const rpc = between(claude, 'registerRunIntentRpc(session.rpcHandlerManager, session, (request) => {', 'return { stickyModel');
@@ -85,14 +90,36 @@ describe('Codex wrapper (runCodex.ts)', () => {
         expect(codex).toContain('let currentEffort: ReasoningEffort | undefined = resumedEffort !== undefined ? (resumedEffort ?? undefined) as ReasoningEffort | undefined : DEFAULT_CODEX_EFFORT;');
     });
     it('records the intent each message carries', () => {
-        const at = codex.indexOf('recordRunIntents(session, message.meta);');
+        const at = codex.indexOf('recordRunIntents(session, effortRefused ? withoutEffort(message.meta) : message.meta);');
         expect(at).toBeGreaterThan(codex.indexOf("logger.debug('[Codex] User message received without an effort override');"));
     });
     it('the RPC moves model / effort; 「本机配置」 resets the next meta-less turn', () => {
         const rpc = between(codex, 'registerRunIntentRpc(session.rpcHandlerManager, {', '\n    });');
         expect(rpc).toContain('pendingModelReset = !currentModel;');
-        expect(rpc).toContain('currentEffort = (request.effort || undefined) as ReasoningEffort | undefined;');
+        expect(rpc).toContain('effortRefused = unsupportedEffortReason(discoveredModels, effortJudgeModel(currentModel, pendingModelReset), effort) !== null;');
+        expect(rpc).toContain('if (!effortRefused) currentEffort = effort;');
+        expect(rpc).toContain('return { effortRefused };');
         expect(codex).toContain('messageModelReset = pendingModelReset && !messageModel;');
+    });
+    // REGRESSION (QA28 P2-4): astra + minimal was refused yet became the sticky
+    // level and the session's intent — every device's label went blank and every
+    // later message without meta failed the same way.
+    it('a refused explicit effort is neither sticky nor recorded', () => {
+        const receipt = between(codex, "} else if (typeof incoming === 'string') {", "logger.debug('[Codex] Valid effort override applied');");
+        expect(receipt).toContain('effortRefused = unsupportedEffortReason(discoveredModels, effortJudgeModel(messageModel, messageModelReset), messageEffort) !== null;');
+        expect(receipt).toMatch(/if \(effortRefused\) \{[^}]*\} else \{\s*currentEffort = messageEffort;/);
+        expect(codex).toContain('...(effortExplicit ? { effortExplicit: true } : {}),');
+    });
+    it('a refused held level rolls back (sticky + intent); only an explicit one fails the turn', () => {
+        const loop = between(codex, 'const turnEffort = settleTurnEffort(', 'const includeAppendSystemPrompt');
+        expect(loop).toContain('explicit: message.mode.effortExplicit === true,');
+        expect(loop).toContain('fallback: lastStartedEffort,');
+        expect(loop).toMatch(/if \(currentEffort === refused\) \{\s*currentEffort = turnEffort\.effort;/);
+        expect(loop).toContain('if (readEffortIntent(session.getMetadata()?.effortIntent) === refused) {');
+        expect(loop).toContain('recordRunIntents(session, { effort: turnEffort.effort ?? null, effortIntent: turnEffort.effort ?? EFFORT_INTENT_AUTO });');
+        expect(loop).toContain('throw new Error(turnEffort.refusal);');
+        expect(codex).toContain('effort: turnEffort.effort,');
+        expect(codex).toMatch(/onTurnStarted: \(\) => \{\s*lastStartedEffort = turnEffort\.effort;/);
     });
 });
 
@@ -105,5 +132,22 @@ describe('auto-restart (B-852) relaunches into the restore path (QA27 P2-1)', ()
         const impl = between(daemon, 'const restartSessionImpl = async', 'const stopSession = ');
         expect(impl).toContain('const model = sanitizeResumeModel(options?.model);');
         expect(impl).toContain('HAPPY_RECONNECT_SESSION_ID: happySessionId,');
+    });
+});
+
+describe('spawn / team / automation first messages carry the choice (QA28 P2-5)', () => {
+    // REGRESSION (QA28 P2-5): `spawn` without --model recorded the resolved
+    // `claude-opus-5-5` as the intent, so the session stopped following latest.
+    const sender = read('commands/sessionMessage.ts');
+    const worker = read('daemon/teams/worker.ts');
+    const runner = read('daemon/automations/runner.ts');
+    it('the CLI sender forwards the intent keys', () => {
+        expect(sender).toContain('...(options.modelIntent !== undefined ? { modelIntent: options.modelIntent } : {}),');
+        expect(sender).toContain('...(options.effortIntent !== undefined ? { effortIntent: options.effortIntent } : {}),');
+    });
+    it('a team member and an automation send the resolved meta with its intent', () => {
+        expect(worker).toContain("sentFrom: 'team', ...teamInitialModelMeta(op.model) });");
+        expect(runner).toContain("const meta = resolveFirstMessageMeta({ agent, permissionMode, explicitModel: action.model ?? undefined, capabilities });");
+        expect(runner).toContain("await send(spawned.sessionId, `${header}\\n${action.prompt}`, { localId: `automation-${run.id}`, ...meta });");
     });
 });

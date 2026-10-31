@@ -52,19 +52,42 @@ export function recordRunIntents(session: MetadataSession, input: Record<string,
     return nextRunIntents(currentRunIntents(current), input);
 }
 
+/**
+ * B-849b2 (QA28 P2-4): `input` without its effort — what the wrapper records
+ * when the agent refused that effort. A refused level is not the session's
+ * choice: recorded, it emptied every device's label and failed every later
+ * message without meta.
+ */
+export function withoutEffort<T extends Record<string, unknown>>(input: T | null | undefined): Record<string, unknown> | null | undefined {
+    if (!input) return input;
+    const { effort: _effort, effortIntent: _effortIntent, ...rest } = input;
+    return rest;
+}
+
+/** What `apply` did with a `session-run-intent` request. */
+export type RunIntentApplied = {
+    /** Extra wrapper facts to publish with the intent (e.g. `stickyModel`). */
+    facts?: Partial<Metadata>;
+    /** The agent cannot run the requested effort: the wrapper kept its own, and the intent keeps the previous one. */
+    effortRefused?: boolean;
+};
+
 type RpcRegistrar = { registerHandler(method: string, handler: (params: unknown) => Promise<unknown> | unknown): void };
 
 /**
  * Register `session-run-intent`. `apply` moves the wrapper's sticky model /
- * effort (the keys present in the request) and returns extra facts to publish
- * with the intent (e.g. `stickyModel`).
+ * effort (the keys present in the request) and says what it applied. A
+ * refused effort is not recorded (B-849b2) and the call answers
+ * `unsupported-effort`, so the picker keeps the pick pending, not confirmed.
  */
-export function registerRunIntentRpc(rpc: RpcRegistrar, session: MetadataSession, apply: (request: RunIntentRequest) => Partial<Metadata> | void): void {
+export function registerRunIntentRpc(rpc: RpcRegistrar, session: MetadataSession, apply: (request: RunIntentRequest) => RunIntentApplied): void {
     rpc.registerHandler(RUN_INTENT_RPC, async (params: unknown): Promise<RunIntentResponse> => {
         const parsed = RunIntentRequestSchema.safeParse(params ?? {});
         if (!parsed.success) return { ok: false, error: 'invalid-request' };
-        const extra = apply(parsed.data) ?? {};
-        const intents = recordRunIntents(session, parsed.data, extra);
+        const applied = apply(parsed.data);
+        const accepted = applied.effortRefused ? withoutEffort(parsed.data) : parsed.data;
+        const intents = recordRunIntents(session, accepted, applied.facts ?? {});
+        if (applied.effortRefused) return { ok: false, error: 'unsupported-effort' };
         return { ok: true, ...intents };
     });
 }

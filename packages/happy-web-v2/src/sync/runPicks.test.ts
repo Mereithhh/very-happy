@@ -119,3 +119,25 @@ describe('Codex following latest (no model sent)', () => {
         expect(meta.modelIntent).toBe('latest');
     });
 });
+
+describe('a recorded effort the model cannot run is no choice (B-849b2, QA28 P2-4)', () => {
+    const ASTRA = { code: 'gpt-6-astra', reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] };
+    const codex = (metadata: Record<string, unknown>) => ({
+        id: 'c1', permissionMode: null, modelMode: null, effortLevel: null, presence: 'online' as const,
+        metadata: { flavor: 'codex', path: '/w', host: 'h', capabilities: [RUN_INTENT_CAPABILITY], models: [ASTRA], ...metadata } as any,
+    });
+    it('an intent recorded from a refused message reads as nothing chosen', () => {
+        expect(sessionRunIntents(codex({ modelIntent: 'gpt-6-astra', effortIntent: 'minimal' }).metadata)).toEqual({ model: 'gpt-6-astra', effort: null });
+        expect(sessionRunIntents(codex({ modelIntent: 'latest', currentModelCode: 'gpt-6-astra', effortIntent: 'minimal' }).metadata).effort).toBeNull();
+        expect(sessionRunIntents(codex({ modelIntent: 'gpt-6-astra', effortIntent: 'xhigh' }).metadata).effort).toBe('xhigh');
+    });
+    it('no verdict without the model in the catalog', () => {
+        expect(sessionRunIntents(codex({ modelIntent: 'gpt-6-sol', effortIntent: 'minimal' }).metadata).effort).toBe('minimal');
+    });
+    it('the reported level is not a fallback either when the model refuses it', () => {
+        expect(resolveRunPick(codex({ modelIntent: 'gpt-6-astra', effortIntent: 'minimal', currentModelCode: 'gpt-6-astra', currentThoughtLevelCode: 'minimal' }), 'effort', noBase))
+            .toEqual({ value: undefined, state: 'none' });
+        expect(resolveRunPick(codex({ modelIntent: 'gpt-6-astra', effortIntent: 'minimal', currentModelCode: 'gpt-6-astra', currentThoughtLevelCode: 'xhigh' }), 'effort', noBase))
+            .toEqual({ value: 'xhigh', state: 'fallback' });
+    });
+});

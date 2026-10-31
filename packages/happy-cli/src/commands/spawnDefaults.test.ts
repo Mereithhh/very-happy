@@ -26,7 +26,7 @@ describe('resolveFirstMessageMeta', () => {
 
     it('claude: latest resolves to pinned Opus 5.5 with effort reset, like the web message meta', () => {
         expect(resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'bypassPermissions', capabilities: capable }))
-            .toEqual({ permissionMode: 'bypassPermissions', model: 'claude-opus-5-5', effort: null })
+            .toEqual({ permissionMode: 'bypassPermissions', model: 'claude-opus-5-5', effort: null, modelIntent: 'latest', effortIntent: 'default' })
     })
 
     it('claude: falls back to the machine default when the wrapper can run no known Opus', () => {
@@ -59,14 +59,14 @@ describe('resolveFirstMessageMeta', () => {
     })
 
     it('codex: latest = newest sol the published catalog lists; no catalog → only the permission mode', () => {
-        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_166, configuredModel: null })).toEqual({ permissionMode: 'yolo', model: 'gpt-6.1-sol' })
-        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_154, configuredModel: null })).toEqual({ permissionMode: 'yolo', model: 'gpt-5.6-sol' })
-        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', configuredModel: null })).toEqual({ permissionMode: 'yolo' })
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_166, configuredModel: null })).toEqual({ permissionMode: 'yolo', model: 'gpt-6.1-sol', modelIntent: 'latest' })
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_154, configuredModel: null })).toEqual({ permissionMode: 'yolo', model: 'gpt-5.6-sol', modelIntent: 'latest' })
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', configuredModel: null })).toEqual({ permissionMode: 'yolo', modelIntent: 'latest' })
     })
 
     it('codex: a model pinned in the machine config (or an unknown config) is never overridden', () => {
-        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_166, configuredModel: 'gpt-5.6-sol' })).toEqual({ permissionMode: 'yolo' })
-        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_166 })).toEqual({ permissionMode: 'yolo' })
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_166, configuredModel: 'gpt-5.6-sol' })).toEqual({ permissionMode: 'yolo', modelIntent: 'latest' })
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', catalog: CODEX_166 })).toEqual({ permissionMode: 'yolo', modelIntent: 'latest' })
         // An explicit --model still wins over the machine config.
         expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', explicitModel: 'gpt-6-sol', configuredModel: 'gpt-5.6-sol' }).model).toBe('gpt-6-sol')
     })
@@ -87,3 +87,23 @@ describe('resolveFirstMessageMeta', () => {
         expect(waitsForModelCatalog('pi', undefined)).toBe(false)
     })
 })
+
+describe('first-message intent (B-849b2, QA28 P2-5)', () => {
+    const capable = ['claude-opus-5-5-v1']
+    it('a spawn without --model records latest, not the model it resolved to', () => {
+        const claude = resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'bypassPermissions', capabilities: capable })
+        expect(claude.model).toBe('claude-opus-5-5')
+        expect(claude.modelIntent).toBe('latest')
+        expect(claude.effortIntent).toBe('default')
+        const codex = resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo' })
+        expect(codex.model).toBeUndefined()
+        expect(codex.modelIntent).toBe('latest')
+        expect(codex.effortIntent).toBeUndefined()
+    })
+    it('an explicit --model records the choice itself', () => {
+        expect(resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'default', explicitModel: 'latest', capabilities: capable }).modelIntent).toBe('latest')
+        expect(resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'default', explicitModel: 'default', capabilities: capable })).toMatchObject({ model: null, modelIntent: 'default' })
+        expect(resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo', explicitModel: 'gpt-6-sol' })).toMatchObject({ model: 'gpt-6-sol', modelIntent: 'gpt-6-sol' })
+    })
+})
+

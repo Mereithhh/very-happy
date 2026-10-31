@@ -19,7 +19,7 @@ import type { MessageMeta } from '@/api/types';
 import type { QueueDiscardEntry } from '@/utils/MessageQueue2';
 import { spawnOriginTags } from '@/utils/createSessionMetadata';
 import { CLAUDE_CONFIG_MODEL_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, restoredEffort, restoredModel } from '@slopus/happy-wire';
-import { recordRunIntents, registerRunIntentRpc } from '@/utils/runIntent';
+import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
 import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { configuration } from '@/configuration';
 import { applyProviderEnv, loadSessionProvider } from './providerBinding';
@@ -895,7 +895,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         currentModel = resolved.next.model;
         currentEffort = resolved.next.effort;
         logger.debug(`[loop] Run intent set: model=${currentModel ?? 'default'} effort=${currentEffort ?? 'default'}`);
-        return { stickyModel: currentModel ?? null };
+        // B-849b2: an effort Claude cannot take kept the current one; not recorded.
+        return { facts: { stickyModel: currentModel ?? null }, effortRefused: resolved.ignoredEffort !== undefined };
     });
 
     const currentModeState = () => ({
@@ -1081,7 +1082,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug(`[loop] Ignoring invalid effort from user message: ${resolved.ignoredEffort}`);
         }
         // B-849b: the choice this message carried becomes the session's intent.
-        recordRunIntents(session, message.meta, { stickyModel: currentModel ?? null });
+        // B-849b2 (QA28 P2-4): an ignored effort is not the session's choice.
+        recordRunIntents(session, resolved.ignoredEffort !== undefined ? withoutEffort(message.meta) : message.meta, { stickyModel: currentModel ?? null });
         logger.debug(`[loop] Message mode: permission=${resolved.mode.permissionMode} model=${resolved.mode.model || 'default'} effort=${resolved.mode.effort ?? 'default'} appendSystemPrompt=${resolved.mode.appendSystemPrompt ? 'set' : 'none'} customSystemPrompt=${resolved.mode.customSystemPrompt ? 'set' : 'none'}`);
         // B-515: score the prediction and teach the cache (first web message
         // of an eligible session only).

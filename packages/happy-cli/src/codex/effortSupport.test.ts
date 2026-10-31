@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { unsupportedEffortReason } from './effortSupport';
+import { settleTurnEffort, unsupportedEffortReason } from './effortSupport';
 
 const catalog = [
     { model: 'gpt-6-astra', isDefault: true, supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].map((reasoningEffort) => ({ reasoningEffort })) },
@@ -20,5 +20,22 @@ describe('unsupportedEffortReason', () => {
 
     it('never blocks an unset effort', () => {
         expect(unsupportedEffortReason(catalog, 'gpt-5.5', undefined)).toBeNull();
+    });
+});
+
+describe('settleTurnEffort (B-849b2, QA28 P2-4)', () => {
+    it('a supported level runs as is', () => {
+        expect(settleTurnEffort(catalog, 'gpt-6-astra', 'xhigh', { explicit: true, fallback: 'medium' })).toEqual({ refusal: null, effort: 'xhigh', changed: false });
+    });
+    it('a level the message named is refused, and the held level rolls back to the last started one', () => {
+        const settled = settleTurnEffort(catalog, 'gpt-6-astra', 'minimal', { explicit: true, fallback: 'xhigh' });
+        expect(settled.refusal).toMatch(/"minimal" is not supported by gpt-6-astra/);
+        expect(settled).toMatchObject({ effort: 'xhigh', changed: true });
+    });
+    it('a held (sticky / restored) refused level is no choice: the turn runs on the fallback', () => {
+        expect(settleTurnEffort(catalog, 'gpt-6-astra', 'minimal', { explicit: false, fallback: 'high' })).toEqual({ refusal: null, effort: 'high', changed: true });
+    });
+    it('a fallback the model refuses too leaves the model default', () => {
+        expect(settleTurnEffort(catalog, 'gpt-6-astra', 'minimal', { explicit: false, fallback: 'minimal' })).toEqual({ refusal: null, effort: undefined, changed: true });
     });
 });

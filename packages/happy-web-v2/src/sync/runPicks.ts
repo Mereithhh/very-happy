@@ -21,6 +21,8 @@
  */
 import {
     EFFORT_INTENT_AUTO,
+    isLatestModelMode,
+    MODEL_INTENT_CONFIG,
     readEffortIntent,
     readModelIntent,
     reconcileRunPick,
@@ -45,6 +47,7 @@ type IntentMetadata = {
     currentModelCode?: string | null;
     stickyModel?: string | null;
     currentThoughtLevelCode?: string | null;
+    models?: readonly { code: string; resolvedModel?: string | null; reasoningEfforts?: readonly string[] | null }[] | null;
 } | null | undefined;
 type PickSession = { id?: string; modelMode?: string | null; effortLevel?: string | null; metadata?: IntentMetadata };
 
@@ -52,14 +55,30 @@ export function recordsRunIntent(metadata: IntentMetadata): boolean {
     return metadata?.capabilities?.includes(RUN_INTENT_CAPABILITY) === true;
 }
 
+/**
+ * B-849b2 (QA28 P2-4): whether the session's model can run `level`, judged by
+ * the catalog its wrapper published. Unknown model / no catalog → no verdict
+ * (true). `modelIntent` names the model when it is a fixed id; otherwise the
+ * model the session runs.
+ */
+export function effortRunnable(metadata: IntentMetadata, level: string, modelIntent?: string | null): boolean {
+    if (level === EFFORT_INTENT_AUTO) return true;
+    const model = modelIntent && modelIntent !== MODEL_INTENT_CONFIG && !isLatestModelMode(modelIntent) ? modelIntent : metadata?.currentModelCode;
+    if (!model) return true;
+    const entry = metadata?.models?.find((option) => option.code === model || option.resolvedModel === model);
+    if (!entry?.reasoningEfforts?.length) return true;
+    return entry.reasoningEfforts.includes(level);
+}
+
 /** The session's recorded intents; undefined = an older wrapper (none recorded). */
 export function sessionRunIntents(metadata: IntentMetadata): { model: string | null | undefined; effort: string | null | undefined } {
     if (!recordsRunIntent(metadata)) return { model: undefined, effort: undefined };
     // A new wrapper resumed over metadata an older one wrote: nothing recorded yet.
-    return {
-        model: readModelIntent(metadata?.modelIntent) ?? null,
-        effort: readEffortIntent(metadata?.effortIntent) ?? null,
-    };
+    const model = readModelIntent(metadata?.modelIntent) ?? null;
+    const effort = readEffortIntent(metadata?.effortIntent) ?? null;
+    // B-849b2 (QA28 P2-4): a level the session's model cannot run (recorded
+    // from a refused message by a wrapper before the fix) is no choice at all.
+    return { model, effort: effort !== null && !effortRunnable(metadata, effort, model) ? null : effort };
 }
 
 // --- bases (device-local, persisted) ---
@@ -100,7 +119,7 @@ function fallbackPick(field: RunPickField, metadata: IntentMetadata): string | u
         if (agent === 'claude' && metadata?.currentModelCode) return metadata.currentModelCode;
         return undefined;
     }
-    if (agent === 'codex' && metadata?.currentThoughtLevelCode) return metadata.currentThoughtLevelCode;
+    if (agent === 'codex' && metadata?.currentThoughtLevelCode && effortRunnable(metadata, metadata.currentThoughtLevelCode)) return metadata.currentThoughtLevelCode;
     return undefined;
 }
 

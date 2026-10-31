@@ -1,5 +1,5 @@
-import { CODEX_COMPACT_CAPABILITY, CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, restoredEffort } from '@slopus/happy-wire';
-import { recordRunIntents, registerRunIntentRpc } from '@/utils/runIntent';
+import { CODEX_COMPACT_CAPABILITY, CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort } from '@slopus/happy-wire';
+import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
 import { createProjectInjector } from '@/projects/injector';
 import { sharedProjectsClient } from '@/projects/client';
 import { unlink } from 'node:fs/promises';
@@ -49,7 +49,7 @@ import { createSessionForStartup } from '@/utils/startupSessionCreate';
 import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
-import { unsupportedEffortReason } from './effortSupport';
+import { settleTurnEffort, unsupportedEffortReason } from './effortSupport';
 import { codexModelFacts, resolveCodexTurnModel } from './turnModel';
 import { codexStderrTailOf, describeCodexFailure, describeCodexRetry, describeThrownTurnError } from './codexFailureText';
 import {
@@ -339,6 +339,12 @@ export async function runCodex(opts: {
     let currentEffort: ReasoningEffort | undefined = resumedEffort !== undefined ? (resumedEffort ?? undefined) as ReasoningEffort | undefined : DEFAULT_CODEX_EFFORT;
     // B-849b: the RPC set 「本机配置」; the next turn without a model resets to it.
     let pendingModelReset = false;
+    // B-849b2 (QA28 P2-4): the last level a turn really started with — where a
+    // refused level rolls back to.
+    let lastStartedEffort: ReasoningEffort | undefined = currentEffort;
+    // The model a turn would run now (the catalog judges efforts per model).
+    const effortJudgeModel = (model: string | undefined, modelReset: boolean) =>
+        resolveCodexTurnModel({ model, modelReset }, machineDefaultModel) ?? (client as CodexAppServerClient | undefined)?.threadModel ?? machineDefaultModel;
     let currentAppendSystemPrompt: string | undefined = undefined;
 
     // B-844c: publish the sticky model so the web can clear it with `model:
@@ -458,6 +464,8 @@ export async function runCodex(opts: {
             // incoming value against ReasoningEffort so a stale/garbage entry on
             // the wire doesn't poison the per-turn options.
             let messageEffort = currentEffort;
+            let effortExplicit = false;
+            let effortRefused = false;
             if (message.meta?.hasOwnProperty('effort')) {
                 const incoming = (message.meta as Record<string, unknown>).effort;
                 if (incoming === null || incoming === undefined) {
@@ -467,9 +475,18 @@ export async function runCodex(opts: {
                     logger.debug(`[Codex] Effort reset to default`);
                 } else if (typeof incoming === 'string') {
                     messageEffort = incoming as ReasoningEffort;
-                    currentEffort = messageEffort;
-                    reportModeFacts();
-                    logger.debug('[Codex] Valid effort override applied');
+                    effortExplicit = true;
+                    // B-849b2 (QA28 P2-4): a level the model cannot run fails
+                    // this turn (it says why) but never becomes the sticky level
+                    // or the session's intent.
+                    effortRefused = unsupportedEffortReason(discoveredModels, effortJudgeModel(messageModel, messageModelReset), messageEffort) !== null;
+                    if (effortRefused) {
+                        logger.debug('[Codex] Effort override refused by the model catalog; sticky level kept', logValueMetadata(incoming));
+                    } else {
+                        currentEffort = messageEffort;
+                        reportModeFacts();
+                        logger.debug('[Codex] Valid effort override applied');
+                    }
                 } else {
                     logger.debug('[Codex] Ignoring invalid effort override', logValueMetadata(incoming));
                 }
@@ -478,7 +495,7 @@ export async function runCodex(opts: {
             }
 
             // B-849b: the choice this message carried becomes the session's intent.
-            recordRunIntents(session, message.meta);
+            recordRunIntents(session, effortRefused ? withoutEffort(message.meta) : message.meta);
 
             let messageAppendSystemPrompt = currentAppendSystemPrompt;
             if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
@@ -495,6 +512,7 @@ export async function runCodex(opts: {
                 ...(messageModelReset ? { modelReset: true } : {}),
                 appendSystemPrompt: messageAppendSystemPrompt,
                 effort: messageEffort,
+                ...(effortExplicit ? { effortExplicit: true } : {}),
             };
             if (message.meta?.delivery === 'steer' && !isCodexControlText(message.content.text)) {
                 if (await steerIntoRunningTurn(steerDeps, message.content.text, attachments, message.localKey)) {
@@ -715,12 +733,17 @@ export async function runCodex(opts: {
             currentModel = request.model || undefined;
             pendingModelReset = !currentModel;
         }
+        let effortRefused = false;
         if (Object.prototype.hasOwnProperty.call(request, 'effort')) {
-            currentEffort = (request.effort || undefined) as ReasoningEffort | undefined;
+            const effort = (request.effort || undefined) as ReasoningEffort | undefined;
+            // B-849b2 (QA28 P2-4): a level the model cannot run is not applied or recorded.
+            effortRefused = unsupportedEffortReason(discoveredModels, effortJudgeModel(currentModel, pendingModelReset), effort) !== null;
+            if (!effortRefused) currentEffort = effort;
         }
         // The app-server client may not exist yet on a very early call.
         if (client) reportModeFacts();
         logger.debug('[Codex] Run intent set', logValueMetadata(request.model ?? null));
+        return { effortRefused };
     });
 
     const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, () => handleKillSession('archive'), session, { processSignals: true, onSignal: () => handleKillSession('offline') });
@@ -1248,9 +1271,27 @@ export async function runCodex(opts: {
                 );
 
                 const turnModel = resolveCodexTurnModel(message.mode, machineDefaultModel);
-                const effortRefusal = unsupportedEffortReason(discoveredModels, turnModel ?? client.threadModel ?? machineDefaultModel, message.mode.effort);
-                if (effortRefusal) {
-                    throw new Error(effortRefusal);
+                // B-849b2 (QA28 P2-4): a refused level the wrapper holds (sticky,
+                // or restored from an intent recorded before this fix) rolls back
+                // to the last level a turn started with, and so does the intent;
+                // only a level the message itself named fails the turn.
+                const turnEffort = settleTurnEffort(discoveredModels, turnModel ?? client.threadModel ?? machineDefaultModel, message.mode.effort, {
+                    explicit: message.mode.effortExplicit === true,
+                    fallback: lastStartedEffort,
+                });
+                if (turnEffort.changed) {
+                    const refused = message.mode.effort;
+                    if (currentEffort === refused) {
+                        currentEffort = turnEffort.effort;
+                        reportModeFacts();
+                    }
+                    if (readEffortIntent(session.getMetadata()?.effortIntent) === refused) {
+                        recordRunIntents(session, { effort: turnEffort.effort ?? null, effortIntent: turnEffort.effort ?? EFFORT_INTENT_AUTO });
+                    }
+                    logger.debug('[Codex] Refused effort settled', logValueMetadata(turnEffort.effort ?? null));
+                }
+                if (turnEffort.refusal) {
+                    throw new Error(turnEffort.refusal);
                 }
 
                 // Start thread on first turn (thread persists across mode changes)
@@ -1291,8 +1332,11 @@ export async function runCodex(opts: {
                     model: turnModel,
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,
-                    effort: message.mode.effort,
-                    onTurnStarted: () => heldInput.delivered(),
+                    effort: turnEffort.effort,
+                    onTurnStarted: () => {
+                        lastStartedEffort = turnEffort.effort;
+                        heldInput.delivered();
+                    },
                 });
                 reportModeFacts();
                 first = false;

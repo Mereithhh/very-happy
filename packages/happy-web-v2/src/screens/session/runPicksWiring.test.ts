@@ -48,3 +48,15 @@ describe('AgentInput run picks (B-849b)', () => {
         expect(source).toContain('liveSwitch: metadata?.capabilities?.includes(CLAUDE_CONFIG_MODEL_CAPABILITY) === true');
     });
 });
+
+describe('AgentInput unknown model (B-849b2, QA28 P2-3)', () => {
+    // REGRESSION (QA28 P2-3): `--model gpt-bogus-9` showed 「本机配置 · Sol」 while
+    // every message sent and ran gpt-bogus-9.
+    it('the session\'s model is always an entry; 「未知模型」 when the catalog lacks it', () => {
+        expect(source).toContain('const models = withSelectedModelEntry(listedModels, sessionFollowsLatest ? null : explicitModelMode, (id) => {');
+        expect(source).toContain('const known = !catalogModels?.length || catalogModels.some((model) => model.code === base || model.resolvedModel === base);');
+        expect(source).toContain("{ name: t('session.chat.modelPicker.unknownModel', { model: id }), description: t('session.chat.modelPicker.unknownModelHint') }");
+        expect(source).toContain('optionKeys: models.map((option) => option.key),');
+    });
+});
+

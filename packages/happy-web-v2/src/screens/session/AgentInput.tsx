@@ -67,7 +67,7 @@ import { apiSocket } from '@/sync/apiSocket';
 import { forkCatalogSource, type LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
-import { deriveCodexRunningModel, deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
+import { deriveCodexRunningModel, deriveRunningModelSubtitle, selectDisplayedModelKey, withSelectedModelEntry } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
     advanceQueueDeliveryPhase,
@@ -447,11 +447,20 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const runnableModels = catalogModels?.length
         ? new Set([...catalogModels.map((model) => model.code), ...(normalizeAgentKey(flavor) === 'claude' && (!session || supportsClaudeOpus55(metadata)) ? ['claude-opus-5-5'] : [])])
         : null;
-    const models = localizeModelDescriptions(flavor, withLongContextTwins(flavor, pickedModels, t('session.chat.modelPicker.longContext')), {
+    const listedModels = localizeModelDescriptions(flavor, withLongContextTwins(flavor, pickedModels, t('session.chat.modelPicker.longContext')), {
         resolved: resolvedModelOf,
         keep: new Set([LATEST_MODEL_MODE, 'default', ...customModels]),
         runnable: runnableModels,
         translate: t,
+    });
+    // B-849b2 (QA28 P2-3): a model the picker does not list is shown as itself
+    // (what is sent and run), 「未知模型」 when the wrapper's catalog lacks it.
+    const models = withSelectedModelEntry(listedModels, sessionFollowsLatest ? null : explicitModelMode, (id) => {
+        const base = id.endsWith(LONG_CONTEXT_SUFFIX) ? id.slice(0, -LONG_CONTEXT_SUFFIX.length) : id;
+        const known = !catalogModels?.length || catalogModels.some((model) => model.code === base || model.resolvedModel === base);
+        return known
+            ? { name: nameOfModel(id), description: null }
+            : { name: t('session.chat.modelPicker.unknownModel', { model: id }), description: t('session.chat.modelPicker.unknownModelHint') };
     });
     const isGemini = normalizeAgentKey(flavor) === 'gemini';
     const permModes = getAvailablePermissionModes(flavor, metadata, t as any);

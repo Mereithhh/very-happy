@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveCodexRunningModel, deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
+import { deriveCodexRunningModel, deriveRunningModelSubtitle, selectDisplayedModelKey, withSelectedModelEntry } from './modelDisplay';
 
 const base = { isClaude: true, selectedKey: 'opus', running: 'claude-opus-5' };
 
@@ -54,5 +54,18 @@ describe('deriveCodexRunningModel (B-844d)', () => {
     it('silent for wrappers that do not publish model facts, or unknown intent', () => {
         expect(deriveCodexRunningModel({ stickyModel: undefined, running: 'gpt-6-luna', intended: 'gpt-5.6-sol' })).toBeUndefined();
         expect(deriveCodexRunningModel({ stickyModel: null, running: 'gpt-6-luna', intended: undefined })).toBeUndefined();
+    });
+});
+
+describe('withSelectedModelEntry (B-849b2, QA28 P2-3)', () => {
+    const options = [{ key: 'latest', name: 'Follow latest' }, { key: 'default', name: 'Machine config · Sol' }, { key: 'gpt-6-astra', name: 'GPT-6-Astra' }];
+    const unknown = (id: string) => ({ name: `${id} · unknown model`, description: 'not listed' });
+    it('a model the picker does not list is shown as itself — not the first entry', () => {
+        const listed = withSelectedModelEntry(options, 'gpt-bogus-9', unknown);
+        expect(listed.at(-1)).toEqual({ key: 'gpt-bogus-9', name: 'gpt-bogus-9 · unknown model', description: 'not listed' });
+        expect(selectDisplayedModelKey({ selectedKey: 'gpt-bogus-9', running: 'gpt-bogus-9', optionKeys: listed.map((o) => o.key) })).toBe('gpt-bogus-9');
+    });
+    it('listed models, latest and machine config add nothing', () => {
+        for (const key of ['gpt-6-astra', 'latest', 'default', null, undefined]) expect(withSelectedModelEntry(options, key, unknown)).toEqual(options);
     });
 });
