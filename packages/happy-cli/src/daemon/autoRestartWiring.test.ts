@@ -50,7 +50,7 @@ describe('B-852 auto-restart wiring', () => {
         for (const src of [claude, codex, acp]) {
             expect(src).toMatch(/const autoUpdated = takeAutoRestartedEvent\(process\.env(, 'Codex')?\);\n\s+if \(autoUpdated\) session\.sendSessionEvent\(autoUpdated\);/);
         }
-        expect(claude).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY]');
+        expect(claude).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY]');
         expect(codex).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY');
         expect(acp).toContain("...(opts.agentName === 'pi' && opts.startedBy === 'daemon' ? [AUTO_RESTART_CAPABILITY] : [])],");
     });

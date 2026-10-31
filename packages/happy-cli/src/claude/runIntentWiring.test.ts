@@ -16,6 +16,7 @@ const claude = read('claude/runClaude.ts');
 const remote = read('claude/claudeRemote.ts');
 const launcher = read('claude/claudeRemoteLauncher.ts');
 const codex = read('codex/runCodex.ts');
+const daemon = read('daemon/run.ts');
 const between = (source: string, start: string, end: string) => {
     const at = source.indexOf(start);
     expect(at).toBeGreaterThan(-1);
@@ -92,5 +93,17 @@ describe('Codex wrapper (runCodex.ts)', () => {
         expect(rpc).toContain('pendingModelReset = !currentModel;');
         expect(rpc).toContain('currentEffort = (request.effort || undefined) as ReasoningEffort | undefined;');
         expect(codex).toContain('messageModelReset = pendingModelReset && !messageModel;');
+    });
+});
+
+describe('auto-restart (B-852) relaunches into the restore path (QA27 P2-1)', () => {
+    // REGRESSION (QA27 P2-1): an idle auto-restart dropped effort and the 1M model
+    // for messages without meta. The daemon relaunches as a reconnect with no
+    // --model, so the new wrapper's restoredRun / resumedEffort (above) apply.
+    it('the auto restart is a seeded reconnect that passes no model of its own', () => {
+        expect(daemon).toContain("const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, auto: { kind: staleness.kind, target: staleness.target } });");
+        const impl = between(daemon, 'const restartSessionImpl = async', 'const stopSession = ');
+        expect(impl).toContain('const model = sanitizeResumeModel(options?.model);');
+        expect(impl).toContain('HAPPY_RECONNECT_SESSION_ID: happySessionId,');
     });
 });
