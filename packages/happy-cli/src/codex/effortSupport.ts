@@ -4,6 +4,7 @@ type CatalogModel = {
     model: string;
     isDefault?: boolean;
     supportedReasoningEfforts: { reasoningEffort: ReasoningEffort }[];
+    defaultReasoningEffort?: ReasoningEffort | null;
 };
 
 /**
@@ -33,8 +34,9 @@ export function unsupportedEffortReason(
  *   message without meta does not fail the same way.
  * - not explicit (a sticky or restored level, e.g. an intent a wrapper before
  *   this fix recorded): the session simply has no valid choice; the turn runs
- *   on `fallback`, or the model's own default when that is refused too.
- * `effort` undefined = the model's default.
+ *   on `fallback`, or — when that is refused too — the level the catalog names
+ *   as the model's default (a named level every device can show; a Codex
+ *   session offers no 「自动」), else no level (Codex picks).
  */
 export function settleTurnEffort(
     catalog: readonly CatalogModel[],
@@ -44,6 +46,8 @@ export function settleTurnEffort(
 ): { refusal: string | null; effort: ReasoningEffort | undefined; changed: boolean } {
     const refusal = unsupportedEffortReason(catalog, model, effort);
     if (!refusal) return { refusal: null, effort, changed: false };
-    const settled = unsupportedEffortReason(catalog, model, opts.fallback) ? undefined : opts.fallback;
+    const catalogDefault = catalog.find((entry) => model ? entry.model === model : entry.isDefault)?.defaultReasoningEffort ?? undefined;
+    const settled = !unsupportedEffortReason(catalog, model, opts.fallback) ? opts.fallback
+        : catalogDefault && !unsupportedEffortReason(catalog, model, catalogDefault) ? catalogDefault : undefined;
     return { refusal: opts.explicit ? refusal : null, effort: settled, changed: true };
 }

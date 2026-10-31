@@ -35,7 +35,9 @@ describe('settleTurnEffort (B-849b2, QA28 P2-4)', () => {
     it('a held (sticky / restored) refused level is no choice: the turn runs on the fallback', () => {
         expect(settleTurnEffort(catalog, 'gpt-6-astra', 'minimal', { explicit: false, fallback: 'high' })).toEqual({ refusal: null, effort: 'high', changed: true });
     });
-    it('a fallback the model refuses too leaves the model default', () => {
+    it('a fallback the model refuses too settles on the catalog default level, else none', () => {
         expect(settleTurnEffort(catalog, 'gpt-6-astra', 'minimal', { explicit: false, fallback: 'minimal' })).toEqual({ refusal: null, effort: undefined, changed: true });
+        const withDefault = [{ ...catalog[0], defaultReasoningEffort: 'medium' as const }];
+        expect(settleTurnEffort(withDefault, 'gpt-6-astra', 'minimal', { explicit: false, fallback: 'minimal' })).toEqual({ refusal: null, effort: 'medium', changed: true });
     });
 });
