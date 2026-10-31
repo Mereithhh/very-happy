@@ -137,6 +137,11 @@ change `CLI_AUTO_UPDATE_VERSION` or the machine's automatic-update preference.
 It still waits for idle and uses the same installer fence. Older machines show
 the fixed-version terminal command. See [update recovery](../specs/2026-09-cli-update-recovery.md).
 
+After an update, sessions still running the old CLI are restarted in place
+automatically once idle (B-852, machine setting `autoRestartSessions`, default
+on; `HAPPY_AUTO_RESTART_QUIET_MS` shortens the 10-minute quiet window for
+tests). See [auto-restart](../specs/2026-10-auto-restart-stale-wrappers.md).
+
 ## Google login
 
 Set `GOOGLE_CLIENT_ID` and `GOOGLE_ALLOWED_ORIGINS` together. Create your own Web

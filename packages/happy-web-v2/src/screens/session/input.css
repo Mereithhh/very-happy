@@ -565,7 +565,7 @@
   .ci-model-controls .me-trigger { padding-inline: var(--sp-1); }
 }
 @container composer (max-width: 400px) {
-  .ci-model-controls .me-strength { display: none; }
+  .ci-model-controls .mm-v { max-width: 15ch; }
 }
 @media (pointer: coarse) {
   .ci-icon-btn, .ci-composer .mm-trigger { min-width: 44px; min-height: 44px; }

@@ -318,6 +318,22 @@ export async function machineSetAgentHibernation(machineId: string, idleMs: numb
     }
 }
 
+/**
+ * B-852: turn this machine's automatic restart of stale sessions on/off. Same
+ * fake-ack discipline (铁律 17): `{error}` is a failure.
+ */
+export async function machineSetAutoRestart(machineId: string, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { ok: false; error: string }> {
+    try {
+        const raw = await apiSocket.machineRPC<unknown, { enabled: boolean }>(machineId, 'auto-restart-set', { enabled }, { timeoutMs: 30000 });
+        const obj = (raw && typeof raw === 'object') ? raw as { error?: unknown; autoRestart?: { enabled?: unknown } } : {};
+        if (typeof obj.error === 'string' && obj.error) return { ok: false, error: obj.error };
+        const applied = obj.autoRestart?.enabled;
+        return { ok: true, enabled: typeof applied === 'boolean' ? applied : enabled };
+    } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+
 /** B-587: opt a session in/out of idle hibernation. Off is written as an
  *  explicit `false`, never deleted: an absent key is what an old web's
  *  metadata write leaves behind, and the CLI keeps a latched `true` then. */

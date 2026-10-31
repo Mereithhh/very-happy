@@ -1,5 +1,6 @@
 import os from 'node:os';
 import { applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, withoutServerSnapshot, type ReconnectReplay } from '@/utils/reconnectSession';
+import { AUTO_RESTART_CAPABILITY, takeAutoRestartedEvent } from '@/update/autoRestartPolicy';
 import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, latchKeepAwake, resolveCheckMs, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
 import { HibernationProbe, commitHibernation } from '@/hibernation/hibernationProbe';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +16,7 @@ import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import type { EnhancedMode, PermissionMode } from './loop';
 import type { MessageMeta } from '@/api/types';
+import type { QueueDiscardEntry } from '@/utils/MessageQueue2';
 import { spawnOriginTags } from '@/utils/createSessionMetadata';
 import { PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY } from '@slopus/happy-wire';
 import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
@@ -227,7 +229,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
-        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, PROJECT_SESSION_CAPABILITY],
+        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY],
         // Effective mode this process enforces. Kept current by
         // publishPermissionMode below; the web renders it instead of guessing.
         permissionMode: mapToClaudeMode(initialPermissionMode ?? 'default'),
@@ -765,7 +767,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // the web stops showing it as 「排队中」 and later as delivered. Items
     // without a sourceId (CLI-internal pushes) have no web counterpart to mark.
     messageQueue.setOnDiscard((entries) => {
-        const byReason = new Map<'cleared' | 'aborted' | 'restarted', string[]>();
+        const byReason = new Map<QueueDiscardEntry['reason'], string[]>();
         for (const entry of entries) {
             if (!entry.sourceId) continue;
             const list = byReason.get(entry.reason) ?? [];
@@ -1340,6 +1342,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         });
         hibernationProbe.start();
     }
+    // B-852: the daemon restarted this session onto new code by itself — say so, quietly.
+    const autoUpdated = takeAutoRestartedEvent(process.env);
+    if (autoUpdated) session.sendSessionEvent(autoUpdated);
 
     // Create claude loop
     const exitCode = await loop({

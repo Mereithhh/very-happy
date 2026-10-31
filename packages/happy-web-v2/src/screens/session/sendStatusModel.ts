@@ -62,20 +62,21 @@ export function clearSendSpinner(localId: string): void {
     sendingSince.delete(localId);
 }
 
-type DeliveryItem = { kind: string; id: string; sendState?: SendState };
+type DeliveryItem = { kind: string; id: string; sendState?: SendState; inputState?: 'queued' | 'canceled' };
 
 /**
  * B-722: while the session is offline, the newest user prompt the agent has
  * not answered yet is stored on the server but not delivered — it goes out
  * when the session is back (B-679 replays it). Returns that message's id, or
  * null. Input is newest-first (the chat list order); events are skipped, any
- * agent output or tool call means the prompt was picked up.
+ * agent output or tool call means the prompt was picked up. A prompt the CLI
+ * tombstoned (B-854 「未执行」) will never be delivered — no hint under it.
  */
 export function undeliveredPromptId(messagesNewestFirst: readonly DeliveryItem[] | undefined, sessionOnline: boolean): string | null {
     if (sessionOnline || !messagesNewestFirst) return null;
     for (const message of messagesNewestFirst) {
         if (message.kind === 'agent-event') continue;
-        if (message.kind === 'user-text') return message.sendState ? null : message.id;
+        if (message.kind === 'user-text') return message.sendState || message.inputState === 'canceled' ? null : message.id;
         return null;
     }
     return null;

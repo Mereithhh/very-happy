@@ -77,6 +77,12 @@ interface Settings {
    */
   agentHibernationIdleMs?: number
   /**
+   * B-852: restart a session whose wrapper a CLI upgrade left on old code,
+   * automatically once it is provably idle. Absent/true = on, false = off.
+   * Machine-local; set from the web machine page via `auto-restart-set`.
+   */
+  autoRestartSessions?: boolean
+  /**
    * B-327: install a newly recommended CLI by itself while the machine is idle.
    * `idle` (the default) upgrades only with no session wrapper and no live web
    * terminal; `off` never does. Only ever installs the version the relay

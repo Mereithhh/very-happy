@@ -110,7 +110,7 @@ describe('Claude wrapper ↔ Orca follow-ups wiring (B-634)', () => {
         const handler = between(launcher, 'onCommandsUnconfirmed: (commands, { aborted }) => {', 'onCommandsDropped:');
         expect(handler).toContain('aborted: aborted || exitReason !== null,');
         expect(handler).toContain('parkFree: !modeGate.hasParked,');
-        expect(handler).toContain('modeGate.park({ message: plan.redeliver.payload.message, mode: plan.redeliver.payload.mode, uuid: plan.redeliver.uuid });');
+        expect(handler).toContain('modeGate.park({ message: plan.redeliver.payload.message, mode: plan.redeliver.payload.mode, uuid: plan.redeliver.uuid, finalized: true });');
         expect(handler).toContain("session.client.sendQueueCancelReason(plan.tombstone, 'aborted');");
         const remote = read('./claudeRemote.ts');
         expect(between(remote, '    } finally {\n        updateThinking(false);', '\n}\n')).toMatch(/if \(cliCapabilities\.has\(MSG_LIFECYCLE_CAPABILITY\)\) \{\s+const unconfirmed = commandTracker\.takeUnconfirmed\(\);/);

@@ -11,6 +11,19 @@ describe('MessageQueue2', () => {
         expect(queue.isClosed()).toBe(false);
     });
 
+    it('B-854: discardAll reports every queued item with the exit reason and empties the queue', () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        const discarded: Array<{ sourceId: string | undefined; reason: string }> = [];
+        queue.setOnDiscard((entries) => discarded.push(...entries));
+        queue.push('one', 'a', undefined, 'k1');
+        queue.push('two', 'b', undefined, 'k2');
+        expect(queue.discardAll('restarted')).toBe(2);
+        expect(discarded).toEqual([{ sourceId: 'k1', reason: 'restarted' }, { sourceId: 'k2', reason: 'restarted' }]);
+        expect(queue.size()).toBe(0);
+        expect(queue.discardAll('restarted')).toBe(0);
+        expect(discarded).toHaveLength(2);
+    });
+
     it('cancels a pending message by stable source id', async () => {
         const queue = new MessageQueue2<string>(mode => mode);
         queue.push('same text', 'local', undefined, 'message-a');

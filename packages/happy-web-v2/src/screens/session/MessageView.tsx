@@ -5,7 +5,7 @@
  */
 import { memo, useCallback, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Ban, Bot, Brain, Check, ChevronDown, ChevronRight, Play, Square, Terminal } from 'lucide-react';
+import { AlertTriangle, Bot, Brain, Check, ChevronDown, ChevronRight, Play, Square, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage, ToolCallMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { useSession, useSessionThinking, useMachine } from '@/sync/storage';
@@ -22,13 +22,14 @@ import { stripHarnessBlocks, parseLocalCommandMessage, parseTaskNotification } f
 import { estimateWrappedLines, shouldCollapseBubble } from './codeCollapse';
 import { stripThinkingWrapper, formatThoughtFor, thinkingPreview, isLiveThinking } from './thinking';
 import { presentServiceEvent } from './serviceEvent';
+import { AUTO_UPDATED_EVENT_KIND, parseAutoUpdatedLine } from '@/app/autoRestartPolicy';
 import { parseAttachedFiles, stripAttachedFiles } from './attachedFiles';
 import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, type AttachmentItem } from './UserAttachments';
 import { discardedReasonKey } from './discardedInput';
 import { MessageActions } from './MessageActions';
 import { MessageTime } from './MessageTime';
 import { requestChatFollow } from './chatFollowRequest';
-import { SendFailedActions, SendingIndicator, SentFlash, useSendSpinnerReset } from './SendStatusView';
+import { DiscardedNote, SendFailedActions, SendingIndicator, SentFlash, useSendSpinnerReset } from './SendStatusView';
 import { turnSendStatus } from './sendStatusModel';
 import './message.css';
 import { presentTeamMessage } from './teamMessage';
@@ -158,12 +159,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
                     {t('session.chat.draft.attached', { count: attachedDraftCount })}
                 </span>
             )}
-            {discarded && (
-                <span className="msg-discarded" role="status">
-                    <Ban size={12} aria-hidden />
-                    {t(`session.chat.discarded.${discarded}`)}
-                </span>
-            )}
+            {discarded && <DiscardedNote sessionId={sessionId} reason={discarded} text={text} />}
         </div>
     );
 }
@@ -392,6 +388,15 @@ function AgentEventBlock({ message, sessionId, continueOffer = false }: { messag
             {
                 if (ev.kind === 'claude-auth-failed') {
                     return <ClaudeAuthFailedBlock sessionId={sessionId} />;
+                }
+                // B-852: the daemon restarted this session onto new code by itself — one quiet line.
+                const autoUpdated = ev.kind === AUTO_UPDATED_EVENT_KIND ? parseAutoUpdatedLine(ev.message) : null;
+                if (autoUpdated) {
+                    label = autoUpdated.agent
+                        ? t('autoRestart.updatedAgentLine', { agent: autoUpdated.agent, version: autoUpdated.version })
+                        : t('autoRestart.updatedLine', { version: autoUpdated.version });
+                    subtle = true;
+                    break;
                 }
                 const presentation = presentServiceEvent(ev.message);
                 if (presentation.kind === 'hidden') return null;

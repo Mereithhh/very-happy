@@ -75,6 +75,30 @@ park-and-replay 曾经是「一个 `pending` 变量 + 一个 `modeHash` 变量�
 **取的同时 adopt**，遗漏不可表达。park 时还必须把附件 stage 进 prompt——重放路径原样
 返回 park 时的值，而队列项是那些字节的唯一引用。
 
+### 坑 3：park 之后旧 query 不能再取消息（B-853）
+
+park 时 `nextMessage` 返回 null、旧 query 的输入随即关闭，但 Claude Code 进程不会马上退出：
+还在跑的后台任务（`run_in_background` 的 Bash）完成时会发一条 task-notification，自己再跑一轮 turn，
+这轮的 result 又会触发 `pullNextMessage`。修复前这次拉取会经 `takeParked()` 取走 park 的消息；
+如果它的 model 和当前不同，就要先 `await setModel`，这时进程已经退出，返回
+「Query closed before response received」，`messages.push` 往已关闭的输入里写，抛错被 `.catch`
+吞掉。结果这条消息既不在 transcript 里，也不在日志里，也没有 tombstone（dev-sg 复现：B-851b 的 c7 会话，
+以及 B-853 修复前的 pre1 会话）。如果 model 相同，push 前已经 track 过，B-634 ② 的重投能把它找回来，
+但会白转一轮，而且 prompt 会被装饰两次。
+
+现在的规则：
+
+- 输入一旦关闭（`messages.done`）或 query 结束（`queryClosed`），`claudeRemote` 不再拉取。
+- 拉取过程中（`nextMessage` 或 `setModel` 期间）query 结束了，就把消息通过 `onUndeliveredMessage`
+  交还给 launcher。setModel 失败时如果原因是 query 已关，就不发「模型切换失败」提示，也不把 model 降级。
+- launcher 用 `planUndeliveredMessage` 处理交还的消息：park 槽空闲且不在退出，就以 `finalized` 原样
+  park，下一轮 launch 用它请求的 model/mode 执行，不再装饰一次；否则发 tombstone，原因是退出时为
+  `aborted`、其他情况为 `restarted`。退出 remote 时如果 park 槽里还有消息，也发 tombstone。
+- Web 上被 CLI tombstone 的消息，在「未执行 · 原因」后面会有「放回输入框」，一键把原文放回 composer 重发。
+
+Codex 和 pi 没有这个问题：mode 都按 turn 参数（Codex 的 `sendTurnAndWait`）或在 session 内活切
+（ACP 的 `setSessionMode`/`setSessionConfigOption`）生效，不会 park、也不会重开。
+
 ## 兼容矩阵与发布顺序
 
 纯 CLI 侧行为，wire 无改动。

@@ -27,7 +27,8 @@ import * as Popover from '@radix-ui/react-popover';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { StickyNote, Check, FolderOpen, MessageCircleQuestion, MoreHorizontal, Pencil, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
-import { useSession, useSessions } from '@/sync/storage';
+import { useMachine, useSession, useSessions } from '@/sync/storage';
+import { sessionMachineName } from '@/utils/machineUtils';
 import { sessionSetKeepAwake, sessionUpdateTitle } from '@/sync/ops';
 import { supportsKeepAwake } from '@/app/sessionHibernation';
 import { toast } from '@/ui/Toast';
@@ -114,9 +115,10 @@ export function ChatHeader({
     const meta = session?.metadata;
     const title = meta?.summary?.text?.trim() || t('session.newChat');
     const agent = sessionAgentLabel(meta?.flavor, t('status.unknown'));
-    const host = meta?.host;
     const cwd = meta?.path;
     const machineId = meta?.machineId;
+    // B-849a: the machine's display name, not the wrapper's hostname.
+    const host = sessionMachineName(useMachine(machineId ?? ''), meta?.host);
     const [relayStatus, setRelayStatus] = useState<MachineRelayStatus>(() =>
         machineId ? apiSocket.getMachineRelayStatus(machineId) : { transport: 'legacy', state: 'fallback' });
     useEffect(() => {

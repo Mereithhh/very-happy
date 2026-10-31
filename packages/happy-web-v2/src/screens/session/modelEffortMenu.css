@@ -17,23 +17,84 @@
   box-shadow: var(--shadow-lift);
   z-index: 60;
 }
+.me-title { display: block; margin-bottom: var(--sp-3); font-size: var(--fs-13); font-weight: 600; color: var(--text); }
 .me-model-label { display: block; font-size: var(--fs-11); color: var(--text-dim); margin-bottom: var(--sp-1); }
-.me-model-picker { width: 100%; }
+.me-models { display: flex; flex-direction: column; gap: 2px; }
+.me-model {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 36px;
+  padding: var(--sp-1) var(--sp-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) { .me-model:hover { background: var(--fill-hover); } }
+.me-model:focus-visible, .me-more:focus-visible, .me-link:focus-visible, .me-switch-row:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.me-model--on { background: var(--fill-selected); }
+.me-model-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.me-model-name { font-size: var(--fs-13); overflow-wrap: anywhere; }
+.me-model--on .me-model-name { font-weight: 600; }
+.me-model--off { cursor: default; }
+.me-model--off .me-model-name { color: var(--text-dim); }
+@media (hover: hover) and (pointer: fine) { .me-model--off:hover { background: transparent; } }
+.me-model-desc { font-size: var(--fs-11); color: var(--text-dim); overflow-wrap: anywhere; }
+.me-model-check { flex: none; color: var(--text); }
+.me-more {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 32px;
+  padding: 0 var(--sp-2);
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-12);
+  text-align: left;
+  cursor: pointer;
+}
+.me-more-caret { transition: transform var(--motion-fast); }
+.me-more[aria-expanded='true'] .me-more-caret { transform: rotate(90deg); }
+.me-more-count { color: var(--text-faint); }
+.me-more-list { display: flex; flex-direction: column; gap: 2px; padding-left: var(--sp-2); border-left: var(--hairline) solid var(--line); margin-left: var(--sp-2); }
+.me-readonly { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2); border: var(--hairline) solid var(--line); border-radius: var(--r-sm); }
+.me-readonly-value { font-size: var(--fs-13); font-weight: 600; }
+.me-switch-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); width: 100%; margin-top: var(--sp-2); padding: var(--sp-1) var(--sp-2); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .me-switch-row:hover { background: var(--fill-hover); } }
+.me-switch-text { display: flex; flex-direction: column; min-width: 0; }
+.me-switch-text .me-note { margin: 0; }
+.me-switch { position: relative; flex: none; width: 36px; height: 22px; border: 1px solid var(--line-2); border-radius: var(--r-pill); background: var(--bg-3); }
+.me-switch-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-dim); transition: transform var(--motion-fast); }
+.me-switch-row[aria-checked='true'] .me-switch { border-color: var(--text); background: var(--text); }
+.me-switch-row[aria-checked='true'] .me-switch-thumb { background: var(--bg-0); transform: translateX(14px); }
 .me-note { font-size: var(--fs-11); color: var(--text-dim); overflow-wrap: anywhere; margin: var(--sp-2) 0 0; }
-.me-panel .effort-slider { width: 100%; min-width: 0; margin-top: var(--sp-4); }
-.me-panel .effort-slider-control { height: 44px; }
+.me-notice { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); margin-top: var(--sp-2); padding: var(--sp-2); border-radius: var(--r-sm); background: var(--fill-hover); font-size: var(--fs-12); color: var(--text); }
+.me-link { padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-12); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.me-panel .effort-seg, .me-sheet .effort-seg { margin-top: var(--sp-4); }
+.me-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); margin-top: var(--sp-3); padding-top: var(--sp-2); border-top: var(--hairline) solid var(--line); font-size: var(--fs-11); color: var(--text-dim); }
+/* Phones: the whole setup is ONE bottom sheet (no sheet over a popover). */
+.me-sheet-body { min-height: 0; overflow-y: auto; padding: 0 var(--sp-2) var(--sp-2); }
 @media (max-width: 600px), (pointer: coarse) {
   .me-trigger { min-height: 44px; }
 }
-.me-panel .effort-slider-heading { font-size: var(--fs-13); }
-.me-panel .effort-slider input { height: 44px; }
-.me-panel .effort-slider-rail { top: calc(50% - 4px); height: 8px; border-radius: var(--r-pill); }
-.me-panel .effort-slider-rail > span { border-radius: inherit; }
-.me-panel .effort-slider-ticks { top: 20px; }
-.me-panel .effort-slider-ticks i { width: 4px; height: 4px; border-radius: 50%; background: var(--text-faint); }
-.me-panel .effort-slider-burst { top: 22px; }
-.me-panel .effort-slider input::-webkit-slider-thumb { width: 22px; height: 22px; }
-.me-panel .effort-slider input::-moz-range-thumb { width: 16px; height: 16px; }
+@media (pointer: coarse) {
+  .me-model { min-height: 48px; font-size: var(--fs-15); }
+  .me-model-name { font-size: var(--fs-15); }
+  .me-more { min-height: 44px; font-size: var(--fs-13); }
+  .me-switch-row { min-height: 48px; }
+  /* design-lint-allow: 26px track inside the ≥48px row that is the switch (QA26 P2-3) */
+  .me-switch { width: 44px; height: 26px; }
+  .me-switch-thumb { width: 20px; height: 20px; }
+  .me-switch-row[aria-checked='true'] .me-switch-thumb { transform: translateX(18px); }
+  .me-link { min-height: 44px; font-size: var(--fs-13); }
+}
 
 /* B-688: 「自定义…」 — last row, hairline above, ghost row (no own outline). */
 .me-customize {

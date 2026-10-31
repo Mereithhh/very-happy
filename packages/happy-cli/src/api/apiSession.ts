@@ -28,6 +28,7 @@ import { InvalidateSync } from '@/utils/sync';
 import axios from 'axios';
 import { createEnvelope } from '@slopus/happy-wire';
 import { scanUndeliveredQueuedInputs, type UndeliveredScan } from '@/utils/undeliveredQueuedInputs';
+import type { QueueDiscardReason } from '@/utils/MessageQueue2';
 import { normalizeAgentUsage, usageAgentKey } from './usageReport';
 import { MAX_CHAT_ATTACHMENT_ENCRYPTED_BYTES } from '@/utils/attachmentLimits';
 import { TurnReporter } from '@/update/turnActivity';
@@ -990,7 +991,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /** B-332: emit a queue-cancel tombstone, mirroring the web's own signal. */
-    sendQueueCancelReason(localKeys: string[], reason: 'cleared' | 'aborted' | 'restarted'): void {
+    sendQueueCancelReason(localKeys: string[], reason: QueueDiscardReason): void {
         if (localKeys.length === 0) return;
         const envelope = createEnvelope('user', { t: 'queue-cancel', targetLocalKeys: localKeys, reason });
         this.sendSessionProtocolMessage(envelope);
@@ -1637,6 +1638,7 @@ export class ApiSessionClient extends EventEmitter {
 
     async close() {
         logger.debug('[API] socket.close() called');
+        this.closedByClient = true;
         this.promptQueueDrain?.close();
         this.sendSync.stop();
         this.receiveSync.stop();
@@ -1649,7 +1651,16 @@ export class ApiSessionClient extends EventEmitter {
         this.relaySocket = null;
     }
 
+    /**
+     * B-854: set by close(). The socket's own `disconnect` ("io client
+     * disconnect") must not reconnect a client its owner closed: a runner that
+     * ends without `process.exit` (ACP) stayed alive on that socket — still
+     * "active" for the daemon and the web, with no loop to run anything.
+     */
+    private closedByClient = false;
+
     private startSmartReconnect() {
+        if (this.closedByClient) return;
         if (this.reconnectInterval) return;
 
         this.reconnectInterval = setInterval(() => {

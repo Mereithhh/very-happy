@@ -169,7 +169,8 @@ export const sessionProgressEventSchema = z.object({
  * `reason` is a plain string, not an enum (AGENTS 铁律 14): a reader must never
  * drop the whole tombstone over a word it does not know. Absent on web-
  * originated tombstones (the user pressed cancel themselves). Known values:
- * `cleared` | `aborted` | `restarted`.
+ * `cleared` | `aborted` | `restarted` | `failed` (B-854: taken off the queue but
+ * never handed to the agent — a pre-flight or agent start failed).
  *
  * Envelope role must be `user`: the web drops `agent` envelopes without a turn
  * id (typesRaw normalizeSessionEnvelope), and a tombstone has no turn.

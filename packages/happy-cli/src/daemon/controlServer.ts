@@ -38,6 +38,7 @@ const WrapperIdleSnapshotSchema = z.object({
   scheduledWakeups: z.number().int().nonnegative().optional(),
   lastActivityAt: z.number(),
   exiting: z.boolean().optional(),
+  agentVersion: z.string().max(64).optional(),
 }).passthrough();
 const HibernateCheckBodySchema = z.object({
   sessionId: z.string().min(1).max(200),

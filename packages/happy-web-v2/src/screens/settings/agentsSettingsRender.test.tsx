@@ -67,15 +67,22 @@ describe('Settings → Agents (B-370)', () => {
         const groups = [...html.matchAll(/<div class="vh-itemgroup__title eyebrow">([^<]+)<\/div>/g)].map((m) => m[1]);
         expect(groups).toEqual(['New chat creation', 'claude', 'codex', 'gemini', 'openclaw', 'pi']);
         const piGroup = html.slice(html.indexOf('eyebrow">pi<'));
-        expect(piGroup).toContain('<span class="vh-item__title">Permission</span></span><span class="vh-item__right"><span class="set-value">Auto-run (default)</span>');
-        expect(piGroup).toContain('<span class="vh-item__title">Model</span></span><span class="vh-item__right"><span class="set-value">Machine default (default)</span>');
-        expect(piGroup).not.toContain('<span class="vh-item__title">Effort</span>');
+        // 「先审阅改动」 is on by default: the row says what a new pi session starts with.
+        expect(piGroup).toContain('<span class="vh-item__title">Permission</span></span><span class="vh-item__right"><span class="set-value">default permissions (review changes first)</span>');
+        expect(piGroup).toContain('<span class="vh-item__title">Model</span></span><span class="vh-item__right"><span class="set-value">Machine config (default)</span>');
+        expect(piGroup).not.toContain('<span class="vh-item__title">Thinking</span>');
     });
 
     it('B-844b: with no session to resolve against, follow-latest says it depends on the machine (never the table head)', () => {
         const html = renderAgents();
         const codexGroup = html.slice(html.indexOf('eyebrow">codex<'), html.indexOf('eyebrow">gemini<'));
-        expect(codexGroup).toContain('<span class="set-value">Follow latest (depends on the machine)</span>');
+        expect(codexGroup).toContain('<span class="set-value">Latest</span>');
+        // B-849a: review-first on → Codex starts read-only; the row must not claim auto-run.
+        expect(codexGroup).toContain('<span class="set-value">Read only (review changes first)</span>');
+        expect(codexGroup).not.toContain('Auto-run');
+        // Gemini's model is read-only: the machine config decides.
+        const geminiGroup = html.slice(html.indexOf('eyebrow">gemini<'), html.indexOf('eyebrow">openclaw<'));
+        expect(geminiGroup).toContain('<span class="set-value">Set by the machine config</span>');
         expect(html).not.toContain('default model');
     });
 

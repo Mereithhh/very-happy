@@ -80,6 +80,86 @@ describe('pending session store (B-516)', () => {
     beforeEach(() => { vi.useFakeTimers(); });
     afterEach(() => { vi.useRealTimers(); });
 
+    // B-849a: a Codex/Gemini first message resolves follow-latest against the
+    // wrapper's catalog + machine config; sent before the wrapper publishes them
+    // it carried no model and the thread ran Codex's own default instead of the
+    // model the draft showed (mac-office: shown gpt-5.6-sol, ran gpt-6-astra).
+    it('B-849a: holds the first message until the wrapper published its model facts, bounded', async () => {
+        const h = harness();
+        let facts = false;
+        h.deps.hasModelFacts = (_id, agent) => agent !== 'codex' || facts;
+        h.deps.modelFactsWaitMs = 8_000;
+        h.store.create({ ...input, agent: 'codex', firstMessage: 'hello' });
+        h.spawns[0].result.resolve({ type: 'success', sessionId: 'real1' });
+        h.addSession('real1');
+        await flush();
+        expect(h.events).not.toContain('send:real1:hello');
+        facts = true;
+        h.addSession('real1'); // metadata update notifies the session store
+        await flush();
+        expect(h.events).toContain('send:real1:hello');
+
+        const late = harness();
+        late.deps.hasModelFacts = () => false;
+        late.deps.modelFactsWaitMs = 8_000;
+        late.store.create({ ...input, agent: 'codex', firstMessage: 'hi' });
+        late.spawns[0].result.resolve({ type: 'success', sessionId: 'real2' });
+        late.addSession('real2');
+        await flush();
+        expect(late.events).not.toContain('send:real2:hi');
+        await vi.advanceTimersByTimeAsync(8_000);
+        await flush();
+        expect(late.events).toContain('send:real2:hi');
+    });
+
+    it('QA26 P2-2: the page says it waits for the model list, and a timeout is reported once', async () => {
+        const h = harness();
+        let facts = false;
+        const timeouts: string[] = [];
+        h.deps.hasModelFacts = () => facts;
+        h.deps.modelFactsWaitMs = 5_000;
+        h.deps.notifyModelFactsTimeout = (record) => { timeouts.push(record.pendingId); };
+        const record = h.store.create({ ...input, agent: 'codex', firstMessage: 'hello' });
+        h.spawns[0].result.resolve({ type: 'success', sessionId: 'real1' });
+        h.addSession('real1');
+        await flush();
+        expect(h.store.get(record.pendingId)?.waitingForModels).toBe(true);
+        facts = true;
+        h.addSession('real1');
+        await flush();
+        expect(h.store.get(record.pendingId)?.waitingForModels).toBeUndefined();
+        expect(timeouts).toEqual([]);
+
+        const late = harness();
+        const lateTimeouts: string[] = [];
+        late.deps.hasModelFacts = () => false;
+        late.deps.modelFactsWaitMs = 5_000;
+        late.deps.notifyModelFactsTimeout = (r) => { lateTimeouts.push(r.pendingId); };
+        const slow = late.store.create({ ...input, agent: 'codex', firstMessage: 'hi' });
+        late.spawns[0].result.resolve({ type: 'success', sessionId: 'real2' });
+        late.addSession('real2');
+        await flush();
+        await vi.advanceTimersByTimeAsync(5_000);
+        await flush();
+        expect(late.events).toContain('send:real2:hi');
+        expect(lateTimeouts).toEqual([slow.pendingId]);
+        expect(late.store.get(slow.pendingId)?.waitingForModels).toBeUndefined();
+    });
+
+    it('QA26 P2-2: facts already there — no waiting state, no toast', async () => {
+        const h = harness();
+        const timeouts: string[] = [];
+        h.deps.hasModelFacts = () => true;
+        h.deps.notifyModelFactsTimeout = (r) => { timeouts.push(r.pendingId); };
+        const record = h.store.create({ ...input, agent: 'codex', firstMessage: 'hello' });
+        h.spawns[0].result.resolve({ type: 'success', sessionId: 'real1' });
+        h.addSession('real1');
+        await flush();
+        expect(h.events).toContain('send:real1:hello');
+        expect(timeouts).toEqual([]);
+        expect(h.store.get(record.pendingId)?.waitingForModels).toBeUndefined();
+    });
+
     it('B-648: a project join returned by onSpawned holds the first message until it lands', async () => {
         const h = harness();
         const join = deferred<void>();
@@ -607,5 +687,18 @@ describe('B-801 draft new sessions', () => {
         const c = harness({ saved: [old], tabId: 'tab-c' });
         expect(c.store.get(record.pendingId)).toBeUndefined();
         expect(c.deps.clearKeys).toHaveBeenCalledWith(record.pendingId);
+    });
+});
+
+describe('QA26 P2-2 wiring', () => {
+    it('header names the wait, the cap is 5 s, a timeout toasts with the machine name', async () => {
+        const { readFileSync } = await import('node:fs');
+        const parts = readFileSync(new URL('../screens/session/PendingSessionParts.tsx', import.meta.url), 'utf8');
+        const runtime = readFileSync(new URL('./pendingSessionsRuntime.ts', import.meta.url), 'utf8');
+        expect(parts).toContain("? t('pendingSession.waitingForModels', { machine: machineName })");
+        expect(runtime).toContain('const MODEL_FACTS_WAIT_MS = 3_000;');
+        expect(runtime).toContain("toast.show(t('pendingSession.modelsTimeout', { machine:");
+        const { zhHans } = await import('@/text/translations/zh-Hans');
+        expect(zhHans.pendingSession.waitingForModels({ machine: 'qa-f4' })).toBe('等待 qa-f4 上报模型列表…');
     });
 });

@@ -310,6 +310,27 @@ describe('reducer', () => {
             });
         });
 
+        it('B-854: a CLI tombstone marks a message sent to an idle agent (no queuedAt), in either page order', () => {
+            const tombstone: NormalizedMessage = {
+                id: 'cli-failed-event', localId: 'cli-failed', createdAt: 2100,
+                role: 'event', isSidechain: false,
+                content: { type: 'queue-cancel', targetLocalKeys: ['local-idle-failed'], reason: 'failed' },
+            };
+            const idleSend: NormalizedMessage = {
+                id: 'idle-failed', localId: 'local-idle-failed', createdAt: 2000,
+                role: 'user', content: { type: 'text', text: 'pre-flight failed' }, isSidechain: false,
+            };
+            const tombstoneFirst = createReducer();
+            reducer(tombstoneFirst, [tombstone]);
+            expect(reducer(tombstoneFirst, [idleSend]).messages[0]).toMatchObject({
+                kind: 'user-text', localId: 'local-idle-failed', inputState: 'canceled', cancelReason: 'failed',
+            });
+            const messageFirst = createReducer();
+            reducer(messageFirst, [idleSend]);
+            const marked = reducer(messageFirst, [tombstone]).messages;
+            expect(marked.find((m) => m.kind === 'user-text')).toMatchObject({ inputState: 'canceled', cancelReason: 'failed' });
+        });
+
         it('should process user messages with localId', () => {
             const state = createReducer();
             const messages: NormalizedMessage[] = [

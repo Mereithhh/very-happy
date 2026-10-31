@@ -256,6 +256,17 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(reports[2]).toMatchObject({ tokens: { total: 50, input: 40, output: 10 }, cost: { total: 0 } });
     });
 
+    it('B-854: a client its owner closed never reconnects on the resulting disconnect', async () => {
+        vi.useFakeTimers();
+        mockSocket.connected = false;
+        const client = new ApiSessionClient('fake-token', session);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+        await client.close();
+        emitSocketEvent('disconnect', 'io client disconnect');
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+    });
+
     it('retries after initial socket connection error', async () => {
         vi.useFakeTimers();
         mockSocket.connected = false;

@@ -1687,7 +1687,21 @@ function landedOnIdleAgent(state: ReducerState, message: ReducerMessage, queuedA
 function reconcileQueuedInput(state: ReducerState, message: ReducerMessage, changed: Set<string>): void {
     const queuedAt = message.meta?.queuedAt;
     const isInputItem = message.role === 'user' || message.tool?.name === 'file';
-    if (!isInputItem || typeof queuedAt !== 'number') return;
+    if (!isInputItem) return;
+    if (typeof queuedAt !== 'number') {
+        // B-854: a message sent to an idle agent carries no queue stamp, yet the
+        // CLI can still drop it before the agent took it (a pre-flight failure,
+        // a kill). Its CLI tombstone (with a reason) marks it whichever of the
+        // two a history page delivers first. A web cancel (no reason) only ever
+        // targets queued input, handled below.
+        const reason = message.localId ? state.canceledQueuedReasons.get(message.localId) : undefined;
+        if (reason && (message.inputState !== 'canceled' || message.cancelReason !== reason)) {
+            message.inputState = 'canceled';
+            message.cancelReason = reason;
+            changed.add(message.id);
+        }
+        return;
+    }
     // B-513: an unconfirmed input stays in the queue dock. Releasing it by
     // timestamp would move it into the transcript before the server has it.
     const unconfirmed = !!message.localId && state.sendStates.has(message.localId);

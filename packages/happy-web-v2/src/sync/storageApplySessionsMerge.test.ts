@@ -45,3 +45,15 @@ describe('applySessions merges, never replaces', () => {
         expect(listed()).toEqual(['b', 'c', 'd', 'e']);
     });
 });
+
+describe('B-849a2 (QA26 d7): a session picked 「本机配置」 keeps it', () => {
+    it('a later batch does not clear modelMode `default`', () => {
+        storage.getState().applySessions([session('m1')]);
+        storage.getState().updateSessionModelMode('m1', 'default');
+        storage.getState().applySessions([session('m1', { seq: 5 })]);
+        expect(storage.getState().sessions.m1.modelMode).toBe('default');
+        storage.getState().updateSessionModelMode('m1', 'opus');
+        storage.getState().applySessions([session('m1', { seq: 6 })]);
+        expect(storage.getState().sessions.m1.modelMode).toBe('opus');
+    });
+});
