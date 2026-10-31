@@ -25,6 +25,7 @@ import { getInitialMachineMetadata } from '@/daemon/machineMetadata';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { HeldInput } from '@/utils/heldInput';
 import { projectPath } from '@/projectPath';
 import { join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
@@ -318,6 +319,8 @@ export async function runCodex(opts: {
         const keys = entries.map((entry) => entry.sourceId).filter((key): key is string => typeof key === 'string');
         if (keys.length > 0) session.sendQueueCancelReason(keys, entries[0].reason);
     });
+    // B-854: the batch between dequeue and Codex accepting its turn.
+    const heldInput = new HeldInput((keys, reason) => session.sendQueueCancelReason(keys, reason));
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
@@ -495,6 +498,8 @@ export async function runCodex(opts: {
         }).catch((error) => {
             logger.warn('[Codex] Failed to prepare user attachments', safeCodexErrorMetadata(error));
             session.sendSessionEvent({ type: 'message', message: 'Could not prepare this message. Please send it again.' });
+            // B-854: it never reached the queue — mark it so it can be put back.
+            if (message.localKey) session.sendQueueCancelReason([message.localKey], 'failed');
         });
     });
     let thinking = false;
@@ -556,6 +561,9 @@ export async function runCodex(opts: {
     // Turn cancellation uses client.interruptTurn() — no AbortController hack needed.
     let abortController = new AbortController();
     let shouldExit = false;
+    // B-854: set once a kill / signal has tombstoned what this process held;
+    // a pre-flight still finishing must not start that turn after all.
+    let terminating = false;
     // B-587: a hibernation in progress; exits requested meanwhile are deferred (review P1-1).
     const hibernationExit = new HibernationExitLatch<'archive' | 'offline'>((a, b) => a === 'archive' && b !== 'archive');
     let hibernationStamp: HibernationStamp | null = null;
@@ -641,6 +649,13 @@ export async function runCodex(opts: {
         // B-679: pin the offline cursor and route nothing more (see runClaude).
         const exitCursor = intent === 'offline' && session ? exitCursorStamp(session.messageCursor, Date.now()) : undefined;
         if (exitCursor) session.freezeInbound();
+        // B-854: the batch still in pre-flight and everything queued leave
+        // with this process — tombstone them first: the daemon's stop SIGKILLs
+        // 2 s after SIGTERM, and the abort below may take its 3 s grace.
+        const exitReason = intent === 'archive' ? 'aborted' : 'restarted';
+        terminating = true;
+        heldInput.drop(exitReason);
+        messageQueue.discardAll(exitReason);
         await handleAbort('kill');
         logger.debug('[Codex] Abort completed, proceeding with termination');
 
@@ -1107,6 +1122,7 @@ export async function runCodex(opts: {
                     break;
                 }
                 message = batch;
+                heldInput.hold(batch.sourceIds);
             }
 
             // Defensive check for TS narrowing
@@ -1131,6 +1147,7 @@ export async function runCodex(opts: {
 
             if (isCodexClearText(message.message)) {
                 logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
+                heldInput.delivered();
                 client.clearThreadState();
                 currentTurnId = null;
                 codexStartedSubagents = new Set<string>();
@@ -1172,6 +1189,7 @@ export async function runCodex(opts: {
                 if (compactCommand !== null) {
                     // Owner 10-30: Codex compacts the thread itself; the text never reaches the model.
                     await client.ensureConnected();
+                    heldInput.delivered();
                     const outcome = await runCodexCompact(compactCommand, {
                         client,
                         notify: (text) => {
@@ -1230,12 +1248,17 @@ export async function runCodex(opts: {
                 const staged = message.attachments?.length ? await stageClaudeAttachments(message.attachments, {
                     happyHomeDir: configuration.happyHomeDir, sessionId: session.sessionId,
                 }) : [];
+                if (terminating) {
+                    logger.debug('[Codex] Session is ending; not starting the turn');
+                    continue;
+                }
                 const result = await client.sendTurnAndWait(appendStagedAttachmentsToPrompt(turnPrompt, staged), {
                     images: staged.filter((file) => ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.mimeType)).map((file) => file.path),
                     model: turnModel,
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,
                     effort: message.mode.effort,
+                    onTurnStarted: () => heldInput.delivered(),
                 });
                 reportModeFacts();
                 first = false;
@@ -1251,6 +1274,10 @@ export async function runCodex(opts: {
             } catch (error) {
                 // Only actual errors reach here (process crash, connection failure, etc.)
                 logger.warn('Error in codex session', safeCodexErrorMetadata(error));
+                // B-854: failed before Codex took the turn (effort refusal,
+                // app-server / thread start): the message never ran. The web
+                // gets 「未执行」 with put-back below the error line.
+                if (heldInput.drop('failed')) logger.debug('[Codex] Message failed before its turn started; tombstoned');
                 // B-487: a rejected request or pre-flight refusal says why;
                 // only a lost app-server gets the generic crash line.
                 const reason = describeThrownTurnError(error);
@@ -1288,6 +1315,9 @@ export async function runCodex(opts: {
         disposeTermination?.();
         hibernationProbe?.stop();
         session.closePromptQueueDrain(); // B-509: no more pops into a process that is leaving
+        // B-854: leaving the loop (Ctrl-C, closed queue) — nothing goes silently.
+        heldInput.drop('aborted');
+        messageQueue.discardAll('aborted');
         logger.debug('[codex]: Final cleanup start');
         logActiveHandles('cleanup-start');
 

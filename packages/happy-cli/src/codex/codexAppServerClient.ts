@@ -1461,8 +1461,17 @@ export class CodexAppServerClient {
         turnTimeoutMs?: number;
         /** B-625: test hook for the thread-stop grace (see armThreadStopGrace). */
         threadStopGraceMs?: number;
+        /**
+         * B-854: Codex accepted `turn/start` — the prompt is the thread's now.
+         * Not called when the app-server could not be brought back or the
+         * request was rejected: that prompt never ran.
+         */
+        onTurnStarted?: () => void;
     }): Promise<{ aborted: boolean }> {
-        const { aborted } = await this.runTurnAndWait(() => this.sendTurn(prompt, opts), opts);
+        const { aborted } = await this.runTurnAndWait(async () => {
+            await this.sendTurn(prompt, opts);
+            opts?.onTurnStarted?.();
+        }, opts);
         return { aborted };
     }
 

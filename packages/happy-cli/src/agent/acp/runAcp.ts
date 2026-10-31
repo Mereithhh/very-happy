@@ -20,6 +20,8 @@ import { createProjectInjector } from '@/projects/injector';
 import { sharedProjectsClient } from '@/projects/client';
 import { logger } from '@/ui/logger';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { HeldInput } from '@/utils/heldInput';
+import { acpExitIntent, type AcpExit } from './acpExit';
 import { hashObject } from '@/utils/deterministicJson';
 import { Credentials, readSettings } from '@/persistence';
 import { getInitialMachineMetadata } from '@/daemon/machineMetadata';
@@ -653,6 +655,15 @@ export async function runAcp(opts: {
     messageQueue.setOnWait(() => drain.onIdle());
   }
   attachPromptQueueDrain(session);
+  // B-854: every queued message the runner drops is tombstoned (B-332), like
+  // Codex and Claude — ACP never wired this, so its losses were silent.
+  messageQueue.setOnDiscard((entries) => {
+    const keys = entries.map((entry) => entry.sourceId).filter((key): key is string => typeof key === 'string');
+    if (keys.length > 0) session.sendQueueCancelReason(keys, entries[0].reason);
+  });
+  // B-854: the batch between dequeue and `session/prompt` (agent restart, mode
+  // / model / effort switches, prompt building) — not in the queue, not in the agent.
+  const heldInput = new HeldInput((keys, reason) => session.sendQueueCancelReason(keys, reason));
   let currentPermissionMode: string | undefined;
   let currentModel: string | null | undefined;
   let modeSelector: AcpConfigSelector | null = null;
@@ -790,6 +801,19 @@ export async function runAcp(opts: {
   let acpSessionId: string | null = null;
   let piProbe: HibernationProbe | null = null;
   let shouldExit = false;
+  // B-854 / AGENTS 7: why the runner is leaving. Only the user's kill/archive
+  // archives the session; a signal (daemon stop/upgrade) or a backend that
+  // never came up goes offline. The reason is what queued and held messages
+  // are tombstoned with; null = the runner ended unexpectedly.
+  // (`as`: assigned only in callbacks — keep TS from narrowing it to null.)
+  let exit = null as AcpExit | null;
+  const beginExit = (intent: AcpExit['intent'], reason: AcpExit['reason']) => {
+    if (!exit) exit = { intent, reason };
+    shouldExit = true;
+    heldInput.drop(exit.reason);
+    messageQueue.discardAll(exit.reason);
+    messageQueue.close();
+  };
   let abortController = new AbortController();
   let turnCancelled = false;
   // B-629: before the agent's first session is up, a terminal status ends the runner (the
@@ -807,8 +831,9 @@ export async function runAcp(opts: {
       ? `${opts.agentName} backend ${status}: ${detail}`
       : `${opts.agentName} backend ${status}`;
     logger.debug(`[${opts.agentName}] ${reason}; stopping ACP runner`);
-    shouldExit = true;
-    messageQueue.close();
+    // B-854: say why, then mark what was waiting for it as not run.
+    session.sendSessionEvent({ type: 'message', message: reason });
+    beginExit('offline', 'failed');
   };
 
   const sendEnvelopes = (envelopes: SessionEnvelope[]) => {
@@ -1219,6 +1244,8 @@ export async function runAcp(opts: {
     }).catch(() => {
       logger.warn('[ACP] Failed to prepare user attachments');
       session.sendSessionEvent({ type: 'message', message: 'Could not prepare this message. Please send it again.' });
+      // B-854: it never reached the queue (or the queue had closed) — mark it so it can be put back.
+      if (message.localKey) session.sendQueueCancelReason([message.localKey], exit?.reason ?? 'failed');
     });
   });
   session.keepAlive(thinking, 'remote');
@@ -1268,10 +1295,15 @@ export async function runAcp(opts: {
     },
   );
   const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, async () => {
-    shouldExit = true;
-    messageQueue.close();
+    beginExit('archive', 'aborted');
     await handleAbort();
-  }, session, { processSignals: true });
+  }, session, {
+    processSignals: true,
+    onSignal: async () => {
+      beginExit('offline', 'restarted');
+      await handleAbort();
+    },
+  });
 
   // B-629: a fresh agent process after the previous one died. The session (and its
   // transcript on the server) is kept; the agent itself starts without memory, and the
@@ -1395,6 +1427,7 @@ export async function runAcp(opts: {
         }
         break;
       }
+      heldInput.hold(batch.sourceIds);
 
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
       // A synthetic turn still open (agent output that came by itself) ends before ours.
@@ -1427,6 +1460,14 @@ export async function runAcp(opts: {
         const staged = attachments.length ? await stageClaudeAttachments(attachments, {
           happyHomeDir: configuration.happyHomeDir, sessionId: session.sessionId,
         }) : [];
+        if (shouldExit) {
+          // B-854: killed during pre-flight; beginExit tombstoned the prompt — never send it now.
+          sendEnvelopes(sessionManager.endTurn('cancelled'));
+          streamRelay.endTurn();
+          setThinking(false);
+          break;
+        }
+        heldInput.delivered();
         // B-629: the turn is over when the prompt is answered (ACP sends every update
         // before its response); no idle heuristic, no deadline (Orca: none either).
         promptInFlight = true;
@@ -1464,6 +1505,9 @@ export async function runAcp(opts: {
         // send). Say what the agent said; keep the session; the next message runs anew.
         const failure = describeAcpTurnFailure(opts.agentName, error);
         session.sendSessionEvent({ type: 'message', message: failure.message });
+        // B-854: failed before the prompt reached the agent (restart, mode / model
+        // switch, prompt building): 「未执行」 with put-back under the error line.
+        heldInput.drop('failed');
         sendEnvelopes(sessionManager.endTurn('failed', failure.error));
         streamRelay.endTurn();
         setThinking(false);
@@ -1513,15 +1557,25 @@ export async function runAcp(opts: {
 
     try {
       session.closePromptQueueDrain(); // B-509: no more pops into a process that is leaving
-      session.updateMetadata((currentMetadata) => ({
-        ...currentMetadata,
-        lifecycleState: 'archived',
-        lifecycleStateSince: Date.now(),
-        archivedBy: 'cli',
-        archiveReason: 'Session ended',
-      }));
+      // B-854: whatever is left (an unexpected end of the runner) is reported, not dropped.
+      heldInput.drop(exit?.reason ?? 'failed');
+      messageQueue.discardAll(exit?.reason ?? 'failed');
+      const intent = acpExitIntent(exit);
+      if (intent === 'archive') {
+        session.updateMetadata((currentMetadata) => ({
+          ...currentMetadata,
+          lifecycleState: 'archived',
+          lifecycleStateSince: Date.now(),
+          archivedBy: 'cli',
+          archiveReason: 'Session ended',
+        }));
+      }
       session.sendSessionDeath();
       await session.flush();
+      if (intent === 'offline') {
+        // AGENTS 7: an infrastructure exit only goes offline, it never archives.
+        try { await api.deactivateSession(session.sessionId); } catch (error) { logger.debug(`[${opts.agentName}] deactivate on exit failed:`, error); }
+      }
       await session.close();
     } catch (error) {
       logger.debug(`[${opts.agentName}] Session close failed:`, error);

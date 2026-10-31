@@ -827,6 +827,7 @@ export const en = {
                 cleared: 'Not run — dropped by /clear or /compact',
                 aborted: 'Not run — dropped when the turn was stopped',
                 restarted: 'Not run — the session was restarted before it was picked up. Send it again.',
+                failed: 'Not run — it could not be handed to the agent (see the error)',
                 unknown: 'Not run — the agent dropped it from its queue',
             },
             send: 'Send',

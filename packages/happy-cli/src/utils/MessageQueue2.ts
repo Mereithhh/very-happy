@@ -15,7 +15,12 @@ interface QueueItem<T> {
     enqueuedAt?: number;
 }
 
-export type QueueDiscardReason = 'cleared' | 'aborted' | 'restarted';
+/**
+ * Why the CLI dropped a user message it never ran — the `queue-cancel` reason
+ * (B-332). `failed` (B-854): taken off the queue, but the runner could not hand
+ * it to the agent (a pre-flight check or the agent's start failed).
+ */
+export type QueueDiscardReason = 'cleared' | 'aborted' | 'restarted' | 'failed';
 
 export type QueueDiscardEntry = { sourceId: string | undefined; reason: QueueDiscardReason };
 
@@ -280,6 +285,17 @@ export class MessageQueue2<T> {
 
         // Clear waiter without calling it since we're not closing
         this.waiter = null;
+    }
+
+    /**
+     * B-854: the runner is leaving — report everything still queued as not run
+     * for `reason` and drop it, so no message leaves with the process silently.
+     */
+    discardAll(reason: QueueDiscardReason): number {
+        const count = this.queue.length;
+        this.notifyDiscard(reason);
+        this.queue = [];
+        return count;
     }
 
     /**

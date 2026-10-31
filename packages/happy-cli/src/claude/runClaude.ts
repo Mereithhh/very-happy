@@ -16,6 +16,7 @@ import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import type { EnhancedMode, PermissionMode } from './loop';
 import type { MessageMeta } from '@/api/types';
+import type { QueueDiscardEntry } from '@/utils/MessageQueue2';
 import { spawnOriginTags } from '@/utils/createSessionMetadata';
 import { PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY } from '@slopus/happy-wire';
 import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
@@ -766,7 +767,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // the web stops showing it as 「排队中」 and later as delivered. Items
     // without a sourceId (CLI-internal pushes) have no web counterpart to mark.
     messageQueue.setOnDiscard((entries) => {
-        const byReason = new Map<'cleared' | 'aborted' | 'restarted', string[]>();
+        const byReason = new Map<QueueDiscardEntry['reason'], string[]>();
         for (const entry of entries) {
             if (!entry.sourceId) continue;
             const list = byReason.get(entry.reason) ?? [];

@@ -209,6 +209,32 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(calls[3].params.model).toBe('gpt-5.6-sol');
     });
 
+    it('B-854: onTurnStarted fires only once Codex accepted turn/start', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const c = client as any;
+        c.connected = true;
+        let rejectTurn = true;
+        c.request = async (method: string) => {
+            if (method === 'thread/resume') return { thread: { id: 't1' } };
+            if (method === 'turn/start') {
+                if (rejectTurn) throw new Error('turn/start rejected');
+                return { turn: { id: 'turn-1' } };
+            }
+            return {};
+        };
+        await client.resumeThread({ threadId: 't1' });
+        const onTurnStarted = vi.fn();
+        await expect(client.sendTurnAndWait('refused', { onTurnStarted })).rejects.toThrow('turn/start rejected');
+        expect(onTurnStarted).not.toHaveBeenCalled();
+
+        rejectTurn = false;
+        const turn = client.sendTurnAndWait('accepted', { onTurnStarted });
+        await vi.waitFor(() => expect(onTurnStarted).toHaveBeenCalledTimes(1));
+        c.pendingTurnCompletion.resolve(false);
+        await expect(turn).resolves.toEqual({ aborted: false });
+    });
+
     it('wraps transport when sandbox is enabled', async () => {
         // Dynamic import to ensure mocks are applied
         const { CodexAppServerClient } = await import('./codexAppServerClient');

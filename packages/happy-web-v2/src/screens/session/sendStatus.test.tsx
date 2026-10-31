@@ -226,6 +226,8 @@ describe('B-722 pure send-state rules', () => {
         const agent = { kind: 'agent-text', id: 'a' };
         expect(undeliveredPromptId([user('u2'), event, user('u1'), agent], false)).toBe('u2');
         expect(undeliveredPromptId([user('u2'), agent], true)).toBeNull();
+        // B-854: a tombstoned prompt is 「未执行」, not waiting for the session.
+        expect(undeliveredPromptId([{ ...user('u2'), inputState: 'canceled' as const }, agent], false)).toBeNull();
         expect(undeliveredPromptId([agent, user('u1')], false)).toBeNull();
         expect(undeliveredPromptId([user('u3', 'sending')], false)).toBeNull(); // still sending: its own state says so
         expect(undeliveredPromptId(undefined, false)).toBeNull();
