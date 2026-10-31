@@ -9,12 +9,13 @@ vi.mock('@/sync/sync', () => ({ sync: { sendMessage: mocks.send } }));
 vi.mock('@/sync/apiSocket', () => ({ apiSocket: {} }));
 vi.mock('@/sync/storage', () => ({
     // B-722: DeliverOnResumeHint selects from the store (no session → nothing to say).
-    storage: Object.assign((select: (state: unknown) => unknown) => select({ sessionMessages: {}, sessions: {} }), { getState: () => ({ sessionMessages: {} }) }),
+    storage: Object.assign((select: (state: unknown) => unknown) => select({ sessionMessages: {}, sessions: {} }), { getState: () => ({ sessionMessages: {}, machines: {} }) }),
     useSession: () => ({ metadata: { flavor: mocks.flavor } }),
     useSetting: () => mocks.enterToSend,
 }));
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ lang: 'en', t: (key: string) => key }) }));
 vi.mock('./conversationRewind', async (original) => ({ ...await original<typeof import('./conversationRewind')>(), rewindConversation: mocks.rewind }));
+import { MemoryRouter } from 'react-router-dom';
 import { MessageActions } from './MessageActions';
 import { RewindFailure } from './conversationRewind';
 import { onMessageQuote } from './messageQuote';
@@ -215,3 +216,25 @@ describe('who gets edit/delete', () => {
         expect(labels).toEqual(['message.copyMessage', 'Quote']);
     });
 });
+
+describe('B-851 fork from here', () => {
+    const renderRouted = () => act(() => root.render(<MemoryRouter><MessageActions text="original" sessionId="parent" userMessage={message} /></MemoryRouter>));
+    const forkButton = () => host.querySelector('button[aria-label="session.forkFromHere"]');
+    it('is offered on Claude and Codex prompts, never for other agents or outside the app router', () => {
+        renderRouted();
+        expect(forkButton()).not.toBeNull();
+        mocks.flavor = 'codex'; renderRouted();
+        expect(forkButton()).not.toBeNull();
+        mocks.flavor = 'pi'; renderRouted();
+        expect(forkButton()).toBeNull();
+        mocks.flavor = 'claude'; render();
+        expect(forkButton()).toBeNull();
+    });
+    it('explains a blocked fork under the row instead of doing nothing', async () => {
+        renderRouted();
+        await act(async () => (forkButton() as HTMLButtonElement).click());
+        // this session never recorded a Claude conversation id
+        expect(host.querySelector('.msg-fork-note[role="alert"]')?.textContent).toBe('session.forkErrorNoHistory');
+    });
+});
+

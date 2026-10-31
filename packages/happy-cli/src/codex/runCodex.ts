@@ -33,6 +33,7 @@ import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import { checkDaemonHibernation, notifyDaemonSessionStarted } from "@/daemon/controlClient";
+import { AUTO_RESTART_CAPABILITY, takeAutoRestartedEvent } from '@/update/autoRestartPolicy';
 import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, latchKeepAwake, resolveCheckMs, type HibernationStamp, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
 import { HibernationExitLatch, HibernationProbe, commitHibernation } from '@/hibernation/hibernationProbe';
 import { settleCodexSession } from './codexTermination';
@@ -162,7 +163,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
-        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY],
+        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY],
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
@@ -379,6 +380,7 @@ export async function runCodex(opts: {
     publishPermissionMode(opts.permissionMode);
 
     let discoveredModels: Awaited<ReturnType<CodexAppServerClient['listModels']>> = [];
+    let codexAgentVersion: string | null = null;
     // B-844c: what a turn without an explicit model runs (see turnModel.ts).
     let machineDefaultModel: string | undefined;
 
@@ -938,6 +940,8 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect begin');
         await client.connect();
         logger.debug('[codex]: client.connect done');
+        // B-852: the Codex version the published model catalog came from.
+        codexAgentVersion = client.serverVersion;
         try {
             discoveredModels = await client.listModels();
             // B-844: a model pinned in the machine's Codex config wins over
@@ -1046,6 +1050,7 @@ export async function runCodex(opts: {
                     pendingRequests: Object.keys(session.getAgentState()?.requests ?? {}).length,
                     backgroundTasks: codexActiveSubagents.size,
                     lastActivityAt: session.lastActivityAt,
+                    ...(codexAgentVersion ? { agentVersion: codexAgentVersion } : {}),
                     ...(shouldExit && !hibernationExit.hibernating ? { exiting: true } : {}),
                 };
             };
@@ -1077,6 +1082,9 @@ export async function runCodex(opts: {
             });
             hibernationProbe.start();
         }
+        // B-852: the daemon restarted this session onto new code by itself — say so, quietly.
+        const autoUpdated = takeAutoRestartedEvent(process.env, 'Codex');
+        if (autoUpdated) session.sendSessionEvent(autoUpdated);
 
         // Idle from the start: a session nobody ever writes to must not hold app-server either.
         idleRelease.arm();

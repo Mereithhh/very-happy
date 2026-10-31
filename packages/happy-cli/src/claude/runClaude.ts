@@ -1,5 +1,6 @@
 import os from 'node:os';
 import { applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, withoutServerSnapshot, type ReconnectReplay } from '@/utils/reconnectSession';
+import { AUTO_RESTART_CAPABILITY, takeAutoRestartedEvent } from '@/update/autoRestartPolicy';
 import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, latchKeepAwake, resolveCheckMs, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
 import { HibernationProbe, commitHibernation } from '@/hibernation/hibernationProbe';
 import { randomUUID } from 'node:crypto';
@@ -227,7 +228,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
-        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, PROJECT_SESSION_CAPABILITY],
+        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY],
         // Effective mode this process enforces. Kept current by
         // publishPermissionMode below; the web renders it instead of guessing.
         permissionMode: mapToClaudeMode(initialPermissionMode ?? 'default'),
@@ -1340,6 +1341,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         });
         hibernationProbe.start();
     }
+    // B-852: the daemon restarted this session onto new code by itself — say so, quietly.
+    const autoUpdated = takeAutoRestartedEvent(process.env);
+    if (autoUpdated) session.sendSessionEvent(autoUpdated);
 
     // Create claude loop
     const exitCode = await loop({

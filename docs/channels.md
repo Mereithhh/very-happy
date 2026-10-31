@@ -402,6 +402,12 @@ An ACP agent (pi, Gemini…) that rejects a prompt ends it `status: failed` with
 the agent's own reason as `error` (B-845b: pi's refused `/compact` reads
 `Internal error: pi compact failed: Nothing to compact (session too small)`).
 
+**Fork lineage (B-851).** A session forked from the Web (「分叉会话」 /
+「从这里分叉」) carries `parentSessionId` — and, for a fork from a message,
+`forkedFromMessageId` (the parent's prompt it was cut before) — on its `list`,
+`list --all`, `list --machine` rows and the `summary` of `read`; the text
+listing shows `parent=<id>`. Absent on sessions that were not forked.
+
 **Background tasks (B-507).** A turn ending is not the session going quiet:
 an async-launched sub-agent, a `run_in_background` command or a Monitor keeps
 running and wakes the session with a notification later. Every `list` row and

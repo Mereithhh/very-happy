@@ -22,6 +22,7 @@ import { stripHarnessBlocks, parseLocalCommandMessage, parseTaskNotification } f
 import { estimateWrappedLines, shouldCollapseBubble } from './codeCollapse';
 import { stripThinkingWrapper, formatThoughtFor, thinkingPreview, isLiveThinking } from './thinking';
 import { presentServiceEvent } from './serviceEvent';
+import { AUTO_UPDATED_EVENT_KIND, parseAutoUpdatedLine } from '@/app/autoRestartPolicy';
 import { parseAttachedFiles, stripAttachedFiles } from './attachedFiles';
 import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, type AttachmentItem } from './UserAttachments';
 import { discardedReasonKey } from './discardedInput';
@@ -387,6 +388,15 @@ function AgentEventBlock({ message, sessionId, continueOffer = false }: { messag
             {
                 if (ev.kind === 'claude-auth-failed') {
                     return <ClaudeAuthFailedBlock sessionId={sessionId} />;
+                }
+                // B-852: the daemon restarted this session onto new code by itself — one quiet line.
+                const autoUpdated = ev.kind === AUTO_UPDATED_EVENT_KIND ? parseAutoUpdatedLine(ev.message) : null;
+                if (autoUpdated) {
+                    label = autoUpdated.agent
+                        ? t('autoRestart.updatedAgentLine', { agent: autoUpdated.agent, version: autoUpdated.version })
+                        : t('autoRestart.updatedLine', { version: autoUpdated.version });
+                    subtle = true;
+                    break;
                 }
                 const presentation = presentServiceEvent(ev.message);
                 if (presentation.kind === 'hidden') return null;

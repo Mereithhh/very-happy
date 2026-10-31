@@ -15,6 +15,7 @@ import { Spinner } from '@/ui';
 import { restartBrokenSession, useRestartState } from '@/app/sessionRestartAction';
 import { isStaleWrapperNoticeVisible, staleWrapperHintKey, staleWrapperNotice } from '@/app/staleWrapperPolicy';
 import { useVisibleModelSupportNotice } from './ModelSupportBanner';
+import { autoRestartBannerText, useRestartBannerMode } from './useRestartBannerMode';
 import './mirror.css';
 
 export function StaleWrapperBanner({ sessionId }: { sessionId: string }) {
@@ -29,6 +30,9 @@ export function StaleWrapperBanner({ sessionId }: { sessionId: string }) {
     // B-487: an Opus 5.5 notice already offers this same restart with the
     // concrete reason; don't stack two strips for one action.
     const modelNotice = useVisibleModelSupportNotice(sessionId);
+    // B-852: the daemon restarts it by itself once idle — only ask a human when
+    // it cannot (old wrapper, local terminal…), gave up, or waited for long.
+    const mode = useRestartBannerMode(sessionId);
     const notice = staleWrapperNotice(session, machine);
     if (!notice) return null;
     if (modelNotice?.notice.kind === 'claude-opus-55' && modelNotice.notice.action === 'restart') return null;
@@ -37,18 +41,20 @@ export function StaleWrapperBanner({ sessionId }: { sessionId: string }) {
     // show, even if the user had dismissed this notice earlier.
     const busy = restart?.phase === 'spawning' || restart?.phase === 'awaiting-online';
     const failed = restart?.phase === 'failed';
+    if (!busy && !failed && mode.kind === 'auto') return null;
     if (!busy && !failed && !isStaleWrapperNoticeVisible(hintKey, dismissedHints)) return null;
+    const autoText = autoRestartBannerText(mode, notice, t);
 
     const text = busy
         ? t('session.chat.restarting')
         : failed
             ? (restart?.reason === 'daemon-too-old' ? t('session.chat.restartDaemonTooOld') : t('session.chat.restartFailed'))
-            : notice.severity === 'critical'
+            : autoText ?? (notice.severity === 'critical'
                 ? t('staleWrapper.criticalNotice', { sessionVersion: notice.sessionVersion })
-                : t('staleWrapper.behindNotice', { sessionVersion: notice.sessionVersion, machineVersion: notice.machineVersion });
+                : t('staleWrapper.behindNotice', { sessionVersion: notice.sessionVersion, machineVersion: notice.machineVersion }));
 
     return (
-        <div className="mrb" data-testid="stale-wrapper-banner" data-severity={notice.severity}>
+        <div className="mrb" data-testid="stale-wrapper-banner" data-severity={notice.severity} data-auto-restart={mode.kind}>
             <div className={`mrb-note${failed ? ' mrb-note--failed' : ''}`} role="status">
                 <PackageOpen size={13} />
                 <span className="mrb-note-text">{text}</span>

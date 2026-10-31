@@ -26,6 +26,7 @@ import {
     type ModelSupportNotice,
 } from '@/app/modelSupportPolicy';
 import { useLatestModelTable } from '@/sync/latestModels';
+import { autoRestartBannerText, useRestartBannerMode } from './useRestartBannerMode';
 import './mirror.css';
 
 type UpdateState = 'sending' | 'accepted' | 'failed' | 'copied' | 'copyFailed' | null;
@@ -73,10 +74,14 @@ export function ModelSupportBanner({ sessionId }: { sessionId: string }) {
     const [update, setUpdate] = useState<UpdateState>(null);
     const [showCommand, setShowCommand] = useState(false);
     const visible = useVisibleModelSupportNotice(sessionId);
+    // B-852: a restart-only notice is the daemon's job now (a Codex notice it
+    // may not know about counts as manual when it has not listed the session).
+    const restartMode = useRestartBannerMode(sessionId, visible?.notice.kind === 'codex-gpt6' ? 'manual' : 'grace');
     const busy = restart?.phase === 'spawning' || restart?.phase === 'awaiting-online';
     const failed = restart?.phase === 'failed';
     if (!visible) return null;
     const { notice, hintKey } = visible;
+    if (notice.action === 'restart' && !busy && !failed && restartMode.kind === 'auto') return null;
 
     const needsUpdate = notice.action === 'update';
     const command = notice.kind === 'codex-gpt6'
@@ -101,6 +106,9 @@ export function ModelSupportBanner({ sessionId }: { sessionId: string }) {
         : failed ? (restart?.reason === 'daemon-too-old' ? t('session.chat.restartDaemonTooOld') : t('session.chat.restartFailed'))
         : update === 'accepted' ? t('modelSupport.updateRequested')
         : update === 'failed' ? t('modelSupport.updateFailed')
+        : notice.action === 'restart' ? autoRestartBannerText(restartMode, notice.kind === 'codex-gpt6'
+            ? { agent: 'Codex' }
+            : { sessionVersion: notice.wrapperVersion ?? '?', machineVersion: notice.machineVersion ?? '?' }, t)
         : null;
 
     return (

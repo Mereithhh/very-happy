@@ -455,6 +455,23 @@ CLI capability with a session started after the upgrade, or explicitly stop and
 resume the target session when interrupting it is acceptable; daemon version
 alone is not evidence that an existing session hot-loaded the new capability.
 
+Since B-852 the daemon then restarts those old wrappers by itself, in place
+(the same `restart-session` path, history kept), once each one's own idle
+check-in proves it safe: no turn, no pending approval or question, empty queue,
+no background task / sub-agent / scheduled wakeup, not the user's terminal, and
+10 quiet minutes. One restart at a time per machine, ≥15 s apart; two failed
+attempts hand the session back to the web's manual Restart with the reason.
+Sessions started from a terminal are never restarted and show the manual banner
+at once, saying why. If the old wrapper was stopped but the new one failed to
+start, the offline session's Restore banner shows the reason; the daemon tries
+once more after 10 minutes unless the session was restored or archived
+meanwhile, then leaves it to Restore.
+Wrappers from before this change only check in on their own schedule (up to the
+hibernation threshold), so some take hours; Teams / Automations / pi wrappers
+from before it never report and keep the manual banner. The machine page's
+「会话自动更新」 switch turns it off (`autoRestartSessions: false` in settings).
+Spec: [auto-restart](../specs/2026-10-auto-restart-stale-wrappers.md).
+
 Since CLI 0.2.183 (B-770) a launchd-owned daemon hands over through its job.
 The daemon records `supervisor: launchd` only when `launchctl print` shows the
 job's pid is itself or an ancestor (the bin shim); `XPC_SERVICE_NAME` alone is

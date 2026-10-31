@@ -11,6 +11,7 @@ import { teamRelaunchEnv } from './teams/relaunchScope';
 import { ApiClient } from '@/api/api';
 import type { ApiMachineClient } from '@/api/apiMachine';
 import { TrackedSession, SessionEncryptionData } from './types';
+import type { AgentVersions } from '@slopus/happy-wire';
 import { MachineMetadata, DaemonState, Metadata, CliUpdateState } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { isSpawnAgent } from '@/utils/spawnAgents';
@@ -79,6 +80,9 @@ import { joinProject } from '@/projects/attribution';
 import { TurnActivityTracker } from '@/update/turnActivity';
 import { createDaemonHibernation, collectAutomationBindings, waitForPidsToExit, waitForSessionLive } from '@/hibernation/daemonHibernation';
 import { resolveCheckMs, resolveIdleMs, settingIdleMs } from '@/hibernation/hibernationPolicy';
+import { createAutoRestart } from './autoRestart';
+import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, resolveQuietMs, type StaleKind } from '@/update/autoRestartPolicy';
+import { compareExactVersions } from '@/update/cliUpdate';
 import { createAutomationsClient, isAutomationsUnavailable } from '@/automations/client';
 import { BackgroundTaskTracker } from '@/update/backgroundTaskActivity';
 import { ClaudeAuthService } from './claudeAuth/claudeAuthService';
@@ -174,6 +178,8 @@ export async function startDaemon(): Promise<void> {
   let claudeCredentialStoreSetting: 'auto' | 'file' = (await readSettings()).claudeCredentialStore === 'file' ? 'file' : 'auto';
   // B-587: machine-local idle hibernation threshold (undefined = default 6h, 0 = off).
   let agentHibernationSetting: number | undefined = (await readSettings()).agentHibernationIdleMs;
+  // B-852: machine-local switch for automatic restarts of stale wrappers (default on).
+  let autoRestartSetting: boolean = (await readSettings()).autoRestartSessions !== false;
   // B-478: align the daemon's own CLAUDE_CONFIG_DIR / CODEX_HOME with the
   // user's login shell (and settings.json) before anything reads them.
   try {
@@ -354,6 +360,8 @@ export async function startDaemon(): Promise<void> {
     // Pre-populate from disk so sessions survive daemon restarts.
     const sessionIdToFinishedSession = new Map<string, TrackedSession>();
     let teamWorker: ReturnType<typeof createTeamWorker> | undefined;
+    // B-852: created next to the control server (late-bound like teamWorker).
+    let autoRestart: ReturnType<typeof createAutoRestart> | undefined;
     let automationRunner: ReturnType<typeof createAutomationRunner> | undefined;
     let projectPresence: ReturnType<typeof createProjectPresenceReporter> | undefined;
     const persisted = readPersistedSessions();
@@ -1402,6 +1410,13 @@ export async function startDaemon(): Promise<void> {
     // resume (so restart/resume/concurrent-restart never double-spawn) and is
     // bounded by a per-daemon-lifetime circuit breaker.
     const restartCounts = new Map<string, number>();
+    // B-852: `auto` = the daemon's own idle restart after an upgrade. It has its
+    // own attempt limit (autoRestartPolicy) and must not use up the user's
+    // manual-restart breaker; the respawned wrapper posts the "updated" line.
+    type RestartSessionOptions = { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; auto?: { kind: StaleKind; target: string } };
+    // B-852: sessions whose wrapper exit is an automatic restart, not an exit
+    // worth telling a team lead about.
+    const autoRestartExits = new Set<string>();
 
     // Promise-returning stop: kill the live wrapper for a session and resolve
     // when it has actually exited (terminateProcess settles after SIGTERM→2s→
@@ -1441,7 +1456,7 @@ export async function startDaemon(): Promise<void> {
       })));
     };
 
-    const restartSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }): Promise<SpawnSessionResult> => {
+    const restartSession = async (happySessionId: string, options?: RestartSessionOptions): Promise<SpawnSessionResult> => {
       let gate = resumeGates.get(happySessionId);
       if (!gate) {
         gate = createSpawnGate<SpawnSessionResult>();
@@ -1458,10 +1473,10 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    const restartSessionImpl = async (happySessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }): Promise<SpawnSessionResult> => {
+    const restartSessionImpl = async (happySessionId: string, options?: RestartSessionOptions): Promise<SpawnSessionResult> => {
       try {
         const prior = restartCounts.get(happySessionId) ?? 0;
-        const decision = decideRestart(prior, DEFAULT_MAX_RESTARTS);
+        const decision = options?.auto ? { allowed: true as const } : decideRestart(prior, DEFAULT_MAX_RESTARTS);
         if (!decision.allowed) {
           return { type: 'error', errorMessage: `restart:${decision.reason}` };
         }
@@ -1532,7 +1547,7 @@ export async function startDaemon(): Promise<void> {
 
         // Count the attempt now that we are actually spawning (a pre-flight
         // rejection above never burns a slot).
-        restartCounts.set(happySessionId, recordRestartAttempt(prior));
+        if (!options?.auto) restartCounts.set(happySessionId, recordRestartAttempt(prior));
 
         // B-730: see resumeSessionImpl.
         const teamEnv = await teamRelaunchEnvFor(happySessionId, metadata);
@@ -1556,6 +1571,7 @@ export async function startDaemon(): Promise<void> {
             HAPPY_RECONNECT_METADATA_VERSION: String(tracked.encryption.metadataVersion),
             HAPPY_RECONNECT_AGENT_STATE_VERSION: String(tracked.encryption.agentStateVersion),
             ...teamEnv,
+            ...(options?.auto ? { [AUTO_RESTARTED_ENV]: encodeAutoRestarted(options.auto.kind, options.auto.target) } : {}),
           },
         });
         if (result.type === 'success') {
@@ -1608,10 +1624,11 @@ export async function startDaemon(): Promise<void> {
     // Handle child process exit — preserve session data for resume
     const onChildExited = (pid: number) => {
       const session = pidToTrackedSession.get(pid);
-      if (session?.happySessionId && (session.spawnedBy === 'teams' || teamWorker?.hasSession(session.happySessionId))) teamWorker?.report(session.happySessionId, 'exited');
+      if (session?.happySessionId && !autoRestartExits.has(session.happySessionId) && (session.spawnedBy === 'teams' || teamWorker?.hasSession(session.happySessionId))) teamWorker?.report(session.happySessionId, 'exited');
       if (session?.happySessionId && automationRunner?.hasSession(session.happySessionId)) automationRunner.report(session.happySessionId, 'exited');
       if (session?.happySessionId) turnActivity.forget(session.happySessionId);
       if (session?.happySessionId) backgroundTasks.forget(session.happySessionId);
+      if (session?.happySessionId) autoRestart?.forget(session.happySessionId);
       if (session?.happySessionId) peerCoordinator.forget(session.happySessionId);
       // B-587: an exit we approved is a hibernation — keep the restore record 90 days.
       if (session?.happySessionId && daemonHibernation.consumeExit(session.happySessionId)) {
@@ -1710,6 +1727,87 @@ export async function startDaemon(): Promise<void> {
     // is created further down — late-bind through a ref so /clipboard picked up
     // the client once it exists (requests before that get delivered: false).
     let apiMachineRef: ApiMachineClient | null = null;
+    // B-852 (spec 2026-10-auto-restart-stale-wrappers): restart wrappers an
+    // upgrade left on old code once their own idle check-in proves it safe.
+    let latestAgentVersions: AgentVersions | null = null;
+    const trackedFacts = (tracked: TrackedSession) => {
+      const metadata = tracked.happySessionMetadataFromLocalWebhook as (Metadata & { tags?: string[] }) | undefined;
+      return {
+        live: isPidAlive(tracked.pid),
+        wrapperVersion: metadata?.version ?? null,
+        flavor: metadata?.flavor ?? 'claude',
+        capabilities: metadata?.capabilities ?? null,
+        spawnedBy: tracked.spawnedBy ?? null,
+        tags: metadata?.tags ?? null,
+        variant: tracked.variant ?? (metadata as { variant?: string } | undefined)?.variant ?? null,
+        // The wrapper's own word: tracked.startedBy turns into "persisted" /
+        // "recovered" across the very daemon restart an upgrade does.
+        startedBy: metadata?.startedBy ?? null,
+      };
+    };
+    const autoRestartScheduler = createAutoRestart({
+      enabled: () => autoRestartSetting,
+      quietMs: resolveQuietMs(),
+      daemonVersion: packageJson.version,
+      installedAgentVersion: (flavor) => flavor === 'codex'
+        ? latestAgentVersions?.agents.find((agent) => agent.id === 'codex')?.installed ?? null
+        : null,
+      tracked: (sessionId, pid) => {
+        const tracked = pidToTrackedSession.get(pid);
+        if (!tracked || tracked.happySessionId !== sessionId) return null;
+        return trackedFacts(tracked);
+      },
+      liveSessions: () => [...pidToTrackedSession.values()]
+        .filter((tracked) => tracked.happySessionId && tracked.happySessionMetadataFromLocalWebhook && isPidAlive(tracked.pid))
+        .map((tracked) => ({ sessionId: tracked.happySessionId!, ...trackedFacts(tracked) })),
+      turnActive: (sessionId) => turnActivity.activeSessions().includes(sessionId),
+      backgroundTasks: (sessionId) => backgroundTasks.count(sessionId),
+      automationRunning: (sessionId) => automationRunner?.hasSession(sessionId) === true,
+      // The local copy may predate the agent's conversation id (it is the spawn
+      // webhook's); judge the server copy, exactly as restartSessionImpl will.
+      resumable: async (sessionId) => {
+        const tracked = findTrackedSessionById(sessionId);
+        const local = tracked?.happySessionMetadataFromLocalWebhook;
+        const encryption = tracked?.encryption;
+        if (!local || !encryption) return false;
+        const { metadata } = await resolveRelaunchMetadata(local,
+          () => fetchServerSessionMetadata(sessionId, encryption.encryptionKey, encryption.encryptionVariant));
+        return resumePrecheck(metadata, {
+          cwdExists: (p) => existsSync(p),
+          conversationExists: (cwd, claudeSessionId) => locateClaudeConversation(cwd, claudeSessionId) !== null,
+        }).ok;
+      },
+      restart: async (sessionId, staleness) => {
+        autoRestartExits.add(sessionId);
+        try {
+          const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, auto: { kind: staleness.kind, target: staleness.target } });
+          if (result.type !== 'success') return { ok: false, error: result.type === 'error' ? result.errorMessage : result.type };
+          // The new wrapper must actually run the target code (never "success" onto the old one).
+          const after = findTrackedSessionById(sessionId)?.happySessionMetadataFromLocalWebhook?.version;
+          if (staleness.kind === 'cli' && after && (compareExactVersions(after, staleness.target) ?? 0) < 0) {
+            return { ok: false, error: `still-behind: ${after}` };
+          }
+          return { ok: true };
+        } finally {
+          autoRestartExits.delete(sessionId);
+        }
+      },
+      // Offline-failure retry guard: nobody restored, archived or resumed it meanwhile.
+      serverSession: async (sessionId) => {
+        const response = await axios.get(`${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+          headers: { Authorization: `Bearer ${credentials.token}` },
+          timeout: 10_000,
+        });
+        const row = (response.data as { session?: { active?: unknown; archivedAt?: unknown } }).session;
+        if (!row || typeof row.active !== 'boolean') return null;
+        return { active: row.active, archived: row.archivedAt != null };
+      },
+      publish: (sessions) => { void apiMachineRef?.setAutoRestartSessions(sessions); },
+      log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
+    });
+    autoRestart = autoRestartScheduler;
+    const autoRestartSweep = setInterval(() => autoRestartScheduler.sweep(), 60_000);
+    autoRestartSweep.unref?.();
     // B-105: mirror manager is constructed after the API client below —
     // late-bind so /terminal-hook requests during startup are dropped safely.
     let mirrorManagerRef: MirrorManager | null = null;
@@ -1732,7 +1830,17 @@ export async function startDaemon(): Promise<void> {
       // B-555: late-bound like the clipboard push — reports before the machine
       // client exists are dropped; the wrapper re-sends on the next change.
       onRateLimits: (report) => { apiMachineRef?.reportRateLimits(report); },
-      onHibernateCheck: (body) => daemonHibernation.check(body),
+      // B-852: the same idle check-in also decides an automatic restart of a
+      // stale wrapper; hibernation (exit) wins when both say yes.
+      onHibernateCheck: async (body) => {
+        const reply = await daemonHibernation.check(body);
+        if (reply.hibernate) return reply;
+        const auto = await autoRestartScheduler.onCheckIn(body);
+        // Never let a wrapper sleep past the cap — with the switch off too, so
+        // turning it back on (or the NEXT upgrade) gets it looked at within
+        // minutes, not at its hibernation point hours away.
+        return { ...reply, nextCheckMs: Math.min(reply.nextCheckMs ?? AUTO_RESTART_RECHECK_CAP_MS, AUTO_RESTART_RECHECK_CAP_MS, auto.nextCheckMs ?? Infinity) };
+      },
       listPeers: () => peerCoordinator.list(),
       // B-505: `daemon list` shows which sessions have a turn in flight, so an
       // operator can check the WHOLE machine before a supervised restart.
@@ -1927,6 +2035,14 @@ export async function startDaemon(): Promise<void> {
       daemonHibernation.invalidateBindings();
       return resolveIdleMs(agentHibernationSetting);
     });
+    // B-852: the machine page's「会话自动更新」switch.
+    apiMachine.setAutoRestartHandlers(autoRestartSetting, async (enabled) => {
+      await updateSettings((current) => ({ ...current, autoRestartSessions: enabled }));
+      autoRestartSetting = enabled;
+      autoRestartScheduler.sweep();
+      return autoRestartSetting;
+    });
+    setTimeout(() => autoRestartScheduler.sweep(), 5_000).unref?.();
 
     // B-510: mirror the local `webPanels` declaration (settings.json) into
     // daemonState. Started before connect so the connect snapshot carries it.
@@ -2048,7 +2164,7 @@ export async function startDaemon(): Promise<void> {
       if (delay !== null) logger.warn(`[DAEMON RUN] CLI update policy announced; re-checking in ${Math.round(delay / 1000)}s`);
     });
     const stopAgentVersionChecks = startAgentVersionChecks(
-      snapshot => apiMachine.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', agentVersions: snapshot })),
+      snapshot => { latestAgentVersions = snapshot; return apiMachine.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', agentVersions: snapshot })); },
       error => logger.debug('[DAEMON RUN] Agent version check failed', error),
     );
     // B-719: install / update a coding-agent CLI only when the owner clicks it in the Web.
@@ -2315,6 +2431,7 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Health check interval cleared');
       }
       clearInterval(cliUpdateInterval);
+      clearInterval(autoRestartSweep);
       policyAnnouncements.stop();
       stopAgentVersionChecks();
 

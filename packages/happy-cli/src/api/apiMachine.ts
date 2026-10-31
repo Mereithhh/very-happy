@@ -3,6 +3,7 @@
  * Similar to ApiSessionClient but for machine-scoped connections
  */
 
+import type { AutoRestartSessionStatus } from '@/update/autoRestartPolicy';
 import { io, Socket } from 'socket.io-client';
 import { type WebPanel, webPanelsSignature } from '@/webPanels/webPanels';
 import { logger } from '@/ui/logger'
@@ -215,6 +216,8 @@ export class ApiMachineClient {
     private claudeAuthState: ClaudeAuthState | null = null;
     /** B-587: the machine's hibernation threshold, published as a capability. */
     private agentHibernationIdleMs: number | null = null;
+    /** B-852: auto-restart setting + per-session status (null until the daemon installs it). */
+    private autoRestart: { enabled: boolean; sessions: Record<string, AutoRestartSessionStatus> } | null = null;
     /** B-510: last normalized `webPanels` (null = never set → field not written). */
     private webPanels: WebPanel[] | null = null;
     private webPanelsSignatureSent: string | null = null;
@@ -499,6 +502,47 @@ export class ApiMachineClient {
                 agentHibernation: { idleMs, rpcAvailable: true, detectedAt: Date.now() },
             })))
             .catch((error) => { logger.debug('[API MACHINE] Failed to publish agent hibernation:', error); });
+        this.cliUpdatePushChain = attempt.then(() => undefined);
+        return attempt;
+    }
+
+    /**
+     * B-852: the machine page's「会话自动更新」switch (`auto-restart-set`) and
+     * the `daemonState.autoRestart` capability + per-session status. Call
+     * before connect().
+     */
+    setAutoRestartHandlers(initialEnabled: boolean, set: (enabled: boolean) => Promise<boolean>): void {
+        this.autoRestart = { enabled: initialEnabled, sessions: this.autoRestart?.sessions ?? {} };
+        this.rpcHandlerManager.registerHandler('auto-restart-set', async (params: any) => {
+            if (typeof params?.enabled !== 'boolean') return { error: 'invalid-enabled' };
+            const enabled = await set(params.enabled);
+            this.autoRestart = { enabled, sessions: enabled ? (this.autoRestart?.sessions ?? {}) : {} };
+            await this.publishAutoRestart();
+            return { autoRestart: { enabled } };
+        });
+    }
+
+    /** B-852: the scheduler's per-session status changed (already signature-deduped). */
+    setAutoRestartSessions(sessions: Record<string, AutoRestartSessionStatus>): Promise<void> {
+        if (!this.autoRestart) return Promise.resolve();
+        this.autoRestart = { ...this.autoRestart, sessions };
+        return this.publishAutoRestart();
+    }
+
+    private autoRestartState(now: number) {
+        const state = this.autoRestart!;
+        return { enabled: state.enabled, rpcAvailable: true, detectedAt: now, sessions: state.sessions };
+    }
+
+    private publishAutoRestart(): Promise<void> {
+        if (!this.autoRestart || !this.socket?.connected) return Promise.resolve();
+        const attempt = this.cliUpdatePushChain
+            .then(() => this.updateDaemonState((current) => ({
+                ...(current ?? {}),
+                status: current?.status ?? 'running',
+                autoRestart: this.autoRestartState(Date.now()),
+            })))
+            .catch((error) => { logger.debug('[API MACHINE] Failed to publish auto-restart:', error); });
         this.cliUpdatePushChain = attempt.then(() => undefined);
         return attempt;
     }
@@ -1454,6 +1498,8 @@ export class ApiMachineClient {
                     ...(this.claudeAuthState ? { claudeAuth: this.claudeAuthState } : {}),
                     // B-587 capability + setting (same restamp discipline).
                     ...(this.agentHibernationIdleMs !== null ? { agentHibernation: { idleMs: this.agentHibernationIdleMs, rpcAvailable: true, detectedAt: now } } : {}),
+                    // B-852 capability + setting + status (same restamp discipline).
+                    ...(this.autoRestart ? { autoRestart: this.autoRestartState(now) } : {}),
                     // B-510: re-ship the declared panels (also clears a stale list).
                     ...(Array.isArray(this.webPanels) ? { webPanels: { panels: this.webPanels, updatedAt: now } } : {}),
                 };

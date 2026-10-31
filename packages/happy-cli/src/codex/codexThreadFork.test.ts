@@ -106,12 +106,28 @@ describe('codexThreadFork', () => {
     });
 });
 
-it('before-message rewinds only the independent fork and never re-injects the old prompt', async () => {
+it('before-message forks through the previous turn (Codex ≥ 0.154 paginated threads refuse rollback)', async () => {
+    const source = structuredClone(threadWithTurns);
+    const client = {
+        readThread: vi.fn(async ({ threadId }) => ({ thread: threadId === 'fork' ? { id: 'fork', turns: structuredClone(threadWithTurns.turns.slice(0, 1)) } : source })),
+        forkThread: vi.fn().mockResolvedValue({ threadId: 'fork', thread: { id: 'fork', turns: [] } }),
+        rollbackThread: vi.fn().mockRejectedValue(new Error('thread/rollback: paginated threads do not support thread/rollback')),
+        injectItems: vi.fn(),
+    };
+    expect(await forkCodexBeforeUserMessage(client, { threadId: source.id, cwd: '/project', cutBeforeItemId: 'user-2' }))
+        .toEqual({ type: 'success', newCodexThreadId: 'fork' });
+    expect(client.forkThread).toHaveBeenCalledWith({ threadId: source.id, cwd: '/project', lastTurnId: 'turn-1' });
+    expect(client.rollbackThread).not.toHaveBeenCalled();
+    expect(source).toEqual(threadWithTurns);
+    expect(client.injectItems).not.toHaveBeenCalled();
+});
+
+it('before-message on a Codex that ignores lastTurnId cuts only the independent fork and never re-injects the old prompt', async () => {
     const source = structuredClone(threadWithTurns);
     const fork = structuredClone(source);
     fork.id = 'fork';
     const client = {
-        readThread: vi.fn().mockResolvedValue({ thread: source }),
+        readThread: vi.fn(async ({ threadId }) => ({ thread: threadId === 'fork' ? fork : source })),
         forkThread: vi.fn().mockResolvedValue({ threadId: 'fork', thread: fork }),
         rollbackThread: vi.fn(async ({ threadId, numTurns }) => {
             expect(threadId).toBe('fork');
@@ -122,6 +138,7 @@ it('before-message rewinds only the independent fork and never re-injects the ol
     };
     expect(await forkCodexBeforeUserMessage(client, { threadId: source.id, cwd: '/project', cutBeforeItemId: 'user-2' }))
         .toEqual({ type: 'success', newCodexThreadId: 'fork' });
+    expect(client.rollbackThread).toHaveBeenCalledWith({ threadId: 'fork', numTurns: 2 });
     expect(fork.turns).toEqual(threadWithTurns.turns.slice(0, 1));
     expect(source).toEqual(threadWithTurns);
     expect(client.injectItems).not.toHaveBeenCalled();

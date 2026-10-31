@@ -114,6 +114,8 @@ export interface WrapperIdleSnapshot {
     lastActivityAt: number;
     /** Cleanup already running for another reason. */
     exiting?: boolean;
+    /** B-852 (Codex): the agent CLI version this wrapper's app-server started with. */
+    agentVersion?: string;
 }
 
 /** The wrapper-owned half of the rules; re-run at commit time. */
@@ -134,6 +136,23 @@ export function evaluateWrapperIdle(snapshot: WrapperIdleSnapshot, idleMs: numbe
     if ((snapshot.scheduledWakeups ?? 0) > 0) return { ok: false, reason: 'scheduled-wakeup' };
     if (!(now - snapshot.lastActivityAt >= idleMs)) return { ok: false, reason: 'recent-activity' };
     return { ok: true };
+}
+
+/**
+ * B-852: nothing is happening in this wrapper right now — the part of the
+ * idle rules that does not depend on hibernation policy (origin, keep-awake,
+ * flavor, resumability, time). The daemon's auto-restart decides the rest.
+ */
+export function isQuiescent(snapshot: WrapperIdleSnapshot): boolean {
+    return !snapshot.exiting
+        && snapshot.uiSession
+        && !snapshot.variant
+        && !snapshot.thinking
+        && snapshot.queuedInputs === 0
+        && snapshot.waitingForInput
+        && snapshot.pendingRequests === 0
+        && snapshot.backgroundTasks === 0
+        && (snapshot.scheduledWakeups ?? 0) === 0;
 }
 
 /**
