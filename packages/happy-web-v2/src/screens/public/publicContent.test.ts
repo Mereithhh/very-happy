@@ -758,7 +758,7 @@ it('documents the 2026-10-21 batch (projects, drafts, @ mentions, session search
   expect(spawn).toContain(`'${flag}'`);
  }
  const sessions = JSON.stringify(getPublicDoc('sessions'));
- for (const heading of ['Editable drafts', 'Mention files with @', 'Search every session']) expect(sessions).toContain(heading);
+ for (const heading of ['Fork a session', 'Editable drafts', 'Mention files with @', 'Search every session']) expect(sessions).toContain(heading);
  expect(sessions).not.toContain('grouped by workspace');
  // B-650: the sidebar search button opens session search, not the command palette
  expect(JSON.stringify(getPublicDoc('keyboard'))).not.toContain('tap the sidebar search button to open the same command palette');

@@ -51,6 +51,17 @@ describe('mergeSessionSummaries (B-304)', () => {
         expect(sessionLiveness(live, 'bg')).toEqual({ live: true, pid: 1, backgroundTasks: report })
     })
 
+    it('B-851: shows which session a fork came from (list and read share toSummary)', () => {
+        const live: LiveSessionLike[] = [{ happySessionId: 'child', pid: 7 }]
+        const out = mergeSessionSummaries(live, {
+            child: persisted({ parentSessionId: 'parent-1', forkedFromMessageId: 'msg-9' } as Partial<PersistedSession['metadata']>, 10),
+            plain: persisted({}, 5),
+        })
+        expect(out[0]).toMatchObject({ id: 'child', parentSessionId: 'parent-1', forkedFromMessageId: 'msg-9' })
+        expect(out[1]).not.toHaveProperty('parentSessionId')
+        expect(out[1]).not.toHaveProperty('forkedFromMessageId')
+    })
+
     it('never lists a running session twice', () => {
         const live: LiveSessionLike[] = [{ happySessionId: 'dup' }, { happySessionId: 'dup' }]
         expect(mergeSessionSummaries(live, { dup: persisted() }).map((s) => s.id)).toEqual(['dup'])
@@ -187,6 +198,12 @@ describe('summarizeAccountSession (sessions list --all)', () => {
             pending: [{ id: 'r1', tool: 'Bash', createdAt: 400, waitingMs: 600 }],
         })
         expect(out.url).toContain('sess-1')
+    })
+
+    it('B-851: --all carries the fork lineage of a row it can decrypt', () => {
+        const forked = { ...row(), metadata: seal({ ...metadata, parentSessionId: 'parent-1' }) }
+        expect(summarizeAccountSession(forked, keyed, new Set(), 1_000)).toMatchObject({ parentSessionId: 'parent-1' })
+        expect(summarizeAccountSession(forked, keyed, new Set(), 1_000)).not.toHaveProperty('forkedFromMessageId')
     })
 
     it('a row without a local key is reported with decryptable=false and ONLY the plaintext server columns', () => {

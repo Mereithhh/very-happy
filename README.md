@@ -412,6 +412,10 @@ structured parity with Claude.
 - `@` file mentions in the message box, and editable drafts: text the agent
   writes for you to send can be edited and copied in place, and your next
   message hands the final version back to the agent.
+- Fork a Claude or Codex session: **Fork session** in the header ⋯ continues
+  the whole conversation in a new session; **Fork from here** under one of your
+  messages keeps everything before it and puts that message in the new message
+  box to edit and resend. The fork links back to the original.
 - A machine file browser with previews for text, Markdown, images, PDFs, and Excel/CSV
   worksheets. Download original files (up to 50 MiB), copy text or paths, and pin
   clickable previews from agent output to the workspace. Workbook previews run

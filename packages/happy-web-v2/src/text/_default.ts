@@ -744,7 +744,7 @@ export const en = {
         notFoundTitle: 'This session does not exist or was deleted',
         loadFailedTitle: 'Could not load this session',
         renamePlaceholder: 'Session title',
-        // Fork / duplicate / rewind flow (Claude only)
+        // Fork / duplicate / rewind flow
         forkAction: 'Fork session',
         forkSubtitle: 'Continue in a new session with the same context',
         duplicateAction: 'Duplicate from message…',
@@ -761,7 +761,16 @@ export const en = {
         forkErrorMissingUuid: 'The chosen rewind point is no longer present in the source session — try forking without truncation.',
         forkErrorMissingMetadata: 'Missing session metadata required to fork.',
         forkErrorGeneric: 'Failed to fork the session.',
-        forkClaudeOnly: 'Fork is currently only supported for Claude sessions.',
+        // B-851: why a fork could not start
+        forkStarting: 'Forking…',
+        forkUnsupported: 'Only Claude and Codex sessions can be forked.',
+        forkErrorOutdated: 'The very-happy CLI on this machine is too old to fork. Update the CLI and try again.',
+        forkErrorUnreachable: 'Could not reach very-happy on this machine. Check that the machine is online; if it is, update the CLI and try again.',
+        forkErrorNoHistory: 'Nothing to fork yet: the agent has not answered in this session.',
+        forkErrorRunning: 'Wait for the current turn to finish, then fork.',
+        forkErrorAttachments: 'A message with attachments cannot be forked from yet.',
+        forkErrorPending: 'This message has not been delivered yet. Try again in a moment.',
+        forkErrorMissingPoint: 'This message was not found in the agent’s history, so the fork could not start.',
         chat: {
             loadOlder: 'Load older messages',
             loadingOlder: 'Loading older messages…',

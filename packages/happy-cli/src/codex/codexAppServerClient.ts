@@ -1051,6 +1051,7 @@ export class CodexAppServerClient {
         approvalPolicy?: ApprovalPolicy;
         sandbox?: SandboxMode;
         mcpServers?: Record<string, unknown>;
+        lastTurnId?: string;
     }): Promise<{ threadId: string; model: string; thread: Thread }> {
         await this.ensureConnected();
         const defaults = this.threadDefaults ?? {};
@@ -1066,6 +1067,7 @@ export class CodexAppServerClient {
             developerInstructions: null,
             ephemeral: false,
             threadSource: null,
+            ...(opts.lastTurnId ? { lastTurnId: opts.lastTurnId } : {}),
         };
 
         const result = await this.request('thread/fork', params) as ForkConversationResponse;

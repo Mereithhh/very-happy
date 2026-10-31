@@ -304,7 +304,6 @@ export const es: PartialTranslationStructure = {
         forkErrorMissingUuid: 'El punto de retroceso elegido ya no existe en la sesión origen — intenta bifurcar sin truncar.',
         forkErrorMissingMetadata: 'Faltan metadatos de la sesión necesarios para bifurcar.',
         forkErrorGeneric: 'No se pudo bifurcar la sesión.',
-        forkClaudeOnly: 'La bifurcación actualmente solo se admite para sesiones de Claude.',
     },
 
     commandPalette: {

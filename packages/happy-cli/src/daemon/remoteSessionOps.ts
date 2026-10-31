@@ -24,6 +24,7 @@ import {
     readSessionTranscript,
     MAX_READ_LIMIT,
     type AccountSessionSummary,
+    lineageOf,
     type SessionSummary,
     type SessionTranscript,
 } from '@/sessions/sessionOps'
@@ -284,6 +285,7 @@ function summaryFromPersisted(id: string, persisted: PersistedSession | undefine
         ...(meta?.flavor ? { flavor: meta.flavor } : {}),
         ...(meta?.tags?.length ? { tags: [...meta.tags] } : {}),
         ...(meta?.variant ? { variant: meta.variant } : {}),
+        ...lineageOf(meta),
         ...(persisted?.savedAt !== undefined ? { savedAt: persisted.savedAt } : {}),
         url: sessionWebUrl(id),
     }

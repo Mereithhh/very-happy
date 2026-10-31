@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { parseSessionsArgs, peerMessageExitCode, permissionFailureRecord, SESSIONS_HELP } from './sessions'
+import { formatAccountSummaryLine, formatSummaryLine, parseSessionsArgs, peerMessageExitCode, permissionFailureRecord, SESSIONS_HELP } from './sessions'
 
 const ID = 'cmtl3c0x7001vqr29o8nmclno'
 
@@ -195,5 +195,13 @@ describe('exit path (2026-10-29: piped --json cut at the pipe capacity)', () => 
             .filter((line) => !/^\s*(\*|\/\/|\/\*)/.test(line))
             .join('\n')
         expect(code).not.toMatch(/\bprocess\.exit\s*\(/)
+    })
+})
+
+describe('B-851 fork lineage in the text listing', () => {
+    it('list / read and list --all name the parent of a fork, and nothing for an ordinary session', () => {
+        expect(formatSummaryLine({ id: 'kid', live: false, url: 'u', parentSessionId: 'mom' })).toBe('kid [not running] parent=mom u')
+        expect(formatSummaryLine({ id: 'solo', live: false, url: 'u' })).toBe('solo [not running] u')
+        expect(formatAccountSummaryLine({ id: 'kid', live: false, url: 'u', parentSessionId: 'mom', decryptable: true, readable: true, active: false, archived: false, attention: false })).toBe('kid [idle] parent=mom u')
     })
 })

@@ -293,6 +293,9 @@ ${chalk.bold('Actions:')}
              async sub-agents / backgrounded commands still running after
              the turn ended — such a session is NOT idle (absent = the
              daemon or CLI is too old to report it).
+             A forked session shows \`parent=<id>\` (\`parentSessionId\`,
+             plus \`forkedFromMessageId\` for a fork from a message, in
+             --json) in list, list --all and read.
   stop       SIGTERM the session's process via the local daemon.
   archive    Mark the session inactive server-side (it stays resumable).
   approve    Answer a pending permission request \`requestId\` with approve —
@@ -379,7 +382,7 @@ function formatWait(ms: number): string {
     return `${Math.floor(minutes / 60)}h${minutes % 60}m`
 }
 
-function formatAccountSummaryLine(summary: AccountSessionSummary): string {
+export function formatAccountSummaryLine(summary: AccountSessionSummary): string {
     const state = summary.attention
         ? '[attention]'
         : summary.live ? (summary.machine ? `[running on ${summary.machine.host}]` : '[running here]') : summary.active ? '[active elsewhere]' : summary.archived ? '[archived]' : '[idle]'
@@ -392,6 +395,7 @@ function formatAccountSummaryLine(summary: AccountSessionSummary): string {
         if (summary.flavor) parts.push(`agent=${summary.flavor}`)
         if (summary.tags?.length) parts.push(`tags=${summary.tags.join(',')}`)
         if (summary.variant) parts.push(`variant=${summary.variant}`)
+        if (summary.parentSessionId) parts.push(`parent=${summary.parentSessionId}`)
         if (summary.machineId) parts.push(`machine=${summary.machineId}`)
         if (summary.cwd) parts.push(`cwd=${summary.cwd}`)
         if (summary.backgroundTasks && summary.backgroundTasks.count > 0) parts.push(formatBackgroundTasks(summary.backgroundTasks))
@@ -426,12 +430,13 @@ function formatBackgroundTasks(report: NonNullable<SessionSummary['backgroundTas
     return `background=${report.count}${types.length ? `(${types.join(',')})` : ''}`
 }
 
-function formatSummaryLine(summary: SessionSummary): string {
+export function formatSummaryLine(summary: SessionSummary): string {
     const parts = [summary.id, summary.live ? '[running]' : '[not running]']
     if (summary.title) parts.push(`title="${summary.title}"`)
     if (summary.flavor) parts.push(`agent=${summary.flavor}`)
     if (summary.tags?.length) parts.push(`tags=${summary.tags.join(',')}`)
     if (summary.variant) parts.push(`variant=${summary.variant}`)
+    if (summary.parentSessionId) parts.push(`parent=${summary.parentSessionId}`)
     if (summary.cwd) parts.push(`cwd=${summary.cwd}`)
     if (summary.pid !== undefined) parts.push(`pid=${summary.pid}`)
     if (summary.backgroundTasks && summary.backgroundTasks.count > 0) parts.push(formatBackgroundTasks(summary.backgroundTasks))
