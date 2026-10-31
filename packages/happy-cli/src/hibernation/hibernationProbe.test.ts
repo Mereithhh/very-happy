@@ -288,6 +288,25 @@ describe('B-587 HibernationProbe', () => {
         expect(await p.tick()).toBe(60_000);
     });
 
+    it('B-852: a quiescent team / automation / pi session still reports (auto-restart) but never commits', async () => {
+        for (const extra of [{ spawnedBy: 'teams' }, { tags: ['automation'] }, { flavor: 'acp' }, { resumable: false }]) {
+            const commit = vi.fn(async () => true);
+            const ask = vi.fn(async () => ({ hibernate: true, idleMs: 5000 }));
+            const { p } = probe({ snapshot: () => snapshot(extra), ask, commit });
+            await p.tick();
+            expect(ask).toHaveBeenCalledTimes(1);
+            expect(commit).not.toHaveBeenCalled();
+        }
+    });
+
+    it('B-852: a non-quiescent or local-terminal session with a hibernation refusal does not report', async () => {
+        for (const extra of [{ spawnedBy: 'teams', pendingRequests: 1 }, { spawnedBy: 'teams', backgroundTasks: 1 }, { uiSession: false }, { variant: 'assistant' }, { spawnedBy: 'teams', waitingForInput: false }]) {
+            const { p, deps } = probe({ snapshot: () => snapshot(extra) });
+            await p.tick();
+            expect(deps.ask).not.toHaveBeenCalled();
+        }
+    });
+
     it('an approval without a threshold is ignored (fail closed)', async () => {
         const commit = vi.fn(async () => true);
         const { p } = probe({ ask: vi.fn(async () => ({ hibernate: true })), commit });

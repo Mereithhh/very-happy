@@ -41,6 +41,7 @@ import { claudeAuthTone, isClaudeAuthStale, isKnownClaudeAuthDiagnosis, readClau
 import { machineClaudeAuthProbe, machineClaudeAuthRepair, machineClaudeAuthSetStore, type ClaudeAuthRpcResult } from '@/sync/ops';
 import { MachineRateLimits } from './rateLimits/MachineRateLimits';
 import { MachineHibernationGroup } from './MachineHibernationGroup';
+import { MachineAutoRestartGroup } from './MachineAutoRestartGroup';
 
 export function MachineScreen() {
   const { id } = useParams();
@@ -472,6 +473,7 @@ export function MachineScreen() {
           <MachineRateLimits machine={machine} />
 
           <MachineHibernationGroup machine={machine} online={online} />
+          <MachineAutoRestartGroup machine={machine} online={online} />
 
           {claudeAuth && (
             <ItemGroup

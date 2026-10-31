@@ -5721,6 +5721,38 @@ export const zhHans: TranslationStructure = {
     },
 
     // B-587: 空闲休眠
+    // B-852: CLI 升级后自动原地重启（spec 2026-10-auto-restart-stale-wrappers）。
+    autoRestart: {
+        updatedLine: ({ version }: { version: string }) => `已更新到 Very Happy ${version}（会话已原地重启，历史保留）`,
+        updatedAgentLine: ({ agent, version }: { agent: string; version: string }) => `已将 ${agent} 更新到 ${version}（会话已原地重启，历史保留）`,
+        waiting: ({ sessionVersion, machineVersion, why }: { sessionVersion: string; machineVersion: string; why: string }) =>
+            `仍在用 v${sessionVersion}（机器已是 v${machineVersion}）。${why}也可以现在手动重启，对话保留。`,
+        waitingAgent: ({ agent, why }: { agent: string; why: string }) =>
+            `仍在用启动时的 ${agent}。${why}也可以现在手动重启，对话保留。`,
+        failed: ({ reason }: { reason: string }) => `自动更新失败（${reason}）。可以手动重启，对话保留。`,
+        manualLocalTerminal: ({ sessionVersion, machineVersion }: { sessionVersion: string; machineVersion: string }) =>
+            `仍在用 v${sessionVersion}（机器已是 v${machineVersion}）。这个会话在你的终端里运行，不会自动更新；重启即可更新，对话保留。`,
+        manualLocalTerminalAgent: ({ agent }: { agent: string }) =>
+            `仍在用启动时的 ${agent}。这个会话在你的终端里运行，不会自动更新；重启即可更新，对话保留。`,
+        offlineFailed: ({ reason }: { reason: string }) => `自动更新失败（${reason}），会话已离线。点「恢复」继续，对话保留。`,
+        offlineFailedRetry: ({ reason, time }: { reason: string; time: string }) =>
+            `自动更新失败（${reason}），会话已离线。约 ${time} 会自动再试一次，也可以现在恢复，对话保留。`,
+        whyTurnActive: '正在运行，空闲后会自动更新。',
+        whyPendingRequest: '在等你审批，处理完后会自动更新。',
+        whyQueuedInput: '有排队的消息，处理完后会自动更新。',
+        whyBackgroundTasks: '有后台任务在运行，空闲后会自动更新。',
+        whyScheduledWakeup: '有待触发的定时唤醒，之后会自动更新。',
+        whyRecentActivity: '正在使用中，空闲 10 分钟后会自动更新。',
+        whyAutomationRunning: '有自动化正在运行，结束后会自动更新。',
+        whyOther: '空闲后会自动更新。',
+        machineTitle: '会话自动更新',
+        machineFooter: 'CLI 升级后，仍在用旧版本的会话在空闲满 10 分钟时自动原地重启（历史保留）：没有运行中的回合、没有待审批、没有排队消息、没有后台任务。你在自己终端里使用的会话不会被动。',
+        on: '开启',
+        off: '关闭（由我决定）',
+        saved: '已更新会话自动更新设置',
+        saveFailed: '无法更新会话自动更新设置',
+    },
+
     hibernation: {
         notice: '已休眠以释放内存。发消息或点「唤醒」继续。',
         waking: '正在唤醒…',

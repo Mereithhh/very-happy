@@ -44,6 +44,7 @@ import type {
     InputItem,
     ReasoningEffort,
     McpServerElicitationRequestResponse,
+    InitializeResponse,
 } from './codexAppServerTypes';
 import type { SandboxConfig } from '@/persistence';
 import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
@@ -189,6 +190,8 @@ export class CodexAppServerClient {
     private pending = new Map<number, PendingRequest>();
     private processEpoch = 0;
     private connected = false;
+    /** B-852: agent version from the last `initialize` (null = unknown). */
+    serverVersion: string | null = null;
     private sandboxConfig?: SandboxConfig;
     private sandboxCleanup: (() => Promise<void>) | null = null;
     public sandboxEnabled = false;
@@ -826,7 +829,9 @@ export class CodexAppServerClient {
                 experimentalApi: true,
             },
         };
-        await this.request('initialize', initParams);
+        const initialized = await this.request('initialize', initParams) as Partial<InitializeResponse> | null;
+        // B-852: `codex_cli_rs/0.155.0 (…)` → the agent version this app-server runs.
+        this.serverVersion = typeof initialized?.userAgent === 'string' ? initialized.userAgent.match(/\/(\d+\.\d+\.\d+)\b/)?.[1] ?? null : null;
         this.notify('initialized');
         this.connected = true;
         logger.debug('[CodexAppServer] Connected and initialized');

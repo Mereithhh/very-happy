@@ -102,6 +102,14 @@ describe('message timestamps', () => {
         host.remove();
     });
 
+    it('B-852: an automatic restart renders as one quiet localized service line', () => {
+        const message = { kind: 'agent-event', id: 'upd', createdAt: T0, event: { type: 'message', kind: 'session-auto-updated', message: 'Updated to Very Happy 0.2.190 (session restarted in place, history kept)' } } satisfies Message;
+        const host = render(<MessageView message={message} sessionId="s1" showMeta={false} />);
+        expect(host.textContent).toContain('Updated to Very Happy 0.2.190 — session restarted in place, history kept');
+        expect(host.querySelector('.msg-event-line--error')).toBeNull();
+        expect(host.querySelector('button')).toBeNull();
+    });
+
     it('does not make hidden events visible', () => {
         expect(render(<MessageView message={{ kind: 'agent-event', id: 'ready', createdAt: T0, event: { type: 'ready' } }} sessionId="s1" showMeta={false} />).innerHTML).toBe('');
     });

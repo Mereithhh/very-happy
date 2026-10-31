@@ -58,6 +58,10 @@ import type { SessionConfigOption, SessionModeState, SessionModelState } from '@
 import { EditReportThrottle, extractAcpEditPaths } from '@/sessions/editPaths';
 import { reportSessionEditToDaemon } from '@/daemon/controlClient';
 import { readGeminiConfiguredModel } from './geminiConfiguredModel';
+import { AUTO_RESTART_CAPABILITY, takeAutoRestartedEvent } from '@/update/autoRestartPolicy';
+import { HibernationProbe } from '@/hibernation/hibernationProbe';
+import { resolveCheckMs, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
+import { checkDaemonHibernation } from '@/daemon/controlClient';
 
 const ACP_EVENT_PREVIEW_CHARS = 240;
 const ACP_RAW_PREVIEW_CHARS = 2000;
@@ -531,7 +535,9 @@ export async function runAcp(opts: {
     machineId: settings.machineId,
     startedBy: opts.startedBy,
     sandbox: settings.sandboxConfig,
-    capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY],
+    // B-852: a daemon-spawned pi session reports when it is quiescent, so the
+    // daemon can restart it onto new code after an upgrade.
+    capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, ...(opts.agentName === 'pi' && opts.startedBy === 'daemon' ? [AUTO_RESTART_CAPABILITY] : [])],
   });
   metadata.attachmentKinds = [];
   // B-844: report the model the machine's Gemini config pins (null = none),
@@ -782,6 +788,7 @@ export async function runAcp(opts: {
     session.keepAlive(thinking, 'remote');
   };
   let acpSessionId: string | null = null;
+  let piProbe: HibernationProbe | null = null;
   let shouldExit = false;
   let abortController = new AbortController();
   let turnCancelled = false;
@@ -1331,6 +1338,39 @@ export async function runAcp(opts: {
       logger.debug(`[${opts.agentName}] Resume of agent session ${resumeId}: ${started.resumed ?? 'new'}${started.loadFailure ? ` (${started.loadFailure})` : ''}`);
       if (started.resumed !== 'loaded') session.sendSessionEvent({ type: 'message', message: piRestartNotice(opts.agentName, 'resume', started) });
     }
+    // B-852: auto-restart check-ins (spec 2026-10-auto-restart-stale-wrappers).
+    // pi never hibernates (flavor `acp` is refused by the hibernation rules),
+    // so the probe only reports quiescence and never commits.
+    if (opts.agentName === 'pi' && opts.startedBy === 'daemon') {
+      const piSnapshot = (): WrapperIdleSnapshot => {
+        const meta = session.getMetadata();
+        return {
+          flavor: 'acp',
+          resumable: typeof meta?.piSessionId === 'string' && meta.piSessionId.length > 0,
+          uiSession: true,
+          ...(isAssistantVariant ? { variant: 'assistant' } : {}),
+          ...(process.env.HAPPY_SPAWNED_BY ? { spawnedBy: process.env.HAPPY_SPAWNED_BY } : {}),
+          ...(meta?.tags ? { tags: meta.tags } : {}),
+          keepAwake: false,
+          thinking,
+          queuedInputs: messageQueue.size() + (session.promptQueueHasPending() ? 1 : 0),
+          waitingForInput: messageQueue.isWaiting(),
+          pendingRequests: Object.keys(session.getAgentState()?.requests ?? {}).length,
+          backgroundTasks: 0,
+          lastActivityAt: session.lastActivityAt,
+          ...(shouldExit ? { exiting: true } : {}),
+        };
+      };
+      piProbe = new HibernationProbe({
+        checkMs: resolveCheckMs(),
+        snapshot: piSnapshot,
+        ask: (report) => checkDaemonHibernation({ sessionId: session.sessionId, pid: process.pid, report }),
+        commit: async () => false,
+      });
+      piProbe.start();
+    }
+    const autoUpdated = takeAutoRestartedEvent(process.env);
+    if (autoUpdated) session.sendSessionEvent(autoUpdated);
     if (verbose) {
       if (!sawSlashCommands) {
         logAcp('muted', `Outgoing slash commands from ${opts.agentName}: not reported yet`);
@@ -1436,6 +1476,7 @@ export async function runAcp(opts: {
     }
   } finally {
     disposeTermination?.();
+    piProbe?.stop();
     // A turn cut short by kill/backend death never reached setThinking(false)
     // above; release the lease before the interval stops re-sending it.
     setThinking(false);
