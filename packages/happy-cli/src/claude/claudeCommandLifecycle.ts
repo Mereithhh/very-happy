@@ -164,3 +164,19 @@ export function planUnconfirmedCommands<P>(
         tombstone: commands.filter((_, i) => i !== index).map((c) => c.uuid),
     };
 }
+
+/**
+ * B-853: a message the launcher handed to a Query whose input had already
+ * closed (`onUndeliveredMessage`). It never reached Claude Code, so unlike an
+ * unconfirmed command it has not had its first chance yet: it is parked for
+ * the next launch — already finalized, replayed verbatim — unless the session
+ * is leaving remote mode or the park slot is taken; then null, and the caller
+ * tombstones it (B-332) so the web shows it as not delivered.
+ */
+export function planUndeliveredMessage<M extends { mode: unknown }>(
+    message: M,
+    context: { parkFree: boolean; exiting: boolean },
+): (M & { finalized: true }) | null {
+    if (context.exiting || !context.parkFree) return null;
+    return { ...message, finalized: true };
+}

@@ -5,7 +5,7 @@ import { createBackgroundTaskTracker } from './backgroundTasks';
 import { notifyDaemonClaudeAuthFailed } from '@/daemon/controlClient';
 import { Session } from "./session";
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
-import { planUnconfirmedCommands } from './claudeCommandLifecycle';
+import { planUndeliveredMessage, planUnconfirmedCommands } from './claudeCommandLifecycle';
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { rewriteQueuedPermissionMode } from "./utils/queuedPermissionMode";
@@ -520,6 +520,8 @@ export async function claudeRemoteLauncher(
         message: MessageParam['content'];
         mode: EnhancedMode;
         uuid?: string;
+        /** Already went through `finalize` once (a Query handed it back, B-853, or a redelivery): replayed verbatim. */
+        finalized?: boolean;
     };
 
     try {
@@ -629,6 +631,10 @@ export async function claudeRemoteLauncher(
                         const parked = modeGate.takeParked();
                         if (parked) {
                             permissionHandler.handleModeChange(parked.mode.permissionMode);
+                            if (parked.finalized) {
+                                if (typeof parked.message === 'string') onPromptFinalized?.(parked.message);
+                                return parked;
+                            }
                             if (typeof parked.message === 'string') return { ...parked, message: await finalize(parked.message) };
                             return parked;
                         }
@@ -803,11 +809,30 @@ export async function claudeRemoteLauncher(
                         if (plan.redeliver) {
                             redeliveredCommands.add(plan.redeliver.uuid);
                             logger.debug(`[remote]: re-sending unconfirmed user message ${plan.redeliver.uuid} into the next launch`);
-                            modeGate.park({ message: plan.redeliver.payload.message, mode: plan.redeliver.payload.mode, uuid: plan.redeliver.uuid });
+                            modeGate.park({ message: plan.redeliver.payload.message, mode: plan.redeliver.payload.mode, uuid: plan.redeliver.uuid, finalized: true });
                         }
                         if (plan.tombstone.length > 0) {
                             logger.debug(`[remote]: ${plan.tombstone.length} user message(s) never started before the query ended`);
                             session.client.sendQueueCancelReason(plan.tombstone, 'aborted');
+                        }
+                    },
+                    // B-853: the Query's input closed while this message was in
+                    // hand — it never reached Claude Code. Run it first in the
+                    // next launch (it was pulled before anything still queued);
+                    // only when that slot is taken does the web get a tombstone
+                    // it can put back and resend, never silence. Leaving remote
+                    // mode is the user's stop (`aborted`); otherwise the Query
+                    // was replaced before it took the message (`restarted`).
+                    onUndeliveredMessage: (message) => {
+                        const parked = planUndeliveredMessage(message, { parkFree: !modeGate.hasParked, exiting: exitReason !== null });
+                        if (parked) {
+                            logger.debug('[remote]: pulled message missed its Query; replaying it in the next launch');
+                            modeGate.park(parked);
+                        } else if (message.uuid) {
+                            logger.debug(`[remote]: pulled message ${message.uuid} missed its Query and cannot be replayed`);
+                            session.client.sendQueueCancelReason([message.uuid], exitReason !== null ? 'aborted' : 'restarted');
+                        } else {
+                            logger.warn('[remote]: pulled message missed its Query and carries no uuid to tombstone');
                         }
                     },
                     onCommandsDropped: (uuids) => {
@@ -937,6 +962,13 @@ export async function claudeRemoteLauncher(
                 permissionHandler.reset();
                 modeGate.reset();
             }
+        }
+        // B-853: a message parked for a launch that will never come (Ctrl-C,
+        // switch to local) is reported, not dropped with the launcher.
+        const stranded = modeGate.takeParked();
+        if (stranded?.uuid) {
+            logger.debug(`[remote]: leaving remote mode with parked message ${stranded.uuid}; tombstoning it`);
+            session.client.sendQueueCancelReason([stranded.uuid], 'aborted');
         }
     } finally {
         session.client.off('message', observeSessionRecord);

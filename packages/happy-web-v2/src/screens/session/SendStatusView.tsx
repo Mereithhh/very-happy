@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useState } from 'react';
-import { AlertCircle, Check, Clock3, CloudOff, ListEnd, Trash2, Undo2 } from 'lucide-react';
+import { AlertCircle, Ban, Check, Clock3, CloudOff, ListEnd, Trash2, Undo2 } from 'lucide-react';
+import type { DiscardedReasonKey } from './discardedInput';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui/Spinner';
 import { sync } from '@/sync/sync';
@@ -101,6 +102,27 @@ export function DeliverOnResumeHint({ sessionId, messageId }: { sessionId: strin
     return <span className="msg-deliver-later" role="status" aria-live="polite" data-send-state="deliver-on-resume">
         <CloudOff size={12} aria-hidden />
         <span>{t('session.chat.deliverOnResume')}</span>
+    </span>;
+}
+
+/**
+ * B-332 note under a queued message the CLI destroyed before it ran, plus
+ * B-853 「放回输入框」: the way to send it again (with whatever model / mode the
+ * composer now has) instead of retyping it. Shown only when a composer of this
+ * session is mounted to receive it.
+ */
+export function DiscardedNote({ sessionId, reason, text }: { sessionId: string; reason: DiscardedReasonKey; text: string }) {
+    const { t } = useTranslation();
+    const composerMounted = useHasComposer(sessionId);
+    return <span className="msg-discarded" data-discarded-reason={reason}>
+        <Ban size={12} aria-hidden />
+        <span role="status">{t(`session.chat.discarded.${reason}`)}</span>
+        {composerMounted && text && <>
+            <span className="msg-send-sep" aria-hidden>·</span>
+            <button type="button" className="msg-send-action" onClick={() => restoreToComposer(sessionId, text)}>
+                {t('session.chat.sendRestore')}
+            </button>
+        </>}
     </span>;
 }
 

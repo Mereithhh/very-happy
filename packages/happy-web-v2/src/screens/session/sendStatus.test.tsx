@@ -11,7 +11,7 @@ vi.mock('@/sync/sync', () => ({ sync: { sendMessage: vi.fn(), retrySend: mocks.r
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ lang: 'en', t: (key: string) => key }) }));
 vi.mock('@/ui/Toast', () => ({ toast: { success: vi.fn() } }));
 import { MessageActions } from './MessageActions';
-import { useSendSpinnerResetAll } from './SendStatusView';
+import { DiscardedNote, useSendSpinnerResetAll } from './SendStatusView';
 import { onComposerRestore } from './composerRestore';
 import { clearSendSpinner, SEND_SPINNER_DELAY_MS, sendSpinnerRemaining, turnSendStatus, undeliveredPromptId } from './sendStatusModel';
 import { __resetSendConfirmationsForTests, isSentFlashActive, markSendConfirmed, SENT_FLASH_MS } from '@/sync/sendConfirmations';
@@ -229,5 +229,42 @@ describe('B-722 pure send-state rules', () => {
         expect(undeliveredPromptId([agent, user('u1')], false)).toBeNull();
         expect(undeliveredPromptId([user('u3', 'sending')], false)).toBeNull(); // still sending: its own state says so
         expect(undeliveredPromptId(undefined, false)).toBeNull();
+    });
+});
+
+describe('DiscardedNote (B-853)', () => {
+    let host: HTMLDivElement;
+    let root: Root;
+    beforeEach(() => {
+        (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+    });
+    afterEach(() => { act(() => root.unmount()); host.remove(); });
+
+    const putBack = () => [...host.querySelectorAll('button')].find((b) => b.textContent === 'session.chat.sendRestore');
+
+    it('a message the agent never ran says why and goes back to the composer in one click', () => {
+        const received: string[] = [];
+        const off = onComposerRestore('s1', (text) => received.push(text));
+        try {
+            act(() => root.render(<DiscardedNote sessionId="s1" reason="restarted" text="暗号二是 Bruno" />));
+            expect(host.querySelector('[role="status"]')?.textContent).toBe('session.chat.discarded.restarted');
+            act(() => { putBack()!.click(); });
+            expect(received).toEqual(['暗号二是 Bruno']);
+        } finally {
+            off();
+        }
+    });
+
+    it('no put-back without a composer of this session to receive it, or without text', () => {
+        act(() => root.render(<DiscardedNote sessionId="s1" reason="aborted" text="x" />));
+        expect(putBack()).toBeUndefined();
+        const off = onComposerRestore('s1', () => {});
+        try {
+            act(() => root.render(<DiscardedNote sessionId="s1" reason="aborted" text="" />));
+            expect(putBack()).toBeUndefined();
+        } finally {
+            off();
+        }
     });
 });

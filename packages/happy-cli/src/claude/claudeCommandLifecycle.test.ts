@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createClaudeCommandTracker, planUnconfirmedCommands, readClaudeCommandLifecycle } from './claudeCommandLifecycle';
+import { createClaudeCommandTracker, planUndeliveredMessage, planUnconfirmedCommands, readClaudeCommandLifecycle } from './claudeCommandLifecycle';
 
 /** The frame Claude Code 2.1.296 emits (probe 2026-10-19). */
 const frame = (state: string, command_uuid = 'steer-1') => ({
@@ -113,5 +113,18 @@ describe('unconfirmed commands (B-634 ②)', () => {
         // Something else is parked for the next launch (a mode change): never overwrite it.
         expect(planUnconfirmedCommands(cmds, { aborted: false, parkFree: false, redelivered: new Set() }))
             .toEqual({ redeliver: null, tombstone: ['x', 'y'] });
+    });
+});
+
+describe('planUndeliveredMessage (B-853)', () => {
+    const message = { message: 'hi', mode: { permissionMode: 'default' }, uuid: 'u-1' };
+
+    it('parks a message that never reached Claude Code, marked finalized so it is not decorated twice', () => {
+        expect(planUndeliveredMessage(message, { parkFree: true, exiting: false })).toEqual({ ...message, finalized: true });
+    });
+
+    it('returns null (caller tombstones) when leaving remote mode or the park slot is taken', () => {
+        expect(planUndeliveredMessage(message, { parkFree: true, exiting: true })).toBeNull();
+        expect(planUndeliveredMessage(message, { parkFree: false, exiting: false })).toBeNull();
     });
 });
