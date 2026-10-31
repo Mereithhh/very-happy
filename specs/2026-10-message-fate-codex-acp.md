@@ -25,6 +25,7 @@
 - **Codex kill 顺序**：tombstone 在 `handleAbort` **之前**发（daemon stop 在 SIGTERM 后 2 s SIGKILL，abort 宽限 3 s），并置 `terminating`，预检结束后不再启动这一轮。
 - **ACP 退出意图**（`acpExit.ts`）：只有用户 kill/归档才打 archived；信号、backend 起不来、意外结束都只 `sendSessionDeath` + `POST /deactivate`（与 Codex/Claude 的 B-505 一致）。backend 起不来时额外发一条原因事件。
 - **附件准备失败**（两 runner 的 `.catch`）：同样补 `failed` tombstone。
+- **`ApiSessionClient.close()` 后不再重连**：socket 自己的 `io client disconnect` 曾触发 `startSmartReconnect`，ACP runner 结束后（不调 `process.exit`）被重新连上的 socket 吊住，成为对 daemon/Web 仍 `active` 的僵尸 wrapper（实测 A2 SIGTERM 时发现；Codex/Claude 被 `process.exit` 掩盖）。
 - **Web**：`discardedReasonKey` 认 `failed`（文案「未执行 · 没能交给 agent（原因见报错）」）；reducer 对无 `queuedAt` 的输入也应用带 reason 的 CLI tombstone；被 tombstone 的消息不再显示「恢复后送达」。
 
 ## 兼容矩阵与发布顺序
