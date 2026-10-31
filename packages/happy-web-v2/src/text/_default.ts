@@ -2746,6 +2746,19 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            oct31c: {
+                title: 'Fork a session',
+                summary: 'Continue any Claude or Codex session in a new one, and see the model and thinking a session is actually running in one panel.',
+                fork: 'Fork a whole session from its ⋯ menu ("Fork session"), or fork from a message with "Fork from here", which prefills that message; the new session shows which session it was "Forked from".',
+                runSetup: 'Model and thinking now share one "Run setup" panel that shows the values the session is actually running; thinking uses named levels, and a pick made in a session stays in that session.',
+            },
+            oct31b: {
+                title: 'CLI 0.2.190: idle sessions update themselves',
+                summary: 'After a CLI upgrade, idle sessions restart in place on the new version, and no message you send is silently lost any more.',
+                autoRestart: 'After a CLI upgrade, sessions still on the old version restart in place once idle (history kept). Turn it off with "Session auto-update" on the machine page.',
+                noLoss: 'A message the agent could not run no longer disappears: it stays in the conversation marked "Not run" with the reason, and "Back to input" puts it back in the composer.',
+                pi: 'pi sessions are no longer archived after a restart.',
+            },
             oct31a: {
                 title: 'Switching back to "Follow" takes effect right away',
                 summary: 'After pinning a model in a session and switching back to "Follow", the next message runs the model the picker shows.',

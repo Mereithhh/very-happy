@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-31-fork-run-setup',
+    date: '2026-10-31',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct31c.title',
+    summaryKey: 'changelog.releases.oct31c.summary',
+    itemKeys: ['changelog.releases.oct31c.fork', 'changelog.releases.oct31c.runSetup'],
+  },
+  {
+    id: '2026-10-31-cli-auto-restart',
+    cliVersion: '0.2.190',
+    date: '2026-10-31',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct31b.title',
+    summaryKey: 'changelog.releases.oct31b.summary',
+    itemKeys: ['changelog.releases.oct31b.autoRestart', 'changelog.releases.oct31b.noLoss', 'changelog.releases.oct31b.pi'],
+  },
+  {
     id: '2026-10-31-model-follow-switch-back',
     date: '2026-10-31',
     buildVersion: __APP_VERSION__,
