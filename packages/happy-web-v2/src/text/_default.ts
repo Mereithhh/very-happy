@@ -2793,6 +2793,20 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            oct31e: {
+                title: 'Model and thinking follow the session',
+                summary: 'The model and thinking you pick in a session follow the session: your phone and computer show the same choice and send the same one.',
+                everyDevice: 'A change made on one device shows up right away on the others, and messages sent from any device use it.',
+                machineConfig: 'You can switch a session back to "Machine config" mid-session.',
+                rejected: 'A thinking level the agent rejects is no longer remembered.',
+            },
+            oct31d: {
+                title: 'CLI 0.2.191: run setup survives restarts',
+                summary: 'The session keeps its model and thinking choice across resume, stop and automatic restart.',
+                kept: 'After a resume, a stop or an automatic restart, the session goes back to the model and thinking you chose instead of the default.',
+                reported: 'Claude sessions report the thinking level and machine-config model actually in effect.',
+                transition: 'One-time change: after a session from 0.2.190 or earlier first auto-restarts onto 0.2.191, messages sent from the CLI or an automation without settings run Claude on the machine config model with default thinking, and Codex on the same model with default thinking; send one message from the web on the original device to restore your choice (other devices may show the account default until then; what is shown always matches what runs).',
+            },
             oct31c: {
                 title: 'Fork a session',
                 summary: 'Continue any Claude or Codex session in a new one, and see the model and thinking a session is actually running in one panel.',
