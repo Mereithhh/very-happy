@@ -302,7 +302,6 @@ export const it: PartialTranslationStructure = {
         forkErrorMissingUuid: 'Il punto di ritorno scelto non esiste più nella sessione di origine — prova a biforcare senza troncare.',
         forkErrorMissingMetadata: 'Mancano i metadati della sessione necessari per biforcare.',
         forkErrorGeneric: 'Impossibile biforcare la sessione.',
-        forkClaudeOnly: 'La biforcazione è attualmente supportata solo per le sessioni Claude.',
     },
 
     commandPalette: {

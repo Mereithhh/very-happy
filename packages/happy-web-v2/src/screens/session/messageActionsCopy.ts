@@ -8,8 +8,8 @@ export const messageActionsCopy = (lang: string) => lang.startsWith('zh') ? {
     unsent: '这条消息还没送达，稍后再试。',
     recordFailed: 'Agent 已改写对话，但页面记录没保存成功：刷新后重试删除。',
     sendFailed: '对话已回退，但新消息没发出去：在输入框重新发送。',
-    // Used by SessionDetailScreen's banner for forked sessions (a separate feature).
-    branchContext: '从历史消息创建的分支', parent: '返回原会话',
+    // ForkOrigin's link when the source session is not loaded.
+    parent: '返回原会话',
 } : {
     actions: 'Message actions', quote: 'Quote', edit: 'Edit', delete: 'Delete', cancel: 'Cancel',
     text: 'Message', submit: 'Send',
@@ -20,6 +20,6 @@ export const messageActionsCopy = (lang: string) => lang.startsWith('zh') ? {
     unsent: 'This message has not been delivered yet. Try again in a moment.',
     recordFailed: 'The agent rewound, but the page could not save it. Refresh and delete again.',
     sendFailed: 'The conversation was rewound, but the new message was not sent. Send it again from the composer.',
-    // Used by SessionDetailScreen's banner for forked sessions (a separate feature).
-    branchContext: 'Branched from an earlier message', parent: 'Back to original session',
+    // ForkOrigin's link when the source session is not loaded.
+    parent: 'Back to original session',
 };

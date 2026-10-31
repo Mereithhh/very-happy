@@ -4,10 +4,10 @@ import { isQuickSession } from '@/screens/projects/newSessionProject';
 import { SessionPreviews } from './SessionPreviews';
 import { SubagentDock } from './SubagentDock';
 import { PermissionCard } from './PermissionCard';
-import { messageActionsCopy } from './messageActionsCopy';
+import { ForkOrigin } from './ForkOrigin';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { useSession, useMessage, useLocalSetting, useIsDataReady, storage } from '@/sync/storage';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useSession, useLocalSetting, useIsDataReady, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { useMediaQuery } from '@/app/useMediaQuery';
@@ -67,7 +67,7 @@ export function SessionDetailScreen() {
     const { id: routeId } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
-    const { t, lang } = useTranslation();
+    const { t } = useTranslation();
     // B-823 (QA9 O-2): under the cold-start splash the composer commits first, the transcript after that paint.
     const transcriptNow = useAfterSplashPaint();
     // B-516 single tree: a pending record (optimistic new session) renders this
@@ -82,7 +82,6 @@ export function SessionDetailScreen() {
     const pendingId = pendingMode ? pending!.pendingId : null;
     const session = useSession(id ?? '');
     const quickSession = useMemo(() => !!id && isQuickSession(id), [id]);
-    const branchOrigin = useMessage(session?.metadata?.parentSessionId ?? '', session?.metadata?.forkedFromMessageId ?? '');
     const bannerMachine = storage((s) => {
         const mid = session?.metadata?.machineId;
         return mid ? s.machines[mid] : undefined;
@@ -377,7 +376,6 @@ export function SessionDetailScreen() {
     return (
         <div className={`sd${panelOpen && session ? ' sd--files-open' : ''}`} ref={sdRef} data-pending={pending && !session ? pending.state : undefined}>
             <div className="sd-main">
-                {session?.metadata?.parentSessionId && <div className="msg-branch-context"><span>{messageActionsCopy(lang).branchContext}</span>{branchOrigin?.kind === 'user-text' && <q className="msg-branch-preview" title={branchOrigin.text}>{branchOrigin.text}</q>}<Link className="msg-parent-link" to={`/session/${session.metadata.parentSessionId}`}>{messageActionsCopy(lang).parent}</Link></div>}
                 {!session ? <PendingSessionHeader record={pending!} /> : <ChatHeader
                     sessionId={id}
                     filesOpen={filesOpen}
@@ -389,6 +387,7 @@ export function SessionDetailScreen() {
                     boardAction={boardAllowed ? <BoardHeaderButton sessionId={id} active={boardPhone ? boardSheet : boardOpen}
                         onClick={() => boardPhone ? setBoardSheet((v) => !v) : boardOpen ? setPanel(null, true) : setPanel('board', panelOpen)} /> : undefined}
                 />}
+                {session?.metadata?.parentSessionId && <ForkOrigin parentSessionId={session.metadata.parentSessionId} />}
                 {/* B-766: phones get the 汇报板 as a summary strip + top sheet under the header. */}
                 {boardAllowed && boardPhone && <BoardMobile key={`board:${id}`} sessionId={id} open={boardSheet} onOpenChange={setBoardSheet} trailing={<LeadViewStripToggle sessionId={id} />} />}
                 {session && <SessionTeamContext sessionId={id} />}

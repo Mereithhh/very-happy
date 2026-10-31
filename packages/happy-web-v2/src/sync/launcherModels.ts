@@ -18,6 +18,22 @@ export type LauncherCatalogSource = {
 };
 
 /**
+ * B-851: a fork's wrapper publishes its own `metadata.models` only once it
+ * starts the agent, so until the first send the picker would fall back to the
+ * code list and show its older alias labels ("sonnet 5" for a session running
+ * Sonnet 5.5). The parent ran the same agent on the same machine moments ago:
+ * borrow its catalog until the fork publishes one.
+ */
+export function forkCatalogSource<M extends Pick<Metadata, 'flavor' | 'machineId' | 'models'>>(
+    metadata: M | null,
+    parent: M | null | undefined,
+): M | null {
+    if (!metadata || metadata.models?.length || !parent?.models?.length) return metadata;
+    if (normalizeAgentKey(parent.flavor) !== normalizeAgentKey(metadata.flavor) || parent.machineId !== metadata.machineId) return metadata;
+    return parent;
+}
+
+/**
  * Newest-started catalog first, at most one per machine: a machine whose CLI or
  * Codex was upgraded publishes a newer list from its next session, and that
  * list replaces the machine's older ones. `machineId` narrows to one machine

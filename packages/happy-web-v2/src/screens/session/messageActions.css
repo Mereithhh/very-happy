@@ -18,11 +18,13 @@
 
 .msg--user .msg-actions { justify-content: flex-end; }
 .msg-actions-items { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
-.msg-branch-context { display: flex; align-items: center; flex-wrap: wrap; gap: calc(var(--chat-space) * 2); padding: 0 calc(var(--chat-space) * 4); font: var(--chat-fs-secondary)/1.5 var(--font-sans); color: var(--text-dim); }
-.msg-branch-context .msg-parent-link { margin-left: auto; padding-inline: 0; }
+.msg-branch-context { display: flex; align-items: center; flex-wrap: nowrap; gap: calc(var(--chat-space) * 2); padding: 0 calc(var(--chat-space) * 4); font: var(--chat-fs-secondary)/1.5 var(--font-sans); color: var(--text-dim); }
+.msg-branch-context .msg-parent-link { display: block; min-width: 0; padding-inline: 0; line-height: 1.5; overflow: hidden; color: var(--text); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; text-overflow: ellipsis; white-space: nowrap; }
+.msg-branch-context > svg { flex: none; }
+/* B-851: why 「从这里分叉」 could not start, under the action row. */
+.msg-fork-note { margin: var(--chat-space) 0 0; font: var(--chat-fs-secondary)/1.5 var(--font-sans); }
+.msg--user .msg-fork-note { align-self: flex-end; text-align: right; }
 
-
-.msg-branch-preview { min-width: 0; max-width: 44ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 
 /* B-513: not yet confirmed by the server. Dimmed at once (only the spinner

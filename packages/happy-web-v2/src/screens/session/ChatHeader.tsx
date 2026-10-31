@@ -41,6 +41,7 @@ import { useImeGuard } from '@/utils/ime';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { RelayBadge } from '@/components/RelayBadge';
 import { sessionAgentLabel } from './sessionAgentLabel';
+import { useSessionForkItem } from './useSessionFork';
 import { PrStatusChip } from './git/PrStatusChip';
 import { useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
 import { LocationTrail } from '@/components/LocationTrail';
@@ -88,6 +89,8 @@ export function ChatHeader({
     const running = !!session && isAgentWorkLive({ presence: session.presence, thinking: session.thinking, runningSubagentsInTurn: 0, heartbeatFresh: leaseFresh });
     const avail = session ? sessionMenuAvailability({ archivedAt: session.archivedAt, share: sharedWithMe ? true : undefined }, { running, mirror: isMirrorSession(session) }) : null;
     const canShare = !!avail?.share;
+    // B-851: 「分叉会话」 — a new session with this conversation (null = this agent cannot fork).
+    const forkItem = useSessionForkItem(sessionId, running);
     const canControlRuntime = !sharedWithMe && session?.metadata?.capabilities?.includes('claude-runtime-controls-v1') === true;
     // B-587: only a wrapper that can hibernate offers「保持唤醒」(AGENTS #14).
     const canKeepAwake = !sharedWithMe && supportsKeepAwake(session?.metadata);
@@ -306,8 +309,8 @@ export function ChatHeader({
             )}
             {!editing && plan.inline.map(renderAction)}
             {!editing && boardAction}
-            {!editing && (infoItems.length > 0 || plan.overflow.length > 0 || canStartTeam || canControlRuntime || canKeepAwake || sessionItems.length > 0) && (
-                <ActionDropdownMenu sheetTitle={title} items={[...plan.overflow.map(menuItem), ...infoItems, ...withSessionTools(sessionItems, [...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : [])]).map((item, i) => (i === 0 && plan.overflow.length + infoItems.length > 0 ? { ...item, separatorBefore: true } : item))]}>
+            {!editing && (infoItems.length > 0 || plan.overflow.length > 0 || !!forkItem || canStartTeam || canControlRuntime || canKeepAwake || sessionItems.length > 0) && (
+                <ActionDropdownMenu sheetTitle={title} items={[...plan.overflow.map(menuItem), ...infoItems, ...withSessionTools(sessionItems, [...(forkItem ? [forkItem] : []), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : [])]).map((item, i) => (i === 0 && plan.overflow.length + infoItems.length > 0 ? { ...item, separatorBefore: true } : item))]}>
                     <button
                         type="button"
                         className={`ch-icon${overflowHasActive ? ' is-active' : ''}`}

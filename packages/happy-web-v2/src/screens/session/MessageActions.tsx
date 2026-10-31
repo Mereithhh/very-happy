@@ -1,6 +1,10 @@
 import { useReadOnlyTranscript } from './readOnlyTranscript';
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Pencil, Quote, TextQuote, Trash2 } from 'lucide-react';
+import { GitFork, Pencil, Quote, TextQuote, Trash2 } from 'lucide-react';
+import { useInRouterContext, useNavigate } from 'react-router-dom';
+import type { Session } from '@/sync/storageTypes';
+import { isMirrorSession } from '@/assistant/assistantSession';
+import { Spinner } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
 import { Button } from '@/ui/Button';
@@ -15,6 +19,8 @@ import { MessageTime } from './MessageTime';
 import { DeliverOnResumeHint, SendFailedActions, SendingIndicator, SentFlash } from './SendStatusView';
 import type { TurnSendStatus } from './sendStatusModel';
 import { RewindFailure, rewindConversation } from './conversationRewind';
+import { ForkFailure, forkFromMessage, messageForkTarget } from './forkFlow';
+import { forkReasonText, isForkableFlavor } from './forkModel';
 import './messageActions.css';
 
 /**
@@ -29,7 +35,7 @@ import './messageActions.css';
  * are not rolled back. Claude sessions only: the runner rewinds its own
  * transcript (conversationRewind.ts).
  */
-export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, send = null, status, children }: {
+export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, hasAttachments = false, send = null, status, children }: {
     text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments?: boolean;
     /** B-513: not yet confirmed by the server — copy only; a failed turn shows its recovery actions instead of the time. */
     send?: TurnSendStatus | null;
@@ -38,11 +44,11 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
     children?: ReactNode;
 }) {
     if (useReadOnlyTranscript()) return <>{children}</>;
-    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} send={send} status={status}>{children}</EditableMessageActions>;
+    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} hasAttachments={hasAttachments} send={send} status={status}>{children}</EditableMessageActions>;
 }
 
-function EditableMessageActions({ text, sessionId, userMessage, createdAt, send, status, children }: {
-    text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; send: TurnSendStatus | null; status?: ReactNode; children?: ReactNode;
+function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAttachments, send, status, children }: {
+    text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments: boolean; send: TurnSendStatus | null; status?: ReactNode; children?: ReactNode;
 }) {
     const { t, lang } = useTranslation();
     const copy = messageActionsCopy(lang);
@@ -61,11 +67,15 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, send,
     const [busy, setBusy] = useState(false);
     const busyRef = useRef(false);
     const [error, setError] = useState<string | null>(null);
+    const [forkNote, setForkNote] = useState<string | null>(null);
+    const inRouter = useInRouterContext();
 
     // Only a Claude runner can rewind its own conversation; mirrors are read-only.
     const flavor = session?.metadata?.flavor ?? 'claude';
     // B-619: rewind / edit-and-resend are owner operations (session RPC); a grantee only reads.
     const canRewind = !!userMessage && !send && flavor === 'claude' && typeof userMessage.seq === 'number' && !session?.share;
+    // B-851: 「从这里分叉」 — Claude and Codex; a blocked fork explains itself under the row.
+    const canFork = inRouter && !!userMessage && !!session && !send && !session.share && !isMirrorSession(session) && isForkableFlavor(session.metadata?.flavor);
 
     // Grow with the text, like the bubble it replaces.
     useLayoutEffect(() => {
@@ -181,6 +191,7 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, send,
                             setTouchQuoteOffer(null);
                         }}
                     ><TextQuote size={14} aria-hidden /><span>{t('session.chat.readingAids.quoteSelectionLong')}</span></button>}
+                    {canFork && <ForkFromHereButton session={session} message={userMessage} hasAttachments={hasAttachments} onNote={setForkNote} />}
                     {canRewind && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
                     {canRewind && <button ref={deleteButton} type="button" className="msg-action" aria-label={copy.delete} title={copy.delete} onClick={() => { setError(null); setMode('delete'); }}><Trash2 size={14} aria-hidden /></button>}
                 </div>}
@@ -194,5 +205,32 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, send,
                         <MessageTime createdAt={createdAt} />
                     </>}
             </div>}
+        {forkNote && mode === 'idle' && <p role="alert" className="msg-edit-error msg-fork-note">{forkNote}</p>}
     </>;
+}
+
+/** B-851: 「从这里分叉」 — a blocked or failed fork explains itself under the row (`onNote`). */
+function ForkFromHereButton({ session, message, hasAttachments, onNote }: {
+    session: Session; message: UserTextMessage; hasAttachments: boolean; onNote: (note: string | null) => void;
+}) {
+    const { t } = useTranslation();
+    const navigate = useNavigate();
+    const [forking, setForking] = useState(false);
+    const start = () => {
+        if (forking) return;
+        const target = messageForkTarget(session, message, hasAttachments);
+        if (typeof target === 'string') { onNote(forkReasonText(t, target)); return; }
+        onNote(null);
+        setForking(true);
+        forkFromMessage(session, target, message.text)
+            .then((id) => navigate(`/session/${encodeURIComponent(id)}`))
+            .catch((cause) => {
+                const failure = cause instanceof ForkFailure ? cause : new ForkFailure('failed', String(cause));
+                onNote(forkReasonText(t, failure.kind, failure.message));
+            })
+            .finally(() => setForking(false));
+    };
+    return <button type="button" className="msg-action" aria-label={t('session.forkFromHere')} title={t('session.forkFromHere')} aria-busy={forking} disabled={forking} onClick={start}>
+        {forking ? <Spinner size={14} /> : <GitFork size={14} aria-hidden />}
+    </button>;
 }

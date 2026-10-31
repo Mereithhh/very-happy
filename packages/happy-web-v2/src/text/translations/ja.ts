@@ -302,7 +302,6 @@ export const ja: PartialTranslationStructure = {
         forkErrorMissingUuid: '選んだ巻き戻しポイントがソースセッションに存在しません — 切り詰めなしのフォークをお試しください。',
         forkErrorMissingMetadata: 'フォークに必要なセッションのメタデータがありません。',
         forkErrorGeneric: 'セッションのフォークに失敗しました。',
-        forkClaudeOnly: 'フォークは現在 Claude セッションのみ対応しています。',
     },
 
     commandPalette: {
