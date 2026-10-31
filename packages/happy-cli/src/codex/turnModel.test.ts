@@ -63,19 +63,20 @@ describe('runCodex wiring (B-844d)', () => {
     it('sends the resolved model on thread start and on every turn', () => {
         expect(source).toContain('machineDefaultModel = configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model;');
         expect(source).toMatch(/startThread\(\{\n\s*model: turnModel,/);
-        expect(source).toMatch(/sendTurnAndWait\([\s\S]{0,300}?model: turnModel,\n\s*approvalPolicy: executionPolicy\.approvalPolicy,\n\s*sandbox: executionPolicy\.sandbox,\n\s*effort: message\.mode\.effort,/);
+        expect(source).toMatch(/sendTurnAndWait\([\s\S]{0,300}?model: turnModel,\n\s*approvalPolicy: executionPolicy\.approvalPolicy,\n\s*sandbox: executionPolicy\.sandbox,\n\s*effort: turnEffort\.effort,/);
     });
 
-    it('abort does not forget the model', () => {
+    it('abort forgets neither the model nor (B-849b, QA23b P2-1) the effort', () => {
         const reset = source.match(/const resetCurrentModeDefaults = \(\) => \{([\s\S]*?)\n    \};/)?.[1] ?? '';
-        expect(reset).toContain('currentEffort = DEFAULT_CODEX_EFFORT;');
+        expect(reset).toContain('currentAppendSystemPrompt = undefined;');
         expect(reset).not.toMatch(/currentModel\s*=/);
+        expect(reset).not.toMatch(/currentEffort\s*=/);
     });
 
     it('publishes facts from the thread\'s real model, after resume/import, start and every turn', () => {
         expect(source).toContain('codexModelFacts({ threadModel: client.threadModel, pendingModel: currentModel, machineDefault: machineDefaultModel })');
         expect(source).toMatch(/importCodexThreadId,\n\s*cwd: process\.cwd\(\),\n\s*mcpServers,\n\s*\}\);\n\s*first = false;\n\s*appendSystemPromptInjected = true;\n\s*\}\n(\s*\/\/.*\n)*\s*reportModeFacts\(\);/);
         expect(source).toMatch(/codexThreadId: startedThread\.threadId,\n\s*\}\)\);\n\s*reportModeFacts\(\);/);
-        expect(source).toMatch(/effort: message\.mode\.effort,\n\s*onTurnStarted: \(\) => heldInput\.delivered\(\),\n\s*\}\);\n\s*reportModeFacts\(\);/);
+        expect(source).toMatch(/effort: turnEffort\.effort,\n\s*onTurnStarted: \(\) => \{\n\s*lastStartedEffort = turnEffort\.effort;\n\s*heldInput\.delivered\(\);\n\s*\},\n\s*\}\);\n\s*reportModeFacts\(\);/);
     });
 });

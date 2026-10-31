@@ -24,7 +24,7 @@ import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
 import type { MessageParam } from '@anthropic-ai/sdk/resources';
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
 import { applyClaudeResultLifecycle } from './utils/remoteResultLifecycle';
-import { applyClaudeSdkMetadata } from './claudeSdkMetadata';
+import { applyClaudeRunFacts, applyClaudeSdkMetadata } from './claudeSdkMetadata';
 import { createTurnSteeringController } from './turnSteering';
 import { appendStagedAttachmentsToPrompt, chatAttachmentDirectory, stageClaudeAttachments } from './utils/attachmentContent';
 import { configuration } from '@/configuration';
@@ -724,6 +724,12 @@ export async function claudeRemoteLauncher(
                         session.client.updateMetadata((currentMetadata) =>
                             applyClaudeSdkMetadata(currentMetadata, metadata));
                         if (metadata.permissionMode) onEffectivePermissionMode?.(metadata.permissionMode);
+                    },
+                    onRunFacts: (facts) => {
+                        // B-849b: every turn asks; write only what changed.
+                        const current = session.client.getMetadata();
+                        if (current && applyClaudeRunFacts(current, facts) === current) return;
+                        session.client.updateMetadata((currentMetadata) => applyClaudeRunFacts(currentMetadata, facts));
                     },
                     onQueryReady: (q) => {
                         runtimeControls.setQuery(q);

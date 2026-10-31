@@ -36,3 +36,11 @@ describe('CLI MessageMetaSchema mode fields', () => {
         expect(MessageMetaSchema.parse({ model: null }).model).toBeNull();
     });
 });
+
+describe('CLI MessageMetaSchema run intents (B-849b)', () => {
+    it('carries modelIntent / effortIntent through instead of stripping them', () => {
+        const parsed = MessageMetaSchema.parse({ sentFrom: 'web', model: 'claude-opus-5-5', modelIntent: 'latest', effort: null, effortIntent: 'default' });
+        expect(parsed.modelIntent).toBe('latest');
+        expect(parsed.effortIntent).toBe('default');
+    });
+});

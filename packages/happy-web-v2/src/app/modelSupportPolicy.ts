@@ -21,6 +21,7 @@ import {
     supportsClaudeOpus55,
     type AgentDefaultOverrides,
 } from '@/sync/agentDefaults';
+import { withRunPicks } from '@/sync/runPicks';
 import { MACHINE_CONFIG_AGENTS, getLatestModelTier, isLatestModelMode, resolveLatestModel, type LatestModelTable } from '@slopus/happy-wire';
 
 /**
@@ -98,7 +99,8 @@ export function wantedModel(
     latestTable: LatestModelTable | null = null,
 ): string {
     const flavor = session.metadata?.flavor;
-    const wanted = session.modelMode
+    // B-849b: the session's own choice (recorded intent / what it runs) first.
+    const wanted = withRunPicks(session).modelMode
         ?? getAgentDefaultOverride(overrides, flavor).modelMode
         ?? getCodeAgentDefaults(flavor).modelMode;
     if (!isLatestModelMode(wanted)) return wanted;

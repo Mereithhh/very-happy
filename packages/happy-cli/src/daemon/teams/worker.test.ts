@@ -10,7 +10,7 @@ vi.mock('@/persistence', () => ({ readPersistedSessions: mocks.persisted }));
 vi.mock('@/commands/sessionMessage', () => ({ sendUserMessage: mocks.send, waitForSessionKey: mocks.key }));
 vi.mock('@/sessions/sessionOps', () => ({ archiveSession: mocks.archive }));
 vi.mock('./worktree', () => ({ prepareTeamWorktree: mocks.prepare, resolveTeamRepository: mocks.resolve, removeTeamWorktree: mocks.remove }));
-import { createTeamWorker, refusalCode } from './worker';
+import { createTeamWorker, refusalCode, teamInitialModelMeta } from './worker';
 import { readReceipt, writeReceipt } from './journal';
 
 let home: string;
@@ -449,6 +449,13 @@ describe('B-730: rebuilding a relaunched member scope', () => {
         mocks.get.mockImplementation(async (...args) => { const result = await original(...args); for (const t of result.data.teams ?? []) mutate(t); return result; });
         await expect(start().recoverScope('op1', 'session1', join(home, 'teams', 'scopes', 'op1.json'))).rejects.toThrow();
         expect(mocks.post.mock.calls.some(([, request]) => request.action?.type === 'claim-operation')).toBe(false);
+    });
+});
+
+describe('B-849b2 (QA28 P2-5): a member records its model choice', () => {
+    it('a named model is the choice; none means the machine config it runs', () => {
+        expect(teamInitialModelMeta('claude-haiku-5-5')).toEqual({ model: 'claude-haiku-5-5', modelIntent: 'claude-haiku-5-5' });
+        expect(teamInitialModelMeta(undefined)).toEqual({ modelIntent: 'default' });
     });
 });
 

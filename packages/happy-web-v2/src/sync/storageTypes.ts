@@ -23,6 +23,10 @@ export const MetadataSchema = z.object({
     // B-844c: explicit model the wrapper keeps applying to turns without one
     // (an earlier pick); null = none; absent = older wrapper (unknown).
     stickyModel: z.string().nullable().optional(),
+    // B-849b: the session's own model / thinking choice, recorded by the
+    // wrapper; read through the runIntent whitelist (sync/runPicks.ts).
+    modelIntent: z.string().nullable().optional(),
+    effortIntent: z.string().nullable().optional(),
     operatingModes: z.array(z.object({
         code: z.string(),
         value: z.string(),

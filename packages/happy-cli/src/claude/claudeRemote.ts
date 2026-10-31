@@ -19,6 +19,7 @@ import type { JsRuntime } from "./runClaude";
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
 import type { ClaudeSdkMetadata } from './claudeSdkMetadata';
 import { modelSwitchFailureNotice, modelTarget, needsModelSwitch } from './claudeLiveModel';
+import { liveModelTarget, readClaudeRunFacts, type ClaudeRunFacts } from './claudeRunFacts';
 import { formatClaudeTimingLine, type ClaudeTurnMarks } from './claudeTiming';
 import { decideWarmAdoption, formatPrewarmLine, type ClaudePrewarmLease, type WarmAdoptionDecision } from './claudePrewarm';
 import { TimeoutError, withTimeout } from './utils/withTimeout';
@@ -99,6 +100,8 @@ export async function claudeRemote(opts: {
     onAuthFailure?: (reason: string) => void,
     onSessionReset?: () => void,
     onSDKMetadata?: (metadata: ClaudeSdkMetadata) => void,
+    /** B-849b: effort really sent + the settings.json model, read after every system/init. */
+    onRunFacts?: (facts: ClaudeRunFacts) => void,
     /** B-631: uuid-stamped user messages (prompts, steers) Claude Code confirmed it never read — a Stop swept them; the launcher tombstones them (B-332). */
     onCommandsDropped?: (uuids: string[]) => void,
     /**
@@ -427,7 +430,8 @@ export async function claudeRemote(opts: {
                 }
                 if (!reason && decision.switchModel) {
                     try {
-                        await withTimeout(w.response.setModel(modelTarget(initial.mode.model)), w.lease.adoptTimeoutMs);
+                        // B-849b: "machine default" = the settings model, as a fresh Query starts.
+                        await withTimeout(w.response.setModel(await liveModelTarget(w.response, modelTarget(initial.mode.model), w.lease.adoptTimeoutMs)), w.lease.adoptTimeoutMs);
                     } catch {
                         reason = 'set-model-failed';
                     }
@@ -480,7 +484,12 @@ export async function claudeRemote(opts: {
     } else {
         // Push initial message
         messages = new PushableAsyncIterable<SDKUserMessage>();
-        messages.push(initialUserMessage);
+        // B-849b: a resumed Query on 「本机配置」 restarts on the transcript's
+        // last model, not settings.json's (verified 2026-10-31: settings
+        // Sonnet, previous turn Haiku → the relaunched turn ran Haiku). Put it
+        // on the settings model BEFORE the first prompt can start a turn.
+        const resumeOnConfigModel = !!startFrom && modelTarget(initial.mode.model) === undefined;
+        if (!resumeOnConfigModel) messages.push(initialUserMessage);
         timingMarks.spawnAt = Date.now();
         opts.onStartArgsUsed?.();
         response = query({
@@ -491,6 +500,15 @@ export async function claudeRemote(opts: {
             models = await discoverModels(response);
         } catch (error) {
             logger.debug('[claudeRemote] Model capability discovery unavailable');
+        }
+        if (resumeOnConfigModel) {
+            const target = await liveModelTarget(response, undefined);
+            if (target) {
+                await withTimeout(response.setModel(target), SET_MODEL_TIMEOUT_MS, 'set_model')
+                    .then(() => logger.debug(`[claudeRemote] Resumed on the settings model ${target}`))
+                    .catch((e) => logger.debug(`[claudeRemote] setModel(settings model) on resume failed: ${e instanceof Error ? e.message : String(e)}`));
+            }
+            messages.push(initialUserMessage);
         }
         timingMarks.handshakeAt = Date.now();
     }
@@ -649,9 +667,12 @@ export async function claudeRemote(opts: {
             // keeps the model, because the late answer may have landed.
             if (modelUnconfirmed || needsModelSwitch(mode.model, next.mode.model)) {
                 try {
-                    await withTimeout(response.setModel(modelTarget(next.mode.model)), SET_MODEL_TIMEOUT_MS, 'set_model');
+                    // B-849b: setModel(undefined) would land on Claude Code's
+                    // built-in default; 「本机配置」 means the settings.json model.
+                    const target = await liveModelTarget(response, modelTarget(next.mode.model));
+                    await withTimeout(response.setModel(target), SET_MODEL_TIMEOUT_MS, 'set_model');
                     modelUnconfirmed = false;
-                    logger.debug(`[claudeRemote] Model switched to ${modelTarget(next.mode.model) ?? 'default'}`);
+                    logger.debug(`[claudeRemote] Model switched to ${target ?? 'default'}`);
                 } catch (e) {
                     logger.debug(`[claudeRemote] setModel failed: ${e instanceof Error ? e.message : String(e)}`);
                     // B-853: the Query is gone, not the model ("Query closed
@@ -852,6 +873,14 @@ export async function claudeRemote(opts: {
                         // asked for. runClaude publishes THIS, not our intent.
                         permissionMode: systemInit.permissionMode,
                     });
+                }
+
+                // B-849b: init carries no effort on this transport; ask Claude
+                // Code what the turn really sends and what settings.json pins.
+                // Off the message path; a turn has no pending approval yet here.
+                if (opts.onRunFacts) {
+                    const onRunFacts = opts.onRunFacts;
+                    void readClaudeRunFacts(response).then((facts) => { if (facts) onRunFacts(facts); });
                 }
 
                 // Session id is still in memory, wait until session file is written to disk

@@ -18,7 +18,8 @@ import type { EnhancedMode, PermissionMode } from './loop';
 import type { MessageMeta } from '@/api/types';
 import type { QueueDiscardEntry } from '@/utils/MessageQueue2';
 import { spawnOriginTags } from '@/utils/createSessionMetadata';
-import { PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY } from '@slopus/happy-wire';
+import { CLAUDE_CONFIG_MODEL_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, restoredEffort, restoredModel } from '@slopus/happy-wire';
+import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
 import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { configuration } from '@/configuration';
 import { applyProviderEnv, loadSessionProvider } from './providerBinding';
@@ -64,6 +65,11 @@ export interface StartOptions {
 // "default = follow the machine" contract (agentDefaults.ts).
 const DEFAULT_CLAUDE_MODEL: string | undefined = undefined;
 const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = undefined;
+const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+/** B-849b: a restored effort Claude accepts; null (auto) / unknown → none. */
+function restoredClaudeEffort(effort: string | null | undefined): (typeof CLAUDE_EFFORTS)[number] | undefined {
+    return (CLAUDE_EFFORTS as readonly string[]).includes(effort ?? '') ? effort as (typeof CLAUDE_EFFORTS)[number] : undefined;
+}
 
 const importRunClaudeDeps = () => import('./runClaudeDeps');
 
@@ -229,7 +235,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
-        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY],
+        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY],
+        // B-849b: this session's model / thinking choice (wrapper is the sole
+        // writer; a reconnect keeps the server copy). A spawn-time model is a choice.
+        modelIntent: options.model ?? null,
+        effortIntent: null,
+        stickyModel: options.model ?? null,
         // Effective mode this process enforces. Kept current by
         // publishPermissionMode below; the web renders it instead of guessing.
         permissionMode: mapToClaudeMode(initialPermissionMode ?? 'default'),
@@ -363,6 +374,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug(`[START] Reconnect without server snapshot (${snapshot.reason}); skipping existing messages`);
         }
     }
+    // B-849b (QA23b P2-1): a resumed / woken wrapper keeps running what the
+    // session was set to, not the start defaults — a message without meta (CLI
+    // send, team wake) would otherwise run another model / effort than every
+    // device shows.
+    const restoredRun = reconnectSeeded ? { model: restoredModel(response.metadata), effort: restoredEffort(response.metadata) } : null;
 
     // B-512: a fresh session opens its socket now, so the connect handshake
     // overlaps the webhook and the post-webhook setup (the first message used
@@ -825,7 +841,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // when the client enqueued it. An explicit switch (RPC / approval) that
     // happened AFTER that snapshot is newer and must not be undone by it.
     let lastExplicitModeSwitchAt = 0;
-    let currentModel: string | undefined = options.model ?? DEFAULT_CLAUDE_MODEL; // Track current model state
+    // B-849b: a resume restores the session's recorded model over the spawn
+    // args (null = machine default); a fresh spawn starts on its args.
+    let currentModel: string | undefined = restoredRun?.model !== undefined ? (restoredRun.model ?? undefined) : options.model ?? DEFAULT_CLAUDE_MODEL; // Track current model state
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
@@ -833,7 +851,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // B-063: assistant (dispatcher) sessions have the mutating built-ins
     // hard-denied — see assistant/dispatcherTools.ts.
     let currentDisallowedTools: string[] | undefined = withAssistantDenylist(undefined, isAssistantVariant);
-    let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
+    let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = restoredClaudeEffort(restoredRun?.effort) ?? DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
+    if (restoredRun) logger.debug(`[START] Restored run intent: model=${currentModel ?? 'default'} effort=${currentEffort ?? 'default'}`);
 
     // B-283 `/btw` side questions: answered by a separate single-turn query that
     // forks the live Claude session. Registered here (not in the launcher) so
@@ -858,16 +877,27 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     const resetCurrentModeDefaults = () => {
         // permissionMode deliberately survives an abort: the user's latest
-        // selection is process state, not a per-turn override.
-        currentModel = options.model ?? DEFAULT_CLAUDE_MODEL;
+        // selection is process state, not a per-turn override. B-849b: so do
+        // the model and the effort — they are the session's recorded intent,
+        // and every device keeps showing them after a Stop.
         currentFallbackModel = undefined;
         currentCustomSystemPrompt = undefined;
         currentAppendSystemPrompt = undefined;
         currentAllowedTools = undefined;
         currentDisallowedTools = withAssistantDenylist(undefined, isAssistantVariant);
-        currentEffort = DEFAULT_CLAUDE_EFFORT;
         logger.debug('[loop] Reset current mode defaults after abort');
     };
+
+    // B-849b: a picker change lands now, not with the next message — every
+    // device sees it, and a message without meta runs it.
+    registerRunIntentRpc(session.rpcHandlerManager, session, (request) => {
+        const resolved = resolveMessageMode(currentModeState(), request as MessageMeta, { sandboxEnabled, isAssistantVariant, staleModeSnapshot: true, pinnedModel: providerPinnedModel });
+        currentModel = resolved.next.model;
+        currentEffort = resolved.next.effort;
+        logger.debug(`[loop] Run intent set: model=${currentModel ?? 'default'} effort=${currentEffort ?? 'default'}`);
+        // B-849b2: an effort Claude cannot take kept the current one; not recorded.
+        return { facts: { stickyModel: currentModel ?? null }, effortRefused: resolved.ignoredEffort !== undefined };
+    });
 
     const currentModeState = () => ({
         permissionMode: currentPermissionMode,
@@ -1051,6 +1081,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         if (resolved.ignoredEffort !== undefined) {
             logger.debug(`[loop] Ignoring invalid effort from user message: ${resolved.ignoredEffort}`);
         }
+        // B-849b: the choice this message carried becomes the session's intent.
+        // B-849b2 (QA28 P2-4): an ignored effort is not the session's choice.
+        recordRunIntents(session, resolved.ignoredEffort !== undefined ? withoutEffort(message.meta) : message.meta, { stickyModel: currentModel ?? null });
         logger.debug(`[loop] Message mode: permission=${resolved.mode.permissionMode} model=${resolved.mode.model || 'default'} effort=${resolved.mode.effort ?? 'default'} appendSystemPrompt=${resolved.mode.appendSystemPrompt ? 'set' : 'none'} customSystemPrompt=${resolved.mode.customSystemPrompt ? 'set' : 'none'}`);
         // B-515: score the prediction and teach the cache (first web message
         // of an eligible session only).

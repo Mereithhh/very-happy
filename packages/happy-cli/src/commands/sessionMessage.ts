@@ -65,6 +65,9 @@ export async function sendUserMessage(
         model?: string | null
         permissionMode?: string
         effort?: string | null
+        /** B-849b2: the choice behind `model` / `effort` (`latest`, `default`, an id / level). */
+        modelIntent?: string
+        effortIntent?: string
         /** B-497: 'steer' targets the live turn (Claude remote); omitted = queue. */
         delivery?: 'queue' | 'steer'
     } = {},
@@ -85,6 +88,8 @@ export async function sendUserMessage(
             ...(options.model !== undefined ? { model: options.model } : {}),
             ...(options.permissionMode !== undefined ? { permissionMode: options.permissionMode } : {}),
             ...(options.effort !== undefined ? { effort: options.effort } : {}),
+            ...(options.modelIntent !== undefined ? { modelIntent: options.modelIntent } : {}),
+            ...(options.effortIntent !== undefined ? { effortIntent: options.effortIntent } : {}),
             ...(options.delivery !== undefined ? { delivery: options.delivery } : {})
         }
     }

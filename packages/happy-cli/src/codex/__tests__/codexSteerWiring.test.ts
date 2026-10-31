@@ -16,7 +16,7 @@ const source = readFileSync(new URL('../runCodex.ts', import.meta.url), 'utf8')
 describe('Codex steer wiring (B-628)', () => {
     it('advertises codex-steer-v1 so the web offers Steer only to a wrapper that has it', () => {
         expect(CODEX_STEER_CAPABILITY).toBe('codex-steer-v1');
-        expect(source).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY]');
+        expect(source).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY]');
     });
 
     it('tries the running turn first for a delivery=steer message, and queues it otherwise', () => {

@@ -189,8 +189,15 @@ export function claudeMachineConfigEntry(input: {
     selectedKey: string | null | undefined;
     configuredModel?: string | null;
     running?: string | null;
+    /**
+     * B-849b: the wrapper switches a running session back to the settings model
+     * on `model: null` (claude-config-model-v1) — pickable mid-session.
+     */
+    liveSwitch?: boolean;
 }): { model: string | null; selectable: boolean } {
     const onIt = input.inSession && input.selectedKey === 'default';
-    const model = (onIt ? input.running || input.configuredModel : input.configuredModel) || null;
-    return { model, selectable: !input.inSession || onIt };
+    // B-849b: where the wrapper switches to the settings model, that model is
+    // what the entry runs (the turn on screen may still be the previous one).
+    const model = (onIt && !(input.liveSwitch && input.configuredModel) ? input.running || input.configuredModel : input.configuredModel) || null;
+    return { model, selectable: !input.inSession || onIt || input.liveSwitch === true };
 }

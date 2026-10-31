@@ -74,7 +74,7 @@ describe('Claude wrapper ↔ Orca alignment wiring (B-631)', () => {
 
     it('the live control requests have deadlines', () => {
         expect(remote).toContain('const SET_MODEL_TIMEOUT_MS = 30_000;');
-        expect(remote).toContain("await withTimeout(response.setModel(modelTarget(next.mode.model)), SET_MODEL_TIMEOUT_MS, 'set_model');");
+        expect(remote).toContain("await withTimeout(response.setModel(target), SET_MODEL_TIMEOUT_MS, 'set_model');");
         expect(permissionHandler).toContain('export const LIVE_PERMISSION_MODE_TIMEOUT_MS = 15_000;');
         const live = between(permissionHandler, 'await new Promise<void>((resolve) => setImmediate(resolve));', '} catch (error) {');
         expect(live).toContain("await withTimeout(this.setPermissionModeCallback(mode), LIVE_PERMISSION_MODE_TIMEOUT_MS, 'set_permission_mode');");

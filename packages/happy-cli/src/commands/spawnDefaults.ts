@@ -20,8 +20,10 @@
  */
 
 import {
+    EFFORT_INTENT_AUTO,
     getAgentCodeDefaults,
     isLatestModelMode,
+    LATEST_MODEL_MODE,
     normalizeAgentKey,
     resolveLatestModel,
     type CatalogEntryLike,
@@ -33,6 +35,14 @@ export interface FirstMessageMeta {
     /** null = reset to the machine's own default model. */
     model?: string | null
     effort?: string | null
+    /**
+     * B-849b2 (QA28 P2-5): the choice itself — `latest`, `default` or an id —
+     * which the wrapper records as the session's intent. `model` is only what
+     * that choice resolves to now; recording it would pin a session that
+     * follows latest to today's model.
+     */
+    modelIntent?: string
+    effortIntent?: string
 }
 
 /** Explicit `--permission-mode` wins; otherwise the web launcher's code default. */
@@ -80,12 +90,18 @@ export function resolveFirstMessageMeta(input: {
         // only send one their catalog proves, otherwise the machine decides.
         if (resolved) meta.model = resolved
         else if (key === 'claude' || input.explicitModel !== undefined) meta.model = null
+        meta.modelIntent = LATEST_MODEL_MODE
     } else if (input.explicitModel !== undefined) {
         meta.model = input.explicitModel === 'default' ? null : input.explicitModel
+        meta.modelIntent = input.explicitModel
     } else if (key === 'claude') {
         meta.model = wanted === 'default' ? null : wanted
+        meta.modelIntent = wanted
     }
-    if (key === 'claude') meta.effort = null
+    if (key === 'claude') {
+        meta.effort = null
+        meta.effortIntent = EFFORT_INTENT_AUTO
+    }
     return meta
 }
 

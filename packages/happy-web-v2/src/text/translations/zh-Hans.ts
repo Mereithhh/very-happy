@@ -1194,6 +1194,8 @@ export const zhHans: TranslationStructure = {
                 longContext: '1M 上下文',
                 aliasSuffix: '（别名）',
                 longContextHint: '上下文窗口扩到 100 万 token',
+                unknownModel: ({ model }: { model: string }) => `${model} · 未知模型`,
+                unknownModelHint: '不在这台机器上报的模型列表里，消息仍按这个 id 发出',
                 sessionOnly: '只影响这个会话',
                 setDefault: '设为新会话默认…',
                 setDefaultTitle: '设为新会话默认？',

@@ -1,4 +1,5 @@
 import { apiSocket } from '@/sync/apiSocket';
+import { withRunPicks } from '@/sync/runPicks';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -67,8 +68,10 @@ async function settle(parent: Session, newId: string, draft?: string): Promise<v
     if (draft) storage.getState().updateSessionDraft(newId, draft);
     try { await sync.refreshSessions(); } catch { /* the update stream hydrates it shortly */ }
     const state = storage.getState();
-    if (parent.modelMode) state.updateSessionModelMode(newId, parent.modelMode);
-    if (parent.effortLevel) state.updateSessionEffortLevel(newId, parent.effortLevel);
+    // B-849b: the parent's own choice (its recorded intent, not just this device's pick).
+    const picks = withRunPicks(parent);
+    if (picks.modelMode) state.updateSessionModelMode(newId, picks.modelMode);
+    if (picks.effortLevel) state.updateSessionEffortLevel(newId, picks.effortLevel);
 }
 
 export async function forkWholeSession(parent: Session, source: ForkSource): Promise<string> {

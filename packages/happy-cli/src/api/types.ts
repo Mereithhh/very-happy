@@ -512,6 +512,13 @@ export const MessageMetaSchema = z.object({
    * released CLI silently dropped the web's effort selection.
    */
   effort: z.string().nullable().optional(),
+  /**
+   * B-849b: the picker choice behind `model` / `effort` ('latest' | 'default' |
+   * model id; 'default' | level). Plain strings (AGENTS #14); the wrapper
+   * whitelists them and records them as the session's intent.
+   */
+  modelIntent: z.string().optional(),
+  effortIntent: z.string().optional(),
   /** Omitted/queue waits for the current turn; steer targets the live turn. */
   delivery: z.enum(['queue', 'steer']).optional()
 })
@@ -623,6 +630,14 @@ export type Metadata = {
    * machine config.
    */
   stickyModel?: string | null,
+  /**
+   * B-849b: this session's model / thinking choice, recorded by the wrapper
+   * (sole writer) from message meta and the `session-run-intent` RPC; every
+   * device reads it. 'latest' | 'default' | model id; 'default' | level.
+   * null = nothing chosen yet; absent = older wrapper. See happy-wire runIntent.ts.
+   */
+  modelIntent?: string | null,
+  effortIntent?: string | null,
   operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
   currentOperatingModeCode?: string,
   thoughtLevels?: Array<{ code: string; value: string; description?: string | null }>,

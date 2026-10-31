@@ -14,6 +14,12 @@ export interface CodexEnhancedMode {
     appendSystemPrompt?: string;
     /** Reasoning effort passed through to Codex's sendTurnAndWait. */
     effort?: ReasoningEffort;
+    /**
+     * B-849b2: the message itself named `effort` (not the wrapper's sticky
+     * level) — a refused explicit level fails the turn, a refused sticky one is
+     * settled instead (effortSupport.ts settleTurnEffort). Not part of the hash.
+     */
+    effortExplicit?: boolean;
 }
 
 export function hashCodexEnhancedMode(mode: CodexEnhancedMode): string {

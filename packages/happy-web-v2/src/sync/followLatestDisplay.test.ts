@@ -226,6 +226,17 @@ describe('B-849a: a draft says when the machine cannot report what follow-latest
     });
 });
 
+describe('B-849b: 「本机配置」 mid-session on a wrapper that switches back to the settings model', () => {
+    it('is pickable from another model and names the settings model', () => {
+        expect(claudeMachineConfigEntry({ inSession: true, selectedKey: 'claude-opus-5-5', configuredModel: 'claude-haiku-5-5', running: 'claude-opus-5-5', liveSwitch: true }))
+            .toEqual({ model: 'claude-haiku-5-5', selectable: true });
+        // Picked but the previous turn's model still on screen: name what it will run.
+        expect(claudeMachineConfigEntry({ inSession: true, selectedKey: 'default', configuredModel: 'claude-sonnet-5-5', running: 'claude-haiku-5-5', liveSwitch: true }).model).toBe('claude-sonnet-5-5');
+        // An older wrapper keeps it disabled (null kept the running model).
+        expect(claudeMachineConfigEntry({ inSession: true, selectedKey: 'claude-opus-5-5', configuredModel: 'claude-haiku-5-5', liveSwitch: false }).selectable).toBe(false);
+    });
+});
+
 describe('B-849a2 (QA26 P1): Claude 「本机配置」 names only what is known to run', () => {
     it('a draft names no model — the catalog `default` entry is not what settings.json runs', () => {
         expect(claudeMachineConfigEntry({ inSession: false, selectedKey: 'default', running: null })).toEqual({ model: null, selectable: true });
