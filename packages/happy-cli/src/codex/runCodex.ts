@@ -1,4 +1,5 @@
-import { CODEX_COMPACT_CAPABILITY, CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY } from '@slopus/happy-wire';
+import { CODEX_COMPACT_CAPABILITY, CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, restoredEffort } from '@slopus/happy-wire';
+import { recordRunIntents, registerRunIntentRpc } from '@/utils/runIntent';
 import { createProjectInjector } from '@/projects/injector';
 import { sharedProjectsClient } from '@/projects/client';
 import { unlink } from 'node:fs/promises';
@@ -164,7 +165,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
-        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY],
+        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY],
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
@@ -172,6 +173,10 @@ export async function runCodex(opts: {
     // effort a turn without one runs is the wrapper's default, not the catalog's.
     metadata.stickyModel = null;
     metadata.currentThoughtLevelCode = DEFAULT_CODEX_EFFORT;
+    // B-849b: this session's model / thinking choice (wrapper is the sole
+    // writer; a reconnect keeps the server copy).
+    metadata.modelIntent = null;
+    metadata.effortIntent = null;
     // B-464: import of a Codex CLI / desktop thread. The original id is stamped
     // from birth (lineage, and the picker's "imported before" label — B-600:
     // never a reason to hide the original, since the fork below can fail);
@@ -241,6 +246,11 @@ export async function runCodex(opts: {
             logger.debug(`[START] Reconnect without server snapshot (${snapshot.reason}); skipping existing messages`);
         }
     }
+    // B-849b (QA23b P2-1): a resumed wrapper keeps the session's effort — the
+    // recorded intent, else what the previous (older) wrapper reported running —
+    // instead of restarting the thread at medium under an xhigh label. The
+    // thread itself keeps its model across a resume.
+    const resumedEffort = reconnectSeeded && response ? restoredEffort(response.metadata, { useReportedLevel: true }) : undefined;
 
     // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
@@ -326,7 +336,9 @@ export async function runCodex(opts: {
     // Use shared PermissionMode type from api/types for cross-agent compatibility
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
     let currentModel: string | undefined = DEFAULT_CODEX_MODEL;
-    let currentEffort: ReasoningEffort | undefined = DEFAULT_CODEX_EFFORT;
+    let currentEffort: ReasoningEffort | undefined = resumedEffort !== undefined ? (resumedEffort ?? undefined) as ReasoningEffort | undefined : DEFAULT_CODEX_EFFORT;
+    // B-849b: the RPC set 「本机配置」; the next turn without a model resets to it.
+    let pendingModelReset = false;
     let currentAppendSystemPrompt: string | undefined = undefined;
 
     // B-844c: publish the sticky model so the web can clear it with `model:
@@ -365,8 +377,8 @@ export async function runCodex(opts: {
         // still reported read-only / yolo.
         // B-844d: the model is not reset — the Codex thread keeps it across an
         // abort anyway, so forgetting it here only made the published facts lie.
-        currentEffort = DEFAULT_CODEX_EFFORT;
-        reportModeFacts();
+        // B-849b (QA23b P2-1): nor is the effort — it is the session's choice;
+        // resetting it to medium ran the next meta-less turn below the label.
         currentAppendSystemPrompt = undefined;
         logger.debug('[Codex] Reset current mode defaults after abort');
     };
@@ -437,8 +449,10 @@ export async function runCodex(opts: {
                 reportModeFacts();
                 logger.debug('[Codex] Model override updated', logValueMetadata(message.meta.model));
             } else {
+                messageModelReset = pendingModelReset && !messageModel;
                 logger.debug('[Codex] User message received without a model override');
             }
+            pendingModelReset = false;
 
             // Resolve effort — passed straight to sendTurnAndWait. Validate the
             // incoming value against ReasoningEffort so a stale/garbage entry on
@@ -462,6 +476,9 @@ export async function runCodex(opts: {
             } else {
                 logger.debug('[Codex] User message received without an effort override');
             }
+
+            // B-849b: the choice this message carried becomes the session's intent.
+            recordRunIntents(session, message.meta);
 
             let messageAppendSystemPrompt = currentAppendSystemPrompt;
             if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
@@ -688,6 +705,23 @@ export async function runCodex(opts: {
         catch (error) { return {error:error instanceof Error ? error.message : 'Child read failed'}; }
     });
     session.rpcHandlerManager.registerHandler('abort', () => handleAbort('user'));
+    // B-849b: a picker change lands now (every device sees it; a meta-less
+    // send — CLI, team wake — runs it).
+    registerRunIntentRpc(session.rpcHandlerManager, {
+        getMetadata: () => session.getMetadata(),
+        updateMetadata: (handler) => session.updateMetadata(handler),
+    }, (request) => {
+        if (Object.prototype.hasOwnProperty.call(request, 'model')) {
+            currentModel = request.model || undefined;
+            pendingModelReset = !currentModel;
+        }
+        if (Object.prototype.hasOwnProperty.call(request, 'effort')) {
+            currentEffort = (request.effort || undefined) as ReasoningEffort | undefined;
+        }
+        // The app-server client may not exist yet on a very early call.
+        if (client) reportModeFacts();
+        logger.debug('[Codex] Run intent set', logValueMetadata(request.model ?? null));
+    });
 
     const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, () => handleKillSession('archive'), session, { processSignals: true, onSignal: () => handleKillSession('offline') });
 

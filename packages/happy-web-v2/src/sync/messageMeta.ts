@@ -6,18 +6,25 @@ import { isLatestModelMode, type LatestModelTable } from '@slopus/happy-wire';
 import { normalizeClaudeOutboundMode } from './permissionModeOutbound';
 import { getEffortLevelsForModel } from '@/components/modelModeOptions';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
+import { EFFORT_PICK_AUTO, withRunPicks } from './runPicks';
 
 export type MessageModeMeta = {
     permissionMode?: PermissionModeKey;
     model?: string | null;
     effort?: string | null;
+    /** B-849b: the choice behind `model` / `effort`, recorded by the wrapper as the session's intent. */
+    modelIntent?: string;
+    effortIntent?: string;
 };
 
 export function resolveMessageModeMeta(
-    session: Pick<Session, 'permissionMode' | 'modelMode' | 'metadata' | 'effortLevel'>,
+    sessionIn: Pick<Session, 'permissionMode' | 'modelMode' | 'metadata' | 'effortLevel'> & { id?: string },
     settings?: Pick<Settings, 'agentDefaultOverrides'>,
     latestTable: LatestModelTable | null = getLatestModelTable(),
 ): MessageModeMeta {
+    // B-849b: the session's own choice (wrapper-recorded intent, a pending
+    // local pick, else what it runs) — never another device's account default.
+    const session = withRunPicks(sessionIn);
     const agentOverrides = getAgentDefaultOverride(settings?.agentDefaultOverrides, session.metadata?.flavor);
     const meta: MessageModeMeta = {};
     const isClaude = normalizeAgentKey(session.metadata?.flavor) === 'claude';
@@ -78,9 +85,18 @@ export function resolveMessageModeMeta(
     // the Web never sends one (the picker is read-only for Gemini).
     if (modelMode !== undefined && normalizeAgentKey(session.metadata?.flavor) !== 'gemini') {
         meta.model = modelMode === 'default' ? null : modelMode;
+        // B-849b: the choice, not just its resolution — 「跟随最新」 stays latest.
+        meta.modelIntent = session.modelMode && !isLatestModelMode(session.modelMode)
+            ? session.modelMode
+            : followsLatest ? 'latest' : modelMode;
+    } else if (followsLatest && normalizeAgentKey(session.metadata?.flavor) !== 'gemini') {
+        // Codex following latest defers to its machine config and sends no
+        // model; the choice is still the session's to record.
+        meta.modelIntent = 'latest';
     }
 
-    const effort = session.effortLevel ?? agentOverrides.effortLevel;
+    // B-849b: an explicit 「自动」 pick is stored as `default` = no effort sent.
+    const effort = session.effortLevel === EFFORT_PICK_AUTO ? null : (session.effortLevel ?? agentOverrides.effortLevel);
     if (effort !== undefined) {
         const flavor = session.metadata?.flavor ?? 'claude';
         const modelKey = modelMode ?? session.metadata?.currentModelCode ?? 'default';
@@ -100,6 +116,7 @@ export function resolveMessageModeMeta(
     } else if (isClaude) {
         meta.effort = null;
     }
+    if (meta.effort !== undefined) meta.effortIntent = meta.effort ?? EFFORT_PICK_AUTO;
 
     return meta;
 }

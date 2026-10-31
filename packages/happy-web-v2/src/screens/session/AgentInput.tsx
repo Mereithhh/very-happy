@@ -61,7 +61,9 @@ import { autoEffortName, localizeModelDescriptions, localizeModelNames, namedEff
 import { useNavigate } from 'react-router-dom';
 import { useLatestModelTable } from '@/sync/latestModels';
 import { claudeMachineConfigEntry, customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, launcherReportsRunFacts, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
-import { LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
+import { CLAUDE_CONFIG_MODEL_CAPABILITY, LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
+import { EFFORT_PICK_AUTO, pushRunIntent, sessionRunIntents, setRunPickBase, settledRunPick, withRunPicks } from '@/sync/runPicks';
+import { apiSocket } from '@/sync/apiSocket';
 import { forkCatalogSource, type LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
@@ -366,7 +368,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const launcherContext = session ? null : pending?.launcher?.context ?? null;
     const modelMetadata = session ? (metadata ?? {}) : null;
     const latestResolution = resolveLatestForAgent(latestTable, flavor, modelMetadata, launcherContext);
-    const explicitModelMode = pending?.modelMode ?? session?.modelMode;
+    // B-849b: the session's own choice — the wrapper-recorded intent, a pick
+    // from here it has not echoed yet, else what it runs. Never the account
+    // default for a session that already has one (that is for new sessions).
+    const runSession = session ? withRunPicks(session) : null;
+    const explicitModelMode = pending?.modelMode ?? runSession?.modelMode;
     // B-844b: agents whose default is "follow latest" get ONE entry for it (key
     // `latest`), named by what it runs here; it is selected while nobody
     // picked a model for this session and the account default follows latest.
@@ -404,7 +410,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     // reported yet, so only what a session on this entry really runs (1M too);
     // mid-session it is not pickable — no model sent keeps the current one.
     const claudeMachineConfig = normalizeAgentKey(flavor) === 'claude'
-        ? claudeMachineConfigEntry({ inSession: !!session, selectedKey: explicitModelMode, configuredModel: session ? metadata?.configuredModel : launcherContext?.configuredModel, running: metadata?.currentModelCode })
+        ? claudeMachineConfigEntry({ inSession: !!session, selectedKey: explicitModelMode, configuredModel: session ? metadata?.configuredModel : launcherContext?.configuredModel, running: metadata?.currentModelCode, liveSwitch: metadata?.capabilities?.includes(CLAUDE_CONFIG_MODEL_CAPABILITY) === true })
         : null;
     const machineConfigId = claudeMachineConfig
         ? claudeMachineConfig.model
@@ -451,7 +457,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const permModes = getAvailablePermissionModes(flavor, metadata, t as any);
     const efforts = getEffortLevelsForModel(flavor, modelKey ?? 'default', metadata);
     const permKey = (pending ? pending.permissionMode : session?.permissionMode) ?? agentDefaults.permissionMode;
-    const effortKey = (pending ? pending.effortLevel : session?.effortLevel) ?? agentDefaults.effortLevel;
+    const effortKey = (pending ? pending.effortLevel : runSession?.effortLevel) ?? agentDefaults.effortLevel;
     // claude-ish flavors (incl. no flavor) support the explicit「默认」effort
     const isClaudeFlavor = normalizeAgentKey(flavor) === 'claude';
     // pi (flavor 'acp') is its own agent key (B-370) but shares two Claude traits: the
@@ -491,7 +497,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const selectedEffortKey = isClaudeFlavor
         ? selectDisplayedEffortKey(effortOptions, [effortKey, metadata?.currentThoughtLevelCode, backendDefaultEffort, EFFORT_DEFAULT_KEY])
         : selectDisplayedEffortKey(effortOptions, [
-            pending ? pending.effortLevel : session?.effortLevel,
+            pending ? pending.effortLevel : runSession?.effortLevel,
             getAgentDefaultOverride(agentDefaultOverrides, flavor).effortLevel,
             metadata?.currentThoughtLevelCode,
             isPiAgent(flavor) ? metadata?.currentOperatingModeCode : undefined,
@@ -1317,11 +1323,48 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         key: string | null,
     ) => {
         if (pending) pending.onMode(field, key);
-        else storage.getState()[fn](sessionId, key);
+        else {
+            // B-849b: remember which session choice this pick replaces, so a later
+            // choice from another device wins over it (sync/runPicks.ts).
+            if (field === 'modelMode' || field === 'effortLevel') setRunPickBase(sessionId, field === 'modelMode' ? 'model' : 'effort', sessionRunIntents(metadata)[field === 'modelMode' ? 'model' : 'effort']);
+            storage.getState()[fn](sessionId, key);
+            if (session && (field === 'modelMode' || field === 'effortLevel')) void pushPick(field, key);
+        }
         // B-848 (B-849a step 1): a pick here changes THIS session only — the
         // account default for new sessions moves only through the explicit
         // 「设为新会话默认」 below (or Settings → Agents).
     };
+
+    // B-849b: tell the wrapper now — every device shows the pick and a send
+    // without meta (CLI, team wake) runs it. No wrapper (older CLI, offline):
+    // the pick stays pending and rides the next message.
+    const pushPick = async (field: 'modelMode' | 'effortLevel', key: string | null) => {
+        const state = storage.getState();
+        const current = state.sessions?.[sessionId];
+        if (!current) return;
+        const meta = resolveMessageModeMeta({ ...current, [field]: key }, state.settings);
+        const params = field === 'modelMode'
+            ? (meta.modelIntent !== undefined ? { modelIntent: meta.modelIntent, model: meta.model ?? null } : null)
+            : (meta.effortIntent !== undefined ? { effortIntent: meta.effortIntent, effort: meta.effort ?? null } : null);
+        if (params) await pushRunIntent(current, params, (id, method, body) => apiSocket.sessionRPC(id, method, body));
+    };
+
+    // B-849b: once the wrapper echoed a pick (or another device's later choice
+    // replaced it) it stops being a local value.
+    const modelIntent = metadata?.modelIntent;
+    const effortIntent = metadata?.effortIntent;
+    useEffect(() => {
+        const current = session;
+        if (!current) return;
+        if (settledRunPick(current, 'model') === 'clear') {
+            storage.getState().updateSessionModelMode(sessionId, null);
+            setRunPickBase(sessionId, 'model', undefined);
+        }
+        if (settledRunPick(current, 'effort') === 'clear') {
+            storage.getState().updateSessionEffortLevel(sessionId, null);
+            setRunPickBase(sessionId, 'effort', undefined);
+        }
+    }, [sessionId, session, modelIntent, effortIntent]);
 
     // B-848: the one place a composer pick becomes the account default — an
     // explicit, confirmed act naming the agent and the value.
@@ -1340,7 +1383,9 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
 
     const setEffort = (key: string) => {
         if ((isClaudeFlavor || codexDraftAuto) && key === EFFORT_DEFAULT_KEY) {
-            setMode('updateSessionEffortLevel', 'effortLevel', null);
+            // B-849b: in a session 「自动」 is a choice of its own (`default`), not
+            // "no choice" — the account default must not replace it.
+            setMode('updateSessionEffortLevel', 'effortLevel', pending ? null : EFFORT_PICK_AUTO);
         } else {
             setMode('updateSessionEffortLevel', 'effortLevel', key);
         }

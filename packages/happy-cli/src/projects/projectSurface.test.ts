@@ -43,14 +43,14 @@ describe('project tool surface across runners', () => {
 describe('project-v1 capability and injection points', () => {
     it('each injecting runner advertises project-v1 and decorates the prompt it sends', () => {
         const claude = read('../claude/runClaude.ts');
-        expect(claude).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY],');
+        expect(claude).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY],');
         const launcher = read('../claude/claudeRemoteLauncher.ts');
         expect(launcher).toContain('project: session.projectInjector,');
         expect(read('../claude/finalizeRemotePrompt.ts')).toContain('return deps.project.decorate(text);');
         expect(launcher).toContain('onPromptFinalized?.(out);');
         expect(launcher).toContain('const finalized = await finalize(msg.message);');
         const codex = read('../codex/runCodex.ts');
-        expect(codex).toContain('CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY],');
+        expect(codex).toContain('CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY],');
         expect(codex).toContain('message: await projectInjector.decorate(message.message),');
         const acp = read('../agent/acp/runAcp.ts');
         expect(acp).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, ...(opts.agentName === ');

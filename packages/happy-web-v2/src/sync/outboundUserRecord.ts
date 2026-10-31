@@ -32,6 +32,8 @@ export function buildOutboundUserRecord(input: OutboundUserRecordInput): RawReco
             ...(modeMeta.permissionMode !== undefined ? { permissionMode: modeMeta.permissionMode } : {}),
             ...(modeMeta.model !== undefined ? { model: modeMeta.model } : {}),
             ...(modeMeta.effort !== undefined ? { effort: modeMeta.effort } : {}),
+            ...(modeMeta.modelIntent !== undefined ? { modelIntent: modeMeta.modelIntent } : {}),
+            ...(modeMeta.effortIntent !== undefined ? { effortIntent: modeMeta.effortIntent } : {}),
             ...(input.delivery === 'steer' ? { delivery: input.delivery } : {}),
             ...(input.displayText ? { displayText: input.displayText } : {}),
             ...(input.queuedAt !== undefined ? { queuedAt: input.queuedAt } : {}),
@@ -49,5 +51,7 @@ export function readOutboundUserRecord(record: unknown): { text: string; modeMet
     if (typeof meta.permissionMode === 'string') modeMeta.permissionMode = meta.permissionMode as MessageModeMeta['permissionMode'];
     if ('model' in meta && (typeof meta.model === 'string' || meta.model === null)) modeMeta.model = meta.model;
     if ('effort' in meta && (typeof meta.effort === 'string' || meta.effort === null)) modeMeta.effort = meta.effort;
+    if (typeof meta.modelIntent === 'string') modeMeta.modelIntent = meta.modelIntent;
+    if (typeof meta.effortIntent === 'string') modeMeta.effortIntent = meta.effortIntent;
     return { text: candidate.content.text, modeMeta };
 }

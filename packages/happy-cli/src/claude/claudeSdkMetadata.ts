@@ -1,5 +1,6 @@
 import type { Metadata } from '@/api/types';
 import { CLAUDE_ATTACHMENT_KINDS } from './utils/attachmentContent';
+import type { ClaudeRunFacts } from './claudeRunFacts';
 
 export type ClaudeSdkMetadata = {
     models?: Metadata['models'];
@@ -33,4 +34,27 @@ export function applyClaudeSdkMetadata(current: Metadata, update: ClaudeSdkMetad
             ? { defaultModelCode: update.model }
             : {}),
     };
+}
+
+/**
+ * B-849b: publish what Claude Code says it runs. Unchanged facts return the
+ * same object so the client skips a no-op metadata write. `currentThoughtLevelCode`
+ * is dropped when no effort is sent (a model without effort support).
+ */
+export function applyClaudeRunFacts(current: Metadata, facts: ClaudeRunFacts): Metadata {
+    let next = current;
+    if (facts.configuredModel !== undefined && current.configuredModel !== facts.configuredModel) {
+        next = { ...next, configuredModel: facts.configuredModel };
+    }
+    if (facts.effort !== undefined) {
+        if (facts.effort === null) {
+            if (next.currentThoughtLevelCode !== undefined) {
+                const { currentThoughtLevelCode: _dropped, ...rest } = next;
+                next = rest as Metadata;
+            }
+        } else if (next.currentThoughtLevelCode !== facts.effort) {
+            next = { ...next, currentThoughtLevelCode: facts.effort };
+        }
+    }
+    return next;
 }

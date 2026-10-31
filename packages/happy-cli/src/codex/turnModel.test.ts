@@ -66,10 +66,11 @@ describe('runCodex wiring (B-844d)', () => {
         expect(source).toMatch(/sendTurnAndWait\([\s\S]{0,300}?model: turnModel,\n\s*approvalPolicy: executionPolicy\.approvalPolicy,\n\s*sandbox: executionPolicy\.sandbox,\n\s*effort: message\.mode\.effort,/);
     });
 
-    it('abort does not forget the model', () => {
+    it('abort forgets neither the model nor (B-849b, QA23b P2-1) the effort', () => {
         const reset = source.match(/const resetCurrentModeDefaults = \(\) => \{([\s\S]*?)\n    \};/)?.[1] ?? '';
-        expect(reset).toContain('currentEffort = DEFAULT_CODEX_EFFORT;');
+        expect(reset).toContain('currentAppendSystemPrompt = undefined;');
         expect(reset).not.toMatch(/currentModel\s*=/);
+        expect(reset).not.toMatch(/currentEffort\s*=/);
     });
 
     it('publishes facts from the thread\'s real model, after resume/import, start and every turn', () => {

@@ -21,6 +21,7 @@ export * from './agentVersions';
 export * from './harnessInstall';
 export * from './agentCodeDefaults';
 export * from './modelLatest';
+export * from './runIntent';
 
 export * from './promptQueue';
 

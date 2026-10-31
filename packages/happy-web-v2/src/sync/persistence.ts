@@ -316,6 +316,32 @@ export function saveSessionEffortLevels(levels: Record<string, string>) {
     mmkv.set('session-effort-levels', JSON.stringify(levels));
 }
 
+/**
+ * B-849b: per session, the recorded intent this device saw when its user
+ * picked (`m` model, `e` effort; a missing key = the wrapper recorded none).
+ * Lets a later choice from another device win over an unsent local pick.
+ */
+export type RunPickBases = Record<string, { m?: string | null; e?: string | null }>;
+
+export function loadSessionRunPickBases(): RunPickBases {
+    try {
+        const raw = mmkv.getString('session-run-pick-bases');
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+export function saveSessionRunPickBases(bases: RunPickBases) {
+    try {
+        mmkv.set('session-run-pick-bases', JSON.stringify(bases));
+    } catch {
+        // Storage unavailable (private mode / quota): the base lives in memory.
+    }
+}
+
 export function loadProfile(): Profile {
     const profile = mmkv.getString('profile');
     if (profile) {

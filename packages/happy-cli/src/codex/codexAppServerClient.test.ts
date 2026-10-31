@@ -179,7 +179,6 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(source).toContain('...(facts.currentModelCode ? { currentModelCode: facts.currentModelCode } : {}),');
         // Every place that changes currentModel / currentEffort reports it.
         expect(source).toMatch(/messageModelReset = !messageModel;\n\s*currentModel = messageModel;\n\s*reportModeFacts\(\);/);
-        expect(source).toMatch(/currentEffort = DEFAULT_CODEX_EFFORT;\n\s*reportModeFacts\(\);/);
         expect(source).toMatch(/currentEffort = undefined;\n\s*reportModeFacts\(\);/);
         expect(source).toMatch(/currentEffort = messageEffort;\n\s*reportModeFacts\(\);/);
     });
