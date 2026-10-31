@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Machine } from '@/sync/storageTypes';
-import { soleOnlineMachine, machineLabel, pickDefaultMachineId, terminalMachineState } from './machineUtils';
+import { soleOnlineMachine, machineLabel, pickDefaultMachineId, sessionMachineName, terminalMachineState } from './machineUtils';
 
 const M = (id: string, active: boolean, metadata: Machine['metadata'] = null): Machine => ({
     id,
@@ -86,5 +86,14 @@ describe('pickDefaultMachineId', () => {
     it('is idempotent once a live machine is selected', () => {
         // Guards the re-derive effect against a setState loop.
         expect(pickDefaultMachineId(['m1', 'm2'], 'm2')).toBe('m2');
+    });
+});
+
+describe('sessionMachineName (B-849a)', () => {
+    it('names the machine the user named, not the wrapper hostname several machines share', () => {
+        expect(sessionMachineName({ id: 'm1', metadata: { displayName: 'old-box', host: 'dev-sg' } } as Machine, 'dev-sg')).toBe('old-box');
+        expect(sessionMachineName({ id: 'm1', metadata: { displayName: '  ', host: 'mac' } } as Machine, 'dev-sg')).toBe('mac');
+        expect(sessionMachineName(null, 'dev-sg')).toBe('dev-sg');
+        expect(sessionMachineName(undefined, undefined)).toBeUndefined();
     });
 });

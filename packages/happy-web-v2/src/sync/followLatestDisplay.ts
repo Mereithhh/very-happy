@@ -1,7 +1,8 @@
 import { LATEST_MODEL_MODE, MACHINE_CONFIG_AGENTS, type LatestModelResolution, type LatestModelTable } from '@slopus/happy-wire';
 import type { ModelMode } from '@/components/modelModeOptions';
 import type { Metadata } from './storageTypes';
-import { normalizeAgentKey, resolveLatestForAgent } from './agentDefaults';
+import { normalizeAgentKey, resolveLatestForAgent, type LauncherMachineContext } from './agentDefaults';
+import { isCliVersionBelow } from '@/app/cliUpdatePolicy';
 
 /**
  * B-844b: how "follow latest" is shown — one picker entry instead of the
@@ -20,10 +21,31 @@ export type FollowLatestState =
     /** No session or machine to resolve against. */
     | { kind: 'dependsOnMachine' };
 
-export function followLatestState(resolution: LatestModelResolution, resolvedForSession: boolean): FollowLatestState {
+export function followLatestState(resolution: LatestModelResolution, resolvedForSession: boolean, opts?: { runFactsUnknown?: boolean }): FollowLatestState {
+    if (opts?.runFactsUnknown) return { kind: 'machineDefault' };
     if (resolution.configured) return { kind: 'machineConfig', model: resolution.configured };
     if (resolution.model) return { kind: 'latest', model: resolution.model, label: resolution.label };
     return resolvedForSession ? { kind: 'machineDefault' } : { kind: 'dependsOnMachine' };
+}
+
+/**
+ * B-849a: first Very Happy CLI whose Codex/Gemini wrapper reports the
+ * machine's config model (`configuredModel`, B-844 / v0.2.188). Older ones
+ * run their own default, which no Web resolution can name.
+ */
+export const RUN_FACTS_CLI_VERSION = '0.2.188';
+
+/**
+ * Whether a draft (no session yet) on this machine can name what follow-latest
+ * runs. Evidence first: the machine's newest session of the agent published a
+ * catalog without `configuredModel` → its wrapper does not report it. With no
+ * such session, the daemon's CLI version decides (new wrappers are spawned
+ * from it). Claude/pi need no machine-config fact.
+ */
+export function launcherReportsRunFacts(flavor: string | null | undefined, machine: LauncherMachineContext | null | undefined): boolean {
+    if (!MACHINE_CONFIG_AGENTS.includes(normalizeAgentKey(flavor)) || !machine) return true;
+    if (machine.catalog?.length) return machine.configuredModel !== undefined;
+    return !(machine.cliVersion && isCliVersionBelow(machine.cliVersion, RUN_FACTS_CLI_VERSION));
 }
 
 /**
@@ -55,17 +77,18 @@ export function withFollowLatestOption(options: readonly ModelMode[], input: {
     latestModel: string | null;
     /** The displayed explicit choice, `latest` when following. */
     selectedKey: string | null | undefined;
-    machineDefault: { name: string; description: string | null };
+    machineDefault: { name: string; description: string | null; disabled?: boolean };
 }): ModelMode[] {
     const keepDefault = !MACHINE_CONFIG_AGENTS.includes(normalizeAgentKey(input.flavor)) || input.selectedKey === 'default';
     const out: ModelMode[] = [{ key: LATEST_MODEL_MODE, name: input.follow.name, description: input.follow.description }];
     for (const option of options) {
         if (option.key === LATEST_MODEL_MODE) continue;
         if (option.key === 'default') {
-            if (keepDefault) out.push({ ...option, name: input.machineDefault.name, description: input.machineDefault.description });
+            if (keepDefault) out.push({ ...option, name: input.machineDefault.name, description: input.machineDefault.description, ...(input.machineDefault.disabled ? { disabled: true } : {}) });
             continue;
         }
-        if (option.key === input.latestModel && input.selectedKey !== option.key) continue;
+        // QA26 P2-4: a pinned `[1m]` twin is listed (and checked) under its base row.
+        if (option.key === input.latestModel && input.selectedKey !== option.key && input.selectedKey !== `${option.key}[1m]`) continue;
         out.push(option);
     }
     return out;
@@ -142,4 +165,32 @@ export function followLatestDescriptionKey(
 ): 'session.chat.modelLatestDescription' | 'session.chat.modelLatestDescriptionClaude' | 'session.chat.modelLatestDescriptionUpgradeCli' {
     if (state.kind === 'machineDefault') return 'session.chat.modelLatestDescriptionUpgradeCli';
     return isClaude ? 'session.chat.modelLatestDescriptionClaude' : 'session.chat.modelLatestDescription';
+}
+
+/**
+ * B-849a2 (QA26 P1): what Claude's 「本机配置」 (`default`, no model sent) may
+ * name, and whether a pick of it here would take effect.
+ *
+ * Claude Code runs the machine's own `~/.claude/settings.json` `model` (or
+ * `/model`) — not the catalog's `default` entry (that said Fable 5.1 while
+ * dev-sg ran opus[1m]). The wrapper does not report that setting yet
+ * (`configuredModel` for Claude is PR-B), so the entry names a model only from
+ * facts: a reported `configuredModel`, or — when this session has been on
+ * 「本机配置」 — the model it really runs (`currentModelCode`, 1M included).
+ *
+ * Sending no model mid-session does not move Claude off the model it runs
+ * (it keeps the previous turn's), so in an existing session the entry is
+ * selectable only while it is already the selection; a new session (draft)
+ * may always pick it.
+ */
+export function claudeMachineConfigEntry(input: {
+    inSession: boolean;
+    /** The session's model key (`default` = 「本机配置」). */
+    selectedKey: string | null | undefined;
+    configuredModel?: string | null;
+    running?: string | null;
+}): { model: string | null; selectable: boolean } {
+    const onIt = input.inSession && input.selectedKey === 'default';
+    const model = (onIt ? input.running || input.configuredModel : input.configuredModel) || null;
+    return { model, selectable: !input.inSession || onIt };
 }

@@ -93,6 +93,8 @@ export interface PendingSessionRecord {
     /** landed via the draft fallback instead of real sends */
     deliveredAsDraft?: boolean;
     landedAt?: number;
+    /** QA26 P2-2: the session exists and the first message waits for its wrapper's model list (the page says so). */
+    waitingForModels?: boolean;
 }
 
 export interface PendingSessionDeps {
@@ -151,6 +153,17 @@ export interface PendingSessionDeps {
     newId(): string;
     /** How long a spawned session may take to reach the store before the draft fallback. */
     sessionWaitMs: number;
+    /**
+     * B-849a: the wrapper published what the first message's model is resolved
+     * against (Codex/Gemini: its catalog + machine config). Sent before that,
+     * follow-latest resolves to "nothing" and the thread runs Codex's own
+     * default instead of the model the draft showed.
+     */
+    hasModelFacts?(sessionId: string, agent: PendingAgent): boolean;
+    /** Upper bound for that wait; the message goes out regardless after it. */
+    modelFactsWaitMs?: number;
+    /** QA26 P2-2: the wait ran out — the first message went with the machine's own default model. */
+    notifyModelFactsTimeout?(record: PendingSessionRecord): void;
 }
 
 export const PENDING_ID_PREFIX = 'pending-';
@@ -447,7 +460,11 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
     }
 
     function waitForSession(realId: string): Promise<boolean> {
-        if (deps.hasSession(realId)) return Promise.resolve(true);
+        return waitFor(() => deps.hasSession(realId), deps.sessionWaitMs);
+    }
+
+    function waitFor(ready: () => boolean, ms: number): Promise<boolean> {
+        if (ready()) return Promise.resolve(true);
         return new Promise((resolve) => {
             let done = false;
             const finish = (value: boolean) => {
@@ -458,9 +475,9 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 resolve(value);
             };
             const unsubscribe = deps.subscribeSessions(() => {
-                if (deps.hasSession(realId)) finish(true);
+                if (ready()) finish(true);
             });
-            const timer = setTimeout(() => finish(deps.hasSession(realId)), deps.sessionWaitMs);
+            const timer = setTimeout(() => finish(ready()), ms);
         });
     }
 
@@ -489,6 +506,13 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
             if (!(await waitForSession(realId))) {
                 landAsDraft(pendingId);
                 return;
+            }
+            const hasModelFacts = deps.hasModelFacts;
+            if (hasModelFacts && !hasModelFacts(realId, start.agent)) {
+                patch(pendingId, { waitingForModels: true });
+                const arrived = await waitFor(() => hasModelFacts(realId, start.agent), deps.modelFactsWaitMs ?? 0);
+                const waited = patch(pendingId, { waitingForModels: undefined });
+                if (!arrived && waited) deps.notifyModelFactsTimeout?.(waited);
             }
             const ready = records.get(pendingId);
             if (!ready) return;
