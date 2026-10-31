@@ -21,7 +21,7 @@ const section = (from: string, to: string) => {
 describe('Codex held input wiring (B-854)', () => {
     it('holds the dequeued batch and releases it only when Codex took the turn', () => {
         expect(source).toContain('message = batch;\n                heldInput.hold(batch.sourceIds);');
-        expect(source).toContain('onTurnStarted: () => heldInput.delivered(),');
+        expect(source).toMatch(/onTurnStarted: \(\) => \{\n\s*lastStartedEffort = turnEffort\.effort;\n\s*heldInput\.delivered\(\);\n\s*\},/);
         // /clear is handled here; /compact once app-server is back.
         expect(section("logger.debug('[Codex] Handling /clear command", 'client.clearThreadState();')).toContain('heldInput.delivered();');
         expect(source).toContain('await client.ensureConnected();\n                    heldInput.delivered();\n                    const outcome = await runCodexCompact(');
