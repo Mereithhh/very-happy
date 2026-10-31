@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-31-session-run-setup-sync',
+    date: '2026-10-31',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct31e.title',
+    summaryKey: 'changelog.releases.oct31e.summary',
+    itemKeys: ['changelog.releases.oct31e.everyDevice', 'changelog.releases.oct31e.machineConfig', 'changelog.releases.oct31e.rejected'],
+  },
+  {
+    id: '2026-10-31-cli-run-setup-kept',
+    cliVersion: '0.2.191',
+    date: '2026-10-31',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct31d.title',
+    summaryKey: 'changelog.releases.oct31d.summary',
+    itemKeys: ['changelog.releases.oct31d.kept', 'changelog.releases.oct31d.reported', 'changelog.releases.oct31d.transition'],
+  },
+  {
     id: '2026-10-31-fork-run-setup',
     date: '2026-10-31',
     buildVersion: __APP_VERSION__,
