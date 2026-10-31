@@ -1034,6 +1034,7 @@ export const zhHans: TranslationStructure = {
                 cleared: '未执行 · 被 /clear 或 /compact 清掉了',
                 aborted: '未执行 · 停止时被丢弃',
                 restarted: '未执行 · 会话重启前没来得及处理，需要重新发送',
+                failed: '未执行 · 没能交给 agent（原因见报错）',
                 unknown: '未执行 · 被 agent 从队列里丢弃',
             },
             send: '发送',

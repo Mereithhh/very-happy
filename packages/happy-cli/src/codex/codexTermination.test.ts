@@ -55,7 +55,11 @@ describe('B-587 / AGENTS 7: Codex exit by intent', () => {
     });
     it('B-679: runCodex freezes inbound with the cursor before aborting and hands it to settle', () => {
         const src = readFileSync(join(__dirname, 'runCodex.ts'), 'utf8').replace(/\/\/.*$/gm, '');
-        expect(src).toContain("const exitCursor = intent === 'offline' && session ? exitCursorStamp(session.messageCursor, Date.now()) : undefined;\n        if (exitCursor) session.freezeInbound();\n        await handleAbort('kill');");
+        expect(src).toContain("const exitCursor = intent === 'offline' && session ? exitCursorStamp(session.messageCursor, Date.now()) : undefined;\n        if (exitCursor) session.freezeInbound();\n");
+        // B-854 tombstones the held/queued input between the freeze and the abort.
+        const freeze = src.indexOf('if (exitCursor) session.freezeInbound();');
+        expect(freeze).toBeGreaterThan(-1);
+        expect(src.indexOf("await handleAbort('kill');", freeze)).toBeGreaterThan(freeze);
         expect(src).toContain('(m, e) => logger.debug(m, safeCodexErrorMetadata(e)), exitCursor);');
         expect(src).toContain('void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);');
     });

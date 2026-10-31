@@ -28,6 +28,7 @@ import { InvalidateSync } from '@/utils/sync';
 import axios from 'axios';
 import { createEnvelope } from '@slopus/happy-wire';
 import { scanUndeliveredQueuedInputs, type UndeliveredScan } from '@/utils/undeliveredQueuedInputs';
+import type { QueueDiscardReason } from '@/utils/MessageQueue2';
 import { normalizeAgentUsage, usageAgentKey } from './usageReport';
 import { MAX_CHAT_ATTACHMENT_ENCRYPTED_BYTES } from '@/utils/attachmentLimits';
 import { TurnReporter } from '@/update/turnActivity';
@@ -990,7 +991,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /** B-332: emit a queue-cancel tombstone, mirroring the web's own signal. */
-    sendQueueCancelReason(localKeys: string[], reason: 'cleared' | 'aborted' | 'restarted'): void {
+    sendQueueCancelReason(localKeys: string[], reason: QueueDiscardReason): void {
         if (localKeys.length === 0) return;
         const envelope = createEnvelope('user', { t: 'queue-cancel', targetLocalKeys: localKeys, reason });
         this.sendSessionProtocolMessage(envelope);

@@ -76,6 +76,6 @@ describe('runCodex wiring (B-844d)', () => {
         expect(source).toContain('codexModelFacts({ threadModel: client.threadModel, pendingModel: currentModel, machineDefault: machineDefaultModel })');
         expect(source).toMatch(/importCodexThreadId,\n\s*cwd: process\.cwd\(\),\n\s*mcpServers,\n\s*\}\);\n\s*first = false;\n\s*appendSystemPromptInjected = true;\n\s*\}\n(\s*\/\/.*\n)*\s*reportModeFacts\(\);/);
         expect(source).toMatch(/codexThreadId: startedThread\.threadId,\n\s*\}\)\);\n\s*reportModeFacts\(\);/);
-        expect(source).toMatch(/effort: message\.mode\.effort,\n\s*\}\);\n\s*reportModeFacts\(\);/);
+        expect(source).toMatch(/effort: message\.mode\.effort,\n\s*onTurnStarted: \(\) => heldInput\.delivered\(\),\n\s*\}\);\n\s*reportModeFacts\(\);/);
     });
 });
