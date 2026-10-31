@@ -2758,6 +2758,7 @@ export const en = {
                 autoRestart: 'After a CLI upgrade, sessions still on the old version restart in place once idle (history kept). Turn it off with "Session auto-update" on the machine page.',
                 noLoss: 'A message the agent could not run no longer disappears: it stays in the conversation marked "Not run" with the reason, and "Back to input" puts it back in the composer.',
                 pi: 'pi sessions are no longer archived after a restart.',
+                pipe: 'very-happy sessions … --json piped into another command now prints the whole output instead of being cut off.',
             },
             oct31a: {
                 title: 'Switching back to "Follow" takes effect right away',

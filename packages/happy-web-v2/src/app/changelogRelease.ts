@@ -153,7 +153,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.oct31b.title',
     summaryKey: 'changelog.releases.oct31b.summary',
-    itemKeys: ['changelog.releases.oct31b.autoRestart', 'changelog.releases.oct31b.noLoss', 'changelog.releases.oct31b.pi'],
+    itemKeys: ['changelog.releases.oct31b.autoRestart', 'changelog.releases.oct31b.noLoss', 'changelog.releases.oct31b.pi', 'changelog.releases.oct31b.pipe'],
   },
   {
     id: '2026-10-31-model-follow-switch-back',

@@ -2894,6 +2894,7 @@ export const zhHans: TranslationStructure = {
                 autoRestart: 'CLI 升级后，仍在用旧版本的会话空闲时会自动原地重启，历史保留。不需要的话，可以在机器页关掉「会话自动更新」。',
                 noLoss: 'agent 没能执行的消息不会再消失：它留在对话里，标着「未执行」和原因，点「放回输入框」就能放回去重发。',
                 pi: 'pi 会话重启后不会再被归档。',
+                pipe: 'very-happy sessions … --json 接管道时会输出完整内容，不再被截断。',
             },
             oct31a: {
                 title: '改回「跟随」立即生效',
