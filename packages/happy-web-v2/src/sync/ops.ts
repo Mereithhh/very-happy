@@ -204,6 +204,12 @@ export interface SpawnSessionOptions {
      * (the fork's yolo). Old daemons ignore the unknown field.
      */
     permissionMode?: string;
+    /**
+     * B-850c: the account to start on (B-850a). Absent = the machine's default
+     * for the agent; null = the machine login. Only sent to a daemon that
+     * publishes `agentProfiles`, and only for Claude (see spawnAgentProfileParam).
+     */
+    agentProfileId?: string | null;
 }
 
 // Options for forking a Claude session on a machine
@@ -364,10 +370,11 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             permissionMode?: string,
             model?: string,
             origin?: SpawnOrigin,
+            agentProfileId?: string | null,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode, model, origin: currentSpawnOrigin(options.source) }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode, model, origin: currentSpawnOrigin(options.source), ...(options.agentProfileId !== undefined ? { agentProfileId: options.agentProfileId } : {}) }
         );
         return result;
     } catch (error) {

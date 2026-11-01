@@ -29,7 +29,6 @@ import {
   FileText,
   Info,
   MessageSquareHeart,
-  Cpu,
   Share2,
 } from 'lucide-react';
 import {
@@ -146,7 +145,8 @@ import { VoiceSettings } from './VoiceSettings';
 import { MachinesSettings } from './MachinesSettings';
 import { SharedSettings } from './SharedSettings';
 import { FeedbackInbox, FeedbackSettings } from './FeedbackSettings';
-import { ModelProviderSettings } from './ModelProviderSettings';
+import { MachineModelsAndAccounts } from './ModelProviderSettings';
+import { LEGACY_SETTINGS_REDIRECTS, MODELS_ACCOUNTS_PATH, SettingsRedirect } from './settingsRedirect';
 import { resetFeatureTips } from '@/components/featureTips/FeatureTips';
 import { CodeView } from '@/screens/session/CodeView';
 import { SettingsPage as Page, SettingsHeader as Header, SettingsWorkspace } from './SettingsLayout';
@@ -255,18 +255,11 @@ function Overview() {
             onClick={() => navigate('/settings/appearance')}
           />
           <Item
-            title={t('settingsAgents.title')}
-            subtitle={t('settingsAgents.subtitle')}
+            title={t('accounts.pageTitle')}
+            subtitle={t('accounts.overviewSubtitle')}
             left={<Bot size={18} />}
             right={<ChevronRight size={16} />}
-            onClick={() => navigate('/settings/agents')}
-          />
-          <Item
-            title={t('modelConfig.title')}
-            subtitle={t('modelConfig.subtitle')}
-            left={<Cpu size={18} />}
-            right={<ChevronRight size={16} />}
-            onClick={() => navigate('/settings/models')}
+            onClick={() => navigate(`/settings/${MODELS_ACCOUNTS_PATH}`)}
           />
           <Item
             title={t('settingsSnippets.navTitle')}
@@ -1183,9 +1176,46 @@ function NewSessionAgentField({
   );
 }
 
-function Agents() {
+/**
+ * B-850c: Settings → 模型与账号 — the former 「智能体默认设置」 (account-level
+ * new-session defaults, below) and 「模型与 Provider」 (per machine, now with
+ * its accounts) on one page. The old paths redirect here (SettingsRedirect).
+ */
+function ModelsAndAccounts() {
   const { t } = useTranslation();
   const toast = useToast();
+  const [, setOverrides] = useSettingMutable('agentDefaultOverrides');
+  async function clearAll() {
+    const ok = await Modal.confirm(
+      t('settingsAgents.clearOverrides'),
+      t('settingsAgents.clearOverridesConfirm'),
+      { confirmText: t('common.reset'), destructive: true },
+    );
+    if (!ok) return;
+    setOverrides({});
+    toast.success(t('settingsAgents.cleared'));
+  }
+  return (
+    <Page>
+      <Header
+        title={t('accounts.pageTitle')}
+        subtitle={t('accounts.pageSubtitle')}
+        right={
+          <Button size="sm" variant="ghost" onClick={clearAll}>
+            {t('settingsAgents.clearOverrides')}
+          </Button>
+        }
+      />
+      <ItemList>
+        <AgentDefaults />
+        <MachineModelsAndAccounts />
+      </ItemList>
+    </Page>
+  );
+}
+
+function AgentDefaults() {
+  const { t } = useTranslation();
   const [overrides, setOverrides] = useSettingMutable('agentDefaultOverrides');
   // Quick new-chat flow (sidebar "+" / palette): which agent it spawns, and
   // whether to always open the full options dialog instead.
@@ -1213,33 +1243,12 @@ function Agents() {
     [allMachines],
   );
 
-  async function clearAll() {
-    const ok = await Modal.confirm(
-      t('settingsAgents.clearOverrides'),
-      t('settingsAgents.clearOverridesConfirm'),
-      { confirmText: t('common.reset'), destructive: true },
-    );
-    if (!ok) return;
-    setOverrides({});
-    toast.success(t('settingsAgents.cleared'));
-  }
-
   function pick(agent: AgentKey, field: AgentDefaultField, value: string | null) {
     setOverrides(setAgentDefaultOverride(overrides, agent, field, value));
   }
 
   return (
-    <Page>
-      <Header
-        title={t('settingsAgents.title')}
-        subtitle={t('settingsAgents.subtitle')}
-        right={
-          <Button size="sm" variant="ghost" onClick={clearAll}>
-            {t('settingsAgents.clearOverrides')}
-          </Button>
-        }
-      />
-      <ItemList>
+    <>
         <ItemGroup
           title={t('settingsAgents.newSessions')}
           footer={t('settingsAgents.newSessionsFooter')}
@@ -1348,8 +1357,7 @@ function Agents() {
             </ItemGroup>
           );
         })}
-      </ItemList>
-    </Page>
+    </>
   );
 }
 
@@ -2803,8 +2811,8 @@ export function SettingsRoutes({ basePath }: { basePath?: string } = {}) {
       <Route index element={<Overview />} />
       <Route path="appearance" element={<Appearance />} />
       <Route path="account" element={<Account />} />
-      <Route path="agents" element={<Agents />} />
-      <Route path="models" element={<ModelProviderSettings />} />
+      <Route path={MODELS_ACCOUNTS_PATH} element={<ModelsAndAccounts />} />
+      {Object.entries(LEGACY_SETTINGS_REDIRECTS).map(([from, to]) => <Route key={from} path={from} element={<SettingsRedirect to={to} />} />)}
       <Route path="snippets" element={<Snippets />} />
       <Route path="notifications" element={<Notifications />} />
       <Route path="channels" element={<Channels />} />

@@ -1,12 +1,13 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronDown, ChevronRight, SlidersHorizontal, Zap } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Plus, SlidersHorizontal, Zap } from 'lucide-react';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { EffortEnergy, EffortSegments, isMaximumEffort } from '@/components/EffortSegments';
 import type { ModeOption } from '@/components/modelModeOptions';
 import { listedModelKey, type ModelPickerLayout } from './modelPickerLayout';
 import './modemenu.css';
 import './modelEffortMenu.css';
+import '@/components/accounts/accounts.css';
 
 /** Same breakpoint as the shared picker's bottom sheet (ui/picker). */
 const SHEET_MQ = '(pointer: coarse) and (max-width: 600px)';
@@ -27,6 +28,17 @@ function useSheetMode(): boolean {
 
 type MenuAction = { label: string; onSelect: () => void };
 
+/** B-850c: the 账号 block on top of the panel (rows from sessionAccount.buildAccountSection). */
+export type MenuAccountSection = {
+    label: string;
+    rows: { key: string; name: string; tag?: string; status?: { text: string; tone: string }; disabled?: boolean; action?: MenuAction }[];
+    value: string;
+    switchable: boolean;
+    onChoose: (key: string) => void;
+    note?: { text: string; action?: MenuAction };
+    add?: MenuAction;
+};
+
 /**
  * One composer entry for 「运行配置」: model + that model's thinking stops.
  * B-849a: a flat list (newest per family, then 「更多模型」) instead of a
@@ -36,7 +48,7 @@ type MenuAction = { label: string; onSelect: () => void };
  * unknown running model; `footer` says the scope and offers the explicit
  * 「设为新会话默认」 (a pick here never writes the account default, B-848).
  */
-export function ModelEffortMenu({ label, modelLabel, options, layout, value, onChange, subtitle, notice, readOnly, effort, longContextLabel, longContextHint, moreLabel, footer, customize, onOpen, triggerLabel }: {
+export function ModelEffortMenu({ label, modelLabel, options, layout, value, onChange, subtitle, notice, readOnly, effort, longContextLabel, longContextHint, moreLabel, footer, customize, onOpen, triggerLabel, account, triggerPrefix }: {
     label: string;
     modelLabel: string;
     options: ModeOption[];
@@ -55,6 +67,9 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     onOpen?: () => void;
     /** Closed-entry text when it is not the selected option's name (read-only / unknown). */
     triggerLabel?: string;
+    account?: MenuAccountSection;
+    /** B-850c: the account's name before the model on the closed entry (「组织 A · Opus 5.5」). */
+    triggerPrefix?: string;
 }) {
     const [open, setOpen] = useState(false);
     const sheet = useSheetMode();
@@ -76,13 +91,13 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
         subtitle={subtitle} notice={notice} readOnly={readOnly} effort={effort}
         longContext={resolvedLayout.longContext && longContextLabel ? { ...resolvedLayout.longContext, label: longContextLabel, hint: longContextHint, onToggle: (on) => onChange(on ? resolvedLayout.longContext!.onKey : resolvedLayout.longContext!.offKey) } : null}
         more={moreLabel ? { label: moreLabel, open: moreOpen, onToggle: () => setMoreOpen((v) => !v) } : null}
-        footer={footer} customize={customize} runAction={runAction} />;
+        footer={footer} customize={customize} runAction={runAction} account={account} />;
 
     const trigger = (
         <button type="button" className="mm-trigger me-trigger" aria-label={label} aria-haspopup="dialog" aria-expanded={open}
             onClick={sheet ? () => setOpenAndNotify(!open) : undefined}>
             <Zap size={13} aria-hidden="true" />
-            <span className="mm-v">{triggerLabel ?? current?.name}</span>
+            <span className="mm-v">{triggerPrefix ? `${triggerPrefix} · ` : ''}{triggerLabel ?? current?.name}</span>
             {strength && <span className={`me-strength${atMax ? ' me-strength--max' : ''}`}><span>{strength}</span>{atMax && <EffortEnergy />}</span>}
             <ChevronDown size={12} className="mm-caret" aria-hidden="true" />
         </button>
@@ -116,7 +131,7 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     </Popover.Root>;
 }
 
-function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, notice, readOnly, effort, longContext, more, footer, customize, runAction }: {
+function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, notice, readOnly, effort, longContext, more, footer, customize, runAction, account }: {
     modelLabel: string;
     layout: ModelPickerLayout;
     selectedKey: string | null;
@@ -130,8 +145,10 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
     footer?: { note: string; action?: MenuAction };
     customize?: MenuAction;
     runAction: (action: MenuAction) => void;
+    account?: MenuAccountSection;
 }) {
     const id = useId();
+    const accountId = useId();
     const rows = (list: ModeOption[]): ReactNode => list.map((option) => {
         const selected = option.key === selectedKey;
         // B-849a2: a listed entry that would not take effect here says why instead of being picked.
@@ -146,6 +163,34 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
         </button>;
     });
     return <>
+        {account && <>
+            <span className="me-model-label" id={accountId}>{account.label}</span>
+            <div className="me-models me-accounts" role="radiogroup" aria-labelledby={accountId} data-testid="run-setup-accounts">
+                {account.rows.map((row) => {
+                    const selected = row.key === account.value;
+                    const off = (!account.switchable || !!row.disabled) && !selected;
+                    return <div key={row.key} className="me-account-row">
+                        <button type="button" role="radio" aria-checked={selected} aria-disabled={off || undefined} data-account-key={row.key}
+                            className={`me-model${selected ? ' me-model--on' : ''}${off ? ' me-model--off' : ''}`}
+                            onClick={off || selected ? undefined : () => runAction({ label: row.name, onSelect: () => account.onChoose(row.key) })}>
+                            <span className="me-model-text">
+                                <span className="me-model-name">{row.name}{row.tag && <span className="me-account-tag"> · {row.tag}</span>}</span>
+                                {row.status && <span className="me-model-desc me-account-status" data-tone={row.status.tone}>{row.status.text}</span>}
+                            </span>
+                            {selected && <Check size={15} className="me-model-check" aria-hidden="true" />}
+                        </button>
+                        {row.action && <button type="button" className="me-link" onClick={() => runAction(row.action!)}>{row.action.label}</button>}
+                    </div>;
+                })}
+                {account.add && <button type="button" className="me-more me-account-add" onClick={() => runAction(account.add!)}>
+                    <Plus size={14} aria-hidden="true" /><span>{account.add.label}</span>
+                </button>}
+            </div>
+            {account.note && <div className="me-notice" role="status">
+                <span>{account.note.text}</span>
+                {account.note.action && <button type="button" className="me-link" onClick={() => runAction(account.note!.action!)}>{account.note.action.label}</button>}
+            </div>}
+        </>}
         <span className="me-model-label" id={id}>{modelLabel}</span>
         {readOnly
             ? <div className="me-readonly"><span className="me-readonly-value">{readOnly.value}</span><span className="me-note">{readOnly.hint}</span></div>

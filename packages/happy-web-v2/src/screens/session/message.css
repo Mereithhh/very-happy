@@ -194,6 +194,16 @@
   color: var(--danger);
   background: var(--danger-dim);
 }
+/* B-850c: an account warning (local settings override the account) */
+.msg-event-line--warn {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--chat-space) * 2);
+  border-radius: var(--r-pill);
+  padding: 2px calc(var(--chat-space) * 2.5);
+  color: var(--warn);
+  background: var(--warn-dim);
+}
 
 /* B-264: inline restart action under a processFailed event line */
 .msg-event-restart {

@@ -212,7 +212,7 @@ number of concurrently progressing leaf tasks. The harness select lists only the
 harnesses the team's computer can run (Claude Code, Codex, pi; Gemini is not a
 team harness yet), and the default model is a select built from that harness's
 models on the computer — the bundled list, models published by pi sessions, and
-the computer's custom models (**Settings → Models & providers**) — with
+the computer's custom models (**Settings → Models & accounts → Machine config**) — with
 "Follow the harness default" first. Switching the harness resets the model; a
 saved model that is no longer listed stays selected and is flagged. When the lead
 delegates without `assistant`/`model`, the new member uses these defaults; the
