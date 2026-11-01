@@ -28,6 +28,7 @@
 .vh-modal-message {
   font-size: var(--fs-14);
   color: var(--text-dim);
+  white-space: pre-line; /* B-850c: multi-line confirms (account switch) keep their lines */
 }
 .vh-modal-input {
   background: var(--bg-2);

@@ -35,7 +35,7 @@ import { sendUserMessage } from '@/commands/sessionMessage';
 import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
 import { publishedRelaunchPermissionMode } from './relaunchPermissionMode';
 import { resumePrecheck, resumeStartsFreshConversation, sanitizeResumeModel } from './resumePrecheck';
-import { decideRestart, recordRestartAttempt, DEFAULT_MAX_RESTARTS } from './restartBreaker';
+import { decideRestart, recordRestartAttempt, DEFAULT_MAX_ACCOUNT_RESTARTS, DEFAULT_MAX_RESTARTS } from './restartBreaker';
 import type { SpawnGate } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
 import { createPeerCoordinator } from './peerCoordinator';
@@ -81,11 +81,13 @@ import { TurnActivityTracker } from '@/update/turnActivity';
 import { createDaemonHibernation, collectAutomationBindings, waitForPidsToExit, waitForSessionLive } from '@/hibernation/daemonHibernation';
 import { resolveCheckMs, resolveIdleMs, settingIdleMs } from '@/hibernation/hibernationPolicy';
 import { createAutoRestart } from './autoRestart';
-import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, resolveQuietMs, type StaleKind } from '@/update/autoRestartPolicy';
+import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, pendingUpgradeVersion, resolveQuietMs, type StaleKind } from '@/update/autoRestartPolicy';
 import { compareExactVersions } from '@/update/cliUpdate';
 import { createAutomationsClient, isAutomationsUnavailable } from '@/automations/client';
 import { BackgroundTaskTracker } from '@/update/backgroundTaskActivity';
 import { ClaudeAuthService } from './claudeAuth/claudeAuthService';
+import { AccountService } from '@/agentProfiles/accountService';
+import { SPAWN_ACCOUNT_ENV, spawnSetupTokenPty, watchAccountFiles } from '@/agentProfiles/daemonAccounts';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager';
 import { createDaemonControlToken } from './controlAuth';
@@ -170,6 +172,8 @@ export async function startDaemon(): Promise<void> {
   const startupCliAvailability = getStartupCliAvailability();
   // B-276: hoisted so spawnSession (defined below, called later) never hits the TDZ.
   let claudeAuthServiceRef: ClaudeAuthService | null = null;
+  // B-850a: account store + `agent-profile-*` RPCs (agentProfiles/accountService.ts).
+  let accountServiceRef: AccountService | null = null;
   // B-321: the last published update policy, so a handover hold can be attached
   // to it, and the reason of the hold currently reported (to avoid re-pushing
   // the same one on every heartbeat).
@@ -362,6 +366,8 @@ export async function startDaemon(): Promise<void> {
     let teamWorker: ReturnType<typeof createTeamWorker> | undefined;
     // B-852: created next to the control server (late-bound like teamWorker).
     let autoRestart: ReturnType<typeof createAutoRestart> | undefined;
+    // B-856: the heartbeat saw a newer bundle on disk (a hand-run `npm i -g`); a handover follows.
+    let bundleReplacedSeen = false;
     let automationRunner: ReturnType<typeof createAutomationRunner> | undefined;
     let projectPresence: ReturnType<typeof createProjectPresenceReporter> | undefined;
     const persisted = readPersistedSessions();
@@ -795,12 +801,31 @@ export async function startDaemon(): Promise<void> {
         if (options.spawnedBy) {
           extraEnv.HAPPY_SPAWNED_BY = options.spawnedBy;
         }
+        // B-850a: the account a NEW Claude session starts on — the spawn's
+        // choice, else this machine's default. The wrapper records it as the
+        // session's binding (so resume keeps it) and drops the variable. An
+        // account that is gone or unusable fails the spawn: never a silent
+        // fallback to the machine login (Owner Q3).
+        let spawnAccountId: string | null = null;
+        // Only the validated choice below may set it — never `--env` / environmentVariables.
+        delete extraEnv[SPAWN_ACCOUNT_ENV];
+        if ((options.agent ?? 'claude') === 'claude' && accountServiceRef) {
+          try {
+            spawnAccountId = accountServiceRef.resolveSpawnAccount('claude', options.agentProfileId);
+          } catch (error) {
+            return { type: 'error', errorMessage: error instanceof Error ? error.message : String(error) };
+          }
+          if (spawnAccountId) extraEnv[SPAWN_ACCOUNT_ENV] = spawnAccountId;
+        } else if (options.agentProfileId) {
+          return { type: 'error', errorMessage: `agent-profile-unavailable:agent-mismatch: accounts are not supported for ${options.agent} yet` };
+        }
         // B-515: the wrapper cannot see daemonState.claudeAuth (constraint 16);
         // hand it the daemon's last verdict so a fresh Claude session does not
         // prewarm a process that is known to be unable to authenticate. An old
-        // daemon sets nothing (the wrapper then prewarms as if 'ok').
+        // daemon sets nothing (the wrapper then prewarms as if 'ok'). The
+        // machine login's verdict says nothing about a bound account.
         const claudeAuthStatus = claudeAuthServiceRef?.current()?.status;
-        if ((options.agent ?? 'claude') === 'claude' && claudeAuthStatus) {
+        if ((options.agent ?? 'claude') === 'claude' && claudeAuthStatus && !spawnAccountId) {
           extraEnv.HAPPY_CLAUDE_AUTH_STATUS = claudeAuthStatus;
         }
         logger.debug(`[DAEMON RUN] Environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
@@ -1410,10 +1435,12 @@ export async function startDaemon(): Promise<void> {
     // resume (so restart/resume/concurrent-restart never double-spawn) and is
     // bounded by a per-daemon-lifetime circuit breaker.
     const restartCounts = new Map<string, number>();
+    // B-850a: account switches count separately (restartBreaker.ts).
+    const accountRestartCounts = new Map<string, number>();
     // B-852: `auto` = the daemon's own idle restart after an upgrade. It has its
     // own attempt limit (autoRestartPolicy) and must not use up the user's
     // manual-restart breaker; the respawned wrapper posts the "updated" line.
-    type RestartSessionOptions = { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; auto?: { kind: StaleKind; target: string } };
+    type RestartSessionOptions = { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; auto?: { kind: StaleKind; target: string }; account?: true };
     // B-852: sessions whose wrapper exit is an automatic restart, not an exit
     // worth telling a team lead about.
     const autoRestartExits = new Set<string>();
@@ -1475,8 +1502,9 @@ export async function startDaemon(): Promise<void> {
 
     const restartSessionImpl = async (happySessionId: string, options?: RestartSessionOptions): Promise<SpawnSessionResult> => {
       try {
-        const prior = restartCounts.get(happySessionId) ?? 0;
-        const decision = options?.auto ? { allowed: true as const } : decideRestart(prior, DEFAULT_MAX_RESTARTS);
+        const counts = options?.account ? accountRestartCounts : restartCounts;
+        const prior = counts.get(happySessionId) ?? 0;
+        const decision = options?.auto ? { allowed: true as const } : decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);
         if (!decision.allowed) {
           return { type: 'error', errorMessage: `restart:${decision.reason}` };
         }
@@ -1547,7 +1575,7 @@ export async function startDaemon(): Promise<void> {
 
         // Count the attempt now that we are actually spawning (a pre-flight
         // rejection above never burns a slot).
-        if (!options?.auto) restartCounts.set(happySessionId, recordRestartAttempt(prior));
+        if (!options?.auto) counts.set(happySessionId, recordRestartAttempt(prior));
 
         // B-730: see resumeSessionImpl.
         const teamEnv = await teamRelaunchEnvFor(happySessionId, metadata);
@@ -1745,6 +1773,13 @@ export async function startDaemon(): Promise<void> {
         startedBy: metadata?.startedBy ?? null,
       };
     };
+    // B-856: while this daemon waits to be replaced, restarting onto its code
+    // only means a second restart by the next daemon minutes later.
+    const upgradePending = () => pendingUpgradeVersion({
+      daemonVersion: packageJson.version,
+      autoUpdate: cliUpdateStateRef?.autoUpdate,
+      bundleReplaced: bundleReplacedSeen,
+    });
     const autoRestartScheduler = createAutoRestart({
       enabled: () => autoRestartSetting,
       quietMs: resolveQuietMs(),
@@ -1802,6 +1837,7 @@ export async function startDaemon(): Promise<void> {
         if (!row || typeof row.active !== 'boolean') return null;
         return { active: row.active, archived: row.archivedAt != null };
       },
+      upgradePending,
       publish: (sessions) => { void apiMachineRef?.setAutoRestartSessions(sessions); },
       log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
     });
@@ -1819,6 +1855,7 @@ export async function startDaemon(): Promise<void> {
       spawnSession,
       resumeSession, // B-501: `very-happy send --resume`
       restartSession, // B-794: `very-happy session provider`
+      getAgentProfiles: () => accountServiceRef?.state() ?? null, // B-850a: `very-happy account list`
       requestShutdown: () => requestShutdown('happy-cli'),
       onHappySessionWebhook,
       onSessionStateEvent,
@@ -1845,6 +1882,9 @@ export async function startDaemon(): Promise<void> {
       // B-505: `daemon list` shows which sessions have a turn in flight, so an
       // operator can check the WHOLE machine before a supervised restart.
       isTurnActive: (sessionId: string) => turnActivity.activeSessions().includes(sessionId),
+      // B-856: the auto-restart classification, readable locally (it is encrypted on the server).
+      getAutoRestartStatus: (sessionId: string) => autoRestartScheduler.statuses()[sessionId],
+      getDaemonInfo: () => ({ version: packageJson.version, upgradePending: upgradePending(), autoRestartEnabled: autoRestartSetting }),
       pushClipboard: (text: string, terminalId?: string) => {
         if (!apiMachineRef) {
           return { delivered: false, truncated: false, totalBytes: 0, error: 'daemon is still starting up' };
@@ -2044,6 +2084,28 @@ export async function startDaemon(): Promise<void> {
     });
     setTimeout(() => autoRestartScheduler.sweep(), 5_000).unref?.();
 
+    // B-850a: accounts. Registered before connect so the connect snapshot
+    // carries `agentProfiles` (= the capability). A `very-happy account …`
+    // edit in a terminal, or a token expiring, republishes via the watcher.
+    const accountService = new AccountService({
+      home: configuration.happyHomeDir,
+      env: process.env,
+      daemonPid: process.pid,
+      spawnPty: (env) => spawnSetupTokenPty(os.homedir(), env),
+      restartSession: async (sessionId) => {
+        const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, account: true });
+        if (result.type === 'success') return { ok: true };
+        const error = result.type === 'error' ? result.errorMessage : 'unexpected restart result';
+        // stillRunning: the old wrapper is alive on the OLD credential → the bind rolls back.
+        const stillRunning = [...pidToTrackedSession.values()].some((s) => s.happySessionId === sessionId && isPidAlive(s.pid));
+        return { ok: false, notRunning: error.startsWith('restart-precheck:not-tracked'), stillRunning, error };
+      },
+      onChanged: () => { void apiMachine.publishAgentProfiles(); },
+    });
+    accountServiceRef = accountService;
+    apiMachine.setAgentProfileService(accountService);
+    const stopAccountWatch = watchAccountFiles(configuration.happyHomeDir, () => { void apiMachine.publishAgentProfiles(); });
+
     // B-510: mirror the local `webPanels` declaration (settings.json) into
     // daemonState. Started before connect so the connect snapshot carries it.
     const webPanelsSync = startWebPanelsSync({
@@ -2227,6 +2289,7 @@ export async function startDaemon(): Promise<void> {
         try {
           const currentMtimeMs = statSync(bundlePath).mtimeMs;
           bundleReplaced = currentMtimeMs !== initialBundleMtimeMs;
+          if (bundleReplaced) bundleReplacedSeen = true;
         } catch {
           // File temporarily missing (e.g. mid-install) — retry on next heartbeat.
         }
@@ -2279,6 +2342,8 @@ export async function startDaemon(): Promise<void> {
         policyAnnouncements.stop();
         stopAgentVersionChecks();
         claudeAuthService.stop();
+        stopAccountWatch();
+        accountService.dispose();
 
         // Release ownership BEFORE spawning the new daemon. Otherwise the spawned
         // `very-happy daemon start` reads our still-present daemon.state.json, sees
@@ -2454,6 +2519,10 @@ export async function startDaemon(): Promise<void> {
       } catch (error) {
         logger.debug('[DAEMON RUN] Mirror shutdown failed:', error);
       }
+
+      // B-850a: a pending remote login's `claude setup-token` pty dies with us.
+      stopAccountWatch();
+      accountService.dispose();
 
       apiMachine.shutdown();
       await stopControlServer();

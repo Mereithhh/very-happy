@@ -164,6 +164,7 @@ import { applyFileMention, fileMentionDismissKey, fileMentionQuery } from './fil
 import { useFileMentionSuggestions } from './useFileMentionSuggestions';
 import { highlightRuns } from '../quickopen/quickOpenScore';
 import { recordQuickOpen } from '../quickopen/quickOpenHistory';
+import { MACHINE_LOGIN_KEY, buildAccountSection, sessionApiModels, switchSessionAccount, useSessionAccount } from './sessionAccount';
 // B-688: the model/provider editor loads on first use (Vite turns CJS `react` imports into consts, so this sits after every import).
 const ModelConfigEditor = lazy(() => import('@/components/modelConfig/ModelConfigEditor').then((m) => ({ default: m.ModelConfigEditor })));
 
@@ -392,6 +393,8 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     // B-688: the session machine's custom models (its harness config files) join the picker.
     const configMachineId = metadata?.machineId ?? '';
     const configMachine = useMachine(configMachineId);
+    // B-850c: this session's account (rows in the run-setup panel, API account models).
+    const sessionAccount = useSessionAccount(sessionId, configMachine);
     const configHarness = harnessForFlavor(flavor);
     const canConfigureModels = !!configMachineId && !!configHarness && !!configMachine;
     const customModels = useCustomPickerModels(configMachineId, configHarness);
@@ -535,6 +538,25 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     // config model, so what follow-latest runs there is unknown — say that.
     const runFactsUnknown = offersFollowLatest && followState.kind === 'machineDefault' && displayedModelKey === LATEST_MODEL_MODE;
     const upgradeMachineId = metadata?.machineId ?? pending?.machineId;
+    // B-850c: 账号 on top of the panel; switching restarts in place (confirm says
+    // so). An API account pins its model: the list is that account's models and
+    // a pick re-binds with it.
+    const accountFacts = session ? sessionAccount.facts : null;
+    const accountSection = accountFacts ? buildAccountSection(accountFacts, t, {
+        openSettings: sessionAccount.openSettings,
+        openMachine: sessionAccount.openMachine,
+    }) : null;
+    const chooseAccount = (key: string) => {
+        if (!accountFacts?.state) return;
+        const target = key === MACHINE_LOGIN_KEY ? null : accountFacts.state.accounts.find((account) => account.id === key);
+        if (target === undefined) return;
+        void switchSessionAccount({ sessionId, facts: accountFacts, target, working: isWorking }, t);
+    };
+    const apiAccount = sessionApiModels(accountFacts);
+    const apiModelOptions = apiAccount ? apiAccount.models.map((id) => ({ key: id, name: id, description: null })) : null;
+    const accountPrefix = sessionAccount.restarting
+        ? t('accounts.restartingTo', { label: sessionAccount.restarting.label ?? t('accounts.machineLogin') })
+        : accountFacts?.profile ? `${accountFacts.profile.status === 'unavailable' ? '⚠ ' : ''}${accountFacts.profile.label}` : undefined;
     // B-262 A4: honest subtitle — what the CLI has confirmed vs. what we intend.
     const permissionDisplayState = publishesModeFacts
         ? derivePermissionModeDisplay({
@@ -1702,11 +1724,15 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                     <div className="ci-model-controls">
                     <ModelEffortMenu
                         label={t('session.chat.modelPicker.title')}
-                        modelLabel={t('session.chat.modelLabel')}
-                        options={models}
-                        layout={pickerLayout}
-                        value={displayedModelKey ?? null}
-                        onChange={(key) => setMode('updateSessionModelMode', 'modelMode', key)}
+                        modelLabel={apiModelOptions ? t('accounts.apiModels') : t('session.chat.modelLabel')}
+                        options={apiModelOptions ?? models}
+                        layout={apiModelOptions ? undefined : pickerLayout}
+                        value={apiAccount ? apiAccount.pinned : displayedModelKey ?? null}
+                        onChange={(key) => apiAccount && accountFacts
+                            ? void switchSessionAccount({ sessionId, facts: accountFacts, target: apiAccount.account, model: key, working: isWorking, modelOnly: true }, t)
+                            : setMode('updateSessionModelMode', 'modelMode', key)}
+                        account={accountSection ? { label: t('accounts.sectionLabel'), ...accountSection, onChoose: chooseAccount } : undefined}
+                        triggerPrefix={accountPrefix}
                         subtitle={modelSubtitle}
                         notice={runFactsUnknown ? { text: t('session.chat.modelPicker.unknownNote'), extra: upgradeMachineId ? <UpgradeCliLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.upgradeCli')} /> : undefined } : undefined}
                         readOnly={isGemini ? { value: metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.modelPicker.geminiReadOnly'), hint: t('session.chat.modelPicker.geminiReadOnlyHint') } : undefined}
@@ -1716,7 +1742,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                         longContextHint={t('session.chat.modelPicker.longContextHint')}
                         moreLabel={t('session.chat.modelPicker.more')}
                         footer={{ note: t('session.chat.modelPicker.sessionOnly'), action: isGemini && effortOptions.length === 0 ? undefined : { label: t('session.chat.modelPicker.setDefault'), onSelect: () => { void setAsNewSessionDefault(); } } }}
-                        customize={canConfigureModels ? { label: t('modelConfig.customize'), onSelect: () => setModelEditorOpen(true) } : undefined}
+                        customize={canConfigureModels && !apiModelOptions ? { label: t('modelConfig.customize'), onSelect: () => setModelEditorOpen(true) } : undefined}
                         onOpen={() => {
                             if (canConfigureModels && machineSupportsModelConfig(configMachine) && configMachine?.active) void modelConfigStore.getState().load(configMachineId);
                         }}

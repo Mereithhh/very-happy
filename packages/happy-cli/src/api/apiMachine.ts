@@ -18,6 +18,8 @@ import { registerTodoHandlers } from '@/modules/todo/todoRpc';
 import { registerWorktreeHandlers } from '@/worktree/worktreeRpc';
 import { registerModelConfigHandlers } from '@/modules/modelConfig/modelConfigRpc';
 import type { ModelConfigService } from '@/modules/modelConfig/service';
+import { registerAgentProfileHandlers } from '@/agentProfiles/agentProfileRpc';
+import type { AccountService } from '@/agentProfiles/accountService';
 import { configureWorktreeService } from '@/worktree/service';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { prepareClipboardHistoryText, prepareClipboardText } from '@/clipboard/limits';
@@ -214,6 +216,8 @@ export class ApiMachineClient {
     private cliUpdateState: CliUpdateState | null = null;
     private cliUpdatePushChain: Promise<void> = Promise.resolve();
     private claudeAuthState: ClaudeAuthState | null = null;
+    /** B-850a: source of `daemonState.agentProfiles` (null = capability off). */
+    private agentProfileService: AccountService | null = null;
     /** B-587: the machine's hibernation threshold, published as a capability. */
     private agentHibernationIdleMs: number | null = null;
     /** B-852: auto-restart setting + per-session status (null until the daemon installs it). */
@@ -569,6 +573,32 @@ export class ApiMachineClient {
         });
     }
 
+    /**
+     * B-850a: `agent-profile-*` RPCs + `daemonState.agentProfiles` (spec
+     * 2026-11-session-accounts). Call before connect(): the connect snapshot
+     * carries the list, so its presence with `daemonPid === pid` IS the
+     * capability.
+     */
+    setAgentProfileService(service: AccountService): void {
+        this.agentProfileService = service;
+        registerAgentProfileHandlers(this.rpcHandlerManager, service);
+    }
+
+    /** B-850a: republish the account list (after an RPC / CLI edit / expiry tick). */
+    publishAgentProfiles(): Promise<void> {
+        const service = this.agentProfileService;
+        if (!service || !this.socket?.connected) return Promise.resolve();
+        const attempt = this.cliUpdatePushChain
+            .then(() => this.updateDaemonState((current) => ({
+                ...(current ?? {}),
+                status: current?.status ?? 'running',
+                agentProfiles: service.state(),
+            })))
+            .catch((error) => { logger.debug('[API MACHINE] Failed to publish agent profiles:', error); });
+        this.cliUpdatePushChain = attempt.then(() => undefined);
+        return attempt;
+    }
+
     /** B-688 machine RPCs `model-config-*` (modules/modelConfig/modelConfigRpc.ts). */
     setModelConfigService(service: ModelConfigService): void {
         registerModelConfigHandlers(this.rpcHandlerManager, service);
@@ -601,6 +631,7 @@ export class ApiMachineClient {
 
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
+            const { agentProfileId } = params || {};
             const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode, model } = params || {};
             logger.debug('[API MACHINE] Spawning session:', summarizeSpawnSessionForLog(params));
 
@@ -610,7 +641,7 @@ export class ApiMachineClient {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory: directory || '', sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId: typeof importedFromClaudeSessionId === 'string' ? importedFromClaudeSessionId : undefined, variant: variant === 'assistant' ? 'assistant' : undefined, forceNew: forceNew === true, model: typeof model === 'string' ? model : undefined, permissionMode: typeof permissionMode === 'string' ? permissionMode : undefined });
+            const result = await spawnSession({ directory: directory || '', sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId: typeof importedFromClaudeSessionId === 'string' ? importedFromClaudeSessionId : undefined, variant: variant === 'assistant' ? 'assistant' : undefined, forceNew: forceNew === true, model: typeof model === 'string' ? model : undefined, permissionMode: typeof permissionMode === 'string' ? permissionMode : undefined, ...(agentProfileId === null || typeof agentProfileId === 'string' ? { agentProfileId } : {}) });
 
             switch (result.type) {
                 case 'success':
@@ -1496,6 +1527,7 @@ export class ApiMachineClient {
                     // B-276: re-ship the last preflight so a reconnect never
                     // leaves a stale-pid value visible longer than needed.
                     ...(this.claudeAuthState ? { claudeAuth: this.claudeAuthState } : {}),
+                    ...(this.agentProfileService ? { agentProfiles: this.agentProfileService.state() } : {}),
                     // B-587 capability + setting (same restamp discipline).
                     ...(this.agentHibernationIdleMs !== null ? { agentHibernation: { idleMs: this.agentHibernationIdleMs, rpcAvailable: true, detectedAt: now } } : {}),
                     // B-852 capability + setting + status (same restamp discipline).

@@ -29,8 +29,8 @@ describe('B-852 auto-restart wiring', () => {
         expect(run).toContain('...(options?.auto ? { [AUTO_RESTARTED_ENV]: encodeAutoRestarted(options.auto.kind, options.auto.target) } : {}),');
     });
     it('automatic restarts never use up the manual breaker', () => {
-        expect(run).toContain('const decision = options?.auto ? { allowed: true as const } : decideRestart(prior, DEFAULT_MAX_RESTARTS);');
-        expect(run).toContain('if (!options?.auto) restartCounts.set(happySessionId, recordRestartAttempt(prior));');
+        expect(run).toContain('const decision = options?.auto ? { allowed: true as const } : decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);');
+        expect(run).toContain('if (!options?.auto) counts.set(happySessionId, recordRestartAttempt(prior));');
     });
     it('a team lead is not told "exited" for an automatic restart', () => {
         expect(run).toContain("if (session?.happySessionId && !autoRestartExits.has(session.happySessionId) && (session.spawnedBy === 'teams'");
@@ -50,7 +50,7 @@ describe('B-852 auto-restart wiring', () => {
         for (const src of [claude, codex, acp]) {
             expect(src).toMatch(/const autoUpdated = takeAutoRestartedEvent\(process\.env(, 'Codex')?\);\n\s+if \(autoUpdated\) session\.sendSessionEvent\(autoUpdated\);/);
         }
-        expect(claude).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY]');
+        expect(claude).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY]');
         expect(codex).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY');
         expect(acp).toContain("...(opts.agentName === 'pi' && opts.startedBy === 'daemon' ? [AUTO_RESTART_CAPABILITY] : [])],");
     });
@@ -61,5 +61,26 @@ describe('B-852 auto-restart wiring', () => {
     it('pi reports quiescence but never commits a hibernation', () => {
         expect(acp).toContain('commit: async () => false,');
         expect(acp).toContain('pendingRequests: Object.keys(session.getAgentState()?.requests ?? {}).length,\n          backgroundTasks: 0,');
+    });
+});
+
+// B-856: verified with scripts/dev/mutation-check.mjs (see PR).
+describe('B-856 wiring', () => {
+    const main = read('main.ts');
+    const logPrune = read('ui', 'logPrune.ts');
+    it('the scheduler is told when this daemon is about to be replaced (controller state or a new bundle on disk)', () => {
+        expect(run).toContain('const upgradePending = () => pendingUpgradeVersion({\n      daemonVersion: packageJson.version,\n      autoUpdate: cliUpdateStateRef?.autoUpdate,\n      bundleReplaced: bundleReplacedSeen,\n    });');
+        expect(run).toContain('      upgradePending,\n      publish: (sessions)');
+        expect(run).toContain('if (bundleReplaced) bundleReplacedSeen = true;');
+    });
+    it('daemon list reads the status and daemon facts locally; --json carries them', () => {
+        expect(run).toContain('getAutoRestartStatus: (sessionId: string) => autoRestartScheduler.statuses()[sessionId],');
+        expect(run).toContain('getDaemonInfo: () => ({ version: packageJson.version, upgradePending: upgradePending(), autoRestartEnabled: autoRestartSetting }),');
+        expect(main).toContain("console.log(JSON.stringify({ daemon: daemon ?? null, sessions }, null, 2))");
+        expect(main).toContain('for (const line of formatDaemonList(sessions, daemon)) console.log(line)');
+    });
+    it('previous daemon logs are exempt from the general sweep', () => {
+        expect(logPrune).toContain('const doomed = planLogPrune(files.filter((f) => !daemonLogs.keep.has(f.path)), Date.now(), policy, protectedPaths)');
+        expect(logPrune).toContain('if (daemonLogs.trim) trimToTail(daemonLogs.trim.path, daemonLogs.trim.keepBytes)');
     });
 });

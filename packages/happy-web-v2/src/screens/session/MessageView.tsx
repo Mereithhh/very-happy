@@ -22,6 +22,8 @@ import { stripHarnessBlocks, parseLocalCommandMessage, parseTaskNotification } f
 import { estimateWrappedLines, shouldCollapseBubble } from './codeCollapse';
 import { stripThinkingWrapper, formatThoughtFor, thinkingPreview, isLiveThinking } from './thinking';
 import { presentServiceEvent } from './serviceEvent';
+import { AccountEventBlock } from './AccountEventBlock';
+import { accountEventKind, machineLoginCardApplies } from './sessionAccount';
 import { AUTO_UPDATED_EVENT_KIND, parseAutoUpdatedLine } from '@/app/autoRestartPolicy';
 import { parseAttachedFiles, stripAttachedFiles } from './attachedFiles';
 import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, type AttachmentItem } from './UserAttachments';
@@ -377,6 +379,11 @@ function ContinueAction({ sessionId }: { sessionId: string }) {
 
 function AgentEventBlock({ message, sessionId, continueOffer = false }: { message: ModeSwitchMessage; sessionId: string; continueOffer?: boolean }) {
     const { t } = useTranslation();
+    const session = useSession(sessionId);
+    // B-850c (wire v2): an account-bound session's auth failure is the account's, not the machine login's.
+    const authCard = machineLoginCardApplies(session?.metadata)
+        ? <ClaudeAuthFailedBlock sessionId={sessionId} />
+        : <AccountEventBlock sessionId={sessionId} kind="auth-failed" message="" />;
     const ev = message.event;
     let label: string;
     let subtle = false;
@@ -386,9 +393,9 @@ function AgentEventBlock({ message, sessionId, continueOffer = false }: { messag
             break;
         case 'message':
             {
-                if (ev.kind === 'claude-auth-failed') {
-                    return <ClaudeAuthFailedBlock sessionId={sessionId} />;
-                }
+                if (ev.kind === 'claude-auth-failed') return authCard;
+                const accountEvent = accountEventKind(ev.kind);
+                if (accountEvent) return <AccountEventBlock sessionId={sessionId} kind={accountEvent} message={ev.message} />;
                 // B-852: the daemon restarted this session onto new code by itself — one quiet line.
                 const autoUpdated = ev.kind === AUTO_UPDATED_EVENT_KIND ? parseAutoUpdatedLine(ev.message) : null;
                 if (autoUpdated) {
@@ -401,9 +408,7 @@ function AgentEventBlock({ message, sessionId, continueOffer = false }: { messag
                 const presentation = presentServiceEvent(ev.message);
                 if (presentation.kind === 'hidden') return null;
                 // B-297: same card for CLIs too old to tag the event structurally.
-                if (presentation.kind === 'claude-auth') {
-                    return <ClaudeAuthFailedBlock sessionId={sessionId} />;
-                }
+                if (presentation.kind === 'claude-auth') return authCard;
                 if (presentation.kind === 'stopped') {
                     return (
                         <div className="msg msg--event">

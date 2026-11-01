@@ -1,6 +1,6 @@
 /**
  * B-688 model / provider editor (specs/2026-10-custom-models.md). One dialog
- * shared by Settings → 模型与 Provider and the composer picker's 「自定义…」.
+ * shared by Settings → 模型与账号 (本机配置) and the composer picker's 「自定义…」.
  *
  * Flow is fixed: edit → 预览改动 (daemon dry run, masked diff) → 确认写入
  * (daemon re-checks the files' hash, backs up, writes atomically). The key

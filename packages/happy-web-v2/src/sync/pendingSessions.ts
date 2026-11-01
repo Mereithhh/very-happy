@@ -67,6 +67,8 @@ export interface PendingSessionRecord {
     /** undefined = not chosen on the pending page (the agent default applies). */
     modelMode?: string | null;
     effortLevel?: string | null;
+    /** B-850c: the account the session starts on — undefined = the machine's default, null = machine login. */
+    agentProfileId?: string | null;
     /** Task Board dispatch: attach the new session to this task on success. */
     onSpawnedTask?: { taskId: string };
     /** B-648: created from a project (page / group ＋) — join it before the first message is delivered. */
@@ -311,6 +313,8 @@ export interface PendingCreateInput {
     draft?: boolean;
     onSpawnedTask?: { taskId: string };
     onSpawnedProject?: { projectId: string };
+    /** B-850c: see PendingSessionRecord.agentProfileId (the dialog's pick). */
+    agentProfileId?: string | null;
 }
 
 export type PendingModeField = 'permissionMode' | 'modelMode' | 'effortLevel';
@@ -322,6 +326,8 @@ export interface PendingTargetChange {
     agent?: PendingAgent;
     /** Required with an agent change: the new agent's default. */
     permissionMode?: string | null;
+    /** B-850c: undefined key = unchanged; `agentProfileId: undefined` = back to the machine default. */
+    agentProfileId?: string | null;
 }
 
 export function createPendingSessionStore(deps: PendingSessionDeps) {
@@ -411,6 +417,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                     agent: record.agent,
                     permissionMode: record.permissionMode ?? undefined,
                     approvedNewDirectoryCreation: record.approvedNewDirectoryCreation === true,
+                    ...(record.agentProfileId !== undefined ? { agentProfileId: record.agentProfileId } : {}),
                 });
             } catch (error) {
                 result = { type: 'error', errorMessage: error instanceof Error ? error.message : String(error), transport: true };
@@ -632,6 +639,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 ...(input.draft ? { deferred: true } : {}),
                 ...(input.onSpawnedTask ? { onSpawnedTask: input.onSpawnedTask } : {}),
                 ...(input.onSpawnedProject ? { onSpawnedProject: input.onSpawnedProject } : {}),
+                ...(input.agentProfileId !== undefined ? { agentProfileId: input.agentProfileId } : {}),
             };
             records = new Map(records).set(pendingId, record);
             persist([pendingId]);
@@ -704,6 +712,9 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 Object.assign(next, { agent: change.agent, modelMode: undefined, effortLevel: undefined });
                 if (change.permissionMode !== undefined) next.permissionMode = change.permissionMode;
             }
+            // B-850c: an account belongs to one machine and one agent — either changing drops the pick.
+            if ((change.machineId !== undefined && change.machineId !== current.machineId) || next.agent !== undefined) next.agentProfileId = undefined;
+            if ('agentProfileId' in change) next.agentProfileId = change.agentProfileId;
             if (Object.keys(next).length > 0) patch(pendingId, next);
         },
         /** B-801: a failed draft goes back to editing — its message returns to the composer. */

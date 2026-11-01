@@ -42,6 +42,7 @@ import { join } from 'node:path';
 import { wrapperRateLimitReporter } from '@/rateLimits/rateLimitReporter';
 import { describeClaudeProcessExit } from './claudeProcessExit';
 import { createClaudeApiRetryGate, describeClaudeApiRetry, describeClaudeInformational } from './claudeSystemNotices';
+import { noteAccountAuthFailure } from '@/agentProfiles/wrapperAccount';
 
 interface PermissionsField {
     date: number;
@@ -788,6 +789,15 @@ export async function claudeRemoteLauncher(
                         session.client.sendSessionEvent({ type: 'message', message });
                     },
                     onAuthFailure: (reason: string) => {
+                        // B-850a: with an account bound, the account was
+                        // rejected — not the machine login. Mark the account
+                        // (daemon republishes it as expired/invalid) and skip
+                        // the machine-auth card and re-probe.
+                        const accountFailure = noteAccountAuthFailure();
+                        if (accountFailure) {
+                            session.client.sendSessionEvent({ type: 'message', message: `Account "${accountFailure.label}" was rejected (${accountFailure.status}): ${reason}. Sign in again or switch accounts.`, kind: 'agent-profile-auth-failed' });
+                            return;
+                        }
                         // B-276: structured marker for the web (old web strips
                         // `kind`; the plain-text event above still renders) +
                         // immediate daemon re-probe.

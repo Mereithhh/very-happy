@@ -24,6 +24,7 @@ import { resolve, join } from 'node:path';
 import { logger } from '@/ui/logger';
 import { projectPath } from '@/projectPath';
 import type { ApiSessionClient } from '@/api/apiSession';
+import { accountClaudeSettings } from '@/agentProfiles/wrapperAccount';
 
 const MAX_PROMPT_SAMPLE_CHARS = 500;
 const MAX_TITLE_CHARS = 60;
@@ -119,14 +120,17 @@ function sanitizeTitle(raw: string): string | null {
  * exist since Claude Code 2.x; an unknown flag only makes this best-effort
  * call return null.
  */
-export const ONE_SHOT_ARGS: readonly string[] = [
-    '-p',
-    '--model', 'haiku',
-    '--strict-mcp-config',
-    '--settings', '{"disableAllHooks":true}',
-    '--no-session-persistence',
-    '--disable-slash-commands',
-];
+export function oneShotArgs(accountSettings: Record<string, unknown> = {}): string[] {
+    return [
+        '-p',
+        '--model', 'haiku',
+        '--strict-mcp-config',
+        '--settings', JSON.stringify({ ...accountSettings, disableAllHooks: true }),
+        '--no-session-persistence',
+        '--disable-slash-commands',
+    ];
+}
+export const ONE_SHOT_ARGS: readonly string[] = oneShotArgs();
 
 export function runClaudeOneShot(binary: string, prompt: string): Promise<string | null> {
     return new Promise((resolve) => {
@@ -139,7 +143,11 @@ export function runClaudeOneShot(binary: string, prompt: string): Promise<string
 
         let child: ReturnType<typeof spawn>;
         try {
-            child = spawn(binary, [...ONE_SHOT_ARGS, prompt], {
+            // B-850a: the session's account settings (apiKeyHelper) ride along —
+            // without them a one-shot in an API-account session inherited the
+            // account's ANTHROPIC_BASE_URL but authenticated with the MACHINE
+            // login, sending that token to the account's endpoint.
+            child = spawn(binary, [...oneShotArgs(accountClaudeSettings()), prompt], {
                 stdio: ['ignore', 'pipe', 'ignore'],
                 // HAPPY_MANAGED=1: this claude is run BY happy. The user-wide
                 // terminal-mirror SessionStart hook exits on it, so a one-shot

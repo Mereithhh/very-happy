@@ -1,16 +1,16 @@
 /**
- * Settings → 模型与 Provider (B-688, specs/2026-10-custom-models.md).
+ * Settings → 模型与账号, the per-machine half (B-850c merged the former
+ * 「模型与 Provider」 page, B-688 specs/2026-10-custom-models.md, into it).
  *
- * Per machine × harness: what the harness's own config file says right now
- * (masked, read from the machine), and the shared editor to change it.
- * Separate file on purpose: SettingsRoutes.tsx is a conflict hot zone and only
- * gains an import, one <Route> and one overview <Item> (VoiceSettings precedent).
+ * One machine at a time: its accounts (MachineAccounts), then per harness what
+ * the harness's own config file says right now (masked, read from the
+ * machine) and the shared editor to change it — 「本机配置」.
+ * Separate file on purpose: SettingsRoutes.tsx is a conflict hot zone.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Pencil, RefreshCw } from 'lucide-react';
-import { SettingsPage as Page, SettingsHeader as Header } from './SettingsLayout';
-import { Button, Item, ItemGroup, ItemList, Spinner } from '@/ui';
+import { Button, Item, ItemGroup, Spinner } from '@/ui';
 import { Combobox } from '@/ui/Combobox';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
@@ -19,6 +19,7 @@ import { modelConfigStore, useMachineModelConfig } from '@/sync/modelConfigStore
 import { HARNESS_LABELS, machineSupportsModelConfig } from '@/sync/modelConfigModel';
 import { HARNESS_IDS, type HarnessConfigView, type HarnessId } from '@/sync/modelConfigTypes';
 import { ModelConfigEditor } from '@/components/modelConfig/ModelConfigEditor';
+import { MachineAccounts } from '@/components/accounts/MachineAccounts';
 import '@/components/modelConfig/modelConfigEditor.css';
 
 function keySummary(view: HarnessConfigView, t: ReturnType<typeof useTranslation>['t']): string {
@@ -29,7 +30,8 @@ function keySummary(view: HarnessConfigView, t: ReturnType<typeof useTranslation
     return t('modelConfig.keyCommand');
 }
 
-export function ModelProviderSettings() {
+/** Machine picker + that machine's accounts + its agents' own config. Rendered inside the page's ItemList. */
+export function MachineModelsAndAccounts() {
     const { t } = useTranslation();
     const navigate = useNavigate();
     const [params] = useSearchParams();
@@ -50,10 +52,8 @@ export function ModelProviderSettings() {
     const harnesses = state?.data?.harnesses ?? [];
 
     return (
-        <Page>
-            <Header title={t('modelConfig.title')} />
-            <ItemList>
-                <ItemGroup settingId="models.machine" title={t('modelConfig.machine')} footer={t('modelConfig.settingsFooter')}>
+        <>
+                <ItemGroup settingId="models.machine" title={t('accounts.machineGroup')} footer={t('accounts.machineFooter')}>
                     <div className="mcs-machine">
                         {/* inside the settings card the picker is fill-only (1-Border Rule) */}
                         <Combobox label={t('modelConfig.machine')} variant="soft" size="md" className="mcs-machine-picker"
@@ -64,7 +64,12 @@ export function ModelProviderSettings() {
                     </div>
                 </ItemGroup>
 
-                {!machine && <ItemGroup><Item title={t('modelConfig.noMachine')} /></ItemGroup>}
+                {!machine && <ItemGroup><Item title={t('accounts.noMachine')} /></ItemGroup>}
+                {machine && <MachineAccounts key={machine.id} machine={machine} />}
+                {machine && <div className="mcs-local-head" data-setting-id="models.local">
+                    <span className="vh-itemgroup__title eyebrow">{t('accounts.localConfigGroup')}</span>
+                    <span className="mcs-local-note">{t('modelConfig.settingsFooter')}</span>
+                </div>}
                 {machine && !supported && <ItemGroup settingId="models.upgrade">
                     <Item title={t('modelConfig.needsUpgrade')} subtitle={machine.metadata?.happyCliVersion ? `CLI ${machine.metadata.happyCliVersion}` : undefined}
                         right={<Button size="sm" onClick={() => navigate(`/machine/${machine.id}`)}>{t('modelConfig.openMachine')}</Button>} />
@@ -97,8 +102,7 @@ export function ModelProviderSettings() {
                         </ItemGroup>
                     );
                 })}
-            </ItemList>
             <ModelConfigEditor open={editor !== null} onOpenChange={(open) => { if (!open) setEditor(null); }} machineId={effectiveId} harness={editor} />
-        </Page>
+        </>
     );
 }

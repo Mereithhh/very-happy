@@ -294,3 +294,42 @@ describe('B-852 createAutoRestart', () => {
         expect(restart).toHaveBeenCalledWith('b', { kind: 'agent', from: '0.154.0', target: '0.155.0' });
     });
 });
+
+describe('B-856 no restart onto a daemon that is about to be replaced', () => {
+    it('Release24 cmvuj7gkd: while waiting_idle for 0.2.191 the 0.2.190 daemon does not restart a 0.2.189 wrapper', async () => {
+        let pending: string | null = '0.2.191';
+        const resumable = vi.fn(async () => true);
+        const { scheduler, restart, report } = setup({ upgradePending: () => pending, resumable }, { a: { live: true, wrapperVersion: '0.2.189', flavor: 'claude', capabilities: ['agent-hibernation-v1'] } });
+        const reply = await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report() });
+        expect(reply).toEqual({ nextCheckMs: null, restarting: false });
+        expect(scheduler.statuses().a).toMatchObject({ state: 'waiting', reason: 'upgrade-pending', target: '0.2.190' });
+        await flush();
+        expect(restart).not.toHaveBeenCalled();
+        expect(resumable).not.toHaveBeenCalled();
+        // The install failed (this daemon stays): restarts resume.
+        pending = null;
+        expect((await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report() })).restarting).toBe(true);
+        await flush();
+        expect(restart).toHaveBeenCalledTimes(1);
+    });
+
+    it('an upgrade queued between the decision and the stop: no stop, no attempt burned', async () => {
+        let pending: string | null = null;
+        const { scheduler, restart, report } = setup({ upgradePending: () => pending });
+        expect((await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report() })).restarting).toBe(true);
+        pending = '0.2.191';
+        await flush();
+        expect(restart).not.toHaveBeenCalled();
+        expect(scheduler.statuses().a).toMatchObject({ state: 'waiting', reason: 'upgrade-pending' });
+        expect(scheduler.inFlight()).toBe(0);
+    });
+
+    it('the pending check is re-read after the async resumable check', async () => {
+        let pending: string | null = null;
+        const { scheduler, restart, report } = setup({ upgradePending: () => pending, resumable: async () => { pending = '0.2.191'; return true; } });
+        expect((await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report() })).restarting).toBe(false);
+        await flush();
+        expect(restart).not.toHaveBeenCalled();
+        expect(scheduler.statuses().a).toMatchObject({ state: 'waiting', reason: 'upgrade-pending' });
+    });
+});

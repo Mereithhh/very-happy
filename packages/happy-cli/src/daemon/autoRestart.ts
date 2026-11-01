@@ -52,6 +52,11 @@ export interface AutoRestartDeps {
     /** `resumePrecheck` against the conversation on disk. */
     /** `resumePrecheck` on the server's (authoritative) metadata against the conversation on disk. */
     resumable: (sessionId: string) => Promise<boolean>;
+    /**
+     * B-856: the newer CLI this daemon is about to be replaced by (null = none).
+     * While set, nothing is restarted onto this daemon's soon-old code.
+     */
+    upgradePending?: () => string | null;
     restart: (sessionId: string, staleness: Staleness) => Promise<{ ok: true } | { ok: false; error: string }>;
     /**
      * The server's view of a session the failed restart left offline (null =
@@ -144,6 +149,13 @@ export function createAutoRestart(deps: AutoRestartDeps) {
             if (deps.turnActive(sessionId) || deps.backgroundTasks(sessionId) > 0 || deps.automationRunning(sessionId)) {
                 deps.log?.(`[auto-restart] ${sessionId} became busy before the stop; waiting`);
                 setStatus(sessionId, { state: 'waiting', reason: 'turn-active', since, target: staleness.target });
+                return;
+            }
+            // B-856: an upgrade got queued since the decision; the new daemon restarts it once.
+            const pending = deps.upgradePending?.() ?? null;
+            if (pending) {
+                deps.log?.(`[auto-restart] ${sessionId} left to the next daemon: upgrade to ${pending} pending`);
+                setStatus(sessionId, { state: 'waiting', reason: 'upgrade-pending', since, target: staleness.target });
                 return;
             }
             let result: { ok: true } | { ok: false; error: string };
@@ -247,6 +259,7 @@ export function createAutoRestart(deps: AutoRestartDeps) {
             automationRunning: deps.automationRunning(request.sessionId),
             resumable: false,
             attempt,
+            upgradePending: deps.upgradePending?.() ?? null,
             inFlight,
             lastStartedAt,
         };
@@ -266,6 +279,7 @@ export function createAutoRestart(deps: AutoRestartDeps) {
                 automationRunning: deps.automationRunning(request.sessionId),
                 resumable,
                 attempt: attempts.get(request.sessionId) ?? null,
+                upgradePending: deps.upgradePending?.() ?? null,
                 inFlight,
                 lastStartedAt,
             };

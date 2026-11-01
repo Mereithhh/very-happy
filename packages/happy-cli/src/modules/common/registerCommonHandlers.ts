@@ -135,6 +135,11 @@ export interface SpawnSessionOptions {
     environmentVariables?: Record<string, string>;
     token?: string;
     /**
+     * B-850a: account for a new Claude session. undefined = the machine's
+     * default account (none = machine login); null = machine login.
+     */
+    agentProfileId?: string | null;
+    /**
      * If set, the daemon spawns the agent with `--resume <id>` so the new
      * Happy session continues from an existing Claude conversation file.
      * Used by the session fork / duplicate flow: the fork RPC produces a

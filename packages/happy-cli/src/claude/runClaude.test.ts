@@ -334,7 +334,7 @@ describe('runClaude remote JSONL scanner', () => {
         });
         expect(api.getOrCreateSession).toHaveBeenCalledWith(expect.objectContaining({
             metadata: expect.objectContaining({
-                capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', 'prompt-queue-v1', 'fork-backfill-ack-v1', 'agent-hibernation-v1', 'auto-restart-v1', 'project-v1', 'session-run-intent-v1', 'claude-config-model-v1'],
+                capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', 'prompt-queue-v1', 'fork-backfill-ack-v1', 'agent-hibernation-v1', 'auto-restart-v1', 'project-v1', 'session-run-intent-v1', 'claude-config-model-v1', 'agent-profile-v1'],
             }),
         }));
 
@@ -530,6 +530,8 @@ describe('runClaude startup order (B-512)', () => {
         await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
 
         expect(api.getOrCreateSession).not.toHaveBeenCalled();
+        // B-858: the key is not left for the agent and its children to inherit.
+        for (const key of reconnectEnv) expect(process.env[key]).toBeUndefined();
         const reactivate = api.reactivateSession.mock.invocationCallOrder[0];
         const snapshot = api.getSession.mock.invocationCallOrder[0];
         const webhook = mockNotifyDaemonSessionStarted.mock.invocationCallOrder[0];

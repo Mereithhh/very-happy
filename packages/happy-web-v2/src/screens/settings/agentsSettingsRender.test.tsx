@@ -48,7 +48,7 @@ const piSession = (id: string, updatedAt: number, models: string[]) => ({
 function renderAgents() {
     return renderToStaticMarkup(
         <ToastProvider>
-            <MemoryRouter initialEntries={['/settings/agents']}>
+            <MemoryRouter initialEntries={['/settings/models-accounts']}>
                 <Routes>
                     <Route path="/settings/*" element={<SettingsRoutes />} />
                 </Routes>
@@ -65,7 +65,8 @@ describe('Settings → Agents (B-370)', () => {
         // model, no effort row) — override isolation is covered by agentDefaults.test.ts.
         const html = renderAgents();
         const groups = [...html.matchAll(/<div class="vh-itemgroup__title eyebrow">([^<]+)<\/div>/g)].map((m) => m[1]);
-        expect(groups).toEqual(['New chat creation', 'claude', 'codex', 'gemini', 'openclaw', 'pi']);
+        // B-850c: one page — the account-level defaults, then the per-machine part (accounts + machine config).
+        expect(groups).toEqual(['New chat creation', 'claude', 'codex', 'gemini', 'openclaw', 'pi', 'Machine']);
         const piGroup = html.slice(html.indexOf('eyebrow">pi<'));
         // 「先审阅改动」 is on by default: the row says what a new pi session starts with.
         expect(piGroup).toContain('<span class="vh-item__title">Permission</span></span><span class="vh-item__right"><span class="set-value">default permissions (review changes first)</span>');
