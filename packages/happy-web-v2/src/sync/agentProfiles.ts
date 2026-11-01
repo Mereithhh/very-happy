@@ -23,8 +23,17 @@ import {
 // Web's trust gate, whitelisted reads, presentation and Q3 decisions.
 export { AGENT_PROFILE_RPC, AGENT_PROFILE_SESSION_CAPABILITY, AgentProfileSummarySchema, type AgentProfileSummary };
 
-/** Agents that have accounts in this release (codex/pi/gemini come with PR-D/G). */
-export const ACCOUNT_AGENTS = ['claude'] as const;
+/** Agents that have accounts in this release (B-850c2: codex; pi/gemini come with PR-G). */
+export const ACCOUNT_AGENTS = ['claude', 'codex'] as const;
+
+/** The kinds each agent's accounts can be (add form order). */
+export const AGENT_ACCOUNT_KINDS: Record<string, readonly string[]> = {
+    claude: ['claude-subscription', 'claude-api'],
+    codex: ['codex-chatgpt', 'codex-provider'],
+};
+
+/** B-850b `codexProviders`: the machine's ~/.codex/config.toml providers (no secrets). */
+export type CodexProviderOption = { id: string; name?: string; baseUrl?: string; envKey?: string };
 
 const AgentProfilesStateSchema = z.object({
     daemonPid: z.number(),
@@ -33,6 +42,8 @@ const AgentProfilesStateSchema = z.object({
     defaults: z.record(z.string(), z.unknown()),
     /** Not in v1: kinds this daemon can add. Absent = the v1 set (claude-subscription, claude-api). */
     kinds: z.array(z.string()).optional(),
+    /** Wire v3 (B-850b). */
+    codexProviders: z.array(z.unknown()).optional(),
 });
 
 export interface AgentProfilesState {
@@ -42,9 +53,24 @@ export interface AgentProfilesState {
     /** agent → account id new sessions use when the spawn names none; absent = machine login. */
     defaults: Record<string, string>;
     kinds: string[];
+    /** Wire v3: for the codex-provider add form. Empty on an older CLI / a config.toml without providers. */
+    codexProviders: CodexProviderOption[];
 }
 
 const V1_KINDS = ['claude-subscription', 'claude-api'];
+const CODEX_KINDS = ['codex-chatgpt', 'codex-provider'];
+
+function readCodexProvider(raw: unknown): CodexProviderOption | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const v = raw as Record<string, unknown>;
+    if (typeof v.id !== 'string' || !v.id) return null;
+    return {
+        id: v.id,
+        ...(typeof v.name === 'string' && v.name ? { name: v.name } : {}),
+        ...(typeof v.baseUrl === 'string' && v.baseUrl ? { baseUrl: v.baseUrl } : {}),
+        ...(typeof v.envKey === 'string' && v.envKey ? { envKey: v.envKey } : {}),
+    };
+}
 
 /** Accounts list: one malformed entry is dropped, never the whole list. */
 export function parseAgentProfilesState(raw: unknown): AgentProfilesState | null {
@@ -57,7 +83,19 @@ export function parseAgentProfilesState(raw: unknown): AgentProfilesState | null
     }
     const defaults: Record<string, string> = {};
     for (const [agent, id] of Object.entries(parsed.data.defaults)) if (typeof id === 'string' && id) defaults[agent] = id;
-    return { daemonPid: parsed.data.daemonPid, updatedAt: parsed.data.updatedAt, accounts, defaults, kinds: parsed.data.kinds ?? V1_KINDS };
+    const codexProviders = (parsed.data.codexProviders ?? []).map(readCodexProvider).filter((p): p is CodexProviderOption => !!p);
+    // Wire v3 publishes no `kinds`: a B-850b daemon shows itself by its Codex parts
+    // (codexProviders, a Codex account or default). A B-850a daemon has none of them
+    // and rejects Codex adds, so its Codex section stays 「本机登录 · 升级 CLI」.
+    const codexEvidence = parsed.data.codexProviders !== undefined || accounts.some((a) => a.agent === 'codex') || !!defaults.codex;
+    const kinds = parsed.data.kinds ?? (codexEvidence ? [...V1_KINDS, ...CODEX_KINDS] : V1_KINDS);
+    return { daemonPid: parsed.data.daemonPid, updatedAt: parsed.data.updatedAt, accounts, defaults, kinds, codexProviders };
+}
+
+/** Does this daemon serve accounts for `agent` (it can add at least one of its kinds)? */
+export function machineHasAgentAccounts(state: AgentProfilesState | null, agent: string): boolean {
+    if (!state) return false;
+    return (AGENT_ACCOUNT_KINDS[agent] ?? []).some((kind) => state.kinds.includes(kind));
 }
 
 /**
@@ -187,7 +225,7 @@ export type SpawnAccountResolution =
     | { kind: 'blocked'; reason: 'missing' | 'expired' | 'invalid' | 'missing-secret'; label: string | null; fromDefault: boolean };
 
 export function resolveSpawnAccount(state: AgentProfilesState | null, agent: string, choice: SpawnAccountChoice, now = Date.now()): SpawnAccountResolution {
-    if (!state || !agentHasAccounts(agent)) return { kind: 'unsupported' };
+    if (!state || !agentHasAccounts(agent) || !machineHasAgentAccounts(state, agent)) return { kind: 'unsupported' };
     if (choice === null) return { kind: 'machine', explicit: true };
     const fromDefault = choice === undefined;
     const id = fromDefault ? state.defaults[agent] : choice;
@@ -202,10 +240,10 @@ export function resolveSpawnAccount(state: AgentProfilesState | null, agent: str
 /**
  * The `agentProfileId` spawn param. Only an explicit choice is sent (undefined
  * lets the daemon apply its own default, same as an old Web), and never to an
- * old CLI or an agent without accounts (the daemon rejects a non-Claude id).
+ * old CLI or an agent this daemon has no accounts for (a B-850a daemon rejects a Codex id).
  */
 export function spawnAgentProfileParam(state: AgentProfilesState | null, agent: string, choice: SpawnAccountChoice): { agentProfileId?: string | null } {
-    if (!state || !agentHasAccounts(agent) || choice === undefined) return {};
+    if (!state || !agentHasAccounts(agent) || !machineHasAgentAccounts(state, agent) || choice === undefined) return {};
     return { agentProfileId: choice };
 }
 
@@ -248,7 +286,7 @@ export function baseUrlHost(baseUrl: string | undefined): string | null {
 
 // ---- login (subscription) ----
 
-/** 'starting' (wire v2): the machine is still launching setup-token — a waiting state. */
+/** 'starting' (wire v2): the machine is still launching setup-token / the Codex app-server — a waiting state. */
 export type LoginState = 'starting' | 'waiting-code' | 'exchanging' | 'succeeded' | 'failed' | 'canceled' | 'expired';
 const LOGIN_STATES: ReadonlySet<string> = new Set(['starting', 'waiting-code', 'exchanging', 'succeeded', 'failed', 'canceled', 'expired']);
 
@@ -256,6 +294,9 @@ export interface LoginStatus {
     loginId: string;
     /** unknown → 'failed' would end polling on a newer CLI's new state; keep polling instead ('exchanging'). */
     state: LoginState;
+    /** Wire v3: 'device-code' (Codex: open `url`, enter `userCode`, nothing to paste) | 'paste-code' (Claude; also when absent). */
+    flow: 'paste-code' | 'device-code';
+    userCode?: string;
     url?: string;
     expiresAt?: number;
     account?: AgentProfileSummary;
@@ -270,6 +311,8 @@ export function parseLoginStatus(raw: unknown): LoginStatus | null {
     return {
         loginId: v.loginId,
         state: LOGIN_STATES.has(v.state) ? v.state as LoginState : 'exchanging',
+        flow: v.flow === 'device-code' ? 'device-code' : 'paste-code',
+        ...(typeof v.userCode === 'string' && v.userCode.trim() ? { userCode: v.userCode.trim() } : {}),
         ...(typeof v.url === 'string' && /^https:\/\//.test(v.url) ? { url: v.url } : {}),
         ...(typeof v.expiresAt === 'number' ? { expiresAt: v.expiresAt } : {}),
         ...(account.success ? { account: account.data } : {}),
@@ -304,10 +347,21 @@ export interface SwitchPlan {
     cacheMiss: boolean;
     /** API kinds: the model the session will be pinned to. */
     model?: string;
+    /**
+     * Codex, wire v3: ChatGPT ↔ API provider ↔ machine login. Allowed, but the
+     * new account may refuse the old history (`agent-profile-history-rejected`).
+     */
+    crossType: boolean;
+}
+
+/** Codex account families for the cross-type warning; the machine login is its own (config.toml decides). */
+function codexFamily(kind: string | null): 'chatgpt' | 'provider' | 'machine' {
+    if (kind === null) return 'machine';
+    return kind === 'codex-chatgpt' ? 'chatgpt' : 'provider';
 }
 
 /** What the confirm dialog says for switching `current` → `target`. */
-export function planAccountSwitch(current: SessionAgentProfile | null | undefined, target: AgentProfileSummary | null, model?: string): SwitchPlan {
+export function planAccountSwitch(current: SessionAgentProfile | null | undefined, target: AgentProfileSummary | null, model?: string, agent = 'claude'): SwitchPlan {
     const currentId = current ? current.id : null;
     const targetId = target ? target.id : null;
     const pinned = target && isApiAccount(target.kind) ? (model ?? target.models?.[0]) : undefined;
@@ -315,6 +369,45 @@ export function planAccountSwitch(current: SessionAgentProfile | null | undefine
         accountId: targetId,
         label: target ? target.label : null,
         cacheMiss: currentId !== targetId,
+        crossType: agent === 'codex' && currentId !== targetId && codexFamily(current ? current.kind : null) !== codexFamily(target ? target.kind : null),
         ...(pinned ? { model: pinned } : {}),
     };
+}
+
+// ---- add form (codex-provider, wire v3) ----
+
+export interface CodexProviderForm {
+    label: string;
+    /** a `codexProviders` id, or null = own URL */
+    provider: string | null;
+    baseUrl: string;
+    wireApi: 'responses' | 'chat';
+    models: string;
+}
+
+/**
+ * The `agent-profile-add` fields for a Codex provider, or null while the form
+ * cannot be sent. A config.toml provider brings its own base_url / wire_api
+ * (the URL field then only overrides); an own URL needs a valid URL and says
+ * its wire API.
+ */
+export function codexProviderAddFields(form: CodexProviderForm): { label: string; provider?: string; baseUrl?: string; wireApi?: 'responses' | 'chat'; models: string[] } | null {
+    const label = form.label.trim();
+    const baseUrl = form.baseUrl.trim();
+    if (!label) return null;
+    if (baseUrl && !isValidBaseUrl(baseUrl)) return null;
+    if (!form.provider && !baseUrl) return null;
+    return {
+        label,
+        ...(form.provider ? { provider: form.provider } : { wireApi: form.wireApi }),
+        ...(baseUrl ? { baseUrl } : {}),
+        models: parseModelList(form.models),
+    };
+}
+
+/** 「你@例子.com · Plus」 for a ChatGPT account; an API provider shows which config.toml provider it is based on. */
+export function codexAccountFacts(account: Pick<AgentProfileSummary, 'kind' | 'email' | 'planType' | 'provider'>): { email?: string; plan?: string; provider?: string } {
+    if (account.kind === 'codex-chatgpt') return { ...(account.email ? { email: account.email } : {}), ...(account.planType ? { plan: account.planType } : {}) };
+    if (account.kind === 'codex-provider' && account.provider) return { provider: account.provider };
+    return {};
 }

@@ -13,6 +13,7 @@ import {
     accountUsable,
     accountsForAgent,
     agentHasAccounts,
+    machineHasAgentAccounts,
     readMachineAgentProfiles,
     resolveSpawnAccount,
     type SpawnAccountChoice,
@@ -60,7 +61,8 @@ export function SpawnAccountPicker({ machine, machineName, agent, value, onChang
     if (!machine || !agentHasAccounts(agent)) return null;
     const state = readMachineAgentProfiles(machine);
     const labelClass = variant === 'draft' ? 'ps-draft-label' : 'ns-label';
-    if (!state) {
+    // Old CLI — or, for Codex, a CLI with Claude accounts only.
+    if (!state || !machineHasAgentAccounts(state, agent)) {
         return <>
             <label className={labelClass} id={labelId}>{t('accounts.draftAccount')}</label>
             <span className="acc-old-cli" aria-labelledby={labelId} data-testid="spawn-account-old-cli">{t('accounts.machineLogin')} · {t('accounts.upgradeCliShort')}</span>

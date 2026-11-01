@@ -25,7 +25,7 @@ const actions = { openSettings: vi.fn(), openMachine: vi.fn() };
 
 describe('sessionAccountFacts', () => {
     it('no section for agents without accounts', () => {
-        expect(mod.sessionAccountFacts(session({ flavor: 'codex' }), machine())).toBeNull();
+        expect(mod.sessionAccountFacts(session({ flavor: 'gemini' }), machine())).toBeNull();
         expect(mod.sessionAccountFacts(null, machine())).toBeNull();
     });
     it('reads the bound account and the machine list', () => {
@@ -85,9 +85,9 @@ describe('sessionApiModels', () => {
 
 describe('switch confirm', () => {
     it('says restart in place, history kept, cache miss across organizations, interrupt only when working', () => {
-        const lines = mod.switchConfirmLines({ accountId: 'a2', label: 'Org B', cacheMiss: true }, 'dev-sg', false, t);
+        const lines = mod.switchConfirmLines({ accountId: 'a2', label: 'Org B', cacheMiss: true, crossType: false }, 'dev-sg', false, t);
         expect(lines).toEqual(['accounts.switchRestart{"machine":"dev-sg"}', '✓ accounts.switchHistory', '⚠ accounts.switchHistorySent', '⚠ accounts.switchCache']);
-        const working = mod.switchConfirmLines({ accountId: 'h1', label: 'llm-hub', cacheMiss: false, model: 'kimi-k3' }, 'dev-sg', true, t);
+        const working = mod.switchConfirmLines({ accountId: 'h1', label: 'llm-hub', cacheMiss: false, crossType: false, model: 'kimi-k3' }, 'dev-sg', true, t);
         expect(working).toEqual(['accounts.switchRestart{"machine":"dev-sg"}', '✓ accounts.switchHistory', '⚠ accounts.switchInterrupt', 'accounts.switchModel{"model":"kimi-k3"}']);
     });
 
@@ -128,5 +128,66 @@ describe('wire v2', () => {
         mod.notePendingSwitch('s2', { targetId: null, label: null, at: NOW });
         expect(mod.pendingSwitchFor('s2', null, NOW)).toBeNull(); // machine login reached
         expect(mod.pendingSwitchFor('s2', undefined, NOW)).not.toBeNull(); // old/unknown: keep waiting
+    });
+});
+
+// ---- B-850c2: Codex (wire v3) ----
+
+const codexAccounts = [
+    { id: 'gpt-a', label: 'me@x.com', agent: 'codex', kind: 'codex-chatgpt', status: 'ok', email: 'me@x.com', planType: 'plus' },
+    { id: 'hub', label: 'LLM Hub', agent: 'codex', kind: 'codex-provider', status: 'ok', provider: 'llmhub', models: ['gpt-5.6-sol'] },
+];
+const codexMachine = (codex = true) => ({ id: 'm1', active: true, metadata: { displayName: 'dev-sg', host: 'h' }, daemonState: { pid: 7, agentProfiles: {
+    daemonPid: 7, updatedAt: 1, accounts: codex ? [...accounts, ...codexAccounts] : accounts, defaults: {},
+    ...(codex ? { codexProviders: [{ id: 'llmhub', baseUrl: 'https://llm-hub.apodex.app/v1', envKey: 'LLMHUB_API_KEY' }] } : {}),
+} } });
+const codexSession = (metadata: Record<string, unknown>) => session({ flavor: 'codex', ...metadata });
+
+describe('Codex sessions', () => {
+    it('list only Codex accounts — the account agent must match the session flavor', () => {
+        const facts = mod.sessionAccountFacts(codexSession({ agentProfile: null }), codexMachine())!;
+        expect(facts.agent).toBe('codex');
+        const section = mod.buildAccountSection(facts, t, actions, NOW);
+        expect(section.rows.map((r) => r.key)).toEqual([mod.MACHINE_LOGIN_KEY, 'gpt-a', 'hub']);
+        expect(section.rows.find((r) => r.key === 'hub')?.tag).toBe('accounts.kindLocalProvider');
+        expect(section.rows.find((r) => r.key === 'gpt-a')?.tag).toBe('accounts.kindSubscription');
+        // A Claude session on the same machine never sees them.
+        const claude = mod.buildAccountSection(mod.sessionAccountFacts(session({ agentProfile: null }), codexMachine())!, t, actions, NOW);
+        expect(claude.rows.map((r) => r.key)).toEqual([mod.MACHINE_LOGIN_KEY, 'a1', 'a2', 'h1']);
+    });
+
+    it('a CLI with Claude accounts only (B-850a): Codex gets 本机登录 · 升级 CLI', () => {
+        const section = mod.buildAccountSection(mod.sessionAccountFacts(codexSession({}), codexMachine(false))!, t, actions, NOW);
+        expect(section.rows.map((r) => r.key)).toEqual([mod.MACHINE_LOGIN_KEY]);
+        expect(section.switchable).toBe(false);
+        expect(section.note?.text).toBe('accounts.upgradeCli');
+    });
+
+    it('a Codex provider account keeps the Codex model picker (no API model pin)', () => {
+        const facts = mod.sessionAccountFacts(codexSession({ agentProfile: { id: 'hub', label: 'LLM Hub', kind: 'codex-provider', status: 'active', model: 'gpt-5.6-sol' } }), codexMachine());
+        expect(mod.sessionApiModels(facts)).toBeNull();
+    });
+
+    it('cross-type switch (ChatGPT ↔ API ↔ machine) warns the new account may refuse the history', () => {
+        const lines = mod.switchConfirmLines({ accountId: 'hub', label: 'LLM Hub', cacheMiss: true, crossType: true }, 'dev-sg', false, t);
+        expect(lines).toEqual(['accounts.switchRestart{"machine":"dev-sg"}', '✓ accounts.switchHistory', '⚠ accounts.switchHistorySent', '⚠ accounts.switchCache', '⚠ accounts.switchCrossType']);
+    });
+
+    it('history-rejected is an account event', () => {
+        expect(mod.accountEventKind('agent-profile-history-rejected')).toBe('history-rejected');
+    });
+
+    it('「换回原账号」 remembers what ran before the last switch, per session', () => {
+        mod.notePreviousAccount('cs1', { id: 'gpt-a', label: 'me@x.com' });
+        const onHub = { id: 'hub', label: 'LLM Hub', kind: 'codex-provider', status: 'active' as const };
+        expect(mod.previousAccountFor('cs1', onHub)).toEqual({ id: 'gpt-a', label: 'me@x.com' });
+        // already back on it → nothing to switch back to
+        expect(mod.previousAccountFor('cs1', { ...onHub, id: 'gpt-a' })).toBeUndefined();
+        mod.notePreviousAccount('cs2', null);
+        expect(mod.previousAccountFor('cs2', onHub)).toBeNull(); // the machine login
+        expect(mod.previousAccountFor('cs2', null)).toBeUndefined();
+        expect(mod.previousAccountFor('unknown', onHub)).toBeUndefined();
+        mod.notePreviousAccount('cs3', undefined); // old wrapper: unknown, not written
+        expect(mod.previousAccountFor('cs3', onHub)).toBeUndefined();
     });
 });

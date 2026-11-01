@@ -48,3 +48,13 @@
 .me-account-row > .me-model { flex: 1; min-width: 0; }
 .acc-old-cli { align-self: center; color: var(--text-dim); font-size: var(--fs-13); }
 .ps-draft-grid .acc-blocked { grid-column: 1 / -1; }
+
+/* B-850c2: Codex device code — the code the user types on the sign-in page */
+.acc-user-code-row { display: flex; align-items: center; gap: var(--sp-2); padding-left: 28px; }
+.acc-user-code {
+  display: inline-flex; align-items: center; min-height: 40px; padding: 0 var(--sp-3);
+  border: 1px solid var(--line); border-radius: var(--r-btn); background: var(--bg-1); color: var(--text);
+  font-family: var(--font-mono); font-size: var(--fs-20); font-weight: 600; letter-spacing: 0.08em;
+  user-select: all; overflow-wrap: anywhere;
+}
+.acc-link > span { overflow-wrap: anywhere; }

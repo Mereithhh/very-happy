@@ -531,6 +531,26 @@ only *This machine's login · Upgrade CLI*. Secrets never leave the machine:
 the Web sees names, types, status, the endpoint and the key's file path or
 variable name.
 
+**Codex accounts (B-850c2)** — the same page has a *Codex accounts* group per
+machine (CLI with B-850b; older CLIs show *This machine's login · Upgrade CLI*):
+
+- **ChatGPT subscription** — **Add account → ChatGPT subscription** starts a
+  device-code sign-in on the machine: open the link on any device, enter the
+  code shown (copy buttons for both), and the page finishes by itself — there is
+  nothing to paste back. The name is optional (defaults to the signed-in email);
+  the row shows the email and plan.
+- **Local provider / API** — pick a provider from the machine's
+  `~/.codex/config.toml` (its URL, wire API and headers are inherited; a URL
+  typed here overrides) or **Own URL** with its wire API (`responses` / `chat`);
+  models and the key (file / env var / paste) as for a Claude API account.
+
+Switching a Codex session's account (run-setup ⚡) resumes the same thread on the
+new account; the confirm says the history (reasoning included) goes to the new
+account's server, and a switch across types (ChatGPT ↔ API ↔ machine login) may be
+refused by the new account. If it is, the session shows *This session's history
+cannot continue on the new account — start a new session* with **New session**
+(same directory, on that account) and **Switch back**.
+
 ### Custom models and providers (B-688)
 
 **Settings → Models & accounts → Machine config** (and **Custom…** at the bottom of the composer's

@@ -42,6 +42,7 @@ import { SessionArchivedBanner } from './SessionArchivedBanner';
 import { StaleWrapperBanner } from './StaleWrapperBanner';
 import { ModelSupportBanner } from './ModelSupportBanner';
 import { AccountUnavailableBanner } from './AccountUnavailableBanner';
+import { AccountHistoryRejectedBanner } from './HistoryRejected';
 import { spawnAccountBlockText } from '@/components/accounts/SpawnAccountPicker';
 import { readMachineAgentProfiles, resolveSpawnAccount } from '@/sync/agentProfiles';
 import { machineLabel } from '@/utils/machineUtils';
@@ -425,6 +426,8 @@ export function SessionDetailScreen() {
                 {session && !mirror && !sharedWithMe && !canOfferRestore(session, bannerMachine) && <ModelSupportBanner sessionId={id} />}
                 {/* B-850c: the bound account cannot be used — the wrapper refuses turns (never the machine login) */}
                 {session && !mirror && !sharedWithMe && <AccountUnavailableBanner key={`account-unavailable:${id}`} sessionId={id} machine={bannerMachine} />}
+                {/* B-850c2: the new (Codex) account refused this history — new session / switch back */}
+                {session && !mirror && !sharedWithMe && <AccountHistoryRejectedBanner key={`account-history:${id}`} sessionId={id} machine={bannerMachine} />}
                 {/* B-585: this session's worktree setup is waiting for approval / running / failed */}
                 {session && !mirror && !sharedWithMe && <WorktreeSetupBanner key={`worktree-setup:${id}`} sessionId={id} />}
                 <div className="sd-body">
