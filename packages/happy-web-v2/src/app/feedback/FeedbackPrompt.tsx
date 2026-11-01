@@ -7,14 +7,14 @@ import { storage, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { amendFeedback, postFeedback } from '@/sync/apiFeedback';
 import { enteredByDeepLink } from '../entryKind';
-import { usePendingChangelog } from '../changelogReadStore';
+import { useChangelogClosedAt, usePendingChangelog } from '../changelogReadStore';
 import { OVERLAY_PRIORITY, useOverlayTurn } from '../overlayQueue';
 import { shouldDeferPwaInstall } from '../pwaInstallPolicy';
 import { DiagnosticsPicker } from './DiagnosticsPicker';
 import { RatingButtons } from './RatingButtons';
 import { isFeedbackRoute, useFeedbackDiagnostics, useRecordFeedbackRoute } from './feedbackDiagnostics';
 import { feedbackErrorMessage } from './FeedbackForm';
-import { activeDayPatch, feedbackPromptDue, FEEDBACK_TEXT_MAX, type FeedbackPromptState, type FeedbackRating } from './feedbackPolicy';
+import { activeDayPatch, feedbackChangelogWaitMs, feedbackPromptBlock, FEEDBACK_TEXT_MAX, type FeedbackPromptState, type FeedbackRating } from './feedbackPolicy';
 import '../floatingCards.css';
 import './feedback.css';
 
@@ -50,6 +50,7 @@ export function FeedbackPrompt() {
   // defaults would upload 1 over the real count (pending wins the merge).
   const settingsReady = storage((s) => s.settingsVersion !== null);
   const pendingChangelog = usePendingChangelog().length > 0;
+  const changelogClosedAt = useChangelogClosedAt();
   const [wanted, setWanted] = useState(false);
   const decided = useRef(false);
 
@@ -59,30 +60,39 @@ export function FeedbackPrompt() {
     if (patch) sync.applySettings(patch);
   }, [settingsReady, state.feedbackLastActiveDay]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Decide once per page load, after a quiet moment.
-  const latest = useRef({ state, pendingChangelog, pathname });
-  latest.current = { state, pendingChangelog, pathname };
+  // Decide once per page load, after a quiet moment — and, with release notes
+  // unread, after they close (B-857: queued behind them, not skipped).
+  const latest = useRef({ state, pendingChangelog, changelogClosedAt, pathname });
+  latest.current = { state, pendingChangelog, changelogClosedAt, pathname };
+  const readyAt = useRef<number | null>(null);
   useEffect(() => {
     if (!settingsReady || decided.current) return;
+    readyAt.current ??= Date.now();
     let timer = 0;
     const check = () => {
-      const { state: s, pendingChangelog: changelog, pathname: path } = latest.current;
+      const { state: s, pendingChangelog: changelog, changelogClosedAt: closedAt, pathname: path } = latest.current;
+      const now = Date.now();
+      const block = feedbackPromptBlock(s, { pendingChangelog: changelog, changelogClosedAt: closedAt, deepLink: enteredByDeepLink(), interacted: false }, now);
+      if (block === 'changelog') {
+        // Notes open or still to come: this effect re-runs when they close.
+        const wait = feedbackChangelogWaitMs({ changelogClosedAt: closedAt }, now);
+        if (wait !== null) timer = window.setTimeout(check, wait);
+        return;
+      }
       const typing = shouldDeferPwaInstall(document.activeElement);
       // Onboarding cards own this corner; wait for them instead of being shown hidden.
       const cornerTaken = document.querySelector(CORNER_OWNERS) !== null;
       if (typing || cornerTaken || isFeedbackRoute(path)) {
         // Not now, but this load may still ask once the person stops typing / the corner frees up.
-        if (feedbackPromptDue(s, { pendingChangelog: changelog, deepLink: enteredByDeepLink(), interacted: false }, Date.now())) {
-          timer = window.setTimeout(check, TYPING_RETRY_MS);
-        }
+        if (block === null) timer = window.setTimeout(check, TYPING_RETRY_MS);
         return;
       }
       decided.current = true;
-      if (feedbackPromptDue(s, { pendingChangelog: changelog, deepLink: enteredByDeepLink(), interacted: false }, Date.now())) setWanted(true);
+      if (block === null) setWanted(true);
     };
-    timer = window.setTimeout(check, FEEDBACK_PROMPT_DELAY_MS);
+    timer = window.setTimeout(check, Math.max(0, readyAt.current + FEEDBACK_PROMPT_DELAY_MS - Date.now()));
     return () => window.clearTimeout(timer);
-  }, [settingsReady]);
+  }, [settingsReady, changelogClosedAt]);
 
   const turn = useOverlayTurn(wanted, OVERLAY_PRIORITY.notice);
   if (!turn) return null;
