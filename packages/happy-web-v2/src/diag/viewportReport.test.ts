@@ -75,4 +75,9 @@ describe('viewport diag report', () => {
         expect(formatKeyboardLine({ vvHeight: null, vvOffsetTop: null, scrollY: 21, innerHeight: 657, appH: 678, appHOverride: '', keyboardOpen: false, rootLock: false }))
             .toContain('vv.h=n/a vv.top=n/a scrollY=21 inner=657 · --app-h=678 (css) open=no root-lock=no');
     });
+
+    it('B-855 keyboard line: pointer, touch points and how often the root-scroll guard fired (iPad + trackpad)', () => {
+        expect(formatKeyboardLine({ vvHeight: 834, vvOffsetTop: 0, scrollY: 0, innerHeight: 834, appH: 834, appHOverride: '', keyboardOpen: false, rootLock: true, pointer: 'fine', maxTouchPoints: 5, scrollResets: 3 }))
+            .toBe('keyboard: vv.h=834 vv.top=0 scrollY=0 inner=834 · --app-h=834 (css) open=no root-lock=yes · pointer=fine touch-points=5 scroll-resets=3');
+    });
 });
