@@ -31,7 +31,7 @@ export function WorktreeFolderNotice({ detail, c, onChanged, onOpenSettings }: {
       {bad.map((f) => (
         <div key={`${f.machineId}:${f.path}`} className="pj-worktree-row">
           <TriangleAlert size={15} aria-hidden className="pj-worktree-icon" />
-          <p>{c.worktreeFolder(f.path)}{f.repository ? c.worktreeRepo(f.repository) : c.worktreeUnknown}</p>
+          <p>{c.worktreeFolder(f.path)}{f.repository ? c.worktreeRepo(f.repository) : onOpenSettings ? c.worktreeUnknown : c.worktreeUnknownHere}</p>
           {f.repository
             ? <button type="button" className="pj-ghost" disabled={busy} aria-busy={busy} onClick={() => void fix()}>{c.worktreeFix}</button>
             : onOpenSettings && <button type="button" className="pj-ghost" onClick={onOpenSettings}>{c.worktreeOpenSettings}</button>}
