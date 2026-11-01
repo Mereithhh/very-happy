@@ -3070,6 +3070,22 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov01d: {
+                title: '设置里新增「模型与账号」',
+                summary: '在设置里给每台机器添加 Claude 账号，会话可以在账号之间切换。',
+                page: '设置里新增「模型与账号」页，可以给每台机器添加 Claude 订阅或 API 账号。它取代了原来的「智能体默认设置」和「模型与 Provider」页，旧链接会自动跳到这里。',
+                switch: '会话可以切换到另一个账号（原地重启，历史保留），新建会话时可以选账号；账号不可用时，会话上方会有提示。',
+                feedbackCard: '重新打开的更新说明不会再被反馈提示卡挤掉；按 Esc 只关最上层。',
+            },
+            nov01c: {
+                title: 'CLI 0.2.192：支持多个 Claude 账号',
+                summary: '一台机器可以添加多个 Claude 账号，每个会话用你选的那个。',
+                accounts: '一台机器上可以添加不同组织的订阅和 API key/URL，每个会话单独选用；切换账号时会话原地重启，历史保留。',
+                noFallback: '选中的账号不可用时，会话不会运行，不会偷偷改用本机登录。',
+                keyHidden: 'API key 不再通过环境变量传给会话里的命令和子进程。',
+                upgrade: 'CLI 升级排队期间，空闲会话不再被重启两次；`very-happy daemon list` 显示每个会话的 CLI 版本和自动重启状态，上一份 daemon 日志也会保留。',
+                security: '安全加固。',
+            },
             nov01b: {
                 title: '反馈入口更容易找到',
                 summary: '用满两天后就会邀请你打分，并且排在更新说明之后。',
