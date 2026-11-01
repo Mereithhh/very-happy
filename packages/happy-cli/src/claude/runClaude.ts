@@ -41,6 +41,7 @@ import { DEFAULT_CLAUDE_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
 import { CLAUDE_ATTACHMENT_KINDS, stripAttachmentManifest } from './utils/attachmentContent';
 import { TranscriptPathHints } from './utils/transcriptCursor';
 import { planClaudeStartup } from './startupPlan';
+import { takeReconnectEnv } from '@/utils/reconnectEnv';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -145,10 +146,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         return depsLoadPromise;
     };
 
+    // B-858: read once and kept off process.env (see utils/reconnectEnv).
+    const reconnectEnv = takeReconnectEnv();
     const reconnectRequested = Boolean(
-        process.env.HAPPY_RECONNECT_SESSION_ID
-        && process.env.HAPPY_RECONNECT_ENCRYPTION_KEY
-        && process.env.HAPPY_RECONNECT_ENCRYPTION_VARIANT,
+        reconnectEnv.HAPPY_RECONNECT_SESSION_ID
+        && reconnectEnv.HAPPY_RECONNECT_ENCRYPTION_KEY
+        && reconnectEnv.HAPPY_RECONNECT_ENCRYPTION_VARIANT,
     );
     const startupPlan = planClaudeStartup({ startedBy: options.startedBy, reconnect: reconnectRequested });
 
@@ -263,12 +266,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     };
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
-    const reconnectSessionId = process.env.HAPPY_RECONNECT_SESSION_ID;
-    const reconnectKeyBase64 = process.env.HAPPY_RECONNECT_ENCRYPTION_KEY;
-    const reconnectVariant = process.env.HAPPY_RECONNECT_ENCRYPTION_VARIANT as 'legacy' | 'dataKey' | undefined;
-    const reconnectSeq = process.env.HAPPY_RECONNECT_SEQ;
-    const reconnectMetadataVersion = process.env.HAPPY_RECONNECT_METADATA_VERSION;
-    const reconnectAgentStateVersion = process.env.HAPPY_RECONNECT_AGENT_STATE_VERSION;
+    const reconnectSessionId = reconnectEnv.HAPPY_RECONNECT_SESSION_ID;
+    const reconnectKeyBase64 = reconnectEnv.HAPPY_RECONNECT_ENCRYPTION_KEY;
+    const reconnectVariant = reconnectEnv.HAPPY_RECONNECT_ENCRYPTION_VARIANT as 'legacy' | 'dataKey' | undefined;
+    const reconnectSeq = reconnectEnv.HAPPY_RECONNECT_SEQ;
+    const reconnectMetadataVersion = reconnectEnv.HAPPY_RECONNECT_METADATA_VERSION;
+    const reconnectAgentStateVersion = reconnectEnv.HAPPY_RECONNECT_AGENT_STATE_VERSION;
 
     let response: ApiSession | null;
     if (reconnectSessionId && reconnectKeyBase64 && reconnectVariant) {
@@ -922,6 +925,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         startedBy: options.startedBy,
         startingMode: options.startingMode,
         claudeArgs: options.claudeArgs,
+        reconnect: reconnectRequested,
         setting: settings?.claudePrewarm,
     };
     const prewarmCtx = () => ({ sandboxEnabled, isAssistantVariant, staleModeSnapshot: false, pinnedModel: providerPinnedModel });

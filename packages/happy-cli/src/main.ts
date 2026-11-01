@@ -35,9 +35,12 @@ import { commandOnPath } from '@/utils/detectCLI'
 import { CLAUDE_OPTIONS_HELP, DAEMON_STOP_HELP } from './commands/helpFacts'
 import { errorReason, installExitReasonFallback, recordExitReason } from './utils/exitReason'
 import { exitAfterFlush } from './utils/exitAfterFlush'
+import { stashReconnectEnv } from './utils/reconnectEnv'
 
 
 export async function main(): Promise<void> {
+  // B-858: the session key must not reach anything this process spawns.
+  stashReconnectEnv()
   const args = process.argv.slice(2)
 
   // A bare version probe is used by release/runtime health checks and must not
