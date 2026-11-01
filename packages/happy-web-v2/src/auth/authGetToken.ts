@@ -6,7 +6,7 @@ import { getHappyClientId } from "@/sync/apiSocket";
 
 export async function authGetToken(secret: Uint8Array, inviteCode?: string) {
     const API_ENDPOINT = getServerUrl();
-    const { challenge, signature, publicKey } = authChallenge(secret);
+    const { challenge, signature, publicKey } = await authChallenge(secret);
     const body: Record<string, string> = {
         challenge: encodeBase64(challenge),
         signature: encodeBase64(signature),
