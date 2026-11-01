@@ -545,6 +545,19 @@ Before a restart, `very-happy daemon list` answers for the whole machine whether
 any session has a turn in flight (`turnActive`); with `KillMode=process` an
 in-flight turn survives the restart, so this is a courtesy, not a gate.
 
+`very-happy daemon list` also prints, per session, the wrapper's CLI version and
+its automatic-restart status (`waiting` / `manual` / `failed` / `restarting`
+with the reason and target, or `current`), plus the daemon version and any
+upgrade it is waiting for (`upgrade pending (x)`: automatic restarts then wait
+for the new daemon). `--json` returns the same as `{ daemon, sessions }`, so a
+release check no longer depends on the encrypted `daemonState`.
+
+Daemon logs: each daemon start prunes `~/.happy/logs` (14 days, 200 MB, newest
+10 files kept), but the logs of the last 3 previous daemon processes are kept
+outside those caps within their own 64 MB budget (the newest one is cut to its
+last 64 MB rather than dropped), so the log of the daemon an upgrade replaced is
+still there afterwards.
+
 ## Account resource limits
 
 Server-side quotas are per account and read from the deployment environment at
