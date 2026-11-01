@@ -340,3 +340,8 @@ a.mrb-term-btn { text-decoration: none; }
 /* B-763: project page breadcrumb (项目 › 名称) in place of the back link. */
 .pj-trail { margin-bottom: 4px; }
 .pj-trail-current { font-size: var(--fs-13); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* B-850e: 账号 section — one row per agent: machine + account */
+.pj-account-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.pj-account-row > legend { grid-column: 1 / -1; padding: 0; margin-bottom: 6px; font-weight: 600; font-size: var(--fs-13); color: var(--text); }
+@media (max-width: 640px) { .pj-account-row { grid-template-columns: minmax(0, 1fr); } }

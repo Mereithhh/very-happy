@@ -18,6 +18,9 @@ import { teamTaskLane, teamTaskState, type MemberExecution, type TeamTaskState }
 import { useMemberExecution } from './useMemberExecution';
 import { TeamTaskStatePill, teamTaskStateLabel } from './TeamTaskStatePill';
 import { agentKindLabel, agentKindOf } from '@/screens/session/agentIdentity';
+import { useMachine } from '@/sync/storage';
+import { readMachineAgentProfiles } from '@/sync/agentProfiles';
+import { memberAccountTag } from './TeamMemberAccounts';
 
 export function TeamProgress({ team }: { team: TeamState }) {
   const c = useWorkspaceCopy();
@@ -123,10 +126,13 @@ export function TeamMembers({ team, archivedSessionIds, now, execution }: { team
   const context = { now, sessionArchived: (sessionId: string) => !!archivedSessionIds?.has(sessionId) };
   const inactive = team.bots.filter(bot => teamMemberInactive(team, bot, context));
   const current = team.bots.filter(bot => !inactive.includes(bot));
+  // B-850e: the member's chosen account, by its live label on the team's machine.
+  const accountState = readMachineAgentProfiles(useMachine(team.machineId));
   const card = (bot: TeamBot) => {
+    const accountTag = memberAccountTag(bot, accountState);
     const historySessionId = botHistorySessionId(team, bot);
     const active = team.tasks.filter(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status));
-    const content = <><span className="teams-avatar" data-live={active.some(t => stateOf(t) === 'working')}><AgentGlyph kind={agentKindOf(bot.assistant)} size={18} /></span><span className="teams-member-info"><strong>{memberTitle(bot, f)}</strong><small>{agentKindLabel(agentKindOf(bot.assistant)) ?? bot.assistant}</small><span>{active[0] ? teamTextPreviewLines(active[0].goal).join(' ') : c.idle}</span>{!bot.sessionId && <small>{team.operations.some(o => o.botId === bot.id && ["unknown", "failed"].includes(o.status)) ? f.unknown : active.length ? teamTaskStateLabel(stateOf(active[0])) : f.stopped}</small>}{teamBotActivity(team, bot, context) === 'stopping' && <small className="teams-error">{navCopy.stopping}</small>}{/* B-775: also while a queued task makes the member "active" */}{teamCleanupIssues(team).some(issue => issue.botId === bot.id && issue.holdsSession) && <small className="teams-error">{c.cleanupHoldsMember}</small>}{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{historySessionId && <ArrowUpRight size={16} aria-hidden />}</>;
+    const content = <><span className="teams-avatar" data-live={active.some(t => stateOf(t) === 'working')}><AgentGlyph kind={agentKindOf(bot.assistant)} size={18} /></span><span className="teams-member-info"><strong>{memberTitle(bot, f)}</strong><small>{agentKindLabel(agentKindOf(bot.assistant)) ?? bot.assistant}{accountTag ? ` · ${accountTag}` : ''}</small><span>{active[0] ? teamTextPreviewLines(active[0].goal).join(' ') : c.idle}</span>{!bot.sessionId && <small>{team.operations.some(o => o.botId === bot.id && ["unknown", "failed"].includes(o.status)) ? f.unknown : active.length ? teamTaskStateLabel(stateOf(active[0])) : f.stopped}</small>}{teamBotActivity(team, bot, context) === 'stopping' && <small className="teams-error">{navCopy.stopping}</small>}{/* B-775: also while a queued task makes the member "active" */}{teamCleanupIssues(team).some(issue => issue.botId === bot.id && issue.holdsSession) && <small className="teams-error">{c.cleanupHoldsMember}</small>}{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{historySessionId && <ArrowUpRight size={16} aria-hidden />}</>;
     return historySessionId ? <Link key={bot.id} className="teams-member" to={`/session/${encodeURIComponent(historySessionId)}`}>{content}</Link> : <div key={bot.id} className="teams-member">{content}</div>;
   };
   return <section className="teams-members"><h2>{f.membersTitle} <small>{teamMemberCount(team, context)}</small>

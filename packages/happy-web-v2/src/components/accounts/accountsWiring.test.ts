@@ -14,8 +14,8 @@ describe('B-850c accounts wiring', () => {
     it('spawn: agentProfileId is forwarded only when set (old Web / no pick = daemon default)', () => {
         expect(src('sync/ops.ts')).toContain("...(options.agentProfileId !== undefined ? { agentProfileId: options.agentProfileId } : {})");
         expect(src('sync/pendingSessions.ts')).toContain('...(record.agentProfileId !== undefined ? { agentProfileId: record.agentProfileId } : {}),');
-        // the dialog sends a pick only to a daemon with accounts, for Claude
-        expect(src('screens/sessions/NewSessionModal.tsx')).toContain("...(accountChoice !== undefined && readMachineAgentProfiles(selectedMachine) && agent === 'claude' ? { agentProfileId: accountChoice } : {}),");
+        // the dialog sends a pick only to a daemon with accounts for that agent (B-850c2: Codex too)
+        expect(src('screens/sessions/NewSessionModal.tsx')).toContain("...spawnAgentProfileParam(readMachineAgentProfiles(selectedMachine), agent, accountChoice),");
     });
 
     it('Q3: an unusable account blocks before the session is created', () => {
@@ -25,7 +25,8 @@ describe('B-850c accounts wiring', () => {
         expect(detail).toContain("const pendingAccountBlock = pendingMode && pending?.state === 'draft'");
         const modal = src('screens/sessions/NewSessionModal.tsx');
         expect(modal).toContain("    && !accountBlocked\n");
-        expect(modal).toContain("const accountBlocked = resolveSpawnAccount(readMachineAgentProfiles(selectedMachine), agent, accountChoice).kind === 'blocked';");
+        // B-850e: judged on what it will really start on — the project default included.
+        expect(modal).toContain("const accountBlocked = resolveSpawnAccount(readMachineAgentProfiles(selectedMachine), agent, accountChoice, Date.now(), accountLaunch).kind === 'blocked';");
         // the daemon's own refusal reads as a sentence, not a code
         expect(src('sync/pendingSessionsRuntime.ts')).toContain("if (result.type === 'error' && !result.transport && parseSpawnAccountError(result.errorMessage)) result = { ...result, errorMessage: t('accounts.spawnUnavailable') };");
     });
@@ -73,5 +74,41 @@ describe('B-850c accounts wiring', () => {
     it("wire v2: bind 'pending' marks the session 重启中 until it lands", () => {
         expect(src('screens/session/sessionAccount.ts')).toContain("notePendingSwitch(input.sessionId, { targetId: plan.accountId, label: plan.label, at: Date.now() });");
         expect(src('screens/session/AgentInput.tsx')).toContain("const accountPrefix = sessionAccount.restarting\n        ? t('accounts.restartingTo'");
+    });
+
+    // ---- B-850c2: Codex (wire v3) ----
+
+    it('Codex: the session lists accounts of its own agent; settings and pickers gate on the daemon serving that agent', () => {
+        const account = src('screens/session/sessionAccount.ts');
+        expect(account).toContain('...accountsForAgent(facts.state, facts.agent).map(');
+        expect(account).toContain('if (!facts.state || !machineHasAgentAccounts(facts.state, facts.agent)) {');
+        expect(account).toContain('const plan = planAccountSwitch(facts.profile, target, input.model, facts.agent);');
+        expect(src('components/accounts/MachineAccounts.tsx')).toContain('if (!machineHasAgentAccounts(state, agent)) return upgradeGroup(agent);');
+        expect(src('components/accounts/SpawnAccountPicker.tsx')).toContain('if (!state || !machineHasAgentAccounts(state, agent)) {');
+    });
+
+    it('Codex add: provider / own URL through the codex-provider variant; ChatGPT login is codex-chatgpt', () => {
+        const dialog = src('components/accounts/AddAccountDialog.tsx');
+        expect(dialog).toContain("? { agent: 'codex', kind: 'codex-provider', ...providerFields, key }");
+        expect(dialog).toContain("const which = kind === 'codex-chatgpt' ? { agent: 'codex' as const, kind: 'codex-chatgpt' as const }");
+        expect(dialog).toContain("codexProviderAddFields({ label, provider: provider === CUSTOM_PROVIDER ? null : provider, baseUrl, wireApi, models })");
+        // the ChatGPT name is optional (defaults to the email)
+        expect(dialog).toContain("disabled={!relogin && labelRequired && !label.trim()}");
+    });
+
+    it('device code: link + userCode, and the paste box only for the paste-code flow', () => {
+        const dialog = src('components/accounts/AddAccountDialog.tsx');
+        const device = dialog.slice(dialog.indexOf('data-testid="account-device-code"'), dialog.indexOf("{login && !deviceCode && login.state === 'waiting-code'"));
+        expect(device).toContain('data-testid="account-user-code"');
+        expect(device).toContain('<CopyButton text={login.userCode}');
+        expect(device).not.toContain('account-login-code');
+        expect(dialog).toContain("{login && !deviceCode && login.state === 'waiting-code' && <div className=\"acc-login\" data-testid=\"account-login-waiting\">");
+    });
+
+    it('history-rejected: banner mounted, transcript row, 换回原账号 remembers the previous account on switch', () => {
+        expect(src('screens/session/SessionDetailScreen.tsx')).toContain('<AccountHistoryRejectedBanner key={`account-history:${id}`} sessionId={id} machine={bannerMachine} />');
+        expect(src('screens/session/AccountEventBlock.tsx')).toContain("if (kind === 'history-rejected') return <HistoryRejectedEventRow");
+        expect(src('screens/session/sessionAccount.ts')).toContain("notePreviousAccount(input.sessionId, facts.profile === undefined ? undefined : facts.profile ? { id: facts.profile.id, label: facts.profile.label } : null);");
+        expect(src('screens/session/HistoryRejected.tsx')).toContain('agentProfileId: newSessionAccountFor(rejectedLabel, facts.state?.accounts ?? [], facts.agent, facts.profile),');
     });
 });

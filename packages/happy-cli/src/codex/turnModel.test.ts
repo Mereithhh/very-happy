@@ -62,7 +62,7 @@ describe('runCodex wiring (B-844d)', () => {
 
     it('sends the resolved model on thread start and on every turn', () => {
         expect(source).toContain('machineDefaultModel = configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model;');
-        expect(source).toMatch(/startThread\(\{\n\s*model: turnModel,/);
+        expect(source).toMatch(/startThread\(\{\n(?:\s*\/\/.*\n)*\s*model: turnModel \?\? \(codexAccount\.profile && !codexAccount\.unavailable \? machineDefaultModel : undefined\),/);
         expect(source).toMatch(/sendTurnAndWait\([\s\S]{0,300}?model: turnModel,\n\s*approvalPolicy: executionPolicy\.approvalPolicy,\n\s*sandbox: executionPolicy\.sandbox,\n\s*effort: turnEffort\.effort,/);
     });
 

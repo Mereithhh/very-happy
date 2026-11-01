@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { TeamState, TeamTask } from '@slopus/happy-wire';
-import { capAnswered, planPost, postKey, pushPresentation, replyTargetState, rootTaskTransitions, teamSubmitItem, truncateTitle } from './rules';
+import { AttentionItemPostSchema, type TeamOperation, type TeamState, type TeamTask } from '@slopus/happy-wire';
+import { capAnswered, planPost, postKey, pushPresentation, replyTargetState, rootTaskTransitions, teamAccountItem, teamAccountKey, teamAccountTransitions, teamSubmitItem, truncateTitle } from './rules';
 
 const task = (over: Partial<TeamTask>): TeamTask => ({
     id: 't1', parentTaskId: null, goal: 'Ship the notes\nmore', acceptance: ['a'], goalVersion: 1, ownerBotId: null, assigneeBotId: 'lead',
@@ -86,5 +86,40 @@ describe('briefing board rules', () => {
             { id: 4, sessionId: 'o', state: 'answered' }, { id: 5, sessionId: 's', state: 'answered' },
         ];
         expect(capAnswered(rows).map(r => r.id)).toEqual([1, 2, 3, 4]);
+    });
+});
+
+describe('B-850d team account refusals', () => {
+    const op = (over: Partial<TeamOperation>): TeamOperation => ({ id: 'op1', teamId: 'team', machineId: 'm', taskId: 't1', botId: 'b1', attemptId: 'a1', generation: 1, type: 'spawn', status: 'claimed', claimId: 'c', claimedAt: 1, error: null, sessionId: null, directory: '/r', assistant: 'claude', prompt: 'p', createdAt: 1, ...over });
+    const withOps = (operations: TeamOperation[]): TeamState => ({ ...team([]), name: 'Release', bots: [{ id: 'b1', name: 'Builder', sessionId: null, generation: 1, root: false, managed: true, assistant: 'claude', directory: '/r' }], operations });
+    const refused = op({ status: 'failed', failedAt: 5, error: 'agent-profile-unavailable:expired: account "Org A" — sign in again…', agentProfile: { id: 'org-a', label: 'Org A' } });
+
+    it('a spawn that just failed for its account is refused once; other failures and stop ops are not', () => {
+        expect(teamAccountTransitions(withOps([op({})]), withOps([refused]))).toEqual({ refused: [refused], cleared: [] });
+        expect(teamAccountTransitions(withOps([refused]), withOps([refused]))).toEqual({ refused: [], cleared: [] });
+        expect(teamAccountTransitions(withOps([op({})]), withOps([op({ status: 'failed', error: 'Agent process exited' })])).refused).toEqual([]);
+        expect(teamAccountTransitions(withOps([]), withOps([{ ...refused, type: 'stop' }])).refused).toEqual([]);
+    });
+
+    it('retried / launched afterwards → cleared', () => {
+        // 「重试启动」only stamps retryRequestedAt: the item closes; the same refusal again (new failedAt) reopens it.
+        const retried = { ...refused, retryRequestedAt: 9 };
+        expect(teamAccountTransitions(withOps([refused]), withOps([{ ...refused, status: 'completed' }])).cleared).toHaveLength(1);
+        expect(teamAccountTransitions(withOps([refused]), withOps([retried]))).toEqual({ refused: [], cleared: [retried] });
+        const again = { ...retried, failedAt: 12 };
+        expect(teamAccountTransitions(withOps([retried]), withOps([again]))).toEqual({ refused: [again], cleared: [] });
+    });
+
+    it('the item names member, account and reason, gives both ways out, and is a valid post', () => {
+        const item = teamAccountItem(withOps([refused]), refused);
+        expect(item.key).toBe(teamAccountKey('op1'));
+        expect(item.kind).toBe('blocked');
+        expect(item.title).toBe('成员 Builder 的账号「Org A」登录已过期，这一轮没有启动 · Release');
+        expect(item.bodyMd).toContain('没有改用本机登录');
+        expect(item.bodyMd).toContain('重新登录');
+        expect(item.bodyMd).toContain('换账号');
+        expect(item.bodyMd).toContain('重试启动');
+        expect(() => AttentionItemPostSchema.parse({ sessionId: 's', ...item })).not.toThrow();
+        expect(teamAccountItem(withOps([]), { ...refused, agentProfile: undefined, error: 'agent-profile-unavailable:missing: x' }).title).toContain('「机器默认账号」在这台电脑上不存在');
     });
 });

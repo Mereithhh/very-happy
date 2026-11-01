@@ -33,11 +33,17 @@ describe('B-850a account store', () => {
                 hub: { agent: 'claude', kind: 'claude-api', label: 'Hub', baseUrl: 'https://h/', key: { source: 'file', path: '~/k' }, models: ['m1', 3], contextWindows: { m1: 1000, m2: -1 } },
                 nokey: { agent: 'claude', kind: 'claude-api', label: 'x', baseUrl: 'https://h' },
                 'Bad Id': { agent: 'claude', kind: 'claude-subscription', label: 'x' },
-                cx: { agent: 'codex', kind: 'codex-chatgpt', label: 'x' },
+                cx: { agent: 'codex', kind: 'codex-chatgpt', label: 'x', email: 'a@b' },
+                mixed: { agent: 'claude', kind: 'codex-chatgpt', label: 'x' },
+                future: { agent: 'pi', kind: 'pi-provider', label: 'x' },
+                cxp: { agent: 'codex', kind: 'codex-provider', label: 'P', provider: 'llmhub', key: { source: 'env', name: 'LLMHUB_API_KEY' }, models: ['m'] },
+                cxnobase: { agent: 'codex', kind: 'codex-provider', label: 'P', key: { source: 'env', name: 'K' } },
             },
             defaults: { claude: 'org-a', bogus: 3 },
         });
-        expect(Object.keys(f.accounts)).toEqual(['org-a', 'hub']);
+        expect(Object.keys(f.accounts)).toEqual(['org-a', 'hub', 'cx', 'cxp']);
+        expect(f.accounts.cx).toMatchObject({ agent: 'codex', kind: 'codex-chatgpt', email: 'a@b' });
+        expect(f.accounts.cxp).toMatchObject({ provider: 'llmhub', key: { source: 'env', name: 'LLMHUB_API_KEY' }, models: ['m'] });
         expect(f.accounts['org-a'].label).toBe('Org A');
         expect(f.accounts.hub).toMatchObject({ baseUrl: 'https://h', models: ['m1'], contextWindows: { m1: 1000 } });
         expect(f.defaults).toEqual({ claude: 'org-a' });
@@ -86,6 +92,7 @@ describe('B-850a account store', () => {
         });
         const state = buildAgentProfilesState('/h', file, probe(['/root/.config/k']), 10, 42);
         expect(state.daemonPid).toBe(42);
+        expect(state.kinds).toEqual(['claude-subscription', 'claude-api', 'codex-chatgpt', 'codex-provider']);
         expect(state.defaults).toEqual({});
         expect(state.accounts[0]).toMatchObject({ id: 'h', keySource: 'file', keyRef: '~/.config/k', baseUrl: 'https://h' });
     });

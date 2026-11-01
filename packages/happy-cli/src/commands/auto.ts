@@ -33,7 +33,7 @@ import { delay } from '@/utils/time';
 export const AUTO_ACTIONS = ['list', 'show', 'create', 'edit', 'pause', 'resume', 'rm', 'run', 'fire', 'runs', 'cancel', 'ack', 'report', 'skill', 'install', 'uninstall', 'help'] as const;
 export type AutoAction = typeof AUTO_ACTIONS[number];
 
-const VALUE_FLAGS = ['--name', '--rename', '--description', '--machine', '--cron', '--tz', '--every', '--at', '--spawn-dir', '--prompt', '--prompt-file', '--agent', '--model', '--permission-mode', '--sticky-key', '--send-session', '--cwd', '--env', '--timeout', '--concurrency', '--max-runtime', '--payload', '--payload-json', '--payload-file', '--dedupe-key', '--status', '--limit', '--run', '--summary', '--error', '--attention', '--host', '--home', '--precheck-shell', '--precheck-argv', '--precheck-cwd', '--precheck-timeout'] as const;
+const VALUE_FLAGS = ['--name', '--rename', '--description', '--machine', '--cron', '--tz', '--every', '--at', '--spawn-dir', '--prompt', '--prompt-file', '--agent', '--model', '--permission-mode', '--sticky-key', '--account', '--send-session', '--cwd', '--env', '--timeout', '--concurrency', '--max-runtime', '--payload', '--payload-json', '--payload-file', '--dedupe-key', '--status', '--limit', '--run', '--summary', '--error', '--attention', '--host', '--home', '--precheck-shell', '--precheck-argv', '--precheck-cwd', '--precheck-timeout'] as const;
 const BOOL_FLAGS = ['--manual', '--script', '--worktree', '--paused', '--wait', '--json', '--apply', '--all-machines', '--all', '--attention', '--precheck-output', '--no-precheck', '--help', '-h'] as const;
 type ValueFlag = typeof VALUE_FLAGS[number];
 type BoolFlag = typeof BOOL_FLAGS[number];
@@ -104,7 +104,7 @@ export function actionFromCommand(command: AutoCommand, current?: AutomationActi
     const kinds = [flags['--spawn-dir'] !== undefined, flags['--send-session'] !== undefined, bools.has('--script')].filter(Boolean).length;
     if (kinds > 1) throw new Error('Use only one of --spawn-dir, --send-session, --script');
     const prompt = readPrompt(flags);
-    const spawnOnly = ['--agent', '--model', '--permission-mode', '--sticky-key'].filter((flag) => flags[flag as ValueFlag] !== undefined).concat(bools.has('--worktree') ? ['--worktree'] : []);
+    const spawnOnly = ['--agent', '--model', '--permission-mode', '--sticky-key', '--account'].filter((flag) => flags[flag as ValueFlag] !== undefined).concat(bools.has('--worktree') ? ['--worktree'] : []);
     const scriptOnly = ['--cwd', '--timeout'].filter((flag) => flags[flag as ValueFlag] !== undefined).concat(command.env.length ? ['--env'] : []);
     if (kinds === 0) {
         // Editing details of the existing action without restating its kind.
@@ -199,6 +199,8 @@ function spawnDetails(command: AutoCommand): Partial<Extract<AutomationAction, {
         ...(flags['--permission-mode'] !== undefined ? { permissionMode: flags['--permission-mode'] } : {}),
         ...(bools.has('--worktree') ? { worktree: true } : {}),
         ...(flags['--sticky-key'] !== undefined ? { sticky: { key: flags['--sticky-key'] } } : {}),
+        // B-850d: an account of the automation's machine (`very-happy account list`), or `machine` = machine login.
+        ...(flags['--account'] !== undefined ? { agentProfile: flags['--account'] === 'machine' ? null : { id: flags['--account'] } } : {}),
     };
 }
 
@@ -227,7 +229,7 @@ ${chalk.bold('Trigger (one):')}
 ${chalk.bold('Action (one):')}
   --spawn-dir <dir> --prompt <text>|--prompt-file <file>
       [--agent claude|codex|pi|gemini|openclaw] [--model <id>] [--permission-mode <m>]
-      [--worktree] [--sticky-key <template>]
+      [--worktree] [--sticky-key <template>] [--account <id>|machine]
   --send-session <id> --prompt <text>|--prompt-file <file>
   --script -- <argv…> [--cwd <dir>] [--env K=V]... [--timeout <dur>]
 

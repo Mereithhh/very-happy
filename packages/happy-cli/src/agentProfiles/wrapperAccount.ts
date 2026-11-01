@@ -48,6 +48,7 @@ export function unavailableNotice(profile: SessionAgentProfile): string {
         'missing-secret': 'its key / token is missing on this machine',
         expired: 'its sign-in has expired — sign in again',
         invalid: 'its key was rejected — fix the key',
+        'agent-mismatch': 'it belongs to another agent (Claude / Codex)',
     };
     return `Account "${profile.label}" is unavailable: ${why[profile.reason ?? ''] ?? profile.reason ?? 'unknown reason'}. This session will not fall back to the machine login; switch accounts or fix it, and the session restarts in place.`;
 }

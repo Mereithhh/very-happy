@@ -4,7 +4,7 @@
  * ./pendingSessions.ts (dependency-injected, unit-tested without React).
  */
 import { dispatchEntryOf, reportProjectUx } from './projectUx';
-import { applyLocalMembership, projectsApi, refreshProjects } from './projects';
+import { applyLocalMembership, projectsApi, projectsSnapshot, refreshProjects } from './projects';
 import { markQuickSession } from '@/screens/projects/newSessionProject';
 import { useEffect, useSyncExternalStore } from 'react';
 import { randomUUID } from 'expo-crypto';
@@ -29,7 +29,8 @@ import { newSessionTimingCancel, newSessionTimingRpcReturned, newSessionTimingRp
 import { toast } from '@/ui/Toast';
 import { announceDispatched, isViewingSession } from './dispatchFeedback';
 import { t } from '@/text';
-import { parseSpawnAccountError } from './agentProfiles';
+import { parseSpawnAccountError, readMachineAgentProfiles, spawnAgentProfileParam } from './agentProfiles';
+import { projectAccountsOf } from './accountChoice';
 
 /** Spawn is ~1 s; a real session that has not reached the store after this goes to its draft. */
 const SESSION_WAIT_MS = 30_000;
@@ -74,8 +75,14 @@ export const pendingSessions = createPendingSessionStore({
     tabId: TAB_ID,
     isOwnerAlive: isTabAlive,
     withClaimLock: (fn) => withTabLock('vh-pending-sessions-claim', fn),
-    async spawn(options) {
+    async spawn(options, launch) {
         newSessionTimingRpcSent();
+        // B-850e: no account chosen → the project's default for this agent on this machine (explicit > project > machine).
+        if (options.agentProfileId === undefined && launch?.projectId) {
+            const machine = storage.getState().machines[options.machineId];
+            const project = projectAccountsOf(launch.projectId, projectsSnapshot().projects);
+            options = { ...options, ...spawnAgentProfileParam(readMachineAgentProfiles(machine), options.agent ?? 'claude', undefined, { project, machineId: options.machineId }) };
+        }
         let result = await machineSpawnNewSession(options);
         // 铁律 17: an RPC can resolve with `{ error }` — that is a transport
         // failure (the daemon may still have spawned), not a daemon answer.

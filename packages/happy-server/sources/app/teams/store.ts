@@ -10,7 +10,7 @@ import { advanceSchedules } from './schedules';
 import { escalateIdleMembers } from './teamIdle';
 import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable } from './compaction';
 import { requireCapacity } from './errors';
-import { otherTeamBinding, reduceTeam, requireTeam, sessionInOtherTeamMessage, teamView, transferSessionOut, TeamError, type TeamActor } from './reducer';
+import { adoptLeadAccount, otherTeamBinding, reduceTeam, requireTeam, sessionInOtherTeamMessage, teamView, transferSessionOut, TeamError, type TeamActor } from './reducer';
 
 type Principal = { accountId: string; actor: TeamActor; credentialId?: string };
 type Row = { id: string; accountId: string; version: number; projectId?: string | null; state: TeamState };
@@ -163,7 +163,12 @@ export async function createTeam(accountId: string, input: { name: string; machi
         if (!input.project) return team;
         // B-726: same transaction, so a retried create (same requestId) returns the team already bound, never a second project.
         await bindNewTeamProjectTx(tx, accountId, team.id, input.project);
-        return (await load(tx, team.id, accountId)).state;
+        const bound = await load(tx, team.id, accountId);
+        // B-850d2: the Lead started before the project defaults landed; same transaction, so no daemon has claimed its spawn.
+        const adopted = adoptLeadAccount(bound.state);
+        if (!adopted) return bound.state;
+        await persistTransition(tx, bound, adopted);
+        return { ...adopted, projectId: bound.state.projectId };
     });
 }
 export async function listTeams(accountId: string, machineId?: string): Promise<TeamState[]> {

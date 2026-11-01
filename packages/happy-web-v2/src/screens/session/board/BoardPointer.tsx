@@ -7,6 +7,7 @@ import type { AttentionItem } from '@slopus/happy-wire';
 import { boardCopy, kindLabel } from './boardCopy';
 import { kindTone } from './boardModel';
 import { useAttentionStore } from '@/sync/attentionStore';
+import { teamAccountItemText } from './TeamAccountItem';
 import './board.css';
 
 export function BoardPointer({ item, onOpen }: { item: AttentionItem; onOpen: (item: AttentionItem) => void }) {
@@ -15,7 +16,7 @@ export function BoardPointer({ item, onOpen }: { item: AttentionItem; onOpen: (i
     return (
         <button type="button" className="brf-ptr" onClick={() => onOpen(item)}>
             <span className={`brf-kind brf-kind--${kindTone(item.kind)}`}>{copy.pointer(kindLabel(copy, item.kind))}</span>
-            <span className="brf-ptr-title">{item.title}</span>
+            <span className="brf-ptr-title">{teamAccountItemText(item)?.title ?? item.title}</span>
             <span className="brf-ptr-go">{copy.pointerGo}<ChevronRight size={12} aria-hidden /></span>
         </button>
     );

@@ -24,6 +24,10 @@ import { machineFsMkdir } from '@/sync/fsOps';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { useTranslation } from '@/i18n/useTranslation';
 import { WorktreeFolderNotice } from './WorktreeFolderNotice';
+import { Combobox } from '@/ui/Combobox';
+import { AccountChoiceField } from '@/components/accounts/AccountChoiceField';
+import { ACCOUNT_AGENTS } from '@/sync/agentProfiles';
+import { entryChoice, projectAccountEntry, projectAccountsChanged, withProjectAccount, type AccountChoice } from '@/sync/accountChoice';
 import './projects.css';
 
 /**
@@ -90,6 +94,7 @@ export function ProjectSettingsScreen() {
         <InstructionsEditor detail={detail} c={c} editable={policy.editable} onChanged={reload} />
       </section>
       <FoldersSection project={project} c={c} editable={policy.editable} onChanged={reload} />
+      <AccountsSection key={`accounts:${project.updatedAt}`} project={project} c={c} editable={policy.editable} onChanged={reload} />
       <TeamsSection project={project} c={c} editable={policy.editable} onChanged={reload} />
       <SessionsSection detail={detail} c={c} onChanged={reload} />
       <DangerSection project={project} c={c} onChanged={reload} />
@@ -99,6 +104,7 @@ export function ProjectSettingsScreen() {
 
 function sectionTitle(s: (typeof PROJECT_SETTINGS_SECTIONS)[number], c: ProjectCopy): string {
   switch (s) {
+    case 'accounts': return c.accounts;
     case 'basics': return c.basics;
     case 'context': return c.contextTitle;
     case 'folders': return c.folders;
@@ -298,6 +304,60 @@ function FoldersSection({ project, c, editable, onChanged }: SectionProps) {
         <FolderForm key={addKey} c={c} folders={folders} initial={{ machineId: folders[0]?.machineId ?? machines[0]?.id ?? '', path: '' }} busy={busy === 'add'}
           onSubmit={async (draft) => { const ok = await save('add', addFolder(folders, draft)); if (ok) setAddKey((k) => k + 1); return ok; }} />
       )}
+    </section>
+  );
+}
+
+// ─── 账号 (B-850e) ───────────────────────────────────────────────────────
+
+const AGENT_NAMES: Record<string, string> = { claude: 'Claude Code', codex: 'Codex' };
+
+/**
+ * `defaults.agentProfiles[]`: per agent, the machine and the account new
+ * sessions of this project start on there (accounts belong to one machine).
+ * 「跟随机器默认」 = no entry; 本机登录 = `id: null`. Saved as a whole
+ * `defaults` object (the PATCH replaces it), other defaults kept.
+ */
+function AccountsSection({ project, c, editable, onChanged }: SectionProps) {
+  const { t } = useTranslation();
+  const machines = useAllMachines({ includeOffline: true });
+  const { busy, run } = useWrite(c, onChanged);
+  const saved = project.defaults.agentProfiles ?? null;
+  const fallbackMachine = project.folders.find((f) => f.primary)?.machineId ?? project.folders[0]?.machineId ?? machines[0]?.id ?? '';
+  const [rows, setRows] = useState(() => Object.fromEntries(ACCOUNT_AGENTS.map((agent) => {
+    const entry = projectAccountEntry(saved, agent);
+    return [agent, { machineId: entry?.machineId ?? fallbackMachine, choice: entryChoice(entry) }];
+  })) as Record<string, { machineId: string; choice: AccountChoice }>);
+  let next = saved;
+  for (const agent of ACCOUNT_AGENTS) next = withProjectAccount(next, agent, rows[agent].machineId, rows[agent].choice);
+  const changed = projectAccountsChanged(saved, next);
+  const save = () => { if (changed) void run('accounts', async () => { await projectsApi.update(project.id, { defaults: { ...project.defaults, agentProfiles: next } }); toast.success(c.saved); }); };
+  const machineOptions = machines.map((m) => ({ value: m.id, label: machineLabel(m), meta: isMachineOnline(m) ? undefined : t('status.offline') }));
+  return (
+    <section id="pj-settings-accounts" className="pj-section" data-testid="project-accounts">
+      <h2>{c.accounts}</h2>
+      <p className="pj-muted pj-hint">{t('accounts.projectSectionHint')}</p>
+      <form className="pj-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
+        {ACCOUNT_AGENTS.map((agent) => {
+          const row = rows[agent];
+          const machine = machines.find((m) => m.id === row.machineId);
+          const set = (patch: Partial<typeof row>) => setRows((all) => ({ ...all, [agent]: { ...all[agent], ...patch } }));
+          return (
+            <fieldset key={agent} className="pj-account-row" data-testid={`project-account-${agent}`} disabled={!editable}>
+              <legend>{AGENT_NAMES[agent] ?? agent}</legend>
+              <div className="acc-choice-field">
+                <span id={`pj-acc-machine-${agent}`}>{t('accounts.projectMachine')}</span>
+                {/* Accounts are per machine: another machine's ref means nothing here, so switching machines clears the pick. */}
+                <Combobox variant="soft" size="md" label={t('accounts.projectMachine')} labelledBy={`pj-acc-machine-${agent}`} value={row.machineId || null}
+                  options={machineOptions} onChange={(id) => set({ machineId: id, choice: id === row.machineId ? row.choice : undefined })} />
+              </div>
+              <AccountChoiceField machine={machine} agent={agent} value={row.choice} onChange={(choice) => set({ choice })}
+                followLabel={t('accounts.followMachine')} labelId={`pj-acc-${agent}`} testId={`project-account-${agent}-choice`} />
+            </fieldset>
+          );
+        })}
+        {editable && <div className="pj-form-foot"><Button type="submit" variant="primary" size="sm" disabled={!changed} loading={busy === 'accounts'}>{c.save}</Button></div>}
+      </form>
     </section>
   );
 }

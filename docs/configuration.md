@@ -531,6 +531,26 @@ only *This machine's login · Upgrade CLI*. Secrets never leave the machine:
 the Web sees names, types, status, the endpoint and the key's file path or
 variable name.
 
+**Codex accounts (B-850c2)** — the same page has a *Codex accounts* group per
+machine (CLI with B-850b; older CLIs show *This machine's login · Upgrade CLI*):
+
+- **ChatGPT subscription** — **Add account → ChatGPT subscription** starts a
+  device-code sign-in on the machine: open the link on any device, enter the
+  code shown (copy buttons for both), and the page finishes by itself — there is
+  nothing to paste back. The name is optional (defaults to the signed-in email);
+  the row shows the email and plan.
+- **Local provider / API** — pick a provider from the machine's
+  `~/.codex/config.toml` (its URL, wire API and headers are inherited; a URL
+  typed here overrides) or **Own URL** with its wire API (`responses` / `chat`);
+  models and the key (file / env var / paste) as for a Claude API account.
+
+Switching a Codex session's account (run-setup ⚡) resumes the same thread on the
+new account; the confirm says the history (reasoning included) goes to the new
+account's server, and a switch across types (ChatGPT ↔ API ↔ machine login) may be
+refused by the new account. If it is, the session shows *This session's history
+cannot continue on the new account — start a new session* with **New session**
+(same directory, on that account) and **Switch back**.
+
 ### Custom models and providers (B-688)
 
 **Settings → Models & accounts → Machine config** (and **Custom…** at the bottom of the composer's
@@ -638,6 +658,77 @@ very-happy spawn --dir . --account <id|machine> --prompt "…"
 - **deepseek is not recommended for sessions with the full tool set** yet: its
   upstream rejects some tool JSON Schemas (`invalid JSON Schema` 400). Prefer
   kimi-k3 until the hub normalises schemas.
+
+### Accounts for projects, teams, automations and forks (B-850d)
+
+Which account a new session starts on: **its own choice > the project's default
+for that agent on that machine > the machine default (`account default`) > the
+machine login**. Only the account id and its label are stored on the server.
+
+- Projects: one account per agent (Web project settings → 账号 / Accounts: pick
+  the machine, then the account, 本机登录, or follow the machine default). The
+  new-session dialog and drafts say where the account comes from: 「项目默认 · X」,
+  「机器默认 · X」 or 本机登录, and stop before creating when it is unusable. It applies on the
+  machine the account belongs to; on another machine the project has no account
+  default. `very-happy spawn --project <id>` uses it when `--account` is not given.
+- Teams: the team default and each member can name an account (Web team
+  settings → 成员账号 / Member accounts, the new-team form and the new-task
+  dialog; agents pass `agentProfile` to `team_delegate`). A change applies to
+  the member's next launch; when changed on the Web while the member is online,
+  its session is also switched in place right away (history kept). Changing a
+  form's agent clears its account (accounts belong to one agent).
+- Automations: `very-happy auto create|edit … --account <id|machine>` (or the
+  Web form). A sticky session is moved onto the run's account in place, history
+  kept.
+- Forks continue on the parent session's account (CLI `spawn --fork`, Web fork).
+- **No fallback**: an automation run or a team member whose account is missing,
+  expired or rejected does not start. The run shows `account_unavailable` and
+  appears under 「需要我决策」/ Needs you; a refused team member puts an item in
+  the lead's session. Sign in again or pick another account, then run again /
+  press Retry launch.
+- Machines whose CLI predates this ignore these choices and keep starting such
+  sessions on the machine default (else the machine login); the Web says so next
+  to the picker.
+
+### Per-session Codex accounts (B-850b; replaces the daemon-wide provider key of B-847)
+
+Codex sessions take accounts the same way: a **ChatGPT account** (several can
+coexist, each signed in with a device code) or an **API provider** (a
+`[model_providers.<id>]` of `~/.codex/config.toml`, or an own URL) whose key
+reaches only the sessions bound to it.
+
+```sh
+very-happy account login --agent codex [--label "ChatGPT B"]   # prints a link + code; sign in on OpenAI's page
+very-happy account add --agent codex --label "LLM Hub" --provider llmhub \
+  --key-file ~/.config/llm-hub/key --model gpt-5.6-sol --model kimi-k3
+very-happy account add --agent codex --label "Own" --base-url https://x.example/v1 [--wire-api chat] --key-env OWN_KEY
+very-happy account default <id|machine> --agent codex   # account new Codex sessions on this machine start on
+very-happy account bind <sessionId> <id|machine> [--model <id>]
+```
+
+- ChatGPT: each account gets its own Codex home
+  (`$HAPPY_HOME_DIR/accounts/<id>/codex-home`) holding only its `auth.json`;
+  `config.toml`, `sessions/`, skills, `AGENTS.md` and the rest are links into
+  `~/.codex` (or `$CODEX_HOME`), so history and resume are shared. The machine's
+  own `~/.codex/auth.json` is never copied or touched. Each home keeps its own
+  sqlite index / logs; Codex rebuilds the index from the shared sessions.
+- API provider: the session runs on a per-thread provider `vh-<id>` with the
+  base provider's URL / wire API / headers and Codex's `auth.command` reading
+  the key file. The key is never in any environment: measured on Codex 0.154,
+  a provider `env_key` in the app-server environment is visible to the
+  `exec_command` shell (`env` prints it), the `auth` command is not. A bound
+  session also drops every `env_key` of `config.toml` (and `CODEX_API_KEY` /
+  `OPENAI_API_KEY`) from its environment, so a daemon-wide key stops reaching it.
+  An API account's model list is what the picker shows.
+- Unbound sessions keep today's behaviour (machine login / `config.toml` with
+  its `env_key` from the daemon environment).
+- Switching restarts in place and continues the same thread on the new
+  account's model (sticky model and model intent are cleared). Measured: API ↔
+  API across OpenAI organizations (with encrypted reasoning in the history),
+  account ↔ machine login. If an account rejects a history it cannot read, the
+  session says so — start a new session on that account.
+- Same limits as Claude: the agent runs as the same OS user, so it could read
+  the key files, or the environment the daemon itself was started with.
 
 ### Machine web panels and "needs you" (B-510)
 

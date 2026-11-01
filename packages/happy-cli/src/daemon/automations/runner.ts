@@ -27,7 +27,7 @@ import { homedir } from 'node:os';
 import { join, isAbsolute } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import {
-    AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_SUMMARY_MAX_CHARS, isAutomationRunTerminal,
+    AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_SUMMARY_MAX_CHARS, isAutomationRunTerminal, resolveLaunchAgentProfile,
     type AutomationAction, type AutomationClaimedRun, type AutomationReport,
 } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
@@ -38,6 +38,7 @@ import { readSessionLog, TURN_WINDOW } from '@/sessions/sessionOps';
 import { analyzeLatestTurn, userPromptText, type TurnState } from '@/sessions/turnState';
 import { sanitizeSpawnPermissionMode } from '@/daemon/spawnPermissionMode';
 import { isSpawnAgent } from '@/utils/spawnAgents';
+import { accountUnavailableError } from '@/agentProfiles/launchAccount';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { AutomationsRequestError, createAutomationsClient, isAutomationsUnavailable, type AutomationsClient } from '@/automations/client';
 import { clipAutomationReport, clipText, renderAction, renderTemplate, type TemplateContext } from '@/automations/template';
@@ -77,6 +78,17 @@ export interface AutomationRunnerDeps {
     log: (message: string) => void;
     /** B-649: put a spawned session in the automation's project (quiet variant) before its first message. */
     joinProject?: (sessionId: string, projectId: string) => Promise<unknown>;
+    /**
+     * B-850d: this machine's accounts. `resolve` = the daemon's spawn check
+     * (throws `agent-profile-unavailable:<reason>` for a missing / unusable
+     * account); `rebind` moves a sticky session onto the run's account (in-place
+     * restart, history kept). Absent = no account support: runs ignore it.
+     */
+    accounts?: {
+        sessionAccount: (sessionId: string) => string | null;
+        resolve: (agent: 'claude' | 'codex', requested: string | null | undefined) => string | null;
+        rebind: (sessionId: string, accountId: string | null) => Promise<void>;
+    };
     home?: string;
     serverUrl?: string;
     client?: AutomationsClient;
@@ -113,6 +125,51 @@ interface Tracked {
     pendingRunning?: { sessionId: string; stickyKey?: string };
     /** Final report that failed to send; retried each tick. */
     pendingFinal?: AutomationReport;
+    /** B-850d: the sticky key this run continued (cleared when the new account rejects the history). */
+    stickyKey?: string;
+}
+
+/** B-850d: a run refused because its account is missing / expired / invalid (「需要我决策」). */
+export const AUTOMATION_ACCOUNT_UNAVAILABLE = 'account_unavailable';
+
+/**
+ * B-850d: a sticky Codex session moved to an account that rejects its history
+ * (another org's encrypted reasoning). The run fails with this reason — it is
+ * not re-run (its side effects may have started) — and the sticky binding is
+ * cleared, so the next run starts a fresh session on the new account.
+ */
+export const AUTOMATION_ACCOUNT_HISTORY_REJECTED = 'account_history_rejected';
+
+/** attentionReason of a failed / cancelled turn: an account refusal (B-850d) is its own reason. */
+export function turnFailureReason(turn: Pick<TurnState, 'status' | 'refusal'>): string {
+    if (turn.refusal === 'agent-profile-unavailable') return AUTOMATION_ACCOUNT_UNAVAILABLE;
+    if (turn.refusal === 'agent-profile-history-rejected') return AUTOMATION_ACCOUNT_HISTORY_REJECTED;
+    return `turn_${turn.status}`;
+}
+
+/**
+ * B-850d: before a sticky session gets this run, make it run on the run's
+ * account (`requested` undefined = keep its own). Returns the refusal, or null.
+ * Unusable → refused (not rebound, not sent); different → rebound in place.
+ */
+export async function alignStickyAccount(
+    accounts: NonNullable<AutomationRunnerDeps['accounts']>,
+    agent: 'claude' | 'codex',
+    sessionId: string,
+    requested: string | null | undefined,
+): Promise<{ error: string; reason: string } | null> {
+    const current = accounts.sessionAccount(sessionId);
+    let target: string | null;
+    try {
+        target = accounts.resolve(agent, requested !== undefined ? requested : current);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { error: accountUnavailableError(message, 'automation') ?? message, reason: AUTOMATION_ACCOUNT_UNAVAILABLE };
+    }
+    if (target === current) return null;
+    try { await accounts.rebind(sessionId, target); }
+    catch (error) { return { error: `Could not move the sticky session to the run's account: ${error instanceof Error ? error.message : String(error)}`, reason: 'send_failed' }; }
+    return null;
 }
 
 /** The prompt line the daemon prefixes every run with — also the completion anchor. */
@@ -289,6 +346,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
     function wakeThenSend(claimed: AutomationClaimedRun, sessionId: string, text: string, stickyKey?: string): void {
         const { run, automation } = claimed;
         const item = track(claimed, 'send', sessionId);
+        if (stickyKey) item.stickyKey = stickyKey;
         item.waking = true;
         gating++;
         void (async () => {
@@ -354,14 +412,24 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         if (action.permissionMode && sanitizeSpawnPermissionMode(action.permissionMode) === null) { await failNow(claimed, 'spawn', `Invalid permission mode "${action.permissionMode}"`, 'invalid_action'); return; }
         const permissionMode = resolveSpawnPermissionMode(agent, action.permissionMode ?? undefined);
         const stickyKey = action.sticky ? renderTemplate(action.sticky.key, context) : undefined;
+        // B-850d: the run's account — its own choice > the project's for this agent here > (absent) the machine default.
+        const requestedAccount = resolveLaunchAgentProfile({ explicit: action.agentProfile, project: claimed.projectAgentProfiles, agent, machineId: deps.machineId }).agentProfileId;
+        const accountAgent = agent === 'claude' || agent === 'codex' ? agent : null;
         if (stickyKey) {
             const bound = claimed.stickies.find((sticky) => sticky.key === stickyKey);
+            if (bound && (wakeable(bound.sessionId) || deps.live(bound.sessionId)) && deps.accounts && accountAgent) {
+                // Q3: a sticky session runs this round on the run's account or not at all.
+                const problem = await alignStickyAccount(deps.accounts, accountAgent, bound.sessionId, requestedAccount);
+                if (problem) { await failNow(claimed, 'send', problem.error, problem.reason, bound.sessionId); return; }
+            }
             if (bound && wakeable(bound.sessionId)) { wakeThenSend(claimed, bound.sessionId, `${header}\n${action.prompt}`, stickyKey); return; }
             if (bound && deps.live(bound.sessionId)) {
                 persist({ runId: run.id, automationId: automation.id, kind: 'send', phase: 'running', claimId: run.claimId, sessionId: bound.sessionId, stickyKey });
                 try { await send(bound.sessionId, `${header}\n${action.prompt}`, { localId: `automation-${run.id}` }); }
                 catch (error) { await failNow(claimed, 'send', `Sticky session delivery failed: ${error instanceof Error ? error.message : String(error)}`, 'send_failed', bound.sessionId); return; }
-                await reportRunning(track(claimed, 'send', bound.sessionId), bound.sessionId, stickyKey);
+                const item = track(claimed, 'send', bound.sessionId);
+                item.stickyKey = stickyKey;
+                await reportRunning(item, bound.sessionId, stickyKey);
                 return;
             }
             if (bound) await client.deleteSticky(automation.id, stickyKey).catch(() => deps.log(`Automation ${automation.name}: stale sticky ${stickyKey} not cleared`));
@@ -374,8 +442,11 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         }
         persist({ runId: run.id, automationId: automation.id, kind: 'spawn', phase: 'starting', claimId: run.claimId, stickyKey, ...(action.worktree ? { directory } : {}) });
         // VH_AUTOMATION_STICKY: later runs wake this session again, so it keeps the 1h prompt-cache default (B-840).
-        const spawned = await deps.spawn({ directory, agent, permissionMode, spawnedBy: AUTOMATION_SPAWNED_BY, environmentVariables: stickyKey ? { ...env, VH_AUTOMATION_STICKY: '1' } : env });
+        const spawned = await deps.spawn({ directory, agent, permissionMode, spawnedBy: AUTOMATION_SPAWNED_BY, environmentVariables: stickyKey ? { ...env, VH_AUTOMATION_STICKY: '1' } : env, ...(requestedAccount !== undefined ? { agentProfileId: requestedAccount } : {}) });
         if (spawned.type !== 'success') {
+            // Q3: an unusable account refuses the run (never the machine login) → 「需要我决策」.
+            const accountError = spawned.type === 'error' ? accountUnavailableError(spawned.errorMessage, 'automation') : null;
+            if (accountError) { await failNow(claimed, 'spawn', accountError, AUTOMATION_ACCOUNT_UNAVAILABLE); return; }
             await failNow(claimed, 'spawn', spawned.type === 'error' ? spawned.errorMessage : 'Directory approval required', 'spawn_failed');
             return;
         }
@@ -430,7 +501,11 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
                 continue;
             }
             item.waitingOnBackground = false;
-            if (turn.status === 'failed' || turn.status === 'cancelled') await finish(item, { claimId: item.claimId, status: 'failed', sessionId, error: turn.error ?? `Turn ${turn.status}`, needsAttention: true, attentionReason: `turn_${turn.status}` });
+            const reason = turn.status === 'failed' || turn.status === 'cancelled' ? turnFailureReason(turn) : null;
+            if (reason === AUTOMATION_ACCOUNT_HISTORY_REJECTED && item.stickyKey) {
+                await client.deleteSticky(item.automationId, item.stickyKey).catch(() => deps.log(`Automation run ${item.runId}: sticky ${item.stickyKey} not cleared`));
+            }
+            if (reason) await finish(item, { claimId: item.claimId, status: 'failed', sessionId, error: turn.error ?? `Turn ${turn.status}`, needsAttention: true, attentionReason: reason });
             else await finish(item, { claimId: item.claimId, status: 'done', sessionId, summary: clipText(turn.answer, AUTOMATION_SUMMARY_MAX_CHARS) });
         }
     }

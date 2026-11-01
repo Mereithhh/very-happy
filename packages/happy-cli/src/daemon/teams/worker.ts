@@ -2,11 +2,12 @@ import axios from 'axios';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync, unlinkSync } from 'node:fs';
-import { MODEL_INTENT_CONFIG, type TeamOperation, type TeamState, type TeamResponse, type TeamAction } from '@slopus/happy-wire';
+import { agentProfileUnavailableReason, MODEL_INTENT_CONFIG, type TeamOperation, type TeamState, type TeamResponse, type TeamAction } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
 import { readPersistedSessions } from '@/persistence';
 import { sendUserMessage, waitForSessionKey } from '@/commands/sessionMessage';
 import { teamInitialPrompt } from './initialPrompt';
+import { accountUnavailableHint } from '@/agentProfiles/launchAccount';
 import { archiveSession } from '@/sessions/sessionOps';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secureFiles';
@@ -31,8 +32,41 @@ export interface TeamWorkerDeps {
     stopAndWait: (sessionId: string) => Promise<void>;
     live: (sessionId: string) => boolean;
     log: (message: string) => void;
+    /** B-850d: the daemon's spawn-time account check (throws `agent-profile-unavailable:<reason>`). Absent = no account support. */
+    resolveAccount?: (agent: 'claude' | 'codex', requested: string | null | undefined) => string | null;
     home?: string;
     serverUrl?: string;
+}
+
+/** B-850d: the spawn's `agentProfileId` for an operation (undefined = the machine default). */
+export function teamOperationAccount(op: Pick<TeamOperation, 'agentProfile'>): string | null | undefined {
+    if (op.agentProfile === undefined) return undefined;
+    return op.agentProfile === null ? null : op.agentProfile.id;
+}
+
+/**
+ * B-850d (Q3): why this member must not start, or null. A member whose account
+ * is missing / expired / invalid is refused — never started on the machine
+ * login. The error keeps the daemon's `agent-profile-unavailable:<reason>:`
+ * prefix (the server turns it into a 「需要我决策」 item) plus the way out.
+ */
+export function teamAccountRefusal(resolve: TeamWorkerDeps['resolveAccount'], op: Pick<TeamOperation, 'agentProfile' | 'assistant'>): string | null {
+    const agent = op.assistant === 'claude' || op.assistant === 'codex' ? op.assistant : null;
+    const requested = teamOperationAccount(op);
+    if (!resolve) return null;
+    if (!agent) return typeof requested === 'string' ? `agent-profile-unavailable:agent-mismatch: accounts are not supported for ${op.assistant} yet` : null;
+    try {
+        resolve(agent, requested);
+        return null;
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return agentProfileUnavailableReason(message) ? teamAccountError(message) : null;
+    }
+}
+
+function teamAccountError(raw: string): string {
+    const reason = agentProfileUnavailableReason(raw);
+    return `${raw}${reason ? ` — ${accountUnavailableHint(reason, 'team member')}` : ''}`.slice(0, 1000);
 }
 
 /** B-775: ` (<code>)` for a server refusal such as `bot_cleanup_pending`; never other response content. */
@@ -60,6 +94,15 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
     async function complete(op: TeamOperation, receipt: TeamEffectReceipt) {
         await action(op.teamId, `complete-${op.id}`, { type: 'complete-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, ...(receipt.sessionId ? { sessionId: receipt.sessionId } : {}), ...(op.type === 'spawn' && receipt.directory ? { workingDirectory: receipt.directory } : {}) });
         writeReceipt(home, { ...receipt, phase: 'completed' });
+    }
+
+    /** Definite failure, no automatic relaunch (it would be refused again): the owner retries after a fix. */
+    async function refuseForAccount(op: TeamOperation, receipt: TeamEffectReceipt, error: string) {
+        const { retryAt: _retryAt, sessionId: _sessionId, ...rest } = receipt;
+        const next: TeamEffectReceipt = { ...rest, phase: 'prepared', spawnFailures: (receipt.spawnFailures ?? 0) + 1 };
+        writeReceipt(home, next);
+        await action(op.teamId, `account-refused-${op.id}-${receipt.retryConsumed ?? 0}`, { type: 'fail-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, error }).catch(() => {});
+        deps.log(`Teams operation ${op.id} refused: account unavailable`);
     }
 
     async function execute(op: TeamOperation) {
@@ -107,6 +150,9 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                         return;
                     }
                     if (!op.directory) throw new Error('No repository selected for worker');
+                    // B-850d: refuse before preparing anything; waits for the owner's「重试启动」after a fix.
+                    const refusal = teamAccountRefusal(deps.resolveAccount, op);
+                    if (refusal) { await refuseForAccount(op, receipt, refusal); return; }
                     let resource: Awaited<ReturnType<typeof prepareTeamWorktree>>;
                     try {
                         // B-706: reactivating a bot must never reuse its removed worktree path.
@@ -129,7 +175,13 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                     writePrivateFileSync(scopeFile, JSON.stringify({ serverUrl: server, scopeToken: credential.token, teamId: op.teamId, botId: op.botId, taskId: op.taskId, attemptId: op.attemptId }));
                     receipt = { ...receipt, ...resource, scopeFile, phase: 'spawning' };
                     writeReceipt(home, receipt); // BEFORE spawn; uncertainty never authorizes a second spawn
-                    const spawned = await deps.spawn({ directory: resource.directory, agent: op.assistant === 'pi-acp' ? 'pi' : op.assistant, permissionMode: op.permissionMode === 'bypassPermissions' ? 'bypassPermissions' : 'default', spawnedBy: 'teams', environmentVariables: { VH_TEAM_SCOPE_FILE: scopeFile, VH_TEAM_OPERATION_ID: op.id } });
+                    const account = teamOperationAccount(op);
+                    const spawned = await deps.spawn({ directory: resource.directory, agent: op.assistant === 'pi-acp' ? 'pi' : op.assistant, permissionMode: op.permissionMode === 'bypassPermissions' ? 'bypassPermissions' : 'default', spawnedBy: 'teams', environmentVariables: { VH_TEAM_SCOPE_FILE: scopeFile, VH_TEAM_OPERATION_ID: op.id }, ...(account !== undefined ? { agentProfileId: account } : {}) });
+                    if (spawned.type === 'error' && agentProfileUnavailableReason(spawned.errorMessage)) {
+                        // The account went bad between the check and the spawn: nothing started.
+                        await refuseForAccount(op, receipt, teamAccountError(spawned.errorMessage));
+                        return;
+                    }
                     if (spawned.type === 'error' && spawned.startupExit?.exited) {
                         // B-689: the wrapper is confirmed gone — a definite failure, not an
                         // uncertain spawn. Back to `prepared` with a backed-off relaunch.

@@ -32,6 +32,7 @@ import {
   buildUpdate,
   cronPreview,
   draftFromAutomation,
+  editDraft,
   emptyDraft,
   knownTimeZones,
   parseDuration,
@@ -39,6 +40,8 @@ import {
   type DraftErrors,
   type DraftField,
 } from './automationForm';
+import { AccountChoiceField } from '@/components/accounts/AccountChoiceField';
+import { agentTakesAccount } from '@/sync/accountChoice';
 import { describeInterval, langOf } from './automationPresentation';
 import { reportAutomationError } from './AutomationShared';
 import { withoutTeamWorktrees } from '@/utils/teamWorktree';
@@ -119,7 +122,7 @@ export function AutomationFormScreen() {
   }, [editing, draft.machineId, machines]);
 
   const set = <K extends DraftField>(key: K, value: AutomationDraft[K]) => {
-    setDraft((d) => ({ ...d, [key]: value }));
+    setDraft((d) => editDraft(d, key, value));
     if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
   };
   const err = (key: DraftField) => (errors[key] ? (t(ERR_KEY[errors[key]!] ?? 'automations.errSchema') as string) : undefined);
@@ -286,6 +289,12 @@ export function AutomationFormScreen() {
                   options={SPAWN_AGENTS.map((a): { value: string; label: string } => ({ value: a, label: SPAWN_AGENT_LABELS[a] }))}
                 />
               </Field>
+              {/* B-850e: the run's account; sticky runs switch their session in place when it changes. */}
+              {agentTakesAccount(draft.agent) && (
+                <AccountChoiceField machine={machines.find((m) => m.id === draft.machineId)} agent={draft.agent} value={draft.agentProfile} onChange={(choice) => set('agentProfile', choice)}
+                  labelId="au-field-account" followLabel={t(draft.projectId ? 'accounts.followProjectOrMachine' : 'accounts.followMachine') as string}
+                  note={draft.stickyKey.trim() ? (t('accounts.stickyNote') as string) : undefined} className="au-field acc-choice-field" testId="automation-account" />
+              )}
               <Field label={t('automations.fieldDirectory') as string} hint={t('automations.fieldDirectoryHint') as string} error={err('directory')}>
                 <SuggestInput className="au-input mono" aria-label={t('automations.fieldDirectory') as string} value={draft.directory} onValueChange={(v) => set('directory', v)} suggestions={pathsForMachine} placeholder="~/project" spellCheck={false} />
               </Field>

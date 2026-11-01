@@ -101,11 +101,11 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 
 describe('B-757 project settings page', () => {
-  it('has the six sections, in team-settings order, each anchor-linked', async () => {
+  it('has the seven sections (B-850e 账号 after 目录), in team-settings order, each anchor-linked', async () => {
     await render(detail());
     expect($$('main[data-testid=project-settings] > section').map((s) => s.id)).toEqual(
-      ['pj-settings-basics', 'pj-settings-context', 'pj-settings-folders', 'pj-settings-teams', 'pj-settings-sessions', 'pj-settings-danger']);
-    expect($$('.pj-settings-nav a').map((a) => a.getAttribute('href'))).toEqual(['#basics', '#context', '#folders', '#teams', '#sessions', '#danger']);
+      ['pj-settings-basics', 'pj-settings-context', 'pj-settings-folders', 'pj-settings-accounts', 'pj-settings-teams', 'pj-settings-sessions', 'pj-settings-danger']);
+    expect($$('.pj-settings-nav a').map((a) => a.getAttribute('href'))).toEqual(['#basics', '#context', '#folders', '#accounts', '#teams', '#sessions', '#danger']);
     // B-796: the shared back arrow (history first, else appBack's parent: /projects/p1 — see appBack.test.ts)
     expect($('.pj-head .vh-back')).not.toBeNull();
   });

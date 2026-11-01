@@ -31,12 +31,18 @@ import {
 import { fireSnippets } from './automationForm';
 import { MachineTag, reportAutomationError, RunStatusBadge, SessionLink, useAttentionReason, useNow, useSkipReason, useSourceLabel } from './AutomationShared';
 import './automations.css';
+import { useMachine } from '@/sync/storage';
+import { readMachineAgentProfiles } from '@/sync/agentProfiles';
+import { accountChoiceLabel } from '@/sync/accountChoice';
 
 function ActionCard({ automation }: { automation: Automation }) {
   const { t, lang } = useTranslation();
   const [full, setFull] = useState(false);
   const l = langOf(lang);
-  const text = describeAction(automation.action, l);
+  // B-850d 显示规则: the live label on the automation's machine, the stored snapshot only as a fallback.
+  const machine = useMachine(automation.machineId);
+  const account = automation.action.kind === 'spawn' ? automation.action.agentProfile : undefined;
+  const text = describeAction(automation.action, l, accountChoiceLabel(account, readMachineAgentProfiles(machine), { follow: '', machineLogin: t('accounts.machineLogin') as string }) || undefined);
   const kindLabel = text.kind === 'spawn' ? t('automations.actionSpawn') : text.kind === 'send' ? t('automations.actionSend') : t('automations.actionScript');
   const fullBody =
     automation.action.kind === 'script'

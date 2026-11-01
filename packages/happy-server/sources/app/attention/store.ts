@@ -15,7 +15,7 @@ import { log } from '@/utils/log';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 import {
     AttentionError, attentionEnabled, capAnswered, itemView, planPost, postKey, pushPresentation, replyTargetState,
-    requireAttention, rootTaskTransitions, TEAM_SUBMIT_CHOICES, TEAM_SUBMIT_KEY_PREFIX, teamSubmitItem, teamSubmitKey, type AttentionRow,
+    requireAttention, rootTaskTransitions, TEAM_SUBMIT_CHOICES, TEAM_SUBMIT_KEY_PREFIX, teamAccountItem, teamAccountKey, teamAccountTransitions, teamSubmitItem, teamSubmitKey, type AttentionRow,
 } from './rules';
 
 /**
@@ -350,6 +350,24 @@ export async function applyTeamTransitionsTx(tx: Tx, accountId: string, before: 
         const updated = await tx.attentionItem.update({
             where: { id: row.id },
             data: { state: choice ? 'resolved' : 'dismissed', resolvedBy: 'owner', resolvedAt: now, ownerChoice: choice, version: { increment: 1 }, updatedAt: now },
+        });
+        announce(tx, updated);
+    }
+    // B-850d: a member refused for its account → 「需要我决策」 in the lead's session; closes once retried / launched.
+    const accounts = teamAccountTransitions(before, after);
+    const leadSessionId = after.bots.find(b => b.root)?.sessionId;
+    if (!leadSessionId || !await tx.session.findFirst({ where: { id: leadSessionId, accountId }, select: { id: true } })) return;
+    for (const op of accounts.refused) {
+        // A refusal after「重试启动」is a new request id → the closed item reopens.
+        await upsertTx(tx, accountId, { sessionId: leadSessionId, ...teamAccountItem(after, op), requestId: `team-account-${op.id}-${op.retryRequestedAt ?? 0}` },
+            { teamId: after.id, projectId: after.projectId ?? null });
+    }
+    for (const op of accounts.cleared) {
+        const row = await tx.attentionItem.findUnique({ where: { sessionId_key: { sessionId: leadSessionId, key: teamAccountKey(op.id) } } });
+        if (!row || row.accountId !== accountId || !isAttentionActive(row.state)) continue;
+        const updated = await tx.attentionItem.update({
+            where: { id: row.id },
+            data: { state: 'resolved', resolvedBy: 'owner', resolvedAt: now, version: { increment: 1 }, updatedAt: now },
         });
         announce(tx, updated);
     }

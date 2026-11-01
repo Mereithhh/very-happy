@@ -1,4 +1,4 @@
-import { CODEX_COMPACT_CAPABILITY, CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort } from '@slopus/happy-wire';
 import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
 import { createProjectInjector } from '@/projects/injector';
 import { sharedProjectsClient } from '@/projects/client';
@@ -75,6 +75,10 @@ import { CODEX_REMOTE_PERMISSION_MODES, codexPublishablePermissionMode } from '.
 import { EditReportThrottle, extractCodexPatchPaths } from '@/sessions/editPaths';
 import { reportSessionEditToDaemon } from '@/daemon/controlClient';
 import { takeReconnectEnv } from '@/utils/reconnectEnv';
+import { SPAWN_ACCOUNT_ENV } from '@/agentProfiles/store';
+import { MACHINE_CODEX_ACCOUNT, loadCodexWrapperAccount, markCodexAccountRejected, type CodexWrapperAccount } from '@/agentProfiles/codexWrapperAccount';
+import { readCodexDefaultProvider } from '@/agentProfiles/codexConfig';
+import { accountModelsAsCatalog, codexAccountDefaultModel, codexAccountSwitched, isCodexAuthRejection, isHistoryRejectedError } from '@/agentProfiles/codexAccount';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -116,6 +120,11 @@ export async function runCodex(opts: {
     }
 
     type EnhancedMode = CodexEnhancedMode;
+
+    // B-850b: the account the daemon picked for a NEW session; recorded as
+    // this session's binding once its id exists, never passed further down.
+    const spawnAccountId = process.env[SPAWN_ACCOUNT_ENV] || undefined;
+    delete process.env[SPAWN_ACCOUNT_ENV];
 
     //
     // Define session
@@ -166,7 +175,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
-        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY],
+        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY],
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
@@ -255,6 +264,32 @@ export async function runCodex(opts: {
     // thread itself keeps its model across a resume.
     const resumedEffort = reconnectSeeded && response ? restoredEffort(response.metadata, { useReportedLevel: true }) : undefined;
 
+    // B-850b: this session's account (agentProfiles/codexAccount.ts). Resolved
+    // before the app-server exists; an unbound session keeps today's env. A
+    // binding that cannot be honoured refuses every turn — never a silent run
+    // on the machine login (Owner Q3), never a crash (that would archive).
+    let codexAccount: CodexWrapperAccount = MACHINE_CODEX_ACCOUNT;
+    if (response) {
+        try {
+            codexAccount = loadCodexWrapperAccount(configuration.happyHomeDir, response.id, spawnAccountId);
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            logger.debug(`[START] B-850b account resolution failed: ${reason}`);
+            if (spawnAccountId) {
+                codexAccount = { ...MACHINE_CODEX_ACCOUNT, profile: { id: spawnAccountId, label: spawnAccountId, kind: 'unknown', status: 'unavailable', reason: 'error' }, unavailable: true, notices: [`Account "${spawnAccountId}" could not be loaded: ${reason}`] };
+            }
+        }
+    }
+    // A restart onto another account (agent-profile-bind): resume on the new
+    // account's model and forget the old sticky model / model intent (B-844c/d)
+    // — the old model rarely exists on the new endpoint.
+    const accountSwitched = !!reconnectSessionId && reconnectSeeded && !!response && codexAccountSwitched(response.metadata?.agentProfile, codexAccount.profile);
+    // Back on the machine login from an account: the thread's recorded
+    // provider (`vh-<id>`) exists only in that account's override, so name the
+    // machine's own provider or thread/resume fails to load it.
+    if (accountSwitched && !codexAccount.profile) codexAccount = { ...codexAccount, overrides: { env: {}, modelProvider: readCodexDefaultProvider() } };
+    logger.debug(`[START] B-850b account: ${codexAccount.profile ? `${codexAccount.profile.id} ${codexAccount.profile.kind} ${codexAccount.profile.status}` : 'machine login'}${accountSwitched ? ' (switched)' : ''}`);
+
     // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
     // Permission handler declared here so it can be updated in onSessionSwap callback
@@ -294,6 +329,28 @@ export async function runCodex(opts: {
         if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);
         session.updateMetadata((meta) => mergeReconnectMetadata(meta, metadata, Date.now()));
     }
+    session.updateMetadata((current) => ({
+        ...current,
+        agentProfile: codexAccount.profile,
+        ...(accountSwitched ? { stickyModel: null, modelIntent: null } : {}),
+    }));
+    for (const notice of codexAccount.notices) {
+        session.sendSessionEvent({ type: 'message', message: notice, kind: codexAccount.unavailable ? 'agent-profile-unavailable' : 'agent-profile-warning' });
+    }
+    // B-850b: a failure that says the new account rejected this thread's
+    // history (another org's encrypted reasoning) gets one actionable line;
+    // a 401 marks the account so the daemon republishes it.
+    let historyRejectionReported = false;
+    const noteAccountFailure = (text: string) => {
+        if (!codexAccount.profile || codexAccount.unavailable) return;
+        if (accountSwitched && !historyRejectionReported && isHistoryRejectedError(text)) {
+            historyRejectionReported = true;
+            session.sendSessionEvent({ type: 'message', message: `This conversation's history cannot continue on account "${codexAccount.profile.label}". Start a new session on it, or switch back to the previous account.`, kind: 'agent-profile-history-rejected' });
+        } else if (isCodexAuthRejection(text)) {
+            const marked = markCodexAccountRejected(configuration.happyHomeDir, codexAccount.profile.id);
+            if (marked) session.sendSessionEvent({ type: 'message', message: `Account "${codexAccount.profile.label}" was rejected (${marked}). Sign in again or switch accounts.`, kind: 'agent-profile-auth-failed' });
+        }
+    };
 
     // Always report to daemon if it exists (skip if offline)
     if (response) {
@@ -428,6 +485,14 @@ export async function runCodex(opts: {
     };
     let userMessageDelivery = Promise.resolve();
     session.onUserMessage((message) => {
+        // B-850b: bound to an account that cannot run — the message is marked
+        // not run (「未执行」, put back into the composer) instead of going to
+        // Codex on the machine login.
+        if (codexAccount.unavailable && codexAccount.profile) {
+            if (message.localKey) session.sendQueueCancelReason([message.localKey], 'failed');
+            session.sendSessionEvent({ type: 'message', message: codexAccount.notices[0] ?? `Account "${codexAccount.profile.label}" is unavailable.`, kind: 'agent-profile-unavailable' });
+            return;
+        }
         // Claim synchronously, then preserve message order while downloads finish.
         const downloads = session.drainAttachmentsForUserMessage();
         userMessageDelivery = userMessageDelivery.then(async () => {
@@ -789,6 +854,7 @@ export async function runCodex(opts: {
     //
 
     client = new CodexAppServerClient(sandboxConfig);
+    client.setAccountOverrides(codexAccount.overrides);
 
     // B-461: an idle Codex session must not pin `codex app-server` (and with it the
     // ~/.codex sqlite files) forever. Release it after a quiet period; the next
@@ -887,6 +953,7 @@ export async function runCodex(opts: {
             if (failure) {
                 messageBuffer.addMessage(`Task failed: ${failure}`, 'status');
                 session.sendSessionEvent({ type: 'message', message: `Codex error: ${failure}` });
+                noteAccountFailure(failure);
             } else {
                 messageBuffer.addMessage('Task completed', 'status');
             }
@@ -895,6 +962,7 @@ export async function runCodex(opts: {
             if (failure) {
                 messageBuffer.addMessage(`Turn aborted: ${failure}`, 'status');
                 session.sendSessionEvent({ type: 'message', message: `Codex error: ${failure}` });
+                noteAccountFailure(failure);
             } else {
                 messageBuffer.addMessage('Turn aborted', 'status');
             }
@@ -1029,6 +1097,15 @@ export async function runCodex(opts: {
                 logger.debug('[Codex] config/read unavailable', safeCodexErrorMetadata(error));
             }
             machineDefaultModel = configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model;
+            // B-850b: on an account, "default" = the account's model (the
+            // binding's, else its first listed one; a ChatGPT account keeps the
+            // config's model only when its catalog has it), and an API account's
+            // picker lists the account's models instead of Codex's catalog.
+            const accountDefault = codexAccountDefaultModel(codexAccount, configured?.model ?? null, discoveredModels);
+            if (codexAccount.profile && !codexAccount.unavailable) {
+                machineDefaultModel = accountDefault;
+                if (codexAccount.models?.length) discoveredModels = accountModelsAsCatalog(codexAccount.models, discoveredModels);
+            }
             if (discoveredModels.length > 0 || configured) {
                 session.updateMetadata((metadata) => ({
                     ...metadata,
@@ -1039,23 +1116,34 @@ export async function runCodex(opts: {
                             defaultReasoningEffort: model.defaultReasoningEffort,
                         })),
                     } : {}),
-                    defaultModelCode: configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model,
-                    ...(configured ? { configuredModel: configured.model } : {}),
+                    defaultModelCode: codexAccount.profile && !codexAccount.unavailable ? accountDefault : configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model,
+                    ...(configured ? { configuredModel: codexAccount.profile && !codexAccount.unavailable ? accountDefault ?? null : configured.model } : {}),
                 }));
             }
         } catch (error) {
             logger.debug('[Codex] Model discovery unavailable; using compatibility fallback', safeCodexErrorMetadata(error));
         }
 
-        if (opts.resumeThreadId) {
-            await resumeExistingThread({
-                client,
-                session,
-                messageBuffer,
-                threadId: opts.resumeThreadId,
-                cwd: process.cwd(),
-                mcpServers,
-            });
+        // B-850b: an unusable account refuses every turn, and its thread may be
+        // recorded on a provider only that account defines — resume when the
+        // account is fixed / switched (that restarts the session).
+        if (opts.resumeThreadId && !codexAccount.unavailable) {
+            try {
+                await resumeExistingThread({
+                    client,
+                    session,
+                    messageBuffer,
+                    threadId: opts.resumeThreadId,
+                    cwd: process.cwd(),
+                    mcpServers,
+                    // B-850b: after an account switch the thread moves to the
+                    // new account's model (its old one is sticky otherwise).
+                    ...(accountSwitched && machineDefaultModel ? { model: machineDefaultModel } : {}),
+                });
+            } catch (error) {
+                noteAccountFailure(error instanceof Error ? error.message : String(error));
+                throw error;
+            }
             first = false;
             appendSystemPromptInjected = true;
         }
@@ -1300,7 +1388,10 @@ export async function runCodex(opts: {
                 // Start thread on first turn (thread persists across mode changes)
                 if (!client.hasActiveThread()) {
                     const startedThread = await client.startThread({
-                        model: turnModel,
+                        // B-850b: a new thread on an account starts on the account's
+                        // model — Codex would otherwise pick config.toml's, which
+                        // belongs to the machine's own provider.
+                        model: turnModel ?? (codexAccount.profile && !codexAccount.unavailable ? machineDefaultModel : undefined),
                         cwd: process.cwd(),
                         approvalPolicy: executionPolicy.approvalPolicy,
                         sandbox: executionPolicy.sandbox,
@@ -1365,6 +1456,7 @@ export async function runCodex(opts: {
                 if (reason) {
                     messageBuffer.addMessage(`Task failed: ${reason}`, 'status');
                     session.sendSessionEvent({ type: 'message', message: `Codex error: ${reason}` });
+                    noteAccountFailure(reason);
                 } else {
                     // B-625: with Codex's own last words (its stderr tail) when it has any.
                     const tail = codexStderrTailOf(error);

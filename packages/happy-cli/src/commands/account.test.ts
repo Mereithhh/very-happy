@@ -5,11 +5,11 @@ describe('B-850a very-happy account', () => {
     it('parses every subcommand', () => {
         expect(parseAccountArgs([])).toEqual({ action: 'help' });
         expect(parseAccountArgs(['ls', '--json'])).toEqual({ action: 'list', json: true });
-        expect(parseAccountArgs(['login', '--label', 'Org A'])).toEqual({ action: 'login', label: 'Org A', tokenStdin: false });
-        expect(parseAccountArgs(['login', 'org-a'])).toEqual({ action: 'login', accountId: 'org-a', tokenStdin: false });
-        expect(parseAccountArgs(['login', '--label=X', '--token-stdin'])).toEqual({ action: 'login', label: 'X', tokenStdin: true });
+        expect(parseAccountArgs(['login', '--label', 'Org A'])).toEqual({ action: 'login', agent: 'claude', label: 'Org A', tokenStdin: false });
+        expect(parseAccountArgs(['login', 'org-a'])).toEqual({ action: 'login', agent: 'claude', accountId: 'org-a', tokenStdin: false });
+        expect(parseAccountArgs(['login', '--label=X', '--token-stdin'])).toEqual({ action: 'login', agent: 'claude', label: 'X', tokenStdin: true });
         expect(parseAccountArgs(['add', '--label', 'Hub', '--base-url', 'https://h', '--key-file', '~/k', '--model', 'kimi:262144', '--model', 'ds'])).toEqual({
-            action: 'add', label: 'Hub', baseUrl: 'https://h', key: { source: 'file', path: '~/k' }, models: [{ id: 'kimi', contextWindow: 262144 }, 'ds'],
+            action: 'add', agent: 'claude', label: 'Hub', baseUrl: 'https://h', key: { source: 'file', path: '~/k' }, models: [{ id: 'kimi', contextWindow: 262144 }, 'ds'],
         });
         expect(parseAccountArgs(['add', '--label', 'H', '--base-url', 'https://h', '--key-env', 'HUB'])).toMatchObject({ key: { source: 'env', name: 'HUB' } });
         expect(parseAccountArgs(['rm', 'x', '--force'])).toEqual({ action: 'rm', accountId: 'x', force: true });

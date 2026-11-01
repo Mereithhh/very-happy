@@ -74,6 +74,7 @@ very-happy auto create --name daily-inventory --cron '0 9 * * 1-5' --tz Asia/Sin
 very-happy auto create --name backup --every 6h --script -- /usr/bin/env bash -lc 'restic backup ~/notes'
 very-happy auto create --name on-mention --manual --spawn-dir ~/work/ops \
   --prompt 'Reply to: {{payload.text}}' --sticky-key 'conv-{{payload.conversationId}}'
+very-happy auto edit on-mention --account org-b   # run on this machine's account "org-b" (`machine` = machine login)
 very-happy auto list; very-happy auto show daily-inventory
 very-happy auto pause daily-inventory; very-happy auto resume daily-inventory
 very-happy auto runs --attention; very-happy auto ack <runId>
@@ -196,6 +197,13 @@ How a run ends:
   tail as the summary. Timeouts get SIGTERM, then SIGKILL.
 - A precheck that does not pass ends the run as **skipped** before the action
   starts; the check's output tail is the summary.
+- A run whose account (`--account`, the project's default, or the machine
+  default) is missing, expired or rejected on the machine fails with
+  `account_unavailable` and is flagged — it never runs on the machine login.
+  The error says why; sign in again or choose another account, then run again.
+  A sticky Codex session moved to an account that cannot continue its history
+  fails with `account_history_rejected`; the sticky binding is cleared, so the
+  next run starts a new session on that account.
 - Runs whose daemon stops reporting, or that exceed the maximum runtime, are
   marked **expired** and flagged. A daemon restart before the outcome is known
   reports **failed** with attention instead of retrying.

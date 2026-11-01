@@ -11,7 +11,7 @@ import { isInsideTeamWorktree } from '@/utils/teamWorktree';
 export function projectSettingsPath(projectId: string, section?: ProjectSettingsSection): string {
   return `/projects/${encodeURIComponent(projectId)}/settings${section ? `#${section}` : ''}`;
 }
-export const PROJECT_SETTINGS_SECTIONS = ['basics', 'context', 'folders', 'teams', 'sessions', 'danger'] as const;
+export const PROJECT_SETTINGS_SECTIONS = ['basics', 'context', 'folders', 'accounts', 'teams', 'sessions', 'danger'] as const;
 export type ProjectSettingsSection = typeof PROJECT_SETTINGS_SECTIONS[number];
 
 /**

@@ -2,7 +2,7 @@
  * B-850c (wire v2): the wrapper's account events in the transcript —
  * `agent-profile-unavailable` (turn refused), `agent-profile-auth-failed`
  * (401 mid-run) and `agent-profile-warning` (~/.claude/settings.json overrides
- * the account). The first two offer 重新登录 / 换个账号; the warning opens the
+ * the account) and, wire v3, `agent-profile-history-rejected` (HistoryRejected.tsx). The first two offer 重新登录 / 换个账号; the warning opens the
  * machine config. Words come from the session's account, not the CLI's English line.
  */
 import { useState } from 'react';
@@ -11,6 +11,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { useMachine, useSession } from '@/sync/storage';
 import { accountKindTag } from '@/sync/agentProfiles';
 import { SwitchAccountDialog } from './AccountUnavailableBanner';
+import { HistoryRejectedEventRow } from './HistoryRejected';
 import { useSessionAccount, type AccountEventKind } from './sessionAccount';
 
 export function AccountEventBlock({ sessionId, kind, message }: { sessionId: string; kind: AccountEventKind; message: string }) {
@@ -26,6 +27,7 @@ export function AccountEventBlock({ sessionId, kind, message }: { sessionId: str
         : kind === 'auth-failed' ? t('accounts.eventAuthFailed', { label })
         : t('accounts.eventUnavailable', { label });
     const subscription = !!profile && accountKindTag(profile.kind) === 'subscription';
+    if (kind === 'history-rejected') return <HistoryRejectedEventRow sessionId={sessionId} facts={facts} message={message} nav={{ openSettings, openMachine }} />;
     return (
         <div className="msg msg--event" data-testid="account-event" data-kind={kind}>
             <span className={`msg-event-line ${kind === 'warning' ? 'msg-event-line--warn' : 'msg-event-line--error'}`}><AlertTriangle size={13} />{text}</span>

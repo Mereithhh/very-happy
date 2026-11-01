@@ -5,7 +5,7 @@ import { expect, it, vi } from 'vitest';
 
 /** B-714: the new-task / task-action / handoff forms read FormData — the pickers that replaced their <select>s must still post the same names. */
 vi.mock('@/sync/teams', () => ({ actOnTeam: vi.fn(), createTeam: vi.fn(), getTeam: vi.fn(), listTeams: vi.fn(), TeamsApiError: class extends Error {} }));
-vi.mock('@/sync/storage', () => ({ storage: () => null, useAllMachines: () => [] }));
+vi.mock('@/sync/storage', () => ({ storage: () => null, useAllMachines: () => [], useMachine: () => null }));
 vi.mock('@/sync/sync', () => ({ sync: {} }));
 vi.mock('@/screens/session/Markdown', () => ({ Markdown: () => null }));
 vi.mock('./TeamStartForm', () => ({ TeamStartForm: () => null }));
@@ -31,7 +31,7 @@ it('every picker in the Teams FormData forms still lands under its old name', as
     const read = () => Object.fromEntries(new FormData(host.querySelector('form')!) as unknown as Iterable<[string, string]>);
     try {
         await act(async () => root.render(<form><DelegateChoices team={team} agentLabel="Agent" /><TaskActionField canReturn /><HandoffAssignee bots={bots.slice(1) as never} /></form>));
-        expect(read()).toEqual({ assistant: 'codex', parent: '', action: 'message', assignee: 'w1' });
+        expect(read()).toEqual({ assistant: 'codex', agentProfile: '', parent: '', action: 'message', assignee: 'w1' });
         const pressed = (label: string) => [...host.querySelectorAll('button')].find((b) => b.textContent === label)!;
         await act(async () => { pressed('pi').click(); pressed('Return for changes').click(); });
         const parentTrigger = host.querySelector('input[name=parent]')!.parentElement!.querySelector('.vh-select-trigger')!;
@@ -40,7 +40,7 @@ it('every picker in the Teams FormData forms still lands under its old name', as
         expect(options.map((o) => o.title)).toEqual(['Independent task', 'Ship the parser']);
         expect(options[1].textContent).toContain('with tests');
         await act(async () => { options[1].click(); });
-        expect(read()).toEqual({ assistant: 'pi-acp', parent: 'open', action: 'return', assignee: 'w1' });
+        expect(read()).toEqual({ assistant: 'pi-acp', agentProfile: '', parent: 'open', action: 'return', assignee: 'w1' });
         // the handoff picker is required: its proxy input carries the constraint
         expect(host.querySelector<HTMLInputElement>('input[required]')?.value).toBe('w1');
     } finally { await act(async () => root.unmount()); host.remove(); }

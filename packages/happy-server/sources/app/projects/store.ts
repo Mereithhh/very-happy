@@ -365,7 +365,7 @@ async function attachTeamTx(tx: Tx, accountId: string, projectId: string, teamId
         requireProject(folder && folders.length < PROJECT_LIMITS.folders, 'team_machine_not_in_project', 400, { machineId: team.machineId });
         await tx.project.update({ where: { id: projectId }, data: { folders: normalizeFolders([...folders, { ...folder, primary: folders.length === 0 }]), updatedAt: new Date() } });
     }
-    const defaults = snapshotTeamDefaults(team.state?.defaults, readDefaults(project.defaults));
+    const defaults = snapshotTeamDefaults(team.state?.defaults, readDefaults(project.defaults), team.machineId);
     if (defaults) {
         const state = JSON.stringify({ ...team.state, defaults });
         const updated = await tx.$executeRaw`UPDATE "AgentTeam" SET "projectId"=${projectId}, "state"=${state}::jsonb, "version"="version"+1, "updatedAt"=now() WHERE "id"=${teamId} AND "accountId"=${accountId} AND "version"=${team.version}`;

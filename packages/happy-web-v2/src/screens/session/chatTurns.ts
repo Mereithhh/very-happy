@@ -175,8 +175,16 @@ export function isRenderableActivityMessage(message: Message): boolean {
     return true;
 }
 
+/**
+ * B-850c2: account events that end a turn and need the user (re-login, switch,
+ * new session) — kept visible like a failure, never folded into the activity.
+ * Same kinds as sessionAccount.ts ACCOUNT_EVENT_KINDS minus the warning.
+ */
+const ACCOUNT_ACTION_EVENT_KINDS: ReadonlySet<string> = new Set(['agent-profile-unavailable', 'agent-profile-auth-failed', 'agent-profile-history-rejected']);
+
 function isTurnFailure(message: Message): boolean {
     if (message.kind !== 'agent-event' || message.event.type !== 'message') return false;
+    if (message.event.kind && ACCOUNT_ACTION_EVENT_KINDS.has(message.event.kind)) return true;
     const kind = presentServiceEvent(message.event.message).kind;
     return kind === 'error' || kind === 'agent-error' || kind === 'claude-auth';
 }

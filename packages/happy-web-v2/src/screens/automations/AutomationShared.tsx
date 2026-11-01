@@ -11,6 +11,7 @@ import { useMachine, useSession } from '@/sync/storage';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { getSessionName } from '@/utils/sessionUtils';
 import { AutomationsApiError } from '@/sync/apiAutomations';
+import { automationRefusalReason, type AccountRefusalReason } from '@/sync/accountChoice';
 import { attentionKind, runTone, skipReasonKind, type AttentionKind, type RunTone, type SkipReasonKind } from './automationPresentation';
 
 const STATUS_KEY: Record<string, TranslationKey> = {
@@ -29,6 +30,9 @@ const SOURCE_KEY: Record<AutomationRunSource, TranslationKey> = {
   manual: 'automations.sourceManual',
 };
 const REASON_KEY: Record<Exclude<AttentionKind, 'other'>, TranslationKey> = {
+  // B-850d: worded with the reason by accountRefusalText; these are only the generic fallbacks.
+  account_unavailable: 'automations.reasonFailed',
+  account_history_rejected: 'accounts.autoHistoryRejected',
   needs_input: 'automations.reasonNeedsInput',
   failed: 'automations.reasonFailed',
   expired: 'automations.reasonExpired',
@@ -88,14 +92,35 @@ export function useSourceLabel(): (source: AutomationRunSource | string) => stri
 export function runProblemSummary(run: Pick<AutomationRun, 'status' | 'attentionReason' | 'error'>): string {
   const skip = skipReasonKind(run);
   if (skip) return translate(skip === 'other' ? 'automations.statusSkipped' : SKIP_KEY[skip]) as string;
+  const account = accountRefusalText(run);
+  if (account) return account;
   const kind = attentionKind(run);
   return translate(kind === 'other' || kind === 'needs_input' ? 'automations.reasonFailed' : REASON_KEY[kind]) as string;
 }
 
 /** the attention sentence for a run — vocabulary reasons get wording, others show verbatim */
-export function useAttentionReason(): (run: Pick<AutomationRun, 'status' | 'attentionReason'>) => string {
+const REFUSAL_WHY_KEY: Record<AccountRefusalReason, TranslationKey> = {
+  'missing': 'accounts.reasonMissing',
+  'missing-secret': 'accounts.reasonMissingSecret',
+  'expired': 'accounts.reasonExpired',
+  'invalid': 'accounts.reasonInvalid',
+  'agent-mismatch': 'accounts.reasonAgentMismatch',
+  'other': 'accounts.reasonOther',
+};
+
+/** B-850d/e: an account refusal in words — the reason is read from the daemon's English error (Account unavailable (<reason>)). */
+export function accountRefusalText(run: Pick<AutomationRun, 'status' | 'attentionReason' | 'error'>): string | null {
+  const kind = attentionKind(run);
+  if (kind === 'account_history_rejected') return translate('accounts.autoHistoryRejected') as string;
+  if (kind !== 'account_unavailable') return null;
+  return translate('accounts.autoAccountUnavailable', { why: translate(REFUSAL_WHY_KEY[automationRefusalReason(run.error)]) as string }) as string;
+}
+
+export function useAttentionReason(): (run: Pick<AutomationRun, 'status' | 'attentionReason'> & { error?: string | null }) => string {
   const { t } = useTranslation();
   return (run) => {
+    const account = accountRefusalText({ ...run, error: run.error ?? null });
+    if (account) return account;
     const kind = attentionKind(run);
     if (kind === 'other') return run.attentionReason || (t('automations.reasonFailed') as string);
     return t(REASON_KEY[kind]) as string;

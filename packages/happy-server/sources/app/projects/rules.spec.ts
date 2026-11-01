@@ -48,3 +48,25 @@ describe('project error statuses', () => {
         expect(source).not.toMatch(/new ProjectError\([^)]*, 40[13]/);
     });
 });
+
+describe('B-850d project accounts', () => {
+    const entries = [
+        { agent: 'claude', machineId: 'm1', id: 'org-a', label: 'Org A' },
+        { agent: 'claude', machineId: 'm2', id: 'dup-agent' },
+        { agent: 'codex', machineId: 'm1', id: null },
+    ];
+
+    it('normalizeDefaults validates agentProfiles and keeps one per agent', () => {
+        expect(normalizeDefaults({ agentProfiles: entries } as any).agentProfiles).toEqual([entries[0], entries[2]]);
+        expect(normalizeDefaults({ agentProfiles: null } as any).agentProfiles).toBeNull();
+        expect('agentProfiles' in normalizeDefaults({ agentProfiles: [{ agent: 'claude', id: 'no-machine' }] } as any)).toBe(false);
+    });
+
+    it('snapshotTeamDefaults copies the account for the team\'s agent on the team\'s machine, never over the team\'s own', () => {
+        expect(snapshotTeamDefaults({ assistant: 'claude' }, { agentProfiles: entries }, 'm1')).toEqual({ assistant: 'claude', agentProfile: { id: 'org-a', label: 'Org A' } });
+        expect(snapshotTeamDefaults({ assistant: 'codex' }, { agentProfiles: entries }, 'm1')).toEqual({ assistant: 'codex', agentProfile: null });
+        expect(snapshotTeamDefaults({ assistant: 'claude' }, { agentProfiles: entries }, 'm3')).toBeNull();
+        expect(snapshotTeamDefaults({ assistant: 'claude', agentProfile: { id: 'mine' } }, { agentProfiles: entries }, 'm1')).toBeNull();
+        expect(snapshotTeamDefaults({ assistant: 'claude' }, { agentProfiles: entries })).toBeNull();
+    });
+});
