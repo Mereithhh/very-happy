@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
+import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // tap is a full submission, and that every answer lands in synced settings.
 const state = vi.hoisted(() => ({
     settings: {} as Record<string, unknown>,
+    /** what storage.getState() holds when it is ahead of the rendered snapshot; null = same as settings */
+    store: null as Record<string, unknown> | null,
     settingsVersion: 3 as number | null,
     applied: [] as Array<Record<string, unknown>>,
     post: vi.fn(),
@@ -23,7 +26,10 @@ vi.mock('@/ui', () => ({
 vi.mock('react-router-dom', () => ({ useLocation: () => ({ pathname: '/session/cmvph7gqg03ifrz2uk2cweyto', search: '', hash: '' }) }));
 vi.mock('@/sync/storage', () => ({
     useSetting: (name: string) => state.settings[name],
-    storage: (select: (s: { settingsVersion: number | null }) => unknown) => select({ settingsVersion: state.settingsVersion }),
+    storage: Object.assign(
+        (select: (s: { settingsVersion: number | null }) => unknown) => select({ settingsVersion: state.settingsVersion }),
+        { getState: () => ({ settings: state.store ?? state.settings }) },
+    ),
     useAllMachines: () => [{ metadata: { happyCliVersion: '0.2.190', host: 'mac-office' } }],
 }));
 vi.mock('@/sync/sync', () => ({ sync: { applySettings: (patch: Record<string, unknown>) => { state.applied.push(patch); Object.assign(state.settings, patch); } } }));
@@ -37,7 +43,7 @@ vi.mock('../floatingCards.css', () => ({}));
 import { FeedbackPrompt, FEEDBACK_PROMPT_DELAY_MS } from './FeedbackPrompt';
 import { OVERLAY_PRIORITY, requestOverlay, resetOverlayQueueForTest } from '../overlayQueue';
 import { localDay } from './feedbackPolicy';
-import { noteChangelogClosed, resetChangelogReadStoreForTest } from '../changelogReadStore';
+import { noteChangelogClosed, noteChangelogOpened, resetChangelogReadStoreForTest } from '../changelogReadStore';
 
 const DAY = 24 * 60 * 60 * 1000;
 let host: HTMLDivElement; let root: Root;
@@ -54,6 +60,7 @@ beforeEach(() => {
         feedbackLastSubmittedAt: null,
     };
     state.settingsVersion = 3;
+    state.store = null;
     state.applied = [];
     state.pending = [];
     state.deepLink = false;
@@ -108,6 +115,67 @@ describe('FeedbackPrompt (B-836)', () => {
         state.settingsVersion = 3;
         await mount();
         expect(state.applied).toContainEqual({ feedbackActiveDays: 3, feedbackLastActiveDay: localDay(Date.now()) });
+    });
+
+    it('B-857b: counts from the store, not the rendered snapshot — a day written meanwhile is not counted over', async () => {
+        state.settings.feedbackActiveDays = 0;
+        state.settings.feedbackLastActiveDay = null; // this render's snapshot
+        state.store = { ...state.settings, feedbackActiveDays: 2, feedbackLastActiveDay: localDay(Date.now()) }; // landed since
+        await mount();
+        expect(state.applied.some((p) => 'feedbackActiveDays' in p)).toBe(false);
+        state.store = { ...state.settings, feedbackActiveDays: 2, feedbackLastActiveDay: '2020-01-01' };
+        await act(async () => root.unmount());
+        root = createRoot(host);
+        await mount();
+        expect(state.applied).toContainEqual({ feedbackActiveDays: 3, feedbackLastActiveDay: localDay(Date.now()) });
+    });
+
+    it('B-857b: notes reopened inside the 20 s keep the card back until they close again, then 20 s from that close', async () => {
+        state.pending = [{ id: 'nov01a' }];
+        await mount();
+        await act(async () => noteChangelogOpened());
+        await wait(5_000);
+        await act(async () => noteChangelogClosed()); // last page, Esc: still pending
+        await wait(5_000);
+        await act(async () => noteChangelogOpened()); // sidebar entry
+        await wait(60_000);
+        expect(card()).toBeNull();
+        await act(async () => noteChangelogClosed());
+        await wait(FEEDBACK_PROMPT_DELAY_MS - 1);
+        expect(card()).toBeNull();
+        await wait(1);
+        expect(card()).not.toBeNull();
+    });
+
+    it('B-857b: the card stands aside while the notes are open over it, and comes back when they close', async () => {
+        await mount();
+        await wait();
+        expect(card()).not.toBeNull();
+        await act(async () => noteChangelogOpened());
+        expect(card()).toBeNull();
+        await act(async () => noteChangelogClosed());
+        expect(card()).not.toBeNull();
+    });
+
+    it('B-857b: the Esc that closes ⌘K / Modal.alert above the card closes only that, not the card', async () => {
+        const release = requestOverlay('palette', OVERLAY_PRIORITY.interaction);
+        await mount();
+        await wait();
+        expect(card()).toBeNull();
+        // like the palette: closes on Esc in an earlier listener, so the card is back before the event reaches window
+        const closePalette = (e: KeyboardEvent) => { if (e.key === 'Escape') flushSync(() => release()); };
+        document.addEventListener('keydown', closePalette, { capture: true, once: true });
+        // stamped when pressed; the handlers (and the card's mount) run a moment later
+        const press = async () => {
+            const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+            vi.advanceTimersByTime(1);
+            await act(async () => { document.body.dispatchEvent(event); });
+        };
+        await press();
+        expect(card()).not.toBeNull();
+        // a later Esc, with the card on top, is the card's: 以后再说
+        await press();
+        expect(card()).toBeNull();
     });
 
     it('B-857: with unread notes it queues behind them and asks 20 s after they close', async () => {

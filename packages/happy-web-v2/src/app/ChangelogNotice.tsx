@@ -11,7 +11,7 @@ import {
   changelogCliTarget,
 } from './changelogRelease';
 import { changelogAutoAction, changelogPages, pageReleaseIds, pendingChangelogReleases, type ChangelogPage } from './changelogPager';
-import { acknowledgeAllChangelog, changelogReadState, markChangelogReleasesRead, noteChangelogClosed, onChangelogOpenRequest } from './changelogReadStore';
+import { acknowledgeAllChangelog, changelogReadState, markChangelogReleasesRead, noteChangelogClosed, noteChangelogOpened, onChangelogOpenRequest } from './changelogReadStore';
 import { enteredByDeepLink } from './entryKind';
 import { userHasInteracted } from './afterFirstScreen';
 import './changelogNotice.css';
@@ -80,10 +80,11 @@ export function ChangelogNotice() {
     });
   }, [auto, heldAbove, open, start, t, toast]);
   useEffect(() => onChangelogOpenRequest(start), [start]);
-  // B-857: open → closed (by any way out) lets the feedback card queue after the notes.
+  // B-857: open → closed (by any way out) lets the feedback card queue after
+  // the notes; B-857b: opened again (sidebar entry), it waits for that close too.
   const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) wasOpen.current = true;
+    if (open) { wasOpen.current = true; noteChangelogOpened(); }
     else if (wasOpen.current) { wasOpen.current = false; noteChangelogClosed(); }
   }, [open]);
 
