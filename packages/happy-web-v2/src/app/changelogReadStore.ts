@@ -61,10 +61,27 @@ export function usePendingChangelog(): ChangelogRelease[] {
   return useMemo(() => pendingChangelogReleases(snapshot), [snapshot]);
 }
 
-// --- the notes closed during this visit (B-857) -----------------------------
+// --- the notes open / closed during this visit (B-857) -----------------------
 
-let closedAt: number | null = null;
-const closedListeners = new Set<() => void>();
+/** Whether the notes are open (or waiting for their overlay turn), and when they last closed in this visit. */
+export interface ChangelogVisit {
+  open: boolean;
+  closedAt: number | null;
+}
+
+const NO_VISIT: ChangelogVisit = { open: false, closedAt: null };
+let visit = NO_VISIT;
+const visitListeners = new Set<() => void>();
+
+function setVisit(next: ChangelogVisit): void {
+  visit = next;
+  for (const l of visitListeners) l();
+}
+
+/** B-857b: the notes opened (again) — a later `notice` keeps waiting until they close. */
+export function noteChangelogOpened(): void {
+  setVisit({ ...visit, open: true });
+}
 
 /**
  * The notes dialog was open and has closed — read to the end, closed on the
@@ -72,22 +89,25 @@ const closedListeners = new Set<() => void>();
  * queue behind the notes instead of skipping the visit. Per page load.
  */
 export function noteChangelogClosed(now = Date.now()): void {
-  closedAt = now;
-  for (const l of closedListeners) l();
+  setVisit({ open: false, closedAt: now });
 }
 
 /** When the notes last closed in this visit; null = not (yet) shown and closed. */
 export function changelogClosedAt(): number | null {
-  return closedAt;
+  return visit.closedAt;
 }
 
-function subscribeClosed(listener: () => void) {
-  closedListeners.add(listener);
-  return () => { closedListeners.delete(listener); };
+export function changelogVisit(): ChangelogVisit {
+  return visit;
 }
 
-export function useChangelogClosedAt(): number | null {
-  return useSyncExternalStore(subscribeClosed, changelogClosedAt, changelogClosedAt);
+function subscribeVisit(listener: () => void) {
+  visitListeners.add(listener);
+  return () => { visitListeners.delete(listener); };
+}
+
+export function useChangelogVisit(): ChangelogVisit {
+  return useSyncExternalStore(subscribeVisit, changelogVisit, changelogVisit);
 }
 
 // --- "open the notes now" requests (the sidebar entry) -----------------------
@@ -117,7 +137,7 @@ export function onChangelogOpenRequest(listener: () => void): () => void {
 export function resetChangelogReadStoreForTest(): void {
   state = null;
   openPending = false;
-  closedAt = null;
+  visit = NO_VISIT;
   for (const l of listeners) l();
-  for (const l of closedListeners) l();
+  for (const l of visitListeners) l();
 }

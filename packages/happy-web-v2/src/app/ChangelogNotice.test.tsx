@@ -156,12 +156,14 @@ describe('B-715 release-notes pager', () => {
   it('B-857: records when the notes close — read to the end or closed on the last page — not while paging', () => {
     mount();
     expect(store.changelogClosedAt()).toBeNull();
+    expect(store.changelogVisit().open).toBe(true);
     act(() => button('changelog.next')!.click());
     act(() => button('changelog.next')!.click());
     expect(store.changelogClosedAt()).toBeNull();
     press('Escape');
     expect(card()).toBeNull();
     expect(store.changelogClosedAt()).toEqual(expect.any(Number));
+    expect(store.changelogVisit().open).toBe(false);
 
     remount();
     expect(store.changelogClosedAt()).toBeNull();

@@ -12,6 +12,10 @@
  *   1. two active days are enough: yesterday counted once, today makes 2 → the card asks (no unread notes)
  *   2. unread notes: they open first and the card waits behind them (still absent long after the 20 s delay)
  *   3. the notes closed: no card 15 s later, the card ~20 s after the close
+ * And once, on desktop zh-CN (B-857b):
+ *   4. the notes closed on the last page (Esc, still unread) and reopened 5 s later from the sidebar
+ *      stay in front past the first close's 20 s; the card comes ~20 s after the second close
+ *   5. the Esc that closes ⌘K over the card closes only the palette; the card stays
  * Exit code 1 on any failed check.
  */
 import { spawn } from 'node:child_process';
@@ -151,11 +155,75 @@ const tap = async (page, locator) => { if ((await page.evaluate(() => matchMedia
 const why = (page) => page.evaluate(async () => ({
     corner: [...document.querySelectorAll('.pwa-install, .notif-optin, .signin-nudge, .cli-update, .mrb')].map((e) => e.className),
     active: document.activeElement ? `${document.activeElement.tagName}.${document.activeElement.className}` : null,
-    closedAt: (await import('/src/app/changelogReadStore.ts')).changelogClosedAt(),
+    notes: (await import('/src/app/changelogReadStore.ts')).changelogVisit?.() ?? (await import('/src/app/changelogReadStore.ts')).changelogClosedAt(),
     holder: (await import('/src/app/overlayQueue.ts')).currentOverlay(),
     path: location.pathname,
 }));
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// B-857b: the app counts today itself once settings load. Seed only after that write landed, or the
+// two writes race (the app's would land on top of the seed and the day count would be off by one).
+const appCountedToday = (page) => page.waitForFunction((day) => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().settings.feedbackLastActiveDay === day), today(), { timeout: 15_000, polling: 300 });
+const daysAre = (page, n) => page.waitForFunction((want) => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().settings.feedbackActiveDays === want), n, { timeout: 15_000, polling: 300 });
 const yesterday = () => { const d = new Date(Date.now() - 86_400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+async function readyAccount(run, seen) {
+    const ctx = await newContext(run, seen);
+    const page = await ctx.newPage();
+    await signUp(page);
+    await settingsLoaded(page);
+    await appCountedToday(page);
+    await applySettings(page, { feedbackActiveDays: 2, feedbackPromptShownAt: null, feedbackLastSubmittedAt: null, feedbackPromptOptOut: false });
+    await daysAre(page, 2).catch(() => check(false, 'seeded 2 active days'));
+    await page.goto(`${BASE}/`);
+    await settingsLoaded(page);
+    return { ctx, page };
+}
+
+async function reopenAndPalette(run, tag) {
+    step(`${tag} 4. notes reopened inside the 20 s stay in front; the card ~20 s after the second close`);
+    const { ctx, page } = await readyAccount(run, SEEN_BEFORE_NEWEST_TWO);
+    const notes = page.locator('.wn-card');
+    const card = page.locator('.fb-prompt');
+    await notes.waitFor({ timeout: 30_000 });
+    // page to the last one without the receipt, then Esc: closed, still unread
+    for (let i = 0; i < 8 && (await notes.getAttribute('data-locked')) !== null; i++) { await notes.locator('.wn-done').click().catch(() => {}); await sleep(400); }
+    await page.keyboard.press('Escape');
+    await sleep(300);
+    const firstClose = Date.now();
+    check((await notes.count()) === 0, 'notes closed with Esc on the last page');
+    await clearCorner(page);
+    await sleep(5_000 - (Date.now() - firstClose));
+    await page.evaluate(async () => (await import('/src/app/changelogReadStore.ts')).requestChangelogOpen());
+    await notes.waitFor({ timeout: 5_000 }).then(() => check(true, 'notes reopened from the sidebar entry'), () => check(false, 'notes reopened from the sidebar entry'));
+    await sleep(firstClose + 26_000 - Date.now());
+    const front = (await notes.count()) > 0 && (await card.count()) === 0;
+    await shot(page, `${tag}-4-reopened-at-26s`);
+    check(front, 'reopened notes still in front 26 s after the first close, no card', JSON.stringify(await why(page)));
+    for (let i = 0; i < 8 && (await notes.count()) > 0; i++) { await notes.locator('.wn-done').click().catch(() => {}); await sleep(400); }
+    const secondClose = Date.now();
+    check((await notes.count()) === 0, 'notes closed again (read to the end)');
+    await sleep(15_000 - (Date.now() - secondClose));
+    check((await card.count()) === 0, 'no card 15 s after the second close');
+    await card.waitFor({ timeout: 15_000 }).then(() => {
+        const after = (Date.now() - secondClose) / 1000;
+        check(after >= 19.5 && after < 26, 'card asks ~20 s after the second close', `${after.toFixed(1)} s`);
+    }, async () => { console.log('  debug:', JSON.stringify(await why(page))); check(false, 'card asks after the second close'); });
+
+    step(`${tag} 5. the Esc that closes ⌘K over the card leaves the card`);
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press('Control+k');
+    await sleep(1_000);
+    check((await card.count()) === 0, '⌘K open → the card stands aside');
+    await page.keyboard.press('Escape');
+    await sleep(1_500);
+    const shownAt = (await settings(page)).shownAt;
+    check((await card.count()) === 1, '⌘K closed with Esc → the card is back', JSON.stringify(await why(page)));
+    await shot(page, `${tag}-5-card-after-palette-esc`);
+    await page.keyboard.press('Escape');
+    await sleep(500);
+    check((await card.count()) === 0, 'a second Esc, the card on top, closes the card', `shownAt=${shownAt}`);
+    await ctx.close();
+}
 
 try {
     step(`server; releases seen up to ${SEEN_BEFORE_NEWEST_TWO} for the notes runs`);
@@ -168,10 +236,10 @@ try {
         const page = await ctx.newPage();
         const user = await signUp(page);
         await settingsLoaded(page);
+        await appCountedToday(page);
         await applySettings(page, { feedbackActiveDays: 1, feedbackLastActiveDay: yesterday(), feedbackPromptShownAt: null, feedbackLastSubmittedAt: null, feedbackPromptOptOut: false });
         // The live app counts today on top of yesterday: day 2. Let that write land before the reload.
-        await page.waitForFunction(() => import('/src/sync/storage.ts').then(({ storage }) => storage.getState().settings.feedbackActiveDays === 2), null, { timeout: 15_000, polling: 300 })
-            .then(() => check(true, 'today counted as active day 2'), () => check(false, 'today counted as active day 2'));
+        await daysAre(page, 2).then(() => check(true, 'today counted as active day 2'), () => check(false, 'today counted as active day 2'));
         await sleep(3_000);
         await page.goto(`${BASE}/`);
         await settingsLoaded(page);
@@ -192,7 +260,9 @@ try {
         const p2 = await ctx2.newPage();
         await signUp(p2);
         await settingsLoaded(p2);
+        await appCountedToday(p2);
         await applySettings(p2, { feedbackActiveDays: 2, feedbackPromptShownAt: null, feedbackLastSubmittedAt: null, feedbackPromptOptOut: false });
+        await daysAre(p2, 2).catch(() => check(false, 'seeded 2 active days'));
         await p2.goto(`${BASE}/`);
         await settingsLoaded(p2);
         const notes = p2.locator('.wn-card');
@@ -217,6 +287,7 @@ try {
         check(await p2.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow');
         await shot(p2, `${tag}-3-card-after-notes`);
         await ctx2.close();
+        if (tag === 'desktop-zh-CN') await reopenAndPalette(run, tag);
     }
 } catch (error) {
     console.error(error);
