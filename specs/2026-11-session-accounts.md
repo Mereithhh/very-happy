@@ -158,6 +158,7 @@ Web 版同样流程在 B-850c 上线后验收。
 1. **API 供应商账号**（`codex-provider`）：基于 `~/.codex/config.toml` 的 `[model_providers.X]` 或自填 URL；key 来源 file / env / stored，只到达绑定它的会话，Codex 的 shell / MCP / hooks 读不到。取代 B-847「daemon 整体继承 `LLMHUB_API_KEY`」。
 2. **ChatGPT 多账号**（`codex-chatgpt`）：每账号一个 CODEX_HOME 覆盖层，远程登录走 app-server device code。
 3. 切换 = 原地重启、历史保留、清 sticky model（B-844c/d）；跨类型可切（实测见下）。
+   换到模型窗口更小或不同的账号时，Codex 会在第一轮自动 compaction，历史以摘要形式延续（A2 实测：切换后暗号仍答得出）；重启计数与失败回滚同 B-850a（不计入 3 次熔断，失败且旧 wrapper 在跑则回滚绑定）。
 
 ## 设计
 
