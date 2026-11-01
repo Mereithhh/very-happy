@@ -1,6 +1,6 @@
 # 会话级账号（CLI 侧，B-850a）
 
-> 状态：Final
+> 状态：Final（B-850a）；B-850b（Codex）见文末「B-850b」节
 > 日期：2026-11-01 ｜ 关联 backlog：B-850（本文 = PR-C / B-850a；Web = B-850c，Codex = B-850b，团队/自动化 = B-850d）｜ 前身：B-794 provider 绑定（本文取代其注入方式）
 > 设计依据：`~/code/github/skills/tmp/vh-team-B-849-850/DESIGN.md`（A2）、`FEASIBILITY.md`（K2）；Owner 拍板 Q1–Q4 按推荐（project decision #22）
 
@@ -146,3 +146,96 @@ Web 版同样流程在 B-850c 上线后验收。
 
 - 订阅账号真实授权 + 一轮真实对话（Owner 浏览器）。
 - mac-office（launchd）上 node-pty 跑 setup-token 的输出解析。
+
+---
+
+# B-850b：Codex 账号（并入 B-847）
+
+> 日期：2026-11-01 ｜ 分支 team/B-850b-codex-accounts（base team/B-850a-accounts）｜ Codex 0.154.0
+
+## 目标
+
+1. **API 供应商账号**（`codex-provider`）：基于 `~/.codex/config.toml` 的 `[model_providers.X]` 或自填 URL；key 来源 file / env / stored，只到达绑定它的会话，Codex 的 shell / MCP / hooks 读不到。取代 B-847「daemon 整体继承 `LLMHUB_API_KEY`」。
+2. **ChatGPT 多账号**（`codex-chatgpt`）：每账号一个 CODEX_HOME 覆盖层，远程登录走 app-server device code。
+3. 切换 = 原地重启、历史保留、清 sticky model（B-844c/d）；跨类型可切（实测见下）。
+
+## 设计
+
+| | ChatGPT 账号 | API 供应商账号 |
+|---|---|---|
+| app-server env | `CODEX_HOME=$HAPPY_HOME_DIR/accounts/<id>/codex-home` | 不变（不放任何 key） |
+| thread/start\|resume\|fork | `modelProvider:'openai'` | `modelProvider:'vh-<id>'` + `config.model_providers.vh-<id>` = 基础供应商表去掉 `env_key/requires_openai_auth/…` + `auth:{command:<node>, args:['-e', 读文件, <keyPath>]}` |
+| key 位置 | 覆盖层里 Codex 自己写的 `auth.json` | file：用户路径；stored：`accounts/<id>/secret`；env：复制到 `tmp/accounts/key-<pid>-<id>`（0600，退出清理）并从 wrapper env 删除 |
+| 默认模型 | 绑定的 model > config 的 model（仅当该账号 model/list 有它）> 目录默认 | 绑定的 model > 账号 models[0] > config 的 model |
+| 选择器 | Codex `model/list`（该账号的） | 账号 models（目录里有同名的保留其 effort） |
+
+- **覆盖层**（`agentProfiles/codexHome.ts`）：每次 wrapper 启动/登录/检查前重建链接；`auth.json`、`*.sqlite*`、log/tmp/cache、`models_cache.json`、`app-server-daemon` 留在本地，其余（config.toml、sessions、archived_sessions、skills、AGENTS.md、thread-writer-locks…）软链到 wrapper 的 CODEX_HOME。Codex 原子改写过的链接文件改名为 `<name>.overlay-<ts>` 保留后重链。删除账号只删链接，不删共享历史（单测实测）。**从不复制 `~/.codex/auth.json`**（AGENTS #16）。
+- **绑定会话的 env**：剥掉 config.toml 所有 `env_key` + `CODEX_API_KEY` + `OPENAI_API_KEY`；未绑定会话不变。
+- **不可用**（缺账号/缺 secret/被拒/agent 不符）：同 Claude，拒跑每轮（`queue-cancel failed` + `agent-profile-unavailable` 事件），**跳过 thread/resume**（线程可能记录在只有该账号定义的 `vh-<id>` 上，resume 会报 provider not found 让 wrapper 退出）。
+- **切换检测**：上一个 wrapper 写在 server 的 `metadata.agentProfile`（id 或 model）与本次不同 → resume 时显式带新模型，`stickyModel/modelIntent` 置 null。从账号切回本机登录时显式带 config 的 `model_provider`（Codex resume 默认沿用线程记录的 provider）。
+- **运行中被拒**：401/refresh token 失效 → 账号记 `expired`（ChatGPT）/`invalid`（API），发 `agent-profile-auth-failed`；切换后若错误像「encrypted content 无法验证」→ 发 `agent-profile-history-rejected`，提示新开会话。
+- **daemon**：`spawn` 对 codex 也解析 `agentProfileId`；`bind` 校验账号 agent 与会话 flavor 一致；`state()` 带 `codexProviders`。
+- **远程登录**（`codexLogin.ts`）：app-server（CODEX_HOME=覆盖层，剥 OpenAI key）`account/login/start {type:'chatgptDeviceCode'}` → `waiting-code` + `flow:'device-code'` + url + userCode，15 分钟过期；`account/login/completed` → `account/read` 取 email/planType → 建账号（label 默认 email）。新账号失败/取消时删半成品覆盖层；Codex 与 Claude 登录各自互斥。
+
+## wire 增补（v3，已发 Lead 转 A2）
+
+kind `codex-chatgpt` / `codex-provider`；Summary `provider? email? planType?`；State `codexProviders?`；add 变体 `{agent:'codex', kind:'codex-provider', label, provider?, baseUrl?, wireApi?, models?, key}`；login-start `{agent:'codex', kind:'codex-chatgpt', label?, accountId?}`；LoginStatus `flow?`、`userCode?`；`defaults.codex`；事件 `agent-profile-history-rejected`。只加不改。
+
+## 实测（dev-sg，隔离 HAPPY_HOME_DIR + CODEX_HOME + server :5960 + 假 Responses 端点 :5969；证据 `~/code/github/skills/tmp/vh-team-B-850b/`）
+
+| # | 内容 | 结果 |
+|---|---|---|
+| X1 | app-server env 带 `env_key`（B-847 现状），假端点让模型跑 `env` | **`exec_command` 输出里有 key** |
+| X2 | 同上改为线程级 `model_providers.<id>.auth.command` 读 0600 文件 | 请求带 key；`env` 输出无 key；rollout/sqlite 里没有 key 或路径 |
+| X3 | 跨组织 resume：线程在 llm-hub（gpt-5.4-mini，含 encrypted reasoning）→ 直连 OpenAI API → 再回 llm-hub | 三轮都答出暗号；Codex 会把旧 reasoning 一并发给新端点 |
+| E1 | VH 双会话：A 绑假账号、B 绑 Hub；daemon env 带 `LLMHUB_API_KEY=<标记>` | 假端点只见 A 的 key；A 的 shell `env` 无标记也无 A 的 key；B 的 `env` 只有 `CODEX_HOME`；app-server 与 codex 二进制的 `/proc/<pid>/environ` 均无两者 |
+| E2 | RPC bind：B Hub → 假账号 → Hub（换模型）→ 本机登录 → Hub | 每次 `restart:'done'`（约 4 s）；假端点收到 38 条历史（含 Hub 的 reasoning），模型 fake-model、sticky null；回 Hub 后真实模型答出 CODEWORD-PLUM8；切本机登录 wrapper 正常存活 |
+| E3 | A 的 key 文件移走后 bind | metadata `unavailable/missing-secret`；wrapper 存活；消息 `queue-cancel failed` + 事件，端点 0 请求；放回后重绑恢复并答出历史暗号 |
+| E4 | ChatGPT 账号（伪造 auth.json）绑定 A | app-server `CODEX_HOME`=覆盖层；基础 home 建的线程在覆盖层里 resume 成功；401 → 账号 `expired` + 事件；基础 home 未生成 auth.json |
+| L1 | RPC login-start（codex） | `waiting-code`、`flow:'device-code'`、url `https://auth.openai.com/codex/device`、userCode、expiresAt；submit → invalid-params；第二个 start → login-busy；cancel → canceled 且半成品覆盖层被删；`~/.codex/auth.json` mtime 不变 |
+| F1 | `thread/fork` 一个记录在覆盖层专属 provider 上的线程（modelProvider null） | 成功（落到 config 默认 provider），fork 路径无需改 |
+
+**未测**：真实 ChatGPT 后端（dev-sg `~/.codex` 的 ChatGPT 登录 09-25 起失效）——ChatGPT ↔ API 互切是否被 ChatGPT 后端拒绝历史，只能由 X3（跨 OpenAI 组织可用）推断。据此**允许**跨类型切换，被拒时走 `agent-profile-history-rejected` 兜底；Owner 授权一次后按下方步骤复验，若被拒再改为禁止跨类型切换。
+
+## 已知限制
+
+1. 同 uid：agent 可以读 key 文件，也可以读 wrapper 进程的 `/proc/<pid>/environ`（进程**启动时**的 env，删除 `process.env` 不影响它）。所以 `--key-env` 来源与 daemon 级 drop-in 的变量仍可被刻意读取；**推荐 `--key-file`**，并按下节撤掉 daemon 级 drop-in。
+2. 每个 ChatGPT 覆盖层有自己的 sqlite（goals、memories、thread 索引）：在 A 账号里设的 thread goal 切到 B 账号后看不到；会话历史本身共享。
+3. 覆盖层链接到「本次 wrapper 的 CODEX_HOME」；同一 ChatGPT 账号被两个不同 CODEX_HOME 的会话同时使用会互相改链（罕见）。
+4. 用户 `config.toml` 若设 `cli_auth_credentials_store = "keyring"`，auth 不落 `auth.json`，状态会误判为 missing-secret。
+
+## 兼容与发布
+
+- 只发 CLI（wire 增补随 CLI/Web 一起构建）；无 server / 迁移改动。
+- 旧 Web：看不到 Codex 账号；Codex 会话 metadata 多出 `agentProfile`，旧 Web 忽略。新 Web（B-850c）对旧 CLI：daemonState 无 Codex 账号 → 只显示本机登录。
+- 回滚到旧 CLI：Codex 绑定被忽略，会话回到本机登录（config.toml + daemon env）；**如果此时 drop-in 已撤，Codex 会话会因缺 `LLMHUB_API_KEY` 失败** —— 所以先发版并验收，再撤 drop-in（下节）。
+
+## 撤掉 dev-sg / mac-office 临时注入（PR-D 上线并验收后做，本 PR 不动）
+
+现状：dev-sg `~/.config/systemd/user/very-happy-daemon.service.d/llmhub-env.conf`（EnvironmentFile 指向 `~/.secrets/env/llm-hub.env`）；mac-office `~/.config/very-happy/daemon.env` 里追加了 `LLMHUB_API_KEY`。两台的 `~/.codex/config.toml` 默认 `model_provider = "llmhub"`。
+
+每台机器：
+1. 装上含 B-850b 的 CLI 并确认 daemon 版本（按 release skill；dev-sg 用 `systemctl --user restart very-happy-daemon`，mac-office 用 launchd 接管）。
+2. 建账号（key 用文件，不用 env）：
+   `very-happy account add --agent codex --label "LLM Hub" --provider llmhub --key-file ~/.config/llm-hub/key --model gpt-5.6-sol`（mac-office 没有该文件时先 `install -m600` 一个 key 文件）；`very-happy account test <id>` 应为 ok。
+3. 设为 Codex 默认：`very-happy account default <id> --agent codex`（新 Codex 会话从此走账号）。
+4. 迁移存量 Codex 会话（没有绑定的那些，撤 drop-in 后会缺 key；已绑别的账号的不动）：
+   ```sh
+   bound=$(jq -r 'keys[]' ~/.happy/session-accounts.json 2>/dev/null)
+   very-happy sessions list --json | jq -r '.sessions[] | select(.flavor=="codex") | .id' | grep -vxF "$bound" \
+     | while read s; do very-happy account bind "$s" <id> --no-restart; done
+   ```
+   （`--no-restart`：下次启动生效，不打断在跑的 turn；要立即生效去掉它。）
+5. 验证：新开一个 Codex 会话跑 `env | grep -c LLMHUB`（应为 0）且能正常回复；存量会话之一 `account bind <s> <id>` 后能继续对话。
+6. 撤注入：dev-sg 删 `llmhub-env.conf` → `systemctl --user daemon-reload` → `systemctl --user restart very-happy-daemon`（B-505：不杀 wrapper）；mac-office 删 daemon.env 里那一行 → 按 operations Re-adopt launchd。
+7. 复验：`tr '\0' '\n' < /proc/$(pgrep -f 'very-happy.*daemon' | head -1)/environ | grep -c LLMHUB_API_KEY` 为 0（mac-office 用 `ps eww`）；第 5 步再跑一遍。
+回滚：恢复 drop-in / daemon.env 行并重启 daemon；账号与绑定可留着（无副作用）。
+
+## Owner 配合（真实 ChatGPT 授权一次）
+
+在装了本 PR CLI 的机器（或隔离 HAPPY_HOME_DIR）：
+1. `very-happy account login --agent codex --label "ChatGPT B"`，打开打印的链接，登录要用的 ChatGPT 账号，输入打印的 code。终端显示 `Signed in: <id> (…)`；`very-happy account list` 显示 email 和 plan。
+2. `very-happy spawn --dir <目录> --agent codex --account <id> --prompt "记住暗号 CODEWORD-MANGO3，只回 ok"` → 正常回复。
+3. **跨类型复验**：`very-happy account bind <sessionId> <llm-hub 账号>`，再 `very-happy send --session <sessionId> --prompt "暗号是什么？只回暗号"`；再 `account bind` 回 ChatGPT 账号问一次。两次都答出暗号 = 跨类型可用；出现「无法在新账号上继续」事件 = 被拒，告诉 K2 改为禁止跨类型切换。
+4. Web 版（B-850c 上线后）同样流程：添加账号 → ChatGPT → 打开链接输入 code。
+

@@ -5,6 +5,7 @@ type ResumeThreadClient = {
         threadId: string;
         cwd: string;
         mcpServers: Record<string, unknown>;
+        model?: string;
     }) => Promise<{ threadId: string; model: string }>;
 };
 
@@ -24,12 +25,15 @@ export async function resumeExistingThread(opts: {
     threadId: string;
     cwd: string;
     mcpServers: Record<string, unknown>;
+    /** B-850b: resume onto this model (an account switch); absent = the thread keeps its own. */
+    model?: string;
 }): Promise<{ threadId: string; model: string }> {
     try {
         const resumedThread = await opts.client.resumeThread({
             threadId: opts.threadId,
             cwd: opts.cwd,
             mcpServers: opts.mcpServers,
+            ...(opts.model ? { model: opts.model } : {}),
         });
 
         opts.session.updateMetadata((currentMetadata) => ({

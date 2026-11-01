@@ -3,6 +3,8 @@ import {
     AGENT_PROFILE_RPC,
     AGENT_PROFILE_SESSION_CAPABILITY,
     AgentProfileAddRequestSchema,
+    AgentProfileLoginStartRequestSchema,
+    AgentProfileLoginStatusSchema,
     AgentProfilesStateSchema,
     readAgentProfileStatus,
     readSessionAgentProfile,
@@ -40,5 +42,18 @@ describe('B-850a agent profile wire', () => {
         }
         expect(AgentProfileAddRequestSchema.safeParse({ ...base, baseUrl: 'file:///etc', key: { source: 'file', path: 'k' } }).success).toBe(false);
         expect(AgentProfileAddRequestSchema.safeParse({ ...base, key: { source: 'env', name: 'bad name' } }).success).toBe(false);
+    });
+
+    it('B-850b: Codex provider add needs provider or baseUrl; ChatGPT login start; device-code status fields', () => {
+        const key = { source: 'file', path: '~/k' };
+        expect(AgentProfileAddRequestSchema.safeParse({ agent: 'codex', kind: 'codex-provider', label: 'Hub', provider: 'llmhub', key }).success).toBe(true);
+        expect(AgentProfileAddRequestSchema.safeParse({ agent: 'codex', kind: 'codex-provider', label: 'Own', baseUrl: 'https://x/v1', wireApi: 'chat', key }).success).toBe(true);
+        expect(AgentProfileAddRequestSchema.safeParse({ agent: 'codex', kind: 'codex-provider', label: 'None', key }).success).toBe(false);
+        expect(AgentProfileAddRequestSchema.safeParse({ agent: 'codex', kind: 'claude-api', label: 'Mixed', baseUrl: 'https://x', key }).success).toBe(false);
+        expect(AgentProfileLoginStartRequestSchema.safeParse({ agent: 'codex', kind: 'codex-chatgpt' }).success).toBe(true);
+        expect(AgentProfileLoginStartRequestSchema.safeParse({ agent: 'codex', kind: 'claude-subscription' }).success).toBe(false);
+        expect(AgentProfileLoginStatusSchema.parse({ loginId: 'l', state: 'waiting-code', flow: 'device-code', url: 'https://auth.openai.com/codex/device', userCode: 'AB-12', extra: 1 }))
+            .toEqual({ loginId: 'l', state: 'waiting-code', flow: 'device-code', url: 'https://auth.openai.com/codex/device', userCode: 'AB-12' });
+        expect(AgentProfilesStateSchema.safeParse({ daemonPid: 1, updatedAt: 2, accounts: [], defaults: { codex: 'hub' }, codexProviders: [{ id: 'llmhub', envKey: 'LLMHUB_API_KEY' }] }).success).toBe(true);
     });
 });

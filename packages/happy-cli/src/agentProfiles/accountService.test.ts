@@ -125,7 +125,7 @@ describe('B-850a account service', () => {
         expect(await handlers.get(AGENT_PROFILE_RPC.list)!({})).toMatchObject({ daemonPid: 99, accounts: [], defaults: {} });
         expect(await handlers.get(AGENT_PROFILE_RPC.remove)!({ accountId: 'x' })).toEqual({ error: 'no account "x"', code: 'not-found' });
         expect(await handlers.get(AGENT_PROFILE_RPC.loginStatus)!({ loginId: 'x' })).toMatchObject({ code: 'internal' });
-        expect(await handlers.get(AGENT_PROFILE_RPC.setDefault)!({ agent: 'codex', accountId: null })).toMatchObject({ code: 'invalid-params' });
+        expect(await handlers.get(AGENT_PROFILE_RPC.setDefault)!({ agent: 'pi', accountId: null })).toMatchObject({ code: 'invalid-params' });
     });
 });
 

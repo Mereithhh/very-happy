@@ -4,6 +4,7 @@
  *
  *   $HAPPY_HOME_DIR/accounts.json          v2 registry (0600, NO secrets)
  *   $HAPPY_HOME_DIR/accounts/<id>/secret   pasted key / setup-token (0600, dir 0700)
+ *   $HAPPY_HOME_DIR/accounts/<id>/codex-home/  B-850b ChatGPT account: CODEX_HOME overlay (codexHome.ts)
  *   $HAPPY_HOME_DIR/session-accounts.json  { <sessionId>: { account: id|null, model? } }
  *
  * B-794 compatibility (read-only): every profile in `providers.json` is listed
@@ -26,18 +27,39 @@ export type AccountKey =
 
 export type AccountCheck = { status: string; at: number; detail?: string };
 
+export type AccountAgent = 'claude' | 'codex';
+export type AccountKind = 'claude-subscription' | 'claude-api' | 'codex-chatgpt' | 'codex-provider';
+const KIND_AGENT: Record<AccountKind, AccountAgent> = {
+    'claude-subscription': 'claude',
+    'claude-api': 'claude',
+    'codex-chatgpt': 'codex',
+    'codex-provider': 'codex',
+};
+
+/** Kinds whose secret is a key (file / env / stored) sent to an HTTP endpoint. */
+export function isApiKind(kind: AccountKind): kind is 'claude-api' | 'codex-provider' {
+    return kind === 'claude-api' || kind === 'codex-provider';
+}
+
 export type AccountRecord = {
     label: string;
-    agent: 'claude';
-    kind: 'claude-subscription' | 'claude-api';
+    agent: AccountAgent;
+    kind: AccountKind;
     createdAt: number;
-    /** claude-api */
+    /** claude-api, codex-provider (overrides the config.toml provider's base_url) */
     baseUrl?: string;
     models?: string[];
     /** B-794b: model id → real context window. */
     contextWindows?: Record<string, number>;
-    /** claude-api: where the key lives. claude-subscription always uses the stored secret. */
+    /** API kinds: where the key lives. claude-subscription always uses the stored secret. */
     key?: AccountKey;
+    /** codex-provider: the `[model_providers.<id>]` of ~/.codex/config.toml it is based on. */
+    provider?: string;
+    /** codex-provider with an own baseUrl: Codex wire API (default responses). */
+    wireApi?: 'responses' | 'chat';
+    /** codex-chatgpt: from `account/read` after sign-in. */
+    email?: string;
+    planType?: string;
     /** claude-subscription: setup-token expiry (1 year after login). */
     expiresAt?: number;
     check?: AccountCheck;
@@ -65,6 +87,11 @@ export function accountsPath(home: string): string {
 export function accountSecretPath(home: string, id: string): string {
     if (!ACCOUNT_ID_PATTERN.test(id)) throw new Error(`invalid account id "${id}"`);
     return join(home, 'accounts', id, 'secret');
+}
+/** B-850b: a ChatGPT account's CODEX_HOME overlay (its own auth.json, everything else linked to ~/.codex). */
+export function accountCodexHomePath(home: string, id: string): string {
+    if (!ACCOUNT_ID_PATTERN.test(id)) throw new Error(`invalid account id "${id}"`);
+    return join(home, 'accounts', id, 'codex-home');
 }
 export function sessionAccountsPath(home: string): string {
     return join(home, 'session-accounts.json');
@@ -110,14 +137,26 @@ export function parseAccountsFile(raw: unknown): AccountsFile {
         for (const [id, value] of Object.entries(src as Record<string, unknown>)) {
             if (!ACCOUNT_ID_PATTERN.test(id) || !value || typeof value !== 'object') continue;
             const a = value as Record<string, unknown>;
-            if (a.agent !== 'claude' || (a.kind !== 'claude-subscription' && a.kind !== 'claude-api')) continue;
+            const kind = a.kind as AccountKind;
+            if (typeof a.kind !== 'string' || !(a.kind in KIND_AGENT) || a.agent !== KIND_AGENT[kind]) continue;
             const label = typeof a.label === 'string' && a.label.trim() ? a.label.trim() : id;
-            const rec: AccountRecord = { label, agent: 'claude', kind: a.kind, createdAt: typeof a.createdAt === 'number' ? a.createdAt : 0 };
-            if (a.kind === 'claude-api') {
-                if (typeof a.baseUrl !== 'string' || !/^https?:\/\//.test(a.baseUrl)) continue;
+            const rec: AccountRecord = { label, agent: KIND_AGENT[kind], kind, createdAt: typeof a.createdAt === 'number' ? a.createdAt : 0 };
+            const baseUrl = typeof a.baseUrl === 'string' && /^https?:\/\//.test(a.baseUrl) ? a.baseUrl.replace(/\/+$/, '') : undefined;
+            if (kind === 'codex-provider') {
+                const provider = typeof a.provider === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(a.provider) ? a.provider : undefined;
+                if (!provider && !baseUrl) continue;
+                if (provider) rec.provider = provider;
+                if (a.wireApi === 'responses' || a.wireApi === 'chat') rec.wireApi = a.wireApi;
+            }
+            if (kind === 'codex-chatgpt') {
+                if (typeof a.email === 'string' && a.email) rec.email = a.email;
+                if (typeof a.planType === 'string' && a.planType) rec.planType = a.planType;
+            }
+            if (isApiKind(kind)) {
+                if (kind === 'claude-api' && !baseUrl) continue;
                 const key = parseKey(a.key);
                 if (!key) continue;
-                rec.baseUrl = a.baseUrl.replace(/\/+$/, '');
+                if (baseUrl) rec.baseUrl = baseUrl;
                 rec.key = key;
                 if (Array.isArray(a.models)) rec.models = a.models.filter((m): m is string => typeof m === 'string' && m.length > 0);
                 if (a.contextWindows && typeof a.contextWindows === 'object') {
@@ -250,11 +289,18 @@ export function removeAccountSecret(home: string, id: string): void {
  * non-ASCII letters (「组织 A」) would slug to a meaningless fragment, so it
  * gets the kind instead.
  */
-export function newAccountId(label: string, kind: AccountRecord['kind'], taken: Iterable<string>): string {
+const KIND_ID_BASE: Record<AccountKind, string> = {
+    'claude-subscription': 'claude-sub',
+    'claude-api': 'claude-api',
+    'codex-chatgpt': 'chatgpt',
+    'codex-provider': 'codex-api',
+};
+
+export function newAccountId(label: string, kind: AccountKind, taken: Iterable<string>): string {
     const used = new Set(taken);
     const ascii = /^[\x20-\x7e]*$/.test(label);
     const slug = ascii ? label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) : '';
-    const base = slug && /^[a-z0-9]/.test(slug) ? slug : kind === 'claude-subscription' ? 'claude-sub' : 'claude-api';
+    const base = slug && /^[a-z0-9]/.test(slug) ? slug : KIND_ID_BASE[kind];
     if (!used.has(base)) return base;
     for (let n = 2; ; n++) if (!used.has(`${base}-${n}`)) return `${base}-${n}`;
 }
@@ -268,6 +314,7 @@ export type SecretProbe = {
 
 /** Pure: where an account's secret comes from and whether it is there right now. */
 export function secretPresent(home: string, id: string, a: AccountRecord, probe: SecretProbe): boolean {
+    if (a.kind === 'codex-chatgpt') return probe.fileReadable(join(accountCodexHomePath(home, id), 'auth.json'));
     if (a.kind === 'claude-subscription' || a.key?.source === 'stored') return probe.fileReadable(accountSecretPath(home, id));
     if (a.key?.source === 'file') return probe.fileReadable(expandHome(a.key.path));
     if (a.key?.source === 'env') return !!probe.env[a.key.name]?.trim();
@@ -287,7 +334,7 @@ export function accountStatus(home: string, id: string, a: AccountRecord, probe:
 
 export function summarizeAccount(home: string, id: string, a: AccountRecord, probe: SecretProbe, now: number): AgentProfileSummary {
     const { status, detail } = accountStatus(home, id, a, probe, now);
-    const keySource = a.kind === 'claude-subscription' ? 'stored' : a.key?.source;
+    const keySource = a.kind === 'claude-subscription' || a.kind === 'codex-chatgpt' ? 'stored' : a.key?.source;
     const keyRef = a.key?.source === 'file' ? a.key.path : a.key?.source === 'env' ? a.key.name : undefined;
     return {
         id,
@@ -304,6 +351,9 @@ export function summarizeAccount(home: string, id: string, a: AccountRecord, pro
         ...(keySource ? { keySource } : {}),
         ...(keyRef ? { keyRef } : {}),
         ...(a.legacy ? { legacy: true } : {}),
+        ...(a.provider ? { provider: a.provider } : {}),
+        ...(a.email ? { email: a.email } : {}),
+        ...(a.planType ? { planType: a.planType } : {}),
     };
 }
 

@@ -809,9 +809,11 @@ export async function startDaemon(): Promise<void> {
         let spawnAccountId: string | null = null;
         // Only the validated choice below may set it — never `--env` / environmentVariables.
         delete extraEnv[SPAWN_ACCOUNT_ENV];
-        if ((options.agent ?? 'claude') === 'claude' && accountServiceRef) {
+        // B-850b: Codex sessions too (ChatGPT overlay / API provider).
+        const accountAgent = (options.agent ?? 'claude') === 'claude' ? 'claude' : options.agent === 'codex' ? 'codex' : null;
+        if (accountAgent && accountServiceRef) {
           try {
-            spawnAccountId = accountServiceRef.resolveSpawnAccount('claude', options.agentProfileId);
+            spawnAccountId = accountServiceRef.resolveSpawnAccount(accountAgent, options.agentProfileId);
           } catch (error) {
             return { type: 'error', errorMessage: error instanceof Error ? error.message : String(error) };
           }
@@ -2101,6 +2103,15 @@ export async function startDaemon(): Promise<void> {
         return { ok: false, notRunning: error.startsWith('restart-precheck:not-tracked'), stillRunning, error };
       },
       onChanged: () => { void apiMachine.publishAgentProfiles(); },
+      // B-850b: a Codex account never binds to a Claude session and vice versa.
+      sessionAgent: (sessionId) => {
+        for (const tracked of pidToTrackedSession.values()) {
+          if (tracked.happySessionId !== sessionId) continue;
+          const flavor = tracked.happySessionMetadataFromLocalWebhook?.flavor ?? 'claude';
+          return flavor === 'codex' ? 'codex' : flavor === 'claude' ? 'claude' : flavor;
+        }
+        return undefined;
+      },
     });
     accountServiceRef = accountService;
     apiMachine.setAgentProfileService(accountService);

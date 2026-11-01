@@ -639,6 +639,46 @@ very-happy spawn --dir . --account <id|machine> --prompt "…"
   upstream rejects some tool JSON Schemas (`invalid JSON Schema` 400). Prefer
   kimi-k3 until the hub normalises schemas.
 
+### Per-session Codex accounts (B-850b; replaces the daemon-wide provider key of B-847)
+
+Codex sessions take accounts the same way: a **ChatGPT account** (several can
+coexist, each signed in with a device code) or an **API provider** (a
+`[model_providers.<id>]` of `~/.codex/config.toml`, or an own URL) whose key
+reaches only the sessions bound to it.
+
+```sh
+very-happy account login --agent codex [--label "ChatGPT B"]   # prints a link + code; sign in on OpenAI's page
+very-happy account add --agent codex --label "LLM Hub" --provider llmhub \
+  --key-file ~/.config/llm-hub/key --model gpt-5.6-sol --model kimi-k3
+very-happy account add --agent codex --label "Own" --base-url https://x.example/v1 [--wire-api chat] --key-env OWN_KEY
+very-happy account default <id|machine> --agent codex   # account new Codex sessions on this machine start on
+very-happy account bind <sessionId> <id|machine> [--model <id>]
+```
+
+- ChatGPT: each account gets its own Codex home
+  (`$HAPPY_HOME_DIR/accounts/<id>/codex-home`) holding only its `auth.json`;
+  `config.toml`, `sessions/`, skills, `AGENTS.md` and the rest are links into
+  `~/.codex` (or `$CODEX_HOME`), so history and resume are shared. The machine's
+  own `~/.codex/auth.json` is never copied or touched. Each home keeps its own
+  sqlite index / logs; Codex rebuilds the index from the shared sessions.
+- API provider: the session runs on a per-thread provider `vh-<id>` with the
+  base provider's URL / wire API / headers and Codex's `auth.command` reading
+  the key file. The key is never in any environment: measured on Codex 0.154,
+  a provider `env_key` in the app-server environment is visible to the
+  `exec_command` shell (`env` prints it), the `auth` command is not. A bound
+  session also drops every `env_key` of `config.toml` (and `CODEX_API_KEY` /
+  `OPENAI_API_KEY`) from its environment, so a daemon-wide key stops reaching it.
+  An API account's model list is what the picker shows.
+- Unbound sessions keep today's behaviour (machine login / `config.toml` with
+  its `env_key` from the daemon environment).
+- Switching restarts in place and continues the same thread on the new
+  account's model (sticky model and model intent are cleared). Measured: API ↔
+  API across OpenAI organizations (with encrypted reasoning in the history),
+  account ↔ machine login. If an account rejects a history it cannot read, the
+  session says so — start a new session on that account.
+- Same limits as Claude: the agent runs as the same OS user, so it could read
+  the key files, or the environment the daemon itself was started with.
+
 ### Machine web panels and "needs you" (B-510)
 
 A machine can declare local web pages a person may need to look at — a noVNC

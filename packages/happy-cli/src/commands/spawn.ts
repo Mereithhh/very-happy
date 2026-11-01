@@ -230,7 +230,7 @@ ${chalk.bold('Options:')}
                             machine runs (claude: newest Opus; codex: newest
                             sol its Codex lists; gemini: newest pro), else the
                             machine default. 'default' = the machine default.
-  --account <id>         Claude account on this machine (\`very-happy account
+  --account <id>         Claude / Codex account on this machine (\`very-happy account
                             list\`); 'machine' = the machine's own login.
                             Default = the machine's default account, if set. A
                             missing or expired account fails the spawn.

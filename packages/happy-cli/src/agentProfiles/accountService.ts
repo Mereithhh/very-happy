@@ -18,8 +18,12 @@ import {
 } from '@slopus/happy-wire';
 import { checkApiAccount, checkSubscriptionAccount } from './checkAccount';
 import { SetupTokenLoginManager, type SpawnPty } from './setupTokenLogin';
+import { baseCodexHome, readCodexProviders } from './codexConfig';
+import { syncCodexOverlay } from './codexHome';
+import { CodexDeviceLoginManager, checkCodexChatgptAccount, checkCodexProviderAccount, spawnCodexRpc, type SpawnCodexRpc } from './codexLogin';
 import {
     SUBSCRIPTION_TOKEN_TTL_MS,
+    accountCodexHomePath,
     accountSecretPath,
     buildAgentProfilesState,
     defaultSecretProbe,
@@ -38,6 +42,8 @@ import {
     type AccountCheck,
     type AccountRecord,
 } from './store';
+
+const ACCOUNT_AGENTS = ['claude', 'codex'] as const;
 
 export class AccountError extends Error {
     constructor(readonly code: string, message: string, readonly sessions?: string[]) {
@@ -78,9 +84,13 @@ export type AccountServiceDeps = {
     now?: () => number;
     daemonPid?: number;
     spawnPty?: SpawnPty;
+    /** B-850b: `codex app-server` for ChatGPT sign-in / checks (test seam). */
+    spawnCodexRpc?: SpawnCodexRpc;
     restartSession?: (sessionId: string) => Promise<RestartOutcome>;
     /** Called after every write so the daemon can republish its state. */
     onChanged?: () => void;
+    /** B-850b: the agent a session runs (from its tracked flavor); unknown → no check. */
+    sessionAgent?: (sessionId: string) => string | null | undefined;
     /** Test seam for the 1-token checks. */
     check?: (record: AccountRecord, secret: string) => Promise<AccountCheck>;
 };
@@ -93,6 +103,7 @@ export class AccountService {
     private readonly env: Record<string, string | undefined>;
     private readonly now: () => number;
     private logins: SetupTokenLoginManager | null = null;
+    private codexLogins: CodexDeviceLoginManager | null = null;
     /** loginId → account to (re)write when its token arrives. */
     private readonly loginTargets = new Map<string, { accountId?: string; label?: string }>();
 
@@ -103,7 +114,10 @@ export class AccountService {
     }
 
     state(): AgentProfilesState {
-        return buildAgentProfilesState(this.home, readAccounts(this.home), defaultSecretProbe(this.env), this.now(), this.deps.daemonPid ?? process.pid);
+        const state = buildAgentProfilesState(this.home, readAccounts(this.home), defaultSecretProbe(this.env), this.now(), this.deps.daemonPid ?? process.pid);
+        // B-850b: what a codex-provider account can be based on (no secrets: env_key is a variable name).
+        const codexProviders = readCodexProviders(this.env).map((p) => ({ id: p.id, ...(p.name ? { name: p.name } : {}), ...(p.baseUrl ? { baseUrl: p.baseUrl } : {}), ...(p.envKey ? { envKey: p.envKey } : {}) }));
+        return codexProviders.length > 0 ? { ...state, codexProviders } : state;
     }
 
     private summary(id: string): AgentProfileSummary {
@@ -132,8 +146,11 @@ export class AccountService {
         const parsed = AgentProfileAddRequestSchema.safeParse(params);
         if (!parsed.success) throw new AccountError('invalid-params', parsed.error.issues[0]?.message ?? 'invalid params');
         const req = parsed.data;
+        if (req.agent === 'codex' && req.provider && !readCodexProviders(this.env).some((p) => p.id === req.provider)) {
+            throw new AccountError('not-found', `no [model_providers.${req.provider}] in the machine's Codex config.toml`);
+        }
         const file = readAccountsFileV2(this.home);
-        const id = newAccountId(req.label, 'claude-api', Object.keys(readAccounts(this.home).accounts));
+        const id = newAccountId(req.label, req.kind, Object.keys(readAccounts(this.home).accounts));
         const models: string[] = [];
         const contextWindows: Record<string, number> = {};
         for (const m of req.models ?? []) {
@@ -145,10 +162,12 @@ export class AccountService {
         }
         const record: AccountRecord = {
             label: req.label,
-            agent: 'claude',
-            kind: 'claude-api',
+            agent: req.agent,
+            kind: req.kind,
             createdAt: this.now(),
-            baseUrl: req.baseUrl.replace(/\/+$/, ''),
+            ...(req.baseUrl ? { baseUrl: req.baseUrl.replace(/\/+$/, '') } : {}),
+            ...(req.agent === 'codex' && req.provider ? { provider: req.provider } : {}),
+            ...(req.agent === 'codex' && req.wireApi ? { wireApi: req.wireApi } : {}),
             key: req.key.source === 'paste' ? { source: 'stored' } : req.key.source === 'file' ? { source: 'file', path: req.key.path } : { source: 'env', name: req.key.name },
             ...(models.length > 0 ? { models } : {}),
             ...(Object.keys(contextWindows).length > 0 ? { contextWindows } : {}),
@@ -208,7 +227,7 @@ export class AccountService {
     }
 
     setDefault(agent: unknown, accountId: unknown): AgentProfilesState {
-        if (agent !== 'claude') throw new AccountError('invalid-params', 'agent must be "claude"');
+        if (!ACCOUNT_AGENTS.includes(agent as never)) throw new AccountError('invalid-params', 'agent must be "claude" or "codex"');
         if (accountId !== null && typeof accountId !== 'string') throw new AccountError('invalid-params', 'accountId must be a string or null');
         if (typeof accountId === 'string') {
             const record = readAccounts(this.home).accounts[accountId];
@@ -216,8 +235,8 @@ export class AccountService {
             if (record.agent !== agent) throw new AccountError('invalid-params', `"${accountId}" is not a ${agent} account`);
         }
         const file = readAccountsFileV2(this.home);
-        if (accountId === null) delete file.defaults[agent];
-        else file.defaults[agent] = accountId;
+        if (accountId === null) delete file.defaults[agent as string];
+        else file.defaults[agent as string] = accountId;
         writeAccountsFile(this.home, file);
         this.changed();
         return this.state();
@@ -240,13 +259,25 @@ export class AccountService {
         if (typeof accountId !== 'string') throw new AccountError('invalid-params', 'accountId is required');
         const record = readAccounts(this.home).accounts[accountId];
         if (!record) throw new AccountError('not-found', `no account "${accountId}"`);
-        const secret = this.readSecretFor(accountId, record);
-        if (!secret) return this.summary(accountId);
-        const check = this.deps.check
-            ? await this.deps.check(record, secret)
-            : record.kind === 'claude-subscription'
-                ? await checkSubscriptionAccount(secret, join(this.home, 'tmp', 'account-check'), this.now)
-                : await checkApiAccount(record, secret, this.now);
+        let check: AccountCheck;
+        if (record.kind === 'codex-chatgpt') {
+            if (this.summary(accountId).status === 'missing-secret') return this.summary(accountId);
+            const codexHome = accountCodexHomePath(this.home, accountId);
+            syncCodexOverlay(codexHome, baseCodexHome(this.env), this.now());
+            check = this.deps.check
+                ? await this.deps.check(record, '')
+                : await checkCodexChatgptAccount(codexHome, this.env, this.deps.spawnCodexRpc ?? spawnCodexRpc, this.now);
+        } else {
+            const secret = this.readSecretFor(accountId, record);
+            if (!secret) return this.summary(accountId);
+            check = this.deps.check
+                ? await this.deps.check(record, secret)
+                : record.kind === 'claude-subscription'
+                    ? await checkSubscriptionAccount(secret, join(this.home, 'tmp', 'account-check'), this.now)
+                    : record.kind === 'codex-provider'
+                        ? await this.checkCodexProvider(record, secret)
+                        : await checkApiAccount(record, secret, this.now);
+        }
         // Legacy (providers.json) accounts are read-only: report, do not persist.
         if (!record.legacy) {
             const file = readAccountsFileV2(this.home);
@@ -258,6 +289,16 @@ export class AccountService {
             return this.summary(accountId);
         }
         return { ...this.summary(accountId), status: check.status, checkedAt: check.at, ...(check.detail ? { statusDetail: check.detail } : {}) };
+    }
+
+    private async checkCodexProvider(record: AccountRecord, secret: string): Promise<AccountCheck> {
+        const base = record.provider ? readCodexProviders(this.env).find((p) => p.id === record.provider) : undefined;
+        const baseUrl = record.baseUrl ?? base?.baseUrl;
+        if (!baseUrl) return { status: 'unverified', at: this.now(), detail: `provider "${record.provider}" is not in the machine's Codex config.toml` };
+        const headers: Record<string, string> = {};
+        const raw = base?.table.http_headers;
+        if (raw && typeof raw === 'object') for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === 'string') headers[k] = v;
+        return checkCodexProviderAccount(baseUrl, secret, headers, this.now);
     }
 
     // ---- remote login (claude setup-token) -------------------------------------
@@ -304,6 +345,7 @@ export class AccountService {
     async loginStart(params: unknown): Promise<AgentProfileLoginStatus> {
         const parsed = AgentProfileLoginStartRequestSchema.safeParse(params);
         if (!parsed.success) throw new AccountError('invalid-params', parsed.error.issues[0]?.message ?? 'invalid params');
+        if (parsed.data.agent === 'codex') return this.codexLoginStart(parsed.data.accountId, parsed.data.label);
         const { accountId, label } = parsed.data;
         if (accountId) {
             const record = readAccounts(this.home).accounts[accountId];
@@ -319,11 +361,92 @@ export class AccountService {
             throw new AccountError(code, error instanceof Error ? error.message : String(error));
         }
         this.loginTargets.set(status.loginId, { accountId, label });
+        return { ...status, flow: 'paste-code' };
+    }
+
+    // ---- remote login (Codex ChatGPT device code) — B-850b ----------------------
+
+    private codexLoginManager(): CodexDeviceLoginManager {
+        if (this.codexLogins) return this.codexLogins;
+        this.codexLogins = new CodexDeviceLoginManager({
+            spawnRpc: this.deps.spawnCodexRpc ?? spawnCodexRpc,
+            env: this.env,
+            newId: () => randomUUID(),
+            now: this.now,
+            onSuccess: async (loginId, info) => {
+                const target = this.codexLoginTargets.get(loginId);
+                this.codexLoginTargets.delete(loginId);
+                if (!target) throw new AccountError('internal', 'sign-in target lost');
+                return this.storeChatgptAccount(target, info);
+            },
+            onEnd: (loginId, state) => {
+                const target = this.codexLoginTargets.get(loginId);
+                if (state === 'succeeded' || !target) return;
+                this.codexLoginTargets.delete(loginId);
+                // A NEW account's half-made overlay goes; a re-login keeps the account's.
+                if (target.isNew) removeAccountSecret(this.home, target.accountId);
+            },
+        });
+        return this.codexLogins;
+    }
+
+    /** loginId → the account a Codex sign-in writes. */
+    private readonly codexLoginTargets = new Map<string, { accountId: string; label?: string; isNew: boolean }>();
+
+    private async codexLoginStart(accountId: string | undefined, label: string | undefined): Promise<AgentProfileLoginStatus> {
+        const accounts = readAccounts(this.home).accounts;
+        let target: { accountId: string; label?: string; isNew: boolean };
+        if (accountId) {
+            const record = accounts[accountId];
+            if (!record || record.kind !== 'codex-chatgpt') throw new AccountError('not-found', `no ChatGPT account "${accountId}"`);
+            target = { accountId, isNew: false };
+        } else {
+            // Reserve the id now: the overlay must exist before Codex writes auth.json into it.
+            const taken = [...Object.keys(accounts), ...[...this.codexLoginTargets.values()].map((t) => t.accountId)];
+            target = { accountId: newAccountId(label ?? '', 'codex-chatgpt', taken), ...(label ? { label } : {}), isNew: true };
+        }
+        const manager = this.codexLoginManager();
+        const busy = manager.activeLoginId();
+        if (busy) throw new AccountError('login-busy', 'another Codex sign-in is in progress');
+        const codexHome = accountCodexHomePath(this.home, target.accountId);
+        syncCodexOverlay(codexHome, baseCodexHome(this.env), this.now());
+        const status = await manager.start(codexHome);
+        if (status.state === 'failed' || status.state === 'canceled' || status.state === 'expired') {
+            if (target.isNew) removeAccountSecret(this.home, target.accountId);
+            return status;
+        }
+        this.codexLoginTargets.set(status.loginId, target);
         return status;
     }
 
-    private loginOp(fn: (m: SetupTokenLoginManager) => AgentProfileLoginStatus): AgentProfileLoginStatus {
+    /** A finished ChatGPT sign-in → the account record (new) or its refreshed status (re-login). */
+    storeChatgptAccount(target: { accountId: string; label?: string; isNew: boolean }, info: { email?: string; planType?: string }): AgentProfileSummary {
+        const file = readAccountsFileV2(this.home);
+        const now = this.now();
+        const existing = file.accounts[target.accountId];
+        if (existing && existing.kind === 'codex-chatgpt') {
+            existing.check = { status: 'ok', at: now };
+            if (info.email) existing.email = info.email;
+            if (info.planType) existing.planType = info.planType;
+        } else {
+            file.accounts[target.accountId] = {
+                label: target.label?.trim() || info.email || 'ChatGPT',
+                agent: 'codex',
+                kind: 'codex-chatgpt',
+                createdAt: now,
+                check: { status: 'ok', at: now },
+                ...(info.email ? { email: info.email } : {}),
+                ...(info.planType ? { planType: info.planType } : {}),
+            };
+        }
+        writeAccountsFile(this.home, file);
+        this.changed();
+        return this.summary(target.accountId);
+    }
+
+    private loginOp(fn: (m: SetupTokenLoginManager) => AgentProfileLoginStatus, loginId?: unknown, codex?: (m: CodexDeviceLoginManager) => AgentProfileLoginStatus): AgentProfileLoginStatus {
         try {
+            if (codex && typeof loginId === 'string' && this.codexLogins?.has(loginId)) return codex(this.codexLogins);
             return fn(this.loginManager());
         } catch (error) {
             const code = (error as { code?: string }).code ?? 'internal';
@@ -334,23 +457,25 @@ export class AccountService {
     loginSubmit(params: unknown): AgentProfileLoginStatus {
         const parsed = AgentProfileLoginSubmitRequestSchema.safeParse(params);
         if (!parsed.success) throw new AccountError('invalid-params', 'loginId and code are required');
+        if (this.codexLogins?.has(parsed.data.loginId)) throw new AccountError('invalid-params', 'a Codex device-code sign-in has nothing to submit: enter the code on the sign-in page');
         return this.loginOp((m) => m.submit(parsed.data.loginId, parsed.data.code));
     }
 
     loginStatus(loginId: unknown): AgentProfileLoginStatus {
         if (typeof loginId !== 'string') throw new AccountError('invalid-params', 'loginId is required');
-        return this.loginOp((m) => m.status(loginId));
+        return this.loginOp((m) => m.status(loginId), loginId, (m) => m.status(loginId));
     }
 
     loginCancel(loginId: unknown): AgentProfileLoginStatus {
         if (typeof loginId !== 'string') throw new AccountError('invalid-params', 'loginId is required');
-        const status = this.loginOp((m) => m.cancel(loginId));
+        const status = this.loginOp((m) => m.cancel(loginId), loginId, (m) => m.cancel(loginId));
         this.loginTargets.delete(loginId);
         return status;
     }
 
     dispose(): void {
         this.logins?.dispose();
+        this.codexLogins?.dispose();
     }
 
     // ---- sessions --------------------------------------------------------------
@@ -360,8 +485,10 @@ export class AccountService {
         if (accountId !== null) {
             const record = readAccounts(this.home).accounts[accountId];
             if (!record) throw new AccountError('not-found', `no account "${accountId}"`);
+            const agent = this.deps.sessionAgent?.(sessionId);
+            if (agent && agent !== record.agent) throw new AccountError('invalid-params', `"${accountId}" is a ${record.agent} account; this session runs ${agent}`);
             if (model !== undefined) {
-                if (record.kind !== 'claude-api') throw new AccountError('invalid-params', 'model applies to API accounts only');
+                if (record.kind === 'claude-subscription') throw new AccountError('invalid-params', 'model applies to API and Codex accounts only');
                 if (record.models && record.models.length > 0 && !record.models.includes(model)) {
                     throw new AccountError('invalid-params', `model "${model}" is not in ${accountId}'s models (${record.models.join(', ')})`);
                 }
