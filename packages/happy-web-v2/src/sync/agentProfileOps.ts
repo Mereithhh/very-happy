@@ -54,6 +54,9 @@ const readAccount = (obj: Raw): AgentProfileSummary | null => {
     return parsed.success ? parsed.data : null;
 };
 
+/** An `{ account }` reply is an answer even with `error` beside it: a failed test is an account with a bad status, not an RPC failure. */
+const isAccountReply = (obj: Raw): boolean => AgentProfileSummarySchema.safeParse(obj.account).success;
+
 export type AgentProfileKeyInput =
     | { source: 'file'; path: string }
     | { source: 'env'; name: string }
@@ -63,22 +66,30 @@ export const agentProfileList = (machineId: string) =>
     call<AgentProfilesState>(machineId, AGENT_PROFILE_RPC.list, {}, parseAgentProfilesState);
 
 export const agentProfileAdd = (machineId: string, input: { label: string; baseUrl: string; models: string[]; key: AgentProfileKeyInput }) =>
-    call<AgentProfileSummary>(machineId, AGENT_PROFILE_RPC.add, { agent: 'claude', kind: 'claude-api', ...input }, readAccount);
+    call<AgentProfileSummary>(machineId, AGENT_PROFILE_RPC.add, { agent: 'claude', kind: 'claude-api', ...input }, readAccount, isAccountReply);
+
+/**
+ * A LoginStatus is an answer even when it carries `error`: a failed sign-in is
+ * `{ loginId, state: 'failed', error: 'OAuth error: Invalid code…' }`, which must
+ * reach the dialog as that state and reason — not as an RPC failure the poller
+ * ignores (it then spun on 「验证中…」 until the 10-minute expiry).
+ */
+export const isLoginStatusReply = (obj: Raw): boolean => typeof obj.loginId === 'string' && typeof obj.state === 'string';
 
 export const agentProfileLoginStart = (machineId: string, input: { label?: string; accountId?: string }) =>
-    call<LoginStatus>(machineId, AGENT_PROFILE_RPC.loginStart, { agent: 'claude', kind: 'claude-subscription', ...input }, parseLoginStatus);
+    call<LoginStatus>(machineId, AGENT_PROFILE_RPC.loginStart, { agent: 'claude', kind: 'claude-subscription', ...input }, parseLoginStatus, isLoginStatusReply);
 
 export const agentProfileLoginSubmit = (machineId: string, loginId: string, code: string) =>
-    call<LoginStatus>(machineId, AGENT_PROFILE_RPC.loginSubmit, { loginId, code }, parseLoginStatus);
+    call<LoginStatus>(machineId, AGENT_PROFILE_RPC.loginSubmit, { loginId, code }, parseLoginStatus, isLoginStatusReply);
 
 export const agentProfileLoginStatus = (machineId: string, loginId: string) =>
-    call<LoginStatus>(machineId, AGENT_PROFILE_RPC.loginStatus, { loginId }, parseLoginStatus);
+    call<LoginStatus>(machineId, AGENT_PROFILE_RPC.loginStatus, { loginId }, parseLoginStatus, isLoginStatusReply);
 
 export const agentProfileLoginCancel = (machineId: string, loginId: string) =>
-    call<LoginStatus>(machineId, AGENT_PROFILE_RPC.loginCancel, { loginId }, parseLoginStatus);
+    call<LoginStatus>(machineId, AGENT_PROFILE_RPC.loginCancel, { loginId }, parseLoginStatus, isLoginStatusReply);
 
 export const agentProfileTest = (machineId: string, accountId: string) =>
-    call<AgentProfileSummary>(machineId, AGENT_PROFILE_RPC.test, { accountId }, readAccount);
+    call<AgentProfileSummary>(machineId, AGENT_PROFILE_RPC.test, { accountId }, readAccount, isAccountReply);
 
 export const agentProfileRename = (machineId: string, accountId: string, label: string) =>
     call<AgentProfileSummary>(machineId, AGENT_PROFILE_RPC.rename, { accountId, label }, readAccount);
