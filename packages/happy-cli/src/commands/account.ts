@@ -181,6 +181,7 @@ async function loginCodexInteractive(target: { accountId?: string; label?: strin
             process.off('SIGINT', cancel);
         }
     } finally {
+        await svc.settleLogins();
         svc.dispose();
     }
 }

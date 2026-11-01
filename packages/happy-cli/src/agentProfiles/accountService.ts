@@ -481,6 +481,11 @@ export class AccountService {
         this.codexLogins?.dispose();
     }
 
+    /** B-850d2: waits until finished Codex sign-ins are cleaned up (their app-server gone, a canceled new account's overlay removed). */
+    settleLogins(): Promise<void> {
+        return this.codexLogins?.settle() ?? Promise.resolve();
+    }
+
     // ---- sessions --------------------------------------------------------------
 
     /** Validates and writes a session binding (no restart). */

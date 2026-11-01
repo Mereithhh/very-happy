@@ -626,6 +626,36 @@ describe('B-850d member accounts', () => {
         expect('agentProfile' in f.state.bots[0]).toBe(false);
     });
 
+    it('B-850d2 adoptLeadAccount: a following Lead takes the team default on the bot and its unclaimed spawn; never over its own', async () => {
+        const { adoptLeadAccount } = await import('./reducer');
+        const started = (launch: Partial<Extract<TeamAction, { type: 'start' }>['launch']> = {}) => {
+            const f = fixture();
+            f.act({ type: 'start', launch: { goal: 'g', directory: '/repo', assistant: 'claude', ...launch } });
+            return f.state;
+        };
+        const following = started();
+        const adopted = adoptLeadAccount({ ...following, defaults: { ...following.defaults, agentProfile: orgA } })!;
+        expect(adopted.bots[0].agentProfile).toEqual(orgA);
+        expect(adopted.operations[0].agentProfile).toEqual(orgA);
+        expect(adopted.version).toBe(following.version + 1);
+        // The project's「本机登录」(null) is a choice too.
+        expect(adoptLeadAccount({ ...following, defaults: { ...following.defaults, agentProfile: null } })!.operations[0].agentProfile).toBeNull();
+        // No project account → machine default (nothing to adopt).
+        expect(adoptLeadAccount(following)).toBeNull();
+        // The Lead's own choice wins, including an explicit machine login.
+        for (const own of [orgB, null]) {
+            const s = started({ agentProfile: own });
+            expect(adoptLeadAccount({ ...s, defaults: { ...s.defaults, agentProfile: orgA } })).toBeNull();
+        }
+        // A default for another agent does not apply.
+        expect(adoptLeadAccount({ ...following, defaults: { assistant: 'codex', agentProfile: orgA } })).toBeNull();
+        // A spawn already claimed is left alone (the bot still records the account for its next spawn).
+        const claimed = { ...following, defaults: { ...following.defaults, agentProfile: orgA }, operations: following.operations.map(o => ({ ...o, status: 'claimed' as const, claimId: 'c' })) };
+        const late = adoptLeadAccount(claimed)!;
+        expect(late.bots[0].agentProfile).toEqual(orgA);
+        expect('agentProfile' in late.operations[0]).toBe(false);
+    });
+
     it('a stopped member is reused only for the same account', async () => {
         const { sameTeamAccount, delegateAccount } = await import('./reducer');
         expect(sameTeamAccount(undefined, undefined)).toBe(true);

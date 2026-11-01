@@ -126,6 +126,28 @@ export function delegateAccount(explicit: TeamBot['agentProfile'], assistant: Te
     return (defaults.assistant ?? 'claude') === assistant ? defaults.agentProfile : undefined;
 }
 
+/**
+ * B-850d2: a team created into a project starts its Lead before the project's
+ * defaults are snapshotted. A Lead that follows the defaults (no account of its
+ * own) takes the team default for its agent, on the bot and on its spawn still
+ * waiting to be claimed — so the Lead resolves like a member (explicit >
+ * project > machine default) instead of silently running on the machine login.
+ * Returns null when nothing changes.
+ */
+export function adoptLeadAccount(input: TeamState): TeamState | null {
+    const lead = input.bots.find(b => b.root);
+    if (!lead || lead.agentProfile !== undefined || lead.sessionId) return null;
+    const account = delegateAccount(undefined, lead.assistant, input.defaults);
+    if (account === undefined) return null;
+    const s: TeamState = structuredClone(input);
+    s.bots.find(b => b.id === lead.id)!.agentProfile = account;
+    for (const op of s.operations) {
+        if (op.botId === lead.id && op.type === 'spawn' && op.status === 'pending' && op.claimId === null && op.agentProfile === undefined) op.agentProfile = account;
+    }
+    s.version++;
+    return s;
+}
+
 export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string; quiet?: boolean }): { team: TeamState; credentialBotId?: string; operationId?: string; taskId?: string; scheduleId?: string } {
     requireTeam(input.archivedAt === undefined || ['archive', 'claim-operation', 'complete-operation', 'fail-operation', 'reconcile-operation', 'session-event'].includes(action.type), 'team_archived');
     const s = structuredClone(input);

@@ -3,7 +3,8 @@ import { CodexDeviceLoginManager, classifyChatgptRead, codexLoginEnv, type Codex
 
 function fakeRpc(handlers: Record<string, (params: any) => any>) {
     let notify: (method: string, params: any) => void = () => {};
-    let exit: (code: number | null) => void = () => {};
+    const exits: Array<(code: number | null) => void> = [];
+    const exit = (code: number | null) => { for (const cb of exits.splice(0)) cb(code); };
     const calls: Array<{ method: string; params: any }> = [];
     const rpc: CodexRpc = {
         request: async (method, params) => {
@@ -13,8 +14,9 @@ function fakeRpc(handlers: Record<string, (params: any) => any>) {
             return h(params);
         },
         onNotification: (cb) => { notify = cb; },
-        onExit: (cb) => { exit = cb; },
-        close: vi.fn(),
+        onExit: (cb) => { exits.push(cb); },
+        // Killing the app-server is what makes it exit.
+        close: vi.fn(() => exit(null)),
     };
     return { rpc, calls, notify: (m: string, p: any) => notify(m, p), exit: (c: number | null) => exit(c) };
 }
@@ -43,22 +45,50 @@ describe('B-850b Codex device-code sign-in', () => {
     });
 
     it('failure / cancel / app-server exit end the login with a reason; cancel tells Codex', async () => {
-        const f = fakeRpc({ 'account/login/start': () => DEVICE, 'account/login/cancel': () => ({ status: 'canceled' }) });
+        const fakes: Array<ReturnType<typeof fakeRpc>> = [];
+        const spawnRpc = () => { const f = fakeRpc({ 'account/login/start': () => DEVICE, 'account/login/cancel': () => ({ status: 'canceled' }) }); fakes.push(f); return f.rpc; };
         const onEnd = vi.fn();
         let n = 0;
-        const m = new CodexDeviceLoginManager({ spawnRpc: () => f.rpc, env: {}, newId: () => `L${++n}`, onSuccess: vi.fn(), onEnd });
+        const m = new CodexDeviceLoginManager({ spawnRpc, env: {}, newId: () => `L${++n}`, onSuccess: vi.fn(), onEnd });
         await m.start('/h');
-        f.notify('account/login/completed', { loginId: 'cx-1', success: false, error: 'denied' });
+        fakes[0].notify('account/login/completed', { loginId: 'cx-1', success: false, error: 'denied' });
         expect(m.status('L1')).toMatchObject({ state: 'failed', error: 'denied' });
         await m.start('/h');
         expect(m.cancel('L2').state).toBe('canceled');
-        expect(f.calls.some((c) => c.method === 'account/login/cancel' && c.params.loginId === 'cx-1')).toBe(true);
+        expect(fakes[1].calls.some((c) => c.method === 'account/login/cancel' && c.params.loginId === 'cx-1')).toBe(true);
         await m.start('/h');
-        f.exit(1);
+        fakes[2].exit(1);
         expect(m.status('L3')).toMatchObject({ state: 'failed', error: 'codex app-server exited' });
-        expect(onEnd.mock.calls.map((c) => c[1])).toEqual(['failed', 'canceled', 'failed']);
+        await m.settle();
+        expect(onEnd.mock.calls.map((c) => c[1]).sort()).toEqual(['canceled', 'failed', 'failed']);
         expect(() => m.status('nope')).toThrow(expect.objectContaining({ code: 'login-not-found' }));
         m.dispose();
+    });
+
+    it('B-850d2: a canceled login stays canceled when Codex then reports completed:false; onEnd waits for the app-server to exit', async () => {
+        vi.useFakeTimers();
+        try {
+            const f = fakeRpc({ 'account/login/start': () => DEVICE, 'account/login/cancel': () => ({ status: 'canceled' }) });
+            const onEnd = vi.fn();
+            const m = new CodexDeviceLoginManager({ spawnRpc: () => f.rpc, env: {}, newId: () => 'L', onSuccess: vi.fn(), onEnd });
+            await m.start('/h');
+            expect(m.cancel('L').state).toBe('canceled');
+            // What Codex 0.154 actually sends after account/login/cancel.
+            f.notify('account/login/completed', { loginId: 'cx-1', success: false, error: 'Login was not completed' });
+            expect(m.status('L')).toEqual(expect.objectContaining({ state: 'canceled' }));
+            expect(m.status('L').error).toBeUndefined();
+            // Still running (cancel gets 500 ms to reach Codex): removing the overlay now would race its writes.
+            expect(onEnd).not.toHaveBeenCalled();
+            let settled = false;
+            void m.settle().then(() => { settled = true; });
+            await vi.advanceTimersByTimeAsync(500);
+            expect(f.rpc.close).toHaveBeenCalled();
+            expect(onEnd.mock.calls).toEqual([['L', 'canceled']]);
+            expect(settled).toBe(true);
+            m.dispose();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('start that gets no device code fails instead of hanging', async () => {

@@ -19,6 +19,8 @@ import type { AccountCheck } from './store';
 export const DEVICE_LOGIN_TIMEOUT_MS = 15 * 60_000;
 export const DEVICE_LOGIN_START_TIMEOUT_MS = 20_000;
 const LOGIN_RETAIN_MS = 10 * 60_000;
+/** A closed app-server that never reports its exit still gets its login cleaned up. */
+const END_AFTER_CLOSE_MS = 5_000;
 
 export type CodexRpc = {
     request: (method: string, params: unknown, timeoutMs?: number) => Promise<any>;
@@ -139,6 +141,8 @@ export class CodexDeviceLoginManager {
         });
         rpc.onNotification((method, params) => {
             if (method !== 'account/login/completed') return;
+            // B-850d2: Codex answers a cancel with `completed {success:false}`; a finished login keeps its state.
+            if (entry.status.state !== 'starting' && entry.status.state !== 'waiting-code') return;
             if (params?.loginId && entry.codexLoginId && params.loginId !== entry.codexLoginId) return;
             if (params?.success) void this.complete(entry);
             else this.finish(entry, 'failed', sanitizeDetail(String(params?.error ?? 'sign-in failed')));
@@ -197,6 +201,17 @@ export class CodexDeviceLoginManager {
             for (const t of entry.timers) clearTimeout(t);
         }
         this.logins.clear();
+        for (const end of [...this.pendingEnds]) end(true);
+    }
+
+    /** finish() → onEnd still waiting for its app-server to exit; dispose() runs them at once. */
+    private readonly pendingEnds = new Set<(closeNow?: boolean) => void>();
+    private settleWaiters: Array<() => void> = [];
+
+    /** Resolves once every finished login's onEnd has run (a CLI exiting right after Ctrl-C waits for the cleanup). */
+    settle(): Promise<void> {
+        if (this.pendingEnds.size === 0) return Promise.resolve();
+        return new Promise((resolve) => this.settleWaiters.push(resolve));
     }
 
     private get(loginId: string): DeviceLogin {
@@ -211,9 +226,26 @@ export class CodexDeviceLoginManager {
         entry.timers = [];
         const rpc = entry.rpc;
         entry.rpc = null;
-        // Give a cancel request a moment to reach Codex before the process goes.
-        if (rpc) setTimeout(() => rpc.close(), state === 'canceled' ? 500 : 0).unref?.();
-        this.deps.onEnd?.(entry.status.loginId, state);
+        const loginId = entry.status.loginId;
+        if (!rpc) this.deps.onEnd?.(loginId, state);
+        else {
+            // B-850d2: onEnd removes a new account's overlay, so it waits for the app-server to exit —
+            // a still-running Codex would recreate `codex-home/.tmp` after the removal.
+            let ended = false;
+            const end = (closeNow?: boolean) => {
+                if (ended) return;
+                ended = true;
+                this.pendingEnds.delete(end);
+                if (closeNow) rpc.close();
+                this.deps.onEnd?.(loginId, state);
+                if (this.pendingEnds.size === 0) for (const resolve of this.settleWaiters.splice(0)) resolve();
+            };
+            this.pendingEnds.add(end);
+            rpc.onExit(() => end());
+            // Give a cancel request a moment to reach Codex before the process goes.
+            setTimeout(() => rpc.close(), state === 'canceled' ? 500 : 0).unref?.();
+            setTimeout(() => end(), END_AFTER_CLOSE_MS).unref?.();
+        }
         const t = setTimeout(() => this.logins.delete(entry.status.loginId), LOGIN_RETAIN_MS);
         t.unref?.();
     }

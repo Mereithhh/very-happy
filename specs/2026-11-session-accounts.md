@@ -176,7 +176,7 @@ Web 版同样流程在 B-850c 上线后验收。
 - **切换检测**：上一个 wrapper 写在 server 的 `metadata.agentProfile`（id 或 model）与本次不同 → resume 时显式带新模型，`stickyModel/modelIntent` 置 null。从账号切回本机登录时显式带 config 的 `model_provider`（Codex resume 默认沿用线程记录的 provider）。
 - **运行中被拒**：401/refresh token 失效 → 账号记 `expired`（ChatGPT）/`invalid`（API），发 `agent-profile-auth-failed`；切换后若错误像「encrypted content 无法验证」→ 发 `agent-profile-history-rejected`，提示新开会话。
 - **daemon**：`spawn` 对 codex 也解析 `agentProfileId`；`bind` 校验账号 agent 与会话 flavor 一致；`state()` 始终带 `kinds`（= `AGENT_PROFILE_KINDS`，含 `codex-chatgpt`/`codex-provider`），有供应商时带 `codexProviders`。Web 以 `kinds` 判断 daemon 能否建 Codex 账号：缺省（B-850a daemon）当作只有 `claude-subscription`/`claude-api`；不能用 `codexProviders` 是否存在判断（config.toml 没配供应商时也缺省）。
-- **远程登录**（`codexLogin.ts`）：app-server（CODEX_HOME=覆盖层，剥 OpenAI key）`account/login/start {type:'chatgptDeviceCode'}` → `waiting-code` + `flow:'device-code'` + url + userCode，15 分钟过期；`account/login/completed` → `account/read` 取 email/planType → 建账号（label 默认 email）。新账号失败/取消时删半成品覆盖层；Codex 与 Claude 登录各自互斥。
+- **远程登录**（`codexLogin.ts`）：app-server（CODEX_HOME=覆盖层，剥 OpenAI key）`account/login/start {type:'chatgptDeviceCode'}` → `waiting-code` + `flow:'device-code'` + url + userCode，15 分钟过期；`account/login/completed` → `account/read` 取 email/planType → 建账号（label 默认 email）。新账号失败/取消时删半成品覆盖层——**等 app-server 退出后再删**（取消后 Codex 还活 500 ms，会在覆盖层里重建 `.tmp/plugins-clone-*`；CLI Ctrl-C 也等清理完成再退出）；已结束的登录忽略之后的 `account/login/completed`（Codex 对 cancel 回 `success:false, error:'Login was not completed'`，不得把 canceled 改写成 failed，B-850d2）。Codex 与 Claude 登录各自互斥。
 
 ## wire 增补（v3，已发 Lead 转 A2）
 
@@ -277,7 +277,7 @@ Ref 不带 agent：自动化 / 团队换了 agent 后旧 Ref 对不上，daemon 
 | Web 新建会话（B-850c，A2） | 会话里选的 | 项目 defaults（Web 自己算，再给 spawn RPC 的 `agentProfileId`） |
 | `very-happy spawn` | `--account <id\|machine>` | 仅显式 `--project`（GET 项目 defaults）；拿不到时提示并按机器默认 |
 | 自动化 | `action.agentProfile` | server claim 时附 `projectAgentProfiles`（该项目里本机的条目） |
-| 团队 | 成员 / delegate / 团队默认 | 团队挂到项目时，项目里**同机器、同 agent** 的账号复制进团队默认（只在团队没设时，同 agent/model 快照语义） |
+| 团队 | 成员 / delegate / 团队默认 | 团队挂到项目时，项目里**同机器、同 agent** 的账号复制进团队默认（只在团队没设时，同 agent/model 快照语义）。**新建即挂项目**（`createTeam` + `project`）时 Lead 先于快照建好：没选账号（「跟随项目默认」）的 Lead 在同一事务里接收这个团队默认，写进 Lead bot 和它尚未被认领的 spawn op（`adoptLeadAccount`，B-850d2），Lead 与成员同样按「显式 > 项目默认 > 机器默认 > 本机登录」解析；Lead 自己选的账号（含本机登录 `null`）不被覆盖 |
 | fork（CLI `spawn --fork`、Web fork、RPC `parentSessionId`） | spawn 带的 `agentProfileId` | —— 没带则继承父会话绑定；父会话没绑定 = 本机登录（不是机器默认，transcript 和组织保持一致） |
 
 ## 拒跑（Q3）

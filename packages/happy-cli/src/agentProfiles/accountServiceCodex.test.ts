@@ -13,7 +13,9 @@ function setup(rpcHandlers: Record<string, (p: any) => any> = {}) {
     mkdirSync(codexHome, { recursive: true });
     writeFileSync(join(codexHome, 'config.toml'), '[model_providers.llmhub]\nname = "LLM Hub"\nbase_url = "https://hub/v1"\nenv_key = "LLMHUB_API_KEY"\n');
     let notify: (m: string, p: any) => void = () => {};
-    const spawnCodexRpc = vi.fn((overlay: string): CodexRpc => ({
+    const spawnCodexRpc = vi.fn((overlay: string): CodexRpc => {
+        const exits: Array<() => void> = [];
+        return {
         request: async (method, params) => {
             if (method === 'account/login/start') writeFileSync(join(overlay, 'auth.json'), '{"tokens":"new"}');
             const h = rpcHandlers[method];
@@ -21,9 +23,11 @@ function setup(rpcHandlers: Record<string, (p: any) => any> = {}) {
             return h(params);
         },
         onNotification: (cb) => { notify = cb; },
-        onExit: () => {},
-        close: () => {},
-    }));
+        onExit: (cb) => { exits.push(() => cb(null)); },
+        // A canceled login's Codex still writes into its overlay until it exits (QA31: `codex-home/.tmp` left behind).
+        close: () => { mkdirSync(join(overlay, '.tmp'), { recursive: true }); for (const exit of exits.splice(0)) exit(); },
+        };
+    });
     const check = vi.fn(async () => ({ status: 'ok', at: 7 }));
     const sessionAgent = vi.fn((id: string) => (id === 'cx-session' ? 'codex' : id === 'cl-session' ? 'claude' : undefined));
     const svc = new AccountService({ home, env: { CODEX_HOME: codexHome, HUB_KEY: 'k' }, now: () => 5, daemonPid: 9, check, spawnCodexRpc, sessionAgent });
@@ -80,7 +84,22 @@ describe('B-850b account service — Codex', () => {
         expect(existsSync(overlay)).toBe(true);
         notify('account/login/completed', { loginId: 'cx', success: false, error: 'denied' });
         expect(svc.loginStatus(s.loginId)).toMatchObject({ state: 'failed', error: 'denied' });
+        await svc.settleLogins();
         expect(existsSync(overlay)).toBe(false);
+        expect(readAccountsFileV2(home).accounts).toEqual({});
+        svc.dispose();
+    });
+
+    it('B-850d2: a canceled NEW sign-in stays canceled and leaves no overlay once its Codex has exited', async () => {
+        const { home, svc, notify } = setup({ 'account/login/start': () => DEVICE, 'account/login/cancel': () => ({ status: 'canceled' }) });
+        const s = await svc.loginStart({ agent: 'codex', kind: 'codex-chatgpt', label: 'Team C' });
+        const accountDir = join(home, 'accounts', 'team-c');
+        expect(svc.loginCancel(s.loginId).state).toBe('canceled');
+        notify('account/login/completed', { loginId: 'cx', success: false, error: 'Login was not completed' });
+        expect(svc.loginStatus(s.loginId)).toMatchObject({ state: 'canceled' });
+        await svc.settleLogins();
+        expect(svc.loginStatus(s.loginId).state).toBe('canceled');
+        expect(existsSync(accountDir)).toBe(false);
         expect(readAccountsFileV2(home).accounts).toEqual({});
         svc.dispose();
     });
