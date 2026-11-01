@@ -2929,6 +2929,11 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov01a: {
+                title: '修复 iPad 页面上移',
+                summary: '修复 iPad 上整页上移、下方大片空白的问题。',
+                ipad: '在 iPad 上（包括接了妙控键盘或触控板时），页面不会再整体上移、底部留出一大片空白。',
+            },
             oct31e: {
                 title: '模型和思考强度跟着会话走',
                 summary: '会话里选的模型和思考强度跟着会话走，手机和电脑看到的、发出去的都一样。',
