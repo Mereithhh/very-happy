@@ -2741,6 +2741,7 @@ export const zhHans: TranslationStructure = {
         switchToMachineTitle: '切换回本机登录？',
         switchRestart: ({ machine }: { machine: string }) => `会话会在 ${machine} 上原地重启。`,
         switchHistory: '对话历史保留，接着聊。',
+        switchHistorySent: '切到另一个账号时，这个会话的历史（包括推理内容）会发给新账号的服务端。',
         switchInterrupt: '正在进行的这一轮会被中断。',
         switchCache: '切换组织后第一轮不命中缓存，会慢一些、贵一些。',
         switchModel: ({ model }: { model: string }) => `模型：${model}（取自这个账号的模型列表）。`,

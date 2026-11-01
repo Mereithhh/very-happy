@@ -191,7 +191,8 @@ export function switchConfirmLines(plan: ReturnType<typeof planAccountSwitch>, m
         t('accounts.switchRestart', { machine: machineName }),
         `✓ ${t('accounts.switchHistory')}`,
         ...(working ? [`⚠ ${t('accounts.switchInterrupt')}`] : []),
-        ...(plan.cacheMiss ? [`⚠ ${t('accounts.switchCache')}`] : []),
+        // Another account = another provider endpoint: the whole history (reasoning included) goes there.
+        ...(plan.cacheMiss ? [`⚠ ${t('accounts.switchHistorySent')}`, `⚠ ${t('accounts.switchCache')}`] : []),
         ...(plan.model ? [t('accounts.switchModel', { model: plan.model })] : []),
     ];
 }

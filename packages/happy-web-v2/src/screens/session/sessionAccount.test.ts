@@ -86,7 +86,7 @@ describe('sessionApiModels', () => {
 describe('switch confirm', () => {
     it('says restart in place, history kept, cache miss across organizations, interrupt only when working', () => {
         const lines = mod.switchConfirmLines({ accountId: 'a2', label: 'Org B', cacheMiss: true }, 'dev-sg', false, t);
-        expect(lines).toEqual(['accounts.switchRestart{"machine":"dev-sg"}', '✓ accounts.switchHistory', '⚠ accounts.switchCache']);
+        expect(lines).toEqual(['accounts.switchRestart{"machine":"dev-sg"}', '✓ accounts.switchHistory', '⚠ accounts.switchHistorySent', '⚠ accounts.switchCache']);
         const working = mod.switchConfirmLines({ accountId: 'h1', label: 'llm-hub', cacheMiss: false, model: 'kimi-k3' }, 'dev-sg', true, t);
         expect(working).toEqual(['accounts.switchRestart{"machine":"dev-sg"}', '✓ accounts.switchHistory', '⚠ accounts.switchInterrupt', 'accounts.switchModel{"model":"kimi-k3"}']);
     });

@@ -2601,6 +2601,7 @@ export const en = {
         switchToMachineTitle: 'Switch to this machine\'s login?',
         switchRestart: ({ machine }: { machine: string }) => `The session restarts in place on ${machine}.`,
         switchHistory: 'The chat history is kept — continue where you left off.',
+        switchHistorySent: 'Switching sends this session\'s history (reasoning included) to the new account\'s provider.',
         switchInterrupt: 'A turn that is running now is interrupted.',
         switchCache: 'After switching organization the first turn misses the prompt cache: it is slower and costs more.',
         switchModel: ({ model }: { model: string }) => `Model: ${model} (from this account's list).`,
