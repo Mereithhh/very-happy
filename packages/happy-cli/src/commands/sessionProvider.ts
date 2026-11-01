@@ -6,7 +6,7 @@
  */
 import chalk from 'chalk';
 import { configuration } from '@/configuration';
-import { restartDaemonSession } from '@/daemon/controlClient';
+import { listDaemonSessions, restartDaemonSession } from '@/daemon/controlClient';
 import { AccountService } from '@/agentProfiles/accountService';
 import { readAccounts, readSessionBindings, sessionAccountsPath, type AccountsFile } from '@/agentProfiles/store';
 
@@ -92,7 +92,9 @@ export async function handleSessionProviderCommand(args: string[]): Promise<void
         home,
         restartSession: async (sessionId) => {
             const result = await restartDaemonSession(sessionId);
-            return result.success ? { ok: true } : { ok: false, error: result.error ?? 'restart failed' };
+            if (result.success) return { ok: true };
+            const stillRunning = await listDaemonSessions().then((children) => children.some((c) => c?.happySessionId === sessionId), () => false);
+            return { ok: false, stillRunning, error: result.error ?? 'restart failed' };
         },
     });
     const binding = parsed.action === 'set' ? resolveBindingRequest(readAccounts(home), parsed.profile, parsed.model) : null;
@@ -104,6 +106,9 @@ export async function handleSessionProviderCommand(args: string[]): Promise<void
         console.log(`Restarted ${parsed.sessionId} in place.`);
     } else if (result.restart === 'skipped' || result.restart === 'pending') {
         console.log(chalk.dim('Not restarted; the binding applies when the session next starts.'));
+    } else if (result.rolledBack) {
+        console.error(chalk.yellow(`Restart failed: ${result.error}. The session keeps running on its previous provider; the binding was not changed.`));
+        process.exitCode = 1;
     } else {
         console.error(chalk.yellow(`Binding saved, but restart failed: ${result.error}`));
         console.error(chalk.dim('It applies the next time this session is resumed on this machine.'));

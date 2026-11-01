@@ -207,6 +207,13 @@ export function readSessionBindings(home: string): SessionAccountsFile {
     return mergeSessionBindings(readJson(sessionAccountsPath(home)), readJson(sessionProvidersPath(home)));
 }
 
+/** The raw v2 entry of one session (undefined = none; a v1 binding may still apply). For rollback. */
+export function readSessionBindingV2(home: string, sessionId: string): SessionAccountBinding | undefined {
+    const raw = readJson(sessionAccountsPath(home));
+    const entry = raw && typeof raw === 'object' ? (raw as Record<string, unknown>)[sessionId] : undefined;
+    return entry && typeof entry === 'object' ? entry as SessionAccountBinding : undefined;
+}
+
 /**
  * Read-modify-write of ONE session's v2 binding. `null` binding = explicit
  * machine login (shadows a v1 binding); `undefined` deletes the v2 entry.

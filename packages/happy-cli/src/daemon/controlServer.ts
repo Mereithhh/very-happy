@@ -106,7 +106,7 @@ export function startDaemonControlServer({
   /** B-850a: the daemon's own view of its accounts (`very-happy account list`: env-sourced keys are judged in the daemon's environment, not the caller's shell). */
   getAgentProfiles?: () => AgentProfilesState | null;
   /** B-794: stop + relaunch a live session in place (the `restart-session` machine RPC's local twin). */
-  restartSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }) => Promise<SpawnSessionResult>;
+  restartSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; account?: true }) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata, encryption?: SessionEncryptionData) => void;
   /** B-069: a session reported a stable state transition (turn done /
@@ -516,7 +516,9 @@ export function startDaemonControlServer({
         return { success: false, error: 'daemon is still starting up' };
       }
       logger.debug(`[CONTROL SERVER] Restart session request: ${sessionId}`);
-      const result = await restartSession(sessionId, { keepPublishedPermissionMode: true });
+      // B-850a: only account switches use this route (`account bind`, `session provider`, `account rm --force`):
+      // their own restart count, never the crash-loop breaker's 3.
+      const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, account: true });
       switch (result.type) {
         case 'success':
           return { success: true, sessionId: result.sessionId };

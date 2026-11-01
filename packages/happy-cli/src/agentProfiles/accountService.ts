@@ -27,6 +27,7 @@ import {
     newAccountId,
     readAccounts,
     readAccountsFileV2,
+    readSessionBindingV2,
     readSessionBindings,
     removeAccountSecret,
     sessionsBoundTo,
@@ -44,7 +45,8 @@ export class AccountError extends Error {
     }
 }
 
-export type RestartOutcome = { ok: true } | { ok: false; notRunning?: boolean; error: string };
+/** `stillRunning`: the restart failed and the session's old wrapper is alive (on the old credential). */
+export type RestartOutcome = { ok: true } | { ok: false; notRunning?: boolean; stillRunning?: boolean; error: string };
 
 export type AccountServiceDeps = {
     home: string;
@@ -350,6 +352,7 @@ export class AccountService {
         const parsed = AgentProfileBindRequestSchema.safeParse(params);
         if (!parsed.success) throw new AccountError('invalid-params', parsed.error.issues[0]?.message ?? 'invalid params');
         const { sessionId, accountId, model, restart } = parsed.data;
+        const previous = readSessionBindingV2(this.home, sessionId);
         this.writeBinding(sessionId, accountId, model);
         this.changed();
         if (restart === false || !this.deps.restartSession) return { bound: true, restart: 'skipped' };
@@ -360,6 +363,12 @@ export class AccountService {
         if (outcome === 'pending') return { bound: true, restart: 'pending' };
         if (outcome.ok) return { bound: true, restart: 'done' };
         if (outcome.notRunning) return { bound: true, restart: 'skipped', error: outcome.error };
+        if (outcome.stillRunning) {
+            // Never "bound to the new account while running on the old one": undo.
+            writeSessionBinding(this.home, sessionId, previous);
+            this.changed();
+            return { bound: false, rolledBack: true, restart: 'failed', error: outcome.error };
+        }
         return { bound: true, restart: 'failed', error: outcome.error };
     }
 

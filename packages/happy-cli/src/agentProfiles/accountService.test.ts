@@ -98,6 +98,25 @@ describe('B-850a account service', () => {
         expect(await svc.bind({ sessionId: 's3', accountId: 'hub' })).toEqual({ bound: true, restart: 'failed', error: 'restart:limit' });
     });
 
+    it('a restart that fails while the old wrapper still runs rolls the binding back (never bound-but-running-the-old-one)', async () => {
+        const restart = vi.fn(async () => ({ ok: true as const }));
+        const { home, svc } = service({ restartSession: restart });
+        await svc.add({ agent: 'claude', kind: 'claude-api', label: 'Hub', baseUrl: 'https://hub', models: ['kimi'], key: { source: 'env', name: 'HUB_KEY' } });
+        await svc.add({ agent: 'claude', kind: 'claude-api', label: 'Hub2', baseUrl: 'https://hub2', models: ['kimi'], key: { source: 'env', name: 'HUB_KEY' } });
+        await svc.bind({ sessionId: 's1', accountId: 'hub', model: 'kimi' });
+        restart.mockResolvedValueOnce({ ok: false, stillRunning: true, error: 'restart:restart-limit: …' } as never);
+        expect(await svc.bind({ sessionId: 's1', accountId: 'hub2' })).toEqual({ bound: false, rolledBack: true, restart: 'failed', error: 'restart:restart-limit: …' });
+        expect(readSessionBindings(home).s1).toEqual({ account: 'hub', model: 'kimi' });
+        // No previous v2 entry → the entry is removed again (a v1 binding, if any, applies as before).
+        restart.mockResolvedValueOnce({ ok: false, stillRunning: true, error: 'x' } as never);
+        await svc.bind({ sessionId: 'fresh', accountId: 'hub2' });
+        expect(readSessionBindings(home).fresh).toBeUndefined();
+        // Stopped but not relaunched → nothing runs on the old credential: the binding stays.
+        restart.mockResolvedValueOnce({ ok: false, stillRunning: false, error: 'restart-precheck:cwd-missing' } as never);
+        expect(await svc.bind({ sessionId: 's1', accountId: 'hub2' })).toEqual({ bound: true, restart: 'failed', error: 'restart-precheck:cwd-missing' });
+        expect(readSessionBindings(home).s1).toEqual({ account: 'hub2' });
+    });
+
     it('RPC: every method registered; failures resolve { error, code } (AGENTS #17)', async () => {
         const { svc } = service();
         const handlers = new Map<string, (p: unknown) => Promise<unknown>>();

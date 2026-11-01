@@ -16,6 +16,8 @@ const claude = read('claude/runClaude.ts');
 const launcher = read('claude/claudeRemoteLauncher.ts');
 const daemon = read('daemon/run.ts');
 const machine = read('api/apiMachine.ts');
+const control = read('daemon/controlServer.ts');
+const accountCmd = read('commands/account.ts');
 const oneShot = read('claude/utils/titleGenerator.ts');
 const between = (source: string, start: string, end: string) => {
     const at = source.indexOf(start);
@@ -81,5 +83,19 @@ describe('B-850a daemon', () => {
         expect(daemon).toContain('watchAccountFiles(configuration.happyHomeDir, () => { void apiMachine.publishAgentProfiles(); });');
         expect(machine).toContain('...(this.agentProfileService ? { agentProfiles: this.agentProfileService.state() } : {}),');
         expect(machine).toContain("...(agentProfileId === null || typeof agentProfileId === 'string' ? { agentProfileId } : {})");
+    });
+
+    it('account restarts have their own count, never the crash-loop breaker of 3 (A2: 4th bind hit restart-limit)', () => {
+        expect(daemon).toContain('const counts = options?.account ? accountRestartCounts : restartCounts;');
+        expect(daemon).toContain('decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);');
+        expect(daemon).toContain('if (!options?.auto) counts.set(happySessionId, recordRestartAttempt(prior));');
+        // RPC bind / rm --force, and the local route behind `account bind` / `session provider`.
+        expect(daemon).toContain('const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, account: true });');
+        expect(control).toContain('const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, account: true });');
+    });
+
+    it('a failed restart reports whether the old wrapper still runs (bind then rolls back)', () => {
+        expect(daemon).toContain('const stillRunning = [...pidToTrackedSession.values()].some((s) => s.happySessionId === sessionId && isPidAlive(s.pid));\n        return { ok: false, notRunning: error.startsWith(\'restart-precheck:not-tracked\'), stillRunning, error };');
+        expect(accountCmd).toContain('return { ok: false as const, notRunning: /not-tracked|not running|daemon/i.test(error), stillRunning, error };');
     });
 });

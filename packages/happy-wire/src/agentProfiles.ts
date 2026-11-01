@@ -172,14 +172,22 @@ export const AgentProfileBindRequestSchema = z.object({
 export type AgentProfileBindRequest = z.infer<typeof AgentProfileBindRequestSchema>;
 
 export type AgentProfileBindResult = {
-    bound: true;
+    /**
+     * false only with `rolledBack` — the restart failed while the session's
+     * wrapper kept running on the previous credential, so the previous binding
+     * was restored (never "bound to the new account, running the old one").
+     */
+    bound: boolean;
+    /** The new binding was undone (see `bound`); the session runs on its previous account. */
+    rolledBack?: true;
     /**
      * 'done'    — restarted in place on the new account
      * 'skipped' — restart:false, or the session is not running here (applies on next start)
      * 'pending' — still restarting after the 22 s budget (relay RPCs cap at 30 s); the Web
      *             shows 「重启中」 and treats `metadata.agentProfile` turning into the new
      *             account as done
-     * 'failed'  — binding kept; applies on next start
+     * 'failed'  — the session is not running any more: binding kept, applies on next
+     *             start; or (`rolledBack`) it still runs: the previous binding is restored
      */
     restart: string;
     error?: string;

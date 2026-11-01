@@ -6,7 +6,7 @@
 import chalk from 'chalk';
 import { createInterface } from 'node:readline/promises';
 import { configuration } from '@/configuration';
-import { getDaemonAgentProfiles, restartDaemonSession } from '@/daemon/controlClient';
+import { getDaemonAgentProfiles, listDaemonSessions, restartDaemonSession } from '@/daemon/controlClient';
 import { AccountError, AccountService } from '@/agentProfiles/accountService';
 import type { AgentProfileSummary } from '@slopus/happy-wire';
 
@@ -135,7 +135,9 @@ async function restartOutcome(sessionId: string) {
     const result = await restartDaemonSession(sessionId);
     if (result.success) return { ok: true as const };
     const error = result.error ?? 'restart failed';
-    return { ok: false as const, notRunning: /not-tracked|not running|daemon/i.test(error), error };
+    // The old wrapper still alive = still on the old credential → bind() rolls the binding back.
+    const stillRunning = await listDaemonSessions().then((children) => children.some((c) => c?.happySessionId === sessionId), () => false);
+    return { ok: false as const, notRunning: /not-tracked|not running|daemon/i.test(error), stillRunning, error };
 }
 
 async function loginInteractive(target: { accountId?: string; label?: string }): Promise<AgentProfileSummary> {
@@ -237,7 +239,10 @@ export async function handleAccountCommand(args: string[]): Promise<void> {
                 if (result.restart === 'done') console.log('Restarted in place (history kept).');
                 else if (result.restart === 'pending') console.log('Restart in progress.');
                 else if (result.restart === 'skipped') console.log(chalk.dim(`Not restarted${result.error ? ` (${result.error})` : ''}; applies when the session next starts.`));
-                else {
+                else if (result.rolledBack) {
+                    console.error(chalk.yellow(`Restart failed: ${result.error}. The session keeps running on its previous account; the binding was not changed.`));
+                    process.exitCode = 1;
+                } else {
                     console.error(chalk.yellow(`Binding saved, but restart failed: ${result.error}`));
                     process.exitCode = 1;
                 }

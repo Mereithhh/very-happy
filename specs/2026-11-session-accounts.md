@@ -79,6 +79,7 @@ wrapper 拿到 session id 后、起任何 Claude 子进程前解析一次绑定�
 - `daemonState.agentProfiles = { daemonPid, updatedAt, accounts: Summary[], defaults }`；Summary 只含 id/label/agent/kind/status/statusDetail/checkedAt/createdAt/expiresAt/baseUrl/models/keySource/keyRef/legacy。
 - `metadata.agentProfile`：缺 = 旧 wrapper；`null` = 本机登录；`{id,label,kind,status:'active'|'unavailable',reason?,model?}`。
 - RPC：`agent-profile-list/add/login-start/login-submit/login-status/login-cancel/test/rename/remove/set-default/bind`；失败一律 resolve `{error, code}`。`bind` 结果 `restart: 'done'|'skipped'|'pending'|'failed'`（`pending` = 22 s 内未完成，仍在进行；Web 显示「重启中」，等 `metadata.agentProfile` 变成新账号即完成——A2 已按此实现）。
+- 切换账号触发的原地重启（RPC `bind` / `remove --force`、本地 `account bind` / `session provider` 走的 `/restart-session`）**不计入**防崩溃循环的「每会话 3 次」熔断，单独计数、上限 50（`DEFAULT_MAX_ACCOUNT_RESTARTS`，daemon 生命周期内）；A2 实测第 4 次 bind 撞 `restart-limit` 即此问题。重启失败时：旧 wrapper 仍在跑（如撞上限）→ **回滚绑定**，结果 `{bound:false, rolledBack:true, restart:'failed', error}`（只加：`bound` 由字面量 `true` 放宽为 boolean）；旧 wrapper 已停、新的没起来 → 保留新绑定（没有进程在用旧凭据，下次启动即新账号）。不会出现「绑定已写入、实际还跑旧账号」。
 - `remove` 带 `force` 且有绑定会话时：删记录与 secret 后**立即原地重启**这些会话（并行，单个 22 s 预算），它们回来即 `unavailable` 拒跑，不会继续用已删的凭据跑到下次启动；结果多一个 `restarts: {sessionId: 'done'|'skipped'|'pending'|'failed'}`（只加不改）。
 - `very-happy account list` 读**运行中 daemon** 的状态（控制端口 `/agent-profiles`，即 daemonState 同一份），`--key-env` 的变量按 daemon 环境判定；daemon 没跑时退回本地计算，并提示 env 型 key 是按当前 shell 判定的。
 - spawn RPC 新参数 `agentProfileId?: string|null`。

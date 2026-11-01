@@ -35,7 +35,7 @@ import { sendUserMessage } from '@/commands/sessionMessage';
 import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
 import { publishedRelaunchPermissionMode } from './relaunchPermissionMode';
 import { resumePrecheck, resumeStartsFreshConversation, sanitizeResumeModel } from './resumePrecheck';
-import { decideRestart, recordRestartAttempt, DEFAULT_MAX_RESTARTS } from './restartBreaker';
+import { decideRestart, recordRestartAttempt, DEFAULT_MAX_ACCOUNT_RESTARTS, DEFAULT_MAX_RESTARTS } from './restartBreaker';
 import type { SpawnGate } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
 import { createPeerCoordinator } from './peerCoordinator';
@@ -1433,10 +1433,12 @@ export async function startDaemon(): Promise<void> {
     // resume (so restart/resume/concurrent-restart never double-spawn) and is
     // bounded by a per-daemon-lifetime circuit breaker.
     const restartCounts = new Map<string, number>();
+    // B-850a: account switches count separately (restartBreaker.ts).
+    const accountRestartCounts = new Map<string, number>();
     // B-852: `auto` = the daemon's own idle restart after an upgrade. It has its
     // own attempt limit (autoRestartPolicy) and must not use up the user's
     // manual-restart breaker; the respawned wrapper posts the "updated" line.
-    type RestartSessionOptions = { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; auto?: { kind: StaleKind; target: string } };
+    type RestartSessionOptions = { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; auto?: { kind: StaleKind; target: string }; account?: true };
     // B-852: sessions whose wrapper exit is an automatic restart, not an exit
     // worth telling a team lead about.
     const autoRestartExits = new Set<string>();
@@ -1498,8 +1500,9 @@ export async function startDaemon(): Promise<void> {
 
     const restartSessionImpl = async (happySessionId: string, options?: RestartSessionOptions): Promise<SpawnSessionResult> => {
       try {
-        const prior = restartCounts.get(happySessionId) ?? 0;
-        const decision = options?.auto ? { allowed: true as const } : decideRestart(prior, DEFAULT_MAX_RESTARTS);
+        const counts = options?.account ? accountRestartCounts : restartCounts;
+        const prior = counts.get(happySessionId) ?? 0;
+        const decision = options?.auto ? { allowed: true as const } : decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);
         if (!decision.allowed) {
           return { type: 'error', errorMessage: `restart:${decision.reason}` };
         }
@@ -1570,7 +1573,7 @@ export async function startDaemon(): Promise<void> {
 
         // Count the attempt now that we are actually spawning (a pre-flight
         // rejection above never burns a slot).
-        if (!options?.auto) restartCounts.set(happySessionId, recordRestartAttempt(prior));
+        if (!options?.auto) counts.set(happySessionId, recordRestartAttempt(prior));
 
         // B-730: see resumeSessionImpl.
         const teamEnv = await teamRelaunchEnvFor(happySessionId, metadata);
@@ -2077,10 +2080,12 @@ export async function startDaemon(): Promise<void> {
       daemonPid: process.pid,
       spawnPty: (env) => spawnSetupTokenPty(os.homedir(), env),
       restartSession: async (sessionId) => {
-        const result = await restartSession(sessionId, { keepPublishedPermissionMode: true });
+        const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, account: true });
         if (result.type === 'success') return { ok: true };
         const error = result.type === 'error' ? result.errorMessage : 'unexpected restart result';
-        return { ok: false, notRunning: error.startsWith('restart-precheck:not-tracked'), error };
+        // stillRunning: the old wrapper is alive on the OLD credential → the bind rolls back.
+        const stillRunning = [...pidToTrackedSession.values()].some((s) => s.happySessionId === sessionId && isPidAlive(s.pid));
+        return { ok: false, notRunning: error.startsWith('restart-precheck:not-tracked'), stillRunning, error };
       },
       onChanged: () => { void apiMachine.publishAgentProfiles(); },
     });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideRestart, recordRestartAttempt, DEFAULT_MAX_RESTARTS } from './restartBreaker';
+import { decideRestart, recordRestartAttempt, DEFAULT_MAX_ACCOUNT_RESTARTS, DEFAULT_MAX_RESTARTS } from './restartBreaker';
 
 describe('restart circuit breaker', () => {
     it('allows the first restart and reports attempt number', () => {
@@ -34,5 +34,13 @@ describe('restart circuit breaker', () => {
             expect(d.allowed).toBe(true); // still allowed — nothing was recorded
         }
         expect(count).toBe(0);
+    });
+});
+
+describe('B-850a account restarts', () => {
+    it('get a much higher bound than the crash-loop breaker', () => {
+        expect(DEFAULT_MAX_ACCOUNT_RESTARTS).toBeGreaterThanOrEqual(10 * DEFAULT_MAX_RESTARTS);
+        expect(decideRestart(3, DEFAULT_MAX_ACCOUNT_RESTARTS).allowed).toBe(true);
+        expect(decideRestart(DEFAULT_MAX_ACCOUNT_RESTARTS, DEFAULT_MAX_ACCOUNT_RESTARTS).allowed).toBe(false);
     });
 });
