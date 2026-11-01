@@ -18,6 +18,7 @@ import { checkPreviewPath } from '@/claude/utils/previewPath';
 import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
 import { BACKGROUND_TASKS_MAX, BACKGROUND_TASK_DESCRIPTION_MAX } from '@/claude/backgroundTasks';
 import type { BackgroundTasksReport } from '@/update/backgroundTaskActivity';
+import type { AutoRestartSessionStatus } from '@/update/autoRestartPolicy';
 import { sanitizeRateLimitReport, type RateLimitReport } from '@/rateLimits/rateLimitWindows';
 
 // B-587: lenient on purpose — a newer wrapper may report more fields.
@@ -60,6 +61,28 @@ const BackgroundTaskInfoSchema = z.object({
   description: z.string().max(BACKGROUND_TASK_DESCRIPTION_MAX + 1),
   startedAt: z.number(),
 });
+const AutoRestartStatusSchema = z.object({
+  state: z.string(),
+  reason: z.string().optional(),
+  since: z.number(),
+  target: z.string(),
+  offline: z.boolean().optional(),
+  retryAt: z.number().optional(),
+});
+
+/** B-856: daemon-wide facts `daemon list` prints above the sessions. */
+export interface DaemonListInfo {
+  version: string;
+  /** The newer CLI this daemon is about to hand over to (auto-restarts wait for it). */
+  upgradePending: string | null;
+  autoRestartEnabled: boolean;
+}
+const DaemonListInfoSchema = z.object({
+  version: z.string(),
+  upgradePending: z.string().nullable(),
+  autoRestartEnabled: z.boolean(),
+});
+
 const BackgroundTasksReportSchema = z.object({
   count: z.number().int().nonnegative(),
   tasks: z.array(BackgroundTaskInfoSchema),
@@ -89,6 +112,8 @@ export function startDaemonControlServer({
   onSessionEdit,
   listPeers,
   isTurnActive,
+  getAutoRestartStatus,
+  getDaemonInfo,
   onRateLimits,
   onHibernateCheck
 }: {
@@ -144,6 +169,10 @@ export function startDaemonControlServer({
   listPeers?: () => PeerSessionInfo[];
   /** B-505: whether this session has an agent turn in flight (B-466 tracker). */
   isTurnActive?: (sessionId: string) => boolean;
+  /** B-856: the per-session auto-restart status the daemon publishes (encrypted on the server). */
+  getAutoRestartStatus?: (sessionId: string) => AutoRestartSessionStatus | undefined;
+  /** B-856: this daemon's version, the upgrade it waits for and the auto-restart switch, for `daemon list`. */
+  getDaemonInfo?: () => DaemonListInfo;
   /** B-555: a wrapper observed subscription rate-limit windows (already
    *  sanitized). Optional so older wirings/tests keep working. */
   onRateLimits?: (report: RateLimitReport) => void;
@@ -295,7 +324,11 @@ export function startDaemonControlServer({
               turnActive: z.boolean(),
               // B-507: in-flight background tasks per the wrapper's last report (lease-expired = count 0).
               backgroundTasks: BackgroundTasksReportSchema.optional(),
-            }))
+              // B-856: the wrapper's own CLI version and its auto-restart status (null = nothing pending).
+              cliVersion: z.string().optional(),
+              autoRestart: AutoRestartStatusSchema.nullable().optional(),
+            })),
+            daemon: DaemonListInfoSchema.optional(),
           })
         }
       }
@@ -311,7 +344,10 @@ export function startDaemonControlServer({
             pid: child.pid,
             turnActive: isTurnActive ? isTurnActive(child.happySessionId!) : false,
             ...(getBackgroundTasks ? { backgroundTasks: getBackgroundTasks(child.happySessionId!) } : {}),
-          }))
+            ...(child.happySessionMetadataFromLocalWebhook?.version ? { cliVersion: child.happySessionMetadataFromLocalWebhook.version } : {}),
+            ...(getAutoRestartStatus ? { autoRestart: getAutoRestartStatus(child.happySessionId!) ?? null } : {}),
+          })),
+        ...(getDaemonInfo ? { daemon: getDaemonInfo() } : {}),
       }
     });
 

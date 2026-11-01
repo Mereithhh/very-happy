@@ -64,7 +64,8 @@ export type AutoRestartRefusal =
     | 'automation-running'
     | 'backoff'
     | 'gave-up'
-    | 'machine-busy';
+    | 'machine-busy'
+    | 'upgrade-pending';
 
 export type AutoRestartVerdict = { ok: true } | { ok: false; reason: AutoRestartRefusal };
 
@@ -130,6 +131,13 @@ export interface AutoRestartInput {
     /** `resumePrecheck` passed: the restart reopens this conversation. */
     resumable: boolean;
     attempt: AttemptRecord | null;
+    /**
+     * B-856: the version this daemon is about to be replaced by (an install is
+     * queued, running or done, or a newer bundle is already on disk). A restart
+     * now would land on code that is replaced minutes later and the new daemon
+     * would restart the session a second time, so it waits for the new daemon.
+     */
+    upgradePending?: string | null;
     /** Automatic restarts running right now / when the last one started. */
     inFlight: number;
     lastStartedAt: number | null;
@@ -151,6 +159,8 @@ export function decideAutoRestart(input: AutoRestartInput): AutoRestartVerdict {
     // 8: only agents whose restart reopens the same conversation.
     if (!AUTO_RESTART_FLAVORS.includes(report.flavor)) return { ok: false, reason: 'unsupported-flavor' };
     if (!input.resumable) return { ok: false, reason: 'not-resumable' };
+    // B-856: a newer daemon is on its way; it restarts the session once, onto the new code.
+    if (input.upgradePending) return { ok: false, reason: 'upgrade-pending' };
     // 1: no turn in flight (wrapper flag and daemon lease).
     if (report.thinking || input.turnActive) return { ok: false, reason: 'turn-active' };
     // 2: no pending permission request / question.
@@ -202,6 +212,23 @@ export function recordAttempt(previous: AttemptRecord | null, target: string, ok
 
 /** What the daemon publishes per behind session (spec §4). */
 export type AutoRestartSessionState = 'waiting' | 'restarting' | 'failed' | 'manual';
+
+/**
+ * B-856: the newer CLI this daemon is about to hand over to, or null. The
+ * update controller's own word (a queued / running / finished install of a
+ * newer version) or a newer bundle already on disk (`npm i -g` by hand).
+ * A failed or manual-required install keeps this daemon, so it is not pending.
+ */
+export function pendingUpgradeVersion(input: {
+    daemonVersion: string;
+    autoUpdate: { state: string; version: string | null } | null | undefined;
+    bundleReplaced: boolean;
+}): string | null {
+    const update = input.autoUpdate;
+    if (update?.version && ['waiting_idle', 'installing', 'installed'].includes(update.state)
+        && compareExactVersions(update.version, input.daemonVersion) === 1) return update.version;
+    return input.bundleReplaced ? 'on-disk' : null;
+}
 
 export interface AutoRestartSessionStatus {
     state: AutoRestartSessionState;
