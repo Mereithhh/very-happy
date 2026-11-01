@@ -82,3 +82,6 @@ happy-workspaces/
 .pnpm-store/
 .mcp.json
 .playwright-cli/
+
+# Stray pid files from manual runs (write them under ~/code/github/skills/tmp/<task>/ instead)
+*.pid
