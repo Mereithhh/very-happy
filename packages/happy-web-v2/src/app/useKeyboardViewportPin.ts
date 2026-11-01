@@ -16,8 +16,10 @@
  * keyboard state onto the screen root as `data-keyboard-open` (session.css
  * drops the composer's home-indicator padding; composerSendFocus reads it).
  *
- * Scope guards live in keyboardViewport(): coarse pointer only, pinch zoom
- * ignored, Android's resizes-content never registers as an overlay keyboard.
+ * Scope guards live in keyboardViewport(): touch screens only (B-855: iPad
+ * with a trackpad is `pointer: fine`), pinch zoom ignored, Android's
+ * resizes-content never registers as an overlay keyboard. Scroll residue left
+ * by iOS's reveal-pan is undone centrally (viewportVars shouldResetRootScroll).
  */
 import { useEffect, type RefObject } from 'react';
 import { getKeyboardViewport, subscribeKeyboardViewport, useRootScrollLock } from './viewportVars';
@@ -25,16 +27,12 @@ import { getKeyboardViewport, subscribeKeyboardViewport, useRootScrollLock } fro
 export function useKeyboardViewportPin(ref: RefObject<HTMLElement | null>) {
     useRootScrollLock();
     useEffect(() => {
-        let wasOpen = false;
         const apply = (open: boolean) => {
             const el = ref.current;
             if (el) {
                 if (open) el.dataset.keyboardOpen = 'true';
                 else delete el.dataset.keyboardOpen;
             }
-            // Clear any scroll residue iOS's reveal-pan left behind on close.
-            if (wasOpen && !open && window.scrollY) window.scrollTo({ top: 0 });
-            wasOpen = open;
         };
         apply(getKeyboardViewport().open);
         const off = subscribeKeyboardViewport((kb) => apply(kb.open));

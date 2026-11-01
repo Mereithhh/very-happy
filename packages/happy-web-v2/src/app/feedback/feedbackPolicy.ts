@@ -10,7 +10,9 @@ export const FEEDBACK_RATINGS: readonly FeedbackRating[] = ['good', 'ok', 'bad']
 export const FEEDBACK_TEXT_MAX = 2000;
 
 /** First prompt after this many distinct days with the app open. */
-export const FEEDBACK_PROMPT_MIN_ACTIVE_DAYS = 5;
+export const FEEDBACK_PROMPT_MIN_ACTIVE_DAYS = 2;
+/** B-857: after the release notes close in this visit, wait this long before asking. */
+export const FEEDBACK_AFTER_CHANGELOG_MS = 20_000;
 /** At most one prompt per this many days, and none this long after a submission. */
 export const FEEDBACK_PROMPT_INTERVAL_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -43,6 +45,8 @@ export function activeDayPatch(state: Pick<FeedbackPromptState, 'feedbackActiveD
 export interface FeedbackPromptContext {
   /** release notes still unread on this device */
   pendingChangelog: boolean;
+  /** epoch ms the notes dialog closed in this visit (B-857); null = not shown and closed yet */
+  changelogClosedAt: number | null;
   /** opened by a deep link (B-697: those never get an uninvited overlay) */
   deepLink: boolean;
   /** already typing / tapping (B-823) */
@@ -58,10 +62,22 @@ export function feedbackPromptBlock(state: FeedbackPromptState, ctx: FeedbackPro
   const interval = FEEDBACK_PROMPT_INTERVAL_DAYS * DAY_MS;
   if (state.feedbackPromptShownAt !== null && now - state.feedbackPromptShownAt < interval) return 'recently-shown';
   if (state.feedbackLastSubmittedAt !== null && now - state.feedbackLastSubmittedAt < interval) return 'recently-submitted';
-  if (ctx.pendingChangelog) return 'changelog';
+  // B-857: queued after the release notes, not skipped for them — once they
+  // closed (read or not), a quiet FEEDBACK_AFTER_CHANGELOG_MS later.
+  if (ctx.changelogClosedAt !== null) {
+    if (now - ctx.changelogClosedAt < FEEDBACK_AFTER_CHANGELOG_MS) return 'changelog';
+  } else if (ctx.pendingChangelog) return 'changelog';
   if (ctx.deepLink) return 'deep-link';
   if (ctx.interacted) return 'interacted';
   return null;
+}
+
+/**
+ * While blocked only by the notes: ms until the after-notes wait ends, or null
+ * when that is unknown yet (notes not closed — wait for the close itself).
+ */
+export function feedbackChangelogWaitMs(ctx: Pick<FeedbackPromptContext, 'changelogClosedAt'>, now: number): number | null {
+  return ctx.changelogClosedAt === null ? null : Math.max(0, ctx.changelogClosedAt + FEEDBACK_AFTER_CHANGELOG_MS - now);
 }
 
 export function feedbackPromptDue(state: FeedbackPromptState, ctx: FeedbackPromptContext, now: number): boolean {

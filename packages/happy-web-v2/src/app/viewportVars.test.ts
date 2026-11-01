@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { appHeightOverride, keyboardViewport, viewportVars } from './viewportVars';
+import { appHeightOverride, hasTouchScreen, keyboardViewport, shouldResetRootScroll, viewportVars } from './viewportVars';
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
@@ -26,7 +26,7 @@ describe('appHeightOverride (B-797)', () => {
 });
 
 describe('keyboardViewport (B-797)', () => {
-    const base = { coarse: true, vvOffsetTop: 0, vvScale: 1, layoutHeight: 657 };
+    const base = { touch: true, vvOffsetTop: 0, vvScale: 1, layoutHeight: 657 };
 
     it('iOS overlay keyboard: visible height and pan offset', () => {
         expect(keyboardViewport({ ...base, vvHeight: 380.4, vvOffsetTop: 120.2 })).toEqual({ open: true, height: 380, top: 120 });
@@ -40,9 +40,46 @@ describe('keyboardViewport (B-797)', () => {
     it('no keyboard: small UA-chrome drop, pinch zoom, desktop, Android resizes-content', () => {
         expect(keyboardViewport({ ...base, vvHeight: 620 }).open).toBe(false);
         expect(keyboardViewport({ ...base, vvHeight: 300, vvScale: 2 }).open).toBe(false);
-        expect(keyboardViewport({ ...base, coarse: false, vvHeight: 300 }).open).toBe(false);
+        expect(keyboardViewport({ ...base, touch: false, vvHeight: 300 }).open).toBe(false);
         expect(keyboardViewport({ ...base, vvHeight: 400, layoutHeight: 400 }).open).toBe(false);
         expect(keyboardViewport({ ...base, vvHeight: null }).open).toBe(false);
+    });
+});
+
+describe('hasTouchScreen (B-855)', () => {
+    it('iPad with a Magic Keyboard / trackpad: pointer fine, Macintosh UA, but a touch screen', () => {
+        expect(hasTouchScreen({ coarse: false, anyCoarse: true, maxTouchPoints: 5 })).toBe(true);
+        expect(hasTouchScreen({ coarse: false, anyCoarse: false, maxTouchPoints: 5 })).toBe(true);
+        // any-pointer still sees the touch screen when touch points are not reported
+        expect(hasTouchScreen({ coarse: false, anyCoarse: true, maxTouchPoints: 0 })).toBe(true);
+    });
+
+    it('phones / bare iPad (coarse) yes; a desktop without a touch screen no', () => {
+        expect(hasTouchScreen({ coarse: true, anyCoarse: true, maxTouchPoints: 5 })).toBe(true);
+        expect(hasTouchScreen({ coarse: false, anyCoarse: false, maxTouchPoints: 0 })).toBe(false);
+        expect(hasTouchScreen({ coarse: false, anyCoarse: false, maxTouchPoints: 1 })).toBe(false);
+    });
+});
+
+describe('shouldResetRootScroll (B-855)', () => {
+    const base = { rootLocked: true, keyboardOpen: false, scrollX: 0, scrollY: 311, vvHeight: 834, vvScale: 1, layoutHeight: 834 };
+
+    it('locked document scrolled with nothing overlaying it → residue, reset', () => {
+        expect(shouldResetRootScroll(base)).toBe(true);
+        expect(shouldResetRootScroll({ ...base, scrollY: 0, scrollX: 40 })).toBe(true);
+        expect(shouldResetRootScroll({ ...base, vvHeight: null })).toBe(true);
+        expect(shouldResetRootScroll({ ...base, vvHeight: 828 })).toBe(true); // within the slack
+    });
+
+    it('never fights iOS: keyboard up, a smaller overlay (shortcut bar), pinch zoom', () => {
+        expect(shouldResetRootScroll({ ...base, keyboardOpen: true, vvHeight: 436 })).toBe(false);
+        expect(shouldResetRootScroll({ ...base, vvHeight: 790 })).toBe(false);
+        expect(shouldResetRootScroll({ ...base, vvScale: 2 })).toBe(false);
+    });
+
+    it('nothing to do: not locked (public pages scroll), or already at 0', () => {
+        expect(shouldResetRootScroll({ ...base, rootLocked: false })).toBe(false);
+        expect(shouldResetRootScroll({ ...base, scrollY: 0 })).toBe(false);
     });
 });
 
@@ -84,5 +121,7 @@ describe('root document never scrolls on app screens (B-797)', () => {
         expect(read('../main.tsx')).toMatch(/installViewportVars\(\);/);
         // The old pin undid iOS's pan with scrollTo on every resize (fought the pan, left a draggable band).
         expect(read('./useKeyboardViewportPin.ts')).not.toMatch(/requestAnimationFrame|style\.height/);
+        // B-855: residue cleanup lives in one place (viewportVars), not per screen.
+        expect(read('./useKeyboardViewportPin.ts')).not.toMatch(/window\.scrollTo/);
     });
 });

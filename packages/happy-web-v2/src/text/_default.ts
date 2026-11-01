@@ -2793,6 +2793,16 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov01b: {
+                title: 'Feedback is easier to give',
+                summary: 'The feedback invitation now shows up after two days of use, and waits until you close the release notes.',
+                feedback: 'After you have used Very Happy on two days, you are invited to rate it. If there are unread release notes, the invitation waits until you close them, so the two no longer block each other.',
+            },
+            nov01a: {
+                title: 'iPad layout fix',
+                summary: 'Fixed the whole page shifting up on iPad and leaving a large blank area below.',
+                ipad: 'On iPad, including with a Magic Keyboard or trackpad attached, the page no longer stays shifted up with a blank band at the bottom.',
+            },
             oct31e: {
                 title: 'Model and thinking follow the session',
                 summary: 'The model and thinking you pick in a session follow the session: your phone and computer show the same choice and send the same one.',
