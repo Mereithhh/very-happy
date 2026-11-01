@@ -258,5 +258,30 @@ describe('attention REST + hooks through startApi (pglite)', () => {
             team = await act(teamId, 'root-return-team-page', { type: 'return', taskId, attemptId: returned.currentAttemptId, goalVersion: returned.goalVersion, reason: 'from the team page' });
             expect(revisions(team)).toHaveLength(1);
         });
+
+        it('B-850d: a member refused for its account → a 「需要我决策」 item in the lead\'s session; the owner retry closes it', async () => {
+            const leadSession = await newSession();
+            const created = await call('POST', '/v1/teams', { name: 'acct-team', machineId });
+            const teamId = created.body.team.id as string;
+            await act(teamId, 'acct-join', { type: 'join', name: 'Lead', sessionId: leadSession });
+            const delegated = await call('POST', `/v1/teams/${teamId}/actions`, { requestId: 'acct-delegate', action: { type: 'delegate', goal: 'Build it', acceptance: ['done'], botName: 'Builder', agentProfile: { id: 'org-a', label: 'Org A' } } });
+            expect(delegated.status, JSON.stringify(delegated.body)).toBe(200);
+            const op = delegated.body.team.operations.find((o: { type: string }) => o.type === 'spawn');
+            expect(op.agentProfile).toEqual({ id: 'org-a', label: 'Org A' });
+            const claimed = await act(teamId, 'acct-claim', { type: 'claim-operation', operationId: op.id, machineId, teamLaunchVersion: 1 });
+            const claimId = claimed.operations.find(o => o.id === op.id)!.claimId!;
+            await act(teamId, 'acct-fail', { type: 'fail-operation', operationId: op.id, machineId, claimId, error: 'agent-profile-unavailable:expired: account "Org A" — sign in again' });
+            const items = async () => (await call('GET', `/v1/attention-items?sessionId=${leadSession}&state=all`)).body.items as { key: string; state: string; title: string; kind: string; source: string; needsOwner: boolean; teamId: string | null }[];
+            const row = (await items()).find(i => i.key === `team-account:${op.id}`)!;
+            expect(row).toMatchObject({ kind: 'blocked', source: 'team', state: 'open', needsOwner: true, teamId, title: '成员 Builder 的账号「Org A」登录已过期，这一轮没有启动 · acct-team' });
+            await act(teamId, 'acct-retry', { type: 'retry-operation', operationId: op.id, claimId });
+            expect((await items()).find(i => i.key === `team-account:${op.id}`)!.state).toBe('resolved');
+            // Refused again after the retry (still expired) → the same item reopens.
+            await act(teamId, 'acct-fail-2', { type: 'fail-operation', operationId: op.id, machineId, claimId, error: 'agent-profile-unavailable:expired: account "Org A" — sign in again' });
+            expect((await items()).filter(i => i.key === `team-account:${op.id}`).map(i => i.state)).toEqual(['open']);
+            // An ordinary startup failure is not an account item (and settles it).
+            await act(teamId, 'acct-fail-3', { type: 'fail-operation', operationId: op.id, machineId, claimId, error: 'Agent process exited during startup' });
+            expect((await items()).filter(i => i.key.startsWith('team-account:') && i.state === 'open')).toHaveLength(0);
+        });
     });
 });

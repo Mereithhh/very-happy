@@ -107,6 +107,14 @@ export const AgentProfilesStateSchema = z.object({
         baseUrl: z.string().optional(),
         envKey: z.string().optional(),
     })).optional(),
+    /**
+     * B-850d: what else this daemon honours. `'launch-accounts'` = the account
+     * chosen on a project / team / automation (and a fork's inherited one) is
+     * used, and an unusable one refuses the run. Absent (B-850a/b daemon) =
+     * those fields are ignored: such sessions start on the machine default
+     * account, else the machine login — the Web says so next to the picker.
+     */
+    features: z.array(z.string()).optional(),
 });
 export type AgentProfilesState = z.infer<typeof AgentProfilesStateSchema>;
 
@@ -274,4 +282,71 @@ export function readSessionAgentProfile(value: unknown): SessionAgentProfile | n
     if (value === null) return null;
     const parsed = SessionAgentProfileSchema.safeParse(value);
     return parsed.success ? parsed.data : undefined;
+}
+
+// ---- B-850d: accounts chosen on a project / team / automation ----
+
+export const AGENT_PROFILE_FEATURE_LAUNCH = 'launch-accounts';
+
+/**
+ * An account picked for a project / team / automation, as stored on the
+ * server: the machine-local id plus a display label (for 「『组织 A』在
+ * mac-office 上不存在」). Never a secret. Where it is a choice the three
+ * states are: absent = not chosen (next level decides), `null` = the machine
+ * login explicitly, a ref = that account.
+ */
+export const AgentProfileRefSchema = z.object({
+    id: z.string().min(1).max(64),
+    label: z.string().min(1).max(200).optional(),
+});
+export type AgentProfileRef = z.infer<typeof AgentProfileRefSchema>;
+export const AgentProfileChoiceSchema = AgentProfileRefSchema.nullable();
+
+/**
+ * `ProjectDefaults.agentProfiles[]`: the account new sessions of this project
+ * use for `agent` on `machineId` (accounts are per machine, so on any other
+ * machine the project has no account default). `id: null` = machine login.
+ */
+export const ProjectAgentProfileSchema = z.object({
+    agent: z.string().min(1).max(64),
+    machineId: z.string().min(1).max(128),
+    id: z.string().min(1).max(64).nullable(),
+    label: z.string().min(1).max(200).optional(),
+});
+export type ProjectAgentProfile = z.infer<typeof ProjectAgentProfileSchema>;
+export const ProjectAgentProfilesSchema = z.array(ProjectAgentProfileSchema).max(16);
+
+export type LaunchAgentProfile = {
+    /** The spawn's `agentProfileId`: id, `null` (machine login) or undefined (the daemon's machine default, else machine login). */
+    agentProfileId: string | null | undefined;
+    source: 'explicit' | 'project' | 'machine';
+};
+
+/**
+ * Which account a new session starts on — explicit (the session / team /
+ * automation's own choice) > project default for this agent on this machine
+ * > machine default (the daemon) > machine login. Pure; the daemon, the CLI
+ * and the Web share it.
+ */
+export function resolveLaunchAgentProfile(input: {
+    explicit?: AgentProfileRef | null;
+    project?: readonly ProjectAgentProfile[] | null;
+    agent: string;
+    machineId: string;
+}): LaunchAgentProfile {
+    if (input.explicit !== undefined) return { agentProfileId: input.explicit === null ? null : input.explicit.id, source: 'explicit' };
+    const entry = input.project?.find((p) => p.agent === input.agent && p.machineId === input.machineId);
+    if (entry) return { agentProfileId: entry.id, source: 'project' };
+    return { agentProfileId: undefined, source: 'machine' };
+}
+
+/** Project default entries that apply on one machine (what a daemon needs of a project). */
+export function projectAgentProfilesFor(entries: readonly ProjectAgentProfile[] | null | undefined, machineId: string): ProjectAgentProfile[] {
+    return (entries ?? []).filter((e) => e.machineId === machineId);
+}
+
+/** `agent-profile-unavailable:<reason>: …` (daemon spawn error) → reason, else null. */
+export function agentProfileUnavailableReason(error: string | null | undefined): string | null {
+    const m = /^agent-profile-unavailable:([a-z-]+)/.exec(error ?? '');
+    return m ? m[1] : null;
 }

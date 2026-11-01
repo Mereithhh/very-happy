@@ -1,4 +1,4 @@
-import { PROJECT_LIMITS, type ProjectFolder, type ProjectDefaults, type ProjectLogKind } from '@slopus/happy-wire';
+import { PROJECT_LIMITS, ProjectAgentProfilesSchema, type AgentProfileRef, type ProjectAgentProfile, type ProjectFolder, type ProjectDefaults, type ProjectLogKind } from '@slopus/happy-wire';
 
 /** Pure B-644 rules, kept out of the store so they are testable without a database. */
 
@@ -36,6 +36,11 @@ export function normalizeDefaults(defaults: ProjectDefaults | undefined | null):
     if (defaults.model !== undefined) out.model = defaults.model;
     if (defaults.permissionMode !== undefined) out.permissionMode = defaults.permissionMode;
     if (defaults.worktree !== undefined) out.worktree = defaults.worktree;
+    if (defaults.agentProfiles !== undefined) {
+        // B-850d: read back from JSON — validate; one entry per agent (the first wins).
+        const parsed = ProjectAgentProfilesSchema.nullable().safeParse(defaults.agentProfiles);
+        if (parsed.success) out.agentProfiles = parsed.data === null ? null : parsed.data.filter((e, i, all) => all.findIndex(o => o.agent === e.agent) === i);
+    }
     return out;
 }
 
@@ -84,13 +89,20 @@ export function teamMachineAllowed(folders: readonly ProjectFolder[], teamMachin
 
 /** Team defaults only take project values for fields the team has not set itself ("团队内仍以自己的为准"). */
 export function snapshotTeamDefaults(
-    team: { assistant?: string; model?: string; maxParallel?: number } | undefined,
+    team: { assistant?: string; model?: string; maxParallel?: number; agentProfile?: AgentProfileRef | null } | undefined,
     project: ProjectDefaults,
-): { assistant?: 'claude' | 'codex' | 'pi-acp'; model?: string; maxParallel?: number } | null {
-    const current = { ...(team ?? {}) } as { assistant?: 'claude' | 'codex' | 'pi-acp'; model?: string; maxParallel?: number };
+    teamMachineId?: string,
+): { assistant?: 'claude' | 'codex' | 'pi-acp'; model?: string; maxParallel?: number; agentProfile?: AgentProfileRef | null } | null {
+    const current = { ...(team ?? {}) } as { assistant?: 'claude' | 'codex' | 'pi-acp'; model?: string; maxParallel?: number; agentProfile?: AgentProfileRef | null };
     let changed = false;
     const agent = project.agent;
     if (!current.assistant && (agent === 'claude' || agent === 'codex' || agent === 'pi-acp')) { current.assistant = agent; changed = true; }
     if (!current.model && typeof project.model === 'string' && project.model.trim()) { current.model = project.model.trim(); changed = true; }
+    // B-850d: the project's account for the team's agent on the team's machine (accounts are per machine).
+    const entry: ProjectAgentProfile | undefined = teamMachineId ? project.agentProfiles?.find(e => e.agent === (current.assistant ?? 'claude') && e.machineId === teamMachineId) : undefined;
+    if (current.agentProfile === undefined && entry) {
+        current.agentProfile = entry.id === null ? null : { id: entry.id, ...(entry.label ? { label: entry.label } : {}) };
+        changed = true;
+    }
     return changed ? current : null;
 }

@@ -43,7 +43,8 @@ import chalk from 'chalk'
 import { readFileSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { checkIfDaemonRunningAndCleanupStaleState, spawnDaemonSession, stopDaemonSession } from '@/daemon/controlClient'
-import { readPersistedSessions, type PersistedSession } from '@/persistence'
+import { readPersistedSessions, readSettings, type PersistedSession } from '@/persistence'
+import { resolveLaunchAgentProfile } from '@slopus/happy-wire'
 import { resolveFirstMessageMeta, resolveSpawnPermissionMode, waitsForModelCatalog, type FirstMessageMeta } from './spawnDefaults'
 import { fetchLatestModelTable } from '@/api/latestModels'
 import { configuration } from '@/configuration'
@@ -456,6 +457,19 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         }
     }
 
+    // B-850d: no --account → an explicit --project's account for this agent on this machine
+    // (explicit > project > machine default > machine login). A fork keeps its parent's (daemon).
+    let accountChoice: string | null | undefined = options.account ? (options.account === 'machine' ? null : options.account) : undefined
+    if (accountChoice === undefined && options.project && !forkSource) {
+        try {
+            const defaults = await sharedProjectsClient().defaults(options.project)
+            const machineId = (await readSettings()).machineId
+            if (machineId) accountChoice = resolveLaunchAgentProfile({ project: defaults.agentProfiles, agent: agent ?? 'claude', machineId }).agentProfileId
+        } catch (error) {
+            console.error(chalk.dim(`(project ${options.project}: defaults unavailable — using the machine default account: ${error instanceof Error ? error.message : String(error)})`))
+        }
+    }
+
     logger.debug(`[SPAWN CMD] Spawning session in ${directory}${forkSource ? ` (fork of ${forkSource.parentSessionId})` : ''}`)
     // A daemon older than the field strips the unknown key from its zod body
     // schema, so the session still spawns — just without that option (铁律 4).
@@ -475,7 +489,7 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         environmentVariables: spawnEnvironmentVariables(options.env, prompt !== undefined),
         ...resumeIds,
         ...(forkSource ? { parentSessionId: forkSource.parentSessionId } : {}),
-        ...(options.account ? { agentProfileId: options.account === 'machine' ? null : options.account } : {}),
+        ...(accountChoice !== undefined ? { agentProfileId: accountChoice } : {}),
     })
     if (result?.error || !result?.success || !result?.sessionId) {
         const message = result?.error || 'Daemon returned no session ID'

@@ -165,3 +165,56 @@ describe('standalone /compact and /clear (B-845)', () => {
         expect(analyzeLatestTurn(log(user('hi'), service('Context was reset'))).ended).toBe(false)
     })
 })
+
+describe('analyzeLatestTurn — B-850d refused prompts (queue-cancel)', () => {
+    const prompt = (text: string, localId: string, seq: number): LogEntry => ({ seq, body: user(text), localId })
+    const tombstone = (keys: string[], reason?: string) => ev({ t: 'queue-cancel', targetLocalKeys: keys, ...(reason ? { reason } : {}) }, 'user')
+    const notice = (message: string, kind = 'agent-profile-unavailable') => ({ role: 'agent', content: { type: 'event', data: { type: 'message', message, kind } } })
+    const at = (seq: number, body: unknown): LogEntry => ({ seq, body })
+
+    it('a prompt the wrapper refused for its account ends failed, not running', () => {
+        const turn = analyzeLatestTurn([
+            prompt('run the report', 'p1', 1),
+            at(2, tombstone(['p1'], 'failed')),
+            at(3, notice('Account "Org A" is expired — sign in again or switch accounts.')),
+        ])
+        expect(turn.ended).toBe(true)
+        expect(turn.status).toBe('failed')
+        expect(turn.discarded).toBe('failed')
+        expect(turn.refusal).toBe('agent-profile-unavailable')
+        expect(turn.error).toBe('Not executed: Account "Org A" is expired — sign in again or switch accounts.')
+    })
+
+    it('a cleared / web-canceled queued prompt ends cancelled; the previous turn closing later is not ours', () => {
+        const turn = analyzeLatestTurn([
+            prompt('first', 'p0', 1),
+            at(2, ev({ t: 'turn-start' })),
+            prompt('second', 'p1', 3),
+            at(4, tombstone(['p1'])),
+            at(5, ev({ t: 'turn-end', status: 'completed' })),
+        ])
+        expect(turn).toMatchObject({ ended: true, status: 'cancelled', discarded: 'canceled', error: 'Not executed' })
+        expect(turn.refusal).toBeUndefined()
+    })
+
+    it('a tombstone for another prompt does not end ours', () => {
+        const turn = analyzeLatestTurn([prompt('mine', 'p1', 1), at(2, tombstone(['other'], 'failed'))])
+        expect(turn.ended).toBe(false)
+        expect(turn.discarded).toBeUndefined()
+    })
+
+    it('a replayed prompt (turn-start after the tombstone) is running again', () => {
+        const turn = analyzeLatestTurn([prompt('mine', 'p1', 1), at(2, tombstone(['p1'], 'restarted')), at(3, ev({ t: 'turn-start' }))])
+        expect(turn.ended).toBe(false)
+        expect(turn.discarded).toBeUndefined()
+    })
+
+    it('anchored (automation) prompts are matched the same way', () => {
+        const turn = analyzeLatestTurn([
+            prompt('[auto run r1;] go', 'a1', 1),
+            prompt('human typing', 'h1', 2),
+            at(3, tombstone(['a1'], 'failed')),
+        ], { anchor: (body) => (body as { content: { text: string } }).content.text.startsWith('[auto run r1;]') })
+        expect(turn).toMatchObject({ ended: true, status: 'failed', discarded: 'failed' })
+    })
+})

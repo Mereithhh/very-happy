@@ -421,17 +421,18 @@ export async function readSessionLog(sessionId: string, persisted: PersistedSess
             timeout: 15_000,
         },
     )
-    const messages: Array<{ seq: number; content: { t: string; c: string } }> =
+    const messages: Array<{ seq: number; localId?: string | null; content: { t: string; c: string } }> =
         Array.isArray(response.data?.messages) ? response.data.messages : []
     // `before_seq` returns newest-first — flip to chronological order.
     messages.reverse()
     const key = decodeBase64(persisted.encryptionKey)
     return messages.map((message) => {
-        if (message.content?.t !== 'encrypted') return { seq: message.seq, body: null }
+        const localId = typeof message.localId === 'string' ? message.localId : null
+        if (message.content?.t !== 'encrypted') return { seq: message.seq, body: null, localId }
         try {
-            return { seq: message.seq, body: decrypt(key, persisted.encryptionVariant, decodeBase64(message.content.c)) }
+            return { seq: message.seq, body: decrypt(key, persisted.encryptionVariant, decodeBase64(message.content.c)), localId }
         } catch {
-            return { seq: message.seq, body: null }
+            return { seq: message.seq, body: null, localId }
         }
     })
 }

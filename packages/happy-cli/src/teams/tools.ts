@@ -29,6 +29,7 @@ export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: s
         { requestId, ...fields }, async ({ requestId: key, ...args }) => teamActionReceipt(await client.action({ type: name, ...args, ...(name === 'delegate' && args.directory === undefined ? { directory: process.cwd() } : {}) }, key), args.taskId));
     action('delegate', 'Delegate a goal with acceptance criteria. Use parentTaskId for subdelegation. Existing assigneeBotId or a managed worker may execute it.', {
         goal: text, acceptance: z.array(text).min(1).max(32), parentTaskId: id.optional(), assigneeBotId: id.optional(), botName: id.optional(), directory: z.string().min(1).optional(), assistant: z.enum(['claude', 'codex', 'pi-acp']).optional(), model: z.string().trim().min(1).max(256).optional(),
+        agentProfile: z.object({ id: z.string().min(1).max(64), label: z.string().min(1).max(200).optional() }).nullable().optional().describe('Account a member spawns on (id from `very-happy account list`; null = machine login; omit = team default). Unusable → the launch is refused, never the machine login.'),
     });
     action('message', 'Send a persistent task-related message. Delivery does not mean the model has read or acted on it.', { taskId: id, body: text, recipientBotId: id.optional() });
     action('submit', 'Submit evidence for your current attempt and goal version. The owner still has to accept it.', { taskId: id, attemptId: id, goalVersion: z.number().int().positive(), result: text });

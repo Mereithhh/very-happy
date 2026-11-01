@@ -112,6 +112,20 @@ export function teamBotRepository(state: Pick<TeamState, 'operations'>, bot: Tea
     return state.operations.find(o => o.botId === bot.id && o.type === 'spawn' && o.directory)?.directory ?? bot.directory;
 }
 
+/** B-850d: two member account choices are the same (absent ≠ null: machine default vs machine login). */
+export function sameTeamAccount(a: TeamBot['agentProfile'], b: TeamBot['agentProfile']): boolean {
+    if (a === undefined || b === undefined) return a === b;
+    if (a === null || b === null) return a === b;
+    return a.id === b.id;
+}
+
+/** B-850d: a new member's account — the delegate's choice, else the team default when it is for the same agent. */
+export function delegateAccount(explicit: TeamBot['agentProfile'], assistant: TeamBot['assistant'], defaults: TeamState['defaults']): TeamBot['agentProfile'] {
+    if (explicit !== undefined) return explicit;
+    if (defaults?.agentProfile === undefined) return undefined;
+    return (defaults.assistant ?? 'claude') === assistant ? defaults.agentProfile : undefined;
+}
+
 export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string; quiet?: boolean }): { team: TeamState; credentialBotId?: string; operationId?: string; taskId?: string; scheduleId?: string } {
     requireTeam(input.archivedAt === undefined || ['archive', 'claim-operation', 'complete-operation', 'fail-operation', 'reconcile-operation', 'session-event'].includes(action.type), 'team_archived');
     const s = structuredClone(input);
@@ -137,7 +151,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         // B-706: a launch creates its worktree from the bot's source repository, never
         // from the previous launch's worktree (bot.directory after a completed spawn).
         const directory = type === 'spawn' ? teamBotRepository(s, bot) : bot.directory;
-        const op: TeamOperation = { ...(type === 'spawn' ? { teamLaunchVersion: 1 as const } : {}), ...(bot.model ? { model: bot.model } : {}), permissionMode: s.permissionMode === 'bypassPermissions' ? 'bypassPermissions' : 'default', id: id(), teamId: s.id, machineId: s.machineId, taskId: t.id, botId: bot.id, attemptId, generation: bot.generation, type, status: 'pending', claimId: null, claimedAt: null, error: null, sessionId: bot.sessionId, directory, assistant: bot.assistant, prompt: type === 'spawn' ? `Task ${t.id}\n${t.goal}\nAcceptance:\n${t.acceptance.join('\n')}` : '', createdAt: now };
+        const op: TeamOperation = { ...(type === 'spawn' ? { teamLaunchVersion: 1 as const } : {}), ...(bot.model ? { model: bot.model } : {}), ...(type === 'spawn' && bot.agentProfile !== undefined ? { agentProfile: bot.agentProfile } : {}), permissionMode: s.permissionMode === 'bypassPermissions' ? 'bypassPermissions' : 'default', id: id(), teamId: s.id, machineId: s.machineId, taskId: t.id, botId: bot.id, attemptId, generation: bot.generation, type, status: 'pending', claimId: null, claimedAt: null, error: null, sessionId: bot.sessionId, directory, assistant: bot.assistant, prompt: type === 'spawn' ? `Task ${t.id}\n${t.goal}\nAcceptance:\n${t.acceptance.join('\n')}` : '', createdAt: now };
         s.operations.push(op);
         return op;
     };
@@ -171,9 +185,9 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         case 'start': {
             owner();
             requireTeam(s.bots.length === 0 && s.tasks.length === 0 && s.operations.length === 0, 'team_already_started');
-            const bot: TeamBot = { id: id(), name: 'Lead', root: true, managed: true, sessionId: null, generation: 1, assistant: action.launch.assistant, directory: action.launch.directory, ...(action.launch.model ? { model: action.launch.model } : {}) };
+            const bot: TeamBot = { id: id(), name: 'Lead', root: true, managed: true, sessionId: null, generation: 1, assistant: action.launch.assistant, directory: action.launch.directory, ...(action.launch.model ? { model: action.launch.model } : {}), ...(action.launch.agentProfile !== undefined ? { agentProfile: action.launch.agentProfile } : {}) };
             s.bots.push(bot);
-            s.defaults = { assistant: action.launch.assistant, ...(action.launch.model ? { model: action.launch.model } : {}), maxParallel: 3 };
+            s.defaults = { assistant: action.launch.assistant, ...(action.launch.model ? { model: action.launch.model } : {}), ...(action.launch.agentProfile !== undefined ? { agentProfile: action.launch.agentProfile } : {}), maxParallel: 3 };
             const attemptId = id();
             const task: TeamTask = { id: id(), parentTaskId: null, goal: action.launch.goal, acceptance: ['Complete the requested goal and provide verification evidence.'], goalVersion: 1, ownerBotId: null, assigneeBotId: bot.id, status: 'queued', attempts: [{ id: attemptId, botId: bot.id, generation: 1, goalVersion: 1, status: 'pending', result: null }], currentAttemptId: attemptId, cleanup: 'none' };
             s.tasks.push(task); taskId = task.id;
@@ -182,6 +196,16 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         }
         case 'set-defaults': {
             owner(); s.defaults = { ...action.defaults }; break;
+        }
+        case 'set-bot-account': {
+            // B-850d: the member's account for its next spawn; a live member keeps its
+            // session's binding (the Web switches that with agent-profile-bind).
+            owner();
+            const bot = s.bots.find(b => b.id === action.botId);
+            requireTeam(bot, 'bot_not_found', 404);
+            if (action.agentProfile === undefined) delete bot.agentProfile;
+            else bot.agentProfile = action.agentProfile;
+            break;
         }
         case 'set-permission-mode': {
             owner();
@@ -257,12 +281,15 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             let reused = false;
             if (!bot) {
                 const fresh: TeamBot = { id: id(), name: action.botName ?? 'Worker', sessionId: null, generation: 1, root: false, managed: true, assistant: action.assistant ?? s.defaults?.assistant ?? 'claude', ...(action.model ? { model: action.model } : (!action.assistant || action.assistant === s.defaults?.assistant) && s.defaults?.model ? { model: s.defaults.model } : {}), directory: action.directory ?? currentBot?.directory ?? s.bots.find(b => b.root)?.directory ?? null };
+                // B-850d: the delegate's account > the team default (same agent only: accounts are per agent).
+                const account = delegateAccount(action.agentProfile, fresh.assistant, s.defaults);
+                if (account !== undefined) fresh.agentProfile = account;
                 // B-692: reuse a stopped member of the same shape (agent, model, folder —
                 // its source repository, B-706: bot.directory is its last worktree)
                 // instead of growing the roster with one-shot bots. Oldest first.
                 // Only an unbound one: a bot that still holds a session (exited / stale) is
                 // inactive for counting but would be messaged rather than relaunched.
-                const candidate = s.bots.find(b => b.managed && !b.root && !b.sessionId && b.assistant === fresh.assistant && (b.model ?? null) === (fresh.model ?? null) && teamBotRepository(s, b) === fresh.directory && teamBotActivity(s, b, { now }) === 'inactive' && (actor.kind === 'owner' || currentBot?.root));
+                const candidate = s.bots.find(b => b.managed && !b.root && !b.sessionId && b.assistant === fresh.assistant && (b.model ?? null) === (fresh.model ?? null) && teamBotRepository(s, b) === fresh.directory && sameTeamAccount(b.agentProfile, fresh.agentProfile) && teamBotActivity(s, b, { now }) === 'inactive' && (actor.kind === 'owner' || currentBot?.root));
                 if (candidate) {
                     bot = candidate; reused = true;
                     // The old name stays in the record so its history still reads right.
@@ -277,6 +304,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                 }
             }
             requireTeam(bot.sessionId || bot.managed, 'bot_not_bound');
+            // B-850d: naming an account for an existing member sets it for its next spawn.
+            if (!reused && action.assigneeBotId && action.agentProfile !== undefined) bot.agentProfile = action.agentProfile;
             // B-692: a bot whose cleanup has not finished is no longer refused (409
             // made leads create a new bot every time): the task queues and its launch
             // is claimable only after the cleanup completes (see claim-operation).
@@ -417,7 +446,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             const t = s.tasks.find(t => t.id === op.taskId)!;
             if (action.type === 'fail-operation') {
                 const first = op.status === 'claimed';
-                op.status = action.unknown ? 'unknown' : 'failed'; op.error = action.error;
+                op.status = action.unknown ? 'unknown' : 'failed'; op.error = action.error; op.failedAt = now;
                 if (op.type === 'stop') {
                     t.cleanup = 'failed';
                     // B-775: the wrapper is gone and only its worktree is retained — unbind the session

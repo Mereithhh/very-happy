@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import {
     AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DEDUPE_WINDOW_MS, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_DEFAULT_MAX_RUNTIME_MS,
     AUTOMATION_QUEUED_ATTENTION_MS, AUTOMATION_RUN_RETENTION, AUTOMATION_SCRIPT_DEFAULT_MAX_RUNTIME_MS, AUTOMATION_RUN_STATUSES,
-    AUTOMATION_RUN_TERMINAL_STATUSES, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, isAutomationRunTerminal,
+    AUTOMATION_RUN_TERMINAL_STATUSES, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, isAutomationRunTerminal, projectAgentProfilesFor,
     type Automation, type AutomationAction, type AutomationClaim, type AutomationClaimResponse, type AutomationCreate, type AutomationFire, type AutomationFireResponse,
     type AutomationManualRun, type AutomationReport, type AutomationRun, type AutomationRunStatus, type AutomationSticky, type AutomationUpdate,
 } from '@slopus/happy-wire';
@@ -12,6 +12,7 @@ import { inTx, isRetryableTransactionConflict, type Tx } from '@/storage/inTx';
 import { configuredResourceLimit } from '@/app/api/resourceLimits';
 import { AutomationError, requireAutomation } from './errors';
 import { linkedSessionIds } from './attentionLifecycle';
+import { readDefaults } from '@/app/projects/rules';
 import { initialRunAt, nextRunAfter, normalizeTrigger } from './schedule';
 import { decodeStoredAction, encodeStoredAction, foldSkipCount, occurrenceOf, recordMerge, shouldMergeSkip, type SkipCounts, type StoredAction } from './storedAction';
 
@@ -542,7 +543,10 @@ export async function claimRuns(accountId: string, input: AutomationClaim): Prom
             const automation = await tx.automation.findFirst({ where: { id: run.automationId } });
             if (!automation) continue;
             const stickies = await tx.automationSticky.findMany({ where: { automationId: automation.id }, orderBy: { updatedAt: 'desc' } });
-            runs.push({ run: { ...toRunView(run, automation.name), claimId: run.claimId! }, automation: toAutomationView(automation), stickies: stickies.map(stickyView) });
+            // B-850d: the project's account defaults for this machine (the daemon resolves explicit > project > machine).
+            const project = automation.projectId ? await tx.project.findFirst({ where: { id: automation.projectId }, select: { defaults: true } }) : null;
+            const projectAgentProfiles = project ? projectAgentProfilesFor(readDefaults(project.defaults).agentProfiles, input.machineId) : [];
+            runs.push({ run: { ...toRunView(run, automation.name), claimId: run.claimId! }, automation: toAutomationView(automation), stickies: stickies.map(stickyView), ...(projectAgentProfiles.length > 0 ? { projectAgentProfiles } : {}) });
         }
         return { runs, leaseMs };
     }).catch(mapConflict);

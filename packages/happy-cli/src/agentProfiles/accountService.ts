@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+    AGENT_PROFILE_FEATURE_LAUNCH,
     AgentProfileAddRequestSchema,
     AgentProfileBindRequestSchema,
     AgentProfileLoginStartRequestSchema,
@@ -117,7 +118,9 @@ export class AccountService {
         const state = buildAgentProfilesState(this.home, readAccounts(this.home), defaultSecretProbe(this.env), this.now(), this.deps.daemonPid ?? process.pid);
         // B-850b: what a codex-provider account can be based on (no secrets: env_key is a variable name).
         const codexProviders = readCodexProviders(this.env).map((p) => ({ id: p.id, ...(p.name ? { name: p.name } : {}), ...(p.baseUrl ? { baseUrl: p.baseUrl } : {}), ...(p.envKey ? { envKey: p.envKey } : {}) }));
-        return codexProviders.length > 0 ? { ...state, codexProviders } : state;
+        // B-850d: project / team / automation / fork accounts are honoured (and refuse when unusable).
+        const withFeatures = { ...state, features: [AGENT_PROFILE_FEATURE_LAUNCH] };
+        return codexProviders.length > 0 ? { ...withFeatures, codexProviders } : withFeatures;
     }
 
     private summary(id: string): AgentProfileSummary {
@@ -522,6 +525,11 @@ export class AccountService {
         }
         if (outcome.notRunning) return { bound: true, restart: 'skipped', error: outcome.error };
         return { bound: true, restart: 'failed', error: outcome.error };
+    }
+
+    /** B-850d: the account a session is bound to (null = machine login, also when unbound). */
+    sessionAccount(sessionId: string): string | null {
+        return readSessionBindings(this.home)[sessionId]?.account ?? null;
     }
 
     /**

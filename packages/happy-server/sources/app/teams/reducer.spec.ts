@@ -589,3 +589,52 @@ describe('B-775 a failed member cleanup never strands the member', () => {
         expect(f.state.bots.find(b => b.root)?.sessionId).toBe('lead-session');
     });
 });
+
+describe('B-850d member accounts', () => {
+    const orgA = { id: 'org-a', label: 'Org A' };
+    const orgB = { id: 'org-b' };
+
+    it('start: the lead and the team default take the launch account; its spawn op carries it', () => {
+        const f = fixture();
+        f.act({ type: 'start', launch: { goal: 'g', directory: '/repo', assistant: 'claude', agentProfile: orgA } });
+        expect(f.state.bots[0].agentProfile).toEqual(orgA);
+        expect(f.state.defaults?.agentProfile).toEqual(orgA);
+        expect(f.state.operations[0].agentProfile).toEqual(orgA);
+    });
+
+    it('delegate: explicit > team default (same agent only); null = machine login; none = no field', () => {
+        const f = fixture();
+        f.act({ type: 'set-defaults', defaults: { assistant: 'claude', agentProfile: orgA } });
+        f.act({ type: 'delegate', goal: 'a', acceptance: ['x'], botName: 'A' });
+        f.act({ type: 'delegate', goal: 'b', acceptance: ['x'], botName: 'B', agentProfile: orgB });
+        f.act({ type: 'delegate', goal: 'c', acceptance: ['x'], botName: 'C', agentProfile: null });
+        f.act({ type: 'delegate', goal: 'd', acceptance: ['x'], botName: 'D', assistant: 'codex' });
+        expect(f.state.operations.map(o => o.agentProfile)).toEqual([orgA, orgB, null, undefined]);
+        expect('agentProfile' in f.state.operations[3]).toBe(false);
+        expect(f.state.bots.map(b => [b.name, b.agentProfile])).toEqual([['A', orgA], ['B', orgB], ['C', null], ['D', undefined]]);
+    });
+
+    it('set-bot-account (owner only) changes the next spawn; absent clears it', () => {
+        const f = fixture();
+        f.act({ type: 'delegate', goal: 'a', acceptance: ['x'], botName: 'A' });
+        const bot = f.state.bots[0];
+        expect(() => f.act({ type: 'set-bot-account', botId: bot.id, agentProfile: orgB }, { kind: 'agent', botId: bot.id, generation: 1 })).toThrow('owner_required');
+        expect(() => f.act({ type: 'set-bot-account', botId: 'nope', agentProfile: orgB })).toThrow('bot_not_found');
+        f.act({ type: 'set-bot-account', botId: bot.id, agentProfile: orgB });
+        expect(f.state.bots[0].agentProfile).toEqual(orgB);
+        f.act({ type: 'set-bot-account', botId: bot.id });
+        expect('agentProfile' in f.state.bots[0]).toBe(false);
+    });
+
+    it('a stopped member is reused only for the same account', async () => {
+        const { sameTeamAccount, delegateAccount } = await import('./reducer');
+        expect(sameTeamAccount(undefined, undefined)).toBe(true);
+        expect(sameTeamAccount(null, undefined)).toBe(false);
+        expect(sameTeamAccount(null, null)).toBe(true);
+        expect(sameTeamAccount({ id: 'a', label: 'x' }, { id: 'a' })).toBe(true);
+        expect(sameTeamAccount({ id: 'a' }, { id: 'b' })).toBe(false);
+        expect(delegateAccount(undefined, 'codex', { assistant: 'claude', agentProfile: orgA })).toBeUndefined();
+        expect(delegateAccount(undefined, 'claude', { agentProfile: orgA })).toEqual(orgA);
+        expect(delegateAccount(null, 'claude', { agentProfile: orgA })).toBeNull();
+    });
+});

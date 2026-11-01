@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AgentProfileChoiceSchema, type AgentProfileRef } from './agentProfiles';
 
 export const TeamPermissionModeSchema = z.enum(['default', 'bypassPermissions']);
 export type TeamPermissionMode = z.infer<typeof TeamPermissionModeSchema>;
@@ -7,8 +8,9 @@ const id = z.string().min(1).max(128);
 const text = z.string().min(1).max(32000);
 export const TeamAssistantSchema = z.enum(['claude', 'codex', 'pi-acp']);
 export const TeamModelSchema = z.string().trim().min(1).max(256);
-export const TeamLaunchSchema = z.object({ goal: text, directory: z.string().min(1).max(4096), assistant: TeamAssistantSchema, model: TeamModelSchema.optional() });
-export const TeamDefaultsSchema = z.object({ assistant: TeamAssistantSchema.optional(), model: TeamModelSchema.optional(), maxParallel: z.number().int().min(1).max(16).optional() });
+/** B-850d: `agentProfile` everywhere below = the account (id + label, no secret; null = machine login; absent = not chosen). */
+export const TeamLaunchSchema = z.object({ goal: text, directory: z.string().min(1).max(4096), assistant: TeamAssistantSchema, model: TeamModelSchema.optional(), agentProfile: AgentProfileChoiceSchema.optional() });
+export const TeamDefaultsSchema = z.object({ assistant: TeamAssistantSchema.optional(), model: TeamModelSchema.optional(), maxParallel: z.number().int().min(1).max(16).optional(), agentProfile: AgentProfileChoiceSchema.optional() });
 export type TeamLaunch = z.infer<typeof TeamLaunchSchema>;
 export type TeamDefaults = z.infer<typeof TeamDefaultsSchema>;
 export const TeamActionSchema = z.discriminatedUnion('type', [
@@ -16,6 +18,8 @@ export const TeamActionSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('start'), launch: TeamLaunchSchema }),
     z.object({ type: z.literal('set-defaults'), defaults: TeamDefaultsSchema }),
     z.object({ type: z.literal('set-permission-mode'), permissionMode: TeamPermissionModeSchema }),
+    /** B-850d: a member's account for its next spawn (absent = follow the team default). An old server answers invalid action. */
+    z.object({ type: z.literal('set-bot-account'), botId: id, agentProfile: AgentProfileChoiceSchema.optional() }),
     z.object({ type: z.literal('schedule-create'), name: id, botId: id, body: text, runAt: z.number().int().positive().max(8640000000000000), intervalMs: z.number().int().min(60000).max(366 * 86400000).optional() }),
     z.object({ type: z.literal('schedule-pause'), scheduleId: id, version: z.number().int().positive() }),
     z.object({ type: z.literal('schedule-resume'), scheduleId: id, version: z.number().int().positive() }),
@@ -25,7 +29,7 @@ export const TeamActionSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('retry-operation'), operationId: id, claimId: id }),
     /** B-730: `transfer` = the owner confirmed moving a session that is bound in another live team (Web adopt); without it the server answers `session_in_other_team`. An old server strips it. */
     z.object({ type: z.literal('join'), name: id, sessionId: id, botId: id.optional(), transfer: z.literal(true).optional() }),
-    z.object({ type: z.literal('delegate'), goal: text, acceptance: z.array(text).min(1).max(32), parentTaskId: id.optional(), assigneeBotId: id.optional(), botName: id.optional(), directory: z.string().min(1).max(4096).optional(), assistant: TeamAssistantSchema.optional(), model: TeamModelSchema.optional() }),
+    z.object({ type: z.literal('delegate'), goal: text, acceptance: z.array(text).min(1).max(32), parentTaskId: id.optional(), assigneeBotId: id.optional(), botName: id.optional(), directory: z.string().min(1).max(4096).optional(), assistant: TeamAssistantSchema.optional(), model: TeamModelSchema.optional(), agentProfile: AgentProfileChoiceSchema.optional() }),
     z.object({ type: z.literal('message'), taskId: id, body: text, recipientBotId: id.optional() }),
     z.object({ type: z.literal('submit'), taskId: id, attemptId: id, goalVersion: z.number().int().positive(), result: text }),
     z.object({ type: z.literal('accept'), taskId: id, attemptId: id, goalVersion: z.number().int().positive() }),
@@ -64,7 +68,7 @@ export const TeamProjectBindSchema = z.object({
 export type TeamProjectBind = z.infer<typeof TeamProjectBindSchema>;
 export type TeamAction = z.infer<typeof TeamActionSchema>;
 export type TeamActionRequest = z.infer<typeof TeamActionRequestSchema>;
-export type TeamBot = { /** B-692: server-derived (teamBotActivity); absent from old servers. */ activity?: 'active' | 'stopping' | 'idle' | 'inactive'; /** B-692: names before a reuse renamed this member, oldest first. */ previousNames?: string[]; /** B-729: conversations this member had before a join (adopt / rebind) or cleanup unbound them, oldest first (max 32); absent from old servers. */ previousSessionIds?: string[]; /** B-730: the owner moved this member's session to another team (Web adopt with confirmation); absent from old servers. */ transferredTo?: { teamId: string; sessionId: string; at: number }; model?: string; id: string; name: string; sessionId: string | null; generation: number; root: boolean; managed: boolean; assistant: 'claude' | 'codex' | 'pi-acp'; directory: string | null; lastEvent?: 'idle' | 'blocked' | 'exited'; lastEventAt?: number; /** B-769: `lastEventAt` of the idle stretch whose long-idle notice the task owner already got; absent from old servers. */ idleEscalatedAt?: number; /** B-769b: when this bot last got new work (a new attempt or a completed launch); an idle from before it belongs to the previous work. Absent from old servers. */ workAssignedAt?: number };
+export type TeamBot = { /** B-692: server-derived (teamBotActivity); absent from old servers. */ activity?: 'active' | 'stopping' | 'idle' | 'inactive'; /** B-692: names before a reuse renamed this member, oldest first. */ previousNames?: string[]; /** B-729: conversations this member had before a join (adopt / rebind) or cleanup unbound them, oldest first (max 32); absent from old servers. */ previousSessionIds?: string[]; /** B-730: the owner moved this member's session to another team (Web adopt with confirmation); absent from old servers. */ transferredTo?: { teamId: string; sessionId: string; at: number }; model?: string; /** B-850d: the account this member spawns on (absent = machine default). */ agentProfile?: AgentProfileRef | null; id: string; name: string; sessionId: string | null; generation: number; root: boolean; managed: boolean; assistant: 'claude' | 'codex' | 'pi-acp'; directory: string | null; lastEvent?: 'idle' | 'blocked' | 'exited'; lastEventAt?: number; /** B-769: `lastEventAt` of the idle stretch whose long-idle notice the task owner already got; absent from old servers. */ idleEscalatedAt?: number; /** B-769b: when this bot last got new work (a new attempt or a completed launch); an idle from before it belongs to the previous work. Absent from old servers. */ workAssignedAt?: number };
 /** B-769: a member idle (turn ended) with an unsubmitted task the reader owns; server-derived, response-only. */
 export type TeamIdleMember = { botId: string; name: string; since: number; taskIds: string[] };
 /** B-775: a member cleanup that failed and waits for the owner (`teamCleanupIssues`). */
@@ -72,7 +76,7 @@ export type TeamCleanupIssue = { botId: string; name: string; operationId: strin
 export type TeamAttempt = { id: string; botId: string; generation: number; goalVersion: number; status: 'pending' | 'running' | 'submitted' | 'accepted' | 'cancelled' | 'superseded'; result: string | null };
 export type TeamTask = { /** B-822: when the task became done / cancelled (compaction age); absent from old servers and tasks closed before B-822. */ closedAt?: number; id: string; parentTaskId: string | null; goal: string; acceptance: string[]; goalVersion: number; ownerBotId: string | null; assigneeBotId: string; status: 'queued' | 'running' | 'submitted' | 'done' | 'cancelled'; attempts: TeamAttempt[]; currentAttemptId: string; cleanup: 'none' | 'pending' | 'done' | 'failed' };
 export type TeamMessage = { id: string; taskId: string | null; scheduleId?: string; cancelledAt?: number; senderBotId: string | null; source?: 'agent' | 'user' | 'system'; recipientBotId: string; body: string; deliveredAt: number | null; createdAt: number };
-export type TeamOperation = { teamLaunchVersion?: 1; model?: string; permissionMode?: TeamPermissionMode; manualResolution?: { note: string; at: number }; retryRequestedAt?: number; id: string; teamId: string; machineId: string; taskId: string; botId: string; attemptId: string; generation: number; type: 'spawn' | 'stop'; status: 'pending' | 'claimed' | 'completed' | 'failed' | 'unknown'; claimId: string | null; claimedAt: number | null; error: string | null; sessionId: string | null; directory: string | null; assistant: 'claude' | 'codex' | 'pi-acp'; prompt: string; createdAt: number };
+export type TeamOperation = { teamLaunchVersion?: 1; model?: string; /** B-850d: spawn on this account (absent = machine default; null = machine login). */ agentProfile?: AgentProfileRef | null; /** B-850d: when the last fail-operation landed (absent from old servers). */ failedAt?: number; permissionMode?: TeamPermissionMode; manualResolution?: { note: string; at: number }; retryRequestedAt?: number; id: string; teamId: string; machineId: string; taskId: string; botId: string; attemptId: string; generation: number; type: 'spawn' | 'stop'; status: 'pending' | 'claimed' | 'completed' | 'failed' | 'unknown'; claimId: string | null; claimedAt: number | null; error: string | null; sessionId: string | null; directory: string | null; assistant: 'claude' | 'codex' | 'pi-acp'; prompt: string; createdAt: number };
 export type TeamSchedule = { finishedAt?: number; id: string; name: string; botId: string; machineId: string; body: string; status: 'active' | 'paused' | 'cancelled' | 'completed'; version: number; nextRunAt: number | null; intervalMs?: number; pendingMessageId?: string; lastFiredAt?: number; fireCount: number; createdAt: number };
 /** B-822: what counts against a team's record limits. `used` / `limit` per metric; `warning` once any reaches 80%. */
 export type TeamCapacityMetric = 'bytes' | 'messages' | 'operations' | 'tasks';

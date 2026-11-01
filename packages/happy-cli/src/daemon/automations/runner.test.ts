@@ -577,3 +577,104 @@ describe('B-548 automation runner: precheck', () => {
         expect(client.report).toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'failed', needsAttention: true, attentionReason: 'invalid_action' }));
     });
 });
+
+describe('B-850d automation runner: accounts', () => {
+    const withAccount = (agentProfile: { id: string; label?: string } | null | undefined, extra: Record<string, unknown> = {}) =>
+        automation({ action: { kind: 'spawn', agent: 'claude', directory: '/repo', prompt: 'x', ...(agentProfile !== undefined ? { agentProfile } : {}), ...extra } as any });
+    const unusable = (reason: string) => { throw new Error(`agent-profile-unavailable:${reason}: account "Org A"`); };
+
+    it('passes the run\'s account to the spawn; null = machine login; none = left to the daemon', async () => {
+        for (const [i, profile, expected] of [[1, { id: 'org-a' }, 'org-a'], [2, null, null]] as const) {
+            spawn.mockClear();
+            const runner = start(fakeClient([claimed(run({ id: `ra${i}` }), withAccount(profile))])); await settled(runner);
+            expect(spawn.mock.calls[0][0].agentProfileId).toBe(expected);
+            runner.stop();
+        }
+        spawn.mockClear();
+        const runner = start(fakeClient([claimed(run({ id: 'ra3' }), withAccount(undefined))])); await settled(runner);
+        expect('agentProfileId' in spawn.mock.calls[0][0]).toBe(false);
+    });
+
+    it('explicit > project default (this machine, this agent) > machine default', async () => {
+        const project = [{ agent: 'claude', machineId: 'm1', id: 'proj-acct' }, { agent: 'claude', machineId: 'm2', id: 'other-machine' }];
+        let runner = start(fakeClient([{ ...claimed(run(), withAccount(undefined)), projectAgentProfiles: project }])); await settled(runner);
+        expect(spawn.mock.calls[0][0].agentProfileId).toBe('proj-acct');
+        runner.stop(); spawn.mockClear();
+        runner = start(fakeClient([{ ...claimed(run({ id: 'rp2' }), withAccount({ id: 'mine' })), projectAgentProfiles: project }])); await settled(runner);
+        expect(spawn.mock.calls[0][0].agentProfileId).toBe('mine');
+        runner.stop(); spawn.mockClear();
+        runner = start(fakeClient([{ ...claimed(run({ id: 'rp3' }), withAccount(undefined)), projectAgentProfiles: [project[1]] }])); await settled(runner);
+        expect('agentProfileId' in spawn.mock.calls[0][0]).toBe(false);
+    });
+
+    it('Q3: an unusable account refuses the run with account_unavailable (never the machine login)', async () => {
+        spawn.mockResolvedValueOnce({ type: 'error', errorMessage: 'agent-profile-unavailable:expired: account "Org A"' });
+        const client = fakeClient([claimed(run(), withAccount({ id: 'org-a' }))]);
+        const runner = start(client); await settled(runner);
+        expect(spawn).toHaveBeenCalledTimes(1);
+        const report = client.report.mock.calls.at(-1)![1];
+        expect(report).toMatchObject({ status: 'failed', needsAttention: true, attentionReason: 'account_unavailable' });
+        expect(report.error).toMatch(/^Account unavailable \(expired\): account "Org A" — sign-in has expired\. Not run on the machine login\. Fix: sign in again/);
+        expect(report.error).toMatch(/choose another account for this automation/);
+        expect(() => AutomationReportSchema.parse(report)).not.toThrow();
+    });
+
+    describe('sticky sessions', () => {
+        const sticky = (agentProfile?: { id: string } | null) => withAccount(agentProfile, { sticky: { key: 'k' } });
+        const bound = [{ key: 'k', sessionId: 'old', updatedAt: 1 }];
+        const accounts = (current: string | null, resolve: (agent: string, requested: string | null | undefined) => string | null = (_a, r) => r ?? null) => ({
+            sessionAccount: vi.fn(() => current), resolve: vi.fn(resolve), rebind: vi.fn(async () => undefined),
+        });
+
+        it('same account → sent as before, no rebind', async () => {
+            live.add('old');
+            const acc = accounts('org-a');
+            const runner = start(fakeClient([claimed(run(), sticky({ id: 'org-a' }), bound)]), { accounts: acc }); await settled(runner);
+            expect(acc.rebind).not.toHaveBeenCalled();
+            expect(send).toHaveBeenCalledWith('old', expect.any(String), { localId: 'automation-r1' });
+        });
+
+        it('the run names another account → the sticky session is moved onto it (in place), then sent', async () => {
+            live.add('old');
+            const acc = accounts('org-a');
+            const runner = start(fakeClient([claimed(run(), sticky({ id: 'org-b' }), bound)]), { accounts: acc }); await settled(runner);
+            expect(acc.rebind).toHaveBeenCalledWith('old', 'org-b');
+            expect(acc.rebind.mock.invocationCallOrder[0]).toBeLessThan(send.mock.invocationCallOrder[0]);
+            expect(spawn).not.toHaveBeenCalled();
+        });
+
+        it('no account named → keeps the session\'s own, but refuses when it became unusable', async () => {
+            live.add('old');
+            const acc = accounts('org-a', (_a, r) => (r === 'org-a' ? unusable('invalid') : r ?? null));
+            const client = fakeClient([claimed(run(), sticky(undefined), bound)]);
+            const runner = start(client, { accounts: acc }); await settled(runner);
+            expect(acc.resolve).toHaveBeenCalledWith('claude', 'org-a');
+            expect(send).not.toHaveBeenCalled();
+            expect(acc.rebind).not.toHaveBeenCalled();
+            expect(client.report).toHaveBeenLastCalledWith('r1', expect.objectContaining({ status: 'failed', sessionId: 'old', attentionReason: 'account_unavailable', error: expect.stringMatching(/^Account unavailable \(invalid\)/) }));
+        });
+
+        it('a hibernated sticky session is aligned before it is woken', async () => {
+            const acc = accounts(null);
+            const wakeHibernated = vi.fn(async (id: string) => { live.add(id); return true; });
+            const runner = start(fakeClient([claimed(run(), sticky({ id: 'org-b' }), bound)]), { accounts: acc, wakeHibernated, isHibernated: (id) => id === 'old' });
+            await settled(runner);
+            expect(acc.rebind).toHaveBeenCalledWith('old', 'org-b');
+            expect(acc.rebind.mock.invocationCallOrder[0]).toBeLessThan(wakeHibernated.mock.invocationCallOrder[0]);
+        });
+    });
+
+    it('a turn the wrapper refused for its account → account_unavailable, not turn_failed', async () => {
+        const client = fakeClient([claimed()]);
+        const runner = start(client); await settled(runner);
+        readTurn.mockResolvedValue({ ...ended('', 'failed', 'Not executed: Account "Org A" is expired.'), discarded: 'failed', refusal: 'agent-profile-unavailable' });
+        await turnEdge(runner);
+        expect(client.report).toHaveBeenLastCalledWith('r1', expect.objectContaining({ status: 'failed', error: 'Not executed: Account "Org A" is expired.', needsAttention: true, attentionReason: 'account_unavailable' }));
+        // A queue that was merely cleared stays turn_cancelled.
+        client.claim.mockResolvedValueOnce({ runs: [claimed(run({ id: 'r2', claimId: 'c2' }))], leaseMs: 60_000 });
+        await runner.tick();
+        readTurn.mockResolvedValue({ ...ended('', 'cancelled', 'Not executed'), discarded: 'cleared' });
+        await turnEdge(runner);
+        expect(client.report).toHaveBeenLastCalledWith('r2', expect.objectContaining({ attentionReason: 'turn_cancelled' }));
+    });
+});

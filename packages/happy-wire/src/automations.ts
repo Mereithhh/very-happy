@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AgentProfileChoiceSchema, type ProjectAgentProfile } from './agentProfiles';
 
 // B-496 account-level Automations. Request schemas are strict (the server
 // validates them); response shapes are plain TS types like `TeamState`, so
@@ -60,6 +61,8 @@ export const AutomationActionSchema = z.discriminatedUnion('kind', [
         permissionMode: z.string().trim().min(1).max(64).nullable().optional(),
         worktree: z.boolean().optional(),
         sticky: AutomationStickySchema.optional(),
+        /** B-850d: the account the run uses (absent = project default > machine default; null = machine login). An older daemon ignores it. */
+        agentProfile: AgentProfileChoiceSchema.optional(),
     }),
     z.object({ kind: z.literal('send'), sessionId: id, prompt: text }),
     z.object({
@@ -245,7 +248,8 @@ export type AutomationRun = {
     occurrenceCount?: number;
 };
 export type AutomationSticky = { key: string; sessionId: string; updatedAt: number };
-export type AutomationClaimedRun = { run: AutomationRun & { claimId: string }; automation: Automation; stickies: AutomationSticky[] };
+/** B-850d `projectAgentProfiles`: the owning project's account defaults that apply on the claiming machine; absent on older servers / no project. */
+export type AutomationClaimedRun = { run: AutomationRun & { claimId: string }; automation: Automation; stickies: AutomationSticky[]; projectAgentProfiles?: ProjectAgentProfile[] };
 export type AutomationClaimResponse = { runs: AutomationClaimedRun[]; leaseMs: number };
 export type AutomationFireResponse = { run: AutomationRun; deduplicated: boolean };
 export type AutomationErrorResponse = { error: string; status?: AutomationRunStatus };

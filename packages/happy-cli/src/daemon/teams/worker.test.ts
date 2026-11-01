@@ -10,7 +10,7 @@ vi.mock('@/persistence', () => ({ readPersistedSessions: mocks.persisted }));
 vi.mock('@/commands/sessionMessage', () => ({ sendUserMessage: mocks.send, waitForSessionKey: mocks.key }));
 vi.mock('@/sessions/sessionOps', () => ({ archiveSession: mocks.archive }));
 vi.mock('./worktree', () => ({ prepareTeamWorktree: mocks.prepare, resolveTeamRepository: mocks.resolve, removeTeamWorktree: mocks.remove }));
-import { createTeamWorker, refusalCode, teamInitialModelMeta } from './worker';
+import { createTeamWorker, refusalCode, teamAccountRefusal, teamInitialModelMeta, teamOperationAccount } from './worker';
 import { readReceipt, writeReceipt } from './journal';
 
 let home: string;
@@ -20,8 +20,8 @@ const team = (operations: TeamOperation[]): TeamState => ({ id: 'team1', name: '
 const spawn = vi.fn();
 const stopAndWait = vi.fn();
 const logged: string[] = [];
-function start(live: () => boolean = () => false) {
-    const worker = createTeamWorker({ home, serverUrl: 'http://127.0.0.1:1', machineId: 'machine1', token: 'test', spawn, stopAndWait, live, log: message => { logged.push(message); } });
+function start(live: () => boolean = () => false, extra: Partial<Parameters<typeof createTeamWorker>[0]> = {}) {
+    const worker = createTeamWorker({ home, serverUrl: 'http://127.0.0.1:1', machineId: 'machine1', token: 'test', spawn, stopAndWait, live, log: message => { logged.push(message); }, ...extra });
     workers.push(worker);
     return worker;
 }
@@ -459,3 +459,70 @@ describe('B-849b2 (QA28 P2-5): a member records its model choice', () => {
     });
 });
 
+
+describe('B-850d team member accounts', () => {
+    const failures = () => mocks.post.mock.calls.filter(c => c[1].action?.type === 'fail-operation').map(c => c[1].action);
+
+    it('the operation\'s account goes to the spawn (null = machine login; absent = machine default)', async () => {
+        const resolveAccount = vi.fn((_agent: string, requested: string | null | undefined) => requested ?? null);
+        setup({ ...op(), agentProfile: { id: 'org-b', label: 'Org B' } });
+        let worker = start(() => false, { resolveAccount }); await settled(worker);
+        expect(resolveAccount).toHaveBeenCalledWith('codex', 'org-b');
+        expect(spawn.mock.calls[0][0].agentProfileId).toBe('org-b');
+        worker.stop(); rmSync(join(home, 'teams'), { recursive: true, force: true }); spawn.mockClear();
+        setup({ ...op(), id: 'op2', agentProfile: null });
+        worker = start(() => false, { resolveAccount }); await settled(worker);
+        expect(spawn.mock.calls[0][0].agentProfileId).toBeNull();
+        worker.stop(); spawn.mockClear();
+        setup({ ...op(), id: 'op3' });
+        worker = start(() => false, { resolveAccount }); await settled(worker);
+        expect('agentProfileId' in spawn.mock.calls[0][0]).toBe(false);
+    });
+
+    it('Q3: an unusable account refuses before any worktree / spawn, definite (not unknown), and waits for the owner retry', async () => {
+        let usable = false;
+        const resolveAccount = vi.fn((_agent: string, requested: string | null | undefined) => {
+            if (!usable) throw new Error('agent-profile-unavailable:expired: account "Org B"');
+            return requested ?? null;
+        });
+        const operation = { ...op(), agentProfile: { id: 'org-b' } };
+        setup(operation);
+        const worker = start(() => false, { resolveAccount }); await settled(worker);
+        expect(mocks.prepare).not.toHaveBeenCalled();
+        expect(spawn).not.toHaveBeenCalled();
+        const [failure] = failures();
+        expect(failure.unknown).toBeUndefined();
+        expect(failure.error).toMatch(/^agent-profile-unavailable:expired: account "Org B" — /);
+        expect(failure.error).toContain('choose another account for this team member');
+        expect(readReceipt(home, 'op1')).toMatchObject({ phase: 'prepared', spawnFailures: 1 });
+        expect(readReceipt(home, 'op1')?.retryAt).toBeUndefined();
+        await worker.tick(); await worker.tick();
+        expect(failures()).toHaveLength(1); // no automatic relaunch: it would be refused again
+        // Owner fixed the account and pressed「重试启动」.
+        usable = true;
+        setup({ ...operation, status: 'failed', claimId: 'claim1', retryRequestedAt: 7 });
+        await worker.tick();
+        expect(spawn).toHaveBeenCalledTimes(1);
+        expect(spawn.mock.calls[0][0].agentProfileId).toBe('org-b');
+        expect(readReceipt(home, 'op1')).toMatchObject({ phase: 'completed', retryConsumed: 7 });
+    });
+
+    it('an account that went bad between the check and the spawn is refused the same way', async () => {
+        setup({ ...op(), agentProfile: { id: 'org-b' } });
+        spawn.mockResolvedValueOnce({ type: 'error', errorMessage: 'agent-profile-unavailable:missing-secret: account "Org B"' });
+        const worker = start(() => false, { resolveAccount: () => 'org-b' }); await settled(worker);
+        expect(failures()[0]).toMatchObject({ error: expect.stringMatching(/^agent-profile-unavailable:missing-secret:/) });
+        expect(failures()[0].unknown).toBeUndefined();
+        expect(readReceipt(home, 'op1')?.phase).toBe('prepared');
+    });
+
+    it('teamAccountRefusal / teamOperationAccount', () => {
+        expect(teamOperationAccount({})).toBeUndefined();
+        expect(teamOperationAccount({ agentProfile: null })).toBeNull();
+        expect(teamOperationAccount({ agentProfile: { id: 'a' } })).toBe('a');
+        expect(teamAccountRefusal(undefined, { assistant: 'claude', agentProfile: { id: 'a' } })).toBeNull();
+        expect(teamAccountRefusal(() => 'a', { assistant: 'pi-acp', agentProfile: { id: 'a' } })).toMatch(/^agent-profile-unavailable:agent-mismatch/);
+        expect(teamAccountRefusal(() => null, { assistant: 'pi-acp' })).toBeNull();
+        expect(teamAccountRefusal(() => { throw new Error('network'); }, { assistant: 'claude' })).toBeNull();
+    });
+});

@@ -87,6 +87,7 @@ import { createAutomationsClient, isAutomationsUnavailable } from '@/automations
 import { BackgroundTaskTracker } from '@/update/backgroundTaskActivity';
 import { ClaudeAuthService } from './claudeAuth/claudeAuthService';
 import { AccountService } from '@/agentProfiles/accountService';
+import { forkSpawnAccount } from '@/agentProfiles/launchAccount';
 import { SPAWN_ACCOUNT_ENV, spawnSetupTokenPty, watchAccountFiles } from '@/agentProfiles/daemonAccounts';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager';
@@ -813,7 +814,11 @@ export async function startDaemon(): Promise<void> {
         const accountAgent = (options.agent ?? 'claude') === 'claude' ? 'claude' : options.agent === 'codex' ? 'codex' : null;
         if (accountAgent && accountServiceRef) {
           try {
-            spawnAccountId = accountServiceRef.resolveSpawnAccount(accountAgent, options.agentProfileId);
+            // B-850d: a fork continues on its parent's account (transcript and
+            // org stay together; an unbound parent = machine login) unless the
+            // spawn names one — Web fork (B-851) and `spawn --fork` alike.
+            const requested = forkSpawnAccount(options.agentProfileId, options.parentSessionId, (id) => accountServiceRef!.sessionAccount(id));
+            spawnAccountId = accountServiceRef.resolveSpawnAccount(accountAgent, requested);
           } catch (error) {
             return { type: 'error', errorMessage: error instanceof Error ? error.message : String(error) };
           }
@@ -2427,6 +2432,7 @@ export async function startDaemon(): Promise<void> {
         if (remaining.some(isPidAlive)) throw new Error('Worker still running; cleanup retained');
       },
       live: id => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid)),
+      ...(accountServiceRef ? { resolveAccount: (agent: 'claude' | 'codex', requested: string | null | undefined) => accountServiceRef!.resolveSpawnAccount(agent, requested) } : {}),
       log: message => logger.debug(`[DAEMON RUN] ${message}`),
     });
 
@@ -2450,6 +2456,17 @@ export async function startDaemon(): Promise<void> {
         return waitForSessionLive(id, (sid) => [...pidToTrackedSession.values()].some(s => s.happySessionId === sid && isPidAlive(s.pid)));
       },
       joinProject: (sessionId, projectId) => joinProject(projectsClient, sessionId, { kind: 'explicit', projectId }, { via: 'automation' }),
+      // B-850d: sticky sessions follow the run's account; unusable → refused.
+      ...(accountServiceRef ? {
+        accounts: {
+          sessionAccount: (id: string) => accountServiceRef!.sessionAccount(id),
+          resolve: (agent: 'claude' | 'codex', requested: string | null | undefined) => accountServiceRef!.resolveSpawnAccount(agent, requested),
+          rebind: async (sessionId: string, accountId: string | null) => {
+            const result = await accountServiceRef!.bind({ sessionId, accountId });
+            if (result.restart === 'failed') throw new Error(result.error ?? 'restart failed');
+          },
+        },
+      } : {}),
       log: message => logger.debug(`[DAEMON RUN] ${message}`),
     });
 

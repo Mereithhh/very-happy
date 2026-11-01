@@ -185,3 +185,16 @@ describe('B-850a local bind (QA30 P1: "this daemon session" read as not running)
         expect(kept.out).toEqual([]);
     });
 });
+
+describe('B-850d account service', () => {
+    it('advertises launch-accounts and reports a session\'s account (unbound = machine login)', () => {
+        const { svc } = service();
+        expect(svc.state().features).toEqual(['launch-accounts']);
+        svc.storeSubscriptionToken(OAT + 'T', { label: 'Org A' });
+        svc.writeBinding('s1', 'org-a');
+        svc.writeBinding('s2', null);
+        expect(svc.sessionAccount('s1')).toBe('org-a');
+        expect(svc.sessionAccount('s2')).toBeNull();
+        expect(svc.sessionAccount('never')).toBeNull();
+    });
+});
