@@ -2929,6 +2929,11 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov01b: {
+                title: '反馈入口更容易找到',
+                summary: '用满两天后就会邀请你打分，并且排在更新说明之后。',
+                feedback: '用满两天后会邀请你给 Very Happy 打分；有没读的更新说明时，打分邀请会等你关掉更新说明后再出现，两者不再互相挡住。',
+            },
             nov01a: {
                 title: '修复 iPad 页面上移',
                 summary: '修复 iPad 上整页上移、下方大片空白的问题。',
