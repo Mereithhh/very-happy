@@ -150,3 +150,10 @@ describe('login status', () => {
         expect(['succeeded', 'failed', 'canceled', 'expired'].every((s) => isLoginTerminal(s as never))).toBe(true);
     });
 });
+
+describe('wire v2 additions', () => {
+    it("login 'starting' is a waiting state", () => {
+        expect(parseLoginStatus({ loginId: 'l', state: 'starting' })?.state).toBe('starting');
+        expect(isLoginTerminal('starting')).toBe(false);
+    });
+});

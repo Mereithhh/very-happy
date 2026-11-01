@@ -4,7 +4,7 @@
  * restart in place, history kept); the confirm says so, and that a different
  * organization starts with a cold prompt cache.
  */
-import { useContext } from 'react';
+import { useContext, useEffect, useSyncExternalStore } from 'react';
 import { UNSAFE_NavigationContext } from 'react-router-dom';
 import { Modal } from '@/modal';
 import { toast } from '@/ui';
@@ -21,6 +21,7 @@ import {
     apiAccountModels,
     isApiAccount,
     planAccountSwitch,
+    switchLanded,
     readMachineAgentProfiles,
     readSessionAgentProfile,
     sessionSupportsAgentProfiles,
@@ -128,6 +129,62 @@ export function sessionApiModels(facts: SessionAccountFacts | null): { account: 
     return models.length ? { account, models, pinned: profile.model ?? models[0] } : null;
 }
 
+// ---- wire v2: session events ----
+
+export type AccountEventKind = 'unavailable' | 'auth-failed' | 'warning';
+const ACCOUNT_EVENT_KINDS: Record<string, AccountEventKind> = {
+    'agent-profile-unavailable': 'unavailable',
+    'agent-profile-auth-failed': 'auth-failed',
+    'agent-profile-warning': 'warning',
+};
+export function accountEventKind(kind: string | undefined): AccountEventKind | null {
+    return (kind && ACCOUNT_EVENT_KINDS[kind]) || null;
+}
+
+/**
+ * Wire v2: with an account bound (`metadata.agentProfile` an object) the
+ * machine-login 「Claude 登录失效 / 修复本机登录」 card is wrong — the account
+ * was rejected, not the machine login.
+ */
+export function machineLoginCardApplies(metadata: { agentProfile?: unknown } | null | undefined): boolean {
+    const profile = readSessionAgentProfile(metadata?.agentProfile);
+    return !profile;
+}
+
+/**
+ * The bound account was rejected mid-run (auth-failed): the wrapper still
+ * reports it active, the daemon republishes it expired / invalid.
+ */
+export function boundAccountRejected(facts: SessionAccountFacts | null, now = Date.now()): { status: 'expired' | 'invalid' | 'missing-secret'; account: AgentProfileSummary } | null {
+    const profile = facts?.profile;
+    if (!facts?.state || !profile || profile.status !== 'active') return null;
+    const account = facts.state.accounts.find((a) => a.id === profile.id);
+    if (!account) return null;
+    const status = accountDisplayStatus(account, now);
+    return status === 'expired' || status === 'invalid' || status === 'missing-secret' ? { status, account } : null;
+}
+
+// ---- wire v2: a bind whose restart is still running ('pending') ----
+
+type PendingSwitch = { targetId: string | null; label: string | null; at: number };
+const PENDING_SWITCH_MAX_MS = 5 * 60_000;
+const pendingSwitches = new Map<string, PendingSwitch>();
+const pendingListeners = new Set<() => void>();
+const notifyPending = () => { for (const listener of [...pendingListeners]) listener(); };
+export function notePendingSwitch(sessionId: string, value: PendingSwitch | null): void {
+    if (value) pendingSwitches.set(sessionId, value); else pendingSwitches.delete(sessionId);
+    notifyPending();
+}
+function subscribePending(listener: () => void) { pendingListeners.add(listener); return () => { pendingListeners.delete(listener); }; }
+
+/** 「重启中」 until the wrapper reports the target account (or 5 min pass). */
+export function pendingSwitchFor(sessionId: string, profile: SessionAgentProfile | null | undefined, now = Date.now()): PendingSwitch | null {
+    const pending = pendingSwitches.get(sessionId);
+    if (!pending) return null;
+    if (switchLanded(profile, pending.targetId) || now - pending.at > PENDING_SWITCH_MAX_MS) return null;
+    return pending;
+}
+
 /** Pure: the confirm dialog's lines. */
 export function switchConfirmLines(plan: ReturnType<typeof planAccountSwitch>, machineName: string, working: boolean, t: T): string[] {
     return [
@@ -164,14 +221,17 @@ export async function switchSessionAccount(input: {
     const result = await agentProfileBind(facts.machineId, { sessionId: input.sessionId, accountId: plan.accountId, ...(plan.model ? { model: plan.model } : {}) });
     if (!result.ok) { toast.error(t('accounts.switchFailed', { error: accountErrorText(result, t) })); return false; }
     if (result.data.restart === 'done') toast.success(t('accounts.switched', { label: plan.label ?? t('accounts.machineLogin') }));
-    else if (result.data.restart === 'pending') toast.show(t('accounts.switchPending'), 'info');
+    else if (result.data.restart === 'pending') {
+        notePendingSwitch(input.sessionId, { targetId: plan.accountId, label: plan.label, at: Date.now() });
+        toast.show(t('accounts.switchPending'), 'info');
+    }
     else if (result.data.restart === 'skipped') toast.show(t('accounts.switchSkipped'), 'info');
     else toast.error(t('accounts.switchRestartFailed'));
     return true;
 }
 
 /** React glue for the composer and the banner; `machine` = the session's machine (callers already hold it). */
-export function useSessionAccount(sessionId: string, machine: Parameters<typeof sessionAccountFacts>[1]): { facts: SessionAccountFacts | null; openSettings: (relogin?: string) => void; openMachine: () => void } {
+export function useSessionAccount(sessionId: string, machine: Parameters<typeof sessionAccountFacts>[1]): { facts: SessionAccountFacts | null; restarting: PendingSwitch | null; openSettings: (relogin?: string) => void; openMachine: () => void } {
     // Not useNavigate(): the composer also renders outside a Router (unit tests), where it throws.
     // The data router's navigator applies the basename itself.
     const navigator = useContext(UNSAFE_NavigationContext)?.navigator as { push(to: string): void } | undefined;
@@ -179,8 +239,13 @@ export function useSessionAccount(sessionId: string, machine: Parameters<typeof 
     const session = useSession(sessionId);
     const machineId = (session?.metadata as { machineId?: string } | null | undefined)?.machineId ?? '';
     const facts = sessionAccountFacts(session, machine);
+    useSyncExternalStore(subscribePending, () => pendingSwitches.get(sessionId));
+    const restarting = pendingSwitchFor(sessionId, facts?.profile);
+    const stale = !restarting && pendingSwitches.has(sessionId);
+    useEffect(() => { if (stale) notePendingSwitch(sessionId, null); }, [stale, sessionId]);
     return {
         facts,
+        restarting,
         openSettings: (relogin) => navigate?.(accountSettingsHref(machineId, relogin)),
         openMachine: () => navigate?.(`/machine/${encodeURIComponent(machineId)}`),
     };

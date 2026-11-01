@@ -205,6 +205,7 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, k
                                 <Button variant="primary" loading={busy} disabled={!code.trim()} onClick={() => void submitCode()} data-testid="account-login-submit">{t('accounts.submitCode')}</Button>
                             </div>
                         </div>}
+                        {login && login.state === 'starting' && <p className="mce-note" role="status"><Spinner size={13} /> {t('accounts.starting')}</p>}
                         {login && login.state === 'exchanging' && <p className="mce-note" role="status"><Spinner size={13} /> {t('accounts.exchanging')}</p>}
                         {login && login.state === 'succeeded' && <p className="mce-note" role="status" data-testid="account-login-done">{t('accounts.loginSucceeded', { label: login.account?.label ?? label })}</p>}
                         {login && (login.state === 'failed' || login.state === 'expired' || login.state === 'canceled') && <div className="acc-login">

@@ -11,44 +11,20 @@
  * Pure module: no React, no stores.
  */
 import { z } from 'zod';
+import {
+    AGENT_PROFILE_RPC,
+    AGENT_PROFILE_SESSION_CAPABILITY,
+    AgentProfileSummarySchema,
+    readSessionAgentProfile as readWireSessionAgentProfile,
+    type AgentProfileSummary,
+} from '@slopus/happy-wire';
 
-/** Session metadata capability: the wrapper honours a binding and reports `metadata.agentProfile`. */
-export const AGENT_PROFILE_SESSION_CAPABILITY = 'agent-profile-v1';
-
-export const AGENT_PROFILE_RPC = {
-    list: 'agent-profile-list',
-    add: 'agent-profile-add',
-    loginStart: 'agent-profile-login-start',
-    loginSubmit: 'agent-profile-login-submit',
-    loginStatus: 'agent-profile-login-status',
-    loginCancel: 'agent-profile-login-cancel',
-    test: 'agent-profile-test',
-    rename: 'agent-profile-rename',
-    remove: 'agent-profile-remove',
-    setDefault: 'agent-profile-set-default',
-    bind: 'agent-profile-bind',
-} as const;
+// Contract (B-850a wire v1 + v2) comes from happy-wire; this module adds the
+// Web's trust gate, whitelisted reads, presentation and Q3 decisions.
+export { AGENT_PROFILE_RPC, AGENT_PROFILE_SESSION_CAPABILITY, AgentProfileSummarySchema, type AgentProfileSummary };
 
 /** Agents that have accounts in this release (codex/pi/gemini come with PR-D/G). */
 export const ACCOUNT_AGENTS = ['claude'] as const;
-
-export const AgentProfileSummarySchema = z.object({
-    id: z.string(),
-    label: z.string(),
-    agent: z.string(),
-    kind: z.string(),
-    status: z.string(),
-    statusDetail: z.string().optional(),
-    checkedAt: z.number().optional(),
-    createdAt: z.number().optional(),
-    expiresAt: z.number().optional(),
-    baseUrl: z.string().optional(),
-    models: z.array(z.string()).optional(),
-    keySource: z.string().optional(),
-    keyRef: z.string().optional(),
-    legacy: z.boolean().optional(),
-});
-export type AgentProfileSummary = z.infer<typeof AgentProfileSummarySchema>;
 
 const AgentProfilesStateSchema = z.object({
     daemonPid: z.number(),
@@ -114,17 +90,15 @@ export type SessionAgentProfile = {
  * undefined = old wrapper (or unreadable), null = machine login, object = account.
  */
 export function readSessionAgentProfile(value: unknown): SessionAgentProfile | null | undefined {
-    if (value === null) return null;
-    if (!value || typeof value !== 'object') return undefined;
-    const v = value as Record<string, unknown>;
-    if (typeof v.id !== 'string' || typeof v.label !== 'string' || typeof v.kind !== 'string') return undefined;
+    const raw = readWireSessionAgentProfile(value);
+    if (!raw) return raw;
     return {
-        id: v.id,
-        label: v.label,
-        kind: v.kind,
-        status: v.status === 'unavailable' ? 'unavailable' : 'active',
-        ...(typeof v.reason === 'string' ? { reason: v.reason } : {}),
-        ...(typeof v.model === 'string' && v.model ? { model: v.model } : {}),
+        id: raw.id,
+        label: raw.label,
+        kind: raw.kind,
+        status: raw.status === 'unavailable' ? 'unavailable' : 'active',
+        ...(raw.reason !== undefined ? { reason: raw.reason } : {}),
+        ...(raw.model ? { model: raw.model } : {}),
     };
 }
 
@@ -274,8 +248,9 @@ export function baseUrlHost(baseUrl: string | undefined): string | null {
 
 // ---- login (subscription) ----
 
-export type LoginState = 'waiting-code' | 'exchanging' | 'succeeded' | 'failed' | 'canceled' | 'expired';
-const LOGIN_STATES: ReadonlySet<string> = new Set(['waiting-code', 'exchanging', 'succeeded', 'failed', 'canceled', 'expired']);
+/** 'starting' (wire v2): the machine is still launching setup-token — a waiting state. */
+export type LoginState = 'starting' | 'waiting-code' | 'exchanging' | 'succeeded' | 'failed' | 'canceled' | 'expired';
+const LOGIN_STATES: ReadonlySet<string> = new Set(['starting', 'waiting-code', 'exchanging', 'succeeded', 'failed', 'canceled', 'expired']);
 
 export interface LoginStatus {
     loginId: string;
@@ -310,6 +285,16 @@ export function isLoginTerminal(state: LoginState): boolean {
 export const LOGIN_POLL_MS = 1500;
 
 // ---- session switch (bind) ----
+
+/**
+ * Wire v2: bind may answer restart 'pending' (the daemon is still restarting
+ * after ~22 s). The switch is done once the wrapper reports the target in
+ * `metadata.agentProfile` (null target = machine login).
+ */
+export function switchLanded(profile: SessionAgentProfile | null | undefined, targetId: string | null): boolean {
+    if (profile === undefined) return false;
+    return (profile ? profile.id : null) === targetId;
+}
 
 export interface SwitchPlan {
     /** null = back to the machine login */

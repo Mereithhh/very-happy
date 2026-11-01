@@ -554,7 +554,9 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     };
     const apiAccount = sessionApiModels(accountFacts);
     const apiModelOptions = apiAccount ? apiAccount.models.map((id) => ({ key: id, name: id, description: null })) : null;
-    const accountPrefix = accountFacts?.profile ? `${accountFacts.profile.status === 'unavailable' ? '⚠ ' : ''}${accountFacts.profile.label}` : undefined;
+    const accountPrefix = sessionAccount.restarting
+        ? t('accounts.restartingTo', { label: sessionAccount.restarting.label ?? t('accounts.machineLogin') })
+        : accountFacts?.profile ? `${accountFacts.profile.status === 'unavailable' ? '⚠ ' : ''}${accountFacts.profile.label}` : undefined;
     // B-262 A4: honest subtitle — what the CLI has confirmed vs. what we intend.
     const permissionDisplayState = publishesModeFacts
         ? derivePermissionModeDisplay({

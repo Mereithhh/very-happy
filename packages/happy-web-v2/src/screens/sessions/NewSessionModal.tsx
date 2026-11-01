@@ -166,7 +166,9 @@ export function NewSessionModal({
   // This warns; it deliberately does NOT block. The state can lag a login the
   // user just completed, and a launcher that refuses on stale evidence is worse
   // than one that says what it knows.
-  const selectedClaudeAuth = claudeAuthNotice(selectedMachine, agent);
+  // B-850c (wire v2): a session on an account does not use the machine login — no 「本机登录失效」 warning.
+  const onAccount = resolveSpawnAccount(readMachineAgentProfiles(selectedMachine), agent, accountChoice).kind === 'account';
+  const selectedClaudeAuth = onAccount ? { kind: 'none' as const } : claudeAuthNotice(selectedMachine, agent);
   // B-586: 「在新 worktree 中」 — machine capability gate + the daemon's repo info.
   const worktreeSupported = machineSupportsWorktrees(selectedMachine);
   const [worktree, setWorktreeState] = useState<WorktreeDraft>(EMPTY_WORKTREE_DRAFT);

@@ -60,6 +60,9 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
     const [adding, setAdding] = useState(false);
     const [relogin, setRelogin] = useState<{ accountId: string; label: string } | null>(null);
     const [busy, setBusy] = useState<string | null>(null);
+    // Wire v2: a providers.json (legacy) account's test result is not stored — the list stays
+    // 'unverified', so this page keeps what the last test returned.
+    const [legacyTests, setLegacyTests] = useState<Record<string, AgentProfileSummary>>({});
     const now = Date.now();
 
     // Deep link from the unavailable banner: ?relogin=<accountId>.
@@ -87,6 +90,7 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
     const test = (account: AgentProfileSummary) => run(`test:${account.id}`, async () => {
         const result = await agentProfileTest(machine.id, account.id);
         if (!result.ok) { toast.error(accountErrorText(result, t)); return; }
+        if (account.legacy) setLegacyTests((prev) => ({ ...prev, [account.id]: result.data }));
         if (result.data.status === 'ok') toast.success(t('accounts.testOk', { label: result.data.label }));
         else toast.error(t('accounts.testFailed', { label: result.data.label, detail: result.data.statusDetail ?? accountStatusText(accountDisplayStatus(result.data), result.data, t) }));
         await refresh();
@@ -144,7 +148,7 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
                 } />
                 <Item title={<span className="acc-title">{t('accounts.machineLogin')}{!defaultId && <span className="acc-tag">{t('accounts.defaultBadge')}</span>}</span>}
                     subtitle={t('accounts.machineLoginSubtitle')} />
-                {accounts.map((account) => <AccountRow key={account.id} account={account} isDefault={defaultId === account.id} now={now}
+                {accounts.map((account) => <AccountRow key={account.id} account={withLegacyTest(account, legacyTests[account.id])} isDefault={defaultId === account.id} now={now}
                     online={online} busy={busy} onTest={test} onRename={rename} onRemove={remove}
                     onSetDefault={(a) => void setDefault(agent, a.id)} onRelogin={(a) => setRelogin({ accountId: a.id, label: a.label })} />)}
                 <Item title={<span className="acc-add"><Plus size={15} aria-hidden="true" />{t('accounts.add')}</span>} disabled={!online} onClick={() => setAdding(true)} />
@@ -153,6 +157,12 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
         <AddAccountDialog open={adding || !!relogin} onOpenChange={(open) => { if (!open) { setAdding(false); setRelogin(null); void refresh(); } }}
             machineId={machine.id} machineName={name} kinds={state.kinds} relogin={relogin} />
     </>;
+}
+
+/** Pure: a legacy account shows its last test result (the daemon keeps it 'unverified'). */
+export function withLegacyTest(account: AgentProfileSummary, tested: AgentProfileSummary | undefined): AgentProfileSummary {
+    if (!account.legacy || !tested) return account;
+    return { ...account, status: tested.status, statusDetail: tested.statusDetail, checkedAt: tested.checkedAt };
 }
 
 function AccountRow({ account, isDefault, now, online, busy, onTest, onRename, onRemove, onSetDefault, onRelogin }: {

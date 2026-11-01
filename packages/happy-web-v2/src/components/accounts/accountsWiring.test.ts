@@ -59,4 +59,19 @@ describe('B-850c accounts wiring', () => {
         // file path is the default key source
         expect(src('components/accounts/AddAccountDialog.tsx')).toContain("const [keySource, setKeySource] = useState<KeySource>('file');");
     });
+
+    it('wire v2: account events render as account rows; an account session never shows the machine-login card', () => {
+        const view = src('screens/session/MessageView.tsx');
+        expect(view).toContain("const authCard = machineLoginCardApplies(session?.metadata)\n        ? <ClaudeAuthFailedBlock sessionId={sessionId} />");
+        expect(view).toContain("if (ev.kind === 'claude-auth-failed') return authCard;");
+        expect(view).toContain("if (presentation.kind === 'claude-auth') return authCard;");
+        expect(view).toContain('if (accountEvent) return <AccountEventBlock sessionId={sessionId} kind={accountEvent} message={ev.message} />;');
+        expect(src('screens/sessions/NewSessionModal.tsx')).toContain("const selectedClaudeAuth = onAccount ? { kind: 'none' as const } : claudeAuthNotice(selectedMachine, agent);");
+        expect(src('screens/session/AccountUnavailableBanner.tsx')).toContain("if (!facts || !profile || (profile.status !== 'unavailable' && !rejected)) return null;");
+    });
+
+    it("wire v2: bind 'pending' marks the session 重启中 until it lands", () => {
+        expect(src('screens/session/sessionAccount.ts')).toContain("notePendingSwitch(input.sessionId, { targetId: plan.accountId, label: plan.label, at: Date.now() });");
+        expect(src('screens/session/AgentInput.tsx')).toContain("const accountPrefix = sessionAccount.restarting\n        ? t('accounts.restartingTo'");
+    });
 });

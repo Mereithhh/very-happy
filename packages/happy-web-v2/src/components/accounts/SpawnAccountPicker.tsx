@@ -84,7 +84,7 @@ export function SpawnAccountPicker({ machine, machineName, agent, value, onChang
     ];
     const key = choiceToKey(value);
     // A chosen id that vanished stays visible (and blocked) instead of silently becoming the default.
-    if (!options.some((o) => o.value === key)) options.push({ value: key, label: key, meta: t('accounts.statusMissingSecret'), disabled: true });
+    if (!options.some((o) => o.value === key)) options.push({ value: key, label: t('accounts.unknownAccount'), meta: t('accounts.statusMissingSecret'), disabled: true });
     return <>
         <label className={labelClass} id={labelId}>{t('accounts.draftAccount')}</label>
         <Combobox label={t('accounts.draftAccount')} labelledBy={labelId} value={key} onChange={(next) => onChange(keyToChoice(next))} options={options}

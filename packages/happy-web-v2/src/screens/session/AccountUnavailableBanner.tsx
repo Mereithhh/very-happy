@@ -11,18 +11,22 @@ import { useState } from 'react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { accountKindTag } from '@/sync/agentProfiles';
 import { unavailableReasonKey } from '@/components/accounts/accountText';
-import { MACHINE_LOGIN_KEY, buildAccountSection, switchSessionAccount, useSessionAccount, type SessionAccountFacts } from './sessionAccount';
+import { MACHINE_LOGIN_KEY, boundAccountRejected, buildAccountSection, switchSessionAccount, useSessionAccount, type SessionAccountFacts } from './sessionAccount';
 import './mirror.css';
 import '@/screens/session/sessionOptionsDialog.css';
 import '@/components/accounts/accounts.css';
 
+/** Also used by the transcript's account event rows. */
 export function AccountUnavailableBanner({ sessionId, machine }: { sessionId: string; machine: Parameters<typeof useSessionAccount>[1] }) {
     const { t } = useTranslation();
     const { facts, openSettings, openMachine } = useSessionAccount(sessionId, machine);
     const [switching, setSwitching] = useState(false);
     const profile = facts?.profile;
-    if (!facts || !profile || profile.status !== 'unavailable') return null;
-    const reason = unavailableReasonKey(profile.reason);
+    // unavailable: the wrapper refuses turns; rejected (wire v2 auth-failed): it got a 401 mid-run
+    // and the daemon republished the account expired / invalid.
+    const rejected = boundAccountRejected(facts);
+    if (!facts || !profile || (profile.status !== 'unavailable' && !rejected)) return null;
+    const reason = rejected ? rejected.status : unavailableReasonKey(profile.reason);
     const args = { label: profile.label, machine: facts.machineName };
     const text = reason === 'expired' ? t('accounts.bannerExpired', args)
         : reason === 'invalid' ? t('accounts.bannerInvalid', args)
@@ -45,7 +49,7 @@ export function AccountUnavailableBanner({ sessionId, machine }: { sessionId: st
     </div>;
 }
 
-function SwitchAccountDialog({ sessionId, facts, onClose, openSettings, openMachine }: {
+export function SwitchAccountDialog({ sessionId, facts, onClose, openSettings, openMachine }: {
     sessionId: string;
     facts: SessionAccountFacts;
     onClose: () => void;

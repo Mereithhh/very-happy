@@ -96,3 +96,37 @@ describe('switch confirm', () => {
         expect(mod.accountSettingsHref('m1', 'a2')).toBe('/settings/models-accounts?machine=m1&relogin=a2');
     });
 });
+
+describe('wire v2', () => {
+    it('account events map by kind; anything else is not an account event', () => {
+        expect(mod.accountEventKind('agent-profile-unavailable')).toBe('unavailable');
+        expect(mod.accountEventKind('agent-profile-auth-failed')).toBe('auth-failed');
+        expect(mod.accountEventKind('agent-profile-warning')).toBe('warning');
+        expect(mod.accountEventKind('claude-auth-failed')).toBeNull();
+        expect(mod.accountEventKind(undefined)).toBeNull();
+    });
+
+    it('the machine-login card only applies without a bound account', () => {
+        expect(mod.machineLoginCardApplies({})).toBe(true); // old wrapper
+        expect(mod.machineLoginCardApplies({ agentProfile: null })).toBe(true); // machine login
+        expect(mod.machineLoginCardApplies({ agentProfile: { id: 'a1', label: 'Org A', kind: 'claude-subscription', status: 'active' } })).toBe(false);
+    });
+
+    it('auth-failed: an active binding whose account the daemon now reports expired', () => {
+        const facts = mod.sessionAccountFacts(session({ agentProfile: { id: 'a2', label: 'Org B', kind: 'claude-subscription', status: 'active' } }), machine())!;
+        expect(mod.boundAccountRejected(facts, NOW)).toMatchObject({ status: 'expired', account: { id: 'a2' } });
+        const ok = mod.sessionAccountFacts(session({ agentProfile: { id: 'a1', label: 'Org A', kind: 'claude-subscription', status: 'active' } }), machine())!;
+        expect(mod.boundAccountRejected(ok, NOW)).toBeNull();
+    });
+
+    it("bind 'pending' shows 重启中 until metadata.agentProfile is the target", () => {
+        mod.notePendingSwitch('s1', { targetId: 'h1', label: 'llm-hub', at: NOW });
+        const onA1 = { id: 'a1', label: 'Org A', kind: 'claude-subscription', status: 'active' as const };
+        expect(mod.pendingSwitchFor('s1', onA1, NOW + 1000)).toMatchObject({ label: 'llm-hub' });
+        expect(mod.pendingSwitchFor('s1', { ...onA1, id: 'h1' }, NOW + 1000)).toBeNull();
+        expect(mod.pendingSwitchFor('s1', onA1, NOW + 6 * 60_000)).toBeNull();
+        mod.notePendingSwitch('s2', { targetId: null, label: null, at: NOW });
+        expect(mod.pendingSwitchFor('s2', null, NOW)).toBeNull(); // machine login reached
+        expect(mod.pendingSwitchFor('s2', undefined, NOW)).not.toBeNull(); // old/unknown: keep waiting
+    });
+});
