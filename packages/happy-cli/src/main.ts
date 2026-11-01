@@ -21,7 +21,8 @@ import { z } from 'zod'
 import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './daemon/controlClient'
 import { kickstartLaunchdJob, SYSTEMD_RESTART_HINT } from './daemon/daemonSupervisor'
 import { getLatestDaemonLog } from './ui/logger'
-import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
+import { listDaemonSessionsWithInfo, stopDaemonSession } from './daemon/controlClient'
+import { formatDaemonList } from './daemon/daemonListFormat'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { execFileSync } from 'node:child_process'
 import { extractNoSandboxFlag } from './utils/sandboxFlags'
@@ -35,9 +36,12 @@ import { commandOnPath } from '@/utils/detectCLI'
 import { CLAUDE_OPTIONS_HELP, DAEMON_STOP_HELP } from './commands/helpFacts'
 import { errorReason, installExitReasonFallback, recordExitReason } from './utils/exitReason'
 import { exitAfterFlush } from './utils/exitAfterFlush'
+import { stashReconnectEnv } from './utils/reconnectEnv'
 
 
 export async function main(): Promise<void> {
+  // B-858: the session key must not reach anything this process spawns.
+  stashReconnectEnv()
   const args = process.argv.slice(2)
 
   // A bare version probe is used by release/runtime health checks and must not
@@ -626,8 +630,13 @@ Conversation history is preserved on the server, but in-flight tool calls are in
 
     if (daemonSubcommand === 'list') {
       try {
-        const sessions = await listDaemonSessions()
+        const { children: sessions, daemon } = await listDaemonSessionsWithInfo()
 
+        // B-856: machine-readable, with each session's CLI version and auto-restart status.
+        if (args.includes('--json')) {
+          console.log(JSON.stringify({ daemon: daemon ?? null, sessions }, null, 2))
+          return
+        }
         if (sessions.length === 0) {
           console.log('No active sessions this daemon is aware of (they might have been started by a previous version of the daemon)')
         } else {
@@ -645,6 +654,9 @@ Conversation history is preserved on the server, but in-flight tool calls are in
           console.log(background.length === 0
             ? 'No background tasks in flight (wrappers older than 0.2.157 do not report them).'
             : `${background.length} session(s) with background tasks in flight: ${background.map((s: { happySessionId: string; backgroundTasks?: { count?: number } }) => `${s.happySessionId} (${s.backgroundTasks?.count})`).join(', ')}`)
+          // B-856: per session, which CLI it runs and why it has (not) been restarted onto this daemon's.
+          console.log('CLI version / auto-restart per session:')
+          for (const line of formatDaemonList(sessions, daemon)) console.log(line)
         }
       } catch (error) {
         console.log('No daemon running')
@@ -767,7 +779,7 @@ ${chalk.bold('Usage:')}
   very-happy daemon start              Start the daemon (detached)
   very-happy daemon stop               ${DAEMON_STOP_HELP}
   very-happy daemon status             Show daemon status
-  very-happy daemon list               List active sessions
+  very-happy daemon list [--json]      List active sessions (CLI version, auto-restart status)
 
   If you want to kill all happy related processes run 
   ${chalk.cyan('very-happy doctor clean')}

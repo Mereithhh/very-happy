@@ -8,6 +8,7 @@ import {
     decideAutoRestart,
     decodeAutoRestarted,
     encodeAutoRestarted,
+    pendingUpgradeVersion,
     recordAttempt,
     resolveQuietMs,
     statusFromVerdict,
@@ -70,6 +71,7 @@ describe('B-852 decideAutoRestart — every safety condition (spec §2)', () => 
         ['assistant variant', { report: report({ variant: 'assistant' }) }, 'assistant'],
         ['gemini', { report: report({ flavor: 'gemini' }) }, 'unsupported-flavor'],
         ['conversation not on disk', { resumable: false }, 'not-resumable'],
+        ['B-856 upgrade queued for this daemon', { upgradePending: '0.2.191' }, 'upgrade-pending'],
         ['wrapper thinking', { report: report({ thinking: true }) }, 'turn-active'],
         ['daemon turn lease', { turnActive: true }, 'turn-active'],
         ['permission request pending', { report: report({ pendingRequests: 1 }) }, 'pending-request'],
@@ -171,5 +173,30 @@ describe('B-852 quiet window override (tests only)', () => {
         expect(resolveQuietMs({ HAPPY_AUTO_RESTART_QUIET_MS: '-1' })).toBe(AUTO_RESTART_QUIET_MS);
         expect(resolveQuietMs({})).toBe(AUTO_RESTART_QUIET_MS);
         expect(decideAutoRestart(input({ quietMs: 60_000, report: report({ lastActivityAt: NOW - 60_000 }) }))).toEqual({ ok: true });
+    });
+});
+
+describe('B-856 upgrade pending pauses automatic restarts', () => {
+    it('a queued, running or finished install of a newer CLI is pending', () => {
+        for (const state of ['waiting_idle', 'installing', 'installed']) {
+            expect(pendingUpgradeVersion({ daemonVersion: '0.2.190', autoUpdate: { state, version: '0.2.191' }, bundleReplaced: false })).toBe('0.2.191');
+        }
+    });
+    it('failed / manual / current / same or older version is not; a replaced bundle on disk is', () => {
+        for (const state of ['failed', 'manual_required', 'current', 'disabled', 'policy_stale']) {
+            expect(pendingUpgradeVersion({ daemonVersion: '0.2.190', autoUpdate: { state, version: '0.2.191' }, bundleReplaced: false })).toBeNull();
+        }
+        expect(pendingUpgradeVersion({ daemonVersion: '0.2.191', autoUpdate: { state: 'installed', version: '0.2.191' }, bundleReplaced: false })).toBeNull();
+        expect(pendingUpgradeVersion({ daemonVersion: '0.2.191', autoUpdate: { state: 'waiting_idle', version: '0.2.190' }, bundleReplaced: false })).toBeNull();
+        expect(pendingUpgradeVersion({ daemonVersion: '0.2.190', autoUpdate: null, bundleReplaced: false })).toBeNull();
+        expect(pendingUpgradeVersion({ daemonVersion: '0.2.190', autoUpdate: null, bundleReplaced: true })).toBe('on-disk');
+    });
+    it('a manual hand-over (terminal) stays manual rather than turning into a wait', () => {
+        expect(decideAutoRestart(input({ upgradePending: '0.2.191', report: report({ uiSession: false }) }))).toEqual({ ok: false, reason: 'local-terminal' });
+    });
+    it('the wait is published as waiting and leaves the cadence to the cap', () => {
+        const verdict = { ok: false as const, reason: 'upgrade-pending' as const };
+        expect(statusFromVerdict(verdict, undefined, { kind: 'cli', from: '0.2.189', target: '0.2.190' }, NOW, null)).toEqual({ state: 'waiting', reason: 'upgrade-pending', since: NOW, target: '0.2.190' });
+        expect(autoRestartNextCheck(verdict, input())).toBeNull();
     });
 });

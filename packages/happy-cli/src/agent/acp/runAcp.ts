@@ -34,6 +34,7 @@ import type { Session as ApiSession } from '@/api/types';
 import { claimSessionOrExit } from '@/utils/sessionLock';
 import { applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
 import { piRestartNotice, readAcpReconnectEnv } from './acpSessionResume';
+import { takeReconnectEnv } from '@/utils/reconnectEnv';
 import { OUT_OF_TURN_QUIET_MS, outOfTurnAction } from './acpOutOfTurn';
 import { createPiSteerChannel } from './piSteerChannel';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
@@ -547,7 +548,7 @@ export async function runAcp(opts: {
   if (opts.agentName === 'gemini') metadata.configuredModel = readGeminiConfiguredModel();
   // B-633: the daemon's resume reattaches to the SAME session row (same as
   // runCodex / runClaude): no new session, the server snapshot seeds the cursor.
-  const reconnect = readAcpReconnectEnv(process.env);
+  const reconnect = readAcpReconnectEnv(takeReconnectEnv()); // B-858: kept off process.env
   let response: ApiSession | null;
   if (reconnect) {
     logger.debug(`[acp] Reconnecting to existing session ${reconnect.sessionId}`);

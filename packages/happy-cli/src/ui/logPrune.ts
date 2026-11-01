@@ -9,7 +9,7 @@
  * planLogPrune is pure (list in, delete-list out) so the policy is
  * unit-testable without a filesystem.
  */
-import { readdirSync, statSync, unlinkSync } from 'node:fs'
+import { closeSync, ftruncateSync, openSync, readSync, readdirSync, statSync, unlinkSync, utimesSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 
 export interface PrunableFile {
@@ -23,12 +23,66 @@ export interface LogPrunePolicy {
   maxTotalBytes: number
   /** Never delete this many of the newest files, regardless of age. */
   keepRecentCount: number
+  /**
+   * B-856: logs of previous daemon processes (`*-daemon.log`) kept outside the
+   * general caps, newest first, so release forensics survive the handover. A
+   * busy machine's live wrapper logs are always newer, so the general size cap
+   * used to delete the previous daemon's log at the very next start.
+   */
+  keepDaemonLogs?: number
+  /** B-856: total bytes for those daemon logs; the newest one is cut to its tail rather than dropped. */
+  maxDaemonLogBytes?: number
 }
 
 export const DEFAULT_LOG_PRUNE_POLICY: LogPrunePolicy = {
   maxAgeMs: 14 * 24 * 60 * 60_000,
   maxTotalBytes: 200 * 1024 * 1024,
   keepRecentCount: 10,
+  keepDaemonLogs: 3,
+  maxDaemonLogBytes: 64 * 1024 * 1024,
+}
+
+export const DAEMON_LOG_SUFFIX = '-daemon.log'
+
+export interface DaemonLogRetention {
+  /** Previous daemon logs exempt from the general age / size passes. */
+  keep: Set<string>
+  /** The newest previous daemon log is larger than the budget: keep only its last `keepBytes`. */
+  trim: { path: string; keepBytes: number } | null
+}
+
+/**
+ * B-856: which previous daemon logs to keep. The newest is always kept (cut
+ * to the budget when larger); older ones only while they fit the remaining
+ * budget and the count. Protected paths (the live daemon's own log) are not
+ * "previous" and are left out.
+ */
+export function planDaemonLogRetention(
+  files: PrunableFile[],
+  policy: LogPrunePolicy = DEFAULT_LOG_PRUNE_POLICY,
+  protectedPaths: ReadonlySet<string> = new Set(),
+): DaemonLogRetention {
+  const keep = new Set<string>()
+  let trim: DaemonLogRetention['trim'] = null
+  const count = policy.keepDaemonLogs ?? 0
+  let budget = policy.maxDaemonLogBytes ?? 0
+  if (count <= 0 || budget <= 0) return { keep, trim }
+  const daemonLogs = files
+    .filter((f) => f.path.endsWith(DAEMON_LOG_SUFFIX) && !protectedPaths.has(f.path))
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+  for (const f of daemonLogs) {
+    if (keep.size >= count || budget <= 0) break
+    if (keep.size === 0) {
+      keep.add(f.path)
+      if (f.size > budget) { trim = { path: f.path, keepBytes: budget }; budget = 0 }
+      else budget -= f.size
+      continue
+    }
+    if (f.size > budget) break
+    keep.add(f.path)
+    budget -= f.size
+  }
+  return { keep, trim }
 }
 
 /** Decide which files to delete. Newest-first survivors; protected paths
@@ -80,7 +134,10 @@ export function pruneLogsDir(
   } catch {
     return 0
   }
-  const doomed = planLogPrune(files, Date.now(), policy, protectedPaths)
+  // B-856: previous daemon logs have their own count and byte budget.
+  const daemonLogs = planDaemonLogRetention(files, policy, protectedPaths)
+  if (daemonLogs.trim) trimToTail(daemonLogs.trim.path, daemonLogs.trim.keepBytes)
+  const doomed = planLogPrune(files.filter((f) => !daemonLogs.keep.has(f.path)), Date.now(), policy, protectedPaths)
   let deleted = 0
   for (const p of doomed) {
     try {
@@ -91,4 +148,37 @@ export function pruneLogsDir(
     }
   }
   return deleted
+}
+
+/**
+ * Keep only the last `keepBytes` of a file, in place, under a one-line marker;
+ * the modification time is kept so the file keeps its place in the order.
+ * Best-effort like the rest.
+ */
+export function trimToTail(path: string, keepBytes: number): void {
+  let fd: number | null = null
+  try {
+    const st = statSync(path)
+    if (st.size <= keepBytes) return
+    const marker = Buffer.from(`[log trimmed to its last ${keepBytes} bytes by the daemon log retention]\n`)
+    const tailBytes = Math.max(0, keepBytes - marker.length)
+    fd = openSync(path, 'r+')
+    const tail = Buffer.alloc(tailBytes)
+    let read = 0
+    while (read < tailBytes) {
+      const n = readSync(fd, tail, read, tailBytes - read, st.size - tailBytes + read)
+      if (n <= 0) break
+      read += n
+    }
+    writeSync(fd, marker, 0, marker.length, 0)
+    writeSync(fd, tail, 0, read, marker.length)
+    ftruncateSync(fd, marker.length + read)
+    closeSync(fd)
+    fd = null
+    utimesSync(path, st.atime, st.mtime)
+  } catch {
+    // vanished or perms — skip
+  } finally {
+    if (fd !== null) try { closeSync(fd) } catch { /* ignore */ }
+  }
 }

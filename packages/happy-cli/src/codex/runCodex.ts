@@ -74,6 +74,7 @@ import { DEFAULT_CODEX_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
 import { CODEX_REMOTE_PERMISSION_MODES, codexPublishablePermissionMode } from './codexPermissionMode';
 import { EditReportThrottle, extractCodexPatchPaths } from '@/sessions/editPaths';
 import { reportSessionEditToDaemon } from '@/daemon/controlClient';
+import { takeReconnectEnv } from '@/utils/reconnectEnv';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -189,13 +190,15 @@ export async function runCodex(opts: {
         if (importTitle) metadata.summary = { text: importTitle, updatedAt: Date.now() };
     }
 
-    // Check for session reconnection env vars (set by daemon for resume-in-place)
-    const reconnectSessionId = process.env.HAPPY_RECONNECT_SESSION_ID;
-    const reconnectKeyBase64 = process.env.HAPPY_RECONNECT_ENCRYPTION_KEY;
-    const reconnectVariant = process.env.HAPPY_RECONNECT_ENCRYPTION_VARIANT as 'legacy' | 'dataKey' | undefined;
-    const reconnectSeq = process.env.HAPPY_RECONNECT_SEQ;
-    const reconnectMetadataVersion = process.env.HAPPY_RECONNECT_METADATA_VERSION;
-    const reconnectAgentStateVersion = process.env.HAPPY_RECONNECT_AGENT_STATE_VERSION;
+    // Check for session reconnection env vars (set by daemon for resume-in-place).
+    // B-858: read once and kept off process.env (see utils/reconnectEnv).
+    const reconnectEnv = takeReconnectEnv();
+    const reconnectSessionId = reconnectEnv.HAPPY_RECONNECT_SESSION_ID;
+    const reconnectKeyBase64 = reconnectEnv.HAPPY_RECONNECT_ENCRYPTION_KEY;
+    const reconnectVariant = reconnectEnv.HAPPY_RECONNECT_ENCRYPTION_VARIANT as 'legacy' | 'dataKey' | undefined;
+    const reconnectSeq = reconnectEnv.HAPPY_RECONNECT_SEQ;
+    const reconnectMetadataVersion = reconnectEnv.HAPPY_RECONNECT_METADATA_VERSION;
+    const reconnectAgentStateVersion = reconnectEnv.HAPPY_RECONNECT_AGENT_STATE_VERSION;
 
     let response: ApiSession | null;
     if (reconnectSessionId && reconnectKeyBase64 && reconnectVariant) {

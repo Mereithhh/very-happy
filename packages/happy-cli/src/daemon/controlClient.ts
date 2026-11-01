@@ -10,6 +10,7 @@ import { configuration } from '@/configuration';
 import type { PeerSessionInfo } from './types';
 import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
 import type { RateLimitReport } from '@/rateLimits/rateLimitWindows';
+import type { DaemonListInfo } from './controlServer';
 
 function daemonControlHeaders(controlToken?: string): Record<string, string> {
   return {
@@ -110,6 +111,12 @@ export async function notifyDaemonSessionStarted(
 export async function listDaemonSessions(): Promise<any[]> {
   const result = await daemonPost('/list');
   return result.children || [];
+}
+
+/** B-856: the sessions plus the daemon-wide facts (version, pending upgrade, auto-restart switch); `daemon` is absent on older daemons. */
+export async function listDaemonSessionsWithInfo(): Promise<{ children: any[]; daemon?: DaemonListInfo }> {
+  const result = await daemonPost('/list');
+  return { children: result.children || [], ...(result.daemon ? { daemon: result.daemon } : {}) };
 }
 
 export async function stopDaemonSession(sessionId: string): Promise<boolean> {

@@ -81,7 +81,7 @@ import { TurnActivityTracker } from '@/update/turnActivity';
 import { createDaemonHibernation, collectAutomationBindings, waitForPidsToExit, waitForSessionLive } from '@/hibernation/daemonHibernation';
 import { resolveCheckMs, resolveIdleMs, settingIdleMs } from '@/hibernation/hibernationPolicy';
 import { createAutoRestart } from './autoRestart';
-import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, resolveQuietMs, type StaleKind } from '@/update/autoRestartPolicy';
+import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, pendingUpgradeVersion, resolveQuietMs, type StaleKind } from '@/update/autoRestartPolicy';
 import { compareExactVersions } from '@/update/cliUpdate';
 import { createAutomationsClient, isAutomationsUnavailable } from '@/automations/client';
 import { BackgroundTaskTracker } from '@/update/backgroundTaskActivity';
@@ -362,6 +362,8 @@ export async function startDaemon(): Promise<void> {
     let teamWorker: ReturnType<typeof createTeamWorker> | undefined;
     // B-852: created next to the control server (late-bound like teamWorker).
     let autoRestart: ReturnType<typeof createAutoRestart> | undefined;
+    // B-856: the heartbeat saw a newer bundle on disk (a hand-run `npm i -g`); a handover follows.
+    let bundleReplacedSeen = false;
     let automationRunner: ReturnType<typeof createAutomationRunner> | undefined;
     let projectPresence: ReturnType<typeof createProjectPresenceReporter> | undefined;
     const persisted = readPersistedSessions();
@@ -1745,6 +1747,13 @@ export async function startDaemon(): Promise<void> {
         startedBy: metadata?.startedBy ?? null,
       };
     };
+    // B-856: while this daemon waits to be replaced, restarting onto its code
+    // only means a second restart by the next daemon minutes later.
+    const upgradePending = () => pendingUpgradeVersion({
+      daemonVersion: packageJson.version,
+      autoUpdate: cliUpdateStateRef?.autoUpdate,
+      bundleReplaced: bundleReplacedSeen,
+    });
     const autoRestartScheduler = createAutoRestart({
       enabled: () => autoRestartSetting,
       quietMs: resolveQuietMs(),
@@ -1802,6 +1811,7 @@ export async function startDaemon(): Promise<void> {
         if (!row || typeof row.active !== 'boolean') return null;
         return { active: row.active, archived: row.archivedAt != null };
       },
+      upgradePending,
       publish: (sessions) => { void apiMachineRef?.setAutoRestartSessions(sessions); },
       log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
     });
@@ -1845,6 +1855,9 @@ export async function startDaemon(): Promise<void> {
       // B-505: `daemon list` shows which sessions have a turn in flight, so an
       // operator can check the WHOLE machine before a supervised restart.
       isTurnActive: (sessionId: string) => turnActivity.activeSessions().includes(sessionId),
+      // B-856: the auto-restart classification, readable locally (it is encrypted on the server).
+      getAutoRestartStatus: (sessionId: string) => autoRestartScheduler.statuses()[sessionId],
+      getDaemonInfo: () => ({ version: packageJson.version, upgradePending: upgradePending(), autoRestartEnabled: autoRestartSetting }),
       pushClipboard: (text: string, terminalId?: string) => {
         if (!apiMachineRef) {
           return { delivered: false, truncated: false, totalBytes: 0, error: 'daemon is still starting up' };
@@ -2227,6 +2240,7 @@ export async function startDaemon(): Promise<void> {
         try {
           const currentMtimeMs = statSync(bundlePath).mtimeMs;
           bundleReplaced = currentMtimeMs !== initialBundleMtimeMs;
+          if (bundleReplaced) bundleReplacedSeen = true;
         } catch {
           // File temporarily missing (e.g. mid-install) — retry on next heartbeat.
         }

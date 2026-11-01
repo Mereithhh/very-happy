@@ -33,7 +33,7 @@ describe('claudePrewarmEligibility (B-515)', () => {
         ['not-daemon', fresh({ startedBy: 'terminal' })],
         ['not-daemon', fresh({ startedBy: undefined })],
         ['not-remote', fresh({ startingMode: 'local' })],
-        ['reconnect', fresh({ env: { HAPPY_RECONNECT_SESSION_ID: 's1' } })],
+        ['reconnect', fresh({ reconnect: true })],
         ['fork', fresh({ env: { HAPPY_FORK_CLAUDE_SESSION_ID: 'c1' } })],
         ['fork', fresh({ env: { HAPPY_FORKED_FROM_SESSION_ID: 's0' } })],
         ['import', fresh({ env: { HAPPY_IMPORTED_FROM_CLAUDE_SESSION_ID: 'c1' } })],
