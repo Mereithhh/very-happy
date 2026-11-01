@@ -83,6 +83,7 @@ import { getFriendsList, getUserProfile } from './apiFriends';
 import { fetchFeed } from './apiFeed';
 import { FeedItem, FeedBody } from './feedTypes';
 import { decryptNotificationEnc } from './encryption/notificationDecrypt';
+import { SyncNotStartedError } from './syncNotStarted';
 import { maybeShowNotification } from './webNotifications';
 import { maybePlayNotificationSound } from './notificationChime';
 import { stampSeenOnArrival } from './seenOnArrival';
@@ -4712,11 +4713,18 @@ export async function syncRestore(credentials: AuthCredentials) {
 async function syncInit(credentials: AuthCredentials, restore: boolean) {
 
     // Initialize sync engine
-    const secretKey = decodeBase64(credentials.secret, 'base64url');
-    if (secretKey.length !== 32) {
-        throw new Error(`Invalid secret key length: ${secretKey.length}, expected 32`);
+    let encryption: Encryption;
+    try {
+        const secretKey = decodeBase64(credentials.secret, 'base64url');
+        if (secretKey.length !== 32) {
+            throw new Error(`Invalid secret key length: ${secretKey.length}, expected 32`);
+        }
+        encryption = await Encryption.create(secretKey);
+    } catch (e) {
+        // B-859: nothing has started yet — let a retry or a fresh login run init again
+        isInitialized = false;
+        throw new SyncNotStartedError(e);
     }
-    const encryption = await Encryption.create(secretKey);
 
     // Initialize tracking
     initializeTracking(encryption.anonID);

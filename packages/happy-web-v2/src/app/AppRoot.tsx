@@ -12,6 +12,7 @@ import {
 import { TokenStorage, type AuthCredentials } from '@/auth/tokenStorage';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { syncRestore } from '@/sync/sync';
+import { restoreWithRetry } from './bootstrapRestore';
 import { ThemeProvider, ToastProvider, useToast } from '@/ui';
 import { UPDATED_NOTICE_KEY } from '@/app/staleBundleReload';
 import { UpdatePrompt } from '@/app/UpdatePrompt';
@@ -501,7 +502,7 @@ export function AppRoot() {
         const stored = await TokenStorage.getCredentials();
         if (cancelled) return;
         if (stored) {
-          await syncRestore(stored);
+          await restoreWithRetry(() => syncRestore(stored), { isCancelled: () => cancelled });
           if (cancelled) return;
           setCreds(stored);
         }
