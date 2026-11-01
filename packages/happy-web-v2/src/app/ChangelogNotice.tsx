@@ -11,7 +11,7 @@ import {
   changelogCliTarget,
 } from './changelogRelease';
 import { changelogAutoAction, changelogPages, pageReleaseIds, pendingChangelogReleases, type ChangelogPage } from './changelogPager';
-import { acknowledgeAllChangelog, changelogReadState, markChangelogReleasesRead, onChangelogOpenRequest } from './changelogReadStore';
+import { acknowledgeAllChangelog, changelogReadState, markChangelogReleasesRead, noteChangelogClosed, onChangelogOpenRequest } from './changelogReadStore';
 import { enteredByDeepLink } from './entryKind';
 import { userHasInteracted } from './afterFirstScreen';
 import './changelogNotice.css';
@@ -80,6 +80,12 @@ export function ChangelogNotice() {
     });
   }, [auto, heldAbove, open, start, t, toast]);
   useEffect(() => onChangelogOpenRequest(start), [start]);
+  // B-857: open → closed (by any way out) lets the feedback card queue after the notes.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open) wasOpen.current = true;
+    else if (wasOpen.current) { wasOpen.current = false; noteChangelogClosed(); }
+  }, [open]);
 
   const releases = useMemo(() => pages.flatMap((page) => (page.kind === 'major' ? [page.release] : page.releases)), [pages]);
   const cliTarget = useMemo(() => changelogCliTarget(releases), [releases]);

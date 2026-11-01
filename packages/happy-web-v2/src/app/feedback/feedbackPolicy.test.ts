@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  activeDayPatch, buildFeedbackDiagnostics, feedbackPromptBlock, feedbackPromptDue, localDay, routePattern,
-  FEEDBACK_PROMPT_INTERVAL_DAYS, FEEDBACK_PROMPT_MIN_ACTIVE_DAYS, type FeedbackPromptState,
+  activeDayPatch, buildFeedbackDiagnostics, feedbackChangelogWaitMs, feedbackPromptBlock, feedbackPromptDue, localDay, routePattern,
+  FEEDBACK_AFTER_CHANGELOG_MS, FEEDBACK_PROMPT_INTERVAL_DAYS, FEEDBACK_PROMPT_MIN_ACTIVE_DAYS, type FeedbackPromptState,
 } from './feedbackPolicy';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -13,7 +13,7 @@ const ready: FeedbackPromptState = {
   feedbackPromptOptOut: false,
   feedbackLastSubmittedAt: null,
 };
-const quiet = { pendingChangelog: false, deepLink: false, interacted: false };
+const quiet = { pendingChangelog: false, changelogClosedAt: null as number | null, deepLink: false, interacted: false };
 
 describe('feedback prompt policy (B-836)', () => {
   it('counts one active day per local calendar day', () => {
@@ -42,6 +42,31 @@ describe('feedback prompt policy (B-836)', () => {
     for (const [state, ctx, block] of cases) {
       expect(feedbackPromptBlock({ ...ready, ...state }, { ...quiet, ...ctx }, NOW)).toBe(block);
     }
+  });
+
+  it('B-857: two active days are enough', () => {
+    expect(FEEDBACK_PROMPT_MIN_ACTIVE_DAYS).toBe(2);
+    expect(feedbackPromptBlock({ ...ready, feedbackActiveDays: 2 }, quiet, NOW)).toBeNull();
+    expect(feedbackPromptBlock({ ...ready, feedbackActiveDays: 1 }, quiet, NOW)).toBe('new-user');
+  });
+
+  it('B-857: unread release notes queue the card behind them — 20 s after they close, read or not', () => {
+    expect(FEEDBACK_AFTER_CHANGELOG_MS).toBe(20_000);
+    // notes unread and not closed yet (open, or still to come): wait, with no known end
+    expect(feedbackPromptBlock(ready, { ...quiet, pendingChangelog: true }, NOW)).toBe('changelog');
+    expect(feedbackChangelogWaitMs({ changelogClosedAt: null }, NOW)).toBeNull();
+    // read to the end (nothing pending) or closed on the last page (still pending): 20 s later
+    for (const pendingChangelog of [false, true]) {
+      const closed = { ...quiet, pendingChangelog, changelogClosedAt: NOW - FEEDBACK_AFTER_CHANGELOG_MS + 1 };
+      expect(feedbackPromptBlock(ready, closed, NOW)).toBe('changelog');
+      expect(feedbackChangelogWaitMs(closed, NOW)).toBe(1);
+      expect(feedbackPromptBlock(ready, { ...closed, changelogClosedAt: NOW - FEEDBACK_AFTER_CHANGELOG_MS }, NOW)).toBeNull();
+    }
+    // the other guards still win after the notes
+    const after = { ...quiet, changelogClosedAt: NOW - DAY };
+    expect(feedbackPromptBlock(ready, { ...after, deepLink: true }, NOW)).toBe('deep-link');
+    expect(feedbackPromptBlock({ ...ready, feedbackPromptOptOut: true }, after, NOW)).toBe('opted-out');
+    expect(feedbackPromptBlock({ ...ready, feedbackLastSubmittedAt: NOW - DAY }, after, NOW)).toBe('recently-submitted');
   });
 
   it('30 days after the last showing / submission it may ask again', () => {

@@ -29,7 +29,7 @@ vi.mock('@/sync/storage', () => ({
 vi.mock('@/sync/sync', () => ({ sync: { applySettings: (patch: Record<string, unknown>) => { state.applied.push(patch); Object.assign(state.settings, patch); } } }));
 vi.mock('@/sync/apiFeedback', () => ({ postFeedback: state.post, amendFeedback: state.amend, FeedbackApiError: class extends Error {} }));
 vi.mock('@/sync/serverConfig', () => ({ getServerInfo: () => ({ hostname: 'localhost' }) }));
-vi.mock('../changelogReadStore', () => ({ usePendingChangelog: () => state.pending }));
+vi.mock('../changelogReadStore', async (importOriginal) => ({ ...(await importOriginal<typeof import('../changelogReadStore')>()), usePendingChangelog: () => state.pending }));
 vi.mock('../entryKind', () => ({ enteredByDeepLink: () => state.deepLink }));
 vi.mock('./feedback.css', () => ({}));
 vi.mock('../floatingCards.css', () => ({}));
@@ -37,6 +37,7 @@ vi.mock('../floatingCards.css', () => ({}));
 import { FeedbackPrompt, FEEDBACK_PROMPT_DELAY_MS } from './FeedbackPrompt';
 import { OVERLAY_PRIORITY, requestOverlay, resetOverlayQueueForTest } from '../overlayQueue';
 import { localDay } from './feedbackPolicy';
+import { noteChangelogClosed, resetChangelogReadStoreForTest } from '../changelogReadStore';
 
 const DAY = 24 * 60 * 60 * 1000;
 let host: HTMLDivElement; let root: Root;
@@ -44,8 +45,9 @@ beforeEach(() => {
     vi.useFakeTimers();
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true, __APP_VERSION__: '2.1.0' });
     resetOverlayQueueForTest();
+    resetChangelogReadStoreForTest();
     state.settings = {
-        feedbackActiveDays: 5,
+        feedbackActiveDays: 2,
         feedbackLastActiveDay: localDay(Date.now()),
         feedbackPromptShownAt: null,
         feedbackPromptOptOut: false,
@@ -78,9 +80,9 @@ describe('FeedbackPrompt (B-836)', () => {
         expect(state.applied).toContainEqual({ feedbackPromptShownAt: expect.any(Number) });
     });
 
-    it('never asks a new user, a deep-link load, or while release notes are unread', async () => {
+    it('never asks a new user, a deep-link load, or while release notes are unread and not closed', async () => {
         for (const setup of [
-            () => { state.settings.feedbackActiveDays = 4; },
+            () => { state.settings.feedbackActiveDays = 1; },
             () => { state.deepLink = true; },
             () => { state.pending = [{ id: 'oct27a' }]; },
             () => { state.settings.feedbackPromptShownAt = Date.now() - 29 * DAY; },
@@ -93,7 +95,7 @@ describe('FeedbackPrompt (B-836)', () => {
             await mount();
             await wait();
             expect(card()).toBeNull();
-            state.settings.feedbackActiveDays = 5; state.deepLink = false; state.pending = [];
+            state.settings.feedbackActiveDays = 2; state.deepLink = false; state.pending = [];
             state.settings.feedbackPromptShownAt = null; state.settings.feedbackPromptOptOut = false;
         }
     });
@@ -105,7 +107,42 @@ describe('FeedbackPrompt (B-836)', () => {
         expect(state.applied).toEqual([]);
         state.settingsVersion = 3;
         await mount();
-        expect(state.applied).toContainEqual({ feedbackActiveDays: 6, feedbackLastActiveDay: localDay(Date.now()) });
+        expect(state.applied).toContainEqual({ feedbackActiveDays: 3, feedbackLastActiveDay: localDay(Date.now()) });
+    });
+
+    it('B-857: with unread notes it queues behind them and asks 20 s after they close', async () => {
+        state.pending = [{ id: 'nov01a' }];
+        await mount();
+        await wait();
+        await wait(60_000);
+        expect(card()).toBeNull(); // the notes are still up (or still to come)
+        await act(async () => noteChangelogClosed());
+        state.pending = []; // read to the end
+        await wait(FEEDBACK_PROMPT_DELAY_MS - 1);
+        expect(card()).toBeNull();
+        await wait(1);
+        expect(card()?.textContent).toContain('feedback.promptTitle');
+    });
+
+    it('B-857: notes closed before the first quiet delay ran out: still 20 s after the close', async () => {
+        state.pending = [{ id: 'nov01a' }];
+        await mount();
+        await wait(15_000);
+        await act(async () => noteChangelogClosed()); // closed on the last page without the receipt: still pending
+        await wait(5_000);
+        expect(card()).toBeNull();
+        await wait(FEEDBACK_PROMPT_DELAY_MS - 5_000);
+        expect(card()).not.toBeNull();
+    });
+
+    it('B-857: a deep-link load still never asks, even after the notes', async () => {
+        state.pending = [{ id: 'nov01a' }];
+        state.deepLink = true;
+        await mount();
+        await wait();
+        await act(async () => noteChangelogClosed());
+        await wait(60_000);
+        expect(card()).toBeNull();
     });
 
     it('is a notice: waits behind an interaction overlay and steps aside for a critical one', async () => {

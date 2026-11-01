@@ -153,6 +153,23 @@ describe('B-715 release-notes pager', () => {
     expect(card()?.querySelector('.wn-close')).not.toBeNull();
   });
 
+  it('B-857: records when the notes close — read to the end or closed on the last page — not while paging', () => {
+    mount();
+    expect(store.changelogClosedAt()).toBeNull();
+    act(() => button('changelog.next')!.click());
+    act(() => button('changelog.next')!.click());
+    expect(store.changelogClosedAt()).toBeNull();
+    press('Escape');
+    expect(card()).toBeNull();
+    expect(store.changelogClosedAt()).toEqual(expect.any(Number));
+
+    remount();
+    expect(store.changelogClosedAt()).toBeNull();
+    act(() => button('changelog.done')!.click());
+    expect(card()).toBeNull();
+    expect(store.changelogClosedAt()).toEqual(expect.any(Number));
+  });
+
   it('a deep-link load does not open the notes; the sidebar entry is there and opens them', () => {
     entry.setEnteredByDeepLinkForTest(true);
     mount();
