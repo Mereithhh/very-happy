@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-01-models-accounts',
+    date: '2026-11-01',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov01d.title',
+    summaryKey: 'changelog.releases.nov01d.summary',
+    itemKeys: ['changelog.releases.nov01d.page', 'changelog.releases.nov01d.switch', 'changelog.releases.nov01d.feedbackCard'],
+  },
+  {
+    id: '2026-11-01-cli-claude-accounts',
+    cliVersion: '0.2.192',
+    date: '2026-11-01',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov01c.title',
+    summaryKey: 'changelog.releases.nov01c.summary',
+    itemKeys: ['changelog.releases.nov01c.accounts', 'changelog.releases.nov01c.noFallback', 'changelog.releases.nov01c.keyHidden', 'changelog.releases.nov01c.upgrade', 'changelog.releases.nov01c.security'],
+  },
+  {
     id: '2026-11-01-feedback-prompt',
     date: '2026-11-01',
     buildVersion: __APP_VERSION__,
