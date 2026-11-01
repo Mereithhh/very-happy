@@ -18,6 +18,7 @@ const daemon = read('daemon/run.ts');
 const machine = read('api/apiMachine.ts');
 const control = read('daemon/controlServer.ts');
 const accountCmd = read('commands/account.ts');
+const providerCmd = read('commands/sessionProvider.ts');
 const oneShot = read('claude/utils/titleGenerator.ts');
 const between = (source: string, start: string, end: string) => {
     const at = source.indexOf(start);
@@ -96,6 +97,11 @@ describe('B-850a daemon', () => {
 
     it('a failed restart reports whether the old wrapper still runs (bind then rolls back)', () => {
         expect(daemon).toContain('const stillRunning = [...pidToTrackedSession.values()].some((s) => s.happySessionId === sessionId && isPidAlive(s.pid));\n        return { ok: false, notRunning: error.startsWith(\'restart-precheck:not-tracked\'), stillRunning, error };');
-        expect(accountCmd).toContain('return { ok: false as const, notRunning: /not-tracked|not running|daemon/i.test(error), stillRunning, error };');
+        // Local CLI (`account bind`, `session provider`): the shared classifier, never a loose text match.
+        expect(accountCmd).toContain('return localRestartFailure(error, stillRunning);');
+        expect(providerCmd).toContain("return localRestartFailure(result.error ?? 'restart failed', stillRunning);");
+        expect(accountCmd).toContain("const shown = bindResultMessages(result, parsed.sessionId,");
+        expect(accountCmd).toContain('if (shown.exitCode) process.exitCode = shown.exitCode;');
+        expect(providerCmd).toContain("const shown = bindResultMessages(result, parsed.sessionId, binding ?");
     });
 });

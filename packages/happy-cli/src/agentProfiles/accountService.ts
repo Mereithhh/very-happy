@@ -48,6 +48,30 @@ export class AccountError extends Error {
 /** `stillRunning`: the restart failed and the session's old wrapper is alive (on the old credential). */
 export type RestartOutcome = { ok: true } | { ok: false; notRunning?: boolean; stillRunning?: boolean; error: string };
 
+/** controlClient's messages when no daemon answers: nothing of this machine is running. */
+const DAEMON_DOWN = /^(No daemon running|Daemon is not running)/;
+
+/**
+ * A failed restart through the local daemon (`account bind`, `session provider`).
+ * `notRunning` only for the daemon's own `restart-precheck:not-tracked` or no
+ * daemon at all — never a loose match on the text (QA30: "restart-limit … this
+ * daemon session" read as not running, so bind kept a binding the live wrapper
+ * ignored). A wrapper still running always wins.
+ */
+export function localRestartFailure(error: string, stillRunning: boolean): Extract<RestartOutcome, { ok: false }> {
+    return { ok: false, stillRunning, notRunning: !stillRunning && (error.startsWith('restart-precheck:not-tracked') || DAEMON_DOWN.test(error)), error };
+}
+
+/** What `account bind` / `session provider` print, and the exit code (non-zero whenever the switch did not happen as asked). */
+export function bindResultMessages(result: AgentProfileBindResult, sessionId: string, target: string, noun: 'account' | 'provider'): { out: string[]; err: string[]; exitCode: 0 | 1 } {
+    const bound = `Bound ${sessionId} → ${target}.`;
+    if (result.restart === 'done') return { out: [bound, 'Restarted in place (history kept).'], err: [], exitCode: 0 };
+    if (result.restart === 'pending') return { out: [bound, 'Restart in progress.'], err: [], exitCode: 0 };
+    if (result.restart === 'skipped') return { out: [bound, `Not restarted${result.error ? ` (${result.error})` : ''}; applies when the session next starts.`], err: [], exitCode: 0 };
+    if (result.rolledBack) return { out: [], err: [`Not switched: the restart failed (${result.error}). The session keeps running on its previous ${noun}; the binding was not changed.`], exitCode: 1 };
+    return { out: [], err: [`Binding to ${target} saved, but the restart failed (${result.error}); the session is not running and starts on ${target} next time.`], exitCode: 1 };
+}
+
 export type AccountServiceDeps = {
     home: string;
     env?: Record<string, string | undefined>;
@@ -362,13 +386,14 @@ export class AccountService {
         ]);
         if (outcome === 'pending') return { bound: true, restart: 'pending' };
         if (outcome.ok) return { bound: true, restart: 'done' };
-        if (outcome.notRunning) return { bound: true, restart: 'skipped', error: outcome.error };
+        // stillRunning first: a live wrapper on the old credential must never keep the new binding.
         if (outcome.stillRunning) {
             // Never "bound to the new account while running on the old one": undo.
             writeSessionBinding(this.home, sessionId, previous);
             this.changed();
             return { bound: false, rolledBack: true, restart: 'failed', error: outcome.error };
         }
+        if (outcome.notRunning) return { bound: true, restart: 'skipped', error: outcome.error };
         return { bound: true, restart: 'failed', error: outcome.error };
     }
 

@@ -7,8 +7,8 @@
 import chalk from 'chalk';
 import { configuration } from '@/configuration';
 import { listDaemonSessions, restartDaemonSession } from '@/daemon/controlClient';
-import { AccountService } from '@/agentProfiles/accountService';
-import { readAccounts, readSessionBindings, sessionAccountsPath, type AccountsFile } from '@/agentProfiles/store';
+import { AccountService, bindResultMessages, localRestartFailure } from '@/agentProfiles/accountService';
+import { readAccounts, readSessionBindings, type AccountsFile } from '@/agentProfiles/store';
 
 export const SESSION_PROVIDER_HELP = `Usage:
   very-happy session provider --list
@@ -94,24 +94,13 @@ export async function handleSessionProviderCommand(args: string[]): Promise<void
             const result = await restartDaemonSession(sessionId);
             if (result.success) return { ok: true };
             const stillRunning = await listDaemonSessions().then((children) => children.some((c) => c?.happySessionId === sessionId), () => false);
-            return { ok: false, stillRunning, error: result.error ?? 'restart failed' };
+            return localRestartFailure(result.error ?? 'restart failed', stillRunning);
         },
     });
     const binding = parsed.action === 'set' ? resolveBindingRequest(readAccounts(home), parsed.profile, parsed.model) : null;
     const result = await service.bind({ sessionId: parsed.sessionId, accountId: binding?.account ?? null, ...(binding?.model ? { model: binding.model } : {}), restart: parsed.restart });
-    console.log(binding
-        ? `Bound ${parsed.sessionId} → ${binding.account}${binding.model ? ` / ${binding.model}` : ''} (${sessionAccountsPath(home)})`
-        : `${parsed.sessionId} → machine login.`);
-    if (result.restart === 'done') {
-        console.log(`Restarted ${parsed.sessionId} in place.`);
-    } else if (result.restart === 'skipped' || result.restart === 'pending') {
-        console.log(chalk.dim('Not restarted; the binding applies when the session next starts.'));
-    } else if (result.rolledBack) {
-        console.error(chalk.yellow(`Restart failed: ${result.error}. The session keeps running on its previous provider; the binding was not changed.`));
-        process.exitCode = 1;
-    } else {
-        console.error(chalk.yellow(`Binding saved, but restart failed: ${result.error}`));
-        console.error(chalk.dim('It applies the next time this session is resumed on this machine.'));
-        process.exitCode = 1;
-    }
+    const shown = bindResultMessages(result, parsed.sessionId, binding ? `${binding.account}${binding.model ? ` / ${binding.model}` : ''}` : 'machine login', 'provider');
+    for (const line of shown.out) console.log(line);
+    for (const line of shown.err) console.error(chalk.yellow(line));
+    if (shown.exitCode) process.exitCode = shown.exitCode;
 }

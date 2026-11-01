@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { AGENT_PROFILE_RPC } from '@slopus/happy-wire';
-import { AccountError, AccountService } from './accountService';
+import { AccountError, AccountService, bindResultMessages, localRestartFailure } from './accountService';
 import { registerAgentProfileHandlers } from './agentProfileRpc';
 import { classifyClaudeCheck, classifyHttpCheck, sanitizeDetail } from './checkAccount';
 import { accountSecretPath, readAccountsFileV2, readSessionBindings } from './store';
@@ -141,5 +141,47 @@ describe('B-850a account checks', () => {
         expect(classifyClaudeCheck(1, 'Failed to authenticate. API Error: 401 OAuth access token is invalid.', 1).status).toBe('expired');
         expect(classifyClaudeCheck(1, 'ENOTFOUND api.anthropic.com', 1)).toEqual({ status: 'unverified', at: 1, detail: 'ENOTFOUND api.anthropic.com' });
         expect(sanitizeDetail(`bad ${OAT}abcdef123 here`)).toBe('bad sk-ant-… here');
+    });
+});
+
+describe('B-850a local bind (QA30 P1: "this daemon session" read as not running)', () => {
+    const LIMIT = 'restart:restart-limit: this session has already been restarted 50 time(s) this daemon session (max 50). Start a new session instead.';
+
+    it('localRestartFailure: a live wrapper wins; notRunning only for not-tracked or no daemon', () => {
+        expect(localRestartFailure(LIMIT, true)).toEqual({ ok: false, stillRunning: true, notRunning: false, error: LIMIT });
+        expect(localRestartFailure(LIMIT, false).notRunning).toBe(false);
+        expect(localRestartFailure('restart-precheck:not-tracked: Session s is not tracked by this daemon.', false).notRunning).toBe(true);
+        expect(localRestartFailure('No daemon running, no state file found', false).notRunning).toBe(true);
+        expect(localRestartFailure('Daemon is not running, file is stale', false).notRunning).toBe(true);
+        expect(localRestartFailure('restart-precheck:not-tracked: x', true).notRunning).toBe(false);
+    });
+
+    it('bind rolls back when the daemon text mentions "daemon" and the old wrapper still runs, even if notRunning were set', async () => {
+        const restart = vi.fn(async () => ({ ok: true as const }));
+        const { home, svc } = service({ restartSession: restart });
+        await svc.add({ agent: 'claude', kind: 'claude-api', label: 'Cli file', baseUrl: 'https://a', models: ['m'], key: { source: 'env', name: 'HUB_KEY' } });
+        await svc.add({ agent: 'claude', kind: 'claude-api', label: 'Web env', baseUrl: 'https://b', models: ['m'], key: { source: 'env', name: 'HUB_KEY' } });
+        await svc.bind({ sessionId: 's1', accountId: 'cli-file' });
+        restart.mockResolvedValueOnce(localRestartFailure(LIMIT, true) as never);
+        const result = await svc.bind({ sessionId: 's1', accountId: 'web-env' });
+        expect(result).toEqual({ bound: false, rolledBack: true, restart: 'failed', error: LIMIT });
+        expect(readSessionBindings(home).s1).toEqual({ account: 'cli-file' });
+        // Order inside bind: stillRunning beats a (wrong) notRunning too.
+        restart.mockResolvedValueOnce({ ok: false, notRunning: true, stillRunning: true, error: LIMIT } as never);
+        expect((await svc.bind({ sessionId: 's1', accountId: 'web-env' })).rolledBack).toBe(true);
+        expect(readSessionBindings(home).s1).toEqual({ account: 'cli-file' });
+        const shown = bindResultMessages(result, 's1', 'web-env', 'account');
+        expect(shown.exitCode).toBe(1);
+        expect(shown.out).toEqual([]);
+        expect(shown.err.join('\n')).not.toContain('Bound');
+        expect(shown.err[0]).toContain('keeps running on its previous account');
+    });
+
+    it('bindResultMessages: "Bound →" only when switched (or applied on next start); failures exit non-zero', () => {
+        expect(bindResultMessages({ bound: true, restart: 'done' }, 's', 'a', 'account')).toEqual({ out: ['Bound s → a.', 'Restarted in place (history kept).'], err: [], exitCode: 0 });
+        expect(bindResultMessages({ bound: true, restart: 'skipped', error: 'restart-precheck:not-tracked' }, 's', 'a', 'account').exitCode).toBe(0);
+        const kept = bindResultMessages({ bound: true, restart: 'failed', error: 'restart-precheck:cwd-missing' }, 's', 'a', 'provider');
+        expect(kept.exitCode).toBe(1);
+        expect(kept.out).toEqual([]);
     });
 });

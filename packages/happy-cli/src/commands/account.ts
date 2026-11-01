@@ -7,7 +7,7 @@ import chalk from 'chalk';
 import { createInterface } from 'node:readline/promises';
 import { configuration } from '@/configuration';
 import { getDaemonAgentProfiles, listDaemonSessions, restartDaemonSession } from '@/daemon/controlClient';
-import { AccountError, AccountService } from '@/agentProfiles/accountService';
+import { AccountError, AccountService, bindResultMessages, localRestartFailure } from '@/agentProfiles/accountService';
 import type { AgentProfileSummary } from '@slopus/happy-wire';
 
 export const ACCOUNT_HELP = `Usage:
@@ -137,7 +137,7 @@ async function restartOutcome(sessionId: string) {
     const error = result.error ?? 'restart failed';
     // The old wrapper still alive = still on the old credential → bind() rolls the binding back.
     const stillRunning = await listDaemonSessions().then((children) => children.some((c) => c?.happySessionId === sessionId), () => false);
-    return { ok: false as const, notRunning: /not-tracked|not running|daemon/i.test(error), stillRunning, error };
+    return localRestartFailure(error, stillRunning);
 }
 
 async function loginInteractive(target: { accountId?: string; label?: string }): Promise<AgentProfileSummary> {
@@ -235,17 +235,10 @@ export async function handleAccountCommand(args: string[]): Promise<void> {
                 return;
             case 'bind': {
                 const result = await service.bind({ sessionId: parsed.sessionId, accountId: parsed.accountId, ...(parsed.model ? { model: parsed.model } : {}), restart: parsed.restart });
-                console.log(`Bound ${parsed.sessionId} → ${parsed.accountId ?? 'machine login'}${parsed.model ? ` / ${parsed.model}` : ''}.`);
-                if (result.restart === 'done') console.log('Restarted in place (history kept).');
-                else if (result.restart === 'pending') console.log('Restart in progress.');
-                else if (result.restart === 'skipped') console.log(chalk.dim(`Not restarted${result.error ? ` (${result.error})` : ''}; applies when the session next starts.`));
-                else if (result.rolledBack) {
-                    console.error(chalk.yellow(`Restart failed: ${result.error}. The session keeps running on its previous account; the binding was not changed.`));
-                    process.exitCode = 1;
-                } else {
-                    console.error(chalk.yellow(`Binding saved, but restart failed: ${result.error}`));
-                    process.exitCode = 1;
-                }
+                const shown = bindResultMessages(result, parsed.sessionId, `${parsed.accountId ?? 'machine login'}${parsed.model ? ` / ${parsed.model}` : ''}`, 'account');
+                for (const line of shown.out) console.log(line);
+                for (const line of shown.err) console.error(chalk.yellow(line));
+                if (shown.exitCode) process.exitCode = shown.exitCode;
                 return;
             }
         }
