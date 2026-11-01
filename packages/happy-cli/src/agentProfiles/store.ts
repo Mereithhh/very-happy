@@ -17,7 +17,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import type { AgentProfileSummary, AgentProfilesState } from '@slopus/happy-wire';
+import { AGENT_PROFILE_KINDS, type AgentProfileSummary, type AgentProfilesState } from '@slopus/happy-wire';
 import { parseProvidersFile, parseSessionProvidersFile, providersPath, sessionProvidersPath } from '@/claude/providerBinding';
 
 export type AccountKey =
@@ -376,5 +376,5 @@ export function buildAgentProfilesState(home: string, file: AccountsFile, probe:
         .sort((x, y) => (x.createdAt ?? 0) - (y.createdAt ?? 0) || x.id.localeCompare(y.id));
     const defaults: Record<string, string> = {};
     for (const [agent, id] of Object.entries(file.defaults)) if (file.accounts[id]) defaults[agent] = id;
-    return { daemonPid, updatedAt: now, accounts, defaults };
+    return { daemonPid, updatedAt: now, accounts, defaults, kinds: [...AGENT_PROFILE_KINDS] };
 }

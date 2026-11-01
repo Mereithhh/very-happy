@@ -94,7 +94,13 @@ export const AgentProfilesStateSchema = z.object({
     accounts: z.array(AgentProfileSummarySchema),
     /** agent → account id new sessions on this machine use when the spawn names none. Absent = machine login. */
     defaults: z.record(z.string(), z.string()),
-    /** B-850b: the providers in this machine's ~/.codex/config.toml (for the add form; no secrets). */
+    /**
+     * B-850b: the account kinds this daemon can create (its AGENT_PROFILE_KINDS). Always sent from
+     * B-850b on, so a codex-capable daemon with no config.toml providers is distinguishable from a
+     * B-850a daemon. Absent (older daemon) = ['claude-subscription', 'claude-api'].
+     */
+    kinds: z.array(z.string()).optional(),
+    /** B-850b: the providers in this machine's ~/.codex/config.toml (for the add form; no secrets). Absent when none. */
     codexProviders: z.array(z.object({
         id: z.string(),
         name: z.string().optional(),

@@ -92,6 +92,7 @@ describe('B-850a account store', () => {
         });
         const state = buildAgentProfilesState('/h', file, probe(['/root/.config/k']), 10, 42);
         expect(state.daemonPid).toBe(42);
+        expect(state.kinds).toEqual(['claude-subscription', 'claude-api', 'codex-chatgpt', 'codex-provider']);
         expect(state.defaults).toEqual({});
         expect(state.accounts[0]).toMatchObject({ id: 'h', keySource: 'file', keyRef: '~/.config/k', baseUrl: 'https://h' });
     });

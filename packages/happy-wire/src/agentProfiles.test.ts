@@ -55,5 +55,6 @@ describe('B-850a agent profile wire', () => {
         expect(AgentProfileLoginStatusSchema.parse({ loginId: 'l', state: 'waiting-code', flow: 'device-code', url: 'https://auth.openai.com/codex/device', userCode: 'AB-12', extra: 1 }))
             .toEqual({ loginId: 'l', state: 'waiting-code', flow: 'device-code', url: 'https://auth.openai.com/codex/device', userCode: 'AB-12' });
         expect(AgentProfilesStateSchema.safeParse({ daemonPid: 1, updatedAt: 2, accounts: [], defaults: { codex: 'hub' }, codexProviders: [{ id: 'llmhub', envKey: 'LLMHUB_API_KEY' }] }).success).toBe(true);
+        expect(AgentProfilesStateSchema.parse({ daemonPid: 1, updatedAt: 2, accounts: [], defaults: {}, kinds: ['claude-api', 'codex-provider'] }).kinds).toEqual(['claude-api', 'codex-provider']);
     });
 });
