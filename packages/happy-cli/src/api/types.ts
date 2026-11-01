@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { AgentVersionsSchema } from '@slopus/happy-wire';
+import { AgentProfilesStateSchema, AgentVersionsSchema, type SessionAgentProfile } from '@slopus/happy-wire';
 import type { Update, UpdateMachineBody } from '@slopus/happy-wire';
 import type { ReleaseDrainNotice } from '@slopus/happy-wire';
 import { UsageSchema } from '@/claude/types'
@@ -432,6 +432,8 @@ export const DaemonStateSchema = z.object({
    * forward), so a downgraded daemon carries this field along unchanged.
    */
   claudeAuth: ClaudeAuthStateSchema.optional(),
+  /** B-850a: this machine's accounts (no secrets). Trust: `agentProfiles.daemonPid === pid`. */
+  agentProfiles: AgentProfilesStateSchema.optional(),
   /** B-555: see RateLimitsStateSchema. Old webs ignore it; old daemons carry it forward unchanged. */
   rateLimits: RateLimitsStateSchema.optional(),
   /**
@@ -637,6 +639,11 @@ export type Metadata = {
    * null = nothing chosen yet; absent = older wrapper. See happy-wire runIntent.ts.
    */
   modelIntent?: string | null,
+  /**
+   * B-850a: the account this wrapper actually runs on (agentProfiles.ts).
+   * null = machine login; absent = wrapper without `agent-profile-v1`.
+   */
+  agentProfile?: SessionAgentProfile | null,
   effortIntent?: string | null,
   operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
   currentOperatingModeCode?: string,

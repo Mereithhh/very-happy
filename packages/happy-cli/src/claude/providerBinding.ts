@@ -1,21 +1,18 @@
 /**
- * B-794: per-session Claude provider (base URL + model) binding.
- *
- * Machine-local, file-backed — never synced, never in session metadata:
+ * B-794 v1 files, READ-ONLY since B-850a (agentProfiles/store.ts lists these
+ * profiles as legacy `claude-api` accounts and honours these bindings):
  *
  *   $HAPPY_HOME_DIR/providers.json         { profiles: { <id>: { name?, baseUrl, apiKeyFile, models? } } }
  *     models[] entries are ids or { id, contextWindow } (B-794b)
  *   $HAPPY_HOME_DIR/session-providers.json { <happySessionId>: { profile, model } }
  *
- * The session's wrapper reads its own binding once at startup (runClaude) and
- * rewrites ITS process env before any Claude Code child is spawned, so only the
- * bound session changes; every other wrapper is a separate process and keeps
- * exactly today's env. The key is read from `apiKeyFile` at that moment and is
- * never logged or persisted anywhere else.
+ * B-794 injected the key as ANTHROPIC_AUTH_TOKEN, which the session's Bash
+ * tool, hooks and stdio MCP servers all inherited; B-850a injects it through
+ * apiKeyHelper instead (agentProfiles/claudeAccountEnv.ts).
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 export type ProviderProfile = {
     name?: string;
@@ -29,29 +26,6 @@ export type ProviderProfile = {
 export type ProvidersFile = { profiles: Record<string, ProviderProfile> };
 export type SessionProviderBinding = { profile: string; model: string };
 export type SessionProvidersFile = Record<string, SessionProviderBinding>;
-
-/** Env a bound session's Claude Code must not inherit: they would beat or confuse the hub token. */
-export const PROVIDER_STRIPPED_ENV_KEYS = [
-    'ANTHROPIC_API_KEY',
-    'CLAUDE_CODE_OAUTH_TOKEN',
-    'CLAUDE_CODE_OAUTH_REFRESH_TOKEN',
-    'CLAUDE_CODE_OAUTH_SCOPES',
-    'CLAUDE_CODE_USE_BEDROCK',
-    'CLAUDE_CODE_USE_VERTEX',
-    'ANTHROPIC_CUSTOM_HEADERS',
-    'ANTHROPIC_SMALL_FAST_MODEL',
-    'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
-] as const;
-
-export type ResolvedProvider = {
-    profile: string;
-    model: string;
-    baseUrl: string;
-    /** Env to set on the wrapper process (contains the token — never log). */
-    env: Record<string, string>;
-    /** Env keys to delete from the wrapper process. */
-    unset: readonly string[];
-};
 
 export function providersPath(happyHomeDir: string): string {
     return join(happyHomeDir, 'providers.json');
@@ -117,100 +91,4 @@ export function readProviders(happyHomeDir: string): ProvidersFile {
 
 export function readSessionProviders(happyHomeDir: string): SessionProvidersFile {
     return parseSessionProvidersFile(readJson(sessionProvidersPath(happyHomeDir)));
-}
-
-/**
- * Pure: the env a bound session runs with. Every Claude model slot (main,
- * opus/sonnet/haiku aliases, subagents, background small-fast calls) points
- * at the bound model so no request falls back to an Anthropic model id the
- * hub would route elsewhere.
- *
- * B-794b, compaction: when the context is over the bound model's window,
- * Claude Code compacts with the transcript's last `requestedModel` if that is
- * a known model with a larger window (`compact_larger_model`) — after a switch
- * that is the old Anthropic model, so the summary ran on claude-opus-5-5.
- * CLAUDE_CODE_NO_MODEL_FALLBACK=1 turns every model substitution off, that
- * one included. CLAUDE_CODE_MAX_CONTEXT_TOKENS gives an unrecognized id its
- * real window, so auto-compact stops firing at the assumed 200k.
- */
-export function buildProviderEnv(profile: ProviderProfile, model: string, token: string): Record<string, string> {
-    const contextWindow = profile.contextWindows?.[model];
-    return {
-        ANTHROPIC_BASE_URL: profile.baseUrl,
-        ANTHROPIC_AUTH_TOKEN: token,
-        ANTHROPIC_MODEL: model,
-        ANTHROPIC_DEFAULT_OPUS_MODEL: model,
-        ANTHROPIC_DEFAULT_SONNET_MODEL: model,
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
-        ANTHROPIC_SMALL_FAST_MODEL: model,
-        CLAUDE_CODE_SUBAGENT_MODEL: model,
-        CLAUDE_CODE_NO_MODEL_FALLBACK: '1',
-        ...(contextWindow ? { CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(contextWindow) } : {}),
-    };
-}
-
-/**
- * The binding for one session, or null when it has none (the unchanged path).
- * Throws on a binding that cannot be honoured (unknown profile, unreadable
- * key) — the caller must fail loudly rather than silently run on the default
- * provider the user explicitly moved away from.
- */
-export function resolveSessionProvider(
-    sessionId: string,
-    deps: {
-        providers: ProvidersFile;
-        bindings: SessionProvidersFile;
-        readKey: (path: string) => string;
-    },
-): ResolvedProvider | null {
-    const binding = deps.bindings[sessionId];
-    if (!binding) return null;
-    const profile = deps.providers.profiles[binding.profile];
-    if (!profile) throw new Error(`provider profile "${binding.profile}" is not defined in providers.json`);
-    const token = deps.readKey(profile.apiKeyFile).trim();
-    if (!token) throw new Error(`provider profile "${binding.profile}": api key file is empty`);
-    return {
-        profile: binding.profile,
-        model: binding.model,
-        baseUrl: profile.baseUrl,
-        env: buildProviderEnv(profile, binding.model, token),
-        unset: PROVIDER_STRIPPED_ENV_KEYS,
-    };
-}
-
-export function loadSessionProvider(happyHomeDir: string, sessionId: string): ResolvedProvider | null {
-    const bindings = readSessionProviders(happyHomeDir);
-    if (!bindings[sessionId]) return null;
-    return resolveSessionProvider(sessionId, {
-        providers: readProviders(happyHomeDir),
-        bindings,
-        readKey: (p) => readFileSync(expandHome(p), 'utf8'),
-    });
-}
-
-/** Mutates `env` in place: strip inherited credentials, then set the provider's. */
-export function applyProviderEnv(env: Record<string, string | undefined>, provider: ResolvedProvider): void {
-    for (const key of provider.unset) delete env[key];
-    Object.assign(env, provider.env);
-}
-
-/** Pure: next bindings file after `set` (binding) or clear (null). */
-export function updateBindings(
-    current: SessionProvidersFile,
-    sessionId: string,
-    binding: SessionProviderBinding | null,
-): SessionProvidersFile {
-    const next = { ...current };
-    if (binding) next[sessionId] = binding;
-    else delete next[sessionId];
-    return next;
-}
-
-export function writeSessionProviders(happyHomeDir: string, bindings: SessionProvidersFile): void {
-    const path = sessionProvidersPath(happyHomeDir);
-    mkdirSync(dirname(path), { recursive: true });
-    const tmp = `${path}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(bindings, null, 2) + '\n', { mode: 0o600 });
-    chmodSync(tmp, 0o600);
-    renameSync(tmp, path);
 }

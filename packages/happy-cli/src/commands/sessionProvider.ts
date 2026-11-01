@@ -1,29 +1,24 @@
 /**
- * B-794: `very-happy session provider` — bind one Claude session to a
- * provider profile + model (claude/providerBinding.ts), then restart it in
- * place through the local daemon so the binding takes effect with its history.
+ * B-794: `very-happy session provider` — kept as an alias of
+ * `very-happy account bind` (B-850a). A "profile" is any account id
+ * (providers.json profiles are listed as legacy accounts); the binding is
+ * written to session-accounts.json and the session restarts in place.
  */
 import chalk from 'chalk';
 import { configuration } from '@/configuration';
-import { restartDaemonSession } from '@/daemon/controlClient';
-import {
-    readProviders,
-    readSessionProviders,
-    sessionProvidersPath,
-    updateBindings,
-    writeSessionProviders,
-    type ProvidersFile,
-    type SessionProviderBinding,
-} from '@/claude/providerBinding';
+import { listDaemonSessions, restartDaemonSession } from '@/daemon/controlClient';
+import { AccountService, bindResultMessages, localRestartFailure } from '@/agentProfiles/accountService';
+import { readAccounts, readSessionBindings, type AccountsFile } from '@/agentProfiles/store';
 
 export const SESSION_PROVIDER_HELP = `Usage:
   very-happy session provider --list
   very-happy session provider <sessionId> <profile> [--model <model>] [--no-restart]
   very-happy session provider <sessionId> default [--no-restart]
 
-Binds a Claude (SDK/remote) session on THIS machine to a provider profile from
-$HAPPY_HOME_DIR/providers.json, then restarts the session in place (history
-kept). "default" removes the binding. --model defaults to the profile's first model.`;
+Alias of \`very-happy account bind\`. Binds a Claude session on THIS machine to
+an account (\`very-happy account list\`; providers.json profiles are included),
+then restarts it in place (history kept). "default" = the machine login.
+--model defaults to the account's first model.`;
 
 export type SessionProviderArgs =
     | { action: 'help' }
@@ -62,19 +57,22 @@ export function parseSessionProviderArgs(args: string[]): SessionProviderArgs {
     return { action: 'set', sessionId, profile, model, restart };
 }
 
-/** Pure: validate a `set` against the profiles and pick the model. */
-export function resolveBindingRequest(providers: ProvidersFile, profile: string, model: string | undefined): SessionProviderBinding {
-    const p = providers.profiles[profile];
-    if (!p) {
-        const known = Object.keys(providers.profiles);
-        throw new Error(`unknown provider profile "${profile}"${known.length ? ` (known: ${known.join(', ')})` : ' (providers.json has no profiles)'}`);
+/** Pure: validate a `set` against the accounts and pick the model (API accounts). */
+export function resolveBindingRequest(accounts: AccountsFile, profile: string, model: string | undefined): { account: string; model?: string } {
+    const a = accounts.accounts[profile];
+    if (!a) {
+        const known = Object.keys(accounts.accounts);
+        throw new Error(`unknown account "${profile}"${known.length ? ` (known: ${known.join(', ')})` : ' (no accounts; see `very-happy account`)'}`);
     }
-    const chosen = model ?? p.models?.[0];
-    if (!chosen) throw new Error(`profile "${profile}" lists no models; pass --model`);
-    if (p.models && p.models.length > 0 && !p.models.includes(chosen)) {
-        throw new Error(`model "${chosen}" is not in profile "${profile}" models (${p.models.join(', ')})`);
+    if (a.kind !== 'claude-api') {
+        if (model) throw new Error(`--model applies to API accounts only`);
+        return { account: profile };
     }
-    return { profile, model: chosen };
+    const chosen = model ?? a.models?.[0];
+    if (chosen && a.models && a.models.length > 0 && !a.models.includes(chosen)) {
+        throw new Error(`model "${chosen}" is not in account "${profile}" models (${a.models.join(', ')})`);
+    }
+    return { account: profile, ...(chosen ? { model: chosen } : {}) };
 }
 
 export async function handleSessionProviderCommand(args: string[]): Promise<void> {
@@ -84,35 +82,25 @@ export async function handleSessionProviderCommand(args: string[]): Promise<void
         console.log(SESSION_PROVIDER_HELP);
         return;
     }
-    const bindings = readSessionProviders(home);
     if (parsed.action === 'list') {
-        const entries = Object.entries(bindings);
-        if (entries.length === 0) console.log('No session provider bindings.');
-        for (const [sessionId, b] of entries) console.log(`${sessionId}  ${b.profile}  ${b.model}`);
+        const entries = Object.entries(readSessionBindings(home));
+        if (entries.length === 0) console.log('No session account bindings.');
+        for (const [sessionId, b] of entries) console.log(`${sessionId}  ${b.account ?? 'machine'}${b.model ? `  ${b.model}` : ''}`);
         return;
     }
-    if (parsed.action === 'set') {
-        const binding = resolveBindingRequest(readProviders(home), parsed.profile, parsed.model);
-        writeSessionProviders(home, updateBindings(bindings, parsed.sessionId, binding));
-        console.log(`Bound ${parsed.sessionId} → ${binding.profile} / ${binding.model} (${sessionProvidersPath(home)})`);
-    } else {
-        if (!bindings[parsed.sessionId]) {
-            console.log(`${parsed.sessionId} has no binding; nothing to change.`);
-            return;
-        }
-        writeSessionProviders(home, updateBindings(bindings, parsed.sessionId, null));
-        console.log(`Cleared binding for ${parsed.sessionId} (default provider).`);
-    }
-    if (!parsed.restart) {
-        console.log(chalk.dim('Not restarted; the binding applies when the session next starts.'));
-        return;
-    }
-    const result = await restartDaemonSession(parsed.sessionId);
-    if (result.success) {
-        console.log(`Restarted ${parsed.sessionId} in place.`);
-        return;
-    }
-    console.error(chalk.yellow(`Binding saved, but restart failed: ${result.error}`));
-    console.error(chalk.dim('It applies the next time this session is resumed on this machine.'));
-    process.exitCode = 1;
+    const service = new AccountService({
+        home,
+        restartSession: async (sessionId) => {
+            const result = await restartDaemonSession(sessionId);
+            if (result.success) return { ok: true };
+            const stillRunning = await listDaemonSessions().then((children) => children.some((c) => c?.happySessionId === sessionId), () => false);
+            return localRestartFailure(result.error ?? 'restart failed', stillRunning);
+        },
+    });
+    const binding = parsed.action === 'set' ? resolveBindingRequest(readAccounts(home), parsed.profile, parsed.model) : null;
+    const result = await service.bind({ sessionId: parsed.sessionId, accountId: binding?.account ?? null, ...(binding?.model ? { model: binding.model } : {}), restart: parsed.restart });
+    const shown = bindResultMessages(result, parsed.sessionId, binding ? `${binding.account}${binding.model ? ` / ${binding.model}` : ''}` : 'machine login', 'provider');
+    for (const line of shown.out) console.log(line);
+    for (const line of shown.err) console.error(chalk.yellow(line));
+    if (shown.exitCode) process.exitCode = shown.exitCode;
 }

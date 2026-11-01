@@ -12,6 +12,13 @@ describe('parseSpawnArgs', () => {
         expect(options.help).toBe(false)
     })
 
+    it('B-850a: parses --account (id or machine) and rejects junk', () => {
+        expect(parseSpawnArgs(['--dir', '/tmp/foo', '--account', 'org-b']).account).toBe('org-b')
+        expect(parseSpawnArgs(['--dir', '/tmp/foo', '--account', 'machine']).account).toBe('machine')
+        expect(() => parseSpawnArgs(['--dir', '/tmp/foo', '--account'])).toThrow(/--account/)
+        expect(() => parseSpawnArgs(['--dir', '/tmp/foo', '--account', 'Bad Id'])).toThrow(/--account/)
+    })
+
     it('parses short aliases and --json', () => {
         const options = parseSpawnArgs(['-d', '/tmp/foo', '-p', 'hi', '--json'])
         expect(options.dir).toBe('/tmp/foo')

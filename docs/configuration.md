@@ -543,41 +543,55 @@ same configuration applies when you run the agent in a terminal there:
 - Audit trail: `$HAPPY_HOME_DIR/model-config-audit.jsonl` records the action,
   files, key names and the key mode — never key values.
 
-### Per-session Claude provider (B-794)
+### Per-session Claude accounts (B-850a; supersedes the B-794 provider binding)
 
-One Claude (SDK/remote) session can run on another Anthropic-compatible endpoint
-and model while every other session on the machine stays on the default. Machine
-local, CLI only:
-
-```json
-// $HAPPY_HOME_DIR/providers.json (0600)
-{
-  "profiles": {
-    "llmhub": {
-      "name": "LLM Hub",
-      "baseUrl": "https://llm-hub.example.com",
-      "apiKeyFile": "~/.config/llm-hub/key",
-      "models": [
-        { "id": "kimi-k3", "contextWindow": 262144 },
-        "deepseek-v4-1-flash-1017"
-      ]
-    }
-  }
-}
-```
+A machine can hold several Claude **accounts**, and each Claude session runs on
+one of them while every other session keeps its own: a Claude subscription
+(another organization), an API key (Anthropic Console, LLM Hub or any
+Anthropic-compatible URL), or the machine's own login (the default, nothing to
+configure). Accounts belong to the machine: tokens and keys stay in
+`$HAPPY_HOME_DIR` (0600) and are never sent to the server or written into
+session metadata — the Web only sees names, kinds and status.
 
 ```sh
-very-happy session provider <sessionId> llmhub --model kimi-k3   # bind + restart in place (history kept)
-very-happy session provider <sessionId> default                  # unbind + restart
-very-happy session provider --list
+very-happy account login --label "Org B"     # subscription: opens claude setup-token, pick the org in the browser, paste the code
+very-happy account add --label "LLM Hub" --base-url https://llm-hub.example.com \
+  --key-file ~/.config/llm-hub/key --model kimi-k3:262144 --model deepseek-v4-1-flash-1017
+very-happy account list                       # status: ok / unverified / expired / invalid / missing-secret
+very-happy account test <id>                  # one tiny real request
+very-happy account default <id|machine>       # account new Claude sessions on this machine start on
+very-happy account bind <sessionId> <id|machine> [--model <id>]   # switch + restart in place (history kept)
+very-happy spawn --dir . --account <id|machine> --prompt "…"
 ```
 
-- Bindings live in `$HAPPY_HOME_DIR/session-providers.json`. The session's
-  wrapper reads its binding at start, strips inherited `ANTHROPIC_API_KEY` /
-  `CLAUDE_CODE_OAUTH_*`, and sets `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`
-  (read from `apiKeyFile`, never logged or synced) and the bound model in every
-  model slot (main, opus/sonnet/haiku aliases, subagent, small-fast). The bound
-  model wins over the composer's model picker.
+- Keys: `--key-file <path>` (recommended; re-read on every refresh, so rotating
+  the file needs no restart), `--key-env <VAR>` (read from the daemon's
+  environment; the variable is removed from that session's environment), or
+  `--key-stdin` (stored at `$HAPPY_HOME_DIR/accounts/<id>/secret`). The Web can
+  also paste a key: it travels through the Very Happy server to the machine and
+  is not stored on the server.
+- What a session can see: a subscription token is passed as
+  `CLAUDE_CODE_OAUTH_TOKEN` and an API key through Claude Code's `apiKeyHelper`;
+  measured on Claude Code 2.1.304, neither reaches the session's Bash tool,
+  hooks or stdio MCP servers. (B-794 used `ANTHROPIC_AUTH_TOKEN`, which all
+  three inherited.) The agent still runs as the same OS user, so it could read
+  the files under `$HAPPY_HOME_DIR` if it tried.
+- No silent fallback: a session bound to an account that is missing, expired or
+  rejected refuses each message ("not run", with the reason) instead of running
+  on the machine login; `spawn` with such an account fails. Sign in again
+  (`account login <id>`) or switch accounts.
+- Switching restarts the session in place; the conversation continues
+  (`~/.claude` is shared, only the credential changes). The first turn after
+  switching organizations does not hit the prompt cache.
+- An API account pins every model slot (main, opus/sonnet/haiku aliases,
+  subagent, small-fast) to the bound model, which wins over the composer's
+  model picker.
+- B-794 files still work, read-only: every `providers.json` profile is listed
+  as an API account (edit or remove it in that file), and
+  `session-providers.json` bindings apply to sessions with no newer binding.
+  `very-happy session provider …` is an alias of `account bind`. New bindings
+  live in `$HAPPY_HOME_DIR/session-accounts.json`, accounts in
+  `$HAPPY_HOME_DIR/accounts.json`.
 - Compaction (B-794b): `CLAUDE_CODE_NO_MODEL_FALLBACK=1` is set, so Claude Code
   never compacts on the transcript's previous (larger-window) Anthropic model —
   without it, the first compaction after switching a long session ran on

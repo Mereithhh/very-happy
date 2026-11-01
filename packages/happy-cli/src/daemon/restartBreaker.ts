@@ -15,6 +15,13 @@
 
 export const DEFAULT_MAX_RESTARTS = 3;
 
+/**
+ * B-850a: in-place restarts for an account switch (`agent-profile-bind`,
+ * `account rm --force`) are the user's own action, not a crash loop: they have
+ * their own count and a much higher bound, and never use up the 3 above.
+ */
+export const DEFAULT_MAX_ACCOUNT_RESTARTS = 50;
+
 export type RestartDecision =
     | { allowed: true; attempt: number }
     | { allowed: false; reason: string };

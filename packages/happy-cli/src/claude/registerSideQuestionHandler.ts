@@ -97,11 +97,13 @@ export const SIDE_QUESTION_MAX_RUN_MS = 10 * 60_000;
  * forwarders) once per side question. `disableAllHooks` via `--settings`
  * keeps the fork silent while `settingSources` still bring in CLAUDE.md.
  */
-export function writeSideQuestionSettingsFile(homeDir: string): string {
+export function writeSideQuestionSettingsFile(homeDir: string, extra: Record<string, unknown> = {}): string {
     const dir = join(homeDir, 'tmp', 'hooks');
     mkdirSync(dir, { recursive: true });
     const file = join(dir, `side-question-${process.pid}.json`);
-    writeFileSync(file, JSON.stringify({ disableAllHooks: true }));
+    // B-850a: `extra` carries the session account's apiKeyHelper, so the fork
+    // runs on the same account as the session.
+    writeFileSync(file, JSON.stringify({ ...extra, disableAllHooks: true }));
     return file;
 }
 

@@ -3,6 +3,7 @@
  * Used by CLI commands to interact with running daemon
  */
 
+import type { AgentProfilesState } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
 import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
@@ -150,6 +151,8 @@ export async function spawnDaemonSession(
     resumeCodexThreadId?: string;
     /** Lineage: the Happy session this fork branched from. */
     parentSessionId?: string;
+    /** B-850a: account (null = machine login; absent = the machine default). An older daemon strips it. */
+    agentProfileId?: string | null;
   }
 ): Promise<any> {
   const result = await daemonPost('/spawn-session', {
@@ -162,6 +165,7 @@ export async function spawnDaemonSession(
     resumeClaudeSessionId: opts?.resumeClaudeSessionId,
     resumeCodexThreadId: opts?.resumeCodexThreadId,
     parentSessionId: opts?.parentSessionId,
+    ...(opts?.agentProfileId !== undefined ? { agentProfileId: opts.agentProfileId } : {}),
   });
   return result;
 }
@@ -201,6 +205,12 @@ export async function resumeDaemonSession(
 }
 
 /** B-794: restart a live session in place via the local daemon. Never throws. */
+/** B-850a: the running daemon's account state (null = no daemon / older daemon). */
+export async function getDaemonAgentProfiles(): Promise<AgentProfilesState | null> {
+  const result = await daemonPost('/agent-profiles');
+  return result && Array.isArray(result.accounts) ? result as AgentProfilesState : null;
+}
+
 export async function restartDaemonSession(sessionId: string): Promise<{ success: boolean; sessionId?: string; error?: string }> {
   const result = await daemonPost('/restart-session', { sessionId });
   if (result?.error) {

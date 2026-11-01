@@ -29,8 +29,8 @@ describe('B-852 auto-restart wiring', () => {
         expect(run).toContain('...(options?.auto ? { [AUTO_RESTARTED_ENV]: encodeAutoRestarted(options.auto.kind, options.auto.target) } : {}),');
     });
     it('automatic restarts never use up the manual breaker', () => {
-        expect(run).toContain('const decision = options?.auto ? { allowed: true as const } : decideRestart(prior, DEFAULT_MAX_RESTARTS);');
-        expect(run).toContain('if (!options?.auto) restartCounts.set(happySessionId, recordRestartAttempt(prior));');
+        expect(run).toContain('const decision = options?.auto ? { allowed: true as const } : decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);');
+        expect(run).toContain('if (!options?.auto) counts.set(happySessionId, recordRestartAttempt(prior));');
     });
     it('a team lead is not told "exited" for an automatic restart', () => {
         expect(run).toContain("if (session?.happySessionId && !autoRestartExits.has(session.happySessionId) && (session.spawnedBy === 'teams'");
@@ -50,7 +50,7 @@ describe('B-852 auto-restart wiring', () => {
         for (const src of [claude, codex, acp]) {
             expect(src).toMatch(/const autoUpdated = takeAutoRestartedEvent\(process\.env(, 'Codex')?\);\n\s+if \(autoUpdated\) session\.sendSessionEvent\(autoUpdated\);/);
         }
-        expect(claude).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY]');
+        expect(claude).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY]');
         expect(codex).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY');
         expect(acp).toContain("...(opts.agentName === 'pi' && opts.startedBy === 'daemon' ? [AUTO_RESTART_CAPABILITY] : [])],");
     });
