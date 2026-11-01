@@ -160,6 +160,15 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       failCommand(error)
     }
     return;
+  } else if (subcommand === 'account' || subcommand === 'accounts') {
+    // B-850a: this machine's accounts (subscription / API) for Claude sessions.
+    try {
+      const { handleAccountCommand } = await import('./commands/account');
+      await handleAccountCommand(args.slice(1));
+    } catch (error) {
+      failCommand(error)
+    }
+    return exitAfterFlush(process.exitCode ?? 0);
   } else if ((subcommand === 'session' || subcommand === 'sessions') && args[1] === 'provider') {
     // B-794: per-session Claude provider binding.
     try {
@@ -887,6 +896,8 @@ ${chalk.bold('Usage:')}
   very-happy sessions          List, read, stop, archive, approve or deny
                             sessions and their permission requests (for
                             automation; see sessions --help)
+  very-happy account           This machine's Claude accounts (subscription
+                            orgs, API keys) for per-session use (see account --help)
   very-happy codex             Start Codex mode
   very-happy gemini            Start Gemini mode (ACP)
   very-happy pi                Start pi mode (ACP via the pi-acp adapter)

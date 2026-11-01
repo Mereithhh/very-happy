@@ -16,9 +16,10 @@ import { projectPath } from '@/projectPath';
  * 
  * @param port - The port where Happy server is listening
  * @param source - Optional tag the forwarder reports as `?source=` (B-515 prewarm)
+ * @param extra - B-850a: the session account's settings (apiKeyHelper); never contains a secret
  * @returns Path to the generated settings file
  */
-export function generateHookSettingsFile(port: number, source?: string): string {
+export function generateHookSettingsFile(port: number, source?: string, extra: Record<string, unknown> = {}): string {
     const hooksDir = join(configuration.happyHomeDir, 'tmp', 'hooks');
     mkdirSync(hooksDir, { recursive: true });
 
@@ -38,6 +39,7 @@ export function generateHookSettingsFile(port: number, source?: string): string 
         : `node "${forwarderScript}" ${port}`;
 
     const settings = {
+        ...extra,
         hooks: {
             SessionStart: [
                 {

@@ -143,6 +143,8 @@ export async function spawnDaemonSession(
     resumeCodexThreadId?: string;
     /** Lineage: the Happy session this fork branched from. */
     parentSessionId?: string;
+    /** B-850a: account (null = machine login; absent = the machine default). An older daemon strips it. */
+    agentProfileId?: string | null;
   }
 ): Promise<any> {
   const result = await daemonPost('/spawn-session', {
@@ -155,6 +157,7 @@ export async function spawnDaemonSession(
     resumeClaudeSessionId: opts?.resumeClaudeSessionId,
     resumeCodexThreadId: opts?.resumeCodexThreadId,
     parentSessionId: opts?.parentSessionId,
+    ...(opts?.agentProfileId !== undefined ? { agentProfileId: opts.agentProfileId } : {}),
   });
   return result;
 }

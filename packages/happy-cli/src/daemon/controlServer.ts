@@ -360,6 +360,8 @@ export function startDaemonControlServer({
           resumeClaudeSessionId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).optional(),
           resumeCodexThreadId: z.string().min(1).max(200).optional(),
           parentSessionId: z.string().min(1).max(200).optional(),
+          // B-850a: `very-happy spawn --account` (null = machine login; absent = machine default).
+          agentProfileId: z.string().min(1).max(64).nullable().optional(),
         }),
         response: {
           200: z.object({
@@ -384,7 +386,7 @@ export function startDaemonControlServer({
         }
       }
     }, async (request, reply) => {
-      const { directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId } = request.body;
+      const { directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, agentProfileId } = request.body;
 
       if (!directory && variant !== 'assistant') {
         reply.code(500);
@@ -392,7 +394,7 @@ export function startDaemonControlServer({
       }
 
       logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}, agent=${agent || 'default'}, variant=${variant || 'none'}, forceNew=${forceNew === true}, spawnedBy=${spawnedBy || 'unset'}`);
-      const result = await spawnSession({ directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId });
+      const result = await spawnSession({ directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, ...(agentProfileId !== undefined ? { agentProfileId } : {}) });
       const resumed = Boolean(resumeClaudeSessionId || resumeCodexThreadId);
 
       switch (result.type) {

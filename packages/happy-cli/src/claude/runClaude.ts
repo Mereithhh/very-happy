@@ -18,11 +18,12 @@ import type { EnhancedMode, PermissionMode } from './loop';
 import type { MessageMeta } from '@/api/types';
 import type { QueueDiscardEntry } from '@/utils/MessageQueue2';
 import { spawnOriginTags } from '@/utils/createSessionMetadata';
-import { CLAUDE_CONFIG_MODEL_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, restoredEffort, restoredModel } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, restoredEffort, restoredModel } from '@slopus/happy-wire';
 import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
 import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { configuration } from '@/configuration';
-import { applyProviderEnv, loadSessionProvider } from './providerBinding';
+import { loadWrapperAccount, type WrapperAccount } from '@/agentProfiles/wrapperAccount';
+import { SPAWN_ACCOUNT_ENV } from '@/agentProfiles/store';
 import { checkDaemonHibernation, notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { getInitialMachineMetadata } from '@/daemon/machineMetadata';
 import { projectPath } from '../projectPath';
@@ -94,6 +95,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         prewarmSpawnEnv[key] = process.env[key];
         delete process.env[key];
     }
+    // B-850a: the account the daemon picked for a NEW session; recorded as
+    // this session's binding once its id exists, never passed further down.
+    const spawnAccountId = process.env[SPAWN_ACCOUNT_ENV] || undefined;
+    delete process.env[SPAWN_ACCOUNT_ENV];
 
     const workingDirectory = process.cwd();
 
@@ -235,7 +240,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
-        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY],
+        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY],
         // B-849b: this session's model / thinking choice (wrapper is the sole
         // writer; a reconnect keeps the server copy). A spawn-time model is a choice.
         modelIntent: options.model ?? null,
@@ -631,24 +636,30 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // refuse `teams permissions` (teams/permissions.ts) — not this feature's call.
     options = { ...options, claudeEnvVars: { ...options.claudeEnvVars, VH_PEER_SESSION_ID: response.id } };
 
-    // B-794: a per-session provider binding (claude/providerBinding.ts). It
-    // rewrites THIS wrapper's env before any Claude Code child exists, so only
-    // this session moves; unbound sessions never enter this branch. A binding
-    // that cannot be honoured is surfaced in the chat and the session runs on
-    // the default provider rather than dying (a crash would archive it).
-    let providerPinnedModel: string | undefined;
+    // B-850a (supersedes B-794's provider binding): this session's account
+    // (agentProfiles/). It rewrites THIS wrapper's env before any Claude child
+    // exists, so only this session moves; an unbound session keeps today's env.
+    // Subscription → CLAUDE_CODE_OAUTH_TOKEN, API → apiKeyHelper in our
+    // --settings file: neither reaches Bash, hooks or stdio MCP (spec §实测).
+    // A binding that cannot be honoured is reported and every turn refused —
+    // never a silent run on the machine login (Owner Q3), never a crash (a
+    // crash would archive the session).
+    let account: WrapperAccount;
     try {
-        const provider = loadSessionProvider(configuration.happyHomeDir, response.id);
-        if (provider) {
-            applyProviderEnv(process.env, provider);
-            options = { ...options, model: provider.model };
-            providerPinnedModel = provider.model;
-            logger.debug(`[START] B-794 provider binding: profile=${provider.profile} model=${provider.model} baseUrl=${provider.baseUrl}`);
-        }
+        account = loadWrapperAccount(configuration.happyHomeDir, response.id, spawnAccountId);
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        logger.debug(`[START] B-794 provider binding failed: ${reason}`);
-        session.sendSessionEvent({ type: 'message', message: `Provider binding ignored: ${reason}` });
+        logger.debug(`[START] B-850a account resolution failed: ${reason}`);
+        account = spawnAccountId
+            ? { profile: { id: spawnAccountId, label: spawnAccountId, kind: 'unknown', status: 'unavailable', reason: 'error' }, settings: {}, unavailable: true, notices: [`Account "${spawnAccountId}" could not be loaded: ${reason}`], cleanup: () => {} }
+            : { profile: null, settings: {}, unavailable: false, notices: [], cleanup: () => {} };
+    }
+    const providerPinnedModel: string | undefined = account.pinnedModel;
+    if (providerPinnedModel) options = { ...options, model: providerPinnedModel };
+    logger.debug(`[START] B-850a account: ${account.profile ? `${account.profile.id} ${account.profile.kind} ${account.profile.status}` : 'machine login'}`);
+    session.updateMetadata((current) => ({ ...current, agentProfile: account.profile }));
+    for (const notice of account.notices) {
+        session.sendSessionEvent({ type: 'message', message: notice, kind: account.unavailable ? 'agent-profile-unavailable' : 'agent-profile-warning' });
     }
 
     // Remote-mode session scanner: catches user-typed prompts that
@@ -755,7 +766,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     logger.debug(`[START] Hook server started on port ${hookServer.port}`);
 
     // Generate hook settings file for Claude
-    const hookSettingsPath = generateHookSettingsFile(hookServer.port);
+    const hookSettingsPath = generateHookSettingsFile(hookServer.port, undefined, account.settings);
     logger.debug(`[START] Generated hook settings file: ${hookSettingsPath}`);
 
     // Print log file path
@@ -869,7 +880,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         getModel: () => currentModel,
         cwd: workingDirectory,
         getEnv: () => options.claudeEnvVars,
-        settingsPath: writeSideQuestionSettingsFile(configuration.happyHomeDir),
+        settingsPath: writeSideQuestionSettingsFile(configuration.happyHomeDir, account.settings),
         // B-482: in remote mode the launcher parks the live Query's /btw entry
         // on the session while the Query is alive; local mode never sets it.
         getLiveQuery: () => currentSession?.getSideQuestionLive() ?? null,
@@ -948,6 +959,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let userMessageSeen = false;
     const prewarmTagFiles = new Set<string>();
     const createPrewarm = () => {
+        // B-850a: an unusable account would only prewarm a process that 401s.
+        if (account.unavailable) return null;
         const eligibility = claudePrewarmEligibility({
             ...prewarmSessionInput,
             env: { ...process.env, ...prewarmSpawnEnv },
@@ -975,7 +988,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         const tag = prewarmHookGate.newTag();
         let tagHookSettingsPath: string;
         try {
-            tagHookSettingsPath = generateHookSettingsFile(hookServer.port, tag);
+            tagHookSettingsPath = generateHookSettingsFile(hookServer.port, tag, account.settings);
         } catch (error) {
             slot.release();
             logger.debug(formatPrewarmLine('skipped', 'hook-settings'));
@@ -1030,6 +1043,15 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     session.onUserMessage(async (message) => {
         userMessageSeen = true;
+
+        // B-850a: bound to an account that cannot run — the message is marked
+        // not run (「未执行」, put back into the composer) instead of going to
+        // Claude on the machine login.
+        if (account.unavailable && account.profile) {
+            if (message.localKey) session.sendQueueCancelReason([message.localKey], 'failed');
+            session.sendSessionEvent({ type: 'message', message: account.notices[0] ?? `Account "${account.profile.label}" is unavailable.`, kind: 'agent-profile-unavailable' });
+            return;
+        }
 
         // NOTE: the JSONL-scanner dedupe is NOT stamped here any more (B-355).
         // What the SDK writes to disk is the FINALISED prompt: the queue batches
@@ -1267,6 +1289,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Stop Hook server and cleanup settings file
             hookServer.stop();
             cleanupHookSettingsFile(hookSettingsPath);
+            account.cleanup();
 
             // Stop the remote JSONL scanner (file watchers + intervals).
             await remoteScanner.cleanup();
@@ -1455,6 +1478,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Stop Hook server and cleanup settings file
     hookServer.stop();
     cleanupHookSettingsFile(hookSettingsPath);
+    account.cleanup();
     logger.debug('Stopped Hook server and cleaned up settings file');
 
     // Exit with the code from Claude

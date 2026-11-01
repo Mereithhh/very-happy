@@ -84,6 +84,8 @@ export interface SpawnCommandOptions {
     env?: Record<string, string>
     /** B-492: model for the first message ('default' = machine default). */
     model?: string
+    /** B-850a: account on this machine ('machine' = the machine login). */
+    account?: string
     /** B-492: fork this session (id) instead of starting from scratch. */
     fork?: string
     /** B-649: join this project before the first message (explicit attribution). */
@@ -160,6 +162,10 @@ export function parseSpawnArgs(args: string[]): SpawnCommandOptions {
             const value = args[++i]
             if (value === undefined || value.trim().length === 0) throw new Error('--model requires a value')
             options.model = value
+        } else if (arg === '--account') {
+            const value = args[++i]
+            if (value === undefined || !/^[a-z0-9][a-z0-9-]{0,47}$/.test(value)) throw new Error('--account requires an account id (see `very-happy account list`) or "machine"')
+            options.account = value
         } else if (arg === '--fork') {
             const value = args[++i]
             if (value === undefined) throw new Error('--fork requires a session id')
@@ -196,8 +202,8 @@ ${chalk.bold('very-happy spawn')} - Spawn a remote session via the local daemon 
 ${chalk.bold('Usage:')}
   very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>]
                    [--spawned-by <name>] [--permission-mode <mode>]
-                   [--agent <name>] [--model <id>] [--env KEY=VALUE]...
-                   [--project <id> | --no-project] [--json]
+                   [--agent <name>] [--model <id>] [--account <id>]
+                   [--env KEY=VALUE]... [--project <id> | --no-project] [--json]
   very-happy spawn --fork <sessionId> [--prompt …] [--permission-mode <mode>]
                    [--model <id>] [--spawned-by <name>] [--project <id>]
                    [--json]
@@ -224,6 +230,10 @@ ${chalk.bold('Options:')}
                             machine runs (claude: newest Opus; codex: newest
                             sol its Codex lists; gemini: newest pro), else the
                             machine default. 'default' = the machine default.
+  --account <id>         Claude account on this machine (\`very-happy account
+                            list\`); 'machine' = the machine's own login.
+                            Default = the machine's default account, if set. A
+                            missing or expired account fails the spawn.
   --fork <sessionId>     Fork an existing session of THIS machine (same as the
                             web's fork): copies its conversation and continues
                             it in a new session, in the same directory and with
@@ -465,6 +475,7 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         environmentVariables: spawnEnvironmentVariables(options.env, prompt !== undefined),
         ...resumeIds,
         ...(forkSource ? { parentSessionId: forkSource.parentSessionId } : {}),
+        ...(options.account ? { agentProfileId: options.account === 'machine' ? null : options.account } : {}),
     })
     if (result?.error || !result?.success || !result?.sessionId) {
         const message = result?.error || 'Daemon returned no session ID'

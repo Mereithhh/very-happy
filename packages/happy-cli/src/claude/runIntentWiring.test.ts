@@ -28,7 +28,7 @@ describe('capabilities', () => {
         expect(RUN_INTENT_CAPABILITY).toBe('session-run-intent-v1');
         expect(CLAUDE_CONFIG_MODEL_CAPABILITY).toBe('claude-config-model-v1');
         expect(RUN_INTENT_RPC).toBe('session-run-intent');
-        expect(claude).toContain('PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY],');
+        expect(claude).toContain('PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY],');
         expect(codex).toContain('CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY],');
     });
 });
