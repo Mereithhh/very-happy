@@ -2999,6 +2999,22 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov01d: {
+                title: 'New Models & accounts settings',
+                summary: 'Add Claude accounts to each machine in Settings and switch a session between them.',
+                page: 'Settings has a new Models & accounts page: add Claude subscription or API accounts to each machine. It replaces the Agent defaults and Models & providers pages, and their old links open it.',
+                switch: 'Switch a session to another account (it restarts in place and keeps its history), pick an account when you start a new session, and see a banner on the session when its account stops working.',
+                feedbackCard: 'Release notes you reopen are no longer pushed aside by the feedback card, and Esc closes only the topmost layer.',
+            },
+            nov01c: {
+                title: 'CLI 0.2.192: several Claude accounts',
+                summary: 'A machine can hold several Claude accounts, and each session uses the one you pick.',
+                accounts: 'Add subscriptions for different organizations and API keys / URLs to one machine, and choose one per session; switching restarts the session in place and keeps its history.',
+                noFallback: 'When the chosen account is unavailable, the session does not run instead of quietly switching to the machine login.',
+                keyHidden: 'API keys are no longer passed to the session\'s commands and subprocesses through the environment.',
+                upgrade: 'While a CLI upgrade is queued, idle sessions are no longer restarted twice; `very-happy daemon list` shows each session\'s CLI version and auto-restart status, and the previous daemon log is kept.',
+                security: 'Security hardening.',
+            },
             nov01b: {
                 title: 'Feedback is easier to give',
                 summary: 'The feedback invitation now shows up after two days of use, and waits until you close the release notes.',
