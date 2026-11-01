@@ -61,6 +61,35 @@ export function usePendingChangelog(): ChangelogRelease[] {
   return useMemo(() => pendingChangelogReleases(snapshot), [snapshot]);
 }
 
+// --- the notes closed during this visit (B-857) -----------------------------
+
+let closedAt: number | null = null;
+const closedListeners = new Set<() => void>();
+
+/**
+ * The notes dialog was open and has closed — read to the end, closed on the
+ * last page, or left through a link. Lets a later `notice` (the feedback card)
+ * queue behind the notes instead of skipping the visit. Per page load.
+ */
+export function noteChangelogClosed(now = Date.now()): void {
+  closedAt = now;
+  for (const l of closedListeners) l();
+}
+
+/** When the notes last closed in this visit; null = not (yet) shown and closed. */
+export function changelogClosedAt(): number | null {
+  return closedAt;
+}
+
+function subscribeClosed(listener: () => void) {
+  closedListeners.add(listener);
+  return () => { closedListeners.delete(listener); };
+}
+
+export function useChangelogClosedAt(): number | null {
+  return useSyncExternalStore(subscribeClosed, changelogClosedAt, changelogClosedAt);
+}
+
 // --- "open the notes now" requests (the sidebar entry) -----------------------
 
 const openListeners = new Set<() => void>();
@@ -88,5 +117,7 @@ export function onChangelogOpenRequest(listener: () => void): () => void {
 export function resetChangelogReadStoreForTest(): void {
   state = null;
   openPending = false;
+  closedAt = null;
   for (const l of listeners) l();
+  for (const l of closedListeners) l();
 }

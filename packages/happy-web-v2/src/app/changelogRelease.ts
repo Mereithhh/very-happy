@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-01-feedback-prompt',
+    date: '2026-11-01',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov01b.title',
+    summaryKey: 'changelog.releases.nov01b.summary',
+    itemKeys: ['changelog.releases.nov01b.feedback'],
+  },
+  {
     id: '2026-11-01-ipad-layout-fix',
     date: '2026-11-01',
     buildVersion: __APP_VERSION__,
