@@ -165,18 +165,17 @@ describe('B-850c2 Codex (wire v3)', () => {
     const gpt = sub({ id: 'gpt-a', label: 'me@x.com', agent: 'codex', kind: 'codex-chatgpt', email: 'me@x.com', planType: 'plus', keySource: 'stored' });
     const hub = api({ id: 'hub', label: 'LLM Hub', agent: 'codex', kind: 'codex-provider', provider: 'llmhub', models: ['gpt-5.6-sol'] });
 
-    it('a B-850b daemon shows itself by its Codex parts; `kinds` wins when published', () => {
-        const withProviders = parseAgentProfilesState({ ...stateOf([sub()]), codexProviders: [{ id: 'llmhub', baseUrl: 'https://h/v1', envKey: 'K' }, { id: 7 }, { id: 'bare' }] })!;
-        expect(withProviders.codexProviders).toEqual([{ id: 'llmhub', baseUrl: 'https://h/v1', envKey: 'K' }, { id: 'bare' }]);
-        expect(machineHasAgentAccounts(withProviders, 'codex')).toBe(true);
-        // an empty providers list is still a B-850b daemon
-        expect(machineHasAgentAccounts(parseAgentProfilesState({ ...stateOf([]), codexProviders: [] }), 'codex')).toBe(true);
-        expect(machineHasAgentAccounts(parseAgentProfilesState(stateOf([gpt])), 'codex')).toBe(true);
-        expect(machineHasAgentAccounts(parseAgentProfilesState(stateOf([], { codex: 'hub' })), 'codex')).toBe(true);
-        // B-850a: nothing Codex → Codex stays 本机登录 · 升级 CLI; Claude unaffected
-        const v1 = parseAgentProfilesState(stateOf([sub()]));
-        expect(machineHasAgentAccounts(v1, 'codex')).toBe(false);
-        expect(machineHasAgentAccounts(v1, 'claude')).toBe(true);
+    const ALL = ['claude-subscription', 'claude-api', 'codex-chatgpt', 'codex-provider'];
+    it('`kinds` decides Codex support; absent = a B-850a daemon (Claude only)', () => {
+        const b = parseAgentProfilesState({ ...stateOf([sub()]), kinds: ALL, codexProviders: [{ id: 'llmhub', baseUrl: 'https://h/v1', envKey: 'K' }, { id: 7 }, { id: 'bare' }] })!;
+        expect(b.codexProviders).toEqual([{ id: 'llmhub', baseUrl: 'https://h/v1', envKey: 'K' }, { id: 'bare' }]);
+        expect(machineHasAgentAccounts(b, 'codex')).toBe(true);
+        expect(machineHasAgentAccounts(parseAgentProfilesState({ ...stateOf([]), kinds: ALL }), 'codex')).toBe(true); // no providers, still B-850b
+        // no kinds: Codex parts do not count (B-850b always sends kinds)
+        const a = parseAgentProfilesState({ ...stateOf([gpt], { codex: 'gpt-a' }), codexProviders: [] });
+        expect(a?.kinds).toEqual(['claude-subscription', 'claude-api']);
+        expect(machineHasAgentAccounts(a, 'codex')).toBe(false);
+        expect(machineHasAgentAccounts(a, 'claude')).toBe(true);
         expect(machineHasAgentAccounts(parseAgentProfilesState({ ...stateOf([gpt]), kinds: ['claude-api'] }), 'codex')).toBe(false);
         expect(machineHasAgentAccounts(null, 'claude')).toBe(false);
     });
@@ -192,7 +191,7 @@ describe('B-850c2 Codex (wire v3)', () => {
     });
 
     it('new Codex session: picks and blocks like Claude once the daemon serves Codex accounts', () => {
-        const state = parseAgentProfilesState(stateOf([sub(), gpt, { ...hub, status: 'invalid' }], { codex: 'gpt-a' }))!;
+        const state = parseAgentProfilesState({ ...stateOf([sub(), gpt, { ...hub, status: 'invalid' }], { codex: 'gpt-a' }), kinds: ALL })!;
         expect(resolveSpawnAccount(state, 'codex', undefined, NOW)).toMatchObject({ kind: 'account', fromDefault: true, account: { id: 'gpt-a' } });
         expect(resolveSpawnAccount(state, 'codex', 'hub', NOW)).toMatchObject({ kind: 'blocked', reason: 'invalid', label: 'LLM Hub' });
         // a Claude account id is not a Codex account

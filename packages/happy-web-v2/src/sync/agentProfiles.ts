@@ -58,7 +58,6 @@ export interface AgentProfilesState {
 }
 
 const V1_KINDS = ['claude-subscription', 'claude-api'];
-const CODEX_KINDS = ['codex-chatgpt', 'codex-provider'];
 
 function readCodexProvider(raw: unknown): CodexProviderOption | null {
     if (!raw || typeof raw !== 'object') return null;
@@ -84,11 +83,9 @@ export function parseAgentProfilesState(raw: unknown): AgentProfilesState | null
     const defaults: Record<string, string> = {};
     for (const [agent, id] of Object.entries(parsed.data.defaults)) if (typeof id === 'string' && id) defaults[agent] = id;
     const codexProviders = (parsed.data.codexProviders ?? []).map(readCodexProvider).filter((p): p is CodexProviderOption => !!p);
-    // Wire v3 publishes no `kinds`: a B-850b daemon shows itself by its Codex parts
-    // (codexProviders, a Codex account or default). A B-850a daemon has none of them
-    // and rejects Codex adds, so its Codex section stays 「本机登录 · 升级 CLI」.
-    const codexEvidence = parsed.data.codexProviders !== undefined || accounts.some((a) => a.agent === 'codex') || !!defaults.codex;
-    const kinds = parsed.data.kinds ?? (codexEvidence ? [...V1_KINDS, ...CODEX_KINDS] : V1_KINDS);
+    // `kinds` (B-850b, always sent) says what this daemon can create; absent = a
+    // B-850a daemon: Claude only, so its Codex section stays 「本机登录 · 升级 CLI」.
+    const kinds = parsed.data.kinds ?? V1_KINDS;
     return { daemonPid: parsed.data.daemonPid, updatedAt: parsed.data.updatedAt, accounts, defaults, kinds, codexProviders };
 }
 
