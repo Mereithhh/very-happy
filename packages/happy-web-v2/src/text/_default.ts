@@ -2946,7 +2946,7 @@ export const en = {
                 summary: 'A machine can hold several Claude accounts, and each session uses the one you pick.',
                 accounts: 'Add subscriptions for different organizations and API keys / URLs to one machine, and choose one per session; switching restarts the session in place and keeps its history.',
                 noFallback: 'When the chosen account is unavailable, the session does not run instead of quietly switching to the machine login.',
-                keyHidden: 'API keys are not visible to the commands the session runs.',
+                keyHidden: 'API keys are no longer passed to the session\'s commands and subprocesses through the environment.',
                 upgrade: 'While a CLI upgrade is queued, idle sessions are no longer restarted twice; `very-happy daemon list` shows each session\'s CLI version and auto-restart status, and the previous daemon log is kept.',
                 security: 'Security hardening.',
             },

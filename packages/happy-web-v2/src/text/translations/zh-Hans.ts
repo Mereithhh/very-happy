@@ -3082,7 +3082,7 @@ export const zhHans: TranslationStructure = {
                 summary: '一台机器可以添加多个 Claude 账号，每个会话用你选的那个。',
                 accounts: '一台机器上可以添加不同组织的订阅和 API key/URL，每个会话单独选用；切换账号时会话原地重启，历史保留。',
                 noFallback: '选中的账号不可用时，会话不会运行，不会偷偷改用本机登录。',
-                keyHidden: 'API key 对会话里运行的命令不可见。',
+                keyHidden: 'API key 不再通过环境变量传给会话里的命令和子进程。',
                 upgrade: 'CLI 升级排队期间，空闲会话不再被重启两次；`very-happy daemon list` 显示每个会话的 CLI 版本和自动重启状态，上一份 daemon 日志也会保留。',
                 security: '安全加固。',
             },
