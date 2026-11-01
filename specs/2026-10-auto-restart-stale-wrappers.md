@@ -72,6 +72,7 @@ daemon 本身看不到 wrapper 的内存队列、待审批、后台 shell。唯�
 | 9 | wrapper 不在退出中 | 快照 `exiting` | `exiting` |
 | 10 | 机器级错峰：同时最多 1 个自动重启，两次之间 ≥ 15 s | 调度器 | `machine-busy` |
 | 11 | 该 session 不在失败退避期、未放弃 | 调度器 | `backoff` / `gave-up` |
+| 12 | 本 daemon 不在等待被替换（B-856）：更新控制器对更高版本处于 `waiting_idle` / `installing` / `installed`，或心跳发现盘上 bundle 已被替换 | `pendingUpgradeVersion`（`cliUpdateStateRef` + `bundleReplacedSeen`） | `upgrade-pending` |
 
 **N = 10 分钟的理由**：读完回复再打字的间隔绝大多数在几分钟内；10 分钟远离「正准备发消息」。即便撞上，重启只要几秒，期间发出的消息
 落在 server 上，新 wrapper 按 exitCursor 重放（B-679），不会丢，只是晚几秒。更长（如 30 分钟）会让活跃使用的会话迟迟拿不到修复。
@@ -101,6 +102,7 @@ daemon 本身看不到 wrapper 的内存队列、待审批、后台 shell。唯�
 - 自动重启不计入手动重启的 3 次熔断（各自独立上限），避免自动那一次吃掉用户的手动额度。
 - 决定与占用机器名额（inFlight / lastStartedAt）同步完成，中间没有 await：两个会话同时通过便宜规则时也只会启动一个（单测覆盖）。
 - 停旧 wrapper 前最后再查一次 daemon 的 turn / 后台租约与 automation run，任一变化就放弃这次（等下次 check-in）。
+- **升级排队时不重启（B-856）**：Release24 的 cmvuj7gkd 在 dev-sg `waiting_idle:0.2.191` 期间被 0.2.190 daemon 从 0.2.189 重启到 0.2.190，16 分钟后又被新 daemon 重启到 0.2.191。条件 12 放在「交给用户」类原因（4、8）之后、忙闲类之前：手动会话仍显示手动，可自动的显示 `waiting (upgrade-pending)`，下次 check-in 由新 daemon 一次重启到新版本。停旧 wrapper 前的最后一查也看它，不计尝试次数。安装失败 / `manual_required` / 预检失败（daemon 留任）时条件解除，照常重启。离线失败的那一次自动重试不受此限（会话已经没有 wrapper，新 daemon 不知道它，等下去只会一直离线）。
 
 ### 4. 状态发布与 Web
 

@@ -7,14 +7,14 @@ import { storage, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { amendFeedback, postFeedback } from '@/sync/apiFeedback';
 import { enteredByDeepLink } from '../entryKind';
-import { useChangelogClosedAt, usePendingChangelog } from '../changelogReadStore';
+import { useChangelogVisit, usePendingChangelog } from '../changelogReadStore';
 import { OVERLAY_PRIORITY, useOverlayTurn } from '../overlayQueue';
 import { shouldDeferPwaInstall } from '../pwaInstallPolicy';
 import { DiagnosticsPicker } from './DiagnosticsPicker';
 import { RatingButtons } from './RatingButtons';
 import { isFeedbackRoute, useFeedbackDiagnostics, useRecordFeedbackRoute } from './feedbackDiagnostics';
 import { feedbackErrorMessage } from './FeedbackForm';
-import { activeDayPatch, feedbackChangelogWaitMs, feedbackPromptBlock, FEEDBACK_TEXT_MAX, type FeedbackPromptState, type FeedbackRating } from './feedbackPolicy';
+import { activeDayPatch, feedbackChangelogWaitMs, feedbackPromptBlock, isFreshEscape, FEEDBACK_TEXT_MAX, type FeedbackPromptState, type FeedbackRating } from './feedbackPolicy';
 import '../floatingCards.css';
 import './feedback.css';
 
@@ -50,32 +50,34 @@ export function FeedbackPrompt() {
   // defaults would upload 1 over the real count (pending wins the merge).
   const settingsReady = storage((s) => s.settingsVersion !== null);
   const pendingChangelog = usePendingChangelog().length > 0;
-  const changelogClosedAt = useChangelogClosedAt();
+  const { open: changelogOpen, closedAt: changelogClosedAt } = useChangelogVisit();
   const [wanted, setWanted] = useState(false);
   const decided = useRef(false);
 
   useEffect(() => {
     if (!settingsReady) return;
-    const patch = activeDayPatch(state, Date.now());
+    // B-857b: the store, not this render's snapshot — a write that landed since
+    // (another device, another tab) must not be counted over.
+    const patch = activeDayPatch(storage.getState().settings, Date.now());
     if (patch) sync.applySettings(patch);
   }, [settingsReady, state.feedbackLastActiveDay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decide once per page load, after a quiet moment — and, with release notes
   // unread, after they close (B-857: queued behind them, not skipped).
-  const latest = useRef({ state, pendingChangelog, changelogClosedAt, pathname });
-  latest.current = { state, pendingChangelog, changelogClosedAt, pathname };
+  const latest = useRef({ state, pendingChangelog, changelogOpen, changelogClosedAt, pathname });
+  latest.current = { state, pendingChangelog, changelogOpen, changelogClosedAt, pathname };
   const readyAt = useRef<number | null>(null);
   useEffect(() => {
     if (!settingsReady || decided.current) return;
     readyAt.current ??= Date.now();
     let timer = 0;
     const check = () => {
-      const { state: s, pendingChangelog: changelog, changelogClosedAt: closedAt, pathname: path } = latest.current;
+      const { state: s, pendingChangelog: changelog, changelogOpen: open, changelogClosedAt: closedAt, pathname: path } = latest.current;
       const now = Date.now();
-      const block = feedbackPromptBlock(s, { pendingChangelog: changelog, changelogClosedAt: closedAt, deepLink: enteredByDeepLink(), interacted: false }, now);
+      const block = feedbackPromptBlock(s, { pendingChangelog: changelog, changelogOpen: open, changelogClosedAt: closedAt, deepLink: enteredByDeepLink(), interacted: false }, now);
       if (block === 'changelog') {
         // Notes open or still to come: this effect re-runs when they close.
-        const wait = feedbackChangelogWaitMs({ changelogClosedAt: closedAt }, now);
+        const wait = feedbackChangelogWaitMs({ changelogOpen: open, changelogClosedAt: closedAt }, now);
         if (wait !== null) timer = window.setTimeout(check, wait);
         return;
       }
@@ -94,7 +96,8 @@ export function FeedbackPrompt() {
     return () => window.clearTimeout(timer);
   }, [settingsReady, changelogClosedAt]);
 
-  const turn = useOverlayTurn(wanted, OVERLAY_PRIORITY.notice);
+  // B-857b: never ask for the turn while the notes are open (reopened from the sidebar).
+  const turn = useOverlayTurn(wanted && !changelogOpen, OVERLAY_PRIORITY.notice);
   if (!turn) return null;
   return <FeedbackPromptCard pathname={pathname} onClose={() => setWanted(false)} />;
 }
@@ -115,8 +118,12 @@ export function FeedbackPromptCard({ pathname, onClose }: { pathname: string; on
   // Shown = counted, on every device: the 30-day clock starts now.
   useEffect(() => { sync.applySettings({ feedbackPromptShownAt: Date.now() }); }, []);
 
+  // B-857b: only an Esc pressed while the card is up. The one that closed a
+  // ⌘K palette / Modal.alert above it is still travelling to window when the
+  // card comes back mid-dispatch — that one is the overlay's, not the card's.
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    const mountedAt = performance.now();
+    const onKeyDown = (event: KeyboardEvent) => { if (isFreshEscape(event, mountedAt)) onClose(); };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);

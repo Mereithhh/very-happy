@@ -47,19 +47,19 @@
 - 表单底部有「也可以在 GitHub 提 issue」链接，指向 `https://github.com/Mereithhh/very-happy/issues/new`；还有一行隐私说明，写明反馈只保存在当前服务器（显示服务器主机名）。
 
 ### 提示卡（`FeedbackPrompt`，首屏之后挂载）
-- **计活跃天数**：每个本地自然日第一次打开 app 时，`feedbackActiveDays` 加 1，每天最多写一次 settings。要等 server settings 至少加载过一次才计数，否则 pending 合并会用默认值 1 覆盖服务端的真实计数。
+- **计活跃天数**：每个本地自然日第一次打开 app 时，`feedbackActiveDays` 加 1，每天最多写一次 settings。要等 server settings 至少加载过一次才计数，否则 pending 合并会用默认值 1 覆盖服务端的真实计数。计数读 `storage.getState()` 的最新 settings，不读渲染时的快照（B-857b：快照之后落地的写入——别的设备或标签页刚计过的天——会被旧值覆盖成少一天）。
 - **何时弹**（纯函数 `feedbackPromptBlock`）：以下条件全部满足才弹。
   - 活跃天数 ≥ 2（B-857，原为 5：几乎每天发版，5 天门槛加上「有未读更新说明就不弹」，上线 5 天没人见过提示卡）；
   - 距上次弹出 ≥ 30 天，距上次提交 ≥ 30 天；
   - 没有选过「不再提示」；
-  - 更新说明优先（B-857）：本设备有未读更新说明时，先等更新说明弹出并关闭（看完、在最后一页关掉、或经链接离开都算），关闭后同一次访问再过 20 秒（`FEEDBACK_AFTER_CHANGELOG_MS`）才弹；不再整次访问都不弹。更新说明没有自动弹出（深链、用户已在操作而只留了 toast）时，提示卡继续等它，本次访问不弹。关闭时刻由 `ChangelogNotice` 写入 `changelogReadStore` 的 `noteChangelogClosed`，只在本页面生命周期内有效；
+  - 更新说明优先（B-857）：本设备有未读更新说明时，先等更新说明弹出并关闭（看完、在最后一页关掉、或经链接离开都算），关闭后同一次访问再过 20 秒（`FEEDBACK_AFTER_CHANGELOG_MS`）才弹；不再整次访问都不弹。更新说明没有自动弹出（深链、用户已在操作而只留了 toast）时，提示卡继续等它，本次访问不弹。关闭时刻由 `ChangelogNotice` 写入 `changelogReadStore` 的 `noteChangelogClosed`，只在本页面生命周期内有效。B-857b：更新说明开着（含从侧栏重新打开）时提示卡一律不请求 overlay turn，也不计时；重新打开后再关闭，从这次关闭重新计 20 秒（`noteChangelogOpened` / `changelogVisit().open`）；
   - 不是深链进入。
   
   挂载 20 秒后检查一次。如果用户正在输入、引导卡（安装 / 通知 / 登录方式）或横幅占着角落、或者当前就在反馈页，就每 5 秒重试，直到条件满足后再弹。不按 B-823 的「已交互就不弹」处理：提示卡不挡页面，用户几乎一进来就会操作，按那条规则它就永远出不来。
 - **排队**：`useOverlayTurn(wanted, notice)`。它排在更新日志和用户自己打开的对话框后面；critical 浮层出现时让位，不算 dismiss，critical 关闭后回来。CSS 层另有一道保险：引导卡出现时隐藏它（`floatingCards.css`）。
 - **记录**：卡片拿到展示机会时写 `feedbackPromptShownAt`，其他设备的 30 天计时也从这时开始。
 - **一键评分**：点一下就 `POST /v1/feedback { rating, source: 'prompt' }`，不带诊断信息（用户还没看过要发什么），提交即算成功，并写 `feedbackLastSubmittedAt`。之后可以选择展开文字框和诊断信息，「补充发送」走 `PATCH /v1/feedback/:id`（只有本人可改，1 小时内有效），「完成」直接关闭。
-- **关闭方式**：「以后再说」、✕、Esc 只关闭卡片，30 天后可以再弹；「不再提示」写 `feedbackPromptOptOut: true`，之后只能从入口进入。
+- **关闭方式**：「以后再说」、✕、Esc 只关闭卡片，30 天后可以再弹。Esc 只关最上层（B-857b，`isFreshEscape`）：卡片挂载前派发的 Esc（关掉盖在卡上的 ⌘K / Modal.alert 的那一下，卡在同一次派发中回来）和别的层已 `preventDefault` 的 Esc 都不关卡片；「不再提示」写 `feedbackPromptOptOut: true`，之后只能从入口进入。
 
 ### 跨设备状态
 synced settings 的扁平字段：`feedbackActiveDays`、`feedbackLastActiveDay`、`feedbackPromptShownAt`、`feedbackPromptOptOut`、`feedbackLastSubmittedAt`，默认值写在 `settingsDefaults`。同一天多台设备只计 1 天；两台设备并发写入时可能少计 1 天，可以接受。

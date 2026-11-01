@@ -63,3 +63,24 @@ describe('B-852 auto-restart wiring', () => {
         expect(acp).toContain('pendingRequests: Object.keys(session.getAgentState()?.requests ?? {}).length,\n          backgroundTasks: 0,');
     });
 });
+
+// B-856: verified with scripts/dev/mutation-check.mjs (see PR).
+describe('B-856 wiring', () => {
+    const main = read('main.ts');
+    const logPrune = read('ui', 'logPrune.ts');
+    it('the scheduler is told when this daemon is about to be replaced (controller state or a new bundle on disk)', () => {
+        expect(run).toContain('const upgradePending = () => pendingUpgradeVersion({\n      daemonVersion: packageJson.version,\n      autoUpdate: cliUpdateStateRef?.autoUpdate,\n      bundleReplaced: bundleReplacedSeen,\n    });');
+        expect(run).toContain('      upgradePending,\n      publish: (sessions)');
+        expect(run).toContain('if (bundleReplaced) bundleReplacedSeen = true;');
+    });
+    it('daemon list reads the status and daemon facts locally; --json carries them', () => {
+        expect(run).toContain('getAutoRestartStatus: (sessionId: string) => autoRestartScheduler.statuses()[sessionId],');
+        expect(run).toContain('getDaemonInfo: () => ({ version: packageJson.version, upgradePending: upgradePending(), autoRestartEnabled: autoRestartSetting }),');
+        expect(main).toContain("console.log(JSON.stringify({ daemon: daemon ?? null, sessions }, null, 2))");
+        expect(main).toContain('for (const line of formatDaemonList(sessions, daemon)) console.log(line)');
+    });
+    it('previous daemon logs are exempt from the general sweep', () => {
+        expect(logPrune).toContain('const doomed = planLogPrune(files.filter((f) => !daemonLogs.keep.has(f.path)), Date.now(), policy, protectedPaths)');
+        expect(logPrune).toContain('if (daemonLogs.trim) trimToTail(daemonLogs.trim.path, daemonLogs.trim.keepBytes)');
+    });
+});

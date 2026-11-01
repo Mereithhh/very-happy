@@ -35,7 +35,7 @@ export function localDay(now: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** The settings patch that counts today, or null when today is already counted (one write per day). */
+/** The settings patch that counts today — from the store's latest state, not a render snapshot (B-857b), or null when today is already counted (one write per day). */
 export function activeDayPatch(state: Pick<FeedbackPromptState, 'feedbackActiveDays' | 'feedbackLastActiveDay'>, now: number): Pick<FeedbackPromptState, 'feedbackActiveDays' | 'feedbackLastActiveDay'> | null {
   const today = localDay(now);
   if (state.feedbackLastActiveDay === today) return null;
@@ -45,6 +45,8 @@ export function activeDayPatch(state: Pick<FeedbackPromptState, 'feedbackActiveD
 export interface FeedbackPromptContext {
   /** release notes still unread on this device */
   pendingChangelog: boolean;
+  /** the notes dialog is open now — first time or reopened (B-857b) */
+  changelogOpen: boolean;
   /** epoch ms the notes dialog closed in this visit (B-857); null = not shown and closed yet */
   changelogClosedAt: number | null;
   /** opened by a deep link (B-697: those never get an uninvited overlay) */
@@ -63,7 +65,9 @@ export function feedbackPromptBlock(state: FeedbackPromptState, ctx: FeedbackPro
   if (state.feedbackPromptShownAt !== null && now - state.feedbackPromptShownAt < interval) return 'recently-shown';
   if (state.feedbackLastSubmittedAt !== null && now - state.feedbackLastSubmittedAt < interval) return 'recently-submitted';
   // B-857: queued after the release notes, not skipped for them — once they
-  // closed (read or not), a quiet FEEDBACK_AFTER_CHANGELOG_MS later.
+  // closed (read or not), a quiet FEEDBACK_AFTER_CHANGELOG_MS later. B-857b:
+  // reopened inside that wait, they hold the card again until the next close.
+  if (ctx.changelogOpen) return 'changelog';
   if (ctx.changelogClosedAt !== null) {
     if (now - ctx.changelogClosedAt < FEEDBACK_AFTER_CHANGELOG_MS) return 'changelog';
   } else if (ctx.pendingChangelog) return 'changelog';
@@ -74,10 +78,19 @@ export function feedbackPromptBlock(state: FeedbackPromptState, ctx: FeedbackPro
 
 /**
  * While blocked only by the notes: ms until the after-notes wait ends, or null
- * when that is unknown yet (notes not closed — wait for the close itself).
+ * when that is unknown yet (notes open or not closed — wait for the close itself).
  */
-export function feedbackChangelogWaitMs(ctx: Pick<FeedbackPromptContext, 'changelogClosedAt'>, now: number): number | null {
-  return ctx.changelogClosedAt === null ? null : Math.max(0, ctx.changelogClosedAt + FEEDBACK_AFTER_CHANGELOG_MS - now);
+export function feedbackChangelogWaitMs(ctx: Pick<FeedbackPromptContext, 'changelogOpen' | 'changelogClosedAt'>, now: number): number | null {
+  return ctx.changelogOpen || ctx.changelogClosedAt === null ? null : Math.max(0, ctx.changelogClosedAt + FEEDBACK_AFTER_CHANGELOG_MS - now);
+}
+
+/**
+ * B-857b: an Esc meant for the card — not one another layer already handled
+ * (default prevented), and not one dispatched before the card mounted (the Esc
+ * that closed the overlay covering it, still bubbling when the card came back).
+ */
+export function isFreshEscape(event: Pick<KeyboardEvent, 'key' | 'defaultPrevented' | 'timeStamp'>, mountedAt: number): boolean {
+  return event.key === 'Escape' && !event.defaultPrevented && event.timeStamp >= mountedAt;
 }
 
 export function feedbackPromptDue(state: FeedbackPromptState, ctx: FeedbackPromptContext, now: number): boolean {

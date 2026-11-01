@@ -530,6 +530,8 @@ describe('runClaude startup order (B-512)', () => {
         await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
 
         expect(api.getOrCreateSession).not.toHaveBeenCalled();
+        // B-858: the key is not left for the agent and its children to inherit.
+        for (const key of reconnectEnv) expect(process.env[key]).toBeUndefined();
         const reactivate = api.reactivateSession.mock.invocationCallOrder[0];
         const snapshot = api.getSession.mock.invocationCallOrder[0];
         const webhook = mockNotifyDaemonSessionStarted.mock.invocationCallOrder[0];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  activeDayPatch, buildFeedbackDiagnostics, feedbackChangelogWaitMs, feedbackPromptBlock, feedbackPromptDue, localDay, routePattern,
+  activeDayPatch, buildFeedbackDiagnostics, feedbackChangelogWaitMs, feedbackPromptBlock, feedbackPromptDue, isFreshEscape, localDay, routePattern,
   FEEDBACK_AFTER_CHANGELOG_MS, FEEDBACK_PROMPT_INTERVAL_DAYS, FEEDBACK_PROMPT_MIN_ACTIVE_DAYS, type FeedbackPromptState,
 } from './feedbackPolicy';
 
@@ -13,7 +13,7 @@ const ready: FeedbackPromptState = {
   feedbackPromptOptOut: false,
   feedbackLastSubmittedAt: null,
 };
-const quiet = { pendingChangelog: false, changelogClosedAt: null as number | null, deepLink: false, interacted: false };
+const quiet = { pendingChangelog: false, changelogOpen: false, changelogClosedAt: null as number | null, deepLink: false, interacted: false };
 
 describe('feedback prompt policy (B-836)', () => {
   it('counts one active day per local calendar day', () => {
@@ -54,7 +54,7 @@ describe('feedback prompt policy (B-836)', () => {
     expect(FEEDBACK_AFTER_CHANGELOG_MS).toBe(20_000);
     // notes unread and not closed yet (open, or still to come): wait, with no known end
     expect(feedbackPromptBlock(ready, { ...quiet, pendingChangelog: true }, NOW)).toBe('changelog');
-    expect(feedbackChangelogWaitMs({ changelogClosedAt: null }, NOW)).toBeNull();
+    expect(feedbackChangelogWaitMs({ changelogOpen: false, changelogClosedAt: null }, NOW)).toBeNull();
     // read to the end (nothing pending) or closed on the last page (still pending): 20 s later
     for (const pendingChangelog of [false, true]) {
       const closed = { ...quiet, pendingChangelog, changelogClosedAt: NOW - FEEDBACK_AFTER_CHANGELOG_MS + 1 };
@@ -67,6 +67,27 @@ describe('feedback prompt policy (B-836)', () => {
     expect(feedbackPromptBlock(ready, { ...after, deepLink: true }, NOW)).toBe('deep-link');
     expect(feedbackPromptBlock({ ...ready, feedbackPromptOptOut: true }, after, NOW)).toBe('opted-out');
     expect(feedbackPromptBlock({ ...ready, feedbackLastSubmittedAt: NOW - DAY }, after, NOW)).toBe('recently-submitted');
+  });
+
+  it('B-857b: notes reopened inside the wait hold the card again — with no known end — until the next close', () => {
+    const reopened = { ...quiet, pendingChangelog: true, changelogOpen: true, changelogClosedAt: NOW - FEEDBACK_AFTER_CHANGELOG_MS - 1 };
+    expect(feedbackPromptBlock(ready, reopened, NOW)).toBe('changelog');
+    expect(feedbackChangelogWaitMs(reopened, NOW)).toBeNull();
+    // even with nothing left pending (read up to the last page): open is open
+    expect(feedbackPromptBlock(ready, { ...reopened, pendingChangelog: false }, NOW)).toBe('changelog');
+    // closed again: a fresh 20 s from that close
+    const closedAgain = { ...reopened, changelogOpen: false, changelogClosedAt: NOW };
+    expect(feedbackChangelogWaitMs(closedAgain, NOW)).toBe(FEEDBACK_AFTER_CHANGELOG_MS);
+    expect(feedbackPromptBlock(ready, closedAgain, NOW + FEEDBACK_AFTER_CHANGELOG_MS)).toBeNull();
+  });
+
+  it('B-857b: Esc closes the card only when it is the card\'s — not one handled above it or sent before it mounted', () => {
+    const esc = (timeStamp: number, defaultPrevented = false) => ({ key: 'Escape', defaultPrevented, timeStamp });
+    expect(isFreshEscape(esc(1001), 1000)).toBe(true);
+    expect(isFreshEscape(esc(1000), 1000)).toBe(true);
+    expect(isFreshEscape(esc(999), 1000)).toBe(false); // the Esc that closed ⌘K, still bubbling
+    expect(isFreshEscape(esc(1001, true), 1000)).toBe(false);
+    expect(isFreshEscape({ key: 'Enter', defaultPrevented: false, timeStamp: 1001 }, 1000)).toBe(false);
   });
 
   it('30 days after the last showing / submission it may ask again', () => {

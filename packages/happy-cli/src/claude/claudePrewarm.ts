@@ -46,6 +46,8 @@ export type ClaudePrewarmSessionInput = {
     startedBy?: string;
     startingMode?: string;
     claudeArgs?: string[];
+    /** Resume-in-place of an existing session (HAPPY_RECONNECT_*, no longer in env — B-858). */
+    reconnect?: boolean;
     /** Raw `claudePrewarm` from ~/.happy/settings.json (no schema default — AGENTS constraint 1). */
     setting: unknown;
 };
@@ -72,7 +74,7 @@ export function claudePrewarmSessionEligibility(input: ClaudePrewarmSessionInput
     if (input.setting === 'off') return no('setting-off');
     if (input.startedBy !== 'daemon') return no('not-daemon');
     if (input.startingMode !== 'remote') return no('not-remote');
-    if (env.HAPPY_RECONNECT_SESSION_ID) return no('reconnect');
+    if (input.reconnect) return no('reconnect');
     if (env.HAPPY_FORK_CLAUDE_SESSION_ID || env.HAPPY_FORKED_FROM_SESSION_ID) return no('fork');
     if (env.HAPPY_IMPORTED_FROM_CLAUDE_SESSION_ID) return no('import');
     if (env.HAPPY_SESSION_VARIANT === 'assistant') return no('assistant');
