@@ -65,8 +65,13 @@ export type AgentProfileKeyInput =
 export const agentProfileList = (machineId: string) =>
     call<AgentProfilesState>(machineId, AGENT_PROFILE_RPC.list, {}, parseAgentProfilesState);
 
-export const agentProfileAdd = (machineId: string, input: { label: string; baseUrl: string; models: string[]; key: AgentProfileKeyInput }) =>
-    call<AgentProfileSummary>(machineId, AGENT_PROFILE_RPC.add, { agent: 'claude', kind: 'claude-api', ...input }, readAccount, isAccountReply);
+/** Wire v1 claude-api, or wire v3 codex-provider (`provider` and/or `baseUrl`; a provider's settings are inherited). */
+export type AgentProfileAddInput =
+    | { agent: 'claude'; kind: 'claude-api'; label: string; baseUrl: string; models: string[]; key: AgentProfileKeyInput }
+    | { agent: 'codex'; kind: 'codex-provider'; label: string; provider?: string; baseUrl?: string; wireApi?: 'responses' | 'chat'; models: string[]; key: AgentProfileKeyInput };
+
+export const agentProfileAdd = (machineId: string, input: AgentProfileAddInput) =>
+    call<AgentProfileSummary>(machineId, AGENT_PROFILE_RPC.add, input, readAccount, isAccountReply);
 
 /**
  * A LoginStatus is an answer even when it carries `error`: a failed sign-in is
@@ -76,8 +81,11 @@ export const agentProfileAdd = (machineId: string, input: { label: string; baseU
  */
 export const isLoginStatusReply = (obj: Raw): boolean => typeof obj.loginId === 'string' && typeof obj.state === 'string';
 
-export const agentProfileLoginStart = (machineId: string, input: { label?: string; accountId?: string }) =>
-    call<LoginStatus>(machineId, AGENT_PROFILE_RPC.loginStart, { agent: 'claude', kind: 'claude-subscription', ...input }, parseLoginStatus, isLoginStatusReply);
+/** Claude: setup-token (paste-code). Codex (wire v3): ChatGPT device code; a new account's label defaults to the email. */
+export type AgentProfileLoginKind = { agent: 'claude'; kind: 'claude-subscription' } | { agent: 'codex'; kind: 'codex-chatgpt' };
+
+export const agentProfileLoginStart = (machineId: string, input: AgentProfileLoginKind & { label?: string; accountId?: string }) =>
+    call<LoginStatus>(machineId, AGENT_PROFILE_RPC.loginStart, input, parseLoginStatus, isLoginStatusReply);
 
 export const agentProfileLoginSubmit = (machineId: string, loginId: string, code: string) =>
     call<LoginStatus>(machineId, AGENT_PROFILE_RPC.loginSubmit, { loginId, code }, parseLoginStatus, isLoginStatusReply);

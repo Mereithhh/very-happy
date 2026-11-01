@@ -39,7 +39,7 @@ import { worktreeCopy, worktreeErrorText } from './worktreeCopy';
 import './newsession.css';
 import { DialogHead } from '@/ui/DialogHead';
 import { SpawnAccountPicker } from '@/components/accounts/SpawnAccountPicker';
-import { readMachineAgentProfiles, resolveSpawnAccount, type SpawnAccountChoice } from '@/sync/agentProfiles';
+import { readMachineAgentProfiles, resolveSpawnAccount, spawnAgentProfileParam, type SpawnAccountChoice } from '@/sync/agentProfiles';
 import { accountSettingsHref } from '@/screens/session/sessionAccount';
 import { machineLabel as machineDisplayName } from '@/utils/machineUtils';
 
@@ -265,7 +265,7 @@ export function NewSessionModal({
       permissionMode: resolveNewSessionPermissionMode(agentDefaultOverrides, agent, reviewFirst),
       source: 'dialog',
       firstMessage: initialCommand,
-      ...(accountChoice !== undefined && readMachineAgentProfiles(selectedMachine) && agent === 'claude' ? { agentProfileId: accountChoice } : {}),
+      ...spawnAgentProfileParam(readMachineAgentProfiles(selectedMachine), agent, accountChoice),
       ...(spawnedTaskId ? { onSpawnedTask: { taskId: spawnedTaskId } } : {}),
       ...(projectId ? { onSpawnedProject: { projectId } } : {}),
     });

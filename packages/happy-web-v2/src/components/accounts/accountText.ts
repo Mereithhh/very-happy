@@ -6,6 +6,7 @@ import type { useTranslation } from '@/i18n/useTranslation';
 import {
     accountKindTag,
     baseUrlHost,
+    codexAccountFacts,
     daysUntil,
     type AccountDisplayStatus,
     type AgentProfileSummary,
@@ -35,11 +36,16 @@ export function accountStatusText(status: AccountDisplayStatus, account: Pick<Ag
 /** 「API · llm-hub.apodex.app · key：文件 ~/.config/…」 — never the key. */
 export function accountDetailText(account: AgentProfileSummary, t: T): string {
     const parts: string[] = [];
+    // B-850c2: a ChatGPT account says who signed in and on which plan; a Codex provider names its config.toml entry.
+    const codex = codexAccountFacts(account);
+    if (codex.email) parts.push(codex.email);
+    if (codex.plan) parts.push(codex.plan.charAt(0).toUpperCase() + codex.plan.slice(1));
+    if (codex.provider) parts.push(t('accounts.providerFrom', { id: codex.provider }));
     const host = baseUrlHost(account.baseUrl);
     if (host) parts.push(host);
     if (account.keySource === 'file' && account.keyRef) parts.push(t('accounts.keyFromFile', { ref: account.keyRef }));
     else if (account.keySource === 'env' && account.keyRef) parts.push(t('accounts.keyFromEnv', { ref: account.keyRef }));
-    else if (account.keySource === 'stored' && accountKindTag(account.kind) === 'api') parts.push(t('accounts.keyStored'));
+    else if (account.keySource === 'stored' && accountKindTag(account.kind) !== 'subscription') parts.push(t('accounts.keyStored'));
     if (account.models?.length) parts.push(account.models.join(', '));
     return parts.join(' · ');
 }

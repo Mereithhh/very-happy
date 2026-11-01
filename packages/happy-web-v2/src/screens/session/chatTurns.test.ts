@@ -43,6 +43,23 @@ describe('buildChatRows', () => {
         expect(genericOnly[2]).toMatchObject({ message: { id: 'generic' } });
     });
 
+    it('B-850c2: an account event that needs the user stays visible in an answerless turn', () => {
+        const event = (id: string, createdAt: number, message: string, kind?: string): Message => ({
+            kind: 'agent-event', id, createdAt, event: { type: 'message', message, ...(kind ? { kind } : {}) },
+        } as Message);
+        const rows = buildChatRows([
+            user('u1', 1),
+            tool('read', 2),
+            event('err', 3, 'Codex error: The encrypted content for item rs_1 could not be verified.'),
+            event('hist', 4, 'This conversation\'s history cannot continue on account "Fake".', 'agent-profile-history-rejected'),
+        ], false);
+        expect(rows.map((row) => row.type)).toEqual(['message', 'activity', 'message', 'message']);
+        expect(rows.slice(2).map((row) => (row as { message: { id: string } }).message.id)).toEqual(['err', 'hist']);
+        // the warning is informational: folded with the activity
+        const warn = buildChatRows([user('u2', 1), tool('read', 2), event('w', 3, 'settings override the account', 'agent-profile-warning')], false);
+        expect(warn.map((row) => row.type)).toEqual(['message', 'activity']);
+    });
+
     it('keeps the live turn detailed inside one activity row', () => {
         const rows = buildChatRows([
             user('u1', 1),
