@@ -5,7 +5,7 @@ import { EncryptionCache } from "./encryptionCache";
 import { SessionEncryption } from "./sessionEncryption";
 import { MachineEncryption } from "./machineEncryption";
 import { encodeBase64, decodeBase64 } from "@/encryption/base64";
-import sodium from '@/encryption/libsodium.lib';
+import sodium, { sodiumReady } from '@/encryption/libsodium.lib';
 import { decryptBox, encryptBox } from "@/encryption/libsodium";
 import { randomUUID } from 'expo-crypto';
 
@@ -14,6 +14,9 @@ type SodiumKeyPair = { publicKey: Uint8Array; privateKey: Uint8Array; keyType: s
 export class Encryption {
 
     static async create(masterSecret: Uint8Array) {
+
+        // B-859: crypto_box_seed_keypair below is undefined until the wasm is up
+        await sodiumReady;
 
         // Derive content data key to open session and machine records
         const contentDataKey = await deriveKey(masterSecret, 'Happy EnCoder', ['content']);
