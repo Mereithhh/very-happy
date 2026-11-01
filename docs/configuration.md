@@ -639,6 +639,31 @@ very-happy spawn --dir . --account <id|machine> --prompt "…"
   upstream rejects some tool JSON Schemas (`invalid JSON Schema` 400). Prefer
   kimi-k3 until the hub normalises schemas.
 
+### Accounts for projects, teams, automations and forks (B-850d)
+
+Which account a new session starts on: **its own choice > the project's default
+for that agent on that machine > the machine default (`account default`) > the
+machine login**. Only the account id and its label are stored on the server.
+
+- Projects: one account per agent (Web project settings). It applies on the
+  machine the account belongs to; on another machine the project has no account
+  default. `very-happy spawn --project <id>` uses it when `--account` is not given.
+- Teams: the team default and each member can name an account (Web team
+  settings; agents pass `agentProfile` to `team_delegate`). A change applies to
+  the member's next launch.
+- Automations: `very-happy auto create|edit … --account <id|machine>` (or the
+  Web form). A sticky session is moved onto the run's account in place, history
+  kept.
+- Forks continue on the parent session's account (CLI `spawn --fork`, Web fork).
+- **No fallback**: an automation run or a team member whose account is missing,
+  expired or rejected does not start. The run shows `account_unavailable` and
+  appears under 「需要我决策」/ Needs you; a refused team member puts an item in
+  the lead's session. Sign in again or pick another account, then run again /
+  press Retry launch.
+- Machines whose CLI predates this ignore these choices and keep starting such
+  sessions on the machine default (else the machine login); the Web says so next
+  to the picker.
+
 ### Per-session Codex accounts (B-850b; replaces the daemon-wide provider key of B-847)
 
 Codex sessions take accounts the same way: a **ChatGPT account** (several can
