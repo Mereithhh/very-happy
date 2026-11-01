@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-01-account-defaults',
+    date: '2026-11-01',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov01f.title',
+    summaryKey: 'changelog.releases.nov01f.summary',
+    itemKeys: ['changelog.releases.nov01f.codex', 'changelog.releases.nov01f.defaults', 'changelog.releases.nov01f.decisions'],
+  },
+  {
+    id: '2026-11-01-cli-codex-accounts',
+    cliVersion: '0.2.193',
+    date: '2026-11-01',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov01e.title',
+    summaryKey: 'changelog.releases.nov01e.summary',
+    itemKeys: ['changelog.releases.nov01e.codex', 'changelog.releases.nov01e.noFallback', 'changelog.releases.nov01e.keyEnv', 'changelog.releases.nov01e.defaults', 'changelog.releases.nov01e.refused'],
+  },
+  {
     id: '2026-11-01-models-accounts',
     date: '2026-11-01',
     buildVersion: __APP_VERSION__,
