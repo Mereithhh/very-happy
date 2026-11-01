@@ -201,6 +201,9 @@ How a run ends:
   default) is missing, expired or rejected on the machine fails with
   `account_unavailable` and is flagged — it never runs on the machine login.
   The error says why; sign in again or choose another account, then run again.
+  A sticky Codex session moved to an account that cannot continue its history
+  fails with `account_history_rejected`; the sticky binding is cleared, so the
+  next run starts a new session on that account.
 - Runs whose daemon stops reporting, or that exceed the maximum runtime, are
   marked **expired** and flagged. A daemon restart before the outcome is known
   reports **failed** with attention instead of retrying.

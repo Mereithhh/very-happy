@@ -47,8 +47,12 @@ export interface TurnState {
      * 'canceled' when it named none). Absent otherwise.
      */
     discarded?: string
-    /** B-850d: the wrapper refused it because the session's account cannot run. */
-    refusal?: 'agent-profile-unavailable'
+    /**
+     * B-850d: why the account stopped this turn — 'agent-profile-unavailable'
+     * (refused, never run), or 'agent-profile-history-rejected' (a failed turn
+     * after a Codex account switch whose new account rejects the history).
+     */
+    refusal?: 'agent-profile-unavailable' | 'agent-profile-history-rejected'
 }
 
 import { compactCommandText, parseClear } from '@/parsers/specialCommands'
@@ -148,12 +152,12 @@ function discardReason(body: unknown, localId: string | null | undefined): strin
     return typeof env.ev.reason === 'string' && env.ev.reason.length > 0 ? env.ev.reason : 'canceled'
 }
 
-/** B-850d: the wrapper's explanation that follows a refused prompt (account unavailable). */
-function refusalNotice(body: unknown): string | null {
+/** B-850d: an account event line of the wrapper (`kind` + text), or null. */
+function accountNotice(body: unknown): { kind: string; message: string } | null {
     const b = asRecord(body)
     const data = b?.role === 'agent' && b.content?.type === 'event' ? asRecord(b.content.data) : null
-    if (data?.type !== 'message' || typeof data.message !== 'string') return null
-    return data.kind === 'agent-profile-unavailable' ? data.message : null
+    if (data?.type !== 'message' || typeof data.message !== 'string' || typeof data.kind !== 'string') return null
+    return data.kind.startsWith('agent-profile-') ? { kind: data.kind, message: data.message } : null
 }
 
 function controlCommandVerdict(body: unknown): { status: string; error: string | null } | null {
@@ -192,6 +196,7 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
     const anchorLocalId = userIndex >= 0 ? entries[userIndex].localId : null
     let discarded: string | null = null
     let refused = false
+    let historyRejected: string | null = null
 
     for (let i = userIndex + 1; i < entries.length; i++) {
         const body = entries[i].body
@@ -207,7 +212,7 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
             startedAfterPrompt = true
             // A new turn inside the window (queued prompt, another device):
             // only what follows it belongs to the latest turn.
-            ended = false; status = null; error = null; texts = []; discarded = null; refused = false
+            ended = false; status = null; error = null; texts = []; discarded = null; refused = false; historyRejected = null
             continue
         }
         const reason = !ended ? discardReason(body, anchorLocalId) : null
@@ -218,9 +223,10 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
             error = 'Not executed'
             continue
         }
+        const notice = accountNotice(body)
+        if (notice?.kind === 'agent-profile-history-rejected') historyRejected = notice.message
         if (discarded) {
-            const notice = refusalNotice(body)
-            if (notice && !refused) { refused = true; error = `Not executed: ${notice}` }
+            if (notice?.kind === 'agent-profile-unavailable' && !refused) { refused = true; error = `Not executed: ${notice.message}` }
             // The previous turn closing after our (queued, then refused) prompt.
             if (env?.ev?.t === 'turn-end') continue
         }
@@ -247,6 +253,8 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
     }
 
     if (userIndex < 0) ended = lastMarker === 'end'
+    const rejectedHistory = ended && !discarded && status === 'failed' && historyRejected !== null
+    if (rejectedHistory) error = error ? `${historyRejected} (${error})` : historyRejected
     return {
         userSeq: userIndex >= 0 ? entries[userIndex].seq : null,
         ended,
@@ -255,5 +263,6 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
         answer: texts.join('\n\n').trim(),
         lastSeq,
         ...(ended && discarded ? { discarded, ...(refused ? { refusal: 'agent-profile-unavailable' as const } : {}) } : {}),
+        ...(rejectedHistory ? { refusal: 'agent-profile-history-rejected' as const } : {}),
     }
 }

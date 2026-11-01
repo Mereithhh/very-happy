@@ -209,6 +209,21 @@ describe('analyzeLatestTurn — B-850d refused prompts (queue-cancel)', () => {
         expect(turn.discarded).toBeUndefined()
     })
 
+    it('a failed turn after a Codex switch whose account rejects the history names that refusal', () => {
+        const rejected = 'This conversation\'s history cannot continue on account "ChatGPT B". Start a new session on it, or switch back to the previous account.'
+        const turn = analyzeLatestTurn([
+            prompt('continue', 'p1', 1),
+            at(2, ev({ t: 'turn-start' })),
+            at(3, notice(rejected, 'agent-profile-history-rejected')),
+            at(4, ev({ t: 'turn-end', status: 'failed', error: 'encrypted content could not be verified' })),
+        ])
+        expect(turn).toMatchObject({ ended: true, status: 'failed', refusal: 'agent-profile-history-rejected', error: `${rejected} (encrypted content could not be verified)` })
+        expect(turn.discarded).toBeUndefined()
+        // Completed turns and other notices carry no refusal.
+        expect(analyzeLatestTurn([prompt('x', 'p1', 1), at(2, ev({ t: 'turn-start' })), at(3, notice('warn', 'agent-profile-warning')), at(4, ev({ t: 'turn-end', status: 'failed' }))]).refusal).toBeUndefined()
+        expect(analyzeLatestTurn([prompt('x', 'p1', 1), at(2, ev({ t: 'turn-start' })), at(3, notice(rejected, 'agent-profile-history-rejected')), at(4, ev({ t: 'turn-end', status: 'completed' }))]).refusal).toBeUndefined()
+    })
+
     it('anchored (automation) prompts are matched the same way', () => {
         const turn = analyzeLatestTurn([
             prompt('[auto run r1;] go', 'a1', 1),

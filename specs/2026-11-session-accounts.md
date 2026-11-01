@@ -264,10 +264,13 @@ kind `codex-chatgpt` / `codex-provider`；Summary `provider? email? planType?`�
 | fork | 不存；daemon 读父会话的 `session-accounts.json` 绑定 | |
 
 三态：缺省 = 交给下一级；`null` = 显式本机登录；ref = 该账号。机器默认在 daemon（`accounts.json` defaults），server 不知道。
+Ref 不带 agent：自动化 / 团队换了 agent 后旧 Ref 对不上，daemon 报 `agent-profile-unavailable:agent-mismatch`（照常拒跑 + 「需要我决策」）；Web 在表单换 agent 时清空 Ref。
+`label` 是选择时的快照，只作兜底展示（账号可能已改名或删除），Web 以该机器 `daemonState.agentProfiles` 里的实时 label 为准。
 
 ## 解析（`happy-wire` `resolveLaunchAgentProfile`，daemon / CLI / Web 共用）
 
 `explicit !== undefined` → explicit；否则项目里 `agent` + `machineId` 都匹配的那条；否则 `undefined`（daemon `resolveSpawnAccount`：机器默认，没有则本机登录）。
+返回 `{ agentProfileId, source, effective }`：`source` ∈ `explicit | project | machine | machine-login`，`effective` = 实际会用的账号（null = 本机登录）。传入该机器的 `machineDefaults`（daemonState defaults）时才能区分 `machine`（机器默认 · X）与 `machine-login`；不传时一律 `machine`、`effective: undefined`。Web 的「项目默认 · X」「机器默认 · X」和创建前的 Q3 拦截都按它判断。
 
 | 入口 | explicit | 项目默认从哪来 |
 |---|---|---|
@@ -281,6 +284,7 @@ kind `codex-chatgpt` / `codex-provider`；Summary `provider? email? planType?`�
 
 - **daemon 检查点**：`AccountService.resolveSpawnAccount`（缺记录 / agent 不符 / missing-secret / expired / invalid → `agent-profile-unavailable:<reason>: …`），不起任何进程。
 - **自动化**：spawn 失败 → run `failed` + `needsAttention` + `attentionReason: 'account_unavailable'`，`error` = `Account unavailable (<reason>): … Not run on the machine login. Fix: sign in again (…) or choose another account for this automation.`。**sticky**：先按同一检查校验本轮账号（action 未指定 = 会话自己的绑定）；不可用 → 同上拒跑、不发、不改绑；账号变了 → `bind` 原地重启切过去（历史保留）再发，重启 `failed` 则 `send_failed` 不发。`send` 动作沿用目标会话自己的绑定；wrapper 拒掉的轮次（`queue-cancel failed` + `agent-profile-unavailable` 事件）由 turn 分析识别，同样记 `account_unavailable`。
+  - **Codex sticky 跨类型切换被拒历史**（B-850b `agent-profile-history-rejected` 事件 + 该轮 failed）：本轮记 `account_history_rejected`（error = 事件文案 + 原错误），**不自动重跑**（这一轮可能已有副作用），同时清掉该 sticky 绑定 → 下一轮在新账号上新开会话。选它而不是「当场新开会话重跑」：不悄悄丢上下文、不重复执行，Owner 在「需要我决策」里看到原因。
 - **团队**：worker 在**准备 worktree 之前**检查；不可用 → `fail-operation`（确定失败，非 unknown），`error` 以 `agent-profile-unavailable:<reason>:` 开头 + 处理方式；receipt 回 `prepared` 且不安排自动重试（必然再被拒），等 Owner「重试启动」。server `applyTeamTransitionsTx` 对这类失败在 **lead 会话**写一条 attention：source `team`、kind `blocked`、key `team-account:<operationId>`、标题「成员 X 的账号「Org A」登录已过期，这一轮没有启动 · 团队名」、正文写重新登录 / 换账号 / 重试启动；Owner 重试（`retryRequestedAt` 变化）或启动成功 → resolved；重试后再被拒（新 `failedAt`）→ 同 key 重开。lead 会话不存在时不写（团队页仍显示 op 错误）。
 - 均需 `VH_OWNER_BOARD_ENABLED`（attention 条目）；自动化的 `needsAttention` 不依赖它。
 
@@ -290,7 +294,7 @@ kind `codex-chatgpt` / `codex-provider`；Summary `provider? email? planType?`�
 
 ## wire 增补（v4，已发 Lead 转 A2；只加不改）
 
-`AgentProfileRef(Schema)`、`AgentProfileChoiceSchema`、`ProjectAgentProfile(Schema)`、`resolveLaunchAgentProfile`、`projectAgentProfilesFor`、`agentProfileUnavailableReason`、`AGENT_PROFILE_FEATURE_LAUNCH = 'launch-accounts'`；`AgentProfilesState.features?`；`ProjectDefaults.agentProfiles?`；`AutomationAction(spawn).agentProfile?`；`AutomationClaimedRun.projectAgentProfiles?`；团队如上 + `TeamOperation.failedAt?`；`TurnState.discarded? / refusal?`（CLI 内部）。无新 RPC。MCP `team_delegate` 多一个可选 `agentProfile`；`very-happy auto create/edit --account <id|machine>`。
+`AgentProfileRef(Schema)`、`AgentProfileChoiceSchema`、`ProjectAgentProfile(Schema)`、`resolveLaunchAgentProfile`、`projectAgentProfilesFor`、`agentProfileUnavailableReason`、`AGENT_PROFILE_FEATURE_LAUNCH = 'launch-accounts'`；`AgentProfilesState.features?`；`ProjectDefaults.agentProfiles?`；`AutomationAction(spawn).agentProfile?`；`AutomationClaimedRun.projectAgentProfiles?`；团队如上 + `TeamOperation.failedAt?`；`TurnState.discarded? / refusal?`（`'agent-profile-unavailable' | 'agent-profile-history-rejected'`，CLI 内部）；`LaunchAgentProfile.effective`、source `'machine-login'`；attentionReason `account_unavailable` / `account_history_rejected`。无新 RPC。MCP `team_delegate` 多一个可选 `agentProfile`；`very-happy auto create/edit --account <id|machine>`。
 
 ## 兼容矩阵与发布顺序
 

@@ -291,7 +291,10 @@ export const AGENT_PROFILE_FEATURE_LAUNCH = 'launch-accounts';
 /**
  * An account picked for a project / team / automation, as stored on the
  * server: the machine-local id plus a display label (for 「『组织 A』在
- * mac-office 上不存在」). Never a secret. Where it is a choice the three
+ * mac-office 上不存在」). Never a secret. The label is a snapshot from when it
+ * was picked — only a fallback for display (the account may since be renamed
+ * or gone); readers prefer the live label from that machine's
+ * `daemonState.agentProfiles`. Where it is a choice the three
  * states are: absent = not chosen (next level decides), `null` = the machine
  * login explicitly, a ref = that account.
  */
@@ -319,7 +322,14 @@ export const ProjectAgentProfilesSchema = z.array(ProjectAgentProfileSchema).max
 export type LaunchAgentProfile = {
     /** The spawn's `agentProfileId`: id, `null` (machine login) or undefined (the daemon's machine default, else machine login). */
     agentProfileId: string | null | undefined;
-    source: 'explicit' | 'project' | 'machine';
+    /**
+     * Where it comes from: 'explicit' | 'project' | 'machine' (the machine
+     * default account) | 'machine-login' (no default on that machine). Without
+     * `machineDefaults` the last two cannot be told apart: 'machine'.
+     */
+    source: 'explicit' | 'project' | 'machine' | 'machine-login';
+    /** The account the session will start on (null = machine login); undefined when it depends on a machine default not given. */
+    effective: string | null | undefined;
 };
 
 /**
@@ -333,11 +343,18 @@ export function resolveLaunchAgentProfile(input: {
     project?: readonly ProjectAgentProfile[] | null;
     agent: string;
     machineId: string;
+    /** That machine's `daemonState.agentProfiles.defaults` (agent → id), when known (Web). */
+    machineDefaults?: Readonly<Record<string, string>> | null;
 }): LaunchAgentProfile {
-    if (input.explicit !== undefined) return { agentProfileId: input.explicit === null ? null : input.explicit.id, source: 'explicit' };
+    if (input.explicit !== undefined) {
+        const id = input.explicit === null ? null : input.explicit.id;
+        return { agentProfileId: id, source: 'explicit', effective: id };
+    }
     const entry = input.project?.find((p) => p.agent === input.agent && p.machineId === input.machineId);
-    if (entry) return { agentProfileId: entry.id, source: 'project' };
-    return { agentProfileId: undefined, source: 'machine' };
+    if (entry) return { agentProfileId: entry.id, source: 'project', effective: entry.id };
+    if (!input.machineDefaults) return { agentProfileId: undefined, source: 'machine', effective: undefined };
+    const fallback = input.machineDefaults[input.agent];
+    return fallback ? { agentProfileId: undefined, source: 'machine', effective: fallback } : { agentProfileId: undefined, source: 'machine-login', effective: null };
 }
 
 /** Project default entries that apply on one machine (what a daemon needs of a project). */

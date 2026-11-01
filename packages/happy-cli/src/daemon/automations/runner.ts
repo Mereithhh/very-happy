@@ -125,14 +125,26 @@ interface Tracked {
     pendingRunning?: { sessionId: string; stickyKey?: string };
     /** Final report that failed to send; retried each tick. */
     pendingFinal?: AutomationReport;
+    /** B-850d: the sticky key this run continued (cleared when the new account rejects the history). */
+    stickyKey?: string;
 }
 
 /** B-850d: a run refused because its account is missing / expired / invalid (「需要我决策」). */
 export const AUTOMATION_ACCOUNT_UNAVAILABLE = 'account_unavailable';
 
+/**
+ * B-850d: a sticky Codex session moved to an account that rejects its history
+ * (another org's encrypted reasoning). The run fails with this reason — it is
+ * not re-run (its side effects may have started) — and the sticky binding is
+ * cleared, so the next run starts a fresh session on the new account.
+ */
+export const AUTOMATION_ACCOUNT_HISTORY_REJECTED = 'account_history_rejected';
+
 /** attentionReason of a failed / cancelled turn: an account refusal (B-850d) is its own reason. */
 export function turnFailureReason(turn: Pick<TurnState, 'status' | 'refusal'>): string {
-    return turn.refusal === 'agent-profile-unavailable' ? AUTOMATION_ACCOUNT_UNAVAILABLE : `turn_${turn.status}`;
+    if (turn.refusal === 'agent-profile-unavailable') return AUTOMATION_ACCOUNT_UNAVAILABLE;
+    if (turn.refusal === 'agent-profile-history-rejected') return AUTOMATION_ACCOUNT_HISTORY_REJECTED;
+    return `turn_${turn.status}`;
 }
 
 /**
@@ -334,6 +346,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
     function wakeThenSend(claimed: AutomationClaimedRun, sessionId: string, text: string, stickyKey?: string): void {
         const { run, automation } = claimed;
         const item = track(claimed, 'send', sessionId);
+        if (stickyKey) item.stickyKey = stickyKey;
         item.waking = true;
         gating++;
         void (async () => {
@@ -414,7 +427,9 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
                 persist({ runId: run.id, automationId: automation.id, kind: 'send', phase: 'running', claimId: run.claimId, sessionId: bound.sessionId, stickyKey });
                 try { await send(bound.sessionId, `${header}\n${action.prompt}`, { localId: `automation-${run.id}` }); }
                 catch (error) { await failNow(claimed, 'send', `Sticky session delivery failed: ${error instanceof Error ? error.message : String(error)}`, 'send_failed', bound.sessionId); return; }
-                await reportRunning(track(claimed, 'send', bound.sessionId), bound.sessionId, stickyKey);
+                const item = track(claimed, 'send', bound.sessionId);
+                item.stickyKey = stickyKey;
+                await reportRunning(item, bound.sessionId, stickyKey);
                 return;
             }
             if (bound) await client.deleteSticky(automation.id, stickyKey).catch(() => deps.log(`Automation ${automation.name}: stale sticky ${stickyKey} not cleared`));
@@ -486,7 +501,11 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
                 continue;
             }
             item.waitingOnBackground = false;
-            if (turn.status === 'failed' || turn.status === 'cancelled') await finish(item, { claimId: item.claimId, status: 'failed', sessionId, error: turn.error ?? `Turn ${turn.status}`, needsAttention: true, attentionReason: turnFailureReason(turn) });
+            const reason = turn.status === 'failed' || turn.status === 'cancelled' ? turnFailureReason(turn) : null;
+            if (reason === AUTOMATION_ACCOUNT_HISTORY_REJECTED && item.stickyKey) {
+                await client.deleteSticky(item.automationId, item.stickyKey).catch(() => deps.log(`Automation run ${item.runId}: sticky ${item.stickyKey} not cleared`));
+            }
+            if (reason) await finish(item, { claimId: item.claimId, status: 'failed', sessionId, error: turn.error ?? `Turn ${turn.status}`, needsAttention: true, attentionReason: reason });
             else await finish(item, { claimId: item.claimId, status: 'done', sessionId, summary: clipText(turn.answer, AUTOMATION_SUMMARY_MAX_CHARS) });
         }
     }

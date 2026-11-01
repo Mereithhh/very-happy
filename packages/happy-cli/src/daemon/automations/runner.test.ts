@@ -664,6 +664,18 @@ describe('B-850d automation runner: accounts', () => {
         });
     });
 
+    it('Codex sticky moved to an account that rejects the history → account_history_rejected, sticky cleared (next run starts fresh)', async () => {
+        live.add('old');
+        const acc = { sessionAccount: vi.fn(() => 'chatgpt-a'), resolve: vi.fn((_a: string, r: string | null | undefined) => r ?? null), rebind: vi.fn(async () => undefined) };
+        const client = fakeClient([claimed(run(), automation({ action: { kind: 'spawn', agent: 'codex', directory: '/repo', prompt: 'x', sticky: { key: 'k' }, agentProfile: { id: 'hub' } } as any }), [{ key: 'k', sessionId: 'old', updatedAt: 1 }])]);
+        const runner = start(client, { accounts: acc }); await settled(runner);
+        expect(acc.rebind).toHaveBeenCalledWith('old', 'hub');
+        readTurn.mockResolvedValue({ ...ended('', 'failed', 'history cannot continue on account "Hub"'), refusal: 'agent-profile-history-rejected' });
+        await turnEdge(runner, 'old');
+        expect(client.deleteSticky).toHaveBeenCalledWith('a1', 'k');
+        expect(client.report).toHaveBeenLastCalledWith('r1', expect.objectContaining({ status: 'failed', attentionReason: 'account_history_rejected', error: 'history cannot continue on account "Hub"' }));
+    });
+
     it('a turn the wrapper refused for its account → account_unavailable, not turn_failed', async () => {
         const client = fakeClient([claimed()]);
         const runner = start(client); await settled(runner);

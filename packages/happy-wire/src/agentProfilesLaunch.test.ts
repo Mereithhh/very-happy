@@ -9,19 +9,26 @@ describe('B-850d resolveLaunchAgentProfile', () => {
     ];
 
     it('explicit beats the project default; null is the machine login', () => {
-        expect(resolveLaunchAgentProfile({ explicit: { id: 'x' }, project, agent: 'claude', machineId: 'm1' })).toEqual({ agentProfileId: 'x', source: 'explicit' });
-        expect(resolveLaunchAgentProfile({ explicit: null, project, agent: 'claude', machineId: 'm1' })).toEqual({ agentProfileId: null, source: 'explicit' });
+        expect(resolveLaunchAgentProfile({ explicit: { id: 'x' }, project, agent: 'claude', machineId: 'm1' })).toEqual({ agentProfileId: 'x', source: 'explicit', effective: 'x' });
+        expect(resolveLaunchAgentProfile({ explicit: null, project, agent: 'claude', machineId: 'm1' })).toEqual({ agentProfileId: null, source: 'explicit', effective: null });
     });
 
     it('project default only for the same agent on the same machine', () => {
-        expect(resolveLaunchAgentProfile({ project, agent: 'claude', machineId: 'm1' })).toEqual({ agentProfileId: 'org-a', source: 'project' });
-        expect(resolveLaunchAgentProfile({ project, agent: 'claude', machineId: 'm2' })).toEqual({ agentProfileId: 'org-b', source: 'project' });
-        expect(resolveLaunchAgentProfile({ project, agent: 'codex', machineId: 'm1' })).toEqual({ agentProfileId: null, source: 'project' });
+        expect(resolveLaunchAgentProfile({ project, agent: 'claude', machineId: 'm1' })).toEqual({ agentProfileId: 'org-a', source: 'project', effective: 'org-a' });
+        expect(resolveLaunchAgentProfile({ project, agent: 'claude', machineId: 'm2' })).toEqual({ agentProfileId: 'org-b', source: 'project', effective: 'org-b' });
+        expect(resolveLaunchAgentProfile({ project, agent: 'codex', machineId: 'm1' })).toEqual({ agentProfileId: null, source: 'project', effective: null });
     });
 
     it('nothing chosen → undefined (the daemon applies the machine default, else the machine login)', () => {
-        expect(resolveLaunchAgentProfile({ project, agent: 'codex', machineId: 'm2' })).toEqual({ agentProfileId: undefined, source: 'machine' });
-        expect(resolveLaunchAgentProfile({ agent: 'claude', machineId: 'm1' })).toEqual({ agentProfileId: undefined, source: 'machine' });
+        expect(resolveLaunchAgentProfile({ project, agent: 'codex', machineId: 'm2' })).toEqual({ agentProfileId: undefined, source: 'machine', effective: undefined });
+        expect(resolveLaunchAgentProfile({ agent: 'claude', machineId: 'm1' })).toEqual({ agentProfileId: undefined, source: 'machine', effective: undefined });
+    });
+
+    it('with the machine defaults known (Web): machine default · X, or machine login', () => {
+        expect(resolveLaunchAgentProfile({ agent: 'claude', machineId: 'm9', machineDefaults: { claude: 'dflt' } })).toEqual({ agentProfileId: undefined, source: 'machine', effective: 'dflt' });
+        expect(resolveLaunchAgentProfile({ agent: 'codex', machineId: 'm9', machineDefaults: { claude: 'dflt' } })).toEqual({ agentProfileId: undefined, source: 'machine-login', effective: null });
+        // The project still wins over the machine default.
+        expect(resolveLaunchAgentProfile({ project, agent: 'claude', machineId: 'm1', machineDefaults: { claude: 'dflt' } }).source).toBe('project');
     });
 
     it('projectAgentProfilesFor keeps one machine', () => {
