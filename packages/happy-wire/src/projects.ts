@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ProjectAgentProfilesSchema } from './agentProfiles';
 
 /**
  * B-644 Projects (`specs/2026-10-projects.md`): a long-lived, account-owned
@@ -49,6 +50,8 @@ export const ProjectDefaultsSchema = z.object({
     model: z.string().max(256).nullable().optional(),
     permissionMode: z.string().max(64).nullable().optional(),
     worktree: z.boolean().nullable().optional(),
+    /** B-850d: per-agent account for new sessions (one entry per agent, machine-scoped; ids + labels only). */
+    agentProfiles: ProjectAgentProfilesSchema.nullable().optional(),
 });
 export type ProjectDefaults = z.infer<typeof ProjectDefaultsSchema>;
 

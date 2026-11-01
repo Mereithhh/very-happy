@@ -283,6 +283,45 @@ describe('projects store (pglite)', () => {
             expect((await teams.readTeam(team.id, { accountId })).projectId).toBe(team.projectId);
         });
 
+        it('B-850d2: a new team following the project default runs its Lead on the project account, like its members', async () => {
+            const orgA = { id: 'org-a', label: 'Org A' };
+            const p = await newProject('acct-project', { defaults: { agentProfiles: [{ agent: 'claude', machineId, id: orgA.id, label: orgA.label }] } });
+            const team = await teams.createTeam(accountId, { name: 'Follows project', machineId, requestId: 'tp-acct-1', launch: launch('/repo'), project: { projectId: p.id } });
+            const lead = team.bots.find(b => b.root)!;
+            expect(team.defaults?.agentProfile).toEqual(orgA);
+            expect(lead.agentProfile).toEqual(orgA);
+            // The daemon claims what is stored, not the returned view.
+            const ops = await db.$queryRaw<{ state: { botId: string; type: string; agentProfile?: unknown } }[]>`SELECT "state" FROM "TeamOperation" WHERE "teamId"=${team.id}`;
+            expect(ops.map(o => [o.state.botId, o.state.type, o.state.agentProfile])).toEqual([[lead.id, 'spawn', orgA]]);
+            const member = await teams.actOnTeam(team.id, { accountId }, { requestId: 'tp-acct-delegate', action: { type: 'delegate', goal: 'm', acceptance: ['x'], botName: 'M' } });
+            expect(member.team.bots.find(b => b.name === 'M')?.agentProfile).toEqual(orgA);
+            // A retried create returns the same team, already adopted.
+            const again = await teams.createTeam(accountId, { name: 'Follows project', machineId, requestId: 'tp-acct-1', launch: launch('/repo'), project: { projectId: p.id } });
+            expect(again.bots.find(b => b.root)?.agentProfile).toEqual(orgA);
+            // An explicit Lead account (here the machine login) is never overridden by the project.
+            const own = await teams.createTeam(accountId, { name: 'Own login', machineId, requestId: 'tp-acct-2', launch: { ...launch('/repo'), agentProfile: null }, project: { projectId: p.id } });
+            expect(own.bots.find(b => b.root)?.agentProfile).toBeNull();
+            expect((await db.$queryRaw<{ a: unknown }[]>`SELECT "state"->'agentProfile' AS a FROM "TeamOperation" WHERE "teamId"=${own.id}`)[0].a).toBeNull();
+        });
+
+        it('B-850d2 route: POST /v1/teams into a project → the daemon\'s operations poll hands the Lead spawn the project account', async () => {
+            const { default: fastify } = await import('fastify');
+            const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');
+            const { teamRoutes } = await import('@/app/api/routes/teamRoutes');
+            const app = fastify(); app.setValidatorCompiler(validatorCompiler); app.setSerializerCompiler(serializerCompiler);
+            app.decorate('authenticate', async (request: any) => { request.userId = accountId; }); teamRoutes(app as any);
+            try {
+                const p = await newProject('acct-route', { defaults: { agentProfiles: [{ agent: 'claude', machineId, id: 'org-a', label: 'Org A' }] } });
+                const created = await app.inject({ method: 'POST', url: '/v1/teams', payload: { name: 'Route team', machineId, requestId: 'tp-acct-route', launch: launch('/repo'), project: { projectId: p.id } } });
+                expect(created.statusCode).toBe(200);
+                const teamId = created.json().team.id;
+                const polled = await app.inject({ method: 'GET', url: `/v1/teams/operations?machineId=${machineId}&teamLaunchVersion=1` });
+                expect(polled.statusCode).toBe(200);
+                const spawns = polled.json().operations.filter((op: any) => op.teamId === teamId);
+                expect(spawns.map((op: any) => [op.type, op.agentProfile])).toEqual([['spawn', { id: 'org-a', label: 'Org A' }]]);
+            } finally { await app.close(); }
+        });
+
         it('an older client (no project field) gets no project; the kill switch also just skips the project', async () => {
             const plain = await teams.createTeam(accountId, { name: 'Old CLI team', machineId, requestId: 'tp-2' });
             expect(plain.projectId).toBeUndefined();

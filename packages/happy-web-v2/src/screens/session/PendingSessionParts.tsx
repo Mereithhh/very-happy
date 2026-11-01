@@ -23,6 +23,7 @@ import { suggestProjectFor } from '@/screens/projects/projectSuggestion';
 import { draftDirectorySuggestions, draftProjectHint, resolveHomePath } from './draftTarget';
 import { SpawnAccountPicker } from '@/components/accounts/SpawnAccountPicker';
 import { accountSettingsHref } from './sessionAccount';
+import { projectAccountsOf } from '@/sync/accountChoice';
 import './header.css';
 import './input.css';
 import './pendingSession.css';
@@ -238,7 +239,9 @@ function DraftTarget({ record }: { record: PendingSessionRecord }) {
                 {/* B-850c: the account it starts on (Q3: an unusable one is stopped here, before the first send). */}
                 <SpawnAccountPicker machine={machine} machineName={machineName} agent={record.agent} value={record.agentProfileId}
                     onChange={(agentProfileId) => pendingSessions.setTarget(id, { agentProfileId })}
-                    onFix={() => navigate(accountSettingsHref(record.machineId))} labelId={`${id}-account`} />
+                    onFix={() => navigate(accountSettingsHref(record.machineId))} labelId={`${id}-account`}
+                    project={projectAccountsOf(record.onSpawnedProject?.projectId, projectsSnap.projects)}
+                    machineNameOf={(machineId) => { const m = storage.getState().machines[machineId]; return machineLabel(m?.metadata, machineId); }} />
             </div>
             <p className="ps-card-text ps-draft-landing" data-testid="draft-landing">{t('pendingSession.draftLanding', { machine: machineName })}</p>
             {machine && machineVersion && oldCli(machine) && <p className="ps-card-text ps-draft-warn" role="status" data-testid="draft-old-cli">{t('pendingSession.draftOldCli', { machine: machineName, version: machineVersion })}</p>}

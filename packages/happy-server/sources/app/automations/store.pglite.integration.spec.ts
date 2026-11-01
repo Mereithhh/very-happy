@@ -320,6 +320,24 @@ describe('automations store (pglite)', () => {
         expect((await store.getAutomation(accountId, once.id))).toMatchObject({ status: 'active', nextRunAt: null });
     });
 
+    it('B-850d: a claim carries the project account defaults for the claiming machine; the action keeps its own account', async () => {
+        const projectId = `proj-${crypto.randomUUID()}`;
+        await db.project.create({ data: { id: projectId, accountId, name: 'acct', defaults: { agentProfiles: [
+            { agent: 'claude', machineId, id: 'org-a', label: 'Org A' },
+            { agent: 'codex', machineId: 'elsewhere', id: 'org-x' },
+        ] } } });
+        const a = await make({ projectId, action: { ...spawn, agentProfile: { id: 'mine', label: 'Mine' } } });
+        expect(a.action).toMatchObject({ agentProfile: { id: 'mine', label: 'Mine' } });
+        const plain = await make();
+        await store.runAutomationNow(accountId, a.id, {});
+        await store.runAutomationNow(accountId, plain.id, {});
+        const { runs } = await store.claimRuns(accountId, { machineId });
+        const withProject = runs.find(r => r.automation.id === a.id)!;
+        expect(withProject.projectAgentProfiles).toEqual([{ agent: 'claude', machineId, id: 'org-a', label: 'Org A' }]);
+        expect(withProject.automation.action).toMatchObject({ agentProfile: { id: 'mine' } });
+        expect('projectAgentProfiles' in runs.find(r => r.automation.id === plain.id)!).toBe(false);
+    });
+
     it('claims at most one run per automation and only for the requesting machine', async () => {
         const a = await make({ concurrency: 'queue' });
         for (let i = 0; i < 3; i++) await store.runAutomationNow(accountId, a.id, { payload: `p${i}` });

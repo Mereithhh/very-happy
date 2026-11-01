@@ -207,7 +207,8 @@ export interface SpawnSessionOptions {
     /**
      * B-850c: the account to start on (B-850a). Absent = the machine's default
      * for the agent; null = the machine login. Only sent to a daemon that
-     * publishes `agentProfiles`, and only for Claude (see spawnAgentProfileParam).
+     * publishes `agentProfiles` with accounts for the agent (Claude; Codex since
+     * B-850b — see spawnAgentProfileParam).
      */
     agentProfileId?: string | null;
 }

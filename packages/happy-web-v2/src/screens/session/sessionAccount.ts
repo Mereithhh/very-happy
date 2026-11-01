@@ -20,6 +20,7 @@ import {
     agentHasAccounts,
     apiAccountModels,
     isApiAccount,
+    machineHasAgentAccounts,
     planAccountSwitch,
     switchLanded,
     readMachineAgentProfiles,
@@ -61,6 +62,8 @@ export type AccountSection = {
 };
 
 export interface SessionAccountFacts {
+    /** the session's agent (flavor): an account must belong to it (wire v3 bind rule) */
+    agent: string;
     machineId: string;
     machineName: string;
     state: AgentProfilesState | null;
@@ -72,9 +75,11 @@ export interface SessionAccountFacts {
 /** Pure: everything the panel / banner need from the stores. null = this agent has no accounts. */
 export function sessionAccountFacts(session: { metadata?: unknown; presence?: unknown } | null | undefined, machine: { id: string; daemonState?: unknown; metadata?: unknown; active?: boolean } | null | undefined): SessionAccountFacts | null {
     const metadata = (session?.metadata ?? null) as { flavor?: string | null; machineId?: string; agentProfile?: unknown; capabilities?: string[] } | null;
-    if (!metadata || !agentHasAccounts(normalizeAgentKey(metadata.flavor ?? 'claude'))) return null;
+    const agent = normalizeAgentKey(metadata?.flavor ?? 'claude');
+    if (!metadata || !agentHasAccounts(agent)) return null;
     const machineId = metadata.machineId ?? '';
     return {
+        agent,
         machineId,
         machineName: machine ? machineLabel(machine as never) : machineId.slice(0, 8),
         state: readMachineAgentProfiles(machine),
@@ -89,13 +94,14 @@ export function buildAccountSection(facts: SessionAccountFacts, t: T, actions: {
     openMachine: () => void;
 }, now = Date.now()): AccountSection {
     const machineRow: AccountRow = { key: MACHINE_LOGIN_KEY, name: t('accounts.machineLogin') };
-    if (!facts.state) {
+    // Old CLI — or a CLI with Claude accounts only, for a Codex session.
+    if (!facts.state || !machineHasAgentAccounts(facts.state, facts.agent)) {
         return { rows: [machineRow], value: MACHINE_LOGIN_KEY, switchable: false, note: { text: t('accounts.upgradeCli'), action: { label: t('accounts.upgradeCliShort'), onSelect: actions.openMachine } } };
     }
     if (!facts.capable) {
         return { rows: [machineRow], value: MACHINE_LOGIN_KEY, switchable: false, note: { text: t('accounts.oldWrapper') } };
     }
-    const rows: AccountRow[] = [machineRow, ...accountsForAgent(facts.state, 'claude').map((account): AccountRow => {
+    const rows: AccountRow[] = [machineRow, ...accountsForAgent(facts.state, facts.agent).map((account): AccountRow => {
         const status = accountDisplayStatus(account, now);
         const usable = accountUsable(status);
         return {
@@ -131,11 +137,13 @@ export function sessionApiModels(facts: SessionAccountFacts | null): { account: 
 
 // ---- wire v2: session events ----
 
-export type AccountEventKind = 'unavailable' | 'auth-failed' | 'warning';
+export type AccountEventKind = 'unavailable' | 'auth-failed' | 'warning' | 'history-rejected';
 const ACCOUNT_EVENT_KINDS: Record<string, AccountEventKind> = {
     'agent-profile-unavailable': 'unavailable',
     'agent-profile-auth-failed': 'auth-failed',
     'agent-profile-warning': 'warning',
+    // wire v3 (Codex): the new account refused this thread's history after a switch
+    'agent-profile-history-rejected': 'history-rejected',
 };
 export function accountEventKind(kind: string | undefined): AccountEventKind | null {
     return (kind && ACCOUNT_EVENT_KINDS[kind]) || null;
@@ -162,6 +170,41 @@ export function boundAccountRejected(facts: SessionAccountFacts | null, now = Da
     if (!account) return null;
     const status = accountDisplayStatus(account, now);
     return status === 'expired' || status === 'invalid' || status === 'missing-secret' ? { status, account } : null;
+}
+
+// ---- wire v3: what a session ran on before its last switch (「换回原账号」) ----
+
+/** null = the machine login. Per device: the wire carries no previous binding. */
+export type PreviousAccount = { id: string; label: string } | null;
+const PREVIOUS_KEY = 'vh.accounts.previous';
+
+function readPreviousMap(): Record<string, PreviousAccount> {
+    try {
+        const raw = JSON.parse(globalThis.localStorage?.getItem(PREVIOUS_KEY) ?? '{}') as unknown;
+        return raw && typeof raw === 'object' ? raw as Record<string, PreviousAccount> : {};
+    } catch { return {}; }
+}
+
+export function notePreviousAccount(sessionId: string, previous: PreviousAccount | undefined): void {
+    if (previous === undefined) return;
+    try {
+        const map = readPreviousMap();
+        map[sessionId] = previous;
+        // Small and per device: keep the latest 50 sessions.
+        const keys = Object.keys(map);
+        for (const key of keys.slice(0, Math.max(0, keys.length - 50))) delete map[key];
+        globalThis.localStorage?.setItem(PREVIOUS_KEY, JSON.stringify(map));
+    } catch { /* storage unavailable: the button falls back to the switch dialog */ }
+}
+
+/** undefined = not known on this device (the button opens the switch dialog). */
+export function previousAccountFor(sessionId: string, current: SessionAgentProfile | null | undefined): PreviousAccount | undefined {
+    const previous = readPreviousMap()[sessionId];
+    if (previous === undefined) return undefined;
+    if (previous && typeof previous.id !== 'string') return undefined;
+    // Already back on it: nothing to switch back to.
+    const currentId = current ? current.id : current === null ? null : undefined;
+    return (previous ? previous.id : null) === currentId ? undefined : previous;
 }
 
 // ---- wire v2: a bind whose restart is still running ('pending') ----
@@ -193,6 +236,8 @@ export function switchConfirmLines(plan: ReturnType<typeof planAccountSwitch>, m
         ...(working ? [`⚠ ${t('accounts.switchInterrupt')}`] : []),
         // Another account = another provider endpoint: the whole history (reasoning included) goes there.
         ...(plan.cacheMiss ? [`⚠ ${t('accounts.switchHistorySent')}`, `⚠ ${t('accounts.switchCache')}`] : []),
+        // Codex ChatGPT ↔ API ↔ machine login: allowed, the new side may refuse the history (wire v3).
+        ...(plan.crossType ? [`⚠ ${t('accounts.switchCrossType')}`] : []),
         ...(plan.model ? [t('accounts.switchModel', { model: plan.model })] : []),
     ];
 }
@@ -208,7 +253,7 @@ export async function switchSessionAccount(input: {
     modelOnly?: boolean;
 }, t: T): Promise<boolean> {
     const { facts, target } = input;
-    const plan = planAccountSwitch(facts.profile, target, input.model);
+    const plan = planAccountSwitch(facts.profile, target, input.model, facts.agent);
     const ok = input.modelOnly && plan.model
         ? await Modal.confirm(t('accounts.apiModelTitle', { model: plan.model }), [t('accounts.apiModelBody'), ...(input.working ? [`⚠ ${t('accounts.switchInterrupt')}`] : [])].join('\n'), { confirmText: t('accounts.switchConfirm') })
         : await Modal.confirm(
@@ -221,6 +266,8 @@ export async function switchSessionAccount(input: {
     const { agentProfileBind } = await import('@/sync/agentProfileOps');
     const result = await agentProfileBind(facts.machineId, { sessionId: input.sessionId, accountId: plan.accountId, ...(plan.model ? { model: plan.model } : {}) });
     if (!result.ok) { toast.error(t('accounts.switchFailed', { error: accountErrorText(result, t) })); return false; }
+    // 「换回原账号」 on a history-rejected event needs what ran before this switch.
+    notePreviousAccount(input.sessionId, facts.profile === undefined ? undefined : facts.profile ? { id: facts.profile.id, label: facts.profile.label } : null);
     if (result.data.restart === 'done') toast.success(t('accounts.switched', { label: plan.label ?? t('accounts.machineLogin') }));
     else if (result.data.restart === 'pending') {
         notePendingSwitch(input.sessionId, { targetId: plan.accountId, label: plan.label, at: Date.now() });

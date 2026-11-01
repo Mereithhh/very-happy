@@ -150,6 +150,8 @@ export function resolveClaudeAccount(sessionId: string, deps: ClaudeAccountDeps)
     const record = deps.accounts.accounts[id];
     if (!record) return unavailable(id, id, 'unknown', 'missing');
     const { label, kind } = record;
+    // B-850b: a Codex account bound to a Claude session (hand edit / old Web).
+    if (record.agent !== 'claude') return unavailable(id, label, kind, 'agent-mismatch');
     if (kind === 'claude-subscription') {
         const path = accountSecretPath(deps.home, id);
         if (!deps.fileReadable(path)) return unavailable(id, label, kind, 'missing-secret');

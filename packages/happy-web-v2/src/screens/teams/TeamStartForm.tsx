@@ -29,12 +29,16 @@ import { ProjectPicker } from '@/screens/projects/ProjectPicker';
 import { teamProjectFromChoice, type ProjectChoice } from '@/screens/projects/projectChoice';
 import { teamNameFromGoal } from './teamPresentation';
 import { startBlocker } from './teamStartState';
+import { AgentProfileChoiceSchema, type AgentProfileRef } from '@slopus/happy-wire';
+import { AccountChoiceField } from '@/components/accounts/AccountChoiceField';
+import { teamAgent, type AccountChoice } from '@/sync/accountChoice';
 
-export type TeamLaunchInput = { goal: string; directory: string; assistant: 'claude' | 'codex' | 'pi-acp'; model?: string };
+/** B-850e `agentProfile`: the lead's and the team default account (absent = project default, else machine default). */
+export type TeamLaunchInput = { goal: string; directory: string; assistant: 'claude' | 'codex' | 'pi-acp'; model?: string; agentProfile?: AgentProfileRef | null };
 export function supportsTeamLaunch(machine: { metadata?: unknown; active?: boolean; activeAt?: number }) {
   return (machine.metadata as { teamLaunchVersion?: number } | null)?.teamLaunchVersion === 1;
 }
-const intentSchema = z.object({ requestId: z.string().min(1), name: z.string().min(1), machineId: z.string().min(1), launch: z.object({ goal: z.string().min(1), directory: z.string().min(1), assistant: z.enum(['claude','codex','pi-acp']), model: z.string().optional() }), project: z.object({ projectId: z.string().optional(), create: z.boolean().optional() }).optional() });
+const intentSchema = z.object({ requestId: z.string().min(1), name: z.string().min(1), machineId: z.string().min(1), launch: z.object({ goal: z.string().min(1), directory: z.string().min(1), assistant: z.enum(['claude','codex','pi-acp']), model: z.string().optional(), agentProfile: AgentProfileChoiceSchema.optional() }), project: z.object({ projectId: z.string().optional(), create: z.boolean().optional() }).optional() });
 type LaunchIntent = z.infer<typeof intentSchema>;
 /**
  * `chooseProject` (B-726) shows「所属项目」— only when creating a new team; it
@@ -55,7 +59,10 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
   const [goal, setGoal] = useState('');
   const [name, setName] = useState('');
   const [model, setModel] = useState('');
-  const [assistant, setAssistant] = useState<TeamLaunchInput['assistant']>('claude');
+  const [assistant, setAssistantState] = useState<TeamLaunchInput['assistant']>('claude');
+  // B-850e: accounts are per agent and per machine — a new agent or machine clears the pick.
+  const [account, setAccount] = useState<AccountChoice>(undefined);
+  const setAssistant = (next: TeamLaunchInput['assistant']) => { if (next !== assistant) setAccount(undefined); setAssistantState(next); };
   const machines = useAllMachines({ includeOffline: true });
   const presets = useSetting('sessionPathPresets');
   const recents = useSetting('recentMachinePaths');
@@ -77,13 +84,13 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
   const directoryRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setRestored(false); setBusy(false); setError(''); setPicking(false);
-    setGoal(''); setName(''); setModel(''); setAssistant('claude'); setDirectory(''); setProjectChoice(initialChoice);
+    setGoal(''); setName(''); setModel(''); setAssistant('claude'); setAccount(undefined); setDirectory(''); setProjectChoice(initialChoice);
     setMachine(fixedMachine ?? '');
     if (!key) return;
     try {
       const saved = readPendingIntent(key, value => intentSchema.parse(value));
       setIntent(saved);
-      if (saved) { setMachine(saved.machineId); setDirectory(saved.launch.directory); setGoal(saved.launch.goal); setName(saved.name); setModel(saved.launch.model ?? ''); setAssistant(saved.launch.assistant); setProjectChoice(saved.project?.projectId ? { kind: 'existing', projectId: saved.project.projectId } : saved.project?.create ? { kind: 'new' } : chooseProject ? { kind: 'none' } : initialChoice); }
+      if (saved) { setMachine(saved.machineId); setDirectory(saved.launch.directory); setGoal(saved.launch.goal); setName(saved.name); setModel(saved.launch.model ?? ''); setAssistantState(saved.launch.assistant); setAccount(saved.launch.agentProfile); setProjectChoice(saved.project?.projectId ? { kind: 'existing', projectId: saved.project.projectId } : saved.project?.create ? { kind: 'new' } : chooseProject ? { kind: 'none' } : initialChoice); }
       if (!saved) {
         const decision = decideQuickChat({machines: machines.filter(m => supportsTeamLaunch(m) && (!fixedMachine || m.id === fixedMachine)), recents: recents ?? [], alwaysAsk: false});
         // UI-P0-01: fold the configuration only when the computer AND the folder are both known (B-438: unknown → open).
@@ -128,7 +135,7 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
       launchDirectory = made.path;
       if (mounted.current) { setNewFolder(false); setDirectory(made.path); }
     }
-    const launch: TeamLaunchInput = { goal: goal.trim(), directory: launchDirectory, assistant, ...(model.trim() ? { model: model.trim() } : {}) };
+    const launch: TeamLaunchInput = { goal: goal.trim(), directory: launchDirectory, assistant, ...(model.trim() ? { model: model.trim() } : {}), ...(account !== undefined ? { agentProfile: account } : {}) };
     let sending: LaunchIntent | null = null;
     let resuming = true;
     try {
@@ -136,7 +143,7 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
       const project = projectsReady ? teamProjectFromChoice(projectChoice) : undefined;
       sending = retainPendingIntent(key, { requestId: crypto.randomUUID(), name: title, machineId, launch, ...(project ? { project } : {}) }, value => intentSchema.parse(value));
       setIntent(sending);
-      setMachine(sending.machineId); setDirectory(sending.launch.directory); setGoal(sending.launch.goal); setName(sending.name); setModel(sending.launch.model ?? ''); setAssistant(sending.launch.assistant);
+      setMachine(sending.machineId); setDirectory(sending.launch.directory); setGoal(sending.launch.goal); setName(sending.name); setModel(sending.launch.model ?? ''); setAssistantState(sending.launch.assistant); setAccount(sending.launch.agentProfile);
       const team = await onStart(sending.name, sending.machineId, sending.launch, sending.requestId, sending.project);
       clearPendingIntent(key, sending.requestId);
       if (mounted.current && currentKey.current === key) { recordRecentMachinePath(sending.machineId, sending.launch.directory); setIntent(null); onStarted(team); }
@@ -157,14 +164,14 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
       <button type="button" className="team-start-toggle" aria-expanded={configOpen} aria-controls="team-start-config" onClick={() => setConfigOpen(open => !open)}><ChevronDown size={16} aria-hidden className="team-start-chev" />{c.configure}<span className="team-start-context">{machine ? machineLabel(machine) : c.machine} · {directory || c.project} · {assistant === 'claude' ? 'Claude Code' : assistant === 'codex' ? 'Codex' : 'pi'}</span></button>
       <CollapsePanel id="team-start-config" open={configOpen} className="team-start-config-body">
 
-      {!fixedMachine && <div className="teams-field"><span id={`${fieldId}-machine`}>{c.machine}</span><Combobox variant="soft" size="md" label={c.machine} labelledBy={`${fieldId}-machine`} placeholder={c.machine} required value={machineId || null} options={machines.map(m => ({ value: m.id, label: machineLabel(m), meta: isMachineOnline(m) ? undefined : t('status.offline') }))} onChange={value => { const next = machines.find(m => m.id === value); setMachine(value); setDirectory(''); setPicking(false); const a = preferredTeamAssistant(next?.metadata, assistant); if (a !== assistant) { setAssistant(a); setModel(''); } }} /></div>}
+      {!fixedMachine && <div className="teams-field"><span id={`${fieldId}-machine`}>{c.machine}</span><Combobox variant="soft" size="md" label={c.machine} labelledBy={`${fieldId}-machine`} placeholder={c.machine} required value={machineId || null} options={machines.map(m => ({ value: m.id, label: machineLabel(m), meta: isMachineOnline(m) ? undefined : t('status.offline') }))} onChange={value => { const next = machines.find(m => m.id === value); setMachine(value); setDirectory(''); setPicking(false); setAccount(undefined); const a = preferredTeamAssistant(next?.metadata, assistant); if (a !== assistant) { setAssistant(a); setModel(''); } }} /></div>}
       <label>{c.project}<div className="team-folder-input"><SuggestInput inputRef={directoryRef} value={directory} onValueChange={setDirectory} required aria-label={c.project} suggestions={(presets ?? []).map(p => ({ value: p.path, label: p.path }))} placeholder="/path/to/project" /><button type="button" disabled={!machine || !isMachineOnline(machine)} onClick={() => setPicking(!picking)}><FolderOpen size={16} />{c.browse}</button></div></label>
       {!newFolderBlocked && <Checkbox className="team-folder-new" checked={newFolder} onCheckedChange={on => { setNewFolder(on); setPicking(false); if (on) setDirectory(defaultNewFolder(name.trim() || goal.trim().split('\n')[0])); }}>{folderCopy.create}</Checkbox>}
       {newFolder && <Checkbox className="team-folder-new" checked={gitInit} onCheckedChange={setGitInit}>{folderCopy.gitInit}</Checkbox>}
       {newFolder && newProblem && <p className="team-start-blocker" role="status">{folderCopy.problem[newProblem]}</p>}
       {picking && machine && <div className="team-folder-browser"><FsBrowser machineId={machineId} initialPath={directory || machine.metadata?.homeDir || '/'} onPickDir={path => { setDirectory(path); setPicking(false); }} /></div>}
       {/* B-698: the launch harness/model also become the team's defaults for new members (server reducer). */}
-      <div className="team-start-options"><TeamHarnessModelFields machineId={machineId} assistant={assistant} model={model} onAssistant={setAssistant} onModel={setModel} harnessLabel={c.leadAndMembers} /><label>{c.name}<input name="name" value={name} onChange={e => setName(e.target.value)} maxLength={128} placeholder={teamNameFromGoal(goal)} /></label></div>
+      <div className="team-start-options"><TeamHarnessModelFields machineId={machineId} assistant={assistant} model={model} onAssistant={setAssistant} onModel={setModel} harnessLabel={c.leadAndMembers} /><AccountChoiceField machine={machine} agent={teamAgent(assistant)} value={account} onChange={setAccount} label={t('accounts.teamDefaultAccount')} labelId={`${fieldId}-account`} followLabel={t('accounts.followProjectOrMachine')} hint={t('accounts.teamDefaultAccountHint')} className="teams-field acc-choice-field" testId="team-start-account" /><label>{c.name}<input name="name" value={name} onChange={e => setName(e.target.value)} maxLength={128} placeholder={teamNameFromGoal(goal)} /></label></div>
       </CollapsePanel></div>
       {projectsReady && <div className="team-start-project"><label htmlFor="team-start-project">{c.teamProject}</label><ProjectPicker id="team-start-project" value={projectChoice} onChange={setProjectChoice} projects={projectsSnap.projects} newName={name.trim() || teamNameFromGoal(goal)} noneLabel={c.teamProjectNone} /><p className="team-start-assurance">{c.teamProjectHint}</p></div>}
     </fieldset>

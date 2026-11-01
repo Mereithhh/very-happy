@@ -20,6 +20,7 @@ import {
   type AutomationUpdate,
 } from '@slopus/happy-wire';
 import { describeCron } from './automationPresentation';
+import type { AgentProfileRef } from '@slopus/happy-wire';
 
 export const TRIGGER_KINDS = ['cron', 'interval', 'once', 'manual'] as const;
 export const ACTION_KINDS = ['spawn', 'send', 'script'] as const;
@@ -53,6 +54,8 @@ export interface AutomationDraft {
   permissionMode: string;
   worktree: boolean;
   stickyKey: string;
+  /** B-850d/e: the run's account (undefined = project default > machine default; null = machine login). */
+  agentProfile?: AgentProfileRef | null;
   prompt: string;
   sendSessionId: string;
   /** one shell-ish line; see splitArgv */
@@ -283,6 +286,7 @@ export function draftFromAutomation(a: Automation): AutomationDraft {
     d.permissionMode = act.permissionMode ?? '';
     d.worktree = act.worktree === true;
     d.stickyKey = act.sticky?.key ?? '';
+    if (act.agentProfile !== undefined) d.agentProfile = act.agentProfile;
     d.prompt = act.prompt;
   } else if (act.kind === 'send') {
     d.sendSessionId = act.sessionId;
@@ -304,6 +308,17 @@ export function draftFromAutomation(a: Automation): AutomationDraft {
 }
 
 export type DraftField = keyof AutomationDraft;
+
+/**
+ * One field edit. B-850e: an account belongs to one agent on one machine, so
+ * changing either clears the account pick (the daemon would refuse a stale
+ * ref as `agent-mismatch` / `missing`).
+ */
+export function editDraft<K extends DraftField>(d: AutomationDraft, key: K, value: AutomationDraft[K]): AutomationDraft {
+  const next = { ...d, [key]: value };
+  if ((key === 'agent' || key === 'machineId') && value !== d[key]) delete next.agentProfile;
+  return next;
+}
 export type DraftErrors = Partial<Record<DraftField, string>>;
 
 /** Field problems as error KEYS (the form maps them to `t()`), so the pure
@@ -384,6 +399,7 @@ export function actionFromDraft(d: AutomationDraft): AutomationAction {
         ...(d.permissionMode ? { permissionMode: d.permissionMode } : {}),
         ...(d.worktree ? { worktree: true } : {}),
         ...(d.stickyKey.trim() ? { sticky: { key: d.stickyKey.trim() } } : {}),
+        ...(d.agentProfile !== undefined ? { agentProfile: d.agentProfile } : {}),
       };
     case 'send':
       return { kind: 'send', sessionId: d.sendSessionId.trim(), prompt: d.prompt };

@@ -16,10 +16,15 @@ export const ACCOUNT_HELP = `Usage:
   very-happy account login <id>                    sign an existing subscription account in again
   very-happy account login --label <name> --token-stdin   import a token from \`claude setup-token\`
   very-happy account add --label <name> --base-url <url> (--key-file <path> | --key-env <VAR> | --key-stdin) [--model <id>[:<contextWindow>]]...
+  very-happy account login --agent codex [--label <name>]   ChatGPT sign-in (device code) in its own Codex home
+  very-happy account login <id>                    sign an existing ChatGPT account in again
+  very-happy account add --agent codex --label <name> (--provider <config.toml id> | --base-url <url>) [--wire-api responses|chat]
+                         (--key-file <path> | --key-env <VAR> | --key-stdin) [--model <id>]...
+                                                   Codex API provider; the key reaches only sessions bound to it
   very-happy account test <id>
   very-happy account rename <id> <label>
   very-happy account rm <id> [--force]
-  very-happy account default <id|machine>          account new Claude sessions on this machine start on
+  very-happy account default <id|machine> [--agent codex]   account new Claude (or Codex) sessions on this machine start on
   very-happy account bind <sessionId> <id|machine> [--model <id>] [--no-restart]
 
 Accounts belong to THIS machine: tokens and keys stay in $HAPPY_HOME_DIR
@@ -29,12 +34,12 @@ is missing or expired refuses to run — it never falls back to the machine logi
 export type AccountArgs =
     | { action: 'help' }
     | { action: 'list'; json: boolean }
-    | { action: 'login'; accountId?: string; label?: string; tokenStdin: boolean }
-    | { action: 'add'; label: string; baseUrl: string; key: { source: 'file'; path: string } | { source: 'env'; name: string } | { source: 'stdin' }; models: Array<string | { id: string; contextWindow: number }> }
+    | { action: 'login'; agent: 'claude' | 'codex'; accountId?: string; label?: string; tokenStdin: boolean }
+    | { action: 'add'; agent: 'claude' | 'codex'; label: string; baseUrl?: string; provider?: string; wireApi?: 'responses' | 'chat'; key: { source: 'file'; path: string } | { source: 'env'; name: string } | { source: 'stdin' }; models: Array<string | { id: string; contextWindow: number }> }
     | { action: 'test'; accountId: string }
     | { action: 'rename'; accountId: string; label: string }
     | { action: 'rm'; accountId: string; force: boolean }
-    | { action: 'default'; accountId: string | null }
+    | { action: 'default'; accountId: string | null; agent?: 'claude' | 'codex' }
     | { action: 'bind'; sessionId: string; accountId: string | null; model?: string; restart: boolean };
 
 /** Pure: argv after `account` → action. Throws on malformed input. */
@@ -44,7 +49,7 @@ export function parseAccountArgs(args: string[]): AccountArgs {
     const flags = new Map<string, string[]>();
     const bools = new Set<string>();
     const positional: string[] = [];
-    const valued = new Set(['--label', '--base-url', '--key-file', '--key-env', '--model']);
+    const valued = new Set(['--label', '--base-url', '--key-file', '--key-env', '--model', '--agent', '--provider', '--wire-api']);
     for (let i = 0; i < rest.length; i++) {
         const arg = rest[i];
         if (arg === '-h' || arg === '--help') return { action: 'help' };
@@ -63,21 +68,34 @@ export function parseAccountArgs(args: string[]): AccountArgs {
         for (const f of flags.keys()) if (!names.includes(f)) throw new Error(`unknown option ${f}`);
     };
     const machineOr = (id: string) => (id === 'machine' || id === 'default' ? null : id);
+    const agentFlag = (): 'claude' | 'codex' => {
+        const agent = one('--agent') ?? 'claude';
+        if (agent !== 'claude' && agent !== 'codex') throw new Error('--agent must be claude or codex');
+        return agent;
+    };
     switch (sub) {
         case 'list':
         case 'ls':
             allowed(['--json']);
             return { action: 'list', json: bools.has('--json') };
-        case 'login':
-            allowed(['--label', '--token-stdin']);
+        case 'login': {
+            allowed(['--label', '--token-stdin', '--agent']);
+            const agent = agentFlag();
             if (positional.length > 1) throw new Error('login takes at most one account id');
-            if (!positional[0] && !one('--label')) throw new Error('login needs --label <name> (new account) or an account id (sign in again)');
-            return { action: 'login', ...(positional[0] ? { accountId: positional[0] } : {}), ...(one('--label') ? { label: one('--label') } : {}), tokenStdin: bools.has('--token-stdin') };
+            if (agent === 'claude' && !positional[0] && !one('--label')) throw new Error('login needs --label <name> (new account) or an account id (sign in again)');
+            if (agent === 'codex' && bools.has('--token-stdin')) throw new Error('--token-stdin is for Claude accounts');
+            return { action: 'login', agent, ...(positional[0] ? { accountId: positional[0] } : {}), ...(one('--label') ? { label: one('--label') } : {}), tokenStdin: bools.has('--token-stdin') };
+        }
         case 'add': {
-            allowed(['--label', '--base-url', '--key-file', '--key-env', '--key-stdin', '--model']);
+            allowed(['--label', '--base-url', '--key-file', '--key-env', '--key-stdin', '--model', '--agent', '--provider', '--wire-api']);
+            const agent = agentFlag();
             const label = one('--label');
             const baseUrl = one('--base-url');
-            if (!label || !baseUrl) throw new Error('add needs --label and --base-url');
+            const provider = one('--provider');
+            const wireApi = one('--wire-api');
+            if (agent === 'claude' && (provider || wireApi)) throw new Error('--provider / --wire-api are for Codex accounts (--agent codex)');
+            if (wireApi && wireApi !== 'responses' && wireApi !== 'chat') throw new Error('--wire-api must be responses or chat');
+            if (!label || (!baseUrl && !provider)) throw new Error(agent === 'codex' ? 'add --agent codex needs --label and --provider or --base-url' : 'add needs --label and --base-url');
             const sources = [one('--key-file') !== undefined, one('--key-env') !== undefined, bools.has('--key-stdin')].filter(Boolean).length;
             if (sources !== 1) throw new Error('add needs exactly one of --key-file, --key-env, --key-stdin');
             const key = one('--key-file') !== undefined
@@ -87,7 +105,7 @@ export function parseAccountArgs(args: string[]): AccountArgs {
                 const match = m.match(/^(.+):(\d+)$/);
                 return match ? { id: match[1], contextWindow: Number(match[2]) } : m;
             });
-            return { action: 'add', label, baseUrl, key, models };
+            return { action: 'add', agent, label, ...(baseUrl ? { baseUrl } : {}), ...(provider ? { provider } : {}), ...(wireApi ? { wireApi: wireApi as 'responses' | 'chat' } : {}), key, models };
         }
         case 'test':
         case 'rm':
@@ -100,9 +118,9 @@ export function parseAccountArgs(args: string[]): AccountArgs {
             if (positional.length !== 2) throw new Error('rename needs <id> <label>');
             return { action: 'rename', accountId: positional[0], label: positional[1] };
         case 'default':
-            allowed([]);
+            allowed(['--agent']);
             if (positional.length !== 1) throw new Error('default needs <id|machine>');
-            return { action: 'default', accountId: machineOr(positional[0]) };
+            return { action: 'default', accountId: machineOr(positional[0]), ...(one('--agent') ? { agent: agentFlag() } : {}) };
         case 'bind':
             allowed(['--model', '--no-restart']);
             if (positional.length !== 2) throw new Error('bind needs <sessionId> <id|machine>');
@@ -114,8 +132,10 @@ export function parseAccountArgs(args: string[]): AccountArgs {
 
 /** Pure: one line per account for `account list`. */
 export function formatAccountLine(a: AgentProfileSummary, isDefault: boolean, now: number): string {
-    const kind = a.kind === 'claude-subscription' ? 'subscription' : a.kind === 'claude-api' ? 'api' : a.kind;
+    const kind = ({ 'claude-subscription': 'subscription', 'claude-api': 'api', 'codex-chatgpt': 'codex chatgpt', 'codex-provider': 'codex provider' } as Record<string, string>)[a.kind] ?? a.kind;
     const extra: string[] = [];
+    if (a.email) extra.push(a.email + (a.planType ? ` (${a.planType})` : ''));
+    if (a.provider) extra.push(`provider: ${a.provider}`);
     if (a.baseUrl) extra.push(a.baseUrl);
     if (a.models?.length) extra.push(`models: ${a.models.join(', ')}`);
     if (a.keySource === 'file' || a.keySource === 'env') extra.push(`key: ${a.keySource} ${a.keyRef ?? ''}`.trim());
@@ -138,6 +158,32 @@ async function restartOutcome(sessionId: string) {
     // The old wrapper still alive = still on the old credential → bind() rolls the binding back.
     const stillRunning = await listDaemonSessions().then((children) => children.some((c) => c?.happySessionId === sessionId), () => false);
     return localRestartFailure(error, stillRunning);
+}
+
+/** B-850b: Codex ChatGPT sign-in in the terminal — the same device-code flow the Web uses. */
+async function loginCodexInteractive(target: { accountId?: string; label?: string }): Promise<AgentProfileSummary> {
+    const svc = new AccountService({ home: configuration.happyHomeDir });
+    try {
+        const started = await svc.loginStart({ agent: 'codex', kind: 'codex-chatgpt', ...target });
+        if (started.state !== 'waiting-code' || !started.url || !started.userCode) throw new Error(started.error ?? 'codex did not return a device code');
+        console.log(`Open ${started.url} , sign in to ChatGPT and enter this code:\n\n    ${started.userCode}\n\nWaiting (expires in 15 minutes; Ctrl-C to cancel)…`);
+        const cancel = () => { svc.loginCancel(started.loginId); };
+        process.once('SIGINT', cancel);
+        try {
+            for (;;) {
+                await new Promise((r) => setTimeout(r, 1000));
+                const status = svc.loginStatus(started.loginId);
+                if (status.state === 'waiting-code' || status.state === 'starting') continue;
+                if (status.state === 'succeeded' && status.account) return status.account;
+                throw new Error(status.error ?? `sign-in ${status.state}`);
+            }
+        } finally {
+            process.off('SIGINT', cancel);
+        }
+    } finally {
+        await svc.settleLogins();
+        svc.dispose();
+    }
 }
 
 async function loginInteractive(target: { accountId?: string; label?: string }): Promise<AgentProfileSummary> {
@@ -202,15 +248,21 @@ export async function handleAccountCommand(args: string[]): Promise<void> {
             }
             case 'login': {
                 const target = { ...(parsed.accountId ? { accountId: parsed.accountId } : {}), ...(parsed.label ? { label: parsed.label } : {}) };
-                const account = parsed.tokenStdin
-                    ? service.storeSubscriptionToken(await readStdin(), target)
-                    : await loginInteractive(target);
+                const existing = parsed.accountId ? service.state().accounts.find((a) => a.id === parsed.accountId) : undefined;
+                const codex = parsed.agent === 'codex' || existing?.agent === 'codex';
+                const account = codex
+                    ? await loginCodexInteractive(target)
+                    : parsed.tokenStdin
+                        ? service.storeSubscriptionToken(await readStdin(), target)
+                        : await loginInteractive(target);
                 console.log(`Signed in: ${account.id} (${account.label}).`);
                 return;
             }
             case 'add': {
                 const key = parsed.key.source === 'stdin' ? { source: 'paste' as const, value: await readStdin() } : parsed.key;
-                const account = await service.add({ agent: 'claude', kind: 'claude-api', label: parsed.label, baseUrl: parsed.baseUrl, key, ...(parsed.models.length ? { models: parsed.models } : {}) });
+                const account = parsed.agent === 'codex'
+                    ? await service.add({ agent: 'codex', kind: 'codex-provider', label: parsed.label, ...(parsed.baseUrl ? { baseUrl: parsed.baseUrl } : {}), ...(parsed.provider ? { provider: parsed.provider } : {}), ...(parsed.wireApi ? { wireApi: parsed.wireApi } : {}), key, ...(parsed.models.length ? { models: parsed.models } : {}) })
+                    : await service.add({ agent: 'claude', kind: 'claude-api', label: parsed.label, baseUrl: parsed.baseUrl, key, ...(parsed.models.length ? { models: parsed.models } : {}) });
                 console.log(formatAccountLine(account, false, Date.now()));
                 return;
             }
@@ -229,10 +281,13 @@ export async function handleAccountCommand(args: string[]): Promise<void> {
                 for (const [sessionId, outcome] of Object.entries(restarts ?? {})) if (outcome !== 'done') console.log(chalk.dim(`  ${sessionId}: restart ${outcome}`));
                 return;
             }
-            case 'default':
-                service.setDefault('claude', parsed.accountId);
-                console.log(parsed.accountId ? `New Claude sessions on this machine start on ${parsed.accountId}.` : 'New Claude sessions on this machine use the machine login.');
+            case 'default': {
+                const agent = parsed.agent ?? (parsed.accountId ? service.state().accounts.find((a) => a.id === parsed.accountId)?.agent : undefined) ?? 'claude';
+                service.setDefault(agent, parsed.accountId);
+                const name = agent === 'codex' ? 'Codex' : 'Claude';
+                console.log(parsed.accountId ? `New ${name} sessions on this machine start on ${parsed.accountId}.` : `New ${name} sessions on this machine use the machine login.`);
                 return;
+            }
             case 'bind': {
                 const result = await service.bind({ sessionId: parsed.sessionId, accountId: parsed.accountId, ...(parsed.model ? { model: parsed.model } : {}), restart: parsed.restart });
                 const shown = bindResultMessages(result, parsed.sessionId, `${parsed.accountId ?? 'machine login'}${parsed.model ? ` / ${parsed.model}` : ''}`, 'account');

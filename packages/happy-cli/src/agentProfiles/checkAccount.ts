@@ -43,7 +43,7 @@ function lastLine(text: string): string {
 
 /** Never echo anything token-shaped back to the Web. */
 export function sanitizeDetail(text: string): string {
-    return text.replace(/sk-ant-[A-Za-z0-9_-]+/g, 'sk-ant-…').replace(/\s+/g, ' ').trim().slice(0, 200);
+    return text.replace(/sk-ant-[A-Za-z0-9_-]+/g, 'sk-ant-…').replace(/\b(sk|rk)-[A-Za-z0-9_-]{16,}/g, '$1-…').replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
 export async function checkApiAccount(record: AccountRecord, key: string, now: () => number = Date.now): Promise<AccountCheck> {

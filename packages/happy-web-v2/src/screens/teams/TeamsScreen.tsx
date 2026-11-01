@@ -10,7 +10,7 @@ import {
   TeamsApiError,
 } from "@/sync/teams";
 import { watchTeamDispatch } from "@/sync/teamDispatchWatch";
-import { storage, useAllMachines } from "@/sync/storage";
+import { storage, useAllMachines, useMachine } from "@/sync/storage";
 import { useShallow } from "zustand/react/shallow";
 import { botHistorySessionId } from "@/screens/sessions/teamNavigation";
 import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
@@ -26,6 +26,10 @@ import { AdoptTeamForm } from "./AdoptTeamForm";
 import { TeamStartForm } from "./TeamStartForm";
 import { useFirstUseCopy } from "./firstUseCopy";
 import { TeamOptions } from "./TeamOptions";
+import { TeamMemberAccounts, memberFollowLabel } from "./TeamMemberAccounts";
+import { AccountChoiceField } from "@/components/accounts/AccountChoiceField";
+import { decodeAccountChoice, encodeAccountChoice, teamAgent, type AccountChoice } from "@/sync/accountChoice";
+import { readMachineAgentProfiles } from "@/sync/agentProfiles";
 import { TeamProjectLine, TeamProjectNudge, TeamProjectSettings } from "./TeamProject";
 import { refreshProjects, useProjects } from "@/sync/projects";
 import { ActionDropdownMenu } from "@/ui/Menu";
@@ -157,11 +161,13 @@ function TeamsContent() {
       unsubscribe();
     };
   }, [teamId]);
-  async function act(action?: TeamAction) {
-    if (!teamId || busy) return;
+  async function act(action?: TeamAction): Promise<void> { await actApplied(action); }
+  /** true once the server applied the action (B-850e: the member account follow-up needs to know). */
+  async function actApplied(action?: TeamAction): Promise<boolean> {
+    if (!teamId || busy) return false;
     const p =
       pending ?? (action ? { action, requestId: crypto.randomUUID() } : null);
-    if (!p) return;
+    if (!p) return false;
     setPending(p);
     setBusy(true);
     try {
@@ -174,12 +180,14 @@ function TeamsContent() {
       setPending(null);
       setError("");
       if (p.action.type === "delegate") setDelegating(false);
+      return true;
     } catch (e) {
       if (e instanceof TeamsApiError && e.status < 500) {
         setPending(null);
         if (e.status === 409) void load();
       }
       fail(e);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -295,6 +303,7 @@ function TeamsContent() {
           </section>
             <TeamProjectSettings team={team} disabled={disabled} />
             <TeamOptions team={team} disabled={disabled} onSave={async defaults => { await act({type: 'set-defaults', defaults}); }} />
+            <TeamMemberAccounts team={team} disabled={disabled} act={actApplied} />
           </>}
           {startingExisting && <TeamDialog title={first.setup} onClose={() => setStartingExisting(false)}><TeamStartForm machineId={team.machineId} intentScope={`team:${team.id}`} onStart={async (_name, _machineId, launch, requestId) => {
             return (await actOnTeam(team.id, {type: 'start', launch}, requestId)).team;
@@ -325,6 +334,8 @@ function TeamsContent() {
                       | "codex"
                       | "pi-acp",
                     parentTaskId: String(f.get("parent")) || undefined,
+                    // B-850e: the new member's account (absent = team default for the same agent).
+                    ...(() => { const choice = decodeAccountChoice(String(f.get("agentProfile") ?? "")); return choice !== undefined ? { agentProfile: choice } : {}; })(),
                   });
                 }}
               >
@@ -493,7 +504,12 @@ function TeamHeadingMenu({ label, items }: { label: string; items: MenuItemDef[]
 
 export function DelegateChoices({ team, agentLabel }: { team: TeamState; agentLabel: string }) {
   const id = useId();
-  const [assistant, setAssistant] = useState<TeamAssistant>(team.defaults?.assistant ?? "claude");
+  const [assistant, setAssistantState] = useState<TeamAssistant>(team.defaults?.assistant ?? "claude");
+  // B-850e: the new member's account; a new agent clears it (accounts are per agent).
+  const [account, setAccount] = useState<AccountChoice>(undefined);
+  const setAssistant = (next: TeamAssistant) => { if (next !== assistant) setAccount(undefined); setAssistantState(next); };
+  const machine = useMachine(team.machineId);
+  const accountState = readMachineAgentProfiles(machine);
   const [parent, setParent] = useState("");
   const open = team.tasks.filter((task) => !["done", "cancelled"].includes(task.status));
   const parentOptions = [
@@ -510,6 +526,9 @@ export function DelegateChoices({ team, agentLabel }: { team: TeamState; agentLa
       <Segmented labelledBy={`${id}-agent`} name="assistant" value={assistant} onChange={setAssistant}
         options={TEAM_ASSISTANTS.map((value) => ({ value, label: TEAM_ASSISTANT_LABELS[value] }))} />
     </div>
+    <AccountChoiceField machine={machine} agent={teamAgent(assistant)} value={account} onChange={setAccount} labelId={`${id}-account`}
+      followLabel={memberFollowLabel(team, { assistant }, accountState)} className="teams-field acc-choice-field" testId="delegate-account" />
+    <input type="hidden" name="agentProfile" value={encodeAccountChoice(account)} />
     <div className="teams-field">
       <span id={`${id}-parent`}>{tr("teams.parent")}</span>
       <Combobox variant="soft" size="md" label={tr("teams.parent")} labelledBy={`${id}-parent`} name="parent" searchable

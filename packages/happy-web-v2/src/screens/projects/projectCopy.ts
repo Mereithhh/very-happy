@@ -20,7 +20,7 @@ export function useProjectCopy() {
     attachTeam: '关联团队', detach: '解除关联', newTeamHere: '在此项目中新建团队', linkTeam: '关联已有团队', noTeams: '还没有团队。团队的负责人和成员会共享这个项目的说明和记录。', teamNoFolder: '这个团队没有已知的工作目录，无法加入项目', viaTeam: '团队成员', removeFromProject: '从项目移出', archive: '归档项目', unarchive: '取消归档', delete: '删除项目', deleteConfirm: '删除项目？会话不会被删除，只是不再属于这个项目。',
     notFound: '项目不存在或已被删除', unavailable: '这个服务器还不支持项目', loading: '正在加载…', failed: '操作失败', saved: '已保存',
     // B-757 settings page
-    backTo: (name: string) => `返回「${name}」`, basics: '基本信息', description: '描述', descriptionPh: '一句话说明这个项目做什么', basicsHint: '名称和描述显示在侧栏、项目页和项目选择器里。',
+    backTo: (name: string) => `返回「${name}」`, basics: '基本信息', accounts: '账号', description: '描述', descriptionPh: '一句话说明这个项目做什么', basicsHint: '名称和描述显示在侧栏、项目页和项目选择器里。',
     contextTitle: '项目说明', contextHint: '这个项目要做什么、约定、注意事项。所有成员会话都会读到：放在首条消息前，更新后下一轮带上一行提示。', write: '编辑', preview: '预览', bytes: (n: number, max: number) => `${n} / ${max} 字节`, previewEmpty: '没有可预览的内容',
     foldersHint: '成员会话在这些目录里工作；新会话落在这些目录里时会提示加入项目。', noFolders: '还没有目录', change: '修改',
     folderErr: { empty: '填写路径', machine: '选择机器', worktree: '这是团队成员的临时工作区，改填仓库路径', duplicate: '这台机器上已经有这个目录', limit: '目录已达上限' } as Record<string, string>,
@@ -46,7 +46,7 @@ export function useProjectCopy() {
     attachTeam: 'Link team', detach: 'Unlink', newTeamHere: 'New team in this project', linkTeam: 'Link a team', noTeams: 'No teams yet. A team’s lead and members share this project’s instructions and log.', teamNoFolder: 'This team has no known working folder, so it cannot join the project', viaTeam: 'Team member', removeFromProject: 'Remove from project', archive: 'Archive project', unarchive: 'Unarchive', delete: 'Delete project', deleteConfirm: 'Delete the project? Sessions are kept; they just leave the project.',
     notFound: 'Project not found or deleted', unavailable: 'This server does not support projects yet', loading: 'Loading…', failed: 'Something went wrong', saved: 'Saved',
     // B-757 settings page
-    backTo: (name: string) => `Back to ${name}`, basics: 'Basics', description: 'Description', descriptionPh: 'One line on what this project is for', basicsHint: 'Name and description show in the sidebar, the project page and project pickers.',
+    backTo: (name: string) => `Back to ${name}`, basics: 'Basics', accounts: 'Accounts', description: 'Description', descriptionPh: 'One line on what this project is for', basicsHint: 'Name and description show in the sidebar, the project page and project pickers.',
     contextTitle: 'Project instructions', contextHint: 'What this project is for, its conventions and caveats. Every member session reads them: they go in front of the first message, and after an update the next turn carries a one-line note.', write: 'Write', preview: 'Preview', bytes: (n: number, max: number) => `${n} / ${max} bytes`, previewEmpty: 'Nothing to preview',
     foldersHint: 'Member sessions work in these folders; a new session in one of them is offered to join the project.', noFolders: 'No folders yet', change: 'Edit',
     folderErr: { empty: 'Enter a path', machine: 'Choose a machine', worktree: 'This is a team member’s temporary worktree; use the repository path', duplicate: 'This machine already has this folder', limit: 'Folder limit reached' } as Record<string, string>,

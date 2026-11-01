@@ -1,6 +1,6 @@
 import {
-    ATTENTION_LIMITS, attentionKindNeedsOwner, attentionPushKind, isAttentionActive,
-    type AttentionItem, type AttentionItemPost, type TeamState, type TeamTask,
+    agentProfileUnavailableReason, ATTENTION_LIMITS, attentionKindNeedsOwner, attentionPushKind, isAttentionActive,
+    type AttentionItem, type AttentionItemPost, type TeamOperation, type TeamState, type TeamTask,
 } from '@slopus/happy-wire';
 
 /** Pure B-766 briefing-board rules (`specs/2026-10-owner-briefing.md`), kept out of the store so they are testable without a database. */
@@ -160,6 +160,67 @@ export function teamSubmitItem(team: Pick<TeamState, 'id' | 'name'>, task: TeamT
             { id: TEAM_SUBMIT_CHOICES.return, label: '退回' },
         ],
         links: [{ type: 'task' as const, ref: task.id, label: team.name }],
+    };
+}
+
+// ─── B-850d: a member refused because its account is unusable (Q3) ───────────
+
+export const TEAM_ACCOUNT_KEY_PREFIX = 'team-account:';
+export const teamAccountKey = (operationId: string) => `${TEAM_ACCOUNT_KEY_PREFIX}${operationId}`;
+
+const ACCOUNT_REASON_ZH: Record<string, string> = {
+    'missing': '在这台电脑上不存在',
+    'missing-secret': '缺 key / 登录凭据',
+    'expired': '登录已过期',
+    'invalid': 'key 被拒绝',
+    'agent-mismatch': '不是这个 agent 的账号',
+};
+
+export interface TeamAccountTransitions {
+    /** Spawn operations that just failed with `agent-profile-unavailable:*` — one「需要我决策」item each. */
+    refused: TeamOperation[];
+    /** Operations whose account refusal is over (owner retry, completed, reconciled) — their item closes. */
+    cleared: TeamOperation[];
+}
+
+function accountRefused(op: TeamOperation | undefined): boolean {
+    return !!op && op.type === 'spawn' && op.status === 'failed' && agentProfileUnavailableReason(op.error) !== null;
+}
+
+export function teamAccountTransitions(before: TeamState, after: TeamState): TeamAccountTransitions {
+    const out: TeamAccountTransitions = { refused: [], cleared: [] };
+    const prior = new Map(before.operations.map(o => [o.id, o]));
+    for (const op of after.operations) {
+        const was = prior.get(op.id);
+        // A new failure report (failedAt) — also the same refusal again after「重试启动」.
+        if (accountRefused(op) && (!accountRefused(was) || was!.failedAt !== op.failedAt)) out.refused.push(op);
+        else if (accountRefused(was) && (!accountRefused(op) || was!.retryRequestedAt !== op.retryRequestedAt)) out.cleared.push(op);
+    }
+    return out;
+}
+
+/** The item: what is wrong (member, account, reason) and the two ways out — sign in again, or another account, then「重试启动」. */
+export function teamAccountItem(team: Pick<TeamState, 'id' | 'name' | 'bots'>, op: TeamOperation) {
+    const reason = agentProfileUnavailableReason(op.error) ?? 'unknown';
+    const bot = team.bots.find(b => b.id === op.botId);
+    const account = op.agentProfile ? (op.agentProfile.label ?? op.agentProfile.id) : '机器默认账号';
+    const why = ACCOUNT_REASON_ZH[reason] ?? reason;
+    return {
+        source: 'team' as const,
+        kind: 'blocked' as const,
+        key: teamAccountKey(op.id),
+        title: truncateTitle(`成员 ${bot?.name ?? op.botId} 的账号「${account}」${why}，这一轮没有启动 · ${team.name}`, ATTENTION_LIMITS.titleChars),
+        bodyMd: truncateBytes([
+            `团队「${team.name}」的成员 **${bot?.name ?? op.botId}** 指定的账号「${account}」${why}，没有改用本机登录。`,
+            '',
+            '处理：',
+            '- **重新登录**：设置 → 模型与账号 → 这台电脑 → 该账号「重新登录」（或在电脑上 `very-happy account login` / `very-happy account test <id>`）。',
+            '- **换账号**：团队设置里给该成员换一个账号（或清空跟随团队默认）。',
+            '- 处理完在团队里对这条启动点「重试启动」。',
+            '',
+            `原因：\`${(op.error ?? '').slice(0, 400)}\``,
+        ].join('\n'), ATTENTION_LIMITS.bodyBytes),
+        links: [{ type: 'task' as const, ref: op.taskId, label: team.name }],
     };
 }
 

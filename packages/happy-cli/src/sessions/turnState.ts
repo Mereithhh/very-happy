@@ -13,12 +13,17 @@
  * A prompt sent while the previous turn is still running is followed by that
  * turn's `turn-end` BEFORE its own `turn-start`, so when the agent emits
  * starts at all, a `turn-end` only counts once a `turn-start` followed the prompt.
+ * B-850d: a prompt the wrapper refused without running it (a `queue-cancel`
+ * tombstone naming its localId — account unavailable, queue cleared, restart)
+ * never gets a turn; the tombstone ends it, as `failed` / `cancelled`.
  */
 
 export interface LogEntry {
     seq: number
     /** Decrypted body, or null when it could not be decrypted. */
     body: unknown | null
+    /** The message's localId (prompts carry one; queue-cancel tombstones name it). */
+    localId?: string | null
 }
 
 export interface TurnState {
@@ -36,6 +41,18 @@ export interface TurnState {
     answer: string
     /** Highest seq in the window (0 when empty) — resume point for polling. */
     lastSeq: number
+    /**
+     * B-850d: set when the turn ended because the prompt was never run — the
+     * tombstone's reason ('failed' | 'cleared' | 'aborted' | 'restarted' |
+     * 'canceled' when it named none). Absent otherwise.
+     */
+    discarded?: string
+    /**
+     * B-850d: why the account stopped this turn — 'agent-profile-unavailable'
+     * (refused, never run), or 'agent-profile-history-rejected' (a failed turn
+     * after a Codex account switch whose new account rejects the history).
+     */
+    refusal?: 'agent-profile-unavailable' | 'agent-profile-history-rejected'
 }
 
 import { compactCommandText, parseClear } from '@/parsers/specialCommands'
@@ -126,6 +143,23 @@ function isControlCommand(text: string): boolean {
 
 const COMPACTION_FAILED = 'Compaction failed:'
 
+/** B-850d: the reason of a `queue-cancel` tombstone naming `localId`, or null. */
+function discardReason(body: unknown, localId: string | null | undefined): string | null {
+    if (!localId) return null
+    const env = sessionEnvelope(body)
+    if (env?.ev?.t !== 'queue-cancel' || !Array.isArray(env.ev.targetLocalKeys)) return null
+    if (!env.ev.targetLocalKeys.includes(localId)) return null
+    return typeof env.ev.reason === 'string' && env.ev.reason.length > 0 ? env.ev.reason : 'canceled'
+}
+
+/** B-850d: an account event line of the wrapper (`kind` + text), or null. */
+function accountNotice(body: unknown): { kind: string; message: string } | null {
+    const b = asRecord(body)
+    const data = b?.role === 'agent' && b.content?.type === 'event' ? asRecord(b.content.data) : null
+    if (data?.type !== 'message' || typeof data.message !== 'string' || typeof data.kind !== 'string') return null
+    return data.kind.startsWith('agent-profile-') ? { kind: data.kind, message: data.message } : null
+}
+
 function controlCommandVerdict(body: unknown): { status: string; error: string | null } | null {
     const b = asRecord(body)
     const data = b?.role === 'agent' && b.content?.type === 'event' ? asRecord(b.content.data) : null
@@ -159,6 +193,10 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
     const steerAnchor = userIndex >= 0 && isSteerPrompt(entries[userIndex].body)
     const anchorText = userIndex >= 0 ? userPromptText(entries[userIndex].body) : null
     const commandAnchor = anchorText !== null && isControlCommand(anchorText)
+    const anchorLocalId = userIndex >= 0 ? entries[userIndex].localId : null
+    let discarded: string | null = null
+    let refused = false
+    let historyRejected: string | null = null
 
     for (let i = userIndex + 1; i < entries.length; i++) {
         const body = entries[i].body
@@ -174,8 +212,23 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
             startedAfterPrompt = true
             // A new turn inside the window (queued prompt, another device):
             // only what follows it belongs to the latest turn.
-            ended = false; status = null; error = null; texts = []
+            ended = false; status = null; error = null; texts = []; discarded = null; refused = false; historyRejected = null
             continue
+        }
+        const reason = !ended ? discardReason(body, anchorLocalId) : null
+        if (reason) {
+            ended = true
+            discarded = reason
+            status = reason === 'failed' ? 'failed' : 'cancelled'
+            error = 'Not executed'
+            continue
+        }
+        const notice = accountNotice(body)
+        if (notice?.kind === 'agent-profile-history-rejected') historyRejected = notice.message
+        if (discarded) {
+            if (notice?.kind === 'agent-profile-unavailable' && !refused) { refused = true; error = `Not executed: ${notice.message}` }
+            // The previous turn closing after our (queued, then refused) prompt.
+            if (env?.ev?.t === 'turn-end') continue
         }
         if (env?.ev?.t === 'turn-end') {
             lastMarker = 'end'
@@ -200,6 +253,8 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
     }
 
     if (userIndex < 0) ended = lastMarker === 'end'
+    const rejectedHistory = ended && !discarded && status === 'failed' && historyRejected !== null
+    if (rejectedHistory) error = error ? `${historyRejected} (${error})` : historyRejected
     return {
         userSeq: userIndex >= 0 ? entries[userIndex].seq : null,
         ended,
@@ -207,5 +262,7 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
         error: ended ? error : null,
         answer: texts.join('\n\n').trim(),
         lastSeq,
+        ...(ended && discarded ? { discarded, ...(refused ? { refusal: 'agent-profile-unavailable' as const } : {}) } : {}),
+        ...(rejectedHistory ? { refusal: 'agent-profile-history-rejected' as const } : {}),
     }
 }

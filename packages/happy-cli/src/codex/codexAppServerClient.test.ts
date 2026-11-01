@@ -160,8 +160,8 @@ describe('CodexAppServerClient sandbox integration', () => {
     it('B-844: runCodex publishes configuredModel only when config/read answered', () => {
         const source = readFileSync(new URL('./runCodex.ts', import.meta.url), 'utf8');
         expect(source).toContain('configured = { model: await client.readConfiguredModel(process.cwd()) };');
-        expect(source).toContain('defaultModelCode: configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model,');
-        expect(source).toContain('...(configured ? { configuredModel: configured.model } : {}),');
+        expect(source).toContain('defaultModelCode: codexAccount.profile && !codexAccount.unavailable ? accountDefault : configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model,');
+        expect(source).toContain('...(configured ? { configuredModel: codexAccount.profile && !codexAccount.unavailable ? accountDefault ?? null : configured.model } : {}),');
     });
 
     it('B-844: the wrapper has no model default of its own (machine config decides)', () => {
@@ -564,6 +564,55 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(turnRequest?.params).toEqual(expect.objectContaining({ threadId: 'thread-idle' }));
         expect(firstProcessRequests.filter((msg) => msg.method === 'turn/start')).toHaveLength(1);
 
+        await client.disconnect();
+    });
+
+    it('B-850b: account overrides reach the app-server env and every thread/start|resume (merged with mcp_servers)', async () => {
+        const requests: MockRpcMessage[] = [];
+        const threadResult = (msg: MockRpcMessage, stdout: any) => setTimeout(() => pushJsonLine(stdout, {
+            id: msg.id,
+            result: { thread: { id: 'thread-acct', path: '/tmp/t' }, model: 'kimi', modelProvider: 'vh-hub', cwd: '/tmp/project', approvalPolicy: 'on-request', sandbox: { type: 'readOnly' }, reasoningEffort: null },
+        }), 0);
+        mockSpawn.mockImplementation(() => createMockProcess({
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if ((msg.method === 'thread/start' || msg.method === 'thread/resume') && msg.id != null) threadResult(msg, stdout);
+            },
+        }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const providerTable = { name: 'Hub', base_url: 'https://h/v1', auth: { command: '/node', args: ['-e', 'x', '/key'] } };
+        client.setAccountOverrides({ env: { CODEX_HOME: '/overlay' }, modelProvider: 'vh-hub', config: { model_providers: { 'vh-hub': providerTable } } });
+        await client.connect();
+        expect(mockSpawn.mock.calls[0][2].env.CODEX_HOME).toBe('/overlay');
+        await client.startThread({ cwd: '/tmp/project', mcpServers: { happy: { command: 'n' } } });
+        await client.resumeThread({ threadId: 'thread-acct', model: 'kimi' });
+        const start = requests.find((m) => m.method === 'thread/start')!;
+        const resume = requests.find((m) => m.method === 'thread/resume')!;
+        for (const req of [start, resume]) {
+            expect(req.params.modelProvider).toBe('vh-hub');
+            expect(req.params.config).toEqual({ mcp_servers: { happy: { command: 'n' } }, model_providers: { 'vh-hub': providerTable } });
+        }
+        expect(resume.params.model).toBe('kimi');
+        await client.disconnect();
+    });
+
+    it('B-850b: without an account, threads keep modelProvider null and config = mcp_servers only', async () => {
+        const requests: MockRpcMessage[] = [];
+        mockSpawn.mockImplementation(() => createMockProcess({
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: { thread: { id: 't', path: '/t' }, model: 'm', modelProvider: 'openai', cwd: '/', approvalPolicy: 'on-request', sandbox: { type: 'readOnly' }, reasoningEffort: null } }), 0);
+            },
+        }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        await client.connect();
+        expect(mockSpawn.mock.calls[0][2].env.CODEX_HOME).toBe(process.env.CODEX_HOME);
+        await client.startThread({ cwd: '/' });
+        const start = requests.find((m) => m.method === 'thread/start')!;
+        expect(start.params.modelProvider).toBeNull();
+        expect(start.params.config).toBeNull();
         await client.disconnect();
     });
 

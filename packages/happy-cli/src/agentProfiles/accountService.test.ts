@@ -122,10 +122,10 @@ describe('B-850a account service', () => {
         const handlers = new Map<string, (p: unknown) => Promise<unknown>>();
         registerAgentProfileHandlers({ registerHandler: ((m: string, h: (p: unknown) => Promise<unknown>) => { handlers.set(m, h); }) as never }, svc);
         expect([...handlers.keys()].sort()).toEqual(Object.values(AGENT_PROFILE_RPC).sort());
-        expect(await handlers.get(AGENT_PROFILE_RPC.list)!({})).toMatchObject({ daemonPid: 99, accounts: [], defaults: {} });
+        expect(await handlers.get(AGENT_PROFILE_RPC.list)!({})).toMatchObject({ daemonPid: 99, accounts: [], defaults: {}, kinds: expect.arrayContaining(['codex-chatgpt', 'codex-provider']) });
         expect(await handlers.get(AGENT_PROFILE_RPC.remove)!({ accountId: 'x' })).toEqual({ error: 'no account "x"', code: 'not-found' });
         expect(await handlers.get(AGENT_PROFILE_RPC.loginStatus)!({ loginId: 'x' })).toMatchObject({ code: 'internal' });
-        expect(await handlers.get(AGENT_PROFILE_RPC.setDefault)!({ agent: 'codex', accountId: null })).toMatchObject({ code: 'invalid-params' });
+        expect(await handlers.get(AGENT_PROFILE_RPC.setDefault)!({ agent: 'pi', accountId: null })).toMatchObject({ code: 'invalid-params' });
     });
 });
 
@@ -183,5 +183,18 @@ describe('B-850a local bind (QA30 P1: "this daemon session" read as not running)
         const kept = bindResultMessages({ bound: true, restart: 'failed', error: 'restart-precheck:cwd-missing' }, 's', 'a', 'provider');
         expect(kept.exitCode).toBe(1);
         expect(kept.out).toEqual([]);
+    });
+});
+
+describe('B-850d account service', () => {
+    it('advertises launch-accounts and reports a session\'s account (unbound = machine login)', () => {
+        const { svc } = service();
+        expect(svc.state().features).toEqual(['launch-accounts']);
+        svc.storeSubscriptionToken(OAT + 'T', { label: 'Org A' });
+        svc.writeBinding('s1', 'org-a');
+        svc.writeBinding('s2', null);
+        expect(svc.sessionAccount('s1')).toBe('org-a');
+        expect(svc.sessionAccount('s2')).toBeNull();
+        expect(svc.sessionAccount('never')).toBeNull();
     });
 });

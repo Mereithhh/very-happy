@@ -278,6 +278,17 @@ export class CodexAppServerClient {
     private rateLimitReadInFlight = false;
     private rateLimitReadUnsupported = false;
 
+    /**
+     * B-850b: the session's account (agentProfiles/codexWrapperAccount.ts) —
+     * env for the app-server (a ChatGPT account's CODEX_HOME overlay) and the
+     * provider every thread runs on. Kept across idle-release respawns.
+     */
+    private accountOverrides: { env: Record<string, string>; modelProvider?: string; config?: Record<string, unknown> } = { env: {} };
+
+    setAccountOverrides(overrides: { env: Record<string, string>; modelProvider?: string; config?: Record<string, unknown> }): void {
+        this.accountOverrides = overrides;
+    }
+
     constructor(sandboxConfig?: SandboxConfig) {
         this.sandboxConfig = sandboxConfig;
     }
@@ -745,6 +756,7 @@ export class CodexAppServerClient {
         if (this.sandboxEnabled) {
             env.CODEX_SANDBOX = 'seatbelt';
         }
+        Object.assign(env, this.accountOverrides.env);
 
         logger.debug(`[CodexAppServer] Spawning: ${command} ${args.join(' ')}`);
 
@@ -950,7 +962,8 @@ export class CodexAppServerClient {
     }
 
     private buildThreadConfig(mcpServers?: Record<string, unknown>): Record<string, unknown> | null {
-        return mcpServers ? { mcp_servers: mcpServers } : null;
+        const config = { ...(mcpServers ? { mcp_servers: mcpServers } : {}), ...this.accountOverrides.config };
+        return Object.keys(config).length > 0 ? config : null;
     }
 
     private rememberThreadDefaults(opts: {
@@ -981,7 +994,7 @@ export class CodexAppServerClient {
         await this.ensureConnected();
         const params: NewConversationParams = {
             model: opts.model ?? null,
-            modelProvider: null,
+            modelProvider: this.accountOverrides.modelProvider ?? null,
             profile: null,
             cwd: opts.cwd ?? process.cwd(),
             approvalPolicy: opts.approvalPolicy ?? null,
@@ -1024,7 +1037,7 @@ export class CodexAppServerClient {
         const params: ResumeConversationParams = {
             threadId,
             model: opts?.model ?? defaults.model ?? null,
-            modelProvider: null,
+            modelProvider: this.accountOverrides.modelProvider ?? null,
             cwd: opts?.cwd ?? defaults.cwd ?? process.cwd(),
             approvalPolicy: opts?.approvalPolicy ?? defaults.approvalPolicy ?? null,
             sandbox: opts?.sandbox ?? defaults.sandbox ?? null,
@@ -1063,7 +1076,7 @@ export class CodexAppServerClient {
         const params: ForkConversationParams = {
             threadId: opts.threadId,
             model: opts.model ?? defaults.model ?? null,
-            modelProvider: null,
+            modelProvider: this.accountOverrides.modelProvider ?? null,
             cwd: opts.cwd ?? defaults.cwd ?? process.cwd(),
             approvalPolicy: opts.approvalPolicy ?? defaults.approvalPolicy ?? null,
             sandbox: opts.sandbox ?? defaults.sandbox ?? null,

@@ -1,3 +1,4 @@
+import type { AgentProfileRef } from "@slopus/happy-wire";
 import type { ProjectView, TeamAction, TeamProjectBind, TeamProjectChoice, TeamResponse, TeamState } from "@slopus/happy-wire";
 import { getCurrentAuth } from "@/auth/AuthContext";
 import { getServerUrl } from "./serverConfig";
@@ -38,7 +39,7 @@ export const createTeam = (
   name: string,
   machineId: string,
   requestId: string,
-  launch?: { goal: string; directory: string; assistant: "claude" | "codex" | "pi-acp"; model?: string },
+  launch?: { goal: string; directory: string; assistant: "claude" | "codex" | "pi-acp"; model?: string; agentProfile?: AgentProfileRef | null },
   /** B-726: absent = no project (an older server strips it either way). */
   project?: TeamProjectChoice,
 ) => request<{ team: TeamState }>("", { name, machineId, requestId, ...(launch ? { launch } : {}), ...(project ? { project } : {}) });

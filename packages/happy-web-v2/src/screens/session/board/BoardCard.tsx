@@ -7,6 +7,7 @@ import { kindLabel, type BoardCopy } from './boardCopy';
 import { choiceLabel, displayTitle, isLive, itemStatus, kindTone, optionMarker, repliesTo, resolveAction, recommendationTag } from './boardModel';
 import { useMessage } from '@/sync/storage';
 import { Markdown } from '../Markdown';
+import { TeamAccountItemActions, teamAccountItemText } from './TeamAccountItem';
 
 export function boardTime(ts: number): string {
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return ''; }
@@ -39,6 +40,8 @@ export const BoardCard = forwardRef<HTMLDivElement, {
     const firstMsg = useMessage(item.sessionId, item.firstReply?.messageId ?? '');
     const firstText = item.firstReply?.snippet ?? (firstMsg?.kind === 'agent-text' ? firstMsg.text : undefined);
     const firstAt = firstMsg?.createdAt;
+    // B-850e: a team account refusal reads in the reader's language (the server writes Chinese).
+    const accountText = teamAccountItemText(item);
     const statusLabel = status ? (status.key === 'decided' && status.choice ? copy.decided(choiceLabel(item, status.choice)) : copy.status[status.key]) : null;
     return (
         <div ref={ref} className={`brf-card${expanded ? ' is-open' : ''}${selected ? ' is-selected' : ''}${status?.tone === 'done' ? ' is-done' : ''}`}
@@ -47,7 +50,7 @@ export const BoardCard = forwardRef<HTMLDivElement, {
             <button type="button" className="brf-card-head" aria-expanded={expanded} aria-controls={bodyId} onClick={() => actions.onToggle(item)}>
                 <span className="brf-r1">
                     <span className={`brf-kind brf-kind--${kindTone(item.kind)}`}>{kindLabel(copy, item.kind)}</span>
-                    <span className="brf-title" title={item.title}>{displayTitle(item.title)}</span>
+                    <span className="brf-title" title={accountText?.title ?? item.title}>{displayTitle(accountText?.title ?? item.title)}</span>
                     {statusLabel && <span className={`brf-status brf-status--${status!.tone}`}>{statusLabel}</span>}
                 </span>
                 <span className="brf-r2">
@@ -60,7 +63,7 @@ export const BoardCard = forwardRef<HTMLDivElement, {
             </button>
             {expanded && (
                 <div className="brf-x" id={bodyId}>
-                    {item.bodyMd && <div className="brf-body"><Markdown text={item.bodyMd} /></div>}
+                    {accountText ? <div className="brf-body"><Markdown text={accountText.body} /></div> : item.bodyMd && <div className="brf-body"><Markdown text={item.bodyMd} /></div>}
                     {item.options && item.options.length > 0 && (
                         <div className="brf-opts" role="group" aria-label={copy.kinds.decision}>
                             {item.options.map((o) => (
@@ -105,6 +108,7 @@ export const BoardCard = forwardRef<HTMLDivElement, {
                         {item.anchor && (
                             <button type="button" onClick={() => actions.onLocate(item)}><CornerUpRight size={13} aria-hidden />{copy.locate}</button>
                         )}
+                        <TeamAccountItemActions item={item} />
                         {resolve && <button type="button" onClick={() => actions.onResolve(item)}>{copy.resolve[resolve]}</button>}
                         <button type="button" onClick={() => actions.onFollowUp(item)}><CornerDownLeft size={13} aria-hidden />{copy.followUp}</button>
                     </div>

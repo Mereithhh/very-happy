@@ -207,7 +207,8 @@ export function promptPreview(text: string, maxLines = 3, maxChars = 280): { tex
   return { text: out, truncated };
 }
 
-export function describeAction(action: AutomationAction, lang: Lang): ActionText {
+/** `accountLabel`: B-850e — the run's account by its live label (the caller resolves it on the machine); omitted = not chosen. */
+export function describeAction(action: AutomationAction, lang: Lang, accountLabel?: string): ActionText {
   const zh = lang === 'zh';
   switch (action.kind) {
     case 'spawn': {
@@ -215,6 +216,7 @@ export function describeAction(action: AutomationAction, lang: Lang): ActionText
       if (action.model) bits.push(action.model);
       if (action.worktree) bits.push('worktree');
       if (action.sticky) bits.push(`sticky ${action.sticky.key}`);
+      if (action.agentProfile !== undefined && accountLabel) bits.push(`${zh ? '账号' : 'account'} ${accountLabel}`);
       const p = promptPreview(action.prompt);
       return { kind: 'spawn', headline: bits.join(' · '), body: p.text, truncated: p.truncated };
     }
@@ -285,6 +287,10 @@ export type AttentionKind =
   | 'precheck_broken'
   /** B-548: the machine's CLI cannot run prechecks (the action did not run) */
   | 'precheck_unsupported_cli'
+  /** B-850d: the run's account is missing / expired / invalid — refused, not run on the machine login */
+  | 'account_unavailable'
+  /** B-850d: a sticky Codex session moved to an account that refuses its history */
+  | 'account_history_rejected'
   | 'other';
 
 export function attentionKind(run: Pick<AutomationRun, 'status' | 'attentionReason'>): AttentionKind {
@@ -296,6 +302,8 @@ export function attentionKind(run: Pick<AutomationRun, 'status' | 'attentionReas
   if (reason === 'invalid_action') return 'invalid_action';
   if (reason === 'precheck_timeout' || reason === 'precheck_error') return 'precheck_broken';
   if (reason === 'precheck_unsupported_cli') return 'precheck_unsupported_cli';
+  if (reason === 'account_unavailable') return 'account_unavailable';
+  if (reason === 'account_history_rejected') return 'account_history_rejected';
   if (reason === 'lease_expired' || reason === 'max_runtime_exceeded' || run.status === 'expired') return 'expired';
   if (run.status === 'failed') return 'failed';
   return 'other';
@@ -321,6 +329,8 @@ export function attentionRank(run: Pick<AutomationRun, 'status' | 'attentionReas
     case 'invalid_action':
     case 'precheck_broken':
     case 'precheck_unsupported_cli':
+    case 'account_unavailable':
+    case 'account_history_rejected':
       return 1;
     case 'machine_offline':
       return 2;

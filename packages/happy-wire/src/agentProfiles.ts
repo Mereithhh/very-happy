@@ -39,8 +39,13 @@ export const AGENT_PROFILE_RPC = {
     bind: 'agent-profile-bind',
 } as const;
 
-/** Kinds this CLI can create. Reserved for later PRs: codex-chatgpt, codex-provider, pi-provider, gemini-api. */
-export const AGENT_PROFILE_KINDS = ['claude-subscription', 'claude-api'] as const;
+/**
+ * Kinds this CLI can create. Reserved for later PRs: pi-provider, gemini-api.
+ *   codex-chatgpt  — B-850b: a ChatGPT sign-in (device code) in its own CODEX_HOME overlay
+ *   codex-provider — B-850b: an API provider (a `[model_providers.X]` of the machine's
+ *                    ~/.codex/config.toml, or an own URL) with a per-session key
+ */
+export const AGENT_PROFILE_KINDS = ['claude-subscription', 'claude-api', 'codex-chatgpt', 'codex-provider'] as const;
 export type AgentProfileKind = (typeof AGENT_PROFILE_KINDS)[number];
 
 /**
@@ -56,7 +61,7 @@ export type AgentProfileStatus = (typeof AGENT_PROFILE_STATUSES)[number];
 export const AgentProfileSummarySchema = z.object({
     id: z.string(),
     label: z.string(),
-    agent: z.string(),                      // 'claude' (codex/pi/gemini later)
+    agent: z.string(),                      // 'claude' | 'codex' (pi/gemini later)
     kind: z.string(),                       // AgentProfileKind (open)
     status: z.string(),                     // AgentProfileStatus (open; unknown → 'unverified')
     statusDetail: z.string().optional(),    // short human reason for the last failed check
@@ -74,6 +79,11 @@ export const AgentProfileSummarySchema = z.object({
     keyRef: z.string().optional(),
     /** Read from the B-794 `providers.json` (v1): listed and usable, but edit/remove it in that file. */
     legacy: z.boolean().optional(),
+    /** B-850b codex-provider: the `[model_providers.<id>]` of ~/.codex/config.toml it is based on. */
+    provider: z.string().optional(),
+    /** B-850b codex-chatgpt: from Codex `account/read` after sign-in. */
+    email: z.string().optional(),
+    planType: z.string().optional(),
 });
 export type AgentProfileSummary = z.infer<typeof AgentProfileSummarySchema>;
 
@@ -84,6 +94,27 @@ export const AgentProfilesStateSchema = z.object({
     accounts: z.array(AgentProfileSummarySchema),
     /** agent → account id new sessions on this machine use when the spawn names none. Absent = machine login. */
     defaults: z.record(z.string(), z.string()),
+    /**
+     * B-850b: the account kinds this daemon can create (its AGENT_PROFILE_KINDS). Always sent from
+     * B-850b on, so a codex-capable daemon with no config.toml providers is distinguishable from a
+     * B-850a daemon. Absent (older daemon) = ['claude-subscription', 'claude-api'].
+     */
+    kinds: z.array(z.string()).optional(),
+    /** B-850b: the providers in this machine's ~/.codex/config.toml (for the add form; no secrets). Absent when none. */
+    codexProviders: z.array(z.object({
+        id: z.string(),
+        name: z.string().optional(),
+        baseUrl: z.string().optional(),
+        envKey: z.string().optional(),
+    })).optional(),
+    /**
+     * B-850d: what else this daemon honours. `'launch-accounts'` = the account
+     * chosen on a project / team / automation (and a fork's inherited one) is
+     * used, and an unusable one refuses the run. Absent (B-850a/b daemon) =
+     * those fields are ignored: such sessions start on the machine default
+     * account, else the machine login — the Web says so next to the picker.
+     */
+    features: z.array(z.string()).optional(),
 });
 export type AgentProfilesState = z.infer<typeof AgentProfilesStateSchema>;
 
@@ -122,23 +153,55 @@ export const AgentProfileModelInputSchema = z.union([
     z.object({ id: z.string().min(1).max(160), contextWindow: z.number().int().positive().optional() }),
 ]);
 
-export const AgentProfileAddRequestSchema = z.object({
+const BaseUrlSchema = z.string().regex(/^https?:\/\/\S+$/).max(512);
+
+export const ClaudeApiAddRequestSchema = z.object({
     agent: z.literal('claude'),
     kind: z.literal('claude-api'),
     label: z.string().trim().min(1).max(60),
-    baseUrl: z.string().regex(/^https?:\/\/\S+$/).max(512),
+    baseUrl: BaseUrlSchema,
     models: z.array(AgentProfileModelInputSchema).max(50).optional(),
     key: AgentProfileKeyInputSchema,
 });
+
+/**
+ * B-850b: a Codex API provider. `provider` = a `[model_providers.<id>]` of the
+ * machine's ~/.codex/config.toml (its base_url / wire_api / headers are
+ * inherited; `baseUrl` overrides); without one, `baseUrl` is required.
+ */
+export const CodexProviderAddRequestSchema = z.object({
+    agent: z.literal('codex'),
+    kind: z.literal('codex-provider'),
+    label: z.string().trim().min(1).max(60),
+    provider: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
+    baseUrl: BaseUrlSchema.optional(),
+    wireApi: z.enum(['responses', 'chat']).optional(),
+    models: z.array(AgentProfileModelInputSchema).max(50).optional(),
+    key: AgentProfileKeyInputSchema,
+}).refine((r) => !!r.provider || !!r.baseUrl, { message: 'provider or baseUrl is required' });
+
+export const AgentProfileAddRequestSchema = z.union([ClaudeApiAddRequestSchema, CodexProviderAddRequestSchema]);
 export type AgentProfileAddRequest = z.infer<typeof AgentProfileAddRequestSchema>;
 
-/** Starts `claude setup-token` on the machine. `accountId` = re-login an existing subscription account. */
-export const AgentProfileLoginStartRequestSchema = z.object({
-    agent: z.literal('claude'),
-    kind: z.literal('claude-subscription'),
-    label: z.string().trim().min(1).max(60).optional(),
-    accountId: z.string().optional(),
-});
+/**
+ * Starts `claude setup-token` (paste-code flow) or, B-850b, a Codex ChatGPT
+ * device-code sign-in on the machine. `accountId` = re-login an existing account.
+ */
+export const AgentProfileLoginStartRequestSchema = z.union([
+    z.object({
+        agent: z.literal('claude'),
+        kind: z.literal('claude-subscription'),
+        label: z.string().trim().min(1).max(60).optional(),
+        accountId: z.string().optional(),
+    }),
+    z.object({
+        agent: z.literal('codex'),
+        kind: z.literal('codex-chatgpt'),
+        /** Optional: a new account defaults to the signed-in email. */
+        label: z.string().trim().min(1).max(60).optional(),
+        accountId: z.string().optional(),
+    }),
+]);
 export type AgentProfileLoginStartRequest = z.infer<typeof AgentProfileLoginStartRequestSchema>;
 
 export const AgentProfileLoginSubmitRequestSchema = z.object({
@@ -147,12 +210,18 @@ export const AgentProfileLoginSubmitRequestSchema = z.object({
 });
 
 /**
- * waiting-code → (submit) → exchanging → succeeded | failed.
- * canceled / expired (10 min without a code) are terminal too.
+ * paste-code (Claude):  waiting-code → (submit) → exchanging → succeeded | failed.
+ * device-code (Codex):  waiting-code (the user enters `userCode` at `url`; nothing
+ *                       to submit) → succeeded | failed.
+ * canceled / expired (Claude 10 min without a code, Codex 15 min) are terminal too.
  */
 export const AgentProfileLoginStatusSchema = z.object({
     loginId: z.string(),
     state: z.string(),
+    /** B-850b: 'paste-code' | 'device-code' (absent = older CLI = paste-code). */
+    flow: z.string().optional(),
+    /** device-code: what the user types on the `url` page. Not a secret on its own (useless without the browser sign-in). */
+    userCode: z.string().optional(),
     url: z.string().optional(),
     expiresAt: z.number().optional(),
     account: AgentProfileSummarySchema.optional(),
@@ -213,4 +282,88 @@ export function readSessionAgentProfile(value: unknown): SessionAgentProfile | n
     if (value === null) return null;
     const parsed = SessionAgentProfileSchema.safeParse(value);
     return parsed.success ? parsed.data : undefined;
+}
+
+// ---- B-850d: accounts chosen on a project / team / automation ----
+
+export const AGENT_PROFILE_FEATURE_LAUNCH = 'launch-accounts';
+
+/**
+ * An account picked for a project / team / automation, as stored on the
+ * server: the machine-local id plus a display label (for 「『组织 A』在
+ * mac-office 上不存在」). Never a secret. The label is a snapshot from when it
+ * was picked — only a fallback for display (the account may since be renamed
+ * or gone); readers prefer the live label from that machine's
+ * `daemonState.agentProfiles`. Where it is a choice the three
+ * states are: absent = not chosen (next level decides), `null` = the machine
+ * login explicitly, a ref = that account.
+ */
+export const AgentProfileRefSchema = z.object({
+    id: z.string().min(1).max(64),
+    label: z.string().min(1).max(200).optional(),
+});
+export type AgentProfileRef = z.infer<typeof AgentProfileRefSchema>;
+export const AgentProfileChoiceSchema = AgentProfileRefSchema.nullable();
+
+/**
+ * `ProjectDefaults.agentProfiles[]`: the account new sessions of this project
+ * use for `agent` on `machineId` (accounts are per machine, so on any other
+ * machine the project has no account default). `id: null` = machine login.
+ */
+export const ProjectAgentProfileSchema = z.object({
+    agent: z.string().min(1).max(64),
+    machineId: z.string().min(1).max(128),
+    id: z.string().min(1).max(64).nullable(),
+    label: z.string().min(1).max(200).optional(),
+});
+export type ProjectAgentProfile = z.infer<typeof ProjectAgentProfileSchema>;
+export const ProjectAgentProfilesSchema = z.array(ProjectAgentProfileSchema).max(16);
+
+export type LaunchAgentProfile = {
+    /** The spawn's `agentProfileId`: id, `null` (machine login) or undefined (the daemon's machine default, else machine login). */
+    agentProfileId: string | null | undefined;
+    /**
+     * Where it comes from: 'explicit' | 'project' | 'machine' (the machine
+     * default account) | 'machine-login' (no default on that machine). Without
+     * `machineDefaults` the last two cannot be told apart: 'machine'.
+     */
+    source: 'explicit' | 'project' | 'machine' | 'machine-login';
+    /** The account the session will start on (null = machine login); undefined when it depends on a machine default not given. */
+    effective: string | null | undefined;
+};
+
+/**
+ * Which account a new session starts on — explicit (the session / team /
+ * automation's own choice) > project default for this agent on this machine
+ * > machine default (the daemon) > machine login. Pure; the daemon, the CLI
+ * and the Web share it.
+ */
+export function resolveLaunchAgentProfile(input: {
+    explicit?: AgentProfileRef | null;
+    project?: readonly ProjectAgentProfile[] | null;
+    agent: string;
+    machineId: string;
+    /** That machine's `daemonState.agentProfiles.defaults` (agent → id), when known (Web). */
+    machineDefaults?: Readonly<Record<string, string>> | null;
+}): LaunchAgentProfile {
+    if (input.explicit !== undefined) {
+        const id = input.explicit === null ? null : input.explicit.id;
+        return { agentProfileId: id, source: 'explicit', effective: id };
+    }
+    const entry = input.project?.find((p) => p.agent === input.agent && p.machineId === input.machineId);
+    if (entry) return { agentProfileId: entry.id, source: 'project', effective: entry.id };
+    if (!input.machineDefaults) return { agentProfileId: undefined, source: 'machine', effective: undefined };
+    const fallback = input.machineDefaults[input.agent];
+    return fallback ? { agentProfileId: undefined, source: 'machine', effective: fallback } : { agentProfileId: undefined, source: 'machine-login', effective: null };
+}
+
+/** Project default entries that apply on one machine (what a daemon needs of a project). */
+export function projectAgentProfilesFor(entries: readonly ProjectAgentProfile[] | null | undefined, machineId: string): ProjectAgentProfile[] {
+    return (entries ?? []).filter((e) => e.machineId === machineId);
+}
+
+/** `agent-profile-unavailable:<reason>: …` (daemon spawn error) → reason, else null. */
+export function agentProfileUnavailableReason(error: string | null | undefined): string | null {
+    const m = /^agent-profile-unavailable:([a-z-]+)/.exec(error ?? '');
+    return m ? m[1] : null;
 }

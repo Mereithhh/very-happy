@@ -21,6 +21,7 @@ import {
     accountNeedsRelogin,
     accountStatusTone,
     accountsForAgent,
+    machineHasAgentAccounts,
     readMachineAgentProfiles,
     type AgentProfileSummary,
     type AgentProfilesState,
@@ -30,7 +31,7 @@ import { accountDetailText, accountErrorText, accountKindText, accountStatusText
 import { AddAccountDialog } from './AddAccountDialog';
 import './accounts.css';
 
-const AGENT_TITLES: Record<string, string> = { claude: 'Claude' };
+const AGENT_TITLES: Record<string, string> = { claude: 'Claude', codex: 'Codex' };
 const MACHINE_LOGIN = '__machine__';
 
 /** The fresher of the daemon's published state and our last RPC answer. */
@@ -57,8 +58,9 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
     const { state, refresh, apply } = useMachineAccounts(machine);
     const online = isMachineOnline(machine);
     const name = machineLabel(machine);
-    const [adding, setAdding] = useState(false);
-    const [relogin, setRelogin] = useState<{ accountId: string; label: string } | null>(null);
+    /** the agent whose 「添加账号」 is open */
+    const [adding, setAdding] = useState<string | null>(null);
+    const [relogin, setRelogin] = useState<{ accountId: string; label: string; kind: string; agent: string } | null>(null);
     const [busy, setBusy] = useState<string | null>(null);
     // Wire v2: a providers.json (legacy) account's test result is not stored — the list stays
     // 'unverified', so this page keeps what the last test returned.
@@ -71,16 +73,16 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
     useEffect(() => {
         if (!reloginParam || !state) return;
         const account = state.accounts.find((a) => a.id === reloginParam);
-        if (account && accountKindTag(account.kind) === 'subscription') setRelogin({ accountId: account.id, label: account.label });
+        if (account && accountKindTag(account.kind) === 'subscription') setRelogin({ accountId: account.id, label: account.label, kind: account.kind, agent: account.agent });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [reloginParam, !!state]);
 
-    if (!state) {
-        return <ItemGroup settingId="models.accounts" title={t('accounts.accountsGroup', { agent: 'Claude' })}>
-            <Item title={t('accounts.machineLogin')} subtitle={t('accounts.upgradeCli')}
-                right={<Button size="sm" onClick={() => navigate(`/machine/${encodeURIComponent(machine.id)}`)}>{t('accounts.upgradeCliShort')}</Button>} />
-        </ItemGroup>;
-    }
+    // Old CLI (or, for Codex, a CLI with Claude accounts only): 「本机登录 · 升级 CLI」.
+    const upgradeGroup = (agent: string) => <ItemGroup key={agent} settingId="models.accounts" title={t('accounts.accountsGroup', { agent: AGENT_TITLES[agent] ?? agent })}>
+        <Item title={t('accounts.machineLogin')} subtitle={t('accounts.upgradeCli')}
+            right={<Button size="sm" onClick={() => navigate(`/machine/${encodeURIComponent(machine.id)}`)}>{t('accounts.upgradeCliShort')}</Button>} />
+    </ItemGroup>;
+    if (!state) return <>{ACCOUNT_AGENTS.map(upgradeGroup)}</>;
 
     const run = async (key: string, fn: () => Promise<void>) => {
         setBusy(key);
@@ -131,13 +133,14 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
 
     return <>
         {ACCOUNT_AGENTS.map((agent) => {
+            if (!machineHasAgentAccounts(state, agent)) return upgradeGroup(agent);
             const accounts = accountsForAgent(state, agent);
             const defaultId = state.defaults[agent] ?? null;
             const defaultOptions = [
                 { value: MACHINE_LOGIN, label: t('accounts.machineLogin') },
                 ...accounts.map((a) => ({ value: a.id, label: a.label, meta: accountKindText(a.kind, t) })),
             ];
-            return <ItemGroup key={agent} settingId="models.accounts" title={t('accounts.accountsGroup', { agent: AGENT_TITLES[agent] ?? agent })} footer={t('accounts.accountsFooter')}>
+            return <ItemGroup key={agent} settingId={agent === 'claude' ? 'models.accounts' : `models.accounts.${agent}`} title={t('accounts.accountsGroup', { agent: AGENT_TITLES[agent] ?? agent })} footer={t('accounts.accountsFooter')}>
                 {!online && <Item title={t('accounts.offline')} />}
                 <Item title={t('accounts.defaultRow')} right={
                     <Combobox label={t('accounts.defaultRow')} variant="soft" size="sm" className="acc-default-picker" searchable={false}
@@ -147,15 +150,15 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
                         options={defaultOptions} />
                 } />
                 <Item title={<span className="acc-title">{t('accounts.machineLogin')}{!defaultId && <span className="acc-tag">{t('accounts.defaultBadge')}</span>}</span>}
-                    subtitle={t('accounts.machineLoginSubtitle')} />
+                    subtitle={agent === 'codex' ? t('accounts.machineLoginSubtitleCodex') : t('accounts.machineLoginSubtitle')} />
                 {accounts.map((account) => <AccountRow key={account.id} account={withLegacyTest(account, legacyTests[account.id])} isDefault={defaultId === account.id} now={now}
                     online={online} busy={busy} onTest={test} onRename={rename} onRemove={remove}
-                    onSetDefault={(a) => void setDefault(agent, a.id)} onRelogin={(a) => setRelogin({ accountId: a.id, label: a.label })} />)}
-                <Item title={<span className="acc-add"><Plus size={15} aria-hidden="true" />{t('accounts.add')}</span>} disabled={!online} onClick={() => setAdding(true)} />
+                    onSetDefault={(a) => void setDefault(agent, a.id)} onRelogin={(a) => setRelogin({ accountId: a.id, label: a.label, kind: a.kind, agent })} />)}
+                <Item title={<span className="acc-add" data-testid={`account-add-${agent}`}><Plus size={15} aria-hidden="true" />{t('accounts.add')}</span>} disabled={!online} onClick={() => setAdding(agent)} />
             </ItemGroup>;
         })}
-        <AddAccountDialog open={adding || !!relogin} onOpenChange={(open) => { if (!open) { setAdding(false); setRelogin(null); void refresh(); } }}
-            machineId={machine.id} machineName={name} kinds={state.kinds} relogin={relogin} />
+        <AddAccountDialog open={!!adding || !!relogin} onOpenChange={(open) => { if (!open) { setAdding(null); setRelogin(null); void refresh(); } }}
+            machineId={machine.id} machineName={name} agent={relogin?.agent ?? adding ?? 'claude'} kinds={state.kinds} codexProviders={state.codexProviders} relogin={relogin} />
     </>;
 }
 
