@@ -16,7 +16,7 @@ export class Encryption {
     static async create(masterSecret: Uint8Array) {
 
         // B-859: crypto_box_seed_keypair below is undefined until the wasm is up
-        await sodiumReady;
+        await sodiumReady();
 
         // Derive content data key to open session and machine records
         const contentDataKey = await deriveKey(masterSecret, 'Happy EnCoder', ['content']);

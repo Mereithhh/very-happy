@@ -14,7 +14,7 @@ vi.mock('@/encryption/libsodium.lib', async () => {
     await real.ready;
     // Registered before any importer awaits `sodiumReady`, so it runs first.
     void gate.ready.then(() => Object.assign(gate.sodium, real));
-    return { default: gate.sodium, sodiumReady: gate.ready };
+    return { default: gate.sodium, sodiumReady: () => gate.ready };
 });
 
 describe('Encryption.create before libsodium is ready (B-859)', () => {
