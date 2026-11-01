@@ -7,7 +7,7 @@ import { configuration } from '@/configuration';
 import { readPersistedSessions } from '@/persistence';
 import { sendUserMessage, waitForSessionKey } from '@/commands/sessionMessage';
 import { teamInitialPrompt } from './initialPrompt';
-import { accountUnavailableError } from '@/agentProfiles/launchAccount';
+import { accountUnavailableHint } from '@/agentProfiles/launchAccount';
 import { archiveSession } from '@/sessions/sessionOps';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secureFiles';
@@ -65,8 +65,8 @@ export function teamAccountRefusal(resolve: TeamWorkerDeps['resolveAccount'], op
 }
 
 function teamAccountError(raw: string): string {
-    const hint = accountUnavailableError(raw, 'team member');
-    return `${raw}${hint ? ` — ${hint.replace(/^Account unavailable \([a-z-]+\): /, '')}` : ''}`.slice(0, 1000);
+    const reason = agentProfileUnavailableReason(raw);
+    return `${raw}${reason ? ` — ${accountUnavailableHint(reason, 'team member')}` : ''}`.slice(0, 1000);
 }
 
 /** B-775: ` (<code>)` for a server refusal such as `bot_cleanup_pending`; never other response content. */

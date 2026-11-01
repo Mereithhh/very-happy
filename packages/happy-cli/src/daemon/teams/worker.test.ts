@@ -492,7 +492,7 @@ describe('B-850d team member accounts', () => {
         expect(spawn).not.toHaveBeenCalled();
         const [failure] = failures();
         expect(failure.unknown).toBeUndefined();
-        expect(failure.error).toMatch(/^agent-profile-unavailable:expired: account "Org B" — /);
+        expect(failure.error).toBe('agent-profile-unavailable:expired: account "Org B" — sign-in has expired. Not run on the machine login. Fix: sign in again (Settings → Models & accounts, or `very-happy account login` / `very-happy account test`), or choose another account for this team member.');
         expect(failure.error).toContain('choose another account for this team member');
         expect(readReceipt(home, 'op1')).toMatchObject({ phase: 'prepared', spawnFailures: 1 });
         expect(readReceipt(home, 'op1')?.retryAt).toBeUndefined();

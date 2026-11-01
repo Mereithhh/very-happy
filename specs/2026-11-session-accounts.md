@@ -1,6 +1,6 @@
 # 会话级账号（CLI 侧，B-850a）
 
-> 状态：Final（B-850a）；B-850b（Codex）见文末「B-850b」节
+> 状态：Final（B-850a）；B-850b（Codex）、B-850d（项目/团队/自动化/fork）见文末各节
 > 日期：2026-11-01 ｜ 关联 backlog：B-850（本文 = PR-C / B-850a；Web = B-850c，Codex = B-850b，团队/自动化 = B-850d）｜ 前身：B-794 provider 绑定（本文取代其注入方式）
 > 设计依据：`~/code/github/skills/tmp/vh-team-B-849-850/DESIGN.md`（A2）、`FEASIBILITY.md`（K2）；Owner 拍板 Q1–Q4 按推荐（project decision #22）
 
@@ -118,7 +118,7 @@ wrapper 拿到 session id 后、起任何 Claude 子进程前解析一次绑定�
 2. Claude Code 未来改变对 `CLAUDE_CODE_OAUTH_TOKEN` 的子进程清理 —— S1 的探针脚本可复跑；升级 Claude 版本时复验。
 3. setup-token 的 Ink 输出格式变化导致 URL/token 解析失败 —— 失败会明确回 `failed`；兜底是 `very-happy account login --token-stdin`。
 4. 一次误判的 401 会把账号标成 expired/invalid、让绑定会话拒跑 —— 由用户 `account test` / 重新登录恢复；拒跑优于串号（Q3）。
-5. `very-happy sessions read` 不认 `queue-cancel`，被拒消息之后显示 turn running —— 自动化场景由 B-850d 处理。
+5. ~~`very-happy sessions read` 不认 `queue-cancel`，被拒消息之后显示 turn running~~ —— B-850d 已修（见文末）。
 
 ## 验收标准
 
@@ -240,3 +240,84 @@ kind `codex-chatgpt` / `codex-provider`；Summary `provider? email? planType?`�
 3. **跨类型复验**：`very-happy account bind <sessionId> <llm-hub 账号>`，再 `very-happy send --session <sessionId> --prompt "暗号是什么？只回暗号"`；再 `account bind` 回 ChatGPT 账号问一次。两次都答出暗号 = 跨类型可用；出现「无法在新账号上继续」事件 = 被拒，告诉 K2 改为禁止跨类型切换。
 4. Web 版（B-850c 上线后）同样流程：添加账号 → ChatGPT → 打开链接输入 code。
 
+
+---
+
+# B-850d：项目 / 团队 / 自动化 / fork 的账号
+
+> 日期：2026-11-01 ｜ 分支 team/B-850d-account-binding（base team/B-850b-codex-accounts）｜ Owner Q3：自动化和团队拒跑、不回落、进「需要我决策」
+
+## 目标
+
+1. 项目默认账号（每个 agent 一个）、团队成员账号、自动化账号都存 **profileId**（id + label，无 secret）；fork 继承父会话账号（含 B-851 Web fork）。
+2. 解析优先级：**显式指定 > 项目默认 > 机器默认 > 本机登录**。
+3. 自动化 / 团队这一轮遇到账号缺失、过期、无效 → 拒跑，**不回落本机登录**，「需要我决策」里一条（原因 + 重新登录 / 换账号）。
+4. `very-happy sessions read` 认 `queue-cancel`（被拒/未执行的提示词），`--wait` 不再卡到超时。
+
+## 存在哪（server 可见，只有 id + label）
+
+| 位置 | 字段 | 语义 |
+|---|---|---|
+| 项目 `Project.defaults` | `agentProfiles?: [{ agent, machineId, id: string\|null, label? }]` | 每个 agent 一条；只在该 machineId 生效（账号属于机器）；`id: null` = 本机登录 |
+| 自动化 `action`（spawn） | `agentProfile?: { id, label? } \| null` | 缺省 = 未指定 |
+| 团队 | `TeamLaunch / TeamDefaults / delegate / TeamBot / TeamOperation .agentProfile?`；action `set-bot-account { botId, agentProfile? }` | 新成员 = delegate 指定 > 团队默认（同 agent 才继承）；`set-bot-account` 只影响该成员**下次** spawn |
+| fork | 不存；daemon 读父会话的 `session-accounts.json` 绑定 | |
+
+三态：缺省 = 交给下一级；`null` = 显式本机登录；ref = 该账号。机器默认在 daemon（`accounts.json` defaults），server 不知道。
+
+## 解析（`happy-wire` `resolveLaunchAgentProfile`，daemon / CLI / Web 共用）
+
+`explicit !== undefined` → explicit；否则项目里 `agent` + `machineId` 都匹配的那条；否则 `undefined`（daemon `resolveSpawnAccount`：机器默认，没有则本机登录）。
+
+| 入口 | explicit | 项目默认从哪来 |
+|---|---|---|
+| Web 新建会话（B-850c，A2） | 会话里选的 | 项目 defaults（Web 自己算，再给 spawn RPC 的 `agentProfileId`） |
+| `very-happy spawn` | `--account <id\|machine>` | 仅显式 `--project`（GET 项目 defaults）；拿不到时提示并按机器默认 |
+| 自动化 | `action.agentProfile` | server claim 时附 `projectAgentProfiles`（该项目里本机的条目） |
+| 团队 | 成员 / delegate / 团队默认 | 团队挂到项目时，项目里**同机器、同 agent** 的账号复制进团队默认（只在团队没设时，同 agent/model 快照语义） |
+| fork（CLI `spawn --fork`、Web fork、RPC `parentSessionId`） | spawn 带的 `agentProfileId` | —— 没带则继承父会话绑定；父会话没绑定 = 本机登录（不是机器默认，transcript 和组织保持一致） |
+
+## 拒跑（Q3）
+
+- **daemon 检查点**：`AccountService.resolveSpawnAccount`（缺记录 / agent 不符 / missing-secret / expired / invalid → `agent-profile-unavailable:<reason>: …`），不起任何进程。
+- **自动化**：spawn 失败 → run `failed` + `needsAttention` + `attentionReason: 'account_unavailable'`，`error` = `Account unavailable (<reason>): … Not run on the machine login. Fix: sign in again (…) or choose another account for this automation.`。**sticky**：先按同一检查校验本轮账号（action 未指定 = 会话自己的绑定）；不可用 → 同上拒跑、不发、不改绑；账号变了 → `bind` 原地重启切过去（历史保留）再发，重启 `failed` 则 `send_failed` 不发。`send` 动作沿用目标会话自己的绑定；wrapper 拒掉的轮次（`queue-cancel failed` + `agent-profile-unavailable` 事件）由 turn 分析识别，同样记 `account_unavailable`。
+- **团队**：worker 在**准备 worktree 之前**检查；不可用 → `fail-operation`（确定失败，非 unknown），`error` 以 `agent-profile-unavailable:<reason>:` 开头 + 处理方式；receipt 回 `prepared` 且不安排自动重试（必然再被拒），等 Owner「重试启动」。server `applyTeamTransitionsTx` 对这类失败在 **lead 会话**写一条 attention：source `team`、kind `blocked`、key `team-account:<operationId>`、标题「成员 X 的账号「Org A」登录已过期，这一轮没有启动 · 团队名」、正文写重新登录 / 换账号 / 重试启动；Owner 重试（`retryRequestedAt` 变化）或启动成功 → resolved；重试后再被拒（新 `failedAt`）→ 同 key 重开。lead 会话不存在时不写（团队页仍显示 op 错误）。
+- 均需 `VH_OWNER_BOARD_ENABLED`（attention 条目）；自动化的 `needsAttention` 不依赖它。
+
+## sessions read（`sessions/turnState.ts`）
+
+`LogEntry` 带 `localId`（v3 messages 本来就返回）。锚点提示词之后出现 `queue-cancel` 且 `targetLocalKeys` 含它的 localId → `ended: true`，`status` = reason 为 `failed` 时 `failed`，其他（cleared/aborted/restarted/网页取消）`cancelled`；`error` = `Not executed[: <agent-profile-unavailable 事件文案>]`；`turn.discarded = <reason>`、`turn.refusal = 'agent-profile-unavailable'`（只加不改）。之后又出现 `turn-start`（B-679 replay）则重新算 running；被丢弃提示词之后到达的上一轮 `turn-end` 不算它的。
+
+## wire 增补（v4，已发 Lead 转 A2；只加不改）
+
+`AgentProfileRef(Schema)`、`AgentProfileChoiceSchema`、`ProjectAgentProfile(Schema)`、`resolveLaunchAgentProfile`、`projectAgentProfilesFor`、`agentProfileUnavailableReason`、`AGENT_PROFILE_FEATURE_LAUNCH = 'launch-accounts'`；`AgentProfilesState.features?`；`ProjectDefaults.agentProfiles?`；`AutomationAction(spawn).agentProfile?`；`AutomationClaimedRun.projectAgentProfiles?`；团队如上 + `TeamOperation.failedAt?`；`TurnState.discarded? / refusal?`（CLI 内部）。无新 RPC。MCP `team_delegate` 多一个可选 `agentProfile`；`very-happy auto create/edit --account <id|machine>`。
+
+## 兼容矩阵与发布顺序
+
+| | 旧 server（无本 PR） | 新 server |
+|---|---|---|
+| 旧 daemon（B-850a/b 或更老） | 不变 | 字段存着但 daemon 忽略（zod 剥掉）：自动化/团队按**机器默认，再无则本机登录**跑（现状）；fork 按机器默认。daemonState 无 `features: ['launch-accounts']` → **Web 在账号选择旁提示「这台电脑的 CLI 需升级，账号选择不会生效」** |
+| 新 daemon | server 剥掉 action/team 字段 → 同上现状；claim 无 `projectAgentProfiles`；`set-bot-account` 回 invalid action | 全功能 |
+
+- 旧 Web：忽略新字段；拒跑的自动化 run 显示 `account_unavailable` 原始 reason + error 文本；团队 attention 条目照常显示（标题/正文是中文成品）。
+- 发布：server/Web 与 CLI 各自独立可发、顺序任意；建议先 server/Web（B-850c 表单一起）再发 CLI。无迁移（全部是 Json 列内字段）。
+- 回滚 CLI：回到「忽略字段」行为（上表第一行）。回滚 server：字段被剥掉，已存的 Json 留在库里，重新部署后恢复。
+
+## 实测（dev-sg，隔离 HAPPY_HOME_DIR + standalone server :5960 + 假 Anthropic 端点 :5969；两个 API 账号 Org A / Org B，key 分别 `…AAAAAA` / `…BBBBBB`；证据 `~/code/github/skills/tmp/vh-team-B-850d/`）
+
+| # | 内容 | 结果 |
+|---|---|---|
+| D1 | 项目 defaults.agentProfiles = claude→Org A（本机），`spawn --project <id>`（无 --account） | metadata.agentProfile = Org A；端点只见 key A；回复 `done AAAAAA` |
+| D2 | 团队：lead 加入后 delegate MemberA(Org A)、MemberB(Org B) | 两个 op 带各自 agentProfile；成员 metadata 分别 Org A / Org B，回复分别 `done AAAAAA` / `done BBBBBB` |
+| D3 | 自动化一次性（`--at`，Org A）；sticky（Org B）跑两次 → `auto edit --account org-a` 再跑 | 一次性 done/AAAAAA；sticky 前两轮同一会话 BBBBBB，第三轮同一会话原地切到 Org A（hostPid 变，历史 3 轮都在），AAAAAA |
+| D4 | fork：Org B 会话 `spawn --fork`；RPC `spawn-happy-session {parentSessionId}`（Web fork 路径）；同 + `agentProfileId: null` | 前两者 Org B；第三个 `agentProfile: null`（显式覆盖） |
+| D5 | Org B 的 key 文件移走：自动化（新 spawn）、sticky 改回 Org B、团队 delegate MemberC(Org B) | 自动化两条 `failed ! account_unavailable`，error 写明原因与处理；端点 **0 请求**；sticky 会话绑定仍是 Org A（未改绑、未发）；团队 op `failed`（非 unknown），lead 会话出现 `team-account:<op>` blocked/open/needsOwner 条目，正文含重新登录 / 换账号 / 重试启动 |
+| D6 | key 放回 → Owner retry-operation | MemberC 启动且为 Org B；条目 `resolved` |
+| D7 | 会话绑到缺 key 的 Org B 后 `send` 一条，`sessions read --wait --timeout 120` | **1 s** 返回 `latest turn: ended (failed) — Not executed: Account "Org B" is unavailable…`；`--json` 含 `discarded:'failed'`、`refusal:'agent-profile-unavailable'`（修前：一直 running 到超时，单测 mutation 证明） |
+
+## 已知限制
+
+1. 团队成员在线时改账号（`set-bot-account`）只影响下次 spawn；要立即生效 Web 另调 `agent-profile-bind`（原地重启）。
+2. CLI `spawn` 只对显式 `--project` 用项目默认；继承自调用会话的项目（lineage）不算「指定项目」。
+3. 项目默认按 machineId 精确匹配：项目在另一台机器上新建会话 = 无项目默认（Web 在创建前显示「本机登录（<机器> 没有『组织 A』）」，DESIGN F7）。
+4. 已在运行的团队成员 / send 目标会话，账号中途失效时由 wrapper 逐轮拒跑（B-850a），团队侧不另发「需要我决策」（只有 spawn 被拒才发）。

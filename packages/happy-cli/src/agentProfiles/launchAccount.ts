@@ -37,7 +37,11 @@ export function accountUnavailableError(error: string, scope: 'automation' | 'te
     const reason = agentProfileUnavailableReason(error);
     if (!reason) return null;
     const detail = error.replace(/^agent-profile-unavailable:[a-z-]+:?\s*/, '');
-    const what = REASON_TEXT[reason] ?? reason;
-    return `Account unavailable (${reason}): ${detail ? `${detail} — ` : ''}${what}. Not run on the machine login. ` +
+    return `Account unavailable (${reason}): ${detail ? `${detail} — ` : ''}${accountUnavailableHint(reason, scope)}`;
+}
+
+/** What the reason means, that nothing ran on the machine login, and the two ways out. */
+export function accountUnavailableHint(reason: string, scope: 'automation' | 'team member'): string {
+    return `${REASON_TEXT[reason] ?? reason}. Not run on the machine login. ` +
         `Fix: sign in again (Settings → Models & accounts, or \`very-happy account login\` / \`very-happy account test\`), or choose another account for this ${scope}.`;
 }
