@@ -41,6 +41,8 @@ vi.mock('@/utils/sessionUtils', () => ({ getSessionName: (s: { metadata?: { summ
 
 const { ProjectSettingsScreen } = await import('./ProjectSettingsScreen');
 const { ProjectsApiError } = await import('@/sync/projects');
+const { WorktreeFolderNotice } = await import('./WorktreeFolderNotice');
+const { useProjectCopy } = await import('./projectCopy');
 
 function project(extra: Partial<ProjectView> = {}): ProjectView {
   return {
@@ -239,10 +241,24 @@ describe('B-757 project settings page', () => {
     const notice = section('folders').querySelector('[data-testid=project-worktree-folder]')!;
     expect(notice.textContent).toContain(wt);
     expect(button(notice, 'Open settings')).toBeUndefined();
+    expect(notice.textContent).toContain('remove it below');
+    expect(notice.textContent).not.toContain('remove it in settings');
     await act(async () => { type(section('folders').querySelector<HTMLInputElement>('.pj-folder-add .pj-folder-picker input')!, `${wt}/web`); });
     expect(section('folders').textContent).toContain('temporary worktree — choose the repository');
     await click(button(section('folders'), 'Add folder'));
     expect(api.update).not.toHaveBeenCalled();
+  });
+
+  it('B-757c: elsewhere (the project page, with 打开设置) an unknown worktree still says remove it in settings', async () => {
+    const wt = '/home/u/.happy/teams/worktrees/11111111-2222-4333-8444-555555555555';
+    const open = vi.fn();
+    function Page() { return <WorktreeFolderNotice detail={{ project: project({ folders: [{ machineId: 'm1', path: wt, primary: true }] }) }} c={useProjectCopy()} onChanged={async () => {}} onOpenSettings={open} />; }
+    await act(async () => root.render(<Page />));
+    const notice = host.querySelector('[data-testid=project-worktree-folder]')!;
+    expect(notice.textContent).toContain('remove it in settings');
+    expect(notice.textContent).not.toContain('remove it below');
+    await click(button(notice, 'Open settings'));
+    expect(open).toHaveBeenCalledTimes(1);
   });
 
   it('#folders on a project without folders focuses the path field', async () => {
