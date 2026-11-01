@@ -37,8 +37,7 @@ export const SETTINGS_SECTION_TITLES: Record<string, SettingsText> = {
   '': 'settings.title',
   appearance: 'settings.appearance',
   account: 'settings.account',
-  agents: 'settingsAgents.title',
-  models: 'modelConfig.title',
+  'models-accounts': 'accounts.pageTitle',
   snippets: 'settingsSnippets.navTitle',
   notifications: 'notifications.title',
   channels: 'settingsChannels.title',
@@ -78,14 +77,14 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: 'account.server', section: 'account', title: 'settingsAccount.server', keywords: ['server', 'host', 'url', '服务器', '地址'] },
   { id: 'account.logout', section: 'account', title: 'settingsAccount.logout', description: 'settingsAccount.logoutSubtitle', keywords: ['logout', 'log out', 'sign out', '退出', '登出', '注销'] },
   // ── agents ──
-  { id: 'agents.defaultAgent', section: 'agents', title: 'settingsAgents.defaultAgent', keywords: ['agent', 'default agent', 'claude', 'codex', 'pi', 'new chat', '默认', '新建', '代理'] },
-  { id: 'agents.alwaysAsk', section: 'agents', title: 'settingsAgents.alwaysAsk', description: 'settingsAgents.alwaysAskDescription', keywords: ['ask', 'new session', 'dialog', 'configure', '询问', '新建', '每次', '弹窗'] },
-  { id: 'agents.reviewFirst', section: 'agents', title: 'settingsFeatures.reviewChangesFirst', keywords: ['review', 'changes', 'diff', '审阅', '改动', '先看'] },
+  { id: 'agents.defaultAgent', section: 'models-accounts', title: 'settingsAgents.defaultAgent', keywords: ['agent', 'default agent', 'claude', 'codex', 'pi', 'new chat', '默认', '新建', '代理'] },
+  { id: 'agents.alwaysAsk', section: 'models-accounts', title: 'settingsAgents.alwaysAsk', description: 'settingsAgents.alwaysAskDescription', keywords: ['ask', 'new session', 'dialog', 'configure', '询问', '新建', '每次', '弹窗'] },
+  { id: 'agents.reviewFirst', section: 'models-accounts', title: 'settingsFeatures.reviewChangesFirst', keywords: ['review', 'changes', 'diff', '审阅', '改动', '先看'] },
   ...agentKeys.map((agent): SettingsIndexEntry => {
     const name = AGENT_NAMES[agent] ?? agent;
     return {
       id: `agents.${agent}`,
-      section: 'agents',
+      section: 'models-accounts',
       // = the group's visible title (agent name); results read "Agent defaults › Claude"
       title: { en: name, zh: name },
       description: { en: 'Default permission, model and effort for new sessions', zh: '新会话的默认权限、模型与思考强度' },
@@ -125,8 +124,8 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   // ── shared (B-701) ──
   { id: 'shared.list', section: 'shared', title: 'share.settings.title', description: 'share.settings.subtitle', keywords: ['share', 'shared', 'link', 'revoke', 'expire', 'access', '分享', '链接', '撤销', '过期', '已分享', '联系人'] },
   // ── machines ──
-  // ── models (B-688) ──
-  { id: 'models.machine', section: 'models', title: 'modelConfig.machine', description: 'modelConfig.subtitle', keywords: ['model', 'provider', 'base url', 'baseurl', 'api key', 'gateway', 'custom model', 'claude', 'codex', 'gemini', 'pi', 'anthropic_base_url', 'config.toml', 'settings.json', '模型', '自定义模型', '网关', '密钥', '供应商'] },
+  // ── models & accounts (B-688, B-850c) ──
+  { id: 'models.machine', section: 'models-accounts', title: 'accounts.machineGroup', description: 'accounts.machineFooter', keywords: ['account', 'accounts', 'subscription', 'organization', 'setup-token', 'login', 'llm-hub', '账号', '订阅', '组织', '登录', '切换账号', 'model', 'provider', 'base url', 'baseurl', 'api key', 'gateway', 'custom model', 'claude', 'codex', 'gemini', 'pi', 'anthropic_base_url', 'config.toml', 'settings.json', '模型', '自定义模型', '网关', '密钥', '供应商'] },
   { id: 'machines.connect', section: 'machines', title: 'connectMachine.groupTitle', keywords: ['connect', 'add machine', 'install', 'pair', '连接', '添加电脑', '配对', '安装'] },
   { id: 'machines.list', section: 'machines', title: 'settingsMachines.listTitle', description: 'settingsMachines.footer', keywords: ['machines', 'computers', 'daemon', '电脑', '机器'] },
   // ── feedback (B-836) ──

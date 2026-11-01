@@ -497,9 +497,43 @@ The composer's command list marks `/compact` as unavailable on sessions that
 cannot run it, and sending it there shows a notice instead of a message (older
 Codex wrappers included — update the CLI and restart the session).
 
+### Accounts per session (B-850)
+
+**Settings → Models & accounts** (the former *Agent defaults* and *Models &
+providers* pages; `/settings/agents` and `/settings/models` redirect there)
+lists each machine's Claude **accounts** next to *This machine's login*:
+
+- **Subscription** — **Add account → Claude subscription** starts
+  `claude setup-token` on the machine; open the link, pick the organization,
+  paste the code back. Name it yourself (Claude does not say which organization
+  a sign-in belongs to). The row shows *Expires in N days* in the last 30 days
+  and **Sign in again** once it has expired.
+- **API** — a base URL, its models (the first is a session's default) and where
+  the key comes from: **File** on the machine (default), an **Env var** of the
+  daemon, or **Paste** — a pasted key is relayed through the Very Happy server
+  to the machine and is not stored by the server; the machine keeps it in a
+  0600 file. Every add is tested once; a failed test still saves.
+- Rows offer **Test**, **Rename**, **Set as default** (what new sessions on that
+  machine use) and **Delete**; deleting an account sessions are bound to asks
+  first, and those sessions then run no turns until switched — they never fall
+  back to the machine login. Accounts from the older `providers.json` are listed
+  read-only.
+
+In a session, the run-setup menu (⚡) lists the machine's accounts above the
+models: switching restarts the session in place (history kept; after a change
+of organization the first turn misses the prompt cache). An API account pins
+its model, so the list shows that account's models. New-session dialog and
+draft card have an **Account** picker (default: the machine's default); an
+expired, rejected or missing account is stopped before the session is created.
+A session whose account is unusable shows a banner with **Sign in again** /
+**Fix the key** and **Switch account**. Machines whose CLI predates accounts show
+only *This machine's login · Upgrade CLI*. Secrets never leave the machine:
+the Web sees names, types, status, the endpoint and the key's file path or
+variable name.
+
 ### Custom models and providers (B-688)
 
-**Settings → Models & providers** (and **Custom…** at the bottom of the composer's
+**Settings → Models & accounts → Machine config** (and **Custom…** at the bottom of the composer's
 model picker) edits each agent's *own* config file on the chosen machine, so the
 same configuration applies when you run the agent in a terminal there:
 

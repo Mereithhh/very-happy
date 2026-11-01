@@ -38,6 +38,10 @@ import { machineSupportsWorktrees } from '@/utils/worktree';
 import { worktreeCopy, worktreeErrorText } from './worktreeCopy';
 import './newsession.css';
 import { DialogHead } from '@/ui/DialogHead';
+import { SpawnAccountPicker } from '@/components/accounts/SpawnAccountPicker';
+import { readMachineAgentProfiles, resolveSpawnAccount, type SpawnAccountChoice } from '@/sync/agentProfiles';
+import { accountSettingsHref } from '@/screens/session/sessionAccount';
+import { machineLabel as machineDisplayName } from '@/utils/machineUtils';
 
 interface PathPreset {
   id: string;
@@ -143,6 +147,10 @@ export function NewSessionModal({
   // selected machine's reported home dir. Avoids a bogus "create directory ~/…"
   // prompt for paths that actually exist.
   const selectedMachine = online.find((m) => m.id === machineId);
+  // B-850c: the account the session starts on; an account belongs to one machine and agent.
+  const [accountChoice, setAccountChoice] = useState<SpawnAccountChoice>(undefined);
+  useEffect(() => { setAccountChoice(undefined); }, [machineId, agent]);
+  const accountBlocked = resolveSpawnAccount(readMachineAgentProfiles(selectedMachine), agent, accountChoice).kind === 'blocked';
   const agentsToSetUp = agentsNeedingSetup(selectedMachine?.metadata);
   // Derived, not stored: switching machines or the agent becoming available hides the row.
   const shownSetupAgent = setupAgent && agentsToSetUp.includes(setupAgent) ? setupAgent : null;
@@ -170,6 +178,7 @@ export function NewSessionModal({
   const canCreate = !!selectedMachine
     && trimmed.length > 0
     && selectedAgentAvailability.available
+    && !accountBlocked
     && (!worktreeActive || worktreeDraftReady(worktree, worktreeInfoState))
     && creating === 'idle';
 
@@ -254,6 +263,7 @@ export function NewSessionModal({
       permissionMode: resolveNewSessionPermissionMode(agentDefaultOverrides, agent, reviewFirst),
       source: 'dialog',
       firstMessage: initialCommand,
+      ...(accountChoice !== undefined && readMachineAgentProfiles(selectedMachine) && agent === 'claude' ? { agentProfileId: accountChoice } : {}),
       ...(spawnedTaskId ? { onSpawnedTask: { taskId: spawnedTaskId } } : {}),
       ...(projectId ? { onSpawnedProject: { projectId } } : {}),
     });
@@ -396,6 +406,10 @@ export function NewSessionModal({
                 );
               })}
             </div>
+            {/* B-850c: the account it starts on (Q3: an unusable one blocks 创建). */}
+            <SpawnAccountPicker machine={selectedMachine} machineName={selectedMachine ? machineDisplayName(selectedMachine) : ''} agent={agent}
+              value={accountChoice} onChange={setAccountChoice} labelId="ns-account-label" variant="dialog"
+              onFix={() => { onClose(); navigate(accountSettingsHref(machineId)); }} />
             {agent === 'claude' && (
               <div className="ns-agent-help">
                 {t('newSessionModal.bundledClaudeHelp')}{' '}

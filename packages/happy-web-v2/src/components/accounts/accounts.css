@@ -1,0 +1,50 @@
+/* B-850c accounts: settings rows, add dialog, run-setup section. Tokens only (tokens.css). */
+.acc-title { display: inline-flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; min-width: 0; }
+.acc-name { overflow-wrap: anywhere; }
+.acc-tag {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 var(--sp-2);
+  border-radius: var(--r-pill); background: var(--fill-soft); color: var(--text-dim);
+  font-size: var(--fs-11); font-weight: 500; line-height: 1; white-space: nowrap;
+}
+.acc-actions { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.acc-more {
+  position: relative; display: inline-grid; place-items: center; width: 28px; height: 28px;
+  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-dim); cursor: pointer;
+}
+.acc-more::after { content: ''; position: absolute; inset: -8px; } /* 44×44 touch target */
+@media (hover: hover) and (pointer: fine) {
+  .acc-more:hover { background: var(--fill-hover); color: var(--text); }
+}
+.acc-add { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); }
+.acc-default-picker { min-width: 160px; max-width: 220px; }
+
+.acc-dialog { max-width: 520px; }
+.acc-kinds { width: 100%; }
+.acc-login { display: flex; flex-direction: column; gap: var(--sp-3); }
+.acc-step { display: flex; align-items: flex-start; gap: var(--sp-2); margin: 0; color: var(--text); font-size: var(--fs-13); line-height: 1.5; }
+.acc-step-n {
+  flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: var(--r-pill);
+  background: var(--fill-soft); color: var(--text-dim); font-size: var(--fs-11); font-weight: 600;
+}
+.acc-link-row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; padding-left: 28px; }
+.acc-link {
+  display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 32px; padding: 0 var(--sp-3);
+  border-radius: var(--r-btn); background: var(--text); color: var(--bg-0); font-size: var(--fs-13); font-weight: 500; text-decoration: none;
+}
+.mce-hint--warn { color: var(--warn); }
+
+/* run-setup panel: account rows above the model list */
+.me-accounts { display: flex; flex-direction: column; gap: 2px; }
+.me-account-tag { color: var(--text-faint); font-size: var(--fs-11); }
+.me-account-status { font-size: var(--fs-11); }
+.me-account-status[data-tone="warn"] { color: var(--warn); }
+.me-account-status[data-tone="err"] { color: var(--danger); }
+.me-account-add { justify-content: flex-start; color: var(--text-dim); }
+
+/* draft card / new-session dialog */
+.acc-blocked { margin: 0; color: var(--danger); font-size: var(--fs-12); line-height: 1.5; }
+.acc-blocked a, .acc-blocked button { color: var(--text); text-decoration: underline; background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+.me-account-row { display: flex; align-items: center; gap: var(--sp-2); }
+.me-account-row > .me-model { flex: 1; min-width: 0; }
+.acc-old-cli { align-self: center; color: var(--text-dim); font-size: var(--fs-13); }
+.ps-draft-grid .acc-blocked { grid-column: 1 / -1; }

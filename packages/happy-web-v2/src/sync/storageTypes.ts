@@ -27,6 +27,10 @@ export const MetadataSchema = z.object({
     // wrapper; read through the runIntent whitelist (sync/runPicks.ts).
     modelIntent: z.string().nullable().optional(),
     effortIntent: z.string().nullable().optional(),
+    // B-850c: the account the wrapper ACTUALLY runs on (absent = old wrapper,
+    // null = machine login). Kept raw and read through the whitelist in
+    // sync/agentProfiles.ts so a newer shape never drops the metadata.
+    agentProfile: z.unknown().optional(),
     operatingModes: z.array(z.object({
         code: z.string(),
         value: z.string(),

@@ -29,6 +29,7 @@ import { newSessionTimingCancel, newSessionTimingRpcReturned, newSessionTimingRp
 import { toast } from '@/ui/Toast';
 import { announceDispatched, isViewingSession } from './dispatchFeedback';
 import { t } from '@/text';
+import { parseSpawnAccountError } from './agentProfiles';
 
 /** Spawn is ~1 s; a real session that has not reached the store after this goes to its draft. */
 const SESSION_WAIT_MS = 30_000;
@@ -85,6 +86,8 @@ export const pendingSessions = createPendingSessionStore({
         }
         if (result.type === 'success') newSessionTimingRpcReturned(result.sessionId);
         else newSessionTimingCancel();
+        // B-850c (Q3): the daemon's own refusal of an unusable account reads as a sentence.
+        if (result.type === 'error' && !result.transport && parseSpawnAccountError(result.errorMessage)) result = { ...result, errorMessage: t('accounts.spawnUnavailable') };
         return result;
     },
     hasSession: (id) => !!storage.getState().sessions[id],

@@ -59,3 +59,7 @@
 /* settings page machine row */
 .mcs-machine { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
 .mcs-machine-picker { flex: 1; }
+/* B-850c: 「本机配置」 heading inside Settings → 模型与账号 (the harness groups follow it). */
+.mcs-local-head { display: flex; flex-direction: column; margin-top: var(--sp-4); }
+.mcs-local-head > .vh-itemgroup__title { margin-bottom: var(--sp-1); }
+.mcs-local-note { margin: 0 var(--sp-1) var(--sp-2); color: var(--text-faint); font-size: var(--fs-12); line-height: 1.45; }

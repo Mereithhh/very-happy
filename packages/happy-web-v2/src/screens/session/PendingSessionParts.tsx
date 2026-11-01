@@ -21,6 +21,8 @@ import { machineCliVersion } from '@/app/staleWrapperPolicy';
 import { useProjects } from '@/sync/projects';
 import { suggestProjectFor } from '@/screens/projects/projectSuggestion';
 import { draftDirectorySuggestions, draftProjectHint, resolveHomePath } from './draftTarget';
+import { SpawnAccountPicker } from '@/components/accounts/SpawnAccountPicker';
+import { accountSettingsHref } from './sessionAccount';
 import './header.css';
 import './input.css';
 import './pendingSession.css';
@@ -160,6 +162,7 @@ function machineLabel(meta: { displayName?: string; host?: string } | null | und
  */
 function DraftTarget({ record }: { record: PendingSessionRecord }) {
     const { t, lang } = useTranslation();
+    const navigate = useNavigate();
     const zh = lang.startsWith('zh');
     const id = record.pendingId;
     const machines = useAllMachines({ includeOffline: true });
@@ -232,6 +235,10 @@ function DraftTarget({ record }: { record: PendingSessionRecord }) {
                     autoCapitalize="off"
                     autoCorrect="off"
                 />
+                {/* B-850c: the account it starts on (Q3: an unusable one is stopped here, before the first send). */}
+                <SpawnAccountPicker machine={machine} machineName={machineName} agent={record.agent} value={record.agentProfileId}
+                    onChange={(agentProfileId) => pendingSessions.setTarget(id, { agentProfileId })}
+                    onFix={() => navigate(accountSettingsHref(record.machineId))} labelId={`${id}-account`} />
             </div>
             <p className="ps-card-text ps-draft-landing" data-testid="draft-landing">{t('pendingSession.draftLanding', { machine: machineName })}</p>
             {machine && machineVersion && oldCli(machine) && <p className="ps-card-text ps-draft-warn" role="status" data-testid="draft-old-cli">{t('pendingSession.draftOldCli', { machine: machineName, version: machineVersion })}</p>}

@@ -702,3 +702,36 @@ describe('QA26 P2-2 wiring', () => {
         expect(zhHans.pendingSession.waitingForModels({ machine: 'qa-f4' })).toBe('等待 qa-f4 上报模型列表…');
     });
 });
+
+describe('B-850c account choice on a new session', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('a draft spawns with its chosen account; machine or agent change drops the pick', () => {
+        const h = harness();
+        const record = h.store.create({ ...input, agent: 'claude', draft: true });
+        h.store.setTarget(record.pendingId, { agentProfileId: 'acc-1' });
+        expect(h.store.get(record.pendingId)?.agentProfileId).toBe('acc-1');
+        // the same machine again keeps it; another machine does not (accounts belong to one machine)
+        h.store.setTarget(record.pendingId, { machineId: record.machineId, path: '/elsewhere' });
+        expect(h.store.get(record.pendingId)?.agentProfileId).toBe('acc-1');
+        h.store.setTarget(record.pendingId, { machineId: 'm2' });
+        expect(h.store.get(record.pendingId)?.agentProfileId).toBeUndefined();
+        h.store.setTarget(record.pendingId, { agentProfileId: null });
+        h.store.setTarget(record.pendingId, { agent: 'codex', permissionMode: 'default' });
+        expect(h.store.get(record.pendingId)?.agentProfileId).toBeUndefined();
+        h.store.setTarget(record.pendingId, { agent: 'claude', permissionMode: 'default', agentProfileId: null });
+        expect(h.store.append(record.pendingId, 'go')).toBe(true);
+        expect(h.spawns[0].options.agentProfileId).toBeNull();
+    });
+
+    it('no pick sends no agentProfileId (the daemon default applies, like an old Web)', () => {
+        const h = harness();
+        h.store.create({ ...input, agent: 'claude', firstMessage: 'hi' });
+        expect(h.spawns).toHaveLength(1);
+        expect('agentProfileId' in h.spawns[0].options).toBe(false);
+        const picked = harness();
+        picked.store.create({ ...input, agent: 'claude', firstMessage: 'hi', agentProfileId: 'acc-2' });
+        expect(picked.spawns[0].options.agentProfileId).toBe('acc-2');
+    });
+});
