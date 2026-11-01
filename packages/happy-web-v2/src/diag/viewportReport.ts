@@ -119,11 +119,17 @@ export interface KeyboardSnapshot {
     appHOverride: string;
     keyboardOpen: boolean;
     rootLock: boolean;
+    /** B-855: what the keyboard path keys on — iPad + trackpad is `pointer: fine`. */
+    pointer?: 'coarse' | 'fine' | 'none';
+    maxTouchPoints?: number;
+    /** times the root-lock guard undid a document scroll since load. */
+    scrollResets?: number;
 }
 
 export function formatKeyboardLine(k: KeyboardSnapshot): string {
     return [
         `keyboard: vv.h=${px(k.vvHeight)} vv.top=${px(k.vvOffsetTop)} scrollY=${px(k.scrollY)} inner=${px(k.innerHeight)}`,
         `--app-h=${px(k.appH)} (${k.appHOverride ? `js ${k.appHOverride}` : 'css'}) open=${k.keyboardOpen ? 'yes' : 'no'} root-lock=${k.rootLock ? 'yes' : 'no'}`,
+        ...(k.pointer === undefined ? [] : [`pointer=${k.pointer} touch-points=${k.maxTouchPoints ?? 0} scroll-resets=${k.scrollResets ?? 0}`]),
     ].join(' · ');
 }

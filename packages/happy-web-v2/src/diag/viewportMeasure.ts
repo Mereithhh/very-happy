@@ -3,6 +3,7 @@
  * each viewport unit / safe-area inset by sizing hidden probe elements, since
  * none of 100lvh, env(), or the resolved --app-h are exposed to JS directly.
  */
+import { getRootScrollResets } from '@/app/viewportVars';
 import type { ElementSnapshot, KeyboardSnapshot, ViewportSnapshot } from './viewportReport';
 
 const UNIT_PROBES: Array<[label: string, height: string]> = [
@@ -119,6 +120,9 @@ export function collectKeyboardSnapshot(): KeyboardSnapshot {
         appHOverride: root.style.getPropertyValue('--app-h').trim(),
         keyboardOpen: root.dataset.keyboardOpen === 'true',
         rootLock: root.dataset.rootLock === 'true',
+        pointer: window.matchMedia('(pointer: coarse)').matches ? 'coarse' : window.matchMedia('(pointer: fine)').matches ? 'fine' : 'none',
+        maxTouchPoints: navigator.maxTouchPoints ?? 0,
+        scrollResets: getRootScrollResets(),
     };
 }
 

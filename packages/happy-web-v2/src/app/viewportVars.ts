@@ -24,6 +24,19 @@
  * 3. Root lock — app shells never scroll the document (inner containers do);
  *    `useRootScrollLock` sets `<html data-root-lock>` (overflow hidden) while
  *    such a screen is mounted. Public pages (landing / docs) keep page scroll.
+ *
+ * 4. B-855 (iPad, Xu CHEN 11-01): overflow hidden does not stop iOS from
+ *    scrolling the document — its keyboard reveal-pan, focus() and
+ *    scrollIntoView all do, and the offset can outlive the keyboard: the whole
+ *    app sat ~300px up with a blank band below until iOS re-laid out. Two gaps
+ *    let it stick: the keyboard path keyed on `pointer: coarse`, which an iPad
+ *    with a Magic Keyboard / trackpad reports as fine (with a Macintosh UA), so
+ *    nothing was pinned or cleaned up; and the lock only reset the scroll once,
+ *    at mount. Now any touch screen counts (`hasTouchScreen`), and while
+ *    locked every window scroll / viewport / rotation / page-show / visibility
+ *    event re-checks `shouldResetRootScroll` and returns the document to 0 —
+ *    except while the keyboard is up or something still overlays the visual
+ *    viewport, where iOS's pan is followed through `--vv-top`, never fought.
  */
 import { useEffect } from 'react';
 
@@ -49,16 +62,25 @@ export interface KeyboardViewport {
     top: number;
 }
 
+/**
+ * B-855: a touch screen, not only a coarse primary pointer. iPadOS with a
+ * Magic Keyboard / trackpad reports `pointer: fine` and a Macintosh UA, yet its
+ * soft keyboard still overlays the page and iOS still pans it.
+ */
+export function hasTouchScreen(s: { coarse: boolean; anyCoarse: boolean; maxTouchPoints: number }): boolean {
+    return s.coarse || s.anyCoarse || s.maxTouchPoints > 1;
+}
+
 /** Is the iOS overlay keyboard up, and where is the visible area? */
 export function keyboardViewport(s: {
-    coarse: boolean;
+    touch: boolean;
     vvHeight: number | null;
     vvOffsetTop: number;
     vvScale: number;
     layoutHeight: number;
 }): KeyboardViewport {
     const closed = { open: false, height: s.layoutHeight, top: 0 };
-    if (!s.coarse || s.vvHeight === null || !(s.vvHeight > 0)) return closed;
+    if (!s.touch || s.vvHeight === null || !(s.vvHeight > 0)) return closed;
     if (s.vvScale > 1.001) return closed; // pinch zoom, not a keyboard
     if (s.vvHeight >= s.layoutHeight - KEYBOARD_MIN_PX) return closed; // Android resizes-content lands here too
     const top = Math.max(0, Math.min(s.vvOffsetTop, s.layoutHeight - s.vvHeight));
@@ -71,6 +93,45 @@ export function viewportVars(appH: number | null, kb: KeyboardViewport): Record<
         return { '--app-h': `${kb.height}px`, '--vv-h': `${kb.height}px`, '--vv-top': `${kb.top}px`, keyboardOpen: true };
     }
     return { '--app-h': appH === null ? null : `${appH}px`, '--vv-h': null, '--vv-top': null, keyboardOpen: false };
+}
+
+/** Visual-viewport shortfall (px) still treated as "nothing overlays the page". */
+const VV_FULL_SLACK_PX = 8;
+
+/**
+ * B-855: must a locked document's scroll offset be undone now? Only when the
+ * visual viewport covers the whole layout viewport — then iOS has nothing to
+ * reveal and any offset is residue. While the keyboard (or a smaller overlay
+ * such as the iPad shortcut bar) is up, or the page is pinch-zoomed, iOS's pan
+ * is legitimate and a scrollTo would fight it (B-797's feedback loop).
+ */
+export function shouldResetRootScroll(s: {
+    rootLocked: boolean;
+    keyboardOpen: boolean;
+    scrollX: number;
+    scrollY: number;
+    vvHeight: number | null;
+    vvScale: number;
+    layoutHeight: number;
+}): boolean {
+    if (!s.rootLocked || s.keyboardOpen) return false;
+    if (!s.scrollX && !s.scrollY) return false;
+    if (s.vvScale > 1.001) return false;
+    if (s.vvHeight !== null && s.vvHeight < s.layoutHeight - VV_FULL_SLACK_PX) return false;
+    return true;
+}
+
+/** Events after which a locked document is re-checked (window / document / visualViewport). */
+export const ROOT_SCROLL_GUARD_EVENTS = {
+    window: ['scroll', 'resize', 'orientationchange', 'pageshow', 'focusout'],
+    document: ['visibilitychange'],
+    visualViewport: ['resize', 'scroll'],
+} as const;
+
+let rootScrollResets = 0;
+/** How often the guard has undone a document scroll (Viewport 诊断). */
+export function getRootScrollResets(): number {
+    return rootScrollResets;
 }
 
 type Listener = (kb: KeyboardViewport) => void;
@@ -115,7 +176,7 @@ export function installViewportVars(): void {
         // The ICB height: unaffected by iOS's overlay keyboard (unlike vv).
         const layoutHeight = Math.max(window.innerHeight, root.clientHeight);
         const kb = keyboardViewport({
-            coarse: mq('(pointer: coarse)'),
+            touch: hasTouchScreen({ coarse: mq('(pointer: coarse)'), anyCoarse: mq('(any-pointer: coarse)'), maxTouchPoints: navigator.maxTouchPoints ?? 0 }),
             vvHeight: vv ? vv.height : null,
             vvOffsetTop: vv?.offsetTop ?? 0,
             vvScale: vv?.scale ?? 1,
@@ -135,6 +196,19 @@ export function installViewportVars(): void {
         }
         if (vars.keyboardOpen) root.dataset.keyboardOpen = 'true';
         else delete root.dataset.keyboardOpen;
+        const reset = shouldResetRootScroll({
+            rootLocked: root.dataset.rootLock === 'true',
+            keyboardOpen: kb.open,
+            scrollX: window.scrollX,
+            scrollY: window.scrollY,
+            vvHeight: vv ? vv.height : null,
+            vvScale: vv?.scale ?? 1,
+            layoutHeight,
+        });
+        if (reset) {
+            rootScrollResets++;
+            window.scrollTo(0, 0);
+        }
         const changed = kb.open !== current.open || kb.height !== current.height || kb.top !== current.top;
         current = kb;
         if (changed) listeners.forEach((fn) => fn(kb));
@@ -142,10 +216,9 @@ export function installViewportVars(): void {
     const schedule = () => {
         if (!frame) frame = requestAnimationFrame(update);
     };
-    window.addEventListener('resize', schedule);
-    window.addEventListener('orientationchange', schedule);
-    window.visualViewport?.addEventListener('resize', schedule);
-    window.visualViewport?.addEventListener('scroll', schedule);
+    for (const type of ROOT_SCROLL_GUARD_EVENTS.window) window.addEventListener(type, schedule, { passive: true });
+    for (const type of ROOT_SCROLL_GUARD_EVENTS.document) document.addEventListener(type, schedule);
+    for (const type of ROOT_SCROLL_GUARD_EVENTS.visualViewport) window.visualViewport?.addEventListener(type, schedule);
     update();
 }
 
