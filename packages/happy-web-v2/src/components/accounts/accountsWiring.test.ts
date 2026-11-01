@@ -25,7 +25,8 @@ describe('B-850c accounts wiring', () => {
         expect(detail).toContain("const pendingAccountBlock = pendingMode && pending?.state === 'draft'");
         const modal = src('screens/sessions/NewSessionModal.tsx');
         expect(modal).toContain("    && !accountBlocked\n");
-        expect(modal).toContain("const accountBlocked = resolveSpawnAccount(readMachineAgentProfiles(selectedMachine), agent, accountChoice).kind === 'blocked';");
+        // B-850e: judged on what it will really start on — the project default included.
+        expect(modal).toContain("const accountBlocked = resolveSpawnAccount(readMachineAgentProfiles(selectedMachine), agent, accountChoice, Date.now(), accountLaunch).kind === 'blocked';");
         // the daemon's own refusal reads as a sentence, not a code
         expect(src('sync/pendingSessionsRuntime.ts')).toContain("if (result.type === 'error' && !result.transport && parseSpawnAccountError(result.errorMessage)) result = { ...result, errorMessage: t('accounts.spawnUnavailable') };");
     });

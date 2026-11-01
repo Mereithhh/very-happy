@@ -16,14 +16,17 @@
  */
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUpRight, Check, ListChecks, RotateCw, X } from 'lucide-react';
+import { ArrowUpRight, Check, KeyRound, ListChecks, Pencil, RotateCw, X } from 'lucide-react';
 import { Modal } from '@/modal';
 import { toast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { AUTOMATIONS_BOARD_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
-import { fmtAbsolute, fmtRelative, isRunOpen, langOf, sortAttentionRuns } from './automationPresentation';
+import { attentionKind, fmtAbsolute, fmtRelative, isRunOpen, langOf, sortAttentionRuns } from './automationPresentation';
+import { accountSettingsHref } from '@/screens/session/sessionAccount';
 import { reportAutomationError, RunStatusBadge, SessionLink, useAttentionReason, useNow } from './AutomationShared';
 import './automations.css';
+
+const isAccountRefusal = (run: Parameters<typeof attentionKind>[0]) => attentionKind(run) === 'account_unavailable' || attentionKind(run) === 'account_history_rejected';
 
 export function AttentionSection({ poll = true, linkAutomation = true }: { poll?: boolean; linkAutomation?: boolean }) {
   const { t, lang } = useTranslation();
@@ -35,6 +38,7 @@ export function AttentionSection({ poll = true, linkAutomation = true }: { poll?
   const ackAll = useAutomations((s) => s.ackAll);
   const cancel = useAutomations((s) => s.cancel);
   const rerun = useAutomations((s) => s.rerun);
+  const automations = useAutomations((s) => s.automations);
   const reason = useAttentionReason();
   const now = useNow();
   const [busy, setBusy] = useState<string | null>(null);
@@ -121,12 +125,32 @@ export function AttentionSection({ poll = true, linkAutomation = true }: { poll?
                 </div>
               </div>
               <div className="au-attn-actions">
+                {/* B-850e: an account refusal — sign in again / pick another account, then 再跑一次 (below). */}
+                {isAccountRefusal(run) && (() => {
+                  const action = automations.find((a) => a.id === run.automationId)?.action;
+                  const accountId = action?.kind === 'spawn' && action.agentProfile ? action.agentProfile.id : undefined;
+                  return <>
+                    {attentionKind(run) === 'account_unavailable' && (
+                      <button type="button" className="au-btn au-btn--primary" data-testid="attn-relogin" onClick={() => navigate(accountSettingsHref(run.machineId, accountId))}>
+                        <KeyRound size={13} /> {t('accounts.actionRelogin')}
+                      </button>
+                    )}
+                    <button type="button" className="au-btn" data-testid="attn-switch-account" onClick={() => navigate(`/automations/${encodeURIComponent(run.automationId)}/edit`)}>
+                      <Pencil size={13} /> {t('accounts.actionSwitch')}
+                    </button>
+                  </>;
+                })()}
                 {run.sessionId && (
                   <button type="button" className="au-btn au-btn--primary" onClick={() => navigate(`/session/${encodeURIComponent(run.sessionId!)}`)}>
                     <ArrowUpRight size={13} /> {t('automations.openSession')}
                   </button>
                 )}
-                <button type="button" className="au-btn" disabled={busy === `rerun:${run.id}`} onClick={() => void guard(`rerun:${run.id}`, async () => { await rerun(run.automationId); toast.success(t('automations.runQueued', { name: run.automationName }) as string); })}>
+                <button type="button" className="au-btn" disabled={busy === `rerun:${run.id}`} onClick={() => void guard(`rerun:${run.id}`, async () => {
+                  await rerun(run.automationId);
+                  // B-850e: after fixing the account, 再跑一次 is the retry — this refusal is handled (a new refusal opens its own row).
+                  if (isAccountRefusal(run)) await ack(run.id, 'owner');
+                  toast.success(t('automations.runQueued', { name: run.automationName }) as string);
+                })}>
                   <RotateCw size={13} /> {t('automations.rerun')}
                 </button>
                 {isRunOpen(run.status) && (

@@ -148,9 +148,15 @@ export function NewSessionModal({
   // prompt for paths that actually exist.
   const selectedMachine = online.find((m) => m.id === machineId);
   // B-850c: the account the session starts on; an account belongs to one machine and agent.
+  const suggestedProject = suggestProjectFor({ machineId, path: directory.trim() }, liveProjects);
+  const projectHint = newSessionProjectHint(suggestedProject, pickedProject, liveProjects);
+  const projectId = projectHint.kind === 'auto' || projectHint.kind === 'picked' ? projectHint.project.id : null;
+  // B-850e: the project's account for this agent on this machine comes before the machine default (wire resolveLaunchAgentProfile).
+  const projectAccounts = projectId ? liveProjects.find((p) => p.id === projectId)?.defaults.agentProfiles ?? null : null;
+  const accountLaunch = { project: projectAccounts, machineId };
   const [accountChoice, setAccountChoice] = useState<SpawnAccountChoice>(undefined);
   useEffect(() => { setAccountChoice(undefined); }, [machineId, agent]);
-  const accountBlocked = resolveSpawnAccount(readMachineAgentProfiles(selectedMachine), agent, accountChoice).kind === 'blocked';
+  const accountBlocked = resolveSpawnAccount(readMachineAgentProfiles(selectedMachine), agent, accountChoice, Date.now(), accountLaunch).kind === 'blocked';
   const agentsToSetUp = agentsNeedingSetup(selectedMachine?.metadata);
   // Derived, not stored: switching machines or the agent becoming available hides the row.
   const shownSetupAgent = setupAgent && agentsToSetUp.includes(setupAgent) ? setupAgent : null;
@@ -167,7 +173,7 @@ export function NewSessionModal({
   // user just completed, and a launcher that refuses on stale evidence is worse
   // than one that says what it knows.
   // B-850c (wire v2): a session on an account does not use the machine login — no 「本机登录失效」 warning.
-  const onAccount = resolveSpawnAccount(readMachineAgentProfiles(selectedMachine), agent, accountChoice).kind === 'account';
+  const onAccount = resolveSpawnAccount(readMachineAgentProfiles(selectedMachine), agent, accountChoice, Date.now(), accountLaunch).kind === 'account';
   const selectedClaudeAuth = onAccount ? { kind: 'none' as const } : claudeAuthNotice(selectedMachine, agent);
   // B-586: 「在新 worktree 中」 — machine capability gate + the daemon's repo info.
   const worktreeSupported = machineSupportsWorktrees(selectedMachine);
@@ -221,9 +227,6 @@ export function NewSessionModal({
   // B-516: optimistic open. The pending page owns the spawn, a directory
   // creation approval, the first message (queued in its outbox) and failure;
   // recent-path memory and the Task Board mapping happen on success there.
-  const suggestedProject = suggestProjectFor({ machineId, path: directory.trim() }, liveProjects);
-  const projectHint = newSessionProjectHint(suggestedProject, pickedProject, liveProjects);
-  const projectId = projectHint.kind === 'auto' || projectHint.kind === 'picked' ? projectHint.project.id : null;
   // Offline machines stay listed, disabled, so the picker says why they can't be
   // chosen; a remembered machine this account no longer lists keeps its old row.
   const offlineText = lang.startsWith('zh') ? '离线' : 'Offline';
@@ -410,7 +413,8 @@ export function NewSessionModal({
             </div>
             {/* B-850c: the account it starts on (Q3: an unusable one blocks 创建). */}
             <SpawnAccountPicker machine={selectedMachine} machineName={selectedMachine ? machineDisplayName(selectedMachine) : ''} agent={agent}
-              value={accountChoice} onChange={setAccountChoice} labelId="ns-account-label" variant="dialog"
+              value={accountChoice} onChange={setAccountChoice} labelId="ns-account-label" variant="dialog" project={projectAccounts}
+              machineNameOf={(id) => { const m = online.find((x) => x.id === id); return m ? machineDisplayName(m) : id.slice(0, 8); }}
               onFix={() => { onClose(); navigate(accountSettingsHref(machineId)); }} />
             {agent === 'claude' && (
               <div className="ns-agent-help">

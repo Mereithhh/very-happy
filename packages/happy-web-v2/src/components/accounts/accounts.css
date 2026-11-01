@@ -58,3 +58,10 @@
   user-select: all; overflow-wrap: anywhere;
 }
 .acc-link > span { overflow-wrap: anywhere; }
+
+/* B-850e: account picker on project / team / automation forms */
+.acc-choice-hint { color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; }
+.acc-choice-gate { color: var(--warn); font-size: var(--fs-12); line-height: 1.5; }
+.acc-choice-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.acc-choice-field > span:first-child { color: var(--text-dim); font-size: var(--fs-12); }
+.teams-screen .acc-choice-field > span:first-child { color: inherit; font-size: inherit; }

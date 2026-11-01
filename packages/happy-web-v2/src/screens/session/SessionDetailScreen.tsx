@@ -45,7 +45,9 @@ import { AccountUnavailableBanner } from './AccountUnavailableBanner';
 import { AccountHistoryRejectedBanner } from './HistoryRejected';
 import { spawnAccountBlockText } from '@/components/accounts/SpawnAccountPicker';
 import { readMachineAgentProfiles, resolveSpawnAccount } from '@/sync/agentProfiles';
+import { projectAccountsOf } from '@/sync/accountChoice';
 import { machineLabel } from '@/utils/machineUtils';
+import { useProjects } from '@/sync/projects';
 import { AutomationAttentionBanner } from './AutomationAttentionBanner';
 import { WorktreeSetupBanner } from './WorktreeSetupBanner';
 import { canOfferRestore } from '@/app/sessionRestore';
@@ -97,8 +99,10 @@ export function SessionDetailScreen() {
     const pendingLauncher = useLauncherModelSource(pending?.agent, pendingMode ? pending?.machineId : null);
     // B-850c (Q3): a draft whose account cannot be used is not started — the card says why.
     const pendingMachine = storage((s) => (pendingMode && pending ? s.machines[pending.machineId] : undefined));
+    // B-850e: …including the project default it would start on.
+    const pendingProjects = useProjects();
     const pendingAccountBlock = pendingMode && pending?.state === 'draft'
-        ? spawnAccountBlockText(resolveSpawnAccount(readMachineAgentProfiles(pendingMachine), pending.agent, pending.agentProfileId), pendingMachine ? machineLabel(pendingMachine) : pending.machineId.slice(0, 8), t)
+        ? spawnAccountBlockText(resolveSpawnAccount(readMachineAgentProfiles(pendingMachine), pending.agent, pending.agentProfileId, Date.now(), { project: projectAccountsOf(pending.onSpawnedProject?.projectId, pendingProjects.projects), machineId: pending.machineId }), pendingMachine ? machineLabel(pendingMachine) : pending.machineId.slice(0, 8), t)
         : null;
     const [searchParams, setSearchParams] = useSearchParams();
     const panelTab = readSessionPanel(searchParams.get('panel'));

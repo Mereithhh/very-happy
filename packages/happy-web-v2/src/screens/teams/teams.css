@@ -399,3 +399,6 @@
 .teams-trail { margin-bottom: 4px; }
 .teams-trail-current { font-size: var(--fs-13); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .teams-heading-more { display: inline-flex; align-items: center; justify-content: center; }
+
+/* B-850e: 成员账号 — one picker per member, no list bullets */
+.team-member-accounts-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }

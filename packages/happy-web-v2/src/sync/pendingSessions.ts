@@ -106,7 +106,8 @@ export interface PendingSessionDeps {
     isOwnerAlive(ownerTab: string): Promise<boolean>;
     /** Run `fn` while holding a cross-tab exclusive lock (reclaiming orphans). */
     withClaimLock(fn: () => Promise<void>): Promise<void>;
-    spawn(options: SpawnSessionOptions): Promise<SpawnSessionResult>;
+    /** B-850e `launch.projectId`: the project the session joins — its account default applies when no account was chosen. */
+    spawn(options: SpawnSessionOptions, launch?: { projectId?: string }): Promise<SpawnSessionResult>;
     hasSession(id: string): boolean;
     /** Called on every session-store change; returns an unsubscribe. */
     subscribeSessions(listener: () => void): () => void;
@@ -418,7 +419,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                     permissionMode: record.permissionMode ?? undefined,
                     approvedNewDirectoryCreation: record.approvedNewDirectoryCreation === true,
                     ...(record.agentProfileId !== undefined ? { agentProfileId: record.agentProfileId } : {}),
-                });
+                }, record.onSpawnedProject ? { projectId: record.onSpawnedProject.projectId } : undefined);
             } catch (error) {
                 result = { type: 'error', errorMessage: error instanceof Error ? error.message : String(error), transport: true };
             }

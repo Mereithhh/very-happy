@@ -665,12 +665,18 @@ Which account a new session starts on: **its own choice > the project's default
 for that agent on that machine > the machine default (`account default`) > the
 machine login**. Only the account id and its label are stored on the server.
 
-- Projects: one account per agent (Web project settings). It applies on the
+- Projects: one account per agent (Web project settings → 账号 / Accounts: pick
+  the machine, then the account, 本机登录, or follow the machine default). The
+  new-session dialog and drafts say where the account comes from: 「项目默认 · X」,
+  「机器默认 · X」 or 本机登录, and stop before creating when it is unusable. It applies on the
   machine the account belongs to; on another machine the project has no account
   default. `very-happy spawn --project <id>` uses it when `--account` is not given.
 - Teams: the team default and each member can name an account (Web team
-  settings; agents pass `agentProfile` to `team_delegate`). A change applies to
-  the member's next launch.
+  settings → 成员账号 / Member accounts, the new-team form and the new-task
+  dialog; agents pass `agentProfile` to `team_delegate`). A change applies to
+  the member's next launch; when changed on the Web while the member is online,
+  its session is also switched in place right away (history kept). Changing a
+  form's agent clears its account (accounts belong to one agent).
 - Automations: `very-happy auto create|edit … --account <id|machine>` (or the
   Web form). A sticky session is moved onto the run's account in place, history
   kept.

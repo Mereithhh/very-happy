@@ -15,10 +15,13 @@ import {
     agentHasAccounts,
     machineHasAgentAccounts,
     readMachineAgentProfiles,
+    projectSpawnAccount,
     resolveSpawnAccount,
+    type AgentProfilesState,
     type SpawnAccountChoice,
     type SpawnAccountResolution,
 } from '@/sync/agentProfiles';
+import type { ProjectAgentProfile } from '@slopus/happy-wire';
 import { accountKindText, accountStatusText } from './accountText';
 import './accounts.css';
 
@@ -46,7 +49,32 @@ export function spawnAccountBlockText(resolution: SpawnAccountResolution, machin
     }
 }
 
-export function SpawnAccountPicker({ machine, machineName, agent, value, onChange, onFix, labelId, variant = 'draft' }: {
+/**
+ * B-850d/e: the 「不选」 row says where the account comes from —
+ * 「项目默认 · X」 when the session's project has one for this agent on this
+ * machine, else 「机器默认 · X」 / 「机器默认 · 本机登录」.
+ */
+export function spawnDefaultOptionLabel(state: AgentProfilesState, agent: string, machineId: string, project: readonly ProjectAgentProfile[] | null | undefined, t: T): string {
+    const fromProject = projectSpawnAccount(agent, { project, machineId });
+    if (fromProject) {
+        if (fromProject.id === null) return t('accounts.projectDefault', { label: t('accounts.machineLogin') });
+        const account = state.accounts.find((a) => a.id === fromProject.id && a.agent === agent);
+        const snapshot = project?.find((e) => e.agent === agent && e.id === fromProject.id)?.label;
+        return t('accounts.projectDefault', { label: account?.label ?? snapshot ?? fromProject.id });
+    }
+    const id = state.defaults[agent];
+    if (!id) return t('accounts.draftDefaultMachineLogin');
+    const account = state.accounts.find((a) => a.id === id && a.agent === agent);
+    return t('accounts.draftDefault', { label: account?.label ?? '?' });
+}
+
+/** B-850e: the project has an account for this agent, but on another machine (DESIGN F7). */
+export function projectAccountElsewhere(agent: string, machineId: string, project: readonly ProjectAgentProfile[] | null | undefined): string | null {
+    const entry = project?.find((e) => e.agent === agent);
+    return entry && entry.machineId !== machineId ? entry.machineId : null;
+}
+
+export function SpawnAccountPicker({ machine, machineName, agent, value, onChange, onFix, labelId, variant = 'draft', project, machineNameOf }: {
     machine: { id: string; daemonState?: unknown } | null | undefined;
     machineName: string;
     agent: string;
@@ -56,6 +84,9 @@ export function SpawnAccountPicker({ machine, machineName, agent, value, onChang
     onFix: () => void;
     labelId: string;
     variant?: 'draft' | 'dialog';
+    /** B-850e: the session's project `defaults.agentProfiles` (absent = no project) */
+    project?: readonly ProjectAgentProfile[] | null;
+    machineNameOf?: (machineId: string) => string;
 }) {
     const { t } = useTranslation();
     if (!machine || !agentHasAccounts(agent)) return null;
@@ -70,9 +101,9 @@ export function SpawnAccountPicker({ machine, machineName, agent, value, onChang
     }
     const now = Date.now();
     const accounts = accountsForAgent(state, agent);
-    const defaultAccount = state.defaults[agent] ? accounts.find((a) => a.id === state.defaults[agent]) : undefined;
+    const launch = { project, machineId: machine.id };
     const options: SelectOption[] = [
-        { value: DEFAULT_KEY, label: defaultAccount ? t('accounts.draftDefault', { label: defaultAccount.label }) : state.defaults[agent] ? t('accounts.draftDefault', { label: '?' }) : t('accounts.draftDefaultMachineLogin') },
+        { value: DEFAULT_KEY, label: spawnDefaultOptionLabel(state, agent, machine.id, project, t) },
         { value: MACHINE_KEY, label: t('accounts.machineLogin') },
         ...accounts.map((account) => {
             const status = accountDisplayStatus(account, now);
@@ -91,7 +122,11 @@ export function SpawnAccountPicker({ machine, machineName, agent, value, onChang
         <label className={labelClass} id={labelId}>{t('accounts.draftAccount')}</label>
         <Combobox label={t('accounts.draftAccount')} labelledBy={labelId} value={key} onChange={(next) => onChange(keyToChoice(next))} options={options}
             searchable={false} {...(variant === 'dialog' ? { size: 'md' as const } : {})} />
-        <SpawnAccountBlock resolution={resolveSpawnAccount(state, agent, value, now)} machineName={machineName} onFix={onFix} />
+        <SpawnAccountBlock resolution={resolveSpawnAccount(state, agent, value, now, launch)} machineName={machineName} onFix={onFix} />
+        {value === undefined && (() => {
+            const elsewhere = projectAccountElsewhere(agent, machine.id, project);
+            return elsewhere ? <p className="acc-choice-hint ps-draft-note" data-testid="spawn-account-elsewhere">{t('accounts.projectOtherMachine', { machine: machineNameOf?.(elsewhere) ?? elsewhere.slice(0, 8) })}</p> : null;
+        })()}
     </>;
 }
 

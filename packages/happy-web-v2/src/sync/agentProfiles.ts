@@ -14,9 +14,12 @@ import { z } from 'zod';
 import {
     AGENT_PROFILE_RPC,
     AGENT_PROFILE_SESSION_CAPABILITY,
+    AGENT_PROFILE_FEATURE_LAUNCH,
     AgentProfileSummarySchema,
     readSessionAgentProfile as readWireSessionAgentProfile,
+    resolveLaunchAgentProfile,
     type AgentProfileSummary,
+    type ProjectAgentProfile,
 } from '@slopus/happy-wire';
 
 // Contract (B-850a wire v1 + v2) comes from happy-wire; this module adds the
@@ -44,6 +47,8 @@ const AgentProfilesStateSchema = z.object({
     kinds: z.array(z.string()).optional(),
     /** Wire v3 (B-850b). */
     codexProviders: z.array(z.unknown()).optional(),
+    /** B-850d: what else the daemon honours ('launch-accounts'). */
+    features: z.array(z.unknown()).optional(),
 });
 
 export interface AgentProfilesState {
@@ -55,6 +60,8 @@ export interface AgentProfilesState {
     kinds: string[];
     /** Wire v3: for the codex-provider add form. Empty on an older CLI / a config.toml without providers. */
     codexProviders: CodexProviderOption[];
+    /** B-850d: e.g. 'launch-accounts'; empty on a B-850a/b daemon. */
+    features: string[];
 }
 
 const V1_KINDS = ['claude-subscription', 'claude-api'];
@@ -86,7 +93,16 @@ export function parseAgentProfilesState(raw: unknown): AgentProfilesState | null
     // `kinds` (B-850b, always sent) says what this daemon can create; absent = a
     // B-850a daemon: Claude only, so its Codex section stays 「本机登录 · 升级 CLI」.
     const kinds = parsed.data.kinds ?? V1_KINDS;
-    return { daemonPid: parsed.data.daemonPid, updatedAt: parsed.data.updatedAt, accounts, defaults, kinds, codexProviders };
+    const features = (parsed.data.features ?? []).filter((f): f is string => typeof f === 'string');
+    return { daemonPid: parsed.data.daemonPid, updatedAt: parsed.data.updatedAt, accounts, defaults, kinds, codexProviders, features };
+}
+
+/**
+ * B-850d: does this daemon use the account chosen on a project / team /
+ * automation (and a fork's)? Without it those choices save but do not apply.
+ */
+export function machineHonoursLaunchAccounts(state: AgentProfilesState | null): boolean {
+    return !!state && state.features.includes(AGENT_PROFILE_FEATURE_LAUNCH);
 }
 
 /** Does this daemon serve accounts for `agent` (it can add at least one of its kinds)? */
@@ -216,13 +232,54 @@ export type SpawnAccountChoice = string | null | undefined;
 export type SpawnAccountResolution =
     /** old CLI / agent without accounts: send nothing, the machine login runs */
     | { kind: 'unsupported' }
-    | { kind: 'machine'; explicit: boolean }
-    | { kind: 'account'; account: AgentProfileSummary; status: AccountDisplayStatus; fromDefault: boolean }
+    | { kind: 'machine'; explicit: boolean; fromProject?: true }
+    | { kind: 'account'; account: AgentProfileSummary; status: AccountDisplayStatus; fromDefault: boolean; fromProject?: true }
     /** Q3: stop before creating — the user must pick another. */
-    | { kind: 'blocked'; reason: 'missing' | 'expired' | 'invalid' | 'missing-secret'; label: string | null; fromDefault: boolean };
+    | { kind: 'blocked'; reason: 'missing' | 'expired' | 'invalid' | 'missing-secret'; label: string | null; fromDefault: boolean; fromProject?: true };
 
-export function resolveSpawnAccount(state: AgentProfilesState | null, agent: string, choice: SpawnAccountChoice, now = Date.now()): SpawnAccountResolution {
+/** B-850d: 「项目默认 · X」/「机器默认 · X」/「本机登录」 — where the resolved account comes from. */
+export type SpawnAccountSource = 'explicit' | 'project' | 'machine' | 'machine-login';
+
+export function spawnAccountSource(resolution: SpawnAccountResolution): SpawnAccountSource | null {
+    if (resolution.kind === 'unsupported') return null;
+    if (resolution.fromProject) return 'project';
+    if (resolution.kind === 'machine') return resolution.explicit ? 'explicit' : 'machine-login';
+    return resolution.fromDefault ? 'machine' : 'explicit';
+}
+
+/**
+ * B-850d: where a new session's project default comes in — the project's
+ * `defaults.agentProfiles` and the machine it starts on. Absent = no project.
+ */
+export interface SpawnAccountProject {
+    project?: readonly ProjectAgentProfile[] | null;
+    machineId: string;
+}
+
+/**
+ * B-850d: the project's account for `agent` when the session starts on
+ * `machineId` (wire `resolveLaunchAgentProfile`, source 'project'), else
+ * undefined: `{ id: null }` = the project says machine login.
+ */
+export function projectSpawnAccount(agent: string, launch: SpawnAccountProject | null | undefined): { id: string | null } | undefined {
+    if (!launch?.project?.length) return undefined;
+    const resolved = resolveLaunchAgentProfile({ project: launch.project, agent, machineId: launch.machineId });
+    return resolved.source === 'project' ? { id: resolved.agentProfileId ?? null } : undefined;
+}
+
+/**
+ * The account a spawn starts on. B-850d: with `launch`, an unchosen draft
+ * follows the project default for this agent on this machine before the
+ * machine default (explicit > project > machine > machine login); the result
+ * then carries `fromProject: true` and is judged like an explicit pick (Q3).
+ */
+export function resolveSpawnAccount(state: AgentProfilesState | null, agent: string, choice: SpawnAccountChoice, now = Date.now(), launch?: SpawnAccountProject | null): SpawnAccountResolution {
     if (!state || !agentHasAccounts(agent) || !machineHasAgentAccounts(state, agent)) return { kind: 'unsupported' };
+    const project = choice === undefined ? projectSpawnAccount(agent, launch) : undefined;
+    if (project) {
+        const resolved = resolveSpawnAccount(state, agent, project.id, now);
+        return { ...resolved, fromProject: true } as SpawnAccountResolution;
+    }
     if (choice === null) return { kind: 'machine', explicit: true };
     const fromDefault = choice === undefined;
     const id = fromDefault ? state.defaults[agent] : choice;
@@ -239,8 +296,12 @@ export function resolveSpawnAccount(state: AgentProfilesState | null, agent: str
  * lets the daemon apply its own default, same as an old Web), and never to an
  * old CLI or an agent this daemon has no accounts for (a B-850a daemon rejects a Codex id).
  */
-export function spawnAgentProfileParam(state: AgentProfilesState | null, agent: string, choice: SpawnAccountChoice): { agentProfileId?: string | null } {
-    if (!state || !agentHasAccounts(agent) || !machineHasAgentAccounts(state, agent) || choice === undefined) return {};
+export function spawnAgentProfileParam(state: AgentProfilesState | null, agent: string, choice: SpawnAccountChoice, launch?: SpawnAccountProject | null): { agentProfileId?: string | null } {
+    if (!state || !agentHasAccounts(agent) || !machineHasAgentAccounts(state, agent)) return {};
+    // B-850d: the Web resolves the project default itself (a daemon only knows its machine default).
+    const project = choice === undefined ? projectSpawnAccount(agent, launch) : undefined;
+    if (project) return { agentProfileId: project.id };
+    if (choice === undefined) return {};
     return { agentProfileId: choice };
 }
 
