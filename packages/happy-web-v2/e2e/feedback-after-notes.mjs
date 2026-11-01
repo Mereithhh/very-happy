@@ -117,7 +117,12 @@ async function signUp(page) {
     await page.goto(`${BASE}/signup`);
     const toggle = page.locator('.auth-method-toggle');
     await page.locator('input[autocomplete="username"]').or(toggle).first().waitFor({ timeout: 30_000 });
-    if (!(await page.locator('input[autocomplete="username"]').isVisible())) await toggle.click();
+    // The page may expand the password form itself once the server config loads: click the toggle only
+    // while it is collapsed, or a click racing that expansion folds the form away again.
+    for (let i = 0; i < 10 && !(await page.locator('input[autocomplete="username"]').isVisible()); i++) {
+        if ((await toggle.getAttribute('aria-expanded').catch(() => null)) === 'false') await toggle.click().catch(() => {});
+        await sleep(500);
+    }
     await page.locator('input[autocomplete="username"]').fill(username);
     const pw = `pw-${randomBytes(6).toString('hex')}`;
     const pws = page.locator('input[autocomplete="new-password"]');
