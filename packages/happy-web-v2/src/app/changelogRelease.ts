@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-01-crypto-timeout',
+    date: '2026-11-01',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov01h.title',
+    summaryKey: 'changelog.releases.nov01h.summary',
+    itemKeys: ['changelog.releases.nov01h.cryptoTimeout', 'changelog.releases.nov01h.worktreeNotice'],
+  },
+  {
     id: '2026-11-01-login-restore',
     date: '2026-11-01',
     buildVersion: __APP_VERSION__,

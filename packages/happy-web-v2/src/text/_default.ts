@@ -2999,6 +2999,12 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov01h: {
+                title: 'Fix: no longer stuck on the loading page',
+                summary: 'If the encryption module fails to load, you are taken back to the login page instead of waiting forever.',
+                cryptoTimeout: 'In rare cases the encryption module fails to load. Instead of staying on the loading page forever, you are now taken back to the login page after about 16 seconds.',
+                worktreeNotice: 'In project settings, the notice for a worktree folder whose repository can’t be found now says to remove it below.',
+            },
             nov01g: {
                 title: 'Fix: no more being sent back to the login page',
                 summary: 'Opening the web app occasionally sent you back to the login page for no reason. That is fixed.',
