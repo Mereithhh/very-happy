@@ -2999,6 +2999,11 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov01g: {
+                title: 'Fix: no more being sent back to the login page',
+                summary: 'Opening the web app occasionally sent you back to the login page for no reason. That is fixed.',
+                login: 'Opening the web app occasionally sent you back to the login page for no reason. Now, when this kind of temporary problem happens while loading, the app retries automatically, so you no longer have to sign in again.',
+            },
             nov01f: {
                 title: 'Codex accounts, and accounts for projects, teams and automations',
                 summary: 'Pick a Codex account per session, and set default accounts for projects, teams and automations.',
