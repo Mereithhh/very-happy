@@ -2999,6 +2999,22 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov01f: {
+                title: 'Codex accounts, and accounts for projects, teams and automations',
+                summary: 'Pick a Codex account per session, and set default accounts for projects, teams and automations.',
+                codex: 'Models & accounts now has a Codex section: add an API provider (from the machine\'s config.toml, or your own URL + key) or a ChatGPT subscription (sign in with a device code). Switch a session\'s Codex account or pick one for a new session; a cross-type switch warns you that the new account may not accept the history.',
+                defaults: 'Projects, teams and automations have an account field; each team member can have their own account, and a fork keeps the original session\'s account.',
+                decisions: 'When a team or automation does not run because its account is unavailable, it shows up under “Needs my decision”, where you can sign in again, switch accounts or retry.',
+            },
+            nov01e: {
+                title: 'CLI 0.2.193: Codex accounts',
+                summary: 'Codex sessions can use the account you pick, and projects, teams and automations can have default accounts.',
+                codex: 'Codex can use a different account per session: an API provider (chosen from config.toml, or your own URL + key) or a ChatGPT subscription (device-code sign-in). Switching restarts the session in place and keeps its history.',
+                noFallback: 'When the chosen account is unavailable, that turn does not run instead of falling back to the machine login.',
+                keyEnv: 'API keys are no longer passed to the session\'s commands and subprocesses through the environment.',
+                defaults: 'Projects, teams and automations can set a default account, team members can each have their own, and a fork keeps the original session\'s account.',
+                refused: 'When a team or automation does not run because its account is unavailable, it appears under “Needs my decision”, where you can sign in again, switch accounts or retry.',
+            },
             nov01d: {
                 title: 'New Models & accounts settings',
                 summary: 'Add Claude accounts to each machine in Settings and switch a session between them.',
