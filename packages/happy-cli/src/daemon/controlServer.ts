@@ -3,6 +3,7 @@
  * Provides endpoints for listing sessions, stopping sessions, and daemon shutdown
  */
 
+import { AgentProfilesStateSchema, type AgentProfilesState } from '@slopus/happy-wire';
 import fastify, { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -90,7 +91,8 @@ export function startDaemonControlServer({
   listPeers,
   isTurnActive,
   onRateLimits,
-  onHibernateCheck
+  onHibernateCheck,
+  getAgentProfiles
 }: {
   /** Fresh per-process bearer token persisted in the private daemon state. */
   controlToken: string;
@@ -101,6 +103,8 @@ export function startDaemonControlServer({
    *  runs (`very-happy send --resume`). Optional so older wirings/tests keep
    *  working (→ 503). */
   resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }) => Promise<SpawnSessionResult>;
+  /** B-850a: the daemon's own view of its accounts (`very-happy account list`: env-sourced keys are judged in the daemon's environment, not the caller's shell). */
+  getAgentProfiles?: () => AgentProfilesState | null;
   /** B-794: stop + relaunch a live session in place (the `restart-session` machine RPC's local twin). */
   restartSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
@@ -284,6 +288,17 @@ export function startDaemonControlServer({
     }
 
     // List all tracked sessions
+    typed.post('/agent-profiles', {
+      schema: { response: { 200: AgentProfilesStateSchema, 503: z.object({ error: z.string() }) } },
+    }, async (_request, reply) => {
+      const state = getAgentProfiles?.() ?? null;
+      if (!state) {
+        reply.code(503);
+        return { error: 'accounts are not available in this daemon yet' };
+      }
+      return state;
+    });
+
     typed.post('/list', {
       schema: {
         response: {

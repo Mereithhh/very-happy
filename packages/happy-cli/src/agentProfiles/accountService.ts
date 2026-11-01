@@ -145,7 +145,14 @@ export class AccountService {
         return this.summary(accountId);
     }
 
-    remove(accountId: unknown, force: unknown): { removed: true; sessions: string[] } {
+    /**
+     * `force` with bound sessions: the credential is gone, so each of those
+     * sessions restarts in place right away and comes back `unavailable`
+     * (refusing turns, Q3) instead of running on the deleted credential until
+     * its next start. Restarts run in parallel within the bind budget; one
+     * still going reports 'pending'.
+     */
+    async remove(accountId: unknown, force: unknown): Promise<{ removed: true; sessions: string[]; restarts?: Record<string, string> }> {
         if (typeof accountId !== 'string') throw new AccountError('invalid-params', 'accountId is required');
         const { file } = this.editable(accountId);
         const sessions = sessionsBoundTo(readSessionBindings(this.home), accountId);
@@ -157,7 +164,21 @@ export class AccountService {
         writeAccountsFile(this.home, file);
         removeAccountSecret(this.home, accountId);
         this.changed();
-        return { removed: true, sessions };
+        if (sessions.length === 0 || !this.deps.restartSession) return { removed: true, sessions };
+        const restarts: Record<string, string> = {};
+        await Promise.all(sessions.map(async (sessionId) => { restarts[sessionId] = await this.restartWithinBudget(sessionId); }));
+        return { removed: true, sessions, restarts };
+    }
+
+    /** 'done' | 'skipped' (not running here) | 'pending' (still going after the budget) | 'failed' */
+    private async restartWithinBudget(sessionId: string): Promise<string> {
+        const outcome = await Promise.race([
+            this.deps.restartSession!(sessionId),
+            new Promise<'pending'>((r) => setTimeout(() => r('pending'), BIND_RESTART_BUDGET_MS).unref?.()),
+        ]);
+        if (outcome === 'pending') return 'pending';
+        if (outcome.ok) return 'done';
+        return outcome.notRunning ? 'skipped' : 'failed';
     }
 
     setDefault(agent: unknown, accountId: unknown): AgentProfilesState {

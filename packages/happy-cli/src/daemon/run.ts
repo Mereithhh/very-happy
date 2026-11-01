@@ -1842,6 +1842,7 @@ export async function startDaemon(): Promise<void> {
       spawnSession,
       resumeSession, // B-501: `very-happy send --resume`
       restartSession, // B-794: `very-happy session provider`
+      getAgentProfiles: () => accountServiceRef?.state() ?? null, // B-850a: `very-happy account list`
       requestShutdown: () => requestShutdown('happy-cli'),
       onHappySessionWebhook,
       onSessionStateEvent,

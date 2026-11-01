@@ -78,7 +78,9 @@ wrapper 拿到 session id 后、起任何 Claude 子进程前解析一次绑定�
 - 会话能力 `agent-profile-v1`；机器能力 = `daemonState.agentProfiles`（受信条件 `daemonPid === pid`）。
 - `daemonState.agentProfiles = { daemonPid, updatedAt, accounts: Summary[], defaults }`；Summary 只含 id/label/agent/kind/status/statusDetail/checkedAt/createdAt/expiresAt/baseUrl/models/keySource/keyRef/legacy。
 - `metadata.agentProfile`：缺 = 旧 wrapper；`null` = 本机登录；`{id,label,kind,status:'active'|'unavailable',reason?,model?}`。
-- RPC：`agent-profile-list/add/login-start/login-submit/login-status/login-cancel/test/rename/remove/set-default/bind`；失败一律 resolve `{error, code}`。`bind` 结果 `restart: 'done'|'skipped'|'pending'|'failed'`（`pending` = 22 s 内未完成，仍在进行）。
+- RPC：`agent-profile-list/add/login-start/login-submit/login-status/login-cancel/test/rename/remove/set-default/bind`；失败一律 resolve `{error, code}`。`bind` 结果 `restart: 'done'|'skipped'|'pending'|'failed'`（`pending` = 22 s 内未完成，仍在进行；Web 显示「重启中」，等 `metadata.agentProfile` 变成新账号即完成——A2 已按此实现）。
+- `remove` 带 `force` 且有绑定会话时：删记录与 secret 后**立即原地重启**这些会话（并行，单个 22 s 预算），它们回来即 `unavailable` 拒跑，不会继续用已删的凭据跑到下次启动；结果多一个 `restarts: {sessionId: 'done'|'skipped'|'pending'|'failed'}`（只加不改）。
+- `very-happy account list` 读**运行中 daemon** 的状态（控制端口 `/agent-profiles`，即 daemonState 同一份），`--key-env` 的变量按 daemon 环境判定；daemon 没跑时退回本地计算，并提示 env 型 key 是按当前 shell 判定的。
 - spawn RPC 新参数 `agentProfileId?: string|null`。
 - 所有枚举字段是开放字符串，读端白名单（`readAgentProfileStatus`、`readSessionAgentProfile`）。
 

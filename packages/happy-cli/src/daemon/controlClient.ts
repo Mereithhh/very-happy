@@ -3,6 +3,7 @@
  * Used by CLI commands to interact with running daemon
  */
 
+import type { AgentProfilesState } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
 import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
@@ -197,6 +198,12 @@ export async function resumeDaemonSession(
 }
 
 /** B-794: restart a live session in place via the local daemon. Never throws. */
+/** B-850a: the running daemon's account state (null = no daemon / older daemon). */
+export async function getDaemonAgentProfiles(): Promise<AgentProfilesState | null> {
+  const result = await daemonPost('/agent-profiles');
+  return result && Array.isArray(result.accounts) ? result as AgentProfilesState : null;
+}
+
 export async function restartDaemonSession(sessionId: string): Promise<{ success: boolean; sessionId?: string; error?: string }> {
   const result = await daemonPost('/restart-session', { sessionId });
   if (result?.error) {

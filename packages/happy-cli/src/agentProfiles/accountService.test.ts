@@ -41,28 +41,27 @@ describe('B-850a account service', () => {
         expect(check).not.toHaveBeenCalled();
     });
 
-    it('subscription token store: new account, re-login updates expiry; legacy providers are read-only', () => {
+    it('subscription token store: new account, re-login updates expiry; legacy providers are read-only', async () => {
         const { home, svc } = service();
         writeFileSync(join(home, 'providers.json'), JSON.stringify({ profiles: { hub: { baseUrl: 'https://h', apiKeyFile: '/k' } } }));
         const a = svc.storeSubscriptionToken(OAT + 'T', { label: 'Org A' });
         expect(a).toMatchObject({ id: 'org-a', kind: 'claude-subscription', status: 'ok', expiresAt: 5 + 365 * 86_400_000 });
         expect(() => svc.rename('hub', 'x')).toThrow(AccountError);
-        expect(() => svc.remove('hub', false)).toThrow(/providers.json/);
+        await expect(svc.remove('hub', false)).rejects.toThrow(/providers.json/);
         expect(svc.state().accounts.map((x) => [x.id, x.legacy ?? false])).toEqual([['hub', true], ['org-a', false]]);
     });
 
-    it('remove refuses while sessions use the account; force keeps their binding (they refuse to run, no fallback)', () => {
-        const { home, svc } = service();
+    it('remove refuses while sessions use the account; force keeps their binding and restarts them now (they come back unavailable, no fallback)', async () => {
+        const restartSession = vi.fn(async (id: string) => (id === 's2' ? { ok: false as const, notRunning: true, error: 'restart-precheck:not-tracked' } : { ok: true as const }));
+        const { home, svc } = service({ restartSession });
         svc.storeSubscriptionToken(OAT + 'T', { label: 'Org A' });
         svc.setDefault('claude', 'org-a');
         svc.writeBinding('s1', 'org-a');
-        try {
-            svc.remove('org-a', false);
-            throw new Error('expected in-use');
-        } catch (error) {
-            expect(error).toMatchObject({ code: 'in-use', sessions: ['s1'] });
-        }
-        expect(svc.remove('org-a', true)).toEqual({ removed: true, sessions: ['s1'] });
+        svc.writeBinding('s2', 'org-a');
+        await expect(svc.remove('org-a', false)).rejects.toMatchObject({ code: 'in-use', sessions: ['s1', 's2'] });
+        expect(restartSession).not.toHaveBeenCalled();
+        expect(await svc.remove('org-a', true)).toEqual({ removed: true, sessions: ['s1', 's2'], restarts: { s1: 'done', s2: 'skipped' } });
+        expect(restartSession.mock.calls.map((c) => c[0]).sort()).toEqual(['s1', 's2']);
         expect(readSessionBindings(home).s1).toEqual({ account: 'org-a' });
         expect(svc.state().defaults).toEqual({});
         expect(() => statSync(accountSecretPath(home, 'org-a'))).toThrow();

@@ -6,7 +6,7 @@
 import chalk from 'chalk';
 import { createInterface } from 'node:readline/promises';
 import { configuration } from '@/configuration';
-import { restartDaemonSession } from '@/daemon/controlClient';
+import { getDaemonAgentProfiles, restartDaemonSession } from '@/daemon/controlClient';
 import { AccountError, AccountService } from '@/agentProfiles/accountService';
 import type { AgentProfileSummary } from '@slopus/happy-wire';
 
@@ -178,7 +178,10 @@ export async function handleAccountCommand(args: string[]): Promise<void> {
     try {
         switch (parsed.action) {
             case 'list': {
-                const state = service.state();
+                // The daemon's view is the truth: an env-sourced key lives in
+                // the DAEMON's environment, not in this shell's.
+                const daemonState = await getDaemonAgentProfiles().catch(() => null);
+                const state = daemonState ?? service.state();
                 if (parsed.json) {
                     console.log(JSON.stringify({ accounts: state.accounts, defaults: state.defaults }, null, 2));
                     return;
@@ -189,6 +192,9 @@ export async function handleAccountCommand(args: string[]): Promise<void> {
                 }
                 const now = Date.now();
                 for (const a of state.accounts) console.log(formatAccountLine(a, state.defaults[a.agent] === a.id, now));
+                if (!daemonState && state.accounts.some((a) => a.keySource === 'env')) {
+                    console.log(chalk.dim('Daemon not running: --key-env accounts were checked against THIS shell\'s environment; the daemon\'s may differ.'));
+                }
                 if (!state.defaults.claude) console.log(chalk.dim('New sessions use the machine login (no default account).'));
                 return;
             }
@@ -216,8 +222,9 @@ export async function handleAccountCommand(args: string[]): Promise<void> {
                 console.log(formatAccountLine(service.rename(parsed.accountId, parsed.label), false, Date.now()));
                 return;
             case 'rm': {
-                const { sessions } = service.remove(parsed.accountId, parsed.force);
-                console.log(`Removed ${parsed.accountId}.${sessions.length ? ` ${sessions.length} bound session(s) will refuse to run until switched.` : ''}`);
+                const { sessions, restarts } = await service.remove(parsed.accountId, parsed.force);
+                console.log(`Removed ${parsed.accountId}.${sessions.length ? ` ${sessions.length} bound session(s) restarted and refuse to run until switched.` : ''}`);
+                for (const [sessionId, outcome] of Object.entries(restarts ?? {})) if (outcome !== 'done') console.log(chalk.dim(`  ${sessionId}: restart ${outcome}`));
                 return;
             }
             case 'default':

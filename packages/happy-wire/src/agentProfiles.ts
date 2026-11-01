@@ -173,10 +173,24 @@ export type AgentProfileBindRequest = z.infer<typeof AgentProfileBindRequestSche
 
 export type AgentProfileBindResult = {
     bound: true;
-    /** 'done' | 'skipped' (restart:false or session not running here) | 'failed' (binding kept; applies on next start) */
+    /**
+     * 'done'    — restarted in place on the new account
+     * 'skipped' — restart:false, or the session is not running here (applies on next start)
+     * 'pending' — still restarting after the 22 s budget (relay RPCs cap at 30 s); the Web
+     *             shows 「重启中」 and treats `metadata.agentProfile` turning into the new
+     *             account as done
+     * 'failed'  — binding kept; applies on next start
+     */
     restart: string;
     error?: string;
 };
+
+/**
+ * `agent-profile-remove` result. With `force` and bound sessions, each of them is
+ * restarted in place right away and comes back `unavailable` (no fallback);
+ * `restarts` = sessionId → 'done' | 'skipped' | 'pending' | 'failed' (as in bind).
+ */
+export type AgentProfileRemoveResult = { removed: true; sessions: string[]; restarts?: Record<string, string> };
 
 export type AgentProfileRpcError = { error: string; code: string; sessions?: string[] };
 
