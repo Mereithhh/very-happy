@@ -10,7 +10,7 @@ vi.mock('@/persistence', () => ({
   clearDaemonState: mocks.clearDaemonState,
 }));
 
-import { checkIfDaemonRunningAndCleanupStaleState, listDaemonSessions, resumeDaemonSession, setTerminalTitleViaDaemon, spawnDaemonSession } from './controlClient';
+import { checkIfDaemonRunningAndCleanupStaleState, daemonProbeFailure, listDaemonSessions, resumeDaemonSession, setTerminalTitleViaDaemon, spawnDaemonSession } from './controlClient';
 
 const baseState = {
   pid: 4242,
@@ -142,5 +142,52 @@ describe('daemon control client authentication', () => {
 
     mocks.readDaemonState.mockResolvedValue(null);
     await expect(resumeDaemonSession('sess-1')).resolves.toEqual({ success: false, error: 'No daemon running, no state file found' });
+  });
+});
+
+describe('B-864: a busy daemon is never treated as stale', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    mocks.readDaemonState.mockReset();
+    mocks.clearDaemonState.mockReset();
+  });
+
+  it('keeps the state (and lock) of a live daemon that is too busy to answer in 2s', async () => {
+    // A real listener that accepts and never answers: the daemon's event loop
+    // is busy. Deleting its state + lock here let `daemon start` run a second
+    // daemon beside it.
+    const { createServer } = await import('node:net');
+    const sockets: import('node:net').Socket[] = [];
+    const busy = createServer((socket) => { sockets.push(socket); });
+    await new Promise<void>((resolve) => busy.listen(0, '127.0.0.1', resolve));
+    const port = (busy.address() as import('node:net').AddressInfo).port;
+    try {
+      mocks.readDaemonState.mockResolvedValue({ ...baseState, httpPort: port, controlToken: 't' });
+      vi.spyOn(process, 'kill').mockImplementation(() => true);
+      await expect(checkIfDaemonRunningAndCleanupStaleState()).resolves.toBe(true);
+      expect(mocks.clearDaemonState).not.toHaveBeenCalled();
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve) => busy.close(() => resolve()));
+    }
+  }, 10_000);
+
+  it('still cleans up when nothing listens on the recorded port (PID reused by another process)', async () => {
+    const { createServer } = await import('node:net');
+    const probe = createServer();
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const port = (probe.address() as import('node:net').AddressInfo).port;
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    mocks.readDaemonState.mockResolvedValue({ ...baseState, httpPort: port, controlToken: 't' });
+    vi.spyOn(process, 'kill').mockImplementation(() => true);
+    await expect(checkIfDaemonRunningAndCleanupStaleState()).resolves.toBe(false);
+    expect(mocks.clearDaemonState).toHaveBeenCalledOnce();
+  });
+
+  it('classifies probe failures', () => {
+    expect(daemonProbeFailure(Object.assign(new Error('timeout'), { name: 'TimeoutError' }))).toBe('unresponsive');
+    expect(daemonProbeFailure(Object.assign(new TypeError('fetch failed'), { cause: { code: 'UND_ERR_HEADERS_TIMEOUT' } }))).toBe('unresponsive');
+    expect(daemonProbeFailure(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }))).toBe('not-listening');
+    expect(daemonProbeFailure(new TypeError('fetch failed'))).toBe('not-listening');
   });
 });

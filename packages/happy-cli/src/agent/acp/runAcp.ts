@@ -1305,6 +1305,11 @@ export async function runAcp(opts: {
       await handleAbort();
     },
   });
+  // B-864: the server handed the session to a newer wrapper process.
+  session.on('superseded', () => {
+    beginExit('superseded', 'restarted');
+    void handleAbort();
+  });
 
   // B-629: a fresh agent process after the previous one died. The session (and its
   // transcript on the server) is kept; the agent itself starts without memory, and the
@@ -1571,8 +1576,11 @@ export async function runAcp(opts: {
           archiveReason: 'Session ended',
         }));
       }
-      session.sendSessionDeath();
-      await session.flush();
+      // B-864: a superseded runner writes nothing — the session is the successor's.
+      if (intent !== 'superseded') {
+        session.sendSessionDeath();
+        await session.flush();
+      }
       if (intent === 'offline') {
         // AGENTS 7: an infrastructure exit only goes offline, it never archives.
         try { await api.deactivateSession(session.sessionId); } catch (error) { logger.debug(`[${opts.agentName}] deactivate on exit failed:`, error); }

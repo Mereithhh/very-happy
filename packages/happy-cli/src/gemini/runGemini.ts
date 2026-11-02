@@ -414,7 +414,7 @@ export async function runGemini(opts: {
    * `offline` for SIGTERM/SIGINT — daemon stop, upgrade, shutdown — which only sends
    * session-end + deactivate, so the session comes back instead of reading as archived.
    */
-  const handleKillSession = async (intent: 'archive' | 'offline' = 'archive') => {
+  const handleKillSession = async (intent: 'archive' | 'offline' | 'superseded' = 'archive') => {
     logger.debug(`[Gemini] Kill session requested (${intent}) - terminating process`);
     await handleAbort();
     logger.debug('[Gemini] Abort completed, proceeding with termination');
@@ -440,6 +440,8 @@ export async function runGemini(opts: {
 
   session.rpcHandlerManager.registerHandler('abort', handleAbort);
   registerKillSessionHandler(session.rpcHandlerManager, () => handleKillSession('archive'), session, { processSignals: true, onSignal: () => handleKillSession('offline') });
+  // B-864: the server handed the session to a newer wrapper process.
+  session.on('superseded', () => { void handleKillSession('superseded'); });
 
   //
   // Initialize Ink UI

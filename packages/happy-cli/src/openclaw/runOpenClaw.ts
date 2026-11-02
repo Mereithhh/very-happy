@@ -317,6 +317,13 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
     clearPendingTurn(new Error('Session terminated'));
     await handleAbort();
   }, session);
+  // B-864: the server handed the session to a newer wrapper process.
+  session.on('superseded', () => {
+    shouldExit = true;
+    messageQueue.close();
+    clearPendingTurn(new Error('Session superseded'));
+    void handleAbort();
+  });
 
   try {
     const started = await backend.startSession();
@@ -363,6 +370,11 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
     await backend.dispose();
 
     try {
+      // B-864: a superseded runner leaves the successor's session untouched.
+      if (session.superseded) {
+        await session.close();
+        return;
+      }
       session.updateMetadata((currentMetadata) => ({
         ...currentMetadata,
         lifecycleState: 'archived',

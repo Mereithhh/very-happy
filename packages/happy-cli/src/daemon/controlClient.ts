@@ -394,6 +394,22 @@ export async function setTerminalTitleViaDaemon(
  * We can destructure the response on the caller for richer output.
  * For instance when running `very-happy daemon status` we can show more information.
  */
+/**
+ * B-864: why the control-port probe of a live daemon PID failed.
+ *   - `unresponsive`: the connection was accepted (or is still pending) but no
+ *     answer came in time — a busy daemon. Never grounds for deleting its state.
+ *   - `not-listening`: refused / reset / unreachable — nothing of ours serves
+ *     that port, so the PID belongs to someone else.
+ */
+export function daemonProbeFailure(error: unknown): 'unresponsive' | 'not-listening' {
+  const err = error as { name?: unknown; code?: unknown; cause?: { code?: unknown; name?: unknown } } | null;
+  const name = err?.name ?? err?.cause?.name;
+  if (name === 'TimeoutError' || name === 'AbortError') return 'unresponsive';
+  const code = err?.cause?.code ?? err?.code;
+  if (code === 'UND_ERR_HEADERS_TIMEOUT' || code === 'UND_ERR_BODY_TIMEOUT' || code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'ETIMEDOUT') return 'unresponsive';
+  return 'not-listening';
+}
+
 export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
   const state = await readDaemonState();
   if (!state) {
@@ -422,9 +438,18 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
       if (response.ok) {
         return true;
       }
-    } catch {
-      // HTTP check failed - the PID is not our daemon (likely reused by OS after reboot)
-      logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but HTTP health check failed on port ${state.httpPort}, cleaning up stale state`);
+    } catch (error) {
+      // B-864: a daemon that is merely slow (event loop busy for >2 s during an
+      // upgrade, a large adoption, a laptop waking up) is still THE daemon.
+      // Deleting its state + lock here let the caller's `daemon start-sync`
+      // take a fresh lock and run a SECOND daemon beside it — two schedulers
+      // restarting the same sessions, two wrappers on one session. Only a
+      // port nobody listens on proves the PID is not ours (reused after reboot).
+      if (daemonProbeFailure(error) === 'unresponsive') {
+        logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but did not answer on port ${state.httpPort} within 2s; treating it as a busy daemon (state kept)`);
+        return true;
+      }
+      logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but nothing serves its control port ${state.httpPort}, cleaning up stale state`);
       await cleanupDaemonState();
       return false;
     }
@@ -473,9 +498,10 @@ export async function isDaemonRunningCurrentlyInstalledHappyVersion(): Promise<b
   return currentCliVersion === state.startedWithCliVersion;
 }
 
-export async function cleanupDaemonState(): Promise<void> {
+/** B-864: a daemon cleaning up after itself passes its own pid (see clearDaemonState). */
+export async function cleanupDaemonState(ownerPid?: number): Promise<void> {
   try {
-    await clearDaemonState();
+    await clearDaemonState(ownerPid);
     logger.debug('[DAEMON RUN] Daemon state file removed');
   } catch (error) {
     logger.debug('[DAEMON RUN] Error cleaning up daemon metadata', error);

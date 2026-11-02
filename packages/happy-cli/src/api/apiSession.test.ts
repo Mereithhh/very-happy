@@ -193,6 +193,61 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
     });
 
+    it('B-864: sends this process\'s agent identity on the session handshake', () => {
+        new ApiSessionClient('fake-token', session);
+        const auth = mockIo.mock.calls[0][1].auth;
+        expect(auth.clientType).toBe('session-scoped');
+        expect(typeof auth.agentInstance).toBe('string');
+        expect(auth.agentInstance.length).toBeGreaterThan(0);
+        expect(Number.isSafeInteger(auth.agentStartedAt)).toBe(true);
+        expect(auth.agentStartedAt).toBeLessThanOrEqual(Date.now());
+    });
+
+    it('B-864: a session-superseded notice stops the client for good and tells the runner', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const superseded = vi.fn();
+        client.on('superseded', superseded);
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        emitSocketEvent('session-superseded', { sessionId: 'other-session', by: null });
+        expect(superseded).not.toHaveBeenCalled();
+
+        emitSocketEvent('session-superseded', { sessionId: 'test-session-id', by: { startedAt: 1_700_000_000_000, happyClient: 'cli-coding-session/0.2.196' } });
+        expect(superseded).toHaveBeenCalledTimes(1);
+        expect(client.superseded).toBe(true);
+        expect(mockSocket.close).toHaveBeenCalled();
+        expect(errors.mock.calls.join(' ')).toContain('was taken over');
+
+        // The server's disconnect that follows must not bring it back.
+        mockSocket.connected = false;
+        mockSocket.connect.mockClear();
+        emitSocketEvent('disconnect', 'io server disconnect');
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        expect(mockSocket.connect).not.toHaveBeenCalled();
+
+        // Nothing that still arrives is routed to the agent.
+        const routed = vi.fn();
+        client.onUserMessage(routed);
+        emitSocketEvent('update', createNewMessageUpdate(1, encryptContent(session, { role: 'user', content: { type: 'text', text: 'run it' } })));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(routed).not.toHaveBeenCalled();
+        emitSocketEvent('session-superseded', { sessionId: 'test-session-id', by: null });
+        expect(superseded).toHaveBeenCalledTimes(1);
+    });
+
+    it('B-864: a connect refused as superseded is final and replayed to a late listener', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        mockSocket.connect.mockClear();
+        emitSocketEvent('connect_error', new Error('Session superseded'));
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        expect(mockSocket.connect).not.toHaveBeenCalled();
+        const late = vi.fn();
+        client.on('superseded', late);
+        await Promise.resolve();
+        expect(late).toHaveBeenCalledTimes(1);
+    });
+
     it('B-512: replays an archive signal to a listener attached after it fired (early socket)', async () => {
         const client = new ApiSessionClient('fake-token', session);
         const early = vi.fn();

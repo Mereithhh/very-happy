@@ -4,8 +4,9 @@ import { Server, type Socket } from 'socket.io';
 import { AccountTerminalRateLimiter, relayPayloadBytes, resolveRpcRelayLimit, resolveTerminalRelayLimit, rpcRateLimitAck } from './app/api/socket/terminalRateLimit';
 import { verifyRelayToken, type RelayTokenClaims } from './app/relay/relayToken';
 import { HEALTH_ROUTE_OPTIONS } from './app/api/utils/healthRoute';
+import { decideAgentAdmission, parseAgentIdentity, SESSION_SUPERSEDED_EVENT, supersededNotice, type AgentPeer } from './app/api/socket/sessionAgentExclusivity';
 
-type RelaySocket = Socket & { data: { relayClaims?: RelayTokenClaims } };
+type RelaySocket = Socket & { data: { relayClaims?: RelayTokenClaims; agent?: AgentPeer } };
 
 const MAX_ID_BYTES = 256;
 const MAX_DIMENSION = 10_000;
@@ -133,6 +134,30 @@ export async function startRelayServer(env: NodeJS.ProcessEnv = process.env, opt
         if (clientType === 'session') {
             const sessionId = claims.sessionId!;
             const room = sessionRoom(machineId, sessionId);
+            // B-864: one runner per session, the newest wrapper process wins
+            // (same rule as the central socket). Decided synchronously from
+            // this process's own room before joining it, so a stale runner
+            // never receives a delivery. Legacy runners (no identity) keep
+            // the old rule among themselves: the latest connection wins.
+            const self: AgentPeer = { id: socket.id, identity: parseAgentIdentity(socket.handshake.auth) };
+            socket.data.agent = self;
+            const peers: Array<{ peer: AgentPeer; socket: RelaySocket }> = [];
+            for (const id of io.of('/').adapter.rooms.get(room) ?? []) {
+                const peerSocket = io.of('/').sockets.get(id) as RelaySocket | undefined;
+                if (peerSocket?.data.agent && id !== socket.id) peers.push({ peer: peerSocket.data.agent, socket: peerSocket });
+            }
+            const verdict = decideAgentAdmission(self, peers.map(({ peer }) => peer));
+            if (!verdict.admit) {
+                socket.emit(SESSION_SUPERSEDED_EVENT, supersededNotice(sessionId, verdict.holder));
+                socket.disconnect(true);
+                return;
+            }
+            const evict = self.identity ? new Set(verdict.evict.map((peer) => peer.id)) : null;
+            for (const { peer, socket: old } of peers) {
+                if (evict && !evict.has(peer.id)) continue;
+                if (evict) old.emit(SESSION_SUPERSEDED_EVENT, supersededNotice(sessionId, self));
+                old.disconnect(true);
+            }
             socket.join(room);
             socket.on('session-message-committed', (data: any) => {
                 if (!sessionLimiter.consume(accountId, relayPayloadBytes(data))) return socket.disconnect(true);
@@ -142,9 +167,6 @@ export async function startRelayServer(env: NodeJS.ProcessEnv = process.env, opt
                     sessionId,
                     messages: data.messages,
                 });
-            });
-            void io.in(room).fetchSockets().then((existing) => {
-                for (const old of existing) if (old.id !== socket.id) old.disconnect(true);
             });
             return;
         }

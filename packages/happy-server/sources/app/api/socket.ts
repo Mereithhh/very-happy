@@ -8,7 +8,7 @@ import { decode as msgpackDecode } from "@msgpack/msgpack";
 import { log, warn } from "@/utils/log";
 import { attachSocketDiagnostics } from "@/utils/socketDiagnostics";
 import { auth } from "@/app/auth/auth";
-import { getMetricsLabelsFromSocket, redisClientErrorsCounter, redisStreamLagMsGauge, socketRecoveryCounter, socketRecoveryScannedEntries, socketStreamHeadAgeSeconds, socketStreamLengthGauge, releaseHandoverCounter, releaseHandoverDuration, socketOrphansEvictedCounter, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
+import { getMetricsLabelsFromSocket, sessionAgentSupersededCounter, redisClientErrorsCounter, redisStreamLagMsGauge, socketRecoveryCounter, socketRecoveryScannedEntries, socketStreamHeadAgeSeconds, socketStreamLengthGauge, releaseHandoverCounter, releaseHandoverDuration, socketOrphansEvictedCounter, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
 import { usageHandler } from "./socket/usageHandler";
 import { rpcHandler } from "./socket/rpcHandler";
 import { pingHandler } from "./socket/pingHandler";
@@ -33,6 +33,7 @@ import { ReleaseCoordinator } from '@/app/release/releaseCoordinator';
 import { closeCoordinationRedis, initializeCoordinationRedis } from '@/app/release/redisCoordination';
 import { DistributedSocketConnectionLimiter } from './socket/distributedSocketLimit';
 import { evictOrphansOf, ORPHAN_SWEEP_INTERVAL_MS, sweepOrphans, type OrphanEviction } from './socket/socketOrphans';
+import { createSessionAgentGuard, SESSION_SUPERSEDED_ERROR } from './socket/sessionAgentExclusivity';
 import { createBoundedStreamsAdapter, defaultRecoveryLimits, SOCKET_STREAM_MAX_LEN, type AdapterConnections } from './socket/boundedStreamsAdapter';
 
 export const SOCKET_STREAM_NAME = 'vh:socket.io';
@@ -284,6 +285,12 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
         socket.data.handoverEpoch = typeof socket.handshake.auth.handoverEpoch === 'string'
             ? socket.handshake.auth.handoverEpoch
             : undefined;
+        // B-864: one live agent connection per session — the newest wrapper
+        // process wins. A stale one is refused here, before it joins any room.
+        if (clientType === 'session-scoped' && sessionId && !await sessionAgentGuard.admit(socket, verified.userId, sessionId)) {
+            next(new Error(SESSION_SUPERSEDED_ERROR));
+            return;
+        }
         if (distributedConnectionLimiter) {
             try {
                 if (!await distributedConnectionLimiter.acquire(verified.userId, `${releaseConfig!.slot}:${socket.id}`)) {
@@ -297,6 +304,33 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
             }
         }
         next();
+    });
+
+    const rejectionLoggedAt = new Map<string, number>();
+    const rejectionLogGate = (sessionId: string, now: number): boolean => {
+        const last = rejectionLoggedAt.get(sessionId);
+        if (last !== undefined && now - last < 60_000) return false;
+        if (rejectionLoggedAt.size >= 1_000) rejectionLoggedAt.clear();
+        rejectionLoggedAt.set(sessionId, now);
+        return true;
+    };
+    const sessionAgentGuard = createSessionAgentGuard({
+        roomOf: (userId, sessionId) => `user:${userId}:session:${sessionId}`,
+        fetchRoom: (room) => io.in(room).timeout(2_000).fetchSockets(),
+        record: ({ userId, sessionId, stale, winner, outcome }) => {
+            sessionAgentSupersededCounter.inc({ outcome });
+            // An old CLI that was displaced keeps retrying every ~3 s; one line a minute per session is enough.
+            if (outcome === 'rejected' && !rejectionLogGate(sessionId, Date.now())) return;
+            // Field names chosen to survive logSafety: status/client are plain, socketId is hashed.
+            warn({
+                module: 'websocket', event: 'session-agent-superseded', status: outcome, userId, sessionId,
+                stale: { socketId: stale.id, startedAt: stale.identity?.startedAt, client: stale.happyClient },
+                winner: winner ? { socketId: winner.id, startedAt: winner.identity?.startedAt, client: winner.happyClient } : null,
+            }, outcome === 'evicted'
+                ? 'Disconnected an older agent connection: a newer wrapper took over the session'
+                : 'Refused an agent connection: a newer wrapper already runs the session');
+        },
+        onError: (error, sessionId) => log({ module: 'websocket', sessionId, error }, 'Session agent arbitration failed'),
     });
 
     // B-543: one engine connection + one namespace = at most one Socket.
@@ -398,6 +432,12 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
         }
         eventRouter.addConnection(userId, connection);
         websocketConnectionsGauge.inc({ type: connection.connectionType, ...labels });
+
+        // B-864: the middleware check cannot see a peer that is itself still
+        // in its middleware. Re-arbitrate once joined: of two racing
+        // newcomers the later checker sees the earlier one, and the verdict
+        // (newest process wins) is the same whichever side computes it.
+        if (connection.connectionType === 'session-scoped') sessionAgentGuard.afterJoin(socket, userId, connection.sessionId);
 
         // Broadcast daemon online status
         if (connection.connectionType === 'machine-scoped') {

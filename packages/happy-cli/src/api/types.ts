@@ -49,6 +49,8 @@ export interface ServerToClientEvents {
   'rpc-request': (data: { method: string, params: string }, callback: (response: string) => void) => void
   'rpc-registered': (data: { method: string }) => void
   'session-archive': (data: { sessionId: string }) => void
+  /** B-864: a newer wrapper process now runs this session; stop driving it. */
+  'session-superseded': (data: { sessionId: string; by: { startedAt: number; happyClient?: string } | null }) => void
   'rpc-unregistered': (data: { method: string }) => void
   'rpc-error': (data: { type: string, error: string }) => void
   ephemeral: (data: { type: 'activity', id: string, active: boolean, activeAt: number, thinking: boolean }) => void
