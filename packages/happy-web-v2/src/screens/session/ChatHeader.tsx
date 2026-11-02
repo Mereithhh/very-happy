@@ -17,7 +17,11 @@ import { RenameModal } from '@/screens/sessions/RenameModal';
 import { MoveToProjectModal } from '@/screens/projects/MoveToProjectModal';
 import { sessionProjectMenu } from '@/screens/projects/projectChoice';
 import { ShareDialog } from './ShareDialog';
-import { isSharedWithMe } from '@/app/sessionAccess';
+import { canOperate, isSharedWithMe } from '@/app/sessionAccess';
+import { OperatorPresenceChip } from './OperatorPresenceChip';
+import { OperatorTerminalDialog } from './OperatorTerminal';
+import { OperatorFilesDialog } from './OperatorFiles';
+import { formatShareTime } from './shareFormat';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import * as Popover from '@radix-ui/react-popover';
 /**
@@ -25,7 +29,7 @@ import * as Popover from '@radix-ui/react-popover';
  * and the global back button.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { StickyNote, Check, FolderOpen, MessageCircleQuestion, MoreHorizontal, Pencil, X } from 'lucide-react';
+import { StickyNote, Check, FolderOpen, MessageCircleQuestion, MoreHorizontal, Pencil, TerminalSquare, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useMachine, useSession, useSessions } from '@/sync/storage';
 import { sessionMachineName } from '@/utils/machineUtils';
@@ -86,6 +90,13 @@ export function ChatHeader({
     const projectsSnap = useProjects();
     // B-619: shared WITH me → every owner-only control disappears (the server refuses them anyway).
     const sharedWithMe = !!session && isSharedWithMe(session);
+    // B-867: an operator grantee gets a terminal and a project-folder file panel
+    // on the owner's machine, both through the server broker (never fs-* / machine key).
+    const operator = !!session && canOperate(session);
+    const [opTerminalOpen, setOpTerminalOpen] = useState(false);
+    const [opFilesOpen, setOpFilesOpen] = useState(false);
+    useEffect(() => { if (!operator) { setOpTerminalOpen(false); setOpFilesOpen(false); } }, [operator]);
+    const toggleFiles = operator ? () => setOpFilesOpen((v) => !v) : onToggleFiles;
     // B-756: same liveness entry point as the composer's Stop (铁律 13) and the same gate as the sidebar row menu.
     const leaseFresh = useHeartbeatFresh(sessionId);
     const running = !!session && isAgentWorkLive({ presence: session.presence, thinking: session.thinking, runningSubagentsInTurn: 0, heartbeatFresh: leaseFresh });
@@ -165,7 +176,7 @@ export function ChatHeader({
     const plan = planChatHeaderActions({
         compact,
         hasBtw: !!onToggleBtw,
-        hasFiles: !!onToggleFiles,
+        hasFiles: !!toggleFiles,
     });
     // B-726: the session header can move this session into / out of a project (also from the sidebar row and the new-session dialog).
     // B-763: 项目 › 团队 › 当前 — the same placement as the sidebar tree; phones keep only the parent.
@@ -217,7 +228,7 @@ export function ChatHeader({
             case 'btw':
                 return { key, label: t('session.btw.title'), icon: MessageCircleQuestion, checked: !!btwOpen, onSelect: () => onToggleBtw?.() };
             case 'files':
-                return { key, label: t('session.chat.files'), icon: FolderOpen, checked: !!filesOpen, onSelect: () => onToggleFiles?.() };
+                return { key, label: t('session.chat.files'), icon: FolderOpen, checked: operator ? opFilesOpen : !!filesOpen, onSelect: () => toggleFiles?.() };
         }
     };
     const renderAction = (key: ChatHeaderActionKey) => {
@@ -256,11 +267,11 @@ export function ChatHeader({
                         key={key}
                         type="button"
                         ref={filesBtnRef}
-                        className={`ch-icon ch-files-toggle${filesOpen ? ' is-active' : ''}`}
-                        onClick={onToggleFiles}
+                        className={`ch-icon ch-files-toggle${(operator ? opFilesOpen : filesOpen) ? ' is-active' : ''}`}
+                        onClick={toggleFiles}
                         aria-label={t('session.chat.files')}
-                        title={t('session.chat.files')}
-                        aria-pressed={filesOpen}
+                        title={operator ? t('share.operator.filesScope') : t('session.chat.files')}
+                        aria-pressed={operator ? opFilesOpen : filesOpen}
                     >
                         <FolderOpen size={16} />
                     </button>
@@ -311,9 +322,16 @@ export function ChatHeader({
             {!editing && (
                 <div className="ch-status">
                     {sessionIssue && !foldIdentity && <SessionIssueChip issue={sessionIssue} />}
+                    {canShare && <OperatorPresenceChip sessionId={sessionId} compact={compact} />}
                     <PrStatusChip sessionId={sessionId} compact={compact} />
                     {!foldIdentity && <RelayBadge status={relayStatus} />}
                 </div>
+            )}
+            {!editing && operator && (
+                <button type="button" className={`ch-icon${opTerminalOpen ? ' is-active' : ''}`} onClick={() => setOpTerminalOpen(true)}
+                    aria-label={t('share.operator.terminal')} title={t('share.operator.terminal')} aria-pressed={opTerminalOpen}>
+                    <TerminalSquare size={16} />
+                </button>
             )}
             {!editing && plan.inline.map(renderAction)}
             {!editing && boardAction}
@@ -331,6 +349,12 @@ export function ChatHeader({
             )}
             {canControlRuntime && <ClaudeRuntimeDialog key={sessionId} sessionId={sessionId} open={runtimeOpen} onOpenChange={setRuntimeOpen}/>}
             {foldIdentity && <SessionInfoDialog open={infoOpen} onOpenChange={setInfoOpen} agent={agent} host={host} cwd={cwd} relay={relayStatus} />}
+            {operator && session?.share && (
+                <OperatorTerminalDialog sessionId={sessionId} owner={session.share.owner.displayName}
+                    expiresAt={session.share.expiresAt ? formatShareTime(session.share.expiresAt) : '—'}
+                    open={opTerminalOpen} onOpenChange={setOpTerminalOpen} />
+            )}
+            {operator && cwd && <OperatorFilesDialog sessionId={sessionId} root={cwd} open={opFilesOpen} onOpenChange={setOpFilesOpen} />}
             {canShare && <ShareDialog key={`share:${sessionId}`} sessionId={sessionId} open={shareOpen} onOpenChange={setShareOpen} />}
             {moveProjectOpen && <MoveToProjectModal initialSessionId={sessionId} candidates={[]} onClose={() => setMoveProjectOpen(false)} />}
             {tagsOpen && session && <HeaderTagsModal session={session} title={meta?.summary?.text ?? ''} onClose={() => setTagsOpen(false)} />}

@@ -12,6 +12,7 @@ import { db } from '@/storage/db';
 import { afterTx, inTx, isRetryableTransactionConflict, type Tx } from '@/storage/inTx';
 import { allocateUserSeq } from '@/storage/seq';
 import { log } from '@/utils/log';
+import { ISSUE_REVIEW_KEY_PREFIX } from '@/app/issues/rules';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 import {
     AttentionError, attentionEnabled, capAnswered, itemView, planPost, postKey, pushPresentation, replyTargetState,
@@ -258,6 +259,11 @@ export async function ownerRespond(accountId: string, id: string, input: Attenti
         if (row.source === 'team' && row.key?.startsWith(TEAM_SUBMIT_KEY_PREFIX) && row.teamId && isAttentionActive(row.state)) {
             await settleRootTask(accountId, row, input.choice, input.note);
         }
+        // B-872:「完成」/「退回」on an issue's 待验收 item act on the issue first; the issue change then closes this item as the owner's choice.
+        if (row.source === 'issue' && row.key?.startsWith(ISSUE_REVIEW_KEY_PREFIX) && isAttentionActive(row.state)) {
+            const issues = await import('@/app/issues/store');
+            await issues.settleIssueReview(accountId, row.key.slice(ISSUE_REVIEW_KEY_PREFIX.length), input.choice, input.note);
+        }
     }
     return run(async tx => {
         const row = await loadItem(tx, accountId, id);
@@ -368,6 +374,40 @@ export async function applyTeamTransitionsTx(tx: Tx, accountId: string, before: 
         const updated = await tx.attentionItem.update({
             where: { id: row.id },
             data: { state: 'resolved', resolvedBy: 'owner', resolvedAt: now, version: { increment: 1 }, updatedAt: now },
+        });
+        announce(tx, updated);
+    }
+}
+
+/**
+ * B-872 issue bridge (`specs/2026-11-issues.md` §7): post an item from inside
+ * the issue transaction. No-op while the board is off or the session row is
+ * gone; a board-side refusal (active-item cap, kind mismatch) never fails the
+ * issue write — it is thrown before any SQL of its own, so the transaction is intact.
+ */
+export async function postIssueItemTx(tx: Tx, accountId: string, sessionId: string, item: Omit<AttentionItemPost, 'sessionId' | 'requestId' | 'bodyMd'> & { bodyMd?: string | null }, requestId: string, context: { projectId: string | null }): Promise<void> {
+    if (!attentionEnabled()) return;
+    if (!await tx.session.findFirst({ where: { id: sessionId, accountId }, select: { id: true } })) return;
+    try {
+        await upsertTx(tx, accountId, { ...item, sessionId, requestId }, { teamId: null, projectId: context.projectId });
+    } catch (error) {
+        if (!(error instanceof AttentionError)) throw error;
+    }
+}
+
+/** B-872: closes the account's active items with these keys (any session). `ownerChoice` marks a board-button settle. */
+export async function closeIssueItemsTx(tx: Tx, accountId: string, keys: string[], close: { state: 'resolved' | 'dismissed'; resolvedBy: string; ownerChoice?: string; ownerNote?: string | null }): Promise<void> {
+    if (!attentionEnabled() || keys.length === 0) return;
+    const rows = await tx.attentionItem.findMany({ where: { accountId, source: 'issue', key: { in: keys }, state: { in: ACTIVE_STATES } } });
+    const now = new Date();
+    for (const row of rows) {
+        const updated = await tx.attentionItem.update({
+            where: { id: row.id },
+            data: {
+                state: close.state, resolvedBy: close.resolvedBy, resolvedAt: now,
+                ...(close.ownerChoice !== undefined ? { ownerChoice: close.ownerChoice, ownerNote: close.ownerNote ?? null } : {}),
+                version: { increment: 1 }, updatedAt: now,
+            },
         });
         announce(tx, updated);
     }

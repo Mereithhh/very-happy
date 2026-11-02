@@ -8,6 +8,7 @@ import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { log } from "@/utils/log";
 import { deleteSessionAttachments } from "@/storage/files";
 import { notifyGranteesSessionDeleted } from "@/app/session/sessionShares";
+import { teardownOperatorSession } from "@/app/session/operatorBroker";
 
 /**
  * Delete a session and all its related data.
@@ -118,6 +119,8 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
                 payload: updatePayload,
                 recipientFilter: { type: 'user-scoped-only' }
             });
+            // B-867: kill operator terminals (registry rows outlive the session on purpose).
+            void teardownOperatorSession(sessionId, 'deleted').catch(() => undefined);
             if (granteeIds.length > 0) {
                 notifyGranteesSessionDeleted(sessionId, granteeIds).catch((err) => log({ module: 'session-delete', sessionId, err }, 'Failed to notify grantees (non-fatal)'));
             }

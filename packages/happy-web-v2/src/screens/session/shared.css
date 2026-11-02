@@ -175,6 +175,8 @@
 .shd-list-title { margin: 0 0 var(--sp-2); color: var(--text-dim); font-size: var(--fs-12); font-weight: 600; }
 .shd-grant { display: flex; align-items: center; gap: var(--sp-3); min-height: 44px; padding: 6px 0; border-top: 1px solid var(--line); }
 .shd-grant:last-child { border-bottom: 1px solid var(--line); }
+.shd-grant-wrap:last-child > .shd-grant { border-bottom: 1px solid var(--line); }
+.shd-grant-wrap:last-child:has(.shd-opevents-wrap) > .shd-grant { border-bottom: 0; }
 .shd-grant--confirm .shd-grant-name { white-space: normal; line-height: 1.4; }
 .shd-grant-avatar { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--fill-soft); color: var(--text-dim); display: grid; place-items: center; font-size: var(--fs-12); font-weight: 600; overflow: hidden; }
 .shd-grant-avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -204,3 +206,42 @@
   .shd-link-item { flex-wrap: wrap; }
   .shd-link-actions { width: 100%; }
 }
+
+/* ---- B-867 operator tier (share dialog) ---- */
+.shd-role-btn--operator[aria-pressed='true'] { border-color: var(--danger); }
+.shd-opwarn { margin: 0; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--danger-dim); color: var(--text); font-size: var(--fs-12); line-height: 1.45; }
+.shd-opwarn-title { display: flex; gap: var(--sp-2); align-items: center; margin: 0 0 var(--sp-1); font-weight: 600; color: var(--danger); }
+.shd-opwarn-title > svg { flex: none; }
+.shd-opwarn-list { margin: 0; padding-left: 1.2em; display: grid; gap: 2px; }
+.shd-opack { font-size: var(--fs-12); line-height: 1.45; color: var(--text); }
+.shd-opconfirm { display: flex; flex-direction: column; gap: var(--sp-3); }
+.shd-opconfirm-facts { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-1); font-size: var(--fs-13); color: var(--text); }
+.shd-opconfirm-expiry { display: flex; align-items: center; gap: var(--sp-2); }
+.shd-opevents-wrap { padding: 0 0 var(--sp-2) calc(28px + var(--sp-3)); border-bottom: 1px solid var(--line); }
+.shd-opevents-toggle { min-height: 44px; padding: 0; border: 0; background: none; color: var(--text-dim); font-size: var(--fs-12); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.shd-opevents-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.shd-opevents { margin: var(--sp-1) 0 0; padding: 0; list-style: none; display: grid; gap: 2px; max-height: 220px; overflow-y: auto; }
+.shd-opevents li { display: flex; gap: var(--sp-2); font-size: var(--fs-12); line-height: 1.4; min-width: 0; }
+.shd-opevents-time { flex: none; color: var(--text-faint); font-family: var(--font-mono); font-size: var(--fs-11); }
+.shd-opevents-text { min-width: 0; color: var(--text); overflow-wrap: anywhere; }
+.shd-opevents-detail { color: var(--text-faint); font-family: var(--font-mono); font-size: var(--fs-11); }
+/* B-867 operator controls above the shared composer */
+.opc { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-3) 0; }
+.opc-select { flex: none; }
+.opc-field { display: inline-flex; align-items: center; gap: var(--sp-1); flex: none; }
+.opc-label { font-size: var(--fs-12); color: var(--text-dim); }
+/* B-867 owner header: someone is operating this session (danger, never --accent) */
+.opchip { display: inline-flex; align-items: center; gap: var(--sp-1); min-height: 26px; max-width: 260px; padding: 0 var(--sp-2); border: 1px solid var(--danger); border-radius: var(--r-pill); background: var(--danger-dim); color: var(--danger); font-size: var(--fs-12); font-weight: 600; cursor: pointer; position: relative; }
+.opchip::after { content: ''; position: absolute; inset: -9px 0; }
+.opchip > svg { flex: none; }
+.opchip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opchip--compact .opchip-text { max-width: 120px; }
+.opchip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.opchip-pop { z-index: 60; width: min(360px, calc(100vw - 24px)); max-height: min(480px, calc(100dvh - 80px)); overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-1); color: var(--text); box-shadow: var(--shadow-pop); }
+.opchip-pop-title { margin: 0; font-size: var(--fs-13); font-weight: 600; color: var(--danger); }
+.opchip-pop-sub { margin: 0; font-size: var(--fs-12); color: var(--text-dim); }
+.opchip-confirm-text { margin: 0; font-size: var(--fs-12); line-height: 1.45; }
+.opchip-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-2); }
+/* B-867: operator strip sits above the shared composer, which owns the safe-area gap */
+.sd-foot.sd-foot--operator { padding-bottom: 0; }
+.shb-role--operator { background: var(--danger-dim); color: var(--danger); }

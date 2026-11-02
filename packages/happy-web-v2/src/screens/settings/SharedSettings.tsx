@@ -79,7 +79,7 @@ export function SharedSettings() {
                                 left={<Users size={16} />}
                                 title={g.grantee.displayName}
                                 subtitle={[
-                                    g.role === 'driver' ? t('share.roleDriver') : t('share.roleViewer'),
+                                    g.role === 'driver' ? (g.operate === true ? t('share.roleOperator') : t('share.roleDriver')) : t('share.roleViewer'),
                                     g.status === 'pending' ? t('share.dialog.statusPending') : null,
                                     g.status === 'expired' ? t('share.expiry.expired') : g.expiresAt ? remainingDaysLabel(t, g.expiresAt) : t('share.expiry.never'),
                                 ].filter(Boolean).join(' · ')}

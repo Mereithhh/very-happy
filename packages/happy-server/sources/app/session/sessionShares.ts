@@ -13,6 +13,10 @@
  * of those sessions, and — for drivers — ONE write: a plain-text user message
  * the server encrypts itself. No RPC, no relay token, no metadata / state
  * writes, no archive / delete, no re-sharing.
+ *
+ * B-867 operator tier = role `driver` + `operate`. Operators reach the owner's
+ * daemon only through the server broker (operatorBroker.ts); this module owns
+ * granting it (explicit confirmation + mandatory expiry) and ending it.
  */
 import type { Prisma, SessionGrantRole, SessionGrantStatus } from '@prisma/client';
 import { db } from '@/storage/db';
@@ -28,6 +32,8 @@ import { businessAuditEnabled, publishAudit } from '@/app/audit/producer';
 import { buildUserProfile, type UserProfile } from '@/app/social/type';
 import { displayNameOf, identityOf, profileInclude, resolveAccountByHandle, type ProfileAccount } from '@/app/social/accountDirectory';
 import { RelationshipStatus } from '@prisma/client';
+import { beginOperatorTeardown, operatorGrantsChanged, type OperatorEndReason } from './operatorBroker';
+import { normalizeModeCap } from './operatorPolicy';
 import {
     contentKeyPairFromSecret,
     decodeAccountSecret,
@@ -147,6 +153,16 @@ export async function redactedMetadataFor(session: SessionKeyRow & { metadata: s
     return encodeBundle(encryptWithDataKey(redactMetadataObject(plain as Record<string, unknown>), dek));
 }
 
+/**
+ * B-867b: the mode cap an operator grant starts with — the owner's effective
+ * mode (metadata.permissionMode) right now, `default` when unreported.
+ */
+async function ownerModeCapNow(session: SessionKeyRow & { metadata: string }): Promise<string> {
+    const dek = await openSessionDataKey(session);
+    const plain = dek ? decryptWithDataKey(decodeBundle(session.metadata), dek) as Record<string, unknown> | null : null;
+    return normalizeModeCap(plain?.permissionMode);
+}
+
 async function sessionPreview(session: SessionKeyRow & { metadata: string }): Promise<{ name: string | null; path: string | null; host: string | null }> {
     const dek = await openSessionDataKey(session);
     const plain = dek ? decryptWithDataKey(decodeBundle(session.metadata), dek) as Record<string, any> | null : null;
@@ -171,6 +187,8 @@ export type SessionGrantView = {
     id: string;
     sessionId: string;
     role: SessionGrantRole;
+    /** B-867: operator tier (role is still 'driver' so older webs read it as "Can send"). */
+    operate: boolean;
     status: SessionGrantStatus;
     createdAt: number;
     acceptedAt: number | null;
@@ -182,6 +200,7 @@ export type SharedSessionInvite = {
     id: string;
     sessionId: string;
     role: SessionGrantRole;
+    operate: boolean;
     status: SessionGrantStatus;
     createdAt: number;
     expiresAt: number | null;
@@ -189,12 +208,13 @@ export type SharedSessionInvite = {
     session: { name: string | null; path: string | null; host: string | null };
 };
 
-async function grantView(grant: { id: string; sessionId: string; role: SessionGrantRole; status: SessionGrantStatus; createdAt: Date; acceptedAt: Date | null; expiresAt: Date | null; grantee: ProfileAccount }): Promise<SessionGrantView> {
+async function grantView(grant: { id: string; sessionId: string; role: SessionGrantRole; operate: boolean; status: SessionGrantStatus; createdAt: Date; acceptedAt: Date | null; expiresAt: Date | null; grantee: ProfileAccount }): Promise<SessionGrantView> {
     const identity = await identityOf(grant.grantee.id);
     return {
         id: grant.id,
         sessionId: grant.sessionId,
         role: grant.role,
+        operate: grant.operate,
         status: grant.status,
         createdAt: grant.createdAt.getTime(),
         acceptedAt: grant.acceptedAt ? grant.acceptedAt.getTime() : null,
@@ -203,12 +223,13 @@ async function grantView(grant: { id: string; sessionId: string; role: SessionGr
     };
 }
 
-async function inviteView(grant: { id: string; sessionId: string; role: SessionGrantRole; status: SessionGrantStatus; createdAt: Date; expiresAt: Date | null; grantedBy: ProfileAccount; session: SessionKeyRow & { metadata: string } }): Promise<SharedSessionInvite> {
+async function inviteView(grant: { id: string; sessionId: string; role: SessionGrantRole; operate: boolean; status: SessionGrantStatus; createdAt: Date; expiresAt: Date | null; grantedBy: ProfileAccount; session: SessionKeyRow & { metadata: string } }): Promise<SharedSessionInvite> {
     const owner = profileOf(grant.grantedBy);
     return {
         id: grant.id,
         sessionId: grant.sessionId,
         role: grant.role,
+        operate: grant.operate,
         status: grant.status,
         createdAt: grant.createdAt.getTime(),
         expiresAt: grant.expiresAt ? grant.expiresAt.getTime() : null,
@@ -233,7 +254,19 @@ function audit(kind: string, accountId: string, sessionId: string, payload: Reco
     if (businessAuditEnabled()) publishAudit({ kind, accountId, sessionId, payload });
 }
 
-export async function createSessionGrant(input: { ownerId: string; sessionId: string; target?: string; granteeAccountId?: string; role: SessionGrantRole; expiresInDays?: GrantExpiryDays }): Promise<SessionGrantView> {
+/**
+ * B-867: the operator tier needs role 'driver', an explicit `confirmOperator`
+ * from the owner, and a finite expiry (1/7/30 days — never "forever").
+ */
+export function assertOperatorGrantable(input: { role: SessionGrantRole; confirmOperator?: boolean; expiresAt: Date | null }): void {
+    if (input.role !== 'driver') throw new SessionShareError('operator_requires_driver', 400);
+    if (input.confirmOperator !== true) throw new SessionShareError('operator_requires_confirm', 400);
+    if (!input.expiresAt) throw new SessionShareError('operator_requires_expiry', 400);
+}
+
+export async function createSessionGrant(input: { ownerId: string; sessionId: string; target?: string; granteeAccountId?: string; role: SessionGrantRole; expiresInDays?: GrantExpiryDays; operate?: boolean; confirmOperator?: boolean }): Promise<SessionGrantView> {
+    const operate = input.operate === true;
+    if (operate) assertOperatorGrantable({ role: input.role, confirmOperator: input.confirmOperator, expiresAt: grantExpiresAt(input.expiresInDays) });
     const session = await db.session.findUnique({ where: { id: input.sessionId }, select: { id: true, accountId: true, dataEncryptionKey: true, metadata: true } });
     if (!session || session.accountId !== input.ownerId) throw new SessionShareError('session_not_found', 404);
     if (!session.dataEncryptionKey) throw new SessionShareError('session_not_shareable', 409);
@@ -250,6 +283,7 @@ export async function createSessionGrant(input: { ownerId: string; sessionId: st
     if (!granteePublicKey) throw new SessionShareError('grantee_key_unavailable', 409);
 
     await enforceAccountWriteRate({ accountId: input.ownerId, resource: 'relationship', units: 1, envName: 'MAX_SESSION_SHARES_PER_ACCOUNT_PER_MINUTE', fallback: 30 });
+    const modeCap = operate ? await ownerModeCapNow(session) : null;
 
     const grant = await inTx(async (tx) => {
         const existing = await tx.sessionGrant.findUnique({ where: { sessionId_granteeAccountId: { sessionId: session.id, granteeAccountId: grantee.id } } });
@@ -265,13 +299,16 @@ export async function createSessionGrant(input: { ownerId: string; sessionId: st
             acceptedAt: null,
             revokedAt: null,
             expiresAt: grantExpiresAt(input.expiresInDays),
+            operate,
+            operateConfirmedAt: operate ? new Date() : null,
+            operateModeCap: operate ? modeCap : null,
         };
         return existing
             ? tx.sessionGrant.update({ where: { id: existing.id }, data, include: { grantee: { include: profileInclude } } })
             : tx.sessionGrant.create({ data: { ...data, sessionId: session.id, granteeAccountId: grantee.id }, include: { grantee: { include: profileInclude } } });
     });
     invalidateGrantees(session.id);
-    audit('session.share.created', input.ownerId, session.id, { grantId: grant.id, granteeAccountId: grantee.id, role: input.role, expiresAt: grant.expiresAt?.toISOString() ?? null });
+    audit('session.share.created', input.ownerId, session.id, { grantId: grant.id, granteeAccountId: grantee.id, role: input.role, operate, expiresAt: grant.expiresAt?.toISOString() ?? null });
 
     const invite = await inviteView({ ...grant, grantedBy: (await db.account.findUniqueOrThrow({ where: { id: input.ownerId }, include: profileInclude })), session });
     await emitToAccount(grantee.id, { t: 'session-share', invite });
@@ -288,18 +325,63 @@ export async function listSessionGrants(ownerId: string, sessionId: string): Pro
     return Promise.all(grants.map(grantView));
 }
 
-export async function updateSessionGrantRole(ownerId: string, sessionId: string, granteeAccountId: string, role: SessionGrantRole | undefined, expiresInDays?: GrantExpiryDays): Promise<SessionGrantView> {
+export async function updateSessionGrantRole(ownerId: string, sessionId: string, granteeAccountId: string, role: SessionGrantRole | undefined, expiresInDays?: GrantExpiryDays, operator?: { operate?: boolean; confirmOperator?: boolean; endOperation?: boolean }): Promise<SessionGrantView> {
     await requireSessionAccess(ownerId, sessionId, 'owner');
     const grant = await db.sessionGrant.findUnique({ where: { sessionId_granteeAccountId: { sessionId, granteeAccountId } }, include: { grantee: { include: profileInclude } } });
     if (!grant || grant.status === 'revoked') throw new SessionShareError('grant_not_found', 404);
+    const nextRole = role ?? grant.role;
+    const nextExpiresAt = expiresInDays !== undefined ? grantExpiresAt(expiresInDays) : grant.expiresAt;
+    // Becoming a viewer always drops the operator tier; otherwise it stays unless explicitly changed.
+    const nextOperate = nextRole === 'viewer' ? false : operator?.operate ?? grant.operate;
+    if (nextOperate && !grant.operate) assertOperatorGrantable({ role: nextRole, confirmOperator: operator?.confirmOperator, expiresAt: nextExpiresAt });
+    if (nextOperate && !nextExpiresAt) throw new SessionShareError('operator_requires_expiry', 400);
     const data: Prisma.SessionGrantUpdateInput = {};
     if (role) data.role = role;
-    if (expiresInDays !== undefined) data.expiresAt = grantExpiresAt(expiresInDays);
+    if (expiresInDays !== undefined) data.expiresAt = nextExpiresAt;
+    if (nextOperate !== grant.operate) {
+        data.operate = nextOperate;
+        data.operateConfirmedAt = nextOperate ? new Date() : null;
+        // Granted now: cap at the owner's mode now. Dropped: no cap to keep.
+        data.operateModeCap = nextOperate ? await ownerModeCapNow(await db.session.findUniqueOrThrow({ where: { id: sessionId }, select: { id: true, accountId: true, dataEncryptionKey: true, metadata: true } })) : null;
+    }
     const updated = await db.sessionGrant.update({ where: { id: grant.id }, data, include: { grantee: { include: profileInclude } } });
     invalidateGrantees(sessionId);
-    audit('session.share.role', ownerId, sessionId, { grantId: grant.id, granteeAccountId, role: updated.role, expiresAt: updated.expiresAt?.toISOString() ?? null });
-    await emitToAccount(granteeAccountId, { t: 'session-share-updated', sessionId, grantId: grant.id, role: updated.role, status: updated.status });
+    audit('session.share.role', ownerId, sessionId, { grantId: grant.id, granteeAccountId, role: updated.role, operate: updated.operate, expiresAt: updated.expiresAt?.toISOString() ?? null });
+    await emitToAccount(granteeAccountId, { t: 'session-share-updated', sessionId, grantId: grant.id, role: updated.role, operate: updated.operate, status: updated.status });
+    // "End their operation" (presence chip) vs. lowering the tier in the share dialog: same effect, different record.
+    if (grant.operate && !updated.operate) await endOperator(grant.id, operator?.endOperation === true ? 'ended_by_owner' : 'downgraded', { sessionId, granteeId: granteeAccountId, ownerId });
     return grantView(updated);
+}
+
+/**
+ * B-867b: the owner put `mode` in effect through their OWN client (rpcHandler's
+ * account rpc-call, never the operator broker): it becomes the cap of every
+ * active operator grant on the session, and each operator re-reads its row so
+ * its mode menu follows. Operator-driven mode changes never reach here, so the
+ * cap cannot float up with them.
+ */
+export async function ownerSetOperatorModeCap(ownerId: string, sessionId: string, mode: unknown): Promise<void> {
+    const cap = normalizeModeCap(mode);
+    const grants = await db.sessionGrant.findMany({
+        where: { sessionId, operate: true, status: 'active', session: { accountId: ownerId }, OR: [{ operateModeCap: null }, { NOT: { operateModeCap: cap } }] },
+        select: { id: true, granteeAccountId: true, role: true, operate: true, status: true },
+    });
+    if (grants.length === 0) return;
+    await db.sessionGrant.updateMany({ where: { id: { in: grants.map((g) => g.id) } }, data: { operateModeCap: cap } });
+    invalidateGrantees(sessionId);
+    for (const grant of grants) {
+        await emitToAccount(grant.granteeAccountId, { t: 'session-share-updated', sessionId, grantId: grant.id, role: grant.role, operate: grant.operate, status: grant.status });
+    }
+}
+
+/**
+ * Close the grantee's operator connections. Returns once the registry is closed
+ * and the operator told; the kills on the owner's daemon run behind it, so an
+ * offline daemon never holds up the owner's request (B-867c, QA40 P2-2).
+ */
+async function endOperator(grantId: string, reason: OperatorEndReason, notify: { sessionId: string; granteeId: string; ownerId: string }): Promise<void> {
+    const failed = (error: unknown) => log({ module: 'session-share', sessionId: notify.sessionId, errorName: error instanceof Error ? error.name : typeof error }, 'operator teardown failed');
+    await beginOperatorTeardown(grantId, reason, notify).then(({ kills }) => { kills.catch(failed); }, failed);
 }
 
 export async function revokeSessionGrant(ownerId: string, sessionId: string, granteeAccountId: string): Promise<void> {
@@ -310,6 +392,7 @@ export async function revokeSessionGrant(ownerId: string, sessionId: string, gra
     invalidateGrantees(sessionId);
     audit('session.share.revoked', ownerId, sessionId, { grantId: grant.id, granteeAccountId });
     await emitToAccount(granteeAccountId, { t: 'session-share-revoked', sessionId, grantId: grant.id });
+    if (grant.operate) await endOperator(grant.id, 'revoked', { sessionId, granteeId: granteeAccountId, ownerId });
 }
 
 export async function respondToSessionGrant(granteeAccountId: string, grantId: string, accept: boolean): Promise<SharedSessionInvite | null> {
@@ -323,7 +406,8 @@ export async function respondToSessionGrant(granteeAccountId: string, grantId: s
     });
     invalidateGrantees(grant.sessionId);
     audit(accept ? 'session.share.accepted' : 'session.share.declined', granteeAccountId, grant.sessionId, { grantId: grant.id, ownerId: grant.grantedByAccountId });
-    await emitToAccount(grant.grantedByAccountId, { t: 'session-share-updated', sessionId: grant.sessionId, grantId: grant.id, role: updated.role, status: updated.status });
+    await emitToAccount(grant.grantedByAccountId, { t: 'session-share-updated', sessionId: grant.sessionId, grantId: grant.id, role: updated.role, operate: updated.operate, status: updated.status });
+    if (!accept && grant.operate) await endOperator(grant.id, 'revoked', { sessionId: grant.sessionId, granteeId: granteeAccountId, ownerId: grant.session.accountId });
     return accept ? inviteView({ ...grant, status: updated.status }) : null;
 }
 
@@ -340,7 +424,7 @@ export async function listPendingSessionInvites(granteeAccountId: string): Promi
 export async function listSharedSessionRows<T extends SessionKeyRow & { metadata: string }>(
     granteeAccountId: string,
     select: Prisma.SessionSelect,
-): Promise<Array<{ row: T; share: { grantId: string; role: SessionGrantRole; owner: { id: string; displayName: string } }; dataEncryptionKey: Buffer; metadata: string }>> {
+): Promise<Array<{ row: T; share: { grantId: string; role: SessionGrantRole; operate: boolean; modeCap: string | null; expiresAt: number | null; owner: { id: string; displayName: string } }; dataEncryptionKey: Buffer; metadata: string }>> {
     const grants = await db.sessionGrant.findMany({
         where: { granteeAccountId, status: 'active', ...unexpiredGrant() },
         include: { grantedBy: { select: { id: true, firstName: true, lastName: true, username: true } }, session: { select: { ...select, id: true, accountId: true, dataEncryptionKey: true, metadata: true } } },
@@ -353,7 +437,7 @@ export async function listSharedSessionRows<T extends SessionKeyRow & { metadata
         if (!metadata) continue; // owner secret missing: nothing we can safely show
         out.push({
             row,
-            share: { grantId: grant.id, role: grant.role, owner: { id: grant.grantedBy.id, displayName: displayNameOf(grant.grantedBy, await identityOf(grant.grantedBy.id)) } },
+            share: { grantId: grant.id, role: grant.role, operate: grant.operate, modeCap: grant.operate ? grant.operateModeCap ?? 'default' : null, expiresAt: grant.expiresAt ? grant.expiresAt.getTime() : null, owner: { id: grant.grantedBy.id, displayName: displayNameOf(grant.grantedBy, await identityOf(grant.grantedBy.id)) } },
             dataEncryptionKey: Buffer.from(grant.granteeDataEncryptionKey),
             metadata,
         });
@@ -422,6 +506,7 @@ const granteeCache = new Map<string, { ids: string[]; at: number }>();
 
 export function invalidateGrantees(sessionId: string): void {
     granteeCache.delete(sessionId);
+    operatorGrantsChanged();
 }
 
 export async function activeGranteeIds(sessionId: string): Promise<string[]> {
