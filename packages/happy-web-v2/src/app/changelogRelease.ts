@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-02-fork-while-running',
+    date: '2026-11-02',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov02b.title',
+    summaryKey: 'changelog.releases.nov02b.summary',
+    itemKeys: ['changelog.releases.nov02b.forkWhole', 'changelog.releases.nov02b.forkHere', 'changelog.releases.nov02b.cli'],
+  },
+  {
+    id: '2026-11-02-cli-fork-while-running',
+    cliVersion: '0.2.194',
+    date: '2026-11-02',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov02a.title',
+    summaryKey: 'changelog.releases.nov02a.summary',
+    itemKeys: ['changelog.releases.nov02a.fork', 'changelog.releases.nov02a.spawn'],
+  },
+  {
     id: '2026-11-01-crypto-timeout',
     date: '2026-11-01',
     buildVersion: __APP_VERSION__,
