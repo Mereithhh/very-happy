@@ -252,6 +252,8 @@ export const WebTerminalListItemSchema = z.object({
   /** New daemons always send an array (including []); absence identifies an
    * old daemon that cannot persist terminal tags. */
   tags: z.array(z.string()).optional(),
+  /** B-868: Very Happy project id; new daemons send null for none. */
+  projectId: z.string().nullable().optional(),
   cwd: z.string().optional(),
   createdAt: z.number().optional(),
   activityAt: z.number().optional(),
@@ -294,6 +296,8 @@ export const ClosedTerminalRecordSchema = z.object({
   manual: z.boolean().optional(),
   /** B-273: attached user tmux session name — restore re-attaches. */
   attachTmux: z.string().optional(),
+  /** B-868: project at close time — restore keeps it. */
+  projectId: z.string().optional(),
   closedAt: z.number(),
 })
 
@@ -410,6 +414,15 @@ export const DaemonStateSchema = z.object({
    * Same trust rule (`detectedAt >= startedAt`); old webs ignore it.
    */
   historySearch: z.object({
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
+  /**
+   * B-868 capability flag: this daemon answers `set-terminal-project`, honours
+   * `open-terminal.projectId` and pushes `projectId` on every terminal. Same
+   * trust rule (`detectedAt >= startedAt`); old webs ignore it.
+   */
+  terminalProjects: z.object({
     rpcAvailable: z.boolean(),
     detectedAt: z.number(),
   }).optional(),

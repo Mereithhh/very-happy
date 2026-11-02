@@ -55,6 +55,12 @@ export function daemonRpcFlagSupported(daemonState: any, key: string): boolean {
   return flag.detectedAt >= startedAt;
 }
 
+/** B-868: does this machine's CURRENT daemon answer `set-terminal-project`
+ *  (and push `projectId` on its terminals)? Old CLI → the menu asks to update. */
+export function terminalProjectsSupported(daemonState: any): boolean {
+  return daemonRpcFlagSupported(daemonState, 'terminalProjects');
+}
+
 /** B-273: does this machine's CURRENT daemon answer `list-tmux-sessions` and
  *  honour `open-terminal.attachTmux`? */
 export function tmuxSessionsSupported(daemonState: any): boolean {

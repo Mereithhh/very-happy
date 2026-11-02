@@ -28,7 +28,7 @@ export interface TerminalRestoreFacts {
 export type TerminalRestorePlan =
     | { kind: 'already-live' }
     | { kind: 'error'; reason: 'missing-cwd' | 'tmux-session-gone' }
-    | { kind: 'create'; terminalId: string; cwd: string; title?: string; manual: boolean; tags?: string[]; command?: string; attachTmux?: string; cols?: number; rows?: number };
+    | { kind: 'create'; terminalId: string; cwd: string; title?: string; manual: boolean; tags?: string[]; projectId?: string; command?: string; attachTmux?: string; cols?: number; rows?: number };
 
 /** B-287: the recorded pane geometry, when the record has one. */
 function recordGeometry(record: ClosedTerminalRecord): { cols: number; rows: number } | Record<string, never> {
@@ -53,6 +53,7 @@ export function planTerminalRestore(record: ClosedTerminalRecord, facts: Termina
             title: record.title ?? record.attachTmux,
             manual: true,
             tags: record.tags,
+            ...(record.projectId ? { projectId: record.projectId } : {}),
             command: attachStartupCommand(matches[0].id, facts.attachSocket),
             attachTmux: record.attachTmux,
             ...recordGeometry(record),
@@ -67,6 +68,7 @@ export function planTerminalRestore(record: ClosedTerminalRecord, facts: Termina
         title: record.title,
         manual: record.manual === true,
         tags: record.tags,
+        ...(record.projectId ? { projectId: record.projectId } : {}),
         ...(resumable ? { command: `claude --resume ${record.claudeSessionId}` } : {}),
         ...recordGeometry(record),
     };

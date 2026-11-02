@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { TerminalSquare, Plus } from 'lucide-react';
 import { SettingsPage, SettingsHeader } from '@/screens/settings/SettingsLayout';
 import { useAllMachines } from '@/sync/storage';
@@ -7,6 +7,7 @@ import { terminalMachineState } from '@/utils/machineUtils';
 import { Badge, ItemList, ItemGroup, Item, EmptyState, StatusDot } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { tmuxMissing } from '@/sync/closedTerminals';
+import { newTerminalSearch, terminalProjectParam } from '@/app/newTerminalSearch';
 
 function machineLabel(m: any): string {
   return m?.metadata?.displayName || m?.metadata?.host || m?.id?.slice(0, 8) || 'machine';
@@ -18,12 +19,14 @@ export function TerminalPickerScreen() {
   const createTerminal = useTerminalSessions((s) => s.create);
   const terminals = useTerminalSessions((s) => s.terminals);
   const { t } = useTranslation();
+  // B-868: created from a project (several machines online) — keep its project.
+  const projectId = terminalProjectParam(useSearchParams()[0].get('project'));
 
   const openNew = (machineId: string, name: string) => {
-    const term = createTerminal(machineId, name);
+    const term = createTerminal(machineId, name, undefined, projectId);
     // fresh=1: the ONE open allowed to create the tmux session (see
     // WebTerminalScreen) — every other open is attach-only.
-    navigate(`/terminal/${machineId}?tid=${term.id}&fresh=1`);
+    navigate(`/terminal/${machineId}?${newTerminalSearch(term.id, { projectId }).toString()}`);
   };
 
   return (

@@ -77,6 +77,21 @@ unarchive them.
 | Automation with a project | Sessions it spawns join quietly (see [Automations](automations.md)). |
 | Team in the project | The lead's and members' sessions are members through the team. They leave when the team leaves the project; moving one explicitly into another project wins. |
 
+**Web terminals** belong to a project too — for ownership and display only;
+nothing is typed into the terminal and no project context is injected. A
+terminal's row menu has **Move to project…** / **Remove from "…"**, and
+**New terminal** in a project (its page's Terminals section, the project's ⋯
+menu, or ⌘N / ⌥N / ⌘K *New terminal* while a project page is open) files the
+new terminal under it, in the project's primary folder when that computer is
+online. Such terminals show on the project page (Terminals), under the
+project's sidebar group and with the ⌘K project filter, and stay there after a
+reload. The project is stored on the terminal's computer (the tmux option
+`@vh_project`), so it survives a daemon restart, closing (the closed record
+keeps it) and restoring. It needs a CLI that supports it: with an older CLI
+the menu item is greyed out as *Move to project… (update the CLI)*. A
+terminal mirroring a Claude session that is in a project still shows there
+until it is given its own project.
+
 **New project** asks for a name and a folder: **Choose a folder** (a path on a
 computer; remembered folders and **Browse** help) or **New working folder**
 (created by that computer's daemon, default `~/projects/<name>`, only inside

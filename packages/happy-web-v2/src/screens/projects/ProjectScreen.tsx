@@ -1,7 +1,7 @@
 import { BackButton } from '@/app/BackButton';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { FolderKanban, Settings2, Send, UsersRound, Zap, Undo2, Plus, Link2, LogOut } from 'lucide-react';
+import { FolderKanban, Settings2, Send, UsersRound, Zap, Undo2, Plus, Link2, LogOut, TerminalSquare } from 'lucide-react';
 import { ActionDropdownMenu } from '@/ui/Menu';
 import { Modal } from '@/modal';
 import { linkableTeams, teamMoveSource } from './projectChoice';
@@ -27,6 +27,10 @@ import { useProjectCopy, type ProjectCopy } from './projectCopy';
 import { useTranslation } from '@/i18n/useTranslation';
 import { LocationTrail } from '@/components/LocationTrail';
 import { projectTrail, trailCopy } from '@/app/locationTrail';
+import { useTerminalSessions } from '@/sync/terminalSessions';
+import { terminalProjectResolver } from '@/app/sessionPlacement';
+import { createTerminalInProject } from '@/app/newTerminal';
+import { leaveTerminalProject } from '@/app/sessionMenuActions';
 import './projects.css';
 
 /**
@@ -203,6 +207,12 @@ function ProjectOverview({ detail, c, onChanged }: { detail: ProjectDetailRespon
     try { await projectsApi.attachTeam(detail.project.id, teamId); await onChanged(); }
     catch (error) { toast.error(error instanceof ProjectsApiError && error.code === 'team_machine_not_in_project' ? c.teamNoFolder : c.failed); }
   };
+  // B-868: terminals filed under this project (own @vh_project, or a mirror
+  // session that is a member) — ownership and display only.
+  const zh = useTranslation().lang.startsWith('zh');
+  const allTerminals = useTerminalSessions((s) => s.terminals);
+  const terminalOf = useMemo(() => terminalProjectResolver(known, projects.members, []), [known, projects.members]);
+  const projectTerminals = allTerminals.filter((t) => terminalOf(t) === detail.project.id);
   const leave = async (sessionId: string) => {
     try { await projectsApi.removeMember(detail.project.id, sessionId); applyLocalMembership(null, [sessionId]); await onChanged(); }
     catch { toast.error(c.failed); }
@@ -251,6 +261,22 @@ function ProjectOverview({ detail, c, onChanged }: { detail: ProjectDetailRespon
             </Link>
             {/* B-726: explicit members leave here; a team member follows its team (team settings). */}
             {r.member.via !== 'team' && <button type="button" className="pj-icon-btn pj-member-leave" title={c.removeFromProject} aria-label={`${c.removeFromProject}: ${r.title}`} onClick={() => void leave(r.member.sessionId)}><LogOut size={15} aria-hidden /></button>}
+          </div>
+        ))}
+      </section>
+      <section className="pj-section pj-terminals" data-testid="project-terminals">
+        <h2>{c.terminals}<span className="pj-count">{projectTerminals.length}</span>
+          <span className="pj-h-actions">
+            <button type="button" className="pj-ghost" disabled={!!detail.project.archivedAt} onClick={() => createTerminalInProject(navigate, detail.project)}><Plus size={14} aria-hidden />{c.newTerminal}</button>
+          </span>
+        </h2>
+        {projectTerminals.length === 0 ? <p className="pj-muted">{c.noTerminals}</p> : projectTerminals.map((t) => (
+          <div key={t.id} className="pj-member-row">
+            <Link className="pj-member" to={`/terminal/${encodeURIComponent(t.machineId)}?tid=${encodeURIComponent(t.id)}`}>
+              <span className="pj-member-title"><TerminalSquare size={14} aria-hidden /> {t.title}</span>
+              <span className="pj-muted pj-member-meta">{[t.machineName, t.cwd].filter(Boolean).join(' · ')}</span>
+            </Link>
+            {t.projectId === detail.project.id && <button type="button" className="pj-icon-btn pj-member-leave" title={c.removeFromProject} aria-label={`${c.removeFromProject}: ${t.title}`} onClick={() => void leaveTerminalProject(t.id, zh)}><LogOut size={15} aria-hidden /></button>}
           </div>
         ))}
       </section>

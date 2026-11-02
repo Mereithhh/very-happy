@@ -6,11 +6,11 @@ describe('directTerminalItems (B-486)', () => {
         const out = directTerminalItems([
             { id: 'tmux1' },
             { id: 'd1', direct: { cwd: '/w', createdAt: 20, title: '  ' }, lastOutputAt: 30 },
-            { id: 'd0', direct: { cwd: '/h', createdAt: 10, title: 'job' } },
+            { id: 'd0', direct: { cwd: '/h', createdAt: 10, title: 'job', projectId: 'p-1' } },
         ], new Set());
         expect(out).toEqual([
-            { id: 'd0', title: 'job', tags: [], cwd: '/h', createdAt: 10, direct: true },
-            { id: 'd1', tags: [], cwd: '/w', createdAt: 20, activityAt: 30, direct: true },
+            { id: 'd0', title: 'job', tags: [], projectId: 'p-1', cwd: '/h', createdAt: 10, direct: true },
+            { id: 'd1', tags: [], projectId: null, cwd: '/w', createdAt: 20, activityAt: 30, direct: true },
         ]);
     });
 

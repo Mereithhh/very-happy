@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, MessageSquarePlus, Pencil, Settings2, UsersRound } from 'lucide-react';
+import { Archive, ArchiveRestore, MessageSquarePlus, Pencil, Settings2, TerminalSquare, UsersRound } from 'lucide-react';
 import type { ProjectView } from '@slopus/happy-wire';
 import type { MenuItemDef } from '@/ui';
 
@@ -29,14 +29,16 @@ export function projectPrimaryFolder(project: Pick<ProjectView, 'folders'>): { m
 
 export function projectMenuCopy(zh: boolean) {
   return zh
-    ? { newSession: '新建会话', newTeam: '在此项目组建团队', settings: '项目设置', rename: '重命名', archive: '归档项目', unarchive: '取消归档', actions: '项目操作' }
-    : { newSession: 'New session', newTeam: 'Start a team here', settings: 'Project settings', rename: 'Rename', archive: 'Archive project', unarchive: 'Unarchive', actions: 'Project actions' };
+    ? { newSession: '新建会话', newTerminal: '新建终端', newTeam: '在此项目组建团队', settings: '项目设置', rename: '重命名', archive: '归档项目', unarchive: '取消归档', actions: '项目操作' }
+    : { newSession: 'New session', newTerminal: 'New terminal', newTeam: 'Start a team here', settings: 'Project settings', rename: 'Rename', archive: 'Archive project', unarchive: 'Unarchive', actions: 'Project actions' };
 }
 
 export function buildProjectMenu(input: {
   zh: boolean;
   archived?: boolean;
   onNewSession: () => void;
+  /** B-868: a web terminal filed under this project (nothing injected). */
+  onNewTerminal?: () => void;
   /** B-762 (spec B-760 §5.1): 「在此项目组建团队」 — omitted where teams are hidden. */
   onNewTeam?: () => void;
   onSettings: () => void;
@@ -46,6 +48,7 @@ export function buildProjectMenu(input: {
   const c = projectMenuCopy(input.zh);
   return [
     { key: 'new-session', label: c.newSession, icon: MessageSquarePlus, disabled: input.archived, onSelect: input.onNewSession },
+    ...(input.onNewTerminal ? [{ key: 'new-terminal', label: c.newTerminal, icon: TerminalSquare, disabled: input.archived, onSelect: input.onNewTerminal } satisfies MenuItemDef] : []),
     ...(input.onNewTeam ? [{ key: 'new-team', label: c.newTeam, icon: UsersRound, disabled: input.archived, onSelect: input.onNewTeam } satisfies MenuItemDef] : []),
     { key: 'settings', label: c.settings, icon: Settings2, onSelect: input.onSettings },
     { key: 'rename', label: c.rename, icon: Pencil, onSelect: input.onRename },
