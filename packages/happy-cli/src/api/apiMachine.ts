@@ -35,6 +35,7 @@ import { sendTerminalNotification, terminalNotifyLink, terminalNotifyMessage } f
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
+import { createReconnectGate } from './reconnectGate';
 import { getClaudeProjectsRoot, getProjectPath } from '@/claude/utils/path';
 import { readTrackedClaudeSessionIds, readTrackedCodexThreadIds } from '@/persistence';
 import { listClaudeProjectDirs, listClaudeSessionHistory } from '@/claude/utils/claudeSessionHistory';
@@ -1913,17 +1914,22 @@ export class ApiMachineClient {
     private startSmartReconnect() {
         if (this.reconnectInterval) return;
 
+        // B-869: the predicate is a hint — a wrong one must not wedge the socket.
+        const gate = createReconnectGate();
         this.reconnectInterval = setInterval(() => {
             if (this.socket.connected) {
                 clearInterval(this.reconnectInterval!);
                 this.reconnectInterval = null;
                 return;
             }
-            if (!shouldReconnect()) {
+            const decision = gate.decide(shouldReconnect());
+            if (decision === 'wait') {
                 logger.debug('[API MACHINE] Still not ready to reconnect');
                 return;
             }
-            logger.debug('[API MACHINE] Attempting reconnect');
+            logger.debug(decision === 'force'
+                ? '[API MACHINE] Still not ready after repeated checks — forcing a reconnect attempt'
+                : '[API MACHINE] Attempting reconnect');
             // B-543: never stack a second CONNECT on a pending one.
             connectGuarded(this.socket, 'reconnect-interval', guardOptions);
         }, 3000);
