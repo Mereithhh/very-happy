@@ -3006,6 +3006,21 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov02d: {
+                title: 'Side chat while the session is running',
+                summary: 'Ask a question while the agent is working, without interrupting it. Works for Claude and Codex sessions.',
+                entry: 'While a session is running, “Side chat” sits to the left of Stop; /btw still works.',
+                readOnly: 'Side chat only answers questions: it uses no tools and changes nothing, and it is not added to the main conversation.',
+                kept: 'Side chat history is kept per session in this browser and is still there after a reload.',
+                fork: '“Continue as fork” turns it into a forked session in one click, where the agent can act.',
+                cli: 'Side chat in Codex sessions needs CLI 0.2.195 on that machine; with an older CLI you are asked to upgrade.',
+            },
+            nov02c: {
+                title: 'CLI 0.2.195: side chat in Codex sessions',
+                summary: 'Codex sessions can now answer side chat questions while they run.',
+                codex: 'Each side chat question is answered from a temporary read-only copy of the conversation; the running Codex session is not interrupted or changed.',
+                approval: 'If the session is waiting for your approval, side chat says so and that the action has not run yet.',
+            },
             nov02b: {
                 title: 'Fork a session while it is running',
                 summary: 'You no longer have to wait for a turn to finish before forking.',
