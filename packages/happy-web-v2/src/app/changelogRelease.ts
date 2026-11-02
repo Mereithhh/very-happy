@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-03-terminals-in-projects',
+    date: '2026-11-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov03b.title',
+    summaryKey: 'changelog.releases.nov03b.summary',
+    itemKeys: ['changelog.releases.nov03b.move', 'changelog.releases.nov03b.show', 'changelog.releases.nov03b.only', 'changelog.releases.nov03b.cli'],
+  },
+  {
+    id: '2026-11-03-cli-terminals-in-projects',
+    cliVersion: '0.2.197',
+    date: '2026-11-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov03a.title',
+    summaryKey: 'changelog.releases.nov03a.summary',
+    itemKeys: ['changelog.releases.nov03a.store', 'changelog.releases.nov03a.restore'],
+  },
+  {
     id: '2026-11-02-one-agent-per-session',
     date: '2026-11-02',
     buildVersion: __APP_VERSION__,
