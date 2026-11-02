@@ -11,6 +11,7 @@ import {
     ISSUE_CLOSED_STATUSES,
     ISSUE_LIMITS,
     ISSUE_PRIORITIES,
+    ISSUE_SESSION_CAPABILITY,
     ISSUE_STATUSES,
     isIssueClosed,
     isIssueRunActive,
@@ -155,6 +156,35 @@ export function isUnackedSessionlessFailure(run: IssueRunView, issue: Pick<Issue
 
 export function failedRunsNeedingYou(runs: Readonly<Record<string, IssueRunView>>, issues: Readonly<Record<string, IssueView>>): IssueRunView[] {
     return Object.values(runs).filter((r) => isUnackedSessionlessFailure(r, issues[r.issueId])).sort((a, b) => (b.endedAt ?? b.createdAt) - (a.endedAt ?? a.createdAt));
+}
+
+/**
+ * Spec §10 会话头: the issue a session runs for, read from the run table
+ * (`IssueRun.sessionId`), never from `metadata.issue` (a display hint the
+ * wrapper writes, not a binding). The newest run wins when a session was
+ * absorbed into later runs; a deleted issue shows nothing.
+ */
+export function sessionIssueBinding(
+    sessionId: string,
+    runs: Readonly<Record<string, IssueRunView>>,
+    issues: Readonly<Record<string, IssueView>>,
+): { issue: IssueView; run: IssueRunView } | null {
+    let best: IssueRunView | null = null;
+    for (const run of Object.values(runs)) {
+        if (run.sessionId !== sessionId || !issues[run.issueId] || issues[run.issueId].deletedAt) continue;
+        if (!best || run.createdAt > best.createdAt) best = run;
+    }
+    return best ? { issue: issues[best.issueId], run: best } : null;
+}
+
+/**
+ * Whether the header should ask the server which issue a session belongs to
+ * when the store has no run for it: only sessions an issue could have started
+ * (the wrapper wrote `metadata.issue`, or advertises `issue-v1` — an older CLI
+ * never runs issues), so ordinary sessions cost no request.
+ */
+export function mayBelongToIssue(metadata: { issue?: unknown; capabilities?: readonly string[] } | null | undefined): boolean {
+    return !!metadata && (!!metadata.issue || (metadata.capabilities?.includes(ISSUE_SESSION_CAPABILITY) ?? false));
 }
 
 /** Sidebar badge (spec §10): my pending work = in_review + blocked. */

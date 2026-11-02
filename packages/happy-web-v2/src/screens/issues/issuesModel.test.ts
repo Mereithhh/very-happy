@@ -3,7 +3,7 @@ import type { IssueRunView, IssueView } from '@slopus/happy-wire';
 import {
     agentIdleStillInProgress, commentTriggerPreview, EMPTY_FILTER, failedRunsNeedingYou, filterFromSearch, filterToSearch, groupByStatus,
     ISSUE_WORKER_FRESH_MS, machineWorkerState, matchesFilter, matchIssues, mentionCandidates, myIssues, sortOrderBetween, toggleMention,
-    usedLabels, waitingOnMeCount, runIsWorking, findIssue, mentionQuery,
+    usedLabels, waitingOnMeCount, runIsWorking, findIssue, mentionQuery, sessionIssueBinding, mayBelongToIssue,
 } from './issuesModel';
 
 let n = 0;
@@ -161,5 +161,30 @@ describe('B-873 @ typed in the comment box', () => {
         expect(mentionQuery('please @co')).toBe('co');
         expect(mentionQuery('mail me@host')).toBeNull();
         expect(mentionQuery('done @codex now')).toBeNull();
+    });
+});
+
+describe('B-873b session header binding (spec §10: run table, not metadata)', () => {
+    it('finds the issue through IssueRun.sessionId; the newest run wins', () => {
+        const a = issue();
+        const old = run({ issueId: a.id, sessionId: 'sess', createdAt: 1, status: 'ended' });
+        const later = run({ issueId: a.id, sessionId: 'sess', createdAt: 9, seq: 2 });
+        const other = run({ issueId: a.id, sessionId: 'elsewhere' });
+        const runs = { [old.id]: old, [later.id]: later, [other.id]: other };
+        expect(sessionIssueBinding('sess', runs, { [a.id]: a })).toEqual({ issue: a, run: later });
+        expect(sessionIssueBinding('nobody', runs, { [a.id]: a })).toBeNull();
+    });
+    it('a deleted or unknown issue shows nothing', () => {
+        const gone = issue({ deletedAt: 5 });
+        const r = run({ issueId: gone.id, sessionId: 'sess' });
+        expect(sessionIssueBinding('sess', { [r.id]: r }, { [gone.id]: gone })).toBeNull();
+        expect(sessionIssueBinding('sess', { [r.id]: r }, {})).toBeNull();
+    });
+    it('asks the server only for sessions an issue could have started', () => {
+        expect(mayBelongToIssue({ issue: { id: 'i1', key: 'VH-1' } })).toBe(true);
+        expect(mayBelongToIssue({ capabilities: ['issue-v1'] })).toBe(true);
+        expect(mayBelongToIssue({ capabilities: ['teams-adopt-v1'] })).toBe(false);
+        expect(mayBelongToIssue({})).toBe(false);
+        expect(mayBelongToIssue(null)).toBe(false);
     });
 });

@@ -19,9 +19,10 @@
  *      typing `@cl` offers @claude inline and previews a new run for it;
  *   4. the agent comments and moves the issue to in_review → /board 「需要我决策」
  *      lists 「VH-1 待验收」 with 完成 / 退回; 完成 → issue done, the band empties;
- *   5. the run row opens its session;
+ *   5. the run row opens its session; its header shows 「VH-1 · 已完成」 (a bar
+ *      chip on desktop, a ⋯ row on the phone header) and that opens VH-1 again;
  *   6. switch off (`#issues-off`): /todos is the old Todos page, the sidebar has
- *      待办 and no Issues / 运行中, ⌘K has no issue rows; switch on: /todos → /issues?assignee=none.
+ *      待办 and no Issues / 运行中, ⌘K has no issue rows, a session header has no VH chip; switch on: /todos → /issues?assignee=none.
  * No horizontal overflow, coarse touch targets ≥ 44px on the main controls.
  * Exit code 1 on any failed check.
  */
@@ -44,8 +45,8 @@ const THEMES = opt('themes', 'light,dark').split(',');
 if (OUT) mkdirSync(OUT, { recursive: true });
 
 const COPY = {
-    'zh-CN': { newIssue: '新建 issue', agent: 'Agent', create: '创建', queued: '排队中', waiting: '等待', running: '运行中', inProgress: '进行中', queuedPreview: '排队送进', notePreview: '只记录', delivered: '已送达 · 第 1 次执行', review: '待验收', accept: '完成', done: '已完成', todos: '待办', issues: 'Issues', running2: '运行中', send: '发送' },
-    'en-US': { newIssue: 'New issue', agent: 'Agent', create: 'Create', queued: 'Queued', waiting: 'Waiting for', running: 'Running', inProgress: 'In progress', queuedPreview: 'Queued into', notePreview: 'recorded only', delivered: 'Delivered · run 1', review: 'in review', accept: 'Done', done: 'Done', todos: 'Todos', issues: 'Issues', running2: 'Running', send: 'Send' },
+    'zh-CN': { newIssue: '新建 issue', agent: 'Agent', create: '创建', queued: '排队中', waiting: '等待', running: '运行中', inProgress: '进行中', queuedPreview: '排队送进', notePreview: '只记录', delivered: '已送达 · 第 1 次执行', review: '待验收', accept: '完成', done: '已完成', todos: '待办', issues: 'Issues', running2: '运行中', send: '发送', moreActions: '更多会话操作' },
+    'en-US': { newIssue: 'New issue', agent: 'Agent', create: 'Create', queued: 'Queued', waiting: 'Waiting for', running: 'Running', inProgress: 'In progress', queuedPreview: 'Queued into', notePreview: 'recorded only', delivered: 'Delivered · run 1', review: 'in review', accept: 'Done', done: 'Done', todos: 'Todos', issues: 'Issues', running2: 'Running', send: 'Send', moreActions: 'More session actions' },
 };
 
 function findChromium() {
@@ -169,6 +170,24 @@ try {
                 await page.waitForSelector('[data-testid="issue-runs"] .is-run');
                 await page.locator('[data-testid="issue-runs"] .is-run-main').first().click();
                 await page.waitForURL(/\/dev\/device\/session\/dev-plain/, { timeout: 10000 }).then(() => check(true, `${tag}: run row opens its session`), () => check(false, `${tag}: run row opens its session`, page.url()));
+                // 5b. B-873b: the session header points back at the issue
+                const chipText = `${key} · ${c.done}`;
+                if (deviceName === 'phone') {
+                    await page.locator('.ch [aria-label="' + c.moreActions + '"]').click();
+                    const row = page.getByRole('menuitem', { name: chipText });
+                    await row.waitFor({ timeout: 5000 }).then(() => check(true, `${tag}: phone ⋯ offers ${chipText}`), () => check(false, `${tag}: phone ⋯ offers ${chipText}`));
+                    const rb = await row.boundingBox();
+                    check(rb && rb.height >= 44, `${tag}: the ⋯ issue row is a 44px touch target`, `${rb?.height}`);
+                    await shot(page, `${tag}-05c-session-issue-menu`);
+                    await row.click();
+                } else {
+                    const chip = page.locator('[data-testid="session-issue-chip"]');
+                    await chip.waitFor({ timeout: 5000 }).then(() => check(true, `${tag}: session header shows the VH chip`), () => check(false, `${tag}: session header shows the VH chip`));
+                    check((await chip.innerText()).trim() === chipText, `${tag}: chip reads ${chipText}`, await chip.innerText());
+                    await shot(page, `${tag}-05c-session-issue-chip`);
+                    await chip.click();
+                }
+                await page.waitForURL(new RegExp(`/dev/device/issues/${key}$`), { timeout: 10000 }).then(() => check(true, `${tag}: the header entry opens ${key}`), () => check(false, `${tag}: the header entry opens ${key}`, page.url()));
 
                 // list / board views with seeded data (screens only)
                 if (theme === THEMES[0]) {
@@ -223,6 +242,11 @@ try {
                     await offInput.fill('VH-1');
                     await off.waitForTimeout(400);
                     check((await off.locator('.cp-group--issues').count()) === 0 && (await off.locator('.cp-row', { hasText: c.newIssue === '新建 issue' ? '新建 issue：' : 'New issue:' }).count()) === 0, `${tag}: switch off → ⌘K has no issue rows`);
+                    await off.keyboard.press('Escape');
+                    await off.goto(`${APP}/dev/device/session/dev-plain#issues-off`);
+                    await off.waitForSelector('.ch', { timeout: 20000 });
+                    await off.waitForTimeout(600);
+                    check((await off.locator('[data-testid="session-issue-chip"]').count()) === 0, `${tag}: switch off → no VH chip in the session header`);
                     await offCtx.close();
                 }
             }

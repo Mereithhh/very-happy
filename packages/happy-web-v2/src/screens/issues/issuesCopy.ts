@@ -50,6 +50,8 @@ const zh = {
     sidebarRunning: '运行中', projectSection: 'Issues', projectEmpty: '这个项目还没有未关闭的 issue', quickAddPh: '快速新建 issue，回车创建', viewAll: '查看全部',
     disabled: '这个服务器没有开启 Issues',
     chip: (key: string) => `本会话属于 ${key}`,
+    sessionChip: (key: string, status: string) => `${key} · ${status}`,
+    sessionChipHint: (key: string, title: string) => `本会话在做 ${key}「${title}」，点击打开 issue`,
 };
 type IssuesCopy = typeof zh;
 const en: IssuesCopy = {
@@ -95,6 +97,8 @@ const en: IssuesCopy = {
     sidebarRunning: 'Running', projectSection: 'Issues', projectEmpty: 'No open issues in this project', quickAddPh: 'Quick new issue, Enter to create', viewAll: 'View all',
     disabled: 'Issues are not enabled on this server',
     chip: (key) => `This session belongs to ${key}`,
+    sessionChip: (key, status) => `${key} · ${status}`,
+    sessionChipHint: (key, title) => `This session works on ${key} “${title}” — open the issue`,
 };
 
 export function issuesCopyFor(lang: string): IssuesCopy {

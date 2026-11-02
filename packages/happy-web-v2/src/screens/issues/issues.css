@@ -230,7 +230,14 @@ a.is-tl-author { text-decoration: underline; text-decoration-color: var(--line-2
   .is-col-cards .is-row-assignee { display: inline; }
   .is-view-switch { width: 132px; }
 }
+/* B-873b 会话头: 「VH-12 · 进行中」, same weight as the PR chip beside it. */
+.is-session-chip { display: inline-flex; align-items: center; gap: 4px; flex: none; max-width: 160px; height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg-1); color: var(--text-dim); font: var(--fs-11) var(--font-mono); cursor: pointer; }
+.is-session-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.is-session-chip:focus-visible { outline: none; background: var(--bg-2); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .is-session-chip:hover { background: var(--bg-2); color: var(--text); } }
+
 @media (pointer: coarse) {
+  .is-session-chip { height: 44px; }
   .is-primary, .is-soft, .is-ghost, .is-chip, .is-search { height: 44px; }
   .is-icon-btn, .is-row-act { width: 44px; height: 44px; }
   .is-row-main, .is-dec-main, .is-run-main, .is-group-head, .is-field-btn { min-height: 44px; }

@@ -19,6 +19,7 @@ import {
     type IssueMutationResponse,
     type IssueRunCreate,
     type IssueRunView,
+    type IssueSessionContext,
     type IssueTodoImportResult,
     type IssueUpdate,
     type IssueWorkersResponse,
@@ -107,6 +108,8 @@ export const issuesApi = {
     run: (id: string, input: IssueRunCreate) => request<IssueMutationResponse>('POST', `/${enc(id)}/runs`, input),
     cancelRun: (runId: string) => request<{ run: IssueRunView }>('POST', `/runs/${enc(runId)}/cancel`, {}),
     ackFailure: (runId: string) => request<{ run: IssueRunView }>('POST', `/runs/${enc(runId)}/ack-failure`, {}),
+    /** Spec §10 会话头: which issue a session runs for. `since=now` skips the comment digest (read-only on the server). */
+    session: (sessionId: string) => request<IssueSessionContext>('GET', `/session/${enc(sessionId)}?since=${Date.now()}`),
     workers: () => request<IssueWorkersResponse>('GET', '/workers'),
     importLegacyTodos: () => request<IssueTodoImportResult>('POST', '/import-legacy-todos', {}),
 };

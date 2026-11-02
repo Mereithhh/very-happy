@@ -96,6 +96,7 @@ function ensureOwner(): string {
         probing = null;
         loading = null;
         importedFor = '';
+        sessionLookups.clear();
     }
     return key;
 }
@@ -124,7 +125,7 @@ export function probeIssues(): Promise<IssuesAvailability> {
 }
 
 let loading: Promise<void> | null = null;
-/** Open issues whose runs we fetch on a full load, so row spinners and failed runs are known before a socket update. */
+/** Older servers only (no `latestRuns` on the list): open issues whose runs we fetch on a full load, so row spinners and failed runs are known before a socket update. */
 const RUN_PREFETCH_MAX = 40;
 
 /** Full list on first call, `updatedSince=<asOf>` afterwards (resume / reconnect). */
@@ -138,11 +139,16 @@ export function loadIssues(opts: { full?: boolean } = {}): Promise<void> {
     if (since === null) useIssuesStore.setState({ listStatus: state.listStatus === 'ready' ? 'ready' : 'loading' });
     const run = (async () => {
         const all: IssueView[] = [];
+        const latestRuns: IssueRunView[] = [];
+        // A server before B-872 e1fabb3a sends no `latestRuns`; one page without it means fall back to per-issue details.
+        let listCarriesRuns = true;
         let cursor: string | null = null;
         let asOf = 0;
         do {
-            const page = await issuesApi.list({ limit: 500, ...(since !== null ? { updatedSince: since, includeDeleted: '1' } : {}), ...(cursor ? { cursor } : {}) });
+            const page: ListPage = await issuesApi.list({ limit: 500, ...(since !== null ? { updatedSince: since, includeDeleted: '1' } : {}), ...(cursor ? { cursor } : {}) });
             all.push(...page.issues);
+            if (Array.isArray(page.latestRuns)) latestRuns.push(...page.latestRuns);
+            else listCarriesRuns = false;
             cursor = page.nextCursor;
             asOf = page.asOf;
         } while (cursor);
@@ -152,8 +158,9 @@ export function loadIssues(opts: { full?: boolean } = {}): Promise<void> {
             listStatus: 'ready',
             asOf,
             issues: all.reduce((acc, issue) => mergeIssue(acc, issue), since === null ? {} as Record<string, IssueView> : s.issues),
+            runs: latestRuns.reduce((acc, run) => mergeRun(acc, run), s.runs),
         }));
-        if (since === null) void prefetchRuns(all, key);
+        if (since === null && !listCarriesRuns) void prefetchRuns(all, key);
     })().catch((error) => {
         if (owner !== key) return;
         if (isIssuesUnavailable(error)) useIssuesStore.setState({ ...INITIAL, availability: 'disabled' });
@@ -163,8 +170,11 @@ export function loadIssues(opts: { full?: boolean } = {}): Promise<void> {
     return run;
 }
 
+/** `latestRuns` is on the wire from B-872 e1fabb3a; optional here so an older server (absent) and an older wire type both read. */
+type ListPage = Awaited<ReturnType<typeof issuesApi.list>> & { latestRuns?: IssueRunView[] };
+
 /**
- * The list carries no runs (wire `IssueView.latestRunId` only). Open issues
+ * Older servers: the list carries no runs (wire `IssueView.latestRunId` only). Open issues
  * that ran get their detail fetched once, 4 at a time, so the row spinner,
  * 「agent 空闲 · 仍进行中」 and failed runs waiting on the owner are right
  * from the start; socket `issue-run` updates keep them fresh after that.
@@ -322,6 +332,32 @@ export async function loadIssueWorkers(): Promise<void> {
     }
 }
 
+// ─── session header (spec §10 会话头) ─────────────────────────────────────────
+
+/** Sessions already asked about for this owner (an answer of 「not bound」 is remembered too). */
+const sessionLookups = new Set<string>();
+
+/**
+ * One `GET /v1/issues/session/:sid` per session per owner, for a session the
+ * store has no run for (opened from a link, older than the list's latest
+ * runs). The answer lands in the store like any other snapshot; socket
+ * `issue-run` updates keep it fresh after that.
+ */
+export function lookupSessionIssue(sessionId: string): Promise<void> {
+    const key = ensureOwner();
+    if (!key || sessionLookups.has(sessionId) || useIssuesStore.getState().availability !== 'enabled') return Promise.resolve();
+    sessionLookups.add(sessionId);
+    return issuesApi.session(sessionId).then((context) => {
+        if (owner !== key || !context.issue || !context.run) return;
+        const { issue, run } = context;
+        useIssuesStore.setState((s) => ({ issues: mergeIssue(s.issues, issue), runs: mergeRun(s.runs, run) }));
+    }).catch((error) => {
+        if (owner !== key) return;
+        if (isIssuesUnavailable(error)) useIssuesStore.setState({ availability: 'disabled' });
+        else sessionLookups.delete(sessionId); // network trouble: the next open asks again
+    });
+}
+
 let importedFor = '';
 /** Spec §8: the Issues page imports legacy Todos once per mount/owner (idempotent server-side). */
 export function importLegacyTodosOnce(): void {
@@ -344,5 +380,5 @@ export function useIssuesEnabled(): boolean {
 }
 
 export const _forTests = {
-    reset: () => { owner = ''; probing = null; loading = null; importedFor = ''; useIssuesStore.setState({ ...INITIAL }); },
+    reset: () => { owner = ''; probing = null; loading = null; importedFor = ''; sessionLookups.clear(); useIssuesStore.setState({ ...INITIAL }); },
 };

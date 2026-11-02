@@ -44,6 +44,7 @@ import { RelayBadge } from '@/components/RelayBadge';
 import { sessionAgentLabel } from './sessionAgentLabel';
 import { useSessionForkItem } from './useSessionFork';
 import { PrStatusChip } from './git/PrStatusChip';
+import { SessionIssueChip, useSessionIssue, useSessionIssueMenuItem } from '@/screens/issues/SessionIssueChip';
 import { useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
 import { LocationTrail } from '@/components/LocationTrail';
 import { sessionTrail, trailCopy, visibleTrail } from '@/app/locationTrail';
@@ -199,7 +200,11 @@ export function ChatHeader({
             <Pencil size={13} className="ch-title-pencil" />
         </button>
     );
+    // B-873b: the issue this session runs for — a chip on the bar, a ⋯ row once the phone header folds identity.
+    const sessionIssue = useSessionIssue(sessionId)?.issue ?? null;
+    const issueMenuItem = useSessionIssueMenuItem(foldIdentity ? sessionIssue : null);
     const infoItems: MenuItemDef[] = foldIdentity ? [{ key: 'session-info', label: t('session.infoTitle'), icon: Info, onSelect: () => setInfoOpen(true) }] : [];
+    if (issueMenuItem) infoItems.unshift(issueMenuItem);
     const overflowHasActive = plan.overflow.some(
         (key) => (key === 'btw' && btwOpen) || (key === 'files' && filesOpen),
     );
@@ -305,6 +310,7 @@ export function ChatHeader({
                 place the input measured 4px wide at 360px — unusable. */}
             {!editing && (
                 <div className="ch-status">
+                    {sessionIssue && !foldIdentity && <SessionIssueChip issue={sessionIssue} />}
                     <PrStatusChip sessionId={sessionId} compact={compact} />
                     {!foldIdentity && <RelayBadge status={relayStatus} />}
                 </div>

@@ -59,7 +59,8 @@ export interface FakeIssuesServer {
 
 type Json = Record<string, unknown>;
 
-export function createFakeIssuesServer(opts: { now?: () => number; enabled?: boolean } = {}): FakeIssuesServer {
+/** `latestRuns: false` = a server before B-872 e1fabb3a (the list carries no runs). */
+export function createFakeIssuesServer(opts: { now?: () => number; enabled?: boolean; latestRuns?: boolean } = {}): FakeIssuesServer {
     const now = opts.now ?? (() => Date.now());
     let enabled = opts.enabled ?? true;
     let workers: { machineId: string; workerVersion: number; lastSeenAt: number }[] = [];
@@ -131,7 +132,15 @@ export function createFakeIssuesServer(opts: { now?: () => number; enabled?: boo
             const q = query.get('q')?.toLowerCase();
             if (q) list = list.filter((i) => i.title.toLowerCase().includes(q) || i.key.toLowerCase().includes(q));
             const limit = Number(query.get('limit') ?? 500);
-            return ok({ issues: list.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit), nextCursor: null, asOf: now() });
+            const page = list.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit);
+            const latestRuns = page.flatMap((i) => (i.latestRunId && runs.get(i.latestRunId) ? [runs.get(i.latestRunId)!] : []));
+            return ok({ issues: page, nextCursor: null, asOf: now(), ...(opts.latestRuns === false ? {} : { latestRuns }) });
+        }
+        if (method === 'GET' && parts[0] === 'session' && parts.length === 2) {
+            const run = [...runs.values()].find((r) => r.sessionId === parts[1]);
+            const issue = run ? issues.get(run.issueId) : undefined;
+            if (!run || !issue || issue.deletedAt) return ok({ issue: null, run: null, current: false, comments: [], asOf: now() });
+            return ok({ issue, run, current: isIssueRunActive(run.status), comments: [], asOf: now() });
         }
         if (method === 'GET' && parts[0] === 'workers') return ok({ workers });
         if (method === 'POST' && parts[0] === 'import-legacy-todos') return ok({ imported: 0, updated: 0, skipped: 0, conflicts: 0, invalid: 0 });

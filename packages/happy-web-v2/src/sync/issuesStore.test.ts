@@ -11,7 +11,7 @@ import { setIssuesTransport, IssuesApiError, isIssuesUnavailable } from './apiIs
 import { createFakeIssuesServer } from './issuesFake';
 import { useAttentionStore } from './attentionStore';
 import {
-    _forTests, settleIssueReview, acceptIssue, applyIssueRunUpdate, applyIssueUpdate, createIssue, loadIssueDetail, loadIssues, mergeIssue, mergeRun, probeIssues,
+    _forTests, lookupSessionIssue, settleIssueReview, acceptIssue, applyIssueRunUpdate, applyIssueUpdate, createIssue, loadIssueDetail, loadIssues, mergeIssue, mergeRun, probeIssues,
     returnIssue, startIssueRun, updateIssue, useIssuesStore,
 } from './issuesStore';
 
@@ -20,8 +20,8 @@ const codex = { kind: 'agent', machineId: 'm1', agent: 'codex' } as const;
 beforeEach(() => { _forTests.reset(); });
 afterEach(() => { setIssuesTransport(null); _forTests.reset(); });
 
-function useFake(enabled = true) {
-    const server = createFakeIssuesServer({ enabled });
+function useFake(enabled = true, latestRuns = true) {
+    const server = createFakeIssuesServer({ enabled, latestRuns });
     setIssuesTransport(server.transport);
     server.subscribe((u) => { if (u.t === 'issue') applyIssueUpdate(u.issue); else if (u.t === 'issue-run') applyIssueRunUpdate(u.run); });
     return server;
@@ -168,5 +168,69 @@ describe('B-872/B-873 完成 / 退回 go through the review item when the 汇报
         await acceptIssue(a.id);
         expect(attention.respond).not.toHaveBeenCalled();
         expect(server.issues()[0].status).toBe('done');
+    });
+});
+
+describe('B-873b list latestRuns (B-872 e1fabb3a) with an older-server fallback', () => {
+    async function seed(latestRuns: boolean) {
+        const server = useFake(true, latestRuns);
+        await probeIssues();
+        const a = await createIssue({ title: 'agent', assignee: codex });
+        server.agent.start(server.runs()[0].id, 'sess');
+        _forTests.reset();
+        const calls: string[] = [];
+        setIssuesTransport(async (m, p, b) => { calls.push(`${m} ${p}`); return server.transport(m, p, b); });
+        await probeIssues();
+        await loadIssues({ full: true });
+        for (let i = 0; i < 5; i++) await Promise.resolve();
+        await new Promise((r) => setTimeout(r, 0));
+        return { a, calls, server };
+    }
+    it('a server that sends latestRuns: runs land from the list, no per-issue detail fetch', async () => {
+        const { a, calls } = await seed(true);
+        expect(Object.values(useIssuesStore.getState().runs).map((r) => [r.issueId, r.status])).toEqual([[a.id, 'running']]);
+        expect(calls.filter((c) => /^GET \/[^?]/.test(c))).toEqual([]);
+    });
+    it('an older server without the field: the open issues still get their details fetched', async () => {
+        const { a, calls } = await seed(false);
+        expect(calls).toContain(`GET /${a.id}`);
+        expect(Object.values(useIssuesStore.getState().runs).map((r) => r.issueId)).toEqual([a.id]);
+    });
+});
+
+describe('B-873b session header lookup (GET /v1/issues/session/:sid)', () => {
+    it('one request per session; the binding lands in the store; 「not bound」 is remembered', async () => {
+        const server = useFake();
+        await probeIssues();
+        const a = await createIssue({ title: 'agent', assignee: codex });
+        server.agent.start(server.runs()[0].id, 'sess');
+        useIssuesStore.setState({ runs: {}, issues: {} });
+        const calls: string[] = [];
+        setIssuesTransport(async (m, p, b) => { calls.push(`${m} ${p}`); return server.transport(m, p, b); });
+        await lookupSessionIssue('sess');
+        await lookupSessionIssue('sess');
+        await lookupSessionIssue('plain');
+        await lookupSessionIssue('plain');
+        expect(calls.map((c) => c.replace(/since=\d+/, 'since=N'))).toEqual(['GET /session/sess?since=N', 'GET /session/plain?since=N']);
+        const state = useIssuesStore.getState();
+        expect(state.issues[a.id]?.key).toBe(a.key);
+        expect(Object.values(state.runs).map((r) => r.sessionId)).toEqual(['sess']);
+    });
+    it('switch off: nothing is asked', async () => {
+        const server = useFake(false);
+        await probeIssues();
+        const spy = vi.spyOn(server, 'transport');
+        setIssuesTransport(spy as never);
+        await lookupSessionIssue('sess');
+        expect(spy).not.toHaveBeenCalled();
+    });
+    it('network trouble is retried on the next open', async () => {
+        useFake();
+        await probeIssues();
+        let calls = 0;
+        setIssuesTransport(async () => { calls += 1; throw new Error('offline'); });
+        await lookupSessionIssue('sess');
+        await lookupSessionIssue('sess');
+        expect(calls).toBe(2);
     });
 });
