@@ -25,6 +25,13 @@ export const CODEX_STEER_CAPABILITY = 'codex-steer-v1';
 export const CODEX_COMPACT_CAPABILITY = 'codex-compact-v1';
 
 /**
+ * B-861: the Codex wrapper answers `/btw` side questions (`btw-ask/poll/cancel`)
+ * on an ephemeral fork in a second app-server. Older Codex wrappers have no
+ * such RPC, so the web hides the side-chat entry on them (AGENTS #14).
+ */
+export const CODEX_BTW_CAPABILITY = 'codex-btw-v1';
+
+/**
  * B-632: the pi wrapper hands a `meta.delivery === 'steer'` message to the running
  * pi turn (pi `sendUserMessage(…, { deliverAs: 'steer' })` through the Very Happy pi
  * extension). Advertised only once that extension has connected.

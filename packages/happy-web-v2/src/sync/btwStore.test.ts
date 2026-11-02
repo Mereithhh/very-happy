@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createBtwStore } from './btwStore';
+import { createBtwStore, localBtwPersistence, MAX_STORED_EXCHANGES, parseStoredBtwSession, type BtwPersistence } from './btwStore';
 import type { SideQuestionPollResponse } from './ops';
 
-function harness(polls: Array<Partial<SideQuestionPollResponse> | Error>, askImpl?: () => Promise<any>) {
+function harness(polls: Array<Partial<SideQuestionPollResponse> | Error>, askImpl?: () => Promise<any>, persistence?: BtwPersistence) {
     let clock = 5000;
     const queue = [...polls];
     const ask = vi.fn(askImpl ?? (async () => ({ requestId: 'req-1', hadContext: true })));
@@ -13,7 +13,7 @@ function harness(polls: Array<Partial<SideQuestionPollResponse> | Error>, askImp
     });
     const cancel = vi.fn(async () => true);
     const delay = vi.fn(async () => { clock += 1000; });
-    const store = createBtwStore({ ask, poll, cancel, delay, now: () => clock, pollMs: 1000 });
+    const store = createBtwStore({ ask, poll, cancel, delay, now: () => clock, pollMs: 1000, persistence });
     return { store, ask, poll, cancel, delay };
 }
 
@@ -112,5 +112,81 @@ describe('btwStore ask/poll loop (B-283)', () => {
         h.store.getState().clear('s1');
         expect(h.store.getState().sessions.s1).toBeUndefined();
         expect(h.store.getState().sessions.s2.draft).toBe('other');
+    });
+});
+
+/** A Map-backed store with the JSON round trip of localStorage. */
+function memoryPersistence(seed: Record<string, unknown> = {}) {
+    const data = new Map(Object.entries(seed).map(([k, v]) => [k, JSON.stringify(v)]));
+    const persistence: BtwPersistence = {
+        load: (id) => (data.has(id) ? JSON.parse(data.get(id)!) : null),
+        save: (id, state) => { if (state) data.set(id, JSON.stringify(state)); else data.delete(id); },
+    };
+    return { data, persistence };
+}
+
+describe('btwStore persistence (B-861)', () => {
+    it('a reload keeps the side chat and its history feeds the next ask', async () => {
+        const mem = memoryPersistence();
+        const before = harness([{ text: 'PELICAN-7731', status: 'done' }], undefined, mem.persistence);
+        await before.store.getState().ask('s1', 'codeword?');
+        expect(JSON.parse(mem.data.get('s1')!).exchanges[0]).toEqual(expect.objectContaining({ question: 'codeword?', answer: 'PELICAN-7731', status: 'done' }));
+
+        const after = harness([{ text: 'backwards', status: 'done' }], undefined, mem.persistence);
+        after.store.getState().hydrate('s1');
+        expect(after.store.getState().sessions.s1.exchanges.map((e) => e.answer)).toEqual(['PELICAN-7731']);
+        await after.store.getState().ask('s1', 'reverse it');
+        expect(after.ask).toHaveBeenCalledWith('s1', 'reverse it', [{ question: 'codeword?', answer: 'PELICAN-7731' }]);
+    });
+
+    it('resumes polling a question that was running at reload; one without a request id is cancelled', async () => {
+        const mem = memoryPersistence({ s1: { draft: '', exchanges: [
+            { id: 'a', question: 'q1', answer: '', status: 'running', startedAt: 1 },
+            { id: 'b', question: 'q2', answer: 'par', status: 'running', startedAt: 2, requestId: 'req-7' },
+        ] } });
+        const h = harness([{ text: 'full answer', status: 'done', hadContext: false }], undefined, mem.persistence);
+        h.store.getState().hydrate('s1');
+        await vi.waitFor(() => expect(h.store.getState().sessions.s1.exchanges[1].status).toBe('done'));
+        expect(h.poll).toHaveBeenCalledWith('s1', 'req-7');
+        expect(h.store.getState().sessions.s1.exchanges.map((e) => [e.status, e.answer, e.hadContext])).toEqual([
+            ['cancelled', '', true], ['done', 'full answer', false],
+        ]);
+    });
+
+    it('a /btw draft parked before the panel mounts does not overwrite the stored chat', () => {
+        const mem = memoryPersistence({ s1: { draft: '', exchanges: [{ id: 'a', question: 'q', answer: 'a', status: 'done', startedAt: 1 }] } });
+        const h = harness([], undefined, mem.persistence);
+        h.store.getState().setDraft('s1', 'next question');
+        expect(JSON.parse(mem.data.get('s1')!)).toEqual(expect.objectContaining({ draft: 'next question', exchanges: [expect.objectContaining({ id: 'a' })] }));
+    });
+
+    it('clear removes the stored chat; only the newest exchanges are kept', async () => {
+        const mem = memoryPersistence();
+        const h = harness(Array.from({ length: MAX_STORED_EXCHANGES + 2 }, (_, i) => ({ text: `a${i}`, status: 'done' as const })), undefined, mem.persistence);
+        for (let i = 0; i < MAX_STORED_EXCHANGES + 2; i++) await h.store.getState().ask('s1', `q${i}`);
+        const stored = JSON.parse(mem.data.get('s1')!).exchanges;
+        expect(stored).toHaveLength(MAX_STORED_EXCHANGES);
+        expect(stored[0].question).toBe('q2');
+        h.store.getState().clear('s1');
+        expect(mem.data.has('s1')).toBe(false);
+    });
+
+    it('degrades to memory-only when storage throws, and drops malformed stored rows', async () => {
+        vi.stubGlobal('localStorage', {
+            getItem: () => { throw new Error('SecurityError'); },
+            setItem: () => { throw new Error('QuotaExceededError'); },
+            removeItem: () => { throw new Error('SecurityError'); },
+        });
+        try {
+            const h = harness([{ text: 'ok', status: 'done' }], undefined, localBtwPersistence);
+            await h.store.getState().ask('s1', 'q');
+            expect(h.store.getState().sessions.s1.exchanges[0].answer).toBe('ok');
+            h.store.getState().clear('s1');
+            expect(localBtwPersistence.load('s1')).toBeNull();
+        } finally {
+            vi.unstubAllGlobals();
+        }
+        expect(parseStoredBtwSession({ exchanges: [{ id: 1 }, null, { id: 'x', question: 'q', answer: 'a', status: 'weird', startedAt: 1 }], draft: 3 })).toBeNull();
+        expect(parseStoredBtwSession('garbage')).toBeNull();
     });
 });

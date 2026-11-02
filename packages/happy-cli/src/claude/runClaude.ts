@@ -449,7 +449,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         startHappyServer, startHookServer, EditReportThrottle, extractClaudeEditPaths,
         reportSessionEditToDaemon, generateHookSettingsFile, cleanupHookSettingsFile,
         registerKillSessionHandler, SessionExitGate, exitIntentFromArchiveFlag, settleSessionOnExit,
-        registerSideQuestionHandler, writeSideQuestionSettingsFile, claudeCheckSession,
+        registerSideQuestionHandler, writeSideQuestionSettingsFile, describePendingApprovals, claudeCheckSession,
         createSessionScanner, getProjectPath, replayClaudeForkJsonl, snapshotTree, terminateSurvivors, TitleGenerator, BoardAnalyzer,
         FileRateLimiter, createSelfReportState, withAssistantDenylist, contentLogMetadata,
         resolveMessageMode, claudePrewarmEligibility, claudePrewarmSessionEligibility, prewarmCacheFile,
@@ -887,6 +887,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // B-482: in remote mode the launcher parks the live Query's /btw entry
         // on the session while the Query is alive; local mode never sets it.
         getLiveQuery: () => currentSession?.getSideQuestionLive() ?? null,
+        getMainStatus: () => describePendingApprovals(session.getAgentState()?.requests),
     });
 
     const resetCurrentModeDefaults = () => {

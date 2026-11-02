@@ -87,19 +87,24 @@ async function settle(parent: Session, newId: string, draft?: string): Promise<v
  */
 export type WholeFork = { id: string; partial: boolean; prefilled: boolean };
 
-export async function forkWholeSession(parent: Session, source: ForkSource, running: boolean): Promise<WholeFork> {
+/**
+ * `draft` (B-861, side chat 「转成分叉会话」) replaces the running turn's
+ * prefill: the user's next step is the side question, while the running
+ * prompt keeps running in the source session.
+ */
+export async function forkWholeSession(parent: Session, source: ForkSource, running: boolean, draft?: string): Promise<WholeFork> {
     try {
         const mode = parentPermissionMode(parent, source.kind);
         if (!running) {
             const id = await createSessionFork(source, mode, deps);
-            await settle(parent, id);
+            await settle(parent, id, draft);
             return { id, partial: false, prefilled: false };
         }
         const fork = await createCompletedTurnsFork(source, mode, deps);
         if (fork === 'noCompletedTurn') throw new ForkFailure('noHistory', 'The running turn is the first one');
-        const draft = forkPrefill(fork.excludedPrompts, confirmedPrompts(source.sessionId));
-        await settle(parent, fork.sessionId, draft);
-        return { id: fork.sessionId, partial: fork.excludedPrompts.length > 0, prefilled: draft.length > 0 };
+        const prefill = draft ?? forkPrefill(fork.excludedPrompts, confirmedPrompts(source.sessionId));
+        await settle(parent, fork.sessionId, prefill);
+        return { id: fork.sessionId, partial: fork.excludedPrompts.length > 0, prefilled: draft === undefined && prefill.length > 0 };
     } catch (error) {
         throw classify(source, error);
     }

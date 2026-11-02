@@ -134,6 +134,23 @@ describe('B-860 whole-session fork while a turn runs', () => {
         expect(calls[1].params).toMatchObject({ parentSessionId: 'parent', resumeClaudeSessionId: '33333333-3333-4333-8333-333333333333', permissionMode: 'plan' });
         expect(storage.getState().sessions.branch.draft).toBe('second');
     });
+    it('B-861 side chat 「转成分叉会话」: the side question is prefilled instead of the running prompt', async () => {
+        stubMachine({
+            'claude-fork-completed-turns': { type: 'success', newClaudeSessionId: '33333333-3333-4333-8333-333333333333', excludedPrompts: ['[header] second'] },
+            'spawn-happy-session': { type: 'success', sessionId: 'branch' },
+        });
+        const fork = await flow.forkWholeSession(storage.getState().sessions.parent, source, true, 'fix the flaky test');
+        expect(fork).toEqual({ id: 'branch', partial: true, prefilled: false });
+        expect(storage.getState().sessions.branch.draft).toBe('fix the flaky test');
+    });
+    it('B-861 side chat fork of an idle session copies everything and prefills the side question', async () => {
+        stubMachine({
+            'claude-fork-session': { type: 'success', newClaudeSessionId: '44444444-4444-4444-8444-444444444444' },
+            'spawn-happy-session': { type: 'success', sessionId: 'branch' },
+        });
+        expect(await flow.forkWholeSession(storage.getState().sessions.parent, source, false, 'next step')).toEqual({ id: 'branch', partial: false, prefilled: false });
+        expect(storage.getState().sessions.branch.draft).toBe('next step');
+    });
     it('the turn ended meanwhile: a plain fork, no notice, nothing prefilled', async () => {
         stubMachine({
             'codex-fork-completed-turns': { type: 'success', newCodexThreadId: 'thread-2', excludedPrompts: [] },

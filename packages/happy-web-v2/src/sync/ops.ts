@@ -2132,6 +2132,8 @@ export interface SideQuestionPollResponse {
     error?: string;
     startedAt: number;
     finishedAt?: number;
+    /** B-861: the CLI's final word on context (absent from older CLIs). */
+    hadContext?: boolean;
 }
 
 // A thrown CLI handler does NOT reject the RPC: RpcHandlerManager answers with
@@ -2180,6 +2182,7 @@ export async function sessionBtwPoll(sessionId: string, requestId: string): Prom
         error: typeof snap.error === 'string' ? snap.error : undefined,
         startedAt: typeof snap.startedAt === 'number' ? snap.startedAt : Date.now(),
         finishedAt: typeof snap.finishedAt === 'number' ? snap.finishedAt : undefined,
+        ...(typeof snap.hadContext === 'boolean' ? { hadContext: snap.hadContext } : {}),
     };
 }
 
