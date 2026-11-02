@@ -38,3 +38,15 @@ export function sessionPlacementResolver(projects: ProjectView[], members: Proje
 export function resolveSessionPlacement(sessionId: string | undefined, ctx: { projects: ProjectView[]; members: ProjectMemberView[]; teams: TeamState[] }): SessionPlacement {
   return sessionPlacementResolver(ctx.projects, ctx.members, ctx.teams)(sessionId);
 }
+
+/**
+ * B-868: a web terminal's project. Its own project (`@vh_project`, set by
+ * 「移到项目…」 or a create inside a project) wins while that project is live;
+ * otherwise a mirrored terminal follows its mirror session's placement (the
+ * pre-B-868 behaviour). Ownership and display only — nothing is injected.
+ */
+export function terminalProjectResolver(projects: ProjectView[], members: ProjectMemberView[], teams: TeamState[]): (terminal: { projectId?: string | null; mirrorSessionId?: string }) => string | null {
+  const live = new Set(projects.filter((p) => !p.archivedAt).map((p) => p.id));
+  const place = sessionPlacementResolver(projects, members, teams);
+  return (terminal) => (terminal.projectId && live.has(terminal.projectId) ? terminal.projectId : place(terminal.mirrorSessionId).projectId);
+}

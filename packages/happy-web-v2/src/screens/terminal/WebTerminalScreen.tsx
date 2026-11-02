@@ -66,6 +66,7 @@ import { RenameModal } from '@/screens/sessions/RenameModal';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForTerminal } from '@/sync/activityOverlay';
 import { resumeStartupCommand } from '@/sync/closedTerminals';
+import { terminalProjectParam } from '@/app/newTerminalSearch';
 import { resolveStartupCommand } from '@/utils/terminalStartup';
 import { useIsDesktop, useIsTablet, useMediaQuery } from '@/app/useMediaQuery';
 import { planTermHeaderActions, type TermHeaderActionKey } from './termHeaderLayout';
@@ -309,11 +310,15 @@ export function WebTerminalScreen() {
     const name = params.get('attachName') || '';
     return /^\$\d{1,9}$/.test(id) && name ? { id, name } : undefined;
   })();
+  // B-868: the project this create files the terminal under (create-open only).
+  const createProjectRef = useRef<string | undefined>(undefined);
+  createProjectRef.current = terminalProjectParam(params.get('project'));
   const clearFreshRef = useRef(() => {});
   clearFreshRef.current = () => {
     if (params.get('fresh') !== '1') return;
     const next = new URLSearchParams(params);
     next.delete('fresh');
+    next.delete('project');
     next.delete('cwd');
     next.delete('resume');
     next.delete('cmd');
@@ -1726,6 +1731,7 @@ export function WebTerminalScreen() {
         // Starting directory for the create path only (see createCwdRef).
         cwd: isFresh && !attach ? createCwdRef.current : undefined,
         ...(attach ? { attachTmux: attach } : {}),
+        ...(isFresh && createProjectRef.current ? { projectId: createProjectRef.current } : {}),
         // Only the fresh-create navigation may create the tmux session; any
         // other mount (sidebar nav, URL refresh) attaches to what exists —
         // a deleted terminal's stale URL must not resurrect it (>= 0.2.29;

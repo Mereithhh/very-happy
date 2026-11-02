@@ -87,6 +87,8 @@ export interface AutoRestoreCandidate {
     /** B-265: tags + manual-rename flag, put back on the recreated session. */
     tags?: string[];
     manual?: boolean;
+    /** B-868: project, put back on the recreated session. */
+    projectId?: string;
     /** B-287: last observed pane geometry (see LiveTerminalInfo). */
     cols?: number;
     rows?: number;
@@ -99,6 +101,7 @@ export interface AutoRestorePlan {
     title?: string;
     tags?: string[];
     manual?: boolean;
+    projectId?: string;
     /** B-287: recreate at this size (daemon falls back to its default). */
     cols?: number;
     rows?: number;
@@ -186,6 +189,7 @@ export function selectAutoRestore(
             terminalId: c.id,
             ...(c.tags !== undefined ? { tags: c.tags } : {}),
             ...(c.manual ? { manual: true } : {}),
+            ...(c.projectId ? { projectId: c.projectId } : {}),
             ...(c.cols !== undefined && c.rows !== undefined ? { cols: c.cols, rows: c.rows } : {}),
             cwd: c.cwd,
             title: c.title,

@@ -740,7 +740,7 @@ export class ApiMachineClient {
             // declaration; a client that doesn't send it gets the v1 response
             // shape verbatim (its `applyOpenResult` throws on anything else and
             // the terminal would stay "connecting" forever).
-            const { terminalId, cols, rows, cwd, fromSeq, encStream, startupCommand, resub, attachOnly, streamMode, attachTmux } = params || {};
+            const { terminalId, cols, rows, cwd, fromSeq, encStream, startupCommand, resub, attachOnly, streamMode, attachTmux, projectId } = params || {};
             // B-273: `attachTmux {id,name}` — validated (and possibly refused
             // with 'tmux-session-gone') inside open() BEFORE anything is created.
             const attach = attachTmux && typeof attachTmux === 'object' && typeof attachTmux.id === 'string' && typeof attachTmux.name === 'string'
@@ -750,6 +750,8 @@ export class ApiMachineClient {
                 terminalId, cols, rows, cwd, fromSeq, startupCommand, resub, attachOnly,
                 streamMode: streamMode === 'lines' ? 'lines' : undefined,
                 ...(attach ? { attachTmux: attach } : {}),
+                // B-868: create-only; validated inside open().
+                ...(typeof projectId === 'string' ? { projectId } : {}),
             });
             // Negotiated stream encryption: only enable for clients that ask
             // (so an old client still works in plaintext). Echo it back so the
@@ -898,6 +900,19 @@ export class ApiMachineClient {
             }
             if (!this.webTerminal.setTags(terminalId, tags)) {
                 throw new Error('Failed to set terminal tags (invalid tags, tmux unavailable, or session gone)');
+            }
+            return { type: 'success' };
+        });
+
+        // B-868: put a terminal in a Very Happy project (projectId) or take it
+        // out (null). Gated web-side by `daemonState.terminalProjects`.
+        this.rpcHandlerManager.registerHandler('set-terminal-project', async (params: any) => {
+            const { terminalId, projectId } = params || {};
+            if (typeof terminalId !== 'string' || !terminalId || projectId === undefined) {
+                throw new Error('terminalId and projectId are required');
+            }
+            if (!this.webTerminal.setProject(terminalId, projectId)) {
+                throw new Error('Failed to set terminal project (invalid id, tmux unavailable, or session gone)');
             }
             return { type: 'success' };
         });
@@ -1546,6 +1561,8 @@ export class ApiMachineClient {
                     codexHistory: { rpcAvailable: true, detectedAt: now },
                     // B-549 capability flag: `history-search` (same restamp discipline).
                     historySearch: { rpcAvailable: true, detectedAt: now },
+                    // B-868 capability flag: `set-terminal-project` (same restamp discipline).
+                    terminalProjects: { rpcAvailable: true, detectedAt: now },
                     // B-084: closed records survive daemon restarts (persisted
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.
