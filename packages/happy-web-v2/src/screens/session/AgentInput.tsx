@@ -17,7 +17,7 @@ import { appendMessageQuote, insertMessageQuoteAt } from './messageActionsModel'
  * newline; soft keyboards newline). IME-safe: never sends mid-composition.
  */
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronUp, CloudOff, CornerDownRight, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, CloudOff, CornerDownRight, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd, MessageCircleQuestion } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
@@ -215,8 +215,10 @@ function UpgradeCliLink({ machineId, label }: { machineId: string; label: string
     return <button type="button" className="me-link" onClick={() => navigate(`/machine/${encodeURIComponent(machineId)}`)}>{label}</button>;
 }
 
-export function AgentInput({ sessionId, agentFlavor, pending }: {
+export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }: {
     sessionId: string;
+    /** B-861: this session can host the side-chat panel (Claude/Codex, not a mirror or a session shared with me). */
+    sideChat?: boolean;
     /** Used while `session` is null (pending page): options and default overrides
      *  must follow the chosen agent, not fall back to Claude's slot. */
     agentFlavor?: string;
@@ -1752,6 +1754,21 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                     </Suspense>}
                     </div>
                     <div className="ci-composer-actions">
+                        {/* B-861: while the main turn runs, side chat is the way to ask
+                            without queueing behind it or interrupting it. */}
+                        {sideChat && isWorking && !pending && (
+                            <button
+                                type="button"
+                                className="ci-side-chat"
+                                onClick={() => openBtwPanel(sessionId)}
+                                title={t('session.btw.entryHint')}
+                                aria-label={`${t('session.btw.entry')} — ${t('session.btw.entryHint')}`}
+                                data-side-chat
+                            >
+                                <MessageCircleQuestion size={16} aria-hidden />
+                                {t('session.btw.entry')}
+                            </button>
+                        )}
                         {isWorking && !sending && !processingAttachments && (!hasDraft || aborting) ? (
                             <button
                                 type="button"

@@ -157,6 +157,38 @@ describe('CodexAppServerClient sandbox integration', () => {
         await expect(client.readConfiguredModel('/repo')).rejects.toThrow('Method not found');
     });
 
+    it('B-861: side threads are ephemeral read-only forks on the account, and never become the client thread', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setAccountOverrides({ env: { K: 'v' }, modelProvider: 'acct', config: { 'model_providers.acct.base_url': 'https://x' } });
+        vi.spyOn(client, 'ensureConnected').mockResolvedValue();
+        const request = vi.spyOn(client as any, 'request').mockResolvedValue({ thread: { id: 'side-1' }, turn: { id: 't-1' } });
+        expect(await client.openSideThread({ sourceThreadId: 'main', cwd: '/repo', model: 'gpt-x', developerInstructions: 'side' })).toEqual({ threadId: 'side-1' });
+        expect(request).toHaveBeenLastCalledWith('thread/fork', expect.objectContaining({
+            threadId: 'main', ephemeral: true, excludeTurns: true, persistExtendedHistory: false,
+            approvalPolicy: 'never', sandbox: 'read-only', modelProvider: 'acct', model: 'gpt-x', developerInstructions: 'side',
+            config: { 'model_providers.acct.base_url': 'https://x', 'features.hooks': false },
+        }));
+        await client.openSideThread({ sourceThreadId: null, cwd: '/repo', developerInstructions: 'side' });
+        expect(request).toHaveBeenLastCalledWith('thread/start', expect.objectContaining({ ephemeral: true, sandbox: 'read-only', approvalPolicy: 'never', modelProvider: 'acct' }));
+        expect(await client.startSideTurn('side-1', 'q')).toBe('t-1');
+        expect(request).toHaveBeenLastCalledWith('turn/start', { threadId: 'side-1', input: [{ type: 'text', text: 'q' }], approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' } });
+        // The main-thread state (resume target, interrupt target) is untouched.
+        expect(client.threadId).toBeNull();
+        expect(client.turnId).toBeNull();
+    });
+
+    it('B-861: raw notification listeners see every notification and can unsubscribe', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const seen: string[] = [];
+        const off = client.onRawNotification((method, params) => seen.push(`${method}:${params?.threadId}`));
+        (client as any).handleNotification('item/agentMessage/delta', { threadId: 'side-1', delta: 'x' });
+        off();
+        (client as any).handleNotification('turn/completed', { threadId: 'side-1' });
+        expect(seen).toEqual(['item/agentMessage/delta:side-1']);
+    });
+
     it('B-844: runCodex publishes configuredModel only when config/read answered', () => {
         const source = readFileSync(new URL('./runCodex.ts', import.meta.url), 'utf8');
         expect(source).toContain('configured = { model: await client.readConfiguredModel(process.cwd()) };');

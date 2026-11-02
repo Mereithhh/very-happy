@@ -66,6 +66,25 @@ describe('registerSideQuestionHandler (B-283)', () => {
         expect(done).toEqual(expect.objectContaining({ status: 'done', text: 'done text', finishedAt: 1000 }));
     });
 
+    it('B-861: the wrapper status line reaches the run input', async () => {
+        const handlers = new Map<string, Handler>();
+        const run = vi.fn(async () => ({ answer: 'x', hadContext: true }));
+        registerSideQuestionHandler({ registerHandler: (m: string, h: Handler) => { handlers.set(m, h); } }, {
+            getClaudeSessionId: () => 't', getModel: () => undefined, cwd: '/', run, getMainStatus: () => 'waiting for approval',
+        });
+        await handlers.get('btw-ask')!({ question: 'q' });
+        expect(run).toHaveBeenCalledWith(expect.objectContaining({ mainStatus: 'waiting for approval' }));
+    });
+
+    it('B-861: poll carries the final hadContext (a Codex fork that fell back to no context)', async () => {
+        const h = harness({ run: async () => ({ answer: 'x', hadContext: false }) });
+        const ask = await h.call('btw-ask', { question: 'q' });
+        expect(ask.hadContext).toBe(true);
+        await flush();
+        const poll: SideQuestionPollResponse = await h.call('btw-poll', { requestId: ask.requestId });
+        expect(poll).toMatchObject({ status: 'done', hadContext: false });
+    });
+
     it('rejects empty and oversized questions', async () => {
         const h = harness();
         await expect(h.call('btw-ask', { question: '   ' })).rejects.toThrow('empty');

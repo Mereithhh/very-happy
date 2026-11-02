@@ -1,4 +1,4 @@
-import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort } from '@slopus/happy-wire';
 import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
 import { createProjectInjector } from '@/projects/injector';
 import { sharedProjectsClient } from '@/projects/client';
@@ -64,6 +64,9 @@ import { CODEX_IDLE_RELEASE_ENV, CodexIdleReleaseTimer, resolveCodexIdleReleaseM
 import { codexCompactCommand, enqueueCodexUserText, isCodexClearText, isCodexControlText } from './codexClearCommand';
 import { runCodexCompact } from './codexCompact';
 import { steerIntoRunningTurn } from './codexSteer';
+import { runCodexSideQuestion } from './codexSideQuestion';
+import { registerSideQuestionHandler } from '@/claude/registerSideQuestionHandler';
+import { describePendingApprovals } from '@/claude/sideQuestion';
 import {
     buildCodexTurnPrompt,
     hashCodexEnhancedMode,
@@ -175,7 +178,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
-        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY],
+        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY],
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
@@ -855,6 +858,22 @@ export async function runCodex(opts: {
 
     client = new CodexAppServerClient(sandboxConfig);
     client.setAccountOverrides(codexAccount.overrides);
+
+    // B-861: `/btw` side questions. Each runs on its own app-server (same
+    // sandbox and account overrides — an account-bound session never falls back
+    // to the machine login) over an ephemeral fork of the main thread; the main
+    // client, thread and turn are never touched.
+    registerSideQuestionHandler(session.rpcHandlerManager, {
+        getClaudeSessionId: () => client?.threadId ?? null,
+        getModel: () => currentModel ?? client?.threadModel ?? undefined,
+        cwd: process.cwd(),
+        getMainStatus: () => describePendingApprovals(session.getAgentState()?.requests),
+        run: (input) => runCodexSideQuestion(() => {
+            const side = new CodexAppServerClient(sandboxConfig);
+            side.setAccountOverrides(codexAccount.overrides);
+            return side;
+        }, input),
+    });
 
     // B-461: an idle Codex session must not pin `codex app-server` (and with it the
     // ~/.codex sqlite files) forever. Release it after a quiet period; the next

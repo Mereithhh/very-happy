@@ -218,3 +218,22 @@
 }
 
 @media (max-width: 600px), (pointer: coarse) { .btw-textarea { font-size:max(16px, var(--chat-fs-body)); } }
+
+/* B-861: 「转成分叉会话」 — continue the side chat as a full session with tools. */
+.btw-fork {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text);
+  font: 600 var(--chat-fs-caption)/1 var(--font-sans);
+  white-space: nowrap;
+}
+.btw-fork > svg { flex: none; color: var(--text-dim); }
+@media (hover: hover) and (pointer: fine) { .btw-fork:hover { background: var(--fill-selected); } }
+@media (pointer: coarse) { .btw-fork { height: 44px; padding: 0 var(--sp-3); } }

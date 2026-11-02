@@ -4,12 +4,17 @@
  * btwStore (memory-only, per session); the store owns the ask/poll loop so
  * closing the panel never abandons a running question.
  *
- * Gate: any structured Claude session can host the panel, but only a wrapper
- * advertising `claude-btw-v1` answers — older CLIs get an upgrade notice and a
- * disabled composer (铁律 14: capability per session, never per machine).
+ * Gate: any structured Claude or Codex session can host the panel, but only
+ * a wrapper advertising `claude-btw-v1` / `codex-btw-v1` answers — older CLIs
+ * get an upgrade notice and a disabled composer (铁律 14: capability per
+ * session, never per machine).
+ *
+ * B-861: 「转成分叉会话」 forks the session (completed turns only while it
+ * runs — B-860) into a full session with tools, the last side question
+ * prefilled.
  */
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircleQuestion, ArrowUp, Square, Trash2, X } from 'lucide-react';
+import { MessageCircleQuestion, ArrowUp, GitFork, Square, Trash2, X } from 'lucide-react';
 import { useSession, useSetting } from '@/sync/storage';
 import { btwStore, useBtwSession, type BtwExchange } from '@/sync/btwStore';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -18,6 +23,7 @@ import { useImeGuard } from '@/utils/ime';
 import { Markdown, MarkdownPathProvider } from './Markdown';
 import { useElapsedSeconds } from './useElapsed';
 import { supportsBtw } from './btwCommand';
+import { useStartSessionFork } from './useSessionFork';
 import { insertComposerNewline, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
 import './btw.css';
 
@@ -68,6 +74,8 @@ export function BtwPanel({ sessionId, onClose, embedded = false, active = true }
     const supported = supportsBtw(session);
     const online = session?.presence === 'online';
     const running = exchanges.find((e) => e.status === 'running');
+    const startFork = useStartSessionFork(sessionId);
+    const lastQuestion = exchanges.length ? exchanges[exchanges.length - 1].question : '';
     const ime = useImeGuard();
     const enterToSend = useSetting('agentInputEnterToSend');
     const taRef = useRef<HTMLTextAreaElement>(null);
@@ -153,6 +161,12 @@ export function BtwPanel({ sessionId, onClose, embedded = false, active = true }
             </div>
 
             <div className="btw-foot">
+                {startFork && lastQuestion && (
+                    <button type="button" className="btw-fork" onClick={() => startFork({ draft: lastQuestion })} title={t('session.btw.forkHint')} data-btw-fork>
+                        <GitFork size={14} aria-hidden />
+                        <span>{t('session.btw.fork')}</span>
+                    </button>
+                )}
                 {!supported ? (
                     <div className="btw-note btw-note--block">{t('session.btw.unsupported')}</div>
                 ) : !online ? (

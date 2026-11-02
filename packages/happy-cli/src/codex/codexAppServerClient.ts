@@ -271,6 +271,7 @@ export class CodexAppServerClient {
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
+    private rawNotificationListeners = new Set<(method: string, params: any) => void>();
     private approvalHandler: ApprovalHandler | null = null;
     // B-555: subscription rate-limit snapshots (sparse notifications + throttled reads).
     private rateLimitHandler: ((snapshot: unknown) => void) | null = null;
@@ -1139,6 +1140,65 @@ export class CodexAppServerClient {
         return await this.request('thread/inject_items', params) as InjectItemsResponse;
     }
 
+    // ─── B-861 side questions ───────────────────────────────────
+    // A side client (its own app-server process) drives a throwaway thread
+    // with these; none of them touch `_threadId` / `_turnId`, so the client's
+    // turn tracking and reconnect-resume stay out of it.
+
+    /** Every app-server notification, raw. Returns the unsubscribe. */
+    onRawNotification(listener: (method: string, params: any) => void): () => void {
+        this.rawNotificationListeners.add(listener);
+        return () => { this.rawNotificationListeners.delete(listener); };
+    }
+
+    /**
+     * An ephemeral (never persisted) thread for one side question. With
+     * `sourceThreadId`: `thread/fork` of the main thread — Codex 0.154 forks a
+     * running thread from a second app-server with the turn in flight as
+     * `interrupted`, and writes nothing to the source rollout
+     * (vh-team-B-861/codex-probe1.log). `excludeTurns` is required for an
+     * ephemeral fork of a paginated thread. Read-only sandbox, approval never.
+     */
+    async openSideThread(opts: {
+        sourceThreadId: string | null;
+        cwd: string;
+        model?: string;
+        developerInstructions: string;
+    }): Promise<{ threadId: string }> {
+        await this.ensureConnected();
+        const common = {
+            model: opts.model ?? null,
+            modelProvider: this.accountOverrides.modelProvider ?? null,
+            cwd: opts.cwd,
+            approvalPolicy: 'never' as ApprovalPolicy,
+            sandbox: 'read-only' as SandboxMode,
+            config: { ...this.accountOverrides.config, 'features.hooks': false },
+            baseInstructions: null,
+            developerInstructions: opts.developerInstructions,
+            ephemeral: true,
+            persistExtendedHistory: false,
+        };
+        const result = opts.sourceThreadId
+            ? await this.request('thread/fork', { ...common, threadId: opts.sourceThreadId, excludeTurns: true, threadSource: null })
+            : await this.request('thread/start', { ...common, profile: null, compactPrompt: null, includeApplyPatchTool: false, experimentalRawEvents: false });
+        return { threadId: (result as NewConversationResponse).thread.id };
+    }
+
+    /** `turn/start` on a side thread; resolves with the turn id once accepted. */
+    async startSideTurn(threadId: string, text: string): Promise<string | null> {
+        const result = await this.request('turn/start', {
+            threadId,
+            input: [{ type: 'text', text }],
+            approvalPolicy: 'never',
+            sandboxPolicy: { type: 'readOnly' },
+        }) as { turn?: { id?: string | null } };
+        return typeof result?.turn?.id === 'string' ? result.turn.id : null;
+    }
+
+    async interruptSideTurn(threadId: string, turnId: string): Promise<void> {
+        await this.request('turn/interrupt', { threadId, turnId });
+    }
+
     async reconnectAndResumeThread(): Promise<boolean> {
         const threadId = this._threadId;
         await this.disconnectInternal({ preserveThreadState: !!threadId });
@@ -1923,6 +1983,9 @@ export class CodexAppServerClient {
     private handleNotification(method: string, params: any): void {
         // B-622: anything the app-server says while a turn is pending is a sign of life.
         this.touchTurnWatchdog();
+        for (const listener of this.rawNotificationListeners) {
+            try { listener(method, params); } catch (error) { logger.debug('[CodexAppServer] raw notification listener failed', errorLogMetadata(error)); }
+        }
 
         // codex/event notifications: either `codex/event` or `codex/event/<type>`
         if (method === 'codex/event' || method.startsWith('codex/event/')) {

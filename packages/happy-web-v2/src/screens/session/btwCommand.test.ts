@@ -22,11 +22,18 @@ describe('btw capability gate', () => {
     it('offers the panel on any Claude session but only new CLIs answer', () => {
         expect(canOfferBtw(claude())).toBe(true);
         expect(canOfferBtw({ metadata: {} } as any)).toBe(true);
-        expect(canOfferBtw({ metadata: { flavor: 'codex' } } as any)).toBe(false);
+        expect(canOfferBtw({ metadata: { flavor: 'gemini' } } as any)).toBe(false);
         expect(supportsBtw(claude())).toBe(false);
         expect(supportsBtw(claude(['claude-steer-v1']))).toBe(false);
         expect(supportsBtw(claude(['claude-steer-v1', 'claude-btw-v1']))).toBe(true);
         expect(supportsBtw({ metadata: { flavor: 'codex', capabilities: ['claude-btw-v1'] } } as any)).toBe(false);
         expect(supportsBtw(null)).toBe(false);
+    });
+
+    it('B-861: Codex hosts the panel; only a wrapper with codex-btw-v1 answers', () => {
+        expect(canOfferBtw({ metadata: { flavor: 'codex' } } as any)).toBe(true);
+        expect(supportsBtw({ metadata: { flavor: 'codex', capabilities: ['codex-steer-v1'] } } as any)).toBe(false);
+        expect(supportsBtw({ metadata: { flavor: 'codex', capabilities: ['codex-btw-v1'] } } as any)).toBe(true);
+        expect(supportsBtw({ metadata: { flavor: 'claude', capabilities: ['codex-btw-v1'] } } as any)).toBe(false);
     });
 });

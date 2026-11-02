@@ -219,3 +219,20 @@ describe('runSideQuestionLive (B-482, in-process /btw)', () => {
         expect(isUnsupportedSideQuestionError(new Error('Query closed before response received'))).toBe(false);
     });
 });
+
+describe('B-861 pending approvals in the side prompt', () => {
+    it('describes what waits for approval; nothing pending = no status line', async () => {
+        const { describePendingApprovals, buildSideQuestionPrompt } = await import('./sideQuestion');
+        expect(describePendingApprovals({})).toBeNull();
+        expect(describePendingApprovals(undefined)).toBeNull();
+        const status = describePendingApprovals({
+            a: { tool: 'CodexBash', arguments: { command: ['/bin/bash', '-lc', 'shred -u perm-x.txt'] } },
+            b: { tool: 'Bash', arguments: { command: 'rm -rf build' } },
+        });
+        expect(status).toBe('The main agent is waiting for the user to approve: CodexBash (/bin/bash -lc shred -u perm-x.txt); Bash (rm -rf build). It has not run yet and was not aborted.');
+        const prompt = buildSideQuestionPrompt('where is it stuck?', [], status);
+        expect(prompt.indexOf('<main-session-status>')).toBeLessThan(prompt.indexOf(SIDE_QUESTION_REMINDER));
+        expect(prompt.endsWith('where is it stuck?')).toBe(true);
+        expect(buildSideQuestionPrompt('q')).not.toContain('main-session-status');
+    });
+});

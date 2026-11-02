@@ -257,7 +257,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       ] },
       { heading: 'Queue, steer, stop', blocks: [
         { type: 'p', text: 'Sending while Claude is working queues the message as the next turn. Steer injects it into the running turn as a course correction instead, and Stop ends the turn. Queued messages stay editable and can be cancelled on current daemons.' },
-        { type: 'p', text: 'Type /btw, or press the side-question button in the session header, to ask something without touching the main conversation: a separate, tool-less, single-turn Claude process forks the session context and answers in a right-hand panel, even while a turn is running. Sessions started before CLI 0.2.100 show an upgrade hint instead.' },
+        { type: 'p', text: 'Side chat asks something without touching the main conversation: type /btw, press the side chat button in the session header, or — while a turn is running — the Side chat button next to Stop. The answer comes from the session context in one reply, with no tools, in a right-hand panel; the running turn is not interrupted and nothing is added to it. Claude and Codex sessions both have it (Codex answers on a throwaway copy of the thread). The side chat is kept in this browser across reloads, not synced to other devices. Continue as fork turns it into a full forked session that can use tools, with your last side question in the composer. Sessions started before the current CLI show an upgrade hint instead.' },
         { type: 'p', text: 'pi sessions support Steer as well, show extension select prompts as answerable question cards, and show their sub-agents as cards. These pi features need CLI 0.2.179 or newer on that machine.' },
       ] },
       { heading: 'Sub-agents, tools, files', blocks: [
