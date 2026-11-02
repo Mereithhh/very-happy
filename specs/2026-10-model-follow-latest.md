@@ -83,6 +83,7 @@ sentinel 永不上线：web `resolveMessageModeMeta`、`resolveDefaultModelMode`
   - Gemini 不在本修复范围（另立条目）：daemon 拉起的是 `gemini/runGemini.ts`，它不上报 `configuredModel`；显式选的模型会写进 `~/.gemini/config.json`，而且总用 `GEMINI_MODEL` 指定模型。发 null 只会退回上一次选的模型，起不到复位作用。
 - Codex wrapper 去掉写死的 gpt-5.5 默认：不带 model 的 turn 交给 Codex 按本机配置或它自己的默认跑。
 - 显示：选择器的跟随项、设置页该机器的值都写成「跟随本机配置（gpt-5.6-sol）」（见下节）。这时 B-487 的升级提示不出现。
+- **B-487 提示只看会话实际会请求的模型（B-862，QA35）**：Codex/Gemini 跟随最新时，提示条用解析出的 `model`（catalog 能证明可跑的最新 id，也就是发送时真正带的那个），不用 `newest`（表里已知最新）。此前 config.toml 只设了 `model_provider`、没钉 model 的 Codex 0.154 会话（`configuredModel: null`）会被提示「gpt-6.1-sol 需要 Codex 0.160.0」，实际发的却是 gpt-5.6-sol。会话绑定 API 供应商账号（`agentProfile.kind = codex-provider`）时不按 OpenAI 目录的最低 Codex 版本提示，显式选的也不提示；ChatGPT 账号或本机登录显式选了更新的模型时照常提示。本机登录走自定义 provider 时 wrapper 不上报 provider，Web 区分不了，显式选新模型仍会提示。Claude 跟随最新的 Opus 5.5 提示不变。
 
 ### 显示（B-844b，QA22 P2-1～P2-4）
 
