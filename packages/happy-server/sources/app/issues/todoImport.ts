@@ -5,7 +5,7 @@ import {
 } from '@slopus/happy-wire';
 import { db } from '@/storage/db';
 import type { Tx } from '@/storage/inTx';
-import { emitComment, emitIssue, runIssueTx, assertIssuesEnabled } from './store';
+import { allocateNumber, emitComment, emitIssue, runIssueTx, assertIssuesEnabled } from './store';
 
 /**
  * B-872 lazy Todos import (`specs/2026-11-issues.md` §8). Reads the
@@ -66,9 +66,8 @@ async function importChunk(tx: Tx, accountId: string, todos: BuiltinTodo[], vers
         const prior = existing.get(todo.id);
         if (!prior) {
             if (live >= ISSUE_LIMITS.issuesPerAccount) { out.skipped++; continue; }
-            const seq = await tx.issueSequence.upsert({ where: { accountId }, create: { accountId, last: 1 }, update: { last: { increment: 1 } } });
             const row = await tx.issue.create({ data: {
-                id: randomUUID(), accountId, number: seq.last, title: fields.title, description: fields.description, status: fields.status,
+                id: randomUUID(), accountId, number: await allocateNumber(tx, accountId), title: fields.title, description: fields.description, status: fields.status,
                 assigneeKind: 'none', assignee: { kind: 'none' }, sortOrder: fields.sortOrder, createdBy: { kind: 'import' },
                 legacyTodoId: fields.legacyTodoId, legacyTodoVersion: version, importedAt: now,
                 createdAt: new Date(fields.createdAt), updatedAt: now, statusChangedAt: new Date(fields.updatedAt),

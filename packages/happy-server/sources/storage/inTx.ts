@@ -39,7 +39,17 @@ export function txAttempt(tx: Tx): object {
     return (tx as any)[symbol];
 }
 
-export async function inTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+export interface InTxOptions {
+    /** Default SERIALIZABLE. READ COMMITTED only for a write that serializes itself on a row lock taken first (B-872c issue numbers). */
+    isolationLevel?: Prisma.TransactionIsolationLevel;
+    /** Conflict retries after the first attempt (default 3). */
+    retries?: number;
+    /** Wait before retry `n` (1-based); default `n * 100` ms. */
+    backoff?: (retry: number) => number;
+}
+
+export async function inTx<T>(fn: (tx: Tx) => Promise<T>, opts: InTxOptions = {}): Promise<T> {
+    const { isolationLevel = 'Serializable', retries = 3, backoff = (retry: number) => retry * 100 } = opts;
     let counter = 0;
     let wrapped = async (tx: Tx) => {
         (tx as any)[symbol] = [];
@@ -49,7 +59,7 @@ export async function inTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
     }
     while (true) {
         try {
-            let result = await db.$transaction(wrapped, { isolationLevel: 'Serializable', timeout: 10000 });
+            let result = await db.$transaction(wrapped, { isolationLevel, timeout: 10000 });
             for (let callback of result.callbacks) {
                 try {
                     callback();
@@ -59,9 +69,9 @@ export async function inTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
             }
             return result.result;
         } catch (e) {
-            if (isRetryableTransactionConflict(e) && counter < 3) {
+            if (isRetryableTransactionConflict(e) && counter < retries) {
                 counter++;
-                await delay(counter * 100);
+                await delay(backoff(counter));
                 continue;
             }
             throw e;
