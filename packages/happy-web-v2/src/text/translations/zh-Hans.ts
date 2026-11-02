@@ -2157,6 +2157,7 @@ export const zhHans: TranslationStructure = {
         roleOperator: '可操作',
         operator: {
             roleHint: '还能使用这个会话的终端、文件、/btw，以及审批和打断。',
+            modeLabel: '模式',
             warningTitle: '这等于把你机器上的 shell 交给对方',
             warningRead: '对方能读取这台机器上你能读的所有文件，包括你的 Very Happy 账号凭据。',
             warningRun: '对方能以你的身份在这台机器上执行任意命令。',

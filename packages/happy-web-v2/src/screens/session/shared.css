@@ -228,6 +228,8 @@
 /* B-867 operator controls above the shared composer */
 .opc { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-3) 0; }
 .opc-select { flex: none; }
+.opc-field { display: inline-flex; align-items: center; gap: var(--sp-1); flex: none; }
+.opc-label { font-size: var(--fs-12); color: var(--text-dim); }
 /* B-867 owner header: someone is operating this session (danger, never --accent) */
 .opchip { display: inline-flex; align-items: center; gap: var(--sp-1); min-height: 26px; max-width: 260px; padding: 0 var(--sp-2); border: 1px solid var(--danger); border-radius: var(--r-pill); background: var(--danger-dim); color: var(--danger); font-size: var(--fs-12); font-weight: 600; cursor: pointer; position: relative; }
 .opchip::after { content: ''; position: absolute; inset: -9px 0; }

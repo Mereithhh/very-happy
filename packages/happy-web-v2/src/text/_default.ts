@@ -1995,6 +1995,7 @@ export const en = {
         // B-867: operator tier — terminal, files, approvals and interrupts on the owner's machine.
         operator: {
             roleHint: 'Also uses the terminal, files, /btw, approvals and interrupts of this session.',
+            modeLabel: 'Mode',
             warningTitle: 'This hands over a shell on your machine',
             warningRead: 'They can read every file on this machine that you can, including your Very Happy account credentials.',
             warningRun: 'They can run any command on this machine as you.',

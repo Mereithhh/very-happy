@@ -4,9 +4,10 @@
   position: fixed;
   z-index: 4201;
   top: 50%;
-  left: 50%;
+  /* centred between the side safe-area insets */
+  left: calc(50% + (var(--sa-l) - var(--sa-r)) / 2);
   transform: translate(-50%, -50%);
-  width: min(1100px, calc(100vw - 32px));
+  width: min(1100px, calc(100vw - 32px - var(--sa-l) - var(--sa-r)));
   height: min(760px, calc(var(--vv-h, 100dvh) - 32px));
   display: flex;
   flex-direction: column;

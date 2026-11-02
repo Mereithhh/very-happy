@@ -50,25 +50,31 @@ export function OperatorControls({ sessionId }: { sessionId: string }) {
 
     return (
         <div className="opc" role="group" aria-label={t('share.roleOperator')}>
-            <Button type="button" variant="ghost" size="sm" leftIcon={<Square size={13} />} loading={busy === 'stop'} onClick={() => void stop()}>
+            <Button type="button" variant="ghost" size="sm" leftIcon={<Square size={12} fill="currentColor" />} loading={busy === 'stop'} onClick={() => void stop()}>
                 {t('session.chat.stop')}
             </Button>
-            <SelectMenu<string>
-                className="opc-select"
-                label={t('session.chat.permissionLabel')}
-                value={ownerMode ?? 'default'}
-                options={choices.map((c) => ({ value: c.value, label: c.value, disabled: !c.allowed }))}
-                onChange={(v) => void setMode(v)}
-            />
-            {models.length > 0 && (
+            <span className="opc-field">
+                <span className="opc-label" id={`opc-mode-${sessionId}`}>{t('share.operator.modeLabel')}</span>
+                <SelectMenu<string>
+                    className="opc-select"
+                    label={t('session.chat.permissionLabel')}
+                    labelledBy={`opc-mode-${sessionId}`}
+                    value={ownerMode ?? 'default'}
+                    options={choices.map((c) => ({ value: c.value, label: c.value, disabled: !c.allowed }))}
+                    onChange={(v) => void setMode(v)}
+                />
+            </span>
+            {models.length > 0 && (<span className="opc-field">
+                <span className="opc-label" id={`opc-model-${sessionId}`}>{t('session.chat.modelLabel')}</span>
                 <SelectMenu<string>
                     className="opc-select"
                     label={t('session.chat.modelLabel')}
+                    labelledBy={`opc-model-${sessionId}`}
                     value={currentModel && models.includes(currentModel) ? currentModel : models[0]}
                     options={models.map((m) => ({ value: m, label: m }))}
                     onChange={(v) => void setModel(v)}
                 />
-            )}
+            </span>)}
         </div>
     );
 }
