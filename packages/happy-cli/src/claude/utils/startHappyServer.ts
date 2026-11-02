@@ -331,7 +331,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             }
         },
         changeTitle: async (title: string) => {
-            logger.debug('[happyMCP] Changing title to:', title);
+            logger.debug(`[happyMCP] Changing title (${title.length} chars)`); // B-874c: titles carry issue text
             try {
                 client.sendClaudeSessionMessage({
                     type: 'summary',

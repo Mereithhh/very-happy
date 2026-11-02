@@ -47,7 +47,7 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
     let lastPresenceAt = 0;
     let lastPresenceVersion: number | null = null;
     const label = (id: string) => titles.get(id) ?? id.slice(0, 8);
-    const issueDigest = deps.issueDigest === undefined ? createIssueDigest({ sessionId: deps.sessionId, timeoutMs }) : deps.issueDigest;
+    const issueDigest = deps.issueDigest === undefined ? createIssueDigest({ sessionId: deps.sessionId, metadata: () => deps.metadata?.() ?? null, timeoutMs }) : deps.issueDigest;
 
     function withTimeout<T>(p: Promise<T>): Promise<T> {
         return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error('project injection timeout')), timeoutMs).unref?.())]);

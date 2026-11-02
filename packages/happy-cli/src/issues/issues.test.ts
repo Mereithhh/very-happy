@@ -3,8 +3,11 @@ import type { IssueCommentView, IssueSessionContext, IssueView } from '@slopus/h
 import { createIssuesClient, issueConflictBackoffMs, IssueRequestError, IssuesUnsupportedError, ISSUE_CONFLICT_MAX_RETRIES, ISSUES_UNSUPPORTED_BACKOFF_MS } from './client';
 import { createIssueToolExecutor, ISSUE_TOOL_NAMES, ISSUE_TOOL_SCHEMAS, registerIssueTools } from './tools';
 import { describeIssueError } from './format';
-import { buildIssueDigestLine, createIssueDigest } from './digest';
-import { issueSessionMetadata } from './sessionMetadata';
+import { buildIssueDigestLine, createIssueDigest, fileIssueDigestCursorStore, ISSUE_DIGEST_CURSOR_TTL_MS } from './digest';
+import { issueRelaunchEnv, issueSessionMetadata, readSessionIssueMetadata } from './sessionMetadata';
+import { mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const res = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -157,13 +160,13 @@ describe('next-turn issue digest (spec §5 layer 3)', () => {
     });
     it('first turn only sets the cursor; later turns fetch since it and prepend ≤1 line; failures send unchanged', async () => {
         const session = vi.fn(async (_sid: string, since?: number) => since === undefined ? ctx({ asOf: 100 }) : ctx({ asOf: 200, issue: issue({ status: 'todo' }), comments: [entry({ kind: 'status', data: { from: 'in_review', to: 'todo' } })] }));
-        const d = createIssueDigest({ sessionId: () => 's', enabled: () => true, client: { session, isDisabled: () => false } as any });
+        const d = createIssueDigest({ sessionId: () => 's', enabled: () => true, cursorStore: null, client: { session, isDisabled: () => false } as any });
         expect(await d.decorate('first')).toBe('first');
         expect(await d.decorate('second')).toBe('[Issue VH-12 now todo (in_review → todo by owner)]\nsecond');
         expect(session).toHaveBeenLastCalledWith('s', 100, 1500);
         session.mockRejectedValueOnce(new Error('timeout'));
         expect(await d.decorate('third')).toBe('third');
-        const off = createIssueDigest({ sessionId: () => 's', enabled: () => false, client: { session, isDisabled: () => false } as any });
+        const off = createIssueDigest({ sessionId: () => 's', enabled: () => false, cursorStore: null, client: { session, isDisabled: () => false } as any });
         session.mockClear();
         expect(await off.decorate('x')).toBe('x');
         expect(session).not.toHaveBeenCalled();
@@ -175,5 +178,62 @@ describe('metadata.issue from the spawn env', () => {
         expect(issueSessionMetadata({ VH_ISSUE_ID: 'i-1', VH_ISSUE_RUN_ID: 'r-1', VH_ISSUE_KEY: 'VH-7' })).toEqual({ issue: { id: 'i-1', runId: 'r-1', key: 'VH-7' } });
         expect(issueSessionMetadata({ VH_ISSUE_ID: 'i-1', VH_ISSUE_KEY: 'rm -rf' })).toEqual({ issue: { id: 'i-1' } });
         expect(issueSessionMetadata({})).toEqual({});
+    });
+});
+
+describe('B-874c: digest survives a wrapper relaunch (QA43 P1-1)', () => {
+    const changed = (asOf: number) => ctx({ asOf, issue: issue(), comments: [entry({ kind: 'field', data: { fields: ['description', 'priority'] } })] });
+
+    it('without VH_ISSUE_* in env, metadata.issue (kept across reconnects) still enables it', async () => {
+        const prev = process.env.VH_ISSUE_ID;
+        delete process.env.VH_ISSUE_ID;
+        try {
+            const session = vi.fn(async (_sid: string, since?: number) => since === undefined ? ctx({ asOf: 100 }) : changed(200));
+            let meta: unknown = { flavor: 'codex' };
+            const d = createIssueDigest({ sessionId: () => 's', metadata: () => meta, cursorStore: null, client: { session, isDisabled: () => false } as any });
+            expect(await d.decorate('plain')).toBe('plain');
+            expect(session).not.toHaveBeenCalled();
+            meta = { flavor: 'codex', issue: { id: 'i1', runId: 'r1', key: 'VH-12' } };
+            expect(await d.decorate('m1')).toBe('m1');
+            expect(await d.decorate('m2')).toBe('[Issue VH-12 description, priority updated]\nm2');
+        } finally { if (prev !== undefined) process.env.VH_ISSUE_ID = prev; }
+    });
+
+    it('a relaunched wrapper continues from the previous wrapper\'s cursor (changes made while it was down are not lost)', async () => {
+        const home = mkdtempSync(join(tmpdir(), 'b874c-digest-'));
+        try {
+            const session = vi.fn(async (_sid: string, since?: number) => since === undefined ? ctx({ asOf: 100 }) : changed((since ?? 0) + 100));
+            const client = { session, isDisabled: () => false } as any;
+            const before = createIssueDigest({ sessionId: () => 's1', enabled: () => true, cursorStore: fileIssueDigestCursorStore(home), client });
+            expect(await before.decorate('first')).toBe('first');
+            // Owner edits; the wrapper is auto-restarted before the next turn.
+            const after = createIssueDigest({ sessionId: () => 's1', enabled: () => true, cursorStore: fileIssueDigestCursorStore(home), client });
+            expect(await after.decorate('next')).toBe('[Issue VH-12 description, priority updated]\nnext');
+            expect(session).toHaveBeenLastCalledWith('s1', 100, 1500);
+            expect(fileIssueDigestCursorStore(home).read('s1')).toBe(200);
+            expect(fileIssueDigestCursorStore(home).read('../x')).toBeNull();
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
+
+    it('prunes stale cursor files on the first write', () => {
+        const home = mkdtempSync(join(tmpdir(), 'b874c-digest-'));
+        try {
+            const dir = join(home, 'issues', 'digest');
+            mkdirSync(dir, { recursive: true });
+            writeFileSync(join(dir, 'old.json'), '{"asOf":1}');
+            const old = (Date.now() - ISSUE_DIGEST_CURSOR_TTL_MS - 60_000) / 1000;
+            utimesSync(join(dir, 'old.json'), old, old);
+            fileIssueDigestCursorStore(home).write('fresh', 5);
+            expect(readdirSync(dir).sort()).toEqual(['fresh.json']);
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
+
+    it('relaunch env is rebuilt from metadata.issue and never inherits the daemon\'s own VH_ISSUE_*', () => {
+        expect(issueRelaunchEnv({ issue: { id: 'i-1', runId: 'r-1', key: 'VH-7' } })).toEqual({ VH_ISSUE_ID: 'i-1', VH_ISSUE_RUN_ID: 'r-1', VH_ISSUE_KEY: 'VH-7' });
+        const none = issueRelaunchEnv({ flavor: 'claude' });
+        expect(none).toEqual({ VH_ISSUE_ID: undefined, VH_ISSUE_RUN_ID: undefined, VH_ISSUE_KEY: undefined });
+        expect({ ...{ VH_ISSUE_ID: 'inherited' }, ...none }.VH_ISSUE_ID).toBeUndefined();
+        expect(readSessionIssueMetadata({ issue: { id: 'bad id!' } })).toBeNull();
+        expect(readSessionIssueMetadata(null)).toBeNull();
     });
 });

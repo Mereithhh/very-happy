@@ -6,6 +6,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import * as tmp from 'tmp';
 import axios from 'axios';
+import { issueRelaunchEnv } from '@/issues/sessionMetadata';
 import { teamRelaunchEnv } from './teams/relaunchScope';
 
 import { ApiClient } from '@/api/api';
@@ -721,7 +722,8 @@ export async function startDaemon(): Promise<void> {
           logger.debug(`[DAEMON RUN] Directory creation failed: ${errorMessage}`);
           return {
             type: 'error',
-            errorMessage
+            errorMessage,
+            notStarted: true,
           };
         }
       }
@@ -818,11 +820,11 @@ export async function startDaemon(): Promise<void> {
             const requested = forkSpawnAccount(options.agentProfileId, options.parentSessionId, (id) => accountServiceRef!.sessionAccount(id));
             spawnAccountId = accountServiceRef.resolveSpawnAccount(accountAgent, requested);
           } catch (error) {
-            return { type: 'error', errorMessage: error instanceof Error ? error.message : String(error) };
+            return { type: 'error', errorMessage: error instanceof Error ? error.message : String(error), notStarted: true };
           }
           if (spawnAccountId) extraEnv[SPAWN_ACCOUNT_ENV] = spawnAccountId;
         } else if (options.agentProfileId) {
-          return { type: 'error', errorMessage: `agent-profile-unavailable:agent-mismatch: accounts are not supported for ${options.agent} yet` };
+          return { type: 'error', errorMessage: `agent-profile-unavailable:agent-mismatch: accounts are not supported for ${options.agent} yet`, notStarted: true };
         }
         // B-515: the wrapper cannot see daemonState.claudeAuth (constraint 16);
         // hand it the daemon's last verdict so a fresh Claude session does not
@@ -868,7 +870,8 @@ export async function startDaemon(): Promise<void> {
           logger.warn(`[DAEMON RUN] ${errorMessage}`);
           return {
             type: 'error',
-            errorMessage
+            errorMessage,
+            notStarted: true,
           };
         }
 
@@ -909,7 +912,8 @@ export async function startDaemon(): Promise<void> {
           if (!isSpawnAgent(agent)) {
             return {
               type: 'error',
-              errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
+              errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`,
+              notStarted: true,
             };
           }
           const resumeId = agent === 'claude'
@@ -1032,7 +1036,8 @@ export async function startDaemon(): Promise<void> {
             default:
               return {
                 type: 'error',
-                errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
+                errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`,
+                notStarted: true,
               };
           }
           const args = [
@@ -1125,7 +1130,8 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
         return Promise.resolve({
           type: 'error',
-          errorMessage: 'Failed to spawn Happy process - no PID returned'
+          errorMessage: 'Failed to spawn Happy process - no PID returned',
+          notStarted: true,
         });
       }
 
@@ -1413,6 +1419,8 @@ export async function startDaemon(): Promise<void> {
             HAPPY_RECONNECT_METADATA_VERSION: String(tracked.encryption.metadataVersion),
             HAPPY_RECONNECT_AGENT_STATE_VERSION: String(tracked.encryption.agentStateVersion),
             ...teamEnv,
+            // B-874c: an issue run's binding rides every relaunch (digest, MCP context).
+            ...issueRelaunchEnv(metadata),
           },
         });
         if (result.type === 'success') {
@@ -1606,6 +1614,8 @@ export async function startDaemon(): Promise<void> {
             HAPPY_RECONNECT_METADATA_VERSION: String(tracked.encryption.metadataVersion),
             HAPPY_RECONNECT_AGENT_STATE_VERSION: String(tracked.encryption.agentStateVersion),
             ...teamEnv,
+            // B-874c: see resumeSessionImpl.
+            ...issueRelaunchEnv(metadata),
             ...(options?.auto ? { [AUTO_RESTARTED_ENV]: encodeAutoRestarted(options.auto.kind, options.auto.target) } : {}),
           },
         });

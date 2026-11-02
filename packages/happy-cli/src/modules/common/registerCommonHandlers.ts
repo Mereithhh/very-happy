@@ -210,7 +210,9 @@ export type SpawnSessionResult =
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
     // B-689: `startupExit` is set when the wrapper is known to be gone before it
     // reported a session — the spawn failed definitively and may be retried.
-    | { type: 'error'; errorMessage: string; startupExit?: StartupExit };
+    // B-874c: `notStarted` = refused before any process was created (directory,
+    // env, agent, account checks) — definitive, nothing to recover.
+    | { type: 'error'; errorMessage: string; startupExit?: StartupExit; notStarted?: true };
 
 /**
  * Register all RPC handlers with the session

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { redactLogString, redactLogValue } from './logRedaction';
+import { redactCliArgv, redactLogString, redactLogValue } from './logRedaction';
 
 describe('log redaction', () => {
   it('removes nested credentials, environment values, and bearer strings', () => {
@@ -39,5 +39,20 @@ describe('log redaction', () => {
     expect(redactLogString('Authorization: Bearer abc.def token=hello')).toBe(
       'Authorization: Bearer [REDACTED] token=[REDACTED]',
     );
+  });
+});
+
+describe('startup argv redaction (B-874c, QA43 P2-4)', () => {
+  const head = ['/usr/bin/node', '/opt/vh/bin/happy.mjs'];
+  it('drops issue / todo text but keeps the command shape', () => {
+    expect(redactCliArgv([...head, 'issue', 'comment', 'VH-12', 'secret plan for the launch'])).toEqual([...head, 'issue', 'comment', 'VH-12', '[redacted]']);
+    expect(redactCliArgv([...head, 'issues', 'create', '--title', 'Fix login bug', '--priority=high', '--description=Users see 500'])).toEqual([...head, 'issues', 'create', '--title', '[redacted]', '--priority=[redacted]', '--description=[redacted]']);
+    expect(redactCliArgv([...head, 'todo', 'add', '--id', '0b9d6c6e-1f0a-4d43-9a39-6a5d1c1b7e21', '--title', 'Buy milk', '--version', '3'])).toEqual([...head, 'todo', 'add', '--id', '0b9d6c6e-1f0a-4d43-9a39-6a5d1c1b7e21', '--title', '[redacted]', '--version', '3']);
+    expect(redactCliArgv([...head, 'todo', 'add', 'Hello'])).toEqual([...head, 'todo', 'add', '[redacted]']);
+  });
+  it('leaves other commands as they were', () => {
+    const argv = [...head, 'daemon', 'start'];
+    expect(redactCliArgv(argv)).toEqual(argv);
+    expect(redactCliArgv(head)).toEqual(head);
   });
 });

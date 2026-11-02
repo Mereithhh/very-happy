@@ -24,12 +24,25 @@ import { listIssueReceipts, readIssueReceipt, writeIssueReceipt, type IssueRecei
  * message: the run's session is live → queued user message (never steer) →
  *          complete; not live → fail (the server starts a new run).
  *
+ * A spawn that clearly failed (directory not creatable, wrapper exited, …)
+ * fails the run with its reason (§3.7 → 「需要我决策」). One whose outcome is
+ * unknown keeps its claim and is re-checked each tick for
+ * ISSUE_SPAWN_UNKNOWN_GRACE_MS, then recovered or failed — never left `claimed`.
+ *
  * Old server / switch off: the client answers `IssuesUnsupportedError` and
  * backs off 10 minutes, so the worker costs one 404 per 10 minutes.
  */
 
 export const ISSUE_POLL_MS = 5_000;
 export const ISSUE_SPAWNED_BY = 'issue';
+/**
+ * B-874c (QA43 P2-1): a spawn whose outcome is unknown (the wrapper may still
+ * come up) holds its claim and is re-checked every tick; past this it fails
+ * the run with a reason. Below the server's 120 s claim lease, so the claim is
+ * still ours when we report; a daemon that dies meanwhile is bounded by the
+ * lease (3 expiries fail the run).
+ */
+export const ISSUE_SPAWN_UNKNOWN_GRACE_MS = 60_000;
 const FIRST_MESSAGE_KEY_WAIT_MS = 10_000;
 
 type SessionEvent = 'running' | 'idle' | 'exited' | 'crashed';
@@ -48,6 +61,7 @@ export interface IssueWorkerDeps {
     home?: string;
     /** Tests drive `tick()` themselves. */
     autoStart?: boolean;
+    now?: () => number;
 }
 
 /** `VH-12` from the frozen prompt's first line (`You are assigned issue VH-12: …`); the dispatch view carries no key. */
@@ -113,10 +127,44 @@ export function createIssueWorker(deps: IssueWorkerDeps) {
 
     const save = (receipt: IssueReceipt) => { writeIssueReceipt(home, receipt); return receipt; };
 
-    async function fail(receipt: IssueReceipt, error: string, unknown = false) {
-        await client.fail(receipt.dispatchId, { machineId: deps.machineId, claimId: receipt.claimId, error: error.slice(0, 4000), ...(unknown ? { unknown: true } : {}) });
-        save({ ...receipt, phase: unknown ? receipt.phase : 'failed' });
-        deps.log(`Issue dispatch ${receipt.dispatchId} ${unknown ? 'outcome unknown' : 'failed'}`);
+    const now = deps.now ?? Date.now;
+    /** Spawns whose outcome is not known yet, by dispatch id (claim held, re-checked every tick). */
+    const unknownSpawns = new Map<string, { view: IssueDispatchView; receipt: IssueReceipt; reason: string; deadline: number }>();
+
+    // Every failure is definite (the run fails and lands in 「需要我决策」); an unknown outcome is held locally, never `unknown:true`.
+    async function fail(receipt: IssueReceipt, error: string) {
+        await client.fail(receipt.dispatchId, { machineId: deps.machineId, claimId: receipt.claimId, error: error.slice(0, 4000) });
+        save({ ...receipt, phase: 'failed' });
+        deps.log(`Issue dispatch ${receipt.dispatchId} failed`);
+    }
+
+    function holdUnknown(view: IssueDispatchView, receipt: IssueReceipt, reason: string) {
+        const held = unknownSpawns.get(view.id);
+        unknownSpawns.set(view.id, { view, receipt, reason, deadline: held?.deadline ?? now() + ISSUE_SPAWN_UNKNOWN_GRACE_MS });
+        deps.log(`Issue dispatch ${view.id} spawn outcome unknown; re-checking`);
+    }
+
+    /** Recover a held spawn from its session's metadata, or fail it once the grace is over. */
+    async function recheckUnknown() {
+        for (const [id, held] of [...unknownSpawns]) {
+            if (closed) return;
+            const matches = persistedRunSessions(held.view.runId);
+            try {
+                if (matches.length === 1) {
+                    unknownSpawns.delete(id);
+                    await afterSpawn(held.view, save({ ...held.receipt, sessionId: matches[0], phase: 'spawned' }));
+                } else if (matches.length > 1 || now() >= held.deadline) {
+                    unknownSpawns.delete(id);
+                    await fail(held.receipt, matches.length > 1
+                        ? `Spawn produced ${matches.length} sessions for this run; stop the extra ones and retry`
+                        : `Session did not start within ${Math.round(ISSUE_SPAWN_UNKNOWN_GRACE_MS / 1000)} s (${held.reason}); check the machine before retrying`);
+                }
+            } catch (error) {
+                // Claim gone (lease expired → re-queued, or run superseded): the next claim decides again.
+                if (httpCode(error) === 'issue_dispatch_claim_mismatch' || error instanceof IssuesUnsupportedError) unknownSpawns.delete(id);
+                deps.log(`Issue dispatch ${id} remains pending${error instanceof IssueRequestError && error.code ? ` (${error.code})` : ''}`);
+            }
+        }
     }
 
     async function complete(receipt: IssueReceipt) {
@@ -160,26 +208,42 @@ export function createIssueWorker(deps: IssueWorkerDeps) {
                 await fail({ ...receipt, phase: 'claimed' }, accountUnavailableError(spawned.errorMessage, 'issue') ?? spawned.errorMessage);
                 return;
             }
-            if (spawned.type === 'error' && spawned.startupExit?.exited) { await fail(receipt, `Session failed to start: ${spawned.errorMessage}`); return; }
+            // B-874c: refused before any process existed (directory not creatable, env, agent) or the wrapper already exited — definite.
+            if (spawned.type === 'error' && (spawned.startupExit?.exited || spawned.notStarted)) { await fail(receipt, `Session failed to start: ${spawned.errorMessage}`); return; }
             if (spawned.type === 'requestToApproveDirectoryCreation') { await fail(receipt, `Directory does not exist on this machine: ${spawn.directory}`); return; }
             if (spawned.type !== 'success') {
                 // The wrapper may still be coming up: only a persisted session for this run is evidence either way.
                 const matches = persistedRunSessions(view.runId);
-                if (matches.length !== 1) { await fail(receipt, `Spawn outcome unknown: ${spawned.errorMessage}`, true); return; }
+                if (matches.length !== 1) { holdUnknown(view, receipt, spawned.errorMessage); return; }
                 receipt = save({ ...receipt, sessionId: matches[0], phase: 'spawned' });
             } else {
                 receipt = save({ ...receipt, sessionId: spawned.sessionId, phase: 'spawned' });
             }
-            runBySession.set(receipt.sessionId!, view.runId);
-            if (spawn.projectId && deps.joinProject) await deps.joinProject(receipt.sessionId!, spawn.projectId).catch(() => undefined);
-        }
-        if (receipt.phase === 'spawning') {
+        } else if (receipt.phase === 'spawning') {
             // Re-claimed after a restart mid-spawn: recover the session from its metadata, never spawn again.
             const matches = persistedRunSessions(view.runId);
-            if (matches.length !== 1) { await fail(receipt, 'Spawn outcome unknown; verify the old process before retrying', true); return; }
+            if (matches.length !== 1) { holdUnknown(view, receipt, 'the spawn was interrupted by a daemon restart'); return; }
             receipt = save({ ...receipt, sessionId: matches[0], phase: 'spawned' });
-            runBySession.set(receipt.sessionId!, view.runId);
+        } else {
+            // Re-claimed past the spawn (spawned / delivered / completed): finish delivering and completing.
+            if (receipt.sessionId && !receipt.ended) runBySession.set(receipt.sessionId, view.runId);
+            await deliverAndComplete(view, receipt);
+            return;
         }
+        await afterSpawn(view, receipt);
+    }
+
+    /** A session exists for this run: track it, join the project, then first message + complete. */
+    async function afterSpawn(view: IssueDispatchView, receipt: IssueReceipt) {
+        runBySession.set(receipt.sessionId!, view.runId);
+        const projectId = view.spawn?.projectId;
+        if (projectId && deps.joinProject) await deps.joinProject(receipt.sessionId!, projectId).catch(() => undefined);
+        await deliverAndComplete(view, receipt);
+    }
+
+    async function deliverAndComplete(view: IssueDispatchView, receipt: IssueReceipt) {
+        const spawn = view.spawn!;
+        const agent = spawn.agent;
         if (receipt.phase === 'spawned') {
             const sessionId = receipt.sessionId!;
             const mode = sanitizeSpawnPermissionMode(spawn.permissionMode ?? undefined);
@@ -265,6 +329,7 @@ export function createIssueWorker(deps: IssueWorkerDeps) {
         if (running || closed || Date.now() < retryAt) return;
         running = true;
         try {
+            await recheckUnknown();
             let dispatches: IssueDispatchView[];
             try { dispatches = (await client.poll(deps.machineId)).dispatches ?? []; }
             catch (error) {
