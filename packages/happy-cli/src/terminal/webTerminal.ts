@@ -3159,6 +3159,7 @@ export class WebTerminalManager {
             this.recordClosed({
                 id: terminalId, title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual,
                 ...(info.attachTmux ? { attachTmux: info.attachTmux } : {}),
+                ...(info.projectId ? { projectId: info.projectId } : {}),
                 ...seenGeometry(info.cols, info.rows),
                 mirrorSessionId: this.mirrorResolver?.(terminalId) ?? mirror?.sessionId,
                 claudeSessionId: mirror?.claudeSessionId,

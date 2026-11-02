@@ -19,10 +19,13 @@
  *   4. a reload keeps all of that;
  *   5. 「从「X」移出」 (row menu) and the project page's leave button take them
  *      out again — gone from the page, the group and the chip; tmux option unset;
- *   6. nothing is ever typed into a terminal (pane text unchanged by the moves).
+ *   6. nothing is ever typed into a terminal (pane text unchanged by the moves);
+ *   7. B-868b: a project terminal closed from its row ⋯ 「关闭」 keeps the project
+ *      in closed-terminals.json, and the 归档 ↻ restore brings it back into the
+ *      project (tmux `@vh_project`, sidebar group) — not 「不在项目中」.
  * Exit code 1 on any failed check.
  */
-import { existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -50,8 +53,8 @@ const CLI = resolve(import.meta.dirname, '../../happy-cli/dist/index.mjs');
 const SOCK = join(WORK, 'tmux.sock');
 const PROJECT_NAME = 'B868 Proj';
 const COPY = {
-    'zh-CN': { newTerminal: '新建终端', move: '移到项目…', moveBtn: '移动', leave: `从「${PROJECT_NAME}」移出`, removeFromProject: '从项目移出', search: '搜索', more: '更多操作' },
-    'en-US': { newTerminal: 'New terminal', move: 'Move to project…', moveBtn: 'Move', leave: `Remove from "${PROJECT_NAME}"`, removeFromProject: 'Remove from project', search: 'Search', more: 'More actions' },
+    'zh-CN': { newTerminal: '新建终端', move: '移到项目…', moveBtn: '移动', leave: `从「${PROJECT_NAME}」移出`, removeFromProject: '从项目移出', search: '搜索', more: '更多操作', close: '关闭', archived: '归档', restore: '恢复这个终端（同 id、标题、标签）' },
+    'en-US': { newTerminal: 'New terminal', move: 'Move to project…', moveBtn: 'Move', leave: `Remove from "${PROJECT_NAME}"`, removeFromProject: 'Remove from project', search: 'Search', more: 'More actions', close: 'Close', archived: 'Archived', restore: 'Restore this terminal (same id, title and tags)' },
 };
 
 function findChromium() {
@@ -91,6 +94,9 @@ for (const name of Object.keys(cliEnv)) {
 }
 cliEnv.VH_TMUX_SOCKET = SOCK;
 const tmux = (...a) => spawnSync('tmux', ['-S', SOCK, ...a], { encoding: 'utf8', timeout: 5_000 });
+const closedRecord = (tid) => {
+    try { return JSON.parse(readFileSync(join(WORK, 'cli-home', 'closed-terminals.json'), 'utf8')).find((r) => r.id === tid) ?? null; } catch { return null; }
+};
 const tmuxProject = (tid) => tmux('show-options', '-v', '-t', `=vh-${tid}:`, '@vh_project').stdout.trim();
 const paneText = (tid) => tmux('capture-pane', '-p', '-t', `=vh-${tid}:`).stdout.trim();
 /** A unique title so rows / palette items can be found by text (test setup, not the feature). */
@@ -301,6 +307,41 @@ try {
 
             // 6. ownership only — nothing typed into the terminal.
             check(paneText(tidB) === paneB, '6. pane text unchanged by move / remove (nothing injected)');
+
+            // 7. B-868b: row ⋯ 关闭 → 归档 ↻ → back in the project.
+            await page.goto(projectPage);
+            await terminalsSection.waitFor({ timeout: 30_000 });
+            await terminalsSection.getByRole('button', { name: c.newTerminal }).click();
+            await page.waitForURL(/\/terminal\//, { timeout: 15_000 });
+            const tidC = new URL(page.url()).searchParams.get('tid');
+            check(!!(await until(() => tmuxProject(tidC) === projectId, 20_000)), '7. project terminal created', tmuxProject(tidC) || '(unset)');
+            const titleC = `B868-C-${tag}`;
+            titleTerminal(tidC, titleC);
+            await page.goto(`${APP}/`);
+            const rowC = page.locator(`[data-dragkey="t:${tidC}"]`);
+            await rowC.waitFor({ timeout: 20_000 });
+            await dismiss();
+            check(await until(async () => (await groupOf(rowC)) === PROJECT_NAME, 10_000), '7. before close: under the project group');
+            await openRowMenu(rowC);
+            await page.getByRole('menuitem', { name: c.close, exact: true }).click();
+            await page.getByRole('dialog').getByRole('button', { name: c.close, exact: true }).click();
+            check(!!(await until(() => tmux('has-session', '-t', `=vh-${tidC}:`).status !== 0, 15_000)), '7. 关闭 → tmux session gone');
+            check(!!(await until(() => closedRecord(tidC)?.projectId === projectId, 10_000)), '7. closed-terminals.json record keeps projectId', JSON.stringify(closedRecord(tidC)?.projectId ?? null));
+            await page.getByRole('tab', { name: c.archived, exact: true }).click();
+            const closedRow = page.locator('.sb-closed-row', { hasText: titleC });
+            await closedRow.waitFor({ timeout: 15_000 });
+            await shot('archived-closed');
+            await closedRow.getByRole('button', { name: c.restore }).click();
+            check(!!(await until(() => tmux('has-session', '-t', `=vh-${tidC}:`).status === 0, 20_000)), '7. ↻ restore → tmux session back');
+            check(!!(await until(() => tmuxProject(tidC) === projectId, 10_000)), '7. ↻ restore → tmux @vh_project = project', tmuxProject(tidC) || '(unset)');
+            await page.goto(`${APP}/`);
+            await rowC.waitFor({ timeout: 20_000 });
+            check(await until(async () => (await groupOf(rowC)) === PROJECT_NAME, 15_000), '7. ↻ restore → sidebar: back under the project group (not 不在项目中)');
+            await shot('restored-in-project');
+            await page.goto(projectPage);
+            await terminalsSection.waitFor({ timeout: 30_000 });
+            check(await until(() => terminalsSection.getByText(titleC).isVisible(), 15_000), '7. ↻ restore → project page lists it again');
+            tmux('kill-session', '-t', `=vh-${tidC}:`);
 
             // tidy: close both terminals for the next round.
             tmux('kill-session', '-t', `=vh-${tidA}:`);

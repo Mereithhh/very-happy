@@ -1,10 +1,28 @@
-import { describe, expect, it } from 'vitest';
-import { parseTerminalProjectId, validateTerminalProjectId } from './terminalProject';
-import { LIST_FIELD_SEP, parseSessionListLine, terminalListSignature, type TerminalListItem } from './webTerminal';
-import { liveSnapshotChanged, sanitizeLiveSnapshot } from './liveTerminals';
-import { sanitizeClosedTerminals } from './closedTerminals';
-import { planTerminalRestore } from './terminalRestore';
-import { selectAutoRestore } from './autoRestore';
+import { describe, expect, it, afterAll } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createIsolatedTmux, tmuxAvailable } from '@/testing/isolatedTmux';
+
+// The kill-path cases drive a real WebTerminalManager: isolated HAPPY_HOME_DIR
+// (closed-terminals.json) and a private tmux socket BEFORE webTerminal loads.
+const happyHome = mkdtempSync(join(tmpdir(), 'vh-proj-home-'));
+const prevHome = process.env.HAPPY_HOME_DIR;
+process.env.HAPPY_HOME_DIR = happyHome;
+const iso = createIsolatedTmux('vh-proj');
+const { parseTerminalProjectId, validateTerminalProjectId } = await import('./terminalProject');
+const { LIST_FIELD_SEP, parseSessionListLine, terminalListSignature, WebTerminalManager } = await import('./webTerminal');
+type TerminalListItem = import('./webTerminal').TerminalListItem;
+const { liveSnapshotChanged, sanitizeLiveSnapshot } = await import('./liveTerminals');
+const { sanitizeClosedTerminals } = await import('./closedTerminals');
+const { planTerminalRestore } = await import('./terminalRestore');
+const { selectAutoRestore } = await import('./autoRestore');
+
+afterAll(() => {
+    iso.dispose();
+    if (prevHome === undefined) delete process.env.HAPPY_HOME_DIR; else process.env.HAPPY_HOME_DIR = prevHome;
+    rmSync(happyHome, { recursive: true, force: true });
+});
 
 const PID = '3f2c1a9e-8b7d-4c6e-9f00-112233445566';
 const mk = (...fields: string[]) => fields.join(LIST_FIELD_SEP);
@@ -64,5 +82,41 @@ describe('B-868 terminal project id', () => {
             now: 1000, config: { enabled: true, max: 5, windowMs: 60_000 }, liveIds: new Set(), cwdExists: () => true,
         });
         expect(sel.plans[0]).toMatchObject({ terminalId: 't1', projectId: PID });
+    });
+
+    // B-868b (QA39 P1): the web ⋯ → Close path wrote a close record WITHOUT the
+    // project, so ↻ restore came back as "not in a project". Every close path
+    // must carry it; tracking / daemon-gap / auto-restore are covered above.
+    describe.skipIf(!tmuxAvailable)('web close (killSession) keeps the project for ↻ restore', () => {
+        const mgr = new WebTerminalManager(() => { /* stream not under test */ });
+        afterAll(() => { mgr.disposeAll(); mgr.stopListTracking(); });
+        const vhProject = (id: string) => (iso.run('show-options', '-qv', '-t', `=vh-${id}:`, '@vh_project').stdout ?? '').trim();
+
+        it('tmux terminal: close record has projectId, restore puts @vh_project back', async () => {
+            await mgr.open({ terminalId: 'proj0001', cols: 80, rows: 24, cwd: iso.dir, projectId: PID });
+            mgr.unsubscribe('proj0001');
+            expect(vhProject('proj0001')).toBe(PID);
+            expect(mgr.killSession('proj0001')).toBe(true);
+            expect(iso.hasSession('vh-proj0001')).toBe(false);
+            expect(mgr.getClosedTerminals().find((r) => r.id === 'proj0001')).toMatchObject({ reason: 'closed', projectId: PID });
+            expect(mgr.restoreClosedTerminal('proj0001')).toEqual({ type: 'success', terminalId: 'proj0001' });
+            expect(vhProject('proj0001')).toBe(PID);
+            expect(mgr.listSessions().find((t) => t.id === 'proj0001')?.projectId).toBe(PID);
+        }, 30_000);
+
+        it('tmux terminal moved into a project after creation: the close record follows the move', async () => {
+            await mgr.open({ terminalId: 'proj0002', cols: 80, rows: 24, cwd: iso.dir });
+            mgr.unsubscribe('proj0002');
+            expect(mgr.setProject('proj0002', PID)).toBe(true);
+            expect(mgr.killSession('proj0002')).toBe(true);
+            expect(mgr.getClosedTerminals().find((r) => r.id === 'proj0002')?.projectId).toBe(PID);
+        }, 30_000);
+
+        it('direct pty: close record has projectId', () => {
+            // The direct branch is chosen by tmux absence; seed the live session it keys on.
+            (mgr as any).terminals.set('proj0003', { direct: { cwd: iso.dir, createdAt: 1, tags: [], projectId: PID }, dispose: () => {} });
+            expect(mgr.killSession('proj0003')).toBe(true);
+            expect(mgr.getClosedTerminals().find((r) => r.id === 'proj0003')).toMatchObject({ reason: 'closed', cwd: iso.dir, projectId: PID });
+        });
     });
 });
