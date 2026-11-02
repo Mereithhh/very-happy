@@ -110,8 +110,9 @@ export function SessionDetailScreen() {
     const notesTransition = useRef<NotesPanelSnapshot|null>(null);
     // One aside, two tenants: the files panel (three tabs) or the `/btw`
     // side-question panel (B-283). `filesOpen` drives the files toggle only.
-    // `?panel=btw` on a session that cannot host it (codex/gemini, terminal
+    // `?panel=btw` on a session that cannot host it (gemini/pi, terminal
     // mirror, pasted URL) is ignored rather than mounting a dead panel.
+    // B-861: Codex sessions host it too.
     // B-619: a session shared WITH me has no machine access from this account —
     // no files panel, no /btw, no session RPC of any kind.
     const sharedWithMe = !!session && isSharedWithMe(session);
@@ -461,6 +462,7 @@ export function SessionDetailScreen() {
                             sessionId={id}
                             agentFlavor={session ? undefined : pending?.agent}
                             pending={pendingComposer}
+                            sideChat={btwAllowed}
                         />
                     </div>
                 )}

@@ -45,6 +45,8 @@ export interface SideQuestionPollResponse {
     error?: string;
     startedAt: number;
     finishedAt?: number;
+    /** B-861: final word on context — the Codex path may fall back to none after the ack said yes. Old web ignores it. */
+    hadContext?: boolean;
 }
 
 interface RpcRegistrar {
@@ -52,7 +54,7 @@ interface RpcRegistrar {
 }
 
 export interface SideQuestionDeps {
-    /** Live Claude session id of the main conversation (null before first turn). */
+    /** Live Claude session id — or, for Codex (B-861), the main thread id — of the main conversation (null before first turn). */
     getClaudeSessionId: () => string | null | undefined;
     getModel: () => string | undefined;
     cwd: string;
@@ -70,6 +72,8 @@ export interface SideQuestionDeps {
      * subtype → fork.
      */
     getLiveQuery?: () => SideQuestionLiveQuery | null;
+    /** B-861: a line about the main session the fork's transcript copy cannot show (pending approvals). */
+    getMainStatus?: () => string | null;
     run?: (input: SideQuestionInput) => Promise<SideQuestionResult>;
     now?: () => number;
     /** How long a finished result stays pollable. */
@@ -83,6 +87,7 @@ interface Slot {
     error?: string;
     startedAt: number;
     finishedAt?: number;
+    hadContext: boolean;
     abort: AbortController;
 }
 
@@ -175,6 +180,7 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
             status: 'running',
             text: '',
             startedAt: now(),
+            hadContext: live ? true : Boolean(resumeSessionId),
             abort: new AbortController(),
         };
         slots.set(slot.requestId, slot);
@@ -192,6 +198,7 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
         void run({
             question,
             history: parseHistory(request.history),
+            mainStatus: deps.getMainStatus?.() ?? null,
             resumeSessionId,
             cwd: deps.cwd,
             model: deps.getModel(),
@@ -201,6 +208,7 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
             onText: (text) => { if (slot.status === 'running') slot.text = text; },
         }, live).then((result) => {
             slot.text = result.answer;
+            slot.hadContext = result.hadContext;
             finish(slot, 'done');
             logger.debug(`[btw] side question ${slot.requestId} done (${result.mode ?? 'fork'}, ${result.answer.length} chars)`);
         }).catch((error: unknown) => {
@@ -212,7 +220,7 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
                 logger.debug(`[btw] side question ${slot.requestId} failed: ${message}`);
             }
         }).finally(() => clearTimeout(deadline));
-        return { requestId: slot.requestId, hadContext: live ? true : Boolean(resumeSessionId), mode: live ? 'live' : 'fork' };
+        return { requestId: slot.requestId, hadContext: slot.hadContext, mode: live ? 'live' : 'fork' };
     });
 
     rpc.registerHandler<{ requestId?: unknown }, SideQuestionPollResponse>('btw-poll', async (request) => {
@@ -227,6 +235,7 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
             error: slot.error,
             startedAt: slot.startedAt,
             finishedAt: slot.finishedAt,
+            hadContext: slot.hadContext,
         };
     });
 

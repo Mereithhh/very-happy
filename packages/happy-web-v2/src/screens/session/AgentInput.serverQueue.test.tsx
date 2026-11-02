@@ -70,6 +70,7 @@ vi.mock('@/sync/promptQueue', async () => ({
 }));
 
 import { AgentInput } from './AgentInput';
+import { openBtwPanel } from './btwPanelState';
 import { networkStore } from '@/sync/networkStatus';
 
 let host: HTMLDivElement;
@@ -286,6 +287,21 @@ describe('AgentInput server-side prompt queue (B-509)', () => {
         expect(mocks.abort).toHaveBeenCalledTimes(1);
         expect(mocks.remove).not.toHaveBeenCalled();
         expect(mocks.toastShow).toHaveBeenCalledWith('session.chat.queueStillPending', 'info');
+    });
+
+    it('B-861: while the turn runs a 「侧聊」 entry next to Stop opens the side-chat panel; none without sideChat or when idle', async () => {
+        mocks.session.draft = '';
+        render();
+        expect(host.querySelector('[data-side-chat]')).toBeNull();
+        act(() => root.render(<AgentInput sessionId="session" sideChat />));
+        const entry = host.querySelector<HTMLButtonElement>('[data-side-chat]')!;
+        expect(entry.title).toBe('session.btw.entryHint');
+        expect(host.querySelector('.ci-send--abort')).not.toBeNull();
+        await act(async () => { entry.click(); });
+        expect(vi.mocked(openBtwPanel)).toHaveBeenCalledWith('session');
+        mocks.working = false;
+        act(() => root.render(<AgentInput sessionId="session" sideChat />));
+        expect(host.querySelector('[data-side-chat]')).toBeNull();
     });
 
     it('B-722: editing a server row closes the editor at once and reads 保存中 → 已保存, or 未保存 · 重试 with the edit kept', async () => {

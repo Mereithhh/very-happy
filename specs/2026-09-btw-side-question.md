@@ -1,6 +1,6 @@
 # `/btw` 侧问（side question）：不打断主对话的旁路问答
 
-> 状态：Shipped（commit `9d3a101f`，PR #143，2026-09-02 合入 main；web `main@892be05e` + CLI v0.2.100 已于 2026-09-02 发布）；2026-09-22 B-480 修订提示词形状与并发语义（见「B-480 修订」），CLI v0.2.146 发布（v0.2.145 因 npm 平台包 staged 作废）；B-482 改走进程内 `side_question` 控制请求（已合入，待发布）
+> 状态：Shipped（commit `9d3a101f`，PR #143，2026-09-02 合入 main；web `main@892be05e` + CLI v0.2.100 已于 2026-09-02 发布）；2026-09-22 B-480 修订提示词形状与并发语义（见「B-480 修订」），CLI v0.2.146 发布（v0.2.145 因 npm 平台包 staged 作废）；B-482 改走进程内 `side_question` 控制请求（已合入，待发布）；2026-11-02 B-861 加 Codex、刷新保留、运行中入口、转成分叉会话（见文末「B-861 修订」）
 > 日期：2026-09-02 ｜ 关联 backlog：B-283 ｜ 出处：Owner 2026-09-02「给 claude code sdk session 支持类似 btw 命令的能力」
 
 ## 背景
@@ -24,8 +24,8 @@ web 用户在等 agent 干活时想顺口问一句「这个报错啥意思」只
 ## 非目标
 
 - 不做 token 级推送流式（server/relay 无通用 session→user 推送通道；本版用轮询取渐进文本）。
-- 不持久化侧问历史（刷新即丢；Claude CLI 也只在进程内保留 `btwHistory`）。
-- 不支持 codex/gemini/acp/mirror 会话。
+- ~~不持久化侧问历史~~（B-861 起同一浏览器内刷新保留，跨设备仍不同步）。
+- 不支持 gemini/acp/pi/mirror 会话（B-861 起支持 Codex）。
 - 不给侧问开工具或 MCP。
 
 ## 现状事实（代码已确认）
@@ -154,3 +154,59 @@ Owner 问「有啥办法能做到和 claude code 的逻辑一样」。答案是�
 与 B-280 版本的差异：上下文从「磁盘 transcript + resume 补 interrupted 占位」变成进程内实时消息（不再说「上个进程被中断」）；没有 token 级渐进文本（Claude Code 本地 `/btw` 也是整段回）；不再多起一个 claude 进程，hooks 问题不复存在。
 
 验证：本机 SDK 0.3.267 裸 Query 探针（`scratchpad/probe3.mjs`）——主 turn 跑 Bash 时问「现在在干嘛呢」3.5s 答出正在跑什么；turn 结束后与带历史再问正常；每次 `control_request_progress started` 先到。`claudeRemote.test.ts` 锁控制请求形状，`registerSideQuestionHandler.test.ts` 锁 live 优先与三种回退，`sideQuestion.test.ts` 锁 history 映射 / 取消 / 空答 / refusal 前缀。真机 V-158。
+
+## B-861 修订（2026-11-02）：侧聊——Codex、刷新保留、运行中入口、转成分叉会话
+
+需求：Jinghui LU「主分支在跑的时候，同时 side chat」。UI 与文档统一叫「侧聊 / Side chat」，命令仍是 `/btw`，RPC 名不变。
+
+### Codex：临时线程作答（仅 CLI 新增；RPC 形状不变）
+
+实测 Codex 0.154（`vh-team-B-861/codex-probe1.log`、`codex-probe2.log`，隔离 `CODEX_HOME`）：
+
+| 探针 | 结果 |
+|---|---|
+| 第二个 app-server 在主轮运行中 `thread/fork {ephemeral:true}` | 拒绝：`ephemeral paginated thread/fork requires excludeTurns: true`；加 `excludeTurns:true` 后 156ms 成功，`path:null` |
+| 在 fork 上 `turn/start` 问暗号 / 追问 | 2.9s 答对；追问正确（上下文含进行中轮次，显示为 `interrupted`） |
+| 主线程 rollout | 侧聊前后：之前内容是之后的前缀，新增行全部是主会话自己的；`sessions/` 文件数不变 |
+| 主轮 | 完整跑完（`LONG-DONE`），未被打断 |
+| 首轮还在跑时 fork | 成功且带上下文（暗号答对） |
+
+实现：
+
+| 层 | 改动 |
+|---|---|
+| `codexAppServerClient.ts` | `onRawNotification`；`openSideThread`（有主线程 → `thread/fork`，否则 `thread/start`；都 `ephemeral`、`excludeTurns`、`sandbox: read-only`、`approvalPolicy: never`、`features.hooks=false`、账号 `modelProvider`/config）；`startSideTurn` / `interruptSideTurn`。均不碰 `_threadId/_turnId`，不影响重连 resume |
+| `codexSideQuestion.ts` | `runCodexSideQuestion`：每问一个新 `CodexAppServerClient`（同 sandboxConfig + 账号 overrides）→ fork → 单轮 → `disconnect` 停掉该 app-server（临时线程随之消失）。只收 side 线程的通知；`item/agentMessage/delta` 渐进文本；出现非消息/推理条目（命令、MCP、web 搜索…）立即 `turn/interrupt` 并回 Claude 同款 `(The model tried to call …)`；fork 失败（rollout 未落盘）→ 无上下文临时线程，`hadContext:false` |
+| `registerSideQuestionHandler.ts` | `getMainStatus` dep；poll 回 `hadContext`（Codex 回退后纠正 ack） |
+| `runCodex.ts` | 注册 `btw-ask/poll/cancel`；capability `codex-btw-v1`（wire `CODEX_BTW_CAPABILITY`） |
+| 提示词 | `SIDE_QUESTION_SYSTEM_PROMPT` 加一句：最新一步可能还没结果——仍在跑或等审批，不要说成被中断。主会话有待审批请求时，wrapper 把 `<main-session-status>`（工具 + 命令）放在 reminder 前（Claude fork 路径与 Codex 都用）。实测前：Claude/Codex 都答「命令被中止」；后：「在等你批准，尚未执行」 |
+
+不变：Claude 仍是 B-482 live 优先、fork 兜底。新的 ask 取代在跑的（Codex 侧 abort → interrupt + 停 app-server）。
+
+### Web
+
+- `canOfferBtw` 认 Codex；`supportsBtw` 按 flavor 查 `claude-btw-v1` / `codex-btw-v1`。旧 Codex wrapper：面板可开、输入禁用、提示升级；`/btw` 不发进主线程。
+- 持久化：`btwStore` 按会话写 `localStorage['vh.btw.v1:<sessionId>']`（最近 50 条，单答 2 万字截断，含 draft）。首次读该会话时 hydrate（内存优先；`setDraft`/`ask` 前先 hydrate，避免覆盖已存记录）。刷新时还在跑的那条若有 requestId 就续 poll（CLI 留 5 分钟），没有则标为已停止。读写全部 try/catch，失败退回纯内存。「清空」删 key。**不跨设备同步**（不上服务器）。
+- 入口：主会话运行中（`isAgentWorkLive`）输入框 Stop 左侧「侧聊 / Side chat」中性描边胶囊，tooltip「主会话跑着也能问，不会打断它」，触屏 44px；仅 `btwAllowed`（Claude/Codex、非镜像、非他人分享）。
+- 「转成分叉会话 / Continue as fork」：面板底部，有侧聊记录时显示；走 B-860 `forkWholeSession`（运行中只带已完成轮次），预填最后一条侧聊问题（取代运行中那条的预填），运行中照常弹「只含已完成部分」提示。复用 `useStartSessionFork`（⋯ 菜单同一路径）。
+
+### 兼容与发布顺序
+
+| Web | CLI | Claude | Codex |
+|---|---|---|---|
+| 新 | 新 | 全功能 | 全功能 |
+| 新 | 旧（实测 0.2.193） | 侧聊可用 + 入口 + 刷新保留 | 入口在，面板提示升级 CLI，`/btw` 不进主对话，pageerror 0 |
+| 旧 | 新 | 同旧版 | `/btw` 文本照旧发给 Codex；多出的 capability 被忽略 |
+
+server 不变。先 server/Web（镜像）后 CLI；Codex 侧聊需要新 CLI 起的会话（铁律 14）。「转成分叉会话」依赖 B-860 的 RPC（同批 CLI）。
+
+### 验收（隔离 daemon，证据 `~/code/github/skills/tmp/vh-team-B-861/`）
+
+- Codex（`e2e-codex-desk.log`）/ Claude（`e2e-claude-desk.log`）：主轮 100s sleep 中侧聊答对暗号（Codex 4.7s / Claude 2.6s），追问倒写、引用首问都对；刷新后 3 条仍在；rollout/transcript 前缀不变、无侧聊字样，主轮 LONG-DONE；「转成分叉会话」预填最后一问，新会话用工具跑了 `ls`。
+- 边界：Codex 首轮（`edge-codex-first.log`）；权限挂起（`edge-perm3*.log`，请求侧聊前后都在，批准后跑完）；连问取代（`edge-codex-supersede.log`：first=cancelled、second=done，侧 app-server 全退）；账号绑定（`edge-acct.log`：侧 app-server 无本机 key 仍答对；账号 key 换成坏的 → 401，不回落；恢复后正常）。
+- 手机 coarse 中英：入口 44×72 / 44×100，无横向溢出（`mobile.log`、`shots/mobile-*`）。新 Web + 0.2.193（`compat-193.log`）。
+
+### 已知边界
+
+- Claude 账号绑定沿用 B-850a（live 路径同进程；fork 路径带账号 `apiKeyHelper`），本次未另做真机。
+- 侧聊记录只在当前浏览器；换设备或清站点数据就没了。

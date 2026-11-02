@@ -21,6 +21,8 @@ export interface SideQuestionInput {
     question: string;
     /** Earlier side questions of this session (web-held; CLI keeps nothing). */
     history?: SideQuestionExchange[];
+    /** B-861: what the wrapper knows and the copied transcript cannot show (a pending approval). */
+    mainStatus?: string | null;
     /** Live Claude session id to fork; null before the first turn (no context). */
     resumeSessionId: string | null;
     cwd: string;
@@ -108,6 +110,11 @@ type QueryFn = (params: { prompt: QueryPrompt; options?: QueryOptions }) => Asyn
 export const SIDE_QUESTION_SYSTEM_PROMPT = [
     'A user message wrapped in a side-question system-reminder is a SIDE QUESTION: answer it',
     'directly in one response from the conversation context, with no tools and no action on the main task.',
+    // B-861: a fork taken mid-turn shows the running step without its result;
+    // models read that as "interrupted" / "aborted" (Claude and Codex probes,
+    // vh-team-B-861/edge-perm-*.log). It is still running or awaiting approval.
+    'In your copy of the conversation the latest step may have no result yet: the main agent is still running it,',
+    'or it is waiting for the user to approve it. Describe it that way, never as interrupted, aborted or stopped.',
 ].join(' ');
 
 /**
@@ -148,15 +155,33 @@ function clip(text: string, max: number): string {
  * reminder sits directly before the question, after the history block, so it
  * is the last instruction the model reads.
  */
-export function buildSideQuestionPrompt(question: string, history: SideQuestionExchange[] = []): string {
+export function buildSideQuestionPrompt(question: string, history: SideQuestionExchange[] = [], mainStatus?: string | null): string {
     const trimmed = question.trim();
     const prior = history
         .filter((h) => h.question.trim() && h.answer.trim())
         .slice(-MAX_HISTORY);
-    const body = `${SIDE_QUESTION_REMINDER}\n\n${trimmed}`;
+    const status = mainStatus ? `<main-session-status>${mainStatus}</main-session-status>\n\n` : '';
+    const body = `${status}${SIDE_QUESTION_REMINDER}\n\n${trimmed}`;
     if (prior.length === 0) return body;
     const lines = prior.map((h) => `Q: ${clip(h.question.trim(), MAX_HISTORY_CHARS)}\nA: ${clip(h.answer.trim(), MAX_HISTORY_CHARS)}`);
     return `<earlier-side-questions>\n${lines.join('\n\n')}\n</earlier-side-questions>\n\n${body}`;
+}
+
+/**
+ * B-861: the copy a fork answers from shows a tool call that awaits approval
+ * as cut off ("the command was aborted" — Codex writes an aborted result into
+ * the fork). The wrapper's agent state knows better; say it in the prompt.
+ */
+export function describePendingApprovals(requests: Record<string, { tool?: unknown; arguments?: unknown }> | null | undefined): string | null {
+    const pending = Object.values(requests ?? {});
+    if (pending.length === 0) return null;
+    const items = pending.slice(0, 3).map((request) => {
+        const tool = typeof request.tool === 'string' ? request.tool : 'a tool';
+        const args = request.arguments as { command?: unknown } | null | undefined;
+        const command = Array.isArray(args?.command) ? args.command.join(' ') : typeof args?.command === 'string' ? args.command : '';
+        return command ? `${tool} (${clip(command, 160)})` : tool;
+    });
+    return `The main agent is waiting for the user to approve: ${items.join('; ')}. It has not run yet and was not aborted.`;
 }
 
 /** Options for the side query — exported so tests can pin the contract. */
@@ -213,7 +238,7 @@ function apiErrorFromSystem(message: SDKMessage): string | null {
 
 export async function runSideQuestion(query: QueryFn, input: SideQuestionInput): Promise<SideQuestionResult> {
     const options = sideQuestionQueryOptions(input);
-    const stream = query({ prompt: buildSideQuestionPrompt(input.question, input.history), options });
+    const stream = query({ prompt: buildSideQuestionPrompt(input.question, input.history, input.mainStatus), options });
     let streamed = '';
     let final = '';
     let toolAttempt: string | null = null;

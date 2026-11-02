@@ -23,6 +23,7 @@ export { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/util
 export { registerKillSessionHandler } from './registerKillSessionHandler';
 export { SessionExitGate, exitIntentFromArchiveFlag, settleSessionOnExit } from './sessionExitLifecycle';
 export { registerSideQuestionHandler, writeSideQuestionSettingsFile } from './registerSideQuestionHandler';
+export { describePendingApprovals } from './sideQuestion';
 export { claudeCheckSession } from '@/claude/utils/claudeCheckSession';
 export { createSessionScanner } from '@/claude/utils/sessionScanner';
 export { getProjectPath } from './utils/path';

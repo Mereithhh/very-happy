@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-02-side-chat-while-running',
+    date: '2026-11-02',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov02d.title',
+    summaryKey: 'changelog.releases.nov02d.summary',
+    itemKeys: ['changelog.releases.nov02d.entry', 'changelog.releases.nov02d.readOnly', 'changelog.releases.nov02d.kept', 'changelog.releases.nov02d.fork', 'changelog.releases.nov02d.cli'],
+  },
+  {
+    id: '2026-11-02-cli-codex-side-chat',
+    cliVersion: '0.2.195',
+    date: '2026-11-02',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov02c.title',
+    summaryKey: 'changelog.releases.nov02c.summary',
+    itemKeys: ['changelog.releases.nov02c.codex', 'changelog.releases.nov02c.approval'],
+  },
+  {
     id: '2026-11-02-fork-while-running',
     date: '2026-11-02',
     buildVersion: __APP_VERSION__,
