@@ -5,14 +5,14 @@
  * 2026-10-sidebar-header §B-713).
  */
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { ChevronDown, CircleHelp, Contact, FolderKanban, FolderPlus, LayoutGrid, ListChecks, MessageSquareHeart, Plus, Settings, StickyNote, UsersRound, Zap } from 'lucide-react';
+import { Activity, ChevronDown, CircleHelp, Contact, FolderKanban, FolderPlus, LayoutGrid, ListChecks, ListTodo, MessageSquareHeart, Plus, Settings, StickyNote, UsersRound, Zap } from 'lucide-react';
 import { ActionDropdownMenu, QuickThemeToggle, Spinner, type MenuItemDef } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { MIN_LIST_ROWS, moreMenuEntries, navAttentionTotal, navMenuLabel, settleCapabilityRows, splitCapabilities, type SidebarActionRow, type SidebarChip, type SidebarNavEntry, type SidebarNavKey } from './sidebarNavEntries';
 
-const navIcon = { projects: FolderKanban, teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact, feedback: MessageSquareHeart } as const;
+const navIcon = { issues: ListTodo, board: Activity, projects: FolderKanban, teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact, feedback: MessageSquareHeart } as const;
 
 /** Capability entries as menu items (「更多能力 ▾」 / phone 「更多 ▾」), each with its count. */
 export function capabilityMenuItems(entries: readonly SidebarNavEntry[], names: Record<SidebarNavKey, string>, onNavigate: (path: string) => void): MenuItemDef[] {
@@ -164,8 +164,14 @@ export function SidebarChipRow(props: {
   const attention = navAttentionTotal(more);
   // B-762 (D1): the 项目 chip carries the project tree's 需要你 total.
   const projectAttention = props.capabilities.find((e) => e.key === 'projects')?.attention ?? 0;
+  const issueAttention = props.capabilities.find((e) => e.key === 'issues')?.attention ?? 0;
   return (
     <div className="sb-chips">
+      {props.chips.includes('issues') && (
+        <button type="button" className="sb-chip" data-cap="issues" aria-label={navMenuLabel(props.capabilityNames.issues, issueAttention)} title={props.capabilityNames.issues} onClick={() => props.onNavigate('/issues')}>
+          <ListTodo size={16} /><span>{props.capabilityNames.issues}</span><AttentionBadge count={issueAttention} tone="warn" />
+        </button>
+      )}
       {props.chips.includes('projects') && (
         <button type="button" className="sb-chip" data-cap="projects" aria-label={navMenuLabel(props.capabilityNames.projects, projectAttention)} title={props.capabilityNames.projects} onClick={() => props.onNavigate('/projects')}>
           <FolderKanban size={16} /><span>{t('sidebar.chipProject')}</span><AttentionBadge count={projectAttention} tone="warn" />

@@ -16,7 +16,7 @@ vi.mock('@/ui', async (importOriginal) => ({ ...(await importOriginal<typeof imp
 const { SidebarActionRows, SidebarChipRow, SidebarFooter, capabilityMenuItems } = await import('./SidebarTop');
 const { moreMenuEntries, sidebarNavEntries, sidebarTopModel } = await import('./sidebarNavEntries');
 
-const names = { projects: 'Projects', teams: 'Teams', automations: 'Automations', todos: 'Todos', people: 'People', feedback: 'Send feedback' };
+const names = { issues: 'Issues', board: 'Running', projects: 'Projects', teams: 'Teams', automations: 'Automations', todos: 'Todos', people: 'People', feedback: 'Send feedback' };
 const entries = sidebarNavEntries({ teamsVisible: true, automationsVisible: true, automationAttention: 2, incomingPeople: 1 });
 const desktop = sidebarTopModel({ isDesktop: true, projectsReady: true, teamsVisible: true });
 const phone = sidebarTopModel({ isDesktop: false, projectsReady: true, teamsVisible: true });
