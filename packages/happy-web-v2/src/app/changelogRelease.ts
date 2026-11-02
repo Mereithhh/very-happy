@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-03-share-can-operate',
+    date: '2026-11-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov03d.title',
+    summaryKey: 'changelog.releases.nov03d.summary',
+    itemKeys: ['changelog.releases.nov03d.grant', 'changelog.releases.nov03d.trust', 'changelog.releases.nov03d.cap', 'changelog.releases.nov03d.watch'],
+  },
+  {
+    id: '2026-11-03-cli-codex-operate-mode',
+    cliVersion: '0.2.199',
+    date: '2026-11-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov03e.title',
+    summaryKey: 'changelog.releases.nov03e.summary',
+    itemKeys: ['changelog.releases.nov03e.codex', 'changelog.releases.nov03e.upgrade'],
+  },
+  {
     id: '2026-11-03-cli-mac-wake-reconnect',
     cliVersion: '0.2.198',
     date: '2026-11-03',
