@@ -434,6 +434,7 @@ export const zhHant: PartialTranslationStructure = {
         groupActions: '動作',
         groupSessions: '對話',
         groupTerminals: '終端',
+        groupContent: '對話內容',
         actionNewChat: '新建對話',
         actionNewChatAdvanced: '新建對話（自訂選項）…',
         actionNewTerminal: '新建終端',

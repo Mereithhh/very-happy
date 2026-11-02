@@ -370,10 +370,10 @@ package. See [Self-hosting](docs/deployment.md).
   &nbsp; notes
 </p>
 
-The production command palette searches actions, chats, and terminals. Session
-search (`Command/Ctrl+Shift+F`, or the sidebar Search control on a phone)
-searches titles, projects and tags plus what was said on every online machine,
-then opens the session on the hit. Saved prompts use `Command/Ctrl+.`.
+The command palette is the one search entry: `Command/Ctrl+K`,
+`Command/Ctrl+Shift+F` and the sidebar Search control all open it. It searches
+actions, chats, terminals, and what was said on every online machine, and a
+snippet opens the session on the hit. Saved prompts use `Command/Ctrl+.`.
 
 Very Happy preserves terminal muscle memory: on macOS, `Ctrl+K/J/N/R` stay with
 readline and the real TUI. Browser-reserved new/close chords work only where the
@@ -407,8 +407,9 @@ structured parity with Claude.
 - [Projects](docs/projects.md): the sidebar groups sessions by project, project
   sessions start with shared instructions and decisions, and a project page
   shows each session's status; `very-happy spawn --project`.
-- Session search (`Command/Ctrl+Shift+F`) across titles, projects, tags and
-  every online machine's conversation history, opening the session on the hit.
+- One search entry (`Command/Ctrl+K`; `Command/Ctrl+Shift+F` opens the same
+  palette) across commands, titles, projects, tags and every online machine's
+  conversation history, opening the session on the hit.
 - `@` file mentions in the message box, and editable drafts: text the agent
   writes for you to send can be edited and copied in place, and your next
   message hands the final version back to the agent.

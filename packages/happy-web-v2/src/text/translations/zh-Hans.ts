@@ -1330,7 +1330,7 @@ export const zhHans: TranslationStructure = {
     },
 
     commandPalette: {
-        placeholder: '输入命令或搜索...',
+        placeholder: '命令、会话，或对话里说过的话… #标签',
         // Categories
         categorySessions: '会话',
         categoryRecentSessions: '最近会话',
@@ -1359,6 +1359,7 @@ export const zhHans: TranslationStructure = {
         groupActions: '动作',
         groupSessions: '对话',
         groupTerminals: '终端',
+        groupContent: '对话内容',
         actionNewChat: '新建对话',
         actionNewChatAdvanced: '新建对话（自定义选项）…',
         actionNewChatWithQuery: ({ query }: { query: string }) => `新建对话：${query}`,
@@ -1367,7 +1368,6 @@ export const zhHans: TranslationStructure = {
         actionAttachTmux: '接入 tmux 会话…',
         actionImportClaude: '导入 Claude Code 对话…',
         actionImportCodex: '导入 Codex 对话…',
-        actionSearchSessions: '搜索会话…',
         actionSearchHistory: '搜索历史对话…',
         actionRenameSession: '重命名当前对话',
         actionArchiveSession: '归档当前对话',
@@ -1727,9 +1727,7 @@ export const zhHans: TranslationStructure = {
         alreadyImportedOpen: ({ name }: { name: string }) => `打开之前导入成的会话：${name}`,
     },
     sessionSearch: {
-        title: '搜索会话',
-        placeholder: '搜会话与对话内容… #标签',
-        emptyHint: '搜索全部会话：标题、目录、项目、标签，以及每台在线机器上的对话内容。#标签 按标签筛选。',
+        title: '搜索',
         noResults: '没有匹配的会话',
         searching: '搜索中…',
         statusLabel: '状态',
@@ -1737,6 +1735,11 @@ export const zhHans: TranslationStructure = {
         statusLive: '进行中',
         statusWaiting: '等你',
         statusArchived: '归档',
+        statusNotArchived: '未归档',
+        statusIncludeArchived: '含归档',
+        statusArchivedOnly: '仅归档',
+        filtersLabel: '筛选',
+        resetFilters: '重置',
         projectLabel: '项目',
         projectAny: '全部项目',
         agentLabel: 'Agent',
@@ -1764,8 +1767,6 @@ export const zhHans: TranslationStructure = {
         roleUser: '你',
         roleAgent: 'Agent',
         roleTool: '工具',
-        openPalette: '命令与快速跳转（⌘K）',
-        footKeys: '↑↓ 选择 · Enter 打开 · Esc 关闭',
     },
     historySearch: {
         modeLabel: '查找方式',
@@ -3139,6 +3140,13 @@ export const zhHans: TranslationStructure = {
                 outboxAlt: '手机上的会话页：最后一条消息标着「未发送」，旁边是「重发」和「丢弃」',
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
+            },
+            nov02f: {
+                title: '搜索合成一个入口',
+                summary: '⌘K 现在也能搜对话内容。',
+                oneEntry: '⌘K、⌘⇧F 和侧栏搜索按钮现在打开同一个面板。',
+                content: '输入两个字以上，新增的「对话内容」会搜各台机器上的对话正文，点结果直接跳到那条消息。',
+                filters: '项目、机器、Agent、时间、归档筛选也都在这个面板里。',
             },
             nov02e: {
                 title: '不再误报需要升级 Codex',

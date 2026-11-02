@@ -14,7 +14,15 @@ import {
   NEEDS_YOU_LIMIT,
   paletteSettingsQuery,
   type PaletteGroup,
+  CONTENT_MIN_CHARS,
+  contentSearchText,
+  PALETTE_DEFAULT_FILTERS,
+  paletteFiltersActive,
+  splitSearchRows,
+  adoptFirstResult,
+  CREATE_ROW_KEY,
 } from './paletteModel';
+import type { ResultSnippet, SessionSearchRow } from '@/screens/search/sessionSearch';
 
 const NOW = 1_700_000_000_000;
 
@@ -247,5 +255,70 @@ describe('resolveActiveIndex / moveActive (review #2: highlight by key)', () => 
     expect(moveActive(keys, { key: 'a:x', index: 3 }, 1)).toEqual({ key: 'needs:a', index: 0 });
     expect(moveActive(['needs:a', 'needs:c'], { key: 'needs:b', index: 1 }, 1)).toEqual({ key: 'needs:a', index: 0 });
     expect(moveActive([], null, 1)).toBeNull();
+  });
+});
+
+describe('B-865 one search entry: content rows', () => {
+  const row = (over: Partial<SessionSearchRow> & { key: string }): SessionSearchRow => ({
+    title: over.key, subtitle: '', titleRanges: [], subtitleRanges: [], updatedAt: NOW, archived: false, metaHit: false, snippets: [], ...over,
+  });
+  const snip = (text: string): ResultSnippet => ({ source: 'content', role: 'user', text, ranges: [[0, 2]] });
+
+  it('a title match keeps one row: its snippets attach to the 「会话」 row, never a second row in 「对话内容」', () => {
+    const split = splitSearchRows([
+      row({ key: 's:a', sessionId: 'a', metaHit: true, snippets: [snip('hi there')] }),
+      row({ key: 's:b', sessionId: 'b', snippets: [snip('only said here')] }),
+    ], new Set(['a']));
+    expect(split.attach.get('a')).toEqual([snip('hi there')]);
+    expect(split.contentRows.map((r) => r.key)).toEqual(['s:b']);
+    expect(split.titleRows).toEqual([]);
+  });
+
+  it('a metadata-only match the substring filter missed joins 「会话」; importable rows go to 「对话内容」; nothing is duplicated', () => {
+    const imp = row({ key: 'i:m1:claude:x', importable: { machineId: 'm1', entry: {} as never }, snippets: [snip('xx')] });
+    const split = splitSearchRows([
+      row({ key: 's:c', sessionId: 'c', metaHit: true }),
+      row({ key: 's:a', sessionId: 'a', metaHit: true }),
+      imp,
+    ], new Set(['a']));
+    expect(split.titleRows.map((r) => r.sessionId)).toEqual(['c']);
+    expect(split.contentRows).toEqual([imp]);
+    expect(split.attach.size).toBe(0);
+    const ids = [...split.titleRows, ...split.contentRows].map((r) => r.sessionId).filter(Boolean);
+    expect(ids).not.toContain('a');
+  });
+
+  it('content search starts at two characters (CJK counts per character, spaces do not count)', () => {
+    expect(CONTENT_MIN_CHARS).toBe(2);
+    expect(contentSearchText('a')).toBe('');
+    expect(contentSearchText(' a ')).toBe('');
+    expect(contentSearchText('ab')).toBe('ab');
+    expect(contentSearchText('登')).toBe('');
+    expect(contentSearchText('登录')).toBe('登录');
+  });
+
+  it('the filter bar starts without archived sessions; only a change from that counts as active', () => {
+    expect(PALETTE_DEFAULT_FILTERS.status).toBe('live');
+    expect(paletteFiltersActive(PALETTE_DEFAULT_FILTERS)).toBe(false);
+    expect(paletteFiltersActive({ ...PALETTE_DEFAULT_FILTERS, status: 'all' })).toBe(true);
+    expect(paletteFiltersActive({ ...PALETTE_DEFAULT_FILTERS, machineId: 'm1' })).toBe(true);
+  });
+
+  it('「对话内容」 sits right after 「会话」, before terminals / settings / create', () => {
+    const order = orderPaletteItems(['create', 'terminals', 'content', 'sessions', 'actions'].map((group) => ({ group: group as PaletteGroup })));
+    expect(order.map((it) => it.group)).toEqual(['actions', 'sessions', 'content', 'terminals', 'create']);
+  });
+});
+
+describe('B-865 highlight when content results arrive', () => {
+  it('an unchosen highlight on 「新建对话」 moves to the first result; a chosen one stays', () => {
+    const keys = ['content:s:a', CREATE_ROW_KEY];
+    expect(adoptFirstResult(keys, { key: CREATE_ROW_KEY, index: 0 }, false)).toEqual({ key: 'content:s:a', index: 0 });
+    const chosen = { key: CREATE_ROW_KEY, index: 1 };
+    expect(adoptFirstResult(keys, chosen, true)).toBe(chosen);
+    const onRow = { key: 'action:x', index: 0 };
+    expect(adoptFirstResult(['content:s:a', 'action:x'], onRow, false)).toBe(onRow);
+    const alone = { key: CREATE_ROW_KEY, index: 0 };
+    expect(adoptFirstResult([CREATE_ROW_KEY], alone, false)).toBe(alone);
   });
 });
