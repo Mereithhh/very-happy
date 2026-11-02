@@ -3001,6 +3001,19 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov02b: {
+                title: 'Fork a session while it is running',
+                summary: 'You no longer have to wait for a turn to finish before forking.',
+                forkWhole: '“Fork session” works while the session is running: the fork has the completed turns only, and the message still running is put into the new session’s input box with a notice.',
+                forkHere: '“Fork from here” works while the session is running, too.',
+                cli: 'Forking the whole session while it runs needs CLI 0.2.194 on that machine; with an older CLI you are asked to upgrade. The original session is not affected.',
+            },
+            nov02a: {
+                title: 'CLI 0.2.194: fork a running session',
+                summary: 'Sessions can be forked while they are running; the original session is not affected.',
+                fork: 'Forking a running session takes the completed turns only; the message still running is not included and is put into the new session’s input box.',
+                spawn: 'very-happy spawn --fork supports running sessions too; --json lists the left-out messages in excludedPrompts.',
+            },
             nov01h: {
                 title: 'Fix: no longer stuck on the loading page',
                 summary: 'If the encryption module fails to load, you are taken back to the login page instead of waiting forever.',
