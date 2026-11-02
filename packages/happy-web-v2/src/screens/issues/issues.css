@@ -19,7 +19,7 @@
 }
 .is-screen > * { flex-shrink: 0; }
 .is-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.is-head .vh-back-row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.is-head .vh-back-row { flex: 1 0 auto; max-width: 100%; display: flex; align-items: center; gap: 8px; }
 .is-head h1 {
   display: flex; align-items: center; gap: 8px; margin: 0;
   font-size: var(--fs-20); font-weight: 600; letter-spacing: -0.025em; text-wrap: balance;
@@ -196,6 +196,7 @@ a.is-tl-author { text-decoration: underline; text-decoration-color: var(--line-2
 .is-composer-input { border: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-14); resize: vertical; min-height: 60px; outline: none; }
 .is-composer-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .is-composer-spacer { flex: 1; }
+.is-mention-suggest { display: flex; gap: 6px; flex-wrap: wrap; }
 .is-mention-chip { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-12); padding: 0 8px; border-radius: var(--r-pill); background: var(--fill-selected); line-height: 22px; }
 .is-trigger-preview { margin: 0; font-size: var(--fs-12); color: var(--text-dim); }
 .is-trigger--targets { color: var(--text); }

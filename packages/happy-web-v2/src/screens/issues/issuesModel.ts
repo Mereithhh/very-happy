@@ -240,6 +240,12 @@ export function toggleMention(list: readonly AgentMention[], mention: AgentMenti
     return list.length >= ISSUE_LIMITS.mentionsPerComment ? [...list] : [...list, mention];
 }
 
+/** The `@…` being typed at the end of a comment (at the start or after a space), or null — opens the inline agent picker. */
+export function mentionQuery(body: string): string | null {
+    const match = /(^|\s)@(\w*)$/.exec(body);
+    return match ? match[2] : null;
+}
+
 // ─── ⌘K ───────────────────────────────────────────────────────────────────────
 
 /** `VH-12` / `#12` / `12` jumps straight to that issue; otherwise key/title substring, open issues first. */

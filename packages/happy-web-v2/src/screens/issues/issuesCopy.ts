@@ -21,7 +21,7 @@ const zh = {
     runN: (n: number) => `第 ${n} 次`, triggers: { assign: '指派', mention: '@ 唤起', comment: '评论', retry: '重试' } as Record<string, string>,
     runStatus: { queued: '排队中', claimed: '启动中', running: '运行中', idle: '空闲', ended: '已结束', failed: '失败', cancelled: '已停止', superseded: '已被替代' } as Record<string, string>,
     waitingMachine: (m: string) => `等待 ${m} 上线`, openSession: '打开会话', retryRun: '重试', switchAgent: '换 agent', stop: '停止', ack: '知道了',
-    comment: '评论', commentPh: '写评论…  @ 选 agent，/note 开头只记录不唤醒', send: '发送', mention: '@ agent', mentionLimit: '最多 @ 3 个',
+    comment: '评论', commentPh: '写评论…  @ 选 agent，/note 开头只记录不唤醒', send: '发送', mention: '提及 agent', mentionLimit: '最多 @ 3 个',
     preview: {
         note: '/note：只记录，不唤醒 agent',
         noAgent: '不会唤醒 agent（没有指派给 agent，可以 @ 一个）',
@@ -71,7 +71,7 @@ const en: IssuesCopy = {
     runN: (n) => `Run ${n}`, triggers: { assign: 'Assigned', mention: '@ mention', comment: 'Comment', retry: 'Retry' },
     runStatus: { queued: 'Queued', claimed: 'Starting', running: 'Running', idle: 'Idle', ended: 'Ended', failed: 'Failed', cancelled: 'Stopped', superseded: 'Superseded' },
     waitingMachine: (m) => `Waiting for ${m} to come online`, openSession: 'Open session', retryRun: 'Retry', switchAgent: 'Switch agent', stop: 'Stop', ack: 'Dismiss',
-    comment: 'Comment', commentPh: 'Write a comment…  @ picks an agent, /note records without waking one', send: 'Send', mention: '@ agent', mentionLimit: 'Up to 3 mentions',
+    comment: 'Comment', commentPh: 'Write a comment…  @ picks an agent, /note records without waking one', send: 'Send', mention: 'Mention agent', mentionLimit: 'Up to 3 mentions',
     preview: {
         note: '/note: recorded only, no agent is woken',
         noAgent: 'Wakes no agent (not assigned to one — @ one to wake it)',

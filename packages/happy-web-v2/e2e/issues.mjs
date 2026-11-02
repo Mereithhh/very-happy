@@ -16,6 +16,7 @@
  *   2. the daemon starts the run → run running, issue todo → in_progress;
  *   3. a comment previews 「排队送进 codex … 正在运行的会话」, a `/note` previews
  *      「只记录」; after sending, the timeline shows it with 「已送达 · 第 1 次执行」;
+ *      typing `@cl` offers @claude inline and previews a new run for it;
  *   4. the agent comments and moves the issue to in_review → /board 「需要我决策」
  *      lists 「VH-1 待验收」 with 完成 / 退回; 完成 → issue done, the band empties;
  *   5. the run row opens its session;
@@ -129,6 +130,15 @@ try {
                 await page.click('[data-testid="issue-comment-send"]');
                 await page.waitForFunction((t) => document.querySelector('[data-testid="issue-timeline"]')?.textContent?.includes(t), c.delivered);
                 check(true, `${tag}: timeline shows the delivered comment`);
+                // typing @ offers the agents inline; @claude would start a new run (not the assignee)
+                await box.fill('also have a look @cl');
+                const suggest = page.locator('[data-testid="issue-mention-suggest"] button', { hasText: '@claude' });
+                await suggest.waitFor({ timeout: 5000 });
+                await suggest.click();
+                check((await box.inputValue()) === 'also have a look ', `${tag}: picking @claude removes the typed @cl`);
+                check((await page.locator('[data-testid="issue-trigger-preview"]').innerText()).includes('claude'), `${tag}: @claude previews a new run for claude`);
+                await shot(page, `${tag}-03b-mention`);
+                await box.fill('');
 
                 // 4. agent → in_review → 需要我决策 → 完成
                 await page.evaluate(() => {
@@ -176,6 +186,17 @@ try {
                     await page.waitForSelector('[data-testid="issue-decisions"]');
                     await shot(page, `${tag}-08-waiting`);
                     check((await page.locator('[data-testid="issue-decisions"] [data-kind="failed"]').count()) === 1, `${tag}: failed sessionless run in 等我处理`);
+                    // ⌘K: issue rows by key; no match → 「新建 issue：<查询>」
+                    await page.keyboard.press('Control+k');
+                    const input = page.locator('.cp-search-input');
+                    await input.waitFor();
+                    await input.fill('VH-4');
+                    await page.waitForSelector('.cp-group--issues .cp-row', { timeout: 5000 }).then(() => check(true, `${tag}: ⌘K finds VH-4`), () => check(false, `${tag}: ⌘K finds VH-4`));
+                    await input.fill('zzqq unmatched');
+                    await page.waitForTimeout(300);
+                    check((await page.locator('.cp-row', { hasText: c.newIssue === '新建 issue' ? '新建 issue：zzqq unmatched' : 'New issue: zzqq unmatched' }).count()) === 1, `${tag}: ⌘K offers 新建 issue for an unmatched query`);
+                    await shot(page, `${tag}-11-palette`);
+                    await page.keyboard.press('Escape');
                     // /todos → /issues?assignee=none while on
                     await go(page, '/dev/device/todos');
                     await page.waitForURL(/\/dev\/device\/issues\?assignee=none/, { timeout: 10000 }).then(() => check(true, `${tag}: /todos redirects to unassigned issues`), () => check(false, `${tag}: /todos redirects`, page.url()));
@@ -196,6 +217,12 @@ try {
                     const caps = await off.evaluate(() => [...document.querySelectorAll('[data-cap]')].map((e) => e.getAttribute('data-cap')));
                     check(!caps.includes('issues') && !caps.includes('board'), `${tag}: switch off → no Issues / 运行中 entries`, caps.join(','));
                     await shot(off, `${tag}-10-off-sidebar`);
+                    await off.keyboard.press('Control+k');
+                    const offInput = off.locator('.cp-search-input');
+                    await offInput.waitFor();
+                    await offInput.fill('VH-1');
+                    await off.waitForTimeout(400);
+                    check((await off.locator('.cp-group--issues').count()) === 0 && (await off.locator('.cp-row', { hasText: c.newIssue === '新建 issue' ? '新建 issue：' : 'New issue:' }).count()) === 0, `${tag}: switch off → ⌘K has no issue rows`);
                     await offCtx.close();
                 }
             }

@@ -3,7 +3,7 @@ import type { IssueRunView, IssueView } from '@slopus/happy-wire';
 import {
     agentIdleStillInProgress, commentTriggerPreview, EMPTY_FILTER, failedRunsNeedingYou, filterFromSearch, filterToSearch, groupByStatus,
     ISSUE_WORKER_FRESH_MS, machineWorkerState, matchesFilter, matchIssues, mentionCandidates, myIssues, sortOrderBetween, toggleMention,
-    usedLabels, waitingOnMeCount, runIsWorking, findIssue,
+    usedLabels, waitingOnMeCount, runIsWorking, findIssue, mentionQuery,
 } from './issuesModel';
 
 let n = 0;
@@ -152,5 +152,14 @@ describe('B-873 assignee picker gate (spec §2 IssueWorker)', () => {
         expect(machineWorkerState({ online: true, machineId: 'm' }, [], now)).toBe('cli-old');
         expect(machineWorkerState({ online: true, machineId: 'm' }, [{ machineId: 'm', lastSeenAt: now - ISSUE_WORKER_FRESH_MS - 1 }], now)).toBe('cli-old');
         expect(machineWorkerState({ online: true, machineId: 'm' }, [{ machineId: 'm', lastSeenAt: now - 1000 }], now)).toBe('ok');
+    });
+});
+
+describe('B-873 @ typed in the comment box', () => {
+    it('only a trailing @word at the start or after a space opens the picker', () => {
+        expect(mentionQuery('@')).toBe('');
+        expect(mentionQuery('please @co')).toBe('co');
+        expect(mentionQuery('mail me@host')).toBeNull();
+        expect(mentionQuery('done @codex now')).toBeNull();
     });
 });

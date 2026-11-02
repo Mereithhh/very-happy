@@ -23,7 +23,7 @@ import {
 import { useIssuesSync } from '@/sync/issuesSync';
 import { Markdown } from '@/screens/session/Markdown';
 import {
-    agentIdleStillInProgress, commentTriggerPreview, type AgentMention, findIssue, formatDuration, mentionCandidates, runDurationMs, runsOfIssue, toggleMention, type TriggerPreview,
+    agentIdleStillInProgress, commentTriggerPreview, mentionQuery, type AgentMention, findIssue, formatDuration, mentionCandidates, runDurationMs, runsOfIssue, toggleMention, type TriggerPreview,
 } from './issuesModel';
 import { assigneeText, issuePath, sessionPath, StatusGlyph, useIssuesBase, useMachineNames } from './IssueParts';
 import { AssigneeDialog, priorityOptions, projectOptions, statusOptions } from './IssueDialogs';
@@ -327,6 +327,13 @@ function CommentBox({ issue, runs, copy, machineName }: { issue: IssueView; runs
         key: m.agent, label: `@${m.agent}${m.machineId ? ` · ${machineName(m.machineId)}` : ''}`,
         icon: AtSign, checked: mentions.some((x) => x.agent === m.agent), onSelect: () => setMentions((list) => toggleMention(list, m)),
     }));
+    // Typing `@` (at the start or after a space) offers the agents inline; picking one makes a structured mention (spec §6: never parsed from prose).
+    const at = mentionQuery(body);
+    const suggestions = at === null ? [] : candidates.filter((m) => m.agent.startsWith(at.toLowerCase()) && !mentions.some((x) => x.agent === m.agent));
+    const pickSuggestion = (m: AgentMention) => {
+        setMentions((list) => toggleMention(list, m));
+        setBody((text) => text.replace(/@\w*$/, ''));
+    };
     const send = async () => {
         if (!body.trim() || sending) return;
         setSending(true);
@@ -341,12 +348,14 @@ function CommentBox({ issue, runs, copy, machineName }: { issue: IssueView; runs
     return (
         <div className="is-composer" data-testid="issue-comment-box">
             <textarea className="is-composer-input" value={body} rows={3} placeholder={copy.commentPh} aria-label={copy.comment}
-                onChange={(e) => {
-                    const next = e.target.value;
-                    setBody(next);
-                }}
+                onChange={(e) => setBody(e.target.value)}
                 onCompositionStart={ime.onCompositionStart} onCompositionEnd={ime.onCompositionEnd}
                 onKeyDown={(e) => { if (ime.isGuarded(e)) return; if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void send(); } }} />
+            {suggestions.length > 0 && (
+                <div className="is-mention-suggest" role="group" aria-label={copy.mention} data-testid="issue-mention-suggest">
+                    {suggestions.map((m) => <button key={m.agent} type="button" className="is-soft" onMouseDown={(e) => e.preventDefault()} onClick={() => pickSuggestion(m)}>@{m.agent}{m.machineId ? ` · ${machineName(m.machineId)}` : ''}</button>)}
+                </div>
+            )}
             <div className="is-composer-bar">
                 <ActionDropdownMenu align="start" items={mentionItems}>
                     <button type="button" className="is-soft" data-testid="issue-mention"><AtSign size={14} aria-hidden />{copy.mention}</button>
