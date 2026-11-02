@@ -4,11 +4,14 @@ import { ApiUpdateContainerSchema } from './apiTypes';
 vi.mock('@/auth/AuthContext', () => ({ getCurrentAuth: () => ({ credentials: { token: 't' } }) }));
 vi.mock('./serverConfig', () => ({ getServerUrl: () => 'https://test.invalid' }));
 vi.mock('./apiSocket', () => ({ getHappyClientId: () => 'test' }));
+const attention = vi.hoisted(() => ({ respond: vi.fn() }));
+vi.mock('./apiAttention', () => ({ respondToAttentionItem: attention.respond, listAttentionItems: vi.fn(), isAttentionDisabled: () => false }));
 
 import { setIssuesTransport, IssuesApiError, isIssuesUnavailable } from './apiIssues';
 import { createFakeIssuesServer } from './issuesFake';
+import { useAttentionStore } from './attentionStore';
 import {
-    _forTests, acceptIssue, applyIssueRunUpdate, applyIssueUpdate, createIssue, loadIssueDetail, loadIssues, mergeIssue, mergeRun, probeIssues,
+    _forTests, settleIssueReview, acceptIssue, applyIssueRunUpdate, applyIssueUpdate, createIssue, loadIssueDetail, loadIssues, mergeIssue, mergeRun, probeIssues,
     returnIssue, startIssueRun, updateIssue, useIssuesStore,
 } from './issuesStore';
 
@@ -138,5 +141,32 @@ describe('B-873 socket updates reach the store (sync.ts → issuesStore)', () =>
             { t: 'issue-comment', comment: { id: 'c', issueId: 'i', body: 'x' } },
             { t: 'issue-run', run: { id: 'r', issueId: 'i', status: 'running' } },
         ]) expect(ApiUpdateContainerSchema.safeParse({ id: 'u', seq: 1, body, createdAt: 1 }).success).toBe(true);
+    });
+});
+
+describe('B-872/B-873 完成 / 退回 go through the review item when the 汇报板 has it', () => {
+    it('owner-respond choose done|return with the note; no direct PATCH', async () => {
+        const server = useFake();
+        await probeIssues();
+        const a = await createIssue({ title: 'agent', assignee: codex });
+        const item = { id: 'att1', sessionId: 's', key: `issue-review:${a.id}`, state: 'open', version: 1, links: [{ type: 'issue', ref: a.id, label: a.key }] };
+        useAttentionStore.setState({ bySession: { s: [item as never] } });
+        attention.respond.mockResolvedValue({ item: { ...item, state: 'resolved', version: 2 } });
+        const patch = vi.spyOn(server, 'transport');
+        setIssuesTransport(patch as never);
+        await settleIssueReview(a.id, 'return', ' needs a test ');
+        expect(attention.respond).toHaveBeenCalledWith('att1', { action: 'choose', choice: 'return', note: 'needs a test' });
+        expect(patch.mock.calls.some(([m]) => m === 'PATCH')).toBe(false);
+        expect(useAttentionStore.getState().bySession.s[0].state).toBe('resolved');
+        useAttentionStore.setState({ bySession: {} });
+    });
+    it('without the item (board off): the same outcome written on the issue', async () => {
+        const server = useFake();
+        await probeIssues();
+        attention.respond.mockReset();
+        const a = await createIssue({ title: 'x', status: 'in_review' });
+        await acceptIssue(a.id);
+        expect(attention.respond).not.toHaveBeenCalled();
+        expect(server.issues()[0].status).toBe('done');
     });
 });

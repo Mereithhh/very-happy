@@ -28,7 +28,13 @@ import type {
     IssueView,
 } from '@slopus/happy-wire';
 import { getCurrentAuth } from '@/auth/AuthContext';
+import { isAttentionActive, type AttentionItem } from '@slopus/happy-wire';
 import { issuesApi, isIssuesUnavailable, usingFakeIssuesTransport } from './apiIssues';
+import { respondToAttentionItem } from './apiAttention';
+import { applyAttentionItem, useAttentionStore } from './attentionStore';
+
+/** Key prefix of the bridge's 待验收 item (server `ISSUE_REVIEW_KEY_PREFIX`, spec §7). */
+export const ISSUE_REVIEW_KEY_PREFIX = 'issue-review:';
 import { getServerUrl } from './serverConfig';
 
 export type IssuesAvailability = 'unknown' | 'enabled' | 'disabled';
@@ -275,14 +281,37 @@ export async function ackIssueRunFailure(runId: string): Promise<void> {
     applyIssueRunUpdate(run);
 }
 
-/** In-review decision (spec §7): 完成 → done; 退回 → todo, the note becomes a human comment (routed back to the agent). */
-export async function acceptIssue(id: string): Promise<void> {
-    await updateIssue(id, { status: 'done' });
+/** The bridge's open 待验收 item for an issue (`issue-review:<issueId>`, spec §7), if the 汇报板 has it loaded. */
+export function issueReviewItem(issueId: string): AttentionItem | null {
+    const key = `${ISSUE_REVIEW_KEY_PREFIX}${issueId}`;
+    for (const list of Object.values(useAttentionStore.getState().bySession)) {
+        const item = list.find((i) => i.key === key && isAttentionActive(i.state));
+        if (item) return item;
+    }
+    return null;
 }
-export async function returnIssue(id: string, note: string): Promise<void> {
-    await updateIssue(id, { status: 'todo' });
-    if (note.trim()) await commentOnIssue(id, { body: note.trim() });
+
+/**
+ * In-review decision (spec §7): 「完成」 / 「退回」 go through the review
+ * item's owner-respond (`choose done|return` + note) — the server settles the
+ * issue (done; or todo with the note as my comment, routed back to the agent)
+ * and closes the item as my choice. Without that item (board off / not loaded)
+ * the same outcome is written on the issue directly.
+ */
+export async function settleIssueReview(issueId: string, choice: 'done' | 'return', note = ''): Promise<void> {
+    const item = issueReviewItem(issueId);
+    if (item) {
+        const { item: next } = await respondToAttentionItem(item.id, { action: 'choose', choice, ...(note.trim() ? { note: note.trim() } : {}) });
+        applyAttentionItem(next);
+        await loadIssueDetail(issueId);
+        return;
+    }
+    if (choice === 'done') { await updateIssue(issueId, { status: 'done' }); return; }
+    await updateIssue(issueId, { status: 'todo' });
+    if (note.trim()) await commentOnIssue(issueId, { body: note.trim() });
 }
+export const acceptIssue = (id: string) => settleIssueReview(id, 'done');
+export const returnIssue = (id: string, note: string) => settleIssueReview(id, 'return', note);
 
 export async function loadIssueWorkers(): Promise<void> {
     try {
