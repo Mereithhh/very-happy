@@ -286,3 +286,28 @@ CREATE TABLE "SessionOperatorEvent" (...);      -- §6.1，INDEX(sessionId, at)�
 6. **撤销 kill operator 新开的终端**；接入的会话自有终端只断开不 kill。
 7. **审计不存终端按键内容**（只存聚合与元数据）；transcript 不插系统行，改用头部芯片 + 操作记录 + 终端标签。
 8. operator 的文件面板只到会话 cwd（session RPC），不开放机器级 `fs-*`。
+
+## 12. 实现契约（Lead 11-03 批准后补，Web/server 共用）
+
+Lead 审批补充：明文（params、终端字节、文件内容）不进日志 / metrics / 错误上报，错误只回固定错误码；broker 只在 grant 有效且调用来自 operator 时才解机器 key（测试 + 源码断言）；确认弹窗中英文写全三件事（能读本机所有文件含 Very Happy 账号凭据 / 能以你的身份执行任意命令 / 撤销后对方已启动的后台进程不会自动停）；owner 头部「X 正在操作」芯片醒目，带一键「结束对方的操作」（= `PATCH operate:false`：撤销这一档、断开、kill 对方新开的终端）。
+
+### 12.1 REST
+
+- grant 视图（`SessionGrantView`）、invite（`SharedSessionInvite`）、`/v1/sessions` 行的 `share`、outgoing grant：新增 `operate: boolean`（role 仍是 `viewer|driver`）。
+- `POST /v1/sessions/:id/shares`、`PATCH /v1/sessions/:id/shares/:accountId`：body 新增 `operate?: boolean`、`confirmOperator?: true`。错误码：`operator_requires_confirm`、`operator_requires_driver`、`operator_requires_expiry`（400）。
+- `GET /v1/sessions/:id/shares/:accountId/operator-events?limit=100` → `{ events: [{ id, kind, actorAccountId, detail, at }] }`（owner）。
+- `GET /v1/sessions/:id/operator-activity` → `{ operators: [{ granteeAccountId, displayName, openTerminals, lastActivityAt }] }`（owner；`lastActivityAt` 两分钟内或 `openTerminals>0` 视为「正在操作」）。
+
+### 12.2 socket（grantee 的 user-scoped 连接，中央 server）
+
+- `emitWithAck('operator-rpc', { sessionId, op, params })` → `{ ok: true, result } | { ok: false, error: <code> }`。`params`/`result` 都是 **会话 DEK 加密的 base64**（与 `sessionRPC` 的 `encryptRaw/decryptRaw` 同格式）。
+  - `op` 为 session 方法名：`permission`、`abort`、`steer`、`set-permission-mode`、`session-run-intent`、`btw-ask`、`btw-poll`、`btw-cancel`、`readFile`、`writeFile`、`listDirectory`、`getDirectoryTree`、`ripgrep`、`difftastic`、`bash`、`uploadFile`、`uploadFileChunk`、`codex-child-read`；结果与 owner 调该 session RPC 时解密后的对象一致。
+  - 终端 `op`：
+    - `terminal.open` `{ cols, rows }` → `{ type:'success', terminalId, ...open-terminal 结果 }`（新开，cwd = 会话目录）。
+    - `terminal.attach` `{ terminalId, cols, rows, fromSeq?, resub? }` → 同上（只能接入自己开的或会话自有终端）。
+    - `terminal.history` `{ terminalId, page }`、`terminal.scroll` `{ terminalId, ... }`、`terminal.paste` `{ terminalId, text }`、`terminal.kill` `{ terminalId }`、`terminal.list` `{}` → `{ terminals: [{ terminalId, kind:'opened'|'attached', openedAt }] }`。
+    - 结果里的 `data`/`chunks[].data` 是 **明文 base64 终端字节**（整个 result 已经被 DEK 加密），等价于 owner 侧 `encStream` 解密后的值。
+  - 错误码：`not_operator`、`operator_method_denied`、`operator_mode_escalation`、`operator_path_denied`、`operator_terminal_denied`、`operator_terminal_limit`、`cli_upgrade_required`、`machine_unsupported`、`machine_offline`、`rpc_failed`、`rate_limited`、`bad_params`。
+- `emit('operator-terminal-input', { sessionId, terminalId, data })`（data = DEK 加密的 base64 字节串）、`emit('operator-terminal-resize', { sessionId, terminalId, cols, rows })`、`emit('operator-terminal-close', { sessionId, terminalId })`（只退订，不 kill）。
+- 下行（grantee）：`operator-terminal-output { sessionId, terminalId, seq, data }`（data 同 input 格式）、`operator-terminal-exit { sessionId, terminalId, exitCode }`、`operator-revoked { sessionId, reason: 'revoked'|'downgraded'|'expired'|'deleted'|'archived'|'ended_by_owner' }`。
+- 下行（owner）：`operator-activity { sessionId, granteeAccountId, displayName, openTerminals, lastActivityAt }`（独立事件名，旧 Web 的 onAny 自然忽略）。
