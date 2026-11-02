@@ -415,7 +415,9 @@ structured parity with Claude.
 - Fork a Claude or Codex session: **Fork session** in the header ⋯ continues
   the whole conversation in a new session; **Fork from here** under one of your
   messages keeps everything before it and puts that message in the new message
-  box to edit and resend. The fork links back to the original.
+  box to edit and resend. Both work while the agent is still working: the turn
+  in progress stays out and its message is prefilled. The fork links back to
+  the original.
 - A machine file browser with previews for text, Markdown, images, PDFs, and Excel/CSV
   worksheets. Download original files (up to 50 MiB), copy text or paths, and pin
   clickable previews from agent output to the workspace. Workbook previews run

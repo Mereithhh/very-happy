@@ -50,7 +50,8 @@ import { fetchLatestModelTable } from '@/api/latestModels'
 import { configuration } from '@/configuration'
 import type { Metadata } from '@/api/types'
 import { forkProviderConversation, resolveForkSource, type ForkSource } from './spawnFork'
-import { readSessionMetadata } from '@/sessions/sessionOps'
+import { readSessionLog, readSessionMetadata, TURN_WINDOW } from '@/sessions/sessionOps'
+import { analyzeLatestTurn } from '@/sessions/turnState'
 import { sendUserMessage, sessionWebUrl, waitForSessionKey } from './sessionMessage'
 import { isValidSpawnOrigin } from '@/utils/createSessionMetadata'
 import { ALLOWED_SPAWN_PERMISSION_MODES, sanitizeSpawnPermissionMode } from '@/daemon/spawnPermissionMode'
@@ -239,6 +240,9 @@ ${chalk.bold('Options:')}
                             web's fork): copies its conversation and continues
                             it in a new session, in the same directory and with
                             the same agent (so --dir / --agent are not needed).
+                            A source mid-turn forks its completed turns only;
+                            the prompt left out is printed (--json:
+                            excludedPrompts). The source is not interrupted.
   --env KEY=VALUE        Extra environment for the session process. Repeatable.
                             \${VAR} is expanded against the daemon's environment;
                             an unresolved reference fails the spawn.
@@ -284,6 +288,22 @@ const defaultFirstMessageDeps: FirstMessageDeps = {
     readSessionMetadata,
     sendUserMessage,
     warn: (message) => console.error(chalk.yellow('Warning:'), message),
+}
+
+/**
+ * B-860: whether the fork source is in the middle of a turn, from its server
+ * log (the same turn state `sessions read --wait` uses). Unreadable → idle:
+ * the pre-B-860 whole copy.
+ */
+async function sourceTurnRunning(sessionId: string): Promise<boolean> {
+    const persisted = readPersistedSessions()[sessionId]
+    if (!persisted) return false
+    try {
+        return !analyzeLatestTurn(await readSessionLog(sessionId, persisted, TURN_WINDOW)).ended
+    } catch (error) {
+        console.error(chalk.dim(`(could not read whether ${sessionId} is mid-turn — forking everything: ${error instanceof Error ? error.message : String(error)})`))
+        return false
+    }
 }
 
 /**
@@ -448,9 +468,14 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
     // conversation locally. Only after the daemon check, so a stopped daemon
     // does not leave an orphan copy behind.
     let resumeIds: { resumeClaudeSessionId?: string; resumeCodexThreadId?: string } = {}
+    let excludedPrompts: string[] = []
     if (forkSource) {
         try {
-            resumeIds = await forkProviderConversation(forkSource)
+            // B-860: a source mid-turn forks its completed turns only.
+            const running = await sourceTurnRunning(forkSource.parentSessionId)
+            const { excludedPrompts: excluded = [], ...ids } = await forkProviderConversation(forkSource, { running })
+            resumeIds = ids
+            excludedPrompts = excluded
         } catch (error) {
             console.error(chalk.red('Error:'), `Failed to fork session ${forkSource.parentSessionId}: ${error instanceof Error ? error.message : String(error)}`)
             process.exit(1)
@@ -549,6 +574,9 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         if (forkSource) {
             payload.forkedFrom = forkSource.parentSessionId
         }
+        if (excludedPrompts.length > 0) {
+            payload.excludedPrompts = excludedPrompts
+        }
         if (projectOutcome.joined) {
             payload.project = { id: projectOutcome.projectId, via: projectOutcome.via }
         }
@@ -567,6 +595,10 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         console.log(`${chalk.bold('URL:')}     ${url}`)
         if (prompt !== undefined && promptError === null) {
             console.log(chalk.green('First message sent.'))
+        }
+        if (excludedPrompts.length > 0) {
+            console.log(chalk.yellow('The source was mid-turn: the fork holds its completed turns only. Left out (send it again if you want it):'))
+            for (const text of excludedPrompts) console.log(text.split('\n').map((line) => `  > ${line}`).join('\n'))
         }
     }
 

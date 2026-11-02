@@ -5,14 +5,13 @@ import { getSessionForkSource, type ForkSource } from '@/utils/sessionFork';
 
 /** `pointId` is absent for prompts sent from the Web; forkFlow resolves it from the machine's transcript. */
 export type RewindTarget = { source: ForkSource; messageId?: string; pointId?: string };
-export type RewindUnavailable = 'unsupported' | 'attachments' | 'pending' | 'running';
-export function getRewindTarget(session: Session | null | undefined, message: UserTextMessage, hasAttachments: boolean, running: boolean): RewindTarget | RewindUnavailable {
+export type RewindUnavailable = 'unsupported' | 'attachments' | 'pending';
+export function getRewindTarget(session: Session | null | undefined, message: UserTextMessage, hasAttachments: boolean): RewindTarget | RewindUnavailable {
     if (!session || !['claude', 'codex'].includes(session.metadata?.flavor ?? 'claude')) return 'unsupported';
     const source = getSessionForkSource(session);
     if (!source) return 'unsupported';
     if (hasAttachments) return 'attachments';
     if (message.inputState || message.cancelReason || message.seq == null) return 'pending';
-    if (running) return 'running';
     const pointId = source.kind === 'codex' ? message.codexItemId : message.claudeUuid;
     return { source, messageId: message.id, ...(pointId ? { pointId } : {}) };
 }

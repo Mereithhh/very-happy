@@ -34,11 +34,10 @@ describe('edit and rerun', () => {
     });
     it('does not guess missing identifiers from text or accept stale Claude IDs on pi', () => {
         // B-851: a Web-sent prompt has no claude uuid — the target carries none and forkFlow asks the machine.
-        expect(getRewindTarget(session, { ...message, claudeUuid: undefined }, false, false)).toEqual({ source: target.source, messageId: 'message' });
-        expect(getRewindTarget({ ...session, metadata: { ...session.metadata!, flavor: 'pi' } }, message, false, false)).toBe('unsupported');
-        expect(getRewindTarget(session, message, true, false)).toBe('attachments');
-        expect(getRewindTarget(session, message, false, true)).toBe('running');
-        expect(getRewindTarget(session, { ...message, inputState: 'queued' }, false, false)).toBe('pending');
+        expect(getRewindTarget(session, { ...message, claudeUuid: undefined }, false)).toEqual({ source: target.source, messageId: 'message' });
+        expect(getRewindTarget({ ...session, metadata: { ...session.metadata!, flavor: 'pi' } }, message, false)).toBe('unsupported');
+        expect(getRewindTarget(session, message, true)).toBe('attachments');
+        expect(getRewindTarget(session, { ...message, inputState: 'queued' }, false)).toBe('pending');
     });
     it('preserves Codex read-only and safe-yolo without Claude normalization', () => {
         expect(rewindPermissionMode('codex', 'read-only')).toBe('read-only');

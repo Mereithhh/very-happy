@@ -19,9 +19,9 @@
 
 import type { PersistedSession } from '@/persistence'
 import { getProjectPath } from '@/claude/utils/path'
-import { ForkSourceMissingError, forkSession as claudeForkSession } from '@/claude/utils/claudeSessionFork'
+import { ForkSourceMissingError, forkCompletedTurns as claudeForkCompletedTurns, forkSession as claudeForkSession } from '@/claude/utils/claudeSessionFork'
 import { CodexAppServerClient } from '@/codex/codexAppServerClient'
-import { forkCodexThread } from '@/codex/codexThreadFork'
+import { forkCodexCompletedTurns, forkCodexThread } from '@/codex/codexThreadFork'
 
 export type ForkSource =
     | { agent: 'claude'; directory: string; claudeSessionId: string; permissionMode?: string; parentSessionId: string }
@@ -52,11 +52,26 @@ export function resolveForkSource(sessionId: string, persisted: PersistedSession
     return { agent: 'claude', directory, claudeSessionId: metadata.claudeSessionId, permissionMode, parentSessionId: sessionId }
 }
 
-/** Step 1: copy the provider conversation. Returns the resume id for the spawn. */
-export async function forkProviderConversation(source: ForkSource): Promise<{ resumeClaudeSessionId?: string; resumeCodexThreadId?: string }> {
+export type ForkedConversation = {
+    resumeClaudeSessionId?: string
+    resumeCodexThreadId?: string
+    /** B-860: prompts of the source's turn in progress, left out of the copy. */
+    excludedPrompts?: string[]
+}
+
+/**
+ * Step 1: copy the provider conversation. Returns the resume id for the spawn.
+ * B-860: while the source runs a turn (`running`), only its completed turns are
+ * copied — the same daemon helpers the web's `*-fork-completed-turns` RPCs use.
+ */
+export async function forkProviderConversation(source: ForkSource, opts: { running?: boolean } = {}): Promise<ForkedConversation> {
     if (source.agent === 'claude') {
         try {
-            return { resumeClaudeSessionId: await claudeForkSession(getProjectPath(source.directory), source.claudeSessionId) }
+            const projectDir = getProjectPath(source.directory)
+            if (!opts.running) return { resumeClaudeSessionId: await claudeForkSession(projectDir, source.claudeSessionId) }
+            const result = await claudeForkCompletedTurns(projectDir, source.claudeSessionId)
+            if ('startFresh' in result) throw new Error(NO_COMPLETED_TURN)
+            return { resumeClaudeSessionId: result.newClaudeSessionId, excludedPrompts: result.excludedPrompts }
         } catch (error) {
             if (error instanceof ForkSourceMissingError) throw new Error('Claude session file not found on this machine')
             throw error
@@ -65,9 +80,16 @@ export async function forkProviderConversation(source: ForkSource): Promise<{ re
     const client = new CodexAppServerClient()
     await client.connect()
     try {
-        const result = await forkCodexThread(client, { threadId: source.codexThreadId, cwd: source.directory })
-        return { resumeCodexThreadId: result.newCodexThreadId }
+        if (!opts.running) {
+            const result = await forkCodexThread(client, { threadId: source.codexThreadId, cwd: source.directory })
+            return { resumeCodexThreadId: result.newCodexThreadId }
+        }
+        const result = await forkCodexCompletedTurns(client, { threadId: source.codexThreadId, cwd: source.directory })
+        if ('startFresh' in result) throw new Error(NO_COMPLETED_TURN)
+        return { resumeCodexThreadId: result.newCodexThreadId, excludedPrompts: result.excludedPrompts }
     } finally {
         await client.disconnect()
     }
 }
+
+const NO_COMPLETED_TURN = 'the session is running its first turn — nothing has completed yet to fork; retry once it ends.'

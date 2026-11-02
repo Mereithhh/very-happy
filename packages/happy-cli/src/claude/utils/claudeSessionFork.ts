@@ -14,7 +14,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { copyFile, rename, readFile, unlink, writeFile } from "node:fs/promises";
+import { rename, readFile, unlink, writeFile } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -83,12 +83,6 @@ function userPromptText(parsed: any): string | null {
  * leave an orphan copy that the import picker lists as a second original,
  * once per retry). Best effort: a missing file is the desired end state.
  */
-/**
- * Copy the source JSONL to a new file under the same project dir.
- * Returns the new Claude session UUID. The file copy is atomic at the FS
- * level (single copyFile call), so concurrent writes by Claude to the
- * source do not corrupt the destination.
- */
 export async function discardForkedSession(projectDir: string, claudeSessionId: string): Promise<void> {
     try {
         await unlink(jsonlPath(projectDir, claudeSessionId));
@@ -100,22 +94,139 @@ export async function discardForkedSession(projectDir: string, claudeSessionId: 
     }
 }
 
+/**
+ * Copy the source JSONL to a new file under the same project dir.
+ * Returns the new Claude session UUID.
+ */
 export async function forkSession(projectDir: string, sourceClaudeSessionId: string): Promise<string> {
-    const newId = randomUUID();
     const src = jsonlPath(projectDir, sourceClaudeSessionId);
-    const dst = jsonlPath(projectDir, newId);
-
-    try {
-        await copyFile(src, dst);
-    } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-            throw new ForkSourceMissingError(src);
-        }
-        throw error;
-    }
-
+    // B-860: Claude may be appending to the source right now — copy only the
+    // lines it has finished writing, never a torn last line.
+    const lines = completeLines(await readSource(src));
+    const newId = await writeFork(projectDir, lines);
     logger.debug(`[CLAUDE FORK] Forked ${sourceClaudeSessionId} -> ${newId}`);
     return newId;
+}
+
+async function readSource(src: string): Promise<string> {
+    try {
+        return await readFile(src, 'utf-8');
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new ForkSourceMissingError(src);
+        throw error;
+    }
+}
+
+/** Write `lines` as a new session file under a fresh UUID; atomic, so a half copy is never resumable. */
+async function writeFork(projectDir: string, lines: readonly string[]): Promise<string> {
+    const newId = randomUUID();
+    const destination = jsonlPath(projectDir, newId);
+    const temporary = `${destination}.tmp-${process.pid}`;
+    try {
+        await writeFile(temporary, lines.length > 0 ? lines.join('\n') + '\n' : '', { encoding: 'utf-8', flag: 'wx' });
+        await rename(temporary, destination);
+    } catch (error) {
+        await unlink(temporary).catch(() => undefined);
+        throw error;
+    }
+    return newId;
+}
+
+/**
+ * B-860: the lines of a JSONL another process may still be appending to.
+ * The last segment has no newline yet; it is kept only when it already
+ * parses (the writer just has not added the newline) — a torn write is not.
+ */
+export function completeLines(raw: string): string[] {
+    const lines = raw.split('\n');
+    const tail = lines.pop() ?? '';
+    if (tail.trim()) {
+        try { JSON.parse(tail); lines.push(tail); } catch { /* still being written */ }
+    }
+    return lines.filter((line) => line.length > 0);
+}
+
+const INTERRUPTED_PROMPT = /^\[Request interrupted by user(?: for tool use)?\]$/i;
+const LOCAL_COMMAND_OUTPUT = /^<local-command-(?:stdout|stderr)>/;
+// Assistant stops that do not end the turn: Claude continues with the tool result / server tool.
+const CONTINUING_STOPS = new Set(['tool_use', 'pause_turn']);
+
+/** True when `entry` closes a turn: the agent's final answer, an interrupt, a local command's output, a compaction. */
+function endsTurn(entry: any): boolean {
+    if (!entry || entry.isSidechain) return false;
+    if (entry.type === 'assistant') {
+        const stop = entry.message?.stop_reason;
+        return typeof stop === 'string' && !CONTINUING_STOPS.has(stop);
+    }
+    if (entry.type === 'system' && entry.subtype === 'compact_boundary') return true;
+    if (entry.type === 'user' && entry.isCompactSummary) return true;
+    const text = userPromptText(entry)?.trim();
+    return text !== undefined && (INTERRUPTED_PROMPT.test(text) || LOCAL_COMMAND_OUTPUT.test(text));
+}
+
+/**
+ * B-860: the turn still being written at the end of a transcript — every
+ * prompt after the last entry that closed a turn (a steered or mid-turn
+ * delivered prompt belongs to the same turn). `null` when the transcript ends
+ * on a closed turn. Only meaningful while the session is known to be running:
+ * an idle transcript can end without a closing entry (a turn that died).
+ */
+export function findUnfinishedTurn(lines: readonly string[]): { start: number; prompts: string[] } | null {
+    let start = -1;
+    const prompts: string[] = [];
+    for (let i = lines.length - 1; i >= 0; i--) {
+        let entry: any;
+        try { entry = JSON.parse(lines[i]); } catch { continue; }
+        if (endsTurn(entry)) break;
+        const text = userPromptText(entry);
+        if (text === null || typeof entry.uuid !== 'string') continue;
+        start = i;
+        prompts.unshift(text);
+    }
+    return start < 0 ? null : { start, prompts };
+}
+
+/** Whether `lines` hold a conversation worth resuming, i.e. at least one prompt (B-851 rules). */
+function conversationOf(lines: readonly string[]): { conversation: boolean; prompt: boolean } {
+    let conversation = false;
+    let prompt = false;
+    for (const line of lines) {
+        let entry: any;
+        try { entry = JSON.parse(line); } catch { continue; }
+        // Even a prior image-only prompt is history: never silently discard it.
+        if (entry?.isSidechain || entry?.isMeta || entry?.isSynthetic || (entry?.type !== 'user' && entry?.type !== 'assistant')) continue;
+        conversation = true;
+        const content = entry.message?.content;
+        if (entry.type === 'user' && (typeof content === 'string'
+            || (Array.isArray(content) && content.length > 0 && !content.some((block: any) => block?.type === 'tool_result')))) {
+            prompt = true;
+        }
+    }
+    return { conversation, prompt };
+}
+
+export type CompletedTurnsFork =
+    | { newClaudeSessionId: string; excludedPrompts: string[] }
+    | { startFresh: true; excludedPrompts: string[] };
+
+/**
+ * B-860: fork a RUNNING session — every completed turn, none of the one in
+ * progress (its prompts come back as `excludedPrompts` so the caller can
+ * offer them again). `startFresh` = the running turn is the first one, so
+ * there is nothing completed to keep. The source is only read.
+ */
+export async function forkCompletedTurns(projectDir: string, sourceClaudeSessionId: string): Promise<CompletedTurnsFork> {
+    const src = jsonlPath(projectDir, sourceClaudeSessionId);
+    const lines = completeLines(await readSource(src));
+    const unfinished = findUnfinishedTurn(lines);
+    const kept = unfinished ? lines.slice(0, unfinished.start) : lines;
+    const excludedPrompts = unfinished?.prompts ?? [];
+    const history = conversationOf(kept);
+    if (!history.conversation) return { startFresh: true, excludedPrompts };
+    if (!history.prompt) throw new Error('Cannot safely fork: earlier history has no user prompt');
+    const newClaudeSessionId = await writeFork(projectDir, kept);
+    logger.debug(`[CLAUDE FORK] Forked completed turns of ${sourceClaudeSessionId} -> ${newClaudeSessionId} (${excludedPrompts.length} prompt(s) left out)`);
+    return { newClaudeSessionId, excludedPrompts };
 }
 
 /**
@@ -258,14 +369,8 @@ export async function forkBeforeUserMessage(
     projectDir: string, sourceClaudeSessionId: string, cutBeforeUuid: string,
 ): Promise<string | null> {
     const src = jsonlPath(projectDir, sourceClaudeSessionId);
-    let raw: string;
-    try { raw = await readFile(src, 'utf-8'); } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new ForkSourceMissingError(src);
-        throw error;
-    }
-    const lines = raw.split('\n');
-    let hasPreviousConversation = false;
-    let hasPreviousPrompt = false;
+    // B-860: the source may be mid-turn; a torn last line is not history yet.
+    const lines = completeLines(await readSource(src));
     let cut = -1;
     for (let i = 0; i < lines.length; i++) {
         let entry: any;
@@ -275,29 +380,11 @@ export async function forkBeforeUserMessage(
             cut = i;
             break;
         }
-        // Even a prior image-only prompt is history: never silently discard it.
-        if (!entry?.isSidechain && !entry?.isMeta && !entry?.isSynthetic
-            && (entry?.type === 'user' || entry?.type === 'assistant')) {
-            hasPreviousConversation = true;
-            const content = entry.message?.content;
-            if (entry.type === 'user' && (typeof content === 'string'
-                || (Array.isArray(content) && content.length > 0 && !content.some((block: any) => block?.type === 'tool_result')))) {
-                hasPreviousPrompt = true;
-            }
-        }
     }
     if (cut < 0) throw new ForkTruncateUuidNotFoundError(cutBeforeUuid, src);
-    if (!hasPreviousConversation) return null;
-    if (!hasPreviousPrompt) throw new Error('Cannot safely rewind: earlier history has no user prompt');
-    const newId = randomUUID();
-    const destination = jsonlPath(projectDir, newId);
-    const temporary = `${destination}.tmp-${process.pid}`;
-    try {
-        await writeFile(temporary, lines.slice(0, cut).join('\n') + '\n', { encoding: 'utf-8', flag: 'wx' });
-        await rename(temporary, destination);
-    } catch (error) {
-        await unlink(temporary).catch(() => undefined);
-        throw error;
-    }
-    return newId;
+    const kept = lines.slice(0, cut);
+    const history = conversationOf(kept);
+    if (!history.conversation) return null;
+    if (!history.prompt) throw new Error('Cannot safely rewind: earlier history has no user prompt');
+    return writeFork(projectDir, kept);
 }

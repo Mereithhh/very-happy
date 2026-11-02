@@ -4,6 +4,7 @@ import {
     CodexForkRewindPointNotFoundError,
     forkCodexThread,
     forkCodexBeforeUserMessage,
+    forkCodexCompletedTurns,
     listCodexRewindPoints,
 } from './codexThreadFork';
 
@@ -184,4 +185,66 @@ it('marks attached Codex points and rejects editing them before any fork', async
     await expect(forkCodexBeforeUserMessage(client, { threadId: 'source', cwd: '/project', cutBeforeItemId: 'user' }))
         .rejects.toThrow('with attachments');
     expect(client.forkThread).not.toHaveBeenCalled();
+});
+
+describe('B-860: forking a running Codex thread', () => {
+    // What a second app-server reads while the source's own app-server runs turn-3:
+    // the rollout has no completion yet, so the turn reads as `interrupted`.
+    const running = () => ({
+        id: 'thread-source',
+        turns: [
+            { ...structuredClone(threadWithTurns.turns[0]), status: 'completed' },
+            { ...structuredClone(threadWithTurns.turns[1]), status: 'completed' },
+            {
+                id: 'turn-3', status: 'interrupted', items: [
+                    { type: 'userMessage', id: 'user-3', content: [{ type: 'text', text: 'run the long task' }] },
+                    { type: 'agentMessage', id: 'agent-3', text: 'working…' },
+                    { type: 'userMessage', id: 'user-3b', content: [{ type: 'text', text: 'steered note' }] },
+                ],
+            },
+        ],
+    });
+    function clientFor(source: any, forkTurns: number) {
+        return {
+            readThread: vi.fn(async ({ threadId }) => ({ thread: threadId === 'fork' ? { id: 'fork', turns: structuredClone(source.turns.slice(0, forkTurns)) } : source })),
+            forkThread: vi.fn().mockResolvedValue({ threadId: 'fork', thread: { id: 'fork', turns: [] } }),
+            rollbackThread: vi.fn(),
+            injectItems: vi.fn(),
+        };
+    }
+
+    it('forks through the last completed turn and hands back the running turn\'s prompts', async () => {
+        const source = running();
+        const client = clientFor(source, 2);
+        expect(await forkCodexCompletedTurns(client, { threadId: source.id, cwd: '/project' }))
+            .toEqual({ type: 'success', newCodexThreadId: 'fork', excludedPrompts: ['run the long task', 'steered note'] });
+        // Never `lastTurnId` of the running turn: a running Codex refuses that fork.
+        expect(client.forkThread).toHaveBeenCalledWith({ threadId: source.id, cwd: '/project', lastTurnId: 'turn-2' });
+        expect(client.rollbackThread).not.toHaveBeenCalled();
+    });
+
+    it('the running turn not in the rollout yet: a plain whole fork', async () => {
+        const source = running();
+        source.turns = source.turns.slice(0, 2);
+        const client = clientFor(source, 2);
+        expect(await forkCodexCompletedTurns(client, { threadId: source.id, cwd: '/project' }))
+            .toEqual({ type: 'success', newCodexThreadId: 'fork', excludedPrompts: [] });
+        expect(client.forkThread).toHaveBeenCalledWith({ threadId: source.id, cwd: '/project' });
+    });
+
+    it('first turn running: startFresh without creating a fork', async () => {
+        const source = running();
+        source.turns = source.turns.slice(2);
+        const client = clientFor(source, 0);
+        expect(await forkCodexCompletedTurns(client, { threadId: source.id, cwd: '/project' }))
+            .toEqual({ type: 'success', startFresh: true, excludedPrompts: ['run the long task', 'steered note'] });
+        expect(client.forkThread).not.toHaveBeenCalled();
+    });
+
+    it('a fork that kept the running turn anyway is refused, not handed out', async () => {
+        const source = running();
+        const client = clientFor(source, 3);
+        client.rollbackThread.mockResolvedValue({ thread: { turns: source.turns.slice(0, 1) } });
+        await expect(forkCodexCompletedTurns(client, { threadId: source.id, cwd: '/project' })).rejects.toThrow('did not preserve');
+    });
 });
