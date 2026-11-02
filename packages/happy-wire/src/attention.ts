@@ -34,8 +34,8 @@ export const ATTENTION_LIMITS = {
     openPerSessionSoftCap: 5,
 } as const;
 
-/** Who created the item. `agent` = `request_human`; `team` = a root-task `team_submit`. */
-export const ATTENTION_SOURCES = ['lead', 'agent', 'owner', 'automation', 'team'] as const;
+/** Who created the item. `agent` = `request_human`; `team` = a root-task `team_submit`; `issue` = B-871 issue events (server-written only, spec 2026-11-issues §7). */
+export const ATTENTION_SOURCES = ['lead', 'agent', 'owner', 'automation', 'team', 'issue'] as const;
 export type AttentionSource = typeof ATTENTION_SOURCES[number];
 export const ATTENTION_KINDS = ['decision', 'todo', 'blocked', 'report', 'answer', 'question', 'request', 'pin'] as const;
 export type AttentionKind = typeof ATTENTION_KINDS[number];
@@ -43,7 +43,7 @@ export type AttentionKind = typeof ATTENTION_KINDS[number];
 export const ATTENTION_STATES = ['open', 'in_progress', 'answered', 'resolved', 'dismissed'] as const;
 export type AttentionState = typeof ATTENTION_STATES[number];
 export const ATTENTION_ACTIVE_STATES: readonly AttentionState[] = ['open', 'in_progress'];
-export const ATTENTION_RESOLVED_BY = ['owner', 'owner-replied', 'lead', 'auto-first-reply', 'run-done', 'session-archived'] as const;
+export const ATTENTION_RESOLVED_BY = ['owner', 'owner-replied', 'lead', 'auto-first-reply', 'run-done', 'session-archived', 'issue-status'] as const;
 export type AttentionResolvedBy = typeof ATTENTION_RESOLVED_BY[number];
 
 /** Kinds the lead may post with `owner_board_post`; the other kinds come from their own paths. */
@@ -115,7 +115,7 @@ export type AttentionOption = z.infer<typeof AttentionOptionSchema>;
 const options = z.array(AttentionOptionSchema).min(ATTENTION_LIMITS.options.min).max(ATTENTION_LIMITS.options.max)
     .refine(o => new Set(o.map(x => x.id)).size === o.length, 'option ids must be unique');
 
-export const ATTENTION_LINK_TYPES = ['task', 'pr', 'commit', 'url', 'panel'] as const;
+export const ATTENTION_LINK_TYPES = ['task', 'pr', 'commit', 'url', 'panel', 'issue'] as const;
 export const AttentionLinkSchema = z.object({
     type: z.enum(ATTENTION_LINK_TYPES),
     ref: z.string().trim().min(1).max(ATTENTION_LIMITS.linkRefChars),

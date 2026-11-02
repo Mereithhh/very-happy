@@ -28,5 +28,6 @@ export * from './promptQueue';
 
 export * from './migrationProtocol';
 export * from './attention';
+export * from './issues';
 
 export * from './syncProtocol';
