@@ -455,6 +455,15 @@ CLI capability with a session started after the upgrade, or explicitly stop and
 resume the target session when interrupting it is acceptable; daemon version
 alone is not evidence that an existing session hot-loaded the new capability.
 
+Since B-864 the server keeps one agent connection per session: when a newer
+wrapper process connects, an older one gets `session-superseded`, stops its
+agent and exits without touching the session (an old CLI is disconnected and
+its reconnects are refused). Server log `event=session-agent-superseded`
+(`status=evicted|rejected`, `stale`/`winner` start time + CLI version), metric
+`session_agent_superseded_total`; wrapper log `[API] [SUPERSEDED]`. A daemon
+that is merely slow to answer `/list` is no longer treated as stale, so
+`daemon start` cannot start a second daemon beside it.
+
 Since B-852 the daemon then restarts those old wrappers by itself, in place
 (the same `restart-session` path, history kept), once each one's own idle
 check-in proves it safe: no turn, no pending approval or question, empty queue,
