@@ -71,6 +71,8 @@ describe('B-859d signup → login() crypto ready timeout', () => {
     const notice = host.querySelector('.auth-crypto-not-ready');
     expect(notice?.getAttribute('role')).toBe('alert');
     expect(notice?.textContent).toContain('The encryption module has not finished loading');
+    // B-859e: the notice sits at the top of the card; it must take focus so it is not missed.
+    expect(document.activeElement).toBe(notice);
     expect(host.querySelector('.auth-password-form .auth-error')).toBeNull();
     expect(navigate).not.toHaveBeenCalled();
 
