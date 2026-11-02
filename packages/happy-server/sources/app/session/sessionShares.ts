@@ -32,7 +32,7 @@ import { businessAuditEnabled, publishAudit } from '@/app/audit/producer';
 import { buildUserProfile, type UserProfile } from '@/app/social/type';
 import { displayNameOf, identityOf, profileInclude, resolveAccountByHandle, type ProfileAccount } from '@/app/social/accountDirectory';
 import { RelationshipStatus } from '@prisma/client';
-import { operatorGrantsChanged, teardownOperatorGrant, type OperatorEndReason } from './operatorBroker';
+import { beginOperatorTeardown, operatorGrantsChanged, type OperatorEndReason } from './operatorBroker';
 import { normalizeModeCap } from './operatorPolicy';
 import {
     contentKeyPairFromSecret,
@@ -325,7 +325,7 @@ export async function listSessionGrants(ownerId: string, sessionId: string): Pro
     return Promise.all(grants.map(grantView));
 }
 
-export async function updateSessionGrantRole(ownerId: string, sessionId: string, granteeAccountId: string, role: SessionGrantRole | undefined, expiresInDays?: GrantExpiryDays, operator?: { operate?: boolean; confirmOperator?: boolean }): Promise<SessionGrantView> {
+export async function updateSessionGrantRole(ownerId: string, sessionId: string, granteeAccountId: string, role: SessionGrantRole | undefined, expiresInDays?: GrantExpiryDays, operator?: { operate?: boolean; confirmOperator?: boolean; endOperation?: boolean }): Promise<SessionGrantView> {
     await requireSessionAccess(ownerId, sessionId, 'owner');
     const grant = await db.sessionGrant.findUnique({ where: { sessionId_granteeAccountId: { sessionId, granteeAccountId } }, include: { grantee: { include: profileInclude } } });
     if (!grant || grant.status === 'revoked') throw new SessionShareError('grant_not_found', 404);
@@ -348,7 +348,8 @@ export async function updateSessionGrantRole(ownerId: string, sessionId: string,
     invalidateGrantees(sessionId);
     audit('session.share.role', ownerId, sessionId, { grantId: grant.id, granteeAccountId, role: updated.role, operate: updated.operate, expiresAt: updated.expiresAt?.toISOString() ?? null });
     await emitToAccount(granteeAccountId, { t: 'session-share-updated', sessionId, grantId: grant.id, role: updated.role, operate: updated.operate, status: updated.status });
-    if (grant.operate && !updated.operate) await endOperator(grant.id, 'downgraded', { sessionId, granteeId: granteeAccountId, ownerId });
+    // "End their operation" (presence chip) vs. lowering the tier in the share dialog: same effect, different record.
+    if (grant.operate && !updated.operate) await endOperator(grant.id, operator?.endOperation === true ? 'ended_by_owner' : 'downgraded', { sessionId, granteeId: granteeAccountId, ownerId });
     return grantView(updated);
 }
 
@@ -373,9 +374,14 @@ export async function ownerSetOperatorModeCap(ownerId: string, sessionId: string
     }
 }
 
-/** Close the grantee's operator connections (does not wait for the kills on a slow daemon). */
+/**
+ * Close the grantee's operator connections. Returns once the registry is closed
+ * and the operator told; the kills on the owner's daemon run behind it, so an
+ * offline daemon never holds up the owner's request (B-867c, QA40 P2-2).
+ */
 async function endOperator(grantId: string, reason: OperatorEndReason, notify: { sessionId: string; granteeId: string; ownerId: string }): Promise<void> {
-    await teardownOperatorGrant(grantId, reason, notify).catch((error) => log({ module: 'session-share', sessionId: notify.sessionId, errorName: error instanceof Error ? error.name : typeof error }, 'operator teardown failed'));
+    const failed = (error: unknown) => log({ module: 'session-share', sessionId: notify.sessionId, errorName: error instanceof Error ? error.name : typeof error }, 'operator teardown failed');
+    await beginOperatorTeardown(grantId, reason, notify).then(({ kills }) => { kills.catch(failed); }, failed);
 }
 
 export async function revokeSessionGrant(ownerId: string, sessionId: string, granteeAccountId: string): Promise<void> {

@@ -8,6 +8,7 @@
  * tested; the broker (operatorBroker.ts) only executes the returned plan.
  */
 import * as path from 'node:path';
+import { CODEX_LIVE_PERMISSION_CAPABILITY } from '@slopus/happy-wire';
 
 export type OperatorErrorCode =
     | 'not_operator'
@@ -158,6 +159,9 @@ export type OperatorSessionContext = {
     currentMode: unknown;
     /** The grant's mode cap (SessionGrant.operateModeCap): the only bound for mode checks. */
     modeCap: unknown;
+    /** metadata.flavor / metadata.capabilities: a live mode change needs the agent to answer it (B-867c). */
+    flavor?: unknown;
+    capabilities?: unknown;
     /**
      * `permission` only: agentState.requests[params.id].tool, or null when the
      * request is not (yet) in agentState — then the call is treated as a plan
@@ -265,6 +269,9 @@ function planSessionCallUnfenced(method: OperatorSessionMethod, rawParams: unkno
         case 'set-permission-mode': {
             const params = asObject(rawParams);
             if (!operatorMayUseMode(params.mode, ctx.modeCap)) throw new OperatorError('operator_mode_escalation');
+            // An older Codex wrapper registers no set-permission-mode: the RPC would wait out
+            // the reconnect grace and come back machine_offline (QA40 P2-5). Say what it is, now.
+            if (ctx.flavor === 'codex' && !(Array.isArray(ctx.capabilities) && ctx.capabilities.includes(CODEX_LIVE_PERMISSION_CAPABILITY))) throw new OperatorError('cli_upgrade_required');
             return { kind: 'session', method, params: { mode: params.mode }, audit: { kind: 'mode', detail: { from: typeof ctx.currentMode === 'string' ? ctx.currentMode : null, to: params.mode } } };
         }
         case 'session-run-intent': {
@@ -306,12 +313,31 @@ function planSessionCallUnfenced(method: OperatorSessionMethod, rawParams: unkno
             if (!audited) return { kind: 'session', method, params, audit: null };
             const target = typeof params.path === 'string' ? params.path : typeof params.cwd === 'string' ? params.cwd : null;
             const detail: Record<string, unknown> = { path: target };
-            if (method === 'bash' && typeof params.command === 'string') detail.command = params.command.slice(0, 200);
+            // The owner's activity log shows the command (audit purpose); operatorAuditPayload()
+            // keeps it out of the external business audit, which gets only its size (B-867c).
+            if (method === 'bash' && typeof params.command === 'string') {
+                detail.command = params.command.slice(0, 200);
+                detail.commandBytes = Buffer.byteLength(params.command, 'utf8');
+            }
             return { kind: 'session', method, params, audit: { kind: method === 'bash' ? 'bash' : method === 'writeFile' ? 'file.write' : 'file.upload', detail } };
         }
         default:
             return { kind: 'session', method, params: rawParams ?? {}, audit: null };
     }
+}
+
+/** Event detail keys that stay in SessionOperatorEvent (owner's log) and never leave the server. */
+const LOCAL_ONLY_AUDIT_KEYS = new Set(['command']);
+
+/**
+ * The business-audit payload for an operator event: the stored detail minus
+ * command text (B-867c). What leaves is metadata only — kind (method), sizes,
+ * ids, paths — and the producer stamps the time. Pure; operatorPolicy.spec.ts.
+ */
+export function operatorAuditPayload(grantId: string, detail: Record<string, unknown> | undefined): Record<string, unknown> {
+    const out: Record<string, unknown> = { grantId };
+    for (const [key, value] of Object.entries(detail ?? {})) if (!LOCAL_ONLY_AUDIT_KEYS.has(key)) out[key] = value;
+    return out;
 }
 
 export type TerminalRegistryEntry = { terminalId: string; kind: 'opened' | 'attached' };

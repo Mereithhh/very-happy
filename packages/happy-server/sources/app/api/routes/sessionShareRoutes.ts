@@ -64,9 +64,9 @@ export function sessionShareRoutes(app: Fastify) {
 
     app.patch('/v1/sessions/:sessionId/shares/:accountId', {
         ...auth,
-        schema: { params: granteeParams, body: z.object({ role: roleSchema.optional(), expiresInDays: expirySchema.optional(), operate: z.boolean().optional(), confirmOperator: z.literal(true).optional() }).refine((b) => b.role !== undefined || b.expiresInDays !== undefined || b.operate !== undefined, { message: 'role, expiresInDays or operate' }) },
+        schema: { params: granteeParams, body: z.object({ role: roleSchema.optional(), expiresInDays: expirySchema.optional(), operate: z.boolean().optional(), confirmOperator: z.literal(true).optional(), endOperation: z.literal(true).optional() }).refine((b) => b.role !== undefined || b.expiresInDays !== undefined || b.operate !== undefined, { message: 'role, expiresInDays or operate' }) },
     }, async (request, reply) => handle(reply, async () => ({
-        grant: await updateSessionGrantRole(request.userId, request.params.sessionId, request.params.accountId, request.body.role, request.body.expiresInDays, { operate: request.body.operate, confirmOperator: request.body.confirmOperator }),
+        grant: await updateSessionGrantRole(request.userId, request.params.sessionId, request.params.accountId, request.body.role, request.body.expiresInDays, { operate: request.body.operate, confirmOperator: request.body.confirmOperator, endOperation: request.body.endOperation }),
     })));
 
     // B-867 owner views of the operator tier.

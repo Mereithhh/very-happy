@@ -113,18 +113,25 @@ What you see while they work:
   the tier at once (they keep **Can send**), disconnects their terminal and
   file panel and closes the terminals they opened.
 - Their terminals appear in your own terminal list, tagged with their name; you
-  can watch or close them.
+  can watch or close them. When you close one, they are told and it no longer
+  counts toward their four-terminal limit.
 - An activity log per person in **Share…** (terminal open / close, approvals,
-  interrupts, mode and model changes, file writes). Keystrokes are counted, not
-  stored.
+  interrupts, mode and model changes, file writes, the file-panel commands they
+  ran, and why their access ended). Keystrokes are counted, not stored. The log
+  is kept for 90 days, also after you delete the session. Command text stays in
+  this log; Very Happy's external audit trail records only that a command ran
+  and its size.
 
 Revoking, downgrading or expiry takes effect immediately: their terminal and
-file panel disconnect and the terminals they opened are closed. Their machine
+file panel disconnect and the terminals they opened are closed. If your
+machine is offline at that moment, your request still returns at once; the
+terminals are closed when the machine reconnects. Their machine
 access always goes through the server, which checks the grant on every call
 and every terminal frame; they never receive your machine key.
 
 The terminal needs the CLI on your machine to be recent enough; otherwise
-they see “The CLI on their machine needs an update”.
+they see “The CLI on their machine needs an update”. The same applies to an
+operator changing the permission mode of a Codex session.
 
 ## Trust model
 

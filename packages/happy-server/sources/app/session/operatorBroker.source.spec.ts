@@ -84,6 +84,14 @@ describe('B-867 operator broker source guarantees', () => {
         expect(body('noteOwnerModeRpc')).toContain("if (name === 'permission' && params.approved !== true) return;");
     });
 
+    it('B-867c: the sweep runs every second (expiry notice ≤ ~1 s) and every stored daemonState reaches the gone-check', () => {
+        expect(source).toContain('const SWEEP_INTERVAL_MS = 1_000;');
+        expect(source).toContain('sweepTimer = setInterval(() => { void sweepOperatorTerminals(); }, SWEEP_INTERVAL_MS);');
+        const handler = readFileSync(join(__dirname, '../api/socket/machineUpdateHandler.ts'), 'utf8');
+        expect(handler).toContain('void noteOperatorMachineState(userId, result.machine.id, result.machine.daemonState).catch(() => undefined);\n\n            // Generate machine daemon state update');
+        expect(body('noteOperatorMachineState')).toContain('openOperatorMachineKey(registeredGrant(row), machineId)');
+    });
+
     it('log lines carry ids and error names only', () => {
         const allowed = new Set(['module', 'granteeId', 'sessionId', 'grantId', 'actorAccountId', 'machineId', 'userId', 'errorName']);
         const calls = [...source.matchAll(/\blog\(\{([^}]*)\}/g)].map((m) => m[1]);

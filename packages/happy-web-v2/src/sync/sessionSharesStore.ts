@@ -37,7 +37,8 @@ export interface SessionSharesState {
     share: (sessionId: string, who: ShareTarget, role: SessionShareRole, expiresInDays?: ShareExpiryDays, operator?: OperatorGrantOptions) => Promise<SessionGrantView>;
     setRole: (sessionId: string, accountId: string, role: SessionShareRole) => Promise<void>;
     /** B-867: grant (with the owner's explicit confirmation + a finite expiry) or remove the operator tier. */
-    setOperate: (sessionId: string, accountId: string, operate: boolean, expiresInDays?: Exclude<ShareExpiryDays, null>) => Promise<void>;
+    /** `endOperation`: the presence chip's "End their operation" — recorded as ended_by_owner, not a downgrade. */
+    setOperate: (sessionId: string, accountId: string, operate: boolean, expiresInDays?: Exclude<ShareExpiryDays, null>, opts?: { endOperation?: boolean }) => Promise<void>;
     /** B-701 */
     setExpiry: (sessionId: string, accountId: string, expiresInDays: ShareExpiryDays) => Promise<void>;
     linksBySession: Record<string, ShareLinkView[]>;
@@ -91,10 +92,10 @@ export const useSessionShares = create<SessionSharesState>((set, get) => ({
         const grant = await updateSessionGrantRole(sessionId, accountId, role);
         set((s) => ({ grantsBySession: { ...s.grantsBySession, [sessionId]: upsertGrant(s.grantsBySession[sessionId] ?? [], grant) } }));
     },
-    setOperate: async (sessionId, accountId, operate, expiresInDays) => {
+    setOperate: async (sessionId, accountId, operate, expiresInDays, opts) => {
         const grant = await updateSessionGrant(sessionId, accountId, operate
             ? { role: 'driver', operate: true, confirmOperator: true, expiresInDays }
-            : { operate: false });
+            : { operate: false, ...(opts?.endOperation ? { endOperation: true as const } : {}) });
         set((s) => ({ grantsBySession: { ...s.grantsBySession, [sessionId]: upsertGrant(s.grantsBySession[sessionId] ?? [], grant) } }));
     },
     setExpiry: async (sessionId, accountId, expiresInDays) => {

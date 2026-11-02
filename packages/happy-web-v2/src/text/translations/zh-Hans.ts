@@ -2189,6 +2189,7 @@ export const zhHans: TranslationStructure = {
             terminalKill: '关闭终端',
             terminalOpening: '正在打开终端…',
             terminalEnded: '终端已结束。',
+            terminalClosedOnMachine: ({ owner }: { owner: string }) => `这个终端已在 ${owner} 的机器上被关闭。`,
             filesScope: '仅限项目目录',
             revoked: '你的「可操作」权限已结束，终端和文件面板已断开。',
             errors: {
@@ -2220,7 +2221,17 @@ export const zhHans: TranslationStructure = {
                 fileWrite: '写入了文件',
                 fileUpload: '上传了文件',
                 bash: '执行了文件面板命令',
+                ended: '可操作权限已结束',
+                terminalGone: '终端在你的机器上被关闭',
                 other: '其他操作',
+            },
+            endReason: {
+                revoked: '已撤销分享',
+                downgraded: '降为可发消息',
+                ended_by_owner: '由你结束',
+                expired: '已到期',
+                archived: '会话已归档',
+                deleted: '会话已删除',
             },
         },
         banner: {

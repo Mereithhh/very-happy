@@ -13,10 +13,10 @@ import { useEffect, useState } from 'react';
 import { Button, Checkbox } from '@/ui';
 import { SelectMenu } from '@/ui/SelectMenu';
 import { useTranslation } from '@/i18n/useTranslation';
-import type { SimpleTranslationKey } from '@/text';
 import { listOperatorEvents, SessionShareApiError } from '@/sync/apiSessionShares';
 import { OPERATOR_EXPIRY_CHOICES, type OperatorEvent, type ShareExpiryDays } from '@/sync/sessionShareTypes';
 import { expiryLabel, formatShareTime } from './shareFormat';
+import { eventDetail, operatorEventLabelKey } from './operatorEvents';
 import './shared.css';
 
 type OperatorExpiry = Exclude<ShareExpiryDays, null>;
@@ -26,39 +26,6 @@ export const OPERATOR_DEFAULT_EXPIRY: OperatorExpiry = 1;
 /** Coerce any expiry choice into one the operator tier allows (no "never"). Pure. */
 export function operatorExpiryOf(value: ShareExpiryDays): OperatorExpiry {
     return value && (OPERATOR_EXPIRY_CHOICES as number[]).includes(value) ? value : OPERATOR_DEFAULT_EXPIRY;
-}
-
-const EVENT_LABEL: Record<string, SimpleTranslationKey> = {
-    'grant.operator': 'share.operator.event.grantOperator',
-    'grant.operator.removed': 'share.operator.event.grantOperatorRemoved',
-    'terminal.open': 'share.operator.event.terminalOpen',
-    'terminal.attach': 'share.operator.event.terminalAttach',
-    'terminal.close': 'share.operator.event.terminalClose',
-    'terminal.kill': 'share.operator.event.terminalKill',
-    'terminal.input': 'share.operator.event.terminalInput',
-    permission: 'share.operator.event.permission',
-    abort: 'share.operator.event.abort',
-    steer: 'share.operator.event.steer',
-    mode: 'share.operator.event.mode',
-    model: 'share.operator.event.model',
-    btw: 'share.operator.event.btw',
-    'file.write': 'share.operator.event.fileWrite',
-    'file.upload': 'share.operator.event.fileUpload',
-    bash: 'share.operator.event.bash',
-};
-
-export function operatorEventLabelKey(kind: string): SimpleTranslationKey {
-    return EVENT_LABEL[kind] ?? 'share.operator.event.other';
-}
-
-/** One short, non-sensitive detail per event: a path, a tool, a mode. Never input text. */
-function eventDetail(event: OperatorEvent): string | null {
-    const d = event.detail ?? {};
-    for (const key of ['path', 'tool', 'mode', 'model', 'reason', 'decision'] as const) {
-        const v = d[key];
-        if (typeof v === 'string' && v) return v.length > 80 ? `${v.slice(0, 77)}…` : v;
-    }
-    return null;
 }
 
 export function OperatorWarning({ compact }: { compact?: boolean }) {
@@ -164,7 +131,7 @@ export function OperatorEventsList({ sessionId, accountId, actorName }: { sessio
     return (
         <ol className="shd-opevents">
             {events.map((event) => {
-                const detail = eventDetail(event);
+                const detail = eventDetail(event, t);
                 return (
                     <li key={event.id}>
                         <span className="shd-opevents-time">{formatShareTime(event.at)}</span>

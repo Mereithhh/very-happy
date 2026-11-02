@@ -42,6 +42,7 @@ import {
     OperatorError,
     isOperatorSessionMethod,
     isOperatorTerminalOp,
+    operatorAuditPayload,
     planOperatorSessionCall,
     planOperatorTerminalCall,
     type OperatorErrorCode,
@@ -52,7 +53,8 @@ export type OperatorEndReason = 'revoked' | 'downgraded' | 'expired' | 'deleted'
 
 const GRANT_CACHE_TTL_MS = 1_000;
 const MACHINE_KEY_CACHE_TTL_MS = 10 * 60_000;
-const SWEEP_INTERVAL_MS = 2_000;
+/** B-867c: 1 s (was 2 s) so an expiry reaches the operator within ~1 s; idle cost is one indexed query per slot per tick. */
+const SWEEP_INTERVAL_MS = 1_000;
 const INPUT_FLUSH_MS = 60_000;
 const ACTIVITY_EMIT_MIN_MS = 20_000;
 const EVENT_RETENTION_MS = 90 * 24 * 60 * 60_000;
@@ -170,6 +172,8 @@ type SessionContext = {
     agentState: string | null;
     cwd: string;
     currentMode: unknown;
+    flavor: unknown;
+    capabilities: unknown;
     sessionTerminalId: string | null;
     machineId: string | null;
 };
@@ -186,6 +190,8 @@ async function loadSessionContext(grant: VerifiedOperatorGrant): Promise<Session
         agentState: session.agentState,
         cwd: metadata.path,
         currentMode: metadata.permissionMode,
+        flavor: metadata.flavor,
+        capabilities: metadata.capabilities,
         sessionTerminalId: typeof metadata.terminalId === 'string' ? metadata.terminalId : null,
         machineId: typeof metadata.machineId === 'string' ? metadata.machineId : null,
     };
@@ -210,7 +216,7 @@ function open(value: unknown, key: Uint8Array): unknown | null {
 
 // ---------------------------------------------------------------- terminal index
 
-type IndexEntry = { grantId: string; sessionId: string; ownerId: string; granteeId: string; machineId: string; terminalId: string; kind: 'opened' | 'attached' };
+type IndexEntry = { grantId: string; sessionId: string; ownerId: string; granteeId: string; machineId: string; terminalId: string; kind: 'opened' | 'attached'; openedAt: number };
 
 /** Open operator terminals by `${machineId}:${terminalId}` — what the output tap consults per frame. */
 let terminalIndex = new Map<string, IndexEntry[]>();
@@ -219,12 +225,12 @@ let indexLoadedAt = 0;
 async function refreshTerminalIndex(): Promise<IndexEntry[]> {
     const rows = await db.sessionOperatorTerminal.findMany({
         where: { closedAt: null },
-        select: { grantId: true, sessionId: true, ownerAccountId: true, granteeAccountId: true, machineId: true, terminalId: true, kind: true },
+        select: { grantId: true, sessionId: true, ownerAccountId: true, granteeAccountId: true, machineId: true, terminalId: true, kind: true, openedAt: true },
     });
     const next = new Map<string, IndexEntry[]>();
     const entries: IndexEntry[] = rows.map((row) => ({
         grantId: row.grantId, sessionId: row.sessionId, ownerId: row.ownerAccountId, granteeId: row.granteeAccountId,
-        machineId: row.machineId, terminalId: row.terminalId, kind: row.kind === 'attached' ? 'attached' : 'opened',
+        machineId: row.machineId, terminalId: row.terminalId, kind: row.kind === 'attached' ? 'attached' : 'opened', openedAt: row.openedAt.getTime(),
     }));
     for (const entry of entries) {
         const key = `${entry.machineId}:${entry.terminalId}`;
@@ -296,7 +302,8 @@ export async function recordOperatorEvent(input: { sessionId: string; grantId: s
     await db.sessionOperatorEvent.create({ data: { sessionId: input.sessionId, grantId: input.grantId, actorAccountId: input.actorAccountId, kind: input.kind, detail: (input.detail ?? {}) as any } })
         .catch((error) => log({ module: 'operator', sessionId: input.sessionId, errorName: errorName(error) }, 'operator event write failed'));
     log({ module: 'operator', sessionId: input.sessionId, grantId: input.grantId, actorAccountId: input.actorAccountId }, `operator.${input.kind}`);
-    if (businessAuditEnabled()) publishAudit({ kind: `session.share.operator.${input.kind}`, accountId: input.actorAccountId, sessionId: input.sessionId, payload: { grantId: input.grantId, ...(input.detail ?? {}) } });
+    // Command text stays in SessionOperatorEvent (the owner's log); the business audit gets metadata only (B-867c).
+    if (businessAuditEnabled()) publishAudit({ kind: `session.share.operator.${input.kind}`, accountId: input.actorAccountId, sessionId: input.sessionId, payload: operatorAuditPayload(input.grantId, input.detail) });
 }
 
 const lastActivityEmit = new Map<string, number>();
@@ -401,6 +408,8 @@ async function runOperatorRpc(io: Server, granteeId: string, data: unknown, limi
             cwd: ctx.cwd,
             currentMode: ctx.currentMode,
             modeCap: grant.modeCap,
+            flavor: ctx.flavor,
+            capabilities: ctx.capabilities,
             permissionTool: op === 'permission' ? pendingRequestTool(ctx, plainParams) : undefined,
         });
         const method = `${sessionId}:${plan.method}`;
@@ -437,11 +446,16 @@ async function runOperatorRpc(io: Server, granteeId: string, data: unknown, limi
         announceChange();
     }
     let raw: unknown;
+    // The operator's own kill: the daemonState push it causes is not "closed on the machine".
+    const killing = plan.unregister ? `${machineId}:${plan.unregister}` : null;
+    if (killing) operatorKillsInFlight.add(killing);
     try {
         raw = await forwardToOwner(io, grant.ownerId, `${machineId}:${plan.method}`, seal(plan.params, machineKey));
     } catch (error) {
         if (plan.register) await closeRegistry(grant.grantId, machineId, plan.register.terminalId, 'open_failed');
         throw error;
+    } finally {
+        if (killing) operatorKillsInFlight.delete(killing);
     }
     const result = open(raw, machineKey) as Record<string, unknown> | null;
     if (!result || typeof result !== 'object') {
@@ -529,7 +543,7 @@ async function deliverFrame(ownerId: string, machineId: string, event: 'terminal
         if (!grant || grant.grantId !== entry.grantId) continue;
         const room = `user:${entry.granteeId}:user-scoped`;
         if (event === 'terminal-exit') {
-            ioRef?.to(room).emit('operator-terminal-exit', { sessionId: entry.sessionId, terminalId: frame.terminalId, exitCode: frame.exitCode });
+            await operatorTerminalGone(entry, 'exited', frame.exitCode);
             continue;
         }
         if (typeof frame.data !== 'string') continue;
@@ -549,6 +563,67 @@ async function deliverFrame(ownerId: string, machineId: string, event: 'terminal
 async function sessionKeyRow(sessionId: string) {
     const row = await db.session.findUnique({ where: { id: sessionId }, select: { id: true, accountId: true, dataEncryptionKey: true } });
     return row ?? { id: sessionId, accountId: '', dataEncryptionKey: null };
+}
+
+/**
+ * A terminal registered less than this ago may be missing from a push that predates
+ * its creation (the row is written before open-terminal): leave it to a later push —
+ * the title / tag writes right after the open produce one.
+ */
+const GONE_GRACE_MS = 10_000;
+const operatorKillsInFlight = new Set<string>();
+
+/**
+ * An operator terminal ended on the owner's machine: it exited, or it left the
+ * machine's terminal list (the owner closed it from their sidebar — the daemon's
+ * kill-terminal sends no terminal-exit). Close its registry row so it stops
+ * counting toward the per-grant limit, tell the operator's pane, refresh the
+ * owner's chip. Only the call that closes the row reports it (B-867c, QA40 P2-4).
+ */
+async function operatorTerminalGone(entry: IndexEntry, reason: 'exited' | 'closed_on_machine', exitCode?: number): Promise<void> {
+    const closed = await db.sessionOperatorTerminal.updateMany({
+        where: { grantId: entry.grantId, machineId: entry.machineId, terminalId: entry.terminalId, closedAt: null },
+        data: { closedAt: new Date(), closeReason: reason, pendingKill: false },
+    });
+    if (closed.count === 0) return;
+    announceChange();
+    ioRef?.to(`user:${entry.granteeId}:user-scoped`).emit('operator-terminal-exit', {
+        sessionId: entry.sessionId, terminalId: entry.terminalId, exitCode: Number.isSafeInteger(exitCode) ? exitCode : -1, reason,
+    });
+    if (reason === 'closed_on_machine') {
+        await recordOperatorEvent({ sessionId: entry.sessionId, grantId: entry.grantId, actorAccountId: entry.ownerId, kind: 'terminal.gone', detail: { terminalId: entry.terminalId } });
+    }
+    void emitOperatorActivity(entry, true);
+}
+
+/** Pushed terminal ids in a daemonState, or null when it carries no list this daemon run wrote. */
+function pushedTerminalIds(state: unknown): Set<string> | null {
+    const s = state as { startedAt?: unknown; webTerminals?: { updatedAt?: unknown; terminals?: unknown } } | null;
+    const wt = s?.webTerminals;
+    if (!wt || typeof wt.updatedAt !== 'number' || !Array.isArray(wt.terminals)) return null;
+    if (typeof s?.startedAt === 'number' && wt.updatedAt < s.startedAt) return null;
+    return new Set((wt.terminals as Array<{ id?: unknown }>).map((t) => t?.id).filter((id): id is string => typeof id === 'string'));
+}
+
+/**
+ * machineUpdateHandler hook: the owner's machine stored a new daemonState. O(index)
+ * miss unless an operator terminal is open on that machine; then the list is read
+ * with the machine key (reached through the registered row, like teardown).
+ */
+export async function noteOperatorMachineState(ownerId: string, machineId: string, encryptedState: unknown): Promise<void> {
+    const entries: IndexEntry[] = [];
+    for (const list of terminalIndex.values()) for (const e of list) if (e.ownerId === ownerId && e.machineId === machineId) entries.push(e);
+    if (entries.length === 0) return;
+    const row = { grantId: entries[0].grantId, sessionId: entries[0].sessionId, ownerAccountId: ownerId, granteeAccountId: entries[0].granteeId };
+    const key = await openOperatorMachineKey(registeredGrant(row), machineId);
+    if (!key) return;
+    const ids = pushedTerminalIds(open(encryptedState, key));
+    if (!ids) return;
+    for (const entry of entries) {
+        if (ids.has(entry.terminalId) || operatorKillsInFlight.has(`${machineId}:${entry.terminalId}`)) continue;
+        if (Date.now() - entry.openedAt < GONE_GRACE_MS) continue;
+        await operatorTerminalGone(entry, 'closed_on_machine');
+    }
 }
 
 /** Operator → owner machine: input / resize / close for a registered terminal. */
@@ -611,44 +686,64 @@ export function operatorHandler(userId: string, socket: Socket, connection: { co
 // ---------------------------------------------------------------- teardown
 
 const tearingDown = new Set<string>();
+const pendingKillsInFlight = new Set<string>();
+
+type TeardownSummary = { killed: number; pending: number; detached: number };
 
 /**
- * End a grant's operator access everywhere: kill terminals it opened (or mark
- * them pendingKill), detach the ones it attached to, invalidate every slot,
- * tell the operator's web. Idempotent.
+ * End a grant's operator access everywhere: close its registry rows (the tap
+ * stops), mark opened terminals pendingKill, invalidate every slot, tell the
+ * operator's web — then return. The kills run in `kills`: a slow or offline
+ * daemon (kill-terminal waits out the RPC timeout) never holds up the owner's
+ * revoke / downgrade request (B-867c); an undelivered kill stays pendingKill
+ * and is retried on reconnect and by the sweep. Idempotent.
  */
-export async function teardownOperatorGrant(grantId: string, reason: OperatorEndReason, notify?: { sessionId: string; granteeId: string; ownerId: string }): Promise<{ killed: number; pending: number; detached: number }> {
-    const summary = { killed: 0, pending: 0, detached: 0 };
-    if (tearingDown.has(grantId)) return summary;
+export async function beginOperatorTeardown(grantId: string, reason: OperatorEndReason, notify?: { sessionId: string; granteeId: string; ownerId: string }): Promise<{ kills: Promise<TeardownSummary> }> {
+    if (tearingDown.has(grantId)) return { kills: Promise.resolve({ killed: 0, pending: 0, detached: 0 }) };
     tearingDown.add(grantId);
     try {
         invalidateGrantCache();
         const rows = await db.sessionOperatorTerminal.findMany({ where: { grantId, closedAt: null } });
-        // Stop the tap first (closedAt), then kill.
+        // Stop the tap first (closedAt); opened terminals are pendingKill until a kill lands.
         if (rows.length > 0) {
-            await db.sessionOperatorTerminal.updateMany({ where: { grantId, closedAt: null }, data: { closedAt: new Date(), closeReason: reason } });
+            const closedAt = new Date();
+            await db.sessionOperatorTerminal.updateMany({ where: { grantId, closedAt: null, kind: 'opened' }, data: { closedAt, closeReason: reason, pendingKill: true } });
+            await db.sessionOperatorTerminal.updateMany({ where: { grantId, closedAt: null }, data: { closedAt, closeReason: reason } });
         }
         announceChange();
-        // Tell the operator's web before the (possibly slow) kills: its panes close now.
         const target = notify ?? (rows[0] ? { sessionId: rows[0].sessionId, granteeId: rows[0].granteeAccountId, ownerId: rows[0].ownerAccountId } : null);
         if (target) {
             ioRef?.to(`user:${target.granteeId}:user-scoped`).emit('operator-revoked', { sessionId: target.sessionId, reason });
             ioRef?.to(`user:${target.ownerId}:user-scoped`).emit('operator-activity', { sessionId: target.sessionId, granteeAccountId: target.granteeId, displayName: null, openTerminals: 0, lastActivityAt: Date.now(), ended: true });
         }
-        for (const row of rows) {
-            if (row.kind !== 'opened') { summary.detached++; continue; }
-            const killed = ioRef ? await killOnOwnerMachine(ioRef, registeredGrant(row), row.machineId, row.terminalId) : false;
-            if (killed) summary.killed++;
-            else {
-                summary.pending++;
-                await db.sessionOperatorTerminal.update({ where: { id: row.id }, data: { pendingKill: true } });
+        const kills = (async (): Promise<TeardownSummary> => {
+            const summary: TeardownSummary = { killed: 0, pending: 0, detached: 0 };
+            for (const row of rows) {
+                if (row.kind !== 'opened') { summary.detached++; continue; }
+                pendingKillsInFlight.add(row.id);
+                try {
+                    const killed = ioRef ? await killOnOwnerMachine(ioRef, registeredGrant(row), row.machineId, row.terminalId) : false;
+                    if (killed) {
+                        summary.killed++;
+                        await db.sessionOperatorTerminal.update({ where: { id: row.id }, data: { pendingKill: false } });
+                    } else summary.pending++;
+                } finally {
+                    pendingKillsInFlight.delete(row.id);
+                }
             }
-        }
-        if (target) await recordOperatorEvent({ sessionId: target.sessionId, grantId, actorAccountId: target.ownerId, kind: 'ended', detail: { reason, ...summary } });
-        return summary;
+            if (target) await recordOperatorEvent({ sessionId: target.sessionId, grantId, actorAccountId: target.ownerId, kind: 'ended', detail: { reason, ...summary } });
+            return summary;
+        })();
+        kills.catch((error) => log({ module: 'operator', grantId, errorName: errorName(error) }, 'operator teardown kills failed'));
+        return { kills };
     } finally {
         tearingDown.delete(grantId);
     }
+}
+
+/** `beginOperatorTeardown` and wait for the kills (sweep, archive / delete, tests). */
+export async function teardownOperatorGrant(grantId: string, reason: OperatorEndReason, notify?: { sessionId: string; granteeId: string; ownerId: string }): Promise<TeardownSummary> {
+    return (await beginOperatorTeardown(grantId, reason, notify)).kills;
 }
 
 /** Session archived / deleted: end every operator grant on it. */
@@ -661,8 +756,6 @@ export async function teardownOperatorSession(sessionId: string, reason: 'archiv
     }
     for (const grantId of grantIds) await teardownOperatorGrant(grantId, reason);
 }
-
-const pendingKillsInFlight = new Set<string>();
 
 /** Retry kills that could not be delivered (daemon was offline). Called on machine connect and by the sweep. */
 export async function retryPendingOperatorKills(ownerId?: string, machineId?: string): Promise<void> {

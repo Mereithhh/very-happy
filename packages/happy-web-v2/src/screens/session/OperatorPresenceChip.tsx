@@ -57,7 +57,7 @@ export function OperatorPresenceChip({ sessionId, compact }: { sessionId: string
     const end = async (accountId: string) => {
         setBusy(true); setError(null);
         try {
-            await setOperate(sessionId, accountId, false);
+            await setOperate(sessionId, accountId, false, undefined, { endOperation: true });
             setActivity((list) => list.filter((a) => a.granteeAccountId !== accountId));
             setConfirming(null);
         } catch (e) {

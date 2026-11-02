@@ -268,7 +268,6 @@ model Session {
     accessKeys        AccessKey[]
     promptQueue       SessionPromptQueueItem[]
     grants            SessionGrant[]
-    operatorEvents    SessionOperatorEvent[]
     shareLinks        SessionShareLink[]
     projectMember     ProjectMember?
     attentionItems    AttentionItem[]
@@ -361,11 +360,12 @@ model SessionOperatorTerminal {
     @@index([ownerAccountId, machineId, pendingKill])
 }
 
-/// B-867 operator audit trail shown to the owner. Metadata only: never terminal keystrokes, params or file contents.
+/// B-867 operator audit trail shown to the owner. Never terminal keystrokes or file contents; a file-panel
+/// bash keeps its first 200 command characters here only (never in the business audit). No FK (B-867c):
+/// the trail outlives a deleted session and is pruned by the 90-day retention sweep.
 model SessionOperatorEvent {
     id             String   @id @default(cuid())
     sessionId      String
-    session        Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
     grantId        String
     actorAccountId String
     kind           String

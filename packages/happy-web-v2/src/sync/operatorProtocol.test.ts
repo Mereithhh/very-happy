@@ -65,6 +65,9 @@ describe('B-867 operator wire helpers', () => {
         expect(parseOperatorOutput({ sessionId: 's', terminalId: 't', data: 'x', seq: 1.5 })).toBeNull();
         expect(parseOperatorExit({ sessionId: 's', terminalId: 't', exitCode: 0 })).toEqual({ sessionId: 's', terminalId: 't', exitCode: 0 });
         expect(parseOperatorExit({ sessionId: 's', terminalId: 't' })).toBeNull();
+        // B-867c: why it ended — closed on the owner's machine vs. the shell exiting; unknown reasons dropped.
+        expect(parseOperatorExit({ sessionId: 's', terminalId: 't', exitCode: -1, reason: 'closed_on_machine' })).toEqual({ sessionId: 's', terminalId: 't', exitCode: -1, reason: 'closed_on_machine' });
+        expect(parseOperatorExit({ sessionId: 's', terminalId: 't', exitCode: 0, reason: 'nope' })).toEqual({ sessionId: 's', terminalId: 't', exitCode: 0 });
     });
     it('B-867b: the mode menu is bounded by the grant cap, not the mode the operator moved the session to', () => {
         // Operator lowered to plan under a default cap: default is offered again, acceptEdits is not.

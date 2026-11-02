@@ -10,6 +10,8 @@ import type * as Crypto from './sessionCrypto';
 
 const { logged } = vi.hoisted(() => ({ logged: [] as unknown[] }));
 vi.mock('@/utils/log', () => ({ log: (...args: unknown[]) => { logged.push(args); }, warn: (...args: unknown[]) => { logged.push(args); } }));
+const { audited } = vi.hoisted(() => ({ audited: [] as Array<{ kind: string; payload?: Record<string, unknown> }> }));
+vi.mock('@/app/audit/producer', () => ({ businessAuditEnabled: () => true, publishAudit: (input: { kind: string; payload?: Record<string, unknown> }) => { audited.push(input); } }));
 const { emitUpdate, emitToRooms } = vi.hoisted(() => ({ emitUpdate: vi.fn(), emitToRooms: vi.fn() }));
 vi.mock('@/app/events/eventRouter', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/app/events/eventRouter')>();
@@ -39,10 +41,13 @@ describe('B-867 operator broker (pglite)', () => {
     const emitted: Array<{ room: string; event: string; payload: any }> = [];
     const daemonCalls: Array<{ method: string; params: any }> = [];
     let daemonDown = false;
+    /** B-867c: a daemon that never acks (until released) — what made the owner's revoke wait 15 s. */
+    let daemonHang: Promise<void> | null = null;
     const daemonSocket = {
         id: 'daemon-socket', data: {}, handshake: { issued: 1 },
         timeout: () => ({
             emitWithAck: async (_event: string, req: { method: string; params: string }) => {
+                if (daemonHang) { await daemonHang; throw new Error('operation has timed out'); }
                 if (daemonDown) throw new Error('operation has timed out');
                 const isMachine = req.method.startsWith(`${machineId}:`);
                 const key = isMachine ? machineKey : dek;
@@ -134,7 +139,8 @@ describe('B-867 operator broker (pglite)', () => {
         await shares.respondToSessionGrant(driverId, driverGrant.id, true);
     }, 60000);
     afterAll(async () => { broker.__setOperatorIoForTests(null); await db?.$disconnect(); rmSync(root, { recursive: true, force: true }); });
-    beforeEach(() => { emitted.length = 0; daemonCalls.length = 0; daemonDown = false; });
+    beforeEach(() => { emitted.length = 0; daemonCalls.length = 0; daemonDown = false; daemonHang = null; audited.length = 0; });
+    const sealMachine = (v: unknown) => Buffer.from(crypto.encryptWithDataKey(v, machineKey)).toString('base64');
 
     it('granting operate needs driver + explicit confirmation + a finite expiry', async () => {
         await expect(shares.createSessionGrant({ ownerId, sessionId, granteeAccountId: granteeId, role: 'driver', operate: true, expiresInDays: 1 })).rejects.toMatchObject({ code: 'operator_requires_confirm' });
@@ -305,7 +311,9 @@ describe('B-867 operator broker (pglite)', () => {
         const opened = await db.sessionOperatorTerminal.findFirstOrThrow({ where: { granteeAccountId: granteeId, kind: 'opened', closedAt: null } });
         await shares.revokeSessionGrant(ownerId, sessionId, granteeId);
         expect(emitted.find((e) => e.event === 'operator-revoked')).toMatchObject({ room: granteeRoom(), payload: { sessionId, reason: 'revoked' } });
-        expect(daemonCalls).toContainEqual({ method: 'kill-terminal', params: { terminalId: opened.terminalId } });
+        // The kill runs behind the revoke response (B-867c).
+        await vi.waitFor(() => expect(daemonCalls).toContainEqual({ method: 'kill-terminal', params: { terminalId: opened.terminalId } }));
+        await vi.waitFor(async () => expect((await broker.listOperatorEvents(sessionId, granteeId, 50)).some((e) => e.kind === 'ended')).toBe(true));
         expect(daemonCalls.filter((c) => c.method === 'kill-terminal')).toHaveLength(1); // never the session terminal
         expect(await db.sessionOperatorTerminal.count({ where: { granteeAccountId: granteeId, closedAt: null } })).toBe(0);
 
@@ -327,6 +335,7 @@ describe('B-867 operator broker (pglite)', () => {
         const openedId = (openWith((ack as any).result, dek) as any).terminalId as string;
         const pending = await db.sessionOperatorTerminal.findFirstOrThrow({ where: { grantId: again.id, terminalId: openedId } });
         expect(pending).toMatchObject({ pendingKill: true, closeReason: 'downgraded' });
+        await vi.waitFor(async () => expect((await broker.listOperatorEvents(sessionId, granteeId, 50)).find((e) => e.kind === 'ended' && (e.detail as any).reason === 'downgraded')?.detail).toMatchObject({ pending: 1 }));
         expect(emitted.find((e) => e.event === 'operator-revoked')?.payload).toEqual({ sessionId, reason: 'downgraded' });
         daemonDown = false; daemonCalls.length = 0;
         await broker.retryPendingOperatorKills(ownerId, machineId);
@@ -340,8 +349,125 @@ describe('B-867 operator broker (pglite)', () => {
         emitted.length = 0; daemonCalls.length = 0;
         await broker.sweepOperatorTerminals();
         expect(emitted.find((e) => e.event === 'operator-revoked')?.payload).toEqual({ sessionId, reason: 'expired' });
-        expect(daemonCalls.some((c) => c.method === 'kill-terminal')).toBe(true);
+        await vi.waitFor(() => expect(daemonCalls.some((c) => c.method === 'kill-terminal')).toBe(true));
         expect(await rpc(granteeId, 'abort', {})).toEqual({ ok: false, error: 'not_operator' });
+    });
+
+    /** Re-grant the operator tier (accepted) and return its grant id. */
+    async function regrant(): Promise<string> {
+        const existing = await db.sessionGrant.findFirst({ where: { sessionId, granteeAccountId: granteeId, status: { not: 'revoked' } } });
+        if (existing) {
+            if (!existing.operate || !existing.expiresAt || existing.expiresAt.getTime() <= Date.now()) await shares.updateSessionGrantRole(ownerId, sessionId, granteeId, 'driver', 7, { operate: true, confirmOperator: true });
+            return existing.id;
+        }
+        const view = await shares.createSessionGrant({ ownerId, sessionId, granteeAccountId: granteeId, role: 'driver', operate: true, confirmOperator: true, expiresInDays: 7 });
+        await shares.respondToSessionGrant(granteeId, view.id, true);
+        return view.id;
+    }
+    async function openOperatorTerminal(): Promise<string> {
+        const ack = await rpc(granteeId, 'terminal.open', { cols: 80, rows: 24 });
+        expect(ack.ok).toBe(true);
+        return (openWith((ack as any).result, dek) as any).terminalId as string;
+    }
+
+    it('B-867c: revoke / downgrade on a daemon that never answers returns at once; kill stays pending', async () => {
+        const grantId = await regrant();
+        const terminalId = await openOperatorTerminal();
+        let release!: () => void;
+        daemonHang = new Promise<void>((resolve) => { release = resolve; });
+        emitted.length = 0;
+        const started = Date.now();
+        await shares.updateSessionGrantRole(ownerId, sessionId, granteeId, undefined, undefined, { operate: false });
+        expect(Date.now() - started).toBeLessThan(1_000);
+        expect(emitted.find((e) => e.event === 'operator-revoked')?.payload).toEqual({ sessionId, reason: 'downgraded' });
+        expect(await db.sessionOperatorTerminal.findFirstOrThrow({ where: { grantId, terminalId } })).toMatchObject({ pendingKill: true, closeReason: 'downgraded' });
+        expect(await rpc(granteeId, 'abort', {})).toEqual({ ok: false, error: 'not_operator' });
+        release();
+        await vi.waitFor(async () => expect((await broker.listOperatorEvents(sessionId, granteeId, 50))[0]).toMatchObject({ kind: 'ended', detail: { reason: 'downgraded', pending: 1 } }));
+        // Same for a full revoke.
+        daemonHang = null;
+        await shares.updateSessionGrantRole(ownerId, sessionId, granteeId, undefined, undefined, { operate: true, confirmOperator: true });
+        const second = await openOperatorTerminal();
+        daemonHang = new Promise<void>((resolve) => { release = resolve; });
+        const revokeStarted = Date.now();
+        await shares.revokeSessionGrant(ownerId, sessionId, granteeId);
+        expect(Date.now() - revokeStarted).toBeLessThan(1_000);
+        expect(await db.sessionOperatorTerminal.findFirstOrThrow({ where: { grantId, terminalId: second } })).toMatchObject({ pendingKill: true, closeReason: 'revoked' });
+        release();
+        await vi.waitFor(async () => expect((await broker.listOperatorEvents(sessionId, granteeId, 50))[0]).toMatchObject({ kind: 'ended', detail: { reason: 'revoked' } }));
+    });
+
+    it('B-867c: "End their operation" records ended_by_owner; the share dialog downgrade stays downgraded', async () => {
+        await regrant();
+        emitted.length = 0;
+        await shares.updateSessionGrantRole(ownerId, sessionId, granteeId, undefined, undefined, { operate: false, endOperation: true });
+        expect(emitted.find((e) => e.event === 'operator-revoked')?.payload).toEqual({ sessionId, reason: 'ended_by_owner' });
+        await vi.waitFor(async () => expect((await broker.listOperatorEvents(sessionId, granteeId, 50))[0]).toMatchObject({ kind: 'ended', detail: { reason: 'ended_by_owner' } }));
+    });
+
+    it('B-867c: a file-panel bash keeps its command in the owner\'s log; the business audit gets only its size', async () => {
+        await regrant();
+        const command = `cat ${SECRET_MARK}.txt`;
+        expect((await rpc(granteeId, 'bash', { command })).ok).toBe(true);
+        const event = (await broker.listOperatorEvents(sessionId, granteeId, 50)).find((e) => e.kind === 'bash')!;
+        expect(event.detail).toMatchObject({ command, commandBytes: Buffer.byteLength(command), path: '/home/owner/repo' });
+        const out = audited.find((a) => a.kind === 'session.share.operator.bash')!;
+        expect(out.payload).toEqual({ grantId: expect.any(String), path: '/home/owner/repo', commandBytes: Buffer.byteLength(command) });
+        expect(JSON.stringify(audited)).not.toContain(SECRET_MARK);
+    });
+
+    it('B-867c: a terminal the owner closed (gone from the machine list) ends for the operator and stops counting', async () => {
+        const grantId = await regrant();
+        const terminalId = await openOperatorTerminal();
+        const keep = await openOperatorTerminal();
+        const list = (ids: string[]) => sealMachine({ startedAt: 1, webTerminals: { updatedAt: 2, terminals: ids.map((id) => ({ id })) } });
+        // A young terminal missing from a push may predate its creation: left alone.
+        await broker.noteOperatorMachineState(ownerId, machineId, list([keep]));
+        expect(await db.sessionOperatorTerminal.count({ where: { grantId, closedAt: null } })).toBe(2);
+        await db.sessionOperatorTerminal.updateMany({ where: { grantId }, data: { openedAt: new Date(Date.now() - 60_000) } });
+        await broker.sweepOperatorTerminals(); // reload the index (openedAt)
+        emitted.length = 0;
+        await broker.noteOperatorMachineState(ownerId, machineId, list([keep]));
+        expect(await db.sessionOperatorTerminal.findFirstOrThrow({ where: { grantId, terminalId } })).toMatchObject({ closeReason: 'closed_on_machine', pendingKill: false });
+        expect(await db.sessionOperatorTerminal.findFirstOrThrow({ where: { grantId, terminalId: keep } })).toMatchObject({ closedAt: null });
+        expect(emitted.find((e) => e.event === 'operator-terminal-exit')).toMatchObject({ room: granteeRoom(), payload: { sessionId, terminalId, reason: 'closed_on_machine' } });
+        await vi.waitFor(() => expect(emitted.find((e) => e.event === 'operator-activity')?.payload).toMatchObject({ openTerminals: 1 }));
+        expect((await broker.listOperatorEvents(sessionId, granteeId, 50))[0]).toMatchObject({ kind: 'terminal.gone', actorAccountId: ownerId, detail: { terminalId } });
+        // Reported once; an unreadable state / another machine's push changes nothing.
+        emitted.length = 0;
+        await broker.noteOperatorMachineState(ownerId, machineId, list([keep]));
+        await broker.noteOperatorMachineState(ownerId, machineId, 'not-a-state');
+        await broker.noteOperatorMachineState(ownerId, 'other-machine', list([]));
+        expect(emitted.filter((e) => e.event === 'operator-terminal-exit')).toEqual([]);
+        // The shell exiting closes its row too.
+        broker.operatorTerminalTap(ownerId, machineId, 'terminal-exit', { terminalId: keep, exitCode: 0 });
+        await vi.waitFor(async () => expect((await db.sessionOperatorTerminal.findFirstOrThrow({ where: { grantId, terminalId: keep } })).closeReason).toBe('exited'));
+        expect(emitted.find((e) => e.event === 'operator-terminal-exit')?.payload).toMatchObject({ terminalId: keep, exitCode: 0, reason: 'exited' });
+        expect(await db.sessionOperatorTerminal.count({ where: { grantId, closedAt: null } })).toBe(0);
+    });
+
+    it('B-867c: Codex — a live mode change reaches a wrapper that advertises it; an older one is refused at once', async () => {
+        await regrant();
+        const session = await db.session.findUniqueOrThrow({ where: { id: sessionId } });
+        const plain = openWith(session.metadata, dek) as Record<string, unknown>;
+        await db.session.update({ where: { id: sessionId }, data: { metadata: sealDek({ ...plain, flavor: 'codex', capabilities: [] }) } });
+        const started = Date.now();
+        expect(await rpc(granteeId, 'set-permission-mode', { mode: 'read-only' })).toEqual({ ok: false, error: 'cli_upgrade_required' });
+        expect(Date.now() - started).toBeLessThan(1_000);
+        expect(await rpc(granteeId, 'set-permission-mode', { mode: 'yolo' })).toEqual({ ok: false, error: 'operator_mode_escalation' });
+        expect(daemonCalls).toEqual([]);
+        await db.session.update({ where: { id: sessionId }, data: { metadata: sealDek({ ...plain, flavor: 'codex', capabilities: ['codex-live-permission-v1'] }) } });
+        expect((await rpc(granteeId, 'set-permission-mode', { mode: 'read-only' })).ok).toBe(true);
+        expect(daemonCalls).toEqual([{ method: 'set-permission-mode', params: { mode: 'read-only' } }]);
+        await db.session.update({ where: { id: sessionId }, data: { metadata: sealDek(plain) } });
+        await setMode('default');
+    });
+
+    it('B-867c: the operator audit trail outlives a deleted session', async () => {
+        const doomed = (await db.session.create({ data: { accountId: ownerId, tag: randomBytes(8).toString('hex'), metadata: 'x' } })).id;
+        await broker.recordOperatorEvent({ sessionId: doomed, grantId: 'g-doomed', actorAccountId: granteeId, kind: 'bash', detail: { command: 'ls' } });
+        await db.session.delete({ where: { id: doomed } });
+        expect(await db.sessionOperatorEvent.count({ where: { sessionId: doomed } })).toBe(1);
     });
 
     it('no plaintext (params, terminal bytes, results) ever reached a log line', () => {

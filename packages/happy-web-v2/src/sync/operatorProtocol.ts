@@ -132,7 +132,8 @@ export function readOperatorAck(ack: unknown): { ok: true; result: string } | { 
 // ---------------------------------------------------------------- terminal frames (spec §12.2)
 
 export type OperatorTerminalOutput = { sessionId: string; terminalId: string; seq?: number; data: string };
-export type OperatorTerminalExit = { sessionId: string; terminalId: string; exitCode: number };
+/** `reason` (B-867c): 'closed_on_machine' = left the owner's terminal list (the owner closed it); absent/'exited' = the shell exited. */
+export type OperatorTerminalExit = { sessionId: string; terminalId: string; exitCode: number; reason?: 'exited' | 'closed_on_machine' };
 
 function isStr(v: unknown): v is string { return typeof v === 'string' && v.length > 0; }
 
@@ -149,6 +150,7 @@ export function parseOperatorExit(raw: unknown): OperatorTerminalExit | null {
     if (!raw || typeof raw !== 'object') return null;
     const r = raw as Record<string, unknown>;
     if (!isStr(r.sessionId) || !isStr(r.terminalId) || typeof r.exitCode !== 'number') return null;
-    return { sessionId: r.sessionId, terminalId: r.terminalId, exitCode: r.exitCode };
+    const reason = r.reason === 'exited' || r.reason === 'closed_on_machine' ? r.reason : undefined;
+    return { sessionId: r.sessionId, terminalId: r.terminalId, exitCode: r.exitCode, ...(reason ? { reason } : {}) };
 }
 

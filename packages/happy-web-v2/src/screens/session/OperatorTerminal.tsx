@@ -101,6 +101,15 @@ export function OperatorTerminalDialog({ sessionId, owner, expiresAt, open, onOp
         if (open) onOpenChange(false);
     }), [sessionId, open, onOpenChange]);
 
+    // A terminal ended on the owner's machine (exit, or the owner closed it): drop its
+    // tab even when it is not the one on screen, and say why (B-867c, QA40 P2-4).
+    useEffect(() => onOperatorEvent('exit', (e) => {
+        if (e.sessionId !== sessionId) return;
+        setTerminals((list) => list.filter((x) => x.terminalId !== e.terminalId));
+        setActive((cur) => cur === e.terminalId ? null : cur);
+        toast.show(e.reason === 'closed_on_machine' ? t('share.operator.terminalClosedOnMachine', { owner }) : t('share.operator.terminalEnded'));
+    }), [sessionId, owner, t]);
+
     const kill = async (terminalId: string) => {
         try { await operatorCall(sessionId, 'terminal.kill', { terminalId }); }
         catch (e) { setError(operatorErrorCopy(t, operatorErrorCode(e))); return; }
@@ -132,11 +141,7 @@ export function OperatorTerminalDialog({ sessionId, owner, expiresAt, open, onOp
                     {error && <p className="opt-error" role="alert">{error}</p>}
                     <div className="opt-body">
                         {active
-                            ? <OperatorTerminalPane key={active} sessionId={sessionId} terminalId={active} onEnded={() => {
-                                setTerminals((list) => list.filter((x) => x.terminalId !== active));
-                                setActive(null);
-                                toast.show(t('share.operator.terminalEnded'));
-                            }} onError={(code) => setError(operatorErrorCopy(t, code))} />
+                            ? <OperatorTerminalPane key={active} sessionId={sessionId} terminalId={active} onError={(code) => setError(operatorErrorCopy(t, code))} />
                             : <p className="opt-empty">{busy ? t('share.operator.terminalOpening') : ''}</p>}
                     </div>
                 </Dialog.Content>
@@ -145,16 +150,13 @@ export function OperatorTerminalDialog({ sessionId, owner, expiresAt, open, onOp
     );
 }
 
-function OperatorTerminalPane({ sessionId, terminalId, onEnded, onError }: {
+function OperatorTerminalPane({ sessionId, terminalId, onError }: {
     sessionId: string;
     terminalId: string;
-    onEnded: () => void;
     onError: (code: string) => void;
 }) {
     const mountRef = useRef<HTMLDivElement | null>(null);
-    const endedRef = useRef(onEnded);
     const errorRef = useRef(onError);
-    endedRef.current = onEnded;
     errorRef.current = onError;
 
     useEffect(() => {
@@ -184,9 +186,6 @@ function OperatorTerminalPane({ sessionId, terminalId, onEnded, onError }: {
                 const plain = await openOperatorData(sessionId, e.data);
                 if (plain && !disposed) renderer.write(b64ToBytes(plain));
             });
-        });
-        const offExit = onOperatorEvent('exit', (e) => {
-            if (e.sessionId === sessionId && e.terminalId === terminalId && !disposed) endedRef.current();
         });
         const offRevoked = onOperatorEvent('revoked', (e) => {
             // Clear what the operator saw — the access is gone.
@@ -223,7 +222,7 @@ function OperatorTerminalPane({ sessionId, terminalId, onEnded, onError }: {
         return () => {
             disposed = true;
             resizeObserver.disconnect();
-            offOutput(); offExit(); offRevoked();
+            offOutput(); offRevoked();
             input.dispose();
             sendOperatorTerminalClose(sessionId, terminalId);
             renderer.dispose();

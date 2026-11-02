@@ -50,7 +50,7 @@ describe('/btw wiring (B-283)', () => {
     it('B-861: the Codex wrapper registers the same RPCs and advertises codex-btw-v1; the composer offers 侧聊 while running', () => {
         const runCodex = readFileSync(new URL('../../../../happy-cli/src/codex/runCodex.ts', import.meta.url), 'utf8');
         expect(runCodex).toContain('registerSideQuestionHandler(session.rpcHandlerManager');
-        expect(runCodex).toContain('CODEX_BTW_CAPABILITY]');
+        expect(runCodex).toContain('CODEX_BTW_CAPABILITY, CODEX_LIVE_PERMISSION_CAPABILITY]');
         expect(runCodex).toContain('side.setAccountOverrides(codexAccount.overrides)');
         expect(read('./SessionDetailScreen.tsx')).toContain('sideChat={btwAllowed}');
     });

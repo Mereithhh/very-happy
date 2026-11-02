@@ -17,7 +17,7 @@ const daemon = read('daemon/run.ts');
 
 describe('B-850b Codex wrapper', () => {
     it('advertises the capability and takes the spawn account out of the env', () => {
-        expect(codex).toContain('CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY],');
+        expect(codex).toContain('CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_LIVE_PERMISSION_CAPABILITY],');
         expect(codex).toContain('const spawnAccountId = process.env[SPAWN_ACCOUNT_ENV] || undefined;\n    delete process.env[SPAWN_ACCOUNT_ENV];');
     });
 

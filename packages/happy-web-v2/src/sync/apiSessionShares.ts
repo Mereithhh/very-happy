@@ -71,7 +71,7 @@ export function createSessionGrant(sessionId: string, who: ShareTarget, role: Se
     return call(`/v1/sessions/${encodeURIComponent(sessionId)}/shares`, z.object({ grant: SessionGrantViewSchema }), json(body)).then((r) => r.grant);
 }
 
-export function updateSessionGrant(sessionId: string, accountId: string, change: { role?: SessionShareRole; expiresInDays?: ShareExpiryDays; operate?: boolean; confirmOperator?: true }): Promise<SessionGrantView> {
+export function updateSessionGrant(sessionId: string, accountId: string, change: { role?: SessionShareRole; expiresInDays?: ShareExpiryDays; operate?: boolean; confirmOperator?: true; endOperation?: true }): Promise<SessionGrantView> {
     return call(`/v1/sessions/${encodeURIComponent(sessionId)}/shares/${encodeURIComponent(accountId)}`, z.object({ grant: SessionGrantViewSchema }), json(change, 'PATCH')).then((r) => r.grant);
 }
 

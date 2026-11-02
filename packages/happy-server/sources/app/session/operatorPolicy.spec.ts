@@ -7,6 +7,7 @@ import {
     exitPlanModeWithinCap,
     permissionModeRank,
     operatorMayUseMode,
+    operatorAuditPayload,
     pathWithinRoot,
     planOperatorSessionCall,
     planOperatorTerminalCall,
@@ -134,7 +135,26 @@ describe('B-867 operator policy', () => {
         // B-867b: a cwd-less bash / ripgrep / difftastic runs in the session cwd, not the daemon's.
         expect(planOperatorSessionCall('bash', { command: 'ls' }, ctx).params).toEqual({ command: 'ls', cwd: '/home/owner/repo' });
         expect((planOperatorSessionCall('ripgrep', { args: ['foo'] }, ctx).params as any).cwd).toBe('/home/owner/repo');
-        expect(planOperatorSessionCall('bash', { command: 'git status --porcelain', cwd: '/home/owner/repo' }, ctx).audit).toEqual({ kind: 'bash', detail: { path: '/home/owner/repo', command: 'git status --porcelain' } });
+        expect(planOperatorSessionCall('bash', { command: 'git status --porcelain', cwd: '/home/owner/repo' }, ctx).audit).toEqual({ kind: 'bash', detail: { path: '/home/owner/repo', command: 'git status --porcelain', commandBytes: 22 } });
+    });
+
+    it('B-867c: the business-audit payload never carries command text; the owner\'s detail does', () => {
+        const long = `echo ${'é'.repeat(300)}`;
+        const plan = planOperatorSessionCall('bash', { command: long, cwd: '/home/owner/repo' }, ctx);
+        expect(plan.audit?.detail).toMatchObject({ command: long.slice(0, 200), commandBytes: Buffer.byteLength(long) });
+        expect(operatorAuditPayload('g1', plan.audit?.detail)).toEqual({ grantId: 'g1', path: '/home/owner/repo', commandBytes: Buffer.byteLength(long) });
+        expect(operatorAuditPayload('g1', { reason: 'revoked', killed: 1 })).toEqual({ grantId: 'g1', reason: 'revoked', killed: 1 });
+        expect(operatorAuditPayload('g1', undefined)).toEqual({ grantId: 'g1' });
+    });
+
+    it('B-867c: Codex live mode needs the wrapper capability; escalation is still reported as escalation', () => {
+        const codex = { ...ctx, flavor: 'codex', modeCap: 'default' };
+        expect(code(() => planOperatorSessionCall('set-permission-mode', { mode: 'read-only' }, { ...codex, capabilities: [] }))).toBe('cli_upgrade_required');
+        expect(code(() => planOperatorSessionCall('set-permission-mode', { mode: 'read-only' }, codex))).toBe('cli_upgrade_required');
+        expect(code(() => planOperatorSessionCall('set-permission-mode', { mode: 'yolo' }, { ...codex, capabilities: [] }))).toBe('operator_mode_escalation');
+        expect(planOperatorSessionCall('set-permission-mode', { mode: 'read-only' }, { ...codex, capabilities: ['codex-live-permission-v1'] }).params).toEqual({ mode: 'read-only' });
+        // Claude sessions are unaffected.
+        expect(planOperatorSessionCall('set-permission-mode', { mode: 'plan' }, { ...ctx, flavor: 'claude', capabilities: [] }).params).toEqual({ mode: 'plan' });
     });
 
     it('B-867b: ripgrep / difftastic path args stay inside the session cwd', () => {

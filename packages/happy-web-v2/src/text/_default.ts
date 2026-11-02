@@ -2027,6 +2027,7 @@ export const en = {
             terminalKill: 'Close terminal',
             terminalOpening: 'Opening terminal…',
             terminalEnded: 'The terminal ended.',
+            terminalClosedOnMachine: ({ owner }: { owner: string }) => `This terminal was closed on ${owner}'s machine.`,
             filesScope: 'Project folder only',
             revoked: 'Your operator access ended. The terminal and file panel were disconnected.',
             errors: {
@@ -2058,7 +2059,18 @@ export const en = {
                 fileWrite: 'Wrote a file',
                 fileUpload: 'Uploaded a file',
                 bash: 'Ran a file-panel command',
+                ended: 'Operator access ended',
+                terminalGone: 'Terminal closed on your machine',
                 other: 'Other action',
+            },
+            // Why operator access ended (activity log detail of an `ended` event).
+            endReason: {
+                revoked: 'access revoked',
+                downgraded: 'lowered to Can send',
+                ended_by_owner: 'ended by you',
+                expired: 'expired',
+                archived: 'session archived',
+                deleted: 'session deleted',
             },
         },
         banner: {

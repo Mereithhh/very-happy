@@ -180,7 +180,7 @@ Web 侧 operator 的文件面板改用 session RPC（`listDirectory`/`readFile`�
 
 ### 6.1 审计表
 
-`SessionOperatorEvent(id, sessionId, grantId, actorAccountId, kind, detail jsonb, at)`，保留 90 天（与链接打开记录同一个清理任务）。
+`SessionOperatorEvent(id, sessionId, grantId, actorAccountId, kind, detail jsonb, at)`，保留 90 天（扫尾每小时清一次）。**不挂外键**（B-867c）：owner 删除会话后审计仍保留到 90 天，不随会话级联删除。
 
 | kind | detail |
 |---|---|
@@ -189,9 +189,11 @@ Web 侧 operator 的文件面板改用 session RPC（`listDirectory`/`readFile`�
 | `terminal.input` | **按会话分钟聚合**：输入字节数、回车次数；**不存按键内容**（可能含密码），owner 要看内容就看终端本身（owner 本来就收到全部输出，tmux 回滚也在） |
 | `permission` | 工具名、批准/拒绝、是否带 mode |
 | `abort` / `steer` / `mode` / `model` / `btw` | 新旧值（btw 不存问题正文） |
-| `file.write` / `file.upload` / `bash` | 路径；`bash` 存命令前 200 字符（文件面板的 git 命令） |
+| `file.write` / `file.upload` / `bash` | 路径；`bash` 存命令前 200 字符（owner 在操作记录里看对方跑了什么）+ 命令字节数 `commandBytes` |
+| `ended` | 结束原因（`revoked` / `downgraded` / `ended_by_owner` / `expired` / `archived` / `deleted`）、killed / pending / detached 数 |
+| `terminal.gone` | terminalId：operator 的终端从 owner 机器的终端列表消失（owner 在侧栏关掉），actor 记为 owner |
 
-同时 `audit()` 写 business audit（与 B-619 同）。
+同时写 business audit（与 B-619 同），但**只外发元数据**（B-867c）：kind（即方法名）、grantId、路径、字节数等，时间由 producer 打 `at`；**命令文本（`detail.command`）只留在本表，不外发**（`operatorAuditPayload`，单测 + pglite 用例钉住）。
 
 ### 6.2 owner 看得到
 
@@ -309,19 +311,19 @@ Lead 审批补充：明文（params、终端字节、文件内容）不进日志
     - 结果里的 `data`/`chunks[].data` 是 **明文 base64 终端字节**（整个 result 已经被 DEK 加密），等价于 owner 侧 `encStream` 解密后的值。
   - 错误码：`not_operator`、`operator_method_denied`、`operator_mode_escalation`、`operator_path_denied`、`operator_terminal_denied`、`operator_terminal_limit`、`cli_upgrade_required`、`machine_unsupported`、`machine_offline`、`rpc_failed`、`rate_limited`、`bad_params`。
 - `emit('operator-terminal-input', { sessionId, terminalId, data })`（data = DEK 加密的 base64 字节串）、`emit('operator-terminal-resize', { sessionId, terminalId, cols, rows })`、`emit('operator-terminal-close', { sessionId, terminalId })`（只退订，不 kill）。
-- 下行（grantee）：`operator-terminal-output { sessionId, terminalId, seq, data }`（data 同 input 格式）、`operator-terminal-exit { sessionId, terminalId, exitCode }`、`operator-revoked { sessionId, reason: 'revoked'|'downgraded'|'expired'|'deleted'|'archived'|'ended_by_owner' }`。
+- 下行（grantee）：`operator-terminal-output { sessionId, terminalId, seq, data }`（data 同 input 格式）、`operator-terminal-exit { sessionId, terminalId, exitCode, reason?: 'exited'|'closed_on_machine' }`（B-867c）、`operator-revoked { sessionId, reason: 'revoked'|'downgraded'|'expired'|'deleted'|'archived'|'ended_by_owner' }`。
 - 下行（owner）：`operator-activity { sessionId, granteeAccountId, displayName, openTerminals, lastActivityAt }`（独立事件名，旧 Web 的 onAny 自然忽略）。
 
 ## 实现记录（B-867，与设计稿的差异）
 
 - **broker**：`app/session/operatorPolicy.ts`（纯函数：白名单、mode 上限、cwd 围栏、终端参数改写）+ `app/session/operatorBroker.ts`（授权 → 改写 → 换钥 → 转发 → 审计；输出 tap；撤销/扫尾）。`rpcHandler.ts` 抽出 `routeRpcToRoom`，账号自己的 `rpc-call` 与 broker 共用同一条投递路径（行为不变，原 23 条测试照过）。
 - **机器 key 的打开点**：只有 `openOperatorMachineKey(VerifiedOperatorGrant, machineId)`，且只查 `accountId = grant.ownerId` 的机器。`VerifiedOperatorGrant` 只有两处能铸造：operator 调用时的 grant 查询，以及撤销/补杀时「由先前已验证的 operator 调用登记过的终端行」（kill 参数需要机器 key 加密，这是 Lead 约束下唯一的非 operator 发起场景）。源码断言 `operatorBroker.source.spec.ts` 钉住，`mutation-check` 6/6 变异被抓。
-- **过期**：没有用每 grant 的 `setTimeout`，改为每 slot 2 s 一次的扫尾（`sweepOperatorTerminals`）：刷新终端索引、对 grant 已失效（撤销/降级/过期/归档/删除）的终端执行 teardown、刷输入计数、30 s 重试 pendingKill、每小时清 90 天前的事件。数据面靠每帧校验在过期那一刻就停（grant 缓存 ≤1 s，且比对 `expiresAt`），kill 最迟 ≤2 s。
+- **过期**：没有用每 grant 的 `setTimeout`，改为每 slot 1 s（B-867c 前为 2 s）一次的扫尾（`sweepOperatorTerminals`）：刷新终端索引、对 grant 已失效（撤销/降级/过期/归档/删除）的终端执行 teardown、刷输入计数、30 s 重试 pendingKill、每小时清 90 天前的事件。数据面靠每帧校验在过期那一刻就停（grant 缓存 ≤1 s，且比对 `expiresAt`），kill 最迟 ≤2 s。
 - **登记表无外键**：`SessionOperatorTerminal` 不挂 FK，会话/grant 被删后行仍在，扫尾仍能 kill。
 - **steer 不带文本**：CLI 的 `steer` 本来就没有参数（结束当前轮，让排队消息接着跑）；operator 的追加指令走已有的署名 shared message。
 - **会话自有终端**：grantee 拿不到 `metadata.terminalId`（脱敏），用 `terminal.attach { session: true }` 按角色接入。
 - **链接分享**：`POST /share-links` 的 body 改 `.strict()`，带 `operate`/`role` 直接 400。
-- **owner 一键「结束对方的操作」**= `PATCH operate:false`（降为 Can send），走同一 teardown；grantee 先收到 `operator-revoked`，再执行 kill（daemon 慢/离线不阻塞撤销响应）。
+- **owner 一键「结束对方的操作」**= `PATCH operate:false, endOperation:true`（降为 Can send，原因记 `ended_by_owner`；分享面板里改档仍记 `downgraded`），走同一 teardown；grantee 先收到 `operator-revoked`，kill 在响应之后异步执行（B-867c，见下）。
 - **Web**：operator 终端是独立的 `OperatorTerminalDialog`（复用渲染工厂、字体、lineHeight 1.0、主题色），不改 `WebTerminalScreen`；文件面板用 session RPC，只读、限会话目录；mode 选单高于 owner 当前 mode 的选项置灰。
 
 ### 验证
@@ -364,3 +366,18 @@ Lead 审批补充：明文（params、终端字节、文件内容）不进日志
    - 会话目录内的软链指向目录外：**未修，进 backlog**。服务器拿不到 owner 机器的文件系统，只能在 CLI `validatePath` 做 realpath；但 owner 自己的调用也走同一路径（会改变 owner 跟随软链的行为），需要由 broker 注入「operator 调用」标记 + CLI 新版本 + 兼容矩阵。且 operator 有 bash / 终端，软链围栏不是实际安全边界（§1.3「shell 不做隔离」），收益有限。
 
 **验证**：`operatorPolicy.spec.ts`（ExitPlanMode 注入、cap 而非 current、approved_for_session 改写、ripgrep/difftastic 围栏、bash cwd；**机制测试**：每个 allowlist 方法 × 每个 mode 键的最宽值 × 三种工具，输出要么被拒、要么无 mode 键或 mode ≤ 上限且只出现在 `OPERATOR_MODE_METHODS`）；`operatorBroker.pglite.integration.spec.ts`（QA40 链路逐步重放：降 plan → 不带 mode 批准 ExitPlanMode → daemon 收到 `mode:'default'` → 提 bypass/acceptEdits 被拒；先降再升到上限止；owner 升/降上限、拒绝的审批不改上限、上限变化通知 grantee、同值不写）；`operatorBroker.source.spec.ts`（broker 用 `grant.modeCap`、`routeRpcToRoom` 不改上限）。`mutation-check` 7/7 被抓。Web：`operatorModeBound` 选单按 `share.modeCap`（旧 server 回退当前值）。
+
+## B-867c 实现记录：发布前 P2（QA40）
+
+| QA40 | 处理 |
+|---|---|
+| P2-7 bash 命令明文外发 | `detail.command`（前 200 字符）保留在 `SessionOperatorEvent`，owner 操作记录里显示命令；business audit 经 `operatorAuditPayload` 去掉 `command`，只带 kind/grantId/path/`commandBytes`，时间是 producer 的 `at`。§6.1 已改。 |
+| P2-2 daemon 离线时撤销阻塞 15 s | teardown 拆成两段：`beginOperatorTeardown` 关登记行（opened 行同时置 `pendingKill`）、广播失效、通知 grantee 和 owner 后就返回；kill 在后台跑，成功才清 `pendingKill`，失败留给重连补杀和 30 s 重试，`ended` 事件在 kill 结束后写（带 killed/pending 数）。撤销 / 降档 / 一键结束 / 拒绝邀请都走这条，HTTP 不等 kill。扫尾、归档、删除仍等 kill 结束（`teardownOperatorGrant`）。 |
+| P2-4 owner 关掉 operator 终端后无提示、行一直 OPEN | daemon 的 `kill-terminal` 不发 `terminal-exit`，但会把新的终端列表写进 `daemonState.webTerminals`（`machine-update-state` 只经中央 server，不经 relay）。`machineUpdateHandler` 每次写入后调 `noteOperatorMachineState`：该机器没有 operator 终端时内存 Map 未命中直接返回；有则用登记行铸的 grant 打开机器 key，解出列表，列表里没有的 operator 终端关行（`closed_on_machine`），给 grantee 发 `operator-terminal-exit { reason:'closed_on_machine' }`，记 `terminal.gone`，刷新 owner 芯片数。登记不足 10 s 的终端跳过（行在 open-terminal 前写入，更早的 push 不含它；open 之后的改标题 / 打标签会再触发 push）；operator 自己正在 kill 的终端跳过。shell 自己退出（`terminal-exit`）也关行（`exited`），不再一直计入每 grant 4 个上限。Web：终端弹窗对任一 tab 的 exit 都移除该 tab，并提示「这个终端已在 X 的机器上被关闭」。 |
+| P2-5 Codex 降档返回 machine_offline | 原因：Codex wrapper 没注册 `set-permission-mode`（Codex 的 mode 只随消息 `meta.permissionMode` 生效），RPC 房间为空，`routeRpcToRoom` 等完重连宽限后报 not_available → `machine_offline`。修法：CLI Codex wrapper 注册 `set-permission-mode`（按 Codex 档位校验，设为下一轮的 mode，发布 `metadata.permissionMode`），声明能力 `codex-live-permission-v1`；server 对 `flavor:'codex'` 且无该能力的会话立刻回 `cli_upgrade_required`（Web 显示「对方机器的 CLI 需要升级」），越级仍先报 `operator_mode_escalation`。**需要随 CLI 发布**；旧 CLI 上降档不可用但立即给出正确原因。 |
+| P2-6 ended_by_owner 未用、`downgraded` 未翻译 | 见上；操作记录新增 `ended`、`terminal.gone` 标签，结束原因中英文各 6 条。 |
+| P2-3 到期通知 > 1 s | 不加 per-grant timer，扫尾间隔 2 s → 1 s。开销：每 slot 每秒一次 `SessionOperatorTerminal where closedAt is null`（有索引，通常 0 行），有 operator 终端时再加一次按 id 查 grant；pendingKill 重试和 retention 节奏不变。到期到通知最坏约 1 s + 一次查询；数据面仍在到期瞬间切断。**已知行为**：扫尾只看「有打开终端」的 grant，没开终端的 operator 到期不推 `operator-revoked`，靠每次调用 `not_operator` 与下一次行重读收口。 |
+| P2-8 审计随会话删除 | 保留。理由：这是对 owner 机器做过什么的记录，owner 删会话往往正是清理之后，审计不应跟着消失；保留期本来就由 90 天 retention 控制。新迁移 `20261103140000_session_operator_event_keep` 只删 FK（`DROP CONSTRAINT IF EXISTS`），不改数据，单独成文件以免改动已在 QA 应用的迁移的 checksum。删会话后 grant 行随会话删除，Web 不再能列出这些事件，只在库里保留到期。顺带：会话删除时 teardown 写的 `ended` 事件以前会撞 FK 失败，现在能写入。 |
+
+**验证**：`operatorPolicy.spec.ts`（`operatorAuditPayload` 不带命令、Codex 能力门槛）；`operatorBroker.pglite.integration.spec.ts`（daemon 不应答时降档 / 撤销 < 1 s 返回且行为 pendingKill；`endOperation` 记 `ended_by_owner`；bash 命令在本表、外发无命令；owner 关终端 → 行关闭 + grantee 收 exit + 芯片计数 1 + `terminal.gone`，年轻终端不误关，重复 push 不重复报；shell exit 关行；Codex 旧 wrapper 立即 `cli_upgrade_required`、新 wrapper 转发；删会话后事件仍在）；`operatorBroker.source.spec.ts`（扫尾 1 s、`machineUpdateHandler` 接线）；CLI `codexLivePermission.test.ts`；Web `operatorEvents.test.ts`、`operatorProtocol.test.ts`。
+
