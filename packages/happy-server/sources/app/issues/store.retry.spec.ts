@@ -5,7 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * AGENTS rule 12: issue writes run in SERIALIZABLE `inTx`, which retries
  * Prisma P2034 and raw-query P2010 + SQLSTATE 40001; a racing unique insert
  * (P2002) is retried by the issue store; exhausted retries surface as a
- * retryable 409 `transaction_conflict`, never a 500.
+ * retryable 409 `transaction_conflict`, never a 500. The 16-way same-account
+ * create burst on real PostgreSQL is `scripts/ci/issues-concurrency-smoke.mjs`
+ * (server container smoke).
  */
 const { transaction } = vi.hoisted(() => ({ transaction: vi.fn() }));
 vi.mock('@/storage/db', () => ({ db: { $transaction: transaction } }));
@@ -27,10 +29,18 @@ describe('issues store transaction retries', () => {
         expect(transaction.mock.calls[0][1]).toMatchObject({ isolationLevel: 'Serializable' });
     });
 
-    it('maps exhausted serialization retries to 409 transaction_conflict', async () => {
+    it('maps exhausted serialization retries (1 + 8) to 409 transaction_conflict', async () => {
         transaction.mockRejectedValue(p2010());
         const { listIssues } = await import('./store');
         await expect(listIssues('acct', {})).rejects.toMatchObject({ code: 'transaction_conflict', status: 409 });
+        expect(transaction).toHaveBeenCalledTimes(9);
+    });
+
+    it('B-872c: createIssue runs READ COMMITTED behind the sequence row lock (QA42 P2-1)', async () => {
+        transaction.mockRejectedValue(new Error('stop'));
+        const { createIssue } = await import('./store');
+        await expect(createIssue('acct', { title: 't' } as never)).rejects.toThrow('stop');
+        expect(transaction.mock.calls[0][1]).toMatchObject({ isolationLevel: 'ReadCommitted' });
     });
 
     it('retries a racing unique insert (P2002), then answers 409', async () => {
