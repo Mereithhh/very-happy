@@ -3140,6 +3140,21 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov02d: {
+                title: '会话运行中也能侧聊',
+                summary: 'agent 干活时也能提问，不会打断它。Claude 和 Codex 会话都支持。',
+                entry: '会话运行中，Stop 左侧有「侧聊」入口；/btw 照常可用。',
+                readOnly: '侧聊只回答问题：不用工具、不动手，也不写进主对话。',
+                kept: '侧聊记录按会话保存在本浏览器，刷新后还在。',
+                fork: '「转成分叉会话」一键转成分叉会话，在那里可以让 agent 动手。',
+                cli: 'Codex 会话的侧聊需要那台机器的 CLI 是 0.2.195，旧版本会提示升级 CLI。',
+            },
+            nov02c: {
+                title: 'CLI 0.2.195：Codex 会话也能侧聊',
+                summary: 'Codex 会话运行中也能回答侧聊问题。',
+                codex: '每个侧聊问题都基于当前对话的一份只读临时副本回答，不打断、也不改动正在运行的 Codex 会话。',
+                approval: '会话在等你批准时，侧聊会如实说明正在等批准、尚未执行。',
+            },
             nov02b: {
                 title: '会话运行中也能分叉',
                 summary: '不用再等这一轮跑完才能分叉。',
