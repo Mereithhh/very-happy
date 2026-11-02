@@ -26,13 +26,13 @@ export async function joinProject(
     client: Pick<ProjectsClient, 'membership' | 'addMembers'>,
     sessionId: string,
     choice: ProjectChoice,
-    opts: { timeoutMs?: number; via?: 'explicit' | 'lineage' | 'automation' } = {},
+    opts: { timeoutMs?: number; via?: 'explicit' | 'lineage' | 'automation' | 'issue' } = {},
 ): Promise<JoinOutcome> {
     if (choice.kind === 'none') return { joined: false, reason: 'no project' };
     const timeoutMs = opts.timeoutMs ?? 3000;
     const work = async (): Promise<JoinOutcome> => {
         let projectId: string;
-        let via: 'explicit' | 'lineage' | 'automation';
+        let via: 'explicit' | 'lineage' | 'automation' | 'issue';
         if (choice.kind === 'explicit') { projectId = choice.projectId; via = opts.via ?? 'explicit'; }
         else {
             const parent = await client.membership(choice.parentSessionId);

@@ -15,7 +15,8 @@ import { acpNoticeMessage, type AcpNotice } from './acpNotices';
 import { describeAcpTurnFailure } from './acpTurnFailure';
 import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
-import { PI_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, type SessionEnvelope } from '@slopus/happy-wire';
+import { ISSUE_SESSION_CAPABILITY, PI_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, type SessionEnvelope } from '@slopus/happy-wire';
+import { issueSessionMetadata } from '@/issues/sessionMetadata';
 import { createProjectInjector } from '@/projects/injector';
 import { sharedProjectsClient } from '@/projects/client';
 import { logger } from '@/ui/logger';
@@ -535,6 +536,7 @@ export async function runAcp(opts: {
   const { state, metadata } = createSessionMetadata({
     flavor: resolveSessionFlavor(opts.agentName),
     ...(process.env.VH_TEAM_OPERATION_ID ? { teamOperationId: process.env.VH_TEAM_OPERATION_ID } : {}),
+    ...issueSessionMetadata(),
     machineId: settings.machineId,
     startedBy: opts.startedBy,
     sandbox: settings.sandboxConfig,
@@ -542,6 +544,8 @@ export async function runAcp(opts: {
     // daemon can restart it onto new code after an upgrade.
     capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, ...(opts.agentName === 'pi' && opts.startedBy === 'daemon' ? [AUTO_RESTART_CAPABILITY] : [])],
   });
+  // B-874: issue_* tools (via HAPPY_MCP_URL) + issue digest (spec §5).
+  metadata.capabilities = [...(metadata.capabilities ?? []), ISSUE_SESSION_CAPABILITY];
   metadata.attachmentKinds = [];
   // B-844: report the model the machine's Gemini config pins (null = none),
   // so the web's "follow latest" leaves it alone.

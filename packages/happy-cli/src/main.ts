@@ -579,6 +579,15 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exitCode = 1;
     }
     return;
+  } else if (subcommand === 'issue' || subcommand === 'issues') {
+    try {
+      const { handleIssueCommand } = await import('./commands/issue');
+      await handleIssueCommand(args.slice(1));
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : 'Issue command failed');
+      process.exitCode = 1;
+    }
+    return;
   } else if (subcommand === 'teams') {
     try {
       const { handleTeamsCommand } = await import('./commands/teams');
@@ -926,6 +935,7 @@ ${chalk.bold('Usage:')}
                             conversations on this machine (agent-home --help)
   very-happy connect           Connect AI vendor API keys
   very-happy todo              Built-in Todos and official agent skill (todo --help)
+  very-happy issue             Issues: list, show, create, assign to an agent, comment (issue --help)
   very-happy auto              Scheduled / triggered automations: spawn, sticky
                             sessions or scripts with tracked runs (auto --help)
   very-happy sandbox           Configure and manage OS-level sandboxing

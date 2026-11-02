@@ -2,6 +2,7 @@ import type { ProjectPresenceEntry } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
 import { buildDigestLine, buildFirstTurnPrefix, prependToMessage } from './prompt';
 import { ProjectsUnsupportedError, type ProjectsClient } from './client';
+import { createIssueDigest, type IssueDigest } from '@/issues/digest';
 
 /**
  * B-645 per-wrapper project injector (spec §3 layers P and D).
@@ -26,6 +27,8 @@ export type ProjectInjectorDeps = {
     timeoutMs?: number;
     now?: () => number;
     presenceMinIntervalMs?: number;
+    /** B-874: the issue digest line (spec §5) rides on the same decorate call; default = one for this session. */
+    issueDigest?: Pick<IssueDigest, 'decorate'> | null;
 };
 
 export type ProjectInjectorState = {
@@ -44,6 +47,7 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
     let lastPresenceAt = 0;
     let lastPresenceVersion: number | null = null;
     const label = (id: string) => titles.get(id) ?? id.slice(0, 8);
+    const issueDigest = deps.issueDigest === undefined ? createIssueDigest({ sessionId: deps.sessionId, timeoutMs }) : deps.issueDigest;
 
     function withTimeout<T>(p: Promise<T>): Promise<T> {
         return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error('project injection timeout')), timeoutMs).unref?.())]);
@@ -111,15 +115,16 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
         reset() { state.prefixSent = false; state.cursor = 0; },
         async decorate<T>(message: T): Promise<T> {
             if (typeof message !== 'string') return message;
+            const withIssue = async (text: string) => issueDigest ? issueDigest.decorate(text) : text;
             const sid = deps.sessionId();
-            if (!sid || deps.client.isDisabled()) return message;
+            if (!sid || deps.client.isDisabled()) return await withIssue(message) as unknown as T;
+            let out: string = message;
             try {
-                const out = state.prefixSent ? await laterTurn(sid, message) : await firstTurn(sid, message);
-                return out as unknown as T;
+                out = state.prefixSent ? await laterTurn(sid, message) : await firstTurn(sid, message);
             } catch (error) {
                 if (!(error instanceof ProjectsUnsupportedError)) logger.debug(`[projects] injection skipped: ${String(error)}`);
-                return message;
             }
+            return await withIssue(out) as unknown as T;
         },
     };
 }
