@@ -311,6 +311,40 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(reports[2]).toMatchObject({ tokens: { total: 50, input: 40, output: 10 }, cost: { total: 0 } });
     });
 
+    it('B-869: a dropped session socket reconnects with the same agent identity when the readiness predicate never turns true', async () => {
+        vi.useFakeTimers();
+        const client = new ApiSessionClient('fake-token', session);
+        const identity = mockIo.mock.calls[0][1].auth.agentInstance;
+        mockSocket.connect.mockClear();
+        mockShouldReconnect.mockReturnValue(false);
+        mockSocket.connected = false;
+        emitSocketEvent('disconnect', 'ping timeout');
+
+        await vi.advanceTimersByTimeAsync(27_000);
+        expect(mockSocket.connect).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(3_000);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+        // B-864: same socket, same handshake identity — the server sees a
+        // transport reconnect of the same instance, never a stale wrapper.
+        expect(mockIo).toHaveBeenCalledTimes(1);
+        expect(mockIo.mock.calls[0][1].auth.agentInstance).toBe(identity);
+        await client.close();
+    });
+
+    it('B-869: the forced reconnect never revives a superseded session', async () => {
+        vi.useFakeTimers();
+        const client = new ApiSessionClient('fake-token', session);
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        mockSocket.connect.mockClear();
+        mockShouldReconnect.mockReturnValue(false);
+        emitSocketEvent('session-superseded', { sessionId: 'test-session-id', by: null });
+        mockSocket.connected = false;
+        emitSocketEvent('disconnect', 'io server disconnect');
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(client.superseded).toBe(true);
+        expect(mockSocket.connect).not.toHaveBeenCalled();
+    });
+
     it('B-854: a client its owner closed never reconnects on the resulting disconnect', async () => {
         vi.useFakeTimers();
         mockSocket.connected = false;

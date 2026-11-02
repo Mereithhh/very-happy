@@ -19,6 +19,7 @@ import { ReleaseDrainNoticeSchema, type ReleaseDrainNotice } from '@slopus/happy
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
 import { shouldReconnect } from '@/utils/lidState';
+import { createReconnectGate } from './reconnectGate';
 import { RelayAssignmentResponseSchema, type SessionEnvelope, type SessionStreamFrame, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
     closeClaudeTurnWithStatus,
@@ -1707,17 +1708,22 @@ export class ApiSessionClient extends EventEmitter {
         if (this.closedByClient) return;
         if (this.reconnectInterval) return;
 
+        // B-869: the predicate is a hint — a wrong one must not wedge the socket.
+        const gate = createReconnectGate();
         this.reconnectInterval = setInterval(() => {
             if (this.socket.connected) {
                 clearInterval(this.reconnectInterval!);
                 this.reconnectInterval = null;
                 return;
             }
-            if (!shouldReconnect()) {
+            const decision = gate.decide(shouldReconnect());
+            if (decision === 'wait') {
                 logger.debug('[API] Still not ready to reconnect');
                 return;
             }
-            logger.debug('[API] Attempting reconnect');
+            logger.debug(decision === 'force'
+                ? '[API] Still not ready after repeated checks — forcing a reconnect attempt'
+                : '[API] Attempting reconnect');
             // B-543: never stack a second CONNECT on a pending one.
             connectGuarded(this.socket, 'reconnect-interval', guardOptions);
         }, 3000);
