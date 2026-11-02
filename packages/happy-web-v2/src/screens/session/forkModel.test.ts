@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Session } from '@/sync/storageTypes';
-import { forkFailureKind, forkReasonText, injectedPromptKey, isForkableFlavor, resolveForkPoint, sessionForkBlock } from './forkModel';
+import { forkFailureKind, forkPrefill, forkReasonText, injectedPromptKey, isForkableFlavor, resolveForkPoint, sessionForkBlock } from './forkModel';
 
 const claude = { id: 's', metadata: { machineId: 'm', path: '/repo', flavor: 'claude', claudeSessionId: 'c' } } as unknown as Session;
-const ok = { machineOnline: true, running: false };
+const ok = { machineOnline: true };
 
 describe('B-851 sessionForkBlock', () => {
     it('forks Claude and Codex with their own conversation ids', () => {
@@ -14,11 +14,10 @@ describe('B-851 sessionForkBlock', () => {
     it('explains each reason it cannot, most fundamental first', () => {
         expect(sessionForkBlock({ ...claude, metadata: { ...claude.metadata!, flavor: 'pi' } } as Session, ok)).toBe('unsupported');
         expect(sessionForkBlock(null, ok)).toBe('unsupported');
-        expect(sessionForkBlock({ ...claude, metadata: { ...claude.metadata!, claudeSessionId: undefined } } as Session, { machineOnline: false, running: true })).toBe('noHistory');
+        expect(sessionForkBlock({ ...claude, metadata: { ...claude.metadata!, claudeSessionId: undefined } } as Session, { machineOnline: false })).toBe('noHistory');
         // a Codex session never carries a stale Claude id into a Claude fork
         expect(sessionForkBlock({ ...claude, metadata: { ...claude.metadata!, flavor: 'codex' } } as Session, ok)).toBe('noHistory');
-        expect(sessionForkBlock(claude, { machineOnline: false, running: true })).toBe('offline');
-        expect(sessionForkBlock(claude, { machineOnline: true, running: true })).toBe('running');
+        expect(sessionForkBlock(claude, { machineOnline: false })).toBe('offline');
     });
     it('treats a session without flavor as Claude (pre-flavor sessions)', () => {
         expect(isForkableFlavor(undefined)).toBe(true);
@@ -182,5 +181,24 @@ describe('B-851 failure copy', () => {
         expect(forkReasonText(t as never, 'failed', 'disk full')).toBe('session.forkErrorGeneric disk full');
         expect(forkReasonText(t as never, 'outdated', 'Method not found')).toBe('session.forkErrorOutdated');
         expect(forkReasonText(t as never, 'offline')).toBe('session.forkErrorOffline');
+    });
+});
+
+describe('B-860 forkPrefill', () => {
+    const prompts = [{ text: 'earlier' }, { text: 'run the long task' }, { text: 'also check the logs' }];
+    it('prefills the running prompts with the Web’s own text, in order', () => {
+        expect(forkPrefill(['[project vh] run the long task', 'also check the logs'], prompts)).toBe('run the long task\n\nalso check the logs');
+    });
+    it('drops injected and harness prompts, keeps an unseen typed one as the machine read it', () => {
+        expect(forkPrefill([
+            '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>',
+            '[Very Happy team message t-1; from lead]\nplease review',
+            '<command-name>/compact</command-name>',
+            'typed in the terminal',
+        ], prompts)).toBe('typed in the terminal');
+        expect(forkPrefill([], prompts)).toBe('');
+    });
+    it('a repeated prompt maps to the latest occurrence, not an earlier one', () => {
+        expect(forkPrefill(['continue'], [{ text: 'continue' }, { text: 'other' }, { text: 'continue' }])).toBe('continue');
     });
 });

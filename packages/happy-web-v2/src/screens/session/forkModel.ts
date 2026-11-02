@@ -10,9 +10,10 @@ import { stripHarnessBlocks } from './harness';
  * - `unsupported`: not a Claude / Codex session (pi, gemini, …) — no entry.
  * - `noHistory`: the agent never ran a turn, so there is no conversation id.
  * - `offline`: the owning machine is offline; the fork runs on that machine.
- * - `running`: a turn is in progress; its transcript is still being written.
+ * A running turn no longer blocks (B-860): the whole-session fork keeps the
+ * completed turns, and a prompt's fork cuts before it as when idle.
  */
-export type ForkBlock = 'unsupported' | 'noHistory' | 'offline' | 'running';
+export type ForkBlock = 'unsupported' | 'noHistory' | 'offline';
 
 export function isForkableFlavor(flavor: string | null | undefined): boolean {
     return (flavor ?? 'claude') === 'claude' || flavor === 'codex';
@@ -20,13 +21,12 @@ export function isForkableFlavor(flavor: string | null | undefined): boolean {
 
 export function sessionForkBlock(
     session: Pick<Session, 'id' | 'metadata'> | null | undefined,
-    state: { machineOnline: boolean; running: boolean },
+    state: { machineOnline: boolean },
 ): ForkBlock | { source: ForkSource } {
     if (!session || !isForkableFlavor(session.metadata?.flavor)) return 'unsupported';
     const source = getSessionForkSource(session as Session);
     if (!source) return 'noHistory';
     if (!state.machineOnline) return 'offline';
-    if (state.running) return 'running';
     return { source };
 }
 
@@ -76,6 +76,33 @@ export function injectedPromptKey(text: string): string | null | undefined {
 
 function contains(point: string, prompt: string): boolean {
     return normalize(point).includes(normalize(prompt));
+}
+
+/**
+ * B-860: what to put in the new composer after forking a running session —
+ * the prompts of the turn left out, as the machine read them. Injected ones
+ * (task notifications, team / peer / automation deliveries) were never typed
+ * here and are dropped; a typed one is replaced by the Web's own text when a
+ * confirmed prompt matches it (the transcript may carry a wrapper prefix).
+ */
+export function forkPrefill(excluded: readonly string[], prompts: readonly { text: string }[]): string {
+    const typed = prompts.filter((prompt) => injectedPromptKey(prompt.text) === undefined && normalize(prompt.text));
+    let cursor = typed.length;
+    const texts: string[] = [];
+    for (let i = excluded.length - 1; i >= 0; i--) {
+        const point = excluded[i];
+        if (injectedPromptKey(point) !== undefined) continue;
+        let at = cursor - 1;
+        while (at >= 0 && !contains(point, typed[at].text)) at--;
+        if (at >= 0) {
+            cursor = at;
+            texts.unshift(typed[at].text);
+        } else if (!/^\s*</.test(point)) {
+            // Not a prompt this Web saw; a `<command-name>` / harness entry is not prefilled.
+            texts.unshift(point);
+        }
+    }
+    return texts.join('\n\n');
 }
 
 /**
@@ -158,7 +185,6 @@ const REASON_KEY = {
     unsupported: 'session.forkUnsupported',
     noHistory: 'session.forkErrorNoHistory',
     offline: 'session.forkErrorOffline',
-    running: 'session.forkErrorRunning',
     attachments: 'session.forkErrorAttachments',
     pending: 'session.forkErrorPending',
     outdated: 'session.forkErrorOutdated',

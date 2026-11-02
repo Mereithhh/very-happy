@@ -174,12 +174,21 @@ export async function forkCodexBeforeUserMessage(
         throw new Error('Cannot safely rewind a user message inside an existing turn');
     }
     if (sourceCut.index === 0) return { type: 'success', startFresh: true };
-    // B-851: fork THROUGH the turn before the cut (`lastTurnId`). Codex 0.154+
-    // forks into a paginated thread that refuses the deprecated `thread/rollback`.
-    // An older Codex ignores the field and copies everything; only then is the
-    // copy cut back the old way. Either way the result is read back and checked
-    // turn by turn (by each turn's first item — item ids survive a fork).
-    const kept = (source.turns ?? []).slice(0, sourceCut.index);
+    return forkThroughTurns(client, opts, (source.turns ?? []).slice(0, sourceCut.index));
+}
+
+/**
+ * B-851: fork THROUGH the last of `kept` (`lastTurnId`). Codex 0.154+ forks
+ * into a paginated thread that refuses the deprecated `thread/rollback`. An
+ * older Codex ignores the field and copies everything; only then is the copy
+ * cut back the old way. Either way the result is read back and checked turn
+ * by turn (by each turn's first item — item ids survive a fork).
+ */
+async function forkThroughTurns(
+    client: CodexForkClient & { readThread: (opts: { threadId: string; includeTurns: boolean }) => Promise<{ thread: Thread }> },
+    opts: { threadId: string; cwd: string },
+    kept: readonly ThreadTurn[],
+): Promise<CodexForkResult> {
     const expected = kept.map(firstItemId);
     const forked = await client.forkThread({ threadId: opts.threadId, cwd: opts.cwd, lastTurnId: kept[kept.length - 1].id });
     if (forked.threadId === opts.threadId) throw new Error('Codex did not create an independent fork');
@@ -191,4 +200,40 @@ export async function forkCodexBeforeUserMessage(
         throw new Error('Codex rollback did not preserve the expected history');
     }
     return { type: 'success', newCodexThreadId: forked.threadId };
+}
+
+/**
+ * B-860: a turn the source's own app-server is still running. Another
+ * app-server reads it from the rollout as `interrupted` (it has no
+ * completion yet); a running Codex refuses to fork through it. Only asked
+ * while the session is known to be running.
+ */
+function isUnfinishedTurn(turn: ThreadTurn | undefined): boolean {
+    return turn?.status === 'inProgress' || turn?.status === 'interrupted';
+}
+
+/**
+ * B-860: fork a RUNNING thread — every completed turn, not the one in
+ * progress (its prompts come back as `excludedPrompts`). Verified on Codex
+ * 0.154 from a second app-server while the source turn runs: `thread/fork`
+ * with `lastTurnId` of the previous turn succeeds and the source turn
+ * finishes untouched. `startFresh` = the running turn is the first one.
+ */
+export async function forkCodexCompletedTurns(
+    client: CodexForkClient & { readThread: (opts: { threadId: string; includeTurns: boolean }) => Promise<{ thread: Thread }> },
+    opts: { threadId: string; cwd: string },
+): Promise<(CodexForkResult | { type: 'success'; startFresh: true }) & { excludedPrompts: string[] }> {
+    const { thread: source } = await client.readThread({ threadId: opts.threadId, includeTurns: true });
+    const turns = source.turns ?? [];
+    const last = turns[turns.length - 1];
+    if (!isUnfinishedTurn(last)) {
+        return { ...(await forkCodexThread(client, opts)), excludedPrompts: [] };
+    }
+    const excludedPrompts = (last.items ?? []).flatMap((item) => {
+        const text = textFromUserItem(item);
+        return text ? [text] : [];
+    });
+    const kept = turns.slice(0, -1);
+    if (kept.length === 0) return { type: 'success', startFresh: true, excludedPrompts };
+    return { ...(await forkThroughTurns(client, opts, kept)), excludedPrompts };
 }

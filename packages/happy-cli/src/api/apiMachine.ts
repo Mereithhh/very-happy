@@ -40,6 +40,7 @@ import { readTrackedClaudeSessionIds, readTrackedCodexThreadIds } from '@/persis
 import { listClaudeProjectDirs, listClaudeSessionHistory } from '@/claude/utils/claudeSessionHistory';
 import {
     forkBeforeUserMessage,
+    forkCompletedTurns as claudeForkCompletedTurns,
     forkSession as claudeForkSession,
     forkAndTruncateSession as claudeForkAndTruncateSession,
     listClaudeRewindPoints,
@@ -55,6 +56,7 @@ import { ReleaseDrainNoticeSchema, type RelayAssignment, type ReleaseDrainNotice
 import {
     CodexForkRewindPointNotFoundError,
     forkCodexBeforeUserMessage,
+    forkCodexCompletedTurns,
     forkCodexThread,
     listCodexRewindPoints,
 } from '@/codex/codexThreadFork';
@@ -1160,6 +1162,29 @@ export class ApiMachineClient {
             return withCodexAppServerClient((client) => forkCodexBeforeUserMessage(client, {
                 threadId: codexThreadId, cwd: directory, cutBeforeItemId,
             }));
+        });
+
+        // B-860: fork a RUNNING session — the completed turns only; the turn in
+        // progress stays out and its prompts come back (`excludedPrompts`) for
+        // the new composer. Separate names: an old daemon must answer `Method
+        // not found`, not silently copy the half-written turn. The source
+        // session is only read, never paused or interrupted.
+        this.rpcHandlerManager.registerHandler('claude-fork-completed-turns', async (params: any) => {
+            const directory = requireNonEmptyString(params?.directory, 'directory');
+            const claudeSessionId = requireNonEmptyString(params?.claudeSessionId, 'claudeSessionId');
+            if (!UUID_RE.test(claudeSessionId)) throw new Error('claudeSessionId must be a valid UUID');
+            try {
+                return { type: 'success', ...await claudeForkCompletedTurns(getProjectPath(directory), claudeSessionId) };
+            } catch (error) {
+                if (error instanceof ForkSourceMissingError) throw new Error('Claude session file not found on this machine');
+                throw error;
+            }
+        });
+
+        this.rpcHandlerManager.registerHandler('codex-fork-completed-turns', async (params: any) => {
+            const directory = requireNonEmptyString(params?.directory, 'directory');
+            const codexThreadId = requireNonEmptyString(params?.codexThreadId, 'codexThreadId');
+            return withCodexAppServerClient((client) => forkCodexCompletedTurns(client, { threadId: codexThreadId, cwd: directory }));
         });
 
         // Register stop daemon handler

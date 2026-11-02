@@ -91,8 +91,9 @@ describe('B-851 fork from a prompt sent from the Web (no claude uuid)', () => {
             .rejects.toMatchObject({ kind: 'missingPoint' });
         expect(calls.map((c) => c.method)).toEqual(['claude-list-rewind-points']);
     });
-    it('blocks a running session and an offline machine before any RPC', () => {
-        const session = storage.getState().sessions.parent;
+    it('blocks attachments and an offline machine before any RPC — never a running turn (B-860)', () => {
+        const session = { ...storage.getState().sessions.parent, thinking: true };
+        expect(flow.messageForkTarget(session, prompt('b', 3, 'second') as never, false)).toMatchObject({ messageId: 'b' });
         expect(flow.messageForkTarget(session, prompt('b', 3, 'second') as never, true)).toBe('attachments');
         storage.setState((state) => ({ ...state, machines: { m: { id: 'm', active: false } as never } }));
         expect(flow.messageForkTarget(session, prompt('b', 3, 'second') as never, false)).toBe('offline');
@@ -103,19 +104,53 @@ describe('B-851 whole-session fork failures are explained', () => {
     const source = { kind: 'claude' as const, sessionId: 'parent', machineId: 'm', directory: '/repo', claudeSessionId: 'c' };
     it('a daemon without the RPC needs a newer CLI', async () => {
         stubMachine({ 'claude-fork-session': { error: 'Method not found' } });
-        await expect(flow.forkWholeSession(storage.getState().sessions.parent, source)).rejects.toMatchObject({ kind: 'outdated' });
+        await expect(flow.forkWholeSession(storage.getState().sessions.parent, source, false)).rejects.toMatchObject({ kind: 'outdated' });
     });
     it('an unregistered method on a machine still shown online names both causes', async () => {
         stubMachine({ 'claude-fork-session': new Error('RPC method not available') });
-        await expect(flow.forkWholeSession(storage.getState().sessions.parent, source)).rejects.toMatchObject({ kind: 'unreachable' });
+        await expect(flow.forkWholeSession(storage.getState().sessions.parent, source, false)).rejects.toMatchObject({ kind: 'unreachable' });
     });
     it('a machine that went offline meanwhile says offline', async () => {
         stubMachine({ 'claude-fork-session': new Error('RPC method not available') });
         storage.setState((state) => ({ ...state, machines: { m: { id: 'm', active: false } as never } }));
-        await expect(flow.forkWholeSession(storage.getState().sessions.parent, source)).rejects.toMatchObject({ kind: 'offline' });
+        await expect(flow.forkWholeSession(storage.getState().sessions.parent, source, false)).rejects.toMatchObject({ kind: 'offline' });
     });
     it('keeps the machine’s own reason otherwise', async () => {
         stubMachine({ 'claude-fork-session': { error: 'Claude session file not found on this machine' } });
-        await expect(flow.forkWholeSession(storage.getState().sessions.parent, source)).rejects.toMatchObject({ kind: 'failed', message: 'Claude session file not found on this machine' });
+        await expect(flow.forkWholeSession(storage.getState().sessions.parent, source, false)).rejects.toMatchObject({ kind: 'failed', message: 'Claude session file not found on this machine' });
+    });
+});
+
+describe('B-860 whole-session fork while a turn runs', () => {
+    const source = { kind: 'claude' as const, sessionId: 'parent', machineId: 'm', directory: '/repo', claudeSessionId: 'c' };
+    it('keeps the completed turns, prefills the running prompt with the Web’s text and reports it', async () => {
+        stubMachine({
+            'claude-fork-completed-turns': { type: 'success', newClaudeSessionId: '33333333-3333-4333-8333-333333333333', excludedPrompts: ['[header] second'] },
+            'spawn-happy-session': { type: 'success', sessionId: 'branch' },
+        });
+        const fork = await flow.forkWholeSession(storage.getState().sessions.parent, source, true);
+        expect(fork).toEqual({ id: 'branch', partial: true, prefilled: true });
+        expect(calls.map((c) => c.method)).toEqual(['claude-fork-completed-turns', 'spawn-happy-session']);
+        expect(calls[1].params).toMatchObject({ parentSessionId: 'parent', resumeClaudeSessionId: '33333333-3333-4333-8333-333333333333', permissionMode: 'plan' });
+        expect(storage.getState().sessions.branch.draft).toBe('second');
+    });
+    it('the turn ended meanwhile: a plain fork, no notice, nothing prefilled', async () => {
+        stubMachine({
+            'codex-fork-completed-turns': { type: 'success', newCodexThreadId: 'thread-2', excludedPrompts: [] },
+            'spawn-happy-session': { type: 'success', sessionId: 'branch' },
+        });
+        const codex = { kind: 'codex' as const, sessionId: 'parent', machineId: 'm', directory: '/repo', codexThreadId: 't' };
+        expect(await flow.forkWholeSession(storage.getState().sessions.parent, codex, true)).toEqual({ id: 'branch', partial: false, prefilled: false });
+        expect(calls[1].params).toMatchObject({ resumeCodexThreadId: 'thread-2' });
+    });
+    it('the first turn is the running one: noHistory, no session spawned', async () => {
+        stubMachine({ 'claude-fork-completed-turns': { type: 'success', startFresh: true, excludedPrompts: ['first'] } });
+        await expect(flow.forkWholeSession(storage.getState().sessions.parent, source, true)).rejects.toMatchObject({ kind: 'noHistory' });
+        expect(calls.map((c) => c.method)).toEqual(['claude-fork-completed-turns']);
+    });
+    it('an older daemon without the RPC asks for a CLI update instead of copying the half-written turn', async () => {
+        stubMachine({ 'claude-fork-completed-turns': { error: 'Method not found' } });
+        await expect(flow.forkWholeSession(storage.getState().sessions.parent, source, true)).rejects.toMatchObject({ kind: 'outdated' });
+        expect(calls.map((c) => c.method)).toEqual(['claude-fork-completed-turns']);
     });
 });

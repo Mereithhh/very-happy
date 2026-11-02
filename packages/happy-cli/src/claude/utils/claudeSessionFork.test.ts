@@ -8,6 +8,9 @@ import {
     listClaudeRewindPoints,
     discardForkedSession,
     forkSession,
+    forkCompletedTurns,
+    findUnfinishedTurn,
+    completeLines,
     forkAndTruncateSession,
     ForkTruncateUuidNotFoundError,
     ForkSourceMissingError,
@@ -265,6 +268,83 @@ describe('claudeSessionFork', () => {
 
         it('is a no-op when the file is already gone', async () => {
             await expect(discardForkedSession(projectDir, '11111111-1111-1111-1111-111111111111')).resolves.toBeUndefined();
+        });
+    });
+    describe('B-860: forking a running session', () => {
+        const user = (uuid: string, content: unknown, extra: object = {}) => ({ type: 'user', uuid, message: { role: 'user', content }, ...extra });
+        const assistant = (uuid: string, stop: string | null, text = 'x') => ({ type: 'assistant', uuid, message: { role: 'assistant', content: [{ type: 'text', text }], stop_reason: stop } });
+        const toolResult = (uuid: string) => user(uuid, [{ type: 'tool_result', tool_use_id: 't', content: 'ok' }]);
+        const done = [user('u1', 'remember ALPHA'), assistant('a1', 'end_turn', 'OK')];
+
+        async function writeRaw(raw: string): Promise<string> {
+            const path = join(projectDir, `${sourceId}.jsonl`);
+            await writeFile(path, raw, 'utf-8');
+            return path;
+        }
+        const jsonl = (entries: object[]) => entries.map((e) => JSON.stringify(e)).join('\n') + '\n';
+
+        it('drops a torn last line but keeps a complete one still missing its newline', () => {
+            const a = JSON.stringify(user('u1', 'hi'));
+            const b = JSON.stringify(assistant('a1', 'end_turn'));
+            expect(completeLines(`${a}\n${b}\n`)).toEqual([a, b]);
+            expect(completeLines(`${a}\n${b}`)).toEqual([a, b]);
+            expect(completeLines(`${a}\n${b.slice(0, 20)}`)).toEqual([a]);
+            expect(completeLines('')).toEqual([]);
+        });
+
+        it('cuts the turn in progress — tool calls, a torn last line and a steered prompt included', async () => {
+            const running = [
+                user('u2', 'run the long task'),
+                assistant('a2', 'tool_use'),
+                toolResult('r2'),
+                user('u3', 'also check the logs'),
+                assistant('a3', 'tool_use'),
+            ];
+            const source = await writeRaw(jsonl([...done, ...running]) + JSON.stringify(assistant('a4', null)).slice(0, 30));
+            const original = await readFile(source, 'utf-8');
+            const result = await forkCompletedTurns(projectDir, sourceId);
+            expect(result).toEqual({ newClaudeSessionId: expect.any(String), excludedPrompts: ['run the long task', 'also check the logs'] });
+            expect(await readJsonl((result as { newClaudeSessionId: string }).newClaudeSessionId)).toEqual(done);
+            expect(await readFile(source, 'utf-8')).toBe(original);
+        });
+
+        it('copies everything when the transcript already ends on a closed turn', async () => {
+            await writeRaw(jsonl([...done, { type: 'last-prompt', lastPrompt: 'x' }]));
+            const result = await forkCompletedTurns(projectDir, sourceId);
+            expect(result).toMatchObject({ excludedPrompts: [] });
+            expect(await readJsonl((result as { newClaudeSessionId: string }).newClaudeSessionId)).toEqual([...done, { type: 'last-prompt', lastPrompt: 'x' }]);
+        });
+
+        it('first turn still running: nothing completed → startFresh with the prompt handed back', async () => {
+            await writeRaw(jsonl([user('u1', 'first'), assistant('a1', 'tool_use')]));
+            expect(await forkCompletedTurns(projectDir, sourceId)).toEqual({ startFresh: true, excludedPrompts: ['first'] });
+        });
+
+        it('an interrupt, a local command and a compaction each close the turn before', () => {
+            const lines = (entries: object[]) => entries.map((e) => JSON.stringify(e));
+            const tail = [user('u9', 'next'), assistant('a9', 'tool_use')];
+            for (const closer of [
+                user('i1', '[Request interrupted by user for tool use]'),
+                user('c1', '<local-command-stdout>Set model to opus</local-command-stdout>'),
+                { type: 'system', subtype: 'compact_boundary', uuid: 'b1' },
+                user('s1', 'This session is being continued from a previous conversation…', { isCompactSummary: true }),
+                assistant('e1', 'stop_sequence'),
+            ]) {
+                const all = lines([user('u1', 'a'), assistant('a1', 'tool_use'), closer, ...tail]);
+                expect(findUnfinishedTurn(all)).toEqual({ start: 3, prompts: ['next'] });
+            }
+            // tool_use / pause_turn stops do not close a turn; sidechain answers never do.
+            const open = lines([...done, user('u2', 'go'), assistant('a2', 'pause_turn'), { ...assistant('s2', 'end_turn'), isSidechain: true }]);
+            expect(findUnfinishedTurn(open)).toEqual({ start: 2, prompts: ['go'] });
+            expect(findUnfinishedTurn(lines(done))).toBeNull();
+        });
+
+        it('rewind-before and the whole copy ignore a torn last line', async () => {
+            await writeRaw(jsonl([...done, user('u2', 'second'), assistant('a2', 'tool_use')]) + '{"type":"assist');
+            const before = await forkBeforeUserMessage(projectDir, sourceId, 'u2');
+            expect(await readJsonl(before!)).toEqual(done);
+            const whole = await forkSession(projectDir, sourceId);
+            expect(await readJsonl(whole)).toEqual([...done, user('u2', 'second'), assistant('a2', 'tool_use')]);
         });
     });
 });

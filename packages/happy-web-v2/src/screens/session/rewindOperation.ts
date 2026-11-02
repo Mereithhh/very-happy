@@ -7,7 +7,7 @@ type RewindDependencies = {
     rememberMode: (sessionId: string, mode: string) => void;
     spawn: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
 };
-type BranchResponse = { type?: string; error?: string; errorMessage?: string; startFresh?: boolean; newClaudeSessionId?: string; newCodexThreadId?: string } | null;
+type BranchResponse = { type?: string; error?: string; errorMessage?: string; startFresh?: boolean; newClaudeSessionId?: string; newCodexThreadId?: string; excludedPrompts?: unknown } | null;
 
 /** Separate RPC names ensure old daemons cannot silently ignore before semantics. */
 export async function createRewindBranch(target: RewindTarget & { pointId: string }, permissionMode: string | undefined, deps: RewindDependencies): Promise<string> {
@@ -36,6 +36,27 @@ export async function createSessionFork(source: ForkSource, permissionMode: stri
     // A whole-session copy always has something to resume.
     if (result?.startFresh === true) throw new Error('Invalid fork response');
     return spawnBranch(source, result, permissionMode, undefined, deps);
+}
+
+/**
+ * B-860: fork a session whose turn is still running — the machine keeps the
+ * completed turns (`*-fork-completed-turns`) and reports the prompts of the
+ * turn in progress. `noCompletedTurn`: that turn is the first, nothing to
+ * keep; no session is spawned. The source is only read, never interrupted.
+ */
+export async function createCompletedTurnsFork(
+    source: ForkSource, permissionMode: string | undefined, deps: RewindDependencies,
+): Promise<{ sessionId: string; excludedPrompts: string[] } | 'noCompletedTurn'> {
+    const response = await deps.rpc(source.machineId, source.kind === 'claude' ? 'claude-fork-completed-turns' : 'codex-fork-completed-turns', {
+        directory: source.directory,
+        ...(source.kind === 'claude' ? { claudeSessionId: source.claudeSessionId } : { codexThreadId: source.codexThreadId }),
+    });
+    const result = response as BranchResponse;
+    const excludedPrompts = Array.isArray(result?.excludedPrompts)
+        ? result.excludedPrompts.filter((text): text is string => typeof text === 'string')
+        : [];
+    if (result && !result.error && result.type === 'success' && result.startFresh === true) return 'noCompletedTurn';
+    return { sessionId: await spawnBranch(source, result, permissionMode, undefined, deps), excludedPrompts };
 }
 
 async function spawnBranch(source: ForkSource, result: BranchResponse, permissionMode: string | undefined, messageId: string | undefined, deps: RewindDependencies): Promise<string> {

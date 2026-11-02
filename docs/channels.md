@@ -305,6 +305,12 @@ with the account content key, which `dataKey` CLI credentials do not hold.
   `resumed: true` from `/spawn-session`; an older daemon strips the resume
   fields and starts a fresh session, which `spawn --fork` then stops and
   reports as an error (the copied conversation file stays behind).
+  B-860: a source in the middle of a turn (its server log has no `turn-end`
+  after the latest prompt) forks its completed turns only — the same helpers
+  as the Web's `claude-fork-completed-turns` / `codex-fork-completed-turns`
+  RPCs; the turn in progress is left out and printed (`--json`:
+  `excludedPrompts`). The source keeps running. If that turn is its first,
+  the fork is refused (nothing has completed).
   With a prompt, the CLI first waits until the fork's wrapper reports its
   replayed history committed on the server (`metadata.forkBackfill`, B-531),
   so the prompt is always ordered after that history. If a wrapper that

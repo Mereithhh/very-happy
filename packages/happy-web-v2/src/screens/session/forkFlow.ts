@@ -8,9 +8,9 @@ import type { UserTextMessage } from '@/sync/typesMessage';
 import type { ForkSource } from '@/utils/sessionFork';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
 import { isHeartbeatFresh } from '@/sync/heartbeatLease';
-import { forkFailureKind, resolveForkPoint, sessionForkBlock, type ForkPoint, type ForkReason } from './forkModel';
+import { forkFailureKind, forkPrefill, resolveForkPoint, sessionForkBlock, type ForkPoint, type ForkReason } from './forkModel';
 import { getRewindTarget, rewindPermissionMode, type RewindTarget } from './messageActionsModel';
-import { createRewindBranch, createSessionFork } from './rewindOperation';
+import { createCompletedTurnsFork, createRewindBranch, createSessionFork } from './rewindOperation';
 
 /**
  * B-851: 「分叉会话」 (header ⋯) and 「从这里分叉」 (a prompt's actions).
@@ -19,7 +19,7 @@ import { createRewindBranch, createSessionFork } from './rewindOperation';
  * source session is never touched. Lineage (`parentSessionId`,
  * `forkedFromMessageId`) rides the spawn into the new session's metadata.
  */
-export type ForkFailureKind = ReturnType<typeof forkFailureKind> | 'missingPoint';
+export type ForkFailureKind = ReturnType<typeof forkFailureKind> | 'missingPoint' | 'noHistory';
 export class ForkFailure extends Error {
     constructor(public readonly kind: ForkFailureKind, message: string) {
         super(message);
@@ -40,17 +40,24 @@ function machineOnline(machineId: string): boolean {
     return storage.getState().machines[machineId]?.active === true;
 }
 
-/** Read at click time: a fork is the user's explicit act, not a live status to subscribe to. */
+/**
+ * Read at click time: a fork is the user's explicit act, not a live status to
+ * subscribe to. B-860: it only picks what a whole-session fork keeps (the
+ * completed turns) and the notice — it never blocks a fork.
+ */
 export function sessionRunningNow(session: Session): boolean {
     return isAgentWorkLive({ presence: session.presence, thinking: session.thinking, runningSubagentsInTurn: 0, heartbeatFresh: isHeartbeatFresh(session.id) });
 }
 
-/** Why 「从这里分叉」 cannot start for this prompt, or what to cut. */
+/**
+ * Why 「从这里分叉」 cannot start for this prompt, or what to cut. Allowed
+ * while a turn runs (B-860): an earlier prompt cuts inside the completed
+ * turns; the running prompt cuts before itself and is prefilled, as when idle.
+ */
 export function messageForkTarget(session: Session, message: UserTextMessage, hasAttachments: boolean): RewindTarget | ForkReason {
-    const running = sessionRunningNow(session);
-    const state = sessionForkBlock(session, { machineOnline: machineOnline(session.metadata?.machineId ?? ''), running });
+    const state = sessionForkBlock(session, { machineOnline: machineOnline(session.metadata?.machineId ?? '') });
     if (typeof state === 'string') return state;
-    return getRewindTarget(session, message, hasAttachments, running);
+    return getRewindTarget(session, message, hasAttachments);
 }
 
 function classify(source: ForkSource, error: unknown): ForkFailure {
@@ -74,11 +81,25 @@ async function settle(parent: Session, newId: string, draft?: string): Promise<v
     if (picks.effortLevel) state.updateSessionEffortLevel(newId, picks.effortLevel);
 }
 
-export async function forkWholeSession(parent: Session, source: ForkSource): Promise<string> {
+/**
+ * `partial`: the session was mid-turn, so the fork holds its completed turns
+ * only (B-860); `prefilled`: that turn's message waits in the new composer.
+ */
+export type WholeFork = { id: string; partial: boolean; prefilled: boolean };
+
+export async function forkWholeSession(parent: Session, source: ForkSource, running: boolean): Promise<WholeFork> {
     try {
-        const id = await createSessionFork(source, parentPermissionMode(parent, source.kind), deps);
-        await settle(parent, id);
-        return id;
+        const mode = parentPermissionMode(parent, source.kind);
+        if (!running) {
+            const id = await createSessionFork(source, mode, deps);
+            await settle(parent, id);
+            return { id, partial: false, prefilled: false };
+        }
+        const fork = await createCompletedTurnsFork(source, mode, deps);
+        if (fork === 'noCompletedTurn') throw new ForkFailure('noHistory', 'The running turn is the first one');
+        const draft = forkPrefill(fork.excludedPrompts, confirmedPrompts(source.sessionId));
+        await settle(parent, fork.sessionId, draft);
+        return { id: fork.sessionId, partial: fork.excludedPrompts.length > 0, prefilled: draft.length > 0 };
     } catch (error) {
         throw classify(source, error);
     }
