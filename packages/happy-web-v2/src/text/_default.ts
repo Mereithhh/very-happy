@@ -3008,6 +3008,13 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov02f: {
+                title: 'One search for sessions and conversations',
+                summary: '⌘K now also searches what was said in your conversations.',
+                oneEntry: '⌘K, ⌘⇧F and the sidebar search button now open the same panel.',
+                content: 'Type two or more characters and the new “Conversation content” group searches conversation text on all your machines; click a result to jump straight to that message.',
+                filters: 'Project, machine, agent, time and archived filters are all in the same panel.',
+            },
             nov02e: {
                 title: 'No more false “upgrade Codex” banner',
                 summary: 'Codex sessions only ask you to upgrade Codex when the model they actually use needs it.',
