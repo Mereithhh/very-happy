@@ -13,6 +13,7 @@ import './auth.css';
 import { authReturnTarget, peekPersistedAuthReturnTarget } from '@/app/authReturnTarget';
 import { classifyPasswordLoginFailure } from './loginErrorPresentation';
 import { isReadyTimeout } from '@/encryption/readyDeadline';
+import { CryptoNotReadyNotice } from './CryptoNotReadyNotice';
 import { rateLimitedMessage } from '@/auth/rateLimitMessage';
 import { EmailOtpForm } from './EmailOtpForm';
 import { publicAuthMethodState } from './emailOtpPresentation';
@@ -158,10 +159,7 @@ export function LoginScreen() {
             <h2 id="login-form-title">{t('settings.connectAccount')}</h2>
           </header>
           {reauthMessage && <div className="auth-reauth-note" role="status">{reauthMessage}</div>}
-          {cryptoNotReady && <div className="auth-error auth-crypto-not-ready" role="alert">
-            <span>{t('login.errorCryptoNotReady')}</span>
-            <Button type="button" size="sm" onClick={() => window.location.reload()}>{t('login.reloadPage')}</Button>
-          </div>}
+          {cryptoNotReady && <CryptoNotReadyNotice />}
 
           {oidcEnabled && <OidcLoginButton
             displayName={oidcDisplayName}
