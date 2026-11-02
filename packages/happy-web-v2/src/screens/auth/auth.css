@@ -320,6 +320,14 @@
   border-radius: var(--r-sm);
   font-size: var(--fs-12);
 }
+/* B-859c: crypto wasm not loaded — message plus a reload button. */
+.auth-crypto-not-ready {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
 .auth-policy {
   padding: var(--sp-3);
   color: var(--text-dim);

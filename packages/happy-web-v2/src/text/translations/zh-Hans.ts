@@ -5774,6 +5774,8 @@ export const zhHans: TranslationStructure = {
         title: '继续上次的工作。',
         subtitle: 'Agent 会话、终端与机器，都在同一个控制台。',
         waiting: '等待身份验证',
+        errorCryptoNotReady: '加密模块还没加载好，请刷新页面后重试。',
+        reloadPage: '刷新页面',
     },
 
     authCommon: {
