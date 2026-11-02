@@ -75,7 +75,39 @@ export function usingFakeIssuesTransport(): boolean {
     return transport !== fetchTransport;
 }
 
+/**
+ * B-872c spec §9: 409 `transaction_conflict` means the server's own retries ran
+ * out and the write rolled back, so it is resent as-is — same path and body,
+ * hence the same `requestId` (create / comment / run keep theirs in a ref) or
+ * `ifVersion` (PATCH) — after ~200 ms·2ⁿ plus jitter, at most 5 times; only
+ * then does `issueErrors.ts` show it. Every other 409 is a business conflict
+ * and is never retried.
+ */
+export const ISSUE_TRANSACTION_CONFLICT = 'transaction_conflict';
+export const ISSUE_CONFLICT_MAX_RETRIES = 5;
+export function issueConflictBackoffMs(attempt: number, random: () => number = Math.random): number {
+    const base = 200 * 2 ** attempt;
+    return base + Math.floor(random() * base / 2);
+}
+let retrySleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+/** Tests: skip the real backoff wait (null restores setTimeout). */
+export function setIssuesRetrySleep(next: ((ms: number) => Promise<void>) | null): void {
+    retrySleep = next ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+}
+
 async function request<T>(method: IssuesMethod, path: string, body?: unknown): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            return await requestOnce<T>(method, path, body);
+        } catch (error) {
+            const retryable = error instanceof IssuesApiError && error.status === 409 && error.code === ISSUE_TRANSACTION_CONFLICT;
+            if (!retryable || attempt >= ISSUE_CONFLICT_MAX_RETRIES) throw error;
+            await retrySleep(issueConflictBackoffMs(attempt));
+        }
+    }
+}
+
+async function requestOnce<T>(method: IssuesMethod, path: string, body?: unknown): Promise<T> {
     const { status, data } = await transport(method, path, body);
     if (status < 200 || status >= 300) {
         const { error, ...details } = (data ?? {}) as { error?: string } & Record<string, unknown>;
