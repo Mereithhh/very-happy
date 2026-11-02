@@ -22,6 +22,7 @@ import {
     type AgentDefaultOverrides,
 } from '@/sync/agentDefaults';
 import { withRunPicks } from '@/sync/runPicks';
+import { readSessionAgentProfile } from '@/sync/agentProfiles';
 import { MACHINE_CONFIG_AGENTS, getLatestModelTier, isLatestModelMode, resolveLatestModel, type LatestModelTable } from '@slopus/happy-wire';
 
 /**
@@ -52,6 +53,7 @@ export interface ModelSupportSessionLike {
         capabilities?: string[] | null;
         models?: Array<{ code: string }> | null;
         configuredModel?: string | null;
+        agentProfile?: unknown;
     } | null;
 }
 
@@ -92,7 +94,10 @@ function isOpus55(model: string | null | undefined): model is string {
 /** The model the user asked this session to run: an explicit pick, else the
  *  synced default, else the code default — deliberately NOT capability-gated
  *  (the gate is what silently drops Opus 5.5 on an old wrapper). Following
- *  latest (B-844) wants the newest model of the tier anyone knows of. */
+ *  latest (B-844) on Claude wants the newest model of the tier anyone knows
+ *  of; on Codex / Gemini it is what the session really requests (B-862): the
+ *  newest its own catalog proves runnable — a newer id it does not list is
+ *  never sent, and a custom provider may not serve it at all. */
 export function wantedModel(
     session: Pick<ModelSupportSessionLike, 'modelMode' | 'metadata'>,
     overrides: AgentDefaultOverrides | null | undefined,
@@ -107,13 +112,14 @@ export function wantedModel(
     // The machine's own config pins a model (or the wrapper cannot tell):
     // nothing is sent, so there is no newer model to nag about.
     if (MACHINE_CONFIG_AGENTS.includes(flavor ?? '') && session.metadata?.configuredModel !== null) return 'default';
-    const newest = resolveLatestModel(latestTable, flavor ?? 'claude', {
+    const resolution = resolveLatestModel(latestTable, flavor ?? 'claude', {
         kind: 'session',
         capabilities: session.metadata?.capabilities ?? null,
         catalog: session.metadata?.models ?? null,
         configuredModel: session.metadata?.configuredModel,
-    }).newest;
-    return newest ?? 'default';
+    });
+    const target = MACHINE_CONFIG_AGENTS.includes(flavor ?? '') ? resolution.model : resolution.newest;
+    return target ?? 'default';
 }
 
 /** First Codex whose bundled catalog carries `model`: the gpt-6 ChatGPT gate
@@ -154,6 +160,9 @@ export function modelSupportNotice(
     }
 
     if (metadata.flavor === 'codex') {
+        // B-862: the minimum Codex comes from OpenAI's catalog; an API provider
+        // account serves its own models whatever the Codex version.
+        if (readSessionAgentProfile(metadata.agentProfile)?.kind === 'codex-provider') return null;
         const minVersion = codexMinVersion(model, latestTable);
         if (!minVersion) return null;
         // No published catalog = a wrapper too old to discover models; its
