@@ -249,9 +249,10 @@ describe('lists without a session merge live catalogs', () => {
 });
 
 describe('B-487 notice for a session following latest', () => {
-    it('a Codex whose catalog lacks the newest sol says which version brings it', () => {
-        const notice = modelSupportNotice(session({ flavor: 'codex', metadata: { models: CODEX_154, configuredModel: null } }), null, {});
-        expect(notice).toMatchObject({ kind: 'codex-gpt6', model: 'gpt-6.1-sol', minVersion: '0.160.0', action: 'update' });
+    // B-862: latest on Codex sends the newest id its catalog lists, so a newer
+    // table id it lacks (gpt-6.1-sol on 0.154) is never requested — no nag.
+    it('a Codex following latest is judged by the model it really sends', () => {
+        expect(modelSupportNotice(session({ flavor: 'codex', metadata: { models: CODEX_154, configuredModel: null } }), null, {})).toBeNull();
         expect(modelSupportNotice(session({ flavor: 'codex', metadata: { models: CODEX_166, configuredModel: null } }), null, {})).toBeNull();
     });
 

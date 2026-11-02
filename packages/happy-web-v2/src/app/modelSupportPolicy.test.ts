@@ -94,6 +94,54 @@ describe('Codex gpt-6-sol / gpt-6-luna missing from the catalog', () => {
     });
 });
 
+describe('B-862: Codex notice only for the model the session really requests', () => {
+    // QA35: Codex 0.154.0, follow latest, catalog tops out at gpt-5.6-sol.
+    const CATALOG_154 = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5'].map((code) => ({ code }));
+    const codex154 = { active: true, daemonState: {
+        pid: 7, agentVersionEpoch: 1,
+        agentVersions: { checkedAt: Date.now(), daemonPid: 7, agents: [{ id: 'codex', installed: '0.154.0', latest: '0.166.0', status: 'update-available' }] },
+    } };
+    const codex = (metadata: Record<string, unknown>, modelMode: string | null = null) => ({
+        archivedAt: null,
+        modelMode,
+        metadata: { machineId: 'm1', flavor: 'codex', models: CATALOG_154, ...metadata },
+    });
+    const llmHub = { id: 'llm-hub', label: 'LLM Hub', kind: 'codex-provider', status: 'active', model: 'gpt-5.6-sol' };
+    const chatgpt = { id: 'me', label: 'ChatGPT', kind: 'codex-chatgpt', status: 'active' };
+
+    it('follow latest + a model pinned in config.toml: no notice', () => {
+        expect(wantedModel(codex({ configuredModel: 'gpt-5.6-sol' }), {})).toBe('default');
+        expect(modelSupportNotice(codex({ configuredModel: 'gpt-5.6-sol' }), codex154, {})).toBeNull();
+        // Nothing pinned (provider set, model left to Codex): latest sends the
+        // catalog's newest, not the table's gpt-6.1-sol.
+        expect(wantedModel(codex({ configuredModel: null }), {})).toBe('gpt-5.6-sol');
+        expect(modelSupportNotice(codex({ configuredModel: null }), codex154, {})).toBeNull();
+    });
+
+    it('an API provider account never gets the OpenAI catalog floor, even for an explicit pick', () => {
+        const bound = codex({ agentProfile: llmHub, configuredModel: 'gpt-5.6-sol', models: [{ code: 'gpt-5.6-sol' }] });
+        expect(modelSupportNotice(bound, codex154, {})).toBeNull();
+        expect(modelSupportNotice({ ...bound, modelMode: 'gpt-6.1-sol' }, codex154, {})).toBeNull();
+        expect(modelSupportNotice({ ...bound, modelMode: 'gpt-6-sol' }, codex154, { codex: { modelMode: 'gpt-6-sol' } })).toBeNull();
+    });
+
+    it('a ChatGPT account that explicitly picks a newer model is still told to update', () => {
+        expect(modelSupportNotice(codex({ agentProfile: chatgpt, configuredModel: null }, 'gpt-6.1-sol'), codex154, {})).toEqual({
+            kind: 'codex-gpt6', model: 'gpt-6.1-sol', action: 'update', installedVersion: '0.154.0', minVersion: '0.160.0',
+        });
+        // …and the synced account default counts as explicit too.
+        expect(modelSupportNotice(codex({ agentProfile: chatgpt, configuredModel: null }), codex154, { codex: { modelMode: 'gpt-6-sol' } }))
+            .toMatchObject({ model: 'gpt-6-sol', minVersion: CODEX_GPT6_MIN_VERSION });
+    });
+
+    it('machine login following latest: no notice; an explicit pick still gets one', () => {
+        const local = codex({ agentProfile: null, configuredModel: null });
+        expect(modelSupportNotice(local, codex154, {})).toBeNull();
+        expect(modelSupportNotice(local, codex154, { codex: { modelMode: 'latest' } })).toBeNull();
+        expect(modelSupportNotice({ ...local, modelMode: 'gpt-6.1-sol' }, codex154, {})).toMatchObject({ model: 'gpt-6.1-sol', action: 'update' });
+    });
+});
+
 it('remembers a dismissal per session, model and version', () => {
     const notice = modelSupportNotice(oldClaude(), machineOn('0.2.148'), undefined)!;
     const key = modelSupportHintKey('s1', notice);
