@@ -19,8 +19,27 @@ import {
   History,
   HardDrive,
   MessageSquarePlus,
+  Download,
+  X,
 } from 'lucide-react';
 import { useSessions, storage, useLocalSetting } from '@/sync/storage';
+import { Combobox, SelectMenu } from '@/ui';
+import { machineLabel } from '@/utils/machineUtils';
+import { splitHighlights } from '@/screens/sessions/historySearch';
+import type { HistoryAgent } from '@/screens/sessions/claudeHistoryImport';
+import { formatSessionAge } from '@/screens/sessions/newTerminalAttach';
+import { requestChatJump } from '@/screens/search/chatJump';
+import { pickerOwnsKey } from '@/screens/search/pickerOwnsKey';
+import { useSessionSearch } from '@/screens/search/useSessionSearch';
+import {
+  matchSessionSearchChord,
+  type Range,
+  type ResultSnippet,
+  type SessionSearchFilters,
+  type SessionSearchRow,
+  type StatusFilter,
+  type TimeFilter,
+} from '@/screens/search/sessionSearch';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { getSessionName, getSessionSubtitle, formatLastSeen } from '@/utils/sessionUtils';
@@ -56,22 +75,34 @@ import {
   paletteSettingsQuery,
   PALETTE_SETTINGS_LIMIT,
   type PaletteGroup,
+  contentSearchText,
+  PALETTE_DEFAULT_FILTERS,
+  splitSearchRows,
+  paletteFiltersActive,
+  PALETTE_GROUP_ORDER,
+  adoptFirstResult,
+  CREATE_ROW_KEY,
 } from './paletteModel';
+import { parseSidebarQuery } from '@/screens/sessions/sidebarSearch';
 import { isWebPushSupported } from '@/sync/webPush';
 import { getNotificationPermission } from '@/sync/webNotifications';
 import { PaletteStatusMark } from './PaletteStatusMark';
 import { listArrowDelta } from '@/utils/listArrowKey';
-import { openSessionSearch, SESSION_SEARCH_HINT } from '@/screens/search/sessionSearchEvents';
+import { COMMAND_PALETTE_OPEN_EVENT, COMMAND_PALETTE_HINT, SESSION_SEARCH_HINT } from '@/screens/search/sessionSearchEvents';
 import './commandpalette.css';
 import { OVERLAY_PRIORITY, useOverlayTurn } from '@/app/overlayQueue';
 
 /**
  * Programmatic open — the palette owns its open state; UI entry points that
- * can't press ⌘K (the sidebar's coarse-pointer search icon) dispatch this
+ * can't press ⌘K (the sidebar 🔍, the release-notes action) dispatch this
  * event instead. Window event, not a store: the palette is a singleton and
  * nothing else needs to observe the state.
+ *
+ * B-865: the palette is THE search entry — ⌘K, ⌘⇧F and the sidebar 🔍 all open
+ * it; the old separate session-search panel (B-650) lives on as its 「对话内容」
+ * group and filter bar.
  */
-const OPEN_EVENT = 'vh:command-palette-open';
+const OPEN_EVENT = COMMAND_PALETTE_OPEN_EVENT;
 export function openCommandPalette() {
   window.dispatchEvent(new Event(OPEN_EVENT));
 }
@@ -90,6 +121,15 @@ type CommandItem = {
   hint?: string;
   /** B-552 等我看 rows: the sidebar's status mark + "how long ago" */
   status?: { execution: AgentExecution; unread: boolean; backgroundTasks?: number; flavor?: string | null; legacy?: boolean; at: number };
+  /** B-865: highlighted title (content rows) */
+  titleRanges?: Range[];
+  subtitleRanges?: Range[];
+  /** B-865: what was said — each snippet opens the session on that hit */
+  snippets?: ResultSnippet[];
+  openSnippet?: (snippet: ResultSnippet) => void;
+  badge?: 'archived' | 'importable';
+  /** B-865: content rows show their age like the old search panel */
+  updatedAt?: number;
   run: () => void | Promise<void>;
 };
 
@@ -101,6 +141,8 @@ type PaletteDialogs = {
   attachTmux: () => void;
   importHistory: (agent: ImportHistoryAgent) => void;
   searchHistory: () => void;
+  /** B-865 (was B-650): an importable content hit → that machine's history search */
+  importFound: (target: { machineId: string; agent: HistoryAgent; query: string }) => void;
 };
 
 export function CommandPalette() {
@@ -111,6 +153,7 @@ export function CommandPalette() {
   const [showImport, setShowImport] = useState<ImportHistoryAgent | null>(null);
   // B-549: the same dialog, opened straight into full-text search.
   const [showHistorySearch, setShowHistorySearch] = useState(false);
+  const [importTarget, setImportTarget] = useState<{ machineId: string; agent: HistoryAgent; query: string } | null>(null);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -126,6 +169,19 @@ export function CommandPalette() {
       }
     };
     window.addEventListener('keydown', onKeyDown, true); // capture
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
+  // B-865: ⌘⇧F (Ctrl+Shift+F) opens the same palette — except inside a web
+  // terminal off macOS, whose own find owns that chord (matchSessionSearchChord).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target instanceof Element ? e.target : null;
+      if (!matchSessionSearchChord(e, IS_MAC, !!target?.closest('.xterm'))) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen((prev) => !prev);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, []);
 
@@ -147,6 +203,7 @@ export function CommandPalette() {
     attachTmux: () => setShowAttachTmux(true),
     importHistory: (agent) => setShowImport(agent),
     searchHistory: () => setShowHistorySearch(true),
+    importFound: (target) => setImportTarget(target),
   }), []);
 
   return (
@@ -166,6 +223,24 @@ export function CommandPalette() {
       {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
       {showImport && <ImportHistoryModal initialAgent={showImport} onClose={() => setShowImport(null)} />}
       {showHistorySearch && <ImportHistoryModal initialMode="search" onClose={() => setShowHistorySearch(false)} />}
+      {importTarget && (
+        <ImportHistoryModal
+          initialMode="search"
+          initialMachineId={importTarget.machineId}
+          initialAgent={importTarget.agent}
+          initialQuery={importTarget.query}
+          onClose={() => setImportTarget(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function Highlighted({ text, ranges }: { text: string; ranges: Range[] }) {
+  return (
+    <>
+      {splitHighlights(text, ranges).map((seg, i) =>
+        seg.hit ? <mark key={i} className="cp-mark">{seg.text}</mark> : <span key={i}>{seg.text}</span>)}
     </>
   );
 }
@@ -201,6 +276,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
   // Highlight is tracked by row KEY (paletteModel.resolveActiveIndex), so
   // rows inserted/removed elsewhere never move it under the user.
   const [active, setActive] = useState<PaletteActive | null>(null);
+  // B-865: did the user move the highlight since the query last changed (arrows / pointer)?
+  const chosenRef = useRef(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -210,6 +287,33 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
   const terminals = useTerminalSessions((s) => s.terminals);
   const boardItems = useBoardItems();
   const unreadIds = storage((s) => s.unreadSessionIds);
+
+  // ── B-865: session search (titles + what was said), narrowed by the filter bar ──
+  const [filters, setFilters] = useState<SessionSearchFilters>(PALETTE_DEFAULT_FILTERS);
+  const parsedQuery = useMemo(() => parseSidebarQuery(query), [query]);
+  const contentText = contentSearchText(parsedQuery.text);
+  const search = useSessionSearch(query, contentText !== '', filters);
+  const passingIds = useMemo(() => new Set(search.passing.map((f) => f.session.id)), [search.passing]);
+  const searchTerms = search.q.terms;
+
+  /** Open a session; with a snippet, land on that hit (B-650 chat jump). */
+  const openHit = useCallback((sessionId: string, snippet?: ResultSnippet) => {
+    if (snippet && searchTerms.length) {
+      requestChatJump(sessionId, {
+        terms: searchTerms,
+        ...(snippet.messageId ? { messageId: snippet.messageId } : { snippet: snippet.text }),
+        ...(snippet.at !== undefined ? { at: snippet.at } : {}),
+      });
+    }
+    navigate(`/session/${sessionId}`);
+  }, [navigate, searchTerms]);
+  const openSearchRow = useCallback((row: SessionSearchRow, snippet?: ResultSnippet) => {
+    if (row.importable) {
+      dialogs.importFound({ machineId: row.importable.machineId, agent: row.importable.entry.agent, query: searchTerms.join(' ') });
+      return;
+    }
+    if (row.sessionId) openHit(row.sessionId, snippet ?? row.snippets[0]);
+  }, [dialogs, openHit, searchTerms]);
 
   // current session id from the route (/session/:id)
   const currentSessionId = useMemo(() => {
@@ -327,16 +431,6 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       icon: <History size={16} />,
       haystack: `import codex history thread conversation desktop resume ${(t('commandPalette.actionImportCodex') as string).toLowerCase()}`,
       run: () => dialogs.importHistory('codex'),
-    });
-    out.push({
-      // B-650: the cross-session search panel (titles + every machine's content).
-      key: 'action:search-sessions',
-      group: 'actions',
-      title: t('commandPalette.actionSearchSessions'),
-      icon: <Search size={16} />,
-      haystack: `search sessions find conversation content full text grep ${(t('commandPalette.actionSearchSessions') as string).toLowerCase()}`,
-      hint: SESSION_SEARCH_HINT,
-      run: openSessionSearch,
     });
     out.push({
       // B-549: search what was said in a machine's Claude Code / Codex history.
@@ -474,9 +568,14 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       run: () => navigate('/settings'),
     });
 
-    // Sessions (nav) — filter out section-header strings from the legacy list
-    for (const s of sessions ?? []) {
-      if (typeof s === 'string') continue;
+    // Sessions (nav) — B-865: every session passing the filter bar (archived
+    // ones only when the status chip asks), in the sidebar's order, then the
+    // rest (archived) newest first.
+    const order = new Map<string, number>();
+    (sessions ?? []).forEach((s, i) => { if (typeof s !== 'string') order.set(s.id, i); });
+    const ordered = [...search.passing].sort((a, b) =>
+      (order.get(a.session.id) ?? Infinity) - (order.get(b.session.id) ?? Infinity) || b.doc.updatedAt - a.doc.updatedAt);
+    for (const { session: s, doc } of ordered) {
       // B-091/B-105 belt-and-braces: sessionsData already excludes hidden
       // sessions (assistant, terminal mirrors) at the source; keep the
       // predicate here so a storage-lane refactor can't leak them into search.
@@ -492,6 +591,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         icon: <MessageSquare size={16} />,
         haystack: `${title} ${sub} ${path}`.toLowerCase(),
         tags: s.metadata?.tags,
+        ...(doc.archived ? { badge: 'archived' as const } : {}),
         run: () => navigate(`/session/${s.id}`),
       });
     }
@@ -514,6 +614,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
     return out;
   }, [
     sessions,
+    search.passing,
     happyBotEntryVisible,
     lang,
     machines,
@@ -535,7 +636,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
     for (const s of sessions ?? []) if (typeof s !== 'string') byId.set(s.id, s);
     return needsYou.flatMap((item) => {
       const s = byId.get(item.key);
-      if (!s) return [];
+      // B-865: the filter bar narrows 等我看 too.
+      if (!s || !passingIds.has(s.id)) return [];
       const title = getSessionName(s);
       return [{
         key: `needs:${s.id}`,
@@ -555,7 +657,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         run: () => navigate(`/session/${s.id}`),
       }];
     });
-  }, [needsYou, sessions, unreadIds, navigate]);
+  }, [needsYou, sessions, unreadIds, navigate, passingIds]);
 
   // ── filter (paletteModel: substring + sidebar `#tag` grammar, unchanged),
   // then one display order shared by rendering and ↑↓/Enter ──
@@ -584,12 +686,45 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
           run: () => navigate(settingsIndex.settingHref(entry)),
         }))
       : [];
-    const matched = orderPaletteItems([...filterPaletteItems(items, query), ...settingsRows]);
+    // B-865: one row per session. A title match keeps its 「会话」 row and gains
+    // its content snippets (Enter still just opens it — a quick switch must
+    // not land mid-transcript; a snippet click jumps). Sessions found only by
+    // what was said form 「对话内容」, after the instant groups.
+    const base = filterPaletteItems(items, query);
+    const titleIds = new Set(base.filter((it) => it.group === 'sessions').map((it) => it.key.slice('session:'.length)));
+    const split = splitSearchRows(search.rows, titleIds);
+    const byKey = new Map(items.map((it) => [it.key, it]));
+    const extraTitle = split.titleRows.flatMap((row) => {
+      const it = byKey.get(`session:${row.sessionId}`);
+      return it ? [it] : [];
+    });
+    const withSnippets = (it: CommandItem): CommandItem => {
+      if (it.group !== 'sessions') return it;
+      const id = it.key.slice('session:'.length);
+      const snippets = split.attach.get(id);
+      return snippets ? { ...it, snippets, openSnippet: (sn) => { close(); openHit(id, sn); } } : it;
+    };
+    const contentRows: CommandItem[] = split.contentRows.map((row) => ({
+      key: `content:${row.key}`,
+      group: 'content' as const,
+      title: row.title,
+      titleRanges: row.titleRanges,
+      subtitle: row.subtitle,
+      subtitleRanges: row.subtitleRanges,
+      icon: row.importable ? <Download size={16} /> : <MessageSquare size={16} />,
+      haystack: '',
+      snippets: row.snippets,
+      openSnippet: (sn) => { close(); openSearchRow(row, sn); },
+      ...(row.importable ? { badge: 'importable' as const } : row.archived ? { badge: 'archived' as const } : {}),
+      updatedAt: row.updatedAt,
+      run: () => openSearchRow(row),
+    }));
+    const matched = orderPaletteItems([...[...base, ...extraTitle].map(withSnippets), ...contentRows, ...settingsRows]);
     const draft = newChatDraftFor(query, matched);
     if (draft == null) return matched;
     const createTitle = t('commandPalette.actionNewChatWithQuery', { query: draft });
     return [...matched, {
-      key: 'create:new-chat',
+      key: CREATE_ROW_KEY,
       group: 'create' as const,
       title: createTitle,
       icon: <MessageSquarePlus size={16} />,
@@ -599,7 +734,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       // on its own.
       run: () => void createChatOrConfigure(navigate, (target) => dialogs.newChat(target, draft), { location, draft }),
     }];
-  }, [items, needsYouItems, query, t, lang, navigate, dialogs, location, settingsIndex]);
+  }, [items, needsYouItems, query, t, lang, navigate, dialogs, location, settingsIndex, search.rows, close, openHit, openSearchRow]);
 
   const keys = useMemo(() => filtered.map((it) => it.key), [filtered]);
   const activeIndex = resolveActiveIndex(keys, active);
@@ -608,6 +743,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
   // otherwise jump when a section is inserted above it, and a vanished row's
   // fallback neighbour becomes the new pinned row.
   useEffect(() => {
+    const adopted = adoptFirstResult(keys, active, chosenRef.current);
+    if (adopted !== active) { setActive(adopted); return; }
     const key = activeIndex >= 0 ? keys[activeIndex] : undefined;
     if (key !== undefined && (active?.key !== key || active.index !== activeIndex)) {
       setActive({ key, index: activeIndex });
@@ -616,7 +753,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
 
   // scroll active item into view
   useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLElement>('.cp-item.is-active');
+    const el = listRef.current?.querySelector<HTMLElement>('.cp-row.is-active');
     el?.scrollIntoView({ block: 'nearest' });
   }, [activeIndex]);
 
@@ -635,14 +772,22 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       // operate the candidate window — they must not run items, move the
       // selection, or close the palette.
       if (ime.isGuarded(e)) return;
-      // B-655: only a bare ↑/↓ moves the selection; with a modifier it is a
-      // caret/selection key for the search field.
-      const delta = listArrowDelta(e);
+      // B-714: a filter picker's (portalled) popup owns its keys, Esc included.
+      if (pickerOwnsKey(e)) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         close();
-      } else if (delta !== null) {
+        return;
+      }
+      // ↑↓ / Enter drive the list only from the search field: a focused filter
+      // chip or snippet button keeps its own keys.
+      if (e.target !== inputRef.current) return;
+      // B-655: only a bare ↑/↓ moves the selection; with a modifier it is a
+      // caret/selection key for the search field.
+      const delta = listArrowDelta(e);
+      if (delta !== null) {
         e.preventDefault();
+        chosenRef.current = true;
         setActive((a) => moveActive(keys, a, delta));
       } else if (e.key === 'Enter') {
         e.preventDefault();
@@ -654,11 +799,35 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
 
   // render grouped list (dividers by group label); `filtered` is already in
   // display order, so a row's flat index is its keyboard index.
+  // B-865: the 「对话内容」 group's state line — machines being searched, offline,
+  // on an old CLI, failing or still indexing (the rest of the list never waits).
+  const coverage = search.coverage;
+  const contentStatus = useMemo<{ text: string; detail: string; incomplete: boolean } | null>(() => {
+    if (!contentText) return null;
+    if (search.contentSkipped) return { text: t('sessionSearch.contentNotIndexed'), detail: '', incomplete: true };
+    const parts: string[] = [];
+    if (coverage.pending.length) parts.push(t('sessionSearch.searchingMachines', { count: coverage.pending.length }));
+    if (coverage.offline.length) parts.push(t('sessionSearch.machinesOffline', { count: coverage.offline.length }));
+    if (coverage.unsupported.length) parts.push(t('sessionSearch.machinesOldCli', { count: coverage.unsupported.length }));
+    if (coverage.failed.length) parts.push(t('sessionSearch.machinesFailed', { count: coverage.failed.length }));
+    if (coverage.indexing.length) parts.push(t('sessionSearch.machinesIndexing', { count: coverage.indexing.length }));
+    if (!parts.length) return null;
+    const names = (list: { name: string }[]) => list.map((m) => m.name).join(', ');
+    const detail = [
+      coverage.offline.length ? `${t('sessionSearch.offlineLabel')}: ${names(coverage.offline)}` : '',
+      coverage.unsupported.length ? `${t('sessionSearch.oldCliLabel')}: ${names(coverage.unsupported)}` : '',
+      coverage.failed.length ? `${t('sessionSearch.failedLabel')}: ${names(coverage.failed)}` : '',
+      coverage.indexing.length ? `${t('sessionSearch.indexingLabel')}: ${coverage.indexing.map((m) => `${m.name}${m.progress ? ` ${m.progress.done}/${m.progress.total}` : ''}`).join(', ')}` : '',
+    ].filter(Boolean).join('\n');
+    return { text: parts.join(' · '), detail, incomplete: coverage.incomplete };
+  }, [contentText, search.contentSkipped, coverage, t]);
+
   const groups = useMemo(() => {
     const labels: Record<PaletteGroup, string | null> = {
       needsYou: t('sidebar.groupWaiting'),
       actions: t('commandPalette.groupActions'),
       sessions: t('commandPalette.groupSessions'),
+      content: t('commandPalette.groupContent'),
       terminals: t('commandPalette.groupTerminals'),
       settings: t('settings.title'),
       create: null,
@@ -669,8 +838,41 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       if (last && last.group === it.group) last.rows.push({ it, index });
       else out.push({ group: it.group, label: labels[it.group], rows: [{ it, index }] });
     });
+    // No content rows yet (or none at all) but a state to report: the group
+    // header still stands where the rows will arrive.
+    if (contentStatus && !out.some((g) => g.group === 'content')) {
+      const rank = (g: PaletteGroup) => PALETTE_GROUP_ORDER.indexOf(g);
+      const at = out.findIndex((g) => rank(g.group) > rank('content'));
+      const placeholder = { group: 'content' as const, label: labels.content, rows: [] };
+      if (at < 0) out.push(placeholder);
+      else out.splice(at, 0, placeholder);
+    }
     return out;
-  }, [filtered, t]);
+  }, [filtered, t, contentStatus]);
+
+  const statusOptions: Array<{ value: StatusFilter; label: string }> = [
+    { value: 'live', label: t('sessionSearch.statusNotArchived') },
+    { value: 'waiting', label: t('sessionSearch.statusWaiting') },
+    { value: 'all', label: t('sessionSearch.statusIncludeArchived') },
+    { value: 'archived', label: t('sessionSearch.statusArchivedOnly') },
+  ];
+  const timeOptions: Array<{ value: TimeFilter; label: string }> = [
+    { value: 'any', label: t('sessionSearch.timeAny') },
+    { value: '1d', label: t('sessionSearch.time1d') },
+    { value: '7d', label: t('sessionSearch.time7d') },
+    { value: '30d', label: t('sessionSearch.time30d') },
+  ];
+  const agents = useMemo(
+    () => [...new Set(search.facts.map((f) => f.agent).filter((a): a is string => !!a))].sort(),
+    [search.facts],
+  );
+  const setFilter = <K extends keyof SessionSearchFilters>(k: K, v: SessionSearchFilters[K]) => {
+    setFilters((f) => ({ ...f, [k]: v }));
+    setActive(null);
+  };
+  const roleLabel = (sn: ResultSnippet) =>
+    sn.role === 'user' ? t('sessionSearch.roleUser') : sn.role === 'assistant' ? t('sessionSearch.roleAgent') : t('sessionSearch.roleTool');
+  const now = search.now;
 
   return (
     <div
@@ -700,33 +902,125 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
             onChange={(e) => {
               setQuery(e.target.value);
               setActive(null);
+              chosenRef.current = false;
             }}
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
+            aria-label={t('commandPalette.placeholder')}
           />
+          <button type="button" className="cp-close" onClick={close} aria-label={t('common.close')} title={t('common.close')}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* B-865: the old session-search filters, one compact row (scrolls sideways on a phone). */}
+        <div className="cp-filters" role="group" aria-label={t('sessionSearch.filtersLabel')}>
+          <SelectMenu
+            variant="chip"
+            className={`cp-filter${filters.status !== PALETTE_DEFAULT_FILTERS.status ? ' is-set' : ''}`}
+            label={t('sessionSearch.statusLabel')}
+            value={filters.status}
+            onChange={(v) => setFilter('status', v)}
+            options={statusOptions}
+          />
+          <Combobox
+            variant="chip"
+            className={`cp-filter${filters.projectId ? ' is-set' : ''}`}
+            label={t('sessionSearch.projectLabel')}
+            value={filters.projectId ?? ''}
+            onChange={(v) => setFilter('projectId', v || null)}
+            options={[
+              { value: '', label: t('sessionSearch.projectAny') },
+              ...search.projects.projects.filter((p) => !p.archivedAt).map((p) => ({ value: p.id, label: p.name })),
+            ]}
+          />
+          <Combobox
+            variant="chip"
+            className={`cp-filter${filters.machineId ? ' is-set' : ''}`}
+            label={t('sessionSearch.machineLabel')}
+            value={filters.machineId ?? ''}
+            onChange={(v) => setFilter('machineId', v || null)}
+            options={[
+              { value: '', label: t('sessionSearch.machineAny') },
+              ...search.machines.map((m) => ({ value: m.id, label: machineLabel(m), ...(m.active ? {} : { meta: t('sessionSearch.offlineLabel') }) })),
+            ]}
+          />
+          <SelectMenu
+            variant="chip"
+            className={`cp-filter${filters.agent ? ' is-set' : ''}`}
+            label={t('sessionSearch.agentLabel')}
+            value={filters.agent ?? ''}
+            onChange={(v) => setFilter('agent', v || null)}
+            options={[{ value: '', label: t('sessionSearch.agentAny') }, ...agents.map((a) => ({ value: a, label: a }))]}
+          />
+          <SelectMenu
+            variant="chip"
+            className={`cp-filter${filters.time !== 'any' ? ' is-set' : ''}`}
+            label={t('sessionSearch.timeLabel')}
+            value={filters.time}
+            onChange={(v) => setFilter('time', v)}
+            options={timeOptions}
+          />
+          {paletteFiltersActive(filters) ? (
+            <button type="button" className="cp-filters-reset" onClick={() => { setFilters(PALETTE_DEFAULT_FILTERS); setActive(null); }}>
+              {t('sessionSearch.resetFilters')}
+            </button>
+          ) : null}
         </div>
 
         <div className="cp-list vh-scroll-fade" ref={listRef}>
-          {filtered.length === 0 ? (
+          {groups.length === 0 ? (
             <div className="cp-empty">{t('commandPalette.empty')}</div>
           ) : (
             groups.map((grp) => (
               <div key={grp.group} className={`cp-group cp-group--${grp.group}`}>
-                {grp.label ? <div className="cp-group-label">{grp.label}</div> : null}
+                {grp.label ? (
+                  <div className="cp-group-label">
+                    <span>{grp.label}</span>
+                    {grp.group === 'content' && contentStatus ? (
+                      <span
+                        className={`cp-group-status${contentStatus.incomplete ? ' is-incomplete' : ''}`}
+                        role="status"
+                        title={contentStatus.detail || undefined}
+                      >
+                        {contentStatus.text}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+                {grp.group === 'content' && contentStatus?.detail ? (
+                  <div className="cp-group-detail">{contentStatus.detail.split('\n').map((l) => <div key={l}>{l}</div>)}</div>
+                ) : null}
                 {grp.rows.map(({ it, index }) => (
-                  <button
+                  <div
                     key={it.key}
+                    className={`cp-row${index === activeIndex ? ' is-active' : ''}`}
+                    onMouseMove={() => { if (index !== activeIndex) { chosenRef.current = true; setActive({ key: it.key, index }); } }}
+                  >
+                  <button
                     type="button"
                     className={`cp-item${index === activeIndex ? ' is-active' : ''}`}
-                    onMouseMove={() => { if (index !== activeIndex) setActive({ key: it.key, index }); }}
                     onClick={() => runItem(it)}
                   >
                     <span className="cp-item-icon">{it.icon}</span>
                     <span className="cp-item-text">
-                      <span className="cp-item-title">{it.title}</span>
-                      {it.subtitle ? <span className="cp-item-sub">{it.subtitle}</span> : null}
+                      <span className="cp-item-title">
+                        {it.titleRanges ? <Highlighted text={it.title} ranges={it.titleRanges} /> : it.title}
+                      </span>
+                      {it.subtitle ? (
+                        <span className="cp-item-sub">
+                          {it.subtitleRanges ? <Highlighted text={it.subtitle} ranges={it.subtitleRanges} /> : it.subtitle}
+                        </span>
+                      ) : null}
                     </span>
+                    {it.badge ? (
+                      <span className="cp-badge">
+                        {it.badge === 'archived' ? <Archive size={11} aria-hidden /> : <Download size={11} aria-hidden />}
+                        {it.badge === 'archived' ? t('sessionSearch.archivedBadge') : t('sessionSearch.importableBadge')}
+                      </span>
+                    ) : null}
+                    {it.updatedAt !== undefined ? <span className="cp-item-age">{formatSessionAge(it.updatedAt, now)}</span> : null}
                     {it.status ? (
                       <span className="cp-item-trail">
                         <PaletteStatusMark
@@ -741,6 +1035,17 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
                     ) : null}
                     {it.hint ? <kbd className="cp-item-hint">{it.hint}</kbd> : null}
                   </button>
+                  {it.snippets?.length ? (
+                    <div className="cp-snippets">
+                      {it.snippets.map((sn, k) => (
+                        <button key={k} type="button" className="cp-snippet" onClick={() => it.openSnippet?.(sn)}>
+                          <span className="cp-snippet-role">{roleLabel(sn)}</span>
+                          <span className="cp-snippet-text"><Highlighted text={sn.text} ranges={sn.ranges} /></span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  </div>
                 ))}
               </div>
             ))
@@ -751,6 +1056,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
           <span>{t('commandPalette.hintNavigate')}</span>
           <span>{t('commandPalette.hintSelect')}</span>
           <span>{t('commandPalette.hintClose')}</span>
+          <span className="cp-footer-entry">{COMMAND_PALETTE_HINT} · {SESSION_SEARCH_HINT}</span>
         </div>
       </div>
     </div>

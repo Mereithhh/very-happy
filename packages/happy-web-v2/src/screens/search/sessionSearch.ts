@@ -205,7 +205,8 @@ export function searchLocalSessions(
                 for (const t of hit) found.add(t);
                 if (snippets.length < MAX_ROW_SNIPPETS) {
                     const sn = buildSnippet(st.text, q.terms);
-                    if (sn) snippets.push({ source: 'cache', role: st.role, text: sn.text, ranges: sn.ranges, messageId: m.id });
+                    // B-865: a reply repeated turn after turn shows once (the newest).
+                    if (sn && !snippets.some((x) => x.text === sn.text)) snippets.push({ source: 'cache', role: st.role, text: sn.text, ranges: sn.ranges, messageId: m.id });
                 }
                 if (found.size === q.terms.length && snippets.length >= MAX_ROW_SNIPPETS) break;
             }
