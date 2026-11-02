@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { clientTag, isOwnerAuthoredMessage, linkedSessionIds, MAX_LINKED_SESSIONS } from './attentionLifecycle';
+import { ISSUE_DISPATCH_LOCAL_ID_PREFIX } from '@slopus/happy-wire';
+import { AUTOMATED_LOCAL_ID_PREFIXES, clientTag, isOwnerAuthoredMessage, linkedSessionIds, MAX_LINKED_SESSIONS } from './attentionLifecycle';
 
 describe('B-508 attention lifecycle (pure rules)', () => {
     it('treats web / app / relay-persisted / terminal-send messages as the owner speaking', () => {
@@ -20,6 +21,13 @@ describe('B-508 attention lifecycle (pure rules)', () => {
         for (const client of ['automation/0.2.157', 'teams/0.2.157', 'cli-spawn/0.2.157', 'assistant-mcp/0.2.157', 'session-message/0.2.157', 'daemon-auto/0.2.157', 'Automation/1']) {
             expect(isOwnerAuthoredMessage({ localId: 'any', client }), client).toBe(false);
         }
+    });
+    it('B-872: an issue dispatch (`issue-<dispatchId>`, the wire prefix) is never the owner, even from a user-scoped client', () => {
+        expect(AUTOMATED_LOCAL_ID_PREFIXES).toContain(ISSUE_DISPATCH_LOCAL_ID_PREFIX);
+        expect(isOwnerAuthoredMessage({ localId: `${ISSUE_DISPATCH_LOCAL_ID_PREFIX}d1`, client: 'cli-daemon/0.2.200' })).toBe(false);
+        expect(isOwnerAuthoredMessage({ localId: 'issue-0b1f', connectionType: 'user-scoped' })).toBe(false);
+        // Only the prefix: an ordinary uuid localId that merely contains "issue" is still the owner.
+        expect(isOwnerAuthoredMessage({ localId: 'my-issue-1', client: 'web/1.0.0' })).toBe(true);
     });
     it('parses the client tag before the slash, case-insensitively', () => {
         expect(clientTag('web/1.2.3')).toBe('web');

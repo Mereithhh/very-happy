@@ -39,7 +39,9 @@ describe('B-845b Codex abort keeps the permission mode (published == actual)', (
         const reset = source.slice(start, source.indexOf('};', start));
         expect(reset).toContain("logger.debug('[Codex] Reset current mode defaults after abort');");
         expect(reset).not.toMatch(/currentPermissionMode\s*=/);
-        // The only writes: the initial flag and an accepted message mode (which is also published).
-        expect(source.match(/currentPermissionMode\s*=(?!=)/g)).toHaveLength(1);
+        // The only writes: an accepted message mode and the live set-permission-mode RPC (B-867c);
+        // both are published right after.
+        expect(source.match(/currentPermissionMode\s*=(?!=)/g)).toHaveLength(2);
+        expect(source).toContain('currentPermissionMode = mode;\n        publishPermissionMode(mode);');
     });
 });

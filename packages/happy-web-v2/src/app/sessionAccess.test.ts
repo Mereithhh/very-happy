@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canSendAsGrantee, isSharedWithMe, sessionAccess } from './sessionAccess';
+import { canOperate, canSendAsGrantee, isSharedWithMe, sessionAccess } from './sessionAccess';
 
 describe('B-619 sessionAccess', () => {
     const share = (role: 'viewer' | 'driver') => ({ share: { grantId: 'g', role, owner: { id: 'o', displayName: 'Owner' } } });
@@ -16,4 +16,16 @@ describe('B-619 sessionAccess', () => {
         expect(canSendAsGrantee(share('viewer'))).toBe(false);
         expect(canSendAsGrantee(share('driver'))).toBe(true);
     });
+
+    it('B-867: operator = driver + operate; anything else is not', () => {
+        const op = { share: { grantId: 'g', role: 'driver' as const, operate: true, owner: { id: 'o', displayName: 'Owner' } } };
+        expect(sessionAccess(op)).toBe('operator');
+        expect(canOperate(op)).toBe(true);
+        expect(canSendAsGrantee(op)).toBe(true);
+        expect(canOperate(share('driver'))).toBe(false);
+        expect(canOperate({ share: { grantId: 'g', role: 'viewer' as const, operate: true, owner: { id: 'o', displayName: 'Owner' } } })).toBe(false);
+        expect(sessionAccess({ share: { grantId: 'g', role: 'viewer' as const, operate: true, owner: { id: 'o', displayName: 'Owner' } } })).toBe('viewer');
+        expect(canOperate(null)).toBe(false);
+    });
 });
+

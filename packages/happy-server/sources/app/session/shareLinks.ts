@@ -381,7 +381,7 @@ export type OutgoingShares = {
     sessions: Array<{
         sessionId: string;
         title: string | null;
-        grants: Array<{ id: string; grantee: { id: string; displayName: string }; role: string; status: string; expiresAt: number | null; createdAt: number }>;
+        grants: Array<{ id: string; grantee: { id: string; displayName: string }; role: string; operate: boolean; status: string; expiresAt: number | null; createdAt: number }>;
         links: ShareLinkView[];
     }>;
 };
@@ -403,6 +403,7 @@ export async function listOutgoingShares(ownerId: string): Promise<OutgoingShare
                 id: grant.id,
                 grantee: { id: grant.grantee.id, displayName: displayNameOf(grant.grantee, await identityOf(grant.grantee.id)) },
                 role: grant.role,
+                operate: grant.operate,
                 status: grant.expiresAt && grant.expiresAt.getTime() <= Date.now() ? 'expired' : grant.status,
                 expiresAt: grant.expiresAt ? grant.expiresAt.getTime() : null,
                 createdAt: grant.createdAt.getTime(),

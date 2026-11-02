@@ -37,7 +37,9 @@ import { MirrorBanner } from './MirrorBanner';
 import { MirrorInputBar } from './MirrorInputBar';
 import { SharedSessionBanner } from './SharedSessionBanner';
 import { SharedComposer } from './SharedComposer';
-import { canSendAsGrantee, isSharedWithMe } from '@/app/sessionAccess';
+import { canOperate, canSendAsGrantee, isSharedWithMe } from '@/app/sessionAccess';
+import { OperatorControls } from './OperatorControls';
+import { onOperatorEvent } from '@/sync/operatorTransport';
 import { SessionArchivedBanner } from './SessionArchivedBanner';
 import { StaleWrapperBanner } from './StaleWrapperBanner';
 import { ModelSupportBanner } from './ModelSupportBanner';
@@ -128,7 +130,9 @@ export function SessionDetailScreen() {
             navigate('/', { replace: true });
         }
     }, [sharedWithMe, session, pendingMode, navigate, t]);
-    const btwAllowed = !!session && !isMirrorSession(session) && !sharedWithMe && canOfferBtw(session);
+    // B-867: an operator grantee also gets /btw, approvals and interrupts (through the server broker).
+    const operator = !!session && canOperate(session);
+    const btwAllowed = !!session && !isMirrorSession(session) && (!sharedWithMe || operator) && canOfferBtw(session);
     const btwOpen = panelTab === 'btw' && btwAllowed;
     // B-512 timing: store arrival (fallback when the update path didn't mark
     // it) and composer mount end a pending new-session trace. Effects run
@@ -171,6 +175,16 @@ export function SessionDetailScreen() {
     setPanelRef.current = setPanel;
     const btwOpenRef = useRef(btwOpen);
     btwOpenRef.current = btwOpen;
+    // B-867: revoke / downgrade / expiry closes the operator's side panel at once,
+    // before the session row is re-read (which then closes every other gate).
+    useEffect(() => {
+        if (!operator || !id) return;
+        return onOperatorEvent('revoked', (e) => {
+            if (e.sessionId !== id) return;
+            toast.error(t('share.operator.revoked'));
+            if (btwOpenRef.current) setPanelRef.current(null, true);
+        });
+    }, [operator, id, t]);
     // URL owns the visible pane; notesPanelOpen remains the global shortcut signal.
     useEffect(() => {
         const current = {id,panel:panelTab,open:notesOpen};
@@ -473,6 +487,13 @@ export function SessionDetailScreen() {
                 {mirror && <MirrorInputBar sessionId={id} />}
                 {/* B-619: a driver's only write path; viewers get nothing below the transcript.
                     PermissionCard is deliberately absent — approvals stay with the owner. */}
+                {/* B-867: an operator answers permission requests and interrupts / re-modes (capped) on top. */}
+                {sharedWithMe && session && operator && (
+                    <div className="sd-foot sd-foot--operator">
+                        <PermissionCard key={`permission:${id}`} sessionId={id} />
+                        <OperatorControls sessionId={id} />
+                    </div>
+                )}
                 {sharedWithMe && session && canSendAsGrantee(session) && <SharedComposer sessionId={id} />}
             </div>
             {retainedPanel && session && (

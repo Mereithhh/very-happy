@@ -1,3 +1,4 @@
+import { teardownOperatorSession } from '@/app/session/operatorBroker';
 import { sessionActivityRelayGate } from "@/app/presence/sessionActivityRelayGate";
 import { eventRouter, buildNewSessionUpdate, buildSessionActivityEphemeral, buildSessionArchivedAtUpdate } from "@/app/events/eventRouter";
 import { type Fastify } from "../types";
@@ -13,6 +14,7 @@ import { activityCache } from '@/app/presence/sessionCache';
 import { allocateUserSeq } from '@/storage/seq';
 import { noteSessionArchived } from '@/app/automations/attentionLifecycle';
 import { noteAttentionSessionArchived } from '@/app/attention/store';
+import { noteIssueSessionArchived } from '@/app/issues/dispatch';
 import { fanoutSessionUpdateToGrantees, listSharedSessionRows, resolveSessionAccess, sharedSessionRowFor } from '@/app/session/sessionShares';
 import { sessionListRows } from '@/app/session/sessionListRows';
 
@@ -439,10 +441,14 @@ export function sessionRoutes(app: Fastify) {
 
         activityCache.discardSessionUpdate(sessionId);
         eventRouter.emitSessionArchived(userId, sessionId);
+        // B-867: archiving ends every operator's access to this session.
+        void teardownOperatorSession(sessionId, 'archived').catch(() => undefined);
         await emitArchivedAtUpdate(userId, sessionId, archivedAt);
         // B-508: archiving is user intent (B-505) — attention runs about this session are resolved.
         void noteSessionArchived(userId, sessionId);
         void noteAttentionSessionArchived(userId, sessionId);
+        // B-872: the session's active issue run ends (not a failure).
+        void noteIssueSessionArchived(userId, sessionId);
 
         // Notify all clients about the session deactivation
         sessionActivityRelayGate.forget(sessionId);

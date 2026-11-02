@@ -162,6 +162,15 @@ export type UpdateEvent = {
     type: 'attention-item';
     item: unknown;
 } | {
+    type: 'issue';
+    issue: unknown;
+} | {
+    type: 'issue-comment';
+    comment: unknown;
+} | {
+    type: 'issue-run';
+    run: unknown;
+} | {
     type: 'kv-batch-update';
     changes: Array<{
         key: string;
@@ -181,6 +190,8 @@ export type SessionShareUpdateEvent = {
     sessionId: string;
     grantId: string;
     role: 'viewer' | 'driver';
+    /** B-867; absent from older servers. */
+    operate?: boolean;
     status: 'pending' | 'active' | 'revoked';
 } | {
     type: 'session-share-revoked';
@@ -773,6 +784,19 @@ export function buildAttentionItemUpdate(item: unknown, updateSeq: number, updat
         },
         createdAt: Date.now()
     };
+}
+
+/** B-872 Issues: account-level full snapshots (`issue` / `issue-comment` / `issue-run`); clients keep the highest version per id. */
+export function buildIssueUpdate(issue: unknown, updateSeq: number, updateId: string): UpdatePayload {
+    return { id: updateId, seq: updateSeq, body: { t: 'issue', issue }, createdAt: Date.now() };
+}
+
+export function buildIssueCommentUpdate(comment: unknown, updateSeq: number, updateId: string): UpdatePayload {
+    return { id: updateId, seq: updateSeq, body: { t: 'issue-comment', comment }, createdAt: Date.now() };
+}
+
+export function buildIssueRunUpdate(run: unknown, updateSeq: number, updateId: string): UpdatePayload {
+    return { id: updateId, seq: updateSeq, body: { t: 'issue-run', run }, createdAt: Date.now() };
 }
 
 export function buildKVBatchUpdateUpdate(

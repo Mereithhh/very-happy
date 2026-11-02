@@ -6,7 +6,11 @@
 import { z } from 'zod';
 import { apiSocket } from './apiSocket';
 import {
+    OperatorActivitySchema,
+    OperatorEventSchema,
     OutgoingSharesSchema,
+    type OperatorActivity,
+    type OperatorEvent,
     SessionGrantViewSchema,
     ShareLinkAccessSchema,
     ShareLinkViewSchema,
@@ -53,18 +57,36 @@ export function listSessionGrants(sessionId: string): Promise<SessionGrantView[]
 /** B-621: share to a typed target (email / handle) or to a directory account id (friend picker). */
 export type ShareTarget = { target: string } | { accountId: string };
 
-export function createSessionGrant(sessionId: string, who: ShareTarget, role: SessionShareRole, expiresInDays?: ShareExpiryDays): Promise<SessionGrantView> {
+/**
+ * B-867: the operator tier rides on role 'driver'. The server refuses it
+ * without `confirmOperator: true` and a finite expiry; the dialog only sends
+ * this after the owner ticked the acknowledgement AND confirmed the modal.
+ */
+export type OperatorGrantOptions = { operate: true; confirmOperator: true };
+
+export function createSessionGrant(sessionId: string, who: ShareTarget, role: SessionShareRole, expiresInDays?: ShareExpiryDays, operator?: OperatorGrantOptions): Promise<SessionGrantView> {
     // B-701: omit expiresInDays for "never" so a pre-B-701 server (which strips unknown keys anyway) sees the same body.
-    const body = expiresInDays ? { ...who, role, expiresInDays } : { ...who, role };
+    const base = expiresInDays ? { ...who, role, expiresInDays } : { ...who, role };
+    const body = operator ? { ...base, ...operator } : base;
     return call(`/v1/sessions/${encodeURIComponent(sessionId)}/shares`, z.object({ grant: SessionGrantViewSchema }), json(body)).then((r) => r.grant);
 }
 
-export function updateSessionGrant(sessionId: string, accountId: string, change: { role?: SessionShareRole; expiresInDays?: ShareExpiryDays }): Promise<SessionGrantView> {
+export function updateSessionGrant(sessionId: string, accountId: string, change: { role?: SessionShareRole; expiresInDays?: ShareExpiryDays; operate?: boolean; confirmOperator?: true; endOperation?: true }): Promise<SessionGrantView> {
     return call(`/v1/sessions/${encodeURIComponent(sessionId)}/shares/${encodeURIComponent(accountId)}`, z.object({ grant: SessionGrantViewSchema }), json(change, 'PATCH')).then((r) => r.grant);
 }
 
 export function updateSessionGrantRole(sessionId: string, accountId: string, role: SessionShareRole): Promise<SessionGrantView> {
     return updateSessionGrant(sessionId, accountId, { role });
+}
+
+// ---------------------------------------------------------------- B-867 operator audit / presence (owner side)
+
+export function listOperatorEvents(sessionId: string, accountId: string, limit = 100): Promise<OperatorEvent[]> {
+    return call(`/v1/sessions/${encodeURIComponent(sessionId)}/shares/${encodeURIComponent(accountId)}/operator-events?limit=${limit}`, z.object({ events: z.array(OperatorEventSchema) })).then((r) => r.events);
+}
+
+export function getOperatorActivity(sessionId: string): Promise<OperatorActivity[]> {
+    return call(`/v1/sessions/${encodeURIComponent(sessionId)}/operator-activity`, z.object({ operators: z.array(OperatorActivitySchema) })).then((r) => r.operators);
 }
 
 // ---------------------------------------------------------------- B-701 share links (owner side)

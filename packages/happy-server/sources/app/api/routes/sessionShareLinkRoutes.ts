@@ -57,7 +57,8 @@ export function sessionShareLinkRoutes(app: Fastify) {
 
     app.post('/v1/sessions/:sessionId/share-links', {
         ...auth_,
-        schema: { params: sessionParams, body: z.object({ scope: z.enum(['snapshot', 'live']), expiresInDays: expirySchema }) },
+        // .strict(): a link never carries a role / operate (B-867 §7) — extra fields are a 400, not silently dropped.
+        schema: { params: sessionParams, body: z.object({ scope: z.enum(['snapshot', 'live']), expiresInDays: expirySchema }).strict() },
     }, async (request, reply) => handle(reply, async () =>
         createShareLink({ ownerId: request.userId, sessionId: request.params.sessionId, scope: request.body.scope, expiresInDays: request.body.expiresInDays })));
 

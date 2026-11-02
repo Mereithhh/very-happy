@@ -52,7 +52,7 @@ export function SharedInvites() {
                                 <strong>{invite.owner.displayName}</strong> {t('share.invites.shared')} <q>{name}</q>
                             </span>
                         </div>
-                        <span className="sb-invite-sub" title={sub || undefined}>{[invite.role === 'driver' ? t('share.roleDriver') : t('share.roleViewer'), sub].filter(Boolean).join(' · ')}</span>
+                        <span className="sb-invite-sub" title={sub || undefined}>{[invite.role === 'driver' ? (invite.operate === true ? t('share.roleOperator') : t('share.roleDriver')) : t('share.roleViewer'), sub].filter(Boolean).join(' · ')}</span>
                         <span className="sb-invite-actions">
                             <button type="button" className="vh-btn vh-btn--primary vh-btn--sm" disabled={busy === invite.id} aria-busy={busy === invite.id} onClick={() => void onAccept(invite.id, invite.sessionId)}>
                                 <Check size={14} aria-hidden /> {t('share.invites.accept')}
