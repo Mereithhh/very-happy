@@ -2367,7 +2367,7 @@ export async function startDaemon(): Promise<void> {
         // leaving nothing running once we also exit.
         apiMachine.shutdown();
         await stopControlServer();
-        await cleanupDaemonState();
+        await cleanupDaemonState(process.pid);
         await releaseDaemonLock(daemonLockHandle);
         await stopCaffeinate();
 
@@ -2403,6 +2403,8 @@ export async function startDaemon(): Promise<void> {
       if (daemonState && daemonState.pid !== process.pid) {
         logger.debug('[DAEMON RUN] Somehow a different daemon was started without killing us. We should kill ourselves.')
         requestShutdown('exception', 'A different daemon was started without killing us. We should kill ourselves.')
+        // B-864: and stop here — the heartbeat below would overwrite the other daemon's state with ours.
+        return;
       }
 
       // Heartbeat
@@ -2554,7 +2556,7 @@ export async function startDaemon(): Promise<void> {
 
       apiMachine.shutdown();
       await stopControlServer();
-      await cleanupDaemonState();
+      await cleanupDaemonState(process.pid);
       await stopCaffeinate();
       await releaseDaemonLock(daemonLockHandle);
 

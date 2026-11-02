@@ -89,7 +89,7 @@ describe('runClaude / api wiring', () => {
 
     it('cleanup claims the intent through the gate before doing anything', () => {
         // B-587: only a hibernation (which claimed the gate in commitHibernation) bypasses the claim here.
-        expect(runClaude).toContain("const intent = opts.hibernation ? 'hibernate' as const : exitGate.claim(exitIntentFromArchiveFlag(opts.archive));");
+        expect(runClaude).toContain("const intent = opts.hibernation ? 'hibernate' as const : exitGate.claim(opts.superseded ? 'superseded' : exitIntentFromArchiveFlag(opts.archive));");
         expect(runClaude).toContain("claimExit: () => exitGate.claim('hibernate') !== null,");
         expect(runClaude).toContain('if (intent === null) {');
         expect(runClaude).toContain('await settleSessionOnExit(session.sessionId, intent, {');
@@ -199,5 +199,33 @@ describe('B-587 hibernate exit', () => {
         expect(gate.exitRequested).toBe(false);
         expect(gate.release('hibernate')).toBeNull();
         expect(gate.current).toBe('hibernate');
+    });
+});
+
+describe('B-864: superseded exit', () => {
+    it('writes nothing about the session — it belongs to the newer wrapper', async () => {
+        const d = { ...deps(), updateMetadataAndWait: vi.fn(async () => true) };
+        await settleSessionOnExit('s1', 'superseded', { ...d, exitCursor: { seq: 3, at: 1 } as never });
+        expect(d.sendSessionDeath).not.toHaveBeenCalled();
+        expect(d.deactivateSession).not.toHaveBeenCalled();
+        expect(d.archiveSession).not.toHaveBeenCalled();
+        expect(d.updateMetadata).not.toHaveBeenCalled();
+        expect(d.updateMetadataAndWait).not.toHaveBeenCalled();
+    });
+
+    it('outranks every other exit deferred during a hibernation decision', () => {
+        const gate = new SessionExitGate();
+        expect(gate.claim('hibernate')).toBe('hibernate');
+        expect(gate.claim('archive')).toBeNull();
+        expect(gate.claim('superseded')).toBeNull();
+        expect(gate.claim('archive')).toBeNull();
+        expect(gate.claim('offline')).toBeNull();
+        expect(gate.release('hibernate')).toBe('superseded');
+    });
+
+    it('runClaude leaves on the client\'s superseded signal through that intent', () => {
+        const src = readFileSync(join(__dirname, 'runClaude.ts'), 'utf8').replace(/\/\/.*$/gm, '');
+        expect(src).toMatch(/session\.on\('superseded', \(\) => \{ void cleanup\(\{ superseded: true \}\); \}\)/);
+        expect(src).toContain("exitGate.claim(opts.superseded ? 'superseded' : exitIntentFromArchiveFlag(opts.archive))");
     });
 });

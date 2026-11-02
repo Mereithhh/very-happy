@@ -8,7 +8,8 @@
  */
 import type { QueueDiscardReason } from '@/utils/MessageQueue2';
 
-export type AcpExit = { intent: 'archive' | 'offline'; reason: QueueDiscardReason };
+/** B-864: `superseded` = a newer wrapper runs the session; leave without lifecycle writes. */
+export type AcpExit = { intent: 'archive' | 'offline' | 'superseded'; reason: QueueDiscardReason };
 
 export function acpExitIntent(exit: AcpExit | null): AcpExit['intent'] {
     return exit?.intent ?? 'offline';

@@ -1305,6 +1305,11 @@ export async function runAcp(opts: {
       await handleAbort();
     },
   });
+  // B-864: the server handed the session to a newer wrapper process.
+  session.on('superseded', () => {
+    beginExit('superseded', 'restarted');
+    void handleAbort();
+  });
 
   // B-629: a fresh agent process after the previous one died. The session (and its
   // transcript on the server) is kept; the agent itself starts without memory, and the
@@ -1562,6 +1567,10 @@ export async function runAcp(opts: {
       heldInput.drop(exit?.reason ?? 'failed');
       messageQueue.discardAll(exit?.reason ?? 'failed');
       const intent = acpExitIntent(exit);
+      if (intent === 'superseded') {
+        await session.close();
+        return;
+      }
       if (intent === 'archive') {
         session.updateMetadata((currentMetadata) => ({
           ...currentMetadata,

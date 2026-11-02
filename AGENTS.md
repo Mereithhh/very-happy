@@ -100,6 +100,7 @@ CLI 改动也会影响 Web `src/screens/public` 的契约测试，不能只跑 C
 17. **RPC resolve 仍可能是 `{ error }`**：Web wrapper 先检查 error 再读载荷。server/relay RPC 上限 30s，长任务用即返 id + 轮询。
 18. **旁路 SDK query**：使用已确认 transcript 落盘的 live `Session.sessionId`，透传 `claudeEnvVars`，禁用 hooks；不要信 `/clear` 后旧 metadata id。见 [btw spec](specs/2026-09-btw-side-question.md)。
 19. **tmux 探针分隔符仅用可打印 ASCII**，会话用 `$id` 而非名字定位。控制字符/locale 会改变输出；不同 tmux 版本行为需 gate，本地通过不代表 CI 通过。
-20. **每个 session 至多一个活 wrapper**：所有 spawn/resume 都经 `claimSessionOrExit` 持锁；takeover 顺序为停旧→等退出→持锁→reactivate，停不掉则让位。多写者事故走「重启会话」，不手杀其中之一。见 [单写者 spec](specs/2026-09-session-single-writer-lock.md)。
+20. **每个 session 至多一个活 wrapper**：所有 spawn/resume 都经 `claimSessionOrExit` 持锁（B-864 起 claim 串行化）；takeover 顺序为停旧→等退出→持锁→reactivate，停不掉则让位。多写者事故走「重启会话」，不手杀其中之一。见 [单写者 spec](specs/2026-09-session-single-writer-lock.md)。
+   server 兜底（B-864）：每会话只留最新启动的 agent 连接，旧的收 `session-superseded` 后不写生命周期退出；daemon 探测超时 ≠ 失效，不得删活 daemon 的 state/lock。见 [单连接 spec](specs/2026-11-session-single-agent-connection.md)。
 21. **pi-acp 不透传 MCP，也不提供权限模式选择器**；MCP 走 `HAPPY_MCP_URL`（优先于终端上下文），权限走 `HAPPY_PERMISSION_MODE`/session-modes 文件，由 pi permission-gate 执法。不要把 thinking/model selector 当权限 mode。
 22. **非 Claude runner 的 assistant 变体需显式传 `startHappyServer(session, { assistant })`**；新增 runner 支持时核对调用点，不能假定已透传。

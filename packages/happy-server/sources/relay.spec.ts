@@ -137,6 +137,75 @@ describe('database-free regional relay', () => {
         expect(refused.code).toBe('rpc_account_rate_limited');
         expect(refused.retryAfterMs).toBeGreaterThanOrEqual(1);
         expect(Number.isFinite(refused.retryAfterMs)).toBe(true);    });
+
+    it('B-864: one runner per session — the newest wrapper process gets the deliveries, a stale one is turned away', async () => {
+        const secret = 'regional-relay-integration-secret';
+        const server = await startRelayServer({
+            RELAY_ID: 'sin', RELAY_REGION: 'Singapore', RELAY_TOKEN_SECRET: secret,
+            HOST: '127.0.0.1', PORT: '0', LOG_LEVEL: 'silent',
+        } as NodeJS.ProcessEnv);
+        servers.push(server);
+        const origin = `http://127.0.0.1:${server.port}`;
+        const sessionToken = () => signRelayToken({ secret, accountId: 'a1', relayId: 'sin', machineId: 'm1', sessionId: 's1', clientType: 'session' }).token;
+        const webToken = signRelayToken({ secret, accountId: 'a1', relayId: 'sin', machineId: 'm1', clientType: 'web' }).token;
+        const runner = (auth: Record<string, unknown>) => {
+            const socket = connect(origin, { path: '/v1/relay', transports: ['websocket'], reconnection: false, auth: { token: sessionToken(), ...auth } });
+            clients.push(socket);
+            const delivered: string[] = [];
+            socket.on('session-message-deliver', (data, callback) => {
+                delivered.push(...data.messages.map((m: any) => m.localId));
+                callback({ ok: true, messages: [] });
+            });
+            return { socket, delivered };
+        };
+        const web = connect(origin, { path: '/v1/relay', transports: ['websocket'], auth: { token: webToken } });
+        clients.push(web);
+
+        const old = runner({ agentInstance: 'old', agentStartedAt: 1_000 });
+        await Promise.all([once(old.socket, 'connect'), once(web, 'connect')]);
+        const fresh = runner({ agentInstance: 'new', agentStartedAt: 2_000 });
+        const notice = once(old.socket, 'session-superseded');
+        await once(fresh.socket, 'connect');
+        await expect(notice).resolves.toEqual({ sessionId: 's1', by: { startedAt: 2_000 } });
+
+        const delivered = await web.timeout(2_000).emitWithAck('session-message-deliver', { sessionId: 's1', messages: [{ localId: 'l1', content: 'c' }] });
+        expect(delivered).toEqual({ ok: true, messages: [] });
+        expect(fresh.delivered).toEqual(['l1']);
+        expect(old.delivered).toEqual([]);
+
+        // The stale wrapper reconnecting must not kick the newer one off the relay.
+        const stale = runner({ agentInstance: 'old', agentStartedAt: 1_000 });
+        await expect(once(stale.socket, 'session-superseded')).resolves.toMatchObject({ sessionId: 's1', by: { startedAt: 2_000 } });
+        await web.timeout(2_000).emitWithAck('session-message-deliver', { sessionId: 's1', messages: [{ localId: 'l2', content: 'c' }] });
+        expect(fresh.delivered).toEqual(['l1', 'l2']);
+        expect(stale.delivered).toEqual([]);
+        expect(fresh.socket.connected).toBe(true);
+
+        // A legacy runner (no identity) cannot displace it either.
+        const legacy = runner({});
+        await expect(once(legacy.socket, 'session-superseded')).resolves.toMatchObject({ sessionId: 's1' });
+        expect(fresh.socket.connected).toBe(true);
+    });
+
+    it('B-864: legacy runners keep the old rule among themselves — the latest connection wins', async () => {
+        const secret = 'regional-relay-integration-secret';
+        const server = await startRelayServer({
+            RELAY_ID: 'sin', RELAY_REGION: 'Singapore', RELAY_TOKEN_SECRET: secret,
+            HOST: '127.0.0.1', PORT: '0', LOG_LEVEL: 'silent',
+        } as NodeJS.ProcessEnv);
+        servers.push(server);
+        const origin = `http://127.0.0.1:${server.port}`;
+        const token = () => signRelayToken({ secret, accountId: 'a1', relayId: 'sin', machineId: 'm1', sessionId: 's1', clientType: 'session' }).token;
+        const first = connect(origin, { path: '/v1/relay', transports: ['websocket'], reconnection: false, auth: { token: token() } });
+        clients.push(first);
+        await once(first, 'connect');
+        const gone = once(first, 'disconnect');
+        const second = connect(origin, { path: '/v1/relay', transports: ['websocket'], reconnection: false, auth: { token: token() } });
+        clients.push(second);
+        await once(second, 'connect');
+        await expect(gone).resolves.toBe('io server disconnect');
+        expect(second.connected).toBe(true);
+    });
 });
 
 function once(socket: Socket, event: string): Promise<any> {

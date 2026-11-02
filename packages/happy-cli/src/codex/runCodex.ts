@@ -671,7 +671,7 @@ export async function runCodex(opts: {
     // a pre-flight still finishing must not start that turn after all.
     let terminating = false;
     // B-587: a hibernation in progress; exits requested meanwhile are deferred (review P1-1).
-    const hibernationExit = new HibernationExitLatch<'archive' | 'offline'>((a, b) => a === 'archive' && b !== 'archive');
+    const hibernationExit = new HibernationExitLatch<'archive' | 'offline' | 'superseded'>((a, b) => b !== 'superseded' && (a === 'superseded' || (a === 'archive' && b !== 'archive')));
     let hibernationStamp: HibernationStamp | null = null;
     let hibernationProbe: HibernationProbe | null = null;
 
@@ -744,7 +744,7 @@ export async function runCodex(opts: {
      * Abort stops the current inference but keeps the session alive.
      * Kill terminates the entire process.
      */
-    const handleKillSession = async (intent: 'archive' | 'offline' = 'archive') => {
+    const handleKillSession = async (intent: 'archive' | 'offline' | 'superseded' = 'archive') => {
         // B-587: a hibernation is already taking this process offline; never
         // let a late signal stamp it archived on the way out.
         if (hibernationExit.intercept(intent)) {
@@ -759,6 +759,7 @@ export async function runCodex(opts: {
         // with this process — tombstone them first: the daemon's stop SIGKILLs
         // 2 s after SIGTERM, and the abort below may take its 3 s grace.
         const exitReason = intent === 'archive' ? 'aborted' : 'restarted';
+        if (intent === 'superseded') logger.debug('[Codex] Session superseded by a newer wrapper; leaving without lifecycle writes');
         terminating = true;
         heldInput.drop(exitReason);
         messageQueue.discardAll(exitReason);
@@ -818,6 +819,8 @@ export async function runCodex(opts: {
     });
 
     const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, () => handleKillSession('archive'), session, { processSignals: true, onSignal: () => handleKillSession('offline') });
+    // B-864: the server handed the session to a newer wrapper process.
+    session.on('superseded', () => { void handleKillSession('superseded'); });
 
     //
     // Initialize Ink UI

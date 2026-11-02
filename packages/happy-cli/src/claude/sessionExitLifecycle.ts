@@ -33,8 +33,11 @@
 import type { Metadata } from '@/api/types';
 
 /** B-587: `hibernate` = `offline` on the server (deactivate, never archive)
- *  plus a `metadata.hibernation` stamp written before the session ends. */
-export type SessionExitIntent = 'archive' | 'offline' | 'hibernate';
+ *  plus a `metadata.hibernation` stamp written before the session ends.
+ *  B-864: `superseded` = the server handed the session to a newer wrapper
+ *  process; this one leaves WITHOUT any lifecycle write (no metadata stamp,
+ *  no session-end, no deactivate/archive) — the row belongs to the successor. */
+export type SessionExitIntent = 'archive' | 'offline' | 'hibernate' | 'superseded';
 
 export interface SessionExitDeps {
     updateMetadata: (handler: (metadata: Metadata) => Metadata) => void;
@@ -56,6 +59,10 @@ export const OFFLINE_EXIT_STAMP_TIMEOUT_MS = 3_000;
 
 /** The lifecycle side of cleanup: metadata stamp, socket death, HTTP fallback. */
 export async function settleSessionOnExit(sessionId: string, intent: SessionExitIntent, deps: SessionExitDeps): Promise<void> {
+    if (intent === 'superseded') {
+        deps.log?.(`[START] ${sessionId} superseded by a newer wrapper: leaving its lifecycle untouched`);
+        return;
+    }
     if (intent === 'archive') {
         deps.updateMetadata((currentMetadata) => ({
             ...currentMetadata,
@@ -117,7 +124,8 @@ export class SessionExitGate {
     claim(intent: SessionExitIntent): SessionExitIntent | null {
         if (this.decided === 'hibernate' && !this.hibernateCommitted && intent !== 'hibernate') {
             // archive outranks offline: a user's archive must not be downgraded.
-            if (this.deferred !== 'archive') this.deferred = intent;
+            // B-864: superseded outranks both — this process no longer owns the row.
+            if (this.deferred !== 'superseded' && (this.deferred !== 'archive' || intent === 'superseded')) this.deferred = intent;
             return null;
         }
         if (this.decided !== null) return null;

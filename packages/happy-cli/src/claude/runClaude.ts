@@ -1240,9 +1240,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // `session-archive` echo, or teardown noise from the dying SDK child.
     const exitGate = new SessionExitGate();
     let hibernationProbe: HibernationProbe | null = null;
-    const cleanup = async (opts: { archive?: boolean; hibernation?: NonNullable<Metadata['hibernation']> } = { archive: true }) => {
+    const cleanup = async (opts: { archive?: boolean; hibernation?: NonNullable<Metadata['hibernation']>; superseded?: boolean } = { archive: true }) => {
         // B-587: a hibernation claimed the gate itself (commitHibernation) before calling here.
-        const intent = opts.hibernation ? 'hibernate' as const : exitGate.claim(exitIntentFromArchiveFlag(opts.archive));
+        const intent = opts.hibernation ? 'hibernate' as const : exitGate.claim(opts.superseded ? 'superseded' : exitIntentFromArchiveFlag(opts.archive));
         if (intent === null) {
             logger.debug(`[START] Termination (archive=${opts.archive ?? true}) ignored: cleanup already running as ${exitGate.current}`);
             return;
@@ -1284,7 +1284,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                     log: (message, ...args) => logger.debug(message, ...args),
                 });
 
-                await session.flush();
+                // B-864: a superseded client is already closed; nothing it still
+                // holds is the successor's to receive.
+                if (intent !== 'superseded') await session.flush();
                 await session.close();
             }
 
@@ -1347,6 +1349,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // want the metadata stamped — it's the user explicitly choosing to
     // retire the session, not just disconnecting.
     registerKillSessionHandler(session.rpcHandlerManager, () => cleanup({ archive: true }), session);
+    // B-864: the server gave this session to a newer wrapper process — stop
+    // the agent and leave without touching the session (it is not ours now).
+    session.on('superseded', () => { void cleanup({ superseded: true }); });
 
     // B-587: idle hibernation (spec 2026-10-idle-agent-hibernation). Only a
     // daemon-spawned remote UI session checks in; the daemon decides, this
@@ -1389,7 +1394,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 // commit window runs now instead of being lost.
                 releaseExit: () => {
                     const deferred = exitGate.release('hibernate');
-                    if (deferred) void cleanup({ archive: deferred === 'archive' });
+                    if (deferred) void cleanup(deferred === 'superseded' ? { superseded: true } : { archive: deferred === 'archive' });
                 },
                 recheck: () => evaluateWrapperIdle(hibernationSnapshot(), idleMs, Date.now()),
                 idleMs,

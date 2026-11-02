@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -88,6 +88,59 @@ describe('sessionLock', () => {
         runScheduled();               // settle: still alive
         await expect(pending).resolves.toEqual({ ok: false, holder: { pid: 25691, startedAt: 1, version: '0.2.93' } });
         expect(readSessionLock(SESSION, dir)?.pid).toBe(25691);
+    });
+
+    it('B-864: two takeover claimants never both win — the second takes over from the first', async () => {
+        // Two daemons (or a re-attach beside a restore) restart the same
+        // session at once. Before the claim file both saw holder 25691, both
+        // waited it out, both wrote the record and both connected.
+        const alive = new Set([25691, 30001, 30002]);
+        const a = makeRuntime(dir, alive, 30001);
+        const b = makeRuntime(dir, alive, 30002);
+        writeFileSync(sessionLockPath(SESSION, dir), JSON.stringify({ pid: 25691, startedAt: 1, version: '0.2.194' }));
+
+        const first = acquireSessionLock(SESSION, { takeover: true, version: '0.2.195' }, a.runtime);
+        const second = acquireSessionLock(SESSION, { takeover: true, version: '0.2.195' }, b.runtime);
+        expect(a.signals).toEqual([{ pid: 25691, signal: 'SIGTERM' }]);
+        expect(b.signals).toEqual([]);            // waits on the claim, does not signal the old holder too
+
+        alive.delete(25691);
+        a.runScheduled();                         // grace → holder gone
+        a.runScheduled();                         // settle
+        await expect(first).resolves.toEqual({ ok: true, replaced: { pid: 25691, startedAt: 1, version: '0.2.194' } });
+        expect(readSessionLock(SESSION, dir)?.pid).toBe(30001);
+
+        b.runScheduled();                         // claim poll → free now; holder is the first claimant
+        expect(b.signals).toEqual([{ pid: 30001, signal: 'SIGTERM' }]);
+        expect(readSessionLock(SESSION, dir)?.pid).toBe(30001);
+        alive.delete(30001);
+        b.runScheduled();
+        b.runScheduled();
+        await expect(second).resolves.toMatchObject({ ok: true, replaced: { pid: 30001 } });
+        expect(readSessionLock(SESSION, dir)?.pid).toBe(30002);
+        expect(existsSync(`${sessionLockPath(SESSION, dir)}.claim`)).toBe(false);
+    });
+
+    it('B-864: a claimant that waits past the claim window yields instead of joining in', async () => {
+        let now = 1_700_000_000_000;
+        const alive = new Set([30001]);
+        const b = makeRuntime(dir, alive, 30002);
+        b.runtime.now = () => now;
+        writeFileSync(`${sessionLockPath(SESSION, dir)}.claim`, '30001');
+        const pending = acquireSessionLock(SESSION, { takeover: true, version: '0.2.195', claimWaitMs: 1_000 }, b.runtime);
+        now += 1_000;
+        b.runScheduled();
+        await expect(pending).resolves.toEqual({ ok: false, holder: { pid: 30001, startedAt: 0, version: '' } });
+        expect(b.signals).toEqual([]);
+        expect(readFileSync(`${sessionLockPath(SESSION, dir)}.claim`, 'utf-8')).toBe('30001');
+    });
+
+    it('B-864: a claim left by a dead claimant is cleared', async () => {
+        const { runtime } = makeRuntime(dir, new Set());
+        writeFileSync(`${sessionLockPath(SESSION, dir)}.claim`, '44444');
+        await expect(acquireSessionLock(SESSION, { takeover: true, version: '0.2.195' }, runtime)).resolves.toEqual({ ok: true, replaced: null });
+        expect(readSessionLock(SESSION, dir)?.pid).toBe(17092);
+        expect(existsSync(`${sessionLockPath(SESSION, dir)}.claim`)).toBe(false);
     });
 
     it('re-acquiring our own lock is a no-op success', async () => {

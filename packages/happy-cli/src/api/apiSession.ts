@@ -1,3 +1,4 @@
+import { agentInstanceAuth, SESSION_SUPERSEDED_ERROR, type SessionSupersededNotice } from './agentInstance';
 import { logger } from '@/ui/logger'
 import { connectGuarded, socketConnectGuard } from './socketConnectGuard'
 import { EventEmitter } from 'node:events'
@@ -109,6 +110,8 @@ export class ApiSessionClient extends EventEmitter {
     override on(event: string | symbol, listener: (...args: any[]) => void): this {
         super.on(event, listener);
         if (event === 'archived' && this.archiveSignalled) queueMicrotask(() => listener());
+        // B-864: same window for a takeover refused at the first connect.
+        if (event === 'superseded' && this.supersededAt !== null) queueMicrotask(() => listener());
         return this;
     }
 
@@ -256,8 +259,21 @@ export class ApiSessionClient extends EventEmitter {
                 this.emit('archived');
                 return;
             }
+            if (error.message === SESSION_SUPERSEDED_ERROR) {
+                this.markSuperseded(null);
+                return;
+            }
             this.startSmartReconnect();
         })
+
+        // B-864: the server keeps one agent connection per session; a newer
+        // wrapper process now runs this one. Route nothing more, stop
+        // reconnecting, and let the runner leave without touching the
+        // session's lifecycle (it belongs to the successor).
+        this.socket.on('session-superseded', (notice: SessionSupersededNotice) => {
+            if (notice?.sessionId !== this.sessionId) return;
+            this.markSuperseded(notice);
+        });
 
         // Server-owned lifecycle command. The database transition is already
         // committed when this arrives, so cleanup is idempotent and does not
@@ -378,6 +394,7 @@ export class ApiSessionClient extends EventEmitter {
                 clientType: 'session-scoped' as const,
                 sessionId: this.sessionId,
                 happyClient: `cli-coding-session/${configuration.currentCliVersion}`,
+                ...agentInstanceAuth,
                 ...(handover ? { handoverEpoch: handover.epoch } : {}),
             },
             ...(handover ? { query: { vh_slot: handover.candidateSlot }, forceNew: true } : {}),
@@ -401,7 +418,7 @@ export class ApiSessionClient extends EventEmitter {
         const startedAt = Date.now();
         const previous = this.socket;
         const candidate = this.createControlSocket(notice);
-        type TransferEvent = 'session-archive' | 'update' | 'error' | 'server-draining';
+        type TransferEvent = 'session-archive' | 'session-superseded' | 'update' | 'error' | 'server-draining';
         const transferredListeners = new Map<TransferEvent, any[]>();
         for (const listener of previous.listeners('rpc-request') as any[]) candidate.on('rpc-request', listener);
         const timeoutMs = Math.max(1, Math.min(10_000, notice.deadline - Date.now()));
@@ -418,7 +435,7 @@ export class ApiSessionClient extends EventEmitter {
                 candidate.close();
                 return;
             }
-            for (const event of ['session-archive', 'update', 'error', 'server-draining'] as const) {
+            for (const event of ['session-archive', 'session-superseded', 'update', 'error', 'server-draining'] as const) {
                 const listeners = previous.listeners(event) as any[];
                 previous.removeAllListeners(event);
                 for (const listener of listeners) candidate.on(event as any, listener);
@@ -437,8 +454,12 @@ export class ApiSessionClient extends EventEmitter {
                 this.rpcHandlerManager.onSocketDisconnect(candidate);
                 this.startSmartReconnect();
             });
-            candidate.on('connect_error', () => {
+            candidate.on('connect_error', (error) => {
                 this.rpcHandlerManager.onSocketDisconnect(candidate);
+                if (error?.message === SESSION_SUPERSEDED_ERROR) {
+                    this.markSuperseded(null);
+                    return;
+                }
                 this.startSmartReconnect();
             });
             this.receiveSync.invalidate();
@@ -853,7 +874,7 @@ export class ApiSessionClient extends EventEmitter {
             if (!assignment) return;
             const relaySocket = io(assignment.url, {
                 path: '/v1/relay',
-                auth: { token: assignment.token },
+                auth: { token: assignment.token, ...agentInstanceAuth },
                 transports: ['websocket'],
                 reconnection: true,
                 reconnectionDelay: 500,
@@ -861,6 +882,9 @@ export class ApiSessionClient extends EventEmitter {
             });
             this.relaySocket?.close();
             this.relaySocket = relaySocket;
+            relaySocket.on('session-superseded', (notice: SessionSupersededNotice) => {
+                if (notice?.sessionId === this.sessionId) this.markSuperseded(notice);
+            });
             relaySocket.on('connect', () => {
                 if (this.relaySocket !== relaySocket) return;
                 this.rpcHandlerManager.onSocketConnect(relaySocket);
@@ -1634,6 +1658,26 @@ export class ApiSessionClient extends EventEmitter {
                 resolve();
             }, 10000);
         });
+    }
+
+    /** B-864: set once the server handed this session to a newer wrapper process. */
+    private supersededAt: number | null = null;
+
+    get superseded(): boolean {
+        return this.supersededAt !== null;
+    }
+
+    private markSuperseded(notice: SessionSupersededNotice | null): void {
+        if (this.supersededAt !== null) return;
+        this.supersededAt = Date.now();
+        const by = notice?.by ? ` by a wrapper started at ${new Date(notice.by.startedAt).toISOString()}${notice.by.happyClient ? ` (${notice.by.happyClient})` : ''}` : ' by a newer wrapper';
+        const message = `Session ${this.sessionId} was taken over${by}; this process (pid ${process.pid}) stops driving it.`;
+        logger.debug(`[API] [SUPERSEDED] ${message}`);
+        console.error(message);
+        // Held, never routed: whatever still arrives belongs to the successor.
+        this.inboundFrozen = true;
+        void this.close();
+        this.emit('superseded', notice);
     }
 
     async close() {

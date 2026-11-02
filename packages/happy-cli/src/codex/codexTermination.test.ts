@@ -64,3 +64,19 @@ describe('B-587 / AGENTS 7: Codex exit by intent', () => {
         expect(src).toContain('void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);');
     });
 });
+
+describe('B-864: superseded Codex / Gemini exit', () => {
+    it('closes without a stamp, session-end or deactivate', async () => {
+        const s = session();
+        const deactivate = vi.fn(async () => true);
+        await settleCodexSession(s, 'superseded', deactivate);
+        expect(s.updateMetadata).not.toHaveBeenCalled();
+        expect(deactivate).not.toHaveBeenCalled();
+        expect(s.order).toEqual(['close']);
+    });
+
+    it('runCodex routes the client\'s superseded signal to that exit', () => {
+        const src = readFileSync(join(__dirname, 'runCodex.ts'), 'utf8').replace(/\/\/.*$/gm, '');
+        expect(src).toContain("session.on('superseded', () => { void handleKillSession('superseded'); });");
+    });
+});
