@@ -5,7 +5,8 @@ Two ways to share one conversation, both from `…` (More session actions) →
 
 - **People** — another account on the same Very Happy server. They see the
   transcript live; a **driver** can also send messages into it under their own
-  name. Your machine stays yours.
+  name. An **operator** (**Can operate**) can additionally use this session's
+  terminal, files, `/btw`, approvals and interrupts on your machine.
 - **Link** — a read-only web link anyone can open without signing in. Links
   never let anyone send messages; use People sharing for that.
 
@@ -18,8 +19,10 @@ Every share can expire (1, 7 or 30 days, or never) and be revoked at any time.
 2. Pick a friend from the chips at the top of the dialog, or enter the person's
    email or username (an account on this server). Friends come from **People**
    in the sidebar — search by handle or exact email, send a request, they accept.
-3. Choose **View only** or **Can send**, and how long it lasts (**Expires**:
-   never by default, or 1 / 7 / 30 days), then **Share**.
+3. Choose **View only**, **Can send** or **Can operate**, and how long it lasts
+   (**Expires**: never by default, or 1 / 7 / 30 days), then **Share**.
+   **Can operate** always expires (1 day by default) and needs two
+   confirmations — see [Can operate](#can-operate) below.
 
 They get an invitation at the top of their sidebar. Once they accept, the
 session appears under **Shared with me** on their side and in the dialog's
@@ -59,13 +62,16 @@ reaches server logs or link-preview bots, and link pages are never indexed.
 
 ## What a shared account can and cannot do
 
-| | View only | Can send |
-|---|---|---|
-| Read the transcript, diffs, attachments, live status | ✓ | ✓ |
-| Send a message (shown under their own name) | ✗ | ✓ |
-| Answer permission requests / questions | ✗ | ✗ |
-| Interrupt, steer, change model or permission mode | ✗ | ✗ |
-| Files panel, `/btw`, terminal, rename, archive, re-share | ✗ | ✗ |
+| | View only | Can send | Can operate |
+|---|---|---|---|
+| Read the transcript, diffs, attachments, live status | ✓ | ✓ | ✓ |
+| Send a message (shown under their own name) | ✗ | ✓ | ✓ |
+| Answer permission requests / questions | ✗ | ✗ | ✓ |
+| Interrupt, steer, change model | ✗ | ✗ | ✓ |
+| Change permission mode | ✗ | ✗ | ✓ never above yours |
+| Terminal on your machine (starts in the session folder) | ✗ | ✗ | ✓ |
+| Files panel (session folder only), `/btw` | ✗ | ✗ | ✓ |
+| Rename, archive, rewind, fork, re-share, other sessions, machine settings | ✗ | ✗ | ✗ |
 
 A driver's message is encrypted by the server with the session key and stored
 as the owner's session traffic, so the owner's machine daemon needs no update.
@@ -73,6 +79,45 @@ The message carries a header naming the sender; the agent reads it on its next
 turn. Approvals stay with the owner — share **Can send** only with people you
 would hand your keyboard to, because the agent acts on your machine under your
 current permission mode.
+
+## Can operate
+
+**Can operate** hands over a shell on your machine. Before granting it, know
+that the other person:
+
+- can read every file on that machine that you can, **including your Very
+  Happy account credentials**;
+- can run any command on that machine **as you**;
+- keeps any background process they started running after you revoke access.
+
+The terminal starts in the session's folder, but a shell cannot be confined to
+it. The Very Happy API keeps them on this one session — no other sessions,
+machines, account settings or the account list — but inside the shell they
+have your Unix user's rights.
+
+How it is granted: choose **Can operate** → read the warning → tick the
+acknowledgement → **Grant operator access** → confirm again in the dialog
+(who, which machine, until when). The expiry is always 1, 7 or 30 days.
+
+What you see while they work:
+
+- A red **“<name> is operating · N terminals”** chip in the session header.
+  It opens their recent activity and **End their operation**, which removes
+  the tier at once (they keep **Can send**), disconnects their terminal and
+  file panel and closes the terminals they opened.
+- Their terminals appear in your own terminal list, tagged with their name; you
+  can watch or close them.
+- An activity log per person in **Share…** (terminal open / close, approvals,
+  interrupts, mode and model changes, file writes). Keystrokes are counted, not
+  stored.
+
+Revoking, downgrading or expiry takes effect immediately: their terminal and
+file panel disconnect and the terminals they opened are closed. Their machine
+access always goes through the server, which checks the grant on every call
+and every terminal frame; they never receive your machine key.
+
+The terminal needs the CLI on your machine to be recent enough; otherwise
+they see “The CLI on their machine needs an update”.
 
 ## Trust model
 

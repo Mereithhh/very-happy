@@ -1,0 +1,43 @@
+/* B-867 operator terminal: one card, dark pane in both themes (the terminal is the floor). */
+.opt-overlay { position: fixed; inset: 0; z-index: 4200; }
+.opt {
+  position: fixed;
+  z-index: 4201;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(1100px, calc(100vw - 32px));
+  height: min(760px, calc(var(--vv-h, 100dvh) - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  box-sizing: border-box;
+  background: var(--bg-1);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-modal);
+}
+.opt:focus { outline: none; }
+.opt-head { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.opt-title { margin: 0; flex: none; max-width: 40%; font-size: var(--fs-14); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opt-tabs { flex: 1; min-width: 0; display: flex; gap: var(--sp-1); overflow-x: auto; scrollbar-width: none; }
+.opt-tab { flex: none; min-height: 32px; padding: 0 var(--sp-3); border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--text-dim); font-size: var(--fs-12); cursor: pointer; }
+.opt-tab[aria-selected='true'] { border-color: var(--line); background: var(--bg-2); color: var(--text); }
+.opt-tab:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.opt-close { margin: 0; }
+.opt-banner { display: flex; gap: var(--sp-2); align-items: center; margin: 0; padding: var(--sp-1) var(--sp-3); border-radius: var(--r-md); background: var(--danger-dim); color: var(--text); font-size: var(--fs-12); line-height: 1.4; }
+.opt-banner > svg { flex: none; color: var(--danger); }
+.opt-error { margin: 0; color: var(--danger); font-size: var(--fs-12); }
+.opt-body { flex: 1; min-height: 0; display: flex; border-radius: var(--r-md); background: var(--term-bg); overflow: hidden; }
+.opt-term { flex: 1; min-width: 0; min-height: 0; padding: var(--sp-1); }
+.opt-empty { margin: auto; color: var(--text-faint); font-size: var(--fs-12); }
+
+@media (pointer: coarse) {
+  .opt-tab { min-height: 44px; }
+}
+@media (max-width: 600px) {
+  .opt { top: 0; left: 0; transform: none; width: 100%; height: var(--vv-h, 100dvh); border-radius: 0; border-width: 0; padding: max(var(--sp-2), var(--sa-t)) var(--sp-2) max(var(--sp-2), var(--sa-b)); }
+  .opt-title { display: none; }
+}

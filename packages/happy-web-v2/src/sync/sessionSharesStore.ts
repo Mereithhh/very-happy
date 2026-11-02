@@ -23,6 +23,7 @@ import {
     listSessionGrants,
     revokeSessionGrant,
     updateSessionGrantRole,
+    type OperatorGrantOptions,
     type ShareTarget,
 } from './apiSessionShares';
 import type { SessionGrantView, SessionShareRole, SharedSessionInvite, ShareExpiryDays, ShareLinkScope, ShareLinkView } from './sessionShareTypes';
@@ -33,8 +34,10 @@ export interface SessionSharesState {
     grantsBySession: Record<string, SessionGrantView[]>;
     refreshInvites: () => Promise<void>;
     refreshGrants: (sessionId: string) => Promise<void>;
-    share: (sessionId: string, who: ShareTarget, role: SessionShareRole, expiresInDays?: ShareExpiryDays) => Promise<SessionGrantView>;
+    share: (sessionId: string, who: ShareTarget, role: SessionShareRole, expiresInDays?: ShareExpiryDays, operator?: OperatorGrantOptions) => Promise<SessionGrantView>;
     setRole: (sessionId: string, accountId: string, role: SessionShareRole) => Promise<void>;
+    /** B-867: grant (with the owner's explicit confirmation + a finite expiry) or remove the operator tier. */
+    setOperate: (sessionId: string, accountId: string, operate: boolean, expiresInDays?: Exclude<ShareExpiryDays, null>) => Promise<void>;
     /** B-701 */
     setExpiry: (sessionId: string, accountId: string, expiresInDays: ShareExpiryDays) => Promise<void>;
     linksBySession: Record<string, ShareLinkView[]>;
@@ -49,7 +52,7 @@ export interface SessionSharesState {
     /** socket: a new invitation for me */
     onInvite: (invite: SharedSessionInvite) => void;
     /** socket: an invitation of mine was answered / re-roled, or one I received was re-roled */
-    onGrantUpdated: (sessionId: string, grantId: string, role: SessionShareRole, status: SessionGrantView['status']) => void;
+    onGrantUpdated: (sessionId: string, grantId: string, role: SessionShareRole, status: SessionGrantView['status'], operate?: boolean) => void;
     /** socket: a share I received is gone */
     onRevoked: (sessionId: string, grantId: string | null) => void;
 }
@@ -79,13 +82,19 @@ export const useSessionShares = create<SessionSharesState>((set, get) => ({
         const grants = await listSessionGrants(sessionId);
         set((s) => ({ grantsBySession: { ...s.grantsBySession, [sessionId]: grants } }));
     },
-    share: async (sessionId, who, role, expiresInDays) => {
-        const grant = await createSessionGrant(sessionId, who, role, expiresInDays);
+    share: async (sessionId, who, role, expiresInDays, operator) => {
+        const grant = await createSessionGrant(sessionId, who, role, expiresInDays, operator);
         set((s) => ({ grantsBySession: { ...s.grantsBySession, [sessionId]: upsertGrant(s.grantsBySession[sessionId] ?? [], grant) } }));
         return grant;
     },
     setRole: async (sessionId, accountId, role) => {
         const grant = await updateSessionGrantRole(sessionId, accountId, role);
+        set((s) => ({ grantsBySession: { ...s.grantsBySession, [sessionId]: upsertGrant(s.grantsBySession[sessionId] ?? [], grant) } }));
+    },
+    setOperate: async (sessionId, accountId, operate, expiresInDays) => {
+        const grant = await updateSessionGrant(sessionId, accountId, operate
+            ? { role: 'driver', operate: true, confirmOperator: true, expiresInDays }
+            : { operate: false });
         set((s) => ({ grantsBySession: { ...s.grantsBySession, [sessionId]: upsertGrant(s.grantsBySession[sessionId] ?? [], grant) } }));
     },
     setExpiry: async (sessionId, accountId, expiresInDays) => {
@@ -128,7 +137,7 @@ export const useSessionShares = create<SessionSharesState>((set, get) => ({
         set((s) => ({ invites: s.invites.filter((i) => i.id !== grantId) }));
     },
     onInvite: (invite) => set((s) => ({ invites: [invite, ...s.invites.filter((i) => i.id !== invite.id)], invitesLoaded: true })),
-    onGrantUpdated: (sessionId, grantId, role, status) => {
+    onGrantUpdated: (sessionId, grantId, role, status, operate) => {
         const grants = get().grantsBySession[sessionId];
         if (grants?.some((g) => g.id === grantId)) {
             set((s) => ({
@@ -136,12 +145,12 @@ export const useSessionShares = create<SessionSharesState>((set, get) => ({
                     ...s.grantsBySession,
                     [sessionId]: status === 'revoked'
                         ? (s.grantsBySession[sessionId] ?? []).filter((g) => g.id !== grantId)
-                        : (s.grantsBySession[sessionId] ?? []).map((g) => g.id === grantId ? { ...g, role, status } : g),
+                        : (s.grantsBySession[sessionId] ?? []).map((g) => g.id === grantId ? { ...g, role, status, ...(operate !== undefined ? { operate } : {}) } : g),
                 },
             }));
         }
         // A re-role of an invitation I have not answered yet.
-        set((s) => ({ invites: s.invites.map((i) => i.id === grantId ? { ...i, role } : i) }));
+        set((s) => ({ invites: s.invites.map((i) => i.id === grantId ? { ...i, role, ...(operate !== undefined ? { operate } : {}) } : i) }));
     },
     onRevoked: (sessionId, grantId) => set((s) => ({ invites: s.invites.filter((i) => i.id !== grantId && i.sessionId !== sessionId) })),
 }));

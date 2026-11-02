@@ -26,8 +26,10 @@ describe('/btw wiring (B-283)', () => {
         expect(source).toContain('btwAllowed={btwAllowed} onPanel={tab=>setPanel(tab,true)}');
         expect(read('./SessionWorkspacePanel.tsx')).toContain('<BtwPanel sessionId={sessionId} embedded active={visible && activeTool===tab.id}');
         expect(source).toContain('onToggleBtw={btwAllowed');
-        // B-619: no /btw on a session shared with me (no machine RPC from this account).
-        expect(source).toContain('const btwAllowed = !!session && !isMirrorSession(session) && !sharedWithMe && canOfferBtw(session);');
+        // B-619: no /btw on a session shared with me (no machine RPC from this account) —
+        // B-867: except for an operator grantee, whose /btw goes through the server broker.
+        expect(source).toContain('const btwAllowed = !!session && !isMirrorSession(session) && (!sharedWithMe || operator) && canOfferBtw(session);');
+        expect(source).toContain('const operator = !!session && canOperate(session);');
         expect(read('./ChatHeader.tsx')).toContain('ch-btw-toggle');
     });
 

@@ -382,7 +382,7 @@ export async function listPendingSessionInvites(granteeAccountId: string): Promi
 export async function listSharedSessionRows<T extends SessionKeyRow & { metadata: string }>(
     granteeAccountId: string,
     select: Prisma.SessionSelect,
-): Promise<Array<{ row: T; share: { grantId: string; role: SessionGrantRole; operate: boolean; owner: { id: string; displayName: string } }; dataEncryptionKey: Buffer; metadata: string }>> {
+): Promise<Array<{ row: T; share: { grantId: string; role: SessionGrantRole; operate: boolean; expiresAt: number | null; owner: { id: string; displayName: string } }; dataEncryptionKey: Buffer; metadata: string }>> {
     const grants = await db.sessionGrant.findMany({
         where: { granteeAccountId, status: 'active', ...unexpiredGrant() },
         include: { grantedBy: { select: { id: true, firstName: true, lastName: true, username: true } }, session: { select: { ...select, id: true, accountId: true, dataEncryptionKey: true, metadata: true } } },
@@ -395,7 +395,7 @@ export async function listSharedSessionRows<T extends SessionKeyRow & { metadata
         if (!metadata) continue; // owner secret missing: nothing we can safely show
         out.push({
             row,
-            share: { grantId: grant.id, role: grant.role, operate: grant.operate, owner: { id: grant.grantedBy.id, displayName: displayNameOf(grant.grantedBy, await identityOf(grant.grantedBy.id)) } },
+            share: { grantId: grant.id, role: grant.role, operate: grant.operate, expiresAt: grant.expiresAt ? grant.expiresAt.getTime() : null, owner: { id: grant.grantedBy.id, displayName: displayNameOf(grant.grantedBy, await identityOf(grant.grantedBy.id)) } },
             dataEncryptionKey: Buffer.from(grant.granteeDataEncryptionKey),
             metadata,
         });
