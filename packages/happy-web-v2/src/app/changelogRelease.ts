@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-03-cli-mac-wake-reconnect',
+    cliVersion: '0.2.198',
+    date: '2026-11-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov03c.title',
+    summaryKey: 'changelog.releases.nov03c.summary',
+    itemKeys: ['changelog.releases.nov03c.wake', 'changelog.releases.nov03c.lid'],
+  },
+  {
     id: '2026-11-03-terminals-in-projects',
     date: '2026-11-03',
     buildVersion: __APP_VERSION__,

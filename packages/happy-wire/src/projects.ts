@@ -60,10 +60,11 @@ export const ProjectLogKindSchema = z.enum(PROJECT_LOG_KINDS);
 export type ProjectLogKind = z.infer<typeof ProjectLogKindSchema>;
 
 /** How a session became a member. `team` is derived at read time from an attached team and never stored. */
-export const PROJECT_MEMBER_VIA = ['explicit', 'lineage', 'suggested-accepted', 'team', 'automation'] as const;
+export const PROJECT_MEMBER_VIA = ['explicit', 'lineage', 'suggested-accepted', 'team', 'automation', 'issue'] as const;
 export type ProjectMemberVia = typeof PROJECT_MEMBER_VIA[number];
 /** Stored values (a client may not claim `team`). Kept as an open string on read so a newer value never breaks an older reader. */
-export const ProjectMemberViaInputSchema = z.enum(['explicit', 'lineage', 'suggested-accepted', 'automation']);
+/** `issue` (B-871): an issue run's session joins the issue's project. */
+export const ProjectMemberViaInputSchema = z.enum(['explicit', 'lineage', 'suggested-accepted', 'automation', 'issue']);
 
 export const ProjectCreateSchema = z.object({
     name: z.string().trim().min(1).max(PROJECT_LIMITS.nameChars),

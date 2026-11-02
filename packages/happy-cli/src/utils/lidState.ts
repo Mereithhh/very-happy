@@ -11,6 +11,16 @@ export function hasNetworkConnectivity(): boolean {
     return false
 }
 
+/**
+ * B-869: a closed lid only matters when it puts the Mac to sleep. With
+ * clamshell sleep disabled (`"AppleClamshellCausesSleep" = No`, a MacBook run
+ * closed as a server) the machine stays awake and must reconnect.
+ */
+export function lidClosedAndSleeping(ioregOutput: string): boolean {
+    if (!ioregOutput.includes('"AppleClamshellState" = Yes')) return false
+    return !ioregOutput.includes('"AppleClamshellCausesSleep" = No')
+}
+
 export function isLidClosed(): boolean {
     if (process.platform !== 'darwin') return false
     try {
@@ -18,7 +28,7 @@ export function isLidClosed(): boolean {
             timeout: 5000,
             encoding: 'utf-8',
         })
-        return output.includes('"AppleClamshellState" = Yes')
+        return lidClosedAndSleeping(output)
     } catch {
         return false
     }

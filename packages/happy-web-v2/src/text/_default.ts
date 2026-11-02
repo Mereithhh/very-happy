@@ -3090,6 +3090,12 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov03c: {
+                title: 'CLI 0.2.198: a Mac running with its lid closed reconnects after sleep',
+                summary: 'A Mac that runs with its lid closed reconnects within about 30 seconds of waking, instead of staying offline.',
+                wake: 'After the Mac wakes from sleep, the connection comes back by itself within about 30 seconds.',
+                lid: 'A Mac set to keep running with the lid closed counts as awake, so it is no longer shown offline for hours.',
+            },
             nov03b: {
                 title: 'Web terminals can go into a project',
                 summary: 'Put a terminal in a project from its row menu, or create it inside the project.',
