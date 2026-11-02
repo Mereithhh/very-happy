@@ -320,6 +320,18 @@
   border-radius: var(--r-sm);
   font-size: var(--fs-12);
 }
+/* B-859c: crypto wasm not loaded — message plus a reload button. */
+.auth-crypto-not-ready {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+/* B-859e: scrolled into view and focused on appear (short windows); keep a gap from the
+   viewport edge, and let the danger box be the focus cue. */
+.auth-crypto-not-ready { scroll-margin-block: var(--sp-4); }
+.auth-crypto-not-ready:focus { outline: none; }
 .auth-policy {
   padding: var(--sp-3);
   color: var(--text-dim);

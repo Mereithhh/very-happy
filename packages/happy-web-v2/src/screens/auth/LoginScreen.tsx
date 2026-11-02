@@ -12,6 +12,8 @@ import { OidcLoginButton } from './OidcLoginButton';
 import './auth.css';
 import { authReturnTarget, peekPersistedAuthReturnTarget } from '@/app/authReturnTarget';
 import { classifyPasswordLoginFailure } from './loginErrorPresentation';
+import { isReadyTimeout } from '@/encryption/readyDeadline';
+import { CryptoNotReadyNotice } from './CryptoNotReadyNotice';
 import { rateLimitedMessage } from '@/auth/rateLimitMessage';
 import { EmailOtpForm } from './EmailOtpForm';
 import { publicAuthMethodState } from './emailOtpPresentation';
@@ -36,6 +38,8 @@ export function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  // B-859c: the crypto wasm missed its load budget; only a reload fixes that.
+  const [cryptoNotReady, setCryptoNotReady] = useState(false);
   const [authConfig, setAuthConfig] = useState<PublicAuthConfig | null>(null);
   const [passwordExpanded, setPasswordExpanded] = useState(false);
 
@@ -57,6 +61,7 @@ export function LoginScreen() {
     setBusy(true);
     setError(null);
     setGoogleError(null);
+    setCryptoNotReady(false);
     try {
       const creds = await loginWithPassword(username, password);
       await login(creds.token, creds.secret);
@@ -68,6 +73,8 @@ export function LoginScreen() {
         setError(t('errors.authenticationFailed'));
       } else if (failure === 'rate-limited') {
         setError(rateLimitedMessage(t, (err as { retryAfterSeconds?: number }).retryAfterSeconds));
+      } else if (failure === 'crypto-not-ready') {
+        setCryptoNotReady(true);
       } else {
         setError('Could not reach the server. Check your connection and server address.');
       }
@@ -79,12 +86,14 @@ export function LoginScreen() {
   async function onGoogleCredential(credential: string, nonce: string) {
     setBusy(true);
     setGoogleError(null);
+    setCryptoNotReady(false);
     try {
       const creds = await loginWithGoogle(credential, nonce);
       await login(creds.token, creds.secret);
       navigate(authReturnTarget(location.state), { replace: true });
     } catch (err) {
-      if (err instanceof CloudAuthError && err.code === 'capacity-reached') setGoogleError(t('signup.errorCapacityReached'));
+      if (isReadyTimeout(err)) setCryptoNotReady(true);
+      else if (err instanceof CloudAuthError && err.code === 'capacity-reached') setGoogleError(t('signup.errorCapacityReached'));
       else if (err instanceof CloudAuthError && err.code === 'rate-limited') setGoogleError(rateLimitedMessage(t, err.retryAfterSeconds));
       else if (err instanceof CloudAuthError && err.code === 'signup-closed') setGoogleError(t('signup.errorSignupClosed'));
       else if (err instanceof CloudAuthError && err.code === 'invite-required') {
@@ -99,7 +108,13 @@ export function LoginScreen() {
   }
 
   async function finishLogin(creds: { token: string; secret: string }) {
-    await login(creds.token, creds.secret);
+    try {
+      await login(creds.token, creds.secret);
+    } catch (err) {
+      if (!isReadyTimeout(err)) throw err;
+      setCryptoNotReady(true);
+      return;
+    }
     toast.success(t('common.success'));
     navigate(authReturnTarget(location.state), { replace: true });
   }
@@ -144,6 +159,7 @@ export function LoginScreen() {
             <h2 id="login-form-title">{t('settings.connectAccount')}</h2>
           </header>
           {reauthMessage && <div className="auth-reauth-note" role="status">{reauthMessage}</div>}
+          {cryptoNotReady && <CryptoNotReadyNotice />}
 
           {oidcEnabled && <OidcLoginButton
             displayName={oidcDisplayName}

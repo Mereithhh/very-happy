@@ -5963,6 +5963,9 @@ export const en = {
         title: 'Pick up where you left off.',
         subtitle: 'Your agent sessions, terminals, and machines — ready in one console.',
         waiting: 'waiting for identity',
+        // B-859c: the wasm crypto module did not load in time — not a server problem.
+        errorCryptoNotReady: 'The encryption module has not finished loading. Refresh the page to try again.',
+        reloadPage: 'Refresh page',
     },
 
     authCommon: {

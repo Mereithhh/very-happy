@@ -625,6 +625,8 @@ export type MessageContent = z.infer<typeof MessageContentSchema>
 export type Metadata = {
   /** Durable Teams spawn correlation; never contains credentials. */
   teamOperationId?: string,
+  /** B-874: the issue run this session executes (display only; the server's run table is authoritative). */
+  issue?: { id: string; runId?: string; key?: string },
   /**
    * ACP session config option value (normalized for UI metadata consumers).
    */

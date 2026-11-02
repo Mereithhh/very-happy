@@ -1,4 +1,5 @@
 import { registerProjectTools, createProjectToolExecutor, PROJECT_TOOL_NAMES } from '@/projects/tools';
+import { registerIssueTools, createIssueToolExecutor, ISSUE_TOOL_NAMES } from '@/issues/tools';
 import { PiContextReportSchema, type PiContextReport } from '@/agent/acp/piContextUsage';
 /**
  * Happy MCP server
@@ -98,6 +99,8 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     if (client) registerSessionPeerTools(mcp, createSessionPeerToolExecutor(client));
     // B-645: project_context / project_note — always registered (a fixed tools prefix); "not in a project" otherwise.
     if (client) registerProjectTools(mcp, createProjectToolExecutor(() => client.sessionId));
+    // B-874: issue_get / issue_update / issue_comment / issue_list — always registered; "issue_not_bound" outside an issue run.
+    if (client) registerIssueTools(mcp, createIssueToolExecutor(() => client.sessionId));
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -465,6 +468,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             ...AUTOMATION_TOOL_NAMES,
             ...SESSION_PEER_TOOL_NAMES,
             ...PROJECT_TOOL_NAMES,
+            ...ISSUE_TOOL_NAMES,
             // Auto-allow only; the tools themselves appear for a lead on a board server.
             ...OWNER_BOARD_TOOL_NAMES,
             ...(options?.assistant && !process.env.VH_TEAM_SCOPE_FILE ? ASSISTANT_TOOL_NAMES : []),

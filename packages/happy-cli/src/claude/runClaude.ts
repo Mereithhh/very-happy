@@ -18,7 +18,7 @@ import type { EnhancedMode, PermissionMode } from './loop';
 import type { MessageMeta } from '@/api/types';
 import type { QueueDiscardEntry } from '@/utils/MessageQueue2';
 import { spawnOriginTags } from '@/utils/createSessionMetadata';
-import { AGENT_PROFILE_SESSION_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, restoredEffort, restoredModel } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, restoredEffort, restoredModel } from '@slopus/happy-wire';
 import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
 import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { configuration } from '@/configuration';
@@ -43,6 +43,7 @@ import { CLAUDE_ATTACHMENT_KINDS, stripAttachmentManifest } from './utils/attach
 import { TranscriptPathHints } from './utils/transcriptCursor';
 import { planClaudeStartup } from './startupPlan';
 import { takeReconnectEnv } from '@/utils/reconnectEnv';
+import { issueSessionMetadata } from '@/issues/sessionMetadata';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -239,6 +240,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         lifecycleStateSince: Date.now(),
         flavor: 'claude',
         ...(process.env.VH_TEAM_OPERATION_ID ? { teamOperationId: process.env.VH_TEAM_OPERATION_ID } : {}),
+        ...issueSessionMetadata(),
         // Advertise composer support before the first SDK response. Otherwise
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
@@ -269,6 +271,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // B-586: linked git worktree → branch shown in the session list.
         ...sessionWorktreeMetadata(workingDirectory),
     };
+    // B-874: issue_* tools + issue digest (spec §5).
+    metadata.capabilities = [...(metadata.capabilities ?? []), ISSUE_SESSION_CAPABILITY];
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
     const reconnectSessionId = reconnectEnv.HAPPY_RECONNECT_SESSION_ID;
