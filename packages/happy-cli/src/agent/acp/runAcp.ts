@@ -1567,10 +1567,6 @@ export async function runAcp(opts: {
       heldInput.drop(exit?.reason ?? 'failed');
       messageQueue.discardAll(exit?.reason ?? 'failed');
       const intent = acpExitIntent(exit);
-      if (intent === 'superseded') {
-        await session.close();
-        return;
-      }
       if (intent === 'archive') {
         session.updateMetadata((currentMetadata) => ({
           ...currentMetadata,
@@ -1580,8 +1576,11 @@ export async function runAcp(opts: {
           archiveReason: 'Session ended',
         }));
       }
-      session.sendSessionDeath();
-      await session.flush();
+      // B-864: a superseded runner writes nothing — the session is the successor's.
+      if (intent !== 'superseded') {
+        session.sendSessionDeath();
+        await session.flush();
+      }
       if (intent === 'offline') {
         // AGENTS 7: an infrastructure exit only goes offline, it never archives.
         try { await api.deactivateSession(session.sessionId); } catch (error) { logger.debug(`[${opts.agentName}] deactivate on exit failed:`, error); }

@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => {
     sendAgentUsageSnapshot: vi.fn(),
     updateMetadata: vi.fn(),
     sendSessionDeath: vi.fn(),
+    on: vi.fn(),
     flush: vi.fn(async () => {}),
     close: vi.fn(async () => {}),
     updateAgentState: vi.fn((handler: (state: Record<string, unknown>) => Record<string, unknown>) => {
