@@ -1,6 +1,7 @@
 import { sessionAbort } from '@/sync/ops';
 import { applyLocalMembership, projectsApi, refreshProjects } from '@/sync/projects';
 import { toast } from '@/ui/Toast';
+import { useTerminalSessions } from '@/sync/terminalSessions';
 import { sessionLink } from './sessionMenu';
 
 /**
@@ -33,4 +34,9 @@ export async function leaveSessionProject(projectId: string, sessionId: string, 
   } finally {
     void refreshProjects();
   }
+}
+
+/** B-868: 「从「X」移出」 for a web terminal — clears `@vh_project` on its machine. */
+export async function leaveTerminalProject(terminalId: string, zh: boolean): Promise<void> {
+  if (!(await useTerminalSessions.getState().setProject(terminalId, null))) toast.error(zh ? '移出失败' : 'Could not remove');
 }

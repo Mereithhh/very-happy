@@ -343,6 +343,19 @@ export function passesFilters(s: FilterableSession, f: SessionSearchFilters, now
     return true;
 }
 
+/**
+ * B-868: a web terminal row under the filter bar. Terminals are always live,
+ * so 仅归档 hides them; the project chip matches the terminal's resolved
+ * project (`terminalProjectResolver`) and the machine chip its machine. Agent,
+ * 等你 and time keep the pre-B-868 behaviour (terminals are not narrowed).
+ */
+export function terminalPassesFilters(t: { machineId: string; projectId: string | null }, f: SessionSearchFilters): boolean {
+    if (f.status === 'archived') return false;
+    if (f.projectId && t.projectId !== f.projectId) return false;
+    if (f.machineId && t.machineId !== f.machineId) return false;
+    return true;
+}
+
 /** Content hits that pass the machine / agent / time filters before mapping. Importable rows have no
  *  project / status, so any project or non-default status filter drops them. */
 export function importableAllowed(f: SessionSearchFilters): boolean {

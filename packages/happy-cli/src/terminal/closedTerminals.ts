@@ -19,7 +19,7 @@
  *     off a transient tmux list glitch.
  */
 
-import { sanitizeTagList } from './liveTerminals';
+import { projectField, sanitizeTagList } from './liveTerminals';
 
 export interface ClosedTerminalRecord {
     /** Terminal id (tmux session was `vh-<id>`). */
@@ -51,6 +51,9 @@ export interface ClosedTerminalRecord {
     /** B-273: the user tmux session (name) this terminal was attached to;
      *  restore re-attaches instead of opening an empty shell. */
     attachTmux?: string;
+    /** B-868: the terminal's project at close time; a restore puts it back
+     *  (like an archived session, a closed terminal keeps its project). */
+    projectId?: string;
     /** B-287: pane geometry when last seen alive — a restore recreates the
      *  session at this size so claude's first paint is not reflowed later. */
     cols?: number;
@@ -113,7 +116,7 @@ export function sanitizeClosedTerminals(
     const out: ClosedTerminalRecord[] = [];
     for (const item of raw) {
         if (!item || typeof item !== 'object') continue;
-        const { id, title, cwd, mirrorSessionId, claudeSessionId, reason, closedAt, tags, manual, attachTmux } = item as Record<string, unknown>;
+        const { id, title, cwd, mirrorSessionId, claudeSessionId, reason, closedAt, tags, manual, attachTmux, projectId } = item as Record<string, unknown>;
         if (typeof id !== 'string' || id.length === 0 || typeof closedAt !== 'number') continue;
         if (seen.has(id)) continue;
         seen.add(id);
@@ -128,6 +131,7 @@ export function sanitizeClosedTerminals(
             ...(tagList !== undefined ? { tags: tagList } : {}),
             ...(manual === true ? { manual: true } : {}),
             ...(typeof attachTmux === 'string' && attachTmux ? { attachTmux } : {}),
+            ...projectField(projectId),
             closedAt,
         });
     }

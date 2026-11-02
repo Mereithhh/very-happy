@@ -74,6 +74,28 @@ export function sessionProjectMenu(sessionId: string, snap: { status: string; me
 }
 
 /**
+ * B-868: a web terminal row's 「移到项目…」/「换项目…」 and 「从「X」移出」. Same
+ * labels as a session. The project lives on the machine (`@vh_project`), so a
+ * daemon without the capability (old CLI) gets the entry disabled with an
+ * update hint instead of a write it would not understand; 移出 needs the
+ * terminal's OWN project (a mirror-derived one is changed on the session).
+ */
+export function terminalProjectMenu(
+  terminal: { projectId?: string | null },
+  snap: { status: string; projects: ProjectView[] },
+  opts: { supported: boolean; zh: boolean },
+): { move: string | null; moveDisabled: boolean; leave: { projectId: string; label: string } | null } {
+  if (snap.status !== 'ready') return { move: null, moveDisabled: false, leave: null };
+  const project = terminal.projectId ? snap.projects.find((p) => p.id === terminal.projectId && !p.archivedAt) ?? null : null;
+  if (!opts.supported) {
+    return { move: opts.zh ? '移到项目…（需升级 CLI）' : 'Move to project… (update the CLI)', moveDisabled: true, leave: null };
+  }
+  const move = project ? (opts.zh ? '换项目…' : 'Move to another project…') : (opts.zh ? '移到项目…' : 'Move to project…');
+  const leave = project ? { projectId: project.id, label: opts.zh ? `从「${project.name}」移出` : `Remove from "${project.name}"` } : null;
+  return { move, moveDisabled: false, leave };
+}
+
+/**
  * B-763 (B-760 §5.1): the team row / team page menu entry — 「换项目…」 for a
  * team in a project, 「放进项目…」 for one in none. Hidden for an archived team
  * (the server refuses a bind) and while projects are unavailable.

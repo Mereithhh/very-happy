@@ -8,13 +8,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, Plus, CircleHelp, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ChevronRight, X, UsersRound, ArrowDownWideNarrow, ListOrdered, FolderOpen, Clock3, Crown, Bot, RotateCcw, Cable, Trash2, History, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, FolderKanban, FolderPlus, Tags } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
+import { createTerminalAt, createTerminalHere } from '@/app/newTerminal';
 import { createChatOrConfigure, useNewChatPending } from '@/app/newChat';
 import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { PendingSessionRows } from './PendingSessionRows';
 import { getSessionName, getSessionSidebarSubtitle, formatLastSeen } from '@/utils/sessionUtils';
 import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
-import { buildClosedTerminalRows, closedTerminalsOf, killAttachedSupported } from '@/sync/closedTerminals';
+import { buildClosedTerminalRows, closedTerminalsOf, killAttachedSupported, terminalProjectsSupported } from '@/sync/closedTerminals';
 import { restoreClosedTerminal } from '@/app/rowActions';
 import { confirmArchiveSession, nextSessionPathAfterClose, confirmCloseTerminal, confirmKillAttachedTerminal, saveRowRename, collectAllTags, restoreSessionOrAlert } from '@/app/rowActions';
 import { canOfferRestore, useRestoreState } from '@/app/sessionRestore';
@@ -27,7 +27,7 @@ import { buildSidebarTree, entryDepth, listShowsRow, ownerChipResolver, projectD
 import { groupRowsByTag } from './sidebarTagGroups';
 import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
 import { toast } from '@/ui/Toast';
-import { MoveToProjectModal } from '@/screens/projects/MoveToProjectModal';
+import { MoveTerminalToProjectModal, MoveToProjectModal } from '@/screens/projects/MoveToProjectModal';
 import { NewProjectDialog } from '@/screens/projects/NewProjectDialog';
 import type { ProjectView } from '@slopus/happy-wire';
 import type { Session } from '@/sync/storageTypes';
@@ -67,8 +67,8 @@ import { attentionKeysOf, rowSignalOf, type RowSignal } from './sidebarAttention
 import { useItemNeedsYouSessionIds, useNeedsYouSync, withItemAttention } from '@/sync/needsYou';
 import { attentionSessionIds } from '@/screens/automations/automationPresentation';
 import { buildSessionMenu, sessionMenuAvailability } from '@/app/sessionMenu';
-import { copySessionLink, leaveSessionProject, stopSessionTurn } from '@/app/sessionMenuActions';
-import { sessionProjectMenu } from '@/screens/projects/projectChoice';
+import { copySessionLink, leaveSessionProject, leaveTerminalProject, stopSessionTurn } from '@/app/sessionMenuActions';
+import { sessionProjectMenu, terminalProjectMenu } from '@/screens/projects/projectChoice';
 import { ShareDialog } from '@/screens/session/ShareDialog';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
@@ -161,6 +161,8 @@ interface Row {
   direct?: boolean;
   /** B-273/B-282: terminal attached to this user tmux session (name). */
   attachTmux?: string;
+  /** B-868: the terminal's own project (`@vh_project`), see WorkspaceRowLike. */
+  ownProjectId?: string | null;
   /** B-619: session shared WITH me — owner's name + my role. Such rows live in their own group. */
   share?: { owner: string; role: 'viewer' | 'driver'; grantId: string };
 }
@@ -379,6 +381,7 @@ export function Sidebar() {
             workspacePath: tm.cwd,
             title: tm.title || tm.machineName,
             tags: tm.tags,
+            ownProjectId: tm.projectId,
             subtitle: `${tm.machineName} · terminal`,
             restored: !!tm.restoredAt,
             direct: tm.direct === true,
@@ -1258,6 +1261,7 @@ export function Sidebar() {
   const tagNoticeVisible = orderable && showTagGroupingBackNotice({ sidebarGrouping: grouping, sidebarGroupMode: savedGroupMode, sidebarGroupByTag: groupByTag, tagGroupingBackNoticeDismissed: tagNoticeDismissed });
 
   const [moveProjectTarget, setMoveProjectTarget] = useState<{ sessionId: string; candidates: { sessionId: string; title: string }[] } | null>(null);
+  const [moveTerminalTarget, setMoveTerminalTarget] = useState<string | null>(null);
   // B-676: 新会话 first, 新项目 second (orderCreateMenu) — on the phone ＋ they are the top two rows.
   const createItems: MenuItemDef[] = orderCreateMenu([
     ...(projectsSnap.status === 'ready' ? [{
@@ -1284,7 +1288,8 @@ export function Sidebar() {
       key: 'terminal',
       label: t('newSessionModal.terminalTitle'),
       icon: TerminalSquare,
-      onSelect: () => createTerminalOrPick(navigate),
+      // B-868: inside a project page the terminal joins that project.
+      onSelect: () => createTerminalHere(navigate, location.pathname),
     },
     {
       // B-144: same terminal, but pick the working directory first —
@@ -1717,8 +1722,12 @@ export function Sidebar() {
                           canMoveDown={i >= 0 && i < displayRows.length - 1}
                           onMove={orderable && !grouped && !r.share ? (dir) => moveRow(r.key, i, dir) : undefined}
                           onRenameRequest={(focusTags) => openRename(r, focusTags)}
-                          projectMenu={r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink ? sessionProjectMenu(r.sessionId, projectsSnap, { shared: false, zh: lang.startsWith('zh') }) : undefined}
-                          onMoveToProject={projectsSnap.status === 'ready' && r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink
+                          projectMenu={r.kind === 'terminal' && r.terminalId
+                            ? terminalProjectMenu({ projectId: r.ownProjectId }, projectsSnap, { supported: terminalProjectsSupported(allMachines.find((m) => m.id === r.machineId)?.daemonState), zh: lang.startsWith('zh') })
+                            : r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink ? sessionProjectMenu(r.sessionId, projectsSnap, { shared: false, zh: lang.startsWith('zh') }) : undefined}
+                          onMoveToProject={projectsSnap.status !== 'ready' ? undefined
+                            : r.kind === 'terminal' && r.terminalId ? () => setMoveTerminalTarget(r.terminalId!)
+                            : r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink
                             ? () => setMoveProjectTarget({ sessionId: r.sessionId!, candidates: sec.allRows.flatMap((x) => (x.kind === 'session' && x.sessionId && !x.share && !x.teamHistoryLink && !x.team ? [{ sessionId: x.sessionId, title: x.title || x.sessionId.slice(0, 8) }] : [])) })
                             : undefined}
                           onShare={r.kind === 'session' && r.session ? () => setShareTarget(r.session!.id) : undefined}
@@ -1843,6 +1852,7 @@ export function Sidebar() {
       {newProject && <NewProjectDialog initialName={newProject.name} sessionIds={newProject.sessionIds} onClose={() => setNewProject(null)} />}
       {shareTarget && <ShareDialog key={`share:${shareTarget}`} sessionId={shareTarget} open onOpenChange={(open) => { if (!open) setShareTarget(null); }} />}
       {moveProjectTarget && <MoveToProjectModal initialSessionId={moveProjectTarget.sessionId} candidates={moveProjectTarget.candidates} onClose={() => setMoveProjectTarget(null)} />}
+      {moveTerminalTarget && <MoveTerminalToProjectModal terminalId={moveTerminalTarget} onClose={() => setMoveTerminalTarget(null)} />}
       {renameTarget && (
         <RenameModal
           defaultTitle={renameTarget.title}
@@ -1961,8 +1971,8 @@ function SidebarRow({
    *  search narrowing). */
   onMove?: (dir: -1 | 1) => void;
   onRenameRequest: (focusTags?: boolean) => void;
-  /** B-756: this session's project entries (`sessionProjectMenu`), undefined for terminals / shared / history rows. */
-  projectMenu?: ReturnType<typeof sessionProjectMenu>;
+  /** B-756: this row's project entries (`sessionProjectMenu`; B-868 `terminalProjectMenu` for a terminal), undefined for shared / history rows. */
+  projectMenu?: ReturnType<typeof sessionProjectMenu> & { moveDisabled?: boolean };
   /** B-649: 「移到项目…」 (undefined hides it: projects unavailable, shared or history rows). */
   onMoveToProject?: () => void;
   /** B-756: 「分享…」 — the session header's share panel (owner's active sessions only). */
@@ -2105,7 +2115,9 @@ function SidebarRow({
     onTags: !isTerminal || row.tags !== undefined ? () => onRenameRequest(true) : undefined,
     project: projectMenu,
     onMoveToProject,
-    onLeaveProject: leave && s ? () => void leaveSessionProject(leave.projectId, s.id, zh) : undefined,
+    onLeaveProject: !leave ? undefined
+      : isTerminal ? () => void leaveTerminalProject(row.terminalId!, zh)
+      : s ? () => void leaveSessionProject(leave.projectId, s.id, zh) : undefined,
     // B-091 标记优先/取消优先 — writes metadata.tags through the same
     // update-metadata op as the rename dialog (setPriorityLevel prepends the
     // tag, so the row also lands in the priority group when grouping is on).

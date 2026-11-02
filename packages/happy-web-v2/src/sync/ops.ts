@@ -499,6 +499,9 @@ export async function machineOpenTerminal(
          *  by the daemon). Only sent on the fresh-create open, only when
          *  `tmuxSessionsSupported(daemonState)`. Old daemons ignore it. */
         attachTmux?: { id: string; name: string };
+        /** B-868: put the NEW terminal in this project (create-open only).
+         *  Old daemons ignore it. */
+        projectId?: string;
     },
     /** Transport options. Catch-up opens pass a short timeout so a dead link
      *  fails fast instead of holding the terminal write chain for 60s. */
@@ -517,7 +520,7 @@ export async function machineOpenTerminal(
                 | { mode: 'snapshot'; data: string }
                 | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
             ),
-            { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean; startupCommand?: string; resub?: boolean; attachOnly?: boolean; streamMode?: 'lines'; attachTmux?: { id: string; name: string } }
+            { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean; startupCommand?: string; resub?: boolean; attachOnly?: boolean; streamMode?: 'lines'; attachTmux?: { id: string; name: string }; projectId?: string }
         >(machineId, 'open-terminal', options, rpc);
         // A daemon-side handler error comes back as `{ error }` WITH a
         // relay-level ok (RpcHandlerManager encrypts the error object as a
@@ -1067,6 +1070,8 @@ export interface MachineTerminal {
     title?: string;
     /** Present (including []) only when the daemon supports terminal tags. */
     tags?: string[];
+    /** B-868: Very Happy project id; null = none; absent from old daemons. */
+    projectId?: string | null;
     cwd?: string;
     createdAt?: number;
     /** tmux session_activity (ms) — newer daemons only; fall back to createdAt. */
@@ -1112,6 +1117,20 @@ export async function machineSetTerminalTags(machineId: string, terminalId: stri
             machineId, 'set-terminal-tags', { terminalId, tags },
         );
         return true;
+    } catch {
+        return false;
+    }
+}
+
+/** B-868: put a terminal in a project (id) or take it out (null) on the owning
+ * daemon. Only called when `terminalProjectsSupported(daemonState)`. Returns
+ * whether the daemon confirmed the write (an `{ error }` reply is a failure). */
+export async function machineSetTerminalProject(machineId: string, terminalId: string, projectId: string | null): Promise<boolean> {
+    try {
+        const r = await apiSocket.machineRPC<{ type: 'success' } | { error?: string }, { terminalId: string; projectId: string | null }>(
+            machineId, 'set-terminal-project', { terminalId, projectId },
+        );
+        return (r as { type?: string })?.type === 'success';
     } catch {
         return false;
     }

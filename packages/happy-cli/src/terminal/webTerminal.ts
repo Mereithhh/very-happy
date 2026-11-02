@@ -267,6 +267,10 @@ export interface OpenTerminalOptions {
      *  `startupCommand`. Old daemons ignore the field (web gates on the
      *  daemonState.tmuxSessions flag anyway). */
     attachTmux?: { id: string; name: string };
+    /** B-868: put the NEW terminal in this Very Happy project (`@vh_project`).
+     *  Create-only like startupCommand; an invalid id is ignored. Old daemons
+     *  ignore the field (the web gates on daemonState.terminalProjects). */
+    projectId?: string;
 }
 
 /** Result of (re)subscribing to a terminal.
@@ -578,6 +582,9 @@ export interface TerminalListItem {
     title?: string;
     /** Always present in new daemon output; optional for old persisted state. */
     tags?: string[];
+    /** B-868: the Very Happy project (`@vh_project`); new daemons always send
+     *  it, null = none. Ownership and display only — nothing is injected. */
+    projectId?: string | null;
     cwd?: string;
     createdAt?: number;
     activityAt?: number;
@@ -619,9 +626,9 @@ export interface TerminalListItem {
 }
 
 /** What the close/gap bookkeeping remembers per live terminal (B-084/B-265). */
-type SeenTerminalInfo = { title?: string; cwd?: string; tags?: string[]; manual?: boolean; attachTmux?: string; cols?: number; rows?: number };
+type SeenTerminalInfo = { title?: string; cwd?: string; tags?: string[]; manual?: boolean; attachTmux?: string; projectId?: string; cols?: number; rows?: number };
 function seenInfoOf(t: TerminalListItem): SeenTerminalInfo {
-    return { title: t.title, cwd: t.cwd, tags: t.tags, manual: t.manual, attachTmux: t.attachTmux, ...seenGeometry(t.paneCols, t.paneRows) };
+    return { title: t.title, cwd: t.cwd, tags: t.tags, manual: t.manual, attachTmux: t.attachTmux, ...(t.projectId ? { projectId: t.projectId } : {}), ...seenGeometry(t.paneCols, t.paneRows) };
 }
 /** `{cols, rows}` when both are known, else nothing — keeps records free of
  *  `undefined` keys (they are persisted verbatim and diffed by field). */
@@ -653,6 +660,8 @@ export function terminalListSignature(items: TerminalListItem[]): string {
             t.mirrorSessionId ?? '',
             t.attachTmux ?? '',
             t.direct ? 1 : 0,
+            // B-868: moving a terminal between projects must push at once.
+            t.projectId ?? '',
         ]);
     return JSON.stringify(canon);
 }
@@ -676,6 +685,7 @@ import {
     parseTerminalTags,
     validateTerminalTags,
 } from './sessionListFormat';
+import { validateTerminalProjectId } from './terminalProject';
 export {
     LIST_FIELD_SEP,
     LIST_SESSIONS_FORMAT,
@@ -1871,6 +1881,7 @@ export class WebTerminalManager {
             this.closedTerminals = appendClosedTerminal(this.closedTerminals, {
                 id, title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual,
                 ...(info.attachTmux ? { attachTmux: info.attachTmux } : {}),
+                ...(info.projectId ? { projectId: info.projectId } : {}),
                 ...seenGeometry(info.cols, info.rows),
                 // Live binding first (authoritative while it exists), persisted
                 // metadata as the fallback once the mirror has been torn down.
@@ -1933,6 +1944,7 @@ export class WebTerminalManager {
                 tags: info.tags,
                 manual: info.manual,
                 ...(info.attachTmux ? { attachTmux: info.attachTmux } : {}),
+                ...(info.projectId ? { projectId: info.projectId } : {}),
                 ...seenGeometry(info.cols, info.rows),
                 mirrorSessionId: mirror?.sessionId,
                 claudeSessionId: mirror?.claudeSessionId,
@@ -1946,6 +1958,7 @@ export class WebTerminalManager {
                 cwd: info.cwd,
                 tags: info.tags,
                 manual: info.manual,
+                ...(info.projectId ? { projectId: info.projectId } : {}),
                 ...seenGeometry(info.cols, info.rows),
                 seenAt: info.seenAt,
                 claudeSessionId: mirror?.claudeSessionId,
@@ -2069,7 +2082,7 @@ export class WebTerminalManager {
     /** Shared cold-create for auto-restore (B-150) and restore-terminal
      *  (B-265): same create-only env as the interactive path, title/tags
      *  written back, optional startup command injected. */
-    private createDetachedTerminal(plan: { terminalId: string; cwd: string; title?: string; manual?: boolean; tags?: string[]; command?: string; attachTmux?: string; cols?: number; rows?: number }): boolean {
+    private createDetachedTerminal(plan: { terminalId: string; cwd: string; title?: string; manual?: boolean; tags?: string[]; projectId?: string; command?: string; attachTmux?: string; cols?: number; rows?: number }): boolean {
         const env = ptyEnv();
         const name = `vh-${plan.terminalId}`;
         // Idempotence guard #2 (after the live-set filter): if it exists, leave
@@ -2123,6 +2136,11 @@ export class WebTerminalManager {
             spawnSync('tmux', tmuxArgs(['set-option', '-t', `=${name}:`, '@vh_attach', plan.attachTmux]),
                 { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
         }
+        const projectId = validateTerminalProjectId(plan.projectId);
+        if (projectId) {
+            spawnSync('tmux', tmuxArgs(['set-option', '-t', `=${name}:`, '@vh_project', projectId]),
+                { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
+        }
         if (plan.command) {
             // B-547: a daemon-typed `claude …` carries the status hooks.
             const command = withTerminalHooks(plan.command, plan.terminalId, this.claudeVersion.current());
@@ -2138,7 +2156,7 @@ export class WebTerminalManager {
      *  would care about changed (see liveSnapshotChanged). */
     private persistLiveSnapshot(live: ReadonlyMap<string, SeenTerminalInfo>, now: number): void {
         const candidate = new Map<string, LiveTerminalInfo>();
-        for (const [id, info] of live) candidate.set(id, { title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual, ...(info.attachTmux ? { attachTmux: info.attachTmux } : {}), ...seenGeometry(info.cols, info.rows), seenAt: now });
+        for (const [id, info] of live) candidate.set(id, { title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual, ...(info.attachTmux ? { attachTmux: info.attachTmux } : {}), ...(info.projectId ? { projectId: info.projectId } : {}), ...seenGeometry(info.cols, info.rows), seenAt: now });
         if (!liveSnapshotChanged(this.lastPersistedSnapshot, candidate)) return;
         this.lastPersistedSnapshot = candidate;
         saveLiveSnapshot(candidate);
@@ -2443,7 +2461,7 @@ export class WebTerminalManager {
                 try { spawnSync('tmux', tmuxArgs(a), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }); } catch { /* best-effort */ }
             }
             if (createdNew) {
-                attachedTmux = this.injectIntoCreated(tmuxSession, attachTarget, opts.startupCommand, env);
+                attachedTmux = this.injectIntoCreated(tmuxSession, attachTarget, opts.startupCommand, env, opts.projectId);
             } else if (opts.attachTmux && !attachOnly) {
                 // B-273: the session already existed (duplicate create — a
                 // lost RPC reply replayed with fresh=1, StrictMode's double
@@ -2508,7 +2526,7 @@ export class WebTerminalManager {
                     createdNew = retry.status === 0;
                     // Same post-create work as the primary path (B-273: an
                     // attach request must never end up as a bare shell here).
-                    if (createdNew) attachedTmux = this.injectIntoCreated(tmuxSession, attachTarget, opts.startupCommand, env);
+                    if (createdNew) attachedTmux = this.injectIntoCreated(tmuxSession, attachTarget, opts.startupCommand, env, opts.projectId);
                 }
             }
             // A hosted notebook can expose a tmux binary but still reject
@@ -2620,7 +2638,8 @@ export class WebTerminalManager {
                 try { proc.write(startup + '\r'); } catch { /* best-effort */ }
             }
             const created = new TerminalSession(id, { kind: 'pty', pty: proc }, undefined, cols, rows);
-            created.direct = { cwd, createdAt: Date.now() };
+            const createProject = validateTerminalProjectId(opts.projectId);
+            created.direct = { cwd, createdAt: Date.now(), ...(createProject ? { projectId: createProject } : {}) };
             // tmux follows pane_title into @vh_title for durable terminals; a
             // direct shell only has the headless screen's OSC title.
             // Same filter as the tmux pane_title follow (hostname / shell names are not titles).
@@ -2692,7 +2711,13 @@ export class WebTerminalManager {
         attachTarget: { id: string; name: string } | undefined,
         startupCommand: unknown,
         env: Record<string, string>,
+        projectId?: unknown,
     ): { id: string; name: string } | undefined {
+        // B-868: the project the create asked for — before the attach early return.
+        const project = validateTerminalProjectId(projectId);
+        if (project) {
+            try { spawnSync('tmux', tmuxArgs(['set-option', '-t', `=${tmuxSession}:`, '@vh_project', project]), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }); } catch { /* best-effort */ }
+        }
         if (attachTarget) {
             for (const a of [
                 ['set-option', '-t', `=${tmuxSession}:`, '@vh_title', attachTarget.name],
@@ -3074,6 +3099,7 @@ export class WebTerminalManager {
                 cwd: liveDirect.direct.cwd,
                 tags: liveDirect.direct.tags ?? [],
                 ...(liveDirect.direct.manual ? { manual: true } : {}),
+                ...(liveDirect.direct.projectId ? { projectId: liveDirect.direct.projectId } : {}),
                 reason: 'closed',
                 closedAt: Date.now(),
             });
@@ -3133,6 +3159,7 @@ export class WebTerminalManager {
             this.recordClosed({
                 id: terminalId, title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual,
                 ...(info.attachTmux ? { attachTmux: info.attachTmux } : {}),
+                ...(info.projectId ? { projectId: info.projectId } : {}),
                 ...seenGeometry(info.cols, info.rows),
                 mirrorSessionId: this.mirrorResolver?.(terminalId) ?? mirror?.sessionId,
                 claudeSessionId: mirror?.claudeSessionId,
@@ -3225,6 +3252,7 @@ export class WebTerminalManager {
                     title,
                     // Always include [] so Web can feature-detect tag support.
                     tags: s.tags,
+                    projectId: s.projectId,
                     cwd: s.cwd,
                     createdAt: s.created,
                     // tmux last-activity (epoch s) → ms; optional so old daemons
@@ -3443,6 +3471,34 @@ export class WebTerminalManager {
         const name = `vh-${terminalId}`;
         try {
             const r = spawnSync('tmux', tmuxArgs(['set-option', '-t', name, '@vh_tags', JSON.stringify(valid)]), {
+                stdio: 'ignore', env: ptyEnv(),
+            });
+            if (r.status !== 0) return false;
+            this.kickListRefresh();
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    /** B-868: put the terminal in a Very Happy project, or take it out (null).
+     *  Only the id is stored (`@vh_project`); the web resolves it against the
+     *  account's projects. Nothing is ever injected into the terminal. */
+    setProject(terminalId: string, projectId: unknown): boolean {
+        const direct = this.terminals.get(terminalId)?.direct;
+        if (!direct && !isTmuxAvailable()) return false;
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(terminalId)) return false;
+        const valid = validateTerminalProjectId(projectId);
+        if (valid === undefined) return false;
+        if (direct) {
+            if (valid) direct.projectId = valid;
+            else delete direct.projectId;
+            this.kickListRefresh();
+            return true;
+        }
+        const target = `=vh-${terminalId}:`;
+        try {
+            const r = spawnSync('tmux', tmuxArgs(valid ? ['set-option', '-t', target, '@vh_project', valid] : ['set-option', '-u', '-t', target, '@vh_project']), {
                 stdio: 'ignore', env: ptyEnv(),
             });
             if (r.status !== 0) return false;

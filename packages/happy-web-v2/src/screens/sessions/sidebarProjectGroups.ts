@@ -56,11 +56,12 @@ export function groupRowsByProject<T extends WorkspaceRowLike>(
   for (const p of live) for (const teamId of p.teamIds ?? []) teamProject.set(teamId, p.id);
   const teamOfSession = teamSessionMembership(teams);
   const place = sessionPlacementResolver(live, members, teams);
+  const liveIds = new Set(live.map(p => p.id));
 
   const byProject = new Map<string, T[]>();
   const loose: T[] = [];
   for (const row of rows) {
-    const pid = place(row.sessionId).projectId;
+    const pid = row.ownProjectId && liveIds.has(row.ownProjectId) ? row.ownProjectId : place(row.sessionId).projectId;
     if (pid) byProject.set(pid, [...(byProject.get(pid) ?? []), row]);
     else loose.push(row);
   }

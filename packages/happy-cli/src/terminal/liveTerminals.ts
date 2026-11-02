@@ -23,6 +23,7 @@
  *     EXACT terminalId match (never cwd+time heuristics: with several terminals
  *     in one directory those mismatch, which would resume the wrong chat).
  */
+import { parseTerminalProjectId } from './terminalProject';
 
 /** What is remembered per live terminal — the same shape trackClosures caches,
  *  plus when it was last observed alive (the close record uses it as closedAt,
@@ -37,6 +38,8 @@ export interface LiveTerminalInfo {
     manual?: boolean;
     /** B-273: attached user tmux session (name), see webTerminal `@vh_attach`. */
     attachTmux?: string;
+    /** B-868: Very Happy project (`@vh_project`), put back by a restore. */
+    projectId?: string;
     /** B-287: the pane's real geometry when last observed, so a cold restore
      *  recreates the session at that size instead of a hardcoded one. */
     cols?: number;
@@ -48,6 +51,12 @@ export interface LiveTerminalInfo {
 export function sanitizeGeometry(cols: unknown, rows: unknown): { cols: number; rows: number } | undefined {
     const ok = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 2 && v <= 10_000;
     return ok(cols) && ok(rows) ? { cols, rows } : undefined;
+}
+
+/** B-868: `{ projectId }` for a valid persisted project id, else nothing. */
+export function projectField(value: unknown): { projectId: string } | Record<string, never> {
+    const projectId = parseTerminalProjectId(value);
+    return projectId ? { projectId } : {};
 }
 
 /** Tolerant read of a persisted tags list (strings only, trimmed, capped). */
@@ -84,7 +93,7 @@ export function sanitizeLiveSnapshot(
     const rows: Array<[string, LiveTerminalInfo]> = [];
     for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
         if (!id || !value || typeof value !== 'object') continue;
-        const { title, cwd, seenAt, tags, manual, attachTmux, cols: rawCols, rows: rawRows } = value as Record<string, unknown>;
+        const { title, cwd, seenAt, tags, manual, attachTmux, projectId, cols: rawCols, rows: rawRows } = value as Record<string, unknown>;
         if (typeof seenAt !== 'number' || !Number.isFinite(seenAt)) continue;
         if (now - seenAt >= ttlMs) continue;
         const tagList = sanitizeTagList(tags);
@@ -94,6 +103,7 @@ export function sanitizeLiveSnapshot(
             ...(tagList !== undefined ? { tags: tagList } : {}),
             ...(manual === true ? { manual: true } : {}),
             ...(typeof attachTmux === 'string' && attachTmux ? { attachTmux } : {}),
+            ...projectField(projectId),
             ...(sanitizeGeometry(rawCols, rawRows) ?? {}),
             seenAt,
         }]);
@@ -128,6 +138,7 @@ export function liveSnapshotChanged(
         if (before.title !== info.title || before.cwd !== info.cwd) return true;
         if (!!before.manual !== !!info.manual) return true;
         if ((before.attachTmux ?? '') !== (info.attachTmux ?? '')) return true;
+        if ((before.projectId ?? '') !== (info.projectId ?? '')) return true;
         if ((before.tags ?? []).join('\u0000') !== (info.tags ?? []).join('\u0000')) return true;
         if (before.cols !== info.cols || before.rows !== info.rows) return true;
     }

@@ -49,6 +49,9 @@ export interface TerminalSession {
   title: string;
   /** undefined = old daemon without tag support; [] = supported, no tags. */
   tags?: string[];
+  /** B-868: the Very Happy project id, null = none; undefined = the daemon
+   *  did not say (old CLI). Display resolves it against live projects. */
+  projectId?: string | null;
   /** Titled (manual rename or daemon auto-title): the pushed @vh_title set. */
   manual?: boolean;
   /** Pushed tmux pane cwd — the file browser's starting directory. */
@@ -87,7 +90,7 @@ export interface PushOverlay {
   /** Optimistic rows for terminals created locally, keyed into pushes by id. */
   created: TerminalSession[];
   /** id → optimistic metadata changes the daemon hasn't pushed back yet. */
-  renames: Record<string, { title?: string; tags?: string[]; at: number }>;
+  renames: Record<string, { title?: string; tags?: string[]; projectId?: string | null; at: number }>;
   /** id → when the local kill hid this terminal. */
   removed: Record<string, number>;
 }
@@ -171,6 +174,7 @@ function pushRowOf(t: MachineTerminal, machineId: string, machineName: string): 
     machineName,
     title: title || machineName || 'Terminal',
     tags,
+    projectId: typeof t.projectId === 'string' && t.projectId ? t.projectId : t.projectId === null ? null : undefined,
     manual: !!title,
     cwd: t.cwd,
     createdAt: t.createdAt ?? 0,
@@ -252,6 +256,7 @@ export function composeTerminalList(
           ...row,
           ...(ren.title !== undefined ? { title: ren.title, manual: true } : {}),
           ...(ren.tags !== undefined ? { tags: ren.tags } : {}),
+          ...(ren.projectId !== undefined ? { projectId: ren.projectId } : {}),
         });
       } else {
         rows.push(row);
@@ -292,7 +297,8 @@ export function pruneOverlay(
     if (!pushed) continue; // terminal gone → nothing left to rename
     const titleDone = r.title === undefined || (pushed.title ?? '').trim() === r.title;
     const tagsDone = r.tags === undefined || JSON.stringify(pushed.tags) === JSON.stringify(r.tags);
-    if (titleDone && tagsDone) continue; // daemon caught up
+    const projectDone = r.projectId === undefined || (pushed.projectId ?? null) === r.projectId;
+    if (titleDone && tagsDone && projectDone) continue; // daemon caught up
     if (now - r.at > RENAME_OVERLAY_TTL_MS) continue; // never landed → honest revert
     renames[id] = r;
   }
