@@ -9,7 +9,7 @@ import {
 } from '@slopus/happy-wire';
 import { buildIssueCommentUpdate, buildIssueRunUpdate, buildIssueUpdate, eventRouter } from '@/app/events/eventRouter';
 import { readFolders } from '@/app/projects/rules';
-import { afterTx, inTx, isRetryableTransactionConflict, type Tx } from '@/storage/inTx';
+import { afterTx, inTx, isRetryableTransactionConflict, txAttempt, type Tx } from '@/storage/inTx';
 import { allocateUserSeq } from '@/storage/seq';
 import { log } from '@/utils/log';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
@@ -55,14 +55,15 @@ export async function runIssueTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
 
 // ─── Emission (once per object per transaction, after commit) ────────────────
 
-const pendingSymbol = Symbol('issue-emits');
 type Pending = Map<string, { accountId: string; build: (seq: number, id: string) => ReturnType<typeof buildIssueUpdate> }>;
+const pendingByAttempt = new WeakMap<object, Pending>();
 
 function queueEmit(tx: Tx, key: string, accountId: string, build: (seq: number, id: string) => ReturnType<typeof buildIssueUpdate>) {
-    let pending = (tx as any)[pendingSymbol] as Pending | undefined;
+    const attempt = txAttempt(tx);
+    let pending = pendingByAttempt.get(attempt);
     if (!pending) {
         pending = new Map();
-        (tx as any)[pendingSymbol] = pending;
+        pendingByAttempt.set(attempt, pending);
         const flush = pending;
         afterTx(tx, () => { void emitAll(flush); });
     }
@@ -144,7 +145,7 @@ async function enforceIssueQuota(tx: Tx, accountId: string, adding = 1) {
     requireIssue(count + adding <= ISSUE_LIMITS.issuesPerAccount, 'issue_count_quota_exceeded', 429, { limit: ISSUE_LIMITS.issuesPerAccount });
 }
 
-async function updateIssue(tx: Tx, id: string, data: Prisma.IssueUpdateInput): Promise<IssueRow> {
+async function updateIssue(tx: Tx, id: string, data: Prisma.IssueUncheckedUpdateInput): Promise<IssueRow> {
     const row = await tx.issue.update({ where: { id }, data: { ...data, version: { increment: 1 }, updatedAt: new Date() } });
     emitIssue(tx, row);
     return row;
@@ -401,10 +402,10 @@ async function applyHumanUpdateTx(tx: Tx, accountId: string, issue: IssueRow, pa
         ...(patch.title !== undefined ? { title: patch.title } : {}),
         ...(patch.description !== undefined ? { description: patch.description } : {}),
         ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
-        ...(patch.projectId !== undefined ? { project: patch.projectId ? { connect: { id: patch.projectId } } : { disconnect: true } } : {}),
+        ...(patch.projectId !== undefined ? { projectId: patch.projectId } : {}),
         ...(patch.labels !== undefined ? { labels: patch.labels } : {}),
         ...(patch.dueAt !== undefined ? { dueAt: patch.dueAt ? new Date(patch.dueAt) : null } : {}),
-        ...(patch.parentId !== undefined ? { parent: patch.parentId ? { connect: { id: patch.parentId } } : { disconnect: true } } : {}),
+        ...(patch.parentId !== undefined ? { parentId: patch.parentId } : {}),
         ...(patch.sortOrder !== undefined ? { sortOrder: patch.sortOrder } : {}),
         ...(assigneeChanged ? { assigneeKind: assignee.kind, assignee: json(assignee) } : {}),
         ...(statusChanged ? {

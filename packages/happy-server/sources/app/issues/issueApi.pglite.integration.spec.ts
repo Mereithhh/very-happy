@@ -62,7 +62,15 @@ describe('B-872 Issues REST through startApi (pglite)', () => {
         expect((await s.call('GET', '/v1/issues')).body).toEqual({ error: 'issues_disabled' });
         const sessionId = await s.newSession();
         expect((await s.call('POST', `/v1/sessions/${sessionId}/archive`)).status).toBe(200);
+        // Built-in Todos keep working exactly as before on the KV routes, and nothing is imported behind the owner's back.
+        const todoId = crypto.randomUUID();
+        const value = Buffer.from(JSON.stringify({ schemaVersion: 1, id: todoId, title: 'kv todo', note: '', status: 'open', order: 1, createdAt: 1, updatedAt: 1 })).toString('base64');
+        const wrote = await s.call('POST', '/v1/kv', { mutations: [{ key: BUILTIN_TODO_PREFIX + todoId, value, version: -1 }] });
+        expect(wrote.status).toBe(200);
+        const listed = await s.call('GET', `/v1/kv?prefix=${encodeURIComponent(BUILTIN_TODO_PREFIX)}`);
+        expect(listed.body.items.map((i: { key: string; value: string }) => [i.key, i.value])).toEqual([[BUILTIN_TODO_PREFIX + todoId, value]]);
         expect(await s.db.issue.count()).toBe(0);
+        await s.db.userKVStore.deleteMany({ where: { key: BUILTIN_TODO_PREFIX + todoId } });
         process.env.VH_ISSUES_ENABLED = 'true';
     });
 
