@@ -85,8 +85,10 @@ session from the project page, its group's ＋, `very-happy spawn --project <id>
 or let spawned and forked sessions inherit their parent's project. A new
 team gets a project with its name by default, so its lead and members share the
 project's instructions and log; link or change a team's project from the project
-page or team settings. Project instructions, log and messages are stored on the
-server.
+page or team settings. Web terminals can be filed under a project too (row ⋯ →
+**Move to project…**, or **New terminal** inside a project) — shown on its page,
+its sidebar group and the ⌘K project filter; nothing is typed into them. Project
+instructions, log and messages are stored on the server.
 
 ## Teams: from one goal to parallel work
 

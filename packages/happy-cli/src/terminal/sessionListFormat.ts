@@ -9,6 +9,7 @@
  */
 import { piSessionNameFromTitle } from './terminalTitleSuggest';
 import { isSafeTmuxSessionName } from './userTmuxSessions';
+import { parseTerminalProjectId } from './terminalProject';
 
 export const SHELL_COMMANDS = new Set(['zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'tcsh', 'csh']);
 
@@ -110,6 +111,9 @@ export const LIST_SESSIONS_FORMAT = [
     // field is deliberately last so a pathological 0x1f inside a title can only
     // garble the title, never shift the fields.
     '#{pane_current_command} #{pane_pid}',
+    // B-868: the Very Happy project this terminal belongs to (`@vh_project`,
+    // a project id). Before pane_title for the same reason as above.
+    '#{@vh_project}',
     '#{pane_title}',
 ].join(LIST_FIELD_SEP);
 
@@ -134,6 +138,8 @@ export interface SessionListLine {
      *  when tmux printed anything but a positive integer. */
     paneCols?: number;
     paneRows?: number;
+    /** B-868: parsed `@vh_project`; null when unset or not a valid id. */
+    projectId: string | null;
     /** Raw `#{pane_title}` of the session's active pane. */
     paneTitle?: string;
 }
@@ -142,8 +148,8 @@ export interface SessionListLine {
 export function parseSessionListLine(line: string): SessionListLine | undefined {
     if (!line) return undefined;
     const parts = line.split(LIST_FIELD_SEP);
-    if (parts.length < 12) return undefined;
-    const [name, created, activity, cwd, vhTitle, manual, vhTags, vhAttach, paneW, paneH, paneCommand] = parts;
+    if (parts.length < 13) return undefined;
+    const [name, created, activity, cwd, vhTitle, manual, vhTags, vhAttach, paneW, paneH, paneCommand, vhProject] = parts;
     if (!name) return undefined;
     const geom = parsePositiveInt(paneW) !== undefined && parsePositiveInt(paneH) !== undefined
         ? { paneCols: parsePositiveInt(paneW)!, paneRows: parsePositiveInt(paneH)! }
@@ -162,9 +168,10 @@ export function parseSessionListLine(line: string): SessionListLine | undefined 
         // restore lookup / attach echo compare it exactly.
         attachTmux: isSafeTmuxSessionName(vhAttach) ? vhAttach : undefined,
         ...geom,
-        // pane_title is last, so anything after field 11 is title content that
+        projectId: parseTerminalProjectId(vhProject),
+        // pane_title is last, so anything after field 12 is title content that
         // contained the separator — rejoin it rather than dropping it.
-        paneTitle: parts.slice(11).join(LIST_FIELD_SEP) || undefined,
+        paneTitle: parts.slice(12).join(LIST_FIELD_SEP) || undefined,
     };
 }
 
@@ -207,3 +214,4 @@ export function parseTerminalTags(raw: unknown): string[] {
         return [];
     }
 }
+

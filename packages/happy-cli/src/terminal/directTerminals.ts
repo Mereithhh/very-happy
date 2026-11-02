@@ -26,6 +26,8 @@ export interface DirectTerminalInfo {
     manual?: boolean;
     /** Terminal tags (validated by the caller). */
     tags?: string[];
+    /** B-868: Very Happy project id (validated by the caller). */
+    projectId?: string;
 }
 
 /** The subset of a list item this module produces (structurally a TerminalListItem). */
@@ -33,6 +35,7 @@ export interface DirectTerminalItem {
     id: string;
     title?: string;
     tags: string[];
+    projectId: string | null;
     manual?: boolean;
     cwd: string;
     createdAt: number;
@@ -57,6 +60,7 @@ export function directTerminalItems(
             id: s.id,
             ...(title ? { title } : {}),
             tags: s.direct.tags ?? [],
+            projectId: s.direct.projectId ?? null,
             ...(s.direct.manual ? { manual: true } : {}),
             cwd: s.direct.cwd,
             createdAt: s.direct.createdAt,

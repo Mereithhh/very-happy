@@ -19,11 +19,29 @@ export interface CreateTerminalOptions {
    *  never the command text (see utils/terminalStartup.ts). Omitted for the
    *  default, so an unchanged flow produces the exact same URL as before. */
   startupSelectionId?: string;
+  /** B-868: file the new terminal under this project (an id; the create-open
+   *  asks the daemon to store it as `@vh_project`). */
+  projectId?: string;
+}
+
+/** B-868: a project id as it may travel in the URL (server ids are UUIDs). */
+export function terminalProjectParam(value: string | null | undefined): string | undefined {
+  return value && /^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : undefined;
+}
+
+/** B-868: the project page the user is on (`/projects/:id[/…]`), if any. */
+export function projectIdOfPath(pathname: string): string | undefined {
+  const m = pathname.match(/^\/projects\/([^/]+)/);
+  if (!m) return undefined;
+  try { return terminalProjectParam(decodeURIComponent(m[1])); } catch { return undefined; }
 }
 
 /** The `?…` query for a fresh-create navigation. Pure; unit-tested. */
 export function newTerminalSearch(terminalId: string, opts: CreateTerminalOptions = {}): URLSearchParams {
   const q = new URLSearchParams({ tid: terminalId, fresh: '1' });
+  // The project rides along whatever else the create does (attach included).
+  const project = terminalProjectParam(opts.projectId);
+  if (project) q.set('project', project);
   if (opts.attachTmux) {
     // Attach wins over cwd/resume: the directory is irrelevant inside the
     // attached session and a resume would be typed into the wrong shell.
