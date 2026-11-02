@@ -3008,6 +3008,21 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov02h: {
+                title: 'A session is never run by two background processes at once',
+                summary: 'When a new background process takes over a session, the old one stops and exits by itself.',
+                takeover: 'A session is no longer run by two background processes at the same time: once a new one takes over, the old one stops and exits automatically.',
+                stop: 'Stopping or restarting a session also stops the Claude / Codex processes it started, so nothing keeps running in the background.',
+                daemon: 'Fixed a busy daemon being mistaken for a dead one, which could leave two daemons running on the same machine.',
+                cli: 'Needs CLI 0.2.196 on that machine.',
+            },
+            nov02g: {
+                title: 'CLI 0.2.196: one background process per session',
+                summary: 'A session is run by only one background process at a time.',
+                takeover: 'When a newer process takes over a session, the old one stops quietly and exits without changing the session.',
+                stop: 'Stopping or restarting a session stops the whole process tree, including the Claude / Codex processes it started.',
+                daemon: 'A daemon that is slow to answer is no longer treated as dead, so “very-happy daemon start” no longer starts a second daemon next to it.',
+            },
             nov02f: {
                 title: 'One search for sessions and conversations',
                 summary: '⌘K now also searches what was said in your conversations.',
