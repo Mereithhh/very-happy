@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { redactCliArgv, redactLogString, redactLogValue } from './logRedaction';
 
 describe('log redaction', () => {
@@ -54,5 +56,17 @@ describe('startup argv redaction (B-874c, QA43 P2-4)', () => {
     const argv = [...head, 'daemon', 'start'];
     expect(redactCliArgv(argv)).toEqual(argv);
     expect(redactCliArgv(head)).toEqual(head);
+  });
+});
+
+describe('startup argv / title logging wiring (B-874c)', () => {
+  const strip = (source: string) => source.replace(/^\s*\/\/.*$/gm, '');
+  it('main logs the redacted argv and the MCP title change logs only a length', () => {
+    const main = strip(readFileSync(join(__dirname, '../main.ts'), 'utf8'));
+    expect(main).toContain("logger.debug('Starting happy CLI with args: ', redactCliArgv(process.argv))");
+    expect(main).not.toContain("logger.debug('Starting happy CLI with args: ', process.argv)");
+    const mcp = readFileSync(join(__dirname, '../claude/utils/startHappyServer.ts'), 'utf8');
+    expect(mcp).toContain('logger.debug(`[happyMCP] Changing title (${title.length} chars)`);');
+    expect(mcp).not.toContain("logger.debug('[happyMCP] Changing title to:', title);");
   });
 });
