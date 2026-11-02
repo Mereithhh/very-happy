@@ -17,6 +17,7 @@
 import { Server, Socket } from "socket.io";
 import { activityCache } from "@/app/presence/sessionCache";
 import { AccountTerminalRateLimiter, allowAccountRelay } from './terminalRateLimit';
+import { operatorTerminalTap } from '@/app/session/operatorBroker';
 
 type Conn = { connectionType: string; machineId?: string };
 
@@ -123,12 +124,15 @@ export function terminalHandler(
                 seq: data.seq,
                 enc: data.enc,
             });
+            // B-867: an operator's terminal — re-keyed and unicast by the broker.
+            operatorTerminalTap(userId, machineId, 'terminal-output', data);
         });
         socket.on('terminal-exit', (data: { terminalId: string; exitCode: number }) => {
             if (!relayAllowed(data)) return;
             if (!data || !boundedRelayId(data.terminalId) || !Number.isSafeInteger(data.exitCode) ||
                 data.exitCode < MIN_EXIT_CODE || data.exitCode > MAX_EXIT_CODE) return;
             io.to(userRoom).emit('terminal-exit', { terminalId: data.terminalId, machineId, exitCode: data.exitCode });
+            operatorTerminalTap(userId, machineId, 'terminal-exit', data);
         });
         // ── Realtime sidebar ordering ────────────────────────────────────────
         // "These terminals just produced output, now." An ordering hint only:

@@ -50,7 +50,7 @@ describe('project-v1 capability and injection points', () => {
         expect(launcher).toContain('onPromptFinalized?.(out);');
         expect(launcher).toContain('const finalized = await finalize(msg.message);');
         const codex = read('../codex/runCodex.ts');
-        expect(codex).toContain('CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY],');
+        expect(codex).toContain('CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_LIVE_PERMISSION_CAPABILITY],');
         expect(codex).toContain('message: await projectInjector.decorate(message.message),');
         const acp = read('../agent/acp/runAcp.ts');
         expect(acp).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, ...(opts.agentName === ');

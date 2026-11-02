@@ -7,12 +7,13 @@
  */
 import type { Session } from '@/sync/storageTypes';
 
-export type SessionAccess = 'owner' | 'driver' | 'viewer';
+export type SessionAccess = 'owner' | 'operator' | 'driver' | 'viewer';
 
 export function sessionAccess(session: Pick<Session, 'share'> | null | undefined): SessionAccess {
     const share = session?.share;
     if (!share) return 'owner';
-    return share.role === 'driver' ? 'driver' : 'viewer';
+    if (share.role === 'driver') return share.operate === true ? 'operator' : 'driver';
+    return 'viewer';
 }
 
 export function isSharedWithMe(session: Pick<Session, 'share'> | null | undefined): boolean {
@@ -21,5 +22,15 @@ export function isSharedWithMe(session: Pick<Session, 'share'> | null | undefine
 
 /** The composer / send path a grantee gets. Owners keep the full AgentInput. */
 export function canSendAsGrantee(session: Pick<Session, 'share'> | null | undefined): boolean {
-    return sessionAccess(session) === 'driver';
+    const access = sessionAccess(session);
+    return access === 'driver' || access === 'operator';
+}
+
+/**
+ * B-867: a grantee holding the operator tier (role driver + operate). The
+ * server broker is the authority; this only decides which controls render
+ * and whether sessionRPC routes through `operator-rpc` instead of refusing.
+ */
+export function canOperate(session: Pick<Session, 'share'> | null | undefined): boolean {
+    return sessionAccess(session) === 'operator';
 }

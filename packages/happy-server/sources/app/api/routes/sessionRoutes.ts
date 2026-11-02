@@ -1,3 +1,4 @@
+import { teardownOperatorSession } from '@/app/session/operatorBroker';
 import { sessionActivityRelayGate } from "@/app/presence/sessionActivityRelayGate";
 import { eventRouter, buildNewSessionUpdate, buildSessionActivityEphemeral, buildSessionArchivedAtUpdate } from "@/app/events/eventRouter";
 import { type Fastify } from "../types";
@@ -439,6 +440,8 @@ export function sessionRoutes(app: Fastify) {
 
         activityCache.discardSessionUpdate(sessionId);
         eventRouter.emitSessionArchived(userId, sessionId);
+        // B-867: archiving ends every operator's access to this session.
+        void teardownOperatorSession(sessionId, 'archived').catch(() => undefined);
         await emitArchivedAtUpdate(userId, sessionId, archivedAt);
         // B-508: archiving is user intent (B-505) — attention runs about this session are resolved.
         void noteSessionArchived(userId, sessionId);
