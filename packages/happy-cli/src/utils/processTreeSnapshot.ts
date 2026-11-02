@@ -50,6 +50,37 @@ export const readProcessTable: ProcessTableReader = () => {
     }
 };
 
+/**
+ * B-864b: `ps -A -o pid=,ppid=,stat=,lstart=` → entries of processes that can
+ * still run. A zombie (stat `Z…`) has exited and only waits to be reaped by its
+ * new parent; it executes nothing, so "did the tree really stop" skips it.
+ */
+export function parseLiveProcessTable(stdout: string): ProcessEntry[] {
+    const entries: ProcessEntry[] = [];
+    for (const line of stdout.split('\n')) {
+        const match = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.+?)\s*$/.exec(line);
+        if (!match || match[3].startsWith('Z')) continue;
+        entries.push({ pid: Number(match[1]), ppid: Number(match[2]), start: match[4] });
+    }
+    return entries;
+}
+
+export const readLiveProcessTable: ProcessTableReader = () => {
+    if (process.platform === 'win32') return null;
+    try {
+        const result = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,stat=,lstart='], {
+            encoding: 'utf8',
+            timeout: 3_000,
+            maxBuffer: 16 * 1024 * 1024,
+            env: { ...process.env, LC_ALL: 'C', LANG: 'C' },
+        });
+        if (result.status !== 0 || typeof result.stdout !== 'string') return null;
+        return parseLiveProcessTable(result.stdout);
+    } catch {
+        return null;
+    }
+};
+
 /** Every descendant of `rootPid` in `table` (breadth-first, root excluded). */
 export function descendantsOf(rootPid: number, table: readonly ProcessEntry[]): ProcessEntry[] {
     const children = new Map<number, ProcessEntry[]>();

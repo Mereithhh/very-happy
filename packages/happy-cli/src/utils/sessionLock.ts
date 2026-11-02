@@ -28,15 +28,18 @@
  * session X" (adoption after a handover, stop-before-relaunch), falling back
  * to `hostPid` / command-line matching only for wrappers older than the lock.
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { configuration } from '@/configuration';
 import { logger } from '@/ui/logger';
-import { terminateProcess, type ProcessTerminationRuntime } from '@/daemon/processTermination';
+import { isProcessAlive, terminateProcessTree, type ProcessTerminationRuntime, type TerminateTreeDeps } from '@/daemon/processTermination';
 import { writePrivateFileSync } from '@/utils/secureFiles';
 
 export const SESSION_LOCK_DIR = 'session-locks';
+/** B-864: how long a claimant waits for another claimant's takeover to finish. */
+export const SESSION_CLAIM_WAIT_MS = 15_000;
+const SESSION_CLAIM_POLL_MS = 100;
 
 export interface SessionLockRecord {
     pid: number;
@@ -51,6 +54,8 @@ export interface SessionLockRuntime extends ProcessTerminationRuntime {
     /** This process's pid. */
     selfPid: number;
     now(): number;
+    /** Process-table access for the takeover's tree stop (tests inject it; default `ps`). */
+    tree?: Pick<TerminateTreeDeps, 'snapshot' | 'reap' | 'readLive' | 'platform'>;
 }
 
 const defaultRuntime = (): SessionLockRuntime => ({
@@ -58,14 +63,7 @@ const defaultRuntime = (): SessionLockRuntime => ({
     selfPid: process.pid,
     now: () => Date.now(),
     signal: (pid, signal) => process.kill(pid, signal),
-    isAlive: (pid) => {
-        try {
-            process.kill(pid, 0);
-            return true;
-        } catch {
-            return false;
-        }
-    },
+    isAlive: (pid) => isProcessAlive(pid),
     schedule: (callback, delayMs) => { setTimeout(callback, delayMs); },
 });
 
@@ -109,6 +107,61 @@ function writeSessionLock(happySessionId: string, record: SessionLockRecord, dir
     renameSync(tmp, path);
 }
 
+/**
+ * B-864: the read-check-write below is not atomic by itself. Two claimants
+ * racing for the same session (two daemons restarting it, an assistant
+ * re-attach beside a restore) both saw the same holder, both waited out its
+ * termination, both wrote the record and BOTH connected — two wrappers on one
+ * session. Claimants now serialize on an O_EXCL claim file held for the whole
+ * check → terminate → write; the next claimant then sees the previous one as
+ * the holder and takes over from it (or yields), never alongside it.
+ */
+function claimPath(happySessionId: string, dir: string): string {
+    return `${sessionLockPath(happySessionId, dir)}.claim`;
+}
+
+/** The claimant pid holding the claim file, or null when free / unreadable. */
+function claimantPid(path: string): number | null {
+    try {
+        const pid = Number.parseInt(readFileSync(path, 'utf-8').trim(), 10);
+        return Number.isInteger(pid) && pid > 0 ? pid : null;
+    } catch {
+        return null;
+    }
+}
+
+type ClaimAttempt = { taken: true } | { taken: false; claimant: number };
+
+function tryTakeClaim(happySessionId: string, runtime: Pick<SessionLockRuntime, 'dir' | 'selfPid' | 'isAlive'>): ClaimAttempt {
+    mkdirSync(runtime.dir, { recursive: true, mode: 0o700 });
+    const path = claimPath(happySessionId, runtime.dir);
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const fd = openSync(path, 'wx', 0o600);
+            try { writeSync(fd, String(runtime.selfPid)); } finally { closeSync(fd); }
+            return { taken: true };
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException)?.code !== 'EEXIST') {
+                // Cannot serialize (read-only dir, exotic fs): fall back to the
+                // unserialized claim rather than refusing to run at all.
+                return { taken: true };
+            }
+            const pid = claimantPid(path);
+            if (pid !== null && pid !== runtime.selfPid && runtime.isAlive(pid)) return { taken: false, claimant: pid };
+            // Left behind by a claimant that died mid-claim (or garbage): clear and retry once.
+            try { unlinkSync(path); } catch { /* raced with another cleaner */ }
+        }
+    }
+    const pid = claimantPid(path);
+    return pid !== null && pid !== runtime.selfPid ? { taken: false, claimant: pid } : { taken: true };
+}
+
+function releaseClaim(happySessionId: string, runtime: Pick<SessionLockRuntime, 'dir' | 'selfPid'>): void {
+    const path = claimPath(happySessionId, runtime.dir);
+    if (claimantPid(path) !== runtime.selfPid) return;
+    try { unlinkSync(path); } catch { /* already gone */ }
+}
+
 export type AcquireSessionLockResult =
     | { ok: true; replaced: SessionLockRecord | null }
     | { ok: false; holder: SessionLockRecord };
@@ -123,7 +176,7 @@ export type AcquireSessionLockResult =
  */
 export function acquireSessionLock(
     happySessionId: string,
-    options: { takeover: boolean; version: string; flavor?: string; graceMs?: number },
+    options: { takeover: boolean; version: string; flavor?: string; graceMs?: number; claimWaitMs?: number },
     runtime: SessionLockRuntime = defaultRuntime(),
 ): Promise<AcquireSessionLockResult> {
     const record = (): SessionLockRecord => ({
@@ -133,24 +186,53 @@ export function acquireSessionLock(
         ...(options.flavor ? { flavor: options.flavor } : {}),
     });
 
-    const holder = liveSessionLockHolder(happySessionId, runtime);
-    if (!holder) {
-        writeSessionLock(happySessionId, record(), runtime.dir);
-        return Promise.resolve({ ok: true, replaced: null });
-    }
-    if (!options.takeover) {
-        return Promise.resolve({ ok: false, holder });
-    }
-    return new Promise((resolve) => {
-        const requested = terminateProcess(holder.pid, (stopped) => {
-            if (!stopped) {
+    return new Promise((settle) => {
+        const deadline = runtime.now() + (options.claimWaitMs ?? SESSION_CLAIM_WAIT_MS);
+        const attempt = () => {
+            const claim = tryTakeClaim(happySessionId, runtime);
+            if (!claim.taken) {
+                if (runtime.now() >= deadline) {
+                    // Another claimant is still mid-takeover: it will be the
+                    // session's wrapper, so this one must not become a second.
+                    settle({ ok: false, holder: { pid: claim.claimant, startedAt: 0, version: '' } });
+                    return;
+                }
+                runtime.schedule(attempt, SESSION_CLAIM_POLL_MS);
+                return;
+            }
+            const resolve = (result: AcquireSessionLockResult) => {
+                releaseClaim(happySessionId, runtime);
+                settle(result);
+            };
+            const holder = liveSessionLockHolder(happySessionId, runtime);
+            if (!holder) {
+                writeSessionLock(happySessionId, record(), runtime.dir);
+                resolve({ ok: true, replaced: null });
+                return;
+            }
+            if (!options.takeover) {
                 resolve({ ok: false, holder });
                 return;
             }
-            writeSessionLock(happySessionId, record(), runtime.dir);
-            resolve({ ok: true, replaced: holder });
-        }, runtime, options.graceMs ?? 2_000);
-        if (!requested) resolve({ ok: false, holder });
+            // B-864b: the holder's whole tree. Stopping only the wrapper left its
+            // Claude Code / codex app-server running the turn unowned whenever
+            // the wrapper needed the SIGKILL — a ghost executor beside this one.
+            const requested = terminateProcessTree(holder.pid, (stopped) => {
+                if (!stopped) {
+                    resolve({ ok: false, holder });
+                    return;
+                }
+                writeSessionLock(happySessionId, record(), runtime.dir);
+                resolve({ ok: true, replaced: holder });
+            }, {
+                ...runtime.tree,
+                runtime,
+                graceMs: options.graceMs ?? 2_000,
+                onLeftovers: (pids) => logger.debug(`[SESSION LOCK] ${happySessionId}: takeover of ${holder.pid} left ${pids.join(', ')} running`),
+            });
+            if (!requested) resolve({ ok: false, holder });
+        };
+        attempt();
     });
 }
 

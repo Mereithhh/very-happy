@@ -531,15 +531,34 @@ export function writeDaemonState(state: DaemonLocallyPersistedState): void {
   writePrivateFileSync(configuration.daemonStateFile, JSON.stringify(state, null, 2));
 }
 
+/** The pid written into the daemon lock file, or null when absent / unreadable. */
+function daemonLockPid(): number | null {
+  try {
+    const pid = Number.parseInt(readFileSync(configuration.daemonLockFile, 'utf-8').trim(), 10);
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Clean up daemon state file and lock file
+ * Clean up daemon state file and lock file.
+ *
+ * B-864: `ownerPid` = a daemon cleaning up after ITSELF. It removes the files
+ * only while they are still its own: when another daemon has taken over in
+ * the meantime, the old one's shutdown used to delete the new one's state and
+ * lock, so the new daemon then shut itself down too ("a different daemon was
+ * started") — or the next `daemon start` ran a third one. Without `ownerPid`
+ * (stale cleanup of a dead PID) the files are removed unconditionally.
  */
-export async function clearDaemonState(): Promise<void> {
+export async function clearDaemonState(ownerPid?: number): Promise<void> {
   if (existsSync(configuration.daemonStateFile)) {
-    await unlink(configuration.daemonStateFile);
+    const owner = ownerPid === undefined ? null : (await readDaemonState())?.pid ?? null;
+    if (ownerPid === undefined || owner === null || owner === ownerPid) await unlink(configuration.daemonStateFile);
   }
   // Also clean up lock file if it exists (for stale cleanup)
   if (existsSync(configuration.daemonLockFile)) {
+    if (ownerPid !== undefined && daemonLockPid() !== ownerPid) return;
     try {
       await unlink(configuration.daemonLockFile);
     } catch {
@@ -606,7 +625,8 @@ export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
   } catch { }
 
   try {
-    if (existsSync(configuration.daemonLockFile)) {
+    // B-864: never unlink a lock another daemon has taken since (see clearDaemonState).
+    if (existsSync(configuration.daemonLockFile) && daemonLockPid() === process.pid) {
       unlinkSync(configuration.daemonLockFile);
     }
   } catch { }

@@ -23,7 +23,7 @@ describe('shutdown scrollback flush wiring (B-550)', () => {
         const stateUpdate = body.indexOf("status: 'shutting-down'");
         const awaited = body.indexOf('await scrollbackFlush;');
         const mirror = body.indexOf('await mirrorManager.shutdown()');
-        const cleanup = body.indexOf('await cleanupDaemonState();');
+        const cleanup = body.indexOf('await cleanupDaemonState(process.pid);');
         const lock = body.indexOf('await releaseDaemonLock(daemonLockHandle);');
         expect(start).toBeGreaterThan(-1);
         expect(start).toBeLessThan(stateUpdate);

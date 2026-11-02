@@ -94,7 +94,7 @@ import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager'
 import { createDaemonControlToken } from './controlAuth';
 import { withDaemonHeartbeat } from './daemonState';
 import { DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS, fetchCliUpdateState, resolveCliUpdateCheckInterval } from '@/update/cliUpdate';
-import { terminateProcess, terminateProcessTree } from './processTermination';
+import { isProcessAlive, terminateProcessTree } from './processTermination';
 import { describeStartupExit, readStartupExitReason, type StartupExit } from './startupExit';
 import { findAllHappyProcesses } from './doctor';
 import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRecovery';
@@ -338,8 +338,7 @@ export async function startDaemon(): Promise<void> {
       tracked: (sessionId, pid) => {
         const tracked = pidToTrackedSession.get(pid);
         if (!tracked || tracked.happySessionId !== sessionId) return null;
-        let live = false;
-        try { process.kill(pid, 0); live = true; } catch { live = false; }
+        const live = isProcessAlive(pid);
         return { live, ...(tracked.spawnedBy ? { spawnedBy: tracked.spawnedBy } : {}) };
       },
       teamsMember: (sessionId) => teamWorker?.hasSession(sessionId) === true,
@@ -599,15 +598,8 @@ export async function startDaemon(): Promise<void> {
           // (1) Live singleton: an alive tracked assistant session wins. The
           // spawn-time variant tag (C2b) makes this hold even in the window
           // before the session webhook lands.
-          const live = findLiveAssistant(pidToTrackedSession.values(), (pid) => {
-            try {
-              process.kill(pid, 0);
-              return true;
-            } catch {
-              // stale entry — the heartbeat will prune it
-              return false;
-            }
-          });
+          // A stale entry (dead pid) is pruned by the heartbeat.
+          const live = findLiveAssistant(pidToTrackedSession.values(), (pid) => isProcessAlive(pid));
           if (live?.happySessionId) {
             logger.debug(`[DAEMON RUN] Assistant already running (session ${live.happySessionId}, pid ${live.pid})`);
             return { type: 'success', sessionId: live.happySessionId };
@@ -1191,7 +1183,9 @@ export async function startDaemon(): Promise<void> {
           // B-689: report only once it is confirmed gone (SIGTERM → 2 s →
           // SIGKILL), so the caller may retry the launch without a second writer.
           try {
-            const started = terminateProcess(pid, (stopped) => fail({ exited: stopped, code: null, signal: null, timedOut: true }));
+            // B-864b: with its tree — a wrapper that got as far as starting Claude
+            // Code but not the webhook would otherwise leave it running.
+            const started = terminateProcessTree(pid, (stopped) => fail({ exited: stopped, code: null, signal: null, timedOut: true }));
             if (!started) fail({ exited: false, code: null, signal: null, timedOut: true });
           } catch {
             fail({ exited: false, code: null, signal: null, timedOut: true });
@@ -1693,14 +1687,7 @@ export async function startDaemon(): Promise<void> {
     // (origin tag / self-report / live target / 5min per-session cooldown) are
     // pure in assistantReport.ts; failures only ever debug-log.
     const assistantReportLastSentAt = new Map<string, number>();
-    const isPidAlive = (pid: number): boolean => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    };
+    const isPidAlive = (pid: number): boolean => isProcessAlive(pid);
     const onSessionStateEvent = (sessionId: string, event: AssistantReportEvent, spawnedByFromSession?: string): void => {
       // B-496: a run's session blocking on input is an attention signal for that run.
       if (automationRunner?.hasSession(sessionId)) automationRunner.report(sessionId, event === 'completed' ? 'idle' : 'blocked');
@@ -2278,10 +2265,8 @@ export async function startDaemon(): Promise<void> {
 
       // Prune stale sessions
       for (const [pid, _] of pidToTrackedSession.entries()) {
-        try {
-          // Check if process is still alive (signal 0 doesn't kill, just checks)
-          process.kill(pid, 0);
-        } catch (error) {
+        // B-864b: EPERM is alive — only a pid that is really gone is finalized.
+        if (!isProcessAlive(pid)) {
           // Recovered processes have no ChildProcess 'exit' listener after a
           // daemon restart. Route stale pruning through the same finalizer so
           // their persisted encryption/resume state remains discoverable.
@@ -2367,7 +2352,7 @@ export async function startDaemon(): Promise<void> {
         // leaving nothing running once we also exit.
         apiMachine.shutdown();
         await stopControlServer();
-        await cleanupDaemonState();
+        await cleanupDaemonState(process.pid);
         await releaseDaemonLock(daemonLockHandle);
         await stopCaffeinate();
 
@@ -2403,6 +2388,8 @@ export async function startDaemon(): Promise<void> {
       if (daemonState && daemonState.pid !== process.pid) {
         logger.debug('[DAEMON RUN] Somehow a different daemon was started without killing us. We should kill ourselves.')
         requestShutdown('exception', 'A different daemon was started without killing us. We should kill ourselves.')
+        // B-864: and stop here — the heartbeat below would overwrite the other daemon's state with ours.
+        return;
       }
 
       // Heartbeat
@@ -2554,7 +2541,7 @@ export async function startDaemon(): Promise<void> {
 
       apiMachine.shutdown();
       await stopControlServer();
-      await cleanupDaemonState();
+      await cleanupDaemonState(process.pid);
       await stopCaffeinate();
       await releaseDaemonLock(daemonLockHandle);
 

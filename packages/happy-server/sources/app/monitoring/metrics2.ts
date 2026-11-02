@@ -216,6 +216,13 @@ export const socketOrphansEvictedCounter = new Counter({
     registers: [register]
 });
 
+export const sessionAgentSupersededCounter = new Counter({
+    name: 'session_agent_superseded_total',
+    help: 'B-864: agent connections displaced because a newer wrapper runs the same session (evicted = disconnected, rejected = refused at connect)',
+    labelNames: ['outcome'] as const,
+    registers: [register]
+});
+
 export const releaseHandoverDuration = new Histogram({
     name: 'release_handover_duration_seconds',
     help: 'Client-observed make-before-break handover duration',

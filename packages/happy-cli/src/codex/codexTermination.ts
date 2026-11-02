@@ -20,12 +20,18 @@ export interface CodexTerminationSession {
 
 export async function settleCodexSession(
     session: CodexTerminationSession,
-    intent: 'archive' | 'offline',
+    intent: 'archive' | 'offline' | 'superseded',
     deactivate: (sessionId: string) => Promise<unknown>,
     log: (message: string, error?: unknown) => void = () => {},
     /** B-679: offline exit cursor (inbound already frozen) — see claude/sessionExitLifecycle. */
     exitCursor?: NonNullable<Metadata['exitCursor']>,
 ): Promise<void> {
+    // B-864: a newer wrapper runs the session now — no stamp, no session-end,
+    // no deactivate: the row is the successor's.
+    if (intent === 'superseded') {
+        await session.close();
+        return;
+    }
     if (intent === 'offline' && exitCursor && session.updateMetadataAndWait) {
         const landed = await session.updateMetadataAndWait((currentMetadata) => ({ ...currentMetadata, exitCursor }), OFFLINE_EXIT_STAMP_TIMEOUT_MS);
         if (!landed) log('[Codex] offline exit cursor not confirmed before going offline');

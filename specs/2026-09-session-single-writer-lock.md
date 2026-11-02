@@ -12,6 +12,9 @@
 3. 用户点「重启会话」→ `stopSessionAndWait` 在 daemon 的 pid 表里找不到它 → 直接 spawn 17092 → 两个 SDK 各跑一遍每条消息：Claude JSONL 写两条同文本 user 行（每个 wrapper 的 scanner 只按内容去重一条，各转发一条 + web 自己那条 = 3）、两路 thinking、两个进程各自 publish `permissionMode`（acceptEdits / bypassPermissions）互相覆盖。
 4. 附带发现：杀掉其中一个 wrapper，它的 `deactivateSession` 让 server 广播 archive，**另一个也跟着退出**——多写者状态下任何单点处置都会归档整个会话。
 
+> 2026-11-02 B-864：本锁的三个洞（非原子、按 `HAPPY_HOME_DIR` 分目录、takeover 不杀子进程树）与 daemon 分裂导致同一会话两个 wrapper；
+> claim 已串行化，server 端另加「每会话一个 agent 连接」兜底，见 [单连接 spec](2026-11-session-single-agent-connection.md)。
+
 ## 不变式与执法点
 
 **不变式**：同一台机器上，一个 happy session 任何时刻至多一个活 wrapper。

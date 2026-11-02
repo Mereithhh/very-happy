@@ -8,6 +8,8 @@
 import psList from 'ps-list';
 import spawn from 'cross-spawn';
 
+import { terminateProcessTree } from './processTermination';
+
 /**
  * Find all Happy CLI processes (including current process)
  */
@@ -91,24 +93,17 @@ export async function killRunawayHappyProcesses(): Promise<{ killed: number, err
       console.log(`Killing runaway process PID ${pid} (command arguments hidden for privacy)`);
       
       if (process.platform === 'win32') {
-        // Windows: use taskkill
-        const result = spawn.sync('taskkill', ['/F', '/PID', pid.toString()], { stdio: 'pipe' });
+        // Windows: use taskkill; /T takes the agent processes under it too (B-864b)
+        const result = spawn.sync('taskkill', ['/F', '/T', '/PID', pid.toString()], { stdio: 'pipe' });
         if (result.error) throw result.error;
         if (result.status !== 0) throw new Error(`taskkill exited with code ${result.status}`);
       } else {
-        // Unix: try SIGTERM first
-        process.kill(pid, 'SIGTERM');
-        
-        // Wait a moment
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Check if still alive
-        const processes = await psList();
-        const stillAlive = processes.find(p => p.pid === pid);
-        if (stillAlive) {
-          console.log(`Process PID ${pid} ignored SIGTERM, using SIGKILL`);
-          process.kill(pid, 'SIGKILL');
-        }
+        // Unix: SIGTERM, SIGKILL after 1 s, and (B-864b) the process tree under
+        // it — a SIGKILLed wrapper cannot reap its Claude Code / codex app-server.
+        const stopped = await new Promise<boolean>((resolve) => {
+          if (!terminateProcessTree(pid, resolve, { graceMs: 1_000 })) resolve(false);
+        });
+        if (!stopped) throw new Error('process (or a child of it) survived SIGKILL');
       }
       
       console.log(`Successfully killed runaway process PID ${pid}`);
