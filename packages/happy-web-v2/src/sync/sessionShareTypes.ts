@@ -18,6 +18,9 @@ export const SessionShareInfoSchema = z.object({
     operate: z.boolean().optional(),
     // B-867: when the grant expires (operator grants always do); absent on older servers.
     expiresAt: z.number().nullable().optional(),
+    // B-867b: operator mode cap (owner's mode at grant time, moved only by the owner); null for non-operators,
+    // absent on servers before B-867b. Plain string on purpose: an unknown future mode must not drop the row.
+    modeCap: z.string().nullable().optional(),
     owner: z.object({ id: z.string(), displayName: z.string() }),
 });
 export type SessionShareInfo = z.infer<typeof SessionShareInfoSchema>;

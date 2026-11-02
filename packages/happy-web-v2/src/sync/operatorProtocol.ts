@@ -103,6 +103,14 @@ export function operatorModeAllowed(next: string, ownerMode: string | null | und
     return nextRank <= ownerRank;
 }
 
+/**
+ * The bound the operator's mode menu uses: the grant's cap from the server
+ * (B-867b), else — on a server before B-867b — the owner's mode in effect.
+ */
+export function operatorModeBound(share: { modeCap?: string | null } | null | undefined, ownerMode: string | null | undefined): string | null {
+    return share?.modeCap ?? ownerMode ?? null;
+}
+
 const CLAUDE_MODES = ['plan', 'default', 'acceptEdits', 'bypassPermissions'] as const;
 const CODEX_MODES = ['read-only', 'default', 'safe-yolo', 'yolo'] as const;
 

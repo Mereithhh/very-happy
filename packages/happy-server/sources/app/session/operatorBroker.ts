@@ -36,7 +36,7 @@ import type { AccountTerminalRateLimiter } from '@/app/api/socket/terminalRateLi
 import { businessAuditEnabled, publishAudit } from '@/app/audit/producer';
 import { displayNameOf, identityOf } from '@/app/social/accountDirectory';
 import { loadAccountSecret } from '@/app/auth/accountSecrets';
-import { openSessionDataKey } from './sessionShares';
+import { openSessionDataKey, ownerSetOperatorModeCap } from './sessionShares';
 import { contentKeyPairFromSecret, decodeAccountSecret, decryptWithDataKey, encryptWithDataKey, unwrapDataEncryptionKey } from './sessionCrypto';
 import {
     OperatorError,
@@ -70,11 +70,13 @@ export type VerifiedOperatorGrant = {
     ownerId: string;
     granteeId: string;
     expiresAt: number;
+    /** SessionGrant.operateModeCap (B-867b); null reads as `default`. */
+    modeCap: string | null;
 };
 
 const grantCache = new Map<string, { grant: VerifiedOperatorGrant | null; at: number }>();
 
-function mint(row: { grantId: string; sessionId: string; ownerId: string; granteeId: string; expiresAt: number }): VerifiedOperatorGrant {
+function mint(row: { grantId: string; sessionId: string; ownerId: string; granteeId: string; expiresAt: number; modeCap: string | null }): VerifiedOperatorGrant {
     return { [VERIFIED]: true, ...row };
 }
 
@@ -90,10 +92,10 @@ export async function resolveOperatorGrant(granteeId: string, sessionId: string)
     const now = new Date();
     const row = await db.sessionGrant.findFirst({
         where: { sessionId, granteeAccountId: granteeId, status: 'active', role: 'driver', operate: true, expiresAt: { gt: now } },
-        select: { id: true, expiresAt: true, session: { select: { accountId: true, archivedAt: true } } },
+        select: { id: true, expiresAt: true, operateModeCap: true, session: { select: { accountId: true, archivedAt: true } } },
     });
     const grant = row && row.expiresAt && !row.session.archivedAt
-        ? mint({ grantId: row.id, sessionId, ownerId: row.session.accountId, granteeId, expiresAt: row.expiresAt.getTime() })
+        ? mint({ grantId: row.id, sessionId, ownerId: row.session.accountId, granteeId, expiresAt: row.expiresAt.getTime(), modeCap: row.operateModeCap })
         : null;
     grantCache.set(key, { grant, at: Date.now() });
     return grant;
@@ -109,9 +111,32 @@ export function operatorGrantsChanged(): void {
     try { ioRef?.serverSideEmit(CROSS_SLOT_EVENT, {}); } catch { /* single-node adapter */ }
 }
 
+/**
+ * rpcHandler hook for the account's own `rpc-call`: an owner `set-permission-mode`
+ * or a mode-carrying approval updates the operator cap. Cheap no-op unless the
+ * session has an active operator grant.
+ */
+export async function noteOwnerModeRpc(ownerId: string, method: string, encryptedParams: unknown): Promise<void> {
+    const sep = method.lastIndexOf(':');
+    if (sep <= 0) return;
+    const sessionId = method.slice(0, sep);
+    const name = method.slice(sep + 1);
+    if (name !== 'set-permission-mode' && name !== 'permission') return;
+    const operators = await db.sessionGrant.count({ where: { sessionId, operate: true, status: 'active', session: { accountId: ownerId } } });
+    if (operators === 0) return;
+    const session = await db.session.findUnique({ where: { id: sessionId }, select: { id: true, accountId: true, dataEncryptionKey: true } });
+    if (!session || session.accountId !== ownerId) return;
+    const dek = await openSessionDataKey(session);
+    if (!dek) return;
+    const params = open(encryptedParams, dek) as Record<string, unknown> | null;
+    if (!params || typeof params.mode !== 'string') return;
+    if (name === 'permission' && params.approved !== true) return;
+    await ownerSetOperatorModeCap(ownerId, sessionId, params.mode);
+}
+
 /** Teardown only: a grant reference for a terminal row a verified operator call registered. */
 function registeredGrant(row: { grantId: string; sessionId: string; ownerAccountId: string; granteeAccountId: string }): VerifiedOperatorGrant {
-    return mint({ grantId: row.grantId, sessionId: row.sessionId, ownerId: row.ownerAccountId, granteeId: row.granteeAccountId, expiresAt: 0 });
+    return mint({ grantId: row.grantId, sessionId: row.sessionId, ownerId: row.ownerAccountId, granteeId: row.granteeAccountId, expiresAt: 0, modeCap: null });
 }
 
 // ---------------------------------------------------------------- keys
@@ -141,6 +166,8 @@ async function openOperatorMachineKey(grant: VerifiedOperatorGrant, machineId: s
 
 type SessionContext = {
     dek: Uint8Array;
+    /** Encrypted agentState (pending permission requests live here). */
+    agentState: string | null;
     cwd: string;
     currentMode: unknown;
     sessionTerminalId: string | null;
@@ -148,7 +175,7 @@ type SessionContext = {
 };
 
 async function loadSessionContext(grant: VerifiedOperatorGrant): Promise<SessionContext | null> {
-    const session = await db.session.findUnique({ where: { id: grant.sessionId }, select: { id: true, accountId: true, dataEncryptionKey: true, metadata: true } });
+    const session = await db.session.findUnique({ where: { id: grant.sessionId }, select: { id: true, accountId: true, dataEncryptionKey: true, metadata: true, agentState: true } });
     if (!session || session.accountId !== grant.ownerId) return null;
     const dek = await openSessionDataKey(session);
     if (!dek) return null;
@@ -156,11 +183,21 @@ async function loadSessionContext(grant: VerifiedOperatorGrant): Promise<Session
     if (!metadata || typeof metadata.path !== 'string' || !metadata.path) return null;
     return {
         dek,
+        agentState: session.agentState,
         cwd: metadata.path,
         currentMode: metadata.permissionMode,
         sessionTerminalId: typeof metadata.terminalId === 'string' ? metadata.terminalId : null,
         machineId: typeof metadata.machineId === 'string' ? metadata.machineId : null,
     };
+}
+
+/** agentState.requests[params.id].tool, or null when unknown (the policy then fails closed). */
+function pendingRequestTool(ctx: SessionContext, params: unknown): string | null {
+    const id = params && typeof params === 'object' ? (params as Record<string, unknown>).id : undefined;
+    if (typeof id !== 'string' || !ctx.agentState) return null;
+    const state = open(ctx.agentState, ctx.dek) as { requests?: Record<string, { tool?: unknown }> } | null;
+    const tool = state?.requests && Object.prototype.hasOwnProperty.call(state.requests, id) ? state.requests[id]?.tool : undefined;
+    return typeof tool === 'string' ? tool : null;
 }
 
 function fromB64(value: string): Uint8Array { return new Uint8Array(Buffer.from(value, 'base64')); }
@@ -360,7 +397,12 @@ async function runOperatorRpc(io: Server, granteeId: string, data: unknown, limi
     if (plainParams === null) throw new OperatorError('bad_params');
 
     if (isOperatorSessionMethod(op)) {
-        const plan = planOperatorSessionCall(op, plainParams, { cwd: ctx.cwd, currentMode: ctx.currentMode });
+        const plan = planOperatorSessionCall(op, plainParams, {
+            cwd: ctx.cwd,
+            currentMode: ctx.currentMode,
+            modeCap: grant.modeCap,
+            permissionTool: op === 'permission' ? pendingRequestTool(ctx, plainParams) : undefined,
+        });
         const method = `${sessionId}:${plan.method}`;
         const result = await forwardToOwner(io, grant.ownerId, method, seal(plan.params, ctx.dek));
         if (!(await resolveOperatorGrant(granteeId, sessionId))) throw new OperatorError('not_operator');

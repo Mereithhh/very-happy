@@ -2195,7 +2195,7 @@ export const zhHans: TranslationStructure = {
                 upgrade: '对方机器的 CLI 需要升级。',
                 offline: '对方机器不在线。',
                 denied: '「可操作」不允许这个操作。',
-                modeEscalation: '不能把权限模式调得比分享者当前的更高。',
+                modeEscalation: '不能把权限模式调到分享者设定的上限以上。',
                 pathDenied: '只能访问项目目录里的文件。',
                 terminalLimit: '你打开的终端已达上限。',
                 notOperator: '你已不再拥有这个会话的「可操作」权限。',

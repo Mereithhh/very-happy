@@ -50,6 +50,14 @@ describe('B-867 operator broker (pglite)', () => {
                 const method = req.method.slice(req.method.indexOf(':') + 1);
                 daemonCalls.push({ method, params });
                 let result: unknown = { ok: true };
+                // Mode side effects exactly as the CLI applies them (permissionHandler.ts):
+                // set-permission-mode switches; an approved ExitPlanMode without a
+                // post-plan mode falls back to bypassPermissions.
+                if (method === 'set-permission-mode') await setMode(params.mode);
+                if (method === 'permission' && params.approved === true) {
+                    if (pendingTools[params.id] === 'ExitPlanMode') await setMode(['default', 'acceptEdits', 'bypassPermissions'].includes(params.mode) ? params.mode : 'bypassPermissions');
+                    else if (params.mode) await setMode(params.mode);
+                }
                 if (method === 'open-terminal') {
                     const screen = Buffer.from(`${SECRET_MARK} screen`).toString('base64');
                     result = { type: 'success', terminalId: params.terminalId, mode: 'snapshot', data: params.encStream ? Buffer.from(crypto.encryptWithDataKey(screen, machineKey)).toString('base64') : screen, encStream: !!params.encStream };
@@ -67,6 +75,23 @@ describe('B-867 operator broker (pglite)', () => {
         on: () => undefined,
         serverSideEmit: () => undefined,
     };
+    let pendingTools: Record<string, string> = {};
+    async function setMode(mode: string) {
+        const session = await db.session.findUniqueOrThrow({ where: { id: sessionId } });
+        const plain = openWith(session.metadata, dek) as Record<string, unknown>;
+        await db.session.update({ where: { id: sessionId }, data: { metadata: sealDek({ ...plain, permissionMode: mode }) } });
+    }
+    async function currentMode() {
+        return (openWith((await db.session.findUniqueOrThrow({ where: { id: sessionId } })).metadata, dek) as any).permissionMode;
+    }
+    async function setPendingRequests(tools: Record<string, string>) {
+        pendingTools = tools;
+        const requests = Object.fromEntries(Object.entries(tools).map(([id, tool]) => [id, { tool, arguments: {}, createdAt: Date.now() }]));
+        await db.session.update({ where: { id: sessionId }, data: { agentState: sealDek({ requests }) } });
+    }
+    const operatorCap = async () => (await db.sessionGrant.findFirstOrThrow({ where: { sessionId, granteeAccountId: granteeId } })).operateModeCap;
+    /** Owner's own client changing the mode: what rpcHandler hands the broker after a routed rpc-call. */
+    const ownerRpc = (method: string, params: unknown) => broker.noteOwnerModeRpc(ownerId, `${sessionId}:${method}`, sealDek(params));
     const granteeRoom = () => `user:${granteeId}:user-scoped`;
     const sealDek = (v: unknown) => Buffer.from(crypto.encryptWithDataKey(v, dek)).toString('base64');
     const openWith = (v: string, key: Uint8Array) => crypto.decryptWithDataKey(new Uint8Array(Buffer.from(v, 'base64')), key);
@@ -117,6 +142,8 @@ describe('B-867 operator broker (pglite)', () => {
         await expect(shares.createSessionGrant({ ownerId, sessionId, granteeAccountId: granteeId, role: 'driver', operate: true, confirmOperator: true, expiresInDays: null })).rejects.toMatchObject({ code: 'operator_requires_expiry' });
         const view = await shares.createSessionGrant({ ownerId, sessionId, granteeAccountId: granteeId, role: 'driver', operate: true, confirmOperator: true, expiresInDays: 1 });
         expect(view).toMatchObject({ role: 'driver', operate: true, status: 'pending' });
+        // The cap is the owner's effective mode at grant time.
+        expect(await operatorCap()).toBe('default');
         // Pending is not operating.
         expect(await rpc(granteeId, 'abort', {})).toEqual({ ok: false, error: 'not_operator' });
         await shares.respondToSessionGrant(granteeId, view.id, true);
@@ -137,12 +164,81 @@ describe('B-867 operator broker (pglite)', () => {
         expect(await rpc(granteeId, 'permission', { id: 'p1', approved: true, mode: 'bypassPermissions' })).toEqual({ ok: false, error: 'operator_mode_escalation' });
         expect(await rpc(granteeId, 'readFile', { path: '/home/owner/.happy/accounts/a/secret' })).toEqual({ ok: false, error: 'operator_path_denied' });
         expect(daemonCalls).toEqual([]);
+        await setPendingRequests({ p1: 'Bash' });
         const ack = await rpc(granteeId, 'permission', { id: 'p1', approved: true, allowTools: ['Bash(*)'] });
         expect(ack.ok).toBe(true);
         expect(daemonCalls).toEqual([{ method: 'permission', params: { id: 'p1', approved: true } }]);
         expect(openWith((ack as any).result, dek)).toEqual({ ok: true });
         const events = await broker.listOperatorEvents(sessionId, granteeId, 10);
         expect(events.map((e) => e.kind)).toContain('permission');
+    });
+
+    it('B-867b QA40 chain: plan → approve ExitPlanMode without mode → bypass is closed; cap never floats with the operator', async () => {
+        expect(await currentMode()).toBe('default');
+        // 1. Lowering is allowed.
+        expect((await rpc(granteeId, 'set-permission-mode', { mode: 'plan' })).ok).toBe(true);
+        expect(await currentMode()).toBe('plan');
+        // 2–3. The agent asks ExitPlanMode; the operator approves WITHOUT a mode:
+        // the broker injects the highest post-plan mode within the cap.
+        await setPendingRequests({ exit1: 'ExitPlanMode' });
+        expect((await rpc(granteeId, 'permission', { id: 'exit1', approved: true })).ok).toBe(true);
+        expect(daemonCalls.at(-1)).toEqual({ method: 'permission', params: { id: 'exit1', approved: true, mode: 'default' } });
+        expect(await currentMode()).toBe('default');
+        // A non post-plan mode on a plan approval (the CLI would read it as bypass) is rewritten too.
+        await setMode('plan');
+        expect((await rpc(granteeId, 'permission', { id: 'exit1', approved: true, mode: 'yolo' })).ok).toBe(true);
+        expect(daemonCalls.at(-1)?.params.mode).toBe('default');
+        // An explicit escalation on the plan card is refused.
+        expect(await rpc(granteeId, 'permission', { id: 'exit1', approved: true, mode: 'bypassPermissions' })).toEqual({ ok: false, error: 'operator_mode_escalation' });
+        // An unknown request id is treated as a plan approval (fail closed).
+        await setPendingRequests({});
+        expect((await rpc(granteeId, 'permission', { id: 'ghost', approved: true })).ok).toBe(true);
+        expect(daemonCalls.at(-1)?.params).toEqual({ id: 'ghost', approved: true, mode: 'default' });
+        // 4. The cap did not float: bypass / acceptEdits still refused.
+        expect(await rpc(granteeId, 'set-permission-mode', { mode: 'bypassPermissions' })).toEqual({ ok: false, error: 'operator_mode_escalation' });
+        expect(await rpc(granteeId, 'set-permission-mode', { mode: 'acceptEdits' })).toEqual({ ok: false, error: 'operator_mode_escalation' });
+        // Session-wide approvals are narrowed to a single approval.
+        await setPendingRequests({ p2: 'Edit' });
+        expect((await rpc(granteeId, 'permission', { id: 'p2', approved: true, decision: 'approved_for_session', updatedPermissions: [{ type: 'setMode', mode: 'bypassPermissions' }] })).ok).toBe(true);
+        expect(daemonCalls.at(-1)?.params).toEqual({ id: 'p2', approved: true, decision: 'approved' });
+        expect(await operatorCap()).toBe('default');
+    });
+
+    it('B-867b: down then up stops at the cap; only the owner\'s own mode RPCs move it', async () => {
+        expect((await rpc(granteeId, 'set-permission-mode', { mode: 'plan' })).ok).toBe(true);
+        expect((await rpc(granteeId, 'set-permission-mode', { mode: 'default' })).ok).toBe(true);
+        expect(await rpc(granteeId, 'set-permission-mode', { mode: 'acceptEdits' })).toEqual({ ok: false, error: 'operator_mode_escalation' });
+        // The owner raises it from their own client: the cap follows.
+        emitUpdate.mockClear();
+        await ownerRpc('set-permission-mode', { mode: 'bypassPermissions' });
+        await setMode('bypassPermissions');
+        expect(await operatorCap()).toBe('bypassPermissions');
+        // The operator re-reads its row (mode menu follows the cap); the row carries the cap.
+        expect(JSON.stringify(emitUpdate.mock.calls)).toContain('session-share-updated');
+        expect((await shares.listSharedSessionRows(granteeId, { id: true }))[0].share.modeCap).toBe('bypassPermissions');
+        // Same mode again: no write, no event.
+        emitUpdate.mockClear();
+        await ownerRpc('set-permission-mode', { mode: 'bypassPermissions' });
+        expect(emitUpdate).not.toHaveBeenCalled();
+        await setPendingRequests({ exit2: 'ExitPlanMode' });
+        expect((await rpc(granteeId, 'permission', { id: 'exit2', approved: true })).ok).toBe(true);
+        expect(daemonCalls.at(-1)?.params.mode).toBe('bypassPermissions');
+        // The owner lowers it (plan-card approval with a mode counts too); a rejected one does not.
+        await ownerRpc('permission', { id: 'exit2', approved: false, mode: 'bypassPermissions' });
+        expect(await operatorCap()).toBe('bypassPermissions');
+        await ownerRpc('permission', { id: 'exit2', approved: true, mode: 'acceptEdits' });
+        expect(await operatorCap()).toBe('acceptEdits');
+        await ownerRpc('set-permission-mode', { mode: 'plan' });
+        expect(await operatorCap()).toBe('plan');
+        // Cap plan: no plan approval at all, no way back up.
+        await setPendingRequests({ exit3: 'ExitPlanMode' });
+        expect(await rpc(granteeId, 'permission', { id: 'exit3', approved: true })).toEqual({ ok: false, error: 'operator_mode_escalation' });
+        expect((await rpc(granteeId, 'permission', { id: 'exit3', approved: false })).ok).toBe(true);
+        expect(await rpc(granteeId, 'set-permission-mode', { mode: 'default' })).toEqual({ ok: false, error: 'operator_mode_escalation' });
+        // Restore for the tests below.
+        await ownerRpc('set-permission-mode', { mode: 'default' });
+        await setMode('default');
+        expect(await operatorCap()).toBe('default');
     });
 
     it('terminal.open: forced cwd + encStream; operator sees only DEK ciphertext; live output is re-keyed; owner terminals are not tapped', async () => {

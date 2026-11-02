@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     OPERATOR_SESSION_METHODS,
     operatorModeAllowed,
+    operatorModeBound,
     operatorModeChoices,
     parseOperatorExit,
     parseOperatorOutput,
@@ -64,5 +65,15 @@ describe('B-867 operator wire helpers', () => {
         expect(parseOperatorOutput({ sessionId: 's', terminalId: 't', data: 'x', seq: 1.5 })).toBeNull();
         expect(parseOperatorExit({ sessionId: 's', terminalId: 't', exitCode: 0 })).toEqual({ sessionId: 's', terminalId: 't', exitCode: 0 });
         expect(parseOperatorExit({ sessionId: 's', terminalId: 't' })).toBeNull();
+    });
+    it('B-867b: the mode menu is bounded by the grant cap, not the mode the operator moved the session to', () => {
+        // Operator lowered to plan under a default cap: default is offered again, acceptEdits is not.
+        const bound = operatorModeBound({ modeCap: 'default' }, 'plan');
+        expect(operatorModeChoices('claude', bound).filter((c) => c.allowed).map((c) => c.value)).toEqual(['plan', 'default']);
+        // Pre-fix escalation left the session in bypass: the cap still says default.
+        expect(operatorModeAllowed('bypassPermissions', operatorModeBound({ modeCap: 'default' }, 'bypassPermissions'))).toBe(false);
+        // Server before B-867b: fall back to the mode in effect.
+        expect(operatorModeBound({}, 'acceptEdits')).toBe('acceptEdits');
+        expect(operatorModeBound(undefined, undefined)).toBeNull();
     });
 });

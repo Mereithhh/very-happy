@@ -1,21 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import {
     MAX_OPERATOR_TERMINALS_PER_GRANT,
+    OPERATOR_MODE_METHODS,
+    OPERATOR_SESSION_METHODS,
     OperatorError,
+    exitPlanModeWithinCap,
+    permissionModeRank,
     operatorMayUseMode,
     pathWithinRoot,
     planOperatorSessionCall,
     planOperatorTerminalCall,
 } from './operatorPolicy';
 
-const ctx = { cwd: '/home/owner/repo', currentMode: 'default' };
+const ctx = { cwd: '/home/owner/repo', currentMode: 'default', modeCap: 'default', permissionTool: 'Bash' };
 const termCtx = (registry: Array<{ terminalId: string; kind: 'opened' | 'attached' }> = []) => ({
     cwd: '/home/owner/repo', sessionTerminalId: 'sess-term', registry, newTerminalId: () => 'op-new',
 });
 const code = (fn: () => unknown) => { try { fn(); } catch (e) { return e instanceof OperatorError ? e.code : 'other'; } return null; };
 
 describe('B-867 operator policy', () => {
-    it('mode cap: never above the owner\'s current effective mode; unknown modes refused', () => {
+    it('mode cap: never above the grant cap; unknown modes refused', () => {
         expect(operatorMayUseMode('plan', 'default')).toBe(true);
         expect(operatorMayUseMode('default', 'default')).toBe(true);
         expect(operatorMayUseMode('acceptEdits', 'default')).toBe(false);
@@ -43,6 +47,71 @@ describe('B-867 operator policy', () => {
         expect(planOperatorSessionCall('set-permission-mode', { mode: 'plan' }, ctx).audit?.kind).toBe('mode');
     });
 
+    it('B-867b: the cap, not the current mode, bounds every mode check', () => {
+        // The operator already moved the session to bypass (pre-fix chain): still capped at default.
+        const floated = { ...ctx, currentMode: 'bypassPermissions', modeCap: 'default' };
+        expect(code(() => planOperatorSessionCall('set-permission-mode', { mode: 'bypassPermissions' }, floated))).toBe('operator_mode_escalation');
+        expect(code(() => planOperatorSessionCall('permission', { id: 'p', approved: true, mode: 'acceptEdits' }, floated))).toBe('operator_mode_escalation');
+        // Lowered below the cap: back up to the cap only.
+        const lowered = { ...ctx, currentMode: 'plan', modeCap: 'acceptEdits' };
+        expect(planOperatorSessionCall('set-permission-mode', { mode: 'acceptEdits', extra: 1 }, lowered).params).toEqual({ mode: 'acceptEdits' });
+        expect(code(() => planOperatorSessionCall('set-permission-mode', { mode: 'bypassPermissions' }, lowered))).toBe('operator_mode_escalation');
+    });
+
+    it('B-867b: ExitPlanMode approvals always carry a mode within the cap', () => {
+        const plan = (params: Record<string, unknown>, modeCap: string, permissionTool: string | null = 'ExitPlanMode') =>
+            planOperatorSessionCall('permission', params, { ...ctx, modeCap, permissionTool }).params;
+        expect(plan({ id: 'x', approved: true }, 'default')).toEqual({ id: 'x', approved: true, mode: 'default' });
+        expect(plan({ id: 'x', approved: true }, 'safe-yolo')).toEqual({ id: 'x', approved: true, mode: 'acceptEdits' });
+        expect(plan({ id: 'x', approved: true }, 'bypassPermissions')).toEqual({ id: 'x', approved: true, mode: 'bypassPermissions' });
+        expect(plan({ id: 'x', approved: true, mode: 'plan' }, 'default')).toEqual({ id: 'x', approved: true, mode: 'default' });
+        expect(plan({ id: 'x', approved: true, mode: 'acceptEdits' }, 'bypassPermissions')).toEqual({ id: 'x', approved: true, mode: 'acceptEdits' });
+        expect(plan({ id: 'x', approved: true }, 'default', 'exit_plan_mode')).toEqual({ id: 'x', approved: true, mode: 'default' });
+        // Unknown tool (agentState lagging) = treated as a plan approval.
+        expect(plan({ id: 'x', approved: true }, 'default', null)).toEqual({ id: 'x', approved: true, mode: 'default' });
+        expect(code(() => plan({ id: 'x', approved: true, mode: 'bypassPermissions' }, 'acceptEdits'))).toBe('operator_mode_escalation');
+        expect(code(() => plan({ id: 'x', approved: true }, 'plan'))).toBe('operator_mode_escalation');
+        expect(code(() => plan({ id: 'x', approved: true }, 'read-only'))).toBe('operator_mode_escalation');
+        // A rejection never carries a mode.
+        expect(plan({ id: 'x', approved: false, mode: 'bypassPermissions', reason: 'no' }, 'plan')).toEqual({ id: 'x', approved: false, reason: 'no' });
+        expect(exitPlanModeWithinCap(undefined)).toBe('default');
+        expect(exitPlanModeWithinCap('yolo')).toBe('bypassPermissions');
+    });
+
+    it('B-867b: session-wide approvals and unknown permission keys never reach the daemon', () => {
+        const plan = planOperatorSessionCall('permission', { id: 'p', approved: true, decision: 'approved_for_session', allowTools: ['Bash'], updatedPermissions: [{ type: 'setMode', mode: 'bypassPermissions' }], suggestions: [1] }, ctx);
+        expect(plan.params).toEqual({ id: 'p', approved: true, decision: 'approved' });
+        expect((planOperatorSessionCall('permission', { id: 'p', approved: false, decision: 'abort' }, ctx).params as any).decision).toBe('abort');
+    });
+
+    it('B-867b mechanism: no operator RPC can raise the mode above the cap', () => {
+        // Every allowlisted method, fed every mode-bearing key at its most permissive value.
+        const hostile = {
+            id: 'p', approved: true, mode: 'bypassPermissions', permissionMode: 'bypassPermissions', allowTools: ['Bash(*)'],
+            decision: 'approved_for_session', updatedPermissions: [{ type: 'setMode', mode: 'bypassPermissions' }],
+            path: 'a.txt', cwd: '/home/owner/repo', args: ['x'], command: 'true', content: '',
+        };
+        for (const method of OPERATOR_SESSION_METHODS) {
+            for (const permissionTool of ['Bash', 'ExitPlanMode', null]) {
+                let params: Record<string, unknown>;
+                try {
+                    params = planOperatorSessionCall(method, hostile, { ...ctx, modeCap: 'default', permissionTool }).params as Record<string, unknown>;
+                } catch (e) {
+                    expect(e, method).toBeInstanceOf(OperatorError);
+                    continue;
+                }
+                expect(params.allowTools, method).toBeUndefined();
+                expect(params.updatedPermissions, method).toBeUndefined();
+                expect(params.permissionMode, method).toBeUndefined();
+                expect(params.decision === 'approved_for_session', method).toBe(false);
+                if (params.mode !== undefined) {
+                    expect(OPERATOR_MODE_METHODS as readonly string[], method).toContain(method);
+                    expect(permissionModeRank(params.mode)!, method).toBeLessThanOrEqual(permissionModeRank('default')!);
+                }
+            }
+        }
+    });
+
     it('run intent keeps only model / effort fields', () => {
         const plan = planOperatorSessionCall('session-run-intent', { modelIntent: 'opus', effort: 'high', provider: 'evil', accountId: 'x' }, ctx);
         expect(plan.params).toEqual({ modelIntent: 'opus', effort: 'high' });
@@ -62,7 +131,28 @@ describe('B-867 operator policy', () => {
         expect(code(() => planOperatorSessionCall('bash', { command: 'git status', cwd: '/' }, ctx))).toBe('operator_path_denied');
         expect(code(() => planOperatorSessionCall('listDirectory', { path: '../' }, ctx))).toBe('operator_path_denied');
         expect(planOperatorSessionCall('readFile', { path: 'README.md' }, ctx).audit).toBeNull();
+        // B-867b: a cwd-less bash / ripgrep / difftastic runs in the session cwd, not the daemon's.
+        expect(planOperatorSessionCall('bash', { command: 'ls' }, ctx).params).toEqual({ command: 'ls', cwd: '/home/owner/repo' });
+        expect((planOperatorSessionCall('ripgrep', { args: ['foo'] }, ctx).params as any).cwd).toBe('/home/owner/repo');
         expect(planOperatorSessionCall('bash', { command: 'git status --porcelain', cwd: '/home/owner/repo' }, ctx).audit).toEqual({ kind: 'bash', detail: { path: '/home/owner/repo', command: 'git status --porcelain' } });
+    });
+
+    it('B-867b: ripgrep / difftastic path args stay inside the session cwd', () => {
+        const rg = (args: unknown) => code(() => planOperatorSessionCall('ripgrep', { args }, ctx));
+        expect(rg(['-n', 'TODO', 'src', './lib'])).toBeNull();
+        expect(rg(['/api/', 'src'])).toBeNull(); // first positional is the pattern
+        expect(rg(['-e', '/etc/passwd', 'src'])).toBeNull(); // -e value is a pattern
+        expect(rg(['--glob', '*.ts', '-e', 'x'])).toBeNull();
+        expect(rg(['TODO', '/home/owner/.ssh'])).toBe('operator_path_denied');
+        expect(rg(['TODO', '../other'])).toBe('operator_path_denied');
+        expect(rg(['-e', 'x', '/etc'])).toBe('operator_path_denied');
+        expect(rg(['TODO', '--', '/etc'])).toBe('operator_path_denied');
+        for (const flag of [['--pre', 'sh'], ['--pre=sh'], ['-f', 'pats'], ['--file=/etc/passwd'], ['--ignore-file', '/x'], ['-L'], ['--follow'], ['-nL']]) {
+            expect(rg([...flag, 'x']), flag.join(' ')).toBe('operator_path_denied');
+        }
+        expect(rg('TODO /etc')).toBe('bad_params');
+        expect(code(() => planOperatorSessionCall('difftastic', { args: ['a.ts', 'b.ts'] }, ctx))).toBeNull();
+        expect(code(() => planOperatorSessionCall('difftastic', { args: ['a.ts', '/etc/passwd'] }, ctx))).toBe('operator_path_denied');
     });
 
     it('terminal.open: server id + session cwd + encStream; client cwd / startupCommand / attachTmux ignored', () => {

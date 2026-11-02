@@ -33,6 +33,7 @@ import { buildUserProfile, type UserProfile } from '@/app/social/type';
 import { displayNameOf, identityOf, profileInclude, resolveAccountByHandle, type ProfileAccount } from '@/app/social/accountDirectory';
 import { RelationshipStatus } from '@prisma/client';
 import { operatorGrantsChanged, teardownOperatorGrant, type OperatorEndReason } from './operatorBroker';
+import { normalizeModeCap } from './operatorPolicy';
 import {
     contentKeyPairFromSecret,
     decodeAccountSecret,
@@ -150,6 +151,16 @@ export async function redactedMetadataFor(session: SessionKeyRow & { metadata: s
     const plain = decryptWithDataKey(decodeBundle(session.metadata), dek);
     if (!plain || typeof plain !== 'object') return null;
     return encodeBundle(encryptWithDataKey(redactMetadataObject(plain as Record<string, unknown>), dek));
+}
+
+/**
+ * B-867b: the mode cap an operator grant starts with — the owner's effective
+ * mode (metadata.permissionMode) right now, `default` when unreported.
+ */
+async function ownerModeCapNow(session: SessionKeyRow & { metadata: string }): Promise<string> {
+    const dek = await openSessionDataKey(session);
+    const plain = dek ? decryptWithDataKey(decodeBundle(session.metadata), dek) as Record<string, unknown> | null : null;
+    return normalizeModeCap(plain?.permissionMode);
 }
 
 async function sessionPreview(session: SessionKeyRow & { metadata: string }): Promise<{ name: string | null; path: string | null; host: string | null }> {
@@ -272,6 +283,7 @@ export async function createSessionGrant(input: { ownerId: string; sessionId: st
     if (!granteePublicKey) throw new SessionShareError('grantee_key_unavailable', 409);
 
     await enforceAccountWriteRate({ accountId: input.ownerId, resource: 'relationship', units: 1, envName: 'MAX_SESSION_SHARES_PER_ACCOUNT_PER_MINUTE', fallback: 30 });
+    const modeCap = operate ? await ownerModeCapNow(session) : null;
 
     const grant = await inTx(async (tx) => {
         const existing = await tx.sessionGrant.findUnique({ where: { sessionId_granteeAccountId: { sessionId: session.id, granteeAccountId: grantee.id } } });
@@ -289,6 +301,7 @@ export async function createSessionGrant(input: { ownerId: string; sessionId: st
             expiresAt: grantExpiresAt(input.expiresInDays),
             operate,
             operateConfirmedAt: operate ? new Date() : null,
+            operateModeCap: operate ? modeCap : null,
         };
         return existing
             ? tx.sessionGrant.update({ where: { id: existing.id }, data, include: { grantee: { include: profileInclude } } })
@@ -328,6 +341,8 @@ export async function updateSessionGrantRole(ownerId: string, sessionId: string,
     if (nextOperate !== grant.operate) {
         data.operate = nextOperate;
         data.operateConfirmedAt = nextOperate ? new Date() : null;
+        // Granted now: cap at the owner's mode now. Dropped: no cap to keep.
+        data.operateModeCap = nextOperate ? await ownerModeCapNow(await db.session.findUniqueOrThrow({ where: { id: sessionId }, select: { id: true, accountId: true, dataEncryptionKey: true, metadata: true } })) : null;
     }
     const updated = await db.sessionGrant.update({ where: { id: grant.id }, data, include: { grantee: { include: profileInclude } } });
     invalidateGrantees(sessionId);
@@ -335,6 +350,27 @@ export async function updateSessionGrantRole(ownerId: string, sessionId: string,
     await emitToAccount(granteeAccountId, { t: 'session-share-updated', sessionId, grantId: grant.id, role: updated.role, operate: updated.operate, status: updated.status });
     if (grant.operate && !updated.operate) await endOperator(grant.id, 'downgraded', { sessionId, granteeId: granteeAccountId, ownerId });
     return grantView(updated);
+}
+
+/**
+ * B-867b: the owner put `mode` in effect through their OWN client (rpcHandler's
+ * account rpc-call, never the operator broker): it becomes the cap of every
+ * active operator grant on the session, and each operator re-reads its row so
+ * its mode menu follows. Operator-driven mode changes never reach here, so the
+ * cap cannot float up with them.
+ */
+export async function ownerSetOperatorModeCap(ownerId: string, sessionId: string, mode: unknown): Promise<void> {
+    const cap = normalizeModeCap(mode);
+    const grants = await db.sessionGrant.findMany({
+        where: { sessionId, operate: true, status: 'active', session: { accountId: ownerId }, OR: [{ operateModeCap: null }, { NOT: { operateModeCap: cap } }] },
+        select: { id: true, granteeAccountId: true, role: true, operate: true, status: true },
+    });
+    if (grants.length === 0) return;
+    await db.sessionGrant.updateMany({ where: { id: { in: grants.map((g) => g.id) } }, data: { operateModeCap: cap } });
+    invalidateGrantees(sessionId);
+    for (const grant of grants) {
+        await emitToAccount(grant.granteeAccountId, { t: 'session-share-updated', sessionId, grantId: grant.id, role: grant.role, operate: grant.operate, status: grant.status });
+    }
 }
 
 /** Close the grantee's operator connections (does not wait for the kills on a slow daemon). */
@@ -382,7 +418,7 @@ export async function listPendingSessionInvites(granteeAccountId: string): Promi
 export async function listSharedSessionRows<T extends SessionKeyRow & { metadata: string }>(
     granteeAccountId: string,
     select: Prisma.SessionSelect,
-): Promise<Array<{ row: T; share: { grantId: string; role: SessionGrantRole; operate: boolean; expiresAt: number | null; owner: { id: string; displayName: string } }; dataEncryptionKey: Buffer; metadata: string }>> {
+): Promise<Array<{ row: T; share: { grantId: string; role: SessionGrantRole; operate: boolean; modeCap: string | null; expiresAt: number | null; owner: { id: string; displayName: string } }; dataEncryptionKey: Buffer; metadata: string }>> {
     const grants = await db.sessionGrant.findMany({
         where: { granteeAccountId, status: 'active', ...unexpiredGrant() },
         include: { grantedBy: { select: { id: true, firstName: true, lastName: true, username: true } }, session: { select: { ...select, id: true, accountId: true, dataEncryptionKey: true, metadata: true } } },
@@ -395,7 +431,7 @@ export async function listSharedSessionRows<T extends SessionKeyRow & { metadata
         if (!metadata) continue; // owner secret missing: nothing we can safely show
         out.push({
             row,
-            share: { grantId: grant.id, role: grant.role, operate: grant.operate, expiresAt: grant.expiresAt ? grant.expiresAt.getTime() : null, owner: { id: grant.grantedBy.id, displayName: displayNameOf(grant.grantedBy, await identityOf(grant.grantedBy.id)) } },
+            share: { grantId: grant.id, role: grant.role, operate: grant.operate, modeCap: grant.operate ? grant.operateModeCap ?? 'default' : null, expiresAt: grant.expiresAt ? grant.expiresAt.getTime() : null, owner: { id: grant.grantedBy.id, displayName: displayNameOf(grant.grantedBy, await identityOf(grant.grantedBy.id)) } },
             dataEncryptionKey: Buffer.from(grant.granteeDataEncryptionKey),
             metadata,
         });

@@ -1,7 +1,7 @@
 /**
  * B-867 operator controls — what an operator grantee gets on top of the
- * driver composer: interrupt, permission mode (never above the owner's mode
- * in effect, spec §4) and model. Every call is a session RPC the web routes
+ * driver composer: interrupt, permission mode (never above the grant's mode
+ * cap — the owner's mode when granted, moved only by the owner, spec §4) and model. Every call is a session RPC the web routes
  * through the server broker; the broker re-applies the same cap, so the
  * disabled options here are a courtesy, not the enforcement.
  */
@@ -11,7 +11,7 @@ import { RUN_INTENT_RPC } from '@slopus/happy-wire';
 import { useSession } from '@/sync/storage';
 import { sessionAbort, sessionSetPermissionMode } from '@/sync/ops';
 import { apiSocket } from '@/sync/apiSocket';
-import { operatorModeAllowed, operatorModeChoices } from '@/sync/operatorProtocol';
+import { operatorModeAllowed, operatorModeBound, operatorModeChoices } from '@/sync/operatorProtocol';
 import { SelectMenu } from '@/ui/SelectMenu';
 import { Button } from '@/ui';
 import { toast } from '@/ui/Toast';
@@ -26,7 +26,8 @@ export function OperatorControls({ sessionId }: { sessionId: string }) {
     if (!session) return null;
     const meta = session.metadata;
     const ownerMode = meta?.permissionMode ?? null;
-    const choices = operatorModeChoices(meta?.flavor, ownerMode);
+    const modeCap = operatorModeBound(session.share, ownerMode);
+    const choices = operatorModeChoices(meta?.flavor, modeCap);
     const models = (meta?.models ?? []).map((m) => m.code).filter((c): c is string => typeof c === 'string' && c.length > 0);
     const currentModel = meta?.modelIntent ?? meta?.currentModelCode ?? null;
     const fail = (e: unknown) => toast.error(operatorErrorCopy(t, operatorErrorCode(e)));
@@ -36,7 +37,7 @@ export function OperatorControls({ sessionId }: { sessionId: string }) {
         try { await sessionAbort(sessionId); } catch (e) { fail(e); } finally { setBusy(null); }
     };
     const setMode = async (mode: string) => {
-        if (!operatorModeAllowed(mode, ownerMode)) { toast.error(t('share.operator.errors.modeEscalation')); return; }
+        if (!operatorModeAllowed(mode, modeCap)) { toast.error(t('share.operator.errors.modeEscalation')); return; }
         setBusy('mode');
         try { await sessionSetPermissionMode(sessionId, mode); } catch (e) { fail(e); } finally { setBusy(null); }
     };

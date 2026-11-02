@@ -68,7 +68,7 @@ reaches server logs or link-preview bots, and link pages are never indexed.
 | Send a message (shown under their own name) | ✗ | ✓ | ✓ |
 | Answer permission requests / questions | ✗ | ✗ | ✓ |
 | Interrupt, steer, change model | ✗ | ✗ | ✓ |
-| Change permission mode | ✗ | ✗ | ✓ never above yours |
+| Change permission mode | ✗ | ✗ | ✓ never above your limit¹ |
 | Terminal on your machine (starts in the session folder) | ✗ | ✗ | ✓ |
 | Files panel (session folder only), `/btw` | ✗ | ✗ | ✓ |
 | Rename, archive, rewind, fork, re-share, other sessions, machine settings | ✗ | ✗ | ✗ |
@@ -94,6 +94,13 @@ The terminal starts in the session's folder, but a shell cannot be confined to
 it. The Very Happy API keeps them on this one session — no other sessions,
 machines, account settings or the account list — but inside the shell they
 have your Unix user's rights.
+
+¹ The limit is your permission mode at the moment you grant **Can operate**.
+Only you move it: whenever *you* switch the mode (or approve a plan into a
+mode) from your own client, the limit follows. Nothing the operator does —
+lowering the mode and raising it again, approving a plan, answering an
+approval — can take the session above it. Their approvals are always one-off:
+“always allow” and “allow for this session” are turned into a single approval.
 
 How it is granted: choose **Can operate** → read the warning → tick the
 acknowledgement → **Grant operator access** → confirm again in the dialog

@@ -2033,7 +2033,7 @@ export const en = {
                 upgrade: 'The CLI on their machine needs an update.',
                 offline: 'Their machine is offline.',
                 denied: 'Not allowed with operator access.',
-                modeEscalation: 'You cannot raise the permission mode above the owner\'s.',
+                modeEscalation: 'You cannot raise the permission mode above the limit the owner set.',
                 pathDenied: 'Only files inside the project folder are available.',
                 terminalLimit: 'You already have the maximum number of terminals open.',
                 notOperator: 'You no longer have operator access to this session.',

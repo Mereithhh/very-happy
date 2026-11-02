@@ -444,6 +444,9 @@ export function rpcHandler(
             }
 
             const routed = await routeRpcToRoom(io, rpcRoom(userId, method), method, params, socket.id);
+            // B-867b: only the owner's own mode change moves an operator's cap
+            // (operators route through operatorBroker, never this handler).
+            if (routed.ok) void import('@/app/session/operatorBroker').then((broker) => broker.noteOwnerModeRpc(userId, method, params)).catch((error) => log({ module: 'operator', errorName: error instanceof Error ? error.name : typeof error }, 'operator mode cap update failed'));
             finish(routed.code);
             callback?.(routed.ok ? { ok: true, result: routed.result } : { ok: false, error: routed.error });
         } catch (error) {

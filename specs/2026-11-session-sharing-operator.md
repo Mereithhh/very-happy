@@ -46,7 +46,7 @@ Chris 11-02：「有没有什么自己的 session 给别人临时接手的功能
 |---|---|---|
 | T1 | operator 越出这个会话：调别的会话的 RPC、别的机器、spawn 新会话、读 `agent-profile-*`、改账号设置 | operator **不拿机器 key、不拿 relay token、不进 owner 的 RPC 房间**；所有调用经服务器 broker，按 `sessionId` + 方法白名单逐条放行（§3） |
 | T2 | 拿到机器 key 后解密 owner 所有终端/机器 RPC | 机器 key **永不下发**给 operator；服务器在 broker 里用机器 key 重加密/解密，对 operator 只用该会话 DEK（§2） |
-| T3 | 把权限模式提到 bypass/yolo，让 agent 不经审批乱跑 | mode 只能**不高于 owner 当前生效 mode**（§4） |
+| T3 | 把权限模式提到 bypass/yolo，让 agent 不经审批乱跑 | mode 只能**不高于 grant 的 mode 上限**（授予时 owner 的生效 mode，仅 owner 本人更新；§4、B-867b） |
 | T4 | 撤销/过期后仍在敲终端或收输出 | 每帧查 grant；撤销时服务器主动 kill operator 开的终端、广播跨 slot 失效、通知 Web 关面板（§5） |
 | T5 | 看不到 operator 干了什么 | 审计表 + owner 端实时「谁在操作」+ operator 终端在 owner 终端列表可见、可旁观、可关（§6） |
 | T6 | 链接泄露带来远程执行 | 链接分享**没有**这一档，接口层就拒绝（§7） |
@@ -137,13 +137,13 @@ Web 侧 operator 的文件面板改用 session RPC（`listDirectory`/`readFile`�
 
 ## 4. 权限模式与模型：允许改，但不能提升
 
-- **结论**：operator 可以切 mode / model，但 mode **不高于 owner 当前生效的 mode**（grant 授予时不快照；每次按会话 metadata 里 CLI 回报的实际生效值判断，见 permission-mode-cli-truth）。
+- **结论**：operator 可以切 mode / model，但 mode **不高于 grant 的 mode 上限**。~~不快照、按当前生效值判断~~（B-867b 推翻：operator 能先降到 plan、再批准 ExitPlanMode 让 CLI 默认切到 bypass，当前值随之上浮，上限失效——QA40 T3 chain）。上限 = 授予 operator 时 owner 的生效 mode（`SessionGrant.operateModeCap`），之后只有 **owner 本人**的 mode RPC 能改它；见文末「B-867b 实现记录」。
 - 档位（低→高）：
   - Claude：`plan` < `default` < `acceptEdits` < `bypassPermissions`
   - Codex：`read-only` < `default`/`auto` < `full-access`/`yolo`
   - 其它 runner（gemini/acp/pi/openclaw）：只允许切到与当前相同或白名单里明确更低的值；未知 mode → 拒绝。
-- owner 当前 mode 未知（metadata 没回报）→ 视为 `default`。
-- 好处：operator 可以把 owner 的 bypass 会话「降到 default 自己逐条审批」，但不能把 owner 的 default 会话提到 bypass。owner 之后再提升，operator 也能跟着用——这是 owner 的显式动作。
+- 授予时 owner mode 未知（metadata 没回报）或上限为空 → 视为 `default`。
+- 好处：operator 可以把 owner 的 bypass 会话「降到 default 自己逐条审批」再升回 bypass，但不能把 owner 的 default 会话提到 bypass。owner 之后再提升，operator 也能跟着用——这是 owner 的显式动作。
 - `permission` 里的 `mode`（「批准并切换到 acceptEdits」）同规则；`allowTools` 一律剥除。
 - model/effort：放开（影响的是 owner 的额度/费用，警告中提及「会使用你的 agent 账号与额度」）；不能改服务商/账号绑定（B-794/B-850）。
 - Web `yoloEnforcement` 的 auto-approve 只对 owner 生效，operator 侧不自动审批（`storage.ts:536` 现状保留）。
@@ -280,7 +280,7 @@ CREATE TABLE "SessionOperatorEvent" (...);      -- §6.1，INDEX(sessionId, at)�
 
 1. **采用服务器 broker（方案 C）**：operator 不拿机器 key/relay token，CLI 零改动。
 2. **shell 不做隔离**，只做诚实警告 + 有效期 + 审计 + 撤销 kill（§1.3）。
-3. **mode 不能高于 owner 当前生效值**；`allowTools`（总是允许）不给；model/effort 放开。
+3. **mode 不能高于 grant 的 mode 上限**（B-867b：授予时快照，仅 owner 更新）；`allowTools`（总是允许）不给；model/effort 放开。
 4. **operator 必须有有效期**，1/7/30 天，默认 1 天，无永久。
 5. **数据模型 `role=driver + operate=true`**，不扩 enum（旧 Web 天然按 driver、回滚自动收权）。
 6. **撤销 kill operator 新开的终端**；接入的会话自有终端只断开不 kill。
@@ -330,3 +330,37 @@ Lead 审批补充：明文（params、终端字节、文件内容）不进日志
 - 协议级 e2e（本地 standalone + 隔离 `HAPPY_HOME_DIR` 的真实 daemon + 真实 Claude 会话，两个密码账号）：未确认/无期限被拒、链接带 operate 400；终端在会话目录执行、`startupCommand` 被忽略；提 mode 到 bypass、`killSession`、读会话目录外文件均被拒；权限卡经 broker 批准后命令执行；abort 生效；撤销后 **23 ms** grantee 收到 `operator-revoked`，之后 0 帧输出，tmux 会话被 kill，后续调用 `not_operator`。
 - 真浏览器 e2e（A 桌面 / B 390×844 coarse）：A 在面板选「可操作」→ 勾选前按钮禁用 → 确认弹窗列出对象/机器/到期与四条警告 → 授予（1 天）；B 开终端执行命令、点 Approve 执行、点 Stop；A 头部红色芯片「bob 正在操作 · 1 terminal」；A 一键结束 → B 终端 **78 ms** 关闭并提示，tmux 被 kill；B 回到 Can send（有输入框、无终端/控制）；改为只看后无输入框；链接 tab 无此档；横向滚动 0。
 - 旧 Web 兼容：用 main 版 `sessionShareTypes.ts` 解析新 grant 视图与 `session-share-updated`（带 `operate`）通过，role 读作 `driver`。
+
+## B-867b 实现记录：operator mode 上限（QA40 T3 chain）
+
+**问题**（QA40，真实 Claude，owner 会话 default）：operator `set-permission-mode plan`（降级，放行）→ agent 调 ExitPlanMode → operator `permission {id, approved:true}` 不带 mode（broker 缺省不查）→ CLI `permissionHandler.ts` 对不带 post-plan mode 的批准默认切 `bypassPermissions` → 上限按当前值算，于是 `set-permission-mode bypassPermissions` 也放行。证据 `~/code/github/skills/tmp/vh-team-qa40/results/t2.log`「T3 chain」。
+
+**修法**
+
+1. **上限不随 operator 上浮**：新列 `SessionGrant.operateModeCap`（迁移 `20261103130000_session_operator_mode_cap`，独立于已在 QA 环境应用的 `…120000`，免 checksum 变更）。授予 / 升级为 operator 时写入 owner 当时的 `metadata.permissionMode`（未知 → `default`）；降级/撤销清空。broker 的所有 mode 判断只用 `grant.modeCap`，`currentMode` 只进审计。
+2. **只有 owner 本人更新上限**：`rpcHandler` 里账号**自己的** `rpc-call` 投递成功后调 `noteOwnerModeRpc`：`<sid>:set-permission-mode` 的 `mode`、或 `<sid>:permission` 中 `approved:true` 且带 `mode` 的批准，写入该会话所有 active operator grant 的上限，并给 grantee 发 `session-share-updated`（Web 重读 `share.modeCap`，选单跟随）。operator 走 `operator-rpc` → broker → `routeRpcToRoom`，**不经过** `rpcHandler` 的 `rpc-call`，所以 operator 的任何动作都不会改上限（源码断言钉住 `routeRpcToRoom` 内无此调用）。
+   - 不跟踪：owner 在本机终端 Shift+Tab、仅靠消息 `meta.permissionMode` 切换（旧 CLI 无 live 切换时）。这两种不会抬高上限，只可能让上限停在 owner 上一次经 Web 显式设的值——不比授予时更宽。
+3. **所有会顺带改 mode 的路径**（daemon 侧行为按 CLI 源码核对）：
+
+| 入口（operator） | 参数 | CLI 侧效果 | 处理 |
+|---|---|---|---|
+| `set-permission-mode` | `mode` | 直接切换 | 必须 ≤ 上限，否则 `operator_mode_escalation`；参数只留 `{ mode }` |
+| `permission` 批准 ExitPlanMode / `exit_plan_mode` | 无 `mode` 或非 `default/acceptEdits/bypassPermissions` | **默认切 `bypassPermissions`**（QA 链路） | 服务器注入「≤ 上限的最高 post-plan mode」（上限 default→default，safe-yolo→acceptEdits，yolo→bypass）；上限低于 default（plan/read-only）→ 拒绝批准（拒绝计划不受影响） |
+| `permission` 批准 ExitPlanMode（计划卡「接受并自动批准编辑 / bypass」） | `mode` | 切到该 mode | 必须 ≤ 上限 |
+| `permission` 批准普通工具 | `mode` | 切到该 mode（deferred 更新） | 必须 ≤ 上限 |
+| `permission`，请求 id 不在 agentState（状态滞后/伪造） | — | 未知 | 按 ExitPlanMode 处理（注入 ≤ 上限的 mode，fail closed） |
+| `permission` | `allowTools` | 永久加入允许列表 | 剥除（B-867 原有） |
+| `permission` | `decision: 'approved_for_session'` | Claude：应用 SDK suggestions（含 `setMode`、规则）；Codex：`acceptForSession`；ACP：proceed-always | 改写为 `approved` |
+| `permission` | 其它键（`updatedPermissions`、`suggestions` …） | 新 CLI 可能识别 | 白名单 `id/approved/decision/mode/reason/updatedInput`，其余丢弃 |
+| `permission` 拒绝 | `mode` | CLI 只在批准时用 mode | 剥除 |
+| 其它所有 operator session RPC | `mode`/`permissionMode`/`allowTools`/`decision`/`updatedPermissions` | — | 统一剥除（`OPERATOR_MODE_METHODS` 之外） |
+| shared message（driver 写入） | — | 服务器组装，`meta` 无 `permissionMode` → CLI 沿用当前 mode | 无需处理 |
+| `session-run-intent` | — | 只留 model/effort | 无 mode（B-867 原有） |
+| Codex 审批 | `decision` | Codex 无 ExitPlanMode；`approved_for_session` = 会话级放行 | 同上改写为 `approved`；mode 档位 `read-only < default < safe-yolo < yolo` 同表 |
+
+4. **文件 RPC 三处 P2**
+   - ripgrep / difftastic 位置参数：服务器逐个校验路径参数在会话 cwd 内（ripgrep 第一个位置参数是 pattern，除非给了 `-e/--regexp`）；拒绝 `--pre`、`--pre-glob`、`-f/--file`、`--ignore-file`、`-L/--follow`（含组合短参）。
+   - bash / ripgrep / difftastic 不带 `cwd`：服务器强制补会话 cwd（CLI 对 `cwd: '/'` 视为不设，原有围栏已拒）。
+   - 会话目录内的软链指向目录外：**未修，进 backlog**。服务器拿不到 owner 机器的文件系统，只能在 CLI `validatePath` 做 realpath；但 owner 自己的调用也走同一路径（会改变 owner 跟随软链的行为），需要由 broker 注入「operator 调用」标记 + CLI 新版本 + 兼容矩阵。且 operator 有 bash / 终端，软链围栏不是实际安全边界（§1.3「shell 不做隔离」），收益有限。
+
+**验证**：`operatorPolicy.spec.ts`（ExitPlanMode 注入、cap 而非 current、approved_for_session 改写、ripgrep/difftastic 围栏、bash cwd；**机制测试**：每个 allowlist 方法 × 每个 mode 键的最宽值 × 三种工具，输出要么被拒、要么无 mode 键或 mode ≤ 上限且只出现在 `OPERATOR_MODE_METHODS`）；`operatorBroker.pglite.integration.spec.ts`（QA40 链路逐步重放：降 plan → 不带 mode 批准 ExitPlanMode → daemon 收到 `mode:'default'` → 提 bypass/acceptEdits 被拒；先降再升到上限止；owner 升/降上限、拒绝的审批不改上限、上限变化通知 grantee、同值不写）；`operatorBroker.source.spec.ts`（broker 用 `grant.modeCap`、`routeRpcToRoom` 不改上限）。`mutation-check` 7/7 被抓。Web：`operatorModeBound` 选单按 `share.modeCap`（旧 server 回退当前值）。

@@ -329,6 +329,9 @@ model SessionGrant {
     /// B-867: operator tier = role driver + operate. Requires expiresAt and an explicit owner confirmation.
     operate                  Boolean            @default(false)
     operateConfirmedAt       DateTime?
+    /// B-867b: the highest permission mode an operator may select or approve into. Set to the owner's effective
+    /// mode when the operator tier is granted; afterwards ONLY the owner's own mode RPCs move it (never an operator).
+    operateModeCap           String?
 
     @@unique([sessionId, granteeAccountId])
     @@index([granteeAccountId, status])

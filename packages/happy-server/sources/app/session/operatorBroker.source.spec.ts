@@ -58,6 +58,32 @@ describe('B-867 operator broker source guarantees', () => {
         expect(input.indexOf('openOperatorMachineKey(grant, entry.machineId)')).toBeGreaterThan(inputGuard);
     });
 
+    it('B-867b: every operator session RPC is planned against the grant\'s mode cap before it is forwarded', () => {
+        const fn = body('runOperatorRpc');
+        const planned = fn.indexOf('const plan = planOperatorSessionCall(op, plainParams, {');
+        expect(planned).toBeGreaterThan(0);
+        const planArgs = fn.slice(planned, fn.indexOf('});', planned));
+        expect(planArgs).toContain('modeCap: grant.modeCap,');
+        expect(planArgs).toContain("permissionTool: op === 'permission' ? pendingRequestTool(ctx, plainParams) : undefined,");
+        // The only session forward sends the plan's params, after planning.
+        const forward = fn.indexOf('forwardToOwner(io, grant.ownerId, method, seal(plan.params, ctx.dek))');
+        expect(forward).toBeGreaterThan(planned);
+        expect(fn.match(/forwardToOwner\(/g)).toHaveLength(2); // session + terminal
+        expect(body('resolveOperatorGrant')).toContain('modeCap: row.operateModeCap');
+    });
+
+    it('B-867b: the cap moves only through the owner\'s own rpc-call (never the broker\'s forward path)', () => {
+        const rpcHandler = readFileSync(join(__dirname, '../api/socket/rpcHandler.ts'), 'utf8');
+        const route = rpcHandler.slice(rpcHandler.indexOf('export async function routeRpcToRoom('), rpcHandler.indexOf('export function rpcHandler('));
+        expect(route).not.toContain('noteOwnerModeRpc');
+        expect(rpcHandler).toContain("const routed = await routeRpcToRoom(io, rpcRoom(userId, method), method, params, socket.id);\n            // B-867b");
+        expect(rpcHandler).toContain('if (routed.ok) void import(\'@/app/session/operatorBroker\').then((broker) => broker.noteOwnerModeRpc(userId, method, params))');
+        expect(body('runOperatorRpc')).not.toContain('ownerSetOperatorModeCap');
+        expect(source.match(/ownerSetOperatorModeCap\(/g)).toHaveLength(1); // noteOwnerModeRpc only
+        expect(body('noteOwnerModeRpc')).toContain('await ownerSetOperatorModeCap(ownerId, sessionId, params.mode);');
+        expect(body('noteOwnerModeRpc')).toContain("if (name === 'permission' && params.approved !== true) return;");
+    });
+
     it('log lines carry ids and error names only', () => {
         const allowed = new Set(['module', 'granteeId', 'sessionId', 'grantId', 'actorAccountId', 'machineId', 'userId', 'errorName']);
         const calls = [...source.matchAll(/\blog\(\{([^}]*)\}/g)].map((m) => m[1]);
