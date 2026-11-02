@@ -547,7 +547,13 @@ export type IssueDispatchView = {
 
 export type IssueDispatchPollResponse = { dispatches: IssueDispatchView[] };
 export type IssueMutationResponse = { issue: IssueView; runs?: IssueRunView[]; comment?: IssueCommentView };
-export type IssueListResponse = { issues: IssueView[]; nextCursor: string | null; asOf: number };
+export type IssueListResponse = {
+    issues: IssueView[];
+    nextCursor: string | null;
+    asOf: number;
+    /** The `latestRunId` run of each issue on this page that has one (lets the list show run state without a detail fetch). Absent from older servers. */
+    latestRuns?: IssueRunView[];
+};
 export type IssueDetailResponse = { issue: IssueView; comments: IssueCommentView[]; runs: IssueRunView[]; children: Pick<IssueView, 'id' | 'key' | 'title' | 'status'>[] };
 
 /** GET /v1/issues/session/:sessionId — what `issue_*` tools and the next-turn digest need. `issue: null` = session not bound. */

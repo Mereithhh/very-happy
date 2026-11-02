@@ -324,7 +324,9 @@ export async function listIssues(accountId: string, query: IssueListQuery): Prom
             take: limit + 1,
         });
         const page = rows.slice(0, limit);
-        return { issues: page.map(issueView), nextCursor: rows.length > limit ? encodeCursor(page[page.length - 1]) : null, asOf };
+        const latestRunIds = page.flatMap(row => row.latestRunId ? [row.latestRunId] : []);
+        const latestRuns = latestRunIds.length ? await tx.issueRun.findMany({ where: { id: { in: latestRunIds } } }) : [];
+        return { issues: page.map(issueView), nextCursor: rows.length > limit ? encodeCursor(page[page.length - 1]) : null, asOf, latestRuns: latestRuns.map(runView) };
     });
 }
 

@@ -225,6 +225,11 @@ describe('B-872 Issues REST through startApi (pglite)', () => {
         expect(swap.body.runs).toMatchObject([{ seq: 4, trigger: 'retry', agent: 'pi' }]);
         expect((await issueRow(created.body.issue.id)).assignee).toMatchObject({ agent: 'pi' });
         expect((await runsOf(created.body.issue.id)).map(r => r.status)).toEqual(['superseded', 'superseded', 'superseded', 'queued']);
+        // The list carries each issue's latest run so the Web needs no per-issue detail fetch.
+        const listed = await s.call('GET', '/v1/issues?limit=100');
+        expect(listed.body.latestRuns.filter((r: { issueId: string }) => r.issueId === created.body.issue.id)).toMatchObject([{ id: swap.body.runs[0].id, seq: 4, agent: 'pi' }]);
+        const withRun = listed.body.issues.filter((i: { latestRunId: string | null }) => i.latestRunId).map((i: { latestRunId: string }) => i.latestRunId).sort();
+        expect(listed.body.latestRuns.map((r: { id: string }) => r.id).sort()).toEqual(withRun);
         // Cancel stops the queued run and its dispatch.
         const cancel = await s.call('POST', `/v1/issues/runs/${swap.body.runs[0].id}/cancel`, {});
         expect(cancel.body.run.status).toBe('cancelled');
