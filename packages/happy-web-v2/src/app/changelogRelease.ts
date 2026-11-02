@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-03-crypto-not-ready-notice',
+    date: '2026-11-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov03f.title',
+    summaryKey: 'changelog.releases.nov03f.summary',
+    itemKeys: ['changelog.releases.nov03f.notice', 'changelog.releases.nov03f.hidden'],
+  },
+  {
+    id: '2026-11-03-cli-stability-0-2-200',
+    cliVersion: '0.2.200',
+    date: '2026-11-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov03g.title',
+    summaryKey: 'changelog.releases.nov03g.summary',
+    itemKeys: ['changelog.releases.nov03g.update'],
+  },
+  {
     id: '2026-11-03-share-can-operate',
     date: '2026-11-03',
     buildVersion: __APP_VERSION__,
