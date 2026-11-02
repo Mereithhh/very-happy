@@ -3140,6 +3140,13 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov02e: {
+                title: '不再误报需要升级 Codex',
+                summary: 'Codex 会话只在实际使用的模型确实需要时，才提示升级 Codex。',
+                latest: 'Codex 会话跟随最新模型时，不再误报需要升级 Codex。',
+                apiProvider: '绑定 API 供应商账号的 Codex 会话不再显示 Codex 版本提示。',
+                explicit: '显式选了需要新版 Codex 的模型时，照常提示升级。',
+            },
             nov02d: {
                 title: '会话运行中也能侧聊',
                 summary: 'agent 干活时也能提问，不会打断它。Claude 和 Codex 会话都支持。',

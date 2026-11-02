@@ -3006,6 +3006,13 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov02e: {
+                title: 'No more false “upgrade Codex” banner',
+                summary: 'Codex sessions only ask you to upgrade Codex when the model they actually use needs it.',
+                latest: 'Codex sessions that follow the latest model no longer show a false “upgrade Codex” prompt.',
+                apiProvider: 'Codex sessions bound to an API provider account no longer show the Codex version prompt.',
+                explicit: 'If you explicitly pick a newer model that needs a newer Codex, you are still asked to upgrade.',
+            },
             nov02d: {
                 title: 'Side chat while the session is running',
                 summary: 'Ask a question while the agent is working, without interrupting it. Works for Claude and Codex sessions.',

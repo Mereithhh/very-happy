@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-02-codex-upgrade-banner',
+    date: '2026-11-02',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov02e.title',
+    summaryKey: 'changelog.releases.nov02e.summary',
+    itemKeys: ['changelog.releases.nov02e.latest', 'changelog.releases.nov02e.apiProvider', 'changelog.releases.nov02e.explicit'],
+  },
+  {
     id: '2026-11-02-side-chat-while-running',
     date: '2026-11-02',
     buildVersion: __APP_VERSION__,
