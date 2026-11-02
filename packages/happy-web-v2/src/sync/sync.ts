@@ -29,6 +29,7 @@ import { markSendConfirmed } from './sendConfirmations';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import { applyAttentionItem } from './attentionStore';
+import { applyIssueCommentUpdate, applyIssueRunUpdate, applyIssueUpdate } from './issuesStore';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
@@ -121,7 +122,7 @@ import {
     settledOutboxRecords,
     SendDeadlines,
 } from './outbox';
-import { SYNC_ACK_TIMEOUT_MS, type SyncSubResultOk } from '@slopus/happy-wire';
+import { SYNC_ACK_TIMEOUT_MS, type IssueCommentView, type IssueRunView, type IssueView, type SyncSubResultOk } from '@slopus/happy-wire';
 import { createCursor, expireReorder, planMerge, resetCursor, type MergeItem, type MergeMeta, type MergePlan, type MergeSource, type SessionCursor } from './sessionMerge';
 import { SessionSyncScheduler, type HelloReason, type SubscribeRequest } from './sessionSyncScheduler';
 import type { AckOutcome, SessionSyncState } from './sessionSyncState';
@@ -4217,6 +4218,13 @@ class Sync {
         } else if (updateData.body.t === 'attention-item') {
             // B-766: 汇报板 item snapshot (full item; the store keeps the highest version).
             applyAttentionItem(updateData.body.item);
+        } else if (updateData.body.t === 'issue') {
+            // B-873: Issues snapshots (full objects; the store keeps the highest version).
+            applyIssueUpdate(updateData.body.issue as unknown as IssueView);
+        } else if (updateData.body.t === 'issue-comment') {
+            applyIssueCommentUpdate(updateData.body.comment as unknown as IssueCommentView);
+        } else if (updateData.body.t === 'issue-run') {
+            applyIssueRunUpdate(updateData.body.run as unknown as IssueRunView);
         }
     }
 

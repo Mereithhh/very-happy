@@ -211,6 +211,7 @@ docker run -d --name "$PG_APP" --network "$NET" -p 127.0.0.1::3005 \
   -e SIGNUP_MODE=open -e SIGNUP_MAX_ACCOUNTS=2 \
   -e DB_PROVIDER=postgres \
   -e DATABASE_URL="postgresql://postgres:postgres@${PG}:5432/happy?schema=public" \
+  -e VH_ISSUES_ENABLED=true \
   "$IMAGE" >/dev/null
 PG_PORT="$(wait_for_health "$PG_APP")"
 curl -fsS -H 'content-type: application/json' \
@@ -219,5 +220,9 @@ curl -fsS -H 'content-type: application/json' \
 grep -q '"token"' "$DATA_DIR/postgres-signup.json"
 PG_LOGS="$(docker logs "$PG_APP" 2>&1)"
 grep -q 'Migrating external PostgreSQL database' <<<"$PG_LOGS"
+# B-872c (QA42 P2-1): same-account 16-way concurrent issue creates on real
+# PostgreSQL all succeed with contiguous numbers (PGlite cannot show this).
+PG_TOKEN="$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).token)' "$DATA_DIR/postgres-signup.json")"
+node scripts/ci/issues-concurrency-smoke.mjs "http://127.0.0.1:${PG_PORT}" "$PG_TOKEN" 16 3
 
 echo 'Server container migration, persistence, Web, and Postgres smoke passed.'

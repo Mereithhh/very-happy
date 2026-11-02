@@ -22,7 +22,8 @@ import {
 
 /**
  * B-872 Issues store (`specs/2026-11-issues.md` §2–§8). Every mutation runs
- * in a SERIALIZABLE `inTx` (P2034 / P2010+40001 retried there, AGENTS rule
+ * in a SERIALIZABLE `inTx` — except createIssue, READ COMMITTED behind the
+ * sequence row lock (B-872c) — (P2034 / P2010+40001 retried there, AGENTS rule
  * 12; a racing unique insert — P2002 — is retried here); exhausted retries
  * surface as a retryable 409 `transaction_conflict`. After commit each
  * changed issue / comment / run is emitted once as an account-level update
@@ -41,10 +42,16 @@ const requestKey = (scope: string, accountId: string, requestId: string | undefi
 const isUniqueViolation = (error: unknown) => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 
-export async function runIssueTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+/**
+ * Retries a serialization failure / deadlock up to 8 times with jittered
+ * backoff (B-872c: the fixed 100/200/300 ms of plain `inTx` keeps a burst of
+ * same-account writers in lockstep), so a 409 `transaction_conflict` is rare;
+ * clients still retry it (spec §2.7).
+ */
+export async function runIssueTx<T>(fn: (tx: Tx) => Promise<T>, opts: { isolationLevel?: Prisma.TransactionIsolationLevel } = {}): Promise<T> {
     assertIssuesEnabled();
     for (let attempt = 0; ; attempt++) {
-        try { return await inTx(fn); }
+        try { return await inTx(fn, { isolationLevel: opts.isolationLevel, retries: 8, backoff: retry => retry * 50 + Math.random() * 100 }); }
         catch (error) {
             if (isUniqueViolation(error) && attempt < 3) continue;
             if (isRetryableTransactionConflict(error) || isUniqueViolation(error)) throw new IssueError('transaction_conflict', 409);
@@ -135,9 +142,18 @@ async function checkParent(tx: Tx, accountId: string, selfId: string | null, par
     }
 }
 
-async function allocateNumber(tx: Tx, accountId: string): Promise<number> {
-    const seq = await tx.issueSequence.upsert({ where: { accountId }, create: { accountId, last: 1 }, update: { last: { increment: 1 } } });
-    return seq.last;
+/**
+ * Next VH-n of the account in one atomic statement. The row lock it takes is
+ * held to commit, so under READ COMMITTED (createIssue) same-account creates
+ * queue behind it instead of failing; a rolled-back create also rolls back
+ * the increment, so numbers stay gapless (B-872c, QA42 P2-1).
+ */
+export async function allocateNumber(tx: Tx, accountId: string): Promise<number> {
+    const rows = await tx.$queryRaw<{ last: number }[]>`
+        INSERT INTO "IssueSequence" ("accountId", "last") VALUES (${accountId}, 1)
+        ON CONFLICT ("accountId") DO UPDATE SET "last" = "IssueSequence"."last" + 1
+        RETURNING "last"`;
+    return Number(rows[0].last);
 }
 
 async function enforceIssueQuota(tx: Tx, accountId: string, adding = 1) {
@@ -345,7 +361,13 @@ export async function getIssue(accountId: string, ref: string): Promise<IssueDet
 
 // ─── Human: create / update / delete ─────────────────────────────────────────
 
-/** POST /v1/issues. Idempotent by `requestId`; an agent assignee on a runnable status starts a run in the same transaction (§3.1). */
+/**
+ * POST /v1/issues. Idempotent by `requestId`; an agent assignee on a runnable
+ * status starts a run in the same transaction (§3.1). READ COMMITTED: the
+ * number is allocated first, and its sequence row lock serializes the rest of
+ * this account's creates (quota count included); a racing duplicate
+ * `requestId` fails its unique insert and the retry returns the winner.
+ */
 export async function createIssue(accountId: string, input: IssueCreate): Promise<IssueMutationResponse> {
     return runIssueTx(async tx => {
         const key = requestKey('create', accountId, input.requestId);
@@ -353,6 +375,7 @@ export async function createIssue(accountId: string, input: IssueCreate): Promis
             const prior = await tx.issue.findFirst({ where: { requestKey: key, accountId } });
             if (prior) return { issue: issueView(prior), runs: (await tx.issueRun.findMany({ where: { issueId: prior.id }, orderBy: { seq: 'asc' } })).map(runView) };
         }
+        const number = await allocateNumber(tx, accountId);
         await enforceIssueQuota(tx, accountId);
         const projectId = input.projectId ?? null;
         const folders = await projectFolders(tx, accountId, projectId);
@@ -361,7 +384,7 @@ export async function createIssue(accountId: string, input: IssueCreate): Promis
         const status = input.status ?? (assignee.kind === 'agent' ? 'todo' : 'backlog');
         const now = new Date();
         let issue: IssueRow = await tx.issue.create({ data: {
-            id: randomUUID(), accountId, number: await allocateNumber(tx, accountId), title: input.title, description: input.description ?? '',
+            id: randomUUID(), accountId, number, title: input.title, description: input.description ?? '',
             status, priority: input.priority ?? 'none', assigneeKind: assignee.kind, assignee: json(assignee), projectId, labels: input.labels ?? [],
             dueAt: input.dueAt ? new Date(input.dueAt) : null, parentId: input.parentId ?? null, sortOrder: now.getTime(),
             createdBy: json({ kind: 'user' }), requestKey: key, createdAt: now, updatedAt: now, statusChangedAt: now,
@@ -376,7 +399,7 @@ export async function createIssue(accountId: string, input: IssueCreate): Promis
             runs.push(runView(started.run));
         }
         return { issue: issueView(issue), runs };
-    });
+    }, { isolationLevel: 'ReadCommitted' });
 }
 
 type HumanPatch = Omit<IssueUpdate, 'ifVersion'>;

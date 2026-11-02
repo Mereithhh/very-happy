@@ -7,7 +7,7 @@
  * computed here once. B-756: 项目 (the /projects list) leads once the projects
  * API answered — same gate as 新建项目.
  */
-export type SidebarNavKey = 'projects' | 'teams' | 'automations' | 'todos' | 'people' | 'feedback';
+export type SidebarNavKey = 'issues' | 'board' | 'projects' | 'teams' | 'automations' | 'todos' | 'people' | 'feedback';
 
 export interface SidebarNavEntry {
   key: SidebarNavKey;
@@ -28,12 +28,21 @@ export function sidebarNavEntries(input: {
   automationsVisible: boolean;
   automationAttention: number;
   incomingPeople: number;
+  /** B-873 (spec 2026-11-issues §10/Q11): only once the server answered `/v1/issues` — off = the entries above, unchanged */
+  issuesVisible?: boolean;
+  /** B-873: my pending issues (in_review + blocked) */
+  issueAttention?: number;
 }): SidebarNavEntry[] {
   const entries: SidebarNavEntry[] = [];
+  // B-873: Issues leads, 运行中 (/board) right after it; 待办 is folded into Issues (/todos redirects).
+  if (input.issuesVisible) {
+    entries.push({ key: 'issues', path: '/issues', attention: Math.max(0, input.issueAttention ?? 0), tone: 'warn' });
+    entries.push({ key: 'board', path: '/board', attention: 0 });
+  }
   if (input.projectsVisible) entries.push({ key: 'projects', path: '/projects', attention: Math.max(0, input.projectAttention ?? 0), tone: 'warn' });
   if (input.teamsVisible) entries.push({ key: 'teams', path: '/teams', attention: 0 });
   if (input.automationsVisible) entries.push({ key: 'automations', path: '/automations', attention: Math.max(0, input.automationAttention) });
-  entries.push({ key: 'todos', path: '/todos', attention: 0 });
+  if (!input.issuesVisible) entries.push({ key: 'todos', path: '/todos', attention: 0 });
   entries.push({ key: 'people', path: '/people', attention: Math.max(0, input.incomingPeople) });
   entries.push({ key: 'feedback', path: '/settings/feedback', attention: 0, phoneOnly: true });
   return entries;
@@ -61,14 +70,16 @@ export function navMenuLabel(name: string, attention: number): string {
 export type SidebarHeaderControl = 'search' | 'create-menu' | 'collapse';
 export type SidebarActionRow = 'new-session' | 'new-project' | 'new-team';
 /** B-756 (Lead 10-22): phone chips NAVIGATE (项目 → /projects, 团队 → /teams); creating lives on those pages and in ＋. */
-export type SidebarChip = 'projects' | 'teams' | 'more';
+export type SidebarChip = 'issues' | 'projects' | 'teams' | 'more';
 
-export function sidebarTopModel(input: { isDesktop: boolean; projectsReady: boolean; teamsVisible: boolean }): { header: SidebarHeaderControl[]; actions: SidebarActionRow[]; chips: SidebarChip[] } {
+export function sidebarTopModel(input: { isDesktop: boolean; projectsReady: boolean; teamsVisible: boolean; issuesVisible?: boolean }): { header: SidebarHeaderControl[]; actions: SidebarActionRow[]; chips: SidebarChip[] } {
   const creates: ('new-project' | 'new-team')[] = [];
   if (input.projectsReady) creates.push('new-project');
   if (input.teamsVisible) creates.push('new-team');
   if (!input.isDesktop) {
     const chips: SidebarChip[] = [];
+    // B-873: Issues is a first-level entry, so it takes the first chip on the phone too.
+    if (input.issuesVisible) chips.push('issues');
     if (input.projectsReady) chips.push('projects');
     if (input.teamsVisible) chips.push('teams');
     return { header: ['search', 'create-menu'], actions: [], chips: [...chips, 'more'] };

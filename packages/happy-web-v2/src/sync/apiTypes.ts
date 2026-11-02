@@ -6,6 +6,9 @@ import {
     ApiUpdateNewMessageSchema,
     ApiUpdateSessionStateSchema,
     UpdateAttentionItemBodySchema,
+    UpdateIssueBodySchema,
+    UpdateIssueCommentBodySchema,
+    UpdateIssueRunBodySchema,
     type ApiMessage,
 } from '@slopus/happy-wire';
 import { GitHubProfileSchema, ImageRefSchema } from './profile';
@@ -195,7 +198,11 @@ export const ApiUpdateSchema = z.union([
     ApiNewFeedPostSchema,
     ApiKvBatchUpdateSchema,
     ApiPromptQueueUpdateSchema,
-    UpdateAttentionItemBodySchema
+    UpdateAttentionItemBodySchema,
+    // B-873: Issues snapshots (only emitted while VH_ISSUES_ENABLED is on).
+    UpdateIssueBodySchema,
+    UpdateIssueCommentBodySchema,
+    UpdateIssueRunBodySchema
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;

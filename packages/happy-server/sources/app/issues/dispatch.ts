@@ -34,7 +34,9 @@ async function reclaimExpired(tx: Tx, accountId: string, machineId: string) {
             if (run && d.kind === 'spawn') await failRunTx(tx, run, 'claim lease expired 3 times');
             continue;
         }
-        await tx.issueDispatch.update({ where: { id: d.id }, data: { status: 'queued', attempts, claimId: null, claimedAt: null } });
+        // The prompt frozen by the expired claim goes with it: the poll preview is then rebuilt like the next claim's (QA42 P2-3).
+        const { prompt: _expired, ...payload } = (d.payload ?? {}) as Prisma.JsonObject;
+        await tx.issueDispatch.update({ where: { id: d.id }, data: { status: 'queued', attempts, claimId: null, claimedAt: null, ...(d.kind === 'spawn' ? { payload } : {}) } });
         if (run && d.kind === 'spawn' && run.status === 'claimed') emitRun(tx, await tx.issueRun.update({ where: { id: run.id }, data: { status: 'queued', claimedAt: null } }));
     }
 }
@@ -47,7 +49,11 @@ async function spawnView(tx: Tx, row: DispatchRow): Promise<IssueDispatchView> {
     return dispatchView(row, await buildRunPrompt(tx, issue, run));
 }
 
-/** Poll: records the worker as seen, recycles expired claims, and lists this machine's queued dispatches (spawn prompts built now). */
+/**
+ * Poll: records the worker as seen, recycles expired claims, and lists this
+ * machine's queued dispatches. A spawn's prompt here is a preview built now;
+ * the prompt the run gets is the one its claim freezes (spec §3.2).
+ */
 export async function pollDispatches(accountId: string, machineId: string, workerVersion: number): Promise<IssueDispatchPollResponse> {
     return runIssueTx(async tx => {
         await requireMachine(tx, accountId, machineId);
@@ -67,7 +73,8 @@ export async function pollDispatches(accountId: string, machineId: string, worke
 /**
  * Claim: `queued → claimed` with a fresh claimId, conditional on still being
  * queued (concurrent claimers: one wins, the rest get 409). A spawn freezes
- * its prompt now and moves the run to `claimed`.
+ * its prompt now — every claim rebuilds it, so a re-claim after an expired
+ * lease sees the latest title / comments — and moves the run to `claimed`.
  */
 export async function claimDispatch(accountId: string, dispatchId: string, machineId: string): Promise<{ dispatch: IssueDispatchView }> {
     return runIssueTx(async tx => {

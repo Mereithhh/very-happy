@@ -3090,6 +3090,20 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov03d: {
+                title: 'Session sharing adds a "Can operate" tier',
+                summary: 'Share a session with a contact so they can also use its terminal, files and /btw, and approve or interrupt. They can run commands on your machine as you — share it only with people you trust.',
+                grant: 'In Share → Contacts, choose "Can operate", read the red warning and confirm twice. It always expires after 1, 7 or 30 days (1 day by default). Link sharing does not offer this tier.',
+                trust: 'The other person can run commands on your machine as you and read the files you can read. Share it only with people you trust.',
+                cap: 'Their permission mode can never go above the mode you had when you granted access; only you can change that limit.',
+                watch: 'While they work, the session header shows "<name> is operating" with their activity log. End their operation in one click and their terminal is disconnected at once.',
+            },
+            nov03e: {
+                title: 'CLI 0.2.199: "Can operate" can change the mode of a Codex session',
+                summary: 'Someone you granted "Can operate" can switch a Codex session to a lower permission mode while it runs.',
+                codex: 'In a Codex session, the operator can switch to a lower permission mode (such as read-only); the next turn uses it. Modes above your limit are refused.',
+                upgrade: 'If your machine still runs an older CLI, they are told the CLI on your machine needs an update.',
+            },
             nov03c: {
                 title: 'CLI 0.2.198: a Mac running with its lid closed reconnects after sleep',
                 summary: 'A Mac that runs with its lid closed reconnects within about 30 seconds of waking, instead of staying offline.',

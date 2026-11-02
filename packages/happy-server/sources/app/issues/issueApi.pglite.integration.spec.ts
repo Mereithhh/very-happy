@@ -346,14 +346,21 @@ describe('B-872 Issues REST through startApi (pglite)', () => {
         expect((await issueRow(d.body.issue.id)).status).toBe('in_progress');
     });
 
-    it('claim lease: an expired claim returns to the queue, the third expiry fails the run', async () => {
+    it('claim lease: an expired claim returns to the queue, the third expiry fails the run; each claim freezes its own prompt and the poll preview matches the next claim', async () => {
         const created = await s.call('POST', '/v1/issues', { title: 'Lease', assignee: agent({ machineId: otherMachine }) });
         const runId = created.body.runs[0].id;
         for (let i = 1; i <= 3; i++) {
             const polled = await s.call('GET', `/v1/issues/dispatch?machineId=${otherMachine}&workerVersion=1`);
             const d = polled.body.dispatches.find((x: { runId: string }) => x.runId === runId);
             expect(d, `round ${i}`).toBeTruthy();
-            await s.call('POST', `/v1/issues/dispatch/${d.id}/claim`, { machineId: otherMachine });
+            const claimed = await s.call('POST', `/v1/issues/dispatch/${d.id}/claim`, { machineId: otherMachine });
+            // QA42 P2-3: the preview the poll showed is what this claim froze (after an expiry too).
+            expect(claimed.body.dispatch.spawn.prompt, `round ${i}`).toBe(d.spawn.prompt);
+            expect(claimed.body.dispatch.spawn.prompt).toContain(i === 1 ? 'Lease' : `Lease r${i - 1}`);
+            // Edited while claimed: this claim's prompt stays frozen; the next claim (after the lease expires) picks it up.
+            const version = (await issueRow(created.body.issue.id)).version;
+            expect((await s.call('PATCH', `/v1/issues/${created.body.issue.id}`, { title: `Lease r${i}`, ifVersion: version })).status).toBe(200);
+            expect(((await s.db.issueDispatch.findUniqueOrThrow({ where: { id: d.id } })).payload as { prompt: string }).prompt).not.toContain(`Lease r${i}`);
             await s.db.issueDispatch.update({ where: { id: d.id }, data: { claimedAt: new Date(Date.now() - 121_000) } });
         }
         await s.call('GET', `/v1/issues/dispatch?machineId=${otherMachine}&workerVersion=1`);

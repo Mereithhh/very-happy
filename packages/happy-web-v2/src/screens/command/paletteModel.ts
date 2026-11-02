@@ -20,11 +20,13 @@ import {
  *  `settings` (B-575): item-level settings hits, only for a free-text query.
  *  `content` (B-865): sessions found by what was said (daemon `history-search`
  *  + loaded messages) whose title did not match, and importable conversations. */
-export type PaletteGroup = 'needsYou' | 'actions' | 'sessions' | 'content' | 'terminals' | 'settings' | 'create';
+export type PaletteGroup = 'needsYou' | 'actions' | 'sessions' | 'issues' | 'content' | 'terminals' | 'settings' | 'create';
 export const PALETTE_GROUP_ORDER: readonly PaletteGroup[] = [
   'needsYou',
   'actions',
   'sessions',
+  // B-873: issues by key / title (only while the server has Issues on)
+  'issues',
   'content',
   'terminals',
   'settings',

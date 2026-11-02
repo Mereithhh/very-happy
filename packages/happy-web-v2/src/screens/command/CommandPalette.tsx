@@ -1,5 +1,5 @@
 import type { RecentMachinePath } from '@/utils/quickChat';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IS_MAC, isAppChord } from '@/app/appChord';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -61,7 +61,10 @@ import { AttachTmuxModal } from '@/screens/sessions/AttachTmuxModal';
 import { ImportHistoryModal, type ImportHistoryAgent } from '@/screens/sessions/ImportHistoryModal';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
-import { FileSearch } from 'lucide-react';
+import { FileSearch, ListTodo } from 'lucide-react';
+import { useIssuesEnabled, useIssuesStore } from '@/sync/issuesStore';
+import { matchIssues } from '@/screens/issues/issuesModel';
+import { issuesCopyFor } from '@/screens/issues/issuesCopy';
 import { onQuickOpen, openQuickOpen } from '@/screens/quickopen/quickOpenEvents';
 import type { AgentExecution } from '@/sync/agentStatus';
 import {
@@ -106,6 +109,8 @@ import { OVERLAY_PRIORITY, useOverlayTurn } from '@/app/overlayQueue';
  * group and filter bar.
  */
 const OPEN_EVENT = COMMAND_PALETTE_OPEN_EVENT;
+// B-873: the issue dialog loads with the Issues chunk, only when asked for.
+const NewIssueDialog = lazy(() => import('@/screens/issues/IssueDialogs').then((m) => ({ default: m.NewIssueDialog })));
 export function openCommandPalette() {
   window.dispatchEvent(new Event(OPEN_EVENT));
 }
@@ -146,6 +151,8 @@ type PaletteDialogs = {
   searchHistory: () => void;
   /** B-865 (was B-650): an importable content hit → that machine's history search */
   importFound: (target: { machineId: string; agent: HistoryAgent; query: string }) => void;
+  /** B-873: 新建 issue (title prefilled from the query) */
+  newIssue: (title?: string) => void;
 };
 
 export function CommandPalette() {
@@ -157,6 +164,7 @@ export function CommandPalette() {
   // B-549: the same dialog, opened straight into full-text search.
   const [showHistorySearch, setShowHistorySearch] = useState(false);
   const [importTarget, setImportTarget] = useState<{ machineId: string; agent: HistoryAgent; query: string } | null>(null);
+  const [newIssue, setNewIssue] = useState<{ title: string } | null>(null);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -207,6 +215,7 @@ export function CommandPalette() {
     importHistory: (agent) => setShowImport(agent),
     searchHistory: () => setShowHistorySearch(true),
     importFound: (target) => setImportTarget(target),
+    newIssue: (title) => setNewIssue({ title: title ?? '' }),
   }), []);
 
   return (
@@ -235,6 +244,7 @@ export function CommandPalette() {
           onClose={() => setImportTarget(null)}
         />
       )}
+      {newIssue && <Suspense fallback={null}><NewIssueDialog initialTitle={newIssue.title} onClose={() => setNewIssue(null)} /></Suspense>}
     </>
   );
 }
@@ -297,6 +307,10 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
   const contentText = contentSearchText(parsedQuery.text);
   const search = useSessionSearch(query, contentText !== '', filters);
   const projectsSnap = useProjects();
+  // B-873: Issues in ⌘K only once the server answered `/v1/issues` (off = the palette exactly as before).
+  const issuesEnabled = useIssuesEnabled();
+  const issuesMap = useIssuesStore((s) => s.issues);
+  const issueCopy = issuesCopyFor(lang);
   const terminalProject = useMemo(() => terminalProjectResolver(projectsSnap.projects, projectsSnap.members, []), [projectsSnap.projects, projectsSnap.members]);
   const passingIds = useMemo(() => new Set(search.passing.map((f) => f.session.id)), [search.passing]);
   const searchTerms = search.q.terms;
@@ -475,6 +489,16 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       haystack: (t('commandPalette.actionNewChatAdvanced') as string).toLowerCase(),
       run: () => dialogs.newChat(),
     });
+    if (issuesEnabled) {
+      out.push({
+        key: 'action:new-issue',
+        group: 'actions',
+        title: issueCopy.paletteNewEmpty,
+        icon: <ListTodo size={16} />,
+        haystack: `new issue 新建 issue ${issueCopy.paletteNewEmpty.toLowerCase()}`,
+        run: () => dialogs.newIssue(),
+      });
+    }
     if (currentSessionId) {
       // B-576: phone entry to the session page's ⌘P quick open.
       out.push({
@@ -636,6 +660,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
     openNewTerminal,
     renameCurrent,
     archiveCurrent,
+    issuesEnabled,
+    issueCopy,
   ]);
 
   // B-552 等我看 rows (empty query only), rendered like the session rows plus
@@ -728,9 +754,28 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       updatedAt: row.updatedAt,
       run: () => openSearchRow(row),
     }));
-    const matched = orderPaletteItems([...[...base, ...extraTitle].map(withSnippets), ...contentRows, ...settingsRows]);
+    // B-873: issues by key / title (`VH-12` jumps straight to it); none found → 「新建 issue：<查询>」 below 新建对话.
+    const issueHits = issuesEnabled ? matchIssues(Object.values(issuesMap), query) : [];
+    const issueRows: CommandItem[] = issueHits.map((issue) => ({
+      key: `issue:${issue.id}`,
+      group: 'issues' as const,
+      title: `${issue.key} ${issue.title}`,
+      subtitle: issueCopy.statuses[issue.status] ?? issue.status,
+      icon: <ListTodo size={16} />,
+      haystack: '',
+      run: () => navigate(`/issues/${encodeURIComponent(issue.key)}`),
+    }));
+    const issueCreate: CommandItem[] = issuesEnabled && issueHits.length === 0 && query.trim() ? [{
+      key: 'create:issue',
+      group: 'create' as const,
+      title: issueCopy.paletteNew(query.trim()),
+      icon: <ListTodo size={16} />,
+      haystack: '',
+      run: () => dialogs.newIssue(query.trim()),
+    }] : [];
+    const matched = orderPaletteItems([...[...base, ...extraTitle].map(withSnippets), ...issueRows, ...contentRows, ...settingsRows]);
     const draft = newChatDraftFor(query, matched);
-    if (draft == null) return matched;
+    if (draft == null) return [...matched, ...issueCreate];
     const createTitle = t('commandPalette.actionNewChatWithQuery', { query: draft });
     return [...matched, {
       key: CREATE_ROW_KEY,
@@ -742,8 +787,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       // path) or the dialog's initial instruction (configure path) — never sent
       // on its own.
       run: () => void createChatOrConfigure(navigate, (target) => dialogs.newChat(target, draft), { location, draft }),
-    }];
-  }, [items, needsYouItems, query, t, lang, navigate, dialogs, location, settingsIndex, search.rows, close, openHit, openSearchRow]);
+    }, ...issueCreate];
+  }, [items, needsYouItems, query, t, lang, navigate, dialogs, location, settingsIndex, search.rows, close, openHit, openSearchRow, issuesEnabled, issuesMap, issueCopy]);
 
   const keys = useMemo(() => filtered.map((it) => it.key), [filtered]);
   const activeIndex = resolveActiveIndex(keys, active);
@@ -836,6 +881,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       needsYou: t('sidebar.groupWaiting'),
       actions: t('commandPalette.groupActions'),
       sessions: t('commandPalette.groupSessions'),
+      issues: issueCopy.paletteGroup,
       content: t('commandPalette.groupContent'),
       terminals: t('commandPalette.groupTerminals'),
       settings: t('settings.title'),
@@ -857,7 +903,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       else out.splice(at, 0, placeholder);
     }
     return out;
-  }, [filtered, t, contentStatus]);
+  }, [filtered, t, contentStatus, issueCopy]);
 
   const statusOptions: Array<{ value: StatusFilter; label: string }> = [
     { value: 'live', label: t('sessionSearch.statusNotArchived') },
