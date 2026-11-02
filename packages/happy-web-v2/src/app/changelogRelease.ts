@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-02-unified-search',
+    date: '2026-11-02',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov02f.title',
+    summaryKey: 'changelog.releases.nov02f.summary',
+    itemKeys: ['changelog.releases.nov02f.oneEntry', 'changelog.releases.nov02f.content', 'changelog.releases.nov02f.filters'],
+  },
+  {
     id: '2026-11-02-codex-upgrade-banner',
     date: '2026-11-02',
     buildVersion: __APP_VERSION__,

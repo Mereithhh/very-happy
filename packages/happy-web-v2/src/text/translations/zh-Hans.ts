@@ -3140,6 +3140,13 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov02f: {
+                title: '搜索合成一个入口',
+                summary: '⌘K 现在也能搜对话内容。',
+                oneEntry: '⌘K、⌘⇧F 和侧栏搜索按钮现在打开同一个面板。',
+                content: '输入两个字以上，新增的「对话内容」会搜各台机器上的对话正文，点结果直接跳到那条消息。',
+                filters: '项目、机器、Agent、时间、归档筛选也都在这个面板里。',
+            },
             nov02e: {
                 title: '不再误报需要升级 Codex',
                 summary: 'Codex 会话只在实际使用的模型确实需要时，才提示升级 Codex。',
