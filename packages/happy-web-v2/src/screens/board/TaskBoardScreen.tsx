@@ -39,6 +39,10 @@ import { useBoardItems, useBoardCompleted } from './useBoardItems';
 import { BoardCard, fmtDuration } from './BoardCard';
 import { buildLifecycleColumns, groupBoardItems, type BoardItem, type CompletedEntry } from './boardItems';
 import { AttentionSection } from '@/screens/automations/AttentionSection';
+import { IssueDecisions } from '@/screens/issues/IssueDecisions';
+import { issuesCopyFor } from '@/screens/issues/issuesCopy';
+import { useIssuesEnabled } from '@/sync/issuesStore';
+import { useIssuesSync } from '@/sync/issuesSync';
 import { useAutomations } from '@/sync/automationsStore';
 import { automationsEntryVisible } from '@/sync/automationsPoll';
 import { useBoardFlip, type ColumnMap } from './boardFlip';
@@ -330,7 +334,10 @@ function TaskLane({
 
 export function TaskBoardScreen() {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
+  // B-873: with Issues on, /board is 「运行中」 and carries the issue decisions; off = unchanged.
+  const issuesEnabled = useIssuesEnabled();
+  useIssuesSync(issuesEnabled);
   const items = useBoardItems();
   const [layout, setLayout] = useLocalSettingMutable('boardLayout');
   const tasks = useBoardTasks((s) => s.tasks);
@@ -533,7 +540,7 @@ export function TaskBoardScreen() {
     <div className="bd" ref={boardRef}>
       <header className="bd-header">
         <BackButton />
-        <span className="bd-title">{t('board.title')}</span>
+        <span className="bd-title">{issuesEnabled ? issuesCopyFor(lang).sidebarRunning : t('board.title')}</span>
         {attention.length > 0 && (
           <span className="bd-summary-attn mono" title={t('board.attention') as string}>
             {attention.length}
@@ -577,6 +584,8 @@ export function TaskBoardScreen() {
       {/* B-498: automation runs that need the owner — hidden when empty */}
       <div className="bd-attn-wrap">
         <AttentionSection />
+        {/* B-873: in-review / blocked issues and sessionless failed runs (only while Issues are on) */}
+        {issuesEnabled && <IssueDecisions />}
       </div>
 
       {lifecycleMode ? (

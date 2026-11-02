@@ -8,6 +8,7 @@ import { choiceLabel, displayTitle, isLive, itemStatus, kindTone, optionMarker, 
 import { useMessage } from '@/sync/storage';
 import { Markdown } from '../Markdown';
 import { TeamAccountItemActions, teamAccountItemText } from './TeamAccountItem';
+import { IssueItemActions, isIssueReviewItem, issueLinkOf } from './IssueItemActions';
 
 export function boardTime(ts: number): string {
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return ''; }
@@ -64,7 +65,7 @@ export const BoardCard = forwardRef<HTMLDivElement, {
             {expanded && (
                 <div className="brf-x" id={bodyId}>
                     {accountText ? <div className="brf-body"><Markdown text={accountText.body} /></div> : item.bodyMd && <div className="brf-body"><Markdown text={item.bodyMd} /></div>}
-                    {item.options && item.options.length > 0 && (
+                    {item.options && item.options.length > 0 && !isIssueReviewItem(item) && (
                         <div className="brf-opts" role="group" aria-label={copy.kinds.decision}>
                             {item.options.map((o) => (
                                 <button key={o.id} type="button" className={`brf-opt${item.ownerChoice === o.id ? ' is-chosen' : ''}`}
@@ -109,6 +110,7 @@ export const BoardCard = forwardRef<HTMLDivElement, {
                             <button type="button" onClick={() => actions.onLocate(item)}><CornerUpRight size={13} aria-hidden />{copy.locate}</button>
                         )}
                         <TeamAccountItemActions item={item} />
+                        {issueLinkOf(item) && <IssueItemActions item={item} />}
                         {resolve && <button type="button" onClick={() => actions.onResolve(item)}>{copy.resolve[resolve]}</button>}
                         <button type="button" onClick={() => actions.onFollowUp(item)}><CornerDownLeft size={13} aria-hidden />{copy.followUp}</button>
                     </div>

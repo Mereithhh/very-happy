@@ -66,7 +66,11 @@ const AutomationDetailScreen = lazy(() => import('@/screens/automations/Automati
 const AutomationFormScreen = lazy(() => import('@/screens/automations/AutomationFormScreen').then((m) => ({ default: m.AutomationFormScreen })));
 const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen').then((m) => ({ default: m.AssistantScreen })));
 const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) => ({ default: m.NotesScreen })));
-const TodosScreen = lazy(() => import('@/screens/todos/TodosScreen').then((m) => ({ default: m.TodosScreen })));
+// B-873: Issues (spec 2026-11-issues §10). /todos goes through the gate: Issues on → /issues?assignee=none, off → the old page.
+const TodosGate = lazy(() => import('@/screens/issues/TodosGate').then((m) => ({ default: m.TodosGate })));
+const IssuesScreen = lazy(() => import('@/screens/issues/IssuesScreen').then((m) => ({ default: m.IssuesScreen })));
+const IssueDetailScreen = lazy(() => import('@/screens/issues/IssueDetailScreen').then((m) => ({ default: m.IssueDetailScreen })));
+const ExternalTodosRoute = lazy(() => import('@/screens/issues/ExternalTodosRoute').then((m) => ({ default: m.ExternalTodosRoute })));
 // B-621: people directory (friends) — the share picker and later Spaces build on it.
 const PeopleScreen = lazy(() => import('@/screens/people/PeopleScreen').then((m) => ({ default: m.PeopleScreen })));
 const ChangelogScreen = lazy(() => import('@/screens/changelog/ChangelogScreen').then((m) => ({ default: m.ChangelogScreen })));
@@ -372,7 +376,10 @@ const router = createBrowserRouter(
             { path: 'projects/:projectId/settings', element: <Lazy><ProjectSettingsScreen /></Lazy> },
             { path: 'automations', element: <Lazy><AutomationsScreen /></Lazy> },
             { path: 'automations/new', element: <Lazy><AutomationFormScreen /></Lazy> },
-            { path: 'todos', element: <Lazy><TodosScreen /></Lazy> },
+            { path: 'todos', element: <Lazy><TodosGate /></Lazy> },
+            { path: 'issues', element: <Lazy><IssuesScreen /></Lazy> },
+            { path: 'issues/external', element: <Lazy><ExternalTodosRoute /></Lazy> },
+            { path: 'issues/:key', element: <Lazy><IssueDetailScreen /></Lazy> },
             { path: 'people', element: <Lazy><PeopleScreen /></Lazy> },
             { path: 'notes', element: <Lazy><NotesScreen /></Lazy> },
             { path: 'board', element: <Lazy><TaskBoardScreen /></Lazy> },
@@ -458,7 +465,10 @@ const router = createBrowserRouter(
             { path: 'board/automations', element: <Navigate to="/automations" replace /> },
             { path: 'board/automations/:id', element: <LegacyAutomationRedirect /> },
             { path: 'notes', element: <Lazy><NotesScreen /></Lazy> },
-            { path: 'todos', element: <Lazy><TodosScreen /></Lazy> },
+            { path: 'todos', element: <Lazy><TodosGate /></Lazy> },
+            { path: 'issues', element: <Lazy><IssuesScreen /></Lazy> },
+            { path: 'issues/external', element: <Lazy><ExternalTodosRoute /></Lazy> },
+            { path: 'issues/:key', element: <Lazy><IssueDetailScreen /></Lazy> },
             { path: 'people', element: <Lazy><PeopleScreen /></Lazy> },
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
             { path: 'terminal', element: <Lazy><TerminalPickerScreen /></Lazy> },
