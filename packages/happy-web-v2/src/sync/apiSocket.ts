@@ -14,6 +14,7 @@ import { isMachineRealtimeEvent, shouldIgnoreLegacyRealtime } from './machineRel
 import { decideAfterProbe, decideProbe, LIVENESS_PROBE_MS } from './socketLiveness';
 import { getResumeVisibilityEpoch } from './resumeSync';
 import { rpcDedupKey, RpcRateGate, RpcRateLimitedError } from './rpcRateGate';
+import { OPERATOR_SESSION_METHODS, OperatorRpcError, readOperatorAck } from './operatorProtocol';
 
 /**
  * Bound for the machineRPC relay preflight `relay-ping`. Short on purpose: it
@@ -277,7 +278,13 @@ class ApiSocket {
         // routes it, the UI hides every RPC-backed control). Fail here, before any
         // relay discovery, so a stray hook cannot start diagnostics against a
         // machine this account does not own (422 diagnostics_target_unavailable).
-        if (storage.getState().sessions[sessionId]?.share) {
+        const share = storage.getState().sessions[sessionId]?.share;
+        if (share) {
+            // B-867: an operator grantee reaches the allowlisted session methods
+            // through the server broker (session key only, never the machine's).
+            if (share.role === 'driver' && share.operate === true && OPERATOR_SESSION_METHODS.has(method)) {
+                return this.operatorRPC<R, A>(sessionId, method, params, opts);
+            }
             throw new Error(`Session ${sessionId} is shared with this account: RPC '${method}' is owner-only`);
         }
         const sessionEncryption = this.encryption!.getSessionEncryption(sessionId);
@@ -368,6 +375,33 @@ class ApiSocket {
         // refusal vs. a timeout are different things to a caller, and the old
         // constant string hid all of them behind one message.
         throw new Error(typeof result?.error === 'string' && result.error ? result.error : 'RPC call failed');
+    }
+
+    /**
+     * B-867: one call to the server's operator broker. Params and result are
+     * sealed with the SESSION key (same format as sessionRPC); the broker
+     * re-checks the grant and forwards with the owner's keys. Central socket
+     * only — the regional relay has no grant database and no revoke path.
+     * Errors carry the broker's stable code (OperatorRpcError), never params.
+     */
+    async operatorRPC<R, A>(sessionId: string, op: string, params: A, opts?: { timeoutMs?: number }): Promise<R> {
+        const sessionEncryption = this.encryption!.getSessionEncryption(sessionId);
+        if (!sessionEncryption) throw new OperatorRpcError('not_operator');
+        const socket = this.socket;
+        if (!socket?.connected) throw new OperatorRpcError('machine_offline');
+        const encryptedParams = await sessionEncryption.encryptRaw(params);
+        let ack: unknown;
+        try {
+            ack = await socket
+                .timeout(opts?.timeoutMs ?? (op.startsWith('terminal.') ? ApiSocket.MACHINE_RPC_TIMEOUT_MS : ApiSocket.SESSION_RPC_TIMEOUT_MS))
+                .emitWithAck('operator-rpc', { sessionId, op, params: encryptedParams });
+        } catch {
+            // No ack at all: a server without the broker never answers this event.
+            throw new OperatorRpcError(this.socket === socket && socket.connected ? 'server_too_old' : 'machine_offline');
+        }
+        const read = readOperatorAck(ack);
+        if (!read.ok) throw new OperatorRpcError(read.code);
+        return await sessionEncryption.decryptRaw(read.result) as R;
     }
 
     /**

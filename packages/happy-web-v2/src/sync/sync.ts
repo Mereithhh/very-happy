@@ -3999,8 +3999,8 @@ class Sync {
         } else if (updateData.body.t === 'session-share-updated') {
             // B-619: an invitation I sent was answered / a role changed. Owners refresh the
             // dialog list; a grantee whose role changed needs the session row re-read.
-            const { sessionId, grantId, role, status } = updateData.body;
-            useSessionShares.getState().onGrantUpdated(sessionId, grantId, role, status);
+            const { sessionId, grantId, role, status, operate } = updateData.body;
+            useSessionShares.getState().onGrantUpdated(sessionId, grantId, role, status, operate);
             if (storage.getState().sessions[sessionId]?.share) this.sessionsSync.invalidate();
         } else if (updateData.body.t === 'session-share-revoked') {
             // B-619: the owner took the share back (or deleted the session). Purge it like a delete:

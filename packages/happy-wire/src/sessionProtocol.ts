@@ -32,6 +32,14 @@ export const CODEX_COMPACT_CAPABILITY = 'codex-compact-v1';
 export const CODEX_BTW_CAPABILITY = 'codex-btw-v1';
 
 /**
+ * B-867c: the Codex wrapper answers `set-permission-mode` (the mode the next turn
+ * runs with, published as `metadata.permissionMode`). Older Codex wrappers take a
+ * mode only from a message's meta; the operator broker refuses a live mode change
+ * on them at once (`cli_upgrade_required`) instead of waiting out the RPC (AGENTS #14).
+ */
+export const CODEX_LIVE_PERMISSION_CAPABILITY = 'codex-live-permission-v1';
+
+/**
  * B-632: the pi wrapper hands a `meta.delivery === 'steer'` message to the running
  * pi turn (pi `sendUserMessage(…, { deliverAs: 'steer' })` through the Very Happy pi
  * extension). Advertised only once that extension has connected.

@@ -65,7 +65,7 @@ const rpcFetchSocketsTimeouts = new Counter({
     registers: [register]
 });
 
-function rpcRoom(userId: string, method: string): string {
+export function rpcRoom(userId: string, method: string): string {
     return `${RPC_ROOM_PREFIX}${userId}:${method}`;
 }
 
@@ -217,6 +217,91 @@ export function selectRpcTarget<T extends { data?: any; handshake?: { issued?: u
     return { target: ordered[0], kind, orphansDropped: live.length > 0 ? targets.length - live.length : 0 };
 }
 
+export type RpcRouteResult =
+    | { ok: true; code: 'success'; result: unknown }
+    | { ok: false; code: 'not_available' | 'self_call' | 'target_disconnected' | 'timeout'; error: string };
+
+/**
+ * Deliver one `rpc-request` to the daemon socket registered in `room` and wait
+ * for its ack (cross-replica via the adapter). Shared by the account's own
+ * `rpc-call` and the B-867 operator broker, which routes into the OWNER's
+ * room after its own authorization. `callerSocketId` refuses self-calls.
+ */
+export async function routeRpcToRoom(io: Server, room: string, method: string, params: unknown, callerSocketId?: string): Promise<RpcRouteResult> {
+    // 1. Find the daemon socket(s) cross-replica via the adapter.
+    // If the room is empty OR fetchSockets fails (peer replica
+    // unresponsive — fetchRoomSockets logs and returns []) fall
+    // through to the wait-for-reconnect grace window.
+    let targets = await fetchRoomSockets(io, room, RPC_LOOKUP_FETCH_TIMEOUTS_MS[0]);
+    if (targets.length === 0) {
+        targets = await waitForRoomMember(io, room, RPC_RECONNECT_GRACE_MS, rpcMetricMethod(method));
+    }
+
+    if (targets.length === 0) {
+        return { ok: false, code: 'not_available', error: 'RPC method not available' };
+    }
+    const selection = selectRpcTarget(targets);
+    if (selection.kind === 'handover') {
+        log({ module: 'websocket', level: 'warn', roomId: room, socketCount: targets.length, orphansDropped: selection.orphansDropped },
+            'Multiple RPC sockets found during handover (different epochs); preferring the epoch owner');
+    } else if (selection.kind === 'same-epoch-duplicate') {
+        log({ module: 'websocket', level: 'warn', roomId: room, socketCount: targets.length, orphansDropped: selection.orphansDropped },
+            'Same-epoch duplicate RPC sockets (anomaly); preferring the newest connection');
+    } else if (selection.orphansDropped > 0) {
+        log({ module: 'websocket', level: 'warn', roomId: room, socketCount: targets.length, orphansDropped: selection.orphansDropped },
+            'Dropped orphan RPC sockets (B-543) before routing');
+    }
+    const target = selection.target;
+    if (callerSocketId !== undefined && target.id === callerSocketId) {
+        return { ok: false, code: 'self_call', error: 'Cannot call RPC on the same socket' };
+    }
+
+    // 2. Single-target emit with timeout — works cross-replica via adapter.
+    //
+    // Race against a presence poll that aborts fast if the target leaves
+    // the room. WHY: emitWithAck has no idea the target socket is dead;
+    // when the daemon's pod gets killed mid-call, the cluster adapter's
+    // outgoing BROADCAST request is queued waiting for a BROADCAST_ACK
+    // that will never come, and the request only times out at the user-
+    // set RPC_CALL_TIMEOUT_MS (30s). Heartbeat-based pod liveness
+    // detection in the adapter takes ~10s and doesn't proactively
+    // cancel pending broadcasts. Polling fetchSockets is the only way
+    // to detect "the target socket is gone" and abort fast (~2-4s).
+    //
+    // Requires 2 consecutive empty polls before declaring disconnect
+    // to avoid false positives from transient Redis/adapter timeouts.
+    const ackPromise = target.timeout(RPC_CALL_TIMEOUT_MS)
+        .emitWithAck('rpc-request', { method, params });
+
+    let presenceAlive = true;
+    const presencePoll = (async () => {
+        let consecutiveMisses = 0;
+        while (presenceAlive) {
+            await sleep(RPC_PRESENCE_POLL_MS);
+            if (!presenceAlive) return;
+            const stillThere = await fetchRoomSockets(io, room, RPC_PRESENCE_FETCH_TIMEOUT_MS, 'presence');
+            if (!stillThere.some(s => s.id === target.id)) {
+                consecutiveMisses++;
+                if (consecutiveMisses >= 2) {
+                    throw new Error('RPC target disconnected');
+                }
+            } else {
+                consecutiveMisses = 0;
+            }
+        }
+    })();
+
+    try {
+        const response = await Promise.race([ackPromise, presencePoll]);
+        return { ok: true, code: 'success', result: response };
+    } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'RPC call failed';
+        return { ok: false, code: errorMsg === 'RPC target disconnected' ? 'target_disconnected' : 'timeout', error: errorMsg };
+    } finally {
+        presenceAlive = false;
+    }
+}
+
 export function rpcHandler(
     userId: string,
     socket: Socket,
@@ -358,85 +443,12 @@ export function rpcHandler(
                 return;
             }
 
-            // 1. Find the daemon socket(s) cross-replica via the adapter.
-            // If the room is empty OR fetchSockets fails (peer replica
-            // unresponsive — fetchRoomSockets logs and returns []) fall
-            // through to the wait-for-reconnect grace window.
-            const room = rpcRoom(userId, method);
-            let targets = await fetchRoomSockets(io, room, RPC_LOOKUP_FETCH_TIMEOUTS_MS[0]);
-            if (targets.length === 0) {
-                targets = await waitForRoomMember(io, room, RPC_RECONNECT_GRACE_MS, rpcMetricMethod(method));
-            }
-
-            if (targets.length === 0) {
-                finish('not_available');
-                callback?.({ ok: false, error: 'RPC method not available' });
-                return;
-            }
-            const selection = selectRpcTarget(targets);
-            if (selection.kind === 'handover') {
-                log({ module: 'websocket', level: 'warn', roomId: room, socketCount: targets.length, orphansDropped: selection.orphansDropped },
-                    'Multiple RPC sockets found during handover (different epochs); preferring the epoch owner');
-            } else if (selection.kind === 'same-epoch-duplicate') {
-                log({ module: 'websocket', level: 'warn', roomId: room, socketCount: targets.length, orphansDropped: selection.orphansDropped },
-                    'Same-epoch duplicate RPC sockets (anomaly); preferring the newest connection');
-            } else if (selection.orphansDropped > 0) {
-                log({ module: 'websocket', level: 'warn', roomId: room, socketCount: targets.length, orphansDropped: selection.orphansDropped },
-                    'Dropped orphan RPC sockets (B-543) before routing');
-            }
-            const target = selection.target;
-            if (target.id === socket.id) {
-                finish('self_call');
-                callback?.({ ok: false, error: 'Cannot call RPC on the same socket' });
-                return;
-            }
-
-            // 2. Single-target emit with timeout — works cross-replica via adapter.
-            //
-            // Race against a presence poll that aborts fast if the target leaves
-            // the room. WHY: emitWithAck has no idea the target socket is dead;
-            // when the daemon's pod gets killed mid-call, the cluster adapter's
-            // outgoing BROADCAST request is queued waiting for a BROADCAST_ACK
-            // that will never come, and the request only times out at the user-
-            // set RPC_CALL_TIMEOUT_MS (30s). Heartbeat-based pod liveness
-            // detection in the adapter takes ~10s and doesn't proactively
-            // cancel pending broadcasts. Polling fetchSockets is the only way
-            // to detect "the target socket is gone" and abort fast (~2-4s).
-            //
-            // Requires 2 consecutive empty polls before declaring disconnect
-            // to avoid false positives from transient Redis/adapter timeouts.
-            const ackPromise = target.timeout(RPC_CALL_TIMEOUT_MS)
-                .emitWithAck('rpc-request', { method, params });
-
-            let presenceAlive = true;
-            const presencePoll = (async () => {
-                let consecutiveMisses = 0;
-                while (presenceAlive) {
-                    await sleep(RPC_PRESENCE_POLL_MS);
-                    if (!presenceAlive) return;
-                    const stillThere = await fetchRoomSockets(io, room, RPC_PRESENCE_FETCH_TIMEOUT_MS, 'presence');
-                    if (!stillThere.some(s => s.id === target.id)) {
-                        consecutiveMisses++;
-                        if (consecutiveMisses >= 2) {
-                            throw new Error('RPC target disconnected');
-                        }
-                    } else {
-                        consecutiveMisses = 0;
-                    }
-                }
-            })();
-
-            try {
-                const response = await Promise.race([ackPromise, presencePoll]);
-                finish('success');
-                callback?.({ ok: true, result: response });
-            } catch (error) {
-                const errorMsg = error instanceof Error ? error.message : 'RPC call failed';
-                finish(errorMsg === 'RPC target disconnected' ? 'target_disconnected' : 'timeout');
-                callback?.({ ok: false, error: errorMsg });
-            } finally {
-                presenceAlive = false;
-            }
+            const routed = await routeRpcToRoom(io, rpcRoom(userId, method), method, params, socket.id);
+            // B-867b: only the owner's own mode change moves an operator's cap
+            // (operators route through operatorBroker, never this handler).
+            if (routed.ok) void import('@/app/session/operatorBroker').then((broker) => broker.noteOwnerModeRpc(userId, method, params)).catch((error) => log({ module: 'operator', errorName: error instanceof Error ? error.name : typeof error }, 'operator mode cap update failed'));
+            finish(routed.code);
+            callback?.(routed.ok ? { ok: true, result: routed.result } : { ok: false, error: routed.error });
         } catch (error) {
             finish('internal_error');
             log({ module: 'websocket', level: 'error', error }, 'Error in rpc-call');

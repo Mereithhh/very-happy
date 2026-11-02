@@ -157,6 +157,35 @@ describe('ApiMachineClient socket reconnection', () => {
         client.shutdown();
     });
 
+    it('B-869: a ping-timeout drop reconnects even when the readiness predicate never turns true', async () => {
+        vi.useFakeTimers();
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.connect();
+        mockSocket.connected = true;
+        emitSocketEvent('connect');
+
+        // mac-office 11-02: lid closed, clamshell sleep off, no external display.
+        mockShouldReconnect.mockReturnValue(false);
+        mockSocket.connected = false;
+        emitSocketEvent('disconnect', 'ping timeout');
+
+        await vi.advanceTimersByTimeAsync(27_000);
+        expect(mockSocket.connect).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(3_000);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+
+        // Still refused: the next forced attempt follows within another window.
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(2);
+
+        mockSocket.connected = true;
+        emitSocketEvent('connect');
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(2);
+        client.shutdown();
+    });
+
     it('forwards a durable server archive command to local process termination', () => {
         const stopSession = vi.fn(() => true);
         const client = new ApiMachineClient('fake-token', makeMachine());

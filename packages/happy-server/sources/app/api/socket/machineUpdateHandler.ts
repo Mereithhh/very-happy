@@ -1,3 +1,4 @@
+import { noteOperatorMachineState } from '@/app/session/operatorBroker';
 import { getMetricsLabelsFromSocket, machineAliveEventsCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
 import { activityCache } from "@/app/presence/sessionCache";
 import { buildMachineActivityEphemeral, buildUpdateMachineUpdate, eventRouter } from "@/app/events/eventRouter";
@@ -125,6 +126,9 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
                 });
                 return;
             }
+
+            // B-867c: an operator terminal that left the machine's list (the owner closed it) ends for the operator too.
+            void noteOperatorMachineState(userId, result.machine.id, result.machine.daemonState).catch(() => undefined);
 
             // Generate machine daemon state update
             const daemonStateUpdate = {

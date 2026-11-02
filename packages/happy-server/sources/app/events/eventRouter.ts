@@ -190,6 +190,8 @@ export type SessionShareUpdateEvent = {
     sessionId: string;
     grantId: string;
     role: 'viewer' | 'driver';
+    /** B-867; absent from older servers. */
+    operate?: boolean;
     status: 'pending' | 'active' | 'revoked';
 } | {
     type: 'session-share-revoked';

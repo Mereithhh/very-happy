@@ -14,6 +14,13 @@ export type SessionShareStatus = z.infer<typeof SessionShareStatusSchema>;
 export const SessionShareInfoSchema = z.object({
     grantId: z.string(),
     role: SessionShareRoleSchema,
+    // B-867: operator tier = role 'driver' + operate. Absent on servers before B-867.
+    operate: z.boolean().optional(),
+    // B-867: when the grant expires (operator grants always do); absent on older servers.
+    expiresAt: z.number().nullable().optional(),
+    // B-867b: operator mode cap (owner's mode at grant time, moved only by the owner); null for non-operators,
+    // absent on servers before B-867b. Plain string on purpose: an unknown future mode must not drop the row.
+    modeCap: z.string().nullable().optional(),
     owner: z.object({ id: z.string(), displayName: z.string() }),
 });
 export type SessionShareInfo = z.infer<typeof SessionShareInfoSchema>;
@@ -23,6 +30,7 @@ export const SessionGrantViewSchema = z.object({
     id: z.string(),
     sessionId: z.string(),
     role: SessionShareRoleSchema,
+    operate: z.boolean().optional(),
     status: SessionShareStatusSchema,
     createdAt: z.number(),
     acceptedAt: z.number().nullable(),
@@ -43,6 +51,7 @@ export const SharedSessionInviteSchema = z.object({
     id: z.string(),
     sessionId: z.string(),
     role: SessionShareRoleSchema,
+    operate: z.boolean().optional(),
     status: SessionShareStatusSchema,
     createdAt: z.number(),
     expiresAt: z.number().nullable().optional(),
@@ -52,7 +61,7 @@ export const SharedSessionInviteSchema = z.object({
 export type SharedSessionInvite = z.infer<typeof SharedSessionInviteSchema>;
 
 export const ApiSessionShareUpdateSchema = z.object({ t: z.literal('session-share'), invite: SharedSessionInviteSchema });
-export const ApiSessionShareUpdatedSchema = z.object({ t: z.literal('session-share-updated'), sessionId: z.string(), grantId: z.string(), role: SessionShareRoleSchema, status: SessionShareStatusSchema });
+export const ApiSessionShareUpdatedSchema = z.object({ t: z.literal('session-share-updated'), sessionId: z.string(), grantId: z.string(), role: SessionShareRoleSchema, operate: z.boolean().optional(), status: SessionShareStatusSchema });
 export const ApiSessionShareRevokedSchema = z.object({ t: z.literal('session-share-revoked'), sessionId: z.string(), grantId: z.string().nullable() });
 
 // ---------------------------------------------------------------- B-701 share links
@@ -93,6 +102,7 @@ export const OutgoingSharesSchema = z.object({
             id: z.string(),
             grantee: z.object({ id: z.string(), displayName: z.string() }),
             role: SessionShareRoleSchema,
+            operate: z.boolean().optional(),
             status: z.string(),
             expiresAt: z.number().nullable(),
             createdAt: z.number(),
@@ -118,3 +128,44 @@ export const PublicLinkMessagesSchema = z.object({
     lastSeq: z.number(),
 });
 export type PublicLinkMessages = z.infer<typeof PublicLinkMessagesSchema>;
+
+// ---------------------------------------------------------------- B-867 operator tier
+
+/** What the share dialog lets the owner pick. `operator` is wire role 'driver' + operate:true. */
+export type ShareTier = 'viewer' | 'driver' | 'operator';
+/** Operator grants must expire (spec §5.3): no "never". */
+export const OPERATOR_EXPIRY_CHOICES: Exclude<ShareExpiryDays, null>[] = [1, 7, 30];
+
+export function tierOf(grant: { role: SessionShareRole; operate?: boolean }): ShareTier {
+    if (grant.role === 'driver' && grant.operate === true) return 'operator';
+    return grant.role;
+}
+
+export const OperatorEventSchema = z.object({
+    id: z.string(),
+    kind: z.string(),
+    actorAccountId: z.string(),
+    detail: z.record(z.string(), z.unknown()).nullable().optional(),
+    at: z.number(),
+});
+export type OperatorEvent = z.infer<typeof OperatorEventSchema>;
+
+export const OperatorActivitySchema = z.object({
+    granteeAccountId: z.string(),
+    displayName: z.string(),
+    openTerminals: z.number(),
+    lastActivityAt: z.number().nullable(),
+});
+export type OperatorActivity = z.infer<typeof OperatorActivitySchema>;
+
+/** Socket `operator-activity` (owner side). */
+export const OperatorActivityEventSchema = OperatorActivitySchema.extend({ sessionId: z.string() });
+
+/** Socket `operator-revoked` (grantee side). */
+export const OperatorRevokedEventSchema = z.object({ sessionId: z.string(), reason: z.string() });
+
+/** "Is operating now": an open terminal, or any operator action within the last two minutes (spec §12.1). */
+export const OPERATOR_ACTIVE_WINDOW_MS = 2 * 60_000;
+export function isOperatingNow(a: Pick<OperatorActivity, 'openTerminals' | 'lastActivityAt'>, now = Date.now()): boolean {
+    return a.openTerminals > 0 || (a.lastActivityAt !== null && now - a.lastActivityAt < OPERATOR_ACTIVE_WINDOW_MS);
+}

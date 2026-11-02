@@ -15,8 +15,10 @@ computer, phone, or tablet. Teams adds coordinated parallel work to that same hu
 - [Automations](automations.md): schedule or trigger agent sessions and scripts
   on one machine, and decide on failed, expired or waiting runs from the board.
 - [Session sharing](session-sharing.md): let another account on your server
-  watch a conversation live, or send messages into it under their own name;
-  or hand out a read-only link that expires and can be revoked.
+  watch a conversation live, send messages into it under their own name, or
+  operate it (terminal, files, approvals — a time-limited, audited handover of
+  a shell on your machine); or hand out a read-only link that expires and can
+  be revoked.
 - [Keyboard and touch](keyboard-shortcuts.md): the command palette (one search entry),
   `@` file mentions, fast navigation, PWA/browser shortcut boundaries, and mobile
   equivalents.
