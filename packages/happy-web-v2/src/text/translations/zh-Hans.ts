@@ -3141,6 +3141,21 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov02h: {
+                title: '同一个会话不会再被两个后台进程同时执行',
+                summary: '新的后台进程接管会话后，旧的会自动停下退出。',
+                takeover: '同一个会话不会再被两个后台进程同时执行：新的进程接管后，旧的会自动停下退出。',
+                stop: '停止或重启会话时，会连同它启动的 Claude / Codex 进程一起停掉，不再留下继续执行的进程。',
+                daemon: '修复了 daemon 忙时被误判为失效、导致一台机器上同时跑两个 daemon 的问题。',
+                cli: '需要那台机器的 CLI 是 0.2.196。',
+            },
+            nov02g: {
+                title: 'CLI 0.2.196：一个会话只由一个后台进程执行',
+                summary: '同一个会话同一时间只有一个后台进程在执行。',
+                takeover: '新的进程接管会话后，旧的会静默停下退出，不改动会话。',
+                stop: '停止或重启会话时停掉整棵进程树，包括它启动的 Claude / Codex 进程。',
+                daemon: 'daemon 响应慢不再被当成失效，「very-happy daemon start」不会再在旁边另起一个 daemon。',
+            },
             nov02f: {
                 title: '搜索合成一个入口',
                 summary: '⌘K 现在也能搜对话内容。',

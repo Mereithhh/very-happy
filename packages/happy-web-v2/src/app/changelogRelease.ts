@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-02-one-agent-per-session',
+    date: '2026-11-02',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov02h.title',
+    summaryKey: 'changelog.releases.nov02h.summary',
+    itemKeys: ['changelog.releases.nov02h.takeover', 'changelog.releases.nov02h.stop', 'changelog.releases.nov02h.daemon', 'changelog.releases.nov02h.cli'],
+  },
+  {
+    id: '2026-11-02-cli-one-agent-per-session',
+    cliVersion: '0.2.196',
+    date: '2026-11-02',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov02g.title',
+    summaryKey: 'changelog.releases.nov02g.summary',
+    itemKeys: ['changelog.releases.nov02g.takeover', 'changelog.releases.nov02g.stop', 'changelog.releases.nov02g.daemon'],
+  },
+  {
     id: '2026-11-02-unified-search',
     date: '2026-11-02',
     buildVersion: __APP_VERSION__,
