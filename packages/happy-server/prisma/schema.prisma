@@ -268,6 +268,7 @@ model Session {
     accessKeys        AccessKey[]
     promptQueue       SessionPromptQueueItem[]
     grants            SessionGrant[]
+    operatorEvents    SessionOperatorEvent[]
     shareLinks        SessionShareLink[]
     projectMember     ProjectMember?
     attentionItems    AttentionItem[]
@@ -325,9 +326,52 @@ model SessionGrant {
     revokedAt                DateTime?
     /// B-701: null = no expiry. Every read path treats a past value like revoked.
     expiresAt                DateTime?
+    /// B-867: operator tier = role driver + operate. Requires expiresAt and an explicit owner confirmation.
+    operate                  Boolean            @default(false)
+    operateConfirmedAt       DateTime?
 
     @@unique([sessionId, granteeAccountId])
     @@index([granteeAccountId, status])
+}
+
+/// B-867 terminals an operator opened (kind 'opened') or attached to (kind 'attached') through the server
+/// broker. No FK: rows outlive a deleted session/grant so the revoke sweep can still kill them. The output
+/// tap keys on (machineId, terminalId); `pendingKill` marks an opened terminal whose kill could not be
+/// delivered (daemon offline) and is retried when the machine reconnects.
+model SessionOperatorTerminal {
+    id               String    @id @default(cuid())
+    grantId          String
+    sessionId        String
+    ownerAccountId   String
+    granteeAccountId String
+    machineId        String
+    terminalId       String
+    kind             String
+    openedAt         DateTime  @default(now())
+    closedAt         DateTime?
+    closeReason      String?
+    pendingKill      Boolean   @default(false)
+
+    @@unique([grantId, machineId, terminalId])
+    @@index([machineId, terminalId])
+    @@index([closedAt])
+    @@index([ownerAccountId, machineId, pendingKill])
+}
+
+/// B-867 operator audit trail shown to the owner. Metadata only: never terminal keystrokes, params or file contents.
+model SessionOperatorEvent {
+    id             String   @id @default(cuid())
+    sessionId      String
+    session        Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    grantId        String
+    actorAccountId String
+    kind           String
+    detail         Json?
+    at             DateTime @default(now())
+
+    @@index([sessionId, at])
+    @@index([grantId, at])
+    @@index([at])
 }
 
 /// B-701 read-only share link (spec specs/2026-10-session-sharing-tiers.md).
