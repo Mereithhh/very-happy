@@ -33,6 +33,7 @@ import { pickerOwnsKey } from '@/screens/search/pickerOwnsKey';
 import { useSessionSearch } from '@/screens/search/useSessionSearch';
 import {
   matchSessionSearchChord,
+  terminalPassesFilters,
   type Range,
   type ResultSnippet,
   type SessionSearchFilters,
@@ -40,11 +41,13 @@ import {
   type StatusFilter,
   type TimeFilter,
 } from '@/screens/search/sessionSearch';
+import { useProjects } from '@/sync/projects';
+import { terminalProjectResolver } from '@/app/sessionPlacement';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { getSessionName, getSessionSubtitle, formatLastSeen } from '@/utils/sessionUtils';
 import { useBoardItems } from '@/screens/board/useBoardItems';
-import { createTerminalOrPick, NEW_TERMINAL_SHORTCUT_HINT } from '@/app/newTerminal';
+import { createTerminalHere, NEW_TERMINAL_SHORTCUT_HINT } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
 import { sessionUpdateTitle } from '@/sync/ops';
 import { archiveSessionNow, nextSessionPathAfterClose, restoreSessionOrAlert } from '@/app/rowActions';
@@ -293,6 +296,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
   const parsedQuery = useMemo(() => parseSidebarQuery(query), [query]);
   const contentText = contentSearchText(parsedQuery.text);
   const search = useSessionSearch(query, contentText !== '', filters);
+  const projectsSnap = useProjects();
+  const terminalProject = useMemo(() => terminalProjectResolver(projectsSnap.projects, projectsSnap.members, []), [projectsSnap.projects, projectsSnap.members]);
   const passingIds = useMemo(() => new Set(search.passing.map((f) => f.session.id)), [search.passing]);
   const searchTerms = search.q.terms;
 
@@ -345,7 +350,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
   );
 
   // one online machine → direct create; 0 / >1 → picker (shared entry point)
-  const openNewTerminal = useCallback(() => createTerminalOrPick(navigate), [navigate]);
+  // B-868: on a project page the new terminal belongs to that project.
+  const openNewTerminal = useCallback(() => createTerminalHere(navigate, location.pathname), [navigate, location.pathname]);
 
   const renameCurrent = useCallback(async () => {
     if (!currentSessionId) return;
@@ -596,8 +602,9 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       });
     }
 
-    // Terminals (nav)
+    // Terminals (nav) — B-868: narrowed by the project / machine chips.
     for (const term of terminals) {
+      if (!terminalPassesFilters({ machineId: term.machineId, projectId: terminalProject(term) }, filters)) continue;
       const sub = term.machineName;
       out.push({
         key: `terminal:${term.id}`,
@@ -615,6 +622,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
   }, [
     sessions,
     search.passing,
+    filters,
+    terminalProject,
     happyBotEntryVisible,
     lang,
     machines,

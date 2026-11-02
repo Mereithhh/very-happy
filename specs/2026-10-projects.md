@@ -264,7 +264,7 @@ Owner 原话：按标签分组时不展示项目；项目在侧栏缺少入口�
 
 - 分享：自己的、未归档、非镜像会话；打开与页头相同的分享面板（B-619/B-701）。
 - 停止：只在会话正在跑一轮时出现；判活与输入框的停止按钮同一入口（`isAgentWorkLive`，铁律 13），侧栏用看板的同一分类。
-- 分享给我的会话只有「退出这个分享」+「复制链接」；终端行没有分享/项目/停止，归档改为「关闭」。
+- 分享给我的会话只有「退出这个分享」+「复制链接」；终端行没有分享/停止，归档改为「关闭」；B-868 起终端行也有「移到项目…（换项目…）/ 从「X」移出」（见实现记录 B-868）。
 - 各自特有的项照旧在构建结果外追加：侧栏行的「预览」「归档并删除 worktree」「连同 tmux 会话一起关闭」；页头的笔记/旁路提问/文件、运行时控制、组建团队、保持唤醒。
 - 「标签…」打开与重命名相同的对话框，焦点落在标签输入框。
 
@@ -445,3 +445,13 @@ Phase 3（随 Spaces）：项目协调者（= Spaces 命名 Agent 绑定到项�
 - **合并**：同一会话一行，≤3 条片段，缓存片段在前（带消息 id，可精确跳转），daemon 片段去重后补齐；daemon 命中经 `findTrackedSessionId` 映射，未托管的显示「可导入」，点击进入导入对话框（带入机器、agent 与查询词）。排序：标题命中 → 有内容片段 → 其余，组内按更新时间；可导入行垫底。项目/状态筛选非默认时不出可导入行（它们没有项目和状态）；agent 选 pi/Gemini 时跳过第 2 路并明示「该 agent 的对话内容尚未进入机器索引」。
 - **跳到命中**：缓存命中按消息 id；daemon 命中在已加载消息里按片段原文定位（最长片段 → 全部词 → 时间最近），找不到就向前翻页（≤6 页）。DOM 定位：用户消息用 `data-chat-prompt-id`，其余在该轮内按文本找；正文折叠在活动行里时落到该轮的提问。高亮用 CSS Custom Highlight API（`::highlight(vh-search-hit)`，8 s 后清除），不改 DOM；新 token `--search-hit` 只表示搜索命中。
 - **兼容**：旧 daemon / 离线 / 超时 / 建索引中都只影响第 2 路，并在结果顶部写明台数与机器名；第 1、3 路照常。发布只需 server/Web（无 CLI 改动、无迁移）。
+
+### B-868 Web 终端归属（只做归属与展示）
+
+- **存储**：终端不是 server Session（`ProjectMember.sessionId` 外键指向 Session），归属存在终端所在机器上：tmux 用户选项 `@vh_project` = 项目 id（直连 pty 终端存 daemon 内存），与 `@vh_tags`（`specs/2026-08-terminal-tags.md`）同一路子。daemon 在 list-sessions 格式里读出、随 `daemonState.webTerminals[].projectId`（`string | null`）推送，并进 list 签名、存活快照、关闭记录、自动恢复与 `restore-terminal`——关闭/tombstone 后与归档会话一样保留项目，恢复即回到原项目。无 server / wire / 数据库改动。
+- **写入**：新 RPC `set-terminal-project {terminalId, projectId | null}`；`open-terminal` 新增仅建时生效的 `projectId`。能力位 `daemonState.terminalProjects {rpcAvailable, detectedAt}`（同 `detectedAt >= startedAt` 信任规则）。daemon 不校验项目是否存在（看不到账号项目），Web 只认活项目 id，删除/归档的项目自动不再展示。
+- **Web**：终端的项目 = 自己的 `@vh_project`（项目活着时）否则沿用镜像会话的归属（`terminalProjectResolver`）。侧栏按项目分组、项目页「终端」区、⌘K 项目/机器筛选都用它。乐观覆盖与标签同 TTL；RPC 被拒立即回退。新建：项目页「终端 → 新建终端」、项目 ⋯「新建终端」、在项目页时的 ⌘N/⌥N、侧栏 ＋「终端」、⌘K「新建终端」都带上该项目（URL `project=`），在主目录所在机器在线时落到主目录。
+- **旧 CLI**：无能力位 → 行菜单「移到项目…（需升级 CLI）」置灰，不发未知 RPC；建时的 `projectId` 被旧 daemon 忽略（终端照常创建、不归属）。
+- **不注入**：从不向终端写入任何内容（e2e 校验移入/移出前后 pane 文本不变）。
+- **兼容与发布顺序**：旧 Web + 新 CLI 忽略 `projectId` 字段；新 Web + 旧 CLI 置灰提示升级；新 + 新完整可用。CLI 与 Web 可任意顺序发布，推荐 server/Web → CLI（与本 spec 总顺序一致），回滚任一侧无副作用（tmux 选项保留无害）。
+

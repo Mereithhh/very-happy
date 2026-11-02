@@ -3,9 +3,10 @@ import { IS_MAC, isAppChord } from '@/app/appChord';
 import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { projectsSnapshot } from '@/sync/projects';
 import { soleOnlineMachine, machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { isImeGuardedEvent } from '@/utils/ime';
-import { newTerminalSearch, type CreateTerminalOptions } from './newTerminalSearch';
+import { newTerminalSearch, projectIdOfPath, type CreateTerminalOptions } from './newTerminalSearch';
 
 /**
  * The ONE "new terminal" entry point — every button/shortcut/palette item goes
@@ -20,16 +21,38 @@ import { newTerminalSearch, type CreateTerminalOptions } from './newTerminalSear
  * to machines just to open a terminal — and the decision uses the freshest
  * state at click time rather than a render-time snapshot.
  */
-export function createTerminalOrPick(navigate: NavigateFunction): void {
+export function createTerminalOrPick(navigate: NavigateFunction, opts: { projectId?: string } = {}): void {
   const m = soleOnlineMachine(Object.values(storage.getState().machines));
   if (m) {
-    const term = useTerminalSessions.getState().create(m.id, machineLabel(m));
+    const term = useTerminalSessions.getState().create(m.id, machineLabel(m), undefined, opts.projectId);
     // fresh=1: the ONE open allowed to create the tmux session (see
     // WebTerminalScreen) — every other open is attach-only.
-    navigate(`/terminal/${m.id}?tid=${term.id}&fresh=1`);
+    navigate(`/terminal/${m.id}?${newTerminalSearch(term.id, opts).toString()}`);
   } else {
-    navigate('/terminal');
+    navigate(opts.projectId ? `/terminal?project=${encodeURIComponent(opts.projectId)}` : '/terminal');
   }
+}
+
+/**
+ * B-868: a new terminal that belongs to `project` — in its primary folder
+ * when that machine is online, else wherever createTerminalOrPick would put
+ * it (still filed under the project). Nothing is typed into it.
+ */
+export function createTerminalInProject(navigate: NavigateFunction, project: { id: string; folders: Array<{ machineId: string; path: string; primary?: boolean }> }): void {
+  const folder = project.folders.find((f) => f.primary) ?? project.folders[0];
+  if (folder && createTerminalAt(navigate, folder.machineId, { cwd: folder.path, projectId: project.id })) return;
+  createTerminalOrPick(navigate, { projectId: project.id });
+}
+
+/**
+ * B-868: ⌘N / ⌥N and the palette's 「新建终端」 — inside a project page the new
+ * terminal belongs to that project; anywhere else it is the plain create.
+ */
+export function createTerminalHere(navigate: NavigateFunction, pathname: string): void {
+  const projectId = projectIdOfPath(pathname);
+  const project = projectId ? projectsSnapshot().projects.find((p) => p.id === projectId && !p.archivedAt) : undefined;
+  if (project) createTerminalInProject(navigate, project);
+  else createTerminalOrPick(navigate);
 }
 
 /**
@@ -63,7 +86,7 @@ export function createTerminalAt(
   if (!m || !isMachineOnline(m)) return false;
   // B-273: the optimistic row shows the session name at once (the daemon pins
   // the same name as the title, so the push does not flip it later).
-  const term = useTerminalSessions.getState().create(machineId, machineLabel(m), opts.attachTmux?.name);
+  const term = useTerminalSessions.getState().create(machineId, machineLabel(m), opts.attachTmux?.name, opts.projectId);
   navigate(`/terminal/${machineId}?${newTerminalSearch(term.id, opts).toString()}`);
   return true;
 }
@@ -110,7 +133,7 @@ export function useNewTerminalShortcuts(): void {
       if (cmdN && !e.metaKey && isEditableTarget(e.target)) return;
       e.preventDefault();
       e.stopPropagation();
-      createTerminalOrPick(navigate);
+      createTerminalHere(navigate, window.location.pathname);
     };
     // CAPTURE phase: run before any focused widget can swallow the shortcut
     // (same registration style as the sidebar's ⌘1-9 / ⌘R listener).

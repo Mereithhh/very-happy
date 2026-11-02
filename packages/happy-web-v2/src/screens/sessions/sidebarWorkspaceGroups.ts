@@ -4,6 +4,9 @@ export interface WorkspaceRowLike {
   machineName?: string;
   workspacePath?: string;
   sessionId?: string;
+  /** B-868: a terminal row's own project (`@vh_project`); wins over the
+   *  mirror session's placement while that project is live. */
+  ownProjectId?: string | null;
 }
 
 export interface SidebarWorkspaceGroup<T extends WorkspaceRowLike> {

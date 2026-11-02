@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Button, Checkbox } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
+import { useTerminalSessions } from '@/sync/terminalSessions';
 import { toast } from '@/ui/Toast';
 import { planMove } from './moveToProject';
 import { ProjectPicker } from './ProjectPicker';
@@ -75,6 +76,47 @@ export function MoveToProjectModal({ initialSessionId, candidates, onClose }: {
         <div className="ns-actions vh-dialog-foot">
           <Button variant="ghost" onClick={onClose}>{zh ? '取消' : 'Cancel'}</Button>
           <Button variant="primary" disabled={busy || selected.size === 0} aria-busy={busy || undefined} onClick={() => void apply()}>{zh ? '移动' : 'Move'}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * B-868 「移到项目…」 for a web terminal. The project is stored on the machine
+ * (`@vh_project`, set over RPC), not as a server membership, so this is one
+ * terminal at a time and needs no server call. Ownership and display only:
+ * nothing is typed into the terminal.
+ */
+export function MoveTerminalToProjectModal({ terminalId, onClose }: { terminalId: string; onClose: () => void }) {
+  const zh = useTranslation().lang.startsWith('zh');
+  const terminal = useTerminalSessions((s) => s.terminals.find((t) => t.id === terminalId));
+  const setProject = useTerminalSessions((s) => s.setProject);
+  const snap = useProjects();
+  const projects = snap.projects.filter((p) => !p.archivedAt);
+  const current = terminal?.projectId && projects.some((p) => p.id === terminal.projectId) ? terminal.projectId : '';
+  const [target, setTarget] = useState<string>(current);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { document.getElementById('mtp-project')?.focus(); }, []);
+  const apply = async () => {
+    if ((target || '') === current) { onClose(); return; }
+    setBusy(true);
+    const ok = await setProject(terminalId, target || null);
+    setBusy(false);
+    if (!ok) { toast.error(zh ? '移动失败（机器离线或 CLI 版本过旧）' : 'Could not move (machine offline or CLI too old)'); return; }
+    reportProjectUx({ kind: 'dispatch', entry: 'move', inProject: !!target });
+    onClose();
+  };
+  return (
+    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+      <div className="ns-card vh-dialog" role="dialog" aria-modal="true" aria-labelledby="mtp-dialog-title" onClick={(e) => e.stopPropagation()}>
+        <DialogHead title={zh ? '移到项目' : 'Move to project'} titleId="mtp-dialog-title" description={terminal?.title} onClose={onClose} />
+        <label className="ns-label" htmlFor="mtp-project">{zh ? '项目' : 'Project'}</label>
+        <ProjectPicker id="mtp-project" value={target ? { kind: 'existing', projectId: target } : { kind: 'none' }} onChange={(next) => setTarget(next.kind === 'existing' ? next.projectId : '')} projects={projects} noneLabel={zh ? '无项目（移出项目）' : 'No project (remove)'} />
+        <p className="pj-muted mtp-note">{zh ? '终端只归属和展示在项目里，不会向终端输入任何内容。' : 'The terminal is only filed and shown under the project; nothing is typed into it.'}</p>
+        <div className="ns-actions vh-dialog-foot">
+          <Button variant="ghost" onClick={onClose}>{zh ? '取消' : 'Cancel'}</Button>
+          <Button variant="primary" disabled={busy || !terminal} aria-busy={busy || undefined} onClick={() => void apply()}>{zh ? '移动' : 'Move'}</Button>
         </div>
       </div>
     </div>

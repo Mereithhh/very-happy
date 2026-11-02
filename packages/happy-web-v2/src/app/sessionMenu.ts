@@ -32,7 +32,7 @@ export interface SessionMenuInput {
   /** Tags live in the same rename dialog; a separate item makes them findable. */
   onTags?: () => void;
   /** From `sessionProjectMenu`: 「移到项目…」 / 「换项目…」 and 「从「X」移出」. */
-  project?: { move: string | null; leave: { label: string } | null };
+  project?: { move: string | null; leave: { label: string } | null; /** B-868: old CLI — shown, not usable. */ moveDisabled?: boolean };
   onMoveToProject?: () => void;
   onLeaveProject?: () => void;
   priority?: { level: PriorityLevel | null; onSet: (level: PriorityLevel | null) => void };
@@ -57,7 +57,7 @@ export function buildSessionMenu(input: SessionMenuInput): MenuItemDef[] {
   if (input.onShare) items.push({ key: 'share', label: t('share.menu'), icon: Users, onSelect: input.onShare });
   if (input.onRename) items.push({ key: 'rename', label: t('common.rename'), icon: Pencil, onSelect: input.onRename });
   if (input.onTags) items.push({ key: 'tags', label: copy.tags, icon: Tags, onSelect: input.onTags });
-  if (input.project?.move && input.onMoveToProject) items.push({ key: 'move-project', label: input.project.move, icon: FolderKanban, onSelect: input.onMoveToProject });
+  if (input.project?.move && input.onMoveToProject) items.push({ key: 'move-project', label: input.project.move, icon: FolderKanban, disabled: input.project.moveDisabled, onSelect: input.onMoveToProject });
   if (input.project?.leave && input.onLeaveProject) items.push({ key: 'leave-project', label: input.project.leave.label, icon: FolderMinus, onSelect: input.onLeaveProject });
   if (input.priority) {
     // B-522: P0/P1/P2 as checkable choices; the current one unchecks (clears).

@@ -2,6 +2,7 @@ import type { NavigateFunction } from 'react-router-dom';
 import type { ProjectView } from '@slopus/happy-wire';
 import type { RecentMachinePath } from '@/utils/quickChat';
 import { createChatOrConfigure } from '@/app/newChat';
+import { createTerminalInProject } from '@/app/newTerminal';
 import { Modal } from '@/modal';
 import { projectsApi, refreshProjects } from '@/sync/projects';
 import { toast } from '@/ui/Toast';
@@ -57,6 +58,7 @@ export function projectMenuItems(project: ProjectView, opts: { zh: boolean; navi
     zh: opts.zh,
     archived: !!project.archivedAt,
     onNewSession: () => newSessionInProject(project, opts.navigate, opts.openConfigure),
+    onNewTerminal: () => createTerminalInProject(opts.navigate, project),
     ...(opts.teams ? { onNewTeam: () => opts.navigate(projectNewTeamPath(project.id)) } : {}),
     onSettings: () => opts.navigate(projectSettingsPath(project.id)),
     onRename: () => void renameProject(project, opts.zh),

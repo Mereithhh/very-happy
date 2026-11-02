@@ -21,7 +21,7 @@
  * (setTitle kick); the overlay renders the new title until that push lands.
  */
 import { create } from 'zustand';
-import { machineSetTerminalTags, machineSetTerminalTitle, type MachineTerminal } from '@/sync/ops';
+import { machineSetTerminalProject, machineSetTerminalTags, machineSetTerminalTitle, type MachineTerminal } from '@/sync/ops';
 import {
   composeTerminalList,
   pruneOverlay,
@@ -71,12 +71,18 @@ interface TerminalSessionsState {
   pushes: Record<string, MachinePush>;
   /** Optimistic overlay for local mutations. */
   overlay: PushOverlay;
-  create(machineId: string, machineName: string, title?: string): TerminalSession;
+  /** `projectId` (B-868): the new terminal's project, shown at once; the
+   *  create-open asks the daemon to store it. */
+  create(machineId: string, machineName: string, title?: string, projectId?: string): TerminalSession;
   /** B-265: a RESTORED terminal keeps its old id — show its row immediately
    *  (with the record's title/tags) until the daemon's push carries it, and
    *  drop any lingering `removed` overlay for that id. */
   adopt(id: string, machineId: string, machineName: string, meta?: { title?: string; tags?: string[] }): void;
   update(id: string, changes: { title?: string; tags?: string[] }): void;
+  /** B-868: move the terminal into a project (id) or out of one (null). The
+   *  row moves at once; the daemon's push confirms it, or the overlay expires
+   *  and the row honestly moves back. Resolves to whether the daemon accepted. */
+  setProject(id: string, projectId: string | null): Promise<boolean>;
   remove(id: string): void;
   /** Apply one machine's trusted webTerminals snapshot (terminalSync).
    *  `updatedAt` is the snapshot's own stamp — it decides which machine row
@@ -102,13 +108,14 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
   terminals: [],
   pushes: {},
   overlay: EMPTY_OVERLAY,
-  create: (machineId, machineName, title) => {
+  create: (machineId, machineName, title, projectId) => {
     const now = Date.now();
     const t: TerminalSession = {
       id: newId(),
       machineId,
       machineName,
       title: title?.trim() || machineName || 'Terminal',
+      ...(projectId ? { projectId } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -178,6 +185,33 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
     scheduleOverlaySweep(RENAME_OVERLAY_TTL_MS);
     if (cleanTitle !== undefined) void machineSetTerminalTitle(row.machineId, id, cleanTitle);
     if (nextTags !== undefined) void machineSetTerminalTags(row.machineId, id, nextTags);
+  },
+  setProject: async (id, projectId) => {
+    const row = get().terminals.find((t) => t.id === id);
+    if (!row) return false;
+    const { pushes, overlay } = get();
+    const pending = overlay.renames[id];
+    const nextOverlay: PushOverlay = {
+      ...overlay,
+      renames: { ...overlay.renames, [id]: { ...pending, projectId, at: Date.now() } },
+    };
+    set({ overlay: nextOverlay, terminals: composed(pushes, nextOverlay) });
+    scheduleOverlaySweep(RENAME_OVERLAY_TTL_MS);
+    const ok = await machineSetTerminalProject(row.machineId, id, projectId);
+    if (!ok) {
+      // Refused (or offline): revert now instead of waiting out the TTL.
+      const cur = get().overlay;
+      const entry = cur.renames[id];
+      if (entry && entry.projectId === projectId) {
+        const { projectId: _dropped, ...rest } = entry;
+        const renames = { ...cur.renames };
+        if (rest.title !== undefined || rest.tags !== undefined) renames[id] = rest;
+        else delete renames[id];
+        const reverted: PushOverlay = { ...cur, renames };
+        set({ overlay: reverted, terminals: composed(get().pushes, reverted) });
+      }
+    }
+    return ok;
   },
   remove: (id) => {
     // The caller already fired kill-terminal; hide the row until the push
