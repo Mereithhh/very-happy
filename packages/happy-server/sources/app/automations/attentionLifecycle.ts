@@ -13,8 +13,12 @@ import { log } from '@/utils/log';
  * tag and the localId prefix every automated sender stamps.
  */
 
-/** localId prefixes stamped by automated senders (daemon automations, Teams, cross-machine send, peer messages, conflict notices). */
-export const AUTOMATED_LOCAL_ID_PREFIXES = ['automation-', 'teams-', 'remote-send-', 'session-message-', 'edit-conflict-'] as const;
+/**
+ * localId prefixes stamped by automated senders (daemon automations, Teams, cross-machine send, peer messages, conflict
+ * notices, B-872 issue dispatches `issue-<dispatchId>` = wire `ISSUE_DISPATCH_LOCAL_ID_PREFIX`). Not behind
+ * `VH_ISSUES_ENABLED`: a pure judgement, and with the switch off no issue message exists.
+ */
+export const AUTOMATED_LOCAL_ID_PREFIXES = ['automation-', 'teams-', 'remote-send-', 'session-message-', 'edit-conflict-', 'issue-'] as const;
 /** `X-Happy-Client` tags (the part before `/`) of automated senders. */
 export const AUTOMATED_CLIENT_TAGS = ['automation', 'teams', 'cli-spawn', 'assistant-mcp', 'session-message', 'daemon-auto'] as const;
 /** The wrapper's own tag: it persists BOTH its agent output and relay-delivered client messages through `POST /v3/…/messages`, so it only counts as the owner when it says so. */

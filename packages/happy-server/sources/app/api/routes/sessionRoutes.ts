@@ -13,6 +13,7 @@ import { activityCache } from '@/app/presence/sessionCache';
 import { allocateUserSeq } from '@/storage/seq';
 import { noteSessionArchived } from '@/app/automations/attentionLifecycle';
 import { noteAttentionSessionArchived } from '@/app/attention/store';
+import { noteIssueSessionArchived } from '@/app/issues/dispatch';
 import { fanoutSessionUpdateToGrantees, listSharedSessionRows, resolveSessionAccess, sharedSessionRowFor } from '@/app/session/sessionShares';
 import { sessionListRows } from '@/app/session/sessionListRows';
 
@@ -443,6 +444,8 @@ export function sessionRoutes(app: Fastify) {
         // B-508: archiving is user intent (B-505) — attention runs about this session are resolved.
         void noteSessionArchived(userId, sessionId);
         void noteAttentionSessionArchived(userId, sessionId);
+        // B-872: the session's active issue run ends (not a failure).
+        void noteIssueSessionArchived(userId, sessionId);
 
         // Notify all clients about the session deactivation
         sessionActivityRelayGate.forget(sessionId);

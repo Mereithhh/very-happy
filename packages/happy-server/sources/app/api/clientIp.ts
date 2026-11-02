@@ -102,13 +102,20 @@ function expandIpv6(address: string): string[] | undefined {
 }
 
 /** Fastify `req` log serializer: same shape as Fastify's default, with the resolved client IP. */
+/** B-872: `/v1/issues?q=…` carries search text (issue content is plaintext server-side, spec §2.6) — request logs keep the path only. */
+export function redactIssueQuery(url: string): string {
+    if (typeof url !== 'string' || !url.startsWith('/v1/issues')) return url;
+    const q = url.indexOf('?');
+    return q < 0 ? url : `${url.slice(0, q)}?[redacted]`;
+}
+
 export function requestLogSerializer(request: ClientIpRequest & {
     method: string; url: string; host?: string; socket?: { remoteAddress?: string; remotePort?: number } | null;
 }) {
     if (!request || typeof request !== 'object') return request;
     return {
         method: request.method,
-        url: request.url,
+        url: redactIssueQuery(request.url),
         host: request.host,
         remoteAddress: clientIp(request),
         remotePort: request.socket?.remotePort,

@@ -72,6 +72,7 @@ model Account {
     SessionShareLinks     SessionShareLink[]
     AttentionItems        AttentionItem[]
     Feedback              Feedback[]
+    Issues                Issue[]
 }
 
 model AccountCredential {
@@ -841,6 +842,7 @@ model Project {
     messages               ProjectMessage[]
     teams                  AgentTeam[]
     automations            Automation[]
+    issues                 Issue[]
     @@index([accountId, archivedAt])
 }
 
@@ -1003,4 +1005,147 @@ model Feedback {
 
     @@index([createdAt(sort: Desc)])
     @@index([accountId, createdAt])
+}
+
+//
+// Issues (B-871 / B-872, `specs/2026-11-issues.md` §2). Plaintext, same trust
+// tier as Projects / Teams / AttentionItem. Expand only: six new tables.
+//
+
+/// A human-owned work item (`VH-<number>`). Soft-deleted; `version` bumps on every change.
+model Issue {
+  id                String         @id
+  accountId         String
+  account           Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  number            Int
+  title             String
+  description       String         @default("")
+  status            String
+  priority          String         @default("none")
+  assigneeKind      String         @default("none")
+  assignee          Json           @default("{\"kind\":\"none\"}")
+  projectId         String?
+  project           Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  labels            String[]       @default([])
+  dueAt             DateTime?
+  parentId          String?
+  parent            Issue?         @relation("IssueParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children          Issue[]        @relation("IssueParent")
+  sortOrder         Float          @default(0)
+  createdBy         Json
+  statusRunId       String?
+  latestRunId       String?
+  legacyTodoId      String?
+  legacyTodoVersion Int?
+  importedAt        DateTime?
+  /// Idempotency key of the create request (hash of accountId + requestId).
+  requestKey        String?        @unique
+  links             Json           @default("[]")
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @default(now())
+  statusChangedAt   DateTime       @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  deletedAt         DateTime?
+  version           Int            @default(1)
+  comments          IssueComment[]
+  runs              IssueRun[]
+
+  @@unique([accountId, number])
+  @@unique([accountId, legacyTodoId])
+  @@index([accountId, deletedAt, status])
+  @@index([accountId, updatedAt])
+  @@index([accountId, projectId])
+  @@index([accountId, assigneeKind])
+}
+
+/// Next `Issue.number` per account (kept off `Account`, whose `seq` row is hot).
+model IssueSequence {
+  accountId String @id
+  last      Int    @default(0)
+}
+
+/// Timeline: human / agent comments and server-written system entries.
+model IssueComment {
+  id              String    @id
+  issueId         String
+  issue           Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  accountId       String
+  kind            String
+  authorKind      String
+  authorSessionId String?
+  authorRunId     String?
+  body            String
+  data            Json?
+  mentions        Json      @default("[]")
+  refSessionId    String?
+  routedRunIds    String[]  @default([])
+  ownerAckedAt    DateTime?
+  requestKey      String?   @unique
+  createdAt       DateTime  @default(now())
+  editedAt        DateTime?
+  deletedAt       DateTime?
+
+  @@index([issueId, createdAt])
+  @@index([authorRunId, createdAt])
+}
+
+/// One execution of an issue = one session. The assignee is snapshotted at creation.
+model IssueRun {
+  id               String    @id
+  issueId          String
+  issue            Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  accountId        String
+  seq              Int
+  trigger          String
+  triggerCommentId String?
+  agent            String
+  machineId        String
+  agentProfile     Json?
+  model            String?
+  permissionMode   String?
+  directory        String
+  status           String
+  sessionId        String?   @unique
+  error            String?
+  failureAckedAt   DateTime?
+  requestKey       String?   @unique
+  createdAt        DateTime  @default(now())
+  claimedAt        DateTime?
+  startedAt        DateTime?
+  endedAt          DateTime?
+
+  @@unique([issueId, seq])
+  @@index([accountId, status])
+}
+
+/// Daemon work item: `spawn` a run's session or deliver a `message` into it. Claimed by polling, never pushed.
+model IssueDispatch {
+  id        String    @id
+  accountId String
+  runId     String
+  issueId   String
+  machineId String
+  kind      String
+  payload   Json
+  status    String
+  claimId   String?
+  attempts  Int       @default(0)
+  error     String?
+  createdAt DateTime  @default(now())
+  claimedAt DateTime?
+  doneAt    DateTime?
+
+  @@index([machineId, status])
+  @@index([runId])
+}
+
+/// Daemon issue workers seen polling (assignee picker shows only recent ones).
+model IssueWorker {
+  accountId     String
+  machineId     String
+  workerVersion Int
+  lastSeenAt    DateTime @default(now())
+
+  @@id([accountId, machineId])
 }
