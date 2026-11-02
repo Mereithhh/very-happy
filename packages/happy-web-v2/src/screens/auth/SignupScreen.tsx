@@ -20,6 +20,8 @@ import { BrandLockup } from '@/ui/BrandMark';
 import { brandText } from '@/app/brand';
 import { rateLimitedMessage } from '@/auth/rateLimitMessage';
 import { retryAfterSecondsFromError } from '@/auth/rateLimitRetry';
+import { isReadyTimeout } from '@/encryption/readyDeadline';
+import { CryptoNotReadyNotice } from './CryptoNotReadyNotice';
 
 const MIN_USERNAME = 3;
 const MIN_PASSWORD = 8;
@@ -42,6 +44,8 @@ export function SignupScreen() {
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  // B-859d: the account exists but the crypto wasm missed its load budget; a reload signs in.
+  const [cryptoNotReady, setCryptoNotReady] = useState(false);
   const [authConfig, setAuthConfig] = useState<PublicAuthConfig | null>(null);
   const [passwordExpanded, setPasswordExpanded] = useState(false);
   // Field-level validation only surfaces after a field is touched (audit S2:
@@ -95,6 +99,7 @@ export function SignupScreen() {
     setBusy(true);
     setServerError(null);
     setGoogleError(null);
+    setCryptoNotReady(false);
     try {
       // Generate a fresh 32-byte account secret and base64url-encode it. The
       // secret is what happy uses for encryption/sync; here we register it
@@ -107,7 +112,9 @@ export function SignupScreen() {
       toast.success(t('signup.success'));
       navigate(authReturnTarget(location.state), { replace: true });
     } catch (err: any) {
-      if (err instanceof AccountAuthError) {
+      if (isReadyTimeout(err)) {
+        setCryptoNotReady(true);
+      } else if (err instanceof AccountAuthError) {
         if (err.code === 'username-taken') setServerError(t('signup.errorUsernameTaken'));
         else if (err.code === 'rate-limited') setServerError(rateLimitedMessage(t, err.retryAfterSeconds));
         else setServerError(t('signup.errorGeneric'));
@@ -132,12 +139,15 @@ export function SignupScreen() {
   async function onGoogleCredential(credential: string, nonce: string) {
     setBusy(true);
     setGoogleError(null);
+    setCryptoNotReady(false);
     try {
       const creds = await loginWithGoogle(credential, nonce, invite.trim() || undefined);
       await login(creds.token, creds.secret);
       navigate(authReturnTarget(location.state), { replace: true });
     } catch (err) {
-      if (err instanceof CloudAuthError) {
+      if (isReadyTimeout(err)) {
+        setCryptoNotReady(true);
+      } else if (err instanceof CloudAuthError) {
         if (err.code === 'capacity-reached') setGoogleError(t('signup.errorCapacityReached'));
         else if (err.code === 'invite-required') setGoogleError(t('signup.errorInviteRequiredGoogle'));
         else if (err.code === 'signup-closed') setGoogleError(t('signup.errorSignupClosed'));
@@ -152,7 +162,13 @@ export function SignupScreen() {
   }
 
   async function finishLogin(creds: { token: string; secret: string }) {
-    await login(creds.token, creds.secret);
+    try {
+      await login(creds.token, creds.secret);
+    } catch (err) {
+      if (!isReadyTimeout(err)) throw err;
+      setCryptoNotReady(true);
+      return;
+    }
     toast.success(t('signup.success'));
     navigate(authReturnTarget(location.state), { replace: true });
   }
@@ -166,6 +182,7 @@ export function SignupScreen() {
         <BrandLockup height={36} size={40} className="auth-brand" wordmarkClassName="auth-wordmark" />
         <LanguageSwitcher className="auth-language-switcher" />
         <div className="auth-eyebrow eyebrow">{t('signup.title')}</div>
+        {cryptoNotReady && <CryptoNotReadyNotice />}
 
         {oidcSelfServe && !authConfig?.signup.atCapacity && <OidcLoginButton
           displayName={oidcDisplayName}

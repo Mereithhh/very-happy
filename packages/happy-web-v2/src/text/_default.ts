@@ -3090,6 +3090,17 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov03f: {
+                title: 'Sign-in tells you when the encryption module has not loaded',
+                summary: 'If the encryption module takes too long to load, the sign-in and sign-up pages now say so and offer a Refresh page button, instead of a misleading "Could not reach the server" error.',
+                notice: 'Password, Google and email-code sign-in, and sign-up, show "The encryption module has not finished loading. Refresh the page to try again." with a Refresh page button. On a short window the notice scrolls into view.',
+                hidden: 'Time a tab spends hidden or suspended in the background no longer counts toward the load timeout, so coming back to a tab no longer sends you to the sign-in page.',
+            },
+            nov03g: {
+                title: 'CLI 0.2.200: stability improvements',
+                summary: 'Internal stability improvements to the CLI and daemon. Nothing changes in how you use it.',
+                update: 'Machines with automatic updates install it on their own; nothing to do.',
+            },
             nov03d: {
                 title: 'Session sharing adds a "Can operate" tier',
                 summary: 'Share a session with a contact so they can also use its terminal, files and /btw, and approve or interrupt. They can run commands on your machine as you — share it only with people you trust.',
@@ -5952,6 +5963,9 @@ export const en = {
         title: 'Pick up where you left off.',
         subtitle: 'Your agent sessions, terminals, and machines — ready in one console.',
         waiting: 'waiting for identity',
+        // B-859c: the wasm crypto module did not load in time — not a server problem.
+        errorCryptoNotReady: 'The encryption module has not finished loading. Refresh the page to try again.',
+        reloadPage: 'Refresh page',
     },
 
     authCommon: {

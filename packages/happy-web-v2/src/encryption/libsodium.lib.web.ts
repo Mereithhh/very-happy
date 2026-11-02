@@ -1,5 +1,5 @@
 import sodium from 'libsodium-wrappers';
-import { readyWithin } from './readyDeadline';
+import { documentPauseSignal, readyWithin } from './readyDeadline';
 
 // B-859: libsodium-wrappers attaches every crypto_* function only once its
 // wasm has instantiated; until then `sodium.crypto_box_seed_keypair` is
@@ -13,8 +13,13 @@ import { readyWithin } from './readyDeadline';
 // networks do not eat into it. Measured in headless Chromium: compile ≤ 70 ms
 // and ready ≤ 3.8 s after navigation even at 20x CPU throttle; 12 s leaves
 // ≥ 3x headroom while "never ready" reaches /login in ~16 s, not forever.
+//
+// B-859c: only visible, unfrozen time counts toward the 12 s, so a tab suspended
+// during load still gets its full budget when it comes back.
 export const SODIUM_READY_TIMEOUT_MS = 12_000;
 
-export const sodiumReady: () => Promise<void> = readyWithin(sodium.ready, SODIUM_READY_TIMEOUT_MS, 'libsodium');
+export const sodiumReady: () => Promise<void> = readyWithin(
+    sodium.ready, SODIUM_READY_TIMEOUT_MS, 'libsodium', Date.now, documentPauseSignal(),
+);
 
 export default sodium;
