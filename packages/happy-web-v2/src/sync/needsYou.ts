@@ -6,6 +6,10 @@
  * `needsAttention` and not yet acked (B-508). Counted per session with a Set,
  * so a session with three open decisions is one row that needs you — the same
  * rule as the board's urgent band in `sidebarAttention`.
+ *
+ * B-873 (spec 2026-11-issues §7/§10): a third path — issue runs that failed
+ * before they had a session and are not acknowledged. They have no session to
+ * count, so they are a plain number (same Web-merge as automation runs, Q8).
  */
 import { isAttentionActive, type AttentionItem } from '@slopus/happy-wire';
 import { useEffect, useMemo } from 'react';
@@ -22,12 +26,15 @@ export interface NeedsYou {
     /** Open needs-owner items (inferred drafts included: they wait on you too). */
     items: number;
     automations: number;
+    /** B-873: failed issue runs without a session, not acknowledged. */
+    issueRuns: number;
 }
 
 export function needsYouOf(
     itemsBySession: Readonly<Record<string, readonly AttentionItem[]>>,
     automationSessionIds: ReadonlySet<string> = new Set(),
     automationCount = 0,
+    issueRunCount = 0,
 ): NeedsYou {
     const itemSessionIds = new Set<string>();
     let items = 0;
@@ -44,6 +51,7 @@ export function needsYouOf(
         sessionIds: new Set([...itemSessionIds, ...automationSessionIds]),
         items,
         automations: automationCount,
+        issueRuns: issueRunCount,
     };
 }
 

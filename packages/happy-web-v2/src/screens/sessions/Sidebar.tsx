@@ -65,6 +65,10 @@ import {
 import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
 import { attentionKeysOf, rowSignalOf, type RowSignal } from './sidebarAttention';
 import { useItemNeedsYouSessionIds, useNeedsYouSync, withItemAttention } from '@/sync/needsYou';
+import { useIssuesEnabled, useIssuesStore } from '@/sync/issuesStore';
+import { useIssuesSync } from '@/sync/issuesSync';
+import { failedRunsNeedingYou, waitingOnMeCount } from '@/screens/issues/issuesModel';
+import { issuesCopyFor } from '@/screens/issues/issuesCopy';
 import { attentionSessionIds } from '@/screens/automations/automationPresentation';
 import { buildSessionMenu, sessionMenuAvailability } from '@/app/sessionMenu';
 import { copySessionLink, leaveSessionProject, leaveTerminalProject, stopSessionTurn } from '@/app/sessionMenuActions';
@@ -487,6 +491,11 @@ export function Sidebar() {
   // sidebarAttention.test.ts.
   // B-766 W-2: plus sessions with an open 汇报板 item that waits on you (needsYou, Set per session).
   useNeedsYouSync();
+  // B-873: Issues entries only once the server answered `/v1/issues` (off = the sidebar exactly as before).
+  const issuesEnabled = useIssuesEnabled();
+  const issueAttention = useIssuesStore((s) => waitingOnMeCount(s.issues) + failedRunsNeedingYou(s.runs, s.issues).length);
+  useIssuesSync(issuesEnabled);
+  const issuesCopy = issuesCopyFor(lang);
   const itemNeedsYou = useItemNeedsYouSessionIds();
   const attentionKeys = useMemo(() => withItemAttention(attentionKeysOf(boardItems), itemNeedsYou), [boardItems, itemNeedsYou]);
   const unreadIds = storage((s) => s.unreadSessionIds);
@@ -1338,9 +1347,11 @@ export function Sidebar() {
   // B-713 (spec 2026-10-sidebar-header): no header ⋯. Desktop shows the
   // capability entries as rows while they fit (the rest under 「更多能力 ▾」);
   // the phone gets one chip row 项目 · 团队 · 更多 ▾ under the header.
-  const top = sidebarTopModel({ isDesktop, projectsReady: projectsSnap.status === 'ready', teamsVisible: happyBotEntryVisible });
-  const navEntries = sidebarNavEntries({ projectsVisible: projectsSnap.status === 'ready', projectAttention: projectBadgeTotal, teamsVisible: happyBotEntryVisible, automationsVisible: automationsEnabled, automationAttention, incomingPeople });
+  const top = sidebarTopModel({ isDesktop, projectsReady: projectsSnap.status === 'ready', teamsVisible: happyBotEntryVisible, issuesVisible: issuesEnabled });
+  const navEntries = sidebarNavEntries({ projectsVisible: projectsSnap.status === 'ready', projectAttention: projectBadgeTotal, teamsVisible: happyBotEntryVisible, automationsVisible: automationsEnabled, automationAttention, incomingPeople, issuesVisible: issuesEnabled, issueAttention });
   const navName: Record<SidebarNavKey, string> = {
+    issues: issuesCopy.title,
+    board: issuesCopy.sidebarRunning,
     projects: lang.startsWith('zh') ? '项目' : 'Projects',
     teams: teamCopy.title,
     automations: t('automations.sidebarEntry'),
@@ -1479,7 +1490,7 @@ export function Sidebar() {
                 { key: 'none', disabled: !orderable, label: `${groupMode === 'none' ? '✓ ' : ''}${t('sidebar.groupNone')}`, icon: Clock3, onSelect: () => selectGroupMode('none') },
                 { key: 'ordering-help', disabled: !orderable, label: lang.startsWith('zh') ? '排序说明' : 'Reordering help', icon: CircleHelp, checked: showOrderHint, onSelect: () => setShowOrderHint((shown) => !shown) },
                 { key: 'locate-current', disabled: !onRowRoute, label: lang.startsWith('zh') ? '定位当前会话' : 'Locate current session', icon: LocateFixed, separatorBefore: true, onSelect: locateCurrent },
-                { key: 'overview', label: `${t('board.title')}${attentionCount ? ` · ${attentionCount}` : ''}`, icon: LayoutGrid, separatorBefore: true, onSelect: () => navigate('/board') },
+                { key: 'overview', label: `${issuesEnabled ? issuesCopy.sidebarRunning : t('board.title')}${attentionCount ? ` · ${attentionCount}` : ''}`, icon: LayoutGrid, separatorBefore: true, onSelect: () => navigate('/board') },
               ]}
             >
               <button className="sb-lens-btn" title={t('sidebar.groupMenu')} aria-label={`${t('sidebar.groupMenu')}: ${t(groupMode === 'project' ? 'sidebar.lensProjects' : groupMode === 'tag' ? 'sidebar.lensTags' : 'sidebar.lensRecent')}`}>

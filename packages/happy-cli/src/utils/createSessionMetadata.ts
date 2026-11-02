@@ -32,6 +32,8 @@ export interface CreateSessionMetadataOptions {
     machineId: string;
     /** Exact daemon Team spawn operation used to recover an uncertain spawn. */
     teamOperationId?: string;
+    /** B-874: issue run binding from the spawn env (`issueSessionMetadata`). */
+    issue?: { id: string; runId?: string; key?: string };
     /** How the session was started */
     startedBy?: 'daemon' | 'terminal';
     /** Active sandbox config for the session, or undefined when not used */
@@ -141,6 +143,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         os: os.platform(),
         machineId: opts.machineId,
         ...(opts.teamOperationId ? { teamOperationId: opts.teamOperationId } : {}),
+        ...(opts.issue ? { issue: opts.issue } : {}),
         homeDir: os.homedir(),
         happyHomeDir: configuration.happyHomeDir,
         happyLibDir: projectPath(),

@@ -102,6 +102,8 @@ import { readSessionLock } from '@/utils/sessionLock';
 import { createTeamWorker } from './teams/worker';
 import { TEAM_RETRY_CAPABILITY_VERSION } from './teams/spawnRetry';
 import { createAutomationRunner } from './automations/runner';
+import { createIssueWorker, issueExitEvent } from './issues/worker';
+import { createIssuesClient } from '@/issues/client';
 import { daemonExitCode, HANDOVER_EXIT_CODE, type ShutdownSource } from './shutdownExit';
 import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob, probeSystemdKillMode, wrappersSurviveHandover, handoverWaitsForSessions } from './daemonSupervisor';
 
@@ -324,6 +326,8 @@ export async function startDaemon(): Promise<void> {
     // B-466: which sessions have a turn in flight (wrapper-reported, TTL'd).
     // The only thing the auto-update install/handover gate waits for.
     const turnActivity = new TurnActivityTracker();
+    // B-874: turn start / end of an issue run's session → its run goes running / idle.
+    turnActivity.onEvent((sessionId, event) => issueWorker?.report(sessionId, event === 'turn_started' ? 'running' : 'idle'));
     // B-507: background tasks still in flight per session (wrapper-reported, lease-expired).
     const backgroundTasks = new BackgroundTaskTracker();
     // B-497: who edited which real path lately, and the conflict notices.
@@ -369,6 +373,8 @@ export async function startDaemon(): Promise<void> {
     // B-856: the heartbeat saw a newer bundle on disk (a hand-run `npm i -g`); a handover follows.
     let bundleReplacedSeen = false;
     let automationRunner: ReturnType<typeof createAutomationRunner> | undefined;
+    // B-874: issue dispatch worker (late-bound like teamWorker).
+    let issueWorker: ReturnType<typeof createIssueWorker> | undefined;
     let projectPresence: ReturnType<typeof createProjectPresenceReporter> | undefined;
     const persisted = readPersistedSessions();
     const liveHappyProcesses = await findAllHappyProcesses();
@@ -1141,7 +1147,7 @@ export async function startDaemon(): Promise<void> {
       happyProcess.on('exit', (code, signal) => {
         logger.debug(`[DAEMON RUN] Child PID ${happyProcess.pid} exited with code ${code}, signal ${signal}`);
         if (happyProcess.pid) {
-          onChildExited(happyProcess.pid);
+          onChildExited(happyProcess.pid, { code, signal });
         }
       });
 
@@ -1651,8 +1657,12 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Handle child process exit — preserve session data for resume
-    const onChildExited = (pid: number) => {
+    const onChildExited = (pid: number, exit?: { code: number | null; signal: NodeJS.Signals | null }) => {
       const session = pidToTrackedSession.get(pid);
+      // B-874: an auto-restart keeps the session (and its run) going; a hibernation is the run going idle.
+      if (session?.happySessionId && !autoRestartExits.has(session.happySessionId) && issueWorker?.hasSession(session.happySessionId)) {
+        issueWorker.report(session.happySessionId, daemonHibernation.pendingExit(session.happySessionId) ? 'idle' : issueExitEvent(exit));
+      }
       if (session?.happySessionId && !autoRestartExits.has(session.happySessionId) && (session.spawnedBy === 'teams' || teamWorker?.hasSession(session.happySessionId))) teamWorker?.report(session.happySessionId, 'exited');
       if (session?.happySessionId && automationRunner?.hasSession(session.happySessionId)) automationRunner.report(session.happySessionId, 'exited');
       if (session?.happySessionId) turnActivity.forget(session.happySessionId);
@@ -2319,6 +2329,8 @@ export async function startDaemon(): Promise<void> {
         // stays offline until a person notices.
         // (A relay move hands over on the bundle we already run: nothing to preflight.)
         const preflight = bundleReplaced ? await preflightNewBundle(bundlePath) : { action: 'proceed' as const };
+        // B-874: never hand over in the middle of an issue spawn (its receipt fences, but the first message would wait).
+        if (issueWorker?.busy) return;
         if (preflight.action === 'hold') {
           if (lastHandoverHold !== preflight.reason) {
             lastHandoverHold = preflight.reason;
@@ -2336,6 +2348,7 @@ export async function startDaemon(): Promise<void> {
           : '[DAEMON RUN] Daemon bundle replaced on disk and verified, handing off to new daemon');
         teamWorker?.stop();
         automationRunner?.stop();
+        issueWorker?.stop();
         projectPresence?.stop();
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
@@ -2457,6 +2470,15 @@ export async function startDaemon(): Promise<void> {
       log: message => logger.debug(`[DAEMON RUN] ${message}`),
     });
 
+    // B-874: issue dispatches — its own 5s poll; an old or gated server (404) keeps it idle (1 probe / 10 min).
+    issueWorker = createIssueWorker({
+      machineId, client: createIssuesClient({ token: async () => credentials.token }), spawn: spawnSession,
+      live: id => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid)),
+      ...(accountServiceRef ? { resolveAccount: (agent: 'claude' | 'codex', requested: string | null | undefined) => accountServiceRef!.resolveSpawnAccount(agent, requested) } : {}),
+      joinProject: (sessionId, projectId) => joinProject(projectsClient, sessionId, { kind: 'explicit', projectId }, { via: 'issue' }),
+      log: message => logger.debug(`[DAEMON RUN] ${message}`),
+    });
+
     // B-645: coarse project presence (agent, branch, running/idle) for every live
     // session, one batched PUT per minute on its own rate bucket; an old server
     // 404s and the client backs off for 10 minutes.
@@ -2501,6 +2523,7 @@ export async function startDaemon(): Promise<void> {
       teamWorker?.stop();
       // Real shutdown: kill live script trees; the next daemon reports them from the receipt, never re-runs them.
       automationRunner?.stop({ killScripts: true });
+      issueWorker?.stop();
       projectPresence?.stop();
       // B-585: kill running worktree setup trees; the next daemon records them as interrupted.
       currentWorktreeService()?.stopAll();
