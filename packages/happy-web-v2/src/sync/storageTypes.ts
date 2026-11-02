@@ -66,6 +66,8 @@ export const MetadataSchema = z.object({
     /** Explicit daemon/CLI feature negotiation. Optional; never default it. */
     capabilities: z.array(z.string()).optional(),
     /** B-586: session started inside a linked git worktree (wrapper snapshot). Lenient: never drops the session. */
+    /** B-873b (spec 2026-11-issues §4): the issue a daemon spawned this session for. A display hint only — the binding is `IssueRun.sessionId`. Lenient. */
+    issue: z.object({ id: z.string(), key: z.string().optional() }).passthrough().nullable().optional().catch(undefined),
     worktree: z.object({ branch: z.string().nullable().optional(), root: z.string().optional() }).passthrough().nullable().optional().catch(undefined),
     /**
      * Effective permission mode the CLI process enforces right now (Claude SDK

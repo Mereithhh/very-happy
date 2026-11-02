@@ -41,6 +41,22 @@ describe('sidebarNavEntries (B-641)', () => {
   });
 });
 
+describe('B-873 Issues entries (spec 2026-11-issues §10 / Q11)', () => {
+  it('switch off (or not answered yet): exactly the entries and chips from before', () => {
+    const before = sidebarNavEntries(all);
+    expect(sidebarNavEntries({ ...all, issuesVisible: false, issueAttention: 5 })).toEqual(before);
+    expect(before.map((e) => e.key)).toEqual(['teams', 'automations', 'todos', 'people', 'feedback']);
+    expect(sidebarTopModel({ isDesktop: false, projectsReady: true, teamsVisible: true, issuesVisible: false })).toEqual(sidebarTopModel({ isDesktop: false, projectsReady: true, teamsVisible: true }));
+  });
+  it('switch on: Issues first, 运行中 (/board) right after it, 待办 gone (/todos redirects)', () => {
+    const entries = sidebarNavEntries({ ...all, projectsVisible: true, issuesVisible: true, issueAttention: 2 });
+    expect(entries.map((e) => [e.key, e.path]).slice(0, 3)).toEqual([['issues', '/issues'], ['board', '/board'], ['projects', '/projects']]);
+    expect(entries.map((e) => e.key)).not.toContain('todos');
+    expect(entries[0]).toMatchObject({ attention: 2, tone: 'warn' });
+    expect(sidebarTopModel({ isDesktop: false, projectsReady: true, teamsVisible: true, issuesVisible: true }).chips).toEqual(['issues', 'projects', 'teams', 'more']);
+  });
+});
+
 describe('sidebar top model (B-676, B-713)', () => {
   const base = { projectsReady: true, teamsVisible: true };
   it('desktop: no ⋯ — header 🔍 · collapse, then 新建会话 / 新建项目 / 新建团队 rows', () => {
@@ -97,7 +113,7 @@ describe('Sidebar wiring (B-641, B-676, B-713)', () => {
 
   it('the header renders from the top model; the desktop nav column is gone', () => {
     expect(src).not.toContain('className="sb-products"');
-    expect(src).toContain("const top = sidebarTopModel({ isDesktop, projectsReady: projectsSnap.status === 'ready', teamsVisible: happyBotEntryVisible });");
+    expect(src).toContain("const top = sidebarTopModel({ isDesktop, projectsReady: projectsSnap.status === 'ready', teamsVisible: happyBotEntryVisible, issuesVisible: issuesEnabled });");
     expect(src).not.toContain('sb-more-btn');
     expect(src).toContain("{top.header.includes('create-menu') && (");
     expect(src).toContain('<SidebarActionRows');

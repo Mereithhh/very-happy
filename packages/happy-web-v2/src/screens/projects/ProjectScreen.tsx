@@ -32,6 +32,7 @@ import { terminalProjectResolver } from '@/app/sessionPlacement';
 import { createTerminalInProject } from '@/app/newTerminal';
 import { leaveTerminalProject } from '@/app/sessionMenuActions';
 import './projects.css';
+import { ProjectIssuesSection } from '@/screens/issues/ProjectIssuesSection';
 
 /**
  * B-648 project page `/projects/:id` (`specs/2026-10-projects.md` §6.2/§6.5).
@@ -232,6 +233,8 @@ function ProjectOverview({ detail, c, onChanged }: { detail: ProjectDetailRespon
         <Bucket title={c.doneToday} list={done.map((e) => ({ key: e.key, href: e.href!, title: e.title }))} />
         <Bucket title={c.idle} list={titled(buckets.idle)} />
       </div>
+      {/* B-873: the project's open issues (only while the server has Issues on). */}
+      <ProjectIssuesSection projectId={detail.project.id} archived={!!detail.project.archivedAt} />
       {/* B-726: the project is the team's context — teams live here, with「新建团队」and「关联已有团队」. */}
       <section className="pj-section pj-teams">
         <h2>{c.teams}
