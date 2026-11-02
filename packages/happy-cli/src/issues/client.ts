@@ -36,7 +36,23 @@ export type IssuesClientDeps = {
     token?: () => Promise<string | null>;
     fetch?: Fetch;
     now?: () => number;
+    /** Backoff sleep / jitter source (tests). */
+    sleep?: (ms: number) => Promise<void>;
+    random?: () => number;
 };
+
+/**
+ * B-872c spec §9: 409 `transaction_conflict` means the server's own retries ran
+ * out and the write rolled back, so it is safe to resend: same path, same body
+ * (same `requestId` / `ifVersion`), ~200 ms·2ⁿ plus jitter, at most 5 times.
+ * Every other 409 is a business conflict and is never retried.
+ */
+export const ISSUE_TRANSACTION_CONFLICT = 'transaction_conflict';
+export const ISSUE_CONFLICT_MAX_RETRIES = 5;
+export function issueConflictBackoffMs(attempt: number, random: () => number = Math.random): number {
+    const base = 200 * 2 ** attempt;
+    return base + Math.floor(random() * base / 2);
+}
 
 const KNOWN_CODES = new Set<string>(ISSUE_ERROR_CODES.filter(code => code !== ISSUES_DISABLED_ERROR));
 /** Server codes outside the wire list that still name an object (not "no such route"). */
@@ -50,10 +66,23 @@ export function createIssuesClient(deps: IssuesClientDeps = {}) {
     const now = deps.now ?? Date.now;
     const doFetch = deps.fetch ?? fetch;
     const token = deps.token ?? (async () => (await readCredentialsForConfiguredRelay())?.token ?? null);
+    const sleep = deps.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)));
+    const random = deps.random ?? Math.random;
     let disabledUntil = 0;
 
     // Never propagate raw bodies into logs or errors beyond the error code (issue text is plaintext on the server).
     async function request<T>(path: string, method: string, body?: unknown, timeoutMs = 10_000): Promise<T> {
+        for (let attempt = 0; ; attempt++) {
+            try {
+                return await requestOnce<T>(path, method, body, timeoutMs);
+            } catch (error) {
+                const retryable = error instanceof IssueRequestError && error.status === 409 && error.code === ISSUE_TRANSACTION_CONFLICT;
+                if (!retryable || attempt >= ISSUE_CONFLICT_MAX_RETRIES) throw error;
+                await sleep(issueConflictBackoffMs(attempt, random));
+            }
+        }
+    }
+    async function requestOnce<T>(path: string, method: string, body: unknown, timeoutMs: number): Promise<T> {
         if (now() < disabledUntil) throw new IssuesUnsupportedError();
         const bearer = await token();
         if (!bearer) throw new IssueRequestError(401, 'not_signed_in', {});

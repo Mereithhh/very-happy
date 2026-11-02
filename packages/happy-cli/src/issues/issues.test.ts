@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { IssueCommentView, IssueSessionContext, IssueView } from '@slopus/happy-wire';
-import { createIssuesClient, IssueRequestError, IssuesUnsupportedError, ISSUES_UNSUPPORTED_BACKOFF_MS } from './client';
+import { createIssuesClient, issueConflictBackoffMs, IssueRequestError, IssuesUnsupportedError, ISSUE_CONFLICT_MAX_RETRIES, ISSUES_UNSUPPORTED_BACKOFF_MS } from './client';
 import { createIssueToolExecutor, ISSUE_TOOL_NAMES, ISSUE_TOOL_SCHEMAS, registerIssueTools } from './tools';
 import { describeIssueError } from './format';
 import { buildIssueDigestLine, createIssueDigest } from './digest';
@@ -42,6 +42,36 @@ describe('issues client compatibility (spec §9 compat matrix)', () => {
         for (const [status, code] of [[409, 'issue_status_forbidden'], [409, 'issue_closed'], [409, 'issue_not_bound'], [409, 'issue_run_not_current'], [400, 'issue_comment_required'], [429, 'issue_comment_quota_exceeded']] as const) {
             const d = createIssuesClient({ serverUrl: 'http://x', token: async () => 't', fetch: (async () => res(status, { error: code })) as any });
             await expect(d.agentUpdate({ sessionId: 's', status: 'done' })).rejects.toMatchObject({ status, code });
+        }
+    });
+    it('409 transaction_conflict is resent with the same body (same requestId) after ~200ms·2ⁿ + jitter, then succeeds (spec §9 B-872c)', async () => {
+        const bodies: string[] = [];
+        let calls = 0;
+        const fetch = vi.fn(async (_url: string, init: RequestInit) => {
+            bodies.push(String(init.body));
+            return ++calls <= 3 ? res(409, { error: 'transaction_conflict' }) : res(200, { issue: issue(), version: 1 });
+        });
+        const sleep = vi.fn(async (_ms: number) => {});
+        const c = createIssuesClient({ serverUrl: 'http://x', token: async () => 't', fetch: fetch as any, sleep, random: () => 0.5 });
+        await expect(c.agentComment({ sessionId: 's', body: 'hi', requestId: 'req-1' })).resolves.toMatchObject({ version: 1 });
+        expect(fetch).toHaveBeenCalledTimes(4);
+        expect(new Set(bodies)).toEqual(new Set([JSON.stringify({ sessionId: 's', body: 'hi', requestId: 'req-1' })]));
+        expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([250, 500, 1000]);
+        expect(issueConflictBackoffMs(0, () => 0)).toBe(200);
+        expect(issueConflictBackoffMs(2, () => 0.999)).toBeLessThan(1200);
+    });
+    it('transaction_conflict gives up after 5 retries and surfaces the code; other 409s are never retried', async () => {
+        const conflict = vi.fn(async () => res(409, { error: 'transaction_conflict' }));
+        const c = createIssuesClient({ serverUrl: 'http://x', token: async () => 't', fetch: conflict as any, sleep: async () => {} });
+        await expect(c.create({ title: 'x', requestId: 'r' } as any)).rejects.toMatchObject({ status: 409, code: 'transaction_conflict' });
+        expect(conflict).toHaveBeenCalledTimes(1 + ISSUE_CONFLICT_MAX_RETRIES);
+        for (const code of ['issue_version_conflict', 'issue_dispatch_claim_mismatch', 'attention_item_stale', 'issue_status_forbidden']) {
+            const fetch = vi.fn(async () => res(409, { error: code }));
+            const sleep = vi.fn(async () => {});
+            const d = createIssuesClient({ serverUrl: 'http://x', token: async () => 't', fetch: fetch as any, sleep });
+            await expect(d.update('i1', { ifVersion: 1, status: 'done' } as any)).rejects.toMatchObject({ status: 409, code });
+            expect(fetch).toHaveBeenCalledTimes(1);
+            expect(sleep).not.toHaveBeenCalled();
         }
     });
     it('daemon routes: poll carries machineId + workerVersion, claim/complete/fail/session-event post the wire bodies', async () => {
