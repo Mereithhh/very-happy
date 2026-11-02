@@ -33,4 +33,8 @@ For add, retry with the same UUID and identical title/note after a timeout; do n
 
 For edit/status/delete, a conflict means the version changed. Read the task and compare the new state with the user's request before deciding what to do; never automatically overwrite with a freshly fetched version. A timeout may have committed: read to reconcile, then report the confirmed result. Do not claim a delete succeeded merely because a request was sent.
 
+## Issues
+
+On a server with Issues, My todos are issues without an assignee: the todo commands keep working on them (list shows open ones, `--all` adds completed; an ID may also be an issue key such as VH-12). Run `very-happy issue --help` for the full Issues interface (assign to an agent, comments). Without Issues the todo commands use the classic store; their output is the same.
+
 Restricted team workers cannot use account-wide Todo credentials. Ask the user or supervising session to perform the account operation; do not clear scope variables or seek another credential to bypass that boundary.

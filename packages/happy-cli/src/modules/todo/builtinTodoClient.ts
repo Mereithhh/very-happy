@@ -3,8 +3,8 @@ import { configuration } from '@/configuration';
 import { readCredentialsForConfiguredRelay } from '@/persistence';
 import { readTeamScope, teamScopePath } from '@/teams/context';
 
-/** Account Todos are not part of a delegated worker's scoped authority. */
-export async function authenticatedBuiltinTodoClient() {
+/** Account Todos (KV or Issues) are not part of a delegated worker's scoped authority. */
+export async function assertAccountTodosAllowed(): Promise<void> {
     if (process.env.VH_TEAM_SCOPE_FILE !== undefined) {
         throw new Error('Scoped Teams sessions cannot access account Todos; ask the owner session.');
     }
@@ -12,6 +12,10 @@ export async function authenticatedBuiltinTodoClient() {
     if (sessionId && await readTeamScope(teamScopePath(sessionId))) {
         throw new Error('Scoped Teams sessions cannot access account Todos; ask the owner session.');
     }
+}
+
+export async function authenticatedBuiltinTodoClient() {
+    await assertAccountTodosAllowed();
     const credentials = await readCredentialsForConfiguredRelay();
     if (!credentials) throw new Error('Sign in to Very Happy with `very-happy auth login` before accessing Todos.');
     return createBuiltinTodoClient(credentials, { serverUrl: configuration.serverUrl, clientId: 'very-happy-cli-todo' });

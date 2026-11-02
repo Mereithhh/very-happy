@@ -1,9 +1,12 @@
 import { configuration } from '@/configuration';
-import { authenticatedBuiltinTodoClient } from '@/modules/todo/builtinTodoClient';
+import { assertAccountTodosAllowed, authenticatedBuiltinTodoClient } from '@/modules/todo/builtinTodoClient';
 import { BUILTIN_TODO_SKILL } from '@/modules/todo/skill';
+import { importLegacyTodosOnce, IssuesUnsupportedError, sharedIssuesClient, type IssuesClient } from '@/issues/client';
+import { describeIssueError } from '@/issues/format';
+import { runTodoViaIssues, type TodoAliasCommand } from '@/modules/todo/issueTodos';
 
 export const TODO_HELP = `very-happy todo — account-owned built-in Todos (JSON output)
-  very-happy todo list
+  very-happy todo list [--all]
   very-happy todo get ID
   very-happy todo add --id UUID --title TEXT [--note TEXT]
   very-happy todo edit ID --version N [--title TEXT] [--note TEXT]
@@ -15,11 +18,17 @@ before deciding what to change. Reuse the same add UUID and arguments after an
 unknown result. Use --title=TEXT or --note=TEXT for values starting with --.
 These commands use the current relay and login; they do not
 operate external providers or agent execution plans. skill prints the official
-instructions without authentication. Pass --help for this reference.`;
+instructions without authentication. Pass --help for this reference.
+
+On a server with Issues, a todo is an issue without an assignee: list shows the
+open ones (--all adds completed), add creates a todo-status issue, ID may also be
+an issue key (VH-12), and \`very-happy issue\` offers the rest. Without Issues the
+commands use the classic Todos store.`;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISSUE_KEY = /^VH-[1-9][0-9]{0,8}$/i;
 type Action = 'list' | 'get' | 'add' | 'edit' | 'complete' | 'reopen' | 'delete' | 'skill' | 'help';
-export interface TodoCommand { action: Action; id?: string; version?: number; title?: string; note?: string }
+export interface TodoCommand { action: Action; id?: string; version?: number; title?: string; note?: string; all?: boolean }
 
 export function parseTodoArgs(args: string[]): TodoCommand {
     if (args.length === 0 || (args.length === 1 && args[0] === '--help')) return { action: 'help' };
@@ -28,8 +37,10 @@ export function parseTodoArgs(args: string[]): TodoCommand {
     if (args.length === 2 && args[1] === '--help') return { action: 'help' };
     const flags: Record<string, string> = {};
     let id: string | undefined;
+    let all = false;
     for (let i = 1; i < args.length; i++) {
         const arg = args[i];
+        if (arg === '--all' && action === 'list' && !all) { all = true; continue; }
         if (arg.startsWith('--')) {
             const separator = arg.indexOf('=');
             const flag = separator === -1 ? arg : arg.slice(0, separator);
@@ -48,7 +59,7 @@ export function parseTodoArgs(args: string[]): TodoCommand {
     const allowed = action === 'add' ? ['--id', '--title', '--note'] : action === 'edit' ? ['--version', '--title', '--note'] : ['complete', 'reopen', 'delete'].includes(action) ? ['--version'] : [];
     for (const flag of Object.keys(flags)) if (!allowed.includes(flag)) throw new Error(`${flag} is not supported for ${action}`);
     const needsId = ['get', 'edit', 'complete', 'reopen', 'delete'].includes(action);
-    if (needsId ? !id || !UUID.test(id) : id !== undefined) throw new Error(needsId ? 'A valid Todo UUID is required' : 'Unexpected Todo ID');
+    if (needsId ? !id || !(UUID.test(id) || ISSUE_KEY.test(id)) : id !== undefined) throw new Error(needsId ? 'A valid Todo UUID is required' : 'Unexpected Todo ID');
     if (action === 'add' && (!flags['--id'] || !UUID.test(flags['--id']))) throw new Error('add requires --id UUID; reuse it when retrying');
     if (action === 'add' && flags['--title'] === undefined) throw new Error('add requires --title');
     if (action === 'edit' && flags['--title'] === undefined && flags['--note'] === undefined) throw new Error('edit requires --title or --note');
@@ -60,13 +71,27 @@ export function parseTodoArgs(args: string[]): TodoCommand {
         if (value === undefined || !/^(0|[1-9][0-9]*)$/.test(value) || !Number.isSafeInteger(Number(value))) throw new Error('A non-negative safe integer --version is required');
         version = Number(value);
     }
-    return { action, id: action === 'add' ? flags['--id'] : id, version, title: flags['--title'], note: flags['--note'] };
+    return { action, id: action === 'add' ? flags['--id'] : id, version, title: flags['--title'], note: flags['--note'], ...(all ? { all } : {}) };
 }
 
-export async function handleTodoCommand(args: string[]): Promise<void> {
+export async function handleTodoCommand(args: string[], deps: { issues?: IssuesClient } = {}): Promise<void> {
     const command = parseTodoArgs(args);
     if (command.action === 'help') { console.log(TODO_HELP); return; }
     if (command.action === 'skill') { console.log(BUILTIN_TODO_SKILL); return; }
+    // B-874: Issues first (a todo = an unassigned issue); an old server or the switch off falls back to KV unchanged.
+    await assertAccountTodosAllowed();
+    const issues = deps.issues ?? sharedIssuesClient();
+    if (!issues.isDisabled()) {
+        try {
+            await importLegacyTodosOnce(issues);
+            const result = await runTodoViaIssues(command as TodoAliasCommand, issues);
+            console.log(JSON.stringify({ serverUrl: configuration.serverUrl, result }));
+            return;
+        } catch (error) {
+            if (!(error instanceof IssuesUnsupportedError)) throw new Error(describeIssueError(error));
+        }
+    }
+    if (command.id !== undefined && !UUID.test(command.id)) throw new Error('This server has no Issues; use the Todo UUID');
     const client = await authenticatedBuiltinTodoClient();
     let result: unknown;
     if (command.action === 'list') result = await client.list();

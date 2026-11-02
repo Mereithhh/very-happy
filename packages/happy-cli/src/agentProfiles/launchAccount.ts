@@ -33,7 +33,7 @@ const REASON_TEXT: Record<string, string> = {
  * automation run / team operation reports: what is wrong and the two ways out
  * (sign in again, or choose another account). Null for other errors.
  */
-export function accountUnavailableError(error: string, scope: 'automation' | 'team member'): string | null {
+export function accountUnavailableError(error: string, scope: 'automation' | 'team member' | 'issue'): string | null {
     const reason = agentProfileUnavailableReason(error);
     if (!reason) return null;
     const detail = error.replace(/^agent-profile-unavailable:[a-z-]+:?\s*/, '');
@@ -41,7 +41,7 @@ export function accountUnavailableError(error: string, scope: 'automation' | 'te
 }
 
 /** What the reason means, that nothing ran on the machine login, and the two ways out. */
-export function accountUnavailableHint(reason: string, scope: 'automation' | 'team member'): string {
+export function accountUnavailableHint(reason: string, scope: 'automation' | 'team member' | 'issue'): string {
     return `${REASON_TEXT[reason] ?? reason}. Not run on the machine login. ` +
         `Fix: sign in again (Settings → Models & accounts, or \`very-happy account login\` / \`very-happy account test\`), or choose another account for this ${scope}.`;
 }

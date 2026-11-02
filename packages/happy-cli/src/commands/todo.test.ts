@@ -1,14 +1,28 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 const client = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() }));
-vi.mock('@/modules/todo/builtinTodoClient', () => ({ authenticatedBuiltinTodoClient: vi.fn(async () => client) }));
+vi.mock('@/modules/todo/builtinTodoClient', () => ({ authenticatedBuiltinTodoClient: vi.fn(async () => client), assertAccountTodosAllowed: vi.fn(async () => {}) }));
+// B-874: these cases are the classic store — the server has no Issues (old server / switch off), so todo falls back to KV.
+const issues = vi.hoisted(() => {
+    class IssuesUnsupportedError extends Error {}
+    class IssueRequestError extends Error {
+        constructor(public status: number, public code: string | null, public details: Record<string, unknown>) { super(code ? `Issue request failed: ${code}` : `Issue request failed (HTTP ${status})`); }
+    }
+    return { IssuesUnsupportedError, IssueRequestError, client: { isDisabled: () => false, importLegacyTodos: vi.fn(), list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() } };
+});
+vi.mock('@/issues/client', () => ({ IssuesUnsupportedError: issues.IssuesUnsupportedError, IssueRequestError: issues.IssueRequestError, sharedIssuesClient: () => issues.client, importLegacyTodosOnce: async (c: { importLegacyTodos: () => Promise<unknown> }) => { await c.importLegacyTodos().catch(() => undefined); } }));
 vi.mock('@/modules/todo/skill', () => ({ BUILTIN_TODO_SKILL: 'official skill body' }));
 vi.mock('@/configuration', () => ({ configuration: { serverUrl: 'https://relay.example' } }));
 import { authenticatedBuiltinTodoClient } from '@/modules/todo/builtinTodoClient';
 import { handleTodoCommand, parseTodoArgs } from './todo';
+import { IssueRequestError, IssuesUnsupportedError } from '@/issues/client';
 const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 describe('Todo command', () => {
-    beforeEach(() => { vi.clearAllMocks(); vi.spyOn(console, 'log').mockImplementation(() => {}); });
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+        for (const key of ['importLegacyTodos', 'list', 'get', 'create', 'update', 'remove'] as const) issues.client[key].mockImplementation(async () => { throw new IssuesUnsupportedError(); });
+    });
     afterEach(() => vi.restoreAllMocks());
     it('prints help and the official skill without credentials', async () => {
         for (const args of [[], ['--help'], ['add', '--help'], ['skill']]) await handleTodoCommand(args);
@@ -101,5 +115,77 @@ describe('Todo command', () => {
         await expect(handleTodoCommand(['complete', id, '--version', '2'])).rejects.toThrow('not found');
         expect(client.update).not.toHaveBeenCalled();
         expect(client.create).not.toHaveBeenCalled();
+    });
+});
+
+describe('Todo command on a server with Issues (B-874 alias layer, spec §8)', () => {
+    const issue = (over: Record<string, unknown> = {}) => ({
+        id, number: 7, key: 'VH-7', title: 'T', description: 'N', status: 'todo', priority: 'none', assignee: { kind: 'none' }, projectId: null,
+        labels: [], dueAt: null, parentId: null, sortOrder: 5, createdBy: { kind: 'user' }, statusRunId: null, latestRunId: null, legacyTodoId: null,
+        createdAt: 1, updatedAt: 2, statusChangedAt: 2, startedAt: null, completedAt: null, deletedAt: null, version: 3, ...over,
+    });
+    const api = () => ({
+        isDisabled: () => false, importLegacyTodos: vi.fn(async () => ({})),
+        list: vi.fn(async () => ({ issues: [issue()], nextCursor: null, asOf: 1 })),
+        get: vi.fn(async () => ({ issue: issue(), comments: [], runs: [], children: [] })),
+        create: vi.fn(async () => ({ issue: issue() })), update: vi.fn(async (_id: string, p: any) => ({ issue: issue({ ...p, status: p.status ?? 'todo', version: 4 }) })),
+        remove: vi.fn(async () => ({ issue: issue({ deletedAt: 9 }) })),
+    });
+    const out = () => JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0]).result;
+    beforeEach(() => { vi.clearAllMocks(); vi.spyOn(console, 'log').mockImplementation(() => {}); });
+    afterEach(() => vi.restoreAllMocks());
+    it('list = open unassigned issues in the KV record shape (imports legacy KV first); --all adds closed', async () => {
+        const c = api();
+        await handleTodoCommand(['list'], { issues: c as any });
+        expect(c.importLegacyTodos).toHaveBeenCalled();
+        expect(c.list).toHaveBeenCalledWith(expect.objectContaining({ assigneeKind: 'none', status: 'backlog,todo,in_progress,in_review,blocked' }));
+        expect(out()).toEqual({ records: [{ schemaVersion: 1, id, key: 'VH-7', title: 'T', note: 'N', status: 'open', order: 5, createdAt: 1, updatedAt: 2, version: 3 }], truncated: false, invalidCount: 0 });
+        await handleTodoCommand(['list', '--all'], { issues: c as any });
+        expect((c.list.mock.calls.at(-1) as any[])[0].status).toBeUndefined();
+        expect(authenticatedBuiltinTodoClient).not.toHaveBeenCalled();
+    });
+    it('add = an unassigned todo issue, the UUID is the idempotency key (Q10)', async () => {
+        const c = api();
+        await handleTodoCommand(['add', '--id', id, '--title', 'Buy milk', '--note', 'n'], { issues: c as any });
+        expect(c.create).toHaveBeenCalledWith({ title: 'Buy milk', description: 'n', status: 'todo', assignee: { kind: 'none' }, requestId: id });
+    });
+    it('complete / reopen / edit map to PATCH with ifVersion; delete is the soft delete; get accepts VH-N', async () => {
+        const c = api();
+        await handleTodoCommand(['complete', 'VH-7', '--version', '3'], { issues: c as any });
+        expect(c.update).toHaveBeenLastCalledWith(id, { status: 'done', ifVersion: 3 });
+        expect(out()).toMatchObject({ status: 'done', version: 4 });
+        await handleTodoCommand(['reopen', id, '--version', '3'], { issues: c as any });
+        expect(c.update).toHaveBeenLastCalledWith(id, { status: 'todo', ifVersion: 3 });
+        await handleTodoCommand(['edit', id, '--version', '3', '--note', 'x'], { issues: c as any });
+        expect(c.update).toHaveBeenLastCalledWith(id, { description: 'x', ifVersion: 3 });
+        await handleTodoCommand(['delete', id, '--version', '3'], { issues: c as any });
+        expect(c.remove).toHaveBeenCalledWith(id);
+        expect(out()).toEqual({ id, deleted: true });
+    });
+    it('stale versions never write; a deleted issue reads as null; a legacy KV id resolves through legacyTodoId', async () => {
+        const c = api();
+        await expect(handleTodoCommand(['complete', id, '--version', '2'], { issues: c as any })).rejects.toThrow('conflict');
+        expect(c.update).not.toHaveBeenCalled();
+        c.update.mockRejectedValueOnce(new IssueRequestError(409, 'issue_version_conflict', {}));
+        await expect(handleTodoCommand(['complete', id, '--version', '3'], { issues: c as any })).rejects.toThrow('conflict');
+        c.get.mockResolvedValueOnce({ issue: issue({ deletedAt: 5 }), comments: [], runs: [], children: [] });
+        await handleTodoCommand(['get', id], { issues: c as any });
+        expect(out()).toBeNull();
+        const legacy = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+        c.get.mockRejectedValueOnce(new IssueRequestError(404, 'issue_not_found', {}));
+        c.list.mockResolvedValueOnce({ issues: [issue({ legacyTodoId: legacy })], nextCursor: null, asOf: 1 });
+        await handleTodoCommand(['get', legacy], { issues: c as any });
+        expect(out()).toMatchObject({ key: 'VH-7' });
+    });
+    it('falls back to the classic store only when the server has no Issues; VH-N then needs a UUID', async () => {
+        const c = { ...api(), list: vi.fn(async () => { throw new IssuesUnsupportedError(); }) };
+        client.list.mockResolvedValue({ records: [], truncated: false, invalidCount: 0 });
+        await handleTodoCommand(['list'], { issues: c as any });
+        expect(client.list).toHaveBeenCalled();
+        const d = { ...api(), get: vi.fn(async () => { throw new IssuesUnsupportedError(); }) };
+        await expect(handleTodoCommand(['get', 'VH-7'], { issues: d as any })).rejects.toThrow('use the Todo UUID');
+        const e = { ...api(), list: vi.fn(async () => { throw new IssueRequestError(500, null, {}); }) };
+        await expect(handleTodoCommand(['list'], { issues: e as any })).rejects.toThrow('HTTP 500');
+        expect(client.list).toHaveBeenCalledTimes(1);
     });
 });

@@ -33,12 +33,19 @@ export const TURN_BUSY_TTL_MS = 150_000;
 
 export class TurnActivityTracker {
     private readonly busy = new Map<string, number>();
+    /** B-874: observers of every applied event (the issue worker's run session events). */
+    private readonly listeners: ((sessionId: string, event: TurnEvent) => void)[] = [];
 
     constructor(private readonly ttlMs: number = TURN_BUSY_TTL_MS) {}
 
     apply(sessionId: string, event: TurnEvent, now: number = Date.now()): void {
         if (event === 'turn_started') this.busy.set(sessionId, now);
         else this.busy.delete(sessionId);
+        for (const listener of this.listeners) listener(sessionId, event);
+    }
+
+    onEvent(listener: (sessionId: string, event: TurnEvent) => void): void {
+        this.listeners.push(listener);
     }
 
     /** The wrapper is gone: whatever it reported no longer holds. */
