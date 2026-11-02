@@ -30,6 +30,15 @@ export function afterTx(tx: Tx, callback: () => void) {
     callbacks.push(callback);
 }
 
+/**
+ * Identity of the current transaction attempt (fresh per `inTx` attempt):
+ * per-transaction state keyed on it — never on `tx`, whose client object
+ * Prisma may reuse across transactions — dies with an aborted attempt.
+ */
+export function txAttempt(tx: Tx): object {
+    return (tx as any)[symbol];
+}
+
 export async function inTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
     let counter = 0;
     let wrapped = async (tx: Tx) => {
