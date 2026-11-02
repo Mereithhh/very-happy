@@ -3008,6 +3008,20 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov03b: {
+                title: 'Web terminals can go into a project',
+                summary: 'Put a terminal in a project from its row menu, or create it inside the project.',
+                move: 'Use “Move to project…” in a terminal row’s ⋯ menu, or create a new terminal inside a project to file it there.',
+                show: 'Those terminals show on the project page, in the project’s sidebar group and with the ⌘K project filter.',
+                only: 'This only files and shows the terminal: nothing is typed into it.',
+                cli: 'Needs CLI 0.2.197 on that computer; with an older CLI the menu item is greyed out.',
+            },
+            nov03a: {
+                title: 'CLI 0.2.197: terminals remember their project',
+                summary: 'The computer keeps which project each Web terminal belongs to.',
+                store: 'A terminal’s project is stored on its computer, so it survives a daemon restart.',
+                restore: 'A closed terminal goes back to its project when it is restored.',
+            },
             nov02h: {
                 title: 'A session is never run by two background processes at once',
                 summary: 'When a new background process takes over a session, the old one stops and exits by itself.',
