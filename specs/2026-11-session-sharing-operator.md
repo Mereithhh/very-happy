@@ -1,6 +1,6 @@
 # Session 分享第三档：可操作（operator / Can operate）
 
-> 状态：Draft，待 Lead 审阅（B-867）
+> 状态：Approved（Lead 11-03，8 条全部同意 + 4 点补充）；实现见文末「实现记录」（B-867）
 > 关联：[2026-10-session-sharing](2026-10-session-sharing.md)（B-619 联系人分享）、[2026-10-session-sharing-tiers](2026-10-session-sharing-tiers.md)（B-701 链接分享与有效期）、[permission-mode-source-of-truth](2026-08-permission-mode-source-of-truth.md)、[terminal-channel-v2](2026-08-terminal-channel-v2.md)
 > 基线：main 21206d4a
 
@@ -311,3 +311,22 @@ Lead 审批补充：明文（params、终端字节、文件内容）不进日志
 - `emit('operator-terminal-input', { sessionId, terminalId, data })`（data = DEK 加密的 base64 字节串）、`emit('operator-terminal-resize', { sessionId, terminalId, cols, rows })`、`emit('operator-terminal-close', { sessionId, terminalId })`（只退订，不 kill）。
 - 下行（grantee）：`operator-terminal-output { sessionId, terminalId, seq, data }`（data 同 input 格式）、`operator-terminal-exit { sessionId, terminalId, exitCode }`、`operator-revoked { sessionId, reason: 'revoked'|'downgraded'|'expired'|'deleted'|'archived'|'ended_by_owner' }`。
 - 下行（owner）：`operator-activity { sessionId, granteeAccountId, displayName, openTerminals, lastActivityAt }`（独立事件名，旧 Web 的 onAny 自然忽略）。
+
+## 实现记录（B-867，与设计稿的差异）
+
+- **broker**：`app/session/operatorPolicy.ts`（纯函数：白名单、mode 上限、cwd 围栏、终端参数改写）+ `app/session/operatorBroker.ts`（授权 → 改写 → 换钥 → 转发 → 审计；输出 tap；撤销/扫尾）。`rpcHandler.ts` 抽出 `routeRpcToRoom`，账号自己的 `rpc-call` 与 broker 共用同一条投递路径（行为不变，原 23 条测试照过）。
+- **机器 key 的打开点**：只有 `openOperatorMachineKey(VerifiedOperatorGrant, machineId)`，且只查 `accountId = grant.ownerId` 的机器。`VerifiedOperatorGrant` 只有两处能铸造：operator 调用时的 grant 查询，以及撤销/补杀时「由先前已验证的 operator 调用登记过的终端行」（kill 参数需要机器 key 加密，这是 Lead 约束下唯一的非 operator 发起场景）。源码断言 `operatorBroker.source.spec.ts` 钉住，`mutation-check` 6/6 变异被抓。
+- **过期**：没有用每 grant 的 `setTimeout`，改为每 slot 2 s 一次的扫尾（`sweepOperatorTerminals`）：刷新终端索引、对 grant 已失效（撤销/降级/过期/归档/删除）的终端执行 teardown、刷输入计数、30 s 重试 pendingKill、每小时清 90 天前的事件。数据面靠每帧校验在过期那一刻就停（grant 缓存 ≤1 s，且比对 `expiresAt`），kill 最迟 ≤2 s。
+- **登记表无外键**：`SessionOperatorTerminal` 不挂 FK，会话/grant 被删后行仍在，扫尾仍能 kill。
+- **steer 不带文本**：CLI 的 `steer` 本来就没有参数（结束当前轮，让排队消息接着跑）；operator 的追加指令走已有的署名 shared message。
+- **会话自有终端**：grantee 拿不到 `metadata.terminalId`（脱敏），用 `terminal.attach { session: true }` 按角色接入。
+- **链接分享**：`POST /share-links` 的 body 改 `.strict()`，带 `operate`/`role` 直接 400。
+- **owner 一键「结束对方的操作」**= `PATCH operate:false`（降为 Can send），走同一 teardown；grantee 先收到 `operator-revoked`，再执行 kill（daemon 慢/离线不阻塞撤销响应）。
+- **Web**：operator 终端是独立的 `OperatorTerminalDialog`（复用渲染工厂、字体、lineHeight 1.0、主题色），不改 `WebTerminalScreen`；文件面板用 session RPC，只读、限会话目录；mode 选单高于 owner 当前 mode 的选项置灰。
+
+### 验证
+
+- server：`operatorPolicy.spec.ts`（9）、`operatorBroker.pglite.integration.spec.ts`（8：授予门槛、非 operator 零转发、白名单/allowTools/mode/路径、终端 cwd+encStream+重加密+他人终端不 tap、会话终端只断不杀、撤销先通知后 kill 且流和输入即停、daemon 不可达时 pendingKill 与重连补杀、过期由扫尾结束、日志无明文）、`operatorBroker.source.spec.ts`（4）；全量 1270 通过。
+- 协议级 e2e（本地 standalone + 隔离 `HAPPY_HOME_DIR` 的真实 daemon + 真实 Claude 会话，两个密码账号）：未确认/无期限被拒、链接带 operate 400；终端在会话目录执行、`startupCommand` 被忽略；提 mode 到 bypass、`killSession`、读会话目录外文件均被拒；权限卡经 broker 批准后命令执行；abort 生效；撤销后 **23 ms** grantee 收到 `operator-revoked`，之后 0 帧输出，tmux 会话被 kill，后续调用 `not_operator`。
+- 真浏览器 e2e（A 桌面 / B 390×844 coarse）：A 在面板选「可操作」→ 勾选前按钮禁用 → 确认弹窗列出对象/机器/到期与四条警告 → 授予（1 天）；B 开终端执行命令、点 Approve 执行、点 Stop；A 头部红色芯片「bob 正在操作 · 1 terminal」；A 一键结束 → B 终端 **78 ms** 关闭并提示，tmux 被 kill；B 回到 Can send（有输入框、无终端/控制）；改为只看后无输入框；链接 tab 无此档；横向滚动 0。
+- 旧 Web 兼容：用 main 版 `sessionShareTypes.ts` 解析新 grant 视图与 `session-share-updated`（带 `operate`）通过，role 读作 `driver`。
