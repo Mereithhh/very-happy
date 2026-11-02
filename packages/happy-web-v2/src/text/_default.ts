@@ -769,7 +769,7 @@ export const en = {
         forkErrorNoHistory: 'Nothing to fork yet: the agent has not answered in this session.',
         // B-860: a fork made while a turn runs
         forkRunningNotice: 'This turn is still running, so the fork has the completed turns only.',
-        forkRunningPrefilled: 'The running message is in the input box, ready to send again.',
+        forkRunningNoticePrefilled: 'This turn is still running, so the fork has the completed turns only. The running message is in the input box, ready to send again.',
         forkErrorAttachments: 'A message with attachments cannot be forked from yet.',
         forkErrorPending: 'This message has not been delivered yet. Try again in a moment.',
         forkErrorMissingPoint: 'This message was not found in the agent’s history, so the fork could not start.',

@@ -975,7 +975,7 @@ export const zhHans: TranslationStructure = {
         forkErrorUnreachable: '连不上这台机器上的 very-happy：先确认机器在线；在线的话，升级 CLI 后再试。',
         forkErrorNoHistory: '还没有可分叉的内容：Agent 还没在这个会话里回复过。',
         forkRunningNotice: '这一轮还在进行，分叉只包含已完成的部分。',
-        forkRunningPrefilled: '正在进行的那条消息已填进输入框，可以直接再发。',
+        forkRunningNoticePrefilled: '这一轮还在进行，分叉只包含已完成的部分；正在进行的那条消息已填进输入框，可以直接再发。',
         forkErrorAttachments: '带附件的消息暂不支持从这里分叉。',
         forkErrorPending: '这条消息还没送达，稍后再试。',
         forkErrorMissingPoint: '在 Agent 的历史记录里找不到这条消息，没法从这里分叉。',

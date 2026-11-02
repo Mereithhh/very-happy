@@ -38,8 +38,7 @@ export function useSessionForkItem(sessionId: string, running: boolean): MenuIte
                 .then((fork) => {
                     navigate(`/session/${encodeURIComponent(fork.id)}`);
                     if (fork.partial) {
-                        const notice = t('session.forkRunningNotice');
-                        toast.show(fork.prefilled ? `${notice} ${t('session.forkRunningPrefilled')}` : notice, 'info', { sticky: true });
+                        toast.show(t(fork.prefilled ? 'session.forkRunningNoticePrefilled' : 'session.forkRunningNotice'), 'info', { sticky: true });
                     }
                 })
                 .catch((error) => {
