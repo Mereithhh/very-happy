@@ -24,6 +24,7 @@ import {
     snippetNeedle,
     type ChatJumpRequest,
 } from './chatJump';
+import './sessionsearch.css';
 
 const HIGHLIGHT_NAME = 'vh-search-hit';
 const HIGHLIGHT_MS = 8_000;

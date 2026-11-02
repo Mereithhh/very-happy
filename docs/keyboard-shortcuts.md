@@ -4,63 +4,68 @@ Very Happy is keyboard-first on a desk and touch-reachable on a phone. The Web
 client keeps application shortcuts above the terminal input path without
 pretending the browser can surrender every reserved key.
 
-## Command palette
+## Command palette — the one search entry
 
-Press `Command+K` on macOS or `Ctrl+K` on Windows/Linux. The command palette
-searches shipped actions, active chats, and terminals. It supports the same
-`#tag` query grammar as sidebar search.
+Press `Command+K` on macOS or `Ctrl+K` on Windows/Linux. `Command+Shift+F` /
+`Ctrl+Shift+F` and the sidebar search button open the **same** palette (B-865).
+It searches shipped actions, chats, terminals, settings, and what was said in
+every conversation. It supports the same `#tag` query grammar as sidebar search.
 
 - `Arrow Up` / `Arrow Down`: move through matches. Only the bare keys do;
   with `Shift`, `Command`/`Ctrl` or `Alt` they move the caret or extend the
   selection in the search box, as in any text field. The same holds for the
   `Command+P` / `Ctrl+P` file finder (B-655).
 - `Enter`: run the highlighted action or open the selected work.
-- `Escape`: close the palette.
-- Touch: the sidebar search button opens session search (below); its empty
-  state links to this palette, so it never needs a hardware keyboard.
+- `Escape`: close the palette (an open filter menu closes first).
+- Touch: the sidebar search button opens this palette, so it never needs a
+  hardware keyboard. On a phone it fills the screen.
 
 Current actions include new chat, new terminal, new terminal in a chosen
 directory, voice assistant, clipboard history, notes, todo list, and settings.
-The result index also contains active chats and terminals.
+The result index also contains chats and terminals, and — once you type —
+the conversation content described below.
 
 On macOS the application chord is `Command`, not `Control`. This is deliberate:
 `Ctrl+K`, `Ctrl+J`, `Ctrl+N`, and `Ctrl+R` continue to reach readline and the
 actual agent TUI in a Very Happy terminal.
 
-## Session search
+## Searching what was said
 
-Press `Command+Shift+F` on macOS or `Ctrl+Shift+F` on Windows/Linux, tap the
-sidebar search button, or pick **Search sessions…** in the command palette.
-One panel searches every session of the account, archived and terminal mirrors
-included:
+Type two or more characters in the palette and a **Conversation content** group
+joins the results (about 250 ms after you stop typing; the other groups answer
+at once and never wait for it). It searches every session of the account:
 
 - titles, folders, machines, agents, projects and tags — instantly, in the
   browser (`#tag` filters by tag, as in the sidebar);
 - what was said — every online machine searches its own Claude Code / Codex
   history index in parallel (CLI 0.2.166 or newer); a conversation no session
-  owns yet shows as **Importable**;
+  owns yet shows as **Importable** and opens the machine's history import;
 - messages this tab has already loaded, for every agent (pi and Gemini included).
 
-Each session is one row with up to three highlighted snippets. Clicking a row or
-a snippet opens the session on that message (older history is loaded when
-needed) and highlights the terms. Filters: status (all / in progress / waiting
-for you / archived), project, agent, machine and time.
+A session appears once. When its title already matched, its highlighted snippets
+(up to three) sit under its row in **Chats**, and `Enter` simply opens it;
+otherwise the session is a row of **Conversation content**, and `Enter` opens it
+on the first hit. Clicking a snippet opens the session on that message (older
+history is loaded when needed) and highlights the terms. Typing again drops the
+answers to the previous query.
+
+A filter row under the search box narrows chats and content alike: status (not
+archived — the default —, waiting for you, include archived, archived only),
+project, machine, agent and time. **Reset** returns to the default.
 
 When a machine is offline, runs an older CLI, does not answer within 5 seconds
-or is still building its index, the top of the results says so — for example
-"2 machines offline · 1 machine runs an old CLI — content results are
-incomplete" — with the machine names underneath. Offline machines are never
-reported as "no results".
+or is still building its index, the **Conversation content** header says so —
+for example "Searching 1 machine… · 2 machines offline" — with the machine names
+underneath. Offline machines are never reported as "no results".
 
 Inside a web terminal on Windows/Linux, `Ctrl+Shift+F` stays the terminal's own
-find; use the sidebar button or the palette there.
+find; use `Ctrl+K` or the sidebar button there.
 
 ## Shortcut reference
 
 | Action | macOS | Windows / Linux | Touch |
 |---|---|---|---|
-| Command palette | `Command+K` | `Ctrl+K` | Session search → "Commands and quick jump" |
-| Session search | `Command+Shift+F` | `Ctrl+Shift+F` (outside a terminal) | Sidebar Search |
+| Command palette and search | `Command+K` or `Command+Shift+F` | `Ctrl+K`, or `Ctrl+Shift+F` outside a terminal | Sidebar Search |
 | Switch visible sidebar rows 1–9 | `Command+1` … `Command+9` | `Ctrl+1` … `Ctrl+9` | Tap the row |
 | Saved prompt menu | `Command+.` | `Ctrl+.` | Prompt shortcut button |
 | Toggle notes | `Command+J` | `Ctrl+J` | Notes header button |

@@ -298,12 +298,12 @@ notifications, connected machines, channels, and clipboard handoffs.
 
 The guide also points to the everyday tools that are easy to miss:
 
-- Press `Command/Ctrl+K` to search actions, chats, and terminals;
+- Press `Command/Ctrl+K` to search actions, chats, terminals, and what was said;
   `Command/Ctrl+.` opens saved prompts, and `Command/Ctrl+J` toggles scratch
   notes. Visible sidebar and header buttons provide the same paths on touch.
-- Press `Command/Ctrl+Shift+F` (or the sidebar search button on a phone) to
-  search every session's title, project and tags plus the conversations on each
-  online machine; a result opens the session on the hit.
+- `Command/Ctrl+Shift+F` and the sidebar search button open the same palette:
+  it searches every session's title, project and tags plus the conversations on
+  each online machine; a snippet opens the session on the hit.
 - The sidebar groups sessions by [project](projects.md). Sessions outside a
   project are grouped by folder, and **Make this folder a project** turns one
   into a project whose sessions share instructions and a decision log.
@@ -449,9 +449,8 @@ routing, and it needs the local daemon. See
 ## 6. Learn the fast paths
 
 Press `Command+K` on macOS or `Ctrl+K` on Windows/Linux to search actions,
-chats, and terminals. `Command+Shift+F` / `Ctrl+Shift+F` opens session search;
-on a phone the sidebar search button opens it, and its empty state links to the
-palette. Very Happy keeps macOS `Ctrl` chords available to readline and the real
+chats, terminals, and what was said in every conversation. `Command+Shift+F` /
+`Ctrl+Shift+F` and, on a phone, the sidebar search button open the same palette. Very Happy keeps macOS `Ctrl` chords available to readline and the real
 TUI, and documents where installed-PWA shortcuts differ from browser tabs.
 
 See [Keyboard and touch navigation](keyboard-shortcuts.md) for session switching,

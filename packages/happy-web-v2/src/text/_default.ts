@@ -1136,7 +1136,7 @@ export const en = {
     },
 
     commandPalette: {
-        placeholder: 'Type a command or search...',
+        placeholder: 'Command, chat, or words from a conversation… #tag',
         // Categories
         categorySessions: 'Sessions',
         categoryRecentSessions: 'Recent Sessions',
@@ -1165,6 +1165,8 @@ export const en = {
         groupActions: 'Actions',
         groupSessions: 'Chats',
         groupTerminals: 'Terminals',
+        // B-865: sessions found by what was said (every online machine + loaded messages)
+        groupContent: 'Conversation content',
         actionNewChat: 'New chat',
         actionNewChatAdvanced: 'New chat (choose options)…',
         actionNewChatWithQuery: ({ query }: { query: string }) => `New chat: ${query}`,
@@ -1173,7 +1175,6 @@ export const en = {
         actionAttachTmux: 'Attach a tmux session…',
         actionImportClaude: 'Import a Claude Code conversation…',
         actionImportCodex: 'Import a Codex conversation…',
-        actionSearchSessions: 'Search sessions…',
         actionSearchHistory: 'Search conversation history…',
         actionRenameSession: 'Rename current chat',
         actionArchiveSession: 'Archive current chat',
@@ -1556,10 +1557,8 @@ export const en = {
         alreadyImportedOpen: ({ name }: { name: string }) => `Open the chat it was imported into: ${name}`,
     },
     sessionSearch: {
-        // B-650: cross-session search panel (sidebar 🔍, ⌘K, ⌘⇧F)
-        title: 'Search sessions',
-        placeholder: 'Search sessions and what was said… #tag',
-        emptyHint: 'Searches every session — titles, folders, projects, tags, and the conversation on each online machine. #tag filters by tag.',
+        // B-650 → B-865: the ⌘K palette's session search (sidebar 🔍, ⌘K, ⌘⇧F)
+        title: 'Search',
         noResults: 'No matching sessions',
         searching: 'Searching…',
         statusLabel: 'Status',
@@ -1567,6 +1566,11 @@ export const en = {
         statusLive: 'In progress',
         statusWaiting: 'Waiting for you',
         statusArchived: 'Archived',
+        statusNotArchived: 'Not archived',
+        statusIncludeArchived: 'Include archived',
+        statusArchivedOnly: 'Archived only',
+        filtersLabel: 'Filters',
+        resetFilters: 'Reset',
         projectLabel: 'Project',
         projectAny: 'Any project',
         agentLabel: 'Agent',
@@ -1594,8 +1598,6 @@ export const en = {
         roleUser: 'You',
         roleAgent: 'Agent',
         roleTool: 'Tool',
-        openPalette: 'Commands and quick jump (⌘K)',
-        footKeys: '↑↓ select · Enter open · Esc close',
     },
     historySearch: {
         // B-549: full-text search over the machine's Claude Code / Codex

@@ -1,5 +1,4 @@
 import { AttentionOpenReporter } from '@/screens/projects/AttentionOpenReporter';
-import { SessionSearch } from '@/screens/search/SessionSearchPanel';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { PanelLeft } from 'lucide-react';
@@ -169,9 +168,8 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
       <SignInMethodsNudge />
       {/* B-588: at most one one-time feature tip app-wide */}
       <FeatureTipHost />
+      {/* B-865: the one search entry — ⌘K / ⌘⇧F / sidebar 🔍 (titles + what was said) */}
       <CommandPalette />
-      {/* B-650: cross-session search (sidebar 🔍 / ⌘K / ⌘⇧F) */}
-      <SessionSearch />
       {/* clipboard-push history — singleton like the palette (⌘K / settings open it) */}
       <ClipboardHistoryPanel />
       {/* open_preview pushes — singleton overlay opened by sync/filePreviewPush */}

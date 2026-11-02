@@ -88,6 +88,14 @@ describe('searchLocalSessions (sources 1 + 3)', () => {
     });
 });
 
+describe('B-865 repeated replies', () => {
+    it('the same reply sent every turn shows once (the newest), so other hits keep their slots', () => {
+        const msgs: Message[] = [agent('a1', 'build failed: fix the call sites', 1), agent('a2', 'build failed: fix the call sites', 2), agent('a3', 'call sites fixed', 3)];
+        const rows = searchLocalSessions([doc('a')], new Map([['a', msgs]]), parseSessionSearchQuery('call sites'));
+        expect(rows[0].snippets.map((s) => s.messageId)).toEqual(['a3', 'a2']);
+    });
+});
+
 describe('mergeContentHits (source 2)', () => {
     const q = parseSessionSearchQuery('redis');
     it('adds daemon snippets to a known session, deduplicated against cached ones', () => {

@@ -15,7 +15,8 @@
  *  B-800: global back (⌘[ / edge swipe) is mounted too, for `--gestures`.
  *  B-801: `#draft` opens a 「新会话」 draft page.
  *  B-836: `/v1/feedback*` answers in-page (this account is a feedback admin) and
- *  `#feedback-prompt` shows the feedback prompt card. */
+ *  `#feedback-prompt` shows the feedback prompt card.
+ *  B-865: `#search` seeds the one-search-entry scene (searchSeed.ts). */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalBackNav } from '@/app/appBack';
@@ -29,6 +30,7 @@ import { AppLayout } from '@/screens/AppLayout';
 import { boardTeam, seedBoardSession } from './BoardHarness';
 import { seedLocationTrail } from './LocationTrailHarness';
 import { seedPlainSession } from './plainSessionSeed';
+import { seedSearchScene } from './searchSeed';
 import { installFeedbackApi } from './feedbackHarness';
 import { FeedbackPromptCard } from '@/app/feedback/FeedbackPrompt';
 import { sync } from '@/sync/sync';
@@ -70,6 +72,8 @@ export function DeviceShellHarness() {
       throw new Error(`lookup ${res.status}`);
     };
     storage.getState().applyMachines([{ id: 'dev-machine', seq: 2, createdAt: now, updatedAt: now, active: true, activeAt: now, metadata: { host: 'dev-box', platform: 'linux', teamLaunchVersion: 1 }, metadataVersion: 1, daemonState: null, daemonStateVersion: 1 } as unknown as Machine]);
+    // B-865: `#search` — a content-search machine (answered in-page) and an offline one.
+    const search = location.hash === '#search' ? seedSearchScene() : () => {};
     setReady(true);
     // B-801: `#draft` opens a 「新会话」 draft page (the store's real draft record; nothing is spawned).
     if (location.hash === '#draft' && !pendingSessions.list().some((r) => r.state === 'draft')) {
@@ -96,7 +100,7 @@ export function DeviceShellHarness() {
       toast.error('发送失败：连接已断开，请稍后重试');
       toast.action('有新版本可用 — 点此刷新', () => {});
     }
-    return () => { setTeamNavigationDevOverride(null); board.cleanup(); feedback(); sync.fetchSessionById = realLookup; };
+    return () => { setTeamNavigationDevOverride(null); board.cleanup(); feedback(); search(); sync.fetchSessionById = realLookup; };
   }, []);
   if (!ready) return null;
   // B-836: `#feedback-prompt` shows the prompt card straight away (its timing and queue are unit-tested).

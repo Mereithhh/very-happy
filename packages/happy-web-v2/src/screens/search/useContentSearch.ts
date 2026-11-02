@@ -24,6 +24,13 @@ export interface ContentSearchState {
 
 const EMPTY: ContentSearchState = { hits: new Map(), coverage: [] };
 
+type MachineSearch = typeof machineHistorySearch;
+let searchOverride: MachineSearch | null = null;
+/** DEV / tests: answer `history-search` in-page (the device harness, useContentSearch.test). */
+export function setContentSearchOverride(fn: MachineSearch | null): void {
+    searchOverride = fn;
+}
+
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | 'timeout'> {
     return new Promise((resolve) => {
         const t = setTimeout(() => resolve('timeout'), ms);
@@ -36,8 +43,10 @@ export function useContentSearch(opts: {
     query: string;
     agent?: 'claude' | 'codex';
     machines: readonly Machine[];
+    /** Keystroke → RPC delay (B-865: the palette's query is already debounced once). */
+    debounceMs?: number;
 }): ContentSearchState {
-    const { query, agent, machines } = opts;
+    const { query, agent, machines, debounceMs = HISTORY_SEARCH_DEBOUNCE_MS } = opts;
     const [state, setState] = useState<ContentSearchState>(EMPTY);
     const [pollTick, setPollTick] = useState(0);
     const round = useRef(0);
@@ -64,7 +73,7 @@ export function useContentSearch(opts: {
             const callable = initial.filter((c) => c.state === 'pending');
             for (const c of callable) {
                 void withTimeout(
-                    machineHistorySearch(c.machineId, { query, limit: CONTENT_RESULT_LIMIT, ...(agent ? { agent } : {}) }, { timeoutMs: MACHINE_SEARCH_TIMEOUT_MS }),
+                    (searchOverride ?? machineHistorySearch)(c.machineId, { query, limit: CONTENT_RESULT_LIMIT, ...(agent ? { agent } : {}) }, { timeoutMs: MACHINE_SEARCH_TIMEOUT_MS }),
                     MACHINE_SEARCH_TIMEOUT_MS + 500,
                 ).then((res) => {
                     if (mine !== round.current) return;
@@ -85,9 +94,9 @@ export function useContentSearch(opts: {
                     });
                 });
             }
-        }, isPoll ? 0 : HISTORY_SEARCH_DEBOUNCE_MS);
+        }, isPoll ? 0 : debounceMs);
         return () => clearTimeout(timer);
-    }, [query, agent, scopeKey, pollTick]);
+    }, [query, agent, scopeKey, pollTick, debounceMs]);
 
     const indexing = state.coverage.some((c) => c.state === 'indexing');
     useEffect(() => {
