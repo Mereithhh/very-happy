@@ -14,10 +14,12 @@ import {
 
 const SESSION = 'cmtcqxdtu007vqh2a8m7ztix7';
 
-function makeRuntime(dir: string, alive: Set<number>, selfPid = 17092) {
+function makeRuntime(dir: string, alive: Set<number>, selfPid = 17092, tree: SessionLockRuntime['tree'] = { snapshot: () => [], readLive: () => [] }) {
     const signals: Array<{ pid: number; signal: string }> = [];
     const scheduled: Array<() => void> = [];
     const runtime: SessionLockRuntime = {
+        // Fake pids: never let the takeover's tree stop read (or SIGKILL) the real process table.
+        tree,
         dir,
         selfPid,
         now: () => 1_700_000_000_000,
@@ -86,6 +88,46 @@ describe('sessionLock', () => {
         runScheduled();               // grace → SIGKILL
         expect(signals.map((s) => s.signal)).toEqual(['SIGTERM', 'SIGKILL']);
         runScheduled();               // settle: still alive
+        await expect(pending).resolves.toEqual({ ok: false, holder: { pid: 25691, startedAt: 1, version: '0.2.93' } });
+        expect(readSessionLock(SESSION, dir)?.pid).toBe(25691);
+    });
+
+    it('B-864b: a takeover that needs the SIGKILL also stops the holder\'s Claude Code tree', async () => {
+        const alive = new Set([25691]);
+        const claude = { pid: 25700, ppid: 25691, start: 'Mon Nov  2 10:00:00 2026' };
+        const mcp = { pid: 25710, ppid: 25700, start: 'Mon Nov  2 10:00:01 2026' };
+        let table = [claude, mcp];
+        const snapshots: number[] = [];
+        const reaped: number[][] = [];
+        const { runtime, signals, runScheduled } = makeRuntime(dir, alive, 17092, {
+            snapshot: (pid) => { snapshots.push(pid); return [...table]; },
+            reap: (entries) => { reaped.push(entries.map((e) => e.pid)); table = []; return entries.map((e) => e.pid); },
+            readLive: () => table,
+        });
+        writeFileSync(sessionLockPath(SESSION, dir), JSON.stringify({ pid: 25691, startedAt: 1, version: '0.2.93' }));
+        const pending = acquireSessionLock(SESSION, { takeover: true, version: '0.2.95' }, runtime);
+        runScheduled();               // grace: the wrapper ignored SIGTERM → re-snapshot, SIGKILL
+        expect(signals.map((s) => s.signal)).toEqual(['SIGTERM', 'SIGKILL']);
+        expect(snapshots).toEqual([25691, 25691]);
+        alive.delete(25691);          // the SIGKILL landed; its children did not get it
+        runScheduled();               // settle → reap the tree, verify it is gone
+        await expect(pending).resolves.toEqual({ ok: true, replaced: { pid: 25691, startedAt: 1, version: '0.2.93' } });
+        expect(reaped).toEqual([[25700, 25710]]);
+        expect(readSessionLock(SESSION, dir)?.pid).toBe(17092);
+    });
+
+    it('B-864b: a holder tree that survives the reap fails the takeover (no second executor)', async () => {
+        const alive = new Set([25691]);
+        const claude = { pid: 25700, ppid: 25691, start: 'Mon Nov  2 10:00:00 2026' };
+        const { runtime, runScheduled } = makeRuntime(dir, alive, 17092, {
+            snapshot: () => [claude],
+            reap: () => [],
+            readLive: () => [claude],
+        });
+        writeFileSync(sessionLockPath(SESSION, dir), JSON.stringify({ pid: 25691, startedAt: 1, version: '0.2.93' }));
+        const pending = acquireSessionLock(SESSION, { takeover: true, version: '0.2.95' }, runtime);
+        alive.delete(25691);
+        for (let i = 0; i < 40; i++) runScheduled();
         await expect(pending).resolves.toEqual({ ok: false, holder: { pid: 25691, startedAt: 1, version: '0.2.93' } });
         expect(readSessionLock(SESSION, dir)?.pid).toBe(25691);
     });

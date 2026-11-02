@@ -33,7 +33,7 @@ import { join } from 'node:path';
 
 import { configuration } from '@/configuration';
 import { logger } from '@/ui/logger';
-import { terminateProcess, type ProcessTerminationRuntime } from '@/daemon/processTermination';
+import { isProcessAlive, terminateProcessTree, type ProcessTerminationRuntime, type TerminateTreeDeps } from '@/daemon/processTermination';
 import { writePrivateFileSync } from '@/utils/secureFiles';
 
 export const SESSION_LOCK_DIR = 'session-locks';
@@ -54,6 +54,8 @@ export interface SessionLockRuntime extends ProcessTerminationRuntime {
     /** This process's pid. */
     selfPid: number;
     now(): number;
+    /** Process-table access for the takeover's tree stop (tests inject it; default `ps`). */
+    tree?: Pick<TerminateTreeDeps, 'snapshot' | 'reap' | 'readLive' | 'platform'>;
 }
 
 const defaultRuntime = (): SessionLockRuntime => ({
@@ -61,14 +63,7 @@ const defaultRuntime = (): SessionLockRuntime => ({
     selfPid: process.pid,
     now: () => Date.now(),
     signal: (pid, signal) => process.kill(pid, signal),
-    isAlive: (pid) => {
-        try {
-            process.kill(pid, 0);
-            return true;
-        } catch {
-            return false;
-        }
-    },
+    isAlive: (pid) => isProcessAlive(pid),
     schedule: (callback, delayMs) => { setTimeout(callback, delayMs); },
 });
 
@@ -219,14 +214,22 @@ export function acquireSessionLock(
                 resolve({ ok: false, holder });
                 return;
             }
-            const requested = terminateProcess(holder.pid, (stopped) => {
+            // B-864b: the holder's whole tree. Stopping only the wrapper left its
+            // Claude Code / codex app-server running the turn unowned whenever
+            // the wrapper needed the SIGKILL — a ghost executor beside this one.
+            const requested = terminateProcessTree(holder.pid, (stopped) => {
                 if (!stopped) {
                     resolve({ ok: false, holder });
                     return;
                 }
                 writeSessionLock(happySessionId, record(), runtime.dir);
                 resolve({ ok: true, replaced: holder });
-            }, runtime, options.graceMs ?? 2_000);
+            }, {
+                ...runtime.tree,
+                runtime,
+                graceMs: options.graceMs ?? 2_000,
+                onLeftovers: (pids) => logger.debug(`[SESSION LOCK] ${happySessionId}: takeover of ${holder.pid} left ${pids.join(', ')} running`),
+            });
             if (!requested) resolve({ ok: false, holder });
         };
         attempt();
