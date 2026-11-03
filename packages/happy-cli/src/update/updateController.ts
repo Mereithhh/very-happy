@@ -152,15 +152,17 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         operation = 'tick';
         try { await evaluate(); } finally { operation = null; }
     }
-    async function refresh() {
-        if (operation || blocked) return;
+    /** B-876: says whether a policy was read, so event-driven refreshes can retry (policyRefreshTrigger.ts). */
+    async function refresh(): Promise<'ok' | 'unavailable' | 'busy'> {
+        if (operation || blocked) return 'busy';
         operation = 'refresh';
         try {
             const next = await deps.policy();
-            if (!next) return;
+            if (!next) return 'unavailable';
             if (manualVersion && !validManualTarget(next, manualVersion)) manualVersion = null;
             policy = next;
             await evaluate();
+            return 'ok';
         } finally { operation = null; }
     }
     async function retry(version: unknown): Promise<{ accepted: true } | { error: string }> {
@@ -222,5 +224,7 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         handoverHold = { reason, at: now() };
         publish('failed', manualVersion ?? policy?.autoUpdateVersion ?? null, 'handover_preflight_failed');
     }
-    return { refresh, retry, request, tick, withHandover, holdHandover, isRunning: () => running, currentTarget: () => policy?.autoUpdateVersion ?? null };
+    /** B-876: no policy yet, or the held one is past the 65-minute limit — only a fetch can move on from here. */
+    const policyStale = () => !policy || now() - policy.checkedAt > 65 * 60_000;
+    return { refresh, retry, request, tick, withHandover, holdHandover, policyStale, isRunning: () => running, currentTarget: () => policy?.autoUpdateVersion ?? null };
 }

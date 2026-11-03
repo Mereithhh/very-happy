@@ -72,6 +72,7 @@ import { createUpdateController, resolveBusyInstallGrace } from '@/update/update
 import { installCliStaged } from '@/update/stagedInstall';
 import { lastInstallStore } from '@/update/lastInstall';
 import { createPolicyAnnouncementHandler } from '@/update/policyAnnouncement';
+import { createPolicyRefreshTrigger, createWakeDetector } from '@/update/policyRefreshTrigger';
 import { createHarnessInstaller } from '@/harness/harnessInstaller';
 import { runNpm } from '@/update/npmInstall';
 import { HARNESS_INSTALL_CAPABILITY_VERSION } from '@slopus/happy-wire';
@@ -2228,10 +2229,16 @@ export async function startDaemon(): Promise<void> {
         logger.warn('[RELAY MOVE] Failed:', error);
       }).finally(() => { relayMoveInFlight = null; });
     });
-    const refreshCliUpdate = () => updateController.refresh().catch((error) => {
+    // B-876: reconnect / wake / stale policy re-read the policy at once (paced), not on the next hourly check.
+    const policyRefresh = createPolicyRefreshTrigger({
+      refresh: () => updateController.refresh(),
+      log: (message) => logger.warn(`[DAEMON RUN] ${message}`),
+    });
+    const refreshCliUpdate = () => updateController.refresh().then(policyRefresh.noteRefreshed).catch((error) => {
       logger.debug('[DAEMON RUN] CLI update policy check failed:', error);
     });
-    void refreshCliUpdate();
+    apiMachine.setControlConnectedHandler(() => { policyRefresh.request('connect'); });
+    policyRefresh.request('startup');
     const cliUpdateIntervalMs = resolveCliUpdateCheckInterval(process.env.HAPPY_CLI_UPDATE_CHECK_INTERVAL);
     if (process.env.HAPPY_CLI_UPDATE_CHECK_INTERVAL && cliUpdateIntervalMs === DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS
       && process.env.HAPPY_CLI_UPDATE_CHECK_INTERVAL.trim() !== String(DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS)) {
@@ -2276,6 +2283,7 @@ export async function startDaemon(): Promise<void> {
     // 3. If outdated, restart with latest version
     // 4. Write heartbeat
     const heartbeatIntervalMs = parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '60000');
+    const wakeDetector = createWakeDetector(heartbeatIntervalMs);
     const restartOnStaleVersionAndHeartbeat = setInterval(serialTask(async () => {
       try {
 
@@ -2364,6 +2372,7 @@ export async function startDaemon(): Promise<void> {
         clearInterval(restartOnStaleVersionAndHeartbeat);
         clearInterval(cliUpdateInterval);
         policyAnnouncements.stop();
+        policyRefresh.stop();
         stopAgentVersionChecks();
         claudeAuthService.stop();
         stopAccountWatch();
@@ -2414,6 +2423,10 @@ export async function startDaemon(): Promise<void> {
         // B-864: and stop here — the heartbeat below would overwrite the other daemon's state with ours.
         return;
       }
+
+      // B-876: after a suspend (sleep, DarkWake) or with an expired policy, fetch instead of only reporting policy_stale.
+      const woke = wakeDetector.beat();
+      if (woke || updateController.policyStale()) policyRefresh.request(woke ? 'wake' : 'stale');
 
       // Heartbeat
       try {
@@ -2546,6 +2559,7 @@ export async function startDaemon(): Promise<void> {
       clearInterval(cliUpdateInterval);
       clearInterval(autoRestartSweep);
       policyAnnouncements.stop();
+      policyRefresh.stop();
       stopAgentVersionChecks();
 
       // Update daemon state before shutting down
