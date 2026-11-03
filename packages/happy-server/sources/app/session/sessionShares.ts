@@ -32,7 +32,8 @@ import { businessAuditEnabled, publishAudit } from '@/app/audit/producer';
 import { buildUserProfile, type UserProfile } from '@/app/social/type';
 import { displayNameOf, identityOf, profileInclude, resolveAccountByHandle, type ProfileAccount } from '@/app/social/accountDirectory';
 import { RelationshipStatus } from '@prisma/client';
-import { beginOperatorTeardown, operatorGrantsChanged, type OperatorEndReason } from './operatorBroker';
+import { beginOperatorTeardown, onShareCrossSlotChange, operatorGrantsChanged, type OperatorEndReason } from './operatorBroker';
+import { invalidateProjectShareCaches, noteProjectDerivedOpen, projectGranteeIds, projectSharedSessions, resolveProjectSessionAccess, wireProjectShares } from '@/app/share/projectShares';
 import { normalizeModeCap } from './operatorPolicy';
 import {
     contentKeyPairFromSecret,
@@ -53,7 +54,9 @@ export class SessionShareError extends Error {
 
 export type SessionAccess =
     | { kind: 'owner'; ownerId: string }
-    | { kind: 'grant'; ownerId: string; role: SessionGrantRole; grantId: string };
+    | { kind: 'grant'; ownerId: string; role: SessionGrantRole; grantId: string }
+    /** B-878 PR-B: derived from a project share (never an operator). */
+    | { kind: 'project'; ownerId: string; role: SessionGrantRole; grantId: string; projectId: string };
 
 const MAX_GRANTS_PER_SESSION = 20;
 const DEK_CACHE_TTL_MS = 10 * 60_000;
@@ -86,6 +89,10 @@ export async function resolveSessionAccess(userId: string, sessionId: string, cl
         where: { sessionId, granteeAccountId: userId, status: 'active', ...unexpiredGrant() },
         select: { id: true, role: true, session: { select: { accountId: true } } },
     });
+    // A direct "can send" is already the most a project share could give.
+    if (grant?.role === 'driver') return { kind: 'grant', ownerId: grant.session.accountId, role: grant.role, grantId: grant.id };
+    const derived = await resolveProjectSessionAccess(userId, sessionId);
+    if (derived && (!grant || derived.role === 'driver')) return { kind: 'project', ownerId: derived.ownerId, role: derived.role, grantId: derived.projectGrantId, projectId: derived.projectId };
     if (!grant) return null;
     return { kind: 'grant', ownerId: grant.session.accountId, role: grant.role, grantId: grant.id };
 }
@@ -94,7 +101,7 @@ export async function requireSessionAccess(userId: string, sessionId: string, mi
     const access = await resolveSessionAccess(userId, sessionId);
     if (!access) throw new SessionShareError('session_not_found', 404);
     if (minimum === 'owner' && access.kind !== 'owner') throw new SessionShareError('owner_only', 403);
-    if (minimum === 'driver' && access.kind === 'grant' && access.role !== 'driver') throw new SessionShareError('driver_only', 403);
+    if (minimum === 'driver' && access.kind !== 'owner' && access.role !== 'driver') throw new SessionShareError('driver_only', 403);
     return access;
 }
 
@@ -421,16 +428,25 @@ export async function listPendingSessionInvites(granteeAccountId: string): Promi
 }
 
 /** Rows a grantee sees in /v1/sessions: the owner's row with the grantee-wrapped key and redacted metadata. */
+type SharedRowShare = {
+    grantId: string; role: SessionGrantRole; operate: boolean; modeCap: string | null; expiresAt: number | null; owner: { id: string; displayName: string };
+    /** B-878 PR-B: how the row is reachable. Absent = direct (older servers). */
+    via?: 'direct' | 'project' | 'both';
+    projectId?: string;
+    projectGrantId?: string;
+};
+
 export async function listSharedSessionRows<T extends SessionKeyRow & { metadata: string }>(
     granteeAccountId: string,
     select: Prisma.SessionSelect,
-): Promise<Array<{ row: T; share: { grantId: string; role: SessionGrantRole; operate: boolean; modeCap: string | null; expiresAt: number | null; owner: { id: string; displayName: string } }; dataEncryptionKey: Buffer; metadata: string }>> {
+    opts: { projects?: boolean; onlySessionId?: string } = {},
+): Promise<Array<{ row: T; share: SharedRowShare; dataEncryptionKey: Buffer; metadata: string }>> {
     const grants = await db.sessionGrant.findMany({
         where: { granteeAccountId, status: 'active', ...unexpiredGrant() },
         include: { grantedBy: { select: { id: true, firstName: true, lastName: true, username: true } }, session: { select: { ...select, id: true, accountId: true, dataEncryptionKey: true, metadata: true } } },
         orderBy: { createdAt: 'desc' },
     });
-    const out = [];
+    const out: Array<{ row: T; share: SharedRowShare; dataEncryptionKey: Buffer; metadata: string }> = [];
     for (const grant of grants) {
         const row = grant.session as unknown as T;
         const metadata = await redactedMetadataFor(row);
@@ -442,12 +458,49 @@ export async function listSharedSessionRows<T extends SessionKeyRow & { metadata
             metadata,
         });
     }
+    if (!opts.projects) return out;
+    // B-878 PR-B: sessions reachable through a project share, computed from current membership.
+    const derived = await projectSharedSessions(granteeAccountId);
+    if (derived.size === 0) return out;
+    const byId = new Map(out.map((entry) => [entry.row.id, entry]));
+    const missing = [...derived.keys()].filter((id) => !byId.has(id) && (!opts.onlySessionId || id === opts.onlySessionId));
+    for (const [sessionId, access] of derived) {
+        const entry = byId.get(sessionId);
+        if (!entry) continue;
+        entry.share = { ...entry.share, via: 'both', projectId: access.projectId, projectGrantId: access.projectGrantId, role: entry.share.role === 'driver' || access.role === 'driver' ? 'driver' : 'viewer' };
+    }
+    if (missing.length === 0) return out;
+    const publicKey = await granteeContentPublicKey(granteeAccountId);
+    if (!publicKey) return out;
+    const owners = new Map<string, { id: string; displayName: string }>();
+    const rows = await db.session.findMany({ where: { id: { in: missing } }, select: { ...select, id: true, accountId: true, dataEncryptionKey: true, metadata: true } });
+    for (const raw of rows) {
+        const row = raw as unknown as T;
+        const access = derived.get(row.id);
+        if (!access || row.accountId !== access.ownerId) continue;
+        const dek = await openSessionDataKey(row);
+        const metadata = dek ? await redactedMetadataFor(row) : null;
+        if (!dek || !metadata) continue;
+        if (!owners.has(access.ownerId)) {
+            const owner = await db.account.findUnique({ where: { id: access.ownerId }, select: { id: true, firstName: true, lastName: true, username: true } });
+            if (!owner) continue;
+            owners.set(access.ownerId, { id: owner.id, displayName: displayNameOf(owner, await identityOf(owner.id)) });
+        }
+        noteProjectDerivedOpen(granteeAccountId, access, row.id);
+        out.push({
+            row,
+            share: { grantId: access.projectGrantId, role: access.role, operate: false, modeCap: null, expiresAt: null, owner: owners.get(access.ownerId)!, via: 'project', projectId: access.projectId, projectGrantId: access.projectGrantId },
+            dataEncryptionKey: Buffer.from(wrapDataEncryptionKey(dek, publicKey)),
+            metadata,
+        });
+    }
     return out;
 }
 
 /** One shared session for a grantee (GET /v1/sessions/:id). */
 export async function sharedSessionRowFor<T extends SessionKeyRow & { metadata: string }>(granteeAccountId: string, sessionId: string, select: Prisma.SessionSelect) {
-    const rows = await listSharedSessionRows<T>(granteeAccountId, select);
+    // A single read always includes project-derived access: a client only asks for an id it was told about.
+    const rows = await listSharedSessionRows<T>(granteeAccountId, select, { projects: true, onlySessionId: sessionId });
     return rows.find((entry) => entry.row.id === sessionId) ?? null;
 }
 
@@ -463,7 +516,7 @@ export function buildSharedMessageText(sender: { accountId: string; displayName:
 
 export async function postSharedMessage(input: { granteeAccountId: string; sessionId: string; text: string; localId: string }) {
     const access = await requireSessionAccess(input.granteeAccountId, input.sessionId, 'driver');
-    if (access.kind !== 'grant') throw new SessionShareError('owner_uses_normal_send', 400);
+    if (access.kind === 'owner') throw new SessionShareError('owner_uses_normal_send', 400);
     const text = input.text;
     if (!text.trim()) throw new SessionShareError('empty_message', 400);
     if (Buffer.byteLength(text, 'utf8') > SESSION_MESSAGE_CONTENT_MAX_BYTES / 2) throw new SessionShareError('message_too_large', 413);
@@ -509,11 +562,18 @@ export function invalidateGrantees(sessionId: string): void {
     operatorGrantsChanged();
 }
 
+/** B-878: a project share or membership changed — every slot drops grantee and derived-access caches now. */
+export function sharesChanged(): void {
+    granteeCache.clear();
+    invalidateProjectShareCaches();
+    operatorGrantsChanged();
+}
+
 export async function activeGranteeIds(sessionId: string): Promise<string[]> {
     const cached = granteeCache.get(sessionId);
     if (cached && Date.now() - cached.at < GRANTEE_CACHE_TTL_MS) return cached.ids;
     const grants = await db.sessionGrant.findMany({ where: { sessionId, status: 'active', ...unexpiredGrant() }, select: { granteeAccountId: true } });
-    const ids = grants.map((grant) => grant.granteeAccountId);
+    const ids = [...new Set([...grants.map((grant) => grant.granteeAccountId), ...await projectGranteeIds(sessionId)])];
     granteeCache.set(sessionId, { ids, at: Date.now() });
     return ids;
 }
@@ -551,6 +611,9 @@ export async function notifyGranteesSessionDeleted(sessionId: string, granteeIds
 }
 
 export function installSessionShareFanout(): void {
+    wireProjectShares({ emitUpdate: emitToAccount, sharesChanged });
+    // Registered at startup, not import time (operatorBroker ↔ sessionShares import each other).
+    onShareCrossSlotChange(() => { granteeCache.clear(); invalidateProjectShareCaches(); });
     eventRouter.setSessionFanout({
         update: (sessionId, payload) => fanoutSessionUpdateToGrantees(sessionId, payload).catch((error) => log({ module: 'session-share', sessionId, error }, 'fan-out failed')),
         ephemeral: (sessionId, payload) => fanoutSessionEphemeralToGrantees(sessionId, payload).catch((error) => log({ module: 'session-share', sessionId, error }, 'fan-out failed')),

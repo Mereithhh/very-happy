@@ -107,6 +107,12 @@ function invalidateGrantCache(): void {
     grantCache.clear();
 }
 
+/** B-878 decision 11: other share caches (session grantees, project shares) ride the same cross-slot broadcast. */
+const crossSlotListeners: Array<() => void> = [];
+export function onShareCrossSlotChange(fn: () => void): void {
+    crossSlotListeners.push(fn);
+}
+
 /** Any grant change (accept, re-role, expiry edit, revoke): drop cached verdicts on every slot. */
 export function operatorGrantsChanged(): void {
     invalidateGrantCache();
@@ -274,6 +280,7 @@ export function startOperatorBroker(io: Server): void {
     ioRef = io;
     io.on(CROSS_SLOT_EVENT, () => {
         invalidateGrantCache();
+        for (const fn of crossSlotListeners) fn();
         void refreshTerminalIndex().catch(() => { /* next sweep */ });
     });
     if (sweepTimer) clearInterval(sweepTimer);

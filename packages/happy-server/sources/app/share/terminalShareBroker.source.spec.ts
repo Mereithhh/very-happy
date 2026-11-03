@@ -21,12 +21,21 @@ describe('B-878 terminal share broker source contracts', () => {
     });
 
     it('only the resolver (active + unexpired + this grantee) and attachment rows mint a VerifiedTerminalShare', () => {
-        expect((src.match(/\bmint\(/g) ?? []).length).toBe(4); // definition + resolve + ownerTerminalExists + attachedShare
+        // definition + resolve (terminal grant) + ownerTerminalExists + mintProjectShare + attachedShare
+        expect((src.match(/\bmint\(/g) ?? []).length).toBe(5);
         // The owner probe mints only for a machine of that owner (its own authenticated request).
-        const probe = src.slice(src.indexOf('export async function ownerTerminalExists('), src.indexOf('/** Teardown / state checks only'));
+        const probe = src.slice(src.indexOf('export async function ownerTerminalExists('), src.indexOf('/** This grantee'));
         expect(probe).toContain('const machine = await db.machine.findFirst({ where: { id: machineId, accountId: ownerId }, select: { active: true } });');
-        const resolve = src.slice(src.indexOf('export async function resolveTerminalShare('), src.indexOf('/** Teardown / state checks only'));
+        const resolve = src.slice(src.indexOf('export async function resolveTerminalShare('), src.indexOf('/** This grantee'));
         expect(resolve).toContain("granteeAccountId: granteeId, status: 'active', expiresAt: { gt: new Date() }");
+        // B-878 PR-B: a project share is minted only from this grantee's ACTIVE, unexpired project grant row,
+        // and the resolver hands it out only while the daemon reports the terminal in that project.
+        const active = src.slice(src.indexOf('async function activeProjectGrant('), src.indexOf('/** Mint for one machine'));
+        expect(active).toContain("where: { id: projectGrantId, granteeAccountId: granteeId, status: 'active', OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },");
+        expect((src.match(/mintProjectShare\(/g) ?? []).length).toBe(3); // definition + resolver + lister, each after activeProjectGrant
+        const project = src.slice(src.indexOf('async function resolveProjectTerminal('), src.indexOf('export type ProjectTerminalView'));
+        expect(project).toContain('return info && info.projectId === row.projectId ? candidate : null;');
+        expect(src).toContain("role: 'viewer', expiresAt: row.expiresAt ? row.expiresAt.getTime() : Number.MAX_SAFE_INTEGER, projectId: row.projectId,");
     });
 
     it('every grantee frame re-checks the grant; teardown never kills', () => {

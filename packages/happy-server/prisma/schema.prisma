@@ -71,6 +71,7 @@ model Account {
     SessionGrantsGiven    SessionGrant[] @relation("SessionGrantGrantedBy")
     TerminalGrantsReceived TerminalGrant[] @relation("TerminalGrantGrantee")
     TerminalGrantsGiven    TerminalGrant[] @relation("TerminalGrantOwner")
+    ProjectGrantsReceived  ProjectGrant[]  @relation("ProjectGrantGrantee")
     SessionShareLinks     SessionShareLink[]
     AttentionItems        AttentionItem[]
     Feedback              Feedback[]
@@ -408,6 +409,32 @@ model TerminalGrant {
     revokedAt          DateTime?
 
     @@unique([machineId, terminalId, granteeAccountId])
+    @@index([granteeAccountId, status])
+    @@index([ownerAccountId])
+}
+
+/// B-878 PR-B: a whole project shared with one account (view only / can send). Access to the project's
+/// sessions and terminals is DERIVED at read time from current membership (never copied into SessionGrant),
+/// so sessions added later are visible and sessions moved out are not. Terminals are always view only.
+/// `granteeKey` = a random stream key boxed to the grantee (project terminals are re-keyed to it).
+model ProjectGrant {
+    id               String             @id @default(cuid())
+    projectId        String
+    project          Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+    ownerAccountId   String
+    granteeAccountId String
+    grantee          Account            @relation("ProjectGrantGrantee", fields: [granteeAccountId], references: [id], onDelete: Cascade)
+    role             SessionGrantRole
+    status           SessionGrantStatus @default(pending)
+    granteeKey       Bytes
+    expiresAt        DateTime?
+    endedReason      String?
+    createdAt        DateTime           @default(now())
+    updatedAt        DateTime           @updatedAt
+    acceptedAt       DateTime?
+    revokedAt        DateTime?
+
+    @@unique([projectId, granteeAccountId])
     @@index([granteeAccountId, status])
     @@index([ownerAccountId])
 }
@@ -964,6 +991,7 @@ model Project {
     teams                  AgentTeam[]
     automations            Automation[]
     issues                 Issue[]
+    grants                 ProjectGrant[]
     @@index([accountId, archivedAt])
 }
 

@@ -87,6 +87,9 @@ export function sessionRoutes(app: Fastify) {
             querystring: z.object({
                 // Owner 10-27: `unarchived` = every unarchived row instead of the 150 newest (sessionListRows.ts).
                 scope: z.enum(['recent', 'unarchived']).optional(),
+                // B-878 PR-B: include sessions reachable through project shares. Old webs never ask, so
+                // they never see a row they could not leave (a project row is left as a project).
+                projectShares: z.enum(['1']).optional(),
             }).optional(),
         },
     }, async (request, reply) => {
@@ -96,7 +99,7 @@ export function sessionRoutes(app: Fastify) {
 
         // B-619: sessions shared WITH this account ride along in the same list,
         // keyed for the grantee and with machine-private metadata removed.
-        const shared = await listSharedSessionRows<SessionProjectionRow>(userId, sessionProjection);
+        const shared = await listSharedSessionRows<SessionProjectionRow>(userId, sessionProjection, { projects: request.query?.projectShares === '1' });
         return reply.send({
             sessions: [
                 ...sessions.map(projectSession),
