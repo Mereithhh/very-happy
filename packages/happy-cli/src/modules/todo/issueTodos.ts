@@ -8,13 +8,18 @@ import { IssueRequestError, type IssuesClient } from '@/issues/client';
  * (`--all` adds closed), add = an unassigned `todo` issue (Q10), complete =
  * done, reopen = todo, edit = PATCH with `ifVersion`, delete = soft delete.
  * The caller falls back to the KV client when the server has no Issues.
+ *
+ * B-874d: `id` stays the todo id the caller chose (`add --id U`, sent as
+ * `legacyTodoId`) or the KV id an imported todo had, so the official skill's
+ * add → get/edit/complete/reopen/delete by U reads the same with the switch on
+ * or off; only issues created elsewhere show their issue id.
  */
 
 export type TodoAliasRecord = BuiltinTodoRecord & { key: string };
 
 export function issueToTodoRecord(issue: IssueView): TodoAliasRecord {
     return {
-        schemaVersion: 1, id: issue.id, key: issue.key, title: issue.title, note: issue.description,
+        schemaVersion: 1, id: issue.legacyTodoId ?? issue.id, key: issue.key, title: issue.title, note: issue.description,
         status: isIssueClosed(issue.status) ? 'done' : 'open', order: issue.sortOrder,
         createdAt: issue.createdAt, updatedAt: issue.updatedAt, version: issue.version,
     };
@@ -26,11 +31,12 @@ const CONFLICT = 'Todo version conflict; read the latest task before deciding wh
 export type TodoAliasCommand = { action: 'list' | 'get' | 'add' | 'edit' | 'complete' | 'reopen' | 'delete'; id?: string; version?: number; title?: string; note?: string; all?: boolean };
 
 async function find(client: IssuesClient, ref: string): Promise<IssueView | null> {
+    // The server resolves an issue id, a key and (B-874d) a todo id given at create.
     try { return (await client.get(ref)).issue; }
     catch (error) {
         if (!(error instanceof IssueRequestError && error.code === 'issue_not_found')) throw error;
     }
-    // An id from before the import (`vh.todo.v1.<id>`) still resolves through `legacyTodoId`.
+    // Older servers resolve only the issue id: an imported KV todo id is still found through `legacyTodoId`.
     const { issues } = await client.list({ assigneeKind: 'none', limit: ISSUE_LIMITS.listMax });
     return issues.find(issue => issue.legacyTodoId === ref) ?? null;
 }
@@ -44,7 +50,17 @@ export async function runTodoViaIssues(command: TodoAliasCommand, client: Issues
     }
     if (command.action === 'add') {
         if (command.title!.trim().length > ISSUE_LIMITS.titleChars) throw new Error(`Todo title must contain 1–${ISSUE_LIMITS.titleChars} characters on this server`);
-        const { issue } = await client.create({ title: command.title!.trim(), description: command.note ?? '', status: 'todo', assignee: { kind: 'none' }, requestId: command.id! });
+        const title = command.title!.trim();
+        const note = command.note ?? '';
+        let issue: IssueView;
+        try { ({ issue } = await client.create({ title, description: note, status: 'todo', assignee: { kind: 'none' }, requestId: command.id!, legacyTodoId: command.id! })); }
+        catch (error) {
+            // B-874d: same words as the KV store for a spent (deleted) todo id.
+            if (error instanceof IssueRequestError && error.code === 'issue_todo_deleted') throw new Error('Todo changed on another device; refresh before retrying');
+            throw error;
+        }
+        // A reused id answers the existing todo only when it is the same request (KV semantics).
+        if (issue.title !== title || issue.description !== note) throw new Error('This Todo ID already has different content; read it before deciding');
         return issueToTodoRecord(issue);
     }
     const issue = await find(client, command.id!);
@@ -53,7 +69,7 @@ export async function runTodoViaIssues(command: TodoAliasCommand, client: Issues
     if (!issue || issue.deletedAt) throw new Error('Todo not found; it may have been deleted.');
     if (issue.version !== command.version) throw new Error(CONFLICT);
     try {
-        if (command.action === 'delete') { await client.remove(issue.id); return { id: issue.id, deleted: true }; }
+        if (command.action === 'delete') { await client.remove(issue.id); return { id: issueToTodoRecord(issue).id, deleted: true }; }
         const patch = command.action === 'edit'
             ? { ...(command.title !== undefined ? { title: command.title.trim() } : {}), ...(command.note !== undefined ? { description: command.note } : {}) }
             : { status: command.action === 'complete' ? 'done' as const : 'todo' as const };

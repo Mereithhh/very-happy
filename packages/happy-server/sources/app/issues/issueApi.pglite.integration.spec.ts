@@ -410,4 +410,41 @@ describe('B-872 Issues REST through startApi (pglite)', () => {
         expect(both.map(r => r.status)).toEqual([200, 200]);
         expect(await s.db.issue.count({ where: { accountId: acct2.id } })).toBe(3);
     });
+
+    it('B-874d: a todo id given at create (legacyTodoId) resolves on get / PATCH / DELETE; reusing it returns that issue; the issue id still wins; other accounts cannot see it', async () => {
+        const acct = await s.newAccount();
+        const u = crypto.randomUUID();
+        const created = await s.call('POST', '/v1/issues', { title: 'Todo by U', status: 'todo', assignee: { kind: 'none' }, requestId: u, legacyTodoId: u }, acct.token);
+        expect(created.status).toBe(200);
+        expect(created.body.issue).toMatchObject({ legacyTodoId: u, version: 1 });
+        const issueId = created.body.issue.id;
+        expect(issueId).not.toBe(u);
+        // Same U, another requestId (e.g. a second client): the same issue, never a duplicate.
+        expect((await s.call('POST', '/v1/issues', { title: 'Again', legacyTodoId: u, requestId: 'other' }, acct.token)).body.issue.id).toBe(issueId);
+        expect(await s.db.issue.count({ where: { accountId: acct.id } })).toBe(1);
+        expect((await s.call('GET', `/v1/issues/${u}`, undefined, acct.token)).body.issue.id).toBe(issueId);
+        expect((await s.call('GET', `/v1/issues/${crypto.randomUUID()}`, undefined, acct.token))).toEqual({ status: 404, body: { error: 'issue_not_found' } });
+        const patched = await s.call('PATCH', `/v1/issues/${u}`, { status: 'done', ifVersion: 1 }, acct.token);
+        expect(patched.body.issue).toMatchObject({ id: issueId, status: 'done', version: 2 });
+        // An issue whose own id equals another issue's todo id is found by its own id first.
+        const shadow = await s.db.issue.findUniqueOrThrow({ where: { id: issueId } });
+        const second = await s.call('POST', '/v1/issues', { title: 'Other', legacyTodoId: shadow.id }, acct.token);
+        expect((await s.call('GET', `/v1/issues/${issueId}`, undefined, acct.token)).body.issue.title).toBe('Todo by U');
+        expect(second.body.issue.legacyTodoId).toBe(issueId);
+        // Account-scoped: B's token never reaches A's U; B may use the same U for its own todo.
+        const other = await s.newAccount();
+        expect((await s.call('GET', `/v1/issues/${u}`, undefined, other.token))).toEqual({ status: 404, body: { error: 'issue_not_found' } });
+        expect((await s.call('PATCH', `/v1/issues/${u}`, { title: 'hijack' }, other.token)).status).toBe(404);
+        expect((await s.call('DELETE', `/v1/issues/${u}`, undefined, other.token)).status).toBe(404);
+        const theirs = await s.call('POST', '/v1/issues', { title: 'Theirs', legacyTodoId: u }, other.token);
+        expect(theirs.body.issue.id).not.toBe(issueId);
+        expect((await s.call('GET', `/v1/issues/${u}`, undefined, other.token)).body.issue.id).toBe(theirs.body.issue.id);
+        expect((await s.call('GET', `/v1/issues/${u}`, undefined, acct.token)).body.issue.title).toBe('Todo by U');
+        // Deleted: get still shows the tombstone (the CLI reads it as null); reusing U — same or new requestId — is 404 issue_todo_deleted.
+        expect((await s.call('DELETE', `/v1/issues/${u}`, undefined, acct.token)).status).toBe(200);
+        expect((await s.call('GET', `/v1/issues/${u}`, undefined, acct.token)).body.issue.deletedAt).toEqual(expect.any(Number));
+        expect(await s.call('POST', '/v1/issues', { title: 'Todo by U', requestId: u, legacyTodoId: u }, acct.token)).toEqual({ status: 404, body: { error: 'issue_todo_deleted' } });
+        expect(await s.call('POST', '/v1/issues', { title: 'Todo by U', requestId: 'fresh', legacyTodoId: u }, acct.token)).toEqual({ status: 404, body: { error: 'issue_todo_deleted' } });
+        expect(await s.db.issue.count({ where: { accountId: acct.id } })).toBe(2);
+    });
 });

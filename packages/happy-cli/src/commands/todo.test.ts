@@ -146,8 +146,38 @@ describe('Todo command on a server with Issues (B-874 alias layer, spec §8)', (
     });
     it('add = an unassigned todo issue, the UUID is the idempotency key (Q10)', async () => {
         const c = api();
+        c.create.mockResolvedValue({ issue: issue({ title: 'Buy milk', description: 'n' }) });
         await handleTodoCommand(['add', '--id', id, '--title', 'Buy milk', '--note', 'n'], { issues: c as any });
-        expect(c.create).toHaveBeenCalledWith({ title: 'Buy milk', description: 'n', status: 'todo', assignee: { kind: 'none' }, requestId: id });
+        expect(c.create).toHaveBeenCalledWith({ title: 'Buy milk', description: 'n', status: 'todo', assignee: { kind: 'none' }, requestId: id, legacyTodoId: id });
+    });
+    it('B-874d: the add UUID stays the todo id — every output shows U, every write targets the issue the server resolved U to', async () => {
+        const u = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+        const c = api();
+        const aliased = (over: Record<string, unknown> = {}) => issue({ legacyTodoId: u, ...over });
+        c.create.mockResolvedValue({ issue: aliased() });
+        c.get.mockResolvedValue({ issue: aliased(), comments: [], runs: [], children: [] });
+        c.update.mockImplementation(async (_id: string, p: any) => ({ issue: aliased({ ...p, status: p.status ?? 'todo', version: 4 }) }));
+        await handleTodoCommand(['add', '--id', u, '--title', 'T', '--note', 'N'], { issues: c as any });
+        expect(out()).toMatchObject({ id: u, key: 'VH-7' });
+        await handleTodoCommand(['get', u], { issues: c as any });
+        expect(c.get).toHaveBeenLastCalledWith(u);
+        expect(out()).toMatchObject({ id: u });
+        for (const action of ['edit', 'complete', 'reopen'] as const) {
+            await handleTodoCommand([action, u, '--version', '3', ...(action === 'edit' ? ['--title', 'T2'] : [])], { issues: c as any });
+            expect(c.update).toHaveBeenLastCalledWith(id, expect.objectContaining({ ifVersion: 3 }));
+            expect(out()).toMatchObject({ id: u });
+        }
+        await handleTodoCommand(['delete', u, '--version', '3'], { issues: c as any });
+        expect(c.remove).toHaveBeenCalledWith(id);
+        expect(out()).toEqual({ id: u, deleted: true });
+        // Reused id: different content or a deleted todo fail with the KV store's words.
+        await expect(handleTodoCommand(['add', '--id', u, '--title', 'Other', '--note', 'N'], { issues: c as any })).rejects.toThrow('This Todo ID already has different content');
+        c.create.mockRejectedValueOnce(new IssueRequestError(404, 'issue_todo_deleted', {}));
+        await expect(handleTodoCommand(['add', '--id', u, '--title', 'T', '--note', 'N'], { issues: c as any })).rejects.toThrow('Todo changed on another device; refresh before retrying');
+        // An issue created elsewhere (Web / `issue create`) has no todo id and keeps its issue id.
+        c.get.mockResolvedValueOnce({ issue: issue(), comments: [], runs: [], children: [] });
+        await handleTodoCommand(['get', 'VH-7'], { issues: c as any });
+        expect(out()).toMatchObject({ id });
     });
     it('complete / reopen / edit map to PATCH with ifVersion; delete is the soft delete; get accepts VH-N', async () => {
         const c = api();
@@ -175,7 +205,7 @@ describe('Todo command on a server with Issues (B-874 alias layer, spec §8)', (
         c.get.mockRejectedValueOnce(new IssueRequestError(404, 'issue_not_found', {}));
         c.list.mockResolvedValueOnce({ issues: [issue({ legacyTodoId: legacy })], nextCursor: null, asOf: 1 });
         await handleTodoCommand(['get', legacy], { issues: c as any });
-        expect(out()).toMatchObject({ key: 'VH-7' });
+        expect(out()).toMatchObject({ id: legacy, key: 'VH-7' });
     });
     it('falls back to the classic store only when the server has no Issues; VH-N then needs a UUID', async () => {
         const c = { ...api(), list: vi.fn(async () => { throw new IssuesUnsupportedError(); }) };
