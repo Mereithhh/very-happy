@@ -20,6 +20,8 @@ import { apiSocket } from './apiSocket';
 import { AES256Encryption } from './encryption/encryptor';
 import { sync } from './sync';
 import type { ShareTarget } from './apiSessionShares';
+import { useProjectShares } from './projectSharesStore';
+import { projectGrantIdOfShareId } from './projectShareTypes';
 import {
     createTerminalGrant,
     listIncomingTerminalShares,
@@ -106,13 +108,29 @@ export const useTerminalShares = create<TerminalSharesState>((set, get) => ({
 
 const streamKeys = new Map<string, { boxed: string; enc: AES256Encryption }>();
 
-async function streamKey(grantId: string): Promise<AES256Encryption | null> {
+/** The boxed stream key of a share id: a terminal grant, or (`p:…`) the project grant it derives from. */
+async function boxedKeyOf(grantId: string): Promise<string | null> {
+    const projectGrantId = projectGrantIdOfShareId(grantId);
+    if (projectGrantId) {
+        let p = useProjectShares.getState().incoming.find((g) => g.id === projectGrantId);
+        if (!p) {
+            await useProjectShares.getState().refreshIncoming().catch(() => undefined);
+            p = useProjectShares.getState().incoming.find((g) => g.id === projectGrantId);
+        }
+        return p?.granteeKey ?? null;
+    }
     let share = useTerminalShares.getState().incoming.find((g) => g.id === grantId);
     if (!share) {
         await useTerminalShares.getState().refreshIncoming().catch(() => undefined);
         share = useTerminalShares.getState().incoming.find((g) => g.id === grantId);
     }
-    if (!share) return null;
+    return share?.granteeKey ?? null;
+}
+
+async function streamKey(grantId: string): Promise<AES256Encryption | null> {
+    const granteeKey = await boxedKeyOf(grantId);
+    if (!granteeKey) return null;
+    const share = { granteeKey };
     const cached = streamKeys.get(grantId);
     // A re-share boxes a fresh key: the cache is keyed by the boxed value too.
     if (cached && cached.boxed === share.granteeKey) return cached.enc;

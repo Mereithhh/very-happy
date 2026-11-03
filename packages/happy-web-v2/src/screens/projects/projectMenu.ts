@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, MessageSquarePlus, Pencil, Settings2, TerminalSquare, UsersRound } from 'lucide-react';
+import { Archive, ArchiveRestore, MessageSquarePlus, Pencil, Settings2, TerminalSquare, Users, UsersRound } from 'lucide-react';
 import type { ProjectView } from '@slopus/happy-wire';
 import type { MenuItemDef } from '@/ui';
 
@@ -29,8 +29,8 @@ export function projectPrimaryFolder(project: Pick<ProjectView, 'folders'>): { m
 
 export function projectMenuCopy(zh: boolean) {
   return zh
-    ? { newSession: '新建会话', newTerminal: '新建终端', newTeam: '在此项目组建团队', settings: '项目设置', rename: '重命名', archive: '归档项目', unarchive: '取消归档', actions: '项目操作' }
-    : { newSession: 'New session', newTerminal: 'New terminal', newTeam: 'Start a team here', settings: 'Project settings', rename: 'Rename', archive: 'Archive project', unarchive: 'Unarchive', actions: 'Project actions' };
+    ? { newSession: '新建会话', newTerminal: '新建终端', newTeam: '在此项目组建团队', settings: '项目设置', share: '分享项目…', rename: '重命名', archive: '归档项目', unarchive: '取消归档', actions: '项目操作' }
+    : { newSession: 'New session', newTerminal: 'New terminal', newTeam: 'Start a team here', settings: 'Project settings', share: 'Share project…', rename: 'Rename', archive: 'Archive project', unarchive: 'Unarchive', actions: 'Project actions' };
 }
 
 export function buildProjectMenu(input: {
@@ -42,6 +42,8 @@ export function buildProjectMenu(input: {
   /** B-762 (spec B-760 §5.1): 「在此项目组建团队」 — omitted where teams are hidden. */
   onNewTeam?: () => void;
   onSettings: () => void;
+  /** B-878 PR-B: 「分享项目…」. */
+  onShare?: () => void;
   onRename: () => void;
   onArchive: () => void;
 }): MenuItemDef[] {
@@ -50,6 +52,7 @@ export function buildProjectMenu(input: {
     { key: 'new-session', label: c.newSession, icon: MessageSquarePlus, disabled: input.archived, onSelect: input.onNewSession },
     ...(input.onNewTerminal ? [{ key: 'new-terminal', label: c.newTerminal, icon: TerminalSquare, disabled: input.archived, onSelect: input.onNewTerminal } satisfies MenuItemDef] : []),
     ...(input.onNewTeam ? [{ key: 'new-team', label: c.newTeam, icon: UsersRound, disabled: input.archived, onSelect: input.onNewTeam } satisfies MenuItemDef] : []),
+    ...(input.onShare ? [{ key: 'share', label: c.share, icon: Users, onSelect: input.onShare } satisfies MenuItemDef] : []),
     { key: 'settings', label: c.settings, icon: Settings2, onSelect: input.onSettings },
     { key: 'rename', label: c.rename, icon: Pencil, onSelect: input.onRename },
     { key: 'archive', label: input.archived ? c.unarchive : c.archive, icon: input.archived ? ArchiveRestore : Archive, danger: !input.archived, separatorBefore: true, onSelect: input.onArchive },

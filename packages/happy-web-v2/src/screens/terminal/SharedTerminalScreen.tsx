@@ -17,7 +17,9 @@
  */
 import { Eye, Keyboard, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { onProjectShareChanged, useIncomingProjectShares, useProjectShares } from '@/sync/projectSharesStore';
+import { projectGrantIdOfShareId } from '@/sync/projectShareTypes';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
 import { TERM_FONT, TERM_FONT_SIZE_COARSE, TERM_FONT_SIZE_FINE } from './termFont';
 import { TERM_THEME } from './termTheme';
@@ -67,9 +69,19 @@ export function SharedTerminalScreen() {
     const navigate = useNavigate();
     const { grantId = '' } = useParams<{ grantId: string }>();
     const incoming = useIncomingTerminalShares();
-    const loaded = useTerminalShares((s) => s.incomingLoaded);
+    const terminalLoaded = useTerminalShares((s) => s.incomingLoaded);
     const respond = useTerminalShares((s) => s.respond);
-    const share = incoming.find((g) => g.id === grantId) ?? null;
+    // B-878 PR-B: a project terminal (`p:<projectGrantId>:…`) is always view only and rides on the project share.
+    const projectGrantId = projectGrantIdOfShareId(grantId);
+    const projects = useIncomingProjectShares();
+    const projectLoaded = useProjectShares((s) => s.incomingLoaded);
+    const [search] = useSearchParams();
+    const project = projectGrantId ? projects.find((p) => p.id === projectGrantId && p.status === 'active') ?? null : null;
+    const loaded = projectGrantId ? projectLoaded : terminalLoaded;
+    const share: IncomingTerminalShare | null = projectGrantId
+        ? (project ? { id: grantId, role: 'viewer', status: 'active', granteeKey: project.granteeKey, title: search.get('title'), machineId: '', createdAt: project.createdAt, expiresAt: project.expiresAt ?? 0, owner: project.owner } : null)
+        : incoming.find((g) => g.id === grantId) ?? null;
+    useEffect(() => onProjectShareChanged((id) => { if (id === projectGrantId && useProjectShares.getState().ended[id]) setEnded('revoked'); }), [projectGrantId]);
     const [ended, setEnded] = useState<'revoked' | null>(null);
 
     useEffect(() => onTerminalShareEvent('revoked', (e) => { if (e.grantId === grantId && revokeEndsAccess(e.reason)) setEnded('revoked'); }), [grantId]);
@@ -78,7 +90,7 @@ export function SharedTerminalScreen() {
     if (!share) return loaded ? <SharedTerminalEmpty text={t('share.terminal.notFound')} onHome={() => navigate('/')} /> : <SharedTerminalEmpty text={t('common.loading')} />;
 
     const title = share.title || t('share.terminal.untitled');
-    const expiry = formatShareTime(share.expiresAt);
+    const expiry = share.expiresAt ? formatShareTime(share.expiresAt) : '';
     return (
         <div className="sts">
             <header className="sts-head">
@@ -90,6 +102,7 @@ export function SharedTerminalScreen() {
                 {share.role === 'operator' ? <Keyboard size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
                 {share.role === 'operator'
                     ? t('share.terminal.bannerOperator', { owner: share.owner.displayName, expiry })
+                    : project ? t('share.project.terminalBanner', { owner: share.owner.displayName, project: project.name })
                     : t('share.terminal.bannerViewer', { owner: share.owner.displayName, expiry })}
             </p>
             {share.status === 'pending' ? (

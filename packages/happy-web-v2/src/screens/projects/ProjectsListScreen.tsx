@@ -1,3 +1,4 @@
+import { ProjectShareDialog } from './ProjectShareDialog';
 import { BackButton } from '@/app/BackButton';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -54,10 +55,12 @@ export function ProjectsListScreen() {
     ? { title: '项目', back: '会话', create: '新建项目', empty: '还没有项目。项目把相关会话、说明和记录放在一起。', unavailable: '这个服务器还不支持项目', loading: '正在加载…', sessions: (n: number) => `${n} 个会话`, teams: (n: number) => `${n} 个团队`, attention: (n: number) => `${n} 个等你处理`, showArchived: '显示已归档', hideArchived: '隐藏已归档', noArchived: '没有已归档的项目', noFolder: '还没有目录' }
     : { title: 'Projects', back: 'Sessions', create: 'New project', empty: 'No projects yet. A project keeps related sessions, instructions and a log together.', unavailable: 'This server does not support projects yet', loading: 'Loading…', sessions: (n: number) => `${n} session${n === 1 ? '' : 's'}`, teams: (n: number) => `${n} team${n === 1 ? '' : 's'}`, attention: (n: number) => `${n} waiting for you`, showArchived: 'Show archived', hideArchived: 'Hide archived', noArchived: 'No archived projects', noFolder: 'No folder yet' };
   const menuCopy = projectMenuCopy(zh);
+  // B-878 PR-B: 「分享项目…」 from the row menu.
+  const [shareProject, setShareProject] = useState<string | null>(null);
 
   const renderRow = (entry: (typeof model)[number]) => {
     const p = entry.project;
-    const items = projectMenuItems(p, { zh, navigate, openConfigure });
+    const items = projectMenuItems(p, { zh, navigate, openConfigure, onShare: () => setShareProject(p.id) });
     const meta = [c.sessions(entry.sessions), entry.teams ? c.teams(entry.teams) : ''].filter(Boolean).join(' · ');
     const folder = projectPrimaryFolder(p);
     return (
@@ -104,6 +107,7 @@ export function ProjectsListScreen() {
       )}
       {creating && <NewProjectDialog onClose={() => setCreating(false)} />}
       {configure.open && <NewSessionModal initialLocation={configure.target} onClose={() => setConfigure({ open: false })} />}
+      {shareProject && <ProjectShareDialog projectId={shareProject} open onOpenChange={(o) => { if (!o) setShareProject(null); }} />}
     </main>
   );
 }

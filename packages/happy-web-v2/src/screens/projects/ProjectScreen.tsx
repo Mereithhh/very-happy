@@ -1,7 +1,8 @@
 import { BackButton } from '@/app/BackButton';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { FolderKanban, Settings2, Send, UsersRound, Zap, Undo2, Plus, Link2, LogOut, TerminalSquare } from 'lucide-react';
+import { FolderKanban, Settings2, Send, UsersRound, Users, Zap, Undo2, Plus, Link2, LogOut, TerminalSquare } from 'lucide-react';
+import { ProjectShareDialog } from './ProjectShareDialog';
 import { ActionDropdownMenu } from '@/ui/Menu';
 import { Modal } from '@/modal';
 import { linkableTeams, teamMoveSource } from './projectChoice';
@@ -49,6 +50,9 @@ export function ProjectScreen() {
   const [detail, setDetail] = useState<ProjectDetailResponse | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'missing' | 'unavailable'>('loading');
   const [tab, setTab] = useState<'overview' | 'context'>('overview');
+  // B-878 PR-B: 「分享项目…」.
+  const [shareOpen, setShareOpen] = useState(false);
+  const shareLabel = useTranslation().t('share.project.title');
   const trail = trailCopy(useTranslation().lang.startsWith('zh'));
   const navigate = useNavigate();
 
@@ -88,8 +92,10 @@ export function ProjectScreen() {
           <h1><FolderKanban size={22} aria-hidden />{project.name}</h1>
           {project.goal && <p className="pj-goal">{project.goal}</p>}
         </div>
+        {!project.archivedAt && <button type="button" className="pj-icon-btn" aria-label={shareLabel} title={shareLabel} data-testid="project-share-button" onClick={() => setShareOpen(true)}><Users size={18} /></button>}
         <Link className="pj-icon-btn" to={projectSettingsPath(project.id)} aria-label={c.settings} title={c.settings} data-testid="project-settings-link"><Settings2 size={18} /></Link>
       </header>
+      {shareOpen && <ProjectShareDialog projectId={project.id} open onOpenChange={setShareOpen} />}
       <WorktreeFolderNotice detail={detail} c={c} onChanged={reload} onOpenSettings={() => navigate(projectSettingsPath(project.id, 'folders'))} />
       {/* B-728 (UI-P1-12): the empty state's action opens settings on the path field */}
       <ProjectComposer detail={detail} c={c} onAddFolder={() => navigate(projectSettingsPath(project.id, 'folders'))} />

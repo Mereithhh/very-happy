@@ -40,7 +40,7 @@ describe('B-823 boot prefetch of /v1/sessions', () => {
         expect(startSessionListPrefetch({ fetchImpl, storage: { getItem: () => null }, serverUrl: 'https://x' })).toBeNull();
         expect(startSessionListPrefetch({ fetchImpl, storage: creds('tok'), serverUrl: 'https://x' })).not.toBeNull();
         expect(calls).toHaveLength(1);
-        expect(calls[0].url).toBe('https://x/v1/sessions');
+        expect(calls[0].url).toBe('https://x/v1/sessions?projectShares=1');
         expect((calls[0].init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
         expect(calls[0].init.cache).toBe('no-store');
         expect(calls[0].init.signal).toBeInstanceOf(AbortSignal);

@@ -53,7 +53,7 @@ export function newSessionInProject(project: ProjectView, navigate: NavigateFunc
   void createChatOrConfigure(navigate, openConfigure, { target, projectId: project.id });
 }
 
-export function projectMenuItems(project: ProjectView, opts: { zh: boolean; navigate: NavigateFunction; openConfigure: (target?: RecentMachinePath) => void; teams?: boolean }) {
+export function projectMenuItems(project: ProjectView, opts: { zh: boolean; navigate: NavigateFunction; openConfigure: (target?: RecentMachinePath) => void; teams?: boolean; onShare?: () => void }) {
   return buildProjectMenu({
     zh: opts.zh,
     archived: !!project.archivedAt,
@@ -61,6 +61,7 @@ export function projectMenuItems(project: ProjectView, opts: { zh: boolean; navi
     onNewTerminal: () => createTerminalInProject(opts.navigate, project),
     ...(opts.teams ? { onNewTeam: () => opts.navigate(projectNewTeamPath(project.id)) } : {}),
     onSettings: () => opts.navigate(projectSettingsPath(project.id)),
+    ...(opts.onShare && !project.archivedAt ? { onShare: opts.onShare } : {}),
     onRename: () => void renameProject(project, opts.zh),
     onArchive: () => void toggleProjectArchived(project, opts.zh),
   });
