@@ -286,3 +286,15 @@ CREATE TABLE "ShareAuditEvent" (...);   -- §5，INDEX(ownerAccountId, at)、IND
 - **Web**：终端页头「分享终端」（手机进 ⋯）、侧栏终端行 ⋯「分享…」→ `TerminalShareDialog`；owner 页头「X 正在看」芯片；`/shared/terminal/:grantId`（`SharedTerminalScreen`，只看=owner 列数 + 等比缩小、`disableStdin` + `inputmode=none`；可操作=正常 fit + 输入 + resize）；侧栏顶部邀请与「分享给我的终端」；设置「已分享」加终端组。所有新 socket 事件独立命名，旧 Web 忽略。
 - **CLI**：`open-terminal.viewOnly` + 能力位 `terminalViewOnly`（见 §3.2）。
 - **已知限制**：owner 的「正在看」芯片只靠实时事件，owner 晚于对方打开终端页时不显示已在看的人（分享面板里有完整名单与活动记录）；只看页在 owner 改尺寸后随 daemonState 推送重排，推送最长可滞后约 60 s，页上有「重新同步」。
+
+## 实现记录（PR-B 项目分享，B-878b）
+
+- **迁移** `20261103190000_project_shares`：只建 `ProjectGrant` 一张表（晚于 #874 的 `20261103180000`）。`role` 复用 `SessionGrantRole`，但路由只接受 viewer/driver（zod strict，带 `operate` 或 `operator` 400）。
+- **派生访问**（决策 4）：`app/share/projectShares.ts` 在读时根据项目当前成员（`projects/store.ts` 的 `membersOf`，显式 ∪ 团队派生）计算可见范围。`resolveSessionAccess` 新增 `kind: 'project'`（直接 driver 优先；否则取直接与项目里更高的档）。`listSharedSessionRows(…, { projects: true })` 追加派生行（`share.via = 'project' | 'both'`），DEK 按需 box 给 grantee。`activeGranteeIds` 合并项目 grantee 用于扇出。
+- **成员变化**：`projects/store.ts` 的 create/delete/addMembers/removeMember/attachTeam/bindTeamProject/detachTeam 都经 `membershipChange` 钩子。只要 owner 有项目分享，就比对变更前后的成员：移出的会话给 grantee 推 `session-share-revoked`（同会话另有直接分享时不推），并写 `project.item.removed` 审计；有增减时推 `project-share-changed`。
+- **项目终端**：share id 为 `p:<projectGrantId>:<machineId>:<terminalId>`，没有自己的 grant 行。只能由本 grantee **active + 未过期**的 ProjectGrant 铸造，且只在 daemon 上报该终端 `@vh_project` 等于该项目时有效，否则 `not_shared`。一律只看（可发消息档也不能输入）。移出项目时，machine-state 钩子立即以 `moved` 断开，1 s 扫尾兜底。流 key 为 ProjectGrant 的 `granteeKey`。
+- **跨 slot**（决策 11）：`operatorBroker` 的 `vh-operator-changed` 广播挂上 `onShareCrossSlotChange`，所有 slot 同时清会话 grantee 缓存和项目派生缓存，不再有原来 5 s 的跨 slot 窗口。
+- **兼容**：`/v1/sessions` 只在 `?projectShares=1` 时返回派生行。新 Web 带这个参数，旧 Web 看不到项目派生行，也就不会出现「退出不了的行」。单个读 `/v1/sessions/:id` 总是包含派生访问。
+- **审计**：`ShareAuditEvent`（grantKind=`project`）记 grant.create/accept/update/decline/left/ended、`project.item.removed`、`project.derive.open`（同一 grantee 对同一会话 10 分钟去重）。
+- **Web**：项目页头的「分享项目」按钮，以及侧栏项目组和 Projects 列表的 ⋯「分享项目…」，都打开 `ProjectShareDialog`（只有只看/可发消息两档，附「可操作只能对单个会话或终端授予」提示）。侧栏顶部是项目邀请和「分享给我的项目」；`/shared/project/:grantId` 只读，分「会话/终端」和「说明/记录」两个 tab，可「退出项目」；项目派生的会话不进「分享给我的」会话组。
+- **验证**：server `projectShares.pglite.integration.spec.ts`（9 条，含 Fastify inject 真路由）。两个真实账号的浏览器 e2e（`e2e-proj.json`）：owner 页面分享（只有两档）；grantee 手机端接受后看到会话、终端、说明和记录；后加的会话即时出现；只看档没有输入框；升为可发消息后能发消息；项目终端只看，输入到不了 shell；移出的会话从列表消失、单读 404；撤销项目分享后直接分享的会话保留、页面提示已结束；不在项目里的会话始终不可见；旧 Web 的列表不含派生行。
