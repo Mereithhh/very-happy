@@ -71,15 +71,19 @@ sentinel 永不上线：web `resolveMessageModeMeta`、`resolveDefaultModelMode`
 - wrapper 上报 `metadata.configuredModel`：字符串 = 本机配置钉的模型；`null` = 没钉；字段不存在 = 旧 wrapper，不知道。
   - Codex：app-server `config/read`（0.154 与 0.166 实测都有；返回的是生效配置，含 profile / CLI override），同时 `defaultModelCode` 改为该模型，让「默认」项如实显示。
   - Gemini：`GEMINI_MODEL` 环境变量 → 工作区 `.gemini/settings.json` → `~/.gemini/settings.json`（`model` 为字符串或 `{ name }`）。
-- 解析（`MACHINE_CONFIG_AGENTS = codex, gemini`）：会话上报了钉的模型，或者没上报（旧 wrapper）→ 不发 model，由本机配置决定；上报 `null` → 发同档最新。Claude 不变，它的默认一直都会发出去。
+- 解析（`MACHINE_CONFIG_AGENTS = codex, gemini`）：会话上报了钉的模型，或者没上报（旧 wrapper）→ 不发 model，由本机配置决定；上报 `null` → 发同档最新。
+- **Claude 也遵守本机配置（B-883）**：`CONFIG_PIN_AGENTS = codex, gemini, claude`。Claude 上报了钉的模型 → 不发 model（`model: null`），Claude Code 按本机配置跑；上报 `null` 或没上报（旧 wrapper）→ 照旧发同档最新（Claude 的默认一直显式发送，没上报不等于钉了）。
+  - 来源与优先级（Claude Code 2.1.306 `get_settings` 实测，tmp/vh-team-B-883/probe）：settings `env.ANTHROPIC_MODEL` > 进程 `ANTHROPIC_MODEL` > settings `model`；settings 按 user < project < local 合并。`get_settings` 的 `effective.model` 不含进程 env，所以 wrapper 另读 `ANTHROPIC_MODEL`。
+  - wrapper 启动时就按上面的规则读文件写入 `configuredModel`（`claude/claudeConfiguredModel.ts`），新会话的第一条消息即可不发 model；每轮 system/init 后再用 `get_settings` 的答案覆盖。
+  - **默认 1M**：表项可带 `longContext: true`（Opus 5.5 带）。wrapper 由 `requires`（capability / cliVersion）证明能跑该表项时，跟随最新解析为 `<model>[1m]`（无配置时 Claude Code 自己默认是不带 1M 的 `claude-opus-5-5`）；只靠 catalog 证明（旧 CLI）或表项没这个标志（旧 server 表）→ 不带 `[1m]`，不会出现 `unrecognized_model`。`[1m]` 自 CLI 0.2.103 起被 daemon 接受，capability `claude-opus-5-5-v1` 来自 0.2.149。
 - **复位粘住的模型（B-844c，QA22b P2-A）**：wrapper 会对不带 model 的 turn 继续沿用上一次收到的显式 model。所以「跟随」解析成不发 model 时，如果会话之前发过显式 model（例如账号默认曾固定为 gpt-6-luna，后来改回跟随），只是不发就会继续跑 luna，界面却显示「跟随本机配置（gpt-5.6-sol）」。为此 Codex wrapper 上报 `metadata.stickyModel`：字符串 = 正在沿用的显式 model；`null` = 没有；字段不存在 = 旧 wrapper，不知道。是字符串时 Web 发 `model: null`，wrapper 清掉这个 model 并上报 `null`，之后恢复成不发。`stickyModel` 来自 wrapper 状态，因此其它设备的选择、`spawn --model` 留下的 model 也能复位。旧 wrapper 不上报这个字段，行为和原来一样（不发 model）；即使收到 null 也不会报错，所有已发布版本都按 `meta.model || undefined` 复位，schema 是 nullable。
   - **只发 null 不够（实测）**：Codex app-server 会把 `turn/start` 带过的 model 记成该 thread 的模型，之后不带 model 的 turn 仍沿用它（rollout 序列：luna > 发 null 后仍是 luna > luna）。因此 wrapper 收到 `model: null` 时，这一轮显式传本机默认：`config/read` 钉的模型，没有就用 `model/list` 的 `isDefault`（`codex/turnModel.ts`）；两者都不知道才不传。
   - **只有显式复位才代发本机默认（B-844d，QA23）**：B-844c 一度在「turn 没有 model」时一律代发本机默认。wrapper 内存里的选择一丢（`send --resume` 重启 wrapper、abort 复位），不带 model 的 turn 就被改成 gpt-5.6-sol，违反 `send` 的「不带 --model 保持当前模型」。现在只有 `meta.model === null`（消息上的 `modelReset`）才代发；没有 model 字段就不传，thread 保持它记住的模型。abort 不再复位 model。
   - **`stickyModel` / `currentModelCode` 来自 thread 实际模型（B-844d）**：client 记录 thread 的模型。来源有三处：`thread/start|resume|fork` 响应里的 `model`（Codex 0.166 实测，resume 一个跑过 luna 的 thread 返回 `gpt-6-luna`），以及被接受的 `turn/start` 带的 model。后者也写回 resume 默认值，避免 idle-release 或强制重启后的 resume 把起始模型带回来。wrapper 上报 `currentModelCode` = thread 模型；`stickyModel` = thread 模型与本机默认不同时取该模型，否则为 `null`；还没有 thread 时取待发的显式选择。因此 resume 后 Web 仍知道有粘住的模型，跟随时照样发 null 复位。
   - **显示（B-844d）**：Codex 会话的模型选择解析出的模型与 `currentModelCode` 不一致时（比如 CLI 不带 model 续跑了 luna，而 Web 跟随 sol），选择器面板注明「这个会话当前在跑 X；从这里发下一条消息时会切过去」。只对上报 `stickyModel` 的新 wrapper 显示。
-  - Claude 没有这个问题：它的默认一直显式发 model（`null` = 本机默认）。
+  - Claude 没有这个问题：跟随时要么显式发 model，要么（本机配置钉了模型，B-883）发 `null`，`null` 即切回本机配置模型（`claude-config-model-v1`）。
 - **effort 显示（B-844c，QA22c P2-1）**：Codex wrapper 没收到 effort 时固定跑 `medium`，而 catalog 的 `defaultReasoningEffort` 是 `low`，选择器按 catalog 显示成 low。现在 wrapper 用 `currentThoughtLevelCode` 上报实际在跑的 effort，选择器原本就优先读这个字段；effort 被复位（null）时删掉该字段，选择器回到 catalog 默认，这也是 Codex 此时真正会跑的值。
-- **说明文案（B-844c，QA22c P2-2/P2-3）**：设置页「本机默认」项改用和选择器相同的说明，也不再显示原始 key `default`。跟随项的说明按实际行为区分三种：旧 CLI「升级 CLI 后才会自动切换」；Claude 不写「按本机配置」；Codex/Gemini 不变。
+- **说明文案（B-844c，QA22c P2-2/P2-3）**：设置页「本机默认」项改用和选择器相同的说明，也不再显示原始 key `default`。跟随项的说明按实际行为区分三种：旧 CLI「升级 CLI 后才会自动切换」；其余统一写「本机配置指定了模型时按本机配置」（B-883 起 Claude 也是，不再有 Claude 专用文案）。
   - Gemini 不在本修复范围（另立条目）：daemon 拉起的是 `gemini/runGemini.ts`，它不上报 `configuredModel`；显式选的模型会写进 `~/.gemini/config.json`，而且总用 `GEMINI_MODEL` 指定模型。发 null 只会退回上一次选的模型，起不到复位作用。
 - Codex wrapper 去掉写死的 gpt-5.5 默认：不带 model 的 turn 交给 Codex 按本机配置或它自己的默认跑。
 - 显示：选择器的跟随项、设置页该机器的值都写成「跟随本机配置（gpt-5.6-sol）」（见下节）。这时 B-487 的升级提示不出现。
@@ -91,7 +95,8 @@ sentinel 永不上线：web `resolveMessageModeMeta`、`resolveDefaultModelMode`
 
 - **选择器只有一个跟随项**（key `latest`，选中后会话与账号都不记具体模型）。它取代「X（默认）」和「X 当前最新」两项，名字按解析结果：
   「跟随最新（X）」/「跟随本机配置（X）」/「本机默认（升级 CLI 后跟随最新）」（会话 wrapper 证明不了更新的模型，例如旧 CLI 没上报 `configuredModel`：如实说跑的是机器默认，P2-1）/「跟随最新（取决于机器）」（没有会话也没有机器）。
-  X 本身的条目只在被明确选中（固定）时保留。`default` 只给 Claude 保留，叫「本机默认」（意思是跟随 /model，跟随最新会覆盖它）；Codex/Gemini 的跟随已经尊重本机配置，`default` 只在当前就选着它时出现。原始 key「default model」不再展示（设置页同样改名为「本机默认」）。
+  X 本身的条目只在被明确选中（固定）时保留。`default` 只给 Claude 保留，叫「本机默认」（意思是跟随 /model，跟随最新会覆盖它）；Codex/Gemini 的跟随已经尊重本机配置，`default` 只在当前就选着它时出现。B-883：Claude 跟随项已是「本机配置 · X」时也不再另列 `default`（同一个模型两行），除非当前就选着它。
+  - **1M 开关（B-883）**：跟随项跑的是 `[1m]` id（无配置的默认，或本机配置如 `opus[1m]`）时开关为开；关掉 = 固定不带 1M 的 id（显式选择，会话与重启后都保持）；在这个固定上再打开 = 回到跟随最新。本机配置不带 1M（如 `sonnet`）时开关为关，打开即固定其 `[1m]` 孪生。原始 key「default model」不再展示（设置页同样改名为「本机默认」）。
   X 指跟随项实际要跑的模型（`followEntryModel`）：本机配置钉了模型时是钉的那个，不是同档最新。钉配置的机器上，这个模型也会作为机器的自定义模型（B-688，读自 config.toml）出现，同样按此规则只在被固定时列出（`customModelsBesideFollow`，B-844d / QA23 P2-3）。
 - **设置页「当前」按机器解析**（P2-2/P2-3）：每台机器取该智能体**最新创建**的会话，用 `resolveLatestForAgent(table, agent, 会话 metadata)` 解析，与发送时 `resolveMessageModeMeta` 走的是同一个函数（capability + catalog + configuredModel），不读表头。机器按名称排序，账号级的值：各机一致时显示该值，不一致时显示「跟随最新（因机器而异）」，没有会话时显示「跟随最新（取决于机器）」；展开后的说明逐台列出。这样新建会话只会改变**那台**机器的值，账号级的值不再随「最新会话在哪台机器」来回跳。
 
@@ -130,7 +135,7 @@ catalog，且无法表达「这台机器缺能力」；catalog 作为补充参�
 | 组合 | 行为 |
 |---|---|
 | 新 web + 旧 server（无 endpoint） | 404 → 用 bundled 表 |
-| 新 web + 旧 CLI wrapper | Claude：只按 capability/catalog 解析，无能力 → 机器默认（null）+ B-487 提示条。Codex/Gemini：旧 wrapper 不上报 `configuredModel` → 不发 model；不上报 `stickyModel` → 不复位粘住的显式 model（B-844c 需 CLI 更新）（旧 Codex wrapper 仍会用它写死的 gpt-5.5，直到 CLI 更新）。从不发 `latest` |
+| 新 web + 旧 CLI wrapper | Claude：只按 capability/catalog 解析，无能力 → 机器默认（null）+ B-487 提示条；有 `claude-opus-5-5-v1` → `claude-opus-5-5[1m]`。≤0.2.202 的 wrapper 第一轮之后才上报 `configuredModel`，且不计 `ANTHROPIC_MODEL`：第一条消息仍发 1M 最新，此后按上报的 settings model 不发（B-883 需 CLI 更新）。Codex/Gemini：旧 wrapper 不上报 `configuredModel` → 不发 model；不上报 `stickyModel` → 不复位粘住的显式 model（B-844c 需 CLI 更新）（旧 Codex wrapper 仍会用它写死的 gpt-5.5，直到 CLI 更新）。从不发 `latest` |
 | 旧 web（缓存 PWA） | 用旧代码默认 Opus 5.5 / 不发 Codex model；可能重新写入具体 id override（接受） |
 | 旧 CLI `spawn` | 旧逻辑（Opus 5.5 或机器默认） |
 | 新 CLI `spawn` + 旧 server | 404 → bundled 表 |
