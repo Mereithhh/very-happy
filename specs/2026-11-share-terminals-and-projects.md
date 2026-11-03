@@ -1,6 +1,6 @@
 # 网页终端分享（只看 / 可操作）与项目分享
 
-> 状态：Draft，待 Lead 审（B-878）
+> 状态：Approved（Lead 11-03：1–4、6–12 按推荐；5 改为终端「只看」也不允许永久，1/7/30 天默认 7 天，并加非红色提示）；A 部分实现见文末「实现记录（PR-A）」，B 部分待实现
 > 关联：[2026-10-session-sharing](2026-10-session-sharing.md)（B-619）、[2026-10-session-sharing-tiers](2026-10-session-sharing-tiers.md)（B-701）、[2026-11-session-sharing-operator](2026-11-session-sharing-operator.md)（B-867 broker）、[2026-10-projects](2026-10-projects.md)（项目、B-868 终端归属）、[terminal-geometry-latest-viewer](2026-09-terminal-geometry-latest-viewer.md)
 > 基线：main a7c0d5619
 
@@ -70,18 +70,19 @@ grantee 的访问来自 ──┼ TerminalGrant（新：终端 viewer / operator
 | resize 主终端 | ❌ 服务器丢弃；Web 本地按宽度缩放 | ✅（同 owner 的其他设备，tmux latest 规则） |
 | kill / 关闭 owner 的终端 | ❌ | ❌（只能自己断开；在 shell 里 `exit` 属于 shell 能力，警告里写） |
 | 新开终端、看机器上其他终端、文件面板、会话 | ❌ | ❌ |
-| 有效期 | 1 / 7 / 30 天 / 永久，默认 7 天 | 1 / 7 / 30 天，默认 1 天，无永久（同 B-867） |
-| 确认 | 普通 | 红色警告 + 勾选 + 二次确认 + `confirmOperator:true`（同 B-867 §9，文案改为「这个终端」） |
+| 有效期 | 1 / 7 / 30 天，默认 7 天，**无永久**（Lead 11-03：终端输出常回显 env / token / 密钥） | 1 / 7 / 30 天，默认 1 天，无永久（同 B-867） |
+| 确认 | 普通，但显示一条非红色提示：「对方能看到这个终端的全部输出，包括可能出现的密钥、令牌和环境变量」 | 红色警告 + 勾选 + 二次确认 + `confirmOperator:true`（同 B-867 §9，警告去掉「从会话目录起步」一条） |
 
 ### 3.2 只看档不改主终端尺寸
 
-`open-terminal` 命中已有终端必 resize（`webTerminal.ts:2290`）。broker 对 viewer 的 attach / 重连 catch-up：
-- **忽略 grantee 发来的 cols/rows**，改填 owner 机器最近上报的该终端 `cols/rows`（`daemonState.webTerminals`，B-287 起都有）；`applyResize` 同值即 no-op（tmux 路径比较后跳过，pty 路径同值 resize 无副作用）。
-- 机器状态里没有该终端的几何（极旧 CLI / 刚建尚未上报）→ 返回 `terminal_geometry_unknown`，Web 显示「等待对方终端就绪」并 3 s 后重试，**绝不**用默认 80×24 去 attach。
-- `terminal-resize` 事件对 viewer 一律丢弃。
+`open-terminal` 命中已有终端必 resize（`webTerminal.ts:2290`）。~~只靠 server 填上报几何~~（实现时推翻：`daemonState.webTerminals` 的 `paneCols/paneRows` **不进列表签名**，单纯 resize 不触发推送，可能滞后 ≤60 s；用滞后值 attach 会把 owner 窗格拉回旧尺寸；不传 cols/rows 时 CLI 回落 80×24。）改为：
+- **CLI 新增 `open-terminal.viewOnly`**：已在内存的终端按它自己的 `cols/rows` 重入（`applyResize` 比较后 no-op），冷 attach 读 tmux 当前 `#{window_width} #{window_height}`；隐含 `attachOnly`，丢弃 `startupCommand/attachTmux/projectId`；回包带 `viewOnly:true, paneCols, paneRows`。能力位 `daemonState.terminalViewOnly {rpcAvailable, detectedAt}`（`detectedAt >= startedAt` 才算）。
+- broker 对 viewer 的 attach 一律带 `viewOnly:true`，并**忽略 grantee 的 cols/rows**（填上报几何只是给旧字段一个值）；机器没有该能力位 → `cli_upgrade_required`，**在任何东西发到 daemon 之前**拒绝。
+- `terminal-resize` / `terminal-scroll`（会把 owner 窗格切进 copy-mode）对 viewer 一律丢弃 / 拒绝。
+- owner 自己的 open 不带 `viewOnly`，行为不变（CLI 测试钉住：owner 再 attach 仍按自己的尺寸生效）。
 - Web 端只看视图：固定列数 = 上报的 `cols`，按容器宽度等比缩放字号（不改 lineHeight 1.0、不改字形填格，铁律 9），窄屏可横向平移；输入法、键盘栏不渲染。
 
-**CLI 零改动**。
+**CLI 改动**：仅上面一处（只看档需要；可操作档兼容旧 CLI）。
 
 ### 3.3 绑定与生命周期
 
@@ -221,7 +222,8 @@ CREATE TABLE "ShareAuditEvent" (...);   -- §5，INDEX(ownerAccountId, at)、IND
 
 | 组合 | 结果 |
 |---|---|
-| 新 server + 新 Web + 任意支持 `encStream` 且有机器 DEK 的 CLI | 全功能，**CLI 零改动** |
+| 新 server + 新 Web + 新 CLI（`terminalViewOnly`） | 全功能 |
+| 新 server + 新 Web + 支持 `encStream`、有机器 DEK、无 `terminalViewOnly` 的 CLI | 「可操作」可用；「只看」提示「对方机器上的 CLI 需要升级」（未发任何东西到 daemon，不会改尺寸） |
 | 新 server + 新 Web + 极旧 CLI（无 `encStream` / legacy 机器 key） | 终端分享入口可点，grantee 打开提示「对方机器的 CLI 需要升级」（`cli_upgrade_required`/`machine_unsupported`）；owner 分享时就提前提示 |
 | 新 server + 新 Web + 无 `terminalProjects` 能力的 CLI（B-868 前） | 该机器终端无项目归属 → 不出现在项目分享里（owner 侧本来就显示「需升级 CLI」）；项目会话不受影响 |
 | 新 server + 旧 Web（grantee） | 不请求 `projectShares=1`，看不到派生会话、终端分享；新事件被忽略；直接分享照常 |
@@ -232,7 +234,7 @@ CREATE TABLE "ShareAuditEvent" (...);   -- §5，INDEX(ownerAccountId, at)、IND
 
 - **PR-A 终端分享**：migration（TerminalGrant、ShareTerminalAttachment、ShareAuditEvent）+ server broker 扩展 + Web（终端顶栏/行菜单「分享…」、只看终端视图、「分享给我的 · 终端」）。
 - **PR-B 项目分享**：migration（ProjectGrant）+ server 访问派生与扇出 + Web（项目 ⋯「分享项目…」、`/shared/projects/:id`）。依赖 A 的 broker 抽象与审计表，B 基于 A 分支。
-- 两个都是 server/Web 同镜像；**CLI 不发版**。先 A 后 B 合入，可同一个 Release 发。
+- server/Web 同镜像。**PR-A 含 CLI 改动**（`viewOnly`，Lead 11-03 知会）：先发 server/Web，再发 CLI；CLI 先发也无害（旧 server 不发 `viewOnly`，旧 Web 不认能力位）。PR-B 不改 CLI。先 A 后 B 合入，可同一个 Release 发。
 
 ## 10. UI 与文案
 
@@ -269,3 +271,13 @@ CREATE TABLE "ShareAuditEvent" (...);   -- §5，INDEX(ownerAccountId, at)、IND
 10. **项目分享不能按会话排除**（v1）；要排除就移出项目：推荐如此，降低模型复杂度。
 11. **跨 slot 失效统一**：把 `activeGranteeIds` 的 5 s 跨 slot 窗口一并修成即时（`vh-share-changed`），顺带收紧既有会话分享：推荐如此。
 12. **PR 拆分**：A（终端）先、B（项目）基于 A；CLI 不发版：推荐如此。
+
+## 实现记录（PR-A 终端分享，B-878）
+
+- **server**：`app/share/terminalSharePolicy.ts`（纯函数：档位白名单、viewer attach 改写、有效期、daemonState 解析）、`terminalShareBroker.ts`（授权 → 改写 → 换钥 → 转发 → 审计；输出 tap；撤销 teardown；1 s 扫尾；machine-state 钩子推「终端已关闭」与新几何）、`terminalShares.ts`（grant 增删改查、接受/退出）、`api/routes/terminalShareRoutes.ts`。迁移 `20261103170000_terminal_shares`：`TerminalGrant`、`ShareTerminalAttachment`（含 `subscribers`：attach +1、关闭 −1，teardown 按数释放 daemon 订阅，**从不 kill**）、`ShareAuditEvent`。
+- **机器 key**：`openTerminalShareMachineKey(VerifiedTerminalShare)` 是本模块唯一打开点，只开 grant 自己那台 owner 机器；`VerifiedTerminalShare` 只由 `resolveTerminalShare`（active + 未过期 + 本人）与 attachment 行铸造。源码断言 + mutation-check（server 18/18 被抓，见 PR）。
+- **流 key**：每次（重新）分享生成新的 32 字节 key，box 给 grantee content 公钥存 `granteeKey`；Web 用 `decryptEncryptionKey` 解开后按会话 DEK 同格式 AES-GCM。
+- **跨 slot**：本 broker 自己的 `vh-terminal-share-changed`；会话分享的 grantee 缓存统一（决策 11）留给 PR-B。
+- **Web**：终端页头「分享终端」（手机进 ⋯）、侧栏终端行 ⋯「分享…」→ `TerminalShareDialog`；owner 页头「X 正在看」芯片；`/shared/terminal/:grantId`（`SharedTerminalScreen`，只看=owner 列数 + 等比缩小、`disableStdin` + `inputmode=none`；可操作=正常 fit + 输入 + resize）；侧栏顶部邀请与「分享给我的终端」；设置「已分享」加终端组。所有新 socket 事件独立命名，旧 Web 忽略。
+- **CLI**：`open-terminal.viewOnly` + 能力位 `terminalViewOnly`（见 §3.2）。
+- **已知限制**：owner 的「正在看」芯片只靠实时事件，owner 晚于对方打开终端页时不显示已在看的人（分享面板里有完整名单与活动记录）；只看页在 owner 改尺寸后随 daemonState 推送重排，推送最长可滞后约 60 s，页上有「重新同步」。
