@@ -3185,6 +3185,23 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov03l: {
+                title: 'Share web terminals and whole projects; team sessions follow your language',
+                summary: 'Share a web terminal or a whole project with a contact, team sessions reply in your language, and long imports show progress.',
+                terminal: 'Terminal sharing: share a web terminal with a contact as "View only" or "Can operate", expiring after 1, 7 or 30 days. Revoking disconnects them at once.',
+                trust: 'Someone with "Can operate" can run commands in your terminal — share it only with people you trust.',
+                project: 'Project sharing: share a whole project with a contact (View only or Can send messages). They see its sessions, terminals (view only), notes and records, including ones added later. Moving a session out of the project takes it back; revoking a project share does not affect sessions you shared individually.',
+                team: 'Team sessions reply in your language, and the lead can leave team mode.',
+                import: 'Importing a very long conversation now shows progress and opens on the latest message when done.',
+            },
+            nov03m: {
+                title: 'CLI 0.2.204: Codex team members keep working after a restart, imports are faster',
+                summary: 'Codex team members no longer get stuck on approvals after a restart, and importing long conversations is faster.',
+                codex: 'Codex team members and leads keep "no approval needed" after a restart.',
+                import: 'Importing very long conversations or ones with large files is faster and no longer stalls halfway.',
+                restart: 'Sessions on an old version that cannot update themselves now tell you to restart them.',
+                terminal: 'View-only terminal sharing needs this version. Machines with automatic updates install it on their own.',
+            },
             nov03k: {
                 title: 'Claude now starts with 1M context and respects your machine\'s model',
                 summary: 'Following latest, new Claude sessions run Opus 5.5 with the 1M context window, and the 1M switch in the model picker is on by default.',
