@@ -134,14 +134,21 @@ describe('Todo command on a server with Issues (B-874 alias layer, spec §8)', (
     const out = () => JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0]).result;
     beforeEach(() => { vi.clearAllMocks(); vi.spyOn(console, 'log').mockImplementation(() => {}); });
     afterEach(() => vi.restoreAllMocks());
-    it('list = open unassigned issues in the KV record shape (imports legacy KV first); --all adds closed', async () => {
+    it('list = every unassigned issue, open and done, in the KV record shape and KV order (imports legacy KV first); --all is the same (B-874e)', async () => {
         const c = api();
+        const a = '11111111-1111-4111-8111-111111111111', b = '22222222-2222-4222-8222-222222222222';
+        c.list.mockResolvedValue({ issues: [issue({ legacyTodoId: b, sortOrder: 5, createdAt: 0 }), issue({ legacyTodoId: a, status: 'done', sortOrder: 5, createdAt: 9 }), issue({ sortOrder: 1 })], nextCursor: null, asOf: 1 });
         await handleTodoCommand(['list'], { issues: c as any });
         expect(c.importLegacyTodos).toHaveBeenCalled();
-        expect(c.list).toHaveBeenCalledWith(expect.objectContaining({ assigneeKind: 'none', status: 'backlog,todo,in_progress,in_review,blocked' }));
-        expect(out()).toEqual({ records: [{ schemaVersion: 1, id, key: 'VH-7', title: 'T', note: 'N', status: 'open', order: 5, createdAt: 1, updatedAt: 2, version: 3 }], truncated: false, invalidCount: 0 });
+        expect(c.list).toHaveBeenCalledWith({ assigneeKind: 'none', limit: expect.any(Number) });
+        const listed = out();
+        // KV order: order, then id — not createdAt.
+        expect(listed.records.map((r: { id: string; status: string }) => [r.id, r.status])).toEqual([[id, 'open'], [a, 'done'], [b, 'open']]);
+        expect(listed.records[0]).toEqual({ schemaVersion: 1, id, key: 'VH-7', title: 'T', note: 'N', status: 'open', order: 1, createdAt: 1, updatedAt: 2, version: 3 });
+        expect(listed).toMatchObject({ truncated: false, invalidCount: 0 });
         await handleTodoCommand(['list', '--all'], { issues: c as any });
-        expect((c.list.mock.calls.at(-1) as any[])[0].status).toBeUndefined();
+        expect(c.list).toHaveBeenLastCalledWith({ assigneeKind: 'none', limit: expect.any(Number) });
+        expect(out()).toEqual(listed);
         expect(authenticatedBuiltinTodoClient).not.toHaveBeenCalled();
     });
     it('add = an unassigned todo issue, the UUID is the idempotency key (Q10)', async () => {

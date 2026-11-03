@@ -447,4 +447,23 @@ describe('B-872 Issues REST through startApi (pglite)', () => {
         expect(await s.call('POST', '/v1/issues', { title: 'Todo by U', requestId: 'fresh', legacyTodoId: u }, acct.token)).toEqual({ status: 404, body: { error: 'issue_todo_deleted' } });
         expect(await s.db.issue.count({ where: { accountId: acct.id } })).toBe(2);
     });
+
+    it('B-874e: a todo deleted in KV before the switch (tombstone, value null) is spent — add by that id is 404 issue_todo_deleted after import; live and unknown ids still create', async () => {
+        const acct = await s.newAccount();
+        const [gone, live, fresh] = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+        const value = Buffer.from(JSON.stringify({ schemaVersion: 1, id: live, title: 'Live', note: '', status: 'open', order: 1, createdAt: 1, updatedAt: 2 }));
+        await s.db.userKVStore.create({ data: { accountId: acct.id, key: BUILTIN_TODO_PREFIX + live, value, version: 1 } });
+        await s.db.userKVStore.create({ data: { accountId: acct.id, key: BUILTIN_TODO_PREFIX + gone, value: null, version: 2 } });
+        expect((await s.call('POST', '/v1/issues/import-legacy-todos', undefined, acct.token)).body).toEqual({ imported: 1, updated: 0, skipped: 0, conflicts: 0, invalid: 0 });
+        for (const requestId of [gone, 'fresh']) {
+            expect(await s.call('POST', '/v1/issues', { title: 'Back again', status: 'todo', assignee: { kind: 'none' }, requestId, legacyTodoId: gone }, acct.token)).toEqual({ status: 404, body: { error: 'issue_todo_deleted' } });
+        }
+        expect((await s.call('POST', '/v1/issues', { title: 'Live', legacyTodoId: live, requestId: live }, acct.token)).body.issue).toMatchObject({ legacyTodoId: live, title: 'Live' });
+        expect((await s.call('POST', '/v1/issues', { title: 'New', legacyTodoId: fresh, requestId: fresh }, acct.token)).status).toBe(200);
+        // Another account's tombstone for the same id does not spend it here.
+        const other = await s.newAccount();
+        expect((await s.call('POST', '/v1/issues', { title: 'Mine', legacyTodoId: gone, requestId: gone }, other.token)).status).toBe(200);
+        expect(await s.db.issue.count({ where: { accountId: acct.id } })).toBe(2);
+        expect(await s.db.userKVStore.count({ where: { accountId: acct.id } })).toBe(2);
+    });
 });
