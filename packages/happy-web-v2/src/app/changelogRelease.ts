@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-03-terminal-project-share-team-language-import',
+    date: '2026-11-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov03l.title',
+    summaryKey: 'changelog.releases.nov03l.summary',
+    itemKeys: ['changelog.releases.nov03l.terminal', 'changelog.releases.nov03l.trust', 'changelog.releases.nov03l.project', 'changelog.releases.nov03l.team', 'changelog.releases.nov03l.import'],
+  },
+  {
+    id: '2026-11-03-cli-codex-team-import-0-2-204',
+    cliVersion: '0.2.204',
+    date: '2026-11-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov03m.title',
+    summaryKey: 'changelog.releases.nov03m.summary',
+    itemKeys: ['changelog.releases.nov03m.codex', 'changelog.releases.nov03m.import', 'changelog.releases.nov03m.restart', 'changelog.releases.nov03m.terminal'],
+  },
+  {
     id: '2026-11-03-claude-follow-latest-1m-machine-config',
     date: '2026-11-03',
     buildVersion: __APP_VERSION__,
