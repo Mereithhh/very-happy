@@ -378,6 +378,22 @@ class ApiSocket {
     }
 
     /**
+     * B-878: one acknowledged event on the CENTRAL socket (never a relay) —
+     * the terminal share broker lives on the server only. `offline` = no
+     * connected socket; `no_ack` = nothing answered in time (an old server has
+     * no handler for the event and never acks).
+     */
+    async centralEmitWithAck(event: string, payload: unknown, timeoutMs: number): Promise<{ ok: true; ack: unknown } | { ok: false; reason: 'offline' | 'no_ack' }> {
+        const socket = this.socket;
+        if (!socket?.connected) return { ok: false, reason: 'offline' };
+        try {
+            return { ok: true, ack: await socket.timeout(timeoutMs).emitWithAck(event, payload) };
+        } catch {
+            return { ok: false, reason: this.socket === socket && socket.connected ? 'no_ack' : 'offline' };
+        }
+    }
+
+    /**
      * B-867: one call to the server's operator broker. Params and result are
      * sealed with the SESSION key (same format as sessionRPC); the broker
      * re-checks the grant and forwards with the owner's keys. Central socket

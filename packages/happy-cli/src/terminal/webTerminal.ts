@@ -271,6 +271,17 @@ export interface OpenTerminalOptions {
      *  Create-only like startupCommand; an invalid id is ignored. Old daemons
      *  ignore the field (the web gates on daemonState.terminalProjects). */
     projectId?: string;
+    /** B-878: a VIEW-ONLY share viewer (sent only by the server's share
+     *  broker). Implies `attachOnly`, and the open must never change the
+     *  pane's size: an already-open terminal keeps its geometry (no
+     *  `refresh-client -C`), a cold attach declares the tmux window's CURRENT
+     *  size instead of the requested one. Old daemons ignore the field (the
+     *  broker gates on daemonState.terminalViewOnly). */
+    viewOnly?: boolean;
+    /** B-878: the share grant this open came through (server broker only). A
+     *  view-only grant is remembered per terminal so input / resize the broker
+     *  tags with it are dropped here too — a second layer behind the server. */
+    shareGrantId?: string;
 }
 
 /** Result of (re)subscribing to a terminal.
@@ -309,6 +320,9 @@ export type OpenTerminalResult = {
      *  "this daemon does not support attach" (daemon downgraded under a
      *  cached capability flag). */
     attachedTmux?: { id: string; name: string };
+    /** B-878: echoed when the open honoured `viewOnly` (the pane was not
+     *  resized; `paneCols`/`paneRows` carry the size the viewer renders at). */
+    viewOnly?: boolean;
 } & (
     | { mode: 'snapshot'; data: string }
     | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
@@ -1031,6 +1045,32 @@ export function tmuxNewSessionArgs(
         args.push(';', 'set-option', ...(scope === 'window' ? ['-w'] : []), '-q', '-t', `=${session}:`, option, value);
     }
     return args;
+}
+
+/**
+ * B-878: the geometry a view-only open declares. The live session's own size
+ * when the daemon already holds one (so the resize below is a no-op), else the
+ * tmux window's current size, else the requested size (only reachable when the
+ * window could not be read — the attach then fails on the missing session).
+ * Pure; unit-tested.
+ */
+export function viewOnlyGeometry(
+    live: { cols: number; rows: number } | undefined,
+    tmuxWindow: { cols: number; rows: number } | null,
+    requested: { cols: number; rows: number },
+): { cols: number; rows: number } {
+    if (live) return { cols: live.cols, rows: live.rows };
+    if (tmuxWindow) return tmuxWindow;
+    return requested;
+}
+
+/** `#{window_width} #{window_height}` output → size, or null. Pure. */
+export function parseTmuxWindowSize(out: string | null | undefined): { cols: number; rows: number } | null {
+    const m = /^(\d+)\s+(\d+)\s*$/.exec((out ?? '').trim());
+    if (!m) return null;
+    const cols = Number(m[1]);
+    const rows = Number(m[2]);
+    return cols >= 2 && rows >= 2 && cols <= 10_000 && rows <= 10_000 ? { cols, rows } : null;
 }
 
 export function shouldUseDirectPtyFallback(attachOnly: boolean, createdNew: boolean, sessionAlive: boolean): boolean {
@@ -2249,6 +2289,40 @@ export class WebTerminalManager {
         for (const s of this.terminals.values()) s.subscribers = 0;
     }
 
+    /** B-878: share grants that attached a terminal view-only, by terminal id. */
+    private viewOnlyShares = new Map<string, Set<string>>();
+
+    private noteShareAttach(terminalId: string, grantId: string | undefined, viewOnly: boolean): void {
+        if (typeof grantId !== 'string' || !grantId) return;
+        const set = this.viewOnlyShares.get(terminalId) ?? new Set<string>();
+        if (viewOnly) set.add(grantId); else set.delete(grantId);
+        if (set.size > 0) this.viewOnlyShares.set(terminalId, set); else this.viewOnlyShares.delete(terminalId);
+    }
+
+    /**
+     * B-878 second layer: input / resize tagged with a grant that attached this
+     * terminal view-only is dropped (the broker should never forward it). Logs
+     * the fact only — never the bytes.
+     */
+    dropViewOnlyShareEvent(kind: 'input' | 'resize', terminalId: unknown, grantId: unknown): boolean {
+        if (typeof terminalId !== 'string' || typeof grantId !== 'string') return false;
+        if (!this.viewOnlyShares.get(terminalId)?.has(grantId)) return false;
+        logger.debug(`[WEB TERMINAL] dropped ${kind} from a view-only share on ${terminalId}`);
+        return true;
+    }
+
+    /** B-878: the tmux window's current size for `vh-<id>`, or null. */
+    private readTmuxWindowSize(id: string): { cols: number; rows: number } | null {
+        if (!isTmuxAvailable()) return null;
+        try {
+            const r = spawnSync('tmux', tmuxArgs(['display-message', '-p', '-t', `=vh-${id}:`, '#{window_width} #{window_height}']),
+                { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
+            return r.status === 0 ? parseTmuxWindowSize(r.stdout) : null;
+        } catch {
+            return null;
+        }
+    }
+
     /** Update the emitter when the socket reconnects. */
     setEmit(emit: EmitFn) {
         this.emit = emit;
@@ -2269,6 +2343,22 @@ export class WebTerminalManager {
         const lines = opts.streamMode === 'lines';
 
         const existing = this.terminals.get(id);
+        // An operator attach of the same grant (tier raised) lifts the view-only mark.
+        if (!opts.viewOnly) this.noteShareAttach(id, opts.shareGrantId, false);
+        if (opts.viewOnly) {
+            // B-878: a share viewer never resizes the owner's pane and never
+            // creates. Re-enter as a plain attach declaring the pane's OWN size
+            // (applyResize then sees no change), and echo that size so the
+            // viewer renders at the owner's width.
+            const geometry = viewOnlyGeometry(existing ? { cols: existing.cols, rows: existing.rows } : undefined, existing ? null : this.readTmuxWindowSize(id), { cols, rows });
+            const result = await this.open({
+                ...opts, viewOnly: false, attachOnly: true, shareGrantId: undefined,
+                startupCommand: undefined, attachTmux: undefined, projectId: undefined,
+                cols: geometry.cols, rows: geometry.rows,
+            });
+            this.noteShareAttach(result.terminalId, opts.shareGrantId, true);
+            return { ...result, viewOnly: true, paneCols: result.paneCols ?? geometry.cols, paneRows: result.paneRows ?? geometry.rows };
+        }
         if (existing) {
             // B-273: a repeated create-open (StrictMode double effect, lost
             // reply replayed with fresh=1) must echo the attach fact of the

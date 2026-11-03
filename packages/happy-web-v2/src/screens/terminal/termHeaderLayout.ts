@@ -29,6 +29,7 @@ export type TermHeaderActionKey =
     | 'files'
     | 'refit'
     | 'tmuxHelp'
+    | 'share'
     | 'close';
 
 export type TermHeaderLayoutInput = {
@@ -43,6 +44,8 @@ export type TermHeaderLayoutInput = {
     hasTmuxSession: boolean;
     /** An open terminal (`?tid=`) that this page can close. */
     canClose?: boolean;
+    /** B-878: an open terminal of my own that can be shared. */
+    canShare?: boolean;
 };
 
 export type TermHeaderLayout = {
@@ -61,6 +64,8 @@ export function planTermHeaderActions(input: TermHeaderLayoutInput): TermHeaderL
     available.push('files');
     available.push('refit');
     if (input.hasTmuxSession) available.push('tmuxHelp');
+    // B-878: last on the desktop bar (nearest the edge, like the session header's share).
+    if (input.canShare) available.push('share');
 
     if (!input.compact) return { inline: available, overflow: [] };
 
