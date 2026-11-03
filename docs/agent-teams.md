@@ -259,6 +259,8 @@ teams keep their saved mode (historical teams without a mode use normal approval
 The choice takes effect directly, without a second confirmation. Existing sessions
 and already queued operations retain their prior mode; change a live lead's session
 mode separately. This does not change global agent settings or provide credentials.
+Codex leads and members keep **No approvals** across a restart or resume (the session
+shows it as Codex's `yolo`).
 
 An independent owner terminal can make the same choice:
 

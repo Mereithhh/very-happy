@@ -75,7 +75,7 @@ import {
 } from './codexPrompt';
 import { codexEventLogMetadata, logValueMetadata, safeCodexErrorMetadata } from './logMetadata';
 import { DEFAULT_CODEX_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
-import { CODEX_REMOTE_PERMISSION_MODES, codexPublishablePermissionMode } from './codexPermissionMode';
+import { CODEX_REMOTE_PERMISSION_MODES, codexLaunchPublishablePermissionMode, codexPublishablePermissionMode } from './codexPermissionMode';
 import { EditReportThrottle, extractCodexPatchPaths } from '@/sessions/editPaths';
 import { reportSessionEditToDaemon } from '@/daemon/controlClient';
 import { takeReconnectEnv } from '@/utils/reconnectEnv';
@@ -465,7 +465,8 @@ export async function runCodex(opts: {
         publishedPermissionMode = publishable;
         session.updateMetadata((currentMetadata) => ({ ...currentMetadata, permissionMode: publishable }));
     };
-    publishPermissionMode(opts.permissionMode);
+    // B-884: the launch flag alone may publish bypassPermissions (as yolo).
+    publishPermissionMode(codexLaunchPublishablePermissionMode(opts.permissionMode));
 
     let discoveredModels: Awaited<ReturnType<CodexAppServerClient['listModels']>> = [];
     let codexAgentVersion: string | null = null;
