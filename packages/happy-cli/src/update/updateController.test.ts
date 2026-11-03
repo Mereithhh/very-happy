@@ -325,3 +325,34 @@ describe('resolveBusyInstallGrace', () => {
     for (const bad of ['', '-1', '1.5', 'soon', String(25 * 60 * 60_000)]) expect(resolveBusyInstallGrace(bad)).toBe(DEFAULT_BUSY_INSTALL_GRACE_MS);
   });
 });
+
+describe('refresh result (B-876c: the policy refresh trigger retries on everything but ok)', () => {
+  it('ok when a fresh policy was read', async () => {
+    const {controller} = setup();
+    expect(await controller.refresh()).toBe('ok');
+  });
+  it('unavailable when the fetch read nothing', async () => {
+    const {deps, controller} = setup(); deps.policy.mockResolvedValue(null as any);
+    expect(await controller.refresh()).toBe('unavailable');
+  });
+  it('stale when the server hands back a policy already past the limit', async () => {
+    const {deps, controller} = setup(); deps.policy.mockResolvedValue({...policy, checkedAt: 1000 - 66 * 60_000});
+    expect(await controller.refresh()).toBe('stale');
+  });
+  it('busy while another operation holds the fence, without fetching', async () => {
+    const {deps, controller} = setup(); let resume!:()=>void;
+    const handover = controller.withHandover(()=>new Promise(resolve=>{resume=resolve;}));
+    expect(await controller.refresh()).toBe('busy'); expect(deps.policy).not.toHaveBeenCalled();
+    resume(); await handover;
+    expect(await controller.refresh()).toBe('ok');
+  });
+  it('blocked after an unconfirmed process-tree termination, without fetching', async () => {
+    const {deps, controller} = setup(); deps.install.mockResolvedValue('blocked' as any);
+    await controller.refresh();
+    expect(await controller.refresh()).toBe('blocked'); expect(deps.policy).toHaveBeenCalledTimes(1);
+  });
+  it('superseded once another daemon owns the machine, without fetching', async () => {
+    const deps = { policy: vi.fn(async () => policy), enabled: vi.fn(async () => true), idle: vi.fn(() => true), install: vi.fn(async () => 1 as number | null), publish: vi.fn(), now: () => 1000, owned: () => false };
+    expect(await createUpdateController(deps).refresh()).toBe('superseded'); expect(deps.policy).not.toHaveBeenCalled();
+  });
+});

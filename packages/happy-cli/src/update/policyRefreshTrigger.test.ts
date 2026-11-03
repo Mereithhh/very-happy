@@ -4,24 +4,28 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CliUpdateState } from '@/api/types';
 import { createUpdateController } from './updateController';
 import {
-    createPolicyRefreshTrigger, createWakeDetector, POLICY_REFRESH_MIN_INTERVAL_MS, POLICY_REFRESH_RETRY_MS,
-    type PolicyRefreshResult,
+    createPolicyRefreshTrigger, createWakeDetector, POLICY_REFRESH_MAX_BACKOFF_MS, POLICY_REFRESH_MIN_INTERVAL_MS, POLICY_REFRESH_RETRY_MS,
+    type PolicyRefreshReason, type PolicyRefreshResult,
 } from './policyRefreshTrigger';
 
-function harness(results: PolicyRefreshResult[] = []) {
+function harness(results: PolicyRefreshResult[] = [], fallback: PolicyRefreshResult = 'ok') {
     let clock = 10_000_000;
     const timers: Array<{ fn: () => void; ms: number; cleared: boolean }> = [];
-    const refresh = vi.fn(async (): Promise<PolicyRefreshResult> => results.shift() ?? 'ok');
+    const logs: Array<[string, 'warn' | 'debug']> = [];
+    const refresh = vi.fn(async (): Promise<PolicyRefreshResult> => results.shift() ?? fallback);
     const trigger = createPolicyRefreshTrigger({
         refresh,
         now: () => clock,
+        log: (message, level) => { logs.push([message, level]); },
         setTimer: (fn, ms) => { const t = { fn, ms, cleared: false }; timers.push(t); return t; },
         clearTimer: (t) => { (t as { cleared: boolean }).cleared = true; },
     });
     const settle = () => new Promise((r) => setTimeout(r, 0));
     const live = () => timers.filter((t) => !t.cleared);
     const fire = async () => { const t = live().pop()!; t.cleared = true; t.fn(); await settle(); };
-    return { trigger, refresh, live, fire, settle, advance: (ms: number) => { clock += ms; } };
+    /** Fires the pending timer after waiting it out, and returns its delay. */
+    const waitOut = async () => { const ms = live().at(-1)!.ms; clock += ms; await fire(); return ms; };
+    return { trigger, refresh, logs, live, fire, waitOut, settle, advance: (ms: number) => { clock += ms; } };
 }
 
 describe('policy refresh trigger (B-876)', () => {
@@ -100,6 +104,147 @@ describe('policy refresh trigger (B-876)', () => {
         expect(h.live()).toHaveLength(0);
         expect(h.trigger.request('connect')).toBe('stopped');
         expect(h.refresh).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('policy refresh backoff (B-876c)', () => {
+    it('a fetch that keeps failing backs off 30 s → 1 m → 2 m … and stays at 30 m; a success resets it', async () => {
+        const h = harness([], 'unavailable');
+        h.trigger.request('startup');
+        await h.settle();
+        const delays: number[] = [];
+        for (let i = 0; i < 9; i += 1) delays.push(await h.waitOut());
+        expect(delays).toEqual([30_000, 60_000, 120_000, 240_000, 480_000, 960_000, POLICY_REFRESH_MAX_BACKOFF_MS, POLICY_REFRESH_MAX_BACKOFF_MS, POLICY_REFRESH_MAX_BACKOFF_MS]);
+        h.refresh.mockResolvedValueOnce('ok');
+        await h.waitOut();
+        expect(h.live()).toHaveLength(0);
+        h.refresh.mockResolvedValueOnce('unavailable');
+        h.advance(POLICY_REFRESH_MIN_INTERVAL_MS);
+        h.trigger.request('stale');
+        await h.settle();
+        expect(h.live().map((t) => t.ms)).toEqual([POLICY_REFRESH_RETRY_MS]);
+    });
+
+    it('warns on the first failure and on each step up, not on every capped retry', async () => {
+        const h = harness([], 'unavailable');
+        h.trigger.request('startup');
+        await h.settle();
+        for (let i = 0; i < 9; i += 1) await h.waitOut();
+        const warns = h.logs.filter(([, level]) => level === 'warn').map(([m]) => m);
+        // the startup line, then one per step: 30 s, 1, 2, 4, 8, 16, 30 m
+        expect(warns).toHaveLength(8);
+        expect(warns[0]).toBe('CLI update policy refresh (startup)');
+        expect(warns.at(-1)).toContain('next try in 1800s');
+        expect(h.logs.slice(-4).map(([, level]) => level)).toEqual(['debug', 'debug', 'debug', 'debug']);
+        h.refresh.mockResolvedValueOnce('ok');
+        await h.waitOut();
+        expect(h.logs.at(-1)).toEqual(['CLI update policy refresh recovered after 10 failed attempt(s)', 'warn']);
+    });
+
+    it('stale requests wait out the backoff; a connect or wake skips it, at most once per 5 minutes', async () => {
+        const h = harness([], 'unavailable');
+        h.trigger.request('startup');
+        await h.settle();
+        await h.waitOut(); await h.waitOut(); await h.waitOut(); // backoff now 4 min
+        h.advance(10_000);
+        expect(h.trigger.request('stale')).toBe('deferred');
+        expect(h.trigger.request('connect')).toBe('run');
+        await h.settle();
+        h.advance(10_000);
+        expect(h.trigger.request('connect')).toBe('deferred');
+        expect(h.trigger.request('wake')).toBe('deferred');
+        h.advance(POLICY_REFRESH_MIN_INTERVAL_MS);
+        expect(h.trigger.request('wake')).toBe('run');
+        expect(h.refresh).toHaveBeenCalledTimes(6);
+    });
+
+    it('blocked (manual recovery) schedules nothing; stale requests wait out the backoff, the next connect asks again', async () => {
+        const h = harness([], 'blocked');
+        h.trigger.request('startup');
+        await h.settle();
+        expect(h.live()).toHaveLength(0);
+        expect(h.logs.at(-1)).toEqual(['CLI update policy refresh (startup) read no fresh policy (blocked, 1 in a row); waiting for the next connect / wake / hourly check', 'warn']);
+        h.advance(60_000);
+        expect(h.trigger.request('stale')).toBe('run'); // past the 30 s backoff
+        await h.settle();
+        expect(h.live()).toHaveLength(0);
+        h.advance(30_000);
+        expect(h.trigger.request('stale')).toBe('deferred'); // 1 m backoff not over yet
+        h.live().forEach((t) => { t.cleared = true; });
+        expect(h.trigger.request('connect')).toBe('run');
+        await h.settle();
+        expect(h.refresh).toHaveBeenCalledTimes(3);
+    });
+
+    it('an hourly check that read a fresh policy ends the backoff; one that read a stale policy still restarts the window', async () => {
+        const h = harness([], 'unavailable');
+        h.trigger.request('startup');
+        await h.settle();
+        await h.waitOut(); await h.waitOut(); await h.waitOut(); // backoff now 4 min
+        h.live().forEach((t) => { t.cleared = true; });
+        h.trigger.noteRefreshed('ok');
+        h.advance(POLICY_REFRESH_MIN_INTERVAL_MS);
+        expect(h.trigger.request('stale')).toBe('run');
+        await h.settle();
+        expect(h.live().map((t) => t.ms)).toEqual([POLICY_REFRESH_RETRY_MS]);
+
+        const s = harness();
+        s.trigger.noteRefreshed('stale');
+        expect(s.trigger.request('connect')).toBe('deferred');
+    });
+
+    it('a policy the server already reports as stale backs off from the 5-minute window instead of re-fetching every window', async () => {
+        const h = harness([], 'stale');
+        h.trigger.request('startup');
+        await h.settle();
+        const delays: number[] = [];
+        for (let i = 0; i < 7; i += 1) delays.push(await h.waitOut());
+        expect(delays).toEqual([300_000, 300_000, 300_000, 300_000, 480_000, 960_000, POLICY_REFRESH_MAX_BACKOFF_MS]);
+        h.trigger.noteRefreshed('stale'); // an hourly check that read the same stale policy does not reset it
+        h.advance(POLICY_REFRESH_MIN_INTERVAL_MS);
+        h.refresh.mockResolvedValueOnce('stale');
+        expect(h.trigger.request('stale')).toBe('deferred');
+    });
+});
+
+describe('controller + trigger + heartbeat: one hour of failing fetches, simulated clock (B-876c)', () => {
+    const fresh: CliUpdateState = { currentVersion: '0.2.200', recommendedVersion: '0.2.200', minimumVersion: null, autoUpdateVersion: '0.2.200', checkedAt: 0, status: 'current' };
+
+    /** run.ts in miniature: startup + connect, the 60 s heartbeat (wake / stale), the hourly check. */
+    async function hour(served: () => CliUpdateState | null, maxBackoffMs?: number) {
+        vi.useFakeTimers({ now: 1_800_000_000_000 });
+        try {
+            const policy = vi.fn(async () => served());
+            const controller = createUpdateController({ policy, enabled: async () => true, idle: () => true, install: async () => 0, publish: () => undefined });
+            const warns: string[] = [];
+            const trigger = createPolicyRefreshTrigger({ refresh: () => controller.refresh(), maxBackoffMs, log: (m, level) => { if (level === 'warn') warns.push(m); } });
+            const request = (reason: PolicyRefreshReason) => trigger.request(reason);
+            request('startup');
+            setTimeout(() => request('connect'), 1_000);
+            const wake = createWakeDetector(60_000);
+            setInterval(() => { const woke = wake.beat(); if (woke || controller.policyStale()) request(woke ? 'wake' : 'stale'); }, 60_000);
+            setInterval(() => { void controller.refresh().then(trigger.noteRefreshed); }, 60 * 60_000);
+            await vi.advanceTimersByTimeAsync(60 * 60_000);
+            trigger.stop();
+            return { fetches: policy.mock.calls.length, warns: warns.length };
+        } finally { vi.clearAllTimers(); vi.useRealTimers(); }
+    }
+
+    it('the policy endpoint fails for an hour: single-digit fetches and warnings (fixed 30 s retry was ~120)', async () => {
+        const r = await hour(() => null);
+        expect(r.fetches).toBeLessThan(10);
+        expect(r.warns).toBeLessThan(10);
+        // without the backoff (cap = 30 s) the same hour is the QA48 storm
+        expect((await hour(() => null, POLICY_REFRESH_RETRY_MS)).fetches).toBeGreaterThan(100);
+    });
+
+    it('the server keeps returning a 70-minute-old checkedAt: single-digit fetches (every 5-minute window was 13)', async () => {
+        const r = await hour(() => ({ ...fresh, checkedAt: Date.now() - 70 * 60_000 }));
+        expect(r.fetches).toBeLessThan(10);
+    });
+
+    it('a healthy hour: startup, the trailing run for the connect inside its window, hourly', async () => {
+        expect((await hour(() => ({ ...fresh, checkedAt: Date.now() }))).fetches).toBe(3);
     });
 });
 
@@ -184,6 +329,9 @@ describe('B-876 wiring', () => {
         expect(fetchAt).toBeGreaterThan(-1);
         expect(supersededReturn).toBeGreaterThan(-1);
         expect(fetchAt).toBeGreaterThan(supersededReturn);
+    });
+    it('retries that are not news log at debug, not warn (B-876c)', () => {
+        expect(run).toContain("log: (message, level) => level === 'warn' ? logger.warn(`[DAEMON RUN] ${message}`) : logger.debug(`[DAEMON RUN] ${message}`),");
     });
     it('the startup check goes through the trigger and both stop paths stop it', () => {
         expect(run).toContain("policyRefresh.request('startup');");

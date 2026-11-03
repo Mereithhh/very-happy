@@ -159,9 +159,10 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         try { await evaluate(); } finally { operation = null; }
     }
     /** B-876: says whether a policy was read, so event-driven refreshes can retry (policyRefreshTrigger.ts). */
-    async function refresh(): Promise<'ok' | 'unavailable' | 'busy' | 'superseded'> {
+    async function refresh(): Promise<'ok' | 'stale' | 'unavailable' | 'busy' | 'blocked' | 'superseded'> {
         if (superseded()) return 'superseded';
-        if (operation || blocked) return 'busy';
+        if (blocked) return 'blocked';
+        if (operation) return 'busy';
         operation = 'refresh';
         try {
             const next = await deps.policy();
@@ -169,7 +170,8 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
             if (manualVersion && !validManualTarget(next, manualVersion)) manualVersion = null;
             policy = next;
             await evaluate();
-            return 'ok';
+            // B-876c: the server's own registry check is failing — retrying every window would not help.
+            return policyStale() ? 'stale' : 'ok';
         } finally { operation = null; }
     }
     async function retry(version: unknown): Promise<{ accepted: true } | { error: string }> {

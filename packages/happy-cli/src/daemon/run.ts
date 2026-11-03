@@ -2247,7 +2247,7 @@ export async function startDaemon(): Promise<void> {
     // B-876: reconnect / wake / stale policy re-read the policy at once (paced), not on the next hourly check.
     const policyRefresh = createPolicyRefreshTrigger({
       refresh: () => updateController.refresh(),
-      log: (message) => logger.warn(`[DAEMON RUN] ${message}`),
+      log: (message, level) => level === 'warn' ? logger.warn(`[DAEMON RUN] ${message}`) : logger.debug(`[DAEMON RUN] ${message}`),
     });
     const refreshCliUpdate = () => updateController.refresh().then(policyRefresh.noteRefreshed).catch((error) => {
       logger.debug('[DAEMON RUN] CLI update policy check failed:', error);
