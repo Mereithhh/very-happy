@@ -104,7 +104,9 @@ export function emitRun(tx: Tx, row: RunRow) {
 export async function loadIssue(tx: Tx, accountId: string, ref: string, opts: { allowDeleted?: boolean } = {}): Promise<IssueRow> {
     const parsed = parseIssueRef(ref);
     requireIssue(parsed, 'issue_not_found', 404);
-    const row = await tx.issue.findFirst({ where: 'number' in parsed ? { accountId, number: parsed.number } : { accountId, id: parsed.id } });
+    // B-874d: a todo id given at create (or a pre-import KV todo id) resolves wherever an issue id does; the issue's own id wins.
+    const row = 'number' in parsed ? await tx.issue.findFirst({ where: { accountId, number: parsed.number } })
+        : await tx.issue.findFirst({ where: { accountId, id: parsed.id } }) ?? await tx.issue.findFirst({ where: { accountId, legacyTodoId: parsed.id } });
     requireIssue(row && (opts.allowDeleted || !row.deletedAt), 'issue_not_found', 404);
     return row;
 }
@@ -371,9 +373,13 @@ export async function getIssue(accountId: string, ref: string): Promise<IssueDet
 export async function createIssue(accountId: string, input: IssueCreate): Promise<IssueMutationResponse> {
     return runIssueTx(async tx => {
         const key = requestKey('create', accountId, input.requestId);
-        if (key) {
-            const prior = await tx.issue.findFirst({ where: { requestKey: key, accountId } });
-            if (prior) return { issue: issueView(prior), runs: (await tx.issueRun.findMany({ where: { issueId: prior.id }, orderBy: { seq: 'asc' } })).map(runView) };
+        // B-874d: a todo id is the caller's identity for this issue, so reusing it (even with another requestId) returns that
+        // issue; once it is soft-deleted the id is spent, as a deleted KV todo id is: 404 `issue_todo_deleted`, never a new issue.
+        const prior = (key ? await tx.issue.findFirst({ where: { requestKey: key, accountId } }) : null)
+            ?? (input.legacyTodoId ? await tx.issue.findFirst({ where: { accountId, legacyTodoId: input.legacyTodoId } }) : null);
+        if (prior) {
+            requireIssue(!(input.legacyTodoId && prior.deletedAt), 'issue_todo_deleted', 404);
+            return { issue: issueView(prior), runs: (await tx.issueRun.findMany({ where: { issueId: prior.id }, orderBy: { seq: 'asc' } })).map(runView) };
         }
         const number = await allocateNumber(tx, accountId);
         await enforceIssueQuota(tx, accountId);
@@ -387,7 +393,7 @@ export async function createIssue(accountId: string, input: IssueCreate): Promis
             id: randomUUID(), accountId, number, title: input.title, description: input.description ?? '',
             status, priority: input.priority ?? 'none', assigneeKind: assignee.kind, assignee: json(assignee), projectId, labels: input.labels ?? [],
             dueAt: input.dueAt ? new Date(input.dueAt) : null, parentId: input.parentId ?? null, sortOrder: now.getTime(),
-            createdBy: json({ kind: 'user' }), requestKey: key, createdAt: now, updatedAt: now, statusChangedAt: now,
+            createdBy: json({ kind: 'user' }), requestKey: key, legacyTodoId: input.legacyTodoId ?? null, createdAt: now, updatedAt: now, statusChangedAt: now,
             completedAt: isIssueClosed(status) ? now : null,
         } });
         emitIssue(tx, issue);

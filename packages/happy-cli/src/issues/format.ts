@@ -14,6 +14,7 @@ const MESSAGES: Record<string, string> = {
     issue_run_not_current: 'This issue has moved to a newer run; stop changing it.',
     issue_comment_quota_exceeded: 'Too many issue comments from this run in the last hour; wait before commenting again.',
     issue_not_found: 'No such issue (it may have been deleted).',
+    issue_todo_deleted: 'This todo id belongs to a deleted todo and cannot be reused; add with a new UUID.',
     issue_version_conflict: 'The issue changed since you read it; read it again before deciding what to change.',
     issue_assignee_unsupported: 'That assignee is not supported.',
     issue_agent_unsupported: 'That agent cannot be assigned an issue (Claude, Codex or pi only).',

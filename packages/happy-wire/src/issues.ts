@@ -294,6 +294,13 @@ export const IssueCreateSchema = z.object({
     parentId: id.nullable().optional(),
     /** Idempotency: the same requestId returns the issue it created. */
     requestId: requestId.optional(),
+    /**
+     * B-874d: the caller's todo id (`very-happy todo add --id U`). Stored as
+     * `legacyTodoId`, so U keeps resolving wherever an issue id is accepted and
+     * a second create with the same U returns that issue (404 `issue_todo_deleted`
+     * once that issue is soft-deleted). Older servers strip it.
+     */
+    legacyTodoId: id.optional(),
 });
 export type IssueCreate = z.infer<typeof IssueCreateSchema>;
 
@@ -597,6 +604,8 @@ export const ISSUE_ERROR_CODES = [
     'issue_assignee_unsupported', 'issue_agent_unsupported', 'issue_no_directory', 'issue_machine_not_found',
     'issue_parent_cycle', 'issue_project_not_found', 'issue_comment_quota_exceeded',
     'issue_run_not_found', 'issue_dispatch_claim_mismatch', 'transaction_conflict',
+    /** B-874d: create with the `legacyTodoId` of a soft-deleted issue (a deleted todo id is never reused). */
+    'issue_todo_deleted',
 ] as const;
 export type IssueErrorCode = typeof ISSUE_ERROR_CODES[number];
 
