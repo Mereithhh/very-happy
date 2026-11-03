@@ -39,6 +39,7 @@ import { PromptQueueDrain, type PromptQueueDispatchOutcome } from '@/utils/promp
 import type { PromptQueueDispatchResponse } from '@slopus/happy-wire';
 import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
 import { notifyDaemonBackgroundTasks, notifyDaemonTurnEvent } from '@/daemon/controlClient';
+import { planOutboxBatch, type OutboxItem } from './outboxBatch';
 import { advanceInboundCursor } from './inboundCursor';
 
 const guardOptions = { log: (message: string) => logger.debug(message) };
@@ -167,7 +168,9 @@ export class ApiSessionClient extends EventEmitter {
         costOutput: 0,
     };
     private lastSeq = 0;
-    private pendingOutbox: Array<{ content: string; localId: string }> = [];
+    private pendingOutbox: OutboxItem[] = [];
+    /** B-880: set while a transcript replay enqueues (see `replayHistory`). */
+    private replayingHistory = false;
     private readonly sendSync: InvalidateSync;
     private readonly receiveSync: InvalidateSync;
     private readonly directInboundLocalIds = new Set<string>();
@@ -772,8 +775,6 @@ export class ApiSessionClient extends EventEmitter {
         this.awaitingInitialFetch = false;
     }
 
-    private static readonly MAX_OUTBOX_BATCH_SIZE = 50;
-
     private async flushOutbox() {
         // Send OLDEST first (FIFO). pendingOutbox is in creation order, and the
         // server allocates its per-session monotonic `seq` in the order messages
@@ -783,17 +784,24 @@ export class ApiSessionClient extends EventEmitter {
         // backlog — messages permanently out of order server-side, unfixable
         // client-side. The client re-sorts by seq anyway, so newest-first bought
         // nothing but the bug.)
-        while (this.pendingOutbox.length > 0) {
-            const batchSize = Math.min(this.pendingOutbox.length, ApiSessionClient.MAX_OUTBOX_BATCH_SIZE);
-            const batch = this.pendingOutbox.slice(0, batchSize);
+        // B-880: batches are bounded by bytes as well as count (outboxBatch.ts).
+        for (let plan = planOutboxBatch(this.pendingOutbox); plan; plan = planOutboxBatch(this.pendingOutbox)) {
+            if (plan.kind === 'oversize') {
+                // The server rejects it on every retry; holding it would block every message behind it.
+                const [dropped] = this.pendingOutbox.splice(0, 1);
+                logger.debug(`[API] Dropped an outbound message of ${plan.bytes} bytes (over the server's request limit), localId ${dropped.localId}`);
+                continue;
+            }
+            const batch = this.pendingOutbox.slice(0, plan.count);
 
             const response = await axios.post<V3PostSessionMessagesResponse>(
                 `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
                 {
-                    messages: batch
+                    messages: batch.map(({ content, localId }) => ({ content, localId }))
                 },
                 {
-                    headers: this.authHeaders(),
+                    // B-880: marks a replayed transcript; the server honours it only for a declared backfill (spec PR-2).
+                    headers: plan.backfill ? { ...this.authHeaders(), 'X-Happy-Message-Origin': 'backfill' } : this.authHeaders(),
                     timeout: 60000
                 }
             );
@@ -813,6 +821,30 @@ export class ApiSessionClient extends EventEmitter {
      * the outbox's own (InvalidateSync backoff), so a server that keeps failing
      * keeps this pending rather than resolving early.
      */
+    /**
+     * B-880: enqueue a replayed transcript (import / fork). Everything `replay`
+     * sends is uploaded as a history backfill: its own batches, its own server
+     * rate budget, and counted by `pendingBackfillCount` for the progress the
+     * Web shows. `replay` must be synchronous.
+     */
+    replayHistory<T>(replay: () => T): T {
+        this.replayingHistory = true;
+        try {
+            return replay();
+        } finally {
+            this.replayingHistory = false;
+            // One flush once the whole replay is queued: full batches from the first POST.
+            if (this.pendingOutbox.length > 0) this.sendSync.invalidate();
+        }
+    }
+
+    /** B-880: replayed messages the server has not accepted yet. */
+    pendingBackfillCount(): number {
+        let count = 0;
+        for (const item of this.pendingOutbox) if (item.backfill) count += 1;
+        return count;
+    }
+
     async drainOutbox(): Promise<boolean> {
         const target = new Set(this.pendingOutbox);
         while (this.pendingOutbox.some((item) => target.has(item))) {
@@ -1008,9 +1040,10 @@ export class ApiSessionClient extends EventEmitter {
             // Deterministic localIds (terminal mirror, B-105) ride the server's
             // @@unique([sessionId, localId]) for replay idempotency; everything
             // else keeps the fire-once random id.
-            localId: localId ?? randomUUID()
+            localId: localId ?? randomUUID(),
+            ...(this.replayingHistory ? { backfill: true } : {}),
         });
-        if (invalidate) {
+        if (invalidate && !this.replayingHistory) {
             this.sendSync.invalidate();
         }
     }

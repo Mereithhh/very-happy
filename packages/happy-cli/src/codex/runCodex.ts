@@ -4,7 +4,7 @@ import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/r
 import { createProjectInjector } from '@/projects/injector';
 import { sharedProjectsClient } from '@/projects/client';
 import { unlink } from 'node:fs/promises';
-import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
+import { announceForkBackfill, FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { readChildThread } from './readChildThread';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
 import { appendStagedAttachmentsToPrompt, stageClaudeAttachments, CLAUDE_ATTACHMENT_KINDS } from '@/claude/utils/attachmentContent';
@@ -1205,15 +1205,19 @@ export async function runCodex(opts: {
 
         const forkCodexThreadId = process.env.HAPPY_FORK_CODEX_THREAD_ID;
         if (!reconnectSessionId && forkCodexThreadId) {
+            announceForkBackfill(session);
             try {
                 const { thread } = await client.readThread({
                     threadId: forkCodexThreadId,
                     includeTurns: true,
                 });
                 const envelopes = mapCodexThreadToSessionEnvelopes(thread);
-                for (const envelope of envelopes) {
-                    session.sendSessionProtocolMessage(envelope);
-                }
+                // B-880: uploaded as a history backfill (own batches, budget and progress).
+                session.replayHistory(() => {
+                    for (const envelope of envelopes) {
+                        session.sendSessionProtocolMessage(envelope);
+                    }
+                });
                 session.updateMetadata((currentMetadata) => ({
                     ...currentMetadata,
                     codexThreadId: forkCodexThreadId,
