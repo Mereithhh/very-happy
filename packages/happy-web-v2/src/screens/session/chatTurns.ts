@@ -9,7 +9,7 @@ import { summarizeCompactionTurn, type CompactionSummary } from './compaction';
 import { turnDiffSummary, type TurnDiff } from './turnDiffs';
 import { continueOfferStopId, isUserStopEvent } from './continueOffer';
 import { userAbortedAt } from './subagentAbort';
-import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
+import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
 
 export type LeafRow =
     | {
@@ -190,7 +190,7 @@ const ACCOUNT_ACTION_EVENT_KINDS: ReadonlySet<string> = new Set(['agent-profile-
  */
 function isPinnedNotice(message: Message): boolean {
     return message.kind === 'agent-event' && message.event.type === 'message'
-        && (message.event.kind === LONG_CONTEXT_FALLBACK_EVENT_KIND || message.event.kind === LONG_CONTEXT_REFUSED_EVENT_KIND);
+        && (message.event.kind === LONG_CONTEXT_FALLBACK_EVENT_KIND || message.event.kind === LONG_CONTEXT_INTERRUPTED_EVENT_KIND || message.event.kind === LONG_CONTEXT_REFUSED_EVENT_KIND);
 }
 
 function isTurnFailure(message: Message): boolean {

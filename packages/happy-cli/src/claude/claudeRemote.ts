@@ -25,8 +25,8 @@ import { decideWarmAdoption, formatPrewarmLine, type ClaudePrewarmLease, type Wa
 import { TimeoutError, withTimeout } from './utils/withTimeout';
 import { createClaudeTurnTracker, readClaudeSessionState } from './claudeTurnEnd';
 import { retiredModelFrom, retiredModelNotice, type RetiredModels } from './claudeRetiredModel';
-import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
-import { longContextExplicitNotice, longContextFallbackNotice, longContextRejectionFrom, type LongContextPolicy, type LongContextRejection } from './claudeLongContext';
+import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_MARKER, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
+import { longContextExplicitNotice, longContextFallbackNotice, longContextInterruptedNotice, longContextRejectionFrom, type LongContextPolicy, type LongContextRejection } from './claudeLongContext';
 import {
     createClaudeCommandTracker,
     INTERRUPT_CANCEL_QUEUED_CAPABILITY,
@@ -605,6 +605,8 @@ export async function claudeRemote(opts: {
     let longContextRetry: LongContextRejection | null = null;
     /** The current turn failed on a 1M refusal: its auth-looking error is not a login failure. */
     let longContextRefusedTurn = false;
+    /** The model answered in the current turn: its prompt may have had effects, so it is never resent. */
+    let turnAnswered = false;
 
     // The first prompt is in the Query's input (pushed; the CLI announces its
     // turn with running/init). Uuid-stamped when the web gave it one, and
@@ -705,6 +707,7 @@ export async function claudeRemote(opts: {
             }
             mode = next.mode;
             currentPrompt = next.message;
+            turnAnswered = false;
             updateThinking(true);
             turn.pushed();
             const uuid = promptUuid(next.uuid);
@@ -796,24 +799,38 @@ export async function claudeRemote(opts: {
             const refused: LongContextRejection | null = opts.longContext && !longContextRetry ? longContextRejectionFrom(message, mode.model) : null;
             if (refused) {
                 logger.debug(`[claudeRemote] ${refused.model} refused for long context: ${refused.reason}`);
-                if (opts.longContext!.onRejected(refused) === 'retry') {
+                const decision = opts.longContext!.onRejected(refused);
+                if (decision === 'retry' && !turnAnswered) {
                     longContextRetry = refused;
                     mode = { ...mode, model: refused.plain };
                     opts.onCompletionEvent?.(longContextFallbackNotice(refused), LONG_CONTEXT_FALLBACK_EVENT_KIND);
                     continue;
                 }
-                opts.onCompletionEvent?.(longContextExplicitNotice(refused), LONG_CONTEXT_REFUSED_EVENT_KIND);
+                if (decision === 'retry') {
+                    // Tools may have run: the error stands, later turns use the plain id.
+                    mode = { ...mode, model: refused.plain };
+                    opts.onCompletionEvent?.(longContextInterruptedNotice(refused), LONG_CONTEXT_INTERRUPTED_EVENT_KIND);
+                    void withTimeout(response.setModel(refused.plain), SET_MODEL_TIMEOUT_MS, 'set_model').catch(() => { modelUnconfirmed = true; });
+                } else {
+                    opts.onCompletionEvent?.(longContextExplicitNotice(refused), LONG_CONTEXT_REFUSED_EVENT_KIND);
+                }
             }
             // A 403 refusal arrives as `authentication_failed` ("Failed to
             // authenticate. API Error: 403 … 1M context window", measured): the
             // login is fine — not a poisoned Query, no auth-failure card.
             const loginFine = refused !== null;
+            if (message.type === 'assistant' && !message.error && !(message as { parent_tool_use_id?: string | null }).parent_tool_use_id) {
+                turnAnswered = true;
+                if (mode.model?.endsWith(LONG_CONTEXT_MARKER)) opts.longContext?.onServed();
+            }
             if (refused) longContextRefusedTurn = true;
             if (longContextRetry && message.type === 'result') {
                 const retry = longContextRetry;
                 longContextRetry = null;
                 turn.onResult();
                 lastAssistantError = undefined;
+                longContextRefusedTurn = false;
+                turnAnswered = false;
                 timingTurn++;
                 timingMarks = { pushedAt: Date.now() };
                 if (inputClosed()) {

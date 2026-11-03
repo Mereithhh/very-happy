@@ -58,12 +58,20 @@ export type LongContextDecision = 'retry' | 'fail';
 export type LongContextPolicy = {
     /** Called once per rejected turn; records the machine verdict and says whether to retry on the plain id. */
     onRejected(rejection: LongContextRejection): LongContextDecision;
+    /** A `[1m]` request was answered: the account/provider serves 1M (again) — forget a refusal. */
+    onServed(): void;
 };
 
 export function longContextFallbackNotice(rejection: LongContextRejection): string {
     return `⚠️ This account or provider does not support 1M context — retried with ${rejection.plain} (standard context). `
         + `Following latest no longer uses 1M on this machine.\n`
         + `⚠️ 当前账号或供应商不支持 1M 上下文，已改用 ${rejection.plain}（标准上下文）重试。此后这台机器跟随最新不再使用 1M。`;
+}
+
+/** The refusal came after this turn had already done work: resending could repeat it. */
+export function longContextInterruptedNotice(rejection: LongContextRejection): string {
+    return `⚠️ This account or provider does not support 1M context, and this turn stopped partway. Switched to ${rejection.plain} (standard context); nothing was resent — check the work so far and send your next message.\n`
+        + `⚠️ 当前账号或供应商不支持 1M 上下文，这一轮中途停止。已切到 ${rejection.plain}（标准上下文），没有自动重发：请确认已完成的部分后再发下一条。`;
 }
 
 export function longContextExplicitNotice(rejection: LongContextRejection): string {
@@ -114,6 +122,16 @@ export function writeLongContextVerdict(path: string, key: string, verdict: Long
     renameSync(tmp, path);
 }
 
+export function clearLongContextVerdict(path: string, key: string): void {
+    const store = readStore(path);
+    if (!store.unsupported?.[key]) return;
+    const { [key]: _gone, ...rest } = store.unsupported;
+    store.unsupported = rest;
+    const tmp = `${path}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(store, null, 2));
+    renameSync(tmp, path);
+}
+
 type PolicySession = {
     getMetadata(): { modelIntent?: string | null; stickyModel?: string | null; longContextUnsupported?: LongContextUnsupported | null } | null;
     updateMetadata(handler: (metadata: any) => any): void;
@@ -130,6 +148,7 @@ export function createLongContextPolicy(input: {
     key: string;
     now?: () => number;
     write?: typeof writeLongContextVerdict;
+    clear?: typeof clearLongContextVerdict;
 }): LongContextPolicy {
     const write = input.write ?? writeLongContextVerdict;
     return {
@@ -149,6 +168,15 @@ export function createLongContextPolicy(input: {
             }));
             return retry ? 'retry' : 'fail';
         },
+        onServed() {
+            if (!input.session.getMetadata()?.longContextUnsupported) return;
+            try {
+                (input.clear ?? clearLongContextVerdict)(input.storePath, input.key);
+            } catch {
+                // Best effort, as above.
+            }
+            input.session.updateMetadata((metadata) => ({ ...metadata, longContextUnsupported: null }));
+        },
     };
 }
 
@@ -157,6 +185,16 @@ export function createLongContextPolicy(input: {
  * that has not seen the verdict yet) runs on the plain id once the machine is
  * known not to serve 1M. An explicit `[1m]` pick is left alone.
  */
+/**
+ * The intent behind a message's model: its own `modelIntent`; an older Web's
+ * bare `model` is an explicit pick of that id (same rule as nextRunIntents);
+ * no model at all keeps the session's intent.
+ */
+export function messageModelIntent(meta: { model?: unknown; modelIntent?: unknown } | null | undefined, sessionIntent: unknown): unknown {
+    if (meta?.modelIntent !== undefined) return meta.modelIntent;
+    return typeof meta?.model === 'string' && meta.model ? meta.model : sessionIntent;
+}
+
 export function withoutRefusedLongContext(model: string | undefined, modelIntent: unknown, verdict: LongContextUnsupported | null | undefined): string | undefined {
     if (!verdict || modelIntent !== LATEST_MODEL_MODE || !model?.endsWith(LONG_CONTEXT_MARKER)) return model;
     return model.slice(0, -LONG_CONTEXT_MARKER.length);

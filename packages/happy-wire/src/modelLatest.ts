@@ -141,6 +141,8 @@ export type LongContextUnsupported = { reason: string; at: number };
 /** Session event kinds (`{ type: 'message', kind }`) for the retry notice and the explicit-1M failure. */
 export const LONG_CONTEXT_FALLBACK_EVENT_KIND = 'claude-long-context-fallback';
 export const LONG_CONTEXT_REFUSED_EVENT_KIND = 'claude-long-context-refused';
+/** The refusal came after the turn had done work: switched to the plain id, nothing resent. */
+export const LONG_CONTEXT_INTERRUPTED_EVENT_KIND = 'claude-long-context-interrupted';
 
 /** Whitelisted read (AGENTS #14: an unexpected shape never drops the metadata). */
 export function readLongContextUnsupported(value: unknown): LongContextUnsupported | null {

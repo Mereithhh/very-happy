@@ -744,7 +744,7 @@ describe('claudeRemote', () => {
             let n = 0;
             await claudeRemote({
                 ...base(), onMessage, onReady, onCompletionEvent,
-                longContext: { onRejected },
+                longContext: { onRejected, onServed: vi.fn() },
                 nextMessage: async () => (n++ === 0 ? { message: 'hello', mode: { ...mode, model: 'claude-opus-5-5[1m]' } } : null),
             });
             expect(onRejected).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-5-5[1m]', plain: 'claude-opus-5-5' }));
@@ -768,7 +768,7 @@ describe('claudeRemote', () => {
             let n = 0;
             await claudeRemote({
                 ...base(), onMessage, onCompletionEvent,
-                longContext: { onRejected },
+                longContext: { onRejected, onServed: vi.fn() },
                 nextMessage: async () => (n++ === 0 ? { message: 'hello', mode: { ...mode, model: 'claude-opus-5-5[1m]' } } : null),
             });
             expect(onRejected).toHaveBeenCalledTimes(1);
@@ -792,10 +792,55 @@ describe('claudeRemote', () => {
             const onAuthFailure = vi.fn();
             const onCompletionEvent = vi.fn();
             let n = 0;
-            await claudeRemote({ ...base(), onAuthFailure, onCompletionEvent, longContext: { onRejected: () => 'fail' },
+            await claudeRemote({ ...base(), onAuthFailure, onCompletionEvent, longContext: { onRejected: () => 'fail', onServed: vi.fn() },
                 nextMessage: async () => (n++ === 0 ? { message: 'hi', mode: { ...mode, model: 'claude-opus-5-5[1m]' } } : null) });
             expect(onAuthFailure).not.toHaveBeenCalled();
             expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('Turn off 1M context'), 'claude-long-context-refused');
+        });
+
+        it('B-883b a refusal after the turn already answered is not resent: later turns use the plain id', async () => {
+            const setModel = vi.fn(async () => {});
+            const observed: unknown[] = [];
+            vi.mocked(query).mockImplementation(((args: any) => ({
+                setPermissionMode: vi.fn(),
+                setModel,
+                async *[Symbol.asyncIterator]() {
+                    const input = args.prompt[Symbol.asyncIterator]();
+                    observed.push((await input.next()).value.message.content);
+                    yield { type: 'assistant', parent_tool_use_id: null, message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } };
+                    yield refusal;
+                    yield { type: 'result', subtype: 'success', is_error: true };
+                },
+            })) as any);
+            const onCompletionEvent = vi.fn();
+            const onMessage = vi.fn();
+            let n = 0;
+            await claudeRemote({ ...base(), onMessage, onCompletionEvent, longContext: { onRejected: () => 'retry', onServed: vi.fn() },
+                nextMessage: async () => (n++ === 0 ? { message: 'rm build/', mode: { ...mode, model: 'claude-opus-5-5[1m]' } } : null) });
+            expect(observed).toEqual(['rm build/']);
+            expect(setModel.mock.calls).toEqual([['claude-opus-5-5']]);
+            expect(onMessage).toHaveBeenCalledWith(refusal);
+            expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('nothing was resent'), 'claude-long-context-interrupted');
+        });
+
+        it('B-883b an answered [1m] request reports 1M as served; a plain-id answer does not', async () => {
+            const answer = (model: string, onServed: () => void) => {
+                vi.mocked(query).mockImplementation(((args: any) => ({
+                    setPermissionMode: vi.fn(),
+                    async *[Symbol.asyncIterator]() {
+                        await args.prompt[Symbol.asyncIterator]().next();
+                        yield { type: 'assistant', parent_tool_use_id: null, message: { role: 'assistant', content: [{ type: 'text', text: 'OK' }] } };
+                        yield { type: 'result', subtype: 'success' };
+                    },
+                })) as any);
+                let n = 0;
+                return claudeRemote({ ...base(), longContext: { onRejected: () => 'fail', onServed }, nextMessage: async () => (n++ === 0 ? { message: 'hi', mode: { ...mode, model } } : null) });
+            };
+            const served = vi.fn();
+            await answer('claude-opus-5-5', served);
+            expect(served).not.toHaveBeenCalled();
+            await answer('claude-opus-5-5[1m]', served);
+            expect(served).toHaveBeenCalled();
         });
 
         it('B-883b a plain-id turn\'s rate limit is not a 1M refusal', async () => {
@@ -803,7 +848,7 @@ describe('claudeRemote', () => {
             vi.mocked(query).mockImplementation(longContextQuery([], setModel, { retried: false }) as any);
             const onRejected = vi.fn(() => 'retry' as const);
             let n = 0;
-            await claudeRemote({ ...base(), longContext: { onRejected }, nextMessage: async () => (n++ === 0 ? { message: 'hi', mode: { ...mode, model: 'claude-opus-5-5' } } : null) });
+            await claudeRemote({ ...base(), longContext: { onRejected, onServed: vi.fn() }, nextMessage: async () => (n++ === 0 ? { message: 'hi', mode: { ...mode, model: 'claude-opus-5-5' } } : null) });
             expect(onRejected).not.toHaveBeenCalled();
             expect(setModel).not.toHaveBeenCalled();
         });

@@ -996,6 +996,7 @@ export const en = {
             machineConfigModel: ({ model }: { model: string }) => `Machine config · ${model}`,
             machineDefaultModelDescription: 'Send no model: Claude follows its own settings on this machine (settings.json / /model)',
             longContextFallback: 'This account or provider does not support 1M context, so this turn was retried with the standard context window. Following latest stays on the standard window on this machine.',
+            longContextInterrupted: 'This account or provider does not support 1M context, and this turn stopped partway. Switched to the standard context window; nothing was resent — check the work so far and send your next message.',
             longContextRefused: 'Rejected: this account or provider does not support 1M context. Turn off 1M context in the model picker (or pick another model) and send again.',
             machineDefaultModelMidSession: 'New sessions only: switching here mid-session would keep the model Claude is running',
             machineDefaultModelDescriptionOther: 'Send no model: use the agent\'s own config on this machine',

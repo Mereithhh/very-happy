@@ -41,7 +41,7 @@ import type { BoardTaskRef } from './utils/boardAnalyzer';
 import { DEFAULT_CLAUDE_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
 import { CLAUDE_ATTACHMENT_KINDS, stripAttachmentManifest } from './utils/attachmentContent';
 import { readClaudeConfiguredModel, readClaudeMergedSettings } from './claudeConfiguredModel';
-import { createLongContextPolicy, longContextKey, longContextStorePath, readLongContextVerdict, withoutRefusedLongContext } from './claudeLongContext';
+import { createLongContextPolicy, longContextKey, longContextStorePath, messageModelIntent, readLongContextVerdict, withoutRefusedLongContext } from './claudeLongContext';
 import { TranscriptPathHints } from './utils/transcriptCursor';
 import { planClaudeStartup } from './startupPlan';
 import { takeReconnectEnv } from '@/utils/reconnectEnv';
@@ -1116,7 +1116,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 : `[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
         }
         // B-883b: following latest on a machine known to refuse 1M runs the plain id.
-        const refusedLongContext = withoutRefusedLongContext(resolved.mode.model, message.meta?.modelIntent ?? session.getMetadata()?.modelIntent, session.getMetadata()?.longContextUnsupported ?? longContextVerdict());
+        const refusedLongContext = withoutRefusedLongContext(resolved.mode.model, messageModelIntent(message.meta, session.getMetadata()?.modelIntent), session.getMetadata()?.longContextUnsupported ?? longContextVerdict());
         if (refusedLongContext !== resolved.mode.model) {
             logger.debug(`[loop] ${resolved.mode.model} follows latest on a machine without 1M context; running ${refusedLongContext}`);
             resolved.mode.model = refusedLongContext;

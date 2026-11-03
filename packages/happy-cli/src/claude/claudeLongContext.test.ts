@@ -3,9 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
+    clearLongContextVerdict,
     createLongContextPolicy,
     longContextKey,
     longContextRejectionFrom,
+    messageModelIntent,
     readLongContextVerdict,
     withoutRefusedLongContext,
     writeLongContextVerdict,
@@ -53,6 +55,9 @@ describe('machine memory', () => {
         writeLongContextVerdict(path, 'other', { reason: 'o', at: 2 });
         expect(readLongContextVerdict(path, 'k')).toEqual({ reason: 'r', at: 1 });
         expect(JSON.parse(readFileSync(path, 'utf8')).unsupported.other).toEqual({ reason: 'o', at: 2 });
+        clearLongContextVerdict(path, 'k');
+        expect(readLongContextVerdict(path, 'k')).toBeNull();
+        expect(readLongContextVerdict(path, 'other')).toEqual({ reason: 'o', at: 2 });
     });
 });
 
@@ -84,11 +89,32 @@ describe('createLongContextPolicy', () => {
         expect(pinned.metadata.stickyModel).toBe('claude-opus-5-5[1m]');
     });
 
+    it('an answered [1m] request forgets the refusal (account upgraded); nothing to forget does nothing', () => {
+        const s = session('claude-opus-5-5[1m]');
+        const clear = vi.fn();
+        const policy = createLongContextPolicy({ session: s, storePath: '/x', key: 'k', now: () => 7, write: vi.fn(), clear });
+        policy.onServed();
+        expect(clear).not.toHaveBeenCalled();
+        policy.onRejected(rejection);
+        policy.onServed();
+        expect(clear).toHaveBeenCalledWith('/x', 'k');
+        expect(s.metadata.longContextUnsupported).toBeNull();
+    });
+
     it('a failed write still records it on the session', () => {
         const s = session('latest');
         const policy = createLongContextPolicy({ session: s, storePath: '/x', key: 'k', now: () => 1, write: () => { throw new Error('EROFS'); } });
         expect(policy.onRejected(rejection)).toBe('retry');
         expect(s.metadata.longContextUnsupported).toEqual({ reason: rejection.reason, at: 1 });
+    });
+});
+
+describe('messageModelIntent', () => {
+    it('an old Web\'s bare [1m] model is an explicit pick, not the session\'s latest', () => {
+        expect(messageModelIntent({ model: 'claude-opus-5-5[1m]', modelIntent: 'latest' }, 'x')).toBe('latest');
+        expect(messageModelIntent({ model: 'claude-opus-5-5[1m]' }, 'latest')).toBe('claude-opus-5-5[1m]');
+        expect(messageModelIntent({}, 'latest')).toBe('latest');
+        expect(messageModelIntent(undefined, 'latest')).toBe('latest');
     });
 });
 
