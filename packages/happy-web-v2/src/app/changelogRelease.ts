@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-03-cli-stability-0-2-201',
+    cliVersion: '0.2.201',
+    date: '2026-11-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov03h.title',
+    summaryKey: 'changelog.releases.nov03h.summary',
+    itemKeys: ['changelog.releases.nov03h.update'],
+  },
+  {
     id: '2026-11-03-crypto-not-ready-notice',
     date: '2026-11-03',
     buildVersion: __APP_VERSION__,
