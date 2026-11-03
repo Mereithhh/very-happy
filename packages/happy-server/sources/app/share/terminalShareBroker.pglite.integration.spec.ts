@@ -333,6 +333,38 @@ describe('B-878 terminal share broker (pglite)', () => {
         expect(emitted.filter((e) => e.event === 'terminal-close')).toHaveLength(0);
     });
 
+    it('QA50 P2-1: a close is forwarded only for a subscription the grant holds; repeats are no-ops', async () => {
+        const grant = await share(viewerId, 'viewer');
+        const key = await streamKeyOf(grant.id, viewerSecret);
+        const closes = () => emitted.filter((e) => e.event === 'terminal-close' && e.room === `user:${ownerId}:machine:${machineId}`).length;
+        // No attach yet: stray closes never reach the owner's daemon.
+        for (let i = 0; i < 3; i++) await broker.__forwardTerminalEventForTests(viewerId, 'close', { grantId: grant.id });
+        expect(closes()).toBe(0);
+        // One attach = one daemon subscription; six closes release exactly one.
+        expect((await rpc(viewerId, grant.id, 'attach', {}, key)).ok).toBe(true);
+        emitted.length = 0;
+        for (let i = 0; i < 6; i++) await broker.__forwardTerminalEventForTests(viewerId, 'close', { grantId: grant.id });
+        expect(closes()).toBe(1);
+        const row = await db.shareTerminalAttachment.findFirstOrThrow({ where: { grantId: grant.id } });
+        expect(row.subscribers).toBe(0);
+        // Concurrent duplicates: still exactly one.
+        expect((await rpc(viewerId, grant.id, 'attach', {}, key)).ok).toBe(true);
+        emitted.length = 0;
+        await Promise.all(Array.from({ length: 5 }, () => broker.__forwardTerminalEventForTests(viewerId, 'close', { grantId: grant.id })));
+        expect(closes()).toBe(1);
+        await store.revokeTerminalGrant(ownerId, grant.id);
+    });
+
+    it('QA50 P2-2: sharing a terminal the machine does not report → terminal_gone; an offline machine is not checked', async () => {
+        await expect(store.createTerminalGrant({ ownerId, machineId, terminalId: 'no-such-term', granteeAccountId: viewerId, role: 'viewer' })).rejects.toMatchObject({ code: 'terminal_gone', status: 404 });
+        expect(await db.terminalGrant.count({ where: { terminalId: 'no-such-term' } })).toBe(0);
+        await db.machine.update({ where: { id: machineId }, data: { active: false } });
+        const offline = await store.createTerminalGrant({ ownerId, machineId, terminalId: 'no-such-term', granteeAccountId: viewerId, role: 'viewer' });
+        expect(offline.status).toBe('pending');
+        await db.machine.update({ where: { id: machineId }, data: { active: true } });
+        await store.revokeTerminalGrant(ownerId, offline.id);
+    });
+
     it('real routes: create → incoming → accept → events → revoke; strict bodies; viewer has no "forever"', async () => {
         const fastify = (await import('fastify')).default;
         const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');

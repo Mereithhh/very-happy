@@ -37,6 +37,7 @@ function errorCopy(t: T, e: unknown): string {
     const code = e instanceof SessionShareApiError ? e.code : 'unknown';
     if (code === 'machine_not_found') return t('share.terminal.ownerOnly');
     if (code === 'machine_unsupported') return t('share.terminal.errors.upgrade');
+    if (code === 'terminal_gone') return t('share.terminal.errors.gone');
     if (code === 'bad_expiry') return t('share.operator.expiryRequired');
     return shareErrorCopy(t, code);
 }

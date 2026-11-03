@@ -98,6 +98,23 @@ export async function resolveTerminalShare(granteeId: string, grantId: string): 
     return grant;
 }
 
+/**
+ * QA50 P2-2: does the OWNER's machine report this terminal? `null` = cannot tell
+ * (machine offline, no list this daemon run wrote, legacy key) — the grant is
+ * then created and the attach answers terminal_gone later, as before. Same
+ * check as an attach (the daemon's pushed list), read with the owner's key for
+ * the owner's own authenticated request.
+ */
+export async function ownerTerminalExists(ownerId: string, machineId: string, terminalId: string): Promise<boolean | null> {
+    const machine = await db.machine.findFirst({ where: { id: machineId, accountId: ownerId }, select: { active: true } });
+    if (!machine?.active) return null;
+    const probe = mint({ grantId: '', ownerId, granteeId: ownerId, machineId, terminalId, role: 'viewer', expiresAt: 0 });
+    const machineKey = await openTerminalShareMachineKey(probe);
+    if (!machineKey) return null;
+    const ids = webTerminalIds(await readDaemonState(probe, machineKey));
+    return ids ? ids.has(terminalId) : null;
+}
+
 /** Teardown / state checks only: a grant reference for an attachment a verified grantee call registered. */
 function attachedShare(row: { grantId: string; ownerAccountId: string; granteeAccountId: string; machineId: string; terminalId: string }): VerifiedTerminalShare {
     return mint({ grantId: row.grantId, ownerId: row.ownerAccountId, granteeId: row.granteeAccountId, machineId: row.machineId, terminalId: row.terminalId, role: 'viewer', expiresAt: 0 });
@@ -398,14 +415,19 @@ async function runTerminalShareRpc(io: Server, granteeId: string, data: unknown,
     return seal({ ...plainTerminalResult(result, machineKey), terminalId: grant.terminalId, role: grant.role, ...(geometry ? { geometry } : {}) }, streamKey);
 }
 
-/** One subscription less (grantee closed its pane, or an open failed). The row closes at zero. */
-async function releaseSubscriber(grant: { grantId: string; machineId: string; terminalId: string }, reason: string, close = false): Promise<void> {
-    const where = { grantKind_grantId_machineId_terminalId: { grantKind: GRANT_KIND, grantId: grant.grantId, machineId: grant.machineId, terminalId: grant.terminalId } };
-    const row = await db.shareTerminalAttachment.findUnique({ where, select: { subscribers: true, closedAt: true } });
-    if (!row || row.closedAt) return;
-    const subscribers = Math.max(0, row.subscribers - 1);
-    await db.shareTerminalAttachment.update({ where, data: close || subscribers === 0 ? { subscribers, closedAt: new Date(), closeReason: reason } : { subscribers } });
+/**
+ * One subscription less (grantee closed its pane, or an open failed). Atomic and
+ * idempotent: returns false — and changes nothing — when this grant holds no
+ * subscription, so a repeated close can never reach below what the grant
+ * itself added to the daemon's count (QA50 P2-1). The row closes at zero.
+ */
+async function releaseSubscriber(grant: { grantId: string; machineId: string; terminalId: string }, reason: string, close = false): Promise<boolean> {
+    const key = { grantKind: GRANT_KIND, grantId: grant.grantId, machineId: grant.machineId, terminalId: grant.terminalId };
+    const taken = await db.shareTerminalAttachment.updateMany({ where: { ...key, closedAt: null, subscribers: { gt: 0 } }, data: { subscribers: { decrement: 1 } } });
+    if (taken.count === 0) return false;
+    await db.shareTerminalAttachment.updateMany({ where: { ...key, closedAt: null, ...(close ? {} : { subscribers: 0 }) }, data: { closedAt: new Date(), closeReason: reason } });
     announceChange();
+    return true;
 }
 
 /** Grantee → owner machine: input / resize / close for the grant's terminal. */
@@ -437,9 +459,10 @@ async function forwardTerminalEvent(granteeId: string, event: 'input' | 'resize'
         ioRef?.to(room).emit('terminal-resize', { terminalId: grant.terminalId, cols, rows, shareGrantId: grant.grantId });
         return;
     }
-    // close = unsubscribe this pane; never a kill.
+    // close = unsubscribe this pane; never a kill. Only a subscription this grant really holds is
+    // released on the daemon: a stray / repeated close must not unsubscribe the owner's own view.
+    if (!(await releaseSubscriber(grant, 'detached'))) return;
     ioRef?.to(room).emit('terminal-close', { terminalId: grant.terminalId });
-    await releaseSubscriber(grant, 'detached');
     void emitShareActivity(grant, false, grant.role).catch(() => undefined);
 }
 

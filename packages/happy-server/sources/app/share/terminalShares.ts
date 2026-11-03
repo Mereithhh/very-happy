@@ -31,6 +31,7 @@ import {
     emitToAccount,
     listTerminalShareEvents,
     liveTerminalView,
+    ownerTerminalExists,
     recordTerminalShareEvent,
     resolveTerminalShare,
     teardownTerminalGrant,
@@ -115,6 +116,8 @@ export async function createTerminalGrant(input: { ownerId: string; machineId: s
     const machine = await db.machine.findFirst({ where: { id: input.machineId, accountId: input.ownerId }, select: { id: true, dataEncryptionKey: true } });
     if (!machine) throw new TerminalShareStoreError('machine_not_found', 404);
     if (!machine.dataEncryptionKey) throw new TerminalShareStoreError('machine_unsupported', 409);
+    // QA50 P2-2: refuse a terminal the machine does not report; an offline machine cannot be checked (created as before).
+    if (await ownerTerminalExists(input.ownerId, machine.id, input.terminalId) === false) throw new TerminalShareStoreError('terminal_gone', 404);
     const grantee = input.granteeAccountId
         ? await db.account.findUnique({ where: { id: input.granteeAccountId }, include: profileInclude })
         : await resolveAccountByHandle(input.target ?? '');
