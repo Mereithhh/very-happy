@@ -399,6 +399,15 @@ export class ApiMachineClient {
         this.rpcHandlerManager.registerHandler('harness-install', (params: unknown) => handler(params));
     }
 
+    /** B-877 「退出团队模式」 for a team lead session on this machine (Web session ⋯ / team menu). */
+    setTeamExitHandler(handler: (sessionId: string) => Promise<unknown>): void {
+        this.rpcHandlerManager.registerHandler('team-exit-session', async (params: any) => {
+            const sessionId = params?.sessionId;
+            if (typeof sessionId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(sessionId)) throw new Error('Session ID is required');
+            return handler(sessionId);
+        });
+    }
+
     setCliUpdateRetryHandler(handler: (version: unknown) => Promise<{ accepted: true } | { error: string }>): void {
         this.rpcHandlerManager.registerHandler('cli-update-retry', (params: unknown) =>
             handler(params && typeof params === 'object' ? (params as { version?: unknown }).version : undefined));

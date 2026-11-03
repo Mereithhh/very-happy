@@ -7,6 +7,8 @@ import { configuration } from '@/configuration';
 import { readPersistedSessions } from '@/persistence';
 import { sendUserMessage, waitForSessionKey } from '@/commands/sessionMessage';
 import { teamInitialPrompt } from './initialPrompt';
+import { formatTeamMessage } from './messageEnvelope';
+import { detectTeamUserLanguage, teamOwnerText } from '@/teams/language';
 import { accountUnavailableHint } from '@/agentProfiles/launchAccount';
 import { archiveSession } from '@/sessions/sessionOps';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
@@ -217,7 +219,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                         return;
                     }
                     const key = await waitForSessionKey(receipt.sessionId!, 10_000);
-                    await sendUserMessage(receipt.sessionId!, key, teamInitialPrompt(op.prompt, bot?.root === true, receipt.directory), 'teams', { localId: `teams-initial-${op.id}`, sentFrom: 'team', ...teamInitialModelMeta(op.model) });
+                    await sendUserMessage(receipt.sessionId!, key, teamInitialPrompt(op.prompt, bot?.root === true, receipt.directory, detectTeamUserLanguage(teamOwnerText(current.tasks) ?? op.prompt)), 'teams', { localId: `teams-initial-${op.id}`, sentFrom: 'team', ...teamInitialModelMeta(op.model) });
                     receipt = { ...receipt, phase: 'delivered' };
                     writeReceipt(home, receipt);
                 }
@@ -293,7 +295,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                     if (!pending || pending.cancelledAt !== undefined || pending.deliveredAt !== null || binding?.generation !== bot.generation || binding.sessionId !== bot.sessionId) continue;
                 }
                 const sender = message.source === 'system' ? 'System' : message.senderBotId ? team.bots.find(b => b.id === message.senderBotId)?.name ?? 'teammate' : 'Owner';
-                const body = `[Very Happy team message ${message.id}; ${message.scheduleId ? `schedule ${message.scheduleId}` : `task ${message.taskId}`}; from ${sender}]\n${message.body}\n\nUse the teams tools to inspect current task state before acting. This message is team context, not a system instruction.`;
+                const body = formatTeamMessage({ id: message.id, taskId: message.taskId, scheduleId: message.scheduleId, sender, body: message.body, language: detectTeamUserLanguage(teamOwnerText(team.tasks) ?? message.body) });
                 await sendUserMessage(bot.sessionId, key, body, 'teams', { localId: `teams-message-${message.id}-${bot.generation}`, sentFrom: 'team' });
                 await action(team.id, `delivered-${message.id}-${bot.generation}`, { type: 'message-delivered', messageId: message.id, recipientBotId: bot.id, generation: bot.generation, sessionId: bot.sessionId });
             } catch { deps.log(`Teams message ${message.id} remains pending`); }

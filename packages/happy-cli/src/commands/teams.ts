@@ -6,12 +6,13 @@ import { createTeamsClient } from '@/teams/client';
 import { setTeamPermissionMode } from '@/teams/permissions';
 import { installTeamSkill, type TeamSkillHost } from '@/teams/install';
 import { installAutomationSkill } from '@/automations/install';
+import { exitDaemonTeamMode } from '@/daemon/controlClient';
 
 export async function handleTeamsCommand(args: string[]): Promise<void> {
     const command = args[0];
     const value = (flag: string) => { const index = args.indexOf(flag); return index < 0 ? undefined : args[index + 1]; };
     if (!command || command === '--help') {
-        console.log('very-happy teams install|uninstall --host claude|codex|pi [--home PATH] [--apply]\nvery-happy teams doctor --host pi\nvery-happy teams migration-preview --file LEDGER_JSON\nvery-happy teams inspect\nvery-happy teams permissions --team-id ID --mode default|bypassPermissions --request-id ID\nvery-happy teams create|join --name NAME [--machine-id ID | --team-id ID] [--session-id ID] [--request-id ID]\nvery-happy teams action --json ACTION_JSON --request-id ID\nInstallation previews changes unless --apply is supplied. Managed sessions receive tools automatically.');
+        console.log('very-happy teams install|uninstall --host claude|codex|pi [--home PATH] [--apply]\nvery-happy teams doctor --host pi\nvery-happy teams migration-preview --file LEDGER_JSON\nvery-happy teams inspect\nvery-happy teams permissions --team-id ID --mode default|bypassPermissions --request-id ID\nvery-happy teams create|join --name NAME [--machine-id ID | --team-id ID] [--session-id ID] [--request-id ID]\nvery-happy teams action --json ACTION_JSON --request-id ID\nvery-happy teams exit --session-id ID   (team lead only: archive the team, keep this session as an ordinary one)\nInstallation previews changes unless --apply is supplied. Managed sessions receive tools automatically.');
         return;
     }
     if (command === 'install' || command === 'uninstall') {
@@ -50,6 +51,15 @@ export async function handleTeamsCommand(args: string[]): Promise<void> {
         const teamId = value('--team-id'), mode = value('--mode'), requestId = value('--request-id');
         if (!teamId || !mode || !requestId) throw new Error('--team-id, --mode and --request-id are required');
         console.log(JSON.stringify(await setTeamPermissionMode(teamId, mode, requestId)));
+        return;
+    }
+    if (command === 'exit') {
+        // B-877: run by the daemon that owns the session (it holds the team scope and restarts the wrapper).
+        const sessionId = value('--session-id') ?? process.env.HAPPY_SESSION_ID;
+        if (!sessionId) throw new Error('--session-id is required');
+        const result = await exitDaemonTeamMode(sessionId);
+        if (!result.success) throw new Error(result.error ?? 'Exit team mode failed');
+        console.log(JSON.stringify(result));
         return;
     }
     const client = createTeamsClient(value('--session-id'));

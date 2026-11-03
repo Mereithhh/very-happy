@@ -11,6 +11,18 @@ import { readReceipt, receiptPath } from './journal';
  */
 const OPERATION_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 
+/** B-877: set by 「退出团队模式」 (exitTeamMode.ts); this machine relaunches the session as an ordinary one. */
+const SESSION_ID = /^[a-zA-Z0-9_-]{1,128}$/;
+
+export function teamExitMarkerPath(home: string, sessionId: string): string {
+    if (!SESSION_ID.test(sessionId)) throw new Error('Invalid session id');
+    return join(home, 'teams', 'exited', `${sessionId}.json`);
+}
+
+export function hasExitedTeamMode(home: string, sessionId: string): boolean {
+    try { return existsSync(teamExitMarkerPath(home, sessionId)); } catch { return false; }
+}
+
 export function teamScopeFilePath(home: string, operationId: string): string {
     if (!OPERATION_ID.test(operationId)) throw new Error('Invalid team operation id');
     return join(home, 'teams', 'scopes', `${operationId}.json`);
@@ -50,6 +62,8 @@ export async function teamRelaunchEnv(input: {
     recover?: (operationId: string, scopeFile: string) => Promise<void>;
     log: (message: string) => void;
 }): Promise<Record<string, string>> {
+    // B-877: the owner took this session out of its team (「退出团队模式」): relaunch it as an ordinary session.
+    if (hasExitedTeamMode(input.home, input.sessionId)) return {};
     const operationId = relaunchTeamOperationId(input.home, input.sessionId, input.metadata);
     if (!operationId) return {};
     const scopeFile = teamScopeFilePath(input.home, operationId);

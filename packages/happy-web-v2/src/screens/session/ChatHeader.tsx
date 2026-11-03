@@ -2,7 +2,7 @@ import { ClaudeRuntimeDialog } from './ClaudeRuntimeDialog';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { useLocalSetting } from '@/sync/storage';
 import { useNavigate } from 'react-router-dom';
-import { Bot, Info, Moon } from 'lucide-react';
+import { Bot, Info, Moon, LogOut } from 'lucide-react';
 import { SessionInfoDialog } from './SessionInfoDialog';
 import { useProjects } from '@/sync/projects';
 import { buildSessionMenu, sessionMenuAvailability, withSessionTools } from '@/app/sessionMenu';
@@ -36,6 +36,7 @@ import { sessionMachineName } from '@/utils/machineUtils';
 import { sessionSetKeepAwake, sessionUpdateTitle } from '@/sync/ops';
 import { supportsKeepAwake } from '@/app/sessionHibernation';
 import { toast } from '@/ui/Toast';
+import { confirmExitTeamMode, teamExitTarget } from '@/screens/teams/teamExit';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ActionDropdownMenu, Spinner, type MenuItemDef } from '@/ui';
@@ -205,6 +206,8 @@ export function ChatHeader({
         } : undefined,
     }) : [];
     const canStartTeam = !sharedWithMe && showTeams && session?.metadata?.capabilities?.includes('teams-adopt-v1') && session.archivedAt == null && !teams.some(t => t.bots.some(b => b.sessionId === sessionId));
+    // B-877: the lead of a live team can take this session out of team mode (Web ⋯; `very-happy teams exit` on the CLI).
+    const exitTeam = !sharedWithMe && session?.archivedAt == null ? teamExitTarget(teams, sessionId) : null;
     const titleButton = (
         <button type="button" className="ch-title-btn" onClick={startEdit} disabled={sharedWithMe} title={sharedWithMe ? undefined : t('session.renameTitle')}>
             <span className="ch-title">{trail.member && <span className="ch-member">{trail.member.lead ? (zh ? '负责人' : 'Lead') : trail.member.name} · </span>}{title}</span>
@@ -335,8 +338,8 @@ export function ChatHeader({
             )}
             {!editing && plan.inline.map(renderAction)}
             {!editing && boardAction}
-            {!editing && (infoItems.length > 0 || plan.overflow.length > 0 || !!forkItem || canStartTeam || canControlRuntime || canKeepAwake || sessionItems.length > 0) && (
-                <ActionDropdownMenu sheetTitle={title} items={[...plan.overflow.map(menuItem), ...infoItems, ...withSessionTools(sessionItems, [...(forkItem ? [forkItem] : []), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : [])]).map((item, i) => (i === 0 && plan.overflow.length + infoItems.length > 0 ? { ...item, separatorBefore: true } : item))]}>
+            {!editing && (infoItems.length > 0 || plan.overflow.length > 0 || !!forkItem || canStartTeam || !!exitTeam || canControlRuntime || canKeepAwake || sessionItems.length > 0) && (
+                <ActionDropdownMenu sheetTitle={title} items={[...plan.overflow.map(menuItem), ...infoItems, ...withSessionTools(sessionItems, [...(forkItem ? [forkItem] : []), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : []), ...(exitTeam ? [{key:'team-exit',label:t('teams.exitTeamMode'),icon:LogOut,onSelect:()=>void confirmExitTeamMode(machineId, sessionId)}] : [])]).map((item, i) => (i === 0 && plan.overflow.length + infoItems.length > 0 ? { ...item, separatorBefore: true } : item))]}>
                     <button
                         type="button"
                         className={`ch-icon${overflowHasActive ? ' is-active' : ''}`}

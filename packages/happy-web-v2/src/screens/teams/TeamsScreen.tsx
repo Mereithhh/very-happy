@@ -17,7 +17,8 @@ import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
 import "./teams.css";
 import { TeamSchedules } from "./TeamSchedules";
 import { t as tr } from "@/text";
-import { Bot, UsersRound, Settings2, Clock3, LayoutDashboard, Plus, RefreshCw, Archive, Check, FolderInput, MoreHorizontal } from "lucide-react";
+import { Bot, UsersRound, Settings2, Clock3, LayoutDashboard, Plus, RefreshCw, Archive, Check, FolderInput, MoreHorizontal, LogOut } from "lucide-react";
+import { confirmExitTeamMode, teamLeadSessionId } from "./teamExit";
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
@@ -237,6 +238,11 @@ function TeamsContent() {
           {team && <TeamHeadingMenu label={tr("common.moreActions")} items={[
             ...(teamProjectMenu(team, projectsSnap, { zh }) ? [{ key: "change-project", label: teamProjectMenu(team, projectsSnap, { zh })!, icon: FolderInput, onSelect: () => setChangingProject(true) }] : []),
             { key: "settings", label: c.settings, icon: Settings2, onSelect: () => setView("settings") },
+            // B-877: archive but keep the lead's session as an ordinary one (runs on the lead's machine).
+            ...(team.archivedAt === undefined && teamLeadSessionId(team) ? [{ key: "exit-team-mode", label: tr("teams.exitTeamMode"), icon: LogOut, onSelect: () => {
+              const lead = teamLeadSessionId(team)!;
+              void confirmExitTeamMode(storage.getState().sessions[lead]?.metadata?.machineId ?? team.machineId, lead).then((left) => { if (left) void load(); });
+            } }] : []),
           ]} />}
           {teamId ? <button aria-label={tr("teams.refresh")} title={tr("teams.refresh")} onClick={() => { setError(""); void load(); }}><RefreshCw size={17} /></button> : <button className="teams-primary" disabled={unavailable} onClick={() => setCreating(true)}><Plus size={16} />{c.create}</button>}
         </div>

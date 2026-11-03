@@ -412,6 +412,35 @@ the board; a session adopted as lead mid-run gets them after its next restart.
 - Archive after tasks, execution operations, and cleanup are resolved. Archived
   teams leave the active list, while their existing direct links remain readable.
 
+### Exit team mode (keep the lead as an ordinary session)
+
+**Exit team mode** (lead session ⋯ menu, or the team page ⋯ menu) archives the
+team the usual way — unfinished tasks and schedules are cancelled, member
+sessions stop, worktrees are kept — but the lead session is not stopped. Its
+computer restarts it in place with its history and without the team: no team
+instructions, no team messages, and team tools no longer act on the old team.
+Later restarts and resumes stay ordinary. From a terminal on the lead's
+computer:
+
+```sh
+very-happy teams exit --session-id <lead-session-id>
+```
+
+A plain **Archive team** still stops the lead too. Member sessions cannot exit
+on their own; they end with the team. Requires the lead computer's CLI to
+include this command (B-877); an older server stops the lead anyway, and the
+app says so.
+
+退出团队模式（负责人会话 ⋯ 或团队页 ⋯）：按现有归档逻辑归档团队，但负责人会话不停，保留历史后作为普通会话原地重启，之后不再注入团队说明、不再收团队消息。
+
+### Language
+
+Team instructions are English, so a spawned lead or member used to drift into
+English replies. Every team entry prompt now names the owner's language (taken
+from the owner's goal; Chinese, Japanese and Korean are detected, anything else
+is described as "the language the user wrote the goal in"), and every team
+message ends with a one-line reminder. Measured before/after in B-877.
+
 ## Migrate from a private supervisor
 
 ```sh
