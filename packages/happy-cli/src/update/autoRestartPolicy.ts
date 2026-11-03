@@ -280,6 +280,45 @@ export function wrapperReportsIdle(input: {
     return !(input.tags ?? []).some((tag) => tag === 'teams' || tag === 'automation' || tag === 'assistant');
 }
 
+/**
+ * B-882: how long a pre-`auto-restart-v1` wrapper may stay `awaiting-check-in`
+ * before it is handed to the user. Its probe asks every 5 min when locally idle
+ * and backs off 30 min after a handover gap; past that, silence means it never
+ * will (dev-sg: a 0.2.187 wrapper spawned with an origin refuses locally as
+ * `spawn-origin`, while the recovered daemon tracking lost that origin).
+ */
+export const LEGACY_CHECK_IN_GRACE_MS = 40 * 60 * 1000;
+
+/** `HAPPY_AUTO_RESTART_CHECK_IN_GRACE_MS` (any value ≥ 0, tests) or the default. */
+export function resolveCheckInGraceMs(env: Record<string, string | undefined> = process.env): number {
+    const raw = env.HAPPY_AUTO_RESTART_CHECK_IN_GRACE_MS;
+    if (raw !== undefined && raw.trim() !== '') {
+        const value = Number(raw);
+        if (Number.isFinite(value) && value >= 0) return Math.round(value);
+    }
+    return LEGACY_CHECK_IN_GRACE_MS;
+}
+
+/**
+ * The sweep's status for a stale wrapper that has not checked in (yet) in
+ * this daemon run. `awaitingSince` = when this run started waiting for it.
+ * A wrapper that does check in later is still judged normally on that check-in.
+ */
+export function uncheckedWrapperStatus(input: {
+    reportsIdle: boolean;
+    capabilities: readonly string[] | null | undefined;
+    awaitingSince: number | null;
+    now: number;
+    graceMs?: number;
+}): { state: 'waiting'; reason: 'awaiting-check-in' } | { state: 'manual'; reason: 'no-report' | 'no-check-in' } {
+    if (!input.reportsIdle) return { state: 'manual', reason: 'no-report' };
+    const legacy = !(input.capabilities ?? []).includes(AUTO_RESTART_CAPABILITY);
+    if (legacy && input.awaitingSince !== null && input.now - input.awaitingSince >= (input.graceMs ?? LEGACY_CHECK_IN_GRACE_MS)) {
+        return { state: 'manual', reason: 'no-check-in' };
+    }
+    return { state: 'waiting', reason: 'awaiting-check-in' };
+}
+
 /** The service line the restarted wrapper posts (spec §5); the web localizes it by `kind`. */
 export const AUTO_UPDATED_EVENT_KIND = 'session-auto-updated';
 

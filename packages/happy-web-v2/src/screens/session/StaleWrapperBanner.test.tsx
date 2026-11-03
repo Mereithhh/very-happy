@@ -140,6 +140,16 @@ it('QA25 P2-1: a session in the user\'s terminal shows the manual banner at once
     expect(mock.restartSession).toHaveBeenCalledExactlyOnceWith('s1');
 });
 
+it('B-882: an old wrapper the daemon cannot prove idle (no-report / no-check-in) shows the manual banner, saying why (critical wording still wins)', () => {
+    mock.session.metadata.version = '0.2.140';
+    for (const reason of ['no-report', 'no-check-in']) {
+        autoRestart({ s1: { state: 'manual', reason, since: Date.now(), target: '0.2.141' } });
+        render();
+        expect(host.textContent).toContain('autoRestart.manualNoReport');
+        expect(banner()?.getAttribute('data-auto-restart')).toBe('manual');
+    }
+});
+
 it('B-852: switch off, or a stamp from an older daemon run → the old banner', () => {
     autoRestart({}, { enabled: false });
     render();

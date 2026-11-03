@@ -6465,6 +6465,10 @@ export const en = {
             `Still on v${sessionVersion} (the machine has v${machineVersion}). It runs in your terminal, so it is not updated automatically — restart it to update; the conversation is kept.`,
         manualLocalTerminalAgent: ({ agent }: { agent: string }) =>
             `Still on the ${agent} it started with. It runs in your terminal, so it is not updated automatically — restart it to update; the conversation is kept.`,
+        manualNoReport: ({ sessionVersion, machineVersion }: { sessionVersion: string; machineVersion: string }) =>
+            `Still on v${sessionVersion} (the machine has v${machineVersion}). This older session does not report when it is idle, so it is not updated automatically — restart it to update; the conversation is kept.`,
+        manualNoReportAgent: ({ agent }: { agent: string }) =>
+            `Still on the ${agent} it started with. This older session does not report when it is idle, so it is not updated automatically — restart it to update; the conversation is kept.`,
         offlineFailed: ({ reason }: { reason: string }) => `Automatic update failed (${reason}) and the session is offline. Restore it to continue — the conversation is kept.`,
         offlineFailedRetry: ({ reason, time }: { reason: string; time: string }) =>
             `Automatic update failed (${reason}) and the session is offline. It will try once more around ${time}, or restore it now — the conversation is kept.`,

@@ -18,6 +18,10 @@ describe('B-852 auto-restart wiring', () => {
         expect(run).toContain('const auto = await autoRestartScheduler.onCheckIn(body);\n        // Never let a wrapper sleep past the cap');
         expect(run).not.toContain('if (!autoRestartSetting) return reply;');
     });
+    it('a recovered wrapper\'s spawn origin comes from its own event echo (B-882)', () => {
+        expect(run).toContain('if (spawnedByFromSession) echoedSpawnedBy.set(sessionId, spawnedByFromSession);');
+        expect(run).toContain('spawnedBy: tracked.spawnedBy ?? (tracked.happySessionId ? echoedSpawnedBy.get(tracked.happySessionId) : undefined) ?? null,');
+    });
     it('terminal sessions are told apart by the wrapper\'s own startedBy (QA25 P2-1)', () => {
         expect(run).toContain('startedBy: metadata?.startedBy ?? null,');
     });
