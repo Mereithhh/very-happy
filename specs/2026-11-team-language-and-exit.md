@@ -59,6 +59,11 @@ Q2 现状：Web 建的团队，Lead bot 的 `managed=true`。归档时 root 任�
   3. 团队未归档时，用 Owner 身份发 archive `keepLeadSession`，requestId `team-exit-<sid>`，所以操作幂等。
   4. 写 `teams/exited/<sid>.json` 标记，删除 scope 文件。
   5. managed 且仍在运行的 Lead 原地 `restartSession`：保留 `--resume` 历史；relaunch 时看到标记就不带 team env（`relaunchScope.ts` `teamRelaunchEnv`），之后的恢复、自动重启、自动化唤醒也一样。`team_create` 接入的 Lead 每次调用都现读 scope，删掉 scope 文件即可，不需要重启。
+- B-877b（QA49：退出后 Lead 不知道自己已退出，把 team_* 的「no team scope … call team_inspect again」当成临时故障，让用户「权限恢复后发一句继续」）：
+  - 标记加 `teamName`、`language`（Owner 原话检测）、`reason`（`exit` / `archived`）、`noticeAt`（`teams/exitNotice.ts`）。
+  - team_* 工具：没有 scope 且有标记时，所有走 scope 的工具（inspect、delegate、message、submit、schedule…）都返回 `teamExitedMessage`：团队 "<名字>" 已归档、本会话已退出团队模式、是普通会话；这是终态不是临时故障，不要重试、不要查询或派活、不要让用户恢复权限，直接自己完成。英文 + B-877 的语言提醒句。无标记时 `NO_TEAM_SCOPE_MESSAGE` 去掉「call team_inspect again」；env 指向的 scope 文件丢失另给 `MISSING_TEAM_SCOPE_MESSAGE`；活会话收到 409 `team_archived` 也给明确文案。`team_create` / `team_join` 不拦：用户明确要新团队时仍可建。
+  - 一次性说明：`createProjectInjector().decorate` 末尾套 `createTeamExitNotice`，Claude（`finalizeRemotePrompt`）、Codex（`runCodex`）、Gemini/ACP 都走这里；有标记且没有 `noticeAt` 时在本回合最前面加 `[Very Happy: team mode ended] …`，先写 `noticeAt` 再发，所以重启、崩溃都不会重复。语言按本条用户消息检测，短消息退回标记里的 Owner 语言。`/compact`、`/clear` 不消耗。
+  - B-730 路径：relaunch 时 daemon 用 spawn receipt 的 teamId 以 Owner 身份读团队（5 s 超时，失败按原逻辑带 team env）；团队已归档且本会话是 root → 写 `reason: archived` 标记，不带 team env，之后同上。成员不变。
 - 入口：machine RPC `team-exit-session`（Web）、control `/team-exit-session`、CLI `very-happy teams exit --session-id <id>`。
 - Web：会话 ⋯ 菜单（只对活团队的 Lead 显示）和团队页 ⋯ 菜单里加「退出团队模式 / Exit team mode」，确认框说明后果；toast 区分已重启、无需重启、旧 server 已停 Lead、离线、CLI 过旧几种结果（`screens/teams/teamExit.ts`）。
 
@@ -102,3 +107,4 @@ server 和 Web 在同一个镜像里，先发 server/Web，再发 CLI。
 - [x] daemon：exit 写标记、删 scope、幂等、拒绝成员；之后 relaunch 不带 team env（`exitTeamMode.test.ts`）
 - [x] 隔离 server + daemon e2e，修前和修后各跑一遍（`~/code/github/skills/tmp/vh-team-B-877/e2e`）
 - [x] Web 两处入口，中英文案
+- [x] B-877b：退出 / 归档后恢复的 Lead，team_* 明确说已退出团队模式；下一回合一次性说明（持久化、只一次，Claude/Codex）（`exitNotice.test.ts`、`exitTeamMode.test.ts`、`injector.test.ts`，e2e `~/code/github/skills/tmp/vh-team-B-877b/e2e`）

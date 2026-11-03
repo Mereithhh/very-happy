@@ -419,7 +419,11 @@ team the usual way — unfinished tasks and schedules are cancelled, member
 sessions stop, worktrees are kept — but the lead session is not stopped. Its
 computer restarts it in place with its history and without the team: no team
 instructions, no team messages, and team tools no longer act on the old team.
-Later restarts and resumes stay ordinary. From a terminal on the lead's
+Later restarts and resumes stay ordinary. The lead is told once, before your
+next message, that team mode has ended, and every team tool from then on says
+the team is archived and that it should do the work itself — it no longer asks
+you to wait for team access. A lead whose team was archived the ordinary way and
+which you restore later is treated the same. From a terminal on the lead's
 computer:
 
 ```sh
@@ -431,7 +435,7 @@ on their own; they end with the team. Requires the lead computer's CLI to
 include this command (B-877); an older server stops the lead anyway, and the
 app says so.
 
-退出团队模式（负责人会话 ⋯ 或团队页 ⋯）：按现有归档逻辑归档团队，但负责人会话不停，保留历史后作为普通会话原地重启，之后不再注入团队说明、不再收团队消息。
+退出团队模式（负责人会话 ⋯ 或团队页 ⋯）：按现有归档逻辑归档团队，但负责人会话不停，保留历史后作为普通会话原地重启，之后不再注入团队说明、不再收团队消息。下一条消息前会告诉负责人一次「团队模式已结束」，之后团队工具都明确回复团队已归档、请自己完成，不会再让你等团队权限恢复；普通归档后再恢复的负责人会话同样处理。
 
 ### Language
 
