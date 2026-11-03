@@ -778,6 +778,26 @@ describe('claudeRemote', () => {
             expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('Turn off 1M context'), 'claude-long-context-refused');
         });
 
+        it('B-883b an explicit 1M refused with 403 (reported as authentication_failed) is not a login failure', async () => {
+            const refusal403 = { ...refusal, error: 'authentication_failed', api_error_status: 403,
+                message: { role: 'assistant', content: [{ type: 'text', text: 'Failed to authenticate. API Error: 403 Your organization does not have access to the 1M context window.' }] } };
+            vi.mocked(query).mockImplementation(((args: any) => ({
+                setPermissionMode: vi.fn(),
+                async *[Symbol.asyncIterator]() {
+                    await args.prompt[Symbol.asyncIterator]().next();
+                    yield refusal403;
+                    yield { type: 'result', subtype: 'success', is_error: true, result: refusal403.message.content[0].text };
+                },
+            })) as any);
+            const onAuthFailure = vi.fn();
+            const onCompletionEvent = vi.fn();
+            let n = 0;
+            await claudeRemote({ ...base(), onAuthFailure, onCompletionEvent, longContext: { onRejected: () => 'fail' },
+                nextMessage: async () => (n++ === 0 ? { message: 'hi', mode: { ...mode, model: 'claude-opus-5-5[1m]' } } : null) });
+            expect(onAuthFailure).not.toHaveBeenCalled();
+            expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('Turn off 1M context'), 'claude-long-context-refused');
+        });
+
         it('B-883b a plain-id turn\'s rate limit is not a 1M refusal', async () => {
             const setModel = vi.fn(async () => {});
             vi.mocked(query).mockImplementation(longContextQuery([], setModel, { retried: false }) as any);

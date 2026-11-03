@@ -21,7 +21,8 @@ describe('longContextRejectionFrom', () => {
     it('reads the 429 "Extra usage is required for long context" reply while running a [1m] id', () => {
         expect(longContextRejectionFrom(reply('API Error: Request rejected (429) · Extra usage is required for long context requests.'), 'claude-opus-5-5[1m]'))
             .toEqual({ model: 'claude-opus-5-5[1m]', plain: 'claude-opus-5-5', reason: 'API Error: Request rejected (429) · Extra usage is required for long context requests.' });
-        expect(longContextRejectionFrom(reply('API Error: 403 Your organization does not have access to the 1M context window.', { error: 'unknown', api_error_status: 403 }), 'claude-opus-5-5[1m]')?.plain)
+        // 403: Claude Code retries 10 times, then reports it as an auth failure.
+        expect(longContextRejectionFrom(reply('Failed to authenticate. API Error: 403 Your organization does not have access to the 1M context window.', { error: 'authentication_failed', api_error_status: 403 }), 'claude-opus-5-5[1m]')?.plain)
             .toBe('claude-opus-5-5');
         expect(longContextRejectionFrom(reply('Usage credits are required for long context requests.'), 'claude-sonnet-5[1m]')?.plain).toBe('claude-sonnet-5');
     });

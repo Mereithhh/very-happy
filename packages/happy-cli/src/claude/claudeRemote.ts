@@ -603,6 +603,8 @@ export async function claudeRemote(opts: {
     // retries) and a retry owed once that turn's result arrives.
     let currentPrompt: MessageParam['content'] = initial.message;
     let longContextRetry: LongContextRejection | null = null;
+    /** The current turn failed on a 1M refusal: its auth-looking error is not a login failure. */
+    let longContextRefusedTurn = false;
 
     // The first prompt is in the Query's input (pushed; the CLI announces its
     // turn with running/init). Uuid-stamped when the web gave it one, and
@@ -729,7 +731,9 @@ export async function claudeRemote(opts: {
     // for a turn that ended by idle (B-631): the flagged assistant frame is
     // the signal either way.
     const recycleIfPoisoned = (result?: SDKResultMessage): boolean => {
-        const recycleReason = queryRecycleReason(result ?? { subtype: 'success' }, lastAssistantError);
+        const refusedTurn = longContextRefusedTurn;
+        longContextRefusedTurn = false;
+        const recycleReason = refusedTurn ? null : queryRecycleReason(result ?? { subtype: 'success' }, lastAssistantError);
         lastAssistantError = undefined;
         if (!recycleReason) return false;
         logger.warn(`[claudeRemote] Ending SDK query after ${recycleReason}; the next message starts a fresh Claude Code process`);
@@ -800,6 +804,11 @@ export async function claudeRemote(opts: {
                 }
                 opts.onCompletionEvent?.(longContextExplicitNotice(refused), LONG_CONTEXT_REFUSED_EVENT_KIND);
             }
+            // A 403 refusal arrives as `authentication_failed` ("Failed to
+            // authenticate. API Error: 403 … 1M context window", measured): the
+            // login is fine — not a poisoned Query, no auth-failure card.
+            const loginFine = refused !== null;
+            if (refused) longContextRefusedTurn = true;
             if (longContextRetry && message.type === 'result') {
                 const retry = longContextRetry;
                 longContextRetry = null;
@@ -833,7 +842,7 @@ export async function claudeRemote(opts: {
                     });
                 continue;
             }
-            if (message.type === 'assistant' && message.error) {
+            if (message.type === 'assistant' && message.error && !loginFine) {
                 lastAssistantError = message.error;
             }
             // B-634 ③: Claude Code says the model this session runs does not
