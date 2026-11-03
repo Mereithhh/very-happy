@@ -128,10 +128,10 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
                 return;
             }
 
-            // B-867c: an operator terminal that left the machine's list (the owner closed it) ends for the operator too.
-            void noteOperatorMachineState(userId, result.machine.id, result.machine.daemonState).catch(() => undefined);
             // B-878: a shared terminal that left the list ends for its viewers; a new pane size re-fits them.
             void noteTerminalShareMachineState(userId, result.machine.id, result.machine.daemonState).catch(() => undefined);
+            // B-867c: an operator terminal that left the machine's list (the owner closed it) ends for the operator too.
+            void noteOperatorMachineState(userId, result.machine.id, result.machine.daemonState).catch(() => undefined);
 
             // Generate machine daemon state update
             const daemonStateUpdate = {

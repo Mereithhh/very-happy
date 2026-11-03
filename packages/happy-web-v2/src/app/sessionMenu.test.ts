@@ -103,6 +103,8 @@ describe('one builder for both surfaces', () => {
     }
     // 分享… is gated by the shared availability on both surfaces
     expect(sidebar).toContain('onShare: avail?.share ? onShare : undefined,');
+    // B-878: a terminal row of mine adds 分享… for its own terminal-share dialog
+    expect(sidebar).toContain("if (isTerminal && onShare && !row.share) {");
     expect(header).toContain('onShare: avail.share ? () => setShareOpen(true) : undefined,');
     // no surface keeps a private share / project item list next to the builder
     expect(header).not.toContain("key:'share'");

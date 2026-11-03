@@ -2129,8 +2129,7 @@ function SidebarRow({
     t,
     zh,
     isTerminal,
-    // B-878: terminals share through their own dialog (any terminal row of mine).
-    onShare: isTerminal ? onShare : avail?.share ? onShare : undefined,
+    onShare: avail?.share ? onShare : undefined,
     onRename: () => onRenameRequest(false),
     onTags: !isTerminal || row.tags !== undefined ? () => onRenameRequest(true) : undefined,
     project: projectMenu,
@@ -2170,6 +2169,11 @@ function SidebarRow({
         });
       },
     });
+  }
+
+  // B-878: a terminal of mine shares through its own dialog (first item, like a session's 分享…).
+  if (isTerminal && onShare && !row.share) {
+    menuItems.unshift({ key: 'share', label: t('share.menu'), icon: UsersRound, onSelect: onShare });
   }
 
   if (peekable) {
