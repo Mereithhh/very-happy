@@ -2,7 +2,7 @@ import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TeamResponse, TeamState } from '@slopus/happy-wire';
 import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secureFiles';
-import { relaunchTeamOperationId, teamExitMarkerPath, teamScopeFilePath } from './relaunchScope';
+import { relaunchTeamOperationId, teamExitMarker, teamExitMarkerPath, teamScopeFilePath } from './relaunchScope';
 
 /**
  * B-877 「退出团队模式」: the lead's session goes on as an ordinary session, history kept.
@@ -36,7 +36,10 @@ export async function exitTeamMode(input: { home: string; sessionId: string; met
     try { scope = JSON.parse(readFileSync(scopeFile, 'utf8')); }
     catch {
         // A repeat after success: the scope is gone, the marker remembers the team.
-        if (existsSync(marker)) return { ...JSON.parse(readFileSync(marker, 'utf8')), leadStopped: false, alreadyExited: true };
+        if (existsSync(marker)) {
+            const { teamId, managed } = JSON.parse(readFileSync(marker, 'utf8'));
+            return { teamId, managed: managed === true, leadStopped: false, alreadyExited: true };
+        }
         throw new Error('This session is not in a team on this machine');
     }
     if (typeof scope?.teamId !== 'string' || typeof scope.botId !== 'string') throw new Error('Invalid team scope');
@@ -50,7 +53,8 @@ export async function exitTeamMode(input: { home: string; sessionId: string; met
     const leadStopped = team.operations.some(op => op.type === 'stop' && op.botId === bot.id && op.sessionId === sessionId);
     const result = { teamId: scope.teamId, managed: operationId !== null };
     ensurePrivateDirectorySync(join(home, 'teams', 'exited'));
-    writePrivateFileSync(marker, JSON.stringify({ ...result, at: Date.now() }));
+    // B-877b: name and language feed what team tools and the one-time note tell the model (teams/exitNotice.ts).
+    writePrivateFileSync(marker, JSON.stringify(teamExitMarker(team, result.managed, 'exit')));
     try { unlinkSync(scopeFile); } catch (error: any) { if (error?.code !== 'ENOENT') throw error; }
     return { ...result, leadStopped };
 }

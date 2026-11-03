@@ -6,6 +6,7 @@ import { isInsideTeamWorktree, rebaseTeamWorktreePath } from '@slopus/happy-wire
 import { configuration } from '@/configuration';
 import { readCredentialsForConfiguredRelay, readSettings, readPersistedSessions } from '@/persistence';
 import { readTeamScope, teamScopePath, writeTeamScope } from './context';
+import { readTeamExitMarker, teamExitedMessage } from './exitNotice';
 
 // Never propagate HTTP bodies/errors: upstream diagnostics may contain credentials.
 export async function teamRequest(path: string, method: string, token: string, scoped: boolean, body?: unknown): Promise<any> {
@@ -40,8 +41,11 @@ export function teamRefusalMessage(status: number, body: unknown): string {
         const used = count('used'), limit = count('limit');
         return `Teams request refused (${code}${used !== null && limit !== null ? `: ${used}/${limit}` : ''}): ${TEAM_LIMIT_EXPLANATION}`;
     }
+    // B-877b: a team archived under a live session (members, or a lead that has not restarted yet).
+    if (code === 'team_archived') return TEAM_ARCHIVED_MESSAGE;
     return `Teams request failed (HTTP ${status}: ${code})`;
 }
+export const TEAM_ARCHIVED_MESSAGE = 'Teams request refused (team_archived): this team is archived, which is final; its tasks were cancelled and no team action can succeed. Do not retry or wait for team access. Tell the user the team has ended and do what they ask yourself, in this session. 团队已归档，团队工具不再可用；请直接告诉用户并自己完成用户的要求。';
 /** B-822: shown for every `*_limit` refusal. */
 export const TEAM_LIMIT_EXPLANATION = 'a team capacity limit was reached. This is not rate limiting: retrying or waiting will not help. Closed tasks, their delivered messages and finished operations are archived automatically, so what is left is open work — accept, cancel or hand off finished tasks (team_inspect shows `capacity`), or ask the user to archive this team and start a new one. 团队容量已满，不是限流，重试无效：请验收/取消已完成的任务，或请用户归档本团队后新建。';
 export class TeamConnectionPreflightError extends Error {}
@@ -60,8 +64,21 @@ export class SessionInOtherTeamError extends TeamConnectionPreflightError {
 export function sessionInOtherTeamMessage(teamName: string, teamId: string): string {
     return `This session is already the lead or a member of team "${teamName}"${teamId ? ` (${teamId})` : ''}. Call team_inspect and use team_delegate to assign work inside that team; do not create or join another team. 你已经是团队「${teamName}」的成员或负责人，请先 team_inspect，再用 team_delegate 在本团队内派活，不要新建或加入其他团队。`;
 }
-/** B-730: shown when this session holds no team scope. A restarted lead used to read it as "make a team". */
-export const NO_TEAM_SCOPE_MESSAGE = 'This session has no team scope. Do not create a team to get one: if you lead or work in a team (for example after a restart), call team_inspect again or tell the user; use team_create or team_join only when the user asks for a new team.';
+/**
+ * B-730: shown when this session holds no team scope. A restarted lead used to read it as "make a team".
+ * B-877b: it used to add "call team_inspect again", and a lead that had left its team (QA49) told the user
+ * to wait until its team permissions came back. A session that left its team gets `teamExitedMessage`.
+ */
+export const NO_TEAM_SCOPE_MESSAGE = 'This session is not in a team, so team tools do not work here. Retrying will not change that. Do not create or join a team to get one: answer the user and do what they ask yourself, in this session; use team_create or team_join only when the user explicitly asks for a new team.';
+/** B-730: a Teams-spawned session whose scope file is gone (the daemon could not restore it). */
+export const MISSING_TEAM_SCOPE_MESSAGE = 'This session\'s team scope is missing (the Very Happy daemon could not restore it), so team tools do not work here. Retrying will not help. Tell the user; the owner can restart this session from the team page to restore it. Do not create or join another team.';
+
+/** The refusal for a session without a usable scope (B-877b: a session that left its team says so). */
+export function noTeamScopeMessage(sessionId: string | undefined, home: string = configuration.happyHomeDir): string {
+    const marker = readTeamExitMarker(home, sessionId);
+    if (marker) return teamExitedMessage(marker);
+    return process.env.VH_TEAM_SCOPE_FILE ? MISSING_TEAM_SCOPE_MESSAGE : NO_TEAM_SCOPE_MESSAGE;
+}
 
 const initializationLocks = new Map<string, Promise<unknown>>();
 async function serializeInitialization<T>(path: string, work: () => Promise<T>): Promise<T> {
@@ -149,13 +166,13 @@ export function createTeamsClient(sessionId?: string) {
         },
         async inspect() {
             const scope = await readTeamScope(scopePath());
-            if (!scope) throw new Error(NO_TEAM_SCOPE_MESSAGE);
+            if (!scope) throw new Error(noTeamScopeMessage(sessionId ?? process.env.HAPPY_SESSION_ID));
             const { credential: _credential, ...safe } = await teamRequest(`/v1/teams/${encodeURIComponent(scope.teamId)}/agent`, 'GET', scope.scopeToken, true);
             return safe;
         },
         async action(action: Record<string, unknown>, requestId: string = randomUUID()) {
             const scope = await readTeamScope(scopePath());
-            if (!scope) throw new Error(NO_TEAM_SCOPE_MESSAGE);
+            if (!scope) throw new Error(noTeamScopeMessage(sessionId ?? process.env.HAPPY_SESSION_ID));
             const result = await teamRequest(`/v1/teams/${encodeURIComponent(scope.teamId)}/agent`, 'POST', scope.scopeToken, true, { requestId, action });
             // Scope issuance is never part of a model-facing response.
             const { credential: _credential, ...safe } = result;

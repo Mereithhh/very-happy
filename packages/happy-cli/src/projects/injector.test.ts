@@ -94,4 +94,14 @@ describe('project injector', () => {
         expect((await inj.decorate('y')).endsWith('---\ny')).toBe(true);
         expect(client.context).toHaveBeenCalledTimes(2);
     });
+    it('B-877b: the one-time team-exit note rides on every agent\'s turn, first in line, even with projects off', async () => {
+        const notice = { decorate: vi.fn((m: string) => `[team mode ended]\n${m}`) };
+        const issueDigest = { decorate: vi.fn(async (m: string) => `[Issue VH-1 now todo]\n${m}`) };
+        for (const agent of ['claude', 'codex']) {
+            const inj = createProjectInjector({ client: fakeClient(), sessionId: () => 's1', metadata: () => null, agent, timeoutMs: 50, issueDigest, teamExitNotice: notice });
+            expect((await inj.decorate('hi')).startsWith('[team mode ended]\n[Issue VH-1 now todo]\n[Very Happy project')).toBe(true);
+            const off = createProjectInjector({ client: fakeClient({ isDisabled: vi.fn(() => true) }), sessionId: () => 's1', agent, issueDigest: null, teamExitNotice: notice });
+            expect(await off.decorate('hi')).toBe('[team mode ended]\nhi');
+        }
+    });
 });

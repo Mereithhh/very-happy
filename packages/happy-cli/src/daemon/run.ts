@@ -1289,6 +1289,7 @@ export async function startDaemon(): Promise<void> {
       sessionId: happySessionId,
       metadata,
       recover: teamWorker ? (operationId, scopeFile) => teamWorker!.recoverScope(operationId, happySessionId, scopeFile) : undefined,
+      team: async (teamId) => (await axios.get(`${configuration.serverUrl}/v1/teams/${encodeURIComponent(teamId)}`, { timeout: 5_000, headers: { Authorization: `Bearer ${credentials.token}` } })).data.team,
       log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
     });
     const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }): Promise<SpawnSessionResult> => {
