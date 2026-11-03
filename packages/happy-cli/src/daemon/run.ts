@@ -8,6 +8,7 @@ import * as tmp from 'tmp';
 import axios from 'axios';
 import { issueRelaunchEnv } from '@/issues/sessionMetadata';
 import { teamRelaunchEnv } from './teams/relaunchScope';
+import { exitTeamMode } from './teams/exitTeamMode';
 
 import { ApiClient } from '@/api/api';
 import type { ApiMachineClient } from '@/api/apiMachine';
@@ -1290,6 +1291,7 @@ export async function startDaemon(): Promise<void> {
       sessionId: happySessionId,
       metadata,
       recover: teamWorker ? (operationId, scopeFile) => teamWorker!.recoverScope(operationId, happySessionId, scopeFile) : undefined,
+      team: async (teamId) => (await axios.get(`${configuration.serverUrl}/v1/teams/${encodeURIComponent(teamId)}`, { timeout: 5_000, headers: { Authorization: `Bearer ${credentials.token}` } })).data.team,
       log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
     });
     const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }): Promise<SpawnSessionResult> => {
@@ -1498,6 +1500,19 @@ export async function startDaemon(): Promise<void> {
         if (!requested) done();
         setTimeout(done, timeoutMs).unref?.();
       })));
+    };
+
+    // B-877: 「退出团队模式」 (daemon/teams/exitTeamMode.ts). The team is archived without stopping
+    // this lead; a Teams-spawned wrapper then restarts in place (history kept) without its team env.
+    const exitTeamModeForSession = async (happySessionId: string) => {
+      const metadata = findTrackedSessionById(happySessionId)?.happySessionMetadataFromLocalWebhook ?? readPersistedSessions()[happySessionId]?.metadata;
+      const http = axios.create({ baseURL: configuration.serverUrl, timeout: 20_000, headers: { Authorization: `Bearer ${credentials.token}` } });
+      const result = await exitTeamMode({ home: configuration.happyHomeDir, sessionId: happySessionId, metadata, http });
+      const live = [...pidToTrackedSession.values()].some((s) => s.happySessionId === happySessionId && isPidAlive(s.pid));
+      if (!result.managed || !live || result.leadStopped || result.alreadyExited) return { ...result, restarted: false };
+      const restart = await restartSession(happySessionId, { keepPublishedPermissionMode: true });
+      if (restart.type !== 'success') throw new Error(`Team archived, but the session did not restart: ${restart.type === 'error' ? restart.errorMessage : restart.type}`);
+      return { ...result, restarted: true };
     };
 
     const restartSession = async (happySessionId: string, options?: RestartSessionOptions): Promise<SpawnSessionResult> => {
@@ -1871,6 +1886,7 @@ export async function startDaemon(): Promise<void> {
       spawnSession,
       resumeSession, // B-501: `very-happy send --resume`
       restartSession, // B-794: `very-happy session provider`
+      exitTeamMode: exitTeamModeForSession, // B-877: `very-happy teams exit`
       getAgentProfiles: () => accountServiceRef?.state() ?? null, // B-850a: `very-happy account list`
       requestShutdown: () => requestShutdown('happy-cli'),
       onHappySessionWebhook,
@@ -2049,6 +2065,7 @@ export async function startDaemon(): Promise<void> {
     // B-506: answer `sessions.*` from the account's other machines with this
     // machine's keys (specs/2026-09-cross-machine-session-ops.md).
     apiMachine.setRemoteSessionOpsHandlers(createRemoteSessionOpsHandlers(machineId));
+    apiMachine.setTeamExitHandler(exitTeamModeForSession);
 
     // B-276: daemon-context Claude auth preflight (spec 2026-09-claude-auth-preflight).
     const claudeAuthService = new ClaudeAuthService({

@@ -14,7 +14,9 @@ export const TeamDefaultsSchema = z.object({ assistant: TeamAssistantSchema.opti
 export type TeamLaunch = z.infer<typeof TeamLaunchSchema>;
 export type TeamDefaults = z.infer<typeof TeamDefaultsSchema>;
 export const TeamActionSchema = z.discriminatedUnion('type', [
-    z.object({ type: z.literal('archive') }),
+    /** B-877: `keepLeadSession` = 「退出团队模式」: archive as usual but leave the root bots' sessions running
+     *  (the lead goes on as an ordinary session). An old server strips it and stops the lead as before. */
+    z.object({ type: z.literal('archive'), keepLeadSession: z.literal(true).optional() }),
     z.object({ type: z.literal('start'), launch: TeamLaunchSchema }),
     z.object({ type: z.literal('set-defaults'), defaults: TeamDefaultsSchema }),
     z.object({ type: z.literal('set-permission-mode'), permissionMode: TeamPermissionModeSchema }),

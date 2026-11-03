@@ -22,6 +22,13 @@ describe('team message presentation', () => {
         expect(result.preview).not.toContain(id);
         expect(result.preview.length).toBe(180);
     });
+    // B-877: newer daemons end the footer with a language reminder; old and new footers both strip.
+    it('strips the footer with or without the language reminder', () => {
+        for (const reminder of ['', ' Reply in Chinese (中文), the user\'s language.', ' Reply in the user\'s language, not this envelope\'s.']) {
+            const text = `[Very Happy team message m-2; task ${id}; from Dev]\nTask ${id} submitted:\n结果${footer}${reminder}`;
+            expect(presentTeamMessage({ text, meta: { sentFrom: 'team' } })?.body).toBe('结果');
+        }
+    });
     // B-716 / B-704: the envelope and footer are transport, never the text people read.
     it('strips the envelope and footer, keeps the markdown body and header fields', () => {
         const body = '| a | b |\n|---|---|\n| 1 | 2 |\n\n```ts\nx()\n```';

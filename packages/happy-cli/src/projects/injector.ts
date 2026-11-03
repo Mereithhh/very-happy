@@ -3,6 +3,7 @@ import { logger } from '@/ui/logger';
 import { buildDigestLine, buildFirstTurnPrefix, prependToMessage } from './prompt';
 import { ProjectsUnsupportedError, type ProjectsClient } from './client';
 import { createIssueDigest, type IssueDigest } from '@/issues/digest';
+import { createTeamExitNotice, type TeamExitNotice } from '@/teams/exitNotice';
 
 /**
  * B-645 per-wrapper project injector (spec §3 layers P and D).
@@ -29,6 +30,8 @@ export type ProjectInjectorDeps = {
     presenceMinIntervalMs?: number;
     /** B-874: the issue digest line (spec §5) rides on the same decorate call; default = one for this session. */
     issueDigest?: Pick<IssueDigest, 'decorate'> | null;
+    /** B-877b: the one-time 「team mode ended」 note after the lead left its team; default = one for this session. */
+    teamExitNotice?: Pick<TeamExitNotice, 'decorate'> | null;
 };
 
 export type ProjectInjectorState = {
@@ -48,6 +51,7 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
     let lastPresenceVersion: number | null = null;
     const label = (id: string) => titles.get(id) ?? id.slice(0, 8);
     const issueDigest = deps.issueDigest === undefined ? createIssueDigest({ sessionId: deps.sessionId, metadata: () => deps.metadata?.() ?? null, timeoutMs }) : deps.issueDigest;
+    const teamExitNotice = deps.teamExitNotice === undefined ? createTeamExitNotice({ sessionId: deps.sessionId }) : deps.teamExitNotice;
 
     function withTimeout<T>(p: Promise<T>): Promise<T> {
         return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error('project injection timeout')), timeoutMs).unref?.())]);
@@ -115,7 +119,11 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
         reset() { state.prefixSent = false; state.cursor = 0; },
         async decorate<T>(message: T): Promise<T> {
             if (typeof message !== 'string') return message;
-            const withIssue = async (text: string) => issueDigest ? issueDigest.decorate(text) : text;
+            // The team-exit note goes first: it changes how the model reads everything after it.
+            const withIssue = async (text: string) => {
+                const digested = issueDigest ? await issueDigest.decorate(text) : text;
+                return teamExitNotice ? teamExitNotice.decorate(digested) : digested;
+            };
             const sid = deps.sessionId();
             if (!sid || deps.client.isDisabled()) return await withIssue(message) as unknown as T;
             let out: string = message;

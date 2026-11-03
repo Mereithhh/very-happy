@@ -31,3 +31,22 @@ export function codexPublishablePermissionMode(mode: unknown): PermissionMode | 
         ? mode as PermissionMode
         : null;
 }
+
+/**
+ * B-884: the mode a wrapper publishes for its own `--permission-mode` flag.
+ *
+ * Team members and leads launch Codex with Claude's `bypassPermissions`, which
+ * is not a Codex mode, so nothing was published and the next restart / resume
+ * relaunched `default` — every tool call then waited on an approval nobody
+ * would answer. Codex runs `bypassPermissions` exactly like `yolo` (approval
+ * `never`, sandbox `danger-full-access`, see executionPolicy.ts), so the flag
+ * is published in Codex's own word and a relaunch gets the same access.
+ *
+ * Launch flag only: it comes from whoever started the wrapper (the daemon's
+ * sanitized spawn, or the local CLI). Remote message meta and the live
+ * set-permission-mode RPC keep `codexPublishablePermissionMode`, where
+ * `bypassPermissions` stays ignored (issue #1092).
+ */
+export function codexLaunchPublishablePermissionMode(flag: unknown): PermissionMode | null {
+    return codexPublishablePermissionMode(flag === 'bypassPermissions' ? 'yolo' : flag);
+}
