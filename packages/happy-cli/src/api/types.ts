@@ -378,6 +378,11 @@ export const DaemonStateSchema = z.object({
     rpcAvailable: z.boolean(),
     detectedAt: z.number(),
   }).optional(),
+  /** B-877b capability flag: this daemon answers `team-exit-session` (same trust rule). */
+  teamExit: z.object({
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
   /**
    * B-273 capability flag: this daemon answers `list-tmux-sessions` and
    * honours `open-terminal.attachTmux`. Same trust rule (`detectedAt >=
@@ -747,7 +752,7 @@ export type Metadata = {
    * --fork --prompt` waits for it before sending, so the prompt cannot get a
    * seq inside the replay. Absent on non-fork sessions and old wrappers.
    */
-  forkBackfill?: { done: true; count: number; failed?: boolean; completedAt: number }
+  forkBackfill?: { done: true; count: number; failed?: boolean; completedAt: number } | { done: false; total: number; sent: number }
   /**
    * B-544: the newest in-place rewind (conversation-rewind with a requestId).
    * `pending` until the web's transcript-drop tombstone with the same

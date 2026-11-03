@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createAutoRestart, type AutoRestartDeps, type AutoRestartTracked } from './autoRestart';
-import { AUTO_RESTART_BACKOFF_MS, AUTO_RESTART_MIN_GAP_MS, AUTO_RESTART_QUIET_MS } from '@/update/autoRestartPolicy';
+import { AUTO_RESTART_BACKOFF_MS, AUTO_RESTART_MIN_GAP_MS, AUTO_RESTART_QUIET_MS, LEGACY_CHECK_IN_GRACE_MS } from '@/update/autoRestartPolicy';
 import type { WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
 
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve)).then(() => new Promise<void>((resolve) => setImmediate(resolve)));
@@ -142,6 +142,52 @@ describe('B-852 createAutoRestart', () => {
         live.team = { ...live.team, wrapperVersion: '0.2.190' };
         scheduler.sweep();
         expect(Object.keys(scheduler.statuses()).sort()).toEqual(['a', 'b']);
+    });
+
+    // B-882 (dev-sg pids 3057331 / 3509601): 0.2.187 wrappers spawned with an
+    // origin refuse locally as `spawn-origin` and never POST, while the
+    // recovered daemon tracking lost that origin and waited for them forever.
+    it('sweep: a legacy wrapper that never checks in is handed to the user after the grace; a v1 one keeps waiting', () => {
+        const { scheduler, advance } = setup({}, {
+            v1: { live: true, wrapperVersion: '0.2.188', flavor: 'claude', capabilities: ['agent-hibernation-v1', 'auto-restart-v1'] },
+        });
+        scheduler.sweep();
+        advance(LEGACY_CHECK_IN_GRACE_MS - 1);
+        scheduler.sweep();
+        expect(scheduler.statuses().a).toMatchObject({ state: 'waiting', reason: 'awaiting-check-in' });
+        advance(1);
+        scheduler.sweep();
+        expect(scheduler.statuses().a).toMatchObject({ state: 'manual', reason: 'no-check-in', target: '0.2.190' });
+        expect(scheduler.statuses().v1).toMatchObject({ state: 'waiting', reason: 'awaiting-check-in' });
+    });
+
+    it('sweep: a legacy wrapper that checked in is judged on its check-in, never by the grace', async () => {
+        const { scheduler, advance, report } = setup({ turnActive: () => true });
+        scheduler.sweep();
+        await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report() });
+        advance(LEGACY_CHECK_IN_GRACE_MS);
+        scheduler.sweep();
+        expect(scheduler.statuses().a).toMatchObject({ state: 'waiting', reason: 'turn-active' });
+    });
+
+    it('sweep: a no-check-in wrapper that checks in later is still restarted when idle', async () => {
+        const { scheduler, advance, report, restart } = setup();
+        scheduler.sweep();
+        advance(LEGACY_CHECK_IN_GRACE_MS);
+        scheduler.sweep();
+        expect(scheduler.statuses().a).toMatchObject({ state: 'manual', reason: 'no-check-in' });
+        expect((await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report() })).restarting).toBe(true);
+        await flush();
+        expect(restart).toHaveBeenCalledWith('a', expect.objectContaining({ target: '0.2.190' }));
+    });
+
+    it('sweep: an origin learned after the first sweep (wrapper echo) turns awaiting-check-in into manual at once', () => {
+        const { scheduler, live } = setup();
+        scheduler.sweep();
+        expect(scheduler.statuses().a).toMatchObject({ state: 'waiting', reason: 'awaiting-check-in' });
+        live.a = { ...live.a, spawnedBy: 'artifact-rules' };
+        scheduler.sweep();
+        expect(scheduler.statuses().a).toMatchObject({ state: 'manual', reason: 'no-report' });
     });
 
     it('switch off → no restart and nothing published as waiting', async () => {

@@ -68,6 +68,13 @@ export const en = {
         archive: "Archive team",
         archived: "This team is archived and read-only",
         archiveDescription: "Archiving cancels unfinished tasks and schedules and stops team-managed sessions. Attached sessions, working directories and history are retained. Offline machines finish cleanup when they reconnect.",
+        exitTeamMode: "Exit team mode",
+        exitTeamModeDescription: "The lead goes on as an ordinary session with its history. The team is archived: unfinished tasks and schedules are cancelled and member sessions stop; working directories are kept. The lead gets no more team messages or team instructions. This cannot be undone: an archived team cannot be reopened and its members do not start again. To work as a team again, start a new team.",
+        exitTeamModeDone: "Left team mode. The lead session restarted as an ordinary session.",
+        exitTeamModeDoneNoRestart: "Left team mode. This session is now an ordinary session.",
+        exitTeamModeLeadStopped: "The team is archived, but this server stopped the lead session. Resume it to continue as an ordinary session.",
+        exitTeamModeOffline: "The lead's computer is offline. Exit team mode once it is back online.",
+        exitTeamModeOldCli: "The lead's computer runs an older Very Happy CLI. Update it, then try again.",
         activeTasks: "Complete or cancel the remaining tasks first.",
         unresolvedOperations: "Resolve the outstanding execution operations first.",
         cleanupUnfinished: "Resource cleanup is still unfinished.",
@@ -782,6 +789,9 @@ export const en = {
             loadOlder: 'Load older messages',
             loadingOlder: 'Loading older messages…',
             loadingMessages: 'Loading messages…',
+            importingTitle: 'Importing conversation history…',
+            importingHint: 'The newest messages open here once the upload finishes.',
+            importingCount: ({ sent, total, percent }: { sent: string; total: string; percent: number }) => `${sent} / ${total} messages · ${percent}%`,
             emptyTitle: 'No messages yet',
             emptyDescription: 'Send a message to start the conversation.',
             jumpToLatest: 'Jump to latest',
@@ -6463,6 +6473,10 @@ export const en = {
             `Still on v${sessionVersion} (the machine has v${machineVersion}). It runs in your terminal, so it is not updated automatically — restart it to update; the conversation is kept.`,
         manualLocalTerminalAgent: ({ agent }: { agent: string }) =>
             `Still on the ${agent} it started with. It runs in your terminal, so it is not updated automatically — restart it to update; the conversation is kept.`,
+        manualNoReport: ({ sessionVersion, machineVersion }: { sessionVersion: string; machineVersion: string }) =>
+            `Still on v${sessionVersion} (the machine has v${machineVersion}). This older session does not report when it is idle, so it is not updated automatically — restart it to update; the conversation is kept.`,
+        manualNoReportAgent: ({ agent }: { agent: string }) =>
+            `Still on the ${agent} it started with. This older session does not report when it is idle, so it is not updated automatically — restart it to update; the conversation is kept.`,
         offlineFailed: ({ reason }: { reason: string }) => `Automatic update failed (${reason}) and the session is offline. Restore it to continue — the conversation is kept.`,
         offlineFailedRetry: ({ reason, time }: { reason: string; time: string }) =>
             `Automatic update failed (${reason}) and the session is offline. It will try once more around ${time}, or restore it now — the conversation is kept.`,

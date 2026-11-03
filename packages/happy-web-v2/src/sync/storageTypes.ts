@@ -135,16 +135,20 @@ export const MetadataSchema = z.object({
     forkedFromMessageId: z.string().optional(),
     /**
      * B-531: the fork's wrapper writes this once the server accepted its
-     * replayed history; `very-happy spawn --fork --prompt` waits for it. The
-     * web never reads it — it is declared only so a web metadata write (rename,
-     * priority) does not strip it while a CLI is still waiting. Lenient on
-     * purpose: a shape mismatch must not fail the whole metadata parse.
+     * replayed history; `very-happy spawn --fork --prompt` waits for it.
+     * Declared so a web metadata write (rename, priority) does not strip it
+     * while a CLI is still waiting. B-880: `done: false` + `total` / `sent`
+     * while the replay uploads — the web parks the session meanwhile
+     * (importBackfill.ts). Lenient on purpose: a shape mismatch must not fail
+     * the whole metadata parse.
      */
     forkBackfill: z.object({
         done: z.boolean().optional(),
         count: z.number().optional(),
         failed: z.boolean().optional(),
         completedAt: z.number().optional(),
+        total: z.number().optional(),
+        sent: z.number().optional(),
     }).passthrough().optional().catch(undefined),
     /**
      * B-544: the wrapper's newest in-place rewind. Written by the wrapper

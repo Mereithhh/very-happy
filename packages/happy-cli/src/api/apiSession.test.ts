@@ -474,6 +474,36 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect((client as any).lastSeq).toBe(3);
     });
 
+    it('B-880: a replayed history uploads as backfill batches, live messages after it as their own', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        let seq = 0;
+        mockAxiosPost.mockImplementation(async (_url: string, body: { messages: Array<{ localId: string }> }) => ({
+            data: { messages: body.messages.map((m) => ({ id: `id-${++seq}`, seq, localId: m.localId, createdAt: seq, updatedAt: seq })) },
+        }));
+
+        const total = client.replayHistory(() => {
+            for (let i = 0; i < 150; i++) client.sendCodexMessage({ type: 'history', i });
+            return 150;
+        });
+        expect(total).toBe(150);
+        expect(client.pendingBackfillCount()).toBe(150);
+        client.sendCodexMessage({ type: 'live' });
+        expect(client.pendingBackfillCount()).toBe(150);
+
+        await expect(client.drainOutbox()).resolves.toBe(true);
+        const calls = mockAxiosPost.mock.calls.map(([, body, config]) => ({
+            count: body.messages.length,
+            origin: config.headers['X-Happy-Message-Origin'],
+            backfillFieldSent: body.messages.some((m: Record<string, unknown>) => 'backfill' in m),
+        }));
+        expect(calls).toEqual([
+            { count: 100, origin: 'backfill', backfillFieldSent: false },
+            { count: 50, origin: 'backfill', backfillFieldSent: false },
+            { count: 1, origin: undefined, backfillFieldSent: false },
+        ]);
+        expect(client.pendingBackfillCount()).toBe(0);
+    });
+
     it('retries failed POST and succeeds without dropping queued messages', async () => {
         const client = new ApiSessionClient('fake-token', session);
 

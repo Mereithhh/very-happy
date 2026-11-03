@@ -212,6 +212,32 @@ describe('team coordination invariants', () => {
         expect(f.state.bots[0].sessionId).toBe('user-session');
     });
 
+    // B-877: 「退出团队模式」 = archive, except that the lead's own session keeps running.
+    it('archive with keepLeadSession stops members but never the managed lead', () => {
+        const run = (keepLeadSession: boolean) => {
+            const f = fixture();
+            f.act({ type: 'start', launch: { goal: '目标', directory: '/repo', assistant: 'claude' } });
+            const spawned = (sessionId: string) => {
+                const op = f.state.operations.at(-1)!;
+                f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: op.id, machineId: 'machine' });
+                f.act({ type: 'complete-operation', operationId: op.id, machineId: 'machine', claimId: f.state.operations.find(o => o.id === op.id)!.claimId!, sessionId });
+            };
+            spawned('lead-session');
+            const lead = f.state.bots.find(b => b.root)!;
+            f.act({ type: 'delegate', goal: 'member work', acceptance: ['a'], parentTaskId: f.state.tasks[0].id }, { kind: 'agent', botId: lead.id, generation: lead.generation });
+            spawned('member-session');
+            f.act(keepLeadSession ? { type: 'archive', keepLeadSession: true } : { type: 'archive' });
+            return f.state;
+        };
+        const kept = run(true);
+        expect(kept.archivedAt).toBe(1000);
+        expect(kept.tasks.every(t => t.status === 'cancelled')).toBe(true);
+        expect(kept.operations.filter(o => o.type === 'stop').map(o => o.sessionId)).toEqual(['member-session']);
+        expect(kept.bots.find(b => b.root)?.sessionId).toBe('lead-session');
+        // Control: a plain archive still stops the lead too.
+        expect(run(false).operations.filter(o => o.type === 'stop').map(o => o.sessionId).sort()).toEqual(['lead-session', 'member-session']);
+    });
+
     it('cancels queued launches and deduplicates stops when archiving', () => {
         const f = fixture(); f.act({type:'delegate', goal:'g', acceptance:['a']});
         f.act({type:'archive'});

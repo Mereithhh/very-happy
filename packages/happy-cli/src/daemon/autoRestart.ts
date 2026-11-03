@@ -14,6 +14,7 @@ import {
     decideAutoRestart,
     recordAttempt,
     statusFromVerdict,
+    uncheckedWrapperStatus,
     wrapperReportsIdle,
     wrapperStaleness,
     type AttemptRecord,
@@ -40,6 +41,8 @@ export interface AutoRestartDeps {
     enabled: () => boolean;
     /** Condition 6 threshold (tests shorten it via HAPPY_AUTO_RESTART_QUIET_MS). */
     quietMs?: number;
+    /** B-882: legacy check-in grace (tests shorten it via HAPPY_AUTO_RESTART_CHECK_IN_GRACE_MS). */
+    checkInGraceMs?: number;
     daemonVersion: string;
     /** Installed agent binary version for this flavor (Codex), from the daemon's agentVersions snapshot. */
     installedAgentVersion: (flavor: string) => string | null;
@@ -96,6 +99,8 @@ export function createAutoRestart(deps: AutoRestartDeps) {
      * until the session is back online (spec §3 "offline failure").
      */
     const offline = new Map<string, Staleness>();
+    /** B-882: when this run started waiting for a wrapper's first check-in. */
+    const awaitingSince = new Map<string, number>();
     const schedule = deps.schedule ?? ((fn: () => void, ms: number) => { setTimeout(fn, ms).unref?.(); });
     let inFlight = 0;
     let lastStartedAt: number | null = null;
@@ -122,6 +127,7 @@ export function createAutoRestart(deps: AutoRestartDeps) {
         statuses.delete(sessionId);
         behindSince.delete(sessionId);
         offline.delete(sessionId);
+        awaitingSince.delete(sessionId);
     }
 
     function isLive(sessionId: string): boolean {
@@ -334,17 +340,31 @@ export function createAutoRestart(deps: AutoRestartDeps) {
                 }
                 continue;
             }
-            if (previous && previous.target === staleness.target) continue;
-            const reports = wrapperReportsIdle({
-                flavor: session.flavor,
+            // B-882: a wrapper still awaiting its first check-in is looked at
+            // again every sweep — its origin may have been learned since, or
+            // its silence outlasted the legacy grace.
+            const awaiting = previous?.target === staleness.target && previous.state === 'waiting' && previous.reason === 'awaiting-check-in';
+            if (previous && previous.target === staleness.target && !awaiting) continue;
+            if (!awaiting) awaitingSince.set(session.sessionId, t);
+            const next = uncheckedWrapperStatus({
+                reportsIdle: wrapperReportsIdle({
+                    flavor: session.flavor,
+                    capabilities: session.capabilities,
+                    spawnedBy: session.spawnedBy,
+                    tags: session.tags,
+                    variant: session.variant,
+                }),
                 capabilities: session.capabilities,
-                spawnedBy: session.spawnedBy,
-                tags: session.tags,
-                variant: session.variant,
+                awaitingSince: awaitingSince.get(session.sessionId) ?? null,
+                now: t,
+                ...(deps.checkInGraceMs !== undefined ? { graceMs: deps.checkInGraceMs } : {}),
             });
-            setStatus(session.sessionId, reports
-                ? { state: 'waiting', reason: 'awaiting-check-in', since: t, target: staleness.target }
-                : { state: 'manual', reason: 'no-report', since: t, target: staleness.target });
+            if (awaiting && next.state === 'waiting') continue;
+            if (next.state === 'manual') {
+                awaitingSince.delete(session.sessionId);
+                if (next.reason === 'no-check-in') deps.log?.(`[auto-restart] ${session.sessionId}: wrapper ${session.wrapperVersion ?? '?'} never checked in; left to the user`);
+            }
+            setStatus(session.sessionId, { ...next, since: t, target: staleness.target });
         }
         for (const id of new Set([...statuses.keys(), ...behindSince.keys()])) {
             if (seen.has(id) || statuses.get(id)?.state === 'restarting') continue;
@@ -364,6 +384,7 @@ export function createAutoRestart(deps: AutoRestartDeps) {
             const state = statuses.get(sessionId)?.state;
             if (state === 'restarting' || offline.has(sessionId)) return;
             behindSince.delete(sessionId);
+            awaitingSince.delete(sessionId);
             if (statuses.delete(sessionId)) publish();
         },
         statuses(): Record<string, AutoRestartSessionStatus> {

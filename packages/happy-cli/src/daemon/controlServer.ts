@@ -98,6 +98,7 @@ export function startDaemonControlServer({
   spawnSession,
   resumeSession,
   restartSession,
+  exitTeamMode,
   requestShutdown,
   onHappySessionWebhook,
   onSessionStateEvent,
@@ -131,6 +132,8 @@ export function startDaemonControlServer({
   /** B-850a: the daemon's own view of its accounts (`very-happy account list`: env-sourced keys are judged in the daemon's environment, not the caller's shell). */
   getAgentProfiles?: () => AgentProfilesState | null;
   /** B-794: stop + relaunch a live session in place (the `restart-session` machine RPC's local twin). */
+  /** B-877: 「退出团队模式」 for a team lead session (`very-happy teams exit`). */
+  exitTeamMode?: (sessionId: string) => Promise<{ teamId: string; managed: boolean; leadStopped: boolean; restarted: boolean; alreadyExited?: true }>;
   restartSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; account?: true }) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata, encryption?: SessionEncryptionData) => void;
@@ -564,6 +567,28 @@ export function startDaemonControlServer({
         case 'error':
           reply.code(500);
           return { success: false, error: result.errorMessage };
+      }
+    });
+
+    typed.post('/team-exit-session', {
+      schema: {
+        body: z.object({ sessionId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/) }),
+        response: {
+          200: z.object({ success: z.boolean(), teamId: z.string().optional(), managed: z.boolean().optional(), leadStopped: z.boolean().optional(), restarted: z.boolean().optional(), alreadyExited: z.boolean().optional(), error: z.string().optional() }),
+          500: z.object({ success: z.boolean(), error: z.string().optional() }),
+          503: z.object({ success: z.boolean(), error: z.string().optional() }),
+        }
+      }
+    }, async (request, reply) => {
+      if (!exitTeamMode) {
+        reply.code(503);
+        return { success: false, error: 'daemon is still starting up' };
+      }
+      try {
+        return { success: true, ...await exitTeamMode(request.body.sessionId) };
+      } catch (error) {
+        reply.code(500);
+        return { success: false, error: error instanceof Error ? error.message : 'Exit team mode failed' };
       }
     });
 

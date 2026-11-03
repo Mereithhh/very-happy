@@ -8,6 +8,7 @@ import { stripEditedDrafts } from '@/sync/editableDrafts';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import { ChevronDown, Trash2 } from 'lucide-react';
 import { useSession, useSessionMessages } from '@/sync/storage';
+import { importUploadProgress } from '@/sync/importBackfill';
 import { sync } from '@/sync/sync';
 import { sessionCancelQueuedMessage } from '@/sync/ops';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -82,6 +83,7 @@ export function ChatList({
     const { t } = useTranslation();
     const toast = useToast();
     const session = useSession(sessionId);
+    const importing = importUploadProgress(session);
     const { messages, isLoaded, hasMoreOlder, isLoadingOlder } = useSessionMessages(sessionId);
     const scrollRef = useRef<HTMLDivElement>(null);
     const innerRef = useRef<HTMLDivElement>(null);
@@ -717,6 +719,27 @@ export function ChatList({
     useEffect(() => {
         if (!sessionLive) endLiveStreamTurn(sessionId);
     }, [sessionLive, sessionId]);
+
+    // B-880: an import still uploading shows its progress, not a replay growing from the oldest message.
+    if (importing) {
+        const percent = importing.total > 0 ? Math.floor((importing.sent / importing.total) * 100) : 0;
+        return (
+            <div className="cl cl--loading cl--importing" data-import-progress={`${importing.sent}/${importing.total}`}>
+                <div className="cl-scroll">
+                    <div className="cl-inner cl-import" aria-live="polite">
+                        <OrbitLoader size="compact" label={t('session.chat.importingTitle')} />
+                        <p className="cl-import-hint">{t('session.chat.importingHint')}</p>
+                        {importing.total > 0 && (
+                            <div className="cl-import-progress">
+                                <progress aria-label={t('session.chat.importingTitle')} max={importing.total} value={importing.sent} />
+                                <span className="mono">{t('session.chat.importingCount', { sent: importing.sent.toLocaleString(), total: importing.total.toLocaleString(), percent })}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (isLoaded && messages.length === 0) {
         return (

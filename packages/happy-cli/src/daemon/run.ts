@@ -8,6 +8,7 @@ import * as tmp from 'tmp';
 import axios from 'axios';
 import { issueRelaunchEnv } from '@/issues/sessionMetadata';
 import { teamRelaunchEnv } from './teams/relaunchScope';
+import { exitTeamMode } from './teams/exitTeamMode';
 
 import { ApiClient } from '@/api/api';
 import type { ApiMachineClient } from '@/api/apiMachine';
@@ -84,7 +85,7 @@ import { TurnActivityTracker } from '@/update/turnActivity';
 import { createDaemonHibernation, collectAutomationBindings, waitForPidsToExit, waitForSessionLive } from '@/hibernation/daemonHibernation';
 import { resolveCheckMs, resolveIdleMs, settingIdleMs } from '@/hibernation/hibernationPolicy';
 import { createAutoRestart } from './autoRestart';
-import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, pendingUpgradeVersion, resolveQuietMs, type StaleKind } from '@/update/autoRestartPolicy';
+import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, pendingUpgradeVersion, resolveCheckInGraceMs, resolveQuietMs, type StaleKind } from '@/update/autoRestartPolicy';
 import { compareExactVersions } from '@/update/cliUpdate';
 import { createAutomationsClient, isAutomationsUnavailable } from '@/automations/client';
 import { BackgroundTaskTracker } from '@/update/backgroundTaskActivity';
@@ -1290,6 +1291,7 @@ export async function startDaemon(): Promise<void> {
       sessionId: happySessionId,
       metadata,
       recover: teamWorker ? (operationId, scopeFile) => teamWorker!.recoverScope(operationId, happySessionId, scopeFile) : undefined,
+      team: async (teamId) => (await axios.get(`${configuration.serverUrl}/v1/teams/${encodeURIComponent(teamId)}`, { timeout: 5_000, headers: { Authorization: `Bearer ${credentials.token}` } })).data.team,
       log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
     });
     const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }): Promise<SpawnSessionResult> => {
@@ -1498,6 +1500,19 @@ export async function startDaemon(): Promise<void> {
         if (!requested) done();
         setTimeout(done, timeoutMs).unref?.();
       })));
+    };
+
+    // B-877: 「退出团队模式」 (daemon/teams/exitTeamMode.ts). The team is archived without stopping
+    // this lead; a Teams-spawned wrapper then restarts in place (history kept) without its team env.
+    const exitTeamModeForSession = async (happySessionId: string) => {
+      const metadata = findTrackedSessionById(happySessionId)?.happySessionMetadataFromLocalWebhook ?? readPersistedSessions()[happySessionId]?.metadata;
+      const http = axios.create({ baseURL: configuration.serverUrl, timeout: 20_000, headers: { Authorization: `Bearer ${credentials.token}` } });
+      const result = await exitTeamMode({ home: configuration.happyHomeDir, sessionId: happySessionId, metadata, http });
+      const live = [...pidToTrackedSession.values()].some((s) => s.happySessionId === happySessionId && isPidAlive(s.pid));
+      if (!result.managed || !live || result.leadStopped || result.alreadyExited) return { ...result, restarted: false };
+      const restart = await restartSession(happySessionId, { keepPublishedPermissionMode: true });
+      if (restart.type !== 'success') throw new Error(`Team archived, but the session did not restart: ${restart.type === 'error' ? restart.errorMessage : restart.type}`);
+      return { ...result, restarted: true };
     };
 
     const restartSession = async (happySessionId: string, options?: RestartSessionOptions): Promise<SpawnSessionResult> => {
@@ -1710,7 +1725,12 @@ export async function startDaemon(): Promise<void> {
     // pure in assistantReport.ts; failures only ever debug-log.
     const assistantReportLastSentAt = new Map<string, number>();
     const isPidAlive = (pid: number): boolean => isProcessAlive(pid);
+    // B-882: the spawn origin a wrapper echoes on its state events. A daemon
+    // restart drops tracked.spawnedBy (not persisted), and an old wrapper with
+    // an origin never checks in — this lets auto-restart call it manual at once.
+    const echoedSpawnedBy = new Map<string, string>();
     const onSessionStateEvent = (sessionId: string, event: AssistantReportEvent, spawnedByFromSession?: string): void => {
+      if (spawnedByFromSession) echoedSpawnedBy.set(sessionId, spawnedByFromSession);
       // B-496: a run's session blocking on input is an attention signal for that run.
       if (automationRunner?.hasSession(sessionId)) automationRunner.report(sessionId, event === 'completed' ? 'idle' : 'blocked');
       if (spawnedByFromSession === 'teams' || teamWorker?.hasSession(sessionId) || [...pidToTrackedSession.values()].some(s => s.happySessionId === sessionId && s.spawnedBy === 'teams')) {
@@ -1781,7 +1801,7 @@ export async function startDaemon(): Promise<void> {
         wrapperVersion: metadata?.version ?? null,
         flavor: metadata?.flavor ?? 'claude',
         capabilities: metadata?.capabilities ?? null,
-        spawnedBy: tracked.spawnedBy ?? null,
+        spawnedBy: tracked.spawnedBy ?? (tracked.happySessionId ? echoedSpawnedBy.get(tracked.happySessionId) : undefined) ?? null,
         tags: metadata?.tags ?? null,
         variant: tracked.variant ?? (metadata as { variant?: string } | undefined)?.variant ?? null,
         // The wrapper's own word: tracked.startedBy turns into "persisted" /
@@ -1799,6 +1819,7 @@ export async function startDaemon(): Promise<void> {
     const autoRestartScheduler = createAutoRestart({
       enabled: () => autoRestartSetting,
       quietMs: resolveQuietMs(),
+      checkInGraceMs: resolveCheckInGraceMs(),
       daemonVersion: packageJson.version,
       installedAgentVersion: (flavor) => flavor === 'codex'
         ? latestAgentVersions?.agents.find((agent) => agent.id === 'codex')?.installed ?? null
@@ -1871,6 +1892,7 @@ export async function startDaemon(): Promise<void> {
       spawnSession,
       resumeSession, // B-501: `very-happy send --resume`
       restartSession, // B-794: `very-happy session provider`
+      exitTeamMode: exitTeamModeForSession, // B-877: `very-happy teams exit`
       getAgentProfiles: () => accountServiceRef?.state() ?? null, // B-850a: `very-happy account list`
       requestShutdown: () => requestShutdown('happy-cli'),
       onHappySessionWebhook,
@@ -2049,6 +2071,7 @@ export async function startDaemon(): Promise<void> {
     // B-506: answer `sessions.*` from the account's other machines with this
     // machine's keys (specs/2026-09-cross-machine-session-ops.md).
     apiMachine.setRemoteSessionOpsHandlers(createRemoteSessionOpsHandlers(machineId));
+    apiMachine.setTeamExitHandler(exitTeamModeForSession);
 
     // B-276: daemon-context Claude auth preflight (spec 2026-09-claude-auth-preflight).
     const claudeAuthService = new ClaudeAuthService({
