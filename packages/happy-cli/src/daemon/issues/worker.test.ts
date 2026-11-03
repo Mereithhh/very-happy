@@ -8,7 +8,7 @@ vi.mock('@/configuration', () => ({ configuration: { happyHomeDir: '', serverUrl
 vi.mock('@/persistence', () => ({ readPersistedSessions: mocks.persisted }));
 vi.mock('@/commands/sessionMessage', () => ({ sendUserMessage: vi.fn(), waitForSessionKey: vi.fn() }));
 import { IssueRequestError, IssuesUnsupportedError } from '@/issues/client';
-import { createIssueWorker, issueAccountRefusal, issueExitEvent, issueKeyFromPrompt, issueSpawnAccount } from './worker';
+import { createIssueWorker, ISSUE_SPAWN_UNKNOWN_GRACE_MS, issueAccountRefusal, issueExitEvent, issueKeyFromPrompt, issueSpawnAccount } from './worker';
 import { readIssueReceipt, writeIssueReceipt } from './journal';
 
 let home: string;
@@ -81,14 +81,23 @@ describe('daemon issue worker (spec §3.2 / §11)', () => {
         expect(client.fail).toHaveBeenCalledWith('d1', expect.objectContaining({ claimId: 'claim-d1', error: expect.stringMatching(/^Account unavailable \(expired\)/) }));
         expect((client.fail.mock.calls[0] as any[])[1].unknown).toBeUndefined();
     });
-    it('a re-claimed dispatch whose spawn had begun never spawns again: recovered by run id, else unknown', async () => {
+    it('a re-claimed dispatch whose spawn had begun never spawns again: recovered by run id, else held then failed (never unknown)', async () => {
         writeIssueReceipt(home, { dispatchId: 'd1', kind: 'spawn', runId: 'r1', issueId: 'i1', claimId: 'old', phase: 'spawning', updatedAt: Date.now() });
+        let t = 1_000;
         const client = fakeClient([spawnDispatch()]);
-        const { worker, spawn } = start(client);
+        const { worker, spawn } = start(client, { now: () => t });
         await worker.tick();
         expect(spawn).not.toHaveBeenCalled();
-        expect(client.fail).toHaveBeenCalledWith('d1', expect.objectContaining({ claimId: 'claim-d1', unknown: true }));
+        expect(client.fail).not.toHaveBeenCalled();
+        client.poll.mockResolvedValue({ dispatches: [] }); // claimed now: no longer polled
+        t += ISSUE_SPAWN_UNKNOWN_GRACE_MS;
+        await worker.tick();
+        expect(spawn).not.toHaveBeenCalled();
+        expect(client.fail).toHaveBeenCalledTimes(1);
+        expect((client.fail.mock.calls[0] as any[])[1]).toEqual({ machineId: 'm1', claimId: 'claim-d1', error: expect.stringMatching(/^Session did not start within 60 s \(the spawn was interrupted by a daemon restart\)/) });
+        expect(readIssueReceipt(home, 'd1')).toMatchObject({ phase: 'failed' });
 
+        writeIssueReceipt(home, { dispatchId: 'd1', kind: 'spawn', runId: 'r1', issueId: 'i1', claimId: 'old', phase: 'spawning', updatedAt: Date.now() });
         mocks.persisted.mockReturnValue({ s9: { metadata: { issue: { id: 'i1', runId: 'r1' } } } } as any);
         const again = fakeClient([spawnDispatch()]);
         const second = start(again);
@@ -96,16 +105,65 @@ describe('daemon issue worker (spec §3.2 / §11)', () => {
         expect(second.spawn).not.toHaveBeenCalled();
         expect(again.complete).toHaveBeenCalledWith('d1', { machineId: 'm1', claimId: 'claim-d1', sessionId: 's9' });
     });
-    it('a spawn whose wrapper exited is a definite failure; an unconfirmed error is unknown', async () => {
+    it('B-874c: a spawn refused before any process existed (directory not creatable) or whose wrapper exited fails the run with the reason', async () => {
+        const mkdirError = "Unable to create directory at '/nonexistent/x'. Permission denied. You don't have write access to create a folder at this location.";
         const client = fakeClient([spawnDispatch()]);
-        const { worker } = start(client, { spawn: vi.fn(async () => ({ type: 'error' as const, errorMessage: 'boom', startupExit: { exited: true } as any })) });
+        const { worker } = start(client, { spawn: vi.fn(async () => ({ type: 'error' as const, errorMessage: mkdirError, notStarted: true as const })) });
         await worker.tick();
-        expect((client.fail.mock.calls[0] as any[])[1]).toMatchObject({ error: expect.stringContaining('boom') });
-        expect((client.fail.mock.calls[0] as any[])[1].unknown).toBeUndefined();
+        expect(client.fail).toHaveBeenCalledTimes(1);
+        expect((client.fail.mock.calls[0] as any[])[1]).toEqual({ machineId: 'm1', claimId: 'claim-d1', error: `Session failed to start: ${mkdirError}` });
+        expect(readIssueReceipt(home, 'd1')).toMatchObject({ phase: 'failed' });
+
         const c2 = fakeClient([spawnDispatch({ id: 'd3' })]);
-        const w2 = start(c2, { spawn: vi.fn(async () => ({ type: 'error' as const, errorMessage: 'webhook timeout' })) });
+        const w2 = start(c2, { spawn: vi.fn(async () => ({ type: 'error' as const, errorMessage: 'boom', startupExit: { exited: true } as any })) });
         await w2.worker.tick();
-        expect((c2.fail.mock.calls[0] as any[])[1]).toMatchObject({ unknown: true });
+        expect((c2.fail.mock.calls[0] as any[])[1]).toEqual({ machineId: 'm1', claimId: 'claim-d3', error: 'Session failed to start: boom' });
+    });
+    it('B-874c: an unconfirmed spawn holds its claim, recovers a late session, else fails after the grace (never stuck claimed)', async () => {
+        let t = 0;
+        const timeout = vi.fn(async () => ({ type: 'error' as const, errorMessage: 'Session webhook timeout for PID 42' }));
+        const late = fakeClient([spawnDispatch()]);
+        const w1 = start(late, { spawn: timeout, now: () => t });
+        await w1.worker.tick();
+        expect(late.fail).not.toHaveBeenCalled();
+        late.poll.mockResolvedValue({ dispatches: [] });
+        // The wrapper comes up late: its persisted metadata names the run.
+        mocks.persisted.mockReturnValue({ s5: { metadata: { issue: { id: 'i1', runId: 'r1' } } } } as any);
+        t += 5_000;
+        await w1.worker.tick();
+        expect(late.fail).not.toHaveBeenCalled();
+        expect(w1.order).toEqual(['join', 'send:s5:issue-d1', 'complete']);
+        expect(w1.worker.hasSession('s5')).toBe(true);
+        expect(timeout).toHaveBeenCalledTimes(1);
+
+        mocks.persisted.mockReturnValue({});
+        const never = fakeClient([spawnDispatch({ id: 'd7', runId: 'r7' })]);
+        const timeout2 = vi.fn(async () => ({ type: 'error' as const, errorMessage: 'Session webhook timeout for PID 43' }));
+        const w2 = start(never, { spawn: timeout2, now: () => t });
+        await w2.worker.tick();
+        never.poll.mockResolvedValue({ dispatches: [] });
+        t += ISSUE_SPAWN_UNKNOWN_GRACE_MS - 1;
+        await w2.worker.tick();
+        expect(never.fail).not.toHaveBeenCalled();
+        t += 1;
+        await w2.worker.tick();
+        expect(never.fail).toHaveBeenCalledTimes(1);
+        expect((never.fail.mock.calls[0] as any[])[1]).toEqual({ machineId: 'm1', claimId: 'claim-d7', error: expect.stringContaining('Session did not start within 60 s (Session webhook timeout for PID 43)') });
+        await w2.worker.tick();
+        expect(never.fail).toHaveBeenCalledTimes(1);
+        expect(timeout2).toHaveBeenCalledTimes(1);
+    });
+    it('B-874c: a held spawn whose claim is gone is dropped (the next claim decides)', async () => {
+        let t = 0;
+        const client = fakeClient([spawnDispatch()]);
+        const { worker } = start(client, { spawn: vi.fn(async () => ({ type: 'error' as const, errorMessage: 'webhook timeout' })), now: () => t });
+        await worker.tick();
+        client.poll.mockResolvedValue({ dispatches: [] });
+        client.fail.mockRejectedValue(new IssueRequestError(409, 'issue_dispatch_claim_mismatch', {}));
+        t += ISSUE_SPAWN_UNKNOWN_GRACE_MS;
+        await worker.tick();
+        await worker.tick();
+        expect(client.fail).toHaveBeenCalledTimes(1);
     });
     it('message: queued into a live session (no steer, no model meta), else failed so the server starts a new run', async () => {
         const client = fakeClient([messageDispatch()]);

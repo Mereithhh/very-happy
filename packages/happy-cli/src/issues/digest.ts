@@ -2,6 +2,11 @@ import type { IssueCommentView, IssueView } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
 import { prependToMessage } from '@/projects/prompt';
 import { IssuesUnsupportedError, sharedIssuesClient, type IssuesClient } from './client';
+import { readSessionIssueMetadata } from './sessionMetadata';
+import { configuration } from '@/configuration';
+import { join } from 'node:path';
+import { readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secureFiles';
 
 /**
  * B-874 next-turn issue digest (spec §5, third layer). Before a turn that is
@@ -33,32 +38,84 @@ export function buildIssueDigestLine(issue: Pick<IssueView, 'key' | 'status'>, e
 
 export type IssueDigestDeps = {
     sessionId: () => string | null | undefined;
-    /** Only sessions the issue worker started carry VH_ISSUE_ID; others never call the server. */
+    /** Session metadata (server copy after a reconnect): `metadata.issue` marks an issue session. */
+    metadata?: () => unknown;
+    /** Only issue sessions call the server; default = VH_ISSUE_ID in env or `metadata.issue`. */
     enabled?: () => boolean;
     client?: IssuesClient;
     timeoutMs?: number;
+    /** Cursor store that outlives the wrapper (relaunch); default = a file per session under HAPPY_HOME_DIR. */
+    cursorStore?: IssueDigestCursorStore | null;
 };
+
+export type IssueDigestCursorStore = {
+    read(sessionId: string): number | null;
+    write(sessionId: string, asOf: number): void;
+};
+
+const SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
+/** Cursor files untouched this long are pruned (the session is long gone). */
+export const ISSUE_DIGEST_CURSOR_TTL_MS = 30 * 24 * 3600_000;
+
+/**
+ * B-874c: the digest cursor (server `asOf`, so no clock skew) in
+ * `<home>/issues/digest/<sessionId>.json`. A relaunched wrapper (auto-restart,
+ * Restart, account switch, crash restart, wake) continues from the last turn
+ * of the previous one instead of silently skipping the changes in between.
+ */
+export function fileIssueDigestCursorStore(home: string, now = Date.now): IssueDigestCursorStore {
+    const dir = join(home, 'issues', 'digest');
+    let pruned = false;
+    return {
+        read(sessionId) {
+            if (!SESSION_ID.test(sessionId)) return null;
+            try {
+                const asOf = (JSON.parse(readFileSync(join(dir, `${sessionId}.json`), 'utf8')) as { asOf?: unknown }).asOf;
+                return typeof asOf === 'number' && Number.isFinite(asOf) ? asOf : null;
+            } catch { return null; }
+        },
+        write(sessionId, asOf) {
+            if (!SESSION_ID.test(sessionId)) return;
+            try {
+                ensurePrivateDirectorySync(dir);
+                writePrivateFileSync(join(dir, `${sessionId}.json`), JSON.stringify({ asOf }));
+                if (!pruned) {
+                    pruned = true;
+                    for (const file of readdirSync(dir)) {
+                        const path = join(dir, file);
+                        try { if (now() - statSync(path).mtimeMs > ISSUE_DIGEST_CURSOR_TTL_MS) unlinkSync(path); } catch { /* raced */ }
+                    }
+                }
+            } catch (error) { logger.debug(`[issues] digest cursor not saved: ${String(error)}`); }
+        },
+    };
+}
 
 export function createIssueDigest(deps: IssueDigestDeps) {
     const client = deps.client ?? sharedIssuesClient();
-    const enabled = deps.enabled ?? (() => !!process.env.VH_ISSUE_ID);
+    // B-874c (QA43 P1-1): a relaunched wrapper may lack VH_ISSUE_* — metadata.issue (server-owned, kept across reconnects) still marks it.
+    const enabled = deps.enabled ?? (() => !!process.env.VH_ISSUE_ID || readSessionIssueMetadata(deps.metadata?.()) !== null);
     const timeoutMs = deps.timeoutMs ?? 1500;
+    const store = deps.cursorStore === undefined ? fileIssueDigestCursorStore(configuration.happyHomeDir) : deps.cursorStore;
     let cursor: number | null = null;
+    let loadedFor: string | null = null;
+    const advance = (sid: string, asOf: number) => { cursor = asOf; store?.write(sid, asOf); };
     return {
         cursor: () => cursor,
         async decorate(message: string): Promise<string> {
             const sid = deps.sessionId();
             if (!sid || !enabled() || client.isDisabled()) return message;
+            if (loadedFor !== sid) { loadedFor = sid; cursor = store?.read(sid) ?? null; }
             try {
                 if (cursor === null) {
                     const ctx = await client.session(sid, undefined, timeoutMs);
                     // Not bound yet (the daemon completes the dispatch after this first message): try next turn.
-                    if (ctx.issue) cursor = ctx.asOf;
+                    if (ctx.issue) advance(sid, ctx.asOf);
                     return message;
                 }
                 const ctx = await client.session(sid, cursor, timeoutMs);
                 if (!ctx.issue) return message;
-                cursor = ctx.asOf;
+                advance(sid, ctx.asOf);
                 return prependToMessage(message, buildIssueDigestLine(ctx.issue, ctx.comments));
             } catch (error) {
                 if (!(error instanceof IssuesUnsupportedError)) logger.debug(`[issues] digest skipped: ${String(error)}`);

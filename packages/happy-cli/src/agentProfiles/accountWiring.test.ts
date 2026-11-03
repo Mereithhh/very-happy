@@ -73,7 +73,7 @@ describe('B-850a daemon', () => {
         const spawn = between(daemon, 'let spawnAccountId: string | null = null;', 'logger.debug(`[DAEMON RUN] Environment variable keys');
         expect(spawn).toContain("const accountAgent = (options.agent ?? 'claude') === 'claude' ? 'claude' : options.agent === 'codex' ? 'codex' : null;\n        if (accountAgent && accountServiceRef) {");
         expect(spawn).toContain('spawnAccountId = accountServiceRef.resolveSpawnAccount(accountAgent, requested);');
-        expect(spawn).toContain("return { type: 'error', errorMessage: error instanceof Error ? error.message : String(error) };");
+        expect(spawn).toContain("return { type: 'error', errorMessage: error instanceof Error ? error.message : String(error), notStarted: true };");
         expect(spawn).toContain('if (spawnAccountId) extraEnv[SPAWN_ACCOUNT_ENV] = spawnAccountId;');
         expect(spawn).toContain("if ((options.agent ?? 'claude') === 'claude' && claudeAuthStatus && !spawnAccountId) {");
     });

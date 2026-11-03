@@ -48,3 +48,25 @@ export function redactLogValue(
   }
   return result;
 }
+
+/** Subcommands whose positional/flag values carry issue or todo text (titles, comments, notes). */
+const TEXT_SUBCOMMANDS = new Set(['issue', 'issues', 'todo']);
+const SAFE_ARG = /^(?:[a-z][a-z-]{0,31}|[A-Z]+-\d{1,9}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{1,12})$/;
+
+/**
+ * B-874c (QA43 P2-4): the startup debug line logs argv; for `issue` / `todo`
+ * that is the user's issue text. Keep the command shape (action words, flag
+ * names, VH-N keys, ids, numbers) and drop every other value.
+ */
+export function redactCliArgv(argv: readonly string[]): string[] {
+  const sub = argv[2];
+  if (!sub || !TEXT_SUBCOMMANDS.has(sub)) return [...argv];
+  return argv.map((arg, i) => {
+    if (i < 3) return arg;
+    if (arg.startsWith('-')) {
+      const eq = arg.indexOf('=');
+      return eq === -1 ? arg : `${arg.slice(0, eq)}=[redacted]`;
+    }
+    return SAFE_ARG.test(arg) ? arg : '[redacted]';
+  });
+}

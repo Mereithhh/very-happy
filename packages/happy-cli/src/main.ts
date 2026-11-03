@@ -12,6 +12,7 @@
 
 
 import chalk from 'chalk'
+import { redactCliArgv } from '@/utils/logRedaction'
 import type { StartOptions } from '@/claude/runClaude'
 import { logger } from './ui/logger'
 import { readCredentialsForConfiguredRelay, readSettings, readDaemonState } from './persistence'
@@ -53,7 +54,7 @@ export async function main(): Promise<void> {
 
   // If --version is passed - do not log, its likely daemon inquiring about our version
   if (!args.includes('--version')) {
-    logger.debug('Starting happy CLI with args: ', process.argv)
+    logger.debug('Starting happy CLI with args: ', redactCliArgv(process.argv))
   }
   // B-689: a non-zero exit always leaves its reason in the session log.
   installExitReasonFallback()
