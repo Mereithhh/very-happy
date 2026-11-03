@@ -22,6 +22,11 @@ export const SessionShareInfoSchema = z.object({
     // absent on servers before B-867b. Plain string on purpose: an unknown future mode must not drop the row.
     modeCap: z.string().nullable().optional(),
     owner: z.object({ id: z.string(), displayName: z.string() }),
+    // B-878 PR-B: how the row is reachable — 'project' rows live under their shared project and are left as a project.
+    // Plain strings: an unknown future value must not drop the row.
+    via: z.string().optional(),
+    projectId: z.string().optional(),
+    projectGrantId: z.string().optional(),
 });
 export type SessionShareInfo = z.infer<typeof SessionShareInfoSchema>;
 

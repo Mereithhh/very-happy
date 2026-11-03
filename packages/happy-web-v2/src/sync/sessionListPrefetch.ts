@@ -54,7 +54,8 @@ export interface SessionListResponse {
  */
 export function sessionListRequest(serverUrl: string, token: string, scope: 'recent' | 'unarchived' = 'recent'): { url: string; headers: Record<string, string> } {
     return {
-        url: scope === 'unarchived' ? `${serverUrl}/v1/sessions?scope=unarchived` : `${serverUrl}/v1/sessions`,
+        // B-878 PR-B: projectShares=1 also returns sessions reachable through a shared project.
+        url: scope === 'unarchived' ? `${serverUrl}/v1/sessions?scope=unarchived&projectShares=1` : `${serverUrl}/v1/sessions?projectShares=1`,
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',

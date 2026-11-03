@@ -766,7 +766,8 @@ export function Sidebar() {
   );
   // B-619: 「分享给我的」 — a trailing group in every view mode; not draggable, no ⌘N badge.
   const sharedRows = useMemo<Row[]>(
-    () => (sessions ? sortRowsByRecent(visibleSidebarSessions(sessions, view).filter((s) => !!s.share).map(sessionRow)) : []),
+    // B-878 PR-B: project-only rows are listed under their shared project, not here.
+    () => (sessions ? sortRowsByRecent(visibleSidebarSessions(sessions, view).filter((s) => !!s.share && s.share.via !== 'project').map(sessionRow)) : []),
     [sessions, view],
   );
   const displayRows = plainDisplayRows;
