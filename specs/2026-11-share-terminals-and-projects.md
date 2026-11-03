@@ -127,7 +127,7 @@ owner daemon ── terminal-output（机器 key）──▶ terminalHandler →
 
 - 被分享者看到项目的：成员会话（显式 ∪ 团队派生，**含之后加入的**）、项目内终端（`webTerminals[].projectId` = 该项目，含之后移入的）、项目名称/目标/目录（脱敏，见 4.4）、**说明与记录（只读）**。
 - 看不到：离线留言（`ProjectMessage`，点对点私信性质）、团队的任务树与消息、自动化、项目设置、ux/度量数据、项目外的任何东西。
-- **移出即收回**：会话移出/换项目、团队解绑、团队 bot 换代后旧会话不再是成员、终端移出项目 → 下一次读路径即 404，并推 `project-share-item-removed` 让 Web 关闭已打开的页面（≤1 s，见 4.5）。
+- **移出即收回**：会话移出/换项目、团队解绑、团队 bot 换代后旧会话不再是成员、终端移出项目 → 下一次读路径即 404，并推 `project-share-item-removed` 让 Web 关闭已打开的页面（≤1 s，见 4.5）。终端例外：归属信号是 daemon 上报的 `@vh_project`，从 owner 移出/移入到 grantee 侧生效要等下一次 daemon 状态上报（实测 5–10 s），期间已 attach 的 grantee 仍能看输出；会话不受此限。
 - **撤销项目分享**只收回派生访问；同一会话/终端的直接分享不受影响（effective 回落到直接 grant）。
 - 归档项目：分享保留但只读冻结（被分享者仍能看历史，看不到新加入，因为归档项目不再接新成员）。删除项目：ProjectGrant 级联删除，派生全部收回。
 
@@ -148,7 +148,7 @@ owner daemon ── terminal-output（机器 key）──▶ terminalHandler →
 
 ### 4.4 可见数据与脱敏
 
-- 会话：与直接分享完全相同的脱敏 metadata（`redactMetadataObject`）与 DEK 重包（按需 `box` 给 grantee，复用 10 min DEK 缓存）。
+- 会话：与直接分享完全相同的脱敏 metadata（`redactMetadataObject`，保留会话工作目录 `path` 与 `machineId`）与 DEK 重包（按需 `box` 给 grantee，复用 10 min DEK 缓存）。
 - 终端：服务器解出 `webTerminals`，只投影 `{terminalId, machineName, title, cwd 的目录名, projectId, alive, activityAt}`；不给 tags 外的 tmux 名、完整路径、`attachTmux`、pid。
 - 项目：name、goal、说明当前版本（不含历史）、记录（作者会话显示标题，不显示 sessionId 之外的机器信息）、目录列表只给 `{machineName, basename}`。
 - presence「在做：…」：随会话行给。
@@ -292,7 +292,7 @@ CREATE TABLE "ShareAuditEvent" (...);   -- §5，INDEX(ownerAccountId, at)、IND
 - **迁移** `20261103190000_project_shares`：只建 `ProjectGrant` 一张表（晚于 #874 的 `20261103180000`）。`role` 复用 `SessionGrantRole`，但路由只接受 viewer/driver（zod strict，带 `operate` 或 `operator` 400）。
 - **派生访问**（决策 4）：`app/share/projectShares.ts` 在读时根据项目当前成员（`projects/store.ts` 的 `membersOf`，显式 ∪ 团队派生）计算可见范围。`resolveSessionAccess` 新增 `kind: 'project'`（直接 driver 优先；否则取直接与项目里更高的档）。`listSharedSessionRows(…, { projects: true })` 追加派生行（`share.via = 'project' | 'both'`），DEK 按需 box 给 grantee。`activeGranteeIds` 合并项目 grantee 用于扇出。
 - **成员变化**：`projects/store.ts` 的 create/delete/addMembers/removeMember/attachTeam/bindTeamProject/detachTeam 都经 `membershipChange` 钩子。只要 owner 有项目分享，就比对变更前后的成员：移出的会话给 grantee 推 `session-share-revoked`（同会话另有直接分享时不推），并写 `project.item.removed` 审计；有增减时推 `project-share-changed`。
-- **项目终端**：share id 为 `p:<projectGrantId>:<machineId>:<terminalId>`，没有自己的 grant 行。只能由本 grantee **active + 未过期**的 ProjectGrant 铸造，且只在 daemon 上报该终端 `@vh_project` 等于该项目时有效，否则 `not_shared`。一律只看（可发消息档也不能输入）。移出项目时，machine-state 钩子立即以 `moved` 断开，1 s 扫尾兜底。流 key 为 ProjectGrant 的 `granteeKey`。
+- **项目终端**：share id 为 `p:<projectGrantId>:<machineId>:<terminalId>`，没有自己的 grant 行。只能由本 grantee **active + 未过期**的 ProjectGrant 铸造，且只在 daemon 上报该终端 `@vh_project` 等于该项目时有效，否则 `not_shared`。一律只看（可发消息档也不能输入）。移出项目时，machine-state 钩子在收到 daemon 上报后立即以 `moved` 断开，1 s 扫尾兜底；端到端延迟取决于 daemon 上报周期（5–10 s，已知限制）。流 key 为 ProjectGrant 的 `granteeKey`。
 - **跨 slot**（决策 11）：`operatorBroker` 的 `vh-operator-changed` 广播挂上 `onShareCrossSlotChange`，所有 slot 同时清会话 grantee 缓存和项目派生缓存，不再有原来 5 s 的跨 slot 窗口。
 - **兼容**：`/v1/sessions` 只在 `?projectShares=1` 时返回派生行。新 Web 带这个参数，旧 Web 看不到项目派生行，也就不会出现「退出不了的行」。单个读 `/v1/sessions/:id` 总是包含派生访问。
 - **审计**：`ShareAuditEvent`（grantKind=`project`）记 grant.create/accept/update/decline/left/ended、`project.item.removed`、`project.derive.open`（同一 grantee 对同一会话 10 分钟去重）。
