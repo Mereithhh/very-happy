@@ -183,9 +183,14 @@ export function isRenderableActivityMessage(message: Message): boolean {
  */
 const ACCOUNT_ACTION_EVENT_KINDS: ReadonlySet<string> = new Set(['agent-profile-unavailable', 'agent-profile-auth-failed', 'agent-profile-history-rejected', LONG_CONTEXT_REFUSED_EVENT_KIND]);
 
-/** B-883b: a notice the user must see even when the turn answered (the 1M fallback) — never folded into the activity. */
+/**
+ * B-883b: notices the user must see even when the turn "answered" (the 1M
+ * fallback before the real answer; the explicit-1M refusal before Claude
+ * Code's API-error reply) — never folded into the activity.
+ */
 function isPinnedNotice(message: Message): boolean {
-    return message.kind === 'agent-event' && message.event.type === 'message' && message.event.kind === LONG_CONTEXT_FALLBACK_EVENT_KIND;
+    return message.kind === 'agent-event' && message.event.type === 'message'
+        && (message.event.kind === LONG_CONTEXT_FALLBACK_EVENT_KIND || message.event.kind === LONG_CONTEXT_REFUSED_EVENT_KIND);
 }
 
 function isTurnFailure(message: Message): boolean {
