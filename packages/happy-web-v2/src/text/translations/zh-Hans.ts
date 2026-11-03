@@ -3228,6 +3228,11 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov03j: {
+                title: 'CLI 0.2.203：团队工具的返回更短',
+                summary: '团队工具的返回更短，省 token；team_inspect 新增 includeClosed 和 messagesLimit 参数。',
+                update: '开了自动更新的机器会自己装上，不需要操作。',
+            },
             nov03i: {
                 title: 'CLI 0.2.202：睡眠或断网恢复后更快收到新版本',
                 summary: '电脑从睡眠或断网恢复后，会更快收到并安装新版本。',
