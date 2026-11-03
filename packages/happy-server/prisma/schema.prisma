@@ -69,6 +69,8 @@ model Account {
     Projects   Project[]
     SessionGrantsReceived SessionGrant[] @relation("SessionGrantGrantee")
     SessionGrantsGiven    SessionGrant[] @relation("SessionGrantGrantedBy")
+    TerminalGrantsReceived TerminalGrant[] @relation("TerminalGrantGrantee")
+    TerminalGrantsGiven    TerminalGrant[] @relation("TerminalGrantOwner")
     SessionShareLinks     SessionShareLink[]
     AttentionItems        AttentionItem[]
     Feedback              Feedback[]
@@ -376,6 +378,76 @@ model SessionOperatorEvent {
     at             DateTime @default(now())
 
     @@index([sessionId, at])
+    @@index([grantId, at])
+    @@index([at])
+}
+
+/// B-878 one web terminal (machineId + terminalId) shared with one account, view-only or operator
+/// (spec specs/2026-11-share-terminals-and-projects.md). Every tier has an expiry (1/7/30 days).
+/// `granteeKey` = a random per-grant stream key boxed to the grantee's content public key; the broker
+/// re-keys the owner's machine-key stream to it, so the grantee never holds the machine key.
+model TerminalGrant {
+    id                 String             @id @default(cuid())
+    ownerAccountId     String
+    owner              Account            @relation("TerminalGrantOwner", fields: [ownerAccountId], references: [id], onDelete: Cascade)
+    granteeAccountId   String
+    grantee            Account            @relation("TerminalGrantGrantee", fields: [granteeAccountId], references: [id], onDelete: Cascade)
+    machineId          String
+    terminalId         String
+    /// 'viewer' | 'operator' (TEXT + server allowlist, so a later tier needs no enum change).
+    role               String
+    status             SessionGrantStatus @default(pending)
+    granteeKey         Bytes
+    titleSnapshot      String?
+    expiresAt          DateTime
+    operateConfirmedAt DateTime?
+    endedReason        String?
+    createdAt          DateTime           @default(now())
+    updatedAt          DateTime           @updatedAt
+    acceptedAt         DateTime?
+    revokedAt          DateTime?
+
+    @@unique([machineId, terminalId, granteeAccountId])
+    @@index([granteeAccountId, status])
+    @@index([ownerAccountId])
+}
+
+/// B-878 a share grant's attachment to the owner's terminal through the broker: what the output tap
+/// consults per frame. No FK (like SessionOperatorTerminal): rows outlive a deleted grant for teardown.
+model ShareTerminalAttachment {
+    id               String    @id @default(cuid())
+    grantKind        String
+    grantId          String
+    ownerAccountId   String
+    granteeAccountId String
+    machineId        String
+    terminalId       String
+    /// Daemon subscriptions this grant holds (attach +1, pane close −1); released on teardown.
+    subscribers      Int       @default(0)
+    openedAt         DateTime  @default(now())
+    closedAt         DateTime?
+    closeReason      String?
+
+    @@unique([grantKind, grantId, machineId, terminalId])
+    @@index([machineId, terminalId])
+    @@index([closedAt])
+}
+
+/// B-878 share audit trail (terminal and, later, project shares). Metadata only — never terminal bytes
+/// or keystrokes. No FK; pruned by the 90-day retention sweep.
+model ShareAuditEvent {
+    id             String   @id @default(cuid())
+    ownerAccountId String
+    actorAccountId String
+    grantKind      String
+    grantId        String
+    resourceKind   String
+    resourceId     String
+    kind           String
+    detail         Json?
+    at             DateTime @default(now())
+
+    @@index([ownerAccountId, at])
     @@index([grantId, at])
     @@index([at])
 }
