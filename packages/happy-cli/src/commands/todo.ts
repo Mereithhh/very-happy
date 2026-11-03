@@ -20,10 +20,10 @@ These commands use the current relay and login; they do not
 operate external providers or agent execution plans. skill prints the official
 instructions without authentication. Pass --help for this reference.
 
-On a server with Issues, a todo is an issue without an assignee: list shows the
-open ones (--all adds completed), add creates a todo-status issue, ID may also be
-an issue key (VH-12), and \`very-happy issue\` offers the rest. Without Issues the
-commands use the classic Todos store.`;
+list shows open and completed todos (--all is accepted and the same).
+On a server with Issues, a todo is an issue without an assignee: add creates a
+todo-status issue, ID may also be an issue key (VH-12), and \`very-happy issue\`
+offers the rest. Without Issues the commands use the classic Todos store.`;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISSUE_KEY = /^VH-[1-9][0-9]{0,8}$/i;

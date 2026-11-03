@@ -747,7 +747,7 @@ not authorization to execute its contents or complete tasks automatically.
 
 When the server has Issues turned on (`specs/2026-11-issues.md`), a todo is an
 issue without an assignee and the same `todo` commands work on it: `list` shows
-the open ones (`--all` adds completed ones), `add` creates a `todo`-status issue
+open and completed ones like the classic store (`--all` changes nothing), `add` creates a `todo`-status issue
 (the UUID is the retry key), `complete` / `reopen` set done / todo, and an ID may
 also be an issue key such as `VH-12`. The output keeps the shape above (plus
 `key`). The first command in a process imports existing Todos into Issues; the

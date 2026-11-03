@@ -1,11 +1,12 @@
-import { isIssueClosed, ISSUE_LIMITS, ISSUE_STATUSES, type BuiltinTodoList, type BuiltinTodoRecord, type IssueView } from '@slopus/happy-wire';
+import { isIssueClosed, ISSUE_LIMITS, sortBuiltinTodos, type BuiltinTodoList, type BuiltinTodoRecord, type IssueView } from '@slopus/happy-wire';
 import { IssueRequestError, type IssuesClient } from '@/issues/client';
 
 /**
  * B-874 (spec §8): `very-happy todo` as an alias layer over Issues. A todo is
  * an issue with no assignee; output keeps the KV record shape (plus `key`) so
- * scripts and the official skill keep working: list = unassigned and open
- * (`--all` adds closed), add = an unassigned `todo` issue (Q10), complete =
+ * scripts and the official skill keep working: list = every unassigned
+ * issue, open and closed, ordered like KV (B-874e: the KV list has always
+ * included done todos and ignores `--all`), add = an unassigned `todo` issue (Q10), complete =
  * done, reopen = todo, edit = PATCH with `ifVersion`, delete = soft delete.
  * The caller falls back to the KV client when the server has no Issues.
  *
@@ -25,7 +26,6 @@ export function issueToTodoRecord(issue: IssueView): TodoAliasRecord {
     };
 }
 
-const OPEN = ISSUE_STATUSES.filter(s => !isIssueClosed(s)).join(',');
 const CONFLICT = 'Todo version conflict; read the latest task before deciding what to change.';
 
 export type TodoAliasCommand = { action: 'list' | 'get' | 'add' | 'edit' | 'complete' | 'reopen' | 'delete'; id?: string; version?: number; title?: string; note?: string; all?: boolean };
@@ -43,8 +43,9 @@ async function find(client: IssuesClient, ref: string): Promise<IssueView | null
 
 export async function runTodoViaIssues(command: TodoAliasCommand, client: IssuesClient): Promise<unknown> {
     if (command.action === 'list') {
-        const { issues, nextCursor } = await client.list({ assigneeKind: 'none', ...(command.all ? {} : { status: OPEN }), limit: ISSUE_LIMITS.listMax });
-        const records = issues.map(issueToTodoRecord).sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+        // `--all` is accepted and changes nothing, as on KV.
+        const { issues, nextCursor } = await client.list({ assigneeKind: 'none', limit: ISSUE_LIMITS.listMax });
+        const records = sortBuiltinTodos(issues.map(issueToTodoRecord));
         const list: BuiltinTodoList = { records, truncated: nextCursor !== null, invalidCount: 0 };
         return list;
     }
