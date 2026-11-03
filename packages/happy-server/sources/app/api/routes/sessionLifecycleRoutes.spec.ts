@@ -39,6 +39,8 @@ const { row, dbMock, emitArchived, emitEphemeral, emitUpdate, discardPending } =
             },
             // B-619: no shares in these fixtures.
             sessionGrant: { findFirst: vi.fn(async () => null), findMany: vi.fn(async () => []) },
+            // B-878 PR-B: derived access through a project share (none here).
+            projectGrant: { findMany: vi.fn(async () => []), count: vi.fn(async () => 0) },
         },
         emitArchived: vi.fn(),
         emitEphemeral: vi.fn(),

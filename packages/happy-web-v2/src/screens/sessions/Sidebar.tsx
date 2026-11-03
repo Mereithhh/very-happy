@@ -75,6 +75,7 @@ import { copySessionLink, leaveSessionProject, leaveTerminalProject, stopSession
 import { sessionProjectMenu, terminalProjectMenu } from '@/screens/projects/projectChoice';
 import { ShareDialog } from '@/screens/session/ShareDialog';
 import { TerminalShareDialog } from '@/screens/terminal/TerminalShareDialog';
+import { ProjectShareDialog } from '@/screens/projects/ProjectShareDialog';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
@@ -109,6 +110,7 @@ import { worktreeCopy } from './worktreeCopy';
 import { SessionPeek, peekDomId, useSessionPeek } from './SessionPeek';
 import { SharedInvites } from './SharedInvites';
 import { SharedTerminals } from './SharedTerminals';
+import { SharedProjects } from './SharedProjects';
 import { useFriendRequests } from '@/sync/storage';
 import { useSessionShares } from '@/sync/sessionSharesStore';
 import { Modal } from '@/modal';
@@ -766,7 +768,8 @@ export function Sidebar() {
   );
   // B-619: 「分享给我的」 — a trailing group in every view mode; not draggable, no ⌘N badge.
   const sharedRows = useMemo<Row[]>(
-    () => (sessions ? sortRowsByRecent(visibleSidebarSessions(sessions, view).filter((s) => !!s.share).map(sessionRow)) : []),
+    // B-878 PR-B: project-only rows are listed under their shared project, not here.
+    () => (sessions ? sortRowsByRecent(visibleSidebarSessions(sessions, view).filter((s) => !!s.share && s.share.via !== 'project').map(sessionRow)) : []),
     [sessions, view],
   );
   const displayRows = plainDisplayRows;
@@ -976,6 +979,8 @@ export function Sidebar() {
   const openRename = useCallback((row: Row, focusTags = false) => { setRenameFocusTags(focusTags); setRenameTarget(row); }, []);
   // B-756: 「分享…」 from a row opens the same share panel as the session header.
   const [shareTarget, setShareTarget] = useState<string | null>(null);
+  // B-878 PR-B: a project group's 「分享项目…」.
+  const [shareProject, setShareProject] = useState<string | null>(null);
   // B-878: a terminal row's 「分享…」.
   const [shareTerminal, setShareTerminal] = useState<{ machineId: string; terminalId: string; title: string; host: string | null } | null>(null);
   // Suggestions: every tag currently in use across sessions and terminals.
@@ -1368,7 +1373,7 @@ export function Sidebar() {
   const newProjectSession = (project: ProjectView) => newSessionInProject(project, navigate, configureNew);
   const projectCopy = projectMenuCopy(lang.startsWith('zh'));
   const zh = lang.startsWith('zh');
-  const projectItems = (project: ProjectView) => projectMenuItems(project, { zh, navigate, openConfigure: configureNew, teams: happyBotEntryVisible });
+  const projectItems = (project: ProjectView) => projectMenuItems(project, { zh, navigate, openConfigure: configureNew, teams: happyBotEntryVisible, onShare: () => setShareProject(project.id) });
   // B-762 (spec B-760 §5.1): the tree's keyboard — ↑/↓ move between nodes, →
   // opens / steps in, ← folds / steps out. Nodes mark their focus target
   // [data-tree-item] and fold button [data-tree-toggle] inside [data-tree-node].
@@ -1521,6 +1526,7 @@ export function Sidebar() {
         <PendingSessionRows />
         {/* B-619: invitations first — they need an answer before anything else shows. */}
         <SharedInvites />
+        <SharedProjects />
         <SharedTerminals />
         {displayRows === null ? (
           <div className="sb-loading">
@@ -1869,6 +1875,7 @@ export function Sidebar() {
       {showImport && <ImportHistoryModal initialAgent={showImport} onClose={() => setShowImport(null)} />}
       {newProject && <NewProjectDialog initialName={newProject.name} sessionIds={newProject.sessionIds} onClose={() => setNewProject(null)} />}
       {shareTarget && <ShareDialog key={`share:${shareTarget}`} sessionId={shareTarget} open onOpenChange={(open) => { if (!open) setShareTarget(null); }} />}
+      {shareProject && <ProjectShareDialog key={`share-proj:${shareProject}`} projectId={shareProject} open onOpenChange={(open) => { if (!open) setShareProject(null); }} />}
       {shareTerminal && <TerminalShareDialog key={`share-term:${shareTerminal.machineId}:${shareTerminal.terminalId}`} {...shareTerminal} open onOpenChange={(open) => { if (!open) setShareTerminal(null); }} />}
       {moveProjectTarget && <MoveToProjectModal initialSessionId={moveProjectTarget.sessionId} candidates={moveProjectTarget.candidates} onClose={() => setMoveProjectTarget(null)} />}
       {moveTerminalTarget && <MoveTerminalToProjectModal terminalId={moveTerminalTarget} onClose={() => setMoveTerminalTarget(null)} />}

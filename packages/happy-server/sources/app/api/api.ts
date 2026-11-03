@@ -52,6 +52,7 @@ import { configuredResourceLimit } from './resourceLimits';
 import { relayRoutes } from './routes/relayRoutes';
 import { sessionShareRoutes } from './routes/sessionShareRoutes';
 import { terminalShareRoutes } from './routes/terminalShareRoutes';
+import { projectShareRoutes } from './routes/projectShareRoutes';
 import { sessionShareLinkRoutes } from './routes/sessionShareLinkRoutes';
 import { connectionDiagnosticsRoutes } from './routes/connectionDiagnosticsRoutes';
 import { cspReportRoutes } from './routes/cspReportRoutes';
@@ -175,6 +176,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     relayRoutes(typed);
     sessionShareRoutes(typed);
     terminalShareRoutes(typed);
+    projectShareRoutes(typed);
     sessionShareLinkRoutes(typed);
     connectionDiagnosticsRoutes(typed);
     cspReportRoutes(typed);

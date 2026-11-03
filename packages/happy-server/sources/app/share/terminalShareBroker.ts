@@ -39,6 +39,7 @@ import { loadMasterSecret } from '@/app/session/sessionShares';
 import { contentKeyPairFromSecret, decryptWithDataKey, encryptWithDataKey, unwrapDataEncryptionKey } from '@/app/session/sessionCrypto';
 import {
     TerminalShareError,
+    cwdBasename,
     allowTerminalShareEvent,
     isTerminalShareRole,
     planTerminalShareCall,
@@ -50,7 +51,7 @@ import {
     type TerminalShareRole,
 } from './terminalSharePolicy';
 
-export type TerminalShareEndReason = 'revoked' | 'left' | 'expired' | 'downgraded' | 'deleted';
+export type TerminalShareEndReason = 'revoked' | 'left' | 'expired' | 'downgraded' | 'deleted' | 'moved';
 
 const GRANT_CACHE_TTL_MS = 1_000;
 const KEY_CACHE_TTL_MS = 10 * 60_000;
@@ -61,6 +62,26 @@ const MAX_PARAMS_BYTES = 256 * 1024;
 const MAX_ID_BYTES = 256;
 const CROSS_SLOT_EVENT = 'vh-terminal-share-changed';
 const GRANT_KIND = 'terminal';
+
+/**
+ * B-878 PR-B: a terminal reached through a PROJECT share has no grant row of its
+ * own; its share id is `p:<projectGrantId>:<machineId>:<terminalId>` (none of the
+ * parts can contain ':'). Always view only; valid only while the terminal's
+ * `@vh_project` is that project.
+ */
+export function projectTerminalShareId(projectGrantId: string, machineId: string, terminalId: string): string {
+    return `p:${projectGrantId}:${machineId}:${terminalId}`;
+}
+type ParsedShareId = { kind: 'terminal'; grantId: string } | { kind: 'project'; projectGrantId: string; machineId: string; terminalId: string };
+export function parseShareId(id: string): ParsedShareId | null {
+    if (!id.startsWith('p:')) return id.includes(':') ? null : { kind: 'terminal', grantId: id };
+    const parts = id.split(':');
+    if (parts.length !== 4 || parts.some((p) => !p)) return null;
+    return { kind: 'project', projectGrantId: parts[1], machineId: parts[2], terminalId: parts[3] };
+}
+function kindOf(grantId: string): 'terminal' | 'project' {
+    return grantId.startsWith('p:') ? 'project' : 'terminal';
+}
 
 // ---------------------------------------------------------------- grants
 
@@ -74,6 +95,8 @@ export type VerifiedTerminalShare = {
     terminalId: string;
     role: TerminalShareRole;
     expiresAt: number;
+    /** B-878 PR-B: the project this share is derived from (project-share ids only). */
+    projectId?: string;
 };
 
 const grantCache = new Map<string, { grant: VerifiedTerminalShare | null; at: number }>();
@@ -87,13 +110,19 @@ export async function resolveTerminalShare(granteeId: string, grantId: string): 
     const key = `${granteeId}:${grantId}`;
     const cached = grantCache.get(key);
     if (cached && Date.now() - cached.at < GRANT_CACHE_TTL_MS) return cached.grant && cached.grant.expiresAt > Date.now() ? cached.grant : null;
-    const row = await db.terminalGrant.findFirst({
-        where: { id: grantId, granteeAccountId: granteeId, status: 'active', expiresAt: { gt: new Date() } },
-        select: { id: true, ownerAccountId: true, machineId: true, terminalId: true, role: true, expiresAt: true },
-    });
-    const grant = row && isTerminalShareRole(row.role)
-        ? mint({ grantId: row.id, ownerId: row.ownerAccountId, granteeId, machineId: row.machineId, terminalId: row.terminalId, role: row.role, expiresAt: row.expiresAt.getTime() })
-        : null;
+    const parsed = parseShareId(grantId);
+    let grant: VerifiedTerminalShare | null = null;
+    if (parsed?.kind === 'project') {
+        grant = await resolveProjectTerminal(granteeId, parsed.projectGrantId, parsed.machineId, parsed.terminalId);
+    } else if (parsed) {
+        const row = await db.terminalGrant.findFirst({
+            where: { id: grantId, granteeAccountId: granteeId, status: 'active', expiresAt: { gt: new Date() } },
+            select: { id: true, ownerAccountId: true, machineId: true, terminalId: true, role: true, expiresAt: true },
+        });
+        grant = row && isTerminalShareRole(row.role)
+            ? mint({ grantId: row.id, ownerId: row.ownerAccountId, granteeId, machineId: row.machineId, terminalId: row.terminalId, role: row.role, expiresAt: row.expiresAt.getTime() })
+            : null;
+    }
     grantCache.set(key, { grant, at: Date.now() });
     return grant;
 }
@@ -113,6 +142,57 @@ export async function ownerTerminalExists(ownerId: string, machineId: string, te
     if (!machineKey) return null;
     const ids = webTerminalIds(await readDaemonState(probe, machineKey));
     return ids ? ids.has(terminalId) : null;
+}
+
+/** This grantee's ACTIVE, unexpired project grant row (the only input a project share is minted from). */
+async function activeProjectGrant(granteeId: string, projectGrantId: string) {
+    return db.projectGrant.findFirst({
+        where: { id: projectGrantId, granteeAccountId: granteeId, status: 'active', OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+        select: { id: true, projectId: true, ownerAccountId: true, expiresAt: true },
+    });
+}
+
+/** Mint for one machine of a verified project grant. View only, always. */
+function mintProjectShare(row: { id: string; projectId: string; ownerAccountId: string; expiresAt: Date | null }, granteeId: string, machineId: string, terminalId: string): VerifiedTerminalShare {
+    return mint({
+        grantId: projectTerminalShareId(row.id, machineId, terminalId), ownerId: row.ownerAccountId, granteeId, machineId, terminalId,
+        role: 'viewer', expiresAt: row.expiresAt ? row.expiresAt.getTime() : Number.MAX_SAFE_INTEGER, projectId: row.projectId,
+    });
+}
+
+/** A project terminal share is valid only while the owner's daemon reports that terminal in that project. */
+async function resolveProjectTerminal(granteeId: string, projectGrantId: string, machineId: string, terminalId: string): Promise<VerifiedTerminalShare | null> {
+    const row = await activeProjectGrant(granteeId, projectGrantId);
+    if (!row) return null;
+    const candidate = mintProjectShare(row, granteeId, machineId, terminalId);
+    const machineKey = await openTerminalShareMachineKey(candidate);
+    if (!machineKey) return null;
+    const info = webTerminalInfo(await readDaemonState(candidate, machineKey), terminalId);
+    return info && info.projectId === row.projectId ? candidate : null;
+}
+
+export type ProjectTerminalView = { shareId: string; machineId: string; terminalId: string; title: string | null; cwd: string | null; viewOnlySupported: boolean };
+
+/** The project's terminals right now (every owner machine whose daemon reports `@vh_project` = the project). */
+export async function listProjectTerminals(granteeId: string, projectGrantId: string): Promise<ProjectTerminalView[]> {
+    const row = await activeProjectGrant(granteeId, projectGrantId);
+    if (!row) return [];
+    const machines = await db.machine.findMany({ where: { accountId: row.ownerAccountId, dataEncryptionKey: { not: null } }, select: { id: true } });
+    const out: ProjectTerminalView[] = [];
+    for (const machine of machines) {
+        const probe = mintProjectShare(row, granteeId, machine.id, '');
+        const machineKey = await openTerminalShareMachineKey(probe);
+        if (!machineKey) continue;
+        const state = await readDaemonState(probe, machineKey);
+        const ids = webTerminalIds(state);
+        if (!ids) continue;
+        for (const terminalId of ids) {
+            const info = webTerminalInfo(state, terminalId);
+            if (!info || info.projectId !== row.projectId) continue;
+            out.push({ shareId: projectTerminalShareId(row.id, machine.id, terminalId), machineId: machine.id, terminalId, title: info.title, cwd: cwdBasename(info.cwd), viewOnlySupported: viewOnlyCapable(state) });
+        }
+    }
+    return out;
 }
 
 /** Teardown / state checks only: a grant reference for an attachment a verified grantee call registered. */
@@ -146,7 +226,11 @@ async function openTerminalShareMachineKey(grant: VerifiedTerminalShare): Promis
 async function openStreamKey(grantId: string, granteeId: string): Promise<Uint8Array | null> {
     const cached = streamKeyCache.get(grantId);
     if (cached && Date.now() - cached.at < KEY_CACHE_TTL_MS) return cached.key;
-    const row = await db.terminalGrant.findUnique({ where: { id: grantId }, select: { granteeKey: true, granteeAccountId: true } });
+    const parsed = parseShareId(grantId);
+    if (!parsed) return null;
+    const row = parsed.kind === 'project'
+        ? await db.projectGrant.findUnique({ where: { id: parsed.projectGrantId }, select: { granteeKey: true, granteeAccountId: true } })
+        : await db.terminalGrant.findUnique({ where: { id: grantId }, select: { granteeKey: true, granteeAccountId: true } });
     if (!row || row.granteeAccountId !== granteeId) return null;
     const master = await loadMasterSecret(granteeId);
     if (!master) return null;
@@ -182,7 +266,7 @@ const lastGeometry = new Map<string, string>();
 
 async function refreshAttachIndex(): Promise<AttachEntry[]> {
     const rows = await db.shareTerminalAttachment.findMany({
-        where: { grantKind: GRANT_KIND, closedAt: null },
+        where: { closedAt: null },
         select: { grantId: true, ownerAccountId: true, granteeAccountId: true, machineId: true, terminalId: true, subscribers: true, openedAt: true },
     });
     const next = new Map<string, AttachEntry[]>();
@@ -257,7 +341,7 @@ function errorName(error: unknown): string {
 
 export async function recordTerminalShareEvent(input: { ownerAccountId: string; actorAccountId: string; grantId: string; machineId: string; terminalId: string; kind: string; detail?: Record<string, unknown> }): Promise<void> {
     await db.shareAuditEvent.create({ data: {
-        ownerAccountId: input.ownerAccountId, actorAccountId: input.actorAccountId, grantKind: GRANT_KIND, grantId: input.grantId,
+        ownerAccountId: input.ownerAccountId, actorAccountId: input.actorAccountId, grantKind: kindOf(input.grantId), grantId: input.grantId,
         resourceKind: 'terminal', resourceId: `${input.machineId}:${input.terminalId}`, kind: input.kind, detail: (input.detail ?? {}) as any,
     } }).catch((error) => log({ module: 'terminal-share', grantId: input.grantId, errorName: errorName(error) }, 'terminal share event write failed'));
     log({ module: 'terminal-share', grantId: input.grantId, actorAccountId: input.actorAccountId }, `terminal-share.${input.kind}`);
@@ -373,8 +457,8 @@ async function runTerminalShareRpc(io: Server, granteeId: string, data: unknown,
     if (isAttach) {
         // Register BEFORE the open so the tap already forwards the first frames.
         await db.shareTerminalAttachment.upsert({
-            where: { grantKind_grantId_machineId_terminalId: { grantKind: GRANT_KIND, grantId: grant.grantId, machineId: grant.machineId, terminalId: grant.terminalId } },
-            create: { grantKind: GRANT_KIND, grantId: grant.grantId, ownerAccountId: grant.ownerId, granteeAccountId: granteeId, machineId: grant.machineId, terminalId: grant.terminalId, subscribers: isResub ? 0 : 1 },
+            where: { grantKind_grantId_machineId_terminalId: { grantKind: kindOf(grant.grantId), grantId: grant.grantId, machineId: grant.machineId, terminalId: grant.terminalId } },
+            create: { grantKind: kindOf(grant.grantId), grantId: grant.grantId, ownerAccountId: grant.ownerId, granteeAccountId: granteeId, machineId: grant.machineId, terminalId: grant.terminalId, subscribers: isResub ? 0 : 1 },
             update: { closedAt: null, closeReason: null, ...(isResub ? {} : { subscribers: { increment: 1 } }) },
         });
         announceChange();
@@ -422,7 +506,7 @@ async function runTerminalShareRpc(io: Server, granteeId: string, data: unknown,
  * itself added to the daemon's count (QA50 P2-1). The row closes at zero.
  */
 async function releaseSubscriber(grant: { grantId: string; machineId: string; terminalId: string }, reason: string, close = false): Promise<boolean> {
-    const key = { grantKind: GRANT_KIND, grantId: grant.grantId, machineId: grant.machineId, terminalId: grant.terminalId };
+    const key = { grantKind: kindOf(grant.grantId), grantId: grant.grantId, machineId: grant.machineId, terminalId: grant.terminalId };
     const taken = await db.shareTerminalAttachment.updateMany({ where: { ...key, closedAt: null, subscribers: { gt: 0 } }, data: { subscribers: { decrement: 1 } } });
     if (taken.count === 0) return false;
     await db.shareTerminalAttachment.updateMany({ where: { ...key, closedAt: null, ...(close ? {} : { subscribers: 0 }) }, data: { closedAt: new Date(), closeReason: reason } });
@@ -514,7 +598,7 @@ async function deliverFrame(ownerId: string, machineId: string, event: 'terminal
 /** The shared terminal ended on the owner's machine (exit, or closed from the owner's sidebar). */
 async function terminalGone(entry: AttachEntry, reason: 'exited' | 'closed_on_machine', exitCode?: number): Promise<void> {
     const closed = await db.shareTerminalAttachment.updateMany({
-        where: { grantKind: GRANT_KIND, grantId: entry.grantId, machineId: entry.machineId, terminalId: entry.terminalId, closedAt: null },
+        where: { grantKind: kindOf(entry.grantId), grantId: entry.grantId, machineId: entry.machineId, terminalId: entry.terminalId, closedAt: null },
         data: { closedAt: new Date(), closeReason: reason, subscribers: 0 },
     });
     if (closed.count === 0) return;
@@ -546,6 +630,15 @@ export async function noteTerminalShareMachineState(ownerId: string, machineId: 
             continue;
         }
         const info = webTerminalInfo(state, entry.terminalId);
+        // B-878 PR-B: a project terminal moved out of the project — access ends now.
+        const parsed = parseShareId(entry.grantId);
+        if (parsed?.kind === 'project') {
+            const pg = await db.projectGrant.findUnique({ where: { id: parsed.projectGrantId }, select: { projectId: true } });
+            if (!pg || info?.projectId !== pg.projectId) {
+                await teardownTerminalGrant(entry.grantId, 'moved', { granteeId: entry.granteeId, ownerId: entry.ownerId, machineId: entry.machineId, terminalId: entry.terminalId });
+                continue;
+            }
+        }
         if (!info || info.cols === null || info.rows === null) continue;
         const size = `${info.cols}x${info.rows}`;
         const dedupKey = `${entry.grantId}:${entry.terminalId}`;
@@ -618,9 +711,9 @@ export async function __forwardTerminalEventForTests(granteeId: string, event: '
  */
 export async function teardownTerminalGrant(grantId: string, reason: TerminalShareEndReason, notify?: { granteeId: string; ownerId: string; machineId: string; terminalId: string }): Promise<{ detached: number }> {
     invalidateCaches();
-    const rows = await db.shareTerminalAttachment.findMany({ where: { grantKind: GRANT_KIND, grantId, closedAt: null } });
+    const rows = await db.shareTerminalAttachment.findMany({ where: { grantKind: kindOf(grantId), grantId, closedAt: null } });
     if (rows.length > 0) {
-        await db.shareTerminalAttachment.updateMany({ where: { grantKind: GRANT_KIND, grantId, closedAt: null }, data: { closedAt: new Date(), closeReason: reason, subscribers: 0 } });
+        await db.shareTerminalAttachment.updateMany({ where: { grantKind: kindOf(grantId), grantId, closedAt: null }, data: { closedAt: new Date(), closeReason: reason, subscribers: 0 } });
     }
     announceChange();
     const target = notify ?? (rows[0] ? { granteeId: rows[0].granteeAccountId, ownerId: rows[0].ownerAccountId, machineId: rows[0].machineId, terminalId: rows[0].terminalId } : null);
@@ -635,6 +728,13 @@ export async function teardownTerminalGrant(grantId: string, reason: TerminalSha
         await recordTerminalShareEvent({ ownerAccountId: target.ownerId, actorAccountId: reason === 'left' ? target.granteeId : target.ownerId, grantId, machineId: target.machineId, terminalId: target.terminalId, kind: 'ended', detail: { reason, detached: rows.length } });
     }
     return { detached: rows.length };
+}
+
+/** A project share ended: detach every project terminal reached through it. */
+export async function teardownProjectTerminalShares(projectGrantId: string, reason: TerminalShareEndReason): Promise<void> {
+    invalidateCaches();
+    const rows = await db.shareTerminalAttachment.findMany({ where: { grantKind: 'project', grantId: { startsWith: `p:${projectGrantId}:` }, closedAt: null }, select: { grantId: true } });
+    for (const grantId of new Set(rows.map((r) => r.grantId))) await teardownTerminalGrant(grantId, reason);
 }
 
 let sweeping = false;
@@ -653,9 +753,19 @@ export async function sweepTerminalShares(): Promise<void> {
         const byGrant = new Map<string, AttachEntry>();
         for (const entry of entries) byGrant.set(entry.grantId, entry);
         if (byGrant.size > 0) {
-            const live = await db.terminalGrant.findMany({ where: { id: { in: [...byGrant.keys()] }, status: 'active', expiresAt: { gt: new Date() } }, select: { id: true } });
+            const terminalIds = [...byGrant.keys()].filter((id) => kindOf(id) === 'terminal');
+            const live = await db.terminalGrant.findMany({ where: { id: { in: terminalIds }, status: 'active', expiresAt: { gt: new Date() } }, select: { id: true } });
             const liveIds = new Set(live.map((grant) => grant.id));
             for (const [grantId, entry] of byGrant) {
+                if (kindOf(grantId) === 'project') {
+                    // Revoked / expired project share, or the terminal left the project.
+                    if (await resolveTerminalShare(entry.granteeId, grantId)) continue;
+                    const parsed = parseShareId(grantId);
+                    const pg = parsed?.kind === 'project' ? await db.projectGrant.findUnique({ where: { id: parsed.projectGrantId }, select: { status: true, expiresAt: true } }) : null;
+                    const why: TerminalShareEndReason = !pg ? 'deleted' : pg.status === 'revoked' ? 'revoked' : pg.expiresAt && pg.expiresAt.getTime() <= Date.now() ? 'expired' : 'moved';
+                    await teardownTerminalGrant(grantId, why, { granteeId: entry.granteeId, ownerId: entry.ownerId, machineId: entry.machineId, terminalId: entry.terminalId });
+                    continue;
+                }
                 if (liveIds.has(grantId)) continue;
                 const grant = await db.terminalGrant.findUnique({ where: { id: grantId }, select: { status: true, expiresAt: true } });
                 const reason: TerminalShareEndReason = !grant ? 'deleted' : grant.status === 'revoked' ? 'revoked' : 'expired';

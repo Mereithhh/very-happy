@@ -14,8 +14,8 @@ describe('scope=unarchived request', () => {
     it('the default list is unchanged; the unarchived read asks for scope=unarchived with the same headers', () => {
         const recent = sessionListRequest('https://x', 'tok');
         const unarchived = sessionListRequest('https://x', 'tok', 'unarchived');
-        expect(recent.url).toBe('https://x/v1/sessions');
-        expect(unarchived.url).toBe('https://x/v1/sessions?scope=unarchived');
+        expect(recent.url).toBe('https://x/v1/sessions?projectShares=1');
+        expect(unarchived.url).toBe('https://x/v1/sessions?scope=unarchived&projectShares=1');
         expect(unarchived.headers).toEqual(recent.headers);
     });
 });

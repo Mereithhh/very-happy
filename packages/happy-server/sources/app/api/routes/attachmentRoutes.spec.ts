@@ -79,6 +79,8 @@ const {
         session: { findFirst: sessionFindFirst },
         // B-619: no shares in these fixtures — a non-owner stays a 404.
         sessionGrant: { findFirst: vi.fn(async () => null) },
+        // B-878 PR-B: derived access through a project share (none here).
+        projectGrant: { findMany: vi.fn(async () => []), count: vi.fn(async () => 0) },
         uploadedFile: {
             deleteMany: vi.fn(async ({ where }: any) => {
                 let count = 0;

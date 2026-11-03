@@ -6,6 +6,7 @@ import {
     type ProjectMessageCreate, type ProjectView, type ProjectMemberView, type ProjectLogEntryView, type ProjectPresenceView, type ProjectMessageView,
     type ProjectDetailResponse, type ProjectListResponse, type TeamProjectChoice, resolveTeamWorktreePath, type TeamProjectBind, type ProjectSessionContext, type ProjectDigest, type ProjectInstructionsRevisionView, type ProjectLogKind,
 } from '@slopus/happy-wire';
+import { db } from '@/storage/db';
 import { inTx, isRetryableTransactionConflict, type Tx } from '@/storage/inTx';
 import { configuredResourceLimit, enforceAccountWriteRate, isAccountResourceLimitError } from '@/app/api/resourceLimits';
 import {
@@ -201,14 +202,14 @@ export async function listProjects(accountId: string, opts: { includeArchived?: 
 
 /** Idempotent by `requestId`; counted against the per-account cap inside the same transaction. */
 export async function createProject(accountId: string, input: ProjectCreate): Promise<ProjectView> {
-    return run(async tx => {
+    return membershipChange(accountId, () => run(async tx => {
         const { row, created } = await createProjectTx(tx, accountId, input);
         if (!created) {
             const attached = await attachedIds(tx, [row.id]);
             return projectView(row, attached.teams.get(row.id) ?? [], attached.automations.get(row.id) ?? []);
         }
         return projectView(row);
-    });
+    }));
 }
 
 /** Transaction-level create (B-726 also uses it when a team is created). `created=false` = the requestId's earlier project. */
@@ -269,11 +270,11 @@ export async function updateProject(accountId: string, id: string, input: Projec
 
 /** Deletes the project and everything it owns; teams/automations are detached (FK SET NULL), sessions are untouched. */
 export async function deleteProject(accountId: string, id: string): Promise<void> {
-    await run(async tx => {
+    await membershipChange(accountId, () => run(async tx => {
         await loadProject(tx, accountId, id);
         await tx.projectReadCursor.deleteMany({ where: { projectId: id } });
         await tx.project.delete({ where: { id } });
-    });
+    }));
 }
 
 /**
@@ -313,22 +314,22 @@ export async function listInstructionRevisions(accountId: string, id: string): P
 // ─── Members ──────────────────────────────────────────────────────────────
 
 export async function addMembers(accountId: string, id: string, input: ProjectMembersAdd): Promise<ProjectMemberView[]> {
-    return run(async tx => {
+    return membershipChange(accountId, () => run(async tx => {
         await loadProject(tx, accountId, id);
         await placeMembers(tx, accountId, id, input.sessionIds, input.via ?? 'explicit');
         return membersOf(tx, accountId, [id]);
-    });
+    }));
 }
 
 /** Removes an explicit membership; a team-derived member leaves only when its team is detached. */
 export async function removeMember(accountId: string, id: string, sessionId: string): Promise<{ removed: boolean }> {
-    return run(async tx => {
+    return membershipChange(accountId, () => run(async tx => {
         await loadProject(tx, accountId, id);
         const removed = await tx.projectMember.deleteMany({ where: { projectId: id, sessionId, accountId } });
         await tx.projectPresence.deleteMany({ where: { projectId: id, sessionId } });
         await tx.projectReadCursor.deleteMany({ where: { projectId: id, sessionId } });
         return { removed: removed.count > 0 };
-    });
+    }));
 }
 
 // ─── Teams ────────────────────────────────────────────────────────────────
@@ -349,10 +350,10 @@ async function loadTeamRow(tx: Tx, accountId: string, teamId: string): Promise<T
  * team has not set itself; the team keeps its own afterwards.
  */
 export async function attachTeam(accountId: string, projectId: string, teamId: string): Promise<{ teamId: string; projectId: string }> {
-    return run(async tx => {
+    return membershipChange(accountId, () => run(async tx => {
         await attachTeamTx(tx, accountId, projectId, teamId);
         return { teamId, projectId };
-    });
+    }));
 }
 
 async function attachTeamTx(tx: Tx, accountId: string, projectId: string, teamId: string): Promise<void> {
@@ -445,7 +446,7 @@ async function createSameNameProjectTx(tx: Tx, accountId: string, teamId: string
  * attach (`create`, idempotent by `requestId`).
  */
 export async function bindTeamProject(accountId: string, teamId: string, bind: TeamProjectBind): Promise<{ teamId: string; projectId: string | null; project: ProjectView | null }> {
-    return run(async tx => {
+    return membershipChange(accountId, () => run(async tx => {
         await loadTeamRow(tx, accountId, teamId);
         let projectId: string | null;
         if (bind.create) {
@@ -459,15 +460,15 @@ export async function bindTeamProject(accountId: string, teamId: string, bind: T
         const row = await loadProject(tx, accountId, projectId);
         const attached = await attachedIds(tx, [projectId]);
         return { teamId, projectId, project: projectView(row, attached.teams.get(projectId) ?? [], attached.automations.get(projectId) ?? []) };
-    });
+    }));
 }
 
 export async function detachTeam(accountId: string, projectId: string, teamId: string): Promise<{ detached: boolean }> {
-    return run(async tx => {
+    return membershipChange(accountId, () => run(async tx => {
         await loadProject(tx, accountId, projectId);
         const n = await tx.$executeRaw`UPDATE "AgentTeam" SET "projectId"=NULL WHERE "id"=${teamId} AND "accountId"=${accountId} AND "projectId"=${projectId}`;
         return { detached: n === 1 };
-    });
+    }));
 }
 
 // ─── Log ──────────────────────────────────────────────────────────────────
@@ -682,6 +683,35 @@ export async function sessionMembership(accountId: string, sessionId: string): P
         const m = await membershipOf(tx, accountId, sessionId);
         return { projectId: m?.projectId ?? null, via: m?.via ?? null };
     });
+}
+
+/**
+ * B-878 PR-B: read-only helpers for project sharing (derived access). No `run`
+ * wrapper: with projects disabled they answer "no project" instead of throwing,
+ * so a shared session simply falls back to its direct grant (or none).
+ */
+export async function projectIdOfSession(accountId: string, sessionId: string): Promise<string | null> {
+    if (process.env.VH_PROJECTS_ENABLED === 'false') return null;
+    return (await membershipOf(db as unknown as Tx, accountId, sessionId))?.projectId ?? null;
+}
+export async function projectSessionIds(accountId: string, projectId: string): Promise<string[]> {
+    if (process.env.VH_PROJECTS_ENABLED === 'false') return [];
+    return (await membersOf(db as unknown as Tx, accountId, [projectId])).map(m => m.sessionId);
+}
+/** Project view + live log for a grantee (no presence, messages, teams or automations). */
+export async function sharedProjectSnapshot(accountId: string, projectId: string): Promise<{ project: ProjectView; log: ProjectLogEntryView[] } | null> {
+    if (process.env.VH_PROJECTS_ENABLED === 'false') return null;
+    const row = await db.project.findFirst({ where: { id: projectId, accountId } });
+    if (!row) return null;
+    const log = await db.projectLogEntry.findMany({ where: { projectId, revokedAt: null }, orderBy: { seq: 'desc' }, take: 200 });
+    return { project: projectView(row), log: logViews(log) };
+}
+
+/** Membership mutations run inside this so project shares can report sessions that left (and refresh grantees). */
+let membershipChangeHook: (<T>(accountId: string, work: () => Promise<T>) => Promise<T>) | null = null;
+export function setProjectMembershipChangeHook(hook: typeof membershipChangeHook): void { membershipChangeHook = hook; }
+function membershipChange<T>(accountId: string, work: () => Promise<T>): Promise<T> {
+    return membershipChangeHook ? membershipChangeHook(accountId, work) : work();
 }
 
 export { ProjectError };

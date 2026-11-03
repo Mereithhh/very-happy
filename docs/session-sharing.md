@@ -168,6 +168,30 @@ Terminal traffic goes through the server only (never the regional relay). The
 server opens your machine key to re-encrypt the stream with a key that belongs
 to this one share; the other account never receives your machine key.
 
+## Share a project
+
+On a project page choose **Share project** (the people icon next to settings),
+or ⋯ → **Share project…** on the project in the sidebar or the Projects list.
+Pick a person and **View only** or **Can send**; the share can expire after 1,
+7 or 30 days or never.
+
+- They see every session in the project and every web terminal filed under
+  it — including ones you add later — plus the project's instructions and
+  log. Not its team tasks, automations, offline messages or folder paths.
+- **View only** reads the sessions. **Can send** also lets them send messages
+  in those sessions, under their own name. Terminals in the project are
+  always view only. **Can operate** is never given through a project; give it
+  for one session or one terminal instead.
+- Moving a session or terminal out of the project ends their access to it at
+  once. Revoking the project share ends everything that came through the
+  project; a session you also shared with them on its own stays shared.
+
+They accept the invitation from the top of their sidebar and then find the
+project under **Projects shared with me**, with the same overview and
+instructions tabs as your own project page, read only. Opening and leaving
+are logged; the first time each session is opened through the project is
+recorded in your audit trail.
+
 ## Trust model
 
 Share links are opened by the server: it decrypts the session, removes what a
