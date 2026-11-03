@@ -3185,6 +3185,12 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov04: {
+                title: 'CLI 0.2.205: team sessions created before the update reply in your language too',
+                summary: 'Team sessions created before the update now also reply in your language.',
+                team: 'Team sessions created before the update now also reply in your language.',
+                update: 'Machines with automatic updates install it on their own; nothing to do.',
+            },
             nov03l: {
                 title: 'Share web terminals and whole projects; team sessions follow your language',
                 summary: 'Share a web terminal or a whole project with a contact, team sessions reply in your language, and long imports show progress.',
