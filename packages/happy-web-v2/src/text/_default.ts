@@ -69,7 +69,7 @@ export const en = {
         archived: "This team is archived and read-only",
         archiveDescription: "Archiving cancels unfinished tasks and schedules and stops team-managed sessions. Attached sessions, working directories and history are retained. Offline machines finish cleanup when they reconnect.",
         exitTeamMode: "Exit team mode",
-        exitTeamModeDescription: "The lead goes on as an ordinary session with its history. The team is archived: unfinished tasks and schedules are cancelled and member sessions stop; working directories are kept. The lead gets no more team messages or team instructions.",
+        exitTeamModeDescription: "The lead goes on as an ordinary session with its history. The team is archived: unfinished tasks and schedules are cancelled and member sessions stop; working directories are kept. The lead gets no more team messages or team instructions. This cannot be undone: an archived team cannot be reopened and its members do not start again. To work as a team again, start a new team.",
         exitTeamModeDone: "Left team mode. The lead session restarted as an ordinary session.",
         exitTeamModeDoneNoRestart: "Left team mode. This session is now an ordinary session.",
         exitTeamModeLeadStopped: "The team is archived, but this server stopped the lead session. Resume it to continue as an ordinary session.",

@@ -65,7 +65,7 @@ export function archivedLeadMarker(team: TeamState, operationId: string, session
 }
 
 /** The team of a launch, from this machine's spawn receipt (the owner's team list leaves archived teams out). */
-function launchTeamId(home: string, operationId: string): string | null {
+export function launchTeamId(home: string, operationId: string): string | null {
     try { return readReceipt(home, operationId)?.teamId ?? null; } catch { return null; }
 }
 

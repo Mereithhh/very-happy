@@ -71,7 +71,7 @@ export const zhHans: TranslationStructure = {
         archived: "团队已归档，仅可查看",
         archiveDescription: "归档会取消未完成的任务和定时安排，并停止团队托管的会话。自行接入的会话、工作目录和历史记录会保留；离线机器上线后继续清理。",
         exitTeamMode: "退出团队模式",
-        exitTeamModeDescription: "负责人会话会保留历史，作为普通会话继续使用。团队会被归档：未完成的任务和定时安排取消，成员会话停止，工作目录保留。之后负责人不再收到团队消息和团队说明。",
+        exitTeamModeDescription: "负责人会话会保留历史，作为普通会话继续使用。团队会被归档：未完成的任务和定时安排取消，成员会话停止，工作目录保留。之后负责人不再收到团队消息和团队说明。此操作不可撤销：归档的团队不能恢复，成员也不会再启动；需要团队协作时请新建团队。",
         exitTeamModeDone: "已退出团队模式，负责人会话已作为普通会话重启。",
         exitTeamModeDoneNoRestart: "已退出团队模式，这个会话现在是普通会话。",
         exitTeamModeLeadStopped: "团队已归档，但服务器版本较旧，负责人会话也被停止了。恢复它即可作为普通会话继续。",

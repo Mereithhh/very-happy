@@ -1572,6 +1572,9 @@ export class ApiMachineClient {
                     historySearch: { rpcAvailable: true, detectedAt: now },
                     // B-868 capability flag: `set-terminal-project` (same restamp discipline).
                     terminalProjects: { rpcAvailable: true, detectedAt: now },
+                    // B-877b capability flag: `team-exit-session` (same restamp discipline); the web
+                    // asks an older CLI to update at once instead of waiting out the server's 15 s RPC grace.
+                    teamExit: { rpcAvailable: true, detectedAt: now },
                     // B-084: closed records survive daemon restarts (persisted
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.

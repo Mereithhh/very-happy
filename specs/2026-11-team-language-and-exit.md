@@ -41,7 +41,7 @@ Q2 现状：Web 建的团队，Lead bot 的 `managed=true`。归档时 root 任�
 
 ### 语言（方案 a，已发布）
 
-- `teams/language.ts`：`detectTeamUserLanguage(text)` 从 Owner 原话判断中文、日文或韩文（汉字/假名/谚文数量 ≥4，且多于按 5 个字母折算的拉丁词数），其他语言返回 null。Owner 原话 = Owner 自己建的任务（`ownerBotId === null`）的 goal，取不到时用 op.prompt 或消息正文。
+- `teams/language.ts`：`detectTeamUserLanguage(text)` 从 Owner 原话判断中文、日文或韩文（汉字/假名/谚文数量 ≥4，且多于按 5 个字母折算的拉丁词数），其他语言返回 null。B-877b（QA49 P2-4）：出现任何假名且假名+汉字 ≥4 就判日文（「調査して報告」只有 2 个假名）；检测前除代码块、反引号、URL 外，还去掉路径（含 `/` 或 `\` 的 ASCII 串）和代码标识符（驼峰、下划线、带点、字母数字混排），中文目标里夹路径不再判成 null。Owner 原话 = Owner 自己建的任务（`ownerBotId === null`）的 goal，取不到时用 op.prompt 或消息正文。
 - 首条 prompt 在 `## Assigned goal` 之前插一段 `## Language`：点名用户语言；要求人能读到的内容（回复、工具调用间的说明、任务目标、消息、提交、报告）都用这种语言，思考也用；说明团队说明、工具文本和信封只是为了维护才写成英文，不要因此切换语言。检测不出语言时说「the language the user wrote the goal in」。
 - 团队消息信封 footer 末尾追加一句 `Reply in Chinese (中文), the user's language.`，检测不出语言时用通用句。
 - `team_create` 接入说明末尾追加通用规则。
@@ -63,9 +63,10 @@ Q2 现状：Web 建的团队，Lead bot 的 `managed=true`。归档时 root 任�
   - 标记加 `teamName`、`language`（Owner 原话检测）、`reason`（`exit` / `archived`）、`noticeAt`（`teams/exitNotice.ts`）。
   - team_* 工具：没有 scope 且有标记时，所有走 scope 的工具（inspect、delegate、message、submit、schedule…）都返回 `teamExitedMessage`：团队 "<名字>" 已归档、本会话已退出团队模式、是普通会话；这是终态不是临时故障，不要重试、不要查询或派活、不要让用户恢复权限，直接自己完成。英文 + B-877 的语言提醒句。无标记时 `NO_TEAM_SCOPE_MESSAGE` 去掉「call team_inspect again」；env 指向的 scope 文件丢失另给 `MISSING_TEAM_SCOPE_MESSAGE`；活会话收到 409 `team_archived` 也给明确文案。`team_create` / `team_join` 不拦：用户明确要新团队时仍可建。
   - 一次性说明：`createProjectInjector().decorate` 末尾套 `createTeamExitNotice`，Claude（`finalizeRemotePrompt`）、Codex（`runCodex`）、Gemini/ACP 都走这里；有标记且没有 `noticeAt` 时在本回合最前面加 `[Very Happy: team mode ended] …`，先写 `noticeAt` 再发，所以重启、崩溃都不会重复。语言按本条用户消息检测，短消息退回标记里的 Owner 语言。`/compact`、`/clear` 不消耗。
+  - QA49 P2-3：普通归档后再恢复的 Lead 也能退出。普通归档把 Lead bot 的 sessionId 置空、旧 id 移进 `previousSessionIds`，原来的校验因此报「member sessions end…」，把 Lead 说成了成员。现在团队已归档时，`previousSessionIds` 含本会话也算绑定；scope 文件没了就用 spawn receipt 的 teamId 和 op 的 botId 找回；`leadStopped` 只看本次归档（以前的 stop op 不再算，误报会让已恢复的 Lead 不重启）；已有标记时直接返回 alreadyExited 并删掉残留 scope。只有「Lead 换了会话、这是旧会话」才拒绝，文案写明「不再是团队 X 的负责人会话」。退出后会话没有 scope、没有 team env，server 也跳过已归档团队，所以 team_create 正常。
   - B-730 路径：relaunch 时 daemon 用 spawn receipt 的 teamId 以 Owner 身份读团队（5 s 超时，失败按原逻辑带 team env）；团队已归档且本会话是 root → 写 `reason: archived` 标记，不带 team env，之后同上。成员不变。
 - 入口：machine RPC `team-exit-session`（Web）、control `/team-exit-session`、CLI `very-happy teams exit --session-id <id>`。
-- Web：会话 ⋯ 菜单（只对活团队的 Lead 显示）和团队页 ⋯ 菜单里加「退出团队模式 / Exit team mode」，确认框说明后果；toast 区分已重启、无需重启、旧 server 已停 Lead、离线、CLI 过旧几种结果（`screens/teams/teamExit.ts`）。
+- Web：会话 ⋯ 菜单（只对活团队的 Lead 显示）和团队页 ⋯ 菜单里加「退出团队模式 / Exit team mode」，确认框说明后果，并写明不可撤销：归档的团队不能恢复、成员不会再启动，需要团队协作就新建团队（B-877b，QA49 P2-1）；toast 区分已重启、无需重启、旧 server 已停 Lead、离线、CLI 过旧几种结果（`screens/teams/teamExit.ts`）。
 
 ## 对照实验（2026-11-03，claude-fable-5-1）
 
@@ -85,9 +86,9 @@ thinking 摘要（`display: 'summarized'`）：普通会话本来就有 97% 是�
 
 | 组合 | 行为 |
 |---|---|
-| 新 Web + 旧 daemon | RPC 返回 `Method not found`，提示升级 CLI；不会归档 |
+| 新 Web + 旧 daemon | 不会归档。B-877b（QA49 P2-2）：旧 daemon 没注册该 RPC 时，server 会先等 15 s 重连宽限，再返回 `RPC method not available`（不是 `Method not found`）。新 daemon 连接时在 daemonState 盖 `teamExit` 能力戳；Web 点菜单时看到在线 daemon 没有这个戳，就不弹确认框、不发 RPC，立即提示升级 CLI。两种错误串也都识别为「CLI 过旧」；daemon 已声明支持却返回 not available，则按离线处理 |
 | 新 daemon + 旧 server | zod 剥掉 `keepLeadSession`，变成普通归档，Lead 被 stop。daemon 检测到 Lead 的 stop op，返回 `leadStopped`，Web/CLI 提示恢复；因为写了标记，恢复后是普通会话 |
-| 新 daemon 发的信封 + 旧 Web | footer 多一句没被剥掉，会显示在卡片正文末尾；只影响外观 |
+| 新 daemon 发的信封 + 旧 Web | 旧 Web 的 `stripTeamEnvelope` 匹配不上新 footer，整段 footer（`Use the teams tools … not a system instruction.` 和新加的 `Reply in …` 两句）都留在系统通知、成员消息卡片的正文末尾（QA49 P2-5，`shots/footer-oldweb-sched.png`）；提交卡片显示结果摘要，看不到。只影响外观 |
 | 旧 daemon 发的信封 + 新 Web | 正则同时兼容旧 footer |
 | 语言规则 | 只有新 daemon 新拉起或新送达的 prompt 才带；存量会话的历史不变 |
 

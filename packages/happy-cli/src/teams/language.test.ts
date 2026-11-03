@@ -14,6 +14,16 @@ describe('B-877: team injections name the user\'s language', () => {
         expect(detectTeamUserLanguage('Translate the 「退出团队模式」 label and update the settings screenshots for both themes')).toBeNull();
         expect(detectTeamUserLanguage('```\n中文中文中文中文\n```\nPlease review')).toBeNull();
     });
+    it('B-877b (QA49 P2-4): kana means Japanese, paths and identifiers do not count, English stays generic', () => {
+        expect(detectTeamUserLanguage('調査して報告')?.code).toBe('ja');
+        expect(detectTeamUserLanguage('ログを調査')?.code).toBe('ja');
+        expect(detectTeamUserLanguage('修复 packages/happy-web-v2/src/…/ChatHeader.tsx 里 exit team 菜单在 mobile 下溢出的问题')?.code).toBe('zh');
+        expect(detectTeamUserLanguage('把 teamExitOutcome 和 exit_team_mode 的 ChatHeader.tsx 改好，再跑 src/screens/teams/teamExit.test.ts')?.code).toBe('zh');
+        expect(detectTeamUserLanguage('C:\\Users\\dev\\project\\README.md 里的说明过期了')?.code).toBe('zh');
+        expect(detectTeamUserLanguage('Fix the overflow of the exit team menu in packages/happy-web-v2/src/screens/session/ChatHeader.tsx on mobile')).toBeNull();
+        expect(detectTeamUserLanguage('Please investigate why the reconnect is slow and report back')).toBeNull();
+        expect(detectTeamUserLanguage('修复问题')?.code).toBe('zh');
+    });
     it('takes the owner\'s words from the task the owner created, not a bot\'s brief', () => {
         expect(teamOwnerText([{ goal: 'English brief by the lead', ownerBotId: 'lead' }, { goal: '用户原话', ownerBotId: null }])).toBe('用户原话');
         expect(teamOwnerText([{ goal: 'English brief by the lead', ownerBotId: 'lead' }])).toBeNull();

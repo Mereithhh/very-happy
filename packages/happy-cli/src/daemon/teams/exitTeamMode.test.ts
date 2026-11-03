@@ -107,3 +107,38 @@ describe('B-877b: a lead relaunched after its team was archived (B-730 path) goe
         expect(archivedLeadMarker({ ...archived, archivedAt: undefined }, 'op-lead', 's1')).toBeNull();
     });
 });
+
+describe('B-877b (QA49 P2-3): the lead of a team archived the ordinary way can still leave it', () => {
+    const archivedUnbound = (over: Record<string, unknown> = {}) => team({ archivedAt: 9, bots: [{ id: 'lead', root: true, sessionId: null, previousSessionIds: ['s1'] }, { id: 'm', root: false, sessionId: null, previousSessionIds: ['s2'] }], operations: [{ id: 'op-lead', type: 'spawn', botId: 'lead', sessionId: 's1' }, { type: 'stop', botId: 'lead', sessionId: 's1' }], ...over });
+    it('exits a resumed lead whose bot was unbound, and restarts it even though an old stop op names it', async () => {
+        const file = teamScopeFilePath(home, 'op-lead');
+        scope(file);
+        const client = http(archivedUnbound());
+        expect(await exitTeamMode({ home, sessionId: 's1', metadata: { teamOperationId: 'op-lead' }, http: client })).toEqual({ teamId: 'team-1', managed: true, leadStopped: false });
+        expect(client.post).not.toHaveBeenCalled();
+        expect(existsSync(file)).toBe(false);
+        expect(JSON.parse(readFileSync(teamExitMarkerPath(home, 's1'), 'utf8'))).toMatchObject({ teamName: 'qa49-exit-cli', reason: 'exit' });
+    });
+    it('finds the team from the spawn receipt when the scope file is gone', async () => {
+        writeReceipt(home, { operationId: 'op-lead', teamId: 'team-1', claimId: 'c', phase: 'completed', sessionId: 's1', scopeFile: teamScopeFilePath(home, 'op-lead') });
+        const client = http(archivedUnbound());
+        expect(await exitTeamMode({ home, sessionId: 's1', metadata: { teamOperationId: 'op-lead' }, http: client })).toMatchObject({ teamId: 'team-1', managed: true });
+        expect(client.get).toHaveBeenCalledWith('/v1/teams/team-1');
+        expect(hasExitedTeamMode(home, 's1')).toBe(true);
+    });
+    it('never calls the lead a member: a lead session that is not the current one gets its own refusal', async () => {
+        scope(teamScopeFilePath(home, 'op-lead'));
+        await expect(exitTeamMode({ home, sessionId: 's1', metadata: { teamOperationId: 'op-lead' }, http: http(team({ bots: [{ id: 'lead', root: true, sessionId: 's-new' }] })) }))
+            .rejects.toThrow('This session is no longer the lead session of team "qa49-exit-cli"');
+    });
+    it('a lead a relaunch already marked (archived path) answers alreadyExited and drops a leftover scope file', async () => {
+        const file = teamScopeFilePath(home, 'op-lead');
+        scope(file);
+        mkdirSync(join(home, 'teams', 'exited'), { recursive: true });
+        writeFileSync(teamExitMarkerPath(home, 's1'), JSON.stringify({ teamId: 'team-1', managed: true, reason: 'archived' }));
+        const client = http();
+        expect(await exitTeamMode({ home, sessionId: 's1', metadata: { teamOperationId: 'op-lead' }, http: client })).toEqual({ teamId: 'team-1', managed: true, leadStopped: false, alreadyExited: true });
+        expect(client.get).not.toHaveBeenCalled();
+        expect(existsSync(file)).toBe(false);
+    });
+});

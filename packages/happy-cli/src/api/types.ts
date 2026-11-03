@@ -378,6 +378,11 @@ export const DaemonStateSchema = z.object({
     rpcAvailable: z.boolean(),
     detectedAt: z.number(),
   }).optional(),
+  /** B-877b capability flag: this daemon answers `team-exit-session` (same trust rule). */
+  teamExit: z.object({
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
   /**
    * B-273 capability flag: this daemon answers `list-tmux-sessions` and
    * honours `open-terminal.attachTmux`. Same trust rule (`detectedAt >=
