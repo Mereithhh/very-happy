@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-04-cli-team-language-backfill-0-2-205',
+    cliVersion: '0.2.205',
+    date: '2026-11-04',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov04.title',
+    summaryKey: 'changelog.releases.nov04.summary',
+    itemKeys: ['changelog.releases.nov04.team', 'changelog.releases.nov04.update'],
+  },
+  {
     id: '2026-11-03-terminal-project-share-team-language-import',
     date: '2026-11-03',
     buildVersion: __APP_VERSION__,
