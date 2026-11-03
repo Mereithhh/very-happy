@@ -144,7 +144,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.nov03k.title',
     summaryKey: 'changelog.releases.nov03k.summary',
-    itemKeys: ['changelog.releases.nov03k.config', 'changelog.releases.nov03k.off'],
+    itemKeys: ['changelog.releases.nov03k.config', 'changelog.releases.nov03k.off', 'changelog.releases.nov03k.refused'],
   },
   {
     id: '2026-11-03-cli-shorter-team-tools-0-2-203',

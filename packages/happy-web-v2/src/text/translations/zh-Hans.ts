@@ -1198,6 +1198,7 @@ export const zhHans: TranslationStructure = {
                 longContext: '1M 上下文',
                 aliasSuffix: '（别名）',
                 longContextHint: '上下文窗口扩到 100 万 token',
+                longContextRefusedHint: '这台机器的账号或供应商拒绝了 1M 上下文，跟随最新改用标准上下文；打开则仍按 1M 请求。',
                 unknownModel: ({ model }: { model: string }) => `${model} · 未知模型`,
                 unknownModelHint: '不在这台机器上报的模型列表里，消息仍按这个 id 发出',
                 sessionOnly: '只影响这个会话',
@@ -3225,6 +3226,7 @@ export const zhHans: TranslationStructure = {
                 summary: '跟随最新时，新的 Claude 会话默认用 Opus 5.5 的 1M 上下文窗口，模型选择器里的 1M 开关默认打开。',
                 config: '机器上配置了模型（settings.json 的 model 或 ANTHROPIC_MODEL，比如 opus[1m]）时按本机配置：选择器显示「本机配置」，1M 开关与配置一致。升级到新版 CLI 后从第一条消息起就生效。',
                 off: '手动关掉 1M 会记成你自己的选择，之后保持关闭。',
+                refused: '账号或供应商不支持 1M 上下文时，这一轮会自动去掉 1M 重试一次，并记住这台机器：之后跟随最新只用标准上下文，1M 开关会说明原因。你自己选的 1M 不会被自动降级，而是给出明确报错。',
             },
             nov03j: {
                 title: 'CLI 0.2.203：团队工具的返回更短',

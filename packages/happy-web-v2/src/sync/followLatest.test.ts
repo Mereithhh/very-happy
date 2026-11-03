@@ -255,7 +255,7 @@ describe('lists without a session merge live catalogs', () => {
             metadata: { happyCliVersion: '0.2.190' },
             daemonState: { pid: 1, agentVersionEpoch: 0, agentVersions: { checkedAt: Date.now(), daemonPid: 1, agents: [{ id: 'codex', installed: '0.154.0', latest: '0.166.0', status: 'update-available' }] } },
         };
-        expect(launcherMachineContext(machine as any, 'codex', null)).toEqual({ cliVersion: '0.2.190', agentVersion: '0.154.0', catalog: null });
+        expect(launcherMachineContext(machine as any, 'codex', null)).toEqual({ cliVersion: '0.2.190', agentVersion: '0.154.0', catalog: null, longContextUnsupported: false });
         expect(launcherMachineContext(null, 'codex', null)).toBeNull();
     });
 });
@@ -277,5 +277,21 @@ describe('B-487 notice for a session following latest', () => {
     it('an old Claude wrapper following latest still gets the Opus 5.5 notice', () => {
         expect(modelSupportNotice(session({ metadata: { capabilities: [], version: '0.2.140' } }), null, {})).toMatchObject({ kind: 'claude-opus-55', model: 'claude-opus-5-5' });
         expect(modelSupportNotice(session({ metadata: capable }), null, {})).toBeNull();
+    });
+});
+
+describe('B-883b: a machine whose account/provider refused 1M', () => {
+    const refused = { reason: 'Extra usage is required for long context requests.', at: 1 };
+    it('a session with the wrapper verdict follows latest without [1m]', () => {
+        expect(resolveLatestForAgent(null, 'claude', { ...capable, configuredModel: null }).model).toBe('claude-opus-5-5[1m]');
+        expect(resolveLatestForAgent(null, 'claude', { ...capable, configuredModel: null, longContextUnsupported: refused }).model).toBe('claude-opus-5-5');
+        // An unreadable verdict proves nothing.
+        expect(resolveLatestForAgent(null, 'claude', { ...capable, configuredModel: null, longContextUnsupported: { reason: 1 } }).model).toBe('claude-opus-5-5[1m]');
+    });
+    it('the new-session dialog takes it from the machine\'s recent session', () => {
+        const ctx = launcherMachineContext({ metadata: {} } as any, 'claude', { models: [], configuredModel: null, longContextUnsupported: refused } as any);
+        expect(ctx?.longContextUnsupported).toBe(true);
+        expect(resolveLatestForAgent(null, 'claude', null, ctx).model).toBe('claude-opus-5-5');
+        expect(launcherMachineContext({ metadata: {} } as any, 'claude', { models: [], configuredModel: null } as any)?.longContextUnsupported).toBe(false);
     });
 });

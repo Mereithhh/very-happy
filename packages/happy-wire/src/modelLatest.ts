@@ -101,10 +101,14 @@ export type CatalogEntryLike = { code: string; value?: string; resolvedModel?: s
  *   the label — the real send is resolved again once the session exists.
  * - `none`: no machine (settings page): newest known.
  */
-export type LatestModelContext =
+export type LatestModelContext = (
     | { kind: 'session'; capabilities?: readonly string[] | null; catalog?: readonly CatalogEntryLike[] | null; configuredModel?: string | null }
     | { kind: 'machine'; cliVersion?: string | null; agentVersion?: string | null; catalog?: readonly CatalogEntryLike[] | null; configuredModel?: string | null }
-    | { kind: 'none'; catalog?: readonly CatalogEntryLike[] | null; configuredModel?: string | null };
+    | { kind: 'none'; catalog?: readonly CatalogEntryLike[] | null; configuredModel?: string | null }
+) & {
+    /** B-883b: the wrapper recorded that this machine's account/provider refused 1M — follow latest without `[1m]`. */
+    longContextUnsupported?: boolean;
+};
 
 /**
  * Agents whose machine configuration may name a model (Codex config.toml /
@@ -126,6 +130,21 @@ export const MACHINE_CONFIG_AGENTS: readonly string[] = ['codex', 'gemini'];
 export const CONFIG_PIN_AGENTS: readonly string[] = [...MACHINE_CONFIG_AGENTS, 'claude'];
 
 export const LONG_CONTEXT_MARKER = '[1m]';
+
+/**
+ * B-883b: `metadata.longContextUnsupported` — the account/provider behind this
+ * wrapper refused a 1M-context request (machine-level memory, the wrapper is
+ * the writer). Absent/null = no such evidence.
+ */
+export type LongContextUnsupported = { reason: string; at: number };
+
+/** Whitelisted read (AGENTS #14: an unexpected shape never drops the metadata). */
+export function readLongContextUnsupported(value: unknown): LongContextUnsupported | null {
+    if (!value || typeof value !== 'object') return null;
+    const { reason, at } = value as { reason?: unknown; at?: unknown };
+    if (typeof reason !== 'string' || typeof at !== 'number' || !Number.isFinite(at)) return null;
+    return { reason: reason.slice(0, 300), at };
+}
 
 export type LatestModelResolution = {
     /** Concrete id to send (Claude: `[1m]` form where proven, B-883), or
@@ -263,7 +282,7 @@ export function resolveLatestModel(
     const sameVersion = model !== null && newest !== null
         && compareTierVersions(tierVersion(tier, model)!, tierVersion(tier, newest)!) === 0;
     return {
-        model: model && longContext.has(model) ? model + LONG_CONTEXT_MARKER : model,
+        model: model && longContext.has(model) && !ctx.longContextUnsupported ? model + LONG_CONTEXT_MARKER : model,
         newest,
         label: model ? labels.get(model) ?? model : null,
         limited: newest !== null && !sameVersion,

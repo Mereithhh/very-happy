@@ -25,6 +25,7 @@ import { decideWarmAdoption, formatPrewarmLine, type ClaudePrewarmLease, type Wa
 import { TimeoutError, withTimeout } from './utils/withTimeout';
 import { createClaudeTurnTracker, readClaudeSessionState } from './claudeTurnEnd';
 import { retiredModelFrom, retiredModelNotice, type RetiredModels } from './claudeRetiredModel';
+import { longContextExplicitNotice, longContextFallbackNotice, longContextRejectionFrom, type LongContextPolicy, type LongContextRejection } from './claudeLongContext';
 import {
     createClaudeCommandTracker,
     INTERRUPT_CANCEL_QUEUED_CAPABILITY,
@@ -121,6 +122,8 @@ export async function claudeRemote(opts: {
     onUndeliveredMessage?: (message: { message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string }) => void,
     /** B-634 ③: session-scoped retired model ids; a message asking for one runs on the default. */
     retiredModels?: RetiredModels,
+    /** B-883b: the provider refused a `[1m]` request — remember it, and retry once on the plain id when following latest. */
+    longContext?: LongContextPolicy,
     /**
      * B-515: start a warm Query with this lease's predicted mode BEFORE the
      * first message; adopted when the first message matches, closed otherwise.
@@ -594,6 +597,11 @@ export async function claudeRemote(opts: {
     // utils/remoteQueryRecycle.ts). Reset when the turn's result is handled.
     let lastAssistantError: string | undefined;
 
+    // B-883b: the prompt of the current turn (what a long-context refusal
+    // retries) and a retry owed once that turn's result arrives.
+    let currentPrompt: MessageParam['content'] = initial.message;
+    let longContextRetry: LongContextRejection | null = null;
+
     // The first prompt is in the Query's input (pushed; the CLI announces its
     // turn with running/init). Uuid-stamped when the web gave it one, and
     // tracked like every other command, so a Stop that sweeps it before it
@@ -692,6 +700,7 @@ export async function claudeRemote(opts: {
                 return;
             }
             mode = next.mode;
+            currentPrompt = next.message;
             updateThinking(true);
             turn.pushed();
             const uuid = promptUuid(next.uuid);
@@ -774,6 +783,54 @@ export async function claudeRemote(opts: {
 
             logger.debug(`[claudeRemote] Message ${message.type}`, contentLogMetadata(message));
 
+            // B-883b: the provider refused 1M context for this turn. Following
+            // latest: the refusal is not shown, the turn runs again on the plain
+            // id once its result is in. An explicit `[1m]` pick fails as is,
+            // with a notice saying why.
+            const refused: LongContextRejection | null = opts.longContext && !longContextRetry ? longContextRejectionFrom(message, mode.model) : null;
+            if (refused) {
+                logger.debug(`[claudeRemote] ${refused.model} refused for long context: ${refused.reason}`);
+                if (opts.longContext!.onRejected(refused) === 'retry') {
+                    longContextRetry = refused;
+                    mode = { ...mode, model: refused.plain };
+                    opts.onCompletionEvent?.(longContextFallbackNotice(refused));
+                    continue;
+                }
+                opts.onCompletionEvent?.(longContextExplicitNotice(refused));
+            }
+            if (longContextRetry && message.type === 'result') {
+                const retry = longContextRetry;
+                longContextRetry = null;
+                turn.onResult();
+                lastAssistantError = undefined;
+                timingTurn++;
+                timingMarks = { pushedAt: Date.now() };
+                if (inputClosed()) {
+                    logger.debug('[claudeRemote] Query input closed before the long-context retry; nothing resent');
+                    updateThinking(false);
+                    opts.onReady(message);
+                    continue;
+                }
+                logger.debug(`[claudeRemote] Retrying the turn on ${retry.plain}`);
+                // Pushed after the switch is answered (bounded): the resend must
+                // not start on the refused model.
+                void withTimeout(response.setModel(retry.plain), SET_MODEL_TIMEOUT_MS, 'set_model')
+                    .catch((e) => {
+                        logger.debug(`[claudeRemote] setModel(${retry.plain}) for the long-context retry failed: ${e instanceof Error ? e.message : String(e)}`);
+                        modelUnconfirmed = true;
+                    })
+                    .then(() => {
+                        if (inputClosed()) return;
+                        turn.pushed();
+                        messages.push({
+                            type: 'user',
+                            parent_tool_use_id: null,
+                            origin: { kind: 'human' },
+                            message: { role: 'user', content: currentPrompt },
+                        });
+                    });
+                continue;
+            }
             if (message.type === 'assistant' && message.error) {
                 lastAssistantError = message.error;
             }

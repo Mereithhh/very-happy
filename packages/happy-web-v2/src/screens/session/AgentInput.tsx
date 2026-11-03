@@ -50,6 +50,7 @@ import {
     resolveAgentDefaultConfig,
     resolveDefaultModelMode,
     resolveLatestForAgent,
+    latestModelContext,
     isFollowingLatestModel,
     getCodeAgentDefaults,
     setAgentDefaultOverride,
@@ -371,6 +372,8 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const launcherContext = session ? null : pending?.launcher?.context ?? null;
     const modelMetadata = session ? (metadata ?? {}) : null;
     const latestResolution = resolveLatestForAgent(latestTable, flavor, modelMetadata, launcherContext);
+    // B-883b: the wrapper recorded that this machine's account/provider refused 1M.
+    const longContextRefused = latestModelContext(modelMetadata, launcherContext).longContextUnsupported === true;
     // B-849b: the session's own choice — the wrapper-recorded intent, a pick
     // from here it has not echoed yet, else what it runs. Never the account
     // default for a session that already has one (that is for new sessions).
@@ -1742,7 +1745,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                         triggerLabel={isGemini ? (metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.machineDefaultModel')) : undefined}
                         effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
                         longContextLabel={t('session.chat.modelPicker.longContext')}
-                        longContextHint={t('session.chat.modelPicker.longContextHint')}
+                        longContextHint={longContextRefused ? t('session.chat.modelPicker.longContextRefusedHint') : t('session.chat.modelPicker.longContextHint')}
                         moreLabel={t('session.chat.modelPicker.more')}
                         footer={{ note: t('session.chat.modelPicker.sessionOnly'), action: isGemini && effortOptions.length === 0 ? undefined : { label: t('session.chat.modelPicker.setDefault'), onSelect: () => { void setAsNewSessionDefault(); } } }}
                         customize={canConfigureModels && !apiModelOptions ? { label: t('modelConfig.customize'), onSelect: () => setModelEditorOpen(true) } : undefined}

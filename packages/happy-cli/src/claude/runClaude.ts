@@ -40,7 +40,8 @@ import { join } from 'node:path';
 import type { BoardTaskRef } from './utils/boardAnalyzer';
 import { DEFAULT_CLAUDE_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
 import { CLAUDE_ATTACHMENT_KINDS, stripAttachmentManifest } from './utils/attachmentContent';
-import { readClaudeConfiguredModel } from './claudeConfiguredModel';
+import { readClaudeConfiguredModel, readClaudeMergedSettings } from './claudeConfiguredModel';
+import { createLongContextPolicy, longContextKey, longContextStorePath, readLongContextVerdict, withoutRefusedLongContext } from './claudeLongContext';
 import { TranscriptPathHints } from './utils/transcriptCursor';
 import { planClaudeStartup } from './startupPlan';
 import { takeReconnectEnv } from '@/utils/reconnectEnv';
@@ -223,6 +224,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     const originTags = spawnOriginTags(process.env, 'claude');
 
+    // B-883b: this machine's verdict on 1M context for the provider/login this wrapper uses.
+    const claudeEnv = { ...process.env, ...options.claudeEnvVars };
+    const longContextStore = longContextStorePath(configuration.happyHomeDir);
+    const longContextStoreKey = longContextKey(claudeEnv, readClaudeMergedSettings(claudeEnv, workingDirectory).env);
+    const longContextVerdict = () => readLongContextVerdict(longContextStore, longContextStoreKey);
+
     let metadata: Metadata = {
         path: workingDirectory,
         host: os.hostname(),
@@ -252,7 +259,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         modelIntent: options.model ?? null,
         effortIntent: null,
         // B-883: known before the first message, so follow-latest defers to it there too.
-        configuredModel: readClaudeConfiguredModel({ ...process.env, ...options.claudeEnvVars }, workingDirectory),
+        configuredModel: readClaudeConfiguredModel(claudeEnv, workingDirectory),
+        longContextUnsupported: longContextVerdict(),
         stickyModel: options.model ?? null,
         // Effective mode this process enforces. Kept current by
         // publishPermissionMode below; the web renders it instead of guessing.
@@ -1105,6 +1113,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 ? `[loop] Ignoring permission mode downgrade from ${previousPermissionMode} to default`
                 : `[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
         }
+        // B-883b: following latest on a machine known to refuse 1M runs the plain id.
+        const refusedLongContext = withoutRefusedLongContext(resolved.mode.model, message.meta?.modelIntent, session.getMetadata()?.longContextUnsupported ?? longContextVerdict());
+        if (refusedLongContext !== resolved.mode.model) {
+            logger.debug(`[loop] ${resolved.mode.model} follows latest on a machine without 1M context; running ${refusedLongContext}`);
+            resolved.mode.model = refusedLongContext;
+            resolved.next.model = refusedLongContext;
+        }
         currentModel = resolved.next.model;
         currentFallbackModel = resolved.next.fallbackModel;
         currentCustomSystemPrompt = resolved.next.customSystemPrompt;
@@ -1439,6 +1454,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         onSessionReady: (sessionInstance) => {
             // Store reference for hook server callback
             currentSession = sessionInstance;
+            sessionInstance.longContextPolicy = createLongContextPolicy({ session, storePath: longContextStore, key: longContextStoreKey });
             // B-551: the local launcher's scanner reads the same hints.
             sessionInstance.transcriptPathHints = transcriptPathHints;
             // B-515: the system/init path (an adopted warm process, whose

@@ -814,6 +814,7 @@ export async function claudeRemoteLauncher(
                     // read them — the same tombstone a destroyed queue item gets
                     // (B-332), so the web shows them as not delivered, not answered.
                     retiredModels: session.retiredModels,
+                    longContext: session.longContextPolicy ?? undefined,
                     // B-634 ②: messages the Query ended without Claude Code ever
                     // starting them — sent once more, or tombstoned (B-332).
                     onCommandsUnconfirmed: (commands, { aborted }) => {

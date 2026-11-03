@@ -33,13 +33,13 @@ export function claudeSettingsFiles(env: Record<string, string | undefined>, cwd
     return [join(userDir, 'settings.json'), join(cwd, '.claude', 'settings.json'), join(cwd, '.claude', 'settings.local.json')];
 }
 
-/** Read the files and resolve. A missing or unparsable file is skipped, as Claude Code does. */
-export function readClaudeConfiguredModel(
+/** The settings files merged (model: last wins; env: merged). A missing or unparsable file is skipped, as Claude Code does. */
+export function readClaudeMergedSettings(
     env: Record<string, string | undefined>,
     cwd: string,
     readFile: (path: string) => string = (path) => readFileSync(path, 'utf8'),
     home?: string,
-): string | null {
+): { model: unknown; env: Record<string, unknown> } {
     let model: unknown;
     const mergedEnv: Record<string, unknown> = {};
     for (const path of claudeSettingsFiles(env, cwd, home)) {
@@ -54,5 +54,15 @@ export function readClaudeConfiguredModel(
         if (str(settings.model)) model = settings.model;
         if (settings.env && typeof settings.env === 'object') Object.assign(mergedEnv, settings.env);
     }
-    return configuredModelOf({ model, env: mergedEnv }, env.ANTHROPIC_MODEL);
+    return { model, env: mergedEnv };
+}
+
+/** Read the files and resolve the pinned model. */
+export function readClaudeConfiguredModel(
+    env: Record<string, string | undefined>,
+    cwd: string,
+    readFile?: (path: string) => string,
+    home?: string,
+): string | null {
+    return configuredModelOf(readClaudeMergedSettings(env, cwd, readFile, home), env.ANTHROPIC_MODEL);
 }

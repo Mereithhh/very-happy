@@ -149,3 +149,10 @@ describe('QA26 P2-4: 1M pinned on the followed model', () => {
         expect(on.selectedInMore).toBe(false);
     });
 });
+
+describe('B-883b: following latest on a machine that refused 1M', () => {
+    it('the follow entry is the plain id: the switch shows off and turning it on pins the [1m] twin', () => {
+        const layout = layoutModelPicker(claudeOptions, { flavor: 'claude', selectedKey: 'latest', followModel: 'claude-opus-5-5', resolved, runnable });
+        expect(layout.longContext).toEqual({ on: false, onKey: 'claude-opus-5-5[1m]', offKey: 'latest' });
+    });
+});

@@ -993,6 +993,7 @@ export const en = {
                 longContext: '1M context',
                 aliasSuffix: ' (alias)',
                 longContextHint: 'Extends the context window to 1M tokens',
+                longContextRefusedHint: 'This machine\'s account or provider refused 1M context, so following latest uses the standard window. Turning it on asks for 1M anyway.',
                 unknownModel: ({ model }: { model: string }) => `${model} · unknown model`,
                 unknownModelHint: 'Not in the models this machine reported; messages still send this id',
                 sessionOnly: 'Applies to this session only',
@@ -3094,6 +3095,7 @@ export const en = {
                 summary: 'Following latest, new Claude sessions run Opus 5.5 with the 1M context window, and the 1M switch in the model picker is on by default.',
                 config: 'A model set on the machine (settings.json `model` or ANTHROPIC_MODEL, such as opus[1m]) now wins: the picker shows “Machine config” with the 1M switch matching it. With the new CLI this holds from the first message.',
                 off: 'Turning 1M off is remembered as your own choice and stays off.',
+                refused: 'If the account or provider does not support 1M context, the turn is retried once without it and the machine remembers: following latest stays on the standard window there, and the 1M switch says why. A 1M you picked yourself is never downgraded — you get a clear error instead.',
             },
             nov03j: {
                 title: 'CLI 0.2.203: team tools return shorter answers',

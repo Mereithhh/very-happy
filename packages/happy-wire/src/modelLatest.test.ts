@@ -7,6 +7,7 @@ import {
     isResolvedLatestModel,
     parseLatestModelTable,
     resolveLatestModel,
+    readLongContextUnsupported,
     tierVersion,
     type LatestModelTable,
 } from './modelLatest';
@@ -214,5 +215,24 @@ describe('parseLatestModelTable', () => {
     it('a broken server tier falls back to the bundled one at resolve time', () => {
         const table = { version: 9, agents: { codex: { tier: 'sol', pattern: '(', models: [] } } } as LatestModelTable;
         expect(resolveLatestModel(table, 'codex', { kind: 'none' }).model).toBe('gpt-6.1-sol');
+    });
+});
+
+describe('B-883b: account/provider without 1M', () => {
+    it('follows latest without [1m] once the wrapper recorded a refusal', () => {
+        const ctx = { kind: 'session' as const, capabilities: [CLAUDE_OPUS_55_CAPABILITY], configuredModel: null };
+        expect(resolveLatestModel(null, 'claude', ctx).model).toBe('claude-opus-5-5[1m]');
+        expect(resolveLatestModel(null, 'claude', { ...ctx, longContextUnsupported: true })).toMatchObject({ model: 'claude-opus-5-5', label: 'Opus 5.5', limited: false });
+        expect(resolveLatestModel(null, 'claude', { kind: 'machine', longContextUnsupported: true }).model).toBe('claude-opus-5-5');
+        // A machine config pin still wins.
+        expect(resolveLatestModel(null, 'claude', { ...ctx, configuredModel: 'opus[1m]', longContextUnsupported: true }).model).toBeNull();
+    });
+
+    it('reads metadata.longContextUnsupported through a whitelist', () => {
+        expect(readLongContextUnsupported({ reason: 'Extra usage is required', at: 5 })).toEqual({ reason: 'Extra usage is required', at: 5 });
+        expect(readLongContextUnsupported({ reason: 'x'.repeat(400), at: 5 })?.reason).toHaveLength(300);
+        for (const bad of [null, undefined, true, 'x', { reason: 1, at: 5 }, { reason: 'x' }, { reason: 'x', at: NaN }]) {
+            expect(readLongContextUnsupported(bad)).toBeNull();
+        }
     });
 });

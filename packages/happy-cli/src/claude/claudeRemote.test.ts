@@ -714,6 +714,80 @@ describe('claudeRemote', () => {
             expect(observed).toEqual(['turn 1', 'turn 2']);
         });
 
+        // B-883b: Claude Code 2.1.304's reply to a 429 "Extra usage is required for long context requests".
+        const refusal = { type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', is_api_error_message: true, api_error_status: 429,
+            message: { role: 'assistant', content: [{ type: 'text', text: 'API Error: Request rejected (429) · Extra usage is required for long context requests.' }] } };
+        const longContextQuery = (observed: unknown[], setModel: ReturnType<typeof vi.fn>, opts: { retried: boolean }) => (args: any) => ({
+            setPermissionMode: vi.fn(),
+            setModel,
+            async *[Symbol.asyncIterator]() {
+                const input = args.prompt[Symbol.asyncIterator]();
+                observed.push((await input.next()).value.message.content);
+                yield refusal;
+                yield { type: 'result', subtype: 'success', is_error: true, api_error_status: 429 };
+                yield { type: 'system', subtype: 'session_state_changed', state: 'idle' };
+                if (!opts.retried) return;
+                observed.push((await input.next()).value.message.content);
+                yield { type: 'assistant', parent_tool_use_id: null, message: { role: 'assistant', content: [{ type: 'text', text: 'OK' }] } };
+                yield { type: 'result', subtype: 'success' };
+            },
+        });
+
+        it('B-883b following latest: a 1M refusal is retried once on the plain id, not shown, with a notice', async () => {
+            const setModel = vi.fn(async () => {});
+            const observed: unknown[] = [];
+            vi.mocked(query).mockImplementation(longContextQuery(observed, setModel, { retried: true }) as any);
+            const onRejected = vi.fn(() => 'retry' as const);
+            const onCompletionEvent = vi.fn();
+            const onMessage = vi.fn();
+            const onReady = vi.fn();
+            let n = 0;
+            await claudeRemote({
+                ...base(), onMessage, onReady, onCompletionEvent,
+                longContext: { onRejected },
+                nextMessage: async () => (n++ === 0 ? { message: 'hello', mode: { ...mode, model: 'claude-opus-5-5[1m]' } } : null),
+            });
+            expect(onRejected).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-5-5[1m]', plain: 'claude-opus-5-5' }));
+            expect(setModel.mock.calls).toEqual([['claude-opus-5-5']]);
+            expect(observed).toEqual(['hello', 'hello']);
+            expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('retried with claude-opus-5-5'));
+            // Neither the refusal nor the failed turn's result reaches the web; one turn end, the retry's.
+            expect(onMessage.mock.calls.map(([m]) => m)).not.toContainEqual(refusal);
+            expect(onMessage.mock.calls.filter(([m]) => m.type === 'result')).toHaveLength(1);
+            expect(onReady).toHaveBeenCalledTimes(1);
+            expect(onReady.mock.calls[0][0]).toEqual({ type: 'result', subtype: 'success' });
+        });
+
+        it('B-883b an explicit 1M pick is not downgraded: the refusal is shown with a notice, nothing resent', async () => {
+            const setModel = vi.fn(async () => {});
+            const observed: unknown[] = [];
+            vi.mocked(query).mockImplementation(longContextQuery(observed, setModel, { retried: false }) as any);
+            const onRejected = vi.fn(() => 'fail' as const);
+            const onCompletionEvent = vi.fn();
+            const onMessage = vi.fn();
+            let n = 0;
+            await claudeRemote({
+                ...base(), onMessage, onCompletionEvent,
+                longContext: { onRejected },
+                nextMessage: async () => (n++ === 0 ? { message: 'hello', mode: { ...mode, model: 'claude-opus-5-5[1m]' } } : null),
+            });
+            expect(onRejected).toHaveBeenCalledTimes(1);
+            expect(setModel).not.toHaveBeenCalled();
+            expect(observed).toEqual(['hello']);
+            expect(onMessage).toHaveBeenCalledWith(refusal);
+            expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('Turn off 1M context'));
+        });
+
+        it('B-883b a plain-id turn\'s rate limit is not a 1M refusal', async () => {
+            const setModel = vi.fn(async () => {});
+            vi.mocked(query).mockImplementation(longContextQuery([], setModel, { retried: false }) as any);
+            const onRejected = vi.fn(() => 'retry' as const);
+            let n = 0;
+            await claudeRemote({ ...base(), longContext: { onRejected }, nextMessage: async () => (n++ === 0 ? { message: 'hi', mode: { ...mode, model: 'claude-opus-5-5' } } : null) });
+            expect(onRejected).not.toHaveBeenCalled();
+            expect(setModel).not.toHaveBeenCalled();
+        });
+
         it('③ a sub-agent\'s model_not_found does not retire the session model', async () => {
             const setModel = vi.fn(async () => {});
             vi.mocked(query).mockImplementation(() => ({

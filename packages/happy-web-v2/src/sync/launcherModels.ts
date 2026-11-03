@@ -1,5 +1,6 @@
 import type { Metadata } from './storageTypes';
 import { normalizeAgentKey, type LauncherMachineContext } from './agentDefaults';
+import { readLongContextUnsupported } from '@slopus/happy-wire';
 import { readAgentVersions } from '@/app/agentVersions';
 import { machineCliVersion, type StaleWrapperMachineLike } from '@/app/staleWrapperPolicy';
 
@@ -14,7 +15,7 @@ export type LauncherCatalogSource = {
      *  CLI/Codex and config; updatedAt moves on any status change (a daemon
      *  restart touches every old session). */
     createdAt?: number;
-    metadata?: Pick<Metadata, 'flavor' | 'machineId' | 'models' | 'defaultModelCode' | 'configuredModel'> | null;
+    metadata?: Pick<Metadata, 'flavor' | 'machineId' | 'models' | 'defaultModelCode' | 'configuredModel' | 'longContextUnsupported'> | null;
 };
 
 /**
@@ -73,6 +74,7 @@ export function launcherMachineContext(
         agentVersion: agent === 'claude' ? null : installed,
         catalog: catalog?.models ?? null,
         configuredModel: catalog?.configuredModel,
+        longContextUnsupported: !!readLongContextUnsupported(catalog?.longContextUnsupported),
     };
 }
 
