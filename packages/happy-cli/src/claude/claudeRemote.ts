@@ -25,6 +25,7 @@ import { decideWarmAdoption, formatPrewarmLine, type ClaudePrewarmLease, type Wa
 import { TimeoutError, withTimeout } from './utils/withTimeout';
 import { createClaudeTurnTracker, readClaudeSessionState } from './claudeTurnEnd';
 import { retiredModelFrom, retiredModelNotice, type RetiredModels } from './claudeRetiredModel';
+import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
 import { longContextExplicitNotice, longContextFallbackNotice, longContextRejectionFrom, type LongContextPolicy, type LongContextRejection } from './claudeLongContext';
 import {
     createClaudeCommandTracker,
@@ -96,7 +97,8 @@ export async function claudeRemote(opts: {
      *  onMessage. They are relayed live on a bypass channel and must never
      *  reach the persisted transcript — see streamRelay.ts. */
     onStreamFrame?: (message: import('./streamRelay').StreamRelayInput) => void,
-    onCompletionEvent?: (message: string) => void,
+    /** `kind` tags a structured event the web renders itself (B-883b). */
+    onCompletionEvent?: (message: string, kind?: string) => void,
     /** B-276: the turn ended with an auth failure that poisons this Query. */
     onAuthFailure?: (reason: string) => void,
     onSessionReset?: () => void,
@@ -793,10 +795,10 @@ export async function claudeRemote(opts: {
                 if (opts.longContext!.onRejected(refused) === 'retry') {
                     longContextRetry = refused;
                     mode = { ...mode, model: refused.plain };
-                    opts.onCompletionEvent?.(longContextFallbackNotice(refused));
+                    opts.onCompletionEvent?.(longContextFallbackNotice(refused), LONG_CONTEXT_FALLBACK_EVENT_KIND);
                     continue;
                 }
-                opts.onCompletionEvent?.(longContextExplicitNotice(refused));
+                opts.onCompletionEvent?.(longContextExplicitNotice(refused), LONG_CONTEXT_REFUSED_EVENT_KIND);
             }
             if (longContextRetry && message.type === 'result') {
                 const retry = longContextRetry;

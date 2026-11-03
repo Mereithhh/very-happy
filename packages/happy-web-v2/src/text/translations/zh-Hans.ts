@@ -1190,6 +1190,8 @@ export const zhHans: TranslationStructure = {
             machineDefaultModel: '本机配置',
             machineConfigModel: ({ model }: { model: string }) => `本机配置 · ${model}`,
             machineDefaultModelDescription: '不指定模型，按这台机器 Claude 自己的设置（settings.json / /model）',
+            longContextFallback: '当前账号或供应商不支持 1M 上下文，这一轮已改用标准上下文重试；此后这台机器跟随最新只用标准上下文。',
+            longContextRefused: '请求被拒：当前账号或供应商不支持 1M 上下文。请在模型选择器里关闭 1M 上下文（或换一个模型）后重新发送。',
             machineDefaultModelMidSession: '仅新建会话可选：会话中途切过来，Claude 会沿用当前模型',
             machineDefaultModelDescriptionOther: '不指定模型，用这台机器上 agent 自己的配置',
             modelPicker: {

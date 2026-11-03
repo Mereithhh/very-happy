@@ -72,6 +72,17 @@ describe('createLongContextPolicy', () => {
         }
     });
 
+    it('following latest, the session keeps the plain id from now on (stickyModel)', () => {
+        const s = session('latest');
+        s.updateMetadata((m: any) => ({ ...m, stickyModel: 'claude-opus-5-5[1m]' }));
+        createLongContextPolicy({ session: s, storePath: '/x', key: 'k', write: vi.fn() }).onRejected(rejection);
+        expect(s.metadata.stickyModel).toBe('claude-opus-5-5');
+        const pinned = session('claude-opus-5-5[1m]');
+        pinned.updateMetadata((m: any) => ({ ...m, stickyModel: 'claude-opus-5-5[1m]' }));
+        createLongContextPolicy({ session: pinned, storePath: '/x', key: 'k', write: vi.fn() }).onRejected(rejection);
+        expect(pinned.metadata.stickyModel).toBe('claude-opus-5-5[1m]');
+    });
+
     it('a failed write still records it on the session', () => {
         const s = session('latest');
         const policy = createLongContextPolicy({ session: s, storePath: '/x', key: 'k', now: () => 1, write: () => { throw new Error('EROFS'); } });

@@ -9,6 +9,7 @@ import { summarizeCompactionTurn, type CompactionSummary } from './compaction';
 import { turnDiffSummary, type TurnDiff } from './turnDiffs';
 import { continueOfferStopId, isUserStopEvent } from './continueOffer';
 import { userAbortedAt } from './subagentAbort';
+import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
 
 export type LeafRow =
     | {
@@ -180,7 +181,12 @@ export function isRenderableActivityMessage(message: Message): boolean {
  * new session) — kept visible like a failure, never folded into the activity.
  * Same kinds as sessionAccount.ts ACCOUNT_EVENT_KINDS minus the warning.
  */
-const ACCOUNT_ACTION_EVENT_KINDS: ReadonlySet<string> = new Set(['agent-profile-unavailable', 'agent-profile-auth-failed', 'agent-profile-history-rejected']);
+const ACCOUNT_ACTION_EVENT_KINDS: ReadonlySet<string> = new Set(['agent-profile-unavailable', 'agent-profile-auth-failed', 'agent-profile-history-rejected', LONG_CONTEXT_REFUSED_EVENT_KIND]);
+
+/** B-883b: a notice the user must see even when the turn answered (the 1M fallback) — never folded into the activity. */
+function isPinnedNotice(message: Message): boolean {
+    return message.kind === 'agent-event' && message.event.type === 'message' && message.event.kind === LONG_CONTEXT_FALLBACK_EVENT_KIND;
+}
 
 function isTurnFailure(message: Message): boolean {
     if (message.kind !== 'agent-event' || message.event.type !== 'message') return false;
@@ -432,9 +438,10 @@ export function buildChatRows(
                 }
                 if (ends.length > 0) rows.push(...buildLeafRows(ends, finalAgentId));
             } else {
-                const activity = turnMessages
-                    .slice(0, finalIndex)
-                    .filter(isRenderableActivityMessage);
+                const beforeAnswer = turnMessages.slice(0, finalIndex).filter(isRenderableActivityMessage);
+                const pinned = beforeAnswer.filter(isPinnedNotice);
+                const activity = beforeAnswer.filter((candidate) => !isPinnedNotice(candidate));
+                if (pinned.length > 0) rows.push(...buildLeafRows(pinned, finalAgentId));
                 if (activity.length > 0) {
                     const finalMessage = turnMessages[finalIndex];
                     const durationSeconds = finalMessage.kind === 'agent-text' && finalMessage.totalDurationMs != null

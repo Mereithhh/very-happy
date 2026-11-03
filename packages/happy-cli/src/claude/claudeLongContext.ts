@@ -115,7 +115,7 @@ export function writeLongContextVerdict(path: string, key: string, verdict: Long
 }
 
 type PolicySession = {
-    getMetadata(): { modelIntent?: string | null; longContextUnsupported?: LongContextUnsupported | null } | null;
+    getMetadata(): { modelIntent?: string | null; stickyModel?: string | null; longContextUnsupported?: LongContextUnsupported | null } | null;
     updateMetadata(handler: (metadata: any) => any): void;
 };
 
@@ -140,8 +140,14 @@ export function createLongContextPolicy(input: {
             } catch {
                 // Memory is best effort; this session still records it below.
             }
-            input.session.updateMetadata((metadata) => ({ ...metadata, longContextUnsupported: verdict }));
-            return input.session.getMetadata()?.modelIntent === LATEST_MODEL_MODE ? 'retry' : 'fail';
+            const retry = input.session.getMetadata()?.modelIntent === LATEST_MODEL_MODE;
+            // Following latest, the session now keeps the plain id (a resume restores stickyModel).
+            input.session.updateMetadata((metadata) => ({
+                ...metadata,
+                longContextUnsupported: verdict,
+                ...(retry && metadata.stickyModel === rejection.model ? { stickyModel: rejection.plain } : {}),
+            }));
+            return retry ? 'retry' : 'fail';
         },
     };
 }

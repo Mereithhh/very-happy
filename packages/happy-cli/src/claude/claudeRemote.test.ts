@@ -750,7 +750,7 @@ describe('claudeRemote', () => {
             expect(onRejected).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-5-5[1m]', plain: 'claude-opus-5-5' }));
             expect(setModel.mock.calls).toEqual([['claude-opus-5-5']]);
             expect(observed).toEqual(['hello', 'hello']);
-            expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('retried with claude-opus-5-5'));
+            expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('retried with claude-opus-5-5'), 'claude-long-context-fallback');
             // Neither the refusal nor the failed turn's result reaches the web; one turn end, the retry's.
             expect(onMessage.mock.calls.map(([m]) => m)).not.toContainEqual(refusal);
             expect(onMessage.mock.calls.filter(([m]) => m.type === 'result')).toHaveLength(1);
@@ -775,7 +775,7 @@ describe('claudeRemote', () => {
             expect(setModel).not.toHaveBeenCalled();
             expect(observed).toEqual(['hello']);
             expect(onMessage).toHaveBeenCalledWith(refusal);
-            expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('Turn off 1M context'));
+            expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('Turn off 1M context'), 'claude-long-context-refused');
         });
 
         it('B-883b a plain-id turn\'s rate limit is not a 1M refusal', async () => {

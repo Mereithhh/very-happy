@@ -1114,7 +1114,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 : `[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
         }
         // B-883b: following latest on a machine known to refuse 1M runs the plain id.
-        const refusedLongContext = withoutRefusedLongContext(resolved.mode.model, message.meta?.modelIntent, session.getMetadata()?.longContextUnsupported ?? longContextVerdict());
+        const refusedLongContext = withoutRefusedLongContext(resolved.mode.model, message.meta?.modelIntent ?? session.getMetadata()?.modelIntent, session.getMetadata()?.longContextUnsupported ?? longContextVerdict());
         if (refusedLongContext !== resolved.mode.model) {
             logger.debug(`[loop] ${resolved.mode.model} follows latest on a machine without 1M context; running ${refusedLongContext}`);
             resolved.mode.model = refusedLongContext;

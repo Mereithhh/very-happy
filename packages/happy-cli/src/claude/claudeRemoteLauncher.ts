@@ -784,9 +784,9 @@ export async function claudeRemoteLauncher(
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
                     onMessage,
-                    onCompletionEvent: (message: string) => {
+                    onCompletionEvent: (message: string, kind?: string) => {
                         logger.debug('[remote]: Completion event received:', contentLogMetadata(message));
-                        session.client.sendSessionEvent({ type: 'message', message });
+                        session.client.sendSessionEvent(kind ? { type: 'message', message, kind } : { type: 'message', message });
                     },
                     onAuthFailure: (reason: string) => {
                         // B-850a: with an account bound, the account was

@@ -25,6 +25,19 @@ const tool = (id: string, createdAt: number, state: 'running' | 'completed' = 'c
 });
 
 describe('buildChatRows', () => {
+    it('B-883b: the 1M fallback notice stays visible above the answer; an explicit-1M refusal is the turn\'s failure', () => {
+        const event = (id: string, createdAt: number, kind: string): Message => ({
+            kind: 'agent-event', id, createdAt, event: { type: 'message', message: 'notice', kind },
+        } as Message);
+        const answered = buildChatRows([user('u1', 1), event('fallback', 2, 'claude-long-context-fallback'), tool('read', 3), finalAgent('ok', 4, 1000)], false);
+        expect(answered.map((row) => row.type)).toEqual(['message', 'message', 'activity', 'message']);
+        expect(answered[1]).toMatchObject({ type: 'message', message: { id: 'fallback' } });
+        expect(answered[2]).toMatchObject({ type: 'activity', messages: [{ id: 'read' }] });
+        const refused = buildChatRows([user('u2', 1), event('refused', 2, 'claude-long-context-refused')], false);
+        expect(refused.map((row) => row.type)).toEqual(['message', 'message']);
+        expect(refused[1]).toMatchObject({ type: 'message', message: { id: 'refused' } });
+    });
+
     it('keeps the failure of an answerless turn visible and drops the reason-less duplicate (B-487)', () => {
         const event = (id: string, createdAt: number, message: string): Message => ({
             kind: 'agent-event', id, createdAt, event: { type: 'message', message },

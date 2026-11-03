@@ -138,6 +138,10 @@ export const LONG_CONTEXT_MARKER = '[1m]';
  */
 export type LongContextUnsupported = { reason: string; at: number };
 
+/** Session event kinds (`{ type: 'message', kind }`) for the retry notice and the explicit-1M failure. */
+export const LONG_CONTEXT_FALLBACK_EVENT_KIND = 'claude-long-context-fallback';
+export const LONG_CONTEXT_REFUSED_EVENT_KIND = 'claude-long-context-refused';
+
 /** Whitelisted read (AGENTS #14: an unexpected shape never drops the metadata). */
 export function readLongContextUnsupported(value: unknown): LongContextUnsupported | null {
     if (!value || typeof value !== 'object') return null;
