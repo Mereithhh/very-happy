@@ -6,6 +6,12 @@
  */
 export type TeamUserLanguage = { name: string; code: 'zh' | 'ja' | 'ko' };
 
+export const TEAM_LANGUAGES: readonly TeamUserLanguage[] = [
+    { name: 'Chinese (中文)', code: 'zh' },
+    { name: 'Japanese (日本語)', code: 'ja' },
+    { name: 'Korean (한국어)', code: 'ko' },
+];
+
 /** A path (`packages/happy-web-v2/src/…/ChatHeader.tsx`, `C:\\x\\y`): ASCII path characters around a separator. */
 const PATH = /[\w.\-~@:…]*[\/\\][\w.\-~@:…\/\\]*/g;
 /** A code identifier: camelCase / PascalCase humps, snake_case, dotted (`a.ts`, `obj.prop`) or letters mixed with digits. */
@@ -30,10 +36,12 @@ export function detectTeamUserLanguage(text: string | null | undefined): TeamUse
     return null;
 }
 
+export const TEAM_LANGUAGE_RULE_HEADING = '## Language\nThe user works in ';
+
 /** One paragraph placed right before the assigned goal of every team entry prompt. */
 export function teamLanguageRule(language: TeamUserLanguage | null): string {
     const target = language ? language.name : 'the language the user wrote the goal in';
-    return `## Language\nThe user works in ${target}. Write everything people read in ${language ? language.name : 'that language'}: replies, notes between tool calls, task goals, messages, submissions and reports. Think in it too. The team instructions, tool texts and message envelopes are English only for maintenance; never switch language because of them. Code, commands, identifiers and quoted text stay as they are.`;
+    return `${TEAM_LANGUAGE_RULE_HEADING}${target}. Write everything people read in ${language ? language.name : 'that language'}: replies, notes between tool calls, task goals, messages, submissions and reports. Think in it too. The team instructions, tool texts and message envelopes are English only for maintenance; never switch language because of them. Code, commands, identifiers and quoted text stay as they are.`;
 }
 
 /** Short reminder appended to each team message envelope. */

@@ -4,6 +4,7 @@ import { buildDigestLine, buildFirstTurnPrefix, prependToMessage } from './promp
 import { ProjectsUnsupportedError, type ProjectsClient } from './client';
 import { createIssueDigest, type IssueDigest } from '@/issues/digest';
 import { createTeamExitNotice, type TeamExitNotice } from '@/teams/exitNotice';
+import { createTeamLanguageBackfill, type TeamLanguageBackfill } from '@/teams/languageBackfill';
 
 /**
  * B-645 per-wrapper project injector (spec §3 layers P and D).
@@ -32,6 +33,8 @@ export type ProjectInjectorDeps = {
     issueDigest?: Pick<IssueDigest, 'decorate'> | null;
     /** B-877b: the one-time 「team mode ended」 note after the lead left its team; default = one for this session. */
     teamExitNotice?: Pick<TeamExitNotice, 'decorate'> | null;
+    /** B-877c: the language rule, once, for a team session that started without it; default = one for this session. */
+    teamLanguageBackfill?: Pick<TeamLanguageBackfill, 'decorate'> | null;
 };
 
 export type ProjectInjectorState = {
@@ -52,6 +55,7 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
     const label = (id: string) => titles.get(id) ?? id.slice(0, 8);
     const issueDigest = deps.issueDigest === undefined ? createIssueDigest({ sessionId: deps.sessionId, metadata: () => deps.metadata?.() ?? null, timeoutMs }) : deps.issueDigest;
     const teamExitNotice = deps.teamExitNotice === undefined ? createTeamExitNotice({ sessionId: deps.sessionId }) : deps.teamExitNotice;
+    const teamLanguageBackfill = deps.teamLanguageBackfill === undefined ? createTeamLanguageBackfill({ sessionId: deps.sessionId }) : deps.teamLanguageBackfill;
 
     function withTimeout<T>(p: Promise<T>): Promise<T> {
         return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error('project injection timeout')), timeoutMs).unref?.())]);
@@ -122,7 +126,8 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
             // The team-exit note goes first: it changes how the model reads everything after it.
             const withIssue = async (text: string) => {
                 const digested = issueDigest ? await issueDigest.decorate(text) : text;
-                return teamExitNotice ? teamExitNotice.decorate(digested) : digested;
+                const noticed = teamExitNotice ? teamExitNotice.decorate(digested) : digested;
+                return teamLanguageBackfill ? teamLanguageBackfill.decorate(noticed, message) : noticed;
             };
             const sid = deps.sessionId();
             if (!sid || deps.client.isDisabled()) return await withIssue(message) as unknown as T;
