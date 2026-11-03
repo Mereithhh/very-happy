@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AssistantToolRegistrar } from '@/assistant/assistantTools';
 import { createTeamsClient } from './client';
-import { teamActionReceipt, teamTaskToolView, teamToolView } from './toolView';
+import { teamActionReceipt, teamTaskToolView, teamToolView, type TeamToolViewOptions } from './toolView';
 
 export const TEAM_TOOL_NAMES = ['team_create', 'team_join', 'team_inspect', 'team_delegate', 'team_message', 'team_submit', 'team_accept', 'team_return', 'team_cancel', 'team_handoff', 'team_schedule_create', 'team_schedule_pause', 'team_schedule_resume', 'team_schedule_cancel'] as const;
 const id = z.string().min(1).max(128);
@@ -14,17 +14,23 @@ export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: s
             catch (error) { return { content: [{ type: 'text' as const, text: error instanceof Error ? error.message : 'Teams operation failed' }], isError: true }; }
         });
     };
-    register('team_create', 'Create an official Very Happy team and join this session as its root bot. Does not grant access outside this account. The team joins this session\'s project, or a new project with the team\'s name; its members share that project\'s context.',
-        { name: id, machineId: id.optional(), requestId, projectId: id.optional().describe('Existing project to put the team in'), noProject: z.boolean().optional().describe('Create the team without a project') }, (args) => client.initialize(args));
-    register('team_join', 'Join an existing team as a root bot using this session owner’s account. Scoped workers cannot elevate their role.',
-        { teamId: id, name: id, botId: id.optional().describe('Existing root bot to reconnect; preserves its identity'), requestId }, (args) => client.initialize(args));
-    // B-840: writes answer with teamActionReceipt (ids, capacity, idle members); the team view stays here.
-    // B-822: a compact view by default (closed tasks summarized, recent messages); detail on request.
+    // B-881: create/join answer with the compact view too (adopt.ts keeps calling `initialize` for the whole team).
     // A Codex stdio bridge forwards to the owning process, whose answer is already compact (`omitted`).
-    const compact = (result: any) => result?.team && !result.team.omitted ? { ...result, team: teamToolView(result.team) } : result;
-    register('team_inspect', 'Read your visible team tasks, attempts and messages. Inspect before decisions; submission is not acceptance. Returns a compact view (closed tasks summarized, recent messages, unfinished operations, capacity); pass taskId for one task in full, or full=true for the whole team.',
-        { taskId: id.optional().describe('Return this task in full: all attempts, messages and operations'), full: z.boolean().optional().describe('Return the whole team view (can be very large)') },
-        async (args) => { const result = await client.inspect(); return args.full ? result : args.taskId ? teamTaskToolView(result.team, args.taskId) : compact(result); });
+    const compact = (result: any, options: TeamToolViewOptions = {}) => Array.isArray(result?.team?.tasks) && !result.team.omitted ? { ...result, team: teamToolView(result.team, { botId: typeof result.botId === 'string' ? result.botId : undefined, ...options }) } : result;
+    register('team_create', 'Create an official Very Happy team and join this session as its root bot. Does not grant access outside this account. The team joins this session\'s project, or a new project with the team\'s name; its members share that project\'s context.',
+        { name: id, machineId: id.optional(), requestId, projectId: id.optional().describe('Existing project to put the team in'), noProject: z.boolean().optional().describe('Create the team without a project') }, async (args) => compact(await client.initialize(args)));
+    register('team_join', 'Join an existing team as a root bot using this session owner’s account. Scoped workers cannot elevate their role.',
+        { teamId: id, name: id, botId: id.optional().describe('Existing root bot to reconnect; preserves its identity'), requestId }, async (args) => compact(await client.initialize(args)));
+    // B-840: writes answer with teamActionReceipt (ids, capacity, idle members); the team view stays here.
+    // B-881: the default view is an index (open tasks clipped, closed counted, your recent messages clipped, no operations).
+    register('team_inspect', 'Read your visible team tasks, attempts and messages. Inspect before decisions; submission is not acceptance. Returns a compact view (members, open tasks with clipped goals, closed-task counts, your recent messages clipped, capacity); pass taskId for one task in full (goal, acceptance, attempts and results, its messages), includeClosed / messagesLimit to widen the view, or full=true for the whole team.',
+        {
+            taskId: id.optional().describe('Return this task in full: goal, acceptance, all attempts with results, its messages and operations'),
+            includeClosed: z.boolean().optional().describe('List closed (done / cancelled) tasks with clipped goals instead of counting them'),
+            messagesLimit: z.number().int().min(0).max(500).optional().describe('How many of your most recent messages to list (default 20); undelivered ones are always listed'),
+            full: z.boolean().optional().describe('Return the whole team view (can be very large)'),
+        },
+        async (args) => { const result = await client.inspect(); return args.full ? result : args.taskId ? teamTaskToolView(result.team, args.taskId) : compact(result, { includeClosed: args.includeClosed, messagesLimit: args.messagesLimit }); });
     const action = (name: string, description: string, fields: Record<string, z.ZodTypeAny>) => register(`team_${name}`, description,
         { requestId, ...fields }, async ({ requestId: key, ...args }) => teamActionReceipt(await client.action({ type: name, ...args, ...(name === 'delegate' && args.directory === undefined ? { directory: process.cwd() } : {}) }, key), args.taskId));
     action('delegate', 'Delegate a goal with acceptance criteria. Use parentTaskId for subdelegation. Existing assigneeBotId or a managed worker may execute it.', {

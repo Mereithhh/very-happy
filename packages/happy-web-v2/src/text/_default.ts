@@ -3093,6 +3093,16 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov03j: {
+                title: 'CLI 0.2.203: team tools return shorter answers',
+                summary: 'Team tools return much shorter answers, which saves tokens; team_inspect gains includeClosed and messagesLimit parameters.',
+                update: 'Machines with automatic updates install it on their own; nothing to do.',
+            },
+            nov03i: {
+                title: 'CLI 0.2.202: new versions arrive sooner after sleep or a network drop',
+                summary: 'When your computer wakes from sleep or gets its network back, it now receives and installs a new version sooner.',
+                update: 'Machines with automatic updates install it on their own; nothing to do.',
+            },
             nov03h: {
                 title: 'CLI 0.2.201: stability improvements',
                 summary: 'Internal stability improvements to the CLI and daemon. Nothing changes in how you use it.',

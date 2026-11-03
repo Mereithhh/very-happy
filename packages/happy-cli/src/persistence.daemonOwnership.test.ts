@@ -71,6 +71,8 @@ describe('daemon state / lock cleanup ownership', () => {
         const run = readFileSync(join(__dirname, 'daemon', 'run.ts'), 'utf8').replace(/\/\/.*$/gm, '');
         expect(run).not.toContain('await cleanupDaemonState();');
         expect(run.match(/await cleanupDaemonState\(process\.pid\);/g)?.length).toBe(2);
-        expect(run).toMatch(/requestShutdown\('exception', 'A different daemon was started without killing us\. We should kill ourselves\.'\)\s*return;/);
+        // B-876b: the check lives in daemonOwnership (onSuperseded requests the shutdown); the heartbeat returns on it.
+        expect(run).toMatch(/requestShutdown\('exception', 'A different daemon was started without killing us\. We should kill ourselves\.'\);/);
+        expect(run).toMatch(/if \(!daemonOwnership\.owns\(\)\) return;\s*const woke = wakeDetector\.beat\(\);/);
     });
 });
