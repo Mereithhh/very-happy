@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
-import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, RefreshCw, MoreHorizontal, Search, X } from 'lucide-react';
+import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, RefreshCw, MoreHorizontal, Search, Users, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { sync as appSync } from '@/sync/sync';
@@ -70,6 +70,8 @@ import { terminalProjectParam } from '@/app/newTerminalSearch';
 import { resolveStartupCommand } from '@/utils/terminalStartup';
 import { useIsDesktop, useIsTablet, useMediaQuery } from '@/app/useMediaQuery';
 import { planTermHeaderActions, type TermHeaderActionKey } from './termHeaderLayout';
+import { TerminalShareDialog } from './TerminalShareDialog';
+import { TerminalShareWatchers } from './TerminalShareWatchers';
 import { termHeaderStatusChips } from './termHeaderStatus';
 import { useFilesPanelWidth } from '../files/useFilesPanelWidth';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -339,6 +341,8 @@ export function WebTerminalScreen() {
   const writeHoldRef = useRef<{ begin: () => void; flush: () => void } | null>(null);
   const [connecting, setConnecting] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  // B-878: the terminal share dialog (owner).
+  const [shareOpen, setShareOpen] = useState(false);
   // First-open hint while the CDN CJK font (Maple Mono CN) is still fetching its
   // slices — the terminal is usable immediately (fallback), this just sets
   // expectations so the swap doesn't read as a stall. Never shows once cached.
@@ -2596,6 +2600,7 @@ export function WebTerminalScreen() {
     showPresets: !IS_COARSE_POINTER,
     hasTmuxSession,
     canClose: !!machineId && !!tid,
+    canShare: !!machineId && !!tid,
   });
   // Toggles that moved into the menu still have to LOOK on when they are on,
   // or a collapsed "select mode" reads as if it silently turned itself off.
@@ -2616,6 +2621,8 @@ export function WebTerminalScreen() {
         return { key, label: t('terminal.refitWidth'), icon: RefreshCw, onSelect: () => refitWidthRef.current?.(true) };
       case 'tmuxHelp':
         return { key, label: t('tmuxHelp.title'), icon: HelpCircle, onSelect: () => setShowHelp(true) };
+      case 'share':
+        return { key, label: t('share.menu'), icon: Users, onSelect: () => setShareOpen(true) };
       // Leave BEFORE the kill (same as the sidebar row and ⌘W): a mounted
       // terminal screen would re-open the id and recreate the killed session.
       case 'close':
@@ -2731,6 +2738,19 @@ export function WebTerminalScreen() {
             <HelpCircle size={18} />
           </button>
         );
+      case 'share':
+        return (
+          <button
+            key={key}
+            type="button"
+            className="sb-icon-btn"
+            title={t('share.terminal.title')}
+            aria-label={t('share.terminal.title')}
+            onClick={() => setShareOpen(true)}
+          >
+            <Users size={18} />
+          </button>
+        );
       case 'close':
         return null; // menu-only, see termHeaderLayout.ts
     }
@@ -2755,6 +2775,7 @@ export function WebTerminalScreen() {
           )}
           {statusChips.includes('connecting') && <span className="term-connecting mono">{t('common.loading')}</span>}
           {statusChips.includes('font') && <span className="term-connecting mono">{t('terminal.fontLoading')}</span>}
+          {machineId && tid && <TerminalShareWatchers machineId={machineId} terminalId={tid} onOpen={() => setShareOpen(true)} />}
         </div>
         <div className="term-header-right">
           {headerPlan.inline.map((key) => renderHeaderAction(key))}
@@ -2943,6 +2964,9 @@ export function WebTerminalScreen() {
         </div>
       )}
       {showHelp && hasTmuxSession && <TmuxHelpModal onClose={() => setShowHelp(false)} />}
+      {shareOpen && machineId && tid && (
+        <TerminalShareDialog machineId={machineId} terminalId={tid} title={title} host={meta?.machineName ?? null} open onOpenChange={setShareOpen} />
+      )}
       {showRename && tid && meta && (
         <RenameModal
           defaultTitle={title}

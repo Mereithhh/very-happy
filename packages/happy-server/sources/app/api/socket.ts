@@ -2,6 +2,7 @@ import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
 import { buildMachineActivityEphemeral, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { operatorHandler, retryPendingOperatorKills, startOperatorBroker, stopOperatorBroker } from "@/app/session/operatorBroker";
+import { startTerminalShareBroker, stopTerminalShareBroker, terminalShareHandler } from "@/app/share/terminalShareBroker";
 import { installSessionShareFanout } from '@/app/session/sessionShares';
 import { Server } from "socket.io";
 import { Redis, type RedisOptions } from "ioredis";
@@ -224,6 +225,7 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
     // Initialize event router with Socket.IO server instance
     eventRouter.init(io);
     startOperatorBroker(io);
+    startTerminalShareBroker(io);
     installSessionShareFanout();
     // B-718: push a promote to connected daemons instead of waiting for their hourly check.
     const cliPolicy = sharedCliVersionPolicy();
@@ -550,12 +552,15 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
         filePreviewHandler(userId, socket, io, connection, terminalRateLimiter);
         // B-867: operator tier broker (grantee user sockets; central server only, never the relay).
         operatorHandler(userId, socket, connection, { rpc: rpcRateLimiter, terminal: terminalRateLimiter });
+        // B-878: terminal share broker (grantee user sockets; central server only).
+        terminalShareHandler(userId, socket, connection, { rpc: rpcRateLimiter, terminal: terminalRateLimiter });
 
     });
 
     onShutdown('api', async () => {
         if (streamLagTimer) clearInterval(streamLagTimer);
         stopOperatorBroker();
+        stopTerminalShareBroker();
         clearInterval(orphanSweep);
         await io.close();
         for (const client of adapterConnections ? Object.values(adapterConnections) : []) {
