@@ -128,6 +128,7 @@ import { SessionSyncScheduler, type HelloReason, type SubscribeRequest } from '.
 import type { AckOutcome, SessionSyncState } from './sessionSyncState';
 import { cacheProbeAfterSeq, isUsableCacheProbe, type CacheProbe } from './cacheProbe';
 import { routedSessionId } from './routedSession';
+import { importUploadProgress } from './importBackfill';
 
 /**
  * B-819: what rendering a cached run did; `merged` = the anchor probe was checked and applied in
@@ -338,6 +339,8 @@ class Sync {
     private sessionMessageLocks = new Map<string, AsyncLock>();
     /** B-803: sessions whose catch-up was skipped while offline; restarted on recovery. */
     private messagesDeferredOffline = new Set<string>();
+    /** B-880: imported sessions whose history is still uploading — no catch-up, no pushes (importBackfill.ts). */
+    private importParked = new Set<string>();
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
     private settingsSync: InvalidateSync;
@@ -839,9 +842,41 @@ class Sync {
      * they ping `onSessionHeartbeat` and fetch only on a seq gap (sessionMerge.ts).
      */
     onSessionEnter = (sessionId: string) => {
-        // B-812: the scheduler subscribes it (subscribe mode) or invalidates the REST sync.
-        this.syncScheduler.open(sessionId);
+        // B-880: an import still uploading opens once it is done (releaseImportParked).
+        if (!this.parkIfImporting(sessionId)) {
+            // B-812: the scheduler subscribes it (subscribe mode) or invalidates the REST sync.
+            this.syncScheduler.open(sessionId);
+        }
         this.touchViewedSession(sessionId);
+    }
+
+    /**
+     * B-880: an imported session whose history is still uploading takes no
+     * catch-up and no pushes — taking them rendered the replay one message at a
+     * time from its oldest (importBackfill.ts). True = parked.
+     */
+    private parkIfImporting(sessionId: string): boolean {
+        if (!importUploadProgress(storage.getState().sessions[sessionId])) return false;
+        if (!this.importParked.has(sessionId)) {
+            this.importParked.add(sessionId);
+            // Opened (or subscribed) before the progress marker arrived: stop paging it in.
+            this.syncScheduler.forget(sessionId);
+            log.log(`💬 import: ${sessionId} parked while its history uploads`);
+        }
+        return true;
+    }
+
+    /** B-880: a parked import that finished (or whose wrapper went away) loads like any session: newest page first. */
+    private releaseImportParked() {
+        for (const sessionId of [...this.importParked]) {
+            if (importUploadProgress(storage.getState().sessions[sessionId])) continue;
+            this.importParked.delete(sessionId);
+            log.log(`💬 import: ${sessionId} uploaded, loading its newest page`);
+            // Whatever reached this tab before it was parked is a window from the oldest end.
+            void this.getSessionMessageLock(sessionId).inLock(() => this.invalidateSessionWindow(sessionId)).then(() => {
+                if (this.isViewed(sessionId)) this.onSessionEnter(sessionId);
+            });
+        }
     }
 
     /**
@@ -3002,6 +3037,7 @@ class Sync {
             return;
         }
         this.messagesDeferredOffline.delete(sessionId);
+        if (this.parkIfImporting(sessionId)) return;
         const encryption = this.encryption.getSessionEncryption(sessionId);
         if (encryption) this.messagesAwaitingKeys.delete(sessionId);
         if (!encryption) {
@@ -3583,6 +3619,7 @@ class Sync {
         if (typeof payload?.sessionId !== 'string' || !Array.isArray(payload.messages) || payload.messages.length === 0) return;
         const session = storage.getState().sessions[payload.sessionId];
         if (!session || typeof payload.machineId !== 'string' || session.metadata?.machineId !== payload.machineId) return;
+        if (this.parkIfImporting(payload.sessionId)) return;
         const encryption = this.encryption.getSessionEncryption(payload.sessionId);
         if (!encryption) return;
         const messages: ApiMessage[] = [];
@@ -3620,6 +3657,10 @@ class Sync {
             // death message emitted by the kill that precedes deletion) —
             // ignore it instead of triggering a pointless full refetch.
             if (isSessionDeleted(updateData.body.sid)) {
+                return;
+            }
+            // B-880: a replayed history still uploading is not rendered message by message.
+            if (this.parkIfImporting(updateData.body.sid)) {
                 return;
             }
 
@@ -4660,6 +4701,7 @@ class Sync {
         const newActive = storage.getState().getActiveSessions();
         this.applySessionDiff(active, newActive);
         this.wakeMessagesAwaitingKeys();
+        if (this.importParked.size > 0) this.releaseImportParked();
     }
 
     /**

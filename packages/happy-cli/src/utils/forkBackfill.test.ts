@@ -76,6 +76,31 @@ describe('B-531 publishForkBackfillWhenCommitted (wrapper side)', () => {
         expect(updates[0]({ path: '/x' } as Metadata).forkBackfill).toEqual({ done: true, count: 95, completedAt: 42 })
     })
 
+    it('B-880: publishes upload progress (done:false) while the replay drains, then the done marker', async () => {
+        let release!: (ok: boolean) => void
+        let pending = 300
+        let tick!: () => void
+        const stop = vi.fn()
+        const written: unknown[] = []
+        const session = {
+            drainOutbox: () => new Promise<boolean>((resolve) => { release = resolve }),
+            updateMetadata: (handler: (m: Metadata) => Metadata) => { written.push(handler({ path: '/x' } as Metadata).forkBackfill) },
+            pendingBackfillCount: () => pending,
+        }
+        const published = publishForkBackfillWhenCommitted(session, { count: 120 }, () => 9, (fn) => { tick = fn; return stop })
+        expect(written).toEqual([{ done: false, total: 300, sent: 0 }])
+        pending = 200; tick()
+        tick() // unchanged → no write
+        pending = 0; tick()
+        expect(written).toEqual([{ done: false, total: 300, sent: 0 }, { done: false, total: 300, sent: 100 }, { done: false, total: 300, sent: 300 }])
+        release(true)
+        await expect(published).resolves.toBe(true)
+        expect(stop).toHaveBeenCalledTimes(1)
+        expect(written.at(-1)).toEqual({ done: true, count: 120, completedAt: 9 })
+        // an older CLI waiting on the marker keeps waiting through progress writes
+        for (const progress of written.slice(0, -1)) expect(readForkBackfillMarker({ forkBackfill: progress })).toBeNull()
+    })
+
     it('no marker when the client closed before the server confirmed', async () => {
         const updateMetadata = vi.fn()
         await expect(publishForkBackfillWhenCommitted({ drainOutbox: async () => false, updateMetadata }, { count: 3 })).resolves.toBe(false)
@@ -93,6 +118,9 @@ describe('B-531 wiring (source assertions, verified with mutation-check)', () =>
     it('Claude fork replay publishes the marker after the replay loop and on a failed read', () => {
         const source = code('claude/runClaude.ts')
         const loop = source.indexOf('closeTurn: () => session.closeReplayedClaudeTurn(),')
+        expect(source).toContain('const backfilled = session.replayHistory(() => replayClaudeForkJsonl(file, {')
+        expect(source.indexOf('announceForkBackfill(session);')).toBeGreaterThan(-1)
+        expect(source.indexOf('announceForkBackfill(session);')).toBeLessThan(source.indexOf('const file = await readFile(jsonlPath'))
         const ok = source.indexOf('void publishForkBackfillWhenCommitted(session, { count: backfilled })')
         const failed = source.indexOf('void publishForkBackfillWhenCommitted(session, { count: 0, failed: true });')
         expect(loop).toBeGreaterThan(-1)
@@ -103,6 +131,9 @@ describe('B-531 wiring (source assertions, verified with mutation-check)', () =>
     it('Codex fork replay publishes the marker after the replay loop and on a failed read', () => {
         const source = code('codex/runCodex.ts')
         const loop = source.indexOf('const envelopes = mapCodexThreadToSessionEnvelopes(thread);')
+        expect(source.indexOf('announceForkBackfill(session);')).toBeGreaterThan(-1)
+        expect(source.indexOf('announceForkBackfill(session);')).toBeLessThan(source.indexOf('const { thread } = await client.readThread({'))
+        expect(source).toMatch(/session\.replayHistory\(\(\) => \{\s*for \(const envelope of envelopes\) \{\s*session\.sendSessionProtocolMessage\(envelope\);/)
         const ok = source.indexOf('void publishForkBackfillWhenCommitted(session, { count: envelopes.length });')
         const failed = source.indexOf('void publishForkBackfillWhenCommitted(session, { count: 0, failed: true });')
         expect(loop).toBeGreaterThan(-1)

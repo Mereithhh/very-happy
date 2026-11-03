@@ -31,6 +31,8 @@ function harness(forkResult: any) {
         updateMetadata: vi.fn((handler) => metadataHandlers.push(handler)),
         sendSessionEvent: vi.fn(),
         sendSessionProtocolMessage: vi.fn(),
+        replayHistory: vi.fn((replay: () => unknown) => replay()) as unknown as <T>(replay: () => T) => T,
+        drainOutbox: vi.fn(async () => true),
     };
     const messageBuffer = { addMessage: vi.fn() };
     return { client, session, messageBuffer, metadataHandlers };
@@ -56,7 +58,11 @@ describe('importCodexThread (B-464)', () => {
         });
         // the fork answered with turns: no second read, and never a read of the original
         expect(h.client.readThread).not.toHaveBeenCalled();
-        expect(h.metadataHandlers).toHaveLength(1);
+        // lineage, then (B-880) the upload announce and, once drained, the done marker
+        await vi.waitFor(() => expect(h.metadataHandlers).toHaveLength(3));
+        expect(h.metadataHandlers[1]({}).forkBackfill).toEqual({ done: false, total: 0, sent: 0 });
+        expect(h.metadataHandlers[2]({}).forkBackfill).toMatchObject({ done: true, count: result.replayed });
+        expect(h.session.replayHistory).toHaveBeenCalledTimes(1);
         expect(h.metadataHandlers[0]({ existing: true })).toEqual({
             existing: true,
             codexThreadId: fork,

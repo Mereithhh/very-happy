@@ -21,6 +21,7 @@
 import type { Thread } from './codexAppServerTypes';
 import { mapCodexThreadToSessionEnvelopes } from './utils/sessionProtocolMapper';
 import { trimIdent } from '@/utils/trimIdent';
+import { announceForkBackfill, publishForkBackfillWhenCommitted, type ForkBackfillSession } from '@/utils/forkBackfill';
 
 type ImportThreadClient = {
     forkThread: (opts: {
@@ -31,10 +32,11 @@ type ImportThreadClient = {
     readThread: (opts: { threadId: string; includeTurns: boolean }) => Promise<{ thread: Thread }>;
 };
 
-type ImportThreadSession = {
+type ImportThreadSession = ForkBackfillSession & {
     updateMetadata: (handler: (currentMetadata: any) => any) => void;
     sendSessionEvent: (event: { type: 'message'; message: string }) => void;
     sendSessionProtocolMessage: (envelope: any) => void;
+    replayHistory: <T>(replay: () => T) => T;
 };
 
 type ImportThreadMessageBuffer = {
@@ -82,10 +84,15 @@ export async function importCodexThread(opts: {
     if (!Array.isArray(thread?.turns)) {
         thread = (await opts.client.readThread({ threadId: forked.threadId, includeTurns: true })).thread;
     }
+    // B-880: a history backfill — own batches and server budget, progress for the Web, then the marker.
+    announceForkBackfill(opts.session);
     const envelopes = mapCodexThreadToSessionEnvelopes(thread);
-    for (const envelope of envelopes) {
-        opts.session.sendSessionProtocolMessage(envelope);
-    }
+    opts.session.replayHistory(() => {
+        for (const envelope of envelopes) {
+            opts.session.sendSessionProtocolMessage(envelope);
+        }
+    });
+    void publishForkBackfillWhenCommitted(opts.session, { count: envelopes.length });
 
     opts.messageBuffer.addMessage(`Imported thread ${trimIdent(opts.threadId)} as ${trimIdent(forked.threadId)}`, 'status');
     opts.session.sendSessionEvent({
