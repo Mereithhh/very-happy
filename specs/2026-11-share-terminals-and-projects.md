@@ -216,7 +216,7 @@ CREATE TABLE "ShareAuditEvent" (...);   -- §5，INDEX(ownerAccountId, at)、IND
 | `GET /v1/shares/outgoing` | 增加 `terminals[]`、`projects[]` 两组 |
 | socket（grantee user 连接）`share-terminal-rpc`（ack）、`share-terminal-input/resize/close` | §3.4；项目派生终端的 grantId 用 ProjectGrant id + `terminalRef {machineId, terminalId}` |
 | socket 下行 `share-terminal-output/exit/revoked`、`project-share-updated`、`project-share-item-added/removed` | 新事件名，旧 Web `onAny` 自然忽略 |
-| 错误码 | `not_shared`、`share_method_denied`、`terminal_geometry_unknown`、`terminal_gone`、`cli_upgrade_required`、`machine_unsupported`、`machine_offline`、`rate_limited`、`bad_params` |
+| 错误码 | `not_shared`、`share_method_denied`、`terminal_gone`、`cli_upgrade_required`、`machine_unsupported`、`machine_offline`、`rate_limited`、`bad_params` |
 
 ## 8. 兼容矩阵
 
@@ -275,7 +275,7 @@ CREATE TABLE "ShareAuditEvent" (...);   -- §5，INDEX(ownerAccountId, at)、IND
 ## 实现记录（PR-A 终端分享，B-878）
 
 - **server**：`app/share/terminalSharePolicy.ts`（纯函数：档位白名单、viewer attach 改写、有效期、daemonState 解析）、`terminalShareBroker.ts`（授权 → 改写 → 换钥 → 转发 → 审计；输出 tap；撤销 teardown；1 s 扫尾；machine-state 钩子推「终端已关闭」与新几何）、`terminalShares.ts`（grant 增删改查、接受/退出）、`api/routes/terminalShareRoutes.ts`。迁移 `20261103170000_terminal_shares`：`TerminalGrant`、`ShareTerminalAttachment`（含 `subscribers`：attach +1、关闭 −1，teardown 按数释放 daemon 订阅，**从不 kill**）、`ShareAuditEvent`。
-- **机器 key**：`openTerminalShareMachineKey(VerifiedTerminalShare)` 是本模块唯一打开点，只开 grant 自己那台 owner 机器；`VerifiedTerminalShare` 只由 `resolveTerminalShare`（active + 未过期 + 本人）与 attachment 行铸造。源码断言 + mutation-check（server 18/18 被抓，见 PR）。
+- **机器 key**：`openTerminalShareMachineKey(VerifiedTerminalShare)` 是本模块唯一打开点，只开 grant 自己那台 owner 机器；`VerifiedTerminalShare` 只由 `resolveTerminalShare`（active + 未过期 + 本人）与 attachment 行铸造。源码断言 + mutation-check（结果见 PR 正文）。
 - **流 key**：每次（重新）分享生成新的 32 字节 key，box 给 grantee content 公钥存 `granteeKey`；Web 用 `decryptEncryptionKey` 解开后按会话 DEK 同格式 AES-GCM。
 - **跨 slot**：本 broker 自己的 `vh-terminal-share-changed`；会话分享的 grantee 缓存统一（决策 11）留给 PR-B。
 - **Web**：终端页头「分享终端」（手机进 ⋯）、侧栏终端行 ⋯「分享…」→ `TerminalShareDialog`；owner 页头「X 正在看」芯片；`/shared/terminal/:grantId`（`SharedTerminalScreen`，只看=owner 列数 + 等比缩小、`disableStdin` + `inputmode=none`；可操作=正常 fit + 输入 + resize）；侧栏顶部邀请与「分享给我的终端」；设置「已分享」加终端组。所有新 socket 事件独立命名，旧 Web 忽略。
