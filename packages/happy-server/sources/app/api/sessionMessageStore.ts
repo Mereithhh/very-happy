@@ -41,34 +41,7 @@ export type StoreSessionMessagesOptions = {
     accountId: string;
     sessionId: string;
     messages: SessionMessageWrite[];
-    /** B-880: a wrapper replaying an imported/forked transcript (`x-happy-message-origin: backfill`). */
-    backfill?: boolean;
 };
-
-/**
- * B-880: which per-minute write budget a batch is charged to. A history
- * backfill (Claude/Codex import or fork: thousands of already-written
- * messages) has its own, larger bucket. On the shared one (600/min) a
- * 12,934-message import took 20 minutes (production 2026-11-03, 15:00–15:19
- * SGT, pinned at exactly 600/min) and starved every live session of the
- * account for that whole time. 50k/min lets a 31,674-message import (28.9 MB
- * transcript) upload unthrottled at the ~450/s one wrapper reaches; at 20k it
- * hit the bucket 35 times. The total count/bytes quotas still apply.
- */
-export function messageWriteBudget(backfill: boolean): { resource: 'message' | 'message_backfill'; envName: string; fallback: number } {
-    // One `envName` / `fallback` pair per line: scripts/ops/resource-budget.mjs reads them from here.
-    return backfill
-        ? {
-            resource: 'message_backfill',
-            envName: 'MAX_BACKFILL_MESSAGES_PER_ACCOUNT_PER_MINUTE',
-            fallback: 50_000,
-        }
-        : {
-            resource: 'message',
-            envName: 'MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE',
-            fallback: 600,
-        };
-}
 
 export type StoreSessionMessagesResult = {
     messages: StoredSessionMessage[];
@@ -126,8 +99,10 @@ export async function storeSessionMessagesInTx(tx: Tx, options: StoreSessionMess
         if (newMessages.length > 0) {
             await enforceAccountWriteRate({
                 accountId: options.accountId,
+                resource: 'message',
                 units: newMessages.length,
-                ...messageWriteBudget(options.backfill === true),
+                envName: 'MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE',
+                fallback: 600,
             }, tx);
         }
         const encoded = newMessages.map((message) => ({

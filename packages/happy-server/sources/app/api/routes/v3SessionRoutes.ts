@@ -162,7 +162,6 @@ export function v3SessionRoutes(app: Fastify) {
                 accountId: userId,
                 sessionId,
                 messages: uniqueMessages,
-                backfill: request.headers['x-happy-message-origin'] === 'backfill',
             });
         } catch (error) {
             if (isAccountResourceLimitError(error)) {

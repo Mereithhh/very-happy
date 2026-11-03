@@ -33,7 +33,7 @@ describe('B-880 planOutboxBatch', () => {
         expect(planOutboxBatch([item(10), item(OUTBOX_BATCH_LIMITS.maxItemBytes)])).toEqual({ kind: 'send', count: 1, backfill: false })
     })
 
-    it('a backfill batch never carries a live message (they are charged to different server budgets)', () => {
+    it('a backfill batch never carries a live message (only the replay carries the backfill header)', () => {
         expect(planOutboxBatch([item(10, true), item(10, true), item(10), item(10, true)])).toEqual({ kind: 'send', count: 2, backfill: true })
         expect(planOutboxBatch([item(10), item(10, true)])).toEqual({ kind: 'send', count: 1, backfill: false })
     })

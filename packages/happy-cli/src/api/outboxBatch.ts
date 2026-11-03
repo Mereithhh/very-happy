@@ -12,8 +12,8 @@
  * Pure, no I/O. A batch is the longest prefix that
  *  - has at most `maxCount` items (the server takes 100),
  *  - stays within `maxBytes` of request body, and
- *  - does not mix a history backfill with live messages: a backfill batch is
- *    charged to its own server rate bucket (`x-happy-message-origin: backfill`).
+ *  - does not mix a history backfill with live messages: a backfill batch
+ *    carries `x-happy-message-origin: backfill` (specs/2026-11-long-import-backfill.md).
  * A single item that can never fit in one request (`maxItemBytes`) is reported
  * as `oversize`: the server would reject it on every retry and block every
  * message behind it.

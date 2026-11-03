@@ -800,7 +800,7 @@ export class ApiSessionClient extends EventEmitter {
                     messages: batch.map(({ content, localId }) => ({ content, localId }))
                 },
                 {
-                    // A replayed transcript is charged to the server's backfill budget, not the live one.
+                    // B-880: marks a replayed transcript; the server honours it only for a declared backfill (spec PR-2).
                     headers: plan.backfill ? { ...this.authHeaders(), 'X-Happy-Message-Origin': 'backfill' } : this.authHeaders(),
                     timeout: 60000
                 }
