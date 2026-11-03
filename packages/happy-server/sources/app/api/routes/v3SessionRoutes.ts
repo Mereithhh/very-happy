@@ -9,6 +9,8 @@ import {
     storeSessionMessages,
 } from "@/app/api/sessionMessageStore";
 import { db } from "@/storage/db";
+import { inTx } from "@/storage/inTx";
+import { closeSessionBackfill, declareSessionBackfill } from "@/app/api/sessionBackfill";
 import { resolveSessionAccess } from "@/app/session/sessionShares";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { z } from "zod";
@@ -162,6 +164,7 @@ export function v3SessionRoutes(app: Fastify) {
                 accountId: userId,
                 sessionId,
                 messages: uniqueMessages,
+                backfill: request.headers['x-happy-message-origin'] === 'backfill',
             });
         } catch (error) {
             if (isAccountResourceLimitError(error)) {
@@ -200,4 +203,29 @@ export function v3SessionRoutes(app: Fastify) {
             messages: stored.messages.map(toSendResponseMessage)
         });
     });
+
+    // B-880: declare (before the first message) or close a history backfill — sessionBackfill.ts.
+    app.post('/v3/sessions/:sessionId/backfill', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({ sessionId: z.string() }),
+            body: z.union([
+                z.object({ total: z.number().int().min(1).max(10_000_000) }),
+                z.object({ done: z.literal(true) }),
+            ]),
+        },
+    }, async (request, reply) => {
+        const accountId = request.userId;
+        const { sessionId } = request.params;
+        const body = request.body;
+        if ('done' in body) {
+            const closed = await inTx((tx) => closeSessionBackfill(tx, { accountId, sessionId }));
+            return reply.send({ closed });
+        }
+        const result = await inTx((tx) => declareSessionBackfill(tx, { accountId, sessionId, total: body.total }));
+        if (result.ok) return reply.send({ quota: result.quota });
+        if (result.reason === 'not-found') return reply.code(404).send({ error: 'Session not found' });
+        return reply.code(409).send({ error: 'backfill_not_allowed', reason: result.reason });
+    });
 }
+

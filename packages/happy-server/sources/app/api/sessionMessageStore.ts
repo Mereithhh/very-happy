@@ -4,6 +4,7 @@ import { enforceAccountWriteRate, lockAccountResources, reserveAccountMessages }
 import { utf8StringSchema } from '@/app/api/resourceSchemas';
 import { inTx, afterTx, type Tx } from '@/storage/inTx';
 import { allocateSessionSeqBatch } from '@/storage/seq';
+import { chargeSessionBackfill } from '@/app/api/sessionBackfill';
 import { z } from 'zod';
 
 // Align with the default Socket.IO transport ceiling. The envelope is also
@@ -41,7 +42,31 @@ export type StoreSessionMessagesOptions = {
     accountId: string;
     sessionId: string;
     messages: SessionMessageWrite[];
+    /** B-880: tagged as a history replay (`x-happy-message-origin: backfill`); counts only within a declared quota (sessionBackfill.ts). */
+    backfill?: boolean;
 };
+
+/**
+ * B-880: which per-minute write budget a batch is charged to. A declared
+ * backfill (sessionBackfill.ts) has its own bucket: on the shared 600/min one a
+ * 12,934-message import took 20 minutes and starved every live session of the
+ * account. 10k/min was measured on an isolated Postgres: 12,934 messages in
+ * 65 s from one wrapper, at most 7 active connections (spec PR-2).
+ */
+export function messageWriteBudget(backfill: boolean): { resource: 'message' | 'message_backfill'; envName: string; fallback: number } {
+    // One `envName` / `fallback` pair per line: scripts/ops/resource-budget.mjs reads them from here.
+    return backfill
+        ? {
+            resource: 'message_backfill',
+            envName: 'MAX_BACKFILL_MESSAGES_PER_ACCOUNT_PER_MINUTE',
+            fallback: 10_000,
+        }
+        : {
+            resource: 'message',
+            envName: 'MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE',
+            fallback: 600,
+        };
+}
 
 export type StoreSessionMessagesResult = {
     messages: StoredSessionMessage[];
@@ -97,12 +122,12 @@ export async function storeSessionMessagesInTx(tx: Tx, options: StoreSessionMess
         // rows that will actually be inserted; charging idempotent retries can
         // turn a normal multi-session replay into a permanent 429 retry storm.
         if (newMessages.length > 0) {
+            // B-880: the backfill budget only within the session's declared quota; a header alone earns nothing.
+            const backfill = options.backfill === true && await chargeSessionBackfill(tx, options.sessionId, newMessages.length);
             await enforceAccountWriteRate({
                 accountId: options.accountId,
-                resource: 'message',
                 units: newMessages.length,
-                envName: 'MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE',
-                fallback: 600,
+                ...messageWriteBudget(backfill),
             }, tx);
         }
         const encoded = newMessages.map((message) => ({

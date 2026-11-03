@@ -171,6 +171,8 @@ export class ApiSessionClient extends EventEmitter {
     private pendingOutbox: OutboxItem[] = [];
     /** B-880: set while a transcript replay enqueues (see `replayHistory`). */
     private replayingHistory = false;
+    /** B-880 PR-2: the server-side backfill quota — declared before the first replay batch, closed after the last. */
+    private backfillDeclaration: 'pending' | 'declared' | 'closed' | null = null;
     private readonly sendSync: InvalidateSync;
     private readonly receiveSync: InvalidateSync;
     private readonly directInboundLocalIds = new Set<string>();
@@ -793,6 +795,7 @@ export class ApiSessionClient extends EventEmitter {
                 continue;
             }
             const batch = this.pendingOutbox.slice(0, plan.count);
+            if (plan.backfill && this.backfillDeclaration === 'pending') await this.declareBackfill(this.pendingBackfillCount());
 
             const response = await axios.post<V3PostSessionMessagesResponse>(
                 `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
@@ -810,6 +813,38 @@ export class ApiSessionClient extends EventEmitter {
             this.noteHandledSeqs(messages.map((message) => message.seq));
             this.pushCommittedMessagesToRelay(batch, messages);
             this.pendingOutbox.splice(0, batch.length);
+            if (plan.backfill && this.backfillDeclaration === 'declared' && this.pendingBackfillCount() === 0) await this.closeBackfill();
+        }
+    }
+
+    /**
+     * B-880 PR-2: the server lets a replay use its backfill write budget only up
+     * to what the session declared before its first message. Any answer
+     * (accepted, refused, 404 from an older server) settles it: the replay then
+     * uploads either way, on whichever budget the server picks. A network error
+     * throws, so the outbox retries it with the batch.
+     */
+    private async declareBackfill(total: number) {
+        const response = await axios.post(
+            `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/backfill`,
+            { total },
+            { headers: this.authHeaders(), timeout: 15_000, validateStatus: () => true },
+        );
+        this.backfillDeclaration = response.status === 200 ? 'declared' : 'closed';
+        logger.debug(`[API] Backfill of ${total} messages declared: HTTP ${response.status}`);
+    }
+
+    /** B-880 PR-2: the replay is uploaded; later backfill-tagged writes go to the live budget. Best effort. */
+    private async closeBackfill() {
+        this.backfillDeclaration = 'closed';
+        try {
+            await axios.post(
+                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/backfill`,
+                { done: true },
+                { headers: this.authHeaders(), timeout: 15_000, validateStatus: () => true },
+            );
+        } catch (error) {
+            logger.debug('[API] Closing the backfill failed (the quota stays as declared):', error);
         }
     }
 
@@ -833,6 +868,7 @@ export class ApiSessionClient extends EventEmitter {
             return replay();
         } finally {
             this.replayingHistory = false;
+            if (this.backfillDeclaration === null && this.pendingBackfillCount() > 0) this.backfillDeclaration = 'pending';
             // One flush once the whole replay is queued: full batches from the first POST.
             if (this.pendingOutbox.length > 0) this.sendSync.invalidate();
         }
