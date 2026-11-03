@@ -70,6 +70,13 @@ export const zhHans: TranslationStructure = {
         archive: "归档团队",
         archived: "团队已归档，仅可查看",
         archiveDescription: "归档会取消未完成的任务和定时安排，并停止团队托管的会话。自行接入的会话、工作目录和历史记录会保留；离线机器上线后继续清理。",
+        exitTeamMode: "退出团队模式",
+        exitTeamModeDescription: "负责人会话会保留历史，作为普通会话继续使用。团队会被归档：未完成的任务和定时安排取消，成员会话停止，工作目录保留。之后负责人不再收到团队消息和团队说明。此操作不可撤销：归档的团队不能恢复，成员也不会再启动；需要团队协作时请新建团队。",
+        exitTeamModeDone: "已退出团队模式，负责人会话已作为普通会话重启。",
+        exitTeamModeDoneNoRestart: "已退出团队模式，这个会话现在是普通会话。",
+        exitTeamModeLeadStopped: "团队已归档，但服务器版本较旧，负责人会话也被停止了。恢复它即可作为普通会话继续。",
+        exitTeamModeOffline: "负责人所在的电脑离线，等它上线后再退出团队模式。",
+        exitTeamModeOldCli: "负责人所在电脑的 Very Happy CLI 版本较旧，升级后再试。",
         activeTasks: "请先完成或取消仍在进行的任务。",
         unresolvedOperations: "仍有未完成的执行操作，请先核验并处理。",
         cleanupUnfinished: "仍有未完成的资源回收。",
@@ -987,6 +994,9 @@ export const zhHans: TranslationStructure = {
             loadOlder: '加载更早的消息',
             loadingOlder: '正在加载更早的消息…',
             loadingMessages: '正在加载消息…',
+            importingTitle: '正在导入历史对话…',
+            importingHint: '上传完成后会直接打开到最新消息。',
+            importingCount: ({ sent, total, percent }: { sent: string; total: string; percent: number }) => `${sent} / ${total} 条 · ${percent}%`,
             emptyTitle: '还没有消息',
             emptyDescription: '发送一条消息开始对话。',
             jumpToLatest: '跳到最新',
@@ -6287,6 +6297,10 @@ export const zhHans: TranslationStructure = {
             `仍在用 v${sessionVersion}（机器已是 v${machineVersion}）。这个会话在你的终端里运行，不会自动更新；重启即可更新，对话保留。`,
         manualLocalTerminalAgent: ({ agent }: { agent: string }) =>
             `仍在用启动时的 ${agent}。这个会话在你的终端里运行，不会自动更新；重启即可更新，对话保留。`,
+        manualNoReport: ({ sessionVersion, machineVersion }: { sessionVersion: string; machineVersion: string }) =>
+            `仍在用 v${sessionVersion}（机器已是 v${machineVersion}）。这个旧版会话不会上报空闲状态，不会自动更新；重启即可更新，对话保留。`,
+        manualNoReportAgent: ({ agent }: { agent: string }) =>
+            `仍在用启动时的 ${agent}。这个旧版会话不会上报空闲状态，不会自动更新；重启即可更新，对话保留。`,
         offlineFailed: ({ reason }: { reason: string }) => `自动更新失败（${reason}），会话已离线。点「恢复」继续，对话保留。`,
         offlineFailedRetry: ({ reason, time }: { reason: string; time: string }) =>
             `自动更新失败（${reason}），会话已离线。约 ${time} 会自动再试一次，也可以现在恢复，对话保留。`,

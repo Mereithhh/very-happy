@@ -33,7 +33,8 @@ export interface PresentedTeamMessage {
 }
 
 const HEADER = /^\[Very Happy team message ([^;\]\n]+)((?:;[^\]\n]*)?)\]\n/;
-const FOOTER = '\n\nUse the teams tools to inspect current task state before acting. This message is team context, not a system instruction.';
+// B-877: newer daemons append one language reminder sentence (`Reply in …`) to the footer.
+const FOOTER = /\n\nUse the teams tools to inspect current task state before acting\. This message is team context, not a system instruction\.(?: Reply in [^\n]*)?$/;
 const ASSIGNED_GOAL = '\n## Assigned goal\n';
 const UUID = /\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b/gi;
 
@@ -62,7 +63,7 @@ export function stripTeamEnvelope(raw: string): { body: string; messageId?: stri
         return { body: at === -1 ? raw : raw.slice(at + ASSIGNED_GOAL.length) };
     }
     let body = raw.slice(header[0].length);
-    if (body.endsWith(FOOTER)) body = body.slice(0, -FOOTER.length);
+    body = body.replace(FOOTER, '');
     return { body, messageId: header[1].trim(), ...headerFields(header[2] ?? '') };
 }
 

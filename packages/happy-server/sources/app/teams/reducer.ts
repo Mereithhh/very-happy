@@ -258,6 +258,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             for (const message of s.messages) if (message.deliveredAt === null) message.cancelledAt ??= now;
             for (const task of s.tasks) {
                 const bot = s.bots.find(b => b.id === task.assigneeBotId);
+                // B-877: 「退出团队模式」 keeps the lead's session; its daemon drops the team scope and restarts it.
+                if (action.keepLeadSession && bot?.root) continue;
                 const existingStop = s.operations.some(o => o.type === 'stop' && o.botId === bot?.id && o.generation === bot?.generation && o.status !== 'completed');
                 if (!existingStop) cleanup(task);
             }

@@ -4,7 +4,7 @@ import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/r
 import { createProjectInjector } from '@/projects/injector';
 import { sharedProjectsClient } from '@/projects/client';
 import { unlink } from 'node:fs/promises';
-import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
+import { announceForkBackfill, FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { readChildThread } from './readChildThread';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
 import { appendStagedAttachmentsToPrompt, stageClaudeAttachments, CLAUDE_ATTACHMENT_KINDS } from '@/claude/utils/attachmentContent';
@@ -75,7 +75,7 @@ import {
 } from './codexPrompt';
 import { codexEventLogMetadata, logValueMetadata, safeCodexErrorMetadata } from './logMetadata';
 import { DEFAULT_CODEX_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
-import { CODEX_REMOTE_PERMISSION_MODES, codexPublishablePermissionMode } from './codexPermissionMode';
+import { CODEX_REMOTE_PERMISSION_MODES, codexLaunchPublishablePermissionMode, codexPublishablePermissionMode } from './codexPermissionMode';
 import { EditReportThrottle, extractCodexPatchPaths } from '@/sessions/editPaths';
 import { reportSessionEditToDaemon } from '@/daemon/controlClient';
 import { takeReconnectEnv } from '@/utils/reconnectEnv';
@@ -465,7 +465,8 @@ export async function runCodex(opts: {
         publishedPermissionMode = publishable;
         session.updateMetadata((currentMetadata) => ({ ...currentMetadata, permissionMode: publishable }));
     };
-    publishPermissionMode(opts.permissionMode);
+    // B-884: the launch flag alone may publish bypassPermissions (as yolo).
+    publishPermissionMode(codexLaunchPublishablePermissionMode(opts.permissionMode));
 
     let discoveredModels: Awaited<ReturnType<CodexAppServerClient['listModels']>> = [];
     let codexAgentVersion: string | null = null;
@@ -1204,15 +1205,19 @@ export async function runCodex(opts: {
 
         const forkCodexThreadId = process.env.HAPPY_FORK_CODEX_THREAD_ID;
         if (!reconnectSessionId && forkCodexThreadId) {
+            announceForkBackfill(session);
             try {
                 const { thread } = await client.readThread({
                     threadId: forkCodexThreadId,
                     includeTurns: true,
                 });
                 const envelopes = mapCodexThreadToSessionEnvelopes(thread);
-                for (const envelope of envelopes) {
-                    session.sendSessionProtocolMessage(envelope);
-                }
+                // B-880: uploaded as a history backfill (own batches, budget and progress).
+                session.replayHistory(() => {
+                    for (const envelope of envelopes) {
+                        session.sendSessionProtocolMessage(envelope);
+                    }
+                });
                 session.updateMetadata((currentMetadata) => ({
                     ...currentMetadata,
                     codexThreadId: forkCodexThreadId,

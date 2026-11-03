@@ -17,6 +17,14 @@
 }
 .cl--empty .cl-scroll { width:100%; display:flex; flex-direction:column; justify-content:safe center; }
 .cl--loading .cl-inner { justify-self: start; }
+/* B-880: an import still uploading (ChatList) */
+.cl-import { align-items: center; text-align: center; gap: var(--sp-3); max-width: min(360px, 100%); padding-inline: var(--sp-4); }
+.cl-import-hint { margin: 0; color: var(--text-dim); }
+.cl-import-progress { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); width: 100%; font-size: var(--chat-fs-secondary); color: var(--text-dim); }
+.cl-import-progress progress { width: 100%; height: 4px; appearance: none; border: 0; border-radius: 2px; background: var(--bg-3); overflow: hidden; }
+.cl-import-progress progress::-webkit-progress-bar { background: var(--bg-3); }
+.cl-import-progress progress::-webkit-progress-value { background: var(--text-dim); }
+.cl-import-progress progress::-moz-progress-bar { background: var(--text-dim); }
 .cl--loading .cl-scroll {
   width: 100%;
   display: grid;

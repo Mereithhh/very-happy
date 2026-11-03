@@ -224,6 +224,18 @@ export async function restartDaemonSession(sessionId: string): Promise<{ success
   return { success: false, error: 'unexpected daemon response' };
 }
 
+/** B-877: 「退出团队模式」 for a team lead session via the local daemon. Never throws. */
+export async function exitDaemonTeamMode(sessionId: string): Promise<{ success: boolean; teamId?: string; restarted?: boolean; leadStopped?: boolean; error?: string }> {
+  const result = await daemonPost('/team-exit-session', { sessionId });
+  if (result?.error) {
+    const raw = String(result.error);
+    return { success: false, error: ROUTE_NOT_FOUND_RE.test(raw)
+      ? 'daemon too old to exit team mode; upgrade very-happy-cli and run `very-happy daemon start`'
+      : raw.replace(/^Request failed: \/team-exit-session, /, '') };
+  }
+  return result?.success === true ? result : { success: false, error: 'unexpected daemon response' };
+}
+
 /**
  * B-069: report a stable session state transition to the local daemon
  * (`completed` = turn ended and idle, `needs_input` = blocked on a permission
