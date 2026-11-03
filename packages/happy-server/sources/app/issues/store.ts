@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import {
-    agentAssigneeOf, buildIssueCommentPrompt, buildIssueInitialPrompt, checkAgentStatusChange, chooseIssueDelivery, isIssueClosed, isIssueRunActive,
+    agentAssigneeOf, BUILTIN_TODO_PREFIX, buildIssueCommentPrompt, buildIssueInitialPrompt, checkAgentStatusChange, chooseIssueDelivery, isIssueClosed, isIssueRunActive,
     issueStatusAfterRunFailure, issueStatusOnRunStart, ISSUE_LIMITS, ISSUE_RUN_ACTIVE_STATUSES, parseIssueRef, routeIssueComment,
     type IssueAgentComment, type IssueAgentUpdate, type IssueAssigneeView, type IssueCommentCreate, type IssueCreate, type IssueDetailResponse,
     type IssueListQuery, type IssueListResponse, type IssueMention, type IssueMutationResponse, type IssueRunCreate, type IssueRunView,
@@ -380,6 +380,12 @@ export async function createIssue(accountId: string, input: IssueCreate): Promis
         if (prior) {
             requireIssue(!(input.legacyTodoId && prior.deletedAt), 'issue_todo_deleted', 404);
             return { issue: issueView(prior), runs: (await tx.issueRun.findMany({ where: { issueId: prior.id }, orderBy: { seq: 'asc' } })).map(runView) };
+        }
+        // B-874e: a todo deleted in KV before Issues were turned on leaves a tombstone (value null) the import skips;
+        // that id is spent too, so it is never recreated as a new issue.
+        if (input.legacyTodoId) {
+            const kv = await tx.userKVStore.findUnique({ where: { accountId_key: { accountId, key: BUILTIN_TODO_PREFIX + input.legacyTodoId } }, select: { value: true } });
+            requireIssue(!(kv && kv.value === null), 'issue_todo_deleted', 404);
         }
         const number = await allocateNumber(tx, accountId);
         await enforceIssueQuota(tx, accountId);
