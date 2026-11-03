@@ -106,6 +106,11 @@ export function readTerminalShareAck(ack: unknown): { ok: true; result: string }
     return { ok: false, code: 'rpc_failed' };
 }
 
+/** `downgraded` = still shared, one tier lower (the pane remounts view-only); every other reason ends access. Pure. */
+export function revokeEndsAccess(reason: string | undefined): boolean {
+    return reason !== 'downgraded';
+}
+
 /**
  * A view-only pane renders at the OWNER's width and scales to fit its box
  * (it never resizes the owner's pane). Returns the CSS scale (≤1: shrink only;

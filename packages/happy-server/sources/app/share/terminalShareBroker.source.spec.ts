@@ -48,6 +48,10 @@ describe('B-878 terminal share broker source contracts', () => {
         expect(machineUpdate).toContain('void noteTerminalShareMachineState(userId, result.machine.id, result.machine.daemonState).catch(() => undefined);');
     });
 
+    it('a socket that goes away releases what it held (a leaked subscriber pins the owner pty)', () => {
+        expect(src).toContain('void releaseHeldSubscriptions(userId, held).catch(');
+    });
+
     it('a sweep runs every second so expiry reaches the grantee within ~1 s', () => {
         expect(src).toContain('const SWEEP_INTERVAL_MS = 1_000;');
         expect(src).toContain('const GRANT_CACHE_TTL_MS = 1_000;');

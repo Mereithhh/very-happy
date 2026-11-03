@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IncomingTerminalShareSchema, ShareTerminalGeometrySchema, defaultTerminalShareExpiry, readTerminalShareAck, viewOnlyScale } from './terminalShareTypes';
+import { IncomingTerminalShareSchema, ShareTerminalGeometrySchema, defaultTerminalShareExpiry, readTerminalShareAck, revokeEndsAccess, viewOnlyScale } from './terminalShareTypes';
 import { terminalShareEventLabelKey } from '@/screens/terminal/terminalShareEventLabels';
 
 describe('B-878 terminal share client helpers', () => {
@@ -26,6 +26,11 @@ describe('B-878 terminal share client helpers', () => {
         expect(parsed.role).toBe('viewer');
         expect(parsed.status).toBe('pending');
         expect(ShareTerminalGeometrySchema.safeParse({ grantId: 'g', cols: 1, rows: 20 }).success).toBe(false);
+    });
+
+    it('lowering to view only keeps the page; every other end reason (and an unknown one) ends access', () => {
+        expect(revokeEndsAccess('downgraded')).toBe(false);
+        for (const r of ['revoked', 'expired', 'left', 'deleted', 'new-reason', undefined]) expect(revokeEndsAccess(r)).toBe(true);
     });
 
     it('activity log: unknown event kinds read as "other"', () => {

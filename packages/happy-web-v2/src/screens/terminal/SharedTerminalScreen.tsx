@@ -35,7 +35,8 @@ import {
     useIncomingTerminalShares,
     useTerminalShares,
 } from '@/sync/terminalSharesStore';
-import { TerminalShareRpcError, viewOnlyScale, type IncomingTerminalShare } from '@/sync/terminalShareTypes';
+import { TerminalShareRpcError, revokeEndsAccess, viewOnlyScale, type IncomingTerminalShare } from '@/sync/terminalShareTypes';
+import { apiSocket } from '@/sync/apiSocket';
 import { acceptLive, applyOpen, b64ToBytes, initialStreamState, isOpenResult, strToB64 } from '@/screens/session/operatorTerminalModel';
 import './terminalShare.css';
 
@@ -71,7 +72,7 @@ export function SharedTerminalScreen() {
     const share = incoming.find((g) => g.id === grantId) ?? null;
     const [ended, setEnded] = useState<'revoked' | null>(null);
 
-    useEffect(() => onTerminalShareEvent('revoked', (e) => { if (e.grantId === grantId) setEnded('revoked'); }), [grantId]);
+    useEffect(() => onTerminalShareEvent('revoked', (e) => { if (e.grantId === grantId && revokeEndsAccess(e.reason)) setEnded('revoked'); }), [grantId]);
 
     if (ended) return <SharedTerminalEmpty text={t('share.terminal.revoked')} onHome={() => navigate('/')} />;
     if (!share) return loaded ? <SharedTerminalEmpty text={t('share.terminal.notFound')} onHome={() => navigate('/')} /> : <SharedTerminalEmpty text={t('common.loading')} />;
@@ -192,7 +193,8 @@ function SharedTerminalPane({ share }: { share: IncomingTerminalShare }) {
 
         const attach = async (fresh: boolean) => {
             try {
-                const params = viewOnly ? {} : { cols: renderer.cols, rows: renderer.rows };
+                const base = viewOnly ? {} : { cols: renderer.cols, rows: renderer.rows };
+                const params = !fresh && state.lastSeq >= 0 ? { ...base, fromSeq: state.lastSeq } : base;
                 const res = await terminalShareCall<unknown>(grantId, 'attach', fresh ? { ...params, resub: true } : params);
                 if (disposed || !isOpenResult(res)) return;
                 const g = (res as { geometry?: { cols?: unknown; rows?: unknown } }).geometry;
@@ -214,6 +216,9 @@ function SharedTerminalPane({ share }: { share: IncomingTerminalShare }) {
             }
         };
         enqueue(() => attach(false));
+        // The server released this pane's subscription when the socket dropped: subscribe
+        // again and catch up on what was missed (replay from lastSeq, else a snapshot).
+        const offReconnected = apiSocket.onReconnected(() => { enqueue(() => attach(false)); });
 
         let lastSize = `${renderer.cols}x${renderer.rows}`;
         const resizeObserver = new ResizeObserver(() => {
@@ -230,7 +235,7 @@ function SharedTerminalPane({ share }: { share: IncomingTerminalShare }) {
         return () => {
             disposed = true;
             resizeObserver.disconnect();
-            offOutput(); offRevoked(); offExit(); offGeometry();
+            offOutput(); offRevoked(); offExit(); offGeometry(); offReconnected();
             input?.dispose();
             sendShareTerminalClose(grantId);
             renderer.dispose();

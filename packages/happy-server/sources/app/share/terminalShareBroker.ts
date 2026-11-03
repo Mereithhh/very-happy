@@ -188,6 +188,8 @@ let sweepTimer: NodeJS.Timeout | null = null;
 
 function invalidateCaches(): void {
     grantCache.clear();
+    // A re-share boxes a NEW stream key into the same row: never keep sealing with the old one.
+    streamKeyCache.clear();
 }
 
 function announceChange(): void {
@@ -315,9 +317,9 @@ function plainTerminalResult(result: Record<string, unknown>, machineKey: Uint8A
 export type TerminalShareRpcAck = { ok: true; result: unknown } | { ok: false; error: TerminalShareErrorCode };
 
 /** One `share-terminal-rpc` call. Never throws; errors are fixed codes. */
-export async function handleTerminalShareRpc(io: Server, granteeId: string, data: unknown, limits: Limits = {}): Promise<TerminalShareRpcAck> {
+export async function handleTerminalShareRpc(io: Server, granteeId: string, data: unknown, limits: Limits = {}, onSubscribed?: (grantId: string) => void): Promise<TerminalShareRpcAck> {
     try {
-        return { ok: true, result: await runTerminalShareRpc(io, granteeId, data, limits) };
+        return { ok: true, result: await runTerminalShareRpc(io, granteeId, data, limits, onSubscribed) };
     } catch (error) {
         if (error instanceof TerminalShareError) return { ok: false, error: error.code };
         log({ module: 'terminal-share', granteeId, errorName: errorName(error) }, 'terminal share rpc failed');
@@ -325,7 +327,7 @@ export async function handleTerminalShareRpc(io: Server, granteeId: string, data
     }
 }
 
-async function runTerminalShareRpc(io: Server, granteeId: string, data: unknown, limits: Limits): Promise<unknown> {
+async function runTerminalShareRpc(io: Server, granteeId: string, data: unknown, limits: Limits, onSubscribed?: (grantId: string) => void): Promise<unknown> {
     const { grantId, op, params } = (data ?? {}) as { grantId?: unknown; op?: unknown; params?: unknown };
     if (!boundedId(grantId) || typeof op !== 'string' || op.length > 32) throw new TerminalShareError('bad_params');
     if (params !== undefined && params !== null && (typeof params !== 'string' || params.length > MAX_PARAMS_BYTES)) throw new TerminalShareError('bad_params');
@@ -385,7 +387,10 @@ async function runTerminalShareRpc(io: Server, granteeId: string, data: unknown,
     if (plan.auditKind) {
         await recordTerminalShareEvent({ ownerAccountId: grant.ownerId, actorAccountId: granteeId, grantId: grant.grantId, machineId: grant.machineId, terminalId: grant.terminalId, kind: plan.auditKind, detail: { role: grant.role } });
     }
-    if (isAttach && !isResub) void emitShareActivity(grant, true, grant.role).catch(() => undefined);
+    if (isAttach && !isResub) {
+        onSubscribed?.(grant.grantId);
+        void emitShareActivity(grant, true, grant.role).catch(() => undefined);
+    }
     const geometry = isAttach && typeof result.paneCols === 'number' && typeof result.paneRows === 'number'
         ? { cols: result.paneCols, rows: result.paneRows }
         : isAttach && info?.cols && info.rows ? { cols: info.cols, rows: info.rows } : undefined;
@@ -534,9 +539,19 @@ const GONE_GRACE_MS = 10_000;
 /** Grantee side: user-scoped sockets only (central server, never the relay). */
 export function terminalShareHandler(userId: string, socket: Socket, connection: { connectionType: string }, limits: Limits): void {
     if (connection.connectionType !== 'user-scoped') return;
+    // Subscriptions this socket holds: a closed tab or dropped socket never sends
+    // share-terminal-close, and a leaked subscriber pins the owner's pty past the idle reaper.
+    const held = new Map<string, number>();
     socket.on('share-terminal-rpc', async (data: unknown, callback?: (ack: TerminalShareRpcAck) => void) => {
-        const ack = await handleTerminalShareRpc(ioRef ?? (socket.nsp.server as Server), userId, data, limits);
+        const ack = await handleTerminalShareRpc(ioRef ?? (socket.nsp.server as Server), userId, data, limits, (grantId) => {
+            held.set(grantId, (held.get(grantId) ?? 0) + 1);
+        });
         if (typeof callback === 'function') callback(ack);
+    });
+    socket.on('disconnect', () => {
+        void releaseHeldSubscriptions(userId, held).catch((error) => {
+            log({ module: 'terminal-share', userId, errorName: errorName(error) }, 'terminal share release failed');
+        });
     });
     for (const [inbound, event] of [
         ['share-terminal-input', 'input'],
@@ -545,11 +560,24 @@ export function terminalShareHandler(userId: string, socket: Socket, connection:
     ] as const) {
         socket.on(inbound, (data: unknown) => {
             if (!data || typeof data !== 'object') return;
+            if (event === 'close') {
+                const grantId = (data as { grantId?: unknown }).grantId;
+                const count = typeof grantId === 'string' ? held.get(grantId) ?? 0 : 0;
+                if (count > 1) held.set(grantId as string, count - 1); else if (count === 1) held.delete(grantId as string);
+            }
             void forwardTerminalEvent(userId, event, data as Record<string, unknown>, limits).catch((error) => {
                 log({ module: 'terminal-share', userId, errorName: errorName(error) }, 'terminal share event failed');
             });
         });
     }
+}
+
+/** The socket went away: close every subscription it still held (no-op for a grant already ended). */
+export async function releaseHeldSubscriptions(granteeId: string, held: Map<string, number>): Promise<void> {
+    for (const [grantId, count] of held) {
+        for (let i = 0; i < count; i++) await forwardTerminalEvent(granteeId, 'close', { grantId }, {});
+    }
+    held.clear();
 }
 
 /** Test seam for the socket events. */

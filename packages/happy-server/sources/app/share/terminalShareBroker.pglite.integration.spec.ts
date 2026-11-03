@@ -296,6 +296,43 @@ describe('B-878 terminal share broker (pglite)', () => {
         expect(await store.listIncomingTerminalShares(operatorId)).toEqual([]);
     });
 
+    it('re-share after a revoke: a new stream key, and the server seals with the new one (no stale cache)', async () => {
+        const first = await share(viewerId, 'viewer');
+        const oldKey = await streamKeyOf(first.id, viewerSecret);
+        expect((await rpc(viewerId, first.id, 'attach', {}, oldKey)).ok).toBe(true); // server caches the key
+        await store.revokeTerminalGrant(ownerId, first.id);
+        const again = await share(viewerId, 'viewer');
+        expect(again.id).toBe(first.id); // same row
+        const newKey = await streamKeyOf(again.id, viewerSecret);
+        expect(Buffer.from(newKey).equals(Buffer.from(oldKey))).toBe(false);
+        expect(await rpc(viewerId, again.id, 'attach', {}, oldKey)).toEqual({ ok: false, error: 'bad_params' });
+        const ack = await rpc(viewerId, again.id, 'attach', {}, newKey);
+        expect(ack.ok).toBe(true);
+        expect((openWith((ack as any).result, newKey) as any).terminalId).toBe(terminalId);
+        await store.revokeTerminalGrant(ownerId, again.id);
+    });
+
+    it('a dropped socket releases the subscriptions it held; a revoked grant releases nothing twice', async () => {
+        const grant = await share(viewerId, 'viewer');
+        const key = await streamKeyOf(grant.id, viewerSecret);
+        const held = new Map<string, number>();
+        const onSubscribed = (id: string) => held.set(id, (held.get(id) ?? 0) + 1);
+        const seal = (v: unknown) => Buffer.from(crypto.encryptWithDataKey(v, key)).toString('base64');
+        await broker.handleTerminalShareRpc(io, viewerId, { grantId: grant.id, op: 'attach', params: seal({}) }, {}, onSubscribed);
+        await broker.handleTerminalShareRpc(io, viewerId, { grantId: grant.id, op: 'attach', params: seal({}) }, {}, onSubscribed);
+        await broker.handleTerminalShareRpc(io, viewerId, { grantId: grant.id, op: 'attach', params: seal({ resub: true }) }, {}, onSubscribed);
+        expect(held.get(grant.id)).toBe(2); // a catch-up holds no new subscription
+        emitted.length = 0;
+        await broker.releaseHeldSubscriptions(viewerId, held);
+        expect(emitted.filter((e) => e.event === 'terminal-close')).toHaveLength(2);
+        const row = await db.shareTerminalAttachment.findFirstOrThrow({ where: { grantId: grant.id } });
+        expect(row).toMatchObject({ subscribers: 0, closeReason: 'detached' });
+        expect(row.closedAt).not.toBeNull();
+        emitted.length = 0;
+        await store.revokeTerminalGrant(ownerId, grant.id);
+        expect(emitted.filter((e) => e.event === 'terminal-close')).toHaveLength(0);
+    });
+
     it('real routes: create → incoming → accept → events → revoke; strict bodies; viewer has no "forever"', async () => {
         const fastify = (await import('fastify')).default;
         const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');
