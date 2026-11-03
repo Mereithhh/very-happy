@@ -477,7 +477,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     it('B-880: a replayed history uploads as backfill batches, live messages after it as their own', async () => {
         const client = new ApiSessionClient('fake-token', session);
         let seq = 0;
-        mockAxiosPost.mockImplementation(async (_url: string, body: { messages: Array<{ localId: string }> }) => ({
+        mockAxiosPost.mockImplementation(async (url: string, body: { messages: Array<{ localId: string }> }) => (url.endsWith('/backfill') ? { status: 200, data: {} } : {
             data: { messages: body.messages.map((m) => ({ id: `id-${++seq}`, seq, localId: m.localId, createdAt: seq, updatedAt: seq })) },
         }));
 
@@ -491,7 +491,10 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(client.pendingBackfillCount()).toBe(150);
 
         await expect(client.drainOutbox()).resolves.toBe(true);
-        const calls = mockAxiosPost.mock.calls.map(([, body, config]) => ({
+        // PR-2: declared before the first replay batch, closed right after the last one
+        const urls = mockAxiosPost.mock.calls.map(([url, body]) => (url.endsWith('/backfill') ? JSON.stringify(body) : 'messages'));
+        expect(urls).toEqual(['{"total":150}', 'messages', 'messages', '{"done":true}', 'messages']);
+        const calls = mockAxiosPost.mock.calls.filter(([url]) => !url.endsWith('/backfill')).map(([, body, config]) => ({
             count: body.messages.length,
             origin: config.headers['X-Happy-Message-Origin'],
             backfillFieldSent: body.messages.some((m: Record<string, unknown>) => 'backfill' in m),
@@ -502,6 +505,18 @@ describe('ApiSessionClient v3 messages API migration', () => {
             { count: 1, origin: undefined, backfillFieldSent: false },
         ]);
         expect(client.pendingBackfillCount()).toBe(0);
+    });
+
+    it('B-880: an older server (404 on the declaration) still gets the whole replay, never a close', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        let seq = 0;
+        mockAxiosPost.mockImplementation(async (url: string, body: { messages: Array<{ localId: string }> }) => (url.endsWith('/backfill') ? { status: 404, data: {} } : {
+            data: { messages: body.messages.map((m) => ({ id: `id-${++seq}`, seq, localId: m.localId, createdAt: seq, updatedAt: seq })) },
+        }));
+        client.replayHistory(() => { for (let i = 0; i < 3; i++) client.sendCodexMessage({ type: 'history', i }); });
+        await expect(client.drainOutbox()).resolves.toBe(true);
+        expect(mockAxiosPost.mock.calls.map(([url]) => url.split('/').pop())).toEqual(['backfill', 'messages']);
+        expect(seq).toBe(3);
     });
 
     it('retries failed POST and succeeds without dropping queued messages', async () => {
