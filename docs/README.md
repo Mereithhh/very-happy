@@ -17,7 +17,8 @@ computer, phone, or tablet. Teams adds coordinated parallel work to that same hu
 - [Session sharing](session-sharing.md): let another account on your server
   watch a conversation live, send messages into it under their own name, or
   operate it (terminal, files, approvals — a time-limited, audited handover of
-  a shell on your machine); or hand out a read-only link that expires and can
+  a shell on your machine); share a single web terminal view-only or to
+  operate; or hand out a read-only link that expires and can
   be revoked.
 - [Keyboard and touch](keyboard-shortcuts.md): the command palette (one search entry),
   `@` file mentions, fast navigation, PWA/browser shortcut boundaries, and mobile

@@ -51,6 +51,7 @@ import { configureClientIpTrust, requestLogSerializer } from './clientIp';
 import { configuredResourceLimit } from './resourceLimits';
 import { relayRoutes } from './routes/relayRoutes';
 import { sessionShareRoutes } from './routes/sessionShareRoutes';
+import { terminalShareRoutes } from './routes/terminalShareRoutes';
 import { sessionShareLinkRoutes } from './routes/sessionShareLinkRoutes';
 import { connectionDiagnosticsRoutes } from './routes/connectionDiagnosticsRoutes';
 import { cspReportRoutes } from './routes/cspReportRoutes';
@@ -173,6 +174,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     attachmentRoutes(typed);
     relayRoutes(typed);
     sessionShareRoutes(typed);
+    terminalShareRoutes(typed);
     sessionShareLinkRoutes(typed);
     connectionDiagnosticsRoutes(typed);
     cspReportRoutes(typed);

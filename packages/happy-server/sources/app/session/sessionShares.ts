@@ -102,7 +102,7 @@ export async function requireSessionAccess(userId: string, sessionId: string, mi
 
 const dekCache = new Map<string, { dek: Uint8Array; at: number }>();
 
-async function loadMasterSecret(accountId: string): Promise<Uint8Array | null> {
+export async function loadMasterSecret(accountId: string): Promise<Uint8Array | null> {
     // Accounts from before AccountSecret existed only hold the sealed secret on
     // their password credential; loadAccountSecret migrates it forward.
     const credential = await db.accountCredential.findUnique({ where: { accountId }, select: { secretEnc: true } });
@@ -125,7 +125,7 @@ export async function openSessionDataKey(session: SessionKeyRow): Promise<Uint8A
 }
 
 /** The grantee's content public key: uploaded by their web client, else derived from their server-held secret. */
-async function granteeContentPublicKey(accountId: string): Promise<Uint8Array | null> {
+export async function granteeContentPublicKey(accountId: string): Promise<Uint8Array | null> {
     const account = await db.account.findUnique({ where: { id: accountId }, select: { contentPublicKey: true } });
     if (account?.contentPublicKey) {
         const bytes = new Uint8Array(Buffer.from(account.contentPublicKey, 'base64'));

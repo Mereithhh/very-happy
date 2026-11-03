@@ -63,6 +63,12 @@ describe('planTermHeaderActions', () => {
         expect(wide.overflow).toHaveLength(0);
     });
 
+    it('B-878: share sits last on the desktop bar and before close in the phone ⋯', () => {
+        expect(planTermHeaderActions(input({ compact: false, canShare: true })).inline).toEqual(['structured', 'notes', 'select', 'files', 'refit', 'tmuxHelp', 'share']);
+        expect(planTermHeaderActions(input({ canShare: true, canClose: true })).overflow).toEqual(['notes', 'select', 'files', 'refit', 'tmuxHelp', 'share', 'close']);
+        expect(planTermHeaderActions(input({ canShare: false })).overflow).not.toContain('share');
+    });
+
     it('leaves no trigger at all when nothing collapsible exists', () => {
         // (not reachable today — notes/files/refit are unconditional — but the
         // caller renders the "⋯" only when overflow is non-empty)
