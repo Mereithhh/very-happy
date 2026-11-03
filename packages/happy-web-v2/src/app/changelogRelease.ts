@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-03-cli-update-after-wake-0-2-202',
+    cliVersion: '0.2.202',
+    date: '2026-11-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov03i.title',
+    summaryKey: 'changelog.releases.nov03i.summary',
+    itemKeys: ['changelog.releases.nov03i.update'],
+  },
+  {
     id: '2026-11-03-cli-stability-0-2-201',
     cliVersion: '0.2.201',
     date: '2026-11-03',
