@@ -1,6 +1,6 @@
 # 超长导入会话：上传与首屏（import backfill）
 
-> 状态：Final（PR-1 客户端；PR-2 server 声明式回放配额随后定稿）
+> 状态：Final（PR-1 #873 客户端；PR-2 server 声明式回放配额）
 > 日期：2026-11-03 ｜ 关联 backlog：B-880 ｜ 前身：B-290（Claude 导入）、B-464（Codex 导入）、B-531（fork backfill 确认）、B-616（首屏只取最新一页）
 
 ## 背景
@@ -64,3 +64,18 @@ server 不变；新 CLI 发的 `X-Happy-Message-Origin: backfill` 头旧/新 ser
 
 - 机制测试：`outboxBatch.test.ts`（分批、字节上限、混批、oversize）、`apiSession.test.ts`（回放 100+50 两批带头、实时消息单独一批）、`forkBackfill.test.ts`（进度写入、旧 CLI 不被进度放行、三条回放路径接线）、`importCodexThread.test.ts`、Web `importBackfill.test.ts`（判定 + 四个入口接线，mutation-check 全部 CAUGHT）、`chatImportProgress.test.tsx`（进度态不渲染 transcript，完成后切回）。
 - 隔离 e2e（证据：`~/code/github/skills/tmp/vh-team-B-880/`，脚本 `e2e/measure.mjs`）：真 daemon `claude-import-session` → 打开会话 → 采样直到最新消息可见 → 刷新冷开 → 滚到顶加载更早；桌面 1280 与手机 390 coarse。
+
+## PR-2：声明式回放配额（迁移 `20261103180000_session_backfill_quota`，expand-only）
+
+- server `sessionBackfill.ts`：`POST /v3/sessions/:id/backfill { total }` 声明（本人；`seq==0`；创建 ≤5 min；只一次；quota = min(total, `MAX_BACKFILL_MESSAGES_PER_SESSION`=100k) × 1.02）→ 200 `{quota}`，否则 409 `backfill_not_allowed` + reason / 404。`{ done: true }` 关闭（quota := used）。
+- `storeSessionMessagesInTx`：带 `x-happy-message-origin: backfill` 且同事务 `chargeSessionBackfill`（`backfillUsed + n ≤ backfillQuota`）成功 → 账号级 `message_backfill` 桶（`MAX_BACKFILL_MESSAGES_PER_ACCOUNT_PER_MINUTE`，默认 **10,000**）；否则普通 600 桶。限流拒绝时整个事务回滚，会话配额不被扣。
+- CLI `apiSession.ts`：回放首批前声明（任何 HTTP 应答都算定局：404 = 旧 server，照常上传；网络错误随该批重试），最后一批后关闭（尽力而为）。
+- 写入方式：每个 POST（≤100 条）一个 SERIALIZABLE 事务，`Account`/`Session` 行锁 + 逐行 `sessionMessage.create`（不是 createMany）。隔离 Postgres 16（`dbload/load.mjs`）：
+  | 场景 | 耗时 | 吞吐 | 429 | 峰值 active 连接 |
+  |---|---|---|---|---|
+  | 声明，10k/分钟，单 wrapper 12,934 条 | 65.0 s | 199 条/s | 42（桶满退避） | 1 |
+  | 不限，单 wrapper 12,934 条（上限参考） | 25.0 s | 517 条/s | 0 | 1 |
+  | 未声明只带头，2,000 条 | 183 s | 11 条/s（= 600/分钟） | 175 | 1 |
+  连接池总数 34（Prisma 默认池 + 后台），不随负载上升；10k/分钟够一次超长导入 ~1 分钟上传完，且单账号写入压力被压在不限时的 40%。
+- 兼容：旧 CLI 不声明 → 普通桶（同今天）；新 CLI + 旧 server → 声明 404，普通桶；旧 server 镜像不读新列。回滚：只回滚镜像；需要删列见 migration.sql 注释。
+- 验收单测：`sessionBackfill.pglite.integration.spec.ts`（普通会话带头仍受 600；声明后 total+2% 内走 backfill 桶、之外回普通桶且 live 会话预算不受影响；关闭后回普通桶；只能声明一次 / 有消息 / 超 5 分钟 / 他人会话被拒；每会话上限；账号 backfill 桶仍限流且拒绝不扣会话配额），CLI `apiSession.test.ts`（声明→批→关闭顺序；旧 server 404 照常上传不关闭）。

@@ -262,6 +262,10 @@ model Session {
     // B-297 - plaintext, self-reported client identity ("cli-coding-session/0.2.105").
     lastHappyClient   String?
     lastHappyClientAt DateTime?
+    // B-880 - declared history backfill (import/fork replay): messages that may use the backfill
+    // write budget, and how many did. Null = never declared; closed = quota lowered to used.
+    backfillQuota     Int?
+    backfillUsed      Int              @default(0)
     seq               Int              @default(0)
     active            Boolean          @default(true)
     archivedAt        DateTime?
