@@ -430,12 +430,16 @@ computer:
 very-happy teams exit --session-id <lead-session-id>
 ```
 
+Exiting cannot be undone: an archived team cannot be reopened and its members
+do not start again; start a new team to work as a team again. A lead you
+restored after a plain archive can exit too, and can then start a new team.
+
 A plain **Archive team** still stops the lead too. Member sessions cannot exit
 on their own; they end with the team. Requires the lead computer's CLI to
 include this command (B-877); an older server stops the lead anyway, and the
 app says so.
 
-退出团队模式（负责人会话 ⋯ 或团队页 ⋯）：按现有归档逻辑归档团队，但负责人会话不停，保留历史后作为普通会话原地重启，之后不再注入团队说明、不再收团队消息。下一条消息前会告诉负责人一次「团队模式已结束」，之后团队工具都明确回复团队已归档、请自己完成，不会再让你等团队权限恢复；普通归档后再恢复的负责人会话同样处理。
+退出团队模式（负责人会话 ⋯ 或团队页 ⋯）：按现有归档逻辑归档团队，但负责人会话不停，保留历史后作为普通会话原地重启，之后不再注入团队说明、不再收团队消息。下一条消息前会告诉负责人一次「团队模式已结束」，之后团队工具都明确回复团队已归档、请自己完成，不会再让你等团队权限恢复；普通归档后再恢复的负责人会话同样处理，也可以执行退出，之后能新建团队。退出不可撤销：归档的团队不能恢复，成员不会再启动。
 
 ### Language
 
