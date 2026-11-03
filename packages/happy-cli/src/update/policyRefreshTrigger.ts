@@ -21,7 +21,9 @@
  *   except that a socket connect runs at once: it proves the network is back,
  *   and a wake-time fetch that failed a few seconds earlier must not hold it;
  * - a refresh the controller skipped because another operation was running is
- *   retried after `retryMs` too.
+ *   retried after `retryMs` too;
+ * - B-876b: a refresh that found another daemon owning the machine (B-864)
+ *   stops the trigger for good — no retry, no deferred run.
  * What to do with the policy (waiting_idle, install, …) stays entirely with the
  * update controller, exactly as for the hourly check.
  */
@@ -31,8 +33,11 @@ export const POLICY_REFRESH_RETRY_MS = 30_000;
 /** A heartbeat gap this much longer than the interval means the process was suspended (sleep / DarkWake). */
 export const WAKE_GAP_SLACK_MS = 2 * 60_000;
 
-/** `ok` = a policy was read; `unavailable` = the fetch failed; `busy` = another update operation ran, nothing was read. */
-export type PolicyRefreshResult = 'ok' | 'unavailable' | 'busy';
+/**
+ * `ok` = a policy was read; `unavailable` = the fetch failed; `busy` = another update operation ran, nothing was read;
+ * `superseded` = another daemon owns the machine now, nothing was read and nothing ever will be (B-876b).
+ */
+export type PolicyRefreshResult = 'ok' | 'unavailable' | 'busy' | 'superseded';
 
 export type PolicyRefreshReason = 'startup' | 'connect' | 'wake' | 'stale' | 'scheduled';
 
@@ -78,6 +83,7 @@ export function createPolicyRefreshTrigger(deps: PolicyRefreshTriggerDependencie
         deps.log?.(`CLI update policy refresh (${reason})`);
         void deps.refresh().catch((): PolicyRefreshResult => 'unavailable').then((result) => {
             inFlight = false;
+            if (result === 'superseded') { stop(); return; }
             if (result === 'ok') lastSuccessAt = now();
             else if (result === 'busy') lastAttemptAt = now();
             if (stopped || result === 'ok') return;
@@ -95,17 +101,20 @@ export function createPolicyRefreshTrigger(deps: PolicyRefreshTriggerDependencie
         return 'run';
     }
 
+    function stop() {
+        stopped = true;
+        if (timer !== null) clearTimer(timer);
+        timer = null;
+    }
+
     return {
         request,
-        /** Any other refresh (startup, hourly, announcement) that read a policy restarts the window. */
+        /** Any other refresh (startup, hourly, announcement) that read a policy restarts the window; one that found us superseded stops it. */
         noteRefreshed(result: PolicyRefreshResult) {
             if (result === 'ok') lastSuccessAt = now();
+            else if (result === 'superseded') stop();
         },
-        stop() {
-            stopped = true;
-            if (timer !== null) clearTimer(timer);
-            timer = null;
-        },
+        stop,
     };
 }
 

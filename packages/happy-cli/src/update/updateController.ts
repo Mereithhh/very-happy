@@ -41,6 +41,11 @@ export interface UpdateControllerDependencies {
      * from a manual one.
      */
     lastInstall?: { read: () => LastCliInstall | null; write: (record: LastCliInstall) => void };
+    /**
+     * B-876b: false once another daemon owns this machine (B-864). A superseded
+     * daemon must not fetch, install or publish — it is about to exit.
+     */
+    owned?: () => boolean;
 }
 /** Serializes install attempts, retains terminal outcomes, and never retries a failure without a user action. */
 export function createUpdateController(deps: UpdateControllerDependencies) {
@@ -81,8 +86,9 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         outcome = { state, version, detail, at: now(), ...(manualVersion ? { source: 'manual' } : {}) };
         deps.publish(snapshot());
     }
+    const superseded = () => !!deps.owned && !deps.owned();
     async function evaluate() {
-        if (!policy || running) return;
+        if (!policy || running || superseded()) return;
         const target = manualVersion ?? policy.autoUpdateVersion ?? null;
         // B-489: manual_required from an install-location check is terminal for
         // this target too — re-checking every heartbeat would only re-log it.
@@ -153,7 +159,8 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         try { await evaluate(); } finally { operation = null; }
     }
     /** B-876: says whether a policy was read, so event-driven refreshes can retry (policyRefreshTrigger.ts). */
-    async function refresh(): Promise<'ok' | 'unavailable' | 'busy'> {
+    async function refresh(): Promise<'ok' | 'unavailable' | 'busy' | 'superseded'> {
+        if (superseded()) return 'superseded';
         if (operation || blocked) return 'busy';
         operation = 'refresh';
         try {
@@ -166,6 +173,7 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         } finally { operation = null; }
     }
     async function retry(version: unknown): Promise<{ accepted: true } | { error: string }> {
+        if (superseded()) return { error: 'daemon_superseded' };
         if (operation || blocked) return { error: blocked ? 'manual_recovery_required' : 'update_in_progress' };
         if (typeof version !== 'string' || outcome?.state !== 'failed' || outcome.version !== version) {
             return { error: 'no_matching_failed_update' };
@@ -186,6 +194,7 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         } finally { operation = null; }
     }
     async function request(version: unknown): Promise<{ accepted: true } | { error: string }> {
+        if (superseded()) return { error: 'daemon_superseded' };
         if (operation || blocked) return { error: blocked ? 'manual_recovery_required' : 'update_in_progress' };
         operation = 'request';
         try {

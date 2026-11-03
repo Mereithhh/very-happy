@@ -26,7 +26,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, deletePersistedSessions } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, readDaemonStatePidSync, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, deletePersistedSessions } from '@/persistence';
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
@@ -73,6 +73,7 @@ import { installCliStaged } from '@/update/stagedInstall';
 import { lastInstallStore } from '@/update/lastInstall';
 import { createPolicyAnnouncementHandler } from '@/update/policyAnnouncement';
 import { createPolicyRefreshTrigger, createWakeDetector } from '@/update/policyRefreshTrigger';
+import { createDaemonOwnership } from '@/daemon/daemonOwnership';
 import { createHarnessInstaller } from '@/harness/harnessInstaller';
 import { runNpm } from '@/update/npmInstall';
 import { HARNESS_INSTALL_CAPABILITY_VERSION } from '@slopus/happy-wire';
@@ -2168,6 +2169,17 @@ export async function startDaemon(): Promise<void> {
         .catch((error) => logger.debug('[DAEMON RUN] could not refresh the recorded host:', error));
     }
 
+    // B-864/B-876b: once daemon.state.json names another pid, this daemon fetches, installs
+    // and writes nothing more, and exits — whichever path (connect, wake, heartbeat…) notices first.
+    const daemonOwnership = createDaemonOwnership({
+      pid: process.pid,
+      statePid: readDaemonStatePidSync,
+      onSuperseded: (ownerPid) => {
+        logger.debug(`[DAEMON RUN] Somehow a different daemon (pid ${ownerPid}) was started without killing us. We should kill ourselves.`);
+        requestShutdown('exception', 'A different daemon was started without killing us. We should kill ourselves.');
+      },
+    });
+
     let lastUpdateLog = '';
     // B-719: created below (needs apiMachine); the CLI update waits while it writes the npm tree.
     let harnessInstaller: ReturnType<typeof createHarnessInstaller> | null = null;
@@ -2193,7 +2205,10 @@ export async function startDaemon(): Promise<void> {
       installFenced: () => !!harnessInstaller?.isRunning(),
       busyGraceMs: resolveBusyInstallGrace(process.env.HAPPY_CLI_UPDATE_BUSY_GRACE_MS),
       lastInstall: lastInstallStore(configuration.happyHomeDir),
+      owned: daemonOwnership.owns,
       publish: (state) => {
+        // B-876b: never write our state over the daemon that replaced us.
+        if (!daemonOwnership.owns()) return;
         cliUpdateStateRef = state;
         fileState = { ...fileState, cliUpdate: state };
         writeDaemonState(fileState);
@@ -2303,6 +2318,8 @@ export async function startDaemon(): Promise<void> {
         }
       }
 
+      // B-876b: a superseded daemon neither installs nor hands over; it is on its way out.
+      if (!daemonOwnership.owns()) return;
       // Reconsider busy waits on the existing heartbeat; never hand over during npm writes.
       await updateController.tick();
       await updateController.withHandover(async () => {
@@ -2416,13 +2433,9 @@ export async function startDaemon(): Promise<void> {
 
       // Before wrecklessly overriting the daemon state file, we should check if we are the ones who own it
       // Race condition is possible, but thats okay for the time being :D
-      const daemonState = await readDaemonState();
-      if (daemonState && daemonState.pid !== process.pid) {
-        logger.debug('[DAEMON RUN] Somehow a different daemon was started without killing us. We should kill ourselves.')
-        requestShutdown('exception', 'A different daemon was started without killing us. We should kill ourselves.')
-        // B-864: and stop here — the heartbeat below would overwrite the other daemon's state with ours.
-        return;
-      }
+      // B-864: and stop here — the heartbeat below would overwrite the other daemon's state with ours.
+      // (daemonOwnership's onSuperseded requests the shutdown.)
+      if (!daemonOwnership.owns()) return;
 
       // B-876: after a suspend (sleep, DarkWake) or with an expired policy, fetch instead of only reporting policy_stale.
       const woke = wakeDetector.beat();

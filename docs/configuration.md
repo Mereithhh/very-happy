@@ -98,6 +98,9 @@ socket reconnects, when its heartbeat notices the machine just woke from sleep
 it holds is older than 65 minutes (which used to only report `policy_stale`).
 These re-reads are paced to one per 5 minutes after a successful one (a request
 inside the window runs once at its end), 30 s after a failed one.
+A daemon that another daemon has replaced (its `daemon.state.json` names
+another pid) re-reads nothing, installs nothing and exits on whichever of these
+paths notices first (B-876b).
 `CLI_VERSION_REGISTRY_URL` (default `https://registry.npmjs.org/very-happy-cli/latest`)
 points the lookup at a private mirror.
 
