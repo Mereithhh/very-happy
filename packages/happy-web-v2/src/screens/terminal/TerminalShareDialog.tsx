@@ -279,6 +279,7 @@ export function TerminalShareDialog({ machineId, terminalId, title, host, open, 
                         error={confirmError}
                         onCancel={() => setPendingOperator(null)}
                         onConfirm={() => void confirmOperator()}
+                        compactWarning
                     />
                 </Dialog.Content>
             </Dialog.Portal>

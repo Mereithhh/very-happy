@@ -63,7 +63,7 @@ export function OperatorExpirySelect({ value, onChange, labelledBy }: { value: O
  * it inline first. The grant button never answers Enter-by-default: it is a
  * destructive-class confirmation (design §6).
  */
-export function OperatorConfirmDialog({ open, name, host, expiry, onExpiry, needsAck, busy, error, onCancel, onConfirm }: {
+export function OperatorConfirmDialog({ open, name, host, expiry, onExpiry, needsAck, busy, error, onCancel, onConfirm, compactWarning }: {
     open: boolean;
     name: string;
     host: string | null;
@@ -74,6 +74,8 @@ export function OperatorConfirmDialog({ open, name, host, expiry, onExpiry, need
     error: string | null;
     onCancel: () => void;
     onConfirm: () => void;
+    /** B-878: a terminal share has no session folder — drop that line. */
+    compactWarning?: boolean;
 }) {
     const { t } = useTranslation();
     const [ack, setAck] = useState(!needsAck);
@@ -99,7 +101,7 @@ export function OperatorConfirmDialog({ open, name, host, expiry, onExpiry, need
                             <li>{t('share.operator.confirmExpiry', { expiry: expiryLabel(t, expiry) })}</li>
                         )}
                     </ul>
-                    <OperatorWarning />
+                    <OperatorWarning compact={compactWarning} />
                     {needsAck && (
                         <Checkbox className="shd-opack" checked={ack} onCheckedChange={setAck}>{t('share.operator.acknowledge')}</Checkbox>
                     )}

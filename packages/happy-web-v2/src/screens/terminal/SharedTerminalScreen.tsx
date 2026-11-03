@@ -110,7 +110,7 @@ function SharedTerminalEmpty({ text, onHome }: { text: string; onHome?: () => vo
             <header className="sts-head"><BackButton /></header>
             <div className="sts-empty" role="status">
                 <p>{text}</p>
-                {onHome && <Button type="button" variant="ghost" size="md" onClick={onHome}>{t('share.terminal.backHome')}</Button>}
+                {onHome && <Button type="button" variant="secondary" size="md" onClick={onHome}>{t('share.terminal.backHome')}</Button>}
             </div>
         </div>
     );

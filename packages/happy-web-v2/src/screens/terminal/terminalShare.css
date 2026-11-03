@@ -10,7 +10,8 @@
 .sts-head .sb-icon-btn { color: var(--term-chrome-fg); }
 .sts-banner { display: flex; align-items: center; gap: var(--sp-2); margin: 0; padding: 6px var(--sp-3); background: var(--term-chrome-panel); color: var(--term-chrome-dim); font-size: var(--fs-12); line-height: 1.4; }
 .sts-banner > svg { flex: none; }
-.sts-banner--operator { background: var(--danger-dim); color: var(--text); }
+.sts-banner--operator { color: var(--term-chrome-fg); box-shadow: inset 3px 0 0 var(--danger); }
+.sts-banner--operator > svg { color: var(--danger); }
 .sts-error { margin: 0; padding: 6px var(--sp-3); background: var(--warn-dim); color: var(--text); font-size: var(--fs-12); }
 .sts-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* View only: the pane keeps the OWNER's columns and is scaled down to fit; scroll sideways never needed. */
@@ -25,7 +26,7 @@
 .sb-shared-terms { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-1) var(--sp-2); }
 .sb-shared-terms-label { padding: var(--sp-1) var(--sp-2); color: var(--text-dim); font-size: var(--fs-11); font-weight: 600; }
 .sb-shared-term { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; padding: 0 var(--sp-2); border-radius: var(--r-md); color: var(--text); text-decoration: none; }
-.sb-shared-term:hover { background: var(--fill-hover); }
+@media (hover: hover) and (pointer: fine) { .sb-shared-term:hover { background: var(--fill-hover); } }
 .sb-shared-term[aria-current="page"] { background: var(--fill-selected); }
 .sb-shared-term-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .sb-shared-term-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-13); }
