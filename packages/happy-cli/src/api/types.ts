@@ -745,7 +745,7 @@ export type Metadata = {
    * --fork --prompt` waits for it before sending, so the prompt cannot get a
    * seq inside the replay. Absent on non-fork sessions and old wrappers.
    */
-  forkBackfill?: { done: true; count: number; failed?: boolean; completedAt: number }
+  forkBackfill?: { done: true; count: number; failed?: boolean; completedAt: number } | { done: false; total: number; sent: number }
   /**
    * B-544: the newest in-place rewind (conversation-rewind with a requestId).
    * `pending` until the web's transcript-drop tombstone with the same

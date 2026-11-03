@@ -382,6 +382,9 @@ export const zhHant: PartialTranslationStructure = {
         forkErrorMissingMetadata: '缺少分叉所需的會話元資料。',
         forkErrorGeneric: '分叉會話失敗。',
         chat: {
+            importingTitle: '正在匯入歷史對話…',
+            importingHint: '上傳完成後會直接打開到最新訊息。',
+            importingCount: ({ sent, total, percent }: { sent: string; total: string; percent: number }) => `${sent} / ${total} 則 · ${percent}%`,
             // B-577/B-578/B-579 閱讀輔助
             readingAids: {
                 quoteSelection: '引用',

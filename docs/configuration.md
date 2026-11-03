@@ -37,6 +37,7 @@ state. Never commit production values.
 | `MAX_MACHINE_STATE_BYTES_PER_ACCOUNT` | Stored machine metadata plus daemon-state bytes | `16777216` |
 | `MAX_ACCOUNT_SETTINGS_WRITES_PER_ACCOUNT_PER_MINUTE` | Shared synchronized-account-settings write rate; values are capped at 256 KiB UTF-8 | `60` |
 | `MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE` | Shared database-backed message ingress rate | `600` |
+| `MAX_BACKFILL_MESSAGES_PER_ACCOUNT_PER_MINUTE` | Separate ingress rate for a wrapper replaying an imported/forked transcript (`x-happy-message-origin: backfill`, B-880), so a long import neither waits on nor starves the live budget | `50000` |
 | `MAX_MESSAGES_PER_ACCOUNT` | Stored message count per account | `100000` |
 | `MAX_MESSAGE_BYTES_PER_ACCOUNT` | Stored encrypted message bytes per account | `536870912` |
 | `MAX_ATTACHMENT_BYTES_PER_ACCOUNT` | Reserved attachment storage per account | `104857600` |

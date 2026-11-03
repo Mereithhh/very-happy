@@ -20,7 +20,7 @@ import type { QueueDiscardEntry } from '@/utils/MessageQueue2';
 import { spawnOriginTags } from '@/utils/createSessionMetadata';
 import { AGENT_PROFILE_SESSION_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, restoredEffort, restoredModel } from '@slopus/happy-wire';
 import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
-import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
+import { announceForkBackfill, FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { configuration } from '@/configuration';
 import { loadWrapperAccount, type WrapperAccount } from '@/agentProfiles/wrapperAccount';
 import { SPAWN_ACCOUNT_ENV } from '@/agentProfiles/store';
@@ -512,12 +512,14 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const forkClaudeSessionId = process.env.HAPPY_FORK_CLAUDE_SESSION_ID;
     if (!reconnectSessionId && forkClaudeSessionId) {
         const jsonlPath = join(getProjectPath(workingDirectory), `${forkClaudeSessionId}.jsonl`);
+        announceForkBackfill(session);
         try {
             const file = await readFile(jsonlPath, 'utf-8');
-            const backfilled = replayClaudeForkJsonl(file, {
+            // B-880: uploaded as a history backfill (own batches, budget and progress).
+            const backfilled = session.replayHistory(() => replayClaudeForkJsonl(file, {
                 send: (line) => session.sendClaudeSessionMessage(line),
                 closeTurn: () => session.closeReplayedClaudeTurn(),
-            });
+            }));
             logger.debug(`[FORK BACKFILL] Replayed ${backfilled} historical messages from ${jsonlPath}`);
             // Bind the new Happy session to the forked Claude UUID up
             // front so the metadata is consistent the moment the app

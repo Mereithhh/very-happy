@@ -371,6 +371,7 @@ describe("v3SessionRoutes", () => {
         delete process.env.MAX_MESSAGES_PER_ACCOUNT;
         delete process.env.MAX_MESSAGE_BYTES_PER_ACCOUNT;
         delete process.env.MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE;
+        delete process.env.MAX_BACKFILL_MESSAGES_PER_ACCOUNT_PER_MINUTE;
     });
 
     afterEach(async () => {
@@ -380,6 +381,7 @@ describe("v3SessionRoutes", () => {
         delete process.env.MAX_MESSAGES_PER_ACCOUNT;
         delete process.env.MAX_MESSAGE_BYTES_PER_ACCOUNT;
         delete process.env.MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE;
+        delete process.env.MAX_BACKFILL_MESSAGES_PER_ACCOUNT_PER_MINUTE;
     });
 
     it("reads messages in seq order from the beginning", async () => {
@@ -732,6 +734,31 @@ describe("v3SessionRoutes", () => {
         });
         expect(weighted.statusCode).toBe(429);
         expect(weighted.json()).toEqual({ error: "message_rate_quota_exceeded" });
+    });
+
+    it("B-880: charges a history backfill to its own bucket, never the live one", async () => {
+        seedSession({ id: "session-1", accountId: "user-1" });
+        process.env.MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE = "2";
+        process.env.MAX_BACKFILL_MESSAGES_PER_ACCOUNT_PER_MINUTE = "5";
+        app = await createApp();
+        const post = (origin: string | undefined, ids: string[]) => app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1", ...(origin ? { "x-happy-message-origin": origin } : {}) },
+            payload: { messages: ids.map((localId) => ({ localId, content: localId })) },
+        });
+
+        // A replayed transcript three times the live budget goes through …
+        expect((await post("backfill", ["b1", "b2", "b3", "b4"])).statusCode).toBe(200);
+        expect([...state.rateCountByKey.keys()]).toEqual(["resource-write:message_backfill:user-1"]);
+        // … and the account's live sessions still have their whole budget.
+        expect((await post(undefined, ["l1", "l2"])).statusCode).toBe(200);
+        expect((await post("relay-client", ["l3"])).json()).toEqual({ error: "message_rate_quota_exceeded" });
+        // The backfill bucket is a guardrail too.
+        const over = await post("backfill", ["b5", "b6"]);
+        expect(over.statusCode).toBe(429);
+        expect(over.json()).toEqual({ error: "message_backfill_rate_quota_exceeded" });
+        expect(state.messages.map((message) => message.localId)).toEqual(["b1", "b2", "b3", "b4", "l1", "l2"]);
     });
 
     it("serializes concurrent v3 and shared Socket writer reservations", async () => {
