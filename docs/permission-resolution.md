@@ -31,6 +31,11 @@ Agents do not implement identical policies:
   values map in `happy-cli/src/claude/utils/permissionMode.ts`.
 - Codex: maps the selection to its approval policy and filesystem sandbox;
   `read-only` is the strict review-first choice and `yolo` is unrestricted.
+  Codex accepts only `default | read-only | safe-yolo | yolo` from messages and
+  the live mode RPC. A wrapper *launched* with `--permission-mode
+  bypassPermissions` (team leads and members) runs it as `yolo` and publishes
+  `yolo`, so a restart or resume relaunches with the same access; a remote
+  message carrying `bypassPermissions` is still ignored.
 - ACP/OpenClaw: enforce only the modes supported by their adapter/provider.
 
 Do not infer a stronger sandbox than the selected agent actually provides.
