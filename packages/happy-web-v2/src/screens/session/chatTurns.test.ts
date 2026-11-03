@@ -33,6 +33,10 @@ describe('buildChatRows', () => {
         expect(answered.map((row) => row.type)).toEqual(['message', 'message', 'activity', 'message']);
         expect(answered[1]).toMatchObject({ type: 'message', message: { id: 'fallback' } });
         expect(answered[2]).toMatchObject({ type: 'activity', messages: [{ id: 'read' }] });
+        // Claude Code echoes the model switch as a `/model` command, so the answer lands in a turn of its own.
+        const split = buildChatRows([user('u3', 1), event('fallback', 2, 'claude-long-context-fallback')], false);
+        expect(split.map((row) => row.type)).toEqual(['message', 'message']);
+        expect(split[1]).toMatchObject({ type: 'message', message: { id: 'fallback' } });
         const refused = buildChatRows([user('u2', 1), event('refused', 2, 'claude-long-context-refused')], false);
         expect(refused.map((row) => row.type)).toEqual(['message', 'message']);
         expect(refused[1]).toMatchObject({ type: 'message', message: { id: 'refused' } });

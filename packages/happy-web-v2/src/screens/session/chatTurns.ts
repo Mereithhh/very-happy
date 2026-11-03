@@ -421,8 +421,8 @@ export function buildChatRows(
                 // 「继续」) stays visible instead of folding away.
                 const renderable = turnMessages.filter(isRenderableActivityMessage);
                 const failures = visibleTurnFailures(renderable);
-                const ends = renderable.filter((candidate) => failures.includes(candidate) || isUserStopEvent(candidate));
-                const activity = renderable.filter((candidate) => !isTurnFailure(candidate) && !isUserStopEvent(candidate));
+                const ends = renderable.filter((candidate) => failures.includes(candidate) || isUserStopEvent(candidate) || isPinnedNotice(candidate));
+                const activity = renderable.filter((candidate) => !isTurnFailure(candidate) && !isUserStopEvent(candidate) && !isPinnedNotice(candidate));
                 const abortedAt = userAbortedAt(renderable);
                 if (activity.length > 0) {
                     rows.push({
