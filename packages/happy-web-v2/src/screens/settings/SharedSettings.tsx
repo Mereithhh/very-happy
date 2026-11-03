@@ -8,11 +8,13 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Link2, Users } from 'lucide-react';
+import { Link2, SquareTerminal, Users } from 'lucide-react';
 import { SettingsPage as Page, SettingsHeader as Header } from './SettingsLayout';
 import { ItemList, ItemGroup, Item, Button } from '@/ui';
 import { listOutgoingShares, listShareLinkAccesses, revokeSessionGrant, revokeShareLink } from '@/sync/apiSessionShares';
 import type { OutgoingShares, ShareLinkAccess, ShareLinkView } from '@/sync/sessionShareTypes';
+import { listOutgoingTerminalGrants, revokeTerminalGrant } from '@/sync/apiTerminalShares';
+import type { TerminalGrantView } from '@/sync/terminalShareTypes';
 import { useTranslation } from '@/i18n/useTranslation';
 import { formatShareTime, remainingDaysLabel } from '@/screens/session/shareFormat';
 
@@ -50,8 +52,12 @@ export function SharedSettings() {
     const [busy, setBusy] = useState<string | null>(null);
     const [expanded, setExpanded] = useState<string | null>(null);
 
+    // B-878: terminal grants. An older server 404s here: the section just stays hidden.
+    const [terminals, setTerminals] = useState<TerminalGrantView[] | null>(null);
+
     const load = useCallback(() => {
         listOutgoingShares().then((d) => { setData(d); setError(false); }, () => setError(true));
+        listOutgoingTerminalGrants().then(setTerminals, () => setTerminals(null));
     }, []);
     useEffect(load, [load]);
 
@@ -100,6 +106,22 @@ export function SharedSettings() {
                         ))}
                     </ItemGroup>
                 ))}
+                {terminals && terminals.length > 0 && (
+                    <ItemGroup title={t('share.terminal.settingsTitle')}>
+                        {terminals.map((g) => (
+                            <Item key={g.id}
+                                left={<SquareTerminal size={16} />}
+                                title={`${g.title ?? t('share.terminal.untitled')} · ${g.grantee.displayName}`}
+                                subtitle={[
+                                    g.role === 'operator' ? t('share.roleOperator') : t('share.roleViewer'),
+                                    g.status === 'pending' ? t('share.dialog.statusPending') : null,
+                                    remainingDaysLabel(t, g.expiresAt),
+                                ].filter(Boolean).join(' · ')}
+                                onClick={() => navigate(`/terminal/${encodeURIComponent(g.machineId)}?tid=${encodeURIComponent(g.terminalId)}`)}
+                                right={<Button type="button" variant="ghost" size="sm" loading={busy === g.id} onClick={(e) => { e.stopPropagation(); void revoke(g.id, () => revokeTerminalGrant(g.id)); }}>{t('share.dialog.revoke')}</Button>} />
+                        ))}
+                    </ItemGroup>
+                )}
             </ItemList>
         </Page>
     );

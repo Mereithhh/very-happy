@@ -26,6 +26,7 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useGlobalBackNav } from '@/app/appBack';
 import { FirstRunScreen } from '@/screens/onboarding/FirstRunScreen';
 import { useSessionInvites } from '@/sync/sessionSharesStore';
+import { useIncomingTerminalShares } from '@/sync/terminalSharesStore';
 import { shouldShowFirstRun } from '@/screens/onboarding/firstRun';
 import { subscribeFirstMachineConnected } from '@/screens/onboarding/firstMachineWelcome';
 import { TerminalConnectScreen } from '@/screens/auth/TerminalConnectScreen';
@@ -52,6 +53,7 @@ const MigrateLoginScreen = lazy(() => import('@/screens/auth/MigrateLoginScreen'
 const SessionDetailScreen = lazy(() => import('@/screens/session/SessionDetailScreen').then((m) => ({ default: m.SessionDetailScreen })));
 const SettingsRoutes = lazy(() => import('@/screens/settings/SettingsRoutes').then((m) => ({ default: m.SettingsRoutes })));
 const WebTerminalRoute = lazy(() => import('@/screens/terminal/WebTerminalRoute').then((m) => ({ default: m.WebTerminalRoute })));
+const SharedTerminalScreen = lazy(() => import('@/screens/terminal/SharedTerminalScreen').then((m) => ({ default: m.SharedTerminalScreen })));
 const TerminalPickerScreen = lazy(() => import('@/screens/terminal/TerminalPickerScreen').then((m) => ({ default: m.TerminalPickerScreen })));
 const MachineScreen = lazy(() => import('@/screens/machine/MachineScreen').then((m) => ({ default: m.MachineScreen })));
 const MachinePanelScreen = lazy(() => import('@/screens/machine/MachinePanelScreen').then((m) => ({ default: m.MachinePanelScreen })));
@@ -185,7 +187,9 @@ function HomeGate() {
   const sessions = useSessions();
   const terminalCount = useTerminalSessions((state) => state.terminals.length);
   // B-619: sessions shared with me / invitations count as a reason to show the list.
-  const inviteCount = useSessionInvites().length;
+  // B-878: terminals shared with me count too.
+  const terminalShareCount = useIncomingTerminalShares().length;
+  const inviteCount = useSessionInvites().length + terminalShareCount;
   if (!dataReady) {
     return <RouteLoading fullViewport label={t('common.loading')} />;
   }
@@ -473,6 +477,8 @@ const router = createBrowserRouter(
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
             { path: 'terminal', element: <Lazy><TerminalPickerScreen /></Lazy> },
             { path: 'terminal/:machineId', element: <Lazy fullViewport={false} centered><WebTerminalRoute /></Lazy> },
+            // B-878: a terminal someone shared with me (server broker, the grant's own key).
+            { path: 'shared/terminal/:grantId', element: <Lazy fullViewport={false}><SharedTerminalScreen /></Lazy> },
             // B-296: static segment, so it outranks `machine/:id` in the router.
             { path: 'machine/connect', element: <Lazy><ConnectMachineScreen /></Lazy> },
             { path: 'machine/:id', element: <Lazy><MachineScreen /></Lazy> },

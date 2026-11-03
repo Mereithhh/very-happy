@@ -1,0 +1,35 @@
+/* B-878 terminal sharing: the owner dialog notes and the grantee's shared terminal page. Tokens only. */
+.shd-note { display: flex; gap: var(--sp-2); align-items: flex-start; margin: 0; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--fill-soft); color: var(--text); font-size: var(--fs-12); line-height: 1.45; }
+.shd-note > svg { flex: none; margin-top: 1px; color: var(--text-dim); }
+.shd-note--quiet { padding: 0; background: none; color: var(--text-dim); }
+
+.sts { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--term-bg); color: var(--term-chrome-fg); }
+.sts-head { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; padding: 0 var(--sp-3); background: var(--term-chrome-bg); border-bottom: 1px solid var(--term-chrome-line); }
+.sts-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-14); font-weight: 600; }
+.sts-role { flex: none; padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--term-chrome-panel); color: var(--term-chrome-dim); font-size: var(--fs-11); }
+.sts-head .sb-icon-btn { color: var(--term-chrome-fg); }
+.sts-banner { display: flex; align-items: center; gap: var(--sp-2); margin: 0; padding: 6px var(--sp-3); background: var(--term-chrome-panel); color: var(--term-chrome-dim); font-size: var(--fs-12); line-height: 1.4; }
+.sts-banner > svg { flex: none; }
+.sts-banner--operator { background: var(--danger-dim); color: var(--text); }
+.sts-error { margin: 0; padding: 6px var(--sp-3); background: var(--warn-dim); color: var(--text); font-size: var(--fs-12); }
+.sts-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+/* View only: the pane keeps the OWNER's columns and is scaled down to fit; scroll sideways never needed. */
+.sts-term { position: absolute; inset: 0; padding: var(--sp-1); }
+.sts-term--fixed { right: auto; bottom: auto; transform-origin: 0 0; }
+.sts-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-3); height: 100%; padding: var(--sp-6); text-align: center; color: var(--term-chrome-dim); font-size: var(--fs-13); }
+
+/* Owner header: who is watching this terminal. */
+.term-share-watchers { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--term-chrome-panel); color: var(--term-chrome-fg); font-size: var(--fs-11); }
+
+/* Sidebar: terminals shared with me (under the invitations). */
+.sb-shared-terms { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-1) var(--sp-2); }
+.sb-shared-terms-label { padding: var(--sp-1) var(--sp-2); color: var(--text-dim); font-size: var(--fs-11); font-weight: 600; }
+.sb-shared-term { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; padding: 0 var(--sp-2); border-radius: var(--r-md); color: var(--text); text-decoration: none; }
+.sb-shared-term:hover { background: var(--fill-hover); }
+.sb-shared-term[aria-current="page"] { background: var(--fill-selected); }
+.sb-shared-term-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.sb-shared-term-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-13); }
+.sb-shared-term-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: var(--fs-11); }
+.sb-shared-term-row { display: flex; align-items: center; gap: 2px; }
+.sb-shared-term-row > .sb-shared-term { flex: 1; min-width: 0; }
+.sb-shared-term-more { flex: none; }

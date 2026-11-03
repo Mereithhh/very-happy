@@ -74,6 +74,7 @@ import { buildSessionMenu, sessionMenuAvailability } from '@/app/sessionMenu';
 import { copySessionLink, leaveSessionProject, leaveTerminalProject, stopSessionTurn } from '@/app/sessionMenuActions';
 import { sessionProjectMenu, terminalProjectMenu } from '@/screens/projects/projectChoice';
 import { ShareDialog } from '@/screens/session/ShareDialog';
+import { TerminalShareDialog } from '@/screens/terminal/TerminalShareDialog';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
@@ -107,6 +108,7 @@ import { archiveAndDeleteWorktree, canArchiveAndDeleteWorktree } from '@/app/wor
 import { worktreeCopy } from './worktreeCopy';
 import { SessionPeek, peekDomId, useSessionPeek } from './SessionPeek';
 import { SharedInvites } from './SharedInvites';
+import { SharedTerminals } from './SharedTerminals';
 import { useFriendRequests } from '@/sync/storage';
 import { useSessionShares } from '@/sync/sessionSharesStore';
 import { Modal } from '@/modal';
@@ -974,6 +976,8 @@ export function Sidebar() {
   const openRename = useCallback((row: Row, focusTags = false) => { setRenameFocusTags(focusTags); setRenameTarget(row); }, []);
   // B-756: 「分享…」 from a row opens the same share panel as the session header.
   const [shareTarget, setShareTarget] = useState<string | null>(null);
+  // B-878: a terminal row's 「分享…」.
+  const [shareTerminal, setShareTerminal] = useState<{ machineId: string; terminalId: string; title: string; host: string | null } | null>(null);
   // Suggestions: every tag currently in use across sessions and terminals.
   const allTags = useMemo(() => collectAllTags(sessions, terminals), [sessions, terminals]);
 
@@ -1517,6 +1521,7 @@ export function Sidebar() {
         <PendingSessionRows />
         {/* B-619: invitations first — they need an answer before anything else shows. */}
         <SharedInvites />
+        <SharedTerminals />
         {displayRows === null ? (
           <div className="sb-loading">
             <Spinner size={12} /> {t('common.loading')}
@@ -1741,7 +1746,9 @@ export function Sidebar() {
                             : r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink
                             ? () => setMoveProjectTarget({ sessionId: r.sessionId!, candidates: sec.allRows.flatMap((x) => (x.kind === 'session' && x.sessionId && !x.share && !x.teamHistoryLink && !x.team ? [{ sessionId: x.sessionId, title: x.title || x.sessionId.slice(0, 8) }] : [])) })
                             : undefined}
-                          onShare={r.kind === 'session' && r.session ? () => setShareTarget(r.session!.id) : undefined}
+                          onShare={r.kind === 'session' && r.session ? () => setShareTarget(r.session!.id)
+                            : r.kind === 'terminal' && r.machineId && r.terminalId ? () => setShareTerminal({ machineId: r.machineId!, terminalId: r.terminalId!, title: r.title, host: r.machineName ?? null })
+                            : undefined}
                           ownerChip={ownerChipOf(r)}
                           hideFirstTag={groupMode === 'tag' && orderable && !!r.tags?.[0]}
                           sheetTitle={treeNode ? r.title : undefined}
@@ -1862,6 +1869,7 @@ export function Sidebar() {
       {showImport && <ImportHistoryModal initialAgent={showImport} onClose={() => setShowImport(null)} />}
       {newProject && <NewProjectDialog initialName={newProject.name} sessionIds={newProject.sessionIds} onClose={() => setNewProject(null)} />}
       {shareTarget && <ShareDialog key={`share:${shareTarget}`} sessionId={shareTarget} open onOpenChange={(open) => { if (!open) setShareTarget(null); }} />}
+      {shareTerminal && <TerminalShareDialog key={`share-term:${shareTerminal.machineId}:${shareTerminal.terminalId}`} {...shareTerminal} open onOpenChange={(open) => { if (!open) setShareTerminal(null); }} />}
       {moveProjectTarget && <MoveToProjectModal initialSessionId={moveProjectTarget.sessionId} candidates={moveProjectTarget.candidates} onClose={() => setMoveProjectTarget(null)} />}
       {moveTerminalTarget && <MoveTerminalToProjectModal terminalId={moveTerminalTarget} onClose={() => setMoveTerminalTarget(null)} />}
       {renameTarget && (
@@ -2121,7 +2129,8 @@ function SidebarRow({
     t,
     zh,
     isTerminal,
-    onShare: avail?.share ? onShare : undefined,
+    // B-878: terminals share through their own dialog (any terminal row of mine).
+    onShare: isTerminal ? onShare : avail?.share ? onShare : undefined,
     onRename: () => onRenameRequest(false),
     onTags: !isTerminal || row.tags !== undefined ? () => onRenameRequest(true) : undefined,
     project: projectMenu,
