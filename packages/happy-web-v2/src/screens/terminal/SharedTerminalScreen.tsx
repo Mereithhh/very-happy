@@ -218,7 +218,10 @@ function SharedTerminalPane({ share }: { share: IncomingTerminalShare }) {
         enqueue(() => attach(false));
         // The server released this pane's subscription when the socket dropped: subscribe
         // again and catch up on what was missed (replay from lastSeq, else a snapshot).
-        const offReconnected = apiSocket.onReconnected(() => { enqueue(() => attach(false)); });
+        // Both paths: a recovered socket (connectionStateRecovery) still went through a server-side disconnect.
+        const resubscribe = () => { enqueue(() => attach(false)); };
+        const offReconnected = apiSocket.onReconnected(resubscribe);
+        const offRecovered = apiSocket.onRecovered(resubscribe);
 
         let lastSize = `${renderer.cols}x${renderer.rows}`;
         const resizeObserver = new ResizeObserver(() => {
@@ -235,7 +238,7 @@ function SharedTerminalPane({ share }: { share: IncomingTerminalShare }) {
         return () => {
             disposed = true;
             resizeObserver.disconnect();
-            offOutput(); offRevoked(); offExit(); offGeometry(); offReconnected();
+            offOutput(); offRevoked(); offExit(); offGeometry(); offReconnected(); offRecovered();
             input?.dispose();
             sendShareTerminalClose(grantId);
             renderer.dispose();
