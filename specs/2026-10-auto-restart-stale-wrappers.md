@@ -125,6 +125,8 @@ autoRestart: {
 `manual` = 该 wrapper 不会上报（旧于 B-587、assistant、终端 local、teams/automation 的旧 wrapper、pi 旧 wrapper），daemon 永远等不到证明，
 直接交给人。
 
+旧 wrapper 等不到 check-in（B-882，dev-sg 实证）：daemon 重启后重新收养的 wrapper 丢了 `tracked.spawnedBy`（不持久化），sweep 只看 capabilities/tags，把带 spawn origin 的 0.2.187 wrapper（`HAPPY_SPAWNED_BY=chenwei` 等，本地 `evaluateWrapperIdle` 判 `spawn-origin`、从不 POST）误判为 `waiting/awaiting-check-in`，横幅一直藏着、也永不重启。现在：① daemon 记住 wrapper 在 `/session-event` 上回显的 `spawnedBy`，收养后补进 sweep 判定，下一次 sweep 即判 `manual/no-report`；② 无 `auto-restart-v1` 的旧 wrapper 在本次 daemon 运行中 `awaiting-check-in` 超过 **40 分钟**（`LEGACY_CHECK_IN_GRACE_MS`，覆盖 5 分钟探测 + 交接后 30 分钟 unsupported 退避；测试用 `HAPPY_AUTO_RESTART_CHECK_IN_GRACE_MS`）仍未 check-in，判 `manual/no-check-in`。之后若它真的 check-in，照常按 §2 判定、空闲即重启。Web 对 `no-report`/`no-check-in` 显示「这个旧版会话不会上报空闲状态，不会自动更新；重启即可更新」（critical 文案优先）。
+
 终端会话（QA25 P2-1）：从终端启动的 wrapper（`metadata.startedBy = 'terminal'`）不跑 probe、永远不 check-in，sweep 直接判 `manual`（reason `local-terminal`），不再进 `waiting/awaiting-check-in`。用 wrapper 自己的 `startedBy`，不用 daemon 的 tracked.startedBy（升级时 daemon 重启后会变成 persisted/recovered）。daemon 拉起后切到本地控制（`controlledByUser`）的 Claude 会话仍会 check-in，`uiSession=false` 即判 `local-terminal` → `manual`。
 
 `since` 按 (session, 目标版本) 记一次：开关关闭期间不发布状态，但计时保留；重新打开后沿用原 `since`，不会把 60 分钟长等待横幅往后推。

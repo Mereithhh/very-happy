@@ -133,6 +133,41 @@ The terminal needs the CLI on your machine to be recent enough; otherwise
 they see “The CLI on their machine needs an update”. The same applies to an
 operator changing the permission mode of a Codex session.
 
+## Share a terminal
+
+Open one of your web terminals and choose **Share terminal** in its header
+(on a phone: ⋯ → **Share…**), or use ⋯ → **Share…** on the terminal's row in
+the sidebar. Pick a person and a level:
+
+- **View only** — they see the live output and the scrollback. They cannot
+  type, paste or scroll your terminal, and your terminal keeps its size: their
+  page shows it at your width, scaled down to fit their screen. Expires after
+  1, 7 or 30 days (default 7). The dialog reminds you that they see everything
+  the terminal prints, including any keys, tokens or environment variables that
+  show up.
+- **Can operate** — they can also type and paste. Like the session tier above
+  it carries the red warning, an acknowledgement and a second confirmation, and
+  expires after 1, 7 or 30 days (default 1). Their window size counts like one
+  of your own devices.
+
+Only this terminal is shared: not your other terminals, files or sessions on
+that machine, and not an agent session running inside the terminal (share that
+session separately). Nobody but you can close the terminal; revoking, lowering
+to view only or expiry disconnects them within a second and leaves the terminal
+running. While someone has it open, the terminal header shows “Alice
+watching”; the share dialog lists everyone with access and an activity log
+(opened, pasted, typing counts — never the keystrokes themselves).
+
+The person accepts the invitation from the top of their sidebar and then finds
+the terminal under **Terminals shared with me**. View only needs a recent CLI
+on your machine; with an older one they see “The CLI on their machine needs an
+update”. Settings → Shared lists every terminal you shared, with a revoke
+button.
+
+Terminal traffic goes through the server only (never the regional relay). The
+server opens your machine key to re-encrypt the stream with a key that belongs
+to this one share; the other account never receives your machine key.
+
 ## Trust model
 
 Share links are opened by the server: it decrypts the session, removes what a

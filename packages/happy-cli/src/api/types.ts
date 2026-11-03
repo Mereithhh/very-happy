@@ -432,6 +432,15 @@ export const DaemonStateSchema = z.object({
     detectedAt: z.number(),
   }).optional(),
   /**
+   * B-878 capability flag: `open-terminal` honours `viewOnly` (attach without
+   * ever resizing the pane). The server's share broker only lets a view-only
+   * share viewer attach when this is set (same `detectedAt >= startedAt` rule).
+   */
+  terminalViewOnly: z.object({
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
+  /**
    * B-486: can web terminals on this machine be durable? `tmuxAvailable:
    * false` ⇒ every new terminal is a direct shell that dies with the daemon,
    * so the web tells the user to install tmux. Same trust rule
