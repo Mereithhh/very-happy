@@ -25,6 +25,8 @@ import { decideWarmAdoption, formatPrewarmLine, type ClaudePrewarmLease, type Wa
 import { TimeoutError, withTimeout } from './utils/withTimeout';
 import { createClaudeTurnTracker, readClaudeSessionState } from './claudeTurnEnd';
 import { retiredModelFrom, retiredModelNotice, type RetiredModels } from './claudeRetiredModel';
+import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_MARKER, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
+import { longContextExplicitNotice, longContextFallbackNotice, longContextInterruptedNotice, longContextRejectionFrom, type LongContextPolicy, type LongContextRejection } from './claudeLongContext';
 import {
     createClaudeCommandTracker,
     INTERRUPT_CANCEL_QUEUED_CAPABILITY,
@@ -95,7 +97,8 @@ export async function claudeRemote(opts: {
      *  onMessage. They are relayed live on a bypass channel and must never
      *  reach the persisted transcript — see streamRelay.ts. */
     onStreamFrame?: (message: import('./streamRelay').StreamRelayInput) => void,
-    onCompletionEvent?: (message: string) => void,
+    /** `kind` tags a structured event the web renders itself (B-883b). */
+    onCompletionEvent?: (message: string, kind?: string) => void,
     /** B-276: the turn ended with an auth failure that poisons this Query. */
     onAuthFailure?: (reason: string) => void,
     onSessionReset?: () => void,
@@ -121,6 +124,8 @@ export async function claudeRemote(opts: {
     onUndeliveredMessage?: (message: { message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string }) => void,
     /** B-634 ③: session-scoped retired model ids; a message asking for one runs on the default. */
     retiredModels?: RetiredModels,
+    /** B-883b: the provider refused a `[1m]` request — remember it, and retry once on the plain id when following latest. */
+    longContext?: LongContextPolicy,
     /**
      * B-515: start a warm Query with this lease's predicted mode BEFORE the
      * first message; adopted when the first message matches, closed otherwise.
@@ -594,6 +599,15 @@ export async function claudeRemote(opts: {
     // utils/remoteQueryRecycle.ts). Reset when the turn's result is handled.
     let lastAssistantError: string | undefined;
 
+    // B-883b: the prompt of the current turn (what a long-context refusal
+    // retries) and a retry owed once that turn's result arrives.
+    let currentPrompt: MessageParam['content'] = initial.message;
+    let longContextRetry: LongContextRejection | null = null;
+    /** The current turn failed on a 1M refusal: its auth-looking error is not a login failure. */
+    let longContextRefusedTurn = false;
+    /** The model answered in the current turn: its prompt may have had effects, so it is never resent. */
+    let turnAnswered = false;
+
     // The first prompt is in the Query's input (pushed; the CLI announces its
     // turn with running/init). Uuid-stamped when the web gave it one, and
     // tracked like every other command, so a Stop that sweeps it before it
@@ -692,6 +706,8 @@ export async function claudeRemote(opts: {
                 return;
             }
             mode = next.mode;
+            currentPrompt = next.message;
+            turnAnswered = false;
             updateThinking(true);
             turn.pushed();
             const uuid = promptUuid(next.uuid);
@@ -718,7 +734,9 @@ export async function claudeRemote(opts: {
     // for a turn that ended by idle (B-631): the flagged assistant frame is
     // the signal either way.
     const recycleIfPoisoned = (result?: SDKResultMessage): boolean => {
-        const recycleReason = queryRecycleReason(result ?? { subtype: 'success' }, lastAssistantError);
+        const refusedTurn = longContextRefusedTurn;
+        longContextRefusedTurn = false;
+        const recycleReason = refusedTurn ? null : queryRecycleReason(result ?? { subtype: 'success' }, lastAssistantError);
         lastAssistantError = undefined;
         if (!recycleReason) return false;
         logger.warn(`[claudeRemote] Ending SDK query after ${recycleReason}; the next message starts a fresh Claude Code process`);
@@ -774,7 +792,74 @@ export async function claudeRemote(opts: {
 
             logger.debug(`[claudeRemote] Message ${message.type}`, contentLogMetadata(message));
 
-            if (message.type === 'assistant' && message.error) {
+            // B-883b: the provider refused 1M context for this turn. Following
+            // latest: the refusal is not shown, the turn runs again on the plain
+            // id once its result is in. An explicit `[1m]` pick fails as is,
+            // with a notice saying why.
+            const refused: LongContextRejection | null = opts.longContext && !longContextRetry ? longContextRejectionFrom(message, mode.model) : null;
+            if (refused) {
+                logger.debug(`[claudeRemote] ${refused.model} refused for long context: ${refused.reason}`);
+                const decision = opts.longContext!.onRejected(refused);
+                if (decision === 'retry' && !turnAnswered) {
+                    longContextRetry = refused;
+                    mode = { ...mode, model: refused.plain };
+                    opts.onCompletionEvent?.(longContextFallbackNotice(refused), LONG_CONTEXT_FALLBACK_EVENT_KIND);
+                    continue;
+                }
+                if (decision === 'retry') {
+                    // Tools may have run: the error stands, later turns use the plain id.
+                    mode = { ...mode, model: refused.plain };
+                    opts.onCompletionEvent?.(longContextInterruptedNotice(refused), LONG_CONTEXT_INTERRUPTED_EVENT_KIND);
+                    void withTimeout(response.setModel(refused.plain), SET_MODEL_TIMEOUT_MS, 'set_model').catch(() => { modelUnconfirmed = true; });
+                } else {
+                    opts.onCompletionEvent?.(longContextExplicitNotice(refused), LONG_CONTEXT_REFUSED_EVENT_KIND);
+                }
+            }
+            // A 403 refusal arrives as `authentication_failed` ("Failed to
+            // authenticate. API Error: 403 … 1M context window", measured): the
+            // login is fine — not a poisoned Query, no auth-failure card.
+            const loginFine = refused !== null;
+            if (message.type === 'assistant' && !message.error && !(message as { parent_tool_use_id?: string | null }).parent_tool_use_id) {
+                turnAnswered = true;
+                if (mode.model?.endsWith(LONG_CONTEXT_MARKER)) opts.longContext?.onServed();
+            }
+            if (refused) longContextRefusedTurn = true;
+            if (longContextRetry && message.type === 'result') {
+                const retry = longContextRetry;
+                longContextRetry = null;
+                turn.onResult();
+                lastAssistantError = undefined;
+                longContextRefusedTurn = false;
+                turnAnswered = false;
+                timingTurn++;
+                timingMarks = { pushedAt: Date.now() };
+                if (inputClosed()) {
+                    logger.debug('[claudeRemote] Query input closed before the long-context retry; nothing resent');
+                    updateThinking(false);
+                    opts.onReady(message);
+                    continue;
+                }
+                logger.debug(`[claudeRemote] Retrying the turn on ${retry.plain}`);
+                // Pushed after the switch is answered (bounded): the resend must
+                // not start on the refused model.
+                void withTimeout(response.setModel(retry.plain), SET_MODEL_TIMEOUT_MS, 'set_model')
+                    .catch((e) => {
+                        logger.debug(`[claudeRemote] setModel(${retry.plain}) for the long-context retry failed: ${e instanceof Error ? e.message : String(e)}`);
+                        modelUnconfirmed = true;
+                    })
+                    .then(() => {
+                        if (inputClosed()) return;
+                        turn.pushed();
+                        messages.push({
+                            type: 'user',
+                            parent_tool_use_id: null,
+                            origin: { kind: 'human' },
+                            message: { role: 'user', content: currentPrompt },
+                        });
+                    });
+                continue;
+            }
+            if (message.type === 'assistant' && message.error && !loginFine) {
                 lastAssistantError = message.error;
             }
             // B-634 ③: Claude Code says the model this session runs does not

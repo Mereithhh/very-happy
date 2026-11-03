@@ -118,6 +118,27 @@ describe('run setup copy (B-849a)', () => {
     });
 });
 
+describe('B-883: following a [1m] id (Claude default, or a machine config like opus[1m])', () => {
+    // What the composer lists then: the follow entry stands for Opus 5.5 and its 1M twin.
+    const followOptions = claudeOptions.filter((option) => option.key !== 'claude-opus-5-5[1m]');
+    it('the switch shows on; switching it off pins the plain id', () => {
+        const layout = layoutModelPicker(followOptions, { flavor: 'claude', selectedKey: 'latest', followModel: 'claude-opus-5-5[1m]', resolved, runnable });
+        expect(keys(layout.primary)).toEqual(['latest', 'default', 'sonnet', 'haiku', 'fable']);
+        expect(layout.longContext).toEqual({ on: true, onKey: 'latest', offKey: 'claude-opus-5-5' });
+        const config = layoutModelPicker(followOptions, { flavor: 'claude', selectedKey: 'latest', followModel: 'opus[1m]', resolved, runnable });
+        expect(config.longContext).toEqual({ on: true, onKey: 'latest', offKey: 'opus' });
+    });
+    it('1M switched off is a pin: listed on top, switch off, switching on follows latest again', () => {
+        const off = layoutModelPicker([...followOptions, { key: 'claude-opus-5-5', name: 'Opus 5.5' }], { flavor: 'claude', selectedKey: 'claude-opus-5-5', followModel: 'claude-opus-5-5[1m]', resolved, runnable });
+        expect(keys(off.primary)).toContain('claude-opus-5-5');
+        expect(off.longContext).toEqual({ on: false, onKey: 'latest', offKey: 'claude-opus-5-5' });
+    });
+    it('a machine config without 1M shows the switch off', () => {
+        const withTwin = layoutModelPicker([...claudeOptions, { key: 'opus[1m]', name: 'opus · 1M' }], { flavor: 'claude', selectedKey: 'latest', followModel: 'opus', resolved, runnable });
+        expect(withTwin.longContext).toEqual({ on: false, onKey: 'opus[1m]', offKey: 'latest' });
+    });
+});
+
 describe('QA26 P2-4: 1M pinned on the followed model', () => {
     it('lists the base row on top and checks it, with the switch on', () => {
         const options = [...claudeOptions, { key: 'claude-opus-5-5', name: 'Opus 5.5' }];
@@ -126,5 +147,12 @@ describe('QA26 P2-4: 1M pinned on the followed model', () => {
         expect(listedModelKey(on, 'claude-opus-5-5[1m]')).toBe('claude-opus-5-5');
         expect(on.longContext).toEqual({ on: true, onKey: 'claude-opus-5-5[1m]', offKey: 'claude-opus-5-5' });
         expect(on.selectedInMore).toBe(false);
+    });
+});
+
+describe('B-883b: following latest on a machine that refused 1M', () => {
+    it('the follow entry is the plain id: the switch shows off and turning it on pins the [1m] twin', () => {
+        const layout = layoutModelPicker(claudeOptions, { flavor: 'claude', selectedKey: 'latest', followModel: 'claude-opus-5-5', resolved, runnable });
+        expect(layout.longContext).toEqual({ on: false, onKey: 'claude-opus-5-5[1m]', offKey: 'latest' });
     });
 });

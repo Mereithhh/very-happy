@@ -166,9 +166,16 @@ export function layoutModelPicker(options: readonly ModeOption[], input: {
 /**
  * The switch flips between an entry and its `[1m]` twin. Following latest it
  * pins the followed model's 1M twin; switching that off follows latest again.
+ * B-883: when what latest follows is itself a `[1m]` id (Claude's default, or
+ * a machine config such as `opus[1m]`) the switch shows on, and switching it
+ * off pins the plain id; switching that pin on again follows latest.
  */
 function longContextSwitch(keys: ReadonlySet<string>, selected: string | null, followModel: string | null): ModelPickerLayout['longContext'] {
     if (!selected || selected === 'default') return null;
+    if (selected === LATEST_MODEL_MODE && followModel?.endsWith(LONG_CONTEXT_SUFFIX)) {
+        // The plain id is folded into the follow entry (withFollowLatestOption); picking it lists it.
+        return { on: true, onKey: LATEST_MODEL_MODE, offKey: baseKey(followModel) };
+    }
     if (selected.endsWith(LONG_CONTEXT_SUFFIX)) {
         const base = baseKey(selected);
         const offKey = keys.has(base) ? base : base === followModel && keys.has(LATEST_MODEL_MODE) ? LATEST_MODEL_MODE : null;
@@ -177,7 +184,8 @@ function longContextSwitch(keys: ReadonlySet<string>, selected: string | null, f
     const base = selected === LATEST_MODEL_MODE ? followModel : selected;
     if (!base) return null;
     const twin = base + LONG_CONTEXT_SUFFIX;
-    return keys.has(twin) ? { on: false, onKey: twin, offKey: selected } : null;
+    if (keys.has(twin)) return { on: false, onKey: twin, offKey: selected };
+    return twin === followModel && keys.has(LATEST_MODEL_MODE) ? { on: false, onKey: LATEST_MODEL_MODE, offKey: selected } : null;
 }
 
 /** The entry a `[1m]` selection is listed under (its base), else the key itself. */

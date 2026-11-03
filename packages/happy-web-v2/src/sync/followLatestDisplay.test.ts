@@ -51,6 +51,29 @@ describe('withFollowLatestOption (P2-4: one entry, no internal key)', () => {
         expect(options.filter((o) => o.key === LATEST_MODEL_MODE)).toHaveLength(1);
     });
 
+    it('B-883: following Opus 5.5 · 1M folds both the 1M twin and the plain id into the follow entry; picking the plain id (1M off) lists it', () => {
+        const follow = withFollowLatestOption(getClaudeModelModes(), {
+            flavor: 'claude', follow: FOLLOW, latestModel: 'claude-opus-5-5[1m]', selectedKey: LATEST_MODEL_MODE, machineDefault: MACHINE_DEFAULT,
+        });
+        expect(follow.map((o) => o.key)).not.toContain('claude-opus-5-5[1m]');
+        expect(follow.map((o) => o.key)).not.toContain('claude-opus-5-5');
+        const off = withFollowLatestOption(getClaudeModelModes(), {
+            flavor: 'claude', follow: FOLLOW, latestModel: 'claude-opus-5-5[1m]', selectedKey: 'claude-opus-5-5', machineDefault: MACHINE_DEFAULT,
+        });
+        expect(off.map((o) => o.key)).toContain('claude-opus-5-5');
+        // B-883 e2e: with a Claude config pin the follow entry IS 「本机配置」 — no second row, unless it is the pick.
+        const pinned = withFollowLatestOption(getClaudeModelModes(), {
+            flavor: 'claude', follow: FOLLOW, latestModel: 'claude-opus-5-5[1m]', selectedKey: LATEST_MODEL_MODE, machineDefault: MACHINE_DEFAULT, followsMachineConfig: true,
+        });
+        expect(pinned.map((o) => o.key)).not.toContain('default');
+        expect(withFollowLatestOption(getClaudeModelModes(), {
+            flavor: 'claude', follow: FOLLOW, latestModel: 'claude-opus-5-5[1m]', selectedKey: 'default', machineDefault: MACHINE_DEFAULT, followsMachineConfig: true,
+        }).map((o) => o.key)).toContain('default');
+        // Claude machine config opus[1m] → 「本机配置」 follow entry with the 1M model.
+        expect(followLatestState({ model: null, newest: 'claude-opus-5-5', label: 'opus[1m]', limited: false, configured: 'opus[1m]' }, true))
+            .toEqual({ kind: 'machineConfig', model: 'opus[1m]' });
+    });
+
     it('an explicit pick of the latest model or of the machine default stays visible and selected', () => {
         const pinned = withFollowLatestOption(getCodexModelModes(), {
             flavor: 'codex', follow: FOLLOW, latestModel: 'gpt-6.1-sol', selectedKey: 'gpt-6.1-sol', machineDefault: MACHINE_DEFAULT,
@@ -172,25 +195,24 @@ describe('followLatestByMachine (P2-2: same resolution as sends, P2-3: per machi
 });
 
 describe('follow entry descriptions say what really happens (B-844c, QA22c P2-2/P2-3)', () => {
-    it('old CLI: no promise of switching before an upgrade; Claude: no machine-config clause', async () => {
+    it('old CLI: no promise of switching before an upgrade; every agent (Claude too, B-883) defers to machine config', async () => {
         const { followLatestDescriptionKey } = await import('./followLatestDisplay');
-        expect(followLatestDescriptionKey({ kind: 'machineDefault' }, false)).toBe('session.chat.modelLatestDescriptionUpgradeCli');
-        expect(followLatestDescriptionKey({ kind: 'machineDefault' }, true)).toBe('session.chat.modelLatestDescriptionUpgradeCli');
-        expect(followLatestDescriptionKey({ kind: 'latest', model: 'claude-opus-5-5' } as any, true)).toBe('session.chat.modelLatestDescriptionClaude');
-        expect(followLatestDescriptionKey({ kind: 'dependsOnMachine' }, true)).toBe('session.chat.modelLatestDescriptionClaude');
-        expect(followLatestDescriptionKey({ kind: 'machineConfig', model: 'gpt-5.6-sol' } as any, false)).toBe('session.chat.modelLatestDescription');
+        expect(followLatestDescriptionKey({ kind: 'machineDefault' })).toBe('session.chat.modelLatestDescriptionUpgradeCli');
+        expect(followLatestDescriptionKey({ kind: 'latest', model: 'claude-opus-5-5[1m]', label: null })).toBe('session.chat.modelLatestDescription');
+        expect(followLatestDescriptionKey({ kind: 'dependsOnMachine' })).toBe('session.chat.modelLatestDescription');
+        expect(followLatestDescriptionKey({ kind: 'machineConfig', model: 'opus[1m]' })).toBe('session.chat.modelLatestDescription');
     });
 
     it('the picker and Settings use the same wording for the machine-default entry and the follow subtitle', async () => {
         const { readFileSync } = await import('node:fs');
         const input = readFileSync(new URL('../screens/session/AgentInput.tsx', import.meta.url), 'utf8');
         const settings = readFileSync(new URL('../screens/settings/SettingsRoutes.tsx', import.meta.url), 'utf8');
-        expect(input).toContain("description: t(followLatestDescriptionKey(followState, normalizeAgentKey(flavor) === 'claude'))");
+        expect(input).toContain("description: t(followLatestDescriptionKey(followState))");
         expect(settings).toContain("? { ...option, name: t('settingsAgents.machineDefault'), description: t(agent === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') }");
         expect(input).toContain("description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') }");
         expect(settings).toContain("detail={o.key === 'default' ? undefined : o.key}");
-        expect(settings).toContain("t(followLatest.claude ? 'settingsAgents.followLatestByMachineClaude' : 'settingsAgents.followLatestByMachine'");
-        expect(settings).toContain("machines: perMachine, claude: agent === 'claude' }");
+        expect(settings).toContain("t('settingsAgents.followLatestByMachine', {");
+        expect(settings).toContain("machines: perMachine }");
     });
 });
 

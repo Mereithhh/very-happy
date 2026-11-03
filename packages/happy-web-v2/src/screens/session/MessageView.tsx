@@ -25,6 +25,7 @@ import { presentServiceEvent } from './serviceEvent';
 import { AccountEventBlock } from './AccountEventBlock';
 import { accountEventKind, machineLoginCardApplies } from './sessionAccount';
 import { AUTO_UPDATED_EVENT_KIND, parseAutoUpdatedLine } from '@/app/autoRestartPolicy';
+import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
 import { parseAttachedFiles, stripAttachedFiles } from './attachedFiles';
 import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, type AttachmentItem } from './UserAttachments';
 import { discardedReasonKey } from './discardedInput';
@@ -396,6 +397,16 @@ function AgentEventBlock({ message, sessionId, continueOffer = false }: { messag
                 if (ev.kind === 'claude-auth-failed') return authCard;
                 const accountEvent = accountEventKind(ev.kind);
                 if (accountEvent) return <AccountEventBlock sessionId={sessionId} kind={accountEvent} message={ev.message} />;
+                // B-883b: the provider refused 1M — localized here, the CLI's bilingual text is for older Webs.
+                if (ev.kind === LONG_CONTEXT_FALLBACK_EVENT_KIND) {
+                    return <div className="msg msg--event"><span className="msg-event-line msg-event-line--warn"><AlertTriangle size={13} />{t('session.chat.longContextFallback')}</span></div>;
+                }
+                if (ev.kind === LONG_CONTEXT_INTERRUPTED_EVENT_KIND) {
+                    return <div className="msg msg--event"><span className="msg-event-line msg-event-line--warn"><AlertTriangle size={13} />{t('session.chat.longContextInterrupted')}</span></div>;
+                }
+                if (ev.kind === LONG_CONTEXT_REFUSED_EVENT_KIND) {
+                    return <div className="msg msg--event"><span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{t('session.chat.longContextRefused')}</span></div>;
+                }
                 // B-852: the daemon restarted this session onto new code by itself — one quiet line.
                 const autoUpdated = ev.kind === AUTO_UPDATED_EVENT_KIND ? parseAutoUpdatedLine(ev.message) : null;
                 if (autoUpdated) {

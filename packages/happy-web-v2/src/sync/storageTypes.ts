@@ -23,6 +23,9 @@ export const MetadataSchema = z.object({
     // B-844c: explicit model the wrapper keeps applying to turns without one
     // (an earlier pick); null = none; absent = older wrapper (unknown).
     stickyModel: z.string().nullable().optional(),
+    // B-883b: the wrapper's verdict that this machine's account/provider
+    // refused 1M context; raw, read through readLongContextUnsupported (wire).
+    longContextUnsupported: z.unknown().optional(),
     // B-849b: the session's own model / thinking choice, recorded by the
     // wrapper; read through the runIntent whitelist (sync/runPicks.ts).
     modelIntent: z.string().nullable().optional(),

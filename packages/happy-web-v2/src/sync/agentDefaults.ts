@@ -22,6 +22,7 @@ import {
     type LatestModelContext,
     type LatestModelResolution,
     type LatestModelTable,
+    readLongContextUnsupported,
 } from '@slopus/happy-wire';
 export { CLAUDE_OPUS_55_MODEL, CLAUDE_OPUS_55_CAPABILITY, supportsClaudeOpus55, normalizeAgentKey };
 export type { AgentKey, AgentDefaultConfig };
@@ -117,12 +118,15 @@ export type LauncherMachineContext = {
     catalog?: readonly CatalogEntryLike[] | null;
     /** That session's metadata.configuredModel (machine agent config pin). */
     configuredModel?: string | null;
+    /** B-883b: that session's wrapper recorded a 1M-context refusal on this machine. */
+    longContextUnsupported?: boolean;
 };
 
 export type ModelResolveMetadata = {
     capabilities?: string[] | null;
     models?: readonly CatalogEntryLike[] | null;
     configuredModel?: string | null;
+    longContextUnsupported?: unknown;
 };
 
 /**
@@ -134,8 +138,8 @@ export function latestModelContext(
     metadata: ModelResolveMetadata | null | undefined,
     machine?: LauncherMachineContext | null,
 ): LatestModelContext {
-    if (metadata) return { kind: 'session', capabilities: metadata.capabilities ?? null, catalog: metadata.models ?? null, configuredModel: metadata.configuredModel };
-    if (machine) return { kind: 'machine', cliVersion: machine.cliVersion ?? null, agentVersion: machine.agentVersion ?? null, catalog: machine.catalog ?? null, configuredModel: machine.configuredModel };
+    if (metadata) return { kind: 'session', capabilities: metadata.capabilities ?? null, catalog: metadata.models ?? null, configuredModel: metadata.configuredModel, longContextUnsupported: !!readLongContextUnsupported(metadata.longContextUnsupported) };
+    if (machine) return { kind: 'machine', cliVersion: machine.cliVersion ?? null, agentVersion: machine.agentVersion ?? null, catalog: machine.catalog ?? null, configuredModel: machine.configuredModel, longContextUnsupported: !!machine.longContextUnsupported };
     return { kind: 'none' };
 }
 
