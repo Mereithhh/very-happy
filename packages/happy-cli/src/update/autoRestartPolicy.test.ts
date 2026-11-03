@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+    LEGACY_CHECK_IN_GRACE_MS,
+    resolveCheckInGraceMs,
+    uncheckedWrapperStatus,
     AUTO_RESTART_BACKOFF_MS,
     AUTO_RESTART_MIN_GAP_MS,
     AUTO_RESTART_QUIET_MS,
@@ -198,5 +201,27 @@ describe('B-856 upgrade pending pauses automatic restarts', () => {
         const verdict = { ok: false as const, reason: 'upgrade-pending' as const };
         expect(statusFromVerdict(verdict, undefined, { kind: 'cli', from: '0.2.189', target: '0.2.190' }, NOW, null)).toEqual({ state: 'waiting', reason: 'upgrade-pending', since: NOW, target: '0.2.190' });
         expect(autoRestartNextCheck(verdict, input())).toBeNull();
+    });
+});
+
+describe('B-882 uncheckedWrapperStatus', () => {
+    const base = { reportsIdle: true, capabilities: ['agent-hibernation-v1'], awaitingSince: 0, now: LEGACY_CHECK_IN_GRACE_MS - 1 };
+    it('a wrapper that cannot report is manual at once', () => {
+        expect(uncheckedWrapperStatus({ ...base, reportsIdle: false })).toEqual({ state: 'manual', reason: 'no-report' });
+    });
+    it('a legacy wrapper waits for its first check-in until the grace, then is manual', () => {
+        expect(uncheckedWrapperStatus(base)).toEqual({ state: 'waiting', reason: 'awaiting-check-in' });
+        expect(uncheckedWrapperStatus({ ...base, now: LEGACY_CHECK_IN_GRACE_MS })).toEqual({ state: 'manual', reason: 'no-check-in' });
+        expect(uncheckedWrapperStatus({ ...base, capabilities: null, now: LEGACY_CHECK_IN_GRACE_MS })).toEqual({ state: 'manual', reason: 'no-check-in' });
+    });
+    it('the grace is overridable for tests (HAPPY_AUTO_RESTART_CHECK_IN_GRACE_MS)', () => {
+        expect(resolveCheckInGraceMs({})).toBe(LEGACY_CHECK_IN_GRACE_MS);
+        expect(resolveCheckInGraceMs({ HAPPY_AUTO_RESTART_CHECK_IN_GRACE_MS: '60000' })).toBe(60_000);
+        expect(resolveCheckInGraceMs({ HAPPY_AUTO_RESTART_CHECK_IN_GRACE_MS: 'x' })).toBe(LEGACY_CHECK_IN_GRACE_MS);
+        expect(uncheckedWrapperStatus({ ...base, now: 1000, graceMs: 1000 })).toEqual({ state: 'manual', reason: 'no-check-in' });
+    });
+    it('an auto-restart-v1 wrapper (reports regardless of origin) keeps waiting; no clock = keep waiting', () => {
+        expect(uncheckedWrapperStatus({ ...base, capabilities: ['auto-restart-v1'], now: 10 * LEGACY_CHECK_IN_GRACE_MS })).toEqual({ state: 'waiting', reason: 'awaiting-check-in' });
+        expect(uncheckedWrapperStatus({ ...base, awaitingSince: null, now: 10 * LEGACY_CHECK_IN_GRACE_MS })).toEqual({ state: 'waiting', reason: 'awaiting-check-in' });
     });
 });

@@ -6340,6 +6340,10 @@ export const zhHans: TranslationStructure = {
             `仍在用 v${sessionVersion}（机器已是 v${machineVersion}）。这个会话在你的终端里运行，不会自动更新；重启即可更新，对话保留。`,
         manualLocalTerminalAgent: ({ agent }: { agent: string }) =>
             `仍在用启动时的 ${agent}。这个会话在你的终端里运行，不会自动更新；重启即可更新，对话保留。`,
+        manualNoReport: ({ sessionVersion, machineVersion }: { sessionVersion: string; machineVersion: string }) =>
+            `仍在用 v${sessionVersion}（机器已是 v${machineVersion}）。这个旧版会话不会上报空闲状态，不会自动更新；重启即可更新，对话保留。`,
+        manualNoReportAgent: ({ agent }: { agent: string }) =>
+            `仍在用启动时的 ${agent}。这个旧版会话不会上报空闲状态，不会自动更新；重启即可更新，对话保留。`,
         offlineFailed: ({ reason }: { reason: string }) => `自动更新失败（${reason}），会话已离线。点「恢复」继续，对话保留。`,
         offlineFailedRetry: ({ reason, time }: { reason: string; time: string }) =>
             `自动更新失败（${reason}），会话已离线。约 ${time} 会自动再试一次，也可以现在恢复，对话保留。`,

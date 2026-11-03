@@ -85,7 +85,7 @@ import { TurnActivityTracker } from '@/update/turnActivity';
 import { createDaemonHibernation, collectAutomationBindings, waitForPidsToExit, waitForSessionLive } from '@/hibernation/daemonHibernation';
 import { resolveCheckMs, resolveIdleMs, settingIdleMs } from '@/hibernation/hibernationPolicy';
 import { createAutoRestart } from './autoRestart';
-import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, pendingUpgradeVersion, resolveQuietMs, type StaleKind } from '@/update/autoRestartPolicy';
+import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, pendingUpgradeVersion, resolveCheckInGraceMs, resolveQuietMs, type StaleKind } from '@/update/autoRestartPolicy';
 import { compareExactVersions } from '@/update/cliUpdate';
 import { createAutomationsClient, isAutomationsUnavailable } from '@/automations/client';
 import { BackgroundTaskTracker } from '@/update/backgroundTaskActivity';
@@ -1725,7 +1725,12 @@ export async function startDaemon(): Promise<void> {
     // pure in assistantReport.ts; failures only ever debug-log.
     const assistantReportLastSentAt = new Map<string, number>();
     const isPidAlive = (pid: number): boolean => isProcessAlive(pid);
+    // B-882: the spawn origin a wrapper echoes on its state events. A daemon
+    // restart drops tracked.spawnedBy (not persisted), and an old wrapper with
+    // an origin never checks in — this lets auto-restart call it manual at once.
+    const echoedSpawnedBy = new Map<string, string>();
     const onSessionStateEvent = (sessionId: string, event: AssistantReportEvent, spawnedByFromSession?: string): void => {
+      if (spawnedByFromSession) echoedSpawnedBy.set(sessionId, spawnedByFromSession);
       // B-496: a run's session blocking on input is an attention signal for that run.
       if (automationRunner?.hasSession(sessionId)) automationRunner.report(sessionId, event === 'completed' ? 'idle' : 'blocked');
       if (spawnedByFromSession === 'teams' || teamWorker?.hasSession(sessionId) || [...pidToTrackedSession.values()].some(s => s.happySessionId === sessionId && s.spawnedBy === 'teams')) {
@@ -1796,7 +1801,7 @@ export async function startDaemon(): Promise<void> {
         wrapperVersion: metadata?.version ?? null,
         flavor: metadata?.flavor ?? 'claude',
         capabilities: metadata?.capabilities ?? null,
-        spawnedBy: tracked.spawnedBy ?? null,
+        spawnedBy: tracked.spawnedBy ?? (tracked.happySessionId ? echoedSpawnedBy.get(tracked.happySessionId) : undefined) ?? null,
         tags: metadata?.tags ?? null,
         variant: tracked.variant ?? (metadata as { variant?: string } | undefined)?.variant ?? null,
         // The wrapper's own word: tracked.startedBy turns into "persisted" /
@@ -1814,6 +1819,7 @@ export async function startDaemon(): Promise<void> {
     const autoRestartScheduler = createAutoRestart({
       enabled: () => autoRestartSetting,
       quietMs: resolveQuietMs(),
+      checkInGraceMs: resolveCheckInGraceMs(),
       daemonVersion: packageJson.version,
       installedAgentVersion: (flavor) => flavor === 'codex'
         ? latestAgentVersions?.agents.find((agent) => agent.id === 'codex')?.installed ?? null
