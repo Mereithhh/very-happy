@@ -15,7 +15,7 @@ describe('B-878 terminal share broker source contracts', () => {
         const opens = src.match(/unwrapDataEncryptionKey\(new Uint8Array\(machine\.dataEncryptionKey\)/g) ?? [];
         expect(opens).toHaveLength(1);
         const fn = src.slice(src.indexOf('async function openTerminalShareMachineKey('), src.indexOf('/** The grant\'s stream key'));
-        expect(fn).toContain('grant[VERIFIED] !== true');
+        expect(fn).toContain('if (!grant || grant[VERIFIED] !== true) return null;');
         expect(fn).toContain('accountId: grant.ownerId');
         expect(fn).toContain('id: grant.machineId');
     });
@@ -32,6 +32,10 @@ describe('B-878 terminal share broker source contracts', () => {
         expect(forward).toContain('allowTerminalShareEvent(grant.role, event)');
         const deliver = src.slice(src.indexOf('async function deliverFrame('), src.indexOf('/** The shared terminal ended'));
         expect(deliver).toContain('await resolveTerminalShare(entry.granteeId, entry.grantId)');
+        expect(deliver).toContain('        if (!grant || grant.machineId !== machineId) continue;');
+        // A revoke that lands while the daemon is answering: nothing is returned to the grantee.
+        const run = src.slice(src.indexOf('async function runTerminalShareRpc('), src.indexOf('/** One subscription less'));
+        expect(run).toContain("    if (!(await resolveTerminalShare(granteeId, grant.grantId))) throw new TerminalShareError('not_shared');");
         expect(src).not.toContain('kill-terminal');
     });
 
@@ -41,7 +45,7 @@ describe('B-878 terminal share broker source contracts', () => {
         // The owner's own web → machine events are forwarded exactly as before (viewer rules live in the broker only).
         expect(terminalHandler).toContain("io.to(room).emit('terminal-resize', { terminalId: data.terminalId, cols: data.cols, rows: data.rows })");
         expect(terminalHandler).toContain("io.to(room).emit('terminal-input', { terminalId: data.terminalId, data: data.data, enc: data.enc })");
-        expect(machineUpdate).toContain('noteTerminalShareMachineState(userId, result.machine.id, result.machine.daemonState)');
+        expect(machineUpdate).toContain('void noteTerminalShareMachineState(userId, result.machine.id, result.machine.daemonState).catch(() => undefined);');
     });
 
     it('a sweep runs every second so expiry reaches the grantee within ~1 s', () => {
