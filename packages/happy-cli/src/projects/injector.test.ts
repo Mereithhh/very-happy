@@ -104,4 +104,13 @@ describe('project injector', () => {
             expect(await off.decorate('hi')).toBe('[team mode ended]\nhi');
         }
     });
+    it('B-877c: the language rule rides on every agent\'s turn, reads the raw message, and works with projects off', async () => {
+        const backfill = { decorate: vi.fn((m: string, source: string) => `[rule for ${source}]\n${m}`) };
+        for (const agent of ['claude', 'codex']) {
+            const inj = createProjectInjector({ client: fakeClient(), sessionId: () => 's1', metadata: () => null, agent, timeoutMs: 50, issueDigest: null, teamExitNotice: null, teamLanguageBackfill: backfill });
+            expect((await inj.decorate('hi')).startsWith('[rule for hi]\n[Very Happy project')).toBe(true);
+            const off = createProjectInjector({ client: fakeClient({ isDisabled: vi.fn(() => true) }), sessionId: () => 's1', agent, issueDigest: null, teamExitNotice: null, teamLanguageBackfill: backfill });
+            expect(await off.decorate('hi')).toBe('[rule for hi]\nhi');
+        }
+    });
 });

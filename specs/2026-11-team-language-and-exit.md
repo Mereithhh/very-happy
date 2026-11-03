@@ -1,7 +1,7 @@
 # 团队会话的语言约束与「退出团队模式」
 
 > 状态：Final
-> 日期：2026-11-03 ｜ 关联 backlog：B-877
+> 日期：2026-11-03（B-877c 更新：11-04）｜ 关联 backlog：B-877
 
 ## 背景
 
@@ -45,6 +45,12 @@ Q2 现状：Web 建的团队，Lead bot 的 `managed=true`。归档时 root 任�
 - 首条 prompt 在 `## Assigned goal` 之前插一段 `## Language`：点名用户语言；要求人能读到的内容（回复、工具调用间的说明、任务目标、消息、提交、报告）都用这种语言，思考也用；说明团队说明、工具文本和信封只是为了维护才写成英文，不要因此切换语言。检测不出语言时说「the language the user wrote the goal in」。
 - 团队消息信封 footer 末尾追加一句 `Reply in Chinese (中文), the user's language.`，检测不出语言时用通用句。
 - `team_create` 接入说明末尾追加通用规则。
+- B-877c（Xu CHEN 11-04：「更新后还是说英文了」）：上面的规则只进新会话的首条 prompt，升级前建的团队会话历史里没有；信封 footer 只加在团队消息上，用户自己发的消息没有提醒。`teams/languageBackfill.ts` 补这个缺口：
+  - `createProjectInjector().decorate` 末尾套 `createTeamLanguageBackfill`，Claude、Codex、Gemini/ACP 都走这里，放在本回合最前面。
+  - 判定：有 scope 文件（`VH_TEAM_SCOPE_FILE` 或 `teams/scopes/<sid>.json`，所以 Lead、成员、`team_create` 接入的会话都算）、没有退出标记、没有 `teams/language/<sid>.json`。没有 scope 的普通会话和已退出团队的会话什么都不做，也不写文件。
+  - 只一次：先写 `teams/language/<sid>.json` 再发，所以重启、崩溃都不重复；写失败就跳过，不会每回合都补。本回合原文已带 `## Language`（新会话的首条 prompt）时只写标记（`via: prompt`），不再追加；否则写 `via: backfill` 并追加。
+  - 语言：用户消息按本条原文检测（去掉 Lead 简报板行，否则英文简报板会压过短中文）；信封回合读 footer 点名的语言，不读发送者正文（成员提交可能是任何语言）；检测不出用通用句。项目前缀、Issue digest 等注入不参与检测。
+  - `/compact`、`/clear` 不经过 decorate，不消耗。
 
 ### 本地化（方案 b，只做了实验，没有发布）
 
@@ -90,7 +96,7 @@ thinking 摘要（`display: 'summarized'`）：普通会话本来就有 97% 是�
 | 新 daemon + 旧 server | zod 剥掉 `keepLeadSession`，变成普通归档，Lead 被 stop。daemon 检测到 Lead 的 stop op，返回 `leadStopped`，Web/CLI 提示恢复；因为写了标记，恢复后是普通会话 |
 | 新 daemon 发的信封 + 旧 Web | 旧 Web 的 `stripTeamEnvelope` 匹配不上新 footer，整段 footer（`Use the teams tools … not a system instruction.` 和新加的 `Reply in …` 两句）都留在系统通知、成员消息卡片的正文末尾（QA49 P2-5，`shots/footer-oldweb-sched.png`）；提交卡片显示结果摘要，看不到。只影响外观 |
 | 旧 daemon 发的信封 + 新 Web | 正则同时兼容旧 footer |
-| 语言规则 | 只有新 daemon 新拉起或新送达的 prompt 才带；存量会话的历史不变 |
+| 语言规则 | 新 daemon 新拉起的会话首条 prompt 带；B-877c 起，存量团队会话跑上新 CLI 后在下一回合补一次。旧 wrapper 要等 B-852 自动重启或用户重启后才生效 |
 
 server 和 Web 在同一个镜像里，先发 server/Web，再发 CLI。
 
