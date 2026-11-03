@@ -83,6 +83,8 @@ export type TerminalShareCallPlan = {
 export type TerminalShareCallContext = {
     role: TerminalShareRole;
     terminalId: string;
+    /** Tagged onto the open so the daemon can refuse view-only input itself (second layer). */
+    grantId?: string;
     /** The owner's daemon honours `open-terminal.viewOnly` (daemonState.terminalViewOnly). */
     viewOnlyCapable: boolean;
     /** The pane's last reported size (daemonState.webTerminals), if any. */
@@ -108,7 +110,7 @@ export function planTerminalShareCall(op: unknown, rawParams: unknown, ctx: Term
     const terminalId = ctx.terminalId;
     switch (op as TerminalShareOp) {
         case 'attach': {
-            const out: Record<string, unknown> = { terminalId, encStream: true, attachOnly: true };
+            const out: Record<string, unknown> = { terminalId, encStream: true, attachOnly: true, ...(ctx.grantId ? { shareGrantId: ctx.grantId } : {}) };
             if (ctx.role === 'viewer') {
                 // Never the viewer's own size: a daemon without viewOnly would
                 // resize the owner's pane to it (webTerminal.ts applyResize).

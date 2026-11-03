@@ -30,6 +30,10 @@ describe('B-878 terminal share policy', () => {
         const plan = planTerminalShareCall('attach', { terminalId: 'other', cols: 20, rows: 5, startupCommand: 'x', attachTmux: { id: '$1' }, cwd: '/', fromSeq: 3, resub: true }, ctx());
         expect(plan).toEqual({ method: 'open-terminal', params: { terminalId: 't1', encStream: true, attachOnly: true, viewOnly: true, cols: 132, rows: 40, fromSeq: 3, resub: true }, auditKind: undefined });
         expect(planTerminalShareCall('attach', {}, ctx({ geometry: null })).params).toMatchObject({ viewOnly: true, cols: 80, rows: 24 });
+        // Lead 11-03 #1: the tier decides, never the request — a viewer cannot opt out, an operator cannot opt in.
+        expect(planTerminalShareCall('attach', { viewOnly: false, cols: 10, rows: 3 }, ctx()).params).toMatchObject({ viewOnly: true, cols: 132, rows: 40 });
+        expect(planTerminalShareCall('attach', { viewOnly: true }, ctx({ role: 'operator' })).params).not.toHaveProperty('viewOnly');
+        expect(planTerminalShareCall('attach', {}, ctx({ grantId: 'g1' })).params).toMatchObject({ shareGrantId: 'g1' });
         expect(code(() => planTerminalShareCall('attach', {}, ctx({ viewOnlyCapable: false })))).toBe('cli_upgrade_required');
     });
 

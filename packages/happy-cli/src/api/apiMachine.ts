@@ -749,7 +749,7 @@ export class ApiMachineClient {
             // declaration; a client that doesn't send it gets the v1 response
             // shape verbatim (its `applyOpenResult` throws on anything else and
             // the terminal would stay "connecting" forever).
-            const { terminalId, cols, rows, cwd, fromSeq, encStream, startupCommand, resub, attachOnly, streamMode, attachTmux, projectId, viewOnly } = params || {};
+            const { terminalId, cols, rows, cwd, fromSeq, encStream, startupCommand, resub, attachOnly, streamMode, attachTmux, projectId, viewOnly, shareGrantId } = params || {};
             // B-273: `attachTmux {id,name}` — validated (and possibly refused
             // with 'tmux-session-gone') inside open() BEFORE anything is created.
             const attach = attachTmux && typeof attachTmux === 'object' && typeof attachTmux.id === 'string' && typeof attachTmux.name === 'string'
@@ -763,6 +763,7 @@ export class ApiMachineClient {
                 ...(typeof projectId === 'string' ? { projectId } : {}),
                 // B-878: share viewer — attach without resizing the pane.
                 ...(viewOnly === true ? { viewOnly: true } : {}),
+                ...(typeof shareGrantId === 'string' && shareGrantId.length <= 128 ? { shareGrantId } : {}),
             });
             // Negotiated stream encryption: only enable for clients that ask
             // (so an old client still works in plaintext). Echo it back so the
@@ -1824,6 +1825,7 @@ export class ApiMachineClient {
 
     private bindMachineCommandHandlers(socket: Socket) {
         socket.on('terminal-input', (data: any) => {
+            if (this.webTerminal.dropViewOnlyShareEvent('input', data?.terminalId, data?.shareGrantId)) return;
             let payload = data.data;
             if (data.enc) {
                 const dec = decrypt(this.machine.encryptionKey, this.machine.encryptionVariant, decodeBase64(data.data));
@@ -1832,7 +1834,10 @@ export class ApiMachineClient {
             }
             this.webTerminal.write(data.terminalId, payload);
         });
-        socket.on('terminal-resize', (data: any) => this.webTerminal.resize(data.terminalId, data.cols, data.rows));
+        socket.on('terminal-resize', (data: any) => {
+            if (this.webTerminal.dropViewOnlyShareEvent('resize', data?.terminalId, data?.shareGrantId)) return;
+            this.webTerminal.resize(data.terminalId, data.cols, data.rows);
+        });
         socket.on('terminal-close', (data: any) => this.webTerminal.unsubscribe(data.terminalId));
         socket.on('session-archive', (data: { sessionId?: unknown }) => {
             if (typeof data?.sessionId !== 'string') return;

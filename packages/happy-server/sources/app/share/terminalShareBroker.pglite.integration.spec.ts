@@ -144,7 +144,7 @@ describe('B-878 terminal share broker (pglite)', () => {
         const key = await streamKeyOf(grant.id, viewerSecret);
         const ack = await rpc(viewerId, grant.id, 'attach', { terminalId: 'someone-elses', cols: 30, rows: 10, startupCommand: 'rm -rf /', attachTmux: { id: '$1', name: 'x' } }, key);
         expect(ack.ok).toBe(true);
-        expect(daemonCalls).toEqual([{ method: 'open-terminal', params: { terminalId, encStream: true, attachOnly: true, viewOnly: true, cols: 132, rows: 40 } }]);
+        expect(daemonCalls).toEqual([{ method: 'open-terminal', params: { terminalId, encStream: true, attachOnly: true, shareGrantId: grant.id, viewOnly: true, cols: 132, rows: 40 } }]);
         const result = openWith((ack as any).result, key) as any;
         expect(result).toMatchObject({ terminalId, role: 'viewer', viewOnly: true, geometry: { cols: 132, rows: 40 }, encStream: false });
         expect(Buffer.from(result.data, 'base64').toString()).toBe(`${SECRET_MARK} screen`);
@@ -208,15 +208,15 @@ describe('B-878 terminal share broker (pglite)', () => {
         expect(Math.round((grant.expiresAt - Date.now()) / 86_400_000)).toBe(1);
         const key = await streamKeyOf(grant.id, operatorSecret);
         expect((await rpc(operatorId, grant.id, 'attach', { cols: 100, rows: 30 }, key)).ok).toBe(true);
-        expect(daemonCalls[0]).toEqual({ method: 'open-terminal', params: { terminalId, encStream: true, attachOnly: true, cols: 100, rows: 30 } });
+        expect(daemonCalls[0]).toEqual({ method: 'open-terminal', params: { terminalId, encStream: true, attachOnly: true, shareGrantId: grant.id, cols: 100, rows: 30 } });
         emitted.length = 0;
         await broker.__forwardTerminalEventForTests(operatorId, 'input', { grantId: grant.id, data: Buffer.from(crypto.encryptWithDataKey(Buffer.from('echo hi\r').toString('base64'), key)).toString('base64') });
         const input = emitted.find((e) => e.event === 'terminal-input')!;
         expect(input.room).toBe(`user:${ownerId}:machine:${machineId}`);
-        expect(input.payload).toMatchObject({ terminalId, enc: true });
+        expect(input.payload).toMatchObject({ terminalId, enc: true, shareGrantId: grant.id });
         expect(Buffer.from(openWith(input.payload.data, machineKey) as string, 'base64').toString()).toBe('echo hi\r');
         await broker.__forwardTerminalEventForTests(operatorId, 'resize', { grantId: grant.id, cols: 90, rows: 20 });
-        expect(emitted).toContainEqual({ room: `user:${ownerId}:machine:${machineId}`, event: 'terminal-resize', payload: { terminalId, cols: 90, rows: 20 } });
+        expect(emitted).toContainEqual({ room: `user:${ownerId}:machine:${machineId}`, event: 'terminal-resize', payload: { terminalId, cols: 90, rows: 20, shareGrantId: grant.id } });
         expect((await rpc(operatorId, grant.id, 'paste', { text: 'pwd' }, key)).ok).toBe(true);
         expect((await rpc(operatorId, grant.id, 'scroll', { lines: -5 }, key)).ok).toBe(true);
         expect(await rpc(operatorId, grant.id, 'kill', {}, key)).toEqual({ ok: false, error: 'share_method_denied' });

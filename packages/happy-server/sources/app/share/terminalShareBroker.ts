@@ -347,6 +347,7 @@ async function runTerminalShareRpc(io: Server, granteeId: string, data: unknown,
     const plan = planTerminalShareCall(op, plainParams, {
         role: grant.role,
         terminalId: grant.terminalId,
+        grantId: grant.grantId,
         viewOnlyCapable: viewOnlyCapable(state),
         geometry: info && info.cols !== null && info.rows !== null ? { cols: info.cols, rows: info.rows } : null,
     });
@@ -425,7 +426,7 @@ async function forwardTerminalEvent(granteeId: string, event: 'input' | 'resize'
         const machineKey = await openTerminalShareMachineKey(grant);
         if (!machineKey) return;
         countInput(grant, plain);
-        ioRef?.to(room).emit('terminal-input', { terminalId: grant.terminalId, data: seal(plain, machineKey), enc: true });
+        ioRef?.to(room).emit('terminal-input', { terminalId: grant.terminalId, data: seal(plain, machineKey), enc: true, shareGrantId: grant.grantId });
         return;
     }
     if (!charge(limits.terminal, [granteeId], 64)) return;
@@ -433,7 +434,7 @@ async function forwardTerminalEvent(granteeId: string, event: 'input' | 'resize'
         const cols = data.cols; const rows = data.rows;
         const ok = (v: unknown) => Number.isSafeInteger(v) && (v as number) >= 2 && (v as number) <= 10_000;
         if (!ok(cols) || !ok(rows)) return;
-        ioRef?.to(room).emit('terminal-resize', { terminalId: grant.terminalId, cols, rows });
+        ioRef?.to(room).emit('terminal-resize', { terminalId: grant.terminalId, cols, rows, shareGrantId: grant.grantId });
         return;
     }
     // close = unsubscribe this pane; never a kill.

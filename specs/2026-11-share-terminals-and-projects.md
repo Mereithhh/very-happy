@@ -80,6 +80,11 @@ grantee 的访问来自 ──┼ TerminalGrant（新：终端 viewer / operator
 - broker 对 viewer 的 attach 一律带 `viewOnly:true`，并**忽略 grantee 的 cols/rows**（填上报几何只是给旧字段一个值）；机器没有该能力位 → `cli_upgrade_required`，**在任何东西发到 daemon 之前**拒绝。
 - `terminal-resize` / `terminal-scroll`（会把 owner 窗格切进 copy-mode）对 viewer 一律丢弃 / 拒绝。
 - owner 自己的 open 不带 `viewOnly`，行为不变（CLI 测试钉住：owner 再 attach 仍按自己的尺寸生效）。
+
+**验收标准（Lead 11-03 补充）**：
+1. `viewOnly` 由 broker 按 grant 档位强制注入：grantee 请求里带不带都不起作用（viewer 传 `viewOnly:false` 无效，operator 传 `viewOnly:true` 被丢弃）；「只看」档 grantee 传的 cols/rows 一律忽略。
+2. CLI 双保险：broker 在 open / input / resize 上带 `shareGrantId`；daemon 记住以 `viewOnly` 附着的 grant，该 grant 的 input、resize 一律丢弃并打一行 debug（不含内容），有单测。同 grant 升为可操作后重新 attach 解除标记。标记只在 daemon 内存，重启后由 server 这一层兜底。
+3. 旧 CLI 上「只看」返回 `cli_upgrade_required`，Web 显示升级提示，不回落成会 resize 的 attach；e2e 用旧 dist（origin/main 构建）验证。
 - Web 端只看视图：固定列数 = 上报的 `cols`，按容器宽度等比缩放字号（不改 lineHeight 1.0、不改字形填格，铁律 9），窄屏可横向平移；输入法、键盘栏不渲染。
 
 **CLI 改动**：仅上面一处（只看档需要；可操作档兼容旧 CLI）。

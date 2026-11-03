@@ -278,6 +278,10 @@ export interface OpenTerminalOptions {
      *  size instead of the requested one. Old daemons ignore the field (the
      *  broker gates on daemonState.terminalViewOnly). */
     viewOnly?: boolean;
+    /** B-878: the share grant this open came through (server broker only). A
+     *  view-only grant is remembered per terminal so input / resize the broker
+     *  tags with it are dropped here too — a second layer behind the server. */
+    shareGrantId?: string;
 }
 
 /** Result of (re)subscribing to a terminal.
@@ -2285,6 +2289,28 @@ export class WebTerminalManager {
         for (const s of this.terminals.values()) s.subscribers = 0;
     }
 
+    /** B-878: share grants that attached a terminal view-only, by terminal id. */
+    private viewOnlyShares = new Map<string, Set<string>>();
+
+    private noteShareAttach(terminalId: string, grantId: string | undefined, viewOnly: boolean): void {
+        if (typeof grantId !== 'string' || !grantId) return;
+        const set = this.viewOnlyShares.get(terminalId) ?? new Set<string>();
+        if (viewOnly) set.add(grantId); else set.delete(grantId);
+        if (set.size > 0) this.viewOnlyShares.set(terminalId, set); else this.viewOnlyShares.delete(terminalId);
+    }
+
+    /**
+     * B-878 second layer: input / resize tagged with a grant that attached this
+     * terminal view-only is dropped (the broker should never forward it). Logs
+     * the fact only — never the bytes.
+     */
+    dropViewOnlyShareEvent(kind: 'input' | 'resize', terminalId: unknown, grantId: unknown): boolean {
+        if (typeof terminalId !== 'string' || typeof grantId !== 'string') return false;
+        if (!this.viewOnlyShares.get(terminalId)?.has(grantId)) return false;
+        logger.debug(`[WEB TERMINAL] dropped ${kind} from a view-only share on ${terminalId}`);
+        return true;
+    }
+
     /** B-878: the tmux window's current size for `vh-<id>`, or null. */
     private readTmuxWindowSize(id: string): { cols: number; rows: number } | null {
         if (!isTmuxAvailable()) return null;
@@ -2317,6 +2343,8 @@ export class WebTerminalManager {
         const lines = opts.streamMode === 'lines';
 
         const existing = this.terminals.get(id);
+        // An operator attach of the same grant (tier raised) lifts the view-only mark.
+        if (!opts.viewOnly) this.noteShareAttach(id, opts.shareGrantId, false);
         if (opts.viewOnly) {
             // B-878: a share viewer never resizes the owner's pane and never
             // creates. Re-enter as a plain attach declaring the pane's OWN size
@@ -2324,10 +2352,11 @@ export class WebTerminalManager {
             // viewer renders at the owner's width.
             const geometry = viewOnlyGeometry(existing ? { cols: existing.cols, rows: existing.rows } : undefined, existing ? null : this.readTmuxWindowSize(id), { cols, rows });
             const result = await this.open({
-                ...opts, viewOnly: false, attachOnly: true,
+                ...opts, viewOnly: false, attachOnly: true, shareGrantId: undefined,
                 startupCommand: undefined, attachTmux: undefined, projectId: undefined,
                 cols: geometry.cols, rows: geometry.rows,
             });
+            this.noteShareAttach(result.terminalId, opts.shareGrantId, true);
             return { ...result, viewOnly: true, paneCols: result.paneCols ?? geometry.cols, paneRows: result.paneRows ?? geometry.rows };
         }
         if (existing) {

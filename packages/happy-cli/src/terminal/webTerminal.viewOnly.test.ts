@@ -1,5 +1,5 @@
 import { describe, expect, it, afterAll } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createIsolatedTmux, tmuxAvailable } from '@/testing/isolatedTmux';
@@ -65,8 +65,32 @@ describe.skipIf(!tmuxAvailable)('B-878 open-terminal viewOnly never resizes the 
         expect(windowSize('vo000002')).toBe('110x33');
     });
 
+    it('second layer: input / resize tagged with a view-only grant is refused; the owner and an operator are not', async () => {
+        await mgr.open({ terminalId: 'vo000004', cols: 100, rows: 30, cwd: iso.dir });
+        await mgr.open({ terminalId: 'vo000004', viewOnly: true, shareGrantId: 'g-view' });
+        expect(mgr.dropViewOnlyShareEvent('input', 'vo000004', 'g-view')).toBe(true);
+        expect(mgr.dropViewOnlyShareEvent('resize', 'vo000004', 'g-view')).toBe(true);
+        // The owner's own frames carry no grant; another terminal or grant is untouched.
+        expect(mgr.dropViewOnlyShareEvent('input', 'vo000004', undefined)).toBe(false);
+        expect(mgr.dropViewOnlyShareEvent('input', 'vo000004', 'g-other')).toBe(false);
+        expect(mgr.dropViewOnlyShareEvent('input', 'vo000001', 'g-view')).toBe(false);
+        // Tier raised: the same grant attaches as an operator and may type.
+        await mgr.open({ terminalId: 'vo000004', cols: 100, rows: 30, attachOnly: true, shareGrantId: 'g-view' });
+        expect(mgr.dropViewOnlyShareEvent('input', 'vo000004', 'g-view')).toBe(false);
+    });
+
     it('viewOnly never creates a terminal', async () => {
         await expect(mgr.open({ terminalId: 'vo000003', cols: 80, rows: 24, viewOnly: true, cwd: iso.dir })).rejects.toThrow('terminal-gone');
         expect(iso.hasSession('vh-vo000003')).toBe(false);
+    });
+});
+
+describe('B-878 daemon wiring: the view-only check runs before the write / resize', () => {
+    const src = readFileSync(join(__dirname, '../api/apiMachine.ts'), 'utf8');
+    it('terminal-input and terminal-resize consult dropViewOnlyShareEvent first', () => {
+        const input = src.slice(src.indexOf("socket.on('terminal-input'"), src.indexOf("this.webTerminal.write(data.terminalId, payload);"));
+        expect(input).toContain("if (this.webTerminal.dropViewOnlyShareEvent('input', data?.terminalId, data?.shareGrantId)) return;");
+        const resize = src.slice(src.indexOf("socket.on('terminal-resize'"), src.indexOf("this.webTerminal.resize(data.terminalId, data.cols, data.rows);"));
+        expect(resize).toContain("if (this.webTerminal.dropViewOnlyShareEvent('resize', data?.terminalId, data?.shareGrantId)) return;");
     });
 });
