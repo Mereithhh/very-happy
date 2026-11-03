@@ -380,8 +380,13 @@ the board; a session adopted as lead mid-run gets them after its next restart.
   `team_accept`, `team_return`, `team_cancel`, `team_handoff`, `team_schedule_*`)
   answer with a short receipt: the task's status, current attempt and goal
   version, the schedule version, capacity and idle members. Use `team_inspect`
-  for the team view (`taskId` for one task in full). Keeping writes small keeps
-  long-running leads' context and prompt-cache writes down.
+  for the team view. Its default view is an index: members, open tasks (goal
+  clipped to 200 characters), closed-task counts, your 20 most recent messages
+  (clipped to 500 characters) and capacity, with no operations. Pass `taskId`
+  for one task in full (goal, acceptance, attempts and results, its messages),
+  `includeClosed` / `messagesLimit` to widen it, or `full` for the whole team.
+  Keeping answers small keeps long-running leads' context and prompt-cache
+  writes down.
 - A message marked delivered is not a processing acknowledgement from the model.
   Inspect the session and result instead of assuming a notification was handled.
 - Cleanup stops only team-created managed workers. User-linked sessions are not

@@ -41,6 +41,11 @@ export interface UpdateControllerDependencies {
      * from a manual one.
      */
     lastInstall?: { read: () => LastCliInstall | null; write: (record: LastCliInstall) => void };
+    /**
+     * B-876b: false once another daemon owns this machine (B-864). A superseded
+     * daemon must not fetch, install or publish — it is about to exit.
+     */
+    owned?: () => boolean;
 }
 /** Serializes install attempts, retains terminal outcomes, and never retries a failure without a user action. */
 export function createUpdateController(deps: UpdateControllerDependencies) {
@@ -81,8 +86,9 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         outcome = { state, version, detail, at: now(), ...(manualVersion ? { source: 'manual' } : {}) };
         deps.publish(snapshot());
     }
+    const superseded = () => !!deps.owned && !deps.owned();
     async function evaluate() {
-        if (!policy || running) return;
+        if (!policy || running || superseded()) return;
         const target = manualVersion ?? policy.autoUpdateVersion ?? null;
         // B-489: manual_required from an install-location check is terminal for
         // this target too — re-checking every heartbeat would only re-log it.
@@ -152,18 +158,24 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         operation = 'tick';
         try { await evaluate(); } finally { operation = null; }
     }
-    async function refresh() {
-        if (operation || blocked) return;
+    /** B-876: says whether a policy was read, so event-driven refreshes can retry (policyRefreshTrigger.ts). */
+    async function refresh(): Promise<'ok' | 'stale' | 'unavailable' | 'busy' | 'blocked' | 'superseded'> {
+        if (superseded()) return 'superseded';
+        if (blocked) return 'blocked';
+        if (operation) return 'busy';
         operation = 'refresh';
         try {
             const next = await deps.policy();
-            if (!next) return;
+            if (!next) return 'unavailable';
             if (manualVersion && !validManualTarget(next, manualVersion)) manualVersion = null;
             policy = next;
             await evaluate();
+            // B-876c: the server's own registry check is failing — retrying every window would not help.
+            return policyStale() ? 'stale' : 'ok';
         } finally { operation = null; }
     }
     async function retry(version: unknown): Promise<{ accepted: true } | { error: string }> {
+        if (superseded()) return { error: 'daemon_superseded' };
         if (operation || blocked) return { error: blocked ? 'manual_recovery_required' : 'update_in_progress' };
         if (typeof version !== 'string' || outcome?.state !== 'failed' || outcome.version !== version) {
             return { error: 'no_matching_failed_update' };
@@ -184,6 +196,7 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         } finally { operation = null; }
     }
     async function request(version: unknown): Promise<{ accepted: true } | { error: string }> {
+        if (superseded()) return { error: 'daemon_superseded' };
         if (operation || blocked) return { error: blocked ? 'manual_recovery_required' : 'update_in_progress' };
         operation = 'request';
         try {
@@ -222,5 +235,7 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         handoverHold = { reason, at: now() };
         publish('failed', manualVersion ?? policy?.autoUpdateVersion ?? null, 'handover_preflight_failed');
     }
-    return { refresh, retry, request, tick, withHandover, holdHandover, isRunning: () => running, currentTarget: () => policy?.autoUpdateVersion ?? null };
+    /** B-876: no policy yet, or the held one is past the 65-minute limit — only a fetch can move on from here. */
+    const policyStale = () => !policy || now() - policy.checkedAt > 65 * 60_000;
+    return { refresh, retry, request, tick, withHandover, holdHandover, policyStale, isRunning: () => running, currentTarget: () => policy?.autoUpdateVersion ?? null };
 }

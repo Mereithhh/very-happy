@@ -507,6 +507,16 @@ export async function clearMachineId(): Promise<void> {
   }));
 }
 
+/** B-876b: the pid in daemon.state.json, read synchronously; null when absent or unreadable. */
+export function readDaemonStatePidSync(): number | null {
+  try {
+    const pid = (JSON.parse(readFileSync(configuration.daemonStateFile, 'utf-8')) as { pid?: unknown }).pid;
+    return typeof pid === 'number' && Number.isInteger(pid) ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Read daemon state from local file
  */

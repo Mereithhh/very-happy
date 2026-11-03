@@ -168,7 +168,8 @@ export function createTeamsClient(sessionId?: string) {
             const scope = await readTeamScope(scopePath());
             if (!scope) throw new Error(noTeamScopeMessage(sessionId ?? process.env.HAPPY_SESSION_ID));
             const { credential: _credential, ...safe } = await teamRequest(`/v1/teams/${encodeURIComponent(scope.teamId)}/agent`, 'GET', scope.scopeToken, true);
-            return safe;
+            // B-881: the caller's bot, so the compact view lists the messages it sent or received.
+            return { ...safe, botId: scope.botId };
         },
         async action(action: Record<string, unknown>, requestId: string = randomUUID()) {
             const scope = await readTeamScope(scopePath());

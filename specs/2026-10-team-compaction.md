@@ -65,6 +65,16 @@
 
 同一批样本上回执中位数为 0.3–4.8k 字符（submit 0.3k，delegate 4.8k），最大 5.3k。`team_inspect` 不变。Codex stdio bridge 转发写操作时，拿到的已经是回执（`team` 里没有 `tasks` 数组），会原样透传。
 
+**B-881 修订：team_inspect 默认视图改为索引。** Lead 团队（68 任务 / 138 消息，原始 589,754 字符）上 B-822 精简视图仍有 89,650 字符（开放任务的完整 goal/acceptance/result、全部消息正文、未完成 operation），超过宿主工具输出上限被截断落盘。默认视图改为：
+
+- bots：id、name、root、activity、lastEvent；
+- 未结束的任务：id、状态、assignee/owner、`currentAttemptId`、`currentAttemptStatus`、`goalVersion`、cleanup、attempt 数，goal 截到 200 字；已结束的只给 `closedTasks: { done, cancelled }` 计数；
+- 消息：只列调用方收发的（`selfBotId`，CLI 从 scope 读出），最近 20 条 + 发给自己且未送达的，正文截到 500 字（`bodyChars` 给原长），去掉 id 和 deliveredAt，未送达的标 `undelivered`；
+- 不给 operations（`omitted` 里给总数和未完成数）；capacity、cleanupIssues、idleMembers、schedules（body 截 200 字）照旧。
+- 参数：`taskId`（单个任务全文：goal、acceptance、全部 attempt 和 result、它的消息和 operation）、`includeClosed`（列出已结束任务摘要）、`messagesLimit`（0–500）、`full`（原始视图）。
+
+脱敏 fixture（`packages/happy-cli/src/teams/__fixtures__/b881-lead-team.json`，文本换成等长占位）上默认视图 18,614 字符。写操作回执的 operation 只留 id/type/botId/status/error，并加 `ok: true`。team_create / team_join 同样返回精简视图（`adopt.ts` 直接调 client，仍拿完整 team）。Web、daemon 与 HTTP API 不变。
+
 ## 兼容与发布顺序
 
 | 组合 | 行为 |

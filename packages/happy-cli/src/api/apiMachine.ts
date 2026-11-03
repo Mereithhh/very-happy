@@ -1536,6 +1536,8 @@ export class ApiMachineClient {
             clearInterval(this.reconnectInterval);
             this.reconnectInterval = null;
         }
+        // B-876: an announcement sent while we were away is never replayed — the daemon re-reads the policy.
+        try { this.controlConnectedHandler?.(); } catch (error) { logger.debug('[API MACHINE] connect handler failed', error); }
 
             // Terminal-list push channel: the CONNECT write itself carries the
             // full current snapshot, stamped with the SAME clock reading as
@@ -1655,6 +1657,12 @@ export class ApiMachineClient {
     }
 
     private cliUpdatePolicyHandler: ((payload: unknown) => void) | null = null;
+    private controlConnectedHandler: (() => void) | null = null;
+
+    /** B-876: every time the control socket (re)connects, including a release handover's new socket. */
+    setControlConnectedHandler(handler: (() => void) | null): void {
+        this.controlConnectedHandler = handler;
+    }
 
     /** B-718: the daemon decides what a policy announcement means (update/policyAnnouncement.ts). */
     setCliUpdatePolicyHandler(handler: ((payload: unknown) => void) | null): void {

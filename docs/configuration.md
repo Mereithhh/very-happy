@@ -91,6 +91,21 @@ still served the old answer), so an idle machine installs a promoted release
 within minutes instead of up to an hour. The push is only a hint — the install
 target still comes from the REST policy and all gates below apply. The hourly
 check remains the fallback for older relays and daemons that were offline.
+**Since B-876** a daemon that missed the push (asleep, offline) does not wait
+for that hourly check either: it re-reads the policy as soon as its machine
+socket reconnects, when its heartbeat notices the machine just woke from sleep
+(including a DarkWake that never dropped the socket), and whenever the policy
+it holds is older than 65 minutes (which used to only report `policy_stale`).
+These re-reads are paced to one per 5 minutes after a successful one (a request
+inside the window runs once at its end). A re-read that gets no fresh policy
+(the request failed, or the server's own registry check keeps failing so its
+`checkedAt` stays old) is retried after 30 s, then 1, 2, 4 … minutes, capped at
+30 minutes and reset by the next success (B-876c); a reconnect or a wake may
+skip that wait once per 5 minutes. Only the first failure and each step up log
+a warning. While an update needs manual recovery nothing is retried on a timer.
+A daemon that another daemon has replaced (its `daemon.state.json` names
+another pid) re-reads nothing, installs nothing and exits on whichever of these
+paths notices first (B-876b).
 `CLI_VERSION_REGISTRY_URL` (default `https://registry.npmjs.org/very-happy-cli/latest`)
 points the lookup at a private mirror.
 
