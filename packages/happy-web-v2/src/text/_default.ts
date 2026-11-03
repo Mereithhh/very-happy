@@ -981,7 +981,6 @@ export const en = {
             followLatestUpgradeCli: 'Actual model unknown · Update CLI',
             followLatestDepends: 'Latest',
             modelLatestDescription: 'Moves to the next model of the same tier once this machine can run it; a model pinned in the machine\'s own config wins',
-            modelLatestDescriptionClaude: 'Moves to the next model of the same tier once this machine can run it',
             modelLatestDescriptionUpgradeCli: 'Follows latest once the Very Happy CLI is updated',
             machineDefaultModel: 'Machine config',
             machineConfigModel: ({ model }: { model: string }) => `Machine config · ${model}`,
@@ -3089,6 +3088,12 @@ export const en = {
                 outboxAlt: 'A phone showing a session whose last message is marked Not sent, with Resend and Discard next to it',
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
+            },
+            nov03k: {
+                title: 'Claude now starts with 1M context and respects your machine\'s model',
+                summary: 'Following latest, new Claude sessions run Opus 5.5 with the 1M context window, and the 1M switch in the model picker is on by default.',
+                config: 'A model set on the machine (settings.json `model` or ANTHROPIC_MODEL, such as opus[1m]) now wins: the picker shows “Machine config” with the 1M switch matching it. With the new CLI this holds from the first message.',
+                off: 'Turning 1M off is remembered as your own choice and stays off.',
             },
             nov03j: {
                 title: 'CLI 0.2.203: team tools return shorter answers',
@@ -6213,7 +6218,6 @@ export const en = {
         codeDefaultSuffix: ' (default)',
         followLatest: 'Follow latest',
         followLatestByMachine: ({ list }: { list: string }) => `Now: ${list}. Each machine moves to the next model of the same tier once it can run it; a model pinned in a machine's own config wins there.`,
-        followLatestByMachineClaude: ({ list }: { list: string }) => `Now: ${list}. Each machine moves to the next model of the same tier once it can run it.`,
         followLatestNoMachine: 'No session of this agent yet, so what runs depends on the machine. Each machine moves to the next model of the same tier once it can run it.',
         followLatestValue: ({ model }: { model: string }) => `Latest · ${model}`,
         followLatestDependsValue: 'Latest',

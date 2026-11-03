@@ -29,10 +29,18 @@ function session(partial: { modelMode?: string | null; flavor?: string; metadata
 }
 
 describe('resolveDefaultModelMode with the latest sentinel', () => {
-    it('claude: a capable wrapper gets claude-opus-5-5, an old one the machine default', () => {
-        expect(resolveDefaultModelMode({}, 'claude', capable)).toBe('claude-opus-5-5');
+    it('claude: a capable wrapper gets claude-opus-5-5 with 1M (B-883), an old one the machine default', () => {
+        expect(resolveDefaultModelMode({}, 'claude', capable)).toBe('claude-opus-5-5[1m]');
         expect(resolveDefaultModelMode({}, 'claude', { capabilities: [] })).toBe('default');
-        expect(resolveDefaultModelMode({}, 'claude', null)).toBe('claude-opus-5-5');
+        expect(resolveDefaultModelMode({}, 'claude', null)).toBe('claude-opus-5-5[1m]');
+    });
+
+    it('B-883: claude with a machine config model (settings / ANTHROPIC_MODEL) sends nothing, on a session and in the launcher', () => {
+        expect(resolveDefaultModelMode({}, 'claude', { ...capable, configuredModel: 'opus[1m]' })).toBe('default');
+        expect(resolveDefaultModelMode({}, 'claude', { ...capable, configuredModel: null })).toBe('claude-opus-5-5[1m]');
+        expect(resolveDefaultModelMode({}, 'claude', null, { machine: { cliVersion: '0.2.202', configuredModel: 'opus[1m]' } })).toBe('default');
+        // An explicit pick (1M off included) is never re-resolved.
+        expect(resolveDefaultModelMode({ claude: { modelMode: 'claude-opus-5-5' } }, 'claude', { ...capable, configuredModel: 'opus[1m]' })).toBe('claude-opus-5-5');
     });
 
     it('codex: resolves from the session catalog, then the machine Codex version', () => {
@@ -67,8 +75,12 @@ describe('resolveDefaultModelMode with the latest sentinel', () => {
 
 describe('resolveMessageModeMeta follows latest', () => {
     it('claude sends the resolved Opus, or null on a wrapper that cannot prove one', () => {
-        expect(resolveMessageModeMeta(session({ metadata: capable }), { agentDefaultOverrides: {} }).model).toBe('claude-opus-5-5');
+        expect(resolveMessageModeMeta(session({ metadata: capable }), { agentDefaultOverrides: {} }).model).toBe('claude-opus-5-5[1m]');
         expect(resolveMessageModeMeta(session({}), { agentDefaultOverrides: {} }).model).toBeNull();
+        // B-883: the machine's own config wins — no model sent, Claude Code runs it.
+        expect(resolveMessageModeMeta(session({ metadata: { ...capable, configuredModel: 'opus[1m]' } }), { agentDefaultOverrides: {} })).toMatchObject({ model: null });
+        // 1M switched off in this session = an explicit pick, kept.
+        expect(resolveMessageModeMeta(session({ modelMode: 'claude-opus-5-5', metadata: capable }), { agentDefaultOverrides: {} }).model).toBe('claude-opus-5-5');
     });
 
     it('codex sends the newest sol its catalog lists; nothing before the catalog arrives', () => {
@@ -82,7 +94,7 @@ describe('resolveMessageModeMeta follows latest', () => {
         expect(resolveMessageModeMeta(session({ flavor: 'codex', modelMode: 'gpt-6-luna', metadata: { models: CODEX_166, configuredModel: null } }), { agentDefaultOverrides: {} }).model).toBe('gpt-6-luna');
         expect(resolveMessageModeMeta(session({ flavor: 'codex', modelMode: 'latest', metadata: { models: CODEX_166, configuredModel: null } }), { agentDefaultOverrides: { codex: { modelMode: 'latest' } } }).model).toBe('gpt-6.1-sol');
         expect(resolveMessageModeMeta(session({ flavor: 'codex', modelMode: 'latest' }), { agentDefaultOverrides: {} })).not.toHaveProperty('model');
-        expect(resolveMessageModeMeta(session({ modelMode: 'latest', metadata: capable }), { agentDefaultOverrides: {} }).model).toBe('claude-opus-5-5');
+        expect(resolveMessageModeMeta(session({ modelMode: 'latest', metadata: capable }), { agentDefaultOverrides: {} }).model).toBe('claude-opus-5-5[1m]');
     });
 
     // B-849a (B-846 short term): the Gemini wrapper writes any sent model into
@@ -100,7 +112,7 @@ describe('B-848: a session\'s own 「跟随最新」 beats a pinned account defa
     it('session modelMode `latest` resolves latest even when the account pins another model', () => {
         const claude = session({ flavor: 'claude', modelMode: 'latest', metadata: { capabilities: [CLAUDE_OPUS_55_CAPABILITY] } });
         const pinned = { agentDefaultOverrides: { claude: { modelMode: 'claude-sonnet-5' } } };
-        expect(resolveMessageModeMeta(claude, pinned).model).toBe('claude-opus-5-5');
+        expect(resolveMessageModeMeta(claude, pinned).model).toBe('claude-opus-5-5[1m]');
         expect(resolveMessageModeMeta({ ...claude, modelMode: null }, pinned).model).toBe('claude-sonnet-5');
         const codex = session({ flavor: 'codex', modelMode: 'latest', metadata: { models: CODEX_166, configuredModel: null } });
         expect(resolveMessageModeMeta(codex, { agentDefaultOverrides: { codex: { modelMode: 'gpt-5.5' } } }).model).toBe('gpt-6.1-sol');

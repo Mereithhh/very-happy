@@ -40,6 +40,7 @@ import { join } from 'node:path';
 import type { BoardTaskRef } from './utils/boardAnalyzer';
 import { DEFAULT_CLAUDE_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
 import { CLAUDE_ATTACHMENT_KINDS, stripAttachmentManifest } from './utils/attachmentContent';
+import { readClaudeConfiguredModel } from './claudeConfiguredModel';
 import { TranscriptPathHints } from './utils/transcriptCursor';
 import { planClaudeStartup } from './startupPlan';
 import { takeReconnectEnv } from '@/utils/reconnectEnv';
@@ -250,6 +251,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // writer; a reconnect keeps the server copy). A spawn-time model is a choice.
         modelIntent: options.model ?? null,
         effortIntent: null,
+        // B-883: known before the first message, so follow-latest defers to it there too.
+        configuredModel: readClaudeConfiguredModel({ ...process.env, ...options.claudeEnvVars }, workingDirectory),
         stickyModel: options.model ?? null,
         // Effective mode this process enforces. Kept current by
         // publishPermissionMode below; the web renders it instead of guessing.

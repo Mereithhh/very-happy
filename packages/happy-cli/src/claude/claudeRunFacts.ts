@@ -18,12 +18,15 @@
  * default (Fable 5.1), NOT the settings model a fresh Query starts on — so a
  * "machine default" switch mid-session must name the settings model itself.
  */
+import { configuredModelOf } from './claudeConfiguredModel';
 import { withTimeout } from './utils/withTimeout';
 
 export type ClaudeRunFacts = {
     /** Effort the next request sends; null = none sent; undefined = unknown. */
     effort?: string | null;
-    /** settings.json model (merged); null = none pinned; undefined = unknown. */
+    /** Model the machine config pins (settings env.ANTHROPIC_MODEL > process
+     *  ANTHROPIC_MODEL > merged settings.json model, B-883); null = none
+     *  pinned; undefined = unknown. */
     configuredModel?: string | null;
 };
 
@@ -32,8 +35,9 @@ type SettingsReader = { getSettings?: () => Promise<unknown> };
 const GET_SETTINGS_TIMEOUT_MS = 3_000;
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 
-/** Pure parse of a `get_settings` response. */
-export function parseClaudeRunFacts(raw: unknown): ClaudeRunFacts {
+/** Pure parse of a `get_settings` response. `processEnvModel`: the
+ *  `ANTHROPIC_MODEL` Claude Code inherited (not in the response). */
+export function parseClaudeRunFacts(raw: unknown, processEnvModel?: string | null): ClaudeRunFacts {
     const facts: ClaudeRunFacts = {};
     if (!raw || typeof raw !== 'object') return facts;
     const { applied, effective } = raw as { applied?: unknown; effective?: unknown };
@@ -43,8 +47,7 @@ export function parseClaudeRunFacts(raw: unknown): ClaudeRunFacts {
         else if (typeof effort === 'string' && EFFORTS.has(effort)) facts.effort = effort;
     }
     if (effective && typeof effective === 'object') {
-        const model = (effective as { model?: unknown }).model;
-        facts.configuredModel = typeof model === 'string' && model.trim() ? model.trim() : null;
+        facts.configuredModel = configuredModelOf(effective as { model?: unknown; env?: unknown }, processEnvModel);
     }
     return facts;
 }
@@ -54,7 +57,8 @@ export async function readClaudeRunFacts(query: unknown, timeoutMs = GET_SETTING
     const reader = query as SettingsReader;
     if (typeof reader?.getSettings !== 'function') return null;
     try {
-        return parseClaudeRunFacts(await withTimeout(reader.getSettings(), timeoutMs, 'get_settings'));
+        // claudeRemote copies claudeEnvVars into process.env before spawning Claude Code.
+        return parseClaudeRunFacts(await withTimeout(reader.getSettings(), timeoutMs, 'get_settings'), process.env.ANTHROPIC_MODEL);
     } catch {
         return null;
     }

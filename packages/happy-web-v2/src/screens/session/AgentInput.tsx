@@ -429,7 +429,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const followName = followState.kind === 'machineConfig'
         ? t('session.chat.followMachineConfig', { model: nameOfModel(followState.model) })
         : followState.kind === 'latest'
-            ? t('session.chat.followLatestOption', { model: baseModels.find((option) => option.key === followState.model)?.name ?? followState.label ?? followState.model })
+            ? t('session.chat.followLatestOption', { model: followState.model.endsWith(LONG_CONTEXT_SUFFIX) ? nameOfModel(followState.model) : baseModels.find((option) => option.key === followState.model)?.name ?? followState.label ?? followState.model })
             : followState.kind === 'machineDefault'
                 ? t('session.chat.followLatestUpgradeCli')
                 : t('session.chat.followLatestDepends');
@@ -437,9 +437,10 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         offersFollowLatest
             ? withFollowLatestOption(baseModels, {
                 flavor,
-                follow: { name: followName, description: t(followLatestDescriptionKey(followState, normalizeAgentKey(flavor) === 'claude')) },
+                follow: { name: followName, description: t(followLatestDescriptionKey(followState)) },
                 latestModel: followEntryModel(followState),
                 selectedKey: followingLatest ? LATEST_MODEL_MODE : modelKey,
+                followsMachineConfig: followState.kind === 'machineConfig',
                 machineDefault: claudeMachineConfig && !claudeMachineConfig.selectable
                     ? { name: machineConfigName, description: t('session.chat.machineDefaultModelMidSession'), disabled: true }
                     : { name: machineConfigName, description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') },

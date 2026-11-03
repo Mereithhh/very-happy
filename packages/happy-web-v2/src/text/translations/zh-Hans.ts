@@ -1186,7 +1186,6 @@ export const zhHans: TranslationStructure = {
             followLatestUpgradeCli: '实际模型未知 · 升级 CLI',
             followLatestDepends: '跟随最新',
             modelLatestDescription: '同档出了新模型、且这台机器能跑时自动切换；本机配置指定了模型时按本机配置',
-            modelLatestDescriptionClaude: '同档出了新模型、且这台机器能跑时自动切换',
             modelLatestDescriptionUpgradeCli: '升级 Very Happy CLI 后才会跟随最新',
             machineDefaultModel: '本机配置',
             machineConfigModel: ({ model }: { model: string }) => `本机配置 · ${model}`,
@@ -3220,6 +3219,12 @@ export const zhHans: TranslationStructure = {
                 outboxAlt: '手机上的会话页：最后一条消息标着「未发送」，旁边是「重发」和「丢弃」',
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
+            },
+            nov03k: {
+                title: 'Claude 默认开启 1M 上下文，并遵守本机配置的模型',
+                summary: '跟随最新时，新的 Claude 会话默认用 Opus 5.5 的 1M 上下文窗口，模型选择器里的 1M 开关默认打开。',
+                config: '机器上配置了模型（settings.json 的 model 或 ANTHROPIC_MODEL，比如 opus[1m]）时按本机配置：选择器显示「本机配置」，1M 开关与配置一致。升级到新版 CLI 后从第一条消息起就生效。',
+                off: '手动关掉 1M 会记成你自己的选择，之后保持关闭。',
             },
             nov03j: {
                 title: 'CLI 0.2.203：团队工具的返回更短',
@@ -6043,7 +6048,6 @@ export const zhHans: TranslationStructure = {
         codeDefaultSuffix: '（默认）',
         followLatest: '跟随最新',
         followLatestByMachine: ({ list }: { list: string }) => `当前：${list}。同档出了新模型、且机器能跑时自动切换；本机配置指定了模型的机器按本机配置。`,
-        followLatestByMachineClaude: ({ list }: { list: string }) => `当前：${list}。同档出了新模型、且机器能跑时自动切换。`,
         followLatestNoMachine: '还没有这个智能体的会话，实际模型取决于机器。同档出了新模型、且机器能跑时自动切换。',
         followLatestValue: ({ model }: { model: string }) => `跟随最新 · ${model}`,
         followLatestDependsValue: '跟随最新',

@@ -39,6 +39,12 @@ export const LatestModelEntrySchema = z.object({
         /** First agent CLI (codex) whose bundled `model/list` carries the model. */
         agentVersion: z.string().optional(),
     }).optional(),
+    /** The model also runs as `<model>[1m]` (Claude Code's 1M-context marker).
+     *  Follow-latest sends that form wherever the entry is proven runnable by
+     *  `requires` (B-883): the wrapper capability that first carried the model
+     *  shipped with a Claude Code that accepts its `[1m]` twin. A wrapper that
+     *  proves the model only through its catalog gets the plain id. */
+    longContext: z.boolean().optional(),
 });
 export type LatestModelEntry = z.infer<typeof LatestModelEntrySchema>;
 
@@ -111,8 +117,19 @@ export type LatestModelContext =
  */
 export const MACHINE_CONFIG_AGENTS: readonly string[] = ['codex', 'gemini'];
 
+/**
+ * B-883: Claude's machine config (settings.json `model`, `ANTHROPIC_MODEL`)
+ * wins over follow-latest too. Unlike MACHINE_CONFIG_AGENTS an unknown config
+ * (absent: an older wrapper, or one that reports it only after a turn) still
+ * follows latest — Claude's default model was always sent.
+ */
+export const CONFIG_PIN_AGENTS: readonly string[] = [...MACHINE_CONFIG_AGENTS, 'claude'];
+
+export const LONG_CONTEXT_MARKER = '[1m]';
+
 export type LatestModelResolution = {
-    /** Concrete id to send, or null = the machine's own default (send nothing). */
+    /** Concrete id to send (Claude: `[1m]` form where proven, B-883), or
+     *  null = the machine's own default (send nothing). */
     model: string | null;
     /** Newest id of the tier anyone knows of (table ∪ catalog). */
     newest: string | null;
@@ -211,11 +228,13 @@ export function resolveLatestModel(
     const labels = new Map<string, string>();
     const known: string[] = [];
     const runnable: string[] = [];
+    const longContext = new Set<string>();
     for (const entry of tier.models) {
         if (!tierVersion(tier, entry.model)) continue;
         labels.set(entry.model, entry.label ?? entry.model);
         known.push(entry.model);
         if (entryRunnable(entry, ctx, catalogIds)) runnable.push(entry.model);
+        if (entry.longContext && entryRunnable(entry, ctx, new Map())) longContext.add(entry.model);
     }
     for (const [id, label] of catalogIds) {
         if (!labels.has(id)) labels.set(id, label);
@@ -231,11 +250,12 @@ export function resolveLatestModel(
         return best?.id ?? null;
     };
     const newest = newestOf(known);
-    if (MACHINE_CONFIG_AGENTS.includes(agent ?? '')) {
+    if (CONFIG_PIN_AGENTS.includes(agent ?? '')) {
         const configured = typeof ctx.configuredModel === 'string' && ctx.configuredModel.trim() ? ctx.configuredModel.trim() : null;
-        // A live session whose wrapper does not report its machine config
-        // proves nothing about it: send nothing (pre-follow-latest behavior).
-        if (configured || (ctx.kind === 'session' && ctx.configuredModel === undefined)) {
+        // A live Codex/Gemini session whose wrapper does not report its machine
+        // config proves nothing about it: send nothing (pre-follow-latest behavior).
+        const unknownConfig = MACHINE_CONFIG_AGENTS.includes(agent ?? '') && ctx.kind === 'session' && ctx.configuredModel === undefined;
+        if (configured || unknownConfig) {
             return { model: null, newest, label: configured, limited: false, configured };
         }
     }
@@ -243,7 +263,7 @@ export function resolveLatestModel(
     const sameVersion = model !== null && newest !== null
         && compareTierVersions(tierVersion(tier, model)!, tierVersion(tier, newest)!) === 0;
     return {
-        model,
+        model: model && longContext.has(model) ? model + LONG_CONTEXT_MARKER : model,
         newest,
         label: model ? labels.get(model) ?? model : null,
         limited: newest !== null && !sameVersion,

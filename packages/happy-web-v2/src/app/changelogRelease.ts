@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-03-claude-follow-latest-1m-machine-config',
+    date: '2026-11-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov03k.title',
+    summaryKey: 'changelog.releases.nov03k.summary',
+    itemKeys: ['changelog.releases.nov03k.config', 'changelog.releases.nov03k.off'],
+  },
+  {
     id: '2026-11-03-cli-shorter-team-tools-0-2-203',
     cliVersion: '0.2.203',
     date: '2026-11-03',

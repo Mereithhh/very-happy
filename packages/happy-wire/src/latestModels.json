@@ -6,7 +6,7 @@
       "tier": "opus",
       "pattern": "^claude-opus-(\\d+)(?:-(\\d{1,2}))?$",
       "models": [
-        { "model": "claude-opus-5-5", "label": "Opus 5.5", "requires": { "capability": "claude-opus-5-5-v1", "cliVersion": "0.2.149" } }
+        { "model": "claude-opus-5-5", "label": "Opus 5.5", "requires": { "capability": "claude-opus-5-5-v1", "cliVersion": "0.2.149" }, "longContext": true }
       ]
     },
     "codex": {

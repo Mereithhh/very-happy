@@ -1054,7 +1054,7 @@ function AgentField({
   /** B-844b: the code default is "follow latest" — what it runs on each machine
    *  (resolved like a send from that machine's newest session) and the
    *  account-level summary of those. */
-  followLatest?: { summary: FollowLatestState | { kind: 'varies' }; machines: MachineFollowLatest[]; claude?: boolean };
+  followLatest?: { summary: FollowLatestState | { kind: 'varies' }; machines: MachineFollowLatest[] };
   /** Replaces 「（默认）」 when the value is not the plain code default (B-849a: review-first). */
   defaultSuffix?: string;
   /** B-849a: older versions and aliases, listed behind 「更多模型」. */
@@ -1077,7 +1077,7 @@ function AgentField({
   const followSubtitle = followLatest
     ? (followLatest.machines.length === 0
       ? t('settingsAgents.followLatestNoMachine')
-      : t(followLatest.claude ? 'settingsAgents.followLatestByMachineClaude' : 'settingsAgents.followLatestByMachine', {
+      : t('settingsAgents.followLatestByMachine', {
         list: followLatest.machines.map((entry) => t('settingsAgents.machineEntry', { machine: entry.label, value: stateValue(entry.state, true) })).join(t('settingsAgents.machineListSeparator')),
       }))
     : undefined;
@@ -1337,7 +1337,7 @@ function AgentDefaults() {
                   override={getAgentDefaultOverrideValue(overrides, agent, 'modelMode')}
                   codeDefault={codeDefaults.modelMode}
                   onPick={(v) => pick(agent, 'modelMode', v)}
-                  followLatest={followsLatestByDefault ? { summary: followSummary, machines: perMachine, claude: agent === 'claude' } : undefined}
+                  followLatest={followsLatestByDefault ? { summary: followSummary, machines: perMachine } : undefined}
                   moreKeys={moreKeys}
                 />
               )}

@@ -57,14 +57,15 @@ describe('tier versions', () => {
 });
 
 describe('resolveLatestModel — claude (same tier only)', () => {
-    it('today: a capable wrapper runs pinned claude-opus-5-5, even before its catalog arrives', () => {
+    it('today: a capable wrapper runs pinned claude-opus-5-5 with 1M context (B-883), even before its catalog arrives', () => {
         const r = resolveLatestModel(null, 'claude', { kind: 'session', capabilities: [CLAUDE_OPUS_55_CAPABILITY] });
-        expect(r).toMatchObject({ model: 'claude-opus-5-5', newest: 'claude-opus-5-5', limited: false, label: 'Opus 5.5' });
+        expect(r).toMatchObject({ model: 'claude-opus-5-5[1m]', newest: 'claude-opus-5-5', limited: false, label: 'Opus 5.5', configured: null });
+        expect(resolveLatestModel(null, 'claude', { kind: 'session', capabilities: [CLAUDE_OPUS_55_CAPABILITY], configuredModel: null }).model).toBe('claude-opus-5-5[1m]');
     });
 
     it('never jumps to Fable or another tier', () => {
         const r = resolveLatestModel(null, 'claude', { kind: 'session', capabilities: [CLAUDE_OPUS_55_CAPABILITY], catalog: CLAUDE_CATALOG });
-        expect(r.model).toBe('claude-opus-5-5');
+        expect(r.model).toBe('claude-opus-5-5[1m]');
     });
 
     it('old wrapper without the capability and no catalog → machine default (null), limited', () => {
@@ -94,16 +95,33 @@ describe('resolveLatestModel — claude (same tier only)', () => {
             agents: { claude: { ...claudeTier, models: [{ model: 'claude-opus-6', requires: { capability: 'claude-opus-6-v1' } }, ...claudeTier.models] } },
         };
         const r = resolveLatestModel(table, 'claude', { kind: 'session', capabilities: [CLAUDE_OPUS_55_CAPABILITY] });
-        expect(r).toMatchObject({ model: 'claude-opus-5-5', newest: 'claude-opus-6', limited: true });
+        expect(r).toMatchObject({ model: 'claude-opus-5-5[1m]', newest: 'claude-opus-6', limited: true });
         expect(resolveLatestModel(table, 'claude', { kind: 'session', capabilities: ['claude-opus-6-v1'] }).model).toBe('claude-opus-6');
     });
 
     it('machine context: an old CLI version rules the entry out, unknown versions do not', () => {
         expect(resolveLatestModel(null, 'claude', { kind: 'machine', cliVersion: '0.2.148' }).model).toBeNull();
-        expect(resolveLatestModel(null, 'claude', { kind: 'machine', cliVersion: '0.2.149' }).model).toBe('claude-opus-5-5');
-        expect(resolveLatestModel(null, 'claude', { kind: 'machine' }).model).toBe('claude-opus-5-5');
-        expect(resolveLatestModel(null, 'claude', { kind: 'none' }).model).toBe('claude-opus-5-5');
+        expect(resolveLatestModel(null, 'claude', { kind: 'machine', cliVersion: '0.2.149' }).model).toBe('claude-opus-5-5[1m]');
+        expect(resolveLatestModel(null, 'claude', { kind: 'machine' }).model).toBe('claude-opus-5-5[1m]');
+        expect(resolveLatestModel(null, 'claude', { kind: 'none' }).model).toBe('claude-opus-5-5[1m]');
     });
+
+    it('B-883: an old wrapper that proves Opus 5.5 only by its catalog gets the plain id (no unrecognized_model)', () => {
+        const r = resolveLatestModel(null, 'claude', { kind: 'session', capabilities: [], catalog: CLAUDE_CATALOG });
+        expect(r).toMatchObject({ model: 'claude-opus-5-5', limited: false });
+        // A newer catalog-only Opus has no table entry saying it takes [1m].
+        expect(resolveLatestModel(null, 'claude', {
+            kind: 'session', capabilities: [CLAUDE_OPUS_55_CAPABILITY],
+            catalog: [{ code: 'opus', value: 'Opus 6', resolvedModel: 'claude-opus-6' }],
+        }).model).toBe('claude-opus-6');
+    });
+
+    it('B-883: an entry without longContext (or a table from before it) sends the plain id', () => {
+        const table: LatestModelTable = { version: 1, agents: { claude: { ...claudeTier, models: [{ model: 'claude-opus-5-5', requires: { capability: CLAUDE_OPUS_55_CAPABILITY } }] } } };
+        expect(resolveLatestModel(table, 'claude', { kind: 'session', capabilities: [CLAUDE_OPUS_55_CAPABILITY] }).model).toBe('claude-opus-5-5');
+        expect(BUNDLED_LATEST_MODELS.agents.claude!.models[0]).toMatchObject({ model: 'claude-opus-5-5', longContext: true });
+    });
+
 });
 
 describe('resolveLatestModel — codex', () => {
@@ -150,8 +168,14 @@ describe('machine configuration wins over follow-latest (codex / gemini)', () =>
         expect(resolveLatestModel(null, 'gemini', { kind: 'session', catalog: [{ code: 'gemini-3.1-pro-preview' }], configuredModel: null }).model).toBe('gemini-3.1-pro-preview');
     });
 
-    it('Claude keeps following latest regardless (its default was always sent)', () => {
-        expect(resolveLatestModel(null, 'claude', { kind: 'session', capabilities: [CLAUDE_OPUS_55_CAPABILITY], configuredModel: 'sonnet' }).model).toBe('claude-opus-5-5');
+    it('B-883: a Claude machine config (settings model / ANTHROPIC_MODEL) wins too: send nothing, report it', () => {
+        expect(resolveLatestModel(null, 'claude', { kind: 'session', capabilities: [CLAUDE_OPUS_55_CAPABILITY], configuredModel: 'opus[1m]' }))
+            .toMatchObject({ model: null, configured: 'opus[1m]', label: 'opus[1m]', newest: 'claude-opus-5-5' });
+        expect(resolveLatestModel(null, 'claude', { kind: 'machine', cliVersion: '0.2.202', configuredModel: 'claude-opus-5-5[1m]' }).configured).toBe('claude-opus-5-5[1m]');
+    });
+
+    it('B-883: a Claude wrapper that does not report its config (absent) still follows latest, unlike codex', () => {
+        expect(resolveLatestModel(null, 'claude', { kind: 'session', capabilities: [CLAUDE_OPUS_55_CAPABILITY] }).model).toBe('claude-opus-5-5[1m]');
     });
 });
 
@@ -171,8 +195,9 @@ describe('resolveLatestModel — gemini', () => {
 describe('isResolvedLatestModel', () => {
     it('matches only the id latest resolves to in that context', () => {
         const ctx = { kind: 'session' as const, capabilities: [CLAUDE_OPUS_55_CAPABILITY] };
-        expect(isResolvedLatestModel(null, 'claude', ctx, 'claude-opus-5-5')).toBe(true);
-        expect(isResolvedLatestModel(null, 'claude', ctx, 'claude-opus-5-5[1m]')).toBe(false);
+        // B-883: latest is the 1M twin; the plain id (1M switched off) is a pin.
+        expect(isResolvedLatestModel(null, 'claude', ctx, 'claude-opus-5-5[1m]')).toBe(true);
+        expect(isResolvedLatestModel(null, 'claude', ctx, 'claude-opus-5-5')).toBe(false);
         expect(isResolvedLatestModel(null, 'claude', ctx, 'opus')).toBe(false);
         expect(isResolvedLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_154, configuredModel: null }, 'gpt-5.6-sol')).toBe(true);
         expect(isResolvedLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_166, configuredModel: null }, 'gpt-5.6-sol')).toBe(false);

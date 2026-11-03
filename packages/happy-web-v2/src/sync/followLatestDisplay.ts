@@ -13,7 +13,7 @@ import { isCliVersionBelow } from '@/app/cliUpdatePolicy';
 export type FollowLatestState =
     /** Runs the newest model of the tier the wrapper proves it can run. */
     | { kind: 'latest'; model: string; label: string | null }
-    /** The machine's own agent config pins a model (Codex/Gemini) — it wins. */
+    /** The machine's own agent config pins a model (Claude/Codex/Gemini) — it wins. */
     | { kind: 'machineConfig'; model: string }
     /** A live wrapper proves nothing newer (old CLI: no configuredModel / no
      *  capability): nothing is sent, the machine default runs. */
@@ -78,8 +78,10 @@ export function withFollowLatestOption(options: readonly ModelMode[], input: {
     /** The displayed explicit choice, `latest` when following. */
     selectedKey: string | null | undefined;
     machineDefault: { name: string; description: string | null; disabled?: boolean };
+    /** B-883: the follow entry already runs the machine's config model (Claude too) — `default` would repeat it. */
+    followsMachineConfig?: boolean;
 }): ModelMode[] {
-    const keepDefault = !MACHINE_CONFIG_AGENTS.includes(normalizeAgentKey(input.flavor)) || input.selectedKey === 'default';
+    const keepDefault = (!MACHINE_CONFIG_AGENTS.includes(normalizeAgentKey(input.flavor)) && !input.followsMachineConfig) || input.selectedKey === 'default';
     const out: ModelMode[] = [{ key: LATEST_MODEL_MODE, name: input.follow.name, description: input.follow.description }];
     for (const option of options) {
         if (option.key === LATEST_MODEL_MODE) continue;
@@ -88,7 +90,9 @@ export function withFollowLatestOption(options: readonly ModelMode[], input: {
             continue;
         }
         // QA26 P2-4: a pinned `[1m]` twin is listed (and checked) under its base row.
-        if (option.key === input.latestModel && input.selectedKey !== option.key && input.selectedKey !== `${option.key}[1m]`) continue;
+        // B-883: following a `[1m]` id folds its plain id in too (the 1M switch reaches it).
+        const followed = option.key === input.latestModel || `${option.key}[1m]` === input.latestModel;
+        if (followed && input.selectedKey !== option.key && input.selectedKey !== `${option.key}[1m]`) continue;
         out.push(option);
     }
     return out;
@@ -156,15 +160,13 @@ export function summarizeFollowLatest(entries: readonly MachineFollowLatest[]): 
 
 /**
  * B-844c (QA22c P2-3): what the follow entry's description may promise. An
- * old CLI does not switch until it is upgraded; Claude has no machine-config
- * pin for follow-latest to defer to (its default model is always sent).
+ * old CLI does not switch until it is upgraded. Every agent's machine-config
+ * pin wins over following latest (Claude too since B-883).
  */
 export function followLatestDescriptionKey(
     state: FollowLatestState,
-    isClaude: boolean,
-): 'session.chat.modelLatestDescription' | 'session.chat.modelLatestDescriptionClaude' | 'session.chat.modelLatestDescriptionUpgradeCli' {
-    if (state.kind === 'machineDefault') return 'session.chat.modelLatestDescriptionUpgradeCli';
-    return isClaude ? 'session.chat.modelLatestDescriptionClaude' : 'session.chat.modelLatestDescription';
+): 'session.chat.modelLatestDescription' | 'session.chat.modelLatestDescriptionUpgradeCli' {
+    return state.kind === 'machineDefault' ? 'session.chat.modelLatestDescriptionUpgradeCli' : 'session.chat.modelLatestDescription';
 }
 
 /**
