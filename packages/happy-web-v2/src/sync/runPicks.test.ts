@@ -42,7 +42,7 @@ describe('cross-device: device B opens a session device A set to Haiku', () => {
     it('a session following latest stays 「跟随最新」 on every device', () => {
         const meta = resolveMessageModeMeta(claude({ modelIntent: 'latest' }), ACCOUNT_OPUS, null);
         expect(meta.modelIntent).toBe('latest');
-        expect(meta.model).toBe('claude-opus-5-5');
+        expect(meta.model).toBe('claude-opus-5-5[1m]');
     });
     it('「自动」 recorded stays auto even where the account default names a level', () => {
         const meta = resolveMessageModeMeta(claude({ effortIntent: 'default' }), ACCOUNT_OPUS, null);

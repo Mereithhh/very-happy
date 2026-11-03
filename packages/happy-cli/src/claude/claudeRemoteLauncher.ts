@@ -784,9 +784,9 @@ export async function claudeRemoteLauncher(
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
                     onMessage,
-                    onCompletionEvent: (message: string) => {
+                    onCompletionEvent: (message: string, kind?: string) => {
                         logger.debug('[remote]: Completion event received:', contentLogMetadata(message));
-                        session.client.sendSessionEvent({ type: 'message', message });
+                        session.client.sendSessionEvent(kind ? { type: 'message', message, kind } : { type: 'message', message });
                     },
                     onAuthFailure: (reason: string) => {
                         // B-850a: with an account bound, the account was
@@ -814,6 +814,7 @@ export async function claudeRemoteLauncher(
                     // read them — the same tombstone a destroyed queue item gets
                     // (B-332), so the web shows them as not delivered, not answered.
                     retiredModels: session.retiredModels,
+                    longContext: session.longContextPolicy ?? undefined,
                     // B-634 ②: messages the Query ended without Claude Code ever
                     // starting them — sent once more, or tombstoned (B-332).
                     onCommandsUnconfirmed: (commands, { aborted }) => {

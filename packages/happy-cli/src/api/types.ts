@@ -663,6 +663,8 @@ export type Metadata = {
    * machine config.
    */
   stickyModel?: string | null,
+  /** B-883b: this machine's account/provider refused 1M context (the wrapper's verdict, see claudeLongContext.ts). */
+  longContextUnsupported?: { reason: string, at: number } | null,
   /**
    * B-849b: this session's model / thinking choice, recorded by the wrapper
    * (sole writer) from message meta and the `session-run-intent` RPC; every

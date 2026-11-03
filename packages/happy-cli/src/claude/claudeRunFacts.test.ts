@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { liveModelTarget, parseClaudeRunFacts, readClaudeRunFacts } from './claudeRunFacts';
 import { applyClaudeRunFacts } from './claudeSdkMetadata';
 import type { Metadata } from '@/api/types';
@@ -17,6 +17,12 @@ describe('parseClaudeRunFacts (B-849b)', () => {
     it('nothing pinned is null, not unknown; no effort sent is null', () => {
         expect(parseClaudeRunFacts({ effective: {}, applied: { effort: null } })).toEqual({ configuredModel: null, effort: null });
     });
+    it('B-883: ANTHROPIC_MODEL pins too — settings env over the process env over the settings model (probed CC 2.1.306)', () => {
+        expect(parseClaudeRunFacts({ effective: { model: 'opus[1m]' } }, 'claude-sonnet-5-5').configuredModel).toBe('claude-sonnet-5-5');
+        expect(parseClaudeRunFacts({ effective: { model: 'opus[1m]', env: { ANTHROPIC_MODEL: 'claude-haiku-5-5' } } }, 'claude-sonnet-5-5').configuredModel).toBe('claude-haiku-5-5');
+        expect(parseClaudeRunFacts({ effective: {} }, 'claude-opus-5-5[1m]').configuredModel).toBe('claude-opus-5-5[1m]');
+        expect(parseClaudeRunFacts({ effective: {} }, '  ').configuredModel).toBeNull();
+    });
     it('unknown shapes say nothing', () => {
         expect(parseClaudeRunFacts(null)).toEqual({});
         expect(parseClaudeRunFacts({ applied: { effort: 'ludicrous' } })).toEqual({});
@@ -24,7 +30,14 @@ describe('parseClaudeRunFacts (B-849b)', () => {
 });
 
 describe('readClaudeRunFacts / liveModelTarget', () => {
+    // The host running the tests may itself export ANTHROPIC_MODEL.
+    beforeEach(() => { vi.stubEnv('ANTHROPIC_MODEL', ''); });
+    afterEach(() => { vi.unstubAllEnvs(); });
     const live = (answer: () => Promise<unknown>) => ({ getSettings: answer });
+    it('B-883: the inherited ANTHROPIC_MODEL counts as the machine config', async () => {
+        vi.stubEnv('ANTHROPIC_MODEL', 'claude-opus-5-5[1m]');
+        expect((await readClaudeRunFacts(live(async () => ({ effective: {} }))))?.configuredModel).toBe('claude-opus-5-5[1m]');
+    });
     it('reads the live Query', async () => {
         expect(await readClaudeRunFacts(live(async () => PROBED))).toEqual({ configuredModel: 'claude-haiku-5-5', effort: 'medium' });
     });

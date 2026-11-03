@@ -118,6 +118,8 @@ export function wantedModel(
         catalog: session.metadata?.models ?? null,
         configuredModel: session.metadata?.configuredModel,
     });
+    // B-883: a Claude config pin (settings.json / ANTHROPIC_MODEL) wins too.
+    if (resolution.configured) return 'default';
     const target = MACHINE_CONFIG_AGENTS.includes(flavor ?? '') ? resolution.model : resolution.newest;
     return target ?? 'default';
 }

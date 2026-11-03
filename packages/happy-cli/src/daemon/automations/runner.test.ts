@@ -99,7 +99,7 @@ describe('automation runner: spawn runs', () => {
         const runner = start(client); await settled(runner);
         expect(client.claim).toHaveBeenCalledWith({ machineId: 'm1', limit: AUTOMATION_MAX_CONCURRENT, leaseMs: 60_000, capabilities: ['precheck'] });
         expect(spawn).toHaveBeenCalledWith({ directory: '/repo', agent: 'claude', permissionMode: 'bypassPermissions', spawnedBy: 'automation', environmentVariables: { VH_AUTOMATION_RUN_ID: 'r1', VH_AUTOMATION_NAME: 'nightly' } });
-        expect(send).toHaveBeenCalledWith('s1', `${automationPromptHeader('nightly', 'r1')}\nSummarize tanka for nightly`, expect.objectContaining({ localId: 'automation-r1', permissionMode: 'bypassPermissions', model: 'claude-opus-5-5', effort: null }));
+        expect(send).toHaveBeenCalledWith('s1', `${automationPromptHeader('nightly', 'r1')}\nSummarize tanka for nightly`, expect.objectContaining({ localId: 'automation-r1', permissionMode: 'bypassPermissions', model: 'claude-opus-5-5[1m]', effort: null }));
         expect(client.report).toHaveBeenCalledWith('r1', { claimId: 'claim-1', status: 'running', sessionId: 's1' });
         expect(readReceipt(home, 'r1')?.phase).toBe('running');
         expect(runner.hasSession('s1')).toBe(true);

@@ -30,7 +30,7 @@ describe('resolveMessageModeMeta (B-103)', () => {
     it('claude defaults to pinned Opus 5.5 only when the wrapper advertises it', () => {
         const capable = { permissionMode: null, modelMode: null, effortLevel: null,
             metadata: { flavor: 'claude', capabilities: ['claude-steer-v1', 'claude-opus-5-5-v1'] } } as any;
-        expect(resolveMessageModeMeta(capable).model).toBe('claude-opus-5-5');
+        expect(resolveMessageModeMeta(capable).model).toBe('claude-opus-5-5[1m]');
         // Older wrappers bundle Claude Code < 2.1.280, which 400s on Opus 5.5.
         const old = { ...capable, metadata: { flavor: 'claude', capabilities: ['claude-steer-v1'] } };
         expect(resolveMessageModeMeta(old).model).toBeNull();

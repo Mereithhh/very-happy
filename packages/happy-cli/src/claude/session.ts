@@ -14,6 +14,7 @@ import type { ClaudePrewarmLease } from "./claudePrewarm";
 import { createProjectInjector, type ProjectInjector } from "@/projects/injector";
 import { sharedProjectsClient } from "@/projects/client";
 import { createRetiredModels } from "./claudeRetiredModel";
+import type { LongContextPolicy } from "./claudeLongContext";
 
 export type ClaudeSteerInput = {
     message: string;
@@ -53,6 +54,8 @@ export class Session {
     readonly scheduledWakeups = createScheduledWakeupTracker();
     /** B-634 ③: model ids Claude Code reported as model_not_found — session-scoped, survives relaunches. */
     readonly retiredModels = createRetiredModels();
+    /** B-883b: what to do when the provider refuses 1M context (set by runClaude; null = forward the error as is). */
+    longContextPolicy: LongContextPolicy | null = null;
 
     /**
      * Window after a user-initiated abort during which stray promise rejections

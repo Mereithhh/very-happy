@@ -24,9 +24,16 @@ describe('resolveSpawnPermissionMode', () => {
 describe('resolveFirstMessageMeta', () => {
     const capable = [CLAUDE_OPUS_55_CAPABILITY]
 
-    it('claude: latest resolves to pinned Opus 5.5 with effort reset, like the web message meta', () => {
+    it('claude: latest resolves to pinned Opus 5.5 · 1M with effort reset, like the web message meta (B-883)', () => {
         expect(resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'bypassPermissions', capabilities: capable }))
-            .toEqual({ permissionMode: 'bypassPermissions', model: 'claude-opus-5-5', effort: null, modelIntent: 'latest', effortIntent: 'default' })
+            .toEqual({ permissionMode: 'bypassPermissions', model: 'claude-opus-5-5[1m]', effort: null, modelIntent: 'latest', effortIntent: 'default' })
+        expect(resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'default', capabilities: capable, configuredModel: null }).model).toBe('claude-opus-5-5[1m]')
+    })
+
+    it('B-883 claude: a machine config model wins — model null (Claude Code runs it); an explicit --model still wins', () => {
+        expect(resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'default', capabilities: capable, configuredModel: 'opus[1m]' }))
+            .toMatchObject({ model: null, modelIntent: 'latest' })
+        expect(resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'default', explicitModel: 'claude-opus-5-5', capabilities: capable, configuredModel: 'opus[1m]' }).model).toBe('claude-opus-5-5')
     })
 
     it('claude: falls back to the machine default when the wrapper can run no known Opus', () => {
@@ -42,6 +49,7 @@ describe('resolveFirstMessageMeta', () => {
                 { model: 'claude-opus-5-5', requires: { capability: CLAUDE_OPUS_55_CAPABILITY } },
             ] } },
         }
+        // This table has no longContext flag (an older server): the plain id.
         expect(resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'default', capabilities: capable, latestTable }).model).toBe('claude-opus-5-5')
         expect(resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'default', capabilities: ['claude-opus-6-v1'], latestTable }).model).toBe('claude-opus-6')
     })
@@ -92,7 +100,7 @@ describe('first-message intent (B-849b2, QA28 P2-5)', () => {
     const capable = ['claude-opus-5-5-v1']
     it('a spawn without --model records latest, not the model it resolved to', () => {
         const claude = resolveFirstMessageMeta({ agent: 'claude', permissionMode: 'bypassPermissions', capabilities: capable })
-        expect(claude.model).toBe('claude-opus-5-5')
+        expect(claude.model).toBe('claude-opus-5-5[1m]')
         expect(claude.modelIntent).toBe('latest')
         expect(claude.effortIntent).toBe('default')
         const codex = resolveFirstMessageMeta({ agent: 'codex', permissionMode: 'yolo' })
