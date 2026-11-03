@@ -177,14 +177,20 @@ Pick a person and **View only** or **Can send**; the share can expire after 1,
 
 - They see every session in the project and every web terminal filed under
   it — including ones you add later — plus the project's instructions and
-  log. Not its team tasks, automations, offline messages or folder paths.
+  log. Not its team tasks, automations or offline messages, and the
+  project's folders show only their folder name, not the full path. Each
+  session's own working directory is visible exactly as in a direct session
+  share (see [Trust model](#trust-model)).
 - **View only** reads the sessions. **Can send** also lets them send messages
   in those sessions, under their own name. Terminals in the project are
   always view only. **Can operate** is never given through a project; give it
   for one session or one terminal instead.
-- Moving a session or terminal out of the project ends their access to it at
-  once. Revoking the project share ends everything that came through the
-  project; a session you also shared with them on its own stays shared.
+- Moving a session out of the project ends their access to it at once.
+  Moving a terminal out of (or into) the project takes effect when your
+  machine next reports its terminals, usually within 5–10 seconds; until
+  then a terminal they already have open keeps showing its output. Revoking
+  the project share ends everything that came through the project; a
+  session you also shared with them on its own stays shared.
 
 They accept the invitation from the top of their sidebar and then find the
 project under **Projects shared with me**, with the same overview and
@@ -204,4 +210,6 @@ Very Happy is server-trusted storage, not end-to-end encrypted
 a session key on purpose: to re-wrap it for the other account and to encrypt a
 driver's message. Every such action is logged (`session.share.*`). The other
 account receives a copy of the session metadata with machine-private fields
-removed (home directory, process id, MCP servers, terminal binding).
+removed (home directory, process id, MCP servers, terminal binding). The
+session's working directory and machine id stay, whether the session was
+shared directly or through a project.
