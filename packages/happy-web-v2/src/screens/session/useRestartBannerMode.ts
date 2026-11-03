@@ -70,13 +70,19 @@ const WHY_KEY = {
 /** The banner text for a `waiting` / `failed` mode; null for the others (they keep their own wording). */
 export function autoRestartBannerText(
     mode: RestartBannerMode,
-    behind: { sessionVersion: string; machineVersion: string } | { agent: string },
+    behind: { sessionVersion: string; machineVersion: string; severity?: string } | { agent: string },
     t: T,
 ): string | null {
     if (mode.kind === 'failed') return t('autoRestart.failed', { reason: failureSummary(mode.reason) || '?' });
     // QA25 P2-1: say why the daemon leaves it to the user.
     if (mode.kind === 'manual' && mode.reason === 'local-terminal') {
         return 'agent' in behind ? t('autoRestart.manualLocalTerminalAgent', { agent: behind.agent }) : t('autoRestart.manualLocalTerminal', behind);
+    }
+    // B-882: an old wrapper that never reports idle will not be updated by the daemon.
+    // The critical "may drop your messages" wording outranks it.
+    const critical = 'severity' in behind && behind.severity === 'critical';
+    if (mode.kind === 'manual' && !critical && (mode.reason === 'no-report' || mode.reason === 'no-check-in')) {
+        return 'agent' in behind ? t('autoRestart.manualNoReportAgent', { agent: behind.agent }) : t('autoRestart.manualNoReport', behind);
     }
     if (mode.kind !== 'waiting') return null;
     const why = t(WHY_KEY[waitReasonKey(mode.reason)]);
