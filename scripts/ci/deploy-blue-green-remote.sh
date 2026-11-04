@@ -142,11 +142,55 @@ initialize_release_files() {
     install -d -m 755 "$RELEASE_DIR"
     install -m 600 "$REPO_ROOT/ops/production/docker-compose.blue-green.yml" "$RELEASE_COMPOSE"
     install -m 600 "$REPO_ROOT/ops/production/legacy-release.override.yml" "$LEGACY_OVERRIDE"
-    if [ ! -f "$RELEASE_DIR/admin-token" ]; then
-        umask 077
-        od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "$RELEASE_DIR/admin-token"
-    fi
-    [ "$(wc -c < "$RELEASE_DIR/admin-token" | tr -d ' ')" -ge 64 ]
+}
+
+# B-886: one release admin token per slot, and the candidate slot gets a fresh
+# one on every release. Before this one `admin-token` file was generated once
+# and shared by both slots forever, so a token that leaked (R45 printed a
+# candidate's whole env) stayed valid indefinitely. Now each slot keeps the
+# token it was started with: calls to the old slot (drain/status/disconnect,
+# rollback's cancel) use its file, the candidate's file is rewritten just
+# before it is (re)created, and the old token dies with the old container.
+slot_token_file() {
+    case "$1" in blue|green) echo "$RELEASE_DIR/admin-token-$1" ;; *) return 1 ;; esac
+}
+
+# The legacy container (port 3005) is the blue slot.
+port_slot() {
+    case "$1" in 3005|3101) echo blue ;; 3102) echo green ;; *) return 1 ;; esac
+}
+
+write_new_admin_token() {
+    local file="$1" next
+    next=$(mktemp "$file.XXXXXX")
+    chmod 600 "$next"
+    od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "$next"
+    mv "$next" "$file"
+}
+
+# Upgrade from the single shared file: every slot running today was started
+# with it, so both per-slot files start as copies; the shared file is removed
+# once both exist. A fresh host gets two new tokens.
+prepare_admin_tokens() {
+    local legacy="$RELEASE_DIR/admin-token" slot file next
+    for slot in blue green; do
+        file=$(slot_token_file "$slot")
+        [ -f "$file" ] && continue
+        if [ -f "$legacy" ]; then
+            next=$(mktemp "$file.XXXXXX")
+            chmod 600 "$next"
+            cat "$legacy" > "$next"
+            mv "$next" "$file"
+        else
+            write_new_admin_token "$file"
+        fi
+    done
+    rm -f "$legacy"
+    for slot in blue green; do
+        file=$(slot_token_file "$slot")
+        chmod 600 "$file"
+        [ "$(wc -c < "$file" | tr -d ' ')" -ge 64 ] || { echo "release admin token for $slot is too short" >&2; return 1; }
+    done
 }
 
 # B-827: the repo owns the base compose (vh-pgbouncer). Install it without
@@ -237,17 +281,21 @@ write_slot_env() {
         printf 'VH_BLUE_SHA=%s\n' "$blue_sha"
         printf 'VH_GREEN_IMAGE=%s\n' "$green_image"
         printf 'VH_GREEN_SHA=%s\n' "$green_sha"
-        printf 'VH_RELEASE_ADMIN_TOKEN=%s\n' "$(<"$RELEASE_DIR/admin-token")"
+        printf 'VH_BLUE_ADMIN_TOKEN=%s\n' "$(<"$(slot_token_file blue)")"
+        printf 'VH_GREEN_ADMIN_TOKEN=%s\n' "$(<"$(slot_token_file green)")"
     } > "$next"
     chmod 600 "$next"
     mv "$next" "$SLOT_ENV"
 }
 
+# The token goes to curl through a file descriptor, never argv (`ps` shows
+# argv to every local user).
 admin_curl() {
-    local port="$1" method="$2" path="$3" body="${4:-}"
-    local args=(-fsS --max-time 15 -X "$method" -H "X-VH-Release-Token: $(<"$RELEASE_DIR/admin-token")")
+    local port="$1" method="$2" path="$3" body="${4:-}" token_file
+    token_file=$(slot_token_file "$(port_slot "$port")")
+    local args=(-fsS --max-time 15 -X "$method")
     if [ -n "$body" ]; then args+=(-H 'Content-Type: application/json' --data "$body"); fi
-    curl "${args[@]}" "http://127.0.0.1:${port}${path}"
+    curl "${args[@]}" -H @<(printf 'X-VH-Release-Token: %s\n' "$(<"$token_file")") "http://127.0.0.1:${port}${path}"
 }
 
 wait_ready() {
@@ -309,6 +357,32 @@ write_active_upstream() {
 reload_caddy() {
     caddy validate --config "$CADDY_FILE"
     systemctl reload caddy
+}
+
+# B-886: the repo owns the production Caddyfile, but only groundwork used to
+# install it, so a fix to it (here: public /_vh/* answers 404) never reached
+# the host. A switch now installs it before any candidate work, keeping the
+# previous copy, and puts that copy back when the new file does not validate
+# or the active release stops answering publicly through it.
+sync_caddyfile() {
+    local source="$REPO_ROOT/ops/production/Caddyfile.blue-green" backup
+    cmp -s "$source" "$CADDY_FILE" && return 0
+    caddy validate --adapter caddyfile --config "$source" >&2 || {
+        echo "repo Caddyfile does not validate on this host; $CADDY_FILE left as is" >&2
+        return 1
+    }
+    install -d -m 700 "$RELEASE_DIR/caddyfile-backups"
+    backup="$RELEASE_DIR/caddyfile-backups/Caddyfile.$(date -u +%Y%m%dT%H%M%SZ)"
+    cp -a "$CADDY_FILE" "$backup"
+    install -m 644 "$source" "$CADDY_FILE"
+    if reload_caddy >&2 && verify_public_release "$ACTIVE_RELEASE"; then
+        echo "installed $CADDY_FILE from the repo (previous copy: $backup)" >&2
+        return 0
+    fi
+    echo "repo Caddyfile failed after reload; restoring $backup" >&2
+    cp -a "$backup" "$CADDY_FILE"
+    reload_caddy >&2 || true
+    return 1
 }
 
 verify_public_release() {
@@ -411,6 +485,7 @@ start_candidate() {
     CANDIDATE_PORT=$(slot_port "$CANDIDATE_SLOT")
     CANDIDATE_SERVICE="happy-server-$CANDIDATE_SLOT"
     verify_migration_contract
+    write_new_admin_token "$(slot_token_file "$CANDIDATE_SLOT")"
     write_slot_env "$CANDIDATE_SLOT" "$IMAGE" "$VERSION"
     slot_compose up -d --force-recreate "$CANDIDATE_SERVICE"
     CANDIDATE_STARTED=true
@@ -550,6 +625,9 @@ switch_release() {
             exit 4
         }
     fi
+    if [ "$MODE" = bluegreen ]; then
+        sync_caddyfile || exit 7
+    fi
     # Allocate and persist an attempt generation before any candidate work.
     # Failed attempts consume a generation, so a retained failed candidate can
     # never outrank a later retry in rpcHandler's lexical epoch ordering.
@@ -661,6 +739,7 @@ if [ "$VH_RELEASE_LIBRARY_ONLY" != 1 ]; then
     # while an earlier attempt is still running; a retry must not race it.
     exec 9>"$RELEASE_DIR/deploy.lock"
     flock -n 9 || { echo "another deployment is still running on this host (lock $RELEASE_DIR/deploy.lock); wait for it or kill -TERM the stale deploy-blue-green-remote.sh" >&2; exit 6; }
+    prepare_admin_tokens
     sync_base_compose
     check_log_rotation
     PHASE=before-switch

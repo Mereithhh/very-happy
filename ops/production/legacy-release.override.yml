@@ -3,4 +3,4 @@ services:
     environment:
       VH_RELEASE_SLOT: blue
       VH_RELEASE_SHA: ${VH_BLUE_SHA}
-      VH_RELEASE_ADMIN_TOKEN: ${VH_RELEASE_ADMIN_TOKEN}
+      VH_RELEASE_ADMIN_TOKEN: ${VH_BLUE_ADMIN_TOKEN}

@@ -214,8 +214,58 @@ rollback never runs a destructive down migration.
 Production prerequisites are intentionally fail-closed and checked without
 printing secret values: `/opt/happy/.env` must contain `REDIS_URL`; its
 `DATABASE_URL` must have an explicit `connection_limit`; Caddy must be at least
-2.10.2. Release state and the generated admin token live mode 0600 under
-`/opt/happy/release/`; the token is not a public API credential.
+2.10.2. Release state and the admin tokens live mode 0600 under
+`/opt/happy/release/`; a token is not a public API credential.
+
+### Release admin API and token rotation (B-886)
+
+`/_vh/release/{ready,status,canary,drain,cancel,disconnect}` drives a slot
+during a release; drain and disconnect cut production connections. Only the
+deploy script calls it, on `127.0.0.1:<slot port>` directly (readiness, canary,
+drain and rollback's cancel included). The public edge never forwards it:
+`Caddyfile.blue-green` answers `/_vh` and `/_vh/*` on both hosts with 404 as the
+first rule of the route. Nothing legitimate reaches it through the public host.
+
+Each slot has its own token, `/opt/happy/release/admin-token-blue` and
+`admin-token-green` (0600), passed to that slot only (`VH_BLUE_ADMIN_TOKEN` /
+`VH_GREEN_ADMIN_TOKEN` in `slots.env`). Every `shadow` and `switch` writes a new
+token for the candidate slot just before recreating it; calls to the old slot
+keep using the token it was started with, so a rollback to the old slot still
+authenticates, and the old token dies when the old slot is stopped (or is
+replaced the next time that slot becomes the candidate). The token reaches curl
+through a file descriptor, never argv or the log. The first run after B-886
+copies the single shared `admin-token` into both slot files (the running slot was
+started with it) and deletes it. Downgrading the deploy script to a pre-B-886
+version needs `cp admin-token-<active slot> admin-token` first, or its drain
+fails before switch and the candidate is stopped.
+
+A switch also installs the repo `Caddyfile.blue-green` when the host copy
+differs (before this only `groundwork` did): it validates the new file, keeps
+the old one in `/opt/happy/release/caddyfile-backups/`, reloads, and verifies the
+active release publicly; on any failure it restores the backup and exits 7
+before candidate work. That extra reload reconnects WebSockets once more, only
+in a release that changes the Caddyfile. Check `diff /etc/caddy/Caddyfile
+ops/production/Caddyfile.blue-green` before a release if the host may carry a
+hand edit.
+
+**A release admin token was exposed** (in a transcript, log, or screenshot):
+
+1. The public path is closed, so the exposure is limited to someone with a shell
+   on vh-sg. Do not paste env/`docker inspect` output; read single keys only
+   (`docker exec <c> printenv <KEY>` piped to a has-value check).
+2. The next normal `switch` rotates it: the candidate gets a new token and the
+   exposed one dies with the old slot once it drains and stops. Confirm in the
+   deploy log that the old slot was stopped (no `left running`); a retained old
+   slot still accepts the old token on loopback — stop it per §Stop the old
+   slot.
+3. Urgent: run an out-of-band switch now (security issues may skip the release
+   window): `gh workflow run deploy-hwsg.yml --ref main -f target=all -f
+   rollout=switch`, with the normal release checks. It ships whatever merged
+   `main` holds; when main has nothing unreleased it is a same-code switch whose
+   only effect is the new token and the old slot's retirement. Do not pass
+   `release_sha` for this: after activation it means "reuse the shadow image"
+   and fails. Afterwards check on the host that neither `admin-token-<slot>` file
+   matches the exposed value (compare `sha256sum` output, never print tokens).
 
 If the candidate's packaged migration tree differs from the active digest, the
 operator must first review it as expand-compatible and set
