@@ -35,12 +35,13 @@ describe('B-804 messages catch-up status', () => {
         expect(networkStore.getState().syncing).toEqual([]);
     });
 
-    it('a slower one shows 「同步中」 (chat line + the top bar holder) and clears when it lands', async () => {
+    it('a slower one shows 「同步中」 in the chat line only and clears when it lands', async () => {
         const run = deferred();
         trackCatchUp('s1', run.promise);
         vi.advanceTimersByTime(CATCH_UP_SHOW_MS);
         expect(phase('s1')).toBe('syncing');
-        expect(networkStore.getState().syncing).toEqual(['messages:s1']);
+        // B-885: never the top bar — it moved the whole shell down 24px and back.
+        expect(networkStore.getState().syncing).toEqual([]);
         run.resolve();
         await vi.advanceTimersByTimeAsync(0);
         expect(phase('s1')).toBeNull();
@@ -69,18 +70,28 @@ describe('B-804 messages catch-up status', () => {
         expect(networkStore.getState().syncing).toEqual([]);
     });
 
-    it('a failed catch-up also releases the bar; sessions are tracked apart', async () => {
+    it('a failed catch-up also ends the line; sessions are tracked apart', async () => {
         const a = deferred();
         const b = deferred();
         trackCatchUp('s1', a.promise);
         trackCatchUp('s2', b.promise);
         vi.advanceTimersByTime(CATCH_UP_SHOW_MS);
-        expect(networkStore.getState().syncing).toEqual(['messages:s1', 'messages:s2']);
+        expect(phase('s1')).toBe('syncing');
         a.reject(new Error('gave up'));
         await vi.advanceTimersByTimeAsync(0);
         expect(phase('s1')).toBeNull();
         expect(phase('s2')).toBe('syncing');
-        expect(networkStore.getState().syncing).toEqual(['messages:s2']);
+        expect(networkStore.getState().syncing).toEqual([]);
+    });
+});
+
+describe('B-885 the chat line takes no layout room', () => {
+    it('is laid over the transcript foot (absolute), so showing / hiding it never resizes the transcript', () => {
+        // Comments stripped: a commented-out declaration must not satisfy the assertion.
+        const css = readFileSync(resolve(__dirname, '../screens/session/session.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+        const block = css.slice(css.indexOf('.sd-body > .chat-sync {'), css.indexOf('}', css.indexOf('.sd-body > .chat-sync {')));
+        expect(block).toContain('position: absolute;');
+        expect(block).not.toContain('flex: none;');
     });
 });
 

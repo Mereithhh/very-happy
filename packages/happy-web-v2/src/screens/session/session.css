@@ -164,21 +164,32 @@
 .session-workspace-pane[hidden] { display:none; }
 .btw-head--embedded { border-bottom:0; padding-block:var(--sp-2); }
 
-/* B-804: the chat's catch-up line (ChatSyncStatus.tsx) — one quiet row under the transcript. */
-.chat-sync {
-  flex: none;
+/* B-804: the chat's catch-up line (ChatSyncStatus.tsx) — one quiet pill at the
+   transcript's foot. B-885: laid over it, not a row of its own — a row shrank the
+   transcript by 24px when it came and grew it back when it went (a layout jump on
+   every slow switch). */
+.sd-body > .chat-sync {
+  position: absolute;
+  z-index: 1;
+  bottom: var(--sp-2);
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   min-height: 24px;
+  max-width: calc(100% - 2 * var(--sp-3));
   padding: 0 var(--sp-3);
+  border-radius: var(--r-pill);
+  background: var(--bg-1);
+  box-shadow: var(--panel-shadow);
   color: var(--text-dim);
   font: var(--chat-fs-caption)/1.4 var(--font-sans);
   white-space: nowrap;
 }
 .chat-sync > svg { flex: none; }
-.chat-sync--slow { color: var(--warn); }
+.sd-body > .chat-sync--slow { color: var(--warn); }
 .chat-sync-sep { color: var(--text-dim); }
 .chat-sync-retry {
   position: relative;

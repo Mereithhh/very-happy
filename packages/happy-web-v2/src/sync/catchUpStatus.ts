@@ -3,16 +3,17 @@
  *
  * resume / reconnect / recovered / a seq gap start a catch-up (sync.ts); its
  * promise settles when the messages sync has drained. While it runs:
- *  - after CATCH_UP_SHOW_MS the top bar says 「同步中…」 (B-799's
- *    beginNetworkSync, one holder per session) and the chat's bottom line
- *    shows — a catch-up that lands sooner shows nothing (no flicker);
+ *  - after CATCH_UP_SHOW_MS the chat's bottom line shows 「同步消息中…」 — a
+ *    catch-up that lands sooner shows nothing (no flicker). B-885: only that
+ *    line, laid over the transcript's foot. The top bar (B-799's
+ *    beginNetworkSync) pushed the whole shell down 24px and back for the same
+ *    news the line already gave — on every slow switch;
  *  - after CATCH_UP_SLOW_MS (the request deadline + 2s) the line turns into
  *    「连接不稳定 · 重试」.
  * A new catch-up for a session that is already catching up joins it: the
  * line ends when the LATEST one settles, and a retry starts the slow clock over.
  */
 import { create } from 'zustand';
-import { beginNetworkSync } from './networkStatus';
 import { SYNC_READ_TIMEOUT_MS } from './requestDeadline';
 
 export const CATCH_UP_SHOW_MS = 300;
@@ -27,7 +28,6 @@ type Tracking = {
     generation: number;
     showTimer: ReturnType<typeof setTimeout> | null;
     slowTimer: ReturnType<typeof setTimeout> | null;
-    release: (() => void) | null;
 };
 
 const tracking = new Map<string, Tracking>();
@@ -58,10 +58,9 @@ export function trackCatchUp(sessionId: string, done: Promise<unknown>, opts?: {
     const slowMs = opts?.slowMs ?? CATCH_UP_SLOW_MS;
     let entry = tracking.get(sessionId);
     if (!entry) {
-        const created: Tracking = { generation: 0, showTimer: null, slowTimer: null, release: null };
+        const created: Tracking = { generation: 0, showTimer: null, slowTimer: null };
         created.showTimer = setTimeout(() => {
             created.showTimer = null;
-            created.release = beginNetworkSync(`messages:${sessionId}`);
             if (catchUpStore.getState().sessions[sessionId] !== 'slow') setPhase(sessionId, 'syncing');
         }, CATCH_UP_SHOW_MS);
         entry = created;
@@ -77,7 +76,6 @@ export function trackCatchUp(sessionId: string, done: Promise<unknown>, opts?: {
         if (!current || current.generation !== generation) return;
         if (current.showTimer) clearTimeout(current.showTimer);
         if (current.slowTimer) clearTimeout(current.slowTimer);
-        current.release?.();
         tracking.delete(sessionId);
         setPhase(sessionId, null);
     };
@@ -90,7 +88,6 @@ export function forgetCatchUp(sessionId: string): void {
     if (!entry) return;
     if (entry.showTimer) clearTimeout(entry.showTimer);
     if (entry.slowTimer) clearTimeout(entry.slowTimer);
-    entry.release?.();
     tracking.delete(sessionId);
     setPhase(sessionId, null);
 }
