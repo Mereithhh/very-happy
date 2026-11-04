@@ -96,6 +96,12 @@ export function transition(state: SessionSyncState, event: SyncEvent): Result {
                     ? { state: { ...state, phase: 'syncing' }, effects: [{ t: 'subscribe', cold: false }] }
                     : { state: { ...state, phase: 'loading' }, effects: [{ t: 'subscribe', cold: true }] };
             }
+            // B-885: switching back to a session still subscribed and live is not a
+            // catch-up — its pushes kept arriving. One quiet check (like the
+            // reconcile); only a gap it finds (`more`) turns it into syncing. Before,
+            // every switch back went syncing, and an ack slower than 300ms showed
+            // 「同步中」 at the top and the bottom of the chat (both moving the layout).
+            if (state.phase === 'live' && event.anchored) return { state, effects: [{ t: 'subscribe', cold: false }] };
             if (state.phase === 'live' || state.phase === 'stale') {
                 return { state: { ...state, phase: 'syncing', staleReason: undefined }, effects: [{ t: 'subscribe', cold: !event.anchored }] };
             }

@@ -12,6 +12,9 @@ type Row = { name: string; from: SessionSyncState; event: SyncEvent; phase: Sess
 const rows: Row[] = [
     { name: '(none) OPEN, no cache → loading, subscribe(null)', from: initialSyncState(), event: { t: 'open', anchored: false }, phase: 'loading', effects: [{ t: 'subscribe', cold: true }] },
     { name: '(none) OPEN, cached / anchored → syncing, subscribe(lastSeq)', from: initialSyncState(), event: { t: 'open', anchored: true }, phase: 'syncing', effects: [{ t: 'subscribe', cold: false }] },
+    { name: 'B-885 live OPEN (switched back, still subscribed) → stays live, one quiet subscribe(lastSeq)', from: at('live'), event: { t: 'open', anchored: true }, phase: 'live', effects: [{ t: 'subscribe', cold: false }] },
+    { name: 'live OPEN without a window (dropped) → syncing, subscribe(null)', from: at('live'), event: { t: 'open', anchored: false }, phase: 'syncing', effects: [{ t: 'subscribe', cold: true }] },
+    { name: 'stale OPEN → syncing, subscribe(lastSeq) (a real catch-up)', from: at('stale', { staleReason: 'socket' }), event: { t: 'open', anchored: true }, phase: 'syncing', effects: [{ t: 'subscribe', cold: false }] },
     { name: 'loading ACK ok, !hasMore, head proved → live', from: at('loading'), event: { t: 'ack', outcome: { t: 'live' } }, phase: 'live', effects: [] },
     { name: 'syncing ACK ok, !hasMore, head proved (also a holed session) → live', from: at('syncing'), event: { t: 'ack', outcome: { t: 'live' } }, phase: 'live', effects: [] },
     { name: 'syncing ACK headSeq < request afterSeq → loading, invalidate, subscribe(null)', from: at('syncing'), event: { t: 'ack', outcome: { t: 'head-behind' } }, phase: 'loading', effects: [{ t: 'invalidate' }, { t: 'subscribe', cold: true }] },

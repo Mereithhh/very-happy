@@ -379,6 +379,7 @@ phase ∈ cold | loading | live | syncing | stale
 | loading/syncing | ACK ok，`hasMore` | 不变 | 继续拉 |
 | loading/syncing | ACK `gapTooLarge` | syncing→live | 重置窗口，按最新页处理，然后照常校验 head |
 | live | PUSH 连续 | live | — |
+| live | OPEN（切回仍订阅着的会话，有窗口） | live | B-885：静默发一次 subscribe(lastSeq)，同 120s 对账；发现缺口（`hasMore`）才进 syncing。原实现进 syncing，ack 慢于 300ms 就显示「同步中」 |
 | live | PUSH 出现 gap，重排缓冲到期 | syncing | 发 subscribe |
 | live | RESUME / CONNECT | syncing | hello |
 | 任意 | SOCKET_DOWN 或 OFFLINE | stale(reason) | 保留数据 |
@@ -394,7 +395,7 @@ phase ∈ cold | loading | live | syncing | stale
 | phase | 聊天区 |
 |---|---|
 | loading | 现有首屏 loading |
-| syncing | 底部细条「同步中…」，超过 300ms 才显示（PR-2） |
+| syncing | 底部细条「同步中…」，超过 300ms 才显示（PR-2）；B-885 起浮在聊天区底部、不占行，也不再拉起顶部条（顶部条只给离线/恢复） |
 | stale(timeout/server) 超过 3s | 「连接不稳定 · 重试」（PR-2） |
 | stale(offline) | 交给 B-799 离线条，聊天区不再重复提示 |
 | live | 不显示 |

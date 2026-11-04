@@ -1041,3 +1041,112 @@ describe('B-812 M1: the session duties survive every link-back edge in every mod
         }
     });
 });
+
+describe('B-885 switching between sessions', () => {
+    /** Every 「同步中」 the chat line would show for `sid`, sampled on each store change. */
+    function watchCatchUp(sid: string) {
+        const seen: string[] = [];
+        const stop = catchUpStore.subscribe((state) => { if (state.sessions[sid]) seen.push(state.sessions[sid]); });
+        return { seen, stop };
+    }
+
+    it('switching back to a loaded (live, retained) session: one quiet check, never 「同步中」, even when its ack is slow', async () => {
+        const a = newSession();
+        const b = newSession();
+        for (let i = 1; i <= 3; i += 1) store(a, `a${i}`);
+        store(b, 'b1');
+        await connect();
+        view(a);
+        await flush();
+        view(b);
+        await flush();
+        expect([phase(a), phase(b)]).toEqual(['live', 'live']);
+        emits = [];
+        let release: (() => void) | null = null;
+        holdSubscribe = (payload, answer) => { release = () => answer(snapshot(payload)); };
+        const watch = watchCatchUp(a);
+        view(a);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(phase(a)).toBe('live');
+        expect(subscribes(a).map((e) => e.payload.afterSeq)).toEqual([3]);
+        release!();
+        await flush();
+        watch.stop();
+        expect(watch.seen).toEqual([]);
+        expect(phase(a)).toBe('live');
+        expect(texts(a)).toEqual(['a1', 'a2', 'a3']);
+        expect(gets).toEqual([]);
+    });
+
+    it('the check still catches up what the switch-back finds missing (a push lost while away)', async () => {
+        const a = newSession();
+        const b = newSession();
+        store(a, 'a1');
+        await connect();
+        view(a);
+        await flush();
+        view(b);
+        await flush();
+        store(a, 'a2'); // stored while away, its push never arrived
+        view(a);
+        await flush();
+        expect(phase(a)).toBe('live');
+        expect(texts(a)).toEqual(['a1', 'a2']);
+    });
+
+    it('a session that went stale is still a catch-up on switch-back (「同步中」 after 300ms)', async () => {
+        const a = newSession();
+        const b = newSession();
+        store(a, 'a1');
+        await connect();
+        view(a);
+        await flush();
+        view(b);
+        await flush();
+        sync.syncScheduler.offline();
+        expect(phase(a)).toBe('stale');
+        let release: (() => void) | null = null;
+        holdSubscribe = (payload, answer) => { release = () => answer(snapshot(payload)); };
+        view(a);
+        expect(phase(a)).toBe('syncing');
+        await vi.advanceTimersByTimeAsync(301);
+        expect(catchUpStore.getState().sessions[a]).toBe('syncing');
+        release!();
+        await flush();
+        expect(catchUpStore.getState().sessions[a]).toBeUndefined();
+    });
+
+    it('an ordinary session is never parked as an import; an uploading import is, until its marker says done (B-880)', async () => {
+        const plain = newSession();
+        const finished = newSession();
+        const importing = newSession();
+        store(plain, 'p1');
+        store(finished, 'f1');
+        store(importing, 'i1');
+        const withMeta = (sid: string, forkBackfill: unknown) => storage.setState((state) => ({
+            sessions: { ...state.sessions, [sid]: { ...state.sessions[sid], metadata: { ...state.sessions[sid].metadata!, forkBackfill } } as never },
+        }));
+        withMeta(finished, { done: true, count: 1, completedAt: 1 });
+        withMeta(importing, { done: false, total: 10, sent: 1 });
+        await connect();
+        for (const sid of [plain, finished, importing]) {
+            view(sid);
+            await flush();
+        }
+        expect(subscribes(plain)).toHaveLength(1);
+        expect(subscribes(finished)).toHaveLength(1);
+        expect([phase(plain), phase(finished)]).toEqual(['live', 'live']);
+        expect(subscribes(importing)).toHaveLength(0);
+        expect(phase(importing)).toBeNull();
+        const parked = (sync as unknown as { importParked: Set<string> }).importParked;
+        expect([...parked]).toEqual([importing]);
+        // Done: released, newest page loaded while it is viewed.
+        withMeta(importing, { done: true, count: 1, completedAt: 2 });
+        (sync as unknown as { releaseImportParked: () => void }).releaseImportParked();
+        await flush();
+        await flush();
+        expect(parked.size).toBe(0);
+        expect(phase(importing)).toBe('live');
+        expect(texts(importing)).toEqual(['i1']);
+    });
+});
