@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-04-session-switch-no-syncing-flash',
+    date: '2026-11-04',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov04a.title',
+    summaryKey: 'changelog.releases.nov04a.summary',
+    itemKeys: ['changelog.releases.nov04a.switch'],
+  },
+  {
     id: '2026-11-04-cli-team-language-backfill-0-2-205',
     cliVersion: '0.2.205',
     date: '2026-11-04',
