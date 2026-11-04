@@ -3185,6 +3185,11 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov04a: {
+                title: 'Switching sessions no longer flashes "Syncing"',
+                summary: 'Switching back to a recently viewed session no longer flashes "Syncing" or a gap at the top.',
+                switch: 'Switching back to a recently viewed session no longer flashes "Syncing" or a gap at the top.',
+            },
             nov04: {
                 title: 'CLI 0.2.205: team sessions created before the update reply in your language too',
                 summary: 'Team sessions created before the update now also reply in your language.',
