@@ -87,7 +87,8 @@ describe('B-804 messages catch-up status', () => {
 
 describe('B-885 the chat line takes no layout room', () => {
     it('is laid over the transcript foot (absolute), so showing / hiding it never resizes the transcript', () => {
-        const css = readFileSync(resolve(__dirname, '../screens/session/session.css'), 'utf8');
+        // Comments stripped: a commented-out declaration must not satisfy the assertion.
+        const css = readFileSync(resolve(__dirname, '../screens/session/session.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
         const block = css.slice(css.indexOf('.sd-body > .chat-sync {'), css.indexOf('}', css.indexOf('.sd-body > .chat-sync {')));
         expect(block).toContain('position: absolute;');
         expect(block).not.toContain('flex: none;');
