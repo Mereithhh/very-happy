@@ -197,11 +197,201 @@ switch_case 'drain never completes' draining 'phase:old-slot-retained' 'stop-old
 switch_case 'drain never completes keeps upstream' draining 'admin:3101:POST:/_vh/release/disconnect' 'write-active'
 switch_case 'drained old slot is stopped' drained 'stop-old:blue' 'write-active'
 
+# B-886: per-slot release admin tokens, rotated for the candidate on every
+# release. The fake host below models what matters: a slot answers the admin
+# API only with the token it was (re)created with (compose reads it from
+# slots.env at `up`), and a stopped slot answers nothing.
+token_case_dir=$(mktemp -d)
+token_case() {
+    local name="$1" rc; shift
+    # Not under `||`: that would switch off errexit and the ERR trap the
+    # rollback depends on for everything inside.
+    set +e
+    (
+        # Earlier cases replaced or unset helpers (admin_curl among them).
+        # shellcheck disable=SC1091
+        source "$REPO_ROOT/scripts/ci/deploy-blue-green-remote.sh"
+        set -Eeuo pipefail
+        RELEASE_DIR="$token_case_dir/release"
+        STATE_FILE="$RELEASE_DIR/state.env" SLOT_ENV="$RELEASE_DIR/slots.env"
+        ACTIVE_INCLUDE="$RELEASE_DIR/active-upstream.caddy"
+        HOST="$token_case_dir/host" CALLS="$token_case_dir/calls.log"
+        export VH_RELEASE_DRAIN_SECONDS=30 VH_RELEASE_PRE_SWITCH_SECONDS=2
+        IMAGE=ghcr.io/mereithhh/very-happy-server@sha256:$(printf 'c%.0s' $(seq 64))
+        slot_compose() {
+            local action="$1" service="${*: -1}" slot
+            slot=${service#happy-server-}
+            case "$action" in
+                up) sed -n "s/^VH_$(printf '%s' "$slot" | tr a-z A-Z)_ADMIN_TOKEN=//p" "$SLOT_ENV" > "$HOST/$slot.token" ;;
+                stop) rm -f "$HOST/$slot.token" ;;
+            esac
+        }
+        curl() {
+            local url="${*: -1}" header="" method=GET port path slot arg prev="" known
+            for arg in "$@"; do
+                for known in "$RELEASE_DIR"/admin-token-blue "$RELEASE_DIR"/admin-token-green; do
+                    case "$arg" in *"$(<"$known")"*) echo "token in argv" >> "$CALLS"; return 99 ;; esac
+                done
+                if [ "$prev" = -H ] && [ "${arg:0:1}" = @ ]; then header=$(cat "${arg:1}"); fi
+                if [ "$prev" = -X ]; then method="$arg"; fi
+                prev="$arg"
+            done
+            port=${url#http://127.0.0.1:}; path=/${port#*/}; port=${port%%/*}
+            slot=$(port_slot "$port")
+            if [ ! -f "$HOST/$slot.token" ] || [ "$header" != "X-VH-Release-Token: $(<"$HOST/$slot.token")" ]; then
+                echo "$slot $method $path 404" >> "$CALLS"; return 22
+            fi
+            echo "$slot $method $path ok" >> "$CALLS"
+            case "$path" in
+                /_vh/release/ready) printf '{"status":"ready","slot":"%s","release":"%s","asset":"/assets/index-%s.js"}' "$slot" "$(<"$HOST/$slot.release")" "$(<"$HOST/$slot.release")" ;;
+                /_vh/release/canary) printf '{"status":"ok"}' ;;
+                /_vh/release/status) printf '{"state":"drained"}' ;;
+                *) printf '{}' ;;
+            esac
+        }
+        # Readiness reports the slot's own release; recorded at write_slot_env.
+        real_write_slot_env=$(declare -f write_slot_env)
+        eval "${real_write_slot_env/write_slot_env/_real_write_slot_env}"
+        write_slot_env() { _real_write_slot_env "$@"; echo "$3" > "$HOST/$1.release"; }
+        verify_migration_contract() { :; }
+        verify_direct_asset() { :; }
+        start_http_probe() { :; }
+        stop_http_probe() { :; }
+        probe_release_verdict() { :; }
+        reload_caddy() { :; }
+        sync_caddyfile() { :; }
+        slot_healthy() { [ -f "$HOST/$(port_slot "$1").token" ]; }
+        verify_public_release() { [ "${FAIL_PUBLIC_RELEASE:-}" != "$1" ]; }
+        sleep() { :; }
+        tok() { cat "$RELEASE_DIR/admin-token-$1"; }
+        "$@"
+    )
+    rc=$?
+    set -e
+    [ "$rc" -eq 0 ] || fail "$name ($rc)"
+}
+
+# Production today: one shared admin-token, green active and started with it.
+setup_upgrade_host() {
+    rm -rf "$token_case_dir/release" "$token_case_dir/host"; : > "$token_case_dir/calls.log"
+    mkdir -p "$token_case_dir/release" "$token_case_dir/host"
+    od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "$token_case_dir/release/admin-token"
+    chmod 600 "$token_case_dir/release/admin-token"
+    cp "$token_case_dir/release/admin-token" "$token_case_dir/legacy-token"
+    cp "$token_case_dir/release/admin-token" "$token_case_dir/host/green.token"
+    echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa > "$token_case_dir/host/green.release"
+    printf 'MODE=bluegreen\nACTIVE_SLOT=green\nACTIVE_PORT=3102\nACTIVE_IMAGE=ghcr.io/mereithhh/very-happy-server@sha256:%s\nACTIVE_RELEASE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nRELEASE_GENERATION=7\n' \
+        "$(printf 'a%.0s' $(seq 64))" > "$token_case_dir/release/state.env"
+}
+
+upgrade_then_two_releases() {
+    local legacy t1 t2
+    legacy=$(<"$token_case_dir/legacy-token")
+    prepare_admin_tokens
+    [ ! -e "$RELEASE_DIR/admin-token" ] || exit 80
+    [ "$(tok blue)" = "$legacy" ] && [ "$(tok green)" = "$legacy" ] || exit 81
+    [ "$(stat -c %a "$RELEASE_DIR/admin-token-blue")" = 600 ] && [ "$(stat -c %a "$RELEASE_DIR/admin-token-green")" = 600 ] || exit 82
+    admin_curl 3102 GET /_vh/release/status >/dev/null || exit 83   # running green still reachable
+    prepare_admin_tokens; [ "$(tok green)" = "$legacy" ] || exit 84  # idempotent
+
+    VERSION=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    switch_release > "$token_case_dir/out1.log" 2>&1
+    t1=$(tok blue)
+    [ "$t1" != "$legacy" ] && [ "$(tok green)" = "$legacy" ] || exit 85
+    grep -qx 'green POST /_vh/release/drain ok' "$CALLS" || exit 86     # old slot driven with the old token
+    grep -qx 'blue GET /_vh/release/ready ok' "$CALLS" || exit 87       # candidate with its new token
+    [ ! -f "$HOST/green.token" ] || exit 88                             # drained old slot stopped
+    [ "$(<"$HOST/blue.token")" = "$t1" ] || exit 89
+    grep -qx 'ACTIVE_SLOT=blue' "$STATE_FILE" || exit 90
+    # The leaked token now opens nothing: green is gone, blue wants t1.
+    printf '%s' "$legacy" > "$RELEASE_DIR/admin-token-blue"
+    if admin_curl 3101 GET /_vh/release/status >/dev/null 2>&1; then exit 91; fi
+    printf '%s' "$t1" > "$RELEASE_DIR/admin-token-blue"
+
+    : > "$CALLS"
+    VERSION=dddddddddddddddddddddddddddddddddddddddd
+    switch_release > "$token_case_dir/out2.log" 2>&1
+    t2=$(tok green)
+    [ "$t2" != "$t1" ] && [ "$t2" != "$legacy" ] || exit 92
+    grep -qx 'blue POST /_vh/release/drain ok' "$CALLS" || exit 93
+    grep -qx 'green GET /_vh/release/ready ok' "$CALLS" || exit 94
+    grep -qx 'ACTIVE_SLOT=green' "$STATE_FILE" || exit 95
+    ! grep -q '404' "$CALLS" || exit 96
+    ! grep -Fq "$legacy" "$token_case_dir"/out*.log && ! grep -Fq "$t1" "$token_case_dir"/out*.log && ! grep -Fq "$t2" "$token_case_dir"/out*.log || exit 97
+    ! grep -q 'token in argv' "$CALLS" || exit 98
+    [ "$(stat -c %a "$RELEASE_DIR/admin-token-green")" = 600 ] && [ "$(stat -c %a "$SLOT_ENV")" = 600 ] || exit 99
+}
+setup_upgrade_host
+token_case 'upgrade from the shared token, then two releases rotate' upgrade_then_two_releases
+
+# A switch that fails publicly after the Caddy reload rolls back to the old
+# slot; rollback's cancel must reach it with the old slot's (unrotated) token.
+failed_switch_rolls_back() {
+    local legacy status=0
+    legacy=$(<"$token_case_dir/legacy-token")
+    prepare_admin_tokens
+    VERSION=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    set +e
+    (set -e; FAIL_PUBLIC_RELEASE=$VERSION switch_release) > "$token_case_dir/out3.log" 2>&1
+    status=$?
+    set -e
+    [ "$status" -ne 0 ] || exit 70
+    [ "$(tok green)" = "$legacy" ] && [ "$(tok blue)" != "$legacy" ] || exit 71
+    grep -qx 'green POST /_vh/release/cancel ok' "$CALLS" || exit 72
+    grep -qx 'reverse_proxy 127.0.0.1:3102' "$ACTIVE_INCLUDE" || exit 73
+    grep -qx 'ACTIVE_SLOT=green' "$STATE_FILE" || exit 74
+    [ -f "$HOST/green.token" ] && [ -f "$HOST/blue.token" ] || exit 75   # both retained
+    ! grep -Fq "$legacy" "$token_case_dir/out3.log" || exit 76
+}
+setup_upgrade_host
+token_case 'failed switch rolls back with the old slot token' failed_switch_rolls_back
+
+# A fresh host (no token at all) gets two distinct 0600 tokens.
+fresh_host() {
+    prepare_admin_tokens
+    [ "$(tok blue)" != "$(tok green)" ] || exit 60
+    [ "$(wc -c < "$RELEASE_DIR/admin-token-blue")" -eq 64 ] || exit 61
+    [ "$(stat -c %a "$RELEASE_DIR/admin-token-blue")" = 600 ] || exit 62
+}
+rm -rf "$token_case_dir/release"; mkdir -p "$token_case_dir/release"
+token_case 'fresh host gets two tokens' fresh_host
+
+# Caddyfile sync (B-886): identical is a no-op; a new file is installed with a
+# backup; one that breaks reload or the public check is put back.
+caddy_sync_case() {
+    local name="$1" reload_rc="$2" expect_rc="$3" expect_content="$4" rc=0
+    (
+        RELEASE_DIR="$token_case_dir/caddy-release" CADDY_FILE="$token_case_dir/Caddyfile"
+        REPO_ROOT="$token_case_dir/repo" ACTIVE_RELEASE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        mkdir -p "$RELEASE_DIR" "$REPO_ROOT/ops/production"
+        echo old > "$CADDY_FILE"; echo "${REPO_CADDY:-new}" > "$REPO_ROOT/ops/production/Caddyfile.blue-green"
+        caddy() { :; }
+        reload_caddy() { return "$reload_rc"; }
+        verify_public_release() { :; }
+        sync_caddyfile 2>/dev/null || exit $?
+    ) || rc=$?
+    [ "$rc" = "$expect_rc" ] || fail "caddy sync $name: rc $rc"
+    [ "$(<"$token_case_dir/Caddyfile")" = "$expect_content" ] || fail "caddy sync $name: content"
+}
+caddy_sync_case 'new file installs' 0 0 new
+ls "$token_case_dir"/caddy-release/caddyfile-backups/Caddyfile.* >/dev/null || fail 'caddy sync must keep a backup'
+caddy_sync_case 'failed reload restores' 1 1 old
+REPO_CADDY=old caddy_sync_case 'identical is a no-op' 1 0 old
+rm -rf "$token_case_dir"
+
+# The public edge never forwards the release admin API (B-886): the block is
+# the first thing inside the route, before any proxying handle.
+caddy_route=$(sed -n '/^veryhappy.dev, happy.mereith.com {/,$p' "$REPO_ROOT/ops/production/Caddyfile.blue-green" | grep -vE '^\s*(#|$)')
+[ "$(printf '%s\n' "$caddy_route" | sed -n 3p | tr -d '\t')" = '@vh_internal path /_vh /_vh/*' ] \
+    && [ "$(printf '%s\n' "$caddy_route" | sed -n 4p | tr -d '\t')" = 'respond @vh_internal 404' ] \
+    || fail 'Caddy must answer public /_vh/* with 404 before anything else in the route'
+
 VH_BLUE_IMAGE=ghcr.io/mereithhh/very-happy-server@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
 VH_GREEN_IMAGE=ghcr.io/mereithhh/very-happy-server@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
 VH_BLUE_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
 VH_GREEN_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
-VH_RELEASE_ADMIN_TOKEN=cccccccccccccccccccccccccccccccc \
+VH_BLUE_ADMIN_TOKEN=cccccccccccccccccccccccccccccccc \
+VH_GREEN_ADMIN_TOKEN=dddddddddddddddddddddddddddddddd \
 VH_PRODUCTION_ENV_FILE=/dev/null \
 docker compose -f "$REPO_ROOT/ops/production/docker-compose.blue-green.yml" config --quiet
 

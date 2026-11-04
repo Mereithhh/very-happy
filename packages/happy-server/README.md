@@ -189,7 +189,8 @@ The maintainer blue-green topology sets `VH_RELEASE_SLOT`, `VH_RELEASE_SHA`,
 Compose environment. These are operator internals, not self-hosting knobs. When
 release identity is present, `REDIS_URL` becomes mandatory and startup fails
 closed; `/_vh/release/*` is token-protected and must remain
-reachable only through loopback/operator paths. Do not expose or reuse the admin
+reachable only through loopback/operator paths (the production Caddyfile answers
+it with 404 publicly; the token rotates per slot on every release). Do not expose or reuse the admin
 token as an account credential.
 
 PGlite is strictly single-process. The server holds a kernel advisory lock on the

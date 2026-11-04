@@ -149,6 +149,14 @@ slot's lifetime; since B-546 the count is released on the response's `close`, an
 names what it waits on. The first switch after B-546 ships still drains a slot
 running the old code — judge the fix from the switch after that.
 
+Release admin tokens (B-886): each slot has its own `admin-token-<slot>`, the
+candidate gets a fresh one on every shadow/switch, and public `/_vh/*` is a 404
+at Caddy (a switch installs the repo Caddyfile when the host copy differs, with
+a backup). If a token is exposed — e.g. env printed into a transcript — follow
+operations §Release admin API and token rotation: the next switch rotates it;
+when urgent, run an out-of-band `rollout=switch`. Never print container env;
+read single keys as has-value checks.
+
 Environment changes: `docker compose restart` does not reread `env_file`. Deploy
 the active merged `main` with `rollout=switch`, so candidate reads the new env
 while old remains available.

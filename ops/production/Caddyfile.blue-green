@@ -39,6 +39,14 @@ import /etc/caddy/vh-origin-secret.caddy
 
 veryhappy.dev, happy.mereith.com {
 	route {
+		# B-886: the release admin API (/_vh/release/*) is for the deploy script on
+		# the host, which calls the slots on 127.0.0.1 directly. Publicly it only
+		# offered a token-guarded way to drain or disconnect production, so it ends
+		# here: 404, never proxied. Caddy's path matcher is case-insensitive and
+		# runs on the cleaned, decoded path.
+		@vh_internal path /_vh /_vh/*
+		respond @vh_internal 404
+
 		import vh_client_ip
 
 		# B-365: happy.mereith.com is the legacy hostname (vh-us used to answer it).
