@@ -3195,6 +3195,13 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov05: {
+                title: 'Expand Mermaid diagrams, folder lists scroll, steadier sidebar',
+                summary: 'Mermaid diagrams can expand to full screen, folder lists scroll properly, and the sidebar row no longer blinks when you switch sessions.',
+                mermaid: 'Mermaid diagrams now have an Expand button and a ⋯ menu: view full screen with pan and zoom, copy the source, or download SVG/PNG, in sessions and on shared pages.',
+                folders: 'The folder lists in New team and New project scroll with the wheel and touch, the "new terminal in a folder" list is no longer squashed on phones, and the "new working folder" checkbox is back on one row.',
+                sidebar: 'Switching sessions inside a collapsed project group no longer makes the sidebar row disappear and come back.',
+            },
             nov04a: {
                 title: 'Switching sessions no longer flashes "Syncing"',
                 summary: 'Switching back to a recently viewed session no longer flashes "Syncing" or a gap at the top.',
