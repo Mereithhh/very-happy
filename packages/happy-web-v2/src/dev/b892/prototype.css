@@ -1,6 +1,6 @@
 .b892-placeholder { padding: 48px; color: var(--text-dim); }
 .b892-placeholder h1 { margin: 0 0 8px; color: var(--text); font-size: var(--fs-20, 20px); }
-.b892-bar { position: fixed; z-index: 5; right: 12px; bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: calc(100vw - 280px); padding: 6px 10px; border-radius: var(--r-md); background: var(--surface-raised, var(--bg-1)); box-shadow: var(--shadow-md, 0 2px 12px rgb(0 0 0 / .18)); font-size: var(--fs-12); color: var(--text-dim); }
+.b892-bar { position: fixed; z-index: 5; right: 12px; bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: calc(100vw - 280px); padding: 6px 10px; border-radius: var(--r-md); background: var(--surface-raised, var(--bg-1)); box-shadow: var(--shadow-pop); font-size: var(--fs-12); color: var(--text-dim); }
 .b892-bar-group { display: inline-flex; align-items: center; gap: 2px; }
 .b892-bar-group b { margin-right: 4px; font-weight: 600; color: var(--text); }
 .b892-bar button { min-height: 26px; padding: 0 8px; border-radius: var(--r-sm); color: var(--text-dim); }
