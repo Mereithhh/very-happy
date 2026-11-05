@@ -132,7 +132,7 @@ components.pre
 | 状态 | 显示 |
 |---|---|
 | 初始 / 加载 mermaid 中 | **代码块**（`CodeView`，plain）——不是 spinner，不是空白 |
-| 渲染成功 | SVG + 右上角「源码 / 图」切换 |
+| 渲染成功 | SVG + 右上角「展开」与 ⋯ 菜单（复制源码 / 下载 SVG / 下载 PNG / 查看源码；B-890 起，见文末 Follow-up） |
 | 语法错误或渲染抛错 | 回落代码块，附一行 `--text-dim` 的说明；**不显示 mermaid 自己的错误图** |
 
 - **API 顺序：先 `parse` 再 `render`**（实测 mermaid 11.17.2）：`parse` **不需要 DOM**、
@@ -272,3 +272,13 @@ components.pre
   表宽改 `max-content`（单元格仍受 `min(40ch, 75vw)` 上限），不再被挤进视口宽。
 - 不碰 in-flow 的 overflow / sticky / 折叠模型（§B 三条 CSS 事实原样成立）；全屏块放在 `.md-table` 规则之后——同优先级的覆盖靠顺序生效，放前面会静默失效（实测 `width: auto` 赢）。
 - 实测（Chromium 390×844 coarse）：12 列表 in-flow 662px 挤在 358px 内只能横滚；全屏后表宽 949px、每行单行，横滚 300px 后首列 left 仍为 0；页面无横向溢出。
+
+## Follow-up：展开、复制、下载（B-890，2026-11-05）
+
+- 触发：用户反馈分享页上的流程图「无法点开」。渲染成功的图右上角常驻两个按钮——「展开」与 ⋯ 菜单（复制源码 / 下载 SVG / 下载 PNG / 查看源码），点图本身也展开；桌面 0.6 透明度、悬停全显，触屏 34px + `::after` 补到 44px。加载中、弱网、渲染失败几格都没有这些按钮。
+- 全屏复用 `components/ImagePreview`（B-608 的拖动 / 滚轮与触控板捏合 / 双指 / 双击缩放、「适应」= 重置、Esc），新增可选 `title` / `actions` / `download={false}`；不另写一套手势。图片源是导出的独立 SVG（blob: URL）。
+- 导出（`mermaidExport.ts`）：按 viewBox 写入固有宽高、去掉 transcript 用的 `max-width`，**背景烘焙为当前主题的 `--bg-1`**（不透明：透明底 + 暗色主题的浅色字放进白底看图器就看不见）；背景 rect 向四周各外扩一个 viewBox——宽高取整后 `meet` 留出亚像素透明边（实测 PNG 角 alpha 198）。PNG 倍率 `max(2, devicePixelRatio)`，并按 8192 边长 / 16.7 Mpx 面积收缩。
+- 实测事实：mermaid 11 **忽略** `flowchart.htmlLabels:false`，节点标签仍是 `<foreignObject>` 里的 HTML。这样的 SVG 从 **blob:** URL 画进 canvas 会被污染（Chromium、WebKit 的 toBlob 都抛 SecurityError），同一内容走 **data:** URL 则不会，所以 PNG 走 data: URL（`img-src` 已允许 data:）。
+- 字体：mermaid 用页面字体 IBM Plex Sans 量标签框，脱离页面的 SVG 读不到 web font，回落到更宽的系统字体后标签被截断（实测 "Serve"、"Run ager"）。导出时把应用已自带的 Plex Sans latin 400（22 kB woff2）以 data: `@font-face` 嵌入，另加 `foreignObject{overflow:visible}` 兜底；CJK 在页面里本来就回落系统字体，两边一致。
+- 复制反馈用组件内的一行 status，而不是 toast：未登录分享页（`PublicRoot`）没有 ToastProvider，toast 会静默丢失。
+- 验收脚本 `packages/happy-web-v2/e2e/mermaidActions.mjs`（生产构建 + 隔离 standalone server，会话页与未登录分享页 × 桌面亮色中文 / 手机 coarse 暗色英文）：86 项通过，pageerror 0，CSP 违规 0。
