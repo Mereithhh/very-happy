@@ -1,19 +1,47 @@
 import { describe, expect, it } from 'vitest';
 import { redactIssueQuery, requestLogSerializer } from '@/app/api/clientIp';
 import {
-    attentionClosedByStatus, canonicalJson, decodeCursor, defaultMentionMachine, encodeCursor, issuesEnabled, mentionItem, normalizeAssignee,
+    attentionClosedByStatus, canonicalJson, decodeCursor, defaultMentionMachine, encodeCursor, issuesAccountAllowlist, issuesEnabled, issuesEnabledForAnyAccount, mentionItem, normalizeAssignee,
     planHumanUpdateRun, resolveRunDirectory, reviewItem, sameAgentConfig, searchNumber, splitList,
 } from './rules';
 
 const codex = { kind: 'agent', machineId: 'm1', agent: 'codex', directory: '/r' } as const;
 
 describe('B-872 issue rules (pure)', () => {
-    it('the switch is on only for exactly "true"', () => {
+    it('the global switch is on only for exactly "true", and then for every account', () => {
+        delete process.env.VH_ISSUES_ACCOUNTS;
         for (const [value, on] of [[undefined, false], ['false', false], ['1', false], ['TRUE', false], ['true', true]] as const) {
             if (value === undefined) delete process.env.VH_ISSUES_ENABLED; else process.env.VH_ISSUES_ENABLED = value;
-            expect(issuesEnabled(), String(value)).toBe(on);
+            expect(issuesEnabled('acct-a'), String(value)).toBe(on);
+            expect(issuesEnabled('acct-b'), String(value)).toBe(on);
+            expect(issuesEnabledForAnyAccount(), String(value)).toBe(on);
         }
+        process.env.VH_ISSUES_ACCOUNTS = 'acct-a';
+        expect(issuesEnabled('acct-b')).toBe(true);
         delete process.env.VH_ISSUES_ENABLED;
+        delete process.env.VH_ISSUES_ACCOUNTS;
+    });
+
+    it('B-888 VH_ISSUES_ACCOUNTS: only listed accounts; spaces, blanks and duplicates tolerated; unset or blank is all off', () => {
+        delete process.env.VH_ISSUES_ENABLED;
+        for (const raw of [undefined, '', ' ', ',', ' , ,, ']) {
+            if (raw === undefined) delete process.env.VH_ISSUES_ACCOUNTS; else process.env.VH_ISSUES_ACCOUNTS = raw;
+            expect(issuesEnabled('acct-a'), JSON.stringify(raw)).toBe(false);
+            expect(issuesEnabled(''), JSON.stringify(raw)).toBe(false);
+            expect(issuesEnabledForAnyAccount(), JSON.stringify(raw)).toBe(false);
+        }
+        process.env.VH_ISSUES_ACCOUNTS = ' acct-a ,, acct-c,acct-a , ';
+        expect(['acct-a', 'acct-b', 'acct-c', '', ' acct-a ', 'ACCT-A', 'acct'].map(id => issuesEnabled(id))).toEqual([true, false, true, false, false, false, false]);
+        expect(issuesEnabledForAnyAccount()).toBe(true);
+        expect([...issuesAccountAllowlist()]).toEqual(['acct-a', 'acct-c']);
+        process.env.VH_ISSUES_ENABLED = 'false';
+        expect(issuesEnabled('acct-a')).toBe(true);
+        expect(issuesEnabled('acct-b')).toBe(false);
+        // Re-read on every call: a changed value takes effect without a restart.
+        process.env.VH_ISSUES_ACCOUNTS = 'acct-b';
+        expect([issuesEnabled('acct-a'), issuesEnabled('acct-b')]).toEqual([false, true]);
+        delete process.env.VH_ISSUES_ENABLED;
+        delete process.env.VH_ISSUES_ACCOUNTS;
     });
 
     it('§3.1 run planning: agent + runnable only; changed agent supersedes; reopen without an active run starts', () => {

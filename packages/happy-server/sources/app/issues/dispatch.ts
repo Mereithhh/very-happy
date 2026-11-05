@@ -55,7 +55,7 @@ async function spawnView(tx: Tx, row: DispatchRow): Promise<IssueDispatchView> {
  * the prompt the run gets is the one its claim freezes (spec §3.2).
  */
 export async function pollDispatches(accountId: string, machineId: string, workerVersion: number): Promise<IssueDispatchPollResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         await requireMachine(tx, accountId, machineId);
         await tx.issueWorker.upsert({
             where: { accountId_machineId: { accountId, machineId } },
@@ -77,7 +77,7 @@ export async function pollDispatches(accountId: string, machineId: string, worke
  * lease sees the latest title / comments — and moves the run to `claimed`.
  */
 export async function claimDispatch(accountId: string, dispatchId: string, machineId: string): Promise<{ dispatch: IssueDispatchView }> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const row = await tx.issueDispatch.findFirst({ where: { id: dispatchId, accountId, machineId } });
         requireIssue(row, 'issue_dispatch_not_found', 404);
         const run = await tx.issueRun.findUniqueOrThrow({ where: { id: row.runId } });
@@ -111,7 +111,7 @@ async function loadClaimed(tx: Tx, accountId: string, dispatchId: string, machin
  * that session's writes are refused (§3.6). Idempotent per claimId.
  */
 export async function completeDispatch(accountId: string, dispatchId: string, input: { machineId: string; claimId: string; sessionId: string }): Promise<{ ok: true }> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const row = await loadClaimed(tx, accountId, dispatchId, input.machineId, input.claimId);
         if (row.status === 'done') return { ok: true };
         requireIssue(row.status === 'claimed', 'issue_dispatch_claim_mismatch', 409);
@@ -149,7 +149,7 @@ async function deliverAbsorbed(tx: Tx, run: RunRow, frozenAt: Date) {
  * session is not live — that run is over and the comment starts a new run.
  */
 export async function failDispatch(accountId: string, dispatchId: string, input: { machineId: string; claimId: string; error: string; unknown?: boolean }): Promise<{ ok: true }> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const row = await loadClaimed(tx, accountId, dispatchId, input.machineId, input.claimId);
         if (row.status === 'failed') return { ok: true };
         requireIssue(row.status === 'claimed', 'issue_dispatch_claim_mismatch', 409);
@@ -171,7 +171,7 @@ export async function failDispatch(accountId: string, dispatchId: string, input:
  * crashed (wrapper crash → failed with a 「需要我决策」 item).
  */
 export async function runSessionEvent(accountId: string, runId: string, input: { machineId: string; sessionId: string; event: 'running' | 'idle' | 'exited' | 'crashed' }): Promise<{ ok: true }> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const run = await tx.issueRun.findFirst({ where: { id: runId, accountId, machineId: input.machineId, sessionId: input.sessionId } });
         requireIssue(run, 'issue_run_not_found', 404);
         if (!isIssueRunActive(run.status)) return { ok: true };
@@ -187,7 +187,7 @@ export async function runSessionEvent(accountId: string, runId: string, input: {
 }
 
 export async function listWorkers(accountId: string): Promise<IssueWorkersResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const rows = await tx.issueWorker.findMany({ where: { accountId }, orderBy: { lastSeenAt: 'desc' } });
         return { workers: rows.map(r => ({ machineId: r.machineId, workerVersion: r.workerVersion, lastSeenAt: r.lastSeenAt.getTime() })) };
     });
@@ -195,7 +195,7 @@ export async function listWorkers(accountId: string): Promise<IssueWorkersRespon
 
 /** Archive hook (user intent, B-505): the session's active run ends. Never throws into the archive route. */
 export async function noteIssueSessionArchived(accountId: string, sessionId: string): Promise<void> {
-    if (!issuesEnabled()) return;
+    if (!issuesEnabled(accountId)) return;
     try {
         await inTx(async tx => {
             const run = await tx.issueRun.findFirst({ where: { sessionId, accountId } });
