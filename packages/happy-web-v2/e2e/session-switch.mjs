@@ -7,7 +7,7 @@
  *   DATA_DIR=<tmp> pnpm -C packages/happy-server exec tsx --env-file=.env.dev ./sources/standalone.ts migrate
  *   VH_SERVER_URL=http://127.0.0.1:<port> pnpm -C packages/happy-web-v2 exec vite --port <vite> --strictPort
  *   node packages/happy-web-v2/e2e/session-switch.mjs --web <web> --data-dir <tmp> --port <port> \
- *     --vite http://127.0.0.1:<vite> [--rtt-ms 400] [--device desktop|phone] [--loops 6] [--out <dir>]
+ *     --vite http://127.0.0.1:<vite> [--rtt-ms 400] [--device desktop|phone|foldable] [--loops 6] [--out <dir>] [--fold-project] [--cpu-throttle 6] [--busy-project 15]
  *
  * The script starts the standalone server serving <web> (the built bundle, the
  * production shape) on --port, and a TCP proxy on --port + 1 that delays every
@@ -23,6 +23,20 @@
  *   jump     largest move (px) of the chat header / composer from their final place
  *            in the 2s after the click, sampled every frame
  *   frames   screenshots every ~100ms for the first second (--out)
+ *
+ * B-887 — the clicked SIDEBAR ROW (desktop; on a phone the list is its own
+ * screen and leaves on purpose, so there only the 300ms before the route moves
+ * counts). Four seeded sessions cover the row states: S1 read, S2 unread
+ * (dot), S3 needs-me (pending permission + heartbeat), S4 pinned (P0 tag).
+ *   rowOut   times a [data-dragkey=<clicked>] element was REMOVED from the DOM
+ *            (MutationObserver) — 0 means the row never left
+ *   rowIn    times one was inserted
+ *   inner    removals inside the kept row (its content remounted)
+ *   same     the element after the switch is the node that was clicked
+ *   moved    the row's index among the rendered rows changed in the 2s after
+ *   gone     frames (2s, every rAF) in which the row was absent or 0-height
+ * --fold-project: the four sessions live in one project the user folded by hand
+ * (vh:sidebar-collapsed-groups:v1), entered by deep link — the B-887 repro.
  */
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -44,6 +58,17 @@ const DEVICE = opt('device', 'desktop');
 const OUT = opt('out', null);
 const RECORDS = Number(opt('records', '40'));
 const LOOPS = Number(opt('loops', '6'));
+// B-887: put the four sessions in one project that is folded by hand — the page
+// opens S1 by deep link (the reveal opens the fold for that route), then every
+// click is a sibling in the same temporarily opened group.
+const FOLD_PROJECT = args.includes('--fold-project');
+// B-887 (the Owner's shape): 按项目 with a big project — the four sessions plus
+// N - 4 more in one open project, a second project beside it, and a writer that
+// keeps posting into the OTHER sessions (updatedAt / seq move) while we click.
+const BUSY_PROJECT = Number(opt('busy-project', '0'));
+const BUSY_MS = Number(opt('busy-ms', '700'));
+// B-887: a slower machine (CDP CPU throttling, e.g. 6) — a fold that commits between two frames gets painted.
+const CPU_THROTTLE = Number(opt('cpu-throttle', '1'));
 if (!WEB || !DATA_DIR || !VITE) {
     console.error('--web, --data-dir and --vite are required');
     process.exit(2);
@@ -96,6 +121,8 @@ const APP = `http://127.0.0.1:${PROXY_PORT}`;
 
 const browser = await chromium.launch({ executablePath: findChromium() });
 const results = [];
+let heartbeat = null;
+let busyWriter = null;
 try {
     // ── seed through the dev page (its /src modules) ──────────────────
     const seedCtx = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1280, height: 860 }, locale: 'zh-CN' });
@@ -119,13 +146,17 @@ try {
         const { encodeBase64 } = await import('/src/encryption/base64.ts');
         for (let i = 0; i < 150 && !sync.encryption; i++) await new Promise((r) => setTimeout(r, 200));
         const out = [];
-        for (const n of [1, 2, 3]) {
+        // B-887: S1 read · S2 unread · S3 needs-me (pending permission) · S4 pinned (P0).
+        for (const n of [1, 2, 3, 4]) {
             const enc = await sync.encryption.openEncryption(null);
-            const [metadata] = await enc.encrypt([{ path: `/tmp/b885-${n}`, host: 'e2e', flavor: 'claude', summary: { text: `B885 session ${n}`, updatedAt: Date.now() } }]);
+            const [metadata] = await enc.encrypt([{ path: `/tmp/b885-${n}`, host: 'e2e', flavor: 'claude', summary: { text: `B885 session ${n}`, updatedAt: Date.now() }, ...(n === 4 ? { tags: ['P0'] } : {}) }]);
+            const agentState = n === 3
+                ? encodeBase64((await enc.encrypt([{ requests: { r1: { tool: 'Bash', arguments: { command: 'ls' }, createdAt: Date.now() } } }]))[0], 'base64')
+                : null;
             const res = await apiSocket.request('/v1/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tag: crypto.randomUUID(), metadata: encodeBase64(metadata, 'base64'), agentState: null, dataEncryptionKey: null }),
+                body: JSON.stringify({ tag: crypto.randomUUID(), metadata: encodeBase64(metadata, 'base64'), agentState, dataEncryptionKey: null }),
             });
             out.push((await res.json()).session.id);
         }
@@ -143,18 +174,76 @@ try {
             const res = await apiSocket.request(`/v3/sessions/${sid}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages }) });
             if (!res.ok) throw new Error(`seed POST ${res.status}`);
         }
+        const { saveUnreadSessionIds } = await import('/src/sync/persistence.ts');
+        saveUnreadSessionIds([out[1]]);
         return out;
     }, RECORDS);
+    if (FOLD_PROJECT && BUSY_PROJECT === 0) {
+        await seed.evaluate(async (sessionIds) => {
+            const { projectsApi } = await import('/src/sync/projects.ts');
+            const { project } = await projectsApi.create({ name: 'B887 folded', sessionIds });
+            localStorage.setItem('vh:sidebar-collapsed-groups:v1', JSON.stringify({ [`project:${project.id}`]: true }));
+        }, ids);
+        console.log('project created and folded by hand');
+    }
+    let busyIds = [];
+    if (BUSY_PROJECT > 0) {
+        busyIds = await seed.evaluate(async ({ clicked, extra, fold }) => {
+            const { sync } = await import('/src/sync/sync.ts');
+            const { apiSocket } = await import('/src/sync/apiSocket.ts');
+            const { encodeBase64 } = await import('/src/encryption/base64.ts');
+            const { projectsApi } = await import('/src/sync/projects.ts');
+            const out = [];
+            for (let n = 0; n < extra; n++) {
+                const enc = await sync.encryption.openEncryption(null);
+                const [metadata] = await enc.encrypt([{ path: `/home/ubuntu/code/busy-${n}`, host: 'dev-sg', flavor: 'claude', summary: { text: `Tanka 代答 ${n}`, updatedAt: Date.now() } }]);
+                const res = await apiSocket.request('/v1/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag: crypto.randomUUID(), metadata: encodeBase64(metadata, 'base64'), agentState: null, dataEncryptionKey: null }) });
+                out.push((await res.json()).session.id);
+            }
+            await sync.refreshSessions?.();
+            const big = out.slice(0, Math.max(0, out.length - 3));
+            const { project } = await projectsApi.create({ name: '业务数据治理', sessionIds: [...clicked, ...big] });
+            await projectsApi.create({ name: 'LLM-HUB', sessionIds: out.slice(big.length) });
+            // --fold-project with --busy-project: the big project is the one folded by hand.
+            if (fold) localStorage.setItem('vh:sidebar-collapsed-groups:v1', JSON.stringify({ [`project:${project.id}`]: true }));
+            return out;
+        }, { clicked: ids, extra: Math.max(3, BUSY_PROJECT - 4 + 3), fold: FOLD_PROJECT });
+        console.log(`busy: ${BUSY_PROJECT} sessions in 业务数据治理, 3 in LLM-HUB, a write every ${BUSY_MS}ms`);
+    }
     const storageDump = await seed.evaluate(() => Object.fromEntries(Object.entries(localStorage)));
-    await seedCtx.close();
+    // Background activity on the other sessions (Tanka 代答-style automations).
+    let busyTurn = 0;
+    const busyStats = {};
+    busyWriter = BUSY_PROJECT > 0 ? setInterval(() => {
+        const sid = busyIds[busyTurn++ % busyIds.length];
+        seed.evaluate(async ({ sid, i }) => {
+            const { sync } = await import('/src/sync/sync.ts');
+            const { apiSocket } = await import('/src/sync/apiSocket.ts');
+            let encryption = null;
+            for (let k = 0; k < 50 && !(encryption = sync.encryption.getSessionEncryption(sid)); k++) await new Promise((r) => setTimeout(r, 100));
+            if (!encryption) return 'no encryption';
+            const content = await encryption.encryptRawRecord({ role: 'user', content: { type: 'text', text: `busy ${i}` } });
+            const res = await apiSocket.request(`/v3/sessions/${sid}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ localId: crypto.randomUUID(), content }] }) });
+            return res.ok ? 'ok' : `http ${res.status}`;
+        }, { sid, i: busyTurn }).then((r) => { busyStats[r] = (busyStats[r] ?? 0) + 1; }, (e) => { busyStats[String(e).slice(0, 40)] = (busyStats[String(e).slice(0, 40)] ?? 0) + 1; });
+    }, BUSY_MS) : null;
+    // S3 stays online (its request is only "needs me" while the agent is alive).
+    heartbeat = setInterval(() => {
+        seed.evaluate((sid) => import('/src/sync/apiSocket.ts').then(({ apiSocket }) => apiSocket.send('session-alive', { sid, time: Date.now(), thinking: false })), ids[2]).catch(() => {});
+    }, 5_000);
+    await seed.evaluate((sid) => import('/src/sync/apiSocket.ts').then(({ apiSocket }) => apiSocket.send('session-alive', { sid, time: Date.now(), thinking: false })), ids[2]);
     console.log(`seeded ${ids.length} sessions × ${RECORDS} records`);
 
     // ── the production page ───────────────────────────────────────────
     const phone = DEVICE === 'phone';
+    // B-887: an unfolded foldable / iPad portrait (coarse, <1100px) — the sidebar is a drawer that stays mounted.
+    const foldable = DEVICE === 'foldable';
     const ctx = await browser.newContext({
         serviceWorkers: 'block',
         locale: 'zh-CN',
-        ...(phone ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : { viewport: { width: 1280, height: 860 } }),
+        ...(phone ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 }
+            : foldable ? { viewport: { width: 890, height: 626 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }
+            : { viewport: { width: 1280, height: 860 } }),
     });
     await ctx.addInitScript((entries) => {
         if (window.top !== window) return;
@@ -178,7 +267,31 @@ try {
             probe.barOn = barOn;
         };
         new MutationObserver(check).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-net-phase', 'class'] });
+        // B-887: every sidebar row element that leaves / enters the DOM, and any
+        // removal INSIDE a row that stays (its content remounting).
+        const rows = { out: [], in: [], inner: [] };
+        window.__b887 = rows;
+        const keysOf = (node) => {
+            if (!(node instanceof Element)) return [];
+            const own = node.matches('[data-dragkey]') ? [node] : [];
+            return [...own, ...node.querySelectorAll('[data-dragkey]')].map((el) => el.getAttribute('data-dragkey'));
+        };
+        new MutationObserver((list) => {
+            const at = performance.now();
+            for (const m of list) {
+                for (const n of m.removedNodes) {
+                    const keys = keysOf(n);
+                    for (const key of keys) rows.out.push({ key, at });
+                    const host = keys.length === 0 && m.target instanceof Element ? m.target.closest('[data-dragkey]') : null;
+                    if (host && n instanceof Element) rows.inner.push({ key: host.getAttribute('data-dragkey'), at, tag: n.tagName, cls: String(n.className).slice(0, 40) });
+                }
+                for (const n of m.addedNodes) for (const key of keysOf(n)) rows.in.push({ key, at });
+            }
+        }).observe(document, { subtree: true, childList: true });
     }, storageDump);
+    // Never production: anything aimed at veryhappy.dev is cut (and counted).
+    let prodHits = 0;
+    await ctx.route(/veryhappy\.dev/, (route) => { prodHits += 1; return route.abort(); });
     const page = await ctx.newPage();
     page.on('pageerror', (e) => console.log('pageerror', e.message));
     await page.goto(`${APP}/session/${ids[0]}`);
@@ -188,6 +301,15 @@ try {
         for (const b of await page.getByRole('button', { name, exact: true }).all()) await b.click({ timeout: 1_000 }).catch(() => {});
     }
     const coarse = await page.evaluate(() => matchMedia('(pointer: coarse)').matches);
+    if (CPU_THROTTLE > 1) await (await ctx.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: CPU_THROTTLE });
+    if (FOLD_PROJECT) {
+        // In-app route change once the projects are loaded (⌘K / a notification): the reveal opens the fold.
+        await page.evaluate(() => { history.pushState({}, '', '/'); dispatchEvent(new PopStateEvent('popstate')); });
+        await sleep(800);
+        await page.evaluate((sid) => { history.pushState({}, '', `/session/${sid}`); dispatchEvent(new PopStateEvent('popstate')); }, ids[0]);
+        await sleep(1_500);
+    }
+    if (OUT) await page.screenshot({ path: join(OUT, `${DEVICE}-0-start.png`) });
     console.log(`device ${DEVICE}, pointer coarse: ${coarse}`);
     latency = RTT_MS / 2;
     await sleep(500);
@@ -205,10 +327,32 @@ try {
             const rail = page.locator('.app-rail-btn').first();
             if (await rail.isVisible().catch(() => false)) await rail.click();
             else await page.evaluate(() => { history.pushState({}, '', '/'); dispatchEvent(new PopStateEvent('popstate')); });
-            await link.waitFor({ state: 'visible', timeout: 10_000 });
+            await link.waitFor({ state: 'visible', timeout: 10_000 }).catch(async (e) => {
+                if (OUT) await page.screenshot({ path: join(OUT, `${label}-missing.png`) });
+                throw e;
+            });
             await sleep(400);
         }
-        const before = await page.evaluate(() => ({ sync: __b885.sync, bar: __b885.bar, n: __b885.shifts.length, now: performance.now() }));
+        const before = await page.evaluate((sid) => {
+            const el = document.querySelector(`[data-dragkey="${sid}"]`);
+            window.__b887node = el;
+            const keys = [...document.querySelectorAll('[data-dragkey]')].map((e) => e.getAttribute('data-dragkey'));
+            return { sync: __b885.sync, bar: __b885.bar, n: __b885.shifts.length, now: performance.now(), out: __b887.out.length, in: __b887.in.length, inner: __b887.inner.length,
+                index: keys.indexOf(sid), state: el?.querySelector('[aria-label], [title]')?.getAttribute('aria-label') ?? '', text: el?.innerText.replace(/\s+/g, ' ').slice(0, 60) ?? '' };
+        }, sid);
+        // B-887: the clicked row every frame for 2s — present / height / index.
+        const rowSamples = page.evaluate((sid) => new Promise((done) => {
+            const out = [];
+            const t0 = performance.now();
+            const tick = () => {
+                const all = [...document.querySelectorAll('[data-dragkey]')];
+                const el = all.find((e) => e.getAttribute('data-dragkey') === sid);
+                out.push({ at: Math.round(performance.now() - t0), path: location.pathname, present: !!el, h: el ? Math.round(el.getBoundingClientRect().height) : 0, index: el ? all.indexOf(el) : -1 });
+                if (performance.now() - t0 < 2_000) requestAnimationFrame(tick);
+                else done(out);
+            };
+            requestAnimationFrame(tick);
+        }), sid);
         // Header / composer tops every frame for 2s from the click.
         const samples = page.evaluate(() => new Promise((done) => {
             const out = [];
@@ -223,7 +367,7 @@ try {
             };
             requestAnimationFrame(tick);
         }));
-        if (phone) await link.tap(); else await link.click();
+        if (phone || foldable) await link.tap(); else await link.click();
         const frames = [];
         if (OUT) {
             for (let i = 0; i < 10; i++) {
@@ -235,7 +379,19 @@ try {
         }
         const rows = (await samples).filter((s) => s.path === sid.slice(-6));
         await sleep(1_000);
-        const after = await page.evaluate(({ n }) => ({ sync: __b885.sync, bar: __b885.bar, shifts: __b885.shifts.slice(n) }), before);
+        const after = await page.evaluate(({ n, out, in: inn, inner, sid }) => ({
+            sync: __b885.sync, bar: __b885.bar, shifts: __b885.shifts.slice(n),
+            rowOut: __b887.out.slice(out).filter((e) => e.key === sid).length,
+            rowIn: __b887.in.slice(inn).filter((e) => e.key === sid).length,
+            anyOut: __b887.out.slice(out).length,
+            inner: __b887.inner.slice(inner).filter((e) => e.key === sid),
+            same: window.__b887node != null && window.__b887node.isConnected && document.querySelector(`[data-dragkey="${sid}"]`) === window.__b887node,
+        }), { ...before, sid });
+        const frames2 = await rowSamples;
+        // Phone: the list screen leaves on purpose once the route moves — judge only before that.
+        const judged = phone ? frames2.filter((f) => f.at < 300 && !f.path.endsWith(sid)) : frames2;
+        const gone = judged.filter((f) => !f.present || f.h === 0).length;
+        const moved = judged.some((f) => f.present && f.index !== before.index);
         const last = rows.at(-1) ?? {};
         const jump = rows.reduce((max, s) => Math.max(max,
             s.header != null && last.header != null ? Math.abs(s.header - last.header) : 0,
@@ -248,6 +404,16 @@ try {
             clsExcludingInput: Number(after.shifts.filter((e) => !e.recentInput).reduce((sum, e) => sum + e.value, 0).toFixed(4)),
             jump: Math.round(jump),
             shellPadMax: Math.max(0, ...rows.map((s) => s.shell)),
+            rowState: before.text,
+            rowOut: after.rowOut,
+            rowIn: after.rowIn,
+            anyRowOut: after.anyOut,
+            inner: after.inner.length,
+            innerTags: [...new Set(after.inner.map((e) => `${e.tag}.${e.cls}`))].slice(0, 4),
+            same: after.same,
+            moved,
+            gone,
+            index: before.index,
         };
         results.push(result);
         console.log(JSON.stringify(result));
@@ -265,16 +431,23 @@ try {
     await switchTo(ids[0], `${DEVICE}-5-loaded-S1`);
     await sleep(1_500);
     await switchTo(ids[2], `${DEVICE}-6-loaded-S3`);
+    await sleep(1_500);
+    await switchTo(ids[3], `${DEVICE}-7-cold-S4`);
     for (let i = 0; i < LOOPS; i++) {
         await sleep(1_500);
-        await switchTo(ids[i % 3], `${DEVICE}-${7 + i}-loaded-S${(i % 3) + 1}`);
+        await switchTo(ids[i % 4], `${DEVICE}-${8 + i}-loaded-S${(i % 4) + 1}`);
     }
     const loaded = results.filter((r) => r.label.includes('loaded'));
     const cold = results.filter((r) => r.label.includes('cold'));
     const sum = (rows, key) => rows.reduce((n, r) => n + r[key], 0);
+    console.log(`SIDEBAR ${DEVICE}: switches ${results.length}, clicked row removed ${sum(results, 'rowOut')}×, inserted ${sum(results, 'rowIn')}×, inner removals ${sum(results, 'inner')}, node replaced ${results.filter((r) => !r.same).length}×, moved ${results.filter((r) => r.moved).length}×, gone frames ${sum(results, 'gone')}`);
     console.log(`SUMMARY ${DEVICE} rtt ${RTT_MS}ms: loaded switches ${loaded.length}, 「同步消息中」 ${sum(loaded, 'sync')}×, top bar ${sum(loaded, 'bar')}×, shift sum ${sum(loaded, 'shift').toFixed(4)}, max jump ${Math.max(...loaded.map((r) => r.jump))}px; cold switches ${cold.length}, 「同步消息中」 ${sum(cold, 'sync')}×, shift sum ${sum(cold, 'shift').toFixed(4)}, max jump ${Math.max(...cold.map((r) => r.jump))}px`);
+    if (BUSY_PROJECT > 0) console.log(`busy writes: ${JSON.stringify(busyStats)}`);
+    console.log(`requests to veryhappy.dev (blocked): ${prodHits}`);
     if (OUT) writeFileSync(join(OUT, `${DEVICE}-results.json`), JSON.stringify({ rttMs: RTT_MS, coarse, results }, null, 2));
 } finally {
+    clearInterval(heartbeat);
+    if (busyWriter) clearInterval(busyWriter);
     await browser.close();
     proxy.close();
     server.kill('SIGTERM');

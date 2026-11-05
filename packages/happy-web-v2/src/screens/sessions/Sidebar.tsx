@@ -96,6 +96,7 @@ import { SidebarActionRows, SidebarChipRow, SidebarFooter } from './SidebarTop';
 import {
   findRevealTarget,
   isGroupCollapsed,
+  revealExpandedAfterRoute,
   nearestScrollTop,
   planReveal,
   setGroupCollapsed,
@@ -1120,8 +1121,13 @@ export function Sidebar() {
   const revealHandled = useRef(0);
   const revealManual = useRef(false);
   const dataReady = storage((st) => st.isDataReady);
+  // Read by the route effect below: this render's groups and current-row test (the new route's).
+  const revealRouteRef = useRef({ sections, isCurrentRow });
+  revealRouteRef.current = { sections, isCurrentRow };
   useEffect(() => {
-    setRevealExpanded((cur) => (cur.size ? new Set() : cur)); // temporary opens end with the route
+    // Temporary opens end with the route — but not the group the new current row is in (B-887).
+    const { sections: secs, isCurrentRow: isCurrent } = revealRouteRef.current;
+    setRevealExpanded((cur) => revealExpandedAfterRoute(cur, secs.map((sec) => ({ id: sec.id, collapsible: sec.collapsible, keys: sec.allRows })), isCurrent));
     setRevealSeq((n) => n + 1);
   }, [location.pathname, location.search]);
   // B-674: declared after the route-change reset above, so its reveal survives the same commit.

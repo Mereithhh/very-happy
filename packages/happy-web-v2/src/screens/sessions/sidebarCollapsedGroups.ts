@@ -163,6 +163,23 @@ export function findRevealTarget<K>(
 }
 
 /**
+ * B-887: the route moved — temporary (reveal) opens end with it, EXCEPT a group
+ * that holds the new current row. Clicking a sibling inside a group that only a
+ * reveal holds open used to fold it for one commit (every row of the group left
+ * the DOM) and the reveal pass re-opened it right after: the clicked row
+ * vanished and came back, remounted. Returns `expanded` itself when nothing changes.
+ */
+export function revealExpandedAfterRoute<K>(
+  expanded: ReadonlySet<string>,
+  sections: readonly RevealSection<K>[],
+  isCurrent: (key: K) => boolean,
+): ReadonlySet<string> {
+  if (expanded.size === 0) return expanded;
+  const keep = sections.filter((sec) => expanded.has(sec.id) && sec.keys.some(isCurrent)).map((sec) => sec.id);
+  return keep.length === expanded.size ? expanded : new Set(keep);
+}
+
+/**
  * Nearest-edge scroll for the sidebar's OWN list (never scrollIntoView, which
  * also scrolls ancestors). Returns the new scrollTop, or null when the row is
  * already fully visible. Rects are viewport coordinates.

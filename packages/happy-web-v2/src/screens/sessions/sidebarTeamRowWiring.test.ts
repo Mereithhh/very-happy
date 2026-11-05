@@ -19,6 +19,10 @@ describe('Sidebar wiring (B-721 / B-762 / B-773)', () => {
     const teams = readFileSync(new URL('../teams/TeamsScreen.tsx', import.meta.url), 'utf8');
     expect(teams).toContain('if (searchParams.get("view") === "settings") {\n      setView("settings");');
   });
+  it('B-887: a route change keeps the temporary open of the group holding the new current row', () => {
+    expect(src).toContain('setRevealExpanded((cur) => revealExpandedAfterRoute(cur, secs.map((sec) => ({ id: sec.id, collapsible: sec.collapsible, keys: sec.allRows })), isCurrent));');
+    expect(src).not.toContain('setRevealExpanded((cur) => (cur.size ? new Set() : cur))');
+  });
   it('B-762: hints, folds and team nodes stay out of ⌘1–9 / reorder', () => {
     expect(src).toContain('.filter((r) => !r.teamInactiveFold && !r.teamEmptyHint && !r.projectEmptyHint && !r.team)');
     expect(src).toContain('const i = r.share || r.teamInactiveFold || r.teamEmptyHint || r.projectEmptyHint || r.team ? -1 : flat++;');
