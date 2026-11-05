@@ -18,11 +18,16 @@ import { useImeGuard } from '@/utils/ime';
 import { insertComposerNewline, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
 import { Spinner, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
+import { ChatAnnotationsTray } from './chatAnnotations/ChatAnnotationsTray';
+import { composeAnnotatedMessage } from './chatAnnotations/chatAnnotations';
+import { getChatAnnotations, getStaleAnnotationIds, removeChatAnnotations, useChatAnnotations } from './chatAnnotations/chatAnnotationsStore';
 import './shared.css';
 
 export function SharedComposer({ sessionId }: { sessionId: string }) {
-    const { t } = useTranslation();
+    const { t, lang } = useTranslation();
     const toast = useToast();
+    // B-891: a driver comments in place too; the comments go out with the next message.
+    const annotationCount = useChatAnnotations(sessionId).length;
     const session = useSession(sessionId);
     const ime = useImeGuard();
     const enterToSend = useSetting('agentInputEnterToSend');
@@ -33,10 +38,13 @@ export function SharedComposer({ sessionId }: { sessionId: string }) {
 
     const send = async () => {
         const value = text.trim();
-        if (!value || sending || archived) return;
+        const notes = getChatAnnotations(sessionId).filter((a) => a.body.trim());
+        if ((!value && notes.length === 0) || sending || archived) return;
         setSending(true);
         try {
-            await sendSharedMessage(sessionId, value, `shared-${randomUUID()}`);
+            const body = composeAnnotatedMessage(notes, value, (lang ?? '').startsWith('zh') ? 'zh' : 'en', getStaleAnnotationIds(sessionId));
+            await sendSharedMessage(sessionId, body, `shared-${randomUUID()}`);
+            removeChatAnnotations(sessionId, notes.map((a) => a.id));
             setText('');
             taRef.current?.focus();
         } catch (error) {
@@ -58,6 +66,8 @@ export function SharedComposer({ sessionId }: { sessionId: string }) {
     };
 
     return (
+        <>
+        {!archived && <div className="shc-annotations"><ChatAnnotationsTray sessionId={sessionId} /></div>}
         <div className="shc">
             <textarea
                 ref={taRef}
@@ -76,7 +86,7 @@ export function SharedComposer({ sessionId }: { sessionId: string }) {
                 type="button"
                 className="shc-send"
                 onClick={() => void send()}
-                disabled={sending || archived || text.trim().length === 0}
+                disabled={sending || archived || (text.trim().length === 0 && annotationCount === 0)}
                 aria-busy={sending}
                 aria-label={t('share.composer.send')}
                 title={t('share.composer.sendHint')}
@@ -84,5 +94,6 @@ export function SharedComposer({ sessionId }: { sessionId: string }) {
                 {sending ? <Spinner size={14} /> : <SendHorizontal size={16} />}
             </button>
         </div>
+        </>
     );
 }

@@ -1,4 +1,5 @@
 import { MMKV } from '@/storage/mmkv-web';
+import { CHAT_ANNOTATIONS_MMKV_ID } from './chatAnnotationsNamespace';
 import { Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SettingsSchema } from './settings';
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
@@ -427,9 +428,10 @@ export const diffCommentsKey = (sessionId: string) => `s.${sessionId}`;
 /** B-572: per-session "viewed" marks of the review-all tab (same key shape). */
 export const REVIEW_VIEWED_MMKV_ID = 'review-viewed';
 
-/** Drop one session's comment drafts (and B-572 viewed marks), or (no id) the whole namespaces. Never throws. */
+
+/** Drop one session's comment drafts (diff + transcript, and B-572 viewed marks), or (no id) the whole namespaces. Never throws. */
 export function clearDiffCommentDrafts(sessionId?: string) {
-    for (const id of [DIFF_COMMENTS_MMKV_ID, REVIEW_VIEWED_MMKV_ID]) {
+    for (const id of [DIFF_COMMENTS_MMKV_ID, REVIEW_VIEWED_MMKV_ID, CHAT_ANNOTATIONS_MMKV_ID]) {
         try {
             const store = new MMKV({ id });
             if (sessionId) store.delete(diffCommentsKey(sessionId));

@@ -21,7 +21,9 @@ describe('/compact in the composer', () => {
 
     it('a typed /compact goes canonical and without the edited-drafts block', () => {
         expect(source).toContain('const attachedDrafts = compactCommand !== null ? [] : selectPendingDrafts(');
-        expect(source).toContain('const sendValue = compactCommand ?? appendEditedDrafts(value,');
+        // B-891: the base is the text with in-place comments; /compact attaches none of them.
+        expect(source).toContain('const sendValue = compactCommand ?? appendEditedDrafts(withNotes,');
+        expect(source).toContain('const attachedNotes = compactCommand !== null ? [] : notes;');
     });
 
     it('a queued /compact is refused or canonicalised the same way', () => {

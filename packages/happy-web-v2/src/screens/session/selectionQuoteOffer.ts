@@ -6,7 +6,8 @@
  */
 import { useSyncExternalStore, type RefObject } from 'react';
 
-export type TouchQuoteOffer = { source: Element; text: string };
+/** `range` (B-891): what 「批注」 anchors to; the text alone cannot say which occurrence. */
+export type TouchQuoteOffer = { source: Element; text: string; range?: Range };
 
 let offer: TouchQuoteOffer | null = null;
 const listeners = new Set<() => void>();
