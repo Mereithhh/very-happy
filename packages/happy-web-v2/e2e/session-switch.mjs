@@ -7,7 +7,7 @@
  *   DATA_DIR=<tmp> pnpm -C packages/happy-server exec tsx --env-file=.env.dev ./sources/standalone.ts migrate
  *   VH_SERVER_URL=http://127.0.0.1:<port> pnpm -C packages/happy-web-v2 exec vite --port <vite> --strictPort
  *   node packages/happy-web-v2/e2e/session-switch.mjs --web <web> --data-dir <tmp> --port <port> \
- *     --vite http://127.0.0.1:<vite> [--rtt-ms 400] [--device desktop|phone|foldable] [--loops 6] [--out <dir>] [--fold-project] [--cpu-throttle 6]
+ *     --vite http://127.0.0.1:<vite> [--rtt-ms 400] [--device desktop|phone|foldable] [--loops 6] [--out <dir>] [--fold-project] [--cpu-throttle 6] [--busy-project 15]
  *
  * The script starts the standalone server serving <web> (the built bundle, the
  * production shape) on --port, and a TCP proxy on --port + 1 that delays every
@@ -62,6 +62,11 @@ const LOOPS = Number(opt('loops', '6'));
 // opens S1 by deep link (the reveal opens the fold for that route), then every
 // click is a sibling in the same temporarily opened group.
 const FOLD_PROJECT = args.includes('--fold-project');
+// B-887 (the Owner's shape): 按项目 with a big project — the four sessions plus
+// N - 4 more in one open project, a second project beside it, and a writer that
+// keeps posting into the OTHER sessions (updatedAt / seq move) while we click.
+const BUSY_PROJECT = Number(opt('busy-project', '0'));
+const BUSY_MS = Number(opt('busy-ms', '700'));
 // B-887: a slower machine (CDP CPU throttling, e.g. 6) — a fold that commits between two frames gets painted.
 const CPU_THROTTLE = Number(opt('cpu-throttle', '1'));
 if (!WEB || !DATA_DIR || !VITE) {
@@ -117,6 +122,7 @@ const APP = `http://127.0.0.1:${PROXY_PORT}`;
 const browser = await chromium.launch({ executablePath: findChromium() });
 const results = [];
 let heartbeat = null;
+let busyWriter = null;
 try {
     // ── seed through the dev page (its /src modules) ──────────────────
     const seedCtx = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1280, height: 860 }, locale: 'zh-CN' });
@@ -172,7 +178,7 @@ try {
         saveUnreadSessionIds([out[1]]);
         return out;
     }, RECORDS);
-    if (FOLD_PROJECT) {
+    if (FOLD_PROJECT && BUSY_PROJECT === 0) {
         await seed.evaluate(async (sessionIds) => {
             const { projectsApi } = await import('/src/sync/projects.ts');
             const { project } = await projectsApi.create({ name: 'B887 folded', sessionIds });
@@ -180,7 +186,47 @@ try {
         }, ids);
         console.log('project created and folded by hand');
     }
+    let busyIds = [];
+    if (BUSY_PROJECT > 0) {
+        busyIds = await seed.evaluate(async ({ clicked, extra, fold }) => {
+            const { sync } = await import('/src/sync/sync.ts');
+            const { apiSocket } = await import('/src/sync/apiSocket.ts');
+            const { encodeBase64 } = await import('/src/encryption/base64.ts');
+            const { projectsApi } = await import('/src/sync/projects.ts');
+            const out = [];
+            for (let n = 0; n < extra; n++) {
+                const enc = await sync.encryption.openEncryption(null);
+                const [metadata] = await enc.encrypt([{ path: `/home/ubuntu/code/busy-${n}`, host: 'dev-sg', flavor: 'claude', summary: { text: `Tanka 代答 ${n}`, updatedAt: Date.now() } }]);
+                const res = await apiSocket.request('/v1/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag: crypto.randomUUID(), metadata: encodeBase64(metadata, 'base64'), agentState: null, dataEncryptionKey: null }) });
+                out.push((await res.json()).session.id);
+            }
+            await sync.refreshSessions?.();
+            const big = out.slice(0, Math.max(0, out.length - 3));
+            const { project } = await projectsApi.create({ name: '业务数据治理', sessionIds: [...clicked, ...big] });
+            await projectsApi.create({ name: 'LLM-HUB', sessionIds: out.slice(big.length) });
+            // --fold-project with --busy-project: the big project is the one folded by hand.
+            if (fold) localStorage.setItem('vh:sidebar-collapsed-groups:v1', JSON.stringify({ [`project:${project.id}`]: true }));
+            return out;
+        }, { clicked: ids, extra: Math.max(3, BUSY_PROJECT - 4 + 3), fold: FOLD_PROJECT });
+        console.log(`busy: ${BUSY_PROJECT} sessions in 业务数据治理, 3 in LLM-HUB, a write every ${BUSY_MS}ms`);
+    }
     const storageDump = await seed.evaluate(() => Object.fromEntries(Object.entries(localStorage)));
+    // Background activity on the other sessions (Tanka 代答-style automations).
+    let busyTurn = 0;
+    const busyStats = {};
+    busyWriter = BUSY_PROJECT > 0 ? setInterval(() => {
+        const sid = busyIds[busyTurn++ % busyIds.length];
+        seed.evaluate(async ({ sid, i }) => {
+            const { sync } = await import('/src/sync/sync.ts');
+            const { apiSocket } = await import('/src/sync/apiSocket.ts');
+            let encryption = null;
+            for (let k = 0; k < 50 && !(encryption = sync.encryption.getSessionEncryption(sid)); k++) await new Promise((r) => setTimeout(r, 100));
+            if (!encryption) return 'no encryption';
+            const content = await encryption.encryptRawRecord({ role: 'user', content: { type: 'text', text: `busy ${i}` } });
+            const res = await apiSocket.request(`/v3/sessions/${sid}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ localId: crypto.randomUUID(), content }] }) });
+            return res.ok ? 'ok' : `http ${res.status}`;
+        }, { sid, i: busyTurn }).then((r) => { busyStats[r] = (busyStats[r] ?? 0) + 1; }, (e) => { busyStats[String(e).slice(0, 40)] = (busyStats[String(e).slice(0, 40)] ?? 0) + 1; });
+    }, BUSY_MS) : null;
     // S3 stays online (its request is only "needs me" while the agent is alive).
     heartbeat = setInterval(() => {
         seed.evaluate((sid) => import('/src/sync/apiSocket.ts').then(({ apiSocket }) => apiSocket.send('session-alive', { sid, time: Date.now(), thinking: false })), ids[2]).catch(() => {});
@@ -396,10 +442,12 @@ try {
     const sum = (rows, key) => rows.reduce((n, r) => n + r[key], 0);
     console.log(`SIDEBAR ${DEVICE}: switches ${results.length}, clicked row removed ${sum(results, 'rowOut')}×, inserted ${sum(results, 'rowIn')}×, inner removals ${sum(results, 'inner')}, node replaced ${results.filter((r) => !r.same).length}×, moved ${results.filter((r) => r.moved).length}×, gone frames ${sum(results, 'gone')}`);
     console.log(`SUMMARY ${DEVICE} rtt ${RTT_MS}ms: loaded switches ${loaded.length}, 「同步消息中」 ${sum(loaded, 'sync')}×, top bar ${sum(loaded, 'bar')}×, shift sum ${sum(loaded, 'shift').toFixed(4)}, max jump ${Math.max(...loaded.map((r) => r.jump))}px; cold switches ${cold.length}, 「同步消息中」 ${sum(cold, 'sync')}×, shift sum ${sum(cold, 'shift').toFixed(4)}, max jump ${Math.max(...cold.map((r) => r.jump))}px`);
+    if (BUSY_PROJECT > 0) console.log(`busy writes: ${JSON.stringify(busyStats)}`);
     console.log(`requests to veryhappy.dev (blocked): ${prodHits}`);
     if (OUT) writeFileSync(join(OUT, `${DEVICE}-results.json`), JSON.stringify({ rttMs: RTT_MS, coarse, results }, null, 2));
 } finally {
     clearInterval(heartbeat);
+    if (busyWriter) clearInterval(busyWriter);
     await browser.close();
     proxy.close();
     server.kill('SIGTERM');
