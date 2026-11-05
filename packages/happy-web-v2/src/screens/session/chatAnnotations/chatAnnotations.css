@@ -35,6 +35,7 @@
   /* 44px hit area around the 18px dot */
   .can-marker::after { content: ''; position: absolute; inset: -13px; }
 }
+/* design-lint-allow: desktop hover preview only — a tap on the marker opens the editor, which shows the same note */
 .can-tip {
   position: absolute;
   bottom: calc(100% + 6px);
@@ -55,7 +56,7 @@
 }
 .can-tip--left { left: auto; right: -4px; }
 @media (hover: hover) and (pointer: fine) {
-  .can-marker:hover .can-tip { display: block; }
+  .can-marker:hover .can-tip { display: block; } /* design-lint-allow: touch reads the note in the editor the tap opens */
   .can-marker--open .can-tip { display: none; }
 }
 
@@ -139,8 +140,8 @@
   font: 400 var(--fs-13) / 1.5 var(--font-sans);
   resize: vertical;
 }
-.can-editor-input:focus-visible { outline: none; border-color: var(--line-heavy); box-shadow: var(--focus-ring); }
-.can-editor-input:focus { border-color: var(--line-heavy); }
+/* focus = caret + a stronger border (design-language「焦点」) */
+.can-editor-input:focus { outline: none; border-color: var(--line-heavy); }
 .can-editor-foot {
   display: flex;
   align-items: center;
