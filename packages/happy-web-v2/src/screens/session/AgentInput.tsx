@@ -862,7 +862,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         // B-642: snapshot the pending edited drafts at submit time; they are
         // marked as seen by the model only once this submission is accepted.
         const attachedDrafts = compactCommand !== null ? [] : selectPendingDrafts(useEditableDrafts.getState().drafts, sessionId);
-        const withNotes = composeAnnotatedMessage(attachedNotes, value, lang.startsWith('zh') ? 'zh' : 'en', getStaleAnnotationIds(sessionId));
+        const withNotes = composeAnnotatedMessage(attachedNotes, value, (lang ?? '').startsWith('zh') ? 'zh' : 'en', getStaleAnnotationIds(sessionId));
         const sendValue = compactCommand ?? appendEditedDrafts(withNotes, buildEditedDraftsBlock(attachedDrafts.map(({ rec }) => ({ title: rec.title, base: rec.base, text: rec.text }))));
         let takenAttachments: QueuedMessage['attachments'];
         let draftTaken = false;
@@ -1465,7 +1465,8 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         setMode('updateSessionPermissionMode', 'permissionMode', appliedKey);
     };
 
-    const hasDraft = text.trim().length > 0 || attachments.length > 0 || processingAttachments || (!pending && annotationCount > 0);
+    const hasAnnotations = !pending && annotationCount > 0;
+    const hasDraft = text.trim().length > 0 || attachments.length > 0 || hasAnnotations || processingAttachments;
     const offlineSend = offlineSendState(networkOffline, attachments.length > 0);
     const canSend = hasDraft && !sending && !processingAttachments && offlineSend !== 'blocked';
     const offlineLabel = offlineSend === 'blocked' ? t('session.chat.sendOfflineAttachments')

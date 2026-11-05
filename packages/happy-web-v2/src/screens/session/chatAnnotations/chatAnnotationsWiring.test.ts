@@ -16,7 +16,7 @@ describe('B-891 transcript comments wiring', () => {
         // only after the send was accepted (sent, or a queue owns it) — a failure keeps them
         expect(src).toMatch(/if \(\(outcome !== 'failed' \|\| queueOwnsItem\) && attachedNotes\.length > 0\) \{\s*removeChatAnnotations\(sessionId, attachedNotes\.map\(\(a\) => a\.id\)\);/);
         // comments alone are sendable
-        expect(src).toMatch(/const hasDraft = [^\n]*\(!pending && annotationCount > 0\);/);
+        expect(src).toMatch(/const hasAnnotations = !pending && annotationCount > 0;\n\s*const hasDraft = [^\n]*\|\| hasAnnotations \|\|/);
         expect(src).toMatch(/\{!pending && <ChatAnnotationsTray sessionId=\{sessionId\} \/>\}/);
     });
 

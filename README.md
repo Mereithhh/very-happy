@@ -415,6 +415,10 @@ structured parity with Claude.
 - `@` file mentions in the message box, and editable drafts: text the agent
   writes for you to send can be edited and copied in place, and your next
   message hands the final version back to the agent.
+- Comment in place: select text in a message and pick **Comment** (next to
+  **Quote**) to write a note right there. The passage keeps a numbered marker,
+  the composer shows just “N comments”, and your next message carries them as
+  quoted excerpts with your notes. Drafts stay in this browser until sent.
 - Fork a Claude or Codex session: **Fork session** in the header ⋯ continues
   the whole conversation in a new session; **Fork from here** under one of your
   messages keeps everything before it and puts that message in the new message

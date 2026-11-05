@@ -10,7 +10,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { MMKV } from '@/storage/mmkv-web';
-import { CHAT_ANNOTATIONS_MMKV_ID, diffCommentsKey } from '@/sync/persistence';
+import { CHAT_ANNOTATIONS_MMKV_ID, chatAnnotationsKey } from '@/sync/chatAnnotationsNamespace';
 import {
     CHAT_ANNOTATIONS_MAX_PER_SESSION,
     clampBody,
@@ -20,7 +20,7 @@ import {
 } from './chatAnnotations';
 
 const store = new MMKV({ id: CHAT_ANNOTATIONS_MMKV_ID });
-const keyOf = diffCommentsKey;
+const keyOf = chatAnnotationsKey;
 /** Whole-namespace budget (chars) — localStorage is ~5MB and shared with everything else. */
 export const CHAT_ANNOTATIONS_TOTAL_MAX_CHARS = 500_000;
 

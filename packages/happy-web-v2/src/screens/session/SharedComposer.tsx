@@ -42,7 +42,7 @@ export function SharedComposer({ sessionId }: { sessionId: string }) {
         if ((!value && notes.length === 0) || sending || archived) return;
         setSending(true);
         try {
-            const body = composeAnnotatedMessage(notes, value, lang.startsWith('zh') ? 'zh' : 'en', getStaleAnnotationIds(sessionId));
+            const body = composeAnnotatedMessage(notes, value, (lang ?? '').startsWith('zh') ? 'zh' : 'en', getStaleAnnotationIds(sessionId));
             await sendSharedMessage(sessionId, body, `shared-${randomUUID()}`);
             removeChatAnnotations(sessionId, notes.map((a) => a.id));
             setText('');

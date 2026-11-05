@@ -73,7 +73,7 @@
 .can-editor--popover {
   position: fixed;
   z-index: 800;
-  width: min(340px, calc(100vw - 16px));
+  width: min(340px, calc(100vw - 16px - var(--sa-l) - var(--sa-r)));
   padding: var(--sp-3);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -192,7 +192,7 @@
 }
 .can-tray-toggle > svg:first-child { color: var(--annotation); }
 .can-tray-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.can-tray-chevron { transition: transform var(--dur-fast, 120ms) ease; }
+.can-tray-chevron { transition: transform var(--dur-snap) ease; }
 .can-tray-chevron--open { transform: rotate(180deg); }
 .can-tray-note {
   min-width: 0;
