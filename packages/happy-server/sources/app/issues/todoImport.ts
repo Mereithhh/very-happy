@@ -33,7 +33,7 @@ function decodeKv(key: string, value: Uint8Array): BuiltinTodo | null {
 }
 
 export async function importLegacyTodos(accountId: string): Promise<IssueTodoImportResult> {
-    assertIssuesEnabled();
+    assertIssuesEnabled(accountId);
     const rows = await db.userKVStore.findMany({
         where: { accountId, key: { startsWith: BUILTIN_TODO_PREFIX }, value: { not: null } },
         orderBy: { key: 'asc' }, take: KV_READ_LIMIT, select: { key: true, value: true, version: true },
@@ -49,7 +49,7 @@ export async function importLegacyTodos(accountId: string): Promise<IssueTodoImp
     const ordered = sortBuiltinTodos(valid.map(v => v.todo)).sort((a, b) => a.createdAt - b.createdAt);
     for (let i = 0; i < ordered.length; i += CHUNK) {
         const chunk = ordered.slice(i, i + CHUNK);
-        const counts = await runIssueTx(tx => importChunk(tx, accountId, chunk, versions));
+        const counts = await runIssueTx(accountId, tx => importChunk(tx, accountId, chunk, versions));
         result.imported += counts.imported; result.updated += counts.updated; result.skipped += counts.skipped; result.conflicts += counts.conflicts;
     }
     return result;

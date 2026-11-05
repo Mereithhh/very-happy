@@ -16,7 +16,7 @@ import { log } from '@/utils/log';
 /**
  * localId prefixes stamped by automated senders (daemon automations, Teams, cross-machine send, peer messages, conflict
  * notices, B-872 issue dispatches `issue-<dispatchId>` = wire `ISSUE_DISPATCH_LOCAL_ID_PREFIX`). Not behind
- * `VH_ISSUES_ENABLED`: a pure judgement, and with the switch off no issue message exists.
+ * the per-account Issues switch: a pure judgement, and an account without Issues has no issue message.
  */
 export const AUTOMATED_LOCAL_ID_PREFIXES = ['automation-', 'teams-', 'remote-send-', 'session-message-', 'edit-conflict-', 'issue-'] as const;
 /** `X-Happy-Client` tags (the part before `/`) of automated senders. */
