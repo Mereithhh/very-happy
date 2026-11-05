@@ -227,6 +227,9 @@
    scroll area so a big directory never grows the card past the viewport. */
 .ns-browse {
   display: flex;
+  /* B-889: the dialog is a flex column — on a phone its content overflows and
+     this clipped (min-height: 0) box was shrunk to 2px. */
+  flex: none;
   height: 240px;
   margin-top: var(--sp-2);
   border: 1px solid var(--line);

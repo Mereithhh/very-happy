@@ -1,6 +1,16 @@
 /* FsBrowser — machine file browser (terminal drawer + session files panel).
    Token-only styling per the Console design language (see tokens.css). */
 
+/* B-889 — picker hosts (a fixed-height box around <FsBrowser onPickDir>) must
+   be `display: flex; flex: none; overflow: hidden` so the height reaches
+   .fsb-list and the LIST is the scroller. A block host with `overflow: auto`
+   scrolls itself instead, and the global `#root [class*='list']
+   { overscroll-behavior: contain }` (base.css) on the never-scrollable
+   .fsb-list then stops the wheel and touch from chaining to it: nothing moved
+   except by dragging the scrollbar. `flex: none` because a dialog is a flex
+   column that shrinks a clipped box to nothing on a phone. At the list's end
+   the dialog does not follow (contain), like every other list.
+   Pinned by fsBrowserHosts.test.ts. */
 .fsb {
   display: flex;
   flex-direction: column;

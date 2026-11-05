@@ -28,7 +28,8 @@
   gap: 12px;
   margin: 16px 0;
 }
-.teams-screen label,
+/* B-889: a <Checkbox> label is a row (box + text); :where keeps the specificity. */
+.teams-screen label:where(:not(.vh-checkbox)),
 .teams-screen .teams-field {
   display: flex;
   flex-direction: column;
@@ -291,7 +292,7 @@
 .team-folder-input { display: flex; align-items: stretch; gap: var(--sp-2); }
 .team-folder-input input { min-width: 0; flex: 1; }
 .team-folder-input button { display: inline-flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; }
-.team-folder-browser { height: 300px; min-height: 180px; overflow: auto; border: 0; border-radius: var(--r-btn); background: var(--fill-hover); }
+.team-folder-browser { display: flex; flex: none; height: 300px; min-height: 180px; overflow: hidden; border: 0; border-radius: var(--r-btn); background: var(--fill-hover); } /* B-889: see fsbrowser.css (picker hosts) */
 .team-start-form details summary { min-height: 32px; cursor: pointer; padding-block: var(--sp-3); }
 .team-start-form details :is(label, .teams-field) + :is(label, .teams-field) { margin-top: var(--sp-3); }
 .team-start-assurance { color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; }
