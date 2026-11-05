@@ -7,7 +7,7 @@
  *   DATA_DIR=<tmp> pnpm -C packages/happy-server exec tsx --env-file=.env.dev ./sources/standalone.ts migrate
  *   VH_SERVER_URL=http://127.0.0.1:<port> pnpm -C packages/happy-web-v2 exec vite --port <vite> --strictPort
  *   node packages/happy-web-v2/e2e/session-switch.mjs --web <web> --data-dir <tmp> --port <port> \
- *     --vite http://127.0.0.1:<vite> [--rtt-ms 400] [--device desktop|phone|foldable] [--loops 6] [--out <dir>] [--fold-project]
+ *     --vite http://127.0.0.1:<vite> [--rtt-ms 400] [--device desktop|phone|foldable] [--loops 6] [--out <dir>] [--fold-project] [--cpu-throttle 6]
  *
  * The script starts the standalone server serving <web> (the built bundle, the
  * production shape) on --port, and a TCP proxy on --port + 1 that delays every
@@ -62,6 +62,8 @@ const LOOPS = Number(opt('loops', '6'));
 // opens S1 by deep link (the reveal opens the fold for that route), then every
 // click is a sibling in the same temporarily opened group.
 const FOLD_PROJECT = args.includes('--fold-project');
+// B-887: a slower machine (CDP CPU throttling, e.g. 6) — a fold that commits between two frames gets painted.
+const CPU_THROTTLE = Number(opt('cpu-throttle', '1'));
 if (!WEB || !DATA_DIR || !VITE) {
     console.error('--web, --data-dir and --vite are required');
     process.exit(2);
@@ -253,6 +255,7 @@ try {
         for (const b of await page.getByRole('button', { name, exact: true }).all()) await b.click({ timeout: 1_000 }).catch(() => {});
     }
     const coarse = await page.evaluate(() => matchMedia('(pointer: coarse)').matches);
+    if (CPU_THROTTLE > 1) await (await ctx.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: CPU_THROTTLE });
     if (FOLD_PROJECT) {
         // In-app route change once the projects are loaded (⌘K / a notification): the reveal opens the fold.
         await page.evaluate(() => { history.pushState({}, '', '/'); dispatchEvent(new PopStateEvent('popstate')); });
