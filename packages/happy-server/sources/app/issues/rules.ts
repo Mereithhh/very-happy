@@ -22,9 +22,31 @@ export function requireIssue(condition: unknown, code: string, status = 409, det
     if (!condition) throw new IssueError(code, status, details);
 }
 
-/** Off unless exactly `true`; read on every request (same as `VH_PROJECTS_ENABLED`), so a `rollout=switch` deploy flips it. */
-export function issuesEnabled(): boolean {
-    return process.env.VH_ISSUES_ENABLED === 'true';
+/**
+ * B-888 per-account rollout. `VH_ISSUES_ACCOUNTS` is a comma-separated
+ * accountId allowlist (blank / duplicate entries and surrounding spaces are
+ * ignored). Parsed once per distinct raw value; the list itself is never
+ * logged or exported as a metric.
+ */
+let allowlistCache: { raw: string; ids: ReadonlySet<string> } | null = null;
+export function issuesAccountAllowlist(raw = process.env.VH_ISSUES_ACCOUNTS ?? ''): ReadonlySet<string> {
+    if (allowlistCache?.raw !== raw) allowlistCache = { raw, ids: new Set(raw.split(',').map(id => id.trim()).filter(Boolean)) };
+    return allowlistCache.ids;
+}
+
+/**
+ * Issues is on for this account when `VH_ISSUES_ENABLED` is exactly `true`
+ * (everyone), else when the account is in `VH_ISSUES_ACCOUNTS`; off otherwise.
+ * Read on every call (same as `VH_PROJECTS_ENABLED`), so a `rollout=switch`
+ * deploy flips it.
+ */
+export function issuesEnabled(accountId: string): boolean {
+    return process.env.VH_ISSUES_ENABLED === 'true' || issuesAccountAllowlist().has(accountId);
+}
+
+/** False when no account can have Issues: the routes may then answer 404 before auth, exactly as before B-888. */
+export function issuesEnabledForAnyAccount(): boolean {
+    return process.env.VH_ISSUES_ENABLED === 'true' || issuesAccountAllowlist().size > 0;
 }
 
 /** A dispatch claimed but not completed within this window goes back to the queue (spec §3.2). */

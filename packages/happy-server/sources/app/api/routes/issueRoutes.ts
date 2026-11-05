@@ -5,7 +5,7 @@ import {
     IssueRunCreateSchema, IssueRunSessionEventSchema, IssueUpdateSchema, ISSUE_LIMITS,
 } from '@slopus/happy-wire';
 import type { Fastify } from '../types';
-import { IssueError, issuesEnabled } from '@/app/issues/rules';
+import { IssueError, issuesEnabled, issuesEnabledForAnyAccount } from '@/app/issues/rules';
 import {
     ackRunFailure, agentComment, agentUpdate, cancelRun, createComment, createIssue, createRun, deleteComment, deleteIssue, editComment, getIssue,
     listIssues, sessionIssueContext, updateIssueFields,
@@ -30,9 +30,13 @@ const commentEdit = z.object({ body: z.string().max(ISSUE_LIMITS.commentBytes).r
 
 /**
  * B-872 Issues REST (`specs/2026-11-issues.md` §9). Account-authenticated.
- * While `VH_ISSUES_ENABLED` is not `true` every route answers 404
- * `issues_disabled` before validation or auth — the same "nothing here" an
- * older server's unknown route gives (compat matrix). Errors are
+ * Issues is per account (B-888, `issuesEnabled`): for an account without it
+ * every route answers 404 `issues_disabled` before validation — the same
+ * "nothing here" an older server's unknown route gives (compat matrix). With
+ * no account enabled at all (neither `VH_ISSUES_ENABLED=true` nor any
+ * `VH_ISSUES_ACCOUNTS`) that 404 also comes before auth, exactly as before;
+ * otherwise auth runs first (in onRequest, still ahead of validation) so the
+ * account is known. Errors are
  * `{ error, ...details }`, never 401/403 (Web treats those as signed out).
  *
  * Static segments (`workers`, `session`, `agent`, `dispatch`, `runs`,
@@ -40,10 +44,15 @@ const commentEdit = z.object({ body: z.string().max(ISSUE_LIMITS.commentBytes).r
  */
 export function issueRoutes(app: Fastify) {
     const gate = {
-        onRequest: async (_request: unknown, reply: any) => {
-            if (!issuesEnabled()) return reply.code(404).send({ error: ISSUES_DISABLED_ERROR });
-        },
-        preHandler: app.authenticate,
+        onRequest: [
+            async (_request: unknown, reply: any) => {
+                if (!issuesEnabledForAnyAccount()) return reply.code(404).send({ error: ISSUES_DISABLED_ERROR });
+            },
+            app.authenticate,
+            async (request: { userId: string }, reply: any) => {
+                if (!issuesEnabled(request.userId)) return reply.code(404).send({ error: ISSUES_DISABLED_ERROR });
+            },
+        ],
     };
     const handle = async (reply: any, work: () => Promise<unknown>) => {
         try { return await work(); }

@@ -74,6 +74,58 @@ describe('B-872 Issues REST through startApi (pglite)', () => {
         process.env.VH_ISSUES_ENABLED = 'true';
     });
 
+    it('B-888 VH_ISSUES_ACCOUNTS: the allowlisted account has Issues end to end; another account gets 404 on every route (before validation), dispatch included, and keeps KV Todos', async () => {
+        delete process.env.VH_ISSUES_ENABLED;
+        const a = await s.newAccount();
+        const b = await s.newAccount();
+        process.env.VH_ISSUES_ACCOUNTS = ` ${a.id} ,, ${a.id},`;
+        try {
+            const aMachine = await s.newMachine(a.id);
+            const bMachine = await s.newMachine(b.id);
+            // A: create + assign an agent → its daemon polls, claims and starts the run.
+            const created = await s.call('POST', '/v1/issues', { title: 'Allowlisted', assignee: agent({ machineId: aMachine }) }, a.token);
+            expect(created.status).toBe(200);
+            const polled = await s.call('GET', `/v1/issues/dispatch?machineId=${aMachine}&workerVersion=1`, undefined, a.token);
+            const spawn = polled.body.dispatches.find((d: { kind: string }) => d.kind === 'spawn');
+            const claimed = await s.call('POST', `/v1/issues/dispatch/${spawn.id}/claim`, { machineId: aMachine }, a.token);
+            const sessionId = await s.newSession(a.id);
+            expect((await s.call('POST', `/v1/issues/dispatch/${spawn.id}/complete`, { machineId: aMachine, claimId: claimed.body.dispatch.claimId, sessionId }, a.token)).status).toBe(200);
+            const runId = spawn.runId as string;
+            expect((await s.db.issueRun.findUniqueOrThrow({ where: { id: runId } })).status).toBe('running');
+            // B: every route, including an invalid body and its own machine's dispatch poll, is 404 issues_disabled.
+            for (const [method, path, body] of [
+                ['GET', '/v1/issues', undefined], ['POST', '/v1/issues', { title: '' }], ['GET', `/v1/issues/${created.body.issue.id}`, undefined],
+                ['GET', '/v1/issues/workers', undefined], ['POST', '/v1/issues/import-legacy-todos', undefined],
+                ['GET', `/v1/issues/dispatch?machineId=${bMachine}&workerVersion=1`, undefined], ['GET', '/v1/issues/dispatch', undefined],
+                ['POST', '/v1/issues/agent/update', {}], ['GET', '/v1/issues/session/abc', undefined], ['POST', `/v1/issues/runs/${runId}/cancel`, undefined],
+            ] as const) {
+                expect(await s.call(method, path, body, b.token), path).toEqual({ status: 404, body: { error: 'issues_disabled' } });
+            }
+            // With some account enabled the account must be known first: no token is 401, as when the switch is on.
+            expect((await s.call('GET', '/v1/issues', undefined, null)).status).toBe(401);
+            expect(await s.db.issueWorker.count({ where: { accountId: b.id } })).toBe(0);
+            // B's built-in Todos stay on KV and nothing is imported.
+            const todoId = crypto.randomUUID();
+            const value = Buffer.from(JSON.stringify({ schemaVersion: 1, id: todoId, title: 'b todo', note: '', status: 'open', order: 1, createdAt: 1, updatedAt: 1 })).toString('base64');
+            expect((await s.call('POST', '/v1/kv', { mutations: [{ key: BUILTIN_TODO_PREFIX + todoId, value, version: -1 }] }, b.token)).status).toBe(200);
+            expect((await s.call('GET', `/v1/kv?prefix=${encodeURIComponent(BUILTIN_TODO_PREFIX)}`, undefined, b.token)).body.items).toHaveLength(1);
+            expect(await s.db.issue.count({ where: { accountId: b.id } })).toBe(0);
+
+            // A dropped from the list: its daemon's poll is 404 and the archive hook leaves its run alone — nothing runs for an off account.
+            process.env.VH_ISSUES_ACCOUNTS = b.id;
+            expect(await s.call('GET', `/v1/issues/dispatch?machineId=${aMachine}&workerVersion=1`, undefined, a.token)).toEqual({ status: 404, body: { error: 'issues_disabled' } });
+            expect((await s.call('POST', `/v1/sessions/${sessionId}/archive`, undefined, a.token)).status).toBe(200);
+            await new Promise(resolve => setTimeout(resolve, 200));
+            expect((await s.db.issueRun.findUniqueOrThrow({ where: { id: runId } })).status).toBe('running');
+            // …and B, now listed, is on.
+            expect((await s.call('GET', '/v1/issues', undefined, b.token)).status).toBe(200);
+            await s.db.userKVStore.deleteMany({ where: { accountId: b.id } });
+        } finally {
+            delete process.env.VH_ISSUES_ACCOUNTS;
+            process.env.VH_ISSUES_ENABLED = 'true';
+        }
+    });
+
     it('creates, numbers concurrently without gaps or duplicates, reads by key, lists and filters; foreign accounts see nothing', async () => {
         expect((await s.call('GET', '/v1/issues', undefined, null)).status).toBe(401);
         const first = await s.call('POST', '/v1/issues', { title: 'First', description: 'd', requestId: 'c1' });

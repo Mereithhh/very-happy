@@ -33,8 +33,8 @@ import {
  * here is a fixed message on an emit failure.
  */
 
-export function assertIssuesEnabled() {
-    requireIssue(issuesEnabled(), 'issues_disabled', 404);
+export function assertIssuesEnabled(accountId: string) {
+    requireIssue(issuesEnabled(accountId), 'issues_disabled', 404);
 }
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -48,8 +48,8 @@ const json = (value: unknown) => value as Prisma.InputJsonValue;
  * same-account writers in lockstep), so a 409 `transaction_conflict` is rare;
  * clients still retry it (spec §2.7).
  */
-export async function runIssueTx<T>(fn: (tx: Tx) => Promise<T>, opts: { isolationLevel?: Prisma.TransactionIsolationLevel } = {}): Promise<T> {
-    assertIssuesEnabled();
+export async function runIssueTx<T>(accountId: string, fn: (tx: Tx) => Promise<T>, opts: { isolationLevel?: Prisma.TransactionIsolationLevel } = {}): Promise<T> {
+    assertIssuesEnabled(accountId);
     for (let attempt = 0; ; attempt++) {
         try { return await inTx(fn, { isolationLevel: opts.isolationLevel, retries: 8, backoff: retry => retry * 50 + Math.random() * 100 }); }
         catch (error) {
@@ -313,7 +313,7 @@ export async function respawnForCommentTx(tx: Tx, run: RunRow, payload: MessageP
 // ─── Human: list / read ──────────────────────────────────────────────────────
 
 export async function listIssues(accountId: string, query: IssueListQuery): Promise<IssueListResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const asOf = Date.now();
         const limit = query.limit ?? LIST_DEFAULT;
         const statuses = splitList(query.status);
@@ -349,7 +349,7 @@ export async function listIssues(accountId: string, query: IssueListQuery): Prom
 }
 
 export async function getIssue(accountId: string, ref: string): Promise<IssueDetailResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const issue = await loadIssue(tx, accountId, ref, { allowDeleted: true });
         const comments = await tx.issueComment.findMany({ where: { issueId: issue.id }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
         const runs = await tx.issueRun.findMany({ where: { issueId: issue.id }, orderBy: { seq: 'asc' } });
@@ -371,7 +371,7 @@ export async function getIssue(accountId: string, ref: string): Promise<IssueDet
  * `requestId` fails its unique insert and the retry returns the winner.
  */
 export async function createIssue(accountId: string, input: IssueCreate): Promise<IssueMutationResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const key = requestKey('create', accountId, input.requestId);
         // B-874d: a todo id is the caller's identity for this issue, so reusing it (even with another requestId) returns that
         // issue; once it is soft-deleted the id is spent, as a deleted KV todo id is: 404 `issue_todo_deleted`, never a new issue.
@@ -490,7 +490,7 @@ async function ackOwnerMentionsTx(tx: Tx, issueId: string, now: Date): Promise<s
 }
 
 export async function updateIssueFields(accountId: string, ref: string, input: IssueUpdate): Promise<IssueMutationResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const issue = await loadIssue(tx, accountId, ref);
         if (input.ifVersion !== undefined && input.ifVersion !== issue.version) throw new IssueError('issue_version_conflict', 409, { issue: issueView(issue) });
         const { ifVersion: _ifVersion, ...patch } = input;
@@ -501,7 +501,7 @@ export async function updateIssueFields(accountId: string, ref: string, input: I
 
 /** Soft delete: tombstone (still served by `updatedSince`), active runs cancelled, open items dismissed. Idempotent. */
 export async function deleteIssue(accountId: string, ref: string): Promise<IssueMutationResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const issue = await loadIssue(tx, accountId, ref, { allowDeleted: true });
         if (issue.deletedAt) return { issue: issueView(issue) };
         for (const run of await activeRuns(tx, issue.id)) await endRun(tx, run, 'cancelled');
@@ -519,8 +519,8 @@ export async function deleteIssue(accountId: string, ref: string): Promise<Issue
 export async function settleIssueReview(accountId: string, issueId: string, choice: string, note?: string): Promise<void> {
     const { AttentionError } = await import('@/app/attention/rules');
     if (choice !== ISSUE_REVIEW_CHOICES.done && choice !== ISSUE_REVIEW_CHOICES.return) throw new AttentionError('attention_unknown_choice', 400);
-    if (!issuesEnabled()) throw new AttentionError('attention_item_stale', 409);
-    await runIssueTx(async tx => {
+    if (!issuesEnabled(accountId)) throw new AttentionError('attention_item_stale', 409);
+    await runIssueTx(accountId, async tx => {
         const issue = await tx.issue.findFirst({ where: { id: issueId, accountId, deletedAt: null } });
         if (!issue || issue.status !== 'in_review') throw new AttentionError('attention_item_stale', 409);
         const owner = { choice, note: note?.trim() || null };
@@ -600,7 +600,7 @@ async function createHumanCommentTx(tx: Tx, accountId: string, issue: IssueRow, 
 }
 
 export async function createComment(accountId: string, ref: string, input: IssueCommentCreate): Promise<IssueMutationResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const issue = await loadIssue(tx, accountId, ref);
         const key = requestKey('comment', accountId, input.requestId);
         if (key) {
@@ -622,7 +622,7 @@ async function loadOwnComment(tx: Tx, accountId: string, issueId: string, commen
 }
 
 export async function editComment(accountId: string, ref: string, commentId: string, body: string): Promise<IssueMutationResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const issue = await loadIssue(tx, accountId, ref);
         await loadOwnComment(tx, accountId, issue.id, commentId);
         const row = await tx.issueComment.update({ where: { id: commentId }, data: { body, editedAt: new Date() } });
@@ -632,7 +632,7 @@ export async function editComment(accountId: string, ref: string, commentId: str
 }
 
 export async function deleteComment(accountId: string, ref: string, commentId: string): Promise<IssueMutationResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const issue = await loadIssue(tx, accountId, ref);
         await loadOwnComment(tx, accountId, issue.id, commentId);
         const row = await tx.issueComment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
@@ -645,7 +645,7 @@ export async function deleteComment(accountId: string, ref: string, commentId: s
 
 /** POST /v1/issues/:id/runs: retry / run with another agent. Always a new run; older active runs are superseded. */
 export async function createRun(accountId: string, ref: string, input: IssueRunCreate): Promise<IssueMutationResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         let issue = await loadIssue(tx, accountId, ref);
         const key = requestKey('run', accountId, input.requestId);
         if (key) {
@@ -672,7 +672,7 @@ async function loadRun(tx: Tx, accountId: string, runId: string): Promise<RunRow
 
 /** Stops a run (human). The session itself is left alone (phase 1: stop it from the session page). Idempotent. */
 export async function cancelRun(accountId: string, runId: string): Promise<{ run: IssueRunView }> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const run = await loadRun(tx, accountId, runId);
         if (!isIssueRunActive(run.status)) return { run: runView(run) };
         return { run: runView(await endRun(tx, run, 'cancelled')) };
@@ -681,7 +681,7 @@ export async function cancelRun(accountId: string, runId: string): Promise<{ run
 
 /** 「知道了」on a failed run: it leaves 「需要我决策」 without a retry. Idempotent. */
 export async function ackRunFailure(accountId: string, runId: string): Promise<{ run: IssueRunView }> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const run = await loadRun(tx, accountId, runId);
         requireIssue(run.status === 'failed', 'issue_run_not_failed', 409);
         if (run.failureAckedAt) return { run: runView(run) };
@@ -724,7 +724,7 @@ async function agentCommentTx(tx: Tx, run: RunRow, issue: IssueRow, body: string
  * need a comment) and / or a comment, on the session's bound issue only.
  */
 export async function agentUpdate(accountId: string, input: Omit<IssueAgentUpdate, 'status'> & { status?: string }): Promise<IssueMutationResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const { run, issue } = await boundRun(tx, accountId, input.sessionId);
         const key = requestKey('agent', accountId, input.requestId);
         if (key) {
@@ -750,7 +750,7 @@ export async function agentUpdate(accountId: string, input: Omit<IssueAgentUpdat
 
 /** `issue_comment` (`mention_owner` → @我). Agent comments never wake anyone (§6 loop guard). */
 export async function agentComment(accountId: string, input: IssueAgentComment): Promise<IssueMutationResponse> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const { run, issue } = await boundRun(tx, accountId, input.sessionId);
         const key = requestKey('agent', accountId, input.requestId);
         if (key) {
@@ -768,7 +768,7 @@ export async function agentComment(accountId: string, input: IssueAgentComment):
  * (next-turn digest). Not bound → `issue: null`.
  */
 export async function sessionIssueContext(accountId: string, sessionId: string, since?: number): Promise<IssueSessionContext> {
-    return runIssueTx(async tx => {
+    return runIssueTx(accountId, async tx => {
         const asOf = Date.now();
         const run = await tx.issueRun.findFirst({ where: { sessionId, accountId } });
         const issue = run ? await tx.issue.findFirst({ where: { id: run.issueId, accountId, deletedAt: null } }) : null;
