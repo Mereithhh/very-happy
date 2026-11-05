@@ -9,6 +9,7 @@ import {
   nearestScrollTop,
   parseCollapsedGroups,
   planReveal,
+  revealExpandedAfterRoute,
   withTemporaryExpanded,
   resetCollapsedGroupsForTest,
   setGroupCollapsed,
@@ -123,6 +124,42 @@ describe('temporary reveal expansion (review 中1)', () => {
     expect(stored).toEqual({ 'workspace:a': true });
     expect(isGroupCollapsed(withTemporaryExpanded(stored, new Set()), 'workspace:a')).toBe(true);
     expect(isGroupCollapsed(withTemporaryExpanded(stored, new Set()), 'completed')).toBe(true);
+  });
+});
+
+describe('revealExpandedAfterRoute (B-887)', () => {
+  // project:p is folded by hand and open only because a reveal opened it.
+  const sections = [
+    { id: 'project:p', collapsible: true, keys: ['s1', 's2', 's3', 's4'] },
+    { id: 'unassigned', collapsible: true, keys: ['s5'] },
+  ];
+  const stored = { 'project:p': true };
+  const visible = (expanded: ReadonlySet<string>) => {
+    const eff = withTemporaryExpanded(stored, expanded);
+    return sections.flatMap((sec) => (isGroupCollapsed(eff, sec.id) ? [] : sec.keys));
+  };
+
+  it('clicking a sibling inside the revealed group keeps it open: same keys, same positions, no fold in between', () => {
+    const revealed = new Set(['project:p']);
+    const before = visible(revealed);
+    const after = revealExpandedAfterRoute(revealed, sections, (k) => k === 's3');
+    expect(after).toBe(revealed); // unchanged → no re-render that folds the group
+    expect(visible(after)).toEqual(before);
+    expect(visible(after).indexOf('s3')).toBe(before.indexOf('s3'));
+  });
+
+  it('a route outside the group still ends the temporary open (B-580 rule)', () => {
+    const revealed = new Set(['project:p']);
+    expect([...revealExpandedAfterRoute(revealed, sections, (k) => k === 's5')]).toEqual([]);
+    expect([...revealExpandedAfterRoute(revealed, sections, () => false)]).toEqual([]);
+    expect(visible(revealExpandedAfterRoute(revealed, sections, (k) => k === 's5'))).toEqual(['s5']);
+  });
+
+  it('keeps only the group holding the new current row', () => {
+    const after = revealExpandedAfterRoute(new Set(['project:p', 'unassigned', 'team:t']), sections, (k) => k === 's2');
+    expect([...after]).toEqual(['project:p']);
+    const none = new Set<string>();
+    expect(revealExpandedAfterRoute(none, sections, (k) => k === 's2')).toBe(none);
   });
 });
 
