@@ -282,7 +282,7 @@ a.mrb-term-btn { text-decoration: none; }
 .pj-folder-input { display: flex; align-items: stretch; gap: var(--sp-2); min-width: 0; }
 .pj-folder-input > :first-child { flex: 1; min-width: 0; }
 .pj-folder-input .pj-ghost { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; height: auto; background: var(--fill-soft); color: var(--text); border-radius: var(--r-sm); }
-.pj-folder-browser { height: 260px; min-height: 160px; overflow: auto; border-radius: var(--r-md); background: var(--fill-hover); }
+.pj-folder-browser { display: flex; flex: none; height: 260px; min-height: 160px; overflow: hidden; border-radius: var(--r-md); background: var(--fill-hover); } /* B-889: see fsbrowser.css (picker hosts) */
 .pj-folder-new { width: 100%; font-family: var(--font-mono), monospace; }
 .pj-folder-hint { margin: 0; font-size: var(--fs-12); line-height: 1.5; }
 .pj-folder-problem { margin: 0; font-size: var(--fs-12); line-height: 1.5; color: var(--danger); }
