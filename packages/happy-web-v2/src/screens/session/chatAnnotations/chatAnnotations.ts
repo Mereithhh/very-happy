@@ -5,7 +5,8 @@
  * persistence lives in chatAnnotationsStore.ts; the DOM side in
  * chatAnnotationDom.ts.
  *
- * Anchor = message id + the selected text exactly as it appears in that
+ * Anchor = the message's server `seq` (reload-stable; rendered message ids
+ * are allocated per load) + the selected text exactly as it appears in that
  * message's rendered text (textContent of the quote source), with up to
  * ANCHOR_CONTEXT chars on each side and the old offset as a hint — the W3C
  * TextQuoteSelector shape. The DOM is never mutated (markers are an overlay,
@@ -19,7 +20,8 @@ import { canSendAsGrantee, sessionAccess } from '@/app/sessionAccess';
 
 export interface ChatAnnotation {
     id: string;
-    messageId: string;
+    /** server seq of the message (one record may render as several text blocks: all are searched) */
+    seq: number;
     /** the selection as it appears in the message's textContent — what is searched for */
     quote: string;
     prefix: string;
@@ -33,25 +35,29 @@ export interface ChatAnnotation {
     updatedAt: number;
 }
 
-export type ChatAnnotationAnchor = Pick<ChatAnnotation, 'messageId' | 'quote' | 'prefix' | 'suffix' | 'start' | 'excerpt'>;
+export type ChatAnnotationAnchor = Pick<ChatAnnotation, 'seq' | 'quote' | 'prefix' | 'suffix' | 'start' | 'excerpt'>;
 
 export const CHAT_ANNOTATIONS_MAX_PER_SESSION = 50;
 export const CHAT_ANNOTATION_BODY_MAX = 4000;
 export const CHAT_ANNOTATION_QUOTE_MAX = 4000;
 export const ANCHOR_CONTEXT = 32;
 
+function isSeq(v: unknown): v is number {
+    return typeof v === 'number' && Number.isInteger(v) && v >= 0;
+}
+
 /**
  * Anchor for `text.slice(start, end)`. Null when the selection is blank or
  * longer than CHAT_ANNOTATION_QUOTE_MAX (a comment on a whole essay is a
  * quote, not an annotation).
  */
-export function buildAnchor(messageId: string, text: string, start: number, end: number, excerpt: string): ChatAnnotationAnchor | null {
+export function buildAnchor(seq: number, text: string, start: number, end: number, excerpt: string): ChatAnnotationAnchor | null {
     const a = Math.max(0, Math.min(start, end));
     const b = Math.min(text.length, Math.max(start, end));
     const quote = text.slice(a, b);
-    if (!messageId || !quote.trim() || quote.length > CHAT_ANNOTATION_QUOTE_MAX) return null;
+    if (!isSeq(seq) || !quote.trim() || quote.length > CHAT_ANNOTATION_QUOTE_MAX) return null;
     return {
-        messageId,
+        seq,
         quote,
         prefix: text.slice(Math.max(0, a - ANCHOR_CONTEXT), a),
         suffix: text.slice(b, b + ANCHOR_CONTEXT),
@@ -119,7 +125,7 @@ const isOffset = (v: unknown): v is number => typeof v === 'number' && Number.is
 export function isChatAnnotation(v: unknown): v is ChatAnnotation {
     if (!v || typeof v !== 'object') return false;
     const c = v as Record<string, unknown>;
-    return isStr(c.id) && !!c.id && isStr(c.messageId) && !!c.messageId
+    return isStr(c.id) && !!c.id && isSeq(c.seq)
         && isStr(c.quote) && !!c.quote && c.quote.length <= CHAT_ANNOTATION_QUOTE_MAX
         && isStr(c.prefix) && c.prefix.length <= ANCHOR_CONTEXT
         && isStr(c.suffix) && c.suffix.length <= ANCHOR_CONTEXT

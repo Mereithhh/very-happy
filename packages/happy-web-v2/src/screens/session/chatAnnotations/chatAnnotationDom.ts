@@ -7,18 +7,23 @@
 import { QUOTE_SOURCE_SELECTOR, type QuotableSelection } from '../selectionQuoteRange';
 import { buildAnchor, locateAnchor, type ChatAnnotation, type ChatAnnotationAnchor } from './chatAnnotations';
 
-const MESSAGE_SELECTOR = '[data-message-id]';
+const MESSAGE_SELECTOR = '[data-message-seq]';
 
-export function messageIdOf(source: Element): string | null {
-    return source.closest(MESSAGE_SELECTOR)?.getAttribute('data-message-id') || null;
+/** Server seq of the message a quote source belongs to; null for unsent (optimistic) or seq-less rows. */
+export function seqOf(source: Element): number | null {
+    const raw = source.closest(MESSAGE_SELECTOR)?.getAttribute('data-message-seq');
+    const seq = raw ? Number(raw) : NaN;
+    return Number.isInteger(seq) && seq >= 0 ? seq : null;
 }
 
-/** The quote source of a rendered message, or null when it is not in the DOM (not loaded, folded). */
-export function sourceForMessage(root: ParentNode, messageId: string): Element | null {
-    const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(messageId) : messageId.replace(/["\\]/g, '\\$&');
-    const message = root.querySelector(`[data-message-id="${escaped}"]`);
-    if (!message) return null;
-    return message.matches(QUOTE_SOURCE_SELECTOR) ? message : message.querySelector(QUOTE_SOURCE_SELECTOR);
+/** The rendered quote sources of message `seq` (a record can render as several text blocks); empty when not in the DOM. */
+export function sourcesForSeq(root: ParentNode, seq: number): Element[] {
+    const out: Element[] = [];
+    for (const message of root.querySelectorAll(`[data-message-seq="${seq}"]`)) {
+        if (message.matches(QUOTE_SOURCE_SELECTOR)) out.push(message);
+        else out.push(...message.querySelectorAll(QUOTE_SOURCE_SELECTOR));
+    }
+    return out;
 }
 
 /** Offset of the boundary point (node, offset) in `source.textContent`. */
@@ -59,25 +64,27 @@ export function rangeFromOffsets(source: Node, start: number, end: number): Rang
     return null;
 }
 
-/** Anchor for a quotable selection (see readQuotableSelection), or null (no message id, blank, too long). */
+/** Anchor for a quotable selection (see readQuotableSelection), or null (no seq yet, blank, too long). */
 export function anchorFromSelection(quotable: Pick<QuotableSelection, 'source' | 'range' | 'text'>): ChatAnnotationAnchor | null {
     const { source, range } = quotable;
-    const messageId = messageIdOf(source);
-    if (!messageId || !source.contains(range.startContainer) || !source.contains(range.endContainer)) return null;
+    const seq = seqOf(source);
+    if (seq === null || !source.contains(range.startContainer) || !source.contains(range.endContainer)) return null;
     const text = source.textContent ?? '';
     const start = textOffset(source, range.startContainer, range.startOffset);
     const end = textOffset(source, range.endContainer, range.endOffset);
-    return buildAnchor(messageId, text, start, end, quotable.text);
+    return buildAnchor(seq, text, start, end, quotable.text);
 }
 
 export type Located = { kind: 'found'; range: Range } | { kind: 'stale' } | { kind: 'absent' };
 
 /** absent = the message is not rendered right now (says nothing about the anchor); stale = rendered, quote gone. */
-export function locateInDom(root: ParentNode, annotation: Pick<ChatAnnotation, 'messageId' | 'quote' | 'prefix' | 'suffix' | 'start'>): Located {
-    const source = sourceForMessage(root, annotation.messageId);
-    if (!source) return { kind: 'absent' };
-    const at = locateAnchor(source.textContent ?? '', annotation);
-    if (!at) return { kind: 'stale' };
-    const range = rangeFromOffsets(source, at.start, at.end);
-    return range ? { kind: 'found', range } : { kind: 'stale' };
+export function locateInDom(root: ParentNode, annotation: Pick<ChatAnnotation, 'seq' | 'quote' | 'prefix' | 'suffix' | 'start'>): Located {
+    const sources = sourcesForSeq(root, annotation.seq);
+    if (sources.length === 0) return { kind: 'absent' };
+    for (const source of sources) {
+        const at = locateAnchor(source.textContent ?? '', annotation);
+        const range = at && rangeFromOffsets(source, at.start, at.end);
+        if (range) return { kind: 'found', range };
+    }
+    return { kind: 'stale' };
 }

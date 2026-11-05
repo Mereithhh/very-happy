@@ -127,6 +127,8 @@ export function SelectionQuote({ rootRef, sessionId }: { rootRef: RefObject<HTML
         };
         const onMouseUp = (event: MouseEvent) => {
             if (event.button !== 0 || isCoarse()) return;
+            // B-891: the release of a click on our own buttons (or inside the comment editor) is not a new selection.
+            if (event.target instanceof Element && (buttonRef.current?.contains(event.target) || event.target.closest('.can-editor'))) return;
             offer({ x: event.clientX, y: event.clientY }, event.detail === 2 ? SELECTION_SETTLE_MS : 0);
         };
         const onKeyUp = (event: KeyboardEvent) => {

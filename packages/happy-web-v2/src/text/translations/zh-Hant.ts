@@ -404,6 +404,7 @@ export const zhHant: PartialTranslationStructure = {
                 staleHint: '原文已變更。批註仍保留，送出時附上批註時的原文。',
                 sendsWith: '隨下一則訊息送出',
                 clear: '清空全部批註',
+                notLoaded: '這則訊息尚未載入，向上捲動載入更早的訊息',
                 jump: '跳到原文',
                 trayLabel: '對話批註',
                 quota: '批註太多了，請先送出或清理一些',

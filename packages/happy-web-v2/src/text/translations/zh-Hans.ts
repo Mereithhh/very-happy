@@ -1095,6 +1095,7 @@ export const zhHans: TranslationStructure = {
                 staleHint: '原文已变化。批注仍保留，发送时附上批注时的原文。',
                 sendsWith: '随下一条消息发送',
                 clear: '清空全部批注',
+                notLoaded: '这条消息还没加载出来，向上滚动加载更早的消息',
                 jump: '跳到原文',
                 trayLabel: '对话批注',
                 quota: '批注太多了，先发送或清理一些',

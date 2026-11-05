@@ -17,23 +17,24 @@
   position: absolute;
   display: inline-grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   padding: 0;
   border: 0;
   border-radius: 999px;
   background: var(--annotation);
   color: var(--annotation-ink);
-  font: 600 var(--fs-11) / 1 var(--font-sans);
+  box-shadow: 0 0 0 1.5px var(--bg-0);
+  font: 600 var(--fs-10) / 1 var(--font-sans);
   font-variant-numeric: tabular-nums;
   pointer-events: auto;
   cursor: pointer;
 }
-.can-marker--open { box-shadow: 0 0 0 2px var(--bg-0), 0 0 0 3px var(--annotation); }
+.can-marker--open { box-shadow: 0 0 0 1.5px var(--bg-0), 0 0 0 3px var(--annotation); }
 .can-marker:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 @media (pointer: coarse) {
-  /* 44px hit area around the 18px dot */
-  .can-marker::after { content: ''; position: absolute; inset: -13px; }
+  /* 44px hit area around the 16px dot */
+  .can-marker::after { content: ''; position: absolute; inset: -14px; }
 }
 /* design-lint-allow: desktop hover preview only — a tap on the marker opens the editor, which shows the same note */
 .can-tip {

@@ -15,7 +15,7 @@ import {
 import { anchorFromSelection, locateInDom, rangeFromOffsets, textOffset } from './chatAnnotationDom';
 
 const note = (over: Partial<ChatAnnotation>): ChatAnnotation => ({
-    id: 'a1', messageId: 'm1', quote: 'q', prefix: '', suffix: '', start: 0, excerpt: 'q', body: 'b', createdAt: 1, updatedAt: 1, ...over,
+    id: 'a1', seq: 7, quote: 'q', prefix: '', suffix: '', start: 0, excerpt: 'q', body: 'b', createdAt: 1, updatedAt: 1, ...over,
 });
 
 describe('anchor + locate (B-891)', () => {
@@ -23,23 +23,23 @@ describe('anchor + locate (B-891)', () => {
 
     it('anchors the exact selection with bounded context and finds it at the same offset', () => {
         const start = text.indexOf('cache misses');
-        const a = buildAnchor('m1', text, start, start + 'cache misses'.length, 'cache misses')!;
-        expect(a).toMatchObject({ messageId: 'm1', quote: 'cache misses', start, prefix: text.slice(Math.max(0, start - ANCHOR_CONTEXT), start) });
+        const a = buildAnchor(7, text, start, start + 'cache misses'.length, 'cache misses')!;
+        expect(a).toMatchObject({ seq: 7, quote: 'cache misses', start, prefix: text.slice(Math.max(0, start - ANCHOR_CONTEXT), start) });
         expect(a.suffix.length).toBeLessThanOrEqual(ANCHOR_CONTEXT);
         expect(locateAnchor(text, a)).toEqual({ start, end: start + 12 });
     });
 
-    it('rejects blank, missing-id and over-long selections', () => {
-        expect(buildAnchor('m1', 'a   b', 1, 4, '')).toBeNull();
-        expect(buildAnchor('', text, 0, 5, 'x')).toBeNull();
+    it('rejects blank, seq-less and over-long selections', () => {
+        expect(buildAnchor(7, 'a   b', 1, 4, '')).toBeNull();
+        expect(buildAnchor(-1, text, 0, 5, 'x')).toBeNull();
         const long = 'x'.repeat(CHAT_ANNOTATION_QUOTE_MAX + 1);
-        expect(buildAnchor('m1', long, 0, long.length, long)).toBeNull();
+        expect(buildAnchor(7, long, 0, long.length, long)).toBeNull();
     });
 
     it('picks the right duplicate by its context after the text above changed', () => {
         // second "the cache" (before "dies")
         const start = text.lastIndexOf('the cache');
-        const a = buildAnchor('m1', text, start, start + 9, 'the cache')!;
+        const a = buildAnchor(7, text, start, start + 9, 'the cache')!;
         const edited = `Intro paragraph added on re-render. ${text}`;
         const at = locateAnchor(edited, a)!;
         expect(edited.slice(at.start, at.end)).toBe('the cache');
@@ -48,12 +48,12 @@ describe('anchor + locate (B-891)', () => {
 
     it('stays put while text streams in after it (no jumping)', () => {
         const start = text.indexOf('fine');
-        const a = buildAnchor('m1', text, start, start + 4, 'fine')!;
+        const a = buildAnchor(7, text, start, start + 4, 'fine')!;
         expect(locateAnchor(`${text} More text fine fine.`, a)).toEqual({ start, end: start + 4 });
     });
 
     it('is stale (null) once the quoted text is gone', () => {
-        const a = buildAnchor('m1', text, 4, 9, 'cache')!;
+        const a = buildAnchor(7, text, 4, 9, 'cache')!;
         expect(locateAnchor('Completely rewritten.', a)).toBeNull();
     });
 });
@@ -62,7 +62,7 @@ describe('DOM anchoring (B-891)', () => {
     let root: HTMLElement;
     beforeAll(() => {
         root = document.createElement('div');
-        root.innerHTML = '<div data-message-id="m1" class="msg-agent-text"><div class="md"><p>Alpha <b>beta</b> gamma</p><p>delta beta</p></div></div>';
+        root.innerHTML = '<div data-message-seq="7" class="msg msg--agent"><div class="msg-agent-text"><div class="md"><p>Alpha <b>beta</b> gamma</p><p>delta beta</p></div></div></div><div data-message-seq="9"><div class="msg-bubble-text">unsent rows have no seq</div></div>';
         document.body.appendChild(root);
     });
 
@@ -74,7 +74,7 @@ describe('DOM anchoring (B-891)', () => {
         range.setEnd(b, 4);
         expect(textOffset(source, b, 0)).toBe(6);
         const anchor = anchorFromSelection({ source, range, text: 'beta' })!;
-        expect(anchor).toMatchObject({ messageId: 'm1', quote: 'beta', start: 6 });
+        expect(anchor).toMatchObject({ seq: 7, quote: 'beta', start: 6 });
         const back = rangeFromOffsets(source, anchor.start, anchor.start + anchor.quote.length)!;
         expect(back.toString()).toBe('beta');
         expect(back.startContainer).toBe(b);
@@ -87,9 +87,9 @@ describe('DOM anchoring (B-891)', () => {
     });
 
     it('reports absent (not rendered) apart from stale (rendered, text gone)', () => {
-        expect(locateInDom(root, note({ messageId: 'nope', quote: 'beta' })).kind).toBe('absent');
-        expect(locateInDom(root, note({ messageId: 'm1', quote: 'omega' })).kind).toBe('stale');
-        const found = locateInDom(root, note({ messageId: 'm1', quote: 'beta', prefix: 'delta ', start: 0 }));
+        expect(locateInDom(root, note({ seq: 99, quote: 'beta' })).kind).toBe('absent');
+        expect(locateInDom(root, note({ seq: 7, quote: 'omega' })).kind).toBe('stale');
+        const found = locateInDom(root, note({ seq: 7, quote: 'beta', prefix: 'delta ', start: 0 }));
         expect(found.kind).toBe('found');
         // the prefix picks the second "beta"
         if (found.kind === 'found') expect(found.range.startContainer.textContent).toBe('delta beta');

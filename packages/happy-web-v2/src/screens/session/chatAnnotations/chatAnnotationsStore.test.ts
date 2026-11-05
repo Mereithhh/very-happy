@@ -10,13 +10,13 @@ describe('chatAnnotationsStore (B-891)', () => {
         mod = await import('./chatAnnotationsStore');
         persistence = await import('@/sync/persistence');
     });
-    const anchor = { messageId: 'm1', quote: 'beta', prefix: 'alpha ', suffix: ' gamma', start: 6, excerpt: 'beta' };
+    const anchor = { seq: 3, quote: 'beta', prefix: 'alpha ', suffix: ' gamma', start: 6, excerpt: 'beta' };
 
     it('persists per session under its own namespace (survives a reload)', () => {
         expect(mod.addChatAnnotation('s1', anchor, 'note', 5)).toBe('ok');
         mod.addChatAnnotation('s2', anchor, 'other', 5);
         const raw = localStorage.getItem('mmkv:chat-annotations:s.s1');
-        expect(JSON.parse(raw!)).toMatchObject([{ messageId: 'm1', quote: 'beta', body: 'note' }]);
+        expect(JSON.parse(raw!)).toMatchObject([{ seq: 3, quote: 'beta', body: 'note' }]);
         expect(mod.getChatAnnotations('s2')).toHaveLength(1);
         expect(mod.getChatAnnotations('s1')).toBe(mod.getChatAnnotations('s1'));
     });

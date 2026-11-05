@@ -9,6 +9,7 @@ import { ChevronDown, MessageSquareText, Pencil, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { toast } from '@/ui';
 import { requestChatJump } from '@/screens/search/chatJump';
+import { storage } from '@/sync/storage';
 import { excerptPreview } from './chatAnnotations';
 import {
     clearChatAnnotations,
@@ -28,12 +29,14 @@ export function ChatAnnotationsTray({ sessionId }: { sessionId: string }) {
     const staleCount = annotations.filter((a) => stale.has(a.id)).length;
     const listId = `can-tray-${sessionId}`;
 
-    const jump = (id: string, messageId: string) => {
-        requestChatJump(sessionId, { terms: [], messageId, flash: true });
-        // once landed, point at the passage itself
-        window.setTimeout(() => {
-            document.querySelector(`.can-marker[data-annotation-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        }, 400);
+    const jump = (id: string, seq: number) => {
+        const marker = () => document.querySelector(`.can-marker[data-annotation-id="${id}"]`);
+        if (marker()) { marker()!.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+        // Not rendered (older history, folded): the session-search jump loads and lands on the message, then point at the passage.
+        const message = storage.getState().sessionMessages[sessionId]?.messages.find((m) => m.seq === seq);
+        if (!message) { toast.show(t('session.chat.annotations.notLoaded'), 'info'); return; }
+        requestChatJump(sessionId, { terms: [], messageId: message.id, flash: true });
+        window.setTimeout(() => marker()?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 600);
     };
     const remove = (id: string) => {
         if (deleteChatAnnotation(sessionId, id) !== 'ok') toast.show(t('session.chat.annotations.saveFailed'), 'error');
@@ -59,7 +62,7 @@ export function ChatAnnotationsTray({ sessionId }: { sessionId: string }) {
                 <ol id={listId} className="can-tray-list">
                     {annotations.map((a, i) => (
                         <li key={a.id} className="can-tray-item">
-                            <button type="button" className="can-tray-jump" onClick={() => jump(a.id, a.messageId)} title={t('session.chat.annotations.jump')}>
+                            <button type="button" className="can-tray-jump" onClick={() => jump(a.id, a.seq)} title={t('session.chat.annotations.jump')}>
                                 <span className="can-tray-num" aria-hidden>{i + 1}</span>
                                 <span className="can-tray-text">
                                     <span className="can-tray-excerpt">{excerptPreview(a.excerpt)}</span>

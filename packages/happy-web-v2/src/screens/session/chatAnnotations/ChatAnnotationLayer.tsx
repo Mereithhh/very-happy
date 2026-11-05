@@ -14,7 +14,7 @@ import { getChatAnnotations, openAnnotationEditor, reportAnchorState, useAnnotat
 import './chatAnnotations.css';
 
 const HIGHLIGHT_NAME = 'vh-annotation';
-const MARKER = 18;
+const MARKER = 16;
 
 type HighlightRegistry = { set(name: string, h: unknown): void; delete(name: string): void };
 function highlightRegistry(): { registry: HighlightRegistry; Ctor: new (...r: Range[]) => unknown } | null {
@@ -80,8 +80,9 @@ export function ChatAnnotationLayer({ sessionId, innerRef, enabled }: { sessionI
             ranges.push(at.range);
             const last = lastVisibleRect(at.range);
             if (!last) return;
-            const left = Math.min(last.right - box.left + 2, box.width - MARKER);
-            next.push({ id: a.id, n: i + 1, left, top: last.top - box.top - 4, tipLeft: left > box.width / 2 });
+            // a superscript after the passage: mostly above the line, so it covers as little text as possible
+            const left = Math.min(last.right - box.left, box.width - MARKER);
+            next.push({ id: a.id, n: i + 1, left, top: last.top - box.top - MARKER / 2 - 2, tipLeft: left > box.width / 2 });
         });
         const draft = pendingRef.current;
         if (draft) {

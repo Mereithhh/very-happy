@@ -44,7 +44,7 @@ export function ChatAnnotationEditor({ sessionId }: { sessionId: string }) {
     const state = useAnnotationEditor();
     if (!state || state.sessionId !== sessionId) return null;
     // keyed: switching to another comment starts a fresh draft
-    return <EditorCard key={state.kind === 'edit' ? state.id : `new:${state.anchor.messageId}:${state.anchor.start}`} sessionId={sessionId} />;
+    return <EditorCard key={state.kind === 'edit' ? state.id : `new:${state.anchor.seq}:${state.anchor.start}`} sessionId={sessionId} />;
 }
 
 function EditorCard({ sessionId }: { sessionId: string }) {
@@ -70,12 +70,6 @@ function EditorCard({ sessionId }: { sessionId: string }) {
         if (state.kind === 'edit' && !existing) openAnnotationEditor(null);
     }, [state.kind, existing]);
 
-    useLayoutEffect(() => {
-        const el = textareaRef.current;
-        if (!el) return;
-        el.focus({ preventScroll: true });
-        el.setSelectionRange(el.value.length, el.value.length);
-    }, []);
 
     // Desktop popover: below the passage, flipped above when it would leave the window.
     useLayoutEffect(() => {
@@ -92,6 +86,16 @@ function EditorCard({ sessionId }: { sessionId: string }) {
         if (place && top + height > vh - 8) top = Math.max(8, place.top - GAP - height);
         setPos({ left, top });
     }, [sheet, state.place]);
+
+    // Focus once visible: the popover is `visibility: hidden` until placed, and a hidden field refuses focus.
+    const focusedRef = useRef(false);
+    useLayoutEffect(() => {
+        const el = textareaRef.current;
+        if (focusedRef.current || !el || (!sheet && !pos)) return;
+        focusedRef.current = true;
+        el.focus({ preventScroll: true });
+        el.setSelectionRange(el.value.length, el.value.length);
+    }, [sheet, pos]);
 
     const close = () => openAnnotationEditor(null);
     const report = (result: WriteResult): boolean => {

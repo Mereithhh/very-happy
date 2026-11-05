@@ -890,6 +890,7 @@ export const en = {
                 staleHint: 'The original text has changed. The comment is kept and sent with the text as it was.',
                 sendsWith: 'Sent with your next message',
                 clear: 'Clear all comments',
+                notLoaded: 'That message is not loaded here yet — scroll up to load earlier messages',
                 jump: 'Jump to the passage',
                 trayLabel: 'Comments on the conversation',
                 quota: 'Too many comments — send or clear some first',

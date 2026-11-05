@@ -129,7 +129,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     const discarded = discardedReasonKey(message);
     const answeredChip = <AnsweredChip messageId={message.id} />;
     return (
-        <div className="msg msg--user" data-chat-prompt-id={message.id} data-message-id={message.id}>
+        <div className="msg msg--user" data-chat-prompt-id={message.id} data-message-id={message.id} data-message-seq={message.seq ?? undefined}>
             {shared && shared.displayName && (
                 <span className="msg-sender" title={shared.accountId ?? undefined}><Users size={11} aria-hidden />{shared.displayName}</span>
             )}
@@ -249,7 +249,8 @@ function AgentText({
     const prose = text;
     return (
         // B-766: the anchor 「已答 ↗」 lands on (and phase 2's board pointers).
-        <div className="msg msg--agent" data-message-id={message.id}>
+        // B-891: data-message-seq — the reload-stable key in-place comments anchor to (ids are per load).
+        <div className="msg msg--agent" data-message-id={message.id} data-message-seq={message.seq ?? undefined}>
             {prose && (
                 <div className="msg-agent-text vh-copyhost">
                     <DraftScopeProvider sessionId={sessionId} seq={message.seq}>
