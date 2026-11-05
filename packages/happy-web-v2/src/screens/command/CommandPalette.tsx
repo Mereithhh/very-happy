@@ -2,26 +2,8 @@ import type { RecentMachinePath } from '@/utils/quickChat';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IS_MAC, isAppChord } from '@/app/appChord';
 import { useNavigate, useLocation } from 'react-router-dom';
-import {
-  Search,
-  Plus,
-  Settings,
-  TerminalSquare,
-  MessageSquare,
-  Pencil,
-  Archive,
-  ClipboardList,
-  StickyNote,
-  UsersRound,
-  ListChecks,
-  FolderOpen,
-  RotateCcw,
-  History,
-  HardDrive,
-  MessageSquarePlus,
-  Download,
-  X,
-} from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MessageSquare, Pencil, Archive, ClipboardList, StickyNote, UsersRound, ListChecks, FolderOpen, RotateCcw, History, HardDrive, MessageSquarePlus, Download, X, Activity, FolderKanban, Zap, Contact, FolderPlus } from 'lucide-react';
+import { B892_NEW_PROJECT_EVENT, useB892 } from '@/screens/sessions/sidebarTopVariant';
 import { useSessions, storage, useLocalSetting } from '@/sync/storage';
 import { Combobox, SelectMenu } from '@/ui';
 import { machineLabel } from '@/utils/machineUtils';
@@ -402,6 +384,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
 
   // ── build the full item index (unfiltered) ──
   const happyBotEntryVisible = useLocalSetting('happyBotEntryVisible');
+  const b892Compact = useB892((s) => s.top !== 'current');
   const items = useMemo<CommandItem[]>(() => {
     const out: CommandItem[] = [];
 
@@ -556,6 +539,20 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       haystack: 'happy bot teams 团队 机器人',
       run: () => navigate('/teams'),
     });
+    // B-892 prototype: every sidebar entry a compact top folds away is one ⌘K search away.
+    if (b892Compact) {
+      const zh = lang.startsWith('zh');
+      const go = (key: string, title: string, words: string, path: string, icon: React.ReactNode) => out.push({ key: `action:go-${key}`, group: 'actions', title, icon, haystack: `${words} ${title.toLowerCase()}`, run: () => navigate(path) });
+      if (issuesEnabled) {
+        go('issues', 'Issues', 'issues issue 任务', '/issues', <ListTodo size={16} />);
+        go('board', zh ? '运行中' : 'Running', 'board running 运行中 看板', '/board', <Activity size={16} />);
+      }
+      go('projects', zh ? '项目' : 'Projects', 'projects 项目', '/projects', <FolderKanban size={16} />);
+      go('automations', zh ? '自动化' : 'Automations', 'automations 自动化 定时', '/automations', <Zap size={16} />);
+      go('people', zh ? '联系人' : 'Contacts', 'people contacts 联系人 好友', '/people', <Contact size={16} />);
+      out.push({ key: 'action:new-project', group: 'actions', title: zh ? '新建项目' : 'New project', icon: <FolderPlus size={16} />, haystack: 'new project 新建项目', run: () => { window.dispatchEvent(new Event(B892_NEW_PROJECT_EVENT)); } });
+      if (happyBotEntryVisible) go('new-team', zh ? '新建团队' : 'New team', 'new team 新建团队', '/teams?new=1', <UsersRound size={16} />);
+    }
     out.push({
       key: 'action:clipboard-history',
       group: 'actions',
@@ -644,6 +641,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
 
     return out;
   }, [
+    b892Compact,
     sessions,
     search.passing,
     filters,

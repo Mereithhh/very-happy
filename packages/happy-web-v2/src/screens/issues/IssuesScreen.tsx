@@ -23,6 +23,8 @@ import {
 import { assigneeText, dueText, issuePath, PriorityTag, RunIndicator, StatusGlyph, useIssuesBase, useMachineNames } from './IssueParts';
 import { NewIssueDialog } from './IssueDialogs';
 import { IssueDecisions } from './IssueDecisions';
+import { IssueGuide, useNewIssueShortcut } from './IssueGuide';
+import { useB892 } from '@/screens/sessions/sidebarTopVariant';
 import { useIssuesCopy, type IssuesCopy } from './issuesCopy';
 import { issueErrorText } from './issueErrors';
 import './issues.css';
@@ -52,6 +54,10 @@ export function IssuesScreen() {
     const [view, setViewState] = useState<View>(readView);
     const setView = (next: View) => { setViewState(next); try { localStorage.setItem(VIEW_KEY, next); } catch { /* private mode */ } };
     const [creating, setCreating] = useState(false);
+    // B-892 prototype: the guide's examples open the dialog prefilled.
+    const [prefill, setPrefill] = useState('');
+    const improved = useB892((s) => s.issues);
+    useNewIssueShortcut(improved && !creating && availability === 'enabled', () => { setPrefill(''); setCreating(true); });
     const setFilter = (next: IssueFilter) => navigate({ search: filterToSearch(next, { tab: tab === 'all' ? null : tab }) }, { replace: true });
     const setTab = (next: Tab) => navigate({ search: filterToSearch(filter, { tab: next === 'all' ? null : next }) }, { replace: true });
 
@@ -78,9 +84,12 @@ export function IssuesScreen() {
             <header className="is-head">
                 <div className="vh-back-row"><BackButton /><h1><ListTodo size={22} aria-hidden />{copy.title}</h1></div>
                 <div className="is-head-actions">
-                    <Link className="is-ghost" to={`${base}/issues/external`}><ExternalLink size={14} aria-hidden />{copy.external}</Link>
+                    {!improved && <Link className="is-ghost" to={`${base}/issues/external`}><ExternalLink size={14} aria-hidden />{copy.external}</Link>}
                     <Segmented className="is-view-switch" label={copy.view} value={view} onChange={setView} options={[{ value: 'list', label: copy.list, icon: LayoutList }, { value: 'board', label: copy.board, icon: Columns3 }]} />
-                    <button type="button" className="is-primary" onClick={() => setCreating(true)} data-testid="issues-new"><Plus size={14} aria-hidden />{copy.newIssue}</button>
+                    <button type="button" className="is-primary" title={improved ? copy.shortcutNew : undefined} onClick={() => { setPrefill(''); setCreating(true); }} data-testid="issues-new"><Plus size={14} aria-hidden />{copy.newIssue}{improved && <kbd className="is-kbd">C</kbd>}</button>
+                    {improved && <ActionDropdownMenu align="end" items={[{ key: 'external', label: copy.external, icon: ExternalLink, onSelect: () => navigate(`${base}/issues/external`) }]}>
+                        <button type="button" className="is-icon-btn" aria-label={copy.moreActions} title={copy.moreActions} data-testid="issues-more"><MoreHorizontal size={16} /></button>
+                    </ActionDropdownMenu>}
                 </div>
             </header>
             <nav className="is-tabs vh-segmented" aria-label={copy.scope}>
@@ -88,16 +97,20 @@ export function IssuesScreen() {
             </nav>
             <FilterBar filter={filter} onChange={setFilter} copy={copy} issues={all} projects={projects.projects} />
             {tab === 'waiting' && <IssueDecisions />}
+            {improved && tab === 'all' && !filterActive(filter) && listStatus !== 'loading' && listStatus !== 'error' && availability !== 'unknown' && all.every((i) => isClosedColumn(columnOf(i.status))) && (
+                <IssueGuide copy={copy} onCreate={(title) => { setPrefill(title); setCreating(true); }} />
+            )}
             {listStatus === 'loading' || availability === 'unknown'
                 ? <p className="is-muted is-loading"><Spinner size={14} /> {copy.loading}</p>
                 : listStatus === 'error' ? <p className="is-muted">{copy.loadFailed} <button type="button" className="is-ghost" onClick={() => void loadIssues({ full: true })}>{copy.retry}</button></p>
+                    : shown.length === 0 && tab === 'all' && improved && !filterActive(filter) ? null
                     : shown.length === 0 && tab === 'all'
                         ? <EmptyState compact title={filterActive(filter) ? copy.emptyFiltered : copy.empty} description={filterActive(filter) ? undefined : copy.emptyHint}
                             actions={filterActive(filter) ? <button type="button" className="is-ghost" onClick={() => setFilter({ ...filter, status: [], projectId: [], assignee: [], label: [], priority: [], q: '' })}>{copy.clear}</button>
                                 : <button type="button" className="is-primary" onClick={() => setCreating(true)}><Plus size={14} aria-hidden />{copy.newIssue}</button>} />
                         : view === 'board' ? <IssueBoard issues={shown} {...rowProps} /> : <IssueList issues={shown} {...rowProps} />}
-            <p className="is-muted is-server-note">{copy.serverVisible}</p>
-            {creating && <NewIssueDialog onClose={() => setCreating(false)} initialProjectId={filter.projectId.length === 1 && filter.projectId[0] !== 'none' ? filter.projectId[0] : null} />}
+            {!improved && <p className="is-muted is-server-note">{copy.serverVisible}</p>}
+            {creating && <NewIssueDialog initialTitle={prefill} onClose={() => setCreating(false)} initialProjectId={filter.projectId.length === 1 && filter.projectId[0] !== 'none' ? filter.projectId[0] : null} />}
         </main>
     );
 }

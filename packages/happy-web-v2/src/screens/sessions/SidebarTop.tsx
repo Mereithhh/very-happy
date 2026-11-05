@@ -4,7 +4,7 @@
  * component tests without the whole session list (spec
  * 2026-10-sidebar-header §B-713).
  */
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { Activity, ChevronDown, CircleHelp, Contact, FolderKanban, FolderPlus, LayoutGrid, ListChecks, ListTodo, MessageSquareHeart, Plus, Settings, StickyNote, UsersRound, Zap } from 'lucide-react';
 import { ActionDropdownMenu, QuickThemeToggle, Spinner, type MenuItemDef } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -143,6 +143,116 @@ export function SidebarActionRows(props: {
           </ActionDropdownMenu>
         )}
       </div>}
+    </div>
+  );
+}
+
+/**
+ * B-892 prototype: the capability entries as one row of equal cells (icon +
+ * tooltip in a1, icon + tiny label in the bottom dock b). A single tab stop:
+ * ←/→/Home/End move inside, Enter opens. Every cell keeps its count.
+ */
+export function CapabilityCells(props: {
+  layout: 'strip' | 'dock';
+  entries: readonly SidebarNavEntry[];
+  names: Record<SidebarNavKey, string>;
+  activePath: string;
+  onNavigate: (path: string) => void;
+}) {
+  const { t } = useTranslation();
+  const entries = props.entries.filter((e) => !e.phoneOnly);
+  const [focusIndex, setFocusIndex] = useState(0);
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const last = entries.length - 1;
+    const next = e.key === 'ArrowRight' ? (focusIndex >= last ? 0 : focusIndex + 1) : e.key === 'ArrowLeft' ? (focusIndex <= 0 ? last : focusIndex - 1) : e.key === 'Home' ? 0 : e.key === 'End' ? last : null;
+    if (next === null) return;
+    e.preventDefault();
+    setFocusIndex(next);
+    e.currentTarget.querySelectorAll<HTMLElement>('button')[next]?.focus();
+  };
+  return (
+    <div className={`sb-cap-cells sb-cap-cells--${props.layout}`} role="toolbar" aria-label={t('sidebar.capabilities')} onKeyDown={onKeyDown}>
+      {entries.map((e, i) => {
+        const Icon = navIcon[e.key];
+        const label = navMenuLabel(props.names[e.key], e.attention);
+        return (
+          <button key={e.key} type="button" className="sb-cap-cell" data-cap={e.key} tabIndex={i === focusIndex ? 0 : -1} title={label} aria-label={label}
+            aria-current={props.activePath === e.path || props.activePath.startsWith(`${e.path}/`) ? 'page' : undefined}
+            onFocus={() => setFocusIndex(i)} onClick={() => props.onNavigate(e.path)}>
+            <Icon size={props.layout === 'dock' ? 16 : 17} />
+            {props.layout === 'dock' && <span className="sb-cap-cell-name">{props.names[e.key]}</span>}
+            <AttentionBadge count={e.attention} tone={e.tone} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * B-892 prototype: the compact desktop top. 新建会话 | ▾ is the only permanent
+ * create row (▾ also holds 项目 / 团队); `createRows` keeps 新建项目 / 新建团队
+ * labelled until the account has one. a1 adds the icon strip, a2 「常用 2 + 更多」,
+ * b leaves the entries to the bottom dock.
+ */
+export function SidebarTopCompact(props: {
+  variant: 'a1' | 'a2' | 'b';
+  creatingChat: boolean;
+  createItems: MenuItemDef[];
+  createRows: readonly ('new-project' | 'new-team')[];
+  capabilities: readonly SidebarNavEntry[];
+  capabilityNames: Record<SidebarNavKey, string>;
+  activePath: string;
+  onNewChat: () => void;
+  onNewProject: () => void;
+  onNewTeam: () => void;
+  onNavigate: (path: string) => void;
+}) {
+  const { t, lang } = useTranslation();
+  const newRowRef = useRef<HTMLDivElement | null>(null);
+  const [newRowWidth, setNewRowWidth] = useState<number>();
+  const entries = props.capabilities.filter((e) => !e.phoneOnly);
+  const frequent = entries.filter((e) => e.key === 'issues' || e.key === 'board' || e.key === 'todos');
+  const rest = entries.filter((e) => !frequent.includes(e));
+  const restAttention = navAttentionTotal(rest);
+  return (
+    <div className="sb-actions sb-actions--compact" data-variant={props.variant}>
+      <div className="sb-new-split" ref={newRowRef}>
+        <button type="button" className="sb-nav-btn sb-new-main" disabled={props.creatingChat} aria-busy={props.creatingChat} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail} onClick={props.onNewChat}>
+          {props.creatingChat ? <Spinner size={17} /> : <Plus size={17} />}<span>{props.creatingChat ? (lang.startsWith('zh') ? '正在创建…' : 'Creating…') : t('sidebar.newSession')}</span>
+        </button>
+        <ActionDropdownMenu align="end" sideOffset={4} contentMinWidth={newRowWidth} items={props.createItems}>
+          <button type="button" className="sb-nav-btn sb-new-more" aria-label={t('sidebar.newMenu')} title={t('sidebar.newMenu')} onPointerDown={() => setNewRowWidth(newRowRef.current?.offsetWidth)}>
+            <ChevronDown size={14} />
+          </button>
+        </ActionDropdownMenu>
+      </div>
+      {props.createRows.includes('new-project') && (
+        <button type="button" className="sb-nav-btn" data-action="new-project" onClick={props.onNewProject}><FolderPlus size={17} /><span>{t('sidebar.newProject')}</span></button>
+      )}
+      {props.createRows.includes('new-team') && (
+        <button type="button" className="sb-nav-btn" data-action="new-team" onClick={props.onNewTeam}><UsersRound size={17} /><span>{t('sidebar.newTeam')}</span></button>
+      )}
+      {props.variant === 'a1' && <CapabilityCells layout="strip" entries={entries} names={props.capabilityNames} activePath={props.activePath} onNavigate={props.onNavigate} />}
+      {props.variant === 'a2' && (
+        <div className="sb-cap-text" role="group" aria-label={t('sidebar.capabilities')}>
+          {frequent.map((e) => {
+            const Icon = navIcon[e.key];
+            return (
+              <button key={e.key} type="button" className="sb-cap-text-btn" data-cap={e.key} aria-label={navMenuLabel(props.capabilityNames[e.key], e.attention)} aria-current={props.activePath === e.path ? 'page' : undefined} onClick={() => props.onNavigate(e.path)}>
+                <Icon size={15} /><span>{props.capabilityNames[e.key]}</span><AttentionBadge count={e.attention} tone={e.tone} />
+              </button>
+            );
+          })}
+          {rest.length > 0 && (
+            <ActionDropdownMenu align="start" sideOffset={4} items={capabilityMenuItems(rest, props.capabilityNames, props.onNavigate)}>
+              <button type="button" className="sb-cap-text-btn sb-cap-text-more" aria-label={navMenuLabel(t('sidebar.moreCapabilities'), restAttention)} title={t('sidebar.moreCapabilities')}>
+                <LayoutGrid size={15} /><span>{t('sidebar.moreEntries')}</span><AttentionBadge count={restAttention} /><ChevronDown size={13} />
+              </button>
+            </ActionDropdownMenu>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- B-892 prototype: fake data only. connect-src 'none' = the page cannot reach any server. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'none'" />
+    <title>B-892 侧栏与 Issues 原型</title>
+    <script>window.__HAPPY_CONFIG__ = { serverUrl: 'http://127.0.0.1:9' };</script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/dev/b892/main.tsx"></script>
+  </body>
+</html>

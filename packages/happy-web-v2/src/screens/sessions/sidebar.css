@@ -822,6 +822,28 @@
 
 .sb-nav-btn[aria-busy="true"] { cursor: progress; }
 
+/* B-892 prototype: compact desktop top. a1 icon strip / b bottom dock share the
+   equal cells; a2 is 「常用 2 + 更多」 as text buttons. */
+.sb-actions--compact { padding-bottom: var(--sp-1); }
+.sb-cap-cells { display:flex; gap:2px; }
+.sb-cap-cells--strip { margin-top:2px; }
+.sb-cap-cells--dock { padding: var(--sp-1) var(--sp-2) 0; }
+.sb-cap-cell { position:relative; flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; height:32px; border-radius:var(--r-sm); color:var(--text-dim); }
+.sb-cap-cells--dock .sb-cap-cell { height:44px; }
+.sb-cap-cell-name { max-width:100%; overflow:hidden; font-size:var(--fs-10); line-height:12px; white-space:nowrap; }
+.sb-cap-cell[aria-current="page"] { background:var(--fill-selected); color:var(--text); }
+.sb-cap-cell:focus-visible { outline:none; box-shadow:var(--focus-ring); color:var(--text); }
+.sb-cap-cell .sb-nav-attn { position:absolute; top:0; right:2px; margin:0; min-width:14px; padding:0 3px; line-height:13px; text-align:center; }
+.sb-cap-text { display:flex; align-items:center; gap:2px; margin-top:2px; }
+.sb-cap-text-btn { display:inline-flex; align-items:center; gap:5px; min-width:0; height:28px; padding:0 6px; border-radius:var(--r-sm); color:var(--text-dim); font-size:var(--fs-12); white-space:nowrap; }
+.sb-cap-text-btn[aria-current="page"], .sb-cap-text-btn[data-state="open"] { background:var(--fill-selected); color:var(--text); }
+.sb-cap-text-btn:focus-visible { outline:none; box-shadow:var(--focus-ring); color:var(--text); }
+.sb-cap-text-btn > svg { flex:none; }
+.sb-cap-text-btn .sb-nav-attn { margin-left:0; min-width:14px; padding:0 3px; line-height:13px; text-align:center; }
+.sb-cap-text-more { margin-left:auto; }
+@media (hover: hover) and (pointer: fine) { .sb-cap-cell:hover, .sb-cap-text-btn:hover { background:var(--fill-hover); color:var(--text); } }
+@media (pointer:coarse) { .sb-cap-cell, .sb-cap-cells--dock .sb-cap-cell { height:44px; } .sb-cap-text-btn { height:44px; } }
+
 .sb-team-member-status { color: var(--text-dim); font-weight: 400; }
 /* B-674: one quiet disclosure row stands in for a team's archived members. */
 .sb-team-archived { display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-height: 32px; padding: 4px var(--sp-2); border-radius: var(--r-sm); color: var(--text-dim); font-size: var(--fs-12); text-align: left; }

@@ -92,7 +92,8 @@ import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
 import { DeferredMajorUpdateEntry } from '@/app/DeferredMajorUpdateEntry';
 import { sidebarNavEntries, orderCreateMenu, sidebarTopModel, NEW_TEAM_PATH, type SidebarNavKey } from './sidebarNavEntries';
-import { SidebarActionRows, SidebarChipRow, SidebarFooter } from './SidebarTop';
+import { CapabilityCells, SidebarActionRows, SidebarChipRow, SidebarFooter, SidebarTopCompact } from './SidebarTop';
+import { B892_NEW_PROJECT_EVENT, compactCreateRows, useB892 } from './sidebarTopVariant';
 import {
   findRevealTarget,
   isGroupCollapsed,
@@ -1262,6 +1263,11 @@ export function Sidebar() {
   // B-755: 「新建项目」 is a dialog that always asks for a folder (existing or new) and offers the project context.
   const [newProject, setNewProject] = useState<{ name: string; sessionIds: string[] } | null>(null);
   const createNamedProject = useCallback(async () => { setNewProject({ name: '', sessionIds: [] }); }, []);
+  useEffect(() => {
+    const open = () => void createNamedProject();
+    window.addEventListener(B892_NEW_PROJECT_EVENT, open);
+    return () => window.removeEventListener(B892_NEW_PROJECT_EVENT, open);
+  }, [createNamedProject]);
   /** Project from a set of rows: folders = their machine+path pairs, the first one primary. */
   const makeProjectFromRows = useCallback(async (name: string, sourceRows: Row[]) => {
     const folders = foldersOfRows(sourceRows).map((f, i) => ({ ...f, primary: i === 0 }));
@@ -1375,6 +1381,15 @@ export function Sidebar() {
     feedback: t('feedback.title'),
   };
   const newTeam = () => navigate(NEW_TEAM_PATH);
+  // B-892 prototype: the compact top applies to the desktop shell only; the phone stays as it is.
+  const topVariant = useB892((s) => s.top);
+  const compactTop = isDesktop && topVariant !== 'current' ? topVariant : null;
+  const compactRows = compactCreateRows({ projectsReady: projectsSnap.status === 'ready', projectCount: projectsSnap.projects.length, teamsVisible: happyBotEntryVisible, teamCount: teams.length });
+  // orderCreateMenu is stable: 新会话, 新项目, then 新建团队 ahead of the other types.
+  const compactCreateItems: MenuItemDef[] = orderCreateMenu([
+    ...(happyBotEntryVisible ? [{ key: 'team', label: t('sidebar.newTeam'), icon: UsersRound, onSelect: newTeam } satisfies MenuItemDef] : []),
+    ...createItems,
+  ]);
   // B-756: 新建会话 into a project — its primary folder, joined before the first message.
   const newProjectSession = (project: ProjectView) => newSessionInProject(project, navigate, configureNew);
   const projectCopy = projectMenuCopy(lang.startsWith('zh'));
@@ -1438,7 +1453,20 @@ export function Sidebar() {
 
       {/* B-676/B-713: labelled 新建会话 ▾ / 新建项目 / 新建团队 rows, then the capability rows (spec 2026-10-sidebar-header).
           新建会话: the main part starts a chat in one click, ▾ lists every create type. */}
-      <SidebarActionRows
+      {compactTop && <SidebarTopCompact
+        variant={compactTop}
+        creatingChat={creatingChat}
+        createItems={compactCreateItems}
+        createRows={compactRows}
+        capabilities={navEntries}
+        capabilityNames={navName}
+        activePath={location.pathname}
+        onNewChat={() => void createChatOrConfigure(navigate, configureNew, { location })}
+        onNewProject={() => void createNamedProject()}
+        onNewTeam={newTeam}
+        onNavigate={navigate}
+      />}
+      {!compactTop && <SidebarActionRows
         actions={top.actions}
         creatingChat={creatingChat}
         createItems={createItems}
@@ -1449,7 +1477,7 @@ export function Sidebar() {
         onNewProject={() => void createNamedProject()}
         onNewTeam={newTeam}
         onNavigate={navigate}
-      />
+      />}
       <SidebarChipRow
         chips={top.chips}
         capabilities={navEntries}
@@ -1873,6 +1901,7 @@ export function Sidebar() {
       <SidebarRateLimit />
       {/* B-715: unread big updates — persistent entry above the footer (B-713 owns the footer row). */}
       <DeferredMajorUpdateEntry />
+      {compactTop === 'b' && <CapabilityCells layout="dock" entries={navEntries} names={navName} activePath={location.pathname} onNavigate={navigate} />}
       <SidebarFooter onSettings={() => navigate('/settings')} onHelp={() => navigate('/help')} onToggleNotes={toggleNotesPanel} />
 
       {showNew && <NewSessionModal initialLocation={newLocation} onClose={() => setShowNew(false)} />}
