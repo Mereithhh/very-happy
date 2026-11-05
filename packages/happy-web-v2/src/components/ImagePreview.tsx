@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Download, ImageOff, Minus, Plus, Scan, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -28,8 +28,21 @@ const copy = {
         zoomIn: '放大', zoomOut: '缩小', zoom: '缩放比例', fit: '适应', fitLabel: '适应窗口', original: '原始尺寸', dimensions: '图片尺寸' },
 };
 
-/** A user-opened image stays in the workspace; no new tab or data-URL navigation. */
-export function ImagePreview({ src, name, onClose }: { src: string; name?: string; onClose: () => void }) {
+/**
+ * A user-opened image stays in the workspace; no new tab or data-URL navigation.
+ *
+ * B-890: the mermaid viewer reuses it for a rendered diagram — `title` replaces the
+ * file name in the header, `actions` adds its own buttons there (copy / SVG / PNG),
+ * and `download={false}` drops the generic "download image" button they replace.
+ */
+export function ImagePreview({ src, name, title: titleOverride, actions, download: showDownload = true, onClose }: {
+    src: string;
+    name?: string;
+    title?: string;
+    actions?: ReactNode;
+    download?: boolean;
+    onClose: () => void;
+}) {
     const { lang } = useTranslation();
     const labels = lang?.startsWith('zh') ? copy.zh : copy.en;
     const [returnFocus] = useState(() => typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null);
@@ -67,7 +80,7 @@ export function ImagePreview({ src, name, onClose }: { src: string; name?: strin
     const lastTapRef = useRef<{ time: number; point: Point } | null>(null);
     const lastPointerTypeRef = useRef('mouse');
     const scaleLabel = `${Number((scale * 100).toFixed(scale < 0.01 ? 1 : 0))}%`;
-    const title = name?.trim() || labels.title;
+    const title = titleOverride?.trim() || name?.trim() || labels.title;
 
     useLayoutEffect(() => {
         if (!canvas) return;
@@ -279,10 +292,11 @@ export function ImagePreview({ src, name, onClose }: { src: string; name?: strin
                 onEscapeKeyDown={event => event.stopPropagation()} onKeyDown={onKeyDown}>
                 <header className="image-preview-header">
                     <Dialog.Title className="image-preview-title" title={title}>{title}</Dialog.Title>
-                    <button type="button" className="image-preview-button" onClick={() => { void download(); }} disabled={downloading}
+                    {actions}
+                    {showDownload && <button type="button" className="image-preview-button" onClick={() => { void download(); }} disabled={downloading}
                         title={downloading ? labels.downloading : labels.download} aria-label={downloading ? labels.downloading : labels.download}>
                         {downloading ? <Spinner size={16} /> : <Download size={18} />}
-                    </button>
+                    </button>}
                     <Dialog.Close asChild><button type="button" className="image-preview-button" title={labels.close} aria-label={labels.close}><X size={19} /></button></Dialog.Close>
                 </header>
                 <div ref={setCanvas} className={`image-preview-canvas${ready && pannable ? ' is-pannable' : ''}${panning ? ' is-panning' : ''}`} aria-busy={!ready && !failed}

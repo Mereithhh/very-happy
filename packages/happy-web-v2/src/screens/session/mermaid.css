@@ -43,3 +43,79 @@
   font-size: var(--chat-fs-control);
   color: var(--text-faint);
 }
+.mmd-note:empty {
+  display: none;
+}
+
+/* B-890: expand + ⋯ float over the diagram's top-right corner. Always shown —
+   on touch there is no hover, and on desktop a hidden control is how "this
+   diagram can't be opened" happened; dimmed until the pointer is on the card. */
+.mmd-frame {
+  position: relative;
+  max-width: 100%;
+}
+.mmd-frame .mmd-svg {
+  cursor: zoom-in;
+}
+.mmd-tools {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+}
+.mmd-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--text-dim);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.mmd-tool:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--text-faint);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mmd-tools {
+    opacity: 0.6;
+    transition: opacity var(--motion-fast);
+  }
+  .mmd-frame:hover .mmd-tools,
+  .mmd-tools:focus-within {
+    opacity: 1;
+  }
+  .mmd-tool:hover {
+    color: var(--text);
+    background: var(--bg-3);
+  }
+}
+/* Touch: 34px visual, 44px hit area via ::after (design-language §6). */
+@media (pointer: coarse) {
+  .mmd-tools {
+    gap: 10px;
+  }
+  .mmd-tool {
+    position: relative;
+    width: 34px;
+    height: 34px;
+  }
+  .mmd-tool::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+  }
+}
+.mmd-full-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--chat-fs-control);
+  color: var(--danger);
+}
