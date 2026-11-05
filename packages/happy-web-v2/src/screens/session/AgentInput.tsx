@@ -148,6 +148,9 @@ import {
 import './input.css';
 import { ComposerAttachments } from './ComposerAttachments';
 import { EditedDraftChips } from './EditedDraftChips';
+import { ChatAnnotationsTray } from './chatAnnotations/ChatAnnotationsTray';
+import { composeAnnotatedMessage } from './chatAnnotations/chatAnnotations';
+import { getChatAnnotations, getStaleAnnotationIds, removeChatAnnotations, useChatAnnotations } from './chatAnnotations/chatAnnotationsStore';
 import { appendEditedDrafts, buildEditedDraftsBlock, splitEditedDrafts } from '@/sync/editableDrafts';
 import { ensureDraftsLoaded, markDraftsAttached, selectPendingDrafts, useEditableDrafts } from '@/sync/editableDraftsStore';
 import { shouldApplyPermissionModeLive } from './livePermissionMode';
@@ -225,9 +228,11 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     agentFlavor?: string;
     pending?: PendingComposer;
 }) {
-    const { t } = useTranslation();
+    const { t, lang } = useTranslation();
     const toast = useToast();
     const session = useSession(sessionId);
+    // B-891: in-place transcript comments ride along with the next message.
+    const annotationCount = useChatAnnotations(sessionId).length;
     // B-642: edited drafts ride along with the next message (chips above the input).
     const draftRecords = useEditableDrafts((state) => state.drafts);
     const pendingDrafts = useMemo(() => selectPendingDrafts(draftRecords, sessionId), [draftRecords, sessionId]);
@@ -790,7 +795,9 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const doSend = async (delivery: 'queue' | 'steer' = 'queue') => {
         const draft = draftRef.current;
         const value = draft.trim();
-        if ((!value && attachments.length === 0) || sendingRef.current || processingAttachments) return;
+        // B-891: a send may be just the comments (no text). A pending session has no transcript to comment on.
+        const notes = pending ? [] : getChatAnnotations(sessionId).filter((a) => a.body.trim());
+        if ((!value && attachments.length === 0 && notes.length === 0) || sendingRef.current || processingAttachments) return;
         if (pending) {
             // B-516: no session yet — queue into the pending outbox. Attachments
             // and `/btw` need a live session; the text stays put for them.
@@ -823,6 +830,9 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         // edited-drafts block) — anything around it turns it into chat — and a
         // session that cannot compact is told so here instead of by the model.
         const compactCommand = parseCompactCommand(value);
+        // `/compact` stays the bare command; the comments wait for the next message.
+        const attachedNotes = compactCommand !== null ? [] : notes;
+        if (!value && attachments.length === 0 && attachedNotes.length === 0) return;
         if (compactCommand !== null && compactSupport(session) === 'unsupported') {
             toast.show(t('session.chat.compactUnsupported'), 'info');
             return;
@@ -852,7 +862,8 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         // B-642: snapshot the pending edited drafts at submit time; they are
         // marked as seen by the model only once this submission is accepted.
         const attachedDrafts = compactCommand !== null ? [] : selectPendingDrafts(useEditableDrafts.getState().drafts, sessionId);
-        const sendValue = compactCommand ?? appendEditedDrafts(value, buildEditedDraftsBlock(attachedDrafts.map(({ rec }) => ({ title: rec.title, base: rec.base, text: rec.text }))));
+        const withNotes = composeAnnotatedMessage(attachedNotes, value, lang.startsWith('zh') ? 'zh' : 'en', getStaleAnnotationIds(sessionId));
+        const sendValue = compactCommand ?? appendEditedDrafts(withNotes, buildEditedDraftsBlock(attachedDrafts.map(({ rec }) => ({ title: rec.title, base: rec.base, text: rec.text }))));
         let takenAttachments: QueuedMessage['attachments'];
         let draftTaken = false;
         let queueOwnsItem = false;
@@ -957,6 +968,10 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
             // `outcome`, so the outer one still reads 'failed' after a successful enqueue.
             if ((outcome !== 'failed' || queueOwnsItem) && attachedDrafts.length > 0) {
                 markDraftsAttached(attachedDrafts.map(({ kvKey, rec }) => ({ kvKey, text: rec.text })));
+            }
+            // B-891: the comments now live in the sent/queued text; drop exactly those drafts.
+            if ((outcome !== 'failed' || queueOwnsItem) && attachedNotes.length > 0) {
+                removeChatAnnotations(sessionId, attachedNotes.map((a) => a.id));
             }
             sendingRef.current = false;
             setSending(false);
@@ -1450,7 +1465,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         setMode('updateSessionPermissionMode', 'permissionMode', appliedKey);
     };
 
-    const hasDraft = text.trim().length > 0 || attachments.length > 0 || processingAttachments;
+    const hasDraft = text.trim().length > 0 || attachments.length > 0 || processingAttachments || (!pending && annotationCount > 0);
     const offlineSend = offlineSendState(networkOffline, attachments.length > 0);
     const canSend = hasDraft && !sending && !processingAttachments && offlineSend !== 'blocked';
     const offlineLabel = offlineSend === 'blocked' ? t('session.chat.sendOfflineAttachments')
@@ -1461,6 +1476,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     return (
         <div className="ci">
             <EditedDraftChips drafts={pendingDrafts} />
+            {!pending && <ChatAnnotationsTray sessionId={sessionId} />}
             <ComposerAttachments attachments={attachments} onRemove={remove} />
 
             {isPiAgent(flavor) && attachments.some((attachment) => attachment.mimeType.startsWith('image/')) && (

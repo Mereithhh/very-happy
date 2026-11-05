@@ -1,0 +1,322 @@
+/* B-891: in-place comments on transcript text. Colour: --annotation*
+   (design-language §2) — its own hue, not live accent, not search-hit. */
+
+::highlight(vh-annotation) {
+  background-color: var(--annotation-dim);
+}
+
+/* ── transcript overlay: numbered markers after each commented passage ── */
+.cl-inner { position: relative; }
+.can-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.can-marker {
+  position: absolute;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--annotation);
+  color: var(--annotation-ink);
+  font: 600 var(--fs-11) / 1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.can-marker--open { box-shadow: 0 0 0 2px var(--bg-0), 0 0 0 3px var(--annotation); }
+.can-marker:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media (pointer: coarse) {
+  /* 44px hit area around the 18px dot */
+  .can-marker::after { content: ''; position: absolute; inset: -13px; }
+}
+.can-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: -4px;
+  display: none;
+  width: max-content;
+  max-width: min(280px, 70vw);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--surface-popover);
+  box-shadow: var(--shadow-popover);
+  color: var(--text);
+  font: 400 var(--fs-12) / 1.45 var(--font-sans);
+  text-align: start;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+.can-tip--left { left: auto; right: -4px; }
+@media (hover: hover) and (pointer: fine) {
+  .can-marker:hover .can-tip { display: block; }
+  .can-marker--open .can-tip { display: none; }
+}
+
+/* ── editor: popover (desktop) / dialog-shell bottom sheet (touch, ≤600px) ── */
+.can-editor {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+.can-editor--popover {
+  position: fixed;
+  z-index: 800;
+  width: min(340px, calc(100vw - 16px));
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface-popover);
+  box-shadow: var(--shadow-pop);
+}
+.can-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+}
+.can-editor--sheet { width: min(460px, 100%); }
+.can-editor-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.can-editor-num {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--annotation);
+  color: var(--annotation-ink);
+  font: 600 var(--fs-11) / 1 var(--font-sans);
+}
+.can-editor-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+.can-editor-quote {
+  margin: 0;
+  padding: 2px 0 2px var(--sp-2);
+  border-left: 2px solid var(--annotation);
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.can-editor-stale { margin: 0; color: var(--warn); font-size: var(--fs-12); }
+.can-editor-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 72px;
+  max-height: 40vh;
+  padding: var(--sp-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--text);
+  font: 400 var(--fs-13) / 1.5 var(--font-sans);
+  resize: vertical;
+}
+.can-editor-input:focus-visible { outline: none; border-color: var(--line-heavy); box-shadow: var(--focus-ring); }
+.can-editor-input:focus { border-color: var(--line-heavy); }
+.can-editor-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+.can-editor-hint {
+  margin-right: auto;
+  color: var(--text-faint);
+  font-size: var(--fs-11);
+}
+.can-editor-delete { margin-right: auto; }
+.can-editor-delete + .can-editor-hint { margin-right: auto; margin-left: 0; }
+@media (pointer: coarse), (max-width: 600px) {
+  .can-editor-input { font-size: 16px; min-height: 96px; }
+  .can-editor--sheet .can-editor-foot { padding-bottom: max(var(--sp-3), var(--sa-b, 0px)); }
+  .can-editor-foot > .vh-btn { min-height: 44px; }
+}
+
+/* ── composer tray: 「N 条批注」 + expandable list ── */
+.can-tray {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.can-tray-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.can-tray-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--annotation-dim);
+  color: var(--text);
+  font: 500 var(--fs-12) / 1 var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.can-tray-toggle > svg:first-child { color: var(--annotation); }
+.can-tray-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.can-tray-chevron { transition: transform var(--dur-fast, 120ms) ease; }
+.can-tray-chevron--open { transform: rotate(180deg); }
+.can-tray-note {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: var(--fs-11);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.can-tray-head > .can-icon { margin-left: auto; }
+.can-tray-stale { color: var(--warn); }
+.can-tray-list {
+  display: flex;
+  flex-direction: column;
+  max-height: min(32vh, 240px);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+.can-tray-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  min-width: 0;
+  border-radius: var(--r-sm);
+}
+.can-tray-jump {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-1);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: start;
+  cursor: pointer;
+}
+.can-tray-jump:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.can-tray-num {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: var(--annotation);
+  color: var(--annotation-ink);
+  font: 600 var(--fs-11) / 1 var(--font-sans);
+}
+.can-tray-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.can-tray-excerpt,
+.can-tray-body {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.can-tray-excerpt { color: var(--text-faint); font-size: var(--fs-11); }
+.can-tray-body { color: var(--text); font-size: var(--fs-12); }
+.can-tray-text > .can-tray-stale { font-size: var(--fs-11); }
+.can-tray-actions { display: inline-flex; flex: none; gap: 2px; }
+.can-icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.can-icon:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media (hover: hover) and (pointer: fine) {
+  .can-tray-toggle:hover { background: color-mix(in srgb, var(--annotation-dim) 70%, var(--fill-hover)); }
+  .can-tray-jump:hover { background: var(--fill-hover); }
+  .can-icon:hover { background: var(--fill-hover); color: var(--text); }
+}
+@media (pointer: coarse) {
+  .can-tray-toggle { height: 36px; }
+  .can-icon { width: 44px; height: 44px; }
+  .can-tray-toggle { position: relative; }
+  .can-tray-toggle::after { content: ''; position: absolute; inset: -4px 0; }
+}
+
+/* the selection pop-up now holds two actions: 引用 · 批注 */
+.cl-selquote-group {
+  position: fixed;
+  z-index: 790;
+  display: inline-flex;
+  align-items: stretch;
+  height: 30px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+.cl-selquote-group > .cl-selquote {
+  position: static;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.cl-selquote-group > .cl-selquote + .cl-selquote { border-left: 1px solid var(--line); }
+.cl-selquote-group > .cl-selquote:focus-visible { box-shadow: inset 0 0 0 1px var(--text-faint); }
+
+/* SharedComposer (driver): the tray sits on the composer's own band */
+.shc-annotations {
+  flex: none;
+  padding: var(--sp-2) var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.shc-annotations:empty { display: none; }
+.shc-annotations:not(:empty) + .shc { border-top: 0; }

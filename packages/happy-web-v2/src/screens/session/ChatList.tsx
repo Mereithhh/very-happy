@@ -72,6 +72,9 @@ import { leadViewEntries, leadViewKeys, ownerAnswers, previewFolds, turnOpenerId
 import { useLeadView } from './leadViewPrefs';
 import { LeadAnswerContext, LeadFoldPreview, LeadFoldRow, LeadVia } from './LeadView';
 import type { ChatRow } from './chatTurns';
+import { canAnnotateSession } from './chatAnnotations/chatAnnotations';
+import { ChatAnnotationLayer } from './chatAnnotations/ChatAnnotationLayer';
+import { ChatAnnotationEditor } from './chatAnnotations/ChatAnnotationEditor';
 
 export function ChatList({
     sessionId,
@@ -876,10 +879,13 @@ export function ChatList({
                     {/* Part of scrollback: innerRef observes growth, while manual
                         scrollback keeps the user's position. No empty footer slot. */}
                     {showLiveStatus && <SessionLiveStatusBar sessionId={sessionId} />}
+                    {/* B-891: comment markers ride inside the content box, so they scroll with the text. */}
+                    <ChatAnnotationLayer sessionId={sessionId} innerRef={innerRef} enabled={canAnnotateSession(session)} />
                 </div>
             </div>
             {/* B-577 / B-579: selection quote and the 「你的提问」 rail. */}
             <SelectionQuote rootRef={scrollRef} sessionId={sessionId} />
+            <ChatAnnotationEditor sessionId={sessionId} />
             <ChatPromptRail
                 rows={visibleRows}
                 scrollRef={scrollRef}

@@ -1,10 +1,10 @@
 import { useReadOnlyTranscript } from './readOnlyTranscript';
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { GitFork, Pencil, Quote, TextQuote, Trash2 } from 'lucide-react';
+import { GitFork, MessageSquarePlus, Pencil, Quote, TextQuote, Trash2 } from 'lucide-react';
 import { useInRouterContext, useNavigate } from 'react-router-dom';
 import type { Session } from '@/sync/storageTypes';
 import { isMirrorSession } from '@/assistant/assistantSession';
-import { Spinner } from '@/ui';
+import { Spinner, toast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
 import { Button } from '@/ui/Button';
@@ -14,6 +14,9 @@ import { useImeGuard } from '@/utils/ime';
 import { insertComposerNewline, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
 import { quoteMessage } from './messageQuote';
 import { getTouchQuoteOffer, setTouchQuoteOffer, useTouchQuoteOffer } from './selectionQuoteOffer';
+import { canAnnotateSession } from './chatAnnotations/chatAnnotations';
+import { anchorFromSelection } from './chatAnnotations/chatAnnotationDom';
+import { openAnnotationEditor } from './chatAnnotations/chatAnnotationsStore';
 import { messageActionsCopy } from './messageActionsCopy';
 import { MessageTime } from './MessageTime';
 import { DeliverOnResumeHint, SendFailedActions, SendingIndicator, SentFlash } from './SendStatusView';
@@ -191,6 +194,19 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
                             setTouchQuoteOffer(null);
                         }}
                     ><TextQuote size={14} aria-hidden /><span>{t('session.chat.readingAids.quoteSelectionLong')}</span></button>}
+                    {/* B-891: comment on the selection in place — the editor is a bottom sheet on touch. */}
+                    {!send && selectionQuote && canAnnotateSession(session) && <button
+                        type="button"
+                        className="msg-action msg-action--selection"
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                            const offer = getTouchQuoteOffer();
+                            const anchor = offer?.range ? anchorFromSelection({ source: offer.source, range: offer.range, text: offer.text }) : null;
+                            setTouchQuoteOffer(null);
+                            if (!anchor) { toast.show(t('session.chat.annotations.cannotAnchor'), 'info'); return; }
+                            openAnnotationEditor({ sessionId, kind: 'new', anchor, place: null });
+                        }}
+                    ><MessageSquarePlus size={14} aria-hidden /><span>{t('session.chat.annotations.annotate')}</span></button>}
                     {canFork && <ForkFromHereButton session={session} message={userMessage} hasAttachments={hasAttachments} onNote={setForkNote} />}
                     {canRewind && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
                     {canRewind && <button ref={deleteButton} type="button" className="msg-action" aria-label={copy.delete} title={copy.delete} onClick={() => { setError(null); setMode('delete'); }}><Trash2 size={14} aria-hidden /></button>}

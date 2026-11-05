@@ -5,15 +5,22 @@
  * 触屏：不画浮层（系统选区菜单在那里），选区静止 500ms 后交给该消息的操作栏
  * （selectionQuoteOffer → MessageActions 的「引用选中」）。
  *
+ * B-891：可发消息的会话里，浮层是「引用 · 批注」两个按钮；批注在原处写（chatAnnotations/），
+ * 触屏的「批注」同样挂在操作栏上。
+ *
  * 时机参考 Orca `NativeChatSelectionQuote`（MIT）：双击后等 500ms 再出，免得第三击正好
  * 落到按钮上；按钮 mousedown 阻止默认，点击不丢选区。
  */
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Quote } from 'lucide-react';
+import { MessageSquarePlus, Quote } from 'lucide-react';
 import { useSession } from '@/sync/storage';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { useTranslation } from '@/i18n/useTranslation';
+import { toast } from '@/ui';
+import { canAnnotateSession } from './chatAnnotations/chatAnnotations';
+import { anchorFromSelection } from './chatAnnotations/chatAnnotationDom';
+import { openAnnotationEditor } from './chatAnnotations/chatAnnotationsStore';
 import { quoteMessage } from './messageQuote';
 import { readQuotableSelection } from './selectionQuoteRange';
 import { setTouchQuoteOffer } from './selectionQuoteOffer';
@@ -26,6 +33,7 @@ const BUTTON_HEIGHT = 30;
 type Request = {
     text: string;
     range: Range;
+    source: Element;
     /** 锚点相对 range 外接矩形左上角的偏移，滚动时跟着文字走。 */
     dx: number;
     dy: number;
@@ -39,10 +47,11 @@ function isCoarse(): boolean {
 export function SelectionQuote({ rootRef, sessionId }: { rootRef: RefObject<HTMLElement | null>; sessionId: string }) {
     const session = useSession(sessionId);
     const enabled = !!session && !isMirrorSession(session);
+    const annotate = canAnnotateSession(session);
     const { t } = useTranslation();
     const [request, setRequest] = useState<Request | null>(null);
     const [position, setPosition] = useState<Position>(null);
-    const buttonRef = useRef<HTMLButtonElement>(null);
+    const buttonRef = useRef<HTMLDivElement>(null);
     const requestRef = useRef<Request | null>(null);
     requestRef.current = request;
 
@@ -61,7 +70,7 @@ export function SelectionQuote({ rootRef, sessionId }: { rootRef: RefObject<HTML
             const line = rects.find((r) => y >= r.top - 1 && y <= r.bottom + 1) ?? rects[rects.length - 1];
             return line ? line.bottom : y;
         })();
-        const width = buttonRef.current?.offsetWidth ?? 72;
+        const width = buttonRef.current?.offsetWidth ?? 140;
         const left = Math.min(Math.max(view.left + 8, x - width / 2), view.right - width - 8);
         setPosition({ left, top: below ? lineBottom + BUTTON_GAP : y - BUTTON_GAP - BUTTON_HEIGHT, below });
     };
@@ -105,7 +114,7 @@ export function SelectionQuote({ rootRef, sessionId }: { rootRef: RefObject<HTML
                 // 鼠标松开处那一行的顶部；键盘选区用终点那一行。
                 const line = point ? rects.find((r) => point.y >= r.top - 2 && point.y <= r.bottom + 2) ?? end : end;
                 const x = point ? Math.min(Math.max(point.x, line.left), line.right) : end.right;
-                const next: Request = { text: quotable.text, range, dx: x - box.left, dy: line.top - box.top };
+                const next: Request = { text: quotable.text, range, source: quotable.source, dx: x - box.left, dy: line.top - box.top };
                 setRequest(next);
                 place(next);
             }, delay);
@@ -137,7 +146,7 @@ export function SelectionQuote({ rootRef, sessionId }: { rootRef: RefObject<HTML
                 touchTimer = window.setTimeout(() => {
                     const quotable = readQuotableSelection(root, window.getSelection());
                     // 触屏不改用户的选区：跨消息就不提供。
-                    setTouchQuoteOffer(quotable && !quotable.clipped ? { source: quotable.source, text: quotable.text } : null);
+                    setTouchQuoteOffer(quotable && !quotable.clipped ? { source: quotable.source, text: quotable.text, range: quotable.range } : null);
                 }, SELECTION_SETTLE_MS);
             }
         };
@@ -175,23 +184,49 @@ export function SelectionQuote({ rootRef, sessionId }: { rootRef: RefObject<HTML
     }, [enabled, rootRef]);
 
     if (!request || typeof document === 'undefined') return null;
+    const dismiss = () => {
+        setRequest(null);
+        setPosition(null);
+    };
     return createPortal(
-        <button
+        <div
             ref={buttonRef}
-            type="button"
-            className="cl-selquote"
+            className="cl-selquote-group"
+            role="group"
+            aria-label={t('session.chat.readingAids.selectionActions')}
             style={position ? { left: position.left, top: position.top } : { visibility: 'hidden', left: 0, top: 0 }}
-            title={t('session.chat.readingAids.quoteSelectionHint')}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-                quoteMessage(sessionId, request.text, 'cursor');
-                setRequest(null);
-                setPosition(null);
-            }}
         >
-            <Quote size={13} aria-hidden />
-            <span>{t('session.chat.readingAids.quoteSelection')}</span>
-        </button>,
+            <button
+                type="button"
+                className="cl-selquote"
+                title={t('session.chat.readingAids.quoteSelectionHint')}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                    quoteMessage(sessionId, request.text, 'cursor');
+                    dismiss();
+                }}
+            >
+                <Quote size={13} aria-hidden />
+                <span>{t('session.chat.readingAids.quoteSelection')}</span>
+            </button>
+            {annotate && <button
+                type="button"
+                className="cl-selquote"
+                title={t('session.chat.annotations.annotateHint')}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                    const anchor = anchorFromSelection(request);
+                    dismiss();
+                    if (!anchor) { toast.show(t('session.chat.annotations.cannotAnchor'), 'info'); return; }
+                    const rects = [...request.range.getClientRects()].filter((r) => r.width > 0 || r.height > 0);
+                    const last = rects[rects.length - 1] ?? request.range.getBoundingClientRect();
+                    openAnnotationEditor({ sessionId, kind: 'new', anchor, place: { left: last.left, top: rects[0]?.top ?? last.top, bottom: last.bottom } });
+                }}
+            >
+                <MessageSquarePlus size={13} aria-hidden />
+                <span>{t('session.chat.annotations.annotate')}</span>
+            </button>}
+        </div>,
         document.body,
     );
 }
