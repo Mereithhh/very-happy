@@ -494,6 +494,23 @@ export const DaemonStateSchema = z.object({
     })),
   }).passthrough().optional(),
   /**
+   * B-894:「自动更新 agent」 — capability (`rpcAvailable` + `detectedAt`),
+   * machine switch (default off) and the last automatic install per harness.
+   */
+  agentAutoUpdate: z.object({
+    enabled: z.boolean(),
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+    status: z.record(z.string(), z.object({
+      harness: z.string(),
+      target: z.string(),
+      state: z.string(),
+      detail: z.string().optional(),
+      attempts: z.number(),
+      at: z.number(),
+    })),
+  }).passthrough().optional(),
+  /**
    * B-510: web panels declared in this machine's local settings.json
    * (`webPanels`), normalized by webPanels/webPanels.ts. Read-only mirror —
    * nothing on the web/server side can write the local declaration.

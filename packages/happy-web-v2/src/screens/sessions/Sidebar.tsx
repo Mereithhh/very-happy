@@ -118,6 +118,7 @@ import { Modal } from '@/modal';
 import '../session/shared.css';
 import { dismissFeatureTip, useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
 import { BRAND } from '@/app/brand';
+import { staleWrapperNotice } from '@/app/staleWrapperPolicy';
 import { AsciiField } from '@/ui/asciiField/AsciiField';
 
 function rowHref(r: Row): string {
@@ -2081,6 +2082,8 @@ function SidebarRow({
     return mid ? st.machines[mid] : undefined;
   });
   const restorable = !isTerminal && canOfferRestore(s, restoreMachine);
+  // B-894: a live session still on older CLI code than its machine (the machine page restarts them in one go).
+  const staleWrapper = !isTerminal && s?.active === true ? staleWrapperNotice(s, restoreMachine) : null;
   const restoreBlockedOffline = restorable && !restoreMachine?.active;
   const restoreState = useRestoreState(s?.id ?? '');
   const restoring = restoreState?.phase === 'spawning' || restoreState?.phase === 'awaiting-online';
@@ -2270,6 +2273,11 @@ function SidebarRow({
             {row.direct && (
               <span className="sb-row-restored" title={t('sidebar.terminalDirectHint')}>
                 {t('sidebar.terminalDirect')}
+              </span>
+            )}
+            {staleWrapper && (
+              <span className="sb-row-restored" data-testid="sb-row-stale" title={t('sidebar.staleWrapperHint', { from: staleWrapper.sessionVersion, to: staleWrapper.machineVersion })}>
+                {t('sidebar.staleWrapper')}
               </span>
             )}
             {/* B-619: whose session this is (the group header already says it is shared). */}

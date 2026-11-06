@@ -158,6 +158,14 @@ After an update, sessions still running the old CLI are restarted in place
 automatically once idle (B-852, machine setting `autoRestartSessions`, default
 on; `HAPPY_AUTO_RESTART_QUIET_MS` shortens the 10-minute quiet window for
 tests). See [auto-restart](../specs/2026-10-auto-restart-stale-wrappers.md).
+Old sessions that cannot be restarted automatically are listed on the machine
+page (「旧版会话」) with one button to restart the idle ones (B-894).
+
+`agentAutoUpdate` (machine setting, default off; the machine page's 「自动更新
+agent」) lets the daemon update an outdated Codex CLI by itself while no Codex
+turn runs (B-894; `HAPPY_AGENT_AUTO_UPDATE_TICK_MS` shortens the 5-minute
+re-check for tests). Claude needs no setting: Web sessions use the SDK bundled
+with the CLI.
 
 ## Google login
 

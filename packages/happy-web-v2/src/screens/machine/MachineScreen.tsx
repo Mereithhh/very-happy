@@ -42,6 +42,8 @@ import { machineClaudeAuthProbe, machineClaudeAuthRepair, machineClaudeAuthSetSt
 import { MachineRateLimits } from './rateLimits/MachineRateLimits';
 import { MachineHibernationGroup } from './MachineHibernationGroup';
 import { MachineAutoRestartGroup } from './MachineAutoRestartGroup';
+import { MachineAgentAutoUpdateGroup } from './MachineAgentAutoUpdateGroup';
+import { MachineStaleSessionsGroup } from './MachineStaleSessionsGroup';
 
 export function MachineScreen() {
   const { id } = useParams();
@@ -367,6 +369,7 @@ export function MachineScreen() {
           )}
 
           <AgentVersionsGroup daemon={machine.daemonState} online={online} now={updateStatusNow} machineId={machine.id} metadata={machine.metadata}/>
+          <MachineAgentAutoUpdateGroup machine={machine} online={online} />
 
           <ItemGroup title={t('machine.daemon')}>
             <Item
@@ -474,6 +477,7 @@ export function MachineScreen() {
 
           <MachineHibernationGroup machine={machine} online={online} />
           <MachineAutoRestartGroup machine={machine} online={online} />
+          <MachineStaleSessionsGroup machine={machine} online={online} />
 
           {claudeAuth && (
             <ItemGroup

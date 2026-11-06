@@ -82,6 +82,8 @@ interface Settings {
    * Machine-local; set from the web machine page via `auto-restart-set`.
    */
   autoRestartSessions?: boolean
+  /** B-894: machine-local「自动更新 agent」 (Codex CLI via the harness installer). Absent = off. */
+  agentAutoUpdate?: boolean
   /**
    * B-327: install a newly recommended CLI by itself while the machine is idle.
    * `idle` (the default) upgrades only with no session wrapper and no live web

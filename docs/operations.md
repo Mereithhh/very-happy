@@ -531,6 +531,34 @@ from before it never report and keep the manual banner. The machine page's
 「会话自动更新」 switch turns it off (`autoRestartSessions: false` in settings).
 Spec: [auto-restart](../specs/2026-10-auto-restart-stale-wrappers.md).
 
+Those never-reporting old wrappers (`very-happy daemon list` shows them as
+`manual (no-report)` / `manual (no-check-in)`) are listed on the machine page
+under 「旧版会话」 (B-894), and every such session's sidebar row carries an
+「旧版」 tag. 「重启空闲的旧会话」 restarts the checked ones in place after one
+confirmation: sessions with a turn running, an approval waiting or background
+tasks are skipped with the reason, team sessions are listed unchecked, and the
+daemon re-checks each restart (`restart-session { ifIdle }` → `busy:<reason>`)
+so a turn that started meanwhile is not killed. That re-check needs a daemon
+with `autoRestart.idleGuard`; on an older CLI the button is disabled with
+「升级 CLI 后可用」 (B-894c — Web ships before the CLI, and some machines stay
+on old versions), while each session's own restart banner still works.
+The daemon itself still never restarts them.
+
+Agent CLIs are separate (B-894). Claude in Web sessions is the binary bundled
+with the CLI's exact `@anthropic-ai/claude-agent-sdk` pin, so it moves only
+with a CLI release that bumps the pin (`scripts/release/check-sdk-pin.mjs`
+warns when it lags). Codex is whatever `codex` is on the daemon's PATH: the
+machine page lists it under agent versions with an Update button, and its
+「自动更新 agent」 switch (default off, `agentAutoUpdate: true` in settings)
+lets the daemon update an outdated Codex itself once no Codex turn is running,
+through the same installer; idle Codex sessions then restart onto it (B-852
+agent staleness). A failed install is shown and retried at most once per
+version (30 min apart); a success the version check does not confirm (another
+`codex` earlier on PATH) is reported as a failure, never retried. Attempts,
+backoff and the last outcome are kept in `$HAPPY_HOME_DIR/agent-auto-update.json`
+so a daemon restart or handover does not reinstall the same version (B-894c);
+they are per target version, so the next Codex release starts from zero.
+
 Since CLI 0.2.183 (B-770) a launchd-owned daemon hands over through its job.
 The daemon records `supervisor: launchd` only when `launchctl print` shows the
 job's pid is itself or an ancestor (the bin shim); `XPC_SERVICE_NAME` alone is
@@ -786,6 +814,15 @@ plaintext answer lives in `Machine.lastHappyClient` / `Session.lastHappyClient`,
 written from the socket handshake's self-reported client identity on every
 connect where the value changed. Rows predating that column, and clients that
 never reconnected since, are `NULL`.
+
+`lastHappyClientAt` is therefore **when this client first connected with that
+version** (the write is skipped when the string is unchanged), not a heartbeat:
+it stops moving between upgrades by design. Liveness is `lastActiveAt` (machine
+heartbeat every 20 s, batched; ≤ ~35 s behind while online) together with
+`active`. Both columns are `timestamp without time zone` holding **UTC** —
+convert with `("lastActiveAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Singapore'`;
+a single `AT TIME ZONE 'Asia/Singapore'` reads them as SGT and shifts them the
+wrong way by 16 hours (B-894: mistaken for a broken auto-update).
 
 ```sql
 -- Fleet-wide version spread for daemons seen in the last week.

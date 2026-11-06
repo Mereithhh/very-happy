@@ -225,3 +225,12 @@ describe('B-882 uncheckedWrapperStatus', () => {
         expect(uncheckedWrapperStatus({ ...base, awaitingSince: null, now: 10 * LEGACY_CHECK_IN_GRACE_MS })).toEqual({ state: 'waiting', reason: 'awaiting-check-in' });
     });
 });
+
+describe('B-894 restartIdleRefusal (restart-session ifIdle)', () => {
+    it('refuses a session with a turn or background tasks, allows an idle one', async () => {
+        const { restartIdleRefusal } = await import('./autoRestartPolicy');
+        expect(restartIdleRefusal({ turnActive: true, backgroundTasks: 0 })).toBe('turn-active');
+        expect(restartIdleRefusal({ turnActive: false, backgroundTasks: 1 })).toBe('background-tasks');
+        expect(restartIdleRefusal({ turnActive: false, backgroundTasks: 0 })).toBeNull();
+    });
+});

@@ -326,6 +326,21 @@ export async function machineSetAgentHibernation(machineId: string, idleMs: numb
 }
 
 /**
+ * B-894: turn this machine's「自动更新 agent」 on/off (fake-ack discipline as below).
+ */
+export async function machineSetAgentAutoUpdate(machineId: string, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { ok: false; error: string }> {
+    try {
+        const raw = await apiSocket.machineRPC<unknown, { enabled: boolean }>(machineId, 'agent-auto-update-set', { enabled }, { timeoutMs: 30000 });
+        const obj = (raw && typeof raw === 'object') ? raw as { error?: unknown; agentAutoUpdate?: { enabled?: unknown } } : {};
+        if (typeof obj.error === 'string' && obj.error) return { ok: false, error: obj.error };
+        const applied = obj.agentAutoUpdate?.enabled;
+        return { ok: true, enabled: typeof applied === 'boolean' ? applied : enabled };
+    } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+/**
  * B-852: turn this machine's automatic restart of stale sessions on/off. Same
  * fake-ack discipline (铁律 17): `{error}` is a failure.
  */
@@ -1326,15 +1341,16 @@ export async function machineResumeSession(
  * (machineRPC rethrows it); callers map that to a "too old" hint.
  */
 export async function machineRestartSession(
-    options: { machineId: string; sessionId: string; model?: string; permissionMode?: string },
+    options: { machineId: string; sessionId: string; model?: string; permissionMode?: string; ifIdle?: true },
     opts?: { timeoutMs?: number },
 ): Promise<SpawnSessionResult> {
-    const { machineId, sessionId, model, permissionMode } = options;
+    const { machineId, sessionId, model, permissionMode, ifIdle } = options;
     try {
-        return await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string }>(
+        // B-894 `ifIdle`: the daemon refuses with `busy:<reason>` instead of stopping a busy session.
+        return await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string; ifIdle?: true }>(
             machineId,
             'restart-session',
-            { sessionId, model, permissionMode },
+            { sessionId, model, permissionMode, ...(ifIdle ? { ifIdle } : {}) },
             opts,
         );
     } catch (error) {

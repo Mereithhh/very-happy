@@ -2,6 +2,7 @@ import { ProjectPicker } from '@/screens/projects/ProjectPicker';
 import { isHarnessInstallId, type HarnessInstallId } from '@slopus/happy-wire';
 import { harnessInstallSupported } from '@/app/harnessInstall';
 import { readAgentVersions } from '@/app/agentVersions';
+import { codexOutdatedNotice } from '@/app/agentAutoUpdate';
 import { useHarnessInstall } from '@/app/useHarnessInstall';
 import { useProjects } from '@/sync/projects';
 import { suggestProjectFor } from '@/screens/projects/projectSuggestion';
@@ -164,6 +165,7 @@ export function NewSessionModal({
   const outdatedAgents = useMemo(() => new Set(
     (readAgentVersions(selectedMachine?.daemonState)?.agents ?? []).filter((v) => v.status === 'update-available').map((v) => v.id),
   ), [selectedMachine?.daemonState]);
+  const codexOutdated = useMemo(() => codexOutdatedNotice(selectedMachine?.daemonState), [selectedMachine?.daemonState]);
   const homeDir = (selectedMachine as any)?.metadata?.homeDir as string | undefined;
   const selectedAgentAvailability = resolveAgentAvailability(selectedMachine?.metadata, agent);
   // B-301: the daemon publishes its Claude login state, but until now only the
@@ -416,6 +418,11 @@ export function NewSessionModal({
               value={accountChoice} onChange={setAccountChoice} labelId="ns-account-label" variant="dialog" project={projectAccounts}
               machineNameOf={(id) => { const m = online.find((x) => x.id === id); return m ? machineDisplayName(m) : id.slice(0, 8); }}
               onFix={() => { onClose(); navigate(accountSettingsHref(machineId)); }} />
+            {/* B-894: Codex behind the registry and the machine will not update it by itself (「自动更新 agent」 off). */}
+            {agent === 'codex' && selectedMachine && codexOutdated && (
+              <CodexOutdatedNotice machineId={selectedMachine.id} daemonState={selectedMachine.daemonState} online={isMachineOnline(selectedMachine)}
+                installed={codexOutdated.installed} canInstall={harnessInstallSupported(selectedMachine.metadata)} />
+            )}
             {agent === 'claude' && (
               <div className="ns-agent-help">
                 {t('newSessionModal.bundledClaudeHelp')}{' '}
@@ -477,6 +484,26 @@ export function NewSessionModal({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** B-894: 「Codex vX 较旧 · 更新」 (the same B-719 install action). */
+function CodexOutdatedNotice({ machineId, daemonState, online, installed, canInstall }: { machineId: string; daemonState: unknown; online: boolean; installed: string; canInstall: boolean }) {
+  const { t } = useTranslation();
+  const action = useHarnessInstall(machineId, 'codex', daemonState, online);
+  return (
+    <div className="ns-agent-help" role="status" data-testid="ns-codex-outdated">
+      {t('newSessionModal.codexOutdated', { version: installed })}
+      {canInstall && (
+        <>
+          {' · '}
+          <Button variant="ghost" size="sm" loading={action.installing} disabled={action.disabled} onClick={() => void action.start()}>
+            {t('harnessInstall.update')}
+          </Button>
+        </>
+      )}
+      {action.status && <div>{action.status}</div>}
     </div>
   );
 }

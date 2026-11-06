@@ -1538,6 +1538,8 @@ export const en = {
     },
 
     newSessionModal: {
+        // B-894
+        codexOutdated: ({ version }: { version: string }) => `Codex v${version} is out of date`,
         // Used by NewSessionModal component
         eyebrow: 'NEW SESSION',
         heading: 'Start something',
@@ -2273,6 +2275,9 @@ export const en = {
         },
     },
     sidebar: {
+        // B-894: live session on older CLI code than its machine.
+        staleWrapper: 'Old version',
+        staleWrapperHint: ({ from, to }: { from: string; to: string }) => `Still on v${from} (the machine has v${to}) — restart it from the machine page or the session`,
         kindTerminal: 'Terminal',
         kindChat: 'Chat',
         agentStatusUnknown: 'Status unknown — waiting for a fresh agent observation',
@@ -6671,6 +6676,42 @@ export const en = {
         off: 'Off — ask me',
         saved: 'Session auto-update updated',
         saveFailed: 'Could not update session auto-update',
+    },
+
+    // B-894: machine page 「旧版会话」 + batch restart of the idle ones.
+    staleSessions: {
+        title: ({ count }: { count: number }) => `Sessions on an older version (${count})`,
+        footer: 'These live sessions still run the CLI they started with. Older ones never report when they are idle, so they are not updated automatically. Restart the idle ones here — each is restarted in place and keeps its conversation. Team sessions are not checked by default: restarting them interrupts their team.',
+        versions: ({ from, to }: { from: string; to: string }) => `v${from} → v${to}`,
+        team: 'Team session',
+        critical: 'May drop messages',
+        skipped: 'Skipped',
+        skipTurnActive: 'Skipped: a turn is running',
+        skipPendingRequest: 'Skipped: waiting for your approval',
+        skipBackgroundTasks: 'Skipped: background tasks running',
+        skipRestarting: 'Skipped: already restarting',
+        select: ({ name }: { name: string }) => `Restart ${name}`,
+        restartIdle: ({ count }: { count: number }) => count === 1 ? 'Restart 1 idle session' : `Restart ${count} idle sessions`,
+        needsCliUpgrade: 'Available after upgrading the CLI on this machine: this version cannot tell when a session starts working, so a batch restart could interrupt it. Restart sessions one at a time from their banner meanwhile.',
+        confirmTitle: ({ count }: { count: number }) => count === 1 ? 'Restart 1 old session?' : `Restart ${count} old sessions?`,
+        confirmBody: 'Each one stops and comes back on the current version with its conversation kept. A session that starts working before its turn is skipped.',
+        confirmAction: 'Restart',
+        done: ({ restarted, skipped, failed }: { restarted: number; skipped: number; failed: number }) =>
+            [`Restarted ${restarted}`, skipped ? `skipped ${skipped}` : '', failed ? `failed ${failed}` : ''].filter(Boolean).join(' · '),
+    },
+
+    // B-894: machine page 「自动更新 agent」.
+    agentAutoUpdate: {
+        title: 'Agent auto-update',
+        footer: 'When on, this machine updates an outdated Codex CLI by itself once no Codex turn is running, then idle Codex sessions restart onto it. A failed install is shown here and retried at most once. Claude needs nothing: it comes with Very Happy.',
+        on: 'On — update Codex automatically',
+        off: 'Off — ask me',
+        saved: 'Agent auto-update updated',
+        saveFailed: 'Could not update agent auto-update',
+        installing: ({ agent, version }: { agent: string; version: string }) => `Updating ${agent} to ${version}…`,
+        installed: ({ agent, version }: { agent: string; version: string }) => `Updated ${agent} to ${version} automatically`,
+        failed: ({ agent, version, reason }: { agent: string; version: string; reason: string }) => `Automatic ${agent} ${version} update failed (${reason}); it will try once more later`,
+        gaveUp: ({ agent, version, reason }: { agent: string; version: string; reason: string }) => `Automatic ${agent} ${version} update failed (${reason}); no more automatic attempts — update it above`,
     },
 
     hibernation: {

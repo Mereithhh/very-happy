@@ -354,3 +354,16 @@ export function takeAutoRestartedEvent(env: NodeJS.ProcessEnv, agentName?: strin
     if (!decoded) return null;
     return { type: 'message', kind: AUTO_UPDATED_EVENT_KIND, message: autoUpdatedEventText(decoded.kind, decoded.target, agentName) };
 }
+
+/**
+ * B-894: a Web 「重启空闲的旧会话」 restart carries `ifIdle`; the daemon refuses
+ * it (error `busy:<reason>`) when what it knows says the session is busy, so a
+ * Web snapshot that lagged a new turn never kills it. Pending approvals are
+ * only known to the Web (agentState) and are skipped there.
+ */
+export type RestartIdleRefusal = 'turn-active' | 'background-tasks';
+export function restartIdleRefusal(input: { turnActive: boolean; backgroundTasks: number }): RestartIdleRefusal | null {
+    if (input.turnActive) return 'turn-active';
+    if (input.backgroundTasks > 0) return 'background-tasks';
+    return null;
+}
