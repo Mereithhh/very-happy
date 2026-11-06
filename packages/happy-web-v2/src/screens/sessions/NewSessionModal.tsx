@@ -488,7 +488,7 @@ export function NewSessionModal({
   );
 }
 
-/** B-894: 「Codex vX 过旧，部分模型不可用 · 更新」 (the same B-719 install action). */
+/** B-894: 「Codex vX 较旧 · 更新」 (the same B-719 install action). */
 function CodexOutdatedNotice({ machineId, daemonState, online, installed, canInstall }: { machineId: string; daemonState: unknown; online: boolean; installed: string; canInstall: boolean }) {
   const { t } = useTranslation();
   const action = useHarnessInstall(machineId, 'codex', daemonState, online);

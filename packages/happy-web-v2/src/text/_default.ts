@@ -1536,7 +1536,7 @@ export const en = {
 
     newSessionModal: {
         // B-894
-        codexOutdated: ({ version }: { version: string }) => `Codex v${version} is outdated; some models are unavailable`,
+        codexOutdated: ({ version }: { version: string }) => `Codex v${version} is out of date`,
         // Used by NewSessionModal component
         eyebrow: 'NEW SESSION',
         heading: 'Start something',

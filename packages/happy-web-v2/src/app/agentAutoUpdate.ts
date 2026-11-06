@@ -50,7 +50,9 @@ export function readMachineAgentAutoUpdate(daemonState: unknown): MachineAgentAu
 }
 
 /**
- * New-session notice「Codex vX 过旧，部分模型不可用 · 更新」: the machine's
+ * New-session notice「Codex vX 较旧 · 更新」 (deliberately no "models unavailable":
+ * API-provider accounts run every model on older Codex; per-model gates are
+ * modelSupportPolicy / B-893's). Shown when the machine's
  * (fresh) version check says Codex has an update, and the daemon will not do
  * it by itself (switch off or not supported). Null otherwise.
  */

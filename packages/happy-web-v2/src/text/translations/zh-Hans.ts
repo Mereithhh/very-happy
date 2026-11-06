@@ -1719,7 +1719,7 @@ export const zhHans: TranslationStructure = {
 
     newSessionModal: {
         // B-894
-        codexOutdated: ({ version }: { version: string }) => `Codex v${version} 过旧，部分模型不可用`,
+        codexOutdated: ({ version }: { version: string }) => `Codex v${version} 较旧`,
         // Used by NewSessionModal component
         eyebrow: '新会话',
         heading: '开始点什么',
