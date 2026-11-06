@@ -10,6 +10,16 @@ import { storage, useAllMachines } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import type { Message } from '@/sync/typesMessage';
 import { useProjects } from '@/sync/projects';
+import { useIncomingProjectShares } from '@/sync/projectSharesStore';
+import { useTranslation } from '@/i18n/useTranslation';
+import { sessionPlacementResolver } from '@/app/sessionPlacement';
+import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
+import { teamSessionMembership } from '@/screens/sessions/teamNavigation';
+import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
+import { worktreeBranchLabel } from '@/utils/worktree';
+import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { prepareSearch } from './searchMatch';
+import { sessionSearchFields, type SearchLabels } from './searchDocs';
 import { isHibernated } from '@/app/sessionHibernation';
 import { isAssistantSession } from '@/assistant/assistantSession';
 import { sessionHasPendingRequests } from '@/screens/board/boardItems';
@@ -73,6 +83,10 @@ export interface SessionSearchResult {
     contentSkipped: boolean;
     machines: ReturnType<typeof useAllMachines>;
     projects: ReturnType<typeof useProjects>;
+    /** B-895: teams (sidebar navigation snapshot) and the field labels, for the project / team rows. */
+    teams: ReturnType<typeof useTeamNavigation>;
+    incomingProjects: ReturnType<typeof useIncomingProjectShares>;
+    labels: SearchLabels;
     now: number;
 }
 
@@ -89,12 +103,27 @@ export function useSessionSearch(rawInput: string, enabled: boolean, filters: Se
     const machines = useAllMachines({ includeOffline: true });
     const projects = useProjects();
 
-    const projectOf = useMemo(() => {
-        const m = new Map<string, string>();
-        for (const mem of projects.members) m.set(mem.sessionId, mem.projectId);
-        return m;
-    }, [projects.members]);
-    const projectName = useMemo(() => new Map(projects.projects.map((p) => [p.id, p.name])), [projects.projects]);
+    const teams = useTeamNavigation();
+    const incomingProjects = useIncomingProjectShares();
+    const { t } = useTranslation();
+    const teamCopy = useTeamNavigationCopy();
+    const labels = useMemo<SearchLabels>(() => ({
+        project: t('sessionSearch.projectLabel'),
+        team: t('sessionSearch.teamLabel'),
+        lead: teamCopy.lead,
+        member: teamCopy.member,
+        sharer: t('sessionSearch.sharerLabel'),
+        machine: t('sessionSearch.machineLabel'),
+    }), [t, teamCopy]);
+
+    // B-895: a team's sessions belong to the team's project (same rule as the sidebar).
+    const liveTeams = useMemo(() => teams.filter((team) => !team.archivedAt), [teams]);
+    const placement = useMemo(() => sessionPlacementResolver(projects.projects, projects.members, liveTeams), [projects.projects, projects.members, liveTeams]);
+    const membership = useMemo(() => teamSessionMembership(liveTeams), [liveTeams]);
+    const projectName = useMemo(() => new Map([
+        ...incomingProjects.map((p) => [p.projectId, p.name] as const),
+        ...projects.projects.map((p) => [p.id, p.name] as const),
+    ]), [projects.projects, incomingProjects]);
     const machineName = useMemo(() => new Map(machines.map((m) => [m.id, machineLabel(m)])), [machines]);
 
     // Every searchable session (archived and terminal mirrors included; the assistant is not a conversation).
@@ -103,15 +132,23 @@ export function useSessionSearch(rawInput: string, enabled: boolean, filters: Se
         for (const s of Object.values(sessionsById)) {
             if (isAssistantSession(s)) continue;
             const archived = !(s.active || isHibernated(s));
-            const projectId = projectOf.get(s.id) ?? null;
+            const projectId = placement(s.id).projectId ?? null;
             const machineId = s.metadata?.machineId ?? null;
             const flavor = s.metadata?.flavor?.trim() || null;
             const agent = !flavor || flavor === 'terminal-mirror' ? 'claude' : flavor;
-            const extra = [
-                projectId ? projectName.get(projectId) : '',
-                machineId ? machineName.get(machineId) : '',
-                s.metadata?.path ?? '',
-            ].filter(Boolean).join(' ');
+            const member = membership.get(s.id);
+            const title = getSessionName(s);
+            const tags = s.metadata?.tags ?? [];
+            const path = s.metadata?.path ?? null;
+            const fields = sessionSearchFields({
+                projectName: projectId ? projectName.get(projectId) : s.share?.projectId ? projectName.get(s.share.projectId) : null,
+                team: member ? { name: member.team.name, bot: member.bot } : null,
+                sharer: s.share?.owner.displayName ?? null,
+                machineName: (machineId ? machineName.get(machineId) : null) ?? s.metadata?.host ?? null,
+                path,
+                pathDisplay: path ? formatPathRelativeToHome(path, s.metadata?.homeDir) : undefined,
+                meta: [agent, worktreeBranchLabel(s.metadata)],
+            }, labels);
             out.push({
                 session: s,
                 agent,
@@ -120,17 +157,18 @@ export function useSessionSearch(rawInput: string, enabled: boolean, filters: Se
                 waiting: sessionHasPendingRequests(s) || s.metadata?.board?.attention === 'review' || s.metadata?.board?.attention === 'blocked',
                 doc: {
                     sessionId: s.id,
-                    title: getSessionName(s),
+                    title,
                     subtitle: getSessionSidebarSubtitle(s),
-                    extra,
-                    tags: s.metadata?.tags ?? [],
+                    // B-895: ties go to the most recently active — the sidebar's activity time (Sidebar.tsx `ts`).
+                    search: prepareSearch({ title, fields, tags, updatedAt: s.updatedAt || s.activeAt || s.createdAt, archived }),
+                    tags,
                     updatedAt: s.updatedAt,
                     archived,
                 },
             });
         }
         return out;
-    }, [sessionsById, projectOf, projectName, machineName]);
+    }, [sessionsById, placement, membership, projectName, machineName, labels]);
 
     const now = Date.now();
     const passing = useMemo(
@@ -189,6 +227,6 @@ export function useSessionSearch(rawInput: string, enabled: boolean, filters: Se
     return {
         q, passing, facts, rows, coverage,
         contentSkipped: searching && daemonAgent === null,
-        machines, projects, now,
+        machines, projects, teams, incomingProjects, labels, now,
     };
 }

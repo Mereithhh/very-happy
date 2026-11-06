@@ -17,11 +17,14 @@ import {
     summarizeCoverage,
     type SessionSearchDoc,
 } from './sessionSearch';
+import { prepareSearch } from './searchMatch';
 import { findJumpMessage, promptForMessage, snippetNeedle } from './chatJump';
 
-const doc = (id: string, over: Partial<SessionSearchDoc> = {}): SessionSearchDoc => ({
-    sessionId: id, title: `title ${id}`, subtitle: 'dev-sg · claude · ~/code/app', extra: '', tags: [], updatedAt: 1000, archived: false, ...over,
-});
+const doc = (id: string, over: Partial<Omit<SessionSearchDoc, 'search'>> & { extra?: string } = {}): SessionSearchDoc => {
+    const { extra, ...rest } = over;
+    const base = { sessionId: id, title: `title ${id}`, subtitle: 'dev-sg · claude · ~/code/app', tags: [] as string[], updatedAt: 1000, archived: false, ...rest };
+    return { ...base, search: prepareSearch({ title: base.title, fields: extra ? [{ kind: 'project', text: extra }] : [], tags: base.tags }) };
+};
 const user = (id: string, text: string, createdAt = 1): Message => ({ kind: 'user-text', id, localId: null, createdAt, text });
 const agent = (id: string, text: string, createdAt = 1): Message => ({ kind: 'agent-text', id, localId: null, createdAt, text });
 const hit = (id: string, over: Partial<HistorySearchHit> = {}): HistorySearchHit => ({
@@ -75,6 +78,12 @@ describe('searchLocalSessions (sources 1 + 3)', () => {
         const docs = [doc('a', { tags: ['ops'], extra: 'Payments' }), doc('b', { extra: 'Payments' })];
         expect(searchLocalSessions(docs, new Map(), parseSessionSearchQuery('#ops')).map((r) => r.sessionId)).toEqual(['a']);
         expect(searchLocalSessions(docs, new Map(), parseSessionSearchQuery('payments')).map((r) => r.sessionId)).toEqual(['a', 'b']);
+    });
+    it('B-895: metaHit means EVERY term is in the metadata (was: any one term)', () => {
+        const docs = [doc('a', { title: 'Fix redis' })];
+        const cached = new Map([['a', [user('m1', 'the cache layer')]]]);
+        expect(searchLocalSessions(docs, cached, parseSessionSearchQuery('redis cache'))[0].metaHit).toBe(false);
+        expect(searchLocalSessions(docs, cached, parseSessionSearchQuery('redis fix'))[0].metaHit).toBe(true);
     });
     it('searches sub-agent children and tool commands', () => {
         const tool: Message = {

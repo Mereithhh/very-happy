@@ -374,8 +374,11 @@ package. See [Self-hosting](docs/deployment.md).
 
 The command palette is the one search entry: `Command/Ctrl+K`,
 `Command/Ctrl+Shift+F` and the sidebar Search control all open it. It searches
-actions, chats, terminals, and what was said on every online machine, and a
-snippet opens the session on the hit. Saved prompts use `Command/Ctrl+.`.
+actions, projects, teams, chats, terminals, and what was said on every online
+machine, and a snippet opens the session on the hit. Every word must match
+(in any field); title hits rank first, then project, team, lead, member and
+sharer, then tags, then machine and folder, newest first on a tie, and a row
+found by anything but its title says why. Saved prompts use `Command/Ctrl+.`.
 
 Very Happy preserves terminal muscle memory: on macOS, `Ctrl+K/J/N/R` stay with
 readline and the real TUI. Browser-reserved new/close chords work only where the

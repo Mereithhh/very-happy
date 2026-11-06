@@ -23,6 +23,7 @@ import {
   CREATE_ROW_KEY,
 } from './paletteModel';
 import type { ResultSnippet, SessionSearchRow } from '@/screens/search/sessionSearch';
+import { pathFields, prepareSearch, type PreparedSearch } from '@/screens/search/searchMatch';
 
 const NOW = 1_700_000_000_000;
 
@@ -129,41 +130,66 @@ describe('boardItemExecution', () => {
   });
 });
 
-type Row = { key: string; group: PaletteGroup; haystack: string; tags?: string[] };
+type Row = { key: string; group: PaletteGroup; search: PreparedSearch };
+const row = (key: string, group: PaletteGroup, title: string, extra: { keywords?: string; path?: string; tags?: string[] } = {}): Row => ({
+  key, group, search: prepareSearch({
+    title,
+    fields: [...(extra.keywords ? [{ kind: 'keyword' as const, text: extra.keywords }] : []), ...pathFields(extra.path)],
+    tags: extra.tags,
+  }),
+});
 const rows: Row[] = [
-  { key: 'a:new', group: 'actions', haystack: 'new chat' },
-  { key: 'a:hist', group: 'actions', haystack: 'search history full text 搜索历史对话…' },
-  { key: 's:1', group: 'sessions', haystack: 'fix login bug ~/proj', tags: ['p0', 'web'] },
-  { key: 's:2', group: 'sessions', haystack: 'chat about release' },
-  { key: 't:1', group: 'terminals', haystack: 'build server devbox', tags: ['web'] },
+  row('a:new', 'actions', 'New chat'),
+  row('a:hist', 'actions', '搜索历史对话…', { keywords: 'search history full text' }),
+  row('s:1', 'sessions', 'Fix login bug', { path: '/home/u/proj', tags: ['p0', 'web'] }),
+  row('s:2', 'sessions', 'Chat about release'),
+  row('t:1', 'terminals', 'build server devbox', { tags: ['web'] }),
 ];
+const keys = (hits: { it: Row }[]) => hits.map((h) => h.it.key);
 
-describe('filterPaletteItems', () => {
-  it('returns everything for an empty query', () => {
-    expect(filterPaletteItems(rows, '   ')).toBe(rows);
+describe('filterPaletteItems (B-895: searchMatch)', () => {
+  it('returns everything, unranked, for an empty query', () => {
+    expect(keys(filterPaletteItems(rows, '   '))).toEqual(rows.map((r) => r.key));
   });
-  it('substring match ranked by position, ties by group', () => {
-    expect(filterPaletteItems(rows, 'chat').map((r) => r.key)).toEqual(['s:2', 'a:new']);
+  it('title prefix ranks above a word-start hit', () => {
+    expect(keys(filterPaletteItems(rows, 'chat'))).toEqual(['s:2', 'a:new']);
   });
   it('#tag terms AND-filter on tags; untagged rows fail', () => {
-    expect(filterPaletteItems(rows, '#web').map((r) => r.key)).toEqual(['s:1', 't:1']);
-    expect(filterPaletteItems(rows, '#web build').map((r) => r.key)).toEqual(['t:1']);
+    expect(keys(filterPaletteItems(rows, '#web'))).toEqual(['s:1', 't:1']);
+    expect(keys(filterPaletteItems(rows, '#web build'))).toEqual(['t:1']);
   });
-  it('keeps the B-549 search-history action reachable', () => {
-    expect(filterPaletteItems(rows, 'history').map((r) => r.key)).toEqual(['a:hist']);
+  it('keeps the B-549 search-history action reachable by its hidden keywords', () => {
+    expect(keys(filterPaletteItems(rows, 'history'))).toEqual(['a:hist']);
+  });
+  it('multi-word queries AND across fields (was: one whole substring)', () => {
+    expect(keys(filterPaletteItems(rows, 'login proj'))).toEqual(['s:1']);
+  });
+});
+
+describe('orderPaletteItems (B-895 groups)', () => {
+  it('projects and teams sit between actions and chats', () => {
+    const E = prepareSearch({ title: '' });
+    const mixed: Row[] = [
+      { key: 's:1', group: 'sessions', search: E },
+      { key: 'team:1', group: 'teams', search: E },
+      { key: 'project:1', group: 'projects', search: E },
+      { key: 'a:1', group: 'actions', search: E },
+    ];
+    expect(orderPaletteItems(mixed).map((r) => r.key)).toEqual(['a:1', 'project:1', 'team:1', 's:1']);
   });
 });
 
 describe('orderPaletteItems', () => {
   it('regroups into display order, stable inside a group', () => {
+    const E = prepareSearch({ title: '' });
     const mixed: Row[] = [
-      { key: 'create', group: 'create', haystack: '' },
-      { key: 's:2', group: 'sessions', haystack: '' },
-      { key: 'a:1', group: 'actions', haystack: '' },
-      { key: 'n:1', group: 'needsYou', haystack: '' },
-      { key: 's:1', group: 'sessions', haystack: '' },
-      { key: 't:1', group: 'terminals', haystack: '' },
-      { key: 'set:1', group: 'settings', haystack: '' },
+      { key: 'create', group: 'create', search: E },
+      { key: 's:2', group: 'sessions', search: E },
+      { key: 'a:1', group: 'actions', search: E },
+      { key: 'n:1', group: 'needsYou', search: E },
+      { key: 's:1', group: 'sessions', search: E },
+      { key: 't:1', group: 'terminals', search: E },
+      { key: 'set:1', group: 'settings', search: E },
     ];
     // B-575: 设置 sits after chats/terminals and before the create row.
     expect(orderPaletteItems(mixed).map((r) => r.key)).toEqual(['n:1', 'a:1', 's:2', 's:1', 't:1', 'set:1', 'create']);
