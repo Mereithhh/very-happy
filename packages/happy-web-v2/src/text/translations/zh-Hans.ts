@@ -2247,7 +2247,12 @@ export const zhHans: TranslationStructure = {
             noTerminals: '这个项目没有终端。',
             noInstructions: '没有说明。',
             noLog: '还没有记录。',
-            terminalBanner: ({ owner, project }: { owner: string; project: string }) => `只看 · ${owner} 的项目「${project}」里的终端`,
+            // B-899: 写明原因和怎么要权限。
+            terminalBanner: ({ owner, project }: { owner: string; project: string }) => `只看：这个终端随 ${owner} 的项目「${project}」分享，项目分享不能在终端里输入。要操作，请 ${owner} 单独把这个终端分享给你为「可操作」。`,
+            operateTerminals: '终端权限…',
+            operateTerminalsTitle: ({ name }: { name: string }) => `让 ${name} 操作一个终端`,
+            operateTerminalsHint: '选项目里的一个终端。仍要确认风险提示并选择有效期。',
+            noOwnTerminals: '这个项目里现在没有你的终端。',
             ended: '你对这个项目的访问已结束。',
             notFound: '这个分享的项目已不可用。',
             serverTooOld: '服务器还不支持项目分享。',
@@ -2262,6 +2267,9 @@ export const zhHans: TranslationStructure = {
             roleOperatorHint: '还能在这个终端里输入。',
             viewerNotice: '对方能看到这个终端的全部输出，包括可能出现的密钥、令牌和环境变量。',
             mirrorNotice: '这个终端里运行的 agent 会话不会一起分享。',
+            // B-899: 从项目分享对话框为某个人打开。
+            prefillTitle: ({ name }: { name: string }) => `给 ${name} 这个终端的「可操作」`,
+            prefillAlready: ({ name }: { name: string }) => `${name} 已经可以操作这个终端。`,
             ownerOnly: '只能分享你自己机器上的终端。',
             watching: ({ names }: { names: string }) => `${names} 正在看`,
             watchingNow: '正在看',

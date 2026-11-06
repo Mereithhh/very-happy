@@ -2087,7 +2087,12 @@ export const en = {
             noTerminals: 'No terminals in this project.',
             noInstructions: 'No instructions.',
             noLog: 'Nothing logged yet.',
-            terminalBanner: ({ owner, project }: { owner: string; project: string }) => `View only · terminal in ${owner}'s project ${project}`,
+            // B-899: say why, and how to get more.
+            terminalBanner: ({ owner, project }: { owner: string; project: string }) => `View only — this terminal comes with ${owner}'s project “${project}”, and a project share never types into terminals. To operate it, ask ${owner} to share this terminal with you as “Can operate”.`,
+            operateTerminals: 'Terminal access…',
+            operateTerminalsTitle: ({ name }: { name: string }) => `Let ${name} operate a terminal`,
+            operateTerminalsHint: 'Pick one terminal in this project. You still confirm the warning and choose how long it lasts.',
+            noOwnTerminals: 'No terminals of yours are in this project right now.',
             ended: 'Your access to this project ended.',
             notFound: 'This shared project is no longer available.',
             serverTooOld: 'The server does not support project sharing yet.',
@@ -2102,6 +2107,9 @@ export const en = {
             roleOperatorHint: 'Can also type in this terminal.',
             viewerNotice: 'They will see everything this terminal prints, including any keys, tokens or environment variables that show up.',
             mirrorNotice: 'Agent sessions running inside this terminal are not shared with it.',
+            // B-899: opened from the project share dialog for one person.
+            prefillTitle: ({ name }: { name: string }) => `Give ${name} “Can operate” on this terminal`,
+            prefillAlready: ({ name }: { name: string }) => `${name} can already operate this terminal.`,
             ownerOnly: 'Only terminals on your own machines can be shared.',
             watching: ({ names }: { names: string }) => `${names} watching`,
             watchingNow: 'Watching now',

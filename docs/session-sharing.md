@@ -184,7 +184,15 @@ Pick a person and **View only** or **Can send**; the share can expire after 1,
 - **View only** reads the sessions. **Can send** also lets them send messages
   in those sessions, under their own name. Terminals in the project are
   always view only. **Can operate** is never given through a project; give it
-  for one session or one terminal instead.
+  for one session or one terminal instead. In the share dialog, **Terminal
+  access…** under a person lists your terminals in the project: pick one to
+  open that terminal's share dialog with the person and **Can operate**
+  already chosen (you still confirm the warning and pick 1, 7 or 30 days).
+- When they also have a terminal shared with them directly, its row on the
+  project page opens that share instead, so **Can operate** works from the
+  project page too. Once it is revoked or expires, the row goes back to view
+  only. A view-only project terminal tells them why it is view only and to
+  ask you for **Can operate**.
 - Moving a session out of the project ends their access to it at once.
   Moving a terminal out of (or into) the project takes effect when your
   machine next reports its terminals, usually within 5–10 seconds; until

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IncomingProjectShareSchema, SharedProjectPageSchema, projectGrantIdOfShareId } from './projectShareTypes';
+import { IncomingProjectShareSchema, SharedProjectPageSchema, projectGrantIdOfShareId, projectTerminalLink } from './projectShareTypes';
 import { SessionShareInfoSchema } from './sessionShareTypes';
 
 describe('B-878 PR-B project share client helpers', () => {
@@ -15,5 +15,20 @@ describe('B-878 PR-B project share client helpers', () => {
         const base = { grantId: 'g', role: 'viewer', owner: { id: 'o', displayName: 'O' } };
         expect(SessionShareInfoSchema.parse({ ...base, via: 'project', projectId: 'p' })).toMatchObject({ via: 'project', projectId: 'p' });
         expect(SessionShareInfoSchema.parse(base).via).toBeUndefined();
+    });
+
+    it('B-899 a project terminal row leads to my own live direct grant (effective = max), else the view-only project share', () => {
+        const page = (direct?: unknown) => SharedProjectPageSchema.parse({ project: { id: 'p', name: 'n' }, terminals: [{ shareId: 'p:g:m:t', machineId: 'm', terminalId: 't', ...(direct === undefined ? {} : { direct }) }] }).terminals[0];
+        const now = 1_000;
+        expect(projectTerminalLink(page(), now)).toEqual({ shareId: 'p:g:m:t', role: 'viewer', via: 'project', pending: false });
+        expect(projectTerminalLink(page({ grantId: 'tg', role: 'operator', status: 'active', expiresAt: now + 1 }), now)).toEqual({ shareId: 'tg', role: 'operator', via: 'direct', pending: false });
+        expect(projectTerminalLink(page({ grantId: 'tg', role: 'operator', status: 'pending', expiresAt: now + 1 }), now)).toMatchObject({ shareId: 'tg', via: 'direct', pending: true });
+        expect(projectTerminalLink(page({ grantId: 'tg', role: 'viewer', status: 'active', expiresAt: now + 1 }), now)).toMatchObject({ shareId: 'tg', role: 'viewer' });
+        // Expired since the page was read: back to view only through the project.
+        expect(projectTerminalLink(page({ grantId: 'tg', role: 'operator', status: 'active', expiresAt: now }), now)).toMatchObject({ shareId: 'p:g:m:t', role: 'viewer', via: 'project' });
+        // A newer server's unknown tier is view only; a malformed direct is ignored, never fatal; null = none.
+        expect(projectTerminalLink(page({ grantId: 'tg', role: 'admin', status: 'active', expiresAt: now + 1 }), now).role).toBe('viewer');
+        expect(page({ grantId: 1 }).direct).toBeUndefined();
+        expect(projectTerminalLink(page(null), now).via).toBe('project');
     });
 });

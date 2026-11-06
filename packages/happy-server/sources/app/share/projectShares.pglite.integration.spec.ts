@@ -227,6 +227,83 @@ describe('B-878 project shares (pglite)', () => {
         expect(daemonCalls).toHaveLength(0);
     });
 
+    it('B-899 effective = max(direct, project): only the grantee\'s own live direct grant upgrades a project terminal row; the p: path never types', async () => {
+        const { createTerminalGrant, respondToTerminalGrant, revokeTerminalGrant, listIncomingTerminalShares } = await import('./terminalShares');
+        const dave = await createAccount('davey'); const erin = await createAccount('erinn');
+        const g = await ps.createProjectGrant({ ownerId, projectId, granteeAccountId: dave.id, role: 'driver', expiresInDays: null }, shares.granteeContentPublicKey);
+        await ps.respondToProjectGrant(dave.id, g.id, true);
+        await setTerminals([{ id: 'dt1', projectId }, { id: 'dt2', projectId }]);
+        const row = async (id: string) => (await broker.listProjectTerminals(dave.id, g.id)).find((t) => t.terminalId === id)!;
+        // No direct grant: the row is the view-only project share, as before.
+        expect((await row('dt1')).direct).toBeUndefined();
+        expect((await row('dt1')).shareId).toBe(broker.projectTerminalShareId(g.id, machineId, 'dt1'));
+        // Someone else's operator grant on the same terminal changes nothing for dave.
+        const forErin = await createTerminalGrant({ ownerId, machineId, terminalId: 'dt1', granteeAccountId: erin.id, role: 'operator', expiresInDays: 1, confirmOperator: true });
+        await respondToTerminalGrant(erin.id, forErin.id, true);
+        expect((await row('dt1')).direct).toBeUndefined();
+        // Dave's own operator grant: pending first (the row leads to the accept page), then active.
+        const direct = await createTerminalGrant({ ownerId, machineId, terminalId: 'dt1', granteeAccountId: dave.id, role: 'operator', expiresInDays: 1, confirmOperator: true });
+        expect((await row('dt1')).direct).toMatchObject({ grantId: direct.id, role: 'operator', status: 'pending' });
+        await respondToTerminalGrant(dave.id, direct.id, true);
+        expect((await row('dt1')).direct).toMatchObject({ grantId: direct.id, role: 'operator', status: 'active' });
+        expect((await row('dt2')).direct).toBeUndefined(); // per terminal, not per project
+        // The direct id operates; the project id of the same terminal still never types.
+        const inc = (await listIncomingTerminalShares(dave.id)).find((s) => s.id === direct.id)!;
+        const directKey = crypto.unwrapDataEncryptionKey(new Uint8Array(Buffer.from(inc.granteeKey, 'base64')), crypto.contentKeyPairFromSecret(dave.secret))!;
+        const projectKey = crypto.unwrapDataEncryptionKey(new Uint8Array(Buffer.from((await ps.listIncomingProjectShares(dave.id)).find((s) => s.id === g.id)!.granteeKey, 'base64')), crypto.contentKeyPairFromSecret(dave.secret))!;
+        const sealed = (v: unknown, k: Uint8Array) => Buffer.from(crypto.encryptWithDataKey(v, k)).toString('base64');
+        const rpc = (shareId: string, k: Uint8Array, op: string, params: unknown) => broker.handleTerminalShareRpc(io, dave.id, { grantId: shareId, op, params: sealed(params, k) });
+        const pShare = broker.projectTerminalShareId(g.id, machineId, 'dt1');
+        expect((await rpc(direct.id, directKey, 'attach', { cols: 80, rows: 24 })).ok).toBe(true);
+        expect(daemonCalls.at(-1)!.params).not.toMatchObject({ viewOnly: true });
+        expect((await rpc(direct.id, directKey, 'paste', { text: 'echo hi' })).ok).toBe(true);
+        expect((await rpc(pShare, projectKey, 'attach', { viewOnly: false, cols: 10, rows: 2 })).ok).toBe(true);
+        expect(daemonCalls.at(-1)!.params).toMatchObject({ terminalId: 'dt1', viewOnly: true });
+        expect(await rpc(pShare, projectKey, 'paste', { text: 'ls' })).toEqual({ ok: false, error: 'share_method_denied' });
+        emitted.length = 0;
+        await broker.__forwardTerminalEventForTests(dave.id, 'input', { grantId: pShare, data: sealed('eA==', projectKey) });
+        expect(emitted.filter((e) => e.event === 'terminal-input')).toEqual([]);
+        await broker.__forwardTerminalEventForTests(dave.id, 'input', { grantId: direct.id, data: sealed('eA==', directKey) });
+        expect(emitted.filter((e) => e.event === 'terminal-input')).toHaveLength(1);
+        // Revoked: back to the view-only project row. Re-shared and then expired: back again.
+        await revokeTerminalGrant(ownerId, direct.id);
+        expect((await row('dt1')).direct).toBeUndefined();
+        const again = await createTerminalGrant({ ownerId, machineId, terminalId: 'dt1', granteeAccountId: dave.id, role: 'operator', expiresInDays: 1, confirmOperator: true });
+        await respondToTerminalGrant(dave.id, again.id, true);
+        expect((await row('dt1')).direct?.grantId).toBe(again.id);
+        await db.terminalGrant.update({ where: { id: again.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+        expect((await row('dt1')).direct).toBeUndefined();
+        // A stranger with the project grant id sees nothing at all.
+        expect(await broker.listProjectTerminals(erin.id, g.id)).toEqual([]);
+        await ps.revokeProjectGrant(ownerId, projectId, dave.id);
+        expect(await broker.listProjectTerminals(dave.id, g.id)).toEqual([]);
+    });
+
+    it('B-899 team-derived sessions (no ProjectMember rows): "can send" lists them as driver and the message posts, signed as the grantee', async () => {
+        const lead = await createSession('team-lead'); const member = await createSession('team-member');
+        const teamProject = (await store.createProject(ownerId, { name: 'team-proj', folders: [{ machineId, path: '/home/owner/team' }] })).id;
+        await db.agentTeam.create({ data: { id: 'team-b899', accountId: ownerId, machineId, projectId: teamProject, state: { name: 'T', bots: [{ id: 'b1', sessionId: lead, root: true }, { id: 'b2', sessionId: member }] } } });
+        expect(await db.projectMember.count({ where: { projectId: teamProject } })).toBe(0);
+        const frank = await createAccount('franky');
+        const g = await ps.createProjectGrant({ ownerId, projectId: teamProject, granteeAccountId: frank.id, role: 'driver', expiresInDays: null }, shares.granteeContentPublicKey);
+        await ps.respondToProjectGrant(frank.id, g.id, true);
+        expect((await ps.sharedProjectView(frank.id, g.id)).sessionIds.sort()).toEqual([lead, member].sort());
+        for (const id of [lead, member]) {
+            expect(await shares.resolveSessionAccess(frank.id, id)).toMatchObject({ kind: 'project', role: 'driver', projectId: teamProject });
+            expect((await listFor(frank.id)).find((r) => r.id === id)).toMatchObject({ via: 'project', role: 'driver' });
+            const sent = await shares.postSharedMessage({ granteeAccountId: frank.id, sessionId: id, text: 'hello team', localId: `t-${id}` });
+            expect(sent.localId).toBe(`t-${id}`);
+            const row = await db.sessionMessage.findFirstOrThrow({ where: { sessionId: id, localId: `t-${id}` } });
+            const sessionRow = await db.session.findUniqueOrThrow({ where: { id }, select: { dataEncryptionKey: true } });
+            const dek = crypto.unwrapDataEncryptionKey(new Uint8Array(sessionRow.dataEncryptionKey!), crypto.contentKeyPairFromSecret(ownerSecret))!;
+            const content = row.content as { t: string; c: string };
+            const record = crypto.decryptWithDataKey(new Uint8Array(Buffer.from(content.c, 'base64')), dek) as any;
+            expect(record.meta.sharedBy).toEqual({ accountId: frank.id, displayName: 'franky' });
+        }
+        await ps.revokeProjectGrant(ownerId, teamProject, frank.id);
+        await expect(shares.postSharedMessage({ granteeAccountId: frank.id, sessionId: lead, text: 'x', localId: 't-x' })).rejects.toBeTruthy();
+    });
+
     it('expiry is enforced on read and announced by the expiry sweep', async () => {
         const g = await ps.createProjectGrant({ ownerId, projectId, granteeAccountId: carolId, role: 'viewer', expiresInDays: 1 }, shares.granteeContentPublicKey);
         await ps.respondToProjectGrant(carolId, g.id, true);

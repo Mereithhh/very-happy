@@ -171,13 +171,34 @@ async function resolveProjectTerminal(granteeId: string, projectGrantId: string,
     return info && info.projectId === row.projectId ? candidate : null;
 }
 
-export type ProjectTerminalView = { shareId: string; machineId: string; terminalId: string; title: string | null; cwd: string | null; viewOnlySupported: boolean };
+/**
+ * B-899: the grantee's own live (pending or active, unexpired) DIRECT grant on one of the project's terminals.
+ * effective = max(direct, project): the project page links such a row to the direct grant's page, so an
+ * operator grant operates there too; the `p:` id itself stays view only whatever direct grant exists.
+ */
+export type ProjectTerminalDirect = { grantId: string; role: TerminalShareRole; status: 'pending' | 'active'; expiresAt: number };
+export type ProjectTerminalView = { shareId: string; machineId: string; terminalId: string; title: string | null; cwd: string | null; viewOnlySupported: boolean; direct?: ProjectTerminalDirect };
+
+/** This grantee's live direct grants from the project owner, by `${machineId}:${terminalId}` (the unique key, one per grantee). */
+async function directGrantsByTerminal(granteeId: string, ownerId: string): Promise<Map<string, ProjectTerminalDirect>> {
+    const rows = await db.terminalGrant.findMany({
+        where: { granteeAccountId: granteeId, ownerAccountId: ownerId, status: { in: ['pending', 'active'] }, expiresAt: { gt: new Date() } },
+        select: { id: true, machineId: true, terminalId: true, role: true, status: true, expiresAt: true },
+    });
+    const out = new Map<string, ProjectTerminalDirect>();
+    for (const row of rows) {
+        if (!isTerminalShareRole(row.role) || (row.status !== 'pending' && row.status !== 'active')) continue;
+        out.set(`${row.machineId}:${row.terminalId}`, { grantId: row.id, role: row.role, status: row.status, expiresAt: row.expiresAt.getTime() });
+    }
+    return out;
+}
 
 /** The project's terminals right now (every owner machine whose daemon reports `@vh_project` = the project). */
 export async function listProjectTerminals(granteeId: string, projectGrantId: string): Promise<ProjectTerminalView[]> {
     const row = await activeProjectGrant(granteeId, projectGrantId);
     if (!row) return [];
     const machines = await db.machine.findMany({ where: { accountId: row.ownerAccountId, dataEncryptionKey: { not: null } }, select: { id: true } });
+    const direct = await directGrantsByTerminal(granteeId, row.ownerAccountId);
     const out: ProjectTerminalView[] = [];
     for (const machine of machines) {
         const probe = mintProjectShare(row, granteeId, machine.id, '');
@@ -189,7 +210,8 @@ export async function listProjectTerminals(granteeId: string, projectGrantId: st
         for (const terminalId of ids) {
             const info = webTerminalInfo(state, terminalId);
             if (!info || info.projectId !== row.projectId) continue;
-            out.push({ shareId: projectTerminalShareId(row.id, machine.id, terminalId), machineId: machine.id, terminalId, title: info.title, cwd: cwdBasename(info.cwd), viewOnlySupported: viewOnlyCapable(state) });
+            const own = direct.get(`${machine.id}:${terminalId}`);
+            out.push({ shareId: projectTerminalShareId(row.id, machine.id, terminalId), machineId: machine.id, terminalId, title: info.title, cwd: cwdBasename(info.cwd), viewOnlySupported: viewOnlyCapable(state), ...(own ? { direct: own } : {}) });
         }
     }
     return out;
