@@ -106,6 +106,8 @@ try {
                 await dialog.locator('input.is-new-title-input').fill(`E2E ${tag}`);
                 await dialog.locator('.is-assignee-kind button', { hasText: c.agent }).click();
                 await dialog.locator('.ns-agent', { hasText: 'codex' }).click();
+                // B-896: an agent needs a directory (server: issue_no_directory) — the dialog asks for it up front.
+                await dialog.locator('#is-new-dir').fill('/work/e2e');
                 await shot(page, `${tag}-02-new-dialog`);
                 await dialog.locator('[data-testid="new-issue-create"]').click();
                 await page.waitForSelector('[data-testid="issue-detail"]');

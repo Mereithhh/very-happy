@@ -65,6 +65,11 @@ import { ImportHistoryModal, type ImportHistoryAgent } from '@/screens/sessions/
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { FileSearch, ListTodo } from 'lucide-react';
+import { Activity, Contact, FolderKanban, FolderPlus, Zap } from 'lucide-react';
+import { useAutomations } from '@/sync/automationsStore';
+import { automationsEntryVisible } from '@/sync/automationsPoll';
+import { requestNewProject } from '@/screens/sessions/sidebarEvents';
+import { paletteNavigationActions, type PaletteNavAction } from './navigationActions';
 import { useIssuesEnabled, useIssuesStore } from '@/sync/issuesStore';
 import { matchIssues } from '@/screens/issues/issuesModel';
 import { issuesCopyFor } from '@/screens/issues/issuesCopy';
@@ -286,6 +291,16 @@ function useSettingsIndex(): SettingsIndexModule | null {
   return index;
 }
 
+const PALETTE_NAV_ICON: Record<PaletteNavAction['icon'], React.ReactNode> = {
+  issues: <ListTodo size={16} />,
+  board: <Activity size={16} />,
+  projects: <FolderKanban size={16} />,
+  automations: <Zap size={16} />,
+  people: <Contact size={16} />,
+  'new-project': <FolderPlus size={16} />,
+  'new-team': <UsersRound size={16} />,
+};
+
 function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void; dialogs: PaletteDialogs }) {
   const { t, lang } = useTranslation();
   const settingsIndex = useSettingsIndex();
@@ -317,6 +332,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
   const projectsSnap = useProjects();
   // B-873: Issues in ⌘K only once the server answered `/v1/issues` (off = the palette exactly as before).
   const issuesEnabled = useIssuesEnabled();
+  const automationsVisible = useAutomations((st) => automationsEntryVisible(st.enabled));
   const issuesMap = useIssuesStore((s) => s.issues);
   const issueCopy = issuesCopyFor(lang);
   const terminalProject = useMemo(() => terminalProjectResolver(projectsSnap.projects, projectsSnap.members, []), [projectsSnap.projects, projectsSnap.members]);
@@ -564,6 +580,18 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       search: kw(lang.startsWith('zh') ? '团队' : 'Teams', 'happy bot teams 团队 机器人'),
       run: () => navigate('/teams'),
     });
+    // B-896: the sidebar's icon-strip entries and 新建项目 / 新建团队, searchable by name.
+    for (const a of paletteNavigationActions({ zh: lang.startsWith('zh'), issuesVisible: issuesEnabled, projectsVisible: projectsSnap.status === 'ready', automationsVisible, teamsVisible: happyBotEntryVisible })) {
+      const target = a.target;
+      out.push({
+        key: a.key,
+        group: 'actions',
+        title: a.title,
+        icon: PALETTE_NAV_ICON[a.icon],
+        haystack: a.haystack,
+        run: () => { if (target.kind === 'path') navigate(target.path); else if (!requestNewProject()) navigate('/projects'); },
+      });
+    }
     out.push({
       key: 'action:clipboard-history',
       group: 'actions',
@@ -666,6 +694,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
     archiveCurrent,
     issuesEnabled,
     issueCopy,
+    automationsVisible,
+    projectsSnap.status,
   ]);
 
   // B-552 等我看 rows (empty query only), rendered like the session rows plus

@@ -1,8 +1,8 @@
 /**
  * B-641: the sidebar's capability entries (项目 / 团队 / 自动化 / 待办 / 联系人), in
- * priority order. B-713 (spec 2026-10-sidebar-header): desktop shows as many
- * as fit as labelled rows under the create rows and folds the rest into
- * 「更多能力 ▾」; the phone folds them all into the chip row's 「更多 ▾」.
+ * priority order. B-896 (spec 2026-10-sidebar-header): desktop shows them all
+ * as one icon strip under 新建会话 ▾; the phone folds them into the chip row's
+ * 「更多 ▾」.
  * 帮助 lives in the sidebar footer. Visibility gates and attention counts are
  * computed here once. B-756: 项目 (the /projects list) leads once the projects
  * API answered — same gate as 新建项目.
@@ -59,23 +59,22 @@ export function navMenuLabel(name: string, attention: number): string {
 }
 
 /**
- * B-676/B-713: what the sidebar top renders, as data (spec
- * 2026-10-sidebar-header). No ⋯ in the header any more. Desktop: header 🔍 ·
- * collapse, then labelled rows 新建会话 (main click = new chat, ▾ = every
- * create type) · 新建项目 (once the projects API answered) · 新建团队 (unless
- * Teams is hidden on this device), followed by the capability rows. Phone:
- * header 🔍 · ＋ (B-641's create menu, one tap) and one compact chip row
- * 项目 · 团队 · 更多 ▾ (B-756: the chips open the lists, not the create dialogs).
+ * B-676/B-713/B-896: what the sidebar top renders, as data (spec
+ * 2026-10-sidebar-header). No ⋯ in the header. Desktop (and the touch drawer,
+ * which renders the desktop sidebar): header 🔍 · collapse, then 新建会话 ▾
+ * (main click = new chat, ▾ = every create type incl. 项目 / 团队) and the
+ * capability icon strip. B-896: 新建项目 / 新建团队 stay as labelled rows only
+ * until the account has one (`projectCount` / `teamCount` 0; unknown = no row,
+ * so existing accounts never see them flash in). Phone: header 🔍 · ＋ (B-641's
+ * create menu, one tap) and one compact chip row 项目 · 团队 · 更多 ▾ (B-756:
+ * the chips open the lists, not the create dialogs).
  */
 export type SidebarHeaderControl = 'search' | 'create-menu' | 'collapse';
 export type SidebarActionRow = 'new-session' | 'new-project' | 'new-team';
 /** B-756 (Lead 10-22): phone chips NAVIGATE (项目 → /projects, 团队 → /teams); creating lives on those pages and in ＋. */
 export type SidebarChip = 'issues' | 'projects' | 'teams' | 'more';
 
-export function sidebarTopModel(input: { isDesktop: boolean; projectsReady: boolean; teamsVisible: boolean; issuesVisible?: boolean }): { header: SidebarHeaderControl[]; actions: SidebarActionRow[]; chips: SidebarChip[] } {
-  const creates: ('new-project' | 'new-team')[] = [];
-  if (input.projectsReady) creates.push('new-project');
-  if (input.teamsVisible) creates.push('new-team');
+export function sidebarTopModel(input: { isDesktop: boolean; projectsReady: boolean; teamsVisible: boolean; issuesVisible?: boolean; projectCount?: number | null; teamCount?: number | null }): { header: SidebarHeaderControl[]; actions: SidebarActionRow[]; chips: SidebarChip[] } {
   if (!input.isDesktop) {
     const chips: SidebarChip[] = [];
     // B-873: Issues is a first-level entry, so it takes the first chip on the phone too.
@@ -84,56 +83,37 @@ export function sidebarTopModel(input: { isDesktop: boolean; projectsReady: bool
     if (input.teamsVisible) chips.push('teams');
     return { header: ['search', 'create-menu'], actions: [], chips: [...chips, 'more'] };
   }
-  return { header: ['search', 'collapse'], actions: ['new-session', ...creates], chips: [] };
+  const actions: SidebarActionRow[] = ['new-session'];
+  if (input.projectsReady && input.projectCount === 0) actions.push('new-project');
+  if (input.teamsVisible && input.teamCount === 0) actions.push('new-team');
+  return { header: ['search', 'collapse'], actions, chips: [] };
 }
 
 /** B-713: 新建团队 lands directly in the Teams create dialog, not on the list. */
 export const NEW_TEAM_PATH = '/teams?new=1';
 
-/** The session list keeps at least this many rows on screen before a capability row is shown. */
-export const MIN_LIST_ROWS = 8;
-
 /**
- * B-713: how many capability rows the desktop shows. `spare` is the height the
- * list and the capability block share (list height + current block height,
- * invariant while rows move between them) minus the list's minimum. Rows go in
- * priority order; while any is folded a 「更多能力」 row (same pitch) is shown
- * too, so k < total costs k + 1 rows. Never negative: with no room at all
- * everything is folded into 「更多能力」.
+ * B-896: the desktop capability strip is one Tab stop (roving tabindex). ←/→
+ * wrap, Home/End jump; any other key is not the strip's (null).
  */
-export function fitCapabilityRows(input: { spare: number; rowPitch: number; total: number }): number {
-  const { spare, rowPitch, total } = input;
-  if (total <= 0) return 0;
-  if (!(rowPitch > 0) || !Number.isFinite(spare)) return 0;
-  if (total * rowPitch <= spare) return total;
-  return Math.max(0, Math.min(total - 1, Math.floor(spare / rowPitch) - 1));
+export function stripFocusTarget(key: string, index: number, count: number): number | null {
+  if (count <= 0) return null;
+  const last = count - 1;
+  if (key === 'ArrowRight') return index >= last ? 0 : index + 1;
+  if (key === 'ArrowLeft') return index <= 0 ? last : index - 1;
+  if (key === 'Home') return 0;
+  if (key === 'End') return last;
+  return null;
 }
 
-/** B-828: px of spare height a capability row must clear beyond its pitch before it comes back. */
-export const CAPABILITY_FIT_SLACK = 4;
-
-/**
- * B-828: the next fit, with hysteresis — folding applies at once, unfolding
- * only once the rows fit with CAPABILITY_FIT_SLACK to spare, so a measurement
- * sitting on a threshold (sub-pixel rounding of the heights the fit reads)
- * cannot flip the rows back and forth on every frame.
- */
-export function settleCapabilityRows(input: { current: number; spare: number; rowPitch: number; total: number; slack?: number }): number {
-  const next = fitCapabilityRows(input);
-  if (next <= input.current) return next;
-  const withSlack = fitCapabilityRows({ ...input, spare: input.spare - (input.slack ?? CAPABILITY_FIT_SLACK) });
-  return Math.max(Math.max(0, input.current), withSlack);
+/** B-896: an entry is the current page on its own path and below it (/issues/VH-3 keeps Issues current). */
+export function isEntryCurrent(entryPath: string, pathname: string): boolean {
+  return pathname === entryPath || pathname.startsWith(`${entryPath}/`);
 }
 
 /** Phone 「更多 ▾」: every capability that is not already a chip (no 项目 / 团队 twice). */
 export function moreMenuEntries<T extends { key: string }>(entries: readonly T[], chips: readonly SidebarChip[]): T[] {
   return entries.filter((e) => !(chips as readonly string[]).includes(e.key));
-}
-
-/** Rows shown directly vs folded into 「更多能力 ▾」 (priority order kept in both). */
-export function splitCapabilities<T>(entries: readonly T[], shown: number): { shown: T[]; folded: T[] } {
-  const k = Math.max(0, Math.min(entries.length, shown));
-  return { shown: entries.slice(0, k), folded: entries.slice(k) };
 }
 
 /** Create menu order: 新会话 first, 新项目 second, then the rest as given. */

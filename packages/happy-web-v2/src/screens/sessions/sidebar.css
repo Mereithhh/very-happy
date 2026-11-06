@@ -802,13 +802,15 @@
 .sb-new-split .sb-new-main > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sb-new-split .sb-new-more { flex:none; width:32px; justify-content:center; padding:0; color: var(--text-dim); }
 .sb-new-split .sb-new-more > svg:first-child { width:14px; }
-/* B-713: capability rows (团队/自动化/待办/联系人) sit under the create rows,
-   one ink step quieter; 「更多能力 ▾」 holds whatever does not fit. */
-.sb-caps { display:flex; flex-direction:column; gap:2px; margin-top: var(--sp-1); }
-.sb-actions .sb-cap { color: var(--text-dim); }
-.sb-actions .sb-cap:focus-visible { color: var(--text); }
-.sb-caps-more .sb-caps-chevron { margin-left:auto; flex:none; color: var(--text-faint); }
-.sb-caps-more .sb-nav-attn + .sb-caps-chevron { margin-left: var(--sp-1); }
+/* B-896: the capability strip — 5–6 equal icon cells under 新建会话 ▾, one ink
+   step quieter than the create rows; the count is a corner badge, the name the
+   native tooltip. Current page = the selected fill, same as a list row. */
+.sb-cap-strip { display:flex; gap:2px; margin-top:2px; }
+.sb-cap-cell { position:relative; flex:1 1 0; min-width:0; display:flex; align-items:center; justify-content:center; height:32px; border-radius:var(--r-sm); color:var(--text-dim); }
+.sb-cap-cell[aria-current="page"] { background:var(--fill-selected); color:var(--text); }
+.sb-cap-cell:focus-visible { outline:none; box-shadow:var(--focus-ring); color:var(--text); }
+@media (hover: hover) and (pointer: fine) { .sb-cap-cell:hover { background:var(--fill-hover); color:var(--text); } }
+.sb-cap-cell .sb-nav-attn { position:absolute; top:0; right:1px; margin:0; min-width:14px; padding:0 3px; line-height:13px; text-align:center; }
 /* B-713: phone chip row 项目 · 团队 · 更多 ▾ — one 44px row under the header. */
 .sb-chips { display:flex; align-items:center; gap: var(--sp-1); padding: 0 var(--sp-3) var(--sp-1); }
 .sb-chip { display:inline-flex; align-items:center; gap:6px; min-width:0; min-height:44px; padding:0 var(--sp-3); border-radius: var(--r-md); background: var(--fill-soft); color: var(--text-dim); font-size: var(--fs-13); white-space:nowrap; }
@@ -818,6 +820,8 @@
 @media (pointer:coarse) {
  .sb-actions .sb-nav-btn { min-height:44px; }
  .sb-new-split .sb-new-more { width:44px; }
+ .sb-cap-strip { gap:0; }
+ .sb-cap-cell { height:44px; min-width:44px; }
 }
 
 .sb-nav-btn[aria-busy="true"] { cursor: progress; }

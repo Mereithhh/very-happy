@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CAPABILITY_FIT_SLACK, NEW_TEAM_PATH, fitCapabilityRows, navAttentionTotal, navMenuLabel, orderCreateMenu, settleCapabilityRows, sidebarNavEntries, sidebarTopModel, splitCapabilities } from './sidebarNavEntries';
+import { NEW_TEAM_PATH, isEntryCurrent, navAttentionTotal, navMenuLabel, orderCreateMenu, sidebarNavEntries, sidebarTopModel, stripFocusTarget } from './sidebarNavEntries';
 
 const all = { teamsVisible: true, automationsVisible: true, automationAttention: 0, incomingPeople: 0 };
 
@@ -57,14 +57,23 @@ describe('B-873 Issues entries (spec 2026-11-issues §10 / Q11)', () => {
   });
 });
 
-describe('sidebar top model (B-676, B-713)', () => {
+describe('sidebar top model (B-676, B-713, B-896)', () => {
   const base = { projectsReady: true, teamsVisible: true };
-  it('desktop: no ⋯ — header 🔍 · collapse, then 新建会话 / 新建项目 / 新建团队 rows', () => {
-    expect(sidebarTopModel({ isDesktop: true, ...base })).toEqual({ header: ['search', 'collapse'], actions: ['new-session', 'new-project', 'new-team'], chips: [] });
+  it('desktop: no ⋯ — header 🔍 · collapse; an account with projects and teams keeps only 新建会话 ▾', () => {
+    expect(sidebarTopModel({ isDesktop: true, ...base, projectCount: 3, teamCount: 1 })).toEqual({ header: ['search', 'collapse'], actions: ['new-session'], chips: [] });
+  });
+  it('B-896: a new account still sees labelled 新建项目 / 新建团队 rows, each gone once it has one', () => {
+    expect(sidebarTopModel({ isDesktop: true, ...base, projectCount: 0, teamCount: 0 }).actions).toEqual(['new-session', 'new-project', 'new-team']);
+    expect(sidebarTopModel({ isDesktop: true, ...base, projectCount: 1, teamCount: 0 }).actions).toEqual(['new-session', 'new-team']);
+    expect(sidebarTopModel({ isDesktop: true, ...base, projectCount: 0, teamCount: 2 }).actions).toEqual(['new-session', 'new-project']);
+  });
+  it('B-896: an unknown count (not loaded / failed) shows no row, so existing accounts never see one flash in', () => {
+    expect(sidebarTopModel({ isDesktop: true, ...base }).actions).toEqual(['new-session']);
+    expect(sidebarTopModel({ isDesktop: true, ...base, projectCount: null, teamCount: null }).actions).toEqual(['new-session']);
   });
   it('desktop drops 新建项目 without the projects API and 新建团队 when Teams is hidden', () => {
-    expect(sidebarTopModel({ isDesktop: true, projectsReady: false, teamsVisible: true }).actions).toEqual(['new-session', 'new-team']);
-    expect(sidebarTopModel({ isDesktop: true, projectsReady: true, teamsVisible: false }).actions).toEqual(['new-session', 'new-project']);
+    expect(sidebarTopModel({ isDesktop: true, projectsReady: false, teamsVisible: true, projectCount: 0, teamCount: 0 }).actions).toEqual(['new-session', 'new-team']);
+    expect(sidebarTopModel({ isDesktop: true, projectsReady: true, teamsVisible: false, projectCount: 0, teamCount: 0 }).actions).toEqual(['new-session', 'new-project']);
   });
   it('phone: header 🔍 · ＋ (B-641 create menu), one chip row 项目 · 团队 · 更多 and no action rows', () => {
     expect(sidebarTopModel({ isDesktop: false, ...base })).toEqual({ header: ['search', 'create-menu'], actions: [], chips: ['projects', 'teams', 'more'] });
@@ -80,29 +89,29 @@ describe('sidebar top model (B-676, B-713)', () => {
   });
 });
 
-describe('capability rows fit the available height (B-713)', () => {
-  const pitch = 34;
-  it('shows every row when they all fit — no 更多能力 row then', () => {
-    expect(fitCapabilityRows({ spare: 4 * pitch, rowPitch: pitch, total: 4 })).toBe(4);
-    expect(fitCapabilityRows({ spare: 1000, rowPitch: pitch, total: 4 })).toBe(4);
+describe('capability strip keyboard (B-896)', () => {
+  it('←/→ wrap, Home/End jump, other keys are not the strip\'s', () => {
+    expect(stripFocusTarget('ArrowRight', 0, 6)).toBe(1);
+    expect(stripFocusTarget('ArrowRight', 5, 6)).toBe(0);
+    expect(stripFocusTarget('ArrowLeft', 0, 6)).toBe(5);
+    expect(stripFocusTarget('ArrowLeft', 3, 6)).toBe(2);
+    expect(stripFocusTarget('Home', 4, 6)).toBe(0);
+    expect(stripFocusTarget('End', 0, 5)).toBe(4);
+    expect(stripFocusTarget('Enter', 2, 6)).toBeNull();
+    expect(stripFocusTarget('Tab', 2, 6)).toBeNull();
+    expect(stripFocusTarget('ArrowRight', 0, 0)).toBeNull();
   });
-  it('folding costs a 更多能力 row: k shown rows + 1 must fit', () => {
-    expect(fitCapabilityRows({ spare: 4 * pitch - 1, rowPitch: pitch, total: 4 })).toBe(2);
-    expect(fitCapabilityRows({ spare: 3 * pitch, rowPitch: pitch, total: 4 })).toBe(2);
-    expect(fitCapabilityRows({ spare: 2 * pitch, rowPitch: pitch, total: 4 })).toBe(1);
+  it('an entry stays current on its sub-pages, not on a sibling sharing a prefix', () => {
+    expect(isEntryCurrent('/issues', '/issues')).toBe(true);
+    expect(isEntryCurrent('/issues', '/issues/VH-3')).toBe(true);
+    expect(isEntryCurrent('/projects', '/projectsx')).toBe(false);
+    expect(isEntryCurrent('/board', '/')).toBe(false);
   });
-  it('no room (or a bad measurement) folds everything, never below zero', () => {
-    expect(fitCapabilityRows({ spare: 10, rowPitch: pitch, total: 4 })).toBe(0);
-    expect(fitCapabilityRows({ spare: -300, rowPitch: pitch, total: 4 })).toBe(0);
-    expect(fitCapabilityRows({ spare: NaN, rowPitch: pitch, total: 4 })).toBe(0);
-    expect(fitCapabilityRows({ spare: 500, rowPitch: 0, total: 4 })).toBe(0);
-    expect(fitCapabilityRows({ spare: 500, rowPitch: pitch, total: 0 })).toBe(0);
-  });
-  it('split keeps priority order: 团队 > 自动化 > 待办 > 联系人', () => {
-    const keys = sidebarNavEntries(all).filter((e) => !e.phoneOnly).map((e) => e.key);
-    expect(splitCapabilities(keys, 2)).toEqual({ shown: ['teams', 'automations'], folded: ['todos', 'people'] });
-    expect(splitCapabilities(keys, 9)).toEqual({ shown: keys, folded: [] });
-    expect(splitCapabilities(keys, -1)).toEqual({ shown: [], folded: keys });
+  it('with Issues on: 6 desktop cells; off: 5 (待办 instead of Issues + 运行中)', () => {
+    const on = sidebarNavEntries({ ...all, projectsVisible: true, issuesVisible: true }).filter((e) => !e.phoneOnly).map((e) => e.key);
+    const off = sidebarNavEntries({ ...all, projectsVisible: true }).filter((e) => !e.phoneOnly).map((e) => e.key);
+    expect(on).toEqual(['issues', 'board', 'projects', 'teams', 'automations', 'people']);
+    expect(off).toEqual(['projects', 'teams', 'automations', 'todos', 'people']);
   });
 });
 
@@ -113,12 +122,14 @@ describe('Sidebar wiring (B-641, B-676, B-713)', () => {
 
   it('the header renders from the top model; the desktop nav column is gone', () => {
     expect(src).not.toContain('className="sb-products"');
-    expect(src).toContain("const top = sidebarTopModel({ isDesktop, projectsReady: projectsSnap.status === 'ready', teamsVisible: happyBotEntryVisible, issuesVisible: issuesEnabled });");
+    expect(src).toContain("const top = sidebarTopModel({");
+    expect(src).toContain("teamCount: isTeamNavigationLoaded(teams) ? teams.length : null,");
     expect(src).not.toContain('sb-more-btn');
     expect(src).toContain("{top.header.includes('create-menu') && (");
     expect(src).toContain('<SidebarActionRows');
     expect(src).toContain('<SidebarChipRow');
-    expect(src).toContain('listRef={listRef}');
+    expect(src).toContain('activePath={location.pathname}');
+    expect(src).toContain('createItems={desktopCreateItems}');
     expect(src).toContain("<SidebarFooter onSettings={() => navigate('/settings')} onHelp={() => navigate('/help')}");
   });
 
@@ -133,28 +144,5 @@ describe('Sidebar wiring (B-641, B-676, B-713)', () => {
   it('every entry goes through the shared list (no hard-wired nav buttons)', () => {
     expect(src).not.toContain("onClick={() => navigate('/todos')}");
     expect(src).not.toContain("onClick={() => navigate('/teams')}");
-  });
-});
-
-describe('capability fit hysteresis (B-828)', () => {
-  const pitch = 34;
-  it('folds at once when the room shrinks', () => {
-    expect(settleCapabilityRows({ current: 4, spare: 4 * pitch - 1, rowPitch: pitch, total: 4 })).toBe(2);
-    expect(settleCapabilityRows({ current: 4, spare: 10, rowPitch: pitch, total: 4 })).toBe(0);
-  });
-  it('unfolds only with CAPABILITY_FIT_SLACK px to spare beyond the threshold', () => {
-    expect(settleCapabilityRows({ current: 2, spare: 4 * pitch, rowPitch: pitch, total: 4 })).toBe(2);
-    expect(settleCapabilityRows({ current: 2, spare: 4 * pitch + CAPABILITY_FIT_SLACK - 1, rowPitch: pitch, total: 4 })).toBe(2);
-    expect(settleCapabilityRows({ current: 2, spare: 4 * pitch + CAPABILITY_FIT_SLACK, rowPitch: pitch, total: 4 })).toBe(4);
-    expect(settleCapabilityRows({ current: 0, spare: 1000, rowPitch: pitch, total: 4 })).toBe(4);
-  });
-  it('a measurement wobbling ±1px on a threshold settles instead of flipping', () => {
-    let current = 4;
-    const seen = new Set<number>();
-    for (let i = 0; i < 20; i++) {
-      current = settleCapabilityRows({ current, spare: 4 * pitch + (i % 2 ? 1 : -1), rowPitch: pitch, total: 4 });
-      if (i > 0) seen.add(current);
-    }
-    expect([...seen]).toEqual([2]);
   });
 });

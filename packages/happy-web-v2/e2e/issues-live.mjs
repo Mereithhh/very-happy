@@ -92,14 +92,13 @@ async function dismissNotices(page) {
 }
 
 /**
- * Capability entries in order: the rows shown, then whatever B-713 folded into
- * 「更多能力」 / the phone's 「更多」 (a fresh account with a project hint folds
- * them all on desktop). Menu items are matched by their label.
+ * Capability entries in order: the cells shown (B-896 desktop strip / phone
+ * chips), then the phone's 「更多」 menu. Menu items are matched by their label.
  */
 const ENTRY_LABELS = { issues: ['Issues'], board: ['运行中', 'Running'], projects: ['项目', 'Projects'], teams: ['团队', 'Teams'], automations: ['自动化', 'Automations'], todos: ['待办', 'Todos'], people: ['联系人', 'People', 'Contacts'], feedback: ['反馈', '发送反馈', 'Feedback', 'Send feedback'] };
 async function sidebarEntries(page) {
     const shown = await page.evaluate(() => [...document.querySelectorAll('[data-cap]')].map((e) => e.getAttribute('data-cap')));
-    const more = page.locator('.sb-caps-more, .sb-chip-more').first();
+    const more = page.locator('.sb-chip-more').first();
     if (!(await more.count())) return shown;
     await more.click();
     const items = await page.locator('[role="menuitem"]').allInnerTexts();
@@ -230,6 +229,9 @@ try {
                     const dialog = page.locator('[data-testid="new-issue-dialog"]');
                     await dialog.waitFor();
                     await dialog.locator('input.is-new-title-input').fill(title);
+                    // B-896: from the second create on, the remembered agent shows as one line + 「更改」.
+                    const change = dialog.locator('[data-testid="issue-assignee-change"]');
+                    if (await change.count()) await change.click();
                     await dialog.locator('.is-assignee-kind button', { hasText: c.agent }).click();
                     const codex = dialog.locator('.ns-agent', { hasText: 'codex' });
                     const agent = (await codex.count()) && (await codex.getAttribute('aria-disabled')) !== 'true' ? 'codex' : 'claude';
