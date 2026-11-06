@@ -128,7 +128,7 @@
 .me-custom-use { flex: none; height: 32px; padding: 0 var(--sp-3); border: 0; border-radius: var(--r-sm); background: var(--text); color: var(--bg-0); font: inherit; font-size: var(--fs-12); font-weight: 600; cursor: pointer; }
 .me-custom-use:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .me-custom .me-note { margin: 0; }
-.me-custom-error { color: var(--danger-ink); }
+.me-custom-error { color: var(--danger); }
 @media (pointer: coarse) {
   /* 16px keeps iOS from zooming the sheet on focus. */
   .me-custom-input, .me-custom-use { height: 44px; font-size: var(--fs-16); }
