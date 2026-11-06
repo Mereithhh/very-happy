@@ -15,7 +15,7 @@ import type { SessionGrantStatus } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { db } from '@/storage/db';
 import { inTx } from '@/storage/inTx';
-import { enforceAccountWriteRate } from '@/app/api/resourceLimits';
+import { enforceAccountWriteRate, isAccountResourceLimitError } from '@/app/api/resourceLimits';
 import { displayNameOf, identityOf, profileInclude, resolveAccountByHandle, type ProfileAccount } from '@/app/social/accountDirectory';
 import { granteeContentPublicKey } from '@/app/session/sessionShares';
 import { wrapDataEncryptionKey } from '@/app/session/sessionCrypto';
@@ -274,4 +274,76 @@ export async function listIncomingTerminalShares(granteeId: string): Promise<Inc
 export async function terminalGrantEvents(ownerId: string, grantId: string, limit: number) {
     await ownedGrant(ownerId, grantId);
     return listTerminalShareEvents(grantId, limit);
+}
+
+// ---------------------------------------------------------------- B-900 batch
+
+/** Most terminals one batch may name (a project's terminals; each item is still one grant). */
+export const MAX_TERMINAL_BATCH = 50;
+
+export type TerminalBatchRef = { machineId: string; terminalId: string; title?: string };
+export type TerminalBatchOutcome = 'created' | 'upgraded' | 'skipped' | 'failed';
+export type TerminalBatchResult = { machineId: string; terminalId: string; outcome: TerminalBatchOutcome; code?: string; grant?: TerminalGrantView };
+
+function batchErrorCode(error: unknown): string {
+    if (error instanceof TerminalShareStoreError || error instanceof TerminalShareError) return error.code;
+    if (isAccountResourceLimitError(error)) return error.code;
+    throw error;
+}
+
+function uniqueRefs(terminals: TerminalBatchRef[]): TerminalBatchRef[] {
+    const seen = new Set<string>();
+    return terminals.filter((t) => { const k = `${t.machineId}:${t.terminalId}`; if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
+/**
+ * B-900 (decision #59, spec §2.1): give ONE person "can operate" on the terminals the owner confirmed —
+ * the project's terminals at this moment. It is a loop of ordinary per-terminal grants, not a project
+ * tier: a terminal put into the project later gets nothing. The confirmation and the 1/7/30-day expiry
+ * are checked once, up front, exactly as for a single grant (no "forever"). Per terminal:
+ *  - the person already has live "can operate" → `skipped` (expiry untouched);
+ *  - they have live "view only" → `upgraded` (same grant; a pending one stays pending);
+ *  - nothing live → a new pending grant (`created`; they accept it like any other);
+ *  - any refusal (terminal gone, too_many_grants, the share-rate limit, …) → `failed` with its code,
+ *    the rest still run, so the owner sees exactly which ones to retry.
+ */
+export async function grantTerminalsOperator(input: { ownerId: string; granteeAccountId: string; terminals: TerminalBatchRef[]; expiresInDays?: unknown; confirmOperator?: boolean }): Promise<TerminalBatchResult[]> {
+    terminalShareExpiry({ role: 'operator', expiresInDays: input.expiresInDays, confirmOperator: input.confirmOperator });
+    const refs = uniqueRefs(input.terminals);
+    if (refs.length === 0 || refs.length > MAX_TERMINAL_BATCH) throw new TerminalShareStoreError('bad_batch', 400);
+    if (input.granteeAccountId === input.ownerId) throw new TerminalShareStoreError('cannot_share_with_self', 400);
+    const out: TerminalBatchResult[] = [];
+    for (const ref of refs) {
+        const base = { machineId: ref.machineId, terminalId: ref.terminalId };
+        try {
+            const existing = await db.terminalGrant.findFirst({ where: { ownerAccountId: input.ownerId, machineId: ref.machineId, terminalId: ref.terminalId, granteeAccountId: input.granteeAccountId, ...liveWhere() }, select: { id: true, role: true } });
+            if (existing?.role === 'operator') { out.push({ ...base, outcome: 'skipped' }); continue; }
+            if (existing) {
+                const grant = await updateTerminalGrant(input.ownerId, existing.id, { role: 'operator', expiresInDays: input.expiresInDays, confirmOperator: input.confirmOperator });
+                out.push({ ...base, outcome: 'upgraded', grant });
+                continue;
+            }
+            const grant = await createTerminalGrant({ ownerId: input.ownerId, machineId: ref.machineId, terminalId: ref.terminalId, title: ref.title, granteeAccountId: input.granteeAccountId, role: 'operator', expiresInDays: input.expiresInDays, confirmOperator: input.confirmOperator });
+            out.push({ ...base, outcome: 'created', grant });
+        } catch (error) {
+            out.push({ ...base, outcome: 'failed', code: batchErrorCode(error) });
+        }
+    }
+    return out;
+}
+
+/**
+ * B-900: revoke ONE person's DIRECT terminal grants on the named terminals (the project's terminals).
+ * Only TerminalGrant rows of this owner for this grantee: the project share, other people's grants and
+ * the terminals themselves are untouched — the person falls back to the project's view-only access.
+ */
+export async function revokeTerminalsFor(input: { ownerId: string; granteeAccountId: string; terminals: TerminalBatchRef[] }): Promise<{ revoked: number }> {
+    const refs = uniqueRefs(input.terminals);
+    if (refs.length === 0 || refs.length > MAX_TERMINAL_BATCH) throw new TerminalShareStoreError('bad_batch', 400);
+    const grants = await db.terminalGrant.findMany({
+        where: { ownerAccountId: input.ownerId, granteeAccountId: input.granteeAccountId, status: { not: 'revoked' }, OR: refs.map((r) => ({ machineId: r.machineId, terminalId: r.terminalId })) },
+        select: { id: true },
+    });
+    for (const grant of grants) await revokeTerminalGrant(input.ownerId, grant.id);
+    return { revoked: grants.length };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IncomingTerminalShareSchema, ShareTerminalGeometrySchema, defaultTerminalShareExpiry, readTerminalShareAck, revokeEndsAccess, serialPerKey, viewOnlyScale } from './terminalShareTypes';
+import { IncomingTerminalShareSchema, ShareTerminalGeometrySchema, defaultTerminalShareExpiry, directlyGranted, failedRefs, planProjectOperate, readTerminalShareAck, revokeEndsAccess, serialPerKey, viewOnlyScale } from './terminalShareTypes';
 import { terminalShareEventLabelKey } from '@/screens/terminal/terminalShareEventLabels';
 
 describe('B-878 terminal share client helpers', () => {
@@ -56,3 +56,41 @@ describe('B-899 serialPerKey', () => {
     });
 });
 
+
+describe('B-900 planProjectOperate', () => {
+    const now = 1_000_000;
+    const term = (id: string, machine = 'm1') => ({ id, machineId: machine, machineName: machine === 'm1' ? 'laptop' : 'server', title: `t-${id}` });
+    const grant = (terminalId: string, role: 'viewer' | 'operator', status: 'pending' | 'active' | 'revoked', grantee = 'bob', expiresAt = now + 1000, machineId = 'm1') =>
+        ({ id: `g-${terminalId}-${grantee}`, machineId, terminalId, role, status, title: null, createdAt: 0, acceptedAt: null, expiresAt, grantee: { id: grantee, displayName: grantee, username: null } });
+
+    it('skips can-operate (accepted or not), upgrades view only, creates the rest; only this person, only live grants', () => {
+        const plan = planProjectOperate(
+            [term('a'), term('b'), term('c'), term('d'), term('e', 'm2'), term('f')],
+            [grant('a', 'operator', 'active'), grant('b', 'operator', 'pending'), grant('c', 'viewer', 'active'), grant('d', 'operator', 'active', 'carol'), grant('f', 'operator', 'active', 'bob', now - 1)],
+            'bob', now);
+        expect(plan.items.map((i) => [i.terminalId, i.current, i.action])).toEqual([
+            ['a', 'operator', 'skip'], ['b', 'operatorPending', 'skip'], ['c', 'viewer', 'upgrade'], ['d', 'none', 'create'], ['e', 'none', 'create'], ['f', 'none', 'create'],
+        ]);
+        expect(plan.send.map((r) => r.terminalId)).toEqual(['c', 'd', 'e', 'f']);
+        expect(plan.machines).toEqual(['laptop', 'server']);
+        expect(plan.gap.map((i) => i.terminalId)).toEqual(['c', 'd', 'e', 'f']);
+        expect(directlyGranted(plan).map((r) => r.terminalId)).toEqual(['a', 'b', 'c']);
+    });
+
+    it('no gap hint when the person operates none of them; nothing to send when all already operate', () => {
+        expect(planProjectOperate([term('a'), term('b')], [grant('a', 'viewer', 'active')], 'bob', now).gap).toEqual([]);
+        const all = planProjectOperate([term('a')], [grant('a', 'operator', 'active')], 'bob', now);
+        expect(all.send).toEqual([]);
+        expect(all.machines).toEqual([]);
+        expect(planProjectOperate([term('a')], [grant('a', 'operator', 'revoked')], 'bob', now).items[0].action).toBe('create');
+    });
+
+    it('failedRefs: exactly the failed terminals of what was sent, for a retry', () => {
+        const sent = [{ machineId: 'm1', terminalId: 'a' }, { machineId: 'm1', terminalId: 'b' }, { machineId: 'm2', terminalId: 'a' }];
+        expect(failedRefs([
+            { machineId: 'm1', terminalId: 'a', outcome: 'created' },
+            { machineId: 'm1', terminalId: 'b', outcome: 'failed', code: 'terminal_gone' },
+            { machineId: 'm2', terminalId: 'a', outcome: 'failed', code: 'relationship_rate_quota_exceeded' },
+        ], sent)).toEqual([sent[1], sent[2]]);
+    });
+});

@@ -3,7 +3,8 @@
  *
  * Owner:    POST /v1/terminal-shares, GET /v1/terminal-shares?machineId&terminalId,
  *           GET /v1/terminal-shares/outgoing, PATCH/DELETE /v1/terminal-shares/:grantId,
- *           GET /v1/terminal-shares/:grantId/events
+ *           GET /v1/terminal-shares/:grantId/events,
+ *           B-900: POST /v1/terminal-shares/batch-operate, POST /v1/terminal-shares/batch-revoke (one person × named terminals)
  * Grantee:  GET /v1/terminal-shares/incoming, POST /v1/terminal-shares/:grantId/respond
  * Streams go over the user socket (`share-terminal-*`, terminalShareBroker.ts), never the relay.
  */
@@ -13,12 +14,15 @@ import { isAccountResourceLimitError } from '../resourceLimits';
 import { TerminalShareError } from '@/app/share/terminalSharePolicy';
 import {
     TerminalShareStoreError,
+    MAX_TERMINAL_BATCH,
     createTerminalGrant,
+    grantTerminalsOperator,
     listIncomingTerminalShares,
     listOutgoingTerminalGrants,
     listTerminalGrants,
     respondToTerminalGrant,
     revokeTerminalGrant,
+    revokeTerminalsFor,
     terminalGrantEvents,
     updateTerminalGrant,
 } from '@/app/share/terminalShares';
@@ -56,6 +60,20 @@ export function terminalShareRoutes(app: Fastify) {
     }, async (request, reply) => handle(reply, async () => ({
         grant: await createTerminalGrant({ ownerId: request.userId, machineId: request.body.machineId, terminalId: request.body.terminalId, title: request.body.title, target: request.body.target, granteeAccountId: request.body.accountId, role: request.body.role, expiresInDays: request.body.expiresInDays, confirmOperator: request.body.confirmOperator }),
     })));
+
+    // B-900: one person × the terminals the owner confirmed (the project's terminals right now).
+    const batchRefs = z.array(z.object({ machineId: id, terminalId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), title: z.string().max(200).optional() }).strict()).min(1).max(MAX_TERMINAL_BATCH);
+    app.post('/v1/terminal-shares/batch-operate', {
+        ...auth,
+        schema: { body: z.object({ accountId: z.string().min(1).max(256), terminals: batchRefs, expiresInDays: expirySchema, confirmOperator: z.literal(true).optional() }).strict() },
+    }, async (request, reply) => handle(reply, async () => ({
+        results: await grantTerminalsOperator({ ownerId: request.userId, granteeAccountId: request.body.accountId, terminals: request.body.terminals, expiresInDays: request.body.expiresInDays, confirmOperator: request.body.confirmOperator }),
+    })));
+
+    app.post('/v1/terminal-shares/batch-revoke', {
+        ...auth,
+        schema: { body: z.object({ accountId: z.string().min(1).max(256), terminals: batchRefs }).strict() },
+    }, async (request, reply) => handle(reply, async () => revokeTerminalsFor({ ownerId: request.userId, granteeAccountId: request.body.accountId, terminals: request.body.terminals })));
 
     app.get('/v1/terminal-shares', {
         ...auth,

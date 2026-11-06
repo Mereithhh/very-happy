@@ -23,8 +23,11 @@ import type { ShareTarget } from './apiSessionShares';
 import { useProjectShares } from './projectSharesStore';
 import { projectGrantIdOfShareId } from './projectShareTypes';
 import {
+    batchOperateTerminals,
+    batchRevokeTerminals,
     createTerminalGrant,
     listIncomingTerminalShares,
+    listOutgoingTerminalGrants,
     listTerminalGrants,
     respondToTerminalGrant,
     revokeTerminalGrant,
@@ -42,6 +45,8 @@ import {
     serialPerKey,
     type IncomingTerminalShare,
     type TerminalGrantView,
+    type TerminalBatchRef,
+    type TerminalBatchResult,
     type TerminalShareActivity,
     type TerminalShareExpiry,
     type TerminalShareRole,
@@ -55,6 +60,11 @@ export interface TerminalSharesState {
     grantsByTerminal: Record<string, TerminalGrantView[]>;
     /** Owner: grantees whose pane is attached right now, by terminal key. */
     watchersByTerminal: Record<string, Record<string, TerminalShareActivity>>;
+    /** Owner: every live grant of mine (B-900 project dialog); undefined until first read. */
+    outgoing: TerminalGrantView[] | undefined;
+    refreshOutgoing: () => Promise<void>;
+    batchOperate: (input: { accountId: string; terminals: TerminalBatchRef[]; expiresInDays: TerminalShareExpiry; confirmOperator: true }) => Promise<TerminalBatchResult[]>;
+    batchRevoke: (input: { accountId: string; terminals: TerminalBatchRef[] }) => Promise<number>;
     refreshIncoming: () => Promise<void>;
     refreshGrants: (machineId: string, terminalId: string) => Promise<void>;
     share: (input: { machineId: string; terminalId: string; title?: string; who: ShareTarget; role: TerminalShareRole; expiresInDays: TerminalShareExpiry; confirmOperator?: true }) => Promise<TerminalGrantView>;
@@ -74,6 +84,19 @@ export const useTerminalShares = create<TerminalSharesState>((set, get) => ({
     incomingLoaded: false,
     grantsByTerminal: {},
     watchersByTerminal: {},
+    outgoing: undefined,
+    refreshOutgoing: async () => {
+        const outgoing = await listOutgoingTerminalGrants();
+        set({ outgoing });
+    },
+    batchOperate: async (input) => {
+        try { return await batchOperateTerminals(input); }
+        finally { await get().refreshOutgoing().catch(() => undefined); }
+    },
+    batchRevoke: async (input) => {
+        try { return await batchRevokeTerminals(input); }
+        finally { await get().refreshOutgoing().catch(() => undefined); }
+    },
     refreshIncoming: async () => {
         const incoming = await listIncomingTerminalShares();
         set({ incoming, incomingLoaded: true });
@@ -225,6 +248,7 @@ export function installTerminalShareTransport(): void {
         if (!TerminalShareUpdatedSchema.safeParse(data).success) return;
         const st = useTerminalShares.getState();
         void st.refreshIncoming().catch(() => undefined);
+        if (st.outgoing !== undefined) void st.refreshOutgoing().catch(() => undefined);
         // Re-read every terminal whose grant list this tab has open.
         for (const key of Object.keys(st.grantsByTerminal)) {
             const sep = key.indexOf(':');

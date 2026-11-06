@@ -347,3 +347,8 @@ a.mrb-term-btn { text-decoration: none; }
 .pj-account-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin: 0; padding: 0; border: 0; min-width: 0; }
 .pj-account-row > legend { grid-column: 1 / -1; padding: 0; margin-bottom: 6px; font-weight: 600; font-size: var(--fs-13); color: var(--text); }
 @media (max-width: 640px) { .pj-account-row { grid-template-columns: minmax(0, 1fr); } }
+
+/* B-900: the owner gave me "can operate" on several terminals at once — accept them in one go. */
+.pj-accept-all { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); margin: 0 0 var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); }
+.pj-accept-all > p { margin: 0; min-width: 0; flex: 1 1 16em; }
+.pj-accept-error { margin: 0 0 var(--sp-2); color: var(--danger); font-size: var(--fs-12); }

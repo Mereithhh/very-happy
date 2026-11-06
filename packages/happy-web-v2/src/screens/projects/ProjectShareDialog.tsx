@@ -9,9 +9,13 @@
  * picking one opens that terminal's own share dialog with this person and
  * "can operate" filled in — the per-terminal grant, its confirmation and
  * expiry are unchanged (no project-wide operate).
+ *
+ * B-900: the same place offers "let them operate every terminal here now" and "revoke all their
+ * terminal access" (ProjectOperateAll.tsx) — per-terminal grants for the terminals listed at that
+ * moment, never a project tier.
  */
 import * as Dialog from '@radix-ui/react-dialog';
-import { Info, ShieldAlert, SquareTerminal, X } from 'lucide-react';
+import { Info, ShieldAlert, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAcceptedFriends } from '@/sync/storage';
 import { getDisplayName } from '@/sync/friendTypes';
@@ -25,6 +29,7 @@ import { shareErrorCopy } from '@/screens/session/ShareDialog';
 import { ExpirySelect } from '@/screens/session/ShareLinkPanel';
 import { remainingDaysLabel } from '@/screens/session/shareFormat';
 import { TerminalShareDialog } from '@/screens/terminal/TerminalShareDialog';
+import { ProjectOperateAll } from './ProjectOperateAll';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { TerminalSession } from '@/sync/terminalPushOps';
 import '@/screens/session/sessionOptionsDialog.css';
@@ -167,12 +172,11 @@ export function ProjectShareDialog({ projectId, open, onOpenChange }: { projectI
                                 <button type="button" className="shd-opevents-toggle" aria-expanded={termsFor === grant.id} onClick={() => setTermsFor(termsFor === grant.id ? null : grant.id)}>{t('share.project.operateTerminals')}</button>
                                 {termsFor === grant.id && (
                                     <div className="shd-grant-terms" role="group" aria-label={t('share.project.operateTerminalsTitle', { name: grant.grantee.displayName })}>
-                                        <p className="shd-grant-terms-hint">{projectTerminals.length === 0 ? t('share.project.noOwnTerminals') : t('share.project.operateTerminalsHint')}</p>
-                                        {projectTerminals.map((tm) => (
-                                            <button key={`${tm.machineId}:${tm.id}`} type="button" className="shd-grant-term" onClick={() => setOperate({ term: tm, accountId: grant.grantee.id, name: grant.grantee.displayName })}>
-                                                <SquareTerminal size={14} aria-hidden /><span>{tm.title}</span><span className="shd-grant-terms-hint">{tm.machineName}</span>
-                                            </button>
-                                        ))}
+                                        <ProjectOperateAll
+                                            terminals={projectTerminals}
+                                            grantee={grant.grantee}
+                                            onPick={(tm) => setOperate({ term: tm, accountId: grant.grantee.id, name: grant.grantee.displayName })}
+                                        />
                                     </div>
                                 )}
                             </div>

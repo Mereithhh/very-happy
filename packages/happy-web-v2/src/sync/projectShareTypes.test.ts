@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IncomingProjectShareSchema, SharedProjectPageSchema, projectGrantIdOfShareId, projectTerminalLink } from './projectShareTypes';
+import { IncomingProjectShareSchema, SharedProjectPageSchema, pendingDirectGrantIds, projectGrantIdOfShareId, projectTerminalLink } from './projectShareTypes';
 import { SessionShareInfoSchema } from './sessionShareTypes';
 
 describe('B-878 PR-B project share client helpers', () => {
@@ -30,5 +30,19 @@ describe('B-878 PR-B project share client helpers', () => {
         expect(projectTerminalLink(page({ grantId: 'tg', role: 'admin', status: 'active', expiresAt: now + 1 }), now).role).toBe('viewer');
         expect(page({ grantId: 1 }).direct).toBeUndefined();
         expect(projectTerminalLink(page(null), now).via).toBe('project');
+    });
+});
+
+describe('B-900 pendingDirectGrantIds', () => {
+    it('only my unexpired pending direct grants; active, expired and project-only rows are left out', () => {
+        const now = 1000;
+        const row = (id: string, direct?: { status: 'pending' | 'active'; expiresAt: number }) => ({ shareId: `p:g:m:${id}`, machineId: 'm', terminalId: id, ...(direct ? { direct: { grantId: `d-${id}`, role: 'operator' as const, ...direct } } : {}) });
+        expect(pendingDirectGrantIds([
+            row('a', { status: 'pending', expiresAt: now + 1 }),
+            row('b', { status: 'active', expiresAt: now + 1 }),
+            row('c', { status: 'pending', expiresAt: now - 1 }),
+            row('d'),
+            row('e', { status: 'pending', expiresAt: now + 5 }),
+        ], now)).toEqual(['d-a', 'd-e']);
     });
 });
