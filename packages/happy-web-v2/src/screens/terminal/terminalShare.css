@@ -48,6 +48,10 @@
 
 /* B-900: every terminal in the project → can operate, for one person (ProjectOperateAll.tsx). */
 .pjo { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+/* B-900 QA65 P2-3: on desktop the confirmation is a shorter centred card stacked on the share dialog,
+   whose top/bottom edges peeked out past it. Hide the share dialog while the confirmation is open
+   (it comes back unchanged on close). Phones use a bottom sheet that already covers it. */
+@media (min-width: 601px) { .so-dialog:has(.pjo[data-confirm-open]) { visibility: hidden; } }
 .pjo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-1) 0; }
 .pjo-gap { display: flex; gap: var(--sp-2); align-items: flex-start; margin: 0; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--warn-dim); color: var(--text); font-size: var(--fs-12); line-height: 1.45; }
 .pjo-gap > svg { flex: none; margin-top: 1px; color: var(--warn); }

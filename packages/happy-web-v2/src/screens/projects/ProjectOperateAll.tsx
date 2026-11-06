@@ -87,7 +87,7 @@ export function ProjectOperateAll({ terminals, grantee, onPick }: {
 
     if (terminals.length === 0) return <p className="shd-grant-terms-hint">{t('share.project.noOwnTerminals')}</p>;
     return (
-        <div className="pjo" data-testid="project-operate-all">
+        <div className="pjo" data-testid="project-operate-all" data-confirm-open={confirmOpen || undefined}>
             {plan.gap.length > 0 && (
                 <p className="pjo-gap" role="note"><AlertTriangle size={14} aria-hidden />{t('share.project.gapHint', { name: grantee.displayName, count: plan.gap.length })}</p>
             )}
@@ -192,8 +192,8 @@ function OperateAllConfirm({ grantee, plan, onClose, batchOperate }: {
                             <li className="pjo-muted">{t('share.project.operateAllScope')}</li>
                             <li className="pjo-muted">{t('share.project.confirmAccept')}</li>
                         </ul>
-                        <OperatorWarning compact />
-                        <Checkbox className="shd-opack" checked={ack} onCheckedChange={setAck}>{t('share.operator.acknowledge')}</Checkbox>
+                        <OperatorWarning compact manyMachines={machines.length > 1} />
+                        <Checkbox className="shd-opack" checked={ack} onCheckedChange={setAck}>{t(machines.length > 1 ? 'share.operator.acknowledgeMany' : 'share.operator.acknowledge')}</Checkbox>
                     </>}
                     {results && <p className="pjo-muted">{t('share.operator.confirmExpiry', { expiry: expiryLabel(t, expiry) })} · {t('share.project.confirmAccept')}</p>}
                     {error && <p className="shd-error" role="alert">{error}</p>}
