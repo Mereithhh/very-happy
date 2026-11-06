@@ -208,3 +208,28 @@ describe('B-893: 输入模型名', () => {
         expect(document.querySelector('.me-panel')).toBeNull();
     });
 });
+
+describe('B-894b row extra (Codex 「更新」 beside a B-893 gate mark)', () => {
+    it('renders the extra as a sibling of the gated row only, never inside the radio; the row stays pickable', () => {
+        const onChange = vi.fn();
+        const gated = new Set(['model-b']);
+        act(() => root.render(<ModelEffortMenu label="Model" modelLabel="Model" options={models} value="model-a" onChange={onChange}
+            effort={{ label: 'Thinking', options: levels, value: 'default', onChange: vi.fn() }}
+            rowExtra={(option) => gated.has(option.key) ? <a href="#update" className="me-link">Update</a> : null} />));
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        const panel = document.querySelector('.me-panel')!;
+        const rows = [...panel.querySelectorAll('[data-testid="model-row-extra"]')];
+        expect(rows).toHaveLength(1);
+        expect(rows[0].querySelector('[role="radio"]')!.textContent).toBe('Model B');
+        expect(rows[0].querySelector('[role="radio"] .me-link')).toBeNull();
+        expect([...rows[0].children].find((el) => el.classList.contains('me-link'))?.textContent).toBe('Update');
+        act(() => rows[0].querySelector<HTMLButtonElement>('[role="radio"]')!.click());
+        expect(onChange).toHaveBeenCalledWith('model-b');
+    });
+    it('no rowExtra → plain radios as before', () => {
+        act(() => root.render(<ModelEffortMenu label="Model" modelLabel="Model" options={models} value="model-a" onChange={vi.fn()}
+            effort={{ label: 'Thinking', options: levels, value: 'default', onChange: vi.fn() }} />));
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        expect(document.querySelector('[data-testid="model-row-extra"]')).toBeNull();
+    });
+});

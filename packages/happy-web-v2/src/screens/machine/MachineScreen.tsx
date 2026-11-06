@@ -2,7 +2,9 @@ import { AgentVersionsGroup } from './AgentVersionsGroup';
 import { useEffect, useMemo, useState } from 'react';
 import { readUpdateRecovery, requestMachineUpdate, retryMachineUpdate } from '@/app/cliUpdateRecovery';
 import { machineAutoUpdateSummary } from '@/app/machineAutoUpdate';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { revealSettingWhenReady } from '@/screens/settings/settingsReveal';
+import { SETTING_QUERY_PARAM } from '@/screens/settings/settingsIndex';
 import { Pencil, Play, Terminal, ChevronRight, History, MonitorPlay } from 'lucide-react';
 import { machinePanelPath, parseWebPanels } from '@/sync/webPanels';
 import { SettingsPage, SettingsHeader } from '@/screens/settings/SettingsLayout';
@@ -57,6 +59,10 @@ export function MachineScreen() {
     const timer = setInterval(() => setUpdateStatusNow(Date.now()), 60_000);
     return () => clearInterval(timer);
   }, []);
+  // B-894b: `?setting=<id>` (the model picker's Codex 「更新」) → scroll to that group, same as settings search.
+  const location = useLocation();
+  const revealId = new URLSearchParams(location.search).get(SETTING_QUERY_PARAM);
+  useEffect(() => (revealId ? revealSettingWhenReady(document, revealId, 4000) : undefined), [location.key, revealId]);
   const machine = useMachine(id ?? '');
   const webPanels = parseWebPanels(machine?.daemonState); // B-510
   const allSessions = useAllSessions();

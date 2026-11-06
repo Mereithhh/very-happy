@@ -32,3 +32,20 @@ describe('machine page harness rows (B-719)', () => {
         expect(html).not.toContain('>Install<');
     });
 });
+
+describe('B-894b footer matches the auto-update switch', () => {
+    const render = (state: object) => renderToStaticMarkup(<AgentVersionsGroup daemon={state} online now={now} machineId="m1" metadata={{ harnessInstallVersion: 1 }} />);
+    it('a daemon with the switch: names it, and no longer claims nothing installs by itself', () => {
+        const html = render({ ...daemon, agentAutoUpdate: { enabled: false, rpcAvailable: true, detectedAt: now } });
+        expect(html).toContain('Agent auto-update below');
+        expect(html).not.toContain('Nothing is installed automatically');
+    });
+    it('an old daemon renders no switch, so the footer does not point at one', () => {
+        const html = render(daemon);
+        expect(html).toContain('Nothing is installed automatically');
+        expect(html).not.toContain('Agent auto-update');
+    });
+    it('carries the anchor the model picker link scrolls to', () => {
+        expect(render(daemon)).toContain('data-setting-id="machine.agentVersions"');
+    });
+});

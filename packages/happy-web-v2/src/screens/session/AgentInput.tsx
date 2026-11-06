@@ -42,7 +42,7 @@ import {
     codexModelGate,
 } from '@/components/modelModeOptions';
 import { checkCustomModelName, recentCustomModelsStore, useRecentCustomModels } from '@/sync/customModelInput';
-import { readAgentVersions } from '@/app/agentVersions';
+import { machineAgentUpdateHref, readAgentVersions } from '@/app/agentVersions';
 import { isImeGuardedEvent, useImeGuard } from '@/utils/ime';
 import { insertComposerNewline, insertComposerText, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
 import { listArrowDelta } from '@/utils/listArrowKey';
@@ -221,6 +221,12 @@ const NO_CATALOGS: never[] = [];
 function UpgradeCliLink({ machineId, label }: { machineId: string; label: string }) {
     const navigate = useNavigate();
     return <button type="button" className="me-link" onClick={() => navigate(`/machine/${encodeURIComponent(machineId)}`)}>{label}</button>;
+}
+
+/** B-894b: 「更新」 beside a B-893 Codex gate mark → the machine page's agent versions (its Update button). */
+function UpgradeAgentLink({ machineId, label }: { machineId: string; label: string }) {
+    const navigate = useNavigate();
+    return <button type="button" className="me-link" onClick={() => navigate(machineAgentUpdateHref(machineId))}>{label}</button>;
 }
 
 export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }: {
@@ -476,6 +482,8 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         : session ? readAgentVersions(configMachine?.daemonState)?.agents.find((entry) => entry.id === 'codex')?.installed ?? null
             : launcherContext?.agentVersion ?? null;
     const catalogCodes = catalogModels?.length ? new Set(catalogModels.map((model) => model.code)) : null;
+    // B-894b: rows B-893 marks as needing a newer Codex get 「更新」 beside them.
+    const codexGatedKeys = new Set<string>();
     const listedModels = localizeModelDescriptions(flavor, withLongContextTwins(flavor, withTypedModels, t('session.chat.modelPicker.longContext')), {
         resolved: resolvedModelOf,
         keep: new Set([LATEST_MODEL_MODE, 'default', ...customModels, ...typedModels]),
@@ -483,6 +491,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         translate: t,
     }).map((option) => {
         const gate = normalizeAgentKey(flavor) === 'codex' ? codexModelGate(option.key, { catalogCodes, agentVersion: codexVersion }) : null;
+        if (gate) codexGatedKeys.add(option.key);
         return gate ? { ...option, description: t('session.chat.modelPicker.codexNeedsUpdate', { version: gate.since }) } : option;
     });
     // B-849b2 (QA28 P2-3): a model the picker does not list is shown as itself
@@ -1787,6 +1796,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                             },
                         } : undefined}
                         subtitle={modelSubtitle}
+                        rowExtra={upgradeMachineId ? (option) => codexGatedKeys.has(option.key) ? <UpgradeAgentLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.updateCodex')} /> : null : undefined}
                         notice={runFactsUnknown ? { text: t('session.chat.modelPicker.unknownNote'), extra: upgradeMachineId ? <UpgradeCliLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.upgradeCli')} /> : undefined } : undefined}
                         readOnly={isGemini ? { value: metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.modelPicker.geminiReadOnly'), hint: t('session.chat.modelPicker.geminiReadOnlyHint') } : undefined}
                         triggerLabel={isGemini ? (metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.machineDefaultModel')) : undefined}

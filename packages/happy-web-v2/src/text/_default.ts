@@ -1034,6 +1034,8 @@ export const en = {
                 longContextRefusedHint: 'This machine\'s account or provider refused 1M context, so following latest uses the standard window. Turning it on asks for 1M anyway.',
                 unknownModel: ({ model }: { model: string }) => `${model} · unknown model`,
                 unknownModelHint: 'Not in the models this machine reported; messages still send this id',
+                // B-894b: beside a codexNeedsUpdate mark → the machine page's Update.
+                updateCodex: 'Update',
                 codexNeedsUpdate: ({ version }: { version: string }) => `Built into Codex ${version}+ · you can try it now`,
                 customEntry: 'Enter a model name…',
                 customPlaceholder: 'e.g. gpt-6.1-sol or claude-fable-5-1',
@@ -5703,7 +5705,7 @@ export const en = {
         task:{running:'Running',completed:'Completed',failed:'Failed',stopped:'Stopped',unknown:'Unknown'},
     },
     agentUpdates: {
-        title: 'Coding agent versions', help: 'Checked automatically every 6 hours. Updates are offered, not installed during running sessions.',
+        title: 'Coding agent versions', help: 'Checked automatically every 6 hours. Nothing is installed automatically.', helpAutoUpdate: 'Checked automatically every 6 hours. Nothing is installed by itself unless Agent auto-update below is on — that one waits until no Codex turn is running.',
         notChecked: 'Not checked yet. This feature requires an updated Very Happy daemon.', checked: 'Last checked', stale: 'Check expired',
         current: 'No update', 'update-available': 'Update available', unknown: 'Unverified',
         bundled: 'Bundled runtime · update through Very Happy CLI', external: 'Installed on this machine', guide: 'Upgrade guide',
