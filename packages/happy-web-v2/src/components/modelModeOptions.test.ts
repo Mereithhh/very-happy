@@ -204,6 +204,9 @@ describe('model-specific reasoning catalogs', () => {
         expect(keysAndNames).toEqual(expect.arrayContaining(['claude-fable-5-1=Fable 5.1', 'claude-fable-5-1[1m]=Fable 5.1 · 1M']));
         expect(keysAndNames.indexOf('claude-fable-5-1=Fable 5.1')).toBe(keysAndNames.indexOf('claude-fable-5-1[1m]=Fable 5.1 · 1M') - 1);
         expect(withClaudeCatalogBases([{ key: 'x[1m]', name: 'x' }])).toEqual([{ key: 'x[1m]', name: 'x' }]);
+        // A session already on claude-fable-5-1: CC lists that id, still named 「Fable」.
+        expect(withClaudeCatalogBases([{ key: 'claude-fable-5-1', name: 'Fable' }, { key: 'claude-opus-5-5', name: 'Opus 5.5 (custom)' }]))
+            .toEqual([{ key: 'claude-fable-5-1', name: 'Fable 5.1' }, { key: 'claude-opus-5-5', name: 'Opus 5.5 (custom)' }]);
         expect([...catalogRunnableKeys('claude', ['claude-fable-5-1[1m]'])]).toEqual(['claude-fable-5-1[1m]', 'claude-fable-5-1', 'claude-opus-5-5']);
     });
     it('uses ACP thought levels independently of permissions, including legacy pi levels', () => {

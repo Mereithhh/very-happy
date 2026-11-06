@@ -135,22 +135,25 @@ function claudeIdName(id: string): string | null {
 }
 
 /**
- * B-893: Claude Code 2.1.30x+ lists Fable only as `claude-fable-5-1[1m]`
- * (display name 「Fable」). With no plain entry the picker could not make it
- * its family's newest (1M twins ride on a base entry), so it sank into
- * 「更多模型」. Add the plain id before such a twin, and name both by version.
+ * B-893: Claude Code 2.1.30x+ lists Fable only as `claude-fable-5-1[1m]` —
+ * or, in a session already on it, as `claude-fable-5-1` — named just
+ * 「Fable」 (probed SDK 0.3.318). With no plain entry the picker could not
+ * make it its family's newest (1M twins ride on a base entry), so it sank
+ * into 「更多模型」. Add the plain id before such a twin, and name pinned
+ * ids whose catalog name carries no version by their version.
  */
 export function withClaudeCatalogBases(models: ModelMode[]): ModelMode[] {
     const keys = new Set(models.map((model) => model.key));
     const out: ModelMode[] = [];
     for (const model of models) {
-        const base = model.key.endsWith(LONG_CONTEXT) ? model.key.slice(0, -LONG_CONTEXT.length) : null;
-        const name = base ? claudeIdName(base) : null;
-        if (base && name && !keys.has(base)) {
+        const twin = model.key.endsWith(LONG_CONTEXT);
+        const base = twin ? model.key.slice(0, -LONG_CONTEXT.length) : model.key;
+        const name = claudeIdName(base);
+        if (twin && name && !keys.has(base)) {
             out.push({ key: base, name, description: model.description ?? null });
             keys.add(base);
         }
-        out.push(base && name ? { ...model, name: `${name} · 1M` } : model);
+        out.push(name && !/\d/.test(model.name) ? { ...model, name: twin ? `${name} · 1M` : name } : model);
     }
     return out;
 }
