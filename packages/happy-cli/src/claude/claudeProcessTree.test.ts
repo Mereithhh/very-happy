@@ -24,6 +24,6 @@ describe('Claude Code tree reap on abort (B-634 ①)', () => {
     it('the SDK still reports the pid through options.onProcessSpawned (untyped; an SDK bump must not drop it silently)', () => {
         const require = createRequire(import.meta.url);
         const sdk = readFileSync(join(dirname(require.resolve('@anthropic-ai/claude-agent-sdk')), 'sdk.mjs'), 'utf8');
-        expect(sdk).toMatch(/this\.options\.onProcessSpawned\([a-zA-Z_$]+\.pid\)/);
+        expect(sdk).toMatch(/this\.options\.onProcessSpawned\([a-zA-Z_$]+\.pid[,)]/);
     });
 });
