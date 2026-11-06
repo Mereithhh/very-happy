@@ -3255,7 +3255,7 @@ export const en = {
                 sidebar: 'The sidebar top is more compact: New session ▾ creates projects, teams, terminals and everything else, and the main sections sit in one icon row, one click each and searchable in ⌘K.',
             },
             nov06b: {
-                title: 'CLI 0.2.206: Claude SDK update and optional Codex auto-update',
+                title: 'CLI 0.2.207: Claude SDK update and optional Codex auto-update',
                 summary: 'Bundled Claude SDK updated to 0.3.318; Codex auto-update can be turned on in the machine settings.',
                 update: 'Bundled Claude SDK updated to 0.3.318; the machine settings can turn on Codex auto-update (off by default), which never installs mid-turn and stops after limited retries.',
             },
