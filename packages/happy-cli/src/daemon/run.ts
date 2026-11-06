@@ -2350,7 +2350,7 @@ export async function startDaemon(): Promise<void> {
       versions: () => latestAgentVersions,
       turnActive: (harness) => turnActivity.activeSessions().some((id) => trackedSessionFlavor(id) === harness),
       installerBusy: () => !!harnessInstaller?.isRunning() || updateController.isRunning() || handoverInFlight,
-      request: (harness) => harnessInstaller!.request({ harness }),
+      request: (harness) => harnessInstaller!.request({ harness }, 'auto-update'),
       publish: (status) => { void apiMachine.setAgentAutoUpdateStatus(status); },
       log: (message) => logger.warn(`[DAEMON RUN] ${message}`),
       store: agentAutoUpdateStore(configuration.happyHomeDir),

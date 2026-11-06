@@ -57,7 +57,7 @@ export type MenuAccountSection = {
  * unknown running model; `footer` says the scope and offers the explicit
  * 「设为新会话默认」 (a pick here never writes the account default, B-848).
  */
-export function ModelEffortMenu({ label, modelLabel, options, layout, value, onChange, subtitle, notice, readOnly, effort, longContextLabel, longContextHint, moreLabel, footer, customize, onOpen, triggerLabel, account, triggerPrefix, customModel }: {
+export function ModelEffortMenu({ label, modelLabel, options, layout, value, onChange, subtitle, notice, readOnly, effort, longContextLabel, longContextHint, moreLabel, footer, customize, onOpen, triggerLabel, account, triggerPrefix, customModel, rowExtra }: {
     label: string;
     modelLabel: string;
     options: ModeOption[];
@@ -80,6 +80,8 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     /** B-850c: the account's name before the model on the closed entry (「组织 A · Opus 5.5」). */
     triggerPrefix?: string;
     customModel?: MenuCustomModel;
+    /** B-894b: a link beside one model row (Codex 「更新」 next to its B-893 gate mark). */
+    rowExtra?: (option: ModeOption) => ReactNode;
 }) {
     const [open, setOpen] = useState(false);
     const sheet = useSheetMode();
@@ -101,7 +103,7 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
         subtitle={subtitle} notice={notice} readOnly={readOnly} effort={effort}
         longContext={resolvedLayout.longContext && longContextLabel ? { ...resolvedLayout.longContext, label: longContextLabel, hint: longContextHint, onToggle: (on) => onChange(on ? resolvedLayout.longContext!.onKey : resolvedLayout.longContext!.offKey) } : null}
         more={moreLabel ? { label: moreLabel, open: moreOpen, onToggle: () => setMoreOpen((v) => !v) } : null}
-        footer={footer} customize={customize} runAction={runAction} account={account}
+        footer={footer} customize={customize} runAction={runAction} account={account} rowExtra={rowExtra}
         customModel={customModel ? { ...customModel, onPick: (key) => { setOpen(false); choose(key); } } : undefined} />;
 
     const trigger = (
@@ -142,7 +144,7 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     </Popover.Root>;
 }
 
-function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, notice, readOnly, effort, longContext, more, footer, customize, runAction, account, customModel }: {
+function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, notice, readOnly, effort, longContext, more, footer, customize, runAction, account, customModel, rowExtra }: {
     modelLabel: string;
     layout: ModelPickerLayout;
     selectedKey: string | null;
@@ -158,6 +160,7 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
     runAction: (action: MenuAction) => void;
     account?: MenuAccountSection;
     customModel?: MenuCustomModel & { onPick: (key: string) => void };
+    rowExtra?: (option: ModeOption) => ReactNode;
 }) {
     const id = useId();
     const accountId = useId();
@@ -165,7 +168,7 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
         const selected = option.key === selectedKey;
         // B-849a2: a listed entry that would not take effect here says why instead of being picked.
         const disabled = !!option.disabled && !selected;
-        return <button key={option.key} type="button" role="radio" aria-checked={selected} aria-disabled={disabled || undefined}
+        const button = <button key={option.key} type="button" role="radio" aria-checked={selected} aria-disabled={disabled || undefined}
             className={`me-model${selected ? ' me-model--on' : ''}${disabled ? ' me-model--off' : ''}`} onClick={disabled ? undefined : () => onChoose(option.key)}>
             <span className="me-model-text">
                 <span className="me-model-name">{option.name}</span>
@@ -173,6 +176,9 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
             </span>
             {selected && <Check size={15} className="me-model-check" aria-hidden="true" />}
         </button>;
+        // B-894b: the link is a sibling, never nested in the radio (same row shape as the account rows).
+        const extra = rowExtra?.(option);
+        return extra ? <div key={option.key} className="me-account-row" data-testid="model-row-extra">{button}{extra}</div> : button;
     });
     return <>
         {account && <>

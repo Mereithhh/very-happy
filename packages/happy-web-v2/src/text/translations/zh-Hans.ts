@@ -1239,6 +1239,8 @@ export const zhHans: TranslationStructure = {
                 longContextRefusedHint: '这台机器的账号或供应商拒绝了 1M 上下文，跟随最新改用标准上下文；打开则仍按 1M 请求。',
                 unknownModel: ({ model }: { model: string }) => `${model} · 未知模型`,
                 unknownModelHint: '不在这台机器上报的模型列表里，消息仍按这个 id 发出',
+                // B-894b: beside a codexNeedsUpdate mark → the machine page's Update.
+                updateCodex: '更新',
                 codexNeedsUpdate: ({ version }: { version: string }) => `较新版 Codex（${version}+）才内置 · 可直接试`,
                 customEntry: '输入模型名…',
                 customPlaceholder: '例如 gpt-6.1-sol 或 claude-fable-5-1',
@@ -5528,7 +5530,7 @@ export const zhHans: TranslationStructure = {
         task:{running:'运行中',completed:'已完成',failed:'失败',stopped:'已停止',unknown:'未知状态'},
     },
     agentUpdates: {
-        title: 'Coding agent 版本', help: '每 6 小时自动检测。发现新版会提示，不在会话运行中自动安装。',
+        title: 'Coding agent 版本', help: '每 6 小时自动检测。不会自动安装。', helpAutoUpdate: '每 6 小时自动检测。只有打开下方「自动更新 agent」才会自动安装，并且会等到没有 Codex 回合运行时再装。',
         notChecked: '尚未检测；此功能需要更新 Very Happy daemon。', checked: '上次检测', stale: '检测已过期',
         current: '暂无更新', 'update-available': '可升级', unknown: '未能核验',
         bundled: '内置运行时 · 随 Very Happy CLI 升级', external: '此机器独立安装', guide: '升级说明',

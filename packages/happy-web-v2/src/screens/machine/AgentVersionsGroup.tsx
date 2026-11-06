@@ -1,7 +1,8 @@
 import { AGENT_VERSION_SOURCES, isHarnessInstallId, type HarnessInstallId } from '@slopus/happy-wire';
 import { ItemGroup, Item, Badge, Button } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
-import { readAgentVersions } from '@/app/agentVersions';
+import { AGENT_VERSIONS_SETTING_ID, readAgentVersions } from '@/app/agentVersions';
+import { readMachineAgentAutoUpdate } from '@/app/agentAutoUpdate';
 import { harnessInstallSupported } from '@/app/harnessInstall';
 import { useHarnessInstall } from '@/app/useHarnessInstall';
 
@@ -33,7 +34,9 @@ export function AgentVersionsGroup({daemon,online,now=Date.now(),machineId,metad
     const stale=!online || snapshot?.stale;
     // Listed whenever the daemon supports it; offline rows stay visible but greyed, with the reason.
     const canInstall=!!machineId && harnessInstallSupported(metadata);
-    return <ItemGroup title={t('agentUpdates.title')} footer={canInstall ? `${t('agentUpdates.help')} ${t('harnessInstall.help')}` : t('agentUpdates.help')}>
+    // B-894b: only a daemon that advertises the switch renders it below, so only then may the footer name it.
+    const help=t(readMachineAgentAutoUpdate(daemon) ? 'agentUpdates.helpAutoUpdate' : 'agentUpdates.help');
+    return <ItemGroup settingId={AGENT_VERSIONS_SETTING_ID} title={t('agentUpdates.title')} footer={canInstall ? `${help} ${t('harnessInstall.help')}` : help}>
         {!snapshot ? <Item title={t('agentUpdates.notChecked')}/> : <>
             <Item title={t('agentUpdates.checked')} detail={new Date(snapshot.checkedAt).toLocaleString()}
                 right={stale ? <Badge dot={false}>{t('agentUpdates.stale')}</Badge> : undefined}/>

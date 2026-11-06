@@ -15,3 +15,10 @@ export function agentUpdateCount(daemon:unknown, now=Date.now()) {
     const snapshot=readAgentVersions(daemon,now);
     return snapshot && !snapshot.stale ? snapshot.agents.filter(agent=>agent.status==='update-available').length : 0;
 }
+
+/** B-894b: settings-search anchor of the machine page's agent versions group (its Install / Update buttons). */
+export const AGENT_VERSIONS_SETTING_ID = 'machine.agentVersions';
+/** The machine page scrolled to its agent versions — where 「更新」 from the model picker lands. */
+export function machineAgentUpdateHref(machineId: string): string {
+    return `/machine/${encodeURIComponent(machineId)}?setting=${encodeURIComponent(AGENT_VERSIONS_SETTING_ID)}`;
+}

@@ -17,3 +17,8 @@ it('keeps checks across reconnects but rejects a new daemon epoch',()=>{
  expect(agentUpdateCount({...daemon,startedAt:now+1000},now+1000)).toBe(1);
  expect(agentUpdateCount({...daemon,agentVersionEpoch:now+1000},now+1000)).toBe(0);
 });
+it('B-894b: machineAgentUpdateHref lands on the agent versions group',async()=>{
+    const {machineAgentUpdateHref,AGENT_VERSIONS_SETTING_ID}=await import('./agentVersions');
+    expect(AGENT_VERSIONS_SETTING_ID).toBe('machine.agentVersions');
+    expect(machineAgentUpdateHref('m 1/x')).toBe('/machine/m%201%2Fx?setting=machine.agentVersions');
+});

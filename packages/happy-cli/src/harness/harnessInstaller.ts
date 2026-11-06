@@ -24,6 +24,9 @@ export type HarnessInstallRequestResult =
     | { error: 'node_too_old'; required: string; current: string }
     | { error: string };
 
+/** Who asked for an install (log wording only; the RPC path is always the owner). */
+export type HarnessInstallRequester = 'owner' | 'auto-update';
+
 export interface HarnessInstallerDependencies {
     npm: (args: string[]) => Promise<NpmResult>;
     /** Package directory of the running CLI (projectPath()). */
@@ -129,7 +132,8 @@ export function createHarnessInstaller(deps: HarnessInstallerDependencies) {
     return {
         /** True while npm may be writing the prefix — including after an unconfirmed kill. */
         isRunning: () => running !== null || blocked,
-        async request(params: unknown): Promise<HarnessInstallRequestResult> {
+        /** `requester` is only for the log: the machine page (owner) or B-894's agent auto-update. */
+        async request(params: unknown, requester: HarnessInstallRequester = 'owner'): Promise<HarnessInstallRequestResult> {
             const harness = params && typeof params === 'object' ? (params as { harness?: unknown }).harness : undefined;
             if (!isHarnessInstallId(harness)) {
                 deps.log(`[HARNESS] refused install request for an unknown harness`);
@@ -153,7 +157,7 @@ export function createHarnessInstaller(deps: HarnessInstallerDependencies) {
                 return location;
             }
             const startedAt = now();
-            deps.log(`[HARNESS] owner requested ${harness} install`);
+            deps.log(`[HARNESS] ${requester === 'auto-update' ? 'agent auto-update' : 'owner'} requested ${harness} install`);
             deps.publish({ harness, state: 'installing', startedAt, at: startedAt });
             void run(harness, location.prefix, startedAt);
             return { accepted: true, harness };

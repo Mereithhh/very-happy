@@ -53,6 +53,14 @@ describe('createHarnessInstaller (B-719)', () => {
         expect(logs.some((l) => l.includes('owner requested pi install'))).toBe(true);
     });
 
+    it('B-894b: an agent auto-update install is logged as such, not as the owner', async () => {
+        const { installer, logs } = setup();
+        expect(await installer.request({ harness: 'codex' }, 'auto-update')).toEqual({ accepted: true, harness: 'codex' });
+        await settle(); await settle();
+        expect(logs.some((l) => l.includes('agent auto-update requested codex install'))).toBe(true);
+        expect(logs.some((l) => l.includes('owner requested'))).toBe(false);
+    });
+
     it('rejects package names, commands and anything outside the enum before npm runs', async () => {
         const { installer, deps, published } = setup();
         for (const bad of [{ harness: '@openai/codex' }, { harness: 'pi-acp' }, { harness: 'pi; rm -rf ~' }, { harness: 'opencode' }, { package: 'evil' }, 'pi', null]) {
