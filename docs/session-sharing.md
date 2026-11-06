@@ -188,6 +188,24 @@ Pick a person and **View only** or **Can send**; the share can expire after 1,
   access…** under a person lists your terminals in the project: pick one to
   open that terminal's share dialog with the person and **Can operate**
   already chosen (you still confirm the warning and pick 1, 7 or 30 days).
+- To hand over all of them at once, **Terminal access…** also offers **Let
+  them operate all N terminals here now…**. It lists the project's terminals
+  as they are right now (title and machine) and what happens to each: a
+  terminal they can already operate is skipped, a view-only one they already
+  have is raised, the rest get a new grant. You confirm once, with the same
+  red warning, tick and 1/7/30 days as for one terminal (no "never"); the
+  confirmation names the number of terminals and, when there are several,
+  the machines. Each terminal gets its own grant and its own result line
+  (granted, raised, skipped, or not granted with the reason, e.g. the
+  terminal stopped or too many shares in a minute); **Retry the failed**
+  sends only those again. New grants wait for them to accept; their project
+  page offers **Accept all** for them. This covers only the terminals listed
+  at that moment: a terminal you put into the project later stays view only,
+  and the dialog then says “<name> can operate other terminals in this
+  project; this one does not” with the same button for the new one.
+  **Revoke all of their terminal access** ends their own grants on the
+  project's terminals; the project share stays and the terminals go back to
+  view only.
 - When they also have a terminal shared with them directly, its row on the
   project page opens that share instead, so **Can operate** works from the
   project page too. Once it is revoked or expires, the row goes back to view

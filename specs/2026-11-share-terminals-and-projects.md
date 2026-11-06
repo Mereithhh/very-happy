@@ -214,6 +214,7 @@ CREATE TABLE "ShareAuditEvent" (...);   -- §5，INDEX(ownerAccountId, at)、IND
 | `POST /v1/terminal-shares` `{machineId, terminalId, target|granteeAccountId, role, expiresInDays, confirmOperator?}` | owner；校验机器属于 owner、终端存在于其 `webTerminals`；operator 需 `confirmOperator:true` 且有期限 |
 | `GET /v1/terminal-shares?machineId&terminalId` / `PATCH …/:grantId` / `DELETE …/:grantId` | owner 管理 |
 | `GET /v1/terminal-shares/incoming`、`POST /v1/terminal-shares/:grantId/respond {accept}` | grantee；pending 与 active 列表（含 owner、机器名、标题、是否在线、档位、到期） |
+| `POST /v1/terminal-shares/batch-operate {accountId, terminals[], expiresInDays, confirmOperator}`、`POST /v1/terminal-shares/batch-revoke {accountId, terminals[]}` | B-900 owner：一个人 × owner 确认的终端（项目里当时的终端），逐条结果；见文末实现记录 |
 | `POST /v1/projects/:id/shares` `{target|granteeAccountId, role: viewer|driver, expiresInDays}`；`GET/PATCH/DELETE /v1/projects/:id/shares[/:accountId]` | owner；`role` 只接受 viewer/driver（zod 严格，带 operate → 400 `project_operator_denied`） |
 | `GET /v1/project-shares/incoming`、`POST /v1/project-shares/:grantId/respond` | grantee |
 | `GET /v1/shared/projects/:id` | grantee：项目投影 + 会话行 + 终端行 + 说明 + 记录 |
@@ -310,3 +311,13 @@ CREATE TABLE "ShareAuditEvent" (...);   -- §5，INDEX(ownerAccountId, at)、IND
 - **被分享者侧栏与团队页**：侧栏在「分享给我的项目/终端」下面不再显示「还没有会话」（容易让人以为分享是空的）。`/teams/:id` 对非 owner 是 404，团队页不开放；有分享项目时改为说明「团队页只对团队的所有者开放，可以从项目页进入 Lead 和成员的会话」，并给出每个分享项目的入口。没有分享项目时仍显示原来的「团队不存在」。团队派生会话（项目里没有 ProjectMember、只绑了 AgentTeam）在「可发消息」档下实测：输入框可用，消息能发出，署名为被分享者本人，和显式成员一致。
 - **验证**：`projectShares.pglite.integration.spec.ts` 新增 B-899 用例，覆盖无直接授权时为 viewer、别人的 operator 授权不生效、自己的 pending→active、按终端区分、直接 id 可 paste/input 而 `p:` 被拒、撤销和过期后回退、陌生人和撤销项目后为空。语义变异 5/5 被抓住（`p:` 铸 operator、不按 grantee 过滤、不按过期过滤、revoked 计入、不附 direct）。Web `projectShareTypes.test.ts` 覆盖链接选择和新旧 server 兼容。两账号真实 e2e 见 PR。
 
+
+## 实现记录（B-900 项目里现有终端一次给「可操作」）
+
+- **决策**：Owner 11-07 拍板方案 B（决策 #59）：项目分享对话框里，对某个已分享的人一次给项目里**现有**的全部终端「可操作」；只覆盖授权那一刻的终端，之后放进项目的终端不自动获得；不做项目级「可操作」（§1、§4.2 不变）。
+- **server**：新增 `POST /v1/terminal-shares/batch-operate {accountId, terminals[1..50], expiresInDays: 1|7|30, confirmOperator}` 与 `POST /v1/terminal-shares/batch-revoke {accountId, terminals[]}`（`terminalShares.ts` 的 `grantTerminalsOperator` / `revokeTerminalsFor`）。批量授权就是对 owner 确认的每个终端各建一条普通 TerminalGrant：确认和 1/7/30 天在写任何东西之前统一校验一次（复用 `terminalShareExpiry`，没有永久）；已有 live 可操作 → `skipped`（不动有效期）；已有 live 只看 → 走 `updateTerminalGrant` 升档（同一条授权，已接受的保持 active，未接受的保持 pending）；没有 → `createTerminalGrant` 新建 pending；任一终端被拒（`terminal_gone`、`too_many_grants`、`relationship_rate_quota_exceeded` 即每分钟 `MAX_SESSION_SHARES_PER_ACCOUNT_PER_MINUTE` 条）记为 `failed` + code，其余继续，逐个返回。批量撤销只撤这个人在所列终端上的直接 TerminalGrant，不动 ProjectGrant、别人的授权和终端本身。纯 expand，不改协议、不加迁移。
+- **取舍：批量接口而不是 Web 逐个调单终端接口**：确认和有效期在 server 只校验一次、对整批生效，单个请求拿到逐条结果（含限流失败），重试只发失败项；仍然每终端一条授权，`p:` 路径、broker、审计（每条 `grant.create`/`grant.update`）都不变。终端列表由 Web 传入，即 owner 在确认框里看到的那份快照（daemon 推送的 `@vh_project`）；server 不需要在批量里再判项目归属，因为 owner 本来就能单独分享自己的任意终端，项目只决定「列哪些」。
+- **接受**：沿用现有模型，每条新授权都要对方接受。对方项目页在有 pending 的直接授权时显示「{owner} 把这个项目里 N 个终端交给你操作，接受后才能输入」+「全部接受」（Web 逐条调用 respond，失败如实显示）；已接受的只看授权升档后立即可操作。没有新增「同批一次接受」的 server 概念：同批授权在库里与单独授权无区别，`pendingDirectGrantIds` 只按「本项目、本人、pending、未过期」筛选，不需要批次 id，也就不需要迁移。
+- **之后加入的终端**：不自动授权。owner 打开「终端权限…」时，若这个人在本项目已有可操作的终端、但还有终端没有，显示「X 对这个项目的其他终端有操作权限，这 N 个终端没有」，同一按钮只发缺的那几个（已可操作的跳过）。只在对话框里提示；不在「把终端放进项目」那一刻弹提示，因为终端入项目发生在 daemon 侧（`@vh_project`），Web 没有统一的入项目动作可以挂。
+- **Web**：`ProjectOperateAll.tsx`（对话框内的人名下）+ 纯函数 `planProjectOperate` / `directlyGranted` / `failedRefs`（`terminalShareTypes.ts`）、`pendingDirectGrantIds`（`projectShareTypes.ts`）；store 增加 owner 的 `outgoing` 列表（`terminal-share-updated` 时重读）。确认框冻结打开时的列表，期间新加入项目的终端不会混进来。
+- **验证**：`projectShares.pglite.integration.spec.ts` 新增两条：B-900 主用例（只覆盖所列终端，之后加入的 `bt4` 无授权且 `p:` 只看；已可操作跳过且有效期不动；只看升档且保持 active；未确认或 null/365/0/2 天被拒且不写；`terminal_gone` 与限流逐条 failed、其余成功；撤销全部只撤直接授权、项目分享和别人的授权不变；`p:` 仍不能 paste/input）与真实路由用例（Fastify inject：缺确认、缺/非法有效期、空列表、多余字段均 400 且不写库；跨账号撤销为 0）。两账号 + 隔离 server + 两个隔离 daemon（两台机器）+ 4 个终端的浏览器实测见 PR。
