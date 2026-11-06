@@ -53,7 +53,7 @@ if (!/secret-scan:[\s\S]*?runs-on: ubuntu-latest/.test(workflows['quality.yml'] 
   errors.push('quality.yml: secret scan and package gates must always use ubuntu-latest');
 }
 if (!/smoke-linux:[\s\S]*?runs-on: ubuntu-latest/.test(workflows['cli-smoke-test.yml'] ?? '')
-  || !/smoke-macos:[\s\S]*?runs-on: macos-14/.test(workflows['cli-smoke-test.yml'] ?? '')) {
+  || !/smoke-macos:[\s\S]*?runs-on: macos-15/.test(workflows['cli-smoke-test.yml'] ?? '')) {
   errors.push('cli-smoke-test.yml: Linux and macOS smoke must use GitHub-hosted runners');
 }
 

@@ -1,5 +1,5 @@
 /** Pure validation of GitHub REST run/jobs JSON. Never execute downloaded code. */
-export const REQUIRED_SMOKE_JOBS = ['linux', 'macos-14', 'windows-latest']
+export const REQUIRED_SMOKE_JOBS = ['linux', 'macos-15', 'windows-latest']
   .flatMap((platform) => [20, 24].map((node) => `smoke (${platform}, node ${node})`));
 export const SMOKE_WORKFLOW_PATH = '.github/workflows/cli-smoke-test.yml';
 
