@@ -65,7 +65,7 @@ import { ImportHistoryModal, type ImportHistoryAgent } from '@/screens/sessions/
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { FileSearch, ListTodo } from 'lucide-react';
-import { Activity, Contact, FolderKanban, FolderPlus, Zap } from 'lucide-react';
+import { Activity, Contact, FolderPlus, Zap } from 'lucide-react';
 import { useAutomations } from '@/sync/automationsStore';
 import { automationsEntryVisible } from '@/sync/automationsPoll';
 import { requestNewProject } from '@/screens/sessions/sidebarEvents';
@@ -588,7 +588,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         group: 'actions',
         title: a.title,
         icon: PALETTE_NAV_ICON[a.icon],
-        haystack: a.haystack,
+        search: a.search,
         run: () => { if (target.kind === 'path') navigate(target.path); else if (!requestNewProject()) navigate('/projects'); },
       });
     }
