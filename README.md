@@ -442,6 +442,8 @@ structured parity with Claude.
   pi models can carry their context window (`glm-5.3 200k`) so the context meter
   no longer reads against pi's 128k default
   ([details](docs/configuration.md#custom-models-and-providers-b-688)).
+  For a one-off, **Enter a model name…** in the Claude / Codex picker runs any
+  model id in the current session only and remembers the last three you typed.
 - Machine web panels: declare noVNC, a browser dashboard or any local page in the
   machine's own settings.json and open it from the session workspace or machine
   page; agents call `request_human` to get a person, and the push opens the panel

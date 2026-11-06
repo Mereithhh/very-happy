@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronDown, ChevronRight, Plus, SlidersHorizontal, Zap } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, PenLine, Plus, SlidersHorizontal, Zap } from 'lucide-react';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { EffortEnergy, EffortSegments, isMaximumEffort } from '@/components/EffortSegments';
 import type { ModeOption } from '@/components/modelModeOptions';
@@ -28,6 +28,15 @@ function useSheetMode(): boolean {
 
 type MenuAction = { label: string; onSelect: () => void };
 
+/** B-893: 「输入模型名」 — `check` returns an error text or the value to pick. */
+export type MenuCustomModel = {
+    entryLabel: string;
+    placeholder: string;
+    submitLabel: string;
+    hint: string;
+    check: (raw: string) => { ok: true; value: string } | { ok: false; error: string };
+};
+
 /** B-850c: the 账号 block on top of the panel (rows from sessionAccount.buildAccountSection). */
 export type MenuAccountSection = {
     label: string;
@@ -48,7 +57,7 @@ export type MenuAccountSection = {
  * unknown running model; `footer` says the scope and offers the explicit
  * 「设为新会话默认」 (a pick here never writes the account default, B-848).
  */
-export function ModelEffortMenu({ label, modelLabel, options, layout, value, onChange, subtitle, notice, readOnly, effort, longContextLabel, longContextHint, moreLabel, footer, customize, onOpen, triggerLabel, account, triggerPrefix }: {
+export function ModelEffortMenu({ label, modelLabel, options, layout, value, onChange, subtitle, notice, readOnly, effort, longContextLabel, longContextHint, moreLabel, footer, customize, onOpen, triggerLabel, account, triggerPrefix, customModel }: {
     label: string;
     modelLabel: string;
     options: ModeOption[];
@@ -70,6 +79,7 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     account?: MenuAccountSection;
     /** B-850c: the account's name before the model on the closed entry (「组织 A · Opus 5.5」). */
     triggerPrefix?: string;
+    customModel?: MenuCustomModel;
 }) {
     const [open, setOpen] = useState(false);
     const sheet = useSheetMode();
@@ -91,7 +101,8 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
         subtitle={subtitle} notice={notice} readOnly={readOnly} effort={effort}
         longContext={resolvedLayout.longContext && longContextLabel ? { ...resolvedLayout.longContext, label: longContextLabel, hint: longContextHint, onToggle: (on) => onChange(on ? resolvedLayout.longContext!.onKey : resolvedLayout.longContext!.offKey) } : null}
         more={moreLabel ? { label: moreLabel, open: moreOpen, onToggle: () => setMoreOpen((v) => !v) } : null}
-        footer={footer} customize={customize} runAction={runAction} account={account} />;
+        footer={footer} customize={customize} runAction={runAction} account={account}
+        customModel={customModel ? { ...customModel, onPick: (key) => { setOpen(false); choose(key); } } : undefined} />;
 
     const trigger = (
         <button type="button" className="mm-trigger me-trigger" aria-label={label} aria-haspopup="dialog" aria-expanded={open}
@@ -131,7 +142,7 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     </Popover.Root>;
 }
 
-function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, notice, readOnly, effort, longContext, more, footer, customize, runAction, account }: {
+function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, notice, readOnly, effort, longContext, more, footer, customize, runAction, account, customModel }: {
     modelLabel: string;
     layout: ModelPickerLayout;
     selectedKey: string | null;
@@ -146,6 +157,7 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
     customize?: MenuAction;
     runAction: (action: MenuAction) => void;
     account?: MenuAccountSection;
+    customModel?: MenuCustomModel & { onPick: (key: string) => void };
 }) {
     const id = useId();
     const accountId = useId();
@@ -205,6 +217,7 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
                     {more.open && <div className="me-more-list">{rows(layout.more)}</div>}
                 </>}
                 {!more && rows(layout.more)}
+                {customModel && <CustomModelRow {...customModel} />}
             </div>}
         {/* QA26 P2-3: the whole row is the switch — a ≥44px target on phones, not just the 26px track. */}
         {longContext && !readOnly && <button type="button" role="switch" aria-checked={longContext.on} className="me-switch-row"
@@ -228,4 +241,35 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
             {footer.action && <button type="button" className="me-link" onClick={() => runAction(footer.action!)}>{footer.action.label}</button>}
         </div>}
     </>;
+}
+
+function CustomModelRow({ entryLabel, placeholder, submitLabel, hint, check, onPick }: MenuCustomModel & { onPick: (key: string) => void }) {
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState('');
+    const [error, setError] = useState<string | null>(null);
+    const errorId = useId();
+    if (!editing) {
+        return <button type="button" className="me-more me-custom-entry" onClick={() => setEditing(true)}>
+            <PenLine size={14} aria-hidden="true" /><span>{entryLabel}</span>
+        </button>;
+    }
+    const submit = () => {
+        const result = check(draft);
+        if (!result.ok) { setError(result.error); return; }
+        setError(null);
+        setDraft('');
+        setEditing(false);
+        onPick(result.value);
+    };
+    return <form className="me-custom" onSubmit={(event) => { event.preventDefault(); submit(); }}>
+        <div className="me-custom-row">
+            <input className="me-custom-input" value={draft} autoFocus placeholder={placeholder} aria-label={entryLabel}
+                aria-invalid={error ? true : undefined} aria-describedby={errorId}
+                autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={200}
+                onChange={(event) => { setDraft(event.target.value); if (error) setError(null); }}
+                onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setEditing(false); setError(null); } }} />
+            <button type="submit" className="me-custom-use">{submitLabel}</button>
+        </div>
+        <span id={errorId} className={error ? 'me-note me-custom-error' : 'me-note'} role={error ? 'alert' : undefined}>{error ?? hint}</span>
+    </form>;
 }

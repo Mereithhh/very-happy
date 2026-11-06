@@ -33,10 +33,11 @@ describe('QA26 P2-5: one way to write a model name', () => {
 });
 
 describe('QA26 P2-7: Settings folds what no machine runs as newest', () => {
-    it('runnable keys come from the catalogs (+ pinned Opus 5.5 for Claude); none → null', () => {
+    it('runnable keys come from the catalogs (+ pinned Opus 5.5 for Claude, the gpt-6 generation for Codex); none → null', () => {
         expect(runnableFromCatalogs('claude', [])).toBeNull();
         expect([...runnableFromCatalogs('claude', [{ models: [{ code: 'sonnet', value: 'Sonnet 5.5' }] } as never])!]).toEqual(['sonnet', 'claude-opus-5-5']);
-        expect([...runnableFromCatalogs('codex', [{ models: [{ code: 'gpt-6.1-sol', value: 'x' }] } as never])!]).toEqual(['gpt-6.1-sol']);
+        expect([...runnableFromCatalogs('codex', [{ models: [{ code: 'gpt-5.6-sol', value: 'x' }] } as never])!])
+            .toEqual(['gpt-5.6-sol', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
     });
     it('Settings and the composer use the same names; Settings folds everything off the top list (1M twins too)', () => {
         const settings = readFileSync(new URL('../settings/SettingsRoutes.tsx', import.meta.url), 'utf8');

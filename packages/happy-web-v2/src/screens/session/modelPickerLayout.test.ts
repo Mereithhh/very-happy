@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ModeOption } from '@/components/modelModeOptions';
+import { catalogRunnableKeys, getAvailableModels } from '@/components/modelModeOptions';
 import { layoutModelPicker, listedModelKey, modelFamilyOf, withLongContextTwins } from './modelPickerLayout';
 import { localizeModelDescriptions, autoEffortName, namedEffortOptions } from './runSetupCopy';
 
@@ -29,9 +30,9 @@ const runnable = new Set([...CLAUDE_CATALOG.map(([code]) => code), 'claude-opus-
 const keys = (list: ModeOption[]) => list.map((option) => option.key);
 
 describe('layoutModelPicker (B-849a)', () => {
-    it('Claude: the two defaults, then the newest Sonnet · Haiku · Fable; Opus is the follow entry; the rest under 更多模型', () => {
+    it('Claude: the two defaults, then the newest Fable · Sonnet · Haiku; Opus is the follow entry; the rest under 更多模型', () => {
         const layout = layoutModelPicker(claudeOptions, { flavor: 'claude', selectedKey: 'latest', followModel: 'claude-opus-5-5', resolved, runnable });
-        expect(keys(layout.primary)).toEqual(['latest', 'default', 'sonnet', 'haiku', 'fable']);
+        expect(keys(layout.primary)).toEqual(['latest', 'default', 'fable', 'sonnet', 'haiku']);
         // `default` resolves to Fable 5.1 but is never a family pick, and the 1M twin rides on the switch.
         expect(keys(layout.more)).toEqual(['opus', 'claude-haiku-4-5-20251001', 'claude-sonnet-5', 'claude-opus-5', 'claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-4-6']);
         expect(layout.longContext).toEqual({ on: false, onKey: 'claude-opus-5-5[1m]', offKey: 'latest' });
@@ -42,7 +43,7 @@ describe('layoutModelPicker (B-849a)', () => {
         // the alias comes first in the list: the tie-break, not list order, picks the pinned id
         const options = [...claudeOptions.filter((o) => o.key !== 'latest'), { key: 'claude-opus-5-5', name: 'Opus 5.5' }];
         const on = layoutModelPicker(options, { flavor: 'claude', selectedKey: 'claude-opus-5-5[1m]', resolved, runnable });
-        expect(keys(on.primary)).toEqual(['default', 'claude-opus-5-5', 'sonnet', 'haiku', 'fable']);
+        expect(keys(on.primary)).toEqual(['default', 'claude-opus-5-5', 'fable', 'sonnet', 'haiku']);
         expect(keys(on.more)).toContain('opus');
         expect(on.longContext).toEqual({ on: true, onKey: 'claude-opus-5-5[1m]', offKey: 'claude-opus-5-5' });
         expect(listedModelKey(on, 'claude-opus-5-5[1m]')).toBe('claude-opus-5-5');
@@ -123,7 +124,7 @@ describe('B-883: following a [1m] id (Claude default, or a machine config like o
     const followOptions = claudeOptions.filter((option) => option.key !== 'claude-opus-5-5[1m]');
     it('the switch shows on; switching it off pins the plain id', () => {
         const layout = layoutModelPicker(followOptions, { flavor: 'claude', selectedKey: 'latest', followModel: 'claude-opus-5-5[1m]', resolved, runnable });
-        expect(keys(layout.primary)).toEqual(['latest', 'default', 'sonnet', 'haiku', 'fable']);
+        expect(keys(layout.primary)).toEqual(['latest', 'default', 'fable', 'sonnet', 'haiku']);
         expect(layout.longContext).toEqual({ on: true, onKey: 'latest', offKey: 'claude-opus-5-5' });
         const config = layoutModelPicker(followOptions, { flavor: 'claude', selectedKey: 'latest', followModel: 'opus[1m]', resolved, runnable });
         expect(config.longContext).toEqual({ on: true, onKey: 'latest', offKey: 'opus' });
@@ -143,7 +144,7 @@ describe('QA26 P2-4: 1M pinned on the followed model', () => {
     it('lists the base row on top and checks it, with the switch on', () => {
         const options = [...claudeOptions, { key: 'claude-opus-5-5', name: 'Opus 5.5' }];
         const on = layoutModelPicker(options, { flavor: 'claude', selectedKey: 'claude-opus-5-5[1m]', followModel: 'claude-opus-5-5', resolved, runnable });
-        expect(keys(on.primary)).toEqual(['latest', 'default', 'claude-opus-5-5', 'sonnet', 'haiku', 'fable']);
+        expect(keys(on.primary)).toEqual(['latest', 'default', 'claude-opus-5-5', 'fable', 'sonnet', 'haiku']);
         expect(listedModelKey(on, 'claude-opus-5-5[1m]')).toBe('claude-opus-5-5');
         expect(on.longContext).toEqual({ on: true, onKey: 'claude-opus-5-5[1m]', offKey: 'claude-opus-5-5' });
         expect(on.selectedInMore).toBe(false);
@@ -154,5 +155,38 @@ describe('B-883b: following latest on a machine that refused 1M', () => {
     it('the follow entry is the plain id: the switch shows off and turning it on pins the [1m] twin', () => {
         const layout = layoutModelPicker(claudeOptions, { flavor: 'claude', selectedKey: 'latest', followModel: 'claude-opus-5-5', resolved, runnable });
         expect(layout.longContext).toEqual({ on: false, onKey: 'claude-opus-5-5[1m]', offKey: 'latest' });
+    });
+});
+
+describe('B-893: Fable and the gpt-6 generation on the top list', () => {
+    const t = ((key: string) => key) as never;
+    it('Claude (SDK 0.3.318 catalog, Fable only as claude-fable-5-1[1m]): Opus and Fable both on top, Fable with its 1M switch', () => {
+        const metadata = { models: [
+            { code: 'default', value: 'Default (recommended)', resolvedModel: 'claude-opus-5-5' },
+            { code: 'opus', value: 'Opus 5.5', resolvedModel: 'claude-opus-5-5' },
+            { code: 'claude-fable-5-1[1m]', value: 'Fable', resolvedModel: 'claude-fable-5-1' },
+            { code: 'sonnet', value: 'Sonnet 5', resolvedModel: 'claude-sonnet-5' },
+            { code: 'haiku', value: 'Haiku 4.5', resolvedModel: 'claude-haiku-4-5' },
+        ], capabilities: ['claude-opus-5-5-v1'] } as never;
+        const listed = getAvailableModels('claude', metadata, t);
+        const catalogResolved = (key: string) => (metadata as { models: { code: string; resolvedModel: string }[] }).models.find((m) => m.code === key)?.resolvedModel ?? null;
+        const run = catalogRunnableKeys('claude', (metadata as { models: { code: string }[] }).models.map((m) => m.code));
+        // Pinned Opus 5.5 (not following latest).
+        const pinned = layoutModelPicker(listed, { flavor: 'claude', selectedKey: 'claude-opus-5-5', resolved: catalogResolved, runnable: run });
+        expect(keys(pinned.primary)).toEqual(['default', 'claude-opus-5-5', 'claude-fable-5-1', 'sonnet', 'haiku']);
+        expect(keys(pinned.more)).not.toContain('claude-fable-5-1[1m]');
+        const fable = layoutModelPicker(listed, { flavor: 'claude', selectedKey: 'claude-fable-5-1[1m]', resolved: catalogResolved, runnable: run });
+        expect(fable.longContext).toEqual({ on: true, onKey: 'claude-fable-5-1[1m]', offKey: 'claude-fable-5-1' });
+        expect(fable.selectedInMore).toBe(false);
+        // Following latest Opus 5.5: the follow entry stands for Opus, Fable stays on top.
+        const follow = layoutModelPicker([{ key: 'latest', name: 'Latest · Opus 5.5' }, ...listed], { flavor: 'claude', selectedKey: 'latest', followModel: 'claude-opus-5-5', resolved: catalogResolved, runnable: run });
+        expect(keys(follow.primary).slice(0, 3)).toEqual(['latest', 'default', 'claude-fable-5-1']);
+    });
+    it('Codex 0.154 catalog: the newest of each tier is a gpt-6 model, even the ones its Codex does not bundle', () => {
+        const codes = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.2'];
+        const listed = getAvailableModels('codex', { models: codes.map((code) => ({ code, value: code })) } as never, t);
+        const layout = layoutModelPicker(listed, { flavor: 'codex', selectedKey: 'default', runnable: catalogRunnableKeys('codex', codes) });
+        expect(keys(layout.primary)).toEqual(['default', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-luna', 'gpt-6-astra']);
+        expect(keys(layout.more)).toEqual(expect.arrayContaining(['gpt-6-sol', 'gpt-5.6-sol', 'gpt-5.5']));
     });
 });

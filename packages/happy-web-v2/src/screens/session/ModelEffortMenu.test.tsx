@@ -181,3 +181,30 @@ describe('QA26 P2-4: 1M on — the base row is checked, the trigger names the 1M
         expect(document.querySelector('.me-panel .me-models [aria-checked="true"]')!.textContent).toBe('Model A');
     });
 });
+
+describe('B-893: 输入模型名', () => {
+    it('opens an inline field; a refused name shows the error and picks nothing; a valid one is picked and closes the panel', () => {
+        const onChange = vi.fn();
+        const check = vi.fn((raw: string) => raw.includes(' ') ? { ok: false as const, error: 'bad name' } : { ok: true as const, value: raw.trim() });
+        act(() => root.render(<ModelEffortMenu label="Model" modelLabel="Model" options={models} value="model-a" onChange={onChange}
+            effort={{ label: 'Thinking', options: levels, value: 'low', onChange: vi.fn() }}
+            customModel={{ entryLabel: 'Enter a model name…', placeholder: 'p', submitLabel: 'Use', hint: 'session only', check }} />));
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        act(() => document.querySelector<HTMLButtonElement>('.me-panel .me-custom-entry')!.click());
+        const input = document.querySelector<HTMLInputElement>('.me-panel .me-custom-input')!;
+        const type = (value: string) => act(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        type('gpt 6');
+        act(() => document.querySelector<HTMLButtonElement>('.me-panel .me-custom-use')!.click());
+        expect(document.querySelector('.me-custom-error')?.textContent).toBe('bad name');
+        expect(input.getAttribute('aria-invalid')).toBe('true');
+        expect(onChange).not.toHaveBeenCalled();
+        type('gpt-6.1-sol');
+        expect(document.querySelector('.me-custom-error')).toBeNull();
+        act(() => document.querySelector<HTMLButtonElement>('.me-panel .me-custom-use')!.click());
+        expect(onChange).toHaveBeenCalledWith('gpt-6.1-sol');
+        expect(document.querySelector('.me-panel')).toBeNull();
+    });
+});
