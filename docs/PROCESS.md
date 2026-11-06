@@ -161,7 +161,7 @@ triage（分独立/冲突域）
 
 ### CI 跑在哪（2026-08-25 起：全部 GitHub 托管）
 
-**现状**：所有 workflow 的 `runs-on` 都是托管 `ubuntu-latest` / `macos-14` / `windows-latest`，
+**现状**：所有 workflow 的 `runs-on` 都是托管 `ubuntu-latest` / `macos-15` / `windows-latest`（macOS 固定版本号；macos-14 已于 2026-11-02 退役，B-898 换 macos-15），
 仓库没有 self-hosted runner（`gh api repos/…/actions/runners` 为 0，无 `LINUX_RUNNER` 变量）。
 仓库自 2026-08-25 公开（`ff1ed6dc` #15）后，标准托管 runner 对公开仓不计费，原先「私有仓
 2000 分钟/月、macOS 10×」那套分钟账已不适用。「CI 跑在哪」永远以 `.github/workflows/*.yml` 的

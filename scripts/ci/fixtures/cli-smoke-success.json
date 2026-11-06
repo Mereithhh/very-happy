@@ -33,7 +33,7 @@
       "conclusion": "success"
     },
     {
-      "name": "smoke (macos-14, node 20)",
+      "name": "smoke (macos-15, node 20)",
       "run_id": 123,
       "run_attempt": 2,
       "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -41,7 +41,7 @@
       "conclusion": "success"
     },
     {
-      "name": "smoke (macos-14, node 24)",
+      "name": "smoke (macos-15, node 24)",
       "run_id": 123,
       "run_attempt": 2,
       "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

@@ -132,13 +132,13 @@ jobs:
 
   # ── 发版档 macOS：打 tag / 手动完整冒烟时跑 GitHub 托管 macOS ─────────
   smoke-macos:
-    name: smoke (macos-14, node ${{ matrix.node-version }})
+    name: smoke (macos-15, node ${{ matrix.node-version }})
     if: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.cross_platform) && vars.SKIP_HOSTED_SMOKE != '1' }}
     strategy:
       fail-fast: false
       matrix:
         node-version: [20, 24]
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
 
     steps:
@@ -207,7 +207,7 @@ jobs:
           timeout 30 very-happy --help || { echo "FAIL: --help"; exit 1; }
           echo "very-happy doctor"
           timeout 60 very-happy doctor || { echo "FAIL: doctor"; exit 1; }
-          echo "Smoke test passed on macos-14 (node ${{ matrix.node-version }})"
+          echo "Smoke test passed on macos-15 (node ${{ matrix.node-version }})"
 
       - name: Cleanup global install
         if: always()
