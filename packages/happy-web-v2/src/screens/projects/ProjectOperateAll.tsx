@@ -110,8 +110,8 @@ export function ProjectOperateAll({ terminals, grantee, onPick }: {
             {plan.items.map((item) => {
                 const tm = byKey.get(`${item.machineId}:${item.terminalId}`)!;
                 return (
-                    <button key={`${item.machineId}:${item.terminalId}`} type="button" className="shd-grant-term" data-state={item.current} onClick={() => onPick(tm)}>
-                        <SquareTerminal size={14} aria-hidden /><span>{item.title}</span><span className="shd-grant-terms-hint">{item.machineName}</span>
+                    <button key={`${item.machineId}:${item.terminalId}`} type="button" className="shd-grant-term pjo-term" data-state={item.current} onClick={() => onPick(tm)}>
+                        <SquareTerminal size={14} aria-hidden /><span className="pjo-term-title">{item.title}</span><span className="pjo-term-machine">{item.machineName}</span>
                         <span className="pjo-state">{stateLabel(t, item)}</span>
                     </button>
                 );

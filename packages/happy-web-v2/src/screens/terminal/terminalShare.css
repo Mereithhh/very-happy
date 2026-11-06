@@ -51,8 +51,13 @@
 .pjo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-1) 0; }
 .pjo-gap { display: flex; gap: var(--sp-2); align-items: flex-start; margin: 0; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--warn-dim); color: var(--text); font-size: var(--fs-12); line-height: 1.45; }
 .pjo-gap > svg { flex: none; margin-top: 1px; color: var(--warn); }
-.shd-grant-term > .pjo-state { flex: none; margin-left: auto; color: var(--text-dim); font-size: var(--fs-11); }
-.shd-grant-term[data-state="operator"] > .pjo-state { color: var(--text); }
+.shd-grant-term.pjo-term { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "icon title machine" "icon state state"; align-items: center; column-gap: var(--sp-2); padding-block: var(--sp-1); }
+.pjo-term > svg { grid-area: icon; color: var(--text-dim); }
+.pjo-term > .pjo-term-title { grid-area: title; }
+.pjo-term > .pjo-term-machine { grid-area: machine; max-width: 12em; color: var(--text-dim); font-size: var(--fs-12); }
+.pjo-term > .pjo-state { grid-area: state; color: var(--text-dim); font-size: var(--fs-11); }
+.pjo-term[data-state="operator"] > .pjo-state { color: var(--text); }
+@media (max-width: 480px) { .shd-grant-terms { padding-left: 0; } }
 .pjo-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; max-height: 40vh; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
 .pjo-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "icon title machine" "icon state state"; align-items: center; column-gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); font-size: var(--fs-13); color: var(--text); }
 .pjo-item + .pjo-item { border-top: 1px solid var(--line); }
