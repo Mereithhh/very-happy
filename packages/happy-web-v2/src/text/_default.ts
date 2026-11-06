@@ -1227,6 +1227,9 @@ export const en = {
         groupTerminals: 'Terminals',
         // B-865: sessions found by what was said (every online machine + loaded messages)
         groupContent: 'Conversation content',
+        // B-895: projects / teams as search results
+        groupProjects: 'Projects',
+        groupTeams: 'Teams',
         actionNewChat: 'New chat',
         actionNewChatAdvanced: 'New chat (choose options)…',
         actionNewChatWithQuery: ({ query }: { query: string }) => `New chat: ${query}`,
@@ -1636,6 +1639,10 @@ export const en = {
         agentLabel: 'Agent',
         agentAny: 'Any agent',
         machineLabel: 'Machine',
+        // B-895: why a row matched (second line)
+        teamLabel: 'Team',
+        sharerLabel: 'Shared by',
+        archivedCoverage: 'Archived chats are searched among the newest loaded ones only; older archived chats still show up under Conversation content by what was said.',
         machineAny: 'Any machine',
         timeLabel: 'Time',
         timeAny: 'Any time',
