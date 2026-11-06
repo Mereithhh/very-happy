@@ -9,6 +9,8 @@ import {
     shouldSmoothJumpToLatest,
     followAfterScroll,
     shouldRepin,
+    isLayoutMove,
+    LAYOUT_SHIFT_MS,
     FOLLOW_BAND_PX,
     isUpwardWheel,
     isUpwardTouch,
@@ -156,6 +158,38 @@ describe('followAfterScroll (B-598)', () => {
         expect(followAfterScroll(false, 85, { atBottom: false, movedUp: false })).toEqual({ atBottom: false, detached: false });
         expect(followAfterScroll(false, 40, { atBottom: false, movedUp: false })).toEqual({ atBottom: true, detached: false });
         expect(followAfterScroll(true, 85, { atBottom: true, movedUp: false })).toEqual({ atBottom: false, detached: true });
+    });
+});
+
+// B-897b: replay of WebKit 18.2 traces (Playwright, desktop and iPhone emulation, production
+// build): at a turn's start/end commit scrollTop dropped with no JS write (hooked setter /
+// scrollTo / scrollIntoView all silent) — 15549→15273, 11612→10756, 15419→14513 — and the
+// scroll event that followed landed 276–906px above the bottom while still following.
+// The band un-followed it and the reply grew below a parked view (5/20 landed).
+describe('followAfterScroll — layout clamp vs reader (B-897b)', () => {
+    it('跟随中、往上动但紧挨着转录 DOM 变动 / 尺寸变化：算布局造成的，保持跟随', () => {
+        const clamped = { atBottom: true, movedUp: true, layoutMoved: true };
+        for (const distance of [276, 336, 898, 906]) {
+            expect(followAfterScroll(false, distance, clamped)).toEqual({ atBottom: true, detached: false });
+        }
+    });
+
+    it('没有布局变动的往上动仍按 80px 带：浏览器查找、辅助技术滚动照旧离开', () => {
+        expect(followAfterScroll(false, 276, { atBottom: true, movedUp: true, layoutMoved: false })).toEqual({ atBottom: false, detached: false });
+        expect(followAfterScroll(false, 276, { atBottom: true, movedUp: true })).toEqual({ atBottom: false, detached: false });
+    });
+
+    it('已脱离或本来没在跟随的读者不受影响', () => {
+        expect(followAfterScroll(true, 276, { atBottom: false, movedUp: true, layoutMoved: true })).toEqual({ atBottom: false, detached: true });
+        expect(followAfterScroll(false, 276, { atBottom: false, movedUp: true, layoutMoved: true })).toEqual({ atBottom: false, detached: false });
+    });
+
+    it('isLayoutMove：尺寸变了，或距上次转录变动不到 LAYOUT_SHIFT_MS', () => {
+        expect(isLayoutMove({ now: 7478, lastMutationAt: 7475, resized: false })).toBe(true);
+        expect(isLayoutMove({ now: 1000 + LAYOUT_SHIFT_MS - 1, lastMutationAt: 1000, resized: false })).toBe(true);
+        expect(isLayoutMove({ now: 1000 + LAYOUT_SHIFT_MS, lastMutationAt: 1000, resized: false })).toBe(false);
+        expect(isLayoutMove({ now: 5000, lastMutationAt: -Infinity, resized: true })).toBe(true);
+        expect(isLayoutMove({ now: 5000, lastMutationAt: -Infinity, resized: false })).toBe(false);
     });
 });
 

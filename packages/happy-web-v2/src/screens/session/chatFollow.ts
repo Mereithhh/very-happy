@@ -111,17 +111,25 @@ export type FollowState = { atBottom: boolean; detached: boolean };
  * 的气泡 ≈91px、流式草稿一次长一段、图片加载）——按距离判就把读者判成「离开」，
  * 跟随断掉，回复在下面继续长，视图停在半路（「发完消息滚动条跳到中间」）。
  * 读者离开底部一定是往上动：手势由 detach 处理，拖滚动条向上走 `movedUp`。
+ *
+ * B-897b：往上动也不一定是读者。WebKit（桌面与 iOS 同一个布局引擎）在回合
+ * 开始/结束的 commit 里会布局到一个更矮的中间态，scrollTop 被浏览器夹下去，
+ * 随后内容又长回来；没有任何 JS 写 scrollTop，这次 scroll 事件却落在离底
+ * 几百 px 处（实测 276–906px），按 80px 带判成离开，回复在下面接着长，视图
+ * 停在半路。`layoutMoved`：这次往上动前后转录 DOM 刚变过、或内容/视口尺寸
+ * 变了——正在跟随的读者因此保持跟随（调用方负责重新贴底）。读者自己的上滚
+ * 不受影响：滚轮/触摸/按键先 detach，拖滚动条在调用方先置 detached。
  */
 export function followAfterScroll(
     detached: boolean,
     distance: number,
-    prev: { atBottom: boolean; movedUp: boolean } = { atBottom: false, movedUp: true },
+    prev: { atBottom: boolean; movedUp: boolean; layoutMoved?: boolean } = { atBottom: false, movedUp: true },
 ): FollowState {
     if (detached) {
         const back = distance <= REATTACH_PX;
         return { atBottom: back, detached: !back };
     }
-    if (prev.atBottom && !prev.movedUp) return { atBottom: true, detached: false };
+    if (prev.atBottom && (!prev.movedUp || prev.layoutMoved)) return { atBottom: true, detached: false };
     return { atBottom: distance < FOLLOW_BAND_PX, detached: false };
 }
 
@@ -129,11 +137,23 @@ export function followAfterScroll(
  * B-897：内容净变矮之后要不要重新贴底：跟随中且离底超过 REATTACH_PX。
  * 同一帧里先缩后长（草稿换成正式消息变矮、浏览器把 scrollTop clamp 下来，
  * 紧接着送达标记再长几 px）净变化是变矮，growth 那条不跟，视图就停在离底
- * 8–9px。只管变矮：变高归 shouldFollowGrowth，顶部插入旧历史由补偿处理，
- * 带内（离底 <80px）的读者不能因此被拉到底。
+ * 8–9px。只管变矮：变高归 shouldFollowGrowth，顶部插入旧历史由补偿处理。
+ * 只对还在跟随（`atBottom`）的读者生效：用滚轮/触摸/按键/拖滚动条脱离的读者
+ * 不会因此被拉到底；没有脱离手势就停在带内（离底 <80px，如单次 ↑ 键）的读者
+ * 仍算跟随，内容净变矮时会被拉回底部（main 上同样如此）。
  */
 export function shouldRepin(prevHeight: number, nextHeight: number, atBottom: boolean, distance: number): boolean {
     return atBottom && nextHeight < prevHeight && distance > REATTACH_PX;
+}
+
+/**
+ * B-897b：转录 DOM 变动后多久内的往上动算布局造成的。WebKit 把 clamp 的 scroll
+ * 事件放到下一次渲染更新才派发，慢机/后台节流下一帧可达 100–200ms。
+ */
+export const LAYOUT_SHIFT_MS = 300;
+
+export function isLayoutMove(input: { now: number; lastMutationAt: number; resized: boolean }): boolean {
+    return input.resized || input.now - input.lastMutationAt < LAYOUT_SHIFT_MS;
 }
 
 /** 滚轮向上（内容往回翻）才是离开意图；横向/向下滚不算。 */

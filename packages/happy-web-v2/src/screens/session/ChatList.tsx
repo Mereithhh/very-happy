@@ -36,6 +36,8 @@ import {
     shouldFollowGrowth,
     shouldFollowShrink,
     shouldRepin,
+    REATTACH_PX,
+    isLayoutMove,
     shouldSmoothJumpToLatest,
     followAfterScroll,
     isUpwardWheel,
@@ -262,6 +264,7 @@ export function ChatList({
             ownScrollTopRef.current = el.scrollTop;
             // B-897: the baseline for `movedUp` in onScroll is our own write too.
             lastScrollTopRef.current = el.scrollTop;
+            lastScrollSizeRef.current = scrollSize(el);
         }
     };
 
@@ -331,6 +334,7 @@ export function ChatList({
             el.scrollTop = Math.min(before + delta, max);
             ownScrollTopRef.current = el.scrollTop;
             lastScrollTopRef.current = el.scrollTop;
+            lastScrollSizeRef.current = scrollSize(el);
             return { before, clamped: before + delta > max };
         };
         let last = write();
@@ -479,6 +483,11 @@ export function ChatList({
     // Only an actual upward move while dragging detaches (see onScroll).
     const scrollbarDragRef = useRef(false);
     const lastScrollTopRef = useRef(0);
+    // B-897b: content/viewport size at that baseline, and when the transcript DOM
+    // last changed — an upward move right after either is the browser clamping
+    // scrollTop through a transient layout, not the reader.
+    const lastScrollSizeRef = useRef('');
+    const lastMutationAtRef = useRef(-Infinity);
     const onScrollerPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
         if (e.target !== e.currentTarget) return;
         scrollbarDragRef.current = true;
@@ -521,10 +530,16 @@ export function ChatList({
         const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
         const movedUp = el.scrollTop < lastScrollTopRef.current;
         lastScrollTopRef.current = el.scrollTop;
+        const size = scrollSize(el);
+        const layoutMoved = isLayoutMove({ now: performance.now(), lastMutationAt: lastMutationAtRef.current, resized: size !== lastScrollSizeRef.current });
+        lastScrollSizeRef.current = size;
         if (scrollbarDragRef.current && movedUp) detachedRef.current = true;
+        const wasFollowing = atBottomRef.current && !detachedRef.current;
         // B-598: once detached, the 80px band no longer re-arms following.
-        const { atBottom, detached } = followAfterScroll(detachedRef.current, distance, { atBottom: atBottomRef.current, movedUp });
+        const { atBottom, detached } = followAfterScroll(detachedRef.current, distance, { atBottom: atBottomRef.current, movedUp, layoutMoved });
         detachedRef.current = detached;
+        // B-897b: a layout clamp pushed a following reader up — land again.
+        if (wasFollowing && movedUp && layoutMoved && distance > REATTACH_PX) scrollToBottom(false);
         setAtBottom(atBottom);
         awaySnapshotRef.current = nextAwaySnapshot(awaySnapshotRef.current, atBottom, rowKeys[rowKeys.length - 1] ?? null);
         setShowJump(!atBottom);
@@ -663,6 +678,12 @@ export function ChatList({
             followNextFrame();
         });
         ro.observe(inner);
+        // B-897b: any transcript DOM change (rows, streamed text, fold/unfold) stamps
+        // the time; onScroll reads it to tell a layout clamp from the reader.
+        const mo = typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => {
+            lastMutationAtRef.current = performance.now();
+        });
+        mo?.observe(inner, { childList: true, subtree: true, characterData: true, attributes: true });
         // B-114 ②：滚动容器自身变矮（软键盘弹起 resize 视口）时保持贴底——
         // 内容没变，上面的 growth 路永远不触发。同一个 rAF 防抖共用。
         const scroller = scrollRef.current;
@@ -681,6 +702,7 @@ export function ChatList({
         if (roScroller && scroller) roScroller.observe(scroller);
         return () => {
             ro.disconnect();
+            mo?.disconnect();
             roScroller?.disconnect();
             if (raf) cancelAnimationFrame(raf);
         };
@@ -982,6 +1004,11 @@ export function ChatList({
         </ReaderFollowContext.Provider>
         </MarkdownPathProvider>
     );
+}
+
+/** B-897b: content + viewport height of the scroller, compared across scroll events. */
+function scrollSize(el: HTMLElement): string {
+    return `${el.scrollHeight}x${el.clientHeight}`;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

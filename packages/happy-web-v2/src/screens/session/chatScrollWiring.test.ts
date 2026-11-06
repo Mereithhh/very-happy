@@ -20,10 +20,20 @@ describe('session-scoped transcript scrolling', () => {
     // pure decision (chatFollow.followAfterScroll); the resize follower re-pins a
     // following reader left short by a same-frame shrink-then-grow.
     it('keeps following when content grows below between a follow write and its scroll event', () => {
-        expect(chat).toContain('followAfterScroll(detachedRef.current, distance, { atBottom: atBottomRef.current, movedUp })');
+        expect(chat).toContain('followAfterScroll(detachedRef.current, distance, { atBottom: atBottomRef.current, movedUp, layoutMoved })');
         expect(chat).toMatch(/shouldFollowGrowth\(innerHeightRef\.current, next, atBottomRef\.current\)\s*\|\| shouldRepin\(innerHeightRef\.current, next, atBottomRef\.current, distance\)/);
         // movedUp is measured against our own writes too, not only the last scroll event.
         expect(chat).toMatch(/if \(!animate\) \{\s*ownScrollTopRef\.current = el\.scrollTop;[\s\S]{0,120}lastScrollTopRef\.current = el\.scrollTop;/);
+    });
+
+    // B-897b: WebKit clamps scrollTop through a transient layout at a turn's start/end and
+    // the next scroll event reads as an upward move. The handler must know the transcript DOM
+    // just changed (or the scroller resized) and land a following reader again.
+    it('treats an upward move right after a transcript change as a layout clamp, not the reader', () => {
+        expect(chat).toMatch(/new MutationObserver\(\(\) => \{\s*lastMutationAtRef\.current = performance\.now\(\);\s*\}\);\s*mo\?\.observe\(inner, \{ childList: true, subtree: true, characterData: true, attributes: true \}\);/);
+        expect(chat).toContain('isLayoutMove({ now: performance.now(), lastMutationAt: lastMutationAtRef.current, resized: size !== lastScrollSizeRef.current })');
+        expect(chat).toContain('if (wasFollowing && movedUp && layoutMoved && distance > REATTACH_PX) scrollToBottom(false);');
+        expect(chat).toMatch(/const wasFollowing = atBottomRef\.current && !detachedRef\.current;\s*\/\/ B-598/);
     });
 
     it('uses native vertical touch scrolling without browser scroll anchoring fighting bottom-follow', () => {

@@ -213,12 +213,26 @@ describe('new content at the bottom still follows', () => {
         grown.setAttribute('data-row', '');
         el.querySelector('.cl-inner')!.appendChild(grown);
         fireInnerResize();
-        // … but the reader scrolls up past the band before the next frame
+        // … but the reader scrolls up past the band (a wheel gesture) before the next frame
+        act(() => { el.dispatchEvent(new WheelEvent('wheel', { deltaY: -400, bubbles: true })); });
         userScrollTo(top - 400);
         const readingAt = distance();
         expect(readingAt).toBeGreaterThan(80);
         flushFrames();
         expect(distance()).toBe(readingAt);
+    });
+
+    // B-897b: WebKit clamps scrollTop through a transient layout at a turn's start/end; the
+    // scroll event reads as a 276–906px upward move with no gesture. Right after a transcript
+    // change that is the layout, not the reader: keep following and land again.
+    it('a gesture-less upward move right after a transcript change keeps following and lands again', () => {
+        const grown = document.createElement('div');
+        grown.setAttribute('data-row', '');
+        el.querySelector('.cl-inner')!.appendChild(grown);
+        fireInnerResize();
+        userScrollTo(top - 400);
+        flushFrames();
+        expect(distance()).toBe(0);
     });
 });
 
