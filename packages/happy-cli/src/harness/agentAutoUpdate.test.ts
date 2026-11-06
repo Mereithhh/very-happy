@@ -7,6 +7,10 @@ import {
     decideAgentAutoUpdate,
     resolveAgentAutoUpdateTickMs,
 } from './agentAutoUpdate';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { agentAutoUpdateStore, parseAgentAutoUpdatePersisted, type AgentAutoUpdatePersisted } from './agentAutoUpdateStore';
 
 const NOW = 1_800_000_000_000;
 const versions = (status = 'update-available', installed = '0.154.0', latest = '0.167.0'): AgentVersions => ({
@@ -122,6 +126,84 @@ describe('B-894 createAgentAutoUpdater', () => {
         const h = harness({ enabled: () => false });
         h.updater.onInstallState(h.done('failed', 'x'));
         expect(h.published).toEqual([]);
+    });
+});
+
+describe('B-894c attempts survive daemon restarts', () => {
+    const memStore = () => {
+        let state: AgentAutoUpdatePersisted = { attempts: {}, statuses: {} };
+        return { read: () => structuredClone(state), write: (s: AgentAutoUpdatePersisted) => { state = structuredClone(s); }, peek: () => state };
+    };
+    it('three restarts after an installed-but-still-outdated install = one install (QA56 P2-1)', async () => {
+        const store = memStore();
+        const request = vi.fn(async () => ({ accepted: true as const, harness: 'codex' as const }));
+        const first = harness({ store, request });
+        await first.updater.tick();
+        first.updater.onInstallState(first.done('installed'));
+        for (let restart = 1; restart <= 3; restart++) {
+            const next = harness({ store, request });
+            next.setNow(NOW + restart * 60_000);
+            await next.updater.tick();
+            expect(next.updater.statuses().codex).toMatchObject({ state: 'gave-up', target: '0.167.0' });
+        }
+        expect(request).toHaveBeenCalledTimes(1);
+    });
+    it('backoff and the attempt count carry over; the cap holds across restarts', async () => {
+        const store = memStore();
+        const request = vi.fn(async () => ({ accepted: true as const, harness: 'codex' as const }));
+        const a = harness({ store, request });
+        await a.updater.tick();
+        a.updater.onInstallState(a.done('failed', 'npm_exit_1'));
+        const b = harness({ store, request });
+        await b.updater.tick();
+        expect(request).toHaveBeenCalledTimes(1); // still in backoff after the restart
+        b.setNow(NOW + AGENT_AUTO_UPDATE_BACKOFF_MS);
+        await b.updater.tick();
+        b.updater.onInstallState(b.done('failed', 'npm_exit_1'));
+        expect(b.updater.statuses().codex).toMatchObject({ state: 'gave-up', attempts: 2 });
+        const c = harness({ store, request });
+        c.setNow(NOW + 10 * AGENT_AUTO_UPDATE_BACKOFF_MS);
+        await c.updater.tick();
+        expect(request).toHaveBeenCalledTimes(2);
+        expect(c.published[0]).toMatchObject({ codex: { state: 'gave-up' } }); // shown again right after the restart
+    });
+    it('a new release starts from zero even after giving up', async () => {
+        const store = memStore();
+        store.write({ attempts: { codex: { target: '0.167.0', attempts: 2, lastAt: NOW } }, statuses: { codex: { harness: 'codex', target: '0.167.0', state: 'gave-up', attempts: 2, at: NOW } } });
+        const h = harness({ store });
+        h.setVersions(versions('update-available', '0.154.0', '0.168.0'));
+        await h.updater.tick();
+        expect(h.request).toHaveBeenCalledTimes(1);
+        expect(store.peek().attempts.codex).toMatchObject({ target: '0.168.0', attempts: 1 });
+    });
+    it('an install cut off by the restart counts as a failed attempt, not a live one', async () => {
+        const store = memStore();
+        const a = harness({ store });
+        await a.updater.tick();
+        const b = harness({ store });
+        expect(b.updater.statuses().codex).toMatchObject({ state: 'failed', detail: 'interrupted_by_daemon_restart', attempts: 1 });
+        await b.updater.tick();
+        expect(a.request).toHaveBeenCalledTimes(1);
+        expect(b.request).not.toHaveBeenCalled(); // backoff
+    });
+    it('file store: round-trip, and a missing / malformed file is an empty state', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'agent-auto-update-'));
+        try {
+            const store = agentAutoUpdateStore(dir);
+            expect(store.read()).toEqual({ attempts: {}, statuses: {} });
+            writeFileSync(join(dir, 'agent-auto-update.json'), '{not json');
+            expect(store.read()).toEqual({ attempts: {}, statuses: {} });
+            const state: AgentAutoUpdatePersisted = {
+                attempts: { codex: { target: '0.167.0', attempts: 1, lastAt: NOW, succeeded: true } },
+                statuses: { codex: { harness: 'codex', target: '0.167.0', state: 'installed', attempts: 1, at: NOW } },
+            };
+            store.write(state);
+            expect(store.read()).toEqual(state);
+            expect(JSON.parse(readFileSync(join(dir, 'agent-auto-update.json'), 'utf8'))).toEqual(state);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+        expect(parseAgentAutoUpdatePersisted({ attempts: { codex: { target: 1 } }, statuses: { codex: { state: 'weird' } } })).toEqual({ attempts: {}, statuses: {} });
     });
 });
 

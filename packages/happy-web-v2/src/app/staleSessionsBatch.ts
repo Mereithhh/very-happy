@@ -13,9 +13,11 @@
  *    the Web sees AND the daemon's own per-session wait reason;
  *  - team sessions are listed but not pre-selected (restarting a lead or
  *    member interrupts its team's flow);
- *  - the restart itself asks the daemon `ifIdle` when it supports it
- *    (`daemonState.autoRestart.idleGuard`), so a turn that started after this
- *    snapshot is refused rather than killed.
+ *  - the restart itself always asks the daemon `ifIdle`, so a turn that
+ *    started after this snapshot is refused rather than killed. A daemon
+ *    without `daemonState.autoRestart.idleGuard` (older CLI) cannot refuse,
+ *    so the batch is disabled there (「升级 CLI 后可用」, B-894c); the
+ *    single-session restart on each banner is unchanged.
  *
  * Pure rules only (no store / network imports).
  */
@@ -107,6 +109,18 @@ export function batchRestartIds(entries: readonly StaleSessionEntry[], selected:
 export function daemonHasIdleGuard(daemonState: unknown): boolean {
     const ar = (daemonState as { autoRestart?: { idleGuard?: unknown } } | null | undefined)?.autoRestart;
     return ar?.idleGuard === true;
+}
+
+/** Why 「重启空闲的旧会话」 is unavailable, or null when it can run. Without the
+ *  daemon's idle guard the Web snapshot is the only protection, so a batch
+ *  could kill a turn that began after it (QA56 P1, Web ships before CLI). */
+export type BatchRestartBlock = 'offline' | 'needs-cli-upgrade' | 'none-selected' | 'running';
+export function batchRestartBlock(input: { online: boolean; daemonState: unknown; count: number; running: boolean }): BatchRestartBlock | null {
+    if (!input.online) return 'offline';
+    if (!daemonHasIdleGuard(input.daemonState)) return 'needs-cli-upgrade';
+    if (input.running) return 'running';
+    if (input.count === 0) return 'none-selected';
+    return null;
 }
 
 /** `busy:<reason>` — the daemon's ifIdle refusal → the skip it means. */

@@ -97,12 +97,13 @@ export type BatchRestartOutcome =
   | { id: string; result: 'failed'; reason: string };
 
 /** B-894 「重启空闲的旧会话」: one after another (each restart is a stop + spawn on
- *  the same daemon). A daemon `busy:` refusal is a skip, not a failure, and
+ *  the same daemon), always `ifIdle` — callers gate on the daemon's idle guard
+ *  (batchRestartBlock). A daemon `busy:` refusal is a skip, not a failure, and
  *  leaves no failed state behind on that session's banner. */
-export async function restartIdleStaleSessions(ids: readonly string[], opts: { ifIdle: boolean }): Promise<BatchRestartOutcome[]> {
+export async function restartIdleStaleSessions(ids: readonly string[]): Promise<BatchRestartOutcome[]> {
   const outcomes: BatchRestartOutcome[] = [];
   for (const id of ids) {
-    if (await restartBrokenSession(id, { ifIdle: opts.ifIdle })) {
+    if (await restartBrokenSession(id, { ifIdle: true })) {
       outcomes.push({ id, result: 'restarted' });
       continue;
     }

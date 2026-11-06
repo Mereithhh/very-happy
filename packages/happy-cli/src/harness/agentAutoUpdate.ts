@@ -12,11 +12,15 @@
  *   none after one succeeded (the version check still says outdated = the
  *   new binary is not the one on PATH). The last outcome is published so the
  *   Web shows a failure instead of silently retrying.
+ * - Attempts, backoff and the last outcome survive daemon restarts / handovers
+ *   (agentAutoUpdateStore, B-894c); they are per target, so a new release
+ *   starts from zero. An install cut off by the restart counts as a failure.
  * - Claude is not here: Web/remote sessions run the SDK binary bundled with
  *   the CLI, which moves with CLI releases.
  */
 import type { AgentVersions, HarnessInstallId, HarnessInstallState } from '@slopus/happy-wire';
 import type { HarnessInstallRequestResult } from './harnessInstaller';
+import type { AgentAutoUpdatePersisted } from './agentAutoUpdateStore';
 
 export const AGENT_AUTO_UPDATE_HARNESSES: readonly HarnessInstallId[] = ['codex'];
 export const AGENT_AUTO_UPDATE_MAX_ATTEMPTS = 2;
@@ -89,16 +93,43 @@ export function createAgentAutoUpdater(deps: {
     publish: (status: Record<string, AgentAutoUpdateStatus>) => void;
     log: (message: string) => void;
     now?: () => number;
+    /** Persisted state across daemon restarts (B-894c); omitted = memory only. */
+    store?: { read: () => AgentAutoUpdatePersisted; write: (state: AgentAutoUpdatePersisted) => void };
 }) {
     const now = deps.now ?? Date.now;
-    const attempts = new Map<HarnessInstallId, AgentAutoUpdateAttempt>();
-    const statuses: Record<string, AgentAutoUpdateStatus> = {};
+    const loaded = deps.store?.read() ?? { attempts: {}, statuses: {} };
+    const attempts = new Map<HarnessInstallId, AgentAutoUpdateAttempt>(
+        Object.entries(loaded.attempts).map(([harness, attempt]) => [harness as HarnessInstallId, attempt]));
+    const statuses: Record<string, AgentAutoUpdateStatus> = { ...loaded.statuses };
+    const save = () => {
+        try {
+            deps.store?.write({ attempts: Object.fromEntries(attempts), statuses: { ...statuses } });
+        } catch (error) {
+            deps.log(`[AGENT AUTO-UPDATE] could not save state: ${String(error)}`);
+        }
+    };
+    // An install the previous daemon was waiting on never reported back: a failed attempt, not a live one.
+    for (const status of Object.values(statuses)) {
+        if (status.state !== 'installing') continue;
+        const attempt = attempts.get(status.harness);
+        if (attempt?.target === status.target) attempt.detail = 'interrupted_by_daemon_restart';
+        statuses[status.harness] = {
+            ...status,
+            state: status.attempts >= AGENT_AUTO_UPDATE_MAX_ATTEMPTS ? 'gave-up' : 'failed',
+            detail: 'interrupted_by_daemon_restart',
+        };
+    }
+    if (Object.keys(statuses).length > 0) {
+        save();
+        deps.publish({ ...statuses });
+    }
     /** The install this updater started and is waiting on (harness-install publishes the outcome). */
     let pending: { harness: HarnessInstallId; target: string } | null = null;
     let ticking = false;
 
     const setStatus = (status: AgentAutoUpdateStatus) => {
         statuses[status.harness] = status;
+        save();
         deps.publish({ ...statuses });
     };
     const fail = (harness: HarnessInstallId, target: string, detail: string) => {
@@ -149,6 +180,7 @@ export function createAgentAutoUpdater(deps: {
                     if (prior?.target === decision.target) attempts.set(harness, prior); else attempts.delete(harness);
                     const before = statuses[harness];
                     delete statuses[harness];
+                    save();
                     if (before) deps.publish({ ...statuses });
                     continue;
                 }

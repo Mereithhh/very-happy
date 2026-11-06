@@ -536,9 +536,12 @@ Those never-reporting old wrappers (`very-happy daemon list` shows them as
 under 「旧版会话」 (B-894), and every such session's sidebar row carries an
 「旧版」 tag. 「重启空闲的旧会话」 restarts the checked ones in place after one
 confirmation: sessions with a turn running, an approval waiting or background
-tasks are skipped with the reason, team sessions are listed unchecked, and a
-daemon with `autoRestart.idleGuard` re-checks each restart (`restart-session
-{ ifIdle }` → `busy:<reason>`) so a turn that started meanwhile is not killed.
+tasks are skipped with the reason, team sessions are listed unchecked, and the
+daemon re-checks each restart (`restart-session { ifIdle }` → `busy:<reason>`)
+so a turn that started meanwhile is not killed. That re-check needs a daemon
+with `autoRestart.idleGuard`; on an older CLI the button is disabled with
+「升级 CLI 后可用」 (B-894c — Web ships before the CLI, and some machines stay
+on old versions), while each session's own restart banner still works.
 The daemon itself still never restarts them.
 
 Agent CLIs are separate (B-894). Claude in Web sessions is the binary bundled
@@ -551,7 +554,10 @@ lets the daemon update an outdated Codex itself once no Codex turn is running,
 through the same installer; idle Codex sessions then restart onto it (B-852
 agent staleness). A failed install is shown and retried at most once per
 version (30 min apart); a success the version check does not confirm (another
-`codex` earlier on PATH) is reported as a failure, never retried.
+`codex` earlier on PATH) is reported as a failure, never retried. Attempts,
+backoff and the last outcome are kept in `$HAPPY_HOME_DIR/agent-auto-update.json`
+so a daemon restart or handover does not reinstall the same version (B-894c);
+they are per target version, so the next Codex release starts from zero.
 
 Since CLI 0.2.183 (B-770) a launchd-owned daemon hands over through its job.
 The daemon records `supervisor: launchd` only when `launchctl print` shows the

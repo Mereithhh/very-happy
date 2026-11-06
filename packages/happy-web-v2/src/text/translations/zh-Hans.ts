@@ -6508,6 +6508,7 @@ export const zhHans: TranslationStructure = {
         skipRestarting: '跳过：正在重启',
         select: ({ name }: { name: string }) => `重启 ${name}`,
         restartIdle: ({ count }: { count: number }) => `重启空闲的旧会话（${count}）`,
+        needsCliUpgrade: '升级 CLI 后可用：这台机器的 CLI 版本无法在会话开始干活时拒绝重启，批量重启可能打断它。在此之前可在各会话的横幅里单独重启。',
         confirmTitle: ({ count }: { count: number }) => `重启 ${count} 个旧会话？`,
         confirmBody: '每个会话会停下并以当前版本重新启动，对话保留。轮到它之前开始干活的会话会被跳过。',
         confirmAction: '重启',

@@ -77,6 +77,7 @@ import { createPolicyRefreshTrigger, createWakeDetector } from '@/update/policyR
 import { createDaemonOwnership } from '@/daemon/daemonOwnership';
 import { createHarnessInstaller } from '@/harness/harnessInstaller';
 import { createAgentAutoUpdater, resolveAgentAutoUpdateTickMs } from '@/harness/agentAutoUpdate';
+import { agentAutoUpdateStore } from '@/harness/agentAutoUpdateStore';
 import { runNpm } from '@/update/npmInstall';
 import { HARNESS_INSTALL_CAPABILITY_VERSION } from '@slopus/happy-wire';
 import { createProjectPresenceReporter } from './projectPresence';
@@ -2352,6 +2353,7 @@ export async function startDaemon(): Promise<void> {
       request: (harness) => harnessInstaller!.request({ harness }),
       publish: (status) => { void apiMachine.setAgentAutoUpdateStatus(status); },
       log: (message) => logger.warn(`[DAEMON RUN] ${message}`),
+      store: agentAutoUpdateStore(configuration.happyHomeDir),
     });
     const agentAutoUpdateInterval = setInterval(() => { void agentAutoUpdater?.tick(); }, resolveAgentAutoUpdateTickMs(process.env.HAPPY_AGENT_AUTO_UPDATE_TICK_MS));
     agentAutoUpdateInterval.unref?.();

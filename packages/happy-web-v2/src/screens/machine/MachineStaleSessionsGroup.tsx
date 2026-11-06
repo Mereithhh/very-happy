@@ -13,7 +13,7 @@ import { useAllSessions } from '@/sync/storage';
 import { backgroundTaskCount, useHeartbeatLeaseBump } from '@/sync/heartbeatLease';
 import { getSessionName } from '@/utils/sessionUtils';
 import { readMachineAutoRestart } from '@/app/autoRestartPolicy';
-import { batchRestartIds, daemonHasIdleGuard, staleSessionsForMachine, type StaleSessionSkip } from '@/app/staleSessionsBatch';
+import { batchRestartBlock, batchRestartIds, staleSessionsForMachine, type StaleSessionSkip } from '@/app/staleSessionsBatch';
 import { restartIdleStaleSessions, useSessionRestart } from '@/app/sessionRestartAction';
 import type { Machine } from '@/sync/storageTypes';
 
@@ -44,16 +44,17 @@ export function MachineStaleSessionsGroup({ machine, online }: { machine: Machin
     const selected = new Set(entries.filter((e) => choices[e.id] ?? e.defaultSelected).map((e) => e.id));
     const ids = batchRestartIds(entries, selected);
     const byId = new Map(sessions.map((s) => [s.id, s]));
+    const block = batchRestartBlock({ online, daemonState: machine.daemonState, count: ids.length, running });
 
     const run = async () => {
-        if (running || ids.length === 0) return;
+        if (block) return;
         const ok = await Modal.confirm(t('staleSessions.confirmTitle', { count: ids.length }), t('staleSessions.confirmBody'), {
             confirmText: t('staleSessions.confirmAction'),
         });
         if (!ok) return;
         setRunning(true);
         try {
-            const outcomes = await restartIdleStaleSessions(ids, { ifIdle: daemonHasIdleGuard(machine.daemonState) });
+            const outcomes = await restartIdleStaleSessions(ids);
             const restarted = outcomes.filter((o) => o.result === 'restarted').length;
             const nowSkipped = Object.fromEntries(outcomes.flatMap((o) => o.result === 'skipped' ? [[o.id, o.reason]] : []));
             const failed = outcomes.filter((o) => o.result === 'failed').length;
@@ -94,9 +95,10 @@ export function MachineStaleSessionsGroup({ machine, online }: { machine: Machin
                 );
             })}
             <div className="set-note" style={{ padding: 'var(--sp-2) var(--sp-3) var(--sp-3)' }}>
-                <Button variant="secondary" loading={running} disabled={!online || ids.length === 0 || running} onClick={() => void run()}>
+                <Button variant="secondary" loading={running} disabled={block !== null} onClick={() => void run()}>
                     {t('staleSessions.restartIdle', { count: ids.length })}
                 </Button>
+                {block === 'needs-cli-upgrade' && <div style={{ marginTop: 'var(--sp-2)' }}>{t('staleSessions.needsCliUpgrade')}</div>}
             </div>
         </ItemGroup>
     );

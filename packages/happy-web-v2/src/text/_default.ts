@@ -6685,6 +6685,7 @@ export const en = {
         skipRestarting: 'Skipped: already restarting',
         select: ({ name }: { name: string }) => `Restart ${name}`,
         restartIdle: ({ count }: { count: number }) => count === 1 ? 'Restart 1 idle session' : `Restart ${count} idle sessions`,
+        needsCliUpgrade: 'Available after upgrading the CLI on this machine: this version cannot tell when a session starts working, so a batch restart could interrupt it. Restart sessions one at a time from their banner meanwhile.',
         confirmTitle: ({ count }: { count: number }) => count === 1 ? 'Restart 1 old session?' : `Restart ${count} old sessions?`,
         confirmBody: 'Each one stops and comes back on the current version with its conversation kept. A session that starts working before its turn is skipped.',
         confirmAction: 'Restart',

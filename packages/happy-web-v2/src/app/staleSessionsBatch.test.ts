@@ -3,6 +3,7 @@ import {
     batchRestartIds,
     busyRefusal,
     daemonHasIdleGuard,
+    batchRestartBlock,
     staleSessionSkip,
     staleSessionsForMachine,
     type StaleBatchSessionLike,
@@ -75,5 +76,20 @@ describe('B-894 batchRestartIds / daemon guard', () => {
         expect(busyRefusal('busy:background-tasks')).toBe('background-tasks');
         expect(busyRefusal('restart:too-many')).toBeNull();
         expect(busyRefusal(undefined)).toBeNull();
+    });
+});
+
+describe('B-894c batch restart needs the daemon idle guard', () => {
+    const guarded = { autoRestart: { idleGuard: true } };
+    it('an old daemon (no idleGuard) disables the batch even with idle sessions checked', () => {
+        expect(batchRestartBlock({ online: true, daemonState: {}, count: 3, running: false })).toBe('needs-cli-upgrade');
+        expect(batchRestartBlock({ online: true, daemonState: { autoRestart: { idleGuard: false } }, count: 3, running: false })).toBe('needs-cli-upgrade');
+        expect(batchRestartBlock({ online: true, daemonState: null, count: 1, running: false })).toBe('needs-cli-upgrade');
+    });
+    it('a guarded daemon allows it; offline / nothing checked / running still block', () => {
+        expect(batchRestartBlock({ online: true, daemonState: guarded, count: 2, running: false })).toBeNull();
+        expect(batchRestartBlock({ online: false, daemonState: guarded, count: 2, running: false })).toBe('offline');
+        expect(batchRestartBlock({ online: true, daemonState: guarded, count: 0, running: false })).toBe('none-selected');
+        expect(batchRestartBlock({ online: true, daemonState: guarded, count: 2, running: true })).toBe('running');
     });
 });
