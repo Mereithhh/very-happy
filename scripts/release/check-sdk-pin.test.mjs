@@ -32,6 +32,14 @@ test('stale after 5 releases or 14 days since the first newer one (11-06 real ca
     assert.equal(old.stale, true);
 });
 
+test('versions above the latest dist-tag (not promoted yet) do not count (11-06: pin 0.3.318, latest 0.3.318, 0.3.319 published)', () => {
+    const reg = registry([['0.3.318', NOW - DAY], ['0.3.319', NOW]]);
+    reg['dist-tags'].latest = '0.3.318';
+    const r = sdkPinFreshness({ pinned: '0.3.318', registry: reg, now: NOW });
+    assert.equal(r.behind, 0);
+    assert.match(message(r), /is current/);
+});
+
 test('pre-releases are ignored', () => {
     const reg = registry([['0.3.306', NOW]]);
     reg.versions['0.3.400-beta.1'] = {};

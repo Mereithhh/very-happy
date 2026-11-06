@@ -20,7 +20,8 @@ const newer = (a, b) => { const x = parse(a), y = parse(b); for (let i = 0; i < 
 export function sdkPinFreshness({ pinned, registry, now = Date.now() }) {
     const latest = registry?.['dist-tags']?.latest ?? null;
     const stable = Object.keys(registry?.versions ?? {}).filter((v) => parse(v).length === 3);
-    const behind = stable.filter((v) => newer(v, pinned)).sort((a, b) => (newer(a, b) ? 1 : -1));
+    // Only releases up to the `latest` dist-tag count: a newer one not promoted yet is not "behind".
+    const behind = stable.filter((v) => newer(v, pinned) && (!latest || !newer(v, latest))).sort((a, b) => (newer(a, b) ? 1 : -1));
     const firstNewerAt = behind.length ? Date.parse(registry?.time?.[behind[0]] ?? '') : NaN;
     const days = Number.isFinite(firstNewerAt) ? Math.floor((now - firstNewerAt) / 86_400_000) : 0;
     const stale = behind.length >= WARN_BEHIND_RELEASES || (behind.length > 0 && days >= WARN_BEHIND_DAYS);
