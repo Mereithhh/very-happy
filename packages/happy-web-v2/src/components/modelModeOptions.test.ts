@@ -11,8 +11,7 @@ import {
     getEffortLevelsForModel,
     getHardcodedModelModes,
     getHardcodedPermissionModes,
-    relabelDefaultModel,
-} from './modelModeOptions';
+    relabelDefaultModel, codexModelGate, withClaudeCatalogBases, catalogRunnableKeys } from './modelModeOptions';
 
 describe('resolved default model labels', () => {
     it('keeps the concrete model value while removing the redundant Claude prefix', () => {
@@ -32,20 +31,22 @@ describe('resolved default model labels', () => {
 });
 
 describe('Claude model picker (Fable 5.1)', () => {
-    it('mirrors the bundled Claude Code 2.1.281 /model aliases and pins Opus 5.5', () => {
+    it('mirrors the bundled Claude Code 2.1.318 /model aliases and pins Opus 5.5 and Fable 5.1', () => {
         const modes = getClaudeModelModes();
         const byKey = Object.fromEntries(modes.map((m) => [m.key, m.name]));
         expect(byKey).toMatchObject({
             default: 'default model',
-            fable: 'Fable 5.1',
-            'fable[1m]': 'Fable 5.1 · 1M',
+            'claude-fable-5-1': 'Fable 5.1',
+            'claude-fable-5-1[1m]': 'Fable 5.1 · 1M',
+            fable: 'fable (alias)',
+            'fable[1m]': 'fable (alias) · 1M',
             'claude-opus-5-5': 'Opus 5.5',
             'claude-opus-5-5[1m]': 'Opus 5.5 · 1M',
             opus: 'opus (alias)',
             'opus[1m]': 'opus (alias) · 1M',
-            sonnet: 'Sonnet 5',
-            'sonnet[1m]': 'Sonnet 5 · 1M',
-            haiku: 'Haiku 4.5',
+            sonnet: 'Sonnet 5.5',
+            'sonnet[1m]': 'Sonnet 5.5 · 1M',
+            haiku: 'Haiku 5.5',
             opusplan: 'opusplan',
             best: 'best',
         });
@@ -166,12 +167,44 @@ describe('model-specific reasoning catalogs', () => {
         expect(getEffortLevelsForModel('codex', 'gpt-6-sol', metadata).map(x => x.key)).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
         expect(getEffortLevelsForModel('codex', 'gpt-6-luna', metadata).map(x => x.key)).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
     });
-    it('offers gpt-6-sol and gpt-6-luna even when the Codex catalog lacks them', () => {
+    it('B-893: offers the whole gpt-6 generation even when the Codex catalog lacks it', () => {
         const t = (k: string) => k;
-        const metadata = { models: [{ code: 'gpt-6-astra', value: 'GPT-6-Astra' }, { code: 'gpt-5.5', value: 'GPT-5.5' }] } as any;
+        // Codex 0.154's model/list (dev-sg, 2026-11-06): astra and 5.6-* only.
+        const metadata = { models: [{ code: 'gpt-6-astra', value: 'GPT-6-Astra' }, { code: 'gpt-5.6-sol', value: 'GPT-5.6-Sol' }, { code: 'gpt-5.5', value: 'GPT-5.5' }] } as any;
         expect(getAvailableModels('codex', metadata, t as any).map((m) => m.key))
-            .toEqual(['default', 'gpt-6-sol', 'gpt-6-luna', 'gpt-6-astra', 'gpt-5.5']);
-        expect(getCodexModelModes().map((m) => m.key)).toEqual(expect.arrayContaining(['gpt-6-sol', 'gpt-6-luna']));
+            .toEqual(['default', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.5']);
+        expect(getCodexModelModes().map((m) => m.key).slice(1, 6)).toEqual(['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
+    });
+    it('B-893: marks a gpt-6 model this machine\'s Codex does not bundle, never one it does', () => {
+        const catalog154 = new Set(['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.5']);
+        expect(codexModelGate('gpt-6.1-sol', { catalogCodes: catalog154, agentVersion: '0.154.0' })).toEqual({ since: '0.160.0' });
+        expect(codexModelGate('gpt-6.1-terra', { catalogCodes: catalog154, agentVersion: '0.154.0' })).toEqual({ since: '0.165.0' });
+        expect(codexModelGate('gpt-6-sol', { catalogCodes: catalog154, agentVersion: '0.154.0' })).toEqual({ since: '0.157.0' });
+        // astra is in every catalog since 0.154; listed models and new-enough Codex are never marked.
+        expect(codexModelGate('gpt-6-astra', { catalogCodes: catalog154, agentVersion: '0.154.0' })).toBeNull();
+        expect(codexModelGate('gpt-6-sol', { catalogCodes: new Set(['gpt-6-sol']), agentVersion: '0.154.0' })).toBeNull();
+        expect(codexModelGate('gpt-6.1-terra', { catalogCodes: catalog154, agentVersion: '0.167.0' })).toBeNull();
+        // Version unknown: the catalog decides; neither known → nothing to say.
+        expect(codexModelGate('gpt-6-sol', { catalogCodes: catalog154 })).toEqual({ since: '0.157.0' });
+        expect(codexModelGate('gpt-6-sol', {})).toBeNull();
+        // No catalog yet (new-session dialog): the installed version decides.
+        expect(codexModelGate('gpt-6.1-sol', { agentVersion: '0.157.2' })).toEqual({ since: '0.160.0' });
+        expect(codexModelGate('gpt-6.1-sol', { agentVersion: 'v0.160.0' })).toBeNull();
+    });
+    it('B-893: a [1m]-only Claude catalog entry (Fable, CC 2.1.30x+) gets its plain id, both named by version', () => {
+        const t = (k: string) => k;
+        // SDK 0.3.318 supportedModels() on dev-sg, 2026-11-06.
+        const metadata = { models: [
+            { code: 'default', value: 'Default (recommended)', resolvedModel: 'claude-opus-5-5' },
+            { code: 'opus', value: 'Opus 5.5', resolvedModel: 'claude-opus-5-5' },
+            { code: 'claude-fable-5-1[1m]', value: 'Fable', resolvedModel: 'claude-fable-5-1' },
+            { code: 'sonnet', value: 'Sonnet 5', resolvedModel: 'claude-sonnet-5' },
+        ] } as any;
+        const keysAndNames = getAvailableModels('claude', metadata, t as any).map((m) => `${m.key}=${m.name}`);
+        expect(keysAndNames).toEqual(expect.arrayContaining(['claude-fable-5-1=Fable 5.1', 'claude-fable-5-1[1m]=Fable 5.1 · 1M']));
+        expect(keysAndNames.indexOf('claude-fable-5-1=Fable 5.1')).toBe(keysAndNames.indexOf('claude-fable-5-1[1m]=Fable 5.1 · 1M') - 1);
+        expect(withClaudeCatalogBases([{ key: 'x[1m]', name: 'x' }])).toEqual([{ key: 'x[1m]', name: 'x' }]);
+        expect([...catalogRunnableKeys('claude', ['claude-fable-5-1[1m]'])]).toEqual(['claude-fable-5-1[1m]', 'claude-fable-5-1', 'claude-opus-5-5']);
     });
     it('uses ACP thought levels independently of permissions, including legacy pi levels', () => {
         const thoughtLevels = [{ code: 'off', value: 'Off' }, { code: 'custom', value: 'Deep' }];

@@ -83,8 +83,12 @@ export type LatestModelsResponse = z.infer<typeof LatestModelsResponseSchema>;
  *   (CLI >= 0.2.149, B-487).
  * - Codex: the sol tier is the flagship — it is `isDefault` in Codex 0.160+'s
  *   `model/list`. Bundled catalogs: gpt-6-sol from 0.157.0, gpt-6.1-sol from
- *   0.160.0 (bisected over 0.154–0.166). `codex exec -m` ran gpt-6.1-sol,
- *   gpt-6-sol and gpt-5.6-sol end to end on 0.166.0.
+ *   0.160.0 (bisected over 0.154–0.166; re-checked 2026-11-06 for B-893,
+ *   gpt-6.1-terra from 0.165.0). `agentVersion` is that catalog threshold, not
+ *   a run threshold: `codex exec -m` ran gpt-6.1-sol/terra, gpt-6-sol/luna/astra
+ *   end to end on llm-hub with Codex 0.154.0 and 0.167.0 (B-893). Follow-latest
+ *   still only resolves to what a wrapper proves; the picker lists the rest
+ *   marked (web codexModelGate).
  * - Gemini: gemini-3.1-pro-preview is the newest pro in the picker; Gemini
  *   sessions resolve it only from their own published catalog.
  */

@@ -92,26 +92,30 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 /**
  * Claude model picker. Most keys are Claude Code `--model` aliases — the CLI,
  * not this list, decides what they resolve to, so their labels mirror the
- * wrapper's bundled Claude Code (SDK 0.3.281 / CC 2.1.281: fable → Fable 5.1,
- * opus → Opus 5.5, sonnet → Sonnet 5, haiku → Haiku 4.5). Opus 5.5 is also
- * offered as a pinned id so it stays Opus 5.5 whatever the alias points at;
- * it is the code default (agentDefaults.ts). `[1m]` is Claude Code's
- * 1M-context marker (accepted by the daemon resume path since B-290).
- * `fable5` (pinned Fable 5) is deliberately absent: 2.1.258 rejects it with
- * `unrecognized_model` (probed 2026-09-03).
+ * wrapper's bundled Claude Code (SDK 0.3.318 / CC 2.1.318 without machine
+ * overrides: opus → Opus 5.5, sonnet → Sonnet 5.5, haiku → Haiku 5.5; probed
+ * 2026-11-06). Opus 5.5 and Fable 5.1 are also offered as pinned ids so they
+ * stay put whatever the aliases point at — CC 2.1.318's own catalog lists
+ * Fable only as `claude-fable-5-1[1m]` (B-893). Opus 5.5 is the code default
+ * (agentDefaults.ts). `[1m]` is Claude Code's 1M-context marker (accepted by
+ * the daemon resume path since B-290). `fable5` (pinned Fable 5) is
+ * deliberately absent: 2.1.258 rejects it with `unrecognized_model` (probed
+ * 2026-09-03).
  */
 export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
         ...CLAUDE_PINNED_MODELS,
-        { key: 'fable', name: 'Fable 5.1', description: null },
-        { key: 'fable[1m]', name: 'Fable 5.1 · 1M', description: null },
+        { key: 'claude-fable-5-1', name: 'Fable 5.1', description: null },
+        { key: 'claude-fable-5-1[1m]', name: 'Fable 5.1 · 1M', description: null },
+        { key: 'fable', name: 'fable (alias)', description: null },
+        { key: 'fable[1m]', name: 'fable (alias) · 1M', description: null },
         { key: 'best', name: 'best', description: null },
         { key: 'opus', name: 'opus (alias)', description: null },
         { key: 'opus[1m]', name: 'opus (alias) · 1M', description: null },
-        { key: 'sonnet', name: 'Sonnet 5', description: null },
-        { key: 'sonnet[1m]', name: 'Sonnet 5 · 1M', description: null },
-        { key: 'haiku', name: 'Haiku 4.5', description: null },
+        { key: 'sonnet', name: 'Sonnet 5.5', description: null },
+        { key: 'sonnet[1m]', name: 'Sonnet 5.5 · 1M', description: null },
+        { key: 'haiku', name: 'Haiku 5.5', description: null },
         { key: 'opusplan', name: 'opusplan', description: null },
     ];
 }
@@ -121,23 +125,103 @@ const CLAUDE_PINNED_MODELS: ModelMode[] = [
     { key: 'claude-opus-5-5[1m]', name: 'Opus 5.5 · 1M', description: null },
 ];
 
+const LONG_CONTEXT = '[1m]';
+
+/** `claude-fable-5-1` → 「Fable 5.1」; anything else null. */
+function claudeIdName(id: string): string | null {
+    const match = /^claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2}))?$/.exec(id);
+    if (!match) return null;
+    return `${match[1][0].toUpperCase()}${match[1].slice(1)} ${match[2]}${match[3] ? `.${match[3]}` : ''}`;
+}
+
 /**
- * Codex models newer than the catalog Codex's own `model/list` returns (0.154
- * bundles gpt-6-astra and gpt-5.6-*). Both were run end to end through
- * `codex exec -m` at low…ultra effort on 2026-09-24.
+ * B-893: Claude Code 2.1.30x+ lists Fable only as `claude-fable-5-1[1m]`
+ * (display name 「Fable」). With no plain entry the picker could not make it
+ * its family's newest (1M twins ride on a base entry), so it sank into
+ * 「更多模型」. Add the plain id before such a twin, and name both by version.
  */
-const CODEX_EXTRA_MODELS: ModelMode[] = [
-    { key: 'gpt-6-sol', name: 'gpt-6-sol', description: null },
-    { key: 'gpt-6-luna', name: 'gpt-6-luna', description: null },
+export function withClaudeCatalogBases(models: ModelMode[]): ModelMode[] {
+    const keys = new Set(models.map((model) => model.key));
+    const out: ModelMode[] = [];
+    for (const model of models) {
+        const base = model.key.endsWith(LONG_CONTEXT) ? model.key.slice(0, -LONG_CONTEXT.length) : null;
+        const name = base ? claudeIdName(base) : null;
+        if (base && name && !keys.has(base)) {
+            out.push({ key: base, name, description: model.description ?? null });
+            keys.add(base);
+        }
+        out.push(base && name ? { ...model, name: `${name} · 1M` } : model);
+    }
+    return out;
+}
+
+/**
+ * Keys the wrapper's catalog proves it runs, for 「newest of the family」:
+ * the codes, the plain id of a `[1m]`-only entry, Claude's pinned Opus 5.5
+ * (listed only as the `opus` alias) and — Codex — the gpt-6 generation, which
+ * every Codex on llm-hub runs whether or not it bundles the entry (B-893).
+ */
+export function catalogRunnableKeys(flavor: AgentFlavor, codes: readonly string[], opts: { claudeOpus55?: boolean } = {}): Set<string> {
+    const out = new Set(codes);
+    for (const code of codes) if (code.endsWith(LONG_CONTEXT)) out.add(code.slice(0, -LONG_CONTEXT.length));
+    if (flavor === 'codex') for (const { key } of CODEX_KNOWN_MODELS) out.add(key);
+    if (flavor === 'claude' && opts.claudeOpus55 !== false) out.add('claude-opus-5-5');
+    return out;
+}
+
+/**
+ * B-893: the gpt-6 generation, newest first, with the first Codex whose
+ * bundled `model/list` carries each (`codex debug models`, bisected over
+ * 0.154–0.167 on 2026-11-06). An older Codex still runs them — 0.154 ran all
+ * five end to end through `codex exec -m` on llm-hub — it only lacks their
+ * catalog entry (effort levels, context window), so the picker lists them
+ * everywhere and marks the gap (codexModelGate) instead of hiding them.
+ */
+export const CODEX_KNOWN_MODELS: ReadonlyArray<{ key: string; since?: string }> = [
+    { key: 'gpt-6.1-sol', since: '0.160.0' },
+    { key: 'gpt-6.1-terra', since: '0.165.0' },
+    { key: 'gpt-6-astra' },
+    { key: 'gpt-6-sol', since: '0.157.0' },
+    { key: 'gpt-6-luna', since: '0.157.0' },
 ];
+
+const CODEX_EXTRA_MODELS: ModelMode[] = CODEX_KNOWN_MODELS.map(({ key }) => ({ key, name: key, description: null }));
+
+/**
+ * The Codex version a known model needs in its bundled catalog, when this
+ * machine's Codex lacks it: not in the session's catalog and the installed
+ * version (if known) is older. Null = nothing to mark.
+ */
+export function codexModelGate(
+    key: string,
+    input: { catalogCodes?: ReadonlySet<string> | null; agentVersion?: string | null },
+): { since: string } | null {
+    const since = CODEX_KNOWN_MODELS.find((model) => model.key === key)?.since;
+    if (!since || input.catalogCodes?.has(key)) return null;
+    // Installed version decides; unknown version → a catalog without it does.
+    const below = input.agentVersion ? versionBelow(input.agentVersion, since) : null;
+    if (below === false || (below === null && !input.catalogCodes?.size)) return null;
+    return { since };
+}
+
+function versionBelow(a: string, b: string): boolean | null {
+    const parse = (value: string) => {
+        const parts = value.trim().replace(/^v/, '').split(/[-+]/)[0].split('.').map(Number);
+        return parts.every((part) => Number.isInteger(part) && part >= 0) ? parts : null;
+    };
+    const left = parse(a);
+    const right = parse(b);
+    if (!left || !right) return null;
+    for (let i = 0; i < Math.max(left.length, right.length); i++) {
+        const diff = (left[i] ?? 0) - (right[i] ?? 0);
+        if (diff !== 0) return diff < 0;
+    }
+    return false;
+}
 
 export function getCodexModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
-        // Codex 0.160+ bundles gpt-6.1-sol (its default) and gpt-6.1-terra.
-        { key: 'gpt-6.1-sol', name: 'gpt-6.1-sol', description: null },
-        { key: 'gpt-6.1-terra', name: 'gpt-6.1-terra', description: null },
-        { key: 'gpt-6-astra', name: 'gpt-6-astra', description: null },
         ...CODEX_EXTRA_MODELS,
         { key: 'gpt-5.6-sol', name: 'gpt-5.6-sol', description: null },
         { key: 'gpt-5.6-terra', name: 'gpt-5.6-terra', description: null },
@@ -310,7 +394,8 @@ export function getAvailableModels(
     metadata: Metadata | null | undefined,
     translate: Translate,
 ): ModelMode[] {
-    const metadataModels = labelPinnedAliases(flavor, metadata, mapMetadataOptions(metadata?.models));
+    const mapped = mapMetadataOptions(metadata?.models);
+    const metadataModels = labelPinnedAliases(flavor, metadata, flavor === 'claude' ? withClaudeCatalogBases(mapped) : mapped);
     if (metadataModels.length > 0) {
         const extras = getCatalogExtras(flavor, metadata).filter((extra) => !metadataModels.some((model) => model.key === extra.key));
         const [first, ...rest] = metadataModels;

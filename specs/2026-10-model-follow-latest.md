@@ -109,6 +109,16 @@ sentinel 永不上线：web `resolveMessageModeMeta`、`resolveDefaultModelMode`
   X 指跟随项实际要跑的模型（`followEntryModel`）：本机配置钉了模型时是钉的那个，不是同档最新。钉配置的机器上，这个模型也会作为机器的自定义模型（B-688，读自 config.toml）出现，同样按此规则只在被固定时列出（`customModelsBesideFollow`，B-844d / QA23 P2-3）。
 - **设置页「当前」按机器解析**（P2-2/P2-3）：每台机器取该智能体**最新创建**的会话，用 `resolveLatestForAgent(table, agent, 会话 metadata)` 解析，与发送时 `resolveMessageModeMeta` 走的是同一个函数（capability + catalog + configuredModel），不读表头。机器按名称排序，账号级的值：各机一致时显示该值，不一致时显示「跟随最新（因机器而异）」，没有会话时显示「跟随最新（取决于机器）」；展开后的说明逐台列出。这样新建会话只会改变**那台**机器的值，账号级的值不再随「最新会话在哪台机器」来回跳。
 
+### 选择器列表（B-893，2026-11-06）
+
+「跟随最新」的解析不变（只解析到 wrapper 证明能跑的模型）；变的是选择器**列什么**：
+
+- **Codex 门槛是 catalog 门槛，不是运行门槛。** `agentVersion` 是 Codex 自带 `model/list` 开始收录某模型的版本（`codex debug models` 二分：6-sol/6-luna 0.157.0、6.1-sol 0.160.0、6.1-terra 0.165.0）；0.154.0 和 0.167.0 在 llm-hub 上用 `codex exec -m` 都跑通了 gpt-6.1-sol/terra、gpt-6-sol/luna/astra。
+  因此 web `CODEX_KNOWN_MODELS` 把整个 gpt-6 代都列出，并算作「各档最新」候选（`catalogRunnableKeys`）；本机 Codex 没收录的那几个标「本机 Codex 未内置 · 更新到 X+ 获得完整支持」（`codexModelGate`：catalog 里没有，且已知版本低于门槛；版本未知时以 catalog 为准），可以选，不会消失。Codex 二进制的升级由 B-894 负责。
+- **Claude 主列表：Opus 与 Fable 两个旗舰家族在前**（家族顺序 opus → fable → sonnet → haiku）。根因：CC 2.1.30x 起 SDK catalog 只给 Fable 一个 `claude-fable-5-1[1m]` 条目（没有 `fable` alias 和不带 1M 的 id），而选择器只从非 `[1m]` 条目里选家族最新，`[1m]` 只挂在基础条目的开关上——没有基础条目，Fable 就落进了「更多模型」。
+  修法在选择器侧（没有改 latestModels 的单 tier 结构）：`withClaudeCatalogBases` 为只有 `[1m]` 的条目补上基础 id（按版本命名为「Fable 5.1」），`catalogRunnableKeys` 把基础 id 算作可运行；代码兜底列表也加上固定 id `claude-fable-5-1`（+1M）。
+- **输入模型名（Claude / Codex）**：选择器底部「输入模型名…」，只改当前会话（和点选一样走 `updateSessionModelMode`），本浏览器按 agent 记住最近 3 个（`sync/customModelInput.ts`）。校验取所有链路的交集：daemon 恢复会话的 precheck 只认 `[A-Za-z0-9][A-Za-z0-9._:-]{0,63}` 加可选 `[1m]`，超出的名字恢复时会被丢掉（等于悄悄换成默认），所以在输入时就拒绝；`latest` / `default` 是保留名。不要求在 catalog 里。上游拒绝时沿用现有路径：Claude `setModel` 报「not a recognized model id」时提示并留在原模型，`model_not_found` 走 retired 提示（B-634）。
+
 ### 单一来源
 
 `latestModels.json`（wire 打包进 web/CLI/server 作兜底）→ server `GET /v1/models/latest`（匿名、

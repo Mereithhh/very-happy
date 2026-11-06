@@ -38,7 +38,11 @@ import {
     getEffortLevelsForModel,
     compactResolvedModelCode,
     relabelDefaultModel,
+    catalogRunnableKeys,
+    codexModelGate,
 } from '@/components/modelModeOptions';
+import { checkCustomModelName, recentCustomModelsStore, useRecentCustomModels } from '@/sync/customModelInput';
+import { readAgentVersions } from '@/app/agentVersions';
 import { isImeGuardedEvent, useImeGuard } from '@/utils/ime';
 import { insertComposerNewline, insertComposerText, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
 import { listArrowDelta } from '@/utils/listArrowKey';
@@ -408,6 +412,9 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const configHarness = harnessForFlavor(flavor);
     const canConfigureModels = !!configMachineId && !!configHarness && !!configMachine;
     const customModels = useCustomPickerModels(configMachineId, configHarness);
+    // B-893: names typed into the picker (Claude / Codex), remembered per agent in this browser.
+    const typedModelAgent = configHarness === 'claude' || configHarness === 'codex' ? configHarness : null;
+    const recentTypedModels = useRecentCustomModels(typedModelAgent);
     const [modelEditorOpen, setModelEditorOpen] = useState(false);
     // B-851b: a fork without its own catalog yet borrows its parent's (same machine + agent).
     const parentMetadata = useSession(metadata?.models?.length ? '' : metadata?.parentSessionId ?? '')?.metadata;
@@ -457,15 +464,26 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         offersFollowLatest ? customModelsBesideFollow(customModels, followEntryModel(followState), followingLatest ? LATEST_MODEL_MODE : modelKey) : customModels,
         t('modelConfig.customModelDescription'),
     );
+    const typedModels = recentTypedModels.filter((key) => !pickedModels.some((option) => option.key === key));
+    const withTypedModels = withCustomModels(pickedModels, typedModels, t('session.chat.modelPicker.customRecent'));
     // B-849a: newest per family up top, 1M as a switch, the rest under 「更多模型」, our own descriptions.
+    // B-893: plus the plain id of a `[1m]`-only catalog entry (Fable) and Codex's gpt-6 generation.
     const runnableModels = catalogModels?.length
-        ? new Set([...catalogModels.map((model) => model.code), ...(normalizeAgentKey(flavor) === 'claude' && (!session || supportsClaudeOpus55(metadata)) ? ['claude-opus-5-5'] : [])])
+        ? catalogRunnableKeys(normalizeAgentKey(flavor), catalogModels.map((model) => model.code), { claudeOpus55: !session || supportsClaudeOpus55(metadata) })
         : null;
-    const listedModels = localizeModelDescriptions(flavor, withLongContextTwins(flavor, pickedModels, t('session.chat.modelPicker.longContext')), {
+    // B-893: a gpt-6 model this machine's Codex does not bundle stays listed, marked.
+    const codexVersion = normalizeAgentKey(flavor) !== 'codex' ? null
+        : session ? readAgentVersions(configMachine?.daemonState)?.agents.find((entry) => entry.id === 'codex')?.installed ?? null
+            : launcherContext?.agentVersion ?? null;
+    const catalogCodes = catalogModels?.length ? new Set(catalogModels.map((model) => model.code)) : null;
+    const listedModels = localizeModelDescriptions(flavor, withLongContextTwins(flavor, withTypedModels, t('session.chat.modelPicker.longContext')), {
         resolved: resolvedModelOf,
-        keep: new Set([LATEST_MODEL_MODE, 'default', ...customModels]),
+        keep: new Set([LATEST_MODEL_MODE, 'default', ...customModels, ...typedModels]),
         runnable: runnableModels,
         translate: t,
+    }).map((option) => {
+        const gate = normalizeAgentKey(flavor) === 'codex' ? codexModelGate(option.key, { catalogCodes, agentVersion: codexVersion }) : null;
+        return gate ? { ...option, description: t('session.chat.modelPicker.codexNeedsUpdate', { version: gate.since }) } : option;
     });
     // B-849b2 (QA28 P2-3): a model the picker does not list is shown as itself
     // (what is sent and run), 「未知模型」 when the wrapper's catalog lacks it.
@@ -543,7 +561,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         followModel: offersFollowLatest ? followEntryModel(followState) : null,
         resolved: resolvedModelOf,
         runnable: runnableModels,
-        customKeys: customModels,
+        customKeys: [...customModels, ...typedModels],
     });
     // B-849a: an old CLI's Codex/Gemini wrapper does not report its machine
     // config model, so what follow-latest runs there is unknown — say that.
@@ -1756,6 +1774,18 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                             : setMode('updateSessionModelMode', 'modelMode', key)}
                         account={accountSection ? { label: t('accounts.sectionLabel'), ...accountSection, onChoose: chooseAccount } : undefined}
                         triggerPrefix={accountPrefix}
+                        customModel={typedModelAgent && !apiModelOptions && !isGemini ? {
+                            entryLabel: t('session.chat.modelPicker.customEntry'),
+                            placeholder: t('session.chat.modelPicker.customPlaceholder'),
+                            submitLabel: t('session.chat.modelPicker.customUse'),
+                            hint: t('session.chat.modelPicker.customHint'),
+                            check: (raw) => {
+                                const result = checkCustomModelName(raw);
+                                if (!result.ok) return { ok: false, error: t(`session.chat.modelPicker.customErrors.${result.reason}`) };
+                                recentCustomModelsStore.getState().remember(typedModelAgent, result.value);
+                                return result;
+                            },
+                        } : undefined}
                         subtitle={modelSubtitle}
                         notice={runFactsUnknown ? { text: t('session.chat.modelPicker.unknownNote'), extra: upgradeMachineId ? <UpgradeCliLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.upgradeCli')} /> : undefined } : undefined}
                         readOnly={isGemini ? { value: metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.modelPicker.geminiReadOnly'), hint: t('session.chat.modelPicker.geminiReadOnlyHint') } : undefined}

@@ -2,6 +2,7 @@ import type { Metadata } from './storageTypes';
 import { normalizeAgentKey, type LauncherMachineContext } from './agentDefaults';
 import { readLongContextUnsupported } from '@slopus/happy-wire';
 import { readAgentVersions } from '@/app/agentVersions';
+import { catalogRunnableKeys } from '@/components/modelModeOptions';
 import { machineCliVersion, type StaleWrapperMachineLike } from '@/app/staleWrapperPolicy';
 
 /**
@@ -81,13 +82,13 @@ export function launcherMachineContext(
 export type LauncherModelSource = { context: LauncherMachineContext | null; catalogs: Metadata[] };
 
 /**
- * QA26 P2-7: the model keys these catalogs can run (Claude: plus pinned Opus
- * 5.5, which the SDK lists only as its `opus` alias) — what lets Settings fold
+ * QA26 P2-7: the model keys these catalogs can run (catalogRunnableKeys: plus
+ * pinned Opus 5.5, `[1m]`-only bases and Codex's gpt-6 generation) — what lets Settings fold
  * an old version (Sonnet 5) that no machine runs as its family's newest.
  * Null with no catalog: nothing proves what runs, nothing is folded for it.
  */
 export function runnableFromCatalogs(flavor: string | null | undefined, catalogs: readonly Metadata[]): ReadonlySet<string> | null {
     const codes = catalogs.flatMap((catalog) => (catalog.models ?? []).map((model) => model.code));
     if (codes.length === 0) return null;
-    return new Set([...codes, ...(normalizeAgentKey(flavor) === 'claude' ? ['claude-opus-5-5'] : [])]);
+    return catalogRunnableKeys(normalizeAgentKey(flavor), codes);
 }

@@ -2,7 +2,7 @@
  * B-849b: what a Claude session really runs, read from Claude Code itself.
  *
  * `Query.getSettings()` (the `get_settings` control request; present at runtime
- * in the pinned SDK 0.3.306, missing from its .d.ts — hence the narrow
+ * in the pinned SDK 0.3.306 and 0.3.318, missing from their .d.ts — hence the narrow
  * assertion) answers with
  *   - `effective.model`: the model settings.json pins, merged by Claude Code
  *     across user / project / local exactly as it applies them → the session's
