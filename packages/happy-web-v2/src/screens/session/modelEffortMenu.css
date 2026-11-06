@@ -123,7 +123,7 @@
 .me-custom { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-1) var(--sp-2); }
 .me-custom-row { display: flex; gap: var(--sp-2); }
 .me-custom-input { flex: 1; min-width: 0; height: 32px; padding: 0 var(--sp-2); border: var(--hairline) solid var(--line-2); border-radius: var(--r-sm); background: var(--bg-1); color: var(--text); font: inherit; font-family: var(--font-mono); font-size: var(--fs-12); }
-.me-custom-input:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.me-custom-input:focus { outline: none; border-color: var(--text-dim); }
 .me-custom-input[aria-invalid='true'] { border-color: var(--danger); }
 .me-custom-use { flex: none; height: 32px; padding: 0 var(--sp-3); border: 0; border-radius: var(--r-sm); background: var(--text); color: var(--bg-0); font: inherit; font-size: var(--fs-12); font-weight: 600; cursor: pointer; }
 .me-custom-use:focus-visible { outline: none; box-shadow: var(--focus-ring); }
