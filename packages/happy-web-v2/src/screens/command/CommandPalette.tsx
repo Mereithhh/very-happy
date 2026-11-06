@@ -20,6 +20,7 @@ import {
   HardDrive,
   MessageSquarePlus,
   Download,
+  FolderKanban,
   X,
 } from 'lucide-react';
 import { useSessions, storage, useLocalSetting } from '@/sync/storage';
@@ -31,6 +32,8 @@ import { formatSessionAge } from '@/screens/sessions/newTerminalAttach';
 import { requestChatJump } from '@/screens/search/chatJump';
 import { pickerOwnsKey } from '@/screens/search/pickerOwnsKey';
 import { useSessionSearch } from '@/screens/search/useSessionSearch';
+import { prepareSearch, reasonLine, type PreparedSearch } from '@/screens/search/searchMatch';
+import { entityPassesFilters, projectSearchRows, teamSearchRows } from '@/screens/search/searchDocs';
 import {
   matchSessionSearchChord,
   terminalPassesFilters,
@@ -111,6 +114,11 @@ import { OVERLAY_PRIORITY, useOverlayTurn } from '@/app/overlayQueue';
 const OPEN_EVENT = COMMAND_PALETTE_OPEN_EVENT;
 // B-873: the issue dialog loads with the Issues chunk, only when asked for.
 const NewIssueDialog = lazy(() => import('@/screens/issues/IssueDialogs').then((m) => ({ default: m.NewIssueDialog })));
+/** B-895: an action's search fields — its title plus hidden keywords (never shown as a reason). */
+function kw(title: string, keywords?: string): PreparedSearch {
+  return prepareSearch({ title, fields: keywords ? [{ kind: 'keyword', text: keywords }] : [] });
+}
+
 export function openCommandPalette() {
   window.dispatchEvent(new Event(OPEN_EVENT));
 }
@@ -121,10 +129,8 @@ type CommandItem = {
   title: string;
   subtitle?: string;
   icon: React.ReactNode;
-  /** lower-cased haystack for substring matching */
-  haystack: string;
-  /** chat/terminal tags — `#tag` query terms filter on these (sidebar grammar) */
-  tags?: string[];
+  /** B-895: what the one search rule matches (searchMatch); rows built per query (settings, content…) have none */
+  search?: PreparedSearch;
   /** optional keyboard-shortcut hint rendered on the row's right edge */
   hint?: string;
   /** B-552 等我看 rows: the sidebar's status mark + "how long ago" */
@@ -132,6 +138,8 @@ type CommandItem = {
   /** B-865: highlighted title (content rows) */
   titleRanges?: Range[];
   subtitleRanges?: Range[];
+  /** B-895b: the title equals the whole query — ranks above project / team rows. */
+  exactTitle?: boolean;
   /** B-865: what was said — each snippet opens the session on that hit */
   snippets?: ResultSnippet[];
   openSnippet?: (snippet: ResultSnippet) => void;
@@ -411,7 +419,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionNewTerminal'),
       icon: <TerminalSquare size={16} />,
-      haystack: (t('commandPalette.actionNewTerminal') as string).toLowerCase(),
+      search: kw(t('commandPalette.actionNewTerminal') as string),
       hint: NEW_TERMINAL_SHORTCUT_HINT,
       run: openNewTerminal,
     });
@@ -422,7 +430,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionNewTerminalAt'),
       icon: <FolderOpen size={16} />,
-      haystack: `terminal directory cwd ${(t('commandPalette.actionNewTerminalAt') as string).toLowerCase()}`,
+      search: kw(t('commandPalette.actionNewTerminalAt') as string, 'terminal directory cwd'),
       run: dialogs.newTerminalAt,
     });
     out.push({
@@ -431,7 +439,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionAttachTmux'),
       icon: <TerminalSquare size={16} />,
-      haystack: `tmux attach session ${(t('commandPalette.actionAttachTmux') as string).toLowerCase()}`,
+      search: kw(t('commandPalette.actionAttachTmux') as string, 'tmux attach session'),
       run: dialogs.attachTmux,
     });
     out.push({
@@ -440,7 +448,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionImportClaude'),
       icon: <History size={16} />,
-      haystack: `import claude code history conversation desktop resume ${(t('commandPalette.actionImportClaude') as string).toLowerCase()}`,
+      search: kw(t('commandPalette.actionImportClaude') as string, 'import claude code history conversation desktop resume'),
       run: () => dialogs.importHistory('claude'),
     });
     out.push({
@@ -449,7 +457,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionImportCodex'),
       icon: <History size={16} />,
-      haystack: `import codex history thread conversation desktop resume ${(t('commandPalette.actionImportCodex') as string).toLowerCase()}`,
+      search: kw(t('commandPalette.actionImportCodex') as string, 'import codex history thread conversation desktop resume'),
       run: () => dialogs.importHistory('codex'),
     });
     out.push({
@@ -458,7 +466,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionSearchHistory'),
       icon: <History size={16} />,
-      haystack: `search history full text conversation transcript find content claude codex ${(t('commandPalette.actionSearchHistory') as string).toLowerCase()}`,
+      search: kw(t('commandPalette.actionSearchHistory') as string, 'search history full text conversation transcript find content claude codex'),
       run: dialogs.searchHistory,
     });
     out.push({
@@ -468,7 +476,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('connectMachine.cta'),
       icon: <HardDrive size={16} />,
-      haystack: `connect machine add daemon install cli ${(t('connectMachine.cta') as string).toLowerCase()}`,
+      search: kw(t('connectMachine.cta') as string, 'connect machine add daemon install cli'),
       run: () => navigate('/machine/connect'),
     });
     out.push({
@@ -476,7 +484,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionNewChat'),
       icon: <Plus size={16} />,
-      haystack: (t('commandPalette.actionNewChat') as string).toLowerCase(),
+      search: kw(t('commandPalette.actionNewChat') as string),
       // Quick create (same flow as the sidebar "+"): spawn directly, fall
       // back to the full dialog only when the quick path can't decide.
       run: () => void createChatOrConfigure(navigate, (target) => dialogs.newChat(target), { location }),
@@ -486,7 +494,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionNewChatAdvanced'),
       icon: <MessageSquare size={16} />,
-      haystack: (t('commandPalette.actionNewChatAdvanced') as string).toLowerCase(),
+      search: kw(t('commandPalette.actionNewChatAdvanced') as string),
       run: () => dialogs.newChat(),
     });
     if (issuesEnabled) {
@@ -495,7 +503,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         group: 'actions',
         title: issueCopy.paletteNewEmpty,
         icon: <ListTodo size={16} />,
-        haystack: `new issue 新建 issue ${issueCopy.paletteNewEmpty.toLowerCase()}`,
+        search: kw(issueCopy.paletteNewEmpty, 'new issue 新建 issue'),
         run: () => dialogs.newIssue(),
       });
     }
@@ -506,7 +514,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         group: 'actions',
         title: t('quickOpen.paletteAction'),
         icon: <FileSearch size={16} />,
-        haystack: `open file quick find path ${(t('quickOpen.paletteAction') as string).toLowerCase()}`,
+        search: kw(t('quickOpen.paletteAction') as string, 'open file quick find path'),
         hint: IS_MAC ? '⌘P' : 'Ctrl+P',
         run: openQuickOpen,
       });
@@ -515,7 +523,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         group: 'actions',
         title: t('commandPalette.actionRenameSession'),
         icon: <Pencil size={16} />,
-        haystack: (t('commandPalette.actionRenameSession') as string).toLowerCase(),
+        search: kw(t('commandPalette.actionRenameSession') as string),
         run: renameCurrent,
       });
       const currentSession = (sessions ?? []).find(
@@ -533,7 +541,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
           group: 'actions',
           title: t('commandPalette.actionRestoreSession'),
           icon: <RotateCcw size={16} />,
-          haystack: (t('commandPalette.actionRestoreSession') as string).toLowerCase(),
+          search: kw(t('commandPalette.actionRestoreSession') as string),
           run: () => void restoreSessionOrAlert(currentSessionId),
         });
       }
@@ -543,7 +551,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
           group: 'actions',
           title: t('commandPalette.actionArchiveSession'),
           icon: <Archive size={16} />,
-          haystack: (t('commandPalette.actionArchiveSession') as string).toLowerCase(),
+          search: kw(t('commandPalette.actionArchiveSession') as string),
           run: archiveCurrent,
         });
       }
@@ -553,7 +561,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: lang.startsWith('zh') ? '团队' : 'Teams',
       icon: <UsersRound size={16} />,
-      haystack: 'happy bot teams 团队 机器人',
+      search: kw(lang.startsWith('zh') ? '团队' : 'Teams', 'happy bot teams 团队 机器人'),
       run: () => navigate('/teams'),
     });
     out.push({
@@ -561,7 +569,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionClipboardHistory'),
       icon: <ClipboardList size={16} />,
-      haystack: (t('commandPalette.actionClipboardHistory') as string).toLowerCase(),
+      search: kw(t('commandPalette.actionClipboardHistory') as string),
       run: openClipboardHistory,
     });
     out.push({
@@ -569,7 +577,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionNotes'),
       icon: <StickyNote size={16} />,
-      haystack: `notes ${(t('commandPalette.actionNotes') as string).toLowerCase()}`,
+      search: kw(t('commandPalette.actionNotes') as string, 'notes'),
       hint: IS_MAC ? '⌘J' : 'Ctrl+J',
       run: toggleNotesPanel,
     });
@@ -578,7 +586,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionAllNotes'),
       icon: <StickyNote size={16} />,
-      haystack: `notes ${(t('commandPalette.actionAllNotes') as string).toLowerCase()}`,
+      search: kw(t('commandPalette.actionAllNotes') as string, 'notes'),
       run: () => navigate('/notes'),
     });
     out.push({
@@ -586,7 +594,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionTodos'),
       icon: <ListChecks size={16} />,
-      haystack: `todos todo ${(t('commandPalette.actionTodos') as string).toLowerCase()}`,
+      search: kw(t('commandPalette.actionTodos') as string, 'todos todo'),
       run: () => navigate('/todos'),
     });
     out.push({
@@ -594,7 +602,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'actions',
       title: t('commandPalette.actionOpenSettings'),
       icon: <Settings size={16} />,
-      haystack: (t('commandPalette.actionOpenSettings') as string).toLowerCase(),
+      search: kw(t('commandPalette.actionOpenSettings') as string),
       run: () => navigate('/settings'),
     });
 
@@ -610,17 +618,14 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       // sessions (assistant, terminal mirrors) at the source; keep the
       // predicate here so a storage-lane refactor can't leak them into search.
       if (isHiddenSession(s)) continue;
-      const title = getSessionName(s);
-      const sub = getSessionSubtitle(s);
-      const path = s.metadata?.path ?? '';
       out.push({
         key: `session:${s.id}`,
         group: 'sessions',
-        title,
-        subtitle: sub,
+        title: doc.title,
+        subtitle: getSessionSubtitle(s),
         icon: <MessageSquare size={16} />,
-        haystack: `${title} ${sub} ${path}`.toLowerCase(),
-        tags: s.metadata?.tags,
+        // B-895: title, project, team, 负责人, members, sharer, tags, machine, path (useSessionSearch)
+        search: doc.search,
         ...(doc.archived ? { badge: 'archived' as const } : {}),
         run: () => navigate(`/session/${s.id}`),
       });
@@ -636,8 +641,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         title: term.title,
         subtitle: sub,
         icon: <TerminalSquare size={16} />,
-        haystack: `${term.title} ${sub}`.toLowerCase(),
-        tags: term.tags,
+        search: prepareSearch({ title: term.title, fields: [{ kind: 'machine', text: sub }], tags: term.tags }),
         run: () => navigate(`/terminal/${term.machineId}?tid=${term.id}`),
       });
     }
@@ -680,7 +684,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         title,
         subtitle: getSessionSubtitle(s),
         icon: <MessageSquare size={16} />,
-        haystack: title.toLowerCase(),
+        search: prepareSearch({ title }),
         status: {
           execution: boardItemExecution(item),
           unread: unreadIds.has(s.id),
@@ -694,8 +698,28 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
     });
   }, [needsYou, sessions, unreadIds, navigate, passingIds]);
 
-  // ── filter (paletteModel: substring + sidebar `#tag` grammar, unchanged),
-  // then one display order shared by rendering and ↑↓/Enter ──
+  // B-895: projects and teams as result rows (free-text queries only), narrowed by the filter bar.
+  const projectsReady = search.projects.status === 'ready';
+  const entityItems = useMemo<CommandItem[]>(() => {
+    const projectName = new Map(search.projects.projects.map((p) => [p.id, p.name]));
+    const rows = [
+      ...(projectsReady ? projectSearchRows(search.projects.projects, search.teams, search.incomingProjects, search.labels) : []),
+      ...teamSearchRows(search.teams, (id) => projectName.get(id), search.labels),
+    ];
+    return rows.filter((row) => entityPassesFilters(row, filters)).map((row) => ({
+      key: row.key,
+      group: row.kind === 'project' ? 'projects' as const : 'teams' as const,
+      title: row.title,
+      icon: row.kind === 'project' ? <FolderKanban size={16} /> : <UsersRound size={16} />,
+      search: row.search,
+      ...(row.archived ? { badge: 'archived' as const } : {}),
+      run: () => navigate(row.href),
+    }));
+  }, [projectsReady, search.projects.projects, search.teams, search.incomingProjects, search.labels, filters, navigate]);
+
+  // ── filter (B-895: searchMatch — AND terms, title > project/team/people >
+  // tag > machine/path, ties by recency), then one display order shared by
+  // rendering and ↑↓/Enter ──
   const filtered = useMemo<CommandItem[]>(() => {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -717,15 +741,20 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
           title: settingsIndex.displayText(entry.title, lang, t),
           subtitle: settingsIndex.displayText(settingsIndex.sectionTitle(entry.section), lang, t),
           icon: <Settings size={16} />,
-          haystack: '',
-          run: () => navigate(settingsIndex.settingHref(entry)),
+              run: () => navigate(settingsIndex.settingHref(entry)),
         }))
       : [];
     // B-865: one row per session. A title match keeps its 「会话」 row and gains
     // its content snippets (Enter still just opens it — a quick switch must
     // not land mid-transcript; a snippet click jumps). Sessions found only by
     // what was said form 「对话内容」, after the instant groups.
-    const base = filterPaletteItems(items, query);
+    const indexed = (parsedQuery.text ? [...items, ...entityItems] : items).filter((it): it is CommandItem & { search: PreparedSearch } => !!it.search);
+    // B-895: highlight the title; a row found by project / team / people / tag / machine / path says so in its second line.
+    const base = filterPaletteItems(indexed, query).map(({ it, match }): CommandItem => {
+      if (!match) return it;
+      const reason = match.reasons.length ? reasonLine(match.reasons) : null;
+      return { ...it, titleRanges: match.titleRanges, exactTitle: match.exactTitle, ...(reason ? { subtitle: reason.text, subtitleRanges: reason.ranges } : {}) };
+    });
     const titleIds = new Set(base.filter((it) => it.group === 'sessions').map((it) => it.key.slice('session:'.length)));
     const split = splitSearchRows(search.rows, titleIds);
     const byKey = new Map(items.map((it) => [it.key, it]));
@@ -747,7 +776,6 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       subtitle: row.subtitle,
       subtitleRanges: row.subtitleRanges,
       icon: row.importable ? <Download size={16} /> : <MessageSquare size={16} />,
-      haystack: '',
       snippets: row.snippets,
       openSnippet: (sn) => { close(); openSearchRow(row, sn); },
       ...(row.importable ? { badge: 'importable' as const } : row.archived ? { badge: 'archived' as const } : {}),
@@ -762,7 +790,6 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       title: `${issue.key} ${issue.title}`,
       subtitle: issueCopy.statuses[issue.status] ?? issue.status,
       icon: <ListTodo size={16} />,
-      haystack: '',
       run: () => navigate(`/issues/${encodeURIComponent(issue.key)}`),
     }));
     const issueCreate: CommandItem[] = issuesEnabled && issueHits.length === 0 && query.trim() ? [{
@@ -770,7 +797,6 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'create' as const,
       title: issueCopy.paletteNew(query.trim()),
       icon: <ListTodo size={16} />,
-      haystack: '',
       run: () => dialogs.newIssue(query.trim()),
     }] : [];
     const matched = orderPaletteItems([...[...base, ...extraTitle].map(withSnippets), ...issueRows, ...contentRows, ...settingsRows]);
@@ -782,13 +808,12 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       group: 'create' as const,
       title: createTitle,
       icon: <MessageSquarePlus size={16} />,
-      haystack: '',
       // Same entry as "New chat"; the query becomes the composer draft (quick
       // path) or the dialog's initial instruction (configure path) — never sent
       // on its own.
       run: () => void createChatOrConfigure(navigate, (target) => dialogs.newChat(target, draft), { location, draft }),
     }, ...issueCreate];
-  }, [items, needsYouItems, query, t, lang, navigate, dialogs, location, settingsIndex, search.rows, close, openHit, openSearchRow, issuesEnabled, issuesMap, issueCopy]);
+  }, [items, entityItems, parsedQuery.text, needsYouItems, query, t, lang, navigate, dialogs, location, settingsIndex, search.rows, close, openHit, openSearchRow, issuesEnabled, issuesMap, issueCopy]);
 
   const keys = useMemo(() => filtered.map((it) => it.key), [filtered]);
   const activeIndex = resolveActiveIndex(keys, active);
@@ -881,6 +906,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       needsYou: t('sidebar.groupWaiting'),
       actions: t('commandPalette.groupActions'),
       sessions: t('commandPalette.groupSessions'),
+      projects: t('commandPalette.groupProjects'),
+      teams: t('commandPalette.groupTeams'),
       issues: issueCopy.paletteGroup,
       content: t('commandPalette.groupContent'),
       terminals: t('commandPalette.groupTerminals'),
@@ -1029,7 +1056,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
             <div className="cp-empty">{t('commandPalette.empty')}</div>
           ) : (
             groups.map((grp) => (
-              <div key={grp.group} className={`cp-group cp-group--${grp.group}`}>
+              <div key={`${grp.group}:${grp.rows[0]?.index ?? -1}`} className={`cp-group cp-group--${grp.group}`}>
                 {grp.label ? (
                   <div className="cp-group-label">
                     <span>{grp.label}</span>
@@ -1106,6 +1133,12 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
             ))
           )}
         </div>
+
+        {/* B-895: archived sessions beyond the newest ~150 are not in this tab (the server lists every
+            unarchived one, archived only among the newest); their words still surface under 「对话内容」. */}
+        {query.trim() && (filters.status === 'all' || filters.status === 'archived') ? (
+          <div className="cp-group-detail cp-coverage-note">{t('sessionSearch.archivedCoverage')}</div>
+        ) : null}
 
         <div className="cp-footer">
           <span>{t('commandPalette.hintNavigate')}</span>

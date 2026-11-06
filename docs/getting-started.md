@@ -302,8 +302,10 @@ The guide also points to the everyday tools that are easy to miss:
   `Command/Ctrl+.` opens saved prompts, and `Command/Ctrl+J` toggles scratch
   notes. Visible sidebar and header buttons provide the same paths on touch.
 - `Command/Ctrl+Shift+F` and the sidebar search button open the same palette:
-  it searches every session's title, project and tags plus the conversations on
-  each online machine; a snippet opens the session on the hit.
+  it searches every session's title, project, team (lead and members), sharer
+  and tags plus the conversations on each online machine, and lists matching
+  projects and teams too. Every word must match; title hits rank first and a
+  row found another way shows why. A snippet opens the session on the hit.
 - The sidebar groups sessions by [project](projects.md). Sessions outside a
   project are grouped by folder, and **Make this folder a project** turns one
   into a project whose sessions share instructions and a decision log.

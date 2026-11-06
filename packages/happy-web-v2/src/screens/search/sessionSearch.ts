@@ -17,6 +17,7 @@ import type { Message } from '@/sync/typesMessage';
 import type { HistoryEntry } from '@/screens/sessions/claudeHistoryImport';
 import type { HistorySearchHit } from '@/screens/sessions/historySearch';
 import { parseSidebarQuery, tagsMatchSidebarQuery, type ParsedSidebarQuery } from '@/screens/sessions/sidebarSearch';
+import { termsInFields, type PreparedSearch } from './searchMatch';
 
 export const MAX_QUERY_TERMS = 8;
 export const MAX_ROW_SNIPPETS = 3;
@@ -152,7 +153,7 @@ export interface SessionSearchRow {
     subtitleRanges: Range[];
     updatedAt: number;
     archived: boolean;
-    /** The title / directory / tags / project matched. */
+    /** B-895: every term occurs in the title / project / team / tags / machine / path fields (searchMatch). */
     metaHit: boolean;
     snippets: ResultSnippet[];
 }
@@ -163,8 +164,8 @@ export interface SessionSearchDoc {
     title: string;
     /** Displayed second line (host · agent · path). */
     subtitle: string;
-    /** Extra searchable words not displayed (project name, branch, machine name). */
-    extra: string;
+    /** B-895: the fields searchMatch ranks (title, project, team, 负责人, members, sharer, tags, machine, path). */
+    search: PreparedSearch;
     tags: string[];
     updatedAt: number;
     archived: boolean;
@@ -189,9 +190,9 @@ export function searchLocalSessions(
     const rows: SessionSearchRow[] = [];
     for (const doc of docs) {
         if (!tagsMatchSidebarQuery(doc.tags, q.tagQuery)) continue;
-        const head = `${doc.title}\n${doc.subtitle}\n${doc.extra}\n${doc.tags.join(' ')}`;
-        const found = termsIn(head, q.terms);
-        const metaHit = q.terms.length > 0 && found.size > 0;
+        const found = termsInFields(doc.search, q.terms);
+        // B-895: AND, as the header says (was: any one term in the metadata).
+        const metaHit = found.size === q.terms.length;
         const snippets: ResultSnippet[] = [];
         const messages = cached.get(doc.sessionId);
         if (messages && q.terms.length > 0) {
@@ -221,7 +222,7 @@ export function searchLocalSessions(
             subtitleRanges: matchRanges(doc.subtitle, q.terms),
             updatedAt: doc.updatedAt,
             archived: doc.archived,
-            metaHit: metaHit || (q.terms.length === 0),
+            metaHit,
             snippets,
         });
     }

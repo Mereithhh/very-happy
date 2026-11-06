@@ -13,17 +13,21 @@ import { EMPTY_FILTERS, type ResultSnippet, type SessionSearchFilters, type Sess
 import {
   parseSidebarQuery,
   sidebarQueryIsEmpty,
-  tagsMatchSidebarQuery,
 } from '@/screens/sessions/sidebarSearch';
+import { parseSearchQuery, rankSearch, searchQueryIsEmpty, type PreparedSearch, type SearchMatch } from '@/screens/search/searchMatch';
 
 /** Display sections, top to bottom. Keyboard order follows the same list.
  *  `settings` (B-575): item-level settings hits, only for a free-text query.
  *  `content` (B-865): sessions found by what was said (daemon `history-search`
  *  + loaded messages) whose title did not match, and importable conversations. */
-export type PaletteGroup = 'needsYou' | 'actions' | 'sessions' | 'issues' | 'content' | 'terminals' | 'settings' | 'create';
+export type PaletteGroup = 'needsYou' | 'actions' | 'sessions' | 'projects' | 'teams' | 'issues' | 'content' | 'terminals' | 'settings' | 'create';
 export const PALETTE_GROUP_ORDER: readonly PaletteGroup[] = [
   'needsYou',
   'actions',
+  // B-895: projects and teams by name / members / sharer (free-text queries only).
+  // Above 「会话」: a handful of rows at most, and a long session list would push them off screen.
+  'projects',
+  'teams',
   'sessions',
   // B-873: issues by key / title (only while the server has Issues on)
   'issues',
@@ -170,36 +174,44 @@ export function boardItemExecution(item: Pick<BoardItem, 'status' | 'backgroundT
 
 export interface PaletteMatchable {
   group: PaletteGroup;
-  /** lower-cased haystack for substring matching */
-  haystack: string;
-  /** `#tag` query terms AND-filter on these (sidebar grammar) */
-  tags?: string[];
+  /** B-895: the row's typed fields (title, project, team, tags, machine, path…; searchMatch). */
+  search: PreparedSearch;
+}
+
+export interface PaletteHit<T> {
+  it: T;
+  /** null for an empty query (nothing to explain or highlight). */
+  match: SearchMatch | null;
 }
 
 /**
- * The palette's existing match (moved out of the component unchanged):
- * empty query → everything; otherwise `#tag` terms filter on row tags and the
- * free-text remainder is a case-insensitive substring match, ranked by match
- * position. Ties keep group order. Items without tags fail tag constraints.
+ * B-895: the palette runs the one search rule (searchMatch.rankSearch) —
+ * every whitespace term must occur (AND, across fields), title hits rank above
+ * project / team / member hits, then tags, then machine / path; ties go to the
+ * unarchived, then the most recent, then input order. `#tag` terms filter on
+ * row tags (sidebar grammar). Empty query → every row, unranked. The display
+ * still regroups (orderPaletteItems), so ranking orders rows inside a group.
  */
-export function filterPaletteItems<T extends PaletteMatchable>(items: T[], query: string): T[] {
-  const parsed = parseSidebarQuery(query);
-  if (sidebarQueryIsEmpty(parsed)) return items;
-  const rank = groupRank();
-  return items
-    .filter((it) => tagsMatchSidebarQuery(it.tags, parsed))
-    .map((it) => ({ it, score: parsed.text ? it.haystack.indexOf(parsed.text) : 0 }))
-    .filter((x) => x.score >= 0)
-    .sort((a, b) => a.score - b.score || rank[a.it.group] - rank[b.it.group])
-    .map((x) => x.it);
+export function filterPaletteItems<T extends PaletteMatchable>(items: readonly T[], query: string): PaletteHit<T>[] {
+  const q = parseSearchQuery(query);
+  if (searchQueryIsEmpty(q)) return items.map((it) => ({ it, match: null }));
+  return rankSearch(items, q, (it) => it.search).map(({ row, match }) => ({ it: row, match }));
 }
 
 /**
  * Stable regroup into display order. Rendering and ↑↓/Enter both read this
  * one sequence, so the highlighted row is always the one Enter runs.
+ * B-895b: a chat whose title equals the whole query (`exactTitle`) moves
+ * ahead of the 项目 / 团队 rows, so Enter opens that chat rather than a
+ * same-named project or team; the other chats stay below them.
  */
-export function orderPaletteItems<T extends { group: PaletteGroup }>(items: T[]): T[] {
-  return PALETTE_GROUP_ORDER.flatMap((g) => items.filter((it) => it.group === g));
+export function orderPaletteItems<T extends { group: PaletteGroup; exactTitle?: boolean }>(items: T[]): T[] {
+  const lifted = items.filter((it) => it.group === 'sessions' && it.exactTitle);
+  const rest = lifted.length ? items.filter((it) => !lifted.includes(it)) : items;
+  return PALETTE_GROUP_ORDER.flatMap((g) => [
+    ...(g === 'projects' ? lifted : []),
+    ...rest.filter((it) => it.group === g),
+  ]);
 }
 
 /**
@@ -213,10 +225,6 @@ export function newChatDraftFor(query: string, matched: readonly { group: Palett
   if (matched.some((it) => it.group === 'sessions' || it.group === 'needsYou')) return null;
   const draft = query.trim();
   return draft ? draft : null;
-}
-
-function groupRank(): Record<PaletteGroup, number> {
-  return Object.fromEntries(PALETTE_GROUP_ORDER.map((g, i) => [g, i])) as Record<PaletteGroup, number>;
 }
 
 /**
