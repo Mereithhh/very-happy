@@ -3246,6 +3246,19 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov06a: {
+                title: 'Model picker, smarter search, old-session restart, tidier sidebar',
+                summary: 'The model picker lists gpt-6 and the newest Opus and Fable, ⌘K search is more accurate, the machine page restarts idle old sessions, and the sidebar top is more compact.',
+                models: 'The model picker now lists the gpt-6 family, shows the newest Opus and Fable for Claude and accepts a typed model name; models that need a newer Codex have an Update link.',
+                search: '⌘K search is more accurate: every word must match, title hits come first, chats are found by project, team, lead, member and sharer, projects and teams show up as results, and each hit says why it matched.',
+                restart: 'The machine page can restart idle sessions left on an old CLI in one go; running or waiting sessions are left alone, and machines on an older CLI need to upgrade first.',
+                sidebar: 'The sidebar top is more compact: New session ▾ creates projects, teams, terminals and everything else, and the main sections sit in one icon row, one click each and searchable in ⌘K.',
+            },
+            nov06b: {
+                title: 'CLI 0.2.206: Claude SDK update and optional Codex auto-update',
+                summary: 'Bundled Claude SDK updated to 0.3.318; Codex auto-update can be turned on in the machine settings.',
+                update: 'Bundled Claude SDK updated to 0.3.318; the machine settings can turn on Codex auto-update (off by default), which never installs mid-turn and stops after limited retries.',
+            },
             nov06: {
                 title: 'Comment on selected text in place',
                 summary: 'Select text in a message and add a note right where it is; the notes go out with your next message.',

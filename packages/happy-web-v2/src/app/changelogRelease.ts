@@ -139,6 +139,28 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-06-model-picker-search-machine-restart-sidebar',
+    date: '2026-11-06',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov06a.title',
+    summaryKey: 'changelog.releases.nov06a.summary',
+    itemKeys: [
+      'changelog.releases.nov06a.models',
+      'changelog.releases.nov06a.search',
+      'changelog.releases.nov06a.restart',
+      'changelog.releases.nov06a.sidebar',
+    ],
+  },
+  {
+    id: '2026-11-06-cli-sdk-codex-auto-update-0-2-206',
+    cliVersion: '0.2.206',
+    date: '2026-11-06',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov06b.title',
+    summaryKey: 'changelog.releases.nov06b.summary',
+    itemKeys: ['changelog.releases.nov06b.update'],
+  },
+  {
     id: '2026-11-06-in-place-comments',
     date: '2026-11-06',
     buildVersion: __APP_VERSION__,
