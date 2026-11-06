@@ -36,6 +36,10 @@ import {
     shouldFollowGrowth,
     shouldFollowShrink,
     shouldRepin,
+    REATTACH_PX,
+    isClampStep,
+    isLayoutMove,
+    layoutMoveHeld,
     shouldSmoothJumpToLatest,
     followAfterScroll,
     isUpwardWheel,
@@ -60,7 +64,7 @@ import './chatlist.css';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 import { SendFailedActions, SendingIndicator, SentFlash, useSendSpinnerResetAll } from './SendStatusView';
 import { turnSendStatus } from './sendStatusModel';
-import { latestOwnSendKey, onChatFollowRequest } from './chatFollowRequest';
+import { latestOwnSendKey, onChatDetachRequest, onChatFollowRequest } from './chatFollowRequest';
 import { SelectionQuote } from './SelectionQuote';
 import { ChatPromptRail } from './ChatPromptRail';
 import { ReaderFollowContext, createReaderFollow, type ReaderFollowSource } from './readerFollow';
@@ -262,6 +266,7 @@ export function ChatList({
             ownScrollTopRef.current = el.scrollTop;
             // B-897: the baseline for `movedUp` in onScroll is our own write too.
             lastScrollTopRef.current = el.scrollTop;
+            lastScrollSizeRef.current = scrollSize(el);
         }
     };
 
@@ -331,6 +336,7 @@ export function ChatList({
             el.scrollTop = Math.min(before + delta, max);
             ownScrollTopRef.current = el.scrollTop;
             lastScrollTopRef.current = el.scrollTop;
+            lastScrollSizeRef.current = scrollSize(el);
             return { before, clamped: before + delta > max };
         };
         let last = write();
@@ -420,6 +426,8 @@ export function ChatList({
     // Document-level listeners below are installed once; they call the latest.
     const detachRef = useRef(detach);
     detachRef.current = detach;
+    // B-897c: the annotations tray (and any other jump outside this component) asks first.
+    useEffect(() => onChatDetachRequest(sessionId, () => detachRef.current()), [sessionId]);
     // B-650: a session-search click lands on its hit (screens/search/chatJump.ts).
     useChatJump({ sessionId, scrollRef, chronological, isLoaded, hasMoreOlder: !!hasMoreOlder,
         isLoadingOlder: !!isLoadingOlder, onDetach: () => detachRef.current() });
@@ -455,22 +463,29 @@ export function ChatList({
     // clicked in it. Typing in the composer (or any field) never counts.
     useEffect(() => {
         let pointerInside = false;
-        const onPointerDown = (e: PointerEvent) => {
+        // B-897c: WebKit scrolls the hovered transcript on PageUp / Space with focus
+        // on <body> (scrollers are not focusable there) even before any click.
+        let pointerOver = false;
+        const inside = (e: PointerEvent) => {
             const el = scrollRef.current;
-            pointerInside = !!el && e.target instanceof Node && el.contains(e.target);
+            return !!el && e.target instanceof Node && el.contains(e.target);
         };
+        const onPointerDown = (e: PointerEvent) => { pointerInside = inside(e); };
+        const onPointerOver = (e: PointerEvent) => { pointerOver = e.pointerType === 'mouse' && inside(e); };
         const onKeyDown = (e: KeyboardEvent) => {
             const el = scrollRef.current;
             if (!el || e.defaultPrevented || !isUpwardScrollKey(e) || isEditableTarget(e.target)) return;
             const target = e.target instanceof Node ? e.target : null;
             const onTranscript = !!target && el.contains(target);
             const onPage = target === document.body || target === document.documentElement;
-            if (onTranscript || (onPage && pointerInside)) detachRef.current();
+            if (onTranscript || (onPage && (pointerInside || pointerOver))) detachRef.current();
         };
         document.addEventListener('pointerdown', onPointerDown, true);
+        document.addEventListener('pointerover', onPointerOver, true);
         document.addEventListener('keydown', onKeyDown);
         return () => {
             document.removeEventListener('pointerdown', onPointerDown, true);
+            document.removeEventListener('pointerover', onPointerOver, true);
             document.removeEventListener('keydown', onKeyDown);
         };
     }, []);
@@ -479,6 +494,18 @@ export function ChatList({
     // Only an actual upward move while dragging detaches (see onScroll).
     const scrollbarDragRef = useRef(false);
     const lastScrollTopRef = useRef(0);
+    // B-897b: content/viewport size at that baseline, and when the transcript DOM
+    // last changed — an upward move right after either is the browser clamping
+    // scrollTop through a transient layout, not the reader.
+    const lastScrollSizeRef = useRef('');
+    const lastMutationAtRef = useRef(-Infinity);
+    // B-897c: a suspected clamp waiting two frames to prove it did not keep moving.
+    const layoutCheckRef = useRef<{ top: number; raf: number } | null>(null);
+    const cancelLayoutCheck = () => {
+        if (layoutCheckRef.current) cancelAnimationFrame(layoutCheckRef.current.raf);
+        layoutCheckRef.current = null;
+    };
+    useEffect(() => cancelLayoutCheck, []);
     const onScrollerPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
         if (e.target !== e.currentTarget) return;
         scrollbarDragRef.current = true;
@@ -512,19 +539,54 @@ export function ChatList({
     const onScroll = () => {
         const el = scrollRef.current;
         if (!el) return;
-        if (ownScrollTopRef.current !== null && Math.abs(el.scrollTop - ownScrollTopRef.current) < 1) {
-            ownScrollTopRef.current = null;
-        } else {
-            ownScrollTopRef.current = null;
-            noteMotion();
-        }
+        const ownWrite = ownScrollTopRef.current !== null && Math.abs(el.scrollTop - ownScrollTopRef.current) < 1;
+        ownScrollTopRef.current = null;
+        if (!ownWrite) noteMotion();
         const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-        const movedUp = el.scrollTop < lastScrollTopRef.current;
+        const step = lastScrollTopRef.current - el.scrollTop;
+        const movedUp = step > 0;
         lastScrollTopRef.current = el.scrollTop;
+        const size = scrollSize(el);
+        const layoutMoved = isLayoutMove({ now: performance.now(), lastMutationAt: lastMutationAtRef.current, resized: size !== lastScrollSizeRef.current });
+        lastScrollSizeRef.current = size;
         if (scrollbarDragRef.current && movedUp) detachedRef.current = true;
+        // B-897c: still moving up while a suspected clamp is being checked — a smooth
+        // scroll (tray / rail / keyboard) or momentum, not a one-step clamp.
+        if (layoutCheckRef.current && movedUp && !ownWrite) cancelLayoutCheck();
+        const wasFollowing = atBottomRef.current && !detachedRef.current;
         // B-598: once detached, the 80px band no longer re-arms following.
         const { atBottom, detached } = followAfterScroll(detachedRef.current, distance, { atBottom: atBottomRef.current, movedUp });
         detachedRef.current = detached;
+        // B-897b: a following reader pushed up right after a transcript change is
+        // probably a WebKit layout clamp: land again. B-897c: a big step lands now (a
+        // frame later the clamp has been painted); a small one may be the first step of
+        // a smooth scroll that did not detach, so it waits two frames (chatFollow).
+        if (wasFollowing && movedUp && layoutMoved && distance > REATTACH_PX && !layoutCheckRef.current) {
+            if (isClampStep(step)) {
+                awaySnapshotRef.current = null;
+                setShowJump(false);
+                scrollToBottom(false);
+                return;
+            }
+            // Not following while we wait, so no follow path snaps a smooth scroll back.
+            setAtBottom(false);
+            const top = el.scrollTop;
+            const check = { top, raf: 0 };
+            check.raf = requestAnimationFrame(() => {
+                check.raf = requestAnimationFrame(() => {
+                    if (layoutCheckRef.current !== check) return;
+                    layoutCheckRef.current = null;
+                    const now = scrollRef.current;
+                    if (!now || !layoutMoveHeld(check.top, now.scrollTop, detachedRef.current)) return;
+                    setAtBottom(true);
+                    awaySnapshotRef.current = null;
+                    setShowJump(false);
+                    scrollToBottom(false);
+                });
+            });
+            layoutCheckRef.current = check;
+            return;
+        }
         setAtBottom(atBottom);
         awaySnapshotRef.current = nextAwaySnapshot(awaySnapshotRef.current, atBottom, rowKeys[rowKeys.length - 1] ?? null);
         setShowJump(!atBottom);
@@ -663,6 +725,12 @@ export function ChatList({
             followNextFrame();
         });
         ro.observe(inner);
+        // B-897b: any transcript DOM change (rows, streamed text, fold/unfold) stamps
+        // the time; onScroll reads it to tell a layout clamp from the reader.
+        const mo = typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => {
+            lastMutationAtRef.current = performance.now();
+        });
+        mo?.observe(inner, { childList: true, subtree: true, characterData: true, attributes: true });
         // B-114 ②：滚动容器自身变矮（软键盘弹起 resize 视口）时保持贴底——
         // 内容没变，上面的 growth 路永远不触发。同一个 rAF 防抖共用。
         const scroller = scrollRef.current;
@@ -681,6 +749,7 @@ export function ChatList({
         if (roScroller && scroller) roScroller.observe(scroller);
         return () => {
             ro.disconnect();
+            mo?.disconnect();
             roScroller?.disconnect();
             if (raf) cancelAnimationFrame(raf);
         };
@@ -982,6 +1051,11 @@ export function ChatList({
         </ReaderFollowContext.Provider>
         </MarkdownPathProvider>
     );
+}
+
+/** B-897b: content + viewport height of the scroller, compared across scroll events. */
+function scrollSize(el: HTMLElement): string {
+    return `${el.scrollHeight}x${el.clientHeight}`;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

@@ -10,6 +10,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { toast } from '@/ui';
 import { requestChatJump } from '@/screens/search/chatJump';
 import { storage } from '@/sync/storage';
+import { requestChatDetach } from '../chatFollowRequest';
 import { excerptPreview } from './chatAnnotations';
 import {
     clearChatAnnotations,
@@ -31,12 +32,14 @@ export function ChatAnnotationsTray({ sessionId }: { sessionId: string }) {
 
     const jump = (id: string, seq: number) => {
         const marker = () => document.querySelector(`.can-marker[data-annotation-id="${id}"]`);
-        if (marker()) { marker()!.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+        // B-897c: leave the live end first, or a mid-stream jump is pulled back to the bottom.
+        const land = () => { const el = marker(); if (!el) return; requestChatDetach(sessionId); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+        if (marker()) { land(); return; }
         // Not rendered (older history, folded): the session-search jump loads and lands on the message, then point at the passage.
         const message = storage.getState().sessionMessages[sessionId]?.messages.find((m) => m.seq === seq);
         if (!message) { toast.show(t('session.chat.annotations.notLoaded'), 'info'); return; }
         requestChatJump(sessionId, { terms: [], messageId: message.id, flash: true });
-        window.setTimeout(() => marker()?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 600);
+        window.setTimeout(land, 600);
     };
     const remove = (id: string) => {
         if (deleteChatAnnotation(sessionId, id) !== 'ok') toast.show(t('session.chat.annotations.saveFailed'), 'error');

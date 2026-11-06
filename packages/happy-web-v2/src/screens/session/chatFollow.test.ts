@@ -9,6 +9,11 @@ import {
     shouldSmoothJumpToLatest,
     followAfterScroll,
     shouldRepin,
+    isClampStep,
+    CLAMP_MIN_STEP_PX,
+    isLayoutMove,
+    layoutMoveHeld,
+    LAYOUT_SHIFT_MS,
     FOLLOW_BAND_PX,
     isUpwardWheel,
     isUpwardTouch,
@@ -137,6 +142,9 @@ describe('followAfterScroll (B-598)', () => {
         expect(followAfterScroll(true, 2)).toEqual({ atBottom: true, detached: false });
         expect(followAfterScroll(true, 0.5)).toEqual({ atBottom: true, detached: false });
         expect(followAfterScroll(true, 0)).toEqual({ atBottom: true, detached: false });
+        // B-897c: WebKit's animated PageUp — first scroll event 1px up right after the key detached.
+        expect(followAfterScroll(true, 1, { atBottom: false, movedUp: true })).toEqual({ atBottom: false, detached: true });
+        expect(followAfterScroll(true, 1, { atBottom: false, movedUp: false })).toEqual({ atBottom: true, detached: false });
     });
 
     // B-897: replay of a measured frame sequence (Chromium, production build, 540-message
@@ -156,6 +164,44 @@ describe('followAfterScroll (B-598)', () => {
         expect(followAfterScroll(false, 85, { atBottom: false, movedUp: false })).toEqual({ atBottom: false, detached: false });
         expect(followAfterScroll(false, 40, { atBottom: false, movedUp: false })).toEqual({ atBottom: true, detached: false });
         expect(followAfterScroll(true, 85, { atBottom: true, movedUp: false })).toEqual({ atBottom: false, detached: true });
+    });
+});
+
+// B-897b: replay of WebKit 18.2 traces (Playwright, desktop and iPhone emulation, production
+// build): at a turn's start/end commit scrollTop dropped with no JS write (hooked setter /
+// scrollTo / scrollIntoView all silent) — 15549→15273, 11612→10756, 15419→14513 — and the
+// scroll event that followed landed 276–906px above the bottom while still following.
+// The band un-followed it and the reply grew below a parked view (5/20 landed).
+describe('followAfterScroll — layout clamp vs reader (B-897b / B-897c)', () => {
+    it('本函数只按 80px 带判：clamp 的识别与重新贴底在 isLayoutMove + layoutMoveHeld', () => {
+        for (const distance of [276, 336, 898, 906]) {
+            expect(followAfterScroll(false, distance, { atBottom: true, movedUp: true })).toEqual({ atBottom: false, detached: false });
+        }
+    });
+
+    // B-897c: QA63 trace — the tray's smooth scrollIntoView mid-stream (Chromium) kept moving up
+    // after its first scroll event (marker top -2707 → … → 337), a WebKit clamp is one step.
+    it('isClampStep：实测 clamp 的步长都算，smooth 缓入的小步不算', () => {
+        for (const step of [276, 482, 552, 856, 906]) expect(isClampStep(step)).toBe(true);
+        expect(isClampStep(CLAMP_MIN_STEP_PX)).toBe(true);
+        expect(isClampStep(CLAMP_MIN_STEP_PX - 1)).toBe(false);
+        expect(isClampStep(47)).toBe(false);
+    });
+
+    it('layoutMoveHeld：两帧后没继续往上、也没 detach 才算 clamp', () => {
+        expect(layoutMoveHeld(14639, 14639, false)).toBe(true);
+        expect(layoutMoveHeld(14639, 14640, false)).toBe(true);
+        expect(layoutMoveHeld(14639, 14638.5, false)).toBe(true);
+        expect(layoutMoveHeld(14639, 14100, false)).toBe(false);
+        expect(layoutMoveHeld(14639, 14639, true)).toBe(false);
+    });
+
+    it('isLayoutMove：尺寸变了，或距上次转录变动不到 LAYOUT_SHIFT_MS', () => {
+        expect(isLayoutMove({ now: 7478, lastMutationAt: 7475, resized: false })).toBe(true);
+        expect(isLayoutMove({ now: 1000 + LAYOUT_SHIFT_MS - 1, lastMutationAt: 1000, resized: false })).toBe(true);
+        expect(isLayoutMove({ now: 1000 + LAYOUT_SHIFT_MS, lastMutationAt: 1000, resized: false })).toBe(false);
+        expect(isLayoutMove({ now: 5000, lastMutationAt: -Infinity, resized: true })).toBe(true);
+        expect(isLayoutMove({ now: 5000, lastMutationAt: -Infinity, resized: false })).toBe(false);
     });
 });
 
