@@ -139,6 +139,17 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-06-chat-stays-at-newest-project-terminal-operable',
+    date: '2026-11-06',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov06c.title',
+    summaryKey: 'changelog.releases.nov06c.summary',
+    itemKeys: [
+      'changelog.releases.nov06c.scroll',
+      'changelog.releases.nov06c.terminal',
+    ],
+  },
+  {
     id: '2026-11-06-model-picker-search-machine-restart-sidebar',
     date: '2026-11-06',
     buildVersion: __APP_VERSION__,
