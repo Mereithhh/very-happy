@@ -201,9 +201,17 @@ export function filterPaletteItems<T extends PaletteMatchable>(items: readonly T
 /**
  * Stable regroup into display order. Rendering and ↑↓/Enter both read this
  * one sequence, so the highlighted row is always the one Enter runs.
+ * B-895b: a chat whose title equals the whole query (`exactTitle`) moves
+ * ahead of the 项目 / 团队 rows, so Enter opens that chat rather than a
+ * same-named project or team; the other chats stay below them.
  */
-export function orderPaletteItems<T extends { group: PaletteGroup }>(items: T[]): T[] {
-  return PALETTE_GROUP_ORDER.flatMap((g) => items.filter((it) => it.group === g));
+export function orderPaletteItems<T extends { group: PaletteGroup; exactTitle?: boolean }>(items: T[]): T[] {
+  const lifted = items.filter((it) => it.group === 'sessions' && it.exactTitle);
+  const rest = lifted.length ? items.filter((it) => !lifted.includes(it)) : items;
+  return PALETTE_GROUP_ORDER.flatMap((g) => [
+    ...(g === 'projects' ? lifted : []),
+    ...rest.filter((it) => it.group === g),
+  ]);
 }
 
 /**

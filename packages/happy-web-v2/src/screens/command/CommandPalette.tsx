@@ -138,6 +138,8 @@ type CommandItem = {
   /** B-865: highlighted title (content rows) */
   titleRanges?: Range[];
   subtitleRanges?: Range[];
+  /** B-895b: the title equals the whole query — ranks above project / team rows. */
+  exactTitle?: boolean;
   /** B-865: what was said — each snippet opens the session on that hit */
   snippets?: ResultSnippet[];
   openSnippet?: (snippet: ResultSnippet) => void;
@@ -751,7 +753,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
     const base = filterPaletteItems(indexed, query).map(({ it, match }): CommandItem => {
       if (!match) return it;
       const reason = match.reasons.length ? reasonLine(match.reasons) : null;
-      return { ...it, titleRanges: match.titleRanges, ...(reason ? { subtitle: reason.text, subtitleRanges: reason.ranges } : {}) };
+      return { ...it, titleRanges: match.titleRanges, exactTitle: match.exactTitle, ...(reason ? { subtitle: reason.text, subtitleRanges: reason.ranges } : {}) };
     });
     const titleIds = new Set(base.filter((it) => it.group === 'sessions').map((it) => it.key.slice('session:'.length)));
     const split = splitSearchRows(search.rows, titleIds);
@@ -1054,7 +1056,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
             <div className="cp-empty">{t('commandPalette.empty')}</div>
           ) : (
             groups.map((grp) => (
-              <div key={grp.group} className={`cp-group cp-group--${grp.group}`}>
+              <div key={`${grp.group}:${grp.rows[0]?.index ?? -1}`} className={`cp-group cp-group--${grp.group}`}>
                 {grp.label ? (
                   <div className="cp-group-label">
                     <span>{grp.label}</span>

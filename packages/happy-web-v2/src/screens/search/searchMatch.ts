@@ -92,6 +92,8 @@ export interface SearchReason {
 export interface SearchMatch {
   /** Lower is better: class * 16 + quality. */
   rank: number;
+  /** Every term in the title and the title equals the whole query (B-895b). */
+  exactTitle: boolean;
   titleRanges: Range[];
   /** Non-title fields that carried a term, best class first (deduplicated). */
   reasons: SearchReason[];
@@ -181,7 +183,7 @@ function fieldHas(field: PreparedField, term: string): boolean {
 /** One row against one query; null = no match. An empty free text matches every row passing the `#tag` filter. */
 export function matchSearch(doc: PreparedSearch, q: SearchQuery): SearchMatch | null {
   if (!tagsMatchSidebarQuery(doc.tags, q.tagQuery)) return null;
-  if (q.terms.length === 0) return { rank: 0, titleRanges: [], reasons: [] };
+  if (q.terms.length === 0) return { rank: 0, exactTitle: false, titleRanges: [], reasons: [] };
   let worst = 0;
   let outside = 0;
   const reasonFields: PreparedField[] = [];
@@ -216,7 +218,7 @@ export function matchSearch(doc: PreparedSearch, q: SearchQuery): SearchMatch | 
       const text = f.display ?? f.text;
       return { kind: f.kind, text, ranges: matchRanges(text, reasonTerms.get(f)!) };
     });
-  return { rank: worst * 16 + quality, titleRanges: matchRanges(doc.title, q.terms), reasons };
+  return { rank: worst * 16 + quality, exactTitle: worst === 0 && quality === 0, titleRanges: matchRanges(doc.title, q.terms), reasons };
 }
 
 /**

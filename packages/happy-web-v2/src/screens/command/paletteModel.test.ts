@@ -179,6 +179,44 @@ describe('orderPaletteItems (B-895 groups)', () => {
   });
 });
 
+describe('orderPaletteItems — exact chat title beats a same-named project / team (B-895b, QA57 P1)', () => {
+  // QA57's shape (names neutralised): a project, a project with a team, and chats titled exactly like them.
+  const sess = (key: string, title: string, fields: { kind: 'project' | 'team'; text: string }[] = []) =>
+    ({ key, group: 'sessions' as const, search: prepareSearch({ title, fields }) });
+  const items = [
+    { key: 'project:ledger', group: 'projects' as const, search: prepareSearch({ title: '家庭账本' }) },
+    { key: 'project:vh', group: 'projects' as const, search: prepareSearch({ title: 'Nimbus', fields: [{ kind: 'team', text: 'Nimbus 研发' }] }) },
+    { key: 'team:vh', group: 'teams' as const, search: prepareSearch({ title: 'Nimbus 研发', fields: [{ kind: 'project', text: 'Nimbus' }] }) },
+    sess('s:ledger', '家庭账本', [{ kind: 'project', text: '家庭账本' }]),
+    sess('s:nb-dev', 'Nimbus 研发'),
+    sess('s:vh', 'Nimbus'),
+    sess('s:in-project', '整理笔记', [{ kind: 'project', text: '家庭账本' }]),
+    sess('s:vh-prefix', 'Nimbus 发版'),
+  ];
+  const order = (q: string) =>
+    orderPaletteItems(filterPaletteItems(items, q).map(({ it, match }) => ({ ...it, exactTitle: match?.exactTitle }))).map((r) => r.key);
+  it('「家庭账本」: the chat first, then the project, then the project\'s other chats', () => {
+    expect(order('家庭账本')).toEqual(['s:ledger', 'project:ledger', 's:in-project']);
+  });
+  it('「Nimbus 研发」: the chat ahead of the project (via its team) and the team', () => {
+    expect(order('Nimbus 研发')[0]).toBe('s:nb-dev');
+    expect(order('Nimbus 研发').slice(1, 3)).toEqual(['project:vh', 'team:vh']);
+  });
+  it('「Nimbus」: the exact chat first; prefix-only chats stay below the project / team rows', () => {
+    const o = order('Nimbus');
+    expect(o[0]).toBe('s:vh');
+    expect(o.indexOf('project:vh')).toBeLessThan(o.indexOf('s:vh-prefix'));
+    expect(o.indexOf('project:vh')).toBeLessThan(o.indexOf('s:nb-dev'));
+  });
+  it('no chat titled exactly the query → the project row stays first (Enter opens the project)', () => {
+    expect(order('nimbus 研').slice(0, 2)).toEqual(['project:vh', 'team:vh']);
+    expect(order('家庭')[0]).toBe('project:ledger');
+  });
+  it('full-width / case variants of the title count as exact', () => {
+    expect(order('ｎｉｍｂｕｓ')[0]).toBe('s:vh');
+  });
+});
+
 describe('orderPaletteItems', () => {
   it('regroups into display order, stable inside a group', () => {
     const E = prepareSearch({ title: '' });
