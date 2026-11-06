@@ -3220,6 +3220,11 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov06: {
+                title: 'Comment on selected text in place',
+                summary: 'Select text in a message and add a note right where it is; the notes go out with your next message.',
+                comments: 'Select text in a message and pick Comment to note on it in place — the passage gets a numbered marker, the composer shows "N comments", and the notes go out with your next message.',
+            },
             nov05: {
                 title: 'Expand Mermaid diagrams, folder lists scroll, steadier sidebar',
                 summary: 'Mermaid diagrams can expand to full screen, folder lists scroll properly, and the sidebar row no longer blinks when you switch sessions.',

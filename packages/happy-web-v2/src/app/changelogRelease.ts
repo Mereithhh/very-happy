@@ -139,6 +139,16 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-06-in-place-comments',
+    date: '2026-11-06',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov06.title',
+    summaryKey: 'changelog.releases.nov06.summary',
+    itemKeys: [
+      'changelog.releases.nov06.comments',
+    ],
+  },
+  {
     id: '2026-11-05-mermaid-expand-folder-lists-sidebar',
     date: '2026-11-05',
     buildVersion: __APP_VERSION__,
