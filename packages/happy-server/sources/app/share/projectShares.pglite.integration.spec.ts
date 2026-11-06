@@ -265,6 +265,22 @@ describe('B-878 project shares (pglite)', () => {
         expect(emitted.filter((e) => e.event === 'terminal-input')).toEqual([]);
         await broker.__forwardTerminalEventForTests(dave.id, 'input', { grantId: direct.id, data: sealed('eA==', directKey) });
         expect(emitted.filter((e) => e.event === 'terminal-input')).toHaveLength(1);
+        // Keystrokes reach the shell in typing order even when the first one misses every cache (socket path).
+        const handlers = new Map<string, (data: unknown) => void>();
+        broker.terminalShareHandler(dave.id, { on: (name: string, fn: (data: unknown) => void) => { handlers.set(name, fn); }, nsp: { server: io } } as any, { connectionType: 'user-scoped' }, {});
+        broker.__setTerminalShareIoForTests(io);
+        emitted.length = 0;
+        // Only the first keystroke's grant lookup is slow (a cold cache / slow query): it must still land first.
+        const realFindFirst = db.terminalGrant.findFirst.bind(db.terminalGrant);
+        let calls = 0;
+        (db.terminalGrant as any).findFirst = (args: any) => (calls++ === 0 ? new Promise((r) => setTimeout(r, 60)).then(() => realFindFirst(args)) : realFindFirst(args));
+        const typed = 'echo hi\r'.split('');
+        for (const ch of typed) handlers.get('share-terminal-input')!({ grantId: direct.id, data: sealed(Buffer.from(ch).toString('base64'), directKey) });
+        for (let i = 0; i < 100 && emitted.filter((e) => e.event === 'terminal-input').length < typed.length; i++) await new Promise((r) => setTimeout(r, 20));
+        const arrived = emitted.filter((e) => e.event === 'terminal-input')
+            .map((e) => Buffer.from(crypto.decryptWithDataKey(new Uint8Array(Buffer.from(e.payload.data, 'base64')), machineKey) as string, 'base64').toString());
+        (db.terminalGrant as any).findFirst = realFindFirst;
+        expect(arrived.join('')).toBe(typed.join(''));
         // Revoked: back to the view-only project row. Re-shared and then expired: back again.
         await revokeTerminalGrant(ownerId, direct.id);
         expect((await row('dt1')).direct).toBeUndefined();

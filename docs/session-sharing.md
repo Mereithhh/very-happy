@@ -193,6 +193,9 @@ Pick a person and **View only** or **Can send**; the share can expire after 1,
   project page too. Once it is revoked or expires, the row goes back to view
   only. A view-only project terminal tells them why it is view only and to
   ask you for **Can operate**.
+- Team pages stay yours. Someone you shared the project with reaches the
+  team lead's and members' sessions from the project page (and can send in
+  them with **Can send**); opening a team link tells them so.
 - Moving a session out of the project ends their access to it at once.
   Moving a terminal out of (or into) the project takes effect when your
   machine next reports its terminals, usually within 5–10 seconds; until

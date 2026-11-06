@@ -681,6 +681,9 @@ export function terminalShareHandler(userId: string, socket: Socket, connection:
     // Subscriptions this socket holds: a closed tab or dropped socket never sends
     // share-terminal-close, and a leaked subscriber pins the owner's pty past the idle reaper.
     const held = new Map<string, number>();
+    // B-899: keystrokes must reach the shell in the order they were typed. Each event awaits grant / key
+    // lookups (a cache miss is slower than a hit), so run this socket's events one after another.
+    let events: Promise<void> = Promise.resolve();
     socket.on('share-terminal-rpc', async (data: unknown, callback?: (ack: TerminalShareRpcAck) => void) => {
         const ack = await handleTerminalShareRpc(ioRef ?? (socket.nsp.server as Server), userId, data, limits, (grantId) => {
             held.set(grantId, (held.get(grantId) ?? 0) + 1);
@@ -704,7 +707,7 @@ export function terminalShareHandler(userId: string, socket: Socket, connection:
                 const count = typeof grantId === 'string' ? held.get(grantId) ?? 0 : 0;
                 if (count > 1) held.set(grantId as string, count - 1); else if (count === 1) held.delete(grantId as string);
             }
-            void forwardTerminalEvent(userId, event, data as Record<string, unknown>, limits).catch((error) => {
+            events = events.then(() => forwardTerminalEvent(userId, event, data as Record<string, unknown>, limits)).catch((error) => {
                 log({ module: 'terminal-share', userId, errorName: errorName(error) }, 'terminal share event failed');
             });
         });

@@ -10,7 +10,7 @@
  * `project-share-changed`.
  */
 import { FolderKanban, SquareTerminal } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { BackButton } from '@/app/BackButton';
 import { Button } from '@/ui';
@@ -52,8 +52,14 @@ export function SharedProjectScreen() {
     useEffect(() => { void load(); }, [load, share?.status]);
     useEffect(() => onProjectShareChanged((id) => { if (id === grantId) void load(); }), [grantId, load]);
     // B-899: a direct terminal grant shared / accepted / re-roled / revoked changes where a terminal row leads.
+    // Revoking the last one empties the list, which must reload too (only the first render is skipped).
     const directKey = useIncomingTerminalShares().map((g) => `${g.id}:${g.status}:${g.role}:${g.expiresAt}`).sort().join('|');
-    useEffect(() => { if (directKey) void load(); }, [directKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    const seenDirectKey = useRef<string | null>(null);
+    useEffect(() => {
+        const first = seenDirectKey.current === null;
+        seenDirectKey.current = directKey;
+        if (!first) void load();
+    }, [directKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (ended) return <Empty text={t('share.project.ended')} onHome={() => navigate('/')} />;
     if (share?.status === 'pending') {
@@ -105,7 +111,7 @@ export function SharedProjectScreen() {
                                     <Link key={term.shareId} className="pj-row" data-terminal-via={link.via} to={`/shared/terminal/${encodeURIComponent(link.shareId)}?title=${encodeURIComponent(term.title ?? '')}`}>
                                         <SquareTerminal size={14} aria-hidden />{term.title || t('share.terminal.untitled')}
                                         {term.cwd && <span className="pj-muted">· {term.cwd}</span>}
-                                        <span className="pj-muted pj-row-role">{link.pending ? t('share.dialog.statusPending') : link.role === 'operator' ? t('share.roleOperator') : t('share.roleViewer')}</span>
+                                        <span className="pj-muted pj-row-role">{link.pending ? t('share.project.terminalPending') : link.role === 'operator' ? t('share.roleOperator') : t('share.roleViewer')}</span>
                                     </Link>
                                 );
                             })}

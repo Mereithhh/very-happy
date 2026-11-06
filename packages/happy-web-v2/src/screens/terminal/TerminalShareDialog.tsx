@@ -180,8 +180,10 @@ export function TerminalShareDialog({ machineId, terminalId, title, host, open, 
                         {prefill && (
                             <div className="shd-prefill" role="group" aria-label={t('share.terminal.prefillTitle', { name: prefill.name })} data-testid="terminal-share-prefill">
                                 <span className="shd-prefill-title">{t('share.terminal.prefillTitle', { name: prefill.name })}</span>
-                                {prefillGrant?.role === 'operator'
+                                {prefillGrant?.role === 'operator' && prefillGrant.status === 'active'
                                     ? <span className="shd-prefill-done">{t('share.terminal.prefillAlready', { name: prefill.name })}</span>
+                                    : prefillGrant?.role === 'operator'
+                                    ? <span className="shd-prefill-done">{t('share.terminal.prefillPending', { name: prefill.name })}</span>
                                     : <Button type="button" variant="danger" size="md" disabled={grants === undefined || (!prefillGrant && (role !== 'operator' || !operatorAck))} onClick={grantPrefill}>{t('share.operator.grantButton')}</Button>}
                             </div>
                         )}

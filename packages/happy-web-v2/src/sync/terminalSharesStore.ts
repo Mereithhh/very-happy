@@ -39,6 +39,7 @@ import {
     TerminalShareRpcError,
     TerminalShareUpdatedSchema,
     readTerminalShareAck,
+    serialPerKey,
     type IncomingTerminalShare,
     type TerminalGrantView,
     type TerminalShareActivity,
@@ -169,9 +170,15 @@ export async function terminalShareCall<R = unknown>(grantId: string, op: 'attac
     return result as R;
 }
 
-export async function sendShareTerminalInput(grantId: string, bytesB64: string): Promise<void> {
-    const data = await seal(grantId, bytesB64);
-    if (data) apiSocket.send('share-terminal-input', { grantId, data });
+// B-899: sealing is async (the first call fetches the stream key), so two quick keystrokes could
+// overtake each other; each grant's input is sealed and sent strictly in typing order.
+const inputQueue = serialPerKey();
+
+export function sendShareTerminalInput(grantId: string, bytesB64: string): Promise<void> {
+    return inputQueue(grantId, async () => {
+        const data = await seal(grantId, bytesB64);
+        if (data) apiSocket.send('share-terminal-input', { grantId, data });
+    });
 }
 
 export function sendShareTerminalResize(grantId: string, cols: number, rows: number): void {

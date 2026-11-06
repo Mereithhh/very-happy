@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IncomingTerminalShareSchema, ShareTerminalGeometrySchema, defaultTerminalShareExpiry, readTerminalShareAck, revokeEndsAccess, viewOnlyScale } from './terminalShareTypes';
+import { IncomingTerminalShareSchema, ShareTerminalGeometrySchema, defaultTerminalShareExpiry, readTerminalShareAck, revokeEndsAccess, serialPerKey, viewOnlyScale } from './terminalShareTypes';
 import { terminalShareEventLabelKey } from '@/screens/terminal/terminalShareEventLabels';
 
 describe('B-878 terminal share client helpers', () => {
@@ -38,3 +38,21 @@ describe('B-878 terminal share client helpers', () => {
         expect(terminalShareEventLabelKey('something.new')).toBe('share.terminal.event.other');
     });
 });
+
+describe('B-899 serialPerKey', () => {
+    it('keeps typing order per key even when an earlier task is slower; a failure does not block the next; keys are independent', async () => {
+        const run = serialPerKey();
+        const out: string[] = [];
+        const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+        await Promise.all([
+            run('g', async () => { await wait(30); out.push('e'); }),
+            run('g', async () => { out.push('c'); }),
+            run('g', async () => { throw new Error('x'); }),
+            run('g', async () => { await wait(5); out.push('h'); }),
+            run('other', async () => { out.push('X'); }),
+        ]);
+        expect(out.filter((c) => c !== 'X').join('')).toBe('ech');
+        expect(out.indexOf('X')).toBe(0);
+    });
+});
+

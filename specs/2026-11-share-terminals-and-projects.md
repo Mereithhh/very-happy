@@ -306,5 +306,7 @@ CREATE TABLE "ShareAuditEvent" (...);   -- §5，INDEX(ownerAccountId, at)、IND
 - **Web**：`projectTerminalLink`（纯函数）在点击时判断：自己的直接授权未过期就链到 `/shared/terminal/<grantId>`（pending 时那一页显示接受按钮，行上标「待接受」），否则链到 `p:`。行尾显示进入后的档位。项目页订阅「分享给我的终端」列表，授权、接受、改档、撤销后立即重读；过期由点击时的时间判断兜底。直接授权被撤销时，已打开的直接视图照 PR-A 断开，回项目页再进入就是只看。
 - **原因提示**：项目派生终端的提示条改为「只看：这个终端随 {owner} 的项目「{project}」分享，项目分享不能在终端里输入。要操作，请 {owner} 单独把这个终端分享给你为「可操作」。」（中英）。
 - **owner 一步开权限**：`ProjectShareDialog` 每个已分享的人下面有「终端权限…」，列出 owner 自己在这个项目里的终端（来自 daemon 推送的 `@vh_project`）。点一个会在上层打开该终端的 `TerminalShareDialog`，用 `prefill` 预填这个人并预选「可操作」。仍然走原来的确认勾选、红色二次确认和 1/7/30 天有效期，没有永久选项；对方已有只看授权时改为升档确认。取舍：复用单终端的授权和确认流程，不新增项目级接口，也不做项目级「可操作」（§1 非目标）。
+- **键入顺序（e2e 发现，PR-A 起就有）**：可操作档 `echo hi` 到 shell 变成 `ehi`+`cho`。Web 每个按键各自异步 seal（第一个要取流 key），server 每条 `share-terminal-input` 都 `void forwardTerminalEvent` 并发执行（授权和 key 缓存命中与否耗时不同），两处都可能乱序。改为 Web `serialPerKey` 按 grant 串行 seal 和发送，server 每个 socket 的 input/resize/close 串行转发。
+- **被分享者侧栏与团队页**：侧栏在「分享给我的项目/终端」下面不再显示「还没有会话」（容易让人以为分享是空的）。`/teams/:id` 对非 owner 是 404，团队页不开放；有分享项目时改为说明「团队页只对团队的所有者开放，可以从项目页进入 Lead 和成员的会话」，并给出每个分享项目的入口。没有分享项目时仍显示原来的「团队不存在」。团队派生会话（项目里没有 ProjectMember、只绑了 AgentTeam）在「可发消息」档下实测：输入框可用，消息能发出，署名为被分享者本人，和显式成员一致。
 - **验证**：`projectShares.pglite.integration.spec.ts` 新增 B-899 用例，覆盖无直接授权时为 viewer、别人的 operator 授权不生效、自己的 pending→active、按终端区分、直接 id 可 paste/input 而 `p:` 被拒、撤销和过期后回退、陌生人和撤销项目后为空。语义变异 5/5 被抓住（`p:` 铸 operator、不按 grantee 过滤、不按过期过滤、revoked 计入、不附 direct）。Web `projectShareTypes.test.ts` 覆盖链接选择和新旧 server 兼容。两账号真实 e2e 见 PR。
 

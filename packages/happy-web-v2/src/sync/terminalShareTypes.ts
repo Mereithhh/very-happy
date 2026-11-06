@@ -120,3 +120,17 @@ export function viewOnlyScale(paneWidthPx: number, boxWidthPx: number): number {
     if (!(paneWidthPx > 0) || !(boxWidthPx > 0)) return 1;
     return Math.min(1, boxWidthPx / paneWidthPx);
 }
+
+/**
+ * B-899: run tasks one after another per key (a failing task never blocks the next). Keystrokes go
+ * through this so a slow first seal (key fetch) cannot let a later keystroke overtake it. Pure.
+ */
+export function serialPerKey(): (key: string, task: () => Promise<void>) => Promise<void> {
+    const chains = new Map<string, Promise<void>>();
+    return (key, task) => {
+        const next = (chains.get(key) ?? Promise.resolve()).then(task).catch(() => {});
+        chains.set(key, next);
+        void next.then(() => { if (chains.get(key) === next) chains.delete(key); });
+        return next;
+    };
+}

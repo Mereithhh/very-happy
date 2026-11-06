@@ -2090,6 +2090,10 @@ export const en = {
             // B-899: say why, and how to get more.
             terminalBanner: ({ owner, project }: { owner: string; project: string }) => `View only — this terminal comes with ${owner}'s project “${project}”, and a project share never types into terminals. To operate it, ask ${owner} to share this terminal with you as “Can operate”.`,
             operateTerminals: 'Terminal access…',
+            terminalPending: 'Accept to operate',
+            teamOwnerOnly: 'Team pages are only open to the team’s owner',
+            teamOwnerOnlyHint: 'If this team belongs to a project shared with you, open the project to reach the lead’s and members’ sessions.',
+            backToProject: ({ name }: { name: string }) => `Open project “${name}”`,
             operateTerminalsTitle: ({ name }: { name: string }) => `Let ${name} operate a terminal`,
             operateTerminalsHint: 'Pick one terminal in this project. You still confirm the warning and choose how long it lasts.',
             noOwnTerminals: 'No terminals of yours are in this project right now.',
@@ -2110,6 +2114,7 @@ export const en = {
             // B-899: opened from the project share dialog for one person.
             prefillTitle: ({ name }: { name: string }) => `Give ${name} “Can operate” on this terminal`,
             prefillAlready: ({ name }: { name: string }) => `${name} can already operate this terminal.`,
+            prefillPending: ({ name }: { name: string }) => `“Can operate” is waiting for ${name} to accept.`,
             ownerOnly: 'Only terminals on your own machines can be shared.',
             watching: ({ names }: { names: string }) => `${names} watching`,
             watchingNow: 'Watching now',

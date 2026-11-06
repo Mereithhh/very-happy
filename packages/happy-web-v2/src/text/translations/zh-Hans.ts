@@ -2250,6 +2250,10 @@ export const zhHans: TranslationStructure = {
             // B-899: 写明原因和怎么要权限。
             terminalBanner: ({ owner, project }: { owner: string; project: string }) => `只看：这个终端随 ${owner} 的项目「${project}」分享，项目分享不能在终端里输入。要操作，请 ${owner} 单独把这个终端分享给你为「可操作」。`,
             operateTerminals: '终端权限…',
+            terminalPending: '接受后可操作',
+            teamOwnerOnly: '团队页只对团队的所有者开放',
+            teamOwnerOnlyHint: '如果这个团队属于分享给你的项目，可以从项目页进入 Lead 和成员的会话。',
+            backToProject: ({ name }: { name: string }) => `打开项目「${name}」`,
             operateTerminalsTitle: ({ name }: { name: string }) => `让 ${name} 操作一个终端`,
             operateTerminalsHint: '选项目里的一个终端。仍要确认风险提示并选择有效期。',
             noOwnTerminals: '这个项目里现在没有你的终端。',
@@ -2270,6 +2274,7 @@ export const zhHans: TranslationStructure = {
             // B-899: 从项目分享对话框为某个人打开。
             prefillTitle: ({ name }: { name: string }) => `给 ${name} 这个终端的「可操作」`,
             prefillAlready: ({ name }: { name: string }) => `${name} 已经可以操作这个终端。`,
+            prefillPending: ({ name }: { name: string }) => `「可操作」等待 ${name} 接受。`,
             ownerOnly: '只能分享你自己机器上的终端。',
             watching: ({ names }: { names: string }) => `${names} 正在看`,
             watchingNow: '正在看',
