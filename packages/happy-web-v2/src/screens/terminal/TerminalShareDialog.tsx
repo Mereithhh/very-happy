@@ -38,8 +38,10 @@ import './terminalShare.css';
 
 type T = ReturnType<typeof useTranslation>['t'];
 
-function errorCopy(t: T, e: unknown): string {
-    const code = e instanceof SessionShareApiError ? e.code : 'unknown';
+/** A terminal-share error (thrown, or a B-900 batch result's code) → copy. */
+export function terminalShareErrorCopy(t: T, e: unknown): string {
+    const code = typeof e === 'string' ? e : e instanceof SessionShareApiError ? e.code : 'unknown';
+    if (code === 'relationship_rate_quota_exceeded') return t('share.terminal.errors.rateLimited');
     if (code === 'machine_not_found') return t('share.terminal.ownerOnly');
     if (code === 'machine_unsupported') return t('share.terminal.errors.upgrade');
     if (code === 'terminal_gone') return t('share.terminal.errors.gone');
@@ -89,7 +91,7 @@ export function TerminalShareDialog({ machineId, terminalId, title, host, open, 
         if (!open) return;
         setError(null); setListError(null); setConfirmRevoke(null); setPendingOperator(null); setOperatorAck(false);
         if (prefill) { setRole('operator'); setExpiry(defaultTerminalShareExpiry('operator')); }
-        refreshGrants(machineId, terminalId).catch((e) => setListError(errorCopy(t, e)));
+        refreshGrants(machineId, terminalId).catch((e) => setListError(terminalShareErrorCopy(t, e)));
     }, [open, machineId, terminalId, refreshGrants, t, prefill?.accountId]);
 
     const pickRole = (next: TerminalShareRole) => {
@@ -104,7 +106,7 @@ export function TerminalShareDialog({ machineId, terminalId, title, host, open, 
             await share({ machineId, terminalId, title, who, role: 'viewer', expiresInDays: expiry });
             setTarget('');
         } catch (e) {
-            setError(errorCopy(t, e));
+            setError(terminalShareErrorCopy(t, e));
         } finally {
             setBusy(null);
         }
@@ -133,7 +135,7 @@ export function TerminalShareDialog({ machineId, terminalId, title, host, open, 
             }
             setPendingOperator(null);
         } catch (e) {
-            setConfirmError(errorCopy(t, e));
+            setConfirmError(terminalShareErrorCopy(t, e));
         } finally {
             setConfirmBusy(false);
         }
@@ -147,12 +149,12 @@ export function TerminalShareDialog({ machineId, terminalId, title, host, open, 
             setPendingOperator({ kind: 'upgrade', grant });
             return;
         }
-        try { await update(grant, { role: 'viewer' }); } catch (e) { setListError(errorCopy(t, e)); }
+        try { await update(grant, { role: 'viewer' }); } catch (e) { setListError(terminalShareErrorCopy(t, e)); }
     };
 
     const onRevoke = async (grant: TerminalGrantView) => {
         setConfirmRevoke(null);
-        try { await revoke(grant); } catch (e) { setListError(errorCopy(t, e)); }
+        try { await revoke(grant); } catch (e) { setListError(terminalShareErrorCopy(t, e)); }
     };
 
     const watchingIds = new Set(watchers.map((w) => w.grantId));

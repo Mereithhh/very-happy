@@ -21,8 +21,8 @@ import { getSessionName } from '@/utils/sessionUtils';
 import { SessionShareApiError } from '@/sync/apiSessionShares';
 import { getSharedProject } from '@/sync/apiProjectShares';
 import { onProjectShareChanged, useIncomingProjectShares, useProjectShares } from '@/sync/projectSharesStore';
-import { projectTerminalLink, type SharedProjectPage } from '@/sync/projectShareTypes';
-import { useIncomingTerminalShares } from '@/sync/terminalSharesStore';
+import { pendingDirectGrantIds, projectTerminalLink, type SharedProjectPage } from '@/sync/projectShareTypes';
+import { useIncomingTerminalShares, useTerminalShares } from '@/sync/terminalSharesStore';
 import { Markdown } from '@/screens/session/Markdown';
 import './projects.css';
 
@@ -38,6 +38,9 @@ export function SharedProjectScreen() {
     const share = incoming.find((g) => g.id === grantId) ?? null;
     const ended = useProjectShares((s) => s.ended[grantId]);
     const respond = useProjectShares((s) => s.respond);
+    const respondTerminal = useTerminalShares((s) => s.respond);
+    const [acceptBusy, setAcceptBusy] = useState(false);
+    const [acceptError, setAcceptError] = useState<string | null>(null);
     const [page, setPage] = useState<SharedProjectPage | null>(null);
     const [state, setState] = useState<'loading' | 'ready' | 'missing' | 'old'>('loading');
     const [tab, setTab] = useState<'overview' | 'context'>('overview');
@@ -74,6 +77,19 @@ export function SharedProjectScreen() {
     if (!page) return <Empty text={t('common.loading')} />;
 
     const owner = share?.owner.displayName ?? '';
+    // B-900: an owner's "operate every terminal here" makes one pending grant per terminal — accept them in one go.
+    const pendingDirect = pendingDirectGrantIds(page.terminals, Date.now());
+    const acceptAll = async () => {
+        if (acceptBusy) return;
+        setAcceptBusy(true); setAcceptError(null);
+        const failed: string[] = [];
+        for (const id of pendingDirect) {
+            try { await respondTerminal(id, true); } catch (e) { failed.push(e instanceof SessionShareApiError ? e.code : 'unknown'); }
+        }
+        if (failed.length) setAcceptError(t('share.dialog.errors.generic', { error: failed.join(', ') }));
+        setAcceptBusy(false);
+        void load();
+    };
     const leave = async () => {
         const ok = await Modal.confirm(t('share.project.leaveConfirm', { owner }), undefined, { confirmText: t('share.project.leave'), destructive: true });
         if (!ok) return;
@@ -104,6 +120,13 @@ export function SharedProjectScreen() {
                     </section>
                     <section className="pj-section">
                         <h2>{t('share.project.terminals')} <span className="pj-count">{page.terminals.length}</span></h2>
+                        {pendingDirect.length > 0 && (
+                            <div className="pj-accept-all" role="group" data-testid="project-accept-all">
+                                <p className="pj-muted">{t('share.project.acceptAllBanner', { owner, count: pendingDirect.length })}</p>
+                                <Button type="button" variant="primary" size="sm" loading={acceptBusy} onClick={() => void acceptAll()}>{t('share.project.acceptAll', { count: pendingDirect.length })}</Button>
+                            </div>
+                        )}
+                        {acceptError && <p className="pj-accept-error" role="alert">{acceptError}</p>}
                         {page.terminals.length === 0 ? <p className="pj-muted pj-empty">{t('share.project.noTerminals')}</p>
                             : page.terminals.map((term) => {
                                 const link = projectTerminalLink(term, Date.now());

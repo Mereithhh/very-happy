@@ -98,3 +98,8 @@ export function projectGrantIdOfShareId(shareId: string): string | null {
     const parts = shareId.split(':');
     return parts.length === 4 && parts[1] ? parts[1] : null;
 }
+
+/** B-900: the project's terminals whose direct grant to me still waits for my accept (one "Accept all"). Pure. */
+export function pendingDirectGrantIds(terminals: ReadonlyArray<SharedProjectTerminal>, now: number): string[] {
+    return terminals.map((term) => projectTerminalLink(term, now)).filter((l) => l.via === 'direct' && l.pending).map((l) => l.shareId);
+}

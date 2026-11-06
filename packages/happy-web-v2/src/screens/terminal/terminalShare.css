@@ -45,3 +45,30 @@
 .shd-grant-term > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (hover: hover) and (pointer: fine) { .shd-grant-term:hover { background: var(--fill-hover); } }
 @media (pointer: coarse) { .shd-grant-term { min-height: 44px; } }
+
+/* B-900: every terminal in the project → can operate, for one person (ProjectOperateAll.tsx). */
+.pjo { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+/* B-900 QA65 P2-3: on desktop the confirmation is a shorter centred card stacked on the share dialog,
+   whose top/bottom edges peeked out past it. Hide the share dialog while the confirmation is open
+   (it comes back unchanged on close). Phones use a bottom sheet that already covers it. */
+@media (min-width: 601px) { .so-dialog:has(.pjo[data-confirm-open]) { visibility: hidden; } }
+.pjo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-1) 0; }
+.pjo-gap { display: flex; gap: var(--sp-2); align-items: flex-start; margin: 0; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--warn-dim); color: var(--text); font-size: var(--fs-12); line-height: 1.45; }
+.pjo-gap > svg { flex: none; margin-top: 1px; color: var(--warn); }
+.shd-grant-term.pjo-term { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "icon title machine" "icon state state"; align-items: center; column-gap: var(--sp-2); padding-block: var(--sp-1); }
+.pjo-term > svg { grid-area: icon; color: var(--text-dim); }
+.pjo-term > .pjo-term-title { grid-area: title; }
+.pjo-term > .pjo-term-machine { grid-area: machine; max-width: 12em; color: var(--text-dim); font-size: var(--fs-12); }
+.pjo-term > .pjo-state { grid-area: state; color: var(--text-dim); font-size: var(--fs-11); }
+.pjo-term[data-state="operator"] > .pjo-state { color: var(--text); }
+@media (max-width: 480px) { .shd-grant-terms { padding-left: 0; } }
+.pjo-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; max-height: 40vh; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
+.pjo-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "icon title machine" "icon state state"; align-items: center; column-gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); font-size: var(--fs-13); color: var(--text); }
+.pjo-item + .pjo-item { border-top: 1px solid var(--line); }
+.pjo-item > svg { grid-area: icon; color: var(--text-dim); }
+.pjo-item-title { grid-area: title; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pjo-item-machine { grid-area: machine; color: var(--text-dim); font-size: var(--fs-12); max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pjo-item-state { grid-area: state; color: var(--text-dim); font-size: var(--fs-12); }
+.pjo-item[data-outcome="failed"] .pjo-item-state { color: var(--danger); }
+.pjo-item[data-outcome="created"] .pjo-item-state, .pjo-item[data-outcome="upgraded"] .pjo-item-state { color: var(--text); }
+.pjo-muted { margin: 0; color: var(--text-dim); font-size: var(--fs-12); line-height: 1.45; }

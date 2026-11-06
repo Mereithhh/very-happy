@@ -28,14 +28,15 @@ export function operatorExpiryOf(value: ShareExpiryDays): OperatorExpiry {
     return value && (OPERATOR_EXPIRY_CHOICES as number[]).includes(value) ? value : OPERATOR_DEFAULT_EXPIRY;
 }
 
-export function OperatorWarning({ compact }: { compact?: boolean }) {
+/** `manyMachines`: one confirmation covers terminals on several machines (B-900) → plural wording. */
+export function OperatorWarning({ compact, manyMachines }: { compact?: boolean; manyMachines?: boolean }) {
     const { t } = useTranslation();
     return (
         <div className="shd-opwarn" role="note">
-            <p className="shd-opwarn-title"><ShieldAlert size={15} aria-hidden />{t('share.operator.warningTitle')}</p>
+            <p className="shd-opwarn-title"><ShieldAlert size={15} aria-hidden />{t(manyMachines ? 'share.operator.warningTitleMany' : 'share.operator.warningTitle')}</p>
             <ul className="shd-opwarn-list">
-                <li>{t('share.operator.warningRead')}</li>
-                <li>{t('share.operator.warningRun')}</li>
+                <li>{t(manyMachines ? 'share.operator.warningReadMany' : 'share.operator.warningRead')}</li>
+                <li>{t(manyMachines ? 'share.operator.warningRunMany' : 'share.operator.warningRun')}</li>
                 <li>{t('share.operator.warningBackground')}</li>
                 {!compact && <li>{t('share.operator.warningCwd')}</li>}
             </ul>

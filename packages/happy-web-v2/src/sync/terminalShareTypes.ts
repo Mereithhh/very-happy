@@ -134,3 +134,69 @@ export function serialPerKey(): (key: string, task: () => Promise<void>) => Prom
         return next;
     };
 }
+
+// ---- B-900: project terminals → "can operate" in one go (owner)
+
+export type TerminalBatchRef = { machineId: string; terminalId: string; title?: string };
+export const TerminalBatchResultSchema = z.object({
+    machineId: z.string(),
+    terminalId: z.string(),
+    outcome: z.string().transform((v): 'created' | 'upgraded' | 'skipped' | 'failed' => (v === 'created' || v === 'upgraded' || v === 'skipped' ? v : 'failed')),
+    code: z.string().optional(),
+    grant: TerminalGrantViewSchema.optional().catch(undefined),
+});
+export type TerminalBatchResult = z.infer<typeof TerminalBatchResultSchema>;
+
+/** One of the project's terminals as the owner sees it, with this person's current direct grant. */
+export type OperatePlanItem = {
+    machineId: string;
+    terminalId: string;
+    title: string;
+    machineName: string;
+    /** This person's live direct grant on it: operator / operator not accepted yet / view only / none. */
+    current: 'operator' | 'operatorPending' | 'viewer' | 'none';
+    /** What the batch does: nothing (already can operate), raise view only, or a new grant. */
+    action: 'skip' | 'upgrade' | 'create';
+};
+export type OperatePlan = {
+    items: OperatePlanItem[];
+    /** The terminals the batch sends (skips excluded) — exactly the list the owner confirms. */
+    send: TerminalBatchRef[];
+    /** Distinct machine names of the terminals sent (the confirmation names them when > 1). */
+    machines: string[];
+    /** This person can operate some project terminals but not these (B-900 §5 hint); empty otherwise. */
+    gap: OperatePlanItem[];
+};
+
+/**
+ * B-900: what "give every terminal in the project can-operate" would do for one person, from the project's
+ * terminals RIGHT NOW and my live grants. Only these terminals — never a project tier. Pure.
+ */
+export function planProjectOperate(terminals: ReadonlyArray<{ id: string; machineId: string; machineName: string; title: string }>, grants: ReadonlyArray<TerminalGrantView>, granteeId: string, now: number): OperatePlan {
+    const mine = new Map<string, TerminalGrantView>();
+    for (const g of grants) {
+        if (g.grantee.id !== granteeId || g.status === 'revoked' || g.expiresAt <= now) continue;
+        mine.set(`${g.machineId}:${g.terminalId}`, g);
+    }
+    const items: OperatePlanItem[] = terminals.map((tm) => {
+        const g = mine.get(`${tm.machineId}:${tm.id}`);
+        const current: OperatePlanItem['current'] = !g ? 'none' : g.role === 'operator' ? (g.status === 'active' ? 'operator' : 'operatorPending') : 'viewer';
+        const action: OperatePlanItem['action'] = current === 'operator' || current === 'operatorPending' ? 'skip' : current === 'viewer' ? 'upgrade' : 'create';
+        return { machineId: tm.machineId, terminalId: tm.id, title: tm.title, machineName: tm.machineName, current, action };
+    });
+    const sent = items.filter((i) => i.action !== 'skip');
+    const machines = [...new Set(sent.map((i) => i.machineName).filter(Boolean))];
+    const operates = items.some((i) => i.action === 'skip');
+    return { items, send: sent.map((i) => ({ machineId: i.machineId, terminalId: i.terminalId, title: i.title })), machines, gap: operates ? sent : [] };
+}
+
+/** The terminals of `plan` the person has ANY direct grant on (what "revoke all terminal access" ends). Pure. */
+export function directlyGranted(plan: OperatePlan): TerminalBatchRef[] {
+    return plan.items.filter((i) => i.current !== 'none').map((i) => ({ machineId: i.machineId, terminalId: i.terminalId }));
+}
+
+/** Failed refs of a batch result, to retry exactly those. Pure. */
+export function failedRefs(results: ReadonlyArray<TerminalBatchResult>, sent: ReadonlyArray<TerminalBatchRef>): TerminalBatchRef[] {
+    const failed = new Set(results.filter((r) => r.outcome === 'failed').map((r) => `${r.machineId}:${r.terminalId}`));
+    return sent.filter((r) => failed.has(`${r.machineId}:${r.terminalId}`));
+}

@@ -295,6 +295,106 @@ describe('B-878 project shares (pglite)', () => {
         expect(await broker.listProjectTerminals(dave.id, g.id)).toEqual([]);
     });
 
+    it('B-900 project terminals → can operate in one go: only the terminals named now; skip / upgrade / partial failure; revoke-all only direct; p: stays view only', async () => {
+        const { createTerminalGrant, respondToTerminalGrant, grantTerminalsOperator, revokeTerminalsFor } = await import('./terminalShares');
+        const { TerminalShareError } = await import('./terminalSharePolicy');
+        const frank = await createAccount('fiona9'); const gina = await createAccount('ginaa');
+        const g = await ps.createProjectGrant({ ownerId, projectId, granteeAccountId: frank.id, role: 'driver', expiresInDays: null }, shares.granteeContentPublicKey);
+        await ps.respondToProjectGrant(frank.id, g.id, true);
+        await setTerminals([{ id: 'bt1', projectId }, { id: 'bt2', projectId }, { id: 'bt3', projectId }]);
+        const ref = (id: string) => ({ machineId, terminalId: id, title: id });
+        const row = async (id: string) => (await broker.listProjectTerminals(frank.id, g.id)).find((t) => t.terminalId === id);
+        // bt1: frank already views (active); bt3: frank already operates; gina operates bt1 (someone else's grant).
+        const view1 = await createTerminalGrant({ ownerId, machineId, terminalId: 'bt1', granteeAccountId: frank.id, role: 'viewer', expiresInDays: 7 });
+        await respondToTerminalGrant(frank.id, view1.id, true);
+        const op3 = await createTerminalGrant({ ownerId, machineId, terminalId: 'bt3', granteeAccountId: frank.id, role: 'operator', expiresInDays: 30, confirmOperator: true });
+        const ginas = await createTerminalGrant({ ownerId, machineId, terminalId: 'bt1', granteeAccountId: gina.id, role: 'operator', expiresInDays: 1, confirmOperator: true });
+        // The confirmation and the finite expiry are checked once, before anything is written.
+        await expect(grantTerminalsOperator({ ownerId, granteeAccountId: frank.id, terminals: [ref('bt2')], expiresInDays: 1 })).rejects.toThrow(TerminalShareError);
+        for (const days of [null, 365, 0, 2]) {
+            await expect(grantTerminalsOperator({ ownerId, granteeAccountId: frank.id, terminals: [ref('bt2')], expiresInDays: days, confirmOperator: true })).rejects.toMatchObject({ code: 'bad_expiry' });
+        }
+        expect((await row('bt2'))!.direct).toBeUndefined();
+        const results = await grantTerminalsOperator({ ownerId, granteeAccountId: frank.id, terminals: [ref('bt1'), ref('bt2'), ref('bt3'), ref('bt2')], expiresInDays: 7, confirmOperator: true });
+        expect(results.map((r) => [r.terminalId, r.outcome])).toEqual([['bt1', 'upgraded'], ['bt2', 'created'], ['bt3', 'skipped']]);
+        expect(results[0].grant).toMatchObject({ id: view1.id, role: 'operator', status: 'active' }); // upgrade keeps the accepted grant
+        expect(results[1].grant).toMatchObject({ role: 'operator', status: 'pending' }); // a new one waits for frank
+        expect(results[1].grant!.expiresAt - Date.now()).toBeGreaterThan(6.9 * 86_400_000);
+        expect(results[1].grant!.expiresAt - Date.now()).toBeLessThanOrEqual(7 * 86_400_000);
+        expect((await db.terminalGrant.findUnique({ where: { id: op3.id } }))!.expiresAt.getTime()).toBe(op3.expiresAt); // skipped = untouched
+        expect((await db.terminalGrant.findUnique({ where: { id: ginas.id } }))!.status).toBe('pending'); // gina's grant unaffected
+        expect((await row('bt1'))!.direct).toMatchObject({ grantId: view1.id, role: 'operator', status: 'active' });
+        expect((await row('bt2'))!.direct).toMatchObject({ role: 'operator', status: 'pending' });
+        // Only the terminals named at grant time: one put into the project afterwards gets nothing.
+        await setTerminals([{ id: 'bt1', projectId }, { id: 'bt2', projectId }, { id: 'bt3', projectId }, { id: 'bt4', projectId }]);
+        expect((await row('bt4'))!.direct).toBeUndefined();
+        expect((await row('bt4'))!.shareId).toBe(broker.projectTerminalShareId(g.id, machineId, 'bt4'));
+        expect(await db.terminalGrant.count({ where: { granteeAccountId: frank.id, terminalId: 'bt4' } })).toBe(0);
+        // The p: path of an operable terminal still never types.
+        const projectKey = crypto.unwrapDataEncryptionKey(new Uint8Array(Buffer.from((await ps.listIncomingProjectShares(frank.id)).find((s) => s.id === g.id)!.granteeKey, 'base64')), crypto.contentKeyPairFromSecret(frank.secret))!;
+        const pShare = broker.projectTerminalShareId(g.id, machineId, 'bt1');
+        const sealedP = (v: unknown) => Buffer.from(crypto.encryptWithDataKey(v, projectKey)).toString('base64');
+        expect((await broker.handleTerminalShareRpc(io, frank.id, { grantId: pShare, op: 'attach', params: sealedP({ viewOnly: false, cols: 10, rows: 2 }) })).ok).toBe(true);
+        expect(daemonCalls.at(-1)!.params).toMatchObject({ terminalId: 'bt1', viewOnly: true });
+        expect(await broker.handleTerminalShareRpc(io, frank.id, { grantId: pShare, op: 'paste', params: sealedP({ text: 'ls' }) })).toEqual({ ok: false, error: 'share_method_denied' });
+        emitted.length = 0;
+        await broker.__forwardTerminalEventForTests(frank.id, 'input', { grantId: pShare, data: sealedP('eA==') });
+        expect(emitted.filter((e) => e.event === 'terminal-input')).toEqual([]);
+        // Partial failure: a terminal the (online) machine no longer reports, and the share-rate limit.
+        await db.machine.update({ where: { id: machineId }, data: { active: true } });
+        try {
+            const mixed = await grantTerminalsOperator({ ownerId, granteeAccountId: gina.id, terminals: [ref('gone1'), ref('bt2')], expiresInDays: 1, confirmOperator: true });
+            expect(mixed.map((r) => [r.terminalId, r.outcome, r.code])).toEqual([['gone1', 'failed', 'terminal_gone'], ['bt2', 'created', undefined]]);
+            process.env.MAX_SESSION_SHARES_PER_ACCOUNT_PER_MINUTE = '1';
+            const limited = await grantTerminalsOperator({ ownerId, granteeAccountId: gina.id, terminals: [ref('bt3'), ref('bt4')], expiresInDays: 1, confirmOperator: true });
+            expect(limited).toHaveLength(2);
+            expect(limited.every((r) => r.outcome === 'failed' && r.code === 'relationship_rate_quota_exceeded')).toBe(true);
+        } finally {
+            delete process.env.MAX_SESSION_SHARES_PER_ACCOUNT_PER_MINUTE;
+            await db.machine.update({ where: { id: machineId }, data: { active: false } });
+        }
+        // Revoke all of frank's terminal access here: only his direct grants; the project share and gina's grants stay.
+        expect(await revokeTerminalsFor({ ownerId, granteeAccountId: frank.id, terminals: ['bt1', 'bt2', 'bt3', 'bt4'].map(ref) })).toEqual({ revoked: 3 });
+        for (const id of ['bt1', 'bt2', 'bt3']) expect((await row(id))!.direct).toBeUndefined();
+        expect((await ps.listIncomingProjectShares(frank.id)).find((s) => s.id === g.id)?.status).toBe('active');
+        expect(await db.terminalGrant.count({ where: { granteeAccountId: gina.id, status: { not: 'revoked' } } })).toBe(2);
+        expect(await revokeTerminalsFor({ ownerId, granteeAccountId: frank.id, terminals: [ref('bt1')] })).toEqual({ revoked: 0 });
+        await ps.revokeProjectGrant(ownerId, projectId, frank.id);
+    });
+
+    it('B-900 real routes: batch-operate needs the confirmation and a 1/7/30-day expiry; batch-revoke', async () => {
+        const fastify = (await import('fastify')).default;
+        const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');
+        const { terminalShareRoutes } = await import('@/app/api/routes/terminalShareRoutes');
+        const app = fastify();
+        app.setValidatorCompiler(validatorCompiler);
+        app.setSerializerCompiler(serializerCompiler);
+        app.decorate('authenticate', async (request: any) => { request.userId = request.headers['x-user']; });
+        terminalShareRoutes(app as any);
+        await app.ready();
+        const hank = await createAccount('hanky');
+        const headers = { 'x-user': ownerId };
+        const terminals = [{ machineId, terminalId: 'rt1' }, { machineId, terminalId: 'rt2' }];
+        const post = (url: string, payload: unknown) => app.inject({ method: 'POST', url, headers, payload: payload as any });
+        for (const payload of [
+            { accountId: hank.id, terminals, expiresInDays: 1 },
+            { accountId: hank.id, terminals, expiresInDays: null, confirmOperator: true },
+            { accountId: hank.id, terminals, confirmOperator: true },
+            { accountId: hank.id, terminals, expiresInDays: 90, confirmOperator: true },
+            { accountId: hank.id, terminals: [], expiresInDays: 1, confirmOperator: true },
+            { accountId: hank.id, terminals, expiresInDays: 1, confirmOperator: true, role: 'viewer' },
+        ]) expect((await post('/v1/terminal-shares/batch-operate', payload)).statusCode).toBe(400);
+        expect(await db.terminalGrant.count({ where: { granteeAccountId: hank.id } })).toBe(0);
+        const ok = await post('/v1/terminal-shares/batch-operate', { accountId: hank.id, terminals, expiresInDays: 30, confirmOperator: true });
+        expect(ok.statusCode).toBe(200);
+        expect(ok.json().results.map((r: any) => r.outcome)).toEqual(['created', 'created']);
+        expect((await post('/v1/terminal-shares/batch-operate', { accountId: hank.id, terminals, expiresInDays: 1, confirmOperator: true })).json().results.map((r: any) => r.outcome)).toEqual(['skipped', 'skipped']);
+        // Another account cannot revoke the owner's grants through the batch route.
+        expect((await app.inject({ method: 'POST', url: '/v1/terminal-shares/batch-revoke', headers: { 'x-user': carolId }, payload: { accountId: hank.id, terminals } })).json()).toEqual({ revoked: 0 });
+        expect((await post('/v1/terminal-shares/batch-revoke', { accountId: hank.id, terminals })).json()).toEqual({ revoked: 2 });
+        await app.close();
+    });
+
     it('B-899 team-derived sessions (no ProjectMember rows): "can send" lists them as driver and the message posts, signed as the grantee', async () => {
         const lead = await createSession('team-lead'); const member = await createSession('team-member');
         const teamProject = (await store.createProject(ownerId, { name: 'team-proj', folders: [{ machineId, path: '/home/owner/team' }] })).id;

@@ -8,8 +8,11 @@ import { SessionShareApiError, type ShareTarget } from './apiSessionShares';
 import {
     IncomingTerminalShareSchema,
     TerminalGrantViewSchema,
+    TerminalBatchResultSchema,
     TerminalShareEventSchema,
     type IncomingTerminalShare,
+    type TerminalBatchRef,
+    type TerminalBatchResult,
     type TerminalGrantView,
     type TerminalShareEvent,
     type TerminalShareExpiry,
@@ -64,4 +67,16 @@ export function respondToTerminalGrant(grantId: string, accept: boolean): Promis
 
 export function listTerminalGrantEvents(grantId: string): Promise<TerminalShareEvent[]> {
     return call(`/v1/terminal-shares/${encodeURIComponent(grantId)}/events?limit=100`, z.object({ events: z.array(TerminalShareEventSchema) })).then((r) => r.events);
+}
+
+/** B-900: one person × the terminals the owner confirmed → "can operate"; one result per terminal. */
+export function batchOperateTerminals(input: { accountId: string; terminals: TerminalBatchRef[]; expiresInDays: TerminalShareExpiry; confirmOperator: true }): Promise<TerminalBatchResult[]> {
+    const terminals = input.terminals.map((t) => ({ machineId: t.machineId, terminalId: t.terminalId, ...(t.title ? { title: t.title.slice(0, 200) } : {}) }));
+    return call('/v1/terminal-shares/batch-operate', z.object({ results: z.array(TerminalBatchResultSchema) }), json({ ...input, terminals })).then((r) => r.results);
+}
+
+/** B-900: revoke one person's DIRECT grants on the named terminals (the project share stays). */
+export function batchRevokeTerminals(input: { accountId: string; terminals: TerminalBatchRef[] }): Promise<number> {
+    const terminals = input.terminals.map((t) => ({ machineId: t.machineId, terminalId: t.terminalId }));
+    return call('/v1/terminal-shares/batch-revoke', z.object({ revoked: z.number() }), json({ accountId: input.accountId, terminals })).then((r) => r.revoked);
 }
