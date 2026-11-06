@@ -231,8 +231,66 @@ describe('new content at the bottom still follows', () => {
         el.querySelector('.cl-inner')!.appendChild(grown);
         fireInnerResize();
         userScrollTo(top - 400);
+        // B-897c: before any frame runs — waiting would paint the clamp.
+        expect(distance()).toBe(0);
+    });
+
+    it('a small gesture-less upward step right after a transcript change lands two frames later', () => {
+        const grown = document.createElement('div');
+        grown.setAttribute('data-row', '');
+        el.querySelector('.cl-inner')!.appendChild(grown);
+        fireInnerResize();
+        userScrollTo(top - 150);
+        expect(distance()).toBeGreaterThan(0);
+        flushFrames();
         flushFrames();
         expect(distance()).toBe(0);
+    });
+
+    // B-897c (QA63): the annotations tray's smooth scrollIntoView mid-stream was pulled back to the
+    // bottom in Chromium — each upward step lands right after a streamed DOM change. A clamp is one
+    // step; a smooth / programmatic scroll keeps going on the next frames and must be left alone,
+    // even while the streamed reply keeps growing below.
+    const streamChunk = () => {
+        const grown = document.createElement('div');
+        grown.setAttribute('data-row', '');
+        el.querySelector('.cl-inner')!.appendChild(grown);
+        fireInnerResize();
+    };
+    it('a programmatic smooth scroll up mid-stream (no detach) is not pulled back', () => {
+        streamChunk();
+        flushFrames();
+        expect(distance()).toBe(0);
+        // The browser's smooth animation: one step per frame toward the target, cancelled the
+        // moment anything else writes scrollTop (an instant follow write does exactly that).
+        let pos = top;
+        const target = top - 1000;
+        while (pos > target) {
+            streamChunk();
+            if (top !== pos) break;
+            pos = Math.max(target, pos - 150); // eased: below CLAMP_MIN_STEP_PX
+            userScrollTo(pos);
+            flushFrames();
+        }
+        streamChunk();
+        flushFrames();
+        flushFrames();
+        flushFrames();
+        expect(distance()).toBeGreaterThan(1000);
+    });
+
+    it('a jump outside ChatList that asks to detach first (the tray) stays where it landed', async () => {
+        const { requestChatDetach } = await import('./chatFollowRequest');
+        streamChunk();
+        flushFrames();
+        act(() => requestChatDetach('s'));
+        streamChunk();
+        userScrollTo(top - 600);
+        streamChunk();
+        flushFrames();
+        flushFrames();
+        flushFrames();
+        expect(distance()).toBeGreaterThan(600);
     });
 });
 

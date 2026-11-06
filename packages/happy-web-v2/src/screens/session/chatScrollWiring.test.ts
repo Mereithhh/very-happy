@@ -6,6 +6,9 @@ import { dirname, join } from 'node:path';
 const chat = readFileSync(new URL('./ChatList.tsx', import.meta.url), 'utf8');
 const detail = readFileSync(new URL('./SessionDetailScreen.tsx', import.meta.url), 'utf8');
 const css = readFileSync(new URL('./chatlist.css', import.meta.url), 'utf8');
+const tray = readFileSync(new URL('./chatAnnotations/ChatAnnotationsTray.tsx', import.meta.url), 'utf8');
+const jump = readFileSync(new URL('../search/useChatJump.ts', import.meta.url), 'utf8');
+const rail = readFileSync(new URL('./ChatPromptRail.tsx', import.meta.url), 'utf8');
 
 describe('session-scoped transcript scrolling', () => {
     it('remounts the transcript by session and resets cached-session state before paint', () => {
@@ -20,7 +23,7 @@ describe('session-scoped transcript scrolling', () => {
     // pure decision (chatFollow.followAfterScroll); the resize follower re-pins a
     // following reader left short by a same-frame shrink-then-grow.
     it('keeps following when content grows below between a follow write and its scroll event', () => {
-        expect(chat).toContain('followAfterScroll(detachedRef.current, distance, { atBottom: atBottomRef.current, movedUp, layoutMoved })');
+        expect(chat).toContain('followAfterScroll(detachedRef.current, distance, { atBottom: atBottomRef.current, movedUp })');
         expect(chat).toMatch(/shouldFollowGrowth\(innerHeightRef\.current, next, atBottomRef\.current\)\s*\|\| shouldRepin\(innerHeightRef\.current, next, atBottomRef\.current, distance\)/);
         // movedUp is measured against our own writes too, not only the last scroll event.
         expect(chat).toMatch(/if \(!animate\) \{\s*ownScrollTopRef\.current = el\.scrollTop;[\s\S]{0,120}lastScrollTopRef\.current = el\.scrollTop;/);
@@ -32,8 +35,24 @@ describe('session-scoped transcript scrolling', () => {
     it('treats an upward move right after a transcript change as a layout clamp, not the reader', () => {
         expect(chat).toMatch(/new MutationObserver\(\(\) => \{\s*lastMutationAtRef\.current = performance\.now\(\);\s*\}\);\s*mo\?\.observe\(inner, \{ childList: true, subtree: true, characterData: true, attributes: true \}\);/);
         expect(chat).toContain('isLayoutMove({ now: performance.now(), lastMutationAt: lastMutationAtRef.current, resized: size !== lastScrollSizeRef.current })');
-        expect(chat).toContain('if (wasFollowing && movedUp && layoutMoved && distance > REATTACH_PX) scrollToBottom(false);');
+        expect(chat).toContain('if (wasFollowing && movedUp && layoutMoved && distance > REATTACH_PX && !layoutCheckRef.current) {');
+        // B-897c: re-pinned only after two frames prove it was not a smooth scroll still moving up.
+        expect(chat).toMatch(/if \(isClampStep\(step\)\) \{\s*awaySnapshotRef\.current = null;\s*setShowJump\(false\);\s*scrollToBottom\(false\);\s*return;/);
+        expect(chat).toContain('if (layoutCheckRef.current && movedUp && !ownWrite) cancelLayoutCheck();');
+        expect(chat).toMatch(/if \(!now \|\| !layoutMoveHeld\(check\.top, now\.scrollTop, detachedRef\.current\)\) return;\s*setAtBottom\(true\);/);
         expect(chat).toMatch(/const wasFollowing = atBottomRef\.current && !detachedRef\.current;\s*\/\/ B-598/);
+    });
+
+    // B-897c: programmatic jumps leave the live end before they scroll; keys on <body> detach
+    // when the pointer is over the transcript (WebKit scrolls it without focus).
+    it('detaches before programmatic jumps and hovered-transcript keyboard scrolling', () => {
+        expect(chat).toContain('useEffect(() => onChatDetachRequest(sessionId, () => detachRef.current()), [sessionId]);');
+        expect(tray).toContain("const land = () => { const el = marker(); if (!el) return; requestChatDetach(sessionId); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); };");
+        expect(tray).toContain('window.setTimeout(land, 600);');
+        expect(tray).not.toMatch(/marker\(\)\??!?\.scrollIntoView/);
+        expect(chat).toContain('if (onTranscript || (onPage && (pointerInside || pointerOver))) detachRef.current();');
+        expect(jump).toMatch(/detachRef\.current\(\);\s*land\(\);/);
+        expect(rail).toMatch(/if \(railScrollTarget\(top\) < scroll\.scrollTop\) onNavigateUp\?\.\(\);\s*scroll\.scrollTo/);
     });
 
     it('uses native vertical touch scrolling without browser scroll anchoring fighting bottom-follow', () => {

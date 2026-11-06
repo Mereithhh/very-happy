@@ -116,20 +116,24 @@ export type FollowState = { atBottom: boolean; detached: boolean };
  * 开始/结束的 commit 里会布局到一个更矮的中间态，scrollTop 被浏览器夹下去，
  * 随后内容又长回来；没有任何 JS 写 scrollTop，这次 scroll 事件却落在离底
  * 几百 px 处（实测 276–906px），按 80px 带判成离开，回复在下面接着长，视图
- * 停在半路。`layoutMoved`：这次往上动前后转录 DOM 刚变过、或内容/视口尺寸
- * 变了——正在跟随的读者因此保持跟随（调用方负责重新贴底）。读者自己的上滚
- * 不受影响：滚轮/触摸/按键先 detach，拖滚动条在调用方先置 detached。
+ * 停在半路。这种往上动由调用方用 `isLayoutMove` 识别、`layoutMoveHeld` 确认后
+ * 重新贴底（见下）；本函数只按 80px 带判。读者自己的上滚不受影响：滚轮/触摸/
+ * 按键先 detach，拖滚动条在调用方先置 detached。
  */
 export function followAfterScroll(
     detached: boolean,
     distance: number,
-    prev: { atBottom: boolean; movedUp: boolean; layoutMoved?: boolean } = { atBottom: false, movedUp: true },
+    prev: { atBottom: boolean; movedUp: boolean } = { atBottom: false, movedUp: false },
 ): FollowState {
     if (detached) {
-        const back = distance <= REATTACH_PX;
+        // B-897c: an upward move is never "back at the bottom". WebKit animates
+        // PageUp / Space / ↑: the first scroll event after the gesture detached is
+        // 1px up (distance 1 ≤ REATTACH_PX), which re-attached the reader and the
+        // next follow write cancelled the animation — the key scrolled nowhere.
+        const back = distance <= REATTACH_PX && !prev.movedUp;
         return { atBottom: back, detached: !back };
     }
-    if (prev.atBottom && (!prev.movedUp || prev.layoutMoved)) return { atBottom: true, detached: false };
+    if (prev.atBottom && !prev.movedUp) return { atBottom: true, detached: false };
     return { atBottom: distance < FOLLOW_BAND_PX, detached: false };
 }
 
@@ -154,6 +158,27 @@ export const LAYOUT_SHIFT_MS = 300;
 
 export function isLayoutMove(input: { now: number; lastMutationAt: number; resized: boolean }): boolean {
     return input.resized || input.now - input.lastMutationAt < LAYOUT_SHIFT_MS;
+}
+
+/**
+ * B-897c：流式中转录 DOM 一直在变，`isLayoutMove` 对任何往上动都为真——包括
+ * 没先 detach 的程序化 smooth 滚动（它的第一步看着和 clamp 一样）。已知入口
+ * 都先 detach（批注托盘、useChatJump、rail），这里是给未知入口的保险，按步长分：
+ * - 单步 ≥ CLAMP_MIN_STEP_PX：clamp（实测 276–906px），当场贴底。不能等：等一帧
+ *   clamp 就被画出来，WebKit 桌面回合结束时离底峰值从 87–119px 变成 320–542px。
+ *   smooth 滚动是缓入的，第一步远小于这个值；卡顿时第一步超过它会被当成 clamp，
+ *   这是保险的已知上限，所以新跳转入口仍须先 detach。
+ * - 单步更小：等两帧，`layoutMoveHeld` 确认 scrollTop 没继续变小、读者也没 detach
+ *   才贴底；期间又来了往上的 scroll 事件，调用方直接放弃（按 80px 带判）。
+ */
+export const CLAMP_MIN_STEP_PX = 200;
+
+export function isClampStep(step: number): boolean {
+    return step >= CLAMP_MIN_STEP_PX;
+}
+
+export function layoutMoveHeld(topAtMove: number, topNow: number, detached: boolean): boolean {
+    return !detached && topNow >= topAtMove - 1;
 }
 
 /** 滚轮向上（内容往回翻）才是离开意图；横向/向下滚不算。 */

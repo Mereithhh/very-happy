@@ -28,6 +28,29 @@ export function onChatFollowRequest(sessionId: string, listener: Listener): () =
 }
 
 /**
+ * B-897c: "a programmatic jump is about to move the transcript away from the
+ * live end" — callers outside ChatList (the annotations tray) that scroll the
+ * transcript with `scrollIntoView` ask it to stop following first. Without it
+ * the upward scroll lands while the streamed reply is still changing the DOM,
+ * reads as a layout clamp, and following pulls the view straight back down.
+ */
+const detachListeners = new Map<string, Set<Listener>>();
+
+export function requestChatDetach(sessionId: string): void {
+    for (const listener of detachListeners.get(sessionId) ?? []) listener();
+}
+
+export function onChatDetachRequest(sessionId: string, listener: Listener): () => void {
+    let set = detachListeners.get(sessionId);
+    if (!set) detachListeners.set(sessionId, (set = new Set()));
+    set.add(listener);
+    return () => {
+        set!.delete(listener);
+        if (set!.size === 0) detachListeners.delete(sessionId);
+    };
+}
+
+/**
  * The newest of THIS client's in-flight user messages (storage order:
  * newest-first). Only our own outbox carries `sendState`, so another device's
  * message never yanks this view. Null when nothing is in flight.
