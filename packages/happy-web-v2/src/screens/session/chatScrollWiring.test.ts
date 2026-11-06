@@ -21,7 +21,9 @@ describe('session-scoped transcript scrolling', () => {
     // following reader left short by a same-frame shrink-then-grow.
     it('keeps following when content grows below between a follow write and its scroll event', () => {
         expect(chat).toContain('followAfterScroll(detachedRef.current, distance, { atBottom: atBottomRef.current, movedUp })');
-        expect(chat).toMatch(/shouldFollowGrowth\(innerHeightRef\.current, next, atBottomRef\.current\)\s*\|\| shouldRepin\(atBottomRef\.current, distance\)/);
+        expect(chat).toMatch(/shouldFollowGrowth\(innerHeightRef\.current, next, atBottomRef\.current\)\s*\|\| shouldRepin\(innerHeightRef\.current, next, atBottomRef\.current, distance\)/);
+        // movedUp is measured against our own writes too, not only the last scroll event.
+        expect(chat).toMatch(/if \(!animate\) \{\s*ownScrollTopRef\.current = el\.scrollTop;[\s\S]{0,120}lastScrollTopRef\.current = el\.scrollTop;/);
     });
 
     it('uses native vertical touch scrolling without browser scroll anchoring fighting bottom-follow', () => {

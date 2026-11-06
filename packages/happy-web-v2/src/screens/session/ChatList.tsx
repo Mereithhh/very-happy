@@ -258,7 +258,11 @@ export function ChatList({
         const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
         const animate = smooth && !reduced && shouldSmoothJumpToLatest(distance, el.clientHeight);
         el.scrollTo({ top: el.scrollHeight, behavior: animate ? 'smooth' : 'auto' });
-        if (!animate) ownScrollTopRef.current = el.scrollTop;
+        if (!animate) {
+            ownScrollTopRef.current = el.scrollTop;
+            // B-897: the baseline for `movedUp` in onScroll is our own write too.
+            lastScrollTopRef.current = el.scrollTop;
+        }
     };
 
     // B-603: scroll motion → hold older history until the scroll settles.
@@ -326,6 +330,7 @@ export function ChatList({
             const max = Math.max(0, el.scrollHeight - el.clientHeight);
             el.scrollTop = Math.min(before + delta, max);
             ownScrollTopRef.current = el.scrollTop;
+            lastScrollTopRef.current = el.scrollTop;
             return { before, clamped: before + delta > max };
         };
         let last = write();
@@ -652,7 +657,7 @@ export function ChatList({
             const distance = el ? el.scrollHeight - el.scrollTop - el.clientHeight : 0;
             const follow = !isLoadingOlderRef.current
                 && (shouldFollowGrowth(innerHeightRef.current, next, atBottomRef.current)
-                    || shouldRepin(atBottomRef.current, distance));
+                    || shouldRepin(innerHeightRef.current, next, atBottomRef.current, distance));
             innerHeightRef.current = next;
             if (!follow || raf) return;
             followNextFrame();

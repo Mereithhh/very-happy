@@ -160,15 +160,20 @@ describe('followAfterScroll (B-598)', () => {
 });
 
 describe('shouldRepin (B-897)', () => {
-    it('跟随中内容变了、离底超过 2px 就重新贴底（同帧先缩后长，净变矮也要补）', () => {
-        expect(shouldRepin(true, 8)).toBe(true);
-        expect(shouldRepin(true, 2)).toBe(false);
-        expect(shouldRepin(true, 0)).toBe(false);
+    it('跟随中内容净变矮、离底超过 2px 就重新贴底（同帧先缩后长停在离底 8px）', () => {
+        expect(shouldRepin(15196, 15148, true, 8)).toBe(true);
+        expect(shouldRepin(15196, 15148, true, 2)).toBe(false);
+        expect(shouldRepin(15196, 15148, true, 0)).toBe(false);
+    });
+
+    it('变高不归它管：顶部插入旧历史时带内读者留在原处', () => {
+        expect(shouldRepin(1000, 2000, true, 40)).toBe(false);
+        expect(shouldRepin(1000, 1000, true, 40)).toBe(false);
     });
 
     it('读者已离开底部时不动他', () => {
-        expect(shouldRepin(false, 8)).toBe(false);
-        expect(shouldRepin(false, 900)).toBe(false);
+        expect(shouldRepin(15196, 15148, false, 8)).toBe(false);
+        expect(shouldRepin(15196, 15148, false, 900)).toBe(false);
     });
 });
 

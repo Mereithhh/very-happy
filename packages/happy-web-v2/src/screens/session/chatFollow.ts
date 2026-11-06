@@ -126,13 +126,14 @@ export function followAfterScroll(
 }
 
 /**
- * B-897：内容高度变了（不只是变高）之后要不要重新贴底：跟随中且离底超过
- * REATTACH_PX。同一帧里先缩后长（草稿换成正式消息变矮、浏览器把 scrollTop
- * clamp 下来，紧接着送达标记再长几 px）净变化是变矮，growth 那条不跟，
- * 视图就停在离底 8–9px。
+ * B-897：内容净变矮之后要不要重新贴底：跟随中且离底超过 REATTACH_PX。
+ * 同一帧里先缩后长（草稿换成正式消息变矮、浏览器把 scrollTop clamp 下来，
+ * 紧接着送达标记再长几 px）净变化是变矮，growth 那条不跟，视图就停在离底
+ * 8–9px。只管变矮：变高归 shouldFollowGrowth，顶部插入旧历史由补偿处理，
+ * 带内（离底 <80px）的读者不能因此被拉到底。
  */
-export function shouldRepin(atBottom: boolean, distance: number): boolean {
-    return atBottom && distance > REATTACH_PX;
+export function shouldRepin(prevHeight: number, nextHeight: number, atBottom: boolean, distance: number): boolean {
+    return atBottom && nextHeight < prevHeight && distance > REATTACH_PX;
 }
 
 /** 滚轮向上（内容往回翻）才是离开意图；横向/向下滚不算。 */
