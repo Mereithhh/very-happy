@@ -403,3 +403,6 @@
 
 /* B-850e: 成员账号 — one picker per member, no list bullets */
 .team-member-accounts-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+
+/* B-899: one link per shared project, stacked. */
+.teams-empty-links { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); }

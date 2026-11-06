@@ -20,9 +20,11 @@ export function SharedTeamNotFound({ fallback }: { fallback: React.ReactNode }) 
             <UsersRound size={36} aria-hidden />
             <h2>{t('share.project.teamOwnerOnly')}</h2>
             <p>{t('share.project.teamOwnerOnlyHint')}</p>
-            {projects.map((p) => (
-                <Link key={p.id} to={sharedProjectPath(p.id)}>{t('share.project.backToProject', { name: p.name })} →</Link>
-            ))}
+            <div className="teams-empty-links">
+                {projects.map((p) => (
+                    <Link key={p.id} to={sharedProjectPath(p.id)}>{t('share.project.backToProject', { name: p.name })} →</Link>
+                ))}
+            </div>
         </div>
     );
 }
