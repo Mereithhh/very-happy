@@ -159,7 +159,7 @@ describe('B-683 relaunch keeps the user permission mode', () => {
     expect(restore).toContain('const permissionMode = relaunchPermissionMode(session);');
     expect(restore).toMatch(/machineResumeSession\(\s*\{ machineId: eligibility\.machineId, sessionId, \.\.\.\(permissionMode \? \{ permissionMode \} : \{\}\) \}/);
     expect(restart).toContain('const permissionMode = relaunchPermissionMode(session);');
-    expect(restart).toMatch(/machineRestartSession\(\s*\{ machineId: eligibility\.machineId, sessionId, \.\.\.\(permissionMode \? \{ permissionMode \} : \{\}\) \}/);
+    expect(restart).toMatch(/machineRestartSession\(\s*\{ machineId: eligibility\.machineId, sessionId, \.\.\.\(permissionMode \? \{ permissionMode \} : \{\}\)(, \.\.\.\(opts\?\.ifIdle \? \{ ifIdle: true as const \} : \{\}\))? \}/);
   });
 });
 

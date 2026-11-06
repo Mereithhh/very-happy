@@ -1718,6 +1718,8 @@ export const zhHans: TranslationStructure = {
     },
 
     newSessionModal: {
+        // B-894
+        codexOutdated: ({ version }: { version: string }) => `Codex v${version} 过旧，部分模型不可用`,
         // Used by NewSessionModal component
         eyebrow: '新会话',
         heading: '开始点什么',
@@ -2426,6 +2428,9 @@ export const zhHans: TranslationStructure = {
         },
     },
     sidebar: {
+        // B-894
+        staleWrapper: '旧版',
+        staleWrapperHint: ({ from, to }: { from: string; to: string }) => `仍在用 v${from}（机器已是 v${to}），可在机器页或会话里重启`,
         kindTerminal: '终端',
         kindChat: '对话',
         agentStatusUnknown: '状态未知，等待新的 Agent 状态上报',
@@ -6487,6 +6492,41 @@ export const zhHans: TranslationStructure = {
         off: '关闭（由我决定）',
         saved: '已更新会话自动更新设置',
         saveFailed: '无法更新会话自动更新设置',
+    },
+
+    // B-894: 机器页「旧版会话」+ 批量重启空闲的旧会话。
+    staleSessions: {
+        title: ({ count }: { count: number }) => `旧版会话（${count}）`,
+        footer: '这些在线会话还在跑启动时的 CLI。较旧的会话不会上报空闲，所以不会自动更新。在这里重启空闲的会话：原地重启，保留对话。团队会话默认不勾选，重启会打断所在团队。',
+        versions: ({ from, to }: { from: string; to: string }) => `v${from} → v${to}`,
+        team: '团队会话',
+        critical: '可能丢消息',
+        skipped: '已跳过',
+        skipTurnActive: '跳过：正在运行',
+        skipPendingRequest: '跳过：在等你审批',
+        skipBackgroundTasks: '跳过：有后台任务',
+        skipRestarting: '跳过：正在重启',
+        select: ({ name }: { name: string }) => `重启 ${name}`,
+        restartIdle: ({ count }: { count: number }) => `重启空闲的旧会话（${count}）`,
+        confirmTitle: ({ count }: { count: number }) => `重启 ${count} 个旧会话？`,
+        confirmBody: '每个会话会停下并以当前版本重新启动，对话保留。轮到它之前开始干活的会话会被跳过。',
+        confirmAction: '重启',
+        done: ({ restarted, skipped, failed }: { restarted: number; skipped: number; failed: number }) =>
+            [`已重启 ${restarted} 个`, skipped ? `跳过 ${skipped} 个` : '', failed ? `失败 ${failed} 个` : ''].filter(Boolean).join(' · '),
+    },
+
+    // B-894: 机器页「自动更新 agent」。
+    agentAutoUpdate: {
+        title: '自动更新 agent',
+        footer: '开启后，这台机器在没有 Codex 回合运行时自动更新过旧的 Codex CLI，空闲的 Codex 会话随后原地重启到新版本。安装失败会显示在这里，最多再试一次。Claude 不需要：它随 Very Happy 一起更新。',
+        on: '开启 — 自动更新 Codex',
+        off: '关闭 — 问我',
+        saved: '已更新「自动更新 agent」设置',
+        saveFailed: '无法更新「自动更新 agent」设置',
+        installing: ({ agent, version }: { agent: string; version: string }) => `正在把 ${agent} 更新到 ${version}…`,
+        installed: ({ agent, version }: { agent: string; version: string }) => `已自动把 ${agent} 更新到 ${version}`,
+        failed: ({ agent, version, reason }: { agent: string; version: string; reason: string }) => `自动更新 ${agent} ${version} 失败（${reason}），稍后再试一次`,
+        gaveUp: ({ agent, version, reason }: { agent: string; version: string; reason: string }) => `自动更新 ${agent} ${version} 失败（${reason}），不再自动重试，请在上方手动更新`,
     },
 
     hibernation: {

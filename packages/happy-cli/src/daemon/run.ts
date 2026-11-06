@@ -76,6 +76,7 @@ import { createPolicyAnnouncementHandler } from '@/update/policyAnnouncement';
 import { createPolicyRefreshTrigger, createWakeDetector } from '@/update/policyRefreshTrigger';
 import { createDaemonOwnership } from '@/daemon/daemonOwnership';
 import { createHarnessInstaller } from '@/harness/harnessInstaller';
+import { createAgentAutoUpdater, resolveAgentAutoUpdateTickMs } from '@/harness/agentAutoUpdate';
 import { runNpm } from '@/update/npmInstall';
 import { HARNESS_INSTALL_CAPABILITY_VERSION } from '@slopus/happy-wire';
 import { createProjectPresenceReporter } from './projectPresence';
@@ -85,7 +86,7 @@ import { TurnActivityTracker } from '@/update/turnActivity';
 import { createDaemonHibernation, collectAutomationBindings, waitForPidsToExit, waitForSessionLive } from '@/hibernation/daemonHibernation';
 import { resolveCheckMs, resolveIdleMs, settingIdleMs } from '@/hibernation/hibernationPolicy';
 import { createAutoRestart } from './autoRestart';
-import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, pendingUpgradeVersion, resolveCheckInGraceMs, resolveQuietMs, type StaleKind } from '@/update/autoRestartPolicy';
+import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, pendingUpgradeVersion, resolveCheckInGraceMs, resolveQuietMs, restartIdleRefusal, type StaleKind } from '@/update/autoRestartPolicy';
 import { compareExactVersions } from '@/update/cliUpdate';
 import { createAutomationsClient, isAutomationsUnavailable } from '@/automations/client';
 import { BackgroundTaskTracker } from '@/update/backgroundTaskActivity';
@@ -191,6 +192,8 @@ export async function startDaemon(): Promise<void> {
   let agentHibernationSetting: number | undefined = (await readSettings()).agentHibernationIdleMs;
   // B-852: machine-local switch for automatic restarts of stale wrappers (default on).
   let autoRestartSetting: boolean = (await readSettings()).autoRestartSessions !== false;
+  // B-894: machine-local「自动更新 agent」 (default OFF — installs a newer Codex CLI by itself).
+  let agentAutoUpdateSetting: boolean = (await readSettings()).agentAutoUpdate === true;
   // B-478: align the daemon's own CLAUDE_CONFIG_DIR / CODEX_HOME with the
   // user's login shell (and settings.json) before anything reads them.
   try {
@@ -1226,6 +1229,8 @@ export async function startDaemon(): Promise<void> {
       }
       return sessionIdToFinishedSession.get(happySessionId);
     };
+    const trackedSessionFlavor = (happySessionId: string): string =>
+      findTrackedSessionById(happySessionId)?.happySessionMetadataFromLocalWebhook?.flavor ?? 'claude';
 
     // B-272: the restore record written after a resume/restart spawn succeeded.
     // The webhook has just persisted the NEW wrapper's identity and versions;
@@ -1459,7 +1464,7 @@ export async function startDaemon(): Promise<void> {
     // B-852: `auto` = the daemon's own idle restart after an upgrade. It has its
     // own attempt limit (autoRestartPolicy) and must not use up the user's
     // manual-restart breaker; the respawned wrapper posts the "updated" line.
-    type RestartSessionOptions = { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; auto?: { kind: StaleKind; target: string }; account?: true };
+    type RestartSessionOptions = { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; auto?: { kind: StaleKind; target: string }; account?: true; ifIdle?: true };
     // B-852: sessions whose wrapper exit is an automatic restart, not an exit
     // worth telling a team lead about.
     const autoRestartExits = new Set<string>();
@@ -1534,6 +1539,17 @@ export async function startDaemon(): Promise<void> {
 
     const restartSessionImpl = async (happySessionId: string, options?: RestartSessionOptions): Promise<SpawnSessionResult> => {
       try {
+        // B-894: the Web's batch restart of idle old sessions — never stop one that is busy now.
+        if (options?.ifIdle) {
+          const busy = restartIdleRefusal({
+            turnActive: turnActivity.activeSessions().includes(happySessionId),
+            backgroundTasks: backgroundTasks.count(happySessionId),
+          });
+          if (busy) {
+            logger.debug(`[DAEMON RUN] restart-session ${happySessionId} refused (ifIdle): ${busy}`);
+            return { type: 'error', errorMessage: `busy:${busy}` };
+          }
+        }
         const counts = options?.account ? accountRestartCounts : restartCounts;
         const prior = counts.get(happySessionId) ?? 0;
         const decision = options?.auto ? { allowed: true as const } : decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);
@@ -2122,6 +2138,14 @@ export async function startDaemon(): Promise<void> {
       return autoRestartSetting;
     });
     setTimeout(() => autoRestartScheduler.sweep(), 5_000).unref?.();
+    // B-894: the machine page's「自动更新 agent」switch; the updater is created with the harness installer below.
+    let agentAutoUpdater: ReturnType<typeof createAgentAutoUpdater> | null = null;
+    apiMachine.setAgentAutoUpdateHandlers(agentAutoUpdateSetting, async (enabled) => {
+      await updateSettings((current) => ({ ...current, agentAutoUpdate: enabled }));
+      agentAutoUpdateSetting = enabled;
+      void agentAutoUpdater?.tick();
+      return agentAutoUpdateSetting;
+    });
 
     // B-850a: accounts. Registered before connect so the connect snapshot
     // carries `agentProfiles` (= the capability). A `very-happy account …`
@@ -2294,7 +2318,11 @@ export async function startDaemon(): Promise<void> {
       if (delay !== null) logger.warn(`[DAEMON RUN] CLI update policy announced; re-checking in ${Math.round(delay / 1000)}s`);
     });
     const stopAgentVersionChecks = startAgentVersionChecks(
-      snapshot => { latestAgentVersions = snapshot; return apiMachine.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', agentVersions: snapshot })); },
+      snapshot => {
+        latestAgentVersions = snapshot;
+        return apiMachine.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', agentVersions: snapshot }))
+          .finally(() => { void agentAutoUpdater?.tick(); });
+      },
       error => logger.debug('[DAEMON RUN] Agent version check failed', error),
     );
     // B-719: install / update a coding-agent CLI only when the owner clicks it in the Web.
@@ -2304,6 +2332,7 @@ export async function startDaemon(): Promise<void> {
       commandOnPath,
       cliUpdateBusy: () => updateController.isRunning() || handoverInFlight,
       publish: (state) => {
+        agentAutoUpdater?.onInstallState(state);
         void apiMachine.updateDaemonState(current => ({ ...current, status: current?.status ?? 'running', harnessInstall: state }))
           .catch(error => logger.debug('[DAEMON RUN] harness install state publish failed', error));
       },
@@ -2314,6 +2343,18 @@ export async function startDaemon(): Promise<void> {
       log: message => logger.warn(`[DAEMON RUN] ${message}`),
     });
     apiMachine.setHarnessInstallHandler(params => harnessInstaller!.request(params));
+    // B-894: install a newer Codex CLI by itself when the owner turned it on and no Codex turn is running.
+    agentAutoUpdater = createAgentAutoUpdater({
+      enabled: () => agentAutoUpdateSetting,
+      versions: () => latestAgentVersions,
+      turnActive: (harness) => turnActivity.activeSessions().some((id) => trackedSessionFlavor(id) === harness),
+      installerBusy: () => !!harnessInstaller?.isRunning() || updateController.isRunning() || handoverInFlight,
+      request: (harness) => harnessInstaller!.request({ harness }),
+      publish: (status) => { void apiMachine.setAgentAutoUpdateStatus(status); },
+      log: (message) => logger.warn(`[DAEMON RUN] ${message}`),
+    });
+    const agentAutoUpdateInterval = setInterval(() => { void agentAutoUpdater?.tick(); }, resolveAgentAutoUpdateTickMs(process.env.HAPPY_AGENT_AUTO_UPDATE_TICK_MS));
+    agentAutoUpdateInterval.unref?.();
 
     // Every 60 seconds:
     // 1. Prune stale sessions
@@ -2411,6 +2452,7 @@ export async function startDaemon(): Promise<void> {
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
         clearInterval(cliUpdateInterval);
+        clearInterval(agentAutoUpdateInterval);
         policyAnnouncements.stop();
         policyRefresh.stop();
         stopAgentVersionChecks();
@@ -2593,6 +2635,7 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Health check interval cleared');
       }
       clearInterval(cliUpdateInterval);
+      clearInterval(agentAutoUpdateInterval);
       clearInterval(autoRestartSweep);
       policyAnnouncements.stop();
       policyRefresh.stop();

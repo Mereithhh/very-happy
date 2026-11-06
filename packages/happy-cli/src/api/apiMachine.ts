@@ -4,6 +4,7 @@
  */
 
 import type { AutoRestartSessionStatus } from '@/update/autoRestartPolicy';
+import type { AgentAutoUpdateStatus } from '@/harness/agentAutoUpdate';
 import { io, Socket } from 'socket.io-client';
 import { type WebPanel, webPanelsSignature } from '@/webPanels/webPanels';
 import { logger } from '@/ui/logger'
@@ -165,7 +166,7 @@ type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
     resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
     /** B-264: stop a live-but-broken wrapper and relaunch it on the current CLI. */
-    restartSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
+    restartSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; ifIdle?: true }) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
     listTrackedSessionIds?: () => string[];
     requestShutdown: () => void;
@@ -225,6 +226,8 @@ export class ApiMachineClient {
     private agentHibernationIdleMs: number | null = null;
     /** B-852: auto-restart setting + per-session status (null until the daemon installs it). */
     private autoRestart: { enabled: boolean; sessions: Record<string, AutoRestartSessionStatus> } | null = null;
+    // B-894:「自动更新 agent」 switch + last automatic install per harness.
+    private agentAutoUpdate: { enabled: boolean; status: Record<string, AgentAutoUpdateStatus> } | null = null;
     /** B-510: last normalized `webPanels` (null = never set → field not written). */
     private webPanels: WebPanel[] | null = null;
     private webPanelsSignatureSent: string | null = null;
@@ -547,7 +550,48 @@ export class ApiMachineClient {
 
     private autoRestartState(now: number) {
         const state = this.autoRestart!;
-        return { enabled: state.enabled, rpcAvailable: true, detectedAt: now, sessions: state.sessions };
+        // B-894 `idleGuard`: restart-session honours `ifIdle` (old daemons ignore it, so the Web asks only when this is set).
+        return { enabled: state.enabled, rpcAvailable: true, detectedAt: now, idleGuard: true, sessions: state.sessions };
+    }
+
+    /**
+     * B-894: the machine page's「自动更新 agent」switch (`agent-auto-update-set`)
+     * and `daemonState.agentAutoUpdate` (capability + setting + last outcome).
+     * Call before connect().
+     */
+    setAgentAutoUpdateHandlers(initialEnabled: boolean, set: (enabled: boolean) => Promise<boolean>): void {
+        this.agentAutoUpdate = { enabled: initialEnabled, status: this.agentAutoUpdate?.status ?? {} };
+        this.rpcHandlerManager.registerHandler('agent-auto-update-set', async (params: any) => {
+            if (typeof params?.enabled !== 'boolean') return { error: 'invalid-enabled' };
+            const enabled = await set(params.enabled);
+            this.agentAutoUpdate = { ...this.agentAutoUpdate!, enabled };
+            await this.publishAgentAutoUpdate();
+            return { agentAutoUpdate: { enabled } };
+        });
+    }
+
+    setAgentAutoUpdateStatus(status: Record<string, AgentAutoUpdateStatus>): Promise<void> {
+        if (!this.agentAutoUpdate) return Promise.resolve();
+        this.agentAutoUpdate = { ...this.agentAutoUpdate, status };
+        return this.publishAgentAutoUpdate();
+    }
+
+    private agentAutoUpdateState(now: number) {
+        const state = this.agentAutoUpdate!;
+        return { enabled: state.enabled, rpcAvailable: true, detectedAt: now, status: state.status };
+    }
+
+    private publishAgentAutoUpdate(): Promise<void> {
+        if (!this.agentAutoUpdate || !this.socket?.connected) return Promise.resolve();
+        const attempt = this.cliUpdatePushChain
+            .then(() => this.updateDaemonState((current) => ({
+                ...(current ?? {}),
+                status: current?.status ?? 'running',
+                agentAutoUpdate: this.agentAutoUpdateState(Date.now()),
+            })))
+            .catch((error) => { logger.debug('[API MACHINE] Failed to publish agent auto-update:', error); });
+        this.cliUpdatePushChain = attempt.then(() => undefined);
+        return attempt;
     }
 
     private publishAutoRestart(): Promise<void> {
@@ -1239,7 +1283,7 @@ export class ApiMachineClient {
         if (this.restartSessionHandler) {
             if (!this.rpcHandlerManager.hasHandler(method)) {
                 this.rpcHandlerManager.registerHandler(method, async (params: any) => {
-                    const { sessionId, model, permissionMode } = params || {};
+                    const { sessionId, model, permissionMode, ifIdle } = params || {};
                     if (!sessionId || typeof sessionId !== 'string') {
                         throw new Error('Session ID is required');
                     }
@@ -1247,7 +1291,8 @@ export class ApiMachineClient {
                     if (!handler) {
                         throw new Error('Restart session handler not available');
                     }
-                    const result = await handler(sessionId, { model, permissionMode });
+                    // B-894: the batch 「重启空闲的旧会话」 asks the daemon to refuse a busy session.
+                    const result = await handler(sessionId, { model, permissionMode, ...(ifIdle === true ? { ifIdle: true as const } : {}) });
                     switch (result.type) {
                         case 'success':
                             return { type: 'success', sessionId: result.sessionId };
@@ -1594,6 +1639,8 @@ export class ApiMachineClient {
                     ...(this.agentHibernationIdleMs !== null ? { agentHibernation: { idleMs: this.agentHibernationIdleMs, rpcAvailable: true, detectedAt: now } } : {}),
                     // B-852 capability + setting + status (same restamp discipline).
                     ...(this.autoRestart ? { autoRestart: this.autoRestartState(now) } : {}),
+                    // B-894 capability + setting + status (same restamp discipline).
+                    ...(this.agentAutoUpdate ? { agentAutoUpdate: this.agentAutoUpdateState(now) } : {}),
                     // B-510: re-ship the declared panels (also clears a stale list).
                     ...(Array.isArray(this.webPanels) ? { webPanels: { panels: this.webPanels, updatedAt: now } } : {}),
                 };

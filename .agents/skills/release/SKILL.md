@@ -53,6 +53,13 @@ HAPPY_HOME_DIR=$(mktemp -d) node packages/happy-cli/dist/index.mjs --version
 Never release from a failing gate unless the user explicitly authorizes an
 emergency exception after seeing the failure and rollback plan.
 
+For CLI also run `node scripts/release/check-sdk-pin.mjs` (advisory, B-894; the
+publish workflow repeats it as a warning annotation). Web/remote Claude sessions
+run the binary bundled with the exact `@anthropic-ai/claude-agent-sdk` pin, so
+Claude Code only moves when that pin is bumped. When it reports the pin as
+behind, mention it in the release notes or schedule a bump (re-probe models per
+`modelSupportPolicy.ts`); it never blocks the release.
+
 ### Changelog coverage (run locally BEFORE tagging or dispatching)
 
 Every release must carry its `CHANGELOG_RELEASES` entry

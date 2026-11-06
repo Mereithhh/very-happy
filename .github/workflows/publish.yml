@@ -51,6 +51,11 @@ jobs:
           git fetch --quiet --tags --force origin
           node scripts/changelog/check-release.mjs --mode cli --version "$VERSION"
 
+      # B-894: advisory only — warns (annotation) when the bundled Claude SDK pin lags npm.
+      - name: Advisory - bundled Claude SDK pin freshness
+        continue-on-error: true
+        run: node scripts/release/check-sdk-pin.mjs
+
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:

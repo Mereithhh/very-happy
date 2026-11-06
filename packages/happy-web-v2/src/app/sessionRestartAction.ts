@@ -8,6 +8,7 @@ import { create } from 'zustand';
 import { storage } from '@/sync/storage';
 import { machineRestartSession } from '@/sync/ops';
 import { relaunchPermissionMode } from './sessionRestoreRules';
+import { busyRefusal, type StaleSessionSkip } from './staleSessionsBatch';
 import {
   advanceRestartState,
   mapRestartError,
@@ -61,7 +62,7 @@ function ensureTicker() {
  *  the restart (the session then comes back online within a few seconds);
  *  false with the failure recorded in the store. Idempotent while a restart is
  *  running. */
-export async function restartBrokenSession(sessionId: string): Promise<boolean> {
+export async function restartBrokenSession(sessionId: string, opts?: { ifIdle?: boolean }): Promise<boolean> {
   const store = useSessionRestart.getState();
   const current = store.states[sessionId];
   if (current && current.phase !== 'failed') return false;
@@ -77,7 +78,7 @@ export async function restartBrokenSession(sessionId: string): Promise<boolean> 
   // B-683: the restarted wrapper starts from its flag; keep the user's mode.
   const permissionMode = relaunchPermissionMode(session);
   const result = await machineRestartSession(
-    { machineId: eligibility.machineId, sessionId, ...(permissionMode ? { permissionMode } : {}) },
+    { machineId: eligibility.machineId, sessionId, ...(permissionMode ? { permissionMode } : {}), ...(opts?.ifIdle ? { ifIdle: true as const } : {}) },
     { timeoutMs: RESTART_RPC_TIMEOUT_MS },
   );
   if (result.type === 'success') {
@@ -88,6 +89,35 @@ export async function restartBrokenSession(sessionId: string): Promise<boolean> 
   const message = result.type === 'error' ? result.errorMessage : 'Directory approval is not supported for restart';
   useSessionRestart.getState().set(sessionId, { phase: 'failed', startedAt, reason: mapRestartError(message), message });
   return false;
+}
+
+export type BatchRestartOutcome =
+  | { id: string; result: 'restarted' }
+  | { id: string; result: 'skipped'; reason: StaleSessionSkip }
+  | { id: string; result: 'failed'; reason: string };
+
+/** B-894 「重启空闲的旧会话」: one after another (each restart is a stop + spawn on
+ *  the same daemon). A daemon `busy:` refusal is a skip, not a failure, and
+ *  leaves no failed state behind on that session's banner. */
+export async function restartIdleStaleSessions(ids: readonly string[], opts: { ifIdle: boolean }): Promise<BatchRestartOutcome[]> {
+  const outcomes: BatchRestartOutcome[] = [];
+  for (const id of ids) {
+    if (await restartBrokenSession(id, { ifIdle: opts.ifIdle })) {
+      outcomes.push({ id, result: 'restarted' });
+      continue;
+    }
+    const state = useSessionRestart.getState().states[id];
+    const busy = busyRefusal(state?.message);
+    if (busy) {
+      clearRestartState(id);
+      outcomes.push({ id, result: 'skipped', reason: busy });
+    } else if (state && state.phase !== 'failed') {
+      outcomes.push({ id, result: 'skipped', reason: 'restarting' });
+    } else {
+      outcomes.push({ id, result: 'failed', reason: state?.message ?? state?.reason ?? 'unknown' });
+    }
+  }
+  return outcomes;
 }
 
 export function clearRestartState(sessionId: string): void {
