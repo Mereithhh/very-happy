@@ -173,6 +173,8 @@ describe('model-specific reasoning catalogs', () => {
         const metadata = { models: [{ code: 'gpt-6-astra', value: 'GPT-6-Astra' }, { code: 'gpt-5.6-sol', value: 'GPT-5.6-Sol' }, { code: 'gpt-5.5', value: 'GPT-5.5' }] } as any;
         expect(getAvailableModels('codex', metadata, t as any).map((m) => m.key))
             .toEqual(['default', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.5']);
+        // A model this Codex does not bundle still runs (0.154 on llm-hub ran them all): never disabled.
+        expect(getAvailableModels('codex', metadata, t as any).filter((m) => m.disabled)).toEqual([]);
         expect(getCodexModelModes().map((m) => m.key).slice(1, 6)).toEqual(['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
     });
     it('B-893: marks a gpt-6 model this machine\'s Codex does not bundle, never one it does', () => {

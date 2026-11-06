@@ -1239,7 +1239,7 @@ export const zhHans: TranslationStructure = {
                 longContextRefusedHint: '这台机器的账号或供应商拒绝了 1M 上下文，跟随最新改用标准上下文；打开则仍按 1M 请求。',
                 unknownModel: ({ model }: { model: string }) => `${model} · 未知模型`,
                 unknownModelHint: '不在这台机器上报的模型列表里，消息仍按这个 id 发出',
-                codexNeedsUpdate: ({ version }: { version: string }) => `本机 Codex 未内置 · 更新到 ${version}+ 获得完整支持`,
+                codexNeedsUpdate: ({ version }: { version: string }) => `较新版 Codex（${version}+）才内置 · 可直接试`,
                 customEntry: '输入模型名…',
                 customPlaceholder: '例如 gpt-6.1-sol 或 claude-fable-5-1',
                 customUse: '使用',

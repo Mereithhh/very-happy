@@ -1034,7 +1034,7 @@ export const en = {
                 longContextRefusedHint: 'This machine\'s account or provider refused 1M context, so following latest uses the standard window. Turning it on asks for 1M anyway.',
                 unknownModel: ({ model }: { model: string }) => `${model} · unknown model`,
                 unknownModelHint: 'Not in the models this machine reported; messages still send this id',
-                codexNeedsUpdate: ({ version }: { version: string }) => `Not built into this machine's Codex · update to ${version}+ for full support`,
+                codexNeedsUpdate: ({ version }: { version: string }) => `Built into Codex ${version}+ · you can try it now`,
                 customEntry: 'Enter a model name…',
                 customPlaceholder: 'e.g. gpt-6.1-sol or claude-fable-5-1',
                 customUse: 'Use',
