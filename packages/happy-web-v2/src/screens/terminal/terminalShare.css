@@ -34,3 +34,14 @@
 .sb-shared-term-row { display: flex; align-items: center; gap: 2px; }
 .sb-shared-term-row > .sb-shared-term { flex: 1; min-width: 0; }
 .sb-shared-term-more { flex: none; }
+
+/* B-899: "give <name> can operate" — opened from the project share dialog. */
+.shd-prefill { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); }
+.shd-prefill-title { min-width: 0; font-size: var(--fs-13); font-weight: 600; color: var(--text); }
+.shd-prefill-done { font-size: var(--fs-12); color: var(--text-dim); }
+.shd-grant-terms { display: flex; flex-direction: column; gap: 2px; padding: 0 0 var(--sp-2) 36px; }
+.shd-grant-terms-hint { margin: 0; font-size: var(--fs-12); color: var(--text-dim); }
+.shd-grant-term { display: flex; align-items: center; gap: var(--sp-2); min-height: 30px; padding: 0 var(--sp-2); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
+.shd-grant-term > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (hover: hover) and (pointer: fine) { .shd-grant-term:hover { background: var(--fill-hover); } }
+@media (pointer: coarse) { .shd-grant-term { min-height: 44px; } }

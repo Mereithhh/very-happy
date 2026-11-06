@@ -4,9 +4,14 @@
  * so sessions added later are included and sessions moved out stop being
  * visible. Terminals in the project are always view only; "can operate" is
  * never offered here (only per session or terminal).
+ *
+ * B-899: each person's "Terminal access…" lists my terminals in this project;
+ * picking one opens that terminal's own share dialog with this person and
+ * "can operate" filled in — the per-terminal grant, its confirmation and
+ * expiry are unchanged (no project-wide operate).
  */
 import * as Dialog from '@radix-ui/react-dialog';
-import { Info, ShieldAlert, X } from 'lucide-react';
+import { Info, ShieldAlert, SquareTerminal, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAcceptedFriends } from '@/sync/storage';
 import { getDisplayName } from '@/sync/friendTypes';
@@ -19,6 +24,9 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { shareErrorCopy } from '@/screens/session/ShareDialog';
 import { ExpirySelect } from '@/screens/session/ShareLinkPanel';
 import { remainingDaysLabel } from '@/screens/session/shareFormat';
+import { TerminalShareDialog } from '@/screens/terminal/TerminalShareDialog';
+import { useTerminalSessions } from '@/sync/terminalSessions';
+import type { TerminalSession } from '@/sync/terminalPushOps';
 import '@/screens/session/sessionOptionsDialog.css';
 import '@/screens/session/shared.css';
 import '@/screens/terminal/terminalShare.css';
@@ -44,6 +52,10 @@ export function ProjectShareDialog({ projectId, open, onOpenChange }: { projectI
     const [error, setError] = useState<string | null>(null);
     const [listError, setListError] = useState<string | null>(null);
     const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
+    const [termsFor, setTermsFor] = useState<string | null>(null);
+    const [operate, setOperate] = useState<{ term: TerminalSession; accountId: string; name: string } | null>(null);
+    const allTerminals = useTerminalSessions((s) => s.terminals);
+    const projectTerminals = allTerminals.filter((tm) => tm.projectId === projectId);
     const copy = (e: unknown) => {
         const code = e instanceof SessionShareApiError ? e.code : 'unknown';
         return code === 'http_404' ? t('share.project.serverTooOld') : shareErrorCopy(t, code);
@@ -51,7 +63,7 @@ export function ProjectShareDialog({ projectId, open, onOpenChange }: { projectI
 
     useEffect(() => {
         if (!open) return;
-        setError(null); setListError(null); setConfirmRevoke(null);
+        setError(null); setListError(null); setConfirmRevoke(null); setTermsFor(null);
         refreshGrants(projectId).catch((e) => setListError(copy(e)));
     }, [open, projectId, refreshGrants]);
 
@@ -134,7 +146,8 @@ export function ProjectShareDialog({ projectId, open, onOpenChange }: { projectI
                                 <Button type="button" variant="danger" size="sm" onClick={() => void onRevoke(grant)}>{t('share.dialog.revoke')}</Button>
                             </div>
                         ) : (
-                            <div key={grant.id} className="shd-grant">
+                            <div key={grant.id} className="shd-grant-wrap">
+                            <div className="shd-grant">
                                 <span className="shd-grant-avatar" aria-hidden>{initials(grant.grantee.displayName)}</span>
                                 <span className="shd-grant-text">
                                     <span className="shd-grant-name">{grant.grantee.displayName}</span>
@@ -150,8 +163,34 @@ export function ProjectShareDialog({ projectId, open, onOpenChange }: { projectI
                                 />
                                 <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmRevoke(grant.id)}>{t('share.dialog.revoke')}</Button>
                             </div>
+                            <div className="shd-opevents-wrap">
+                                <button type="button" className="shd-opevents-toggle" aria-expanded={termsFor === grant.id} onClick={() => setTermsFor(termsFor === grant.id ? null : grant.id)}>{t('share.project.operateTerminals')}</button>
+                                {termsFor === grant.id && (
+                                    <div className="shd-grant-terms" role="group" aria-label={t('share.project.operateTerminalsTitle', { name: grant.grantee.displayName })}>
+                                        <p className="shd-grant-terms-hint">{projectTerminals.length === 0 ? t('share.project.noOwnTerminals') : t('share.project.operateTerminalsHint')}</p>
+                                        {projectTerminals.map((tm) => (
+                                            <button key={`${tm.machineId}:${tm.id}`} type="button" className="shd-grant-term" onClick={() => setOperate({ term: tm, accountId: grant.grantee.id, name: grant.grantee.displayName })}>
+                                                <SquareTerminal size={14} aria-hidden /><span>{tm.title}</span><span className="shd-grant-terms-hint">{tm.machineName}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            </div>
                         ))}
                     </div>
+                    {operate && (
+                        <TerminalShareDialog
+                            key={`${operate.term.machineId}:${operate.term.id}:${operate.accountId}`}
+                            machineId={operate.term.machineId}
+                            terminalId={operate.term.id}
+                            title={operate.term.title}
+                            host={operate.term.machineName || null}
+                            prefill={{ accountId: operate.accountId, name: operate.name }}
+                            open
+                            onOpenChange={(next) => { if (!next) setOperate(null); }}
+                        />
+                    )}
                 </Dialog.Content>
             </Dialog.Portal>
         </Dialog.Root>

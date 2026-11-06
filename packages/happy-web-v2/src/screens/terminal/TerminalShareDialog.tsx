@@ -11,6 +11,11 @@
  *
  * Every tier expires (Lead 11-03). Revoking cuts the person off at once; the
  * terminal itself keeps running.
+ *
+ * B-899 `prefill`: opened from the project share dialog for one person who
+ * already has the project — "can operate" is preselected and a single button
+ * gives it to them, still through the same acknowledgement, red confirmation
+ * and expiry (an existing grant of theirs is upgraded instead).
  */
 import * as Dialog from '@radix-ui/react-dialog';
 import { Info, X } from 'lucide-react';
@@ -46,13 +51,14 @@ function initials(name: string): string {
     return name.trim().slice(0, 1).toUpperCase() || '?';
 }
 
-export function TerminalShareDialog({ machineId, terminalId, title, host, open, onOpenChange }: {
+export function TerminalShareDialog({ machineId, terminalId, title, host, open, onOpenChange, prefill }: {
     machineId: string;
     terminalId: string;
     title: string;
     host: string | null;
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    prefill?: { accountId: string; name: string };
 }) {
     const { t } = useTranslation();
     const key = `${machineId}:${terminalId}`;
@@ -82,8 +88,9 @@ export function TerminalShareDialog({ machineId, terminalId, title, host, open, 
     useEffect(() => {
         if (!open) return;
         setError(null); setListError(null); setConfirmRevoke(null); setPendingOperator(null); setOperatorAck(false);
+        if (prefill) { setRole('operator'); setExpiry(defaultTerminalShareExpiry('operator')); }
         refreshGrants(machineId, terminalId).catch((e) => setListError(errorCopy(t, e)));
-    }, [open, machineId, terminalId, refreshGrants, t]);
+    }, [open, machineId, terminalId, refreshGrants, t, prefill?.accountId]);
 
     const pickRole = (next: TerminalShareRole) => {
         setRole(next);
@@ -149,6 +156,12 @@ export function TerminalShareDialog({ machineId, terminalId, title, host, open, 
     };
 
     const watchingIds = new Set(watchers.map((w) => w.grantId));
+    const prefillGrant = prefill ? grants?.find((g) => g.grantee.id === prefill.accountId) ?? null : null;
+    const grantPrefill = () => {
+        if (!prefill) return;
+        if (prefillGrant) { void onRole(prefillGrant, 'operator'); return; }
+        request({ accountId: prefill.accountId }, prefill.name, 'prefill');
+    };
 
     return (
         <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -164,6 +177,16 @@ export function TerminalShareDialog({ machineId, terminalId, title, host, open, 
                     </div>
 
                     <form className="shd-form" onSubmit={(e) => { e.preventDefault(); const v = target.trim(); if (v) request({ target: v }, v, 'form'); }}>
+                        {prefill && (
+                            <div className="shd-prefill" role="group" aria-label={t('share.terminal.prefillTitle', { name: prefill.name })} data-testid="terminal-share-prefill">
+                                <span className="shd-prefill-title">{t('share.terminal.prefillTitle', { name: prefill.name })}</span>
+                                {prefillGrant?.role === 'operator' && prefillGrant.status === 'active'
+                                    ? <span className="shd-prefill-done">{t('share.terminal.prefillAlready', { name: prefill.name })}</span>
+                                    : prefillGrant?.role === 'operator'
+                                    ? <span className="shd-prefill-done">{t('share.terminal.prefillPending', { name: prefill.name })}</span>
+                                    : <Button type="button" variant="danger" size="md" disabled={grants === undefined || (!prefillGrant && (role !== 'operator' || !operatorAck))} onClick={grantPrefill}>{t('share.operator.grantButton')}</Button>}
+                            </div>
+                        )}
                         {pickable.length > 0 && (
                             <div className="shd-friends" role="group" aria-label={t('share.dialog.friendsLabel')}>
                                 <span className="shd-friends-label">{t('share.dialog.friendsLabel')}</span>

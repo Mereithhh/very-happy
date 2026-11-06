@@ -3,12 +3,14 @@
  * `/shared/project/:grantId`. Same structure as my own project page, read
  * only: no composer, no settings, no new session / terminal. Sessions open
  * the normal shared-session page (view only or can send, per the share);
- * terminals open the view-only shared terminal page. The list follows the
+ * terminals open the view-only shared terminal page — or, when the owner
+ * also shared that terminal with me directly, that grant's page (B-899:
+ * effective = max(direct, project)). The list follows the
  * project's current membership (server-derived), re-read on every
  * `project-share-changed`.
  */
 import { FolderKanban, SquareTerminal } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { BackButton } from '@/app/BackButton';
 import { Button } from '@/ui';
@@ -19,7 +21,8 @@ import { getSessionName } from '@/utils/sessionUtils';
 import { SessionShareApiError } from '@/sync/apiSessionShares';
 import { getSharedProject } from '@/sync/apiProjectShares';
 import { onProjectShareChanged, useIncomingProjectShares, useProjectShares } from '@/sync/projectSharesStore';
-import type { SharedProjectPage } from '@/sync/projectShareTypes';
+import { projectTerminalLink, type SharedProjectPage } from '@/sync/projectShareTypes';
+import { useIncomingTerminalShares } from '@/sync/terminalSharesStore';
 import { Markdown } from '@/screens/session/Markdown';
 import './projects.css';
 
@@ -48,6 +51,15 @@ export function SharedProjectScreen() {
     }, [grantId]);
     useEffect(() => { void load(); }, [load, share?.status]);
     useEffect(() => onProjectShareChanged((id) => { if (id === grantId) void load(); }), [grantId, load]);
+    // B-899: a direct terminal grant shared / accepted / re-roled / revoked changes where a terminal row leads.
+    // Revoking the last one empties the list, which must reload too (only the first render is skipped).
+    const directKey = useIncomingTerminalShares().map((g) => `${g.id}:${g.status}:${g.role}:${g.expiresAt}`).sort().join('|');
+    const seenDirectKey = useRef<string | null>(null);
+    useEffect(() => {
+        const first = seenDirectKey.current === null;
+        seenDirectKey.current = directKey;
+        if (!first) void load();
+    }, [directKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (ended) return <Empty text={t('share.project.ended')} onHome={() => navigate('/')} />;
     if (share?.status === 'pending') {
@@ -93,12 +105,16 @@ export function SharedProjectScreen() {
                     <section className="pj-section">
                         <h2>{t('share.project.terminals')} <span className="pj-count">{page.terminals.length}</span></h2>
                         {page.terminals.length === 0 ? <p className="pj-muted pj-empty">{t('share.project.noTerminals')}</p>
-                            : page.terminals.map((term) => (
-                                <Link key={term.shareId} className="pj-row" to={`/shared/terminal/${encodeURIComponent(term.shareId)}?title=${encodeURIComponent(term.title ?? '')}`}>
-                                    <SquareTerminal size={14} aria-hidden />{term.title || t('share.terminal.untitled')}
-                                    {term.cwd && <span className="pj-muted">· {term.cwd}</span>}
-                                </Link>
-                            ))}
+                            : page.terminals.map((term) => {
+                                const link = projectTerminalLink(term, Date.now());
+                                return (
+                                    <Link key={term.shareId} className="pj-row" data-terminal-via={link.via} to={`/shared/terminal/${encodeURIComponent(link.shareId)}?title=${encodeURIComponent(term.title ?? '')}`}>
+                                        <SquareTerminal size={14} aria-hidden />{term.title || t('share.terminal.untitled')}
+                                        {term.cwd && <span className="pj-muted">· {term.cwd}</span>}
+                                        <span className="pj-muted pj-row-role">{link.pending ? t('share.project.terminalPending') : link.role === 'operator' ? t('share.roleOperator') : t('share.roleViewer')}</span>
+                                    </Link>
+                                );
+                            })}
                     </section>
                 </div>
             ) : (

@@ -26,6 +26,7 @@ import { teamLaunchPhase, teamLoadFailure, teamTextPreviewLines } from "./teamPr
 import { AdoptTeamForm } from "./AdoptTeamForm";
 import { TeamStartForm } from "./TeamStartForm";
 import { useFirstUseCopy } from "./firstUseCopy";
+import { SharedTeamNotFound } from "./SharedTeamNotFound";
 import { TeamOptions } from "./TeamOptions";
 import { TeamMemberAccounts, memberFollowLabel } from "./TeamMemberAccounts";
 import { AccountChoiceField } from "@/components/accounts/AccountChoiceField";
@@ -250,7 +251,7 @@ function TeamsContent() {
       {changingProject && team && <ChangeTeamProjectModal team={team} onClose={() => setChangingProject(false)} />}
       {/* B-728 (UI-P1-12): "not enabled for this account" is an explanation, not a red error */}
       {unavailable && <div className="teams-empty" role="status"><UsersRound size={36} aria-hidden /><h2>{first.unavailable}</h2></div>}
-      {notFound && !team && <div className="teams-empty" role="status"><UsersRound size={36} aria-hidden /><h2>{first.notFound}</h2><p>{first.notFoundHint}</p><Link to="/teams">{first.allTeams} →</Link></div>}
+      {notFound && !team && <SharedTeamNotFound fallback={<div className="teams-empty" role="status"><UsersRound size={36} aria-hidden /><h2>{first.notFound}</h2><p>{first.notFoundHint}</p><Link to="/teams">{first.allTeams} →</Link></div>} />}
       {error && !unavailable && !(notFound && !team) && (
         <p role="alert" className="teams-error">
           {error}

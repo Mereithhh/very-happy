@@ -113,6 +113,8 @@ import { SessionPeek, peekDomId, useSessionPeek } from './SessionPeek';
 import { SharedInvites } from './SharedInvites';
 import { SharedTerminals } from './SharedTerminals';
 import { SharedProjects } from './SharedProjects';
+import { useIncomingProjectShares } from '@/sync/projectSharesStore';
+import { useIncomingTerminalShares } from '@/sync/terminalSharesStore';
 import { useFriendRequests } from '@/sync/storage';
 import { useSessionShares } from '@/sync/sessionSharesStore';
 import { Modal } from '@/modal';
@@ -267,6 +269,10 @@ export function Sidebar() {
   const [cmdHeld, setCmdHeld] = useState(false);
   const [showOrderHint, setShowOrderHint] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
+  // B-899: anything shared with me shows above the list, so the list is not "empty" to the eye.
+  const incomingProjectShares = useIncomingProjectShares();
+  const incomingTerminalShares = useIncomingTerminalShares();
+  const hasIncomingShares = incomingProjectShares.length > 0 || incomingTerminalShares.length > 0;
   const terminalViewDefault = useLocalSetting('terminalViewDefault');
   const terminalViewOverrides = useLocalSetting('terminalViewOverrides');
   const toggleCollapsed = useSidebarPrefs((s) => s.toggleCollapsed);
@@ -1558,7 +1564,8 @@ export function Sidebar() {
             <Spinner size={12} /> {t('common.loading')}
           </div>
         ) : sidebarListEmpty(sections, closedRows.length) ? (
-          <div className="sb-empty">{t('sidebar.empty')}</div>
+          // B-899: "no sessions yet" right under shared projects / terminals reads as "the share is empty".
+          hasIncomingShares ? null : <div className="sb-empty">{t('sidebar.empty')}</div>
         ) : (
           <>
             {(() => {

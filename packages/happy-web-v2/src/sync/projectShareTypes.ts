@@ -64,12 +64,33 @@ export const SharedProjectPageSchema = z.object({
         title: z.string().nullable().optional(),
         cwd: z.string().nullable().optional(),
         viewOnlySupported: z.boolean().optional(),
+        // B-899: my own live direct grant on this terminal (effective = max(direct, project)); old servers omit it.
+        direct: z.object({
+            grantId: z.string(),
+            role: z.string().transform((v): 'viewer' | 'operator' => (v === 'operator' ? 'operator' : 'viewer')),
+            status: z.string().transform((v): 'pending' | 'active' => (v === 'active' ? 'active' : 'pending')),
+            expiresAt: z.number(),
+        }).nullable().optional().catch(undefined),
     })).default([]),
 });
 export type SharedProjectPage = z.infer<typeof SharedProjectPageSchema>;
 
 export const ProjectShareChangedSchema = z.object({ grantId: z.string() });
 export const ProjectShareRevokedSchema = z.object({ grantId: z.string(), reason: z.string().optional() });
+
+export type SharedProjectTerminal = SharedProjectPage['terminals'][number];
+export type ProjectTerminalLink = { shareId: string; role: 'viewer' | 'operator'; via: 'direct' | 'project'; pending: boolean };
+
+/**
+ * B-899: where a project page's terminal row leads. effective = max(direct, project): my own unexpired direct
+ * grant wins (its page operates when it is "can operate", or asks me to accept it first); otherwise — none, or
+ * it expired since the page was read — the view-only project share. Pure.
+ */
+export function projectTerminalLink(term: SharedProjectTerminal, now: number): ProjectTerminalLink {
+    const direct = term.direct;
+    if (direct && direct.expiresAt > now) return { shareId: direct.grantId, role: direct.role, via: 'direct', pending: direct.status === 'pending' };
+    return { shareId: term.shareId, role: 'viewer', via: 'project', pending: false };
+}
 
 /** A project terminal share id (`p:<projectGrantId>:<machineId>:<terminalId>`) → its project grant id, else null. Pure. */
 export function projectGrantIdOfShareId(shareId: string): string | null {

@@ -96,6 +96,8 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 @media (hover: hover) and (pointer: fine) { .pj-row:hover { background: var(--fill-hover); } }
+/* B-899: the tier a project terminal row opens with (view only / can operate / pending). */
+.pj-row-role { margin-left: auto; flex: none; padding-left: 8px; font-size: var(--fs-12); }
 .pj-overview { display: flex; flex-direction: column; gap: 16px; }
 .pj-member {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'title badge' 'meta badge';

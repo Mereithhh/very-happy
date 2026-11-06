@@ -165,7 +165,7 @@ owner daemon ── terminal-output（机器 key）──▶ terminalHandler →
 
 - 侧栏「分享给我的」下新增「项目」组：每个分享项目一行，展开是其会话与终端（与自己的项目分组同样式，标 owner 名）。
 - `/shared/projects/:id`：结构同自己的项目页（概览 / 上下文两段），全部只读：没有输入框（driver 也不在项目页起新会话，只能进具体会话发消息）、没有「新建会话/终端」、没有设置齿轮与 ⋯ 编辑项。
-- 进入会话 = 现有共享会话页；进入终端 = 只看终端视图（§3.2）。
+- 进入会话 = 现有共享会话页；进入终端 = 只看终端视图（§3.2）；对方另有该终端的直接授权时进直接授权的视图（§2「终端 effective = max」，B-899）。
 
 ## 5. 审计
 
@@ -298,3 +298,15 @@ CREATE TABLE "ShareAuditEvent" (...);   -- §5，INDEX(ownerAccountId, at)、IND
 - **审计**：`ShareAuditEvent`（grantKind=`project`）记 grant.create/accept/update/decline/left/ended、`project.item.removed`、`project.derive.open`（同一 grantee 对同一会话 10 分钟去重）。
 - **Web**：项目页头的「分享项目」按钮，以及侧栏项目组和 Projects 列表的 ⋯「分享项目…」，都打开 `ProjectShareDialog`（只有只看/可发消息两档，附「可操作只能对单个会话或终端授予」提示）。侧栏顶部是项目邀请和「分享给我的项目」；`/shared/project/:grantId` 只读，分「会话/终端」和「说明/记录」两个 tab，可「退出项目」；项目派生的会话不进「分享给我的」会话组。
 - **验证**：server `projectShares.pglite.integration.spec.ts`（9 条，含 Fastify inject 真路由）。两个真实账号的浏览器 e2e（`e2e-proj.json`）：owner 页面分享（只有两档）；grantee 手机端接受后看到会话、终端、说明和记录；后加的会话即时出现；只看档没有输入框；升为可发消息后能发消息；项目终端只看，输入到不了 shell；移出的会话从列表消失、单读 404；撤销项目分享后直接分享的会话保留、页面提示已结束；不在项目里的会话始终不可见；旧 Web 的列表不含派生行。
+
+## 实现记录（B-899 项目终端 effective = max、原因提示、一步开可操作）
+
+- **问题**：§2 写的是终端 effective = max(直接 TerminalGrant, 项目派生)，但 `listProjectTerminals` 不查直接授权，项目页的终端行固定链到 `p:` id，`p:` 只会铸造 viewer。owner 给同一终端再单独授予「可操作」后，对方从项目页进入仍只看，只有从「分享给我的 · 终端」进入才能操作。
+- **server**：`listProjectTerminals` 给每个终端行附加 `direct?: { grantId, role, status, expiresAt }`。条件是本 grantee、同一 owner、同一 (machineId, terminalId) 上 pending/active 且未过期的 TerminalGrant（唯一键保证每人最多一条）。`p:` id 本身不变，仍然一律只看：max 落在「进哪个视图」，而不是把 `p:` 升级。这样不会混用流 key，审计也照旧分 grantKind。纯 expand，旧 Web 忽略这个字段。
+- **Web**：`projectTerminalLink`（纯函数）在点击时判断：自己的直接授权未过期就链到 `/shared/terminal/<grantId>`（pending 时那一页显示接受按钮，行上标「待接受」），否则链到 `p:`。行尾显示进入后的档位。项目页订阅「分享给我的终端」列表，授权、接受、改档、撤销后立即重读；过期由点击时的时间判断兜底。直接授权被撤销时，已打开的直接视图照 PR-A 断开，回项目页再进入就是只看。
+- **原因提示**：项目派生终端的提示条改为「只看：这个终端随 {owner} 的项目「{project}」分享，项目分享不能在终端里输入。要操作，请 {owner} 单独把这个终端分享给你为「可操作」。」（中英）。
+- **owner 一步开权限**：`ProjectShareDialog` 每个已分享的人下面有「终端权限…」，列出 owner 自己在这个项目里的终端（来自 daemon 推送的 `@vh_project`）。点一个会在上层打开该终端的 `TerminalShareDialog`，用 `prefill` 预填这个人并预选「可操作」。仍然走原来的确认勾选、红色二次确认和 1/7/30 天有效期，没有永久选项；对方已有只看授权时改为升档确认。取舍：复用单终端的授权和确认流程，不新增项目级接口，也不做项目级「可操作」（§1 非目标）。
+- **键入顺序（e2e 发现，PR-A 起就有）**：可操作档 `echo hi` 到 shell 变成 `ehi`+`cho`。Web 每个按键各自异步 seal（第一个要取流 key），server 每条 `share-terminal-input` 都 `void forwardTerminalEvent` 并发执行（授权和 key 缓存命中与否耗时不同），两处都可能乱序。改为 Web `serialPerKey` 按 grant 串行 seal 和发送，server 每个 socket 的 input/resize/close 串行转发。
+- **被分享者侧栏与团队页**：侧栏在「分享给我的项目/终端」下面不再显示「还没有会话」（容易让人以为分享是空的）。`/teams/:id` 对非 owner 是 404，团队页不开放；有分享项目时改为说明「团队页只对团队的所有者开放，可以从项目页进入 Lead 和成员的会话」，并给出每个分享项目的入口。没有分享项目时仍显示原来的「团队不存在」。团队派生会话（项目里没有 ProjectMember、只绑了 AgentTeam）在「可发消息」档下实测：输入框可用，消息能发出，署名为被分享者本人，和显式成员一致。
+- **验证**：`projectShares.pglite.integration.spec.ts` 新增 B-899 用例，覆盖无直接授权时为 viewer、别人的 operator 授权不生效、自己的 pending→active、按终端区分、直接 id 可 paste/input 而 `p:` 被拒、撤销和过期后回退、陌生人和撤销项目后为空。语义变异 5/5 被抓住（`p:` 铸 operator、不按 grantee 过滤、不按过期过滤、revoked 计入、不附 direct）。Web `projectShareTypes.test.ts` 覆盖链接选择和新旧 server 兼容。两账号真实 e2e 见 PR。
+
