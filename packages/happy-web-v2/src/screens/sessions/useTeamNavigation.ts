@@ -56,6 +56,10 @@ function getSnapshot() {
 export function teamNavigationSnapshot(): TeamState[] {
   return getSnapshot();
 }
+/** B-896: false until the first list answered (a failed read also stays false) — the sidebar shows 新建团队 only for a known zero. */
+export function isTeamNavigationLoaded(teams: readonly TeamState[]): boolean {
+  return teams !== empty;
+}
 export function useTeamNavigation() {
   return useSyncExternalStore(subscribe, getSnapshot, () => empty);
 }

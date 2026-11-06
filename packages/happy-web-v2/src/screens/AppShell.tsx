@@ -4,6 +4,9 @@ import type { AppShellMode } from '@/app/appShellMode';
 export type { AppShellMode };
 
 /** Keep the routed view and notes at stable React positions across layout changes. */
+/** B-896: the drawer is touch-only — six 44px icon cells + the sidebar's side padding need 280px, whatever the saved desktop width. */
+export const DRAWER_MIN_WIDTH = 280;
+
 export function AppShell({ mode, width, sidebar, rail, notes, children, onResizeStart, parked = false, drawerOpen = false, onDrawerClose }: {
   mode: AppShellMode;
   width: number;
@@ -32,7 +35,7 @@ export function AppShell({ mode, width, sidebar, rail, notes, children, onResize
         // Hidden states use size + visibility, never display:none / transform / inert: the
         // sidebar's dialogs render inline (position: fixed) and must stay usable (layout.css).
         <aside key="sidebar" className={`app-sidebar${sidebarClass}`}
-          style={drawer ? { width: `calc(min(${width}px, 100vw - var(--app-rail-w) - 24px - var(--sa-l) - var(--sa-r)) + var(--sa-l))` } : undefined}>
+          style={drawer ? { width: `calc(min(max(${width}px, ${DRAWER_MIN_WIDTH}px), 100vw - var(--app-rail-w) - 24px - var(--sa-l) - var(--sa-r)) + var(--sa-l))` } : undefined}>
           {sidebar}
         </aside>
       )}

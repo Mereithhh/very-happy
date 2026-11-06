@@ -1,20 +1,20 @@
 /**
- * B-713: the sidebar's create rows and capability rows (desktop), the chip
- * row (phone) and the footer. Split out of Sidebar.tsx so they render in
+ * B-713/B-896: the sidebar's create rows and capability strip (desktop), the
+ * chip row (phone) and the footer. Split out of Sidebar.tsx so they render in
  * component tests without the whole session list (spec
- * 2026-10-sidebar-header §B-713).
+ * 2026-10-sidebar-header §B-896).
  */
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { Activity, ChevronDown, CircleHelp, Contact, FolderKanban, FolderPlus, LayoutGrid, ListChecks, ListTodo, MessageSquareHeart, Plus, Settings, StickyNote, UsersRound, Zap } from 'lucide-react';
 import { ActionDropdownMenu, QuickThemeToggle, Spinner, type MenuItemDef } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
-import { MIN_LIST_ROWS, moreMenuEntries, navAttentionTotal, navMenuLabel, settleCapabilityRows, splitCapabilities, type SidebarActionRow, type SidebarChip, type SidebarNavEntry, type SidebarNavKey } from './sidebarNavEntries';
+import { isEntryCurrent, moreMenuEntries, navAttentionTotal, navMenuLabel, stripFocusTarget, type SidebarActionRow, type SidebarChip, type SidebarNavEntry, type SidebarNavKey } from './sidebarNavEntries';
 
 const navIcon = { issues: ListTodo, board: Activity, projects: FolderKanban, teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact, feedback: MessageSquareHeart } as const;
 
-/** Capability entries as menu items (「更多能力 ▾」 / phone 「更多 ▾」), each with its count. */
+/** Capability entries as menu items (phone 「更多 ▾」), each with its count. */
 export function capabilityMenuItems(entries: readonly SidebarNavEntry[], names: Record<SidebarNavKey, string>, onNavigate: (path: string) => void): MenuItemDef[] {
   return entries.map((e) => ({ key: e.key, label: navMenuLabel(names[e.key], e.attention), icon: navIcon[e.key], onSelect: () => onNavigate(e.path) }));
 }
@@ -24,63 +24,52 @@ function AttentionBadge({ count, tone }: { count: number; tone?: 'warn' }) {
 }
 
 /**
- * Height the list needs so its first MIN_LIST_ROWS rows are fully on screen,
- * group heads and padding included (content coordinates). With fewer rows
- * than that, the average pitch so far is extrapolated.
+ * B-896: the capability entries as one row of equal icon cells under
+ * 新建会话 ▾ — name (and count) in the native tooltip + aria-label, the count
+ * as a corner badge. One Tab stop: ←/→/Home/End move inside, Enter opens;
+ * the current page carries aria-current. 5 or 6 cells share the row width.
  */
-export function listHeightForRows(list: HTMLElement, fallbackPitch: number): number {
-  const top = list.getBoundingClientRect().top - list.scrollTop;
-  const rows = [...list.querySelectorAll<HTMLElement>('.sb-row, .sb-team-row')].filter((r) => r.offsetHeight > 0);
-  if (rows.length === 0) return MIN_LIST_ROWS * fallbackPitch;
-  const bottomOf = (r: HTMLElement) => r.getBoundingClientRect().bottom - top;
-  if (rows.length >= MIN_LIST_ROWS) return bottomOf(rows[MIN_LIST_ROWS - 1]);
-  const last = bottomOf(rows[rows.length - 1]);
-  return last + (MIN_LIST_ROWS - rows.length) * (last / rows.length);
+export function CapabilityStrip(props: {
+  entries: readonly SidebarNavEntry[];
+  names: Record<SidebarNavKey, string>;
+  activePath: string;
+  onNavigate: (path: string) => void;
+}) {
+  const { t } = useTranslation();
+  const entries = props.entries.filter((e) => !e.phoneOnly);
+  const current = entries.findIndex((e) => isEntryCurrent(e.path, props.activePath));
+  const [focusIndex, setFocusIndex] = useState<number | null>(null);
+  if (entries.length === 0) return null;
+  const tabStop = Math.min(focusIndex ?? Math.max(0, current), entries.length - 1);
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    const next = stripFocusTarget(e.key, tabStop, entries.length);
+    if (next === null) return;
+    e.preventDefault();
+    setFocusIndex(next);
+    e.currentTarget.querySelectorAll<HTMLElement>('.sb-cap-cell')[next]?.focus();
+  };
+  return (
+    <div className="sb-cap-strip" role="toolbar" aria-label={t('sidebar.capabilities')} onKeyDown={onKeyDown}>
+      {entries.map((e, i) => {
+        const Icon = navIcon[e.key];
+        const label = navMenuLabel(props.names[e.key], e.attention);
+        return (
+          <button key={e.key} type="button" className="sb-cap-cell" data-cap={e.key} tabIndex={i === tabStop ? 0 : -1} title={label} aria-label={label}
+            aria-current={i === current ? 'page' : undefined}
+            onFocus={() => setFocusIndex(i)} onClick={() => props.onNavigate(e.path)}>
+            <Icon size={17} aria-hidden />
+            <AttentionBadge count={e.attention} tone={e.tone} />
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 /**
- * B-713: how many capability rows fit while the list keeps MIN_LIST_ROWS rows
- * on screen. Re-measured whenever the sidebar resizes (window resize, notices)
- * or its content changes (list mounts late, groups fold), coalesced per frame.
- * B-828: `block` is the live 能力 block element (a callback ref), never an
- * element captured at mount. The sidebar stays mounted across desktop → phone
- * → desktop (B-795), which rebuilds the block; measuring the detached old one
- * (height 0) drops the block from the invariant below, so more rows measured
- * as less room and the rows flipped on every frame until a remount.
- */
-function useCapabilityFit(listRef: RefObject<HTMLElement | null>, block: HTMLElement | null, total: number): number {
-  const [shown, setShown] = useState(total);
-  useLayoutEffect(() => {
-    const root = block?.closest<HTMLElement>('.sb') ?? block?.parentElement;
-    if (!block || !root) return;
-    const measure = () => {
-      const list = listRef.current;
-      if (!list || !block.isConnected) return;
-      const capRow = block.querySelector<HTMLElement>('.sb-nav-btn');
-      const rowPitch = (capRow?.offsetHeight || 32) + 2;
-      // list + block height is invariant while rows move between them
-      const spare = list.clientHeight + block.offsetHeight - listHeightForRows(list, rowPitch);
-      setShown((current) => settleCapabilityRows({ current, spare, rowPitch, total }));
-    };
-    measure();
-    let frame = 0;
-    const schedule = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => { frame = 0; measure(); });
-    };
-    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
-    ro?.observe(root);
-    if (listRef.current) ro?.observe(listRef.current);
-    const mo = typeof MutationObserver === 'undefined' ? null : new MutationObserver(schedule);
-    mo?.observe(root, { childList: true, subtree: true });
-    return () => { ro?.disconnect(); mo?.disconnect(); if (frame) cancelAnimationFrame(frame); };
-  }, [listRef, block, total]);
-  return Math.min(shown, total);
-}
-
-/**
- * Desktop: 新建会话 | ▾, 新建项目, 新建团队, then 团队 / 自动化 / 待办 / 联系人
- * as rows while they fit, the rest under 「更多能力 ▾」.
+ * Desktop: 新建会话 | ▾ (▾ = every create type), 新建项目 / 新建团队 while the
+ * account has none (B-896), then the capability strip.
  */
 export function SidebarActionRows(props: {
   actions: readonly SidebarActionRow[];
@@ -88,7 +77,7 @@ export function SidebarActionRows(props: {
   createItems: MenuItemDef[];
   capabilities: readonly SidebarNavEntry[];
   capabilityNames: Record<SidebarNavKey, string>;
-  listRef: RefObject<HTMLElement | null>;
+  activePath: string;
   onNewChat: () => void;
   onNewProject: () => void;
   onNewTeam: () => void;
@@ -96,14 +85,8 @@ export function SidebarActionRows(props: {
 }) {
   const { t, lang } = useTranslation();
   const newRowRef = useRef<HTMLDivElement | null>(null);
-  const [capsEl, setCapsEl] = useState<HTMLDivElement | null>(null);
   const [newRowWidth, setNewRowWidth] = useState<number>();
-  // B-836: phone-only entries (反馈) never take a desktop row — 帮助 in the footer reaches them.
-  const rowEntries = props.capabilities.filter((e) => !e.phoneOnly);
-  const fit = useCapabilityFit(props.listRef, capsEl, rowEntries.length);
   if (props.actions.length === 0) return null;
-  const { shown, folded } = splitCapabilities(rowEntries, fit);
-  const foldedAttention = navAttentionTotal(folded);
   return (
     <div className="sb-actions">
       {props.actions.includes('new-session') && <div className="sb-new-split" ref={newRowRef}>
@@ -126,23 +109,7 @@ export function SidebarActionRows(props: {
           <UsersRound size={17} /><span>{t('sidebar.newTeam')}</span>
         </button>
       )}
-      {props.capabilities.length > 0 && <div className="sb-caps" ref={setCapsEl} role="group" aria-label={t('sidebar.capabilities')}>
-        {shown.map((e) => {
-          const Icon = navIcon[e.key];
-          return (
-            <button key={e.key} type="button" className="sb-nav-btn sb-cap" data-cap={e.key} onClick={() => props.onNavigate(e.path)} aria-label={navMenuLabel(props.capabilityNames[e.key], e.attention)}>
-              <Icon size={17} /><span>{props.capabilityNames[e.key]}</span><AttentionBadge count={e.attention} tone={e.tone} />
-            </button>
-          );
-        })}
-        {folded.length > 0 && (
-          <ActionDropdownMenu align="start" sideOffset={4} items={capabilityMenuItems(folded, props.capabilityNames, props.onNavigate)}>
-            <button type="button" className="sb-nav-btn sb-cap sb-caps-more" aria-label={navMenuLabel(t('sidebar.moreCapabilities'), foldedAttention)}>
-              <LayoutGrid size={17} /><span>{t('sidebar.moreCapabilities')}</span><AttentionBadge count={foldedAttention} /><ChevronDown size={14} className="sb-caps-chevron" />
-            </button>
-          </ActionDropdownMenu>
-        )}
-      </div>}
+      <CapabilityStrip entries={props.capabilities} names={props.capabilityNames} activePath={props.activePath} onNavigate={props.onNavigate} />
     </div>
   );
 }

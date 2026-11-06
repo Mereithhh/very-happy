@@ -20,7 +20,7 @@ const h = vi.hoisted(() => ({
   teams: [] as TeamState[],
   projects: { status: 'ready', projects: [] as ProjectView[], members: [] as ProjectMemberView[] },
 }));
-vi.mock('./useTeamNavigation', () => ({ useTeamNavigation: () => h.teams }));
+vi.mock('./useTeamNavigation', () => ({ useTeamNavigation: () => h.teams, isTeamNavigationLoaded: () => true }));
 vi.mock('@/sync/projects', async (orig) => ({
   ...(await orig<typeof import('@/sync/projects')>()),
   useProjects: () => h.projects,

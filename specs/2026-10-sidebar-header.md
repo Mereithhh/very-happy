@@ -146,6 +146,8 @@ Orca 允许逐行隐藏，但这需要新的设置字段、迁移和设置页 UI
 
 ## B-713 修订：三个主入口、能力入口按高度自适应、帮助进底栏
 
+> B-896 起本节的「三行新建 + 能力行按高度折叠」被下文「B-896 修订」取代，保留作历史记录。
+
 > Owner 10-21：「侧边栏应该是新建对话、新建项目、新建团队」「帮助在侧边栏最下面加个入口」；第二次反馈：「入口被隐藏了，大屏幕就都默认展示几个入口，小尺寸再隐藏；不要用右上角的 ⋯，改成新建项目下有一个更多能力 dropdown」「logo 在移动端默认就是 hover 态」。本节覆盖上文方案 D 中关于 ⋯ 菜单与手机 ＋/⋯ 的部分。
 
 ### 结构
@@ -212,3 +214,57 @@ Orca 允许逐行隐藏，但这需要新的设置字段、迁移和设置页 UI
 | 桌面 1440×900 亮 | 桌面 1440×900 暗 | 1280×720（折叠） | 手机 390×844 |
 |---|---|---|---|
 | ![](../docs/screenshots/b713-sidebar-entries/desktop-1440x900-light.png) | ![](../docs/screenshots/b713-sidebar-entries/desktop-1440x900-dark.png) | ![](../docs/screenshots/b713-sidebar-entries/desktop-1280x720-more-menu.png) | ![](../docs/screenshots/b713-sidebar-entries/phone-390x844-light.png) |
+
+
+## B-896 修订：新建合一 + 入口图标条（方案 A1，Owner 11-06 选定）
+
+> 依据：B-892 三方案对比（A1 图标条 / A2 常用 2 + 更多 / B 底部带字栏），Owner 选 A1。原型分支 `prototype/B-892-sidebar-top` 只参考，从 main 重做，去掉原型开关。
+
+### 结构（桌面与触屏抽屉）
+
+| 位置 | 内容 |
+|---|---|
+| 品牌行 | 品牌 · 🔍 · 收起（不变） |
+| 新建 | 「＋ 新建会话 \| ▾」一行。主区一键开会话；▾ 是完整创建菜单：新会话、新建项目、新建团队、自定义新会话、网页终端、在指定目录开终端、接入 tmux、导入 Claude Code / Codex、连接新机器 |
+| 新用户行 | 账号没有项目时多一行「新建项目」，没有团队（且 Teams 入口可见）时多一行「新建团队」，各自建过一个后消失。数量未知（还没加载 / 读取失败）时不显示，老账号不会闪出这两行 |
+| 入口条 | 一行等宽图标格：Issues · 运行中 · 项目 · 团队 · 自动化 · 联系人（账号没开 Issues 时：项目 · 团队 · 自动化 · 待办 · 联系人），点一下直达，角标保留（右上角小徽标，warn / danger 语义不变） |
+| 底栏 | 不变 |
+
+手机单栏不变（chip 行「Issues · 项目 · 团队 · 更多 ▾」）。
+
+- **键盘**：入口条 `role=toolbar`，只占一个 Tab 位（roving tabindex：停在当前页那格，没有就第一格）；←/→ 循环，Home/End 到两端，Enter / Space 打开；当前页（含子路由，如 `/issues/VH-3`）`aria-current=page`，用 `--fill-selected`；焦点环 `--focus-ring`。纯函数 `stripFocusTarget`、`isEntryCurrent`。
+- **tooltip**：按设计规范用原生 `title` + `aria-label`，内容是名字加计数（「自动化 · 2」）。
+- **⌘K 补齐**（`screens/command/navigationActions.ts`）：Issues、运行中、项目、自动化、联系人、新建项目、新建团队都是动作项，中英文名字都在 haystack 里；可见条件与侧栏相同。只加动作项，不动匹配与排序（B-895 在改）。「新建项目」经 `sidebarEvents.requestNewProject()` 打开侧栏里的同一个对话框，没有挂载的侧栏时退到 `/projects`。
+- **触屏抽屉**（竖屏 iPad 等，`appShellMode` 的 drawer 档）：渲染同一个桌面侧栏；格子 44×44，抽屉最小宽 280px（`DRAWER_MIN_WIDTH`，六格 × 44 + 两侧 8px），不受保存的桌面宽度影响。
+- **去掉**：`fitCapabilityRows` / `settleCapabilityRows` / `useCapabilityFit` / 「更多能力 ▾」及其回归测试（B-713/B-828 的按高度折叠与防抖动），`e2e/sidebar-caps-flicker.mjs`。图标条高度固定，不再需要按高度折叠。
+
+### 实测（生产构建 + 隔离 standalone server + 真实隔离 daemon，Chromium）
+
+| 视口 | 列表起始 y | 首屏完整行数 | 入口格 | 横向溢出 | pageerror |
+|---|---|---|---|---|---|
+| 1440×900 亮 中文（有项目、团队、25 个会话） | **180**（B-713：352；生产实测 420） | 14 | 6 × 39×32 | 0 | 0 |
+| 1280×800 亮 中文 | 180 | 11 | 6 × 39×32 | 0 | 0 |
+| 1440×900 暗 英文 | 180 | 13 | 6 | 0 | 0 |
+| 1440×900 新账号、没开 Issues | 248（多「新建项目」「新建团队」两行） | — | 5 × 47×32 | 0 | 0 |
+| 820×1180 coarse（iPad 抽屉） | 232 | 14 | 6 × **44×44**，抽屉宽 280 | 0 | 0 |
+| 390×844 coarse 暗 英文（手机） | 180（不变） | — | chip 行 | 0 | 0 |
+
+- 「Claude · 每周」用量行在侧栏底部（`SidebarRateLimit`，底栏上方）。隔离 daemon 没有上报用量窗口，所以在同一位置插入同 class 的一行（高 32px）再量：1440×900 与 1280×800 的列表起始 y 都仍是 **180**，列表高度各少 32px（首屏约少 1 行：1440×900 约 13 行，1280×800 约 10 行）。
+- 抽屉开合：点 rail 按钮打开（`is-open`），点入口格导航后自动关闭，再打开后 Esc 关闭，全部实测通过。
+- 键盘：从 ▾ 按 Tab 进入入口条落在当前页（/automations → 自动化），→ → End → Home ← 循环正确，Tab 离开、Shift+Tab 回到上次那格，Enter 打开「运行中」后 `aria-current` 跟着移动，可 Tab 的格子始终只有 1 个。
+- ⌘K：7 个词（Issues、运行中、项目、自动化、联系人、新建项目、新建团队）第一条结果都是对应动作；「新建项目」回车弹出新建项目对话框。
+
+截图在 `docs/screenshots/b896-sidebar-issues/`，原始数据在 Owner 本机 `~/code/github/skills/tmp/vh-team-B-896/`（`shots*.json`、`flow.json`）。
+
+| 1440×900 亮 | 新账号 · 没开 Issues | iPad 抽屉 | 手机 390 暗 |
+|---|---|---|---|
+| ![](../docs/screenshots/b896-sidebar-issues/desktop-1440x900-light-zh.png) | ![](../docs/screenshots/b896-sidebar-issues/desktop-1440x900-issues-off-newuser-zh.png) | ![](../docs/screenshots/b896-sidebar-issues/ipad-820x1180-drawer-open.png) | ![](../docs/screenshots/b896-sidebar-issues/phone-390x844-coarse-dark-en.png) |
+
+### 兼容与发布
+
+纯 Web；无协议、存储（服务端）、设置字段变化。新增本机 MMKV 键 `issues-last-assignee:<accountId>`（Issues 页，见 issues spec §10 B-896），登出清除。随 server/Web 镜像发布，回滚即回滚镜像。
+
+### 用户可见变更
+
+- 中：侧栏顶部更紧凑：「新建会话 ▾」里能新建项目、团队、终端等一切；Issues、运行中、项目、团队、自动化、联系人收成一行图标，一下直达，⌘K 也能按名字搜到。Issues 页没有任务时有上手引导，按 C 新建、⌘↵ 创建；新建 issue 会记住上次的指派（机器、agent、目录、模型），条件不满足时回到「无」。
+- EN: The sidebar top is more compact: New session ▾ now creates projects, teams, terminals and everything else, and Issues, Running, Projects, Teams, Automations and Contacts sit in one icon row, one click each and searchable in ⌘K. The Issues page explains itself when empty, C opens a new issue and ⌘↵ creates it, and a new issue starts from your last assignee (machine, agent, directory, model), falling back to None when that can't run.

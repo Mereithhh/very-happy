@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 /**
- * B-713 (spec 2026-10-sidebar-header): the sidebar's three create rows, the
- * capability rows that fold into 「更多能力」 by available height, the phone
- * chip row and 帮助 in the footer.
+ * B-713/B-896 (spec 2026-10-sidebar-header): 新建会话 ▾ (+ 新建项目 / 新建团队
+ * for a new account), the capability icon strip, the phone chip row and 帮助
+ * in the footer.
  */
-import { act, createRef } from 'react';
+import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 
@@ -39,38 +39,31 @@ async function render(node: React.ReactNode) {
   return host;
 }
 
-/** A list element whose height the fit reads; happy-dom has no layout, so rows measure 0 → the 34px fallback pitch. */
-function listWithHeight(height: number) {
-  const list = document.createElement('div');
-  Object.defineProperty(list, 'clientHeight', { configurable: true, value: height });
-  const ref = createRef<HTMLElement>() as { current: HTMLElement | null };
-  ref.current = list;
-  return ref;
-}
+const desktopNew = sidebarTopModel({ isDesktop: true, projectsReady: true, teamsVisible: true, projectCount: 0, teamCount: 0 });
 
-function desktopRows(listHeight: number, handlers: Partial<Record<'onNewChat' | 'onNewProject' | 'onNewTeam' | 'onNavigate', () => void>> = {}) {
+function desktopRows(opts: { actions?: readonly ('new-session' | 'new-project' | 'new-team')[]; activePath?: string; capabilities?: typeof entries } & Partial<Record<'onNewChat' | 'onNewProject' | 'onNewTeam' | 'onNavigate', (...args: never[]) => void>> = {}) {
   return (
     <SidebarActionRows
-      actions={desktop.actions}
+      actions={opts.actions ?? desktopNew.actions}
       creatingChat={false}
       createItems={[]}
-      capabilities={entries}
+      capabilities={opts.capabilities ?? entries}
       capabilityNames={names}
-      listRef={listWithHeight(listHeight)}
-      onNewChat={handlers.onNewChat ?? (() => {})}
-      onNewProject={handlers.onNewProject ?? (() => {})}
-      onNewTeam={handlers.onNewTeam ?? (() => {})}
-      onNavigate={handlers.onNavigate ?? (() => {})}
+      activePath={opts.activePath ?? '/'}
+      onNewChat={opts.onNewChat ?? (() => {})}
+      onNewProject={opts.onNewProject ?? (() => {})}
+      onNewTeam={opts.onNewTeam ?? (() => {})}
+      onNavigate={(opts.onNavigate as (path: string) => void) ?? (() => {})}
     />
   );
 }
 
-const minList = 8 * 34;
+const cells = (el: HTMLElement) => [...el.querySelectorAll<HTMLButtonElement>('.sb-cap-cell')];
 
-it('desktop shows 新建会话 ▾ / 新建项目 / 新建团队 without opening a menu; 新建团队 starts the create flow', async () => {
+it('a new account: 新建会话 ▾ / 新建项目 / 新建团队 without opening a menu; 新建团队 starts the create flow', async () => {
   const onNewTeam = vi.fn();
   const onNewChat = vi.fn();
-  const el = await render(desktopRows(minList + 4 * 34, { onNewTeam, onNewChat }));
+  const el = await render(desktopRows({ onNewTeam, onNewChat }));
   expect(el.querySelector('.sb-new-main')?.textContent).toBe('sidebar.newSession');
   expect(el.querySelector('.sb-new-more')?.getAttribute('aria-label')).toBe('sidebar.newMenu');
   expect(el.querySelector('[data-action="new-project"]')?.textContent).toBe('sidebar.newProject');
@@ -80,41 +73,74 @@ it('desktop shows 新建会话 ▾ / 新建项目 / 新建团队 without opening
   expect(onNewTeam).toHaveBeenCalledTimes(1);
   await act(async () => el.querySelector<HTMLButtonElement>('.sb-new-main')!.click());
   expect(onNewChat).toHaveBeenCalledTimes(1);
-  // every row is a real, enabled button without a negative tabindex → in the Tab order (checked live in Chromium too)
-  for (const b of el.querySelectorAll('button')) {
-    expect(b.getAttribute('tabindex')).toBeNull();
-    expect(b.disabled).toBe(false);
-  }
 });
 
-it('tall sidebar: all four capability rows, in priority order, and no 更多能力 row', async () => {
+it('an account with a project and a team: only 新建会话 ▾ above the strip', async () => {
+  const el = await render(desktopRows({ actions: desktop.actions }));
+  expect(desktop.actions).toEqual(['new-session']);
+  expect(el.querySelector('[data-action]')).toBeNull();
+  expect(el.querySelector('.sb-cap-strip')).not.toBeNull();
+});
+
+it('the strip: every desktop entry is one icon cell with its name + count as tooltip and label', async () => {
   const onNavigate = vi.fn();
-  const el = await render(desktopRows(minList + 4 * 34, { onNavigate }));
-  expect([...el.querySelectorAll('[data-cap]')].map((b) => b.getAttribute('data-cap'))).toEqual(['teams', 'automations', 'todos', 'people']);
-  expect(el.querySelector('.sb-caps-more')).toBeNull();
-  // counts stay visible on the row itself
-  expect(el.querySelector('[data-cap="automations"]')?.getAttribute('aria-label')).toBe('Automations · 2');
+  const el = await render(desktopRows({ onNavigate }));
+  expect(cells(el).map((b) => b.dataset.cap)).toEqual(['teams', 'automations', 'todos', 'people']);
+  expect(el.querySelector('.sb-cap-strip')?.getAttribute('role')).toBe('toolbar');
+  const auto = el.querySelector<HTMLButtonElement>('[data-cap="automations"]')!;
+  expect(auto.getAttribute('aria-label')).toBe('Automations · 2');
+  expect(auto.getAttribute('title')).toBe('Automations · 2');
+  expect(auto.querySelector('.sb-nav-attn')?.textContent).toBe('2');
   await act(async () => el.querySelector<HTMLButtonElement>('[data-cap="todos"]')!.click());
   expect(onNavigate).toHaveBeenCalledWith('/todos');
+  // B-836: 反馈 never takes a desktop cell
+  expect(el.querySelector('[data-cap="feedback"]')).toBeNull();
 });
 
-it('medium sidebar: the first two rows stay, the rest fold into 更多能力 with their count', async () => {
-  const el = await render(desktopRows(minList + 3 * 34));
-  expect([...el.querySelectorAll('[data-cap]')].map((b) => b.getAttribute('data-cap'))).toEqual(['teams', 'automations']);
-  expect(el.querySelector('.sb-caps-more')?.getAttribute('aria-label')).toBe('sidebar.moreCapabilities · 1');
+it('6 cells with Issues on, 5 with it off', async () => {
+  const on = sidebarNavEntries({ projectsVisible: true, issuesVisible: true, teamsVisible: true, automationsVisible: true, automationAttention: 0, incomingPeople: 0 });
+  const el = await render(desktopRows({ capabilities: on }));
+  expect(cells(el).map((b) => b.dataset.cap)).toEqual(['issues', 'board', 'projects', 'teams', 'automations', 'people']);
+  await act(async () => root!.render(desktopRows({ capabilities: sidebarNavEntries({ projectsVisible: true, teamsVisible: true, automationsVisible: true, automationAttention: 0, incomingPeople: 0 }) })));
+  expect(cells(el).length).toBe(5);
 });
 
-it('no spare height: everything folds into 更多能力 — the list keeps its 8 rows', async () => {
-  const el = await render(desktopRows(minList));
-  expect(el.querySelectorAll('[data-cap]:not(.sb-caps-more)').length).toBe(0);
-  expect(el.querySelector('.sb-caps-more')?.getAttribute('aria-label')).toBe('sidebar.moreCapabilities · 3');
+it('one Tab stop: the current page holds it and carries aria-current; ←/→/Home/End move focus, Enter opens', async () => {
+  const onNavigate = vi.fn();
+  const el = await render(desktopRows({ activePath: '/automations/run/1', onNavigate }));
+  const tabbable = () => cells(el).filter((b) => b.tabIndex === 0).map((b) => b.dataset.cap);
+  expect(tabbable()).toEqual(['automations']);
+  expect(cells(el).filter((b) => b.getAttribute('aria-current') === 'page').map((b) => b.dataset.cap)).toEqual(['automations']);
+  const strip = el.querySelector<HTMLElement>('.sb-cap-strip')!;
+  const press = (key: string) => act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })); });
+  await act(async () => cells(el)[1].focus());
+  await press('ArrowRight');
+  expect((document.activeElement as HTMLElement).dataset.cap).toBe('todos');
+  expect(tabbable()).toEqual(['todos']);
+  await press('End');
+  expect((document.activeElement as HTMLElement).dataset.cap).toBe('people');
+  await press('ArrowRight');
+  expect((document.activeElement as HTMLElement).dataset.cap).toBe('teams');
+  await press('ArrowLeft');
+  expect((document.activeElement as HTMLElement).dataset.cap).toBe('people');
+  await press('Home');
+  expect((document.activeElement as HTMLElement).dataset.cap).toBe('teams');
+  expect(strip.contains(document.activeElement)).toBe(true);
+  // Enter on a native <button> clicks it
+  await act(async () => (document.activeElement as HTMLButtonElement).click());
+  expect(onNavigate).toHaveBeenCalledWith('/teams');
 });
 
-it('the fold menu lists the folded entries with counts and routes', () => {
+it('no current entry: the first cell is the Tab stop', async () => {
+  const el = await render(desktopRows({ activePath: '/session/abc' }));
+  expect(cells(el).map((b) => b.tabIndex)).toEqual([0, -1, -1, -1]);
+  expect(el.querySelector('[aria-current]')).toBeNull();
+});
+
+it('the phone 更多 menu lists entries with counts and routes', () => {
   const onNavigate = vi.fn();
   const items = capabilityMenuItems(entries.slice(1).filter((e) => !e.phoneOnly), names, onNavigate);
   expect(items.map((i) => i.label)).toEqual(['Automations · 2', 'Todos', 'People · 1']);
-  expect(items.map((i) => i.key)).not.toContain('help');
   items[0].onSelect?.();
   expect(onNavigate).toHaveBeenCalledWith('/automations');
 });
@@ -124,7 +150,7 @@ it('phone: no action rows; chips 项目 · 团队 open their lists (B-756), 更�
   const phoneEntries = sidebarNavEntries({ projectsVisible: true, teamsVisible: true, automationsVisible: true, automationAttention: 2, incomingPeople: 1 });
   const el = await render(
     <>
-      <SidebarActionRows actions={phone.actions} creatingChat={false} createItems={[]} capabilities={phoneEntries} capabilityNames={names} listRef={listWithHeight(900)} onNewChat={() => {}} onNewProject={() => {}} onNewTeam={() => {}} onNavigate={() => {}} />
+      <SidebarActionRows actions={phone.actions} creatingChat={false} createItems={[]} capabilities={phoneEntries} capabilityNames={names} activePath="/" onNewChat={() => {}} onNewProject={() => {}} onNewTeam={() => {}} onNavigate={() => {}} />
       <SidebarChipRow chips={phone.chips} capabilities={phoneEntries} capabilityNames={names} onNavigate={onNavigate} />
     </>,
   );
@@ -148,59 +174,4 @@ it('帮助 sits in the footer next to 设置', async () => {
   expect(help.previousElementSibling?.textContent?.trim()).toBe('tabs.settings');
   await act(async () => help.click());
   expect(onHelp).toHaveBeenCalledTimes(1);
-});
-
-/**
- * B-828 (Xu CHEN 10-26 flicker): the sidebar stays mounted across desktop → phone
- * → desktop (B-795), which rebuilds the 能力 block. The fit used to keep measuring
- * the block it captured at mount — detached, height 0 — so more rows measured as
- * less room and the rows flipped on every frame until a remount (设置 and back).
- * happy-dom has no layout: heights are stubbed so the sidebar keeps a fixed total
- * (list + block), and a detached element measures 0 like in a browser.
- */
-it('desktop → phone → desktop: the rows settle on the rebuilt block instead of flipping every frame (B-828)', async () => {
-  const pitch = 34;
-  const total = minList + 4 * pitch + 10; // all four rows fit, with 10px to spare
-  const proto = HTMLElement.prototype;
-  const original = Object.getOwnPropertyDescriptor(proto, 'offsetHeight');
-  Object.defineProperty(proto, 'offsetHeight', {
-    configurable: true,
-    get(this: HTMLElement) {
-      if (!this.isConnected) return 0;
-      if (this.classList.contains('sb-caps')) return this.children.length * pitch;
-      if (this.classList.contains('sb-nav-btn')) return pitch - 2;
-      return 0;
-    },
-  });
-  try {
-    const list = document.createElement('div');
-    Object.defineProperty(list, 'clientHeight', { configurable: true, get: () => total - (document.querySelector<HTMLElement>('.sb-caps')?.offsetHeight ?? 0) });
-    const listRef = { current: list };
-    const rows = (actions: readonly ('new-session' | 'new-project' | 'new-team')[]) => (
-      <div className="sb">
-        <SidebarActionRows actions={actions} creatingChat={false} createItems={[]} capabilities={entries} capabilityNames={names} listRef={listRef} onNewChat={() => {}} onNewProject={() => {}} onNewTeam={() => {}} onNavigate={() => {}} />
-      </div>
-    );
-    const frames = (n: number) => act(async () => { for (let i = 0; i < n; i++) await new Promise((r) => requestAnimationFrame(() => r(null))); });
-    const caps = () => [...document.querySelectorAll('.sb-caps [data-cap]')].map((b) => b.getAttribute('data-cap'));
-
-    await render(rows(desktop.actions));
-    await frames(4);
-    expect(caps()).toEqual(['teams', 'automations', 'todos', 'people']);
-
-    await act(async () => root!.render(rows(phone.actions)));
-    expect(document.querySelector('.sb-caps')).toBeNull();
-    await act(async () => root!.render(rows(desktop.actions)));
-
-    let flips = 0;
-    const mo = new MutationObserver(() => { flips += 1; });
-    mo.observe(document.querySelector('.sb-caps')!, { childList: true });
-    await frames(12);
-    mo.disconnect();
-    expect(caps()).toEqual(['teams', 'automations', 'todos', 'people']);
-    expect(flips).toBe(0);
-  } finally {
-    if (original) Object.defineProperty(proto, 'offsetHeight', original);
-    else delete (proto as unknown as Record<string, unknown>).offsetHeight;
-  }
 });

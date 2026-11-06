@@ -79,7 +79,7 @@ import { ProjectShareDialog } from '@/screens/projects/ProjectShareDialog';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
-import { useTeamNavigation } from './useTeamNavigation';
+import { isTeamNavigationLoaded, useTeamNavigation } from './useTeamNavigation';
 import { consumeDispatchReveal, liveReveal, useDispatchFeedback } from '@/sync/dispatchFeedback';
 import { freshRowCount, isFreshRow, planDispatchReveal, teamFreshCount } from './sidebarDispatchReveal';
 import { botHistorySessionId, groupTeamNavigation, missingTeamSessionIds, teamInactiveGroupId, teamMemberCount, teamMemberInactive, teamSessionMembership, teamSessionSuperseded, unstartedTeamMembers } from './teamNavigation';
@@ -92,6 +92,7 @@ import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
 import { DeferredMajorUpdateEntry } from '@/app/DeferredMajorUpdateEntry';
 import { sidebarNavEntries, orderCreateMenu, sidebarTopModel, NEW_TEAM_PATH, type SidebarNavKey } from './sidebarNavEntries';
+import { NEW_PROJECT_EVENT } from './sidebarEvents';
 import { SidebarActionRows, SidebarChipRow, SidebarFooter } from './SidebarTop';
 import {
   findRevealTarget,
@@ -1263,6 +1264,12 @@ export function Sidebar() {
   // B-755: 「新建项目」 is a dialog that always asks for a folder (existing or new) and offers the project context.
   const [newProject, setNewProject] = useState<{ name: string; sessionIds: string[] } | null>(null);
   const createNamedProject = useCallback(async () => { setNewProject({ name: '', sessionIds: [] }); }, []);
+  // B-896: ⌘K 「新建项目」 opens the same dialog (it lives here, the palette does not own it).
+  useEffect(() => {
+    const open = (e: Event) => { e.preventDefault(); void createNamedProject(); };
+    window.addEventListener(NEW_PROJECT_EVENT, open);
+    return () => window.removeEventListener(NEW_PROJECT_EVENT, open);
+  }, [createNamedProject]);
   /** Project from a set of rows: folders = their machine+path pairs, the first one primary. */
   const makeProjectFromRows = useCallback(async (name: string, sourceRows: Row[]) => {
     const folders = foldersOfRows(sourceRows).map((f, i) => ({ ...f, primary: i === 0 }));
@@ -1360,10 +1367,17 @@ export function Sidebar() {
     },
   ]);
 
-  // B-713 (spec 2026-10-sidebar-header): no header ⋯. Desktop shows the
-  // capability entries as rows while they fit (the rest under 「更多能力 ▾」);
-  // the phone gets one chip row 项目 · 团队 · 更多 ▾ under the header.
-  const top = sidebarTopModel({ isDesktop, projectsReady: projectsSnap.status === 'ready', teamsVisible: happyBotEntryVisible, issuesVisible: issuesEnabled });
+  // B-896 (spec 2026-10-sidebar-header): no header ⋯. Desktop shows 新建会话 ▾
+  // and the capability icon strip; 新建项目 / 新建团队 rows only until the
+  // account has one. The phone gets one chip row 项目 · 团队 · 更多 ▾.
+  const top = sidebarTopModel({
+    isDesktop,
+    projectsReady: projectsSnap.status === 'ready',
+    teamsVisible: happyBotEntryVisible,
+    issuesVisible: issuesEnabled,
+    projectCount: projectsSnap.status === 'ready' ? projectsSnap.projects.length : null,
+    teamCount: isTeamNavigationLoaded(teams) ? teams.length : null,
+  });
   const navEntries = sidebarNavEntries({ projectsVisible: projectsSnap.status === 'ready', projectAttention: projectBadgeTotal, teamsVisible: happyBotEntryVisible, automationsVisible: automationsEnabled, automationAttention, incomingPeople, issuesVisible: issuesEnabled, issueAttention });
   const navName: Record<SidebarNavKey, string> = {
     issues: issuesCopy.title,
@@ -1376,6 +1390,10 @@ export function Sidebar() {
     feedback: t('feedback.title'),
   };
   const newTeam = () => navigate(NEW_TEAM_PATH);
+  // B-896: desktop ▾ carries every create type — 新建团队 too, since its row goes once a team exists.
+  const desktopCreateItems: MenuItemDef[] = happyBotEntryVisible
+    ? orderCreateMenu([{ key: 'team', label: t('sidebar.newTeam'), icon: UsersRound, onSelect: newTeam } satisfies MenuItemDef, ...createItems])
+    : createItems;
   // B-756: 新建会话 into a project — its primary folder, joined before the first message.
   const newProjectSession = (project: ProjectView) => newSessionInProject(project, navigate, configureNew);
   const projectCopy = projectMenuCopy(lang.startsWith('zh'));
@@ -1437,15 +1455,15 @@ export function Sidebar() {
         </div>
       </header>
 
-      {/* B-676/B-713: labelled 新建会话 ▾ / 新建项目 / 新建团队 rows, then the capability rows (spec 2026-10-sidebar-header).
+      {/* B-676/B-896: 新建会话 ▾ (新建项目 / 新建团队 rows only for a new account), then the capability strip (spec 2026-10-sidebar-header).
           新建会话: the main part starts a chat in one click, ▾ lists every create type. */}
       <SidebarActionRows
         actions={top.actions}
         creatingChat={creatingChat}
-        createItems={createItems}
+        createItems={desktopCreateItems}
         capabilities={navEntries}
         capabilityNames={navName}
-        listRef={listRef}
+        activePath={location.pathname}
         onNewChat={() => void createChatOrConfigure(navigate, configureNew, { location })}
         onNewProject={() => void createNamedProject()}
         onNewTeam={newTeam}
