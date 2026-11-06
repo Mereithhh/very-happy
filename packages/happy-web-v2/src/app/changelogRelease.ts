@@ -152,8 +152,8 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     ],
   },
   {
-    id: '2026-11-06-cli-sdk-codex-auto-update-0-2-206',
-    cliVersion: '0.2.206',
+    id: '2026-11-06-cli-sdk-codex-auto-update-0-2-207',
+    cliVersion: '0.2.207',
     date: '2026-11-06',
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.nov06b.title',

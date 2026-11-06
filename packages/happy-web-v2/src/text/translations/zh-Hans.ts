@@ -3383,7 +3383,7 @@ export const zhHans: TranslationStructure = {
                 sidebar: '侧栏顶部更紧凑：「新建会话 ▾」里能新建项目、团队、终端等一切，常用入口收成一行图标，一下直达，⌘K 也能按名字搜到。',
             },
             nov06b: {
-                title: 'CLI 0.2.206：Claude SDK 升级，可选 Codex 自动更新',
+                title: 'CLI 0.2.207：Claude SDK 升级，可选 Codex 自动更新',
                 summary: '内置 Claude SDK 升到 0.3.318；机器设置里可以打开 Codex 自动更新。',
                 update: '内置 Claude SDK 升到 0.3.318；机器设置里可以打开 Codex 自动更新（默认关闭），回合进行中不安装，失败有上限。',
             },
