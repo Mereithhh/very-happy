@@ -37,9 +37,9 @@ function session(id: string, title: string, opts: {
 
 /** Owner-shaped fixture: most paths under ~/code/github/skills/…, a team with a lead and members, a shared chat. */
 const DOCS: Doc[] = [
-  session('s-search', 'B-895 搜索不准', { team: 'VeryHappy 研发', bot: 'Dev-A2' }),
+  session('s-search', 'B-895 搜索不准', { team: 'Orbit 研发', bot: 'Dev-A2' }),
   session('s-search2', '搜索排序 review', { updatedAt: 50 }),
-  session('s-lead', 'VeryHappy 研发 Lead', { team: 'VeryHappy 研发', lead: true, project: 'VeryHappy' }),
+  session('s-lead', 'Orbit 研发 Lead', { team: 'Orbit 研发', lead: true, project: 'VeryHappy' }),
   session('s-skills', 'skills 仓库整理', { path: `${HOME}/code/github/other` }),
   session('s-path-skills', '周报草稿', { path: `${HOME}/code/github/skills` }),
   session('s-deploy', 'Deploy release 28', { project: 'VeryHappy', tags: ['ops'] }),
@@ -66,7 +66,7 @@ describe('B-895 golden table: one match + rank rule', () => {
     ['mixed Chinese + English terms AND', '终端 copy', ['s-mixed']],
     ['multi-word AND across title and project', 'release veryhappy', ['s-deploy', 's-deploy-old']],
     ['a term nobody has → no row', 'deploy zzz', []],
-    ['project / team name finds its sessions; title first, then newest, archived last', 'veryhappy', ['s-lead', 's-deploy', 's-search', 's-deploy-old']],
+    ['project name finds its sessions, newest first, archived last', 'veryhappy', ['s-deploy', 's-lead', 's-deploy-old']],
     ['team name finds the lead and members', '研发', ['s-lead', 's-search']],
     ['「负责人」 finds the lead conversation', '负责人', ['s-lead']],
     ['「lead」 finds the lead in English too', 'lead', ['s-lead']],
@@ -107,11 +107,11 @@ describe('match details', () => {
   });
   it('non-title hits say why (project · team · 负责人), best class first, highlighted', () => {
     const m = matchSearch(DOCS.find((d) => d.id === 's-search')!.search, parseSearchQuery('dev-a2'))!;
-    expect(m.reasons.map((r) => r.text)).toEqual(['VeryHappy 研发 › Dev-A2']);
+    expect(m.reasons.map((r) => r.text)).toEqual(['Orbit 研发 › Dev-A2']);
     const line = reasonLine(m.reasons);
     expect(line.text.slice(line.ranges[0][0], line.ranges[0][1])).toBe('Dev-A2');
     const lead = matchSearch(DOCS.find((d) => d.id === 's-lead')!.search, parseSearchQuery('负责人'))!;
-    expect(lead.reasons.map((r) => r.text)).toEqual(['VeryHappy 研发 › 负责人']);
+    expect(lead.reasons.map((r) => r.text)).toEqual(['Orbit 研发 › 负责人']);
   });
   it('「负责人」 is found in an English UI, shown as Lead', () => {
     const d = session('x', 'Some chat', { team: 'T', lead: true, labels: EN });
@@ -133,7 +133,7 @@ describe('match details', () => {
 
 describe('project and team rows', () => {
   const bot = (over: Partial<TeamBot>): TeamBot => ({ id: 'b', name: 'Dev', sessionId: null, generation: 1, root: false, managed: true, assistant: 'claude', directory: '/r', ...over });
-  const team = (over: Partial<TeamState>): TeamState => ({ id: 't1', name: 'VeryHappy 研发', machineId: 'm1', version: 1, bots: [bot({ id: 'l', name: 'lead', root: true }), bot({ id: 'd', name: 'Dev-A2' })], tasks: [], messages: [], operations: [], createdAt: 1, ...over });
+  const team = (over: Partial<TeamState>): TeamState => ({ id: 't1', name: 'Orbit 研发', machineId: 'm1', version: 1, bots: [bot({ id: 'l', name: 'lead', root: true }), bot({ id: 'd', name: 'Dev-A2' })], tasks: [], messages: [], operations: [], createdAt: 1, ...over });
   const project = { id: 'p1', name: 'VeryHappy', goal: null, instructions: '', instructionsVersion: 1, instructionsUpdatedBy: null, instructionsUpdatedAt: null, folders: [], defaults: {}, archivedAt: null, createdAt: 1, updatedAt: 5, teamIds: ['t1'], automationIds: [] } as unknown as Parameters<typeof projectSearchRows>[0][number];
   const teams = teamSearchRows([team({ projectId: 'p1' }), team({ id: 't2', name: 'Infra', archivedAt: 9, bots: [bot({ name: 'QA-7' })] })], (id) => (id === 'p1' ? 'VeryHappy' : undefined), ZH);
   const projects = projectSearchRows([project], [team({})], [{ id: 'g1', projectId: 'p9', name: 'Pricing', status: 'active', owner: { displayName: 'Alice Wang' } }, { id: 'g2', projectId: 'p8', name: 'Pending one', status: 'pending', owner: { displayName: 'Bob' } }], ZH);
@@ -171,7 +171,7 @@ describe('performance', () => {
     const many: Doc[] = [];
     for (let i = 0; i < 500; i++) {
       many.push(session(`p${i}`, `${i % 7 === 0 ? 'B-' + i + ' 搜索' : 'Task ' + i} ${i % 3 ? 'review' : '部署'}`, {
-        team: i % 5 === 0 ? 'VeryHappy 研发' : undefined, bot: `Dev-${i}`, lead: i === 0, project: i % 4 === 0 ? 'VeryHappy' : undefined,
+        team: i % 5 === 0 ? 'Orbit 研发' : undefined, bot: `Dev-${i}`, lead: i === 0, project: i % 4 === 0 ? 'VeryHappy' : undefined,
         tags: i % 9 === 0 ? ['ops'] : [], path: `${HOME}/code/github/skills/tmp/vh-team-${i}/wt`,
       }));
     }
