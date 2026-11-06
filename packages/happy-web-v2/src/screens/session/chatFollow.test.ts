@@ -8,6 +8,8 @@ import {
     shouldFollowShrink,
     shouldSmoothJumpToLatest,
     followAfterScroll,
+    shouldRepin,
+    FOLLOW_BAND_PX,
     isUpwardWheel,
     isUpwardTouch,
     isUpwardScrollKey,
@@ -135,6 +137,43 @@ describe('followAfterScroll (B-598)', () => {
         expect(followAfterScroll(true, 2)).toEqual({ atBottom: true, detached: false });
         expect(followAfterScroll(true, 0.5)).toEqual({ atBottom: true, detached: false });
         expect(followAfterScroll(true, 0)).toEqual({ atBottom: true, detached: false });
+    });
+
+    // B-897: replay of a measured frame sequence (Chromium, production build, 540-message
+    // session): the follow wrote scrollTop to the bottom, then the sent bubble (+91px) /
+    // a streamed draft chunk (+85px) committed before that write's scroll event was
+    // dispatched. The event saw distance 85 and un-followed; the reply then grew below
+    // a view parked mid-transcript (「发完消息滚动条跳到中间」).
+    it('跟随中、没往上动的 scroll 事件不因底部长高超过跟随带而断开跟随', () => {
+        const grewBelow = { atBottom: true, movedUp: false };
+        expect(followAfterScroll(false, 85, grewBelow)).toEqual({ atBottom: true, detached: false });
+        expect(followAfterScroll(false, 2675, grewBelow)).toEqual({ atBottom: true, detached: false });
+        expect(followAfterScroll(false, FOLLOW_BAND_PX + 1, grewBelow).atBottom).toBe(true);
+    });
+
+    it('往上动、或本来就没在跟随时仍按 80px 带判断；脱离中只认真正到底', () => {
+        expect(followAfterScroll(false, 85, { atBottom: true, movedUp: true })).toEqual({ atBottom: false, detached: false });
+        expect(followAfterScroll(false, 85, { atBottom: false, movedUp: false })).toEqual({ atBottom: false, detached: false });
+        expect(followAfterScroll(false, 40, { atBottom: false, movedUp: false })).toEqual({ atBottom: true, detached: false });
+        expect(followAfterScroll(true, 85, { atBottom: true, movedUp: false })).toEqual({ atBottom: false, detached: true });
+    });
+});
+
+describe('shouldRepin (B-897)', () => {
+    it('跟随中内容净变矮、离底超过 2px 就重新贴底（同帧先缩后长停在离底 8px）', () => {
+        expect(shouldRepin(15196, 15148, true, 8)).toBe(true);
+        expect(shouldRepin(15196, 15148, true, 2)).toBe(false);
+        expect(shouldRepin(15196, 15148, true, 0)).toBe(false);
+    });
+
+    it('变高不归它管：顶部插入旧历史时带内读者留在原处', () => {
+        expect(shouldRepin(1000, 2000, true, 40)).toBe(false);
+        expect(shouldRepin(1000, 1000, true, 40)).toBe(false);
+    });
+
+    it('读者已离开底部时不动他', () => {
+        expect(shouldRepin(15196, 15148, false, 8)).toBe(false);
+        expect(shouldRepin(15196, 15148, false, 900)).toBe(false);
     });
 });
 

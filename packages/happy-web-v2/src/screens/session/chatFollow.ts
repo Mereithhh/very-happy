@@ -103,13 +103,37 @@ export const REATTACH_PX = 2;
 
 export type FollowState = { atBottom: boolean; detached: boolean };
 
-/** 一次 scroll 事件之后的跟随状态：脱离中只认真正到底，否则沿用 80px 带。 */
-export function followAfterScroll(detached: boolean, distance: number): FollowState {
+/**
+ * 一次 scroll 事件之后的跟随状态：脱离中只认真正到底，否则沿用 80px 带。
+ *
+ * B-897：正在跟随、且这次没有往上动（`movedUp` 为假）时保持跟随，不看距离。
+ * 跟随写入的 scroll 事件要到下一帧才派发，期间底部长出 >80px 的内容（刚发出
+ * 的气泡 ≈91px、流式草稿一次长一段、图片加载）——按距离判就把读者判成「离开」，
+ * 跟随断掉，回复在下面继续长，视图停在半路（「发完消息滚动条跳到中间」）。
+ * 读者离开底部一定是往上动：手势由 detach 处理，拖滚动条向上走 `movedUp`。
+ */
+export function followAfterScroll(
+    detached: boolean,
+    distance: number,
+    prev: { atBottom: boolean; movedUp: boolean } = { atBottom: false, movedUp: true },
+): FollowState {
     if (detached) {
         const back = distance <= REATTACH_PX;
         return { atBottom: back, detached: !back };
     }
+    if (prev.atBottom && !prev.movedUp) return { atBottom: true, detached: false };
     return { atBottom: distance < FOLLOW_BAND_PX, detached: false };
+}
+
+/**
+ * B-897：内容净变矮之后要不要重新贴底：跟随中且离底超过 REATTACH_PX。
+ * 同一帧里先缩后长（草稿换成正式消息变矮、浏览器把 scrollTop clamp 下来，
+ * 紧接着送达标记再长几 px）净变化是变矮，growth 那条不跟，视图就停在离底
+ * 8–9px。只管变矮：变高归 shouldFollowGrowth，顶部插入旧历史由补偿处理，
+ * 带内（离底 <80px）的读者不能因此被拉到底。
+ */
+export function shouldRepin(prevHeight: number, nextHeight: number, atBottom: boolean, distance: number): boolean {
+    return atBottom && nextHeight < prevHeight && distance > REATTACH_PX;
 }
 
 /** 滚轮向上（内容往回翻）才是离开意图；横向/向下滚不算。 */

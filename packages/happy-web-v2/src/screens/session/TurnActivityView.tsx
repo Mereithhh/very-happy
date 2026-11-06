@@ -41,6 +41,15 @@ function TurnActivityViewImpl({
 }) {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(live);
+    // B-897: a turn going live again opens in the same render, not in the
+    // effect below — that ran after paint, so one frame showed the row folded
+    // (its answer already moved inside) and the browser clamped scrollTop
+    // ~600px up; the scroll event read as the reader leaving the live end.
+    const [liveSeen, setLiveSeen] = useState(live);
+    if (live !== liveSeen) {
+        setLiveSeen(live);
+        if (live) setExpanded(true);
+    }
     const wasLiveRef = useRef(live);
     const detailId = useId();
     const detailRef = useRef<HTMLDivElement>(null);
