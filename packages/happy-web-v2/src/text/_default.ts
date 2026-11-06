@@ -3259,6 +3259,12 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov06c: {
+                title: 'Chat stays at the newest reply, project terminals open operable',
+                summary: 'After you send a message the chat no longer jumps to the middle, and project terminals shared as Can operate are easier to use.',
+                scroll: 'In Chrome, Edge and similar browsers the chat now stays at the newest reply after you send a message instead of jumping to the middle.',
+                terminal: 'A project terminal also shared with you as Can operate now opens operable from the project page; view-only project terminals explain why; the project share dialog can give someone Can operate on a terminal in one step; typing into a shared terminal no longer arrives out of order.',
+            },
             nov06a: {
                 title: 'Model picker, smarter search, old-session restart, tidier sidebar',
                 summary: 'The model picker lists gpt-6 and the newest Opus and Fable, ⌘K search is more accurate, the machine page restarts idle old sessions, and the sidebar top is more compact.',
