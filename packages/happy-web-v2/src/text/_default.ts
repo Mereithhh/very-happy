@@ -3288,6 +3288,12 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov07: {
+                title: 'Safari chat scrolling fixed, share all project terminals at once',
+                summary: 'Chat stays where you expect in Safari, and a project share can give someone Can operate on all its terminals in one step.',
+                scroll: 'In Safari (iPhone, iPad and Mac) the chat now stays at the newest reply after you send a message, and jumping to a comment or paging up with the keyboard while a reply streams stays where you went.',
+                terminal: 'When sharing a project you can now give someone Can operate on every terminal currently in it at once (same risk confirmation, 1/7/30 days) or revoke it in one step; terminals added later are not included.',
+            },
             nov06c: {
                 title: 'Chat stays at the newest reply, project terminals open operable',
                 summary: 'After you send a message the chat no longer jumps to the middle, and project terminals shared as Can operate are easier to use.',
