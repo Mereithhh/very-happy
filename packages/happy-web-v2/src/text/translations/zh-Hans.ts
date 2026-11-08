@@ -3433,8 +3433,8 @@ export const zhHans: TranslationStructure = {
                 codex: 'Codex 被系统杀掉时会显示原因（很可能是内存不足）；同一个 Codex 会话一加载就连续崩溃时，会提供「新开 Codex 会话（带上摘要）」，在同一目录接着做。',
             },
             nov08b: {
-                title: 'CLI 0.2.208：很长的 Codex 会话可正常恢复',
-                summary: '恢复长 Codex 会话更轻；一加载就崩溃的会话不再反复自动重启。',
+                title: 'CLI 0.2.208：Codex 长会话崩溃不再循环重启',
+                summary: '恢复长 Codex 会话时不再一次读回全部历史；一加载就崩溃的会话不再反复自动重启。',
                 resume: '恢复很长的 Codex 会话时不再一次读回全部历史；会话一加载就连续崩溃时停止自动重启，不再反复重试。',
             },
             nov07: {
