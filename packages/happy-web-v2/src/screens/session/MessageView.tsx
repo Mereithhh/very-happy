@@ -22,6 +22,9 @@ import { stripHarnessBlocks, parseLocalCommandMessage, parseTaskNotification } f
 import { estimateWrappedLines, shouldCollapseBubble } from './codeCollapse';
 import { stripThinkingWrapper, formatThoughtFor, thinkingPreview, isLiveThinking } from './thinking';
 import { presentServiceEvent } from './serviceEvent';
+import { runCodexHandoff } from './codexHandoffRun';
+import { isSharedWithMe } from '@/app/sessionAccess';
+import { toast } from '@/ui/Toast';
 import { AccountEventBlock } from './AccountEventBlock';
 import { accountEventKind, machineLoginCardApplies } from './sessionAccount';
 import { AUTO_UPDATED_EVENT_KIND, parseAutoUpdatedLine } from '@/app/autoRestartPolicy';
@@ -311,6 +314,44 @@ function RestartAction({ sessionId }: { sessionId: string }) {
     );
 }
 
+/** B-901: the way out of a Codex thread the wrapper stopped respawning — a new
+ *  Codex session in the same directory, its composer prefilled with a summary. */
+function CodexHandoffAction({ sessionId }: { sessionId: string }) {
+    const { t } = useTranslation();
+    const navigate = useNavigate();
+    const session = useSession(sessionId);
+    const machine = useMachine(session?.metadata?.machineId ?? '');
+    const machineOnline = !!machine && isMachineOnline(machine);
+    const [busy, setBusy] = useState(false);
+    if (!session || isSharedWithMe(session)) return null;
+    const start = () => {
+        if (busy) return;
+        setBusy(true);
+        toast.show(t('session.chat.codexHandoffStarting'), 'info');
+        runCodexHandoff(session, {
+            intro: t('session.chat.codexHandoffDraftIntro'),
+            summary: t('session.chat.codexHandoffDraftSummary'),
+            recent: t('session.chat.codexHandoffDraftRecent'),
+            user: t('session.chat.codexHandoffDraftUser'),
+            assistant: t('session.chat.codexHandoffDraftAssistant'),
+            outro: t('session.chat.codexHandoffDraftOutro'),
+        })
+            .then((result) => {
+                navigate(`/session/${encodeURIComponent(result.sessionId)}`);
+                if (!result.fromMachine) toast.show(t('session.chat.codexHandoffLocalSummary'), 'info', { sticky: true });
+            })
+            .catch((error) => toast.show(t('session.chat.codexHandoffFailed', { reason: error instanceof Error ? error.message : String(error) }), 'error', { sticky: true }))
+            .finally(() => setBusy(false));
+    };
+    return (
+        <span className="msg-event-restart">
+            <button type="button" className="msg-event-restart-btn" onClick={start} disabled={busy || !machineOnline}>
+                {busy ? t('session.chat.codexHandoffStarting') : t('session.chat.codexHandoffAction')}
+            </button>
+        </span>
+    );
+}
+
 /** B-276: jump from an auth-failed turn to the machine's Claude login status. */
 function MachineAuthLink({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
@@ -436,6 +477,14 @@ function AgentEventBlock({ message, sessionId, continueOffer = false }: { messag
                         <div className="msg msg--event">
                             <span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{t(presentation.textKey)}</span>
                             <RestartAction sessionId={sessionId} />
+                        </div>
+                    );
+                }
+                if (presentation.kind === 'codex-crash-loop') {
+                    return (
+                        <div className="msg msg--event">
+                            <span className="msg-event-line msg-event-line--error" title={presentation.text}><AlertTriangle size={13} />{t('session.chat.codexCrashLoop')}</span>
+                            <CodexHandoffAction sessionId={sessionId} />
                         </div>
                     );
                 }

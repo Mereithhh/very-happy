@@ -717,6 +717,8 @@ export type Metadata = {
    */
   terminalId?: string,
   codexThreadId?: string, // Codex app-server thread ID
+  /** B-901: consecutive app-server deaths while loading `threadId` (codexCrashLoop.ts). Old clients ignore it. */
+  codexResumeCrash?: { threadId: string, count: number, at: number, signal?: string | null, code?: number | null },
   piSessionId?: string, // B-633: pi session id (pi-acp `session/load` reopens it)
   tools?: string[],
   slashCommands?: string[],

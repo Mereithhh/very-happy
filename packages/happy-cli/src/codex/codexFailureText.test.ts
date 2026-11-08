@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { codexStderrTailOf, describeCodexFailure, describeCodexRetry, describeThrownTurnError, readableCodexErrorText } from './codexFailureText';
+import { codexStderrTailOf, describeCodexExit, describeCodexFailure, describeCodexRetry, describeThrownTurnError, processLossMessage, readableCodexErrorText } from './codexFailureText';
 
 describe('codexStderrTailOf', () => {
     it('B-625: reads the stderr tail a dead app-server left on its rejection, or null', () => {
@@ -75,5 +75,16 @@ describe('describeThrownTurnError', () => {
     it('never throws on malformed JSON', () => {
         expect(readableCodexErrorText('{not json')).toBe('{not json');
         expect(readableCodexErrorText('{"type":"error"}')).toBe('{"type":"error"}');
+    });
+});
+
+describe('B-901 process loss line', () => {
+    it('carries code/signal when there is no stderr, with the OOM hint for SIGKILL', () => {
+        const killed = Object.assign(new Error('Codex process exited (code=null, signal=SIGKILL) while waiting for thread/resume'), { codexExit: { code: null, signal: 'SIGKILL' }, codexStderrTail: '' });
+        expect(processLossMessage(killed)).toBe('Process exited unexpectedly: Codex process exited (signal=SIGKILL) — killed by the system, most likely out of memory (a very large Codex thread can need several GB to resume)');
+        const crashed = Object.assign(new Error('x'), { codexExit: { code: 1, signal: null }, codexStderrTail: 'panicked: boom' });
+        expect(processLossMessage(crashed)).toBe('Process exited unexpectedly: Codex process exited (code=1): panicked: boom');
+        expect(processLossMessage(new Error('Codex process disconnected while waiting for turn/start'))).toBe('Process exited unexpectedly');
+        expect(describeCodexExit({ code: null, signal: 'SIGTERM' })).toBe('Codex process exited (signal=SIGTERM)');
     });
 });

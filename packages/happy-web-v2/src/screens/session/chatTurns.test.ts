@@ -64,6 +64,19 @@ describe('buildChatRows', () => {
         expect(genericOnly[2]).toMatchObject({ message: { id: 'generic' } });
     });
 
+    it('B-901: the Codex crash-loop card (the way out) stays visible next to the crash line', () => {
+        const event = (id: string, createdAt: number, message: string): Message => ({
+            kind: 'agent-event', id, createdAt, event: { type: 'message', message },
+        } as Message);
+        const rows = buildChatRows([
+            user('u1', 1),
+            event('loss', 2, 'Process exited unexpectedly: Codex process exited (signal=SIGKILL) — killed by the system, most likely out of memory'),
+            event('loop', 3, 'Codex thread crash loop: Codex died 2 times in a row while loading this thread — it was killed (SIGKILL), most likely out of memory.'),
+        ], false);
+        expect(rows.map((row) => row.type)).toEqual(['message', 'message', 'message']);
+        expect(rows.slice(1).map((row) => (row as { message: { id: string } }).message.id)).toEqual(['loss', 'loop']);
+    });
+
     it('B-850c2: an account event that needs the user stays visible in an answerless turn', () => {
         const event = (id: string, createdAt: number, message: string, kind?: string): Message => ({
             kind: 'agent-event', id, createdAt, event: { type: 'message', message, ...(kind ? { kind } : {}) },

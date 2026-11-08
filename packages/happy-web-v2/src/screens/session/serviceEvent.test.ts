@@ -62,3 +62,10 @@ it('shows a Codex turn refusal as an error with its reason (B-487)', () => {
     expect(presentServiceEvent(message)).toEqual({ kind: 'agent-error', text: message });
     expect(presentServiceEvent('Codex error:')).toEqual({ kind: 'subtle', text: 'Codex error:' });
 });
+
+it('B-901: the CLI crash-loop notice offers the new-session way out; a reasoned SIGKILL loss is an error with its words', () => {
+    const notice = 'Codex thread crash loop: Codex died 2 times in a row while loading this thread — it was killed (SIGKILL), most likely out of memory. Very Happy stopped restarting it. Start a new Codex session with a summary of this one to continue.';
+    expect(presentServiceEvent(notice)).toEqual({ kind: 'codex-crash-loop', text: notice });
+    const loss = 'Process exited unexpectedly: Codex process exited (signal=SIGKILL) — killed by the system, most likely out of memory (a very large Codex thread can need several GB to resume)';
+    expect(presentServiceEvent(loss)).toEqual({ kind: 'agent-error', text: loss });
+});

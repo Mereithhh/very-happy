@@ -522,6 +522,36 @@ The composer's command list marks `/compact` as unavailable on sessions that
 cannot run it, and sending it there shows a notice instead of a message (older
 Codex wrappers included — update the CLI and restart the session).
 
+### A Codex thread too large to load (B-901)
+
+Codex stores every tool output whole in the thread's rollout
+(`~/.codex/sessions/…/rollout-*-<thread>.jsonl`), so a long session with
+verbose tool calls can reach hundreds of MB. Loading such a thread
+(`thread/resume`, also `thread/read` / `thread/fork`) takes several GB — an
+850 MB rollout peaked at ~3.5–3.9 GB on codex-cli 0.154 — and on a
+memory-capped host (container, cgroup) the kernel OOM-kills `codex app-server`
+with SIGKILL and no stderr.
+
+- The session says how Codex died: `Process exited unexpectedly: Codex process
+  exited (signal=SIGKILL) — killed by the system, most likely out of memory …`.
+- After 2 deaths in a row before Codex served a single turn on that thread,
+  the wrapper stops respawning it (also across 「重启」; the streak lives in
+  session metadata and is forgotten after 6 hours without a crash, or by
+  `/clear`). Messages are marked 「未执行」 instead of killing Codex again.
+- The way out is 「新开 Codex 会话（带上摘要）」 on that notice: a new, empty
+  Codex session in the same machine and directory, its composer prefilled
+  with Codex's latest compaction summary and the last 12 messages, read
+  straight from the rollout file by the daemon (`codex-handoff-context`; the
+  page's loaded messages are used when the machine cannot read it). Check and
+  send it.
+- To confirm on the machine:
+
+  ```sh
+  grep -hE "CodexAppServer\] Process exited|Crash-loop check" $(ls -t ~/.happy/logs/*.log | grep -v -- -daemon.log | head -5) | tail -6 | cut -c1-160
+  find ~/.codex/sessions -name '*.jsonl' -size +100M -exec du -h {} + | awk '{print $1}'
+  cat /sys/fs/cgroup/memory.max 2>/dev/null
+  ```
+
 ### Accounts per session (B-850)
 
 **Settings → Models & accounts** (the former *Agent defaults* and *Models &

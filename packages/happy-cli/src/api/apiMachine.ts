@@ -3,6 +3,7 @@
  * Similar to ApiSessionClient but for machine-scoped connections
  */
 
+import { findCodexRollout, readCodexHandoff } from '@/codex/codexHandoff';
 import type { AutoRestartSessionStatus } from '@/update/autoRestartPolicy';
 import type { AgentAutoUpdateStatus } from '@/harness/agentAutoUpdate';
 import { io, Socket } from 'socket.io-client';
@@ -1176,6 +1177,15 @@ export class ApiMachineClient {
                 cwd: directory,
             }));
             return result;
+        });
+
+        // B-901: the way out of a thread Codex cannot load (OOM on resume) — read
+        // straight from the rollout, never through an app-server.
+        this.rpcHandlerManager.registerHandler('codex-handoff-context', async (params: any) => {
+            const codexThreadId = requireNonEmptyString(params?.codexThreadId, 'codexThreadId');
+            const rollout = await findCodexRollout(codexThreadId);
+            if (!rollout) return { type: 'error', error: 'The Codex transcript of this thread was not found on this machine' };
+            return { type: 'success', ...(await readCodexHandoff(rollout)) };
         });
 
         this.rpcHandlerManager.registerHandler('codex-list-rewind-points', async (params: any) => {
