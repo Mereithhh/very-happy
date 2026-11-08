@@ -139,6 +139,23 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-08-codex-killed-reason-new-session-with-summary',
+    date: '2026-11-08',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov08.title',
+    summaryKey: 'changelog.releases.nov08.summary',
+    itemKeys: ['changelog.releases.nov08.codex'],
+  },
+  {
+    id: '2026-11-08-cli-codex-long-session-resume-0-2-208',
+    cliVersion: '0.2.208',
+    date: '2026-11-08',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov08b.title',
+    summaryKey: 'changelog.releases.nov08b.summary',
+    itemKeys: ['changelog.releases.nov08b.resume'],
+  },
+  {
     id: '2026-11-07-safari-chat-scroll-share-all-terminals',
     date: '2026-11-07',
     buildVersion: __APP_VERSION__,

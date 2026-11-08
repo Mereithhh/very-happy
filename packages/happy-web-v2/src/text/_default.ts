@@ -3299,6 +3299,16 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov08: {
+                title: 'Codex crashes now say why, with a way to carry on',
+                summary: 'When Codex is killed by the system the chat says so, and a session that keeps crashing offers a fresh start with a summary.',
+                codex: 'When Codex is killed by the system the chat now says so (most likely out of memory), and a Codex session that keeps crashing on load offers "New Codex session with summary" to carry on in the same directory.',
+            },
+            nov08b: {
+                title: 'CLI 0.2.208: resuming very long Codex sessions',
+                summary: 'Resuming a long Codex session is lighter, and a session that keeps crashing on load stops restarting itself.',
+                resume: 'Resuming a very long Codex session no longer loads its whole history at once, and a session that keeps crashing on load stops restarting itself.',
+            },
             nov07: {
                 title: 'Safari chat scrolling fixed, share all project terminals at once',
                 summary: 'Chat stays where you expect in Safari, and a project share can give someone Can operate on all its terminals in one step.',
