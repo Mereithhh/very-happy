@@ -58,6 +58,9 @@ export const MetadataSchema = z.object({
     machineId: z.string().optional(),
     claudeSessionId: z.string().optional(), // Claude Code session ID
     codexThreadId: z.string().optional(), // Codex app-server thread ID
+    /** B-901: the CLI's crash-loop streak for a Codex thread (codexCrashLoop.ts);
+     *  kept here so a Web metadata write does not strip it. No default (铁律 1). */
+    codexResumeCrash: z.object({ threadId: z.string(), count: z.number(), at: z.number() }).passthrough().optional().catch(undefined),
     piSessionId: z.string().optional(), // B-633: pi session id (resume reopens it via pi-acp session/load)
     tools: z.array(z.string()).optional(),
     slashCommands: z.array(z.string()).optional(),

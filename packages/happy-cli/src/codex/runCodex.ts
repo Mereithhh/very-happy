@@ -52,7 +52,8 @@ import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { settleTurnEffort, unsupportedEffortReason } from './effortSupport';
 import { codexModelFacts, resolveCodexTurnModel } from './turnModel';
-import { codexStderrTailOf, describeCodexFailure, describeCodexRetry, describeThrownTurnError } from './codexFailureText';
+import { describeCodexFailure, describeCodexRetry, describeThrownTurnError, processLossMessage } from './codexFailureText';
+import { crashLoopNotice, isCrashLoopBlocked, readCodexResumeCrash, recordCodexCrash } from './codexCrashLoop';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
@@ -958,6 +959,36 @@ export async function runCodex(opts: {
     const editThrottle = new EditReportThrottle();
     // B-555: subscription windows → local daemon (advisory, never blocks a turn).
     client.setRateLimitHandler((snapshot) => wrapperRateLimitReporter().observeCodex(snapshot));
+    // B-901: a thread that kills its app-server on load is not respawned forever.
+    // Held here: updateMetadata is a server round trip, so getMetadata() lags the exit just recorded.
+    // Metadata only carries the streak across wrapper restarts.
+    let crashStreakNow = readCodexResumeCrash(session.getMetadata()?.codexResumeCrash);
+    const crashStreak = () => crashStreakNow;
+    // The thread a crash-loop block skipped resuming at start (client.threadId stays null then).
+    let blockedResumeThreadId: string | null = null;
+    const crashLoopBlocked = () => isCrashLoopBlocked(crashStreak(), client.threadId ?? blockedResumeThreadId, Date.now());
+    const sendCrashLoopNotice = () => {
+        const streak = crashStreak();
+        if (!streak) return;
+        messageBuffer.addMessage('Codex keeps dying while loading this thread; not restarting it', 'status');
+        session.sendSessionEvent({ type: 'message', message: crashLoopNotice(streak) });
+    };
+    client.setUnexpectedExitHandler((exit) => {
+        const next = recordCodexCrash(crashStreak(), exit, Date.now());
+        logger.debug(`[Codex] App-server died: code=${exit.code} signal=${exit.signal} servedTurn=${exit.servedTurn} streak=${next?.count ?? 0}`);
+        if (!next) return;
+        crashStreakNow = next;
+        session.updateMetadata((currentMetadata) => ({ ...currentMetadata, codexResumeCrash: next }));
+    });
+    const clearCrashStreak = () => {
+        if (!crashStreakNow) return;
+        crashStreakNow = null;
+        session.updateMetadata((currentMetadata) => {
+            const nextMetadata = { ...currentMetadata };
+            delete nextMetadata.codexResumeCrash;
+            return nextMetadata;
+        });
+    };
     client.setEventHandler((msg) => {
         if (msg.type === 'token_count') {
             session.sendAgentUsageSnapshot('codex', msg);
@@ -1163,7 +1194,14 @@ export async function runCodex(opts: {
         // B-850b: an unusable account refuses every turn, and its thread may be
         // recorded on a provider only that account defines — resume when the
         // account is fixed / switched (that restarts the session).
-        if (opts.resumeThreadId && !codexAccount.unavailable) {
+        if (opts.resumeThreadId && !codexAccount.unavailable && isCrashLoopBlocked(crashStreak(), opts.resumeThreadId, Date.now())) {
+            // B-901: loading this thread killed Codex every time — do not try again.
+            blockedResumeThreadId = opts.resumeThreadId;
+            logger.debug('[Codex] Not resuming a thread in a crash loop');
+            sendCrashLoopNotice();
+            first = false;
+            appendSystemPromptInjected = true;
+        } else if (opts.resumeThreadId && !codexAccount.unavailable) {
             try {
                 await resumeExistingThread({
                     client,
@@ -1337,6 +1375,7 @@ export async function runCodex(opts: {
                 logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
                 heldInput.delivered();
                 client.clearThreadState();
+                blockedResumeThreadId = null;
                 currentTurnId = null;
                 codexStartedSubagents = new Set<string>();
                 codexActiveSubagents = new Set<string>();
@@ -1374,6 +1413,13 @@ export async function runCodex(opts: {
 
             const compactCommand = codexCompactCommand(message.message);
             try {
+                if (crashLoopBlocked()) {
+                    // B-901: respawning would load the same thread and die again.
+                    // The message never ran: 「未执行」 with put-back, plus the way out.
+                    heldInput.drop('failed');
+                    sendCrashLoopNotice();
+                    continue;
+                }
                 if (compactCommand !== null) {
                     // Owner 10-30: Codex compacts the thread itself; the text never reaches the model.
                     await client.ensureConnected();
@@ -1474,6 +1520,7 @@ export async function runCodex(opts: {
                 });
                 reportModeFacts();
                 first = false;
+                if (!result.aborted) clearCrashStreak();
                 if (includeAppendSystemPrompt) {
                     appendSystemPromptInjected = true;
                 }
@@ -1498,10 +1545,12 @@ export async function runCodex(opts: {
                     session.sendSessionEvent({ type: 'message', message: `Codex error: ${reason}` });
                     noteAccountFailure(reason);
                 } else {
-                    // B-625: with Codex's own last words (its stderr tail) when it has any.
-                    const tail = codexStderrTailOf(error);
+                    // B-625/B-901: with Codex's own last words (its stderr tail) and how it
+                    // ended (code/signal) — an OOM kill leaves no stderr, only SIGKILL.
                     messageBuffer.addMessage('Process exited unexpectedly', 'status');
-                    session.sendSessionEvent({ type: 'message', message: tail ? `Process exited unexpectedly: ${tail}` : 'Process exited unexpectedly' });
+                    session.sendSessionEvent({ type: 'message', message: processLossMessage(error) });
+                    logger.debug(`[Codex] Crash-loop check: streak=${crashStreak()?.count ?? 0} thread=${client.threadId ?? blockedResumeThreadId ?? 'none'} blocked=${crashLoopBlocked()}`);
+                    if (crashLoopBlocked()) sendCrashLoopNotice();
                 }
             } finally {
                 // Reset permission handler, reasoning processor, and diff processor

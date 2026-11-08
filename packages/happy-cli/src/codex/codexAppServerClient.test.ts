@@ -1574,6 +1574,82 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('B-901: an app-server killed while loading the thread reports code/signal and counts as an unserved exit', async () => {
+        const first = createMockProcess({
+            pid: 3901,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-901') }), 0);
+                }
+            },
+        });
+        const resumes: Array<Record<string, unknown>> = [];
+        const second = createMockProcess({
+            pid: 3902,
+            onRequest: (msg) => {
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    resumes.push(msg.params as Record<string, unknown>);
+                    // OOM killer: no stderr, no answer — only SIGKILL.
+                    setTimeout(() => second.emit('exit', null, 'SIGKILL'), 5);
+                }
+            },
+        });
+        mockSpawn.mockImplementationOnce(() => first).mockImplementationOnce(() => second);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const { processLossMessage } = await import('./codexFailureText');
+        const client = new CodexAppServerClient();
+        const exits: Array<Record<string, unknown>> = [];
+        client.setUnexpectedExitHandler((exit) => exits.push(exit));
+
+        await client.connect();
+        await client.startThread({ cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+        first.emit('exit', null, 'SIGKILL');
+        const error = await client.ensureConnected().then(() => null, (err: unknown) => err);
+
+        expect(resumes).toEqual([expect.objectContaining({ threadId: 'thread-901', excludeTurns: true })]);
+        expect((error as Error).message).toBe('Codex process exited (code=null, signal=SIGKILL) while waiting for thread/resume');
+        expect((error as { codexExit?: unknown }).codexExit).toEqual({ code: null, signal: 'SIGKILL' });
+        expect(processLossMessage(error)).toMatch(/^Process exited unexpectedly: Codex process exited \(signal=SIGKILL\) — killed by the system, most likely out of memory/);
+        expect(exits).toEqual([
+            { code: null, signal: 'SIGKILL', threadId: 'thread-901', servedTurn: false },
+            { code: null, signal: 'SIGKILL', threadId: 'thread-901', servedTurn: false },
+        ]);
+
+        await client.disconnect();
+    });
+
+    it('B-901: our own disconnect is not an unexpected exit; a served turn marks the process healthy', async () => {
+        const proc = createMockProcess({
+            pid: 3903,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-903') }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => turnStartedLines(stdout, msg.id!, 'thread-903', 'turn-903'), 0);
+                    setTimeout(() => pushJsonLine(stdout, { method: 'turn/completed', params: { threadId: 'thread-903', turn: { id: 'turn-903', status: 'completed', items: [] } } }), 10);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const exits: Array<Record<string, unknown>> = [];
+        client.setUnexpectedExitHandler((exit) => exits.push(exit));
+
+        await client.connect();
+        await client.startThread({ cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+        await expect(client.sendTurnAndWait('hi')).resolves.toEqual({ aborted: false });
+        proc.emit('exit', 137, null);
+        expect(exits).toEqual([{ code: 137, signal: null, threadId: 'thread-903', servedTurn: true }]);
+
+        mockSpawn.mockImplementation(() => createMockProcess({ pid: 3904 }));
+        await client.connect();
+        await client.disconnect();
+        expect(exits).toHaveLength(1);
+    });
+
     it('B-625: thread/closed on the session\'s own thread ends a pending turn', async () => {
         const proc = createMockProcess({
             pid: 3013,

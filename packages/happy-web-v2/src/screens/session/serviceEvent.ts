@@ -6,6 +6,9 @@ export type ServiceEventPresentation =
     /** B-487: the agent refused the turn and said why (e.g. Codex's backend
      *  400 for a model the sign-in cannot use) — shown as an error, verbatim. */
     | { kind: 'agent-error'; text: string }
+    /** B-901: the wrapper stopped respawning a Codex thread that kills Codex on
+     *  load — offer a new Codex session carrying its summary. */
+    | { kind: 'codex-crash-loop'; text: string }
     | { kind: 'subtle'; text: string };
 
 /**
@@ -26,6 +29,9 @@ export type ServiceEventPresentation =
 /** The reason-less line a failed turn-end becomes (reducer fallback). */
 export const GENERIC_TURN_FAILURE = /^(claude )?turn failed$/i;
 
+/** Same string as the CLI's codexCrashLoop.ts CODEX_CRASH_LOOP_PREFIX. */
+export const CODEX_CRASH_LOOP_PREFIX = 'Codex thread crash loop:';
+
 const CLAUDE_AUTH_FAILURE = /^authentication_failed$|failed to authenticate|oauth session expired/i;
 
 export function presentServiceEvent(message: string): ServiceEventPresentation {
@@ -45,6 +51,9 @@ export function presentServiceEvent(message: string): ServiceEventPresentation {
     const normalized = visibleMessage.toLowerCase();
     if (normalized === 'aborted by user' || normalized === 'turn aborted') {
         return { kind: 'stopped', textKey: 'session.chat.stoppedByYou' };
+    }
+    if (visibleMessage.startsWith(CODEX_CRASH_LOOP_PREFIX)) {
+        return { kind: 'codex-crash-loop', text: visibleMessage };
     }
     if (normalized === 'process exited unexpectedly') {
         return { kind: 'error', textKey: 'session.chat.processFailed' };

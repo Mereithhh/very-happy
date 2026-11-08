@@ -115,3 +115,36 @@ export function describeThrownTurnError(error: unknown): string | null {
     if (!message.trim() || TRANSPORT_LOSS.test(message)) return null;
     return readableCodexErrorText(message);
 }
+
+/** B-901: how the app-server process ended, carried on the errors its exit rejected. */
+export type CodexExit = { code: number | null; signal: string | null };
+
+export function codexExitOf(error: unknown): CodexExit | null {
+    const exit = (error as { codexExit?: unknown } | null)?.codexExit as Partial<CodexExit> | undefined;
+    if (!exit || typeof exit !== 'object') return null;
+    return {
+        code: typeof exit.code === 'number' ? exit.code : null,
+        signal: typeof exit.signal === 'string' && exit.signal ? exit.signal : null,
+    };
+}
+
+/**
+ * B-901: one line for a dead app-server — exit code/signal, and for SIGKILL
+ * the likely cause. A memory-capped host (cgroup/container) OOM-kills Codex
+ * while it loads a very large thread: no stderr at all, only SIGKILL.
+ */
+export function describeCodexExit(exit: CodexExit, tail?: string | null): string {
+    const status = exit.signal ? `signal=${exit.signal}` : `code=${exit.code ?? 'null'}`;
+    const hint = exit.signal === 'SIGKILL'
+        ? ' — killed by the system, most likely out of memory (a very large Codex thread can need several GB to resume)'
+        : '';
+    return `Codex process exited (${status})${hint}${tail ? `: ${tail}` : ''}`;
+}
+
+/** The session event for a lost app-server: why it died, as far as we know. */
+export function processLossMessage(error: unknown): string {
+    const tail = codexStderrTailOf(error);
+    const exit = codexExitOf(error);
+    if (exit) return `Process exited unexpectedly: ${describeCodexExit(exit, tail)}`;
+    return tail ? `Process exited unexpectedly: ${tail}` : 'Process exited unexpectedly';
+}

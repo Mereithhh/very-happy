@@ -52,6 +52,10 @@ import packageJson from '../../package.json';
 import { isUnsupportedCodexMethodError, shouldReadCodexRateLimits } from '@/rateLimits/rateLimitWindows';
 import { codexChildAnnouncements } from './codexChildThreads';
 import { killCodexProcessTree, stopCodexProcess } from './codexProcessTree';
+import { describeCodexExit, type CodexExit } from './codexFailureText';
+
+/** B-901: an app-server exit we did not cause, for the crash-loop guard. */
+export type CodexUnexpectedExit = CodexExit & { threadId: string | null; servedTurn: boolean };
 
 /** JSON-RPC error code carried by a rejected `request()`, when Codex answered with one. */
 export function jsonRpcErrorCodeOf(error: unknown): number | null {
@@ -249,6 +253,9 @@ export class CodexAppServerClient {
     private threadStopGrace: ReturnType<typeof setTimeout> | null = null;
     /** Last few hundred chars of the app-server's stderr: Codex's own last words when it dies. */
     private stderrRing = '';
+    /** B-901: this app-server ended a turn — it got past loading the thread. */
+    private servedTurnSinceSpawn = false;
+    private unexpectedExitHandler: ((exit: CodexUnexpectedExit) => void) | null = null;
     private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
     // B-622: inactivity watchdog for the pending turn — re-armed by every
     // notification, never a cap on how long a turn may run (see sendTurnAndWait).
@@ -305,6 +312,11 @@ export class CodexAppServerClient {
     /** B-844d: the model the current thread runs for turns that name none (null = unknown). */
     get threadModel(): string | null {
         return this._threadModel;
+    }
+
+    /** B-901: the app-server died on its own (never called for our own disconnect/release). */
+    setUnexpectedExitHandler(handler: ((exit: CodexUnexpectedExit) => void) | null): void {
+        this.unexpectedExitHandler = handler;
     }
 
     setEventHandler(handler: (msg: EventMsg) => void): void {
@@ -464,6 +476,7 @@ export class CodexAppServerClient {
         const failed = status === 'failed' || (error !== undefined && error !== null);
 
         this.clearThreadStopGrace();
+        this.servedTurnSinceSpawn = true;
         this.tryResolvePendingTurn(aborted, turnId, source);
         this._turnId = null;
         this.maybeRefreshRateLimits();
@@ -784,12 +797,16 @@ export class CodexAppServerClient {
             }
             this.connected = false;
             const tail = this.stderrTail();
+            const exit: CodexExit = { code: code ?? null, signal: signal ?? null };
             const exited = `Codex process exited (code=${code ?? 'null'}${signal ? `, signal=${signal}` : ''})`;
+            // B-901: the crash-loop guard counts this exit (no own disconnect gets here).
+            this.unexpectedExitHandler?.({ ...exit, threadId: this._threadId, servedTurn: this.servedTurnSinceSpawn });
             // Reject all pending requests
             for (const [id, req] of this.pending) {
                 if (req.epoch !== epoch) continue;
                 const error = new Error(`${exited} while waiting for ${req.method}`);
-                (error as Error & { codexStderrTail?: string }).codexStderrTail = tail;
+                (error as Error & { codexStderrTail?: string; codexExit?: CodexExit }).codexStderrTail = tail;
+                (error as Error & { codexExit?: CodexExit }).codexExit = exit;
                 req.reject(error);
                 this.pending.delete(id);
             }
@@ -802,7 +819,7 @@ export class CodexAppServerClient {
                     type: 'turn_aborted',
                     reason: 'process-exit',
                     ...(turnId ? { turn_id: turnId } : {}),
-                    error: { message: `${exited}${tail ? `: ${tail}` : ''}` },
+                    error: { message: describeCodexExit(exit, tail) },
                 });
             }
             // Resolve pending turn completion (treat as abort)
@@ -811,6 +828,7 @@ export class CodexAppServerClient {
 
         // Pipe stderr for debug logging; keep a tail for the exit message.
         this.stderrRing = '';
+        this.servedTurnSinceSpawn = false;
         // B-628: a respawned app-server may be a newer codex; its children are new too.
         this.steerUnsupported = false;
         this.steeredAwaitingEcho.clear();
@@ -1046,6 +1064,11 @@ export class CodexAppServerClient {
             baseInstructions: null,
             developerInstructions: null,
             persistExtendedHistory: true,
+            // B-901: nothing here reads the resumed turns, and on a long thread
+            // they came back as one JSON line of hundreds of MB (400 MB for an
+            // 850 MB rollout) that this process had to buffer and parse. Older
+            // Codex ignores the unknown param, as with lastTurnId (B-851).
+            excludeTurns: true,
         };
 
         const result = await this.request('thread/resume', params) as ResumeConversationResponse;

@@ -57,6 +57,8 @@ export type ResumeConversationParams = {
     baseInstructions: string | null;
     developerInstructions: string | null;
     persistExtendedHistory: boolean;
+    /** B-901 (Codex ≥ 0.154): answer without `thread.turns`. Older Codex ignores it. */
+    excludeTurns?: boolean;
 };
 
 export type ResumeConversationResponse = NewConversationResponse;

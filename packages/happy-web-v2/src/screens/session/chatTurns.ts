@@ -197,7 +197,8 @@ function isTurnFailure(message: Message): boolean {
     if (message.kind !== 'agent-event' || message.event.type !== 'message') return false;
     if (message.event.kind && ACCOUNT_ACTION_EVENT_KINDS.has(message.event.kind)) return true;
     const kind = presentServiceEvent(message.event.message).kind;
-    return kind === 'error' || kind === 'agent-error' || kind === 'claude-auth';
+    // B-901: the crash-loop card carries the only way out — never folded away.
+    return kind === 'error' || kind === 'agent-error' || kind === 'claude-auth' || kind === 'codex-crash-loop';
 }
 
 /** Failure events of an answerless turn; the reason-less "Turn failed" is
