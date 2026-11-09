@@ -3310,6 +3310,11 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov09: {
+                title: 'Set Claude Code and Codex accounts per machine',
+                summary: 'Pick the account each machine uses for a project, and see which one a new session will use.',
+                accounts: 'Project settings now let you pick the Claude Code and Codex account per machine, so work projects use the work account and personal ones the personal account; the project composer shows which account a new session will use',
+            },
             nov08: {
                 title: 'Codex crashes now say why, with a way to carry on',
                 summary: 'When Codex is killed by the system the chat says so, and a session that keeps crashing offers a fresh start with a summary.',

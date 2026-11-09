@@ -3438,6 +3438,11 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov09: {
+                title: '按电脑分别设置 Claude Code 和 Codex 账号',
+                summary: '项目里可以给每台电脑选用哪个账号，新建会话时会显示这次用哪个。',
+                accounts: '项目设置里的「账号」可以按电脑分别设置 Claude Code 和 Codex 账号，公司项目用公司账号、个人项目用个人账号；在项目里新建会话时会显示这次用哪个账号',
+            },
             nov08: {
                 title: 'Codex 崩溃会说明原因，并可接着做',
                 summary: 'Codex 被系统杀掉时对话里会提示原因；会话一加载就反复崩溃时，可以带摘要新开一个。',
