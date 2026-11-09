@@ -1,4 +1,4 @@
-import { teamBotActivity, teamCleanupHoldsSession, teamCleanupIssues, teamMemberCounts, type TeamAction, type TeamCleanupIssue, type TeamState, type TeamBot, type TeamTask, type TeamOperation } from '@slopus/happy-wire';
+import { teamBotActivity, teamCleanupHoldsSession, teamCleanupIssues, teamMemberCounts, type TeamAction, type TeamCleanupIssue, type TeamState, type TeamBot, type TeamTask, type TeamOperation, type ProjectAgentProfile } from '@slopus/happy-wire';
 
 export type TeamActor = { kind: 'owner' } | { kind: 'agent'; botId: string; generation: number };
 export { TeamError, requireTeam } from './errors';
@@ -120,10 +120,14 @@ export function sameTeamAccount(a: TeamBot['agentProfile'], b: TeamBot['agentPro
 }
 
 /** B-850d: a new member's account — the delegate's choice, else the team default when it is for the same agent. */
-export function delegateAccount(explicit: TeamBot['agentProfile'], assistant: TeamBot['assistant'], defaults: TeamState['defaults']): TeamBot['agentProfile'] {
+export function delegateAccount(explicit: TeamBot['agentProfile'], assistant: TeamBot['assistant'], defaults: TeamState['defaults'], project?: readonly ProjectAgentProfile[] | null): TeamBot['agentProfile'] {
     if (explicit !== undefined) return explicit;
-    if (defaults?.agentProfile === undefined) return undefined;
-    return (defaults.assistant ?? 'claude') === assistant ? defaults.agentProfile : undefined;
+    if (defaults?.agentProfile !== undefined && (defaults.assistant ?? 'claude') === assistant) return defaults.agentProfile;
+    // B-902: no team default for this agent (a Codex member of a Claude team) — the project's
+    // account for this agent on the team's machine, before the machine default.
+    const entry = project?.find(e => e.agent === assistant);
+    if (!entry) return undefined;
+    return entry.id === null ? null : { id: entry.id, ...(entry.label ? { label: entry.label } : {}) };
 }
 
 /**
@@ -148,7 +152,7 @@ export function adoptLeadAccount(input: TeamState): TeamState | null {
     return s;
 }
 
-export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string; quiet?: boolean }): { team: TeamState; credentialBotId?: string; operationId?: string; taskId?: string; scheduleId?: string } {
+export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string; quiet?: boolean; /** B-902: the team's project accounts on the team's machine */ projectAccounts?: readonly ProjectAgentProfile[] | null }): { team: TeamState; credentialBotId?: string; operationId?: string; taskId?: string; scheduleId?: string } {
     requireTeam(input.archivedAt === undefined || ['archive', 'claim-operation', 'complete-operation', 'fail-operation', 'reconcile-operation', 'session-event'].includes(action.type), 'team_archived');
     const s = structuredClone(input);
     const { now, id } = ctx;
@@ -305,8 +309,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             let reused = false;
             if (!bot) {
                 const fresh: TeamBot = { id: id(), name: action.botName ?? 'Worker', sessionId: null, generation: 1, root: false, managed: true, assistant: action.assistant ?? s.defaults?.assistant ?? 'claude', ...(action.model ? { model: action.model } : (!action.assistant || action.assistant === s.defaults?.assistant) && s.defaults?.model ? { model: s.defaults.model } : {}), directory: action.directory ?? currentBot?.directory ?? s.bots.find(b => b.root)?.directory ?? null };
-                // B-850d: the delegate's account > the team default (same agent only: accounts are per agent).
-                const account = delegateAccount(action.agentProfile, fresh.assistant, s.defaults);
+                // B-850d: the delegate's account > the team default (same agent only: accounts are per agent) > B-902 the project's for this agent on this machine.
+                const account = delegateAccount(action.agentProfile, fresh.assistant, s.defaults, ctx.projectAccounts);
                 if (account !== undefined) fresh.agentProfile = account;
                 // B-692: reuse a stopped member of the same shape (agent, model, folder —
                 // its source repository, B-706: bot.directory is its last worktree)

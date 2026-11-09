@@ -28,7 +28,8 @@ describe('B-850c accounts wiring', () => {
         // B-850e: judged on what it will really start on — the project default included.
         expect(modal).toContain("const accountBlocked = resolveSpawnAccount(readMachineAgentProfiles(selectedMachine), agent, accountChoice, Date.now(), accountLaunch).kind === 'blocked';");
         // the daemon's own refusal reads as a sentence, not a code
-        expect(src('sync/pendingSessionsRuntime.ts')).toContain("if (result.type === 'error' && !result.transport && parseSpawnAccountError(result.errorMessage)) result = { ...result, errorMessage: t('accounts.spawnUnavailable') };");
+        // (B-902: also when it arrived as a transport error / thrown — see accountsWiringB902.test.ts)
+        expect(src('sync/pendingSessionsRuntime.ts')).toContain("if (result.type === 'error' && parseSpawnAccountError(result.errorMessage)) result = { type: 'error', errorMessage: t('accounts.spawnUnavailable') };");
     });
 
     it('draft card offers the account picker and resets it on machine / agent change', () => {

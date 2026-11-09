@@ -693,4 +693,18 @@ describe('B-850d member accounts', () => {
         expect(delegateAccount(undefined, 'claude', { agentProfile: orgA })).toEqual(orgA);
         expect(delegateAccount(null, 'claude', { agentProfile: orgA })).toBeNull();
     });
+
+    it('B-902: a member with no account and no team default for its agent takes the project\'s for that agent', async () => {
+        const { delegateAccount } = await import('./reducer');
+        const project = [{ agent: 'claude', machineId: 'm1', id: 'corp', label: 'Corp' }, { agent: 'codex', machineId: 'm1', id: 'corp-cx', label: 'Corp' }];
+        // Codex member of a Claude team: the team default is Claude-only → the project's Codex account.
+        expect(delegateAccount(undefined, 'codex', { assistant: 'claude', agentProfile: orgA }, project)).toEqual({ id: 'corp-cx', label: 'Corp' });
+        // The team default for the same agent still wins; an explicit choice (incl. machine login) wins over both.
+        expect(delegateAccount(undefined, 'claude', { assistant: 'claude', agentProfile: orgA }, project)).toEqual(orgA);
+        expect(delegateAccount(null, 'codex', { assistant: 'claude', agentProfile: orgA }, project)).toBeNull();
+        // Project says machine login; no entry for the agent → undefined (the daemon's machine default).
+        expect(delegateAccount(undefined, 'codex', undefined, [{ agent: 'codex', machineId: 'm1', id: null }])).toBeNull();
+        expect(delegateAccount(undefined, 'pi-acp', undefined, project)).toBeUndefined();
+        expect(delegateAccount(undefined, 'codex', undefined, null)).toBeUndefined();
+    });
 });

@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import type { TeamActionRequest, TeamResponse, TeamState, TeamOperation, TeamMessage, TeamLaunch, TeamProjectChoice } from '@slopus/happy-wire';
+import { projectAgentProfilesFor, type TeamActionRequest, type TeamResponse, type TeamState, type TeamOperation, type TeamMessage, type TeamLaunch, type TeamProjectChoice } from '@slopus/happy-wire';
+import { readDefaults } from '@/app/projects/rules';
 import { bindNewTeamProjectTx } from '@/app/projects/store';
 import { applyTeamTransitionsTx } from '@/app/attention/store';
 import { db } from '@/storage/db';
@@ -226,7 +227,8 @@ export async function actOnTeam(teamId: string, auth: { accountId: string } | { 
         if (action.type === 'join' && p.actor.kind === 'owner' && row.state.archivedAt === undefined) await guardSessionTeam(tx, p.accountId, action.sessionId, teamId, action.transfer === true);
         const now = Date.now();
         // B-822: closed work moves to the archive before the action, so a team at a limit is unblocked by its next write.
-        const reduced = reduceTeam(compactTeam(row.state, now), p.actor, action, { now, id: randomUUID, quiet: opts.quiet });
+        const projectAccounts = action.type === 'delegate' && action.agentProfile === undefined ? await teamProjectAccounts(tx, teamId, row.projectId) : null;
+        const reduced = reduceTeam(compactTeam(row.state, now), p.actor, action, { now, id: randomUUID, quiet: opts.quiet, projectAccounts });
         await persistTransition(tx, row, reduced.team);
         // B-766: a root task's submit has no recipient in the reducer — it becomes a「待你验收」briefing item instead.
         await applyTeamTransitionsTx(tx, p.accountId, row.state, reduced.team);
@@ -237,6 +239,19 @@ export async function actOnTeam(teamId: string, auth: { accountId: string } | { 
         if (reduced.credentialBotId) response.credential = await credential(tx, reduced.team, reduced.credentialBotId);
         return response;
     });
+}
+
+/**
+ * B-902: the team's project accounts that apply on the team's machine — what a
+ * new member without its own account, and without a team default for its
+ * agent, starts on (a Codex member of a Claude team in a company project).
+ */
+async function teamProjectAccounts(tx: Tx, teamId: string, projectId: string | null | undefined) {
+    if (!projectId) return null;
+    const team = await tx.agentTeam.findUnique({ where: { id: teamId }, select: { machineId: true } });
+    const project = await tx.project.findUnique({ where: { id: projectId }, select: { defaults: true } });
+    if (!team || !project) return null;
+    return projectAgentProfilesFor(readDefaults(project.defaults).agentProfiles, team.machineId);
 }
 
 /** Server clock + per-team transaction: empty polls never grow the idempotency ledger. */

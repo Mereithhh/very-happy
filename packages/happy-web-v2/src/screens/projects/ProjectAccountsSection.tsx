@@ -12,6 +12,7 @@ import { AccountChoiceField } from '@/components/accounts/AccountChoiceField';
 import { AddAccountDialog } from '@/components/accounts/AddAccountDialog';
 import { ACCOUNT_AGENTS, accountsForAgent, machineHasAgentAccounts, readMachineAgentProfiles } from '@/sync/agentProfiles';
 import {
+  accountChoiceDisplay,
   applyProjectAccountEdits,
   projectAccountCellKey,
   projectAccountDraft,
@@ -119,12 +120,18 @@ function AccountCell({ agent, machineId, machine, value, editable, changed, onCh
   // A machine whose CLI serves accounts but has none for this agent yet: add one right here.
   const canAdd = editable && online && !!onAdd && machineHasAgentAccounts(state, agent) && accountsForAgent(state, agent).length === 0;
   const labelId = `pj-acc-${agent}-${machineId}`;
+  // The chosen account is no longer on that machine: sessions there are refused (never the machine login) until fixed.
+  const shown = accountChoiceDisplay(value, state);
+  const missing = shown.kind === 'account' && shown.missing;
   return (
     <div className="pj-account-cell" data-testid={`project-account-${agent}-${machineId}`} data-changed={changed || undefined}>
       <AccountChoiceField machine={machine} agent={agent} value={value} onChange={onChange} followLabel={followLabel}
         label={online ? name : `${name} · ${t('status.offline')}`} labelId={labelId} testId={`project-account-${agent}-${machineId}-choice`} />
+      {missing && <p className="acc-choice-gate pj-account-missing" role="status" data-testid={`project-account-${agent}-${machineId}-missing`}>
+        {t('accounts.projectMissingHere', { label: shown.label, machine: name })}
+      </p>}
       {canAdd && <p className="acc-choice-hint pj-account-add" data-testid={`project-account-${agent}-${machineId}-add`}>
-        {t('accounts.projectNoAccountsHere', { machine: name })}{' '}
+        {t('accounts.projectNoAccountsHere', { machine: name, agent: AGENT_NAMES[agent] ?? agent })}{' '}
         <Button type="button" variant="ghost" size="sm" leftIcon={<Plus size={14} />} onClick={onAdd}>{t('accounts.projectAddHere', { machine: name })}</Button>
       </p>}
     </div>

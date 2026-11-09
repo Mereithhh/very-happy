@@ -38,9 +38,22 @@ describe('B-902 project accounts per machine', () => {
 
     it('the project composer shows the account and its source; pickers link to the project settings', () => {
         const screen = src('screens/projects/ProjectScreen.tsx');
-        expect(screen).toContain('<ComposerAccount detail={detail} machine={machine} />');
+        expect(screen).toContain('{account && <ComposerAccount projectId={detail.project.id} account={account} />}');
         expect(screen).toContain('spawnDefaultOptionLabel(state, agent, machine.id, entries, t)');
+        // Q3 before creating: an unusable project account stops the composer, with the reason and both fixes.
+        expect(screen).toContain('if (!folder || !first || busy || blocked) return;');
+        expect(screen).toContain("{account.blockText} <Link to={accountSettingsHref(machine.id)}>{t('accounts.blockedFix')}</Link>");
         expect(src('screens/sessions/NewSessionModal.tsx')).toContain("onSetProjectAccount: () => { onClose(); navigate(projectSettingsPath(projectId, 'accounts')); }");
         expect(src('screens/issues/AssigneeFields.tsx')).toContain("onSetProjectAccount: () => navigate(projectSettingsPath(projectId, 'accounts'))");
+    });
+
+    it('a daemon account refusal reads as a sentence even when the RPC threw / resolved { error }', () => {
+        const runtime = src('sync/pendingSessionsRuntime.ts');
+        expect(runtime).toContain("if (parseSpawnAccountError(error instanceof Error ? error.message : String(error))) return { type: 'error', errorMessage: t('accounts.spawnUnavailable') };");
+        expect(runtime).toContain("if (result.type === 'error' && parseSpawnAccountError(result.errorMessage)) result = { type: 'error', errorMessage: t('accounts.spawnUnavailable') };");
+    });
+
+    it('a project account no longer on its machine says so under the picker', () => {
+        expect(src('screens/projects/ProjectAccountsSection.tsx')).toContain("const missing = shown.kind === 'account' && shown.missing;");
     });
 });
