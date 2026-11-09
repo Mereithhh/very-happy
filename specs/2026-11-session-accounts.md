@@ -258,7 +258,7 @@ kind `codex-chatgpt` / `codex-provider`；Summary `provider? email? planType?`�
 
 | 位置 | 字段 | 语义 |
 |---|---|---|
-| 项目 `Project.defaults` | `agentProfiles?: [{ agent, machineId, id: string\|null, label? }]` | 每个 agent 一条；只在该 machineId 生效（账号属于机器）；`id: null` = 本机登录 |
+| 项目 `Project.defaults` | `agentProfiles?: [{ agent, machineId, id: string\|null, label? }]` | **每个 agent × 每台机器一条**（B-902；原先每个 agent 一条）；只在该 machineId 生效（账号属于机器）；`id: null` = 本机登录；最多 16 条 |
 | 自动化 `action`（spawn） | `agentProfile?: { id, label? } \| null` | 缺省 = 未指定 |
 | 团队 | `TeamLaunch / TeamDefaults / delegate / TeamBot / TeamOperation .agentProfile?`；action `set-bot-account { botId, agentProfile? }` | 新成员 = delegate 指定 > 团队默认（同 agent 才继承）；`set-bot-account` 只影响该成员**下次** spawn |
 | fork | 不存；daemon 读父会话的 `session-accounts.json` 绑定 | |
@@ -321,7 +321,43 @@ Ref 不带 agent：自动化 / 团队换了 agent 后旧 Ref 对不上，daemon 
 
 ## 已知限制
 
+（B-902 起第 2、3 条有变化，见下节。）
+
 1. 团队成员在线时改账号（`set-bot-account`）只影响下次 spawn；要立即生效 Web 另调 `agent-profile-bind`（原地重启）。
 2. CLI `spawn` 只对显式 `--project` 用项目默认；继承自调用会话的项目（lineage）不算「指定项目」。
 3. 项目默认按 machineId 精确匹配：项目在另一台机器上新建会话 = 无项目默认（Web 在创建前显示「本机登录（<机器> 没有『组织 A』）」，DESIGN F7）。
 4. 已在运行的团队成员 / send 目标会话，账号中途失效时由 wrapper 逐轮拒跑（B-850a），团队侧不另发「需要我决策」（只有 spawn 被拒才发）。
+
+## B-902：按机器设置项目账号 + 入口与可见性（2026-11-09）
+
+Owner 11-09：「按照项目设置 cc，codex 的登录账号，公司的项目用公司的账号，个人的用个人的」。上线 8 天全站 0 个项目在用；最大缺口是每个 agent 只能选一台机器，Owner 前 8 个项目都有两台机器的目录，另一台上会悄悄落回机器默认。
+
+**改动（解析优先级与 Q3 拒跑规则不变）**
+
+| 层 | 改了什么 |
+|---|---|
+| server `projects/rules.ts normalizeDefaults` | 去重键从 `agent` 改成 `agent + machineId`（之前 PATCH 进来的第二台机器会被静默丢掉）。wire schema 本来就允许多条（≤16）。 |
+| server `issues/store.ts createRunTx` + `rules.ts issueSpawnAgentProfile` | **修缺口**：issue 指派「跟随默认」时 spawn dispatch 不带账号，daemon 只会用机器默认——项目账号从没生效过（Web 却显示「项目默认 · X」）。现在建 run 时按 `resolveLaunchAgentProfile` 填入该项目「agent × 指派机器」的条目；run 行本身仍记指派者的选择（缺省），重试时按当时的项目设置重新解析。 |
+| server `teams/reducer.ts delegateAccount` + `teams/store.ts teamProjectAccounts` | **修缺口**：团队默认账号只对团队默认 agent 生效，Claude 团队里委派的 Codex 成员落到机器默认（实测公司项目里拿到个人 key）。现在顺序是 delegate 指定 > 团队默认（同 agent）> 项目里「该 agent × 团队机器」> 机器默认。Lead 不变（仍由 `snapshotTeamDefaults` / `adoptLeadAccount` 处理）。 |
+| Web 项目设置「账号」(`ProjectAccountsSection.tsx`) | 每个 agent 一组，每台机器一格：项目目录所在机器（主目录的机器在前）+ 已有设置的机器；离线机器照样能设（label 用快照）。每格：跟随机器默认 · X（写出那台机器实际默认）/ 本机登录 / 该机器的账号。保存时**先重新读项目**，只把本表单改动的格子（`projectAccountEdits` → `applyProjectAccountEdits`）写上去，别的标签页同时保存的其它格子不被覆盖。那台机器没有该 agent 的账号 → 格子下「在 X 添加账号」直接打开 B-850c 的添加对话框；选中的账号已不在那台机器 → 格子下黄字说明会拒跑。 |
+| Web 项目页输入框 (`ProjectScreen.tsx ComposerAccount`) | 显示所选目录那台机器上会用的账号和来源：「账号 · 项目默认 · X」/「机器默认 · X」/「本机登录」，项目一条都没设时加「· 项目未设账号」，点它进项目设置 #accounts。账号不可用时发送键禁用、下面红字写原因 +「打开账号设置 · 改项目账号」（之前会直接建会话再被 daemon 拒，失败卡显示原始英文错误）。 |
+| Web 新建对话框 / 草稿卡 / issue 指派 (`SpawnAccountPicker`) | 「项目在别的电脑上设了账号」改为按本机是否有条目判断（多条时列出全部机器），并给「为这台电脑设置」直达项目设置。 |
+| Web `pendingSessionsRuntime.ts` | daemon 的 `agent-profile-unavailable` 是 RPC 抛出的（走 `{ error }` / throw），以前被当成 transport 错误、显示原始英文；现在一律换成「机器拒绝启动这个会话：它的账号不可用」，且不当作 lost-ack（确定没起进程）。 |
+
+**本地终端启动（任务第 4 项，查清、不做）**：终端里直接跑 `very-happy` / `very-happy codex`，会话**不会**进项目——`projects/attribution.ts` 只认显式 `--project` 和 lineage，按目录只是 Web 横幅建议，服务端也不按目录自动入组（`projects/store.ts putPresence` 只保留已是成员的会话）。账号上，wrapper 只从 daemon spawn 设的 `VH_AGENT_PROFILE_ID` 取初始账号（`runClaude.ts` / `runCodex.ts`），终端启动没有它 → 不写绑定 → `resolveClaudeAccount` 返回本机登录（`claudeAccountEnv.ts`），**连机器默认账号也不用**。所以「最终挂到项目就用项目账号」这个前提在启动时不成立（启动时还不是项目成员，账号在第一轮前就定了）。做法评估：wrapper 启动时 GET `/v1/projects` 按 machineId + cwd 匹配再解析，约 100–200 行 CLI 改动 + 一次启动网络请求（离线/慢网时同一目录结果会不一致，且会把结果永久写进会话绑定）；还会让「按目录归属」在账号上先于项目成员资格生效，与 attribution 规则冲突。按任务「代价大就写明」不在本条做；替代路径：Web 新建、`very-happy spawn --project <id>`、或会话里「换个账号」（原地重启、历史保留）。机器默认对终端不生效是否算缺陷，另记给 Lead。
+
+**已知限制变化**：第 3 条（项目默认只在一台机器生效）由按机器设置解决；第 2 条（CLI 只认显式 `--project`）不变，终端启动行为如上。新增：团队 Lead 换 agent 后的项目账号仍按建团时快照（`snapshotTeamDefaults` 语义不变）。
+
+**兼容与发布**：只改 server/Web，无迁移、无 wire/协议改动、不需要新 CLI。旧 Web 打开多机器项目：`projectAccountEntry` 取该 agent 第一条，表单只显示一台机器；保存时 `withProjectAccount` 会把该 agent 其它机器的条目删掉（旧 Web 与新 server 同镜像发布，窗口只在发布切换时的旧标签页）。旧 server + 新 Web 不存在（同镜像）。daemon 侧早已按 `agent + machineId` 匹配（`resolveLaunchAgentProfile`、自动化 claim 的 `projectAgentProfilesFor`），多条目对新旧 CLI 都生效。
+
+**实测（dev-sg，隔离 server :5980 + 4 个隔离 daemon H1–H4（公司电脑-1/2、家里电脑、新电脑，各自 `CLAUDE_CONFIG_DIR`）+ 假 Anthropic :5982 / 假 Responses :5983 按 key 回 `done <key 末 6 位>`；机器默认 H1=公司、H2/H3=个人；公司项目在 H1/H2 设公司、H3 不设，个人项目在 H1 设个人；证据 `~/code/github/skills/tmp/vh-team-B-902/`）**
+
+| # | 路径 | 结果 |
+|---|---|---|
+| R1 | Web 项目页新建 × 7（Claude：公司@H1/H2/H3、个人@H1；Codex：公司@H2/H3、个人@H1） | 依次 `H1CORP H2CORP H3PERS H1PERS H2CORP H3PERS H1PERS`；输入框标签分别为项目默认 · 公司 / 机器默认 · 个人 / 项目默认 · 个人 |
+| R2 | 自动化（项目内 spawn，未指定账号）× 4 | 公司@H2 Claude/Codex → `H2CORP`；个人@H1 Claude → `H1PERS`（H1 机器默认是公司）；公司@H3 Codex → `H3PERS` |
+| R3 | issue 指派「跟随默认」× 4 | 公司@H2 Claude `H2CORP`、公司@H1 Codex `H1CORP`、个人@H1 Codex `H1PERS`、公司@H3 Claude `H3PERS`（修前同路径只会用机器默认） |
+| R4 | 团队（公司项目，H2，Claude Lead） | Lead / Claude 成员 `H2CORP`；Codex 成员修前 `H2PERS`，修后 `H2CORP` |
+| R5 | fork（`spawn --fork`，同 Web fork 的 RPC） | Claude、Codex 各一，均继承父会话 `H2CORP` |
+| R6 | 删掉 H2 的 Claude「公司」 | 自动化 `failed` + `account_unavailable` + needsAttention；团队成员 op `failed`，Lead 会话 `team-account:` blocked/open；端点上该 key 0 新请求；项目设置格子提示已不存在；项目页输入框禁发并写原因 |
+

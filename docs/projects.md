@@ -212,7 +212,11 @@ start a new session after updating the CLI.
 ## The project page
 
 - **Composer at the top**: start a session in the project's folder with the
-  agent you choose. A project needs at least one folder for this.
+  agent you choose. A project needs at least one folder for this. Under it,
+  **Account · Project default · X** (or *Machine default · X*, *no project
+  account*) says which account that session will start on for the selected
+  folder's machine; click it to change the project's accounts. If that
+  account cannot run there, the composer says why and does not send.
 - **Overview**: sessions bucketed like the task board — waiting for you,
   running, done today, idle — plus attached teams and scheduled automations.
   Member rows show whether each session received the current instructions
@@ -222,13 +226,20 @@ start a new session after updating the CLI.
   concurrent edit is not overwritten; history is kept) and browse the log,
   filter it by kind, add an entry yourself or revoke one.
 - **Project settings** (the gear in the page header, or
-  `/projects/<id>/settings`; `#basics`, `#context`, `#folders`, `#teams`,
+  `/projects/<id>/settings`; `#basics`, `#context`, `#folders`, `#accounts`, `#teams`,
   `#sessions`, `#danger` jump to a section), laid out like team settings:
   - **Basics**: name and description.
   - **Project instructions**: **Write** / **Preview** (rendered Markdown),
     a byte counter against the 8 KB limit, version-checked saves and history.
   - **Folders**: add, edit (machine and path) or remove a folder, choose the
     primary one. A duplicate folder on the same machine is refused inline.
+  - **Accounts**: for Claude Code and Codex, one picker per machine the
+    project lives on — *Follow the machine default · X*, the machine login,
+    or one of that machine's accounts (e.g. the company account for a company
+    project). New sessions from the Web, automations, teams, issues and forks
+    in this project follow it on that machine. A machine without an account
+    for the agent gets *Add an account on X*. See
+    [configuration](configuration.md#accounts-for-projects-teams-automations-and-forks-b-850d).
   - **Teams**: link a team, start a new one in the project, or unlink one
     (asks first; its members leave the project, the team is unaffected).
   - **Member sessions**: open or remove a session (asks first). A team member
