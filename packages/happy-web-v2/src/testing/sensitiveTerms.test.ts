@@ -56,8 +56,11 @@ const TERMS = new Set([
 ]);
 /**
  * B-905: people's names, hashed with their words joined (`Ada Lovelace` →
- * `adalovelace`); a run of 2 or 3 words separated by space, `_` or `-` is
- * checked joined, so case, spacing and hyphen variants all hit.
+ * `adalovelace`) in both orders (given + family and family + given; B-905b
+ * added the second). A run of 2 or 3 words separated by space, `_` or `-` is
+ * checked joined, and so is every substring of a letter run (`adalovelace`,
+ * `byAdaLovelace`), so case, spacing, hyphen and no-separator variants all hit.
+ * To add a name, add the hash of each order.
  */
 const NAME_TERMS = new Set([
   '427fe6007ab776480fe71f080c359206fe7d76045c83035ee24d835c4b71bff2',
@@ -81,11 +84,35 @@ const NAME_TERMS = new Set([
   '71b48da96280e44e6d50b766fc1f5fe1685a471e06607d144498e0b0b5f0e36b',
   'f9255ef40e9e023753afc5efd5729d1e4decee20b93c877e41a8478569d19d35',
   '768942bfcc18ff1e874d37dd008e5683fb86a211b6d5a46c75b56fd57401f1a5',
+  // B-905b: the same names in the other order.
+  '33899e790b25a9af0abfb30216416ece97e9e29b53855e2d9a8cf8d93f3a02ea',
+  'abc2b0bf1e7e2e37224130c27bada5151cfd6fd71ce74033de0c810d3030aaf8',
+  'f3f6bbc64c09f071550ba399b2b1d7ef9309010a0f7de1b3dd7a511b3f7d0935',
+  '7d1dd7581daf3d8e978ca582f8addd82723838653893a883c0185aaf733e5da9',
+  '3271cc978c1e2f0d0c8f5377db352880085a71f5d6248065bde263abac8cf7c5',
+  '1a66e41e2c906d972e1d7143f42c5881c1e5ff73288f9e1bb6052f3a0bc9cfc6',
+  '3dda85ebfb0fd5939d88f4e7419c09e269800655f1232416d5cd11afbf72b77e',
+  '98709b4958f28108685941083333330b99f816e4e5c813ee33a8403149722afd',
+  '15e16a057e81c0433c88039b14c2c28e633faae12c918e0afa4fc976cab27e62',
+  '330632a0d504619f8251972db568fe1f9c80c85219039bac2004b6c0848dc727',
+  'cdcb1590dea3b35f03d47d23a8d723dcaff77e7136a787948043c0168a496257',
+  'cea57532dbbccf0511762af9096afb13e4426ad944177f4b604f32a3aa8dff28',
+  'ce99d7a74e6a0aba0493a1f7f918f7e3e54eeaeafeb038dfab169808a81b8689',
+  'e15429e2a4fc71dba0b55a2cb770a1f29b9ab01c7786aca2867803324d4af298',
+  '27c4f3b54a61a3b527701a1fae88830c45b413f95126d22f1bc4be22167dc5c0',
+  '406fefa6adcf29a22fa462c630a731fdf6e11e152a2e82ccb9ec8ce3fb79b91e',
+  '6d63a38450cff32e004e29ed72700c40a12e0a66e69736e60c5d5f343590be46',
+  '78d9bce196d81200cf314f19a2cb41a784ecd1c88ec2fadcf9d03d2e3279f129',
+  '2ca99a9fd49c10370c0710eb71b78beffc297121fa630e4f2176b3b8cba2cba0',
+  '87b27d5a4c3728ba6a10f45180c0bb91525508c36c569231cf4dbc2265870d6c',
+  '43af989aae255642d4fc8aff3f32b04722547191890be7fdd601bbdcfeb00160',
 ]);
 // Lengths (in code points) of the hashed terms, per script.
 const ASCII_LENGTHS = [6, 7, 8, 9, 12, 13, 17, 20, 21];
 const CJK_LENGTHS = [2, 3, 6, 7];
 const MIXED_LENGTHS = [11];
+/** Lengths of the hashed names (letters only). */
+const NAME_LENGTHS = [6, 7, 8, 9, 10, 11, 12, 13];
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
@@ -127,19 +154,28 @@ function findTerms(text: string, terms: Set<string>, asciiLengths: number[], cjk
   return hits;
 }
 
-/** Runs of 2–3 ASCII words separated by space, `_` or `-`, joined; one that hashes into `terms` is a hit. */
-function findNames(text: string, terms: Set<string>, seen = new Map<string, boolean>()): string[] {
+/**
+ * Runs of 2–3 ASCII words separated by space, `_` or `-`, joined, and every
+ * substring of each letter run with a length in `lengths` (names written with
+ * no separator); one that hashes into `terms` is a hit.
+ */
+function findNames(text: string, terms: Set<string>, lengths: number[], seen = new Map<string, boolean>()): string[] {
   const hits: string[] = [];
-  for (const [run] of text.toLowerCase().matchAll(/[a-z]+(?:[ \t_-]+[a-z]+)+/g)) {
+  const check = (joined: string) => {
+    let hit = seen.get(joined);
+    if (hit === undefined) seen.set(joined, hit = terms.has(sha256(joined)));
+    if (hit) hits.push(joined);
+  };
+  const lower = text.toLowerCase();
+  for (const [run] of lower.matchAll(/[a-z]+(?:[ \t_-]+[a-z]+)+/g)) {
     const words = run.split(/[ \t_-]+/);
     for (let i = 0; i + 1 < words.length; i++) {
-      for (const n of [2, 3]) {
-        if (i + n > words.length) continue;
-        const joined = words.slice(i, i + n).join('');
-        let hit = seen.get(joined);
-        if (hit === undefined) seen.set(joined, hit = terms.has(sha256(joined)));
-        if (hit) hits.push(joined);
-      }
+      for (const n of [2, 3]) if (i + n <= words.length) check(words.slice(i, i + n).join(''));
+    }
+  }
+  for (const [run] of lower.matchAll(/[a-z]+/g)) {
+    for (let i = 0; i < run.length; i++) {
+      for (const n of lengths) if (i + n <= run.length) check(run.slice(i, i + n));
     }
   }
   return hits;
@@ -169,8 +205,17 @@ describe('sensitive terms (B-764, B-905)', () => {
 
   it('the name matcher finds a joined 2–3 word name in any case, spacing or hyphen variant', () => {
     const terms = new Set(['adalovelace', 'grace-hopper-x'.replace(/-/g, '')].map(sha256));
-    expect(findNames('Ada LOVELACE / ada-lovelace / ada_lovelace / reported by Grace Hopper X', terms)).toEqual(['adalovelace', 'adalovelace', 'adalovelace', 'gracehopperx']);
-    expect(findNames('adalovelace / ada, lovelace / ada\nlovelace / adam lovelace', terms)).toEqual([]);
+    expect(findNames('Ada LOVELACE / ada-lovelace / ada_lovelace / reported by Grace Hopper X', terms, [])).toEqual(['adalovelace', 'adalovelace', 'adalovelace', 'gracehopperx']);
+    expect(findNames('ada, lovelace / ada\nlovelace / adam lovelace', terms, [])).toEqual([]);
+  });
+
+  it('the name matcher finds a name written with no separator, in either order and any case (B-905b)', () => {
+    const terms = new Set(['adalovelace', 'lovelaceada'].map(sha256));
+    const find = (text: string) => findNames(text, terms, [11]);
+    expect(find('HAPPY_SPAWNED_BY=adalovelace')).toEqual(['adalovelace']);
+    expect(find('tmp/lovelaceada-ios/repro.cjs')).toEqual(['lovelaceada']);
+    expect(find('AdaLovelace / LOVELACEADA / byadalovelacex')).toEqual(['adalovelace', 'lovelaceada', 'adalovelace']);
+    expect(find('ada1lovelace / adalovelac / lovelace.ada')).toEqual([]);
   });
 
   it('no listed term appears in any tracked text file', () => {
@@ -184,7 +229,7 @@ describe('sensitive terms (B-764, B-905)', () => {
         if (statSync(path).size > 4 << 20) continue;
         text = readFileSync(path, 'utf8');
       } catch { continue; } // deleted in the working tree
-      if (findTerms(text, TERMS, ASCII_LENGTHS, CJK_LENGTHS, MIXED_LENGTHS, seen).length || findNames(text, NAME_TERMS, nameSeen).length) hits.push(file);
+      if (findTerms(text, TERMS, ASCII_LENGTHS, CJK_LENGTHS, MIXED_LENGTHS, seen).length || findNames(text, NAME_TERMS, NAME_LENGTHS, nameSeen).length) hits.push(file);
     }
     expect(hits).toEqual([]);
   }, 120_000);
