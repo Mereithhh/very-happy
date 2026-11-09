@@ -344,11 +344,24 @@ a.mrb-term-btn { text-decoration: none; }
 .pj-trail-current { font-size: var(--fs-13); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* B-850e: 账号 section — one row per agent: machine + account */
-.pj-account-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin: 0; padding: 0; border: 0; min-width: 0; }
-.pj-account-row > legend { grid-column: 1 / -1; padding: 0; margin-bottom: 6px; font-weight: 600; font-size: var(--fs-13); color: var(--text); }
-@media (max-width: 640px) { .pj-account-row { grid-template-columns: minmax(0, 1fr); } }
+/* B-902: per agent, one picker per machine the project lives on */
+.pj-account-agent { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 10px 16px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.pj-account-agent > legend { grid-column: 1 / -1; padding: 0; margin-bottom: 6px; font-weight: 600; font-size: var(--fs-13); color: var(--text); }
+.pj-account-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pj-account-add { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.pj-form-foot > .pj-muted { margin-right: auto; font-size: var(--fs-12); }
 
 /* B-900: the owner gave me "can operate" on several terminals at once — accept them in one go. */
 .pj-accept-all { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); margin: 0 0 var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); }
 .pj-accept-all > p { margin: 0; min-width: 0; flex: 1 1 16em; }
 .pj-accept-error { margin: 0 0 var(--sp-2); color: var(--danger); font-size: var(--fs-12); }
+
+/* B-902: the composer says which account its session starts on */
+.pj-composer-account {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto;
+  color: var(--text-dim); font-size: var(--fs-12); text-decoration: none; white-space: nowrap;
+}
+.pj-composer-account > span { overflow: hidden; text-overflow: ellipsis; }
+.pj-composer-account:hover { color: var(--text); }
+.pj-composer-account[data-blocked] { color: var(--danger); }
+.pj-composer-account-unset { color: var(--text-faint); }

@@ -500,6 +500,26 @@ describe('B-872 Issues REST through startApi (pglite)', () => {
         expect(await s.db.issue.count({ where: { accountId: acct.id } })).toBe(2);
     });
 
+    it('B-902: an agent assignee left on 「跟随默认」 gets the project account for its machine in the spawn dispatch; its own choice wins; another machine stays on the machine default', async () => {
+        const project = await s.db.project.create({ data: { id: crypto.randomUUID(), accountId: s.accountId, name: 'Acct', folders: [{ machineId, path: '/acct/m1', primary: true }, { machineId: otherMachine, path: '/acct/m2', primary: false }],
+            defaults: { agentProfiles: [{ agent: 'claude', machineId, id: 'corp', label: 'Corp' }, { agent: 'codex', machineId, id: null }] } } });
+        const spawnOf = async (issueId: string, machine: string) => {
+            const polled = await s.call('GET', `/v1/issues/dispatch?machineId=${machine}&workerVersion=1`);
+            return polled.body.dispatches.find((d: { kind: string; issueId: string }) => d.kind === 'spawn' && d.issueId === issueId).spawn;
+        };
+        const follow = await s.call('POST', '/v1/issues', { title: 'follow', projectId: project.id, assignee: { kind: 'agent', machineId, agent: 'claude' } });
+        expect(await spawnOf(follow.body.issue.id, machineId)).toMatchObject({ agentProfile: { id: 'corp', label: 'Corp' }, projectId: project.id });
+        const codexLogin = await s.call('POST', '/v1/issues', { title: 'codex', projectId: project.id, assignee: { kind: 'agent', machineId, agent: 'codex' } });
+        expect((await spawnOf(codexLogin.body.issue.id, machineId)).agentProfile).toBeNull();
+        const own = await s.call('POST', '/v1/issues', { title: 'own', projectId: project.id, assignee: { kind: 'agent', machineId, agent: 'claude', agentProfile: { id: 'personal' } } });
+        expect((await spawnOf(own.body.issue.id, machineId)).agentProfile).toEqual({ id: 'personal' });
+        const elsewhere = await s.call('POST', '/v1/issues', { title: 'm2', projectId: project.id, assignee: { kind: 'agent', machineId: otherMachine, agent: 'claude' } });
+        expect('agentProfile' in await spawnOf(elsewhere.body.issue.id, otherMachine)).toBe(false);
+        // The run itself keeps the assignee's choice (absent) — a retry re-resolves against the project as it is then.
+        expect((await runsOf(follow.body.issue.id))[0].agentProfile).toBeNull();
+        for (const i of [follow, codexLogin, own, elsewhere]) await s.call('DELETE', `/v1/issues/${i.body.issue.id}`);
+    });
+
     it('B-874e: a todo deleted in KV before the switch (tombstone, value null) is spent — add by that id is 404 issue_todo_deleted after import; live and unknown ids still create', async () => {
         const acct = await s.newAccount();
         const [gone, live, fresh] = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];

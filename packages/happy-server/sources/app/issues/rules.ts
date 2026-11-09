@@ -1,6 +1,7 @@
 import {
     agentAssigneeOf, ATTENTION_LIMITS, formatIssueKey, isIssueClosed, ISSUE_RUNNABLE_STATUSES,
-    type IssueAssigneeView, type IssueCommentView, type IssueDispatchView, type IssueRunView, type IssueView, type ProjectFolder,
+    resolveLaunchAgentProfile,
+    type AgentProfileRef, type IssueAssigneeView, type IssueCommentView, type IssueDispatchView, type IssueRunView, type IssueView, type ProjectAgentProfile, type ProjectFolder,
 } from '@slopus/happy-wire';
 import { truncateTitle } from '@/app/attention/rules';
 
@@ -132,6 +133,22 @@ export interface SpawnPayload {
     projectId: string | null; prompt?: string;
 }
 export interface MessagePayload { sessionId: string; text: string; commentId: string; trigger?: string }
+
+/**
+ * B-902: the account a spawn dispatch carries. The assignee's own choice wins;
+ * 「跟随默认」 (undefined) takes the issue project's entry for this agent on
+ * this machine (`resolveLaunchAgentProfile`, same order as every other entry
+ * point), else stays undefined = the daemon's machine default. Before this the
+ * project default never reached the daemon (it only saw undefined).
+ */
+export function issueSpawnAgentProfile(explicit: AgentProfileRef | null | undefined, project: readonly ProjectAgentProfile[] | null | undefined, agent: string, machineId: string): AgentProfileRef | null | undefined {
+    if (explicit !== undefined) return explicit;
+    const resolved = resolveLaunchAgentProfile({ project, agent, machineId });
+    if (resolved.source !== 'project') return undefined;
+    if (resolved.agentProfileId === null || resolved.agentProfileId === undefined) return null;
+    const label = project?.find(e => e.agent === agent && e.machineId === machineId)?.label;
+    return { id: resolved.agentProfileId, ...(label ? { label } : {}) };
+}
 
 /** `prompt` is filled by the caller for a spawn that has not frozen one yet (built when served, so it reads the latest comments). */
 export function dispatchView(row: DispatchRow, prompt?: string): IssueDispatchView {

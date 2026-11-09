@@ -52,12 +52,14 @@ describe('project error statuses', () => {
 describe('B-850d project accounts', () => {
     const entries = [
         { agent: 'claude', machineId: 'm1', id: 'org-a', label: 'Org A' },
-        { agent: 'claude', machineId: 'm2', id: 'dup-agent' },
+        { agent: 'claude', machineId: 'm2', id: 'org-a-m2' },
         { agent: 'codex', machineId: 'm1', id: null },
     ];
 
-    it('normalizeDefaults validates agentProfiles and keeps one per agent', () => {
-        expect(normalizeDefaults({ agentProfiles: entries } as any).agentProfiles).toEqual([entries[0], entries[2]]);
+    it('normalizeDefaults validates agentProfiles and keeps one per agent per machine (B-902)', () => {
+        expect(normalizeDefaults({ agentProfiles: entries } as any).agentProfiles).toEqual(entries);
+        const dup = [...entries, { agent: 'claude', machineId: 'm1', id: 'dup-same-machine' }];
+        expect(normalizeDefaults({ agentProfiles: dup } as any).agentProfiles).toEqual(entries);
         expect(normalizeDefaults({ agentProfiles: null } as any).agentProfiles).toBeNull();
         expect('agentProfiles' in normalizeDefaults({ agentProfiles: [{ agent: 'claude', id: 'no-machine' }] } as any)).toBe(false);
     });
@@ -66,6 +68,7 @@ describe('B-850d project accounts', () => {
         expect(snapshotTeamDefaults({ assistant: 'claude' }, { agentProfiles: entries }, 'm1')).toEqual({ assistant: 'claude', agentProfile: { id: 'org-a', label: 'Org A' } });
         expect(snapshotTeamDefaults({ assistant: 'codex' }, { agentProfiles: entries }, 'm1')).toEqual({ assistant: 'codex', agentProfile: null });
         expect(snapshotTeamDefaults({ assistant: 'claude' }, { agentProfiles: entries }, 'm3')).toBeNull();
+        expect(snapshotTeamDefaults({ assistant: 'claude' }, { agentProfiles: entries }, 'm2')).toEqual({ assistant: 'claude', agentProfile: { id: 'org-a-m2' } });
         expect(snapshotTeamDefaults({ assistant: 'claude', agentProfile: { id: 'mine' } }, { agentProfiles: entries }, 'm1')).toBeNull();
         expect(snapshotTeamDefaults({ assistant: 'claude' }, { agentProfiles: entries })).toBeNull();
     });

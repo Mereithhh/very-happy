@@ -65,3 +65,6 @@
 .acc-choice-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .acc-choice-field > span:first-child { color: var(--text-dim); font-size: var(--fs-12); }
 .teams-screen .acc-choice-field > span:first-child { color: inherit; font-size: inherit; }
+
+/* B-902: 「为这台电脑设置」 under the new-session account picker */
+.acc-inline-link { color: var(--text); text-decoration: underline; background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }

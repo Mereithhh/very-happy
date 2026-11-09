@@ -17,6 +17,11 @@ import {
     sameAccountChoice,
     teamAccountItemFacts,
     withProjectAccount,
+    applyProjectAccountEdits,
+    projectAccountCellKey,
+    projectAccountDraft,
+    projectAccountEdits,
+    projectAccountMachineIds,
     FOLLOW_KEY,
     MACHINE_LOGIN_KEY,
 } from './accountChoice';
@@ -88,12 +93,13 @@ describe('B-850e label: live label first, Ref.label only as fallback', () => {
     });
 });
 
-describe('B-850e project defaults (one entry per agent, machine-scoped)', () => {
+describe('B-850e / B-902 project defaults (one entry per agent per machine)', () => {
     const saved = [{ agent: 'claude', machineId: 'm1', id: 'org-a', label: 'Org A' }, { agent: 'codex', machineId: 'm1', id: null }];
 
-    it('set / replace / remove one agent, others kept; empty → null', () => {
+    it('set / replace / remove one agent on one machine; other machines and agents kept; empty → null', () => {
+        // B-902: a second machine is added next to m1, not instead of it.
         expect(withProjectAccount(saved, 'claude', 'm2', { id: 'org-b', label: 'Org B' })).toEqual([
-            { agent: 'codex', machineId: 'm1', id: null },
+            ...saved,
             { agent: 'claude', machineId: 'm2', id: 'org-b', label: 'Org B' },
         ]);
         expect(withProjectAccount(saved, 'claude', 'm1', null)).toContainEqual({ agent: 'claude', machineId: 'm1', id: null });
@@ -103,9 +109,12 @@ describe('B-850e project defaults (one entry per agent, machine-scoped)', () => 
         expect(withProjectAccount(null, 'claude', '', { id: 'x' })).toBeNull();
     });
 
-    it('entry ↔ choice and change detection', () => {
-        expect(entryChoice(projectAccountEntry(saved, 'claude'))).toEqual({ id: 'org-a', label: 'Org A' });
-        expect(entryChoice(projectAccountEntry(saved, 'codex'))).toBeNull();
+    it('entry ↔ choice (per machine) and change detection', () => {
+        const two = [...saved, { agent: 'claude', machineId: 'm2', id: 'org-b' }];
+        expect(entryChoice(projectAccountEntry(two, 'claude', 'm1'))).toEqual({ id: 'org-a', label: 'Org A' });
+        expect(entryChoice(projectAccountEntry(two, 'claude', 'm2'))).toEqual({ id: 'org-b' });
+        expect(entryChoice(projectAccountEntry(two, 'claude', 'm3'))).toBeUndefined();
+        expect(entryChoice(projectAccountEntry(saved, 'codex', 'm1'))).toBeNull();
         expect(entryChoice(projectAccountEntry(saved, 'pi'))).toBeUndefined();
         expect(projectAccountsChanged(saved, [...saved].reverse())).toBe(false);
         expect(projectAccountsChanged(saved, withProjectAccount(saved, 'claude', 'm1', { id: 'org-a', label: 'renamed' }))).toBe(false);
@@ -113,6 +122,54 @@ describe('B-850e project defaults (one entry per agent, machine-scoped)', () => 
         expect(projectAccountsChanged(null, null)).toBe(false);
         expect(projectAccountsOf('p1', [{ id: 'p1', defaults: { agentProfiles: saved } }])).toBe(saved);
         expect(projectAccountsOf(null, [{ id: 'p1', defaults: { agentProfiles: saved } }])).toBeNull();
+    });
+
+    it('B-902 machines listed: folder machines (primary first), then machines that already have an entry', () => {
+        const folders = [{ machineId: 'm2', primary: false }, { machineId: 'm1', primary: true }, { machineId: 'm2', primary: false }];
+        expect(projectAccountMachineIds(folders, [{ agent: 'claude', machineId: 'm9', id: 'x' }, { agent: 'codex', machineId: 'm1', id: null }])).toEqual(['m1', 'm2', 'm9']);
+        expect(projectAccountMachineIds([], null)).toEqual([]);
+    });
+
+    it('B-902 only the changed cells are saved, onto the latest entries (a concurrent save elsewhere survives)', () => {
+        const machines = ['m1', 'm2'];
+        const initial = projectAccountDraft(saved, ['claude', 'codex'], machines);
+        expect(initial[projectAccountCellKey('claude', 'm1')]).toEqual({ id: 'org-a', label: 'Org A' });
+        expect(initial[projectAccountCellKey('claude', 'm2')]).toBeUndefined();
+        expect(projectAccountEdits(initial, initial)).toEqual([]);
+        const draft = { ...initial, [projectAccountCellKey('claude', 'm2')]: { id: 'org-b', label: 'Org B' }, [projectAccountCellKey('codex', 'm1')]: undefined };
+        const edits = projectAccountEdits(initial, draft);
+        expect(edits).toEqual([
+            { agent: 'claude', machineId: 'm2', choice: { id: 'org-b', label: 'Org B' } },
+            { agent: 'codex', machineId: 'm1', choice: undefined },
+        ]);
+        // Meanwhile another tab set claude on m1 to org-c and codex on m3: both kept, only the two edited cells change.
+        const latest = [{ agent: 'claude', machineId: 'm1', id: 'org-c' }, { agent: 'codex', machineId: 'm1', id: null }, { agent: 'codex', machineId: 'm3', id: 'cx' }];
+        expect(applyProjectAccountEdits(latest, edits)).toEqual([
+            { agent: 'claude', machineId: 'm1', id: 'org-c' },
+            { agent: 'codex', machineId: 'm3', id: 'cx' },
+            { agent: 'claude', machineId: 'm2', id: 'org-b', label: 'Org B' },
+        ]);
+        expect(applyProjectAccountEdits(null, [{ agent: 'claude', machineId: 'm1', choice: undefined }])).toBeNull();
+        // A relabelled snapshot of the same account is not an edit.
+        expect(projectAccountEdits(initial, { ...initial, [projectAccountCellKey('claude', 'm1')]: { id: 'org-a', label: 'new name' } })).toEqual([]);
+    });
+});
+
+describe('B-902 one project, two machines, each on its own account', () => {
+    const project = [
+        { agent: 'claude', machineId: 'm1', id: 'corp-1', label: 'Corp' },
+        { agent: 'claude', machineId: 'm2', id: 'corp-2', label: 'Corp' },
+        { agent: 'codex', machineId: 'm2', id: null },
+    ];
+    it('m1 and m2 resolve to their own entries; m3 (no entry) falls to the machine default / machine login', () => {
+        expect(projectSpawnAccount('claude', { project, machineId: 'm1' })).toEqual({ id: 'corp-1' });
+        expect(projectSpawnAccount('claude', { project, machineId: 'm2' })).toEqual({ id: 'corp-2' });
+        expect(projectSpawnAccount('codex', { project, machineId: 'm2' })).toEqual({ id: null });
+        expect(projectSpawnAccount('claude', { project, machineId: 'm3' })).toBeUndefined();
+        expect(spawnAgentProfileParam(stateOf(), 'claude', undefined, { project, machineId: 'm2' })).toEqual({ agentProfileId: 'corp-2' });
+        expect(spawnAgentProfileParam(stateOf(), 'claude', undefined, { project, machineId: 'm3' })).toEqual({});
+        expect(spawnAccountSource(resolveSpawnAccount(stateOf(), 'claude', undefined, NOW, { project, machineId: 'm3' }))).toBe('machine');
+        expect(spawnAccountSource(resolveSpawnAccount(stateOf({ defaults: {} }), 'claude', undefined, NOW, { project, machineId: 'm3' }))).toBe('machine-login');
     });
 });
 

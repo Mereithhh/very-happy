@@ -283,6 +283,18 @@ describe('projects store (pglite)', () => {
             expect((await teams.readTeam(team.id, { accountId })).projectId).toBe(team.projectId);
         });
 
+        it('B-902: project accounts are kept per agent per machine through update and read back', async () => {
+            const p = await newProject('acct-multi');
+            const entries = [
+                { agent: 'claude', machineId, id: 'corp', label: 'Corp' },
+                { agent: 'claude', machineId: otherMachineId, id: 'corp-2', label: 'Corp' },
+                { agent: 'codex', machineId: otherMachineId, id: null },
+            ];
+            const updated = await store.updateProject(accountId, p.id, { defaults: { agentProfiles: [...entries, { agent: 'claude', machineId, id: 'dup' }] } });
+            expect(updated.defaults.agentProfiles).toEqual(entries);
+            expect((await store.listProjects(accountId)).projects.find(x => x.id === p.id)?.defaults.agentProfiles).toEqual(entries);
+        });
+
         it('B-850d2: a new team following the project default runs its Lead on the project account, like its members', async () => {
             const orgA = { id: 'org-a', label: 'Org A' };
             const p = await newProject('acct-project', { defaults: { agentProfiles: [{ agent: 'claude', machineId, id: orgA.id, label: orgA.label }] } });

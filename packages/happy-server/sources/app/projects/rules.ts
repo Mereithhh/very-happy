@@ -37,9 +37,9 @@ export function normalizeDefaults(defaults: ProjectDefaults | undefined | null):
     if (defaults.permissionMode !== undefined) out.permissionMode = defaults.permissionMode;
     if (defaults.worktree !== undefined) out.worktree = defaults.worktree;
     if (defaults.agentProfiles !== undefined) {
-        // B-850d: read back from JSON — validate; one entry per agent (the first wins).
+        // B-850d / B-902: read back from JSON — validate; one entry per agent per machine (the first wins).
         const parsed = ProjectAgentProfilesSchema.nullable().safeParse(defaults.agentProfiles);
-        if (parsed.success) out.agentProfiles = parsed.data === null ? null : parsed.data.filter((e, i, all) => all.findIndex(o => o.agent === e.agent) === i);
+        if (parsed.success) out.agentProfiles = parsed.data === null ? null : parsed.data.filter((e, i, all) => all.findIndex(o => o.agent === e.agent && o.machineId === e.machineId) === i);
     }
     return out;
 }
