@@ -14,7 +14,7 @@
 4. dev-sg 上 pid 2775017 只有 **1 条** TCP（到 CloudFront）⇒ 两个 server socket 共用同一条 engine 连接。
 5. wrapper 在 10-10 14:38:29 部署切换时断线，`startSmartReconnect` 3 s 内调了两次 `socket.connect()`（日志两行 `Attempting reconnect`）。
 
-### 根因（本地复现，`skills/tmp/xuchen-ios/dupconnect/repro.cjs`，socket.io 4.8.3 server + client）
+### 根因（本地复现，`skills/tmp/ios-dupconnect/repro.cjs`，socket.io 4.8.3 server + client）
 
 - **client**：`Socket.connect()` 在 manager 已 `open`、本 socket 的 CONNECT 还没被确认时会**再发一个 CONNECT 包**（`socket.io-client/build/esm/socket.js` `connect(): if ("open" === this.io._readyState) this.onopen()`）。重连时 server 接纳慢（鉴权/连接限额/B-494 有界恢复排队）超过 3 s，`setInterval` 就会第二次 `connect()`。
 - **server**：同一 engine client 上同一 namespace 的第二个 CONNECT 生成第二个 `Socket`，`client.nsps.set('/', 新)` 覆盖路由，但第一个 `Socket` 仍在 `nsp.sockets`、所有 room（含连接态恢复带回的 RPC room）和 eventRouter 里——**孤儿**：server 发给它的包照样经同一条线送到 client，但 client 回的 ack 被路由给新 socket，孤儿上的 `emitWithAck` 必然超时。
