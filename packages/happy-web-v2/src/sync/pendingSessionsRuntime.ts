@@ -83,7 +83,14 @@ export const pendingSessions = createPendingSessionStore({
             const project = projectAccountsOf(launch.projectId, projectsSnapshot().projects);
             options = { ...options, ...spawnAgentProfileParam(readMachineAgentProfiles(machine), options.agent ?? 'claude', undefined, { project, machineId: options.machineId }) };
         }
-        let result = await machineSpawnNewSession(options);
+        let result: Awaited<ReturnType<typeof machineSpawnNewSession>>;
+        try {
+            result = await machineSpawnNewSession(options);
+        } catch (error) {
+            // B-902: a thrown daemon refusal of the account is definite (nothing started), not a lost ack.
+            if (parseSpawnAccountError(error instanceof Error ? error.message : String(error))) return { type: 'error', errorMessage: t('accounts.spawnUnavailable') };
+            throw error;
+        }
         // 铁律 17: an RPC can resolve with `{ error }` — that is a transport
         // failure (the daemon may still have spawned), not a daemon answer.
         const known = result?.type === 'success' || result?.type === 'error' || result?.type === 'requestToApproveDirectoryCreation';
@@ -94,7 +101,9 @@ export const pendingSessions = createPendingSessionStore({
         if (result.type === 'success') newSessionTimingRpcReturned(result.sessionId);
         else newSessionTimingCancel();
         // B-850c (Q3): the daemon's own refusal of an unusable account reads as a sentence.
-        if (result.type === 'error' && !result.transport && parseSpawnAccountError(result.errorMessage)) result = { ...result, errorMessage: t('accounts.spawnUnavailable') };
+        // B-902: the daemon throws it (RPC `{ error }`), so it also arrives as a transport error — but it
+        // is a definite refusal made before any process existed, never an unknown outcome.
+        if (result.type === 'error' && parseSpawnAccountError(result.errorMessage)) result = { type: 'error', errorMessage: t('accounts.spawnUnavailable') };
         return result;
     },
     hasSession: (id) => !!storage.getState().sessions[id],

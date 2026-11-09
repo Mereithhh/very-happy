@@ -22,6 +22,7 @@ import {
     type SpawnAccountResolution,
 } from '@/sync/agentProfiles';
 import type { ProjectAgentProfile } from '@slopus/happy-wire';
+import { projectAccountElsewhere } from '@/sync/accountChoice';
 import { accountKindText, accountStatusText } from './accountText';
 import './accounts.css';
 
@@ -68,13 +69,7 @@ export function spawnDefaultOptionLabel(state: AgentProfilesState, agent: string
     return t('accounts.draftDefault', { label: account?.label ?? '?' });
 }
 
-/** B-850e: the project has an account for this agent, but on another machine (DESIGN F7). */
-export function projectAccountElsewhere(agent: string, machineId: string, project: readonly ProjectAgentProfile[] | null | undefined): string | null {
-    const entry = project?.find((e) => e.agent === agent);
-    return entry && entry.machineId !== machineId ? entry.machineId : null;
-}
-
-export function SpawnAccountPicker({ machine, machineName, agent, value, onChange, onFix, labelId, variant = 'draft', project, machineNameOf }: {
+export function SpawnAccountPicker({ machine, machineName, agent, value, onChange, onFix, labelId, variant = 'draft', project, machineNameOf, onSetProjectAccount }: {
     machine: { id: string; daemonState?: unknown } | null | undefined;
     machineName: string;
     agent: string;
@@ -87,6 +82,8 @@ export function SpawnAccountPicker({ machine, machineName, agent, value, onChang
     /** B-850e: the session's project `defaults.agentProfiles` (absent = no project) */
     project?: readonly ProjectAgentProfile[] | null;
     machineNameOf?: (machineId: string) => string;
+    /** B-902: open the project's 账号 settings (offered when the project has none on this machine) */
+    onSetProjectAccount?: () => void;
 }) {
     const { t } = useTranslation();
     if (!machine || !agentHasAccounts(agent)) return null;
@@ -125,7 +122,12 @@ export function SpawnAccountPicker({ machine, machineName, agent, value, onChang
         <SpawnAccountBlock resolution={resolveSpawnAccount(state, agent, value, now, launch)} machineName={machineName} onFix={onFix} />
         {value === undefined && (() => {
             const elsewhere = projectAccountElsewhere(agent, machine.id, project);
-            return elsewhere ? <p className="acc-choice-hint ps-draft-note" data-testid="spawn-account-elsewhere">{t('accounts.projectOtherMachine', { machine: machineNameOf?.(elsewhere) ?? elsewhere.slice(0, 8) })}</p> : null;
+            if (!elsewhere) return null;
+            const names = elsewhere.map((id) => machineNameOf?.(id) ?? id.slice(0, 8)).join(', ');
+            return <p className="acc-choice-hint ps-draft-note" data-testid="spawn-account-elsewhere">
+                {t('accounts.projectOtherMachine', { machine: names })}
+                {onSetProjectAccount && <>{' '}<button type="button" className="acc-inline-link" onClick={onSetProjectAccount} data-testid="spawn-account-set-here">{t('accounts.projectSetHere')}</button></>}
+            </p>;
         })()}
     </>;
 }

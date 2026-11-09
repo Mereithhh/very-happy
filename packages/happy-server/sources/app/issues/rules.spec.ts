@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { redactIssueQuery, requestLogSerializer } from '@/app/api/clientIp';
 import {
     attentionClosedByStatus, canonicalJson, decodeCursor, defaultMentionMachine, encodeCursor, issuesAccountAllowlist, issuesEnabled, issuesEnabledForAnyAccount, mentionItem, normalizeAssignee,
-    planHumanUpdateRun, resolveRunDirectory, reviewItem, sameAgentConfig, searchNumber, splitList,
+    issueSpawnAgentProfile, planHumanUpdateRun, resolveRunDirectory, reviewItem, sameAgentConfig, searchNumber, splitList,
 } from './rules';
 
 const codex = { kind: 'agent', machineId: 'm1', agent: 'codex', directory: '/r' } as const;
@@ -107,5 +107,27 @@ describe('B-872 issue rules (pure)', () => {
         expect(redactIssueQuery('/v1/issues/VH-1')).toBe('/v1/issues/VH-1');
         expect(redactIssueQuery('/v1/projects?x=1')).toBe('/v1/projects?x=1');
         expect(requestLogSerializer({ method: 'GET', url: '/v1/issues?q=secret', headers: {}, socket: null } as never).url).toBe('/v1/issues?[redacted]');
+    });
+});
+
+describe('B-902 issue spawn account', () => {
+    const project = [
+        { agent: 'claude', machineId: 'm1', id: 'corp', label: 'Corp' },
+        { agent: 'claude', machineId: 'm2', id: 'corp-m2', label: 'Corp' },
+        { agent: 'codex', machineId: 'm1', id: null },
+    ];
+    it('the assignee\'s own choice wins (account or machine login)', () => {
+        expect(issueSpawnAgentProfile({ id: 'mine' }, project, 'claude', 'm1')).toEqual({ id: 'mine' });
+        expect(issueSpawnAgentProfile(null, project, 'claude', 'm1')).toBeNull();
+    });
+    it('「跟随默认」 takes the project entry for this agent on this machine', () => {
+        expect(issueSpawnAgentProfile(undefined, project, 'claude', 'm1')).toEqual({ id: 'corp', label: 'Corp' });
+        expect(issueSpawnAgentProfile(undefined, project, 'claude', 'm2')).toEqual({ id: 'corp-m2', label: 'Corp' });
+        expect(issueSpawnAgentProfile(undefined, project, 'codex', 'm1')).toBeNull();
+    });
+    it('no entry for the machine / agent / project = undefined (the daemon\'s machine default)', () => {
+        expect(issueSpawnAgentProfile(undefined, project, 'claude', 'm3')).toBeUndefined();
+        expect(issueSpawnAgentProfile(undefined, project, 'codex', 'm2')).toBeUndefined();
+        expect(issueSpawnAgentProfile(undefined, null, 'claude', 'm1')).toBeUndefined();
     });
 });

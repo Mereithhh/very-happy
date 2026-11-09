@@ -720,12 +720,30 @@ Which account a new session starts on: **its own choice > the project's default
 for that agent on that machine > the machine default (`account default`) > the
 machine login**. Only the account id and its label are stored on the server.
 
-- Projects: one account per agent (Web project settings → 账号 / Accounts: pick
-  the machine, then the account, 本机登录, or follow the machine default). The
-  new-session dialog and drafts say where the account comes from: 「项目默认 · X」,
-  「机器默认 · X」 or 本机登录, and stop before creating when it is unusable. It applies on the
-  machine the account belongs to; on another machine the project has no account
-  default. `very-happy spawn --project <id>` uses it when `--account` is not given.
+- Projects: one account per agent **per machine** (B-902; Web project settings
+  → 账号 / Accounts lists, for Claude Code and Codex, every machine the project
+  has a folder on plus any machine that already has a setting; each one is
+  跟随机器默认 · X / Follow the machine default · X, 本机登录, or an account of that
+  machine). Accounts belong to one machine, so a company project on two
+  machines is set twice; a machine left unset uses its own default. Saving
+  writes only the cells you changed, onto the latest saved settings. A
+  machine with no account for that agent offers 「在 X 添加账号」/ *Add an
+  account on X* right there; an account that is gone from its machine is
+  flagged under its picker.
+  The project page composer shows 「账号 · 项目默认 · X」/「机器默认 · X」 for the
+  selected folder's machine (or 「项目未设账号」) and refuses to send when that
+  account is unusable; the new-session dialog and drafts say the same and
+  stop before creating, and offer 「为这台电脑设置」 when the project has an
+  account only on other machines. Issues assigned to an agent left on its
+  default, and team members of another agent than the team default (a Codex
+  member of a Claude team), also start on the project's account for their
+  machine. `very-happy spawn --project <id>` uses it when `--account` is not
+  given.
+- Terminal launches: a `very-happy` / `very-happy codex` started directly in a
+  terminal is not part of any project (a directory is only a Web suggestion,
+  never automatic) and starts on that machine's own login — it does not read
+  project accounts, nor the machine default account. Use the Web, `very-happy
+  spawn --project <id>`, or switch the session's account afterwards.
 - Teams: the team default and each member can name an account (Web team
   settings → 成员账号 / Member accounts, the new-team form and the new-task
   dialog; agents pass `agentProfile` to `team_delegate`). A change applies to

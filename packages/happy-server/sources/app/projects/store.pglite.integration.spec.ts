@@ -283,6 +283,18 @@ describe('projects store (pglite)', () => {
             expect((await teams.readTeam(team.id, { accountId })).projectId).toBe(team.projectId);
         });
 
+        it('B-902: project accounts are kept per agent per machine through update and read back', async () => {
+            const p = await newProject('acct-multi');
+            const entries = [
+                { agent: 'claude', machineId, id: 'corp', label: 'Corp' },
+                { agent: 'claude', machineId: otherMachineId, id: 'corp-2', label: 'Corp' },
+                { agent: 'codex', machineId: otherMachineId, id: null },
+            ];
+            const updated = await store.updateProject(accountId, p.id, { defaults: { agentProfiles: [...entries, { agent: 'claude', machineId, id: 'dup' }] } });
+            expect(updated.defaults.agentProfiles).toEqual(entries);
+            expect((await store.listProjects(accountId)).projects.find(x => x.id === p.id)?.defaults.agentProfiles).toEqual(entries);
+        });
+
         it('B-850d2: a new team following the project default runs its Lead on the project account, like its members', async () => {
             const orgA = { id: 'org-a', label: 'Org A' };
             const p = await newProject('acct-project', { defaults: { agentProfiles: [{ agent: 'claude', machineId, id: orgA.id, label: orgA.label }] } });
@@ -319,6 +331,33 @@ describe('projects store (pglite)', () => {
                 expect(polled.statusCode).toBe(200);
                 const spawns = polled.json().operations.filter((op: any) => op.teamId === teamId);
                 expect(spawns.map((op: any) => [op.type, op.agentProfile])).toEqual([['spawn', { id: 'org-a', label: 'Org A' }]]);
+            } finally { await app.close(); }
+        });
+
+        it('B-902 route: a Codex member delegated into a Claude team of a project starts on the project\'s Codex account for the team\'s machine', async () => {
+            const { default: fastify } = await import('fastify');
+            const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');
+            const { teamRoutes } = await import('@/app/api/routes/teamRoutes');
+            const app = fastify(); app.setValidatorCompiler(validatorCompiler); app.setSerializerCompiler(serializerCompiler);
+            app.decorate('authenticate', async (request: any) => { request.userId = accountId; }); teamRoutes(app as any);
+            try {
+                const p = await newProject('acct-codex-member', { defaults: { agentProfiles: [
+                    { agent: 'claude', machineId, id: 'corp', label: 'Corp' },
+                    { agent: 'codex', machineId, id: 'corp-cx', label: 'Corp' },
+                    { agent: 'codex', machineId: otherMachineId, id: 'elsewhere' },
+                ] } });
+                const created = await app.inject({ method: 'POST', url: '/v1/teams', payload: { name: 'Mixed team', machineId, requestId: 'tp-b902', launch: launch('/repo'), project: { projectId: p.id } } });
+                expect(created.statusCode).toBe(200);
+                const teamId = created.json().team.id;
+                const act = (requestId: string, action: Record<string, unknown>) => app.inject({ method: 'POST', url: `/v1/teams/${teamId}/actions`, payload: { requestId, action: { type: 'delegate', goal: 'g', acceptance: ['a'], ...action } } });
+                expect((await act('b902-cx', { botName: 'Cx', assistant: 'codex' })).statusCode).toBe(200);
+                expect((await act('b902-cx-own', { botName: 'CxOwn', assistant: 'codex', agentProfile: null })).statusCode).toBe(200);
+                const polled = await app.inject({ method: 'GET', url: `/v1/teams/operations?machineId=${machineId}&teamLaunchVersion=1` });
+                const ops = polled.json().operations.filter((op: any) => op.teamId === teamId && op.type === 'spawn');
+                const bots = (await app.inject({ method: 'GET', url: `/v1/teams/${teamId}` })).json().team.bots;
+                const opOf = (name: string) => ops.find((op: any) => op.botId === bots.find((b: any) => b.name === name).id);
+                expect(opOf('Cx').agentProfile).toEqual({ id: 'corp-cx', label: 'Corp' });
+                expect(opOf('CxOwn').agentProfile).toBeNull();
             } finally { await app.close(); }
         });
 

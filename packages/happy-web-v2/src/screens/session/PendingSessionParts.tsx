@@ -4,6 +4,7 @@
  * stays mounted when the page turns into the real session.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { projectSettingsPath } from '@/screens/projects/projectSettings';
 import { useNavigate } from 'react-router-dom';
 import { ListEnd, Trash2 } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
@@ -241,7 +242,8 @@ function DraftTarget({ record }: { record: PendingSessionRecord }) {
                     onChange={(agentProfileId) => pendingSessions.setTarget(id, { agentProfileId })}
                     onFix={() => navigate(accountSettingsHref(record.machineId))} labelId={`${id}-account`}
                     project={projectAccountsOf(record.onSpawnedProject?.projectId, projectsSnap.projects)}
-                    machineNameOf={(machineId) => { const m = storage.getState().machines[machineId]; return machineLabel(m?.metadata, machineId); }} />
+                    machineNameOf={(machineId) => { const m = storage.getState().machines[machineId]; return machineLabel(m?.metadata, machineId); }}
+                    {...(record.onSpawnedProject?.projectId ? { onSetProjectAccount: () => navigate(projectSettingsPath(record.onSpawnedProject!.projectId, 'accounts')) } : {})} />
             </div>
             <p className="ps-card-text ps-draft-landing" data-testid="draft-landing">{t('pendingSession.draftLanding', { machine: machineName })}</p>
             {machine && machineVersion && oldCli(machine) && <p className="ps-card-text ps-draft-warn" role="status" data-testid="draft-old-cli">{t('pendingSession.draftOldCli', { machine: machineName, version: machineVersion })}</p>}

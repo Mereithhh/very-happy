@@ -1,4 +1,5 @@
 import { ProjectPicker } from '@/screens/projects/ProjectPicker';
+import { projectSettingsPath } from '@/screens/projects/projectSettings';
 import { isHarnessInstallId, type HarnessInstallId } from '@slopus/happy-wire';
 import { harnessInstallSupported } from '@/app/harnessInstall';
 import { readAgentVersions } from '@/app/agentVersions';
@@ -417,7 +418,8 @@ export function NewSessionModal({
             <SpawnAccountPicker machine={selectedMachine} machineName={selectedMachine ? machineDisplayName(selectedMachine) : ''} agent={agent}
               value={accountChoice} onChange={setAccountChoice} labelId="ns-account-label" variant="dialog" project={projectAccounts}
               machineNameOf={(id) => { const m = online.find((x) => x.id === id); return m ? machineDisplayName(m) : id.slice(0, 8); }}
-              onFix={() => { onClose(); navigate(accountSettingsHref(machineId)); }} />
+              onFix={() => { onClose(); navigate(accountSettingsHref(machineId)); }}
+              {...(projectId ? { onSetProjectAccount: () => { onClose(); navigate(projectSettingsPath(projectId, 'accounts')); } } : {})} />
             {/* B-894: Codex behind the registry and the machine will not update it by itself (「自动更新 agent」 off). */}
             {agent === 'codex' && selectedMachine && codexOutdated && (
               <CodexOutdatedNotice machineId={selectedMachine.id} daemonState={selectedMachine.daemonState} online={isMachineOnline(selectedMachine)}

@@ -8,7 +8,7 @@ import {
     type IssueSessionContext, type IssueUpdate, type IssueView, type ProjectFolder,
 } from '@slopus/happy-wire';
 import { buildIssueCommentUpdate, buildIssueRunUpdate, buildIssueUpdate, eventRouter } from '@/app/events/eventRouter';
-import { readFolders } from '@/app/projects/rules';
+import { readDefaults, readFolders } from '@/app/projects/rules';
 import { afterTx, inTx, isRetryableTransactionConflict, txAttempt, type Tx } from '@/storage/inTx';
 import { allocateUserSeq } from '@/storage/seq';
 import { log } from '@/utils/log';
@@ -16,7 +16,7 @@ import { randomKeyNaked } from '@/utils/randomKeyNaked';
 import { bridgeAgentStatus, bridgeOwnerMention, bridgeOwnerMentionsHandled, bridgeRunFailed, bridgeRunFailuresCleared, bridgeStatusLeft } from './attentionBridge';
 import {
     canonicalJson, changedFieldNames, commentView, decodeCursor, defaultMentionMachine, encodeCursor, isRunnable, IssueError, issuesEnabled, issueView,
-    LIST_DEFAULT, normalizeAssignee, planHumanUpdateRun, readAssignee, requireIssue, resolveRunDirectory, runView, searchNumber, splitList,
+    issueSpawnAgentProfile, LIST_DEFAULT, normalizeAssignee, planHumanUpdateRun, readAssignee, requireIssue, resolveRunDirectory, runView, searchNumber, splitList,
     ISSUE_REVIEW_CHOICES, type AgentAssignee, type CommentRow, type IssueRow, type MessagePayload, type RunRow, type SpawnPayload,
 } from './rules';
 
@@ -116,6 +116,12 @@ async function projectFolders(tx: Tx, accountId: string, projectId: string | nul
     const project = await tx.project.findFirst({ where: { id: projectId, accountId }, select: { folders: true } });
     requireIssue(project, 'issue_project_not_found', 404);
     return readFolders(project.folders);
+}
+
+/** B-902: the project's per-agent-per-machine accounts (empty when the project is gone). */
+async function projectAgentProfiles(tx: Tx, accountId: string, projectId: string) {
+    const project = await tx.project.findFirst({ where: { id: projectId, accountId }, select: { defaults: true } });
+    return project ? readDefaults(project.defaults).agentProfiles ?? null : null;
 }
 
 async function requireMachine(tx: Tx, accountId: string, machineId: string) {
@@ -235,8 +241,10 @@ export async function createRunTx(tx: Tx, issue: IssueRow, input: {
         agentProfile: c.agentProfile === undefined ? Prisma.DbNull : c.agentProfile === null ? Prisma.JsonNull : json(c.agentProfile),
         model: c.model ?? null, permissionMode: c.permissionMode ?? null, directory: input.directory, status: 'queued', requestKey: input.requestKey ?? null,
     } });
+    const agentProfile = c.agentProfile !== undefined || !issue.projectId ? c.agentProfile
+        : issueSpawnAgentProfile(undefined, await projectAgentProfiles(tx, issue.accountId, issue.projectId), c.agent, c.machineId);
     const payload: SpawnPayload = {
-        agent: c.agent, directory: input.directory, ...(c.agentProfile !== undefined ? { agentProfile: c.agentProfile } : {}),
+        agent: c.agent, directory: input.directory, ...(agentProfile !== undefined ? { agentProfile } : {}),
         model: c.model ?? null, permissionMode: c.permissionMode ?? null, projectId: issue.projectId,
     };
     await tx.issueDispatch.create({ data: {

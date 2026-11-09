@@ -7,6 +7,7 @@
  * is shown but not pickable (「离线」/「CLI 过旧」, spec §2 IssueWorker).
  */
 import { useCallback, useEffect, useMemo } from 'react';
+import { projectSettingsPath } from '@/screens/projects/projectSettings';
 import { useNavigate } from 'react-router-dom';
 import { ISSUE_ASSIGNABLE_AGENTS, type IssueAssignableAgent, type IssueAssignee, type IssueAssigneeView } from '@slopus/happy-wire';
 import { Combobox, Segmented } from '@/ui';
@@ -150,7 +151,9 @@ export function AssigneeFields({ draft, onChange, copy, status, projectId, idPre
                     <SpawnAccountPicker machine={machine} machineName={machine ? machineLabel(machine) : ''} agent={draft.agent} value={draft.account}
                         onChange={(account) => set({ account })} labelId={`${idPrefix}-account`} variant="dialog"
                         project={project?.defaults.agentProfiles ?? null}
-                        onFix={() => navigate(accountSettingsHref(draft.machineId))} />
+                        onFix={() => navigate(accountSettingsHref(draft.machineId))}
+                        machineNameOf={(id) => { const m = machines.find((x) => x.id === id); return m ? machineLabel(m) : id.slice(0, 8); }}
+                        {...(projectId ? { onSetProjectAccount: () => navigate(projectSettingsPath(projectId, 'accounts')) } : {})} />
                     <label className="ns-label" id={`${idPrefix}-model`}>{copy.model}</label>
                     <Combobox label={copy.model} labelledBy={`${idPrefix}-model`} size="md" value={draft.model} options={modelOptions} onChange={(model) => set({ model })} />
                     <label className="ns-label" htmlFor={`${idPrefix}-dir`}>{copy.directory}</label>

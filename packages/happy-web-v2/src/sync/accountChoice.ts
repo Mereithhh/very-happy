@@ -121,11 +121,17 @@ export function accountChoiceOptions(state: AgentProfilesState | null, agent: st
     return options;
 }
 
-// ---- project defaults (`ProjectDefaults.agentProfiles[]`, one entry per agent) ----
+// ---- project defaults (`ProjectDefaults.agentProfiles[]`, one entry per agent per machine, B-902) ----
 
-/** The project's entry for `agent` (the server keeps one per agent; first wins). */
-export function projectAccountEntry(entries: readonly ProjectAgentProfile[] | null | undefined, agent: string): ProjectAgentProfile | undefined {
-    return entries?.find((e) => e.agent === agent);
+/** Wire `ProjectAgentProfilesSchema` cap. */
+export const PROJECT_ACCOUNT_ENTRIES_MAX = 16;
+
+/**
+ * The project's entry for `agent` on `machineId` (the server keeps one per
+ * agent per machine; first wins). Without `machineId`: the agent's first entry.
+ */
+export function projectAccountEntry(entries: readonly ProjectAgentProfile[] | null | undefined, agent: string, machineId?: string): ProjectAgentProfile | undefined {
+    return entries?.find((e) => e.agent === agent && (machineId === undefined || e.machineId === machineId));
 }
 
 /** Entry → choice (the machine travels separately). */
@@ -135,12 +141,13 @@ export function entryChoice(entry: ProjectAgentProfile | undefined): AccountChoi
 }
 
 /**
- * The project's entries with `agent` set to `choice` on `machineId`
- * (undefined removes the agent's entry: 「跟随机器默认」). Other agents keep
- * theirs. null when nothing is left (the PATCH then clears the field).
+ * The project's entries with `agent` on `machineId` set to `choice`
+ * (undefined removes it: 「跟随机器默认」). Every other entry — other agents,
+ * the same agent on other machines — is kept. null when nothing is left (the
+ * PATCH then clears the field).
  */
 export function withProjectAccount(entries: readonly ProjectAgentProfile[] | null | undefined, agent: string, machineId: string, choice: AccountChoice): ProjectAgentProfile[] | null {
-    const rest = (entries ?? []).filter((e) => e.agent !== agent);
+    const rest = (entries ?? []).filter((e) => !(e.agent === agent && e.machineId === machineId));
     if (choice !== undefined && machineId) {
         rest.push(choice === null
             ? { agent, machineId, id: null }
@@ -149,10 +156,74 @@ export function withProjectAccount(entries: readonly ProjectAgentProfile[] | nul
     return rest.length ? rest : null;
 }
 
-/** Does `next` differ from `current` (order-insensitive, by agent)? */
+/** Does `next` differ from `current` (order-insensitive, by agent + machine)? */
 export function projectAccountsChanged(current: readonly ProjectAgentProfile[] | null | undefined, next: readonly ProjectAgentProfile[] | null | undefined): boolean {
     const norm = (list: readonly ProjectAgentProfile[] | null | undefined) => JSON.stringify([...(list ?? [])].map((e) => [e.agent, e.machineId, e.id]).sort());
     return norm(current) !== norm(next);
+}
+
+/**
+ * B-902: the machines the project's account settings list — the machines its
+ * folders are on (primary folder first, then folder order), then any machine
+ * that already has an entry (a folder removed later must not hide a setting
+ * that still applies there).
+ */
+export function projectAccountMachineIds(folders: readonly { machineId: string; primary?: boolean }[], entries: readonly ProjectAgentProfile[] | null | undefined): string[] {
+    const ordered = [...folders.filter((f) => f.primary), ...folders.filter((f) => !f.primary)].map((f) => f.machineId);
+    for (const e of entries ?? []) ordered.push(e.machineId);
+    return ordered.filter((id, i) => id && ordered.indexOf(id) === i);
+}
+
+/** One cell of the agent × machine grid. */
+export interface ProjectAccountEdit { agent: string; machineId: string; choice: AccountChoice }
+
+export function projectAccountCellKey(agent: string, machineId: string): string {
+    return `${agent}\u0000${machineId}`;
+}
+
+/** The grid's starting values: each agent × machine cell from the saved entries. */
+export function projectAccountDraft(entries: readonly ProjectAgentProfile[] | null | undefined, agents: readonly string[], machineIds: readonly string[]): Record<string, AccountChoice> {
+    const draft: Record<string, AccountChoice> = {};
+    for (const agent of agents) for (const machineId of machineIds) draft[projectAccountCellKey(agent, machineId)] = entryChoice(projectAccountEntry(entries, agent, machineId));
+    return draft;
+}
+
+/** Only the cells the user changed (compared with what the form started from). */
+export function projectAccountEdits(initial: Readonly<Record<string, AccountChoice>>, draft: Readonly<Record<string, AccountChoice>>): ProjectAccountEdit[] {
+    const edits: ProjectAccountEdit[] = [];
+    for (const key of Object.keys(draft)) {
+        if (sameAccountChoice(initial[key], draft[key])) continue;
+        const [agent, machineId] = key.split('\u0000');
+        edits.push({ agent, machineId, choice: draft[key] });
+    }
+    return edits;
+}
+
+/**
+ * Apply only the changed cells onto the latest saved entries (re-read just
+ * before the PATCH): a cell somebody else saved meanwhile, or a machine this
+ * form did not list, is left as it is.
+ */
+export function applyProjectAccountEdits(latest: readonly ProjectAgentProfile[] | null | undefined, edits: readonly ProjectAccountEdit[]): ProjectAgentProfile[] | null {
+    let next: ProjectAgentProfile[] | null = latest?.length ? [...latest] : null;
+    for (const edit of edits) next = withProjectAccount(next, edit.agent, edit.machineId, edit.choice);
+    return next;
+}
+
+/**
+ * B-850e / B-902: the project has an account for this agent on other machines
+ * but none on this one (DESIGN F7) — those machines, else null.
+ */
+export function projectAccountElsewhere(agent: string, machineId: string, project: readonly ProjectAgentProfile[] | null | undefined): string[] | null {
+    const mine = project?.filter((e) => e.agent === agent) ?? [];
+    if (!mine.length || mine.some((e) => e.machineId === machineId)) return null;
+    return [...new Set(mine.map((e) => e.machineId))];
+}
+
+/** A new session's project account defaults (`onSpawnedProject`), or null (no / unknown project). */
+export function projectAccountsOf(projectId: string | null | undefined, projects: readonly { id: string; defaults: { agentProfiles?: ProjectAgentProfile[] | null } }[]): ProjectAgentProfile[] | null {
+    if (!projectId) return null;
+    return projects.find((p) => p.id === projectId)?.defaults.agentProfiles ?? null;
 }
 
 // ---- encoding a choice into an uncontrolled <form> (delegate dialog) ----
@@ -253,11 +324,6 @@ export function teamAccountItemFacts(item: { key: string | null; title: string; 
     };
 }
 
-/** A new session's project account defaults (`onSpawnedProject`), or null (no / unknown project). */
-export function projectAccountsOf(projectId: string | null | undefined, projects: readonly { id: string; defaults: { agentProfiles?: ProjectAgentProfile[] | null } }[]): ProjectAgentProfile[] | null {
-    if (!projectId) return null;
-    return projects.find((p) => p.id === projectId)?.defaults.agentProfiles ?? null;
-}
 
 /**
  * B-850d: `set-bot-account` only affects the member's next spawn; a member

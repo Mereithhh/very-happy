@@ -1,14 +1,18 @@
 import { BackButton } from '@/app/BackButton';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { FolderKanban, Settings2, Send, UsersRound, Users, Zap, Undo2, Plus, Link2, LogOut, TerminalSquare } from 'lucide-react';
+import { FolderKanban, Settings2, Send, UsersRound, Users, Zap, Undo2, Plus, Link2, LogOut, TerminalSquare, KeyRound } from 'lucide-react';
+import { agentHasAccounts, machineHasAgentAccounts, readMachineAgentProfiles, resolveSpawnAccount } from '@/sync/agentProfiles';
+import { spawnAccountBlockText, spawnDefaultOptionLabel } from '@/components/accounts/SpawnAccountPicker';
+import { accountSettingsHref } from '@/screens/session/sessionAccount';
+import type { Machine } from '@/sync/storageTypes';
 import { ProjectShareDialog } from './ProjectShareDialog';
 import { ActionDropdownMenu } from '@/ui/Menu';
 import { Modal } from '@/modal';
 import { linkableTeams, teamMoveSource } from './projectChoice';
 import type { ProjectDetailResponse, ProjectLogEntryView, ProjectLogKind } from '@slopus/happy-wire';
 import { applyLocalMembership, projectsApi, ProjectsApiError, refreshProjects, useProjects } from '@/sync/projects';
-import { useAllMachines, useAllSessions, storage } from '@/sync/storage';
+import { useAllMachines, useAllSessions, storage, useSetting } from '@/sync/storage';
 import { useBoardCompleted, useBoardItems } from '@/screens/board/useBoardItems';
 import { attentionKeysOf } from '@/screens/sessions/sidebarAttention';
 import { useItemNeedsYouSessionIds, withItemAttention } from '@/sync/needsYou';
@@ -112,6 +116,7 @@ export function ProjectScreen() {
 
 function ProjectComposer({ detail, c, onAddFolder }: { detail: ProjectDetailResponse; c: ProjectCopy; onAddFolder: () => void }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const machines = useAllMachines({ includeOffline: true });
   const folders = detail.project.folders;
   const [folderIndex, setFolderIndex] = useState(() => Math.max(0, folders.findIndex((f) => f.primary)));
@@ -119,9 +124,11 @@ function ProjectComposer({ detail, c, onAddFolder }: { detail: ProjectDetailResp
   const [busy, setBusy] = useState(false);
   const folder = folders[Math.min(folderIndex, folders.length - 1)];
   const machine = folder ? machines.find((m) => m.id === folder.machineId) : undefined;
+  const account = useComposerAccount(detail, machine);
+  const blocked = !!account?.blockText;
   const send = () => {
     const first = text.trim();
-    if (!folder || !first || busy) return;
+    if (!folder || !first || busy || blocked) return;
     setBusy(true);
     const state = storage.getState();
     const defaults = detail.project.defaults;
@@ -159,11 +166,46 @@ function ProjectComposer({ detail, c, onAddFolder }: { detail: ProjectDetailResp
               options={folders.map((f, i) => ({ value: String(i), label: `${f.path}${f.primary ? ` · ${c.primary}` : ''}` }))}
             />
             {machine && <span className="pj-muted mono">{machineLabel(machine)}</span>}
+            {account && <ComposerAccount projectId={detail.project.id} account={account} />}
           </div>
         ) : <span className="pj-composer-empty"><span className="pj-muted">{c.noFolder}</span><button type="button" className="pj-ghost" onClick={onAddFolder}><Plus size={14} />{c.addFolder}</button></span>}
-        <button type="button" className="pj-send" disabled={!folder || !text.trim() || busy} onClick={send} aria-label={c.send} title={`${c.send} (⌘↵)`}><Send size={16} /></button>
+        <button type="button" className="pj-send" disabled={!folder || !text.trim() || busy || blocked} onClick={send} aria-label={c.send} title={`${c.send} (⌘↵)`}><Send size={16} /></button>
       </div>
+      {account?.blockText && machine && <p className="acc-blocked pj-composer-blocked" role="alert" data-testid="project-composer-account-blocked">
+        {account.blockText} <Link to={accountSettingsHref(machine.id)}>{t('accounts.blockedFix')}</Link> · <Link to={projectSettingsPath(detail.project.id, 'accounts')}>{t('accounts.projectChangeAccount')}</Link>
+      </p>}
     </div>
+  );
+}
+
+/**
+ * B-902: which account the composer's session will start on, and where it
+ * comes from (项目默认 · X / 机器默认 · X / 本机登录) — the project's own
+ * entry for this agent on the folder's machine first. `unset`: the project
+ * has no account settings at all. `blockText`: Q3 — the account cannot run,
+ * so the composer stops before creating anything.
+ */
+function useComposerAccount(detail: ProjectDetailResponse, machine: Machine | undefined): { label: string; unset: boolean; blockText: string | null } | null {
+  const { t } = useTranslation();
+  const newSessionAgent = useSetting('newSessionAgent');
+  const agent = normalizeAgentKey(detail.project.defaults.agent ?? newSessionAgent);
+  if (!machine || !agentHasAccounts(agent)) return null;
+  const entries = detail.project.defaults.agentProfiles ?? null;
+  const state = readMachineAgentProfiles(machine);
+  const supported = !!state && machineHasAgentAccounts(state, agent);
+  const label = supported ? spawnDefaultOptionLabel(state, agent, machine.id, entries, t) : t('accounts.machineLogin');
+  const blockText = supported ? spawnAccountBlockText(resolveSpawnAccount(state, agent, undefined, Date.now(), { project: entries, machineId: machine.id }), machineLabel(machine), t) : null;
+  return { label, unset: !entries?.length, blockText };
+}
+
+function ComposerAccount({ projectId, account }: { projectId: string; account: { label: string; unset: boolean; blockText: string | null } }) {
+  const { t } = useTranslation();
+  return (
+    <Link className="pj-composer-account" to={projectSettingsPath(projectId, 'accounts')} title={t('accounts.composerAccountTitle')}
+      data-testid="project-composer-account" data-blocked={account.blockText ? true : undefined} data-unset={account.unset || undefined}>
+      <KeyRound size={12} aria-hidden />
+      <span>{t('accounts.composerAccount', { label: account.label })}{account.unset && <span className="pj-composer-account-unset"> · {t('accounts.projectNotSet')}</span>}</span>
+    </Link>
   );
 }
 
