@@ -1,7 +1,7 @@
 /**
  * B-864 over a REAL socket.io server + clients: the guard socket.ts installs
  * (middleware `admit` + post-join `afterJoin`) keeps one agent per session room.
- * Reproduces the Xu CHEN 11-02 shape — two wrappers on one session, both
+ * Reproduces the 11-02 user report shape — two wrappers on one session, both
  * receiving the user's message — and shows the older one stops receiving.
  */
 import { createServer, type Server as HttpServer } from 'node:http';

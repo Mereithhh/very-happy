@@ -15,7 +15,7 @@
  *
  * 记 key 而不是 row 数：旧历史（「加载更早」/ 停在顶部时按需加载的一页，
  * B-616 之前还有每 250ms 一页的后台预取）把旧消息**插在顶部**，row 数照样涨。
- * 按 row 数算，离底后 badge 会被旧历史一路推到 99+（Xu CHEN 实报：「数字慢慢变到 99+」）。
+ * 按 row 数算，离底后 badge 会被旧历史一路推到 99+（用户实报：「数字慢慢变到 99+」）。
  */
 export function nextAwaySnapshot(
     prev: string | null,
@@ -95,7 +95,7 @@ export function shouldSmoothJumpToLatest(distance: number, viewportHeight: numbe
  * （markdown 迟到渲染、滚动条取整）不该让跟随断掉。可一旦用户做了向上滚的
  * 手势，再用 80px 带重新上膛就是 bug：触控板/慢滚轮每个事件只走几 px，两次
  * 流式 token 之间读者仍在带内，下一个 token 就把他拽回 0——永远出不去
- * （Xu CHEN 2026-10-13：「往上滚想看完整回复，会主动掉到最下面」）。
+ * （用户 2026-10-13：「往上滚想看完整回复，会主动掉到最下面」）。
  * 脱离后只有真正回到底（≤ REATTACH_PX，留给 HiDPI 的小数 scrollTop）才重新跟随。
  */
 export const FOLLOW_BAND_PX = 80;
@@ -276,7 +276,7 @@ export function shouldFoldFinishedTurn(input: { following: boolean; panelTop: nu
  * 非自写的 scroll 事件、没有冻结中的页）时，请求一页；在动、在加载、或没有更早的
  * 都不请求。插入只发生在读者静止时，WebKit 认程序写 scrollTop，锚点补偿才靠得住
  * （B-603 的根因）。一页插完，顶部就退到一屏以外，自然停下；内容不足一屏时会连续
- * 补到够一屏。Xu CHEN 2026-10-16 录屏：B-603 的「动时冻结」在真机惯性滚动里仍漏插，
+ * 补到够一屏。用户 2026-10-16 录屏：B-603 的「动时冻结」在真机惯性滚动里仍漏插，
  * 一分钟内 134 页的后台预取是根子，于是去掉它。
  */
 export const LOAD_OLDER_NEAR_TOP_MIN_PX = 480;

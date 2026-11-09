@@ -5,7 +5,7 @@
 > 日期：2026-10-21 ｜ 关联 backlog：B-644 ~ B-652
 > 出处：12 个 agent 的调研与交叉评审（Orca 源码、Claude Code Projects / Desktop、open-claude-ui、Codex app、GitHub 同类 12 个仓库；架构 / 提示工程 / 交互 / 反方 / 重度用户五个角色评审）。
 > 底稿不进仓库，在 Owner 本机 `~/code/github/skills/tmp/vh-project-research/out/`（`30-final.md` 为终稿，含全部证据行号与评审裁决表）。本 spec 是可执行的定稿，和底稿冲突时以本 spec 为准。
-> 关系：`specs/2026-10-spaces-a2a.design.md`（Draft）是更大的多人空间设计。本 spec 的 Project 是 personal Space 内的工作容器，先于 Spaces P0 落地；项目内消息的熔断/回执在 Phase 2 并入 Spaces 信封 v1，只设计一次。
+> 关系：本 spec 的 Project 是 personal 范围内的工作容器；更大的多人空间设计不在本仓库。
 
 ## 背景
 
@@ -208,7 +208,7 @@ Unread for you: {≤3 lines "from {title}: {first 120 chars}"}
 │    fix sidebar grouping   ◆  │
 │  ▸ B-640 重构（团队）   3/5  │  团队以 goal 为标题嵌在项目组里（修 Sidebar.tsx:539）
 │    backlog grooming       ⟳  │
-│ ▸ apodex-ridge            2  │
+│ ▸ acme-data            2  │
 │ ▾ 未归属                      │  子分组按目录（原工作区派生，worktree 合并到 repo 根）
 │    ~/code/foo · 2   [设为项目]│  一键把这个目录变成项目，现有会话一并移入
 └──────────────────────────────┘

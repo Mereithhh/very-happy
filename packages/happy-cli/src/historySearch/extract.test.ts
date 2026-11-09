@@ -36,9 +36,9 @@ describe('extractClaudeLine (B-549)', () => {
 
     it('skips isMeta / isCompactSummary turns and strips shell, command and hook harness (review B-549)', () => {
         const s = emptyDocState();
-        // `/apodex-product` alone: the envelope, then the injected skill body (isMeta).
-        extractClaudeLine(s, j({ type: 'user', cwd: '/w', message: { content: '<command-message>apodex-product</command-message>\n<command-name>/apodex-product</command-name>' } }));
-        extractClaudeLine(s, j({ type: 'user', isMeta: true, message: { content: [{ type: 'text', text: 'Base directory for this skill: /Users/me/.claude/skills/apodex-product\n\n# Apodex' }] } }));
+        // `/acme-product` alone: the envelope, then the injected skill body (isMeta).
+        extractClaudeLine(s, j({ type: 'user', cwd: '/w', message: { content: '<command-message>acme-product</command-message>\n<command-name>/acme-product</command-name>' } }));
+        extractClaudeLine(s, j({ type: 'user', isMeta: true, message: { content: [{ type: 'text', text: 'Base directory for this skill: /Users/me/.claude/skills/acme-product\n\n# Acme' }] } }));
         extractClaudeLine(s, j({ type: 'user', isCompactSummary: true, message: { content: 'This session is being continued from a previous conversation. Summary: …' } }));
         extractClaudeLine(s, j({ type: 'user', message: { content: '<bash-input>ls -la</bash-input>' } }));
         extractClaudeLine(s, j({ type: 'user', message: { content: '<bash-stdout>secret.txt</bash-stdout><bash-stderr>warn</bash-stderr>' } }));

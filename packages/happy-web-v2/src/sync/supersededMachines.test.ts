@@ -17,7 +17,7 @@ function machine(over: Partial<SupersedableMachine> & { id: string }): Superseda
   return {
     active: false,
     activeAt: 0,
-    metadata: { host: 'ip-10-122-241-147', platform: 'linux', happyHomeDir: HOME },
+    metadata: { host: 'ip-10-0-0-1', platform: 'linux', happyHomeDir: HOME },
     ...over,
   };
 }
@@ -60,15 +60,15 @@ describe('supersededMachineIds', () => {
 
   it.each([
     ['host', { host: 'other-host', platform: 'linux', happyHomeDir: HOME }],
-    ['platform', { host: 'ip-10-122-241-147', platform: 'darwin', happyHomeDir: HOME }],
-    ['happyHomeDir', { host: 'ip-10-122-241-147', platform: 'linux', happyHomeDir: '/root/.happy' }],
+    ['platform', { host: 'ip-10-0-0-1', platform: 'darwin', happyHomeDir: HOME }],
+    ['happyHomeDir', { host: 'ip-10-0-0-1', platform: 'linux', happyHomeDir: '/root/.happy' }],
   ])('needs all three parts to match — differing %s does not group', (_field, metadata) => {
     expect([...supersededMachineIds([machine({ id: 'x', metadata }), live])]).toEqual([]);
   });
 
   it.each([
     ['no metadata at all', null],
-    ['metadata missing happyHomeDir', { host: 'ip-10-122-241-147', platform: 'linux' }],
+    ['metadata missing happyHomeDir', { host: 'ip-10-0-0-1', platform: 'linux' }],
     ['an empty string part', { host: '', platform: 'linux', happyHomeDir: HOME }],
   ])('never groups on a partial identity: %s', (_case, metadata) => {
     // Two old daemons that both report nothing must not collapse into one.

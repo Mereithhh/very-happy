@@ -139,7 +139,7 @@ const codexAccounts = [
 ];
 const codexMachine = (codex = true) => ({ id: 'm1', active: true, metadata: { displayName: 'dev-sg', host: 'h' }, daemonState: { pid: 7, agentProfiles: {
     daemonPid: 7, updatedAt: 1, accounts: codex ? [...accounts, ...codexAccounts] : accounts, defaults: {},
-    ...(codex ? { kinds: ['claude-subscription', 'claude-api', 'codex-chatgpt', 'codex-provider'], codexProviders: [{ id: 'llmhub', baseUrl: 'https://llm-hub.apodex.app/v1', envKey: 'LLMHUB_API_KEY' }] } : {}),
+    ...(codex ? { kinds: ['claude-subscription', 'claude-api', 'codex-chatgpt', 'codex-provider'], codexProviders: [{ id: 'llmhub', baseUrl: 'https://llm-hub.example.com/v1', envKey: 'LLMHUB_API_KEY' }] } : {}),
 } } });
 const codexSession = (metadata: Record<string, unknown>) => session({ flavor: 'codex', ...metadata });
 

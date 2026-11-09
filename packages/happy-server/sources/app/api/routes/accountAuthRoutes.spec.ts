@@ -189,14 +189,14 @@ describe('public Email OTP and password policy', () => {
         enableEmail();
         process.env.OIDC_ISSUER = 'https://idp.example.com';
         process.env.OIDC_CLIENT_ID = 'relay';
-        process.env.OIDC_DISPLAY_NAME = 'Apodex SSO';
+        process.env.OIDC_DISPLAY_NAME = 'Acme SSO';
         process.env.SIGNUP_MODE = 'invite';
         process.env.SIGNUP_INVITE_CODES = 'code';
         process.env.OIDC_SIGNUP_MODE = 'open';
         try {
             const app = await buildApp();
             const response = await app.inject({ method: 'GET', url: '/v1/auth/config' });
-            expect(response.json()).toMatchObject({ oidc: { displayName: 'Apodex SSO', signupMode: 'open' }, signup: { mode: 'invite' } });
+            expect(response.json()).toMatchObject({ oidc: { displayName: 'Acme SSO', signupMode: 'open' }, signup: { mode: 'invite' } });
             await app.close();
         } finally {
             for (const key of ['OIDC_ISSUER', 'OIDC_CLIENT_ID', 'OIDC_DISPLAY_NAME', 'OIDC_SIGNUP_MODE', 'SIGNUP_INVITE_CODES']) delete process.env[key];

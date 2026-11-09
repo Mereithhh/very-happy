@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * B-616 (Xu CHEN 2026-10-16 recording, iPhone Safari, a ~13k-message session):
+ * B-616 (a user 2026-10-16 recording, iPhone Safari, a ~13k-message session):
  * the view kept jumping to much earlier content in the first minute after
  * opening. The background prefetch inserted a page above the reader every
  * ~0.5s for ~134 pages; iOS WebKit drops the compensating scrollTop write

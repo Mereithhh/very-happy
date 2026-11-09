@@ -32,7 +32,7 @@ function machine(id: string, updatedAt: number, terminals = shared) {
 
 function feed(machines: ReturnType<typeof machine>[]) {
   for (const { id, snapshot } of pushedMachineSnapshots(machines)) {
-    useTerminalSessions.getState().applyPush(id, 'ip-10-122-241-147', snapshot.terminals, snapshot.updatedAt);
+    useTerminalSessions.getState().applyPush(id, 'ip-10-0-0-1', snapshot.terminals, snapshot.updatedAt);
   }
 }
 

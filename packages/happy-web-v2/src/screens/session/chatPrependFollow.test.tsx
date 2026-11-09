@@ -295,7 +295,7 @@ describe('new content at the bottom still follows', () => {
 });
 
 /**
- * B-598 regression (Xu CHEN 2026-10-13, desktop): after sending, scrolling up
+ * B-598 regression (a user 2026-10-13, desktop): after sending, scrolling up
  * to re-read the start of the reply while it streams got yanked back to the
  * bottom. onScroll re-armed `atBottom` whenever the reader was inside the 80px
  * band, and every streamed token (row effect / growth follower) then scrolled
@@ -407,7 +407,7 @@ describe('an upward gesture during streaming detaches from the live end', () => 
 });
 
 /**
- * B-603 regression (Xu CHEN 2026-10-15, iPhone Safari tab, idle 13k-message
+ * B-603 regression (a user 2026-10-15, iPhone Safari tab, idle 13k-message
  * session): reading back while the background prefetch landed a page every
  * ~0.5 s, the view kept leaping to much older content, and 「跳到最新」 /
  * 「上一条提问」 stopped far from where they aim. Each page was compensated with

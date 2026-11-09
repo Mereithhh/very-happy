@@ -282,8 +282,8 @@ describe('B-360 same terminal id pushed by two machine rows', () => {
   const shared = [term({ id: 'aaa', title: 'resource_moniter' }), term({ id: 'bbb', title: 'en-other' })];
   // The retired daemon's snapshot is frozen at handover; the live one keeps
   // rewriting webTerminals, so its updatedAt is always later.
-  const retired = push('ip-10-122-241-147', shared, NOW - 60_000);
-  const live = push('ip-10-122-241-147', shared, NOW);
+  const retired = push('ip-10-0-0-1', shared, NOW - 60_000);
+  const live = push('ip-10-0-0-1', shared, NOW);
 
   it('renders each terminal ONCE, owned by the machine with the newest snapshot', () => {
     const rows = composeTerminalList({ 'old-mid': retired, 'new-mid': live }, EMPTY_OVERLAY, NOW);

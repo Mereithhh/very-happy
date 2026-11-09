@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// B-855: iPad (Xu CHEN 11-01) — the whole app sat ~300px up with a blank band
+// B-855: iPad (a user 11-01) — the whole app sat ~300px up with a blank band
 // below: iOS left the locked document scrolled. installViewportVars must undo
 // that after any of these events, recognise an iPad with a trackpad
 // (pointer: fine) as a touch screen, and leave iOS's pan alone while the

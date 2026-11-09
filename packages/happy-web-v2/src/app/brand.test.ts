@@ -9,8 +9,8 @@ describe('B-624 brand config', () => {
   });
 
   it('takes the operator name, a safe logo URL, and the landing switch', () => {
-    expect(readBrandConfig({ brand: { name: ' Apodex Vibe ', logoUrl: 'https://cdn.example.com/logo.svg' }, landing: false })).toEqual({
-      name: 'Apodex Vibe', wordmark: 'Apodex Vibe', logoUrl: 'https://cdn.example.com/logo.svg', logoDarkUrl: null, wordmarkUrl: null, wordmarkDarkUrl: null, iconUrl: null, envLabel: null, landingEnabled: false, isDefault: false,
+    expect(readBrandConfig({ brand: { name: ' Acme Vibe ', logoUrl: 'https://cdn.example.com/logo.svg' }, landing: false })).toEqual({
+      name: 'Acme Vibe', wordmark: 'Acme Vibe', logoUrl: 'https://cdn.example.com/logo.svg', logoDarkUrl: null, wordmarkUrl: null, wordmarkDarkUrl: null, iconUrl: null, envLabel: null, landingEnabled: false, isDefault: false,
     });
     expect(readBrandConfig({ brand: { logoUrl: '/brand/logo.png' } }).logoUrl).toBe('/brand/logo.png');
     expect(readBrandConfig({ brand: { logoUrl: 'javascript:alert(1)' } }).logoUrl).toBeNull();
@@ -21,23 +21,23 @@ describe('B-624 brand config', () => {
 
   it('rewrites product-name copy only for a custom brand', () => {
     expect(brandText('Sign in — Very Happy', readBrandConfig(undefined))).toBe('Sign in — Very Happy');
-    const apodex = readBrandConfig({ brand: { name: 'Apodex Vibe' } });
-    expect(brandText('登录 — Very Happy', apodex)).toBe('登录 — Apodex Vibe');
-    expect(brandText('very happy · Very Happy CLI', apodex)).toBe('Apodex Vibe · Apodex Vibe CLI');
+    const acme = readBrandConfig({ brand: { name: 'Acme Vibe' } });
+    expect(brandText('登录 — Very Happy', acme)).toBe('登录 — Acme Vibe');
+    expect(brandText('very happy · Very Happy CLI', acme)).toBe('Acme Vibe · Acme Vibe CLI');
   });
 
   it('B-638: reads the asset pair, icon and environment label; the title carries the label', () => {
-    const brand = readBrandConfig({ brand: { name: 'Apodex Vibe', logoUrl: '/brand/i.svg', logoDarkUrl: '/brand/i-dark.svg', wordmarkUrl: '/brand/w.svg', wordmarkDarkUrl: 'javascript:x', iconUrl: '/brand/icon-512.png', envLabel: '  测试环境 ' } });
+    const brand = readBrandConfig({ brand: { name: 'Acme Vibe', logoUrl: '/brand/i.svg', logoDarkUrl: '/brand/i-dark.svg', wordmarkUrl: '/brand/w.svg', wordmarkDarkUrl: 'javascript:x', iconUrl: '/brand/icon-512.png', envLabel: '  测试环境 ' } });
     expect(brand).toMatchObject({ logoDarkUrl: '/brand/i-dark.svg', wordmarkUrl: '/brand/w.svg', wordmarkDarkUrl: null, iconUrl: '/brand/icon-512.png', envLabel: '测试环境' });
-    expect(brandTitle(brand)).toBe('Apodex Vibe · 测试环境');
-    expect(brandTitle(readBrandConfig({ brand: { name: 'Apodex Vibe' } }))).toBe('Apodex Vibe');
+    expect(brandTitle(brand)).toBe('Acme Vibe · 测试环境');
+    expect(brandTitle(readBrandConfig({ brand: { name: 'Acme Vibe' } }))).toBe('Acme Vibe');
     expect(readBrandConfig({ brand: { envLabel: 'x'.repeat(40) } }).envLabel).toHaveLength(24);
   });
 
   it('B-637: deep-copies a dictionary with the name swapped, and keeps the default object identity', () => {
     const copy = { pwa: { title: 'Install Very Happy', steps: ['Open very happy', 'Done'] }, n: 3 };
     expect(brandCopy(copy, readBrandConfig(undefined))).toBe(copy);
-    expect(brandCopy(copy, readBrandConfig({ brand: { name: 'Apodex Vibe' } }))).toEqual({ pwa: { title: 'Install Apodex Vibe', steps: ['Open Apodex Vibe', 'Done'] }, n: 3 });
+    expect(brandCopy(copy, readBrandConfig({ brand: { name: 'Acme Vibe' } }))).toEqual({ pwa: { title: 'Install Acme Vibe', steps: ['Open Acme Vibe', 'Done'] }, n: 3 });
     expect(copy.pwa.title).toBe('Install Very Happy');
   });
 
@@ -46,11 +46,11 @@ describe('B-624 brand config', () => {
     const doc = { title: 'Very Happy', querySelector: () => meta } as unknown as Document;
     applyBrandToDocument(readBrandConfig(undefined), doc);
     expect(doc.title).toBe('Very Happy');
-    applyBrandToDocument(readBrandConfig({ brand: { name: 'Apodex Vibe' } }), doc);
-    expect(doc.title).toBe('Apodex Vibe');
-    expect(meta.getAttribute('content')).toBe('Apodex Vibe');
-    applyBrandToDocument(readBrandConfig({ brand: { name: 'Apodex Vibe', envLabel: 'Staging' } }), doc);
-    expect(doc.title).toBe('Apodex Vibe · Staging');
-    expect(meta.getAttribute('content')).toBe('Apodex Vibe');
+    applyBrandToDocument(readBrandConfig({ brand: { name: 'Acme Vibe' } }), doc);
+    expect(doc.title).toBe('Acme Vibe');
+    expect(meta.getAttribute('content')).toBe('Acme Vibe');
+    applyBrandToDocument(readBrandConfig({ brand: { name: 'Acme Vibe', envLabel: 'Staging' } }), doc);
+    expect(doc.title).toBe('Acme Vibe · Staging');
+    expect(meta.getAttribute('content')).toBe('Acme Vibe');
   });
 });

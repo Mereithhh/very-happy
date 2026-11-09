@@ -4,7 +4,7 @@
 
 ## 事故
 
-会话「Tanka 待办提取（shanda + apodex）」同时被两个 wrapper 驱动（25691@22:19 与 17092@00:15，同一 `--resume 31c510f1…`）：每条用户消息前端显示 3 条、thinking 轨迹展开/收起闪动、yolo 权限模式来回翻。
+会话「待办提取」同时被两个 wrapper 驱动（25691@22:19 与 17092@00:15，同一 `--resume 31c510f1…`）：每条用户消息前端显示 3 条、thinking 轨迹展开/收起闪动、yolo 权限模式来回翻。
 
 链路：
 1. `resume`/`restart-session` 成功后用 **spawn 前**（server/磁盘）的 metadata 重写 `sessions.json`，把 webhook 刚写入的新 `hostPid` 冲回上一个 wrapper 的死 pid（记录里是 8 月 28 日的 94251）。

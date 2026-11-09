@@ -26,7 +26,7 @@ describe('B-620 OIDC provider (discovery, JWKS, id_token)', () => {
     afterAll(async () => { await idp.close(); });
     beforeEach(() => resetOidcCachesForTests());
 
-    const env = () => ({ OIDC_ISSUER: idp.issuer, OIDC_CLIENT_ID: idp.clientId, OIDC_CLIENT_SECRET: idp.clientSecret, OIDC_DISPLAY_NAME: 'Apodex SSO', OIDC_ALLOWED_EMAIL_DOMAINS: 'apodex.com, Tanka.ai' } as NodeJS.ProcessEnv);
+    const env = () => ({ OIDC_ISSUER: idp.issuer, OIDC_CLIENT_ID: idp.clientId, OIDC_CLIENT_SECRET: idp.clientSecret, OIDC_DISPLAY_NAME: 'Acme SSO', OIDC_ALLOWED_EMAIL_DOMAINS: 'example.com, Example.org' } as NodeJS.ProcessEnv);
 
     it('is disabled without OIDC_ISSUER and rejects an issuer without a client id', () => {
         expect(resolveOidcConfig({} as NodeJS.ProcessEnv)).toBeNull();
@@ -38,9 +38,9 @@ describe('B-620 OIDC provider (discovery, JWKS, id_token)', () => {
         const config = resolveOidcConfig({ ...env(), OIDC_ISSUER: `${idp.issuer}/`, OIDC_SCOPES: 'profile email' })!;
         expect(config.issuer).toBe(idp.issuer);
         expect(config.scopes).toBe('openid profile email');
-        expect(config.displayName).toBe('Apodex SSO');
-        expect([...config.allowedEmailDomains]).toEqual(['apodex.com', 'tanka.ai']);
-        expect(isEmailDomainAllowed('Someone@Apodex.com', config)).toBe(true);
+        expect(config.displayName).toBe('Acme SSO');
+        expect([...config.allowedEmailDomains]).toEqual(['example.com', 'example.org']);
+        expect(isEmailDomainAllowed('Someone@Example.com', config)).toBe(true);
         expect(isEmailDomainAllowed('someone@gmail.com', config)).toBe(false);
         expect(isEmailDomainAllowed(undefined, config)).toBe(false);
         expect(isEmailDomainAllowed(undefined, { ...config, allowedEmailDomains: new Set() })).toBe(true);
@@ -55,10 +55,10 @@ describe('B-620 OIDC provider (discovery, JWKS, id_token)', () => {
 
     it('derives redirect and return URLs from PUBLIC_URL, proxy headers, or explicit overrides', () => {
         const config = resolveOidcConfig(env())!;
-        const headers = { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'vibe-test.apodex.site', host: '10.0.0.5:3005' };
+        const headers = { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'vibe-test.example.com', host: '10.0.0.5:3005' };
         delete process.env.PUBLIC_URL;
-        expect(resolveRedirectUri(config, { headers })).toBe('https://vibe-test.apodex.site/v1/auth/oidc/callback');
-        expect(resolveWebReturnBase(config, { headers })).toBe('https://vibe-test.apodex.site');
+        expect(resolveRedirectUri(config, { headers })).toBe('https://vibe-test.example.com/v1/auth/oidc/callback');
+        expect(resolveWebReturnBase(config, { headers })).toBe('https://vibe-test.example.com');
         process.env.PUBLIC_URL = 'https://api.example.com/';
         expect(resolveRedirectUri(config, { headers })).toBe('https://api.example.com/v1/auth/oidc/callback');
         delete process.env.PUBLIC_URL;
@@ -80,9 +80,9 @@ describe('B-620 OIDC provider (discovery, JWKS, id_token)', () => {
         expect(Object.fromEntries(url.searchParams)).toMatchObject({ response_type: 'code', client_id: idp.clientId, scope: 'openid profile email', state: 's', nonce: 'n', code_challenge: 'c', code_challenge_method: 'S256', redirect_uri: 'https://a/cb' });
 
         const now = Math.floor(Date.now() / 1000);
-        const token = idp.signIdToken({ iss: idp.issuer, aud: idp.clientId, sub: 'u1', iat: now, exp: now + 60, nonce: 'nonce-1', email: 'Jo@Apodex.com', name: 'Jo', preferred_username: 'Jo.Doe' });
+        const token = idp.signIdToken({ iss: idp.issuer, aud: idp.clientId, sub: 'u1', iat: now, exp: now + 60, nonce: 'nonce-1', email: 'Jo@Example.com', name: 'Jo', preferred_username: 'Jo.Doe' });
         const claims = await verifyOidcIdToken(token, { issuer: config.issuer, clientId: config.clientId, jwksUri: discovery.jwks_uri, expectedNonceHash: hashOidcValue('nonce-1'), fetchImpl });
-        expect(claims).toEqual({ sub: 'u1', email: 'jo@apodex.com', emailVerified: false, name: 'Jo', picture: undefined, preferredUsername: 'jo.doe' });
+        expect(claims).toEqual({ sub: 'u1', email: 'jo@example.com', emailVerified: false, name: 'Jo', picture: undefined, preferredUsername: 'jo.doe' });
     });
 
     it('rejects wrong nonce, audience, issuer, expiry, and tampered signatures', async () => {

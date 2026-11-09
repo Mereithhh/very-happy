@@ -6,7 +6,7 @@
  * view (ChatList) or presses 「加载更早」 — never by a background loop.
  *
  * Why: the previous background prefetch inserted a page above the reader
- * every ~0.5s until the whole history was in (Xu CHEN's Toolathon session:
+ * every ~0.5s until the whole history was in (a user's Toolathon session:
  * ~13k messages ≈ 134 pages ≈ a minute of top inserts after every open), each
  * compensated by a scrollTop write. iOS WebKit drops those writes while a
  * momentum scroll is running, and the un-virtualised list re-derives every

@@ -1,5 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -7,7 +8,8 @@ import { describe, expect, it } from 'vitest';
  * B-764: the repository is public, yet fixtures, dev harnesses, comments and a
  * placeholder carried the Owner's real team names, a team goal verbatim and
  * real session / worktree ids. This guard fails when any listed term shows up
- * again in package sources, specs or docs. Terms are stored only as SHA-256 of
+ * again in any tracked text file (B-905 widened it from package sources, specs
+ * and docs to the whole tree: ops config, scripts, e2e harnesses, root docs). Terms are stored only as SHA-256 of
  * their lowercase form, so the list itself never spells them out; use neutral
  * examples (「订单看板」, `atlas-pay`, `sess-lead-a`, `wt-0001`) instead.
  * To add a term: `printf %s '<term in lowercase>' | sha256sum`. A term that
@@ -26,10 +28,63 @@ const TERMS = new Set([
   '79383dd3e0fe8d495240818ea48154cc2baa34c2d103578fe038650753db05fd',
   '16d3fc1f8837ed2c29a81e7c14fc8e243a52d2578492e3d5ea8d21cc55e44626',
   'bfdc2a9c2b7345ed8e5264aa47354df0dc359974910907ede8ad8d33e92bb276',
+  // B-905: organisation names and domains, internal system and host names,
+  // cloud account and DNS zone ids.
+  'c12d355660984790ff3e5e3fe877b51e9f4f5ac02fe9895d72c043839ac06a4b',
+  '4c58b0c300aad7e18979910863e4bcdda5c4783b9430300a327ea1918873cda4',
+  '37268bac06c26e759c8658d038e569af58c95e81815da5c377853fc7c98de7f6',
+  '590a7c9abe8d8f3bdc4576b91aed45be63557db438960deddbc9213e9a4e16d8',
+  '2f8b2d10953eeadaeea8169cdde57c5986abcca2784fd4feb21493937ff48abd',
+  '4922a523992c13956a6f8594e1904e19dc10469b9e8f5df2350b4fa175d81f9d',
+  'bb58f059967b69b18f1a965635a7108ad72d2affe7330a6965e6a10c9a043791',
+  '351ade2f72aed0d0172b7e7ac34d25b66f36d4087c720ab6bb0987e5206a22b3',
+  '82832c4f0192b5746966c79ea7479e3ceb10382871a39751833adf0e32de204e',
+  'de17cc0a4a0eab1775b3f7a1010489ddbff3e6cc367fccbf0bfcabded127e5a3',
+  '6a61d722665c91493b6ec3bdb1c46fa24e5ee378fb4ee7afecd4d47a3ca2ac81',
+  '5a9dcf6762a14fa6e769b5b54298e3ed7c7e152b48c920bc84cfa134682e558b',
+  'f7d46d72dea46b5650c1ce579fe2b8662c0003f380df7b637f54e0dfb4849c8b',
+  '97b5dfaf9ba8af1a9e5a69894c407fa2ec00427a48fc3552d16780a0b90a9fcf',
+  'a3c1d7a1154c6f5c0bdd0174b3615e229f40448ebfeda321353bd1e7261a5ee8',
+  '1454fdfaba0386b1d5585d97014f0bdac530ebd03bb58c182e5e5d4a81caf553',
+  '27bdabef11ad43319177660626c4ee380aab396f2408c60d5db3ff3fc5c63e53',
+  '62ea4337f33ea47189614d7ec15d0cc32bc370f3d7ccbc651433064e26cb379e',
+  'bb64e3f7e06b7f652ecf84f9f2230f6efeeff2c51764126aafe97d465c64de26',
+  '04439f68a0fbafe0772ad48d7684ff96d79900a757457bcfb53bab305339543f',
+  '3dc07fdf3b52d1317659883ca75ef9fc64c312b536245696d2313a5d55732fe3',
+  'bb50b09bb31226899944b55551618599d7075978f62a969554c5a58e05d85855',
+  'd0dd96141cb7ebccd340a687664620cee3aae6bfabc49438a084423d76ee7c80',
+]);
+/**
+ * B-905: people's names, hashed with their words joined (`Ada Lovelace` →
+ * `adalovelace`); a run of 2 or 3 words separated by space, `_` or `-` is
+ * checked joined, so case, spacing and hyphen variants all hit.
+ */
+const NAME_TERMS = new Set([
+  '427fe6007ab776480fe71f080c359206fe7d76045c83035ee24d835c4b71bff2',
+  '3f7b38a9e903ab07f2c6463bafbe529af3a73a5ef11f02b8b7b60dcac1b0e785',
+  '5de635b77ae5259c288d4589099598f090645328daaa21396dd2446aa75b415c',
+  '9848f8d0c07253e6870deb5e7468d26228567e440f197f911eef59f4fb296995',
+  '713c01329caf6d9bba1fae48d32300229ff391cf25a275f15c6d57e8f1f0f22d',
+  '37647699220399701aa30f9e2c80a85fb5a2213168272a2e952d078f520f9d06',
+  '3b1e4bf1a81c9810657ab7a804d4933485353c52a7d262c04de6e5e76bc6769c',
+  '3d6f66fbb345b8a281e1d68445996ae7d0ac51eb115b589f7f65c52a485403e5',
+  '6c45faf596931eeec3102b56e206bc40ad533e744a1d58464129866fb9870390',
+  '48696fbbf5e1d701ff4d295eb36f52454557c6f1567e88a3d3f5fdbb9d760b1f',
+  '2f1a0dd023c22732df4df53785cbb1c28ae3a0729ae0c74a6743f967a78ab2f8',
+  '158c703de55fc66e1e87e50f2259da0ac976bffafddcb65912d186fbf51e5b73',
+  'f8107eae4f41230218b7af32867a0e25c3833e183962727498c69c62db6902c5',
+  '1a247082310cfb8aa2e06a73fb814d12a47e73885a37c442d450ec3db1b7fb90',
+  '2e762af0b28cafc73e1c8e0ccba59a8ceb1433f2b5adfa6fce5d4bd5671a2661',
+  '0ff7d4ce8f28b77972730c1f38355e594f8164251ca5f08935383c746f6a6fe8',
+  '74d74c4a8ad879e62943f1b0ae4c51a18bbc0a9ba2e8e087f26ff22e4b5ed69a',
+  '1fb0c759100166d60fa4af3661c5ee93920505ae0da6ab469bec9dfe6f7e9cbc',
+  '71b48da96280e44e6d50b766fc1f5fe1685a471e06607d144498e0b0b5f0e36b',
+  'f9255ef40e9e023753afc5efd5729d1e4decee20b93c877e41a8478569d19d35',
+  '768942bfcc18ff1e874d37dd008e5683fb86a211b6d5a46c75b56fd57401f1a5',
 ]);
 // Lengths (in code points) of the hashed terms, per script.
-const ASCII_LENGTHS = [7, 8, 9, 13];
-const CJK_LENGTHS = [2, 6, 7];
+const ASCII_LENGTHS = [6, 7, 8, 9, 12, 13, 17, 20, 21];
+const CJK_LENGTHS = [2, 3, 6, 7];
 const MIXED_LENGTHS = [11];
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -72,18 +127,33 @@ function findTerms(text: string, terms: Set<string>, asciiLengths: number[], cjk
   return hits;
 }
 
-const repo = new URL('../../../../', import.meta.url).pathname;
-const ROOTS = ['packages/happy-web-v2/src', 'packages/happy-cli/src', 'packages/happy-server/sources', 'packages/happy-wire/src', 'specs', 'docs'];
-function* files(dir: string): Generator<string> {
-  for (const name of readdirSync(dir)) {
-    if (name === 'node_modules' || name === 'dist') continue;
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) yield* files(path);
-    else if (/\.(tsx?|mts|mjs|cjs|js|css|md|json|html|ya?ml|txt)$/.test(name)) yield path;
+/** Runs of 2–3 ASCII words separated by space, `_` or `-`, joined; one that hashes into `terms` is a hit. */
+function findNames(text: string, terms: Set<string>, seen = new Map<string, boolean>()): string[] {
+  const hits: string[] = [];
+  for (const [run] of text.toLowerCase().matchAll(/[a-z]+(?:[ \t_-]+[a-z]+)+/g)) {
+    const words = run.split(/[ \t_-]+/);
+    for (let i = 0; i + 1 < words.length; i++) {
+      for (const n of [2, 3]) {
+        if (i + n > words.length) continue;
+        const joined = words.slice(i, i + n).join('');
+        let hit = seen.get(joined);
+        if (hit === undefined) seen.set(joined, hit = terms.has(sha256(joined)));
+        if (hit) hits.push(joined);
+      }
+    }
   }
+  return hits;
 }
 
-describe('sensitive terms (B-764)', () => {
+const repo = new URL('../../../../', import.meta.url).pathname;
+const TEXT = /\.(tsx?|mts|mjs|cjs|js|jsx|css|md|mdx|json|jsonl|html|ya?ml|txt|sh|toml|conf|env|example|tsv|csv|svg|plist|service|sql|prisma|rs)$|(^|\/)(Caddyfile[^/]*|Dockerfile[^/]*|Makefile|\.gitignore)$/;
+/** Every tracked text file; lockfiles are generated and skipped. */
+function trackedFiles(): string[] {
+  const out = execFileSync('git', ['ls-files', '-z'], { cwd: repo, encoding: 'utf8', maxBuffer: 64 << 20 });
+  return out.split('\0').filter((f) => f && TEXT.test(f) && !/(^|\/)(pnpm-lock\.yaml|yarn\.lock|package-lock\.json|Cargo\.lock)$/.test(f));
+}
+
+describe('sensitive terms (B-764, B-905)', () => {
   it('the matcher finds hashed ASCII, prefixed and CJK terms', () => {
     const terms = new Set(['atlas-pay', 'sess7', '订单看板'].map(sha256));
     expect(findTerms('team "Atlas-Pay-ops" / my-atlas-pay / sess7abc / 「订单看板」', terms, [5, 9], [4])).toEqual(['atlas-pay', 'atlas-pay', 'sess7', '订单看板']);
@@ -97,14 +167,25 @@ describe('sensitive terms (B-764)', () => {
     expect(find('xatlas pay 看板 / atlas pay\n看板 / atlas pay 看 / atlas, pay 看板')).toEqual([]);
   });
 
-  it('no listed term appears in package sources, specs or docs', () => {
+  it('the name matcher finds a joined 2–3 word name in any case, spacing or hyphen variant', () => {
+    const terms = new Set(['adalovelace', 'grace-hopper-x'.replace(/-/g, '')].map(sha256));
+    expect(findNames('Ada LOVELACE / ada-lovelace / ada_lovelace / reported by Grace Hopper X', terms)).toEqual(['adalovelace', 'adalovelace', 'adalovelace', 'gracehopperx']);
+    expect(findNames('adalovelace / ada, lovelace / ada\nlovelace / adam lovelace', terms)).toEqual([]);
+  });
+
+  it('no listed term appears in any tracked text file', () => {
     const seen = new Map<string, boolean>();
+    const nameSeen = new Map<string, boolean>();
     const hits: string[] = [];
-    for (const root of ROOTS) {
-      for (const file of files(join(repo, root))) {
-        if (findTerms(readFileSync(file, 'utf8'), TERMS, ASCII_LENGTHS, CJK_LENGTHS, MIXED_LENGTHS, seen).length) hits.push(file.slice(repo.length));
-      }
+    for (const file of trackedFiles()) {
+      const path = join(repo, file);
+      let text: string;
+      try {
+        if (statSync(path).size > 4 << 20) continue;
+        text = readFileSync(path, 'utf8');
+      } catch { continue; } // deleted in the working tree
+      if (findTerms(text, TERMS, ASCII_LENGTHS, CJK_LENGTHS, MIXED_LENGTHS, seen).length || findNames(text, NAME_TERMS, nameSeen).length) hits.push(file);
     }
     expect(hits).toEqual([]);
-  }, 60_000);
+  }, 120_000);
 });

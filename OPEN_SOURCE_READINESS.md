@@ -73,7 +73,7 @@ OAuth/Cloud policy, the Android Chrome tactile check, and release messaging.
 | CLI Smoke | PR #4 run `32825833131`: Linux Node 20/24 passed; private macOS/Windows jobs are intentionally unavailable to public PRs |
 | Post-merge main | Exact head `1bbd6bef`: Quality `32826119316` and CLI Smoke `32826119257` passed |
 | Protected PR | PR #1 run `32817704371`: all three required checks passed without bypass |
-| Fork isolation | PR #2 from `MiroMindAI` run `32817718015`: all checks passed on `ubuntu-latest`; 0 public runners/secrets/variables; closed unmerged |
+| Fork isolation | PR #2 from a fork account run `32817718015`: all checks passed on `ubuntu-latest`; 0 public runners/secrets/variables; closed unmerged |
 | Web | 112 test files / 1,495 tests; Vite production build; TypeScript zero errors |
 | CLI | 129 test files / 1,242 tests; build, types, isolated HOME runtime, public Linux smoke and private real-macOS Node 20/24 tag smoke |
 | Server | 58 test files / 410 tests; TypeScript zero errors; container/migration/persistence checks |

@@ -8,7 +8,7 @@
 
 ## 事故
 
-Xu CHEN 11-02 20:32：会话里的 agent 说「已经有另一个会话在做这件事」——另一个 Claude 进程
+用户 11-02 20:32：会话里的 agent 说「已经有另一个会话在做这件事」——另一个 Claude 进程
 （claude session `81074a3a…`）对话记录与本会话相同、收到了同一条消息、已改文件并在 9 台 ECS 上起了校准，
 会话列表里看不到它。B-272 的单写者锁只在一台机器、一个 `HAPPY_HOME_DIR` 内有效，且 read→check→write
 不原子；server 从不过问同一会话挂了几个 agent 连接：谁连进 `user:U:session:S` 房间，谁就收到每条用户消息。

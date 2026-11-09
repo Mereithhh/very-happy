@@ -29,7 +29,7 @@ body,
    iOS 26 home-screen web apps (viewport-fit=cover + black-translucent) report
    100dvh / 100svh / 100% / innerHeight short by the TOP safe-area inset
    (~47–59pt), so the app ends that far above the screen edge: a blank band
-   under the composer (Xu CHEN 2026-10-10, iOS 26.5, present before any
+   under the composer (a user 2026-10-10, iOS 26.5, present before any
    keyboard). Only 100lvh reads the full height there. Scoped to standalone
    WebKit so Safari tabs and Android keep the dynamic viewport.
    B-643 switched new installs to status-bar-style=default (the page starts

@@ -100,7 +100,7 @@ type QueryFn = (params: { prompt: QueryPrompt; options?: QueryOptions }) => Asyn
 
 /**
  * Short system-prompt tail; the real steering lives in `SIDE_QUESTION_REMINDER`
- * inside the user turn. 2026-09-22 (Yue DENG's report): with only this append,
+ * inside the user turn. 2026-09-22 (a user's report): with only this append,
  * a fork asked "现在在干嘛呢" answered like the MAIN agent — "现在真的起："
  * then stopped dead, because it went to call a tool it does not have. A system
  * prompt tail is too far from the question to beat a transcript full of the
