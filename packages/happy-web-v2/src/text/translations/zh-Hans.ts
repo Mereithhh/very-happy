@@ -2560,6 +2560,7 @@ export const zhHans: TranslationStructure = {
         projectHintDismiss: '不再提示',
         groupUnassignedByFolder: '按目录分组',
         unassignedActions: '「不在项目中」操作',
+        chatsActions: '「会话」操作',
         projectEmpty: '还没有内容。',
         projectEmptyOr: '或',
         startTeam: '组建团队',
@@ -3442,6 +3443,7 @@ export const zhHans: TranslationStructure = {
                 title: '按电脑分别设置 Claude Code 和 Codex 账号',
                 summary: '项目里可以给每台电脑选用哪个账号，新建会话时会显示这次用哪个。',
                 accounts: '项目设置里的「账号」可以按电脑分别设置 Claude Code 和 Codex 账号，公司项目用公司账号、个人项目用个人账号；在项目里新建会话时会显示这次用哪个账号',
+                groupByFolder: '没有项目时也能在侧栏「会话」旁的 ⋯ 里打开「按目录分组」',
             },
             nov08: {
                 title: 'Codex 崩溃会说明原因，并可接着做',

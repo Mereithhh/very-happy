@@ -144,7 +144,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.nov09.title',
     summaryKey: 'changelog.releases.nov09.summary',
-    itemKeys: ['changelog.releases.nov09.accounts'],
+    itemKeys: ['changelog.releases.nov09.accounts', 'changelog.releases.nov09.groupByFolder'],
   },
   {
     id: '2026-11-08-codex-killed-reason-new-session-with-summary',

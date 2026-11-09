@@ -2416,6 +2416,7 @@ export const en = {
         projectHintDismiss: 'Dismiss',
         groupUnassignedByFolder: 'Group by folder',
         unassignedActions: 'Not-in-a-project actions',
+        chatsActions: 'Chats actions',
         projectEmpty: 'Nothing here yet.',
         projectEmptyOr: 'or',
         startTeam: 'Start a team',
@@ -3314,6 +3315,7 @@ export const en = {
                 title: 'Set Claude Code and Codex accounts per machine',
                 summary: 'Pick the account each machine uses for a project, and see which one a new session will use.',
                 accounts: 'Project settings now let you pick the Claude Code and Codex account per machine, so work projects use the work account and personal ones the personal account; the project composer shows which account a new session will use',
+                groupByFolder: 'With no project yet, the ⋯ next to Chats in the sidebar can turn on Group by folder too',
             },
             nov08: {
                 title: 'Codex crashes now say why, with a way to carry on',
