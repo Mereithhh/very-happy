@@ -1,302 +1,299 @@
 file	line	category	change	snippet
-packages/happy-agent/src/config.ts	11	C CLI 默认地址	DEFAULT_*_URL 改新域名；authRelay 把 veryhappy.dev 列为 legacy 同站别名；已装机器靠 B-635 server-migrate 改 settings	const serverUrl = (process.env.HAPPY_SERVER_URL ?? 'https://veryhappy.dev').replace(/\/+$/, '');
-packages/happy-cli/src/commands/auth.ts	13	C CLI 默认地址	DEFAULT_*_URL 改新域名；authRelay 把 veryhappy.dev 列为 legacy 同站别名；已装机器靠 B-635 server-migrate 改 settings	const DEFAULT_SERVER_URL = 'https://veryhappy.dev';
-packages/happy-cli/src/commands/panels.ts	14	C CLI 默认地址	DEFAULT_*_URL 改新域名；authRelay 把 veryhappy.dev 列为 legacy 同站别名；已装机器靠 B-635 server-migrate 改 settings	* than `*` will not include veryhappy.dev unless it names it explicitly).
-packages/happy-cli/src/configuration.ts	14	C CLI 默认地址	DEFAULT_*_URL 改新域名；authRelay 把 veryhappy.dev 列为 legacy 同站别名；已装机器靠 B-635 server-migrate 改 settings	const DEFAULT_RELAY_URL = 'https://veryhappy.dev'
-packages/happy-cli/src/ui/authRelay.ts	1	C CLI 默认地址	DEFAULT_*_URL 改新域名；authRelay 把 veryhappy.dev 列为 legacy 同站别名；已装机器靠 B-635 server-migrate 改 settings	const DEFAULT_SERVER_URL = 'https://veryhappy.dev';
-packages/happy-cli/src/ui/authRelay.ts	2	C CLI 默认地址	DEFAULT_*_URL 改新域名；authRelay 把 veryhappy.dev 列为 legacy 同站别名；已装机器靠 B-635 server-migrate 改 settings	const LEGACY_CLOUD_SERVER_URL = 'https://happy.mereith.com';
-packages/happy-cli/src/ui/authRelay.ts	25	C CLI 默认地址	DEFAULT_*_URL 改新域名；authRelay 把 veryhappy.dev 列为 legacy 同站别名；已装机器靠 B-635 server-migrate 改 settings	// veryhappy.dev migration without weakening the fail-closed rule for an
-.github/workflows/deploy-hwsg.yml	94	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev \
-.github/workflows/deploy-hwsg.yml	97	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev \
-.github/workflows/deploy-hwsg.yml	181	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	url: https://veryhappy.dev
-.github/workflows/e2e-smoke.yml	24	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	default: https://veryhappy.dev
-.github/workflows/e2e-smoke.yml	30	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	default: https://veryhappy.dev
-.github/workflows/e2e-smoke.yml	64	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	VH_SMOKE_URL: ${{ inputs.url || 'https://veryhappy.dev' }}
-.github/workflows/publish.yml	277	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	VH_PUBLIC_ORIGIN: https://veryhappy.dev
-scripts/changelog/check-release.mjs	6	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	*   web: node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev --sha <sha>
-scripts/ci/deploy-blue-green-remote.sh	18	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	PUBLIC_ORIGIN=https://veryhappy.dev
-scripts/ci/deploy-blue-green-remote.sh	401	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	# `veryhappy.dev` resolves to Cloudflare from this host, not to the host itself,
-scripts/ci/deploy-server-remote.sh	31	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	PUBLIC_ORIGIN=https://veryhappy.dev
-scripts/release/advance-auto-update.sh	16	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	#   4. verify https://veryhappy.dev/v1/version/cli reports autoUpdateVersion=<X.Y.Z>
-scripts/release/advance-auto-update.sh	33	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	API="https://veryhappy.dev/v1/version/cli"
-scripts/release/check-recommended.mjs	8	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	origin = 'https://veryhappy.dev', fetcher = fetch,
-scripts/release/check-recommended.mjs	57	D 发布/CI	PUBLIC_ORIGIN、--live、check-recommended、advance-auto-update 改新域名；过渡期 deploy 同时探活两个 host	await waitForRecommendation(process.argv[2], { origin: process.env.VH_PUBLIC_ORIGIN ?? 'https://veryhappy.dev' });
-ops/production/Caddyfile.blue-green	40	E 边缘/Caddy	站点块加 vibe.apodex.site；阶段 3 旧 host 页面 301、API 继续服务（同 happy.mereith.com 模式）；状态机测试同步	veryhappy.dev, happy.mereith.com {
-ops/production/Caddyfile.blue-green	52	E 边缘/Caddy	站点块加 vibe.apodex.site；阶段 3 旧 host 页面 301、API 继续服务（同 happy.mereith.com 模式）；状态机测试同步	# B-365: happy.mereith.com is the legacy hostname (vh-us used to answer it).
-ops/production/Caddyfile.blue-green	58	E 边缘/Caddy	站点块加 vibe.apodex.site；阶段 3 旧 host 页面 301、API 继续服务（同 happy.mereith.com 模式）；状态机测试同步	host happy.mereith.com
-ops/production/Caddyfile.blue-green	61	E 边缘/Caddy	站点块加 vibe.apodex.site；阶段 3 旧 host 页面 301、API 继续服务（同 happy.mereith.com 模式）；状态机测试同步	redir @vh_legacy_page https://veryhappy.dev{uri} 301
-scripts/ci/test-blue-green-state-machine.sh	384	E 边缘/Caddy	站点块加 vibe.apodex.site；阶段 3 旧 host 页面 301、API 继续服务（同 happy.mereith.com 模式）；状态机测试同步	caddy_route=$(sed -n '/^veryhappy.dev, happy.mereith.com {/,$p' "$REPO_ROOT/ops/production/Caddyfile.blue-green" | grep -vE '^\s*(#|$)')
-docs/backlog.md	88	H 历史记录	不改（历史事实）；新 spec 只引用新域名	| B-365 | **老机 vh-us 退役清单**（东京 VPS，2026-09-07 起只剩冻结的 PostgreSQL 副本 + Caddy 转发/301）：① ≥2026-09-21 确认无回滚需求后销毁；② 销毁前把 `happy.mereith.com` 的 A 记
-docs/competition/2026-09-ux-review/README.md	17	H 历史记录	不改（历史事实）；新 spec 只引用新域名	> 日期 2026-09-03；代码事实基于本机 `main@796565d5` 与线上 `veryhappy.dev` 实测。
-docs/competition/2026-09-ux-review/README.md	416	H 历史记录	不改（历史事实）；新 spec 只引用新域名	**T-16b 预填深链（并入 T-37，NEXT）**：`veryhappy.dev/new?machine=&dir=&branch=&agent=&prompt=` 只预填不自动发送 + 会话/终端页「复制深链」。今天**没有生产者**（`docs/channels.md`
-docs/competition/2026-09-ux-review/README.md	448	H 历史记录	不改（历史事实）；新 spec 只引用新域名	**问题**：登录用户在一次发版后打开 veryhappy.dev，进入认证界面前要先取 entry+vendor+css ≈100 KB，再取 `AppRoot` **590,599 字节**（压缩后传输量，2026-09-03 对线上 `AppRoot-BrBtMrpo-59
-docs/competition/2026-09-ux-review/README.md	787	H 历史记录	不改（历史事实）；新 spec 只引用新域名	- **地址确定性**：`https://veryhappy.dev/dev/<machine>/<port>/`（或 `<port>--<machine>.veryhappy.dev`），账号鉴权、默认只对你自己；链接可直接扔进手机。
-docs/competition/2026-09-ux-review/README.md	816	H 历史记录	不改（历史事实）；新 spec 只引用新域名	（T-16b 的预填深链 `veryhappy.dev/new?machine=&dir=&branch=&agent=&prompt=` 并入本条——深链的补齐时机是「有东西会生成链接」的那一刻。）
-docs/competition/2026-09-ux-review/README.md	1027	H 历史记录	不改（历史事实）；新 spec 只引用新域名	代码事实全部在本机 `main@796565d5` 上核实；线上事实（`AppRoot` 590,599 字节、entry 资产名）2026-09-03 对 `veryhappy.dev` 实测。
-docs/competition/2026-09-ux-review/merged-draft.md	309	H 历史记录	不改（历史事实）；新 spec 只引用新域名	另加 `https://veryhappy.dev/new?machine=&dir=&branch=&agent=&prompt=`（只预填、不自动发送）与会话/终端页的 `复制深链`。
-docs/competition/2026-09-ux-review/self/product-map.md	69	H 历史记录	不改（历史事实）；新 spec 只引用新域名	| `FirstRunScreen`（`/`，0 台机器） | Eyebrow「YOUR FIRST MACHINE」→「Connect a computer to get started」。**快速路径**：一条 `curl https://veryhappy.dev/inst
-docs/competition/2026-09-ux-review/self/product-map.md	250	H 历史记录	不改（历史事实）；新 spec 只引用新域名	1. 手机打开 veryhappy.dev → 安装卡引导加到主屏；登录态延续。
-docs/competition/2026-09-ux-review/vendors/claude-code-desktop-rc/inventory.md	3	H 历史记录	不改（历史事实）；新 spec 只引用新域名	- Researched for: very-happy (veryhappy.dev) first-principles UX comparison
-docs/competition/2026-09-ux-review/vendors/orca/inventory.md	3	H 历史记录	不改（历史事实）；新 spec 只引用新域名	Lens: FEATURE & SURFACE INVENTORY. Researched 2026-09-03 for very-happy (veryhappy.dev).
-docs/competition/2026-09-ux-review/vendors/orca/orchestration.md	3	H 历史记录	不改（历史事实）；新 spec 只引用新域名	Researched 2026-09-03 for very-happy (veryhappy.dev). Orca desktop v1.4.195 (released 2026-09-02), mobile 0.0.47. All docs read the same day
-docs/competition/2026-09-ux-review/vendors/paseo/inventory.md	3	H 历史记录	不改（历史事实）；新 spec 只引用新域名	Lens: FEATURE & SURFACE INVENTORY. Researched 2026-09-03 for very-happy (veryhappy.dev).
-docs/competition/2026-09-ux-review/vendors/paseo/orchestration.md	5	H 历史记录	不改（历史事实）；新 spec 只引用新域名	- 为谁而研究：very-happy（veryhappy.dev，Happy Coder fork，web/PWA only，单 Owner + AI agent 集群）
-specs/2026-08-cloud-identity.md	9	H 历史记录	不改（历史事实）；新 spec 只引用新域名	`happy.mereith.com`；官方 Cloud 允许陌生用户直接注册，而不是要求每位用户先部署 server。
-specs/2026-08-cloud-identity.md	144	H 历史记录	不改（历史事实）；新 spec 只引用新域名	GOOGLE_ALLOWED_ORIGINS=https://happy.mereith.com
-specs/2026-08-cloud-identity.md	211	H 历史记录	不改（历史事实）；新 spec 只引用新域名	- Google Console 配置真实 Client ID 后，在 `https://happy.mereith.com` 完成一次新用户注册和再次登录。
-specs/2026-08-terminal-channel-v2.goal.md	66	H 历史记录	不改（历史事实）；新 spec 只引用新域名	- 发布完成：web 已部署 happy.mereith.com、CLI 已发 npm、daemon 已 vh-update
-specs/2026-08-terminal-mirror.goal.md	56	H 历史记录	不改（历史事实）；新 spec 只引用新域名	- 发布完成：web 已部署 happy.mereith.com、CLI 已发 npm、daemon 已 vh-update
-specs/2026-08-web-resume-sync.md	188	H 历史记录	不改（历史事实）；新 spec 只引用新域名	生产 `veryhappy.dev`（CloudFront）走 h2，并通告 `Alt-Svc: h3`：所有 REST 共用一条连接，WebSocket 另走 HTTP/1.1。
-specs/2026-08-zero-downtime-release.md	9	H 历史记录	不改（历史事实）；新 spec 只引用新域名	当前 `veryhappy.dev` 只有一个 `happy-server` 容器，Caddy 固定代理到
-specs/2026-08-zero-downtime-release.md	120	H 历史记录	不改（历史事实）；新 spec 只引用新域名	https://veryhappy.dev
-specs/2026-09-claude-history-import.md	90	H 历史记录	不改（历史事实）；新 spec 只引用新域名	- [ ] 真机：mac-office 升级后在 veryhappy.dev 导入一条 CLI 对话并继续（V-121，Owner 清账）。
-specs/2026-09-codex-history-import.md	96	H 历史记录	不改（历史事实）；新 spec 只引用新域名	- [ ] 真机：机器升级后在 veryhappy.dev 导入一条 codex CLI thread 并继续（V-153，Owner 清账）。
-specs/2026-09-machine-web-panels.md	43	H 历史记录	不改（历史事实）；新 spec 只引用新域名	| Web 以 https 提供（`veryhappy.dev` 经 CloudFront），iframe 指向 `http://<tailnet/LAN IP>` 会被浏览器按混合内容拦截 | `docs/operations.md:17` |
-specs/2026-09-markdown-engine-and-attachments.md	416	H 历史记录	不改（历史事实）；新 spec 只引用新域名	veryhappy.dev，而输入密码不在 agent 的可做范围内——所以这一项转 `docs/verify-queue.md`
-specs/2026-09-todo-agent-skill.md	42	H 历史记录	不改（历史事实）；新 spec 只引用新域名	- 双Mac均用实际安装的0.2.127执行`todo list`与`todo skill`：目标veryhappy.dev，当前账号0条记录、无truncated/invalid，输出skill与公开文档一致（忽略console.log额外尾换行）；没有真实待办写入。
-specs/2026-09-unified-agent-status.md	65	H 历史记录	不改（历史事实）；新 spec 只引用新域名	PR #348 merged as `c7db3fc2ff5074df8bd28756bad3f6d9e26c89a4`. Web assets at veryhappy.dev expose the new neutral identity and single-status 
-specs/2026-10-daemon-auto-update-follow-promote.md	10	H 历史记录	不改（历史事实）；新 spec 只引用新域名	| ② | relay 策略：`autoUpdatePolicy=latest`，`autoUpdateVersion=0.2.180`，`source=registry` | `curl https://veryhappy.dev/v1/version/cli` |
-specs/2026-10-spaces-a2a.design.md	139	H 历史记录	不改（历史事实）；新 spec 只引用新域名	- 迁移：没有账号级导出/导入工具；所有 JWT 和 AccountSecret 都系于 `HANDY_MASTER_SECRET`。最省事的做法是**域名切换而非数据搬家**：现有 DB 与 master secret 原样挂到新域名，用户只改 `HAPPY_SERVER_UR
-specs/2026-10-web-csp-and-auth-expiry.md	10	H 历史记录	不改（历史事实）；新 spec 只引用新域名	3. 全站没有 CSP 与其他安全头（`curl -sI https://veryhappy.dev/` 2026-10-26 实测）。
-specs/2026-10-web-csp-and-auth-expiry.md	68	H 历史记录	不改（历史事实）；新 spec 只引用新域名	- 应用代码里会发起 loopback/明文连接的路径，逐一核对：语音 asr/tts 固定 `wss://api.elevenlabs.io`；relay 只接受 https 配置（生产 relay-sg/us 均 https）；附件 local 模式的 URL 由 X-For
-docs/monitoring/very-happy-alerts.prometheusrule.yaml	23	M 监控	告警/探活目标加新域名，旧域名改为观察流量用	description: No blue/green slot of veryhappy.dev has been scrapeable for 5m (server down, or the vh-metrics tunnel broke).
-docs/operations.md	23	R 中继域名	阶段 5（可选）：relay 新增 relay-*.vibe.apodex.site 站点块+证书，HAPPY_RELAYS_JSON 换 URL；旧名并行到下线	| Singapore relay | `sg-hw`, `https://relay-sg.veryhappy.dev`, Docker + Caddy on `hw-sg` |
-docs/operations.md	24	R 中继域名	阶段 5（可选）：relay 新增 relay-*.vibe.apodex.site 站点块+证书，HAPPY_RELAYS_JSON 换 URL；旧名并行到下线	| US relay | `us-fb`, `https://relay-us.veryhappy.dev`, Docker + Caddy on `dmit-la` (Los Angeles). Moved off `fb-us`/k8sus on 2026-09-11 (B-
-ops/relay/Caddyfile.sg	1	R 中继域名	阶段 5（可选）：relay 新增 relay-*.vibe.apodex.site 站点块+证书，HAPPY_RELAYS_JSON 换 URL；旧名并行到下线	relay-sg.veryhappy.dev {
-ops/relay/Caddyfile.us	1	R 中继域名	阶段 5（可选）：relay 新增 relay-*.vibe.apodex.site 站点块+证书，HAPPY_RELAYS_JSON 换 URL；旧名并行到下线	relay-us.veryhappy.dev {
-scripts/ci/deploy-relays.sh	51	R 中继域名	阶段 5（可选）：relay 新增 relay-*.vibe.apodex.site 站点块+证书，HAPPY_RELAYS_JSON 换 URL；旧名并行到下线	'https://relay-sg.veryhappy.dev/health|sg-hw' \
-scripts/ci/deploy-relays.sh	52	R 中继域名	阶段 5（可选）：relay 新增 relay-*.vibe.apodex.site 站点块+证书，HAPPY_RELAYS_JSON 换 URL；旧名并行到下线	'https://relay-us.veryhappy.dev/health|us-fb'; do
-packages/happy-server/sources/app/api/securityHeaders.ts	84	S server 运行时	仅注释/文档字符串；运行时 origin 走 env（见 spec §2.2）	/** Public origin of this request (`https://veryhappy.dev`), when known. */
-packages/happy-server/sources/app/push/webhookNotify.ts	285	S server 运行时	仅注释/文档字符串；运行时 origin 走 env（见 spec §2.2）	* `https://veryhappy.dev`) on the server to get URL lines; unset, the
-packages/happy-agent/src/cli-smoke.test.ts	556	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(config.serverUrl).toBe('https://veryhappy.dev');
-packages/happy-agent/src/config.test.ts	21	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(config.serverUrl).toBe('https://veryhappy.dev');
-packages/happy-agent/src/credentials.test.ts	85	T 测试夹具	保留或改为中性 example 域名；不影响运行	config.serverUrl = 'https://veryhappy.dev';
-packages/happy-cli/src/assistant/memory.test.ts	30	T 测试夹具	保留或改为中性 example 域名；不影响运行	const { doc, replaced } = applyMemorySectionUpdate(DOC, '长期事实', '- [2026-08-13] 生产域名 veryhappy.dev')
-packages/happy-cli/src/assistant/memory.test.ts	32	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(doc).toContain('## 长期事实\n\n- [2026-08-13] 生产域名 veryhappy.dev\n')
-packages/happy-cli/src/commands/panels.test.ts	9	T 测试夹具	保留或改为中性 example 域名；不影响运行	it('CSP frame-ancestors without * or veryhappy.dev forbids; with them allows', () => {
-packages/happy-cli/src/commands/panels.test.ts	11	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(frameVerdict({ 'content-security-policy': 'frame-ancestors https://veryhappy.dev' }).embeddable).toBe(true)
-packages/happy-cli/src/configuration.test.ts	25	T 测试夹具	保留或改为中性 example 域名；不影响运行	.toBe('https://veryhappy.dev')
-packages/happy-cli/src/resume/localHappyAgentAuth.test.ts	34	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(readLocalHappyAgentCredentials(writeAgentKey(), 'https://veryhappy.dev'))
-packages/happy-cli/src/sessionProtocol/toolResultPayload.test.ts	46	T 测试夹具	保留或改为中性 example 域名；不影响运行	const content = 'Web search results for query: "vh"\n\nLinks: [{"title":"VH","url":"https://veryhappy.dev"}]';
-packages/happy-cli/src/ui/authFlow.test.ts	85	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(credentialRelayProblem('https://veryhappy.dev', 'https://relay.example.com')).toContain('Credentials belong to');
-packages/happy-cli/src/ui/authFlow.test.ts	88	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(credentialRelayProblem(undefined, 'https://veryhappy.dev')).toBeUndefined();
-packages/happy-cli/src/ui/authFlow.test.ts	92	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(credentialRelayProblem(undefined, 'https://happy.mereith.com')).toBeUndefined();
-packages/happy-cli/src/ui/authFlow.test.ts	93	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(credentialRelayProblem(undefined, 'https://happy.mereith.com/')).toBeUndefined();
-packages/happy-cli/src/ui/doctorPrivacy.test.ts	55	T 测试夹具	保留或改为中性 example 域名；不影响运行	serverUrl: 'https://veryhappy.dev',
-packages/happy-server/sources/app/api/htmlConfigInjection.spec.ts	24	T 测试夹具	保留或改为中性 example 域名；不影响运行	<meta property="og:image" content="https://veryhappy.dev/og-image.png" />
-packages/happy-server/sources/app/api/htmlConfigInjection.spec.ts	56	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(html).toContain('og:image" content="https://veryhappy.dev/og-image.png"');
-packages/happy-server/sources/app/api/routes/accountAuthRoutes.spec.ts	175	T 测试夹具	保留或改为中性 example 域名；不影响运行	process.env.AUTH_EMAIL_FROM = 'login@veryhappy.dev';
-packages/happy-server/sources/app/api/routes/accountAuthRoutes.spec.ts	260	T 测试夹具	保留或改为中性 example 域名；不影响运行	process.env.GOOGLE_ALLOWED_ORIGINS = 'https://veryhappy.dev';
-packages/happy-server/sources/app/api/routes/accountAuthRoutes.spec.ts	589	T 测试夹具	保留或改为中性 example 域名；不影响运行	process.env.AUTH_EMAIL_FROM = 'login@veryhappy.dev';
-packages/happy-server/sources/app/api/routes/accountAuthRoutes.spec.ts	771	T 测试夹具	保留或改为中性 example 域名；不影响运行	process.env.GOOGLE_ALLOWED_ORIGINS = 'https://veryhappy.dev';
-packages/happy-server/sources/app/api/routes/accountAuthRoutes.spec.ts	774	T 测试夹具	保留或改为中性 example 域名；不影响运行	async function inject(payloadOverride: Record<string, unknown> = {}, origin = 'https://veryhappy.dev') {
-packages/happy-server/sources/app/api/routes/accountAuthRoutes.spec.ts	877	T 测试夹具	保留或改为中性 example 域名；不影响运行	process.env.AUTH_EMAIL_FROM = 'login@veryhappy.dev';
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	11	T 测试夹具	保留或改为中性 example 域名；不影响运行	'document-uri': 'https://veryhappy.dev/session/cmabcdefghijklmnop1234?token=secret',
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	18	T 测试夹具	保留或改为中性 example 域名；不影响运行	{ type: 'csp-violation', body: { documentURL: 'https://veryhappy.dev/', effectiveDirective: 'connect-src', blockedURL: 'wss://relay.example/
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	20	T 测试夹具	保留或改为中性 example 域名；不影响运行	{ type: 'csp-violation', body: { documentURL: 'https://veryhappy.dev/', effectiveDirective: 'script-src', blockedURL: 'inline', disposition:
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	33	T 测试夹具	保留或改为中性 example 域名；不影响运行	'document-uri': 'https://veryhappy.dev/terminal/cmvpe72j702e7qn2ulflthf88',
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	42	T 测试夹具	保留或改为中性 example 域名；不影响运行	const [app] = parseCspReports(report('http://127.0.0.1:38811/app-loopback', 'https://veryhappy.dev/assets/index-6c54afa6.js'));
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	44	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(parseCspReports(report('http://10.0.0.5/app-private', 'https://veryhappy.dev/assets/index.js'))[0]).toMatchObject({ scheme: 'http', h
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	45	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(parseCspReports(report('http://example.com/app-public', 'https://veryhappy.dev/assets/index.js'))[0]).toMatchObject({ scheme: 'http',
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	47	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(parseCspReports(report('http://localhost:5173/', 'https://veryhappy.dev/terminal/cmvpe72j702e7qn2ulflthf88'))[0].source).toBe('inline
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	50	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(parseCspReports([{ type: 'csp-violation', body: { documentURL: 'https://veryhappy.dev/session/x', effectiveDirective: 'connect-src', 
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	58	T 测试夹具	保留或改为中性 example 域名；不影响运行	for (const host of ['172.32.0.1', '8.8.8.8', '100.128.0.1', 'veryhappy.dev', '[2001:db8::1]', '999.1.1.1']) expect(hostClass(host), host).to
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	62	T 测试夹具	保留或改为中性 example 域名；不影响运行	const doc = 'https://veryhappy.dev/session/abc#x';
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	65	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(sourceClass('https://veryhappy.dev/assets/a.js', doc)).toBe('self');
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	66	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(sourceClass('https://veryhappy.dev/session/abc', doc)).toBe('inline');
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	84	T 测试夹具	保留或改为中性 example 域名；不影响运行	const legacy = await app.inject({ method: 'POST', url: '/v1/csp-report', headers: { 'content-type': 'application/csp-report' }, payload: JSO
-packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	86	T 测试夹具	保留或改为中性 example 域名；不影响运行	const modern = await app.inject({ method: 'POST', url: '/v1/csp-report', headers: { 'content-type': 'application/reports+json' }, payload: J
-packages/happy-server/sources/app/api/routes/googleIdentityLink.pglite.integration.spec.ts	38	T 测试夹具	保留或改为中性 example 域名；不影响运行	process.env.GOOGLE_ALLOWED_ORIGINS = 'https://veryhappy.dev';
-packages/happy-server/sources/app/api/routes/googleIdentityLink.pglite.integration.spec.ts	98	T 测试夹具	保留或改为中性 example 域名；不影响运行	headers: { origin: 'https://veryhappy.dev' },
-packages/happy-server/sources/app/api/routes/googleIdentityLink.pglite.integration.spec.ts	145	T 测试夹具	保留或改为中性 example 域名；不影响运行	headers: { origin: 'https://veryhappy.dev' },
-packages/happy-server/sources/app/api/securityHeaders.spec.ts	43	T 测试夹具	保留或改为中性 example 域名；不影响运行	const policy = reportOnlyContentSecurityPolicy({ html: HTML, serverUrl: 'https://api.example.com', requestOrigin: 'https://veryhappy.dev' })
-packages/happy-server/sources/app/api/securityHeaders.spec.ts	46	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(connect).toContain('https://veryhappy.dev wss://veryhappy.dev');
-packages/happy-server/sources/app/api/securityHeaders.spec.ts	53	T 测试夹具	保留或改为中性 example 域名；不影响运行	for (const policy of [contentSecurityPolicy({ html: HTML, serverUrl: 'same-origin' }), reportOnlyContentSecurityPolicy({ html: HTML, serverU
-packages/happy-server/sources/app/api/securityHeaders.spec.ts	65	T 测试夹具	保留或改为中性 example 域名；不影响运行	const relayOrigins = ['https://relay-sg.veryhappy.dev', 'https://relay-us.veryhappy.dev/', 'not a url'];
-packages/happy-server/sources/app/api/securityHeaders.spec.ts	66	T 测试夹具	保留或改为中性 example 域名；不影响运行	const connect = directive(reportOnlyContentSecurityPolicy({ html: HTML, serverUrl: 'same-origin', requestOrigin: 'https://veryhappy.dev', re
-packages/happy-server/sources/app/api/securityHeaders.spec.ts	67	T 测试夹具	保留或改为中性 example 域名；不影响运行	for (const origin of ['https://relay-sg.veryhappy.dev', 'wss://relay-sg.veryhappy.dev', 'https://relay-us.veryhappy.dev', 'wss://relay-us.ve
-packages/happy-server/sources/app/api/webDocumentOnSend.spec.ts	54	T 测试夹具	保留或改为中性 example 域名；不影响运行	const { app } = await webApp('enforce', ['https://relay-sg.veryhappy.dev', 'https://relay-us.veryhappy.dev']);
-packages/happy-server/sources/app/api/webDocumentOnSend.spec.ts	55	T 测试夹具	保留或改为中性 example 域名；不影响运行	const res = await app.inject({ url: '/terminal/cmvpe72j702e7qn2ulflthf88', headers: { host: 'veryhappy.dev', 'x-forwarded-proto': 'https' } 
-packages/happy-server/sources/app/api/webDocumentOnSend.spec.ts	57	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(connect).toContain('https://veryhappy.dev wss://veryhappy.dev');
-packages/happy-server/sources/app/api/webDocumentOnSend.spec.ts	58	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(connect).toContain('https://relay-sg.veryhappy.dev wss://relay-sg.veryhappy.dev https://relay-us.veryhappy.dev wss://relay-us.veryhap
-packages/happy-server/sources/app/auth/emailAuthConfig.spec.ts	13	T 测试夹具	保留或改为中性 example 域名；不影响运行	AUTH_EMAIL_FROM: 'login@veryhappy.dev',
-packages/happy-server/sources/app/auth/emailAuthConfig.spec.ts	19	T 测试夹具	保留或改为中性 example 域名；不影响运行	AUTH_EMAIL_FROM: 'login@veryhappy.dev',
-packages/happy-server/sources/app/auth/emailSender.spec.ts	11	T 测试夹具	保留或改为中性 example 域名；不影响运行	provider: 'cloudflare', from: 'login@veryhappy.dev', ttlMinutes: 10, ...limits,
-packages/happy-server/sources/app/auth/emailSender.spec.ts	23	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(payload).toMatchObject({ to: 'person@example.com', from: 'login@veryhappy.dev' });
-packages/happy-server/sources/app/auth/emailSender.spec.ts	31	T 测试夹具	保留或改为中性 example 域名；不影响运行	provider: 'resend', from: 'login@veryhappy.dev', ttlMinutes: 10, ...limits,
-packages/happy-server/sources/app/auth/emailSender.spec.ts	48	T 测试夹具	保留或改为中性 example 域名；不影响运行	provider: 'cloudflare', from: 'login@veryhappy.dev', ttlMinutes: 10, ...limits,
-packages/happy-server/sources/app/auth/googleLoginSecurity.spec.ts	17	T 测试夹具	保留或改为中性 example 域名；不影响运行	GOOGLE_ALLOWED_ORIGINS: 'https://veryhappy.dev,http://localhost:8082',
-packages/happy-server/sources/app/auth/googleLoginSecurity.spec.ts	19	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(isGoogleOriginAllowed('https://veryhappy.dev', config)).toBe(true);
-packages/happy-server/sources/app/auth/googleLoginSecurity.spec.ts	24	T 测试夹具	保留或改为中性 example 域名；不影响运行	GOOGLE_ALLOWED_ORIGINS: 'https://user:password@veryhappy.dev',
-packages/happy-server/sources/app/push/webhookNotify.spec.ts	514	T 测试夹具	保留或改为中性 example 域名；不影响运行	process.env.HAPPY_WEB_URL = 'https://veryhappy.dev';
-packages/happy-server/sources/app/push/webhookNotify.spec.ts	517	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(p.message.split('\n')).toEqual(['需要你介入：scan the QR code', '会话：deploy', '链接：https://veryhappy.dev/machine/m1/panel/desktop', 'session:
-packages/happy-server/sources/app/push/webhookNotify.spec.ts	519	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(q.message).toContain('链接：https://veryhappy.dev/session/s1');
-packages/happy-web-v2/e2e/mermaidActions.mjs	354	T 测试夹具	保留或改为中性 example 域名；不影响运行	check(prodRequests.length === 0, 'no request reached *.veryhappy.dev', prodRequests.slice(0, 3).join(' '));
-packages/happy-web-v2/e2e/session-switch.mjs	292	T 测试夹具	保留或改为中性 example 域名；不影响运行	// Never production: anything aimed at veryhappy.dev is cut (and counted).
-packages/happy-web-v2/e2e/session-switch.mjs	446	T 测试夹具	保留或改为中性 example 域名；不影响运行	console.log(`requests to veryhappy.dev (blocked): ${prodHits}`);
-packages/happy-web-v2/e2e/smoke.mjs	7	T 测试夹具	保留或改为中性 example 域名；不影响运行	*   VH_SMOKE_URL=https://veryhappy.dev VH_SMOKE_USERNAME=… VH_SMOKE_PASSWORD=… \
-packages/happy-web-v2/e2e/smokeLib.mjs	13	T 测试夹具	保留或改为中性 example 域名；不影响运行	const url = (env.VH_SMOKE_URL || 'https://veryhappy.dev').replace(/\/+$/, '');
-packages/happy-web-v2/e2e/smokeLib.test.mjs	9	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(c).toMatchObject({ url: 'https://veryhappy.dev', username: 'smoke', machine: null, skipReason: null });
-packages/happy-web-v2/e2e/sync-resume.mjs	24	T 测试夹具	保留或改为中性 example 域名；不影响运行	* --h2 (production shape: veryhappy.dev is CloudFront h2 + Alt-Svc h3): a
-packages/happy-web-v2/e2e/sync-resume.mjs	197	T 测试夹具	保留或改为中性 example 域名；不影响运行	// Production (veryhappy.dev behind CloudFront) speaks h2 (and offers h3): one
-packages/happy-web-v2/src/app/sessionMenu.test.ts	88	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(sessionLink('https://veryhappy.dev/', '/session/abc')).toBe('https://veryhappy.dev/session/abc');
-packages/happy-web-v2/src/app/sessionMenu.test.ts	89	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(sessionLink('https://veryhappy.dev', 'terminal/m?tid=1')).toBe('https://veryhappy.dev/terminal/m?tid=1');
-packages/happy-web-v2/src/app/swTakeover.test.ts	143	T 测试夹具	保留或改为中性 example 域名；不影响运行	const shell = 'https://veryhappy.dev/index.html?__WB_REVISION__=abc123';
-packages/happy-web-v2/src/app/swTakeover.test.ts	144	T 测试夹具	保留或改为中性 example 域名；不影响运行	const asset = 'https://veryhappy.dev/assets/index-abc.js';
-packages/happy-web-v2/src/app/swTakeover.test.ts	147	T 测试夹具	保留或改为中性 example 域名；不影响运行	const precache = new FakeCache([shell, asset, 'https://veryhappy.dev/manifest.webmanifest']);
-packages/happy-web-v2/src/app/swTakeover.test.ts	150	T 测试夹具	保留或改为中性 example 域名；不影响运行	keys: async () => ['workbox-precache-v2-https://veryhappy.dev/', 'very-happy-assets-v1'],
-packages/happy-web-v2/src/app/swTakeover.test.ts	155	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(precache.urls).toEqual([asset, 'https://veryhappy.dev/manifest.webmanifest']);
-packages/happy-web-v2/src/auth/authLatch.test.ts	16	T 测试夹具	保留或改为中性 example 域名；不影响运行	const SERVER = 'https://veryhappy.dev';
-packages/happy-web-v2/src/components/RelayBadge.test.tsx	8	T 测试夹具	保留或改为中性 example 域名；不影响运行	vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'https://veryhappy.dev' }));
-packages/happy-web-v2/src/components/tools/builtinTools.test.ts	137	T 测试夹具	保留或改为中性 example 域名；不影响运行	const peer = (id: string, extra: Record<string, unknown> = {}) => ({ sessionId: id, kind: 'managed', cwd: '/home/me/repo', flavor: 'claude',
-packages/happy-web-v2/src/components/tools/builtinTools.test.ts	157	T 测试夹具	保留或改为中性 example 域名；不影响运行	state: 'completed', result: mcpText({ delivered: true, messageId: 'm-9', to: 's-2', url: 'https://veryhappy.dev/session/s-2' }),
-packages/happy-web-v2/src/components/tools/builtinTools.test.ts	269	T 测试夹具	保留或改为中性 example 域名；不影响运行	state: 'completed', result: 'Spawned session abcdefgh1234 in /w and sent the first prompt. https://veryhappy.dev/session/abcdefgh1234',
-packages/happy-web-v2/src/screens/notifications/pushSwPresence.test.ts	20	T 测试夹具	保留或改为中性 example 域名；不影响运行	location: new URL('https://veryhappy.dev/sw.js'),
-packages/happy-web-v2/src/screens/onboarding/firstRun.test.ts	44	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(firstMachineBootstrapCommand('https://veryhappy.dev', 'https://veryhappy.dev')).toBe(CLOUD_BOOTSTRAP_COMMAND);
-packages/happy-web-v2/src/screens/onboarding/firstRun.test.ts	45	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(firstMachineCommands('https://veryhappy.dev', 'https://veryhappy.dev')).toEqual({
-packages/happy-web-v2/src/screens/onboarding/firstRun.test.ts	68	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(firstMachineCommands('not a URL', 'also bad')).toEqual(firstMachineCommands('https://veryhappy.dev', 'https://veryhappy.dev'));
-packages/happy-web-v2/src/screens/public/publicContent.test.ts	655	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(readme).toContain('href="https://veryhappy.dev/welcome"');
-packages/happy-web-v2/src/screens/session/SessionDetailScreen.keys.test.tsx	4	T 测试夹具	保留或改为中性 example 域名；不影响运行	* on veryhappy.dev c50066e1. Cause: B-585 mounted <WorktreeSetupBanner key={id}>
-packages/happy-web-v2/src/screens/session/builtinToolView.test.tsx	70	T 测试夹具	保留或改为中性 example 域名；不影响运行	const bare = render(message('b1', 'session_spawn', { directory: '/w', prompt: 'go' }, 'completed', 'Spawned session zyxwvuts9876 in /w. http
-packages/happy-web-v2/src/screens/session/chatPrependFollow.test.tsx	3	T 测试夹具	保留或改为中性 example 域名；不影响运行	* Regression (Owner 2026-10-13, veryhappy.dev eccf6b55): scrolling up an idle
-packages/happy-web-v2/src/screens/session/relayLabel.test.ts	6	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(relayRegionLabel({ transport: 'regional', state: 'connected', region: 'US West' }, 'https://veryhappy.dev')).toBe('🇺🇸 US WEST');
-packages/happy-web-v2/src/screens/session/relayLabel.test.ts	10	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(relayRegionLabel({ transport: 'legacy', state: 'fallback' }, 'https://veryhappy.dev')).toBe('🇸🇬 SG');
-packages/happy-web-v2/src/screens/session/spawnedSessionId.test.ts	7	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(spawnedSessionIdOf('Spawned session cmtabc123456 in /w and sent the first prompt. https://veryhappy.dev/session/cmtabc123456')).toBe(
-packages/happy-web-v2/src/screens/session/toolResultCards.test.tsx	76	T 测试夹具	保留或改为中性 example 域名；不影响运行	const text = 'Web search results for query: "vh"\n\nLinks: [{"title":"Very Happy","url":"https://veryhappy.dev"}]';
-packages/happy-web-v2/src/screens/session/toolResultCards.test.tsx	79	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(html).toContain('href="https://veryhappy.dev"');
-packages/happy-web-v2/src/screens/session/turnActivityFold.test.tsx	3	T 测试夹具	保留或改为中性 example 域名；不影响运行	* B-607 regression (Owner 2026-10-16, veryhappy.dev): scrolled up in a
-packages/happy-web-v2/src/screens/teams/teamTaskState.test.ts	111	T 测试夹具	保留或改为中性 example 域名；不影响运行	* Production replay (veryhappy.dev, read-only, 2026-10-22 09:58:29Z): the
-packages/happy-web-v2/src/screens/workspace/browserAddress.test.ts	4	T 测试夹具	保留或改为中性 example 域名；不影响运行	const origin='https://veryhappy.dev';
-packages/happy-web-v2/src/screens/workspace/browserAddress.test.ts	8	T 测试夹具	保留或改为中性 example 域名；不影响运行	for(const value of ['', 'javascript:alert(1)','data:text/html,hello','file:///etc/passwd','https://user:secret@example.com','https://veryhap
-packages/happy-web-v2/src/sync/serverUrlResolution.test.ts	10	T 测试夹具	保留或改为中性 example 域名；不影响运行	fallback: 'https://veryhappy.dev',
-packages/happy-web-v2/src/sync/serverUrlResolution.test.ts	20	T 测试夹具	保留或改为中性 example 域名；不影响运行	fallback: 'https://veryhappy.dev',
-packages/happy-web-v2/src/testing/browserTestGlobals.ts	46	T 测试夹具	保留或改为中性 example 域名；不影响运行	location: { origin: options.origin ?? 'https://veryhappy.dev' },
-packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	4	T 测试夹具	保留或改为中性 example 域名；不影响运行	const page = 'https://veryhappy.dev/session/abc';
-packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	7	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(skillDocumentUrl('/skills/provider/SKILL.md?from=help', page)).toBe('https://veryhappy.dev/skills/provider/SKILL.md?from=help');
-packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	8	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(skillDocumentUrl('https://veryhappy.dev/skills/todos/SKILL.md', page)).toBe('https://veryhappy.dev/skills/todos/SKILL.md');
-packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	11	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(skillDocumentUrl('references/config.md', page, 'https://veryhappy.dev/skills/provider/SKILL.md')).toBe('https://veryhappy.dev/skills/
-packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	12	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(skillDocumentUrl('../todos/SKILL.md', page, 'https://veryhappy.dev/skills/provider/SKILL.md')).toBe('https://veryhappy.dev/skills/tod
-packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	15	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(skillDocumentUrl('/skills/provider/SKILL.md', page, page, '/happy.v2/')).toBe('https://veryhappy.dev/happy.v2/skills/provider/SKILL.m
-packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	16	T 测试夹具	保留或改为中性 example 域名；不影响运行	expect(skillDocumentUrl('/happy.v2/skills/provider/SKILL.md', page, page, '/happy.v2/')).toBe('https://veryhappy.dev/happy.v2/skills/provide
-packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	18	T 测试夹具	保留或改为中性 example 域名；不影响运行	it.each([undefined, '', '#setup', 'javascript:alert(1)', 'https://elsewhere.dev/skills/provider/SKILL.md', '//elsewhere.dev/skills/provider/
-.agents/skills/release/SKILL.md	9	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	Production is `veryhappy.dev`: server + Web V2 on vh-sg (AWS Singapore), published CLI on
-.agents/skills/release/SKILL.md	73	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev --sha <sha>
-.agents/skills/release/SKILL.md	173	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	current `veryhappy.dev` origin, stop and establish the exact target first.
-.agents/skills/release/SKILL.md	222	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	curl -fsS https://veryhappy.dev/v1/version/cli   # source:"registry", recommendedVersion = autoUpdateVersion = X.Y.Z, autoUpdatePolicy:"late
-.agents/skills/release/SKILL.md	271	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	curl -fsS https://veryhappy.dev/v1/version/cli   # must not be source:"unavailable"
-.agents/skills/release/SKILL.md	321	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	curl -fsS https://veryhappy.dev/health
-.agents/skills/release/SKILL.md	322	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	VH_MAIN=$(curl -fsS https://veryhappy.dev/ | grep -oE '/assets/[^" ]+\.js' | head -1)
-.agents/skills/release/SKILL.md	323	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	curl -fsSI "https://veryhappy.dev${VH_MAIN}" | grep -i '^content-type:.*javascript'
-AGENTS.md	5	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	生产 `veryhappy.dev` 的 server/Web 在 **vh-sg（AWS 新加坡）**；拓扑与恢复以 [operations](docs/operations.md) 为准。
-OPEN_SOURCE_READINESS.md	99	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	`/welcome` each contain exactly one runtime config for `https://veryhappy.dev`.
-PRIVACY.md	6	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	`https://veryhappy.dev`. A self-hosted operator controls their own deployment
-README.md	13	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	<a href="https://veryhappy.dev/welcome">
-README.md	31	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	<a href="https://veryhappy.dev/welcome"><strong>Explore the live workspace</strong></a>
-README.md	61	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	<a href="https://veryhappy.dev/whats-new">
-README.md	71	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	[See the full update →](https://veryhappy.dev/whats-new) · [All releases](https://veryhappy.dev/changelog)
-README.md	192	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	<a href="https://veryhappy.dev/welcome">
-README.md	216	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	<a href="https://veryhappy.dev/welcome#proofs">
-README.md	257	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	https://veryhappy.dev/install.sh \
-README.md	310	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	[veryhappy.dev](https://veryhappy.dev), choose the connected machine,
-README.zh-CN.md	13	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	<a href="https://veryhappy.dev/welcome">
-README.zh-CN.md	31	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	<a href="https://veryhappy.dev/welcome"><strong>体验在线工作区</strong></a>
-README.zh-CN.md	57	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	<a href="https://veryhappy.dev/whats-new">
-README.zh-CN.md	67	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	[查看完整更新（含动图）→](https://veryhappy.dev/whats-new) · [全部更新记录](https://veryhappy.dev/changelog)
-README.zh-CN.md	154	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	<a href="https://veryhappy.dev/welcome">
-README.zh-CN.md	175	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	<a href="https://veryhappy.dev/welcome#proofs">
-README.zh-CN.md	211	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	https://veryhappy.dev/install.sh \
-README.zh-CN.md	251	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	只批准由你刚刚发起的机器请求。随后打开 [veryhappy.dev](https://veryhappy.dev)，选择已连接
-RELEASING.md	116	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	- **Default server** is `https://veryhappy.dev` (override with
-docs/PROCESS.md	152	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	`node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev --sha <目标>`
-docs/PROCESS.md	213	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	curl -s -o /dev/null -w '%{http_code}\n' https://veryhappy.dev/health   # 要 200
-docs/PROCESS.md	214	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	M=$(curl -s https://veryhappy.dev/ | grep -oE '/assets/[^"]+\.js' | head -1)
-docs/PROCESS.md	215	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	curl -s -o /dev/null -w '%{content_type}\n' "https://veryhappy.dev$M"   # 必须是 javascript
-docs/configuration.md	75	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	| `VH_OWNER_BOARD_ENABLED` | Server-wide switch for the briefing board (汇报板, B-766, [spec](../specs/2026-10-owner-briefing.md)): `/v1/attent
-docs/configuration.md	78	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	| `VH_FEEDBACK_ADMIN_ACCOUNT_IDS` | Who can read in-app feedback (B-836, [spec](../specs/2026-10-feedback.md)): comma- or space-separated ac
-docs/configuration.md	322	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	| `HAPPY_SERVER_URL` | HTTP/WebSocket relay used by the CLI and daemon | `https://veryhappy.dev` |
-docs/configuration.md	323	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	| `HAPPY_WEBAPP_URL` | Browser origin opened for the one-time machine approval | `https://veryhappy.dev` |
-docs/deployment.md	4	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	`veryhappy.dev` live in [`operations.md`](operations.md).
-docs/deployment.md	220	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	GOOGLE_ALLOWED_ORIGINS=https://veryhappy.dev
-docs/development.md	24	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	`https://veryhappy.dev`, preserving a same-origin browser shape.
-docs/getting-started.md	31	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	https://veryhappy.dev/install.sh \
-docs/getting-started.md	164	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	Open [veryhappy.dev](https://veryhappy.dev). Use an email verification code by
-docs/operations.md	4	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	`veryhappy.dev` deployment. It records topology and procedures, never secret
-docs/operations.md	17	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	| Public endpoint | `https://veryhappy.dev` behind AWS CloudFront `E2JUP4WHDXD8HU` since 2026-09-25 (the Cloudflare apex record is a DNS-onl
-docs/operations.md	25	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	| Retired origin | `vh-us` (Tokyo ByteVirt VPS, 69.8.128.238) — server stopped 2026-09-07, PostgreSQL frozen at 08:14 UTC that day; retired 
-docs/operations.md	187	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	It is deliberately not one-strike, because `veryhappy.dev` resolves to the CDN
-docs/operations.md	331	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	gh workflow run e2e-smoke.yml -f url=https://veryhappy.dev
-docs/operations.md	333	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	VH_SMOKE_URL=https://veryhappy.dev VH_SMOKE_USERNAME=… VH_SMOKE_PASSWORD=… \
-docs/operations.md	781	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	curl -fsS https://veryhappy.dev/health
-docs/operations.md	782	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	VH_MAIN=$(curl -fsS https://veryhappy.dev/ | grep -oE '/assets/[^" ]+\.js' | head -1)
-docs/operations.md	783	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	curl -fsSI "https://veryhappy.dev${VH_MAIN}" | grep -i '^content-type:.*javascript'
-docs/public-server.md	3	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	`https://veryhappy.dev` is the maintainer-operated Very Happy instance and
-docs/upgrading.md	70	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	`TRUST_PROXY`, or already using an IP list, are unaffected (veryhappy.dev already
-docs/upgrading.md	84	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	未设置 `TRUST_PROXY` 或已经使用 IP 列表的部署不受影响（官方 veryhappy.dev 已使用
-packages/happy-app/sources/components/SessionConsole.tsx	50	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	<Text style={styles.accent}>✓</Text> relay connected · happy.mereith.com
-packages/happy-cli/README.md	18	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	By default it connects to **https://veryhappy.dev**. You can point it at any
-packages/happy-cli/README.md	28	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	`veryhappy.dev` is operated by the maintainer of this fork.
-packages/happy-cli/README.md	31	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	machines.** If you don't trust the operator of `veryhappy.dev`, run your own
-packages/happy-cli/README.md	158	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	`https://veryhappy.dev`.
-packages/happy-cli/README.md	191	U 当前文档	README/docs/PRIVACY/AGENTS 等改新域名并注明旧域名过渡期	3. built-in default (`https://veryhappy.dev`)
-packages/happy-web-v2/src/screens/legal/PublicLegalScreen.tsx	17	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	<p>very happy 是面向编程 Agent 的开源远程 Web 客户端。本政策适用于 veryhappy.dev 托管实例。自托管部署由其管理员运营，可能采用不同做法。</p>
-packages/happy-web-v2/src/screens/legal/PublicLegalScreen.tsx	36	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	<p>very happy is an open-source remote Web client for coding agents. This policy describes the hosted instance at veryhappy.dev. A self-host
-packages/happy-web-v2/src/screens/onboarding/firstMachineCommands.ts	1	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	const CLOUD_ORIGIN = 'https://veryhappy.dev';
-packages/happy-web-v2/src/screens/onboarding/firstMachineCommands.ts	8	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	https://veryhappy.dev/install.sh \\
-packages/happy-web-v2/src/screens/public/publicContent.ts	12	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	export const BOOTSTRAP_COMMAND = `(\n  set -eu\n  vh_installer=$(mktemp)\n  trap 'rm -f "$vh_installer"' \\\n    EXIT HUP INT TERM\n  curl -
-packages/happy-web-v2/src/screens/public/publicContent.ts	171	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	{ type: 'p', text: 'Use Very Happy Cloud at veryhappy.dev for the shortest path, or deploy your own relay first. A browser account and every
-packages/happy-web-v2/src/screens/public/publicContent.ts	382	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	{ type: 'p', text: 'veryhappy.dev hosts the web client, account service, sync storage, and relay. It is convenient for trying Very Happy wit
-packages/happy-web-v2/src/screens/public/publicContent.ts	415	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	{ type: 'list', items: ['Cloud users need no endpoint variables; both client URLs default to https://veryhappy.dev.', 'HAPPY_SERVER_URL sele
-packages/happy-web-v2/src/screens/public/publicContent.ts	575	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	{ type: 'p', text: 'Feedback sent from Settings → Send feedback or the occasional feedback card is stored only in the relay you use, with yo
-packages/happy-web-v2/src/screens/public/publicContent.zhHans.ts	86	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	{ heading: '1. 选择中继', blocks: ['最短路径是使用 veryhappy.dev 的 Very Happy Cloud，也可以先部署自己的中继。浏览器账户和所有已连接 CLI 必须使用同一个中继。', 'Very Happy Cloud 上手最快。自托管
-packages/happy-web-v2/src/screens/public/publicContent.zhHans.ts	156	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	{ heading: 'Cloud 提供什么', blocks: ['veryhappy.dev 托管 Web 客户端、账户服务、同步存储与中继，无需自建服务器即可体验 Very Happy。', ['公共注册可以开放、仅限邀请、暂停或受全局容量限制。', '社区服务不承诺在线率
-packages/happy-web-v2/src/screens/public/publicContent.zhHans.ts	172	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	{ heading: '客户端端点', blocks: [['Cloud 用户不需要端点变量；两个客户端 URL 默认都是 https://veryhappy.dev。', 'HAPPY_SERVER_URL 选择 CLI 使用的 API 与 socket 中继。', 'HAPP
-packages/happy-web-v2/src/screens/public/publicContent.zhHans.ts	221	W Web 文案/命令	Landing/文档/法务/首台机器命令改新域名，中英同步	{ heading: '数据处理', blocks: ['根据功能不同，会话、终端流量、账户元数据、日志、附件、通知与集成数据可能经过中继或持久化在中继上。运营方应记录部署的保留策略、备份、子处理方和事故响应。', '邮箱验证码登录会在可信中继上保存规范化邮箱地址。配置的邮件 p
-packages/happy-web-v2/index.html	26	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	<meta property="og:image" content="https://veryhappy.dev/og-image.png" />
-packages/happy-web-v2/public/skills/very-happy-todos/SKILL.md	12	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	1. Run `very-happy todo --help` to check capability. If the executable or todo command is missing, explain that a CLI version supporting thi
-packages/happy-web-v2/scripts/deploy.sh	3	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	#   deploy.sh root     → build (base=/) and serve at veryhappy.dev/ (production, via happy-server /webapp)
-packages/happy-web-v2/scripts/deploy.sh	4	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	#   deploy.sh staging  → build (base=/v2/) and serve at veryhappy.dev/v2/ (Caddy file_server)
-packages/happy-web-v2/scripts/deploy.sh	19	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	SERVER_URL="${VH_SERVER_URL:-https://veryhappy.dev}"
-packages/happy-web-v2/scripts/deploy.sh	28	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	echo "staged at https://veryhappy.dev/v2/ (Caddy file_server, no restart needed)"
-packages/happy-web-v2/scripts/deploy.sh	45	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	code=$(curl -s -o /dev/null -w '%{http_code}' https://veryhappy.dev/health || true)
-packages/happy-web-v2/scripts/deploy.sh	48	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	main=$(curl -s https://veryhappy.dev/ | grep -oE '/assets/[^"]+\.js' | head -1)
-packages/happy-web-v2/scripts/deploy.sh	49	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	ct=$(curl -s -o /dev/null -w '%{content_type}' "https://veryhappy.dev$main")
-packages/happy-web-v2/scripts/deploy.sh	52	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	*javascript*) echo "[deploy] ✓ live at https://veryhappy.dev/" ;;
-packages/happy-web-v2/src/dev/BuiltinToolsHarness.tsx	64	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	call('session_spawn', { directory: '/home/me/code/very-happy', prompt: 'Review PR #431 and leave comments.' }, 'completed', 'Spawned session
-packages/happy-web-v2/src/screens/session/relayLabel.ts	9	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	if (host === 'veryhappy.dev' || host.endsWith('.veryhappy.dev')) return '🇸🇬 SG';
-packages/happy-web-v2/src/sync/automationsPoll.ts	6	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	* Incident (2026-09-25, veryhappy.dev @47605f538): the sidebar 「自动化」 entry
-packages/happy-web-v2/src/ui/SkillDocumentLink.tsx	16	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	const pageUrl = typeof window === 'undefined' ? 'https://veryhappy.dev/' : window.location.href;
-packages/happy-web-v2/vite.config.ts	13	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	const DEFAULT_SERVER_URL = process.env.VH_SERVER_URL ?? 'https://veryhappy.dev';
-packages/happy-wire/src/builtinTodoSkill.ts	13	W Web 构建常量	DEFAULT_SERVER_URL/og:image/relayLabel 等改新域名；relayLabel 同时认新旧两个 host	1. Run \`very-happy todo --help\` to check capability. If the executable or todo command is missing, explain that a CLI version supporting t
-packages/happy-web-v2/public/install.sh	121	W Web 静态/安装	默认 WEB_URL 与安全链接改新域名；旧域名 install.sh 继续可下载	say '  https://veryhappy.dev/docs/security'
-packages/happy-web-v2/public/install.sh	178	W Web 静态/安装	默认 WEB_URL 与安全链接改新域名；旧域名 install.sh 继续可下载	WEB_URL=${HAPPY_WEBAPP_URL:-https://veryhappy.dev}
-scripts/brand/outline-text.py	46	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	"url": outline(FS / "ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff", "veryhappy.dev"),
-scripts/brand/textOutlines.json	15	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	"text": "veryhappy.dev",
-scripts/dev/check-shipped.mjs	32	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	*   node scripts/dev/check-shipped.mjs --origin https://veryhappy.dev --needle X --json
-scripts/dev/check-shipped.mjs	41	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	let origin = 'https://veryhappy.dev';
-scripts/ops/resource-budget.mjs	392	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	console.log('    fill it before any of them is refused. On veryhappy.dev this is ACCEPTED —');
-scripts/probe/README.md	12	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	node scripts/probe/term-input-goldendiff.mjs            # 真站扫描（默认 veryhappy.dev）
-scripts/probe/README.md	19	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	（凭据在 rbw 的 `veryhappy.dev`；profile 会记住登录态，之后不用再给。）
-scripts/probe/README.md	330	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	node scripts/probe/sync-hello-canary.mjs                        # veryhappy.dev，20 轮，token 取 ~/.happy/access.key
-scripts/probe/sync-hello-canary.mjs	10	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	*   node scripts/probe/sync-hello-canary.mjs                          # 默认 veryhappy.dev，20 轮
-scripts/probe/sync-hello-canary.mjs	39	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	server: 'https://veryhappy.dev',
-scripts/probe/term-focus-handoff.mjs	24	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	*   node scripts/probe/term-focus-handoff.mjs --clicks 5 --base https://veryhappy.dev
-scripts/probe/term-focus-handoff.mjs	39	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	base: 'https://veryhappy.dev',
-scripts/probe/term-input-goldendiff.mjs	15	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	*   node scripts/probe/term-input-goldendiff.mjs                     # 真站扫描（默认 veryhappy.dev）
-scripts/probe/term-input-goldendiff.mjs	72	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	base: 'https://veryhappy.dev',
-scripts/probe/term-input-goldendiff.mjs	120	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	--base <url>          默认 https://veryhappy.dev
-scripts/probe/term-lines-e2e.mjs	19	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	*   node scripts/probe/term-lines-e2e.mjs --url https://veryhappy.dev
-scripts/probe/term-lines-e2e.mjs	31	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	url: 'https://veryhappy.dev',
-scripts/probe/term-lines-e2e.mjs	36	X 运维/探针脚本	默认 base 改新域名（参数仍可覆盖）；rbw 条目名可保留	base: 'https://veryhappy.dev',
-(prod) /opt/happy/.env	PUBLIC_URL	P 生产配置	现值含 veryhappy.dev，会被注入成 Web serverUrl：P1 改为不设（same-origin），P3 后可设 https://vibe.apodex.site	
-(prod) /opt/happy/.env	HAPPY_WEB_URL	P 生产配置	Tanka webhook 里的会话链接基址：P3 改新域名	
-(prod) /opt/happy/.env	GOOGLE_ALLOWED_ORIGINS	P 生产配置	现 2 项（veryhappy.dev, happy.mereith.com）：P1 追加 https://vibe.apodex.site；Google Console 同步加 Authorized JS origin	
-(prod) /opt/happy/.env	AUTH_EMAIL_FROM / AUTH_EMAIL_PROVIDER=cloudflare	P 生产配置	发件域 veryhappy.dev 在个人 Cloudflare：本轮不动；旧域名下线前必须换发件域（范围选项 Q5）	
-(prod) /opt/happy/.env	VAPID_SUBJECT	P 生产配置	mailto 指个人邮箱，与域名无关；可选改公司邮箱，密钥不换	
-(prod) /opt/happy/.env	HAPPY_RELAYS_JSON	R 中继域名	relay-sg/us.veryhappy.dev，token 不绑 host：本轮不动	
-(prod) /opt/happy/.env	MIGRATION_TARGET_URL / MIGRATION_HANDOFF_SECRET / 新 all-accounts 开关	P 生产配置	P2 开启同库搬家通知（仅 daemon），见 spec §4	
-(aws) CloudFront E2JUP4WHDXD8HU	Aliases	E 边缘/Caddy	现 veryhappy.dev, cf-test.veryhappy.dev：P1 追加 vibe.apodex.site	
-(aws) ACM us-east-1 1a7be563…	SAN	E 边缘/Caddy	SAN 不能改：P1 新签含 vibe.apodex.site + veryhappy.dev (+cf-test) 的证书，DNS 验证记录写 Route53 / Cloudflare 各一条，再换绑	
-(aws) Route53 Z04787629I6U1OS0O0R0 apodex.site	vibe.apodex.site	E 边缘/Caddy	新建 A/AAAA alias → CloudFront；zone 由 ExternalDNS(main-eks) 共管，手工记录不带 owner TXT 不会被它删	
-(host) vh-sg /etc/caddy/Caddyfile	site block	E 边缘/Caddy	同 ops/production/Caddyfile.blue-green：加 vibe.apodex.site；P3 加 veryhappy.dev 页面 301	
-(google) Google Cloud Console OAuth client	Authorized JavaScript origins	P 生产配置	加 https://vibe.apodex.site（GIS popup，无 redirect URI）；项目归属未核实	
-(cf) Cloudflare veryhappy.dev zone	apex CNAME / admin / relay-*	E 边缘/Caddy	本轮不动；旧域名保留期内不得删 zone、不得让域名过期（防抢注拿 daemon token）	
+packages/happy-agent/src/config.ts	11	C CLI 默认地址	默认值保持 veryhappy.dev（公共版）；新增 `very-happy server use <origin>`；内部机器靠 B-635 server-migrate 或 install.sh --server 写 settings	const serverUrl = (process.env.HAPPY_SERVER_URL ?? 'https://veryhappy.dev').replace(/\/+$/, '');
+packages/happy-cli/src/commands/auth.ts	13	C CLI 默认地址	默认值保持 veryhappy.dev（公共版）；新增 `very-happy server use <origin>`；内部机器靠 B-635 server-migrate 或 install.sh --server 写 settings	const DEFAULT_SERVER_URL = 'https://veryhappy.dev';
+packages/happy-cli/src/commands/panels.ts	14	C CLI 默认地址	默认值保持 veryhappy.dev（公共版）；新增 `very-happy server use <origin>`；内部机器靠 B-635 server-migrate 或 install.sh --server 写 settings	* than `*` will not include veryhappy.dev unless it names it explicitly).
+packages/happy-cli/src/configuration.ts	14	C CLI 默认地址	默认值保持 veryhappy.dev（公共版）；新增 `very-happy server use <origin>`；内部机器靠 B-635 server-migrate 或 install.sh --server 写 settings	const DEFAULT_RELAY_URL = 'https://veryhappy.dev'
+packages/happy-cli/src/ui/authRelay.ts	1	C CLI 默认地址	默认值保持 veryhappy.dev（公共版）；新增 `very-happy server use <origin>`；内部机器靠 B-635 server-migrate 或 install.sh --server 写 settings	const DEFAULT_SERVER_URL = 'https://veryhappy.dev';
+packages/happy-cli/src/ui/authRelay.ts	2	C CLI 默认地址	默认值保持 veryhappy.dev（公共版）；新增 `very-happy server use <origin>`；内部机器靠 B-635 server-migrate 或 install.sh --server 写 settings	const LEGACY_CLOUD_SERVER_URL = 'https://happy.mereith.com';
+packages/happy-cli/src/ui/authRelay.ts	25	C CLI 默认地址	默认值保持 veryhappy.dev（公共版）；新增 `very-happy server use <origin>`；内部机器靠 B-635 server-migrate 或 install.sh --server 写 settings	// veryhappy.dev migration without weakening the fail-closed rule for an
+.github/workflows/deploy-hwsg.yml	94	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev \
+.github/workflows/deploy-hwsg.yml	97	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev \
+.github/workflows/deploy-hwsg.yml	181	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	url: https://veryhappy.dev
+.github/workflows/e2e-smoke.yml	24	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	default: https://veryhappy.dev
+.github/workflows/e2e-smoke.yml	30	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	default: https://veryhappy.dev
+.github/workflows/e2e-smoke.yml	64	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	VH_SMOKE_URL: ${{ inputs.url || 'https://veryhappy.dev' }}
+.github/workflows/publish.yml	277	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	VH_PUBLIC_ORIGIN: https://veryhappy.dev
+scripts/changelog/check-release.mjs	6	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	*   web: node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev --sha <sha>
+scripts/ci/deploy-blue-green-remote.sh	18	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	PUBLIC_ORIGIN=https://veryhappy.dev
+scripts/ci/deploy-blue-green-remote.sh	401	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	# `veryhappy.dev` resolves to Cloudflare from this host, not to the host itself,
+scripts/ci/deploy-server-remote.sh	31	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	PUBLIC_ORIGIN=https://veryhappy.dev
+scripts/release/advance-auto-update.sh	16	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	#   4. verify https://veryhappy.dev/v1/version/cli reports autoUpdateVersion=<X.Y.Z>
+scripts/release/advance-auto-update.sh	33	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	API="https://veryhappy.dev/v1/version/cli"
+scripts/release/check-recommended.mjs	8	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	origin = 'https://veryhappy.dev', fetcher = fetch,
+scripts/release/check-recommended.mjs	57	D 发布/CI	按 instance=internal|public 参数化（PUBLIC_ORIGIN、--live、check-shipped、e2e-smoke、advance-auto-update）	await waitForRecommendation(process.argv[2], { origin: process.env.VH_PUBLIC_ORIGIN ?? 'https://veryhappy.dev' });
+ops/production/Caddyfile.blue-green	40	E 边缘/Caddy	公共版不动；内部版主机用同一 Caddyfile 模板，站点名参数化（{$VH_SITE_HOSTS}），状态机测试按模板断言	veryhappy.dev, happy.mereith.com {
+ops/production/Caddyfile.blue-green	52	E 边缘/Caddy	公共版不动；内部版主机用同一 Caddyfile 模板，站点名参数化（{$VH_SITE_HOSTS}），状态机测试按模板断言	# B-365: happy.mereith.com is the legacy hostname (vh-us used to answer it).
+ops/production/Caddyfile.blue-green	58	E 边缘/Caddy	公共版不动；内部版主机用同一 Caddyfile 模板，站点名参数化（{$VH_SITE_HOSTS}），状态机测试按模板断言	host happy.mereith.com
+ops/production/Caddyfile.blue-green	61	E 边缘/Caddy	公共版不动；内部版主机用同一 Caddyfile 模板，站点名参数化（{$VH_SITE_HOSTS}），状态机测试按模板断言	redir @vh_legacy_page https://veryhappy.dev{uri} 301
+scripts/ci/test-blue-green-state-machine.sh	384	E 边缘/Caddy	公共版不动；内部版主机用同一 Caddyfile 模板，站点名参数化（{$VH_SITE_HOSTS}），状态机测试按模板断言	caddy_route=$(sed -n '/^veryhappy.dev, happy.mereith.com {/,$p' "$REPO_ROOT/ops/production/Caddyfile.blue-green" | grep -vE '^\s*(#|$)')
+docs/backlog.md	88	H 历史记录	不改（历史事实）	| B-365 | **老机 vh-us 退役清单**（东京 VPS，2026-09-07 起只剩冻结的 PostgreSQL 副本 + Caddy 转发/301）：① ≥2026-09-21 确认无回滚需求后销毁；② 销毁前把 `happy.mereith.com` 的 A 记
+docs/competition/2026-09-ux-review/README.md	17	H 历史记录	不改（历史事实）	> 日期 2026-09-03；代码事实基于本机 `main@796565d5` 与线上 `veryhappy.dev` 实测。
+docs/competition/2026-09-ux-review/README.md	416	H 历史记录	不改（历史事实）	**T-16b 预填深链（并入 T-37，NEXT）**：`veryhappy.dev/new?machine=&dir=&branch=&agent=&prompt=` 只预填不自动发送 + 会话/终端页「复制深链」。今天**没有生产者**（`docs/channels.md`
+docs/competition/2026-09-ux-review/README.md	448	H 历史记录	不改（历史事实）	**问题**：登录用户在一次发版后打开 veryhappy.dev，进入认证界面前要先取 entry+vendor+css ≈100 KB，再取 `AppRoot` **590,599 字节**（压缩后传输量，2026-09-03 对线上 `AppRoot-BrBtMrpo-59
+docs/competition/2026-09-ux-review/README.md	787	H 历史记录	不改（历史事实）	- **地址确定性**：`https://veryhappy.dev/dev/<machine>/<port>/`（或 `<port>--<machine>.veryhappy.dev`），账号鉴权、默认只对你自己；链接可直接扔进手机。
+docs/competition/2026-09-ux-review/README.md	816	H 历史记录	不改（历史事实）	（T-16b 的预填深链 `veryhappy.dev/new?machine=&dir=&branch=&agent=&prompt=` 并入本条——深链的补齐时机是「有东西会生成链接」的那一刻。）
+docs/competition/2026-09-ux-review/README.md	1027	H 历史记录	不改（历史事实）	代码事实全部在本机 `main@796565d5` 上核实；线上事实（`AppRoot` 590,599 字节、entry 资产名）2026-09-03 对 `veryhappy.dev` 实测。
+docs/competition/2026-09-ux-review/merged-draft.md	309	H 历史记录	不改（历史事实）	另加 `https://veryhappy.dev/new?machine=&dir=&branch=&agent=&prompt=`（只预填、不自动发送）与会话/终端页的 `复制深链`。
+docs/competition/2026-09-ux-review/self/product-map.md	69	H 历史记录	不改（历史事实）	| `FirstRunScreen`（`/`，0 台机器） | Eyebrow「YOUR FIRST MACHINE」→「Connect a computer to get started」。**快速路径**：一条 `curl https://veryhappy.dev/inst
+docs/competition/2026-09-ux-review/self/product-map.md	250	H 历史记录	不改（历史事实）	1. 手机打开 veryhappy.dev → 安装卡引导加到主屏；登录态延续。
+docs/competition/2026-09-ux-review/vendors/claude-code-desktop-rc/inventory.md	3	H 历史记录	不改（历史事实）	- Researched for: very-happy (veryhappy.dev) first-principles UX comparison
+docs/competition/2026-09-ux-review/vendors/orca/inventory.md	3	H 历史记录	不改（历史事实）	Lens: FEATURE & SURFACE INVENTORY. Researched 2026-09-03 for very-happy (veryhappy.dev).
+docs/competition/2026-09-ux-review/vendors/orca/orchestration.md	3	H 历史记录	不改（历史事实）	Researched 2026-09-03 for very-happy (veryhappy.dev). Orca desktop v1.4.195 (released 2026-09-02), mobile 0.0.47. All docs read the same day
+docs/competition/2026-09-ux-review/vendors/paseo/inventory.md	3	H 历史记录	不改（历史事实）	Lens: FEATURE & SURFACE INVENTORY. Researched 2026-09-03 for very-happy (veryhappy.dev).
+docs/competition/2026-09-ux-review/vendors/paseo/orchestration.md	5	H 历史记录	不改（历史事实）	- 为谁而研究：very-happy（veryhappy.dev，Happy Coder fork，web/PWA only，单 Owner + AI agent 集群）
+specs/2026-08-cloud-identity.md	9	H 历史记录	不改（历史事实）	`happy.mereith.com`；官方 Cloud 允许陌生用户直接注册，而不是要求每位用户先部署 server。
+specs/2026-08-cloud-identity.md	144	H 历史记录	不改（历史事实）	GOOGLE_ALLOWED_ORIGINS=https://happy.mereith.com
+specs/2026-08-cloud-identity.md	211	H 历史记录	不改（历史事实）	- Google Console 配置真实 Client ID 后，在 `https://happy.mereith.com` 完成一次新用户注册和再次登录。
+specs/2026-08-terminal-channel-v2.goal.md	66	H 历史记录	不改（历史事实）	- 发布完成：web 已部署 happy.mereith.com、CLI 已发 npm、daemon 已 vh-update
+specs/2026-08-terminal-mirror.goal.md	56	H 历史记录	不改（历史事实）	- 发布完成：web 已部署 happy.mereith.com、CLI 已发 npm、daemon 已 vh-update
+specs/2026-08-web-resume-sync.md	188	H 历史记录	不改（历史事实）	生产 `veryhappy.dev`（CloudFront）走 h2，并通告 `Alt-Svc: h3`：所有 REST 共用一条连接，WebSocket 另走 HTTP/1.1。
+specs/2026-08-zero-downtime-release.md	9	H 历史记录	不改（历史事实）	当前 `veryhappy.dev` 只有一个 `happy-server` 容器，Caddy 固定代理到
+specs/2026-08-zero-downtime-release.md	120	H 历史记录	不改（历史事实）	https://veryhappy.dev
+specs/2026-09-claude-history-import.md	90	H 历史记录	不改（历史事实）	- [ ] 真机：mac-office 升级后在 veryhappy.dev 导入一条 CLI 对话并继续（V-121，Owner 清账）。
+specs/2026-09-codex-history-import.md	96	H 历史记录	不改（历史事实）	- [ ] 真机：机器升级后在 veryhappy.dev 导入一条 codex CLI thread 并继续（V-153，Owner 清账）。
+specs/2026-09-machine-web-panels.md	43	H 历史记录	不改（历史事实）	| Web 以 https 提供（`veryhappy.dev` 经 CloudFront），iframe 指向 `http://<tailnet/LAN IP>` 会被浏览器按混合内容拦截 | `docs/operations.md:17` |
+specs/2026-09-markdown-engine-and-attachments.md	416	H 历史记录	不改（历史事实）	veryhappy.dev，而输入密码不在 agent 的可做范围内——所以这一项转 `docs/verify-queue.md`
+specs/2026-09-todo-agent-skill.md	42	H 历史记录	不改（历史事实）	- 双Mac均用实际安装的0.2.127执行`todo list`与`todo skill`：目标veryhappy.dev，当前账号0条记录、无truncated/invalid，输出skill与公开文档一致（忽略console.log额外尾换行）；没有真实待办写入。
+specs/2026-09-unified-agent-status.md	65	H 历史记录	不改（历史事实）	PR #348 merged as `c7db3fc2ff5074df8bd28756bad3f6d9e26c89a4`. Web assets at veryhappy.dev expose the new neutral identity and single-status 
+specs/2026-10-daemon-auto-update-follow-promote.md	10	H 历史记录	不改（历史事实）	| ② | relay 策略：`autoUpdatePolicy=latest`，`autoUpdateVersion=0.2.180`，`source=registry` | `curl https://veryhappy.dev/v1/version/cli` |
+specs/2026-10-spaces-a2a.design.md	139	H 历史记录	不改（历史事实）	- 迁移：没有账号级导出/导入工具；所有 JWT 和 AccountSecret 都系于 `HANDY_MASTER_SECRET`。最省事的做法是**域名切换而非数据搬家**：现有 DB 与 master secret 原样挂到新域名，用户只改 `HAPPY_SERVER_UR
+specs/2026-10-web-csp-and-auth-expiry.md	10	H 历史记录	不改（历史事实）	3. 全站没有 CSP 与其他安全头（`curl -sI https://veryhappy.dev/` 2026-10-26 实测）。
+specs/2026-10-web-csp-and-auth-expiry.md	68	H 历史记录	不改（历史事实）	- 应用代码里会发起 loopback/明文连接的路径，逐一核对：语音 asr/tts 固定 `wss://api.elevenlabs.io`；relay 只接受 https 配置（生产 relay-sg/us 均 https）；附件 local 模式的 URL 由 X-For
+docs/monitoring/very-happy-alerts.prometheusrule.yaml	23	M 监控	加 instance 标签，两套各自告警	description: No blue/green slot of veryhappy.dev has been scrapeable for 5m (server down, or the vh-metrics tunnel broke).
+docs/operations.md	23	R 中继域名	公共版不动；内部版先不配 relay（P7 可选单独建）	| Singapore relay | `sg-hw`, `https://relay-sg.veryhappy.dev`, Docker + Caddy on `hw-sg` |
+docs/operations.md	24	R 中继域名	公共版不动；内部版先不配 relay（P7 可选单独建）	| US relay | `us-fb`, `https://relay-us.veryhappy.dev`, Docker + Caddy on `dmit-la` (Los Angeles). Moved off `fb-us`/k8sus on 2026-09-11 (B-
+ops/relay/Caddyfile.sg	1	R 中继域名	公共版不动；内部版先不配 relay（P7 可选单独建）	relay-sg.veryhappy.dev {
+ops/relay/Caddyfile.us	1	R 中继域名	公共版不动；内部版先不配 relay（P7 可选单独建）	relay-us.veryhappy.dev {
+scripts/ci/deploy-relays.sh	51	R 中继域名	公共版不动；内部版先不配 relay（P7 可选单独建）	'https://relay-sg.veryhappy.dev/health|sg-hw' \
+scripts/ci/deploy-relays.sh	52	R 中继域名	公共版不动；内部版先不配 relay（P7 可选单独建）	'https://relay-us.veryhappy.dev/health|us-fb'; do
+packages/happy-server/sources/app/api/securityHeaders.ts	84	S server 运行时	仅注释；运行时按 env / 请求 Host，不改	/** Public origin of this request (`https://veryhappy.dev`), when known. */
+packages/happy-server/sources/app/push/webhookNotify.ts	285	S server 运行时	仅注释；运行时按 env / 请求 Host，不改	* `https://veryhappy.dev`) on the server to get URL lines; unset, the
+packages/happy-agent/src/cli-smoke.test.ts	556	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(config.serverUrl).toBe('https://veryhappy.dev');
+packages/happy-agent/src/config.test.ts	21	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(config.serverUrl).toBe('https://veryhappy.dev');
+packages/happy-agent/src/credentials.test.ts	85	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	config.serverUrl = 'https://veryhappy.dev';
+packages/happy-cli/src/assistant/memory.test.ts	30	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const { doc, replaced } = applyMemorySectionUpdate(DOC, '长期事实', '- [2026-08-13] 生产域名 veryhappy.dev')
+packages/happy-cli/src/assistant/memory.test.ts	32	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(doc).toContain('## 长期事实\n\n- [2026-08-13] 生产域名 veryhappy.dev\n')
+packages/happy-cli/src/commands/panels.test.ts	9	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	it('CSP frame-ancestors without * or veryhappy.dev forbids; with them allows', () => {
+packages/happy-cli/src/commands/panels.test.ts	11	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(frameVerdict({ 'content-security-policy': 'frame-ancestors https://veryhappy.dev' }).embeddable).toBe(true)
+packages/happy-cli/src/configuration.test.ts	25	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	.toBe('https://veryhappy.dev')
+packages/happy-cli/src/resume/localHappyAgentAuth.test.ts	34	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(readLocalHappyAgentCredentials(writeAgentKey(), 'https://veryhappy.dev'))
+packages/happy-cli/src/sessionProtocol/toolResultPayload.test.ts	46	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const content = 'Web search results for query: "vh"\n\nLinks: [{"title":"VH","url":"https://veryhappy.dev"}]';
+packages/happy-cli/src/ui/authFlow.test.ts	85	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(credentialRelayProblem('https://veryhappy.dev', 'https://relay.example.com')).toContain('Credentials belong to');
+packages/happy-cli/src/ui/authFlow.test.ts	88	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(credentialRelayProblem(undefined, 'https://veryhappy.dev')).toBeUndefined();
+packages/happy-cli/src/ui/authFlow.test.ts	92	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(credentialRelayProblem(undefined, 'https://happy.mereith.com')).toBeUndefined();
+packages/happy-cli/src/ui/authFlow.test.ts	93	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(credentialRelayProblem(undefined, 'https://happy.mereith.com/')).toBeUndefined();
+packages/happy-cli/src/ui/doctorPrivacy.test.ts	55	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	serverUrl: 'https://veryhappy.dev',
+packages/happy-server/sources/app/api/htmlConfigInjection.spec.ts	24	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	<meta property="og:image" content="https://veryhappy.dev/og-image.png" />
+packages/happy-server/sources/app/api/htmlConfigInjection.spec.ts	56	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(html).toContain('og:image" content="https://veryhappy.dev/og-image.png"');
+packages/happy-server/sources/app/api/routes/accountAuthRoutes.spec.ts	175	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	process.env.AUTH_EMAIL_FROM = 'login@veryhappy.dev';
+packages/happy-server/sources/app/api/routes/accountAuthRoutes.spec.ts	260	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	process.env.GOOGLE_ALLOWED_ORIGINS = 'https://veryhappy.dev';
+packages/happy-server/sources/app/api/routes/accountAuthRoutes.spec.ts	589	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	process.env.AUTH_EMAIL_FROM = 'login@veryhappy.dev';
+packages/happy-server/sources/app/api/routes/accountAuthRoutes.spec.ts	771	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	process.env.GOOGLE_ALLOWED_ORIGINS = 'https://veryhappy.dev';
+packages/happy-server/sources/app/api/routes/accountAuthRoutes.spec.ts	774	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	async function inject(payloadOverride: Record<string, unknown> = {}, origin = 'https://veryhappy.dev') {
+packages/happy-server/sources/app/api/routes/accountAuthRoutes.spec.ts	877	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	process.env.AUTH_EMAIL_FROM = 'login@veryhappy.dev';
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	11	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	'document-uri': 'https://veryhappy.dev/session/cmabcdefghijklmnop1234?token=secret',
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	18	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	{ type: 'csp-violation', body: { documentURL: 'https://veryhappy.dev/', effectiveDirective: 'connect-src', blockedURL: 'wss://relay.example/
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	20	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	{ type: 'csp-violation', body: { documentURL: 'https://veryhappy.dev/', effectiveDirective: 'script-src', blockedURL: 'inline', disposition:
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	33	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	'document-uri': 'https://veryhappy.dev/terminal/cmvpe72j702e7qn2ulflthf88',
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	42	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const [app] = parseCspReports(report('http://127.0.0.1:38811/app-loopback', 'https://veryhappy.dev/assets/index-6c54afa6.js'));
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	44	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(parseCspReports(report('http://10.0.0.5/app-private', 'https://veryhappy.dev/assets/index.js'))[0]).toMatchObject({ scheme: 'http', h
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	45	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(parseCspReports(report('http://example.com/app-public', 'https://veryhappy.dev/assets/index.js'))[0]).toMatchObject({ scheme: 'http',
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	47	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(parseCspReports(report('http://localhost:5173/', 'https://veryhappy.dev/terminal/cmvpe72j702e7qn2ulflthf88'))[0].source).toBe('inline
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	50	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(parseCspReports([{ type: 'csp-violation', body: { documentURL: 'https://veryhappy.dev/session/x', effectiveDirective: 'connect-src', 
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	58	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	for (const host of ['172.32.0.1', '8.8.8.8', '100.128.0.1', 'veryhappy.dev', '[2001:db8::1]', '999.1.1.1']) expect(hostClass(host), host).to
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	62	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const doc = 'https://veryhappy.dev/session/abc#x';
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	65	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(sourceClass('https://veryhappy.dev/assets/a.js', doc)).toBe('self');
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	66	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(sourceClass('https://veryhappy.dev/session/abc', doc)).toBe('inline');
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	84	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const legacy = await app.inject({ method: 'POST', url: '/v1/csp-report', headers: { 'content-type': 'application/csp-report' }, payload: JSO
+packages/happy-server/sources/app/api/routes/cspReportRoutes.spec.ts	86	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const modern = await app.inject({ method: 'POST', url: '/v1/csp-report', headers: { 'content-type': 'application/reports+json' }, payload: J
+packages/happy-server/sources/app/api/routes/googleIdentityLink.pglite.integration.spec.ts	38	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	process.env.GOOGLE_ALLOWED_ORIGINS = 'https://veryhappy.dev';
+packages/happy-server/sources/app/api/routes/googleIdentityLink.pglite.integration.spec.ts	98	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	headers: { origin: 'https://veryhappy.dev' },
+packages/happy-server/sources/app/api/routes/googleIdentityLink.pglite.integration.spec.ts	145	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	headers: { origin: 'https://veryhappy.dev' },
+packages/happy-server/sources/app/api/securityHeaders.spec.ts	43	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const policy = reportOnlyContentSecurityPolicy({ html: HTML, serverUrl: 'https://api.example.com', requestOrigin: 'https://veryhappy.dev' })
+packages/happy-server/sources/app/api/securityHeaders.spec.ts	46	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(connect).toContain('https://veryhappy.dev wss://veryhappy.dev');
+packages/happy-server/sources/app/api/securityHeaders.spec.ts	53	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	for (const policy of [contentSecurityPolicy({ html: HTML, serverUrl: 'same-origin' }), reportOnlyContentSecurityPolicy({ html: HTML, serverU
+packages/happy-server/sources/app/api/securityHeaders.spec.ts	65	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const relayOrigins = ['https://relay-sg.veryhappy.dev', 'https://relay-us.veryhappy.dev/', 'not a url'];
+packages/happy-server/sources/app/api/securityHeaders.spec.ts	66	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const connect = directive(reportOnlyContentSecurityPolicy({ html: HTML, serverUrl: 'same-origin', requestOrigin: 'https://veryhappy.dev', re
+packages/happy-server/sources/app/api/securityHeaders.spec.ts	67	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	for (const origin of ['https://relay-sg.veryhappy.dev', 'wss://relay-sg.veryhappy.dev', 'https://relay-us.veryhappy.dev', 'wss://relay-us.ve
+packages/happy-server/sources/app/api/webDocumentOnSend.spec.ts	54	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const { app } = await webApp('enforce', ['https://relay-sg.veryhappy.dev', 'https://relay-us.veryhappy.dev']);
+packages/happy-server/sources/app/api/webDocumentOnSend.spec.ts	55	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const res = await app.inject({ url: '/terminal/cmvpe72j702e7qn2ulflthf88', headers: { host: 'veryhappy.dev', 'x-forwarded-proto': 'https' } 
+packages/happy-server/sources/app/api/webDocumentOnSend.spec.ts	57	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(connect).toContain('https://veryhappy.dev wss://veryhappy.dev');
+packages/happy-server/sources/app/api/webDocumentOnSend.spec.ts	58	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(connect).toContain('https://relay-sg.veryhappy.dev wss://relay-sg.veryhappy.dev https://relay-us.veryhappy.dev wss://relay-us.veryhap
+packages/happy-server/sources/app/auth/emailAuthConfig.spec.ts	13	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	AUTH_EMAIL_FROM: 'login@veryhappy.dev',
+packages/happy-server/sources/app/auth/emailAuthConfig.spec.ts	19	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	AUTH_EMAIL_FROM: 'login@veryhappy.dev',
+packages/happy-server/sources/app/auth/emailSender.spec.ts	11	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	provider: 'cloudflare', from: 'login@veryhappy.dev', ttlMinutes: 10, ...limits,
+packages/happy-server/sources/app/auth/emailSender.spec.ts	23	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(payload).toMatchObject({ to: 'person@example.com', from: 'login@veryhappy.dev' });
+packages/happy-server/sources/app/auth/emailSender.spec.ts	31	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	provider: 'resend', from: 'login@veryhappy.dev', ttlMinutes: 10, ...limits,
+packages/happy-server/sources/app/auth/emailSender.spec.ts	48	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	provider: 'cloudflare', from: 'login@veryhappy.dev', ttlMinutes: 10, ...limits,
+packages/happy-server/sources/app/auth/googleLoginSecurity.spec.ts	17	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	GOOGLE_ALLOWED_ORIGINS: 'https://veryhappy.dev,http://localhost:8082',
+packages/happy-server/sources/app/auth/googleLoginSecurity.spec.ts	19	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(isGoogleOriginAllowed('https://veryhappy.dev', config)).toBe(true);
+packages/happy-server/sources/app/auth/googleLoginSecurity.spec.ts	24	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	GOOGLE_ALLOWED_ORIGINS: 'https://user:password@veryhappy.dev',
+packages/happy-server/sources/app/push/webhookNotify.spec.ts	514	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	process.env.HAPPY_WEB_URL = 'https://veryhappy.dev';
+packages/happy-server/sources/app/push/webhookNotify.spec.ts	517	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(p.message.split('\n')).toEqual(['需要你介入：scan the QR code', '会话：deploy', '链接：https://veryhappy.dev/machine/m1/panel/desktop', 'session:
+packages/happy-server/sources/app/push/webhookNotify.spec.ts	519	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(q.message).toContain('链接：https://veryhappy.dev/session/s1');
+packages/happy-web-v2/e2e/mermaidActions.mjs	354	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	check(prodRequests.length === 0, 'no request reached *.veryhappy.dev', prodRequests.slice(0, 3).join(' '));
+packages/happy-web-v2/e2e/session-switch.mjs	292	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	// Never production: anything aimed at veryhappy.dev is cut (and counted).
+packages/happy-web-v2/e2e/session-switch.mjs	446	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	console.log(`requests to veryhappy.dev (blocked): ${prodHits}`);
+packages/happy-web-v2/e2e/smoke.mjs	7	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	*   VH_SMOKE_URL=https://veryhappy.dev VH_SMOKE_USERNAME=… VH_SMOKE_PASSWORD=… \
+packages/happy-web-v2/e2e/smokeLib.mjs	13	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const url = (env.VH_SMOKE_URL || 'https://veryhappy.dev').replace(/\/+$/, '');
+packages/happy-web-v2/e2e/smokeLib.test.mjs	9	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(c).toMatchObject({ url: 'https://veryhappy.dev', username: 'smoke', machine: null, skipReason: null });
+packages/happy-web-v2/e2e/sync-resume.mjs	24	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	* --h2 (production shape: veryhappy.dev is CloudFront h2 + Alt-Svc h3): a
+packages/happy-web-v2/e2e/sync-resume.mjs	197	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	// Production (veryhappy.dev behind CloudFront) speaks h2 (and offers h3): one
+packages/happy-web-v2/src/app/sessionMenu.test.ts	88	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(sessionLink('https://veryhappy.dev/', '/session/abc')).toBe('https://veryhappy.dev/session/abc');
+packages/happy-web-v2/src/app/sessionMenu.test.ts	89	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(sessionLink('https://veryhappy.dev', 'terminal/m?tid=1')).toBe('https://veryhappy.dev/terminal/m?tid=1');
+packages/happy-web-v2/src/app/swTakeover.test.ts	143	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const shell = 'https://veryhappy.dev/index.html?__WB_REVISION__=abc123';
+packages/happy-web-v2/src/app/swTakeover.test.ts	144	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const asset = 'https://veryhappy.dev/assets/index-abc.js';
+packages/happy-web-v2/src/app/swTakeover.test.ts	147	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const precache = new FakeCache([shell, asset, 'https://veryhappy.dev/manifest.webmanifest']);
+packages/happy-web-v2/src/app/swTakeover.test.ts	150	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	keys: async () => ['workbox-precache-v2-https://veryhappy.dev/', 'very-happy-assets-v1'],
+packages/happy-web-v2/src/app/swTakeover.test.ts	155	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(precache.urls).toEqual([asset, 'https://veryhappy.dev/manifest.webmanifest']);
+packages/happy-web-v2/src/auth/authLatch.test.ts	16	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const SERVER = 'https://veryhappy.dev';
+packages/happy-web-v2/src/components/RelayBadge.test.tsx	8	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'https://veryhappy.dev' }));
+packages/happy-web-v2/src/components/tools/builtinTools.test.ts	137	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const peer = (id: string, extra: Record<string, unknown> = {}) => ({ sessionId: id, kind: 'managed', cwd: '/home/me/repo', flavor: 'claude',
+packages/happy-web-v2/src/components/tools/builtinTools.test.ts	157	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	state: 'completed', result: mcpText({ delivered: true, messageId: 'm-9', to: 's-2', url: 'https://veryhappy.dev/session/s-2' }),
+packages/happy-web-v2/src/components/tools/builtinTools.test.ts	269	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	state: 'completed', result: 'Spawned session abcdefgh1234 in /w and sent the first prompt. https://veryhappy.dev/session/abcdefgh1234',
+packages/happy-web-v2/src/screens/notifications/pushSwPresence.test.ts	20	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	location: new URL('https://veryhappy.dev/sw.js'),
+packages/happy-web-v2/src/screens/onboarding/firstRun.test.ts	44	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(firstMachineBootstrapCommand('https://veryhappy.dev', 'https://veryhappy.dev')).toBe(CLOUD_BOOTSTRAP_COMMAND);
+packages/happy-web-v2/src/screens/onboarding/firstRun.test.ts	45	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(firstMachineCommands('https://veryhappy.dev', 'https://veryhappy.dev')).toEqual({
+packages/happy-web-v2/src/screens/onboarding/firstRun.test.ts	68	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(firstMachineCommands('not a URL', 'also bad')).toEqual(firstMachineCommands('https://veryhappy.dev', 'https://veryhappy.dev'));
+packages/happy-web-v2/src/screens/public/publicContent.test.ts	655	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(readme).toContain('href="https://veryhappy.dev/welcome"');
+packages/happy-web-v2/src/screens/session/SessionDetailScreen.keys.test.tsx	4	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	* on veryhappy.dev c50066e1. Cause: B-585 mounted <WorktreeSetupBanner key={id}>
+packages/happy-web-v2/src/screens/session/builtinToolView.test.tsx	70	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const bare = render(message('b1', 'session_spawn', { directory: '/w', prompt: 'go' }, 'completed', 'Spawned session zyxwvuts9876 in /w. http
+packages/happy-web-v2/src/screens/session/chatPrependFollow.test.tsx	3	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	* Regression (Owner 2026-10-13, veryhappy.dev eccf6b55): scrolling up an idle
+packages/happy-web-v2/src/screens/session/relayLabel.test.ts	6	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(relayRegionLabel({ transport: 'regional', state: 'connected', region: 'US West' }, 'https://veryhappy.dev')).toBe('🇺🇸 US WEST');
+packages/happy-web-v2/src/screens/session/relayLabel.test.ts	10	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(relayRegionLabel({ transport: 'legacy', state: 'fallback' }, 'https://veryhappy.dev')).toBe('🇸🇬 SG');
+packages/happy-web-v2/src/screens/session/spawnedSessionId.test.ts	7	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(spawnedSessionIdOf('Spawned session cmtabc123456 in /w and sent the first prompt. https://veryhappy.dev/session/cmtabc123456')).toBe(
+packages/happy-web-v2/src/screens/session/toolResultCards.test.tsx	76	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const text = 'Web search results for query: "vh"\n\nLinks: [{"title":"Very Happy","url":"https://veryhappy.dev"}]';
+packages/happy-web-v2/src/screens/session/toolResultCards.test.tsx	79	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(html).toContain('href="https://veryhappy.dev"');
+packages/happy-web-v2/src/screens/session/turnActivityFold.test.tsx	3	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	* B-607 regression (Owner 2026-10-16, veryhappy.dev): scrolled up in a
+packages/happy-web-v2/src/screens/teams/teamTaskState.test.ts	111	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	* Production replay (veryhappy.dev, read-only, 2026-10-22 09:58:29Z): the
+packages/happy-web-v2/src/screens/workspace/browserAddress.test.ts	4	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const origin='https://veryhappy.dev';
+packages/happy-web-v2/src/screens/workspace/browserAddress.test.ts	8	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	for(const value of ['', 'javascript:alert(1)','data:text/html,hello','file:///etc/passwd','https://user:secret@example.com','https://veryhap
+packages/happy-web-v2/src/sync/serverUrlResolution.test.ts	10	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	fallback: 'https://veryhappy.dev',
+packages/happy-web-v2/src/sync/serverUrlResolution.test.ts	20	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	fallback: 'https://veryhappy.dev',
+packages/happy-web-v2/src/testing/browserTestGlobals.ts	46	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	location: { origin: options.origin ?? 'https://veryhappy.dev' },
+packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	4	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	const page = 'https://veryhappy.dev/session/abc';
+packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	7	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(skillDocumentUrl('/skills/provider/SKILL.md?from=help', page)).toBe('https://veryhappy.dev/skills/provider/SKILL.md?from=help');
+packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	8	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(skillDocumentUrl('https://veryhappy.dev/skills/todos/SKILL.md', page)).toBe('https://veryhappy.dev/skills/todos/SKILL.md');
+packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	11	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(skillDocumentUrl('references/config.md', page, 'https://veryhappy.dev/skills/provider/SKILL.md')).toBe('https://veryhappy.dev/skills/
+packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	12	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(skillDocumentUrl('../todos/SKILL.md', page, 'https://veryhappy.dev/skills/provider/SKILL.md')).toBe('https://veryhappy.dev/skills/tod
+packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	15	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(skillDocumentUrl('/skills/provider/SKILL.md', page, page, '/happy.v2/')).toBe('https://veryhappy.dev/happy.v2/skills/provider/SKILL.m
+packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	16	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	expect(skillDocumentUrl('/happy.v2/skills/provider/SKILL.md', page, page, '/happy.v2/')).toBe('https://veryhappy.dev/happy.v2/skills/provide
+packages/happy-web-v2/src/ui/skillDocumentUrl.test.ts	18	T 测试夹具	保留；涉及「云端 origin 判定」的改成按配置断言	it.each([undefined, '', '#setup', 'javascript:alert(1)', 'https://elsewhere.dev/skills/provider/SKILL.md', '//elsewhere.dev/skills/provider/
+.agents/skills/release/SKILL.md	9	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	Production is `veryhappy.dev`: server + Web V2 on vh-sg (AWS Singapore), published CLI on
+.agents/skills/release/SKILL.md	73	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev --sha <sha>
+.agents/skills/release/SKILL.md	173	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	current `veryhappy.dev` origin, stop and establish the exact target first.
+.agents/skills/release/SKILL.md	222	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	curl -fsS https://veryhappy.dev/v1/version/cli   # source:"registry", recommendedVersion = autoUpdateVersion = X.Y.Z, autoUpdatePolicy:"late
+.agents/skills/release/SKILL.md	271	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	curl -fsS https://veryhappy.dev/v1/version/cli   # must not be source:"unavailable"
+.agents/skills/release/SKILL.md	321	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	curl -fsS https://veryhappy.dev/health
+.agents/skills/release/SKILL.md	322	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	VH_MAIN=$(curl -fsS https://veryhappy.dev/ | grep -oE '/assets/[^" ]+\.js' | head -1)
+.agents/skills/release/SKILL.md	323	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	curl -fsSI "https://veryhappy.dev${VH_MAIN}" | grep -i '^content-type:.*javascript'
+AGENTS.md	5	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	生产 `veryhappy.dev` 的 server/Web 在 **vh-sg（AWS 新加坡）**；拓扑与恢复以 [operations](docs/operations.md) 为准。
+OPEN_SOURCE_READINESS.md	99	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	`/welcome` each contain exactly one runtime config for `https://veryhappy.dev`.
+PRIVACY.md	6	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	`https://veryhappy.dev`. A self-hosted operator controls their own deployment
+README.md	13	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	<a href="https://veryhappy.dev/welcome">
+README.md	31	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	<a href="https://veryhappy.dev/welcome"><strong>Explore the live workspace</strong></a>
+README.md	61	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	<a href="https://veryhappy.dev/whats-new">
+README.md	71	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	[See the full update →](https://veryhappy.dev/whats-new) · [All releases](https://veryhappy.dev/changelog)
+README.md	192	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	<a href="https://veryhappy.dev/welcome">
+README.md	216	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	<a href="https://veryhappy.dev/welcome#proofs">
+README.md	257	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	https://veryhappy.dev/install.sh \
+README.md	310	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	[veryhappy.dev](https://veryhappy.dev), choose the connected machine,
+README.zh-CN.md	13	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	<a href="https://veryhappy.dev/welcome">
+README.zh-CN.md	31	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	<a href="https://veryhappy.dev/welcome"><strong>体验在线工作区</strong></a>
+README.zh-CN.md	57	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	<a href="https://veryhappy.dev/whats-new">
+README.zh-CN.md	67	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	[查看完整更新（含动图）→](https://veryhappy.dev/whats-new) · [全部更新记录](https://veryhappy.dev/changelog)
+README.zh-CN.md	154	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	<a href="https://veryhappy.dev/welcome">
+README.zh-CN.md	175	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	<a href="https://veryhappy.dev/welcome#proofs">
+README.zh-CN.md	211	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	https://veryhappy.dev/install.sh \
+README.zh-CN.md	251	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	只批准由你刚刚发起的机器请求。随后打开 [veryhappy.dev](https://veryhappy.dev)，选择已连接
+RELEASING.md	116	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	- **Default server** is `https://veryhappy.dev` (override with
+docs/PROCESS.md	152	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	`node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev --sha <目标>`
+docs/PROCESS.md	213	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	curl -s -o /dev/null -w '%{http_code}\n' https://veryhappy.dev/health   # 要 200
+docs/PROCESS.md	214	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	M=$(curl -s https://veryhappy.dev/ | grep -oE '/assets/[^"]+\.js' | head -1)
+docs/PROCESS.md	215	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	curl -s -o /dev/null -w '%{content_type}\n' "https://veryhappy.dev$M"   # 必须是 javascript
+docs/configuration.md	75	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	| `VH_OWNER_BOARD_ENABLED` | Server-wide switch for the briefing board (汇报板, B-766, [spec](../specs/2026-10-owner-briefing.md)): `/v1/attent
+docs/configuration.md	78	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	| `VH_FEEDBACK_ADMIN_ACCOUNT_IDS` | Who can read in-app feedback (B-836, [spec](../specs/2026-10-feedback.md)): comma- or space-separated ac
+docs/configuration.md	322	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	| `HAPPY_SERVER_URL` | HTTP/WebSocket relay used by the CLI and daemon | `https://veryhappy.dev` |
+docs/configuration.md	323	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	| `HAPPY_WEBAPP_URL` | Browser origin opened for the one-time machine approval | `https://veryhappy.dev` |
+docs/deployment.md	4	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	`veryhappy.dev` live in [`operations.md`](operations.md).
+docs/deployment.md	220	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	GOOGLE_ALLOWED_ORIGINS=https://veryhappy.dev
+docs/development.md	24	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	`https://veryhappy.dev`, preserving a same-origin browser shape.
+docs/getting-started.md	31	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	https://veryhappy.dev/install.sh \
+docs/getting-started.md	164	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	Open [veryhappy.dev](https://veryhappy.dev). Use an email verification code by
+docs/operations.md	4	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	`veryhappy.dev` deployment. It records topology and procedures, never secret
+docs/operations.md	17	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	| Public endpoint | `https://veryhappy.dev` behind AWS CloudFront `E2JUP4WHDXD8HU` since 2026-09-25 (the Cloudflare apex record is a DNS-onl
+docs/operations.md	25	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	| Retired origin | `vh-us` (Tokyo ByteVirt VPS, 69.8.128.238) — server stopped 2026-09-07, PostgreSQL frozen at 08:14 UTC that day; retired 
+docs/operations.md	187	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	It is deliberately not one-strike, because `veryhappy.dev` resolves to the CDN
+docs/operations.md	331	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	gh workflow run e2e-smoke.yml -f url=https://veryhappy.dev
+docs/operations.md	333	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	VH_SMOKE_URL=https://veryhappy.dev VH_SMOKE_USERNAME=… VH_SMOKE_PASSWORD=… \
+docs/operations.md	781	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	curl -fsS https://veryhappy.dev/health
+docs/operations.md	782	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	VH_MAIN=$(curl -fsS https://veryhappy.dev/ | grep -oE '/assets/[^" ]+\.js' | head -1)
+docs/operations.md	783	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	curl -fsSI "https://veryhappy.dev${VH_MAIN}" | grep -i '^content-type:.*javascript'
+docs/public-server.md	3	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	`https://veryhappy.dev` is the maintainer-operated Very Happy instance and
+docs/upgrading.md	70	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	`TRUST_PROXY`, or already using an IP list, are unaffected (veryhappy.dev already
+docs/upgrading.md	84	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	未设置 `TRUST_PROXY` 或已经使用 IP 列表的部署不受影响（官方 veryhappy.dev 已使用
+packages/happy-app/sources/components/SessionConsole.tsx	50	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	<Text style={styles.accent}>✓</Text> relay connected · happy.mereith.com
+packages/happy-cli/README.md	18	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	By default it connects to **https://veryhappy.dev**. You can point it at any
+packages/happy-cli/README.md	28	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	`veryhappy.dev` is operated by the maintainer of this fork.
+packages/happy-cli/README.md	31	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	machines.** If you don't trust the operator of `veryhappy.dev`, run your own
+packages/happy-cli/README.md	158	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	`https://veryhappy.dev`.
+packages/happy-cli/README.md	191	U 当前文档	公共版描述保留；补「公司内部实例」与两套发布说明（operations/release skill/README）	3. built-in default (`https://veryhappy.dev`)
+packages/happy-web-v2/src/screens/legal/PublicLegalScreen.tsx	17	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	<p>very happy 是面向编程 Agent 的开源远程 Web 客户端。本政策适用于 veryhappy.dev 托管实例。自托管部署由其管理员运营，可能采用不同做法。</p>
+packages/happy-web-v2/src/screens/legal/PublicLegalScreen.tsx	36	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	<p>very happy is an open-source remote Web client for coding agents. This policy describes the hosted instance at veryhappy.dev. A self-host
+packages/happy-web-v2/src/screens/onboarding/firstMachineCommands.ts	1	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	const CLOUD_ORIGIN = 'https://veryhappy.dev';
+packages/happy-web-v2/src/screens/onboarding/firstMachineCommands.ts	8	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	https://veryhappy.dev/install.sh \\
+packages/happy-web-v2/src/screens/public/publicContent.ts	12	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	export const BOOTSTRAP_COMMAND = `(\n  set -eu\n  vh_installer=$(mktemp)\n  trap 'rm -f "$vh_installer"' \\\n    EXIT HUP INT TERM\n  curl -
+packages/happy-web-v2/src/screens/public/publicContent.ts	171	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	{ type: 'p', text: 'Use Very Happy Cloud at veryhappy.dev for the shortest path, or deploy your own relay first. A browser account and every
+packages/happy-web-v2/src/screens/public/publicContent.ts	382	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	{ type: 'p', text: 'veryhappy.dev hosts the web client, account service, sync storage, and relay. It is convenient for trying Very Happy wit
+packages/happy-web-v2/src/screens/public/publicContent.ts	415	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	{ type: 'list', items: ['Cloud users need no endpoint variables; both client URLs default to https://veryhappy.dev.', 'HAPPY_SERVER_URL sele
+packages/happy-web-v2/src/screens/public/publicContent.ts	575	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	{ type: 'p', text: 'Feedback sent from Settings → Send feedback or the occasional feedback card is stored only in the relay you use, with yo
+packages/happy-web-v2/src/screens/public/publicContent.zhHans.ts	86	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	{ heading: '1. 选择中继', blocks: ['最短路径是使用 veryhappy.dev 的 Very Happy Cloud，也可以先部署自己的中继。浏览器账户和所有已连接 CLI 必须使用同一个中继。', 'Very Happy Cloud 上手最快。自托管
+packages/happy-web-v2/src/screens/public/publicContent.zhHans.ts	156	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	{ heading: 'Cloud 提供什么', blocks: ['veryhappy.dev 托管 Web 客户端、账户服务、同步存储与中继，无需自建服务器即可体验 Very Happy。', ['公共注册可以开放、仅限邀请、暂停或受全局容量限制。', '社区服务不承诺在线率
+packages/happy-web-v2/src/screens/public/publicContent.zhHans.ts	172	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	{ heading: '客户端端点', blocks: [['Cloud 用户不需要端点变量；两个客户端 URL 默认都是 https://veryhappy.dev。', 'HAPPY_SERVER_URL 选择 CLI 使用的 API 与 socket 中继。', 'HAPP
+packages/happy-web-v2/src/screens/public/publicContent.zhHans.ts	221	W Web 文案/命令	首台机器命令读 __HAPPY_CONFIG__.installOrigin；文案用 BRAND.name + 当前 origin 占位	{ heading: '数据处理', blocks: ['根据功能不同，会话、终端流量、账户元数据、日志、附件、通知与集成数据可能经过中继或持久化在中继上。运营方应记录部署的保留策略、备份、子处理方和事故响应。', '邮箱验证码登录会在可信中继上保存规范化邮箱地址。配置的邮件 p
+packages/happy-web-v2/index.html	26	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	<meta property="og:image" content="https://veryhappy.dev/og-image.png" />
+packages/happy-web-v2/public/skills/very-happy-todos/SKILL.md	12	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	1. Run `very-happy todo --help` to check capability. If the executable or todo command is missing, explain that a CLI version supporting thi
+packages/happy-web-v2/scripts/deploy.sh	3	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	#   deploy.sh root     → build (base=/) and serve at veryhappy.dev/ (production, via happy-server /webapp)
+packages/happy-web-v2/scripts/deploy.sh	4	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	#   deploy.sh staging  → build (base=/v2/) and serve at veryhappy.dev/v2/ (Caddy file_server)
+packages/happy-web-v2/scripts/deploy.sh	19	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	SERVER_URL="${VH_SERVER_URL:-https://veryhappy.dev}"
+packages/happy-web-v2/scripts/deploy.sh	28	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	echo "staged at https://veryhappy.dev/v2/ (Caddy file_server, no restart needed)"
+packages/happy-web-v2/scripts/deploy.sh	45	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	code=$(curl -s -o /dev/null -w '%{http_code}' https://veryhappy.dev/health || true)
+packages/happy-web-v2/scripts/deploy.sh	48	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	main=$(curl -s https://veryhappy.dev/ | grep -oE '/assets/[^"]+\.js' | head -1)
+packages/happy-web-v2/scripts/deploy.sh	49	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	ct=$(curl -s -o /dev/null -w '%{content_type}' "https://veryhappy.dev$main")
+packages/happy-web-v2/scripts/deploy.sh	52	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	*javascript*) echo "[deploy] ✓ live at https://veryhappy.dev/" ;;
+packages/happy-web-v2/src/dev/BuiltinToolsHarness.tsx	64	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	call('session_spawn', { directory: '/home/me/code/very-happy', prompt: 'Review PR #431 and leave comments.' }, 'completed', 'Spawned session
+packages/happy-web-v2/src/screens/session/relayLabel.ts	9	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	if (host === 'veryhappy.dev' || host.endsWith('.veryhappy.dev')) return '🇸🇬 SG';
+packages/happy-web-v2/src/sync/automationsPoll.ts	6	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	* Incident (2026-09-25, veryhappy.dev @47605f538): the sidebar 「自动化」 entry
+packages/happy-web-v2/src/ui/SkillDocumentLink.tsx	16	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	const pageUrl = typeof window === 'undefined' ? 'https://veryhappy.dev/' : window.location.href;
+packages/happy-web-v2/vite.config.ts	13	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	const DEFAULT_SERVER_URL = process.env.VH_SERVER_URL ?? 'https://veryhappy.dev';
+packages/happy-wire/src/builtinTodoSkill.ts	13	W Web 构建常量	默认 server 只作兜底保持公共版；og:image 改相对；relayLabel 改用 /v1/relays region	1. Run \`very-happy todo --help\` to check capability. If the executable or todo command is missing, explain that a CLI version supporting t
+packages/happy-web-v2/public/install.sh	121	W Web 静态/安装	下发时替换为当前 origin，并支持 --server <origin> 写 settings	say '  https://veryhappy.dev/docs/security'
+packages/happy-web-v2/public/install.sh	178	W Web 静态/安装	下发时替换为当前 origin，并支持 --server <origin> 写 settings	WEB_URL=${HAPPY_WEBAPP_URL:-https://veryhappy.dev}
+scripts/brand/outline-text.py	46	X 运维/探针脚本	保持公共版默认，参数可指内部版	"url": outline(FS / "ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff", "veryhappy.dev"),
+scripts/brand/textOutlines.json	15	X 运维/探针脚本	保持公共版默认，参数可指内部版	"text": "veryhappy.dev",
+scripts/dev/check-shipped.mjs	32	X 运维/探针脚本	保持公共版默认，参数可指内部版	*   node scripts/dev/check-shipped.mjs --origin https://veryhappy.dev --needle X --json
+scripts/dev/check-shipped.mjs	41	X 运维/探针脚本	保持公共版默认，参数可指内部版	let origin = 'https://veryhappy.dev';
+scripts/ops/resource-budget.mjs	392	X 运维/探针脚本	保持公共版默认，参数可指内部版	console.log('    fill it before any of them is refused. On veryhappy.dev this is ACCEPTED —');
+scripts/probe/README.md	12	X 运维/探针脚本	保持公共版默认，参数可指内部版	node scripts/probe/term-input-goldendiff.mjs            # 真站扫描（默认 veryhappy.dev）
+scripts/probe/README.md	19	X 运维/探针脚本	保持公共版默认，参数可指内部版	（凭据在 rbw 的 `veryhappy.dev`；profile 会记住登录态，之后不用再给。）
+scripts/probe/README.md	330	X 运维/探针脚本	保持公共版默认，参数可指内部版	node scripts/probe/sync-hello-canary.mjs                        # veryhappy.dev，20 轮，token 取 ~/.happy/access.key
+scripts/probe/sync-hello-canary.mjs	10	X 运维/探针脚本	保持公共版默认，参数可指内部版	*   node scripts/probe/sync-hello-canary.mjs                          # 默认 veryhappy.dev，20 轮
+scripts/probe/sync-hello-canary.mjs	39	X 运维/探针脚本	保持公共版默认，参数可指内部版	server: 'https://veryhappy.dev',
+scripts/probe/term-focus-handoff.mjs	24	X 运维/探针脚本	保持公共版默认，参数可指内部版	*   node scripts/probe/term-focus-handoff.mjs --clicks 5 --base https://veryhappy.dev
+scripts/probe/term-focus-handoff.mjs	39	X 运维/探针脚本	保持公共版默认，参数可指内部版	base: 'https://veryhappy.dev',
+scripts/probe/term-input-goldendiff.mjs	15	X 运维/探针脚本	保持公共版默认，参数可指内部版	*   node scripts/probe/term-input-goldendiff.mjs                     # 真站扫描（默认 veryhappy.dev）
+scripts/probe/term-input-goldendiff.mjs	72	X 运维/探针脚本	保持公共版默认，参数可指内部版	base: 'https://veryhappy.dev',
+scripts/probe/term-input-goldendiff.mjs	120	X 运维/探针脚本	保持公共版默认，参数可指内部版	--base <url>          默认 https://veryhappy.dev
+scripts/probe/term-lines-e2e.mjs	19	X 运维/探针脚本	保持公共版默认，参数可指内部版	*   node scripts/probe/term-lines-e2e.mjs --url https://veryhappy.dev
+scripts/probe/term-lines-e2e.mjs	31	X 运维/探针脚本	保持公共版默认，参数可指内部版	url: 'https://veryhappy.dev',
+scripts/probe/term-lines-e2e.mjs	36	X 运维/探针脚本	保持公共版默认，参数可指内部版	base: 'https://veryhappy.dev',
+(prod-public) /opt/happy/.env	MIGRATION_TARGET_URL / _WEBAPP_URL / _NAME / _EMAIL_DOMAINS / _HANDOFF_SECRET	P 生产配置	P4 开启（公共版作为迁移源）；P6 关闭	
+(prod-public) /opt/happy/.env	PUBLIC_URL / HAPPY_WEB_URL / GOOGLE_ALLOWED_ORIGINS	P 生产配置	公共版不变	
+(prod-public) /opt/happy/.env	AUTH_EMAIL_FROM（个人 Cloudflare 发件）	P 生产配置	公共版不变；内部版若保留邮箱登录需公司域发件人	
+(prod-internal) 新主机 .env	PUBLIC_URL / HAPPY_WEB_URL / OIDC_* / HANDY_MASTER_SECRET(新) / MIGRATION_HANDOFF_SECRET / BRAND_* / WEB_LANDING=off / CLI_AUTO_UPDATE_VERSION	P 生产配置	P1 新建；不设 HAPPY_RELAYS_JSON	
+(aws) Route53 Z04787629I6U1OS0O0R0	vibe.apodex.site	E 边缘	P1 新建 A/AAAA alias → 内部版 CloudFront（手工记录无 ExternalDNS owner TXT，不会被删）	
+(aws) CloudFront（新）+ ACM us-east-1（新）	vibe.apodex.site	E 边缘	P1 新建；独立 X-Origin-Verify 密钥；公共版 E2JUP4WHDXD8HU 不动	
+(aws) EC2/RDS/ElastiCache（新）	vh-int / vh-int-pg / vh-int-redis	E 边缘	P1 新建（D1：ap-southeast-1, vh-vpc 独立子网与安全组）	
+(idp) 公司 SSO OIDC client	redirect URI	P 生产配置	登记 https://vibe.apodex.site/v1/auth/oidc/callback	
+(cf) veryhappy-fonts.pages.dev	CSP font-src（securityHeaders.ts:31）	P 生产配置	两套都依赖个人 Cloudflare Pages；P7 可选自托管字体	
+(gha) deploy-hwsg.yml / Environments	production-public / production-internal	D 发布/CI	P0 加 instance 输入与第二套 Environment secrets	
