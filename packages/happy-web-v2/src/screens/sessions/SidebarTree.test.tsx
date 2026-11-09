@@ -62,11 +62,11 @@ afterEach(async () => {
   host = null;
 });
 
-async function mount(kind: SceneKind, lens: 'project' | 'tag' | 'none', path = '/') {
+async function mount(kind: SceneKind, lens: 'project' | 'tag' | 'none', path = '/', projectsStatus: 'ready' | 'unavailable' = 'ready') {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const scene = sidebarTreeScene(kind);
   h.teams = scene.teams;
-  h.projects = { status: 'ready', projects: scene.projects, members: scene.members };
+  h.projects = projectsStatus === 'ready' ? { status: 'ready', projects: scene.projects, members: scene.members } : { status: projectsStatus, projects: [], members: [] };
   const st = storage.getState();
   st.applyLocalSettings({ sidebarView: 'list', sidebarGrouping: lens, sidebarProjectHintDismissed: false, sidebarUnassignedByFolder: false });
   st.applySessions(scene.sessions);
@@ -172,6 +172,59 @@ describe('按项目: the project tree', () => {
     expect(treeShape(el)).toEqual(['-1|会话', '0|Shell 别名整理', '0|正则写法速查', '0|写个周末计划', '0|论文阅读笔记']);
     expect(list(el).querySelector('.sb-tree-hint')!.textContent).toContain('相关的会话放进同一个项目');
     expect(list(el).querySelector('.sb-tree-area-toggle')).toBeNull();
+  });
+
+  describe('B-904: the area ⋯ (按目录分组) is there with or without projects', () => {
+    const areaMenu = (el: HTMLElement) => list(el).querySelector<HTMLButtonElement>('.sb-tree-area-menu');
+    async function toggleByFolder(el: HTMLElement) {
+      await act(async () => { areaMenu(el)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+      const items = [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')];
+      expect(items.map((i) => i.textContent?.trim())).toEqual(['按目录分组']);
+      await act(async () => items[0].click());
+    }
+    const byFolder = () => storage.getState().localSettings.sidebarUnassignedByFolder;
+    const folderHeads = (el: HTMLElement) => [...list(el).querySelectorAll('.sb-section-head--workspace .sb-section-label')].map((n) => n.textContent);
+
+    it('with projects: 不在项目中 keeps its ⋯ and the toggle groups by folder, then back', async () => {
+      const el = await mount('atlas', 'project', '/');
+      expect(areaMenu(el)!.getAttribute('aria-label')).toBe('「不在项目中」操作');
+      await toggleByFolder(el);
+      expect(byFolder()).toBe(true);
+      expect(folderHeads(el).length).toBeGreaterThan(0);
+      await toggleByFolder(el);
+      expect(byFolder()).toBe(false);
+      expect(folderHeads(el)).toEqual([]);
+    });
+
+    it('no project yet: 会话 gets the same ⋯ and the same per-device setting', async () => {
+      const el = await mount('solo', 'project', '/');
+      expect(areaMenu(el)!.getAttribute('aria-label')).toBe('「会话」操作');
+      await toggleByFolder(el);
+      expect(byFolder()).toBe(true);
+      expect(treeShape(el)[0]).toBe('-1|会话');
+      expect(folderHeads(el)).toEqual(['atlas']);
+      await toggleByFolder(el);
+      expect(byFolder()).toBe(false);
+      expect(treeShape(el)).toEqual(['-1|会话', '0|Shell 别名整理', '0|正则写法速查', '0|写个周末计划', '0|论文阅读笔记']);
+    });
+
+    it('server without projects (projectsUnavailable): 会话 still has the ⋯, no project hint', async () => {
+      const el = await mount('solo', 'project', '/', 'unavailable');
+      expect(list(el).querySelector('.sb-tree-hint')).toBeNull();
+      await toggleByFolder(el);
+      expect(folderHeads(el)).toEqual(['atlas']);
+    });
+
+    it('1 project deleted down to 0: the area turns into 会话 and keeps its ⋯', async () => {
+      const el = await mount('atlas', 'project', '/');
+      expect(treeShape(el)).toContain('-1|不在项目中6');
+      h.projects = { status: 'ready', projects: [], members: [] };
+      await act(async () => root!.render(<ThemeProvider><MemoryRouter initialEntries={['/']}><Sidebar /></MemoryRouter></ThemeProvider>));
+      expect(treeShape(el).find((r) => r.startsWith('-1|'))).toBe('-1|会话');
+      expect(areaMenu(el)!.getAttribute('aria-label')).toBe('「会话」操作');
+      await toggleByFolder(el);
+      expect(byFolder()).toBe(true);
+    });
   });
 
   it('new user: nothing to draw, the empty line only', async () => {

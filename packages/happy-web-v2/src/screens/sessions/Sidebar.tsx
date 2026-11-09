@@ -1628,13 +1628,13 @@ export function Sidebar() {
                           </button>
                         ) : <span className="sb-tree-area-label">{sec.label}</span>}
                         <span className="sb-tree-area-rule" aria-hidden />
-                        {sec.area.kind === 'unassigned' && (
-                          <ActionDropdownMenu align="end" sideOffset={4} items={[
-                            { key: 'by-folder', label: t('sidebar.groupUnassignedByFolder'), icon: FolderOpen, checked: !!unassignedByFolder, onSelect: () => setUnassignedByFolder(!unassignedByFolder) },
-                          ]}>
-                            <button type="button" className="sb-tree-area-menu" title={t('sidebar.unassignedActions')} aria-label={t('sidebar.unassignedActions')}><MoreHorizontal size={14} /></button>
-                          </ActionDropdownMenu>
-                        )}
+                        {/* B-904: the same ⋯ (same per-device setting) whether the area reads
+                            不在项目中 or — with no project yet / projects unavailable — 会话. */}
+                        <ActionDropdownMenu align="end" sideOffset={4} items={[
+                          { key: 'by-folder', label: t('sidebar.groupUnassignedByFolder'), icon: FolderOpen, checked: !!unassignedByFolder, onSelect: () => setUnassignedByFolder(!unassignedByFolder) },
+                        ]}>
+                          <button type="button" className="sb-tree-area-menu" title={t(sec.area.kind === 'unassigned' ? 'sidebar.unassignedActions' : 'sidebar.chatsActions')} aria-label={t(sec.area.kind === 'unassigned' ? 'sidebar.unassignedActions' : 'sidebar.chatsActions')}><MoreHorizontal size={14} /></button>
+                        </ActionDropdownMenu>
                       </div>
                       {sec.area.hint && sec.allRows.length > 0 && (
                         <p className="sb-tree-hint">
