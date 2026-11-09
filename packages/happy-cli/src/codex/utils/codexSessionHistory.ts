@@ -237,7 +237,7 @@ export function parseCodexHistoryHead(
             // Codex's own sub-threads — the approval reviewer ("guardian", first
             // prompt "The following is the Codex agent history…") and agents a
             // thread spawned — are internal: their fork carries no turns and the
-            // import came up empty (Xu CHEN 2026-10-02). Only user threads.
+            // import came up empty (a user 2026-10-02). Only user threads.
             if (isCodexSubThread(payload)) return null;
             sawMeta = true;
             if (typeof payload.id === 'string' && UUID_RE.test(payload.id)) id = payload.id.toLowerCase();

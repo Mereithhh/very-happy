@@ -36,7 +36,7 @@ parses edge headers itself.
   else the TCP peer. `X-Origin-Verify` and `CloudFront-Viewer-Address` are
   removed before proxying. Update the Cloudflare ranges in the Caddyfile when
   https://www.cloudflare.com/ips/ changes.
-- The secret lives only in rbw `apodex/VH_CLOUDFRONT_ORIGIN_SECRET`, the
+- The secret lives only in rbw `<vault>/VH_CLOUDFRONT_ORIGIN_SECRET`, the
   CloudFront origin config, and host file `/etc/caddy/vh-origin-secret.caddy`
   (`root:caddy 0640`, a `(vh_origin_secret)` snippet setting
   `vars vh_origin_secret "<secret>"`). **Every Caddy validate/reload, including

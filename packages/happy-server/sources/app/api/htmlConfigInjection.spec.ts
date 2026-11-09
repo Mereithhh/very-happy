@@ -28,18 +28,18 @@ describe('runtime HTML config injection', () => {
 </head><body><div class="vh-startup-hub"><svg viewBox="0 0 96 96"><path/></svg></div><strong class="vh-startup-wordmark">Very Happy</strong></body></html>`;
 
     it('B-638: rewrites title, icons, link preview and the splash for an operator brand', () => {
-        const brand = readHtmlBrand({ brand: { name: 'Apodex Vibe', logoUrl: '/brand/i.svg', logoDarkUrl: '/brand/i-dark.svg', iconUrl: '/brand/icon-512.png', wordmarkUrl: '/brand/w.svg', wordmarkDarkUrl: '/brand/w-dark.svg', envLabel: 'Staging' } });
+        const brand = readHtmlBrand({ brand: { name: 'Acme Vibe', logoUrl: '/brand/i.svg', logoDarkUrl: '/brand/i-dark.svg', iconUrl: '/brand/icon-512.png', wordmarkUrl: '/brand/w.svg', wordmarkDarkUrl: '/brand/w-dark.svg', envLabel: 'Staging' } });
         const html = applyBrandToHtml(INDEX, brand, 'https://vibe.example');
-        expect(html).toContain('<title>Apodex Vibe · Staging</title>');
-        expect(html).toContain('<meta name="apple-mobile-web-app-title" content="Apodex Vibe" />');
+        expect(html).toContain('<title>Acme Vibe · Staging</title>');
+        expect(html).toContain('<meta name="apple-mobile-web-app-title" content="Acme Vibe" />');
         expect(html).toContain('<link rel="apple-touch-icon" href="/brand/icon-512.png" />');
         expect(html).toContain('<link rel="icon" type="image/png" href="/brand/icon-512.png" />');
-        expect(html).toContain('<meta property="og:title" content="Apodex Vibe" />');
+        expect(html).toContain('<meta property="og:title" content="Acme Vibe" />');
         expect(html).toContain('<meta property="og:image" content="https://vibe.example/brand/icon-512.png" />');
         expect(html).not.toContain('og:image:width');
         expect(html).toContain('<meta name="twitter:card" content="summary" />');
-        expect(html).toContain('<img class="vh-startup-lockup vh-brand-light" src="/brand/w.svg" alt="Apodex Vibe">');
-        expect(html).toContain('<img class="vh-startup-lockup vh-brand-dark" src="/brand/w-dark.svg" alt="Apodex Vibe">');
+        expect(html).toContain('<img class="vh-startup-lockup vh-brand-light" src="/brand/w.svg" alt="Acme Vibe">');
+        expect(html).toContain('<img class="vh-startup-lockup vh-brand-dark" src="/brand/w-dark.svg" alt="Acme Vibe">');
         expect(html).not.toContain('vh-startup-wordmark');
         expect(html).toContain('<div class="vh-startup-hub"><img class="vh-startup-hub-logo vh-brand-light" src="/brand/i.svg" alt=""><img class="vh-startup-hub-logo vh-brand-dark" src="/brand/i-dark.svg" alt=""></div>');
         expect(html).not.toContain('<svg viewBox="0 0 96 96">');
@@ -61,8 +61,8 @@ describe('runtime HTML config injection', () => {
 
     it('B-638: the PWA manifest follows the brand name, label and icon', () => {
         const manifest = JSON.stringify({ name: 'Very Happy', short_name: 'Very Happy', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }], start_url: '/' });
-        const out = JSON.parse(applyBrandToManifest(manifest, readHtmlBrand({ brand: { name: 'Apodex Vibe', envLabel: 'Staging', iconUrl: '/brand/icon-512.png' } })));
-        expect(out).toMatchObject({ name: 'Apodex Vibe (Staging)', short_name: 'Apodex Vibe', start_url: '/' });
+        const out = JSON.parse(applyBrandToManifest(manifest, readHtmlBrand({ brand: { name: 'Acme Vibe', envLabel: 'Staging', iconUrl: '/brand/icon-512.png' } })));
+        expect(out).toMatchObject({ name: 'Acme Vibe (Staging)', short_name: 'Acme Vibe', start_url: '/' });
         expect(out.icons).toEqual([
             { src: '/brand/icon-512.png', sizes: '192x192', type: 'image/png' },
             { src: '/brand/icon-512.png', sizes: '512x512', type: 'image/png' },

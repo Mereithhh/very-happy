@@ -51,7 +51,7 @@ describe('unseenRows', () => {
         expect(unseenRows('r9', keys(0, 12))).toBe(3);
     });
 
-    it('顶部插入的旧历史不算新消息（后台预取，Xu CHEN 实报 99+）', () => {
+    it('顶部插入的旧历史不算新消息（后台预取，用户实报 99+）', () => {
         // 离底时 r100..r159；预取三页把 r-20..r99 插到前面，底部没有新行
         expect(unseenRows('r159', keys(-20, 159))).toBe(0);
         // 同时底部真的来了 2 行

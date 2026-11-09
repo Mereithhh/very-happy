@@ -1,6 +1,6 @@
 # Host-only secret (never in git): /etc/caddy/vh-origin-secret.caddy, root:caddy 0640:
 #   (vh_origin_secret) {
-#   	vars vh_origin_secret "<64 hex chars; rbw apodex/VH_CLOUDFRONT_ORIGIN_SECRET>"
+#   	vars vh_origin_secret "<64 hex chars; rbw <vault>/VH_CLOUDFRONT_ORIGIN_SECRET>"
 #   }
 # The same value is the CloudFront origin custom header X-Origin-Verify. A
 # missing file fails `caddy validate`, so reload is refused and the old config

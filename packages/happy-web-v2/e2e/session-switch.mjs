@@ -202,13 +202,13 @@ try {
             }
             await sync.refreshSessions?.();
             const big = out.slice(0, Math.max(0, out.length - 3));
-            const { project } = await projectsApi.create({ name: '业务数据治理', sessionIds: [...clicked, ...big] });
-            await projectsApi.create({ name: 'LLM-HUB', sessionIds: out.slice(big.length) });
+            const { project } = await projectsApi.create({ name: '订单看板', sessionIds: [...clicked, ...big] });
+            await projectsApi.create({ name: 'atlas-pay', sessionIds: out.slice(big.length) });
             // --fold-project with --busy-project: the big project is the one folded by hand.
             if (fold) localStorage.setItem('vh:sidebar-collapsed-groups:v1', JSON.stringify({ [`project:${project.id}`]: true }));
             return out;
         }, { clicked: ids, extra: Math.max(3, BUSY_PROJECT - 4 + 3), fold: FOLD_PROJECT });
-        console.log(`busy: ${BUSY_PROJECT} sessions in 业务数据治理, 3 in LLM-HUB, a write every ${BUSY_MS}ms`);
+        console.log(`busy: ${BUSY_PROJECT} sessions in 订单看板, 3 in atlas-pay, a write every ${BUSY_MS}ms`);
     }
     const storageDump = await seed.evaluate(() => Object.fromEntries(Object.entries(localStorage)));
     // Background activity on the other sessions (Tanka 代答-style automations).

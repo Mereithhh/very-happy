@@ -32,7 +32,7 @@ describe('B-627 relay migration routes (pglite)', () => {
         process.env.MIGRATION_TARGET_URL = 'https://api.new.test';
         process.env.MIGRATION_TARGET_WEBAPP_URL = 'https://new.test';
         process.env.MIGRATION_TARGET_NAME = 'New Relay';
-        process.env.MIGRATION_EMAIL_DOMAINS = 'apodex.com';
+        process.env.MIGRATION_EMAIL_DOMAINS = 'example.com';
         const { runMigrations } = await import('../../../standalone');
         await runMigrations({ pgliteDir: process.env.PGLITE_DIR, migrationsDir: join(process.cwd(), 'prisma/migrations') });
         await (await import('@/modules/encrypt')).initEncrypt();
@@ -46,7 +46,7 @@ describe('B-627 relay migration routes (pglite)', () => {
         targetedById = (await db.account.create({ data: { publicKey: 'pk-by-id' } })).id;
         await upsertAccountSecret(db, targetedById, Buffer.alloc(32, 1).toString('base64url'));
         targetedByDomain = (await db.account.create({ data: { publicKey: 'pk-by-domain' } })).id;
-        await db.accountIdentity.create({ data: { accountId: targetedByDomain, provider: 'google', providerSubject: 'g-1', email: 'Someone@Apodex.com' } });
+        await db.accountIdentity.create({ data: { accountId: targetedByDomain, provider: 'google', providerSubject: 'g-1', email: 'Someone@Example.com' } });
         await upsertAccountSecret(db, targetedByDomain, Buffer.alloc(32, 2).toString('base64url'));
         await db.machine.create({ data: { id: 'machine-domain', accountId: targetedByDomain, metadata: '', metadataVersion: 1, daemonState: '', daemonStateVersion: 1, seq: 0 } });
         outsider = (await db.account.create({ data: { publicKey: 'pk-outsider' } })).id;

@@ -81,7 +81,7 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
     }
 
     it('creates the account on first login, hands the session off once, and reuses the account next time', async () => {
-        idp.claims = { email: 'jo@apodex.com', email_verified: true, name: 'Jo Doe', preferred_username: 'JoDoe' };
+        idp.claims = { email: 'jo@example.com', email_verified: true, name: 'Jo Doe', preferred_username: 'JoDoe' };
         const { params } = await start();
         expect(params.redirect_uri).toBe('https://api.test/v1/auth/oidc/callback');
         expect(params.code_challenge_method).toBe('S256');
@@ -111,13 +111,13 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         expect(accounts).toHaveLength(1);
         expect(accounts[0].username).toBe('jodoe');
         expect(accounts[0]).toMatchObject({ firstName: 'Jo', lastName: 'Doe' });
-        expect(accounts[0].AccountIdentity[0]).toMatchObject({ provider: `oidc:${idp.issuer}`, providerSubject: 'subject-1', email: 'jo@apodex.com' });
+        expect(accounts[0].AccountIdentity[0]).toMatchObject({ provider: `oidc:${idp.issuer}`, providerSubject: 'subject-1', email: 'jo@example.com' });
         expect(await db.oidcLoginChallenge.count()).toBe(0);
         expect(await db.oidcLoginHandoff.count()).toBe(0);
 
         // Second login with the same subject: no new account even when signup is closed.
         process.env.SIGNUP_MODE = 'closed';
-        idp.claims = { email: 'jo.new@apodex.com', name: 'Jo Doe' };
+        idp.claims = { email: 'jo.new@example.com', name: 'Jo Doe' };
         const second = await start();
         const cb2 = await callback({ code: 'good-code', state: second.params.state });
         const outcome = returned(cb2.headers.location as string);
@@ -126,12 +126,12 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         expect(complete2.statusCode).toBe(200);
         expect(complete2.json().secret).toBe(body.secret);
         expect(await db.account.count()).toBe(1);
-        expect((await db.accountIdentity.findFirst({ where: { providerSubject: 'subject-1' } }))?.email).toBe('jo.new@apodex.com');
+        expect((await db.accountIdentity.findFirst({ where: { providerSubject: 'subject-1' } }))?.email).toBe('jo.new@example.com');
         expect(await db.accountLoginSession.count({ where: { accountId: accounts[0].id } })).toBe(2);
     });
 
     it('refuses a new account when signup is closed or invite-only without the code, and admits it with the code', async () => {
-        idp.claims = { sub: 'subject-closed', email: 'new@apodex.com' };
+        idp.claims = { sub: 'subject-closed', email: 'new@example.com' };
         process.env.SIGNUP_MODE = 'closed';
         const closed = await start();
         expect(returned((await callback({ code: 'good-code', state: closed.params.state })).headers.location as string).error).toBe('signup-closed');
@@ -150,7 +150,7 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         process.env.SIGNUP_MODE = 'invite';
         process.env.SIGNUP_INVITE_CODES = 'team-2026';
         process.env.OIDC_SIGNUP_MODE = 'open';
-        idp.claims = { sub: 'subject-selfserve', email: 'self@apodex.com', name: 'Alex Rivera' };
+        idp.claims = { sub: 'subject-selfserve', email: 'self@example.com', name: 'Alex Rivera' };
         const before = await db.account.count();
         const selfServe = await start();
         expect(returned((await callback({ code: 'good-code', state: selfServe.params.state })).headers.location as string).handoff).toBeTruthy();
@@ -160,12 +160,12 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
 
         process.env.SIGNUP_MODE = 'open';
         process.env.OIDC_SIGNUP_MODE = 'closed';
-        idp.claims = { sub: 'subject-oidc-closed', email: 'late@apodex.com' };
+        idp.claims = { sub: 'subject-oidc-closed', email: 'late@example.com' };
         const closed = await start();
         expect(returned((await callback({ code: 'good-code', state: closed.params.state })).headers.location as string).error).toBe('signup-closed');
         expect(await db.account.count()).toBe(before + 1);
         // Existing OIDC identities keep logging in while OIDC signup is closed.
-        idp.claims = { sub: 'subject-selfserve', email: 'self@apodex.com' };
+        idp.claims = { sub: 'subject-selfserve', email: 'self@example.com' };
         const again = await start();
         expect(returned((await callback({ code: 'good-code', state: again.params.state })).headers.location as string).handoff).toBeTruthy();
     });
@@ -182,7 +182,7 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         expect(returned((await callback({ code: 'good-code', state: nonce.params.state })).headers.location as string).error).toBe('invalid_id_token');
         idp.nonceOverride = null;
 
-        process.env.OIDC_ALLOWED_EMAIL_DOMAINS = 'apodex.com';
+        process.env.OIDC_ALLOWED_EMAIL_DOMAINS = 'example.com';
         const { oidcAuthRoutes } = await import('./oidcAuthRoutes');
         const strict = fastify();
         strict.setValidatorCompiler(validatorCompiler);
@@ -227,11 +227,11 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
     it('B-626: a verified SSO email claims the Email/Google account that owns it, once; unverified or ambiguous emails do not', async () => {
         const before = await db.account.count();
         const seededSecret = Buffer.alloc(32, 7).toString('base64url');
-        const owner = await seedAccount('link', { provider: 'email', email: 'lin@apodex.com' }, seededSecret);
+        const owner = await seedAccount('link', { provider: 'email', email: 'lin@example.com' }, seededSecret);
 
         // Verified + unique owner → same account, same secret, one new oidc identity, no signup needed.
         process.env.SIGNUP_MODE = 'closed';
-        const first = await login({ sub: 'subject-link', email: 'Lin@Apodex.com', email_verified: true, name: 'Lin Den' });
+        const first = await login({ sub: 'subject-link', email: 'Lin@Example.com', email_verified: true, name: 'Lin Den' });
         expect(first.error).toBeNull();
         expect(first.secret).toBe(seededSecret);
         expect(await db.account.count()).toBe(before + 1);
@@ -239,29 +239,29 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         expect(linked.map((row) => [row.provider, row.providerSubject])).toEqual([['email', 'email-link'], [`oidc:${idp.issuer}`, 'subject-link']]);
 
         // Next login resolves by subject, not by email: no second identity row.
-        const again = await login({ sub: 'subject-link', email: 'lin@apodex.com', email_verified: true });
+        const again = await login({ sub: 'subject-link', email: 'lin@example.com', email_verified: true });
         expect(again.secret).toBe(seededSecret);
         expect(await db.accountIdentity.count({ where: { accountId: owner } })).toBe(2);
 
         // Unverified email never links: a fresh account instead (signup open), owner untouched.
         process.env.SIGNUP_MODE = 'open';
-        const googleOwner = await seedAccount('unverified', { provider: 'google', email: 'g@apodex.com' }, Buffer.alloc(32, 8).toString('base64url'));
-        const unverified = await login({ sub: 'subject-unverified', email: 'g@apodex.com', email_verified: false });
+        const googleOwner = await seedAccount('unverified', { provider: 'google', email: 'g@example.com' }, Buffer.alloc(32, 8).toString('base64url'));
+        const unverified = await login({ sub: 'subject-unverified', email: 'g@example.com', email_verified: false });
         expect(unverified.error).toBeNull();
         expect(await db.accountIdentity.count({ where: { accountId: googleOwner } })).toBe(1);
         expect(await db.account.count()).toBe(before + 3);
 
         // Two accounts own the email → refused, nothing created.
-        await seedAccount('dup-a', { provider: 'email', email: 'dup@apodex.com' }, Buffer.alloc(32, 9).toString('base64url'));
-        await seedAccount('dup-b', { provider: 'google', email: 'dup@apodex.com' }, Buffer.alloc(32, 10).toString('base64url'));
-        const ambiguous = await login({ sub: 'subject-dup', email: 'dup@apodex.com', email_verified: true });
+        await seedAccount('dup-a', { provider: 'email', email: 'dup@example.com' }, Buffer.alloc(32, 9).toString('base64url'));
+        await seedAccount('dup-b', { provider: 'google', email: 'dup@example.com' }, Buffer.alloc(32, 10).toString('base64url'));
+        const ambiguous = await login({ sub: 'subject-dup', email: 'dup@example.com', email_verified: true });
         expect(ambiguous.error).toBe('account_link_ambiguous');
         expect(await db.account.count()).toBe(before + 5);
         expect(await db.accountIdentity.count({ where: { providerSubject: 'subject-dup' } })).toBe(0);
 
         // A key-only owner (no stored secret) cannot be signed into from the Web: fresh account.
-        const keyOnly = await seedAccount('key-only', { provider: 'email', email: 'key@apodex.com' }, null);
-        const fallback = await login({ sub: 'subject-key', email: 'key@apodex.com', email_verified: true });
+        const keyOnly = await seedAccount('key-only', { provider: 'email', email: 'key@example.com' }, null);
+        const fallback = await login({ sub: 'subject-key', email: 'key@example.com', email_verified: true });
         expect(fallback.error).toBeNull();
         expect(await db.accountIdentity.count({ where: { accountId: keyOnly } })).toBe(1);
         expect(await db.account.count()).toBe(before + 7);
@@ -275,8 +275,8 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         oidcAuthRoutes(off.withTypeProvider<ZodTypeProvider>() as unknown as Fastify);
         await off.ready();
         try {
-            const offOwner = await seedAccount('off', { provider: 'email', email: 'off@apodex.com' }, Buffer.alloc(32, 11).toString('base64url'));
-            const separate = await login({ sub: 'subject-off', email: 'off@apodex.com', email_verified: true }, off);
+            const offOwner = await seedAccount('off', { provider: 'email', email: 'off@example.com' }, Buffer.alloc(32, 11).toString('base64url'));
+            const separate = await login({ sub: 'subject-off', email: 'off@example.com', email_verified: true }, off);
             expect(separate.error).toBeNull();
             expect(await db.accountIdentity.count({ where: { accountId: offOwner } })).toBe(1);
             expect(await db.account.count()).toBe(before + 9);
@@ -314,7 +314,7 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         // Fresh subject + valid ticket → the migrated account, even with signup closed and a non-matching email.
         process.env.SIGNUP_MODE = 'closed';
         const ticket = issueMigrationHandoff(secret, { kind: 'web', accountId: migrated });
-        const claimed = await loginWithHandoff(ticket, { sub: 'subject-mig', email: 'moved@apodex.com', email_verified: true, name: 'Moved Person' });
+        const claimed = await loginWithHandoff(ticket, { sub: 'subject-mig', email: 'moved@example.com', email_verified: true, name: 'Moved Person' });
         expect(claimed.error).toBeNull();
         expect(claimed.secret).toBe(migratedSecret);
         expect(await db.account.count()).toBe(before + 1);
@@ -324,18 +324,18 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
 
         // A subject that already made an EMPTY account here is folded into the migrated one.
         process.env.SIGNUP_MODE = 'open';
-        const stray = await login({ sub: 'subject-stray', email: 'stray@apodex.com', email_verified: false });
+        const stray = await login({ sub: 'subject-stray', email: 'stray@example.com', email_verified: false });
         expect(stray.error).toBeNull();
         const strayAccount = (await db.accountIdentity.findFirst({ where: { providerSubject: 'subject-stray' } }))!.accountId;
         const migrated2 = await seedAccount('migrated-2', { provider: 'email', email: 'two@gmail.com' }, Buffer.alloc(32, 22).toString('base64url'));
-        const folded = await loginWithHandoff(issueMigrationHandoff(secret, { kind: 'web', accountId: migrated2 }), { sub: 'subject-stray', email: 'stray@apodex.com' });
+        const folded = await loginWithHandoff(issueMigrationHandoff(secret, { kind: 'web', accountId: migrated2 }), { sub: 'subject-stray', email: 'stray@example.com' });
         expect(folded.error).toBeNull();
         expect(folded.secret).toBe(Buffer.alloc(32, 22).toString('base64url'));
         expect((await db.accountIdentity.findFirst({ where: { providerSubject: 'subject-stray' } }))!.accountId).toBe(migrated2);
         expect(await db.accountIdentity.count({ where: { accountId: strayAccount } })).toBe(0);
 
         // A subject whose account here already has a machine is a conflict; nothing moves.
-        const busy = await login({ sub: 'subject-busy', email: 'busy@apodex.com', email_verified: false });
+        const busy = await login({ sub: 'subject-busy', email: 'busy@example.com', email_verified: false });
         expect(busy.error).toBeNull();
         const busyAccount = (await db.accountIdentity.findFirst({ where: { providerSubject: 'subject-busy' } }))!.accountId;
         await db.machine.create({ data: { id: 'busy-machine', accountId: busyAccount, metadata: '' } });

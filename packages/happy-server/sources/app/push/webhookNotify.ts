@@ -49,7 +49,7 @@ export interface WebhookPayload {
     message: string;
     /**
      * Session id, duplicated as a top-level field for receivers that parse
-     * JSON. Generic gateways (e.g. apodex-bot generic) only read
+     * JSON. Generic gateways (e.g. a generic bot) only read
      * title/message and will DROP this field — that is why the id is also
      * embedded in the message text as a fixed, parseable last line
      * (`session: <id>`), which survives any text-only relay.

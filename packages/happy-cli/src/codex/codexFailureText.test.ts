@@ -17,7 +17,7 @@ describe('codexStderrTailOf', () => {
 const CHATGPT_400 = '{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-6-sol\' model is not supported when using Codex with a ChatGPT account."}}';
 // Exact turn.error.message from codex 0.154.0 when the model gateway answers 504 (probed 2026-10-18).
 const GATEWAY_504 = 'unexpected status 504 Gateway Timeout: <html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n</body>\r\n</html>, url: http://gateway.test/v1/responses';
-// The same page wrapped in a JSON error envelope (llm-hub, Wei FANG 2026-10-18).
+// The same page wrapped in a JSON error envelope (llm-hub, a user 2026-10-18).
 const HUB_504 = 'unexpected status 504 Gateway Timeout: {"error":{"code":"api_error","message":"<html>\\r\\n<head><title>504 Gateway Time-out</title></head>\\r\\n<body>\\r\\n<center><h1>504 Gateway Time-out</h1></center>\\r\\n</body>\\r\\n</html>","param":null,"type":"api_error"}}, url: https://hub.test/v1/responses';
 
 describe('describeCodexFailure', () => {

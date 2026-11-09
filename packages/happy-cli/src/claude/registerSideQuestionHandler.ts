@@ -165,7 +165,7 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
         // (page reload / another tab: btwStore is memory-only and guards against
         // double-asks itself) — it can never send btw-cancel for a request id it
         // no longer holds. Refusing left the panel failing with "already running"
-        // for up to maxRunMs (2026-09-22, Yue DENG); the newest question wins.
+        // for up to maxRunMs (2026-09-22, a user); the newest question wins.
         if (active) {
             const stale = active;
             stale.abort.abort('superseded');

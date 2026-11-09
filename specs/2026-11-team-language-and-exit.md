@@ -5,7 +5,7 @@
 
 ## 背景
 
-用户 Xu CHEN 反馈：11-01「团队模式中间 thinking 切换成英文的比例好像比较高」；11-03「team 模式下会改成英文回答的概率高。和负责人的会话还能从 team 模式恢复为普通模式吗？我想对比看看」。
+用户反馈：11-01「团队模式中间 thinking 切换成英文的比例好像比较高」；11-03「team 模式下会改成英文回答的概率高。和负责人的会话还能从 team 模式恢复为普通模式吗？我想对比看看」。
 
 ## 目标
 
@@ -45,7 +45,7 @@ Q2 现状：Web 建的团队，Lead bot 的 `managed=true`。归档时 root 任�
 - 首条 prompt 在 `## Assigned goal` 之前插一段 `## Language`：点名用户语言；要求人能读到的内容（回复、工具调用间的说明、任务目标、消息、提交、报告）都用这种语言，思考也用；说明团队说明、工具文本和信封只是为了维护才写成英文，不要因此切换语言。检测不出语言时说「the language the user wrote the goal in」。
 - 团队消息信封 footer 末尾追加一句 `Reply in Chinese (中文), the user's language.`，检测不出语言时用通用句。
 - `team_create` 接入说明末尾追加通用规则。
-- B-877c（Xu CHEN 11-04：「更新后还是说英文了」）：上面的规则只进新会话的首条 prompt，升级前建的团队会话历史里没有；信封 footer 只加在团队消息上，用户自己发的消息没有提醒。`teams/languageBackfill.ts` 补这个缺口：
+- B-877c（用户 11-04：「更新后还是说英文了」）：上面的规则只进新会话的首条 prompt，升级前建的团队会话历史里没有；信封 footer 只加在团队消息上，用户自己发的消息没有提醒。`teams/languageBackfill.ts` 补这个缺口：
   - `createProjectInjector().decorate` 末尾套 `createTeamLanguageBackfill`，Claude、Codex、Gemini/ACP 都走这里，放在本回合最前面。
   - 判定：有 scope 文件（`VH_TEAM_SCOPE_FILE` 或 `teams/scopes/<sid>.json`，所以 Lead、成员、`team_create` 接入的会话都算）、没有退出标记、没有 `teams/language/<sid>.json`。没有 scope 的普通会话和已退出团队的会话什么都不做，也不写文件。
   - 只一次：先写 `teams/language/<sid>.json` 再发，所以重启、崩溃都不重复；写失败就跳过，不会每回合都补。本回合原文已带 `## Language`（新会话的首条 prompt）时只写标记（`via: prompt`），不再追加；否则写 `via: backfill` 并追加。

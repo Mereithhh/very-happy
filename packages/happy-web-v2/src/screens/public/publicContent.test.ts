@@ -677,7 +677,7 @@ describe('public documentation registry', () => {
     expect(channels).toContain('allowed_workdir(msg.chat)');
     expect(channels).toContain('routing key, not authentication');
     expect(spec).toContain('Fail closed unless both sender and chat are allowlisted');
-    expect(spec).not.toMatch(/mac-office|hw-sg|apodex-bot|happy\.mereith\.com\/session/);
+    expect(spec).not.toMatch(/mac-office|hw-sg|happy\.mereith\.com\/session/);
   });
 });
 

@@ -25,7 +25,7 @@
  *    `useRootScrollLock` sets `<html data-root-lock>` (overflow hidden) while
  *    such a screen is mounted. Public pages (landing / docs) keep page scroll.
  *
- * 4. B-855 (iPad, Xu CHEN 11-01): overflow hidden does not stop iOS from
+ * 4. B-855 (iPad, a user 11-01): overflow hidden does not stop iOS from
  *    scrolling the document — its keyboard reveal-pan, focus() and
  *    scrollIntoView all do, and the offset can outlive the keyboard: the whole
  *    app sat ~300px up with a blank band below until iOS re-laid out. Two gaps

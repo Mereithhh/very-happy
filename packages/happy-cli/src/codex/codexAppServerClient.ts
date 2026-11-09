@@ -491,7 +491,7 @@ export class CodexAppServerClient {
             // `turn/completed` with `status: failed` is the only place the
             // upstream error (a 504 from the model gateway, a rejected model)
             // is reported, and dropping it as a duplicate is how a failed Codex
-            // turn ended in silence (Wei FANG 2026-10-18). B-625: the failure
+            // turn ended in silence (a user 2026-10-18). B-625: the failure
             // itself is forwarded once.
             if (!failed || this.failedTurnIds.has(turnId)) return;
         }

@@ -227,7 +227,7 @@ describe('B-282 killAttachedSupported', () => {
 describe('B-360 closed records pushed by two machine rows of one host', () => {
   const machine = (id: string, closedAt: number, extra: any = {}) => ({
     id,
-    name: 'ip-10-122-241-147',
+    name: 'ip-10-0-0-1',
     online: id === 'new-mid',
     daemonState: {
       startedAt: 1,

@@ -39,7 +39,7 @@ function machineRow(id: string, opts: { active: boolean; activeAt: number; termi
     metadataVersion: 1,
     daemonStateVersion: 1,
     metadata: {
-      host: opts.host ?? 'ip-10-122-241-147',
+      host: opts.host ?? 'ip-10-0-0-1',
       platform: 'linux',
       happyHomeDir: HOME,
       happyCliVersion: '0.2.120',

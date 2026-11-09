@@ -1362,7 +1362,7 @@ export async function runCodex(opts: {
             // anything happening". Claude raises it when it dispatches the
             // prompt; raising it only on Codex's own task_started left the
             // spinner off for the whole restart plus whatever the model gateway
-            // took before Codex reported the turn (Wei FANG 2026-10-18).
+            // took before Codex reported the turn (a user 2026-10-18).
             if (!thinking) {
                 thinking = true;
                 session.keepAlive(thinking, 'remote');

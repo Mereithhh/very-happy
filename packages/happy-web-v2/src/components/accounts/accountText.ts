@@ -33,7 +33,7 @@ export function accountStatusText(status: AccountDisplayStatus, account: Pick<Ag
     }
 }
 
-/** 「API · llm-hub.apodex.app · key：文件 ~/.config/…」 — never the key. */
+/** 「API · llm-hub.example.com · key：文件 ~/.config/…」 — never the key. */
 export function accountDetailText(account: AgentProfileSummary, t: T): string {
     const parts: string[] = [];
     // B-850c2: a ChatGPT account says who signed in and on which plan; a Codex provider names its config.toml entry.

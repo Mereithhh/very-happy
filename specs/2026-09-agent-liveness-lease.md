@@ -3,7 +3,7 @@
 状态：**已实现并合入 main**（#225、#228）；B-332 已在 `vh/t-010` 实现（见文末「B-332 实现记录」），B-333 仍延后。
 起因：两位用户在「Coding Agent 接入交流群」实报，同一天。
 
-> Simon DU：「好像有 bash command 在运行我的新发的就会 queue，但我再开一个新的 chrome tab 就好了」
+> 用户：「好像有 bash command 在运行我的新发的就会 queue，但我再开一个新的 chrome tab 就好了」
 > 另一位：「会话模式如果有 bash command 在运行我的新发的就会 queue，**有时候会一直卡住，点停止也无法停止**」
 
 ## 判据：三轮对抗 review 逐轮推翻的结论

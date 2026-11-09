@@ -2,7 +2,7 @@
 /**
  * ipad-viewport-sim —— 用 Playwright WebKit 模拟 iPad，验 B-855「整页上移、下方大片空白」：
  *
- * 真机（Xu CHEN 11-01，iPad Pro 横屏 + Magic Keyboard）：整个 app 被往上推约 300px（侧栏头、会话页头
+ * 真机（用户 11-01，iPad Pro 横屏 + Magic Keyboard）：整个 app 被往上推约 300px（侧栏头、会话页头
  * 出屏，输入框到屏幕中间，下方空白），「闪一下」后自愈。即根文档带着 scrollY 残留——iOS 弹键盘时为露出
  * 输入框平移/滚动文档（overflow:hidden 挡不住，iOS 临时扩展可滚范围），收起后没归零。
  *

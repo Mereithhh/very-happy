@@ -12,6 +12,6 @@ describe('B-627 move banner snooze', () => {
     expect(migrationBannerVisible(Number.NaN, now)).toBe(true);
   });
   it('keys the dismissal by target so a second move shows again', () => {
-    expect(migrationBannerHintId('https://vibe.apodex.site')).toBe('migration:https://vibe.apodex.site');
+    expect(migrationBannerHintId('https://vibe.example.com')).toBe('migration:https://vibe.example.com');
   });
 });

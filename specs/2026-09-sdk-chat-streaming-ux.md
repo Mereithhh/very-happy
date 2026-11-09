@@ -249,7 +249,7 @@ liveStream[sessionId] = {
 
 ## 附：B-371 —— ACP 路径（pi）补齐（2026-09-08，T-011 复核）
 
-上面的「非目标」把 ACP runner 排除在外，结果 Wenqing ZHANG 09-02 报的「终端能看到中间过程 thinking，
+上面的「非目标」把 ACP runner 排除在外，结果用户 09-02 报的「终端能看到中间过程 thinking，
 会话端基本看不到」在 pi 会话上**原样存在**——B-309 标 done 时只验了 Claude SDK 路径。复核事实：
 
 | 事实 | 位置 / 证据 |

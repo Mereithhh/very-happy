@@ -4,15 +4,15 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { readBrandConfig } from '@/app/brand';
 import { BrandEnvBadge, BrandIcon, BrandLockup, BrandMark } from './BrandMark';
 
-const apodex = readBrandConfig({ brand: {
-  name: 'Apodex Vibe', logoUrl: '/brand/icon.svg', logoDarkUrl: '/brand/icon-dark.svg',
+const acme = readBrandConfig({ brand: {
+  name: 'Acme Vibe', logoUrl: '/brand/icon.svg', logoDarkUrl: '/brand/icon-dark.svg',
   wordmarkUrl: '/brand/wordmark.svg', wordmarkDarkUrl: '/brand/wordmark-dark.svg', envLabel: 'Staging',
 } });
 const plain = readBrandConfig({ brand: { name: 'Acme', logoUrl: '/brand/acme.png' } });
 
 describe('B-638 brand components', () => {
   it('BrandIcon renders the light/dark pair, a single image, or the default mark', () => {
-    const pair = renderToStaticMarkup(<BrandIcon size={18} brand={apodex} />);
+    const pair = renderToStaticMarkup(<BrandIcon size={18} brand={acme} />);
     expect(pair).toContain('class="brand-icon vh-brand-light" src="/brand/icon.svg"');
     expect(pair).toContain('class="brand-icon vh-brand-dark" src="/brand/icon-dark.svg"');
     const single = renderToStaticMarkup(<BrandIcon size={18} brand={plain} />);
@@ -22,14 +22,14 @@ describe('B-638 brand components', () => {
   });
 
   it('BrandEnvBadge shows only when an environment label is set', () => {
-    expect(renderToStaticMarkup(<BrandEnvBadge brand={apodex} />)).toContain('class="brand-env">Staging<');
+    expect(renderToStaticMarkup(<BrandEnvBadge brand={acme} />)).toContain('class="brand-env">Staging<');
     expect(renderToStaticMarkup(<BrandEnvBadge brand={plain} />)).toBe('');
   });
 
   it('BrandLockup uses the wordmark pair when configured and falls back to the mark + name', () => {
-    const lockup = renderToStaticMarkup(<BrandLockup height={36} size={40} brand={apodex} className="auth-brand" />);
+    const lockup = renderToStaticMarkup(<BrandLockup height={36} size={40} brand={acme} className="auth-brand" />);
     expect(lockup).toContain('class="brand-lockup auth-brand"');
-    expect(lockup).toContain('src="/brand/wordmark.svg" alt="Apodex Vibe"');
+    expect(lockup).toContain('src="/brand/wordmark.svg" alt="Acme Vibe"');
     expect(lockup).toContain('src="/brand/wordmark-dark.svg"');
     const fallback = renderToStaticMarkup(<BrandLockup height={36} size={40} brand={plain} wordmarkClassName="auth-wordmark" />);
     expect(fallback).toContain('src="/brand/acme.png"');

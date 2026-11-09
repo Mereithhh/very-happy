@@ -4,7 +4,7 @@
  * The wrapper-side single-writer lock (B-272, `happy-cli/src/utils/sessionLock.ts`)
  * is per machine and per HAPPY_HOME_DIR and can be raced; when two wrappers
  * slip through, both join `user:U:session:S`, both receive every user message
- * and both run it (Xu CHEN 11-02: a second Claude process on the same session
+ * and both run it (a user 11-02: a second Claude process on the same session
  * started a paid calibration nobody could see). The server is the one place
  * every agent connection passes, so it arbitrates: the NEWEST agent process
  * wins, every older one is told it was superseded and disconnected.

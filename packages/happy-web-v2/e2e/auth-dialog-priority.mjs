@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * B-830: the sign-in-expired dialog (AuthExpiredNotice) outranks every other
- * overlay. Chao FENG 10-26: with unread release notes open, 「登录已失效」 drew
+ * overlay. A user 10-26: with unread release notes open, 「登录已失效」 drew
  * on top but could not be clicked — the Radix notes underneath held
  * `body { pointer-events: none }`, the focus trap and aria-hidden, so only the
  * notes' 「下一条」 reacted. End to end in Chromium, desktop and phone

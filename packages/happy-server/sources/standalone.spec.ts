@@ -43,8 +43,8 @@ describe("resolveHtmlConfig", () => {
 
     it("B-624: emits brand and landing keys only when the operator sets them, and rejects unsafe values", () => {
         expect(resolveBrandHtmlConfig({} as NodeJS.ProcessEnv)).toEqual({});
-        expect(resolveHtmlConfig({ BRAND_NAME: " Apodex Vibe ", BRAND_LOGO_URL: "https://cdn.example/logo.svg", WEB_LANDING: "off" } as NodeJS.ProcessEnv))
-            .toEqual({ serverUrl: "same-origin", brand: { name: "Apodex Vibe", logoUrl: "https://cdn.example/logo.svg" }, landing: false });
+        expect(resolveHtmlConfig({ BRAND_NAME: " Acme Vibe ", BRAND_LOGO_URL: "https://cdn.example/logo.svg", WEB_LANDING: "off" } as NodeJS.ProcessEnv))
+            .toEqual({ serverUrl: "same-origin", brand: { name: "Acme Vibe", logoUrl: "https://cdn.example/logo.svg" }, landing: false });
         expect(resolveBrandHtmlConfig({ BRAND_LOGO_URL: "/brand/logo.png", WEB_LANDING: "on" } as NodeJS.ProcessEnv)).toEqual({ brand: { logoUrl: "/brand/logo.png" } });
         expect(() => resolveBrandHtmlConfig({ BRAND_LOGO_URL: "javascript:alert(1)" } as NodeJS.ProcessEnv)).toThrow("BRAND_LOGO_URL");
         expect(() => resolveBrandHtmlConfig({ BRAND_LOGO_URL: "//evil.example/x.png" } as NodeJS.ProcessEnv)).toThrow("BRAND_LOGO_URL");
@@ -56,8 +56,8 @@ describe("resolveHtmlConfig", () => {
 
 describe("resolveBindHost", () => {
     it("B-638: emits the asset URLs and environment label, validating each like the logo", () => {
-        expect(resolveBrandHtmlConfig({ BRAND_NAME: "Apodex Vibe", BRAND_LOGO_URL: "/brand/i.svg", BRAND_LOGO_DARK_URL: "/brand/i-dark.svg", BRAND_WORDMARK_URL: "/brand/w.svg", BRAND_WORDMARK_DARK_URL: "https://cdn.example/w-dark.svg", BRAND_ICON_URL: "/brand/icon-512.png", BRAND_ENV_LABEL: " 测试环境 " } as NodeJS.ProcessEnv))
-            .toEqual({ brand: { name: "Apodex Vibe", logoUrl: "/brand/i.svg", logoDarkUrl: "/brand/i-dark.svg", wordmarkUrl: "/brand/w.svg", wordmarkDarkUrl: "https://cdn.example/w-dark.svg", iconUrl: "/brand/icon-512.png", envLabel: "测试环境" } });
+        expect(resolveBrandHtmlConfig({ BRAND_NAME: "Acme Vibe", BRAND_LOGO_URL: "/brand/i.svg", BRAND_LOGO_DARK_URL: "/brand/i-dark.svg", BRAND_WORDMARK_URL: "/brand/w.svg", BRAND_WORDMARK_DARK_URL: "https://cdn.example/w-dark.svg", BRAND_ICON_URL: "/brand/icon-512.png", BRAND_ENV_LABEL: " 测试环境 " } as NodeJS.ProcessEnv))
+            .toEqual({ brand: { name: "Acme Vibe", logoUrl: "/brand/i.svg", logoDarkUrl: "/brand/i-dark.svg", wordmarkUrl: "/brand/w.svg", wordmarkDarkUrl: "https://cdn.example/w-dark.svg", iconUrl: "/brand/icon-512.png", envLabel: "测试环境" } });
         expect(resolveBrandHtmlConfig({ BRAND_ENV_LABEL: "Staging" } as NodeJS.ProcessEnv)).toEqual({ brand: { envLabel: "Staging" } });
         expect(() => resolveBrandHtmlConfig({ BRAND_ICON_URL: "data:image/png;base64,AA" } as NodeJS.ProcessEnv)).toThrow("BRAND_ICON_URL");
         expect(() => resolveBrandHtmlConfig({ BRAND_WORDMARK_DARK_URL: "//evil.example/x.svg" } as NodeJS.ProcessEnv)).toThrow("BRAND_WORDMARK_DARK_URL");

@@ -1,7 +1,7 @@
 # Session 分享：把我的会话交给同服务器的另一个人继续聊
 
 > 状态：Shipped（2026-10-18，PR #554 merge `8256be92`；实现见 B-619/B-621，真机项 V-178/V-179 在 `docs/verify-queue.md`）
-> 关联：specs/2026-10-spaces-a2a.design.md §8；前置事实见 docs/research/2026-10-spaces/very-happy-baseline.md
+> 关联：多人空间设计（不在本仓库）
 > 基线：main 2ab14e26d
 
 ## 背景

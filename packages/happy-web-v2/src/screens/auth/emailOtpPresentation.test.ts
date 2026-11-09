@@ -34,17 +34,17 @@ describe('Email OTP presentation state', () => {
     expect(publicAuthMethodState({
       emailOtpEnabled: false,
       passwordLoginEnabled: true,
-      oidc: { displayName: 'Apodex SSO' },
+      oidc: { displayName: 'Acme SSO' },
       signup: { mode: 'invite', maxAccounts: null, registeredAccounts: 3, remainingAccounts: null, atCapacity: false },
-    })).toEqual({ emailEnabled: false, passwordEnabled: true, googleEnabled: false, oidcEnabled: true, oidcDisplayName: 'Apodex SSO', oidcSignupMode: 'invite', oidcSelfServe: false, expandPasswordAfterLoad: false });
+    })).toEqual({ emailEnabled: false, passwordEnabled: true, googleEnabled: false, oidcEnabled: true, oidcDisplayName: 'Acme SSO', oidcSignupMode: 'invite', oidcSelfServe: false, expandPasswordAfterLoad: false });
   });
 
   it('B-623: SSO self-serve is on only when OIDC signup is open while the relay itself is not', () => {
     const base = { emailOtpEnabled: false, passwordLoginEnabled: true, signup: { mode: 'invite' as const, maxAccounts: null, registeredAccounts: 3, remainingAccounts: null, atCapacity: false } };
-    expect(publicAuthMethodState({ ...base, oidc: { displayName: 'Apodex SSO', signupMode: 'open' } })).toMatchObject({ oidcSignupMode: 'open', oidcSelfServe: true });
-    expect(publicAuthMethodState({ ...base, oidc: { displayName: 'Apodex SSO', signupMode: 'closed' } })).toMatchObject({ oidcSignupMode: 'closed', oidcSelfServe: false });
+    expect(publicAuthMethodState({ ...base, oidc: { displayName: 'Acme SSO', signupMode: 'open' } })).toMatchObject({ oidcSignupMode: 'open', oidcSelfServe: true });
+    expect(publicAuthMethodState({ ...base, oidc: { displayName: 'Acme SSO', signupMode: 'closed' } })).toMatchObject({ oidcSignupMode: 'closed', oidcSelfServe: false });
     // Older servers omit signupMode: SSO follows the relay policy.
-    expect(publicAuthMethodState({ ...base, oidc: { displayName: 'Apodex SSO' } })).toMatchObject({ oidcSignupMode: 'invite', oidcSelfServe: false });
-    expect(publicAuthMethodState({ ...base, signup: { ...base.signup, mode: 'open' }, oidc: { displayName: 'Apodex SSO', signupMode: 'open' } })).toMatchObject({ oidcSelfServe: false });
+    expect(publicAuthMethodState({ ...base, oidc: { displayName: 'Acme SSO' } })).toMatchObject({ oidcSignupMode: 'invite', oidcSelfServe: false });
+    expect(publicAuthMethodState({ ...base, signup: { ...base.signup, mode: 'open' }, oidc: { displayName: 'Acme SSO', signupMode: 'open' } })).toMatchObject({ oidcSelfServe: false });
   });
 });
