@@ -22,6 +22,7 @@ import { isHibernated } from '@/app/sessionHibernation';
 import { sessionUpdateTitleTags } from '@/sync/ops';
 import { priorityLevel, setPriorityLevel, sortByPriority } from '@/utils/tags';
 import { sidebarListEmpty, visibleSidebarSessions } from './sidebarRows';
+import { useWakeExpiryTick } from '@/app/useWakeExpiryTick';
 import { groupRowsByProject, foldersOfRows, legacyGroupModeFor, resolveSidebarGrouping, showTagGroupingBackNotice, type SidebarGrouping } from './sidebarProjectGroups';
 import { buildSidebarTree, entryDepth, listShowsRow, ownerChipResolver, projectDefaultOpen, teamDefaultOpen, teamRowRole, teamsFirst, teamTreeGroupId, treeKeyAction, UNASSIGNED_GROUP_ID } from './sidebarTree';
 import { groupRowsByTag } from './sidebarTagGroups';
@@ -225,6 +226,8 @@ function sessionRow(s: Session): Row {
 export function Sidebar() {
   const navigate = useNavigate();
   const sessions = useSessions();
+  // B-906b: re-filter when a waking row's grace runs out (timer only while one is waking).
+  const wakeTick = useWakeExpiryTick(sessions);
   const teams = useTeamNavigation();
   const teamCopy = useTeamNavigationCopy();
   const incomingPeople = useFriendRequests().length;
@@ -412,7 +415,7 @@ export function Sidebar() {
       const ts = resolveActivityTs(r.ts, r.key, localActivity, remoteActivity);
       return ts === r.ts ? r : { ...r, ts };
     });
-  }, [sessions, terminals, view, localActivity, remoteActivity, terminalViewDefault, terminalViewOverrides]);
+  }, [sessions, wakeTick, terminals, view, localActivity, remoteActivity, terminalViewDefault, terminalViewOverrides]);
 
   // ----- reorder hold (mis-click guard) -----
   // An auto-sorted list must never yank a row out from under the pointer: the
@@ -757,7 +760,7 @@ export function Sidebar() {
     if (projectsSnap.status !== 'ready' || !sessions) return 0;
     const live = visibleSidebarSessions(sessions, 'list').filter((s) => !s.share).map(sessionRow);
     return buildSidebarTree({ rows: live, projects: projectsSnap.projects, members: projectsSnap.members, teams: liveTeams, needsYou }).projectBadgeTotal;
-  }, [projectsSnap, sessions, liveTeams, needsYou]);
+  }, [projectsSnap, sessions, wakeTick, liveTeams, needsYou]);
   // B-762: tree members' 运行中 rolls up to their team node.
   const runningTeams = useMemo(() => {
     const out = new Set<string>();
@@ -779,7 +782,7 @@ export function Sidebar() {
   const sharedRows = useMemo<Row[]>(
     // B-878 PR-B: project-only rows are listed under their shared project, not here.
     () => (sessions ? sortRowsByRecent(visibleSidebarSessions(sessions, view).filter((s) => !!s.share && s.share.via !== 'project').map(sessionRow)) : []),
-    [sessions, view],
+    [sessions, wakeTick, view],
   );
   const displayRows = plainDisplayRows;
   // Feeds the hold's arming snapshot (assigned during render, read by the

@@ -126,8 +126,9 @@ describe('B-906 a waking session keeps its place through the whole wake', () => 
   /** The three states the web sees, in arrival order. */
   const phases = (id: string) => [
     ['hibernated', mkSession({ id, active: false, activeAt: HIB_AT, metadata: { ...base, hibernation: { at: HIB_AT, seq: 3 } } as Session['metadata'] })],
-    ['waking', mkSession({ id, active: false, activeAt: HIB_AT, metadata: { ...base, lifecycleStateSince: NOW - 500 } as Session['metadata'] })],
-    ['awake', mkSession({ id, active: true, activeAt: NOW, metadata: { ...base, lifecycleStateSince: NOW - 500 } as Session['metadata'] })],
+    // updatedAt: the server time the wrapper's start write landed (B-906b caps the machine clock with it)
+    ['waking', mkSession({ id, active: false, activeAt: HIB_AT, updatedAt: NOW - 400, metadata: { ...base, lifecycleStateSince: NOW - 500 } as Session['metadata'] })],
+    ['awake', mkSession({ id, active: true, activeAt: NOW, updatedAt: NOW - 400, metadata: { ...base, lifecycleStateSince: NOW - 500 } as Session['metadata'] })],
   ] as const;
   const placeOf = (sessions: Session[], id: string) => {
     const rows = visibleSidebarSessions(sessions, 'list', NOW).map((s) => ({ key: s.id, sessionId: s.id, ts: s.updatedAt }));

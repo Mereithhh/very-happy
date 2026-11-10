@@ -18,7 +18,7 @@ const HOUR_MS = 60 * 60 * 1000;
 /** Machine-page choices (0 = off). */
 export const HIBERNATION_IDLE_CHOICES_MS: readonly number[] = [0, 1 * HOUR_MS, 3 * HOUR_MS, 6 * HOUR_MS, 12 * HOUR_MS, 24 * HOUR_MS];
 
-export type HibernationSession = Pick<Session, 'active' | 'archivedAt' | 'metadata'> & { activeAt?: number };
+export type HibernationSession = Pick<Session, 'active' | 'archivedAt' | 'metadata'> & { activeAt?: number; updatedAt?: number };
 
 export interface HibernationStamp {
     at: number;
@@ -57,12 +57,57 @@ export const WAKE_GRACE_MS = 2 * 60 * 1000;
  * session, whose last heartbeat came after its start.
  */
 export function isWaking(session: HibernationSession | null | undefined, now: number): boolean {
-    if (!session || session.active || session.archivedAt != null) return false;
+    return wakeExpiresAt(session, now) !== null;
+}
+
+/**
+ * B-906b: how far a wake start may sit in the browser's future before it is
+ * not believed (server ↔ browser skew; the wrapper's own clock is already
+ * capped by the server's `updatedAt`, see wakeStartedAt).
+ */
+export const WAKE_FUTURE_TOLERANCE_MS = 60 * 1000;
+
+/**
+ * When the wake started, or null when the row is not a wake. `lifecycleStateSince`
+ * is the WRAPPER machine's clock; `activeAt` / `updatedAt` are the server's.
+ * A machine clock ahead of the server would push the start into the future and
+ * keep a dead row listed for (skew + grace), so the start is capped by the
+ * server time of the row's latest write (`updatedAt` ≥ the time the start
+ * write landed). A machine clock behind the server only makes the start look
+ * older — the row leaves the list sooner, never later.
+ */
+export function wakeStartedAt(session: HibernationSession | null | undefined, now: number): number | null {
+    if (!session || session.active || session.archivedAt != null) return null;
     const meta = session.metadata as { lifecycleState?: unknown; lifecycleStateSince?: unknown } | null | undefined;
     const since = meta?.lifecycleStateSince;
-    if (meta?.lifecycleState !== 'running' || typeof since !== 'number' || !Number.isFinite(since)) return false;
-    if (typeof session.activeAt === 'number' && since <= session.activeAt) return false;
-    return now - since <= WAKE_GRACE_MS;
+    if (meta?.lifecycleState !== 'running' || typeof since !== 'number' || !Number.isFinite(since)) return null;
+    if (typeof session.activeAt === 'number' && since <= session.activeAt) return null;
+    const start = typeof session.updatedAt === 'number' && Number.isFinite(session.updatedAt) ? Math.min(since, session.updatedAt) : since;
+    if (typeof session.activeAt === 'number' && start <= session.activeAt) return null;
+    if (start - now > WAKE_FUTURE_TOLERANCE_MS) return null;
+    return start;
+}
+
+/** When a waking row stops counting as waking (start + grace); null = not waking now. */
+export function wakeExpiresAt(session: HibernationSession | null | undefined, now: number): number | null {
+    const start = wakeStartedAt(session, now);
+    if (start === null || now - start > WAKE_GRACE_MS) return null;
+    return start + WAKE_GRACE_MS;
+}
+
+/**
+ * B-906b: the earliest moment a list built at `now` changes on its own — a
+ * waking row whose grace runs out with no store update to re-render it.
+ * null = no row is waking, so no timer is needed.
+ */
+export function nextWakeExpiry(sessions: Iterable<HibernationSession | string>, now: number): number | null {
+    let next: number | null = null;
+    for (const s of sessions) {
+        if (typeof s === 'string') continue;
+        const at = wakeExpiresAt(s, now);
+        if (at !== null && (next === null || at < next)) next = at;
+    }
+    return next;
 }
 
 /** Listed with the live sessions (not under 归档): online, hibernated, or waking up. */
