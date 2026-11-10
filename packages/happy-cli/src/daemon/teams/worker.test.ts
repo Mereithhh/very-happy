@@ -176,7 +176,7 @@ describe('daemon team effect recovery', () => {
             const operation = { ...op(), directory: join(home, 'teams', 'worktrees', 'old-op') }; setup(operation);
             mocks.resolve.mockImplementationOnce(async (_home: string, repository: string, sourceOf: (id: string) => string | undefined) => repository.endsWith('/old-op') ? sourceOf('old-op')! : repository);
             const worker = start(); await settled(worker);
-            expect(mocks.prepare).toHaveBeenCalledWith(home, '/repo', 'op1');
+            expect(mocks.prepare).toHaveBeenCalledWith(home, '/repo', 'op1', 'teams', expect.any(Function)); // B-912: launch log for the worktree base
             expect(spawn).toHaveBeenCalledTimes(1);
 
             // Nothing to fall back to: a definite preflight failure, reported once per attempt with backoff.

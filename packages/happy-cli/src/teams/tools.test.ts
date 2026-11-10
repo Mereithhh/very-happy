@@ -39,7 +39,7 @@ describe('public scoped team tools', () => {
         // Every write tool answers with a receipt, never the team view.
         for (const name of ['team_delegate', 'team_message', 'team_submit', 'team_return', 'team_cancel', 'team_handoff', 'team_schedule_create', 'team_schedule_pause', 'team_schedule_resume', 'team_schedule_cancel']) {
             client.action.mockResolvedValueOnce(name === 'team_delegate' ? { team, taskId: 'x' } : { team });
-            const answer = await read(name, { requestId: `w-${name}` });
+            const answer = await read(name, { requestId: `w-${name}`, ...(name === 'team_submit' ? { result: 'r' } : name === 'team_message' ? { body: 'b' } : {}) });
             expect(answer.team.tasks, name).toBeUndefined();
             expect(answer.hint, name).toContain('team_inspect');
         }

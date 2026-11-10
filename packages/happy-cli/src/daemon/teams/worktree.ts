@@ -45,7 +45,47 @@ export async function resolveTeamRepository(home: string, repository: string, so
  * (B-585: no `.env*` default here), and its setup script runs only if the owner
  * already approved that exact script on this machine.
  */
-export async function prepareTeamWorktree(home: string, repository: string, id: string, origin: 'teams' | 'automation' = 'teams'): Promise<{ directory: string; repository: string; branch: string }> {
+export type TeamWorktreeBase = { commit: string; ref: string; source: 'fetched' | 'cached' | 'head'; reason?: string };
+
+/**
+ * B-912: the commit a new team member worktree starts from. Team launches name the
+ * user's main checkout, which can sit on a months-old detached HEAD (dev-sg: 459
+ * commits behind), so members used to start there and rebase by hand. Fetch the
+ * remote default branch into its remote-tracking ref only (never the checkout's HEAD,
+ * branches or other worktrees) and start from it. Offline / no access: the last
+ * locally known remote default branch, logged. No remote at all: HEAD, as before.
+ */
+export async function resolveTeamWorktreeBase(repository: string, log: (line: string) => void = () => {}, fetchTimeoutMs = 20_000): Promise<TeamWorktreeBase> {
+    const head = async (reason: string): Promise<TeamWorktreeBase> => {
+        log(`Team worktree base: HEAD of ${repository} (${reason})`);
+        return { commit: await git(repository, ['rev-parse', '--verify', 'HEAD^{commit}']), ref: 'HEAD', source: 'head', reason };
+    };
+    const remotes = (await git(repository, ['remote']).catch(() => '')).split('\n').map(line => line.trim()).filter(Boolean);
+    const remote = remotes.includes('origin') ? 'origin' : remotes.length === 1 ? remotes[0] : null;
+    if (!remote) return head(remotes.length ? 'several remotes and none is origin' : 'no remote');
+    const hasRef = (ref: string) => git(repository, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).then(sha => sha || null, () => null);
+    const quiet = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o BatchMode=yes' };
+    const network = (args: string[]) => exec('git', ['-C', repository, ...args], { timeout: fetchTimeoutMs, maxBuffer: 2 * 1024 * 1024, env: quiet }).then(result => result.stdout.trim());
+    // The default branch: the remote's HEAD symref when known locally, else ask the remote, else main/master.
+    let branch = (await git(repository, ['symbolic-ref', '--quiet', '--short', `refs/remotes/${remote}/HEAD`]).catch(() => '')).replace(`${remote}/`, '');
+    if (!branch) branch = (await network(['ls-remote', '--symref', remote, 'HEAD']).catch(() => '')).match(/^ref: refs\/heads\/(\S+)\s+HEAD/m)?.[1] ?? '';
+    if (!branch) branch = (await hasRef(`refs/remotes/${remote}/main`)) ? 'main' : (await hasRef(`refs/remotes/${remote}/master`)) ? 'master' : 'main';
+    const tracking = `refs/remotes/${remote}/${branch}`;
+    let reason: string | undefined;
+    try {
+        await network(['fetch', '--quiet', '--no-tags', remote, `+refs/heads/${branch}:${tracking}`]);
+    } catch (error) {
+        reason = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').slice(0, 200);
+    }
+    const commit = await hasRef(tracking);
+    if (!commit) return head(`${remote}/${branch} unavailable${reason ? `: ${reason}` : ''}`);
+    log(reason
+        ? `Team worktree base: fetch of ${remote}/${branch} failed, using the last known ${remote}/${branch} ${commit.slice(0, 12)} (${reason})`
+        : `Team worktree base: fetched ${remote}/${branch} ${commit.slice(0, 12)}`);
+    return reason ? { commit, ref: `${remote}/${branch}`, source: 'cached', reason } : { commit, ref: `${remote}/${branch}`, source: 'fetched' };
+}
+
+export async function prepareTeamWorktree(home: string, repository: string, id: string, origin: 'teams' | 'automation' = 'teams', log?: (line: string) => void): Promise<{ directory: string; repository: string; branch: string }> {
     // Resolve on the execution machine, never relative to the daemon's private home.
     repository = expandHome(repository);
     if (!isAbsolute(repository) || !/^[a-zA-Z0-9_-]{1,128}$/.test(id)) throw new Error('A team task requires an absolute repository path and valid operation id');
@@ -61,7 +101,10 @@ export async function prepareTeamWorktree(home: string, repository: string, id: 
         const expected = await git(repository, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
         if (resolve(common) !== resolve(expected)) throw new Error('Team worktree belongs to another repository');
     } else {
-        await git(repository, ['worktree', 'add', '-b', branch, directory, 'HEAD']);
+        // B-912: members start from the fresh remote default branch; automations keep the checkout's HEAD.
+        // A commit id (not `origin/main`) so the new branch gets no upstream that a bare `git push` could hit.
+        const base = origin === 'teams' ? (await resolveTeamWorktreeBase(repository, log)).commit : 'HEAD';
+        await git(repository, ['worktree', 'add', '-b', branch, directory, base]);
         // Fresh worktree only (a reused one was initialized when it was created). Never throws.
         await initializeOwnedWorktree({ source: repository, worktree: directory, branch, origin });
     }
