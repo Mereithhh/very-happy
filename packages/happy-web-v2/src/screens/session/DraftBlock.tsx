@@ -7,11 +7,12 @@
  * every other Markdown surface (thinking, subagent detail, tool output, file
  * previews) has none and keeps the plain read-only code block.
  */
-import React, { useContext, useEffect, useLayoutEffect, useRef } from 'react';
-import { AlertCircle, Check, PenLine, RotateCcw } from 'lucide-react';
+import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { AlertCircle, Check, PenLine, RotateCcw, Send } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
-import { draftKeyFor, draftKvKey, DRAFT_FENCE_LANG, DRAFT_TEXT_MAX_CHARS } from '@/sync/editableDrafts';
+import { draftChipLabel, draftKeyFor, draftKvKey, DRAFT_FENCE_LANG, DRAFT_TEXT_MAX_CHARS } from '@/sync/editableDrafts';
+import { isDraftSendRequested, markDraftSendRequested, requestDraftSend, useCanRequestDraftSend } from './draftSendRequest';
 import { editDraft, ensureDraftsLoaded, retryDraftSave, useEditableDrafts } from '@/sync/editableDraftsStore';
 import { Spinner } from '@/ui/Spinner';
 import { CodeView } from './CodeView';
@@ -59,6 +60,19 @@ function EditableDraft({ scope, original, title }: { scope: DraftScope; original
 
     const setText = (next: string) => editDraft({ sessionId: scope.sessionId, key, original, title, text: next });
 
+    // B-914: 「发送」 = the user replying 「发」 for this draft (see draftSendRequest.ts).
+    const canSend = useCanRequestDraftSend(scope.sessionId);
+    const [sendState, setSendState] = useState<'idle' | 'sending' | 'requested'>(() => (isDraftSendRequested(kvKey) ? 'requested' : 'idle'));
+    useEffect(() => { setSendState(isDraftSendRequested(kvKey) ? 'requested' : 'idle'); }, [kvKey]);
+    const requestSend = async () => {
+        if (sendState !== 'idle') return;
+        setSendState('sending');
+        const label = draftChipLabel({ title, text, original });
+        const ok = await requestDraftSend(scope.sessionId, t('session.chat.draft.sendMessage', { title: label }));
+        if (ok) markDraftSendRequested(kvKey);
+        setSendState(ok ? 'requested' : 'idle');
+    };
+
     return (
         <div className={`dft${edited ? ' dft--edited' : ''}`} data-draft-key={key}>
             <div className="dft-bar">
@@ -91,6 +105,19 @@ function EditableDraft({ scope, original, title }: { scope: DraftScope; original
                         </button>
                     )}
                     <CopyButton text={() => taRef.current?.value ?? text} showLabel className="dft-copy" />
+                    {canSend && (
+                        <button
+                            type="button"
+                            className="dft-send"
+                            data-send-state={sendState}
+                            disabled={sendState !== 'idle'}
+                            onClick={() => void requestSend()}
+                            title={sendState === 'requested' ? t('session.chat.draft.sendRequested') : t('session.chat.draft.sendHint')}
+                        >
+                            {sendState === 'requested' ? <Check size={13} aria-hidden /> : sendState === 'sending' ? <Spinner size={11} /> : <Send size={13} aria-hidden />}
+                            <span>{sendState === 'requested' ? t('session.chat.draft.sendRequested') : t('session.chat.draft.send')}</span>
+                        </button>
+                    )}
                 </span>
             </div>
             <textarea

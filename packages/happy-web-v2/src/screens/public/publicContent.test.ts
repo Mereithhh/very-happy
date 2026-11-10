@@ -17,6 +17,7 @@ describe('public documentation registry', () => {
     expect(PUBLIC_DOCS.map((doc) => doc.slug)).toEqual(expect.arrayContaining([
       'quickstart', 'keyboard', 'cli', 'cloud', 'self-hosting', 'configuration', 'architecture',
       'integrations', 'security', 'accounts-and-quotas', 'upgrades', 'troubleshooting', 'contributing',
+      'projects-teams-sessions',
     ]));
     expect(PUBLIC_DOCS.slice(0, 2).map((doc) => doc.slug)).toEqual(['architecture', 'quickstart']);
   });
@@ -765,4 +766,26 @@ it('documents the 2026-10-21 batch (projects, drafts, @ mentions, session search
  // B-650: the sidebar search button opens session search, not the command palette
  expect(JSON.stringify(getPublicDoc('keyboard'))).not.toContain('tap the sidebar search button to open the same command palette');
  expect(JSON.stringify(getPublicDoc('architecture'))).toContain('pi runs through the managed pi-acp runner');
+});
+
+it('explains how projects, teams and sessions fit together in both languages (B-914)', () => {
+ const en = getPublicDocs('en').find(doc => doc.slug === 'projects-teams-sessions')!;
+ const zh = getPublicDocs('zh-Hans').find(doc => doc.slug === 'projects-teams-sessions')!;
+ expect(zh.label).toBe('项目、团队和会话怎么组织');
+ expect(en.sections.length).toBe(zh.sections.length);
+ en.sections.forEach((section, i) => {
+  expect(zh.sections[i].heading).not.toBe(section.heading);
+  expect(zh.sections[i].blocks.map(block => block.type)).toEqual(section.blocks.map(block => block.type));
+  section.blocks.forEach((block, j) => { if (block.type === 'list') expect((zh.sections[i].blocks[j] as { items: string[] }).items.length).toBe(block.items.length); });
+ });
+ // it sits right before the session guide and links to the detailed guides
+ const slugs = PUBLIC_DOCS.map(doc => doc.slug);
+ expect(slugs.indexOf('projects-teams-sessions')).toBe(slugs.indexOf('sessions') - 1);
+ const links = en.sections.flatMap(section => section.blocks).filter(block => block.type === 'link').map(block => (block as { href: string }).href);
+ for (const href of links) expect(getPublicDoc(href.replace('/docs/', ''))).toBeDefined();
+ // a new team gets a same-name project by default; a project never touches the repository
+ const text = JSON.stringify(en);
+ expect(text).toContain('New team creates a project with the team’s name');
+ expect(text).toContain('does not touch your files, branches or Git history');
+ expect(JSON.stringify(zh)).toContain('新建团队会新建一个同名项目');
 });

@@ -23,9 +23,10 @@
  * the outgoing worker is still in charge comes back on the very same shell.
  * See swTakeover.ts.
  *
- * Checks run when the page becomes visible and on a slow interval — a hidden
- * phone tab checks the moment it wakes up, which is exactly the zombie-client
- * scenario above.
+ * Checks run when the page becomes visible, after the control socket
+ * reconnects (B-914: a release always moves the socket — see
+ * reconnectUpdateCheck.ts) and on a slow interval — a hidden phone tab checks
+ * the moment it wakes up, which is exactly the zombie-client scenario above.
  *
  * Every reload here is announced via markProgrammaticReload() so the tab-close
  * guard (beforeunload, ./viewShortcuts.ts) stands down: a leave-site dialog in
@@ -37,6 +38,7 @@ import { markProgrammaticReload } from '@/app/programmaticReload';
 import { flushPendingDrafts } from '@/app/draftFlush';
 import { getPendingUpdate, setPendingUpdate } from '@/app/pendingUpdate';
 import { decideUpdate } from '@/app/updatePromptPolicy';
+import { createReconnectUpdateCheck } from '@/app/reconnectUpdateCheck';
 import {
   decideStaleBundleReload,
   serializeStaleBundleReloadGuard,
@@ -237,11 +239,30 @@ export async function checkForUpdateNow(): Promise<'current' | 'updated' | 'unkn
   return 'updated';
 }
 
+/** Entry of the running shell, recorded by installStaleBundleReload. */
+let installedOwn: string | null = null;
+
+const reconnectCheck = createReconnectUpdateCheck({
+  check: () => (installedOwn ? checkOnce(installedOwn, true) : undefined),
+  found: () => getPendingUpdate() !== null,
+  setTimer: (fn, ms) => window.setTimeout(fn, ms),
+  clearTimer: (handle) => window.clearTimeout(handle as number),
+});
+
+/** B-914: the control socket (re)connected — possibly to a newly released
+ *  server. Check now (and twice more, see reconnectUpdateCheck.ts) instead of
+ *  waiting for the 15-minute tick. No-op outside a built bundle. */
+export function checkForUpdateAfterReconnect(): void {
+  if (!installedOwn) return;
+  reconnectCheck();
+}
+
 /** Install the watcher. No-op outside a built bundle (dev server). */
 export function installStaleBundleReload(): void {
   if (typeof document === 'undefined') return;
   const own = ownEntryName();
   if (!own) return; // vite dev / unexpected shell — nothing to compare
+  installedOwn = own;
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) { void checkOnce(own); return; }
     // Going to the background is the moment an offered update can be taken

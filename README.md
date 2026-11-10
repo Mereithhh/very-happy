@@ -417,7 +417,9 @@ structured parity with Claude.
   conversation history, opening the session on the hit.
 - `@` file mentions in the message box, and editable drafts: text the agent
   writes for you to send can be edited and copied in place, and your next
-  message hands the final version back to the agent.
+  message hands the final version back to the agent. **Send** on a draft is
+  the same as replying “send”: one message to the conversation (the agent
+  still does the actual sending under its own rules).
 - Comment in place: select text in a message and pick **Comment** (next to
   **Quote**) to write a note right there. The passage keeps a numbered marker,
   the composer shows just “N comments”, and your next message carries them as

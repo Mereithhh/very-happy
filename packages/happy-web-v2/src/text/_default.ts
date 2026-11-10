@@ -839,6 +839,10 @@ export const en = {
                 chipTitle: 'Your edited version goes with the next message',
                 chipRemove: ({ title }: { title: string }) => `Don't send edited draft: ${title}`,
                 attached: ({ count }: { count: number }) => count === 1 ? 'Sent 1 edited draft' : `Sent ${count} edited drafts`,
+                send: 'Send',
+                sendHint: 'Tell the agent to send this draft (same as replying “send”)',
+                sendRequested: 'Send requested',
+                sendMessage: ({ title }: { title: string }) => title ? `Send it: “${title}”` : 'Send it',
             },
             discarded: {
                 cleared: 'Not run — dropped by /clear or /compact',
@@ -3269,7 +3273,7 @@ export const en = {
             `${count} connected ${count === 1 ? 'machine is' : 'machines are'} below v${version}: ${machines}. This command installs the exact release and safely refreshes the daemon.`,
         commandCopied: 'CLI update command copied',
         bundleUpdated: 'Updated to the latest version',
-        updateReady: 'A new version is ready',
+        updateReady: 'New version — refresh to see what\'s new',
         updateApply: 'Refresh',
         updateApplying: 'Refreshing…',
         commandCopyFailed: 'Could not copy the CLI update command',
@@ -3311,6 +3315,13 @@ export const en = {
                 outboxAlt: 'A phone showing a session whose last message is marked Not sent, with Resend and Discard next to it',
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
+            },
+            nov11a: {
+                title: 'Faster update notice, Send on drafts',
+                summary: 'Open tabs learn about a new version right after a release; drafts get a Send button.',
+                update: 'A tab that stays open now checks for a new version as soon as its connection reconnects after a release, instead of up to 15 minutes later. While you are looking at it, it shows “New version — refresh to see what’s new” and keeps showing it until you refresh.',
+                draftSend: 'Draft boxes have a Send button. It is the same as replying “send”: one message to this conversation with the draft’s title (your edited version attached), then it shows Send requested. The agent still does the actual sending under its own rules. Not shown in shared read-only conversations.',
+                docs: 'New docs page: how projects, teams and sessions are organized — what each one is, when to use which, and common misconceptions.',
             },
             nov11: {
                 title: '1M context on by default for Opus / Fable',

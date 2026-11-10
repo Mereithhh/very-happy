@@ -238,6 +238,26 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
     ],
   },
   {
+    slug: 'projects-teams-sessions', label: 'How projects, teams and sessions are organized', summary: 'What each one is, how they fit together, and which one to start with.',
+    sections: [
+      { heading: 'Three building blocks', blocks: [
+        { type: 'p', text: 'A session does the work. A project holds what several sessions share. A team takes one goal, splits it into tasks, and returns results for review.' },
+        { type: 'list', items: ['Session: one agent conversation — Claude Code, Codex, Gemini, pi or another supported agent — running on one machine in one working folder, with its own history, permissions and status.', 'Project: one long-running piece of work. It holds instructions you write, a log of decisions, findings and handoffs that agents record, one or more folders on any machine or repository, and the sessions and teams working on it.', 'Team: a lead session that delegates tasks to member sessions on one machine. Each member works in its own Git worktree and submits its result; the result is then accepted or returned for changes.'] },
+      ] },
+      { heading: 'How they fit together', blocks: [
+        { type: 'list', items: ['A session belongs to at most one project, or to none. Sessions and teams outside every project appear under Not in a project.', 'A project can have several teams; a team belongs to at most one project.', 'Team leads and members are ordinary sessions. They join the team’s project through the team, so they read the same instructions and decisions as the project’s other sessions. Unlink the team and they leave the project; sessions you added directly stay.', 'A team has no context of its own: its shared context is its project’s. A team without a project still runs, but its members get no project instructions or decisions.', 'A project can span machines and repositories. A team runs on one machine under one account.', 'Web terminals can be filed in a project too; they are listed there but receive no project context.'] },
+      ] },
+      { heading: 'Which one to use', blocks: [
+        { type: 'list', items: ['A one-off question or small change: a plain session. You do not need a project.', 'Ongoing work that many sessions touch over days, such as a feature, a migration or an area of a product: a project, so every new session starts with the same instructions and recorded decisions instead of being briefed again.', 'One goal that splits into independent pieces you want done in parallel and reviewed: a team, normally inside the project the work belongs to.', 'A second, separate goal in the same project: another team in that project. A team ends with its goal; the project and its log stay.', 'Scheduled or triggered work: an automation can start its sessions inside a project.'] },
+        { type: 'link', href: '/docs/projects', label: 'Projects in detail' },
+        { type: 'link', href: '/docs/agent-teams', label: 'Teams in detail' },
+      ] },
+      { heading: 'Common misconceptions', blocks: [
+        { type: 'list', items: ['“Creating a team doesn’t create a project.” It does by default: New team creates a project with the team’s name unless you pick an existing project or No project. A team started from a conversation that is already in a project joins that project. If you have reached your project limit, the team is created without one.', '“A project is a folder or a repository.” A project lives on the server. Its folders only say where its sessions work and where new ones start. Creating a project, moving sessions into it or writing its log does not touch your files, branches or Git history, and one repository can hold several projects.', '“Working in a project’s folder puts a session in the project.” It does not. You are offered to join; nothing is added automatically.', '“Joining a project merges conversations.” Each session keeps its own history. Sessions in a project share the instructions and log, can look up what the others are doing with project_context, and can message each other. A project update never wakes an idle session.', '“Accepting a team result merges it.” Acceptance only records the review. The work stays on the member’s branch until it is integrated, and cleanup keeps any worktree with uncommitted or unpushed work.', '“Move to project… changes a team member’s project.” A member follows its team. Change the team’s project in its settings instead.', '“Archiving or deleting a project deletes its sessions.” Sessions are kept. Archiving hides the project; deleting removes the project and its log, and its sessions simply leave it.'] },
+      ] },
+    ],
+  },
+  {
     slug: 'sessions', label: 'Claude conversations', summary: 'Start, import, steer, and recover structured Claude sessions from any device.',
     sections: [
       { heading: 'Start or import a conversation', blocks: [
@@ -265,7 +285,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       ] },
       { heading: 'Editable drafts', blocks: [
         { type: 'p', text: 'When the agent writes something for you to send — a reply, an email, release notes — it marks it as a draft, and the conversation shows it as an editable box with a Copy button that copies the current text. Edits save as you type and sync to your other devices and tabs; an edited draft is marked as edited and can be restored to the original.' },
-        { type: 'p', text: 'Editing never interrupts the agent. On your next message, your final text and a compact diff are attached for the agent to use, shown as a removable chip above the composer.' },
+        { type: 'p', text: 'Editing never interrupts the agent. On your next message, your final text and a compact diff are attached for the agent to use, shown as a removable chip above the composer. Send on the draft is the same as replying “send”: it posts one message to this conversation with the draft’s title (and your edited version attached), then shows Send requested. The agent still does the actual sending under its own rules; the web never sends anything anywhere else. Shared read-only conversations have no Send button.' },
         { type: 'note', text: 'Drafts are the text inside a fenced block whose info string is draft. Claude, Codex, and Gemini sessions are told to use it; a pi session gets an editable box when it writes the fence on its own. While a reply is still streaming, the draft looks like an ordinary code block.' },
       ] },
       { heading: 'Fork a session', blocks: [
@@ -605,6 +625,9 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       ] },
       { heading: 'Rollback', blocks: [
         { type: 'p', text: 'Restore the prior web assets, server source or image, and CLI package. Prefer forward-compatible migrations; do not invent destructive down migrations during an incident.' },
+      ] },
+      { heading: 'Open browser tabs', blocks: [
+        { type: 'p', text: 'A tab that stays open checks for a new web version as soon as its live connection reconnects — which every server release causes — and otherwise every 15 minutes. A tab you are looking at is never reloaded under you: it shows “New version — refresh to see what’s new” until you refresh, and the release notes appear after the refresh. A tab in the background updates itself.' },
       ] },
     ],
   },
