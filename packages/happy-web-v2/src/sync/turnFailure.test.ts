@@ -24,6 +24,7 @@ describe('B-913 sessionTurnFailure', () => {
     it('a running turn, an archived session, a cleared or malformed value → nothing', () => {
         expect(sessionTurnFailure(session({ thinking: true }))).toBeNull();
         expect(sessionTurnFailure(session({ archivedAt: 5 }))).toBeNull();
+        expect(sessionTurnFailure(session({ agentState: { turnFailure: failure, controlledByUser: true } }))).toBeNull();
         expect(sessionTurnFailure(session({ agentState: { turnFailure: null } }))).toBeNull();
         expect(sessionTurnFailure(session({ agentState: { turnFailure: { at: 'x' } } }))).toBeNull();
         expect(sessionTurnFailure(null)).toBeNull();

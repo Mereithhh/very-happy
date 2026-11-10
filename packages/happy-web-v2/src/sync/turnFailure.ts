@@ -12,7 +12,7 @@ import type { Message, UserTextMessage } from './typesMessage';
 
 export type TurnFailureInput = {
     metadata?: { capabilities?: readonly string[] | null } | null;
-    agentState?: { turnFailure?: unknown } | null;
+    agentState?: { turnFailure?: unknown; controlledByUser?: boolean | null } | null;
     /** a turn is running again — the failure is history */
     thinking?: boolean;
     archivedAt?: number | null;
@@ -21,6 +21,9 @@ export type TurnFailureInput = {
 /** The failure to show for this session now, or null. */
 export function sessionTurnFailure(session: TurnFailureInput | null | undefined): TurnFailure | null {
     if (!session || session.archivedAt != null || session.thinking === true) return null;
+    // At the terminal (local mode) the person sees the error where it happened,
+    // and only the remote launcher clears the record — do not show a stale one.
+    if (session.agentState?.controlledByUser === true) return null;
     if (session.metadata?.capabilities?.includes(TURN_FAILURE_CAPABILITY) !== true) return null;
     return readTurnFailure(session.agentState?.turnFailure);
 }
