@@ -19,7 +19,7 @@ export type MessageModeMeta = {
 
 export function resolveMessageModeMeta(
     sessionIn: Pick<Session, 'permissionMode' | 'modelMode' | 'metadata' | 'effortLevel'> & { id?: string },
-    settings?: Pick<Settings, 'agentDefaultOverrides'>,
+    settings?: Pick<Settings, 'agentDefaultOverrides'> & Partial<Pick<Settings, 'claudeLongContextOptOut'>>,
     latestTable: LatestModelTable | null = getLatestModelTable(),
 ): MessageModeMeta {
     // B-849b: the session's own choice (wrapper-recorded intent, a pending
@@ -73,7 +73,7 @@ export function resolveMessageModeMeta(
     const sessionFollowsLatest = isLatestModelMode(session.modelMode);
     const followsLatest = sessionFollowsLatest || isLatestModelMode(agentOverrides.modelMode ?? getCodeAgentDefaults(session.metadata?.flavor).modelMode);
     const resolvedDefault = isClaude || followsLatest
-        ? resolveDefaultModelMode(sessionFollowsLatest ? undefined : settings?.agentDefaultOverrides, session.metadata?.flavor, session.metadata ?? {}, { table: latestTable })
+        ? resolveDefaultModelMode(sessionFollowsLatest ? undefined : settings?.agentDefaultOverrides, session.metadata?.flavor, session.metadata ?? {}, { table: latestTable, longContextOptOut: settings?.claudeLongContextOptOut === true })
         : agentOverrides.modelMode;
     const modelMode = session.modelMode && !isLatestModelMode(session.modelMode)
         ? session.modelMode

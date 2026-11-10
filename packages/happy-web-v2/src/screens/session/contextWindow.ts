@@ -36,6 +36,9 @@ export function contextWindowFor(model: string | null | undefined): number | nul
     // contextWindow 1_000_000 for the bare id (probed 2026-09-24), and the
     // bare id is what the web default and the `opus` alias run.
     if (/^claude-opus-5-5(?![0-9])/.test(id)) return LONG_CONTEXT_WINDOW;
+    // B-908: Fable 5.x and Sonnet 5.x plain ids run at 1M on current Claude Code
+    // (get_context_usage 2026-11-11). Only a guess for wrappers that report no window.
+    if (/^claude-(fable|sonnet)-5(?:-\d{1,2})?(?![0-9])/.test(id)) return LONG_CONTEXT_WINDOW;
     // A non-Claude model ID does not imply a 200k window. Pi uses runtime capacity.
     return /^(claude[-_:]|(?:opus|sonnet|haiku)[-_:])/.test(id) ? DEFAULT_CONTEXT_WINDOW : null;
 }
@@ -87,6 +90,8 @@ export function composerContextUsage(
     runtime: ContextUsage | null | undefined,
     message: {contextSize: number; model?: string | null} | null | undefined,
     runningModel?: string | null,
+    /** B-908: the window the wrapper reports Claude Code measures against — beats the id guess. */
+    reportedWindow?: number | null,
 ): ComposerContextUsage {
     if (isPi) {
         const tokens = runtime?.tokens ?? null;
@@ -99,6 +104,9 @@ export function composerContextUsage(
         return { tokens, window, estimated: true, windowSource, compacted: tokens === null && typeof runtime?.compactedAt === 'number' };
     }
     const tokens = message?.contextSize ?? null;
+    if (typeof reportedWindow === 'number' && reportedWindow > 0) {
+        return { tokens, window: windowHolding(reportedWindow, tokens), estimated: false, windowSource: 'configured', compacted: false };
+    }
     const window = windowHolding(contextWindowFor(message?.model ?? runningModel), tokens);
     return { tokens, window, estimated: false, windowSource: window === null ? 'unknown' : 'inferred', compacted: false };
 }

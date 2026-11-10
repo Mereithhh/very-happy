@@ -1247,6 +1247,7 @@ export const zhHans: TranslationStructure = {
                 longContext: '1M 上下文',
                 aliasSuffix: '（别名）',
                 longContextHint: '上下文窗口扩到 100 万 token',
+                longContextLockedHint: '这个模型默认 1M 上下文',
                 longContextRefusedHint: '这台机器的账号或供应商拒绝了 1M 上下文，跟随最新改用标准上下文；打开则仍按 1M 请求。',
                 unknownModel: ({ model }: { model: string }) => `${model} · 未知模型`,
                 unknownModelHint: '不在这台机器上报的模型列表里，消息仍按这个 id 发出',
@@ -3438,6 +3439,12 @@ export const zhHans: TranslationStructure = {
                 outboxAlt: '手机上的会话页：最后一条消息标着「未发送」，旁边是「重发」和「丢弃」',
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
+            },
+            nov11: {
+                title: '切换到 Opus / Fable 时默认打开 1M 上下文',
+                summary: '切到 Opus 或 Fable 时自动打开 1M 上下文，输入框会显示实际是否在 1M 上运行。',
+                default: '选 Opus 5.5、Fable 5.2 或 Fable 5.1 时自动打开 1M 上下文。模型本来就默认跑 1M 时，开关显示为已开、不可切换；关掉确实会改变窗口时，你的选择会按账号记住。已经在跑的会话不改模型。',
+                honest: '模型按钮和会话头部显示 agent 实际运行的模型，例如「Fable 5.2 · 1M」，上下文计量也按这个窗口算（需要下一版 CLI）。',
             },
             nov10b: {
                 title: 'CLI 0.2.209：Claude 会话可用 Fable 5.2',
