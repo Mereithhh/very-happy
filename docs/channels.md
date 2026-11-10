@@ -661,16 +661,30 @@ resume failed — nothing was delivered.
 
 ## Inbound: Web Assistant / meta-agent
 
-The Web Assistant is the built-in path for asking one Claude coordinator to
-inspect and dispatch other Very Happy sessions. It is separate from an external
-IM adapter and currently spawns **Claude sessions on one selected machine**.
+The Web Assistant — shown as **Main agent** in the app — is the built-in path for
+asking one Claude coordinator to inspect and dispatch other Very Happy sessions.
+An account has exactly one main agent, running on one machine; the web finds it
+through the account pointer (KV `vh.main-agent.v1`), not per machine. It is
+separate from an external IM adapter and currently spawns **Claude sessions on
+one machine** ([spec](../specs/2026-11-main-agent.md)).
 
-1. Connect a machine whose daemon can start Claude structured sessions.
-2. Open **Settings → Voice & Assistant** and select the Assistant machine.
-3. Review **Skip permission approvals**. It is convenient for dispatch, but it
-   grants the coordinator a high-privilege machine-control surface.
-4. Open **Assistant** (or `/assistant`) and ask with an absolute workspace path,
-   for example: `在 /srv/project 派一个会话修复登录测试，然后汇报结果。`
+1. Connect a machine whose daemon can start Claude structured sessions. A
+   machine that stays online (a Linux box rather than a laptop) is recommended.
+2. Click **Main agent** at the top of the sidebar (desktop: a drawer on the
+   right, `Command+Shift+E` toggles it; phone: a full-screen page). With none
+   yet, pick a machine and **Enable**. A machine whose CLI is too old shows an
+   update hint instead of starting anything.
+3. Ask in text — anything goes — or from `Command+K`: type the question, then
+   pick **Ask main agent** (`Command+Enter` sends it from any row).
+4. **Settings → Main agent** shows which machine runs it (moving it starts a new
+   conversation there and archives the old one), the skills folders it mounts
+   (`skillRoots`) and additions to its outbound deny list. Review
+   **Settings → Voice → Skip permission approvals** too: it is convenient for
+   dispatch, but it grants the coordinator a high-privilege machine-control
+   surface.
+
+The full-screen voice view at `/assistant` is still there and opens the same
+session: when the account points at a machine, it only uses that machine.
 
 The assistant uses `session_spawn` to return a new session immediately; it does
 not wait for that worker to finish. Use `sessions_list`, `session_read`, and
