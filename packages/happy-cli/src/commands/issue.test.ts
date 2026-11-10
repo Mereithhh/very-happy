@@ -90,7 +90,7 @@ describe('B-874 wiring (source assertions)', () => {
         expect(run).toMatch(/issueWorker\?\.stop\(\)/);
     });
     it('issue_* tools are registered in-process and forwarded by the Codex bridge; three runners advertise issue-v1 + metadata.issue', () => {
-        expect(src('claude/utils/startHappyServer.ts')).toMatch(/registerIssueTools\(mcp, createIssueToolExecutor\(\(\) => client\.sessionId\)\)/);
+        expect(src('claude/utils/startHappyServer.ts')).toMatch(/registerIssueTools\(mcp, createIssueToolExecutor\(\(\) => client\.sessionId\), replaced\)/);
         expect(src('claude/utils/startHappyServer.ts')).toMatch(/\.\.\.ISSUE_TOOL_NAMES,/);
         expect(src('codex/happyMcpStdioBridge.ts')).toMatch(/registerIssueTools\(server, async/);
         for (const file of ['claude/runClaude.ts', 'codex/runCodex.ts', 'agent/acp/runAcp.ts']) {
