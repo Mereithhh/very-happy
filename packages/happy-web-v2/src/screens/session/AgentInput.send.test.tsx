@@ -51,6 +51,7 @@ vi.mock('./sendFeedback', () => ({ yieldForSendFeedback: mocks.paint }));
 import { AgentInput } from './AgentInput';
 import { canRequestDraftSend, requestDraftSend } from './draftSendRequest';
 import { useEditableDrafts } from '@/sync/editableDraftsStore';
+import { clearAttachmentStash } from './useAttachments';
 
 function deferred() {
     let resolve!: () => void;
@@ -88,6 +89,7 @@ beforeEach(() => {
 
 afterEach(() => {
     act(() => root.unmount());
+    clearAttachmentStash(); // B-918: an unmounted composer parks its attachments per session
     host.remove();
     vi.restoreAllMocks();
 });

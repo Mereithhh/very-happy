@@ -283,7 +283,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const [permissionModeBusy, setPermissionModeBusy] = useState(false);
     // B-098 手动展开态：上限 200px ↔ ~60% 视口高。会话内状态，刻意不持久化。
     const [expanded, setExpanded] = useState(false);
-    const { attachments, processing: processingAttachments, addFiles, remove, take, restore } = useAttachments();
+    const { attachments, processing: processingAttachments, addFiles, remove, take, restore } = useAttachments(sessionId);
     const queuedRef = useRef(queued);
     queuedRef.current = queued;
     const deliveryPhaseRef = useRef<QueueDeliveryPhase>('idle');

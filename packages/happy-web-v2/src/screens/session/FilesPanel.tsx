@@ -1,5 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { FsFileViewer } from '../files/FsFileViewer';
+import { PIN_SOURCE_PARAM } from '../files/previewPinTarget';
+import { getSessionName } from '@/utils/sessionUtils';
 import { resolveAgainstCwd } from './toolFilePath';
 /**
  * FilesPanel — project file tree + changed-files view for a session. Desktop
@@ -189,11 +191,15 @@ function FilesPanelContent({
     const browsePath = session?.metadata?.path ?? null;
     const [params, setParams] = useSearchParams();
     const pinFile = params.get('pinFile');
+    // B-918: files a push from this session docked here show 「来自 <this session>」.
+    const [pushedTabs, setPushedTabs] = useState<ReadonlySet<string>>(() => new Set());
     useEffect(() => {
         if (!pinFile || !browseMachineId) return;
         setSelected(pinFile);
-        const next = new URLSearchParams(params); next.delete('pinFile'); setParams(next, { replace: true });
+        if (params.get(PIN_SOURCE_PARAM) === 'push') setPushedTabs(prev => new Set(prev).add(pinFile));
+        const next = new URLSearchParams(params); next.delete('pinFile'); next.delete(PIN_SOURCE_PARAM); setParams(next, { replace: true });
     }, [pinFile, browseMachineId]);
+    const sourceLabel = session ? getSessionName(session) : undefined;
     // B-572: the chat's turn rollup asks for the review tab via `?review=1`.
     const reviewRequested = params.get(REVIEW_ALL_PARAM) === '1';
     useEffect(() => {
@@ -308,7 +314,7 @@ function FilesPanelContent({
                     untracked={changed.find(f => f.fullPath === diffTabPath(file.id))?.status === 'untracked'}
                     active={active && selected === file.id} refreshToken={gitStatusFiles} onOpenFile={() => setSelected(diffTabPath(file.id)!)}/> : <>
                 {!browseMachineId && <div className="fp-viewer-head"><span className="fp-viewer-path" title={file.id}>{file.id}</span></div>}
-                {browseMachineId ? <FsFileViewer sessionId={sessionId} machineId={browseMachineId} path={resolveAgainstCwd(file.id, browsePath)} fullscreen={fileFullscreen} onToggleFullscreen={() => setFileFullscreen(value => !value)} onClose={() => setFileTabs(state => closeWorkspaceTab(state, file.id))}/> : <FileView sessionId={sessionId} fullPath={file.id}/>}
+                {browseMachineId ? <FsFileViewer sessionId={sessionId} sourceLabel={pushedTabs.has(file.id) ? sourceLabel : undefined} machineId={browseMachineId} path={resolveAgainstCwd(file.id, browsePath)} fullscreen={fileFullscreen} onToggleFullscreen={() => setFileFullscreen(value => !value)} onClose={() => setFileTabs(state => closeWorkspaceTab(state, file.id))}/> : <FileView sessionId={sessionId} fullPath={file.id}/>}
                 </>}
             </WorkspacePane>)}
             {children}

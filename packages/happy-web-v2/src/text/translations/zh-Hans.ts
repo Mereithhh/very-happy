@@ -1555,6 +1555,8 @@ export const zhHans: TranslationStructure = {
         receiveTitle: '接收预览推送',
         receiveSubtitle: 'agent 调用 open_preview 时，在本设备弹出文件预览。关闭后本设备忽略这类推送（其他设备照旧弹出）。',
         diffUnavailable: 'diff 视图尚未实现，这里按普通文件展示',
+        /** B-918: preview head chip naming the session that pushed it. */
+        fromSession: ({ name }: { name: string }) => `来自 ${name}`,
         pushHeld: ({ name }: { name: string }) => `「${name}」推送了预览，点击查看`,
         machineOffline: ({ machine }: { machine: string }) =>
             `${machine} 不在线，读不到这个文件。在那台机器上把 happy daemon 起起来，预览会自己加载。`,
@@ -3443,6 +3445,12 @@ export const zhHans: TranslationStructure = {
                 outboxAlt: '手机上的会话页：最后一条消息标着「未发送」，旁边是「重发」和「丢弃」',
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
+            },
+            nov11f: {
+                title: '预览在发起它的会话里打开',
+                summary: '别的会话推来的文件预览，现在会带你到那个会话去看，不再盖在当前会话上。',
+                jump: '你在会话 A（或任何其他页面）时，会话 B 推来一个文件预览，Very Happy 会跳到 B，在那里打开文件，并标明「来自 B」。按返回回到 A。如果你正在打字，会等你停下 2 秒再跳（最多等 10 秒）。来自当前会话、机器或终端、已归档会话、分享来的会话的预览，仍在原地打开。',
+                keep: '回到 A 时，没发出的文字、附件和批注都还在。开了多个标签页时，只有你正在看的那个会跳转。',
             },
             nov11a: {
                 title: '更新提示更及时；草稿可一键发送',

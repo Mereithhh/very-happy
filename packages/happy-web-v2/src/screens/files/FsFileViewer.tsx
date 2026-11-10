@@ -103,6 +103,8 @@ interface FsFileViewerProps {
     /** B-573: follow this session's agent writes to the file (refresh / banner). */
     sessionId?: string;
     onPin?: () => void;
+    /** B-918: title of the session that pushed this preview (shown as 「来自 …」 in the head). */
+    sourceLabel?: string;
     contained?: boolean;
     machineId: string;
     path: string;
@@ -110,7 +112,7 @@ interface FsFileViewerProps {
     fullscreen: boolean;
     onToggleFullscreen: () => void;
 }
-function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFullscreen, onPin, contained = false, sessionId }: FsFileViewerProps) {
+function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFullscreen, onPin, contained = false, sessionId, sourceLabel }: FsFileViewerProps) {
     const { t, lang } = useTranslation();
     const zh = lang.startsWith('zh');
     const kind = previewKindOf(path);
@@ -363,6 +365,7 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
                 <button type="button" className="fsb-iconbtn fsb-viewer-close" onClick={onClose} aria-label={t('common.back')} title={t('common.back')}>
                     <ChevronLeft size={16} />
                 </button>
+                {sourceLabel && <span className="fsb-viewer-source" title={t('filePreview.fromSession', { name: sourceLabel })}>{t('filePreview.fromSession', { name: sourceLabel })}</span>}
                 <span className="fsb-viewer-path" title={path}>{path}</span>
                 <div className="fsb-viewer-actions">
                 {(kind === 'markdown' || kind === 'html') && state.phase === 'text' && (
