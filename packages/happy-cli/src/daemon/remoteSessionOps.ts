@@ -84,7 +84,7 @@ export interface RemoteSessionOpsDeps {
         deps?: Partial<DeliveryDeps>,
     ) => Promise<DeliveryResult>
     listPeers: (context: PeerToolContext, scope: 'repo' | 'cwd' | 'machine') => Promise<PeerListing>
-    sendPeer: (context: PeerToolContext, args: { to: string; body: string; replyTo?: string }) => Promise<SendPeerMessageResult>
+    sendPeer: (context: PeerToolContext, args: { to: string; body: string; replyTo?: string; purpose?: 'handoff' }) => Promise<SendPeerMessageResult>
     log: (line: string) => void
     now: () => number
     /** Read bucket (list / read / peers). */
@@ -234,7 +234,7 @@ export function createRemoteSessionOpsHandlers(machineId: string, overrides: Par
                 if (deps.now() - started > sendCommitDeadlineMs) {
                     throw new RemoteOpFailure('timeout', `Session ${sessionId} was not live within ${Math.round(sendCommitDeadlineMs / 1000)}s on ${deps.host}; nothing was sent — retry (the same localId cannot double-deliver)`)
                 }
-                return sendUserMessage(sessionId, key, text, client, { ...options, ...(args.localId ? { localId: args.localId } : {}) })
+                return sendUserMessage(sessionId, key, text, client, { ...options, ...(args.localId ? { localId: args.localId } : {}), ...(args.displayText ? { displayText: args.displayText } : {}) })
             }
             return deps.deliver(args.sessionId, persisted, args.text, REMOTE_CLIENT_TAG, {
                 resume: args.resume === true,
@@ -263,7 +263,7 @@ export function createRemoteSessionOpsHandlers(machineId: string, overrides: Par
                 // The target must be HERE; never bounce a remote request onward.
                 remoteMessage: null,
             }
-            return deps.sendPeer(context, { to: args.to, body: args.body, ...(args.replyTo ? { replyTo: args.replyTo } : {}) })
+            return deps.sendPeer(context, { to: args.to, body: args.body, ...(args.replyTo ? { replyTo: args.replyTo } : {}), ...(args.purpose ? { purpose: args.purpose } : {}) })
         }, (args) => args.to),
     }
 }

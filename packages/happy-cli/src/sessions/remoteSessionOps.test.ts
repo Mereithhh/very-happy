@@ -50,6 +50,18 @@ describe('guardRemoteSessionOpsRequest (B-506)', () => {
         expect(msg.ok && msg.request.args).toEqual({ to: 's1', body: 'x', replyTo: 'm0', from: { sessionId: 'sA', title: 'T', flavor: 'claude', cwd: '/w', machine: 'mac' } })
     })
 
+    it('B-915: send keeps a short displayText and a wrapup- localId; message keeps purpose handoff only', () => {
+        const send = guardRemoteSessionOpsRequest('sessions.send', { v: 1, from, args: { sessionId: 's1', text: 'hi', localId: 'wrapup-0123abcd', displayText: '收尾' } }, { enabled: true })
+        expect(send.ok && send.request.args).toEqual({ sessionId: 's1', text: 'hi', localId: 'wrapup-0123abcd', displayText: '收尾' })
+        const long = guardRemoteSessionOpsRequest('sessions.send', { v: 1, from, args: { sessionId: 's1', text: 'hi', displayText: 'x'.repeat(201) } }, { enabled: true })
+        expect(long.ok && long.request.args).toEqual({ sessionId: 's1', text: 'hi' })
+        const sender = { sessionId: 'sA' }
+        const handoff = guardRemoteSessionOpsRequest('sessions.message', { v: 1, from, args: { to: 's1', body: 'x', from: sender, purpose: 'handoff' } }, { enabled: true })
+        expect(handoff.ok && handoff.request.args).toMatchObject({ purpose: 'handoff' })
+        const other = guardRemoteSessionOpsRequest('sessions.message', { v: 1, from, args: { to: 's1', body: 'x', from: sender, purpose: 'spam' } }, { enabled: true })
+        expect(other.ok && other.request.args).not.toHaveProperty('purpose')
+    })
+
     it('sessions.peers: scope whitelist, cwd optional', () => {
         expect(guardRemoteSessionOpsRequest('sessions.peers', { v: 1, from, args: { scope: 'planet' } }, { enabled: true })).toMatchObject({ ok: false, error: { code: 'bad_request' } })
         const out = guardRemoteSessionOpsRequest('sessions.peers', { v: 1, from, args: { scope: 'repo', cwd: '/home/u/repo' } }, { enabled: true })

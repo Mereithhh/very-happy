@@ -4,6 +4,7 @@ import { registerSessionPeerTools } from '@/sessions/peerTools';
 import { registerIdleRestartTool, IDLE_RESTART_TOOL_NAME } from '@/sessions/idleRestartTool';
 import { registerProjectTools } from '@/projects/tools';
 import { registerIssueTools } from '@/issues/tools';
+import { registerWrapupTools } from '@/wrapup/tools';
 import { registerReportProgressTool } from '@/claude/utils/reportProgressTool';
 import { REPORT_PROGRESS_TOOL_NAME } from '@/claude/utils/agentGuidance';
 /**
@@ -206,6 +207,9 @@ async function main() {
     if (response.isError) throw new Error(text || 'Issue request failed');
     return { text };
   });
+  // B-915: wrapup_report / handoff_send / session_wrapup / session_handoff execute in the
+  // owning session process (it owns the running card and the archive); forwarded by name.
+  registerWrapupTools(server, (name, args) => forwardTeam(name, args as Record<string, unknown>));
   // B-556: report_progress writes the owning session's metadata.board (throttle
   // included); the bridge only forwards by name, same schema as the HTTP server.
   registerReportProgressTool(server, async (args) => (await ensureHttpClient()).callTool({ name: REPORT_PROGRESS_TOOL_NAME, arguments: args }) as any);

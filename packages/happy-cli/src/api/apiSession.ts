@@ -1308,6 +1308,11 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
         this.enqueueMessage(content);
+        // B-915 tap: every runner reports `ready` when its turn is over (Claude also emits `turn-ended`).
+        if (event.type === 'ready') {
+            try { this.emit('agent-ready'); }
+            catch (error) { logger.debug('[API] agent-ready listener failed:', error); }
+        }
     }
 
     // ── B-587 hibernation support ──────────────────────────────────────────

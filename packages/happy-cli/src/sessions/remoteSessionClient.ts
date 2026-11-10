@@ -29,7 +29,7 @@ import { openUserScopedSocket, type RpcCallAck, type UserRpcTransport } from '@/
 import type { DeliveryResult } from '@/commands/sessionDelivery'
 import type { AccountSessionSummary } from './sessionOps'
 import type { PeerListing, SendPeerMessageResult } from './peerTools'
-import type { PeerSender } from './peerMessage'
+import type { PeerMessagePurpose, PeerSender } from './peerMessage'
 import type { PeerScope } from './repoIdentity'
 import type { RemoteListResult, RemoteReadResult } from '@/daemon/remoteSessionOps'
 import { randomUUID } from 'node:crypto'
@@ -321,7 +321,7 @@ export interface RemoteDeliveryResult extends DeliveryResult { machine: { id: st
 export async function sendRemoteMessage(
     sessionId: string,
     text: string,
-    options: { machineId?: string; resume?: boolean; model?: string | null; sentFrom?: string; localId?: string } = {},
+    options: { machineId?: string; resume?: boolean; model?: string | null; sentFrom?: string; localId?: string; displayText?: string } = {},
     overrides: Partial<RemoteClientDeps> = {},
 ): Promise<RemoteDeliveryResult> {
     const deps = withDefaults(overrides)
@@ -336,6 +336,8 @@ export async function sendRemoteMessage(
             ...(options.resume ? { resume: true } : {}),
             ...(options.model !== undefined ? { model: options.model } : {}),
             ...(options.sentFrom !== undefined ? { sentFrom: options.sentFrom } : {}),
+            // B-915: an older target daemon drops it (the chat then shows the full text).
+            ...(options.displayText !== undefined ? { displayText: options.displayText } : {}),
         }
         const attempt = () => callRemoteSessionOp<'sessions.send', DeliveryResult>(transport, located.machine.id, 'sessions.send', args, from)
         let result: DeliveryResult
@@ -357,7 +359,7 @@ export interface RemotePeerMessageResult extends SendPeerMessageResult { machine
 
 /** `session_message` / `sessions message` to a session on another machine: the target daemon formats and delivers with OUR identity in the header. */
 export async function sendRemotePeerMessage(
-    args: { to: string; body: string; replyTo?: string; from: PeerSender },
+    args: { to: string; body: string; replyTo?: string; from: PeerSender; purpose?: PeerMessagePurpose },
     options: { machineId?: string } = {},
     overrides: Partial<RemoteClientDeps> = {},
 ): Promise<RemotePeerMessageResult> {
@@ -367,6 +369,8 @@ export async function sendRemotePeerMessage(
         const caller = await deps.caller()
         const result = await callRemoteSessionOp<'sessions.message', SendPeerMessageResult>(transport, located.machine.id, 'sessions.message', {
             to: args.to, body: args.body, ...(args.replyTo ? { replyTo: args.replyTo } : {}),
+            // B-915: an older target daemon drops it and delivers an ordinary session message.
+            ...(args.purpose ? { purpose: args.purpose } : {}),
             from: { ...args.from, machine: args.from.machine ?? caller.host },
         }, caller)
         return { ...result, machine: { id: located.machine.id, host: located.host } }

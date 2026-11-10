@@ -20,7 +20,7 @@ import type { PeerSessionInfo } from '@/daemon/types'
 import { readPersistedSessions, type PersistedSession } from '@/persistence'
 import { sendUserMessage, sessionWebUrl } from '@/commands/sessionMessage'
 import { deliverToSession, type DeliveryResult } from '@/commands/sessionDelivery'
-import { CLI_PEER_SENDER_ID, formatSessionPeerMessage, SESSION_PEER_SENT_FROM, type PeerSender } from './peerMessage'
+import { CLI_PEER_SENDER_ID, formatSessionPeerMessage, SESSION_PEER_SENT_FROM, type PeerMessagePurpose, type PeerSender } from './peerMessage'
 import { isPeerInScope, PEER_SCOPES, resolveRepoIdentity, type PeerScope, type RepoIdentity } from './repoIdentity'
 import { ProjectsUnsupportedError, sharedProjectsClient } from '@/projects/client'
 import { listRemotePeers, sendRemotePeerMessage, type RemotePeerListing, type RemotePeerMessageResult } from './remoteSessionClient'
@@ -78,7 +78,7 @@ export interface PeerToolContext {
      * disables the hop (the daemon answering a proxied call must not bounce
      * it onward).
      */
-    remoteMessage?: ((args: { to: string; body: string; replyTo?: string; from: PeerSender; machineId?: string }) => Promise<RemotePeerMessageResult>) | null
+    remoteMessage?: ((args: { to: string; body: string; replyTo?: string; from: PeerSender; machineId?: string; purpose?: PeerMessagePurpose }) => Promise<RemotePeerMessageResult>) | null
     /** B-506: list peers on another machine (default = proxy through its daemon). */
     remotePeers?: (machineId: string, options: { scope?: PeerScope; cwd?: string }) => Promise<RemotePeerListing>
     /** B-645: scope "project" — read from server-side project presence (no per-machine fan-out). */
@@ -179,6 +179,11 @@ function defaultDeliver(to: string, persisted: PersistedSession, text: string, l
     })
 }
 
+function defaultRemoteMessage(args: { to: string; body: string; replyTo?: string; from: PeerSender; machineId?: string; purpose?: PeerMessagePurpose }): Promise<RemotePeerMessageResult> {
+    const { machineId, ...rest } = args
+    return sendRemotePeerMessage(rest, machineId ? { machineId } : {})
+}
+
 /** Pure: is one more message to `to` inside the budget? Prunes the window in place. */
 export function checkPeerSendBudget(sentTo: Map<string, number[]>, to: string, now: number, limit = PEER_MESSAGE_RATE_LIMIT, windowMs = PEER_MESSAGE_RATE_WINDOW_MS): { ok: boolean; count: number } {
     const recent = (sentTo.get(to) ?? []).filter((t) => now - t <= windowMs)
@@ -191,7 +196,7 @@ export function checkPeerSendBudget(sentTo: Map<string, number[]>, to: string, n
  * machine, not a mirror), format the message and push it into the target's
  * queue. Throws with a precise reason on every refusal.
  */
-export async function sendPeerMessage(context: PeerToolContext, args: { to: string; body: string; replyTo?: string; machineId?: string }): Promise<SendPeerMessageResult> {
+export async function sendPeerMessage(context: PeerToolContext, args: { to: string; body: string; replyTo?: string; machineId?: string; purpose?: PeerMessagePurpose }): Promise<SendPeerMessageResult> {
     const self = context.self()
     if (!isValidSessionId(args.to)) throw new Error('Invalid session id')
     if (args.to === self.sessionId) throw new Error('That is this session; message a peer instead')
@@ -202,7 +207,8 @@ export async function sendPeerMessage(context: PeerToolContext, args: { to: stri
     if (!persisted || args.machineId) {
         // B-506: not ours — hand it to the machine that spawned it. The
         // reply-loop budget still counts here: the loop is the sender's.
-        const remote = context.remoteMessage === undefined ? sendRemotePeerMessage : context.remoteMessage
+        // B-915: the default must hand `machineId` over as the lookup option (it used to be dropped, so every call swept the machines).
+        const remote = context.remoteMessage === undefined ? defaultRemoteMessage : context.remoteMessage
         if (remote === null) {
             throw new Error(`Session ${args.to} is not on this machine (no local key)`)
         }
@@ -212,7 +218,7 @@ export async function sendPeerMessage(context: PeerToolContext, args: { to: stri
         }
         let result: RemotePeerMessageResult
         try {
-            result = await remote({ to: args.to, body, replyTo: args.replyTo, from: self, machineId: args.machineId })
+            result = await remote({ to: args.to, body, replyTo: args.replyTo, from: self, machineId: args.machineId, ...(args.purpose ? { purpose: args.purpose } : {}) })
         } catch (error) {
             // B-646: owning machine offline / session not live there → same-project offline message.
             const stored = await storeOfflineOrThrow(context, self, args.to, body, error instanceof Error ? error : new Error(String(error)))
@@ -240,7 +246,7 @@ export async function sendPeerMessage(context: PeerToolContext, args: { to: stri
         if (!budget.ok) throw new Error(replyLoopRefusal(budget.count, args.to))
     }
     const messageId = randomUUID().slice(0, 8)
-    const text = formatSessionPeerMessage({ id: messageId, from: self, body, replyTo: args.replyTo })
+    const text = formatSessionPeerMessage({ id: messageId, from: self, body, replyTo: args.replyTo, ...(args.purpose ? { purpose: args.purpose } : {}) })
     const result = await (context.deliver ?? defaultDeliver)(args.to, persisted, text, `session-message-${messageId}`)
     context.sentTo?.get(args.to)?.push(now)
     return {
@@ -305,9 +311,11 @@ export function cliPeerSelf(env: NodeJS.ProcessEnv, cwd: string, persisted: Reco
     return { sessionId: CLI_PEER_SENDER_ID, title: `cli ${user}@${hostname()}`, flavor: 'cli', cwd }
 }
 
-/** In-process executor for a managed session: identity from its ApiSessionClient. */
-export function createSessionPeerToolExecutor(client: { sessionId: string; getMetadata: () => { path?: string; flavor?: string; summary?: { text: string } } | null }): SessionPeerToolExecutor {
-    const context: PeerToolContext = {
+type PeerClientLike = { sessionId: string; getMetadata: () => { path?: string; flavor?: string; summary?: { text: string } } | null }
+
+/** A managed session's peer context: identity from its ApiSessionClient, one reply-loop budget per context. */
+export function createSessionPeerContext(client: PeerClientLike): PeerToolContext {
+    return {
         self: () => {
             const meta = client.getMetadata()
             return { sessionId: client.sessionId, title: meta?.summary?.text, flavor: meta?.flavor, cwd: meta?.path ?? process.cwd() }
@@ -315,6 +323,11 @@ export function createSessionPeerToolExecutor(client: { sessionId: string; getMe
         // One budget per session process: the reply-loop guard.
         sentTo: new Map(),
     }
+}
+
+/** In-process executor for a managed session: identity from its ApiSessionClient. */
+export function createSessionPeerToolExecutor(client: PeerClientLike): SessionPeerToolExecutor {
+    const context = createSessionPeerContext(client)
     return (name, args) => executeSessionPeerTool(name, args, context)
 }
 

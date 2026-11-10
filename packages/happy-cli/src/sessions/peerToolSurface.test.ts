@@ -19,7 +19,7 @@ describe('session peer tool surface across runners', () => {
         const source = read('../claude/utils/startHappyServer.ts');
         expect(source).toContain('if (client) registerSessionPeerTools(dispatchRegistrar, createSessionPeerToolExecutor(client));');
         expect(source).toContain('...SESSION_PEER_TOOL_NAMES,');
-        expect(source).toContain('createMcpServer(handlers, options, client.sessionId, client)');
+        expect(source).toContain('createMcpServer(handlers, options, client.sessionId, client, wrapupTools)');
         expect(source.indexOf('registerSessionPeerTools(dispatchRegistrar')).toBeLessThan(source.indexOf("mcp.registerTool('change_title'"));
     });
     it('is forwarded by the Codex stdio bridge without new literal registrations', () => {

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
-    ATTENTION_LIMITS, isAttentionBoardLocalId, ownerBoardPostToRest,
+    ATTENTION_LIMITS, builtinActionOfLocalId, isAttentionBoardLocalId, ownerBoardPostToRest,
     type AttentionAnchor, type AttentionItem, type OwnerBoardListInput, type OwnerBoardListOutput, type OwnerBoardPostInput,
     type OwnerBoardPostOutput, type OwnerBoardResolveInput, type OwnerBoardResolveOutput, type OwnerBoardUpdateInput, type OwnerBoardUpdateOutput,
 } from '@slopus/happy-wire';
@@ -45,6 +45,8 @@ const AUTOMATED_LOCAL_ID_PREFIXES = ['automation-', 'teams-', 'remote-send-', 's
 export function isOwnerMessage(input: { localId?: string | null; sentFrom?: string | null }): boolean {
     const localId = input.localId ?? '';
     if (isAttentionBoardLocalId(localId)) return false;
+    // B-915: a 「收尾」/「交接给…」 turn is a built-in action, not a question to answer.
+    if (builtinActionOfLocalId(localId)) return false;
     if (AUTOMATED_LOCAL_ID_PREFIXES.some(prefix => localId.startsWith(prefix))) return false;
     return typeof input.sentFrom === 'string' && (OWNER_SENT_FROM as readonly string[]).includes(input.sentFrom);
 }
