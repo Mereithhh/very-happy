@@ -147,6 +147,14 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     itemKeys: ['changelog.releases.nov11d.receipts'],
   },
   {
+    id: '2026-11-11-stale-session-card-restart-after-turn',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11b.title',
+    summaryKey: 'changelog.releases.nov11b.summary',
+    itemKeys: ['changelog.releases.nov11b.card', 'changelog.releases.nov11b.agentLine'],
+  },
+  {
     id: '2026-11-11-update-notice-draft-send-org-docs',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,

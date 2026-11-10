@@ -3462,6 +3462,12 @@ export const zhHans: TranslationStructure = {
                 summary: '长时间运行的团队负责人，每次操作团队后不再收到整个团队的内容。',
                 receipts: '派活、发消息、提交、验收、退回、取消、移交和定时提醒，现在在所有会话里都只返回一张简短回执（任务 id、状态，以及下一步要用的 id），包括用旧版 CLI 启动、还没重启过的会话。以前这类会话每次都会收到整个团队的内容（几十万字符），agent 一次读不完。',
             },
+            nov11b: {
+                title: '停在旧版 CLI 的会话会出现在「需要我决策」里',
+                summary: '机器没法自动升级的会话，现在会出一张卡片，带「本轮结束后重启」按钮。',
+                card: '团队负责人、自动化和旧版会话，不会自己重启到新版 CLI。机器（装上带这项功能的 CLI 后）发现这种会话时，会推送一次通知，并在「需要我决策」里出一张卡片，写明会话名、当前版本和目标版本。点「本轮结束后重启」，会等会话空闲后再原地重启，对话历史、模型和思考强度都保留，正在进行的一轮不会被打断。',
+                agentLine: 'agent 自己请求重启会话时（CLI 新功能），对话里会出现一行简短提示。',
+            },
             nov10b: {
                 title: 'CLI 0.2.209：Claude 会话可用 Fable 5.2',
                 summary: 'Claude 会话可以用 Fable 5.2，内置的 Claude Code 同步升级。',
@@ -6610,8 +6616,21 @@ export const zhHans: TranslationStructure = {
 
     // B-587: 空闲休眠
     // B-852: CLI 升级后自动原地重启（spec 2026-10-auto-restart-stale-wrappers）。
+    staleWrapperCard: {
+        title: ({ name, from, target }: { name: string; from: string; target: string }) => `会话「${name}」还在用 CLI ${from}，没法自动升级到 ${target}`,
+        body: ({ from, target }: { name: string; from: string; target: string }) => `本机已经装了 CLI ${target}，但这个会话还跑在 ${from} 上：它是团队、自动化或旧版会话，不向 daemon 报告空闲，所以不会被自动重启，新版的修复和工具在它这里都不生效。\n\n**本轮结束后重启**：daemon 会等这一轮做完、会话空闲下来再原地重启，对话历史、模型和思考强度都保留，正在进行的这一轮不会被打断。`,
+        by: '本机',
+        restartWhenIdle: '本轮结束后重启',
+        queued: '已排队：这一轮结束、会话空闲后重启',
+        queuedToast: '已排队，会话空闲后重启',
+        errorNotLive: '这个会话已经不在它的机器上运行了',
+        errorNotResumable: '这段对话在机器上无法恢复，所以没有重启',
+        errorNoTurnReports: '这个会话的 CLI 太旧，无法判断是否空闲；请在会话菜单里手动重启',
+        errorGeneric: ({ reason }: { reason: string }) => `没能排队重启（${reason}）`,
+    },
     autoRestart: {
         updatedLine: ({ version }: { version: string }) => `已更新到 Very Happy ${version}（会话已原地重启，历史保留）`,
+        restartedOnRequestLine: ({ version }: { version: string }) => `应 agent 请求已原地重启（Very Happy ${version}，历史保留）`,
         updatedAgentLine: ({ agent, version }: { agent: string; version: string }) => `已将 ${agent} 更新到 ${version}（会话已原地重启，历史保留）`,
         waiting: ({ sessionVersion, machineVersion, why }: { sessionVersion: string; machineVersion: string; why: string }) =>
             `仍在用 v${sessionVersion}（机器已是 v${machineVersion}）。${why}也可以现在手动重启，对话保留。`,

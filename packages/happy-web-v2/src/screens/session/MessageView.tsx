@@ -27,7 +27,7 @@ import { isSharedWithMe } from '@/app/sessionAccess';
 import { toast } from '@/ui/Toast';
 import { AccountEventBlock } from './AccountEventBlock';
 import { accountEventKind, machineLoginCardApplies } from './sessionAccount';
-import { AUTO_UPDATED_EVENT_KIND, parseAutoUpdatedLine } from '@/app/autoRestartPolicy';
+import { AUTO_UPDATED_EVENT_KIND, parseAutoUpdatedLine, parseRestartedOnRequestLine, RESTARTED_ON_REQUEST_EVENT_KIND } from '@/app/autoRestartPolicy';
 import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
 import { parseAttachedFiles, stripAttachedFiles } from './attachedFiles';
 import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, type AttachmentItem } from './UserAttachments';
@@ -450,6 +450,13 @@ function AgentEventBlock({ message, sessionId, continueOffer = false }: { messag
                     return <div className="msg msg--event"><span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{t('session.chat.longContextRefused')}</span></div>;
                 }
                 // B-852: the daemon restarted this session onto new code by itself — one quiet line.
+                // B-911: the agent asked for it (`request_idle_restart`) — the same quiet line.
+                const requested = ev.kind === RESTARTED_ON_REQUEST_EVENT_KIND ? parseRestartedOnRequestLine(ev.message) : null;
+                if (requested) {
+                    label = t('autoRestart.restartedOnRequestLine', { version: requested.version });
+                    subtle = true;
+                    break;
+                }
                 const autoUpdated = ev.kind === AUTO_UPDATED_EVENT_KIND ? parseAutoUpdatedLine(ev.message) : null;
                 if (autoUpdated) {
                     label = autoUpdated.agent

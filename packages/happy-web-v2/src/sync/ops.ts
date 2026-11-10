@@ -1341,16 +1341,17 @@ export async function machineResumeSession(
  * (machineRPC rethrows it); callers map that to a "too old" hint.
  */
 export async function machineRestartSession(
-    options: { machineId: string; sessionId: string; model?: string; permissionMode?: string; ifIdle?: true },
+    options: { machineId: string; sessionId: string; model?: string; permissionMode?: string; ifIdle?: true; whenIdle?: true },
     opts?: { timeoutMs?: number },
 ): Promise<SpawnSessionResult> {
-    const { machineId, sessionId, model, permissionMode, ifIdle } = options;
+    const { machineId, sessionId, model, permissionMode, ifIdle, whenIdle } = options;
     try {
         // B-894 `ifIdle`: the daemon refuses with `busy:<reason>` instead of stopping a busy session.
-        return await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string; ifIdle?: true }>(
+        // B-911 `whenIdle`: queue until idle — only for a daemon advertising `autoRestart.idleRestart` (an older one restarts at once).
+        return await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string; ifIdle?: true; whenIdle?: true }>(
             machineId,
             'restart-session',
-            { sessionId, model, permissionMode, ...(ifIdle ? { ifIdle } : {}) },
+            { sessionId, model, permissionMode, ...(ifIdle ? { ifIdle } : {}), ...(whenIdle ? { whenIdle } : {}) },
             opts,
         );
     } catch (error) {

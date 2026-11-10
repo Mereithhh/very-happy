@@ -76,3 +76,11 @@ describe('B-852 texts', () => {
         expect(parseAutoUpdatedLine('hello')).toBeNull();
     });
 });
+
+describe('B-911 restarted-on-request line', () => {
+    it('reads the version from the wrapper\'s English line; other text is not it', async () => {
+        const { parseRestartedOnRequestLine } = await import('./autoRestartPolicy');
+        expect(parseRestartedOnRequestLine("Restarted in place at the agent's request on Very Happy 0.2.210 (history kept)")).toEqual({ version: '0.2.210' });
+        expect(parseRestartedOnRequestLine('Updated to Very Happy 0.2.210 (session restarted in place, history kept)')).toBeNull();
+    });
+});
