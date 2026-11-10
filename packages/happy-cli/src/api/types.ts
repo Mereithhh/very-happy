@@ -378,6 +378,16 @@ export const DaemonStateSchema = z.object({
     rpcAvailable: z.boolean(),
     detectedAt: z.number(),
   }).optional(),
+  /**
+   * B-916c capability flag: this daemon's main agent (assistant variant) runs
+   * with the outbound gates, the risk decision cards and the managed skill
+   * (specs/2026-11-main-agent.md). The web offers the main agent only on a
+   * machine that sets it (same `detectedAt >= startedAt` trust rule).
+   */
+  mainAgentGates: z.object({
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
   /** B-877b capability flag: this daemon answers `team-exit-session` (same trust rule). */
   teamExit: z.object({
     rpcAvailable: z.boolean(),
