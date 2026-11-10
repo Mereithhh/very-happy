@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import {
-    attentionKindNeedsOwner, attentionResolveState, isAttentionActive,
+    applyWrapupCheck, attentionItemNeedsOwner, parseWrapupPayload, attentionKindNeedsOwner, attentionResolveState, isAttentionActive,
     type AttentionItem, type AttentionItemListQuery, type AttentionItemOwnerRespond, type AttentionItemPatch, type AttentionItemPost,
     type AttentionItemResolve, type TeamState,
 } from '@slopus/happy-wire';
@@ -121,8 +121,10 @@ async function enforceActiveLimit(tx: Tx, accountId: string) {
 }
 
 /** The optional content a post carries: present keys only, so a repost leaves the omitted ones as they were. */
-function repostFields(input: Pick<AttentionItemPost, 'options' | 'links' | 'anchor' | 'replyToId'> & { bodyMd?: string | null }) {
+function repostFields(input: Pick<AttentionItemPost, 'kind' | 'options' | 'links' | 'anchor' | 'replyToId' | 'payload'> & { bodyMd?: string | null }) {
     return {
+        // B-915: a wrap-up payload is replaced whole (a new run), and decides whether the card waits on the owner yet.
+        ...(input.payload !== undefined ? { payload: json(input.payload), needsOwner: attentionItemNeedsOwner(input.kind, input.payload) } : {}),
         ...(input.bodyMd !== undefined ? { bodyMd: input.bodyMd } : {}),
         ...(input.options !== undefined ? { options: json(input.options) } : {}),
         ...(input.links !== undefined ? { links: json(input.links) } : {}),
@@ -165,7 +167,7 @@ async function upsertTx(tx: Tx, accountId: string, input: Omit<AttentionItemPost
         row = await tx.attentionItem.create({
             data: {
                 ...content, id: randomUUID(), accountId, sessionId: input.sessionId, teamId: ctx.teamId, projectId: ctx.projectId,
-                source: input.source, kind: input.kind, key, inferred, needsOwner: attentionKindNeedsOwner(input.kind), state: 'open', createdAt: now, updatedAt: now,
+                source: input.source, kind: input.kind, key, inferred, needsOwner: attentionItemNeedsOwner(input.kind, input.payload), state: 'open', createdAt: now, updatedAt: now,
             },
         });
     }
@@ -269,7 +271,14 @@ export async function ownerRespond(accountId: string, id: string, input: Attenti
         const row = await loadItem(tx, accountId, id);
         const now = new Date();
         let data: Prisma.AttentionItemUpdateInput;
-        if (input.action === 'reopen') {
+        if (input.action === 'check') {
+            // B-915: tick a wrap-up card's pending entry; the item's state is untouched (archiving is a separate act).
+            requireAttention(row.kind === 'wrapup', 'attention_check_unsupported', 409, { kind: row.kind });
+            const current = parseWrapupPayload(row.payload)?.pending?.find(p => p.id === input.checkId);
+            requireAttention(current, 'attention_check_unknown', 400);
+            if (current.checked === input.checked) return { item: itemView(row) };
+            data = { payload: json(applyWrapupCheck(row.payload, input.checkId, input.checked)) };
+        } else if (input.action === 'reopen') {
             if (isAttentionActive(row.state)) return { item: itemView(row) };
             data = { state: 'open', resolvedBy: null, resolvedAt: null, ownerChoice: null, ownerNote: input.note ?? null };
         } else if (input.action === 'choose') {

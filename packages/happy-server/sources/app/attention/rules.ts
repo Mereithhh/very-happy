@@ -24,6 +24,8 @@ export interface AttentionRow {
     replyToId: string | null; inferred: boolean; needsOwner: boolean; state: string; ownerChoice: string | null; ownerNote: string | null;
     resolvedBy: string | null; resolveNote: string | null; repostCount: number;
     createdAt: Date; updatedAt: Date; resolvedAt: Date | null; pushedAt: Date | null; version: number;
+    /** B-915 wrap-up card body (`kind: 'wrapup'` only). */
+    payload: unknown;
 }
 
 const ms = (d: Date | null) => d ? d.getTime() : null;
@@ -35,6 +37,7 @@ export function itemView(row: AttentionRow): AttentionItem {
         replyToId: row.replyToId, inferred: row.inferred, needsOwner: row.needsOwner, state: row.state, ownerChoice: row.ownerChoice, ownerNote: row.ownerNote,
         resolvedBy: row.resolvedBy, resolveNote: row.resolveNote, repostCount: row.repostCount,
         createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime(), resolvedAt: ms(row.resolvedAt), pushedAt: ms(row.pushedAt), version: row.version,
+        payload: row.payload ?? null,
     };
 }
 

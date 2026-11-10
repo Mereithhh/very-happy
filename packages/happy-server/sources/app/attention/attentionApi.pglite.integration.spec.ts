@@ -155,6 +155,49 @@ describe('attention REST + hooks through startApi (pglite)', () => {
         expect(await until(() => item(body.item.id), r => r.state !== 'open')).toMatchObject({ state: 'dismissed', resolvedBy: 'session-archived' });
     });
 
+    // B-915: wrap-up cards — running (shown, not waiting on the owner) → done (waits, never pushes), owner ticks, archive dismisses.
+    it('wrapup: payload round-trip, needsOwner follows status, no push, check action, archive dismisses', async () => {
+        const sessionId = await newSession();
+        const post = (payload: Record<string, unknown>, requestId: string) =>
+            call('POST', '/v1/attention-items', { sessionId, source: 'agent', kind: 'wrapup', key: 'wrapup', title: 'Wrap-up', payload, requestId });
+        expect((await call('POST', '/v1/attention-items', { sessionId, source: 'agent', kind: 'wrapup', title: 'no payload' })).status).toBe(400);
+        expect((await call('POST', '/v1/attention-items', { sessionId, source: 'lead', kind: 'report', title: 'x', payload: { v: 1, mode: 'wrapup', status: 'done' } })).status).toBe(400);
+
+        const pushesBefore = pushed.length;
+        const running = await post({ v: 1, mode: 'wrapup', status: 'running', localId: 'wrapup-n1', startedAt: 1 }, 'w1');
+        expect(running.status).toBe(200);
+        expect(running.body.item).toMatchObject({ kind: 'wrapup', needsOwner: false, payload: { status: 'running', localId: 'wrapup-n1' } });
+        const id = running.body.item.id as string;
+
+        const result = { v: 1, mode: 'wrapup', status: 'done', summary: 'Did X', files: ['a.ts'], commits: [{ sha: 'abc1234', subject: 'fix' }],
+            pending: [{ id: 'p1', label: 'Release?', checked: false }, { id: 'p2', label: 'Docs?', checked: false }], canClose: false };
+        const done = await post(result, 'w2');
+        expect(done.body.item).toMatchObject({ id, needsOwner: true, state: 'open', repostCount: 1, payload: result });
+        expect((await call('GET', `/v1/attention-items?needsOwner=1&sessionId=${sessionId}`)).body.items.map((i: { id: string }) => i.id)).toEqual([id]);
+        await sleep(100);
+        expect(pushed.length).toBe(pushesBefore);
+
+        const checked = await call('POST', `/v1/attention-items/${id}/owner-respond`, { action: 'check', checkId: 'p2', checked: true });
+        expect(checked.status).toBe(200);
+        expect(checked.body.item.state).toBe('open');
+        expect(checked.body.item.payload.pending).toEqual([{ id: 'p1', label: 'Release?', checked: false }, { id: 'p2', label: 'Docs?', checked: true }]);
+        const version = checked.body.item.version as number;
+        // Same tick again: unchanged (idempotent retry, no version bump).
+        expect((await call('POST', `/v1/attention-items/${id}/owner-respond`, { action: 'check', checkId: 'p2', checked: true })).body.item.version).toBe(version);
+        expect(await call('POST', `/v1/attention-items/${id}/owner-respond`, { action: 'check', checkId: 'nope', checked: true })).toEqual({ status: 400, body: { error: 'attention_check_unknown' } });
+        expect((await item(id)).payload).toMatchObject({ pending: [{ checked: false }, { checked: true }] });
+
+        const decision = await call('POST', '/v1/attention-items', { sessionId, source: 'lead', kind: 'decision', title: 'Pick', options, requestId: 'w3' });
+        expect(await call('POST', `/v1/attention-items/${decision.body.item.id}/owner-respond`, { action: 'check', checkId: 'p1', checked: true })).toMatchObject({ status: 409, body: { error: 'attention_check_unsupported' } });
+        expect(await call('POST', `/v1/attention-items/${id}/owner-respond`, { action: 'check', checkId: 'p1', checked: true }, otherToken)).toMatchObject({ status: 404 });
+
+        expect((await call('POST', `/v1/sessions/${sessionId}/archive`)).status).toBe(200);
+        expect(await until(() => item(id), r => r.state !== 'open')).toMatchObject({ state: 'dismissed', resolvedBy: 'session-archived' });
+        // A new run on the archived-then-restored session reopens the same card as running (no owner wait).
+        const again = await post({ v: 1, mode: 'wrapup', status: 'running', startedAt: 2 }, 'w4');
+        expect(again.body.item).toMatchObject({ id, state: 'open', needsOwner: false });
+    });
+
     // S-1d: the owner's ordinary chat never closes a decision (it used to settle the only open one as `owner-replied`,
     // silently, with the lead unaware). Only the board choice (owner-respond) or the lead's resolve closes it.
     const ownerSocket = async () => {

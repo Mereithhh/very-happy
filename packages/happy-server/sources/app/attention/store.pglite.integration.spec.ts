@@ -18,6 +18,8 @@ vi.mock('@/app/push/pushDispatch', () => ({
 }));
 
 const MIGRATION = 'prisma/migrations/20261022120000_attention_items/migration.sql';
+const PAYLOAD_MIGRATION = 'prisma/migrations/20261111120000_attention_payload/migration.sql';
+const statements = (file: string) => readFileSync(join(process.cwd(), file), 'utf8').split(/;\s*$/m).map(s => s.replace(/^\s*--.*$/gm, '').trim()).filter(Boolean);
 const options = [{ id: 'A', label: 'Ship now', recommended: true }, { id: 'B', label: 'Wait a day' }];
 const settle = () => new Promise(resolve => setTimeout(resolve, 50));
 
@@ -249,7 +251,25 @@ describe('attention items store (pglite)', () => {
         // Everything else keeps working without the table (the previous image's view of the schema).
         expect(await db.session.count({ where: { id: sessionId } })).toBe(1);
         for (const statement of sql.split(/;\s*$/m).map(s => s.replace(/^\s*--.*$/gm, '').trim()).filter(Boolean)) await db.$executeRawUnsafe(statement);
+        // Later expand-only migrations on the same table (B-915 payload) come back with it.
+        for (const statement of statements(PAYLOAD_MIGRATION)) await db.$executeRawUnsafe(statement);
         const again = await store.postItem(accountId, { sessionId, source: 'agent', kind: 'blocked', title: 'after re-apply', requestId: 'm1' });
         expect(again.created).toBe(true);
+    });
+
+    // B-915: one nullable column, no backfill, no FK; dropping it is the documented rollback and leaves the old image's
+    // view of the table (rows written meanwhile survive minus their payload).
+    it('payload migration is expand-only (one nullable column) and its rollback drops just that column', async () => {
+        const sql = readFileSync(join(process.cwd(), PAYLOAD_MIGRATION), 'utf8');
+        expect(statements(PAYLOAD_MIGRATION)).toEqual(['ALTER TABLE "AttentionItem" ADD COLUMN "payload" JSONB']);
+        expect(sql).not.toMatch(/REFERENCES|NOT NULL|DEFAULT/);
+        const posted = await store.postItem(accountId, { sessionId, source: 'agent', kind: 'wrapup', title: 'w', key: 'wrapup', payload: { v: 1, mode: 'wrapup', status: 'done', summary: 's' } });
+        expect(posted.item.payload).toMatchObject({ summary: 's' });
+        await db.$executeRawUnsafe(sql.match(/-- To remove for good:\s*(.+?);?$/m)![1]);
+        const cols = await db.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*)::bigint AS n FROM information_schema.columns WHERE table_name='AttentionItem' AND column_name='payload'`);
+        expect(cols).toEqual([{ n: 0n }]);
+        expect(await db.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*)::bigint AS n FROM "AttentionItem" WHERE "id"='${posted.item.id}'`)).toEqual([{ n: 1n }]);
+        for (const statement of statements(PAYLOAD_MIGRATION)) await db.$executeRawUnsafe(statement);
+        expect((await store.listItems(accountId, { sessionId, state: 'all' })).items.find(i => i.id === posted.item.id)?.payload).toBeNull();
     });
 });
