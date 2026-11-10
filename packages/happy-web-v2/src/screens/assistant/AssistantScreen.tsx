@@ -32,7 +32,8 @@ import { machineLabel } from '@/utils/machineUtils';
 import { ASSISTANT_DIRECTORY, ASSISTANT_MIN_CLI_VERSION, TTS_MAX_CHARS } from '@/assistant/assistantConstants';
 import { isAssistantSupported } from '@/assistant/assistantSupport';
 import { pickAssistantSession } from '@/assistant/assistantSession';
-import { pickVoiceAssistantMachine } from '@/assistant/mainAgent';
+import { pickVoiceAssistantMachine, mainAgentSupported } from '@/assistant/mainAgent';
+import { mainAgentCopy } from '@/assistant/mainAgentCopy';
 import { useMainAgentStore } from '@/assistant/mainAgentStore';
 import { useMainAgentPointerSync } from '@/assistant/useMainAgent';
 import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission, deriveTranscript, extractOptions } from '@/assistant/assistantView';
@@ -435,8 +436,15 @@ export function AssistantScreen() {
 
     // ── new conversation: forceNew respawn, then archive the old session ──
     const [resetting, setResetting] = useState(false);
+    // B-916c (QA77 #8): a new conversation re-spawns the assistant — it becomes the main
+    // agent, so it needs a daemon that runs it with the gates (`daemonState.mainAgentGates`).
+    const canStartNew = mainAgentSupported(machine);
     const onNewConversation = useCallback(async () => {
         if (!machine || resetting) return;
+        if (!mainAgentSupported(machine)) {
+            toast.error(mainAgentCopy(lang).upgradeBody(machineLabel(machine), machine.metadata?.happyCliVersion ?? mainAgentCopy(lang).unknownVersion));
+            return;
+        }
         setResetting(true);
         try {
             playerRef.current?.stop();
@@ -458,7 +466,7 @@ export function AssistantScreen() {
         } finally {
             setResetting(false);
         }
-    }, [machine, resetting, spawnAssistant]);
+    }, [machine, resetting, spawnAssistant, toast, lang]);
 
     // ── text input ──
     const [draft, setDraft] = useState('');
@@ -770,7 +778,7 @@ export function AssistantScreen() {
                                 <button
                                     type="button"
                                     className="as-reset-btn"
-                                    disabled={!machine || resetting}
+                                    disabled={!machine || resetting || !canStartNew}
                                     onClick={() => void onNewConversation()}
                                     aria-busy={resetting}
                                 >
