@@ -21,7 +21,10 @@ describe('B-913 runCodex wiring', () => {
     it('turn failures are noted on both failing events, cleared when a prompt starts a turn', () => {
         expect(src).toMatch(/addMessage\(`Task failed: \$\{failure\}`, 'status'\);\n\s*noteTurnFailure\(failure\);/);
         expect(src).toMatch(/addMessage\(`Turn aborted: \$\{failure\}`, 'status'\);\n\s*noteTurnFailure\(failure\);/);
-        expect(src).toMatch(/\/\/ B-913: a new prompt[^\n]*\n\s*turnFailure = null;\n\s*session\.clearTurnFailure\(\);\n\s*idleRelease\.cancel\(\);\n\s*turnActive = true;/);
+        // right after a prompt is dequeued, before the turn is taken on
+        const clear = src.search(/\/\/ B-913: a new prompt[^\n]*\n\s*turnFailure = null;\n\s*session\.clearTurnFailure\(\);/);
+        expect(clear).toBeGreaterThan(src.indexOf('// Defensive check for TS narrowing'));
+        expect(clear).toBeLessThan(src.indexOf('idleRelease.cancel();\n            turnActive = true;'));
     });
     it('the ready push becomes the one turn-failed push (never both)', () => {
         const ready = src.slice(src.indexOf('const sendReady = () => {'), src.indexOf('// Debug helper: log active handles'));

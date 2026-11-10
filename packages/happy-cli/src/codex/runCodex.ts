@@ -1386,6 +1386,10 @@ export async function runCodex(opts: {
                 break;
             }
 
+            // B-913: a new prompt — the last turn's failure is over.
+            turnFailure = null;
+            session.clearTurnFailure();
+
             // B-622: the wrapper owns a prompt from here — respawning a released
             // app-server (B-461 drops it after 5 idle minutes), resuming the
             // thread, starting the turn — and the web reads `thinking` as "is
@@ -1398,9 +1402,6 @@ export async function runCodex(opts: {
                 session.keepAlive(thinking, 'remote');
             }
 
-            // B-913: a new prompt — the last turn's failure is over.
-            turnFailure = null;
-            session.clearTurnFailure();
             idleRelease.cancel();
             turnActive = true;
 
