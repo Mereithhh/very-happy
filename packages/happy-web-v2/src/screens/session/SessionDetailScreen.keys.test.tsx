@@ -93,6 +93,7 @@ vi.mock('./AutomationAttentionBanner', async () => {
 });
 // The worktree banner renders nothing for a non-worktree session — its fiber alone is enough to collide.
 vi.mock('./WorktreeSetupBanner', () => ({ WorktreeSetupBanner: () => null }));
+vi.mock('./TurnFailureBanner', () => ({ TurnFailureBanner: () => null }));
 
 import { SessionDetailScreen } from './SessionDetailScreen';
 

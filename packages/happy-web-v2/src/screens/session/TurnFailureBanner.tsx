@@ -11,7 +11,7 @@
  */
 import { useState } from 'react';
 import { RotateCcw, TriangleAlert, X } from 'lucide-react';
-import { useToast } from '@/ui';
+import { toast } from '@/ui/Toast';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -20,7 +20,6 @@ import './mirror.css';
 
 export function TurnFailureBanner({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
-    const toast = useToast();
     const session = useSession(sessionId);
     const { messages } = useSessionMessages(sessionId);
     // Keyed by the failure's own time: a NEW failure shows again.

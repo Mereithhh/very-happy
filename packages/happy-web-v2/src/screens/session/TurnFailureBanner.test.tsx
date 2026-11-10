@@ -14,7 +14,7 @@ vi.mock('@/sync/storage', () => ({
     useSessionMessages: () => ({ messages: mock.messages, isLoaded: true, hasMoreOlder: false, isLoadingOlder: false }),
 }));
 vi.mock('@/sync/sync', () => ({ sync: { sendMessage: mock.sendMessage } }));
-vi.mock('@/ui', () => ({ useToast: () => ({ error: mock.toastError }) }));
+vi.mock('@/ui/Toast', () => ({ toast: { error: mock.toastError } }));
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 import { TurnFailureBanner } from './TurnFailureBanner';
 
