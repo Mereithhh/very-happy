@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 // post-webhook half (SDK loop, MCP/hook servers, scanners…) comes from
 // ./runClaudeDeps, prefetched while the session is being created — see there.
 import { ApiClient } from '@/api/api';
+import type { ApiSessionClient } from '@/api/apiSession';
 import { logger } from '@/ui/logger';
 import { AgentState, Metadata } from '@/api/types';
 import { sessionWorktreeMetadata } from '@/worktree/sessionWorktree';
@@ -724,7 +725,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Start Happy MCP server (assistant variant additionally registers the
     // machine management tool surface — see assistant/assistantTools.ts)
-    const happyServer = await startHappyServer(session, { assistant: isAssistantVariant, selfReportState: boardSelfReport, push: { sendAttention: (input) => api.push().sendAttention(input) } });
+    // B-916c: the main agent (assistant variant outside any team) gets gate 1
+    // (outbound denylist), gate 2 (risk → decision card) and its skill segment.
+    const mainAgent = isAssistantVariant && !process.env.VH_TEAM_SCOPE_FILE ? await prepareMainAgentForSession(api, session) : undefined;
+    const happyServer = await startHappyServer(session, { assistant: isAssistantVariant, mainAgent, selfReportState: boardSelfReport, push: { sendAttention: (input) => api.push().sendAttention(input) } });
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
 
     // Variable to track current session instance (updated via onSessionReady callback)
@@ -1462,6 +1466,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Store reference for hook server callback
             currentSession = sessionInstance;
             sessionInstance.longContextPolicy = createLongContextPolicy({ session, storePath: longContextStore, key: longContextStoreKey });
+            // B-916c: gate 1 hook + skillRoots mount for the main agent's SDK queries.
+            if (mainAgent) sessionInstance.mainAgentGuard = { preToolUse: mainAgent.preToolUse, extraDirectories: mainAgent.extraDirectories };
             // B-551: the local launcher's scanner reads the same hints.
             sessionInstance.transcriptPathHints = transcriptPathHints;
             // B-515: the system/init path (an adopted warm process, whose
@@ -1523,4 +1529,36 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Exit with the code from Claude
     process.exit(exitCode);
+}
+
+/**
+ * B-916c: build the main agent runtime. Gate 1 always holds its defaults; a
+ * failure anywhere else leaves gate 2 failing closed (no board → non-none
+ * dispatches are refused).
+ */
+async function prepareMainAgentForSession(api: ApiClient, session: ApiSessionClient) {
+    const [{ prepareMainAgent, attentionDispatchBoard, MAIN_AGENT_GATES_CAPABILITY }, { setAssistantExtraDenied }, { sharedAttentionClient }, { runClaudeOneShot, resolveClaudeBinary }, { sessionWebUrl }] = await Promise.all([
+        import('@/assistant/gates/setup'),
+        import('@/assistant/dispatcherTools'),
+        import('@/attention/client'),
+        import('./utils/titleGenerator'),
+        import('@/commands/sessionMessage'),
+    ]);
+    const log = (line: string) => logger.debug(line);
+    const binary = resolveClaudeBinary();
+    const runtime = await prepareMainAgent({
+        kvGet: (key) => api.kvGet(key),
+        board: attentionDispatchBoard(sharedAttentionClient(), () => session.sessionId),
+        classify: process.env.HAPPY_MAIN_AGENT_CLASSIFIER === 'off' ? null : (prompt) => runClaudeOneShot(binary, prompt),
+        approvalLink: (boardItemId) => `${sessionWebUrl(session.sessionId)}?panel=board （决策 ${boardItemId}）`,
+        log,
+    });
+    setAssistantExtraDenied(runtime.denylist.sdkDisallowed);
+    try {
+        session.updateMetadata((metadata) => ({ ...metadata, capabilities: [...new Set([...(metadata.capabilities ?? []), MAIN_AGENT_GATES_CAPABILITY])] }));
+    } catch (error) {
+        logger.debug('[START] main agent capability publish failed:', error);
+    }
+    logger.debug(`[START] Main agent gates on: ${runtime.denylist.patterns.length} deny patterns, ${runtime.extraDirectories.length} skill root(s)`);
+    return runtime;
 }
