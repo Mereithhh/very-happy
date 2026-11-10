@@ -122,6 +122,10 @@ export const SettingsSchema = z.object({
     // model were turned into "follow latest" (agentDefaults.ts
     // migrateFollowLatestOverrides). null = not migrated yet. No .default() (rule 1).
     modelFollowLatestMigratedAt: z.number().nullable().describe('Epoch ms the follow-latest model migration ran (null = not yet)'),
+    // B-908: the user switched Claude's 1M context off in a picker — picks and
+    // new sessions stop turning it on by themselves (switching it on clears
+    // this). Account-wide so a phone and a desktop agree. No .default() (rule 1).
+    claudeLongContextOptOut: z.boolean().describe('User switched Claude 1M context off: do not turn it on automatically'),
     // Legacy sidebar pinned rows (superseded by sidebarOrder). Kept in the
     // schema for wire compatibility with old clients/stored blobs, and still
     // read/written ONLY while sidebarOrder is empty (pre-materialization):
@@ -236,6 +240,7 @@ export const settingsDefaults: Settings = {
     newSessionAlwaysAsk: false,
     agentDefaultOverrides: {},
     modelFollowLatestMigratedAt: null,
+    claudeLongContextOptOut: false,
     pinnedRows: [],
     sidebarOrder: [],
     sidebarSort: 'recent',

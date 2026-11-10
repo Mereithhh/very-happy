@@ -145,6 +145,20 @@ function claudeIdName(id: string): string | null {
 }
 
 /**
+ * B-908: the compact name of a model Claude Code reports running
+ * (`metadata.currentModelCode`, system/init keeps `[1m]`):
+ * `claude-fable-5-2[1m]` → 「Fable 5.2 · 1M」, `claude-opus-5-5` → 「Opus 5.5」.
+ * `nameOf` names what the id table does not (aliases, custom ids); without it
+ * the id is shown without its `claude-` prefix.
+ */
+export function claudeRunningModelLabel(id: string, nameOf?: (base: string) => string | null | undefined): string {
+    const long = id.endsWith(LONG_CONTEXT);
+    const base = long ? id.slice(0, -LONG_CONTEXT.length) : id;
+    const name = claudeIdName(base.replace(/-\d{8}$/, '')) ?? nameOf?.(base) ?? compactResolvedModelCode(base);
+    return long ? `${name} · 1M` : name;
+}
+
+/**
  * B-893: Claude Code 2.1.30x+ lists Fable only as `claude-fable-5-1[1m]` —
  * or, in a session already on it, as `claude-fable-5-1` — named just
  * 「Fable」 (probed SDK 0.3.318). With no plain entry the picker could not

@@ -130,6 +130,8 @@
 @media (hover: hover) and (pointer: fine) { .ch-identity-trigger:hover { outline:none; background:var(--bg-2); } }
 .ch-agent, .ch-host { max-width:100px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ch-agent { color:var(--text-dim); }
+/* B-908: the model the wrapper reports running (「Fable 5.2 · 1M」). */
+.ch-model { max-width:128px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-dim); }
 .ch-host { font:var(--fs-10) var(--font-mono); color:var(--text-faint); }
 .ch-identity-details { z-index:60; width:min(320px,calc(100vw - 32px)); padding:var(--sp-3); background:var(--bg-1); border:1px solid var(--line); border-radius:var(--r-md); box-shadow:var(--shadow-pop); }
 .ch-identity-details dl { display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--sp-2); margin:0; }
@@ -140,6 +142,7 @@
  .ch .vh-back { width:44px; height:44px; }
  .ch-identity-trigger { flex-direction:column; justify-content:center; gap:2px; padding:2px; min-height:44px; }
  .ch-agent, .ch-host { max-width:42px; font-size:var(--fs-10); }
+ .ch-model { display:none; }
  .ch-status { gap:2px; padding-right:0; }
  .ch-title-pencil { display:none; }
  .ch-title-btn { min-height:44px; }
@@ -154,6 +157,7 @@
   .ch-main { min-width: 140px; }
   .ch-host { display: none; } /* the machine stays one tap away in the identity popover */
   .ch-agent { max-width: 72px; }
+  .ch-model { max-width: 96px; }
   .ch .relay-badge-label { display: none; }
 }
 
