@@ -664,6 +664,12 @@ export type Metadata = {
   // `code` = protocol value ID, `value` = human label
   models?: Array<{ code: string; value: string; description?: string | null; resolvedModel?: string; reasoningEfforts?: string[]; defaultReasoningEffort?: string }>,
   currentModelCode?: string,
+  /**
+   * B-908: Claude — the context window Claude Code measures the running model
+   * against (`get_context_usage` rawMaxTokens; 1_000_000 on a 1M window).
+   * system/init drops the `[1m]` marker, so this is how the web knows 1M runs.
+   */
+  currentContextWindow?: number,
   /** Resolved SDK model when no per-message model override was supplied. */
   defaultModelCode?: string,
   /**

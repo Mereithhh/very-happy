@@ -25,6 +25,12 @@ cross-machine routing is not available.
 - Use a Git checkout for automatic isolated worktrees. Preserve and integrate
   changes before cleanup; a worktree with uncommitted files or commits that are
   not pushed or merged is intentionally retained.
+- A member's worktree starts from the remote's latest default branch (for
+  example `origin/main`), fetched when the member launches — not from whatever
+  your checkout currently has checked out. Only the remote-tracking ref is
+  updated: your checkout's HEAD, branches and other worktrees are never moved.
+  When the fetch fails (offline, no access) the last known `origin/main` is used
+  and the daemon log says so; a repository without a remote uses its HEAD.
 
 An unavailable/disabled server reports that state. An old daemon cannot receive a
 Teams delegation; it does not fall back to Claude or the legacy assistant.
