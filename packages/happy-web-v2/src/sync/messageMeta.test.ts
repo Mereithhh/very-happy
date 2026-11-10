@@ -130,3 +130,32 @@ it('does not send the previous pi model thinking level along with a new model', 
         flavor: 'acp', currentModelCode: 'deep', thoughtLevels: [{ code: 'xhigh', value: 'Extra high' }],
     } } as any)).toMatchObject({ model: 'small', effort: null });
 });
+
+describe('B-908: an account that switched 1M off', () => {
+    const caps = ['claude-steer-v1', 'claude-opus-5-5-v1'];
+    const fresh = { permissionMode: null, modelMode: null, effortLevel: null, metadata: { flavor: 'claude', capabilities: caps } } as any;
+    const off = { agentDefaultOverrides: {}, claudeLongContextOptOut: true } as any;
+
+    it('a new session following latest starts on the plain id', () => {
+        expect(resolveMessageModeMeta(fresh).model).toBe('claude-opus-5-5[1m]');
+        expect(resolveMessageModeMeta(fresh, off).model).toBe('claude-opus-5-5');
+        expect(resolveMessageModeMeta(fresh, off).modelIntent).toBe('latest');
+    });
+
+    it('a session already running 1M keeps it (the opt-out never moves a running session)', () => {
+        const running = { ...fresh, metadata: { ...fresh.metadata, currentModelCode: 'claude-opus-5-5[1m]' } };
+        expect(resolveMessageModeMeta(running, off).model).toBe('claude-opus-5-5[1m]');
+        const plain = { ...fresh, metadata: { ...fresh.metadata, currentModelCode: 'claude-opus-5-5' } };
+        expect(resolveMessageModeMeta(plain, off).model).toBe('claude-opus-5-5');
+    });
+
+    it('an explicit pick wins either way', () => {
+        expect(resolveMessageModeMeta({ ...fresh, modelMode: 'claude-fable-5-2[1m]' }, off).model).toBe('claude-fable-5-2[1m]');
+    });
+
+    it('an old wrapper (no Opus 5.5 capability, no currentModelCode) still gets the machine default', () => {
+        const old = { ...fresh, metadata: { flavor: 'claude', capabilities: ['claude-steer-v1'] } };
+        expect(resolveMessageModeMeta(old).model).toBeNull();
+        expect(resolveMessageModeMeta(old, off).model).toBeNull();
+    });
+});

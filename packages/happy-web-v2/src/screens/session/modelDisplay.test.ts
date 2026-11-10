@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { deriveCodexRunningModel, deriveRunningModelSubtitle, selectDisplayedModelKey, withSelectedModelEntry } from './modelDisplay';
+import { deriveCodexRunningModel, deriveRunningModelSubtitle, runningModelForTrigger, selectDisplayedModelKey, withSelectedModelEntry } from './modelDisplay';
+import { claudeRunningModelLabel } from '@/components/modelModeOptions';
 
 const base = { isClaude: true, selectedKey: 'opus', running: 'claude-opus-5' };
 
@@ -67,5 +68,31 @@ describe('withSelectedModelEntry (B-849b2, QA28 P2-3)', () => {
     });
     it('listed models, latest and machine config add nothing', () => {
         for (const key of ['gpt-6-astra', 'latest', 'default', null, undefined]) expect(withSelectedModelEntry(options, key, unknown)).toEqual(options);
+    });
+});
+
+describe('B-908: the closed entry names what the wrapper runs', () => {
+    it('names the running id with 1M when Claude Code measures a 1M window (system/init drops [1m])', () => {
+        expect(runningModelForTrigger({ running: 'claude-fable-5-2', contextWindow: 1_000_000, intended: 'claude-fable-5-2[1m]' })).toBe('claude-fable-5-2[1m]');
+        // plain Fable 5.2 on CC 2.1.322 is 1M too — the fact, not the [1m] pick.
+        expect(runningModelForTrigger({ running: 'claude-fable-5-2', contextWindow: 1_000_000, intended: 'claude-fable-5-2' })).toBe('claude-fable-5-2[1m]');
+        // CC 2.1.318 plain Fable 5.2: 200k.
+        expect(runningModelForTrigger({ running: 'claude-fable-5-2', contextWindow: 200_000, intended: 'claude-fable-5-2[1m]' })).toBe('claude-fable-5-2');
+        expect(runningModelForTrigger({ running: 'claude-opus-5-5', contextWindow: 1_000_000, intended: 'opus[1m]', resolve: (key) => key === 'opus' ? 'claude-opus-5-5' : null })).toBe('claude-opus-5-5[1m]');
+    });
+
+    it('old CLI (no window), another model not applied yet, the machine default → the selection names itself', () => {
+        expect(runningModelForTrigger({ running: 'claude-fable-5-2', contextWindow: undefined, intended: 'claude-fable-5-2[1m]' })).toBeUndefined();
+        expect(runningModelForTrigger({ running: 'claude-opus-5-5', contextWindow: 1_000_000, intended: 'claude-fable-5-2[1m]' })).toBeUndefined();
+        expect(runningModelForTrigger({ running: 'claude-opus-5-5', contextWindow: 1_000_000, intended: 'default' })).toBeUndefined();
+        expect(runningModelForTrigger({ running: undefined, contextWindow: 1_000_000, intended: 'claude-fable-5-2[1m]' })).toBeUndefined();
+    });
+
+    it('labels: 「Fable 5.2 · 1M」, 「Opus 5.5」, dated ids, aliases by name', () => {
+        expect(claudeRunningModelLabel('claude-fable-5-2[1m]')).toBe('Fable 5.2 · 1M');
+        expect(claudeRunningModelLabel('claude-opus-5-5')).toBe('Opus 5.5');
+        expect(claudeRunningModelLabel('claude-haiku-4-5-20251001')).toBe('Haiku 4.5');
+        expect(claudeRunningModelLabel('opus[1m]', (base) => base === 'opus' ? 'opus (alias)' : null)).toBe('opus (alias) · 1M');
+        expect(claudeRunningModelLabel('kimi-k3')).toBe('kimi-k3');
     });
 });

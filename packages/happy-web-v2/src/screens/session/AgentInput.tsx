@@ -37,6 +37,7 @@ import {
     getLauncherModelModes,
     getEffortLevelsForModel,
     compactResolvedModelCode,
+    claudeRunningModelLabel,
     relabelDefaultModel,
     catalogRunnableKeys,
     codexModelGate,
@@ -62,7 +63,7 @@ import {
     supportsClaudeFable52,
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
-import { LONG_CONTEXT_SUFFIX, layoutModelPicker, withLongContextTwins } from './modelPickerLayout';
+import { LONG_CONTEXT_SUFFIX, layoutModelPicker, longContextLocked, longContextRowPick, withLongContextTwins } from './modelPickerLayout';
 import { autoEffortName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from './runSetupCopy';
 import { useNavigate } from 'react-router-dom';
 import { useLatestModelTable } from '@/sync/latestModels';
@@ -73,7 +74,7 @@ import { apiSocket } from '@/sync/apiSocket';
 import { forkCatalogSource, type LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
-import { deriveCodexRunningModel, deriveRunningModelSubtitle, selectDisplayedModelKey, withSelectedModelEntry } from './modelDisplay';
+import { deriveCodexRunningModel, deriveRunningModelSubtitle, runningModelForTrigger, selectDisplayedModelKey, withSelectedModelEntry } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
     advanceQueueDeliveryPhase,
@@ -251,6 +252,8 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const usage = useSessionUsage(sessionId);
     const enterToSend = useSetting('agentInputEnterToSend');
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
+    // B-908: the user switched Claude's 1M off — picks and new sessions keep it off.
+    const longContextOptOut = useSetting('claudeLongContextOptOut') === true;
 
     const taRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -387,7 +390,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const launcherCatalogs = (!session && pending?.launcher?.catalogs) || NO_CATALOGS;
     const launcherContext = session ? null : pending?.launcher?.context ?? null;
     const modelMetadata = session ? (metadata ?? {}) : null;
-    const latestResolution = resolveLatestForAgent(latestTable, flavor, modelMetadata, launcherContext);
+    const latestResolution = resolveLatestForAgent(latestTable, flavor, modelMetadata, launcherContext, longContextOptOut);
     // B-883b: the wrapper recorded that this machine's account/provider refused 1M.
     const longContextRefused = latestModelContext(modelMetadata, launcherContext).longContextUnsupported === true;
     // B-849b: the session's own choice — the wrapper-recorded intent, a pick
@@ -405,7 +408,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const followingLatest = offersFollowLatest && (sessionFollowsLatest || (!explicitModelMode && isFollowingLatestModel(agentDefaultOverrides, flavor)));
     const modelKey = explicitModelMode && !sessionFollowsLatest
         ? explicitModelMode
-        : resolveDefaultModelMode(sessionFollowsLatest ? undefined : agentDefaultOverrides, flavor, modelMetadata, { table: latestTable, machine: launcherContext });
+        : resolveDefaultModelMode(sessionFollowsLatest ? undefined : agentDefaultOverrides, flavor, modelMetadata, { table: latestTable, machine: launcherContext, longContextOptOut });
     const resolvedDefaultModel = metadata?.defaultModelCode
         ?? (modelKey === 'default' ? usage?.model : undefined);
     const defaultModelLabel = resolvedDefaultModel
@@ -565,7 +568,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         running: metadata?.currentModelCode,
         optionKeys: models.map((option) => option.key),
     });
-    const pickerLayout = layoutModelPicker(models, {
+    const laidOut = layoutModelPicker(models, {
         flavor,
         selectedKey: displayedModelKey,
         followModel: offersFollowLatest ? followEntryModel(followState) : null,
@@ -573,6 +576,16 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         runnable: runnableModels,
         customKeys: [...customModels, ...typedModels],
     });
+    // B-908: Claude Code runs the selection at 1M whatever the switch says — show it on, locked.
+    const switchModel = displayedModelKey === LATEST_MODEL_MODE ? followEntryModel(followState) : displayedModelKey;
+    const switchLocked = !!session && !!laidOut.longContext && longContextLocked({
+        flavor,
+        selectedModel: switchModel ? (resolvedModelOf(switchModel.replace(/\[1m\]$/, '')) ?? switchModel) : null,
+        running: metadata?.currentModelCode,
+        contextWindow: metadata?.currentContextWindow,
+        capabilities: metadata?.capabilities,
+    });
+    const pickerLayout = switchLocked && laidOut.longContext ? { ...laidOut, longContext: { ...laidOut.longContext, on: true, locked: true } } : laidOut;
     // B-849a: an old CLI's Codex/Gemini wrapper does not report its machine
     // config model, so what follow-latest runs there is unknown — say that.
     const runFactsUnknown = offersFollowLatest && followState.kind === 'machineDefault' && displayedModelKey === LATEST_MODEL_MODE;
@@ -638,10 +651,28 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         : (() => {
             // B-849a: only when it differs from the entry on screen, and said in words.
             const running = deriveRunningModelSubtitle({ isClaude: publishesModeFacts, selectedKey: modelKey, running: metadata?.currentModelCode });
-            return running && metadata?.currentModelCode !== modelKey ? t('session.chat.modelRunning', { model: running }) : undefined;
+            // B-908: system/init drops `[1m]` — running claude-fable-5-2 on a claude-fable-5-2[1m] pick is the same model.
+            const sameModel = !!metadata?.currentModelCode && metadata.currentModelCode.replace(/\[1m\]$/, '') === modelKey.replace(/\[1m\]$/, '');
+            return running && !sameModel ? t('session.chat.modelRunning', { model: running }) : undefined;
         })();
+    // B-908: the closed entry names what the wrapper reports running (「Fable 5.2 · 1M」) once it runs the selection.
+    const runningTriggerModel = isClaudeFlavor && session && !apiModelOptions
+        ? runningModelForTrigger({
+            running: metadata?.currentModelCode,
+            contextWindow: metadata?.currentContextWindow,
+            intended: followingLatest ? followEntryModel(followState) : modelKey === 'default' ? metadata?.defaultModelCode : modelKey,
+            resolve: resolvedModelOf,
+        })
+        : undefined;
+    const runningTriggerLabel = runningTriggerModel ? claudeRunningModelLabel(runningTriggerModel, nameOfBaseModel) : undefined;
+    const modelOptionKeys = new Set(models.map((option) => option.key));
+    const pickModelRow = (key: string) => longContextRowPick(key, { flavor, optionKeys: modelOptionKeys, optOut: longContextOptOut, unsupported: longContextRefused });
+    const rememberLongContext = (on: boolean) => {
+        if (!isClaudeFlavor || longContextOptOut === !on) return;
+        sync.applySettings({ claudeLongContextOptOut: !on });
+    };
     // context meter — always visible when we have a usage snapshot.
-    const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage, metadata?.currentModelCode);
+    const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage, metadata?.currentModelCode, metadata?.currentContextWindow);
     const contextKnown = context.tokens !== null;
     const contextSize = context.tokens ?? 0;
     const contextWindow = context.window;
@@ -1800,9 +1831,12 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                         rowExtra={upgradeMachineId ? (option) => codexGatedKeys.has(option.key) ? <UpgradeAgentLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.updateCodex')} /> : null : undefined}
                         notice={runFactsUnknown ? { text: t('session.chat.modelPicker.unknownNote'), extra: upgradeMachineId ? <UpgradeCliLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.upgradeCli')} /> : undefined } : undefined}
                         readOnly={isGemini ? { value: metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.modelPicker.geminiReadOnly'), hint: t('session.chat.modelPicker.geminiReadOnlyHint') } : undefined}
-                        triggerLabel={isGemini ? (metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.machineDefaultModel')) : undefined}
+                        triggerLabel={isGemini ? (metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.machineDefaultModel')) : runningTriggerLabel}
+                        pickRow={apiModelOptions ? undefined : pickModelRow}
+                        onLongContextToggle={apiModelOptions ? undefined : rememberLongContext}
                         effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
                         longContextLabel={t('session.chat.modelPicker.longContext')}
+                        longContextLockedHint={t('session.chat.modelPicker.longContextLockedHint')}
                         longContextHint={longContextRefused ? t('session.chat.modelPicker.longContextRefusedHint') : t('session.chat.modelPicker.longContextHint')}
                         moreLabel={t('session.chat.modelPicker.more')}
                         footer={{ note: t('session.chat.modelPicker.sessionOnly'), action: isGemini && effortOptions.length === 0 ? undefined : { label: t('session.chat.modelPicker.setDefault'), onSelect: () => { void setAsNewSessionDefault(); } } }}

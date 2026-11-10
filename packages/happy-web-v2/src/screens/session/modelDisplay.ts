@@ -88,3 +88,32 @@ export function deriveCodexRunningModel(input: {
     if (input.stickyModel === undefined || !input.running || !input.intended) return undefined;
     return input.running === input.intended ? undefined : input.running;
 }
+
+/**
+ * B-908: the model the closed picker entry names in a Claude session — what
+ * the wrapper reports running, with 「· 1M」 when Claude Code measures it
+ * against a 1M window (`metadata.currentContextWindow`). system/init drops the
+ * `[1m]` marker and Claude Code picks the window per model (plain Fable 5.2
+ * is 1M on CC 2.1.322), so the window — not the id — says whether 1M runs.
+ * Only while the wrapper runs the selection's model: right after a pick of
+ * another model it keeps the pick's name (the subtitle says what still runs).
+ * Undefined (an older CLI reporting no window, machine default, a mismatch)
+ * = name the selection as before.
+ */
+export function runningModelForTrigger(input: {
+    running: string | null | undefined;
+    /** metadata.currentContextWindow — absent before CLI B-908. */
+    contextWindow: number | null | undefined;
+    /** The id the selection runs (follow entry resolved, `default` → machine default). */
+    intended: string | null | undefined;
+    /** Catalog alias → resolved id (`opus` → `claude-opus-5-5`). */
+    resolve?: (key: string) => string | null | undefined;
+}): string | undefined {
+    const { running, intended, contextWindow } = input;
+    if (!running || !intended || intended === 'default' || typeof contextWindow !== 'number') return undefined;
+    const base = (id: string) => id.endsWith('[1m]') ? id.slice(0, -4) : id;
+    const want = base(intended);
+    const runs = base(running);
+    if (runs !== want && runs !== base(input.resolve?.(want) ?? '')) return undefined;
+    return contextWindow >= 1_000_000 ? `${runs}[1m]` : runs;
+}

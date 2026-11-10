@@ -74,6 +74,10 @@
 .me-switch-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-dim); transition: transform var(--motion-fast); }
 .me-switch-row[aria-checked='true'] .me-switch { border-color: var(--text); background: var(--text); }
 .me-switch-row[aria-checked='true'] .me-switch-thumb { background: var(--bg-0); transform: translateX(14px); }
+/* B-908: Claude Code runs this model at 1M anyway — shown on, not flippable. */
+.me-switch-row[data-locked='true'] { cursor: default; }
+.me-switch-row[data-locked='true'] .me-switch { opacity: .55; }
+@media (hover: hover) and (pointer: fine) { .me-switch-row[data-locked='true']:hover { background: transparent; } }
 .me-note { font-size: var(--fs-11); color: var(--text-dim); overflow-wrap: anywhere; margin: var(--sp-2) 0 0; }
 .me-notice { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); margin-top: var(--sp-2); padding: var(--sp-2); border-radius: var(--r-sm); background: var(--fill-hover); font-size: var(--fs-12); color: var(--text); }
 .me-link { padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-12); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }

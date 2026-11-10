@@ -85,12 +85,12 @@ it('uses pi runtime occupancy, including unknown after compaction, without falli
     expect(composerContextUsage(false, undefined, {contextSize:1234,model:'claude-opus-5[1m]'})).toMatchObject({tokens:1234,window:1000000,estimated:false});
     // Session-protocol usage has no model: size by the running model instead.
     expect(composerContextUsage(false, undefined, {contextSize:1234}, 'claude-opus-5-5')).toMatchObject({tokens:1234,window:1000000});
-    expect(composerContextUsage(false, undefined, {contextSize:1234}, 'claude-sonnet-5')).toMatchObject({window:200000});
-    expect(composerContextUsage(false, undefined, {contextSize:1234,model:'claude-sonnet-5'}, 'claude-opus-5[1m]')).toMatchObject({window:200000});
+    expect(composerContextUsage(false, undefined, {contextSize:1234}, 'claude-haiku-4-5')).toMatchObject({window:200000});
+    expect(composerContextUsage(false, undefined, {contextSize:1234,model:'claude-haiku-4-5'}, 'claude-opus-5[1m]')).toMatchObject({window:200000});
     expect(composerContextUsage(false, undefined, {contextSize:1234}, null)).toMatchObject({window:null});
     // A context larger than the guessed window cannot fit it: 1M, not "100% of 200k".
     expect(composerContextUsage(false, undefined, {contextSize:294_600,model:'claude-opus-5'}, 'claude-opus-5-5')).toMatchObject({window:1000000});
-    expect(composerContextUsage(false, undefined, {contextSize:294_600}, 'claude-sonnet-5')).toMatchObject({window:1000000});
+    expect(composerContextUsage(false, undefined, {contextSize:294_600}, 'claude-haiku-4-5')).toMatchObject({window:1000000});
     expect(windowHolding(200000, 150000)).toBe(200000);
     expect(windowHolding(null, 5)).toBeNull();
     expect(windowHolding(1000000, 1200000)).toBe(1000000);
@@ -116,7 +116,27 @@ describe('B-727 pi denominator and compaction', () => {
     });
     it('Claude / Codex paths are unchanged by pi provenance', () => {
         const piSnapshot = snap({windowSource:'unknown',compactedAt:5});
-        expect(composerContextUsage(false, piSnapshot, {contextSize:150_000,model:'claude-sonnet-5'})).toMatchObject({tokens:150_000,window:200_000,estimated:false,compacted:false});
+        expect(composerContextUsage(false, piSnapshot, {contextSize:150_000,model:'claude-haiku-4-5'})).toMatchObject({tokens:150_000,window:200_000,estimated:false,compacted:false});
         expect(composerContextUsage(false, undefined, {contextSize:150_000,model:'gpt-5.5-codex'})).toMatchObject({tokens:150_000,window:null,estimated:false});
+    });
+});
+
+describe('B-908: the wrapper-reported window wins over the id guess', () => {
+    it('plain Fable 5.2 measured at 1M is 1M, not the 200k id guess; Haiku 200k stays', () => {
+        expect(composerContextUsage(false, undefined, {contextSize:50000,model:'claude-haiku-4-5'}, 'claude-haiku-4-5')).toMatchObject({window:200000});
+        expect(composerContextUsage(false, undefined, {contextSize:50000,model:'claude-fable-5-2'}, 'claude-fable-5-2', 1_000_000)).toMatchObject({window:1000000, estimated:false});
+        expect(composerContextUsage(false, undefined, {contextSize:50000,model:'claude-haiku-4-5'}, 'claude-haiku-4-5', 200_000)).toMatchObject({window:200000});
+    });
+    it('pi ignores it (its runtime reports its own)', () => {
+        expect(composerContextUsage(true, {source:'pi',tokens:10,contextWindow:131072,updatedAt:1}, null, null, 1_000_000)).toMatchObject({window:131072});
+    });
+});
+
+describe('B-908: id fallback (no reported window) counts Fable 5.x / Sonnet 5.x as 1M', () => {
+    it('fable / sonnet 5.x → 1M, haiku stays 200k, older sonnet stays 200k', () => {
+        for (const id of ['claude-fable-5-2', 'claude-fable-5-1', 'claude-fable-5', 'claude-sonnet-5', 'claude-sonnet-5-5']) expect(contextWindowFor(id)).toBe(1_000_000);
+        expect(contextWindowFor('claude-haiku-4-5')).toBe(200_000);
+        expect(contextWindowFor('claude-sonnet-4-6')).toBe(200_000);
+        expect(contextWindowFor('claude-sonnet-50')).toBe(200_000);
     });
 });
