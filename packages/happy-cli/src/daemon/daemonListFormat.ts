@@ -16,6 +16,8 @@ export interface DaemonListSession {
     cliVersion?: string;
     /** null = nothing pending; absent = an older daemon that does not report it. */
     autoRestart?: AutoRestartSessionStatus | null;
+    /** B-911: a queued 「空闲后重启」. */
+    idleRestart?: { source: string; requestedAt: number; wait?: string; restarting?: boolean };
 }
 
 export function autoRestartLabel(session: DaemonListSession, daemon: DaemonListInfo | undefined, formatTime: (ms: number) => string = defaultTime): string {
@@ -39,7 +41,9 @@ export function formatDaemonList(sessions: DaemonListSession[], daemon: DaemonLi
             : ''}`);
     }
     for (const session of sessions) {
-        lines.push(`  ${session.happySessionId}  pid ${session.pid}  cli ${session.cliVersion ?? '?'}  ${autoRestartLabel(session, daemon, formatTime)}`);
+        const idle = session.idleRestart;
+        const queued = idle ? `  restart when idle: ${idle.restarting ? 'restarting' : `queued by ${idle.source} ${(formatTime ?? defaultTime)(idle.requestedAt)}${idle.wait ? ` (waiting: ${idle.wait})` : ''}`}` : '';
+        lines.push(`  ${session.happySessionId}  pid ${session.pid}  cli ${session.cliVersion ?? '?'}  ${autoRestartLabel(session, daemon, formatTime)}${queued}`);
     }
     return lines;
 }

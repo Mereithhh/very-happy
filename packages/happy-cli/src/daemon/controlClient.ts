@@ -334,6 +334,21 @@ export async function listDaemonPeers(): Promise<PeerSessionInfo[]> {
   return Array.isArray(result?.sessions) ? result.sessions as PeerSessionInfo[] : [];
 }
 
+/**
+ * B-911: ask the daemon to restart THIS wrapper's session once it is idle
+ * (`request_idle_restart`). The daemon matches `{ sessionId, pid }` against the
+ * wrappers it tracks, so a caller can only queue its own restart.
+ */
+export async function requestIdleRestartViaDaemon(sessionId: string, pid: number): Promise<import('./controlServer').IdleRestartReply> {
+  const result = await daemonPost('/session-restart-request', { sessionId, pid });
+  if (result?.error) {
+    const reason = String(result.error);
+    if (/404|Not Found/i.test(reason)) return { ok: false, code: 'daemon-too-old' };
+    return { ok: false, code: 'daemon-unreachable' };
+  }
+  return result;
+}
+
 export async function stopDaemonHttp(): Promise<void> {
   await daemonPost('/stop');
 }

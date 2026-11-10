@@ -44,8 +44,8 @@ import { createPeerCoordinator } from './peerCoordinator';
 import { createRemoteSessionOpsHandlers } from './remoteSessionOps';
 import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { refreshAgentHomes, agentHomeSpawnEnv, locateClaudeConversation, describeAgentHome } from '@/agentHome';
-import { existsSync, mkdtempSync, rmSync, statSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
+import { basename, join } from 'path';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { projectPath } from '@/projectPath';
@@ -87,6 +87,11 @@ import { TurnActivityTracker } from '@/update/turnActivity';
 import { createDaemonHibernation, collectAutomationBindings, waitForPidsToExit, waitForSessionLive } from '@/hibernation/daemonHibernation';
 import { resolveCheckMs, resolveIdleMs, settingIdleMs } from '@/hibernation/hibernationPolicy';
 import { createAutoRestart } from './autoRestart';
+import { createIdleRestart, type IdleRestart, type IdleRestartPersisted } from './idleRestart';
+import { createStaleWrapperNotices } from './staleWrapperNotice';
+import { claudeChildRunIntent } from './agentChildIntent';
+import { createAttentionClient } from '@/attention/client';
+import { RESTARTED_ON_REQUEST_ENV, RESTART_EFFORT_ENV, resolveIdleRestartTiming } from '@/update/idleRestartPolicy';
 import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, pendingUpgradeVersion, resolveCheckInGraceMs, resolveQuietMs, restartIdleRefusal, type StaleKind } from '@/update/autoRestartPolicy';
 import { compareExactVersions } from '@/update/cliUpdate';
 import { createAutomationsClient, isAutomationsUnavailable } from '@/automations/client';
@@ -336,6 +341,9 @@ export async function startDaemon(): Promise<void> {
     const turnActivity = new TurnActivityTracker();
     // B-874: turn start / end of an issue run's session → its run goes running / idle.
     turnActivity.onEvent((sessionId, event) => issueWorker?.report(sessionId, event === 'turn_started' ? 'running' : 'idle'));
+    // B-911: a queued 「空闲后重启」 watches every turn edge (late-bound: created with the auto-restart scheduler).
+    let idleRestart: IdleRestart | undefined;
+    turnActivity.onEvent((sessionId, event) => idleRestart?.noteTurn(sessionId, event));
     // B-507: background tasks still in flight per session (wrapper-reported, lease-expired).
     const backgroundTasks = new BackgroundTaskTracker();
     // B-497: who edited which real path lately, and the conflict notices.
@@ -1465,7 +1473,9 @@ export async function startDaemon(): Promise<void> {
     // B-852: `auto` = the daemon's own idle restart after an upgrade. It has its
     // own attempt limit (autoRestartPolicy) and must not use up the user's
     // manual-restart breaker; the respawned wrapper posts the "updated" line.
-    type RestartSessionOptions = { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; auto?: { kind: StaleKind; target: string }; account?: true; ifIdle?: true };
+    // B-911: `effort` = the effort an old wrapper (no recorded intent) was running; `requested` = the agent asked
+    // (`request_idle_restart`: the new wrapper says so); `queued` = a queued idle restart (own limits, not the breaker).
+    type RestartSessionOptions = { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; auto?: { kind: StaleKind; target: string }; account?: true; ifIdle?: true; effort?: string; requested?: true; queued?: true };
     // B-852: sessions whose wrapper exit is an automatic restart, not an exit
     // worth telling a team lead about.
     const autoRestartExits = new Set<string>();
@@ -1553,7 +1563,7 @@ export async function startDaemon(): Promise<void> {
         }
         const counts = options?.account ? accountRestartCounts : restartCounts;
         const prior = counts.get(happySessionId) ?? 0;
-        const decision = options?.auto ? { allowed: true as const } : decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);
+        const decision = options?.auto || options?.queued ? { allowed: true as const } : decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);
         if (!decision.allowed) {
           return { type: 'error', errorMessage: `restart:${decision.reason}` };
         }
@@ -1624,7 +1634,7 @@ export async function startDaemon(): Promise<void> {
 
         // Count the attempt now that we are actually spawning (a pre-flight
         // rejection above never burns a slot).
-        if (!options?.auto) counts.set(happySessionId, recordRestartAttempt(prior));
+        if (!options?.auto && !options?.queued) counts.set(happySessionId, recordRestartAttempt(prior));
 
         // B-730: see resumeSessionImpl.
         const teamEnv = await teamRelaunchEnvFor(happySessionId, metadata);
@@ -1651,6 +1661,9 @@ export async function startDaemon(): Promise<void> {
             // B-874c: see resumeSessionImpl.
             ...issueRelaunchEnv(metadata),
             ...(options?.auto ? { [AUTO_RESTARTED_ENV]: encodeAutoRestarted(options.auto.kind, options.auto.target) } : {}),
+            // B-911: see RestartSessionOptions.
+            ...(options?.effort ? { [RESTART_EFFORT_ENV]: options.effort } : {}),
+            ...(options?.requested ? { [RESTARTED_ON_REQUEST_ENV]: packageJson.version } : {}),
           },
         });
         if (result.type === 'success') {
@@ -1712,6 +1725,7 @@ export async function startDaemon(): Promise<void> {
       if (session?.happySessionId) turnActivity.forget(session.happySessionId);
       if (session?.happySessionId) backgroundTasks.forget(session.happySessionId);
       if (session?.happySessionId) autoRestart?.forget(session.happySessionId);
+      if (session?.happySessionId) idleRestart?.forget(session.happySessionId);
       if (session?.happySessionId) peerCoordinator.forget(session.happySessionId);
       // B-587: an exit we approved is a hibernation — keep the restore record 90 days.
       if (session?.happySessionId && daemonHibernation.consumeExit(session.happySessionId)) {
@@ -1833,6 +1847,19 @@ export async function startDaemon(): Promise<void> {
       autoUpdate: cliUpdateStateRef?.autoUpdate,
       bundleReplaced: bundleReplacedSeen,
     });
+    // B-911: the 「需要我决策」 card for a stale wrapper the daemon cannot restart by itself.
+    const staleWrapperAttention = createAttentionClient({ token: async () => credentials.token });
+    const staleWrapperNotices = createStaleWrapperNotices({
+      client: () => staleWrapperAttention,
+      log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
+    });
+    const sessionDisplayName = (sessionId: string): string => {
+      const metadata = findTrackedSessionById(sessionId)?.happySessionMetadataFromLocalWebhook;
+      const title = metadata?.summary?.text?.trim();
+      if (title) return title;
+      if (typeof metadata?.path === 'string' && metadata.path) return basename(metadata.path) || metadata.path;
+      return sessionId.slice(0, 8);
+    };
     const autoRestartScheduler = createAutoRestart({
       enabled: () => autoRestartSetting,
       quietMs: resolveQuietMs(),
@@ -1893,9 +1920,94 @@ export async function startDaemon(): Promise<void> {
       },
       upgradePending,
       publish: (sessions) => { void apiMachineRef?.setAutoRestartSessions(sessions); },
+      onStuck: (sessionId, status, session) => {
+        void staleWrapperNotices.stuck(sessionId, { name: sessionDisplayName(sessionId), from: session.wrapperVersion ?? '?', target: status.target, reason: status.reason ?? 'no-report' });
+      },
+      onUnstuck: (sessionId) => {
+        // A queued idle restart settles the card itself (its own stop also lands here).
+        if (idleRestart?.status(sessionId)) return;
+        const live = [...pidToTrackedSession.values()].some((s) => s.happySessionId === sessionId && isPidAlive(s.pid));
+        const status = autoRestartScheduler.statuses()[sessionId];
+        void staleWrapperNotices.settle(sessionId, live && !status ? 'done' : 'superseded',
+          !live ? '会话已停止。' : status ? 'daemon 会在它空闲时自动重启。' : `已在 CLI ${packageJson.version} 上运行。`);
+      },
       log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
     });
     autoRestart = autoRestartScheduler;
+    // B-911: 「空闲后重启」 queue — the owner's card button (`restart-session` + `whenIdle`) and the agent's
+    // `request_idle_restart`. Persisted so a daemon handover keeps it.
+    const idleRestartFile = join(configuration.happyHomeDir, 'idle-restarts.json');
+    const idleRestartTiming = resolveIdleRestartTiming();
+    idleRestart = createIdleRestart({
+      ...idleRestartTiming,
+      session: (sessionId) => {
+        for (const tracked of pidToTrackedSession.values()) {
+          if (tracked.happySessionId !== sessionId || !tracked.happySessionMetadataFromLocalWebhook || !isPidAlive(tracked.pid)) continue;
+          const facts = trackedFacts(tracked);
+          return { live: facts.live, wrapperVersion: facts.wrapperVersion, flavor: facts.flavor, variant: facts.variant, startedBy: facts.startedBy };
+        }
+        return null;
+      },
+      turnActive: (sessionId) => turnActivity.activeSessions().includes(sessionId),
+      backgroundTasks: (sessionId) => backgroundTasks.count(sessionId),
+      automationRunning: (sessionId) => automationRunner?.hasSession(sessionId) === true,
+      upgradePending,
+      resumable: async (sessionId) => {
+        const tracked = findTrackedSessionById(sessionId);
+        const local = tracked?.happySessionMetadataFromLocalWebhook;
+        const encryption = tracked?.encryption;
+        if (!local || !encryption) return false;
+        const { metadata } = await resolveRelaunchMetadata(local,
+          () => fetchServerSessionMetadata(sessionId, encryption.encryptionKey, encryption.encryptionVariant));
+        return resumePrecheck(metadata, {
+          cwdExists: (p) => existsSync(p),
+          conversationExists: (cwd, claudeSessionId) => locateClaudeConversation(cwd, claudeSessionId) !== null,
+        }).ok;
+      },
+      restart: async (sessionId, entry) => {
+        const tracked = [...pidToTrackedSession.values()].find((s) => s.happySessionId === sessionId && isPidAlive(s.pid));
+        const facts = tracked ? trackedFacts(tracked) : null;
+        // Fallbacks only: a wrapper that recorded a run intent restores it over these (runClaude).
+        const intent = tracked && facts?.flavor === 'claude' ? await claudeChildRunIntent(tracked.pid) : {};
+        const behind = !!facts?.wrapperVersion && (compareExactVersions(facts.wrapperVersion, packageJson.version) ?? 0) < 0;
+        logger.debug(`[DAEMON RUN] [idle-restart] ${sessionId}: ${facts?.wrapperVersion ?? '?'} → ${packageJson.version}, kept model=${intent.model ?? '-'} effort=${intent.effort ?? '-'}`);
+        autoRestartExits.add(sessionId);
+        try {
+          const result = await restartSession(sessionId, {
+            keepPublishedPermissionMode: true,
+            queued: true,
+            ...(intent.model ? { model: intent.model } : {}),
+            ...(intent.effort ? { effort: intent.effort } : {}),
+            ...(entry.source === 'agent' ? { requested: true as const } : behind ? { auto: { kind: 'cli' as const, target: packageJson.version } } : {}),
+          });
+          return result.type === 'success' ? { ok: true } : { ok: false, error: result.type === 'error' ? result.errorMessage : result.type };
+        } finally {
+          autoRestartExits.delete(sessionId);
+        }
+      },
+      load: () => {
+        try {
+          const raw = JSON.parse(readFileSync(idleRestartFile, 'utf8')) as IdleRestartPersisted;
+          return raw?.version === 1 ? raw : null;
+        } catch {
+          return null;
+        }
+      },
+      save: (state) => writeFileSync(idleRestartFile, JSON.stringify(state), { mode: 0o600 }),
+      onQueued: (sessionId, entry) => { if (entry.source === 'owner') void staleWrapperNotices.queued(sessionId); },
+      onSettled: (sessionId, _entry, outcome) => {
+        // Re-classify now (the card's status would otherwise show the old wrapper until the next minute's sweep).
+        // The card says why it closed first; the re-sweep then finds it closed (no second resolve).
+        if (outcome.ok) void staleWrapperNotices.settle(sessionId, 'done', `已在空闲时重启到 CLI ${packageJson.version}，历史保留。`).finally(() => autoRestartScheduler.sweep());
+        else void staleWrapperNotices.failed(sessionId, outcome.error);
+      },
+      log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
+    });
+    idleRestart.start();
+    const idleRestartRequestFromOwner = async (sessionId: string): Promise<SpawnSessionResult> => {
+      const result = await idleRestart!.request({ sessionId, source: 'owner', target: autoRestartScheduler.statuses()[sessionId]?.target ?? null });
+      return result.ok ? { type: 'success', sessionId, queued: true } : { type: 'error', errorMessage: `idle-restart:${result.code}` };
+    };
     const autoRestartSweep = setInterval(() => autoRestartScheduler.sweep(), 60_000);
     autoRestartSweep.unref?.();
     // B-105: mirror manager is constructed after the API client below —
@@ -1939,6 +2051,13 @@ export async function startDaemon(): Promise<void> {
       isTurnActive: (sessionId: string) => turnActivity.activeSessions().includes(sessionId),
       // B-856: the auto-restart classification, readable locally (it is encrypted on the server).
       getAutoRestartStatus: (sessionId: string) => autoRestartScheduler.statuses()[sessionId],
+      // B-911: the agent's own 「空闲后重启」: only the wrapper this daemon tracks under that pid may ask.
+      requestIdleRestart: async ({ sessionId, pid }) => {
+        const tracked = pidToTrackedSession.get(pid);
+        if (!tracked || tracked.happySessionId !== sessionId || !isPidAlive(pid)) return { ok: false, code: 'not-caller' };
+        return idleRestart!.request({ sessionId, source: 'agent' });
+      },
+      getIdleRestartStatus: (sessionId: string) => idleRestart?.status(sessionId),
       getDaemonInfo: () => ({ version: packageJson.version, upgradePending: upgradePending(), autoRestartEnabled: autoRestartSetting }),
       pushClipboard: (text: string, terminalId?: string) => {
         if (!apiMachineRef) {
@@ -2077,7 +2196,8 @@ export async function startDaemon(): Promise<void> {
     apiMachine.setRPCHandlers({
       spawnSession,
       resumeSession,
-      restartSession,
+      // B-911 `whenIdle`: the stale-wrapper card's 「本轮结束后重启」 queues instead of restarting now.
+      restartSession: (sessionId, options) => options?.whenIdle ? idleRestartRequestFromOwner(sessionId) : restartSession(sessionId, options),
       stopSession,
       listTrackedSessionIds: () => [...pidToTrackedSession.values()]
         .map((session) => session.happySessionId)
@@ -2639,6 +2759,7 @@ export async function startDaemon(): Promise<void> {
       clearInterval(cliUpdateInterval);
       clearInterval(agentAutoUpdateInterval);
       clearInterval(autoRestartSweep);
+      idleRestart?.stop();
       policyAnnouncements.stop();
       policyRefresh.stop();
       stopAgentVersionChecks();

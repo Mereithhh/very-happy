@@ -155,6 +155,15 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     itemKeys: ['changelog.releases.nov11b.card', 'changelog.releases.nov11b.agentLine'],
   },
   {
+    id: '2026-11-11-cli-stale-sessions-restart-when-idle-0-2-210',
+    cliVersion: '0.2.210',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11c.title',
+    summaryKey: 'changelog.releases.nov11c.summary',
+    itemKeys: ['changelog.releases.nov11c.card', 'changelog.releases.nov11c.agentTool'],
+  },
+  {
     id: '2026-11-11-update-notice-draft-send-org-docs',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,

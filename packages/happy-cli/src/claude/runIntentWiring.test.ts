@@ -52,7 +52,7 @@ describe('Claude wrapper (runClaude.ts)', () => {
     it('a resume restores the recorded model and effort over the start defaults', () => {
         expect(claude).toContain('const restoredRun = reconnectSeeded ? { model: restoredModel(response.metadata), effort: restoredEffort(response.metadata) } : null;');
         expect(claude).toContain('let currentModel: string | undefined = restoredRun?.model !== undefined ? (restoredRun.model ?? undefined) : options.model ?? DEFAULT_CLAUDE_MODEL;');
-        expect(claude).toContain('restoredClaudeEffort(restoredRun?.effort) ?? DEFAULT_CLAUDE_EFFORT;');
+        expect(claude).toContain('restoredClaudeEffort(restoredRun?.effort) ?? (restoredRun?.effort === undefined ? restartEffort ?? undefined : undefined) ?? DEFAULT_CLAUDE_EFFORT;');
     });
     it('abort keeps the model and effort', () => {
         const reset = between(claude, 'const resetCurrentModeDefaults = () => {', '\n    };');

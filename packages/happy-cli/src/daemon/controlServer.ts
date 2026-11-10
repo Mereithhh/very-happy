@@ -71,6 +71,19 @@ const AutoRestartStatusSchema = z.object({
   retryAt: z.number().optional(),
 });
 
+/** B-911: the answer to `/session-restart-request`. */
+export type IdleRestartReply =
+  | { ok: true; state: 'queued' | 'already-queued'; requestedAt: number }
+  | { ok: false; code: string; retryAfterMs?: number };
+const IdleRestartListStatusSchema = z.object({
+  source: z.string(),
+  requestedAt: z.number(),
+  target: z.string().nullable().optional(),
+  wait: z.string().optional(),
+  restarting: z.boolean().optional(),
+});
+export type IdleRestartListStatus = z.infer<typeof IdleRestartListStatusSchema>;
+
 /** B-856: daemon-wide facts `daemon list` prints above the sessions. */
 export interface DaemonListInfo {
   version: string;
@@ -118,6 +131,8 @@ export function startDaemonControlServer({
   getDaemonInfo,
   onRateLimits,
   onHibernateCheck,
+  requestIdleRestart,
+  getIdleRestartStatus,
   getAgentProfiles
 }: {
   /** Fresh per-process bearer token persisted in the private daemon state. */
@@ -186,6 +201,14 @@ export function startDaemonControlServer({
   /** B-587: an idle wrapper asks whether it may hibernate. Absent → 404, the
    *  wrapper backs off (same as an old daemon). */
   onHibernateCheck?: (body: HibernateCheckBody) => Promise<HibernateCheckReply> | HibernateCheckReply;
+  /**
+   * B-911: a wrapper's `request_idle_restart` tool. `{ sessionId, pid }` must
+   * name a wrapper this daemon tracks (the caller restarts only itself).
+   * Absent → 404 (the tool says the daemon is too old).
+   */
+  requestIdleRestart?: (body: { sessionId: string; pid: number }) => Promise<IdleRestartReply>;
+  /** B-911: the queued idle restart of a session, for `daemon list`. */
+  getIdleRestartStatus?: (sessionId: string) => IdleRestartListStatus | undefined;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -319,6 +342,24 @@ export function startDaemonControlServer({
       });
     }
 
+    if (requestIdleRestart) {
+      typed.post('/session-restart-request', {
+        schema: {
+          body: z.object({ sessionId: z.string().min(1).max(128), pid: z.number().int().positive() }),
+          response: {
+            200: z.object({ ok: z.boolean(), state: z.string().optional(), requestedAt: z.number().optional(), code: z.string().optional(), retryAfterMs: z.number().optional() }),
+          },
+        },
+      }, async (request) => {
+        try {
+          return await requestIdleRestart(request.body);
+        } catch (error) {
+          logger.debug('[CONTROL SERVER] idle restart request failed:', error);
+          return { ok: false, code: 'error' };
+        }
+      });
+    }
+
     // List all tracked sessions
     typed.post('/agent-profiles', {
       schema: { response: { 200: AgentProfilesStateSchema, 503: z.object({ error: z.string() }) } },
@@ -345,6 +386,8 @@ export function startDaemonControlServer({
               // B-856: the wrapper's own CLI version and its auto-restart status (null = nothing pending).
               cliVersion: z.string().optional(),
               autoRestart: AutoRestartStatusSchema.nullable().optional(),
+              // B-911: a queued 「空闲后重启」 (owner card or the agent's own request).
+              idleRestart: IdleRestartListStatusSchema.optional(),
             })),
             daemon: DaemonListInfoSchema.optional(),
           })
@@ -364,6 +407,7 @@ export function startDaemonControlServer({
             ...(getBackgroundTasks ? { backgroundTasks: getBackgroundTasks(child.happySessionId!) } : {}),
             ...(child.happySessionMetadataFromLocalWebhook?.version ? { cliVersion: child.happySessionMetadataFromLocalWebhook.version } : {}),
             ...(getAutoRestartStatus ? { autoRestart: getAutoRestartStatus(child.happySessionId!) ?? null } : {}),
+            ...(getIdleRestartStatus?.(child.happySessionId!) ? { idleRestart: getIdleRestartStatus(child.happySessionId!) } : {}),
           })),
         ...(getDaemonInfo ? { daemon: getDaemonInfo() } : {}),
       }

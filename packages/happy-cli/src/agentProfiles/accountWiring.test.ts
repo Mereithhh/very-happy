@@ -89,7 +89,7 @@ describe('B-850a daemon', () => {
     it('account restarts have their own count, never the crash-loop breaker of 3 (A2: 4th bind hit restart-limit)', () => {
         expect(daemon).toContain('const counts = options?.account ? accountRestartCounts : restartCounts;');
         expect(daemon).toContain('decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);');
-        expect(daemon).toContain('if (!options?.auto) counts.set(happySessionId, recordRestartAttempt(prior));');
+        expect(daemon).toContain('if (!options?.auto && !options?.queued) counts.set(happySessionId, recordRestartAttempt(prior));');
         // RPC bind / rm --force, and the local route behind `account bind` / `session provider`.
         expect(daemon).toContain('const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, account: true });');
         expect(control).toContain('const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, account: true });');

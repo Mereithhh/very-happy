@@ -1,6 +1,7 @@
 import { registerTeamsTools } from '@/teams/tools';
 import { registerAutomationTools } from '@/automations/tools';
 import { registerSessionPeerTools } from '@/sessions/peerTools';
+import { registerIdleRestartTool, IDLE_RESTART_TOOL_NAME } from '@/sessions/idleRestartTool';
 import { registerProjectTools } from '@/projects/tools';
 import { registerIssueTools } from '@/issues/tools';
 import { registerReportProgressTool } from '@/claude/utils/reportProgressTool';
@@ -189,6 +190,12 @@ async function main() {
     const text = content.filter(block => block.type === 'text').map(block => block.text ?? '').join('\n');
     if (response.isError) throw new Error(text || 'Project request failed');
     return { text };
+  });
+  // B-911: request_idle_restart executes in the owning session process (the daemon matches its pid).
+  registerIdleRestartTool(server, async () => {
+    const response = await (await ensureHttpClient()).callTool({ name: IDLE_RESTART_TOOL_NAME, arguments: {} });
+    const content = response.content as Array<{ type: string; text?: string }>;
+    return { text: content.filter(block => block.type === 'text').map(block => block.text ?? '').join('\n'), isError: response.isError === true };
   });
   // B-874: issue_* execute in the owning session process (it stamps the session); forwarded as text,
   // the owner's `<code>: <sentence>` error text passes through unchanged.

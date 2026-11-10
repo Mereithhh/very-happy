@@ -33,8 +33,8 @@ describe('B-852 auto-restart wiring', () => {
         expect(run).toContain('...(options?.auto ? { [AUTO_RESTARTED_ENV]: encodeAutoRestarted(options.auto.kind, options.auto.target) } : {}),');
     });
     it('automatic restarts never use up the manual breaker', () => {
-        expect(run).toContain('const decision = options?.auto ? { allowed: true as const } : decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);');
-        expect(run).toContain('if (!options?.auto) counts.set(happySessionId, recordRestartAttempt(prior));');
+        expect(run).toContain('const decision = options?.auto || options?.queued ? { allowed: true as const } : decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);');
+        expect(run).toContain('if (!options?.auto && !options?.queued) counts.set(happySessionId, recordRestartAttempt(prior));');
     });
     it('a team lead is not told "exited" for an automatic restart', () => {
         expect(run).toContain("if (session?.happySessionId && !autoRestartExits.has(session.happySessionId) && (session.spawnedBy === 'teams'");
@@ -86,5 +86,42 @@ describe('B-856 wiring', () => {
     it('previous daemon logs are exempt from the general sweep', () => {
         expect(logPrune).toContain('const doomed = planLogPrune(files.filter((f) => !daemonLogs.keep.has(f.path)), Date.now(), policy, protectedPaths)');
         expect(logPrune).toContain('if (daemonLogs.trim) trimToTail(daemonLogs.trim.path, daemonLogs.trim.keepBytes)');
+    });
+});
+
+// B-911: queued idle restarts (owner card / the agent's own request). Verified with scripts/dev/mutation-check.mjs (see PR).
+const machine = read('api', 'apiMachine.ts');
+const control = read('daemon', 'controlServer.ts');
+const happyServer = read('claude', 'utils', 'startHappyServer.ts');
+const bridge = read('codex', 'happyMcpStdioBridge.ts');
+describe('B-911 idle restart wiring', () => {
+    it('the card button (`whenIdle`) queues instead of restarting now, and the daemon advertises it', () => {
+        expect(run).toContain('restartSession: (sessionId, options) => options?.whenIdle ? idleRestartRequestFromOwner(sessionId) : restartSession(sessionId, options),');
+        expect(machine).toContain('...(whenIdle === true ? { whenIdle: true as const } : {})');
+        expect(machine).toContain("idleGuard: true, idleRestart: true, sessions: state.sessions };");
+    });
+    it('only the wrapper the daemon tracks under that pid can queue its own restart', () => {
+        expect(run).toContain("if (!tracked || tracked.happySessionId !== sessionId || !isPidAlive(pid)) return { ok: false, code: 'not-caller' };\n        return idleRestart!.request({ sessionId, source: 'agent' });");
+        expect(happyServer).toContain('idleRestartToolResult(await requestIdleRestartViaDaemon(client.sessionId, process.pid))');
+        expect(control).toContain("typed.post('/session-restart-request'");
+        expect(bridge).toContain('callTool({ name: IDLE_RESTART_TOOL_NAME, arguments: {} })');
+    });
+    it('turn edges and wrapper exits reach the queue', () => {
+        expect(run).toContain('turnActivity.onEvent((sessionId, event) => idleRestart?.noteTurn(sessionId, event));');
+        expect(run).toContain('if (session?.happySessionId) idleRestart?.forget(session.happySessionId);');
+    });
+    it('the restart keeps history, mode and the old wrapper\'s run intent; a lead is not told "exited"', () => {
+        expect(run).toContain("const intent = tracked && facts?.flavor === 'claude' ? await claudeChildRunIntent(tracked.pid) : {};");
+        expect(run).toContain('keepPublishedPermissionMode: true,\n            queued: true,');
+        expect(run).toContain('...(options?.effort ? { [RESTART_EFFORT_ENV]: options.effort } : {}),');
+        expect(run).toContain("...(entry.source === 'agent' ? { requested: true as const } : behind ? { auto: { kind: 'cli' as const, target: packageJson.version } } : {}),");
+        expect(run).toContain('autoRestartExits.add(sessionId);\n        try {\n          const result = await restartSession(sessionId, {\n            keepPublishedPermissionMode: true,');
+        expect(claude).toContain('restoredClaudeEffort(restoredRun?.effort) ?? (restoredRun?.effort === undefined ? restartEffort ?? undefined : undefined) ?? DEFAULT_CLAUDE_EFFORT;');
+    });
+    it('stuck wrappers get the card; a queued restart settles it', () => {
+        expect(run).toContain('onStuck: (sessionId, status, session) => {\n        void staleWrapperNotices.stuck(');
+        expect(run).toContain('if (idleRestart?.status(sessionId)) return;');
+        expect(run).toContain("onQueued: (sessionId, entry) => { if (entry.source === 'owner') void staleWrapperNotices.queued(sessionId); },");
+        expect(run).toContain("if (outcome.ok) void staleWrapperNotices.settle(sessionId, 'done', `已在空闲时重启到 CLI ${packageJson.version}，历史保留。`).finally(() => autoRestartScheduler.sweep());");
     });
 });

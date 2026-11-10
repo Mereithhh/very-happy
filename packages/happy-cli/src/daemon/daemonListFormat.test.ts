@@ -29,4 +29,12 @@ describe('B-856 daemon list: CLI version and auto-restart per session', () => {
             '  b  pid 12  cli ?  current',
         ]);
     });
+    it('B-911: a queued restart-when-idle is shown with who asked and what it waits for', () => {
+        const lines = formatDaemonList([
+            { happySessionId: 's1', pid: 1, cliVersion: '0.2.181', autoRestart: { state: 'manual', reason: 'no-report', since: 0, target: '0.2.210' }, idleRestart: { source: 'owner', requestedAt: 0, wait: 'turn-active' } },
+            { happySessionId: 's2', pid: 2, cliVersion: '0.2.210', autoRestart: null, idleRestart: { source: 'agent', requestedAt: 0, restarting: true } },
+        ], { version: '0.2.210', upgradePending: null, autoRestartEnabled: true }, () => 'T');
+        expect(lines[1]).toBe('  s1  pid 1  cli 0.2.181  auto-restart: manual (no-report) → 0.2.210  restart when idle: queued by owner T (waiting: turn-active)');
+        expect(lines[2]).toBe('  s2  pid 2  cli 0.2.210  current  restart when idle: restarting');
+    });
 });

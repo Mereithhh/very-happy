@@ -9,6 +9,7 @@
  * pacing). Every rule fails closed: anything unknown means "not now".
  */
 import { compareExactVersions } from './cliUpdate';
+import { takeRestartedOnRequestEvent } from './idleRestartPolicy';
 import type { WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
 
 /** Session capability: this wrapper reports quiescence whatever its spawn origin (teams, automation, pi). */
@@ -351,7 +352,9 @@ export function autoUpdatedEventText(kind: StaleKind, version: string, agentName
 export function takeAutoRestartedEvent(env: NodeJS.ProcessEnv, agentName?: string): { type: 'message'; kind: string; message: string } | null {
     const decoded = decodeAutoRestarted(env[AUTO_RESTARTED_ENV]);
     delete env[AUTO_RESTARTED_ENV];
-    if (!decoded) return null;
+    // B-911: or the restart the agent asked for (`request_idle_restart`).
+    const requested = takeRestartedOnRequestEvent(env);
+    if (!decoded) return requested;
     return { type: 'message', kind: AUTO_UPDATED_EVENT_KIND, message: autoUpdatedEventText(decoded.kind, decoded.target, agentName) };
 }
 

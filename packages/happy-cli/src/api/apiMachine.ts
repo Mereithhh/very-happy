@@ -167,7 +167,7 @@ type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
     resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
     /** B-264: stop a live-but-broken wrapper and relaunch it on the current CLI. */
-    restartSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; ifIdle?: true }) => Promise<SpawnSessionResult>;
+    restartSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; ifIdle?: true; whenIdle?: true }) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
     listTrackedSessionIds?: () => string[];
     requestShutdown: () => void;
@@ -239,7 +239,7 @@ export class ApiMachineClient {
     });
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
-    private restartSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
+    private restartSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string; ifIdle?: true; whenIdle?: true }) => Promise<SpawnSessionResult>) | null = null;
     private stopSessionHandler: ((sessionId: string) => boolean) | null = null;
     private listTrackedSessionIds: (() => string[]) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
@@ -552,7 +552,8 @@ export class ApiMachineClient {
     private autoRestartState(now: number) {
         const state = this.autoRestart!;
         // B-894 `idleGuard`: restart-session honours `ifIdle` (old daemons ignore it, so the Web asks only when this is set).
-        return { enabled: state.enabled, rpcAvailable: true, detectedAt: now, idleGuard: true, sessions: state.sessions };
+        // B-911 `idleRestart`: restart-session honours `whenIdle` (an old daemon would restart at once, so the Web asks only when set).
+        return { enabled: state.enabled, rpcAvailable: true, detectedAt: now, idleGuard: true, idleRestart: true, sessions: state.sessions };
     }
 
     /**
@@ -1293,7 +1294,7 @@ export class ApiMachineClient {
         if (this.restartSessionHandler) {
             if (!this.rpcHandlerManager.hasHandler(method)) {
                 this.rpcHandlerManager.registerHandler(method, async (params: any) => {
-                    const { sessionId, model, permissionMode, ifIdle } = params || {};
+                    const { sessionId, model, permissionMode, ifIdle, whenIdle } = params || {};
                     if (!sessionId || typeof sessionId !== 'string') {
                         throw new Error('Session ID is required');
                     }
@@ -1302,10 +1303,11 @@ export class ApiMachineClient {
                         throw new Error('Restart session handler not available');
                     }
                     // B-894: the batch 「重启空闲的旧会话」 asks the daemon to refuse a busy session.
-                    const result = await handler(sessionId, { model, permissionMode, ...(ifIdle === true ? { ifIdle: true as const } : {}) });
+                    // B-911 `whenIdle`: queue the restart until the session is idle (the stale-wrapper card's button).
+                    const result = await handler(sessionId, { model, permissionMode, ...(ifIdle === true ? { ifIdle: true as const } : {}), ...(whenIdle === true ? { whenIdle: true as const } : {}) });
                     switch (result.type) {
                         case 'success':
-                            return { type: 'success', sessionId: result.sessionId };
+                            return { type: 'success', sessionId: result.sessionId, ...(result.queued ? { queued: true } : {}) };
                         case 'requestToApproveDirectoryCreation':
                             return result;
                         case 'error':

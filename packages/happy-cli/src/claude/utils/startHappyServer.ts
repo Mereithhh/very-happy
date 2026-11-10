@@ -1,5 +1,7 @@
 import { registerProjectTools, createProjectToolExecutor, PROJECT_TOOL_NAMES } from '@/projects/tools';
 import { registerIssueTools, createIssueToolExecutor, ISSUE_TOOL_NAMES } from '@/issues/tools';
+import { registerIdleRestartTool, idleRestartToolResult, IDLE_RESTART_TOOL_NAMES } from '@/sessions/idleRestartTool';
+import { requestIdleRestartViaDaemon } from '@/daemon/controlClient';
 import { PiContextReportSchema, type PiContextReport } from '@/agent/acp/piContextUsage';
 /**
  * Happy MCP server
@@ -101,6 +103,8 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     if (client) registerProjectTools(mcp, createProjectToolExecutor(() => client.sessionId));
     // B-874: issue_get / issue_update / issue_comment / issue_list — always registered; "issue_not_bound" outside an issue run.
     if (client) registerIssueTools(mcp, createIssueToolExecutor(() => client.sessionId));
+    // B-911: the agent asks the daemon to restart its own session once idle (the daemon matches this wrapper's pid).
+    if (client) registerIdleRestartTool(mcp, async () => idleRestartToolResult(await requestIdleRestartViaDaemon(client.sessionId, process.pid)));
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -469,6 +473,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             ...SESSION_PEER_TOOL_NAMES,
             ...PROJECT_TOOL_NAMES,
             ...ISSUE_TOOL_NAMES,
+            ...IDLE_RESTART_TOOL_NAMES,
             // Auto-allow only; the tools themselves appear for a lead on a board server.
             ...OWNER_BOARD_TOOL_NAMES,
             ...(options?.assistant && !process.env.VH_TEAM_SCOPE_FILE ? ASSISTANT_TOOL_NAMES : []),
