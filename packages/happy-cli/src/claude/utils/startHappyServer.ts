@@ -41,6 +41,8 @@ import { ATTENTION_SESSION_CAPABILITY } from "@slopus/happy-wire";
 import { sharedAttentionClient } from "@/attention/client";
 import { attachLeadBoard, createLeadBoard, resolveTeamLead } from "@/attention/leadBoard";
 import { OWNER_BOARD_TOOL_NAMES, registerOwnerBoardTools } from "@/attention/tools";
+import { DISPATCH_APPROVED_TOOL } from "@/assistant/gates/dispatchGate";
+import type { MainAgentRuntime } from "@/assistant/gates/setup";
 
 interface HappyMcpHandlers {
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
@@ -70,6 +72,12 @@ export interface StartHappyServerOptions {
      * Normal sessions keep exactly the stock two tools.
      */
     assistant?: boolean;
+    /**
+     * B-916c: main agent runtime (assistant variant, no team scope). Its gate
+     * wraps the registrar so dispatch tools take `risk` and park non-none
+     * calls on the decision board; `dispatch_approved` runs them.
+     */
+    mainAgent?: MainAgentRuntime;
     /** B-510: push client for `request_human` (absent → the tool only marks the board). */
     push?: { sendAttention: (input: { sessionId: string; reason: string; url: string; sessionTitle?: string }) => Promise<{ sent: boolean; kind?: string; error?: string }> };
 }
@@ -92,11 +100,13 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
         version: "1.0.0",
     });
 
-    registerTeamsTools(mcp, sessionId);
+    // B-916c gate 2: the main agent's dispatch tools go through the gate (adds `risk`, parks non-none calls).
+    const dispatchRegistrar = options?.mainAgent && options.assistant && !process.env.VH_TEAM_SCOPE_FILE ? options.mainAgent.gate.wrap(mcp) : mcp;
+    registerTeamsTools(dispatchRegistrar, sessionId);
     // B-496: account-level automations, same trust level as the session itself.
-    registerAutomationTools(mcp);
+    registerAutomationTools(dispatchRegistrar);
     // B-497: message / list the other sessions on this machine (identity = this session).
-    if (client) registerSessionPeerTools(mcp, createSessionPeerToolExecutor(client));
+    if (client) registerSessionPeerTools(dispatchRegistrar, createSessionPeerToolExecutor(client));
     // B-645: project_context / project_note — always registered (a fixed tools prefix); "not in a project" otherwise.
     if (client) registerProjectTools(mcp, createProjectToolExecutor(() => client.sessionId));
     // B-874: issue_get / issue_update / issue_comment / issue_list — always registered; "issue_not_bound" outside an issue run.
@@ -230,7 +240,8 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     });
 
     if (options?.assistant && !process.env.VH_TEAM_SCOPE_FILE) {
-        registerAssistantTools(mcp);
+        registerAssistantTools(dispatchRegistrar);
+        if (options.mainAgent) options.mainAgent.gate.registerApprovedTool(mcp);
     }
 
     return mcp;
@@ -472,6 +483,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             // Auto-allow only; the tools themselves appear for a lead on a board server.
             ...OWNER_BOARD_TOOL_NAMES,
             ...(options?.assistant && !process.env.VH_TEAM_SCOPE_FILE ? ASSISTANT_TOOL_NAMES : []),
+            ...(options?.assistant && options.mainAgent && !process.env.VH_TEAM_SCOPE_FILE ? [DISPATCH_APPROVED_TOOL] : []),
         ],
         leadBoard,
         stop: () => {

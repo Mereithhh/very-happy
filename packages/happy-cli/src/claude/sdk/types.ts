@@ -43,6 +43,8 @@ export interface QueryOptions {
     cwd?: string
     additionalDirectories?: string[]
     disallowedTools?: string[]
+    /** B-916c: SDK hook callbacks (main agent gate 1 uses PreToolUse). */
+    hooks?: import('@anthropic-ai/claude-agent-sdk').Options['hooks']
     maxTurns?: number
     mcpServers?: Record<string, unknown>
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'

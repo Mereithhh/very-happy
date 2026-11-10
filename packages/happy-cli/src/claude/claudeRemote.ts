@@ -60,6 +60,8 @@ export async function claudeRemote(opts: {
     claudeArgs?: string[],
     allowedTools: string[],
     additionalDirectories?: string[],
+    /** B-916c: main agent gate 1 — runs before every tool call, in every permission mode. */
+    preToolUseHook?: (input: any) => Promise<any>,
     signal?: AbortSignal,
     canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: Parameters<CanUseTool>[2]) => Promise<PermissionResult>,
     onElicitation?: OnElicitation,
@@ -235,6 +237,8 @@ export async function claudeRemote(opts: {
             allowedTools: creationMode.allowedTools ? creationMode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
             additionalDirectories: opts.additionalDirectories,
             disallowedTools: creationMode.disallowedTools,
+            // 'block': a failed gate callback blocks the call instead of letting it through.
+            hooks: opts.preToolUseHook ? { PreToolUse: [{ hooks: [opts.preToolUseHook], onFailure: 'block' }] } : undefined,
             effort: creationMode.effort,
             canCallTool: (toolName, input, options) => opts.canCallTool(toolName, input, mode, options),
             onElicitation: opts.onElicitation,

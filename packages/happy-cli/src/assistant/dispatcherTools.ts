@@ -31,6 +31,16 @@ export function withAssistantDenylist(
     isAssistant: boolean,
 ): string[] | undefined {
     if (!isAssistant) return current;
-    const merged = new Set<string>([...(current ?? []), ...ASSISTANT_DISALLOWED_TOOLS]);
+    const merged = new Set<string>([...(current ?? []), ...ASSISTANT_DISALLOWED_TOOLS, ...extraDenied]);
     return [...merged];
+}
+
+/**
+ * B-916c gate 1: user denylist entries the SDK can drop natively (plain names,
+ * whole-server specs). Set once per process by the main agent start-up; the
+ * wildcard patterns are enforced by the PreToolUse hook instead.
+ */
+let extraDenied: readonly string[] = [];
+export function setAssistantExtraDenied(names: readonly string[]): void {
+    extraDenied = [...new Set(names)];
 }
