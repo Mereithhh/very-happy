@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { compileOutboundDenylist, isReadOnlyMcpTool, denyPatternToRegExp, isSdkNativePattern, isValidDenyPattern, outboundPreToolUseHook, OUTBOUND_DENY_REASON } from './outboundDenylist'
 import { effectiveRisk, keywordRisk, maxRisk, parseRiskClassifierOutput, classifyRisk } from './risk'
-import { createDispatchGate, DISPATCH_CARD_KEY_PREFIX, DISPATCH_OPTIONS, DISPATCH_TOOL_NAMES, RECEIPT_MAX_CHARS, cardFaceHash, type BoardItemView, type DispatchBoard } from './dispatchGate'
+import { createDispatchGate, DISPATCH_CARD_KEY_PREFIX, DISPATCH_OPTIONS, DISPATCH_TOOL_NAMES, RECEIPT_MAX_CHARS, cardFaceHash, isReservedCardKey, type BoardItemView, type DispatchBoard } from './dispatchGate'
 import { mergeMainAgentConfigs, parseMainAgentConfig, decodeKvJson, isValidSkillRoot } from './config'
 import { withAssistantDenylist, setAssistantExtraDenied } from '../dispatcherTools'
 
@@ -280,6 +280,29 @@ describe('gate 2: dispatch gate', () => {
         fail = false
         expect(json(await tools.get('dispatch_approved')!.handler({ approvalId: r.approvalId })).state).toBe('dispatched')
         expect(spawn).toHaveBeenCalledTimes(2)
+    })
+
+    it('QA80 P3: dispatch_approved also takes the card id; the checks stay the same', async () => {
+        const { tools, spawn, choose, card } = await setup()
+        const a = json(await tools.get('session_spawn')!.handler({ directory: '/tmp', prompt: 'send the report to D', risk: 'external' }))
+        choose(a.approvalId, 'approve')
+        const done = json(await tools.get('dispatch_approved')!.handler({ boardItemId: a.boardItemId }))
+        expect(done).toMatchObject({ state: 'dispatched', approvalId: a.approvalId })
+        const b = json(await tools.get('session_spawn')!.handler({ directory: '/tmp', prompt: 'send the report to E', risk: 'external' }))
+        card(b.approvalId).bodyMd = 'harmless local work'
+        choose(b.approvalId, 'approve')
+        expect(json(await tools.get('dispatch_approved')!.handler({ boardItemId: b.boardItemId })).error).toBe('card_tampered')
+        expect(json(await tools.get('dispatch_approved')!.handler({ boardItemId: 'not-a-gate-card' })).error).toBe('approval_not_found')
+        expect(json(await tools.get('dispatch_approved')!.handler({})).error).toBe('approval_not_found')
+        expect(spawn).toHaveBeenCalledTimes(1)
+    })
+
+    it('QA80 P3: the reserved prefix matches after trim + lowercase', async () => {
+        for (const key of ['main-agent-dispatch:x', '  MAIN-AGENT-DISPATCH:x', 'Main-Agent-Dispatch:y', '\tmain-agent-dispatch:z']) expect(isReservedCardKey(key), key).toBe(true)
+        for (const key of ['my-main-agent-dispatch:x', 'main-agent-dispatch', 'issue-review:1', null]) expect(isReservedCardKey(key), String(key)).toBe(false)
+        const { tools, boardPost } = await setup()
+        expect(json(await tools.get('owner_board_post')!.handler({ kind: 'report', title: 't', key: '  MAIN-AGENT-DISPATCH:x' })).error).toBe('reserved_card')
+        expect(boardPost).not.toHaveBeenCalled()
     })
 
     it('card face hash covers key, title, body and option ids + labels', () => {
