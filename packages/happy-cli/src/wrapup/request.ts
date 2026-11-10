@@ -31,7 +31,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import axios from 'axios'
 import {
     buildHandoffPrompt, buildWrapupPrompt, decodeWrapupConfig, handoffDisplayText, handoffLocalId, HANDOFF_ITEM_KEY,
-    resolveWrapupTemplate, WRAPUP_ITEM_KEY, WRAPUP_KV_KEY, wrapupDisplayText, wrapupInProgress, wrapupLocalId,
+    resolveWrapupTemplate, WRAPUP_ITEM_KEY, WRAPUP_KV_KEY, WRAPUP_SESSION_CAPABILITY, wrapupDisplayText, wrapupInProgress, wrapupLocalId,
     type AttentionItem, type WrapupConfig,
 } from '@slopus/happy-wire'
 import { configuration } from '@/configuration'
@@ -40,7 +40,7 @@ import { isValidSessionId } from '@/assistant/ids'
 import { deliverToSession, type DeliveryResult } from '@/commands/sessionDelivery'
 import { sendUserMessage } from '@/commands/sessionMessage'
 import { sendRemoteMessage } from '@/sessions/remoteSessionClient'
-import { readSessionState, type SessionServerState } from '@/sessions/sessionOps'
+import { readSessionMetadata, readSessionState, type SessionServerState } from '@/sessions/sessionOps'
 import { AttentionUnsupportedError, sharedAttentionClient } from '@/attention/client'
 import type { BuiltinMode } from './report'
 
@@ -70,6 +70,8 @@ export interface BuiltinRequestDeps {
     deliverRemote: (sessionId: string, text: string, options: DeliverOptions) => Promise<DeliveryResult>
     now: () => number
     nonce: () => string
+    /** B-915c: the session's live wrapper capabilities (server metadata, local key); null when this machine cannot read them. */
+    readCapabilities: (sessionId: string, persisted: PersistedSession | undefined) => Promise<readonly string[] | null>
 }
 
 async function defaultOpenItems(sessionId: string) {
@@ -109,6 +111,14 @@ export function defaultBuiltinRequestDeps(): BuiltinRequestDeps {
         deliverRemote: (sessionId, text, options) => sendRemoteMessage(sessionId, text, { sentFrom: SENT_FROM, localId: options.localId, displayText: options.displayText, resume: options.resume }),
         now: Date.now,
         nonce: () => randomUUID(),
+        readCapabilities: async (sessionId, persisted) => {
+            if (!persisted) return null
+            try {
+                return (await readSessionMetadata(sessionId, persisted))?.capabilities ?? []
+            } catch {
+                return null
+            }
+        },
     }
 }
 
@@ -201,3 +211,25 @@ export async function requestHandoff(request: HandoffRequest, overrides: Partial
     })
     return sendTurn(deps, request.from, 'handoff', text, handoffDisplayText(config.lang ?? 'en', request.toTitle), request.requestId)
 }
+
+/**
+ * B-915c (QA81 P3): the queued wrap-ups whose wrapper has no `wrapup-v1` — an
+ * older CLI answers in the chat but posts no card (same rule and hint as the
+ * Web toast, AGENTS #14: by session capability, not CLI version). Read after
+ * delivery, so a session resumed by a newer daemon counts as upgraded.
+ * Unknown capabilities (no local key) never claim an upgrade is needed.
+ */
+export async function wrapupUpgradeNeeded(results: readonly BuiltinRequestResult[], overrides: Partial<BuiltinRequestDeps> = {}): Promise<string[]> {
+    const deps = { ...defaultBuiltinRequestDeps(), ...overrides }
+    const persisted = deps.readPersisted()
+    const stale: string[] = []
+    for (const r of results) {
+        if (r.state !== 'queued') continue
+        const capabilities = await deps.readCapabilities(r.sessionId, persisted[r.sessionId])
+        if (capabilities && !capabilities.includes(WRAPUP_SESSION_CAPABILITY)) stale.push(r.sessionId)
+    }
+    return stale
+}
+
+/** Same words as the Web toast (`wrapup.upgradeHint`). */
+export const WRAPUP_UPGRADE_HINT = 'Sent. Upgrade the CLI on that machine to get a wrap-up card on the Briefing; for now the result stays in the chat.'

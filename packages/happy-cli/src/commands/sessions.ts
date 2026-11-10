@@ -77,7 +77,7 @@ import { readPersistedSessions } from '@/persistence'
 import { resolve as resolvePath } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { WRAPUP_TEMPLATE_MAX_CHARS } from '@slopus/happy-wire'
-import { requestHandoff, requestWrapup, type BuiltinRequestResult } from '@/wrapup/request'
+import { requestHandoff, requestWrapup, WRAPUP_UPGRADE_HINT, wrapupUpgradeNeeded, type BuiltinRequestResult } from '@/wrapup/request'
 import { SESSION_WRAPUP_MAX_IDS } from '@/wrapup/report'
 import {
     fillForeignAccountRows,
@@ -496,10 +496,14 @@ export function builtinRequestExitCode(results: readonly Pick<BuiltinRequestResu
     return results.length > 0 && results.every((r) => r.state !== 'error') ? 0 : 1
 }
 
-export function formatBuiltinResults(results: readonly BuiltinRequestResult[]): string[] {
-    return results.map((r) => r.state === 'error'
-        ? `${r.sessionId} ${chalk.red('error')}: ${r.error ?? 'failed'}`
-        : `${r.sessionId} ${r.state === 'queued' ? 'queued' : 'running (already in progress, nothing sent)'}`)
+export function formatBuiltinResults(results: readonly BuiltinRequestResult[], upgradeNeeded: readonly string[] = []): string[] {
+    return results.flatMap((r) => r.state === 'error'
+        ? [`${r.sessionId} ${chalk.red('error')}: ${r.error ?? 'failed'}`]
+        : [
+            `${r.sessionId} ${r.state === 'queued' ? 'queued' : 'running (already in progress, nothing sent)'}`,
+            // B-915c: an older wrapper (no `wrapup-v1`) gets the turn but posts no card — the Web toast's hint.
+            ...(r.state === 'queued' && upgradeNeeded.includes(r.sessionId) ? [`  ${chalk.yellow('hint')}: ${WRAPUP_UPGRADE_HINT}`] : []),
+        ])
 }
 
 function readTemplateFile(path: string): string {
@@ -625,8 +629,9 @@ async function runSessionsCommand(args: string[]): Promise<number> {
                     from: options.sessionId as string, to: options.to as string,
                     archiveAfter: options.archive, ...(options.note ? { note: options.note } : {}),
                 })]
-            if (options.json) console.log(JSON.stringify(options.action === 'wrapup' ? { results } : results[0]))
-            else for (const line of formatBuiltinResults(results)) console.log(line)
+            const upgradeNeeded = options.action === 'wrapup' ? await wrapupUpgradeNeeded(results) : []
+            if (options.json) console.log(JSON.stringify(options.action === 'wrapup' ? { results: results.map((r) => upgradeNeeded.includes(r.sessionId) ? { ...r, upgradeHint: WRAPUP_UPGRADE_HINT } : r) } : results[0]))
+            else for (const line of formatBuiltinResults(results, upgradeNeeded)) console.log(line)
             return builtinRequestExitCode(results)
         }
 

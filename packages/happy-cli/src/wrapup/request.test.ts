@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { encodeWrapupConfig, WRAPUP_PROTOCOL_TAIL, decodeWrapupConfig } from '@slopus/happy-wire'
 import type { DeliveryResult } from '@/commands/sessionDelivery'
-import { builtinNonce, requestHandoff, requestWrapup, type BuiltinRequestDeps } from './request'
+import { builtinNonce, requestHandoff, requestWrapup, WRAPUP_UPGRADE_HINT, wrapupUpgradeNeeded, type BuiltinRequestDeps } from './request'
 
 const live = (sessionId: string): DeliveryResult => ({ sessionId, status: 'live', delivered: true, resumed: false, stored: true })
 const running = (mode: string, startedAt: number) => ({ kind: 'wrapup', key: mode, state: 'open', updatedAt: startedAt, payload: { v: 1, mode, status: 'running', startedAt } })
@@ -103,5 +103,29 @@ describe('B-915 session_handoff / sessions handoff', () => {
         expect(sent.map((s) => [s.sessionId, s.resume])).toEqual([['local1', true], ['remote1', true]])
         expect((await requestHandoff({ from: 'arch1', to: 't1' }, d)).error).toMatch(/archived/)
         expect(sent).toHaveLength(2)
+    })
+})
+
+describe('B-915c sessions wrapup: upgrade hint for an older wrapper (QA81 P3)', () => {
+    it('flags a queued session whose live capabilities lack wrapup-v1; never a running / error one or one it cannot read', async () => {
+        const caps: Record<string, readonly string[] | null> = { old: ['project-v1'], bare: [], fresh: ['attention-v1', 'wrapup-v1'], foreign: null }
+        const asked: string[] = []
+        const stale = await wrapupUpgradeNeeded([
+            { sessionId: 'old', state: 'queued' },
+            { sessionId: 'bare', state: 'queued' },
+            { sessionId: 'fresh', state: 'queued' },
+            { sessionId: 'foreign', state: 'queued' },
+            { sessionId: 'busy', state: 'running' },
+            { sessionId: 'gone', state: 'error', error: 'x' },
+        ], {
+            readPersisted: () => ({ old: { encryptionKey: 'k' } as never }),
+            readCapabilities: async (id, persisted) => { asked.push(`${id}:${persisted ? 'key' : '-'}`); return caps[id] ?? null },
+        })
+        expect(stale).toEqual(['old', 'bare'])
+        expect(asked).toEqual(['old:key', 'bare:-', 'fresh:-', 'foreign:-'])
+    })
+
+    it('uses the Web toast wording', () => {
+        expect(WRAPUP_UPGRADE_HINT).toBe('Sent. Upgrade the CLI on that machine to get a wrap-up card on the Briefing; for now the result stays in the chat.')
     })
 })

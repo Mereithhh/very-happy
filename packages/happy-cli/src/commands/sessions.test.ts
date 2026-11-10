@@ -229,6 +229,9 @@ describe('sessions wrapup / handoff (B-915)', () => {
         expect(builtinRequestExitCode([{ state: 'queued' }, { state: 'error' }])).toBe(1)
         expect(builtinRequestExitCode([])).toBe(1)
         expect(formatBuiltinResults([{ sessionId: 'a', state: 'running' }])[0]).toBe('a running (already in progress, nothing sent)')
+        // B-915c: a queued wrap-up on an older wrapper gets the Web toast's upgrade hint under its line.
+        const lines = formatBuiltinResults([{ sessionId: 'a', state: 'queued' }, { sessionId: 'b', state: 'queued' }], ['b']).map((l) => l.replace(/\x1b\[[0-9;]*m/g, ''))
+        expect(lines).toEqual(['a queued', 'b queued', '  hint: Sent. Upgrade the CLI on that machine to get a wrap-up card on the Briefing; for now the result stays in the chat.'])
     })
     it('help documents both and the spawn-first rule', () => {
         expect(SESSIONS_HELP).toContain('very-happy sessions wrapup <id...>')
