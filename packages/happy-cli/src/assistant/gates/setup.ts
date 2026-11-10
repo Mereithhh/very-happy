@@ -13,7 +13,7 @@
 
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { AttentionClient } from '@/attention/client'
 import { assistantHome } from '../bootstrap'
 import { installMainAgentSkill, renderManagedSegment, writeManagedSegment } from '../mainAgentSkill'
@@ -67,8 +67,9 @@ export async function prepareMainAgent(deps: {
     if (config.dropped > 0) deps.log?.(`[main-agent] dropped ${config.dropped} invalid config item(s)`)
     const denylist = compileOutboundDenylist(config.deniedTools)
     const roots = config.skillRoots.map(r => { const path = expandHome(r, home); return { path, exists: existsSync(path) } })
+    let skillPath: string | null = null
     try {
-        const skillPath = await installMainAgentSkill(home, deps.log)
+        skillPath = await installMainAgentSkill(home, deps.log)
         const segment = renderManagedSegment({ skillPaths: skillPath ? [skillPath] : [], skillRoots: roots })
         await writeManagedSegment(join(aHome, 'CLAUDE.md'), segment, deps.log)
     } catch (error) {
@@ -85,7 +86,9 @@ export async function prepareMainAgent(deps: {
         config,
         denylist,
         preToolUse: outboundPreToolUseHook(denylist, (tool) => deps.log?.(`[main-agent gate] denied ${tool}`)),
-        extraDirectories: roots.filter(r => r.exists).map(r => r.path),
+        // The managed skill lives outside the assistant home: mount its directory too, or every
+        // read of the handbook asks for permission in the default mode (seen in the isolated probe).
+        extraDirectories: [...(skillPath ? [dirname(skillPath)] : []), ...roots.filter(r => r.exists).map(r => r.path)],
         gate,
     }
 }
