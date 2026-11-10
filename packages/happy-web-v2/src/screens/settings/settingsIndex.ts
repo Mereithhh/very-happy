@@ -41,6 +41,7 @@ export const SETTINGS_SECTION_TITLES: Record<string, SettingsText> = {
   snippets: 'settingsSnippets.navTitle',
   notifications: 'notifications.title',
   channels: 'settingsChannels.title',
+  'main-agent': 'settingsMainAgent.title',
   voice: 'settingsVoice.title',
   machines: 'settingsMachines.title',
   shared: 'share.settings.title',
@@ -113,6 +114,10 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: 'channels.clipboardHistory', section: 'channels', title: 'clipboard.historyTitle', description: 'clipboard.historyOpenSubtitle', keywords: ['clipboard', 'history', '剪贴板', '历史'] },
   { id: 'channels.filePreview', section: 'channels', title: 'filePreview.receiveTitle', description: 'filePreview.receiveSubtitle', keywords: ['preview', 'open_preview', 'file', '预览', '文件'] },
   { id: 'channels.im', section: 'channels', title: 'settingsChannels.imTitle', keywords: ['im', 'chat', 'telegram', 'tanka', 'bot', '即时通讯', '聊天', '机器人'] },
+  // ── main agent (B-916a) ──
+  { id: 'mainAgent.machine', section: 'main-agent', title: { en: 'Runs on', zh: '运行在哪台机器' }, keywords: ['main agent', 'assistant', 'machine', 'host', '主 agent', '助手', '机器'] },
+  { id: 'mainAgent.skillRoots', section: 'main-agent', title: { en: 'Skills folders (skillRoots)', zh: 'skills 目录（skillRoots）' }, keywords: ['skills', 'skillroots', 'skill roots', '技能', '目录'] },
+  { id: 'mainAgent.deniedTools', section: 'main-agent', title: { en: 'Outbound deny list (additions)', zh: '出站禁用表（补充项）' }, keywords: ['deny', 'denylist', 'outbound', 'blocked tools', '禁用', '出站', '黑名单'] },
   // ── voice ──
   { id: 'voice.voice', section: 'voice', title: 'settingsVoice.voice', keywords: ['voice', 'tts', 'speaker', 'elevenlabs', '语音', '音色', '朗读'] },
   { id: 'voice.library', section: 'voice', title: 'settingsVoice.library', keywords: ['voice library', 'voices', '语音库', '音色库'] },

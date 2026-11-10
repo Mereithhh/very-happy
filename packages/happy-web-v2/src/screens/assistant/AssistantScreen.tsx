@@ -31,7 +31,10 @@ import { startTtsStream } from '@/assistant/ttsStream';
 import { machineLabel } from '@/utils/machineUtils';
 import { ASSISTANT_DIRECTORY, ASSISTANT_MIN_CLI_VERSION, TTS_MAX_CHARS } from '@/assistant/assistantConstants';
 import { isAssistantSupported } from '@/assistant/assistantSupport';
-import { pickAssistantMachine, pickAssistantSession } from '@/assistant/assistantSession';
+import { pickAssistantSession } from '@/assistant/assistantSession';
+import { pickVoiceAssistantMachine } from '@/assistant/mainAgent';
+import { useMainAgentStore } from '@/assistant/mainAgentStore';
+import { useMainAgentPointerSync } from '@/assistant/useMainAgent';
 import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission, deriveTranscript, extractOptions } from '@/assistant/assistantView';
 import { truncateAtSentenceBoundary } from '@/assistant/sentenceTruncate';
 import { useHoldToTalk } from '@/assistant/useHoldToTalk';
@@ -92,9 +95,14 @@ export function AssistantScreen() {
     // ── machine resolution ──
     const machines = useAllMachines({ includeOffline: true });
     const [assistantMachineId, setAssistantMachineId] = useSettingMutable('assistantMachineId');
+    // B-916a: the voice form is a second view of THE main agent — when the
+    // account pointer names a machine, use only that one (never fall back to
+    // another online machine, which would spawn a second assistant).
+    useMainAgentPointerSync();
+    const mainAgentPointer = useMainAgentStore((s) => s.pointer);
     const machinePick = useMemo(
-        () => pickAssistantMachine(machines, assistantMachineId),
-        [machines, assistantMachineId],
+        () => pickVoiceAssistantMachine(machines, assistantMachineId, mainAgentPointer),
+        [machines, assistantMachineId, mainAgentPointer],
     );
     const machine = machinePick.kind === 'machine' ? machinePick.machine : null;
     const cliVersion = machine?.metadata?.happyCliVersion ?? null;

@@ -65,7 +65,10 @@ import { ImportHistoryModal, type ImportHistoryAgent } from '@/screens/sessions/
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { FileSearch, ListTodo } from 'lucide-react';
-import { Activity, Contact, FolderPlus, Zap } from 'lucide-react';
+import { Activity, Bot, Contact, FolderPlus, Zap } from 'lucide-react';
+import { openMainAgent } from '@/assistant/mainAgentStore';
+import { mainAgentCopy } from '@/assistant/mainAgentCopy';
+import { MAIN_AGENT_ASK_KEY, mainAgentAskTrigger } from './mainAgentPalette';
 import { useAutomations } from '@/sync/automationsStore';
 import { automationsEntryVisible } from '@/sync/automationsPoll';
 import { requestNewProject } from '@/screens/sessions/sidebarEvents';
@@ -592,6 +595,16 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         run: () => { if (target.kind === 'path') navigate(target.path); else if (!requestNewProject()) navigate('/projects'); },
       });
     }
+    // B-916a: the main agent, from anywhere
+    out.push({
+      key: 'action:main-agent',
+      group: 'actions',
+      title: mainAgentCopy(lang).paletteOpen,
+      icon: <Bot size={16} />,
+      search: kw(mainAgentCopy(lang).paletteOpen, 'main agent assistant 主 agent 助手 调度'),
+      hint: IS_MAC ? '⌘⇧E' : 'Ctrl+Shift+E',
+      run: () => openMainAgent(),
+    });
     out.push({
       key: 'action:clipboard-history',
       group: 'actions',
@@ -830,10 +843,19 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       run: () => dialogs.newIssue(query.trim()),
     }] : [];
     const matched = orderPaletteItems([...[...base, ...extraTitle].map(withSnippets), ...issueRows, ...contentRows, ...settingsRows]);
+    // B-916a: 「问主 agent：<查询>」 — ⌘↩ sends it from any highlighted row
+    const ask: CommandItem[] = query.trim() ? [{
+      key: MAIN_AGENT_ASK_KEY,
+      group: 'create' as const,
+      title: mainAgentCopy(lang).paletteAsk(query.trim()),
+      icon: <Bot size={16} />,
+      hint: IS_MAC ? '⌘↩' : 'Ctrl+↩',
+      run: () => openMainAgent({ text: query.trim(), send: true }),
+    }] : [];
     const draft = newChatDraftFor(query, matched);
-    if (draft == null) return [...matched, ...issueCreate];
+    if (draft == null) return [...matched, ...ask, ...issueCreate];
     const createTitle = t('commandPalette.actionNewChatWithQuery', { query: draft });
-    return [...matched, {
+    return [...matched, ...ask, {
       key: CREATE_ROW_KEY,
       group: 'create' as const,
       title: createTitle,
@@ -898,12 +920,15 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         e.preventDefault();
         chosenRef.current = true;
         setActive((a) => moveActive(keys, a, delta));
+      } else if (mainAgentAskTrigger(e, query)) {
+        e.preventDefault();
+        runItem(filtered.find((it) => it.key === MAIN_AGENT_ASK_KEY));
       } else if (e.key === 'Enter') {
         e.preventDefault();
         runItem(activeIndex >= 0 ? filtered[activeIndex] : undefined);
       }
     },
-    [filtered, keys, activeIndex, close, runItem, ime],
+    [filtered, keys, activeIndex, close, runItem, ime, query],
   );
 
   // render grouped list (dividers by group label); `filtered` is already in

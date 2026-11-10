@@ -19,6 +19,7 @@ export const settingsSections: {path:string; key:SimpleTranslationKey; icon:type
   {path:'snippets',key:'settingsSnippets.navTitle',icon:Bookmark},
   {path:'notifications',key:'notifications.title',icon:Bell},
   {path:'channels',key:'settingsChannels.title',icon:Cable},
+  {path:'main-agent',key:'settingsMainAgent.title',icon:Bot},
   {path:'voice',key:'settingsVoice.title',icon:Volume2},
   {path:'machines',key:'settingsMachines.title',icon:HardDrive},
   {path:'shared',key:'share.settings.title',icon:Share2},
