@@ -11,6 +11,7 @@ import {
     cleanSkillRoots,
     hasMainAgentGates,
     nextPointerValue,
+    shouldWritePointerBeforeSpawn,
     parseMainAgentConfig,
     parseMainAgentPointer,
     pickVoiceAssistantMachine,
@@ -53,6 +54,11 @@ describe('KV codecs', () => {
         expect(parseMainAgentPointer({ sessionId: 's' })).toBeNull();
         expect(parseMainAgentPointer({ machineId: 'm', sessionId: 5, generation: 'x', extra: true }))
             .toEqual({ machineId: 'm', sessionId: null, generation: 0, updatedAt: null });
+    });
+    it('first enable only spawns (daemon writes); only a move writes the pointer first', () => {
+        expect(shouldWritePointerBeforeSpawn(null, 'm1')).toBe(false);
+        expect(shouldWritePointerBeforeSpawn(pointer({ machineId: 'm1' }), 'm1')).toBe(false);
+        expect(shouldWritePointerBeforeSpawn(pointer({ machineId: 'm1' }), 'm2')).toBe(true);
     });
     it('the web writes a new machine with no session and generation + 1 (spec §2.1)', () => {
         expect(nextPointerValue(pointer({ machineId: 'a', sessionId: 's', generation: 4 }), 'b', 7)).toEqual({ v: 1, machineId: 'b', sessionId: null, generation: 5, updatedAt: 7 });
