@@ -37,7 +37,7 @@ function deps(over: Partial<MainAgentDeps> = {}): MainAgentDeps & { calls: any[]
             comment: async (id, input) => { calls.push({ op: 'issues.comment', id, input }); return { issue: issue() } },
         },
         projects: {
-            list: async () => ({ projects: [{ id: 'p1', name: 'VH', goal: 'ship', teamIds: ['team-1'], archivedAt: null }, { id: 'p2', name: 'old', goal: null, teamIds: [], archivedAt: 1 }] }),
+            list: async () => ({ projects: [{ id: 'p1', name: 'VH', goal: 'ship', teamIds: ['team-1'], archivedAt: null, folders: [{ machineId: 'm1', path: '/repo/vh' }, { machineId: 'm2', path: '/other' }] }, { id: 'p2', name: 'old', goal: null, teamIds: [], archivedAt: 1 }] }),
             get: async (projectId) => { calls.push({ op: 'projects.get', projectId }); return projectDetail() },
             note: async (projectId, input) => { calls.push({ op: 'projects.note', projectId, input }); return { entry: { seq: 71, supersedes: null } } },
         },
@@ -58,7 +58,7 @@ function deps(over: Partial<MainAgentDeps> = {}): MainAgentDeps & { calls: any[]
 function projectDetail(): ProjectDetailResponse {
     const entry = (seq: number, kind: string, title: string, extra: Record<string, unknown> = {}) => ({ id: `e${seq}`, seq, projectId: 'p1', kind, title, body: '', authorSessionId: null, authorUser: true, supersedes: null, supersededBy: null, revokedAt: null, createdAt: seq, ...extra })
     return {
-        project: { id: 'p1', name: 'VH', goal: 'ship fast', instructions: 'Read AGENTS.md', instructionsVersion: 2 } as any,
+        project: { id: 'p1', name: 'VH', goal: 'ship fast', instructions: 'Read AGENTS.md', instructionsVersion: 2, folders: [{ machineId: 'm1', path: '/repo' }, { machineId: 'm2', path: '/srv' }] } as any,
         members: [], presence: [],
         log: [
             entry(1, 'decision', 'use pnpm'),
@@ -107,7 +107,7 @@ describe('teams / Lead dispatch', () => {
         const delivered = d.calls.filter(c => c.op === 'deliver')
         expect(delivered).toHaveLength(1)
         expect(delivered[0].sessionId).toBe('sess-lead')
-        expect(delivered[0].body).toBe(leadDelegationText({ goal: 'Ship B-1', acceptance: ['tests green', 'PR open'], risk: 'none' }))
+        expect(delivered[0].body).toBe(leadDelegationText({ goal: 'Ship B-1', acceptance: ['tests green', 'PR open'] }))
         expect(delivered[0].body).toContain('team_delegate')
     })
 
@@ -132,13 +132,12 @@ describe('teams / Lead dispatch', () => {
 })
 
 describe('Lead dispatch text', () => {
-    it('names the main agent, keeps goal and acceptance verbatim and adds a risk the gate passed through', () => {
-        const body = leadDelegationText({ goal: ' Ship B-1 ', acceptance: ['green'], risk: 'external', note: 'owner asked' })
+    it('names the main agent and keeps goal, acceptance and note verbatim', () => {
+        const body = leadDelegationText({ goal: ' Ship B-1 ', acceptance: ['green'], note: 'owner asked' })
         expect(body.split('\n')).toEqual([
             expect.stringMatching(/^\[Very Happy main agent → Lead\] .*team_delegate/),
-            'Goal: Ship B-1', 'Acceptance:', '- green', 'Risk (marked by the main agent): external', 'Note: owner asked',
+            'Goal: Ship B-1', 'Acceptance:', '- green', 'Note: owner asked',
         ])
-        expect(leadDelegationText({ goal: 'g', acceptance: ['a'], risk: 'none' })).not.toContain('Risk')
     })
 })
 
@@ -205,7 +204,7 @@ describe('todos', () => {
 describe('projects by projectId', () => {
     it('project_list leaves archived projects out', async () => {
         const r = text(await run(deps(), 'project_list'))
-        expect(r).toContain('p1 "VH" ship teams=1')
+        expect(r).toContain('p1 "VH" folder=m1:/repo/vh ship teams=1')
         expect(r).not.toContain('p2')
     })
 
@@ -217,6 +216,7 @@ describe('projects by projectId', () => {
         expect(r).toContain('#3 new rule')
         expect(r).not.toMatch(/Decisions in effect:[^]*#2 old rule[^]*Log/)
         expect(r).toContain('finding 21')
+        expect(r).toContain('Folders (machineId:path): m1:/repo, m2:/srv')
         expect(r).not.toContain('finding 11')
         const ctx = detailAsContext(projectDetail(), true)
         expect(ctx.log).toHaveLength(15)

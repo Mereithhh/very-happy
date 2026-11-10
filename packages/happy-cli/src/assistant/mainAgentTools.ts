@@ -78,7 +78,7 @@ export type MainAgentDeps = {
         comment: (id: string, input: any) => Promise<{ issue: IssueView }>
     }
     projects: {
-        list: () => Promise<{ projects: Array<{ id: string; name: string; goal: string | null; teamIds: string[]; archivedAt: number | null }> }>
+        list: () => Promise<{ projects: Array<{ id: string; name: string; goal: string | null; teamIds: string[]; archivedAt: number | null; folders?: Array<{ machineId: string; path: string }> }> }>
         get: (projectId: string) => Promise<ProjectDetailResponse>
         note: (projectId: string, input: { kind: string; title: string; body?: string; supersedes?: string; authorSessionId: string }) => Promise<{ entry: { seq: number; supersedes: string | null } }>
     }
@@ -113,13 +113,12 @@ export function leadMessageText(input: { body: string; taskId?: string }): strin
     return [`[Very Happy main agent → Lead] A message from the owner${input.taskId ? ` about task ${input.taskId}` : ''}:`, input.body.trim()].join('\n')
 }
 
-export function leadDelegationText(input: { goal: string; acceptance: string[]; risk?: string | null; note?: string }): string {
+export function leadDelegationText(input: { goal: string; acceptance: string[]; note?: string }): string {
     return [
         '[Very Happy main agent → Lead] The owner asked for this work for your team. Delegate it with team_delegate (goal and acceptance below, as written) unless it is clearly yours to do; report back through the usual channel.',
         `Goal: ${input.goal.trim()}`,
         'Acceptance:',
         ...input.acceptance.map(a => `- ${a.trim()}`),
-        ...(input.risk && input.risk !== 'none' ? [`Risk (marked by the main agent): ${input.risk}`] : []),
         ...(input.note ? [`Note: ${input.note.trim()}`] : []),
     ].join('\n')
 }
@@ -192,7 +191,7 @@ export function registerMainAgentTools(mcp: AssistantToolRegistrar, deps: MainAg
         acceptance: z.array(z.string().min(1).max(32_000)).min(1).max(32).describe('Checkable acceptance criteria, one per item'),
         note: z.string().max(4000).optional().describe('Context for the Lead (owner\'s words, links)'),
         requestId,
-    }, false, async (args) => deliverToLead(args.teamId, leadDelegationText({ goal: args.goal, acceptance: args.acceptance, risk: typeof args.risk === 'string' ? args.risk : null, note: args.note })))
+    }, false, async (args) => deliverToLead(args.teamId, leadDelegationText({ goal: args.goal, acceptance: args.acceptance, note: args.note })))
 
     register('lead_message', 'Tell a team\'s Lead something (a follow-up, an answer, a change of plan). Delivered into the Lead\'s session; taskId only names the task it is about.', {
         teamId: id.describe('From teams_list'),
@@ -310,7 +309,7 @@ export function registerMainAgentTools(mcp: AssistantToolRegistrar, deps: MainAg
         const { projects } = await deps.projects.list()
         const live = projects.filter(p => !p.archivedAt)
         if (!live.length) return ok('no projects')
-        return ok([`${live.length} project(s) — id name goal:`, ...live.map(p => `${p.id} "${oneLine(p.name, 40)}"${p.goal ? ` ${oneLine(p.goal, 80)}` : ''}${p.teamIds.length ? ` teams=${p.teamIds.length}` : ''}`)].join('\n'))
+        return ok([`${live.length} project(s) — id name folder goal:`, ...live.map(p => `${p.id} "${oneLine(p.name, 40)}"${p.folders?.[0] ? ` folder=${p.folders[0].machineId}:${p.folders[0].path}` : ''}${p.goal ? ` ${oneLine(p.goal, 60)}` : ''}${p.teamIds.length ? ` teams=${p.teamIds.length}` : ''}`)].join('\n'))
     })
 
     register('project_context', 'Read a Very Happy project of this account: instructions, decisions in effect, recent log entries (last 10; full=true for all), sessions.', {
@@ -319,7 +318,10 @@ export function registerMainAgentTools(mcp: AssistantToolRegistrar, deps: MainAg
         full: z.boolean().optional().describe('Everything'),
     }, true, async (args) => {
         const detail = await deps.projects.get(args.projectId)
-        return ok(formatContextForTool(detailAsContext(detail, args.full === true), { full: args.full === true, section: args.section }))
+        const folders = (detail.project.folders ?? []).map(f => `${f.machineId}:${f.path}`)
+        const text = formatContextForTool(detailAsContext(detail, args.full === true), { full: args.full === true, section: args.section })
+        // The folders tell the main agent where to spawn work for this project.
+        return ok(folders.length ? `${text}\nFolders (machineId:path): ${folders.join(', ')}` : text)
     })
 
     register('project_note', 'Append to a project\'s log in your own name (the main agent): kind decision (changes how its sessions work) | finding (they would otherwise redo it) | handoff. Not progress.', {

@@ -57,6 +57,8 @@ const RECEIPT_KEYS = [
     'ok', 'error', 'id', 'key', 'seq', 'name', 'title', 'status', 'state', 'outcome', 'created', 'deleted', 'version',
     'taskId', 'attemptId', 'currentAttemptId', 'goalVersion', 'scheduleId', 'sessionId', 'runId', 'nextRunAt',
     'scheduled', 'targetVersion', 'url', 'delivered', 'queued',
+    // B-916c gate 2 receipts (dispatch_approved needs approvalId / boardItemId).
+    'approvalId', 'boardItemId', 'risk', 'choice', 'result', 'note',
 ] as const
 const RECEIPT_KEY_SET = new Set<string>(RECEIPT_KEYS)
 
@@ -81,6 +83,9 @@ function pickReceiptFields(value: Record<string, unknown>): Record<string, unkno
  * where the detail is instead.
  */
 export function jsonReceipt(value: unknown, max = RECEIPT_MAX_CHARS): string {
+    // A receipt that already fits is passed through as written (B-916c gate receipts, tool-shaped answers).
+    const whole = JSON.stringify(value)
+    if (whole !== undefined && whole.length <= max) return whole
     if (!value || typeof value !== 'object' || Array.isArray(value)) return capReceiptText(JSON.stringify(value), max)
     const record = value as Record<string, unknown>
     const out = pickReceiptFields(record)
