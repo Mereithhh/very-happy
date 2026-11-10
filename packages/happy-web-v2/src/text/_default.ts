@@ -3311,6 +3311,11 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov10a: {
+                title: 'Fable 5.2 in the model picker',
+                summary: 'Claude sessions can now pick Fable 5.2, with or without 1M context.',
+                fable: 'The Claude model picker now offers Fable 5.2 (and its 1M-context variant) as the newest Fable. New sessions can pick it right away; in a running session it appears once the machine runs the latest CLI and the session is restarted. Sessions already on Fable 5.1 or Opus 5.5 keep their model.',
+            },
             nov10: {
                 title: 'Opening a session in a project no longer makes it vanish from the sidebar',
                 summary: 'A sleeping session you open keeps its place in the sidebar while it wakes up.',

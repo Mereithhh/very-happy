@@ -12,6 +12,9 @@ import {
     CLAUDE_OPUS_55_MODEL,
     CLAUDE_OPUS_55_CAPABILITY,
     supportsClaudeOpus55,
+    CLAUDE_FABLE_52_MODEL,
+    CLAUDE_FABLE_52_CAPABILITY,
+    supportsClaudeFable52,
     isClaudeOpus55Model,
     isLatestModelMode,
     normalizeAgentKey,
@@ -24,7 +27,7 @@ import {
     type LatestModelTable,
     readLongContextUnsupported,
 } from '@slopus/happy-wire';
-export { CLAUDE_OPUS_55_MODEL, CLAUDE_OPUS_55_CAPABILITY, supportsClaudeOpus55, normalizeAgentKey };
+export { CLAUDE_OPUS_55_MODEL, CLAUDE_OPUS_55_CAPABILITY, supportsClaudeOpus55, CLAUDE_FABLE_52_MODEL, CLAUDE_FABLE_52_CAPABILITY, supportsClaudeFable52, normalizeAgentKey };
 export type { AgentKey, AgentDefaultConfig };
 export const agentKeys = AGENT_KEYS;
 

@@ -182,6 +182,47 @@ describe('B-893: Fable and the gpt-6 generation on the top list', () => {
         const follow = layoutModelPicker([{ key: 'latest', name: 'Latest · Opus 5.5' }, ...listed], { flavor: 'claude', selectedKey: 'latest', followModel: 'claude-opus-5-5', resolved: catalogResolved, runnable: run });
         expect(keys(follow.primary).slice(0, 3)).toEqual(['latest', 'default', 'claude-fable-5-1']);
     });
+    it('B-907 (SDK 0.3.322 wrapper, subscription catalog still lists claude-fable-5-1[1m]): Fable 5.2 is the family pick with its 1M switch, 5.1 under 更多模型', () => {
+        const metadata = { models: [
+            { code: 'default', value: 'Default (recommended)', resolvedModel: 'claude-opus-5-5' },
+            { code: 'opus', value: 'Opus', resolvedModel: 'claude-opus-5-5' },
+            { code: 'claude-fable-5-1[1m]', value: 'Fable', resolvedModel: 'claude-fable-5-1' },
+            { code: 'sonnet', value: 'Sonnet 5', resolvedModel: 'claude-sonnet-5' },
+            { code: 'haiku', value: 'Haiku', resolvedModel: 'claude-haiku-4-5' },
+        ], capabilities: ['claude-opus-5-5-v1', 'claude-fable-5-2-v1'] } as never;
+        const listed = getAvailableModels('claude', metadata, t);
+        const catalogResolved = (key: string) => (metadata as { models: { code: string; resolvedModel: string }[] }).models.find((m) => m.code === key)?.resolvedModel ?? null;
+        const run = catalogRunnableKeys('claude', (metadata as { models: { code: string }[] }).models.map((m) => m.code), { claudeFable52: true });
+        const pinned = layoutModelPicker(listed, { flavor: 'claude', selectedKey: 'claude-opus-5-5', resolved: catalogResolved, runnable: run });
+        expect(keys(pinned.primary)).toEqual(['default', 'claude-opus-5-5', 'claude-fable-5-2', 'sonnet', 'haiku']);
+        expect(keys(pinned.more)).toContain('claude-fable-5-1');
+        const fable = layoutModelPicker(listed, { flavor: 'claude', selectedKey: 'claude-fable-5-2[1m]', resolved: catalogResolved, runnable: run });
+        expect(fable.longContext).toEqual({ on: true, onKey: 'claude-fable-5-2[1m]', offKey: 'claude-fable-5-2' });
+        // A session already on Fable 5.1 still finds (and shows) it, with its 1M switch.
+        const old = layoutModelPicker(listed, { flavor: 'claude', selectedKey: 'claude-fable-5-1[1m]', resolved: catalogResolved, runnable: run });
+        expect(old.selectedInMore).toBe(true);
+        expect(old.longContext).toEqual({ on: true, onKey: 'claude-fable-5-1[1m]', offKey: 'claude-fable-5-1' });
+        // Same catalog from an SDK 0.3.318 wrapper (no claude-fable-5-2-v1): unchanged, Fable 5.1 on top.
+        const legacy = { ...(metadata as object), capabilities: ['claude-opus-5-5-v1'] } as never;
+        const legacyRun = catalogRunnableKeys('claude', (metadata as { models: { code: string }[] }).models.map((m) => m.code), { claudeFable52: false });
+        const before = layoutModelPicker(getAvailableModels('claude', legacy, t), { flavor: 'claude', selectedKey: 'claude-opus-5-5', resolved: catalogResolved, runnable: legacyRun });
+        expect(keys(before.primary)).toEqual(['default', 'claude-opus-5-5', 'claude-fable-5-1', 'sonnet', 'haiku']);
+    });
+    it('B-907 (SDK 0.3.322 on an API-key provider): the `fable` alias resolving to claude-fable-5-2 is Fable\'s family pick', () => {
+        const metadata = { models: [
+            { code: 'default', value: 'Default (recommended)', resolvedModel: 'claude-opus-5-5' },
+            { code: 'opus', value: 'Opus 5.5', resolvedModel: 'claude-opus-5-5' },
+            { code: 'fable', value: 'Fable', resolvedModel: 'claude-fable-5-2' },
+            { code: 'sonnet', value: 'Sonnet 5', resolvedModel: 'claude-sonnet-5' },
+            { code: 'haiku', value: 'Haiku 4.5', resolvedModel: 'claude-haiku-4-5' },
+        ], capabilities: ['claude-opus-5-5-v1', 'claude-fable-5-2-v1'] } as never;
+        const listed = getAvailableModels('claude', metadata, t);
+        const catalogResolved = (key: string) => (metadata as { models: { code: string; resolvedModel: string }[] }).models.find((m) => m.code === key)?.resolvedModel ?? null;
+        const run = catalogRunnableKeys('claude', (metadata as { models: { code: string }[] }).models.map((m) => m.code), { claudeFable52: true });
+        const layout = layoutModelPicker(listed, { flavor: 'claude', selectedKey: 'claude-opus-5-5', resolved: catalogResolved, runnable: run });
+        expect(keys(layout.primary)).toEqual(['default', 'claude-opus-5-5', 'claude-fable-5-2', 'sonnet', 'haiku']);
+        expect(keys(layout.more)).toContain('fable');
+    });
     it('Codex 0.154 catalog: the newest of each tier is a gpt-6 model, even the ones its Codex does not bundle', () => {
         const codes = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.2'];
         const listed = getAvailableModels('codex', { models: codes.map((code) => ({ code, value: code })) } as never, t);

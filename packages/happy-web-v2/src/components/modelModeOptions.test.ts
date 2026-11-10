@@ -30,12 +30,14 @@ describe('resolved default model labels', () => {
     });
 });
 
-describe('Claude model picker (Fable 5.1)', () => {
-    it('mirrors the bundled Claude Code 2.1.318 /model aliases and pins Opus 5.5 and Fable 5.1', () => {
+describe('Claude model picker (Fable 5.2 / 5.1)', () => {
+    it('mirrors the bundled Claude Code 2.1.318 /model aliases and pins Opus 5.5, Fable 5.2 and Fable 5.1', () => {
         const modes = getClaudeModelModes();
         const byKey = Object.fromEntries(modes.map((m) => [m.key, m.name]));
         expect(byKey).toMatchObject({
             default: 'default model',
+            'claude-fable-5-2': 'Fable 5.2',
+            'claude-fable-5-2[1m]': 'Fable 5.2 · 1M',
             'claude-fable-5-1': 'Fable 5.1',
             'claude-fable-5-1[1m]': 'Fable 5.1 · 1M',
             fable: 'fable (alias)',
@@ -209,7 +211,29 @@ describe('model-specific reasoning catalogs', () => {
         // A session already on claude-fable-5-1: CC lists that id, still named 「Fable」.
         expect(withClaudeCatalogBases([{ key: 'claude-fable-5-1', name: 'Fable' }, { key: 'claude-opus-5-5', name: 'Opus 5.5 (custom)' }]))
             .toEqual([{ key: 'claude-fable-5-1', name: 'Fable 5.1' }, { key: 'claude-opus-5-5', name: 'Opus 5.5 (custom)' }]);
-        expect([...catalogRunnableKeys('claude', ['claude-fable-5-1[1m]'])]).toEqual(['claude-fable-5-1[1m]', 'claude-fable-5-1', 'claude-opus-5-5']);
+        expect([...catalogRunnableKeys('claude', ['claude-fable-5-1[1m]'])]).toEqual(['claude-fable-5-1[1m]', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-fable-5-2']);
+        expect([...catalogRunnableKeys('claude', ['claude-fable-5-1[1m]'], { claudeFable52: false })]).toEqual(['claude-fable-5-1[1m]', 'claude-fable-5-1', 'claude-opus-5-5']);
+    });
+    it('B-907: pinned Fable 5.2 is offered in a session only when its wrapper advertises claude-fable-5-2-v1', () => {
+        const t = (k: string) => k;
+        // SDK 0.3.322 supportedModels() on a subscription login, 2026-11-10: still only Fable 5.1 [1m].
+        const models = [
+            { code: 'default', value: 'Default (recommended)', resolvedModel: 'claude-opus-5-5' },
+            { code: 'opus', value: 'Opus', resolvedModel: 'claude-opus-5-5' },
+            { code: 'claude-fable-5-1[1m]', value: 'Fable', resolvedModel: 'claude-fable-5-1' },
+            { code: 'haiku', value: 'Haiku', resolvedModel: 'claude-haiku-4-5' },
+        ];
+        const fresh = getAvailableModels('claude', { models, capabilities: ['claude-opus-5-5-v1', 'claude-fable-5-2-v1'] } as any, t as any).map((m) => `${m.key}=${m.name}`);
+        expect(fresh).toEqual(expect.arrayContaining(['claude-fable-5-2=Fable 5.2', 'claude-fable-5-2[1m]=Fable 5.2 · 1M', 'claude-fable-5-1=Fable 5.1']));
+        // An SDK 0.3.318 wrapper (no capability): not listed — it runs only Fable 5.1 from this list.
+        const old = getAvailableModels('claude', { models, capabilities: ['claude-opus-5-5-v1'] } as any, t as any).map((m) => m.key);
+        expect(old).not.toContain('claude-fable-5-2');
+        expect(old).not.toContain('claude-fable-5-2[1m]');
+        // On an API-key provider CC 2.1.322 lists the `fable` alias, resolving to 5.2.
+        expect(withClaudeCatalogBases([{ key: 'claude-fable-5-2[1m]', name: 'Fable' }])).toEqual([
+            { key: 'claude-fable-5-2', name: 'Fable 5.2', description: null },
+            { key: 'claude-fable-5-2[1m]', name: 'Fable 5.2 · 1M' },
+        ]);
     });
     it('uses ACP thought levels independently of permissions, including legacy pi levels', () => {
         const thoughtLevels = [{ code: 'off', value: 'Off' }, { code: 'custom', value: 'Deep' }];

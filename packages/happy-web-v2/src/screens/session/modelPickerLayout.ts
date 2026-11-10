@@ -25,7 +25,7 @@ export const LONG_CONTEXT_SUFFIX = '[1m]';
 // B-893: the two flagship families (Opus, Fable) lead.
 const CLAUDE_FAMILY_ORDER: readonly ModelFamily[] = ['opus', 'fable', 'sonnet', 'haiku'];
 /** Keys Claude Code accepts with the 1M marker (the pre-B-849a list offered exactly these). */
-const CLAUDE_LONG_CONTEXT_BASES: ReadonlySet<string> = new Set(['claude-opus-5-5', 'claude-fable-5-1', 'opus', 'sonnet', 'fable']);
+const CLAUDE_LONG_CONTEXT_BASES: ReadonlySet<string> = new Set(['claude-opus-5-5', 'claude-fable-5-2', 'claude-fable-5-1', 'opus', 'sonnet', 'fable']);
 
 const baseKey = (key: string) => key.endsWith(LONG_CONTEXT_SUFFIX) ? key.slice(0, -LONG_CONTEXT_SUFFIX.length) : key;
 

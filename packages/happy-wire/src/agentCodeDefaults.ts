@@ -39,6 +39,22 @@ export function isClaudeOpus55Model(model: string): boolean {
     return model === CLAUDE_OPUS_55_MODEL || model === `${CLAUDE_OPUS_55_MODEL}[1m]`;
 }
 
+/**
+ * B-907: Fable 5.2 first ships in claude-agent-sdk 0.3.322 (Claude Code
+ * 2.1.322: known model, `fable` alias → claude-fable-5-2). Wrappers on that
+ * SDK advertise this capability; the picker offers the pinned id in a live
+ * session only then. An older Claude Code still runs the id when asked
+ * (`--model` / `setModel`, probed 2026-11-10 on 2.1.318 via an API-key
+ * provider: an `unrecognized_model` warning, 200k context) — so the
+ * capability gates what we list, not what a session may run.
+ */
+export const CLAUDE_FABLE_52_MODEL = 'claude-fable-5-2';
+export const CLAUDE_FABLE_52_CAPABILITY = 'claude-fable-5-2-v1';
+
+export function supportsClaudeFable52(metadata: { capabilities?: string[] | null } | null | undefined): boolean {
+    return metadata?.capabilities?.includes(CLAUDE_FABLE_52_CAPABILITY) === true;
+}
+
 export const AGENT_CODE_DEFAULTS: Readonly<Record<AgentKey, AgentDefaultConfig>> = {
     // The Claude UI key for YOLO is `bypassPermissions`; the CLI also accepts
     // `yolo` and maps it to the Claude SDK's bypass mode.
