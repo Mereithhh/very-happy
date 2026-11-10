@@ -28,7 +28,7 @@ import {
 } from '@/claude/utils/sessionProtocolMapper';
 import { InvalidateSync } from '@/utils/sync';
 import axios from 'axios';
-import { createEnvelope } from '@slopus/happy-wire';
+import { createEnvelope, type TurnFailure } from '@slopus/happy-wire';
 import { scanUndeliveredQueuedInputs, type UndeliveredScan } from '@/utils/undeliveredQueuedInputs';
 import type { QueueDiscardReason } from '@/utils/MessageQueue2';
 import { normalizeAgentUsage, usageAgentKey } from './usageReport';
@@ -1387,6 +1387,32 @@ export class ApiSessionClient extends EventEmitter {
             backgroundTasks: tasks.length > 0 ? { updatedAt: now, tasks } : undefined,
         }));
     });
+
+    /**
+     * B-913: record that this turn ended on a model / upstream API error
+     * (agentState `turnFailure`, read by the web under TURN_FAILURE_CAPABILITY).
+     */
+    setTurnFailure(failure: TurnFailure): void {
+        this.turnFailureSet = true;
+        this.updateAgentState((state) => ({ ...state, turnFailure: failure }));
+    }
+
+    /**
+     * B-913: a new turn started or a turn succeeded — the failure is over.
+     * Writes only when one is recorded (here or in the agentState a restarted
+     * wrapper inherited), so ordinary turns cost nothing.
+     */
+    clearTurnFailure(): void {
+        if (!this.turnFailureSet && !this.agentState?.turnFailure) return;
+        this.turnFailureSet = false;
+        this.updateAgentState((state) => {
+            if (!state.turnFailure) return state;
+            const { turnFailure: _cleared, ...rest } = state;
+            return { ...rest, turnFailure: null };
+        });
+    }
+
+    private turnFailureSet = false;
 
     keepAlive(thinking: boolean, mode: 'local' | 'remote', backgroundTasks?: readonly BackgroundTaskInfo[]) {
         // B-587: a hibernating wrapper stops beating, so no beat can be

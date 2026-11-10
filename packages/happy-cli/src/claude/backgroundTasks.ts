@@ -36,13 +36,31 @@ export interface BackgroundTaskInfo {
     description: string;
     /** Wrapper-local ms epoch of when this task was first seen in the background. */
     startedAt: number;
+    /** B-913: the shell command a `run_in_background` Bash runs (its tool_use input), clipped. */
+    command?: string;
+    /** B-913: the turn that launched it — when it started and the first line of its prompt. */
+    turn?: { startedAt: number; prompt: string };
 }
 
 export const BACKGROUND_TASKS_MAX = 50;
 export const BACKGROUND_TASK_DESCRIPTION_MAX = 200;
+/** B-913: the turn label is a reminder, not the prompt. */
+export const BACKGROUND_TASK_TURN_PROMPT_MAX = 80;
 
 const text = (value: unknown): string | null => typeof value === 'string' && value.length > 0 && !value.includes('\0') ? value : null;
 const clip = (value: string): string => value.length <= BACKGROUND_TASK_DESCRIPTION_MAX ? value : `${value.slice(0, BACKGROUND_TASK_DESCRIPTION_MAX - 1)}…`;
+
+/** B-913: the first line a person typed — leading context blocks (`<project…>…</project…>`) and attachment paths dropped. */
+export function turnPromptLabel(prompt: string): string {
+    let text = prompt.replace(/\r/g, '');
+    for (let i = 0; i < 8; i += 1) {
+        const block = /^\s*<([A-Za-z][\w-]*)\b[^>]*>[\s\S]*?<\/\1>\s*/.exec(text);
+        if (!block) break;
+        text = text.slice(block[0].length);
+    }
+    const line = text.split('\n').map((l) => l.trim()).find((l) => l.length > 0) ?? '';
+    return line.length <= BACKGROUND_TASK_TURN_PROMPT_MAX ? line : `${line.slice(0, BACKGROUND_TASK_TURN_PROMPT_MAX - 1)}…`;
+}
 
 const SETTLED_STATUSES = new Set(['completed', 'failed', 'killed']);
 
@@ -61,16 +79,29 @@ export function createBackgroundTaskTracker() {
     /** Tasks known to be in the background. */
     const background = new Map<string, BackgroundTaskInfo>();
     /** Every task_started we saw (foreground included), so a later move to the background keeps its description. */
-    const known = new Map<string, { id: string; type: string; description: string; toolUseId: string | null }>();
+    const known = new Map<string, { id: string; type: string; description: string; toolUseId: string | null; turn?: BackgroundTaskInfo['turn'] }>();
+    /** B-913: Bash tool_use id → its command, so a backgrounded command can say what it runs. */
+    const commands = new Map<string, string>();
+    /** B-913: the turn being run now (`beginTurn`). */
+    let currentTurn: BackgroundTaskInfo['turn'] | undefined;
 
-    const add = (id: string, now: number, meta?: { type?: string; description?: string }) => {
+    const commandFor = (toolUseId: string | null | undefined): string | undefined => {
+        const command = toolUseId ? commands.get(toolUseId) : undefined;
+        return command ? clip(command) : undefined;
+    };
+
+    const add = (id: string, now: number, meta?: { type?: string; description?: string; toolUseId?: string | null }) => {
         const existing = background.get(id);
         const seen = known.get(id);
+        const command = existing?.command ?? commandFor(meta?.toolUseId ?? seen?.toolUseId);
+        const turn = existing?.turn ?? seen?.turn ?? currentTurn;
         background.set(id, {
             id,
             type: meta?.type ?? existing?.type ?? seen?.type ?? 'unknown',
             description: clip(meta?.description ?? existing?.description ?? seen?.description ?? ''),
             startedAt: existing?.startedAt ?? now,
+            ...(command ? { command } : {}),
+            ...(turn ? { turn: { ...turn } } : {}),
         });
         if (background.size > BACKGROUND_TASKS_MAX) background.delete(background.keys().next().value!);
     };
@@ -84,7 +115,7 @@ export function createBackgroundTaskTracker() {
                     const id = text(task?.task_id);
                     if (!id || task.ambient === true) continue;
                     next.add(id);
-                    add(id, now, { type: text(task.task_type) ?? undefined, description: text(task.description) ?? undefined });
+                    add(id, now, { type: text(task.task_type) ?? undefined, description: text(task.description) ?? undefined, toolUseId: text(task.tool_use_id) });
                 }
                 for (const id of [...background.keys()]) if (!next.has(id)) background.delete(id);
                 return;
@@ -93,7 +124,7 @@ export function createBackgroundTaskTracker() {
             if (!id) return;
             if (m.subtype === 'task_started') {
                 if (m.ambient === true || m.skip_transcript === true) return;
-                const meta = { id, type: text(m.task_type) ?? 'unknown', description: clip(text(m.description) ?? ''), toolUseId: text(m.tool_use_id) };
+                const meta = { id, type: text(m.task_type) ?? 'unknown', description: clip(text(m.description) ?? ''), toolUseId: text(m.tool_use_id), turn: currentTurn };
                 known.set(id, meta);
                 if (known.size > BACKGROUND_TASKS_MAX * 4) known.delete(known.keys().next().value!);
                 if (m.is_backgrounded === true) add(id, now, meta);
@@ -105,6 +136,18 @@ export function createBackgroundTaskTracker() {
                 return;
             }
             if (m.subtype === 'task_notification') { background.delete(id); return; }
+            return;
+        }
+        // B-913: remember what each Bash call runs (main thread and sub-agents alike).
+        if (m.type === 'assistant' && Array.isArray(m.message?.content)) {
+            for (const block of m.message.content) {
+                if (block?.type !== 'tool_use' || block.name !== 'Bash') continue;
+                const toolUseId = text(block.id);
+                const command = text(block.input?.command);
+                if (!toolUseId || !command) continue;
+                commands.set(toolUseId, command.replace(/\s+/g, ' ').trim());
+                if (commands.size > BACKGROUND_TASKS_MAX * 4) commands.delete(commands.keys().next().value!);
+            }
             return;
         }
         // Foreground Agent moved to the background: its tool_result is the async stub.
@@ -122,13 +165,20 @@ export function createBackgroundTaskTracker() {
     function reset(): void {
         background.clear();
         known.clear();
+        commands.clear();
+    }
+
+    /** B-913: a turn starts (the launcher pulled the next prompt) — tasks it launches carry it. */
+    function beginTurn(prompt: string, now: number = Date.now()): void {
+        const label = turnPromptLabel(prompt);
+        currentTurn = { startedAt: now, prompt: label };
     }
 
     function list(): BackgroundTaskInfo[] {
-        return [...background.values()].sort((a, b) => a.startedAt - b.startedAt).map((task) => ({ ...task }));
+        return [...background.values()].sort((a, b) => a.startedAt - b.startedAt).map((task) => ({ ...task, ...(task.turn ? { turn: { ...task.turn } } : {}) }));
     }
 
-    return { observe, reset, list };
+    return { observe, reset, list, beginTurn };
 }
 
 export type BackgroundTaskTracker = ReturnType<typeof createBackgroundTaskTracker>;

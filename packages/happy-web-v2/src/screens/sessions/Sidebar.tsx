@@ -1,11 +1,12 @@
 import { agentStatusSignal, codingAgentLabel, type AgentExecution } from '@/sync/agentStatus';
+import { sessionTurnFailure } from '@/sync/turnFailure';
 import { showsUnreadDot } from '@/sync/unreadTransition';
 import type { RecentMachinePath } from '@/utils/quickChat';
 import { BrandIcon, BrandEnvBadge } from '@/ui/BrandMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ChevronRight, X, UsersRound, ArrowDownWideNarrow, ListOrdered, FolderOpen, Clock3, Crown, Bot, RotateCcw, Cable, Trash2, History, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, FolderKanban, FolderPlus, Tags } from 'lucide-react';
+import { Search, Plus, CircleHelp, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ChevronRight, X, UsersRound, ArrowDownWideNarrow, ListOrdered, FolderOpen, Clock3, Crown, Bot, RotateCcw, Cable, Trash2, History, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, FolderKanban, FolderPlus, Tags, TriangleAlert } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalAt, createTerminalHere } from '@/app/newTerminal';
@@ -2099,7 +2100,12 @@ function SidebarRow({
   const progressLabel = progress
     ? [t('sidebar.progressTooltip', { text: progress.text }), progress.stale ? t('sidebar.progressOutdated') : ''].filter(Boolean).join(' · ')
     : '';
-  const slotLabel = [status ? statusLabel : '', progressLabel].filter(Boolean).join(' · ');
+  // B-913: the last turn stopped on a model API error. Shown where nothing more
+  // urgent holds the slot (live work, a pending question, an offline wrapper).
+  const turnFailure = !isTerminal && status !== 'running' && status !== 'background' && status !== 'input' && status !== 'offline'
+    ? sessionTurnFailure(s) : null;
+  const slotLabel = [turnFailure ? t('sidebar.rowTurnFailed', { summary: turnFailure.summary }) : status ? statusLabel : '', progressLabel].filter(Boolean).join(' · ');
+  const slotClass = turnFailure ? 'failed' : status;
 
   const open = () => navigate(row.href);
 
@@ -2336,8 +2342,9 @@ function SidebarRow({
           </span>
           <span className="sb-row-sub mono">{row.subtitle}</span>
         </span>
-        <span className={`sb-row-status${status ? ` sb-row-status--${status}` : ''}`} title={slotLabel ? `${agentLabel} · ${slotLabel}` : undefined} role={slotLabel ? 'img' : undefined} aria-label={slotLabel ? `${agentLabel} · ${slotLabel}` : undefined}>
-          {status === 'running' || status === 'background' ? <Spinner size={14} /> : status === 'input' ? <CircleAlert size={14} />
+        <span className={`sb-row-status${slotClass ? ` sb-row-status--${slotClass}` : ''}`} title={slotLabel ? `${agentLabel} · ${slotLabel}` : undefined} role={slotLabel ? 'img' : undefined} aria-label={slotLabel ? `${agentLabel} · ${slotLabel}` : undefined}>
+          {turnFailure ? <TriangleAlert size={13} data-testid="sb-row-turn-failed" />
+            : status === 'running' || status === 'background' ? <Spinner size={14} /> : status === 'input' ? <CircleAlert size={14} />
             : status === 'unknown' ? <UnknownStatus size={13} /> : status === 'offline' ? (hibernated ? <Moon size={13} /> : <Unplug size={13} />)
             : status === 'unread' ? <span className="sb-row-unread-dot" /> : null}
         </span>

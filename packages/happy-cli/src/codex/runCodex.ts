@@ -1,4 +1,5 @@
-import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
+import { codexTurnFailure } from './codexTurnFailure';
 import { issueSessionMetadata } from '@/issues/sessionMetadata';
 import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
 import { createProjectInjector } from '@/projects/injector';
@@ -181,7 +182,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
-        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_LIVE_PERMISSION_CAPABILITY],
+        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY, CODEX_COMPACT_CAPABILITY, RUN_INTENT_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_LIVE_PERMISSION_CAPABILITY, TURN_FAILURE_CAPABILITY],
     });
     // B-874: issue_* tools + issue digest (spec §5).
     metadata.capabilities = [...(metadata.capabilities ?? []), ISSUE_SESSION_CAPABILITY];
@@ -627,8 +628,33 @@ export async function runCodex(opts: {
         session.keepAlive(thinking, 'remote');
     }, 2000);
 
+    // B-913: the failure the current turn ended on (agentState turnFailure);
+    // the ready push becomes the one "turn failed" push.
+    let turnFailure: TurnFailure | null = null;
+    const noteTurnFailure = (failure: string | null) => {
+        const next = codexTurnFailure(failure);
+        if (!next) return;
+        turnFailure = next;
+        session.setTurnFailure(next);
+    };
+
     const sendReady = () => {
         session.sendSessionEvent({ type: 'ready' });
+        const failed = turnFailure;
+        turnFailure = null;
+        if (failed) {
+            try {
+                api.push().sendTurnFailedNotification({
+                    sessionId: session.sessionId,
+                    metadata: session.getMetadata(),
+                    provider: 'codex',
+                    summary: failed.summary,
+                });
+            } catch (pushError) {
+                logger.debug('[Codex] Failed to send turn-failed push', safeCodexErrorMetadata(pushError));
+            }
+            return;
+        }
         try {
             api.push().sendSessionNotification({
                 kind: 'done',
@@ -1021,6 +1047,7 @@ export async function runCodex(opts: {
                 messageBuffer.addMessage(`Task failed: ${failure}`, 'status');
                 session.sendSessionEvent({ type: 'message', message: `Codex error: ${failure}` });
                 noteAccountFailure(failure);
+                noteTurnFailure(failure);
             } else {
                 messageBuffer.addMessage('Task completed', 'status');
             }
@@ -1030,6 +1057,7 @@ export async function runCodex(opts: {
                 messageBuffer.addMessage(`Turn aborted: ${failure}`, 'status');
                 session.sendSessionEvent({ type: 'message', message: `Codex error: ${failure}` });
                 noteAccountFailure(failure);
+                noteTurnFailure(failure);
             } else {
                 messageBuffer.addMessage('Turn aborted', 'status');
             }
@@ -1370,6 +1398,9 @@ export async function runCodex(opts: {
 
             idleRelease.cancel();
             turnActive = true;
+            // B-913: a new prompt — the last turn's failure is over.
+            turnFailure = null;
+            session.clearTurnFailure();
 
             if (isCodexClearText(message.message)) {
                 logger.debug('[Codex] Handling /clear command - resetting Codex thread state');

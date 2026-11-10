@@ -26,6 +26,10 @@ export type ReportedBackgroundTask = {
     type?: string | null;
     description?: string | null;
     startedAt?: number | null;
+    /** B-913 (newer CLI): what a backgrounded Bash runs. */
+    command?: string | null;
+    /** B-913 (newer CLI): the turn that launched it. */
+    turn?: { startedAt: number; prompt: string } | null;
 };
 
 export type BackgroundTaskEntry = {
@@ -33,6 +37,10 @@ export type BackgroundTaskEntry = {
     kind: 'command' | 'monitor' | 'agent' | 'other';
     description: string | null;
     startedAt: number | null;
+    /** B-913: the command line (commands only), else null. */
+    command: string | null;
+    /** B-913: the launching turn, null from an older CLI / after a wrapper restart. */
+    turn: { startedAt: number; prompt: string } | null;
 };
 
 export function backgroundTaskKind(type: string | null | undefined): BackgroundTaskEntry['kind'] {
@@ -65,9 +73,23 @@ export function backgroundTaskEntries(
         const kind = backgroundTaskKind(task.type);
         const description = typeof task.description === 'string' && task.description.trim() ? task.description.trim() : null;
         if (kind === 'agent' && description && cardDescriptions.has(description)) continue;
-        out.push({ id: task.id, kind, description, startedAt: typeof task.startedAt === 'number' ? task.startedAt : null });
+        const command = typeof task.command === 'string' && task.command.trim() ? task.command.trim() : null;
+        const turn = task.turn && typeof task.turn.startedAt === 'number' && typeof task.turn.prompt === 'string' ? { startedAt: task.turn.startedAt, prompt: task.turn.prompt } : null;
+        out.push({ id: task.id, kind, description, startedAt: typeof task.startedAt === 'number' ? task.startedAt : null, command, turn });
     }
     return out.sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
+}
+
+/**
+ * B-913: the chip's words. Title = what runs (the command line for a command,
+ * else the agent's description); detail = how long + which turn launched it.
+ * An older CLI sends neither command nor turn: `detailed` is false and the
+ * chip keeps its one-line form.
+ */
+export function backgroundTaskChipText(task: BackgroundTaskEntry): { title: string | null; mono: boolean; turnPrompt: string | null; detailed: boolean } {
+    const command = task.kind === 'command' ? task.command : null;
+    const turnPrompt = task.turn?.prompt?.trim() ? task.turn.prompt.trim() : null;
+    return { title: command ?? task.description, mono: command !== null, turnPrompt, detailed: command !== null || turnPrompt !== null };
 }
 
 /** Compact age for a chip: 45s / 12m / 3h / 2d. */

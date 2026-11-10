@@ -236,6 +236,12 @@
 .sa-dock-stop { display:inline-flex; align-items:center; justify-content:center; flex:none; align-self:stretch; min-width:28px; border:0; border-left:var(--hairline) solid var(--line); background:transparent; color:var(--text-faint); }
 @media (hover: hover) and (pointer: fine) { .sa-dock-stop:hover:not(:disabled) { color:var(--text); background:var(--fill-hover); } }
 .sa-dock-item--task.is-stopping { opacity:.6; }
+/* B-913: a newer CLI says what runs and which turn launched it — two lines: command (mono) / age · turn. */
+.sa-dock-item--detailed { max-width:min(360px, 100%); }
+.sa-dock-lines { display:flex; flex-direction:column; min-width:0; line-height:1.3; }
+.sa-dock-cmd { font-family:var(--font-mono); font-size:var(--chat-fs-secondary); color:var(--text); }
+.sa-dock-detail { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-faint); font-size:var(--chat-fs-secondary); }
+.sa-dock-detail .sa-dock-age { font-family:inherit; }
 @media(pointer:coarse) { .sa-dock-stop { min-width:44px; } }
 
 /* B-614: the agent's type sits in the meta, glyph + name like every other agent chip. */

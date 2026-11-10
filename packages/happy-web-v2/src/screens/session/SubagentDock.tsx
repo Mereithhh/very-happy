@@ -9,7 +9,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { buildSubagentSummary, isSubagentToolName } from './subagentSummary';
 import { presentedSubagentStatus, userAbortedAt } from './subagentAbort';
 import { openSubagentPanel } from './subagentPanelState';
-import { backgroundTaskEntries, formatTaskAge, type BackgroundTaskEntry } from './backgroundTaskDock';
+import { backgroundTaskChipText, backgroundTaskEntries, formatTaskAge, type BackgroundTaskEntry } from './backgroundTaskDock';
 import { stopBackgroundTask } from './claudeRuntimeControl';
 import { AgentGlyph } from './AgentChip';
 import './subagent.css';
@@ -112,14 +112,32 @@ function BackgroundTaskChip({ sessionId, task, now, canStop, messages }: {
             toast.error(t('session.chat.stopBackgroundTaskFailed', { error: e instanceof Error ? e.message : String(e) }));
         }
     };
-    const title = [kindLabel, task.description, age ? t('session.chat.backgroundTaskAge', { age }) : null].filter(Boolean).join(' · ');
-    const body = <>
-        <span aria-hidden><Spinner size={16} className="tg-subagent-spinner" /></span>
-        <Icon size={13} aria-hidden className="sa-dock-kind" />
-        <span className="sa-dock-title">{task.description ?? kindLabel}</span>
-        {age && <span className="sa-dock-state sa-dock-age">{age}</span>}
-    </>;
-    return <span className={`sa-dock-item sa-dock-item--task${stopping ? ' is-stopping' : ''}`} title={title}>
+    // B-913: command line, how long, which turn — enough to judge "stuck or just slow" without asking.
+    const text = backgroundTaskChipText(task);
+    const turnAt = task.turn ? new Date(task.turn.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+    const title = [kindLabel, text.mono ? task.command : null, task.description, age ? t('session.chat.backgroundTaskAge', { age }) : null,
+        text.turnPrompt ? t('session.chat.backgroundTaskTurn', { prompt: text.turnPrompt }) : null,
+        turnAt ? t('session.chat.backgroundTaskTurnAt', { time: turnAt }) : null].filter(Boolean).join(' · ');
+    const body = text.detailed
+        ? <>
+            <span aria-hidden><Spinner size={16} className="tg-subagent-spinner" /></span>
+            <Icon size={13} aria-hidden className="sa-dock-kind" />
+            <span className="sa-dock-lines">
+                <span className={`sa-dock-title${text.mono ? ' sa-dock-cmd' : ''}`}>{text.title ?? kindLabel}</span>
+                <span className="sa-dock-detail">
+                    {age && <span className="sa-dock-age">{t('session.chat.backgroundTaskAge', { age })}</span>}
+                    {age && text.turnPrompt && <span aria-hidden> · </span>}
+                    {text.turnPrompt && <span className="sa-dock-turn">{t('session.chat.backgroundTaskTurn', { prompt: text.turnPrompt })}</span>}
+                </span>
+            </span>
+        </>
+        : <>
+            <span aria-hidden><Spinner size={16} className="tg-subagent-spinner" /></span>
+            <Icon size={13} aria-hidden className="sa-dock-kind" />
+            <span className="sa-dock-title">{task.description ?? kindLabel}</span>
+            {age && <span className="sa-dock-state sa-dock-age">{age}</span>}
+        </>;
+    return <span className={`sa-dock-item sa-dock-item--task${text.detailed ? ' sa-dock-item--detailed' : ''}${stopping ? ' is-stopping' : ''}`} title={title} data-testid="background-task-chip">
         {agentCard
             ? <button type="button" className="sa-dock-open" onClick={() => openSubagentPanel(sessionId, agentCard.id)}>{body}</button>
             : <span className="sa-dock-open">{body}</span>}

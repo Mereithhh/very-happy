@@ -27,6 +27,7 @@ import { notesPanelTransition, type NotesPanelSnapshot } from './notesPanelTrans
 import { setNotesPanelOpen } from '../notes/notesPanelState';
 import { SessionWorkspacePanel } from './SessionWorkspacePanel';
 import { HumanAttentionBanner } from './HumanAttentionBanner';
+import { TurnFailureBanner } from './TurnFailureBanner';
 import { QuickOpen } from '../quickopen/QuickOpen';
 import { useRetainedWorkspace } from '../workspace/useRetainedWorkspace';
 import { onBtwOpen } from './btwPanelState';
@@ -437,6 +438,8 @@ export function SessionDetailScreen() {
                     : <ProjectSuggestionBanner key={`project-suggestion:${id}`} sessionId={id} />)}
                 {/* B-510: an agent asked for a person (request_human). */}
                 {session && !mirror && <HumanAttentionBanner key={`human-attention:${id}`} sessionId={id} />}
+                {/* B-913: the last turn stopped on a model API error → say so, offer 重试 */}
+                {session && !mirror && !sharedWithMe && <TurnFailureBanner key={`turn-failure:${id}`} sessionId={id} />}
                 {/* recoverability: inactive session (archived OR offline) → restore banner */}
                 {session && !mirror && !sharedWithMe && canOfferRestore(session, bannerMachine) && <SessionArchivedBanner sessionId={id} />}
                 {/* B-462: live session still on an older wrapper than the machine runs → offer a restart */}

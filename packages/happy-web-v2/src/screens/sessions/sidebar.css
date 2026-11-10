@@ -841,6 +841,8 @@
 .sb-row-icon.sb-row-icon--neutral { color: var(--text-dim); }
 .sb-row-status { display:inline-flex; align-items:center; justify-content:center; flex:0 0 16px; width:16px; height:16px; color: var(--text-dim); }
 .sb-row-status--input { color: var(--warn); }
+/* B-913: last turn stopped on a model API error — needs the person, like an unread error. */
+.sb-row-status--failed { color: var(--danger); }
 .sb-row-status--unknown, .sb-row-status--offline { color: var(--text-faint); }
 .sb-row-unread-dot { width:6px; height:6px; border-radius:50%; background: var(--danger); }
 
