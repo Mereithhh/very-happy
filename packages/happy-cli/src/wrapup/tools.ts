@@ -14,7 +14,7 @@ import type { AssistantToolRegistrar } from '@/assistant/assistantTools'
 import { WRAPUP_TOOL_NAMES } from '@slopus/happy-wire'
 import {
     HANDOFF_SEND_INPUT, SESSION_HANDOFF_INPUT, SESSION_WRAPUP_INPUT, WRAPUP_REPORT_INPUT,
-    HandoffSendInputSchema, SessionHandoffInputSchema, SessionWrapupInputSchema, WrapupReportInputSchema,
+    HandoffSendInputSchema, SessionHandoffInputSchema, SessionWrapupInputSchema, WrapupReportInputSchema, sessionWrapupIds,
 } from './report'
 import type { WrapupTracker } from './tracker'
 import { requestHandoff, requestWrapup, type BuiltinRequestResult } from './request'
@@ -35,7 +35,7 @@ const SPECS: Record<WrapupToolName, { title: string; description: string; inputS
     },
     session_wrapup: {
         title: 'Ask Sessions To Wrap Up',
-        description: 'Ask other sessions to wrap up (「收尾」) with the account\'s wrap-up template (or `template`): each gets one ordinary turn, and its result arrives as a card on the user\'s board — nothing is archived by this. Batch up to 20 ids. Receipt per id: queued (sent), running (already wrapping up, nothing sent — safe to repeat) or error (e.g. not running: it must be live to take a turn).',
+        description: 'Ask other sessions to wrap up (「收尾」) with the account\'s wrap-up template (or `template`): each gets one ordinary turn, and its result arrives as a card on the user\'s board — nothing is archived by this. Batch up to 20 ids (session_ids, or one session_id). A session that is offline (hibernated) is woken on its machine first; an archived one is refused. Receipt per id: { ok, sessionId, state }: queued (sent), running (already wrapping up, nothing sent — safe to repeat) or error.',
         inputSchema: SESSION_WRAPUP_INPUT, readOnly: false,
     },
     session_handoff: {
@@ -75,25 +75,30 @@ export async function executeWrapupTool(name: WrapupToolName, args: unknown, con
         }
         case 'session_wrapup': {
             const input = parse(SessionWrapupInputSchema, args)
-            const results: BuiltinRequestResult[] = await (context.requestWrapup ?? requestWrapup)(input.session_ids, {
+            const results: BuiltinRequestResult[] = await (context.requestWrapup ?? requestWrapup)(sessionWrapupIds(input), {
                 ...(input.template ? { template: input.template } : {}),
                 ...(input.request_id ? { requestId: input.request_id } : {}),
                 self: context.selfId(),
             })
-            return { results }
+            // `ok` per id: the B-916 receipt shape `{ ok, sessionId, state }`.
+            return { results: results.map(withOk) }
         }
         case 'session_handoff': {
             const input = parse(SessionHandoffInputSchema, args)
-            return (context.requestHandoff ?? requestHandoff)({
+            return withOk(await (context.requestHandoff ?? requestHandoff)({
                 from: input.from, to: input.to,
                 ...(input.to_title ? { toTitle: input.to_title } : {}),
                 ...(input.machine_id ? { machineId: input.machine_id } : {}),
                 archiveAfter: input.archive_after === true,
                 ...(input.note ? { note: input.note } : {}),
                 ...(input.request_id ? { requestId: input.request_id } : {}),
-            })
+            }))
         }
     }
+}
+
+function withOk(result: BuiltinRequestResult): BuiltinRequestResult & { ok: boolean } {
+    return { ok: result.state !== 'error', ...result }
 }
 
 /** A failed handoff is reported as a tool error so the agent cannot miss it. */

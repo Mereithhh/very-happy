@@ -56,4 +56,15 @@ describe('wrap-up tool surface', () => {
         expect(requestHandoff).toHaveBeenCalledWith({ from: 'a1', to: 'b1', archiveAfter: true })
         expect(tracker.report).not.toHaveBeenCalled()
     })
+    it('B-916 contract: session_id alias and an ok flag on every receipt', async () => {
+        const context = { selfId: () => 's1', tracker: { report: vi.fn(), handoff: vi.fn() } }
+        const requestWrapup = vi.fn(async () => [{ sessionId: 'a1', state: 'queued' as const }, { sessionId: 'b1', state: 'error' as const, error: 'archived' }])
+        expect(await executeWrapupTool('session_wrapup', { session_id: 'b1', session_ids: ['a1'] }, { ...context, requestWrapup })).toEqual({
+            results: [{ ok: true, sessionId: 'a1', state: 'queued' }, { ok: false, sessionId: 'b1', state: 'error', error: 'archived' }],
+        })
+        expect(requestWrapup).toHaveBeenCalledWith(['a1', 'b1'], { self: 's1' })
+        await expect(executeWrapupTool('session_wrapup', {}, { ...context, requestWrapup })).rejects.toThrow(/session_ids or session_id/)
+        const requestHandoff = vi.fn(async () => ({ sessionId: 'a1', state: 'running' as const }))
+        expect(await executeWrapupTool('session_handoff', { from: 'a1', to: 'b1' }, { ...context, requestHandoff })).toEqual({ ok: true, sessionId: 'a1', state: 'running' })
+    })
 })

@@ -610,12 +610,15 @@ very-happy sessions handoff <from> --to <id> [--archive] [--note <text>] [--json
 The same two actions the Web offers in the session menu (「收尾」, also the
 `/wrapup` slash command, and 「交接给…」), for scripts and the main agent. Each
 sends one ordinary turn into the session; the matching MCP tools are
-`session_wrapup` (`session_ids` 1–20, optional `template`, `request_id`) and
-`session_handoff` (`from`, `to`, `archive_after`, `note`, `request_id`).
-Receipt per session: `queued`, `running` (that session is already wrapping up
-or handing off — nothing is sent, so a nightly batch can repeat safely) or
-`error` (e.g. not running). Any machine of the account (the owning machine's
-daemon delivers, as for `message`).
+`session_wrapup` (`session_ids` 1–20 or one `session_id`, optional `template`,
+`request_id`) and `session_handoff` (`from`, `to`, `archive_after`, `note`,
+`request_id`). Receipt per session: `{ ok, sessionId, state }` with `queued`,
+`running` (that session is already wrapping up or handing off — nothing is
+sent, so a nightly batch can repeat safely) or `error` (archived, not found, or
+could not be woken). Any machine of the account (the owning machine's daemon
+delivers, as for `message`); an offline (hibernated) session is resumed on its
+machine first and gets the turn once it is live; an archived one is refused,
+never unarchived.
 
 - **Wrap-up** uses the account template (Web → Settings, stored in plain text
   in the account KV `vh.wrapup.v1`; a generic default otherwise) plus a short

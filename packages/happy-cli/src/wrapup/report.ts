@@ -56,11 +56,19 @@ export type HandoffSendInput = z.infer<typeof HandoffSendInputSchema>
 /** `session_wrapup` batch cap: one call stays well inside the 30 s RPC budget per remote target. */
 export const SESSION_WRAPUP_MAX_IDS = 20
 export const SESSION_WRAPUP_INPUT = {
-    session_ids: z.array(sessionId).min(1).max(SESSION_WRAPUP_MAX_IDS).describe('Sessions to wrap up (1-20)'),
+    session_ids: z.array(sessionId).min(1).max(SESSION_WRAPUP_MAX_IDS).optional().describe('Sessions to wrap up (1-20)'),
+    /** B-916 main-agent contract `session_wrapup(sessionId)`: one id, same as `session_ids: [id]`. */
+    session_id: sessionId.optional().describe('One session to wrap up (same as session_ids: [id])'),
     template: z.string().trim().min(1).max(WRAPUP_TEMPLATE_MAX_CHARS).optional().describe('Use this text instead of the account\'s wrap-up template'),
     request_id: requestId.optional(),
 }
 export const SessionWrapupInputSchema = z.object(SESSION_WRAPUP_INPUT)
+    .refine((i) => (i.session_ids?.length ?? 0) + (i.session_id ? 1 : 0) > 0, { message: 'session_ids or session_id is required', path: ['session_ids'] })
+    .refine((i) => (i.session_ids?.length ?? 0) + (i.session_id ? 1 : 0) <= SESSION_WRAPUP_MAX_IDS, { message: `at most ${SESSION_WRAPUP_MAX_IDS} sessions`, path: ['session_ids'] })
+/** Ids of a `session_wrapup` call: `session_ids` then `session_id` (duplicates collapse later). */
+export function sessionWrapupIds(input: SessionWrapupInput): string[] {
+    return [...(input.session_ids ?? []), ...(input.session_id ? [input.session_id] : [])]
+}
 export type SessionWrapupInput = z.infer<typeof SessionWrapupInputSchema>
 
 /** `session_handoff`: ask session `from` to hand its work over to `to`. */
