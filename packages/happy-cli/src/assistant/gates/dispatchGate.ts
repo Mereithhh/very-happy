@@ -44,6 +44,11 @@ const PAYLOAD_FIELD: Readonly<Record<string, string>> = {
 
 export const DISPATCH_APPROVED_TOOL = 'dispatch_approved'
 const BOARD_WRITE_TOOLS = new Set(['owner_board_post', 'owner_board_update', 'owner_board_resolve'])
+
+/** QA80 P3: the reserved prefix matches after trim + lowercase (`  MAIN-AGENT-DISPATCH:x` is reserved too). */
+export function isReservedCardKey(key: unknown): boolean {
+    return typeof key === 'string' && key.trim().toLowerCase().startsWith(DISPATCH_CARD_KEY_PREFIX)
+}
 export const DISPATCH_CARD_KEY_PREFIX = 'main-agent-dispatch:'
 export const RECEIPT_MAX_CHARS = 400
 
@@ -231,8 +236,11 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         }
     }
 
-    async function approved(args: { approvalId?: unknown }): Promise<ToolResult> {
-        const approvalId = typeof args?.approvalId === 'string' ? args.approvalId : ''
+    async function approved(args: { approvalId?: unknown; boardItemId?: unknown }): Promise<ToolResult> {
+        // QA80 P3: after a new conversation / compaction the main agent may only hold the card id.
+        // Resolve it to the approval through the gate's own pending records; every check below is unchanged.
+        let approvalId = typeof args?.approvalId === 'string' ? args.approvalId : ''
+        if (!approvalId && typeof args?.boardItemId === 'string' && args.boardItemId) approvalId = (await approvalIdForCard(args.boardItemId)) ?? ''
         if (!APPROVAL_ID_RE.test(approvalId)) return fail({ error: 'approval_not_found' })
         const done = await readJson(donePath(approvalId))
         if (done?.result) return ok({ ok: true, state: 'already_dispatched', approvalId, result: done.result.slice(0, 200) })
@@ -282,17 +290,21 @@ export function createDispatchGate(deps: DispatchGateDeps) {
     }
     async function release(id: string): Promise<void> { await unlink(inflightPath(id)).catch(() => {}) }
 
-    /** Ids of the cards this gate posted (pending files), for the board write guard. */
-    async function isGateCard(id: string): Promise<boolean> {
+    /** The approval whose pending record names this card (the gate's own records only). */
+    async function approvalIdForCard(id: string): Promise<string | null> {
         try {
             const { readdir } = await import('node:fs/promises')
             for (const name of await readdir(deps.pendingDir)) {
                 if (!name.endsWith('.json') || name.endsWith('.done.json')) continue
                 const p = await readJson(join(deps.pendingDir, name))
-                if (p?.boardItemId === id) return true
+                if (p?.boardItemId === id && typeof p.approvalId === 'string') return p.approvalId
             }
         } catch { /* no dir yet */ }
-        return false
+        return null
+    }
+    /** Ids of the cards this gate posted (pending files), for the board write guard. */
+    async function isGateCard(id: string): Promise<boolean> {
+        return (await approvalIdForCard(id)) !== null
     }
 
     /**
@@ -302,7 +314,7 @@ export function createDispatchGate(deps: DispatchGateDeps) {
      */
     async function boardWriteRefusal(name: string, args: Record<string, unknown>): Promise<string | null> {
         if (name === 'owner_board_post') {
-            return typeof args?.key === 'string' && args.key.startsWith(DISPATCH_CARD_KEY_PREFIX) ? 'reserved_card' : null
+            return isReservedCardKey(args?.key) ? 'reserved_card' : null
         }
         const id = typeof args?.id === 'string' ? args.id : ''
         if (!id) return null
@@ -310,7 +322,7 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         if (!deps.board) return null
         try {
             const item = await deps.board.findById(id)
-            return item?.key?.startsWith(DISPATCH_CARD_KEY_PREFIX) ? 'reserved_card' : null
+            return isReservedCardKey(item?.key) ? 'reserved_card' : null
         } catch { return 'board_unavailable' }
     }
 
@@ -336,10 +348,10 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         /** Register `dispatch_approved` on the real server. */
         registerApprovedTool(mcp: AssistantToolRegistrar): void {
             (mcp.registerTool as any)(DISPATCH_APPROVED_TOOL, {
-                description: 'Run a dispatch the owner approved on the decision board. Pass the approvalId from the awaiting_decision receipt. Runs only when the owner chose 批准执行 (approve) or 只出草稿 (draft; the prompt then forbids sending). Idempotent: a second call returns the first result.',
+                description: 'Run a dispatch the owner approved on the decision board. Pass the approvalId from the awaiting_decision receipt (or, if you only have the card id from the board message, boardItemId). Runs only when the owner chose 批准执行 (approve) on the unchanged card; 只出草稿 (draft) dispatches nothing — write the draft in chat. Idempotent: a second call returns the first result.',
                 title: 'Run Approved Dispatch',
-                inputSchema: { approvalId: z.string().min(1).max(64) },
-            }, (args: { approvalId?: unknown }) => approved(args))
+                inputSchema: { approvalId: z.string().min(1).max(64).optional(), boardItemId: z.string().min(1).max(128).optional().describe('The decision card id, when the approvalId is not at hand') },
+            }, (args: { approvalId?: unknown; boardItemId?: unknown }) => approved(args))
         },
         /** Test hook. */
         _intercept: intercept,

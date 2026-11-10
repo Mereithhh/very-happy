@@ -206,7 +206,7 @@ risk: 'none' | 'external' | 'production'
 
 **批准后执行**。用户在汇报板选择后，server 把选择写入卡片（`resolvedBy='owner'`、`ownerChoice`），Web 同时往主 agent 会话发一条 board 消息（localId 前缀 `board-`，B-766 现有机制）把它唤醒；只调 owner-respond API 不会唤醒会话，主 agent 下一回合的汇报板摘要里同样能看到。主 agent 调 `dispatch_approved({approvalId})`，工具层：
 
-1. 读 pending 文件；不存在，或其中没有 `boardItemId` / 卡面 hash（发卡失败）→ `{ok:false, error:'approval_not_found'}`，**不跳过校验**（QA77 #3）。
+1. 读 pending 文件（入参是 `approvalId`；只有卡片 id 时可传 `boardItemId`，由闸 2 在自己的 pending 记录里反查 approvalId，之后校验不变）；不存在，或其中没有 `boardItemId` / 卡面 hash（发卡失败）→ `{ok:false, error:'approval_not_found'}`，**不跳过校验**（QA77 #3）。
 2. 按 `boardItemId` 读回卡片，key 必须是 `main-agent-dispatch:<approvalId>`；卡片仍 open → `awaiting_decision`。
 3. **卡面绑定**（QA77 P1）：发卡时按 server 存下的卡片算 `sha256({key, title, body_md, options[].id+label})` 存进 pending；此时重算，不一致 → `{ok:false, error:'card_tampered'}`。改标题、改正文、对调按钮 label 都会被拒。
 4. 要求 `resolvedBy='owner'`，否则 `not_approved`；参数 sha256 与 pending 不一致 → `approval_mismatch`（防止批 A 派 B）。
@@ -217,7 +217,7 @@ risk: 'none' | 'external' | 'production'
    - `ownerChoice='drop'` → 不执行，回执 `{ok:true, state:'dropped'}`；
    - 其他选择 → `not_approved`。
 
-**写保护**（QA77 #2）：主 agent 会话的 `owner_board_post / update / resolve` 一律拒绝 key 前缀 `main-agent-dispatch:` 的卡（post 看 key；update / resolve 看本地 pending 记录和读回的卡片 key，读不到按拒绝处理），回执 `{ok:false, error:'reserved_card'}`。这类卡只由闸 2 内部路径发出，不经过 MCP 工具。server 侧无法区分同一个账号 token 下「闸 2 内部」与「主 agent 的 MCP 工具」两种来源（两者都是本机 wrapper 用账号 token 调同一个 `/v1/attention-items`），所以不加 server 拒绝，靠第 3 步卡面绑定兜底。
+**写保护**（QA77 #2）：主 agent 会话的 `owner_board_post / update / resolve` 一律拒绝 key 前缀 `main-agent-dispatch:` 的卡（先 trim 再转小写比较）（post 看 key；update / resolve 看本地 pending 记录和读回的卡片 key，读不到按拒绝处理），回执 `{ok:false, error:'reserved_card'}`。这类卡只由闸 2 内部路径发出，不经过 MCP 工具。server 侧无法区分同一个账号 token 下「闸 2 内部」与「主 agent 的 MCP 工具」两种来源（两者都是本机 wrapper 用账号 token 调同一个 `/v1/attention-items`），所以不加 server 拒绝，靠第 3 步卡面绑定兜底。
 
 链接格式：`<webappUrl>/session/<主 agent sessionId>?panel=board`，后面跟 ` （决策 <boardItemId>）`。
 
