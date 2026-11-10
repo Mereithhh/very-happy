@@ -856,6 +856,8 @@ export type AgentState = {
   /** B-507: background tasks still in flight, renewed every 60s while non-empty
    *  (`update/backgroundTaskActivity.ts`). Readers expire it by `updatedAt`. */
   backgroundTasks?: { updatedAt: number; tasks: import('@/claude/backgroundTasks').BackgroundTaskInfo[] } | null
+  /** B-913: the last turn ended on a model / upstream API error; cleared when the next turn starts or succeeds. */
+  turnFailure?: import('@slopus/happy-wire').TurnFailure | null
   requests?: {
     [id: string]: {
       tool: string,

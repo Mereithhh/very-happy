@@ -30,3 +30,24 @@ describe('B-510 sendAttention (compat matrix)', () => {
         expect(post).toHaveBeenCalledTimes(1)
     })
 })
+
+describe('B-913 sendTurnFailedNotification', () => {
+    beforeEach(() => { post.mockReset() })
+
+    it('rides the done kind with its own words and data.type turn-failed', async () => {
+        post.mockResolvedValueOnce({ data: { success: true } })
+        client().sendTurnFailedNotification({ sessionId: 's1', metadata: { path: '/w/repo' } as any, provider: 'claude', summary: 'API Error: 400 bad request' })
+        await new Promise((r) => setTimeout(r, 0))
+        expect(post).toHaveBeenCalledTimes(1)
+        const [url, body] = post.mock.calls[0]
+        expect(url).toBe('https://relay.example/v1/sessions/s1/push-event')
+        expect(body).toMatchObject({ kind: 'done', title: 'Turn failed', body: 'repo · API Error: 400 bad request', data: { kind: 'done', type: 'turn-failed', provider: 'claude', error: 'API Error: 400 bad request', sessionId: 's1', url: '/session/s1' } })
+    })
+
+    it('keeps the body within the server limit', async () => {
+        post.mockResolvedValueOnce({ data: { success: true } })
+        client().sendTurnFailedNotification({ sessionId: 's1', metadata: null, provider: 'codex', summary: 'x'.repeat(800) })
+        await new Promise((r) => setTimeout(r, 0))
+        expect(post.mock.calls[0][1].body.length).toBeLessThanOrEqual(500)
+    })
+})

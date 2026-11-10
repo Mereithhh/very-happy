@@ -19,7 +19,7 @@ import type { EnhancedMode, PermissionMode } from './loop';
 import type { MessageMeta } from '@/api/types';
 import type { QueueDiscardEntry } from '@/utils/MessageQueue2';
 import { spawnOriginTags } from '@/utils/createSessionMetadata';
-import { AGENT_PROFILE_SESSION_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, restoredEffort, restoredModel } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, restoredEffort, restoredModel } from '@slopus/happy-wire';
 import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
 import { announceForkBackfill, FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { configuration } from '@/configuration';
@@ -285,6 +285,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     };
     // B-874: issue_* tools + issue digest (spec §5).
     metadata.capabilities = [...(metadata.capabilities ?? []), ISSUE_SESSION_CAPABILITY];
+    // B-913: this wrapper records model / API turn failures (agentState.turnFailure).
+    metadata.capabilities = [...metadata.capabilities, TURN_FAILURE_CAPABILITY];
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
     const reconnectSessionId = reconnectEnv.HAPPY_RECONNECT_SESSION_ID;

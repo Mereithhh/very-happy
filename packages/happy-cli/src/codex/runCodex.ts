@@ -1,4 +1,5 @@
-import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
+import { codexTurnFailure } from './codexTurnFailure';
 import { issueSessionMetadata } from '@/issues/sessionMetadata';
 import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
 import { createProjectInjector } from '@/projects/injector';
@@ -185,6 +186,8 @@ export async function runCodex(opts: {
     });
     // B-874: issue_* tools + issue digest (spec §5).
     metadata.capabilities = [...(metadata.capabilities ?? []), ISSUE_SESSION_CAPABILITY];
+    // B-913: this wrapper records model / API turn failures (agentState.turnFailure).
+    metadata.capabilities = [...metadata.capabilities, TURN_FAILURE_CAPABILITY];
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
     // B-844c: no sticky model yet (DEFAULT_CODEX_MODEL is undefined); the
@@ -627,8 +630,33 @@ export async function runCodex(opts: {
         session.keepAlive(thinking, 'remote');
     }, 2000);
 
+    // B-913: the failure the current turn ended on (agentState turnFailure);
+    // the ready push becomes the one "turn failed" push.
+    let turnFailure: TurnFailure | null = null;
+    const noteTurnFailure = (failure: string | null) => {
+        const next = codexTurnFailure(failure);
+        if (!next) return;
+        turnFailure = next;
+        session.setTurnFailure(next);
+    };
+
     const sendReady = () => {
         session.sendSessionEvent({ type: 'ready' });
+        const failed = turnFailure;
+        turnFailure = null;
+        if (failed) {
+            try {
+                api.push().sendTurnFailedNotification({
+                    sessionId: session.sessionId,
+                    metadata: session.getMetadata(),
+                    provider: 'codex',
+                    summary: failed.summary,
+                });
+            } catch (pushError) {
+                logger.debug('[Codex] Failed to send turn-failed push', safeCodexErrorMetadata(pushError));
+            }
+            return;
+        }
         try {
             api.push().sendSessionNotification({
                 kind: 'done',
@@ -1019,6 +1047,7 @@ export async function runCodex(opts: {
             const failure = describeCodexFailure(msg);
             if (failure) {
                 messageBuffer.addMessage(`Task failed: ${failure}`, 'status');
+                noteTurnFailure(failure);
                 session.sendSessionEvent({ type: 'message', message: `Codex error: ${failure}` });
                 noteAccountFailure(failure);
             } else {
@@ -1028,6 +1057,7 @@ export async function runCodex(opts: {
             const failure = describeCodexFailure(msg);
             if (failure) {
                 messageBuffer.addMessage(`Turn aborted: ${failure}`, 'status');
+                noteTurnFailure(failure);
                 session.sendSessionEvent({ type: 'message', message: `Codex error: ${failure}` });
                 noteAccountFailure(failure);
             } else {
@@ -1355,6 +1385,10 @@ export async function runCodex(opts: {
             if (!message) {
                 break;
             }
+
+            // B-913: a new prompt — the last turn's failure is over.
+            turnFailure = null;
+            session.clearTurnFailure();
 
             // B-622: the wrapper owns a prompt from here — respawning a released
             // app-server (B-461 drops it after 5 idle minutes), resuming the

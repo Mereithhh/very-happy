@@ -65,7 +65,10 @@ workflow 等后台任务。它们完成时会向会话投递 `task_notification`
   - 边沿与 level 都应用：两者对同一转换的结果一致（level 先到则边沿是幂等重放；边沿先到则 level 覆盖为同一集合），不会互相打架。
 - `reset()`：query 重建/结束时清空（SDK 文档要求，且新进程的 task_id 与旧集合无关）。
 - `list()`：按 `startedAt` 升序，≤ 50 条；`description` 截到 200 字；`type` 直接用 `task_type`（`local_bash`/`local_agent`/`monitor`/…）。
-- 变化判定 `sameTasks(a, b)` 只比 id 集合与描述，供调用方决定是否发边沿。
+- 变化判定 `sameTasks(a, b)` 比 id 集合、描述，以及 B-913 的 `command` / `turn`，供调用方决定是否发边沿。
+- **B-913 补充字段**（可选，旧读者忽略）：`command`（`local_bash` 的命令行，取自同一 `tool_use_id` 的 Bash `tool_use.input.command`，截 200 字）、`turn: { startedAt, prompt }`（发起它的那一轮：launcher 拉到下一条 prompt 时 `beginTurn`，prompt 取首行、去掉前置上下文块、截 80 字）。
+  SDK 0.3.322 实测顺序是 **level 先到（无 `tool_use_id`）、`task_started` 随后**，命令要等边沿才补上——所以 `sameTasks` 必须把它算作变化，否则补上的命令永远发不出去（B-913 e2e 首轮踩到）。
+  Web dock：后台命令以任务 chip 为准（命令 / 已运行 / 发起轮次 / 停止），点击打开同描述的 background-command 卡片面板，卡片本身不再重复列出；子代理仍按 B-518 以卡片为准。
 
 接线：`claudeRemoteLauncher.onMessage` 里 `runtimeControls.observe` 旁边 `backgroundTasks.observe`；`onQueryReady`/`finally setQuery(null)` 处 `reset`；每次 observe 后 `session.setBackgroundTasks(tracker.list())`（`Session` 只在集合变化时触发一次立即心跳）。
 

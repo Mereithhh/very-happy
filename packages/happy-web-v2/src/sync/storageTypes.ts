@@ -232,8 +232,21 @@ export const AgentStateSchema = z.object({
             type: z.string().nullish(),
             description: z.string().nullish(),
             startedAt: z.number().nullish(),
+            /** B-913: what a backgrounded Bash runs (CLI-clipped). */
+            command: z.string().nullish().catch(undefined),
+            /** B-913: the turn that launched it. */
+            turn: z.object({ startedAt: z.number(), prompt: z.string() }).nullish().catch(undefined),
         })),
     }).nullish(),
+    /** B-913: the last turn ended on a model / upstream API error (wrappers
+     *  with `turn-failure-v1`); read through `sessionTurnFailure`. Lenient:
+     *  a malformed value drops only this field. */
+    turnFailure: z.object({
+        at: z.number(),
+        summary: z.string(),
+        provider: z.string().nullish(),
+        status: z.number().nullish(),
+    }).nullish().catch(undefined),
     requests: z.record(z.string(), z.object({
         tool: z.string(),
         arguments: z.any(),

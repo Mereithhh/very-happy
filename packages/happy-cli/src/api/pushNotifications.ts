@@ -274,8 +274,10 @@ export class PushNotificationClient {
         kind: SessionNotificationKind
         metadata: Metadata | null | undefined
         data?: Record<string, any>
+        /** B-913: wording for an event the kind's default copy does not fit (a failed turn). */
+        copy?: { title: string; body: string }
     }): void {
-        const { title, body } = getSessionNotificationCopy(params.kind, params.metadata)
+        const { title, body } = params.copy ?? getSessionNotificationCopy(params.kind, params.metadata)
         const sessionTitle = getSessionNotificationBody(params.metadata)
         const url = getSessionNotificationUrl(params.data)
         const payloadData = {
@@ -316,6 +318,29 @@ export class PushNotificationClient {
                 logger.debug('[PUSH] sendSessionNotification failed:', error)
             }
         })()
+    }
+
+    /**
+     * B-913: a turn the model / upstream API ended with an error. Rides the
+     * `done` kind (every server accepts it; webhooks file it under the user's
+     * 「完成」 category, device pushes follow the same subscription + presence
+     * rules), with its own words and `data.type: 'turn-failed'`. The caller
+     * sends it once per failure, instead of — never besides — the turn's ready push.
+     */
+    sendTurnFailedNotification(params: {
+        sessionId: string
+        metadata: Metadata | null | undefined
+        provider: string
+        summary: string
+    }): void {
+        const sessionTitle = getSessionNotificationBody(params.metadata)
+        const body = `${sessionTitle} · ${params.summary}`
+        this.sendSessionNotification({
+            kind: 'done',
+            metadata: params.metadata,
+            copy: { title: 'Turn failed', body: body.length <= 500 ? body : `${body.slice(0, 499)}…` },
+            data: { sessionId: params.sessionId, type: 'turn-failed', provider: params.provider, error: params.summary },
+        })
     }
 
     /**

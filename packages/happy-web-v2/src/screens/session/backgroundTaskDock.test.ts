@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ToolCallMessage } from '@/sync/typesMessage';
-import { backgroundTaskEntries, formatTaskAge } from './backgroundTaskDock';
+import { backgroundTaskChipText, backgroundTaskEntries, commandCardFor, dockCardsBesideTasks, formatTaskAge } from './backgroundTaskDock';
 
 const card = (description: string) => ({ kind: 'tool-call', id: 'c', tool: { name: 'Agent', input: { description } } } as unknown as ToolCallMessage);
 const tasks = [
@@ -26,5 +26,40 @@ describe('B-518 background task dock entries', () => {
         expect(formatTaskAge(0, 12 * 60_000)).toBe('12m');
         expect(formatTaskAge(0, 34 * 3600_000)).toBe('1d');
         expect(formatTaskAge(null, 1)).toBeNull();
+    });
+});
+
+describe('B-913 chip detail: command, age, launching turn', () => {
+    it('a newer CLI: the command line is the title (mono), the turn prompt the detail', () => {
+        const [entry] = backgroundTaskEntries([{ id: 'b', type: 'local_bash', description: 'wait for CI', startedAt: 5, command: 'gh run watch 123', turn: { startedAt: 1, prompt: 'merge when green' } }], 1, []);
+        expect(entry).toMatchObject({ command: 'gh run watch 123', turn: { startedAt: 1, prompt: 'merge when green' } });
+        expect(backgroundTaskChipText(entry)).toEqual({ title: 'gh run watch 123', mono: true, turnPrompt: 'merge when green', detailed: true });
+    });
+    it('an agent keeps its description as the title, still with the turn', () => {
+        const [entry] = backgroundTaskEntries([{ id: 'a', type: 'local_agent', description: 'Explore repo', turn: { startedAt: 1, prompt: 'look around' } }], 1, []);
+        expect(backgroundTaskChipText(entry)).toEqual({ title: 'Explore repo', mono: false, turnPrompt: 'look around', detailed: true });
+    });
+    it('an older CLI (no command / turn): the one-line chip as before', () => {
+        const [entry] = backgroundTaskEntries([{ id: 'b', type: 'local_bash', description: 'sleep 300', startedAt: 5 }], 1, []);
+        expect(entry).toMatchObject({ command: null, turn: null });
+        expect(backgroundTaskChipText(entry)).toEqual({ title: 'sleep 300', mono: false, turnPrompt: null, detailed: false });
+    });
+});
+
+describe('B-913 one chip per backgrounded command', () => {
+    const commandCard = (id: string, description: string) => ({ kind: 'tool-call', id, tool: { name: 'Bash', input: { description, command: 'sleep 9' } }, subagent: { status: 'running', subagentType: 'background-command' } } as unknown as ToolCallMessage);
+    it('the task chip stands for its command card (and opens it); other cards stay', () => {
+        const bash = commandCard('c-bash', 'wait loop');
+        const agent = card('Explore repo');
+        const tasks = backgroundTaskEntries([{ id: 't1', type: 'local_bash', description: 'wait loop', command: 'sleep 9' }], 1, [bash, agent]);
+        expect(commandCardFor(tasks[0], [bash, agent])).toBe(bash);
+        expect(dockCardsBesideTasks([bash, agent], tasks)).toEqual([agent]);
+    });
+    it('a plain Bash card with the same words but no background marker is not merged; no tasks → all cards', () => {
+        const plain = { ...commandCard('c', 'wait loop'), subagent: undefined } as unknown as ToolCallMessage;
+        const tasks = backgroundTaskEntries([{ id: 't1', type: 'local_bash', description: 'wait loop' }], 1, [plain]);
+        expect(commandCardFor(tasks[0], [plain])).toBeUndefined();
+        expect(dockCardsBesideTasks([plain], tasks)).toEqual([plain]);
+        expect(dockCardsBesideTasks([plain], [])).toEqual([plain]);
     });
 });

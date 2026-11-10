@@ -119,3 +119,56 @@ describe('B-507 wrapper wiring', () => {
         expect(session).toContain('this.thinking = thinking;\n        this.client.keepAlive(thinking, this.mode, this.backgroundTasks);');
     });
 });
+
+describe('B-913 background task detail: command and launching turn', () => {
+    const bash = (id: string, command: string) => ({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command, run_in_background: true, description: 'wait for CI' } }] } }) as any;
+
+    it('a backgrounded Bash carries its command and the turn that launched it (level and edge paths)', () => {
+        const t = createBackgroundTaskTracker();
+        t.beginTurn('<project-context>repo notes</project-context>\n\n  watch the deploy until healthy\nsecond line', 900);
+        t.observe(bash('tu-1', 'until curl -fs  http://x/health; do sleep 5; done'), 950);
+        t.observe(sys('task_started', { task_id: 'b1', tool_use_id: 'tu-1', task_type: 'local_bash', description: 'wait for CI', is_backgrounded: true }), 1_000);
+        // the next turn starts; the task still belongs to the first one
+        t.beginTurn('something else', 2_000);
+        t.observe(sys('background_tasks_changed', { tasks: [{ task_id: 'b1', task_type: 'local_bash', description: 'wait for CI' }] }), 2_100);
+        expect(t.list()).toEqual([{
+            id: 'b1', type: 'local_bash', description: 'wait for CI', startedAt: 1_000,
+            command: 'until curl -fs http://x/health; do sleep 5; done',
+            turn: { startedAt: 900, prompt: 'watch the deploy until healthy' },
+        }]);
+    });
+
+    it('no turn / no Bash call seen (e.g. right after a wrapper restart) → the fields are absent, not empty', () => {
+        const t = createBackgroundTaskTracker();
+        t.observe(sys('background_tasks_changed', { tasks: [{ task_id: 'a', task_type: 'local_agent', description: 'Explore' }] }), 1_000);
+        expect(t.list()).toEqual([{ id: 'a', type: 'local_agent', description: 'Explore', startedAt: 1_000 }]);
+    });
+
+    it('labels are clipped; a list copy cannot mutate the tracker', () => {
+        const t = createBackgroundTaskTracker();
+        t.beginTurn('x'.repeat(300), 1);
+        t.observe(bash('tu-2', 'y'.repeat(500)), 2);
+        t.observe(sys('task_started', { task_id: 'b2', tool_use_id: 'tu-2', task_type: 'local_bash', description: 'd', is_backgrounded: true }), 3);
+        const [task] = t.list();
+        expect(task.command!.length).toBeLessThanOrEqual(BACKGROUND_TASK_DESCRIPTION_MAX);
+        expect(task.turn!.prompt.length).toBeLessThanOrEqual(80);
+        task.turn!.prompt = 'mutated';
+        expect(t.list()[0].turn!.prompt).not.toBe('mutated');
+    });
+});
+
+describe('B-913 real SDK order (0.3.322 probe): level first, then task_started with the tool_use id', () => {
+    it('the command fills in on the edge and counts as a change to publish', () => {
+        const t = createBackgroundTaskTracker();
+        t.beginTurn('start BG-TASK please', 10);
+        t.observe({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'while true; do sleep 5; done', description: 'wait loop', run_in_background: true } }] } } as any, 20);
+        t.observe(sys('background_tasks_changed', { tasks: [{ task_id: 'bw', task_type: 'local_bash', description: 'wait loop' }] }), 30);
+        const afterLevel = t.list();
+        expect(afterLevel[0].command).toBeUndefined();
+        t.observe(sys('task_started', { task_id: 'bw', tool_use_id: 'toolu_1', task_type: 'local_bash', description: 'wait loop', is_backgrounded: true }), 31);
+        const afterEdge = t.list();
+        expect(afterEdge[0]).toMatchObject({ command: 'while true; do sleep 5; done', turn: { startedAt: 10, prompt: 'start BG-TASK please' }, startedAt: 30 });
+        expect(sameBackgroundTasks(afterLevel, afterEdge)).toBe(false);
+        expect(sameBackgroundTasks(afterEdge, t.list())).toBe(true);
+    });
+});

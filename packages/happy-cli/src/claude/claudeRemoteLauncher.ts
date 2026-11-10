@@ -2,6 +2,7 @@ import { createRuntimeControls, isRuntimeCheckpointReplay } from './runtimeContr
 import { leadBoardFor } from '@/attention/leadBoard';
 import { finalizeRemotePrompt } from './finalizeRemotePrompt';
 import { createBackgroundTaskTracker } from './backgroundTasks';
+import { createClaudeTurnFailureDetector } from './turnFailure';
 import { notifyDaemonClaudeAuthFailed } from '@/daemon/controlClient';
 import { Session } from "./session";
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
@@ -125,6 +126,20 @@ export async function claudeRemoteLauncher(
     session.client.rpcHandlerManager.registerHandler('claude-runtime-control', async input => runtimeControls.request(input));
     // B-507: what is still running in the background, published on the heartbeat.
     const backgroundTasks = createBackgroundTaskTracker();
+    // B-913: a turn the model / upstream API ended with an error.
+    const turnFailures = createClaudeTurnFailureDetector();
+    /** B-913: the prompt as the person wrote it (before project / board context), for the turn label. */
+    let lastRawPrompt: string | null = null;
+    /** B-913: a pulled prompt starts a turn — the last failure is over, tasks launched now belong to it. */
+    const startTurn = <T extends { message: unknown } | null>(next: T): T => {
+        if (next) {
+            turnFailures.reset();
+            session.client.clearTurnFailure();
+            backgroundTasks.beginTurn(lastRawPrompt ?? (typeof next.message === 'string' ? next.message : ''));
+            lastRawPrompt = null;
+        }
+        return next;
+    };
 
     async function abort() {
         if (abortController && !abortController.signal.aborted) {
@@ -342,6 +357,7 @@ export async function claudeRemoteLauncher(
         runtimeControls.observe(message);
         backgroundTasks.observe(message);
         session.setBackgroundTasks(backgroundTasks.list());
+        turnFailures.observe(message);
         session.scheduledWakeups.observe(message);
         // B-631: retries and warnings used to vanish with every other system
         // frame (OutgoingMessageQueue keeps only task_*): a person sitting
@@ -609,7 +625,7 @@ export async function claudeRemoteLauncher(
                     isAborted: (toolCallId: string) => {
                         return permissionHandler.isAborted(toolCallId);
                     },
-                    nextMessage: async () => {
+                    nextMessage: async () => startTurn(await (async () => {
                         // takeParked() adopts as it hands the message over — this
                         // launch exists BECAUSE of that mode. (The two used to be
                         // separate steps and the adopt was missing: B-292.)
@@ -619,6 +635,7 @@ export async function claudeRemoteLauncher(
                         // B-766: localIds of the batch being finalized (queue path); a parked replay has none.
                         let batchSourceIds: string[] | undefined;
                         const finalize = async (prompt: string): Promise<string> => {
+                            lastRawPrompt = prompt;
                             // B-766: the turn starts here (owner questions it answers, `this_turn` anchor) and
                             // a lead's prompt carries the open briefing-board items.
                             const out = await finalizeRemotePrompt(prompt, {
@@ -709,7 +726,7 @@ export async function claudeRemoteLauncher(
 
                         // Exit
                         return null;
-                    },
+                    })()),
                     onSessionFound: (sessionId) => {
                         // Update converter's session ID when new session is found
                         sdkToLogConverter.updateSessionId(sessionId);
@@ -869,6 +886,24 @@ export async function claudeRemoteLauncher(
                             session.client.closeClaudeSessionTurn('cancelled');
                             session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                             return;
+                        }
+                        // B-913: a model / upstream API error ended this turn — say so
+                        // (agentState turnFailure → banner + sidebar marker) and push
+                        // once, unless the next prompt is already waiting to run.
+                        const failure = turnFailures.conclude(result);
+                        if (failure) {
+                            session.client.setTurnFailure(failure);
+                            const idle = !modeGate.hasParked && session.queue.size() === 0 && !session.client.promptQueueHasPending();
+                            if (idle) {
+                                session.api.push().sendTurnFailedNotification({
+                                    sessionId: session.client.sessionId,
+                                    metadata: session.client.getMetadata(),
+                                    provider: 'claude',
+                                    summary: failure.summary,
+                                });
+                            }
+                        } else {
+                            session.client.clearTurnFailure();
                         }
                         applyClaudeResultLifecycle(result, {
                             closeCompleted: () => session.client.closeClaudeSessionTurn('completed'),

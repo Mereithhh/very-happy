@@ -248,6 +248,20 @@ describe('buildWebhookPayload', () => {
         expect(p!.message.startsWith('#')).toBe(false);
     });
 
+    it('B-913: a failed turn (done + type turn-failed) is never 任务完成; it carries the error line', () => {
+        const p = buildWebhookPayload({
+            body: 'repo · API Error: 400 bad request',
+            data: { kind: 'done', type: 'turn-failed', sessionTitle: 'repo', provider: 'claude', error: 'API Error: 400 bad request' },
+        });
+        expect(p!.title).toBe('⚠️ 本轮出错 · repo');
+        expect(p!.message).toContain('本轮因模型 API 错误中断：API Error: 400 bad request');
+        expect(p!.message).not.toContain('任务已完成');
+        // still the user's 「完成」 category — the same opt-in governs it
+        expect(mapKindToWebhookEvent('done')).toBe('completed');
+        const bare = buildWebhookPayload({ body: 'repo', data: { kind: 'done', type: 'turn-failed', sessionTitle: 'repo' } });
+        expect(bare!.message).toContain('本轮因模型 API 错误中断。');
+    });
+
     it('builds a permission payload including the tool name', () => {
         const p = buildWebhookPayload({
             body: 'my-project',
