@@ -66,6 +66,8 @@ describe('B-916c main agent gate wiring', () => {
         expect(server).toContain('registerAutomationTools(dispatchRegistrar);')
         expect(server).toContain('registerSessionPeerTools(dispatchRegistrar, createSessionPeerToolExecutor(client));')
         expect(server).toContain('registerAssistantTools(dispatchRegistrar);')
-        expect(server).toContain('if (options.mainAgent) options.mainAgent.gate.registerApprovedTool(mcp);')
+        expect(server).toContain('if (options?.mainAgent) options.mainAgent.gate.registerApprovedTool(mcp);')
+        // B-916b's account-level tools (lead_delegate / lead_message) go through the gate too
+        expect(server).toContain('if (client) registerMainAgentTools(dispatchRegistrar, createMainAgentDeps(() => client.sessionId));')
     })
 })
