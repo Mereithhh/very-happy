@@ -6,6 +6,7 @@ import { ProjectError } from '@/app/projects/rules';
 import type { Fastify } from '../types';
 import { createTeam, listTeams, readTeam, actOnTeam, tickTeamSchedules } from '@/app/teams/store';
 import { TeamError } from '@/app/teams/reducer';
+import { teamActionReceipt } from '@/app/teams/receipt';
 
 const params = z.object({ id: z.string().min(1).max(128) });
 /** B-912: seconds a client should wait before retrying a team 429 (CLI team_* tools back off on it). */
@@ -46,5 +47,6 @@ export function teamRoutes(app: Fastify) {
         return { token };
     };
     app.get('/v1/teams/:id/agent', { schema: { params } }, async (request, reply) => handle(reply, async () => ({ team: await readTeam(request.params.id, scope(request)) })));
-    app.post('/v1/teams/:id/agent', { schema: { params, body: TeamActionRequestSchema } }, async (request, reply) => handle(reply, () => actOnTeam(request.params.id, scope(request), request.body)));
+    // B-911: scoped writes (the team_* tools of every wrapper, old ones forward this verbatim) answer a receipt, never the team.
+    app.post('/v1/teams/:id/agent', { schema: { params, body: TeamActionRequestSchema } }, async (request, reply) => handle(reply, async () => teamActionReceipt(await actOnTeam(request.params.id, scope(request), request.body), request.body.action)));
 }
