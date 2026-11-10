@@ -15,7 +15,8 @@ export type ModelPickerLayout = {
     primary: ModeOption[];
     more: ModeOption[];
     /** 1M switch for the selected entry; null when it has no 1M twin. */
-    longContext: { on: boolean; onKey: string; offKey: string } | null;
+    /** `locked`: Claude Code runs this model at 1M anyway (B-908) — the switch shows on and cannot be flipped. */
+    longContext: { on: boolean; onKey: string; offKey: string; locked?: boolean } | null;
     /** The selected key lives under 「更多模型」 (the section opens with it). */
     selectedInMore: boolean;
 };
@@ -54,6 +55,40 @@ export function longContextRowPick(key: string, input: {
     if (!CLAUDE_LONG_CONTEXT_DEFAULT_BASES.has(key)) return key;
     const twin = key + LONG_CONTEXT_SUFFIX;
     return input.optionKeys.has(twin) ? twin : key;
+}
+
+/**
+ * B-908: models whose plain id Claude Code itself runs at 1M — probed
+ * 2026-11-11 with get_context_usage: Opus 5.5, Fable 5.1, Sonnet 5 / 5.5 on
+ * Claude Code 2.1.296–2.1.322; Fable 5.2 only from 2.1.322 (wrapper capability
+ * claude-fable-5-2-v1), older ones measure plain Fable 5.2 at 200k.
+ */
+function claudeRunsPlainAt1M(id: string, capabilities: readonly string[] | null | undefined): boolean {
+    if (/^claude-(opus-5-5|fable-5-1|sonnet-5(-5)?)$/.test(id)) return true;
+    return id === 'claude-fable-5-2' && !!capabilities?.includes('claude-fable-5-2-v1');
+}
+
+/**
+ * B-908: the 1M switch would do nothing — switching it off still runs 1M —
+ * when the wrapper reports a 1M window for the selected model and Claude Code
+ * runs that model's plain id at 1M too (proven by the report itself when the
+ * plain id is what runs, else by the probe table above). Without a reported
+ * window (older CLI, a draft) nothing is proven and the switch works as before.
+ */
+export function longContextLocked(input: {
+    flavor: string | null | undefined;
+    /** The id the selection runs (alias resolved, follow entry → its model). */
+    selectedModel: string | null | undefined;
+    running: string | null | undefined;
+    /** metadata.currentContextWindow */
+    contextWindow: number | null | undefined;
+    capabilities?: readonly string[] | null;
+}): boolean {
+    if (normalizeAgentKey(input.flavor) !== 'claude') return false;
+    if (!input.selectedModel || !input.running || typeof input.contextWindow !== 'number' || input.contextWindow < 1_000_000) return false;
+    const want = baseKey(input.selectedModel);
+    if (baseKey(input.running) !== want) return false;
+    return claudeRunsPlainAt1M(want, input.capabilities);
 }
 
 const baseKey = (key: string) => key.endsWith(LONG_CONTEXT_SUFFIX) ? key.slice(0, -LONG_CONTEXT_SUFFIX.length) : key;

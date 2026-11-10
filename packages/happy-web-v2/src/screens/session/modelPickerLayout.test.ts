@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ModeOption } from '@/components/modelModeOptions';
 import { catalogRunnableKeys, getAvailableModels, getClaudeModelModes } from '@/components/modelModeOptions';
-import { layoutModelPicker, listedModelKey, longContextRowPick, modelFamilyOf, withLongContextTwins } from './modelPickerLayout';
+import { layoutModelPicker, listedModelKey, longContextLocked, longContextRowPick, modelFamilyOf, withLongContextTwins } from './modelPickerLayout';
 import { localizeModelDescriptions, autoEffortName, namedEffortOptions } from './runSetupCopy';
 
 // Catalog a Claude session published on 2026-10-31 (CLI 0.2.189, Claude Code 2.1.304).
@@ -263,5 +263,33 @@ describe('B-908 longContextRowPick: a Claude pick with a 1M twin takes the twin'
 
     it('Codex / pi / Gemini picks pass through', () => {
         for (const flavor of ['codex', 'acp', 'gemini']) expect(pick('claude-opus-5-5', { flavor })).toBe('claude-opus-5-5');
+    });
+});
+
+describe('B-908 longContextLocked: the switch would change nothing', () => {
+    const NEW = ['claude-opus-5-5-v1', 'claude-fable-5-2-v1'];
+    const OLD = ['claude-opus-5-5-v1'];
+    const locked = (selectedModel: string, running: string, contextWindow: number | undefined, capabilities = NEW, flavor = 'claude') =>
+        longContextLocked({ flavor, selectedModel, running, contextWindow, capabilities });
+
+    it('CC 2.1.322 (reports 1M): Opus 5.5, Fable 5.1, Fable 5.2, Sonnet 5 / 5.5 — plain or [1m] — are locked on', () => {
+        for (const id of ['claude-opus-5-5', 'claude-fable-5-1', 'claude-fable-5-2', 'claude-sonnet-5', 'claude-sonnet-5-5']) {
+            expect(locked(id, id, 1_000_000)).toBe(true);
+            expect(locked(`${id}[1m]`, id, 1_000_000)).toBe(true);
+        }
+    });
+
+    it('older CC (no Fable 5.2 capability): Fable 5.2 keeps a working switch — off really means 200k', () => {
+        expect(locked('claude-fable-5-2[1m]', 'claude-fable-5-2', 1_000_000, OLD)).toBe(false);
+        expect(locked('claude-fable-5-2', 'claude-fable-5-2', 200_000, OLD)).toBe(false);
+        expect(locked('claude-opus-5-5', 'claude-opus-5-5', 1_000_000, OLD)).toBe(true);
+    });
+
+    it('no reported window (old CLI), a 200k window, another model still running, Haiku, Codex → not locked', () => {
+        expect(locked('claude-fable-5-2', 'claude-fable-5-2', undefined)).toBe(false);
+        expect(locked('claude-fable-5-2', 'claude-fable-5-2', 200_000)).toBe(false);
+        expect(locked('claude-fable-5-2[1m]', 'claude-opus-5-5', 1_000_000)).toBe(false);
+        expect(locked('claude-haiku-4-5', 'claude-haiku-4-5', 1_000_000)).toBe(false);
+        expect(locked('claude-opus-5-5', 'claude-opus-5-5', 1_000_000, NEW, 'codex')).toBe(false);
     });
 });

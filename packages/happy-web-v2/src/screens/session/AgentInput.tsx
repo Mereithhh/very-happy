@@ -63,7 +63,7 @@ import {
     supportsClaudeFable52,
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
-import { LONG_CONTEXT_SUFFIX, layoutModelPicker, longContextRowPick, withLongContextTwins } from './modelPickerLayout';
+import { LONG_CONTEXT_SUFFIX, layoutModelPicker, longContextLocked, longContextRowPick, withLongContextTwins } from './modelPickerLayout';
 import { autoEffortName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from './runSetupCopy';
 import { useNavigate } from 'react-router-dom';
 import { useLatestModelTable } from '@/sync/latestModels';
@@ -568,7 +568,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         running: metadata?.currentModelCode,
         optionKeys: models.map((option) => option.key),
     });
-    const pickerLayout = layoutModelPicker(models, {
+    const laidOut = layoutModelPicker(models, {
         flavor,
         selectedKey: displayedModelKey,
         followModel: offersFollowLatest ? followEntryModel(followState) : null,
@@ -576,6 +576,16 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         runnable: runnableModels,
         customKeys: [...customModels, ...typedModels],
     });
+    // B-908: Claude Code runs the selection at 1M whatever the switch says — show it on, locked.
+    const switchModel = displayedModelKey === LATEST_MODEL_MODE ? followEntryModel(followState) : displayedModelKey;
+    const switchLocked = !!session && !!laidOut.longContext && longContextLocked({
+        flavor,
+        selectedModel: switchModel ? (resolvedModelOf(switchModel.replace(/\[1m\]$/, '')) ?? switchModel) : null,
+        running: metadata?.currentModelCode,
+        contextWindow: metadata?.currentContextWindow,
+        capabilities: metadata?.capabilities,
+    });
+    const pickerLayout = switchLocked && laidOut.longContext ? { ...laidOut, longContext: { ...laidOut.longContext, on: true, locked: true } } : laidOut;
     // B-849a: an old CLI's Codex/Gemini wrapper does not report its machine
     // config model, so what follow-latest runs there is unknown — say that.
     const runFactsUnknown = offersFollowLatest && followState.kind === 'machineDefault' && displayedModelKey === LATEST_MODEL_MODE;
@@ -1826,6 +1836,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                         onLongContextToggle={apiModelOptions ? undefined : rememberLongContext}
                         effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
                         longContextLabel={t('session.chat.modelPicker.longContext')}
+                        longContextLockedHint={t('session.chat.modelPicker.longContextLockedHint')}
                         longContextHint={longContextRefused ? t('session.chat.modelPicker.longContextRefusedHint') : t('session.chat.modelPicker.longContextHint')}
                         moreLabel={t('session.chat.modelPicker.more')}
                         footer={{ note: t('session.chat.modelPicker.sessionOnly'), action: isGemini && effortOptions.length === 0 ? undefined : { label: t('session.chat.modelPicker.setDefault'), onSelect: () => { void setAsNewSessionDefault(); } } }}

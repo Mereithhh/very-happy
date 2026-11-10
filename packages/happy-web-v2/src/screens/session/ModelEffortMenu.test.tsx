@@ -263,3 +263,22 @@ describe('B-908: a row pick may send its 1M twin; the switch is remembered', () 
         expect(onChange).toHaveBeenCalledExactlyOnceWith('model-a');
     });
 });
+
+describe('B-908: a locked 1M switch shows on, says why and does nothing', () => {
+    it('renders checked + aria-disabled with the locked hint; a tap neither toggles nor remembers', () => {
+        const onChange = vi.fn();
+        const onToggle = vi.fn();
+        const layout = { primary: [models[0]], more: [], longContext: { on: true, onKey: 'model-a[1m]', offKey: 'model-a', locked: true }, selectedInMore: false };
+        act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={models} layout={layout} value="model-a" onChange={onChange}
+            longContextLabel="1M" longContextHint="Extends" longContextLockedHint="This model runs with 1M context by default" onLongContextToggle={onToggle}
+            effort={{ label: 'Thinking', options: levels, value: 'low', onChange: vi.fn() }} />));
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        const sw = document.querySelector<HTMLButtonElement>('.me-panel [role="switch"]')!;
+        expect(sw.getAttribute('aria-checked')).toBe('true');
+        expect(sw.getAttribute('aria-disabled')).toBe('true');
+        expect(sw.textContent).toContain('This model runs with 1M context by default');
+        act(() => sw.click());
+        expect(onChange).not.toHaveBeenCalled();
+        expect(onToggle).not.toHaveBeenCalled();
+    });
+});

@@ -1042,6 +1042,7 @@ export const en = {
                 longContext: '1M context',
                 aliasSuffix: ' (alias)',
                 longContextHint: 'Extends the context window to 1M tokens',
+                longContextLockedHint: 'This model runs with 1M context by default',
                 longContextRefusedHint: 'This machine\'s account or provider refused 1M context, so following latest uses the standard window. Turning it on asks for 1M anyway.',
                 unknownModel: ({ model }: { model: string }) => `${model} · unknown model`,
                 unknownModelHint: 'Not in the models this machine reported; messages still send this id',
@@ -3314,7 +3315,7 @@ export const en = {
             nov11: {
                 title: '1M context on by default for Opus / Fable',
                 summary: 'Switching to Opus or Fable turns on 1M context, and the composer shows whether 1M is really running.',
-                default: 'Picking Opus 5.5, Fable 5.2 or Fable 5.1 turns on 1M context. Switch it off once and it stays off for your account until you switch it on again. Sessions already running keep their model.',
+                default: 'Picking Opus 5.5, Fable 5.2 or Fable 5.1 turns on 1M context. Where the model runs with 1M anyway, the switch shows on and stays put; where switching it off really changes the window, your choice is kept for your account. Sessions already running keep their model.',
                 honest: 'The model button and the session header show what the agent really runs, such as “Fable 5.2 · 1M”, and the context meter uses that window (with the next CLI).',
             },
             nov10b: {
