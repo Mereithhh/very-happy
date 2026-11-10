@@ -78,7 +78,8 @@
 ### 3.1 原则
 
 - 写操作只回回执：`{ok:true, id, title?, url?, state}`，**≤400 字符**；失败 `{ok:false, error}` ≤400 字符。
-- 读操作分页：列表默认 20 条，单条摘要 ≤160 字符，整体 **≤4,000 字符**，带 `nextCursor`；正文类读取（会话、终端）**≤8,000 字符**，尾部截断并写明「已截断，用 cursor 继续」。
+- 上限**只对主 agent 会话生效**（`variant='assistant'` 且不在团队范围内）；普通会话的工具返回不变。
+- 读操作分页：列表单行 ≤160 字符、整体 **≤4,000 字符**，按整行截断；正文类读取（会话、终端）**≤8,000 字符**。超限时回执末尾写明「已截断，用 cursor=<n> 继续」，`cursor` 是可选参数，含义为**字符偏移**（从截断处继续）。
 - 超限在 CLI 工具层截断（新 wrapper）；server 侧回执截断是前置依赖 B-911，未落地时只靠 CLI 层。
 - 带副作用的工具都接受 `requestId`（幂等）；超时不等于没做，先查再重试。
 - 新工具都要进 `startHappyServer` 的 `toolNames`（自动放行列表），并且只在 `assistant && !VH_TEAM_SCOPE_FILE` 时注册。
@@ -106,13 +107,16 @@
 | `session_wrapup` | `sessionId`、`templateId?` | `{ok, sessionId, state:'queued'\|'running'}` | — |
 | `session_handoff` | `from`、`to?`（缺省 = 新会话）、`note?` | 400 | — |
 | `session_restart` | `sessionId`、`when: 'idle'\|'now'` | `{ok, sessionId, scheduled, targetVersion?}` | — |
-| `team_delegate` / `team_message` | 现有参数 + `risk` | 400 | **是** |
+| `teams_list` | `cursor?` | 4K：id / 名称 / 项目 / Lead botId / 在途任务数 | — |
+| `lead_delegate` | `teamId`、`goal`、`acceptance: string[]`（1–32）、`risk`、`requestId` | 400 | **是** |
+| `lead_message` | `teamId`、`taskId`、`body`、`risk`、`requestId` | 400 | **是** |
 | `automation_create` / `automation_update` | 现有参数 + `risk` | 400 | **是** |
 | `session_message` | 现有参数 + `risk` | 400 | **是** |
 | `dispatch_approved` | `approvalId` | 400 | —（§4.2 的执行入口） |
 
 - `session_wrapup / session_handoff / session_restart` 对接 B-915、B-911；对方接口未合入时 B-916b 先放 mock（回执 `{ok:false, error:'not_available'}`），接口落地后只改适配层。
-- 主 agent 用 `team_delegate / team_message` 时，工具层校验 `assigneeBotId` / `recipientBotId` 只能是该团队的 root bot（Lead）；否则回执 `{ok:false, error:'main_agent_lead_only'}`。
+- **给团队派活**：主 agent 不属于任何团队，不用会话作用域的 `team_delegate / team_message`（它们在主 agent 会话里本来就没有团队可用）。改用 `teams_list` + `lead_delegate` / `lead_message`：走账号级 `POST /v1/teams/:id/actions`，以 **owner actor** 身份执行；`lead_delegate` 的 assignee 由工具层强制为该团队的 root bot（Lead），`lead_message` 的 recipient 同样强制为 Lead，主 agent 不能直接派给成员；动作元数据带 `via: 'main-agent'`。
+- **项目日志作者**：`project_note(projectId, …)` 以**主 agent 会话自己的身份**写（authorSessionId = 主 agent 会话），**不得以账号 Owner 身份代写**（项目日志代谢会把 Owner 条目当作 Owner 本人的意思）。server 侧放宽一处权限：会话是本账号 KV `vh.main-agent.v1.sessionId` 指向的主 agent 会话时，允许它在本账号任意项目写 note（B-916b 实现）。
 
 ## 4. 安全闸（B-916c）
 
@@ -171,8 +175,8 @@ risk: 'none' | 'external' | 'production'
 | `session_spawn` | `prompt` |
 | `session_send` | `text` |
 | `terminal_send` | `text` |
-| `team_delegate` | `goal` + `acceptance` |
-| `team_message` | `body` |
+| `lead_delegate` / `team_delegate` | `goal` + `acceptance` |
+| `lead_message` / `team_message` | `body` |
 | `session_message` | `body` |
 | `automation_create` / `automation_update` | `action.prompt`；`action` 是脚本时取 argv 拼接 |
 
@@ -256,7 +260,10 @@ risk: 'none' | 'external' | 'production'
 | B-916b | `happy-cli/src/assistant/assistantTools.ts`、新工具模块（issue / todo / project / board 放开 / 收尾交接重启）、daemon 写 `vh.main-agent.v1` |
 | B-916c | `happy-cli/src/assistant/gates/**`（闸 1、闸 2、分类器、`dispatch_approved`）、`assistant/bootstrap.ts`、`assistant/templates.ts`、`assistant/mainAgentSkill.ts`、`claude/sdk/query.ts` 与 `claudeRemote*.ts` 的 hooks / additionalDirectories 透传、本 spec |
 
-闸 2 的接法：B-916c 提供注册包装 `gateRegistrar(mcp, gate)`，在 `startHappyServer` 里对主 agent 会话包住 MCP 注册器；§3.2 中「闸 2 = 是」的工具由包装自动加 `risk` 参数并拦截，工具实现方（B-916b 和现有模块）**不需要**自己处理 `risk`，只需保证 payload 字段名与 §4.2 表一致。
+闸 2 的接法（代替「每个工具自己调 DispatchGate(req)」的钩子写法）：B-916c 在 `startHappyServer` 里给主 agent 会话建一个包装过的注册器 `dispatchRegistrar = mainAgent.gate.wrap(mcp)`（`assistant/gates/dispatchGate.ts`），团队、自动化、会话互发和助手工具都经它注册。§3.2 中「闸 2 = 是」的工具名一经它注册，就自动多一个必填 `risk` 参数并被拦截；`none` 时调用原 handler，且传进去的 args **不含** `risk`。因此：
+
+- B-916b 的新工具（`lead_delegate`、`lead_message` 等）只要用传入的注册器（类型 `AssistantToolRegistrar`）注册，并使用 §4.2 表里的字段名（`goal` / `acceptance` / `body` / `prompt` / `text`），就不用自己处理 `risk`；**不要**在 inputSchema 里再声明 `risk`。
+- 新增派活类工具时，在 `DISPATCH_TOOL_PAYLOADS` 里加一行（工具名 → payload 取法），并同步本 spec §3.2 / §4.2。
 
 ## 8. 兼容与发布顺序
 
@@ -267,7 +274,8 @@ risk: 'none' | 'external' | 'production'
 | 旧 Web + 新 CLI | 旧 `/assistant` 照常；新工具与闸在会话内生效 |
 | 存量旧 wrapper | 没有新工具和闸；随 B-911 / 自动重启换到新版本 |
 
-- 不改 wire schema、不加 server 路由、不加迁移：KV 用现有 `/v1/kv`，汇报板用现有 `source='agent'`。
+- 不改 wire schema、不加 server 路由、不加迁移：KV 用现有 `/v1/kv`，汇报板用现有 `source='agent'`，派给 Lead 用现有账号级 `/v1/teams/:id/actions`。
+- **一处 server 权限放宽**（B-916b）：主 agent 会话（以 KV `vh.main-agent.v1.sessionId` 判定）可在本账号任意项目以自己身份写 project note。旧 server 上该写入被拒，工具回执 `{ok:false, error:'project_not_member'}`，不回退成 Owner 身份。
 - 发布顺序：Web 与 CLI 可独立发布；默认先 server/Web 后 CLI。
 
 ## 9. P1 验收（不含语音）
