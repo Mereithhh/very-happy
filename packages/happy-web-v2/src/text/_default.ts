@@ -3345,6 +3345,12 @@ export const en = {
                 default: 'Picking Opus 5.5, Fable 5.2 or Fable 5.1 turns on 1M context. Where the model runs with 1M anyway, the switch shows on and stays put; where switching it off really changes the window, your choice is kept for your account. Sessions already running keep their model.',
                 honest: 'The model button and the session header show what the agent really runs, such as “Fable 5.2 · 1M”, and the context meter uses that window (with the next CLI).',
             },
+            nov11e: {
+                title: 'A turn that stops on an API error now tells you',
+                summary: 'When the model API ends a turn with an error, the session says so, offers Retry and notifies you once. Background tasks show what they run, for how long and which turn started them.',
+                turnFailed: 'If a turn stops because the model or its API returned an error (a 400, or a 529 that kept failing after retries), the session shows a red strip with the error and a Retry button that sends your last message again, the sidebar row gets a warning mark, and you get one notification under your usual notification settings. It clears as soon as you send again or the next turn succeeds. Needs the latest CLI and a restarted session.',
+                backgroundTasks: 'Background task chips above the composer now show the command they run, how long it has been running and which turn started it, so you can tell a stuck task from a slow one; the stop button stays where the session supports it. Needs the latest CLI.',
+            },
             nov11d: {
                 title: 'Team tools answer with a short receipt in every session',
                 summary: 'Long-running team leads no longer get the whole team back after each team action.',

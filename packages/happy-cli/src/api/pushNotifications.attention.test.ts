@@ -41,7 +41,7 @@ describe('B-913 sendTurnFailedNotification', () => {
         expect(post).toHaveBeenCalledTimes(1)
         const [url, body] = post.mock.calls[0]
         expect(url).toBe('https://relay.example/v1/sessions/s1/push-event')
-        expect(body).toMatchObject({ kind: 'done', title: 'Turn failed', body: 'repo · API Error: 400 bad request', data: { kind: 'done', type: 'turn-failed', provider: 'claude', sessionId: 's1', url: '/session/s1' } })
+        expect(body).toMatchObject({ kind: 'done', title: 'Turn failed', body: 'repo · API Error: 400 bad request', data: { kind: 'done', type: 'turn-failed', provider: 'claude', error: 'API Error: 400 bad request', sessionId: 's1', url: '/session/s1' } })
     })
 
     it('keeps the body within the server limit', async () => {

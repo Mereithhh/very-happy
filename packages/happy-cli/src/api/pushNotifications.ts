@@ -339,7 +339,7 @@ export class PushNotificationClient {
             kind: 'done',
             metadata: params.metadata,
             copy: { title: 'Turn failed', body: body.length <= 500 ? body : `${body.slice(0, 499)}…` },
-            data: { sessionId: params.sessionId, type: 'turn-failed', provider: params.provider },
+            data: { sessionId: params.sessionId, type: 'turn-failed', provider: params.provider, error: params.summary },
         })
     }
 

@@ -322,6 +322,14 @@ export function buildWebhookPayload(push: {
     let headline: string;
     switch (kind) {
         case 'done':
+            // B-913: a turn the model API ended with an error rides `done`
+            // (every server accepts it) — never call it 任务完成.
+            if (push.data.type === 'turn-failed') {
+                const error = typeof push.data.error === 'string' && push.data.error.trim() ? truncate(push.data.error.trim(), 200) : null;
+                title = `⚠️ 本轮出错 · ${shortTitle}`;
+                headline = error ? `本轮因模型 API 错误中断：${error}` : '本轮因模型 API 错误中断。';
+                break;
+            }
             title = `✅ 任务完成 · ${shortTitle}`;
             headline = '任务已完成，会话空闲，等待下一步指令。';
             break;

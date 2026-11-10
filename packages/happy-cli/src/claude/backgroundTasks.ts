@@ -64,13 +64,16 @@ export function turnPromptLabel(prompt: string): string {
 
 const SETTLED_STATUSES = new Set(['completed', 'failed', 'killed']);
 
-/** Same set, same descriptions — the caller uses this to decide whether an edge is worth publishing. */
+/** Same set, same descriptions and detail — the caller uses this to decide whether an edge is worth publishing. */
 export function sameBackgroundTasks(a: readonly BackgroundTaskInfo[], b: readonly BackgroundTaskInfo[]): boolean {
     if (a.length !== b.length) return false;
     const byId = new Map(a.map((task) => [task.id, task]));
     for (const task of b) {
         const other = byId.get(task.id);
         if (!other || other.description !== task.description || other.type !== task.type) return false;
+        // B-913: the level frame comes first, task_started (with the tool_use id
+        // → command) right after — the detail filling in is a change to publish.
+        if (other.command !== task.command || other.turn?.startedAt !== task.turn?.startedAt || other.turn?.prompt !== task.turn?.prompt) return false;
     }
     return true;
 }

@@ -117,7 +117,10 @@ All three endpoints require the account bearer token
 Event categories:
 
 - `completed` — the agent finished its turn and the session is idle
-  (push kind `done`).
+  (push kind `done`). A turn the model API ended with an error (B-913, CLI
+  with `turn-failure-v1`) rides the same kind with `data.type: "turn-failed"`
+  and `data.error` (one sanitized line); it is sent once, instead of the
+  ready push, and its webhook reads `⚠️ 本轮出错 · <title>` with the error.
 - `permission` — needs attention: permission requests **and** clarifying
   questions (push kinds `permission` and `question`).
 
@@ -144,7 +147,8 @@ guaranteed delivery. Counters: **Settings → Diagnostics → Webhook delivery**
 ```
 
 - `title` — heading, prefixed by event emoji: `✅ 任务完成` (completed),
-  `⏸ 需要确认` (permission), `❓ 等待回答` (question).
+  `⚠️ 本轮出错` (completed, turn ended on an API error), `⏸ 需要确认`
+  (permission), `❓ 等待回答` (question).
 - `message` — plain-text lines. The `Agent：` line only appears when the event
   carries a provider; the `链接：` line only appears when the server has
   `HAPPY_WEB_URL` set (see below).

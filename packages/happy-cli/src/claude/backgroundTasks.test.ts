@@ -156,3 +156,19 @@ describe('B-913 background task detail: command and launching turn', () => {
         expect(t.list()[0].turn!.prompt).not.toBe('mutated');
     });
 });
+
+describe('B-913 real SDK order (0.3.322 probe): level first, then task_started with the tool_use id', () => {
+    it('the command fills in on the edge and counts as a change to publish', () => {
+        const t = createBackgroundTaskTracker();
+        t.beginTurn('start BG-TASK please', 10);
+        t.observe({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'while true; do sleep 5; done', description: 'wait loop', run_in_background: true } }] } } as any, 20);
+        t.observe(sys('background_tasks_changed', { tasks: [{ task_id: 'bw', task_type: 'local_bash', description: 'wait loop' }] }), 30);
+        const afterLevel = t.list();
+        expect(afterLevel[0].command).toBeUndefined();
+        t.observe(sys('task_started', { task_id: 'bw', tool_use_id: 'toolu_1', task_type: 'local_bash', description: 'wait loop', is_backgrounded: true }), 31);
+        const afterEdge = t.list();
+        expect(afterEdge[0]).toMatchObject({ command: 'while true; do sleep 5; done', turn: { startedAt: 10, prompt: 'start BG-TASK please' }, startedAt: 30 });
+        expect(sameBackgroundTasks(afterLevel, afterEdge)).toBe(false);
+        expect(sameBackgroundTasks(afterEdge, t.list())).toBe(true);
+    });
+});
