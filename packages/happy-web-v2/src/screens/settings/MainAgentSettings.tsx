@@ -18,10 +18,8 @@ import { useAuth } from '@/auth/AuthContext';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useAllMachines } from '@/sync/storage';
 import { machineLabel } from '@/utils/machineUtils';
-import { isAssistantSupported } from '@/assistant/assistantSupport';
-import { ASSISTANT_MIN_CLI_VERSION } from '@/assistant/assistantConstants';
 import { mainAgentCopy } from '@/assistant/mainAgentCopy';
-import { checkConfigLines, hasMainAgentGates, rankMainAgentCandidates, DENIED_TOOLS_MAX, SKILL_ROOTS_MAX, type ConfigLinesCheck } from '@/assistant/mainAgent';
+import { checkConfigLines, hasMainAgentGates, mainAgentSupported, rankMainAgentCandidates, DENIED_TOOLS_MAX, SKILL_ROOTS_MAX, type ConfigLinesCheck } from '@/assistant/mainAgent';
 import { loadMainAgentConfig, saveMainAgentConfig, useMainAgentStore } from '@/assistant/mainAgentStore';
 import { useMainAgentActions, useMainAgentPointerSync, useMainAgentState } from '@/assistant/useMainAgent';
 import '@/screens/mainAgent/mainAgent.css';
@@ -93,10 +91,10 @@ export function MainAgentSettings() {
                 <ItemGroup settingId="mainAgent.machine" title={copy.settingsMachine} footer={copy.settingsMachineHint}>
                     {machines.length === 0 && <Item title={copy.noMachine} />}
                     {machines.map((m) => {
-                        const supported = isAssistantSupported(m.metadata?.happyCliVersion);
+                        const supported = mainAgentSupported(m);
                         const current = m.id === currentMachineId;
                         const reason = !supported
-                            ? copy.upgradeBody(machineLabel(m), m.metadata?.happyCliVersion ?? copy.unknownVersion, ASSISTANT_MIN_CLI_VERSION)
+                            ? copy.upgradeBody(machineLabel(m), m.metadata?.happyCliVersion ?? copy.unknownVersion)
                             : !m.active ? copy.statusOffline : undefined;
                         const disabled = !current && (!supported || !m.active || actions.spawning);
                         return (

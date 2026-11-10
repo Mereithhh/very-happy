@@ -10,6 +10,7 @@ import {
     cleanDeniedTools,
     cleanSkillRoots,
     hasMainAgentGates,
+    mainAgentSupported,
     nextPointerValue,
     shouldWritePointerBeforeSpawn,
     parseMainAgentConfig,
@@ -32,11 +33,11 @@ function session(partial: Partial<Session> & { id: string }): Session {
 }
 const assistantMeta = (machineId: string) => ({ path: '/', host: 'h', machineId, variant: 'assistant' }) as Session['metadata'];
 
-function machine(id: string, opts: { active?: boolean; version?: string; platform?: string; createdAt?: number; activeAt?: number } = {}): Machine {
+function machine(id: string, opts: { active?: boolean; version?: string; platform?: string; createdAt?: number; activeAt?: number; gates?: boolean } = {}): Machine {
     return {
         id, seq: 0, createdAt: opts.createdAt ?? 0, updatedAt: 0, active: opts.active ?? true, activeAt: opts.activeAt ?? 0,
         metadata: { host: id, platform: opts.platform ?? 'linux', happyCliVersion: opts.version ?? '0.2.209', happyHomeDir: '~/.happy', homeDir: '~' },
-        metadataVersion: 0, daemonState: null, daemonStateVersion: 0,
+        metadataVersion: 0, daemonState: opts.gates === false ? { startedAt: 10 } : { startedAt: 10, mainAgentGates: { rpcAvailable: true, detectedAt: 11 } }, daemonStateVersion: 0,
     };
 }
 const pointer = (p: Partial<MainAgentPointer> & { machineId: string }): MainAgentPointer => ({ sessionId: null, generation: 1, updatedAt: null, ...p });
@@ -100,7 +101,7 @@ describe('rankMainAgentCandidates', () => {
     it('online + supported only; Linux first, then longest-registered — no names involved', () => {
         const laptop = machine('laptop', { platform: 'darwin', createdAt: 1 });
         const box = machine('box', { platform: 'linux', createdAt: 5 });
-        const old = machine('old', { version: '0.1.0' });
+        const old = machine('old', { version: '0.1.0', gates: false });
         const off = machine('off', { active: false });
         const box2 = machine('box2', { platform: 'linux', createdAt: 2 });
         expect(rankMainAgentCandidates([laptop, box, old, off, box2]).map((m) => m.id)).toEqual(['box2', 'box', 'laptop']);
@@ -134,8 +135,18 @@ describe('resolveMainAgent', () => {
     });
 
     it('pointer to an old CLI → upgrade, never starting', () => {
-        const r = resolveMainAgent({ ...base, sessions: [], machines: [machine('m1', { version: '0.2.0' })], pointer: pointer({ machineId: 'm1' }) });
+        const r = resolveMainAgent({ ...base, sessions: [], machines: [machine('m1', { version: '0.2.0', gates: false })], pointer: pointer({ machineId: 'm1' }) });
         expect(r).toMatchObject({ kind: 'upgrade', version: '0.2.0' });
+    });
+
+    it('support is the daemon capability, not the CLI version (B-916c)', () => {
+        // a new version string without the flag is still not supported
+        expect(resolveMainAgent({ ...base, sessions: [], machines: [machine('m1', { version: '9.9.9', gates: false })], pointer: pointer({ machineId: 'm1' }) }).kind).toBe('upgrade');
+        // a flag stamped before the current daemon started (stale, spread forward) does not count
+        const stale = machine('m1'); stale.daemonState = { startedAt: 20, mainAgentGates: { rpcAvailable: true, detectedAt: 11 } };
+        expect(mainAgentSupported(stale)).toBe(false);
+        expect(mainAgentSupported(machine('m1'))).toBe(true);
+        expect(rankMainAgentCandidates([machine('old', { gates: false }), machine('new')]).map((m) => m.id)).toEqual(['new']);
     });
 
     it('pointer to a machine not in the list → legacy pick (spec §2.1)', () => {
@@ -161,7 +172,7 @@ describe('resolveMainAgent', () => {
     });
 
     it('no pointer, legacy setting on an old CLI → upgrade', () => {
-        const r = resolveMainAgent({ ...base, legacyMachineId: 'm1', sessions: [], machines: [machine('m1', { version: '0.1.9' })], pointer: null });
+        const r = resolveMainAgent({ ...base, legacyMachineId: 'm1', sessions: [], machines: [machine('m1', { version: '0.1.9', gates: false })], pointer: null });
         expect(r.kind).toBe('upgrade');
     });
 
