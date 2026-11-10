@@ -56,6 +56,7 @@ import { sendUserMessage, sessionWebUrl, waitForSessionKey } from './sessionMess
 import { isValidSpawnOrigin } from '@/utils/createSessionMetadata'
 import { ALLOWED_SPAWN_PERMISSION_MODES, sanitizeSpawnPermissionMode } from '@/daemon/spawnPermissionMode'
 import { logger } from '@/ui/logger'
+import { sanitizeImportTitle } from '@/daemon/importTitle'
 import { waitForForkBackfill } from '@/utils/forkBackfill'
 
 // Re-exported for back-compat (tests and external imports historically used
@@ -94,6 +95,8 @@ export interface SpawnCommandOptions {
     project?: string
     /** B-649: do not inherit the calling session's project. */
     noProject?: boolean
+    /** B-916b: the new session's title (metadata.summary from the start). */
+    title?: string
     json: boolean
     help: boolean
 }
@@ -178,6 +181,11 @@ export function parseSpawnArgs(args: string[]): SpawnCommandOptions {
             if (value === undefined) throw new Error('--project requires a project id')
             if (!/^[a-zA-Z0-9_-]{1,128}$/.test(value)) throw new Error(`Invalid project id for --project: ${value}`)
             options.project = value
+        } else if (arg === '--title') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--title requires a value')
+            if (sanitizeImportTitle(value) === null) throw new Error('--title must contain visible text')
+            options.title = value
         } else if (arg === '--no-project') {
             options.noProject = true
         } else if (arg === '--json') {
@@ -205,7 +213,8 @@ ${chalk.bold('Usage:')}
   very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>]
                    [--spawned-by <name>] [--permission-mode <mode>]
                    [--agent <name>] [--model <id>] [--account <id>]
-                   [--env KEY=VALUE]... [--project <id> | --no-project] [--json]
+                   [--env KEY=VALUE]... [--project <id> | --no-project]
+                   [--title <text>] [--json]
   very-happy spawn --fork <sessionId> [--prompt …] [--permission-mode <mode>]
                    [--model <id>] [--spawned-by <name>] [--project <id>]
                    [--json]
@@ -249,6 +258,8 @@ ${chalk.bold('Options:')}
   --project <id>         Put the new session in this Very Happy project before
                             its first message (it then starts with the project's
                             instructions and decisions).
+  --title <text>         The new session's title (one line, ≤200 chars). Without it
+                            the title is generated from the first message.
   --no-project           Do not inherit the project of the session that runs
                             this command (by default a session spawned from
                             inside a project session joins the same project).
@@ -515,6 +526,7 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         ...resumeIds,
         ...(forkSource ? { parentSessionId: forkSource.parentSessionId } : {}),
         ...(accountChoice !== undefined ? { agentProfileId: accountChoice } : {}),
+        ...(options.title !== undefined ? { title: options.title } : {}),
     })
     if (result?.error || !result?.success || !result?.sessionId) {
         const message = result?.error || 'Daemon returned no session ID'

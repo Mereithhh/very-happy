@@ -416,6 +416,8 @@ export function startDaemonControlServer({
           parentSessionId: z.string().min(1).max(200).optional(),
           // B-850a: `very-happy spawn --account` (null = machine login; absent = machine default).
           agentProfileId: z.string().min(1).max(64).nullable().optional(),
+          /** B-916b: the session's first title (metadata.summary, like an import's — the title generator then leaves it). */
+          importTitle: z.string().max(1000).optional(),
         }),
         response: {
           200: z.object({
@@ -440,7 +442,7 @@ export function startDaemonControlServer({
         }
       }
     }, async (request, reply) => {
-      const { directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, agentProfileId } = request.body;
+      const { directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, agentProfileId, importTitle } = request.body;
 
       if (!directory && variant !== 'assistant') {
         reply.code(500);
@@ -448,7 +450,7 @@ export function startDaemonControlServer({
       }
 
       logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}, agent=${agent || 'default'}, variant=${variant || 'none'}, forceNew=${forceNew === true}, spawnedBy=${spawnedBy || 'unset'}`);
-      const result = await spawnSession({ directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, ...(agentProfileId !== undefined ? { agentProfileId } : {}) });
+      const result = await spawnSession({ directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, ...(agentProfileId !== undefined ? { agentProfileId } : {}), ...(importTitle !== undefined ? { importTitle } : {}) });
       const resumed = Boolean(resumeClaudeSessionId || resumeCodexThreadId);
 
       switch (result.type) {

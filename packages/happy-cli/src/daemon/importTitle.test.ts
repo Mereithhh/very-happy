@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeImportTitle } from './run';
+import { sanitizeImportTitle } from './importTitle';
 
 const CONTROL = String.fromCharCode(27) + '[31m';
 
@@ -20,5 +20,12 @@ describe('sanitizeImportTitle (B-294)', () => {
         expect(sanitizeImportTitle('   ')).toBeNull();
         expect(sanitizeImportTitle(undefined)).toBeNull();
         expect(sanitizeImportTitle(42)).toBeNull();
+    });
+});
+
+describe('sanitizeImportTitle — env-expansion safety (B-916b)', () => {
+    it('breaks up a literal ${ so the daemon never treats a title as an env reference', () => {
+        expect(sanitizeImportTitle('cost of ${HOME} and ${X:-y}')).toBe('cost of $ {HOME} and $ {X:-y}');
+        expect(sanitizeImportTitle('price $5 {ok}')).toBe('price $5 {ok}');
     });
 });

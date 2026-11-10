@@ -8,6 +8,7 @@ import { logger } from '@/ui/logger';
 import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
+import { sanitizeImportTitle } from './importTitle';
 import type { PeerSessionInfo } from './types';
 import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
 import type { RateLimitReport } from '@/rateLimits/rateLimitWindows';
@@ -153,19 +154,27 @@ export async function spawnDaemonSession(
     parentSessionId?: string;
     /** B-850a: account (null = machine login; absent = the machine default). An older daemon strips it. */
     agentProfileId?: string | null;
+    /** B-916b: first title of the new session. An older daemon strips the key (no title, never a failed spawn). */
+    title?: string;
   }
 ): Promise<any> {
+  // B-916b: the title travels twice — `importTitle` for a daemon that knows it,
+  // HAPPY_IMPORT_TITLE for an older one (it strips the key but passes env through).
+  // A caller's own --env HAPPY_IMPORT_TITLE wins. Sanitized here: env values are ${VAR}-expanded.
+  const title = sanitizeImportTitle(opts?.title)
+  const environmentVariables = title ? { HAPPY_IMPORT_TITLE: title, ...opts?.environmentVariables } : opts?.environmentVariables
   const result = await daemonPost('/spawn-session', {
     directory,
     sessionId,
     spawnedBy: opts?.spawnedBy,
     permissionMode: opts?.permissionMode,
     agent: opts?.agent,
-    environmentVariables: opts?.environmentVariables,
+    environmentVariables,
     resumeClaudeSessionId: opts?.resumeClaudeSessionId,
     resumeCodexThreadId: opts?.resumeCodexThreadId,
     parentSessionId: opts?.parentSessionId,
     ...(opts?.agentProfileId !== undefined ? { agentProfileId: opts.agentProfileId } : {}),
+    ...(title ? { importTitle: title } : {}),
   });
   return result;
 }
