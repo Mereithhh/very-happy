@@ -159,7 +159,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                     try {
                         // B-706: reactivating a bot must never reuse its removed worktree path.
                         const repository = await resolveTeamRepository(home, op.directory, id => { try { return readReceipt(home, id)?.repository; } catch { return undefined; } });
-                        resource = await prepareTeamWorktree(home, repository, op.id);
+                        resource = await prepareTeamWorktree(home, repository, op.id, 'teams', deps.log);
                     } catch (error) {
                         // A preflight failure is definite (nothing was spawned): report the cause and
                         // back off like a startup failure instead of failing again on every poll.
