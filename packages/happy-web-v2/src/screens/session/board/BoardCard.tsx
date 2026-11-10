@@ -66,7 +66,8 @@ export const BoardCard = forwardRef<HTMLDivElement, {
                 <span className="brf-r2">
                     <span>{by} · {boardTime(item.createdAt)}</span>
                     {item.inferred && <span className="brf-inferred">{copy.inferred}</span>}
-                    {item.repostCount > 0 && <span>{copy.merged(item.repostCount)}</span>}
+                    {/* B-915: a wrap-up card is reposted by design (running → result, each new run) — not a merged reminder. */}
+                    {item.repostCount > 0 && item.kind !== 'wrapup' && <span>{copy.merged(item.repostCount)}</span>}
                     {item.links?.map((l) => <span key={`${l.type}:${l.ref}`} className="brf-link">{l.label ?? l.ref}</span>)}
                 </span>
                 {item.resolveNote && !isLive(item) && <span className="brf-note">{copy.resolveNote}：{item.resolveNote}</span>}
