@@ -21,6 +21,7 @@ import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { prepareSearch } from './searchMatch';
 import { sessionSearchFields, type SearchLabels } from './searchDocs';
 import { isListedLive } from '@/app/sessionHibernation';
+import { useWakeExpiryTick } from '@/app/useWakeExpiryTick';
 import { isAssistantSession } from '@/assistant/assistantSession';
 import { sessionHasPendingRequests } from '@/screens/board/boardItems';
 import { getSessionName, getSessionSidebarSubtitle } from '@/utils/sessionUtils';
@@ -100,6 +101,8 @@ export function useSessionSearch(rawInput: string, enabled: boolean, filters: Se
     const searching = q.terms.length > 0;
 
     const sessionsById = storage((s) => s.sessions);
+    // B-906b: a waking row's 'archived' flag flips when its grace runs out.
+    const wakeTick = useWakeExpiryTick(useMemo(() => Object.values(sessionsById), [sessionsById]));
     const machines = useAllMachines({ includeOffline: true });
     const projects = useProjects();
 
@@ -169,7 +172,7 @@ export function useSessionSearch(rawInput: string, enabled: boolean, filters: Se
             });
         }
         return out;
-    }, [sessionsById, placement, membership, projectName, machineName, labels]);
+    }, [sessionsById, wakeTick, placement, membership, projectName, machineName, labels]);
 
     const now = Date.now();
     const passing = useMemo(
