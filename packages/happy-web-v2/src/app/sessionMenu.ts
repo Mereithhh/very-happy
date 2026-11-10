@@ -1,4 +1,4 @@
-import { Archive, ArrowDown, ArrowUp, Flag, FolderKanban, FolderMinus, Link2, Pencil, RotateCcw, Square, Tags, Users, X } from 'lucide-react';
+import { Archive, ArrowDown, ArrowUp, ClipboardCheck, Flag, FolderKanban, FolderMinus, Forward, Link2, Pencil, RotateCcw, Square, Tags, Users, X } from 'lucide-react';
 import type { MenuItemDef } from '@/ui';
 import { PRIORITY_LEVELS, priorityTag, type PriorityLevel } from '@/utils/tags';
 
@@ -11,14 +11,17 @@ import { PRIORITY_LEVELS, priorityTag, type PriorityLevel } from '@/utils/tags';
  * header's panels / runtime / keep-awake) are added by the caller around it.
  *
  * Order: 分享… · 重命名 · 标签 · 移到项目 / 从项目移出 · 优先级 · 复制链接 · 恢复 ·
- * 上移/下移 · 停止 · 归档 (or 关闭 for a terminal).
+ * 上移/下移 · 收尾 · 交接给… · 停止 · 归档 (or 关闭 for a terminal).
+ *
+ * B-915: 收尾 / 交接给… sit right before the 停止 / 归档 tail — they are how a
+ * session usually ends (wrap up, then archive from the result card).
  *
  * B-798 (U2 step 3): 优先级 is ONE row with P0 / P1 / P2 choices (it used to be
  * three rows, and the 13–16 row menus ran off a phone screen).
  */
 export type SessionMenuKey =
   | 'share' | 'rename' | 'tags' | 'move-project' | 'leave-project'
-  | 'priority' | 'copy-link' | 'restore' | 'move-up' | 'move-down' | 'stop' | 'archive';
+  | 'priority' | 'copy-link' | 'restore' | 'move-up' | 'move-down' | 'wrapup' | 'handoff' | 'stop' | 'archive';
 
 type T = (key: any, params?: any) => string;
 
@@ -39,6 +42,10 @@ export interface SessionMenuInput {
   onCopyLink?: () => void;
   restore?: { onSelect: () => void; disabled?: boolean };
   reorder?: { canUp: boolean; canDown: boolean; onMove: (dir: -1 | 1) => void };
+  /** B-915 「收尾」: send the account's wrap-up template as a turn. */
+  onWrapup?: () => void;
+  /** B-915 「交接给…」: open the target-session dialog. */
+  onHandoff?: () => void;
   /** Only while a turn is running (sessionAbort). */
   onStop?: () => void;
   onArchive?: () => void;
@@ -85,6 +92,8 @@ export function buildSessionMenu(input: SessionMenuInput): MenuItemDef[] {
       { key: 'move-down', label: t('sidebar.moveDown'), icon: ArrowDown, disabled: !canDown, onSelect: () => onMove(1) },
     );
   }
+  if (input.onWrapup) items.push({ key: 'wrapup', label: t('wrapup.menu'), icon: ClipboardCheck, separatorBefore: true, onSelect: input.onWrapup });
+  if (input.onHandoff) items.push({ key: 'handoff', label: t('wrapup.handoffMenu'), icon: Forward, separatorBefore: !input.onWrapup, onSelect: input.onHandoff });
   if (input.onStop) items.push({ key: 'stop', label: copy.stop, icon: Square, separatorBefore: true, onSelect: input.onStop });
   // Archive-only (B-083): a chat ends by archiving; a terminal by a neutral close.
   if (input.onArchive) {
@@ -105,7 +114,7 @@ export function buildSessionMenu(input: SessionMenuInput): MenuItemDef[] {
  * 组建团队, 保持唤醒) as ONE group placed before the 停止 / 归档 tail, so the
  * destructive end stays last and the tools are not scattered after it.
  */
-const SESSION_TAIL: readonly string[] = ['stop', 'archive'];
+const SESSION_TAIL: readonly string[] = ['wrapup', 'handoff', 'stop', 'archive'];
 export function withSessionTools(items: MenuItemDef[], tools: MenuItemDef[]): MenuItemDef[] {
   if (tools.length === 0) return items;
   const tail = items.findIndex((item) => SESSION_TAIL.includes(item.key));
@@ -125,6 +134,8 @@ export function sessionLink(origin: string, href: string): string {
  * so the sidebar row and the header ⋯ can't drift apart. A session shared WITH
  * me only offers 复制链接 (everything else writes the owner's session); an
  * archived one is restored, not re-archived or shared; 停止 only while a turn runs.
+ * B-915: 收尾 / 交接给… need an owned, live (not archived) agent session — a
+ * terminal mirror has no wrapper to run the turn.
  */
 export function sessionMenuAvailability(session: { archivedAt?: number | null; share?: unknown }, opts: { running: boolean; mirror: boolean }) {
   const owned = !session.share;
@@ -137,5 +148,6 @@ export function sessionMenuAvailability(session: { archivedAt?: number | null; s
     copyLink: true,
     stop: owned && opts.running,
     archive: owned && active,
+    wrapup: owned && active && !opts.mirror,
   };
 }

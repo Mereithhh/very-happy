@@ -3,7 +3,7 @@
  * belongs to, what the two tabs show, the counts on the strip / badge, the
  * status chip, and the in-stream pointers. No React, no store (DESIGN §3 A, §6).
  */
-import { ATTENTION_LIMITS, ATTENTION_SESSION_CAPABILITY, attentionKindNeedsOwner, isAttentionActive, type AttentionItem, type AttentionOption } from '@slopus/happy-wire';
+import { ATTENTION_LIMITS, ATTENTION_SESSION_CAPABILITY, attentionKindNeedsOwner, isAttentionActive, parseWrapupPayload, type AttentionItem, type AttentionOption } from '@slopus/happy-wire';
 
 export type BoardGroup = 'need' | 'asked' | 'report';
 export type BoardTab = 'open' | 'done';
@@ -103,6 +103,10 @@ export function itemStatus(item: AttentionItem): ItemStatus | null {
         case 'todo':
         case 'blocked':
             return live ? { tone: 'open', key: 'waiting' } : { tone: 'done', key: 'completed' };
+        case 'wrapup':
+            // B-915: running = the agent is still wrapping up; a result waits on the owner (archive or 知道了).
+            if (!live) return { tone: 'done', key: 'completed' };
+            return parseWrapupPayload(item.payload)?.status === 'running' ? { tone: 'wip', key: 'working' } : { tone: 'open', key: 'waiting' };
         default:
             return null;
     }
@@ -122,6 +126,8 @@ export function resolveAction(item: AttentionItem): ResolveAction | null {
         case 'report': case 'answer': case 'pin': return 'ack';
         case 'question': return 'answered';
         case 'request': return 'drop';
+        // B-915: a wrap-up result is archived from the card, or set aside with 知道了 (the session stays open).
+        case 'wrapup': return parseWrapupPayload(item.payload)?.status === 'running' ? null : 'ack';
         default: return null; // a decision resolves by picking an option
     }
 }

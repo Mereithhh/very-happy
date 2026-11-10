@@ -10,6 +10,7 @@ import { Sidebar } from '@/screens/sessions/Sidebar';
 import { DeferredMajorUpdateEntry } from '@/app/DeferredMajorUpdateEntry';
 import { useAfterFirstScreen } from '@/app/afterFirstScreen';
 import { CommandPalette } from '@/screens/command/CommandPalette';
+import { HandoffDialogHost } from '@/screens/session/HandoffDialog';
 import { ClipboardHistoryPanel } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { FsPreviewOverlay } from '@/screens/files/FsPreviewOverlay';
 import { NotesDock } from '@/screens/notes/NotesDock';
@@ -177,6 +178,8 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
       <CommandPalette />
       {/* B-916a: the one main agent — desktop drawer; phones route to /main-agent */}
       <MainAgentHost rootPath={rootPath} />
+      {/* B-915 「交接给…」 — one host; the header ⋯, row ⋯ and /handoff open it by session id */}
+      <HandoffDialogHost />
       {/* clipboard-push history — singleton like the palette (⌘K / settings open it) */}
       <ClipboardHistoryPanel />
       {/* open_preview pushes — singleton overlay opened by sync/filePreviewPush */}

@@ -8,7 +8,7 @@
  * - 追问: quotes the item into the composer; a closed item is reopened.
  * The card updates at once; the server snapshot (higher version) replaces it.
  */
-import { attentionBoardLocalId, isAttentionActive, type AttentionItem } from '@slopus/happy-wire';
+import { applyWrapupCheck, attentionBoardLocalId, isAttentionActive, type AttentionItem } from '@slopus/happy-wire';
 import { sync } from '@/sync/sync';
 import { respondToAttentionItem } from '@/sync/apiAttention';
 import { loadAttentionItems, useAttentionStore } from '@/sync/attentionStore';
@@ -82,5 +82,23 @@ export async function followUp(item: AttentionItem, copy: BoardCopy): Promise<vo
         useAttentionStore.getState().apply(next);
     } catch {
         failed(item, copy);
+    }
+}
+
+/**
+ * B-915: tick / untick one 待确认 entry of a 收尾 card (`owner-respond {check}`).
+ * The tick shows at once; a failure puts the card back and says so.
+ */
+export async function checkWrapupItem(item: AttentionItem, checkId: string, checked: boolean, copy: BoardCopy): Promise<void> {
+    const payload = applyWrapupCheck(item.payload, checkId, checked);
+    if (!payload) return;
+    optimistic(item, { payload, updatedAt: Date.now() });
+    try {
+        const { item: next } = await respondToAttentionItem(item.id, { action: 'check', checkId, checked });
+        useAttentionStore.getState().apply(next);
+    } catch {
+        useAttentionStore.getState().apply(item);
+        toast.error(copy.wrapup.checkFailed);
+        void loadAttentionItems(item.sessionId);
     }
 }

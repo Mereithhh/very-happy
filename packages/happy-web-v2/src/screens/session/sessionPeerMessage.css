@@ -15,6 +15,8 @@
 .peer-message-heading > .ag-route, .peer-message-heading > .ag-chip { flex: 1 1 0; min-width: 0; }
 .msg--peer-conflict .peer-message-heading > svg { color: var(--warn); }
 .peer-message-kind { flex-shrink: 0; color: var(--warn); font-size: var(--chat-fs-secondary); }
+/* B-915: a handoff is news, not a warning. */
+.peer-message-kind--handoff { color: var(--text-dim); font-weight: 500; }
 .peer-message-ago { margin-left: auto; flex-shrink: 0; color: var(--text-faint); font-variant-numeric: tabular-nums; font-size: var(--chat-fs-caption); }
 .peer-message-path { display: block; font-family: var(--font-mono); font-size: var(--chat-fs-secondary); color: var(--text-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
 .peer-message-note { color: var(--text-faint); font-size: var(--chat-fs-secondary); }

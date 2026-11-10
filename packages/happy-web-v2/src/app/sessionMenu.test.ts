@@ -24,6 +24,25 @@ describe('buildSessionMenu', () => {
   it('lists share, rename, tags, project, priority, copy link, stop and archive in one fixed order', () => {
     expect(keys(full())).toEqual(['share', 'rename', 'tags', 'move-project', 'leave-project', 'priority', 'copy-link', 'stop', 'archive']);
   });
+  it('B-915: 收尾 and 交接给… sit right before the stop / archive tail, and withSessionTools keeps them in the tail', () => {
+    const onWrapup = vi.fn();
+    const onHandoff = vi.fn();
+    const items = buildSessionMenu(full({ onWrapup, onHandoff }));
+    expect(items.map((i) => i.key)).toEqual(['share', 'rename', 'tags', 'move-project', 'leave-project', 'priority', 'copy-link', 'wrapup', 'handoff', 'stop', 'archive']);
+    expect(items.find((i) => i.key === 'wrapup')!.label).toBe('wrapup.menu');
+    expect(items.find((i) => i.key === 'handoff')!.label).toBe('wrapup.handoffMenu');
+    items.find((i) => i.key === 'wrapup')!.onSelect();
+    items.find((i) => i.key === 'handoff')!.onSelect();
+    expect([onWrapup.mock.calls.length, onHandoff.mock.calls.length]).toEqual([1, 1]);
+    const tool = { key: 'fork', label: 'Fork', onSelect: noop } as MenuItemDef;
+    expect(withSessionTools(items, [tool]).map((i) => i.key).slice(-5)).toEqual(['fork', 'wrapup', 'handoff', 'stop', 'archive']);
+  });
+  it('B-915: 收尾 / 交接 need my own, live, non-mirror session', () => {
+    expect(sessionMenuAvailability({ archivedAt: null }, { running: false, mirror: false }).wrapup).toBe(true);
+    expect(sessionMenuAvailability({ archivedAt: 1 }, { running: false, mirror: false }).wrapup).toBe(false);
+    expect(sessionMenuAvailability({ archivedAt: null, share: {} }, { running: false, mirror: false }).wrapup).toBe(false);
+    expect(sessionMenuAvailability({ archivedAt: null }, { running: false, mirror: true }).wrapup).toBe(false);
+  });
   it('an absent handler hides its item (shared / archived / idle sessions)', () => {
     expect(keys(full({ onShare: undefined, onStop: undefined, onLeaveProject: undefined }))).toEqual(['rename', 'tags', 'move-project', 'priority', 'copy-link', 'archive']);
     expect(keys({ t, zh: false, onCopyLink: noop })).toEqual(['copy-link']);
@@ -70,7 +89,7 @@ describe('buildSessionMenu', () => {
 
 describe('sessionMenuAvailability', () => {
   it('my active session: everything; stop only while running', () => {
-    expect(sessionMenuAvailability({ archivedAt: null }, { running: true, mirror: false })).toEqual({ share: true, rename: true, tags: true, priority: true, copyLink: true, stop: true, archive: true });
+    expect(sessionMenuAvailability({ archivedAt: null }, { running: true, mirror: false })).toEqual({ share: true, rename: true, tags: true, priority: true, copyLink: true, stop: true, archive: true, wrapup: true });
     expect(sessionMenuAvailability({ archivedAt: null }, { running: false, mirror: false }).stop).toBe(false);
   });
   it('archived: no share, no re-archive; mirror: no share', () => {
@@ -79,7 +98,7 @@ describe('sessionMenuAvailability', () => {
     expect(sessionMenuAvailability({ archivedAt: null }, { running: false, mirror: true }).share).toBe(false);
   });
   it('shared with me: only copy link (everything else writes the owner’s session)', () => {
-    expect(sessionMenuAvailability({ archivedAt: null, share: { role: 'driver' } }, { running: true, mirror: false })).toEqual({ share: false, rename: false, tags: false, priority: false, copyLink: true, stop: false, archive: false });
+    expect(sessionMenuAvailability({ archivedAt: null, share: { role: 'driver' } }, { running: true, mirror: false })).toEqual({ share: false, rename: false, tags: false, priority: false, copyLink: true, stop: false, archive: false, wrapup: false });
   });
 });
 

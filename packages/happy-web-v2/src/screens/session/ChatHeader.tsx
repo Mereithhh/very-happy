@@ -8,6 +8,7 @@ import { claudeRunningModelLabel } from '@/components/modelModeOptions';
 import { normalizeAgentKey } from '@/sync/agentDefaults';
 import { useProjects } from '@/sync/projects';
 import { buildSessionMenu, sessionMenuAvailability, withSessionTools } from '@/app/sessionMenu';
+import { openHandoffDialog, startWrapup } from '@/app/sessionWrapup';
 import { copySessionLink, leaveSessionProject, stopSessionTurn } from '@/app/sessionMenuActions';
 import { confirmArchiveSession, nextSessionPathAfterClose, collectAllTags, saveRowRename } from '@/app/rowActions';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
@@ -207,6 +208,8 @@ export function ChatHeader({
             onSet: (level) => { void sessionUpdateTitleTags(sessionId, { tags: setPriorityLevel(meta?.tags, level) }).catch(() => {}); },
         } : undefined,
         onCopyLink: () => void copySessionLink(`/session/${encodeURIComponent(sessionId)}`, zh),
+        onWrapup: avail.wrapup ? () => void startWrapup(sessionId) : undefined,
+        onHandoff: avail.wrapup ? () => openHandoffDialog(sessionId) : undefined,
         onStop: avail.stop ? () => void stopSessionTurn(sessionId, t('session.chat.stopFailed')) : undefined,
         onArchive: avail.archive ? () => {
             void confirmArchiveSession(session).then((archived) => { if (archived) navigateTeam(nextSessionPathAfterClose(sessionId)); });

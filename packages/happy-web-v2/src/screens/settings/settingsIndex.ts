@@ -94,6 +94,7 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   }),
   // ── snippets ──
   { id: 'snippets.presets', section: 'snippets', title: 'settingsSnippets.presetsGroup', description: 'settingsSnippets.presetsFooter', keywords: ['snippet', 'shortcut', 'preset', 'prompt', 'quick command', '快捷指令', '快捷短语', '预设', '片段'] },
+  { id: 'snippets.wrapup', section: 'snippets', title: 'wrapup.settingsGroup', description: 'wrapup.settingsFooter', keywords: ['wrap up', 'wrapup', 'close session', 'template', 'handoff', '收尾', '收尾模板', '关闭会话', '模板', '交接'] },
   { id: 'snippets.startup', section: 'snippets', title: 'settingsSnippets.startupGroup', description: 'settingsSnippets.startupFooter', keywords: ['startup', 'terminal', 'command', 'init', '启动', '启动命令', '终端'] },
   { id: 'snippets.inputOwnership', section: 'snippets', title: 'settingsSnippets.inputOwnershipGroup', description: 'settingsSnippets.inputOwnershipFooter', keywords: ['input', 'keyboard', 'terminal', '输入', '键盘', '终端'] },
   { id: 'snippets.viewDefault', section: 'snippets', title: 'settingsSnippets.viewDefaultGroup', description: 'settingsSnippets.viewDefaultFooter', keywords: ['xterm', 'structured', 'terminal view', '终端视图', '默认视图', '结构化'] },

@@ -73,6 +73,7 @@ import { failedRunsNeedingYou, waitingOnMeCount } from '@/screens/issues/issuesM
 import { issuesCopyFor } from '@/screens/issues/issuesCopy';
 import { attentionSessionIds } from '@/screens/automations/automationPresentation';
 import { buildSessionMenu, sessionMenuAvailability } from '@/app/sessionMenu';
+import { openHandoffDialog, startWrapup } from '@/app/sessionWrapup';
 import { copySessionLink, leaveSessionProject, leaveTerminalProject, stopSessionTurn } from '@/app/sessionMenuActions';
 import { sessionProjectMenu, terminalProjectMenu } from '@/screens/projects/projectChoice';
 import { ShareDialog } from '@/screens/session/ShareDialog';
@@ -2204,6 +2205,9 @@ function SidebarRow({
     restore: restorable ? { onSelect: onRestore, disabled: restoreBlockedOffline } : undefined,
     // Full-list adjacent swap — the reorder path for coarse pointers (no touch drag).
     reorder: onMove ? { canUp: !!canMoveUp, canDown: !!canMoveDown, onMove } : undefined,
+    // B-915 收尾 / 交接给… (same gate as the session header ⋯).
+    onWrapup: !isTerminal && s && avail?.wrapup ? () => void startWrapup(s.id) : undefined,
+    onHandoff: !isTerminal && s && avail?.wrapup ? () => openHandoffDialog(s.id) : undefined,
     onStop: !isTerminal && s && avail?.stop ? () => void stopSessionTurn(s.id, t('session.chat.stopFailed')) : undefined,
     onArchive: isTerminal || avail?.archive ? () => void onArchiveOrClose() : undefined,
   });

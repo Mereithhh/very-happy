@@ -42,6 +42,38 @@ export interface BoardCopy {
     pointer: (kind: string) => string;
     pointerGo: string;
     badge: (n: number) => string;
+    /** B-915 收尾 / 交接 card. */
+    wrapup: WrapupCopy;
+}
+
+export interface WrapupCopy {
+    /** Who posted it (the card's meta row): the session's own agent, not the team lead. */
+    by: string;
+    running: string;
+    handoffRunning: (target: string | null) => string;
+    canClose: string;
+    pending: (n: number) => string;
+    notYet: string;
+    delivered: (target: string) => string;
+    stored: (target: string) => string;
+    handoffFailed: (target: string) => string;
+    summary: string;
+    more: string;
+    less: string;
+    files: (n: number) => string;
+    artifacts: (n: number) => string;
+    commits: (n: number) => string;
+    copyPaths: string;
+    pendingTitle: string;
+    target: string;
+    deliveryLabel: Record<'delivered' | 'offline-stored' | 'failed', string>;
+    autoArchived: string;
+    archive: string;
+    archived: string;
+    archivePendingConfirm: (n: number) => string;
+    archiveConfirm: string;
+    archiveFailed: string;
+    checkFailed: string;
 }
 
 const ZH: BoardCopy = {
@@ -50,7 +82,7 @@ const ZH: BoardCopy = {
     close: '收起汇报板',
     tabs: { open: '进行中', done: '已处理' },
     groups: { need: '等你处理', asked: '你提的', report: '给你的汇报' },
-    kinds: { decision: '决定', todo: '待办', blocked: '卡住了', report: '汇报', answer: '回答', question: '你问的', request: '你交代的', pin: '你钉的' },
+    kinds: { decision: '决定', todo: '待办', blocked: '卡住了', report: '汇报', answer: '回答', question: '你问的', request: '你交代的', pin: '你钉的', wrapup: '收尾' },
     inferred: '自动识别',
     resolveNote: '负责人备注',
     choicePrefix: '［汇报板 · 决定］',
@@ -82,6 +114,34 @@ const ZH: BoardCopy = {
     pointer: (kind) => `已上板 · ${kind}`,
     pointerGo: '看板',
     badge: (n) => `${n} 件等你`,
+    wrapup: {
+        by: '本会话',
+        running: '收尾中…',
+        handoffRunning: (target) => (target ? `交接中 → ${target}` : '交接中…'),
+        canClose: '可以关闭',
+        pending: (n) => `${n} 项待确认`,
+        notYet: '还不能关闭',
+        delivered: (target) => `已交接给 ${target}`,
+        stored: (target) => `已留言给 ${target}（对方不在线）`,
+        handoffFailed: (target) => (target ? `交接给 ${target} 失败` : '交接失败'),
+        summary: '摘要',
+        more: '展开全文',
+        less: '收起',
+        files: (n) => `文件（${n}）`,
+        artifacts: (n) => `产物（${n}）`,
+        commits: (n) => `提交（${n}）`,
+        copyPaths: '复制路径',
+        pendingTitle: '待确认',
+        target: '交接对象',
+        deliveryLabel: { delivered: '已送达', 'offline-stored': '对方离线，已存为留言，下次运行时读到', failed: '未送达' },
+        autoArchived: '已自动归档本会话',
+        archive: '归档会话',
+        archived: '会话已归档',
+        archivePendingConfirm: (n) => `还有 ${n} 项未确认，仍要归档这个会话？`,
+        archiveConfirm: '归档这个会话？',
+        archiveFailed: '归档失败',
+        checkFailed: '勾选没有保存，已刷新',
+    },
 };
 
 const EN: BoardCopy = {
@@ -90,7 +150,7 @@ const EN: BoardCopy = {
     close: 'Close Briefing',
     tabs: { open: 'Active', done: 'Handled' },
     groups: { need: 'Needs you', asked: 'You asked', report: 'For you' },
-    kinds: { decision: 'Decide', todo: 'To do', blocked: 'Blocked', report: 'Report', answer: 'Answer', question: 'Asked', request: 'Requested', pin: 'Pinned' },
+    kinds: { decision: 'Decide', todo: 'To do', blocked: 'Blocked', report: 'Report', answer: 'Answer', question: 'Asked', request: 'Requested', pin: 'Pinned', wrapup: 'Wrap-up' },
     inferred: 'Auto-detected',
     resolveNote: 'Lead note',
     choicePrefix: '[Briefing · decision] ',
@@ -122,6 +182,34 @@ const EN: BoardCopy = {
     pointer: (kind) => `On Briefing · ${kind}`,
     pointerGo: 'Briefing',
     badge: (n) => `${n} need you`,
+    wrapup: {
+        by: 'This session',
+        running: 'Wrapping up…',
+        handoffRunning: (target) => (target ? `Handing off → ${target}` : 'Handing off…'),
+        canClose: 'Ready to close',
+        pending: (n) => `${n} to confirm`,
+        notYet: 'Not ready to close',
+        delivered: (target) => `Handed off to ${target}`,
+        stored: (target) => `Left for ${target} (offline)`,
+        handoffFailed: (target) => (target ? `Handoff to ${target} failed` : 'Handoff failed'),
+        summary: 'Summary',
+        more: 'Show all',
+        less: 'Show less',
+        files: (n) => `Files (${n})`,
+        artifacts: (n) => `Artifacts (${n})`,
+        commits: (n) => `Commits (${n})`,
+        copyPaths: 'Copy paths',
+        pendingTitle: 'To confirm',
+        target: 'Handed off to',
+        deliveryLabel: { delivered: 'Delivered', 'offline-stored': 'Target offline: stored, read on its next run', failed: 'Not delivered' },
+        autoArchived: 'This session was archived automatically',
+        archive: 'Archive session',
+        archived: 'Session archived',
+        archivePendingConfirm: (n) => `${n} item${n === 1 ? '' : 's'} still unconfirmed. Archive this session anyway?`,
+        archiveConfirm: 'Archive this session?',
+        archiveFailed: 'Could not archive',
+        checkFailed: 'That tick was not saved; refreshed',
+    },
 };
 
 export function boardCopy(zh: boolean): BoardCopy {
