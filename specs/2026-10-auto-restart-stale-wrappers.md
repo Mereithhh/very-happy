@@ -155,6 +155,22 @@ daemon 重启时给新 wrapper 带 `HAPPY_AUTO_RESTARTED_FROM=<旧版本>`；新
 
 机器页「会话自动更新」：开（默认）/ 关。RPC `auto-restart-set { enabled }`，存在 daemon settings `autoRestartSessions`，与 B-587 休眠阈值同样模式。
 
+### 7. B-911：manual 会话看得见、能「本轮结束后重启」，agent 可自请空闲重启
+
+起因：dev-sg 上两个 0.2.181 wrapper（其中一个是团队 Lead）是 `manual / no-report`，三周没人重启；修复只在会话里的横幅上提示，Owner 看不见也不知道该不该点（B-909 报告第 2 条）。
+
+**卡片**（`daemon/staleWrapperNotice.ts`）：调度器第一次把会话判成可重启的 `manual`（`no-report`、`no-check-in`；`local-terminal`/`assistant` 等 daemon 重启不了的不出卡）时回调 `onStuck`，daemon 用账号 token 在该会话下 upsert 一条 attention item：`key: stale-wrapper`、`kind: todo`、`source: automation`，标题写会话名、当前版本、目标版本。推送走 attention 已有的 `pushOnce`（`pushedAt`，每条最多一次，遵守同一套推送设置：webhook 事件过滤、在线抑制）。去重以 server 为准：daemon 重启后再判到同一会话，查到已开着的卡只更新标题（不再推）；Owner 自己关掉的卡（`resolvedBy: owner`）不再重开。会话追上版本 / 退出时 `onUnstuck` 关卡（`done` / `superseded`）。
+
+**本轮结束后重启**：Web 卡片按钮调 machine RPC `restart-session { sessionId, whenIdle: true }`；daemon 不立即重启，放进空闲重启队列（`daemon/idleRestart.ts`），卡片转 `in_progress`。daemon 用 `daemonState.autoRestart.idleRestart: true` 声明支持；旧 daemon 会忽略 `whenIdle` 直接重启，所以 Web 只在看到这一位时才显示按钮。
+
+**空闲判定**（`update/idleRestartPolicy.ts`，纯函数）：旧 wrapper 不 check-in，但 ≥0.2.139 的 wrapper 都向 daemon 报 `turn_started`（运行中每 60 s 续租）/`turn_ended`。全部满足才重启：无回合租约、无后台任务、无 automation run、无排队中的升级、最后一次回合边沿后安静 30 s（排队消息会在这段时间内开下一轮），并且「请求之后见过 `turn_ended`」或「请求后已过 90 s 观察窗（> 一个租约周期，请求前就在跑的回合必然续过租）」。<0.2.139 的 wrapper 证明不了空闲，直接拒绝（`no-turn-reports`）。机器上同时只跑一个；队列与 agent 的限流记录落盘（`<HAPPY_HOME>/idle-restarts.json`），daemon 交接不丢。测试旋钮：`HAPPY_IDLE_RESTART_QUIET_MS / _OBSERVE_MS / _CHECK_MS`。
+
+**保留历史与意图**：执行就是现有的 `restartSession`（`--resume`、同一 session 行、`keepPublishedPermissionMode`），不占手动重启熔断。≤0.2.190 的 wrapper 不记录 model/effort 意图（项目日志 #21），daemon 改从它的 Claude Code 子进程命令行读 `--model` / `--effort`（`daemon/agentChildIntent.ts`），以 `--model` 与 `HAPPY_RESTART_EFFORT` 交给新 wrapper；新 wrapper 只在 server metadata 没有记录意图时才用这两个兜底值。团队成员的退出不会报给 Lead（`autoRestartExits`）。落后版本的重启发「已自动更新」行，agent 自请的发 `session-restarted-on-request` 行。
+
+**agent 自请**（MCP `request_idle_restart`，新 wrapper 才有，Claude 与 Codex bridge 都注册）：不带任何会话参数；wrapper 以 `{ sessionId, pid: process.pid }` 调 daemon 控制口 `/session-restart-request`，daemon 只接受它确实在跟踪的那个 pid ↔ session（`not-caller`），所以只能重启调用者自己。防滥用：同一会话同时只能有一个待执行请求（重复调用幂等）；滚动 24 h 内最多接受 3 次；该会话上次重启（任何来源）后 10 min 内拒绝（`cooldown`）；6 h 内一直没空闲就丢弃。Owner 的按钮不受这些限制（除了一次一个）。
+
+**看得见**：`very-happy daemon list` 每个会话多一列 `restart when idle: queued by owner|agent (waiting: <原因>)`，`--json` 里是 `idleRestart`。
+
 ## 兼容矩阵与发布顺序
 
 | 组合 | 行为 |
@@ -165,7 +181,13 @@ daemon 重启时给新 wrapper 带 `HAPPY_AUTO_RESTARTED_FROM=<旧版本>`；新
 | 新 Web + 旧 daemon | 无 `autoRestart` → 原横幅 |
 | 旧 Web + 新 daemon | 原横幅照常出现（点了也能用）；自动重启后横幅自然消失；服务提示显示英文 |
 
-不加 server 字段、不加 migration。发布：Web（镜像）与 CLI 互不依赖；CLI 发布后机器自动升级即生效（自动重启的是升级后仍在跑的旧 wrapper）。
+| B-911 新 daemon + 旧 wrapper（manual） | 出卡片 + 推一次；按钮排队空闲后重启 |
+| B-911 新 Web + 旧 daemon（无 `idleRestart` 位） | 卡片不会出现（旧 daemon 不建卡）；若遗留卡片，只显示「标为完成」，不显示重启按钮（旧 daemon 会把 `whenIdle` 当成立即重启） |
+| B-911 旧 Web + 新 daemon | 卡片按普通 todo 显示（标为完成 / 追问），没有重启按钮；会话里原横幅照常 |
+| B-911 旧 daemon + 新 wrapper | `request_idle_restart` 拿到 404 → 回 `daemon-too-old`，无副作用 |
+| B-911 无汇报板的 server | 建卡被 `AttentionUnsupportedError` 吞掉；空闲重启、agent 工具照常 |
+
+不加 server 字段、不加 migration（B-911 也没有）。发布：Web（镜像）与 CLI 互不依赖；CLI 发布后机器自动升级即生效（自动重启的是升级后仍在跑的旧 wrapper）。
 
 ## 风险
 

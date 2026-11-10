@@ -1,6 +1,7 @@
 import os from 'node:os';
 import { applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, withoutServerSnapshot, type ReconnectReplay } from '@/utils/reconnectSession';
 import { AUTO_RESTART_CAPABILITY, takeAutoRestartedEvent } from '@/update/autoRestartPolicy';
+import { takeRestartEffort } from '@/update/idleRestartPolicy';
 import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, latchKeepAwake, resolveCheckMs, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
 import { HibernationProbe, commitHibernation } from '@/hibernation/hibernationProbe';
 import { randomUUID } from 'node:crypto';
@@ -882,7 +883,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // B-063: assistant (dispatcher) sessions have the mutating built-ins
     // hard-denied — see assistant/dispatcherTools.ts.
     let currentDisallowedTools: string[] | undefined = withAssistantDenylist(undefined, isAssistantVariant);
-    let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = restoredClaudeEffort(restoredRun?.effort) ?? DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
+    // B-911: a restart of a wrapper that recorded no effort intent (≤0.2.190) carries what it was running.
+    const restartEffort = takeRestartEffort(process.env);
+    let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = restoredClaudeEffort(restoredRun?.effort) ?? (restoredRun?.effort === undefined ? restartEffort ?? undefined : undefined) ?? DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
     if (restoredRun) logger.debug(`[START] Restored run intent: model=${currentModel ?? 'default'} effort=${currentEffort ?? 'default'}`);
 
     // B-283 `/btw` side questions: answered by a separate single-turn query that

@@ -160,6 +160,15 @@ on; `HAPPY_AUTO_RESTART_QUIET_MS` shortens the 10-minute quiet window for
 tests). See [auto-restart](../specs/2026-10-auto-restart-stale-wrappers.md).
 Old sessions that cannot be restarted automatically are listed on the machine
 page (「旧版会话」) with one button to restart the idle ones (B-894).
+A session the daemon can restart but never prove idle by check-in (team leads,
+automations, pre-B-852 wrappers: `manual` / `no-report`, `no-check-in`) also
+gets one card in Needs you, pushed once (B-911): 「本轮结束后重启」 queues the
+restart until its turn is over and it is idle (`restart-session` with
+`whenIdle`; history, model and effort kept). Agents can queue the same for their
+own session with the `request_idle_restart` tool (at most 3 per 24 h, none
+within 10 minutes of the last restart). `very-happy daemon list` shows queued
+ones; `HAPPY_IDLE_RESTART_QUIET_MS` / `_OBSERVE_MS` / `_CHECK_MS` shorten the
+30 s quiet spell, the 90 s observation window and the 10 s check for tests.
 
 `agentAutoUpdate` (machine setting, default off; the machine page's 「自动更新
 agent」) lets the daemon update an outdated Codex CLI by itself while no Codex

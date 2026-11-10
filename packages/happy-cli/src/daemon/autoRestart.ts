@@ -70,6 +70,14 @@ export interface AutoRestartDeps {
     /** Timer for the offline retry (tests drive it by hand). */
     schedule?: (fn: () => void, ms: number) => void;
     publish: (sessions: Record<string, AutoRestartSessionStatus>) => void;
+    /**
+     * B-911: a stale wrapper the daemon can restart but never prove idle by
+     * check-in (`manual` / `no-report` or `no-check-in`) — once per (session,
+     * target) entering that state, so the owner hears about it (card + push).
+     */
+    onStuck?: (sessionId: string, status: AutoRestartSessionStatus, session: AutoRestartTracked) => void;
+    /** B-911: a session left that state (caught up, gone, or reclassified). */
+    onUnstuck?: (sessionId: string) => void;
     now?: () => number;
     random?: () => number;
     log?: (message: string) => void;
@@ -114,6 +122,15 @@ export function createAutoRestart(deps: AutoRestartDeps) {
         deps.publish(snapshot);
     }
 
+    /** B-911: restartable wrappers that can never check in (the owner decides when). */
+    const isStuck = (status: AutoRestartSessionStatus | undefined): boolean =>
+        status?.state === 'manual' && (status.reason === 'no-report' || status.reason === 'no-check-in');
+    function noteStuck(sessionId: string, before: AutoRestartSessionStatus | undefined, session?: AutoRestartTracked): void {
+        const after = statuses.get(sessionId);
+        if (isStuck(after) && session && !(isStuck(before) && before!.target === after!.target)) deps.onStuck?.(sessionId, after!, session);
+        else if (isStuck(before) && !isStuck(after)) deps.onUnstuck?.(sessionId);
+    }
+
     function setStatus(sessionId: string, status: AutoRestartSessionStatus | null): void {
         if (!status) { statuses.delete(sessionId); return; }
         const clock = behindSince.get(sessionId);
@@ -124,7 +141,9 @@ export function createAutoRestart(deps: AutoRestartDeps) {
 
     /** Caught up or gone for good: drop every trace (the next upgrade starts afresh). */
     function clearSession(sessionId: string): void {
+        const before = statuses.get(sessionId);
         statuses.delete(sessionId);
+        if (isStuck(before)) deps.onUnstuck?.(sessionId);
         behindSince.delete(sessionId);
         offline.delete(sessionId);
         awaitingSince.delete(sessionId);
@@ -297,6 +316,7 @@ export function createAutoRestart(deps: AutoRestartDeps) {
             inFlight += 1;
             lastStartedAt = t;
             setStatus(request.sessionId, { state: 'restarting', since: previous?.since ?? t, target: staleness.target });
+            noteStuck(request.sessionId, previous);
             setImmediate(() => { void run(request.sessionId, staleness); });
             return { nextCheckMs: null, restarting: true };
         }
@@ -306,6 +326,8 @@ export function createAutoRestart(deps: AutoRestartDeps) {
             statuses.delete(request.sessionId);
             if (behindSince.get(request.sessionId)?.target !== staleness.target) behindSince.set(request.sessionId, { target: staleness.target, since: t });
         }
+        // A `no-check-in` wrapper that checked in after all is not stuck any more.
+        noteStuck(request.sessionId, previous);
         publish();
         return { nextCheckMs: autoRestartNextCheck(verdict, input, random()), restarting: false };
     }
@@ -365,6 +387,7 @@ export function createAutoRestart(deps: AutoRestartDeps) {
                 if (next.reason === 'no-check-in') deps.log?.(`[auto-restart] ${session.sessionId}: wrapper ${session.wrapperVersion ?? '?'} never checked in; left to the user`);
             }
             setStatus(session.sessionId, { ...next, since: t, target: staleness.target });
+            noteStuck(session.sessionId, previous, session);
         }
         for (const id of new Set([...statuses.keys(), ...behindSince.keys()])) {
             if (seen.has(id) || statuses.get(id)?.state === 'restarting') continue;
@@ -385,7 +408,9 @@ export function createAutoRestart(deps: AutoRestartDeps) {
             if (state === 'restarting' || offline.has(sessionId)) return;
             behindSince.delete(sessionId);
             awaitingSince.delete(sessionId);
+            const before = statuses.get(sessionId);
             if (statuses.delete(sessionId)) publish();
+            if (isStuck(before)) deps.onUnstuck?.(sessionId);
         },
         statuses(): Record<string, AutoRestartSessionStatus> {
             return Object.fromEntries(statuses);

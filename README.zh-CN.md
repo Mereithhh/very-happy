@@ -369,8 +369,8 @@ Very Happy 会向托管会话注入一个小型 MCP 能力面，让 Agent 不只
 
 | 运行路径 | 今天已交付的 MCP 工具 |
 |---|---|
-| 基础托管 Claude 会话 | `change_title`、`copy_to_clipboard`、`open_preview`、`report_progress`、`request_human` |
-| 托管 Codex / Gemini / ACP 桥接 | `change_title`、`copy_to_clipboard`、`open_preview`、`report_progress` |
+| 基础托管 Claude 会话 | `change_title`、`copy_to_clipboard`、`open_preview`、`report_progress`、`request_human`、`request_idle_restart` |
+| 托管 Codex / Gemini / ACP 桥接 | `change_title`、`copy_to_clipboard`、`open_preview`、`report_progress`、`request_idle_restart` |
 | Assistant/meta-agent 变体额外能力 | `sessions_list`、`session_read`、`session_send`、`session_spawn`、`session_kill`、`session_archive`、`terminals_list`、`terminal_read`、`terminal_send`、`memory_update`、`journal_append` |
 | 用户级普通 `claude`（主动启用后） | 仅 `copy_to_clipboard` |
 

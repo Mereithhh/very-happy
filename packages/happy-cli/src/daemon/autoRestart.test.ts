@@ -379,3 +379,46 @@ describe('B-856 no restart onto a daemon that is about to be replaced', () => {
         expect(scheduler.statuses().a).toMatchObject({ state: 'waiting', reason: 'upgrade-pending' });
     });
 });
+
+describe('B-911 stuck wrappers (manual / no-report, no-check-in) are announced once', () => {
+    it('onStuck fires once per (session, target) entering manual; onUnstuck when it catches up or leaves', () => {
+        const onStuck = vi.fn<NonNullable<AutoRestartDeps['onStuck']>>();
+        const onUnstuck = vi.fn<NonNullable<AutoRestartDeps['onUnstuck']>>();
+        const { scheduler, live } = setup({ onStuck, onUnstuck }, {
+            team: { live: true, wrapperVersion: '0.2.181', flavor: 'claude', capabilities: ['agent-hibernation-v1'], spawnedBy: 'teams' },
+            term: { live: true, wrapperVersion: '0.2.181', flavor: 'claude', startedBy: 'terminal' },
+        });
+        scheduler.sweep();
+        scheduler.sweep();
+        expect(onStuck).toHaveBeenCalledTimes(1);
+        expect(onStuck.mock.calls[0][0]).toBe('team');
+        expect(onStuck.mock.calls[0][1]).toMatchObject({ state: 'manual', reason: 'no-report', target: '0.2.190' });
+        expect(onStuck.mock.calls[0][2]).toMatchObject({ wrapperVersion: '0.2.181' });
+        // A terminal session is manual too, but the daemon can never restart it: no card.
+        expect(onStuck.mock.calls.map(c => c[0])).not.toContain('term');
+        // Caught up (restarted onto the daemon's version) → unstuck once.
+        live.team = { ...live.team, wrapperVersion: '0.2.190' };
+        scheduler.sweep();
+        expect(onUnstuck).toHaveBeenCalledTimes(1);
+        expect(onUnstuck).toHaveBeenCalledWith('team');
+        scheduler.sweep();
+        expect(onUnstuck).toHaveBeenCalledTimes(1);
+    });
+
+    it('a stuck wrapper that exits is unstuck (forget); a no-check-in wrapper that checks in after all too', async () => {
+        const onStuck = vi.fn();
+        const onUnstuck = vi.fn();
+        const { scheduler, advance, report } = setup({ onStuck, onUnstuck, checkInGraceMs: 1000 }, {
+            team: { live: true, wrapperVersion: '0.2.181', flavor: 'claude', capabilities: ['agent-hibernation-v1'], spawnedBy: 'teams' },
+        });
+        scheduler.sweep();
+        advance(2000);
+        scheduler.sweep();
+        // `a` (0.2.188, hibernation-capable, no origin) became no-check-in after the grace.
+        expect(onStuck.mock.calls.map(c => [c[0], c[1].reason])).toEqual(expect.arrayContaining([['team', 'no-report'], ['a', 'no-check-in']]));
+        scheduler.forget('team');
+        expect(onUnstuck).toHaveBeenCalledWith('team');
+        await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report({ thinking: true }) });
+        expect(onUnstuck).toHaveBeenCalledWith('a');
+    });
+});

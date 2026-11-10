@@ -482,8 +482,8 @@ progress. The exact tools deliberately follow the runner:
 
 | Runtime path | MCP tools shipped today |
 |---|---|
-| Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress`, `request_human` |
-| Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
+| Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress`, `request_human`, `request_idle_restart` |
+| Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress`, `request_idle_restart` |
 | Assistant/meta-agent variant additions | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
 | User-scoped plain `claude`, after opt-in | `copy_to_clipboard` only |
 

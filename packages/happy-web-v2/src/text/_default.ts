@@ -3340,6 +3340,12 @@ export const en = {
                 card: 'Team leads, automations and older sessions never restart onto a new CLI by themselves. When the machine finds one (with the CLI that ships this), you get one notification and a card in Needs you naming the session and both versions. "Restart after this turn" waits until the session is idle, then restarts it in place, keeping history, model and effort; a turn in progress is never interrupted.',
                 agentLine: 'When an agent restarts its own session (new in the CLI), the chat shows a quiet line saying so.',
             },
+            nov11c: {
+                title: 'CLI 0.2.210: stuck sessions ask you once, and restart after their turn',
+                summary: 'Sessions the machine cannot update by itself now notify you, and agents can ask to restart their own session.',
+                card: 'When a team lead, automation or older session stays on an old CLI, the machine sends one notification and puts a card in Needs you naming the session and both versions. "Restart after this turn" waits until it is idle, then restarts it in place with its history, model and effort.',
+                agentTool: 'Agents get a request_idle_restart tool: it restarts only their own session, once the current turn is over (at most 3 times a day, not within 10 minutes of the last restart).',
+            },
             nov10b: {
                 title: 'CLI 0.2.209: Fable 5.2 in Claude sessions',
                 summary: 'Claude sessions can run Fable 5.2, and the bundled Claude Code is updated.',

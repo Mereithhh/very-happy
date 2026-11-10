@@ -206,7 +206,8 @@ export interface SpawnSessionOptions {
 }
 
 export type SpawnSessionResult =
-    | { type: 'success'; sessionId: string }
+    // B-911: `queued` = a `whenIdle` restart was accepted and waits for the session to go idle.
+    | { type: 'success'; sessionId: string; queued?: true }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
     // B-689: `startupExit` is set when the wrapper is known to be gone before it
     // reported a session — the spawn failed definitively and may be retried.
