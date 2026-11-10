@@ -49,11 +49,14 @@ function envMs(env: Record<string, string | undefined>, key: string, fallback: n
     return fallback;
 }
 
-/** Test knobs (`HAPPY_IDLE_RESTART_QUIET_MS` / `_OBSERVE_MS` / `_CHECK_MS`); the defaults otherwise. */
+/** Never shorter than one turn / background-task lease (60 s) plus slack: below it a running turn can look idle. */
+export const IDLE_RESTART_MIN_OBSERVE_MS = 65_000;
+
+/** Test knobs (`HAPPY_IDLE_RESTART_QUIET_MS` / `_OBSERVE_MS` / `_CHECK_MS`); the defaults otherwise. The observation window is floored at one lease. */
 export function resolveIdleRestartTiming(env: Record<string, string | undefined> = process.env): { quietMs: number; observeMs: number; checkMs: number } {
     return {
         quietMs: envMs(env, 'HAPPY_IDLE_RESTART_QUIET_MS', IDLE_RESTART_QUIET_MS),
-        observeMs: envMs(env, 'HAPPY_IDLE_RESTART_OBSERVE_MS', IDLE_RESTART_OBSERVE_MS),
+        observeMs: Math.max(IDLE_RESTART_MIN_OBSERVE_MS, envMs(env, 'HAPPY_IDLE_RESTART_OBSERVE_MS', IDLE_RESTART_OBSERVE_MS)),
         checkMs: Math.max(1_000, envMs(env, 'HAPPY_IDLE_RESTART_CHECK_MS', IDLE_RESTART_CHECK_MS)),
     };
 }

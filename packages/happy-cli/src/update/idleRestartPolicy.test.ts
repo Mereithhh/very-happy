@@ -29,7 +29,9 @@ describe('B-911 idleRestartReady', () => {
 
     it('test knobs', () => {
         expect(resolveIdleRestartTiming({})).toEqual({ quietMs: IDLE_RESTART_QUIET_MS, observeMs: IDLE_RESTART_OBSERVE_MS, checkMs: 10_000 });
-        expect(resolveIdleRestartTiming({ HAPPY_IDLE_RESTART_QUIET_MS: '2000', HAPPY_IDLE_RESTART_OBSERVE_MS: '5000', HAPPY_IDLE_RESTART_CHECK_MS: '10' })).toEqual({ quietMs: 2000, observeMs: 5000, checkMs: 1000 });
+        // The observation window never drops below one lease (60 s) + slack, even for tests.
+        expect(resolveIdleRestartTiming({ HAPPY_IDLE_RESTART_QUIET_MS: '2000', HAPPY_IDLE_RESTART_OBSERVE_MS: '5000', HAPPY_IDLE_RESTART_CHECK_MS: '10' })).toEqual({ quietMs: 2000, observeMs: 65_000, checkMs: 1000 });
+        expect(resolveIdleRestartTiming({ HAPPY_IDLE_RESTART_OBSERVE_MS: '120000' }).observeMs).toBe(120_000);
     });
 });
 

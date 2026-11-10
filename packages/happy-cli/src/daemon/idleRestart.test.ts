@@ -155,6 +155,25 @@ describe('B-911 idle restart queue', () => {
         expect(await second.queue.request({ sessionId: 'me', source: 'agent' })).toMatchObject({ ok: true, state: 'already-queued' });
     });
 
+    it('after a daemon handover an inherited request waits a full window again: the new daemon has not seen a lease yet', async () => {
+        const first = setup();
+        await first.queue.request({ sessionId: 'lead', source: 'owner' });
+        first.advance(10 * OBSERVE); // long before the handover
+        const saved = first.saved()!;
+        let t = 2_000_000_000;
+        const handover = setup({ load: () => saved, now: () => t });
+        await handover.queue.check();
+        expect(handover.restart).not.toHaveBeenCalled();
+        expect(handover.queue.status('lead')).toMatchObject({ wait: 'observing' });
+        // The wrapper's next lease renewal arrives inside the window: busy → still nothing.
+        t += 30_000; handover.busy.add('lead'); handover.queue.noteTurn('lead', 'turn_started');
+        t += OBSERVE; await handover.queue.check();
+        expect(handover.restart).not.toHaveBeenCalled();
+        handover.busy.delete('lead'); handover.queue.noteTurn('lead', 'turn_ended');
+        t += QUIET; await handover.queue.check();
+        expect(handover.restart).toHaveBeenCalledTimes(1);
+    });
+
     it('one restart at a time; a failure is reported and not retried by itself', async () => {
         let release: (v: { ok: false; error: string }) => void = () => undefined;
         const restart = vi.fn(() => new Promise<{ ok: false; error: string }>((r) => { release = r; }));

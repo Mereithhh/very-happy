@@ -82,6 +82,15 @@ export function createIdleRestart(deps: IdleRestartDeps) {
     const lastRestartAt = new Map<string, number>(Object.entries(loaded?.lastRestartAt ?? {}));
     const lastTurnEventAt = new Map<string, number>();
     const lastTurnEndedAt = new Map<string, number>();
+    /**
+     * When THIS daemon started watching each request: the request time, or —
+     * for one inherited from the previous daemon — its load time. A new daemon
+     * knows nothing of turns and background tasks until their next lease
+     * renewal (≤60 s), so the observation window must restart with it
+     * (11-11 e2e: a persisted request was restarted 12 s after a handover,
+     * mid background task).
+     */
+    const watchingSince = new Map<string, number>([...pending.keys()].map(id => [id, now()]));
     const waits = new Map<string, IdleRestartWait>();
     let running: string | null = null;
     let timer: { clear: () => void } | null = null;
@@ -116,6 +125,7 @@ export function createIdleRestart(deps: IdleRestartDeps) {
         if (!entry) return;
         pending.delete(sessionId);
         waits.delete(sessionId);
+        watchingSince.delete(sessionId);
         persist();
         deps.log?.(`[idle-restart] ${sessionId}: dropped (${why})`);
         deps.onSettled?.(sessionId, entry, { ok: false, error: why });
@@ -144,6 +154,7 @@ export function createIdleRestart(deps: IdleRestartDeps) {
         if (pending.has(sessionId)) return { ok: true, state: 'already-queued', requestedAt: pending.get(sessionId)!.requestedAt };
         const entry: IdleRestartEntry = { source, requestedAt: t, ...(input.target ? { target: input.target } : {}) };
         pending.set(sessionId, entry);
+        watchingSince.set(sessionId, t);
         if (source === 'agent') agentAccepted.set(sessionId, [...(agentAccepted.get(sessionId) ?? []), t]);
         persist();
         deps.log?.(`[idle-restart] ${sessionId}: queued by the ${source}`);
@@ -162,7 +173,7 @@ export function createIdleRestart(deps: IdleRestartDeps) {
             if (entry.source === 'agent' && t - entry.requestedAt >= AGENT_RESTART_PENDING_TTL_MS) { drop(sessionId, 'never idle within the request lifetime'); continue; }
             const verdict = idleRestartReady({
                 now: t,
-                requestedAt: entry.requestedAt,
+                requestedAt: Math.max(entry.requestedAt, watchingSince.get(sessionId) ?? entry.requestedAt),
                 turnActive: deps.turnActive(sessionId),
                 backgroundTasks: deps.backgroundTasks(sessionId),
                 automationRunning: deps.automationRunning(sessionId),
@@ -185,6 +196,7 @@ export function createIdleRestart(deps: IdleRestartDeps) {
                 running = null;
             }
             pending.delete(sessionId);
+            watchingSince.delete(sessionId);
             if (outcome.ok) lastRestartAt.set(sessionId, now());
             persist();
             deps.log?.(`[idle-restart] ${sessionId}: ${outcome.ok ? 'restarted' : `restart failed: ${outcome.error}`}`);
