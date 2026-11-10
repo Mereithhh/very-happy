@@ -3332,6 +3332,12 @@ export const en = {
                 skill: 'New `very-happy skill`: a capability map of sessions, terminals, projects, teams, automations, Issues and todos, accounts, machines, sharing, notifications, panels and settings, with one page per area (`very-happy skill automations`). Sessions get a single line pointing at it, so asking an agent “add a daily 9:00 automation to this project” gets the right command. A copy is kept in ~/.local/share/very-happy/skills/very-happy; files you edited are never overwritten.',
                 autoProject: '`very-happy auto create|edit --project <id>|current` attaches an automation to a project (`--no-project` detaches); before, only the Web could do this.',
             },
+            nov11g: {
+                title: 'CLI 0.2.210: API-error turns are flagged, background tasks show their command',
+                summary: 'A turn that stops on a model/API error is flagged and notified once, and Claude sessions report the context window they really run.',
+                turnFailed: 'CLI: a turn that stops on a model/API error is flagged and notified once; background tasks report their command and the turn that started them.',
+                contextWindow: 'CLI: Claude sessions report the context window they really run (for example 1M), so the app can show it.',
+            },
             nov11f: {
                 title: 'Previews open in the session that sent them',
                 summary: 'A file another session previews now takes you to that session instead of opening over the one you are in.',
