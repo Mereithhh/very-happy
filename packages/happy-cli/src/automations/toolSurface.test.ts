@@ -17,9 +17,9 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 describe('automation tool surface across runners', () => {
     it('is registered in-process for managed Claude and advertised in toolNames', () => {
         const source = read('../claude/utils/startHappyServer.ts');
-        expect(source).toContain('registerAutomationTools(mcp);');
+        expect(source).toContain('registerAutomationTools(dispatchRegistrar);');
         expect(source).toContain('...AUTOMATION_TOOL_NAMES,');
-        expect(source.indexOf('registerAutomationTools(mcp);')).toBeLessThan(source.indexOf("mcp.registerTool('change_title'"));
+        expect(source.indexOf('registerAutomationTools(dispatchRegistrar);')).toBeLessThan(source.indexOf("mcp.registerTool('change_title'"));
     });
     it('is forwarded by the Codex stdio bridge without new literal registrations', () => {
         const source = read('../codex/happyMcpStdioBridge.ts');

@@ -1536,7 +1536,7 @@ async function prepareMainAgentForSession(api: ApiClient, session: ApiSessionCli
         import('@/assistant/gates/setup'),
         import('@/assistant/dispatcherTools'),
         import('@/attention/client'),
-        import('./utils/titleGenerator'),
+        import('@/claude/utils/titleGenerator'),
         import('@/commands/sessionMessage'),
     ]);
     const log = (line: string) => logger.debug(line);
