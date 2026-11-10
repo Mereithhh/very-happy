@@ -3439,6 +3439,11 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov10a: {
+                title: '模型选择里加入 Fable 5.2',
+                summary: 'Claude 会话现在可以选 Fable 5.2，含 1M 上下文版本。',
+                fable: 'Claude 模型选择器里加入 Fable 5.2（含 1M 上下文），作为 Fable 的最新版本。新建会话即可直接选；已在运行的会话需要机器升级到最新 CLI 并重启会话后才会出现。已经在用 Fable 5.1 或 Opus 5.5 的会话模型不变。',
+            },
             nov10: {
                 title: '从侧栏打开项目里的会话时，它不再短暂消失',
                 summary: '打开休眠中的会话时，它在唤醒过程中一直留在侧栏原来的位置。',

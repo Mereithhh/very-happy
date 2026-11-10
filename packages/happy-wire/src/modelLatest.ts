@@ -80,7 +80,11 @@ export type LatestModelsResponse = z.infer<typeof LatestModelsResponseSchema>;
  * latestModels.json — evidence (2026-10-30, kept in the B-844 PR):
  * - Claude: claude-agent-sdk 0.3.306 / Claude Code 2.1.306 knows no Opus newer
  *   than claude-opus-5-5; Opus 5.5 needs wrapper capability claude-opus-5-5-v1
- *   (CLI >= 0.2.149, B-487).
+ *   (CLI >= 0.2.149, B-487). Re-checked 2026-11-10 on SDK 0.3.322 / CC 2.1.322
+ *   (B-907): still no newer Opus. The table holds the Opus tier only — follow
+ *   latest never crosses to Fable (B-844); Fable's newest (now claude-fable-5-2,
+ *   capability claude-fable-5-2-v1) is the picker's family pick (web
+ *   modelModeOptions).
  * - Codex: the sol tier is the flagship — it is `isDefault` in Codex 0.160+'s
  *   `model/list`. Bundled catalogs: gpt-6-sol from 0.157.0, gpt-6.1-sol from
  *   0.160.0 (bisected over 0.154–0.166; re-checked 2026-11-06 for B-893,

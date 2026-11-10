@@ -1,7 +1,7 @@
 import type { Metadata } from '@/sync/storageTypes';
 import type { SimpleTranslationKey } from '@/text';
 import { hackModes } from '@/sync/modeHacks';
-import { getCodeAgentDefaults, isPiAgent, supportsClaudeOpus55 } from '@/sync/agentDefaults';
+import { CLAUDE_FABLE_52_MODEL, getCodeAgentDefaults, isPiAgent, supportsClaudeFable52, supportsClaudeOpus55 } from '@/sync/agentDefaults';
 import { getLatestModelTier, type LatestModelTable } from '@slopus/happy-wire';
 
 export type ModeOption = {
@@ -94,9 +94,12 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
  * not this list, decides what they resolve to, so their labels mirror the
  * wrapper's bundled Claude Code (SDK 0.3.318 / CC 2.1.318 without machine
  * overrides: opus → Opus 5.5, sonnet → Sonnet 5.5, haiku → Haiku 5.5; probed
- * 2026-11-06). Opus 5.5 and Fable 5.1 are also offered as pinned ids so they
- * stay put whatever the aliases point at — CC 2.1.318's own catalog lists
- * Fable only as `claude-fable-5-1[1m]` (B-893). Opus 5.5 is the code default
+ * 2026-11-06). Opus 5.5, Fable 5.2 and Fable 5.1 are also offered as pinned
+ * ids so they stay put whatever the aliases point at — CC 2.1.318's own
+ * catalog lists Fable only as `claude-fable-5-1[1m]` (B-893), and so does
+ * 2.1.322 on a subscription login (B-907; on an API-key provider it lists the
+ * `fable` alias → claude-fable-5-2). Fable 5.2 (B-907) ships in SDK 0.3.322;
+ * Fable 5.1 stays for sessions already on it. Opus 5.5 is the code default
  * (agentDefaults.ts). `[1m]` is Claude Code's 1M-context marker (accepted by
  * the daemon resume path since B-290). `fable5` (pinned Fable 5) is
  * deliberately absent: 2.1.258 rejects it with `unrecognized_model` (probed
@@ -106,6 +109,7 @@ export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
         ...CLAUDE_PINNED_MODELS,
+        ...CLAUDE_FABLE_52_MODELS,
         { key: 'claude-fable-5-1', name: 'Fable 5.1', description: null },
         { key: 'claude-fable-5-1[1m]', name: 'Fable 5.1 · 1M', description: null },
         { key: 'fable', name: 'fable (alias)', description: null },
@@ -125,9 +129,15 @@ const CLAUDE_PINNED_MODELS: ModelMode[] = [
     { key: 'claude-opus-5-5[1m]', name: 'Opus 5.5 · 1M', description: null },
 ];
 
+/** B-907: listed in a live session only when its wrapper advertises `claude-fable-5-2-v1` (SDK 0.3.322+). */
+const CLAUDE_FABLE_52_MODELS: ModelMode[] = [
+    { key: 'claude-fable-5-2', name: 'Fable 5.2', description: null },
+    { key: 'claude-fable-5-2[1m]', name: 'Fable 5.2 · 1M', description: null },
+];
+
 const LONG_CONTEXT = '[1m]';
 
-/** `claude-fable-5-1` → 「Fable 5.1」; anything else null. */
+/** `claude-fable-5-2` → 「Fable 5.2」; anything else null. */
 function claudeIdName(id: string): string | null {
     const match = /^claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2}))?$/.exec(id);
     if (!match) return null;
@@ -164,11 +174,13 @@ export function withClaudeCatalogBases(models: ModelMode[]): ModelMode[] {
  * (listed only as the `opus` alias) and — Codex — the gpt-6 generation, which
  * every Codex on llm-hub runs whether or not it bundles the entry (B-893).
  */
-export function catalogRunnableKeys(flavor: AgentFlavor, codes: readonly string[], opts: { claudeOpus55?: boolean } = {}): Set<string> {
+export function catalogRunnableKeys(flavor: AgentFlavor, codes: readonly string[], opts: { claudeOpus55?: boolean; claudeFable52?: boolean } = {}): Set<string> {
     const out = new Set(codes);
     for (const code of codes) if (code.endsWith(LONG_CONTEXT)) out.add(code.slice(0, -LONG_CONTEXT.length));
     if (flavor === 'codex') for (const { key } of CODEX_KNOWN_MODELS) out.add(key);
     if (flavor === 'claude' && opts.claudeOpus55 !== false) out.add('claude-opus-5-5');
+    // B-907: a subscription catalog on CC 2.1.322 still lists only Fable 5.1.
+    if (flavor === 'claude' && opts.claudeFable52 !== false) out.add(CLAUDE_FABLE_52_MODEL);
     return out;
 }
 
@@ -242,12 +254,18 @@ export function getCodexModelModes(): ModelMode[] {
 /**
  * Models the wrapper's published catalog can lack but the session can still
  * run: pinned Opus 5.5 (the SDK lists it only under its `opus` alias, and only
- * on wrappers that advertise the capability) and Codex models newer than
+ * on wrappers that advertise the capability), pinned Fable 5.2 (B-907, same
+ * rule: `claude-fable-5-2-v1`) and Codex models newer than
  * Codex's bundled list.
  */
 function getCatalogExtras(flavor: AgentFlavor, metadata: Metadata | null | undefined): ModelMode[] {
     if (flavor === 'codex') return CODEX_EXTRA_MODELS;
-    if (flavor === 'claude' && supportsClaudeOpus55(metadata)) return CLAUDE_PINNED_MODELS;
+    if (flavor === 'claude') {
+        return [
+            ...(supportsClaudeOpus55(metadata) ? CLAUDE_PINNED_MODELS : []),
+            ...(supportsClaudeFable52(metadata) ? CLAUDE_FABLE_52_MODELS : []),
+        ];
+    }
     return [];
 }
 

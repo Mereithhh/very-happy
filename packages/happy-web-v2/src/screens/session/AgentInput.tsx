@@ -59,6 +59,7 @@ import {
     getCodeAgentDefaults,
     setAgentDefaultOverride,
     supportsClaudeOpus55,
+    supportsClaudeFable52,
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
 import { LONG_CONTEXT_SUFFIX, layoutModelPicker, withLongContextTwins } from './modelPickerLayout';
@@ -475,7 +476,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     // B-849a: newest per family up top, 1M as a switch, the rest under 「更多模型」, our own descriptions.
     // B-893: plus the plain id of a `[1m]`-only catalog entry (Fable) and Codex's gpt-6 generation.
     const runnableModels = catalogModels?.length
-        ? catalogRunnableKeys(normalizeAgentKey(flavor), catalogModels.map((model) => model.code), { claudeOpus55: !session || supportsClaudeOpus55(metadata) })
+        ? catalogRunnableKeys(normalizeAgentKey(flavor), catalogModels.map((model) => model.code), { claudeOpus55: !session || supportsClaudeOpus55(metadata), claudeFable52: !session || supportsClaudeFable52(metadata) })
         : null;
     // B-893: a gpt-6 model this machine's Codex does not bundle stays listed, marked.
     const codexVersion = normalizeAgentKey(flavor) !== 'codex' ? null

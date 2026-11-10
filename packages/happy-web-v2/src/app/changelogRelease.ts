@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-10-fable-5-2-in-model-picker',
+    date: '2026-11-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov10a.title',
+    summaryKey: 'changelog.releases.nov10a.summary',
+    itemKeys: ['changelog.releases.nov10a.fable'],
+  },
+  {
     id: '2026-11-10-sidebar-waking-session-stays',
     date: '2026-11-10',
     buildVersion: __APP_VERSION__,
