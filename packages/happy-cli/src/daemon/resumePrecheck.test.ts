@@ -29,6 +29,9 @@ describe('B-265 resumePrecheck', () => {
         expect(sanitizeResumeModel('claude-sonnet-4-5')).toBe('claude-sonnet-4-5');
         expect(sanitizeResumeModel('opus[1m]')).toBe('opus[1m]');
         expect(sanitizeResumeModel('fable[1m]')).toBe('fable[1m]');
+        expect(sanitizeResumeModel('claude-fable-5-2')).toBe('claude-fable-5-2');
+        expect(sanitizeResumeModel('claude-fable-5-2[1m]')).toBe('claude-fable-5-2[1m]');
+        expect(sanitizeResumeModel('claude-fable-5-1[1m]')).toBe('claude-fable-5-1[1m]');
         expect(sanitizeResumeModel('opus[2m]')).toBeNull();
         expect(sanitizeResumeModel('[1m]')).toBeNull();
         expect(sanitizeResumeModel('--dangerously-skip-permissions')).toBeNull();

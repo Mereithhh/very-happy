@@ -2,7 +2,7 @@
  * B-849b: what a Claude session really runs, read from Claude Code itself.
  *
  * `Query.getSettings()` (the `get_settings` control request; present at runtime
- * in the pinned SDK 0.3.306 and 0.3.318, missing from their .d.ts — hence the narrow
+ * in the pinned SDK 0.3.306, 0.3.318 and 0.3.322, missing from their .d.ts — hence the narrow
  * assertion) answers with
  *   - `effective.model`: the model settings.json pins, merged by Claude Code
  *     across user / project / local exactly as it applies them → the session's
@@ -15,7 +15,8 @@
  * no effort on this transport.
  *
  * The same probe showed `setModel(undefined)` lands on Claude Code's built-in
- * default (Fable 5.1), NOT the settings model a fresh Query starts on — so a
+ * default (Fable 5.1 on CC 2.1.30x; CC 2.1.322's `fable` alias is Fable 5.2,
+ * B-907), NOT the settings model a fresh Query starts on — so a
  * "machine default" switch mid-session must name the settings model itself.
  */
 import { configuredModelOf } from './claudeConfiguredModel';

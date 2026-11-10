@@ -3,6 +3,8 @@ import { calculateCost, PRICING, resolvePricingKey } from './pricing';
 
 describe('pricing.resolvePricingKey', () => {
     it('maps exact Claude 5 family ids and their 1M variants', () => {
+        expect(resolvePricingKey('claude-fable-5-2')).toBe('claude-fable-5-2');
+        expect(resolvePricingKey('claude-fable-5-2[1m]')).toBe('claude-fable-5-2');
         expect(resolvePricingKey('claude-fable-5-1')).toBe('claude-fable-5-1');
         expect(resolvePricingKey('claude-fable-5-1[1m]')).toBe('claude-fable-5-1');
         expect(resolvePricingKey('claude-opus-5[1m]')).toBe('claude-opus-5');
@@ -12,8 +14,8 @@ describe('pricing.resolvePricingKey', () => {
     });
 
     it('maps Claude Code aliases to the model they currently resolve to', () => {
-        expect(resolvePricingKey('fable')).toBe('claude-fable-5-1');
-        expect(resolvePricingKey('fable[1m]')).toBe('claude-fable-5-1');
+        expect(resolvePricingKey('fable')).toBe('claude-fable-5-2');
+        expect(resolvePricingKey('fable[1m]')).toBe('claude-fable-5-2');
         expect(resolvePricingKey('opus')).toBe('claude-opus-5-5');
         expect(resolvePricingKey('sonnet')).toBe('claude-sonnet-5');
         expect(resolvePricingKey('haiku')).toBe('claude-haiku-4-5');
@@ -31,15 +33,17 @@ describe('pricing.resolvePricingKey', () => {
     it('prices the Mythos counterparts like Fable, not like Opus', () => {
         expect(resolvePricingKey('claude-mythos-5-1')).toBe('claude-mythos-5-1');
         expect(resolvePricingKey('claude-mythos-5')).toBe('claude-mythos-5');
-        expect(resolvePricingKey('mythos')).toBe('claude-mythos-5-1');
+        expect(resolvePricingKey('mythos')).toBe('claude-mythos-5-2');
+        expect(resolvePricingKey('claude-mythos-5-2')).toBe('claude-mythos-5-2');
         expect(PRICING['claude-mythos-5-1']).toEqual(PRICING['claude-fable-5-1']);
+        expect(PRICING['claude-mythos-5-2']).toEqual(PRICING['claude-fable-5-2']);
         expect(PRICING['claude-mythos-5'].input).toBe(10.0);
     });
 
     it('never falls back to a Claude 3 rate for an unknown modern id', () => {
-        expect(resolvePricingKey('claude-fable-6')).toBe('claude-fable-5-1');
-        expect(resolvePricingKey('claude-fable-3')).toBe('claude-fable-5-1');
-        expect(resolvePricingKey('claude-mythos-6')).toBe('claude-mythos-5-1');
+        expect(resolvePricingKey('claude-fable-6')).toBe('claude-fable-5-2');
+        expect(resolvePricingKey('claude-fable-3')).toBe('claude-fable-5-2');
+        expect(resolvePricingKey('claude-mythos-6')).toBe('claude-mythos-5-2');
         expect(resolvePricingKey('claude-opus-6')).toBe('claude-opus-5-5');
         expect(resolvePricingKey(undefined)).toBe('claude-opus-5-5');
         expect(resolvePricingKey('something-else')).toBe('claude-opus-5-5');
@@ -53,5 +57,12 @@ describe('pricing.calculateCost', () => {
         expect(cost.input).toBeCloseTo(PRICING['claude-fable-5-1'].input + PRICING['claude-fable-5-1'].cache_read, 6);
         expect(cost.output).toBeCloseTo(5.0, 6);
         expect(cost.total).toBeCloseTo(cost.input + cost.output, 6);
+    });
+
+    it('prices Fable 5.2 at its own published rates ($8 / $40 / $0.20 cache read), not 5.1\'s', () => {
+        const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_creation_input_tokens: 1_000_000, cache_read_input_tokens: 1_000_000 } as any;
+        const cost = calculateCost(usage, 'claude-fable-5-2[1m]');
+        expect(cost.input).toBeCloseTo(8 + 10 + 0.2, 6);
+        expect(cost.output).toBeCloseTo(40, 6);
     });
 });
