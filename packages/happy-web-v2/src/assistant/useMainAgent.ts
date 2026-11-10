@@ -16,7 +16,7 @@ import { machineSpawnNewSession, sessionArchive } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { ASSISTANT_DIRECTORY } from './assistantConstants';
 import { useAssistantStore } from './assistantStore';
-import { MAIN_AGENT_OTHER_MACHINE_ERROR, resolveMainAgent, type MainAgentState } from './mainAgent';
+import { MAIN_AGENT_OTHER_MACHINE_ERROR, resolveMainAgent, shouldWritePointerBeforeSpawn, type MainAgentState } from './mainAgent';
 import { refreshMainAgentPointer, useMainAgentStore, writeMainAgentPointer } from './mainAgentStore';
 
 /** Pointer refresh cadence while some surface is mounted (the daemon rewrites it on rotation). */
@@ -79,9 +79,10 @@ export function useMainAgentActions(): MainAgentActions {
         setSpawning(true);
         setSpawnError(null);
         try {
-            // spec §2.1: point the account at the machine first (the daemon checks it before spawning).
-            // A server without KV just keeps the legacy per-machine pick.
-            if (credentials && useMainAgentStore.getState().pointer?.machineId !== machineId) {
+            // spec §2.1: the daemon writes the pointer after a spawn. The web writes it only when
+            // MOVING (a pointer exists and names another machine — the daemon would refuse the spawn
+            // with main_agent_on_other_machine otherwise): machineId + sessionId null.
+            if (credentials && shouldWritePointerBeforeSpawn(useMainAgentStore.getState().pointer, machineId)) {
                 try { await writeMainAgentPointer(credentials, machineId); } catch { /* legacy fallback */ }
             }
             const res = await machineSpawnNewSession({
