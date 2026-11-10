@@ -29,6 +29,25 @@ describe('B-913 turn failure summary', () => {
             .toBe('API Error: 400 advisor_20260301 requires request field model (claude-opus-5-5, v2.1.322)');
     });
 
+    it('B-913b: two-label host names without a port are hosts too (QA76: gw.qa76corp)', () => {
+        // positives: two and three labels, with and without a port
+        expect(summarizeTurnError('connect ECONNREFUSED gw.qa76corp')).toBe('connect ECONNREFUSED [host]');
+        expect(summarizeTurnError('getaddrinfo ENOTFOUND corp.internal')).toBe('getaddrinfo ENOTFOUND [host]');
+        expect(summarizeTurnError('upstream example.com returned 502.')).toBe('upstream [host] returned 502.');
+        expect(summarizeTurnError('upstream Example.COM returned 502')).toBe('upstream [host] returned 502');
+        expect(summarizeTurnError('dial gw.qa76corp:8443 failed')).toBe('dial [host] failed');
+        expect(summarizeTurnError('dial llm-gw.corp.internal failed')).toBe('dial [host] failed');
+        expect(summarizeTurnError('dial llm-gw.corp.internal:443 failed')).toBe('dial [host] failed');
+        // negatives: versions, model ids, abbreviations, file names
+        for (const keep of [
+            'API Error: 400 bad request (claude-opus-5-5, v2.1.322, gpt-6.1, gpt-5.1-codex)',
+            'model anthropic.claude-opus-5-5-v1:0 is not enabled',
+            'retry later, e.g. after 30s; i.e. not now',
+            'failed reading foo.ts, SKILL.md, package.json, App.tsx, run.sh, Node.js and README.MD',
+            'took 1.5s (2.0x slower)',
+        ]) expect(summarizeTurnError(keep)).toBe(keep);
+    });
+
     it('first line only, clipped, never empty', () => {
         expect(summarizeTurnError('\n\n  boom\nstack trace')).toBe('boom');
         expect(summarizeTurnError('y '.repeat(400)).length).toBeLessThanOrEqual(TURN_FAILURE_SUMMARY_MAX);

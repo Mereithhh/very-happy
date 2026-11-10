@@ -28,7 +28,15 @@ export const TurnFailureSchema = z.object({
 });
 export type TurnFailure = z.infer<typeof TurnFailureSchema>;
 
-const SECRET_PATTERNS: Array<[RegExp, string]> = [
+/** `name.<ext>` with one of these is a file, not a host (`SKILL.md`, `package.json`, `foo.ts`). */
+const FILE_EXTENSIONS = [
+    'ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs', 'json', 'jsonl', 'md', 'mdx', 'txt', 'log',
+    'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env', 'lock', 'xml', 'csv', 'sql', 'html', 'css', 'scss',
+    'py', 'rb', 'go', 'rs', 'java', 'kt', 'swift', 'sh', 'bash', 'zsh', 'ps1', 'cpp', 'hpp', 'cc',
+    'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'pdf', 'zip', 'gz', 'tgz', 'tar', 'wasm', 'map', 'ipynb',
+].join('|');
+
+const SECRET_PATTERNS:Array<[RegExp, string]> = [
     // API keys / tokens with well-known prefixes
     [/\b(sk|rk|pk)-[A-Za-z0-9_-]{8,}/g, '[redacted]'],
     [/\b(gh[pousr]_|github_pat_|xox[abpr]-|AKIA)[A-Za-z0-9_-]{8,}/g, '[redacted]'],
@@ -44,6 +52,12 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
     [/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{2,5})?\b/g, '[host]'],
     [/\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+:\d{2,5}\b/g, '[host]'],
     [/\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\.[A-Za-z]{2,}\b/g, '[host]'],
+    // B-913b: two-label names with no port (`gw.qa76corp`, `corp.internal`,
+    // `example.com`). Matched by host shape: the last label starts with a
+    // letter, is ≥ 2 chars and has no hyphen (no TLD does), so versions
+    // (`v2.1.322`, `gpt-6.1`), Bedrock-style model ids (`anthropic.claude-…`)
+    // and `e.g.` stay; common file extensions are not hosts.
+    [new RegExp(`\\b[A-Za-z0-9-]+\\.(?!(?:${FILE_EXTENSIONS})(?![\\w-]))[A-Za-z][A-Za-z0-9]+(?![\\w-])`, 'gi'), '[host]'],
     // long opaque blobs (JWTs, base64, hex ids)
     [/[A-Za-z0-9+/_=-]{40,}/g, '…'],
 ];
