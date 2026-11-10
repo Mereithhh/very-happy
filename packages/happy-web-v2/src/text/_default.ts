@@ -3332,7 +3332,7 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
-            nov11b: {
+            nov11g: {
                 title: 'Wrap up and Hand off, built in',
                 summary: 'Close a session with one click: the agent wraps up with your template and leaves a card you archive from. Or hand its work to another session.',
                 wrapup: 'Wrap up is in the session menu and the composer (/wrapup). The agent answers your template (default: what was done, files and commits, what is left, whether it can close) and a card on the Briefing lists the summary, files, commits and items to confirm — tick them, then Archive. Edit the template in Settings → Shortcuts. Nothing is archived on its own; cards need the next CLI.',

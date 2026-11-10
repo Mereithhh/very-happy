@@ -23,7 +23,7 @@ import { deliverToSession, type DeliveryResult } from '@/commands/sessionDeliver
 import { CLI_PEER_SENDER_ID, formatSessionPeerMessage, SESSION_PEER_SENT_FROM, type PeerMessagePurpose, type PeerSender } from './peerMessage'
 import { isPeerInScope, PEER_SCOPES, resolveRepoIdentity, type PeerScope, type RepoIdentity } from './repoIdentity'
 import { ProjectsUnsupportedError, sharedProjectsClient } from '@/projects/client'
-import { listRemotePeers, sendRemotePeerMessage, type RemotePeerListing, type RemotePeerMessageResult } from './remoteSessionClient'
+import { listRemotePeers, RemoteSessionOpsError, sendRemotePeerMessage, type RemotePeerListing, type RemotePeerMessageResult } from './remoteSessionClient'
 
 export const SESSION_PEER_TOOL_NAMES = ['session_message', 'session_peers'] as const
 export type SessionPeerToolName = typeof SESSION_PEER_TOOL_NAMES[number]
@@ -179,6 +179,9 @@ function defaultDeliver(to: string, persisted: PersistedSession, text: string, l
     })
 }
 
+/** Remote failures that mean the named machine is the wrong one (vs offline / unreachable). */
+const WRONG_MACHINE_CODES: ReadonlySet<string> = new Set(['unknown_machine', 'no_local_key'])
+
 function defaultRemoteMessage(args: { to: string; body: string; replyTo?: string; from: PeerSender; machineId?: string; purpose?: PeerMessagePurpose }): Promise<RemotePeerMessageResult> {
     const { machineId, ...rest } = args
     return sendRemotePeerMessage(rest, machineId ? { machineId } : {})
@@ -220,6 +223,9 @@ export async function sendPeerMessage(context: PeerToolContext, args: { to: stri
         try {
             result = await remote({ to: args.to, body, replyTo: args.replyTo, from: self, machineId: args.machineId, ...(args.purpose ? { purpose: args.purpose } : {}) })
         } catch (error) {
+            // B-915: an explicit --machine that is wrong (not on the account / never spawned the session) is the caller's
+            // mistake, not an unreachable target — say so instead of parking the message as offline-stored.
+            if (args.machineId && error instanceof RemoteSessionOpsError && WRONG_MACHINE_CODES.has(error.code)) throw error
             // B-646: owning machine offline / session not live there → same-project offline message.
             const stored = await storeOfflineOrThrow(context, self, args.to, body, error instanceof Error ? error : new Error(String(error)))
             context.sentTo?.get(args.to)?.push(now)

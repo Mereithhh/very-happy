@@ -142,9 +142,9 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     id: '2026-11-11-session-wrap-up-and-handoff',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,
-    titleKey: 'changelog.releases.nov11b.title',
-    summaryKey: 'changelog.releases.nov11b.summary',
-    itemKeys: ['changelog.releases.nov11b.wrapup', 'changelog.releases.nov11b.handoff', 'changelog.releases.nov11b.agents'],
+    titleKey: 'changelog.releases.nov11g.title',
+    summaryKey: 'changelog.releases.nov11g.summary',
+    itemKeys: ['changelog.releases.nov11g.wrapup', 'changelog.releases.nov11g.handoff', 'changelog.releases.nov11g.agents'],
   },
   {
     id: '2026-11-11-main-agent',
