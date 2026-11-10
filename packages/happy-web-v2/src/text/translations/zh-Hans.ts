@@ -3460,7 +3460,7 @@ export const zhHans: TranslationStructure = {
                 skill: '新增 `very-happy skill`：能力地图覆盖会话、终端、项目、团队、自动化、Issues 与待办、账号、机器、分享、通知、面板和设置，每块一页（如 `very-happy skill automations`）。会话里只多一行指向它，问 agent「给这个项目加一个每天 9 点的自动化」就能拿到正确命令。本机副本在 ~/.local/share/very-happy/skills/very-happy，你改过的文件不会被覆盖。',
                 autoProject: '`very-happy auto create|edit --project <id>|current` 可把自动化挂到项目上（`--no-project` 取消）；以前只能在 Web 上设。',
             },
-            nov11g: {
+            nov11j: {
                 title: 'CLI 0.2.210：API 报错中断的回合会被标记，后台任务显示命令',
                 summary: '一轮对话因模型或 API 报错中断时会标记并推送一次；Claude 会话会上报实际运行的上下文窗口。',
                 turnFailed: 'CLI：一轮对话因模型或 API 报错中断时会标记并推送一次；后台任务会带上命令和发起它的那一轮。',

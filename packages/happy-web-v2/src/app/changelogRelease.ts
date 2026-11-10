@@ -143,9 +143,9 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     cliVersion: '0.2.210',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,
-    titleKey: 'changelog.releases.nov11g.title',
-    summaryKey: 'changelog.releases.nov11g.summary',
-    itemKeys: ['changelog.releases.nov11g.turnFailed', 'changelog.releases.nov11g.contextWindow'],
+    titleKey: 'changelog.releases.nov11j.title',
+    summaryKey: 'changelog.releases.nov11j.summary',
+    itemKeys: ['changelog.releases.nov11j.turnFailed', 'changelog.releases.nov11j.contextWindow'],
   },
   {
     id: '2026-11-11-cli-very-happy-skill',
