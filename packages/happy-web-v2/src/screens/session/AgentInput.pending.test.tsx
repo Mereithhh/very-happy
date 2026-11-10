@@ -181,3 +181,38 @@ describe('AgentInput on a pending page (B-516)', () => {
         } finally { mocks.settings.agentDefaultOverrides = {}; }
     });
 });
+
+describe('B-908: Claude draft — 1M by default, a switch-off is remembered for the account', () => {
+    type Menu = { pickRow?: (key: string) => string; onLongContextToggle?: (on: boolean) => void };
+    const lastMenu = () => mocks.modelMenus[mocks.modelMenus.length - 1] as unknown as Menu;
+    const renderClaude = () => act(() => root.render(<AgentInput sessionId="pending-1" agentFlavor="claude" pending={pending} />));
+    afterEach(() => { delete (mocks.settings as Record<string, unknown>).claudeLongContextOptOut; });
+
+    // Opus 5.5 is the follow entry here (「跟随最新 · Opus 5.5 · 1M」), already 1M — no row of its own.
+    it('a row pick of Fable 5.2 / the fable alias sends the 1M twin; Haiku stays plain', () => {
+        renderClaude();
+        expect(lastMenu().pickRow!('claude-fable-5-2')).toBe('claude-fable-5-2[1m]');
+        expect(lastMenu().pickRow!('fable')).toBe('fable[1m]');
+        expect(lastMenu().pickRow!('haiku')).toBe('haiku');
+    });
+
+    it('switching 1M off writes the account opt-out; after it a pick stays plain; switching on clears it', () => {
+        renderClaude();
+        act(() => lastMenu().onLongContextToggle!(false));
+        expect(mocks.applySettings).toHaveBeenCalledExactlyOnceWith({ claudeLongContextOptOut: true });
+        (mocks.settings as Record<string, unknown>).claudeLongContextOptOut = true;
+        renderClaude();
+        expect(lastMenu().pickRow!('claude-fable-5-2')).toBe('claude-fable-5-2');
+        act(() => lastMenu().onLongContextToggle!(false));
+        expect(mocks.applySettings).toHaveBeenCalledOnce();
+        act(() => lastMenu().onLongContextToggle!(true));
+        expect(mocks.applySettings).toHaveBeenLastCalledWith({ claudeLongContextOptOut: false });
+    });
+
+    it('Codex drafts: picks pass through and the switch writes nothing', () => {
+        render();
+        expect(lastMenu().pickRow!('gpt-6.1-sol')).toBe('gpt-6.1-sol');
+        act(() => lastMenu().onLongContextToggle!(false));
+        expect(mocks.applySettings).not.toHaveBeenCalled();
+    });
+});

@@ -134,6 +134,13 @@ The user edited these drafts you wrote. Each <final> is now the authoritative te
   （文案不是代码）。顶栏：「草稿」+ 标题、「已编辑」标记、「恢复原文」（仅已编辑时）、复制按钮。
 - 编辑区是自动增高的 `<textarea>`（触屏 16px 防缩放），不折叠；不另套卡片（1-Border Rule）。
 - chip 复用 `ci-att` 系的视觉台阶（`--bg-2`、`--r-sm`），放在附件条同一位置之上。
+- B-914「发送」：顶栏主按钮，等同用户回复「发」。经已挂载的 composer（`draftSendRequest.ts`，
+  与 composerRestore 同一注册模式）以用户身份向当前会话发一条普通消息「发：「标题」」，所以
+  queue/steer/restore 与 `<edited_drafts>` 附带都走打字回复的同一路径，composer 里正在输入的
+  文字、附件、批注不动。Web 不向任何外部发送，真正的发送仍由 agent 按自己的规则执行（系统
+  提示里说明了这条消息的含义）。点过后显示「已请求发送」并禁用，状态记在本浏览器
+  localStorage（按草稿 KV key，最多 200 条，扛住列表虚拟化重挂载与刷新；不跨设备）。
+  没有 composer 的视图（分享来的只读会话）不显示按钮。窄屏时操作按钮换行到第二行。
 
 ## 兼容矩阵与发布顺序
 

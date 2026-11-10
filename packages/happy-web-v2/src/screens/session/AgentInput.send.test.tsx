@@ -49,6 +49,8 @@ vi.mock('./btwPanelState', () => ({ openBtwPanel: mocks.btw }));
 vi.mock('./sendFeedback', () => ({ yieldForSendFeedback: mocks.paint }));
 
 import { AgentInput } from './AgentInput';
+import { canRequestDraftSend, requestDraftSend } from './draftSendRequest';
+import { useEditableDrafts } from '@/sync/editableDraftsStore';
 
 function deferred() {
     let resolve!: () => void;
@@ -354,5 +356,63 @@ describe('AgentInput paste', () => {
         const event = paste('');
         expect(event.defaultPrevented).toBe(false);
         expect(input().value).toBe('');
+    });
+});
+
+describe('B-914: a draft card\'s 「发送」 goes through the mounted composer', () => {
+    it('sends exactly the request as the user and leaves what is being typed in the composer', async () => {
+        render();
+        expect(canRequestDraftSend('session')).toBe(true);
+        let accepted: boolean | undefined;
+        await act(async () => {
+            const pendingResult = requestDraftSend('session', '发：「Reply to Alex」');
+            request.resolve();
+            accepted = await pendingResult;
+        });
+        expect(accepted).toBe(true);
+        expect(mocks.send).toHaveBeenCalledExactlyOnceWith('session', '发：「Reply to Alex」', {
+            source: 'chat', delivery: 'queue', attachments: undefined, modeMeta: { model: null, effort: null },
+        });
+        expect(input().value).toBe('  Send this draft  ');
+        expect(mocks.draft).not.toHaveBeenCalledWith('session', null);
+    });
+
+    it('carries the user\'s edited draft in the existing <edited_drafts> block', async () => {
+        useEditableDrafts.setState({ drafts: { 'vh.draft.v1.session.4.abc': {
+            v: 1, sessionId: 'session', key: '4.abc', title: 'Reply to Alex',
+            original: 'Hi Alex', text: 'Hi Alex, edited', base: 'Hi Alex', updatedAt: 1,
+        } }, loaded: { session: true }, saves: {} });
+        try {
+            render();
+            await act(async () => {
+                const pendingResult = requestDraftSend('session', '发：「Reply to Alex」');
+                request.resolve();
+                await pendingResult;
+            });
+            const sent = mocks.send.mock.calls[0][1] as string;
+            expect(sent.startsWith('发：「Reply to Alex」\n\n<edited_drafts count="1">')).toBe(true);
+            expect(sent).toContain('<final>\nHi Alex, edited\n</final>');
+        } finally {
+            useEditableDrafts.setState({ drafts: {}, loaded: {}, saves: {} });
+        }
+    });
+
+    it('reports a failed send as not accepted, so the card can be clicked again', async () => {
+        render();
+        let accepted: boolean | undefined;
+        await act(async () => {
+            const pendingResult = requestDraftSend('session', '发');
+            request.reject(new Error('offline'));
+            accepted = await pendingResult;
+        });
+        expect(accepted).toBe(false);
+        expect(input().value).toBe('  Send this draft  ');
+    });
+
+    it('no composer, no sender (read-only views hide the button)', () => {
+        render();
+        act(() => root.unmount());
+        expect(canRequestDraftSend('session')).toBe(false);
+        root = createRoot(host);
     });
 });

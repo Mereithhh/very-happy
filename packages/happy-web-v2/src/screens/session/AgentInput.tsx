@@ -7,6 +7,7 @@ import { harnessForFlavor, machineSupportsModelConfig, withCustomModels } from '
 import { modelConfigStore, useCustomPickerModels } from '@/sync/modelConfigStore';
 import { onMessageQuote } from './messageQuote';
 import { mergeRestoredDraft, onComposerRestore } from './composerRestore';
+import { onDraftSendRequest } from './draftSendRequest';
 import { DispatchedQueueRow, PendingQueueRow } from './SendStatusView';
 import { appendMessageQuote, insertMessageQuoteAt } from './messageActionsModel';
 /**
@@ -37,6 +38,7 @@ import {
     getLauncherModelModes,
     getEffortLevelsForModel,
     compactResolvedModelCode,
+    claudeRunningModelLabel,
     relabelDefaultModel,
     catalogRunnableKeys,
     codexModelGate,
@@ -62,7 +64,7 @@ import {
     supportsClaudeFable52,
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
-import { LONG_CONTEXT_SUFFIX, layoutModelPicker, withLongContextTwins } from './modelPickerLayout';
+import { LONG_CONTEXT_SUFFIX, layoutModelPicker, longContextLocked, longContextRowPick, withLongContextTwins } from './modelPickerLayout';
 import { autoEffortName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from './runSetupCopy';
 import { useNavigate } from 'react-router-dom';
 import { useLatestModelTable } from '@/sync/latestModels';
@@ -73,7 +75,7 @@ import { apiSocket } from '@/sync/apiSocket';
 import { forkCatalogSource, type LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
-import { deriveCodexRunningModel, deriveRunningModelSubtitle, selectDisplayedModelKey, withSelectedModelEntry } from './modelDisplay';
+import { deriveCodexRunningModel, deriveRunningModelSubtitle, runningModelForTrigger, selectDisplayedModelKey, withSelectedModelEntry } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
     advanceQueueDeliveryPhase,
@@ -251,6 +253,8 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const usage = useSessionUsage(sessionId);
     const enterToSend = useSetting('agentInputEnterToSend');
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
+    // B-908: the user switched Claude's 1M off — picks and new sessions keep it off.
+    const longContextOptOut = useSetting('claudeLongContextOptOut') === true;
 
     const taRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -387,7 +391,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const launcherCatalogs = (!session && pending?.launcher?.catalogs) || NO_CATALOGS;
     const launcherContext = session ? null : pending?.launcher?.context ?? null;
     const modelMetadata = session ? (metadata ?? {}) : null;
-    const latestResolution = resolveLatestForAgent(latestTable, flavor, modelMetadata, launcherContext);
+    const latestResolution = resolveLatestForAgent(latestTable, flavor, modelMetadata, launcherContext, longContextOptOut);
     // B-883b: the wrapper recorded that this machine's account/provider refused 1M.
     const longContextRefused = latestModelContext(modelMetadata, launcherContext).longContextUnsupported === true;
     // B-849b: the session's own choice — the wrapper-recorded intent, a pick
@@ -405,7 +409,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const followingLatest = offersFollowLatest && (sessionFollowsLatest || (!explicitModelMode && isFollowingLatestModel(agentDefaultOverrides, flavor)));
     const modelKey = explicitModelMode && !sessionFollowsLatest
         ? explicitModelMode
-        : resolveDefaultModelMode(sessionFollowsLatest ? undefined : agentDefaultOverrides, flavor, modelMetadata, { table: latestTable, machine: launcherContext });
+        : resolveDefaultModelMode(sessionFollowsLatest ? undefined : agentDefaultOverrides, flavor, modelMetadata, { table: latestTable, machine: launcherContext, longContextOptOut });
     const resolvedDefaultModel = metadata?.defaultModelCode
         ?? (modelKey === 'default' ? usage?.model : undefined);
     const defaultModelLabel = resolvedDefaultModel
@@ -565,7 +569,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         running: metadata?.currentModelCode,
         optionKeys: models.map((option) => option.key),
     });
-    const pickerLayout = layoutModelPicker(models, {
+    const laidOut = layoutModelPicker(models, {
         flavor,
         selectedKey: displayedModelKey,
         followModel: offersFollowLatest ? followEntryModel(followState) : null,
@@ -573,6 +577,16 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         runnable: runnableModels,
         customKeys: [...customModels, ...typedModels],
     });
+    // B-908: Claude Code runs the selection at 1M whatever the switch says — show it on, locked.
+    const switchModel = displayedModelKey === LATEST_MODEL_MODE ? followEntryModel(followState) : displayedModelKey;
+    const switchLocked = !!session && !!laidOut.longContext && longContextLocked({
+        flavor,
+        selectedModel: switchModel ? (resolvedModelOf(switchModel.replace(/\[1m\]$/, '')) ?? switchModel) : null,
+        running: metadata?.currentModelCode,
+        contextWindow: metadata?.currentContextWindow,
+        capabilities: metadata?.capabilities,
+    });
+    const pickerLayout = switchLocked && laidOut.longContext ? { ...laidOut, longContext: { ...laidOut.longContext, on: true, locked: true } } : laidOut;
     // B-849a: an old CLI's Codex/Gemini wrapper does not report its machine
     // config model, so what follow-latest runs there is unknown — say that.
     const runFactsUnknown = offersFollowLatest && followState.kind === 'machineDefault' && displayedModelKey === LATEST_MODEL_MODE;
@@ -638,10 +652,28 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         : (() => {
             // B-849a: only when it differs from the entry on screen, and said in words.
             const running = deriveRunningModelSubtitle({ isClaude: publishesModeFacts, selectedKey: modelKey, running: metadata?.currentModelCode });
-            return running && metadata?.currentModelCode !== modelKey ? t('session.chat.modelRunning', { model: running }) : undefined;
+            // B-908: system/init drops `[1m]` — running claude-fable-5-2 on a claude-fable-5-2[1m] pick is the same model.
+            const sameModel = !!metadata?.currentModelCode && metadata.currentModelCode.replace(/\[1m\]$/, '') === modelKey.replace(/\[1m\]$/, '');
+            return running && !sameModel ? t('session.chat.modelRunning', { model: running }) : undefined;
         })();
+    // B-908: the closed entry names what the wrapper reports running (「Fable 5.2 · 1M」) once it runs the selection.
+    const runningTriggerModel = isClaudeFlavor && session && !apiModelOptions
+        ? runningModelForTrigger({
+            running: metadata?.currentModelCode,
+            contextWindow: metadata?.currentContextWindow,
+            intended: followingLatest ? followEntryModel(followState) : modelKey === 'default' ? metadata?.defaultModelCode : modelKey,
+            resolve: resolvedModelOf,
+        })
+        : undefined;
+    const runningTriggerLabel = runningTriggerModel ? claudeRunningModelLabel(runningTriggerModel, nameOfBaseModel) : undefined;
+    const modelOptionKeys = new Set(models.map((option) => option.key));
+    const pickModelRow = (key: string) => longContextRowPick(key, { flavor, optionKeys: modelOptionKeys, optOut: longContextOptOut, unsupported: longContextRefused });
+    const rememberLongContext = (on: boolean) => {
+        if (!isClaudeFlavor || longContextOptOut === !on) return;
+        sync.applySettings({ claudeLongContextOptOut: !on });
+    };
     // context meter — always visible when we have a usage snapshot.
-    const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage, metadata?.currentModelCode);
+    const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage, metadata?.currentModelCode, metadata?.currentContextWindow);
     const contextKnown = context.tokens !== null;
     const contextSize = context.tokens ?? 0;
     const contextWindow = context.window;
@@ -820,12 +852,20 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         }
     };
 
-    const doSend = async (delivery: 'queue' | 'steer' = 'queue') => {
-        const draft = draftRef.current;
+    /**
+     * `request` (B-914): a draft card's 「发送」 — send exactly this text as the
+     * user, leaving whatever is being typed (text, files, comments) in the
+     * composer. Edited drafts still ride along (B-642). `onResult` reports
+     * whether the message was accepted (sent or queued); not called = refused.
+     */
+    const doSend = async (delivery: 'queue' | 'steer' = 'queue', request?: { text: string; onResult: (accepted: boolean) => void }) => {
+        const draft = request ? request.text : draftRef.current;
         const value = draft.trim();
+        const sendFiles = !request && attachments.length > 0;
         // B-891: a send may be just the comments (no text). A pending session has no transcript to comment on.
-        const notes = pending ? [] : getChatAnnotations(sessionId).filter((a) => a.body.trim());
-        if ((!value && attachments.length === 0 && notes.length === 0) || sendingRef.current || processingAttachments) return;
+        const notes = pending || request ? [] : getChatAnnotations(sessionId).filter((a) => a.body.trim());
+        if ((!value && !sendFiles && notes.length === 0) || sendingRef.current || processingAttachments) return;
+        if (pending && request) return;
         if (pending) {
             // B-516: no session yet — queue into the pending outbox. Attachments
             // and `/btw` need a live session; the text stays put for them.
@@ -848,6 +888,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         // B-283: `/btw [question]` opens the side-question panel and NEVER
         // reaches the main conversation (attachments stay in the composer).
         // Non-Claude sessions keep sending the text verbatim.
+        // A draft-card request is 「发：…」 / 「Send it…」 — never /btw or /compact.
         if (routeBtw(value)) {
             setText('');
             draftRef.current = '';
@@ -860,7 +901,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         const compactCommand = parseCompactCommand(value);
         // `/compact` stays the bare command; the comments wait for the next message.
         const attachedNotes = compactCommand !== null ? [] : notes;
-        if (!value && attachments.length === 0 && attachedNotes.length === 0) return;
+        if (!value && !sendFiles && attachedNotes.length === 0) return;
         if (compactCommand !== null && compactSupport(session) === 'unsupported') {
             toast.show(t('session.chat.compactUnsupported'), 'info');
             return;
@@ -874,7 +915,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         // the keyboard but WOULD leave "focused textarea, no keyboard" — a
         // dead state where the next tap fires no focus event and the keyboard
         // can't be summoned. Mobile-only; desktop always refocuses.
-        const hadFocus = document.activeElement === taRef.current;
+        const hadFocus = !request && document.activeElement === taRef.current;
         // B-568: read before the send — sending may itself move the viewport.
         const softKeyboard = IS_COARSE_POINTER && hadFocus && isSoftKeyboardOpen({
             keyboardOpenAttr: taRef.current?.closest('[data-keyboard-open="true"]') != null,
@@ -899,14 +940,16 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         try {
             // Take only this submission before yielding. The user may start a
             // new draft or attach another file while the request is in flight.
-            takenAttachments = attachments.length > 0 ? take() : undefined;
-            draftRef.current = '';
-            setText('');
-            draftTaken = true;
-            // Clear the submitted draft in the same transaction. A late write
-            // after the frame could overwrite a freshly remounted composer's
-            // draft for this session.
-            storage.getState().updateSessionDraft(sessionId, null);
+            takenAttachments = sendFiles ? take() : undefined;
+            if (!request) {
+                draftRef.current = '';
+                setText('');
+                draftTaken = true;
+                // Clear the submitted draft in the same transaction. A late write
+                // after the frame could overwrite a freshly remounted composer's
+                // draft for this session.
+                storage.getState().updateSessionDraft(sessionId, null);
+            }
             const makeItem = (): QueuedMessage => ({
                 id: randomUUID(),
                 text: sendValue,
@@ -1003,13 +1046,24 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
             }
             sendingRef.current = false;
             setSending(false);
+            request?.onResult(outcome !== 'failed' || queueOwnsItem);
             // B-568: a touch send that reached the agent puts the keyboard away;
             // queued/failed sends keep the B-114 rule (composerSendFocus.ts).
             const caret = focusAfterSend({ coarse: IS_COARSE_POINTER, hadFocus, softKeyboard, outcome });
-            if (caret === 'focus') requestAnimationFrame(() => taRef.current?.focus());
+            if (request) { /* B-914: a draft card's send leaves focus where it is */ }
+            else if (caret === 'focus') requestAnimationFrame(() => taRef.current?.focus());
             else if (caret === 'blur') taRef.current?.blur();
         }
     };
+
+    // B-914: a draft card's 「发送」 goes through this composer (draftSendRequest.ts).
+    const doSendRef = useRef(doSend);
+    doSendRef.current = doSend;
+    useEffect(() => onDraftSendRequest(sessionId, async (text) => {
+        let accepted = false;
+        await doSendRef.current('queue', { text, onResult: (ok) => { accepted = ok; } });
+        return accepted;
+    }), [sessionId]);
 
     const interveneQueued = async (id: string) => {
         if (!supportsSteer || !isWorking || editingId === id || deliveryPhaseRef.current === 'intervening' || sendingRef.current) return;
@@ -1800,9 +1854,12 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                         rowExtra={upgradeMachineId ? (option) => codexGatedKeys.has(option.key) ? <UpgradeAgentLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.updateCodex')} /> : null : undefined}
                         notice={runFactsUnknown ? { text: t('session.chat.modelPicker.unknownNote'), extra: upgradeMachineId ? <UpgradeCliLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.upgradeCli')} /> : undefined } : undefined}
                         readOnly={isGemini ? { value: metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.modelPicker.geminiReadOnly'), hint: t('session.chat.modelPicker.geminiReadOnlyHint') } : undefined}
-                        triggerLabel={isGemini ? (metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.machineDefaultModel')) : undefined}
+                        triggerLabel={isGemini ? (metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.machineDefaultModel')) : runningTriggerLabel}
+                        pickRow={apiModelOptions ? undefined : pickModelRow}
+                        onLongContextToggle={apiModelOptions ? undefined : rememberLongContext}
                         effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
                         longContextLabel={t('session.chat.modelPicker.longContext')}
+                        longContextLockedHint={t('session.chat.modelPicker.longContextLockedHint')}
                         longContextHint={longContextRefused ? t('session.chat.modelPicker.longContextRefusedHint') : t('session.chat.modelPicker.longContextHint')}
                         moreLabel={t('session.chat.modelPicker.more')}
                         footer={{ note: t('session.chat.modelPicker.sessionOnly'), action: isGemini && effortOptions.length === 0 ? undefined : { label: t('session.chat.modelPicker.setDefault'), onSelect: () => { void setAsNewSessionDefault(); } } }}

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { liveModelTarget, parseClaudeRunFacts, readClaudeRunFacts } from './claudeRunFacts';
+import { liveModelTarget, parseClaudeRunFacts, parseContextWindow, readClaudeRunFacts } from './claudeRunFacts';
 import { applyClaudeRunFacts } from './claudeSdkMetadata';
 import type { Metadata } from '@/api/types';
 
@@ -69,5 +69,41 @@ describe('applyClaudeRunFacts', () => {
     it('no effort sent drops the level instead of showing a stale one', () => {
         const next = applyClaudeRunFacts({ ...base, currentThoughtLevelCode: 'high' }, { effort: null });
         expect('currentThoughtLevelCode' in next).toBe(false);
+    });
+});
+
+describe('B-908: the context window Claude Code really uses', () => {
+    // get_context_usage 'summary' answers probed 2026-11-11 (CC 2.1.322 / 2.1.318).
+    const FABLE52_322 = { totalTokens: 18529, maxTokens: 1000000, rawMaxTokens: 1000000, autocompactSource: 'model-default', model: 'claude-fable-5-2' };
+    const FABLE52_318 = { totalTokens: 18529, maxTokens: 200000, rawMaxTokens: 200000, autocompactSource: 'unknown-model', model: 'claude-fable-5-2' };
+    beforeEach(() => { vi.stubEnv('ANTHROPIC_MODEL', ''); });
+    afterEach(() => { vi.unstubAllEnvs(); });
+
+    it('parses rawMaxTokens (and the snake_case spelling); junk is unknown', () => {
+        expect(parseContextWindow(FABLE52_322)).toBe(1000000);
+        expect(parseContextWindow(FABLE52_318)).toBe(200000);
+        expect(parseContextWindow({ raw_max_tokens: 1000000 })).toBe(1000000);
+        for (const raw of [null, {}, { rawMaxTokens: '1000000' }, { rawMaxTokens: 0 }, { rawMaxTokens: 1.5 }]) expect(parseContextWindow(raw)).toBeUndefined();
+    });
+
+    it('reads it with the settings facts, summary detail (no token-count calls)', async () => {
+        const getContextUsage = vi.fn(async () => FABLE52_322);
+        expect(await readClaudeRunFacts({ getSettings: async () => PROBED, getContextUsage })).toEqual({ configuredModel: 'claude-haiku-5-5', effort: 'medium', contextWindow: 1000000 });
+        expect(getContextUsage).toHaveBeenCalledWith({ detail: 'summary' });
+    });
+
+    it('an old Claude Code without get_context_usage, or a failing / hanging one, keeps the settings facts', async () => {
+        expect(await readClaudeRunFacts({ getSettings: async () => PROBED })).toEqual({ configuredModel: 'claude-haiku-5-5', effort: 'medium' });
+        expect(await readClaudeRunFacts({ getSettings: async () => PROBED, getContextUsage: async () => { throw new Error('Unsupported control request subtype'); } })).toEqual({ configuredModel: 'claude-haiku-5-5', effort: 'medium' });
+        expect(await readClaudeRunFacts({ getSettings: async () => PROBED, getContextUsage: () => new Promise(() => {}) }, 10)).toEqual({ configuredModel: 'claude-haiku-5-5', effort: 'medium' });
+    });
+
+    it('publishes currentContextWindow; unchanged keeps the object; unknown leaves the last one', () => {
+        const base = { path: '/w', host: 'h' } as Metadata;
+        const next = applyClaudeRunFacts(base, { contextWindow: 1000000 });
+        expect(next.currentContextWindow).toBe(1000000);
+        expect(applyClaudeRunFacts(next, { contextWindow: 1000000 })).toBe(next);
+        expect(applyClaudeRunFacts(next, {}).currentContextWindow).toBe(1000000);
+        expect(applyClaudeRunFacts(next, { contextWindow: 200000 }).currentContextWindow).toBe(200000);
     });
 });

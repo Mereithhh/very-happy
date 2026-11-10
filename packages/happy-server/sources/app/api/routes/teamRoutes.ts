@@ -8,13 +8,23 @@ import { createTeam, listTeams, readTeam, actOnTeam, tickTeamSchedules } from '@
 import { TeamError } from '@/app/teams/reducer';
 
 const params = z.object({ id: z.string().min(1).max(128) });
+/** B-912: seconds a client should wait before retrying a team 429 (CLI team_* tools back off on it). */
+export const TEAM_DEFAULT_RETRY_AFTER_SECONDS = 5;
+export function teamRetryAfterSeconds(status: number, details?: Record<string, unknown>): number | null {
+    if (status !== 429) return null;
+    const given = details?.retryAfter;
+    return typeof given === 'number' && Number.isFinite(given) && given > 0 ? Math.min(3600, Math.ceil(given)) : TEAM_DEFAULT_RETRY_AFTER_SECONDS;
+}
 export function teamRoutes(app: Fastify) {
     const handle = async (reply: any, work: () => Promise<unknown>) => {
         try { return await work(); }
         catch (error) {
-            if (error instanceof TeamError) return reply.code(error.status).send({ error: error.code, ...(error.details ?? {}) });
             // B-726: project errors raised while creating/binding a team keep their own codes.
-            if (error instanceof ProjectError) return reply.code(error.status).send({ error: error.code, ...(error.details ?? {}) });
+            if (error instanceof TeamError || error instanceof ProjectError) {
+                const retryAfter = teamRetryAfterSeconds(error.status, error.details);
+                if (retryAfter !== null) reply.header('retry-after', String(retryAfter));
+                return reply.code(error.status).send({ error: error.code, ...(error.details ?? {}) });
+            }
             throw error;
         }
     };

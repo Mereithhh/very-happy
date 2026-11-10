@@ -46,6 +46,9 @@ export function applyClaudeRunFacts(current: Metadata, facts: ClaudeRunFacts): M
     if (facts.configuredModel !== undefined && current.configuredModel !== facts.configuredModel) {
         next = { ...next, configuredModel: facts.configuredModel };
     }
+    if (facts.contextWindow !== undefined && current.currentContextWindow !== facts.contextWindow) {
+        next = { ...next, currentContextWindow: facts.contextWindow };
+    }
     if (facts.effort !== undefined) {
         if (facts.effort === null) {
             if (next.currentThoughtLevelCode !== undefined) {

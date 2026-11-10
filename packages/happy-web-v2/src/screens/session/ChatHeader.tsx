@@ -4,6 +4,8 @@ import { useLocalSetting } from '@/sync/storage';
 import { useNavigate } from 'react-router-dom';
 import { Bot, Info, Moon, LogOut } from 'lucide-react';
 import { SessionInfoDialog } from './SessionInfoDialog';
+import { claudeRunningModelLabel } from '@/components/modelModeOptions';
+import { normalizeAgentKey } from '@/sync/agentDefaults';
 import { useProjects } from '@/sync/projects';
 import { buildSessionMenu, sessionMenuAvailability, withSessionTools } from '@/app/sessionMenu';
 import { copySessionLink, leaveSessionProject, stopSessionTurn } from '@/app/sessionMenuActions';
@@ -127,7 +129,12 @@ export function ChatHeader({
 
     const meta = session?.metadata;
     const title = meta?.summary?.text?.trim() || t('session.newChat');
-    const agent = sessionAgentLabel(meta?.flavor, t('status.unknown'));
+    // B-908: Claude's running model (wrapper-reported, `[1m]` kept) rides on the agent label: 「Claude · Fable 5.2 · 1M」.
+    const runningModel = normalizeAgentKey(meta?.flavor) === 'claude' && meta?.currentModelCode
+        ? claudeRunningModelLabel(typeof meta.currentContextWindow === 'number' && meta.currentContextWindow >= 1_000_000 && !meta.currentModelCode.endsWith('[1m]') ? `${meta.currentModelCode}[1m]` : meta.currentModelCode)
+        : null;
+    const agentName = sessionAgentLabel(meta?.flavor, t('status.unknown'));
+    const agent = [agentName, runningModel].filter(Boolean).join(' · ');
     const cwd = meta?.path;
     const machineId = meta?.machineId;
     // B-849a: the machine's display name, not the wrapper's hostname.
@@ -313,7 +320,8 @@ export function ChatHeader({
             </div>
             {!editing && !foldIdentity && <div className="ch-identity"><Popover.Root>
                 <Popover.Trigger asChild><button type="button" className="ch-identity-trigger" title={[agent, host, cwd].filter(Boolean).join(' · ')}>
-                    <span className="ch-agent">{agent}</span>
+                    <span className="ch-agent">{agentName}</span>
+                    {runningModel && <span className="ch-model" data-testid="header-running-model">{runningModel}</span>}
                     {host && <span className="ch-host">{host}</span>}
                 </button></Popover.Trigger>
                 <Popover.Portal><Popover.Content className="ch-identity-details" align="end" sideOffset={6} collisionPadding={12}>

@@ -29,9 +29,12 @@ export type ClaudeRunFacts = {
      *  ANTHROPIC_MODEL > merged settings.json model, B-883); null = none
      *  pinned; undefined = unknown. */
     configuredModel?: string | null;
+    /** B-908: the window Claude Code measures the main model against
+     *  (`get_context_usage` rawMaxTokens — what autocompact uses); undefined = unknown. */
+    contextWindow?: number;
 };
 
-type SettingsReader = { getSettings?: () => Promise<unknown> };
+type SettingsReader = { getSettings?: () => Promise<unknown>; getContextUsage?: (opts?: { detail?: 'summary' | 'full' }) => Promise<unknown> };
 
 const GET_SETTINGS_TIMEOUT_MS = 3_000;
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
@@ -53,16 +56,42 @@ export function parseClaudeRunFacts(raw: unknown, processEnvModel?: string | nul
     return facts;
 }
 
+/**
+ * B-908: the context window of a `get_context_usage` answer. Claude Code
+ * decides it per model, not by the `[1m]` marker — probed 2026-11-11
+ * (tmp/vh-team-B908/probe): on CC 2.1.322 the plain Opus 5.5 / Fable 5.1 /
+ * Fable 5.2 / Sonnet 5 ids already measure against 1_000_000
+ * (autocompactSource model-default), Haiku 4.5 against 200_000; on 2.1.318 an
+ * unknown id (Fable 5.2) is 200_000 unless sent as `[1m]`. And system/init
+ * reports the model without `[1m]`, so this is the only fact the web has.
+ */
+export function parseContextWindow(raw: unknown): number | undefined {
+    if (!raw || typeof raw !== 'object') return undefined;
+    const value = (raw as { rawMaxTokens?: unknown; raw_max_tokens?: unknown }).rawMaxTokens ?? (raw as { raw_max_tokens?: unknown }).raw_max_tokens;
+    return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
 /** Ask the live Query; null when this Claude Code cannot answer (never throws). */
 export async function readClaudeRunFacts(query: unknown, timeoutMs = GET_SETTINGS_TIMEOUT_MS): Promise<ClaudeRunFacts | null> {
     const reader = query as SettingsReader;
     if (typeof reader?.getSettings !== 'function') return null;
+    let facts: ClaudeRunFacts;
     try {
         // claudeRemote copies claudeEnvVars into process.env before spawning Claude Code.
-        return parseClaudeRunFacts(await withTimeout(reader.getSettings(), timeoutMs, 'get_settings'), process.env.ANTHROPIC_MODEL);
+        facts = parseClaudeRunFacts(await withTimeout(reader.getSettings(), timeoutMs, 'get_settings'), process.env.ANTHROPIC_MODEL);
     } catch {
         return null;
     }
+    if (typeof reader.getContextUsage === 'function') {
+        try {
+            // 'summary': no token-count API calls, answers from local estimates.
+            const window = parseContextWindow(await withTimeout(reader.getContextUsage({ detail: 'summary' }), timeoutMs, 'get_context_usage'));
+            if (window !== undefined) facts.contextWindow = window;
+        } catch {
+            // Unknown window: leave the published one alone.
+        }
+    }
+    return facts;
 }
 
 /**

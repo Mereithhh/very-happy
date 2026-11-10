@@ -57,7 +57,7 @@ export type MenuAccountSection = {
  * unknown running model; `footer` says the scope and offers the explicit
  * 「设为新会话默认」 (a pick here never writes the account default, B-848).
  */
-export function ModelEffortMenu({ label, modelLabel, options, layout, value, onChange, subtitle, notice, readOnly, effort, longContextLabel, longContextHint, moreLabel, footer, customize, onOpen, triggerLabel, account, triggerPrefix, customModel, rowExtra }: {
+export function ModelEffortMenu({ label, modelLabel, options, layout, value, onChange, subtitle, notice, readOnly, effort, longContextLabel, longContextHint, longContextLockedHint, moreLabel, footer, customize, onOpen, triggerLabel, account, triggerPrefix, customModel, rowExtra, pickRow, onLongContextToggle }: {
     label: string;
     modelLabel: string;
     options: ModeOption[];
@@ -70,6 +70,8 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     effort: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void };
     longContextLabel?: string;
     longContextHint?: string;
+    /** B-908: hint under a locked 1M switch (「这个模型默认 1M 上下文」). */
+    longContextLockedHint?: string;
     moreLabel?: string;
     footer?: { note: string; action?: MenuAction };
     customize?: MenuAction;
@@ -82,6 +84,10 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     customModel?: MenuCustomModel;
     /** B-894b: a link beside one model row (Codex 「更新」 next to its B-893 gate mark). */
     rowExtra?: (option: ModeOption) => ReactNode;
+    /** B-908: what a row pick sends (Claude: the 1M twin by default); the 1M switch bypasses it. */
+    pickRow?: (key: string) => string;
+    /** B-908: the user flipped the 1M switch (remembered as the account's 1M preference). */
+    onLongContextToggle?: (on: boolean) => void;
 }) {
     const [open, setOpen] = useState(false);
     const sheet = useSheetMode();
@@ -95,13 +101,15 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     const strength = effort.options.find((option) => option.key === effort.value)?.name;
     const atMax = isMaximumEffort(effort.options, effort.value);
     const choose = (key: string) => { if (key !== value) onChange(key); };
+    // A row stands for its model; the pick may be its 1M twin (B-908). Re-picking the checked row is a no-op.
+    const chooseRow = (key: string) => { if (key !== listedKey) choose(pickRow ? pickRow(key) : key); };
     const setOpenAndNotify = (next: boolean) => { setOpen(next); if (next) onOpen?.(); };
     const runAction = (action: MenuAction) => { setOpen(false); action.onSelect(); };
 
     const body = <ModelEffortBody
-        modelLabel={modelLabel} layout={resolvedLayout} selectedKey={listedKey} onChoose={choose}
+        modelLabel={modelLabel} layout={resolvedLayout} selectedKey={listedKey} onChoose={chooseRow}
         subtitle={subtitle} notice={notice} readOnly={readOnly} effort={effort}
-        longContext={resolvedLayout.longContext && longContextLabel ? { ...resolvedLayout.longContext, label: longContextLabel, hint: longContextHint, onToggle: (on) => onChange(on ? resolvedLayout.longContext!.onKey : resolvedLayout.longContext!.offKey) } : null}
+        longContext={resolvedLayout.longContext && longContextLabel ? { ...resolvedLayout.longContext, label: longContextLabel, hint: resolvedLayout.longContext.locked ? longContextLockedHint ?? longContextHint : longContextHint, onToggle: (on) => { onLongContextToggle?.(on); onChange(on ? resolvedLayout.longContext!.onKey : resolvedLayout.longContext!.offKey); } } : null}
         more={moreLabel ? { label: moreLabel, open: moreOpen, onToggle: () => setMoreOpen((v) => !v) } : null}
         footer={footer} customize={customize} runAction={runAction} account={account} rowExtra={rowExtra}
         customModel={customModel ? { ...customModel, onPick: (key) => { setOpen(false); choose(key); } } : undefined} />;
@@ -153,7 +161,7 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
     notice?: { text: string; action?: MenuAction; extra?: ReactNode };
     readOnly?: { value: string; hint: string };
     effort: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void };
-    longContext: { on: boolean; label: string; hint?: string; onToggle: (on: boolean) => void } | null;
+    longContext: { on: boolean; locked?: boolean; label: string; hint?: string; onToggle: (on: boolean) => void } | null;
     more: { label: string; open: boolean; onToggle: () => void } | null;
     footer?: { note: string; action?: MenuAction };
     customize?: MenuAction;
@@ -227,7 +235,8 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
             </div>}
         {/* QA26 P2-3: the whole row is the switch — a ≥44px target on phones, not just the 26px track. */}
         {longContext && !readOnly && <button type="button" role="switch" aria-checked={longContext.on} className="me-switch-row"
-            onClick={() => longContext.onToggle(!longContext.on)}>
+            aria-disabled={longContext.locked || undefined} data-locked={longContext.locked ? 'true' : undefined}
+            onClick={longContext.locked ? undefined : () => longContext.onToggle(!longContext.on)}>
             <span className="me-switch-text"><span>{longContext.label}</span>{longContext.hint && <span className="me-note">{longContext.hint}</span>}</span>
             <span className="me-switch" aria-hidden="true"><span className="me-switch-thumb" /></span>
         </button>}
