@@ -55,6 +55,10 @@ describe('B-916c main agent gate wiring', () => {
         expect(run).toContain('setAssistantExtraDenied(runtime.denylist.sdkDisallowed);')
     })
 
+    it('the daemon advertises the main agent capability to the web', () => {
+        expect(src('api/apiMachine.ts')).toContain('mainAgentGates: { rpcAvailable: true, detectedAt: now },')
+    })
+
     it('startHappyServer routes every dispatch-tool family through the gate', () => {
         const server = src('claude/utils/startHappyServer.ts')
         expect(server).toContain('options?.mainAgent && options.assistant && !process.env.VH_TEAM_SCOPE_FILE ? options.mainAgent.gate.wrap(mcp) : mcp;')

@@ -1637,6 +1637,8 @@ export class ApiMachineClient {
                     teamExit: { rpcAvailable: true, detectedAt: now },
                     // B-878 capability flag: `open-terminal.viewOnly` (same restamp discipline).
                     terminalViewOnly: { rpcAvailable: true, detectedAt: now },
+                    // B-916c capability flag: main agent with gates (same restamp discipline).
+                    mainAgentGates: { rpcAvailable: true, detectedAt: now },
                     // B-084: closed records survive daemon restarts (persisted
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.
