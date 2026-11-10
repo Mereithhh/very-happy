@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
-import { prepareTeamWorktree, removeTeamWorktree, resolveTeamRepository } from './worktree';
+import { prepareTeamWorktree, removeTeamWorktree, resolveTeamRepository, resolveTeamWorktreeBase } from './worktree';
 
 describe('team owned worktrees', () => {
     it('isolates attempts and retains dirty and unmerged work', async () => {
@@ -50,6 +50,61 @@ describe('team owned worktrees', () => {
     };
     const refExists = (git: (cwd: string, args: string[]) => string, repo: string, ref: string) => { try { git(repo, ['show-ref', '--verify', ref]); return true; } catch { return false; } };
 
+    // B-912: the shared checkout sits on an old detached HEAD; members must start from the remote's fresh default branch.
+    it('starts a new member worktree from freshly fetched origin/main without moving the checkout or existing worktrees', async () => {
+        const { home, origin, repo, git, commit } = setup();
+        try {
+            const existing = await prepareTeamWorktree(home, repo, 'old-member');
+            const existingHead = git(existing.directory, ['rev-parse', 'HEAD']);
+            const checkoutHead = git(repo, ['rev-parse', 'HEAD']);
+            const lander = join(home, 'lander'); git(home, ['clone', '-q', origin, lander]);
+            commit(lander, 'newer-1.txt'); commit(lander, 'newer-2.txt'); git(lander, ['push', '-q', 'origin', 'main']);
+            const remoteMain = git(lander, ['rev-parse', 'HEAD']);
+            expect(git(repo, ['rev-parse', 'origin/main'])).not.toBe(remoteMain); // stale until fetched
+            // Unknown origin/HEAD: the default branch comes from the remote itself.
+            git(repo, ['symbolic-ref', '--delete', 'refs/remotes/origin/HEAD']);
+            const lines: string[] = [];
+            const work = await prepareTeamWorktree(home, repo, 'new-member', 'teams', line => lines.push(line));
+            expect(git(work.directory, ['rev-parse', 'HEAD'])).toBe(remoteMain);
+            expect(git(work.directory, ['symbolic-ref', '--short', 'HEAD'])).toBe(work.branch);
+            expect(() => git(work.directory, ['rev-parse', '--abbrev-ref', '@{upstream}'])).toThrow(); // no upstream a bare push could hit
+            expect(git(repo, ['rev-parse', 'HEAD'])).toBe(checkoutHead);
+            expect(() => git(repo, ['symbolic-ref', '-q', 'HEAD'])).toThrow(); // still detached
+            expect(git(existing.directory, ['rev-parse', 'HEAD'])).toBe(existingHead);
+            expect(lines.join('\n')).toContain(`fetched origin/main ${remoteMain.slice(0, 12)}`);
+            // Reuse of an existing member worktree never re-bases it.
+            commit(lander, 'newer-3.txt'); git(lander, ['push', '-q', 'origin', 'main']);
+            expect((await prepareTeamWorktree(home, repo, 'new-member')).directory).toBe(work.directory);
+            expect(git(work.directory, ['rev-parse', 'HEAD'])).toBe(remoteMain);
+            // Automations keep starting from the checkout's HEAD.
+            const auto = await prepareTeamWorktree(home, repo, 'auto-1', 'automation');
+            expect(git(auto.directory, ['rev-parse', 'HEAD'])).toBe(checkoutHead);
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
+    it('falls back to the last known origin/main when the fetch fails, and logs it', async () => {
+        const { home, repo, git } = setup();
+        try {
+            const known = git(repo, ['rev-parse', 'origin/main']);
+            git(repo, ['remote', 'set-url', 'origin', join(home, 'unreachable.git')]);
+            const lines: string[] = [];
+            const base = await resolveTeamWorktreeBase(repo, line => lines.push(line));
+            expect(base).toMatchObject({ commit: known, ref: 'origin/main', source: 'cached' });
+            expect(lines.join('\n')).toMatch(/fetch of origin\/main failed, using the last known origin\/main/);
+            const work = await prepareTeamWorktree(home, repo, 'offline', 'teams', () => {});
+            expect(git(work.directory, ['rev-parse', 'HEAD'])).toBe(known);
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
+    it('uses HEAD when the repository has no remote', async () => {
+        const root = join(homedir(), 'code/github/skills/tmp/agent-teams-implementation/tests');
+        mkdirSync(root, { recursive: true });
+        const home = mkdtempSync(join(root, 'noremote-'));
+        const repo = join(home, 'repo'); mkdirSync(repo);
+        const git = (args: string[]) => execFileSync('git', ['-C', repo, '-c', 'user.name=Teams test', '-c', 'user.email=teams@example.invalid', ...args], { stdio: 'pipe' }).toString().trim();
+        try {
+            git(['init', '-b', 'main']); git(['commit', '--allow-empty', '-m', 'initial']);
+            expect(await resolveTeamWorktreeBase(repo)).toMatchObject({ commit: git(['rev-parse', 'HEAD']), ref: 'HEAD', source: 'head', reason: 'no remote' });
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
     it('cleans a worktree whose own team/B-xxx branch was pushed, keeping that branch', async () => {
         const { home, repo, git, commit } = setup();
         try {

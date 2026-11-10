@@ -365,7 +365,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         case 'message': {
             const t = getTask(action.taskId);
             const recipient = action.recipientBotId ?? t.assigneeBotId;
-            requireTeam(recipient === t.assigneeBotId || recipient === t.ownerBotId, 'recipient_outside_task', 403);
+            // B-912: name the owner (the member's lead) so a member's refusal says whom to send it to instead.
+            if (recipient !== t.assigneeBotId && recipient !== t.ownerBotId) throw new TeamError('recipient_outside_task', 403, t.ownerBotId ? { ownerBotId: t.ownerBotId } : undefined);
             msg(t, recipient, action.body); break;
         }
         case 'submit': {
