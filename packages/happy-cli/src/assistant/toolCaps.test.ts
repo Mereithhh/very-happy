@@ -54,6 +54,13 @@ describe('jsonReceipt', () => {
         expect(JSON.parse(text)).toEqual({ ok: true, automation: { id: 'a1', name: 'daily', status: 'active', version: 3, nextRunAt: 1 } })
     })
 
+    it('passes a fitting receipt through as written: gate 2 keeps approvalId / boardItemId', () => {
+        const gate = { ok: true, state: 'awaiting_decision', approvalId: '6f1c2b8e-1a2b-4c3d-9e8f-0a1b2c3d4e5f', boardItemId: 'item-42' }
+        expect(JSON.parse(out(capToolResult(textResult(JSON.stringify(gate)), 'receipt')))).toEqual(gate)
+        const longer = { ...gate, detail: 'd'.repeat(600) }
+        expect(JSON.parse(jsonReceipt(longer))).toEqual(gate)
+    })
+
     it('fits a team write receipt (task ids survive, the team summary goes)', () => {
         const receipt = {
             ok: true, taskId: 't1',
