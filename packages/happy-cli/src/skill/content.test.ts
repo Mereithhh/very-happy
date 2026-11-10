@@ -96,6 +96,11 @@ describe('B-917 very-happy skill coverage (CI guard against a stale skill)', () 
         for (const id of ids) expect(renderSkill()).toContain(`| \`${id}\` |`);
         expect(renderReference('issues-todos')).toContain('`very-happy todo skill`');
         expect(renderReference('nope')).toBeNull();
+        // Real-model run: Claude first asked for `automation` (B-917 e2e).
+        expect(renderReference('automation')).toBe(renderReference('automations'));
+        expect(renderReference('todos')).toBe(renderReference('issues-todos'));
+        expect(renderReference('s')).toBeNull();
+        expect(renderReference('se')).toBeNull();
         expect(Object.keys(skillFiles().files)).toEqual(ids.map((id) => `references/${id}.md`));
     });
 

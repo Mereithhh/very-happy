@@ -272,8 +272,18 @@ ${rows}
 `;
 }
 
+/** Exact id, else the one area whose id starts with it or has it as a word (`automation`, `todos`); ambiguous → null. */
+export function resolveArea(name: string): SkillArea | null {
+    const exact = SKILL_AREAS.find((candidate) => candidate.id === name);
+    if (exact) return exact;
+    const needle = name.trim().toLowerCase();
+    if (needle.length < 3) return null;
+    const matches = SKILL_AREAS.filter((candidate) => candidate.id.startsWith(needle) || candidate.id.split('-').some((word) => word.startsWith(needle)));
+    return matches.length === 1 ? matches[0] : null;
+}
+
 export function renderReference(id: string): string | null {
-    const area = SKILL_AREAS.find((candidate) => candidate.id === id);
+    const area = resolveArea(id);
     return area ? area.body().trim() + '\n' : null;
 }
 
