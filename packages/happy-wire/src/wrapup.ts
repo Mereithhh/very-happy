@@ -7,11 +7,16 @@ import { z } from 'zod';
 // whoever triggered it. The result lands on the owner board as a `wrapup`
 // attention item (`AttentionWrapupPayloadSchema` in ./attention).
 
-/** Session capability: the wrapper registers `wrapup_report` / `session_handoff` and marks wrap-up turns as running cards. */
+/** Session capability: the wrapper registers `wrapup_report` / `handoff_send` and marks wrap-up / handoff turns as running cards. */
 export const WRAPUP_SESSION_CAPABILITY = 'wrapup-v1';
 
-/** MCP tools added by B-915 (all sessions, all runners). */
-export const WRAPUP_TOOL_NAMES = ['wrapup_report', 'session_handoff', 'session_wrapup', 'session_request_handoff'] as const;
+/**
+ * MCP tools added by B-915 (all sessions, all runners). The first two are what
+ * the session doing the work calls; the last two ask *another* session to wrap
+ * up / hand off (the main agent's entry, B-910 `session_wrapup(id)` /
+ * `session_handoff(from, to)`).
+ */
+export const WRAPUP_TOOL_NAMES = ['wrapup_report', 'handoff_send', 'session_wrapup', 'session_handoff'] as const;
 
 /** Board item keys: one wrap-up card and one handoff card per session (a new run reposts and reopens it). */
 export const WRAPUP_ITEM_KEY = 'wrapup';
@@ -134,7 +139,7 @@ export function buildHandoffPrompt(args: { to: HandoffTarget; note?: string | nu
         `[Very Happy handoff] Hand this session's work over to session${quoteTitle(to.title)} (id ${to.id}).`,
         'Write a handoff summary the other agent can act on without this conversation: goal, what is done, current state,',
         'artifact paths (files, branches, PRs, docs), commits, next steps, open questions.',
-        `Then call \`session_handoff\` once with to: "${to.id}"${machine}, summary, artifacts (paths), archive_after: ${args.archiveAfter ? 'true' : 'false'}.`,
+        `Then call \`handoff_send\` once with to: "${to.id}"${machine}, summary, artifacts (paths), archive_after: ${args.archiveAfter ? 'true' : 'false'}.`,
         `If that tool is not available, send the summary with \`session_message\` (to: "${to.id}"${machine}) instead.`,
         'Do not start new work in this session after handing off.',
     ];
