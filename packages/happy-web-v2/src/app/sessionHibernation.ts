@@ -43,6 +43,33 @@ export function isHibernated(session: HibernationSession | null | undefined): bo
     return true;
 }
 
+/** How long a started-but-not-yet-heartbeating wrapper keeps its session listed (B-906). */
+export const WAKE_GRACE_MS = 2 * 60 * 1000;
+
+/**
+ * B-906: a wrapper is starting up for this offline session — its first write
+ * (CLI `mergeReconnectMetadata`: lifecycleState running, hibernation stamp
+ * cleared) has landed, its first `session-alive` has not. Between the two the
+ * session is neither active nor hibernated, so lists that keep `active ||
+ * hibernated` dropped it for those seconds (opening a hibernated session made
+ * it vanish from the sidebar until the wake finished). `lifecycleStateSince`
+ * newer than the last heartbeat is what tells a start from a plain offline
+ * session, whose last heartbeat came after its start.
+ */
+export function isWaking(session: HibernationSession | null | undefined, now: number): boolean {
+    if (!session || session.active || session.archivedAt != null) return false;
+    const meta = session.metadata as { lifecycleState?: unknown; lifecycleStateSince?: unknown } | null | undefined;
+    const since = meta?.lifecycleStateSince;
+    if (meta?.lifecycleState !== 'running' || typeof since !== 'number' || !Number.isFinite(since)) return false;
+    if (typeof session.activeAt === 'number' && since <= session.activeAt) return false;
+    return now - since <= WAKE_GRACE_MS;
+}
+
+/** Listed with the live sessions (not under 归档): online, hibernated, or waking up. */
+export function isListedLive(session: HibernationSession, now: number): boolean {
+    return session.active || isHibernated(session) || isWaking(session, now);
+}
+
 export function supportsKeepAwake(metadata: { capabilities?: string[] } | null | undefined): boolean {
     return Array.isArray(metadata?.capabilities) && metadata!.capabilities!.includes(HIBERNATION_CAPABILITY);
 }

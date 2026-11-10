@@ -20,7 +20,7 @@ import { worktreeBranchLabel } from '@/utils/worktree';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { prepareSearch } from './searchMatch';
 import { sessionSearchFields, type SearchLabels } from './searchDocs';
-import { isHibernated } from '@/app/sessionHibernation';
+import { isListedLive } from '@/app/sessionHibernation';
 import { isAssistantSession } from '@/assistant/assistantSession';
 import { sessionHasPendingRequests } from '@/screens/board/boardItems';
 import { getSessionName, getSessionSidebarSubtitle } from '@/utils/sessionUtils';
@@ -129,9 +129,10 @@ export function useSessionSearch(rawInput: string, enabled: boolean, filters: Se
     // Every searchable session (archived and terminal mirrors included; the assistant is not a conversation).
     const facts = useMemo<SessionFacts[]>(() => {
         const out: SessionFacts[] = [];
+        const now = Date.now();
         for (const s of Object.values(sessionsById)) {
             if (isAssistantSession(s)) continue;
-            const archived = !(s.active || isHibernated(s));
+            const archived = !isListedLive(s, now);
             const projectId = placement(s.id).projectId ?? null;
             const machineId = s.metadata?.machineId ?? null;
             const flavor = s.metadata?.flavor?.trim() || null;
