@@ -3457,6 +3457,11 @@ export const zhHans: TranslationStructure = {
                 default: '选 Opus 5.5、Fable 5.2 或 Fable 5.1 时自动打开 1M 上下文。模型本来就默认跑 1M 时，开关显示为已开、不可切换；关掉确实会改变窗口时，你的选择会按账号记住。已经在跑的会话不改模型。',
                 honest: '模型按钮和会话头部显示 agent 实际运行的模型，例如「Fable 5.2 · 1M」，上下文计量也按这个窗口算（需要下一版 CLI）。',
             },
+            nov11d: {
+                title: '团队工具在所有会话里都只回一张回执',
+                summary: '长时间运行的团队负责人，每次操作团队后不再收到整个团队的内容。',
+                receipts: '派活、发消息、提交、验收、退回、取消、移交和定时提醒，现在在所有会话里都只返回一张简短回执（任务 id、状态，以及下一步要用的 id），包括用旧版 CLI 启动、还没重启过的会话。以前这类会话每次都会收到整个团队的内容（几十万字符），agent 一次读不完。',
+            },
             nov10b: {
                 title: 'CLI 0.2.209：Claude 会话可用 Fable 5.2',
                 summary: 'Claude 会话可以用 Fable 5.2，内置的 Claude Code 同步升级。',

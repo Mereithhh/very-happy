@@ -75,6 +75,26 @@
 
 脱敏 fixture（`packages/happy-cli/src/teams/__fixtures__/b881-lead-team.json`，文本换成等长占位）上默认视图 18,614 字符。写操作回执的 operation 只留 id/type/botId/status/error，并加 `ok: true`。team_create / team_join 同样返回精简视图（`adopt.ts` 直接调 client，仍拿完整 team）。Web、daemon 与 HTTP API 不变。
 
+**B-911 修订：回执改由 server 生成。** B-840/B-881 都在 CLI 里做，存量 wrapper 不热替换：dev-sg 上 0.2.181 的 Lead（10-22 启动）30 天 1457 次 team_* 里 1349 次超出宿主上限，中位约 43.8 万字符。0.2.181 的工具把 `POST /v1/teams/:id/agent` 的 JSON 原样 `JSON.stringify` 给模型，所以在 server 生成回执，所有版本的 wrapper 同时生效：
+
+- **只改 scoped 写**：`POST /v1/teams/:id/agent` 返回 `TeamActionReceipt`（`app/teams/receipt.ts`，wire 类型同名），字段与 B-840 一致，另加 `receipt: 1`、`action`；goal/schedule body 截 200 字、error 截 300 字，`idleMembers` ≤10（每项 taskIds ≤10）、`cleanupIssues` ≤5、`taskOperations` ≤5，超出数写进 `omitted`。不带 credential。
+- **所有写都回 `taskId`**：服务端 `response.taskId`（新建任务）优先，否则取请求里的 `action.taskId`（修 QA19 / 项目日志 #15）；schedule_* 回 `scheduleId` 与 `schedule`。幂等重放（同 requestId）走同一个回执。
+- **不变**：owner 写 `POST /v1/teams/:id/actions`（Web `sync/teams.ts`、daemon `teams/worker.ts` 的 claim/complete/fail/delivered/session-event、CLI join/permissions）仍返回完整 `TeamResponse`；所有读（`GET /v1/teams/:id`、`GET …/agent`）不变；错误体不变。
+
+写响应的消费方（11-11 逐个核对源码与 0.2.181 npm 包）：
+
+| 消费方 | 路由 | 读写响应里的什么 | B-911 后 |
+| --- | --- | --- | --- |
+| Web 团队页（`sync/teams.ts` `actOnTeam`） | `/actions` | `team`（刷新 store） | 不变 |
+| daemon team worker（claim/complete/fail/delivered/session-event） | `/actions` | `credential`、`team.operations` | 不变 |
+| CLI join（`client.initialize`）、`teams permissions` | `/actions` | `credential`、`team` | 不变 |
+| 新 CLI（≥0.2.187）team_* 写工具 | `/agent` | `teamActionReceipt`：`team.tasks` 不是数组就原样透传 | 拿到 server 回执，形状同 B-840 |
+| 新 CLI `very-happy teams action` | `/agent` | 原样打印 | 打印回执（仓库与 skills 里无解析方） |
+| 旧 CLI（≤0.2.186，含 0.2.181）team_* 写工具与 `teams action` | `/agent` | 原样 `JSON.stringify` 给模型，不读字段 | 模型拿到回执 |
+| Codex stdio bridge | 转发 owning 进程的结果 | 已是回执则透传 | 不变 |
+
+没有客户端读 scoped 写响应里的 `team.tasks`，所以不需要能力位。实测（隔离 standalone server，按 11-11 Lead 团队规模造数：22 任务 / 34 消息 / 23.4 万 bytes，经 0.2.181 的 `teams action` 同一条 `client.action` 路径）：改前 lead 写 23.2–24.1 万字符，只有 delegate/schedule 带 id；改后 807–1,447 字符，每次都带 `taskId` 或 `scheduleId`。旧 wrapper 的 `team_inspect` 仍是完整视图（读路径不在本修订范围）。
+
 ## 兼容与发布顺序
 
 | 组合 | 行为 |
@@ -82,6 +102,8 @@
 | 新 server + 旧 CLI | 上限错误返回 409 + code，旧 CLI 显示 `HTTP 409: team_size_limit`。MCP 仍返回完整视图（旧 CLI 没有精简视图，但压缩已经限制了体积） |
 | 旧 server + 新 CLI | 429 + code 走容量提示；没有 `capacity` 和 `compacted` 字段，精简视图照常工作 |
 | B-840 新 CLI（任意 server） | 写操作返回回执；字段都来自现有响应，不需要 server 配合。旧 server 不返回 `capacity`、`idleMembers` 时，回执里就没有这几项。依赖写操作返回值读团队状态的 prompt 需改为调用 team_inspect（内置的 Lead/成员说明本来就要求先 inspect） |
+| B-911 新 server + 任意 CLI | scoped 写一律回执；旧 CLI 原样转给模型，新 CLI 透传。owner 写与所有读不变 |
+| B-911 回滚到旧 server | scoped 写回到完整 team（旧 CLI 再次变大，新 CLI 照常在本地生成回执）；无数据变化 |
 | 回滚到旧镜像 | **只回滚镜像，保留 `TeamArchive` 表，不 DROP**：归档行已从实时表删除，DROP 会永久丢失它们。旧镜像忽略这张表，已归档的记录看不到；保留下来的源仓库 spawn 指向已归档的任务，只在 reconcile / complete 这类路径才会按 op 去查任务，而这些路径要求 op 未完成，所以不会触发 |
 | daemon（任意版本）的 stop / recoverScope | 按 `(botId, generation, sessionId)` 或 spawn id 读 `team.operations` 里的 spawn；当前绑定与未完成 stop 指向的 spawn 不归档，所以不受影响 |
 

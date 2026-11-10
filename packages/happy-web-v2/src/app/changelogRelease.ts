@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-11-team-write-receipts-for-every-session',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11d.title',
+    summaryKey: 'changelog.releases.nov11d.summary',
+    itemKeys: ['changelog.releases.nov11d.receipts'],
+  },
+  {
     id: '2026-11-11-update-notice-draft-send-org-docs',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,

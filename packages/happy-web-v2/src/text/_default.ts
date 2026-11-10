@@ -3329,6 +3329,11 @@ export const en = {
                 default: 'Picking Opus 5.5, Fable 5.2 or Fable 5.1 turns on 1M context. Where the model runs with 1M anyway, the switch shows on and stays put; where switching it off really changes the window, your choice is kept for your account. Sessions already running keep their model.',
                 honest: 'The model button and the session header show what the agent really runs, such as “Fable 5.2 · 1M”, and the context meter uses that window (with the next CLI).',
             },
+            nov11d: {
+                title: 'Team tools answer with a short receipt in every session',
+                summary: 'Long-running team leads no longer get the whole team back after each team action.',
+                receipts: 'Delegating, messaging, submitting, accepting, returning, cancelling, handing off and scheduling now answer with a short receipt (the task id, its state and the ids the next step needs) in every session, including ones started on an older CLI that has not been restarted. Before, such a session got the whole team back each time (hundreds of thousands of characters), which its agent could not read in one go.',
+            },
             nov10b: {
                 title: 'CLI 0.2.209: Fable 5.2 in Claude sessions',
                 summary: 'Claude sessions can run Fable 5.2, and the bundled Claude Code is updated.',

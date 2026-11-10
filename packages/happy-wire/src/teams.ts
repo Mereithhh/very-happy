@@ -84,4 +84,19 @@ export type TeamSchedule = { finishedAt?: number; id: string; name: string; botI
 export type TeamCapacityMetric = 'bytes' | 'messages' | 'operations' | 'tasks';
 export type TeamCapacity = { metrics: Record<TeamCapacityMetric, { used: number; limit: number }>; warning?: string };
 export type TeamState = { /** B-822: server-derived (response-only): record size and limit usage. Absent from old servers. */ capacity?: TeamCapacity; /** B-822: metrics the lead was already warned about (cleared below 70%). */ capacityWarned?: TeamCapacityMetric[]; /** B-822: records moved to the archive by compaction (totals) and when it last ran. Absent until the first compaction. */ compacted?: { messages: number; operations: number; tasks: number; at: number }; /** B-775: server-derived for an agent reader (team_inspect): member cleanups waiting for the owner; absent from old servers. */ cleanupIssues?: TeamCleanupIssue[]; /** B-769: server-derived for an agent reader (team_inspect): its members currently idle with unsubmitted tasks; absent from old servers. */ idleMembers?: TeamIdleMember[]; /** B-726: project this team belongs to (`AgentTeam.projectId`); absent from old servers and when unattached. */ projectId?: string; /** B-692: server-derived (teamMemberCounts); absent from old servers. */ memberCounts?: { active: number; stopping: number; idle: number; inactive: number }; defaults?: TeamDefaults; creationLaunch?: TeamLaunch; permissionMode?: TeamPermissionMode; schedules?: TeamSchedule[]; archivedAt?: number; id: string; name: string; machineId: string; version: number; bots: TeamBot[]; tasks: TeamTask[]; messages: TeamMessage[]; operations: TeamOperation[]; createdAt: number };
+/**
+ * B-911: what `POST /v1/teams/:id/agent` (the scoped team_* write path) answers — a receipt, never
+ * the team. Old wrappers (≤0.2.186) hand this JSON to the model verbatim, so its size is the server's
+ * job. `taskId` is the task the write named or created (absent only for schedule writes).
+ */
+export type TeamActionReceipt = {
+    ok: true; receipt: 1; action: string; taskId?: string; scheduleId?: string; scheduleRecordRetained?: boolean;
+    task?: { id: string; parentTaskId: string | null; status: TeamTask['status']; goal: string; assigneeBotId: string | null; ownerBotId: string | null; currentAttemptId: string | null; goalVersion: number; cleanup: TeamTask['cleanup']; attempts: number; currentAttempt?: { id: string; botId: string; status: string; goalVersion: number; generation: number } };
+    operation?: { id: string; type: TeamOperation['type']; botId: string; status: TeamOperation['status']; error: string | null };
+    taskOperations?: NonNullable<TeamActionReceipt['operation']>[];
+    schedule?: TeamSchedule;
+    team: { id: string; name: string; version: number; openTasks: number; capacity?: TeamCapacity; idleMembers?: TeamIdleMember[]; cleanupIssues?: TeamCleanupIssue[] };
+    omitted?: Record<string, number>;
+    hint: string;
+};
 export type TeamResponse = { scheduleRecordRetained?: boolean; taskId?: string; scheduleId?: string; team: TeamState; operation?: TeamOperation; credential?: { botId: string; token: string } };
