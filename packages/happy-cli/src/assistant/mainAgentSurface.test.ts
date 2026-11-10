@@ -164,7 +164,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
     team_schedule_pause: { requestId: 'r', scheduleId: 's', version: 1 }, team_schedule_resume: { requestId: 'r', scheduleId: 's', version: 1 },
     team_schedule_cancel: { requestId: 'r', scheduleId: 's', version: 1 },
     session_message: { to: 'sess-1', body: 'hi' },
-    lead_delegate: { teamId: 'team-1', goal: 'Ship it', acceptance: ['green'] },
+    lead_delegate: { teamId: 'team-1', goal: 'Ship it', acceptance: ['green'] }, lead_message: { teamId: 'team-1', body: 'hi' },
     issue_get: { issue: 'VH-1' }, issue_create: { title: 'New' }, issue_assign: { key: 'VH-1', assignee: { agent: 'codex' } }, issue_comment: { issue: 'VH-1', body: 'hi' },
     todo_add: { title: 'Call' }, todo_complete: { id: 'VH-1', version: 1 },
     project_context: { projectId: 'p1', full: true }, project_note: { projectId: 'p1', kind: 'finding', title: 't' }, sessions_list: { limit: 50 },

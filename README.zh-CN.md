@@ -372,7 +372,7 @@ Very Happy 会向托管会话注入一个小型 MCP 能力面，让 Agent 不只
 | 基础托管 Claude 会话 | `change_title`、`copy_to_clipboard`、`open_preview`、`report_progress`、`request_human` |
 | 托管 Codex / Gemini / ACP 桥接 | `change_title`、`copy_to_clipboard`、`open_preview`、`report_progress` |
 | Assistant/meta-agent 变体额外能力 | `sessions_list`、`session_read`、`session_send`、`session_spawn`、`session_kill`、`session_archive`、`terminals_list`、`terminal_read`、`terminal_send`、`memory_update`、`journal_append` |
-| 主 agent（不在团队里的 assistant）额外能力 | `teams_list`、`lead_delegate`、`issue_list`、`issue_create`、`issue_assign`、`issue_comment`、`todo_list`、`todo_add`、`todo_complete`、`project_list`、`project_context`、`project_note`、`session_wrapup`、`session_handoff`、`session_restart`、`owner_board_*`；所有返回都有上限（写 400 / 列表 4K / 正文 8K 字符，超出用 `cursor` 续读） |
+| 主 agent（不在团队里的 assistant）额外能力 | `teams_list`、`lead_delegate`、`lead_message`、`issue_list`、`issue_create`、`issue_assign`、`issue_comment`、`todo_list`、`todo_add`、`todo_complete`、`project_list`、`project_context`、`project_note`、`session_wrapup`、`session_handoff`、`session_restart`、`owner_board_*`；所有返回都有上限（写 400 / 列表 4K / 正文 8K 字符，超出用 `cursor` 续读） |
 | 用户级普通 `claude`（主动启用后） | 仅 `copy_to_clipboard` |
 
 用以下命令启用范围较窄的普通终端桥接：

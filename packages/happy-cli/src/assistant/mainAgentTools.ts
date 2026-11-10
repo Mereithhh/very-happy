@@ -31,7 +31,7 @@ import { formatIssueLine, describeIssueError } from '@/issues/format'
 import { formatContextForTool } from '@/projects/prompt'
 
 export const MAIN_AGENT_TOOL_NAMES = [
-    'teams_list', 'lead_delegate',
+    'teams_list', 'lead_delegate', 'lead_message',
     'issue_list', 'issue_create', 'issue_assign', 'issue_comment',
     'todo_list', 'todo_add', 'todo_complete',
     'project_list', 'project_context', 'project_note',
@@ -109,6 +109,10 @@ export function teamLead(team: TeamLike): { id: string; name: string; sessionId:
     return lead ? { id: lead.id, name: lead.name, sessionId: lead.sessionId! } : null
 }
 
+export function leadMessageText(input: { body: string; taskId?: string }): string {
+    return [`[Very Happy main agent → Lead] A message from the owner${input.taskId ? ` about task ${input.taskId}` : ''}:`, input.body.trim()].join('\n')
+}
+
 export function leadDelegationText(input: { goal: string; acceptance: string[]; risk?: string | null; note?: string }): string {
     return [
         '[Very Happy main agent → Lead] The owner asked for this work for your team. Delegate it with team_delegate (goal and acceptance below, as written) unless it is clearly yours to do; report back through the usual channel.',
@@ -159,9 +163,28 @@ export function registerMainAgentTools(mcp: AssistantToolRegistrar, deps: MainAg
         return ok([`${teams.length} team(s) — id name lead open-tasks project:`, ...teams.map(t => {
             const lead = teamLead(t)
             const open = (t.tasks ?? []).filter(task => task.status !== 'done' && task.status !== 'cancelled').length
-            return [t.id, `"${oneLine(t.name, 40)}"`, lead ? `lead=${lead.name}(${lead.sessionId})` : 'lead=none', `open=${open}`, t.projectId ? `project=${t.projectId}` : ''].filter(Boolean).join(' ')
+            return [t.id, `"${oneLine(t.name, 40)}"`, lead ? `lead=${lead.name} bot=${lead.id} session=${lead.sessionId}` : 'lead=none', `open=${open}`, t.projectId ? `project=${t.projectId}` : ''].filter(Boolean).join(' ')
         })].join('\n'))
     })
+
+    /** Resolve a team's Lead, or the refusal receipt. */
+    const leadOf = async (teamId: string): Promise<{ team: TeamLike; lead: { id: string; name: string; sessionId: string } } | Result> => {
+        const team = (await deps.listTeams()).find(t => t.id === teamId)
+        if (!team) return fail(`Team ${teamId} not found (teams_list shows the account's teams).`)
+        if (team.archivedAt !== undefined && team.archivedAt !== null) return fail(`Team "${oneLine(team.name, 60)}" is archived.`)
+        const lead = teamLead(team)
+        if (!lead) return fail(JSON.stringify({ ok: false, error: 'lead_unreachable', detail: `Team "${oneLine(team.name, 60)}" has no Lead session` }))
+        return { team, lead }
+    }
+    const deliverToLead = async (teamId: string, body: string): Promise<Result> => {
+        const found = await leadOf(teamId)
+        if ('content' in found) return found
+        const { team, lead } = found
+        const sent = await deps.deliver(lead.sessionId, body)
+        if (!sent.delivered) return fail(JSON.stringify({ ok: false, error: 'lead_unreachable', detail: oneLine(sent.error ?? 'not delivered', 200) }))
+        // As the owner's request, via the main agent (the delivered text says so on its first line).
+        return ok(JSON.stringify({ ok: true, as: 'owner', via: 'main-agent', teamId: team.id, team: oneLine(team.name, 60), lead: lead.name, leadSessionId: lead.sessionId, state: 'delivered' }))
+    }
 
     register('lead_delegate', 'Give work to a team: the request goes to that team\'s Lead, who delegates it to members (you never assign members yourself). Returns once it is delivered to the Lead\'s session; the Lead reports through the board.', {
         teamId: id.describe('From teams_list'),
@@ -169,17 +192,14 @@ export function registerMainAgentTools(mcp: AssistantToolRegistrar, deps: MainAg
         acceptance: z.array(z.string().min(1).max(32_000)).min(1).max(32).describe('Checkable acceptance criteria, one per item'),
         note: z.string().max(4000).optional().describe('Context for the Lead (owner\'s words, links)'),
         requestId,
-    }, false, async (args) => {
-        const team = (await deps.listTeams()).find(t => t.id === args.teamId)
-        if (!team) return fail(`Team ${args.teamId} not found (teams_list shows the account's teams).`)
-        if (team.archivedAt !== undefined && team.archivedAt !== null) return fail(`Team "${team.name}" is archived.`)
-        const lead = teamLead(team)
-        if (!lead) return fail(`Team "${team.name}" has no Lead session to hand the work to.`)
-        const sent = await deps.deliver(lead.sessionId, leadDelegationText({ goal: args.goal, acceptance: args.acceptance, risk: typeof args.risk === 'string' ? args.risk : null, note: args.note }))
-        if (!sent.delivered) return fail(`Not delivered to the Lead of "${team.name}" (${lead.sessionId}): ${sent.error ?? 'unknown'}`)
-        // As the owner's request, via the main agent (the delivered text says so on its first line).
-        return ok(JSON.stringify({ ok: true, as: 'owner', via: 'main-agent', teamId: team.id, team: oneLine(team.name, 60), lead: lead.name, leadSessionId: lead.sessionId, state: 'delivered' }))
-    })
+    }, false, async (args) => deliverToLead(args.teamId, leadDelegationText({ goal: args.goal, acceptance: args.acceptance, risk: typeof args.risk === 'string' ? args.risk : null, note: args.note })))
+
+    register('lead_message', 'Tell a team\'s Lead something (a follow-up, an answer, a change of plan). Delivered into the Lead\'s session; taskId only names the task it is about.', {
+        teamId: id.describe('From teams_list'),
+        body: z.string().min(1).max(32_000),
+        taskId: id.optional().describe('Team task this is about (quoted in the message)'),
+        requestId,
+    }, false, async (args) => deliverToLead(args.teamId, leadMessageText({ body: args.body, taskId: args.taskId })))
 
     // ── issues (account level) ───────────────────────────────────────────────
     register('issue_list', 'List this account\'s issues, newest first (open ones unless status is given). Filter by project, assignee or text.', {
@@ -319,7 +339,7 @@ export function registerMainAgentTools(mcp: AssistantToolRegistrar, deps: MainAg
             })
             return ok(`recorded #${entry.seq}${entry.supersedes ? ' (supersedes an earlier entry)' : ''}`)
         } catch (error) {
-            if (isNotMember(error)) return ok(JSON.stringify({ ok: false, error: 'not_available', detail: 'This server does not take project notes from the main agent yet' }))
+            if (isNotMember(error)) return ok(JSON.stringify({ ok: false, error: 'project_not_member', detail: 'This server does not take project notes from the main agent yet' }))
             throw error
         }
     })
