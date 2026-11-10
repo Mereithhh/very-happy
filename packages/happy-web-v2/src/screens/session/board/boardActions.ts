@@ -22,8 +22,16 @@ function nonce(): string {
 }
 
 /** The chat line a board choice sends: 「［汇报板 · 决定］<标题> → B. <label>」. */
+/** Key prefix of the main agent's dispatch-gate decision cards (CLI `assistant/gates/dispatchGate.ts`). */
+export const MAIN_AGENT_DISPATCH_KEY_PREFIX = 'main-agent-dispatch:';
+
 export function choiceMessage(item: AttentionItem, optionId: string, copy: BoardCopy): string {
-    return `${copy.choicePrefix}${item.title} → ${choiceLabel(item, optionId)}`;
+    const base = `${copy.choicePrefix}${item.title} → ${choiceLabel(item, optionId)}`;
+    // B-916c (QA80 P3): the wake-up names the approval, so the main agent can call
+    // dispatch_approved even after a new conversation / compaction lost the receipt.
+    const key = item.key ?? '';
+    if (!key.startsWith(MAIN_AGENT_DISPATCH_KEY_PREFIX)) return base;
+    return `${base} (dispatch_approved approvalId=${key.slice(MAIN_AGENT_DISPATCH_KEY_PREFIX.length)} boardItemId=${item.id})`;
 }
 
 function optimistic(item: AttentionItem, patch: Partial<AttentionItem>): void {
