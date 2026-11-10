@@ -152,7 +152,8 @@ const TOOL_DETAIL_MAX_CHARS = 600;
  * tool calls carry a truncated input preview as collapsible detail; an
  * assistant reply's <options> block is flattened to visible "▸ …" lines.
  */
-export function deriveTranscript(messages: Message[]): TranscriptEntry[] {
+/** `keepOptions` (B-916a main agent drawer): keep the raw `<options>` block so `<Markdown onOption>` renders tappable answers. */
+export function deriveTranscript(messages: Message[], opts?: { keepOptions?: boolean }): TranscriptEntry[] {
     const sorted = [...messages].sort(compareMessagesNewestFirst).reverse(); // oldest first
     const out: TranscriptEntry[] = [];
     for (const m of sorted) {
@@ -166,6 +167,8 @@ export function deriveTranscript(messages: Message[]): TranscriptEntry[] {
             if (!m.text.trim()) continue;
             if (m.isThinking) {
                 out.push({ id: m.id, role: 'thinking', text: '', detail: m.text.trim() });
+            } else if (opts?.keepOptions) {
+                out.push({ id: m.id, role: 'assistant', text: m.text.trim() });
             } else {
                 const { text, options } = extractOptions(m.text);
                 const withOptions =

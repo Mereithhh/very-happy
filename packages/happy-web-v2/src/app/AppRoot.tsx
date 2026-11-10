@@ -69,6 +69,7 @@ const AutomationsScreen = lazy(() => import('@/screens/automations/AutomationsSc
 const AutomationDetailScreen = lazy(() => import('@/screens/automations/AutomationDetailScreen').then((m) => ({ default: m.AutomationDetailScreen })));
 const AutomationFormScreen = lazy(() => import('@/screens/automations/AutomationFormScreen').then((m) => ({ default: m.AutomationFormScreen })));
 const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen').then((m) => ({ default: m.AssistantScreen })));
+const MainAgentPage = lazy(() => import('@/screens/mainAgent/MainAgentViews').then((m) => ({ default: m.MainAgentPage })));
 const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) => ({ default: m.NotesScreen })));
 // B-873: Issues (spec 2026-11-issues §10). /todos goes through the gate: Issues on → /issues?assignee=none, off → the old page.
 const TodosGate = lazy(() => import('@/screens/issues/TodosGate').then((m) => ({ default: m.TodosGate })));
@@ -387,6 +388,8 @@ const router = createBrowserRouter(
             { path: 'issues/external', element: <Lazy><ExternalTodosRoute /></Lazy> },
             { path: 'issues/:key', element: <Lazy><IssueDetailScreen /></Lazy> },
             { path: 'people', element: <Lazy><PeopleScreen /></Lazy> },
+            // B-916a: the main agent full screen (phones; desktop opens the drawer)
+            { path: 'main-agent', element: <Lazy><MainAgentPage /></Lazy> },
             { path: 'notes', element: <Lazy><NotesScreen /></Lazy> },
             { path: 'board', element: <Lazy><TaskBoardScreen /></Lazy> },
             { path: 'help', element: <HelpScreen /> },
@@ -470,6 +473,8 @@ const router = createBrowserRouter(
             { path: 'automations/:id/edit', element: <Lazy><AutomationFormScreen /></Lazy> },
             { path: 'board/automations', element: <Navigate to="/automations" replace /> },
             { path: 'board/automations/:id', element: <LegacyAutomationRedirect /> },
+            // B-916a: the main agent full screen (phones; desktop opens the drawer)
+            { path: 'main-agent', element: <Lazy><MainAgentPage /></Lazy> },
             { path: 'notes', element: <Lazy><NotesScreen /></Lazy> },
             { path: 'todos', element: <Lazy><TodosGate /></Lazy> },
             { path: 'issues', element: <Lazy><IssuesScreen /></Lazy> },

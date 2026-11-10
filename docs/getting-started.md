@@ -368,12 +368,13 @@ webhook configuration; saving replaces it. Private, loopback, link-local, and
 redirect targets are rejected. Delivery is best-effort, so do not build a
 workflow that depends on guaranteed notification delivery.
 
-**Dispatch through Assistant.** In **Settings → Voice & Assistant**, select a
-machine that can run Claude, review the skip-approval setting, then open
-**Assistant** (`/assistant`). Ask it to spawn work in an absolute path, for
+**Dispatch through the main agent.** Click **Main agent** at the top of the
+sidebar (or `Command+K` → type → **Ask main agent**). The first time, pick a
+machine that can run Claude and stays online, then **Enable**; review the
+skip-approval setting in **Settings → Voice**. Ask it to spawn work in an absolute path, for
 example `Dispatch a Claude session in /srv/project to fix the login tests`.
 This is a high-privilege machine-control surface: it can read, send, spawn,
-stop, and archive sessions. It currently dispatches Claude on the selected
+stop, and archive sessions. Your account has one main agent; it currently dispatches Claude on its
 machine; automatic cross-provider/cross-machine routing is not implied. See
 [Channels: Web Assistant](channels.md#inbound-web-assistant--meta-agent).
 
