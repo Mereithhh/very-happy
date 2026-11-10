@@ -312,7 +312,9 @@ describe('public documentation registry', () => {
       expect(text).toContain(tool);
       expect(channels).toContain(tool);
     }
-    expect(managedClaude).toContain('...(options?.assistant && !process.env.VH_TEAM_SCOPE_FILE ? ASSISTANT_TOOL_NAMES : [])');
+    // B-916b: the assistant surface is the main agent's (assistant variant outside any team scope).
+    expect(managedClaude).toContain('return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE;');
+    expect(managedClaude).toContain('...(isMainAgentSession(options) ? [...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES] : [])');
     // The standalone server inlines three tools: clipboard (always),
     // terminal preview and title, which exists only inside a Very Happy web
     // terminal (`resolveMcpTerminalId`: VH_TERMINAL_ID set and no HAPPY_MCP_URL,
