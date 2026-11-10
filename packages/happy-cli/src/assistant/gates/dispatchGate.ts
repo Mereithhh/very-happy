@@ -15,7 +15,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 import type { AssistantToolRegistrar } from '../assistantTools'
@@ -43,6 +43,7 @@ const PAYLOAD_FIELD: Readonly<Record<string, string>> = {
 }
 
 export const DISPATCH_APPROVED_TOOL = 'dispatch_approved'
+const BOARD_WRITE_TOOLS = new Set(['owner_board_post', 'owner_board_update', 'owner_board_resolve'])
 export const DISPATCH_CARD_KEY_PREFIX = 'main-agent-dispatch:'
 export const RECEIPT_MAX_CHARS = 400
 
@@ -77,13 +78,35 @@ type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError: boo
 const ok = (value: Record<string, unknown>): ToolResult => ({ content: [{ type: 'text', text: receipt(value) }], isError: false })
 const fail = (value: Record<string, unknown>): ToolResult => ({ content: [{ type: 'text', text: receipt({ ok: false, ...value }) }], isError: true })
 
-export type BoardItemView = { id: string; key: string | null; state: string; ownerChoice: string | null; resolvedBy: string | null }
+export type BoardItemView = {
+    id: string; key: string | null; state: string; ownerChoice: string | null; resolvedBy: string | null
+    /** Card face (what the owner saw when choosing). */
+    title: string; bodyMd: string | null; options: Array<{ id: string; label: string }> | null
+}
+
+/**
+ * QA77 P1: the approval is bound to the card FACE the owner chose on. Hash of
+ * {key, title, body_md, options[].id+label} as the server stored it at post
+ * time; dispatch_approved re-reads the card and refuses on any difference
+ * (a rewritten card — swapped labels, a softer body — is `card_tampered`).
+ */
+export function cardFaceHash(item: Pick<BoardItemView, 'key' | 'title' | 'bodyMd' | 'options'>): string {
+    const face = {
+        key: item.key ?? null,
+        title: item.title ?? '',
+        body_md: item.bodyMd ?? '',
+        options: (item.options ?? []).map(o => ({ id: String(o.id), label: String(o.label) })),
+    }
+    return createHash('sha256').update(JSON.stringify(face)).digest('hex')
+}
 
 export type DispatchBoard = {
     /** Post (upsert by key) the decision card; resolves to the item id. Throws when the board is unavailable. */
-    postDecision(card: { key: string; title: string; bodyMd: string; requestId: string }): Promise<{ id: string }>
+    postDecision(card: { key: string; title: string; bodyMd: string; requestId: string }): Promise<BoardItemView>
     /** Find the card by key among this session's items (any state). Null = not found. Throws when unavailable. */
     findByKey(key: string): Promise<BoardItemView | null>
+    /** The card with this id among this session's items (any state). Null = not found. Throws when unavailable. */
+    findById(id: string): Promise<BoardItemView | null>
 }
 
 export type PendingDispatch = {
@@ -95,6 +118,8 @@ export type PendingDispatch = {
     declared: RiskLevel
     level: RiskLevel
     boardItemId?: string
+    /** cardFaceHash of the card as posted (QA77 P1). */
+    cardSha256?: string
     createdAt: number
     result?: string
 }
@@ -196,8 +221,9 @@ export function createDispatchGate(deps: DispatchGateDeps) {
             await mkdir(deps.pendingDir, { recursive: true, mode: 0o700 })
             await writePrivate(pendingPath(approvalId), pending)
             const card = decisionCard(pending, payload)
-            const { id } = await deps.board.postDecision(card)
-            await writePrivate(pendingPath(approvalId), { ...pending, boardItemId: id })
+            const posted = await deps.board.postDecision(card)
+            const id = posted.id
+            await writePrivate(pendingPath(approvalId), { ...pending, boardItemId: id, cardSha256: cardFaceHash(posted) })
             return ok({ ok: true, state: 'awaiting_decision', approvalId, boardItemId: id, risk: level, note: '已放到「需要我决策」，等用户选择后调 dispatch_approved' })
         } catch (error) {
             deps.log?.(`[main-agent gate] park failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -212,30 +238,93 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         if (done?.result) return ok({ ok: true, state: 'already_dispatched', approvalId, result: done.result.slice(0, 200) })
         const pending = await readJson(pendingPath(approvalId))
         if (!pending || pending.approvalId !== approvalId) return fail({ error: 'approval_not_found' })
+        // QA77 #3: no card was ever posted (or its face was never recorded) → nothing the owner could have approved.
+        if (!pending.boardItemId || !pending.cardSha256) return fail({ error: 'approval_not_found' })
         if (!deps.board) return fail({ error: 'board_unavailable' })
         let item: BoardItemView | null
-        try { item = await deps.board.findByKey(`${DISPATCH_CARD_KEY_PREFIX}${approvalId}`) } catch { return fail({ error: 'board_unavailable' }) }
-        if (!item || (pending.boardItemId && item.id !== pending.boardItemId)) return fail({ error: 'approval_not_found' })
+        try { item = await deps.board.findById(pending.boardItemId) } catch { return fail({ error: 'board_unavailable' }) }
+        if (!item || item.key !== `${DISPATCH_CARD_KEY_PREFIX}${approvalId}`) return fail({ error: 'approval_not_found' })
         if (item.state === 'open' || item.state === 'in_progress') return fail({ error: 'awaiting_decision', boardItemId: item.id })
+        if (cardFaceHash(item) !== pending.cardSha256) return fail({ error: 'card_tampered', boardItemId: item.id })
         if (item.resolvedBy !== 'owner') return fail({ error: 'not_approved', boardItemId: item.id })
-        if (item.ownerChoice === 'drop') {
-            await writePrivate(donePath(approvalId), { ...pending, result: 'dropped' })
-            return ok({ ok: true, state: 'dropped', approvalId })
-        }
-        if (item.ownerChoice !== 'approve' && item.ownerChoice !== 'draft') return fail({ error: 'not_approved', boardItemId: item.id })
         if (canonicalArgsHash(pending.toolName, pending.args) !== pending.argsSha256) return fail({ error: 'approval_mismatch' })
-        const handler = handlers.get(pending.toolName)
-        if (!handler) return fail({ error: 'tool_unavailable', tool: pending.toolName })
-        const result = await handler(withApprovalPrefix(pending.toolName, pending.args, deps.approvalLink(item.id), item.ownerChoice), undefined)
-        const text = result.content.map(c => c.text).join('\n')
-        if (!result.isError) await writePrivate(donePath(approvalId), { ...pending, result: text.slice(0, 1_000) })
-        return { content: [{ type: 'text', text: receipt({ ok: !result.isError, state: result.isError ? 'dispatch_failed' : 'dispatched', approvalId, choice: item.ownerChoice, result: text.slice(0, 200) }) }], isError: result.isError }
+        // QA77 #4: one dispatch per approvalId, even under concurrent calls (O_EXCL marker; rolled back on failure).
+        const claimed = await claim(approvalId)
+        if (!claimed) return ok({ ok: true, state: 'already_dispatched', approvalId })
+        try {
+            if (item.ownerChoice === 'drop') {
+                await writePrivate(donePath(approvalId), { ...pending, result: 'dropped' })
+                return ok({ ok: true, state: 'dropped', approvalId })
+            }
+            if (item.ownerChoice === 'draft') {
+                // 只出草稿: nothing is handed to another executor; the main agent writes the draft in chat.
+                await writePrivate(donePath(approvalId), { ...pending, result: 'draft_only' })
+                return ok({ ok: true, state: 'draft_only', approvalId, note: '用户选了只出草稿：不派会话，在对话里给出草稿' })
+            }
+            if (item.ownerChoice !== 'approve') { await release(approvalId); return fail({ error: 'not_approved', boardItemId: item.id }) }
+            const handler = handlers.get(pending.toolName)
+            if (!handler) { await release(approvalId); return fail({ error: 'tool_unavailable', tool: pending.toolName }) }
+            const result = await handler(withApprovalPrefix(pending.toolName, pending.args, deps.approvalLink(item.id), 'approve'), undefined)
+            const text = result.content.map(c => c.text).join('\n')
+            if (result.isError) await release(approvalId)
+            else await writePrivate(donePath(approvalId), { ...pending, result: text.slice(0, 1_000) })
+            return { content: [{ type: 'text', text: receipt({ ok: !result.isError, state: result.isError ? 'dispatch_failed' : 'dispatched', approvalId, choice: 'approve', result: text.slice(0, 200) }) }], isError: result.isError }
+        } catch (error) {
+            await release(approvalId)
+            return fail({ error: 'dispatch_failed', detail: error instanceof Error ? error.message.slice(0, 120) : 'unknown' })
+        }
+    }
+
+    const inflightPath = (id: string) => join(deps.pendingDir, `${id}.inflight`)
+    async function claim(id: string): Promise<boolean> {
+        try { const fh = await open(inflightPath(id), 'wx', 0o600); await fh.close(); return true }
+        catch (error: any) { if (error?.code === 'EEXIST') return false; throw error }
+    }
+    async function release(id: string): Promise<void> { await unlink(inflightPath(id)).catch(() => {}) }
+
+    /** Ids of the cards this gate posted (pending files), for the board write guard. */
+    async function isGateCard(id: string): Promise<boolean> {
+        try {
+            const { readdir } = await import('node:fs/promises')
+            for (const name of await readdir(deps.pendingDir)) {
+                if (!name.endsWith('.json') || name.endsWith('.done.json')) continue
+                const p = await readJson(join(deps.pendingDir, name))
+                if (p?.boardItemId === id) return true
+            }
+        } catch { /* no dir yet */ }
+        return false
+    }
+
+    /**
+     * QA77 #2: the main agent's owner_board_post / update / resolve never touch a
+     * `main-agent-dispatch:` card; only the gate posts those, outside MCP. Unknown
+     * card (lookup failed) on update/resolve → refused, fail-closed.
+     */
+    async function boardWriteRefusal(name: string, args: Record<string, unknown>): Promise<string | null> {
+        if (name === 'owner_board_post') {
+            return typeof args?.key === 'string' && args.key.startsWith(DISPATCH_CARD_KEY_PREFIX) ? 'reserved_card' : null
+        }
+        const id = typeof args?.id === 'string' ? args.id : ''
+        if (!id) return null
+        if (await isGateCard(id)) return 'reserved_card'
+        if (!deps.board) return null
+        try {
+            const item = await deps.board.findById(id)
+            return item?.key?.startsWith(DISPATCH_CARD_KEY_PREFIX) ? 'reserved_card' : null
+        } catch { return 'board_unavailable' }
     }
 
     return {
         /** Wrap a registrar: dispatch tools gain `risk` and are intercepted; everything else passes through. */
         wrap(mcp: AssistantToolRegistrar): AssistantToolRegistrar {
             const registerTool = ((name: string, config: any, handler: Handler) => {
+                if (BOARD_WRITE_TOOLS.has(name)) {
+                    return (mcp.registerTool as any)(name, config, async (args: Record<string, unknown>, extra: unknown) => {
+                        const refusal = await boardWriteRefusal(name, args ?? {})
+                        if (refusal) return fail({ error: refusal, note: 'decision cards of the dispatch gate cannot be posted, edited or closed by the main agent' })
+                        return handler(args, extra)
+                    })
+                }
                 if (!(name in DISPATCH_TOOL_PAYLOADS)) return (mcp.registerTool as any)(name, config, handler)
                 handlers.set(name, handler)
                 const riskSchema = z.enum(RISK_LEVELS).describe('Required. none = stays inside Very Happy / this machine; external = the result is sent or published where other people see it (messages, mail, comments, PRs, pushes, shares); production = writes production data or infrastructure. Non-none goes to the owner\'s decision board first.')
@@ -255,6 +344,7 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         /** Test hook. */
         _intercept: intercept,
         _approved: approved,
+        _boardWriteRefusal: boardWriteRefusal,
     }
 }
 export type DispatchGate = ReturnType<typeof createDispatchGate>
