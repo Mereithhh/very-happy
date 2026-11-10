@@ -21,7 +21,6 @@ import { machineLabel } from '@/utils/machineUtils';
 import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { Markdown } from '@/screens/session/Markdown';
-import { ASSISTANT_MIN_CLI_VERSION } from '@/assistant/assistantConstants';
 import { derivePendingPermission, deriveTranscript } from '@/assistant/assistantView';
 import { hasMainAgentGates, mainAgentDot, mainAgentStatusDot, MAIN_AGENT_OTHER_MACHINE_ERROR, type MainAgentState } from '@/assistant/mainAgent';
 import { mainAgentCopy, type MainAgentCopy } from '@/assistant/mainAgentCopy';
@@ -106,7 +105,7 @@ function MainAgentBody({ state, copy, actions }: { state: MainAgentState; copy: 
         return (
             <div className="ma-gate" role="status">
                 <h2 className="ma-gate-title">{copy.upgradeTitle}</h2>
-                <p className="ma-gate-body">{copy.upgradeBody(machineLabel(state.machine), state.version ?? copy.unknownVersion, ASSISTANT_MIN_CLI_VERSION)}</p>
+                <p className="ma-gate-body">{copy.upgradeBody(machineLabel(state.machine), state.version ?? copy.unknownVersion)}</p>
                 <Button variant="secondary" onClick={() => navigate(`/machine/${state.machine.id}`)}>{copy.upgradeOpenMachine}</Button>
             </div>
         );

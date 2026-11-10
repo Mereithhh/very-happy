@@ -15,7 +15,7 @@
 
 import type { Machine, Session } from '@/sync/storageTypes';
 import type { Status } from '@/ui/StatusDot';
-import { isAssistantSupported } from './assistantSupport';
+import { daemonRpcFlagSupported } from '@/sync/closedTerminals';
 import { pickAssistantMachine, pickAssistantSession, type AssistantMachinePick } from './assistantSession';
 
 /** Account-level pointer to the one main agent. Daemon-written. */
@@ -46,6 +46,16 @@ export const DENIED_TOOLS_MAX = 64;
 export const SKILL_ROOT_MAX_CHARS = 512;
 const SKILL_ROOT_RE = /^(\/|~(\/|$))/;
 const DENIED_TOOL_RE = /^[A-Za-z0-9_.*-]{1,128}$/;
+
+/**
+ * Machine capability the daemon stamps when its main agent runs with the gates
+ * (B-916c, `daemonState.mainAgentGates`, same `detectedAt >= startedAt` rule).
+ * The web offers / starts the main agent only on such a machine — a capability,
+ * not a CLI version floor, so no constant has to follow releases.
+ */
+export function mainAgentSupported(machine: Pick<Machine, 'daemonState'> | null | undefined): boolean {
+    return daemonRpcFlagSupported(machine?.daemonState, 'mainAgentGates');
+}
 
 /** Session capability the wrapper advertises once the outbound gates are live (spec §4.1). */
 export const MAIN_AGENT_GATES_CAPABILITY = 'main-agent-gates-v1';
@@ -171,13 +181,13 @@ export type MainAgentState =
 /**
  * Machines that look always-on rank first when suggesting where to enable the
  * main agent: no machine name is hard-coded. Online + new-enough CLI is
- * required; then Linux hosts (servers / dev boxes, which a supervisor keeps
+ * required (the daemon advertises `mainAgentGates`); then Linux hosts (servers / dev boxes, which a supervisor keeps
  * up) before laptops, then the longest-registered, then the latest activity.
  */
 export function rankMainAgentCandidates(machines: Machine[]): Machine[] {
     const score = (m: Machine) => (m.metadata?.platform === 'linux' ? 1 : 0);
     return machines
-        .filter((m) => m.active && isAssistantSupported(m.metadata?.happyCliVersion))
+        .filter((m) => m.active && mainAgentSupported(m))
         .slice()
         .sort((a, b) => score(b) - score(a) || a.createdAt - b.createdAt || b.activeAt - a.activeAt);
 }
@@ -202,7 +212,7 @@ export function resolveMainAgent(input: {
         if (session) return { kind: 'ready', session, machine, offline: !machine?.active, viaPointer: true };
         if (machine) {
             const version = machine.metadata?.happyCliVersion ?? null;
-            if (!isAssistantSupported(version)) return { kind: 'upgrade', machine, version };
+            if (!mainAgentSupported(machine)) return { kind: 'upgrade', machine, version };
             if (machine.active) return { kind: 'starting', machine, viaPointer: true };
         }
         // pointed machine offline with no session: offer enabling elsewhere
@@ -213,7 +223,7 @@ export function resolveMainAgent(input: {
             const session = pickAssistantSession(sessions, pick.machine.id);
             if (session) return { kind: 'ready', session, machine: pick.machine, offline: false, viaPointer: false };
             const version = pick.machine.metadata?.happyCliVersion ?? null;
-            if (!isAssistantSupported(version)) return { kind: 'upgrade', machine: pick.machine, version };
+            if (!mainAgentSupported(pick.machine)) return { kind: 'upgrade', machine: pick.machine, version };
             if (legacyMachineId === pick.machine.id) return { kind: 'starting', machine: pick.machine, viaPointer: false };
         }
         // An assistant session on any machine (even an offline one) is still the one to show.

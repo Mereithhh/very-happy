@@ -32,7 +32,7 @@ export interface MainAgentCopy {
     noMachine: string;
     connectMachine: string;
     upgradeTitle: string;
-    upgradeBody: (machine: string, version: string, min: string) => string;
+    upgradeBody: (machine: string, version: string) => string;
     upgradeOpenMachine: string;
     starting: (machine: string) => string;
     startFailed: string;
@@ -50,6 +50,7 @@ export interface MainAgentCopy {
     settingsSubtitle: string;
     settingsMachine: string;
     settingsMachineHint: string;
+    voiceMachineMoved: string;
     settingsMachineNone: string;
     settingsMove: string;
     settingsMoveConfirm: (machine: string) => string;
@@ -94,7 +95,7 @@ const zh: MainAgentCopy = {
     noMachine: '没有在线、且 CLI 版本够新的机器。',
     connectMachine: '连接机器',
     upgradeTitle: '这台机器的 CLI 需要升级',
-    upgradeBody: (m, v, min) => `${m} 上的 CLI 是 ${v}，主 agent 需要 ${min} 或更新。升级后再打开。`,
+    upgradeBody: (m, v) => `${m} 上的 CLI 是 ${v}，还不支持主 agent（需要带安全闸的新版 CLI）。升级后再打开。`,
     upgradeOpenMachine: '打开机器页',
     starting: (m) => `正在 ${m} 上启动主 agent…`,
     startFailed: '启动失败',
@@ -111,6 +112,7 @@ const zh: MainAgentCopy = {
     settingsSubtitle: '运行机器、skills 目录、出站禁用表',
     settingsMachine: '运行在哪台机器',
     settingsMachineHint: '全账号只有一个主 agent。换机器会在新机器上开新对话，旧对话归档。',
+    voiceMachineMoved: '主 agent 已启用：运行机器在「主 agent」设置里改。',
     settingsMachineNone: '未启用',
     settingsMove: '换到这台',
     settingsMoveConfirm: (m) => `把主 agent 换到 ${m}？会在那台机器上开新对话。`,
@@ -155,7 +157,7 @@ const en: MainAgentCopy = {
     noMachine: 'No machine is online with a recent enough CLI.',
     connectMachine: 'Connect a machine',
     upgradeTitle: 'This machine’s CLI needs an update',
-    upgradeBody: (m, v, min) => `${m} runs CLI ${v}; the main agent needs ${min} or newer. Update it, then come back.`,
+    upgradeBody: (m, v) => `${m} runs CLI ${v}, which has no main agent yet (it needs a CLI with the safety gates). Update it, then come back.`,
     upgradeOpenMachine: 'Open machine',
     starting: (m) => `Starting the main agent on ${m}…`,
     startFailed: 'Could not start',
@@ -172,6 +174,7 @@ const en: MainAgentCopy = {
     settingsSubtitle: 'Machine, skills folders, outbound deny list',
     settingsMachine: 'Runs on',
     settingsMachineHint: 'Your account has one main agent. Moving it starts a new conversation on the new machine and archives the old one.',
+    voiceMachineMoved: 'The main agent is on: change its machine in Main agent settings.',
     settingsMachineNone: 'Not set up',
     settingsMove: 'Move here',
     settingsMoveConfirm: (m) => `Move the main agent to ${m}? A new conversation starts there.`,
