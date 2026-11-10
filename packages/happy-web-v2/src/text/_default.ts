@@ -3311,6 +3311,11 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov10b: {
+                title: 'CLI 0.2.209: Fable 5.2 in Claude sessions',
+                summary: 'Claude sessions can run Fable 5.2, and the bundled Claude Code is updated.',
+                fable: 'Claude sessions can run Fable 5.2; the bundled Claude Code is now 2.1.322.',
+            },
             nov10a: {
                 title: 'Fable 5.2 in the model picker',
                 summary: 'Claude sessions can now pick Fable 5.2, with or without 1M context.',

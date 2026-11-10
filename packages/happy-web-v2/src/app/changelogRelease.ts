@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-10-cli-fable-5-2-claude-code-2-1-322-0-2-209',
+    cliVersion: '0.2.209',
+    date: '2026-11-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov10b.title',
+    summaryKey: 'changelog.releases.nov10b.summary',
+    itemKeys: ['changelog.releases.nov10b.fable'],
+  },
+  {
     id: '2026-11-10-fable-5-2-in-model-picker',
     date: '2026-11-10',
     buildVersion: __APP_VERSION__,

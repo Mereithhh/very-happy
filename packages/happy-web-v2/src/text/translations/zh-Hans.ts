@@ -3439,6 +3439,11 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov10b: {
+                title: 'CLI 0.2.209：Claude 会话可用 Fable 5.2',
+                summary: 'Claude 会话可以用 Fable 5.2，内置的 Claude Code 同步升级。',
+                fable: 'Claude 会话可以用 Fable 5.2；内置的 Claude Code 升到 2.1.322。',
+            },
             nov10a: {
                 title: '模型选择里加入 Fable 5.2',
                 summary: 'Claude 会话现在可以选 Fable 5.2，含 1M 上下文版本。',
