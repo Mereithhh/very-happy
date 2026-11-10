@@ -203,7 +203,7 @@ risk: 'none' | 'external' | 'production'
 
 3. 回执：`{ok:true, state:'awaiting_decision', approvalId, boardItemId}`。主 agent 应告诉用户「已放到需要我决策」，不要重复贴内容。
 
-**批准后执行**。用户在汇报板选择后，server 把选择写入卡片并给主 agent 会话发一条 board 消息（现有机制）。主 agent 调 `dispatch_approved({approvalId})`，工具层：
+**批准后执行**。用户在汇报板选择后，server 把选择写入卡片（`resolvedBy='owner'`、`ownerChoice`），Web 同时往主 agent 会话发一条 board 消息（localId 前缀 `board-`，B-766 现有机制）把它唤醒；只调 owner-respond API 不会唤醒会话，主 agent 下一回合的汇报板摘要里同样能看到。主 agent 调 `dispatch_approved({approvalId})`，工具层：
 
 1. 读 pending 文件；不存在 → `{ok:false, error:'approval_not_found'}`。
 2. 读卡片（`owner_board_list state=all`，按 key 找），要求 `resolvedBy='owner'`：
