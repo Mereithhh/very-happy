@@ -104,6 +104,16 @@ window capture。理由：击键落进 overlay（无害、被丢弃）远好过�
 
 `mode: 'file' | 'diff'` 只留参数位；B-036 未做时 diff 降级为普通预览并在顶部提示。
 
+**来源会话路由（B-918，取代 B-526 的 follow）**：推送带 `sessionId`、该会话是本账号的未归档会话
+（非分享来的）、且不是当前所在会话时，先 history push 到 `/session/<来源>`，在来源会话的侧栏
+（同机器，`?pinFile=&pinSource=push`）或其上的浮层（机器不一致）打开，顶栏显示「来自 <来源标题>」；
+「返回」回到原页。其余情况（当前会话自己推的、机器/终端推的、来源已归档/分享/不在列表）原地打开，
+且只停靠进**当前**上下文，不再把别的会话的文件塞进当前会话的侧栏。闸门依次是：标签页不可见 →
+挂起到可见时再判（期间兄弟标签页已跳就作废，BroadcastChannel）；最近 2 秒有按键 → 停 2 秒再跳，
+自到达起最多 10 秒；有对话框或非 composer 输入框里有未存文字 → B-772 的可点提示。composer 的
+草稿、附件（按会话暂存 Blob URL）、批注跳走后保留。纯逻辑见 `previewJumpTarget` /
+`typingHoldMs` / `jumpBlocker` / `JumpLedger`；生产形态 e2e `packages/happy-web-v2/e2e/preview-jump.mjs`。
+
 ### D4. 敏感路径 denylist（新增的安全要求）
 
 `open_preview` 引入了一个**新的读文件主体**：原来读任意文件需要**用户主动导航**，

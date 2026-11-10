@@ -453,3 +453,19 @@
 @media (pointer: coarse) {
   .fsb-agent-changed-refresh { height: 44px; }
 }
+/* B-918: 「来自 <session>」 — which session pushed this preview. */
+.fsb-viewer-source {
+  flex: none;
+  max-width: 40%;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+  color: var(--text);
+  font-size: var(--fs-11);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@container (max-width: 560px) {
+  .fsb-viewer-source { max-width: calc(100% - 52px); }
+}

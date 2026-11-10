@@ -17,21 +17,7 @@ export function previewPinTarget(request: FsPreviewRequest, location: { pathname
     return null;
 }
 
-/**
- * B-526: a preview Claude pushed (`open_preview`) takes you to the session it
- * came from (Owner 2026-10-02: 「preview 弹出来的时候，自动跳转回 preview 的那个
- * 对话」) — the preview is about that conversation, and reading it over an
- * unrelated page left no way to answer it. Only pushes follow; a preview you
- * opened yourself never moves you. Already there, or the session is not in
- * this client's list → stay.
- */
-export function previewFollowTarget(request: FsPreviewRequest, pathname: string, sessionKnown: (id: string) => boolean): string | null {
-    if (!request.fromPush || !request.sessionId || !sessionKnown(request.sessionId)) return null;
-    const match = pathname.match(/^\/session\/([^/]+)\/?$/);
-    let current: string | undefined;
-    try { current = match ? decodeURIComponent(match[1]) : undefined; } catch { current = undefined; }
-    return current === request.sessionId ? null : `/session/${encodeURIComponent(request.sessionId)}`;
-}
+/* B-526's previewFollowTarget is gone: B-918's previewJumpTarget (below) decides moves. */
 
 /**
  * Where an incoming preview docks as the resizable side panel instead of the
@@ -46,4 +32,43 @@ export function previewFollowTarget(request: FsPreviewRequest, pathname: string,
 export function previewDockTarget(request: FsPreviewRequest, location: { pathname: string; search: string }, sessionMachine: (id: string) => string | undefined): string | null {
     if (request.fromPush) return previewPinTarget(request, location, sessionMachine);
     return previewPinTarget({ ...request, sessionId: undefined }, location, sessionMachine);
+}
+
+/** What the jump decision needs to know about the pushing session. */
+export interface PreviewSourceInfo {
+    machineId?: string;
+    /** `archivedAt` set: a deliberately archived session (B-265). */
+    archived: boolean;
+    /** Shared WITH this account (B-619): read-only/driver view, not ours to jump into. */
+    shared: boolean;
+}
+
+/** URL param marking a side-panel file that a push docked (the viewer then shows 「来自 …」). */
+export const PIN_SOURCE_PARAM = 'pinSource';
+
+/**
+ * B-918: a preview pushed by ANOTHER session takes you to that session and
+ * opens there (Owner 11-11:「在 session A preview session B 的东西…直接跳到对应的
+ * session 去展示」). Before this, a push from B while you sat in A on the same
+ * machine docked into A's side panel (previewPinTarget's "same machine" branch),
+ * so B's file looked like A's.
+ *
+ * Returns the URL to push-navigate to, or null = do not jump (open here as
+ * before): not a push, no source session (machine/terminal push), the source
+ * is the session you are already in, or it is unknown / archived / shared.
+ * Any non-session page (board, terminal, settings) counts as "elsewhere".
+ */
+export function previewJumpTarget(request: FsPreviewRequest, pathname: string, source: (id: string) => PreviewSourceInfo | undefined): string | null {
+    if (!request.fromPush || !request.sessionId) return null;
+    const info = source(request.sessionId);
+    if (!info || info.archived || info.shared) return null;
+    const match = pathname.match(/^\/session\/([^/]+)\/?$/);
+    let current: string | undefined;
+    try { current = match ? decodeURIComponent(match[1]) : undefined; } catch { current = undefined; }
+    if (current === request.sessionId) return null;
+    const base = `/session/${encodeURIComponent(request.sessionId)}`;
+    // Dock into B's side panel only when B's machine is the one serving the
+    // file; otherwise land on B and let the modal show it.
+    if (info.machineId !== request.machineId) return base;
+    return `${base}?${new URLSearchParams({ panel: 'browse', pinFile: request.path, [PIN_SOURCE_PARAM]: 'push' })}`;
 }

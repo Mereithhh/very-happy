@@ -1368,6 +1368,8 @@ export const en = {
         receiveSubtitle: 'When an agent calls open_preview, pop the file preview on this device. Off = this device ignores the push (your other devices still show it).',
         // diff mode is a parameter placeholder until B-036 lands
         diffUnavailable: 'Diff view is not built yet — showing the file as-is',
+        /** B-918: preview head chip naming the session that pushed it. */
+        fromSession: ({ name }: { name: string }) => `From ${name}`,
         pushHeld: ({ name }: { name: string }) => `“${name}” pushed a preview. Click to view`,
         machineOffline: ({ machine }: { machine: string }) =>
             `${machine} is offline, so the file cannot be read. Start the happy daemon there and this preview loads itself.`,
@@ -3315,6 +3317,12 @@ export const en = {
                 outboxAlt: 'A phone showing a session whose last message is marked Not sent, with Resend and Discard next to it',
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
+            },
+            nov11f: {
+                title: 'Previews open in the session that sent them',
+                summary: 'A file another session previews now takes you to that session instead of opening over the one you are in.',
+                jump: 'When session B previews a file while you are in session A (or on any other page), Very Happy goes to B and opens the file there, labelled “From <B>”. Back returns you to A. If you are typing, it waits until you pause for 2 seconds (at most 10). Previews from your current session, a machine or terminal, an archived session or a shared one still open where you are.',
+                keep: 'Your unsent text, attachments and comments in A are still there when you come back. With several tabs open, only the one you are looking at moves.',
             },
             nov11a: {
                 title: 'Faster update notice, Send on drafts',

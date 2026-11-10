@@ -128,20 +128,65 @@ async function fileToPreview(
  * Composer attachment state. Converts picked/pasted/dropped files
  * into AttachmentPreview items ready for sync.sendMessage({ attachments }).
  */
-export function useAttachments() {
-    const [attachments, setAttachments] = useState<AttachmentPreview[]>([]);
+/**
+ * B-918: unsent composer attachments parked per session while its composer is
+ * unmounted (route switch — e.g. a pushed preview took you to another session).
+ * The Blob URLs stay alive in the stash; the next composer of that session
+ * adopts them. In-memory only: a reload loses them, like any Blob URL.
+ */
+const attachmentStash = new Map<string, AttachmentPreview[]>();
+
+/** Park `items` for `key` (replaces an older park; that one's URLs are released). */
+export function stashAttachments(key: string, items: AttachmentPreview[]): void {
+    const old = attachmentStash.get(key);
+    if (old) for (const a of old) if (!items.includes(a) && a.uri?.startsWith('blob:')) URL.revokeObjectURL(a.uri);
+    if (items.length) attachmentStash.set(key, items); else attachmentStash.delete(key);
+}
+
+/** Drop every parked set (and its Blob URLs) — logout / test isolation. */
+export function clearAttachmentStash(): void {
+    for (const key of [...attachmentStash.keys()]) stashAttachments(key, []);
+}
+
+/** Take (and remove) what was parked for `key`. */
+export function takeStashedAttachments(key: string): AttachmentPreview[] {
+    const items = attachmentStash.get(key) ?? [];
+    attachmentStash.delete(key);
+    return items;
+}
+
+/** `stashKey`: the session id — unsent attachments survive leaving and coming back (B-918). */
+export function useAttachments(stashKey?: string) {
+    const [attachments, setAttachments] = useState<AttachmentPreview[]>(() => (stashKey ? attachmentStash.get(stashKey) ?? [] : []));
     const [processing, setProcessing] = useState(false);
-    const ownedUrlsRef = useRef(new Set<string>());
+    const ownedUrlsRef = useRef(new Set<string>(attachments.map((a) => a.uri)));
     const processingCountRef = useRef(0);
     const mountedRef = useRef(true);
+    const attachmentsRef = useRef(attachments);
+    attachmentsRef.current = attachments;
+    const stashKeyRef = useRef(stashKey);
+    stashKeyRef.current = stashKey;
 
     useEffect(() => {
         // React StrictMode deliberately runs setup → cleanup → setup in dev.
         mountedRef.current = true;
+        // Adopt the parked items (the initial state only peeked, so a
+        // double-invoked initializer cannot drop them); StrictMode's fake
+        // unmount parks them again and this re-run takes them back.
+        if (stashKeyRef.current) {
+            const parked = takeStashedAttachments(stashKeyRef.current);
+            if (parked.length) {
+                for (const a of parked) ownedUrlsRef.current.add(a.uri);
+                setAttachments((current) => [...parked.filter((a) => !current.includes(a)), ...current]);
+            }
+        }
         return () => {
             mountedRef.current = false;
+            const key = stashKeyRef.current;
+            const keep = key ? attachmentsRef.current.filter((a) => ownedUrlsRef.current.has(a.uri)) : [];
+            if (key) stashAttachments(key, keep);
             for (const uri of ownedUrlsRef.current) {
-                URL.revokeObjectURL(uri);
+                if (!keep.some((a) => a.uri === uri)) URL.revokeObjectURL(uri);
             }
             ownedUrlsRef.current.clear();
         };
