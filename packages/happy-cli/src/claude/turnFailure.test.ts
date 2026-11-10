@@ -70,6 +70,13 @@ describe('B-913 Claude turn failure detector', () => {
     });
 });
 
+describe('B-913 runClaude declares the capability', () => {
+    it('after the issue capability, on the metadata the session is created with', () => {
+        const src = readFileSync(join(__dirname, 'runClaude.ts'), 'utf8');
+        expect(src).toContain('metadata.capabilities = [...(metadata.capabilities ?? []), ISSUE_SESSION_CAPABILITY];\n    // B-913: this wrapper records model / API turn failures (agentState.turnFailure).\n    metadata.capabilities = [...metadata.capabilities, TURN_FAILURE_CAPABILITY];');
+    });
+});
+
 describe('B-913 remote launcher wiring', () => {
     const src = readFileSync(join(__dirname, 'claudeRemoteLauncher.ts'), 'utf8');
     it('every pulled prompt starts a turn: failure cleared, background tasks get the turn', () => {

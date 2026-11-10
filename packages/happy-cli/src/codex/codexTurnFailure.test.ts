@@ -19,8 +19,9 @@ describe('B-913 Codex turn failure', () => {
 describe('B-913 runCodex wiring', () => {
     const src = readFileSync(join(__dirname, 'runCodex.ts'), 'utf8');
     it('turn failures are noted on both failing events, cleared when a prompt starts a turn', () => {
-        expect(src.match(/noteAccountFailure\(failure\);\n\s*noteTurnFailure\(failure\);/g)?.length).toBe(2);
-        expect(src).toMatch(/turnActive = true;\n\s*\/\/ B-913[^\n]*\n\s*turnFailure = null;\n\s*session\.clearTurnFailure\(\);/);
+        expect(src).toMatch(/addMessage\(`Task failed: \$\{failure\}`, 'status'\);\n\s*noteTurnFailure\(failure\);/);
+        expect(src).toMatch(/addMessage\(`Turn aborted: \$\{failure\}`, 'status'\);\n\s*noteTurnFailure\(failure\);/);
+        expect(src).toMatch(/\/\/ B-913: a new prompt[^\n]*\n\s*turnFailure = null;\n\s*session\.clearTurnFailure\(\);\n\s*idleRelease\.cancel\(\);\n\s*turnActive = true;/);
     });
     it('the ready push becomes the one turn-failed push (never both)', () => {
         const ready = src.slice(src.indexOf('const sendReady = () => {'), src.indexOf('// Debug helper: log active handles'));
@@ -28,6 +29,6 @@ describe('B-913 runCodex wiring', () => {
         expect(ready.indexOf('sendTurnFailedNotification(')).toBeLessThan(ready.indexOf("kind: 'done'"));
     });
     it('declares the capability', () => {
-        expect(src).toMatch(/capabilities: \[[^\]]*TURN_FAILURE_CAPABILITY/);
+        expect(src).toContain('metadata.capabilities = [...metadata.capabilities, TURN_FAILURE_CAPABILITY];');
     });
 });

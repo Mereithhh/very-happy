@@ -254,7 +254,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
-        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', 'claude-fable-5-2-v1', PROMPT_QUEUE_CAPABILITY, TURN_FAILURE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY],
+        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', 'claude-fable-5-2-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY],
         // B-849b: this session's model / thinking choice (wrapper is the sole
         // writer; a reconnect keeps the server copy). A spawn-time model is a choice.
         modelIntent: options.model ?? null,
@@ -285,6 +285,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     };
     // B-874: issue_* tools + issue digest (spec §5).
     metadata.capabilities = [...(metadata.capabilities ?? []), ISSUE_SESSION_CAPABILITY];
+    // B-913: this wrapper records model / API turn failures (agentState.turnFailure).
+    metadata.capabilities = [...metadata.capabilities, TURN_FAILURE_CAPABILITY];
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
     const reconnectSessionId = reconnectEnv.HAPPY_RECONNECT_SESSION_ID;
