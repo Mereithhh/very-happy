@@ -184,10 +184,14 @@ export function capToolResult(
         return { content: [{ type: 'text', text: json === undefined ? capReceiptText(text) : jsonReceipt(json) }], isError: false }
     }
     let body = text
-    if (cls === 'list' && format) {
+    if (cls === 'list') {
+        // A JSON list answer is one long line: give it lines (a one-line view per item
+        // when the tool has one, else indented JSON) so the 160-character line clip
+        // and the whole-line page cut apply to its entries, not to the answer.
         const json = tryJson(text)
-        const lines = json === undefined ? null : format(json)
+        const lines = json === undefined ? null : format?.(json) ?? null
         if (lines !== null) body = lines
+        else if (json !== undefined) body = JSON.stringify(json, null, 1)
     }
     return { content: [{ type: 'text', text: pageText(body, cls, cursor) }], isError: false }
 }

@@ -38,7 +38,7 @@ vi.mock('@/automations/client', async (importOriginal) => {
     const automation = (i: number) => ({ id: `auto-${i}`, name: `job-${i}`, description: MID, machineId: 'm1', status: 'active', trigger: { kind: 'cron', expr: '0 9 * * *', tz: 'Asia/Singapore' }, action: { kind: 'spawn', prompt: MID }, concurrency: 'skip', maxRuntimeMs: 1, nextRunAt: 1_800_000_000_000, version: 1, lastRunAt: null, lastRunStatus: null, createdAt: 0, updatedAt: 0 });
     const run = (i: number) => ({ id: `run-${i}`, automationId: 'auto-1', automationName: 'job-1', machineId: 'm1', source: 'schedule', status: 'done', summary: MID, error: null, payload: MID, sessionId: 's', needsAttention: false, createdAt: 0, startedAt: 0, finishedAt: 0 });
     const client = {
-        list: async () => many(300, automation), get: async () => automation(1), getByName: async () => automation(1),
+        list: async () => many(300, automation), get: async () => ({ ...automation(1), description: HUGE }), getByName: async () => ({ ...automation(1), description: HUGE }),
         create: async () => automation(2), update: async () => automation(3), pause: async () => automation(4), resume: async () => automation(5),
         remove: async () => undefined, run: async () => run(1), fire: async () => ({ run: run(2), deduped: false }),
         runs: async () => many(300, run), report: async () => run(3), ack: async () => run(4),
@@ -89,6 +89,15 @@ vi.mock('@/sessions/sessionOps', async (importOriginal) => {
         stopSession: async () => true,
     };
 });
+vi.mock('@/assistant/bootstrap', async () => {
+    const { mkdirSync, mkdtempSync, writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+    const home = mkdtempSync(join(tmpdir(), 'b916b-assistant-'));
+    writeFileSync(join(home, 'personal.md'), '# memory\n');
+    mkdirSync(join(home, 'memory', 'journal'), { recursive: true });
+    return { bootstrapAssistantHome: async () => ({ home, created: [] }), assistantPersonalMemoryPath: () => join(home, 'personal.md'), assistantHome: () => home };
+});
 vi.mock('@/assistant/terminals', () => ({
     listVhTerminals: () => ({ ok: true, terminals: many(200, i => ({ id: `t${i}`, title: `Terminal ${i} ${'t'.repeat(200)}`, cwd: '/repo' })) }),
     readVhTerminal: () => ({ ok: true, text: HUGE }),
@@ -138,7 +147,9 @@ const ARGS: Record<string, Record<string, unknown>> = {
     session_spawn: { directory: '/tmp/b916b-surface', prompt: 'do Y', title: 'Do Y in X', agent: 'codex', projectId: 'p1' },
     session_kill: { sessionId: 'sess-1' }, session_archive: { sessionId: 'sess-1' },
     terminal_read: { terminalId: 't1' }, terminal_send: { terminalId: 't1', text: 'ls' },
-    automation_get: { name: 'job-1' }, automation_create: { name: 'job-2', trigger: { kind: 'manual' }, action: { kind: 'spawn', directory: '/tmp', prompt: 'p' } },
+    automation_get: { name: 'job-1' }, automation_create: { name: 'job-2', trigger: { kind: 'manual' }, action: { kind: 'spawn', agent: 'claude', directory: '/tmp', prompt: 'p' } },
+    change_title: { title: 'T' }, copy_to_clipboard: { text: 't' }, open_preview: { path: '/tmp/b916b-none' }, request_human: { reason: 'r' }, report_progress: { progress: 'p' },
+    memory_update: { section: 'Owner', content: 'c' }, journal_append: { content: 'c' },
     automation_update: { name: 'job-1', version: 1, newName: 'job-9' }, automation_pause: { name: 'job-1' }, automation_resume: { name: 'job-1' },
     automation_delete: { name: 'job-1' }, automation_run: { name: 'job-1' }, automation_fire: { name: 'job-1' }, automation_ack: { runId: 'run-1' },
     automation_report: { runId: 'run-1', status: 'done', summary: 's' },
