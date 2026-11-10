@@ -3112,6 +3112,11 @@ export const en = {
         // the same install. Hidden everywhere else; shown here so it can be removed.
         superseded: 'replaced by a newer entry for this machine',
     },
+    // B-916a: Settings → Main agent (the page body uses assistant/mainAgentCopy.ts)
+    settingsMainAgent: {
+        title: 'Main agent',
+        subtitle: 'Machine, skills folders, outbound deny list',
+    },
     settingsVoice: {
         // Voice settings page (web v2, B-051 assistant TTS)
         title: 'Voice',

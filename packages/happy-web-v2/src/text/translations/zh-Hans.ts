@@ -3242,6 +3242,11 @@ export const zhHans: TranslationStructure = {
         offline: '离线',
         superseded: '已被这台机器的新记录取代',
     },
+    // B-916a: Settings → Main agent (the page body uses assistant/mainAgentCopy.ts)
+    settingsMainAgent: {
+        title: '主 agent',
+        subtitle: '运行机器、skills 目录、出站禁用表',
+    },
     settingsVoice: {
         // Voice settings page (web v2, B-051 assistant TTS)
         title: '语音',

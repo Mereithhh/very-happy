@@ -21,6 +21,9 @@ import {
     type TtsVoice,
 } from '@/sync/apiVoice';
 import { machineLabel } from '@/utils/machineUtils';
+import { useNavigate } from 'react-router-dom';
+import { mainAgentCopy } from '@/assistant/mainAgentCopy';
+import { useMainAgentStore } from '@/assistant/mainAgentStore';
 
 
 
@@ -47,7 +50,7 @@ const LIBRARY_LANGS = [
 ] as const;
 
 export function VoiceSettings() {
-    const { t } = useTranslation();
+    const { t, lang } = useTranslation();
     const { credentials } = useAuth();
     const toast = useToast();
 
@@ -55,6 +58,10 @@ export function VoiceSettings() {
     const [asrLanguage, setAsrLanguage] = useSettingMutable('voiceAssistantLanguage');
     const [readTextReplies, setReadTextReplies] = useSettingMutable('voiceReadTextReplies');
     const [assistantMachineId, setAssistantMachineId] = useSettingMutable('assistantMachineId');
+    // B-916c: with the account pointer the main agent's machine lives in Main agent settings
+    // (changing it there also writes assistantMachineId for old webs); hide the duplicate here.
+    const mainAgentPointer = useMainAgentStore((s) => s.pointer);
+    const navigate = useNavigate();
     const [skipPermissions, setSkipPermissions] = useSettingMutable('assistantSkipPermissions');
     const [pttSound, setPttSound] = useSettingMutable('voicePttSound');
     const machines = useAllMachines({ includeOffline: true });
@@ -341,6 +348,11 @@ export function VoiceSettings() {
                     />
                 </ItemGroup>
 
+                {mainAgentPointer ? (
+                <ItemGroup settingId="voice.assistantMachine" title={t('settingsVoice.assistantMachine')}>
+                    <Item title={mainAgentCopy(lang).voiceMachineMoved} onClick={() => navigate('/settings/main-agent')} />
+                </ItemGroup>
+                ) : (
                 <ItemGroup settingId="voice.assistantMachine" title={t('settingsVoice.assistantMachine')}>
                     <Item
                         title={t('settingsVoice.assistantMachineAuto')}
@@ -358,6 +370,7 @@ export function VoiceSettings() {
                         />
                     ))}
                 </ItemGroup>
+                )}
             </ItemList>
         </Page>
     );

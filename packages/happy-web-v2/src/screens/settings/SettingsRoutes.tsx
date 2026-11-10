@@ -142,6 +142,7 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { getServerInfo } from '@/sync/serverConfig';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { VoiceSettings } from './VoiceSettings';
+import { MainAgentSettings } from './MainAgentSettings';
 import { MachinesSettings } from './MachinesSettings';
 import { SharedSettings } from './SharedSettings';
 import { FeedbackInbox, FeedbackSettings } from './FeedbackSettings';
@@ -281,6 +282,13 @@ function Overview() {
             left={<Cable size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/channels')}
+          />
+          <Item
+            title={t('settingsMainAgent.title')}
+            subtitle={t('settingsMainAgent.subtitle')}
+            left={<Bot size={18} />}
+            right={<ChevronRight size={16} />}
+            onClick={() => navigate('/settings/main-agent')}
           />
           <Item
             title={t('settingsVoice.title')}
@@ -2817,6 +2825,7 @@ export function SettingsRoutes({ basePath }: { basePath?: string } = {}) {
       <Route path="notifications" element={<Notifications />} />
       <Route path="channels" element={<Channels />} />
       <Route path="voice" element={<VoiceSettings />} />
+      <Route path="main-agent" element={<MainAgentSettings />} />
       <Route path="machines" element={<MachinesSettings />} />
       <Route path="shared" element={<SharedSettings />} />
       <Route path="usage" element={<Usage />} />

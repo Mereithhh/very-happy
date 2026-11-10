@@ -210,3 +210,12 @@ describe('B-355: the attachment manifest is never spoken', () => {
         expect(rows.find((r) => r.role === 'user')?.text).toBe('看看这个');
     });
 });
+
+describe('deriveTranscript keepOptions (B-916a)', () => {
+    it('keeps the raw <options> block for the main agent drawer; default still flattens', async () => {
+        const { deriveTranscript } = await import('./assistantView');
+        const msg = { kind: 'agent-text', id: 'a1', localId: null, createdAt: 1, text: 'Pick one\n<options>\n<option>Yes</option>\n</options>', isThinking: false } as never;
+        expect(deriveTranscript([msg], { keepOptions: true })[0].text).toContain('<option>Yes</option>');
+        expect(deriveTranscript([msg])[0].text).toBe('Pick one\n▸ Yes');
+    });
+});

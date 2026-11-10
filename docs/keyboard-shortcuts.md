@@ -69,6 +69,8 @@ find; use `Ctrl+K` or the sidebar button there.
 | Switch visible sidebar rows 1–9 | `Command+1` … `Command+9` | `Ctrl+1` … `Ctrl+9` | Tap the row |
 | Saved prompt menu | `Command+.` | `Ctrl+.` | Prompt shortcut button |
 | Toggle notes | `Command+J` | `Ctrl+J` | Notes header button |
+| Toggle the main agent drawer | `Command+Shift+E` | `Ctrl+Shift+E` | Sidebar **Main agent** (full-screen page) |
+| Ask the main agent from the palette | `Command+Enter` in `Command+K` | `Ctrl+Enter` in `Ctrl+K` | Palette row **Ask main agent** |
 | Edit current title/tags | `Command+R` | `Ctrl+R` | Row menu → Rename / Tags |
 | Go back | `Command+[` or `Alt+Left` outside editors | `Alt+Left` outside editors | Back button or left-edge swipe |
 | New terminal in installed PWA | `Command+N` | `Ctrl+N` outside editable/terminal input | New button |
