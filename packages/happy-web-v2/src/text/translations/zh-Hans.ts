@@ -1044,6 +1044,10 @@ export const zhHans: TranslationStructure = {
                 chipTitle: '编辑后的版本会随下一条消息发给模型',
                 chipRemove: ({ title }: { title: string }) => `不附带此草稿：${title}`,
                 attached: ({ count }: { count: number }) => `附带了 ${count} 份编辑后的草稿`,
+                send: '发送',
+                sendHint: '让 agent 发送这份草稿（等同回复「发」）',
+                sendRequested: '已请求发送',
+                sendMessage: ({ title }: { title: string }) => title ? `发：「${title}」` : '发',
             },
             discarded: {
                 cleared: '未执行 · 被 /clear 或 /compact 清掉了',
@@ -3398,7 +3402,7 @@ export const zhHans: TranslationStructure = {
             `${count} 台在线机器低于 v${version}：${machines}。此命令会安装精确版本并安全刷新 daemon。`,
         commandCopied: 'CLI 更新命令已复制',
         bundleUpdated: '已更新到最新版本',
-        updateReady: '有新版本了',
+        updateReady: '有新版本，刷新后查看更新说明',
         updateApply: '刷新',
         updateApplying: '刷新中…',
         commandCopyFailed: '无法复制 CLI 更新命令',
@@ -3439,6 +3443,13 @@ export const zhHans: TranslationStructure = {
                 outboxAlt: '手机上的会话页：最后一条消息标着「未发送」，旁边是「重发」和「丢弃」',
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
+            },
+            nov11a: {
+                title: '更新提示更及时；草稿可一键发送',
+                summary: '发版后开着的页面马上知道有新版本；草稿卡加了「发送」按钮。',
+                update: '一直开着的页面在发版后连接一重连就会检查新版本，不再最多等 15 分钟。页面正被看着时会一直提示「有新版本，刷新后查看更新说明」，直到你刷新。',
+                draftSend: '草稿卡加了「发送」按钮，等同回复「发」：向当前会话发一条带草稿标题的消息（编辑过的版本照常附带），随后显示「已请求发送」。真正的发送仍由 Agent 按它自己的规则执行。分享来的只读会话不显示。',
+                docs: '新增文档「项目、团队和会话怎么组织」：三者各是什么、什么时候用哪个、常见误区。',
             },
             nov11: {
                 title: '切换到 Opus / Fable 时默认打开 1M 上下文',

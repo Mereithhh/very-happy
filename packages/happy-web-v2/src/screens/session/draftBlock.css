@@ -48,6 +48,12 @@
   gap: 2px;
   flex: none;
 }
+/* B-914: with 发送 the actions no longer fit beside the title on a phone; the
+ * title keeps a readable minimum and the actions wrap to their own row
+ * (right-aligned) instead of squeezing the title and the save state to nothing. */
+.dft-bar { flex-wrap: wrap; row-gap: 2px; }
+.dft-label { flex: 1 1 auto; min-width: min(12em, 100%); }
+.dft-actions { margin-left: auto; }
 .dft-restore {
   display: inline-flex;
   align-items: center;
@@ -62,6 +68,27 @@
 }
 @media (hover: hover) and (pointer: fine) { .dft-restore:hover { background: var(--bg-3); color: var(--text); } }
 .dft-restore:focus-visible { outline: none; box-shadow: var(--focus-ring); } /* B-728 (P2-11): the shared keyboard ring */
+/* B-914: 「发送」 — the card's one primary action (ink on canvas, design CTA rule);
+ * once requested it settles into a quiet, disabled receipt. */
+.dft-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--text);
+  color: var(--bg-0);
+  font-size: var(--chat-fs-caption);
+  font-weight: 560;
+  cursor: pointer;
+}
+.dft-send:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.dft-send:disabled { cursor: default; }
+.dft-send[data-send-state='sending'] { opacity: 0.7; }
+.dft-send[data-send-state='requested'] { background: transparent; color: var(--text-dim); font-weight: inherit; }
+@media (pointer: coarse) { .dft-send { min-height: 30px; padding: 2px 10px; } }
 .dft-text {
   display: block;
   width: 100%;
