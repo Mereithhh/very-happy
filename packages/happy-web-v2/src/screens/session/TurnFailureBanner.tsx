@@ -47,10 +47,10 @@ export function TurnFailureBanner({ sessionId }: { sessionId: string }) {
         <div className="mrb" data-testid="turn-failure-banner" data-kind="turn-failure">
             <div className="mrb-note mrb-note--decision" role="alert">
                 <TriangleAlert size={13} />
-                <span className="mrb-note-text">
+                <span className="mrb-note-text" title={failure.summary}>
                     <strong>{t('session.chat.turnFailedTitle')}</strong>
                     <span className="mrb-note-sep" aria-hidden> · </span>
-                    <span className="mono" data-testid="turn-failure-summary">{failure.summary}</span>
+                    <span className="mrb-turn-error" data-testid="turn-failure-summary">{failure.summary}</span>
                 </span>
                 <span className="mrb-note-actions">
                     {last && (

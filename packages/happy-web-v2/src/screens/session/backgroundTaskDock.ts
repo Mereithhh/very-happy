@@ -80,6 +80,26 @@ export function backgroundTaskEntries(
     return out.sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
 }
 
+const isCommandCard = (card: ToolCallMessage): boolean => card.subagent?.subagentType === 'background-command';
+
+/**
+ * B-913: the transcript card of a backgrounded command that a reported task
+ * stands for (same description). The task chip carries what the card cannot —
+ * the command line, the launching turn, 「停止」 — and opens the card's panel,
+ * so the card is not listed again beside it (one chip per running thing, the
+ * same rule B-518 applies the other way round to sub-agents).
+ */
+export function commandCardFor(task: BackgroundTaskEntry, cards: readonly ToolCallMessage[]): ToolCallMessage | undefined {
+    if (task.kind !== 'command' || !task.description) return undefined;
+    return cards.find((card) => isCommandCard(card) && cardDescription(card) === task.description);
+}
+
+/** The running cards still worth their own chip once the tasks are listed. */
+export function dockCardsBesideTasks(cards: readonly ToolCallMessage[], tasks: readonly BackgroundTaskEntry[]): ToolCallMessage[] {
+    const represented = new Set(tasks.map((task) => commandCardFor(task, cards)).filter((c): c is ToolCallMessage => !!c));
+    return cards.filter((card) => !represented.has(card));
+}
+
 /**
  * B-913: the chip's words. Title = what runs (the command line for a command,
  * else the agent's description); detail = how long + which turn launched it.

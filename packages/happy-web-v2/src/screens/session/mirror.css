@@ -213,6 +213,16 @@
 }
 .mrb[data-kind="turn-failure"] .mrb-note > svg:first-child { color: var(--danger); flex: none; }
 .mrb[data-kind="turn-failure"] .mrb-note-text { flex: 1 1 240px; }
+/* the provider's own words; on a phone two lines are enough (full text in the title / transcript) */
+@media (max-width: 600px) {
+  .mrb[data-kind="turn-failure"] .mrb-note-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+}
 .mrb[data-kind="turn-failure"] .mrb-term-btn:disabled { opacity: 0.6; cursor: default; }
 .mrb-note--decision .mrb-note-text { display: inline; overflow-wrap: anywhere; }
 .mrb-inline-link {

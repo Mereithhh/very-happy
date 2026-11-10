@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ToolCallMessage } from '@/sync/typesMessage';
-import { backgroundTaskChipText, backgroundTaskEntries, formatTaskAge } from './backgroundTaskDock';
+import { backgroundTaskChipText, backgroundTaskEntries, commandCardFor, dockCardsBesideTasks, formatTaskAge } from './backgroundTaskDock';
 
 const card = (description: string) => ({ kind: 'tool-call', id: 'c', tool: { name: 'Agent', input: { description } } } as unknown as ToolCallMessage);
 const tasks = [
@@ -43,5 +43,23 @@ describe('B-913 chip detail: command, age, launching turn', () => {
         const [entry] = backgroundTaskEntries([{ id: 'b', type: 'local_bash', description: 'sleep 300', startedAt: 5 }], 1, []);
         expect(entry).toMatchObject({ command: null, turn: null });
         expect(backgroundTaskChipText(entry)).toEqual({ title: 'sleep 300', mono: false, turnPrompt: null, detailed: false });
+    });
+});
+
+describe('B-913 one chip per backgrounded command', () => {
+    const commandCard = (id: string, description: string) => ({ kind: 'tool-call', id, tool: { name: 'Bash', input: { description, command: 'sleep 9' } }, subagent: { status: 'running', subagentType: 'background-command' } } as unknown as ToolCallMessage);
+    it('the task chip stands for its command card (and opens it); other cards stay', () => {
+        const bash = commandCard('c-bash', 'wait loop');
+        const agent = card('Explore repo');
+        const tasks = backgroundTaskEntries([{ id: 't1', type: 'local_bash', description: 'wait loop', command: 'sleep 9' }], 1, [bash, agent]);
+        expect(commandCardFor(tasks[0], [bash, agent])).toBe(bash);
+        expect(dockCardsBesideTasks([bash, agent], tasks)).toEqual([agent]);
+    });
+    it('a plain Bash card with the same words but no background marker is not merged; no tasks → all cards', () => {
+        const plain = { ...commandCard('c', 'wait loop'), subagent: undefined } as unknown as ToolCallMessage;
+        const tasks = backgroundTaskEntries([{ id: 't1', type: 'local_bash', description: 'wait loop' }], 1, [plain]);
+        expect(commandCardFor(tasks[0], [plain])).toBeUndefined();
+        expect(dockCardsBesideTasks([plain], tasks)).toEqual([plain]);
+        expect(dockCardsBesideTasks([plain], [])).toEqual([plain]);
     });
 });

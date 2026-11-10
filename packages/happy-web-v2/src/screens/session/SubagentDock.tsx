@@ -9,7 +9,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { buildSubagentSummary, isSubagentToolName } from './subagentSummary';
 import { presentedSubagentStatus, userAbortedAt } from './subagentAbort';
 import { openSubagentPanel } from './subagentPanelState';
-import { backgroundTaskChipText, backgroundTaskEntries, formatTaskAge, type BackgroundTaskEntry } from './backgroundTaskDock';
+import { backgroundTaskChipText, backgroundTaskEntries, commandCardFor, dockCardsBesideTasks, formatTaskAge, type BackgroundTaskEntry } from './backgroundTaskDock';
 import { stopBackgroundTask } from './claudeRuntimeControl';
 import { AgentGlyph } from './AgentChip';
 import './subagent.css';
@@ -54,10 +54,12 @@ export function SubagentDock({ sessionId }: { sessionId: string }) {
         const timer = setInterval(() => setNow(Date.now()), 30_000);
         return () => clearInterval(timer);
     }, [tasks.length]);
+    // B-913: a backgrounded command shows once — as its task chip, which opens the card.
+    const shownCards = useMemo(() => dockCardsBesideTasks(cards, tasks), [cards, tasks]);
     const { t } = useTranslation();
-    if (!cards.length && !tasks.length) return null;
+    if (!shownCards.length && !tasks.length) return null;
     return <nav className="sa-dock" aria-label={tasks.length ? t('session.chat.backgroundTasksDock', { count: tasks.length }) : t('session.chat.subagentPanelTitle')}>
-        {cards.map(card => {
+        {shownCards.map(card => {
             const summary = buildSubagentSummary(card);
             const command = card.subagent?.subagentType === 'background-command';
             const title = summary.title ?? t(command ? 'session.chat.backgroundCommand' : 'session.chat.subagentPanelTitle');
@@ -73,12 +75,14 @@ export function SubagentDock({ sessionId }: { sessionId: string }) {
             </button>;
         })}
         {tasks.map(task => <BackgroundTaskChip key={task.id} sessionId={sessionId} task={task} now={now} canStop={canStop}
-            messages={chronological} />)}
+            messages={chronological} commandCard={commandCardFor(task, cards)} />)}
     </nav>;
 }
 
-function BackgroundTaskChip({ sessionId, task, now, canStop, messages }: {
+function BackgroundTaskChip({ sessionId, task, now, canStop, messages, commandCard }: {
     sessionId: string; task: BackgroundTaskEntry; now: number; canStop: boolean; messages: Message[];
+    /** B-913: this command's transcript card, opened by the chip */
+    commandCard?: ToolCallMessage;
 }) {
     const { t } = useTranslation();
     const toast = useToast();
@@ -99,7 +103,7 @@ function BackgroundTaskChip({ sessionId, task, now, canStop, messages }: {
     const agentCard = task.kind === 'agent' && task.description
         ? messages.find((m): m is ToolCallMessage => m.kind === 'tool-call' && isSubagentToolName(m.tool.name)
             && (m.tool.input as Record<string, unknown> | null)?.description === task.description)
-        : undefined;
+        : commandCard;
     const stop = async () => {
         if (stopping) return;
         setStopping(true);
