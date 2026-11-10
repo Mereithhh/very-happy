@@ -1,4 +1,4 @@
-import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
+import { VERY_HAPPY_DISCOVERY as BUILTIN_TODO_DISCOVERY } from '@/skill/discovery';
 vi.mock('@/claude/utils/attachmentContent', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/claude/utils/attachmentContent')>(),
   stageClaudeAttachments: async (files: any[]) => files.map((file) => ({ path: `/test/uploads/${file.name}`, name: file.name, mimeType: file.mimeType, size: file.data.length })),

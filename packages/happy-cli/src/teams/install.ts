@@ -33,8 +33,12 @@ export interface ManagedSkillInstallResult { host: TeamSkillHost; skill: string;
  * Shared by the Teams and Automations skills (B-496): same ownership manifest,
  * same refusal to touch edited or foreign files, same atomic replacement.
  */
-export async function installManagedSkill(skill: { name: string; content: string; managedSessions: string }, options: ManagedSkillInstallOptions): Promise<ManagedSkillInstallResult> {
+const EXTRA_FILE = /^references\/[a-z0-9][a-z0-9-]{0,63}\.md$/;
+
+export async function installManagedSkill(skill: { name: string; content: string; managedSessions: string; files?: Record<string, string> }, options: ManagedSkillInstallOptions): Promise<ManagedSkillInstallResult> {
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(skill.name)) throw new Error('Invalid managed skill name');
+    const extra = skill.files ?? {};
+    for (const relative of Object.keys(extra)) if (!EXTRA_FILE.test(relative)) throw new Error('Invalid managed skill file: ' + relative);
     const directory = join(resolve(options.home), '.local', 'share', 'very-happy', 'skills', skill.name);
     await assertPrivateDestination(directory);
     const file = join(directory, 'SKILL.md');
@@ -46,18 +50,44 @@ export async function installManagedSkill(skill: { name: string; content: string
     if (current !== null && (!previous || previous.owner !== 'very-happy' || (previous.sha256 !== digest(current) && previous.pendingSha256 !== digest(current)))) {
         throw new Error('Existing skill is not owned by Very Happy or was edited; preserve it and resolve manually');
     }
-    const action = options.uninstall ? (current === null && managed === null ? 'unchanged' : 'remove') : current === skill.content && !previous?.pendingSha256 ? 'unchanged' : 'write';
+    // B-917: reference files beside SKILL.md, under the same ownership rule — every
+    // file this skill ever owned must still carry its recorded (or pending) hash.
+    const ownedFiles: Record<string, string> = previous?.files ?? {};
+    const pendingFiles: Record<string, string> = previous?.pendingFiles ?? {};
+    const extraOnDisk: Record<string, string> = {};
+    for (const relative of new Set([...Object.keys(extra), ...Object.keys(ownedFiles), ...Object.keys(pendingFiles)])) {
+        if (!EXTRA_FILE.test(relative)) throw new Error('Existing manifest lists an invalid file; resolve manually');
+        const text = await read(join(directory, relative));
+        if (text === null) continue;
+        if (ownedFiles[relative] !== digest(text) && pendingFiles[relative] !== digest(text)) throw new Error(`Existing skill file ${relative} is not owned by Very Happy or was edited; preserve it and resolve manually`);
+        extraOnDisk[relative] = text;
+    }
+    const filesCurrent = Object.keys(extraOnDisk).every((relative) => extra[relative] === extraOnDisk[relative])
+        && Object.keys(extra).every((relative) => extraOnDisk[relative] === extra[relative]) && !previous?.pendingFiles;
+    const anything = current !== null || managed !== null || Object.keys(extraOnDisk).length > 0;
+    const action = options.uninstall ? (anything ? 'remove' : 'unchanged') : current === skill.content && !previous?.pendingSha256 && filesCurrent ? 'unchanged' : 'write';
     if (options.apply && action !== 'unchanged') {
         await assertPrivateDestination(directory);
-        if (options.uninstall) { if (current !== null) await unlink(file); if (managed !== null) await unlink(manifest); await rmdir(directory).catch(() => {}); }
+        const withFiles = Object.keys(extra).length > 0 || Object.keys(ownedFiles).length > 0;
+        if (options.uninstall) {
+            for (const relative of Object.keys(extraOnDisk)) await unlink(join(directory, relative));
+            if (current !== null) await unlink(file); if (managed !== null) await unlink(manifest);
+            await rmdir(join(directory, 'references')).catch(() => {});
+            await rmdir(directory).catch(() => {});
+        }
         else {
             await mkdir(directory, { recursive: true });
+            if (Object.keys(extra).length) { await assertPrivateDestination(join(directory, 'references')); await mkdir(join(directory, 'references'), { recursive: true }); }
             // Publish recoverable ownership first. Atomic replacement means the skill is
             // always either the verified old bytes or the declared new bytes, never partial.
             const nextHash = digest(skill.content);
-            await publish(manifest, JSON.stringify({ owner: 'very-happy', sha256: current === null ? null : digest(current), pendingSha256: nextHash, version: 1 }));
+            const nextFiles = Object.fromEntries(Object.entries(extra).map(([relative, text]) => [relative, digest(text)]));
+            const currentFiles = Object.fromEntries(Object.entries(extraOnDisk).map(([relative, text]) => [relative, digest(text)]));
+            await publish(manifest, JSON.stringify({ owner: 'very-happy', sha256: current === null ? null : digest(current), pendingSha256: nextHash, ...(withFiles ? { files: currentFiles, pendingFiles: nextFiles } : {}), version: 1 }));
+            for (const [relative, text] of Object.entries(extra)) if (extraOnDisk[relative] !== text) await publish(join(directory, relative), text);
+            for (const relative of Object.keys(extraOnDisk)) if (!(relative in extra)) await unlink(join(directory, relative));
             await publish(file, skill.content);
-            await publish(manifest, JSON.stringify({ owner: 'very-happy', sha256: nextHash, version: 1 }));
+            await publish(manifest, JSON.stringify({ owner: 'very-happy', sha256: nextHash, ...(withFiles ? { files: nextFiles } : {}), version: 1 }));
         }
     }
     return { host: options.host, skill: skill.name, path: file, action, applied: !!options.apply, discovery: 'No host skill directories are modified. Read this absolute skill path in a managed session.', managedSessions: skill.managedSessions };

@@ -589,6 +589,14 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exitCode = 1;
     }
     return;
+  } else if (subcommand === 'skill') {
+    // B-917: Very Happy's own capability skill (progressive disclosure).
+    try {
+      await (await import('@/commands/skill')).handleSkillCommand(args.slice(1));
+    } catch (error) {
+      failCommand(error)
+    }
+    return;
   } else if (subcommand === 'teams') {
     try {
       const { handleTeamsCommand } = await import('./commands/teams');
@@ -935,6 +943,7 @@ ${chalk.bold('Usage:')}
   very-happy agent-home        Show or pin where Claude Code / Codex keep their
                             conversations on this machine (agent-home --help)
   very-happy connect           Connect AI vendor API keys
+  very-happy skill             What Very Happy can do, for agents (skill <area>)
   very-happy todo              Built-in Todos and official agent skill (todo --help)
   very-happy issue             Issues: list, show, create, assign to an agent, comment (issue --help)
   very-happy auto              Scheduled / triggered automations: spawn, sticky

@@ -108,6 +108,11 @@ very-happy auto edit inbox-triage --precheck-timeout 2m     # adjust the existin
 very-happy auto edit inbox-triage --no-precheck             # remove it
 ```
 
+Sessions an automation spawns can join a project: `--project <id>` on `create` /
+`edit`, or `--project current` from inside a project session (its project);
+`edit --no-project` detaches. The server checks the project belongs to your
+account; an older server that drops the field is reported, not silently ignored.
+
 - **Command** — either one shell line (`--precheck-shell`, run by the
   machine's shell) or an argv (`--precheck-argv '["./has-new","--since","5m"]'`,
   no shell). A shell line is not template-rendered — read the payload from
