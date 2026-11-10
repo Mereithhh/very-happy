@@ -115,8 +115,10 @@ function matchesRef(ref: string, issue: { id: string; number: number }): boolean
     return 'number' in parsed ? parsed.number === issue.number : parsed.id === issue.id;
 }
 
-export function registerIssueTools(server: AssistantToolRegistrar, execute: IssueToolExecutor): void {
+/** `skip`: names another surface registers instead (B-916b: the main agent's account-level issue_list / issue_comment). */
+export function registerIssueTools(server: AssistantToolRegistrar, execute: IssueToolExecutor, skip: readonly string[] = []): void {
     for (const name of ISSUE_TOOL_NAMES) {
+        if (skip.includes(name)) continue;
         const spec = ISSUE_TOOL_SCHEMAS[name];
         server.registerTool(name, {
             description: spec.description, title: spec.title, inputSchema: spec.inputSchema,

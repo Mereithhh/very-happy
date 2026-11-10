@@ -78,35 +78,37 @@ export async function handleTodoCommand(args: string[], deps: { issues?: IssuesC
     const command = parseTodoArgs(args);
     if (command.action === 'help') { console.log(TODO_HELP); return; }
     if (command.action === 'skill') { console.log(BUILTIN_TODO_SKILL); return; }
+    const result = await runTodoCommand(command as TodoCommand & { action: TodoAliasCommand['action'] }, deps);
+    console.log(JSON.stringify({ serverUrl: configuration.serverUrl, result }));
+}
+
+/**
+ * One todo operation, Issues first (B-874: a todo = an unassigned issue), the
+ * classic KV store on a server without Issues. Shared by `very-happy todo`
+ * and the main agent's `todo_*` tools (B-916b), which have no shell.
+ */
+export async function runTodoCommand(command: TodoCommand & { action: TodoAliasCommand['action'] }, deps: { issues?: IssuesClient } = {}): Promise<unknown> {
     // B-874: Issues first (a todo = an unassigned issue); an old server or the switch off falls back to KV unchanged.
     await assertAccountTodosAllowed();
     const issues = deps.issues ?? sharedIssuesClient();
     if (!issues.isDisabled()) {
         try {
             await importLegacyTodosOnce(issues);
-            const result = await runTodoViaIssues(command as TodoAliasCommand, issues);
-            console.log(JSON.stringify({ serverUrl: configuration.serverUrl, result }));
-            return;
+            return await runTodoViaIssues(command as TodoAliasCommand, issues);
         } catch (error) {
             if (!(error instanceof IssuesUnsupportedError)) throw new Error(describeIssueError(error));
         }
     }
     if (command.id !== undefined && !UUID.test(command.id)) throw new Error('This server has no Issues; use the Todo UUID');
     const client = await authenticatedBuiltinTodoClient();
-    let result: unknown;
-    if (command.action === 'list') result = await client.list();
-    else if (command.action === 'add') result = await client.create(command.title!, command.note ?? '', command.id!);
-    else {
-        const record = await client.get(command.id!);
-        if (command.action === 'get') result = record;
-        else {
-            if (!record) throw new Error('Todo not found; it may have been deleted.');
-            if (record.version !== command.version) throw new Error('Todo version conflict; read the latest task before deciding what to change.');
-            if (command.action === 'delete') { await client.remove(record); result = { id: record.id, deleted: true }; }
-            else result = await client.update(record, command.action === 'edit'
-                ? { ...(command.title !== undefined ? { title: command.title } : {}), ...(command.note !== undefined ? { note: command.note } : {}) }
-                : { status: command.action === 'complete' ? 'done' : 'open' });
-        }
-    }
-    console.log(JSON.stringify({ serverUrl: configuration.serverUrl, result }));
+    if (command.action === 'list') return client.list();
+    if (command.action === 'add') return client.create(command.title!, command.note ?? '', command.id!);
+    const record = await client.get(command.id!);
+    if (command.action === 'get') return record;
+    if (!record) throw new Error('Todo not found; it may have been deleted.');
+    if (record.version !== command.version) throw new Error('Todo version conflict; read the latest task before deciding what to change.');
+    if (command.action === 'delete') { await client.remove(record); return { id: record.id, deleted: true }; }
+    return client.update(record, command.action === 'edit'
+        ? { ...(command.title !== undefined ? { title: command.title } : {}), ...(command.note !== undefined ? { note: command.note } : {}) }
+        : { status: command.action === 'complete' ? 'done' : 'open' });
 }

@@ -1,0 +1,271 @@
+import { EventEmitter } from 'node:events';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+/**
+ * B-916b through the real MCP transport (startHappyServer): the main agent
+ * (assistant variant, no team scope) gets its own tools plus owner_board_*,
+ * and EVERY tool it can call answers within its ceiling — writes ≤ 400,
+ * lists ≤ 4,000, bodies ≤ 8,000 — even when the backend answers megabytes.
+ * A normal session's answers stay uncapped (B-911 owns the server side).
+ */
+
+const HUGE = 'x'.repeat(60_000);
+/** Per-item filler for long lists (hundreds of items × MID is still megabytes of JSON). */
+const MID = 'm'.repeat(1_500);
+const many = <T>(n: number, f: (i: number) => T) => Array.from({ length: n }, (_, i) => f(i));
+const state = vi.hoisted(() => ({ spawnCalls: [] as any[], order: [] as string[], boardPosts: [] as any[] }));
+
+vi.mock('@/attention/client', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/attention/client')>();
+    const item = (i: number) => ({ id: `item-${i}`, sessionId: 's', teamId: null, projectId: null, source: 'lead', kind: 'decision', key: `k${i}`, title: `Decide ${i} ${'t'.repeat(150)}`, bodyMd: MID, options: null, links: null, anchor: null, firstReply: null, replyToId: null, inferred: false, needsOwner: true, state: 'open', ownerChoice: null, ownerNote: null, resolvedBy: null, resolveNote: null, repostCount: 0, createdAt: 0, updatedAt: 0, resolvedAt: null, pushedAt: null, version: 0 });
+    const client = {
+        isDisabled: () => false, probe: async () => true,
+        post: async (body: any) => { state.boardPosts.push(body); return { item: item(0), created: true }; },
+        patch: async () => ({ item: item(1) }),
+        resolve: async () => ({ item: item(2) }),
+        list: async () => ({ items: many(200, item) }),
+    };
+    return { ...actual, sharedAttentionClient: () => client };
+});
+vi.mock('@/attention/leadBoard', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/attention/leadBoard')>();
+    return { ...actual, resolveTeamLead: async () => false };
+});
+vi.mock('@/automations/client', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/automations/client')>();
+    const automation = (i: number) => ({ id: `auto-${i}`, name: `job-${i}`, description: MID, machineId: 'm1', status: 'active', trigger: { kind: 'cron', expr: '0 9 * * *', tz: 'Asia/Singapore' }, action: { kind: 'spawn', prompt: MID }, concurrency: 'skip', maxRuntimeMs: 1, nextRunAt: 1_800_000_000_000, version: 1, lastRunAt: null, lastRunStatus: null, createdAt: 0, updatedAt: 0 });
+    const run = (i: number) => ({ id: `run-${i}`, automationId: 'auto-1', automationName: 'job-1', machineId: 'm1', source: 'schedule', status: 'done', summary: MID, error: null, payload: MID, sessionId: 's', needsAttention: false, createdAt: 0, startedAt: 0, finishedAt: 0 });
+    const client = {
+        list: async () => many(300, automation), get: async () => automation(1), getByName: async () => automation(1),
+        create: async () => automation(2), update: async () => automation(3), pause: async () => automation(4), resume: async () => automation(5),
+        remove: async () => undefined, run: async () => run(1), fire: async () => ({ run: run(2), deduped: false }),
+        runs: async () => many(300, run), report: async () => run(3), ack: async () => run(4),
+        createWithPrecheck: async () => automation(2),
+    };
+    return { ...actual, authenticatedAutomationsClient: async () => ({ client, machineId: 'm1' }) };
+});
+vi.mock('@/automations/precheckCompat', () => ({
+    createAutomationChecked: async (client: any) => client.create(),
+    updateAutomationChecked: async (client: any) => client.update(),
+}));
+vi.mock('@/teams/client', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/teams/client')>();
+    const task = (i: number) => ({ id: `task-${i}`, parentTaskId: null, status: 'running', goal: MID, acceptance: [MID], assigneeBotId: 'b', ownerBotId: 'o', currentAttemptId: `att-${i}`, goalVersion: 1, cleanup: 'none', attempts: [{ id: `att-${i}`, botId: 'b', generation: 1, goalVersion: 1, status: 'running', result: MID }] });
+    const team = { id: 'team-1', name: 'Dev', version: 1, bots: many(30, i => ({ id: `bot-${i}`, name: `B${i}`, root: i === 0, activity: 'active', lastEvent: 'idle' })), tasks: many(60, task), messages: many(100, i => ({ id: `m${i}`, taskId: 'task-1', senderBotId: 'bot-0', recipientBotId: 'bot-1', body: MID, deliveredAt: 1, createdAt: 1 })), operations: [], capacity: { metrics: {} } };
+    return { ...actual, createTeamsClient: () => ({ initialize: async () => ({ team, botId: 'bot-0' }), inspect: async () => ({ team, botId: 'bot-0' }), action: async () => ({ team, taskId: 'task-1' }) }) };
+});
+vi.mock('@/assistant/mainAgentDeps', () => {
+    const issue = (i: number) => ({ id: `iss-${i}`, key: `VH-${i}`, number: i, title: `Issue ${i} ${'t'.repeat(300)}`, description: MID, status: 'todo', priority: 'none', labels: [], assignee: { kind: 'none' }, version: 1 });
+    const entry = (i: number) => ({ id: `e${i}`, seq: i, projectId: 'p1', kind: i % 3 ? 'finding' : 'decision', title: `Entry ${i} ${'t'.repeat(300)}`, body: MID, authorSessionId: null, authorUser: true, supersedes: null, supersededBy: null, revokedAt: null, createdAt: i });
+    return {
+        createMainAgentDeps: (sessionId: () => string) => ({
+            listTeams: async () => many(80, i => ({ id: `team-${i}`, name: `Team ${i} ${'n'.repeat(200)}`, projectId: 'p1', bots: [{ id: 'lead', name: 'Lead', root: true, sessionId: `lead-session-${i}`, activity: 'active' }], tasks: [] })),
+            deliver: async () => ({ delivered: true }),
+            issues: { list: async () => ({ issues: many(50, issue), nextCursor: 'c' }), get: async () => ({ issue: issue(1) }), create: async () => ({ issue: issue(2), runs: [{ seq: 1, agent: 'codex' }] }), update: async () => ({ issue: issue(3), runs: [] }), comment: async () => ({ issue: issue(4) }) },
+            projects: {
+                list: async () => ({ projects: many(100, i => ({ id: `p${i}`, name: `Project ${i}`, goal: MID, teamIds: [], archivedAt: null })) }),
+                get: async () => ({ project: { id: 'p1', name: 'VH', goal: HUGE, instructions: HUGE, instructionsVersion: 1 }, members: [], presence: [], log: many(200, entry) }),
+                note: async () => ({ entry: { seq: 9, supersedes: null } }),
+            },
+            todo: async (command: any) => command.action === 'list'
+                ? { records: many(300, i => ({ id: `u${i}`, key: `VH-${i}`, title: `Todo ${i} ${'t'.repeat(300)}`, status: 'open', version: 1 })) }
+                : { id: 'u1', key: 'VH-1', title: 'T'.repeat(500), status: command.action === 'complete' ? 'done' : 'open', version: 2 },
+            machineId: async () => 'm1',
+            sessionId,
+            restartNow: async () => ({ success: true }),
+        }),
+    };
+});
+vi.mock('@/sessions/sessionOps', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/sessions/sessionOps')>();
+    const summary = (i: number) => ({ id: `sess-${i}`, live: true, title: `Session ${i} ${'t'.repeat(300)}`, cwd: `/repo/${'d'.repeat(100)}`, flavor: 'claude', url: `https://example.test/s/${i}` });
+    return {
+        ...actual,
+        listSessions: async () => many(150, summary),
+        readSessionTranscript: async () => ({ summary: summary(1), messageCount: 20, transcript: HUGE }),
+        archiveSession: async () => undefined,
+        stopSession: async () => true,
+    };
+});
+vi.mock('@/assistant/terminals', () => ({
+    listVhTerminals: () => ({ ok: true, terminals: many(200, i => ({ id: `t${i}`, title: `Terminal ${i} ${'t'.repeat(200)}`, cwd: '/repo' })) }),
+    readVhTerminal: () => ({ ok: true, text: HUGE }),
+    sendToVhTerminal: () => ({ ok: true }),
+}));
+vi.mock('@/daemon/controlClient', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/daemon/controlClient')>();
+    return { ...actual, spawnDaemonSession: async (directory: string, _sid: unknown, opts: any) => { state.spawnCalls.push({ directory, opts }); state.order.push('spawn'); return { success: true, sessionId: 'new-session' }; } };
+});
+vi.mock('@/commands/sessionMessage', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/commands/sessionMessage')>();
+    return { ...actual, waitForSessionKey: async () => ({ encryptionKey: 'k', metadata: { summary: { text: 'T' } } }), sendUserMessage: async () => { state.order.push('prompt'); } };
+});
+vi.mock('@/commands/sessionDelivery', () => ({ deliverToSession: async () => ({ delivered: true, status: 'live' }) }));
+vi.mock('@/projects/attribution', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/projects/attribution')>();
+    return { ...actual, joinProject: async (_c: unknown, _s: string, choice: any) => { state.order.push(`join:${choice.projectId}`); return { joined: true, projectId: choice.projectId, via: 'explicit' }; } };
+});
+vi.mock('@/projects/client', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/projects/client')>();
+    const client = { isDisabled: () => false, defaults: async () => ({}), membership: async () => ({ projectId: null, via: null }), context: async () => { throw new Error('no project'); }, digest: async () => ({}) };
+    return { ...actual, sharedProjectsClient: () => client };
+});
+vi.mock('@/persistence', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/persistence')>();
+    return { ...actual, readPersistedSessions: () => ({ 'sess-1': { metadata: { summary: { text: 'x' } } } }), readSettings: async () => ({ machineId: 'm1' }) };
+});
+
+const { startHappyServer } = await import('@/claude/utils/startHappyServer');
+const { RECEIPT_MAX_CHARS, LIST_MAX_CHARS, BODY_MAX_CHARS, capClassFor } = await import('./toolCaps');
+const { MAIN_AGENT_TOOL_NAMES } = await import('./mainAgentTools');
+const { ASSISTANT_TOOL_NAMES } = await import('./assistantTools');
+
+function fakeSession(id: string) {
+    const emitter = new EventEmitter() as EventEmitter & Record<string, any>;
+    let metadata: Record<string, any> = { machineId: 'm1' };
+    emitter.sessionId = id;
+    emitter.getMetadata = () => metadata;
+    emitter.updateMetadata = (fn: (m: Record<string, any>) => Record<string, any>) => { metadata = fn(metadata); };
+    emitter.rpcHandlerManager = { registerHandler: () => {}, unregisterHandler: () => {} };
+    return emitter;
+}
+
+/** Arguments that take each tool down its success path (the backends above answer huge). */
+const ARGS: Record<string, Record<string, unknown>> = {
+    session_read: { sessionId: 'sess-1' }, session_send: { sessionId: 'sess-1', text: 'go' },
+    session_spawn: { directory: '/tmp/b916b-surface', prompt: 'do Y', title: 'Do Y in X', agent: 'codex', projectId: 'p1' },
+    session_kill: { sessionId: 'sess-1' }, session_archive: { sessionId: 'sess-1' },
+    terminal_read: { terminalId: 't1' }, terminal_send: { terminalId: 't1', text: 'ls' },
+    automation_get: { name: 'job-1' }, automation_create: { name: 'job-2', trigger: { kind: 'manual' }, action: { kind: 'spawn', directory: '/tmp', prompt: 'p' } },
+    automation_update: { name: 'job-1', version: 1, newName: 'job-9' }, automation_pause: { name: 'job-1' }, automation_resume: { name: 'job-1' },
+    automation_delete: { name: 'job-1' }, automation_run: { name: 'job-1' }, automation_fire: { name: 'job-1' }, automation_ack: { runId: 'run-1' },
+    automation_report: { runId: 'run-1', status: 'done', summary: 's' },
+    team_create: { name: 'n', requestId: 'r' }, team_join: { teamId: 'team-1', name: 'n', requestId: 'r' },
+    team_delegate: { requestId: 'r', goal: 'g', acceptance: ['a'] }, team_message: { requestId: 'r', taskId: 'task-1', body: 'b' },
+    team_submit: { requestId: 'r', taskId: 'task-1', attemptId: 'att-1', goalVersion: 1, result: 'done' },
+    team_accept: { requestId: 'r', taskId: 'task-1', attemptId: 'att-1', goalVersion: 1 },
+    team_return: { requestId: 'r', taskId: 'task-1', attemptId: 'att-1', goalVersion: 1, reason: 'more' },
+    team_cancel: { requestId: 'r', taskId: 'task-1', attemptId: 'att-1', goalVersion: 1, reason: 'stop' },
+    team_handoff: { requestId: 'r', taskId: 'task-1', attemptId: 'att-1', goalVersion: 1, assigneeBotId: 'bot-2' },
+    team_schedule_create: { requestId: 'r', name: 'n', botId: 'bot-0', body: 'b', runAt: 1 },
+    team_schedule_pause: { requestId: 'r', scheduleId: 's', version: 1 }, team_schedule_resume: { requestId: 'r', scheduleId: 's', version: 1 },
+    team_schedule_cancel: { requestId: 'r', scheduleId: 's', version: 1 },
+    session_message: { to: 'sess-1', body: 'hi' },
+    lead_delegate: { teamId: 'team-1', goal: 'Ship it', acceptance: ['green'] },
+    issue_get: { issue: 'VH-1' }, issue_create: { title: 'New' }, issue_assign: { key: 'VH-1', assignee: { agent: 'codex' } }, issue_comment: { issue: 'VH-1', body: 'hi' },
+    todo_add: { title: 'Call' }, todo_complete: { id: 'VH-1', version: 1 },
+    project_context: { projectId: 'p1', full: true }, project_note: { projectId: 'p1', kind: 'finding', title: 't' }, sessions_list: { limit: 50 },
+    owner_board_post: { kind: 'report', title: 'Merged', request_id: 'r1' }, owner_board_update: { id: 'item-1', title: 'x', request_id: 'r2' },
+    owner_board_resolve: { id: 'item-1', outcome: 'done', request_id: 'r3' }, owner_board_list: { state: 'all' },
+    session_wrapup: { sessionId: 'sess-1' }, session_handoff: { from: 'sess-1', to: 'new' }, session_restart: { sessionId: 'sess-1', when: 'now' },
+};
+const CAP = { receipt: RECEIPT_MAX_CHARS, list: LIST_MAX_CHARS, body: BODY_MAX_CHARS } as const;
+const textOf = (r: any) => (r.content as Array<{ text: string }>).map(c => c.text).join('\n');
+
+describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
+    let happy: Awaited<ReturnType<typeof startHappyServer>> | undefined;
+    let mcp: Client | undefined;
+    afterEach(async () => {
+        await mcp?.close(); mcp = undefined;
+        happy?.stop(); happy = undefined;
+        state.spawnCalls = []; state.order = []; state.boardPosts = [];
+        delete process.env.VH_TEAM_SCOPE_FILE;
+    });
+
+    async function connect(options: { assistant?: boolean }, id = 'main-agent') {
+        happy = await startHappyServer(fakeSession(id) as any, options);
+        mcp = new Client({ name: 'b916b-probe', version: '1' });
+        await mcp.connect(new StreamableHTTPClientTransport(new URL(happy.url)));
+        return (await mcp.listTools()).tools;
+    }
+
+    it('registers the main agent tools and owner_board_* only on the main agent', async () => {
+        const tools = await connect({ assistant: true });
+        const names = tools.map(t => t.name);
+        expect(names).toEqual(expect.arrayContaining([...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES, 'owner_board_post', 'owner_board_list']));
+        expect(new Set(names).size).toBe(names.length);
+        expect(happy!.toolNames).toEqual(expect.arrayContaining([...MAIN_AGENT_TOOL_NAMES]));
+        // Pageable tools carry the cursor; receipts do not.
+        const schema = (name: string) => Object.keys((tools.find(t => t.name === name)!.inputSchema as any).properties ?? {});
+        expect(schema('automation_list')).toContain('cursor');
+        expect(schema('team_inspect')).toContain('cursor');
+        expect(schema('session_spawn')).toEqual(expect.arrayContaining(['title', 'agent', 'projectId']));
+        expect(schema('session_spawn')).not.toContain('cursor');
+        await mcp!.close(); happy!.stop(); mcp = undefined; happy = undefined;
+
+        const normal = (await connect({})).map(t => t.name);
+        expect(normal).not.toContain('lead_delegate');
+        expect(normal).not.toContain('owner_board_post');
+        expect(normal).toContain('issue_list');
+    });
+
+    it('a team-scoped assistant is not the main agent', async () => {
+        process.env.VH_TEAM_SCOPE_FILE = '/nonexistent/scope.json';
+        const names = (await connect({ assistant: true })).map(t => t.name);
+        expect(names).not.toContain('lead_delegate');
+        expect(names).not.toContain('sessions_list');
+    });
+
+    it('every tool on the main agent answers within its ceiling', async () => {
+        const tools = await connect({ assistant: true });
+        const sizes: Record<string, number> = {};
+        const texts: Record<string, string> = {};
+        for (const tool of tools) {
+            const args = ARGS[tool.name] ?? {};
+            const result = await mcp!.callTool({ name: tool.name, arguments: args });
+            const text = textOf(result);
+            const cls = result.isError ? 'receipt' : capClassFor(tool.name, args, (tool.annotations as any)?.readOnlyHint === true);
+            sizes[tool.name] = text.length;
+            // Valid arguments everywhere: an SDK-side schema refusal never reaches the handler (or the caps).
+            expect.soft(text, `${tool.name}: SDK input validation`).not.toContain('Input validation error');
+            expect.soft(text.length, `${tool.name} (${cls}${result.isError ? `, error: ${text.slice(0, 120)}` : ''})`).toBeLessThanOrEqual(CAP[cls]);
+            texts[tool.name] = text;
+        }
+        // The huge backends really were reached: lists and bodies fill their page.
+        for (const name of ['automation_list', 'automation_runs', 'sessions_list', 'team_inspect', 'owner_board_list', 'issue_list', 'todo_list', 'project_list', 'teams_list', 'terminals_list']) {
+            expect.soft(sizes[name], `${name}: ${texts[name]?.slice(0, 200)}`).toBeGreaterThan(LIST_MAX_CHARS / 2);
+        }
+        for (const name of ['session_read', 'terminal_read', 'automation_get', 'project_context']) expect.soft(sizes[name], name).toBeGreaterThan(BODY_MAX_CHARS / 2);
+        expect(Object.keys(sizes).length).toBeGreaterThanOrEqual(ASSISTANT_TOOL_NAMES.length + MAIN_AGENT_TOOL_NAMES.length + 12 + 14 + 4);
+    });
+
+    it('the main agent posts to the board as source agent', async () => {
+        await connect({ assistant: true });
+        const r = await mcp!.callTool({ name: 'owner_board_post', arguments: { kind: 'report', title: 'Merged', request_id: 'r1' } });
+        expect(r.isError).toBe(false);
+        expect(state.boardPosts).toEqual([expect.objectContaining({ sessionId: 'main-agent', source: 'agent', kind: 'report', title: 'Merged' })]);
+    });
+
+    it('a truncated list names a cursor that continues it', async () => {
+        await connect({ assistant: true });
+        const first = textOf(await mcp!.callTool({ name: 'automation_list', arguments: {} }));
+        const cursor = first.match(/cursor="(\d+)"/)?.[1];
+        expect(cursor).toBeDefined();
+        const second = textOf(await mcp!.callTool({ name: 'automation_list', arguments: { cursor } }));
+        expect(second.startsWith(`[continued from cursor="${cursor}"]`)).toBe(true);
+        expect(second.length).toBeLessThanOrEqual(LIST_MAX_CHARS);
+        // One line per automation (listViews), not the JSON with its prompts.
+        expect(first.split('\n')[1]).toMatch(/^job-0 auto-0 active cron\(0 9 \* \* \* Asia\/Singapore\) next=2027-01-15T08:00Z spawn$/);
+    });
+
+    it('session_spawn carries title, agent and project; the project is joined before the first prompt', async () => {
+        await connect({ assistant: true });
+        const result = await mcp!.callTool({ name: 'session_spawn', arguments: ARGS.session_spawn });
+        const text = textOf(result);
+        expect(result.isError).toBe(false);
+        expect(state.spawnCalls).toEqual([{ directory: '/tmp/b916b-surface', opts: { spawnedBy: 'assistant', agent: 'codex', title: 'Do Y in X' } }]);
+        expect(state.order).toEqual(['spawn', 'join:p1', 'prompt']);
+        expect(text).toContain('title="Do Y in X" project=p1');
+        expect(text.length).toBeLessThanOrEqual(RECEIPT_MAX_CHARS);
+    });
+
+    it('a normal session keeps its uncapped answers', async () => {
+        await connect({}, 'normal-session');
+        const full = textOf(await mcp!.callTool({ name: 'team_inspect', arguments: { full: true } }));
+        expect(full.length).toBeGreaterThan(BODY_MAX_CHARS);
+        const list = textOf(await mcp!.callTool({ name: 'automation_list', arguments: {} }));
+        expect(list.length).toBeGreaterThan(LIST_MAX_CHARS);
+    });
+});

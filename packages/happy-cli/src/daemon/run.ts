@@ -31,6 +31,7 @@ import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, readDae
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
+import { checkMainAgentMachine, httpKvIo, mainAgentOnOtherMachineMessage, recordMainAgentSession } from '@/assistant/mainAgentPointer';
 import { assistantSpawnMode, createSpawnGate, findLiveAssistant, isAssistantTracked, listPersistedAssistantIds, pickLatestAssistantEntry, resolveAssistantClaudeSessionId } from './assistantSpawn';
 import { decideAssistantReport, formatAssistantReportMessage, resolveReportSessionTitle, type AssistantReportEvent } from './assistantReport';
 import { sendUserMessage } from '@/commands/sessionMessage';
@@ -119,19 +120,12 @@ import { daemonExitCode, HANDOVER_EXIT_CODE, type ShutdownSource } from './shutd
 import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob, probeSystemdKillMode, wrappersSurviveHandover, handoverWaitsForSessions } from './daemonSupervisor';
 
 import { shellescape } from '@/utils/shellescape';
+import { sanitizeImportTitle } from './importTitle';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** B-294: an imported session's title rides an env var into the wrapper, so it
- *  must be a single sane line — collapse whitespace, drop control characters,
- *  clamp the length. Returns null when nothing usable is left. */
-export function sanitizeImportTitle(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  // eslint-disable-next-line no-control-regex
-  const collapsed = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
-  if (collapsed.length === 0) return null;
-  return collapsed.length > 200 ? `${collapsed.slice(0, 199)}…` : collapsed;
-}
+/** B-294: an imported session's title rides an env var into the wrapper (see ./importTitle). */
+export { sanitizeImportTitle };
 
 
 /**
@@ -518,6 +512,8 @@ export async function startDaemon(): Promise<void> {
 
     // B-644/B-649: one projects client for the daemon (shared 404 backoff for presence + attribution).
     const projectsClient = createProjectsClient({ token: async () => credentials.token });
+    // B-916b: account KV pointer to the main agent (one per account, §2.1 of the main agent spec).
+    const mainAgentKv = httpKvIo(configuration.serverUrl, () => credentials.token);
     // Spawn a new session (sessionId reserved for future --resume functionality)
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       // B-478: re-read where Claude/Codex keep their state before every spawn
@@ -533,9 +529,20 @@ export async function startDaemon(): Promise<void> {
       if (assistantSpawnMode(options) !== 'claude-singleton') {
         result = await spawnSessionImpl(options, timer);
       } else {
+        // B-916b: one main agent per account — a pointer naming another machine refuses here.
+        const verdict = await checkMainAgentMachine(mainAgentKv, machineId);
+        if (!verdict.ok) {
+          logger.warn(`[DAEMON RUN] Refusing assistant spawn: the main agent is on machine ${verdict.machineId}`);
+          return { type: 'error', errorMessage: mainAgentOnOtherMachineMessage(verdict.machineId), notStarted: true };
+        }
         result = await (options.forceNew
           ? assistantSpawnGate.replace(() => spawnSessionImpl(options, timer))
           : assistantSpawnGate.join(() => spawnSessionImpl(options, timer)));
+        if (result.type === 'success') {
+          const sessionId = result.sessionId;
+          void recordMainAgentSession(mainAgentKv, machineId, sessionId)
+            .then(outcome => logger.debug(`[DAEMON RUN] main agent pointer ${sessionId}: ${outcome}`));
+        }
       }
       logger.debug(timer.format({ agent: options.agent ?? 'claude', outcome: result.type }));
       // B-649 lineage: a fork joins its source's project before the caller sends
