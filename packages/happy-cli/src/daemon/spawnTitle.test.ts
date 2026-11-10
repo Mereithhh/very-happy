@@ -71,3 +71,11 @@ describe('very-happy spawn --title', () => {
         expect(() => parseSpawnArgs(['--dir', '/x', '--title', '  '])).toThrow('--title must contain visible text');
     });
 });
+
+describe('very-happy spawn wiring', () => {
+    it('hands --title to the daemon (source assertion, verified with mutation-check)', async () => {
+        const { readFileSync } = await import('node:fs');
+        const source = readFileSync(new URL('../commands/spawn.ts', import.meta.url), 'utf8');
+        expect(source).toContain('...(options.title !== undefined ? { title: options.title } : {}),');
+    });
+});

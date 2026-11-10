@@ -143,6 +143,16 @@ describe('capToolResult', () => {
         expect(out(r).length).toBeLessThanOrEqual(RECEIPT_MAX_CHARS)
     })
 
+    it('a JSON list answer without a view is paged as indented JSON, entries clipped, not the whole answer', () => {
+        const json = { tasks: Array.from({ length: 200 }, (_, i) => ({ id: `task-${i}`, goal: 'g'.repeat(300) })) }
+        const page = out(capToolResult(textResult(JSON.stringify(json)), 'list'))
+        expect(page.length).toBeLessThanOrEqual(LIST_MAX_CHARS)
+        expect(page.length).toBeGreaterThan(LIST_MAX_CHARS / 2)
+        expect(page).toContain('"id": "task-0"')
+        expect(page).toMatch(/cursor="\d+"/)
+        for (const line of page.split('\n').slice(0, -1)) expect(line.length).toBeLessThanOrEqual(LIST_LINE_MAX_CHARS)
+    })
+
     it('uses a list formatter for a JSON list and falls back to paging text', () => {
         const fmt = (v: any) => Array.isArray(v?.items) ? v.items.map((i: any) => i.id).join('\n') : null
         expect(out(capToolResult(textResult(JSON.stringify({ items: [{ id: 'a', big: 'x'.repeat(9000) }, { id: 'b' }] })), 'list', undefined, fmt))).toBe('a\nb')
