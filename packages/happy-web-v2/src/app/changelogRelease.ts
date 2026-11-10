@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-10-sidebar-waking-session-stays',
+    date: '2026-11-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov10.title',
+    summaryKey: 'changelog.releases.nov10.summary',
+    itemKeys: ['changelog.releases.nov10.wakeStays'],
+  },
+  {
     id: '2026-11-09-project-accounts-per-machine',
     date: '2026-11-09',
     buildVersion: __APP_VERSION__,

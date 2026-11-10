@@ -3311,6 +3311,11 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov10: {
+                title: 'Opening a session in a project no longer makes it vanish from the sidebar',
+                summary: 'A sleeping session you open keeps its place in the sidebar while it wakes up.',
+                wakeStays: 'Opening a project session from the sidebar no longer makes it disappear from the sidebar for a few seconds; a sleeping (moon) session stays in its project while it wakes up',
+            },
             nov09: {
                 title: 'Set Claude Code and Codex accounts per machine',
                 summary: 'Pick the account each machine uses for a project, and see which one a new session will use.',

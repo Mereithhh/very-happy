@@ -12,19 +12,21 @@
  */
 import type { Session } from '@/sync/storageTypes';
 import { isHiddenSession } from '@/assistant/assistantSession';
-import { isHibernated } from '@/app/sessionHibernation';
+import { isListedLive } from '@/app/sessionHibernation';
 
 export function visibleSidebarSessions(
   sessions: ReadonlyArray<Session | string>,
   view: 'list' | 'status' | 'archived',
+  now: number = Date.now(),
 ): Session[] {
   return sessions
     .filter((s): s is Session => typeof s !== 'string')
     .filter((s) => !isHiddenSession(s))
     // B-587: a hibernated session is still a working conversation — it stays
     // in the list (moon in the status slot) instead of dropping into Archived.
+    // B-906: so does one whose wrapper is waking up (stamp cleared, no heartbeat yet).
     .filter((s) => {
-      const live = s.active || isHibernated(s);
+      const live = isListedLive(s, now);
       return view === 'archived' ? !live : live;
     });
 }
