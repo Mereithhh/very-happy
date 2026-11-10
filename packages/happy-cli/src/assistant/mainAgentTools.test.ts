@@ -95,7 +95,7 @@ describe('teams / Lead dispatch', () => {
 
     it('teams_list leaves archived teams out and names the Lead session', async () => {
         const r = text(await run(deps(), 'teams_list'))
-        expect(r).toContain('team-1 "Dev" lead=Lead(sess-lead) open=1 project=p1')
+        expect(r).toContain('team-1 "Dev" lead=Lead bot=lead session=sess-lead open=1 project=p1')
         expect(r).not.toContain('team-2')
     })
 
@@ -115,8 +115,19 @@ describe('teams / Lead dispatch', () => {
         expect((await run(deps(), 'lead_delegate', { teamId: 'nope', goal: 'g', acceptance: ['a'] })).isError).toBe(true)
         expect((await run(deps(), 'lead_delegate', { teamId: 'team-2', goal: 'g', acceptance: ['a'] })).isError).toBe(true)
         const noLead = deps({ listTeams: async () => [{ id: 'team-3', name: 'x', bots: [{ id: 'm', name: 'M', root: false, sessionId: 's', activity: 'active' }] }] })
-        expect(text(await run(noLead, 'lead_delegate', { teamId: 'team-3', goal: 'g', acceptance: ['a'] }))).toContain('no Lead session')
+        expect(JSON.parse(text(await run(noLead, 'lead_delegate', { teamId: 'team-3', goal: 'g', acceptance: ['a'] })))).toMatchObject({ ok: false, error: 'lead_unreachable' })
         expect(noLead.calls.filter(c => c.op === 'deliver')).toEqual([])
+        const offline = deps({ deliver: async () => ({ delivered: false, error: 'session is offline' }) })
+        const r = await run(offline, 'lead_delegate', { teamId: 'team-1', goal: 'g', acceptance: ['a'] })
+        expect(r.isError).toBe(true)
+        expect(JSON.parse(text(r))).toEqual({ ok: false, error: 'lead_unreachable', detail: 'session is offline' })
+    })
+
+    it('lead_message delivers the body to the Lead, naming the task', async () => {
+        const d = deps()
+        const r = await run(d, 'lead_message', { teamId: 'team-1', body: 'Ship it today', taskId: 'task-9' })
+        expect(JSON.parse(text(r))).toMatchObject({ ok: true, via: 'main-agent', leadSessionId: 'sess-lead' })
+        expect(d.calls.find(c => c.op === 'deliver')).toEqual({ op: 'deliver', sessionId: 'sess-lead', body: '[Very Happy main agent → Lead] A message from the owner about task task-9:\nShip it today' })
     })
 })
 
@@ -217,11 +228,11 @@ describe('projects by projectId', () => {
         expect(d.calls[0]).toEqual({ op: 'projects.note', projectId: 'p1', input: { kind: 'finding', title: 'Lead idle', authorSessionId: 'main-agent-session', body: 'details' } })
     })
 
-    it('project_note answers not_available on a server that refuses the main agent — never retries as the owner', async () => {
+    it('project_note answers project_not_member on a server that refuses the main agent — never retries as the owner', async () => {
         const calls: any[] = []
         const refusing = deps({ projects: { ...deps().projects, note: async (projectId, input) => { calls.push(input); throw Object.assign(new Error('Project request failed'), { code: 'not_a_project_member' }) } } })
         const r = await run(refusing, 'project_note', { projectId: 'p1', kind: 'finding', title: 't' })
-        expect(JSON.parse(text(r))).toMatchObject({ ok: false, error: 'not_available' })
+        expect(JSON.parse(text(r))).toMatchObject({ ok: false, error: 'project_not_member' })
         expect(calls).toHaveLength(1)
         expect(calls[0].authorSessionId).toBe('main-agent-session')
         const failing = deps({ projects: { ...deps().projects, note: async () => { throw Object.assign(new Error('quota'), { code: 'project_note_quota_exceeded' }) } } })
