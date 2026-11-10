@@ -3439,6 +3439,12 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov11: {
+                title: '切换到 Opus / Fable 时默认打开 1M 上下文',
+                summary: '切到 Opus 或 Fable 时自动打开 1M 上下文，输入框会显示实际是否在 1M 上运行。',
+                default: '选 Opus 5.5、Fable 5.2 或 Fable 5.1 时自动打开 1M 上下文。手动关掉一次后，你的账号会一直保持关闭，直到你再打开。已经在跑的会话不改模型。',
+                honest: '模型按钮和会话头部显示 agent 实际运行的模型，例如「Fable 5.2 · 1M」，上下文计量也按这个窗口算（需要下一版 CLI）。',
+            },
             nov10b: {
                 title: 'CLI 0.2.209：Claude 会话可用 Fable 5.2',
                 summary: 'Claude 会话可以用 Fable 5.2，内置的 Claude Code 同步升级。',

@@ -233,3 +233,33 @@ describe('B-894b row extra (Codex 「更新」 beside a B-893 gate mark)', () =>
         expect(document.querySelector('[data-testid="model-row-extra"]')).toBeNull();
     });
 });
+
+describe('B-908: a row pick may send its 1M twin; the switch is remembered', () => {
+    const options = [{ key: 'model-a', name: 'Model A' }, { key: 'model-a[1m]', name: 'Model A · 1M' }, { key: 'model-b', name: 'Model B' }];
+    const open = (value: string, on: boolean, onChange = vi.fn(), onToggle = vi.fn()) => {
+        const layout = { primary: [options[0], options[2]], more: [], longContext: { on, onKey: 'model-a[1m]', offKey: 'model-a' }, selectedInMore: false };
+        act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={options} layout={layout} value={value} onChange={onChange}
+            longContextLabel="1M" pickRow={(key) => key === 'model-b' ? 'model-b[1m]' : key} onLongContextToggle={onToggle}
+            effort={{ label: 'Thinking', options: levels, value: 'low', onChange: vi.fn() }} />));
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        return { onChange, onToggle, rows: [...document.querySelectorAll<HTMLButtonElement>('.me-panel .me-models [role="radio"]')] };
+    };
+
+    it('a row goes through pickRow; the switch does not', () => {
+        const { onChange, onToggle, rows } = open('model-a', false);
+        act(() => rows[1].click());
+        expect(onChange).toHaveBeenLastCalledWith('model-b[1m]');
+        act(() => document.querySelector<HTMLButtonElement>('.me-panel [role="switch"]')!.click());
+        expect(onToggle).toHaveBeenCalledExactlyOnceWith(true);
+        expect(onChange).toHaveBeenLastCalledWith('model-a[1m]');
+    });
+
+    it('switching 1M off reports it; re-picking the checked row (its twin selected) changes nothing', () => {
+        const { onChange, onToggle, rows } = open('model-a[1m]', true);
+        act(() => rows[0].click());
+        expect(onChange).not.toHaveBeenCalled();
+        act(() => document.querySelector<HTMLButtonElement>('.me-panel [role="switch"]')!.click());
+        expect(onToggle).toHaveBeenCalledExactlyOnceWith(false);
+        expect(onChange).toHaveBeenCalledExactlyOnceWith('model-a');
+    });
+});

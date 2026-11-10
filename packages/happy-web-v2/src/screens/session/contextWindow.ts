@@ -87,6 +87,8 @@ export function composerContextUsage(
     runtime: ContextUsage | null | undefined,
     message: {contextSize: number; model?: string | null} | null | undefined,
     runningModel?: string | null,
+    /** B-908: the window the wrapper reports Claude Code measures against — beats the id guess. */
+    reportedWindow?: number | null,
 ): ComposerContextUsage {
     if (isPi) {
         const tokens = runtime?.tokens ?? null;
@@ -99,6 +101,9 @@ export function composerContextUsage(
         return { tokens, window, estimated: true, windowSource, compacted: tokens === null && typeof runtime?.compactedAt === 'number' };
     }
     const tokens = message?.contextSize ?? null;
+    if (typeof reportedWindow === 'number' && reportedWindow > 0) {
+        return { tokens, window: windowHolding(reportedWindow, tokens), estimated: false, windowSource: 'configured', compacted: false };
+    }
     const window = windowHolding(contextWindowFor(message?.model ?? runningModel), tokens);
     return { tokens, window, estimated: false, windowSource: window === null ? 'unknown' : 'inferred', compacted: false };
 }

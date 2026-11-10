@@ -3311,6 +3311,12 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov11: {
+                title: '1M context on by default for Opus / Fable',
+                summary: 'Switching to Opus or Fable turns on 1M context, and the composer shows whether 1M is really running.',
+                default: 'Picking Opus 5.5, Fable 5.2 or Fable 5.1 turns on 1M context. Switch it off once and it stays off for your account until you switch it on again. Sessions already running keep their model.',
+                honest: 'The model button and the session header show what the agent really runs, such as “Fable 5.2 · 1M”, and the context meter uses that window (with the next CLI).',
+            },
             nov10b: {
                 title: 'CLI 0.2.209: Fable 5.2 in Claude sessions',
                 summary: 'Claude sessions can run Fable 5.2, and the bundled Claude Code is updated.',

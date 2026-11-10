@@ -120,3 +120,14 @@ describe('B-727 pi denominator and compaction', () => {
         expect(composerContextUsage(false, undefined, {contextSize:150_000,model:'gpt-5.5-codex'})).toMatchObject({tokens:150_000,window:null,estimated:false});
     });
 });
+
+describe('B-908: the wrapper-reported window wins over the id guess', () => {
+    it('plain Fable 5.2 measured at 1M is 1M, not the 200k id guess; Haiku 200k stays', () => {
+        expect(composerContextUsage(false, undefined, {contextSize:50000,model:'claude-fable-5-2'}, 'claude-fable-5-2')).toMatchObject({window:200000});
+        expect(composerContextUsage(false, undefined, {contextSize:50000,model:'claude-fable-5-2'}, 'claude-fable-5-2', 1_000_000)).toMatchObject({window:1000000, estimated:false});
+        expect(composerContextUsage(false, undefined, {contextSize:50000,model:'claude-haiku-4-5'}, 'claude-haiku-4-5', 200_000)).toMatchObject({window:200000});
+    });
+    it('pi ignores it (its runtime reports its own)', () => {
+        expect(composerContextUsage(true, {source:'pi',tokens:10,contextWindow:131072,updatedAt:1}, null, null, 1_000_000)).toMatchObject({window:131072});
+    });
+});

@@ -26,6 +26,7 @@ import {
     type LatestModelResolution,
     type LatestModelTable,
     readLongContextUnsupported,
+    LONG_CONTEXT_MARKER,
 } from '@slopus/happy-wire';
 export { CLAUDE_OPUS_55_MODEL, CLAUDE_OPUS_55_CAPABILITY, supportsClaudeOpus55, CLAUDE_FABLE_52_MODEL, CLAUDE_FABLE_52_CAPABILITY, supportsClaudeFable52, normalizeAgentKey };
 export type { AgentKey, AgentDefaultConfig };
@@ -130,7 +131,20 @@ export type ModelResolveMetadata = {
     models?: readonly CatalogEntryLike[] | null;
     configuredModel?: string | null;
     longContextUnsupported?: unknown;
+    /** What the wrapper reports running (Claude system/init keeps `[1m]`). */
+    currentModelCode?: string | null;
 };
+
+/**
+ * B-908: the account switched Claude's 1M context off (settings
+ * `claudeLongContextOptOut`). Following latest then resolves without `[1m]`
+ * for a session that is not already running 1M — a new session, or one
+ * still on the plain id — so the opt-out never moves a running session.
+ */
+function longContextOff(metadata: ModelResolveMetadata | null | undefined, optOut: boolean | undefined): boolean {
+    if (!optOut) return false;
+    return !metadata?.currentModelCode?.endsWith(LONG_CONTEXT_MARKER);
+}
 
 /**
  * Where `latest` is resolved (B-844): a live session decides by its own
@@ -140,10 +154,12 @@ export type ModelResolveMetadata = {
 export function latestModelContext(
     metadata: ModelResolveMetadata | null | undefined,
     machine?: LauncherMachineContext | null,
+    longContextOptOut?: boolean,
 ): LatestModelContext {
-    if (metadata) return { kind: 'session', capabilities: metadata.capabilities ?? null, catalog: metadata.models ?? null, configuredModel: metadata.configuredModel, longContextUnsupported: !!readLongContextUnsupported(metadata.longContextUnsupported) };
-    if (machine) return { kind: 'machine', cliVersion: machine.cliVersion ?? null, agentVersion: machine.agentVersion ?? null, catalog: machine.catalog ?? null, configuredModel: machine.configuredModel, longContextUnsupported: !!machine.longContextUnsupported };
-    return { kind: 'none' };
+    const off = longContextOff(metadata, longContextOptOut);
+    if (metadata) return { kind: 'session', capabilities: metadata.capabilities ?? null, catalog: metadata.models ?? null, configuredModel: metadata.configuredModel, longContextUnsupported: !!readLongContextUnsupported(metadata.longContextUnsupported) || off };
+    if (machine) return { kind: 'machine', cliVersion: machine.cliVersion ?? null, agentVersion: machine.agentVersion ?? null, catalog: machine.catalog ?? null, configuredModel: machine.configuredModel, longContextUnsupported: !!machine.longContextUnsupported || off };
+    return off ? { kind: 'none', longContextUnsupported: true } : { kind: 'none' };
 }
 
 export function resolveLatestForAgent(
@@ -151,8 +167,9 @@ export function resolveLatestForAgent(
     flavor: string | null | undefined,
     metadata: ModelResolveMetadata | null | undefined,
     machine?: LauncherMachineContext | null,
+    longContextOptOut?: boolean,
 ): LatestModelResolution {
-    return resolveLatestModel(table, normalizeAgentKey(flavor), latestModelContext(metadata, machine));
+    return resolveLatestModel(table, normalizeAgentKey(flavor), latestModelContext(metadata, machine, longContextOptOut));
 }
 
 /** The account default for this agent is "follow latest" (no pinned model). */
@@ -177,11 +194,11 @@ export function resolveDefaultModelMode(
     overrides: AgentDefaultOverrides | null | undefined,
     flavor: string | null | undefined,
     metadata?: ModelResolveMetadata | null,
-    opts?: { table?: LatestModelTable | null; machine?: LauncherMachineContext | null },
+    opts?: { table?: LatestModelTable | null; machine?: LauncherMachineContext | null; longContextOptOut?: boolean },
 ): string {
     const selected = getAgentDefaultOverride(overrides, flavor).modelMode ?? getCodeAgentDefaults(flavor).modelMode;
     if (isLatestModelMode(selected)) {
-        return resolveLatestForAgent(opts?.table, flavor, metadata, opts?.machine).model ?? 'default';
+        return resolveLatestForAgent(opts?.table, flavor, metadata, opts?.machine, opts?.longContextOptOut).model ?? 'default';
     }
     if (isClaudeOpus55Model(selected) && metadata && !supportsClaudeOpus55(metadata)) return 'default';
     return selected;

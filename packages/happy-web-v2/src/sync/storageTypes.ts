@@ -16,6 +16,8 @@ export const MetadataSchema = z.object({
         defaultReasoningEffort: z.string().optional(),
     })).optional(),
     currentModelCode: z.string().optional(),
+    // B-908: the window Claude Code measures the running model against (wrapper-reported).
+    currentContextWindow: z.number().optional().catch(undefined),
     defaultModelCode: z.string().optional(),
     // B-844: model the machine's own agent config pins (Codex config/read,
     // Gemini settings); null = none; absent = older wrapper (unknown).
