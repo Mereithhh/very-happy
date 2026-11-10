@@ -93,7 +93,7 @@ export async function refreshMainAgentPointer(creds: AuthCredentials): Promise<v
 }
 
 /**
- * Point the account at a machine (enable / move): `{machineId, sessionId: null}`
+ * Point the account at a machine (move only; a first enable leaves it to the daemon): `{machineId, sessionId: null}`
  * with generation + 1, written BEFORE the spawn — the daemon refuses to spawn a
  * main agent when the pointer names another machine, and fills `sessionId`
  * itself (spec §2.1). On a version conflict: re-read, write once more, give up.

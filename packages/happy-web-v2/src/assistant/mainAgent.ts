@@ -87,7 +87,12 @@ export function parseMainAgentPointer(value: unknown): MainAgentPointer | null {
     };
 }
 
-/** The KV value the web writes when the user enables / moves the main agent: new machine, no session yet. */
+/** Enable = spawn only (the daemon writes the pointer); move = the web points the account at the new machine first. */
+export function shouldWritePointerBeforeSpawn(pointer: MainAgentPointer | null, machineId: string): boolean {
+    return !!pointer && pointer.machineId !== machineId;
+}
+
+/** The KV value the web writes when the user moves the main agent: new machine, no session yet. */
 export function nextPointerValue(previous: MainAgentPointer | null, machineId: string, now: number): Record<string, unknown> {
     return { v: 1, machineId, sessionId: null, generation: (previous?.generation ?? 0) + 1, updatedAt: now };
 }
