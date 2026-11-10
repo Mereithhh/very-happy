@@ -3332,6 +3332,13 @@ export const en = {
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
             },
+            nov11b: {
+                title: 'Wrap up and Hand off, built in',
+                summary: 'Close a session with one click: the agent wraps up with your template and leaves a card you archive from. Or hand its work to another session.',
+                wrapup: 'Wrap up is in the session menu and the composer (/wrapup). The agent answers your template (default: what was done, files and commits, what is left, whether it can close) and a card on the Briefing lists the summary, files, commits and items to confirm — tick them, then Archive. Edit the template in Settings → Shortcuts. Nothing is archived on its own; cards need the next CLI.',
+                handoff: 'Hand off to… (session menu) picks another session, on any of your machines. The agent writes a summary with artifact paths and delivers it there; tick “Archive once delivered” and the session archives itself only after delivery is confirmed. A failed handoff shows in red and never archives.',
+                agents: 'Scripts and agents can do the same: very-happy sessions wrapup <id…> and sessions handoff <from> --to <id>, or the session_wrapup / session_handoff tools. A session already wrapping up is not asked twice.',
+            },
             nov11i: {
                 title: 'Main agent: one front desk for your whole account',
                 summary: 'A Main agent in the sidebar you can talk to about anything. It hands work out, and asks you on the briefing board before anything leaves Very Happy.',

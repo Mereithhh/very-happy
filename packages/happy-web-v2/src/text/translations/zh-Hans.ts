@@ -3460,6 +3460,13 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov11b: {
+                title: '内置「收尾」和「交接给…」',
+                summary: '一键收尾：agent 按你的模板总结，汇报板出卡片，可以直接归档。也可以把会话的工作交给另一个会话。',
+                wrapup: '会话菜单和输入框（/wrapup）里新增「收尾」。agent 按你的模板作答（默认四问：做了什么、改了哪些文件和提交、还剩什么、能不能关），汇报板出一张卡：摘要、文件、提交和待确认项，勾选后点「归档会话」即可。模板在「设置 → 快捷指令」里改。不会自动归档；出卡片需要新版 CLI。',
+                handoff: '会话菜单里的「交接给…」：选另一个会话（你任何一台机器上的都可以），agent 写一份带产物路径的摘要并送过去。勾选「交接送达后归档本会话」，确认送达后才会归档。交接失败会标红，不会归档。',
+                agents: '脚本和 agent 也能用：very-happy sessions wrapup <id…>、sessions handoff <from> --to <id>，或 session_wrapup / session_handoff 工具。正在收尾的会话不会被重复要求。',
+            },
             nov11i: {
                 title: '主 agent：整个账号的总入口',
                 summary: '侧栏新增「主 agent」，什么都可以和它聊。它负责派活；凡是要发到 Very Happy 之外的事，都先在汇报板上问你。',
