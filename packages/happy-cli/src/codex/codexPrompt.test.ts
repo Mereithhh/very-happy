@@ -1,4 +1,4 @@
-import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
+import { VERY_HAPPY_DISCOVERY as BUILTIN_TODO_DISCOVERY } from '@/skill/discovery';
 import { describe, expect, it } from 'vitest';
 
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';

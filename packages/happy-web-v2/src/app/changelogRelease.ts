@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-11-cli-very-happy-skill',
+    cliVersion: '0.2.210',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11h.title',
+    summaryKey: 'changelog.releases.nov11h.summary',
+    itemKeys: ['changelog.releases.nov11h.skill', 'changelog.releases.nov11h.autoProject'],
+  },
+  {
     id: '2026-11-11-turn-api-error-banner-background-task-detail',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,

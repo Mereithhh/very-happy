@@ -6,6 +6,7 @@ import { createTeamsClient } from '@/teams/client';
 import { setTeamPermissionMode } from '@/teams/permissions';
 import { installTeamSkill, type TeamSkillHost } from '@/teams/install';
 import { installAutomationSkill } from '@/automations/install';
+import { installVeryHappySkill } from '@/skill/install';
 import { exitDaemonTeamMode } from '@/daemon/controlClient';
 
 export async function handleTeamsCommand(args: string[]): Promise<void> {
@@ -23,9 +24,11 @@ export async function handleTeamsCommand(args: string[]): Promise<void> {
         // Validate both destinations first so an edited/foreign second skill cannot leave the first half-applied.
         await installTeamSkill({ ...options, apply: false });
         await installAutomationSkill({ ...options, apply: false });
+        await installVeryHappySkill({ ...options, apply: false });
         const teams = await installTeamSkill(options);
         const automations = await installAutomationSkill(options);
-        console.log(JSON.stringify({ ...teams, also: [automations] }));
+        const veryHappy = await installVeryHappySkill(options);
+        console.log(JSON.stringify({ ...teams, also: [automations, veryHappy] }));
         return;
     }
     if (command === 'doctor') {

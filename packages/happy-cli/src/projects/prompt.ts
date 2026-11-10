@@ -121,7 +121,7 @@ export function formatContextForTool(ctx: ProjectSessionContext, opts: { full?: 
     const label = opts.label ?? defaultLabel;
     const p = ctx.project;
     const want = (s: string) => !opts.section || opts.section === s;
-    const out: string[] = [`Project "${p.name}" · instructions v${p.instructionsVersion}${ctx.previousReadAt && !opts.full ? ` · changes since ${hhmm(ctx.previousReadAt)}` : ''}`];
+    const out: string[] = [`Project "${p.name}" (id ${p.id}) · instructions v${p.instructionsVersion}${ctx.previousReadAt && !opts.full ? ` · changes since ${hhmm(ctx.previousReadAt)}` : ''}`];
     if (p.goal && want('instructions')) out.push(`Goal: ${oneLine(p.goal, 300)}`);
     if (want('instructions') && (opts.full || !ctx.previousReadAt)) out.push('Instructions:', p.instructions.trim() || '(none)');
     if (want('log')) {

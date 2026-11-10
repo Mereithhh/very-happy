@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { resolve } from 'node:path';
 import { AutomationReportSchema } from '@slopus/happy-wire';
-import { actionFromCommand, AUTO_HELP, buildCliReport, describePrecheck, parseAutoArgs, precheckFromCommand } from './auto';
+import { actionFromCommand, AUTO_HELP, buildCliReport, describePrecheck, parseAutoArgs, precheckFromCommand, projectEchoNotice, projectFromCommand } from './auto';
+import type { Automation } from '@slopus/happy-wire';
 
 describe('very-happy auto argv parsing', () => {
     it('parses subcommands, targets, value/boolean flags, repeatable --env and script argv after --', () => {
@@ -110,5 +111,30 @@ describe('B-548 precheck flags', () => {
             '--attention clipped 900→511 chars (server limit 512).',
         ]);
         expect(buildCliReport('done', parseAutoArgs(['report', '--status', 'done', '--summary', 'ok']).flags)).toEqual({ report: { status: 'done', summary: 'ok' }, notices: [] });
+    });
+});
+
+describe('B-917 auto --project', () => {
+    const membership = async (id: string) => ({ projectId: id === 'sess-a' ? 'proj-1' : null });
+    it('maps --project <id>, --project current, --no-project and no flag', async () => {
+        expect(await projectFromCommand(parseAutoArgs(['create', '--project', 'proj-9']), { env: {}, membership })).toBe('proj-9');
+        expect(await projectFromCommand(parseAutoArgs(['create', '--project', 'current']), { env: { VH_PEER_SESSION_ID: 'sess-a' }, membership })).toBe('proj-1');
+        expect(await projectFromCommand(parseAutoArgs(['edit', 'x', '--no-project']), { env: {}, membership })).toBeNull();
+        expect(await projectFromCommand(parseAutoArgs(['edit', 'x', '--cron', '0 9 * * *']), { env: {}, membership })).toBeUndefined();
+    });
+    it('refuses ambiguous or unresolvable input instead of guessing', async () => {
+        await expect(projectFromCommand(parseAutoArgs(['edit', 'x', '--project', 'p', '--no-project']), { env: {}, membership })).rejects.toThrow('mutually exclusive');
+        await expect(projectFromCommand(parseAutoArgs(['create', '--project', 'current']), { env: {}, membership })).rejects.toThrow('managed session');
+        await expect(projectFromCommand(parseAutoArgs(['create', '--project', 'current']), { env: { VH_PEER_SESSION_ID: 'sess-b' }, membership })).rejects.toThrow('does not belong to a project');
+    });
+    it('flags an older server that dropped projectId, stays quiet otherwise', () => {
+        const base = { id: 'a', name: 'n' } as unknown as Automation;
+        expect(projectEchoNotice('proj-1', base)).toMatch('does not support automation projects');
+        expect(projectEchoNotice('proj-1', { ...base, projectId: 'proj-1' })).toBeNull();
+        expect(projectEchoNotice(undefined, base)).toBeNull();
+    });
+    it('documents the flags in help', () => {
+        expect(AUTO_HELP).toContain('--project <id>|current');
+        expect(AUTO_HELP).toContain('--no-project');
     });
 });

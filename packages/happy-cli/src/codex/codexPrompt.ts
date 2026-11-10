@@ -1,4 +1,4 @@
-import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
+import { VERY_HAPPY_DISCOVERY } from '@/skill/discovery';
 import type { PermissionMode } from '@/api/types';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { hashObject } from '@/utils/deterministicJson';
@@ -48,7 +48,7 @@ export function buildCodexTurnPrompt(opts: {
 
     if (opts.includeTitleInstruction) {
         parts.push(CHANGE_TITLE_INSTRUCTION);
-        parts.push(BUILTIN_TODO_DISCOVERY);
+        parts.push(VERY_HAPPY_DISCOVERY);
     }
 
     return parts.join('\n\n');

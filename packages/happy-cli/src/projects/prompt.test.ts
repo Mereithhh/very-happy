@@ -90,6 +90,9 @@ describe('next-turn digest (D)', () => {
 describe('project_context tool text', () => {
     it('≤2KB by default, full on request, "not in a project" otherwise', () => {
         expect(formatContextForTool(ctx({ project: null }))).toBe('not in a project');
+        // B-917: the id is what `auto --project` / automation_create projectId / spawn --project need.
+        expect(formatContextForTool(ctx()).split('\n')[0]).toContain('"very-happy" (id p1)');
+        expect(formatContextForTool(ctx(), { full: true }).split('\n')[0]).toContain('(id p1)');
         const big = ctx({ project: { id: 'p', name: 'n', goal: null, instructions: 'i'.repeat(8000), instructionsVersion: 1 } });
         expect(formatContextForTool(big).length).toBeLessThanOrEqual(2048);
         expect(formatContextForTool(big, { full: true }).length).toBeGreaterThan(8000);

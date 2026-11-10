@@ -2801,6 +2801,9 @@ export async function startDaemon(): Promise<void> {
       process.exit(daemonExitCode(source));
     };
 
+    // B-917: refresh the offline copy of the `very-happy` skill (best effort, never blocks).
+    void import('@/skill/install').then(({ refreshVeryHappySkillOnDaemonStart }) => refreshVeryHappySkillOnDaemonStart({ happyHomeDir: configuration.happyHomeDir, home: os.homedir(), log: (message) => logger.debug(message) })).catch(() => {});
+
     logger.debug('[DAEMON RUN] Daemon started successfully, waiting for shutdown request');
 
     // Wait for shutdown request

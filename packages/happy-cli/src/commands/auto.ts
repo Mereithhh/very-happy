@@ -29,12 +29,13 @@ import { sessionWebUrl } from './sessionMessage';
 import { parseEnvAssignment, SPAWN_AGENTS } from './spawn';
 import { ALLOWED_SPAWN_PERMISSION_MODES, sanitizeSpawnPermissionMode } from '@/daemon/spawnPermissionMode';
 import { delay } from '@/utils/time';
+import { automationProjectNotice, resolveAutomationProject, type ProjectMembershipLookup } from '@/automations/project';
 
 export const AUTO_ACTIONS = ['list', 'show', 'create', 'edit', 'pause', 'resume', 'rm', 'run', 'fire', 'runs', 'cancel', 'ack', 'report', 'skill', 'install', 'uninstall', 'help'] as const;
 export type AutoAction = typeof AUTO_ACTIONS[number];
 
-const VALUE_FLAGS = ['--name', '--rename', '--description', '--machine', '--cron', '--tz', '--every', '--at', '--spawn-dir', '--prompt', '--prompt-file', '--agent', '--model', '--permission-mode', '--sticky-key', '--account', '--send-session', '--cwd', '--env', '--timeout', '--concurrency', '--max-runtime', '--payload', '--payload-json', '--payload-file', '--dedupe-key', '--status', '--limit', '--run', '--summary', '--error', '--attention', '--host', '--home', '--precheck-shell', '--precheck-argv', '--precheck-cwd', '--precheck-timeout'] as const;
-const BOOL_FLAGS = ['--manual', '--script', '--worktree', '--paused', '--wait', '--json', '--apply', '--all-machines', '--all', '--attention', '--precheck-output', '--no-precheck', '--help', '-h'] as const;
+const VALUE_FLAGS = ['--name', '--rename', '--description', '--machine', '--cron', '--tz', '--every', '--at', '--spawn-dir', '--prompt', '--prompt-file', '--agent', '--model', '--permission-mode', '--sticky-key', '--account', '--send-session', '--cwd', '--env', '--timeout', '--concurrency', '--max-runtime', '--payload', '--payload-json', '--payload-file', '--dedupe-key', '--status', '--limit', '--run', '--summary', '--error', '--attention', '--host', '--home', '--precheck-shell', '--precheck-argv', '--precheck-cwd', '--precheck-timeout', '--project'] as const;
+const BOOL_FLAGS = ['--manual', '--script', '--worktree', '--paused', '--wait', '--json', '--apply', '--all-machines', '--all', '--attention', '--precheck-output', '--no-precheck', '--no-project', '--help', '-h'] as const;
 type ValueFlag = typeof VALUE_FLAGS[number];
 type BoolFlag = typeof BOOL_FLAGS[number];
 
@@ -183,6 +184,22 @@ export function precheckFromCommand(command: AutoCommand, current?: AutomationPr
     return parsed.data;
 }
 
+/**
+ * B-917: `--project <id>|current` attaches the sessions an automation spawns to a
+ * project; `--no-project` detaches (edit). Resolution is shared with the MCP
+ * tools (automations/project.ts). `undefined` = no project flag.
+ */
+export async function projectFromCommand(command: Pick<AutoCommand, 'flags' | 'bools'>, deps: { env?: NodeJS.ProcessEnv; membership?: ProjectMembershipLookup } = {}): Promise<string | null | undefined> {
+    const project = command.flags['--project'];
+    const detach = command.bools.has('--no-project');
+    if (project !== undefined && detach) throw new Error('--project and --no-project are mutually exclusive');
+    if (detach) return null;
+    if (project !== undefined && !project.trim()) throw new Error('--project needs a project id or `current`');
+    return resolveAutomationProject(project, deps);
+}
+
+export const projectEchoNotice = automationProjectNotice;
+
 export function describePrecheck(precheck: AutomationPrecheck): string {
     const what = precheck.shell !== undefined ? `sh: ${precheck.shell}` : `argv: ${JSON.stringify(precheck.command)}`;
     const extras = [precheck.cwd ? `cwd ${precheck.cwd}` : null, precheck.timeoutMs ? `timeout ${Math.round(precheck.timeoutMs / 1000)}s` : null, precheck.includeOutput ? 'output → prompt' : null].filter(Boolean);
@@ -244,6 +261,8 @@ ${chalk.bold('Precheck (optional, runs before the action; exit 0 runs it, anythi
 ${chalk.bold('Options:')}
   --machine <id>|this     Executing machine (default: this machine)
   --description <text>
+  --project <id>|current  Sessions it spawns join this project (\`current\` = the project
+                          of the managed session running this command); edit: --no-project detaches
   --concurrency skip|queue  skip (default) records a run as skipped while one is active
   --max-runtime <dur>     Bound per run (default 6h; scripts 30m)
   --paused                Create paused
@@ -266,6 +285,7 @@ function printAutomation(a: Automation): void {
     console.log(`  trigger:   ${describeTrigger(a.trigger)}   next: ${fmtTime(a.nextRunAt)}`);
     console.log(`  action:    ${describeAction(a.action)}`);
     if (a.precheck) console.log(`  precheck:  ${describePrecheck(a.precheck)}`);
+    if (a.projectId) console.log(`  project:   ${a.projectId}`);
     console.log(`  machine:   ${a.machineId}   concurrency: ${a.concurrency}   max runtime: ${Math.round(a.maxRuntimeMs / 60_000)}m`);
     console.log(`  last run:  ${fmtTime(a.lastRunAt)} ${a.lastRunStatus ?? ''}`);
 }
@@ -358,8 +378,12 @@ export async function handleAutoCommand(args: string[]): Promise<void> {
                 };
                 const precheck = precheckFromCommand(command);
                 if (precheck) input.precheck = precheck;
+                const projectId = await projectFromCommand(command);
+                if (projectId) input.projectId = projectId;
                 const automation = await createAutomationChecked(client, input);
-                if (json) { console.log(JSON.stringify({ automation })); return; }
+                const notice = projectEchoNotice(projectId ?? undefined, automation);
+                if (notice) console.error(chalk.yellow(notice));
+                if (json) { console.log(JSON.stringify({ automation, ...(notice ? { notices: [notice] } : {}) })); return; }
                 console.log(chalk.green('Created.')); printAutomation(automation);
                 return;
             }
@@ -378,9 +402,13 @@ export async function handleAutoCommand(args: string[]): Promise<void> {
                 };
                 const precheck = precheckFromCommand(command, current.precheck);
                 if (precheck !== undefined) input.precheck = precheck;
+                const projectId = await projectFromCommand(command);
+                if (projectId !== undefined) input.projectId = projectId;
                 if (Object.keys(input).length === 1) throw new Error('Nothing to change');
                 const automation = await updateAutomationChecked(client, current.id, input);
-                if (json) { console.log(JSON.stringify({ automation })); return; }
+                const notice = projectEchoNotice(projectId, automation);
+                if (notice) console.error(chalk.yellow(notice));
+                if (json) { console.log(JSON.stringify({ automation, ...(notice ? { notices: [notice] } : {}) })); return; }
                 console.log(chalk.green('Updated.')); printAutomation(automation);
                 return;
             }

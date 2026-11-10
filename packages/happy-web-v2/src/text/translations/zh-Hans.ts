@@ -3454,6 +3454,12 @@ export const zhHans: TranslationStructure = {
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
             },
+            nov11h: {
+                title: 'agent 认识 Very Happy 自己了',
+                summary: '任何会话都能查到 Very Happy 能做什么、怎么操作，提示词不变长。',
+                skill: '新增 `very-happy skill`：能力地图覆盖会话、终端、项目、团队、自动化、Issues 与待办、账号、机器、分享、通知、面板和设置，每块一页（如 `very-happy skill automations`）。会话里只多一行指向它，问 agent「给这个项目加一个每天 9 点的自动化」就能拿到正确命令。本机副本在 ~/.local/share/very-happy/skills/very-happy，你改过的文件不会被覆盖。',
+                autoProject: '`very-happy auto create|edit --project <id>|current` 可把自动化挂到项目上（`--no-project` 取消）；以前只能在 Web 上设。',
+            },
             nov11f: {
                 title: '预览在发起它的会话里打开',
                 summary: '别的会话推来的文件预览，现在会带你到那个会话去看，不再盖在当前会话上。',

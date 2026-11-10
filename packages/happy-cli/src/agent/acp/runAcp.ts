@@ -1,4 +1,4 @@
-import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
+import { VERY_HAPPY_DISCOVERY } from '@/skill/discovery';
 import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from './piContextUsage';
 import { buildAcpPrompt, routeAcpUserText } from './acpSlashCommand';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
@@ -1464,7 +1464,7 @@ export async function runAcp(opts: {
         // prompt still starts with it — a project prefix or the todo note turned pi's /compact into
         // a chat message the model answered with a summary, and nothing was compacted.
         const { prompt, slashCommand } = await buildAcpPrompt(batch.message, {
-          todoNoteSent: todoDiscoverySent, todoNote: BUILTIN_TODO_DISCOVERY, decorate: (m) => projectInjector.decorate(m),
+          todoNoteSent: todoDiscoverySent, todoNote: VERY_HAPPY_DISCOVERY, decorate: (m) => projectInjector.decorate(m),
         });
         const attachments = batch.attachments ?? [];
         const staged = attachments.length ? await stageClaudeAttachments(attachments, {

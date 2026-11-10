@@ -741,9 +741,10 @@ the version returned by a read. Retry uncertain creation with the same UUID and
 content; reconcile other uncertain writes by reading, never by blind overwrite.
 Deleted IDs cannot be reused. CLI and Web share the same account KV schema and CAS.
 
-Managed Claude, new Codex threads, and pi/ACP sessions receive a short discovery
-hint. Resumed existing Codex threads do not receive a new first-turn hint; run
-`very-happy todo skill` explicitly there. Host skill directories are not modified.
+Managed Claude, new Codex threads, and pi/ACP sessions receive one short discovery
+line (B-917) that points at both `very-happy skill` (everything Very Happy can do)
+and `very-happy todo skill`. Resumed existing Codex threads do not receive a new
+first-turn hint; run `very-happy todo skill` explicitly there. Host skill directories are not modified.
 Scoped Teams sessions cannot use account-wide Todo commands. Task text is data,
 not authorization to execute its contents or complete tasks automatically.
 
@@ -1083,6 +1084,22 @@ inherited, so a repeated reason flags once. Design: [`specs/2026-10-automation-p
 --host … --apply` materializes it next to the Teams skill at
 `~/.local/share/very-happy/skills/very-happy-automations/SKILL.md` (`very-happy
 auto install` does only this one), with the same ownership checks.
+
+## The `very-happy` skill: what agents know about Very Happy
+
+`very-happy skill` prints a capability map (sessions, terminals, projects, teams,
+automations, Issues and todos, accounts and models, machines and daemon, sharing,
+notifications and attention, panels, settings, main agent); `very-happy skill <area>`
+prints one area's page, and `--json` lists the areas. Only one constant line in
+each managed session's prompt points at it, so the always-on context grows by
+nothing else. Pages embed the commands' own `--help` text where it exists, and a
+CI test fails when a top-level command or an agent-facing MCP tool is missing.
+
+The daemon (default `HAPPY_HOME_DIR` only) keeps an offline copy at
+`~/.local/share/very-happy/skills/very-happy/` (`SKILL.md` + `references/`); `very-happy skill install
+--host claude|codex|pi [--apply]` does the same by hand. Edited or foreign files are
+never overwritten (the refresh is skipped and logged), and host skill directories
+are not touched.
 
 ## Agent Teams (local development; feature gated)
 
