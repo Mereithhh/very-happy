@@ -31,7 +31,7 @@ const item = {
 
 describe('attention item wire schemas', () => {
     it('derives needsOwner and push kind from the kind', () => {
-        expect(ATTENTION_KINDS.filter(attentionKindNeedsOwner)).toEqual(['decision', 'todo', 'blocked']);
+        expect(ATTENTION_KINDS.filter(attentionKindNeedsOwner)).toEqual(['decision', 'todo', 'blocked', 'wrapup']);
         expect(attentionPushKind({ kind: 'blocked' })).toBe('attention');
         expect(attentionPushKind({ kind: 'answer', replyToId: 'q1' })).toBe('question');
         expect(attentionPushKind({ kind: 'answer', replyToId: null })).toBeNull();
