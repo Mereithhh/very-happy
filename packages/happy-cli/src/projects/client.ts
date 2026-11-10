@@ -1,4 +1,4 @@
-import type { ProjectDefaults, ProjectDigest, ProjectLogEntryView, ProjectPresenceEntry, ProjectSessionContext } from '@slopus/happy-wire';
+import type { ProjectDefaults, ProjectDetailResponse, ProjectDigest, ProjectListResponse, ProjectLogEntryView, ProjectPresenceEntry, ProjectSessionContext } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
 import { readCredentialsForConfiguredRelay } from '@/persistence';
 
@@ -70,10 +70,14 @@ export function createProjectsClient(deps: ProjectsClientDeps = {}) {
             request<ProjectSessionContext>(`/v1/projects/session/${sid(sessionId)}/context?full=${opts.full ? 1 : 0}&peek=${opts.peek ? 1 : 0}`, 'GET', undefined, timeoutMs),
         digest: (sessionId: string, since: number, timeoutMs?: number) =>
             request<ProjectDigest>(`/v1/projects/session/${sid(sessionId)}/digest?since=${Math.max(0, Math.floor(since))}`, 'GET', undefined, timeoutMs),
+        /** B-916b: the account's projects (main agent `project_list`). */
+        list: () => request<ProjectListResponse>('/v1/projects', 'GET'),
+        /** B-916b: one project with its members and log (main agent `project_context(projectId)`). */
+        get: (projectId: string) => request<ProjectDetailResponse>(`/v1/projects/${sid(projectId)}`, 'GET'),
         /** B-850d: a project's new-session defaults (spawn --project resolves its account). */
         defaults: (projectId: string) => request<{ project: { defaults?: ProjectDefaults } }>(`/v1/projects/${sid(projectId)}`, 'GET').then(r => r.project.defaults ?? {}),
         membership: (sessionId: string) => request<{ projectId: string | null; via: string | null }>(`/v1/projects/session/${sid(sessionId)}`, 'GET'),
-        note: (projectId: string, input: { kind: string; title: string; body?: string; supersedes?: string; authorSessionId: string }) =>
+        note: (projectId: string, input: { kind: string; title: string; body?: string; supersedes?: string; /** Absent = the owner's entry (B-916b main agent). */ authorSessionId?: string }) =>
             request<{ entry: ProjectLogEntryView }>(`/v1/projects/${sid(projectId)}/log`, 'POST', input),
         revoke: (projectId: string, ref: string, bySessionId: string) =>
             request<{ entry: ProjectLogEntryView }>(`/v1/projects/${sid(projectId)}/log/${sid(ref)}/revoke`, 'POST', { bySessionId }),

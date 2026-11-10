@@ -43,6 +43,10 @@ import { attachLeadBoard, createLeadBoard, resolveTeamLead } from "@/attention/l
 import { OWNER_BOARD_TOOL_NAMES, registerOwnerBoardTools } from "@/attention/tools";
 import { DISPATCH_APPROVED_TOOL } from "@/assistant/gates/dispatchGate";
 import type { MainAgentRuntime } from "@/assistant/gates/setup";
+import { withToolOutputCaps } from "@/assistant/toolCaps";
+import { MAIN_AGENT_LIST_VIEWS } from "@/assistant/listViews";
+import { MAIN_AGENT_REPLACES, MAIN_AGENT_TOOL_NAMES, registerMainAgentTools } from "@/assistant/mainAgentTools";
+import { createMainAgentDeps } from "@/assistant/mainAgentDeps";
 
 interface HappyMcpHandlers {
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
@@ -94,11 +98,24 @@ function assistantTexts(body: unknown): string[] {
         .map((block: any) => block.text as string);
 }
 
+/**
+ * B-916b: the main agent = the assistant variant outside any team scope (the
+ * B-051 condition). Only it gets the account-level tools and the output caps.
+ */
+export function isMainAgentSession(options?: StartHappyServerOptions, env: NodeJS.ProcessEnv = process.env): boolean {
+    return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE;
+}
+
 function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string, client?: ApiSessionClient): McpServer {
-    const mcp = new McpServer({
+    const server = new McpServer({
         name: "Very Happy Tools",
         version: "1.0.0",
     });
+    const mainAgent = isMainAgentSession(options);
+    // B-916b: on the main agent every answer is capped (receipt 400 / list 4K / body 8K); other sessions unchanged.
+    const mcp = mainAgent ? withToolOutputCaps(server, MAIN_AGENT_LIST_VIEWS) : server;
+    // The main agent's account-level versions replace these session-scoped ones (mainAgentTools.ts).
+    const replaced = mainAgent ? MAIN_AGENT_REPLACES : [];
 
     // B-916c gate 2: the main agent's dispatch tools go through the gate (adds `risk`, parks non-none calls).
     const dispatchRegistrar = options?.mainAgent && options.assistant && !process.env.VH_TEAM_SCOPE_FILE ? options.mainAgent.gate.wrap(mcp) : mcp;
@@ -108,9 +125,9 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     // B-497: message / list the other sessions on this machine (identity = this session).
     if (client) registerSessionPeerTools(dispatchRegistrar, createSessionPeerToolExecutor(client));
     // B-645: project_context / project_note — always registered (a fixed tools prefix); "not in a project" otherwise.
-    if (client) registerProjectTools(mcp, createProjectToolExecutor(() => client.sessionId));
+    if (client) registerProjectTools(mcp, createProjectToolExecutor(() => client.sessionId), replaced);
     // B-874: issue_get / issue_update / issue_comment / issue_list — always registered; "issue_not_bound" outside an issue run.
-    if (client) registerIssueTools(mcp, createIssueToolExecutor(() => client.sessionId));
+    if (client) registerIssueTools(mcp, createIssueToolExecutor(() => client.sessionId), replaced);
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -239,12 +256,15 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
         };
     });
 
-    if (options?.assistant && !process.env.VH_TEAM_SCOPE_FILE) {
+    if (mainAgent) {
         registerAssistantTools(dispatchRegistrar);
-        if (options.mainAgent) options.mainAgent.gate.registerApprovedTool(mcp);
+        // B-916b: issues / todos / projects / Lead dispatch / lifecycle adapters (no shell on this surface).
+        // B-916c: through the gate, so lead_delegate / lead_message take `risk` too.
+        if (client) registerMainAgentTools(dispatchRegistrar, createMainAgentDeps(() => client.sessionId));
+        if (options?.mainAgent) options.mainAgent.gate.registerApprovedTool(mcp);
     }
 
-    return mcp;
+    return server;
 }
 
 function withoutPhase(board: Record<string, unknown> | undefined): Record<string, unknown> {
@@ -266,6 +286,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         autoDetect: async () => (await readSettings()).ownerBoardAutoDetect !== false,
         onSupported: () => client.updateMetadata(metadata => ({ ...metadata, capabilities: [...new Set([...(metadata.capabilities ?? []), ATTENTION_SESSION_CAPABILITY])] })),
         log: (message) => logger.debug(message),
+        ...(isMainAgentSession(options) ? { postSource: 'agent' as const } : {}),
     });
     attachLeadBoard(client, leadBoard);
     void leadBoard.init();
@@ -378,6 +399,8 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
     const contextPath = '/runtime-context/' + randomUUID();
     // B-632: pi steer channel (agent/acp/piSteerChannel.ts) — long poll + hello + ack.
     const steerPath = '/runtime-steer/' + randomUUID();
+    // B-916b: the main agent's owner_board_* appear once the server is known to serve the board (then stay).
+    let mainAgentBoard = false;
     const server = createServer(async (req, res) => {
         if (req.url?.startsWith('/runtime-steer/')) {
             const steer = options?.piSteer;
@@ -430,7 +453,11 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         await leadBoard.ready(OWNER_BOARD_READY_MS);
         const mcp = createMcpServer(handlers, options, client.sessionId, client);
         // B-766: owner briefing board, team lead on a server that serves it (decided once per process).
-        if (leadBoard.toolsExposed()) registerOwnerBoardTools(mcp, leadBoard);
+        // B-916b: also the main agent (capped like the rest of its surface) once the server serves the board.
+        if (isMainAgentSession(options)) {
+            mainAgentBoard ||= leadBoard.supported();
+            if (mainAgentBoard) registerOwnerBoardTools(withToolOutputCaps(mcp, MAIN_AGENT_LIST_VIEWS), leadBoard);
+        } else if (leadBoard.toolsExposed()) registerOwnerBoardTools(mcp, leadBoard);
         try {
             const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: undefined
@@ -482,8 +509,8 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             ...ISSUE_TOOL_NAMES,
             // Auto-allow only; the tools themselves appear for a lead on a board server.
             ...OWNER_BOARD_TOOL_NAMES,
-            ...(options?.assistant && !process.env.VH_TEAM_SCOPE_FILE ? ASSISTANT_TOOL_NAMES : []),
-            ...(options?.assistant && options.mainAgent && !process.env.VH_TEAM_SCOPE_FILE ? [DISPATCH_APPROVED_TOOL] : []),
+            ...(isMainAgentSession(options) ? [...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES] : []),
+            ...(isMainAgentSession(options) && options?.mainAgent ? [DISPATCH_APPROVED_TOOL] : []),
         ],
         leadBoard,
         stop: () => {

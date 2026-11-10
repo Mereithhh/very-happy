@@ -7,6 +7,7 @@ import {
     type ProjectDetailResponse, type ProjectListResponse, type TeamProjectChoice, resolveTeamWorktreePath, type TeamProjectBind, type ProjectSessionContext, type ProjectDigest, type ProjectInstructionsRevisionView, type ProjectLogKind,
 } from '@slopus/happy-wire';
 import { db } from '@/storage/db';
+import { isAccountMainAgent } from './mainAgent';
 import { inTx, isRetryableTransactionConflict, type Tx } from '@/storage/inTx';
 import { configuredResourceLimit, enforceAccountWriteRate, isAccountResourceLimitError } from '@/app/api/resourceLimits';
 import {
@@ -492,7 +493,11 @@ export async function createLogEntry(accountId: string, projectId: string, input
     return run(async tx => {
         await loadProject(tx, accountId, projectId);
         if (input.authorSessionId) {
-            await requireMember(tx, accountId, projectId, input.authorSessionId);
+            // B-916b: the account's main agent writes in its own name in any of the account's projects.
+            const member = await membershipOf(tx, accountId, input.authorSessionId);
+            if (!(member && member.projectId === projectId)) {
+                requireProject(await isAccountMainAgent(tx, accountId, input.authorSessionId), 'not_a_project_member', 409);
+            }
             const recent = await tx.projectLogEntry.findMany({
                 where: { authorSessionId: input.authorSessionId, createdAt: { gt: new Date(Date.now() - 3600_000) } },
                 select: { kind: true },

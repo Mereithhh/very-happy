@@ -123,6 +123,28 @@ describe('projects store (pglite)', () => {
         expect(await store.sessionMembership(accountId, bot)).toEqual({ projectId: null, via: null });
     });
 
+    it('B-916b: the account main agent (KV vh.main-agent.v1) notes in its own name in any project; nobody else does', async () => {
+        const p = await newProject();
+        const main = await newSession(); const stranger = await newSession(); const foreign = await newSession(otherAccountId);
+        const pointer = (sessionId: string) => new TextEncoder().encode(JSON.stringify({ v: 1, machineId, sessionId, generation: 1, updatedAt: 1 }));
+        // No pointer yet: an outsider, main agent or not.
+        await expect(store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'x', authorSessionId: main })).rejects.toMatchObject({ code: 'not_a_project_member', status: 409 });
+        await db.userKVStore.create({ data: { accountId, key: 'vh.main-agent.v1', value: pointer(main) } });
+        const entry = await store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'Lead idle 3h', authorSessionId: main });
+        expect(entry).toMatchObject({ authorSessionId: main, authorUser: false, title: 'Lead idle 3h' });
+        // The agent budget still applies to it.
+        for (let i = 0; i < 4; i++) await store.createLogEntry(accountId, p.id, { kind: 'finding', title: `f${i}`, authorSessionId: main });
+        await expect(store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'sixth', authorSessionId: main })).rejects.toMatchObject({ code: 'project_note_quota_exceeded' });
+        // Another session of the account is still refused.
+        await expect(store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'x', authorSessionId: stranger })).rejects.toMatchObject({ code: 'not_a_project_member' });
+        // A pointer naming another account's session gives nothing; neither does a broken value.
+        await db.userKVStore.update({ where: { accountId_key: { accountId, key: 'vh.main-agent.v1' } }, data: { value: pointer(foreign) } });
+        await expect(store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'x', authorSessionId: foreign })).rejects.toMatchObject({ code: 'not_a_project_member' });
+        await db.userKVStore.update({ where: { accountId_key: { accountId, key: 'vh.main-agent.v1' } }, data: { value: new TextEncoder().encode('{not json') } });
+        await expect(store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'x', authorSessionId: main })).rejects.toMatchObject({ code: 'not_a_project_member' });
+        await db.userKVStore.delete({ where: { accountId_key: { accountId, key: 'vh.main-agent.v1' } } });
+    });
+
     it('agent notes: members only, ≤5/hour with ≤2 decisions and an actionable refusal; user notes unbudgeted; revoke own only', async () => {
         const p = await newProject();
         const s = await newSession(); const outsider = await newSession();
