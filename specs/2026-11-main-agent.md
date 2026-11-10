@@ -108,14 +108,14 @@
 | `session_handoff` | `from`、`to?`（缺省 = 新会话）、`note?` | 400 | — |
 | `session_restart` | `sessionId`、`when: 'idle'\|'now'` | `{ok, sessionId, scheduled, targetVersion?}` | — |
 | `teams_list` | `cursor?` | 4K：id / 名称 / 项目 / Lead botId / 在途任务数 | — |
-| `lead_delegate` | `teamId`、`goal`、`acceptance: string[]`（1–32）、`risk`、`requestId` | 400 | **是** |
-| `lead_message` | `teamId`、`taskId`、`body`、`risk`、`requestId` | 400 | **是** |
+| `lead_delegate` | `teamId`、`goal`、`acceptance: string[]`（1–32）、`note?`、`risk`、`requestId` | `{ok, as:'owner', via:'main-agent', team, lead, leadSessionId, state:'delivered'}` ≤400 | **是** |
+| `lead_message` | `teamId`、`body`、`taskId?`（只作正文引用）、`risk`、`requestId` | 同上 | **是** |
 | `automation_create` / `automation_update` | 现有参数 + `risk` | 400 | **是** |
 | `session_message` | 现有参数 + `risk` | 400 | **是** |
 | `dispatch_approved` | `approvalId` | 400 | —（§4.2 的执行入口） |
 
 - `session_wrapup / session_handoff / session_restart` 对接 B-915、B-911；对方接口未合入时 B-916b 先放 mock（回执 `{ok:false, error:'not_available'}`），接口落地后只改适配层。
-- **给团队派活**：主 agent 不属于任何团队，不用会话作用域的 `team_delegate / team_message`（它们在主 agent 会话里本来就没有团队可用）。改用 `teams_list` + `lead_delegate` / `lead_message`：走账号级 `POST /v1/teams/:id/actions`，以 **owner actor** 身份执行；`lead_delegate` 的 assignee 由工具层强制为该团队的 root bot（Lead），`lead_message` 的 recipient 同样强制为 Lead，主 agent 不能直接派给成员；动作元数据带 `via: 'main-agent'`。
+- **给团队派活 = 投递进 Lead 会话，不是建任务**：主 agent 不属于任何团队，不用会话作用域的 `team_delegate / team_message`。`teams_list` 找到团队后，`lead_delegate` / `lead_message` 把原文（首行固定 `[Very Happy main agent → Lead]`，随后 goal、acceptance 列表、note；或 body）**投递进该团队 Lead 的会话**，走 B-506 投递链路（与 `session_send` 同一条路），由 Lead 自己调 `team_delegate` 拆给成员。主 agent 拿不到 taskId；进度由 Lead 回报，或主 agent 用 `session_read` 读 Lead 会话。Lead 不可达或投递失败：`{ok:false, error:'lead_unreachable'}`。不走账号级 owner actor 的 `/v1/teams/:id/actions`（reducer 的 `bot_busy` 检查会拒绝向挂着根任务的 Lead 派活；不填 assignee 又会新建 managed worker，绕过 Lead）。
 - **项目日志作者**：`project_note(projectId, …)` 以**主 agent 会话自己的身份**写（authorSessionId = 主 agent 会话），**不得以账号 Owner 身份代写**（项目日志代谢会把 Owner 条目当作 Owner 本人的意思）。server 侧放宽一处权限：会话是本账号 KV `vh.main-agent.v1.sessionId` 指向的主 agent 会话时，允许它在本账号任意项目写 note（B-916b 实现）。
 
 ## 4. 安全闸（B-916c）
@@ -274,7 +274,7 @@ risk: 'none' | 'external' | 'production'
 | 旧 Web + 新 CLI | 旧 `/assistant` 照常；新工具与闸在会话内生效 |
 | 存量旧 wrapper | 没有新工具和闸；随 B-911 / 自动重启换到新版本 |
 
-- 不改 wire schema、不加 server 路由、不加迁移：KV 用现有 `/v1/kv`，汇报板用现有 `source='agent'`，派给 Lead 用现有账号级 `/v1/teams/:id/actions`。
+- 不改 wire schema、不加 server 路由、不加迁移：KV 用现有 `/v1/kv`，汇报板用现有 `source='agent'`；派给 Lead 是投递进 Lead 会话（B-506 链路），**不改 reducer、不走 owner actor 的 teams actions**。
 - **一处 server 权限放宽**（B-916b）：主 agent 会话（以 KV `vh.main-agent.v1.sessionId` 判定）可在本账号任意项目以自己身份写 project note。旧 server 上该写入被拒，工具回执 `{ok:false, error:'project_not_member'}`，不回退成 Owner 身份。
 - 发布顺序：Web 与 CLI 可独立发布；默认先 server/Web 后 CLI。
 
