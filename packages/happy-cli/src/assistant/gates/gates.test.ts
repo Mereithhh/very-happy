@@ -2,9 +2,9 @@ import { mkdtemp, readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { compileOutboundDenylist, denyPatternToRegExp, isSdkNativePattern, isValidDenyPattern, outboundPreToolUseHook, OUTBOUND_DENY_REASON } from './outboundDenylist'
+import { compileOutboundDenylist, isReadOnlyMcpTool, denyPatternToRegExp, isSdkNativePattern, isValidDenyPattern, outboundPreToolUseHook, OUTBOUND_DENY_REASON } from './outboundDenylist'
 import { effectiveRisk, keywordRisk, maxRisk, parseRiskClassifierOutput, classifyRisk } from './risk'
-import { createDispatchGate, DISPATCH_CARD_KEY_PREFIX, DISPATCH_TOOL_NAMES, RECEIPT_MAX_CHARS, type BoardItemView, type DispatchBoard } from './dispatchGate'
+import { createDispatchGate, DISPATCH_CARD_KEY_PREFIX, DISPATCH_OPTIONS, DISPATCH_TOOL_NAMES, RECEIPT_MAX_CHARS, cardFaceHash, type BoardItemView, type DispatchBoard } from './dispatchGate'
 import { mergeMainAgentConfigs, parseMainAgentConfig, decodeKvJson, isValidSkillRoot } from './config'
 import { withAssistantDenylist, setAssistantExtraDenied } from '../dispatcherTools'
 
@@ -19,10 +19,23 @@ describe('gate 1: outbound denylist', () => {
     })
 
     it('keeps read tools and Very Happy\'s own server (gate 2 handles it)', () => {
-        for (const tool of ['mcp__chat__conversations_history', 'mcp__chat__channels_list', 'mcp__search__web_search', 'Read', 'Grep', 'Task',
+        for (const tool of ['mcp__chat__list_channels', 'mcp__chat__get_history', 'mcp__search__search_web', 'Read', 'Grep', 'Task',
             'mcp__happy__session_send', 'mcp__happy__team_message', 'mcp__happy__owner_board_post', 'mcp__happy__session_message']) {
             expect(list.denies(tool), tool).toBe(false)
         }
+    })
+
+    it('QA77 #5: third-party MCP is fail-closed; only clearly read-only tools pass', () => {
+        for (const tool of ['mcp__github__create_or_update_file', 'mcp__k8s__kubectl_apply', 'mcp__db__execute_sql', 'mcp__browser__browser_click',
+            'mcp__x__tweet', 'mcp__github__get_or_create_label', 'mcp__docs__getAndUpdate', 'mcp__misc__do_something']) {
+            expect(list.denies(tool), tool).toBe(true)
+        }
+        for (const tool of ['mcp__github__list_issues', 'mcp__github__get_file_contents', 'mcp__github__search_code', 'mcp__docs__getPage', 'mcp__db__query_tables', 'mcp__k8s__describe_pod']) {
+            expect(list.denies(tool), tool).toBe(false)
+            expect(isReadOnlyMcpTool(tool), tool).toBe(true)
+        }
+        // user patterns still tighten read-only tools
+        expect(compileOutboundDenylist(['mcp__github__*']).denies('mcp__github__list_issues')).toBe(true)
     })
 
     it('always denies the B-063 built-ins', () => {
@@ -101,30 +114,42 @@ function recorder() {
     const tools = new Map<string, Registered>()
     return { tools, mcp: { registerTool: ((name: string, config: any, handler: any) => { tools.set(name, { name, config, handler }) }) as any } }
 }
-function fakeBoard() {
-    const items = new Map<string, BoardItemView & { title: string; bodyMd: string }>()
+function fakeBoard(opts: { failPost?: boolean } = {}) {
+    const items = new Map<string, BoardItemView>()
+    const byId = () => [...items.values()]
     const board: DispatchBoard = {
-        postDecision: vi.fn(async (card) => { const id = `item-${items.size + 1}`; items.set(card.key, { id, key: card.key, state: 'open', ownerChoice: null, resolvedBy: null, title: card.title, bodyMd: card.bodyMd }); return { id } }),
+        postDecision: vi.fn(async (card) => {
+            if (opts.failPost) throw new Error('board down')
+            const id = `item-${items.size + 1}`
+            const item: BoardItemView = { id, key: card.key, state: 'open', ownerChoice: null, resolvedBy: null, title: card.title, bodyMd: card.bodyMd, options: DISPATCH_OPTIONS.map(o => ({ id: o.id, label: o.label })) }
+            items.set(card.key, item); return { ...item }
+        }),
         findByKey: vi.fn(async (key) => items.get(key) ?? null),
+        findById: vi.fn(async (id) => byId().find(i => i.id === id) ?? null),
     }
-    const choose = (approvalId: string, choice: string, resolvedBy = 'owner') => { const item = items.get(`${DISPATCH_CARD_KEY_PREFIX}${approvalId}`)!; item.state = 'resolved'; item.ownerChoice = choice; item.resolvedBy = resolvedBy }
-    return { board, items, choose }
+    const card = (approvalId: string) => items.get(`${DISPATCH_CARD_KEY_PREFIX}${approvalId}`)!
+    const choose = (approvalId: string, choice: string, resolvedBy = 'owner') => { const item = card(approvalId); item.state = 'resolved'; item.ownerChoice = choice; item.resolvedBy = resolvedBy }
+    return { board, items, choose, card }
 }
 const text = (result: any) => result.content.map((c: any) => c.text).join('')
 const json = (result: any) => JSON.parse(text(result))
 
-async function setup(opts: { board?: boolean; classify?: (p: string) => Promise<string | null> } = {}) {
+async function setup(opts: { board?: boolean; failPost?: boolean; classify?: (p: string) => Promise<string | null>; spawnImpl?: (args: any) => Promise<any> } = {}) {
     const dir = await mkdtemp(join(tmpdir(), 'vh-gate-'))
-    const fb = fakeBoard()
+    const fb = fakeBoard({ failPost: opts.failPost })
     const gate = createDispatchGate({ pendingDir: join(dir, 'pending'), board: opts.board === false ? null : fb.board, classify: opts.classify ?? null, approvalLink: (id) => `https://web.example/session/s1?panel=board （决策 ${id}）` })
     const { tools, mcp } = recorder()
-    const spawn = vi.fn(async (args: any) => ({ content: [{ type: 'text', text: `spawned with ${JSON.stringify(args)}` }], isError: false }))
+    const spawn = vi.fn(opts.spawnImpl ?? (async (args: any) => ({ content: [{ type: 'text', text: `spawned with ${JSON.stringify(args)}` }], isError: false })))
     const list = vi.fn(async () => ({ content: [{ type: 'text', text: 'list' }], isError: false }))
     const wrapped = gate.wrap(mcp)
     wrapped.registerTool('session_spawn', { description: 'Spawn', inputSchema: { directory: {} as any, prompt: {} as any } }, spawn as any)
     wrapped.registerTool('sessions_list', { description: 'List', inputSchema: {} }, list as any)
+    const boardUpdate = vi.fn(async () => ({ content: [{ type: 'text', text: '{"ok":true}' }], isError: false }))
+    const boardPost = vi.fn(async () => ({ content: [{ type: 'text', text: '{"ok":true}' }], isError: false }))
+    wrapped.registerTool('owner_board_update', { description: 'u', inputSchema: {} }, boardUpdate as any)
+    wrapped.registerTool('owner_board_post', { description: 'p', inputSchema: {} }, boardPost as any)
     gate.registerApprovedTool(mcp)
-    return { dir, gate, tools, spawn, list, ...fb }
+    return { dir, gate, tools, spawn, list, boardUpdate, boardPost, ...fb }
 }
 
 describe('gate 2: dispatch gate', () => {
@@ -176,20 +201,94 @@ describe('gate 2: dispatch gate', () => {
         expect(spawn).toHaveBeenCalledTimes(1)
     })
 
-    it('draft adds the do-not-send prefix; drop and non-owner closes never dispatch', async () => {
+    it('draft and drop never dispatch; a non-owner close is refused', async () => {
         const { tools, spawn, choose } = await setup()
         const ids: string[] = []
         for (let i = 0; i < 3; i++) ids.push(json(await tools.get('session_spawn')!.handler({ directory: '/tmp', prompt: `send the report to the team #${i}`, risk: 'external' })).approvalId)
         choose(ids[0], 'draft')
         choose(ids[1], 'drop')
         choose(ids[2], 'approve', 'lead')
-        expect(json(await tools.get('dispatch_approved')!.handler({ approvalId: ids[0] })).state).toBe('dispatched')
-        expect((spawn.mock.calls[0][0] as any).prompt).toMatch(/^本任务已获批，但只出草稿、不得发送或发布：/)
+        expect(json(await tools.get('dispatch_approved')!.handler({ approvalId: ids[0] })).state).toBe('draft_only')
         expect(json(await tools.get('dispatch_approved')!.handler({ approvalId: ids[1] })).state).toBe('dropped')
         expect(json(await tools.get('dispatch_approved')!.handler({ approvalId: ids[2] })).error).toBe('not_approved')
         expect(json(await tools.get('dispatch_approved')!.handler({ approvalId: '00000000-0000-0000-0000-000000000000' })).error).toBe('approval_not_found')
         expect(json(await tools.get('dispatch_approved')!.handler({ approvalId: '../../etc/passwd' })).error).toBe('approval_not_found')
+        expect(spawn).not.toHaveBeenCalled()
+    })
+
+    it('QA77 P1: a rewritten card face (swapped labels / softer body) is card_tampered, nothing dispatched', async () => {
+        for (const tamper of [
+            (c: BoardItemView) => { c.options = [{ id: 'approve', label: '放弃' }, { id: 'draft', label: '只出草稿' }, { id: 'drop', label: '批准执行' }] },
+            (c: BoardItemView) => { c.bodyMd = '只在本地整理周报草稿，不对外发送。' },
+            (c: BoardItemView) => { c.title = '主 agent 想整理本地周报草稿（none）' },
+        ]) {
+            const { tools, spawn, choose, card } = await setup()
+            const r = json(await tools.get('session_spawn')!.handler({ directory: '/tmp', prompt: 'send the report to D', risk: 'external' }))
+            tamper(card(r.approvalId))
+            choose(r.approvalId, 'approve')
+            expect(json(await tools.get('dispatch_approved')!.handler({ approvalId: r.approvalId })).error).toBe('card_tampered')
+            expect(spawn).not.toHaveBeenCalled()
+        }
+    })
+
+    it('QA77 #2: the main agent cannot post, edit or close a dispatch card through owner_board_*', async () => {
+        const { tools, boardUpdate, boardPost, gate } = await setup()
+        const r = json(await tools.get('session_spawn')!.handler({ directory: '/tmp', prompt: 'send the report to D', risk: 'external' }))
+        const edit = await tools.get('owner_board_update')!.handler({ id: r.boardItemId, title: 'harmless' })
+        expect(json(edit).error).toBe('reserved_card')
+        expect(boardUpdate).not.toHaveBeenCalled()
+        const post = await tools.get('owner_board_post')!.handler({ kind: 'decision', key: `${DISPATCH_CARD_KEY_PREFIX}x`, title: 't' })
+        expect(json(post).error).toBe('reserved_card')
+        expect(boardPost).not.toHaveBeenCalled()
+        await tools.get('owner_board_update')!.handler({ id: 'some-other-item', title: 'fine' })
+        expect(boardUpdate).toHaveBeenCalledTimes(1)
+        expect(await gate._boardWriteRefusal('owner_board_resolve', { id: r.boardItemId })).toBe('reserved_card')
+    })
+
+    it('QA77 #3: no card was posted (board failed) → dispatch_approved refuses, never skips the check', async () => {
+        const { tools, spawn, dir } = await setup({ failPost: true })
+        const parked = await tools.get('session_spawn')!.handler({ directory: '/tmp', prompt: 'send the report to D', risk: 'external' })
+        expect(json(parked).error).toBe('board_unavailable')
+        const [file] = (await readdir(join(dir, 'pending'))).filter(n => n.endsWith('.json'))
+        const id = file.replace(/\.json$/, '')
+        expect(json(await tools.get('dispatch_approved')!.handler({ approvalId: id })).error).toBe('approval_not_found')
+        expect(spawn).not.toHaveBeenCalled()
+    })
+
+    it('QA77 #4: concurrent dispatch_approved calls dispatch once; a failed dispatch releases the claim', async () => {
+        let release!: () => void
+        const gateOpen = new Promise<void>(res => { release = res })
+        let calls = 0
+        const { tools, spawn, choose } = await setup({ spawnImpl: async () => { calls++; await gateOpen; return { content: [{ type: 'text', text: 'spawned' }], isError: false } } })
+        const r = json(await tools.get('session_spawn')!.handler({ directory: '/tmp', prompt: 'send the report to D', risk: 'external' }))
+        choose(r.approvalId, 'approve')
+        const a = tools.get('dispatch_approved')!.handler({ approvalId: r.approvalId })
+        const b = tools.get('dispatch_approved')!.handler({ approvalId: r.approvalId })
+        await new Promise(res => setTimeout(res, 20)); release()
+        const states = [json(await a).state, json(await b).state].sort()
+        expect(states).toEqual(['already_dispatched', 'dispatched'])
+        expect(calls).toBe(1)
         expect(spawn).toHaveBeenCalledTimes(1)
+    })
+
+    it('QA77 #4: a dispatch that fails can be retried (claim rolled back)', async () => {
+        let fail = true
+        const { tools, spawn, choose } = await setup({ spawnImpl: async () => ({ content: [{ type: 'text', text: fail ? 'daemon down' : 'spawned' }], isError: fail }) })
+        const r = json(await tools.get('session_spawn')!.handler({ directory: '/tmp', prompt: 'send the report to D', risk: 'external' }))
+        choose(r.approvalId, 'approve')
+        expect(json(await tools.get('dispatch_approved')!.handler({ approvalId: r.approvalId })).state).toBe('dispatch_failed')
+        fail = false
+        expect(json(await tools.get('dispatch_approved')!.handler({ approvalId: r.approvalId })).state).toBe('dispatched')
+        expect(spawn).toHaveBeenCalledTimes(2)
+    })
+
+    it('card face hash covers key, title, body and option ids + labels', () => {
+        const base: BoardItemView = { id: 'i', key: 'k', state: 'open', ownerChoice: null, resolvedBy: null, title: 't', bodyMd: 'b', options: [{ id: 'approve', label: 'A' }] }
+        const h = cardFaceHash(base)
+        expect(cardFaceHash({ ...base, state: 'resolved', ownerChoice: 'approve' } as BoardItemView)).toBe(h)
+        for (const v of [{ key: 'k2' }, { title: 't2' }, { bodyMd: 'b2' }, { options: [{ id: 'drop', label: 'A' }] }, { options: [{ id: 'approve', label: 'B' }] }]) {
+            expect(cardFaceHash({ ...base, ...v })).not.toBe(h)
+        }
     })
 
     it('tampered pending args are refused (approve A, run B)', async () => {

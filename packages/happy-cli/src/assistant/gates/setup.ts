@@ -34,7 +34,12 @@ export type MainAgentRuntime = {
     gate: DispatchGate
 }
 
+function view(item: { id: string; key: string | null; state: string; ownerChoice: string | null; resolvedBy: string | null; title: string; bodyMd: string | null; options: Array<{ id: string; label: string }> | null }) {
+    return { id: item.id, key: item.key, state: item.state, ownerChoice: item.ownerChoice, resolvedBy: item.resolvedBy, title: item.title, bodyMd: item.bodyMd, options: item.options ? item.options.map(o => ({ id: o.id, label: o.label })) : null }
+}
+
 export function attentionDispatchBoard(client: AttentionClient, sessionId: () => string): DispatchBoard {
+    const all = async () => (await client.list({ sessionId: sessionId(), state: 'all', limit: 200 })).items
     return {
         async postDecision(card) {
             const { item } = await client.post({
@@ -42,12 +47,15 @@ export function attentionDispatchBoard(client: AttentionClient, sessionId: () =>
                 title: card.title, bodyMd: card.bodyMd, key: card.key, requestId: card.requestId,
                 options: DISPATCH_OPTIONS.map(o => ({ ...o })),
             })
-            return { id: item.id }
+            return view(item)
         },
         async findByKey(key) {
-            const { items } = await client.list({ sessionId: sessionId(), state: 'all', limit: 200 })
-            const item = items.find(i => i.key === key)
-            return item ? { id: item.id, key: item.key, state: item.state, ownerChoice: item.ownerChoice, resolvedBy: item.resolvedBy } : null
+            const item = (await all()).find(i => i.key === key)
+            return item ? view(item) : null
+        },
+        async findById(id) {
+            const item = (await all()).find(i => i.id === id)
+            return item ? view(item) : null
         },
     }
 }
@@ -86,9 +94,10 @@ export async function prepareMainAgent(deps: {
         config,
         denylist,
         preToolUse: outboundPreToolUseHook(denylist, (tool) => deps.log?.(`[main-agent gate] denied ${tool}`)),
-        // The managed skill lives outside the assistant home: mount its directory too, or every
-        // read of the handbook asks for permission in the default mode (seen in the isolated probe).
-        extraDirectories: [...(skillPath ? [dirname(skillPath)] : []), ...roots.filter(r => r.exists).map(r => r.path)],
+        // The managed skills live outside the assistant home: mount the whole Very Happy share root
+        // (`~/.local/share/very-happy`), or every Read / Grep of the handbook asks for permission in
+        // the default mode (isolated probe; QA77 #7: a Grep one level up asked too).
+        extraDirectories: [...(skillPath ? [dirname(dirname(dirname(skillPath)))] : []), ...roots.filter(r => r.exists).map(r => r.path)],
         gate,
     }
 }

@@ -105,7 +105,14 @@ function assistantTexts(body: unknown): string[] {
  * B-051 condition). Only it gets the account-level tools and the output caps.
  */
 export function isMainAgentSession(options?: StartHappyServerOptions, env: NodeJS.ProcessEnv = process.env): boolean {
-    return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE;
+    // B-916c (QA77 #6): only a runner that brings the gates (Claude: runClaude builds `mainAgent`)
+    // gets the account-level surface. A pi/ACP assistant keeps the plain B-051 tools.
+    return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE && options.mainAgent !== undefined;
+}
+
+/** B-051 assistant without the main agent runtime (pi / ACP): legacy session tools only, no caps, no account tools. */
+function isLegacyAssistantSession(options?: StartHappyServerOptions, env: NodeJS.ProcessEnv = process.env): boolean {
+    return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE && options.mainAgent === undefined;
 }
 
 function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string, client?: ApiSessionClient): McpServer {
@@ -120,7 +127,7 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     const replaced = mainAgent ? MAIN_AGENT_REPLACES : [];
 
     // B-916c gate 2: the main agent's dispatch tools go through the gate (adds `risk`, parks non-none calls).
-    const dispatchRegistrar = options?.mainAgent && options.assistant && !process.env.VH_TEAM_SCOPE_FILE ? options.mainAgent.gate.wrap(mcp) : mcp;
+    const dispatchRegistrar = mainAgent ? options!.mainAgent!.gate.wrap(mcp) : mcp;
     registerTeamsTools(dispatchRegistrar, sessionId);
     // B-496: account-level automations, same trust level as the session itself.
     registerAutomationTools(dispatchRegistrar);
@@ -266,6 +273,8 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
         // B-916c: through the gate, so lead_delegate / lead_message take `risk` too.
         if (client) registerMainAgentTools(dispatchRegistrar, createMainAgentDeps(() => client.sessionId));
         if (options?.mainAgent) options.mainAgent.gate.registerApprovedTool(mcp);
+    } else if (isLegacyAssistantSession(options)) {
+        registerAssistantTools(mcp);
     }
 
     return server;
@@ -460,7 +469,8 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         // B-916b: also the main agent (capped like the rest of its surface) once the server serves the board.
         if (isMainAgentSession(options)) {
             mainAgentBoard ||= leadBoard.supported();
-            if (mainAgentBoard) registerOwnerBoardTools(withToolOutputCaps(mcp, MAIN_AGENT_LIST_VIEWS), leadBoard);
+            // B-916c (QA77 #2): through the gate's registrar, which refuses writes to the gate's own decision cards.
+            if (mainAgentBoard) registerOwnerBoardTools(options!.mainAgent!.gate.wrap(withToolOutputCaps(mcp, MAIN_AGENT_LIST_VIEWS)), leadBoard);
         } else if (leadBoard.toolsExposed()) registerOwnerBoardTools(mcp, leadBoard);
         try {
             const transport = new StreamableHTTPServerTransport({
@@ -514,8 +524,8 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             ...IDLE_RESTART_TOOL_NAMES,
             // Auto-allow only; the tools themselves appear for a lead on a board server.
             ...OWNER_BOARD_TOOL_NAMES,
-            ...(isMainAgentSession(options) ? [...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES] : []),
-            ...(isMainAgentSession(options) && options?.mainAgent ? [DISPATCH_APPROVED_TOOL] : []),
+            ...(isMainAgentSession(options) ? [...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES, DISPATCH_APPROVED_TOOL] : []),
+            ...(isLegacyAssistantSession(options) ? ASSISTANT_TOOL_NAMES : []),
         ],
         leadBoard,
         stop: () => {

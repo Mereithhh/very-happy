@@ -48,6 +48,37 @@ export const DEFAULT_OUTBOUND_DENY_PATTERNS: readonly string[] = [
     'mcp__*__*rollback*',
 ]
 
+/**
+ * QA77 #5: third-party MCP tools are denied by default — the main agent only
+ * reads and dispatches. A tool passes only when its name (the part after
+ * `mcp__<server>__`) starts with a read-only verb AND carries no write verb
+ * anywhere (`get_or_create_*` is still denied) AND no deny pattern matches.
+ */
+export const READ_ONLY_TOOL_PREFIXES: readonly string[] = ['list', 'get', 'search', 'read', 'query', 'describe', 'fetch', 'find', 'show', 'view', 'lookup', 'count']
+export const WRITE_VERB_TOKENS: readonly string[] = [
+    'create', 'update', 'upsert', 'delete', 'remove', 'write', 'set', 'put', 'patch', 'post', 'send', 'reply', 'publish',
+    'deploy', 'apply', 'exec', 'execute', 'run', 'push', 'merge', 'upload', 'invite', 'share', 'add', 'edit', 'move',
+    'rename', 'approve', 'close', 'archive', 'click', 'type', 'fill', 'submit', 'tweet', 'comment', 'notify', 'forward',
+    'install', 'kill', 'stop', 'start', 'restart', 'rollback', 'release', 'scale', 'drop', 'truncate', 'insert', 'grant',
+]
+
+/** `mcp__<server>__<tool>` → `<tool>` (null for non-MCP names). */
+export function mcpToolPart(toolName: string): string | null {
+    const m = /^mcp__.+?__(.+)$/i.exec(toolName)
+    return m ? m[1] : null
+}
+
+export function isReadOnlyMcpTool(toolName: string): boolean {
+    const tool = mcpToolPart(toolName)
+    if (!tool) return false
+    const tokens = tool.toLowerCase().split(/[^a-z0-9]+|(?<=[a-z])(?=[0-9])/).filter(Boolean)
+    // also split camelCase (getUser → get, user)
+    const camel = tool.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+    const all = new Set([...tokens, ...camel])
+    if (!READ_ONLY_TOOL_PREFIXES.includes(camel[0] ?? '')) return false
+    return !WRITE_VERB_TOKENS.some(verb => all.has(verb))
+}
+
 export const DENY_PATTERN_MAX = 64
 const PATTERN_RE = /^[A-Za-z0-9_.*-]{1,128}$/
 
@@ -114,7 +145,10 @@ export function compileOutboundDenylist(extra: readonly unknown[] = []): Compile
             if (builtins.has(toolName.toLowerCase())) return true
             if (user.some(e => e.re.test(toolName))) return true
             if (isVhOwnTool(toolName)) return false
-            return defaults.some(e => e.re.test(toolName))
+            if (defaults.some(e => e.re.test(toolName))) return true
+            // Fail closed for every other MCP server: only clearly read-only tools pass.
+            if (mcpToolPart(toolName) !== null) return !isReadOnlyMcpTool(toolName)
+            return false
         },
         sdkDisallowed: user.filter(e => isSdkNativePattern(e.pattern)).map(e => e.pattern),
     }

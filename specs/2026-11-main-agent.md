@@ -140,7 +140,8 @@ mcp__*__*create_issue* mcp__*__*pull_request* mcp__*__*rollback*
 ```
 
 - **VH 自己的 MCP server（`mcp__happy__*`）不受默认表约束**：它的会话间派活由闸 2 管。用户在设置里追加的模式对所有工具生效（包括 `mcp__happy__*`）。
-- 生效表 = 内建禁用（B-063 的 5 个）∪ 默认表 ∪ KV `deniedTools` ∪ 本机 `config.json` `deniedTools`。只能加严。
+- **其他 MCP server 默认拒绝（fail-closed，QA77 #5）**：动词子串表会漏掉 `create_or_update_file`、`kubectl_apply`、`execute_sql`、`browser_click`、`tweet` 这类名字。主 agent 的定位是只读、只派活，所以 `mcp__<非 happy>__<tool>` 只有同时满足以下条件才放行：`<tool>` 的第一个词（按 `_`、`-`、camelCase 切分）是只读动词 `list / get / search / read / query / describe / fetch / find / show / view / lookup / count` 之一；名字里任何位置都不含写类动词（`create / update / upsert / delete / remove / write / set / put / patch / post / send / reply / publish / deploy / apply / exec / execute / run / push / merge / upload / invite / share / add / edit / move / rename / approve / close / archive / click / type / fill / submit / tweet / comment / notify / forward / install / kill / stop / start / restart / rollback / release / scale / drop / truncate / insert / grant`，例：`get_or_create_label` 仍拒）；默认表与用户表都不命中。
+- 生效表 = 内建禁用（B-063 的 5 个）∪ 默认表 ∪ 第三方 MCP 默认拒绝 ∪ KV `deniedTools` ∪ 本机 `config.json` `deniedTools`。只能加严，没有放行配置。
 
 **执行点**（两层，都在 SDK 层，与权限模式无关）：
 
@@ -205,14 +206,18 @@ risk: 'none' | 'external' | 'production'
 
 **批准后执行**。用户在汇报板选择后，server 把选择写入卡片（`resolvedBy='owner'`、`ownerChoice`），Web 同时往主 agent 会话发一条 board 消息（localId 前缀 `board-`，B-766 现有机制）把它唤醒；只调 owner-respond API 不会唤醒会话，主 agent 下一回合的汇报板摘要里同样能看到。主 agent 调 `dispatch_approved({approvalId})`，工具层：
 
-1. 读 pending 文件；不存在 → `{ok:false, error:'approval_not_found'}`。
-2. 读卡片（`owner_board_list state=all`，按 key 找），要求 `resolvedBy='owner'`：
+1. 读 pending 文件；不存在，或其中没有 `boardItemId` / 卡面 hash（发卡失败）→ `{ok:false, error:'approval_not_found'}`，**不跳过校验**（QA77 #3）。
+2. 按 `boardItemId` 读回卡片，key 必须是 `main-agent-dispatch:<approvalId>`；卡片仍 open → `awaiting_decision`。
+3. **卡面绑定**（QA77 P1）：发卡时按 server 存下的卡片算 `sha256({key, title, body_md, options[].id+label})` 存进 pending；此时重算，不一致 → `{ok:false, error:'card_tampered'}`。改标题、改正文、对调按钮 label 都会被拒。
+4. 要求 `resolvedBy='owner'`，否则 `not_approved`；参数 sha256 与 pending 不一致 → `approval_mismatch`（防止批 A 派 B）。
+5. **只派一次**（QA77 #4）：先用 `O_EXCL` 建 `<approvalId>.inflight`，建不成 → `{ok:true, state:'already_dispatched'}`；派发失败（工具回错或抛错）删掉标记，可重试；成功后写 `<approvalId>.done.json`，再调回执上一次结果。
+6. 按选择执行：
    - `ownerChoice='approve'` → 原样执行存下的调用，payload 前加一行 `本任务已获批：<链接>`；
-   - `ownerChoice='draft'` → 同样执行，前缀改为 `本任务已获批，但只出草稿、不得发送或发布：<链接>`；
+   - `ownerChoice='draft'` → **不派会话**，回执 `{ok:true, state:'draft_only'}`，主 agent 在对话里给出草稿（只出草稿 = 什么都不交给别的执行者）；
    - `ownerChoice='drop'` → 不执行，回执 `{ok:true, state:'dropped'}`；
-   - 卡片仍 open → `{ok:false, error:'awaiting_decision'}`；其他（被 lead / 系统关闭）→ `{ok:false, error:'not_approved'}`。
-3. 执行前重新算参数 sha256，与 pending 记录不一致 → 拒绝（防止批 A 派 B）。
-4. 执行成功后 pending 文件改名为 `<approvalId>.done.json`；同一个 `approvalId` 再调 → 回执上一次结果，不重复派。
+   - 其他选择 → `not_approved`。
+
+**写保护**（QA77 #2）：主 agent 会话的 `owner_board_post / update / resolve` 一律拒绝 key 前缀 `main-agent-dispatch:` 的卡（post 看 key；update / resolve 看本地 pending 记录和读回的卡片 key，读不到按拒绝处理），回执 `{ok:false, error:'reserved_card'}`。这类卡只由闸 2 内部路径发出，不经过 MCP 工具。server 侧无法区分同一个账号 token 下「闸 2 内部」与「主 agent 的 MCP 工具」两种来源（两者都是本机 wrapper 用账号 token 调同一个 `/v1/attention-items`），所以不加 server 拒绝，靠第 3 步卡面绑定兜底。
 
 链接格式：`<webappUrl>/session/<主 agent sessionId>?panel=board`，后面跟 ` （决策 <boardItemId>）`。
 
@@ -223,6 +228,7 @@ risk: 'none' | 'external' | 'production'
 - 被派会话如果是 `bypassPermissions`，它自己能不能对外发送 VH 管不住；闸 2 只保证「派之前用户看过」。被派会话的 PreToolUse 出站拦截放 P3。
 - 关键词和 haiku 都可能漏判：用户的决策卡是最后一道人工关口，但前提是有一道判成非 `none`。
 - 账号 token 在机器上，理论上能直接调 owner-respond；主 agent 没有 Bash，也没有任何工具暴露这个接口。
+- 闸只装在 Claude 主 agent 上（`runClaude` 构建运行时）。pi / ACP 的 assistant variant 不注册主 agent 账号级工具和上限，只保留 B-051 的旧会话工具（QA77 #6）。
 
 ## 5. Skills（B-916c）
 

@@ -65,7 +65,7 @@ describe('prepareMainAgent', () => {
         await writeFile(join(aHome, 'CLAUDE.md'), '# role\n')
         await writeFile(join(aHome, 'config.json'), JSON.stringify({ skillRoots: [rootA, '/definitely/missing'], deniedTools: ['mcp__*__*archive*'] }))
         const runtime = await prepareMainAgent({ kvGet: async () => ({ value: '%%%not-base64-json' }), board: null, classify: null, approvalLink: (id) => id, home, assistantHomeDir: aHome })
-        expect(runtime.extraDirectories).toEqual([join(home, '.local/share/very-happy/skills/very-happy-main-agent'), rootA])
+        expect(runtime.extraDirectories).toEqual([join(home, '.local/share/very-happy'), rootA])
         expect(runtime.denylist.denies('mcp__chat__send_message')).toBe(true)
         expect(runtime.denylist.denies('mcp__docs__archive_page')).toBe(true)
         const md = await readFile(join(aHome, 'CLAUDE.md'), 'utf8')
