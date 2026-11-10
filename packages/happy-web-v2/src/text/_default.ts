@@ -3334,6 +3334,12 @@ export const en = {
                 summary: 'Long-running team leads no longer get the whole team back after each team action.',
                 receipts: 'Delegating, messaging, submitting, accepting, returning, cancelling, handing off and scheduling now answer with a short receipt (the task id, its state and the ids the next step needs) in every session, including ones started on an older CLI that has not been restarted. Before, such a session got the whole team back each time (hundreds of thousands of characters), which its agent could not read in one go.',
             },
+            nov11b: {
+                title: 'Sessions stuck on an old CLI show up in Needs you',
+                summary: 'A session the machine cannot update by itself now gets a card with a "Restart after this turn" button.',
+                card: 'Team leads, automations and older sessions never restart onto a new CLI by themselves. When the machine finds one (with the CLI that ships this), you get one notification and a card in Needs you naming the session and both versions. "Restart after this turn" waits until the session is idle, then restarts it in place, keeping history, model and effort; a turn in progress is never interrupted.',
+                agentLine: 'When an agent restarts its own session (new in the CLI), the chat shows a quiet line saying so.',
+            },
             nov10b: {
                 title: 'CLI 0.2.209: Fable 5.2 in Claude sessions',
                 summary: 'Claude sessions can run Fable 5.2, and the bundled Claude Code is updated.',
@@ -6789,8 +6795,22 @@ export const en = {
 
     // B-587: idle agent hibernation (banner / sidebar / machine page / ⋯ menu)
     // B-852: automatic restarts after a CLI upgrade (spec 2026-10-auto-restart-stale-wrappers).
+    // B-911: the card the daemon posts for a session it cannot restart by itself.
+    staleWrapperCard: {
+        title: ({ name, from, target }: { name: string; from: string; target: string }) => `"${name}" is still on CLI ${from} and cannot update itself to ${target}`,
+        body: ({ from, target }: { name: string; from: string; target: string }) => `This machine has CLI ${target}, but this session still runs ${from}. It is a team, automation or older session that does not tell the daemon when it is idle, so it is never restarted automatically, and newer fixes and tools do not reach it.\n\n**Restart after this turn**: the daemon waits until the current turn is finished and the session is idle, then restarts it in place. History, model and effort are kept; the running turn is not interrupted.`,
+        by: 'This machine',
+        restartWhenIdle: 'Restart after this turn',
+        queued: 'Queued: restarts once this turn ends and the session is idle',
+        queuedToast: 'Queued: the session restarts once it is idle',
+        errorNotLive: 'This session is not running on its machine any more',
+        errorNotResumable: 'This conversation cannot be resumed on its machine, so it was not restarted',
+        errorNoTurnReports: 'This session\'s CLI is too old to tell when it is idle; restart it from the session menu',
+        errorGeneric: ({ reason }: { reason: string }) => `Could not queue the restart (${reason})`,
+    },
     autoRestart: {
         updatedLine: ({ version }: { version: string }) => `Updated to Very Happy ${version} — session restarted in place, history kept`,
+        restartedOnRequestLine: ({ version }: { version: string }) => `Restarted in place at the agent's request (Very Happy ${version}, history kept)`,
         updatedAgentLine: ({ agent, version }: { agent: string; version: string }) => `Updated ${agent} to ${version} — session restarted in place, history kept`,
         waiting: ({ sessionVersion, machineVersion, why }: { sessionVersion: string; machineVersion: string; why: string }) =>
             `Still on v${sessionVersion} (the machine has v${machineVersion}). ${why} Restart now if you prefer — the conversation is kept.`,

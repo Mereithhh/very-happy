@@ -9,6 +9,7 @@ import { useMessage } from '@/sync/storage';
 import { Markdown } from '../Markdown';
 import { TeamAccountItemActions, teamAccountItemText } from './TeamAccountItem';
 import { IssueItemActions, isIssueReviewItem, issueLinkOf } from './IssueItemActions';
+import { StaleWrapperItemActions, staleWrapperItemText } from './StaleWrapperItem';
 
 export function boardTime(ts: number): string {
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return ''; }
@@ -33,7 +34,9 @@ export const BoardCard = forwardRef<HTMLDivElement, {
 }>(function BoardCard({ item, all, copy, expanded, selected, unread, actions }, ref) {
     const status = itemStatus(item);
     const resolve = resolveAction(item);
-    const by = item.source === 'owner' ? copy.you : copy.lead;
+    // B-911: the stale-wrapper card is the machine's, not the lead's.
+    const staleText = staleWrapperItemText(item);
+    const by = item.source === 'owner' ? copy.you : staleText?.by ?? copy.lead;
     const replies = item.kind === 'question' || item.kind === 'request' ? repliesTo(all, item.id) : [];
     const answering = item.replyToId ? all.find((i) => i.id === item.replyToId) : undefined;
     const bodyId = `brf-x-${item.id}`;
@@ -42,7 +45,8 @@ export const BoardCard = forwardRef<HTMLDivElement, {
     const firstText = item.firstReply?.snippet ?? (firstMsg?.kind === 'agent-text' ? firstMsg.text : undefined);
     const firstAt = firstMsg?.createdAt;
     // B-850e: a team account refusal reads in the reader's language (the server writes Chinese).
-    const accountText = teamAccountItemText(item);
+    // B-911: the daemon's stale-wrapper card, likewise (facts from its title).
+    const accountText = teamAccountItemText(item) ?? staleText;
     const statusLabel = status ? (status.key === 'decided' && status.choice ? copy.decided(choiceLabel(item, status.choice)) : copy.status[status.key]) : null;
     return (
         <div ref={ref} className={`brf-card${expanded ? ' is-open' : ''}${selected ? ' is-selected' : ''}${status?.tone === 'done' ? ' is-done' : ''}`}
@@ -110,6 +114,7 @@ export const BoardCard = forwardRef<HTMLDivElement, {
                             <button type="button" onClick={() => actions.onLocate(item)}><CornerUpRight size={13} aria-hidden />{copy.locate}</button>
                         )}
                         <TeamAccountItemActions item={item} />
+                        <StaleWrapperItemActions item={item} />
                         {issueLinkOf(item) && <IssueItemActions item={item} />}
                         {resolve && <button type="button" onClick={() => actions.onResolve(item)}>{copy.resolve[resolve]}</button>}
                         <button type="button" onClick={() => actions.onFollowUp(item)}><CornerDownLeft size={13} aria-hidden />{copy.followUp}</button>

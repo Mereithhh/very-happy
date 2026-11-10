@@ -55,7 +55,7 @@ describe('B-850e accounts wiring', () => {
 
     it('board: team-account items read in the reader\'s language and offer the ways out', () => {
         const card = src('screens/session/board/BoardCard.tsx');
-        expect(card).toContain('const accountText = teamAccountItemText(item);');
+        expect(card).toContain('const accountText = teamAccountItemText(item) ?? staleText;');
         expect(card).toContain('<TeamAccountItemActions item={item} />');
         expect(src('screens/session/board/TeamAccountItem.tsx')).toContain("await actOnTeam(teamId, { type: 'retry-operation', operationId: op.id, claimId: op.claimId }, crypto.randomUUID());");
     });

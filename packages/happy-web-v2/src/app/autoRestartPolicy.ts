@@ -136,6 +136,13 @@ export function failureSummary(reason: string): string {
 }
 
 /** The restarted wrapper's service line → the version it now runs (and the agent, for a Codex-only update). */
+/** B-911: the line a wrapper posts after a restart its agent asked for (`request_idle_restart`). */
+export const RESTARTED_ON_REQUEST_EVENT_KIND = 'session-restarted-on-request';
+export function parseRestartedOnRequestLine(message: string): { version: string } | null {
+    const match = /^Restarted in place at the agent's request on Very Happy (\S+) \(/.exec(message);
+    return match ? { version: match[1] } : null;
+}
+
 export function parseAutoUpdatedLine(message: string): { agent: string | null; version: string } | null {
     const cli = /^Updated to Very Happy (\S+) \(/.exec(message);
     if (cli) return { agent: null, version: cli[1] };
