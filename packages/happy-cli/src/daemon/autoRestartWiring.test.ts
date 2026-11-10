@@ -122,5 +122,6 @@ describe('B-911 idle restart wiring', () => {
         expect(run).toContain('onStuck: (sessionId, status, session) => {\n        void staleWrapperNotices.stuck(');
         expect(run).toContain('if (idleRestart?.status(sessionId)) return;');
         expect(run).toContain("onQueued: (sessionId, entry) => { if (entry.source === 'owner') void staleWrapperNotices.queued(sessionId); },");
+        expect(run).toContain("if (outcome.ok) void staleWrapperNotices.settle(sessionId, 'done', `已在空闲时重启到 CLI ${packageJson.version}，历史保留。`).finally(() => autoRestartScheduler.sweep());");
     });
 });
