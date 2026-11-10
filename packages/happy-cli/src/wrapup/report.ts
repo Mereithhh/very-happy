@@ -115,6 +115,21 @@ export function buildRunningPost(session: string, action: RunningAction): Attent
     }
 }
 
+/**
+ * B-915b: the wrap-up / handoff turn ended and the agent never called
+ * `wrapup_report` / `handoff_send` — the card says 未完成 and offers 重试
+ * instead of sitting on `running` until the 2 h stale gate.
+ */
+export function buildIncompletePost(session: string, action: RunningAction): AttentionItemPost {
+    return {
+        sessionId: session, source: 'agent', kind: 'wrapup', key: itemKey(action.mode),
+        title: action.mode === 'wrapup' ? 'Wrap-up not finished' : 'Handoff not finished',
+        payload: { v: 1, mode: action.mode, status: 'incomplete', localId: action.localId, startedAt: action.startedAt },
+        anchor: { localId: action.localId },
+        requestId: `incomplete-${action.localId}`.slice(0, 128),
+    }
+}
+
 /** `wrapup_report` → the result card (pending items become unticked checkboxes p1…p10). */
 export function buildWrapupReportPost(session: string, input: WrapupReportInput, running: RunningAction | null | undefined, now: number, requestId: string): AttentionItemPost {
     const run = runningFields('wrapup', running, now)

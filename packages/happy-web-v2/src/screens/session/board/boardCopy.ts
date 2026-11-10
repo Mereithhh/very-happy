@@ -51,6 +51,12 @@ export interface WrapupCopy {
     by: string;
     running: string;
     handoffRunning: (target: string | null) => string;
+    /** B-915b: the turn ended without a report / handoff. */
+    incomplete: string;
+    handoffIncomplete: string;
+    incompleteHint: string;
+    handoffIncompleteHint: string;
+    retry: string;
     canClose: string;
     pending: (n: number) => string;
     notYet: string;
@@ -118,6 +124,11 @@ const ZH: BoardCopy = {
         by: '本会话',
         running: '收尾中…',
         handoffRunning: (target) => (target ? `交接中 → ${target}` : '交接中…'),
+        incomplete: '收尾未完成',
+        handoffIncomplete: '交接未完成',
+        incompleteHint: '这一轮结束了，但会话没有提交收尾结果。',
+        handoffIncompleteHint: '这一轮结束了，但会话没有发出交接。',
+        retry: '重试',
         canClose: '可以关闭',
         pending: (n) => `${n} 项待确认`,
         notYet: '还不能关闭',
@@ -186,6 +197,11 @@ const EN: BoardCopy = {
         by: 'This session',
         running: 'Wrapping up…',
         handoffRunning: (target) => (target ? `Handing off → ${target}` : 'Handing off…'),
+        incomplete: 'Wrap-up not finished',
+        handoffIncomplete: 'Handoff not finished',
+        incompleteHint: 'The turn ended without a wrap-up result.',
+        handoffIncompleteHint: 'The turn ended without sending the handoff.',
+        retry: 'Retry',
         canClose: 'Ready to close',
         pending: (n) => `${n} to confirm`,
         notYet: 'Not ready to close',

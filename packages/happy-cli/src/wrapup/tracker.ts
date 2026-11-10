@@ -11,6 +11,11 @@
  *    offline store), records the outcome on the handoff card and — only after
  *    a confirmed delivery and when asked — archives this session once the
  *    turn is over.
+ *  - B-915b: when the turn that took the request ends and neither tool was
+ *    called, the card turns `incomplete` (未完成, with 重试) instead of
+ *    staying `running` until the 2 h stale gate. "The turn that took it" is
+ *    known from the batch's localIds (`onTurnStart`); a turn that started
+ *    before the request arrived never marks it.
  *
  * Every board write degrades quietly: no board (old server, flag off) means
  * no card, never a failed turn.
@@ -21,7 +26,7 @@ import { builtinActionOfLocalId, type AttentionItemPost } from '@slopus/happy-wi
 import type { AttentionClient } from '@/attention/client'
 import type { SendPeerMessageResult } from '@/sessions/peerTools'
 import {
-    buildHandoffPost, buildRunningPost, buildWrapupReportPost, formatHandoffBody, shouldArchiveAfterHandoff,
+    buildHandoffPost, buildIncompletePost, buildRunningPost, buildWrapupReportPost, formatHandoffBody, shouldArchiveAfterHandoff,
     type BuiltinMode, type HandoffDelivery, type HandoffOutcome, type HandoffSendInput, type RunningAction, type WrapupReportInput,
 } from './report'
 
@@ -72,11 +77,21 @@ export function createWrapupTracker(deps: WrapupTrackerDeps) {
     const log = deps.log ?? (() => {})
     const requestId = deps.requestId ?? (() => randomUUID())
     const running = new Map<BuiltinMode, RunningAction>()
+    /** localIds of running actions a started turn has taken (only those can end up `incomplete`). */
+    const taken = new Set<string>()
+    /** The last action marked `incomplete`: a late `wrapup_report` / `handoff_send` still anchors to it. */
+    const incomplete = new Map<BuiltinMode, RunningAction>()
     let pendingArchive: { outcome: HandoffOutcome; run: RunningAction | undefined } | null = null
     let work: Promise<void> = Promise.resolve()
     const queue = (task: () => Promise<void>) => {
         work = work.then(task).catch((error) => log(`[wrapup] ${errorText(error)}`))
         return work
+    }
+
+    function settle(mode: BuiltinMode): void {
+        const action = running.get(mode)
+        if (action) taken.delete(action.localId)
+        running.delete(mode)
     }
 
     async function post(input: AttentionItemPost): Promise<string | null> {
@@ -90,18 +105,35 @@ export function createWrapupTracker(deps: WrapupTrackerDeps) {
             const mode = builtinActionOfLocalId(message.localId)
             if (!mode || !message.localId) return
             const action: RunningAction = { mode, localId: message.localId, startedAt: now() }
+            const previous = running.get(mode)
+            if (previous) taken.delete(previous.localId)
             running.set(mode, action)
+            incomplete.delete(mode)
             void queue(async () => {
                 if (!(await deps.boardReady())) return
                 await post(buildRunningPost(deps.sessionId(), action))
             })
         },
 
+        /**
+         * The agent takes queued input (Claude remote: the batch being sent).
+         * `sourceIds` = that batch's localIds; none known (a parked replay)
+         * = every request already routed belongs to this turn.
+         */
+        onTurnStart(sourceIds?: readonly string[]): void {
+            const ids = sourceIds?.length ? new Set(sourceIds) : null
+            for (const action of running.values()) {
+                if (!ids || ids.has(action.localId)) taken.add(action.localId)
+            }
+        },
+
         async report(input: WrapupReportInput): Promise<WrapupReportResult> {
-            const run = running.get('wrapup')
+            const run = running.get('wrapup') ?? incomplete.get('wrapup')
+            // The agent answered the request: whatever the board says, this turn no longer ends `incomplete`.
+            if (run && running.get('wrapup') === run) settle('wrapup')
             try {
                 const itemId = await post(buildWrapupReportPost(deps.sessionId(), input, run, now(), requestId()))
-                if (running.get('wrapup') === run) running.delete('wrapup')
+                if (incomplete.get('wrapup') === run) incomplete.delete('wrapup')
                 return { posted: true, ...(itemId ? { itemId } : {}), note: 'The wrap-up card is on the owner\'s board; they archive the session from it. Do not repeat the report in chat.' }
             } catch (error) {
                 log(`[wrapup] report not posted: ${errorText(error)}`)
@@ -130,7 +162,7 @@ export function createWrapupTracker(deps: WrapupTrackerDeps) {
                 ...(input.artifacts?.length ? { artifacts: input.artifacts } : {}),
                 delivery, ...(error ? { error } : {}), ...(machine ? { machine } : {}), archiveAfter,
             }
-            const run = running.get('handoff')
+            const run = running.get('handoff') ?? incomplete.get('handoff')
             let card = false
             try {
                 await post(buildHandoffPost(deps.sessionId(), outcome, run, now(), requestId()))
@@ -138,7 +170,8 @@ export function createWrapupTracker(deps: WrapupTrackerDeps) {
             } catch (e) {
                 log(`[wrapup] handoff card not posted: ${errorText(e)}`)
             }
-            if (running.get('handoff') === run) running.delete('handoff')
+            if (run && running.get('handoff') === run) settle('handoff')
+            if (incomplete.get('handoff') === run) incomplete.delete('handoff')
             const archive = shouldArchiveAfterHandoff({ archiveAfter, delivery })
             if (archive) pendingArchive = { outcome, run }
             const note = delivery === 'delivered'
@@ -153,8 +186,23 @@ export function createWrapupTracker(deps: WrapupTrackerDeps) {
             }
         },
 
-        /** The turn is over (Claude `turn-ended`, any runner's `ready`): run a scheduled self-archive once. */
+        /**
+         * The turn is over (Claude `turn-ended`, any runner's `ready`): a request
+         * this turn took and left unanswered becomes `incomplete`; a scheduled
+         * self-archive runs once.
+         */
         onTurnEnd(): Promise<void> {
+            const unanswered = [...running.values()].filter((action) => taken.has(action.localId))
+            for (const action of unanswered) {
+                settle(action.mode)
+                incomplete.set(action.mode, action)
+            }
+            if (unanswered.length) {
+                void queue(async () => {
+                    if (!(await deps.boardReady())) return
+                    for (const action of unanswered) await post(buildIncompletePost(deps.sessionId(), action))
+                })
+            }
             const pending = pendingArchive
             pendingArchive = null
             if (!pending) return work

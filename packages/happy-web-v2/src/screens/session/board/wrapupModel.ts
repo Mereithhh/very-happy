@@ -8,6 +8,7 @@ import { parseWrapupPayload, type AttentionItem, type WrapupPayloadView } from '
 
 export type WrapupHeadline =
     | { key: 'running'; mode: 'wrapup' | 'handoff'; target: string | null }
+    | { key: 'incomplete'; mode: 'wrapup' | 'handoff' }
     | { key: 'canClose' }
     | { key: 'pending'; count: number }
     | { key: 'notYet' }
@@ -19,6 +20,8 @@ export interface WrapupView {
     payload: WrapupPayloadView;
     mode: 'wrapup' | 'handoff';
     running: boolean;
+    /** B-915b: the turn ended without `wrapup_report` / `handoff_send` — 未完成, offers 重试. */
+    incomplete: boolean;
     headline: WrapupHeadline;
     /** Handoff delivery failed: the card is marked in danger red. */
     failed: boolean;
@@ -31,19 +34,21 @@ export function wrapupView(item: Pick<AttentionItem, 'kind' | 'payload'>): Wrapu
     if (!payload) return null;
     const mode = payload.mode === 'handoff' ? 'handoff' : 'wrapup';
     const running = payload.status === 'running';
+    const incomplete = payload.status === 'incomplete';
     const target = payload.handoff ? (payload.handoff.toTitle?.trim() || payload.handoff.to) : null;
     const uncheckedCount = (payload.pending ?? []).filter((p) => !p.checked).length;
     const delivery = payload.handoff?.delivery;
     const failed = mode === 'handoff' && !running && (payload.status === 'failed' || delivery === 'failed');
     let headline: WrapupHeadline;
     if (running) headline = { key: 'running', mode, target };
+    else if (incomplete) headline = { key: 'incomplete', mode };
     else if (mode === 'handoff') {
         const t = target ?? '';
         headline = failed ? { key: 'handoffFailed', target: t } : delivery === 'offline-stored' ? { key: 'stored', target: t } : { key: 'delivered', target: t };
     } else if (uncheckedCount > 0) headline = { key: 'pending', count: uncheckedCount };
     else if (payload.canClose === false) headline = { key: 'notYet' };
     else headline = { key: 'canClose' };
-    return { payload, mode, running, headline, failed, uncheckedCount };
+    return { payload, mode, running, incomplete, headline, failed, uncheckedCount };
 }
 
 /**

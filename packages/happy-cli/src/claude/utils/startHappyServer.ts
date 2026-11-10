@@ -328,6 +328,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         wrapupTracker.onUserMessage({ localId: event.localId });
     };
     const onClaudeLine = (body: unknown) => { for (const text of assistantTexts(body)) leadBoard.onAssistantText(text); };
+    const onTurnStarted = (sourceIds?: string[]) => { wrapupTracker.onTurnStart(sourceIds); };
     const onTurnEnded = () => { void leadBoard.onTurnEnd(); void wrapupTracker.onTurnEnd(); };
     // Codex / pi / Gemini end a turn with a `ready` event and never emit `turn-ended`.
     const onAgentReady = () => { void wrapupTracker.onTurnEnd(); };
@@ -336,6 +337,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
     if (tapped) {
         client.on('user-message-routed', onRoutedUserMessage);
         client.on('claude-session-message', onClaudeLine);
+        client.on('turn-started', onTurnStarted);
         client.on('turn-ended', onTurnEnded);
         client.on('agent-ready', onAgentReady);
     }
@@ -558,6 +560,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             if (tapped) {
                 client.off('user-message-routed', onRoutedUserMessage);
                 client.off('claude-session-message', onClaudeLine);
+                client.off('turn-started', onTurnStarted);
                 client.off('turn-ended', onTurnEnded);
                 client.off('agent-ready', onAgentReady);
             }

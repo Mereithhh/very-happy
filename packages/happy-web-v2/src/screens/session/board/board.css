@@ -135,3 +135,8 @@ a.wrp-sha { text-decoration: underline; text-decoration-color: var(--line-2); te
 .wrp-archive { display: flex; }
 .wrp-archive-btn { display: inline-flex; align-items: center; gap: 4px; padding: 5px 11px; border: 0; border-radius: var(--r-btn); background: var(--text); color: var(--bg-0); font: inherit; font-size: var(--fs-12); font-weight: 500; cursor: pointer; }
 @media (pointer: coarse) { .wrp-archive-btn { min-height: 44px; padding: 0 14px; } }
+/* B-915b: 未完成 card — a hint and 重试 (outlined, so 归档会话 stays the primary action). */
+.wrp-incomplete { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.wrp-retry-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: var(--r-btn); background: transparent; color: var(--text); font: inherit; font-size: var(--fs-12); font-weight: 500; cursor: pointer; }
+@media (pointer: coarse) { .wrp-retry-btn { min-height: 44px; padding: 0 14px; } }
+@media (hover: hover) and (pointer: fine) { .wrp-retry-btn:hover { background: var(--fill-soft); } }

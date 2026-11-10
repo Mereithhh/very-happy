@@ -12,6 +12,13 @@ describe('wrap-up card model (B-915)', () => {
         expect(pending?.uncheckedCount).toBe(1);
         expect(wrapupView(item({ v: 1, mode: 'wrapup', status: 'done', canClose: false }))?.headline).toEqual({ key: 'notYet' });
     });
+    it('B-915b incomplete: its own headline per mode, neither running nor failed', () => {
+        const w = wrapupView(item({ v: 1, mode: 'wrapup', status: 'incomplete', localId: 'wrapup-n1' }));
+        expect(w).toMatchObject({ headline: { key: 'incomplete', mode: 'wrapup' }, incomplete: true, running: false, failed: false });
+        const hd = wrapupView(item({ v: 1, mode: 'handoff', status: 'incomplete' }));
+        expect(hd).toMatchObject({ headline: { key: 'incomplete', mode: 'handoff' }, incomplete: true, failed: false });
+        expect(wrapupView(item({ v: 1, mode: 'wrapup', status: 'done', canClose: true }))?.incomplete).toBe(false);
+    });
     it('handoff: delivered / offline-stored / failed (red)', () => {
         const h = (delivery: string, status = 'done') => wrapupView(item({ v: 1, mode: 'handoff', status, handoff: { to: 'T', toTitle: 'Target', delivery } }));
         expect(h('delivered')?.headline).toEqual({ key: 'delivered', target: 'Target' });

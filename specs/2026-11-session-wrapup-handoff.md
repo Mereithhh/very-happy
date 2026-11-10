@@ -70,7 +70,7 @@
 ## 风险
 
 1. 模板明文存服务器：设置页明确提示，不放密钥。
-2. agent 不调 `wrapup_report`：卡片停在 running，2 小时后可重新发起；用户也可以直接在会话里看到回复。
+2. agent 不调 `wrapup_report` / `handoff_send`（B-915b）：接下这条请求的那一轮结束时（Claude `turn-ended`；以 batch 的 localId 判定是哪一轮接的，排在别的轮次后面的请求不会被前一轮误判），wrapper 把卡片改为 `status: 'incomplete'`（「收尾未完成 / 交接未完成」，计入「需要我」），卡上「重试」：收尾直接重发，交接重新打开「交接给…」。之后迟到的 report 仍会把卡改成结果。没有轮次开始信号的 runner（Codex / Gemini / ACP）和旧 wrapper 仍按 2 小时过期处理。
 3. 自归档误伤：只在投递确认之后、用户明确勾选时执行，属于用户意图（AGENTS #7 允许）。
 
 ## 验收标准

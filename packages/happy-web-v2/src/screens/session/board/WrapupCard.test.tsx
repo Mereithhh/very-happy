@@ -16,7 +16,10 @@ const h = vi.hoisted(() => ({
     session: { id: 's', archivedAt: null, active: true, metadata: null } as Record<string, unknown> | undefined,
     confirm: vi.fn(async () => false),
     toastError: vi.fn(),
+    startWrapup: vi.fn(async () => 'sent'),
+    openHandoff: vi.fn(),
 }));
+vi.mock('@/app/sessionWrapup', () => ({ startWrapup: h.startWrapup, openHandoffDialog: h.openHandoff }));
 vi.mock('@/sync/storage', () => ({
     useMessage: () => undefined,
     useSession: () => h.session,
@@ -57,6 +60,8 @@ beforeEach(() => {
     h.session = { id: 's', archivedAt: null, active: true, metadata: null };
     h.confirm.mockClear();
     h.toastError.mockClear();
+    h.startWrapup.mockClear();
+    h.openHandoff.mockClear();
 });
 afterEach(async () => {
     if (root) await act(async () => root!.unmount());
@@ -137,6 +142,35 @@ describe('收尾 card (B-915)', () => {
         expect(host.querySelector('.brf-card')?.classList.contains('is-failed')).toBe(false);
         expect(host.querySelector('.wrp-note')?.textContent).toBe('已自动归档本会话');
         expect(host.querySelector('.wrp-archive-btn')).toBeNull();
+    });
+
+    it('B-915b incomplete wrap-up: 收尾未完成 + hint, 重试 sends the wrap-up again, archive still offered', async () => {
+        const host = await render({ ...base, payload: { v: 1, mode: 'wrapup', status: 'incomplete', localId: 'wrapup-n1', startedAt: 1 } });
+        expect(host.querySelector('.brf-title')?.textContent).toBe('收尾未完成');
+        expect(host.querySelector('.wrp-incomplete .wrp-note')?.textContent).toBe('这一轮结束了，但会话没有提交收尾结果。');
+        const retry = host.querySelector('.wrp-retry-btn') as HTMLButtonElement;
+        expect(retry.textContent).toBe('重试');
+        await act(async () => retry.click());
+        expect(h.startWrapup).toHaveBeenCalledWith('s');
+        expect(h.openHandoff).not.toHaveBeenCalled();
+        expect(host.querySelector('.wrp-archive-btn')).not.toBeNull();
+    });
+
+    it('B-915b incomplete handoff: 交接未完成, 重试 reopens 交接给… for this session', async () => {
+        const host = await render({ ...base, key: 'handoff', payload: { v: 1, mode: 'handoff', status: 'incomplete', localId: 'handoff-h1', startedAt: 1 } });
+        expect(host.querySelector('.brf-title')?.textContent).toBe('交接未完成');
+        await act(async () => (host.querySelector('.wrp-retry-btn') as HTMLButtonElement).click());
+        expect(h.openHandoff).toHaveBeenCalledWith('s');
+        expect(h.startWrapup).not.toHaveBeenCalled();
+    });
+
+    it('B-915b: no 重试 on a done / running card, nor once the session is archived', async () => {
+        expect((await render(base)).querySelector('.wrp-retry-btn')).toBeNull();
+        await act(async () => root!.unmount()); root = null;
+        expect((await render({ ...base, payload: { v: 1, mode: 'wrapup', status: 'running' } })).querySelector('.wrp-retry-btn')).toBeNull();
+        await act(async () => root!.unmount()); root = null;
+        h.session = { id: 's', archivedAt: 9, active: false, metadata: null };
+        expect((await render({ ...base, payload: { v: 1, mode: 'wrapup', status: 'incomplete' } })).querySelector('.wrp-retry-btn')).toBeNull();
     });
 
     it('archive from the card: one confirm naming the unconfirmed items; cancel archives nothing', async () => {

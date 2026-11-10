@@ -24,6 +24,12 @@ describe('B-915 wrap-up contract', () => {
         expect(attentionItemNeedsOwner('decision', undefined)).toBe(true);
         expect(attentionPushKind({ kind: 'wrapup' })).toBeNull();
     });
+    it('B-915b incomplete: a valid post, waits on the owner, does not block a new request', () => {
+        const incomplete = { v: 1, mode: 'wrapup', status: 'incomplete', localId: 'wrapup-n1', startedAt: 5 };
+        expect(AttentionItemPostSchema.safeParse({ sessionId: 's', source: 'agent', kind: 'wrapup', title: 't', payload: incomplete }).success).toBe(true);
+        expect(attentionItemNeedsOwner('wrapup', incomplete)).toBe(true);
+        expect(wrapupInProgress({ kind: 'wrapup', state: 'open', updatedAt: 6, payload: incomplete }, 'wrapup', 6)).toBe(false);
+    });
     it('check action and applyWrapupCheck', () => {
         expect(AttentionItemOwnerRespondSchema.safeParse({ action: 'check', checkId: 'p1', checked: true }).success).toBe(true);
         expect(applyWrapupCheck(done, 'p1', true)).toMatchObject({ pending: [{ id: 'p1', checked: true }] });

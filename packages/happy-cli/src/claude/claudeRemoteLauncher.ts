@@ -643,6 +643,7 @@ export async function claudeRemoteLauncher(
                                 board: leadBoardFor(session.client),
                                 project: session.projectInjector,
                                 sourceIds: batchSourceIds,
+                                onTurnStart: (ids) => session.client.emit('turn-started', ids),
                             });
                             onPromptFinalized?.(out);
                             return out;

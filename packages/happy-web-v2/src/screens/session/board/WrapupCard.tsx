@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Archive, ArrowUpRight } from 'lucide-react';
+import { Archive, ArrowUpRight, RotateCcw } from 'lucide-react';
 import type { AttentionItem } from '@slopus/happy-wire';
 import { Modal } from '@/modal';
 import { storage, useSession } from '@/sync/storage';
@@ -23,6 +23,7 @@ export function wrapupHeadlineText(view: WrapupView, copy: WrapupCopy): string {
     const h = view.headline;
     switch (h.key) {
         case 'running': return h.mode === 'handoff' ? copy.handoffRunning(h.target) : copy.running;
+        case 'incomplete': return h.mode === 'handoff' ? copy.handoffIncomplete : copy.incomplete;
         case 'canClose': return copy.canClose;
         case 'pending': return copy.pending(h.count);
         case 'notYet': return copy.notYet;
@@ -30,6 +31,17 @@ export function wrapupHeadlineText(view: WrapupView, copy: WrapupCopy): string {
         case 'stored': return copy.stored(h.target);
         case 'handoffFailed': return copy.handoffFailed(h.target);
     }
+}
+
+/**
+ * B-915b 重试 on an 未完成 card: a wrap-up sends the request again (the account
+ * template, same gate as the menu); a handoff reopens 交接给… for this session
+ * (the target is chosen again — the card never knew it).
+ */
+export async function retryFromWrapupCard(sessionId: string, mode: 'wrapup' | 'handoff'): Promise<void> {
+    const { openHandoffDialog, startWrapup } = await import('@/app/sessionWrapup');
+    if (mode === 'handoff') openHandoffDialog(sessionId);
+    else await startWrapup(sessionId);
 }
 
 /** 归档会话 from the card: one confirm (it names the unconfirmed items when there are any). */
@@ -91,6 +103,16 @@ export function WrapupDetails({ item, view, copy }: { item: AttentionItem; view:
             )}
             {view.failed && handoff?.error && <div className="wrp-error" role="alert">{handoff.error}</div>}
             {handoff?.archived && <div className="wrp-note">{w.autoArchived}</div>}
+            {view.incomplete && (
+                <div className="wrp-incomplete">
+                    <div className="wrp-note">{view.mode === 'handoff' ? w.handoffIncompleteHint : w.incompleteHint}</div>
+                    {live && !archived && (
+                        <button type="button" className="wrp-retry-btn" onClick={() => void retryFromWrapupCard(item.sessionId, view.mode)}>
+                            <RotateCcw size={13} aria-hidden />{w.retry}
+                        </button>
+                    )}
+                </div>
+            )}
             {summary && (
                 <div className="wrp-sec">
                     <div className={`brf-body wrp-summary${long && !full ? ' is-clamped' : ''}`}><Markdown text={summary} /></div>

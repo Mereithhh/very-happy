@@ -133,6 +133,24 @@ describe('owner board in startHappyServer', () => {
         expect(state.calls.some(c => (c.body as { kind?: string })?.kind === 'question')).toBe(false);
     });
 
+    it('B-915b: turn-started takes the wrapup- request; turn-ended without wrapup_report posts an incomplete card', async () => {
+        state.lead = false;
+        const session = fakeSession();
+        await connect(session);
+        session.emit('user-message-routed', { localId: 'wrapup-n2', message: { content: { text: 'Please wrap up' }, meta: { sentFrom: 'web' } } });
+        session.emit('turn-started', ['wrapup-n2']);
+        session.emit('turn-ended', 'completed');
+        await new Promise(resolve => setTimeout(resolve, 10));
+        expect(state.calls.map(c => (c.body as { payload?: { status?: string } })?.payload?.status)).toEqual(['running', 'incomplete']);
+        expect(state.calls[1].body).toMatchObject({ kind: 'wrapup', key: 'wrapup', payload: { status: 'incomplete', localId: 'wrapup-n2' } });
+    });
+
+    it('B-915b: the Claude launcher emits turn-started with the batch ids where it finalizes the prompt', () => {
+        const launcher = readFileSync(join(__dirname, '../claude/claudeRemoteLauncher.ts'), 'utf8');
+        const finalize = launcher.slice(launcher.indexOf('const finalize = async'), launcher.indexOf('const parked = modeGate.takeParked()'));
+        expect(finalize).toContain("onTurnStart: (ids) => session.client.emit('turn-started', ids),");
+    });
+
     // The Claude remote launcher is the only place a turn starts; without these two calls no question settles and no digest is sent.
     it('starts the board turn and adds the digest where the Claude launcher finalizes the prompt', () => {
         const launcher = readFileSync(join(__dirname, '../claude/claudeRemoteLauncher.ts'), 'utf8');

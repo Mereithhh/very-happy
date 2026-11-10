@@ -162,7 +162,8 @@ export const WRAPUP_LIMITS = {
     errorChars: 500,
 } as const;
 export const WRAPUP_MODES = ['wrapup', 'handoff'] as const;
-export const WRAPUP_STATUSES = ['running', 'done', 'failed'] as const;
+/** `incomplete` (B-915b): the wrap-up / handoff turn ended without `wrapup_report` / `handoff_send` — the card offers 重试. */
+export const WRAPUP_STATUSES = ['running', 'done', 'failed', 'incomplete'] as const;
 export type WrapupStatus = typeof WRAPUP_STATUSES[number];
 /** `delivered` = landed in a live session (same machine, or the other machine's daemon acked); `offline-stored` = project message read at its next turn. */
 export const HANDOFF_DELIVERIES = ['delivered', 'offline-stored', 'failed'] as const;
