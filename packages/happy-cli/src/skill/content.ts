@@ -75,7 +75,7 @@ The Web opens shell terminals on any online machine through its daemon (tmux-bac
 A project groups sessions around one goal: instructions, decisions in effect, a log (decision / finding / handoff) and messages between member sessions. Its defaults (agent, model, permission mode, worktree) and instructions are edited in the Web.
 
 ## MCP tools in project sessions
-- \`project_context\`: instructions, decisions, recent log, other sessions and unread messages (changes since your last read; \`full\` for everything).
+- \`project_context\`: the project id, instructions, decisions, recent log, other sessions and unread messages (changes since your last read; \`full\` for everything).
 - \`project_note\`: record a decision, finding or handoff others will need. Not progress.
 
 ## Putting work into a project from the CLI
@@ -83,7 +83,7 @@ A project groups sessions around one goal: instructions, decisions in effect, a 
 - \`very-happy auto create … --project current\` (or a project id): sessions an automation spawns join that project; \`auto edit <name> --no-project\` detaches.
 - \`very-happy issue create … --project <id>\`, \`very-happy issue list --project <id>\`.
 
-Project ids appear in the Web URL of the project. \`current\` resolves the project of the managed session running the command. The server checks the project belongs to the account.`,
+Project ids appear in \`project_context\` output and in the Web URL of the project. \`current\` resolves the project of the managed session running the command. The server checks the project belongs to the account.`,
     },
     {
         id: 'teams',
@@ -105,7 +105,7 @@ Restricted team workers keep to their assignment and worktree; never clear scope
         summary: 'cron / interval / one-shot / manual triggers that spawn a session, continue a sticky session or run a script',
         body: () => `# Automations
 
-Account-level jobs executed by one machine's daemon, with tracked runs. Full skill: \`very-happy auto skill\`. MCP tools in managed sessions: \`automation_list\`, \`automation_get\`, \`automation_create\`, \`automation_update\`, \`automation_pause\`, \`automation_resume\`, \`automation_delete\`, \`automation_run\`, \`automation_fire\`, \`automation_runs\`, \`automation_ack\`, \`automation_report\`.
+Account-level jobs executed by one machine's daemon, with tracked runs. Full skill: \`very-happy auto skill\`. MCP tools in managed sessions: \`automation_list\`, \`automation_get\`, \`automation_create\`, \`automation_update\`, \`automation_pause\`, \`automation_resume\`, \`automation_delete\`, \`automation_run\`, \`automation_fire\`, \`automation_runs\`, \`automation_ack\`, \`automation_report\`. \`automation_create\` / \`automation_update\` take \`projectId\` (a project id or \`current\`, like \`--project\`; \`null\` on update detaches); an older server ignores it and the result carries \`notices\`.
 
 ## Recipes
 - Every day at 09:00 in this project: \`very-happy auto create --name daily-review --cron '0 9 * * *' --tz <IANA zone> --spawn-dir <repo path> --prompt "<what to do>" --project current\`. Ask for (or read from the user's context) the time zone; do not assume UTC.

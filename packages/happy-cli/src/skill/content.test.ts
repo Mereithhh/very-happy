@@ -115,6 +115,17 @@ describe('B-917 very-happy skill coverage (CI guard against a stale skill)', () 
         expect(problems).toEqual([]);
     });
 
+    it('documents the projectId argument wherever the MCP schema takes it, and where project ids come from', async () => {
+        const { AUTOMATION_TOOL_SCHEMAS } = await import('@/automations/tools');
+        const withProject = Object.entries(AUTOMATION_TOOL_SCHEMAS).filter(([, spec]) => 'projectId' in spec.inputSchema).map(([name]) => name);
+        expect(withProject).toEqual(['automation_create', 'automation_update']);
+        const automations = renderReference('automations')!;
+        for (const name of withProject) expect(automations).toContain(`\`${name}\``);
+        expect(automations).toMatch(/`automation_create` \/ `automation_update` take `projectId` \(a project id or `current`/);
+        expect(renderReference('projects')).toMatch(/`project_context`: the project id/);
+        expect(renderReference('projects')).toContain('Project ids appear in `project_context` output');
+    });
+
     it('the daily 09:00 project recipe is a valid auto create command', async () => {
         const { parseAutoArgs } = await import('@/commands/auto');
         const recipe = /`very-happy auto create ([^`]*--cron '0 9 \* \* \*'[^`]*)`/.exec(renderReference('automations')!)![1];

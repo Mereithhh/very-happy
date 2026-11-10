@@ -143,9 +143,9 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     cliVersion: '0.2.210',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,
-    titleKey: 'changelog.releases.nov11b.title',
-    summaryKey: 'changelog.releases.nov11b.summary',
-    itemKeys: ['changelog.releases.nov11b.skill', 'changelog.releases.nov11b.autoProject'],
+    titleKey: 'changelog.releases.nov11h.title',
+    summaryKey: 'changelog.releases.nov11h.summary',
+    itemKeys: ['changelog.releases.nov11h.skill', 'changelog.releases.nov11h.autoProject'],
   },
   {
     id: '2026-11-11-turn-api-error-banner-background-task-detail',

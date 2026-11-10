@@ -84,4 +84,43 @@ describe('automation_* tools', () => {
         expect(client.remove).toHaveBeenCalledWith('a4');
         expect(AUTOMATION_TOOL_SCHEMAS.automation_create.inputSchema.precheck).toBeDefined();
     });
+    it('B-917: projectId on create/update resolves like --project and flags an old server', async () => {
+        const client = fakeClient();
+        const membership = vi.fn(async (sid: string) => ({ projectId: sid === 'sess-a' ? 'proj-1' : null }));
+        const context = { client: client as any, machineId: 'm', env: { VH_PEER_SESSION_ID: 'sess-a' }, membership };
+        const action = { kind: 'send', sessionId: 's', prompt: 'p' };
+        client.create.mockResolvedValueOnce({ id: 'a5', projectId: 'proj-9' });
+        expect(await executeAutomationTool('automation_create', { name: 'p1', trigger: { kind: 'manual' }, action, projectId: 'proj-9' }, context)).toEqual({ automation: { id: 'a5', projectId: 'proj-9' } });
+        expect(client.create).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: 'proj-9' }));
+        client.create.mockResolvedValueOnce({ id: 'a6', projectId: 'proj-1' });
+        await executeAutomationTool('automation_create', { name: 'p2', trigger: { kind: 'manual' }, action, projectId: 'current' }, context);
+        expect(membership).toHaveBeenCalledWith('sess-a');
+        expect(client.create).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: 'proj-1' }));
+        // No projectId: nothing sent, no notice, membership not consulted again.
+        membership.mockClear();
+        expect(await executeAutomationTool('automation_create', { name: 'p3', trigger: { kind: 'manual' }, action }, context)).toEqual({ automation: { id: 'a2' } });
+        expect(client.create.mock.calls.at(-1)![0]).not.toHaveProperty('projectId');
+        expect(membership).not.toHaveBeenCalled();
+        // Old server strips projectId: still created, but the result says it was ignored.
+        const old = await executeAutomationTool('automation_create', { name: 'p4', trigger: { kind: 'manual' }, action, projectId: 'proj-9' }, context) as any;
+        expect(old.automation).toEqual({ id: 'a2' });
+        expect(old.notices[0]).toMatch('does not support automation projects');
+        // Update: null detaches, an id attaches, omitted leaves it alone.
+        client.update.mockResolvedValueOnce({ id: 'a1', version: 4, projectId: null });
+        expect(await executeAutomationTool('automation_update', { name: 'nightly', version: 3, projectId: null }, context)).toEqual({ automation: { id: 'a1', version: 4, projectId: null } });
+        expect(client.update).toHaveBeenLastCalledWith('a1', { version: 3, projectId: null });
+        const stale = await executeAutomationTool('automation_update', { name: 'nightly', version: 3, projectId: 'proj-9' }, context) as any;
+        expect(client.update).toHaveBeenLastCalledWith('a1', { version: 3, projectId: 'proj-9' });
+        expect(stale.notices[0]).toMatch('does not support automation projects');
+        await executeAutomationTool('automation_update', { name: 'nightly', version: 3, newName: 'n2' }, context);
+        expect(client.update.mock.calls.at(-1)![1]).not.toHaveProperty('projectId');
+        // `current` outside a project session is refused before any write.
+        client.create.mockClear();
+        await expect(executeAutomationTool('automation_create', { name: 'p5', trigger: { kind: 'manual' }, action, projectId: 'current' }, { ...context, env: { VH_PEER_SESSION_ID: 'sess-b' } })).rejects.toThrow('does not belong to a project');
+        await expect(executeAutomationTool('automation_create', { name: 'p6', trigger: { kind: 'manual' }, action, projectId: 'current' }, { ...context, env: {} })).rejects.toThrow('managed session');
+        expect(client.create).not.toHaveBeenCalled();
+        expect(AUTOMATION_TOOL_SCHEMAS.automation_create.inputSchema.projectId.safeParse('current').success).toBe(true);
+        expect(AUTOMATION_TOOL_SCHEMAS.automation_update.inputSchema.projectId.safeParse(null).success).toBe(true);
+        expect(AUTOMATION_TOOL_SCHEMAS.automation_create.inputSchema.projectId.safeParse(null).success).toBe(false);
+    });
 });

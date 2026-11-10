@@ -29,7 +29,7 @@ import { sessionWebUrl } from './sessionMessage';
 import { parseEnvAssignment, SPAWN_AGENTS } from './spawn';
 import { ALLOWED_SPAWN_PERMISSION_MODES, sanitizeSpawnPermissionMode } from '@/daemon/spawnPermissionMode';
 import { delay } from '@/utils/time';
-import { sharedProjectsClient } from '@/projects/client';
+import { automationProjectNotice, resolveAutomationProject, type ProjectMembershipLookup } from '@/automations/project';
 
 export const AUTO_ACTIONS = ['list', 'show', 'create', 'edit', 'pause', 'resume', 'rm', 'run', 'fire', 'runs', 'cancel', 'ack', 'report', 'skill', 'install', 'uninstall', 'help'] as const;
 export type AutoAction = typeof AUTO_ACTIONS[number];
@@ -186,32 +186,19 @@ export function precheckFromCommand(command: AutoCommand, current?: AutomationPr
 
 /**
  * B-917: `--project <id>|current` attaches the sessions an automation spawns to a
- * project (B-644 `projectId`); `--no-project` detaches (edit). `current` is the
- * project of the managed session running this command (VH_PEER_SESSION_ID).
- * Ownership is enforced by the server (`project_not_found`), not here.
- * `undefined` = no project flag (edit keeps the current one).
+ * project; `--no-project` detaches (edit). Resolution is shared with the MCP
+ * tools (automations/project.ts). `undefined` = no project flag.
  */
-export async function projectFromCommand(command: Pick<AutoCommand, 'flags' | 'bools'>, deps: { env?: NodeJS.ProcessEnv; membership?: (sessionId: string) => Promise<{ projectId: string | null }> } = {}): Promise<string | null | undefined> {
+export async function projectFromCommand(command: Pick<AutoCommand, 'flags' | 'bools'>, deps: { env?: NodeJS.ProcessEnv; membership?: ProjectMembershipLookup } = {}): Promise<string | null | undefined> {
     const project = command.flags['--project'];
     const detach = command.bools.has('--no-project');
     if (project !== undefined && detach) throw new Error('--project and --no-project are mutually exclusive');
     if (detach) return null;
-    if (project === undefined) return undefined;
-    if (!project.trim()) throw new Error('--project needs a project id or `current`');
-    if (project !== 'current') return project;
-    const sessionId = (deps.env ?? process.env).VH_PEER_SESSION_ID;
-    if (!sessionId) throw new Error('--project current only works inside a Very Happy managed session; pass the project id instead');
-    const membership = await (deps.membership ?? ((id: string) => sharedProjectsClient().membership(id)))(sessionId);
-    if (!membership.projectId) throw new Error('This session does not belong to a project; pass --project <id> or omit --project');
-    return membership.projectId;
+    if (project !== undefined && !project.trim()) throw new Error('--project needs a project id or `current`');
+    return resolveAutomationProject(project, deps);
 }
 
-/** An older server strips `projectId` (B-644): say so instead of reporting a silent success. */
-export function projectEchoNotice(requested: string | null | undefined, automation: Automation): string | null {
-    if (requested === undefined) return null;
-    if (!Object.prototype.hasOwnProperty.call(automation, 'projectId')) return 'This server does not support automation projects: --project / --no-project was ignored. Upgrade the server, or set the project in the Web automation editor.';
-    return null;
-}
+export const projectEchoNotice = automationProjectNotice;
 
 export function describePrecheck(precheck: AutomationPrecheck): string {
     const what = precheck.shell !== undefined ? `sh: ${precheck.shell}` : `argv: ${JSON.stringify(precheck.command)}`;
