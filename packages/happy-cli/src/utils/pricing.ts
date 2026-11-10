@@ -3,11 +3,12 @@ import { Usage } from '../api/types';
 /**
  * Pricing rates (USD per million tokens) for Claude models.
  *
- * Source: https://www.anthropic.com/pricing (Claude 5 family as of 2026-09;
- * older rows kept for JSONL backfills of historical sessions). The
- * `cache_write` column is the 5-minute cache write (1.25× input); the
- * `cache_read` column is 0.1× input except where Anthropic publishes a
- * different rate (Fable 5.1: $0.25).
+ * Source: https://platform.claude.com/docs/en/about-claude/pricing (Fable /
+ * Mythos 5.2 rows read there 2026-11-10: $8 in, $40 out, $10 5-min cache
+ * write, $0.20 cache read; older rows kept for JSONL backfills of historical
+ * sessions). The `cache_write` column is the 5-minute cache write (1.25×
+ * input); the `cache_read` column is 0.1× input except where Anthropic
+ * publishes a different rate (Fable/Mythos 5.2: 0.025× = $0.20; 5.1: $0.25).
  *
  * Lookup is by exact id first, then by `resolvePricingKey` which classifies
  * an arbitrary id (aliases like `opus[1m]`, dated snapshots, Bedrock ARNs)
@@ -17,8 +18,10 @@ import { Usage } from '../api/types';
  */
 export const PRICING = {
     // --- Claude Fable / Mythos (same tier, same price) ---
+    'claude-fable-5-2': { input: 8.0, output: 40.0, cache_write: 10.0, cache_read: 0.20 },
     'claude-fable-5-1': { input: 10.0, output: 50.0, cache_write: 12.5, cache_read: 0.25 },
     'claude-fable-5': { input: 10.0, output: 50.0, cache_write: 12.5, cache_read: 1.0 },
+    'claude-mythos-5-2': { input: 8.0, output: 40.0, cache_write: 10.0, cache_read: 0.20 },
     'claude-mythos-5-1': { input: 10.0, output: 50.0, cache_write: 12.5, cache_read: 0.25 },
     'claude-mythos-5': { input: 10.0, output: 50.0, cache_write: 12.5, cache_read: 1.0 },
 
@@ -55,9 +58,10 @@ export type ModelId = keyof typeof PRICING;
 const DEFAULT_MODEL: ModelId = 'claude-opus-5-5';
 
 const FAMILY_DEFAULTS: Record<'fable' | 'mythos' | 'opus' | 'sonnet' | 'haiku', ModelId> = {
-    fable: 'claude-fable-5-1',
+    // The bundled Claude Code (2.1.322) resolves the `fable` alias to Fable 5.2.
+    fable: 'claude-fable-5-2',
     // Project Glasswing counterpart of Fable: same tier, same published rates.
-    mythos: 'claude-mythos-5-1',
+    mythos: 'claude-mythos-5-2',
     opus: 'claude-opus-5-5',
     sonnet: 'claude-sonnet-5',
     haiku: 'claude-haiku-4-5',
