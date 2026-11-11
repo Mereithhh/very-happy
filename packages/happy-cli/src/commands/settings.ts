@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { configuration } from '@/configuration'
+import { setMachineSettingViaDaemon } from '@/daemon/controlClient'
 import { sharedAttentionClient } from '@/attention/client'
 import { boardItemView } from '@/attention/ownerApproval'
 import { sharedProjectsClient } from '@/projects/client'
@@ -52,7 +53,6 @@ function liveService() {
         machine: {
             read: readMachineSettings,
             write: async (key, value) => {
-                const { setMachineSettingViaDaemon } = await import('@/daemon/controlClient')
                 const viaDaemon = await setMachineSettingViaDaemon(key, value)
                 if (viaDaemon === 'no-daemon') { await writeMachineSettingLocked(key, value); return }
                 if (viaDaemon !== 'ok') throw new SettingsError('daemon_write_failed', { detail: viaDaemon })

@@ -180,7 +180,12 @@ describe('set', () => {
         const h = harness(dir)
         await h.svc.set('assistantSkipPermissions', true, {})
         h.b.ownerChoose('card-1', 'approve')
+        // All three pass every card check before any of them writes: only the O_EXCL claim keeps it to one.
+        const find = h.b.board.findById
+        let arrived = 0; let open!: () => void; const barrier = new Promise<void>((r) => { open = r })
+        h.b.board.findById = async (...args) => { const item = await find(...args); if (++arrived === 3) open(); await barrier; return item }
         const results = await Promise.all([1, 2, 3].map(() => h.svc.set('assistantSkipPermissions', true, { approved: 'card-1' })))
+        h.b.board.findById = find
         expect(results.filter(r => r.ok)).toHaveLength(1)
         expect(await h.svc.set('assistantSkipPermissions', true, { approved: 'card-1' })).toMatchObject({ ok: false, error: 'approval_used' })
         // Wipe the markers: the card itself was burned (its face changed when it was marked 已写入).

@@ -41,6 +41,7 @@ export const LAZY_MODULES: ReadonlyArray<readonly [name: string, load: () => Pro
     ['commands/todo', () => import('@/commands/todo')],
     ['commands/issue', () => import('@/commands/issue')],
     ['commands/skill', () => import('@/commands/skill')],
+    ['commands/settings', () => import('@/commands/settings')],
     ['skill/install', () => import('@/skill/install')],
     ['daemon/doctor', () => import('@/daemon/doctor')],
     ['daemon/install', () => import('@/daemon/install')],
