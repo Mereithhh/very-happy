@@ -14,14 +14,16 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 're
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bot } from 'lucide-react';
 import { StatusDot } from '@/ui';
-import { useIsDesktop } from '@/app/useMediaQuery';
+import { useIsDesktop, useMediaQuery } from '@/app/useMediaQuery';
 import { useTranslation } from '@/i18n/useTranslation';
 import { mainAgentCopy } from '@/assistant/mainAgentCopy';
 import { mainAgentDockShowing, toggleMainAgent, useMainAgentStore } from '@/assistant/mainAgentStore';
 import { useMainAgentPointerSync, useMainAgentState } from '@/assistant/useMainAgent';
 import { mainAgentDot, mainAgentStatusDot } from '@/assistant/mainAgent';
 import { isMainAgentChord, MAIN_AGENT_CHORD_HINT } from '@/screens/command/mainAgentPalette';
-import { canDock, clampDockWidth, DOCK_HANDLE } from './mainAgentDock';
+import { canDock, DETAIL_RESERVE, DOCK_HANDLE, DOCK_MIN, dockLayout, dockMaxWidth, NOTES_HANDLE, NOTES_MIN } from './mainAgentDock';
+import { useLocalSetting } from '@/sync/storage';
+import { resolveNotesPanelWidth } from '@/screens/notes/notesPanelWidth';
 import './mainAgent.css';
 
 const MainAgentDock = lazy(() => import('./MainAgentViews').then((m) => ({ default: m.MainAgentDock })));
@@ -68,7 +70,8 @@ export function MainAgentHost({ rootPath = '/' }: { rootPath?: string } = {}) {
 /**
  * Rendered inside `.app-main-row` (display: contents, so it adds no box). It
  * watches the row's width — the space right of the sidebar — and publishes
- * whether the column fits; the column's width is clamped against it.
+ * whether the column fits; widths for the column and the notes dock sharing
+ * the row come from dockLayout (mainAgentDock.ts).
  */
 export function MainAgentDockSlot({ rootPath = '/' }: { rootPath?: string } = {}) {
     const isDesktop = useIsDesktop();
@@ -99,18 +102,31 @@ export function MainAgentDockSlot({ rootPath = '/' }: { rootPath?: string } = {}
     useEffect(() => () => { useMainAgentStore.setState({ dockAvailable: false }); }, []);
 
     const show = open && available && !onPage;
-    const width = clampDockWidth(stored, rowWidth);
-    // the row's other right-hand dock (notes) leaves room for the column (layout.css)
+    // the notes dock shares this row on wide screens (NotesDock: hidden on /notes, /session/:id, /terminal/:id)
+    const notesOpen = useLocalSetting('notesPanelOpen');
+    const notesStored = useLocalSetting('notesPanelWidth');
+    const notesWide = useMediaQuery('(min-width: 1100px)');
+    const notesInRow = notesOpen && notesWide && !location.pathname.startsWith('/notes') && !/^\/(session|terminal)\/[^/]+/.test(location.pathname);
+    const notesWidth = notesInRow ? resolveNotesPanelWidth(notesStored, typeof window === 'undefined' ? 0 : window.innerWidth) : null;
+    const layout = dockLayout(rowWidth, stored, notesWidth);
+    const maxWidth = layout.notes.kind === 'fit' ? Math.max(DOCK_MIN, rowWidth - DETAIL_RESERVE - DOCK_HANDLE - NOTES_HANDLE - NOTES_MIN) : dockMaxWidth(rowWidth);
+    const notesKey = layout.notes.kind === 'fit' ? `fit:${layout.notes.maxWidth}` : layout.notes.kind;
+    // the notes dock gives way per dockLayout (mainAgent.css reads these)
     useLayoutEffect(() => {
         const row = ref.current?.parentElement;
         if (!row) return;
-        if (show) { row.style.setProperty('--ma-dock-w', `${width + DOCK_HANDLE}px`); row.dataset.maDock = 'open'; }
-        else { row.style.removeProperty('--ma-dock-w'); delete row.dataset.maDock; }
-    }, [show, width]);
+        delete row.dataset.maNotes;
+        row.style.removeProperty('--ma-notes-max');
+        if (!show) { delete row.dataset.maDock; return; }
+        row.dataset.maDock = 'open';
+        if (layout.notes.kind === 'yield') row.dataset.maNotes = 'yield';
+        else if (layout.notes.kind === 'fit') row.style.setProperty('--ma-notes-max', `${layout.notes.maxWidth}px`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- notesKey stands for layout.notes
+    }, [show, notesKey]);
 
     return (
         <div ref={ref} className="ma-dock-slot">
-            {show && <Suspense fallback={null}><MainAgentDock width={width} rowWidth={rowWidth} /></Suspense>}
+            {show && <Suspense fallback={null}><MainAgentDock width={layout.dock} maxWidth={maxWidth} notesYield={layout.notes.kind === 'yield'} /></Suspense>}
         </div>
     );
 }

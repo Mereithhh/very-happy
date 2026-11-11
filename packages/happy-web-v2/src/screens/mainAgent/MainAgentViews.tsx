@@ -15,12 +15,12 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { useMainAgentStore } from '@/assistant/mainAgentStore';
 import { useMainAgentState } from '@/assistant/useMainAgent';
 import { MainAgentPanel } from './MainAgentPanel';
-import { clampDockWidth, dockKeyboardWidth, dockMaxWidth, dockRawWidthFromPointer, DOCK_MIN, shouldCollapseDock } from './mainAgentDock';
+import { dockKeyboardWidth, dockRawWidthFromPointer, DOCK_MIN, shouldCollapseDock } from './mainAgentDock';
 import { mainAgentToolCopy } from './toolCards/mainAgentToolCopy';
 
 type Drag = { pointerId: number; edge: number; startX: number; active: boolean; width: number; collapse: boolean };
 
-export function MainAgentDock({ width, rowWidth }: { width: number; rowWidth: number }) {
+export function MainAgentDock({ width, maxWidth, notesYield }: { width: number; maxWidth: number; notesYield: boolean }) {
     const state = useMainAgentState();
     const { lang } = useTranslation();
     const copy = mainAgentToolCopy(lang);
@@ -53,7 +53,7 @@ export function MainAgentDock({ width, rowWidth }: { width: number; rowWidth: nu
         <>
             <div className="app-resize-handle ma-dock-handle" role="separator" aria-orientation="vertical" tabIndex={0}
                 aria-label={copy.dockResize} title={copy.dockResizeHint}
-                aria-valuemin={DOCK_MIN} aria-valuemax={dockMaxWidth(rowWidth)} aria-valuenow={shown}
+                aria-valuemin={DOCK_MIN} aria-valuemax={maxWidth} aria-valuenow={shown}
                 data-collapse={live?.collapse ? 'armed' : undefined}
                 onPointerDown={(e) => {
                     if (e.button !== 0) return;
@@ -70,7 +70,7 @@ export function MainAgentDock({ width, rowWidth }: { width: number; rowWidth: nu
                         document.body.classList.add('vh-col-resizing');
                     }
                     const raw = dockRawWidthFromPointer(e.clientX, d.edge);
-                    d.width = clampDockWidth(raw, rowWidth);
+                    d.width = Math.min(maxWidth, Math.max(DOCK_MIN, Math.round(raw)));
                     d.collapse = shouldCollapseDock(raw);
                     setLive({ width: d.width, collapse: d.collapse });
                 }}
@@ -80,16 +80,24 @@ export function MainAgentDock({ width, rowWidth }: { width: number; rowWidth: nu
                 onDoubleClick={() => useMainAgentStore.getState().setDockWidth(null)}
                 onKeyDown={(e) => {
                     if (e.key === 'Escape' && drag.current) { e.preventDefault(); end(false); return; }
-                    const next = dockKeyboardWidth(width, e.key, e.shiftKey, rowWidth);
+                    const next = dockKeyboardWidth(width, e.key, e.shiftKey, Number.MAX_SAFE_INTEGER);
                     if (next === null) return;
                     e.preventDefault();
-                    useMainAgentStore.getState().setDockWidth(next);
+                    useMainAgentStore.getState().setDockWidth(Math.min(maxWidth, next));
                 }}
             />
             <aside className={`ma-dock${live?.collapse ? ' ma-dock--collapse-armed' : ''}`} ref={ref} tabIndex={-1} style={{ width: shown }}
                 data-testid="main-agent-dock"
                 onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented && e.target === e.currentTarget) { e.preventDefault(); close(); } }}>
-                <MainAgentPanel state={state} variant="dock" onClose={close} />
+                <div className="ma-dock-col">
+                    {notesYield && (
+                        <div className="ma-dock-notice" role="status">
+                            <span>{copy.notesYield}</span>
+                            <button type="button" className="ma-link-btn" onClick={close}>{copy.dockCollapse}</button>
+                        </div>
+                    )}
+                    <MainAgentPanel state={state} variant="dock" onClose={close} />
+                </div>
             </aside>
         </>
     );

@@ -158,7 +158,7 @@ export function mainAgentToolView(tool: Pick<ToolCall, 'name' | 'state' | 'input
     const isError = tool.state === 'error' || json?.ok === false;
     // `error` is a code (`lead_unreachable`) or, in B-919 lifecycle receipts, a one-line message
     const errorField = str(json?.error);
-    const errorCode = errorField && /^[a-z][a-z_]*$/.test(errorField) ? errorField : undefined;
+    const errorCode = errorField && /^[a-z][a-z_:-]*$/.test(errorField) ? errorField : undefined;
     const errorMessage = errorCode ? str(json?.detail) : errorField ?? str(json?.detail);
 
     if (running) {
@@ -220,7 +220,8 @@ function describe(name: string, input: Rec, json: Rec | null, text: string | nul
             return v(name === 'lead_delegate' ? 'delegate' : 'lead-message', 'delivered', {
                 // the receipt names the team; before it arrives (or on a refusal) the id is all there is
                 heading: str(json?.team) ?? str(input.teamId),
-                fields: [...field('lead', json?.lead), ...(name === 'lead_message' ? field('task', input.taskId, true) : [])],
+                // a Lead bot is usually named "Lead": the link already says 「打开 Lead 会话」, so only a distinct name earns a field
+                fields: [...(str(json?.lead) && str(json?.lead)!.trim().toLowerCase() !== 'lead' ? field('lead', json?.lead) : []), ...(name === 'lead_message' ? field('task', input.taskId, true) : [])],
                 preview: name === 'lead_delegate' ? str(input.goal) : str(input.body),
                 items: name === 'lead_delegate' && Array.isArray(input.acceptance) ? input.acceptance.filter((a): a is string => typeof a === 'string') : undefined,
                 links: sessionLink(json?.leadSessionId, 'lead'),
@@ -320,7 +321,7 @@ function describe(name: string, input: Rec, json: Rec | null, text: string | nul
             const to = str(json?.to) ?? str(input.to) ?? 'new';
             const fresh = to === 'new' || to === 'fresh';
             const state = str(json?.state);
-            return v('lifecycle', state === 'done' ? 'done' : state === 'running' ? 'in-progress' : json?.deduped === true || json?.already === true ? 'already' : 'queued', {
+            return v('lifecycle', json?.deduped === true || json?.already === true ? 'already' : state === 'done' ? 'done' : state === 'running' ? 'in-progress' : 'queued', {
                 fields: [...field('from', json?.from ?? input.from, true), ...(fresh ? [{ key: 'to' as const, value: 'new' }] : field('to', to, true))],
                 preview: str(input.note),
                 links: [...sessionLink(json?.from ?? input.from, 'from'), ...(fresh ? [] : sessionLink(to, 'to'))],

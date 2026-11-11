@@ -188,7 +188,9 @@ function MainAgentConversation({ sessionId, gates, offlineMachine, copy }: { ses
     const transcript = useMemo(() => deriveTranscript(messages, { keepOptions: true, withTool: true }), [messages]);
     const pending = useMemo(() => derivePendingPermission(session?.agentState), [session?.agentState]);
 
-    const [draft, setDraft] = useState('');
+    // B-923: the draft lives in the store, so hiding the column (⌘⇧E, a narrower window) or moving to the page keeps it
+    const draft = useMainAgentStore((st) => st.composerDraft);
+    const setDraft = useMainAgentStore((st) => st.setComposerDraft);
     const inputRef = useRef<HTMLTextAreaElement | null>(null);
     const logRef = useRef<HTMLDivElement | null>(null);
     useEffect(() => {

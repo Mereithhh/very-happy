@@ -43,9 +43,35 @@
 .ma-dock-handle[data-collapse='armed']::after {
   background: var(--text-faint);
 }
-/* the notes dock shares the row: it leaves the column + 320px of content */
+/* the notes dock shares the row: widths from dockLayout (mainAgentDock.ts) —
+   narrowed to its share, or hidden (kept mounted) when it cannot keep its minimum */
 .app-main-row[data-ma-dock='open'] > .notes-dock {
-  max-width: calc(100% - var(--ma-dock-w, 0px) - 320px);
+  max-width: var(--ma-notes-max, none);
+}
+.app-main-row[data-ma-notes='yield'] > .notes-dock,
+.app-main-row[data-ma-notes='yield'] > .notes-dock-handle {
+  display: none;
+}
+.ma-dock-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px var(--sp-3);
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--fill-soft);
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+}
+.ma-dock-notice > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ma-dock-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
 }
 
 .ma-page {

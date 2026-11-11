@@ -13,6 +13,11 @@
  *    "container − 326px" (session.css .sd-files: 320 + its 6px handle), so
  *    conversation and workspace panel keep ≥ 320px each. Nothing overlaps
  *    and the row never scrolls sideways.
+ *  - With the notes dock in the same row (dockLayout): the session area's
+ *    reserve comes first, then the main agent column narrows to DOCK_MIN,
+ *    then the notes dock narrows to its own minimum (300); if it still does
+ *    not fit, the notes dock yields (kept mounted, not shown) and the column
+ *    says so with a one-click way back. Nothing is squeezed below its minimum.
  *  - Open + width persist per device (localStorage), like the sidebar width.
  */
 
@@ -44,6 +49,35 @@ export function dockMaxWidth(rowWidth: number): number {
 export function clampDockWidth(px: number | null | undefined, rowWidth: number): number {
     const w = px == null || !Number.isFinite(px) ? DOCK_DEFAULT : Math.round(px);
     return Math.min(dockMaxWidth(rowWidth), Math.max(DOCK_MIN, w));
+}
+
+/** Notes dock (screens/notes/notesPanelWidth.ts NOTES_PANEL_MIN) and its separator. */
+export const NOTES_MIN = 300;
+export const NOTES_HANDLE = 6;
+
+export type DockLayout = {
+    /** the main agent column's width */
+    dock: number;
+    /** notes dock: not in the row | its max-width (≤ its own width) | hidden while the column shows */
+    notes: { kind: 'none' } | { kind: 'fit'; maxWidth: number } | { kind: 'yield' };
+};
+
+/**
+ * Widths for the main agent column and (if it sits in the same row) the
+ * notes dock. `notesWidth` = the notes dock's own width when it is in the
+ * row, else null. Priority: session area (DETAIL_RESERVE) > main agent
+ * column (≥ DOCK_MIN) > notes dock (≥ NOTES_MIN, else it yields).
+ */
+export function dockLayout(rowWidth: number, stored: number | null | undefined, notesWidth: number | null): DockLayout {
+    const preferred = clampDockWidth(stored, rowWidth);
+    if (notesWidth === null || !Number.isFinite(notesWidth)) return { dock: preferred, notes: { kind: 'none' } };
+    const room = Math.floor(rowWidth - DETAIL_RESERVE - DOCK_HANDLE - NOTES_HANDLE);
+    const notes = Math.max(NOTES_MIN, Math.round(notesWidth));
+    if (preferred + notes <= room) return { dock: preferred, notes: { kind: 'fit', maxWidth: notes } };
+    const dock = Math.max(DOCK_MIN, Math.min(preferred, room - notes));
+    const notesFit = room - dock;
+    if (notesFit >= NOTES_MIN) return { dock, notes: { kind: 'fit', maxWidth: Math.min(notes, notesFit) } };
+    return { dock: preferred, notes: { kind: 'yield' } };
 }
 
 /** The column is anchored to the row's right edge: width = edge − pointer (raw, for the collapse check). */

@@ -43,7 +43,6 @@ describe('mainAgentToolView (B-923)', () => {
         expect(ok).toMatchObject({ kind: 'delegate', status: 'delivered', heading: 'Docs crew', links: [{ kind: 'session', sessionId: 'sess-lead-1234', role: 'lead' }] });
         expect(ok.preview).toMatch(/onboarding guide/);
         expect(ok.items).toHaveLength(3);
-        expect(ok.fields).toContainEqual({ key: 'lead', value: 'Lead' });
         expect(view('lead_delegate-running')).toMatchObject({ status: 'running', heading: 'team-docs', links: [] });
         const bad = view('lead_delegate-unreachable');
         expect(bad).toMatchObject({ status: 'failed', errorCode: 'lead_unreachable', links: [] });
@@ -124,10 +123,12 @@ describe('mainAgentToolView (B-923)', () => {
     it('lifecycle receipts (B-919): queued / running / already / scheduled / failed / not available', () => {
         expect(view('session_wrapup-ok')).toMatchObject({ kind: 'lifecycle', status: 'queued', links: [{ sessionId: 'sess-target-5678' }] });
         expect(view('session_wrapup-running').status).toBe('in-progress');
-        expect(view('session_wrapup-error')).toMatchObject({ status: 'failed', errorText: 'archived session' });
+        expect(view('session_wrapup-error')).toMatchObject({ status: 'failed', errorText: 'wrap-up request failed' });
+        expect(view('session_wrapup-deduped').status).toBe('already');
+        expect(view('session_handoff-deduped')).toMatchObject({ status: 'already', links: [{ role: 'from' }, { role: 'to', sessionId: 'sess-new-9' }] });
         expect(view('session_handoff-ok')).toMatchObject({ status: 'queued', fields: expect.arrayContaining([{ key: 'to', value: 'new' }]), links: [{ role: 'from' }] });
         expect(view('session_handoff-to')).toMatchObject({ status: 'done', links: [{ role: 'from' }, { role: 'to', sessionId: 'sess-lead-1234' }] });
-        expect(view('session_handoff-error')).toMatchObject({ status: 'failed', errorText: 'directory missing' });
+        expect(view('session_handoff-error')).toMatchObject({ status: 'failed', errorText: 'Could not start the new session: directory missing' });
         expect(view('session_restart-idle')).toMatchObject({ status: 'scheduled-idle', fields: expect.arrayContaining([{ key: 'version', value: '0.2.212', mono: true }]) });
         expect(view('session_restart-now').status).toBe('scheduled-now');
         expect(view('session_restart-already').status).toBe('already');
@@ -145,5 +146,36 @@ describe('mainAgentToolView (B-923)', () => {
         expect(toolResultText([{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }])).toBe('a\nb');
         expect(toolResultText({ content: [{ type: 'text', text: 'x' }] })).toBe('x');
         expect(parseIssueLine('assigned VH-3  [todo]  Fix (a) thing  (claude); run #1 queued on claude')).toEqual({ key: 'VH-3', status: 'todo', title: 'Fix (a) thing' });
+    });
+
+    it('QA P3: a Lead named "Lead" is not repeated; a distinct name is shown', () => {
+        expect(view('lead_delegate-ok').fields.find((f) => f.key === 'lead')).toBeUndefined();
+        const named = mainAgentToolView({ name: 'mcp__happy__lead_delegate', state: 'completed', input: { teamId: 't', goal: 'g', acceptance: ['a'] }, result: '{"ok":true,"team":"T","lead":"Docs Lead","leadSessionId":"s1","state":"delivered"}' })!;
+        expect(named.fields).toContainEqual({ key: 'lead', value: 'Docs Lead' });
+    });
+
+    it('QA P3: receipt text is in the UI language — known CLI sentences translated, the rest kept with a lead-in', () => {
+        const cases: Array<[string, RegExp]> = [
+            ['session_restart-busy', /^会话现在不空闲（正在跑一轮对话），请改用「空闲后重启」。$/],
+            ['session_restart-not-live', /不在主 agent 这台机器上运行/],
+            ['session_wrapup-error', /^收尾请求没有成功。$/],
+            ['session_handoff-error', /^新会话没能启动（directory missing）。$/],
+            ['session_spawn-error', /^新开会话失败：directory does not exist$/],
+            ['lead_message-error', /^找不到团队 team-gone。$/],
+            ['todo_complete-error', /^找不到这条待办/],
+            ['issue_comment-error', /^没有指定 Issue/],
+            ['session_wrapup-unknown', /^回执原文：server answered 502$/],
+        ];
+        for (const [id, re] of cases) expect(explain(view(id), zh), id).toMatch(re);
+        // English keeps the CLI's own words
+        expect(explain(view('session_restart-busy'), en)).toMatch(/^it is not idle right now/);
+        // codes (when a receipt carries one) map in both languages
+        for (const code of ['busy:quiet', 'not-live', 'local-terminal', 'owner_request_required', 'deduped', 'already-queued']) {
+            const v = mainAgentToolView({ name: 'mcp__happy__session_restart', state: 'error', input: { sessionId: 's' }, result: JSON.stringify({ ok: false, error: code }) })!;
+            expect(v.errorCode, code).toBe(code);
+            expect(explain(v, zh), code).toMatch(/[\u4e00-\u9fa5]/);
+            expect(explain(v, en), code).toMatch(/[A-Za-z]/);
+        }
+        expect(zh.error('busy:quiet')).toMatch(/上一轮刚结束/);
     });
 });

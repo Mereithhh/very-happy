@@ -53,9 +53,12 @@ interface MainAgentStoreState {
     openRequest: number;
     /** text to put in (or send from) the composer when the main agent opens */
     pendingDraft: { text: string; send: boolean } | null;
+    /** B-923: the composer's unsent text — outlives the column (hide / narrow window) and is shared with the /main-agent page */
+    composerDraft: string;
 
     setDockOpen: (open: boolean) => void;
     setDockWidth: (width: number | null) => void;
+    setComposerDraft: (text: string) => void;
     takePendingDraft: () => { text: string; send: boolean } | null;
     reset: () => void;
 }
@@ -69,6 +72,7 @@ const initial = {
     configRaw: null,
     configVersion: -1,
     pendingDraft: null,
+    composerDraft: '',
 };
 
 const dockPrefs = readDockPrefs();
@@ -83,6 +87,7 @@ export const useMainAgentStore = create<MainAgentStoreState>((set, get) => ({
         set({ dockOpen: open });
         writeDockPrefs({ open, width: get().dockWidth });
     },
+    setComposerDraft: (text) => set({ composerDraft: text }),
     setDockWidth: (width) => {
         set({ dockWidth: width });
         writeDockPrefs({ open: get().dockOpen, width });

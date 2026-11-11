@@ -21,6 +21,8 @@ export interface MainAgentToolCopy {
     rawResult: string;
     /** plain-language reason for a receipt error code; null = show the receipt's own text */
     error: (code: string | undefined) => string | null;
+    /** a receipt's free-text error in this language: a known CLI sentence translated, anything else kept with a lead-in */
+    detail: (text: string) => string;
     blocked: string;
     unavailable: string;
     awaiting: string;
@@ -29,7 +31,74 @@ export interface MainAgentToolCopy {
     dockResize: string;
     dockResizeHint: string;
     dockCollapse: string;
+    notesYield: string;
     paletteClose: string;
+}
+
+/** B-919 lifecycle refusals (CLI assistant/mainAgentLifecycle.ts RESTART_REFUSALS / BUSY_REASONS), keyed by code. */
+const ZH_LIFECYCLE: Record<string, string> = {
+    'not-live': '它不在主 agent 这台机器上运行，只能重启本机的会话。',
+    'local-terminal': '它跑在你自己的终端里，请在那里重启。',
+    'assistant': '它是助手会话，不能这样重启。',
+    'unsupported-flavor': '它的 agent 不支持原地重启。',
+    'no-turn-reports': '它的 wrapper 太旧，无法判断是否空闲；请在网页上重启。',
+    'not-resumable': '它的对话无法恢复。',
+    'already-queued': '已经排了一次重启，没有重复排。',
+    'daemon-too-old': '这台机器的 daemon 太旧，请升级 very-happy-cli。',
+    'daemon-unreachable': '本机 daemon 没有响应。',
+};
+const ZH_BUSY: Record<string, string> = {
+    'turn-active': '正在跑一轮对话',
+    'background-tasks': '有后台任务在跑',
+    'automation-run': '有自动化正在用它',
+    'quiet': '上一轮刚结束，可能还有排队的消息',
+    'upgrade-pending': 'CLI 马上要升级，到时会自动重启',
+    'observing': 'daemon 刚启动，还不确定它是否空闲（约一分钟）',
+};
+/** English sentence the CLI writes → zh. Order matters: the first match wins. */
+const ZH_SENTENCES: Array<[RegExp, (m: RegExpExecArray) => string]> = [
+    [/^it is not idle right now: (.+?); use when = idle/i, (m) => `会话现在不空闲（${zhBusyReason(m[1])}），请改用「空闲后重启」。`],
+    [/^it is busy \(a turn or background task is running\)/i, () => '会话正忙（有对话或后台任务在跑），请改用「空闲后重启」。'],
+    [/^it is not running on this machine/i, () => ZH_LIFECYCLE['not-live']],
+    [/^it runs in the owner's own terminal/i, () => ZH_LIFECYCLE['local-terminal']],
+    [/^it is an assistant session/i, () => ZH_LIFECYCLE['assistant']],
+    [/^its agent cannot be restarted in place/i, () => ZH_LIFECYCLE['unsupported-flavor']],
+    [/^its wrapper is too old to prove it is idle/i, () => ZH_LIFECYCLE['no-turn-reports']],
+    [/^its conversation cannot be resumed/i, () => ZH_LIFECYCLE['not-resumable']],
+    [/^a restart is already queued for it/i, () => ZH_LIFECYCLE['already-queued']],
+    [/^the daemon on this machine is too old/i, () => ZH_LIFECYCLE['daemon-too-old']],
+    [/^the local daemon did not answer/i, () => ZH_LIFECYCLE['daemon-unreachable']],
+    [/^wrap-up request failed/i, () => '收尾请求没有成功。'],
+    [/^handoff request failed/i, () => '交接请求没有成功。'],
+    [/^Could not read session (\S+)/i, (m) => `读不到会话 ${m[1]}。`],
+    [/^Session (\S+) is not on this machine; start a session on its machine/i, (m) => `会话 ${m[1]} 不在主 agent 这台机器上；要交接给新会话，请先在它那台机器上开一个会话，再把它作为接手方。`],
+    [/^Could not start the new session: (.+)$/i, (m) => `新会话没能启动（${m[1]}）。`],
+    [/^from is that is the main agent itself/i, () => '不能交接主 agent 自己，请指定要交出工作的会话。'],
+    [/^to is that is the main agent itself/i, () => '主 agent 不接手工作，请指定一个工作会话，或不填让它新开一个。'],
+    [/^Restart failed: (.+)$/i, (m) => `重启失败（${m[1]}）。`],
+    [/^Invalid session ?id/i, () => '会话 id 不合法。'],
+    [/^Team (\S+) not found/i, (m) => `找不到团队 ${m[1]}。`],
+    [/^Team "(.+)" is archived/i, (m) => `团队「${m[1]}」已归档。`],
+    [/^Pass issue="VH-N"/i, () => '没有指定 Issue（VH-N），主 agent 不属于任何 Issue。'],
+    [/^Todo not found/i, () => '找不到这条待办，可能已被删除。'],
+    [/^Failed to spawn session: (.+)$/i, (m) => `新开会话失败：${m[1]}`],
+    [/^Failed to send(?: \(([^)]+)\))?: (.+)$/i, (m) => `发送失败：${m[2]}`],
+    [/^Session (\S+) on (\S+) is (\S+): (.+)$/i, (m) => `会话没送达（对方状态 ${m[3]}）：${m[4]}`],
+];
+function zhBusyReason(english: string): string {
+    const hit = Object.entries({
+        'a turn is running': 'turn-active', 'a background task is running': 'background-tasks', 'an automation run is using it': 'automation-run',
+        'its last turn ended moments ago': 'quiet', 'a CLI upgrade is about to restart it anyway': 'upgrade-pending', 'the daemon on this machine just started': 'observing',
+    }).find(([en]) => english.startsWith(en));
+    return hit ? ZH_BUSY[hit[1]] : '忙';
+}
+function zhDetail(text: string): string {
+    const t = text.trim();
+    for (const [re, to] of ZH_SENTENCES) {
+        const m = re.exec(t);
+        if (m) return to(m);
+    }
+    return `回执原文：${t}`;
 }
 
 const zh: MainAgentToolCopy = {
@@ -88,9 +157,17 @@ const zh: MainAgentToolCopy = {
             case 'project_not_member': return '服务器版本太旧，还不接受主 agent 写项目日志。';
             case 'not_available': return '当前 Very Happy 版本还不支持这个操作。';
             case 'first_prompt_failed': return '会话已开启，但第一条消息没发出去。';
-            default: return null;
+            case 'not-live': return ZH_LIFECYCLE['not-live'];
+            case 'local-terminal': return ZH_LIFECYCLE['local-terminal'];
+            case 'already-queued': return ZH_LIFECYCLE['already-queued'];
+            case 'deduped': return '同一个请求已经处理过，没有重复发送。';
+            case 'owner_request_required': return '这个操作只能在你明确要求、点名那个会话时做，主 agent 没有执行。';
+            default:
+                if (code?.startsWith('busy')) return `会话现在不空闲（${ZH_BUSY[code.slice(5)] ?? '忙'}），请改用「空闲后重启」。`;
+                return null;
         }
     },
+    detail: zhDetail,
     blocked: '主 agent 不能直接对外发送消息或写生产环境，这次调用被安全阀拦下了。要做这件事，请让它派活给会话并标明风险，由你在汇报板批准。',
     unavailable: '当前 Very Happy 版本还不支持这个操作，升级 CLI 后可用。',
     awaiting: '这次派活会对外可见或改生产，已放到汇报板等你决定。',
@@ -98,6 +175,7 @@ const zh: MainAgentToolCopy = {
     dockResize: '调整主 agent 栏宽度',
     dockResizeHint: '拖动调整宽度 · 双击恢复默认',
     dockCollapse: '收起主 agent',
+    notesYield: '笔记面板在这个宽度放不下，已暂时收起；收起主 agent 后会回来。',
     paletteClose: '关闭主 agent',
 };
 
@@ -157,9 +235,17 @@ const en: MainAgentToolCopy = {
             case 'project_not_member': return 'This server is too old to take project log entries from the main agent.';
             case 'not_available': return 'This Very Happy version does not support this yet.';
             case 'first_prompt_failed': return 'The session started, but its first message was not sent.';
-            default: return null;
+            case 'not-live': return 'It is not running on the main agent\'s machine.';
+            case 'local-terminal': return 'It runs in your own terminal; restart it there.';
+            case 'already-queued': return 'A restart is already queued for it.';
+            case 'deduped': return 'This request was already handled; nothing was sent twice.';
+            case 'owner_request_required': return 'Only done when you explicitly ask for it, for a session you name; the main agent did not do it.';
+            default:
+                if (code?.startsWith('busy')) return 'It is not idle right now; restart it when idle instead.';
+                return null;
         }
     },
+    detail: (text) => text,
     blocked: 'The main agent cannot send anything outside Very Happy or write to production directly, so the safety gate stopped this call. To do it, have it hand the work to a session with a risk level and approve it on the board.',
     unavailable: 'This Very Happy version does not support this yet; update the CLI to use it.',
     awaiting: 'This work would be visible outside or change production, so it is on the board waiting for your decision.',
@@ -167,6 +253,7 @@ const en: MainAgentToolCopy = {
     dockResize: 'Resize the main agent column',
     dockResizeHint: 'Drag to resize · double-click to reset',
     dockCollapse: 'Collapse the main agent',
+    notesYield: 'The notes panel does not fit at this width, so it is hidden for now; it comes back when you collapse the main agent.',
     paletteClose: 'Close the main agent',
 };
 
@@ -181,6 +268,6 @@ export function explain(view: ToolCardView, copy: MainAgentToolCopy): string | n
     if (view.status === 'awaiting') return copy.awaiting;
     const known = copy.error(view.errorCode);
     if (known) return known;
-    if (view.status === 'failed' || view.status === 'not-approved') return view.errorText ?? null;
+    if (view.status === 'failed' || view.status === 'not-approved') return view.errorText ? copy.detail(view.errorText) : null;
     return null;
 }
