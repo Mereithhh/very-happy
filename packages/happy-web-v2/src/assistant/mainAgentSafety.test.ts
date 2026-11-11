@@ -13,8 +13,8 @@ const creds = { token: 't', secret: 's' } as any;
 const resp = (status: number, body: unknown) => ({ status, ok: status >= 200 && status < 300, json: async () => body }) as unknown as Response;
 
 describe('B-922 main agent safety (web)', () => {
-    it('no section reads as standard; a section from a newer build reads strict and unreadable', () => {
-        expect(readSafety({ v: 1, skillRoots: [] })).toMatchObject({ draft: { preset: 'standard', overrides: {}, allowedTools: [] }, unreadable: false, present: false });
+    it('no section reads as loose (the default); a section from a newer build reads strict and unreadable', () => {
+        expect(readSafety({ v: 1, skillRoots: [] })).toMatchObject({ draft: { preset: 'loose', overrides: {}, allowedTools: [] }, unreadable: false, present: false });
         const future = readSafety({ v: 1, safety: { v: 2, preset: 'loose' } });
         expect(future.unreadable).toBe(true);
         expect(draftPolicy(future.draft)).toEqual(PRESET_POLICIES.strict);
@@ -23,12 +23,12 @@ describe('B-922 main agent safety (web)', () => {
     it('an item equal to the preset is not an override; a preset change resets the advanced items', () => {
         let d = readSafety(null).draft;
         d = setDraftItem(d, 'bash', true);
-        d = setDraftItem(d, 'outbound', 'ask'); // = standard
+        d = setDraftItem(d, 'outbound', 'allow'); // = loose
         expect(d.overrides).toEqual({ bash: true });
         expect(overrideCount(d)).toBe(1);
-        d = setDraftPreset(d, 'loose');
-        expect(d).toEqual({ preset: 'loose', overrides: {}, allowedTools: [] });
-        expect(sameDraft(d, { preset: 'loose', overrides: {}, allowedTools: [] })).toBe(true);
+        d = setDraftPreset(d, 'standard');
+        expect(d).toEqual({ preset: 'standard', overrides: {}, allowedTools: [] });
+        expect(sameDraft(d, { preset: 'standard', overrides: {}, allowedTools: [] })).toBe(true);
     });
 
     it('writes keep every other field; the skills save keeps the safety section', () => {

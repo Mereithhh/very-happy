@@ -1,12 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
+    parseMainAgentQuietHours, unreadableSafetySection,
     effectiveSafetyPolicy, isLoosening, mainAgentConfigLoosening, parseMainAgentSafety, PRESET_POLICIES,
     stricterPolicy, toolNameFromToolCardKey,
 } from './mainAgentSafety';
 
 describe('B-922 main agent safety section', () => {
-    it('no section = default (standard)', () => {
-        expect(parseMainAgentSafety(undefined)).toEqual({ safety: { v: 1, preset: 'standard', overrides: {}, allowedTools: [] }, failedClosed: false });
+    it('no section = default (loose, Owner 11-11); a saved preset wins', () => {
+        expect(parseMainAgentSafety(undefined)).toEqual({ safety: { v: 1, preset: 'loose', overrides: {}, allowedTools: [] }, failedClosed: false });
+        expect(parseMainAgentSafety({ v: 1, preset: 'standard' }).safety.preset).toBe('standard');
+        expect(PRESET_POLICIES.loose).toEqual({ production: 'ask', outbound: 'allow', thirdPartyWrite: 'allow', dispatchExternal: 'direct', dispatchProduction: 'ask', bash: false, fileEdits: false });
+    });
+
+    it('server reading: an unreadable section or value shape counts as looser; other fields never matter', () => {
+        expect(unreadableSafetySection({ v: 1, safety: { v: 2, preset: 'strict' } })).toBe(true);
+        expect(unreadableSafetySection(['x'])).toBe(true);
+        expect(unreadableSafetySection({ v: 1, quietHours: { enabled: false } })).toBe(false);
+        expect(unreadableSafetySection(null)).toBe(false);
+    });
+
+    it('quiet hours (B-924): lenient, default 00:30–08:30 on', () => {
+        expect(parseMainAgentQuietHours(undefined)).toEqual({ enabled: true, start: '00:30', end: '08:30', tz: null });
+        expect(parseMainAgentQuietHours({ enabled: false, start: '23:00', end: '7:00', tz: 'Asia/Singapore' })).toEqual({ enabled: false, start: '23:00', end: '08:30', tz: 'Asia/Singapore' });
     });
 
     it.each([
@@ -51,7 +66,7 @@ describe('B-922 main agent safety section', () => {
         expect(isLoosening(mainAgentConfigLoosening(std, { v: 1, safety: { v: 1, preset: 'strict' } }))).toBe(false);
         expect(isLoosening(mainAgentConfigLoosening(std, { v: 1, safety: { v: 9 } }))).toBe(false);
         expect(isLoosening(mainAgentConfigLoosening({ v: 1, safety: { v: 9 } }, std))).toBe(true);
-        // no section on either side = standard both times
+        // no section on either side = the default both times
         expect(isLoosening(mainAgentConfigLoosening(null, { v: 1, skillRoots: ['~/s'] }))).toBe(false);
     });
 

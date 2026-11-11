@@ -8,7 +8,10 @@
  * Reading is fail-closed: a section this build does not fully understand
  * (wrong `v`, unknown preset, unknown key, invalid value) is read as STRICT,
  * so an older CLI meeting a newer section can only be stricter than intended.
- * A config without any `safety` section reads as the default preset.
+ * A config without any `safety` section reads as the default preset (loose).
+ *
+ * The same KV value also carries `quietHours` (B-924); it is not a safety
+ * setting and never counts as loosening.
  */
 
 export const MAIN_AGENT_SAFETY_CAPABILITY = 'main-agent-safety-v2';
@@ -20,7 +23,8 @@ export const MAIN_AGENT_TOOL_ALWAYS_CHOICE = 'always';
 
 export const SAFETY_PRESETS = ['strict', 'standard', 'loose'] as const;
 export type SafetyPreset = typeof SAFETY_PRESETS[number];
-export const DEFAULT_SAFETY_PRESET: SafetyPreset = 'standard';
+/** Owner 11-11: the default leans loose; a saved preset always wins. */
+export const DEFAULT_SAFETY_PRESET: SafetyPreset = 'loose';
 
 /** What gate 1 does with one class of tool. */
 export const TOOL_POLICIES = ['deny', 'ask', 'allow'] as const;
@@ -185,6 +189,38 @@ export function mainAgentConfigLoosening(prev: unknown, next: unknown): ConfigLo
 
 export function isLoosening(l: ConfigLoosening): boolean {
     return l.policy.length > 0 || l.addedAllowedTools.length > 0 || l.removedDeniedTools.length > 0;
+}
+
+/**
+ * Server check for a machine-token write: a `safety` section it cannot read
+ * (unknown version / field / value) counts as loosening — the server does not
+ * guess what a newer client meant. A missing section is the default preset.
+ */
+export function unreadableSafetySection(config: unknown): boolean {
+    if (config === null) return false;
+    if (!isObj(config)) return true;
+    return config.safety !== undefined && parseMainAgentSafety(config.safety).failedClosed;
+}
+
+/** B-924 quiet hours on the same config value. Lenient: anything invalid falls back to the default. */
+export interface MainAgentQuietHours {
+    enabled: boolean;
+    /** `HH:MM`, 24h */
+    start: string;
+    end: string;
+    /** IANA zone; null = the main agent machine's local time */
+    tz: string | null;
+}
+export const DEFAULT_QUIET_HOURS: Readonly<MainAgentQuietHours> = { enabled: true, start: '00:30', end: '08:30', tz: null };
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+export function parseMainAgentQuietHours(raw: unknown): MainAgentQuietHours {
+    const out: MainAgentQuietHours = { ...DEFAULT_QUIET_HOURS };
+    if (!isObj(raw)) return out;
+    if (typeof raw.enabled === 'boolean') out.enabled = raw.enabled;
+    if (typeof raw.start === 'string' && HHMM_RE.test(raw.start)) out.start = raw.start;
+    if (typeof raw.end === 'string' && HHMM_RE.test(raw.end)) out.end = raw.end;
+    if (typeof raw.tz === 'string' && raw.tz.length > 0 && raw.tz.length <= 64) out.tz = raw.tz;
+    return out;
 }
 
 /** `main-agent-tool:<approvalId>:<toolName>` → toolName (null when not such a key). */

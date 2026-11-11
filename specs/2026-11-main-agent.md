@@ -64,12 +64,13 @@
   "v": 1,
   "skillRoots": ["~/skills"],             // ≤16 项；每项 ≤512 字符；绝对路径或 ~ 开头
   "deniedTools": ["mcp__*__*archive*"],   // 闸 1 的追加模式，≤64 项；格式见 §4.1
-  "safety": {                             // B-922，见 §4.4；缺省 = 标准
+  "safety": {                             // B-922，见 §4.4；缺省 = 宽松
     "v": 1,
-    "preset": "standard",                 // strict | standard | loose
+    "preset": "loose",                    // strict | standard | loose
     "overrides": { "bash": false },       // 可选，逐项覆盖预设
     "allowedTools": ["mcp__chat__send_message"] // 「以后都允许」的工具全名，≤64 项
   },
+  "quietHours": { "enabled": true, "start": "00:30", "end": "08:30", "tz": null }, // B-924；缺省 = 00:30–08:30 启用，tz null = 主 agent 机器本地时间
   "updatedAt": 1794334927713
 }
 ```
@@ -78,6 +79,7 @@
 - 本机补充文件 `~/.happy/assistant/config.json`，同一格式。两处**取并集**：`skillRoots` 去重合并，`deniedTools` 去重合并。没有任何一处能减少默认禁用表。
 - 公开仓里的默认值是**空**：`skillRoots: []`，`deniedTools: []`。
 - 不合法的项单独丢弃并在 wrapper 日志里记一行（不回显内容），其余照常生效。
+- `quietHours`（B-924）：宽松读法，单项不合法就用默认值；schema 在 happy-wire `parseMainAgentQuietHours`。它不是安全设置，服务端「改松」检查不比较它。
 - `safety` 段例外（B-922）：它的 schema 在 happy-wire `mainAgentSafety.ts`，读法是 **fail-closed**——`v≠1`、未知 preset、未知字段、非法取值、KV 请求失败或值不是 JSON，整段按「严格」处理（`allowedTools` 也不算）。本机 `config.json` 里的 `safety` 只能逐项改严，它的 `allowedTools` 不生效（主 agent 若开了 Bash，可能自己写这个文件）。B-916c 及更早的 CLI 不认识这段，照旧按严格运行。
 
 ## 3. 工具面（B-916b 实现，B-916c 加闸）
@@ -256,7 +258,7 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 
 **各预设的行为**：
 
-| 类别 | 严格（= B-916c） | 标准（新默认） | 宽松 |
+| 类别 | 严格（= B-916c） | 标准 | 宽松（新默认，Owner 11-11） |
 |---|---|---|---|
 | 内建 Bash | 禁用 | 禁用 | 禁用（高级里可开） |
 | 内建 Edit / Write / MultiEdit / NotebookEdit | 禁用 | 禁用 | 禁用（高级里可开） |
@@ -268,6 +270,8 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 | 第三方其他写 | 禁用 | 先问 | 直接用 |
 | 闸 2 `risk=external` | 先问 | 先问 | 直接派 |
 | 闸 2 `risk=production` | 先问 | 先问 | 先问 |
+
+没有 `safety` 段的账号用默认「宽松」；保存过档位的按保存的走。`automation_run / resume / fire` 三档都不过闸 2（只运行 Owner 已建好的自动化；严格档必须与 B-916c 逐字一致，而它们在 B-916c 本来就不过闸）；`automation_create / update` 维持 §4.2 的 risk 规则。
 
 逐项覆盖（`overrides`）键：`production / outbound / thirdPartyWrite`（`deny|ask|allow`）、`dispatchExternal / dispatchProduction`（`ask|direct`）、`bash / fileEdits`（布尔）。`allowedTools` 只把「先问」变成「直接用」，永远不解除「禁用」。
 
@@ -283,7 +287,9 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 
 **闸 2**。`effectiveRisk` 得出 `external` / `production` 后，对应项为 `direct` 时直接执行原 handler（日志记一行），否则照 §4.2 出卡。
 
-**只有 Owner 本人能改松**。server `POST /v1/kv`：请求 token 被 `requestTokenKind`（`app/auth/tokenKind.ts`，与 B-921 共用；目前判定 = token 带浏览器登录会话 id 即为人）判为机器时，对 `vh.main-agent-config.*` 的每个写入用 happy-wire `mainAgentConfigLoosening(旧值, 新值)` 比较：任何一项变松、删掉 `deniedTools`、删除整个值、写入非 JSON → `422 {error:'main_agent_config_owner_only', key}`。唯一例外：只新增 `allowedTools`，且每个新增工具都有本账号一张 `main-agent-tool:*:<tool>` 卡被 Owner 以 `always` 关闭（这就是第 3 步的写入）。收紧不限。用 422 而不是 403：Web 把 `/v1/kv` 的 401/403 当登录失效处理。
+**真正的边界是服务端检查 + Owner 的批准卡**：本机 `config.json` 只能逐项改严（主 agent 若开了 Bash 能改这个文件，所以它不能放松任何东西）；放松只能通过账号 KV，而账号 KV 的放松只接受浏览器登录的 Owner，或 Owner 在卡上选了「以后都允许」的那个工具。
+
+**只有 Owner 本人能改松**。server `POST /v1/kv`：请求 token 被 `requestTokenKind`（`app/auth/tokenKind.ts`，与 B-921 共用；目前判定 = token 带浏览器登录会话 id 即为人）判为机器时，对 `vh.main-agent-config.*` 的每个写入用 happy-wire `mainAgentConfigLoosening(旧值, 新值)` 比较：任何一项变松、删掉 `deniedTools`、删除整个值（回落到默认宽松）、写入非 JSON / 非对象、`safety` 段读不懂（未知版本、字段或取值，按「更宽松」处理）→ `422 {error:'main_agent_config_owner_only', key}`。唯一例外：只新增 `allowedTools`，且每个新增工具都有本账号一张 `main-agent-tool:*:<tool>` 卡被 Owner 以 `always` 关闭（这就是第 3 步的写入）。收紧不限；`quietHours`、`skillRoots` 等其他字段不比较。`POST /v1/kv/bulk` 是批量读，不写，无需检查。用 422 而不是 403：Web 把 `/v1/kv` 的 401/403 当登录失效处理。
 
 **能力位**。wrapper 在 session `capabilities` 加 `main-agent-safety-v2`，daemon 在 `daemonState` 加 `mainAgentSafety`。Web 设置 → 主 agent → 安全只在主 agent 所在机器有 `mainAgentSafety` 时显示预设与高级项，否则提示升级 CLI（旧 CLI 按严格运行）。
 
@@ -342,12 +348,12 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 | 存量旧 wrapper | 没有新工具和闸；随 B-911 / 自动重启换到新版本 |
 | B-922 新 Web + 旧 CLI（无 `mainAgentSafety`） | 安全一节提示升级；旧 CLI 不认 `safety` 段，按严格运行 |
 | B-922 新 CLI + 旧 server（无守卫） | 设置照常生效；机器 token 改松不会被拒（守卫随 server 发布） |
-| B-922 新 CLI + 旧 Web（B-916a） | 旧 Web 写配置时保留未知字段，`safety` 不丢；没有设置入口，默认标准 |
+| B-922 新 CLI + 旧 Web（B-916a） | 旧 Web 写配置时保留未知字段，`safety` 不丢；没有设置入口，默认宽松 |
 | B-922 新 server + 旧 CLI | 旧 CLI 只读配置，不受影响 |
 
 - 不改 wire schema、不加 server 路由、不加迁移：KV 用现有 `/v1/kv`，汇报板用现有 `source='agent'`；派给 Lead 是投递进 Lead 会话（B-506 链路），**不改 reducer、不走 owner actor 的 teams actions**。
 - **一处 server 权限放宽**（B-916b）：主 agent 会话（以 KV `vh.main-agent.v1.sessionId` 判定）可在本账号任意项目以自己身份写 project note。旧 server 上该写入被拒，工具回执 `{ok:false, error:'project_not_member'}`，不回退成 Owner 身份。
-- 发布顺序：Web 与 CLI 可独立发布；默认先 server/Web 后 CLI。B-922 必须先 server/Web（守卫先在），再 CLI（新默认「标准」随 CLI 生效）。
+- 发布顺序：Web 与 CLI 可独立发布；默认先 server/Web 后 CLI。B-922 必须先 server/Web（守卫先在），再 CLI（新默认「宽松」随 CLI 生效）。
 
 ## 9. P1 验收（不含语音）
 

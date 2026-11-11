@@ -56,7 +56,7 @@ const zh: MainAgentSafetyCopy = {
     presetHint: {
         strict: '第三方工具只能读；发送、发布、部署和其他写工具一律拒绝。派活只要有风险就先问你。',
         standard: '只读工具直接用；发送、发布、部署和其他写工具先出卡问你，批准后才执行。派活有风险时先问你。',
-        loose: '第三方工具直接用，发送也直接发；只有部署、发布、回滚这类生产动作先问你。对外派活直接派，生产派活先问你。',
+        loose: '默认档。第三方工具直接用，发送也直接发；只有部署、发布、回滚这类生产动作先问你。对外派活直接派，生产派活先问你。',
     },
     customized: (n) => `已自定义 ${n} 项`,
     resetCustom: '恢复预设',
@@ -101,7 +101,7 @@ const en: MainAgentSafetyCopy = {
     presetHint: {
         strict: 'Third-party tools are read-only; sending, publishing, deploying and other writes are refused. Risky dispatches ask you first.',
         standard: 'Read-only tools just run; sending, publishing, deploying and other writes post a card and run only after you approve. Risky dispatches ask you first.',
-        loose: 'Third-party tools just run, sends included; only deploy / release / rollback-type production actions ask you. External dispatches go straight out, production ones ask you.',
+        loose: 'The default. Third-party tools just run, sends included; only deploy / release / rollback-type production actions ask you. External dispatches go straight out, production ones ask you.',
     },
     customized: (n) => `${n} item(s) customized`,
     resetCustom: 'Reset to preset',

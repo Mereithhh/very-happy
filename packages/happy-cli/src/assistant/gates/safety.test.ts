@@ -105,9 +105,9 @@ describe('B-922 config: account decides, local file only tightens, unreadable = 
         expect(resolveMainAgentSafety({ safety: { v: 1, preset: 'strict' } }, { safety: { v: 1, preset: 'loose' } }).policy).toEqual(PRESET_POLICIES.strict)
     })
 
-    it('no section = standard; failed request or garbage value = strict', async () => {
+    it('no section = loose (the default); failed request or garbage value = strict', async () => {
         const aHome = await mkdtemp(join(tmpdir(), 'vh-safety-'))
-        expect((await loadMainAgentConfig({ assistantHome: aHome, kvGet: async () => null })).safety?.policy).toEqual(PRESET_POLICIES.standard)
+        expect((await loadMainAgentConfig({ assistantHome: aHome, kvGet: async () => null })).safety?.policy).toEqual(PRESET_POLICIES.loose)
         expect((await loadMainAgentConfig({ assistantHome: aHome, kvGet: async () => { throw new Error('503') } })).safety?.policy).toEqual(PRESET_POLICIES.strict)
         expect((await loadMainAgentConfig({ assistantHome: aHome, kvGet: async () => ({ value: '%%%' }) })).safety?.policy).toEqual(PRESET_POLICIES.strict)
         const future = await loadMainAgentConfig({ assistantHome: aHome, kvGet: async () => ({ value: b64({ v: 1, safety: { v: 2, preset: 'loose', network: 'open' } }) }) })
@@ -128,7 +128,10 @@ describe('B-922 config: account decides, local file only tightens, unreadable = 
         const strict = await prepareMainAgent({ kvGet: async () => ({ value: b64({ v: 1, safety: { v: 1, preset: 'strict' } }) }), board: null, classify: null, approvalLink: (id) => id, home, assistantHomeDir: aHome })
         expect(await strict.preToolUse({ hook_event_name: 'PreToolUse', tool_name: 'mcp__chat__send_message', tool_input: {} }))
             .toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: OUTBOUND_DENY_REASON } })
-        const std = await prepareMainAgent({ kvGet: async () => null, board: null, classify: null, approvalLink: (id) => id, home, assistantHomeDir: aHome })
+        const dflt = await prepareMainAgent({ kvGet: async () => null, board: null, classify: null, approvalLink: (id) => id, home, assistantHomeDir: aHome })
+        expect(dflt.safety.safety.preset).toBe('loose')
+        expect(await dflt.preToolUse({ hook_event_name: 'PreToolUse', tool_name: 'mcp__chat__send_message', tool_input: {} })).toEqual({ continue: true })
+        const std = await prepareMainAgent({ kvGet: async () => ({ value: b64({ v: 1, safety: { v: 1, preset: 'standard' } }) }), board: null, classify: null, approvalLink: (id) => id, home, assistantHomeDir: aHome })
         expect(std.safety.safety.preset).toBe('standard')
         // ask without a board fails closed with its own reason
         expect(await std.preToolUse({ hook_event_name: 'PreToolUse', tool_name: 'mcp__chat__send_message', tool_input: {} }))
@@ -303,7 +306,7 @@ describe('B-922 persistAllowedTool', () => {
     it('creates the section at the default preset; keeps every other field', async () => {
         const kv = memKv({ v: 1, skillRoots: ['~/s'], quietHours: [1, 2] })
         expect(await persistAllowedTool(kv, 'mcp__chat__send_message', () => 7)).toBe('written')
-        expect(kv.value()).toEqual({ v: 1, skillRoots: ['~/s'], quietHours: [1, 2], safety: { v: 1, preset: 'standard', allowedTools: ['mcp__chat__send_message'] }, updatedAt: 7 })
+        expect(kv.value()).toEqual({ v: 1, skillRoots: ['~/s'], quietHours: [1, 2], safety: { v: 1, preset: 'loose', allowedTools: ['mcp__chat__send_message'] }, updatedAt: 7 })
     })
 
     it('appends to an existing section, idempotent, retries one conflict', async () => {
@@ -326,5 +329,5 @@ it('B-922: local config file written by anyone cannot add allowedTools', async (
     await writeFile(join(aHome, 'config.json'), JSON.stringify({ safety: { v: 1, preset: 'loose', allowedTools: ['mcp__cloud__deploy_service'] } }))
     const cfg = await loadMainAgentConfig({ assistantHome: aHome, kvGet: async () => null })
     expect(cfg.safety?.allowedTools).toEqual([])
-    expect(cfg.safety?.policy).toEqual(PRESET_POLICIES.standard)
+    expect(cfg.safety?.policy).toEqual(PRESET_POLICIES.loose)
 })

@@ -5,6 +5,8 @@
  * freely; the one loosening it may make is adding to `safety.allowedTools` a
  * tool the owner chose "以后都允许这个工具" for on a gate-1 card
  * (`main-agent-tool:<approvalId>:<tool>`, resolved by the owner with `always`).
+ * Only `safety` and `deniedTools` are compared; `quietHours`, `skillRoots` and
+ * any other field are free. `/v1/kv/bulk` is a read, so this is the only path.
  */
 
 import {
@@ -14,6 +16,7 @@ import {
     MAIN_AGENT_TOOL_CARD_KEY_PREFIX,
     mainAgentConfigLoosening,
     toolNameFromToolCardKey,
+    unreadableSafetySection,
 } from '@slopus/happy-wire';
 import { db } from '@/storage/db';
 import { kvGet } from './kvGet';
@@ -33,6 +36,9 @@ export function decodeKvJsonValue(value: string): unknown {
 export function machineConfigWriteRefused(prev: unknown, next: unknown, grantedTools: ReadonlySet<string>): boolean {
     // an unreadable replacement cannot be compared: refuse rather than guess
     if (next === undefined) return true;
+    // a safety section (or value shape) this server cannot read counts as looser: fail-closed.
+    // Other fields (skillRoots, quietHours, …) are never compared.
+    if (unreadableSafetySection(next)) return true;
     const loosening = mainAgentConfigLoosening(prev, next);
     if (!isLoosening(loosening)) return false;
     if (loosening.policy.length > 0 || loosening.removedDeniedTools.length > 0) return true;

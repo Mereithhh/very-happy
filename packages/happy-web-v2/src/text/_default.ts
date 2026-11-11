@@ -3403,9 +3403,9 @@ export const en = {
             },
             nov11o: {
                 title: 'Main agent safety settings: Strict, Standard or Loose',
-                summary: 'Choose how much the main agent may do on its own; Standard asks you before it sends or writes anything.',
-                presets: 'Settings → Main agent → Safety: pick Strict (the old behaviour), Standard (new default) or Loose, and override single items under Advanced — production / outbound / other write tools, external and production dispatches, Bash and file edits. Needs the newest CLI on the main agent\'s machine; older ones keep running as Strict.',
-                ask: 'Under Standard, a send / publish / write tool posts a card with the tool and its arguments. "Approve once" runs exactly that call; "Always allow this tool" adds it to the allowed list; "Decline" refuses.',
+                summary: 'Choose how much the main agent may do on its own; by default it uses third-party tools freely and asks before production actions.',
+                presets: 'Settings → Main agent → Safety: pick Strict (the old behaviour), Standard or Loose (the new default; a preset you saved keeps applying), and override single items under Advanced — production / outbound / other write tools, external and production dispatches, Bash and file edits. Needs the newest CLI on the main agent\'s machine; older ones keep running as Strict.',
+                ask: 'A tool set to "Ask me" (production actions under Loose; sends and writes too under Standard) posts a card with the tool and its arguments. "Approve once" runs exactly that call; "Always allow this tool" adds it to the allowed list; "Decline" refuses.',
                 owner: 'Only you, in a signed-in browser, can loosen these settings; the main agent and machine tokens can only make them stricter.',
             },
             nov11m: {

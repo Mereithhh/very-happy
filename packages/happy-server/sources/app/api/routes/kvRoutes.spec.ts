@@ -186,7 +186,7 @@ describe('B-922 main agent safety: machine tokens may only tighten', () => {
 
     it('machine token: tightening passes, loosening is refused (preset, override, deniedTools, delete, garbage)', async () => {
         const strict = { v: 1, deniedTools: ['mcp__*__*archive*'], safety: { v: 1, preset: 'strict' } };
-        expect((await write(strict, -1)).statusCode).toBe(200); // no value yet = default standard → strict is tighter
+        expect((await write(strict, -1)).statusCode).toBe(200); // no value yet = default (loose) → strict is tighter
         for (const [label, next] of [
             ['preset', { ...strict, safety: { v: 1, preset: 'loose' } }],
             ['override', { ...strict, safety: { v: 1, preset: 'strict', overrides: { bash: true } } }],
@@ -195,14 +195,18 @@ describe('B-922 main agent safety: machine tokens may only tighten', () => {
             ['allowedTools without a grant', { ...strict, safety: { v: 1, preset: 'strict', allowedTools: ['mcp__chat__send_message'] } }],
             ['deleted', null],
             ['not JSON', Buffer.from('%%%').toString('base64')],
+            ['safety from a newer version', { ...strict, safety: { v: 2, preset: 'strict' } }],
+            ['unknown safety field', { ...strict, safety: { v: 1, preset: 'strict', network: 'off' } }],
+            ['not an object', ['x']],
         ] as const) {
             const res = await write(next, 0);
             expect(res.statusCode, label).toBe(422);
             expect(res.json(), label).toEqual({ error: 'main_agent_config_owner_only', key: KEY });
         }
         expect(state.rows[0].version).toBe(0);
-        // still allowed: tighten further, non-safety edits
+        // still allowed: tighten further, non-safety edits; quietHours (B-924) is never compared
         expect((await write({ ...strict, skillRoots: ['~/skills'], deniedTools: ['mcp__*__*archive*', 'mcp__*__*drop*'] }, 0)).statusCode).toBe(200);
+        expect((await write({ ...strict, skillRoots: ['~/skills'], deniedTools: ['mcp__*__*archive*', 'mcp__*__*drop*'], quietHours: { enabled: false, start: '01:00', end: '07:00', tz: 'UTC' } }, 1)).statusCode).toBe(200);
     });
 
     it('human (browser login) token may loosen', async () => {
