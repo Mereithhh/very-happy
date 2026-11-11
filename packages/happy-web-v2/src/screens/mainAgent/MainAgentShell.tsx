@@ -21,7 +21,7 @@ import { mainAgentDockShowing, toggleMainAgent, useMainAgentStore } from '@/assi
 import { useMainAgentPointerSync, useMainAgentState } from '@/assistant/useMainAgent';
 import { mainAgentDot, mainAgentStatusDot } from '@/assistant/mainAgent';
 import { isMainAgentChord, MAIN_AGENT_CHORD_HINT } from '@/screens/command/mainAgentPalette';
-import { canDock, clampDockWidth } from './mainAgentDock';
+import { canDock, clampDockWidth, DOCK_HANDLE } from './mainAgentDock';
 import './mainAgent.css';
 
 const MainAgentDock = lazy(() => import('./MainAgentViews').then((m) => ({ default: m.MainAgentDock })));
@@ -104,7 +104,7 @@ export function MainAgentDockSlot({ rootPath = '/' }: { rootPath?: string } = {}
     useLayoutEffect(() => {
         const row = ref.current?.parentElement;
         if (!row) return;
-        if (show) { row.style.setProperty('--ma-dock-w', `${width + 6}px`); row.dataset.maDock = 'open'; }
+        if (show) { row.style.setProperty('--ma-dock-w', `${width + DOCK_HANDLE}px`); row.dataset.maDock = 'open'; }
         else { row.style.removeProperty('--ma-dock-w'); delete row.dataset.maDock; }
     }, [show, width]);
 

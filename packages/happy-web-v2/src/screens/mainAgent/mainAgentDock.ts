@@ -7,20 +7,23 @@
  *  - It docks only when the main row is at least DOCK_MIN_ROW wide (sidebar
  *    excluded); narrower windows and phones open the full-screen
  *    /main-agent page instead, as before.
- *  - Width: [DOCK_MIN, min(DOCK_MAX, row − DETAIL_RESERVE)]. The session
- *    area therefore keeps ≥ DETAIL_RESERVE (640px): its own right-hand
- *    workspace panel (files / preview / board) caps itself at "container −
- *    320px" (session.css .sd-files), so conversation and workspace panel
- *    keep ≥ 320px each. Nothing overlaps and the row never scrolls sideways.
+ *  - Width: [DOCK_MIN, min(DOCK_MAX, row − DOCK_HANDLE − DETAIL_RESERVE)].
+ *    The session area therefore keeps ≥ DETAIL_RESERVE (646px): its own
+ *    right-hand workspace panel (files / preview / board) caps itself at
+ *    "container − 326px" (session.css .sd-files: 320 + its 6px handle), so
+ *    conversation and workspace panel keep ≥ 320px each. Nothing overlaps
+ *    and the row never scrolls sideways.
  *  - Open + width persist per device (localStorage), like the sidebar width.
  */
 
 export const DOCK_MIN = 320;
 export const DOCK_MAX = 560;
 export const DOCK_DEFAULT = 400;
-/** Space the column always leaves to the session area (conversation 320 + workspace panel 320). */
-export const DETAIL_RESERVE = 640;
-export const DOCK_MIN_ROW = DOCK_MIN + DETAIL_RESERVE;
+/** Space the column always leaves to the session area (conversation 320 + workspace handle 6 + panel 320). */
+export const DETAIL_RESERVE = 646;
+/** The column's own resize separator. */
+export const DOCK_HANDLE = 6;
+export const DOCK_MIN_ROW = DOCK_MIN + DOCK_HANDLE + DETAIL_RESERVE;
 export const DOCK_KEY_STEP = 16;
 export const DOCK_KEY_STEP_LARGE = 64;
 /** Dragging the column narrower than this collapses it on release (stored width kept). */
@@ -35,7 +38,7 @@ export function canDock(desktop: boolean, rowWidth: number): boolean {
 }
 
 export function dockMaxWidth(rowWidth: number): number {
-    return Math.max(DOCK_MIN, Math.min(DOCK_MAX, Math.floor(rowWidth - DETAIL_RESERVE)));
+    return Math.max(DOCK_MIN, Math.min(DOCK_MAX, Math.floor(rowWidth - DOCK_HANDLE - DETAIL_RESERVE)));
 }
 
 export function clampDockWidth(px: number | null | undefined, rowWidth: number): number {

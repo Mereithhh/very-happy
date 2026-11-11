@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { canDock, clampDockWidth, DETAIL_RESERVE, DOCK_DEFAULT, DOCK_MAX, DOCK_MIN, DOCK_MIN_ROW, dockKeyboardWidth, dockMaxWidth, parseDockPrefs, shouldCollapseDock } from './mainAgentDock';
+import { canDock, clampDockWidth, DETAIL_RESERVE, DOCK_HANDLE, DOCK_DEFAULT, DOCK_MAX, DOCK_MIN, DOCK_MIN_ROW, dockKeyboardWidth, dockMaxWidth, parseDockPrefs, shouldCollapseDock } from './mainAgentDock';
 
 describe('main agent column rules (B-923)', () => {
     it('docks only on desktop with room for the column and 640px of session area', () => {
-        expect(DOCK_MIN_ROW).toBe(DOCK_MIN + DETAIL_RESERVE);
+        expect(DOCK_MIN_ROW).toBe(DOCK_MIN + DOCK_HANDLE + DETAIL_RESERVE);
         expect(canDock(true, DOCK_MIN_ROW)).toBe(true);
         expect(canDock(true, DOCK_MIN_ROW - 1)).toBe(false);
         expect(canDock(false, 3000)).toBe(false);
@@ -17,13 +17,13 @@ describe('main agent column rules (B-923)', () => {
                 const w = clampDockWidth(stored, row);
                 expect(w).toBeGreaterThanOrEqual(DOCK_MIN);
                 expect(w).toBeLessThanOrEqual(DOCK_MAX);
-                expect(row - w).toBeGreaterThanOrEqual(DETAIL_RESERVE);
+                expect(row - w - DOCK_HANDLE).toBeGreaterThanOrEqual(DETAIL_RESERVE);
             }
         }
         expect(clampDockWidth(null, 3000)).toBe(DOCK_DEFAULT);
-        // the 1280 row (1014) caps the column at 374 so the session keeps 640
-        expect(dockMaxWidth(1014)).toBe(374);
-        expect(clampDockWidth(DOCK_DEFAULT, 1014)).toBe(374);
+        // the 1280 row (1014) caps the column at 362 so the session keeps 646
+        expect(dockMaxWidth(1014)).toBe(362);
+        expect(clampDockWidth(DOCK_DEFAULT, 1014)).toBe(362);
     });
 
     it('keyboard and collapse', () => {
