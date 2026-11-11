@@ -180,3 +180,48 @@ describe('click outside (real components)', () => {
     press(inert, inert, [5, 5]); // no throw, nothing to call
   });
 });
+
+describe('Radix family (DialogContent)', () => {
+  let root: Root;
+  let host: HTMLElement;
+  afterEach(() => { act(() => root?.unmount()); host?.remove(); });
+  const open = async (onOpenChange: (open: boolean) => void) => {
+    const Dialog = await import('@radix-ui/react-dialog');
+    const { DialogContent } = await import('./DialogContent');
+    host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+    act(() => root.render(createElement(Dialog.Root, { open: true, onOpenChange },
+      createElement(Dialog.Portal, null, createElement(Dialog.Overlay, { className: 'vh-dialog-overlay' }),
+        createElement(DialogContent, { className: 'vh-dialog', 'aria-describedby': undefined },
+          createElement(Dialog.Title, null, 'Commit'), createElement('textarea', { name: 'message' }))))));
+    await act(async () => { await new Promise(r => setTimeout(r, 10)); }); // Radix arms its outside listener on the next tick
+  };
+  const pressOutside = () => act(() => {
+    const overlay = document.querySelector('.vh-dialog-overlay')!;
+    overlay.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' }));
+    overlay.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+  });
+  it('a press outside closes an untouched dialog', async () => {
+    const onOpenChange = vi.fn();
+    await open(onOpenChange);
+    pressOutside();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+  it('after an edit a press outside keeps it open', async () => {
+    const onOpenChange = vi.fn();
+    await open(onOpenChange);
+    const field = document.querySelector('textarea')!;
+    act(() => { field.value = 'fix: typo'; field.dispatchEvent(new Event('input', { bubbles: true })); });
+    pressOutside();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+  it('every Radix dialog on the shared shell uses DialogContent', () => {
+    for (const f of ['../screens/session/ShareDialog.tsx', '../screens/session/OperatorFiles.tsx', '../screens/session/OperatorGrant.tsx',
+      '../screens/session/SessionInfoDialog.tsx', '../screens/session/git/GitActionDialog.tsx', '../screens/session/ClaudeRuntimeDialog.tsx',
+      '../screens/projects/ProjectShareDialog.tsx', '../screens/terminal/TerminalShareDialog.tsx', '../components/modelConfig/ModelConfigEditor.tsx',
+      '../screens/session/AccountUnavailableBanner.tsx', '../components/accounts/AddAccountDialog.tsx', '../screens/projects/ProjectOperateAll.tsx']) {
+      const src = read(f);
+      expect(src, f).toMatch(/<DialogContent className=/);
+      expect(src, f).not.toContain('<Dialog.Content');
+    }
+  });
+});

@@ -6,6 +6,7 @@
  * owner's machine under the owner's permission mode (spec security audit).
  */
 import * as Dialog from '@radix-ui/react-dialog';
+import { DialogContent } from '@/ui/DialogContent';
 import { ShieldAlert, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSessionShares } from '@/sync/sessionSharesStore';
@@ -168,7 +169,7 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
         <Dialog.Root open={open} onOpenChange={onOpenChange}>
             <Dialog.Portal>
                 <Dialog.Overlay className="vh-dialog-overlay so-overlay" />
-                <Dialog.Content className="vh-dialog so-dialog" aria-describedby={undefined}>
+                <DialogContent className="vh-dialog so-dialog" aria-describedby={undefined}>
                     <div className="vh-dialog-head so-head">
                         <div>
                             <Dialog.Title className="vh-dialog-title so-title">{t('share.dialog.title')}</Dialog.Title>
@@ -307,7 +308,7 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
                         onCancel={() => setPendingOperator(null)}
                         onConfirm={() => void confirmOperator()}
                     />
-                </Dialog.Content>
+                </DialogContent>
             </Dialog.Portal>
         </Dialog.Root>
     );

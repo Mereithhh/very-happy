@@ -77,3 +77,27 @@ export function useBackdropDismiss<T extends Element = HTMLElement>(onClose: (()
         onChange: markDirty,
     };
 }
+
+export interface OutsideDirtyGuardProps<T extends Element> {
+    onInput: (event: SyntheticEvent<T>) => void;
+    onChange: (event: SyntheticEvent<T>) => void;
+    onClickCapture: (event: MouseEvent<T>) => void;
+    onInteractOutside: (event: { preventDefault(): void }) => void;
+}
+
+/**
+ * B-928, Radix family: Radix already closes on a press outside (and a drag
+ * that starts inside is not one). What it lacked is the edit guard — once
+ * something was typed or chosen, an outside press keeps the dialog open.
+ * Mount it with the content (it resets on every open).
+ */
+export function useOutsideDirtyGuard<T extends Element = HTMLDivElement>(): OutsideDirtyGuardProps<T> {
+    const dirty = useRef(false);
+    const markDirty = () => { dirty.current = true; };
+    return {
+        onInput: markDirty,
+        onChange: markDirty,
+        onClickCapture: (event) => { if (isChoiceTarget(event.target)) markDirty(); },
+        onInteractOutside: (event) => { if (dirty.current) event.preventDefault(); },
+    };
+}

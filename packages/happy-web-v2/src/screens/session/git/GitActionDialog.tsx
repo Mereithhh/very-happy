@@ -9,6 +9,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { DialogContent } from '@/ui/DialogContent';
 import { Bot, ChevronRight, ExternalLink, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Button, CopyButton, Spinner, toast } from '@/ui';
@@ -397,7 +398,7 @@ export function GitActionDialog({
         <Dialog.Root open={open} onOpenChange={(next) => { if (!next) abort.current?.abort(); onOpenChange(next); }}>
             <Dialog.Portal>
                 <Dialog.Overlay className="vh-dialog-overlay so-overlay"/>
-                <Dialog.Content className="vh-dialog so-dialog gd" aria-describedby={undefined}
+                <DialogContent className="vh-dialog so-dialog gd" aria-describedby={undefined}
                     onOpenAutoFocus={(e) => { e.preventDefault(); titleRef.current?.focus(); }}>
                     <div className="vh-dialog-head so-head">
                         <div>
@@ -416,7 +417,7 @@ export function GitActionDialog({
                         <span className="vh-dialog-foot-note gd-stage" role="status">{running && showSpinner ? stageText(phase.stage) : ''}</span>
                         {actions}
                     </div>
-                </Dialog.Content>
+                </DialogContent>
             </Dialog.Portal>
         </Dialog.Root>
     );

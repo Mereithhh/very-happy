@@ -4,6 +4,7 @@
  * relay), once those fold away below CHAT_HEADER_IDENTITY_MIN.
  */
 import * as Dialog from '@radix-ui/react-dialog';
+import { DialogContent } from '@/ui/DialogContent';
 import { X } from 'lucide-react';
 import type { MachineRelayStatus } from '@/sync/apiSocket';
 import { getServerUrl } from '@/sync/serverConfig';
@@ -22,7 +23,7 @@ export function SessionInfoDialog({ open, onOpenChange, agent, host, cwd, relay 
     const { t } = useTranslation();
     const unknown = t('status.unknown');
     return <Dialog.Root open={open} onOpenChange={onOpenChange}>
-        <Dialog.Portal><Dialog.Overlay className="vh-dialog-overlay so-overlay" /><Dialog.Content className="vh-dialog so-dialog ch-info-dialog" aria-describedby={undefined}>
+        <Dialog.Portal><Dialog.Overlay className="vh-dialog-overlay so-overlay" /><DialogContent className="vh-dialog so-dialog ch-info-dialog" aria-describedby={undefined}>
             <div className="vh-dialog-head">
                 <Dialog.Title className="vh-dialog-title">{t('session.infoTitle')}</Dialog.Title>
                 <Dialog.Close asChild><button type="button" className="vh-dialog-close" aria-label={t('common.close')}><X size={18} /></button></Dialog.Close>
@@ -33,6 +34,6 @@ export function SessionInfoDialog({ open, onOpenChange, agent, host, cwd, relay 
                 <dt>{t('session.infoPath')}</dt><dd className="mono">{cwd || unknown}</dd>
                 <dt>{t('session.chat.relayRegion')}</dt><dd>{relayRegionLabel(relay, getServerUrl())} · {t(`relayBadge.${relay.state}`)}</dd>
             </dl>
-        </Dialog.Content></Dialog.Portal>
+        </DialogContent></Dialog.Portal>
     </Dialog.Root>;
 }

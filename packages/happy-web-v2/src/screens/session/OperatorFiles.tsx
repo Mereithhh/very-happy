@@ -6,6 +6,7 @@
  * (spec §3.2, §8 Lead decision 8).
  */
 import * as Dialog from '@radix-ui/react-dialog';
+import { DialogContent } from '@/ui/DialogContent';
 import { ChevronLeft, File, Folder, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -75,7 +76,7 @@ export function OperatorFilesDialog({ sessionId, root, open, onOpenChange }: { s
         <Dialog.Root open={open} onOpenChange={onOpenChange}>
             <Dialog.Portal>
                 <Dialog.Overlay className="vh-dialog-overlay so-overlay" />
-                <Dialog.Content className="vh-dialog so-dialog opf" aria-describedby={undefined}>
+                <DialogContent className="vh-dialog so-dialog opf" aria-describedby={undefined}>
                     <div className="vh-dialog-head so-head">
                         <div>
                             <Dialog.Title className="vh-dialog-title so-title">{t('session.chat.files')}</Dialog.Title>
@@ -114,7 +115,7 @@ export function OperatorFilesDialog({ sessionId, root, open, onOpenChange }: { s
                             ))}
                         </ul>
                     )}
-                </Dialog.Content>
+                </DialogContent>
             </Dialog.Portal>
         </Dialog.Root>
     );
