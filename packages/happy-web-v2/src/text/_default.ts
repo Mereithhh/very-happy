@@ -638,6 +638,9 @@ export const en = {
         agent: 'Agent',
         initialCommand: 'Initial instruction',
         initialCommandPlaceholder: '(optional) sent as the first message once the session starts',
+        // B-929
+        addFiles: 'Add images',
+        filesUnsupported: 'This agent can only say whether it takes images once its session has started. Remove the files, or add them on the session page after it starts.',
         createDirTitle: 'Create directory?',
         createDirMessage: ({ directory }: { directory: string }) => `Directory ${directory} doesn't exist yet. Create it?`,
         title: 'Start New Session',
@@ -3357,6 +3360,12 @@ export const en = {
                 summary: 'Any session can look up what Very Happy can do and how to operate it, without a longer prompt.',
                 skill: 'New `very-happy skill`: a capability map of sessions, terminals, projects, teams, automations, Issues and todos, accounts, machines, sharing, notifications, panels and settings, with one page per area (`very-happy skill automations`). Sessions get a single line pointing at it, so asking an agent “add a daily 9:00 automation to this project” gets the right command. A copy is kept in ~/.local/share/very-happy/skills/very-happy; files you edited are never overwritten.',
                 autoProject: '`very-happy auto create|edit --project <id>|current` attaches an automation to a project (`--no-project` detaches); before, only the Web could do this.',
+            },
+            nov11u: {
+                title: 'A new chat\'s first message can carry images',
+                summary: 'Paste, drop or pick images while a new chat is still starting; they go out with your text as one message.',
+                images: 'On a new chat\'s page (before the session is up) and in the new-chat dialog, images can be pasted, dropped or picked (also on phones). They are uploaded once the session has started and reach Claude or Codex together with the text; a message of images only works too. A reload while it starts keeps them.',
+                noSilentDrop: 'Nothing is dropped silently any more: if the files cannot go out (upload failed, or the session does not take them), you are told why and the text and files are back in the box — send again to retry.',
             },
             nov11s: {
                 title: 'Sidebar entries have names',
@@ -6767,7 +6776,13 @@ export const en = {
         outboxTitle: 'Waiting to send',
         sendAfterStart: 'Sends when the session starts',
         removeQueued: 'Remove',
-        attachmentsLater: 'Attachments can be added once the session has started',
+        attachmentsLater: 'This agent can only say whether it takes images once the session has started — add them then',
+        // B-929: files with a pending session's first message
+        filesCount: ({ count }: { count: number }) => (count === 1 ? '1 file' : `${count} files`),
+        notAccepted: 'This new session cannot take messages right now — your text and files stay in the box.',
+        filesUnsupported: 'This session does not take these files (its agent or CLI is too old). Your text and files are back in the box.',
+        filesUploadFailed: 'The files could not be uploaded, so nothing was sent. Your text and files are back in the box — send again to retry.',
+        filesLost: 'The files of your first message were not kept after the page reloaded. Your text is back in the box — please add them again.',
         btwLater: '/btw is available once the session has started',
         needsApprovalTitle: 'Directory does not exist',
         needsApprovalMessage: ({ directory }: { directory: string }) => `${directory} doesn't exist yet. Create it and start the session?`,

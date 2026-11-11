@@ -42,6 +42,8 @@ vi.mock('./PresetsMenu', () => ({ PresetsMenu: () => null }));
 vi.mock('./btwPanelState', () => ({ openBtwPanel: mocks.btw }));
 
 import { AgentInput, type PendingComposer } from './AgentInput';
+import { restoreFilesToComposer } from './composerRestore';
+import { clearAttachmentStash } from './useAttachments';
 
 let host: HTMLDivElement;
 let root: Root;
@@ -84,7 +86,7 @@ describe('AgentInput on a pending page (B-516)', () => {
         render();
         expect(input().value).toBe('typed before reload');
         await enter();
-        expect(pending.onSend).toHaveBeenCalledExactlyOnceWith('typed before reload');
+        expect(pending.onSend).toHaveBeenCalledExactlyOnceWith('typed before reload', []);
         expect(mocks.send).not.toHaveBeenCalled();
         expect(input().value).toBe('');
         expect(mocks.draft).toHaveBeenCalledWith('pending-1', null);
@@ -214,5 +216,80 @@ describe('B-908: Claude draft — 1M by default, a switch-off is remembered for 
         expect(lastMenu().pickRow!('gpt-6.1-sol')).toBe('gpt-6.1-sol');
         act(() => lastMenu().onLongContextToggle!(false));
         expect(mocks.applySettings).not.toHaveBeenCalled();
+    });
+});
+
+describe('B-929: files on a pending page', () => {
+    // A previous test's unsent files are parked under the same id (B-918) — start clean.
+    beforeEach(() => { clearAttachmentStash(); });
+    function renderAs(flavor: string) { act(() => root.render(<AgentInput sessionId="pending-1" agentFlavor={flavor} pending={pending} />)); }
+    const fileInput = () => host.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const thumbs = () => host.querySelectorAll('.ci-att');
+    async function pick(...files: File[]) {
+        Object.defineProperty(fileInput(), 'files', { configurable: true, value: files });
+        await act(async () => { fileInput().dispatchEvent(new Event('change', { bubbles: true })); });
+        await act(async () => { for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0)); });
+    }
+    const doc = (name = 'notes.pdf') => new File(['%PDF-1'], name, { type: 'application/pdf' });
+
+    it.each(['claude', 'codex'])('%s: a picked file rides with the text into the outbox as one message', async (flavor) => {
+        renderAs(flavor);
+        expect(fileInput().getAttribute('accept')).toBeNull(); // any file, like a live Claude/Codex session
+        await pick(doc());
+        expect(thumbs()).toHaveLength(1);
+        await enter();
+        expect(pending.onSend).toHaveBeenCalledOnce();
+        const [text, files] = vi.mocked(pending.onSend).mock.calls[0];
+        expect(text).toBe('typed before reload');
+        expect(files).toMatchObject([{ name: 'notes.pdf', mimeType: 'application/pdf' }]);
+        expect(thumbs()).toHaveLength(0);
+        expect(input().value).toBe('');
+        expect(mocks.send).not.toHaveBeenCalled();
+    });
+
+    it('files only (no text) can be sent', async () => {
+        pending.initialDraft = '';
+        renderAs('claude');
+        await pick(doc());
+        await enter();
+        expect(pending.onSend).toHaveBeenCalledExactlyOnceWith('', [expect.objectContaining({ name: 'notes.pdf' })]);
+    });
+
+    it('not accepted: says why and keeps text AND files in the box (no silent return)', async () => {
+        pending.onSend = vi.fn(() => false);
+        renderAs('claude');
+        await pick(doc());
+        await enter();
+        expect(mocks.show).toHaveBeenCalledWith('pendingSession.notAccepted', 'info');
+        expect(input().value).toBe('typed before reload');
+        expect(thumbs()).toHaveLength(1);
+    });
+
+    it('an agent that only knows after it starts: paste / drop say so, nothing is added or sent', async () => {
+        renderAs('gemini');
+        const paste = new Event('paste', { bubbles: true, cancelable: true }) as Event & { clipboardData: unknown };
+        paste.clipboardData = { items: [{ kind: 'file', getAsFile: () => doc() }], getData: () => '' };
+        await act(async () => { input().dispatchEvent(paste); });
+        expect(mocks.show).toHaveBeenCalledWith('pendingSession.attachmentsLater', 'info');
+        expect(thumbs()).toHaveLength(0);
+        await enter();
+        expect(pending.onSend).toHaveBeenCalledExactlyOnceWith('typed before reload', []);
+    });
+
+    it('files handed back (upload failed / session takes none) reappear in the box; sending again is the retry', async () => {
+        renderAs('claude');
+        const back = { id: 'r1', uri: 'blob:back/1', width: 4, height: 3, size: 9, name: 'shot.png', mimeType: 'image/png' };
+        act(() => { expect(restoreFilesToComposer('pending-1', [back])).toBe(true); });
+        expect(thumbs()).toHaveLength(1);
+        await enter();
+        expect(pending.onSend).toHaveBeenCalledExactlyOnceWith('typed before reload', [back]);
+    });
+
+    it('a draft page adopts files a left draft page parked', async () => {
+        const left = { id: 'l1', uri: 'blob:left/1', width: 4, height: 3, size: 9, name: 'left.png', mimeType: 'image/png' };
+        pending.takeLeftFiles = vi.fn(() => [left]);
+        renderAs('claude');
+        expect(pending.takeLeftFiles).toHaveBeenCalled();
+        expect(thumbs()).toHaveLength(1);
     });
 });

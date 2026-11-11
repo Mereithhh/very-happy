@@ -23,7 +23,11 @@ import {
     migratePendingDraft,
     type PendingSessionRecord,
 } from './pendingSessions';
-import { hasComposer, mergeRestoredDraft, restoreToComposer } from '@/screens/session/composerRestore';
+import { hasComposer, mergeRestoredDraft, restoreFilesToComposer, restoreToComposer } from '@/screens/session/composerRestore';
+import { parkAttachments, stashedAttachmentKeys, takeStashedAttachments } from '@/screens/session/useAttachments';
+import type { AttachmentPreview } from './attachmentTypes';
+import type { AttachmentSendError } from './attachmentCapabilities';
+import { holdPendingAttachments, releasePendingAttachments, sendPendingItem, sweepPendingAttachments, takePendingAttachments } from './pendingAttachments';
 import { recordRecentMachinePath } from '@/app/recentMachinePath';
 import { newSessionTimingCancel, newSessionTimingRpcReturned, newSessionTimingRpcSent } from '@/app/newSessionTiming';
 import { toast } from '@/ui/Toast';
@@ -44,6 +48,17 @@ const MODEL_FACTS_WAIT_MS = 3_000;
 /** How often a tab looks for pending records whose owner tab has gone away. */
 const RECLAIM_INTERVAL_MS = 30_000;
 const PENDING_STORAGE_SUFFIX = ':pending-sessions-v1';
+/** B-929: move what a composer parked under `from` to `to` (in memory, like the stash itself). */
+function moveParkedFiles(from: string, to: string): void {
+    parkAttachments(to, takeStashedAttachments(from));
+}
+
+/** B-929: why a pending message's files could not go out — said once, the text and files are back in the composer. */
+function sayFilesReturned(kind: AttachmentSendError['kind']): void {
+    if (kind === 'unsupported') toast.show(t('pendingSession.filesUnsupported'), 'error');
+    else if (kind === 'upload-failed') toast.show(t('pendingSession.filesUploadFailed'), 'error');
+    else if (kind === 'lost') toast.show(t('pendingSession.filesLost'), 'error');
+}
 
 function basenameOf(path: string): string {
     return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
@@ -108,11 +123,27 @@ export const pendingSessions = createPendingSessionStore({
     },
     hasSession: (id) => !!storage.getState().sessions[id],
     subscribeSessions: (listener) => storage.subscribe(listener),
-    async sendMessage(id, text, localId) {
-        const receipt = await sync.sendMessage(id, text, { source: 'chat', localId });
+    async sendMessage(id, text, localId, files) {
+        // B-929: files are checked against the real session (an old Codex wrapper advertises none) and go all or nothing.
+        const receipt = await sendPendingItem({
+            metadata: storage.getState().sessions[id]?.metadata,
+            send: (attachments) => sync.sendMessage(id, text, attachments ? { source: 'chat', localId, attachments, strictAttachments: true } : { source: 'chat', localId }),
+            say: sayFilesReturned,
+        }, localId, files);
         // B-814 §5.5.4: the item leaves this record only once the outbox has it on disk.
         await sync.whenOutboxPersisted(id);
         return receipt;
+    },
+    holdAttachments: holdPendingAttachments,
+    releaseAttachments: releasePendingAttachments,
+    restoreAttachments(id, itemIds, composerId) {
+        void takePendingAttachments(itemIds).then(({ items, lost }) => {
+            if (lost > 0) toast.show(t('pendingSession.filesLost'), 'error');
+            if (items.length === 0) return;
+            if (composerId && restoreFilesToComposer(composerId, items)) return;
+            if (restoreFilesToComposer(id, items)) return;
+            parkAttachments(id, items);
+        });
     },
     writePermissionMode: (id, mode) => storage.getState().updateSessionPermissionMode(id, mode),
     writeModelMode: (id, mode) => storage.getState().updateSessionModelMode(id, mode),
@@ -123,6 +154,8 @@ export const pendingSessions = createPendingSessionStore({
         storage.getState().updateSessionDraft(id, mergeRestoredDraft(text, readDraft(id)));
     },
     migrateDraft(pendingId, realId) {
+        // B-929: files a left pending composer parked follow its text to the real id.
+        if (!hasComposer(pendingId)) moveParkedFiles(pendingId, realId);
         migratePendingDraft(pendingId, realId, {
             hasComposer,
             readDraft,
@@ -181,6 +214,24 @@ export const pendingSessions = createPendingSessionStore({
 });
 
 export { isPendingSessionId };
+
+/**
+ * B-929: files a pending composer parked whose record is gone — a left draft
+ * page (its text went to the next 「新会话」, B-801), a discarded page. A new
+ * draft page's composer takes them on mount, so they come back with the text
+ * instead of vanishing with the record.
+ */
+export function takeOrphanPendingFiles(ownId: string): AttachmentPreview[] {
+    const items: AttachmentPreview[] = [];
+    for (const key of stashedAttachmentKeys()) {
+        if (key === ownId || !isPendingSessionId(key) || pendingSessions.get(key)) continue;
+        items.push(...takeStashedAttachments(key));
+    }
+    return items;
+}
+
+// B-929: stored copies whose outbox item is gone (sent / dropped while no tab of ours ran).
+void sweepPendingAttachments(new Set(pendingSessions.list().flatMap((record) => record.outbox.map((item) => item.id))));
 
 /** Initial composer text of a pending page (a pending id has no session to carry `draft`). */
 export function pendingDraft(pendingId: string): string {

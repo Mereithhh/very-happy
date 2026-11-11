@@ -41,6 +41,7 @@
  * tabs' writes are picked up through `refresh()` (storage events).
  */
 import type { SpawnSessionOptions, SpawnSessionResult } from './ops';
+import type { AttachmentPreview } from './attachmentTypes';
 
 export type PendingAgent = NonNullable<SpawnSessionOptions['agent']>;
 export type PendingState = 'draft' | 'spawning' | 'needs-approval' | 'failed' | 'landing' | 'landed';
@@ -50,9 +51,18 @@ export type PendingState = 'draft' | 'spawning' | 'needs-approval' | 'failed' | 
  */
 export type PendingFailure = 'spawn-error' | 'lost-ack' | 'interrupted' | 'directory-declined';
 
+/**
+ * B-929: a file riding with an outbox item. Only its description is in the
+ * record (localStorage); the bytes are held by `deps.holdAttachments` under the
+ * item id (memory + IndexedDB, so a reload keeps them).
+ */
+export type PendingAttachmentMeta = Omit<AttachmentPreview, 'uri'>;
+
 export interface PendingOutboxItem {
     id: string;
+    /** May be empty when the item carries files (B-929). */
     text: string;
+    attachments?: PendingAttachmentMeta[];
 }
 
 export interface PendingSessionRecord {
@@ -116,7 +126,13 @@ export interface PendingSessionDeps {
      * outbox — persistent one included (B-814). `localId` is the outbox
      * item's id: a re-send after a reload is the same input, deduped.
      */
-    sendMessage(sessionId: string, text: string, localId: string): Promise<unknown>;
+    sendMessage(sessionId: string, text: string, localId: string, attachments?: PendingAttachmentMeta[]): Promise<unknown>;
+    /** B-929: keep these files for outbox item `itemId` until it is sent, returned or dropped. */
+    holdAttachments?(itemId: string, items: AttachmentPreview[]): void;
+    /** B-929: hand the files of these outbox items back (same routing as restoreText). */
+    restoreAttachments?(sessionId: string, itemIds: string[], composerId?: string): void;
+    /** B-929: the files of these items are no longer needed (sent / removed / discarded). */
+    releaseAttachments?(itemIds: string[]): void;
     writePermissionMode(sessionId: string, mode: string | null): void;
     writeModelMode(sessionId: string, mode: string | null): void;
     writeEffortLevel(sessionId: string, level: string | null): void;
@@ -186,7 +202,16 @@ export function isPendingSessionId(id: string | null | undefined): boolean {
 
 /** Outbox texts joined the way they would read as one message. */
 export function outboxText(outbox: readonly PendingOutboxItem[]): string {
-    return outbox.map((item) => item.text).join('\n\n');
+    return outbox.map((item) => item.text).filter((text) => text.length > 0).join('\n\n');
+}
+
+/** B-929: the outbox items that carry files. */
+export function outboxFileItemIds(outbox: readonly PendingOutboxItem[]): string[] {
+    return outbox.filter((item) => (item.attachments?.length ?? 0) > 0).map((item) => item.id);
+}
+
+function attachmentMeta(items: readonly AttachmentPreview[]): PendingAttachmentMeta[] {
+    return items.map(({ uri: _uri, ...meta }) => meta);
 }
 
 /**
@@ -260,7 +285,9 @@ function parseRecord(item: unknown): PendingSessionRecord | null {
     if (!isPendingSessionId(r.pendingId) || typeof r.machineId !== 'string' || typeof r.path !== 'string') return null;
     if (typeof r.createdAt !== 'number' || typeof r.state !== 'string') return null;
     const outbox = Array.isArray(r.outbox)
-        ? r.outbox.filter((o) => o && typeof o.id === 'string' && typeof o.text === 'string')
+        ? r.outbox
+            .filter((o) => o && typeof o.id === 'string' && typeof o.text === 'string')
+            .map((o) => (Array.isArray(o.attachments) ? o : { id: o.id, text: o.text }))
         : [];
     return { ...r, outbox };
 }
@@ -310,6 +337,8 @@ export interface PendingCreateInput {
     permissionMode: string | null;
     source: string;
     firstMessage?: string;
+    /** B-929: files sent with the first message (the dialog's pick). */
+    firstAttachments?: AttachmentPreview[];
     /** B-801: open as a draft — nothing is spawned until the first send. */
     draft?: boolean;
     onSpawnedTask?: { taskId: string };
@@ -329,6 +358,10 @@ export interface PendingTargetChange {
     permissionMode?: string | null;
     /** B-850c: undefined key = unchanged; `agentProfileId: undefined` = back to the machine default. */
     agentProfileId?: string | null;
+}
+
+function outboxItem(id: string, text: string, files: readonly AttachmentPreview[]): PendingOutboxItem {
+    return files.length > 0 ? { id, text, attachments: attachmentMeta(files) } : { id, text };
 }
 
 export function createPendingSessionStore(deps: PendingSessionDeps) {
@@ -374,6 +407,8 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
             if (record.realId) aliases.set(record.realId, record.pendingId);
         }
         if (expired.length > 0) {
+            const files = parseTable(deps.load()).filter((r) => expired.includes(r.pendingId)).flatMap((r) => outboxFileItemIds(r.outbox));
+            if (files.length > 0) deps.releaseAttachments?.(files);
             persist([], expired);
             for (const id of expired) deps.clearKeys(id);
         }
@@ -394,10 +429,13 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
         if (!current || current.realId) return; // never after success
         // B-801: a draft's first message stays queued on its page — retry re-sends it.
         const text = current.deferred ? '' : outboxText(current.outbox);
+        // B-929: files go back with the text (a draft keeps them queued, like its text).
+        const files = current.deferred ? [] : outboxFileItemIds(current.outbox);
         const next = patch(pendingId, current.deferred
             ? { state: 'failed', failure, error }
-            : { state: 'failed', failure, error, outbox: [], textReturned: !!text || current.textReturned === true });
+            : { state: 'failed', failure, error, outbox: [], textReturned: !!text || files.length > 0 || current.textReturned === true });
         if (text) deps.restoreText(pendingId, text);
+        if (files.length > 0) deps.restoreAttachments?.(pendingId, files);
         // Interrupted = found after a reload; the sidebar row says so, no toast.
         if (next && failure !== 'interrupted' && viewing !== pendingId) deps.notifyFailure(next);
     }
@@ -498,10 +536,12 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
         const current = records.get(pendingId);
         if (!current?.realId) return;
         const text = outboxText(current.outbox);
+        const files = outboxFileItemIds(current.outbox);
         // The pending composer (same React instance) becomes the real one, so
-        // it is the first place to return the text to.
+        // it is the first place to return the text (and files, B-929) to.
         if (text) deps.restoreText(current.realId, text, pendingId);
-        markLanded(pendingId, { outbox: [], deliveredAsDraft: text ? true : current.deliveredAsDraft });
+        if (files.length > 0) deps.restoreAttachments?.(current.realId, files, pendingId);
+        markLanded(pendingId, { outbox: [], deliveredAsDraft: text || files.length > 0 ? true : current.deliveredAsDraft });
     }
 
     async function deliver(pendingId: string): Promise<void> {
@@ -541,7 +581,9 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 }
                 let receipt: unknown;
                 try {
-                    receipt = await deps.sendMessage(realId, head.text, head.id);
+                    receipt = head.attachments?.length
+                        ? await deps.sendMessage(realId, head.text, head.id, head.attachments)
+                        : await deps.sendMessage(realId, head.text, head.id);
                 } catch (error) {
                     console.warn('[pending-session] outbox send failed', error);
                     receipt = undefined;
@@ -552,6 +594,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 }
                 const after = records.get(pendingId);
                 if (after) patch(pendingId, { outbox: after.outbox.filter((item) => item.id !== head.id) });
+                if (head.attachments?.length) deps.releaseAttachments?.([head.id]);
             }
         } finally {
             landing.delete(pendingId);
@@ -626,6 +669,9 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
         create(input: PendingCreateInput): PendingSessionRecord {
             const pendingId = `${PENDING_ID_PREFIX}${deps.newId()}`;
             const first = input.draft ? undefined : input.firstMessage?.trim();
+            const firstFiles = input.draft ? [] : input.firstAttachments ?? [];
+            const firstId = first || firstFiles.length > 0 ? deps.newId() : null;
+            if (firstId && firstFiles.length > 0) deps.holdAttachments?.(firstId, firstFiles);
             const record: PendingSessionRecord = {
                 pendingId,
                 ownerTab: deps.tabId,
@@ -636,7 +682,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 source: input.source,
                 createdAt: deps.now(),
                 state: input.draft ? 'draft' : 'spawning',
-                outbox: first ? [{ id: deps.newId(), text: first }] : [],
+                outbox: firstId ? [outboxItem(firstId, first ?? '', firstFiles)] : [],
                 ...(input.draft ? { deferred: true } : {}),
                 ...(input.onSpawnedTask ? { onSpawnedTask: input.onSpawnedTask } : {}),
                 ...(input.onSpawnedProject ? { onSpawnedProject: input.onSpawnedProject } : {}),
@@ -649,26 +695,36 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
             return record;
         },
 
-        /** Composer send while pending. False = not accepted (text stays in the composer). */
-        append(pendingId: string, text: string): boolean {
+        /**
+         * Composer send while pending. False = not accepted (text and files stay
+         * in the composer). B-929: `files` ride with the text as one message;
+         * accepted = the store holds them from here on.
+         */
+        append(pendingId: string, text: string, files: AttachmentPreview[] = []): boolean {
             const current = owned(pendingId);
             const value = text.trim();
-            if (!current || !value) return false;
+            if (!current || (!value && files.length === 0)) return false;
+            const accepts = current.state === 'draft' || current.state === 'spawning' || current.state === 'needs-approval' || current.state === 'landing';
+            if (!accepts) return false;
+            const id = deps.newId();
+            if (files.length > 0) deps.holdAttachments?.(id, files);
+            const item = outboxItem(id, value, files);
             if (current.state === 'draft') {
                 // B-801: the first message is what creates the session.
-                patch(pendingId, { state: 'spawning', outbox: [{ id: deps.newId(), text: value }] });
+                patch(pendingId, { state: 'spawning', outbox: [item] });
                 void runSpawn(pendingId);
                 return true;
             }
-            if (current.state !== 'spawning' && current.state !== 'needs-approval' && current.state !== 'landing') return false;
-            patch(pendingId, { outbox: [...current.outbox, { id: deps.newId(), text: value }] });
+            patch(pendingId, { outbox: [...current.outbox, item] });
             return true;
         },
         removeOutboxItem(pendingId: string, itemId: string): void {
             const current = owned(pendingId);
             // A draft's message is what is being started (B-801): back to draft takes it back.
             if (!current || current.state === 'landed' || current.deferred) return;
+            const removed = current.outbox.find((item) => item.id === itemId);
             patch(pendingId, { outbox: current.outbox.filter((item) => item.id !== itemId) });
+            if (removed?.attachments?.length) deps.releaseAttachments?.([itemId]);
         },
 
         setMode(pendingId: string, field: PendingModeField, value: string | null): void {
@@ -723,11 +779,13 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
             const current = owned(pendingId);
             if (current?.state !== 'failed' || !current.deferred) return;
             const text = outboxText(current.outbox);
+            const files = outboxFileItemIds(current.outbox);
             patch(pendingId, {
                 state: 'draft', outbox: [], error: undefined, failure: undefined,
                 approvedNewDirectoryCreation: false, spawnDispatchedAt: undefined,
             });
             if (text) deps.restoreText(pendingId, text, pendingId);
+            if (files.length > 0) deps.restoreAttachments?.(pendingId, files, pendingId);
         },
         /**
          * B-801: the draft page was left. Nothing stays behind: its text moves to
@@ -778,6 +836,8 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
             const current = owned(pendingId);
             if (!current || current.realId) return false;
             if (spawning.has(pendingId)) cancelled.add(pendingId);
+            const files = outboxFileItemIds(current.outbox);
+            if (files.length > 0) deps.releaseAttachments?.(files);
             const next = new Map(records);
             next.delete(pendingId);
             records = next;
