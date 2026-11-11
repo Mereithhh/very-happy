@@ -3144,7 +3144,7 @@ export const en = {
         automationBrief: 'Morning brief',
         automationBriefHint: 'Every day at 09:00: one brief on the board (pushed), covering progress, decisions waiting, stuck sessions and failed automations.',
         automationStuck: 'Watch for stuck sessions',
-        automationStuckHint: 'Every hour: a card for each session that stopped on an API error or went silent mid-work. Skipped when nothing changed.',
+        automationStuckHint: 'Every hour: a card for each session that stopped on an API error or went silent mid-work; approving it sends that session 继续. Skipped when nothing changed.',
         automationWrapup: 'Wrap-up reminder',
         automationWrapupHint: 'Every evening at 23:30: one checklist card of sessions you could wrap up; only the ones you tick are wrapped up.',
         automationsNeedMainAgent: 'Open the main agent first: these run on its machine.',
@@ -3476,7 +3476,7 @@ export const en = {
                 summary: 'Automations can now wake the main agent, and it comes with three of them (switch each in Settings → Main agent). Nothing is wrapped up unless you tick it.',
                 target: 'An automation can send to the main agent (Send to → Main agent; `very-happy auto create --send-main-agent`): it reaches whichever session is the main agent when it runs. A precheck that finds nothing new skips the run without spending tokens.',
                 defaults: 'Three default automations: a 09:00 brief on the board (pushed), an hourly card for each session that stopped on an API error or went silent, and a 23:30 checklist of sessions you could wrap up. Quiet hours keep the main agent\'s cards on the board without a push.',
-                wrapup: 'The wrap-up checklist is a card you tick: choose 收尾所选 and only the ticked sessions are wrapped up. An automation-started turn can never wrap up or hand off a session by itself.',
+                wrapup: 'The wrap-up checklist is a card you tick: choose 收尾所选 and only the ticked sessions are wrapped up. An automation-started turn can never wrap up or hand off a session by itself. A turn you did not type yourself (an automation, a script, another session, or a choice clicked on one of the main agent\'s own cards) also asks before writing its long-term memory or calling another tool\'s send / deploy / write actions, whatever the safety preset; notes and cards it writes are marked as not from you.',
                 tools: 'New main agent tools: read every team\'s board, search the account\'s sessions by project and state, and suggest / run checklist wrap-ups — all with short receipts and capped lists.',
             },
             nov11k: {

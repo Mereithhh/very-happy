@@ -77,7 +77,7 @@ export const WRITE_VERB_TOKENS: readonly string[] = [
 export const PRODUCTION_SUBSTRINGS: readonly string[] = ['deploy', 'release', 'rollback', 'publish']
 export const PRODUCTION_VERB_TOKENS: readonly string[] = ['apply', 'scale', 'drop', 'truncate', 'migrate', 'rollout', 'terminate', 'destroy']
 
-function toolTokens(tool: string): Set<string> {
+export function toolTokens(tool: string): Set<string> {
     const tokens = tool.toLowerCase().split(/[^a-z0-9]+|(?<=[a-z])(?=[0-9])/).filter(Boolean)
     const camel = tool.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
     return new Set([...tokens, ...camel])

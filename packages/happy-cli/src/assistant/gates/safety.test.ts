@@ -129,7 +129,8 @@ describe('B-922 config: account decides, local file only tightens, unreadable = 
         const strict = await prepareMainAgent({ kvGet: async () => ({ value: b64({ v: 1, safety: { v: 1, preset: 'strict' } }) }), board: null, classify: null, approvalLink: (id) => id, home, assistantHomeDir: aHome })
         expect(await strict.preToolUse({ hook_event_name: 'PreToolUse', tool_name: 'mcp__chat__send_message', tool_input: {} }))
             .toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: OUTBOUND_DENY_REASON } })
-        const dflt = await prepareMainAgent({ kvGet: async () => null, board: null, classify: null, approvalLink: (id) => id, home, assistantHomeDir: aHome })
+        // The owner's own turn (B-924c: a non-owner turn asks whatever the preset — sendGuard.test.ts).
+        const dflt = await prepareMainAgent({ kvGet: async () => null, board: null, classify: null, approvalLink: (id) => id, home, assistantHomeDir: aHome, isOwner: () => true })
         expect(dflt.safety.safety.preset).toBe('loose')
         expect(await dflt.preToolUse({ hook_event_name: 'PreToolUse', tool_name: 'mcp__chat__send_message', tool_input: {} })).toEqual({ continue: true })
         const std = await prepareMainAgent({ kvGet: async () => ({ value: b64({ v: 1, safety: { v: 1, preset: 'standard' } }) }), board: null, classify: null, approvalLink: (id) => id, home, assistantHomeDir: aHome })

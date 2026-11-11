@@ -12,6 +12,14 @@
  * self-restart, team cancel / hand-off) refuse every turn that is not the
  * owner's with `owner_request_required`.
  *
+ * B-924c (QA-T P1-A「洗白」): a Briefing-board CHOICE is not the owner's turn either. The Web sends a
+ * choice as a chat message with localId `board-<itemId>-<nonce>` (`attentionBoardLocalId`) and
+ * `sentFrom: web`, but its text is `<card title> → <option label>` — words the card's author wrote, and
+ * the main agent can post a card in a turn the owner did not type. So `board-` → `board_choice`, which
+ * unlocks nothing. Owner-typed text stays the owner's: 追问 only quotes the card into the composer and the
+ * owner sends it with an ordinary localId. Privileged follow-ups of a choice are server-checked and
+ * argument-bound instead (dispatch_approved / wrapup_selected / gate-1 tool cards / settings cards).
+ *
  * Fail-closed: no `sentFrom`, an empty one or one off the list (e.g. `cli`), a
  * localId the tracker never saw routed, a turn with no prompt, or no tracker
  * installed — none of these is the owner. Only `owner` unlocks anything.
@@ -34,13 +42,20 @@
 
 import type { AssistantToolRegistrar } from './assistantTools'
 import { MAIN_AGENT_OWNER_ONLY_TOOLS } from './mainAgentToolPolicy'
+import { ATTENTION_BOARD_LOCAL_ID_PREFIX } from '@slopus/happy-wire'
 
 /** `meta.sentFrom` of a person typing in a Very Happy client (leadBoard's owner rule uses this list). */
 export const OWNER_SENT_FROM = ['web', 'mobile', 'ios', 'android'] as const
 /** localId prefixes stamped by automated senders: never the owner, whatever `sentFrom` says. */
 export const AUTOMATED_LOCAL_ID_PREFIXES = ['automation-', 'teams-', 'remote-send-', 'session-message-', 'edit-conflict-', 'wrapup-', 'handoff-'] as const
 
-export type TurnOrigin = 'owner' | 'automation' | 'agent' | 'unknown'
+/**
+ * `owner` the owner typed it in a client · `board_choice` (B-924c) the owner clicked an option on a
+ * Briefing card (the text is the card's) · `automation` an automation run · `agent` anything else
+ * automated (send, session_message, Lead / team, remote) · `unknown` no prompt / not tracked.
+ * Only `owner` unlocks anything.
+ */
+export type TurnOrigin = 'owner' | 'board_choice' | 'automation' | 'agent' | 'unknown'
 export type TurnPrompt = { localId?: string | null; sentFrom?: string | null }
 
 /** One prompt: the owner's only when typed in a client and not stamped by an automated sender. */
@@ -49,15 +64,17 @@ export function promptOrigin(prompt: TurnPrompt | undefined): TurnOrigin {
     const localId = prompt.localId ?? ''
     if (localId.startsWith('automation-')) return 'automation'
     if (AUTOMATED_LOCAL_ID_PREFIXES.some(prefix => localId.startsWith(prefix))) return 'agent'
+    if (localId.startsWith(ATTENTION_BOARD_LOCAL_ID_PREFIX)) return 'board_choice'
     return typeof prompt.sentFrom === 'string' && (OWNER_SENT_FROM as readonly string[]).includes(prompt.sentFrom) ? 'owner' : 'agent'
 }
 
-/** A batch: `owner` only when every prompt is; `automation` when every prompt is an automation run; empty = `unknown`. */
+/** A batch: `owner` only when every prompt is; `automation` / `board_choice` when every prompt is one; empty = `unknown`. */
 export function classifyTurnOrigin(prompts: readonly (TurnPrompt | undefined)[]): TurnOrigin {
     if (!prompts.length) return 'unknown'
     const origins = prompts.map(promptOrigin)
     if (origins.every(o => o === 'owner')) return 'owner'
     if (origins.every(o => o === 'automation')) return 'automation'
+    if (origins.every(o => o === 'board_choice')) return 'board_choice'
     return origins.includes('unknown') && origins.every(o => o === 'unknown') ? 'unknown' : 'agent'
 }
 
@@ -89,9 +106,10 @@ export function isOwnerTurn(): boolean { return installed() === 'owner' }
 /**
  * B-924 (QA P2-5): the main agent's turn-end pushes ("It's ready!", turn failed)
  * are for the owner's own turns; a turn anything else started ends silently.
+ * A board choice is the owner acting (B-924c): it unlocks nothing, but its turn still pushes.
  */
 export function silentMainAgentTurn(isMainAgent: boolean, origin: TurnOrigin = mainAgentTurnOrigin()): boolean {
-    return isMainAgent && origin !== 'owner'
+    return isMainAgent && origin !== 'owner' && origin !== 'board_choice'
 }
 
 /**

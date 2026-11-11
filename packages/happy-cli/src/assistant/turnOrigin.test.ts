@@ -9,7 +9,8 @@ import { dispatchTarget, installDispatchLedger, mainAgentMustAsk } from './sendG
 describe('B-924 (QA P1-2) turn origin is an allowlist', () => {
     it('only a prompt typed in a client is the owner\'s', () => {
         for (const sentFrom of OWNER_SENT_FROM) expect(promptOrigin({ localId: 'u-1', sentFrom })).toBe('owner')
-        expect(promptOrigin({ localId: 'board-card-1-x', sentFrom: 'web' })).toBe('owner')
+        // B-924c (QA-T P1-A): a Briefing-board choice is the card's text, not the owner's words
+        expect(promptOrigin({ localId: 'board-card-1-x', sentFrom: 'web' })).toBe('board_choice')
         // not the owner: CLI `very-happy send`, scripts, peers, Leads, automations, unknown senders
         expect(promptOrigin({ localId: '3f1c…', sentFrom: 'cli' })).toBe('agent')
         expect(promptOrigin({ localId: 'u-2', sentFrom: null })).toBe('agent')
@@ -27,6 +28,9 @@ describe('B-924 (QA P1-2) turn origin is an allowlist', () => {
         expect(classifyTurnOrigin([{ localId: 'automation-1' }, { localId: 'automation-2' }])).toBe('automation')
         expect(classifyTurnOrigin([{ localId: 'automation-1' }, { localId: 'x', sentFrom: 'web' }])).toBe('agent')
         expect(classifyTurnOrigin([])).toBe('unknown')
+        // B-924c: board choices
+        expect(classifyTurnOrigin([{ localId: 'board-i1-n1', sentFrom: 'web' }])).toBe('board_choice')
+        expect(classifyTurnOrigin([{ localId: 'board-i1-n1', sentFrom: 'web' }, { localId: 'u-1', sentFrom: 'web' }])).toBe('agent')
     })
 
     it('the tracker joins routed prompts to the turn that starts with them', () => {
@@ -69,7 +73,7 @@ describe('B-924 (QA P1-3) owner-only tools refuse every other turn', () => {
         const guarded = withOwnerOnlyTools(server, () => origin === 'owner')
         guarded.registerTool(name, {} as never, (async () => { ran.push(name); return { content: [{ type: 'text', text: 'done' }], isError: false } }) as never)
         guarded.registerTool('sessions_list', {} as never, (async () => ({ content: [{ type: 'text', text: 'list' }], isError: false })) as never)
-        for (const o of ['automation', 'agent', 'unknown'] as const) {
+        for (const o of ['automation', 'agent', 'unknown', 'board_choice'] as const) {
             origin = o
             const r = await tools.get(name)!({})
             expect(r.isError).toBe(true)
@@ -120,6 +124,8 @@ describe('B-924 (QA P2-5) turn-end pushes only for the owner\'s own turns', () =
         expect(silentMainAgentTurn(true, 'agent')).toBe(true)
         expect(silentMainAgentTurn(true, 'unknown')).toBe(true)
         expect(silentMainAgentTurn(true, 'owner')).toBe(false)
+        // B-924c: the owner clicked a card — unlocks nothing, but the turn still pushes
+        expect(silentMainAgentTurn(true, 'board_choice')).toBe(false)
         expect(silentMainAgentTurn(false, 'automation')).toBe(false)
     })
 })

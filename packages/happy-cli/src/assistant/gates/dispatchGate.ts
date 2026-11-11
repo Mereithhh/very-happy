@@ -22,7 +22,7 @@ import { approvalClaims, cardFaceHash, clipBytes, DISPATCH_CARD_KEY_PREFIX, isRe
 import type { AssistantToolRegistrar } from '../assistantTools'
 import type { DispatchPolicy } from '@slopus/happy-wire'
 import { effectiveRisk, isRiskLevel, RISK_LEVELS, type OneShotRunner, type RiskLevel } from './risk'
-import { MAIN_AGENT_ASK_TOOLS } from '../mainAgentToolPolicy'
+import { MAIN_AGENT_ASK_TOOLS, mainAgentAskAction } from '../mainAgentToolPolicy'
 
 /** Dispatch tools and the argument text each hands over (spec §4.2 table). */
 export const DISPATCH_TOOL_PAYLOADS: Readonly<Record<string, (args: Record<string, unknown>) => string>> = {
@@ -148,13 +148,32 @@ function firstLine(text: string, max: number): string {
     return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
 
-export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'>, payload: string, forced: boolean | string = false) {
+/** B-924c: the card's 目标 line — who receives the text (session / Lead / terminal / team / issue / automation). */
+function cardTarget(args: Record<string, unknown> | undefined): string | null {
+    if (!args) return null
+    const pick = (...keys: string[]) => keys.map(k => str(args[k])).find(Boolean) ?? ''
+    const session = pick('sessionId', 'to')
+    if (session) return `会话 ${session}`
+    const terminal = pick('terminalId')
+    if (terminal) return `终端 ${terminal}`
+    const team = pick('teamId')
+    if (team) return `团队 ${team}${pick('taskId', 'botId') ? ` · ${pick('taskId', 'botId')}` : ''}`
+    const issue = pick('issue', 'issueId')
+    if (issue) return `issue ${issue}`
+    const automation = pick('id', 'name')
+    return automation ? automation : null
+}
+
+export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'> & { args?: Record<string, unknown> }, payload: string, forced: boolean | string = false) {
     const head = firstLine(payload, 60) || pending.toolName
+    const target = cardTarget(pending.args)
     return {
         key: `${DISPATCH_CARD_KEY_PREFIX}${pending.approvalId}`,
-        title: `主 agent 想派活（${pending.level}${forced ? '，需你确认' : ''}）：${head}`.slice(0, 120),
+        // B-924c (QA-T P3-2): the title names the action (想恢复自动化 / 想写项目决定 …), not always 派活.
+        title: `主 agent 想${mainAgentAskAction(pending.toolName)}（${pending.level}${forced ? '，需你确认' : ''}）：${head}`.slice(0, 120),
         bodyMd: clipBytes([
             `工具：${pending.toolName}`,
+            ...(target ? [`目标：${target}`] : []),
             `风险：${pending.level}（声明 ${pending.declared}${pending.declared === pending.level ? '' : `，复核 ${pending.level}`}）`,
             `批准号：${pending.approvalId}`,
             ...(typeof forced === 'string' && forced ? [forced] : forced ? [pending.toolName === 'terminal_send'

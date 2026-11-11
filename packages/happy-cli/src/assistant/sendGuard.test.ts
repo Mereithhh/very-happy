@@ -40,7 +40,11 @@ describe('B-924 (QA P1-3) gate 2 mustAsk', () => {
     it('setup.ts ORs the send guard into the one mustAsk hook (next to B-922\'s terminal rule)', async () => {
         const { readFileSync } = await import('node:fs')
         const src = readFileSync(join(__dirname, 'gates', 'setup.ts'), 'utf8')
-        expect(src).toContain('mustAsk: mainAgentMustAskHook(() => safety.policy.bash),')
+        expect(src).toContain('const mustAsk = mainAgentMustAskHook(() => safety.policy.bash, deps.isOwner)')
+        expect(src).toContain('        mustAsk,\n')
+        // B-924c: gate 1 consults the same hook
+        expect(src).toContain('const gate1 = withGate1MustAsk(denylist, approvalDeps, mustAsk)')
+        expect(src).toContain('preToolUse: outboundPreToolUseHook(gate1, ')
     })
 
     it('the card says why: a non-owner turn, not the Bash rule', async () => {
@@ -70,5 +74,19 @@ describe('B-924 (QA P1-3) gate 2 mustAsk', () => {
         await tools.get('session_send')!({ sessionId: 's1', text: '继续', risk: 'external' })
         expect(sent).toHaveLength(2)
         expect(posted).toEqual([])
+    })
+})
+
+describe('B-924c (QA-T P3-2) gate-2 card titles name the action', () => {
+    it('ask-only and dispatch tools say what the main agent wants to do, plus the target', async () => {
+        const { decisionCard } = await import('./gates/dispatchGate')
+        const { MAIN_AGENT_ASK_TOOLS, mainAgentAskAction } = await import('./mainAgentToolPolicy')
+        const card = (toolName: string, args: Record<string, unknown>) => decisionCard({ approvalId: 'a1', toolName, declared: 'none', level: 'none', args }, 'x', '原因')
+        expect(card('automation_resume', { name: 'job-1' }).title).toBe('主 agent 想恢复自动化（none，需你确认）：x')
+        expect(card('project_note', { projectId: 'p1' }).title).toContain('主 agent 想写项目决定')
+        expect(card('session_send', { sessionId: 's9', text: '继续' }).bodyMd).toContain('目标：会话 s9')
+        expect(card('lead_message', { teamId: 't1', body: 'b' }).bodyMd).toContain('目标：团队 t1')
+        // every ask tool has its own action; none falls back to 派活 except the delegate verbs that mean it
+        for (const name of MAIN_AGENT_ASK_TOOLS) expect(mainAgentAskAction(name), name).not.toBe('派活')
     })
 })

@@ -3277,7 +3277,7 @@ export const zhHans: TranslationStructure = {
         automationBrief: '早报',
         automationBriefHint: '每天 09:00 在汇报板发一份早报（会推送）：进展、等你决定的、卡住的会话、失败的自动化。',
         automationStuck: '盯卡住的会话',
-        automationStuckHint: '每小时一次：因模型 API 报错停下、或做到一半长时间没动静的会话，各发一张卡。没有变化就跳过。',
+        automationStuckHint: '每小时一次：因模型 API 报错停下、或做到一半长时间没动静的会话，各发一张卡，批准后给它发「继续」。没有变化就跳过。',
         automationWrapup: '提醒收尾',
         automationWrapupHint: '每晚 23:30 发一张可收尾会话的勾选清单卡；只收尾你勾选的。',
         automationsNeedMainAgent: '请先打开主 agent：这些自动化在它所在的机器上运行。',
@@ -3607,7 +3607,7 @@ export const zhHans: TranslationStructure = {
                 summary: '自动化现在可以叫醒主 agent，并自带三条默认自动化（在「设置 → 主 agent」里逐条开关）。你不勾选，就不会收尾任何会话。',
                 target: '自动化可以发给主 agent（「发送到 → 主 agent」；`very-happy auto create --send-main-agent`）：运行时投进当时的主 agent 会话。precheck 没发现新情况时跳过这次运行，不花 token。',
                 defaults: '三条默认自动化：09:00 早报上汇报板并推送；每小时为以 API 错误停下或长时间没动静的会话各出一张卡；23:30 列出可以收尾的会话。免打扰时段内主 agent 的卡只上板、不推送。',
-                wrapup: '收尾清单是一张可以勾选的卡：勾好后点「收尾所选」，只收尾勾选的会话。自动化发起的回合不能自己收尾或交接任何会话。',
+                wrapup: '收尾清单是一张可以勾选的卡：勾好后点「收尾所选」，只收尾勾选的会话。自动化发起的回合不能自己收尾或交接任何会话。不是你亲手打字发起的回合（自动化、脚本、别的会话、你在主 agent 自己发的卡上点的选项），写长期记忆、调用第三方工具的发送 / 部署 / 写入也都会先问你，不看安全档位；它写下的日志和卡片会标明「非本人回合写入」。',
                 tools: '主 agent 新工具：读各团队的汇报板、按项目和状态搜索会话、出收尾清单并按勾选执行——都只回短回执，列表有上限。',
             },
             nov11k: {

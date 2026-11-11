@@ -46,8 +46,8 @@ const PROMPTS: Readonly<Record<MainAgentAutomationKind, string>> = {
     ].join('\n'),
     stuck: [
         'Sessions that look stuck (precheck output below: each line has the session id, title and why — it ended on a model API error, or has been silent for hours in the middle of work).',
-        'For each one post a decision card: owner_board_post kind=decision, key="main-agent-stuck:<sessionId>", title "卡住了 · <title>", body = the reason in one or two lines, options [{id:"resume",label:"发「继续」"},{id:"look",label:"我自己看"},{id:"ignore",label:"不用管"}]. Do NOT send anything to those sessions now: only after the owner chooses "resume" on a card, send 继续 to that session (session_send, risk none).',
-        'Then automation_report status=done with how many cards you posted.',
+        'For each one call session_send once: sessionId = that session, text "继续", risk none. This turn is an automation run, so nothing is sent now: the gate turns each call into a decision card bound to exactly that message (批准执行 sends it, 放弃 does nothing). Do not post your own cards for them and do not send anything else.',
+        'When the owner approves a card you get a message naming the approval: call dispatch_approved with it. Then automation_report status=done with how many sessions you asked about.',
     ].join('\n'),
     wrapup: [
         'Sessions that could be wrapped up (precheck output below: id, title, idle time). Call wrapup_suggest once with all of them (sessionId + a one-line reason each, in the owner\'s language): it posts one checklist card. Never call session_wrapup for them yourself — nothing is wrapped up unless the owner ticks it on the card.',
@@ -63,7 +63,7 @@ export interface MainAgentAutomationSpec {
 }
 export const MAIN_AGENT_AUTOMATION_DESCRIPTIONS: Readonly<Record<MainAgentAutomationKind, string>> = {
     brief: 'Main agent: morning brief on the board at 09:00 (pushed).',
-    stuck: 'Main agent: every hour, a card for each session that stopped on an API error or went silent (skipped when nothing changed).',
+    stuck: 'Main agent: every hour, a card for each session that stopped on an API error or went silent; approving the card sends it 继续 (skipped when nothing changed).',
     wrapup: 'Main agent: every evening, one checklist card of sessions you could wrap up; only the ones you tick are wrapped up.',
 };
 
