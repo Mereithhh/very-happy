@@ -39,10 +39,14 @@ export function toolApprovalOptions(lang: CardLang = 'zh') {
 }
 export const TOOL_APPROVAL_OPTIONS = toolApprovalOptions('zh')
 
-/** 'zh' for any Chinese locale, otherwise 'en' (account `preferredLanguage`, then the machine locale). */
-export function cardLang(preferred: string | null | undefined, envLocale: string | undefined = process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG): CardLang {
-    const pick = (v: string | null | undefined) => typeof v === 'string' && v.trim() ? (v.toLowerCase().startsWith('zh') ? 'zh' : 'en') : null
-    return pick(preferred) ?? pick(envLocale) ?? 'en'
+/**
+ * The account `preferredLanguage` when set ('zh' for any Chinese tag, otherwise 'en');
+ * unset ("auto") → 'zh', like the gate-2 cards and the reason lines. The machine
+ * locale is not used: daemons run under `LANG=C.UTF-8` (QA-U r2 P3-2).
+ */
+export function cardLang(preferred: string | null | undefined): CardLang {
+    if (typeof preferred !== 'string' || !preferred.trim()) return 'zh'
+    return preferred.toLowerCase().startsWith('zh') ? 'zh' : 'en'
 }
 
 export const TOOL_ARGS_SUMMARY_CHARS = 1_500

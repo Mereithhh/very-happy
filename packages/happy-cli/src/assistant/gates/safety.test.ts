@@ -555,9 +555,16 @@ describe('QA P3', () => {
     it('gate-1 cards follow the account language; option ids never change', async () => {
         const { cardLang, toolApprovalCard } = await import('./toolApproval')
         expect(cardLang('zh-Hans')).toBe('zh')
-        expect(cardLang('en', 'zh_CN.UTF-8')).toBe('en')
-        expect(cardLang(null, 'zh_CN.UTF-8')).toBe('zh')
-        expect(cardLang(null, '')).toBe('en')
+        expect(cardLang('en')).toBe('en')
+        expect(cardLang('en-US')).toBe('en')
+        // QA-U r2 P3-2: no preferredLanguage ("auto") → Chinese, whatever the daemon's LANG (dev-sg: C.UTF-8)
+        const saved = { LANG: process.env.LANG, LC_ALL: process.env.LC_ALL, LC_MESSAGES: process.env.LC_MESSAGES }
+        try {
+            process.env.LANG = 'C.UTF-8'; process.env.LC_ALL = 'en_US.UTF-8'; delete process.env.LC_MESSAGES
+            for (const unset of [null, undefined, '', '  ']) expect(cardLang(unset), String(unset)).toBe('zh')
+        } finally {
+            for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v }
+        }
         const en = toolApprovalCard('0b8c2b5e-1111-4222-8333-944445555666', 'mcp__x__send', { a: 1 }, 'f'.repeat(64), 'en')
         expect(en.title).toBe('The main agent wants to call mcp__x__send')
         expect(en.options.map((o) => o.id)).toEqual(['once', 'always', 'deny'])

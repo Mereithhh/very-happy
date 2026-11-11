@@ -79,7 +79,7 @@ export async function prepareMainAgent(deps: {
     assistantHomeDir?: string
     /** HAPPY_HOME (credentials + approval records). Default: the configured one; tests pass a temp dir. */
     happyHomeDir?: string
-    /** B-922 card language ('zh' | 'en'); default from the account / machine locale (runClaude). */
+    /** B-922 card language ('zh' | 'en'); default from the account preferredLanguage, unset → 'zh' (runClaude). */
     lang?: 'zh' | 'en'
     log?: (line: string) => void
 }): Promise<MainAgentRuntime> {
@@ -138,8 +138,7 @@ export async function prepareMainAgent(deps: {
 
 /**
  * B-922 (QA P3): the gate-1 card language — the account's `preferredLanguage`
- * (the same setting the Web uses), else this machine's locale, else English.
- * Best effort: any failure falls back to the locale.
+ * (the same setting the Web uses); unset or unreadable → Chinese (QA-U r2 P3-2).
  */
 export async function accountCardLang(timeoutMs = 5_000): Promise<CardLang> {
     try {

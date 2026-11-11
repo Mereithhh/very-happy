@@ -285,7 +285,7 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 
 **ask（闸 1）**。PreToolUse 判为「先问」时：
 
-1. 参数 `tool_input` 按闸 2 的 `canonicalArgsHash(tool, input)` 取指纹；`~/.happy/main-agent-approvals/pending-tool/<hash>.json` 没有记录 → 发卡并拒绝本次调用。卡：`key = main-agent-tool:<approvalId>:<toolName>`，标题「主 agent 想调用 <tool>」，正文 = 工具名、参数指纹前 12 位、参数 JSON 摘要（≤1,500 字），选项 `once 批准这一次 / always 以后都允许这个工具 / deny 拒绝`；卡面文字跟账号的 `preferredLanguage`（读不到用本机 locale，再不行英文），选项 id 不变。拒绝原因告诉模型「已出卡，先停下告诉用户；批准后用完全相同的参数再调一次」。
+1. 参数 `tool_input` 按闸 2 的 `canonicalArgsHash(tool, input)` 取指纹；`~/.happy/main-agent-approvals/pending-tool/<hash>.json` 没有记录 → 发卡并拒绝本次调用。卡：`key = main-agent-tool:<approvalId>:<toolName>`，标题「主 agent 想调用 <tool>」，正文 = 工具名、参数指纹前 12 位、参数 JSON 摘要（≤1,500 字），选项 `once 批准这一次 / always 以后都允许这个工具 / deny 拒绝`；卡面文字跟账号的 `preferredLanguage`（没设即「自动」或读不到 → 中文，与闸 2 卡、原因行一致；不看本机 locale，daemon 常是 `LANG=C.UTF-8`，QA-U r2 P3-2），选项 id 不变。拒绝原因告诉模型「已出卡，先停下告诉用户；批准后用完全相同的参数再调一次」。
 2. 再次同参数调用：用闸 2 与 `very-happy settings` 共用的校验（`attention/ownerApproval.ts` 的 `ownerDecision`：key、已关闭、`cardFaceHash` 不变、`resolvedBy='owner'`）。还开着 → 仍拒（等待）；卡没了 / 被改 / 不是 Owner 关的 → 作废并重新出卡。
 3. `once` / `always` → 用 `O_EXCL` 建 `<approvalId>.inflight`（共用的 `approvalClaims`），建成才放行，**只放这一次**，记录随即删除，同参数下一次重新出卡；并发同参数调用只有一个通过。`always` 另把工具加进内存 allow 集，并以机器 token 写入 KV `safety.allowedTools`（`persistAllowedTool`，乐观并发；段读不懂时不写）。`deny` → 拒绝并提示不要重试。
 4. 汇报板不可用或抛错 → 拒绝（fail-closed），原因写明没执行。
