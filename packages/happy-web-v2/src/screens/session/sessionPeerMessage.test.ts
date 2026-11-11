@@ -18,6 +18,13 @@ describe('session peer message presentation (B-497)', () => {
         });
     });
 
+    it('B-915: `; kind handoff` marks a handoff; other / absent kinds stay plain messages', () => {
+        const handoff = `[Very Happy session message m3 from "Source" ${from}; agent codex; kind handoff; machine dev-b]\nGoal: …\n\n${footer}`;
+        expect(presentSessionPeerMessage({ text: handoff, meta: { sentFrom: 'session-peer' } })).toMatchObject({ kind: 'message', handoff: true, machine: 'dev-b', body: 'Goal: …' });
+        const future = `[Very Happy session message m4 from "Source" ${from}; kind something-new]\nhi`;
+        expect(presentSessionPeerMessage({ text: future, meta: { sentFrom: 'session-peer' } })).not.toHaveProperty('handoff');
+    });
+
     it('tolerates an untitled sender, no cwd and no reply reference', () => {
         const text = `[Very Happy session message m2 from "" ${from}]\nping`;
         const result = presentSessionPeerMessage({ text, meta: { sentFrom: 'session-peer' } });

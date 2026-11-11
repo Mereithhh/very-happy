@@ -14,7 +14,10 @@ import { PiContextReportSchema, type PiContextReport } from '@/agent/acp/piConte
 import { createTeamAdoption, TEAMS_ADOPT_CAPABILITY } from '@/teams/adopt';
 import { registerTeamsTools, TEAM_TOOL_NAMES } from '@/teams/tools';
 import { registerAutomationTools, AUTOMATION_TOOL_NAMES } from '@/automations/tools';
-import { registerSessionPeerTools, createSessionPeerToolExecutor, SESSION_PEER_TOOL_NAMES } from '@/sessions/peerTools';
+import { registerSessionPeerTools, createSessionPeerContext, createSessionPeerToolExecutor, sendPeerMessage, SESSION_PEER_TOOL_NAMES } from '@/sessions/peerTools';
+import { createWrapupTracker } from '@/wrapup/tracker';
+import { executeWrapupTool, registerWrapupTools, WRAPUP_TOOL_NAMES, type WrapupToolExecutor } from '@/wrapup/tools';
+import { archiveSession } from '@/sessions/sessionOps';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createServer } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -39,7 +42,7 @@ import { readSettings } from "@/persistence";
 import { getSessionNotificationBody } from "@/api/pushNotifications";
 import { checkPreviewPath } from "./previewPath";
 import { checkDownloadTarget } from "./downloadTarget";
-import { ATTENTION_SESSION_CAPABILITY } from "@slopus/happy-wire";
+import { ATTENTION_SESSION_CAPABILITY, WRAPUP_SESSION_CAPABILITY } from "@slopus/happy-wire";
 import { sharedAttentionClient } from "@/attention/client";
 import { attachLeadBoard, createLeadBoard, resolveTeamLead } from "@/attention/leadBoard";
 import { OWNER_BOARD_TOOL_NAMES, registerOwnerBoardTools } from "@/attention/tools";
@@ -115,7 +118,7 @@ function isLegacyAssistantSession(options?: StartHappyServerOptions, env: NodeJS
     return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE && options.mainAgent === undefined;
 }
 
-function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string, client?: ApiSessionClient): McpServer {
+function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string, client?: ApiSessionClient, wrapup?: WrapupToolExecutor): McpServer {
     const server = new McpServer({
         name: "Very Happy Tools",
         version: "1.0.0",
@@ -139,6 +142,10 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     if (client) registerIssueTools(mcp, createIssueToolExecutor(() => client.sessionId), replaced);
     // B-911: the agent asks the daemon to restart its own session once idle (the daemon matches this wrapper's pid).
     if (client) registerIdleRestartTool(mcp, async () => idleRestartToolResult(await requestIdleRestartViaDaemon(client.sessionId, process.pid)));
+    // B-915: wrapup_report / handoff_send / session_wrapup / session_handoff — every session.
+    // Rebase onto B-916b: the main agent registers its own session_wrapup / session_handoff (mainAgentTools.ts),
+    // so on its surface only wrapup_report / handoff_send come from here (a second registration throws).
+    if (wrapup) registerWrapupTools(mcp, wrapup, mainAgent ? MAIN_AGENT_TOOL_NAMES : []);
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -297,24 +304,42 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         client: sharedAttentionClient(),
         isLead: () => resolveTeamLead(client.sessionId),
         autoDetect: async () => (await readSettings()).ownerBoardAutoDetect !== false,
-        onSupported: () => client.updateMetadata(metadata => ({ ...metadata, capabilities: [...new Set([...(metadata.capabilities ?? []), ATTENTION_SESSION_CAPABILITY])] })),
+        // B-915: `wrapup-v1` rides on the board: its cards need the board, its tools are always registered.
+        onSupported: () => client.updateMetadata(metadata => ({ ...metadata, capabilities: [...new Set([...(metadata.capabilities ?? []), ATTENTION_SESSION_CAPABILITY, WRAPUP_SESSION_CAPABILITY])] })),
         log: (message) => logger.debug(message),
         ...(isMainAgentSession(options) ? { postSource: 'agent' as const } : {}),
     });
     attachLeadBoard(client, leadBoard);
     void leadBoard.init();
+    // B-915 「收尾」/「交接给…」: running cards, the report / handoff tools, archive after a confirmed handoff.
+    const peerContext = createSessionPeerContext(client);
+    const wrapupTracker = createWrapupTracker({
+        sessionId: () => client.sessionId,
+        client: sharedAttentionClient(),
+        boardReady: async () => { await leadBoard.init(); return leadBoard.supported(); },
+        sendPeer: (args) => sendPeerMessage(peerContext, args),
+        archiveSelf: (id) => archiveSession(id),
+        log: (message) => logger.debug(message),
+    });
+    const wrapupTools: WrapupToolExecutor = (name, args) => executeWrapupTool(name, args, { selfId: () => client.sessionId, tracker: wrapupTracker });
     const onRoutedUserMessage = (event: { localId?: string | null; message?: { content?: { text?: unknown }; meta?: { sentFrom?: string; delivery?: string } } }) => {
         const text = event.message?.content?.text;
         leadBoard.onUserMessage({ localId: event.localId, text: typeof text === 'string' ? text : null, sentFrom: event.message?.meta?.sentFrom, delivery: event.message?.meta?.delivery });
+        wrapupTracker.onUserMessage({ localId: event.localId });
     };
     const onClaudeLine = (body: unknown) => { for (const text of assistantTexts(body)) leadBoard.onAssistantText(text); };
-    const onTurnEnded = () => { void leadBoard.onTurnEnd(); };
+    const onTurnStarted = (sourceIds?: string[]) => { wrapupTracker.onTurnStart(sourceIds); };
+    const onTurnEnded = () => { void leadBoard.onTurnEnd(); void wrapupTracker.onTurnEnd(); };
+    // Codex / pi / Gemini end a turn with a `ready` event and never emit `turn-ended`.
+    const onAgentReady = () => { void wrapupTracker.onTurnEnd(); };
     // Test doubles of the session client are not always emitters.
     const tapped = typeof client.on === 'function';
     if (tapped) {
         client.on('user-message-routed', onRoutedUserMessage);
         client.on('claude-session-message', onClaudeLine);
+        client.on('turn-started', onTurnStarted);
         client.on('turn-ended', onTurnEnded);
+        client.on('agent-ready', onAgentReady);
     }
 
     const handlers: HappyMcpHandlers = {
@@ -464,7 +489,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             return;
         }
         await leadBoard.ready(OWNER_BOARD_READY_MS);
-        const mcp = createMcpServer(handlers, options, client.sessionId, client);
+        const mcp = createMcpServer(handlers, options, client.sessionId, client, wrapupTools);
         // B-766: owner briefing board, team lead on a server that serves it (decided once per process).
         // B-916b: also the main agent (capped like the rest of its surface) once the server serves the board.
         if (isMainAgentSession(options)) {
@@ -522,6 +547,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             ...PROJECT_TOOL_NAMES,
             ...ISSUE_TOOL_NAMES,
             ...IDLE_RESTART_TOOL_NAMES,
+            ...WRAPUP_TOOL_NAMES,
             // Auto-allow only; the tools themselves appear for a lead on a board server.
             ...OWNER_BOARD_TOOL_NAMES,
             ...(isMainAgentSession(options) ? [...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES, DISPATCH_APPROVED_TOOL] : []),
@@ -534,7 +560,9 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             if (tapped) {
                 client.off('user-message-routed', onRoutedUserMessage);
                 client.off('claude-session-message', onClaudeLine);
+                client.off('turn-started', onTurnStarted);
                 client.off('turn-ended', onTurnEnded);
+                client.off('agent-ready', onAgentReady);
             }
             server.close();
         }

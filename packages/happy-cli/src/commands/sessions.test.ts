@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { formatAccountSummaryLine, formatSummaryLine, parseSessionsArgs, peerMessageExitCode, permissionFailureRecord, SESSIONS_HELP } from './sessions'
+import { builtinRequestExitCode, formatAccountSummaryLine, formatBuiltinResults, formatSummaryLine, parseSessionsArgs, peerMessageExitCode, permissionFailureRecord, SESSIONS_HELP } from './sessions'
 
 const ID = 'cmtl3c0x7001vqr29o8nmclno'
 
@@ -203,5 +203,39 @@ describe('B-851 fork lineage in the text listing', () => {
         expect(formatSummaryLine({ id: 'kid', live: false, url: 'u', parentSessionId: 'mom' })).toBe('kid [not running] parent=mom u')
         expect(formatSummaryLine({ id: 'solo', live: false, url: 'u' })).toBe('solo [not running] u')
         expect(formatAccountSummaryLine({ id: 'kid', live: false, url: 'u', parentSessionId: 'mom', decryptable: true, readable: true, active: false, archived: false, attention: false })).toBe('kid [idle] parent=mom u')
+    })
+})
+
+describe('sessions wrapup / handoff (B-915)', () => {
+    const ID2 = 'cmtl3c0x7001vqr29o8nmclnp'
+    it('wrapup takes 1-20 ids (deduped) and an optional template file', () => {
+        expect(parseSessionsArgs(['wrapup', ID, ID2, ID, '--template-file', 't.md', '--json'])).toMatchObject({ action: 'wrapup', sessionIds: [ID, ID2], templateFile: 't.md', json: true })
+        expect(() => parseSessionsArgs(['wrapup'])).toThrow(/at least one session id/)
+        expect(() => parseSessionsArgs(['wrapup', 'bad id'])).toThrow(/Invalid session id/)
+        expect(() => parseSessionsArgs(['wrapup', ...Array.from({ length: 21 }, (_, i) => `${ID}${i}`)])).toThrow(/at most 20/)
+        expect(() => parseSessionsArgs(['wrapup', ID, '--to', ID2])).toThrow(/--to only applies/)
+    })
+    it('handoff needs <from> and --to, with --archive / --note', () => {
+        expect(parseSessionsArgs(['handoff', ID, '--to', ID2, '--archive', '--note', 'be brief'])).toMatchObject({ action: 'handoff', sessionId: ID, to: ID2, archive: true, note: 'be brief' })
+        expect(() => parseSessionsArgs(['handoff', ID])).toThrow(/requires --to .*spawn it first/)
+        expect(() => parseSessionsArgs(['handoff', ID, '--to', ID])).toThrow(/same session/)
+        expect(() => parseSessionsArgs(['handoff', '--to', ID2])).toThrow(/requires a session id/)
+        expect(() => parseSessionsArgs(['handoff', ID, '--to', ID2, '--template-file', 'x'])).toThrow(/--template-file only applies/)
+        expect(() => parseSessionsArgs(['read', ID, '--archive'])).toThrow(/--archive only applies/)
+        expect(() => parseSessionsArgs(['handoff', ID, '--to', ID2, '--machine', 'm1'])).toThrow(/--machine only applies/)
+    })
+    it('exit code and lines: running counts as success, any error fails', () => {
+        expect(builtinRequestExitCode([{ state: 'queued' }, { state: 'running' }])).toBe(0)
+        expect(builtinRequestExitCode([{ state: 'queued' }, { state: 'error' }])).toBe(1)
+        expect(builtinRequestExitCode([])).toBe(1)
+        expect(formatBuiltinResults([{ sessionId: 'a', state: 'running' }])[0]).toBe('a running (already in progress, nothing sent)')
+        // B-915c: a queued wrap-up on an older wrapper gets the Web toast's upgrade hint under its line.
+        const lines = formatBuiltinResults([{ sessionId: 'a', state: 'queued' }, { sessionId: 'b', state: 'queued' }], ['b']).map((l) => l.replace(/\x1b\[[0-9;]*m/g, ''))
+        expect(lines).toEqual(['a queued', 'b queued', '  hint: Sent. Upgrade the CLI on that machine to get a wrap-up card on the Briefing; for now the result stays in the chat.'])
+    })
+    it('help documents both and the spawn-first rule', () => {
+        expect(SESSIONS_HELP).toContain('very-happy sessions wrapup <id...>')
+        expect(SESSIONS_HELP).toContain('very-happy sessions handoff <from> --to <id>')
+        expect(SESSIONS_HELP).toContain('spawn it')
     })
 })

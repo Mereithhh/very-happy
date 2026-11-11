@@ -420,6 +420,14 @@ structured parity with Claude.
   message hands the final version back to the agent. **Send** on a draft is
   the same as replying “send”: one message to the conversation (the agent
   still does the actual sending under its own rules).
+- **Wrap up** and **Hand off to…** in the session menu (`/wrapup` in the
+  composer): the agent answers your wrap-up template (Settings → Shortcuts) and
+  leaves a Briefing card with the summary, files, commits and items to confirm,
+  then you archive from the card; a handoff delivers a summary with artifact
+  paths to another session on any of your machines and archives the source
+  only once delivery is confirmed. Scripts and agents use
+  `very-happy sessions wrapup|handoff` or the `session_wrapup` /
+  `session_handoff` tools ([details](docs/channels.md#sessions-wrapup--handoff--收尾-and-交接-b-915)).
 - Comment in place: select text in a message and pick **Comment** (next to
   **Quote**) to write a note right there. The passage keeps a numbered marker,
   the composer shows just “N comments”, and your next message carries them as

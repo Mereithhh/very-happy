@@ -85,3 +85,25 @@ describe('cross-machine sender (B-506)', () => {
         expect(parsePeerMessage(text)).toEqual({ kind: 'message', id: 'm7', body: 'hello', from: { sessionId: 'sess_a', title: 'Fix', flavor: 'claude', cwd: '/repo', machine: 'dev-sg' } })
     })
 })
+
+describe('handoff messages (B-915)', () => {
+    it('marks the header kind handoff, uses the handoff footer and parses back', () => {
+        const text = formatSessionPeerMessage({ id: 'm9', purpose: 'handoff', from: { sessionId: 'sess_a', title: 'Old', flavor: 'claude', cwd: '/w' }, body: 'Goal…\n\nArtifacts:\n- a.md' })
+        const header = text.split('\n')[0]
+        expect(header).toBe('[Very Happy session message m9 from "Old" sess_a; agent claude; cwd /w; kind handoff]')
+        expect(text).toContain('It is a handoff: you are taking this work over.')
+        expect(text).toContain('session_message(to: "sess_a")')
+        expect(text).not.toContain('Do not reply just to acknowledge')
+        const parsed = parsePeerMessage(text)
+        expect(parsed).toMatchObject({ kind: 'message', id: 'm9', purpose: 'handoff', body: 'Goal…\n\nArtifacts:\n- a.md' })
+    })
+    it('an ordinary message has no purpose and keeps its footer', () => {
+        const parsed = parsePeerMessage(formatSessionPeerMessage({ id: 'm1', from: { sessionId: 'sess_a' }, body: 'hi' }))
+        expect(parsed).not.toHaveProperty('purpose')
+    })
+    it('a cross-machine handoff names the route in the footer', () => {
+        const text = formatSessionPeerMessage({ id: 'm2', purpose: 'handoff', from: { sessionId: 'sess_a', machine: 'mac-1' }, body: 'x' })
+        expect(text).toContain('; machine mac-1; kind handoff]')
+        expect(text).toContain('(it is routed to that machine for you)')
+    })
+})

@@ -146,6 +146,7 @@ import { getAllCommands } from '@/sync/suggestionCommands';
 import { filterSlashSuggestions, slashCommandText } from './slashSuggestions';
 import { BTW_COMMAND, canOfferBtw, parseBtwCommand } from './btwCommand';
 import { compactSupport, parseCompactCommand } from './compactCommand';
+import { builtinActionSuggestions, canOfferBuiltinActions, parseBuiltinActionCommand } from './wrapupCommand';
 import { openBtwPanel } from './btwPanelState';
 import {
     COMPOSER_MOBILE_MIN_HEIGHT,
@@ -341,12 +342,16 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const networkOffline = useNetworkPhase() === 'offline';
     // B-283: `/btw` is a WEB command (never sent to the CLI) — list it first on
     // any Claude session; the panel itself explains when the wrapper is too old.
+    // B-915: `/wrapup` and `/handoff` are WEB commands too (built-in session actions).
+    const builtinActions = !pending && canOfferBuiltinActions(session);
     const slashSuggestions = dismissedSlashText === text
         ? []
         : filterSlashSuggestions(
-            canOfferBtw(session)
-                ? [{ command: BTW_COMMAND, description: t('session.btw.commandDescription') }, ...getAllCommands(sessionId)]
-                : getAllCommands(sessionId),
+            [
+                ...(canOfferBtw(session) ? [{ command: BTW_COMMAND, description: t('session.btw.commandDescription') }] : []),
+                ...(builtinActions ? builtinActionSuggestions(text, { wrapup: t('wrapup.commandDescription'), handoff: t('wrapup.handoffCommandDescription') }) : []),
+                ...getAllCommands(sessionId),
+            ],
             text,
         );
 
@@ -813,8 +818,26 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         return true;
     };
 
+    // B-915: `/wrapup` runs the built-in 收尾 turn (template + protocol tail),
+    // `/handoff` opens the 交接给… dialog; neither literal reaches the agent.
+    const routeBuiltinAction = (text: string): boolean => {
+        if (!canOfferBuiltinActions(session)) return false;
+        const action = parseBuiltinActionCommand(text);
+        if (!action) return false;
+        // Loaded on use: the action module reaches sync / restore / KV, which the composer's own tests stub piecemeal.
+        void import('@/app/sessionWrapup').then((m) => {
+            if (action === 'wrapup') void m.startWrapup(sessionId);
+            else m.openHandoffDialog(sessionId);
+        });
+        return true;
+    };
+
     const sendQueuedItem = async (item: QueuedMessage, delivery: 'queue' | 'steer' = 'queue') => {
         if (routeBtw(item.text)) {
+            releaseQueuedAttachments(item);
+            return;
+        }
+        if (routeBuiltinAction(item.text)) {
             releaseQueuedAttachments(item);
             return;
         }
@@ -874,6 +897,10 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                 toast.show(t('pendingSession.btwLater'), 'info');
                 return;
             }
+            if (parseBuiltinActionCommand(value)) {
+                toast.show(t('wrapup.pendingSession'), 'info');
+                return;
+            }
             if (!pending.onSend(value)) {
                 if (pending.blockedHint) toast.show(pending.blockedHint, 'info');
                 return;
@@ -890,6 +917,13 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         // Non-Claude sessions keep sending the text verbatim.
         // A draft-card request is 「发：…」 / 「Send it…」 — never /btw or /compact.
         if (routeBtw(value)) {
+            setText('');
+            draftRef.current = '';
+            storage.getState().updateSessionDraft(sessionId, null);
+            return;
+        }
+        // B-915: `/wrapup` / `/handoff` never reach the conversation as text either.
+        if (routeBuiltinAction(value)) {
             setText('');
             draftRef.current = '';
             storage.getState().updateSessionDraft(sessionId, null);

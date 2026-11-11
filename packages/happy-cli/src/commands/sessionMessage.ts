@@ -70,6 +70,8 @@ export async function sendUserMessage(
         effortIntent?: string
         /** B-497: 'steer' targets the live turn (Claude remote); omitted = queue. */
         delivery?: 'queue' | 'steer'
+        /** B-915: chat label shown instead of the full text (`meta.displayText`, e.g. 「收尾」). */
+        displayText?: string
     } = {},
 ): Promise<void> {
     const credentials = await readCredentialsForConfiguredRelay()
@@ -90,7 +92,8 @@ export async function sendUserMessage(
             ...(options.effort !== undefined ? { effort: options.effort } : {}),
             ...(options.modelIntent !== undefined ? { modelIntent: options.modelIntent } : {}),
             ...(options.effortIntent !== undefined ? { effortIntent: options.effortIntent } : {}),
-            ...(options.delivery !== undefined ? { delivery: options.delivery } : {})
+            ...(options.delivery !== undefined ? { delivery: options.delivery } : {}),
+            ...(options.displayText !== undefined ? { displayText: options.displayText } : {})
         }
     }
 

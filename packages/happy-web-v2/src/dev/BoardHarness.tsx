@@ -14,7 +14,8 @@ import { sync } from '@/sync/sync';
 import { setTeamNavigationDevOverride } from '@/screens/sessions/useTeamNavigation';
 import { buildLeadFixture } from './leadSessionFixture';
 import { markItemSeen, useAttentionStore } from '@/sync/attentionStore';
-import { ATTENTION_SESSION_CAPABILITY, type AttentionItem, type TeamState } from '@slopus/happy-wire';
+import { ATTENTION_SESSION_CAPABILITY, WRAPUP_SESSION_CAPABILITY, type AttentionItem, type TeamState, applyWrapupCheck } from '@slopus/happy-wire';
+import { HandoffDialogHost } from '@/screens/session/HandoffDialog';
 import '@/screens/session/session.css';
 
 export const BOARD_SESSION_ID = 'dev-board';
@@ -146,6 +147,16 @@ function items(): AttentionItem[] {
             createdAt: at(15), updatedAt: at(20), resolvedAt: at(20) },
         { id: 'd2', source: 'lead', kind: 'decision', needsOwner: true, state: 'open', inferred: true, title: L('要不要把旧登录页的入口一起下线？', 'Retire the old login page entry at the same time?'),
             options: [{ id: 'A', label: L('一起下线', 'Retire it too') }, { id: 'B', label: L('保留一周', 'Keep it a week') }], key: 'auto:legacy-login', createdAt: at(44), updatedAt: at(44) },
+        // B-915 examples: a finished 收尾 with 待确认, a running one is shown by the next run, and a failed 交接.
+        { id: 'w1', source: 'agent', kind: 'wrapup', key: 'wrapup', needsOwner: true, state: 'open', title: L('收尾', 'Wrap-up'), createdAt: at(46), updatedAt: at(46),
+            payload: { v: 1, mode: 'wrapup', status: 'done', canClose: true,
+                summary: L('登录页改版已合并（PR #431），预发验证通过。\n文档和截图已同步。\n手机真机检查留给你。', 'Login redesign merged (PR #431) and verified on staging.\nDocs and screenshots updated.\nThe real-phone check is left to you.'),
+                files: ['packages/web/src/login/LoginPage.tsx', 'packages/web/src/login/login.css', 'docs/login.md'],
+                commits: [{ sha: '3f9c2e1a7b', subject: L('登录页改版', 'Login page redesign'), repo: 'example/app' }, { sha: '9a01bc4', subject: L('同步文档截图', 'Sync docs screenshots') }],
+                pending: [{ id: 'p1', label: L('真机上看一眼新登录页', 'Check the new login page on a real phone'), checked: false }, { id: 'p2', label: L('旧入口保留一周', 'Keep the old entry for a week'), checked: true }] } },
+        { id: 'w2', source: 'agent', kind: 'wrapup', key: 'handoff', needsOwner: true, state: 'open', title: L('交接', 'Handoff'), createdAt: at(47), updatedAt: at(47),
+            payload: { v: 1, mode: 'handoff', status: 'failed', summary: L('GPU 视图的进度与待办。', 'GPU view progress and open items.'), artifacts: ['docs/gpu-view.md'],
+                handoff: { to: 'session-gpu', toTitle: L('GPU 视图', 'GPU view'), delivery: 'failed', error: L('目标机器的 daemon 不在线', 'The target machine\'s daemon is offline'), archiveAfter: true } } },
     ] as Draft[]).map(wire);
 }
 
@@ -165,9 +176,16 @@ function installAttentionApi(data: Map<string, AttentionItem>, off: boolean): ()
         if (!m) return json(200, { items: [...data.values()].filter((i) => !sid || i.sessionId === sid) });
         const item = data.get(decodeURIComponent(m[1]));
         if (!item) return json(404, { error: 'not_found' });
-        const body = JSON.parse(String(init?.body ?? '{}')) as { action: string; choice?: string };
+        const body = JSON.parse(String(init?.body ?? '{}')) as { action: string; choice?: string; checkId?: string; checked?: boolean };
         ((window as unknown as { __boardCalls?: unknown[] }).__boardCalls ??= []).push({ id: item.id, ...body });
         const now = Date.now();
+        if (body.action === 'check') {
+            const payload = applyWrapupCheck(item.payload, body.checkId ?? '', body.checked === true);
+            if (!payload) return json(409, { error: 'attention_check_unknown' });
+            const checked: AttentionItem = { ...item, payload, updatedAt: now, version: item.version + 1 };
+            data.set(checked.id, checked);
+            return json(200, { item: checked });
+        }
         const next: AttentionItem = body.action === 'reopen'
             ? { ...item, state: 'open', resolvedBy: null, resolvedAt: null, updatedAt: now, version: item.version + 1 }
             : { ...item, state: item.kind === 'question' || item.kind === 'request' ? 'answered' : 'resolved', ownerChoice: body.choice ?? item.ownerChoice,
@@ -192,7 +210,8 @@ export function seedBoardSession(): { team: TeamState; cleanup: () => void } {
     storage.getState().applySessions([{
         id: SESSION_ID, seq: 1, createdAt: BASE, updatedAt: now, active: true, activeAt: now,
         metadata: { machineId: 'dev-machine', path: '/repo', host: 'dev-box', flavor: 'claude', summary: { text: L('网站改版 · 负责人', 'Website redesign · lead'), updatedAt: now },
-            capabilities: ['claude-steer-v1', 'claude-live-permission-v1', ATTENTION_SESSION_CAPABILITY] },
+            // B-915: `?oldcli=1` drops wrapup-v1 to show the old-wrapper path (upgrade notice, no auto-archive).
+            capabilities: ['claude-steer-v1', 'claude-live-permission-v1', ATTENTION_SESSION_CAPABILITY, ...(new URLSearchParams(location.search).has('oldcli') ? [] : [WRAPUP_SESSION_CAPABILITY])] },
         metadataVersion: 1,
         agentState: { controlledByUser: false, requests: {} },
         agentStateVersion: 1,
@@ -222,9 +241,27 @@ export function BoardHarness() {
     const [ready, setReady] = useState(false);
     useEffect(() => {
         const { team, cleanup } = seedBoardSession();
+        seedHandoffTargets();
         setTeamNavigationDevOverride([team]);
         setReady(true);
         return () => { setTeamNavigationDevOverride(null); cleanup(); };
     }, []);
-    return ready ? <SessionDetailScreen /> : null;
+    // B-915: AppLayout hosts the 交接给… dialog in the app; this harness renders the screen alone.
+    return ready ? <><SessionDetailScreen /><HandoffDialogHost /></> : null;
+}
+
+/** B-915: two other sessions for the 交接给… target list (one live here, one offline on another machine). */
+function seedHandoffTargets(): void {
+    const now = Date.now();
+    const target = (id: string, title: string, machineId: string, host: string, active: boolean, ago: number) => ({
+        id, seq: 1, createdAt: BASE, updatedAt: now - ago, active, activeAt: now - ago,
+        metadata: { machineId, path: `/repo/${id}`, host, flavor: 'claude', summary: { text: title, updatedAt: now } },
+        metadataVersion: 1, agentState: { controlledByUser: false, requests: {} }, agentStateVersion: 1, thinking: false, presence: active ? 'online' : 'offline',
+    } as unknown as Session);
+    storage.getState().applySessions([
+        target('dev-board-gpu', L('GPU 视图', 'GPU view'), 'dev-machine', 'dev-box', true, 60_000),
+        target('dev-board-weekly', L('周报汇总', 'Weekly report'), 'dev-machine-2', 'office-mac', false, 3_600_000),
+    ]);
+    // useAllSessions (the dialog's list) waits for the first sync; this harness has none.
+    storage.setState({ isDataReady: true });
 }

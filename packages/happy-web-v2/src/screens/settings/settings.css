@@ -190,6 +190,9 @@ input.set-value:focus {
     font-size: var(--fs-16);
   }
 }
+/* B-915 收尾模板 (snippets) */
+.set-wrapup { display: flex; flex-direction: column; gap: var(--sp-2); padding: 10px 16px; }
+.set-wrapup__textarea { min-height: 132px; line-height: 1.5; }
 .set-editor__row {
   display: flex;
   gap: var(--sp-2);

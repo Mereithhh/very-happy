@@ -26,6 +26,15 @@ describe('finalizeRemotePrompt', () => {
         expect(d.project.decorate).not.toHaveBeenCalled();
     });
 
+    it('B-915b: reports the turn start with the batch ids to the wrap-up tracker, board or not; not for /compact', async () => {
+        const onTurnStart = vi.fn();
+        await finalizeRemotePrompt('hello', { ...deps(), board: undefined, onTurnStart });
+        expect(onTurnStart).toHaveBeenCalledWith(['l1']);
+        const skipped = vi.fn();
+        await finalizeRemotePrompt('/compact', { ...deps(), onTurnStart: skipped });
+        expect(skipped).not.toHaveBeenCalled();
+    });
+
     it('works without a lead board', async () => {
         const d = deps();
         expect(await finalizeRemotePrompt('hi', { project: d.project })).toBe('[project]\nhi');

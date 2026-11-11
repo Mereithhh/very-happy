@@ -68,6 +68,9 @@ describe('owner message classification', () => {
     it('counts only a person in a Very Happy client, never board buttons or automated senders', () => {
         expect(isOwnerMessage({ localId: 'abc', sentFrom: 'web' })).toBe(true);
         expect(isOwnerMessage({ localId: 'board-item1-n', sentFrom: 'web' })).toBe(false);
+        // B-915: a 「收尾」/「交接给…」 turn from the Web menu is a built-in action, not a question.
+        expect(isOwnerMessage({ localId: 'wrapup-n1', sentFrom: 'web' })).toBe(false);
+        expect(isOwnerMessage({ localId: 'handoff-n1', sentFrom: 'web' })).toBe(false);
         expect(isOwnerMessage({ localId: 'teams-message-1', sentFrom: 'web' })).toBe(false);
         expect(isOwnerMessage({ localId: 'abc', sentFrom: 'team' })).toBe(false);
         expect(isOwnerMessage({ localId: 'abc', sentFrom: 'session-peer' })).toBe(false);

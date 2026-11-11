@@ -38,7 +38,7 @@ has the same tool set:
 |---|---|
 | Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
 | Managed Codex / Gemini / ACP bridge (pi: same server via `HAPPY_MCP_URL` `tools/list`) | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` (B-556; optional `phase`; Codex and pi run it without an approval prompt) |
-| Managed Claude (in-process), Codex / Gemini / ACP (the stdio bridge forwards them) and pi (`HAPPY_MCP_URL`, discovered via `tools/list`) additionally | `team_*` (Agent Teams) and the B-496 Automations tools: `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_pause`, `automation_resume`, `automation_delete`, `automation_run`, `automation_fire`, `automation_runs`, `automation_report`, `automation_ack` — account authority, same trust level as the session; and the B-497 session peer tools `session_message`, `session_peers` (message / list the other sessions on this machine — and, since B-506, on the account's other machines: `session_message` to a foreign session is routed to its machine, `session_peers` takes `machineId`; see [`very-happy sessions peers` / `message`](#sessions-peers--message--talk-to-the-other-sessions-on-this-machine)); and the B-645 project tools `project_context` (read the session's project: instructions, decisions in effect, other sessions, unread messages — ≤2KB delta by default, `full=true` for everything) and `project_note` (append a decision / finding / handoff, ≤5 per hour of which ≤2 decisions; `supersedes` / `revoke`); `session_peers` also takes `scope: "project"` (the other sessions of the project on any machine, from server-side presence); since B-646 a `session_message` to a project session that is not running is stored server-side (`status: "offline-stored"`) and read at that session's next turn instead of being refused. Sessions that report the `project-v1` capability get the project's instructions in front of their first message and a one-line digest on later turns ([spec](../specs/2026-10-projects.md)); OpenClaw and terminal-mirror sessions do not (shown as 「未注入」) |
+| Managed Claude (in-process), Codex / Gemini / ACP (the stdio bridge forwards them) and pi (`HAPPY_MCP_URL`, discovered via `tools/list`) additionally | `team_*` (Agent Teams) and the B-496 Automations tools: `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_pause`, `automation_resume`, `automation_delete`, `automation_run`, `automation_fire`, `automation_runs`, `automation_report`, `automation_ack` — account authority, same trust level as the session; and the B-497 session peer tools `session_message`, `session_peers` (message / list the other sessions on this machine — and, since B-506, on the account's other machines: `session_message` to a foreign session is routed to its machine, `session_peers` takes `machineId`; see [`very-happy sessions peers` / `message`](#sessions-peers--message--talk-to-the-other-sessions-on-this-machine)); and the B-645 project tools `project_context` (read the session's project: instructions, decisions in effect, other sessions, unread messages — ≤2KB delta by default, `full=true` for everything) and `project_note` (append a decision / finding / handoff, ≤5 per hour of which ≤2 decisions; `supersedes` / `revoke`); `session_peers` also takes `scope: "project"` (the other sessions of the project on any machine, from server-side presence); since B-646 a `session_message` to a project session that is not running is stored server-side (`status: "offline-stored"`) and read at that session's next turn instead of being refused. Since B-915 every session also gets `wrapup_report` / `handoff_send` (report this session's wrap-up, hand its work to another session) and `session_wrapup` / `session_handoff` (ask other sessions to; see [`sessions wrapup` / `handoff`](#sessions-wrapup--handoff--收尾-and-交接-b-915)). Sessions that report the `project-v1` capability get the project's instructions in front of their first message and a one-line digest on later turns ([spec](../specs/2026-10-projects.md)); OpenClaw and terminal-mirror sessions do not (shown as 「未注入」) |
 | Voice Assistant / legacy assistant variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send` (both follow the B-506 route for sessions another machine spawned; optional `machineId`), `session_spawn` (B-916b: optional `title`, `agent`, `projectId` — the project is joined before the first prompt), `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
 | Main agent additions (B-916b: assistant variant outside any team scope; it has no shell) | `teams_list`, `lead_delegate`, `lead_message`, `issue_list`, `issue_create`, `issue_assign`, `issue_comment`, `todo_list`, `todo_add`, `todo_complete`, `project_list`, `project_context`, `project_note`, `session_wrapup`, `session_handoff`, `session_restart`, `owner_board_*` — account-level issues / todos / projects (`projectId`), work for a team goes to its Lead (`lead_delegate` / `lead_message` deliver into the Lead's session; `lead_unreachable` when it cannot be reached), wrap-up / handoff / restart adapters answer `not_available` until their backends ship. Every answer on this surface is capped: writes and errors ≤ 400 characters, lists ≤ 4,000 (one line ≤ 160), bodies ≤ 8,000; a longer answer ends with `[truncated: … cursor="N" …]` and the tool takes `cursor` to continue. Dispatch tools take `risk` (`none` / `outbound` / `prod_write` / `irreversible`) for the owner-approval gate |
 | User-scoped `very-happy mcp` (plain `claude`, pi, …) | `copy_to_clipboard` only |
@@ -599,6 +599,44 @@ ignores anything older than the window, so replayed transcript history (a
 terminal mirror's backfill, a re-read after the file was replaced, a daemon
 restart re-adopting a terminal) never produces a notice. Nothing is blocked:
 it is a heads-up, and the Web shows it as a card linking to the other session.
+
+#### `sessions wrapup` / `handoff` — 收尾 and 交接 (B-915)
+
+```sh
+very-happy sessions wrapup <id...> [--template-file <f>] [--json]
+very-happy sessions handoff <from> --to <id> [--archive] [--note <text>] [--json]
+```
+
+The same two actions the Web offers in the session menu (「收尾」, also the
+`/wrapup` slash command, and 「交接给…」), for scripts and the main agent. Each
+sends one ordinary turn into the session; the matching MCP tools are
+`session_wrapup` (`session_ids` 1–20 or one `session_id`, optional `template`,
+`request_id`) and `session_handoff` (`from`, `to`, `archive_after`, `note`,
+`request_id`). Receipt per session: `{ ok, sessionId, state }` with `queued`,
+`running` (that session is already wrapping up or handing off — nothing is
+sent, so a nightly batch can repeat safely) or `error` (archived, not found, or
+could not be woken). Any machine of the account (the owning machine's daemon
+delivers, as for `message`); an offline (hibernated) session is resumed on its
+machine first and gets the turn once it is live; an archived one is refused,
+never unarchived.
+
+- **Wrap-up** uses the account template (Web → Settings, stored in plain text
+  in the account KV `vh.wrapup.v1`; a generic default otherwise) plus a short
+  protocol tail asking the agent to call `wrapup_report` (summary, files,
+  commits, pending items, can_close). The result is a card on the owner board
+  with checkboxes for the pending items and an Archive button. Nothing is
+  archived automatically.
+- **Handoff** asks `<from>` to write a summary with artifact paths and call
+  `handoff_send`, which delivers it like `session_message` with
+  `; kind handoff` in the header and a handoff footer, and puts a handoff card
+  (delivered / stored / failed in red) on `<from>`'s board. `--archive` /
+  `archive_after` archives `<from>` when that turn ends — only after a live
+  session confirmed delivery (this machine's wrapper, or the other machine's
+  daemon acked it); a message stored for a session that is not running, or a
+  failure, never archives. `--to` must be an existing session: to hand off to
+  a new one, spawn it first.
+- Wrappers that report the `wrapup-v1` capability turn these turns into cards;
+  an older wrapper still gets the turn and answers in plain text (no card).
 
 ### `very-happy send` — message an existing session
 

@@ -37,7 +37,8 @@ export const ATTENTION_LIMITS = {
 /** Who created the item. `agent` = `request_human`; `team` = a root-task `team_submit`; `issue` = B-871 issue events (server-written only, spec 2026-11-issues §7). */
 export const ATTENTION_SOURCES = ['lead', 'agent', 'owner', 'automation', 'team', 'issue'] as const;
 export type AttentionSource = typeof ATTENTION_SOURCES[number];
-export const ATTENTION_KINDS = ['decision', 'todo', 'blocked', 'report', 'answer', 'question', 'request', 'pin'] as const;
+/** `wrapup` (B-915) = a session's wrap-up / handoff card; its structured body lives in `payload` (`AttentionWrapupPayloadSchema`). */
+export const ATTENTION_KINDS = ['decision', 'todo', 'blocked', 'report', 'answer', 'question', 'request', 'pin', 'wrapup'] as const;
 export type AttentionKind = typeof ATTENTION_KINDS[number];
 /** `answered` is a settled question/request that stays visible (latest 2 per session, D2); `resolved`/`dismissed` are closed. */
 export const ATTENTION_STATES = ['open', 'in_progress', 'answered', 'resolved', 'dismissed'] as const;
@@ -69,7 +70,17 @@ export function isAttentionBoardLocalId(localId: string | null | undefined): boo
 
 /** Badge + push: only these kinds wait on the owner (§6.1). */
 export function attentionKindNeedsOwner(kind: string): boolean {
-    return kind === 'decision' || kind === 'todo' || kind === 'blocked';
+    return kind === 'decision' || kind === 'todo' || kind === 'blocked' || kind === 'wrapup';
+}
+
+/**
+ * `needsOwner` the server stores for a post (B-915): a `wrapup` card waits on
+ * the owner only once it has a result; while the agent is still wrapping up
+ * (`payload.status === 'running'`) it is shown but not counted.
+ */
+export function attentionItemNeedsOwner(kind: string, payload?: unknown): boolean {
+    if (kind === 'wrapup') return readWrapupStatus(payload) !== 'running';
+    return attentionKindNeedsOwner(kind);
 }
 
 export function isAttentionActive(state: string): boolean {
@@ -92,6 +103,8 @@ export function attentionResolveState(outcome: string): AttentionState {
  */
 export function attentionPushKind(item: { kind: string; replyToId?: string | null; inferred?: boolean }): 'attention' | 'question' | null {
     if (item.inferred) return null;
+    // B-915: wrap-up cards never push (~400 a month; the owner reads them when closing sessions).
+    if (item.kind === 'wrapup') return null;
     if (attentionKindNeedsOwner(item.kind)) return 'attention';
     if (item.kind === 'answer' && item.replyToId) return 'question';
     return null;
@@ -132,6 +145,116 @@ export const AttentionAnchorSchema = z.object({
 }).refine(a => a.localId !== undefined || a.messageId !== undefined, 'anchor needs localId or messageId');
 export type AttentionAnchor = z.infer<typeof AttentionAnchorSchema>;
 
+// ─── B-915 wrap-up / handoff payload ─────────────────────────────────────────
+
+export const WRAPUP_LIMITS = {
+    summaryChars: 4000,
+    files: 100,
+    pathChars: 1024,
+    commits: 30,
+    subjectChars: 200,
+    repoChars: 512,
+    pending: 10,
+    pendingChars: 300,
+    artifacts: 30,
+    idChars: 16,
+    titleChars: 200,
+    errorChars: 500,
+} as const;
+export const WRAPUP_MODES = ['wrapup', 'handoff'] as const;
+/** `incomplete` (B-915b): the wrap-up / handoff turn ended without `wrapup_report` / `handoff_send` — the card offers 重试. */
+export const WRAPUP_STATUSES = ['running', 'done', 'failed', 'incomplete'] as const;
+export type WrapupStatus = typeof WRAPUP_STATUSES[number];
+/** `delivered` = landed in a live session (same machine, or the other machine's daemon acked); `offline-stored` = project message read at its next turn. */
+export const HANDOFF_DELIVERIES = ['delivered', 'offline-stored', 'failed'] as const;
+
+const wrapupPath = z.string().trim().min(1).max(WRAPUP_LIMITS.pathChars);
+export const WrapupCommitSchema = z.object({
+    sha: z.string().trim().regex(/^[0-9a-fA-F]{7,64}$/, 'commit sha'),
+    subject: z.string().trim().max(WRAPUP_LIMITS.subjectChars).optional(),
+    /** `owner/name` or a remote URL, when known (the Web links GitHub commits). */
+    repo: z.string().trim().max(WRAPUP_LIMITS.repoChars).optional(),
+});
+export const WrapupPendingSchema = z.object({
+    id: z.string().trim().min(1).max(WRAPUP_LIMITS.idChars),
+    label: z.string().trim().min(1).max(WRAPUP_LIMITS.pendingChars),
+    checked: z.boolean(),
+});
+export const WrapupHandoffSchema = z.object({
+    to: id,
+    toTitle: z.string().max(WRAPUP_LIMITS.titleChars).optional(),
+    delivery: z.enum(HANDOFF_DELIVERIES).optional(),
+    error: z.string().max(WRAPUP_LIMITS.errorChars).optional(),
+    machine: z.string().max(WRAPUP_LIMITS.titleChars).optional(),
+    archiveAfter: z.boolean().optional(),
+    /** Set once the source session archived itself after a confirmed delivery. */
+    archived: z.boolean().optional(),
+});
+export const AttentionWrapupPayloadSchema = z.object({
+    v: z.literal(1),
+    mode: z.enum(WRAPUP_MODES),
+    status: z.enum(WRAPUP_STATUSES),
+    /** localId of the user turn that asked for it (`wrapup-…` / `handoff-…`). */
+    localId: z.string().min(1).max(256).optional(),
+    startedAt: z.number().int().nonnegative().optional(),
+    summary: z.string().max(WRAPUP_LIMITS.summaryChars).optional(),
+    files: z.array(wrapupPath).max(WRAPUP_LIMITS.files).optional(),
+    commits: z.array(WrapupCommitSchema).max(WRAPUP_LIMITS.commits).optional(),
+    artifacts: z.array(wrapupPath).max(WRAPUP_LIMITS.artifacts).optional(),
+    pending: z.array(WrapupPendingSchema).max(WRAPUP_LIMITS.pending)
+        .refine(p => new Set(p.map(x => x.id)).size === p.length, 'pending ids must be unique').optional(),
+    canClose: z.boolean().optional(),
+    handoff: WrapupHandoffSchema.optional(),
+});
+export type AttentionWrapupPayload = z.infer<typeof AttentionWrapupPayloadSchema>;
+
+/** Lenient read of an item's `payload` (open strings, unknown fields kept): null when it is not a v1 wrap-up payload. */
+const WrapupPayloadReadSchema = z.object({
+    v: z.literal(1),
+    mode: z.string(),
+    status: z.string(),
+    localId: z.string().optional(),
+    startedAt: z.number().optional(),
+    summary: z.string().optional(),
+    files: z.array(z.string()).optional(),
+    commits: z.array(z.object({ sha: z.string(), subject: z.string().optional(), repo: z.string().optional() }).passthrough()).optional(),
+    artifacts: z.array(z.string()).optional(),
+    pending: z.array(z.object({ id: z.string(), label: z.string(), checked: z.boolean() }).passthrough()).optional(),
+    canClose: z.boolean().optional(),
+    handoff: z.object({
+        to: z.string(), toTitle: z.string().optional(), delivery: z.string().optional(), error: z.string().optional(),
+        machine: z.string().optional(), archiveAfter: z.boolean().optional(), archived: z.boolean().optional(),
+    }).passthrough().optional(),
+}).passthrough();
+export type WrapupPayloadView = z.infer<typeof WrapupPayloadReadSchema>;
+export function parseWrapupPayload(payload: unknown): WrapupPayloadView | null {
+    const parsed = WrapupPayloadReadSchema.safeParse(payload);
+    return parsed.success ? parsed.data : null;
+}
+function readWrapupStatus(payload: unknown): string | null {
+    return parseWrapupPayload(payload)?.status ?? null;
+}
+
+/** A `running` card older than this is treated as abandoned: a new wrap-up / handoff request may start over. */
+export const WRAPUP_RUNNING_STALE_MS = 2 * 60 * 60 * 1000;
+/**
+ * Idempotency gate for `sessions wrapup` / `session_wrapup` (B-915): true while
+ * the session's card of this mode is an active `running` one that is not stale.
+ */
+export function wrapupInProgress(item: { kind: string; state: string; updatedAt: number; payload?: unknown } | null | undefined, mode: 'wrapup' | 'handoff', now: number): boolean {
+    if (!item || item.kind !== 'wrapup' || !isAttentionActive(item.state)) return false;
+    const p = parseWrapupPayload(item.payload);
+    if (!p || p.mode !== mode || p.status !== 'running') return false;
+    return now - (p.startedAt ?? item.updatedAt) < WRAPUP_RUNNING_STALE_MS;
+}
+
+/** Apply an owner `check` to a payload; null when the item has no such pending entry. */
+export function applyWrapupCheck(payload: unknown, checkId: string, checked: boolean): Record<string, unknown> | null {
+    const p = parseWrapupPayload(payload);
+    if (!p?.pending?.some(x => x.id === checkId)) return null;
+    return { ...p, pending: p.pending.map(x => x.id === checkId ? { ...x, checked } : x) };
+}
+
 // ─── Item (response / update payload) ────────────────────────────────────────
 
 export const AttentionItemSchema = z.object({
@@ -167,6 +290,8 @@ export const AttentionItemSchema = z.object({
     pushedAt: z.number().nullable(),
     /** Bumped on every mutation; clients keep the highest version per id. */
     version: z.number(),
+    /** B-915: structured body of a `wrapup` item (read with `parseWrapupPayload`); absent from older servers. */
+    payload: z.unknown().nullable().optional(),
 });
 export type AttentionItem = z.infer<typeof AttentionItemSchema>;
 
@@ -204,7 +329,10 @@ export const AttentionItemPostSchema = z.object({
      * pushes once); a draft never downgrades a confirmed item.
      */
     inferred: z.boolean().default(false),
-}).refine(p => p.kind !== 'decision' || p.options !== undefined, { message: 'decision needs 2-4 options', path: ['options'] });
+    /** B-915: only (and always) for `kind: 'wrapup'`. A repost replaces the whole payload. */
+    payload: AttentionWrapupPayloadSchema.optional(),
+}).refine(p => p.kind !== 'decision' || p.options !== undefined, { message: 'decision needs 2-4 options', path: ['options'] })
+    .refine(p => (p.kind === 'wrapup') === (p.payload !== undefined), { message: 'payload is required for wrapup and only allowed there', path: ['payload'] });
 export type AttentionItemPost = z.input<typeof AttentionItemPostSchema>;
 
 /** PATCH /v1/attention-items/:id → `AttentionItemResponse`. Omitted fields keep their value; `appendMd` appends to `bodyMd`. */
@@ -245,6 +373,8 @@ export const AttentionItemOwnerRespondSchema = z.discriminatedUnion('action', [
     z.object({ action: z.literal('choose'), choice: z.string().trim().min(1).max(ATTENTION_LIMITS.optionIdChars), note: note.optional() }),
     z.object({ action: z.literal('resolve'), note: note.optional() }),
     z.object({ action: z.literal('reopen'), note: note.optional() }),
+    /** B-915: tick / untick one `payload.pending` entry of a `wrapup` item (state unchanged). */
+    z.object({ action: z.literal('check'), checkId: z.string().trim().min(1).max(WRAPUP_LIMITS.idChars), checked: z.boolean() }),
 ]);
 export type AttentionItemOwnerRespond = z.infer<typeof AttentionItemOwnerRespondSchema>;
 

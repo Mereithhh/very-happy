@@ -1131,6 +1131,9 @@ model AttentionItem {
     /// At-most-once push watermark; cleared only when a repost reopens a closed item.
     pushedAt      DateTime?
     version       Int       @default(1)
+    /// B-915 structured body of a `wrapup` card (summary / files / commits / pending checks / handoff).
+    /// [AttentionWrapupPayload]
+    payload       Json?
     @@unique([sessionId, key])
     @@index([accountId, state, needsOwner])
     @@index([accountId, updatedAt])

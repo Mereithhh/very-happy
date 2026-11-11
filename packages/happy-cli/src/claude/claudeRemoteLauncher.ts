@@ -642,6 +642,7 @@ export async function claudeRemoteLauncher(
                             const out = await finalizeRemotePrompt(prompt, {
                                 board: leadBoardFor(session.client),
                                 project: session.projectInjector,
+                                onTurnStart: (ids) => session.client.emit('turn-started', ids),
                                 sourceIds: batchSourceIds,
                             });
                             onPromptFinalized?.(out);

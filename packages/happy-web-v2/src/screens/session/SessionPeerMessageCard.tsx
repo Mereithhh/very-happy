@@ -38,7 +38,7 @@ export function SessionPeerMessageCard({ content, sessionId, createdAt }: { cont
     const fromKind = agentKindOf(content.agent);
     // B-506: a message that crossed machines names the sender's host.
     const fromSecondary = [agentKindLabel(fromKind) ?? content.agent, content.machine ? `@${content.machine}` : null].filter(Boolean).join(' · ');
-    const label = conflict ? t('session.peerMessage.conflict') : t('session.peerMessage.messageFrom');
+    const label = conflict ? t('session.peerMessage.conflict') : content.handoff ? t('session.peerMessage.handoff') : t('session.peerMessage.messageFrom');
     const from = <AgentChip strong kind={fromKind} name={content.fromTitle ?? content.fromSessionId} secondary={fromSecondary || undefined} title={content.fromSessionId} />;
     const to = self ? <AgentChip kind={agentKindOf(self.metadata?.flavor)} name={getSessionName(self)} /> : null;
     const route = to ? <AgentRoute from={from} to={to} /> : from;
@@ -54,7 +54,7 @@ export function SessionPeerMessageCard({ content, sessionId, createdAt }: { cont
         <div className="peer-message peer-message--card" role="group" aria-label={label} onClick={(e) => { if (cardClickOpens(e)) setOpen(true); }}>
             <div className="peer-message-heading">
                 <Icon size={16} aria-hidden />
-                {conflict && <span className="peer-message-kind">{label}</span>}
+                {(conflict || content.handoff) && <span className={`peer-message-kind${content.handoff ? ' peer-message-kind--handoff' : ''}`}>{label}</span>}
                 {route}
                 {ago}
                 <MessageTime createdAt={createdAt} />

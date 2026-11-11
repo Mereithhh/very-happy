@@ -4,11 +4,23 @@
 import { ChevronRight } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { AttentionItem } from '@slopus/happy-wire';
-import { boardCopy, kindLabel } from './boardCopy';
+import { boardCopy, kindLabel, type BoardCopy } from './boardCopy';
 import { kindTone } from './boardModel';
+import { wrapupHeadlineText } from './WrapupCard';
+import { wrapupView } from './wrapupModel';
 import { useAttentionStore } from '@/sync/attentionStore';
 import { teamAccountItemText } from './TeamAccountItem';
 import './board.css';
+
+/**
+ * The pointer's title in the reader's language: a 收尾 / 交接 item titles itself
+ * from kind + payload status like its board card (the CLI's stored title is English).
+ */
+export function boardPointerTitle(item: AttentionItem, copy: BoardCopy): string {
+    const wrapup = wrapupView(item);
+    if (wrapup) return wrapupHeadlineText(wrapup, copy.wrapup);
+    return teamAccountItemText(item)?.title ?? item.title;
+}
 
 export function BoardPointer({ item, onOpen }: { item: AttentionItem; onOpen: (item: AttentionItem) => void }) {
     const { lang } = useTranslation();
@@ -16,7 +28,7 @@ export function BoardPointer({ item, onOpen }: { item: AttentionItem; onOpen: (i
     return (
         <button type="button" className="brf-ptr" onClick={() => onOpen(item)}>
             <span className={`brf-kind brf-kind--${kindTone(item.kind)}`}>{copy.pointer(kindLabel(copy, item.kind))}</span>
-            <span className="brf-ptr-title">{teamAccountItemText(item)?.title ?? item.title}</span>
+            <span className="brf-ptr-title">{boardPointerTitle(item, copy)}</span>
             <span className="brf-ptr-go">{copy.pointerGo}<ChevronRight size={12} aria-hidden /></span>
         </button>
     );

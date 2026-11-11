@@ -102,6 +102,8 @@ declare global {
         type AttentionOptions = WireAttentionOption[];
         type AttentionLinks = WireAttentionLink[];
         type AttentionAnchor = WireAttentionAnchor;
+        // B-915 wrap-up / handoff card (stored as posted; read back leniently with `parseWrapupPayload`)
+        type AttentionWrapupPayload = Record<string, unknown>;
 
         type GitHubProfile = GitHubProfileType;
         type GitHubOrg = GitHubOrgType;

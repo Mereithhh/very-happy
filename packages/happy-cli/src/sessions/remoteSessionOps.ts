@@ -62,6 +62,8 @@ export const REMOTE_TITLE_MAX_BYTES = 1024
 /** `sentFrom` values a remote send may stamp on the envelope; anything else becomes `cli`. */
 export const REMOTE_SENT_FROM_ALLOWED = ['cli', 'assistant', 'automation'] as const
 const LOCAL_ID_RE = /^[a-zA-Z0-9_.:-]{1,128}$/
+/** B-915: `meta.displayText` of a remote send (a short chip label such as 「收尾」). */
+export const REMOTE_DISPLAY_TEXT_MAX_CHARS = 200
 
 /** Who is asking — self-reported; the server already guarantees the same account. */
 export interface RemoteCaller {
@@ -113,6 +115,8 @@ export interface RemoteSendArgs {
      * it and cannot double-deliver.
      */
     localId?: string
+    /** B-915: short label the chat shows instead of the full text (`meta.displayText`); older daemons drop it. */
+    displayText?: string
 }
 
 export interface RemotePeersArgs {
@@ -127,6 +131,8 @@ export interface RemoteMessageArgs {
     replyTo?: string
     /** The sender as the target should print it (title / cwd / agent of the calling session). */
     from: PeerSender
+    /** B-915: `handoff` marks the header (`; kind handoff`) and uses the handoff footer; older daemons drop it. */
+    purpose?: 'handoff'
 }
 
 export type RemoteArgsOf<M extends RemoteSessionOpsMethod> =
@@ -235,6 +241,7 @@ export function guardRemoteSessionOpsRequest<M extends RemoteSessionOpsMethod>(
                 ...(args.model === null || (typeof args.model === 'string' && args.model.length <= 128) ? { model: args.model as string | null } : {}),
                 ...((REMOTE_SENT_FROM_ALLOWED as readonly string[]).includes(args.sentFrom as string) ? { sentFrom: args.sentFrom as string } : {}),
                 ...(typeof args.localId === 'string' ? { localId: args.localId } : {}),
+                ...(typeof args.displayText === 'string' && args.displayText.trim() && args.displayText.length <= REMOTE_DISPLAY_TEXT_MAX_CHARS ? { displayText: args.displayText } : {}),
             }
             clean = out
             break
@@ -262,6 +269,7 @@ export function guardRemoteSessionOpsRequest<M extends RemoteSessionOpsMethod>(
                 // from, as the caller identified itself — never a value the
                 // sender picked for someone else.
                 from: { ...sender, machine: caller.host },
+                ...(args.purpose === 'handoff' ? { purpose: 'handoff' as const } : {}),
             }
             clean = out
             break

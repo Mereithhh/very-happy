@@ -44,6 +44,7 @@ import {
   useToast,
 } from '@/ui';
 import { useTheme } from '@/ui';
+import { WrapupTemplateGroup } from './WrapupTemplateGroup';
 import { Modal } from '@/modal';
 import { useAuth } from '@/auth/AuthContext';
 import { checkForUpdateNow } from '@/app/staleBundleReload';
@@ -1564,6 +1565,9 @@ function Snippets() {
             />
           </div>
         </ItemGroup>
+
+        {/* B-915: the account's 收尾 template (session menu 收尾 / `/wrapup`). */}
+        <WrapupTemplateGroup />
 
         {/* Experimental (B-093): who owns the terminal's keyboard/IME state
             machine. Device-local — input hardware is a device trait, and the

@@ -14,6 +14,14 @@
  *   very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
  *   very-happy sessions peers [--scope repo|cwd|machine|project] [--cwd <dir>] [--json]
  *   very-happy sessions message <id> <text> [--reply-to <msgId>] [--json]
+ *   very-happy sessions wrapup <id...> [--template-file <f>] [--json]
+ *   very-happy sessions handoff <from> --to <id> [--archive] [--note <t>] [--json]
+ *
+ * `wrapup` / `handoff` (B-915) are the CLI face of the `session_wrapup` /
+ * `session_handoff` MCP tools (`@/wrapup/request`): one ordinary turn into
+ * each session asking it to wrap up (the account template) or to hand its
+ * work over to another existing session. Idempotent: a session already doing
+ * it answers `running` and gets nothing new. Any machine of the account.
  *
  * `peers` / `message` (B-497) are the CLI face of the `session_peers` /
  * `session_message` MCP tools: who else is running here (same repo by
@@ -67,6 +75,10 @@ import { cliPeerSelf, executeSessionPeerTool, listPeerSessions, sendPeerMessage,
 import { PEER_SCOPES, type PeerScope } from '@/sessions/repoIdentity'
 import { readPersistedSessions } from '@/persistence'
 import { resolve as resolvePath } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { WRAPUP_TEMPLATE_MAX_CHARS } from '@slopus/happy-wire'
+import { requestHandoff, requestWrapup, WRAPUP_UPGRADE_HINT, wrapupUpgradeNeeded, type BuiltinRequestResult } from '@/wrapup/request'
+import { SESSION_WRAPUP_MAX_IDS } from '@/wrapup/report'
 import {
     fillForeignAccountRows,
     listRemotePeers,
@@ -78,7 +90,7 @@ import {
 /** Machine ids are UUIDs the CLI minted (`randomUUID()`); accept the same URL-safe charset as session ids. */
 const MACHINE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/
 
-export type SessionsAction = 'list' | 'read' | 'stop' | 'archive' | 'approve' | 'deny' | 'peers' | 'message' | 'help'
+export type SessionsAction = 'list' | 'read' | 'stop' | 'archive' | 'approve' | 'deny' | 'peers' | 'message' | 'wrapup' | 'handoff' | 'help'
 
 export interface SessionsCommandOptions {
     action: SessionsAction
@@ -117,18 +129,28 @@ export interface SessionsCommandOptions {
      * lookup and force the proxy path; peers: that machine's live sessions.
      */
     machine?: string
+    /** wrapup: every session to ask (1-20). */
+    sessionIds?: string[]
+    /** wrapup: read the template from this file instead of the account's. */
+    templateFile?: string
+    /** handoff: the existing session that takes the work over. */
+    to?: string
+    /** handoff: the source archives itself after a confirmed delivery. */
+    archive: boolean
+    /** handoff: extra instruction appended to the request. */
+    note?: string
     json: boolean
 }
 
-const ACTIONS: readonly SessionsAction[] = ['list', 'read', 'stop', 'archive', 'approve', 'deny', 'peers', 'message']
-const ACTIONS_NEEDING_ID: ReadonlySet<SessionsAction> = new Set(['read', 'stop', 'archive', 'approve', 'deny', 'message'])
+const ACTIONS: readonly SessionsAction[] = ['list', 'read', 'stop', 'archive', 'approve', 'deny', 'peers', 'message', 'wrapup', 'handoff']
+const ACTIONS_NEEDING_ID: ReadonlySet<SessionsAction> = new Set(['read', 'stop', 'archive', 'approve', 'deny', 'message', 'handoff'])
 const ACTIONS_NEEDING_REQUEST_ID: ReadonlySet<SessionsAction> = new Set(['approve', 'deny'])
 
 /** Request ids are wrapper-generated (uuid / cuid-like). Bounded and URL-safe like session ids. */
 const REQUEST_ID_RE = /^[a-zA-Z0-9_.:-]{1,128}$/
 
 function defaultOptions(): SessionsCommandOptions {
-    return { action: 'help', all: false, includeArchived: false, forSession: false, full: false, answer: false, wait: false, json: false }
+    return { action: 'help', all: false, includeArchived: false, forSession: false, full: false, answer: false, wait: false, archive: false, json: false }
 }
 
 /** Pure argv parser (exported for tests). Throws on malformed input. */
@@ -178,6 +200,20 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
             const value = args[++i]
             if (value === undefined || value.trim() === '') throw new Error('--reply-to requires a value')
             options.replyTo = value
+        } else if (arg === '--to') {
+            const value = args[++i]
+            if (value === undefined || !isValidSessionId(value)) throw new Error('--to requires a session id')
+            options.to = value
+        } else if (arg === '--archive') {
+            options.archive = true
+        } else if (arg === '--note') {
+            const value = args[++i]
+            if (value === undefined || value.trim() === '') throw new Error('--note requires a value')
+            options.note = value
+        } else if (arg === '--template-file') {
+            const value = args[++i]
+            if (value === undefined || value.trim() === '') throw new Error('--template-file requires a path')
+            options.templateFile = value
         } else if (arg === '--machine') {
             const value = args[++i]
             if (value === undefined || !MACHINE_ID_RE.test(value)) throw new Error('--machine requires a machine id')
@@ -206,7 +242,13 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
     }
 
     if (!actionSeen) return defaultOptions()
-    const expectedPositionals = ACTIONS_NEEDING_REQUEST_ID.has(options.action) || options.action === 'message' ? 2 : ACTIONS_NEEDING_ID.has(options.action) ? 1 : 0
+    if (options.action === 'wrapup') {
+        if (positionals.length === 0) throw new Error('wrapup requires at least one session id')
+        if (positionals.length > SESSION_WRAPUP_MAX_IDS) throw new Error(`wrapup takes at most ${SESSION_WRAPUP_MAX_IDS} session ids per call`)
+        for (const id of positionals) if (!isValidSessionId(id)) throw new Error(`Invalid session id: ${id}`)
+        options.sessionIds = [...new Set(positionals)]
+    }
+    const expectedPositionals = options.action === 'wrapup' ? positionals.length : ACTIONS_NEEDING_REQUEST_ID.has(options.action) || options.action === 'message' ? 2 : ACTIONS_NEEDING_ID.has(options.action) ? 1 : 0
     if (positionals.length > expectedPositionals) {
         throw new Error(`Unexpected ${expectedPositionals > 0 ? 'extra ' : ''}argument: ${positionals[expectedPositionals]}`)
     }
@@ -252,6 +294,15 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
         if (options.cwd !== undefined) throw new Error('--cwd only applies to `sessions peers`')
     }
     if (options.replyTo !== undefined && options.action !== 'message') throw new Error('--reply-to only applies to `sessions message`')
+    if (options.action === 'handoff') {
+        if (options.to === undefined) throw new Error('handoff requires --to <session id> (an existing session; to hand off to a new one, spawn it first)')
+        if (options.to === options.sessionId) throw new Error('handoff: --to is the same session as <from>')
+    } else {
+        if (options.to !== undefined) throw new Error('--to only applies to `sessions handoff`')
+        if (options.archive) throw new Error('--archive only applies to `sessions handoff`')
+        if (options.note !== undefined) throw new Error('--note only applies to `sessions handoff`')
+    }
+    if (options.templateFile !== undefined && options.action !== 'wrapup') throw new Error('--template-file only applies to `sessions wrapup`')
     if (options.machine !== undefined) {
         if (!MACHINE_ACTIONS.has(options.action)) throw new Error('--machine only applies to `sessions list|read|peers|message`')
         if (options.all) throw new Error('--machine cannot be combined with --all (--all already asks every online machine)')
@@ -274,6 +325,8 @@ ${chalk.bold('Usage:')}
   very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
   very-happy sessions peers [--scope repo|cwd|machine|project] [--cwd <dir>] [--machine <id>] [--json]
   very-happy sessions message <id> <text> [--reply-to <msgId>] [--machine <id>] [--json]
+  very-happy sessions wrapup <id...> [--template-file <f>] [--json]
+  very-happy sessions handoff <from> --to <id> [--archive] [--note <text>] [--json]
 
 ${chalk.bold('Actions:')}
   list       Running sessions plus recently seen ones, newest first.
@@ -320,6 +373,19 @@ ${chalk.bold('Actions:')}
              \`delivered\` follows \`very-happy send\`: true only when a
              wrapper was attached before and after the POST (\`stored\` = it
              is on the server anyway).
+  wrapup     Ask each session (up to ${SESSION_WRAPUP_MAX_IDS}) to wrap up (「收尾」) with the
+             account's wrap-up template (Web: Settings → wrap-up), or with
+             --template-file. Each gets one ordinary turn; the result lands as
+             a card on the owner board, from which the session is archived.
+             Nothing is archived by this command. Per session: \`queued\`,
+             \`running\` (already wrapping up — nothing sent, safe to repeat)
+             or \`error\` (e.g. not running).
+  handoff    Ask <from> to hand its work over to --to (「交接给…」): it writes
+             a summary with artifact paths and delivers it as a handoff
+             message (any machine of the account). --archive: <from> archives
+             itself, but only after a live session confirmed delivery. --to
+             must be an existing session: to hand off to a new one, spawn it
+             first (\`very-happy spawn\`), then run handoff.
 
 ${chalk.bold('Options:')}
   --all              list only: account-wide over REST instead of this
@@ -350,6 +416,10 @@ ${chalk.bold('Options:')}
   --machine <id>     list / read / peers / message: go through this account
                      machine's daemon (its id as the web's machine list shows
                      it). read / message: skip the lookup across machines.
+  --template-file <f> wrapup only: use this file as the template.
+  --to <id>          handoff only: the session that takes the work over.
+  --archive          handoff only: archive <from> after a confirmed delivery.
+  --note <text>      handoff only: extra instruction for <from>.
   --json             Machine-readable output.
   -h, --help         Show this help
 
@@ -368,7 +438,8 @@ ${chalk.bold('Exit codes:')}
      partial state is still printed)
   0  success (approve/deny: the wrapper acknowledged the verdict; check
      \`settled\` in --json to see whether the request has left the pending set;
-     message: delivered, or kept for a same-project session's next turn)
+     message: delivered, or kept for a same-project session's next turn;
+     wrapup / handoff: every session answered queued or running)
   1  bad arguments, unknown session, no machine of the account holds it (or
      its machine is offline / too old), request not pending, session not
      online, or the operation failed (including \`stop\` on a session the
@@ -418,6 +489,28 @@ export function formatAccountSummaryLine(summary: AccountSessionSummary): string
  */
 export function peerMessageExitCode(result: Pick<SendPeerMessageResult, 'delivered' | 'status'>): 0 | 1 {
     return result.delivered || result.status === 'offline-stored' ? 0 : 1
+}
+
+/** B-915: `wrapup` / `handoff` exit 0 when every session took the request or is already doing it. */
+export function builtinRequestExitCode(results: readonly Pick<BuiltinRequestResult, 'state'>[]): 0 | 1 {
+    return results.length > 0 && results.every((r) => r.state !== 'error') ? 0 : 1
+}
+
+export function formatBuiltinResults(results: readonly BuiltinRequestResult[], upgradeNeeded: readonly string[] = []): string[] {
+    return results.flatMap((r) => r.state === 'error'
+        ? [`${r.sessionId} ${chalk.red('error')}: ${r.error ?? 'failed'}`]
+        : [
+            `${r.sessionId} ${r.state === 'queued' ? 'queued' : 'running (already in progress, nothing sent)'}`,
+            // B-915c: an older wrapper (no `wrapup-v1`) gets the turn but posts no card — the Web toast's hint.
+            ...(r.state === 'queued' && upgradeNeeded.includes(r.sessionId) ? [`  ${chalk.yellow('hint')}: ${WRAPUP_UPGRADE_HINT}`] : []),
+        ])
+}
+
+function readTemplateFile(path: string): string {
+    const text = readFileSync(resolvePath(path), 'utf8')
+    if (!text.trim()) throw new Error(`Template file ${path} is empty`)
+    if (text.length > WRAPUP_TEMPLATE_MAX_CHARS) throw new Error(`Template file ${path} is longer than ${WRAPUP_TEMPLATE_MAX_CHARS} characters`)
+    return text
 }
 
 export function permissionFailureRecord(sessionId: string, requestId: string, error: unknown): { sessionId: string; requestId: string; error: string } {
@@ -523,6 +616,23 @@ async function runSessionsCommand(args: string[]): Promise<number> {
                 for (const summary of sessions) console.log(formatSummaryLine(summary))
             }
             return 0
+        }
+
+        if (options.action === 'wrapup' || options.action === 'handoff') {
+            const self = process.env.VH_PEER_SESSION_ID && isValidSessionId(process.env.VH_PEER_SESSION_ID) ? process.env.VH_PEER_SESSION_ID : undefined
+            const results: BuiltinRequestResult[] = options.action === 'wrapup'
+                ? await requestWrapup(options.sessionIds ?? [], {
+                    ...(options.templateFile ? { template: readTemplateFile(options.templateFile) } : {}),
+                    ...(self ? { self } : {}),
+                })
+                : [await requestHandoff({
+                    from: options.sessionId as string, to: options.to as string,
+                    archiveAfter: options.archive, ...(options.note ? { note: options.note } : {}),
+                })]
+            const upgradeNeeded = options.action === 'wrapup' ? await wrapupUpgradeNeeded(results) : []
+            if (options.json) console.log(JSON.stringify(options.action === 'wrapup' ? { results: results.map((r) => upgradeNeeded.includes(r.sessionId) ? { ...r, upgradeHint: WRAPUP_UPGRADE_HINT } : r) } : results[0]))
+            else for (const line of formatBuiltinResults(results, upgradeNeeded)) console.log(line)
+            return builtinRequestExitCode(results)
         }
 
         if (options.action === 'peers' || options.action === 'message') {

@@ -31,6 +31,8 @@ export interface PresentedPeerMessage {
     paths?: string[];
     /** Message only: the id of the message this one answers. */
     replyTo?: string;
+    /** B-915: `handoff` = another session handed its work over to this one (`; kind handoff` in the header). */
+    handoff?: boolean;
     /** Conflict only: how long before the notice the peer edited the file. */
     peerEditedAgoMs?: number;
     /** The human part (header and footer stripped). */
@@ -43,7 +45,7 @@ export interface PresentedPeerMessage {
 const MESSAGE_FOOTER_PREFIX = 'This message comes from another agent session';
 const MESSAGE_HEADER = /^\[Very Happy session message (\S+) from "([^"]*)" (\S+?)((?:; [^\]]*)?)\]$/;
 const CONFLICT_HEADER = /^\[Very Happy edit conflict (\S+); file ([^;\]]+)(?:; more (\d+))?; peer "([^"]*)" (\S+?)((?:; [^\]]*)?)\]$/;
-const FIELD_KEYS = new Set(['agent', 'cwd', 're', 'peer', 'more', 'machine']);
+const FIELD_KEYS = new Set(['agent', 'cwd', 're', 'peer', 'more', 'machine', 'kind']);
 
 /** Inverse of the CLI's sanitizeHeaderValue (percent-encoded `"`, `;`, `]`, `%`). */
 function decodeHeaderValue(value: string): string {
@@ -100,6 +102,7 @@ export function presentSessionPeerMessage(message: Pick<UserTextMessage, 'text' 
             cwd: fields.cwd ?? null,
             ...(fields.machine ? { machine: fields.machine } : {}),
             ...(fields.re ? { replyTo: fields.re } : {}),
+            ...(fields.kind === 'handoff' ? { handoff: true } : {}),
             body: body.trim(),
             raw,
         };

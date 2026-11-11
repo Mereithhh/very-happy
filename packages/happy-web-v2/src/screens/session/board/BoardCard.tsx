@@ -10,6 +10,8 @@ import { Markdown } from '../Markdown';
 import { TeamAccountItemActions, teamAccountItemText } from './TeamAccountItem';
 import { IssueItemActions, isIssueReviewItem, issueLinkOf } from './IssueItemActions';
 import { StaleWrapperItemActions, staleWrapperItemText } from './StaleWrapperItem';
+import { WrapupDetails, wrapupHeadlineText } from './WrapupCard';
+import { wrapupView } from './wrapupModel';
 
 export function boardTime(ts: number): string {
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return ''; }
@@ -36,7 +38,7 @@ export const BoardCard = forwardRef<HTMLDivElement, {
     const resolve = resolveAction(item);
     // B-911: the stale-wrapper card is the machine's, not the lead's.
     const staleText = staleWrapperItemText(item);
-    const by = item.source === 'owner' ? copy.you : staleText?.by ?? copy.lead;
+    const by = item.source === 'owner' ? copy.you : item.kind === 'wrapup' ? copy.wrapup.by : staleText?.by ?? copy.lead;
     const replies = item.kind === 'question' || item.kind === 'request' ? repliesTo(all, item.id) : [];
     const answering = item.replyToId ? all.find((i) => i.id === item.replyToId) : undefined;
     const bodyId = `brf-x-${item.id}`;
@@ -48,27 +50,32 @@ export const BoardCard = forwardRef<HTMLDivElement, {
     // B-911: the daemon's stale-wrapper card, likewise (facts from its title).
     const accountText = teamAccountItemText(item) ?? staleText;
     const statusLabel = status ? (status.key === 'decided' && status.choice ? copy.decided(choiceLabel(item, status.choice)) : copy.status[status.key]) : null;
+    // B-915: a 收尾 / 交接 card titles itself from its payload (「可以关闭」「2 项待确认」「已交接给 X」).
+    const wrapup = wrapupView(item);
+    const title = wrapup ? wrapupHeadlineText(wrapup, copy.wrapup) : (accountText?.title ?? item.title);
     return (
-        <div ref={ref} className={`brf-card${expanded ? ' is-open' : ''}${selected ? ' is-selected' : ''}${status?.tone === 'done' ? ' is-done' : ''}`}
+        <div ref={ref} className={`brf-card${expanded ? ' is-open' : ''}${selected ? ' is-selected' : ''}${status?.tone === 'done' ? ' is-done' : ''}${wrapup?.failed ? ' is-failed' : ''}`}
             data-item-id={item.id}>
             {unread && <span className="brf-unread" aria-hidden />}
             <button type="button" className="brf-card-head" aria-expanded={expanded} aria-controls={bodyId} onClick={() => actions.onToggle(item)}>
                 <span className="brf-r1">
                     <span className={`brf-kind brf-kind--${kindTone(item.kind)}`}>{kindLabel(copy, item.kind)}</span>
-                    <span className="brf-title" title={accountText?.title ?? item.title}>{displayTitle(accountText?.title ?? item.title)}</span>
+                    <span className="brf-title" title={title}>{displayTitle(title)}</span>
                     {statusLabel && <span className={`brf-status brf-status--${status!.tone}`}>{statusLabel}</span>}
                 </span>
                 <span className="brf-r2">
                     <span>{by} · {boardTime(item.createdAt)}</span>
                     {item.inferred && <span className="brf-inferred">{copy.inferred}</span>}
-                    {item.repostCount > 0 && <span>{copy.merged(item.repostCount)}</span>}
+                    {/* B-915: a wrap-up card is reposted by design (running → result, each new run) — not a merged reminder. */}
+                    {item.repostCount > 0 && item.kind !== 'wrapup' && <span>{copy.merged(item.repostCount)}</span>}
                     {item.links?.map((l) => <span key={`${l.type}:${l.ref}`} className="brf-link">{l.label ?? l.ref}</span>)}
                 </span>
                 {item.resolveNote && !isLive(item) && <span className="brf-note">{copy.resolveNote}：{item.resolveNote}</span>}
             </button>
             {expanded && (
                 <div className="brf-x" id={bodyId}>
-                    {accountText ? <div className="brf-body"><Markdown text={accountText.body} /></div> : item.bodyMd && <div className="brf-body"><Markdown text={item.bodyMd} /></div>}
+                    {wrapup ? <WrapupDetails item={item} view={wrapup} copy={copy} />
+                        : accountText ? <div className="brf-body"><Markdown text={accountText.body} /></div> : item.bodyMd && <div className="brf-body"><Markdown text={item.bodyMd} /></div>}
                     {item.options && item.options.length > 0 && !isIssueReviewItem(item) && (
                         <div className="brf-opts" role="group" aria-label={copy.kinds.decision}>
                             {item.options.map((o) => (

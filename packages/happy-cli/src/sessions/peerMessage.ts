@@ -12,6 +12,7 @@
  * Like team messages, everything the reader needs is in the FIRST LINE:
  *
  *   [Very Happy session message <id> from "<title>" <sessionId>; agent <flavor>; cwd <cwd>; re <replyTo>]
+ *   [Very Happy session message <id> from "<title>" <sessionId>; agent <flavor>; cwd <cwd>; kind handoff]   (B-915)
  *   [Very Happy edit conflict <id>; file <path>; peer "<title>" <sessionId>; agent <flavor>; cwd <cwd>; peer edited <n>s ago]
  *
  * Fields are `; `-separated `key value` pairs; the characters that would
@@ -34,11 +35,16 @@ export interface PeerSender {
     machine?: string
 }
 
+/** B-915: what a session message is for. Absent = an ordinary coordination message. */
+export type PeerMessagePurpose = 'handoff'
+
 export interface SessionPeerMessage {
     kind: 'message'
     id: string
     from: PeerSender
     replyTo?: string
+    /** B-915: `handoff` = the sender handed its work over to the recipient (`session_handoff`). */
+    purpose?: PeerMessagePurpose
     body: string
 }
 
@@ -91,14 +97,28 @@ function quotedTitle(sender: PeerSender): string {
     return `"${sanitizeHeaderValue(sender.title, 120)}"`
 }
 
-export function formatSessionPeerMessage(input: { id: string; from: PeerSender; body: string; replyTo?: string }): string {
-    const header = `[Very Happy session message ${input.id} from ${quotedTitle(input.from)} ${input.from.sessionId}${senderFields(input.from)}${input.replyTo ? `; re ${sanitizeHeaderValue(input.replyTo, 64)}` : ''}]`
+export function formatSessionPeerMessage(input: { id: string; from: PeerSender; body: string; replyTo?: string; purpose?: PeerMessagePurpose }): string {
+    const header = `[Very Happy session message ${input.id} from ${quotedTitle(input.from)} ${input.from.sessionId}${senderFields(input.from)}${input.replyTo ? `; re ${sanitizeHeaderValue(input.replyTo, 64)}` : ''}${input.purpose === 'handoff' ? '; kind handoff' : ''}]`
     const base = messageFooterFor(input.from)
     const routed = input.from.machine ? ' (it is routed to that machine for you)' : ''
-    const footer = input.from.sessionId === CLI_PEER_SENDER_ID
+    const footer = input.purpose === 'handoff'
+        ? handoffFooter(base, input.from, routed)
+        : input.from.sessionId === CLI_PEER_SENDER_ID
         ? `${base} It was sent from the command line (\`very-happy sessions message\`), so there is no session to reply to; act on it here.`
         : `${base} Reply with session_message(to: "${input.from.sessionId}")${routed} — or \`very-happy sessions message ${input.from.sessionId} "<text>"\` — only when you have something to add (a question, a decision, a heads-up). Do not reply just to acknowledge or thank; the exchange ends when nothing is left to coordinate.`
     return `${header}\n${input.body.trim()}\n\n${footer}`
+}
+
+/**
+ * B-915: the recipient takes the work over. It reads like the ordinary footer
+ * (same prefix, so readers strip it the same way) but asks for one
+ * acknowledgement and questions only through session_message.
+ */
+function handoffFooter(base: string, from: PeerSender, routed: string): string {
+    const reply = from.sessionId === CLI_PEER_SENDER_ID
+        ? 'It was sent from the command line, so there is no session to reply to.'
+        : `Questions about it go to session_message(to: "${from.sessionId}")${routed}; that session may be archived after this handoff, so do not wait on it.`
+    return `${base} It is a handoff: you are taking this work over. Confirm in one line that you have read it and continue from the summary above. ${reply}`
 }
 
 export function formatDuration(ms: number): string {
@@ -126,7 +146,7 @@ export function formatEditConflictNotice(input: { id: string; path: string; path
 const MESSAGE_HEADER = /^\[Very Happy session message (\S+) from "([^"]*)" (\S+?)((?:; [^\]]*)?)\]$/
 const CONFLICT_HEADER = /^\[Very Happy edit conflict (\S+); file ([^;\]]+)(?:; more \d+)?; peer "([^"]*)" (\S+?)((?:; [^\]]*)?)\]$/
 
-const FIELD_KEYS = new Set(['agent', 'cwd', 're', 'peer', 'more', 'machine'])
+const FIELD_KEYS = new Set(['agent', 'cwd', 're', 'peer', 'more', 'machine', 'kind'])
 
 function parseFields(tail: string): Record<string, string> {
     const fields: Record<string, string> = Object.create(null)
@@ -173,6 +193,7 @@ export function parsePeerMessage(text: string): ParsedPeerMessage | null {
             id: message[1],
             from: { sessionId: message[3], title: decodeHeaderValue(message[2]) || undefined, flavor: fields.agent, cwd: fields.cwd, ...(fields.machine ? { machine: fields.machine } : {}) },
             ...(fields.re ? { replyTo: fields.re } : {}),
+            ...(fields.kind === 'handoff' ? { purpose: 'handoff' as const } : {}),
             body: body.trim(),
         }
     }

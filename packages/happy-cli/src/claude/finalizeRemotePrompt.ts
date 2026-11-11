@@ -17,10 +17,13 @@ export async function finalizeRemotePrompt(prompt: string, deps: {
     board?: PromptDecorator & { onTurnStart: (sourceIds?: string[]) => void };
     project: PromptDecorator;
     sourceIds?: string[];
+    /** B-915b: the same turn-start edge for the wrap-up tracker (a request this turn takes can end up 未完成). */
+    onTurnStart?: (sourceIds?: string[]) => void;
 }): Promise<string> {
     const command = parseSpecialCommand(prompt).type;
     if (command === 'compact' || command === 'clear') return prompt;
     deps.board?.onTurnStart(deps.sourceIds);
+    deps.onTurnStart?.(deps.sourceIds);
     const text = deps.board ? await deps.board.decorate(prompt) : prompt;
     return deps.project.decorate(text);
 }

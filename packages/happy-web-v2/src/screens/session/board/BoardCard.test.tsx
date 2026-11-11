@@ -9,7 +9,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AttentionItem } from '@slopus/happy-wire';
 
-vi.mock('@/sync/storage', () => ({ useMessage: () => undefined }));
+vi.mock('@/sync/storage', () => ({ useMessage: () => undefined, useSession: () => undefined }));
 vi.mock('../Markdown', () => ({ Markdown: ({ text }: { text: string }) => <div>{text}</div> }));
 const { BoardCard } = await import('./BoardCard');
 const { boardCopy } = await import('./boardCopy');
@@ -41,6 +41,16 @@ async function render(item: AttentionItem) {
 }
 
 describe('BoardCard text (QA5 O1)', () => {
+    it('B-915: a wrap-up card does not show its reposts as merged reminders; other kinds still do', async () => {
+        const merged = boardCopy(true).merged(1);
+        const todo = await render({ ...base, source: 'lead', kind: 'todo', options: null, repostCount: 1 });
+        expect(todo.querySelector('.brf-meta, .brf-who')?.parentElement?.textContent ?? todo.textContent).toContain(merged);
+        await act(async () => root!.unmount());
+        const wrap = await render({ ...base, source: 'agent', kind: 'wrapup', key: 'wrapup', options: null, repostCount: 1,
+            payload: { v: 1, mode: 'wrapup', status: 'done', summary: 'S', canClose: true } });
+        expect(wrap.textContent).not.toContain(merged);
+    });
+
     it('team submit: word-boundary title + hover title, labels only, no recommendation tag', async () => {
         const host = await render(base);
         const title = host.querySelector('.brf-title')!;
