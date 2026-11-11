@@ -92,7 +92,7 @@ import { createIdleRestart, ownerRestartRequest, type IdleRestart, type IdleRest
 import { createStaleWrapperNotices } from './staleWrapperNotice';
 import { claudeChildRunIntent } from './agentChildIntent';
 import { createAttentionClient } from '@/attention/client';
-import { RESTARTED_ON_REQUEST_ENV, RESTART_EFFORT_ENV, resolveIdleRestartTiming } from '@/update/idleRestartPolicy';
+import { IDLE_RESTART_MIN_OBSERVE_MS, RESTARTED_ON_REQUEST_ENV, RESTART_EFFORT_ENV, resolveIdleRestartTiming } from '@/update/idleRestartPolicy';
 import { AUTO_RESTARTED_ENV, AUTO_RESTART_RECHECK_CAP_MS, encodeAutoRestarted, pendingUpgradeVersion, resolveCheckInGraceMs, resolveQuietMs, restartIdleRefusal, type StaleKind } from '@/update/autoRestartPolicy';
 import { compareExactVersions } from '@/update/cliUpdate';
 import { createAutomationsClient, isAutomationsUnavailable } from '@/automations/client';
@@ -1945,6 +1945,8 @@ export async function startDaemon(): Promise<void> {
     // `request_idle_restart`. Persisted so a daemon handover keeps it.
     const idleRestartFile = join(configuration.happyHomeDir, 'idle-restarts.json');
     const idleRestartTiming = resolveIdleRestartTiming();
+    // B-919: turn and background-task leases are only known from this moment on (≤60 s to the first renewal).
+    const idleRestartWatchingSince = Date.now();
     const idleRestartFacts = (sessionId: string): IdleRestartSessionFacts | null => {
       for (const tracked of pidToTrackedSession.values()) {
         if (tracked.happySessionId !== sessionId || !tracked.happySessionMetadataFromLocalWebhook || !isPidAlive(tracked.pid)) continue;
@@ -2032,6 +2034,8 @@ export async function startDaemon(): Promise<void> {
       }),
       quietMs: idleRestartTiming.quietMs,
       now: Date.now,
+      watchingSince: idleRestartWatchingSince,
+      minObserveMs: IDLE_RESTART_MIN_OBSERVE_MS,
       restartIfIdle: async (sessionId) => {
         const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, ifIdle: true });
         return result.type === 'success' ? { ok: true } : { ok: false, error: result.type === 'error' ? result.errorMessage : 'working directory needs to be created first' };

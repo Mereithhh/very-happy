@@ -204,6 +204,8 @@ describe('owner restart for the main agent (B-919)', () => {
             activity: () => ({ turnActive: false, backgroundTasks: 0, automationRunning: false, upgradePending: null, lastTurnEventAt: 1_000 }),
             quietMs: 30_000,
             now: () => 100_000,
+            watchingSince: 0,
+            minObserveMs: 65_000,
             restartIfIdle: async (id) => { calls.push(`restart:${id}`); return { ok: true }; },
             version: '0.2.212',
             ...over,
@@ -244,6 +246,17 @@ describe('owner restart for the main agent (B-919)', () => {
             expect(await ownerRestartRequest({ sessionId: 's', when: 'now' }, refused.deps)).toEqual({ ok: false, code: 'busy', error });
             expect(refused.calls).toEqual([]);
         }
+        // QA round 3: right after a daemon start / handover nothing is known yet (turnActive=false, no tasks, no turn edge) → observing, not idle.
+        for (const watchingSince of [100_000, 100_000 - 64_999]) {
+            const fresh = make({ watchingSince, activity: () => ({ turnActive: false, backgroundTasks: 0, automationRunning: false, upgradePending: null, lastTurnEventAt: null }) });
+            expect(await ownerRestartRequest({ sessionId: 's', when: 'now' }, fresh.deps)).toEqual({ ok: false, code: 'busy', error: 'busy:observing' });
+            expect(fresh.calls).toEqual([]);
+        }
+        const watched = make({ watchingSince: 100_000 - 65_000, activity: () => ({ ...idleActivity, lastTurnEventAt: null }) });
+        expect(await ownerRestartRequest({ sessionId: 's', when: 'now' }, watched.deps)).toMatchObject({ ok: true, state: 'restarted' });
+        // `idle` is unaffected: the queue has its own observation window.
+        const freshIdle = make({ watchingSince: 100_000 });
+        expect(await ownerRestartRequest({ sessionId: 's', when: 'idle' }, freshIdle.deps)).toMatchObject({ ok: true, state: 'queued' });
         // Quiet for longer than quietMs (or never seen a turn edge) → allowed.
         const quiet = make({ activity: () => ({ ...idleActivity, lastTurnEventAt: 100_000 - 30_000 }) });
         expect(await ownerRestartRequest({ sessionId: 's', when: 'now' }, quiet.deps)).toMatchObject({ ok: true, state: 'restarted' });

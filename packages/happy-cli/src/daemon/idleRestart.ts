@@ -262,7 +262,9 @@ export type OwnerRestartResult =
  * only a session that passes the same guards, has nothing queued and is idle
  * by the queue's own rule (`idleRestartReady`: no turn, background task,
  * automation run or pending upgrade, and quiet since its last turn edge —
- * only the observation window is left out, since nothing is waiting).
+ * the per-request observation window is left out, since nothing is waiting)
+ * and only once this daemon has watched for a full lease (`busy:observing`
+ * right after a daemon start / handover, when "no turn" only means unknown).
  * `restartIfIdle` then runs with B-894 `ifIdle`, which re-checks turn and
  * background tasks at the moment of the stop. Refusals are `busy` with the
  * reason in `error` (`busy:<wait>`).
@@ -276,6 +278,10 @@ export async function ownerRestartRequest(
         activity: (sessionId: string) => { turnActive: boolean; backgroundTasks: number; automationRunning: boolean; upgradePending: string | null; lastTurnEventAt: number | null };
         quietMs: number;
         now: () => number;
+        /** When this daemon started watching turns and background tasks (its start): before one lease has passed it cannot know a session is busy. */
+        watchingSince: number;
+        /** At least one lease (IDLE_RESTART_MIN_OBSERVE_MS). */
+        minObserveMs: number;
         restartIfIdle: (sessionId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
         version: string;
     },
@@ -291,6 +297,9 @@ export async function ownerRestartRequest(
     const t = deps.now();
     const verdict = idleRestartReady({ ...deps.activity(sessionId), now: t, requestedAt: t, lastTurnEndedAt: null, quietMs: deps.quietMs, observeMs: 0 });
     if (!verdict.ready) return { ok: false, code: 'busy', error: `busy:${verdict.wait}` };
+    // A daemon that just started (handover / restart) has not seen the session's next lease renewal yet:
+    // turnActive=false / backgroundTasks=0 / no turn edge means "unknown", not idle (same reason as `watchingSince` above).
+    if (t - deps.watchingSince < deps.minObserveMs) return { ok: false, code: 'busy', error: 'busy:observing' };
     const result = await deps.restartIfIdle(sessionId);
     if (result.ok) return { ok: true, state: 'restarted', targetVersion: deps.version };
     return { ok: false, code: result.error.startsWith('busy:') ? 'busy' : 'restart-failed', error: result.error };

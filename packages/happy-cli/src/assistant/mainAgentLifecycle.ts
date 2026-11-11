@@ -79,6 +79,7 @@ const BUSY_REASONS: Record<string, string> = {
     'automation-run': 'an automation run is using it',
     'quiet': 'its last turn ended moments ago (more may be queued)',
     'upgrade-pending': 'a CLI upgrade is about to restart it anyway',
+    'observing': 'the daemon on this machine just started and does not know yet whether it is busy (wait about a minute)',
 }
 
 export function restartRefusalText(reply: { code: string; error?: string }): string {

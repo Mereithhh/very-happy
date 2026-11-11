@@ -114,6 +114,7 @@ describe('B-911 idle restart wiring', () => {
         // QA P2-2: the owner's `now` sees the queue's own inputs (automation runs, the last turn edge, the quiet period).
         expect(run).toContain('automationRunning: automationRunner?.hasSession(sessionId) === true,\n        upgradePending: upgradePending(),\n        lastTurnEventAt: idleRestart!.lastTurnEventAt(sessionId),');
         expect(run).toContain('      quietMs: idleRestartTiming.quietMs,');
+        expect(run).toContain('      watchingSince: idleRestartWatchingSince,\n      minObserveMs: IDLE_RESTART_MIN_OBSERVE_MS,');
     });
     it('turn edges and wrapper exits reach the queue', () => {
         expect(run).toContain('turnActivity.onEvent((sessionId, event) => idleRestart?.noteTurn(sessionId, event));');

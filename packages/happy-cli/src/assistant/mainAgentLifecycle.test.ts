@@ -114,6 +114,7 @@ describe('main agent lifecycle (B-919)', () => {
         expect(await busy.restart!({ sessionId: 's', when: 'now', requestId: 'r' })).toEqual({ ok: false, sessionId: 's', error: expect.stringContaining('use when = idle') })
         expect(restartRefusalText({ code: 'busy', error: 'busy:quiet' })).toContain('its last turn ended moments ago')
         expect(restartRefusalText({ code: 'busy', error: 'busy:automation-run' })).toContain('an automation run is using it')
+        expect(restartRefusalText({ code: 'busy', error: 'busy:observing' })).toContain('just started and does not know yet whether it is busy')
         const terminal = createMainAgentLifecycle(deps({ restart: async () => ({ ok: false, code: 'local-terminal' }) }))
         expect(await terminal.restart!({ sessionId: 's', when: 'now', requestId: 'r' })).toMatchObject({ ok: false, error: expect.stringContaining('own terminal') })
         const again = createMainAgentLifecycle(deps({ restart: async () => ({ ok: true, state: 'already-queued' }) }))
