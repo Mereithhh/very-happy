@@ -15,7 +15,7 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { mainAgentMustAsk } from '../sendGuard'
+import { mainAgentMustAsk, mustAskReasonLine } from '../sendGuard'
 import type { AttentionClient } from '@/attention/client'
 import { assistantHome } from '../bootstrap'
 import { installMainAgentSkill, renderManagedSegment, writeManagedSegment } from '../mainAgentSkill'
@@ -121,7 +121,8 @@ export async function prepareMainAgent(deps: {
         dispatchPolicy: () => ({ external: safety.policy.dispatchExternal, production: safety.policy.dispatchProduction }),
         // Calls that always park, whatever their risk. OR further conditions in here (one hook, not several).
         // B-922: terminal_send while Bash is off. B-924: sends to other sessions in a turn the owner did not type (sendGuard.ts).
-        mustAsk: (tool, args) => mustAskTerminal(tool, safety.policy.bash) || mainAgentMustAsk(tool, args) !== null,
+        // B-924b: the card says which rule fired (Bash off, or a non-owner turn and why).
+        mustAsk: mainAgentMustAskHook(() => safety.policy.bash),
     })
     return {
         config,
@@ -155,6 +156,19 @@ export async function accountCardLang(timeoutMs = 5_000): Promise<CardLang> {
         return cardLang(null)
     }
 }
+
+/**
+ * Gate 2's one `mustAsk` hook: the conditions ORed (B-922 terminal rule, B-924 non-owner turn). Returns the
+ * card's 原因 line, or null. Exported so tests build the gate exactly as prepareMainAgent does.
+ */
+export function mainAgentMustAskHook(bashAllowed: () => boolean, isOwner?: () => boolean) {
+    return (tool: string, args: Record<string, unknown>): string | null => {
+        if (mustAskTerminal(tool, bashAllowed())) return TERMINAL_REASON
+        const reason = isOwner ? mainAgentMustAsk(tool, args, isOwner) : mainAgentMustAsk(tool, args)
+        return reason ? mustAskReasonLine(reason) : null
+    }
+}
+const TERMINAL_REASON = '原因：主 agent 的 Bash 已关闭，往终端里发内容等于直接执行命令，所以每次都先问你。'
 
 /** QA P2-2: with Bash off, a terminal is the shell the main agent is not supposed to have — every send asks. */
 export function mustAskTerminal(toolName: string, bashAllowed: boolean): boolean {

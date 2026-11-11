@@ -22,6 +22,7 @@ import { approvalClaims, cardFaceHash, clipBytes, DISPATCH_CARD_KEY_PREFIX, isRe
 import type { AssistantToolRegistrar } from '../assistantTools'
 import type { DispatchPolicy } from '@slopus/happy-wire'
 import { effectiveRisk, isRiskLevel, RISK_LEVELS, type OneShotRunner, type RiskLevel } from './risk'
+import { MAIN_AGENT_ASK_TOOLS } from '../mainAgentToolPolicy'
 
 /** Dispatch tools and the argument text each hands over (spec §4.2 table). */
 export const DISPATCH_TOOL_PAYLOADS: Readonly<Record<string, (args: Record<string, unknown>) => string>> = {
@@ -37,6 +38,18 @@ export const DISPATCH_TOOL_PAYLOADS: Readonly<Record<string, (args: Record<strin
     automation_update: (a) => automationPayload(a.action),
 }
 export const DISPATCH_TOOL_NAMES = Object.keys(DISPATCH_TOOL_PAYLOADS)
+
+/**
+ * B-924b: class-② tools (mainAgentToolPolicy.ts) that are not dispatch tools: no `risk`, no change in the
+ * owner's turn. The gate still intercepts them, so a `mustAsk` call (a turn the owner did not type) parks
+ * as a decision card and runs only through dispatch_approved — automation_run / fire / resume / pause /
+ * delete, issue_assign / issue_comment, project_note, team_* writes.
+ */
+export const ASK_ONLY_TOOLS: readonly string[] = MAIN_AGENT_ASK_TOOLS.filter(n => !(n in DISPATCH_TOOL_PAYLOADS))
+function askOnlyPayload(args: Record<string, unknown>): string {
+    const head = ['name', 'id', 'issue', 'key', 'issueId', 'teamId', 'taskId', 'title'].map(k => str(args[k])).find(Boolean) ?? ''
+    return [head, JSON.stringify(args).slice(0, 1_400)].filter(Boolean).join('\n')
+}
 
 /** Which argument receives the approval prefix when a parked call runs. */
 const PAYLOAD_FIELD: Readonly<Record<string, string>> = {
@@ -123,8 +136,10 @@ export type DispatchGateDeps = {
      * Force the decision card whatever the risk (and whatever the dispatch policy). One hook for every such
      * rule: setup.ts ORs the conditions (B-922: terminal_send while Bash is off). Args are the call's (no risk).
      */
-    mustAsk?: (toolName: string, args: Record<string, unknown>) => boolean
+    mustAsk?: (toolName: string, args: Record<string, unknown>) => MustAskVerdict
 }
+/** false / null / undefined = no; true = yes (generic reason); a string = yes, and it is the card's 原因 line (B-924b). */
+export type MustAskVerdict = boolean | string | null | undefined
 
 type Handler = (args: any, extra?: any) => Promise<ToolResult> | ToolResult
 
@@ -133,16 +148,16 @@ function firstLine(text: string, max: number): string {
     return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
 
-export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'>, payload: string, forced = false) {
+export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'>, payload: string, forced: boolean | string = false) {
     const head = firstLine(payload, 60) || pending.toolName
     return {
         key: `${DISPATCH_CARD_KEY_PREFIX}${pending.approvalId}`,
-        title: `主 agent 想派活（${pending.level}）：${head}`.slice(0, 120),
+        title: `主 agent 想派活（${pending.level}${forced ? '，需你确认' : ''}）：${head}`.slice(0, 120),
         bodyMd: clipBytes([
             `工具：${pending.toolName}`,
             `风险：${pending.level}（声明 ${pending.declared}${pending.declared === pending.level ? '' : `，复核 ${pending.level}`}）`,
             `批准号：${pending.approvalId}`,
-            ...(forced ? [pending.toolName === 'terminal_send'
+            ...(typeof forced === 'string' && forced ? [forced] : forced ? [pending.toolName === 'terminal_send'
                 ? '原因：主 agent 的 Bash 已关闭，往终端里发内容等于直接执行命令，所以每次都先问你。'
                 // B-924: the other forced case (sendGuard.ts) — a send to another session in a turn the owner did not type.
                 : '原因：这一回合不是你本人发起的（自动化、脚本或别的会话发来的消息），主 agent 给别的会话发消息都先问你。'] : []),
@@ -191,7 +206,8 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         const payload = DISPATCH_TOOL_PAYLOADS[toolName]?.(args) ?? ''
         const { level, keyword, classifier } = await effectiveRisk({ toolName, declared: risk, payload, classify: deps.classify })
         deps.log?.(`[main-agent gate] ${toolName} declared=${risk} keyword=${keyword} classifier=${classifier ?? 'n/a'} → ${level}`)
-        const forced = deps.mustAsk?.(toolName, args) === true
+        const verdict = deps.mustAsk?.(toolName, args)
+        const forced = verdict === true || (typeof verdict === 'string' && verdict.length > 0)
         if (level === 'none' && !forced) return handlers.get(toolName)!(args, extra)
         // B-922: the owner chose "直接派" for this level (default ask = B-916c).
         const policy = deps.dispatchPolicy?.()
@@ -199,9 +215,22 @@ export function createDispatchGate(deps: DispatchGateDeps) {
             deps.log?.(`[main-agent gate] ${toolName} ${level} dispatched directly (owner setting)`)
             return handlers.get(toolName)!(args, extra)
         }
+        return park(toolName, args, risk, level, payload, typeof verdict === 'string' ? verdict : forced)
+    }
+
+    /** B-924b: an ASK_ONLY_TOOLS call — runs unless `mustAsk`, then parks like a forced dispatch (risk none). */
+    async function interceptAskOnly(toolName: string, rawArgs: Record<string, unknown>, extra: unknown): Promise<ToolResult> {
+        const args = rawArgs ?? {}
+        const verdict = deps.mustAsk?.(toolName, args)
+        if (!(verdict === true || (typeof verdict === 'string' && verdict.length > 0))) return handlers.get(toolName)!(args, extra)
+        deps.log?.(`[main-agent gate] ${toolName} must ask (${typeof verdict === 'string' ? 'reason' : 'forced'})`)
+        return park(toolName, args, 'none', 'none', askOnlyPayload(args), verdict)
+    }
+
+    async function park(toolName: string, args: Record<string, unknown>, declared: RiskLevel, level: RiskLevel, payload: string, forced: boolean | string): Promise<ToolResult> {
         if (!deps.board) return fail({ error: 'board_unavailable', risk: level })
         const approvalId = newId()
-        const pending: PendingDispatch = { v: 1, approvalId, toolName, args, argsSha256: canonicalArgsHash(toolName, args), declared: risk, level, createdAt: now() }
+        const pending: PendingDispatch = { v: 1, approvalId, toolName, args, argsSha256: canonicalArgsHash(toolName, args), declared, level, createdAt: now() }
         try {
             await mkdir(deps.pendingDir, { recursive: true, mode: 0o700 })
             await writePrivate(pendingPath(approvalId), pending)
@@ -311,6 +340,10 @@ export function createDispatchGate(deps: DispatchGateDeps) {
                         return handler(args, extra)
                     })
                 }
+                if (ASK_ONLY_TOOLS.includes(name)) {
+                    handlers.set(name, handler)
+                    return (mcp.registerTool as any)(name, config, (args: Record<string, unknown>, extra: unknown) => interceptAskOnly(name, args, extra))
+                }
                 if (!(name in DISPATCH_TOOL_PAYLOADS)) return (mcp.registerTool as any)(name, config, handler)
                 handlers.set(name, handler)
                 const riskSchema = z.enum(RISK_LEVELS).describe('Required. none = stays inside Very Happy / this machine; external = the result is sent or published where other people see it (messages, mail, comments, PRs, pushes, shares); production = writes production data or infrastructure. Non-none goes to the owner\'s decision board first.')
@@ -329,6 +362,7 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         },
         /** Test hook. */
         _intercept: intercept,
+        _interceptAskOnly: interceptAskOnly,
         _approved: approved,
         _boardWriteRefusal: boardWriteRefusal,
     }

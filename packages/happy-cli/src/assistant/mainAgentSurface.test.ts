@@ -9,12 +9,24 @@ import { createDispatchGate } from '@/assistant/gates/dispatchGate';
 import { compileOutboundDenylist, outboundPreToolUseHook } from '@/assistant/gates/outboundDenylist';
 import type { MainAgentRuntime } from '@/assistant/gates/setup';
 import { PRESET_POLICIES } from '@slopus/happy-wire';
+import { mainAgentMustAskHook } from '@/assistant/gates/setup';
+import { MAIN_AGENT_TOOL_POLICY, mainAgentToolClass } from '@/assistant/mainAgentToolPolicy';
 
 /** B-916c: the main agent surface exists only with the gate runtime (Claude path). */
 function testMainAgent(): MainAgentRuntime {
     const denylist = compileOutboundDenylist();
     return { config: { skillRoots: [], deniedTools: [], dropped: 0 }, safety: { safety: { v: 1, preset: 'strict', overrides: {}, allowedTools: [] }, policy: { ...PRESET_POLICIES.strict }, allowedTools: [], failedClosed: false }, denylist, preToolUse: outboundPreToolUseHook(denylist), extraDirectories: [],
         gate: createDispatchGate({ pendingDir: join(mkdtempSync(join(tmpdir(), 'vh-surface-')), 'pending'), board: null, classify: null, approvalLink: (id) => id }) };
+}
+
+/** B-924b: the gate exactly as prepareMainAgent builds it (mainAgentMustAskHook, Bash on) on a recording board. */
+function gatedMainAgent(cards: Array<{ title: string; bodyMd: string }>): MainAgentRuntime {
+    const base = testMainAgent();
+    const board = {
+        postDecision: async (card: any) => { cards.push(card); return { id: `card-${cards.length}`, key: card.key, state: 'open', ownerChoice: null, resolvedBy: null, title: card.title, bodyMd: card.bodyMd, options: [] } as any; },
+        findByKey: async () => null, findById: async () => null,
+    };
+    return { ...base, gate: createDispatchGate({ pendingDir: join(mkdtempSync(join(tmpdir(), 'vh-surface-gated-')), 'pending'), board, classify: null, approvalLink: (id) => id, mustAsk: mainAgentMustAskHook(() => true) }) };
 }
 
 /**
@@ -29,7 +41,7 @@ const HUGE = 'x'.repeat(60_000);
 /** Per-item filler for long lists (hundreds of items × MID is still megabytes of JSON). */
 const MID = 'm'.repeat(1_500);
 const many = <T>(n: number, f: (i: number) => T) => Array.from({ length: n }, (_, i) => f(i));
-const state = vi.hoisted(() => ({ spawnCalls: [] as any[], order: [] as string[], boardPosts: [] as any[], lifecycle: [] as string[] }));
+const state = vi.hoisted(() => ({ spawnCalls: [] as any[], order: [] as string[], boardPosts: [] as any[], lifecycle: [] as string[], backend: [] as string[] }));
 
 vi.mock('@/attention/client', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/attention/client')>();
@@ -53,10 +65,12 @@ vi.mock('@/automations/client', async (importOriginal) => {
     const run = (i: number) => ({ id: `run-${i}`, automationId: 'auto-1', automationName: 'job-1', machineId: 'm1', source: 'schedule', status: 'done', summary: MID, error: null, payload: MID, sessionId: 's', needsAttention: false, createdAt: 0, startedAt: 0, finishedAt: 0 });
     const client = {
         list: async () => many(300, automation), get: async () => ({ ...automation(1), description: HUGE }), getByName: async () => ({ ...automation(1), description: HUGE }),
-        create: async () => automation(2), update: async () => automation(3), pause: async () => automation(4), resume: async () => automation(5),
-        remove: async () => undefined, run: async () => run(1), fire: async () => ({ run: run(2), deduped: false }),
+        create: async () => { state.backend.push('automation.create'); return automation(2) }, update: async () => { state.backend.push('automation.update'); return automation(3) },
+        pause: async () => { state.backend.push('automation.pause'); return automation(4) }, resume: async () => { state.backend.push('automation.resume'); return automation(5) },
+        remove: async () => { state.backend.push('automation.delete') }, run: async () => { state.backend.push('automation.run'); return run(1) },
+        fire: async () => { state.backend.push('automation.fire'); return { run: run(2), deduped: false } },
         runs: async () => many(300, run), report: async () => run(3), ack: async () => run(4),
-        createWithPrecheck: async () => automation(2),
+        createWithPrecheck: async () => { state.backend.push('automation.create'); return automation(2) },
     };
     return { ...actual, authenticatedAutomationsClient: async () => ({ client, machineId: 'm1' }) };
 });
@@ -118,7 +132,7 @@ vi.mock('@/sessions/sessionOps', async (importOriginal) => {
         ...actual,
         listSessions: async () => many(150, summary),
         readSessionTranscript: async () => ({ summary: summary(1), messageCount: 20, transcript: HUGE }),
-        archiveSession: async () => undefined,
+        archiveSession: async (id: string) => { state.backend.push(`archive:${id}`); },
         stopSession: async () => true,
     };
 });
@@ -144,7 +158,12 @@ vi.mock('@/commands/sessionMessage', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/commands/sessionMessage')>();
     return { ...actual, waitForSessionKey: async () => ({ encryptionKey: 'k', metadata: { summary: { text: 'T' } } }), sendUserMessage: async () => { state.order.push('prompt'); } };
 });
-vi.mock('@/commands/sessionDelivery', () => ({ deliverToSession: async () => ({ delivered: true, status: 'live' }) }));
+// B-924b: handoff_send's delivery (B-915 tracker → sendPeerMessage), recorded.
+vi.mock('@/sessions/peerTools', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/sessions/peerTools')>();
+    return { ...actual, sendPeerMessage: async (_ctx: unknown, args: any) => { state.backend.push(`peer:${args.purpose}:${args.to}`); return { delivered: true, status: 'live', sessionId: args.to }; } };
+});
+vi.mock('@/commands/sessionDelivery', () => ({ deliverToSession: async (...args: any[]) => { state.backend.push(`deliver:${JSON.stringify(args).slice(0, 200)}`); return { delivered: true, status: 'live' }; } }));
 vi.mock('@/projects/attribution', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/projects/attribution')>();
     return { ...actual, joinProject: async (_c: unknown, _s: string, choice: any) => { state.order.push(`join:${choice.projectId}`); return { joined: true, projectId: choice.projectId, via: 'explicit' }; } };
@@ -218,7 +237,7 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
     afterEach(async () => {
         await mcp?.close(); mcp = undefined;
         happy?.stop(); happy = undefined;
-        state.spawnCalls = []; state.order = []; state.boardPosts = []; state.lifecycle = [];
+        state.spawnCalls = []; state.order = []; state.boardPosts = []; state.lifecycle = []; state.backend = [];
         delete process.env.VH_TEAM_SCOPE_FILE;
     });
 
@@ -291,6 +310,82 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         turn('u-owner-2', 'web');
         expect((await mcp!.callTool({ name: 'session_wrapup', arguments: { sessionId: 'sess-1' } })).isError).toBe(false);
         expect(state.lifecycle).toEqual(['wrapup:sess-1:main-agent']);
+    });
+
+    // ── B-924b: the whole surface, classified (mainAgentToolPolicy.ts) ──────────────────────────────
+    it('B-924b inventory: every tool the real server registers on the main agent is classified, and the table names nothing it does not register', async () => {
+        const names = (await connect({ assistant: true, mainAgent: gatedMainAgent([]) })).map(t => t.name);
+        const unclassified = names.filter(n => !mainAgentToolClass(n));
+        expect(unclassified, 'add these to MAIN_AGENT_TOOL_POLICY (owner_only | ask | allow) and to the spec table').toEqual([]);
+        expect(Object.keys(MAIN_AGENT_TOOL_POLICY).filter(n => !names.includes(n)), 'stale entries').toEqual([]);
+        expect(names.length).toBe(Object.keys(MAIN_AGENT_TOOL_POLICY).length);
+    });
+
+    it('B-924b: in a turn the owner did not type, every owner_only tool refuses and every ask tool parks a card; nothing reaches a backend', async () => {
+        const cards: Array<{ title: string; bodyMd: string }> = [];
+        const tools = await connect({ assistant: true, mainAgent: gatedMainAgent(cards) });
+        const hasRisk = (name: string) => Object.keys((tools.find(t => t.name === name)!.inputSchema as any).properties ?? {}).includes('risk');
+        let n = 0;
+        for (const [localId, sentFrom] of [['3f1c-cli', 'cli'], ['automation-run-7', 'automation'], ['session-message-2', 'web']] as const) {
+            turn(`${localId}-${n++}`, sentFrom);
+            for (const tool of tools) {
+                const cls = mainAgentToolClass(tool.name);
+                if (cls === 'allow') continue;
+                const r = await mcp!.callTool({ name: tool.name, arguments: { ...(ARGS[tool.name] ?? {}), ...(hasRisk(tool.name) ? { risk: 'none' } : {}) } });
+                const body = JSON.parse(textOf(r));
+                if (cls === 'owner_only') expect.soft(body, `${tool.name} in a ${sentFrom} turn`).toMatchObject({ ok: false, error: 'owner_request_required' });
+                else expect.soft(body, `${tool.name} in a ${sentFrom} turn`).toMatchObject({ ok: true, state: 'awaiting_decision' });
+            }
+        }
+        expect(state.backend).toEqual([]);
+        expect(state.lifecycle).toEqual([]);
+        expect(state.spawnCalls).toEqual([]);
+        expect(cards.every(c => c.bodyMd.includes('原因：这一回合不是你本人发起的'))).toBe(true);
+    });
+
+    it('B-924b (QA-T #944 P1-1/P1-2): handoff_send in a `very-happy send` turn is owner_request_required — no self-archive, nothing delivered; the owner\'s turn is unchanged', async () => {
+        await connect({ assistant: true, mainAgent: gatedMainAgent([]) });
+        turn('9b2e-very-happy-send', 'cli');
+        const r = await mcp!.callTool({ name: 'handoff_send', arguments: { to: 'sess-target', summary: 'touch /tmp/pwned-handoff', archive_after: true } });
+        expect(r.isError).toBe(true);
+        expect(JSON.parse(textOf(r))).toMatchObject({ ok: false, error: 'owner_request_required', origin: 'agent' });
+        session!.emit('turn-ended');
+        await new Promise(resolve => setTimeout(resolve, 50));
+        expect(state.backend).toEqual([]);
+        turn('u-owner-handoff', 'web');
+        const owner = await mcp!.callTool({ name: 'handoff_send', arguments: { to: 'sess-target', summary: 'next steps' } });
+        expect(textOf(owner)).toContain('"delivery":"delivered"');
+        expect(state.backend).toEqual(['peer:handoff:sess-target']);
+    });
+
+    it('B-924b (QA-T #944 P1-2): automation_create(kind send, risk none) + automation_run / fire / resume / update in a non-owner turn each park a card that says why; nothing is created or run; the owner\'s turn is unchanged', async () => {
+        const cards: Array<{ title: string; bodyMd: string }> = [];
+        await connect({ assistant: true, mainAgent: gatedMainAgent(cards) });
+        const calls = [
+            ['automation_create', { name: 'pwn', trigger: { kind: 'manual' }, action: { kind: 'send', sessionId: 'sess-t4', prompt: 'touch /tmp/pwned-auto' }, risk: 'none' }],
+            ['automation_run', { name: 'pwn' }], ['automation_fire', { name: 'pwn' }], ['automation_resume', { name: 'pwn' }],
+            ['automation_update', { name: 'job-1', version: 1, newName: 'job-9', risk: 'none' }],
+        ] as const;
+        for (const [localId, sentFrom] of [['4c1d-very-happy-send', 'cli'], ['automation-run-wake', 'automation']] as const) {
+            turn(localId, sentFrom);
+            for (const [name, args] of calls) {
+                const r = JSON.parse(textOf(await mcp!.callTool({ name, arguments: args })));
+                expect(r, `${name} in a ${sentFrom} turn`).toMatchObject({ ok: true, state: 'awaiting_decision' });
+            }
+        }
+        expect(state.backend).toEqual([]);
+        expect(cards).toHaveLength(calls.length * 2);
+        for (const c of cards) expect(c.bodyMd).toContain('不能新建、修改、启动、暂停或删除自动化');
+        // Read and report tools of an automation's own turn still run (the default automations' path).
+        expect((await mcp!.callTool({ name: 'automation_runs', arguments: {} })).isError).toBe(false);
+        expect((await mcp!.callTool({ name: 'automation_report', arguments: ARGS.automation_report })).isError).toBe(false);
+        turn('u-owner-auto', 'web');
+        for (const [name, args] of calls) {
+            const r = await mcp!.callTool({ name, arguments: args });
+            expect(textOf(r), name).not.toContain('awaiting_decision');
+        }
+        expect(state.backend).toEqual(['automation.create', 'automation.run', 'automation.fire', 'automation.resume', 'automation.update']);
+        expect(cards).toHaveLength(calls.length * 2);
     });
 
     it('QA77 #6: an assistant without the gate runtime (pi / ACP) gets only the legacy B-051 tools', async () => {

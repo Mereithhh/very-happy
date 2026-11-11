@@ -82,8 +82,8 @@ describe('B-924 (QA P1-3) owner-only tools refuse every other turn', () => {
         expect(ran).toEqual([name])
     })
 
-    it('covers archive, kill, restart, wrap-up and hand-off', () => {
-        expect([...OWNER_ONLY_TOOLS].sort()).toEqual(['session_archive', 'session_handoff', 'session_kill', 'session_restart', 'session_wrapup'])
+    it('covers archive, kill, restart, wrap-up and hand-off (B-924b: + handoff_send, self-restart, team cancel / hand-off)', () => {
+        expect([...OWNER_ONLY_TOOLS].sort()).toEqual(['handoff_send', 'request_idle_restart', 'session_archive', 'session_handoff', 'session_kill', 'session_restart', 'session_wrapup', 'team_cancel', 'team_handoff'])
     })
 
     it('nothing installed = not the owner', () => {
@@ -102,7 +102,8 @@ describe('B-924 (QA P1-3) sends in a turn the owner did not type always ask', ()
         expect(mainAgentMustAsk('session_message', { to: 's1', body: 'x' }, notOwner)).toBe('not_owner_turn')
         expect(mainAgentMustAsk('lead_message', { teamId: 't1', body: 'x' }, notOwner)).toBe('not_owner_turn')
         expect(mainAgentMustAsk('session_send', { sessionId: 's1', text: '继续' }, () => true)).toBeNull()
-        expect(mainAgentMustAsk('session_spawn', { prompt: 'x' }, notOwner)).toBeNull()
+        expect(mainAgentMustAsk('session_spawn', { prompt: 'x' }, notOwner)).toBe('not_owner_turn')
+        expect(mainAgentMustAsk('sessions_list', {}, notOwner)).toBeNull()
         installDispatchLedger((target) => target === 'session:s-mine')
         expect(mainAgentMustAsk('session_send', { sessionId: 's-mine', text: '进度？' }, notOwner)).toBeNull()
         expect(mainAgentMustAsk('session_send', { sessionId: 's-other', text: '进度？' }, notOwner)).toBe('not_owner_turn')

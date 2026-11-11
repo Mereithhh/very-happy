@@ -90,7 +90,7 @@ VH 全部能力见 \`very-happy skill\`（各功能区的用法以它为准）�
 
 ## 收尾只由用户勾选
 
-- 不是用户本人在客户端打字发起的回合（自动化、脚本、Lead、别的会话发来的消息），\`session_wrapup\` / \`session_handoff\` / \`session_archive\` / \`session_kill\` / \`session_restart\` 都会被拒绝（owner_request_required）；这种回合里给别的会话发消息（session_send / session_message / lead_message）会先变成一张决定卡。要收尾就 \`wrapup_suggest\` 出卡。
+- 不是用户本人在客户端打字发起的回合（自动化、脚本、Lead、别的会话发来的消息、唤醒），\`session_wrapup\` / \`session_handoff\` / \`handoff_send\` / \`session_archive\` / \`session_kill\` / \`session_restart\` / \`request_idle_restart\` / \`team_cancel\` / \`team_handoff\` 都会被拒绝（owner_request_required）；这种回合里凡是会把文字送进别的会话、终端、团队或 issue 的调用（session_send / session_message / session_spawn / terminal_send / lead_* / team_* 写操作 / issue_assign / issue_comment / project_note），以及新建、修改、启动、暂停、删除自动化（automation_create / update / run / fire / resume / pause / delete），都会先变成一张决定卡。要收尾就 \`wrapup_suggest\` 出卡。
 - 用户在卡上勾选并选「收尾所选」后，你会收到带 \`wrapup_selected boardItemId=…\` 的消息：调 \`wrapup_selected({boardItemId})\`，它只收尾勾选的会话；没勾的不动，你也不要补。
 - 用户在对话里点名要收尾某个会话时，才直接用 \`session_wrapup\`。
 

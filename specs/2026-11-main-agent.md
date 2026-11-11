@@ -407,8 +407,94 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 - `wrapup_selected(boardItemId)` 只在以下全部成立时执行：卡片是本会话发的、key 前缀 `main-agent-wrapup:`、带 select payload、`state=resolved` 且 `resolvedBy=owner`、`ownerChoice='wrapup'`；其它情况一律拒绝，不调用。
 - **卡面绑定（QA P1-1）**：`wrapup_suggest` 发卡后把卡面（`cardFaceHash`：key、标题、正文、选项 id 与标签及顺序）和清单（`checklistHash`：每项 id、标签、理由、会话、顺序，不含勾选）连同原始 `{id, ref}` 列表写进 `~/.happy/main-agent-approvals/wrapup-cards/<卡片>.json`（0600）。`wrapup_selected` 先核对记录：没有记录 → `card_not_found`；任一 hash 不一致 → `card_tampered`，一个都不收尾。通过后只收尾勾选、且在原始列表里同 id 同会话的项，其它一律丢弃（requestId = `<卡片>:<会话>`，重试不重复）。
 - **勾选只属于 Owner**：server 对 select payload 的 post 一律不认 `checked`——新卡全部未勾，重发时每项沿用卡上已有的勾选（按 id，新项未勾）；只有 `owner-respond check` 能改勾选（需要已登录的人）。`main-agent-wrapup:` 进 `RESERVED_CARD_KEY_PREFIXES`，`owner_board_*` 不能发、改、关这类卡。
-- **回合来源白名单（QA P1-2，`assistant/turnOrigin.ts`）**：只有本回合每条 prompt 都是 Owner 在客户端亲手发出（`meta.sentFrom` ∈ web / mobile / ios / android，且不带自动化 localId 前缀）才算 Owner 回合；自动化、`very-happy send`、session_message、Lead / 团队消息、没有 prompt 的回合都不是。非 Owner 回合里 `session_wrapup / session_handoff / session_archive / session_kill / session_restart` 一律回 `owner_request_required`（startHappyServer 的 `withOwnerOnlyTools` + 工具内各一道）。
-- **非 Owner 回合里的发送（QA P1-3，`assistant/sendGuard.ts`）**：`session_send / session_message / lead_message` 一律走闸 2 出卡（不看 risk 和安全阀预设），除非目标在主 agent 自己的派活台账里（`installDispatchLedger`，B-925 接入；接入前台账为空）。Owner 回合里闸 2 行为不变。
+- **回合来源白名单（QA P1-2，`assistant/turnOrigin.ts`）**：只有本回合每条 prompt 都是 Owner 在客户端亲手发出（`meta.sentFrom` ∈ web / mobile / ios / android，且不带自动化 localId 前缀）才算 Owner 回合；自动化、`very-happy send`、session_message、Lead / 团队消息、没有 prompt 的回合都不是。非 Owner 回合里 ① 类（`session_wrapup / session_handoff / handoff_send / session_archive / session_kill / session_restart / request_idle_restart / team_cancel / team_handoff`，见下表）一律回 `owner_request_required`（startHappyServer 的 `withOwnerOnlyTools` + 工具内各一道）。
+- **非 Owner 回合里的发送（QA P1-3，B-924b 扩到全部 ② 类，`assistant/sendGuard.ts`）**：下表 ② 类工具在非 Owner 回合一律走闸 2 出卡（不看 risk 和安全阀预设），只有直发类（session_send / session_message / lead_message / lead_delegate / terminal_send）的目标在主 agent 自己的派活台账里（`installDispatchLedger`，B-925 接入；接入前台账为空）时可直发。Owner 回合里闸 2 行为不变。
+
+### 非 Owner 回合工具盘点（B-924b）
+
+主 agent 会话上真实注册的 74 个 MCP 工具（`mainAgentSurface.test.ts` 经 startHappyServer + MCP `tools/list` 取得），全部归入 `assistant/mainAgentToolPolicy.ts` 的三类之一。测试 `B-924b inventory` 在出现未归类工具或表里有未注册的工具时失败。Owner 本人的回合不受此表影响。
+
+| 类 | 工具 | 依据 |
+|---|---|---|
+| owner_only | `session_wrapup` | asks a session to wrap up (one turn) |
+| owner_only | `session_handoff` | asks a session to hand over; archive_after lets it archive itself |
+| owner_only | `session_archive` | archives a session |
+| owner_only | `session_kill` | stops a session process |
+| owner_only | `session_restart` | restarts a session |
+| owner_only | `handoff_send` | hands THIS session over (archive_after archives the main agent) and delivers text to any session (QA-T #944 P1-1/P1-2) |
+| owner_only | `request_idle_restart` | restarts the main agent itself |
+| owner_only | `team_cancel` | cancels a task and its dependent work (stops its workers) |
+| owner_only | `team_handoff` | moves a task to another bot; the previous worker is superseded |
+| ask | `session_send` | user message into an existing session |
+| ask | `session_message` | message into another session |
+| ask | `session_spawn` | new session with a first prompt |
+| ask | `terminal_send` | types into a terminal |
+| ask | `lead_delegate` | work to a team Lead |
+| ask | `lead_message` | message to a team Lead |
+| ask | `team_create` | makes the main agent a team root (it can then direct members) |
+| ask | `team_join` | joins an existing team as root (it can then direct members) |
+| ask | `team_delegate` | goal to a team member |
+| ask | `team_message` | message to a team member / Lead |
+| ask | `team_submit` | result text to the task owner |
+| ask | `team_accept` | accepts a member's work (the member and Lead act on it) |
+| ask | `team_return` | reason text back to the worker |
+| ask | `team_schedule_create` | scheduled message into a root bot's session |
+| ask | `team_schedule_resume` | resumes scheduled messages |
+| ask | `automation_create` | automation that later spawns / sends / runs |
+| ask | `automation_update` | changes what an automation spawns / sends / runs |
+| ask | `automation_run` | runs an automation now (QA-T #944 P1-2) |
+| ask | `automation_fire` | triggers an automation now |
+| ask | `automation_resume` | restarts an automation's scheduled runs |
+| ask | `automation_pause` | stops the owner's automation |
+| ask | `automation_delete` | deletes the owner's automation (irreversible) |
+| ask | `issue_assign` | starts an agent run with the issue as its prompt |
+| ask | `issue_comment` | the comment is routed into the issue's run (or starts one) |
+| ask | `project_note` | a project decision / finding lands in every project session's context |
+| allow | `team_inspect` | read |
+| allow | `team_schedule_pause` | pauses the main agent's own root-bot schedule |
+| allow | `team_schedule_cancel` | cancels the main agent's own root-bot schedule |
+| allow | `automation_list` | read |
+| allow | `automation_get` | read |
+| allow | `automation_runs` | read |
+| allow | `automation_report` | reports the run that woke the main agent |
+| allow | `automation_ack` | clears a run's attention flag (owner-facing) |
+| allow | `session_peers` | read |
+| allow | `sessions_list` | read |
+| allow | `session_read` | read |
+| allow | `sessions_search` | read |
+| allow | `terminals_list` | read |
+| allow | `terminal_read` | read |
+| allow | `teams_list` | read |
+| allow | `boards_read` | read |
+| allow | `issue_get` | read |
+| allow | `issue_list` | read |
+| allow | `issue_update` | the issue this session runs for (the main agent runs for none) |
+| allow | `issue_create` | an unassigned issue: nothing runs until issue_assign |
+| allow | `todo_list` | read |
+| allow | `todo_add` | owner's todo list |
+| allow | `todo_complete` | owner's todo list |
+| allow | `project_list` | read |
+| allow | `project_context` | read |
+| allow | `owner_board_list` | read |
+| allow | `owner_board_post` | the main agent's own board cards (gate cards are reserved) |
+| allow | `owner_board_update` | the main agent's own board cards |
+| allow | `owner_board_resolve` | the main agent's own board cards |
+| allow | `wrapup_suggest` | posts a checklist card; wraps up nothing |
+| allow | `wrapup_selected` | runs only what the owner ticked on a hash-bound card |
+| allow | `wrapup_report` | the main agent's own wrap-up card; closes nothing |
+| allow | `dispatch_approved` | runs only a call the owner approved on an unchanged card |
+| allow | `memory_update` | own memory |
+| allow | `journal_append` | own journal |
+| allow | `change_title` | own title |
+| allow | `report_progress` | own task board |
+| allow | `request_human` | pushes to the owner |
+| allow | `copy_to_clipboard` | owner's clipboard |
+| allow | `open_preview` | owner's preview panel |
+
+- ① = `OWNER_ONLY_TOOLS`（turnOrigin.ts，由本表派生）：新增 `handoff_send`（archive_after 会让主 agent 归档自己，且能把文字直接送进任意会话；QA-T #944 P1-1）、`request_idle_restart`、`team_cancel`、`team_handoff`。
+- ② = `NON_OWNER_ASK_TOOLS`（sendGuard.ts，由本表派生）。派活类工具（带 `risk`）照旧；其余 ② 工具（`ASK_ONLY_TOOLS`：automation_run / fire / resume / pause / delete、issue_assign / issue_comment、project_note、team_* 写）不加 `risk`，Owner 回合直接执行，非 Owner 回合由闸 2 出卡、批准后经 `dispatch_approved` 执行。自动化类卡片原因写明「这种回合里主 agent 不能新建、修改、启动、暂停或删除自动化」。
+- 自动化自己触发的回合（默认早报 / 卡住 / 收尾清单）只用 ③ 工具（boards_read、sessions_search、owner_board_*、wrapup_suggest、automation_report），照常跑；precheck 在 daemon 里跑，不经 MCP。
+
 - 主 agent 的回合结束推送（「It's ready!」、回合失败）只在 Owner 回合发出（QA P2-5）；自动化回合要说的话走汇报板，早报的 `notify` 仍遵守免打扰。
 - 没有任何定时或自动路径会收尾会话。
 - **已知限制（B-927）**：`sentFrom` 由发送端填写，持有本账号机器 token 的进程仍能自称 `web`；保留前缀目前只在 CLI 侧拦（server 仍接受机器 token 对这类 key 发帖、改选项，由上面的卡面绑定兜底）。server 侧打来源标记、保留前缀只认命令侧发帖归 B-927。

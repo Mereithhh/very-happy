@@ -8,8 +8,9 @@
  * remote sends, task notifications with no prompt at all. A batch is the
  * owner's only when every prompt in it is.
  *
- * Owner-only tools (wrap-up, hand-off, archive, kill, restart) refuse every
- * turn that is not the owner's with `owner_request_required`.
+ * Owner-only tools (wrap-up, hand-off incl. handoff_send, archive, kill, restart,
+ * self-restart, team cancel / hand-off) refuse every turn that is not the
+ * owner's with `owner_request_required`.
  *
  * Fail-closed: no `sentFrom`, an empty one or one off the list (e.g. `cli`), a
  * localId the tracker never saw routed, a turn with no prompt, or no tracker
@@ -32,6 +33,7 @@
  */
 
 import type { AssistantToolRegistrar } from './assistantTools'
+import { MAIN_AGENT_OWNER_ONLY_TOOLS } from './mainAgentToolPolicy'
 
 /** `meta.sentFrom` of a person typing in a Very Happy client (leadBoard's owner rule uses this list). */
 export const OWNER_SENT_FROM = ['web', 'mobile', 'ios', 'android'] as const
@@ -92,8 +94,12 @@ export function silentMainAgentTurn(isMainAgent: boolean, origin: TurnOrigin = m
     return isMainAgent && origin !== 'owner'
 }
 
-/** Tools that only run in a turn the owner started (the session tools that end, stop or change other sessions). */
-export const OWNER_ONLY_TOOLS = ['session_wrapup', 'session_handoff', 'session_archive', 'session_kill', 'session_restart'] as const
+/**
+ * Tools that only run in a turn the owner started: everything that ends, archives, restarts or hands over
+ * a session, the main agent itself included (B-924b: + handoff_send, request_idle_restart, team_cancel,
+ * team_handoff). The list is class ① of mainAgentToolPolicy.ts.
+ */
+export const OWNER_ONLY_TOOLS = MAIN_AGENT_OWNER_ONLY_TOOLS
 
 export function ownerOnlyRefusal(origin: TurnOrigin = mainAgentTurnOrigin()): { content: Array<{ type: 'text'; text: string }>; isError: true } {
     return {

@@ -1,7 +1,7 @@
 import { mkdtemp, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { PRESET_POLICIES, type MainAgentSafetyPolicy } from '@slopus/happy-wire'
 import { compileOutboundDenylist, outboundPreToolUseHook, OUTBOUND_DENY_REASON, TOOL_APPROVAL_UNAVAILABLE_REASON, DEFAULT_OUTBOUND_DENY_PATTERNS } from './outboundDenylist'
 import { createDispatchGate, isReservedCardKey, cardFaceHash, type BoardItemView, type DispatchBoard } from './dispatchGate'
@@ -525,7 +525,10 @@ describe('QA P2-2: terminal_send always asks while Bash is off', () => {
         expect((await g.tools.get('terminal_send')({ terminalId: 't1', text: 'ls\n', risk: 'none' })).content[0].text).toBe('sent')
     })
 
-    it('prepareMainAgent sets mustAsk exactly when Bash is off, in every preset', async () => {
+    it('prepareMainAgent sets mustAsk exactly when Bash is off, in every preset (the owner\'s turn; B-924b: other turns always ask)', async () => {
+        const { installMainAgentTurnOrigin } = await import('../turnOrigin')
+        installMainAgentTurnOrigin(() => 'owner')
+        onTestFinished(() => installMainAgentTurnOrigin(() => 'unknown'))
         for (const [safety, forced] of [
             [{ v: 1, preset: 'strict' }, true], [{ v: 1, preset: 'standard' }, true], [{ v: 1, preset: 'loose' }, true],
             [{ v: 1, preset: 'loose', overrides: { bash: true } }, false],

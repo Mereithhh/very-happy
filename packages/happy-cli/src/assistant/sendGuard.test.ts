@@ -40,7 +40,7 @@ describe('B-924 (QA P1-3) gate 2 mustAsk', () => {
     it('setup.ts ORs the send guard into the one mustAsk hook (next to B-922\'s terminal rule)', async () => {
         const { readFileSync } = await import('node:fs')
         const src = readFileSync(join(__dirname, 'gates', 'setup.ts'), 'utf8')
-        expect(src).toContain('mustAsk: (tool, args) => mustAskTerminal(tool, safety.policy.bash) || mainAgentMustAsk(tool, args) !== null,')
+        expect(src).toContain('mustAsk: mainAgentMustAskHook(() => safety.policy.bash),')
     })
 
     it('the card says why: a non-owner turn, not the Bash rule', async () => {
@@ -58,9 +58,10 @@ describe('B-924 (QA P1-3) gate 2 mustAsk', () => {
         }
         expect(sent).toEqual([])
         expect(posted).toHaveLength(3)
-        // Other dispatch tools are unchanged: none runs.
+        // B-924b: session_spawn is class ② too (a new session with a first prompt).
         await tools.get('session_spawn')!({ directory: '/tmp', prompt: '查日志', risk: 'none' })
-        expect(sent).toHaveLength(1)
+        expect(sent).toEqual([])
+        expect(posted).toHaveLength(4)
     })
 
     it('the owner\'s turn: unchanged (none sends, the loose preset sends external directly)', async () => {
