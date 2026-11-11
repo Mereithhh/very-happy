@@ -88,6 +88,16 @@ vi.mock('@/assistant/mainAgentDeps', () => {
                 : { id: 'u1', key: 'VH-1', title: 'T'.repeat(500), status: command.action === 'complete' ? 'done' : 'open', version: 2 },
             machineId: async () => 'm1',
             sessionId,
+            // B-924: boards_read / sessions_search / wrapup_* over huge backends.
+            ops: {
+                board: {
+                    list: async () => ({ items: many(200, i => ({ id: `item-${i}`, sessionId: 's', teamId: `team-${i % 80}`, projectId: null, source: 'lead', kind: 'decision', key: `k${i}`, title: `Decide ${i} ${'t'.repeat(150)}`, bodyMd: MID, options: null, links: null, anchor: null, firstReply: null, replyToId: null, inferred: false, needsOwner: true, state: 'open', ownerChoice: null, ownerNote: null, resolvedBy: null, resolveNote: null, repostCount: 0, createdAt: 0, updatedAt: 0, resolvedAt: null, pushedAt: null, version: 0 })) }),
+                    post: async () => ({ item: { id: 'card-9' }, created: true }),
+                    resolve: async () => ({ item: { id: 'x' } }),
+                },
+                sessions: async () => many(300, i => ({ id: `sess-${i}`, title: `Session ${i} ${'t'.repeat(300)}`, cwd: `/repo/${'d'.repeat(100)}`, flavor: 'claude', archived: false, active: true, attention: false, readable: true, updatedAt: i })),
+                projectSessionIds: async () => many(300, i => `sess-${i}`),
+            },
         }),
     };
 });
@@ -189,6 +199,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
     lead_delegate: { teamId: 'team-1', goal: 'Ship it', acceptance: ['green'] }, lead_message: { teamId: 'team-1', body: 'hi' },
     issue_get: { issue: 'VH-1' }, issue_create: { title: 'New' }, issue_assign: { key: 'VH-1', assignee: { agent: 'codex' } }, issue_comment: { issue: 'VH-1', body: 'hi' },
     todo_add: { title: 'Call' }, todo_complete: { id: 'VH-1', version: 1 },
+    wrapup_suggest: { sessions: [{ sessionId: 'sess-1', reason: 'idle 2 days' }] }, wrapup_selected: { boardItemId: 'item-0' },
     project_context: { projectId: 'p1', full: true }, project_note: { projectId: 'p1', kind: 'finding', title: 't' }, sessions_list: { limit: 50 },
     owner_board_post: { kind: 'report', title: 'Merged', request_id: 'r1' }, owner_board_update: { id: 'item-1', title: 'x', request_id: 'r2' },
     owner_board_resolve: { id: 'item-1', outcome: 'done', request_id: 'r3' }, owner_board_list: { state: 'all' },
@@ -286,7 +297,7 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
             texts[tool.name] = text;
         }
         // The huge backends really were reached: lists and bodies fill their page.
-        for (const name of ['automation_list', 'automation_runs', 'sessions_list', 'team_inspect', 'owner_board_list', 'issue_list', 'todo_list', 'project_list', 'teams_list', 'terminals_list']) {
+        for (const name of ['automation_list', 'automation_runs', 'sessions_list', 'team_inspect', 'owner_board_list', 'issue_list', 'todo_list', 'project_list', 'teams_list', 'terminals_list', 'boards_read', 'sessions_search']) {
             expect.soft(sizes[name], `${name}: ${texts[name]?.slice(0, 200)}`).toBeGreaterThan(LIST_MAX_CHARS / 2);
         }
         for (const name of ['session_read', 'terminal_read', 'automation_get', 'project_context']) expect.soft(sizes[name], name).toBeGreaterThan(BODY_MAX_CHARS / 2);

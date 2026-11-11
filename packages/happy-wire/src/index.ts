@@ -37,3 +37,4 @@ export * from './turnFailure';
 export * from './accountSettings';
 export * from './machineSettings';
 export * from './mainAgentSafety';
+export * from './mainAgentAutomations';

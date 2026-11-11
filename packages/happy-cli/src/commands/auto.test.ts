@@ -42,6 +42,9 @@ describe('action flags', () => {
         expect(actionFromCommand(parseAutoArgs(['create', '--spawn-dir', 'repo', '--prompt', 'go', '--sticky-key', '{{payload.id}}', '--worktree', '--model', 'm', '--permission-mode', 'plan'])))
             .toEqual({ kind: 'spawn', agent: 'claude', directory: resolve('repo'), prompt: 'go', model: 'm', permissionMode: 'plan', worktree: true, sticky: { key: '{{payload.id}}' } });
         expect(actionFromCommand(parseAutoArgs(['create', '--send-session', 's1', '--prompt', 'ping']))).toEqual({ kind: 'send', sessionId: 's1', prompt: 'ping' });
+        // B-924: the main agent as the target, resolved by the server at run time.
+        expect(actionFromCommand(parseAutoArgs(['create', '--send-main-agent', '--prompt', 'brief']))).toEqual({ kind: 'send', target: 'main-agent', prompt: 'brief' });
+        expect(() => actionFromCommand(parseAutoArgs(['create', '--send-main-agent', '--send-session', 's1', '--prompt', 'x']))).toThrow(/only one of/);
         expect(actionFromCommand(parseAutoArgs(['create', '--script', '--cwd', '/w', '--timeout', '5m', '--env', 'K=V', '--', 'echo', 'hi'])))
             .toEqual({ kind: 'script', command: ['echo', 'hi'], cwd: '/w', timeoutMs: 300_000, env: { K: 'V' } });
     });

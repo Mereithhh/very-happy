@@ -272,4 +272,51 @@ describe('attention items store (pglite)', () => {
         for (const statement of statements(PAYLOAD_MIGRATION)) await db.$executeRawUnsafe(statement);
         expect((await store.listItems(accountId, { sessionId, state: 'all' })).items.find(i => i.id === posted.item.id)?.payload).toBeNull();
     });
+    it('B-924: a select decision is ticked item by item while open; never after the owner chose', async () => {
+        const payload = { v: 1 as const, type: 'select' as const, items: [{ id: 's1', label: 'Session one', ref: 'sess-1', checked: false }, { id: 's2', label: 'Session two', ref: 'sess-2', checked: false }] };
+        const { item } = await store.postItem(accountId, { sessionId, source: 'agent', kind: 'decision', title: 'Wrap these up?', options: [{ id: 'wrapup', label: 'Wrap up ticked' }, { id: 'skip', label: 'Not now' }], payload, key: 'wrapup-x' });
+        expect(item.payload).toEqual(payload);
+        const ticked = await store.ownerRespond(accountId, item.id, { action: 'check', checkId: 's2', checked: true });
+        expect((ticked.item.payload as typeof payload).items.map(i => i.checked)).toEqual([false, true]);
+        await expect(store.ownerRespond(accountId, item.id, { action: 'check', checkId: 'nope', checked: true })).rejects.toMatchObject({ code: 'attention_check_unknown' });
+        const chosen = await store.ownerRespond(accountId, item.id, { action: 'choose', choice: 'wrapup' });
+        expect(chosen.item).toMatchObject({ state: 'resolved', resolvedBy: 'owner', ownerChoice: 'wrapup' });
+        await expect(store.ownerRespond(accountId, item.id, { action: 'check', checkId: 's1', checked: true })).rejects.toMatchObject({ code: 'attention_item_closed' });
+        // A plain decision still refuses check; select payloads are refused on other kinds by the wire schema.
+        const plain = await store.postItem(accountId, { sessionId, source: 'agent', kind: 'decision', title: 'Plain', options });
+        await expect(store.ownerRespond(accountId, plain.item.id, { action: 'check', checkId: 's1', checked: true })).rejects.toMatchObject({ code: 'attention_check_unsupported' });
+        const { AttentionItemPostSchema } = await import('@slopus/happy-wire');
+        expect(AttentionItemPostSchema.safeParse({ sessionId, source: 'agent', kind: 'report', title: 'x', payload }).success).toBe(false);
+        expect(AttentionItemPostSchema.safeParse({ sessionId, source: 'agent', kind: 'decision', title: 'x', options, payload }).success).toBe(true);
+    });
+
+    it('B-924: notify pushes a report only from the account main agent; its cards do not push in quiet hours', async () => {
+        const main = await newSession();
+        const kv = (key: string, value: object) => db.userKVStore.upsert({
+            where: { accountId_key: { accountId, key } },
+            create: { accountId, key, value: new TextEncoder().encode(JSON.stringify(value)) },
+            update: { value: new TextEncoder().encode(JSON.stringify(value)) },
+        });
+        await kv('vh.main-agent.v1', { v: 1, machineId, sessionId: main });
+        // Never quiet for the first half.
+        await kv('vh.main-agent-config.v1', { quietHours: { enabled: false } });
+        const brief = await store.postItem(accountId, { sessionId: main, source: 'agent', kind: 'report', title: '早报 · 11-12', notify: true, key: 'main-agent-brief:1' });
+        const leadReport = await store.postItem(accountId, { sessionId, source: 'lead', kind: 'report', title: 'Lead report', notify: true });
+        await vi.waitFor(() => expect(pushesFor(brief.item.id)).toBe(1));
+        await settle();
+        expect(pushesFor(leadReport.item.id)).toBe(0);
+        // Quiet all day: the main agent's decision goes on the board without a push, and never pushes later.
+        await kv('vh.main-agent-config.v1', { quietHours: { enabled: true, start: '00:00', end: '23:59', tz: 'UTC' } });
+        const night = await store.postItem(accountId, { sessionId: main, source: 'agent', kind: 'decision', title: 'Stuck', options, key: 'main-agent-stuck:x' });
+        const lead = await store.postItem(accountId, { sessionId, source: 'lead', kind: 'decision', title: 'Lead decision', options });
+        await vi.waitFor(() => expect(pushesFor(lead.item.id)).toBe(1));
+        await vi.waitFor(async () => expect((await db.attentionItem.findUniqueOrThrow({ where: { id: night.item.id } })).pushedAt).not.toBeNull());
+        await settle();
+        expect(pushesFor(night.item.id)).toBe(0);
+        await kv('vh.main-agent-config.v1', { quietHours: { enabled: false } });
+        await store.postItem(accountId, { sessionId: main, source: 'agent', kind: 'decision', title: 'Stuck again', options, key: 'main-agent-stuck:x' });
+        await settle();
+        expect(pushesFor(night.item.id)).toBe(0);
+    });
+
 });

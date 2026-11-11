@@ -129,6 +129,12 @@ describe('describeAction', () => {
     );
     expect(text).toEqual({ kind: 'spawn', headline: 'claude · ~/work · opus · worktree · sticky {{payload.id}}', body: 'line1\nline2\nline3', truncated: true });
   });
+  it('B-924: names the session of a send, or the main agent for a target send', () => {
+    expect(describeAction({ kind: 'send', sessionId: 's1', prompt: 'ping' }, 'en').headline).toBe('Send to session s1');
+    expect(describeAction({ kind: 'send', sessionId: 's1', prompt: 'ping' }, 'zh').headline).toBe('发送到会话 s1');
+    expect(describeAction({ kind: 'send', target: 'main-agent', prompt: 'ping' }, 'en')).toEqual({ kind: 'send', headline: 'Send to the main agent', body: 'ping', truncated: false });
+    expect(describeAction({ kind: 'send', target: 'main-agent', prompt: 'ping' }, 'zh').headline).toBe('发送到主 agent');
+  });
   it('quotes argv pieces that contain spaces', () => {
     const text = describeAction({ kind: 'script', command: ['bash', '-lc', 'echo hi there'], cwd: '/srv' }, 'zh');
     expect(text.headline).toBe('目录 /srv');

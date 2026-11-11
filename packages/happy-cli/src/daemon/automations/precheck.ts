@@ -15,7 +15,25 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { AUTOMATION_PRECHECK_DEFAULT_TIMEOUT_MS, AUTOMATION_PRECHECK_MAX_TIMEOUT_MS, AUTOMATION_PRECHECK_OUTPUT_MAX_CHARS, AUTOMATION_SUMMARY_MAX_CHARS, type AutomationAction, type AutomationPrecheck, type AutomationSkipReason } from '@slopus/happy-wire';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { projectPath } from '@/projectPath';
 import { TailBuffer } from './script';
+
+/** This CLI as argv (node + its built entry), or null when it is not built (dev runs from sources). */
+export function selfInvocation(): string[] | null {
+    const entry = join(projectPath(), 'dist', 'index.mjs');
+    return existsSync(entry) ? [process.execPath, '--no-warnings', '--no-deprecation', entry] : null;
+}
+
+/**
+ * B-924: an argv precheck whose program is `very-happy` (the main agent's
+ * default automations) runs THIS daemon's CLI, not whatever `very-happy` the
+ * daemon's PATH finds (or none, under a service manager).
+ */
+export function selfCommand(argv: string[], self: string[] | null = selfInvocation()): string[] {
+    return argv[0] === 'very-happy' && self ? [...self, ...argv.slice(1)] : argv;
+}
 
 /** Signal a whole process group by id, whether or not its leader is still alive (POSIX); the child alone on Windows. */
 export function killPrecheckGroup(pgid: number | undefined, child: ChildProcess | undefined, signal: NodeJS.Signals): void {

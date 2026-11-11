@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import {
     AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DEDUPE_WINDOW_MS, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_DEFAULT_MAX_RUNTIME_MS,
     AUTOMATION_QUEUED_ATTENTION_MS, AUTOMATION_RUN_RETENTION, AUTOMATION_SCRIPT_DEFAULT_MAX_RUNTIME_MS, AUTOMATION_RUN_STATUSES,
-    AUTOMATION_RUN_TERMINAL_STATUSES, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, isAutomationRunTerminal, projectAgentProfilesFor,
+    AUTOMATION_RUN_TERMINAL_STATUSES, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, AUTOMATION_MAIN_AGENT_UNAVAILABLE, isAutomationRunTerminal, projectAgentProfilesFor,
     type Automation, type AutomationAction, type AutomationClaim, type AutomationClaimResponse, type AutomationCreate, type AutomationFire, type AutomationFireResponse,
     type AutomationManualRun, type AutomationReport, type AutomationRun, type AutomationRunStatus, type AutomationSticky, type AutomationUpdate,
 } from '@slopus/happy-wire';
@@ -13,6 +13,7 @@ import { configuredResourceLimit } from '@/app/api/resourceLimits';
 import { AutomationError, requireAutomation } from './errors';
 import { linkedSessionIds } from './attentionLifecycle';
 import { readDefaults } from '@/app/projects/rules';
+import { readAccountMainAgent } from '@/app/projects/mainAgent';
 import { initialRunAt, nextRunAfter, normalizeTrigger } from './schedule';
 import { decodeStoredAction, encodeStoredAction, foldSkipCount, occurrenceOf, recordMerge, shouldMergeSkip, type SkipCounts, type StoredAction } from './storedAction';
 
@@ -216,7 +217,7 @@ export async function createAutomation(accountId: string, input: AutomationCreat
         return await inTx(async tx => {
             await requireMachine(tx, accountId, input.machineId);
             await requireAutomationCapacity(tx, accountId);
-            if (input.action.kind === 'send') await requireSession(tx, accountId, input.action.sessionId);
+            if (input.action.kind === 'send' && input.action.sessionId) await requireSession(tx, accountId, input.action.sessionId);
             if (input.projectId) await requireProject(tx, accountId, input.projectId);
             const status = input.status ?? 'active';
             const nextRunAt = status === 'active' ? initialRunAt(trigger, now.getTime()) : null;
@@ -258,7 +259,7 @@ export async function updateAutomation(accountId: string, id: string, input: Aut
             // B-548: the action, its precheck and the skip bookkeeping change independently — an action-only edit (old clients) keeps the gate.
             const stored = decodeStoredAction(row.action);
             const action = storeAction({ action: input.action ?? stored.action, precheck: input.precheck !== undefined ? input.precheck : stored.precheck, skipCounts: stored.skipCounts });
-            if (input.action?.kind === 'send') await requireSession(tx, accountId, input.action.sessionId);
+            if (input.action?.kind === 'send' && input.action.sessionId) await requireSession(tx, accountId, input.action.sessionId);
             const trigger = input.trigger ? normalizeTrigger(input.trigger, now.getTime()) : row.trigger;
             const nextRunAt = input.trigger && row.status === 'active' ? initialRunAt(trigger, now.getTime()) : ms(row.nextRunAt);
             if (input.machineId && input.machineId !== row.machineId) {
@@ -470,6 +471,16 @@ export async function ackRun(accountId: string, runId: string, by: string = 'own
     });
 }
 
+/** B-924: a `main-agent` send with no main agent to deliver to (none set up, or its session is gone). Failed with attention, never handed out. */
+async function failMainAgentUnavailable(tx: Tx, run: RunRow, now: Date): Promise<void> {
+    await tx.automationRun.update({ where: { id: run.id }, data: {
+        status: 'failed', error: AUTOMATION_MAIN_AGENT_UNAVAILABLE, dedupeSlot: null, finishedAt: now, updatedAt: now,
+        summary: 'This automation sends to the main agent, but the account has no main agent session right now. Open the main agent once (sidebar), then run it again.',
+        ...raiseAttention(AUTOMATION_MAIN_AGENT_UNAVAILABLE, now),
+    } });
+    await setLastRunStatus(tx, run.automationId, run.id, 'failed');
+}
+
 /**
  * B-548: the target daemon is too old to run this automation's precheck, so the
  * action must not run at all. Recorded as a skip (flagged once — repeats fold
@@ -526,9 +537,26 @@ export async function claimRuns(accountId: string, input: AutomationClaim): Prom
                 .filter(a => decodeStoredAction(a.action).precheck !== null).map(a => a.id),
         );
         const claimed: RunRow[] = [];
+        // B-924: `send` to `target: 'main-agent'` resolves to the account's main agent when it is handed out.
+        const mainAgentSends = queued.length === 0 ? new Set<string>() : new Set(
+            (await tx.automation.findMany({ where: { id: { in: [...new Set(queued.map(r => r.automationId))] } }, select: { id: true, action: true } }))
+                .filter(a => { const action = decodeStoredAction(a.action).action; return action.kind === 'send' && action.target === 'main-agent'; }).map(a => a.id),
+        );
+        const mainAgent = mainAgentSends.size > 0 ? await readAccountMainAgent(tx, accountId) : null;
+        const resolvedSession = new Map<string, string>();
         for (const run of queued) {
             if (claimed.length >= limit || busy.has(run.automationId)) continue;
             if (gated.has(run.automationId)) { await skipUnsupportedPrecheck(tx, run, now); continue; }
+            if (mainAgentSends.has(run.automationId)) {
+                if (!mainAgent) { await failMainAgentUnavailable(tx, run, now); continue; }
+                if (mainAgent.machineId && mainAgent.machineId !== input.machineId && await tx.machine.findFirst({ where: { id: mainAgent.machineId, accountId }, select: { id: true } })) {
+                    // The main agent lives on another machine (it moved): the run, and the automation's schedule, follow it there.
+                    await tx.automationRun.update({ where: { id: run.id }, data: { machineId: mainAgent.machineId, updatedAt: now } });
+                    await tx.automation.updateMany({ where: { id: run.automationId, machineId: input.machineId }, data: { machineId: mainAgent.machineId, version: { increment: 1 }, updatedAt: now } });
+                    continue;
+                }
+                resolvedSession.set(run.automationId, mainAgent.sessionId);
+            }
             const claimId = randomUUID();
             // A machine that comes back resolves its own `machine_offline` attention.
             const attention = run.attentionReason === 'machine_offline' && run.needsAttention ? { ...clearAttention('machine-back', now), attentionReason: null } : {};
@@ -546,7 +574,11 @@ export async function claimRuns(accountId: string, input: AutomationClaim): Prom
             // B-850d: the project's account defaults for this machine (the daemon resolves explicit > project > machine).
             const project = automation.projectId ? await tx.project.findFirst({ where: { id: automation.projectId }, select: { defaults: true } }) : null;
             const projectAgentProfiles = project ? projectAgentProfilesFor(readDefaults(project.defaults).agentProfiles, input.machineId) : [];
-            runs.push({ run: { ...toRunView(run, automation.name), claimId: run.claimId! }, automation: toAutomationView(automation), stickies: stickies.map(stickyView), ...(projectAgentProfiles.length > 0 ? { projectAgentProfiles } : {}) });
+            const view = toAutomationView(automation);
+            const target = resolvedSession.get(automation.id);
+            // The daemon gets a plain `send` (older daemons run it as is); `target` stays for display.
+            if (target && view.action.kind === 'send') view.action = { ...view.action, sessionId: target };
+            runs.push({ run: { ...toRunView(run, automation.name), claimId: run.claimId! }, automation: view, stickies: stickies.map(stickyView), ...(projectAgentProfiles.length > 0 ? { projectAgentProfiles } : {}) });
         }
         return { runs, leaseMs };
     }).catch(mapConflict);

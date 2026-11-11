@@ -236,9 +236,11 @@ const PUSH_TITLE: Record<string, string> = {
 };
 
 /** Push text for an item, or null when it never pushes (§6.2). */
-export function pushPresentation(item: Pick<AttentionRow, 'kind' | 'title' | 'replyToId'> & { inferred?: boolean }): { kind: 'attention' | 'question'; title: string; body: string } | null {
-    const kind = attentionPushKind(item);
+export function pushPresentation(item: Pick<AttentionRow, 'kind' | 'title' | 'replyToId'> & { inferred?: boolean }, options?: { notify?: boolean }): { kind: 'attention' | 'question'; title: string; body: string } | null {
+    const kind = attentionPushKind(item, options);
     if (!kind) return null;
+    // B-924: a notified report (the main agent's brief) is its own title.
+    if (item.kind === 'report') return { kind, title: item.title.slice(0, 200), body: item.title.slice(0, 500) };
     if (kind === 'question') return { kind, title: '负责人回答了你的问题', body: item.title.slice(0, 500) };
     return { kind, title: `${PUSH_TITLE[item.kind] ?? '需要你'} · ${item.title}`.slice(0, 200), body: item.title.slice(0, 500) };
 }

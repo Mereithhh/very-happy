@@ -53,6 +53,7 @@ import { MAIN_AGENT_LIST_VIEWS } from "@/assistant/listViews";
 import { installSessionLifecycle, MAIN_AGENT_REPLACES, MAIN_AGENT_TOOL_NAMES, registerMainAgentTools } from "@/assistant/mainAgentTools";
 import { createLiveMainAgentLifecycle } from "@/assistant/mainAgentLifecycle";
 import { createMainAgentDeps } from "@/assistant/mainAgentDeps";
+import { classifyTurnSource, installMainAgentTurnSource } from "@/assistant/turnSource";
 
 interface HappyMcpHandlers {
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
@@ -332,7 +333,13 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         wrapupTracker.onUserMessage({ localId: event.localId });
     };
     const onClaudeLine = (body: unknown) => { for (const text of assistantTexts(body)) leadBoard.onAssistantText(text); };
-    const onTurnStarted = (sourceIds?: string[]) => { wrapupTracker.onTurnStart(sourceIds); };
+    // B-924: an automation-only turn (every prompt `automation-<runId>`) may not wrap up / hand off (main agent tools).
+    let turnSource: 'owner' | 'automation' | 'unknown' = 'unknown';
+    if (mainAgentLifecycle) installMainAgentTurnSource(() => turnSource);
+    const onTurnStarted = (sourceIds?: string[]) => {
+        wrapupTracker.onTurnStart(sourceIds);
+        if (sourceIds?.length) turnSource = classifyTurnSource(sourceIds);
+    };
     const onTurnEnded = () => { void leadBoard.onTurnEnd(); void wrapupTracker.onTurnEnd(); };
     // Codex / pi / Gemini end a turn with a `ready` event and never emit `turn-ended`.
     const onAgentReady = () => { void wrapupTracker.onTurnEnd(); };

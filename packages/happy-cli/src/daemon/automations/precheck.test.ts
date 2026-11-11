@@ -95,3 +95,14 @@ describe.skipIf(!posix)('B-548 precheck process', () => {
         expect(alive).toBe(false);
     }, 20_000);
 });
+
+describe('B-924 selfCommand', () => {
+    it('runs `very-happy …` prechecks with this CLI, leaves every other argv alone', async () => {
+        const { selfCommand } = await import('./precheck');
+        const self = ['/usr/bin/node', '--no-warnings', '--no-deprecation', '/opt/vh/dist/index.mjs'];
+        expect(selfCommand(['very-happy', 'main-agent', 'precheck', 'stuck'], self)).toEqual([...self, 'main-agent', 'precheck', 'stuck']);
+        expect(selfCommand(['very-happy', 'x'], null)).toEqual(['very-happy', 'x']);
+        expect(selfCommand(['/bin/true'], self)).toEqual(['/bin/true']);
+        expect(selfCommand(['sh', 'very-happy'], self)).toEqual(['sh', 'very-happy']);
+    });
+});

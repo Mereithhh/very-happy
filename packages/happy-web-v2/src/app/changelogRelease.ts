@@ -175,6 +175,15 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     itemKeys: ['changelog.releases.nov11w.keep', 'changelog.releases.nov11w.custom'],
   },
   {
+    id: '2026-11-11-main-agent-automations-wrapup-checklist-0-2-213',
+    cliVersion: '0.2.214',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11q.title',
+    summaryKey: 'changelog.releases.nov11q.summary',
+    itemKeys: ['changelog.releases.nov11q.target', 'changelog.releases.nov11q.defaults', 'changelog.releases.nov11q.wrapup', 'changelog.releases.nov11q.tools'],
+  },
+  {
     id: '2026-11-11-main-agent-safety-settings',
     cliVersion: '0.2.214',
     date: '2026-11-11',

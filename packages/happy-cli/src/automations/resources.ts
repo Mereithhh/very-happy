@@ -6,7 +6,7 @@ description: Create and operate Very Happy automations — cron / interval / one
 
 # Very Happy Automations
 
-An automation is account-level: a trigger (cron with time zone, fixed interval, one time, or manual only), an action (spawn a session, continue a sticky session, send into a fixed session, or run a script), and one machine that executes it. Every execution is a run with a status (queued → claimed → running → done | failed | skipped | expired | cancelled), an optional session link, a summary and an attention flag.
+An automation is account-level: a trigger (cron with time zone, fixed interval, one time, or manual only), an action (spawn a session, continue a sticky session, send into a fixed session or into the account's main agent with \`target: 'main-agent'\` (resolved when the run starts), or run a script), and one machine that executes it. Every execution is a run with a status (queued → claimed → running → done | failed | skipped | expired | cancelled), an optional session link, a summary and an attention flag.
 
 ## Surfaces
 

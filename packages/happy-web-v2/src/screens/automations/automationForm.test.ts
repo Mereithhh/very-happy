@@ -148,6 +148,31 @@ describe('draft ↔ wire', () => {
     const r2 = buildUpdate(d2, send);
     expect(r2.ok && r2.body).toEqual({ version: 4 });
   });
+  it('B-924: a send to the main agent needs no session id, round-trips, and old sessionId sends stay as they were', () => {
+    const d = emptyDraft({ name: 'brief', machineId: 'm1', triggerKind: 'manual', actionKind: 'send', sendTarget: 'main-agent', sendSessionId: '', prompt: 'brief me' });
+    expect(validateDraft(d)).toEqual({});
+    const r = buildCreate(d);
+    expect(r.ok && r.body.action).toEqual({ kind: 'send', target: 'main-agent', prompt: 'brief me' });
+    // a stale session id typed before switching is not sent
+    const r1 = buildCreate({ ...d, sendSessionId: 's-old' });
+    expect(r1.ok && r1.body.action).toEqual({ kind: 'send', target: 'main-agent', prompt: 'brief me' });
+
+    const stored = base({ action: { kind: 'send', target: 'main-agent', prompt: 'brief me' } });
+    const d2 = draftFromAutomation(stored);
+    expect(d2.sendTarget).toBe('main-agent');
+    expect(d2.sendSessionId).toBe('');
+    const r2 = buildUpdate(d2, stored);
+    expect(r2.ok && r2.body).toEqual({ version: 4 });
+    // switching back to a session needs the id, then sends it instead of the target
+    const back = { ...d2, sendTarget: 'session' as const };
+    expect(validateDraft(back)).toEqual({ sendSessionId: 'session' });
+    const r3 = buildUpdate({ ...back, sendSessionId: 's9' }, stored);
+    expect(r3.ok && r3.body.action).toEqual({ kind: 'send', sessionId: 's9', prompt: 'brief me' });
+
+    const legacy = draftFromAutomation(base({ action: { kind: 'send', sessionId: 's1', prompt: 'ping' } }));
+    expect(legacy.sendTarget).toBe('session');
+    expect(legacy.sendSessionId).toBe('s1');
+  });
   it('buildCreate produces a wire-valid body and omits blanks', () => {
     const d = emptyDraft({ name: 'nightly', machineId: 'm1', triggerKind: 'interval', intervalEvery: '1h', actionKind: 'script', scriptCommand: 'rclone sync a b:c', maxRuntime: '30m' });
     const r = buildCreate(d);

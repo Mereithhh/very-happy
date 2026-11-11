@@ -48,6 +48,11 @@ export const AutomationTriggerSchema = z.discriminatedUnion('kind', [
 ]);
 export type AutomationTrigger = z.infer<typeof AutomationTriggerSchema>;
 
+/** B-924 `send` targets resolved by the server: `main-agent` = the session KV `vh.main-agent.v1` names when the run is claimed. */
+export const AUTOMATION_SEND_TARGETS = ['main-agent'] as const;
+export type AutomationSendTarget = typeof AUTOMATION_SEND_TARGETS[number];
+/** Run error / attention reason when a `main-agent` target has no main agent to resolve to. */
+export const AUTOMATION_MAIN_AGENT_UNAVAILABLE = 'main_agent_unavailable';
 export const AutomationStickySchema = z.object({ key: z.string().min(1).max(512) });
 export const AutomationActionSchema = z.discriminatedUnion('kind', [
     // `agent` and `permissionMode` are open strings (AGENTS #14): the daemon
@@ -64,7 +69,11 @@ export const AutomationActionSchema = z.discriminatedUnion('kind', [
         /** B-850d: the account the run uses (absent = project default > machine default; null = machine login). An older daemon ignores it. */
         agentProfile: AgentProfileChoiceSchema.optional(),
     }),
-    z.object({ kind: z.literal('send'), sessionId: id, prompt: text }),
+    // B-924: `target: 'main-agent'` instead of `sessionId` = the account's main
+    // agent at run time (KV `vh.main-agent.v1`): the server resolves it when a
+    // daemon claims the run and hands the daemon a plain `send` with `sessionId`
+    // (so older daemons run it unchanged). Exactly one of the two.
+    z.object({ kind: z.literal('send'), sessionId: id.optional(), target: z.enum(AUTOMATION_SEND_TARGETS).optional(), prompt: text }),
     z.object({
         kind: z.literal('script'),
         command: z.array(z.string().min(1).max(4096)).min(1).max(256),
@@ -72,8 +81,16 @@ export const AutomationActionSchema = z.discriminatedUnion('kind', [
         env: z.record(z.string().min(1).max(256), z.string().max(32000)).optional(),
         timeoutMs: z.number().int().min(1000).max(7 * 86_400_000).optional(),
     }),
-]);
+]).superRefine((action, ctx) => {
+    if (action.kind === 'send' && (action.sessionId === undefined) === (action.target === undefined)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'send needs exactly one of sessionId or target', path: ['sessionId'] });
+    }
+});
 export type AutomationAction = z.infer<typeof AutomationActionSchema>;
+/** B-924: the session a `send` action delivers to, or null when it targets the main agent (resolved by the server at claim time). */
+export function automationSendSessionId(action: AutomationAction): string | null {
+    return action.kind === 'send' && typeof action.sessionId === 'string' ? action.sessionId : null;
+}
 
 /**
  * B-548: optional gate before the action. Exactly one of `command` (argv, no

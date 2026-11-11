@@ -33,6 +33,7 @@
 import axios from 'axios'
 import { configuration } from '@/configuration'
 import { decodeBase64, decrypt } from '@/api/encryption'
+import { readTurnFailure, type TurnFailure } from '@slopus/happy-wire'
 import { listDaemonSessions, stopDaemonSession } from '@/daemon/controlClient'
 import { readCredentialsForConfiguredRelay, readPersistedSessions, type PersistedSession } from '@/persistence'
 import { sessionWebUrl } from '@/commands/sessionMessage'
@@ -248,6 +249,8 @@ export interface AccountSessionSummary extends SessionSummary {
     pending?: PendingPermissionRequest[]
     /** True when at least one request is pending — the "needs a human" signal. */
     attention: boolean
+    /** B-924: the last turn ended on a model / upstream API error (B-913 agentState `turnFailure`; decryptable rows only). */
+    turnFailure?: TurnFailure
 }
 
 /**
@@ -294,6 +297,7 @@ export function summarizeAccountSession(
 
     const meta = metadata as Metadata & { variant?: string }
     const pending = pendingRequestsOf(agentState, now)
+    const failure = readTurnFailure((agentState as { turnFailure?: unknown } | null)?.turnFailure)
     // B-507: the wrapper renews `backgroundTasks.updatedAt` every 60s while the
     // set is non-empty; a dead wrapper's last agentState stays on the server,
     // so the TTL and the server's `active` flag are what make this honest.
@@ -313,6 +317,7 @@ export function summarizeAccountSession(
         ...(persisted.savedAt !== undefined ? { savedAt: persisted.savedAt } : {}),
         pending,
         attention: pending.length > 0,
+        ...(failure ? { turnFailure: failure } : {}),
     }
 }
 
@@ -354,12 +359,15 @@ export function orderAccountSessions(
 export interface ListAccountSessionsOptions extends ListSessionsOptions {
     /** Include rows the server has already archived (default: hide them). */
     includeArchived?: boolean
+    /** B-924: `unarchived` = every unarchived row instead of the newest 150 (servers without it return the 150). */
+    scope?: 'recent' | 'unarchived'
 }
 
 /** Account-wide listing over REST (`/v1/sessions`, newest 150). See the header note on `decryptable`. */
 export async function listAccountSessions(options: ListAccountSessionsOptions = {}): Promise<AccountSessionSummary[]> {
     const token = await bearerToken()
     const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
+        ...(options.scope === 'unarchived' ? { params: { scope: 'unarchived' } } : {}),
         headers: {
             'Authorization': `Bearer ${token}`,
             'X-Happy-Client': `${SESSION_OPS_CLIENT}/${configuration.currentCliVersion}`,
@@ -421,18 +429,19 @@ export async function readSessionLog(sessionId: string, persisted: PersistedSess
             timeout: 15_000,
         },
     )
-    const messages: Array<{ seq: number; localId?: string | null; content: { t: string; c: string } }> =
+    const messages: Array<{ seq: number; localId?: string | null; createdAt?: unknown; content: { t: string; c: string } }> =
         Array.isArray(response.data?.messages) ? response.data.messages : []
     // `before_seq` returns newest-first — flip to chronological order.
     messages.reverse()
     const key = decodeBase64(persisted.encryptionKey)
     return messages.map((message) => {
         const localId = typeof message.localId === 'string' ? message.localId : null
-        if (message.content?.t !== 'encrypted') return { seq: message.seq, body: null, localId }
+        const at = typeof message.createdAt === 'number' ? { createdAt: message.createdAt } : {}
+        if (message.content?.t !== 'encrypted') return { seq: message.seq, body: null, localId, ...at }
         try {
-            return { seq: message.seq, body: decrypt(key, persisted.encryptionVariant, decodeBase64(message.content.c)), localId }
+            return { seq: message.seq, body: decrypt(key, persisted.encryptionVariant, decodeBase64(message.content.c)), localId, ...at }
         } catch {
-            return { seq: message.seq, body: null, localId }
+            return { seq: message.seq, body: null, localId, ...at }
         }
     })
 }

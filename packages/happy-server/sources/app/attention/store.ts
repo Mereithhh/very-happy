@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import {
-    applyWrapupCheck, attentionItemNeedsOwner, parseWrapupPayload, attentionKindNeedsOwner, attentionResolveState, isAttentionActive,
+    applySelectCheck, applyWrapupCheck, attentionItemNeedsOwner, isMainAgentQuietTime, parseSelectPayload, parseWrapupPayload, readMainAgentQuietHours, attentionKindNeedsOwner, attentionResolveState, isAttentionActive,
     type AttentionItem, type AttentionItemListQuery, type AttentionItemOwnerRespond, type AttentionItemPatch, type AttentionItemPost,
     type AttentionItemResolve, type TeamState,
 } from '@slopus/happy-wire';
@@ -14,6 +14,7 @@ import { allocateUserSeq } from '@/storage/seq';
 import { log } from '@/utils/log';
 import { ISSUE_REVIEW_KEY_PREFIX } from '@/app/issues/rules';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
+import { decodeKvJson, MAIN_AGENT_CONFIG_KV_KEY, MAIN_AGENT_KV_KEY, mainAgentPointerOf } from '@/app/projects/mainAgent';
 import {
     AttentionError, attentionEnabled, capAnswered, itemView, planPost, postKey, pushPresentation, replyTargetState,
     requireAttention, rootTaskTransitions, TEAM_SUBMIT_CHOICES, TEAM_SUBMIT_KEY_PREFIX, teamAccountItem, teamAccountKey, teamAccountTransitions, teamSubmitItem, teamSubmitKey, type AttentionRow,
@@ -56,9 +57,9 @@ async function run<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
 const json = <T>(value: T | null | undefined): T | typeof Prisma.DbNull | undefined => value === undefined ? undefined : value === null ? Prisma.DbNull : value;
 
 /** Emits the item to the account's user-scoped connections and, once, its push. */
-function announce(tx: Tx, row: AttentionRow) {
+function announce(tx: Tx, row: AttentionRow, push?: { notify?: boolean }) {
     const item = itemView(row);
-    afterTx(tx, () => { void emitItem(row.accountId, item); void pushOnce(row); });
+    afterTx(tx, () => { void emitItem(row.accountId, item); void pushOnce(row, push); });
 }
 async function emitItem(accountId: string, item: AttentionItem) {
     try {
@@ -74,12 +75,23 @@ async function emitItem(accountId: string, item: AttentionItem) {
  * is the claim, so concurrent reposts / retries / server replicas race on one
  * row and only the winner dispatches. Closed items never push.
  */
-export async function pushOnce(row: Pick<AttentionRow, 'id' | 'accountId' | 'sessionId' | 'kind' | 'title' | 'replyToId' | 'state' | 'inferred'>): Promise<boolean> {
-    const presentation = pushPresentation(row);
+export async function pushOnce(row: Pick<AttentionRow, 'id' | 'accountId' | 'sessionId' | 'kind' | 'title' | 'replyToId' | 'state' | 'inferred'> & { source?: string }, options?: { notify?: boolean }, now: () => number = Date.now): Promise<boolean> {
+    // B-924: only the account's main agent posts as `agent` with `notify` / quiet hours that matter; everyone else
+    // keeps the old path (no extra reads before the claim).
+    const maybeMainAgent = row.source === 'agent';
+    let presentation = pushPresentation(row, maybeMainAgent ? options : undefined);
     if (!presentation || !isAttentionActive(row.state)) return false;
     try {
         const claimed = await db.attentionItem.updateMany({ where: { id: row.id, pushedAt: null, inferred: false, state: { in: ACTIVE_STATES } }, data: { pushedAt: new Date() } });
         if (claimed.count !== 1) return false;
+        if (maybeMainAgent) {
+            // `notify` counts only from the main agent; its cards go on the board without a push during its
+            // quiet hours (KV vh.main-agent-config.v1). Either way the push slot is used up: a later edit never
+            // pushes at 3 a.m. (and a report never pushes anyway).
+            const rule = await mainAgentPushRule(row.accountId, row.sessionId, now());
+            if (!rule.isMainAgent && options?.notify) presentation = pushPresentation(row);
+            if (!presentation || rule.quiet) return false;
+        }
         const url = `/session/${row.sessionId}?panel=board&item=${encodeURIComponent(row.id)}`;
         eventRouter.emitEphemeral({
             userId: row.accountId,
@@ -92,6 +104,16 @@ export async function pushOnce(row: Pick<AttentionRow, 'id' | 'accountId' | 'ses
         log({ module: 'attention', level: 'warn', error }, 'attention push failed');
         return false;
     }
+}
+
+/** B-924: whether `sessionId` is the account's main agent, and if so whether it is inside its quiet hours (one KV read). */
+async function mainAgentPushRule(accountId: string, sessionId: string, now: number): Promise<{ isMainAgent: boolean; quiet: boolean }> {
+    // A plain read after commit (no transaction needed: a stale read only moves one push by one write).
+    const rows = await db.userKVStore.findMany({ where: { accountId, key: { in: [MAIN_AGENT_KV_KEY, MAIN_AGENT_CONFIG_KV_KEY] } }, select: { key: true, value: true } });
+    const pointer = mainAgentPointerOf(rows.find(r => r.key === MAIN_AGENT_KV_KEY)?.value);
+    if (pointer?.sessionId !== sessionId) return { isMainAgent: false, quiet: false };
+    const config = decodeKvJson(rows.find(r => r.key === MAIN_AGENT_CONFIG_KV_KEY)?.value);
+    return { isMainAgent: true, quiet: isMainAgentQuietTime(readMainAgentQuietHours(config), now) };
 }
 
 async function requireSession(tx: Tx, accountId: string, sessionId: string) {
@@ -171,7 +193,7 @@ async function upsertTx(tx: Tx, accountId: string, input: Omit<AttentionItemPost
             },
         });
     }
-    announce(tx, row);
+    announce(tx, row, { notify: input.notify === true });
     if (input.replyToId) await settleReplyTarget(tx, accountId, input.replyToId, input.kind, now);
     return { row, created: plan.action === 'create' };
 }
@@ -271,7 +293,14 @@ export async function ownerRespond(accountId: string, id: string, input: Attenti
         const row = await loadItem(tx, accountId, id);
         const now = new Date();
         let data: Prisma.AttentionItemUpdateInput;
-        if (input.action === 'check') {
+        if (input.action === 'check' && row.kind === 'decision' && parseSelectPayload(row.payload)) {
+            // B-924: tick a select decision's item. Only while it is open: once the owner chose, the poster acts on what was ticked then.
+            requireAttention(isAttentionActive(row.state), 'attention_item_closed', 409);
+            const current = parseSelectPayload(row.payload)!.items.find(p => p.id === input.checkId);
+            requireAttention(current, 'attention_check_unknown', 400);
+            if (current.checked === input.checked) return { item: itemView(row) };
+            data = { payload: json(applySelectCheck(row.payload, input.checkId, input.checked)) };
+        } else if (input.action === 'check') {
             // B-915: tick a wrap-up card's pending entry; the item's state is untouched (archiving is a separate act).
             requireAttention(row.kind === 'wrapup', 'attention_check_unsupported', 409, { kind: row.kind });
             const current = parseWrapupPayload(row.payload)?.pending?.find(p => p.id === input.checkId);

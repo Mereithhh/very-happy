@@ -71,6 +71,7 @@
     "allowedTools": ["mcp__chat__send_message"] // 「以后都允许」的工具全名，≤64 项
   },
   "quietHours": { "enabled": true, "start": "00:30", "end": "08:30", "tz": null }, // B-924；缺省 = 00:30–08:30 启用，tz null = 主 agent 机器本地时间
+  "quietHours": { "enabled": true, "start": "00:30", "end": "08:30", "tz": "UTC" }, // B-924，见 §10.4
   "updatedAt": 1794334927713
 }
 ```
@@ -122,6 +123,11 @@
 | `automation_create` / `automation_update` | 现有参数 + `risk` | 400 | **是** |
 | `session_message` | 现有参数 + `risk` | 400 | **是** |
 | `dispatch_approved` | `approvalId` | 400 | —（§4.2 的执行入口） |
+| `boards_read`（B-924） | `teamId?`、`perTeam?≤25`（默认 10）、`needsOwner?` | 4K：每个团队一段（Lead、未关项数、最新 N 条），其余放 other；只读 | — |
+| `sessions_search`（B-924） | `projectId?`、`state?: active\|inactive\|api_error\|needs_owner\|archived`、`flavor?`、`q?`、`limit?≤50`（默认 20） | 4K：id / 状态 / 标题 / agent / 目录；账号级，不列主 agent 自己 | — |
+| `wrapup_suggest`（B-924） | `sessions: [{sessionId, title?, reason}]`（1–20）、`requestId?` | 400：`{ok, boardItemId, created, state:'awaiting_owner'}`；只发一张多选决定卡，不收尾任何会话 | — |
+| `wrapup_selected`（B-924） | `boardItemId` | 400：`{ok, boardItemId, queued, note}`；只对 Owner 勾选的会话调 `session_wrapup` 后端 | — |
+| `automation_list / get / runs / pause / resume / run`（现有） | 现有参数 | 4K / 8K / 400 | create / update 过闸 2；其余见 §10.5 |
 
 - `session_wrapup / session_handoff / session_restart` 对接 B-915、B-911（B-919，`assistant/mainAgentLifecycle.ts`，startHappyServer 在主 agent 会话上 `installSessionLifecycle`）；未安装时回执 `{ok:false, error:'not_available'}`。收尾、交接走 `@/wrapup/request`，与会话里按「收尾」「交接给…」和 `very-happy sessions wrapup|handoff` 同一轮；回执只有 id 与状态，不带对方会话内容。三者只在 Owner 明确要求时对点名的会话调用（决策 6），没有定时或自动调用路径。
 - `session_restart` 走本机 daemon 的 `/session-restart-owner`（新路由，旧 daemon 404 → `daemon-too-old`，不会被当成立即重启）：`idle` = Owner 的「本轮结束后重启」队列（B-911）；`now` = 先过同一套会话守卫（不在线、本人终端、assistant、不支持的 agent、不报回合的旧 wrapper 都拒），再按 idle 队列自己的就绪规则 `idleRestartReady` 判断（回合、后台任务、automation run、排队中的升级、距最后一次回合边沿未满静默期，任一成立即 `busy:<原因>` 拒绝；只去掉观察窗），最后以 B-894 `ifIdle` 重启（停之前再查一次回合与后台任务），不打断。
@@ -372,3 +378,50 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 - [ ] 挂一个测试目录为 `skillRoots` 后，主 agent 能检索到其中内容。
 - [ ] 敏感词守卫通过：模板与 SKILL.md 无个人 / 组织信息。
 - [ ] 旧 CLI 机器上 Web 提示升级，不盲 spawn；四包门禁全绿。
+
+## 10. P2 A 批：会主动、管收尾（B-924）
+
+### 10.1 自动化把主 agent 作为目标
+
+- `send` 动作二选一：`sessionId`，或 `target: 'main-agent'`（`AUTOMATION_SEND_TARGETS`）。存的是 `target`，每次 run 被 daemon 领取（claim）时 server 读 KV `vh.main-agent.v1` 解析成当时的 `sessionId`，下发给 daemon 的是普通 `send`（旧 daemon 照常执行）；主 agent 换会话 / 新对话后自动化不用改。
+- 指针指向别的机器：这次 run 和自动化的 `machineId` 一起改到那台机器（version +1），由那台 daemon 领取。没有主 agent（无指针、会话不属于本账号）：run 记 `failed`，`error = attention = main_agent_unavailable`，不下发。
+- 入口：CLI `very-happy auto create --send-main-agent --prompt …`；MCP `automation_create` 的 `action: {kind:'send', target:'main-agent', prompt}`；Web 自动化表单「发送到 → 主 agent」。
+- precheck 沿用 B-548：exit 0 才叫醒主 agent（stdout 追加进 prompt）；其它退出码记 `skipped`，0 token。`command[0] = 'very-happy'` 时 daemon 用自身 CLI 执行（不依赖 PATH）。
+
+### 10.2 默认自动化
+
+| 名称 | 触发 | precheck（`very-happy main-agent precheck <kind>`） | 主 agent 做什么 | 默认 |
+|---|---|---|---|---|
+| `main-agent-brief` | cron `0 9 * * *`，机器 / 浏览器时区 | 总是通过；输出快照：各团队在途 / 待验收、汇报板待 Owner 项、卡住的会话、24 小时内失败的自动化、可收尾会话 | 一张 `report` 卡（`notify:true`，推送一次） | 开 |
+| `main-agent-stuck` | 每 60 分钟 | 找以 API Error 结束（B-913 `turnFailure`）或回合中 ≥3 小时无新消息、无后台任务的会话；**只有没报过的**才通过 | 每个会话一张 decision 卡（发「继续」/ 我自己看 / 不用管），Owner 选「继续」后才 `session_send` | 开 |
+| `main-agent-wrapup` | cron `30 23 * * *` | 找闲置 ≥12 小时、非团队 bot、非主 agent、无待处理请求、还没上过收尾卡的会话；**只有没建议过的**才通过 | `wrapup_suggest` 发一张多选卡 | 开（只出卡） |
+
+- 定义在 `happy-wire/src/mainAgentAutomations.ts`，CLI 和 Web 共用。「开」= 自动化存在且 active；「关」= pause（不删，run 记录保留）；不存在时打开 = 新建。
+- daemon 在本机第一次启动主 agent 时装一次（`~/.happy/assistant/default-automations.json` 记标记）；Owner 之后删掉的不会自动重建，设置页「恢复默认自动化」可手动建回缺的那几条。CLI：`very-happy main-agent automations [list|install|on <kind>|off <kind>]`；Web：设置 → 主 agent。
+- 「没报过」= 本机 `~/.happy/assistant/precheck-<kind>.json` 的已报键（7 天后忘掉）。precheck 通过后若主 agent 那一轮失败，这批要等 7 天或新变化才会再报（已知取舍）。
+
+### 10.3 提醒收尾：多选决定卡
+
+- decision 卡可带 `payload: {v:1, type:'select', items:[{id, label, detail?, ref?, checked}]}`（≤20 项）。Owner 在卡片 open 时用 `owner-respond {action:'check'}` 勾选，然后选「收尾所选」或「这次不用」；卡片关闭后不能再勾。
+- `wrapup_selected(boardItemId)` 只在以下全部成立时执行：卡片是本会话发的、key 前缀 `main-agent-wrapup:`、带 select payload、`state=resolved` 且 `resolvedBy=owner`、`ownerChoice='wrapup'`；然后只对 `checked` 的项逐个调 B-919 的收尾后端（requestId = `<卡片>:<会话>`，重试不重复）。其它情况一律拒绝，不调用。
+- 硬闸：自动化发起的回合（该回合的 prompt localId 全是 `automation-…`）里 `session_wrapup / session_handoff` 回 `owner_request_required`。Web 选项消息带 `wrapup_selected boardItemId=…`，主 agent 下一回合按它执行。
+- 没有任何定时或自动路径会收尾会话（单测覆盖：8 条拒绝路径、只收尾勾选的 1 个、precheck / 扫描 / 默认自动化代码不引用收尾后端）。
+
+### 10.4 推送与免打扰
+
+- 汇报板 post 加可选 `notify`：只对 `report` 生效，且只有发卡会话是本账号主 agent（KV 指针）时生效 —— 早报因此推送一次；Lead 等其它会话的 `notify` 被忽略。
+- 免打扰：`vh.main-agent-config.v1.quietHours {enabled,start,end,tz}`，读法与 B-922 相同（缺省 00:30–08:30 启用，`tz:null` = 机器本地时间）。server 不知道机器时区，所以 `tz` 为空时不判定；daemon 首次安装默认自动化时把机器时区写进去（已有时区就不动），设置页显示并可改时区（改时区同时改早报 / 收尾两条 cron 的 tz）。主 agent 发的卡在时段内照常上板、**不推送**，并占掉这张卡的推送名额（之后编辑不会在半夜补推）。其它会话的推送不受影响。
+
+### 10.5 管理自动化的写入
+
+- `automation_create / automation_update` 已过闸 2（§4.2，payload 取 `action.prompt`）。`pause / resume / run / fire` 不带新 prompt，按 B-922 的可配置闸接入（字段由 B-922 定）；本批不改 `gates/*`。
+
+### 10.6 兼容与发布顺序（server → web → CLI）
+
+| 组合 | 行为 |
+|---|---|
+| 旧 server + 新 CLI / Web | `target` 被 zod 剥掉后缺 `sessionId` → 创建 400；`notify`、select payload 被拒或忽略；`main-agent precheck` 照常 |
+| 新 server + 旧 daemon | 收到的是已解析 `sessionId` 的普通 send，照常执行 |
+| 新 server 回滚到旧 server | 存量 `target` 自动化下发时缺 `sessionId`，旧 daemon 报错失败（不会发错会话） |
+| 旧 Web | 不认识 select payload：多选卡显示为普通 decision 卡（只能选项、不能勾），`wrapup_selected` 因无勾选而不收尾任何会话 |
+

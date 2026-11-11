@@ -24,6 +24,8 @@ export interface LogEntry {
     body: unknown | null
     /** The message's localId (prompts carry one; queue-cancel tombstones name it). */
     localId?: string | null
+    /** B-924: server receive time (epoch ms) when the server sent it. */
+    createdAt?: number
 }
 
 export interface TurnState {

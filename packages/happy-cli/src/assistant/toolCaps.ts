@@ -152,6 +152,8 @@ export const MAIN_AGENT_CAP_RULES: Record<string, CapRule> = {
     // board / issues / todos / projects
     owner_board_list: 'list', issue_list: 'list', issue_get: 'body', todo_list: 'list',
     project_list: 'list', project_context: 'body',
+    // B-924
+    boards_read: 'list', sessions_search: 'list', wrapup_suggest: 'receipt', wrapup_selected: 'receipt',
 }
 
 export function capClassFor(name: string, args: Record<string, unknown>, readOnly: boolean): CapClass {

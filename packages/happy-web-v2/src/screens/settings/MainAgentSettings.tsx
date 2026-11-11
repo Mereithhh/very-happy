@@ -22,6 +22,7 @@ import { mainAgentCopy } from '@/assistant/mainAgentCopy';
 import { checkConfigLines, hasMainAgentGates, mainAgentSupported, rankMainAgentCandidates, DENIED_TOOLS_MAX, SKILL_ROOTS_MAX, type ConfigLinesCheck } from '@/assistant/mainAgent';
 import { loadMainAgentConfig, saveMainAgentConfig, useMainAgentStore } from '@/assistant/mainAgentStore';
 import { useMainAgentActions, useMainAgentPointerSync, useMainAgentState } from '@/assistant/useMainAgent';
+import { MainAgentAutomationsSection } from './MainAgentAutomationsSection';
 import '@/screens/mainAgent/mainAgent.css';
 import { MainAgentSafetySection } from './MainAgentSafetySection';
 
@@ -139,6 +140,7 @@ export function MainAgentSettings() {
                     <span className="ma-settings-note">{copy.settingsStoredIn}</span>
                     <Button variant="primary" loading={saving} disabled={!dirty || !valid} onClick={() => void onSave()}>{copy.settingsSave}</Button>
                 </div>
+                <MainAgentAutomationsSection />
             </ItemList>
         </Page>
     );
