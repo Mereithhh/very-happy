@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-11-main-agent',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11i.title',
+    summaryKey: 'changelog.releases.nov11i.summary',
+    itemKeys: ['changelog.releases.nov11i.entry', 'changelog.releases.nov11i.work', 'changelog.releases.nov11i.gates', 'changelog.releases.nov11i.settings'],
+  },
+  {
     id: '2026-11-11-cli-api-error-turns-background-tasks-0-2-210',
     cliVersion: '0.2.210',
     date: '2026-11-11',

@@ -79,6 +79,7 @@ import { ShareDialog } from '@/screens/session/ShareDialog';
 import { TerminalShareDialog } from '@/screens/terminal/TerminalShareDialog';
 import { ProjectShareDialog } from '@/screens/projects/ProjectShareDialog';
 import { isMirrorSession } from '@/assistant/assistantSession';
+import { MainAgentEntry } from '@/screens/mainAgent/MainAgentShell';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
 import { isTeamNavigationLoaded, useTeamNavigation } from './useTeamNavigation';
@@ -1464,6 +1465,9 @@ export function Sidebar() {
 
         </div>
       </header>
+
+      {/* B-916a: the main agent, always first under the header (desktop + phone) */}
+      <MainAgentEntry />
 
       {/* B-676/B-896: 新建会话 ▾ (新建项目 / 新建团队 rows only for a new account), then the capability strip (spec 2026-10-sidebar-header).
           新建会话: the main part starts a chat in one click, ▾ lists every create type. */}

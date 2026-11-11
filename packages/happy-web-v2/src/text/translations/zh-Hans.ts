@@ -3252,6 +3252,11 @@ export const zhHans: TranslationStructure = {
         offline: '离线',
         superseded: '已被这台机器的新记录取代',
     },
+    // B-916a: Settings → Main agent (the page body uses assistant/mainAgentCopy.ts)
+    settingsMainAgent: {
+        title: '主 agent',
+        subtitle: '运行机器、skills 目录、出站禁用表',
+    },
     settingsVoice: {
         // Voice settings page (web v2, B-051 assistant TTS)
         title: '语音',
@@ -3453,6 +3458,14 @@ export const zhHans: TranslationStructure = {
                 outboxAlt: '手机上的会话页：最后一条消息标着「未发送」，旁边是「重发」和「丢弃」',
                 queue: 'agent 忙时发的排队消息也不会丢，即使还没进队列就断网、刷新了页面。',
                 bigAccounts: '会话很多的账号，在信号差的手机网络下也能进入，不会一直卡在加载中。',
+            },
+            nov11i: {
+                title: '主 agent：整个账号的总入口',
+                summary: '侧栏新增「主 agent」，什么都可以和它聊。它负责派活；凡是要发到 Very Happy 之外的事，都先在汇报板上问你。',
+                entry: '在侧栏顶部点「主 agent」，或按 ⌘K 选「问主 agent…」。整个账号只有这一个对话，跑在你选定的机器上；手机上是全屏页。第一期只支持文字。',
+                work: '它可以在指定项目里开带标题的会话、把活交给团队的 Lead、指派 issue、加 todo、告诉你项目日志写了什么。工具返回都很短，长列表会分页。',
+                gates: '它自己不会往 Very Happy 之外发任何东西：发消息、发邮件、发布、部署类工具在它的会话里被禁用，其他 MCP 工具只能读。会发给别人或动到生产的活，先在汇报板出一张决定卡；只有点「批准执行」才会派出，派出的会话带着你的批准链接。',
+                settings: '设置 → 主 agent：选运行机器、挂载自己的 skills 目录、追加要禁用的工具。那台机器需要 CLI 0.2.211 或更新；旧 CLI 只会提示升级，不会启动。',
             },
             nov11h: {
                 title: 'agent 认识 Very Happy 自己了',

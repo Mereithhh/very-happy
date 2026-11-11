@@ -17,7 +17,8 @@
  *  B-836: `/v1/feedback*` answers in-page (this account is a feedback admin) and
  *  `#feedback-prompt` shows the feedback prompt card.
  *  B-865: `#search` seeds the one-search-entry scene (searchSeed.ts).
- *  B-873: `#issues` (seeded) / `#issues-empty` / `#issues-off` serve Issues from the in-page fake. */
+ *  B-873: `#issues` (seeded) / `#issues-empty` / `#issues-off` serve Issues from the in-page fake.
+ *  B-916a: `#main-agent*` seeds the main agent scenes (mainAgentSeed.ts). */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalBackNav } from '@/app/appBack';
@@ -32,6 +33,7 @@ import { boardTeam, seedBoardSession } from './BoardHarness';
 import { seedLocationTrail } from './LocationTrailHarness';
 import { seedPlainSession } from './plainSessionSeed';
 import { seedSearchScene } from './searchSeed';
+import { seedMainAgentScene } from './mainAgentSeed';
 import { installIssuesHarness } from './issuesHarness';
 import { installFeedbackApi } from './feedbackHarness';
 import { FeedbackPromptCard } from '@/app/feedback/FeedbackPrompt';
@@ -74,6 +76,8 @@ export function DeviceShellHarness() {
       throw new Error(`lookup ${res.status}`);
     };
     storage.getState().applyMachines([{ id: 'dev-machine', seq: 2, createdAt: now, updatedAt: now, active: true, activeAt: now, metadata: { host: 'dev-box', platform: 'linux', teamLaunchVersion: 1 }, metadataVersion: 1, daemonState: null, daemonStateVersion: 1 } as unknown as Machine]);
+    // B-916a: `#main-agent` (live) / `#main-agent-open` (drawer open) / `#main-agent-enable` / `#main-agent-upgrade`.
+    seedMainAgentScene(location.hash);
     // B-865: `#search` — a content-search machine (answered in-page) and an offline one.
     const search = location.hash === '#search' ? seedSearchScene() : () => {};
     // B-873: `#issues` / `#issues-empty` / `#issues-off` — Issues against the in-page fake (issuesHarness.ts).

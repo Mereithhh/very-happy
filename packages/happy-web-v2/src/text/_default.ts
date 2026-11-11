@@ -3122,6 +3122,11 @@ export const en = {
         // the same install. Hidden everywhere else; shown here so it can be removed.
         superseded: 'replaced by a newer entry for this machine',
     },
+    // B-916a: Settings → Main agent (the page body uses assistant/mainAgentCopy.ts)
+    settingsMainAgent: {
+        title: 'Main agent',
+        subtitle: 'Machine, skills folders, outbound deny list',
+    },
     settingsVoice: {
         // Voice settings page (web v2, B-051 assistant TTS)
         title: 'Voice',
@@ -3325,6 +3330,14 @@ export const en = {
                 outboxAlt: 'A phone showing a session whose last message is marked Not sent, with Resend and Discard next to it',
                 queue: 'A message you queue while the agent is busy is kept as well, even if the network drops and the page reloads before the queue accepts it.',
                 bigAccounts: 'Accounts with many sessions now get in on a weak mobile network instead of being stuck loading.',
+            },
+            nov11i: {
+                title: 'Main agent: one front desk for your whole account',
+                summary: 'A Main agent in the sidebar you can talk to about anything. It hands work out, and asks you on the briefing board before anything leaves Very Happy.',
+                entry: 'Open Main agent at the top of the sidebar, or press ⌘K and “Ask Main agent…”. It is one conversation for your whole account, running on the machine you pick; on a phone it opens full screen. Text only for now.',
+                work: 'It can open a session in a project with a title, hand work to a team’s Lead, assign issues, add todos and tell you what a project log says. Its tool answers stay short and long lists are paged.',
+                gates: 'It never sends anything outside Very Happy by itself: chat, mail, publish and deploy tools are blocked in its session, and other MCP tools are read-only. Work that would reach other people or production first shows up as a decision card on the briefing board; only “Approve” dispatches it, and the new session carries a link to your approval.',
+                settings: 'Settings → Main agent: choose the machine, mount your own skills folders and block more tools. The machine needs CLI 0.2.211 or newer; an older CLI is asked to update instead of starting it.',
             },
             nov11h: {
                 title: 'Agents know Very Happy itself',

@@ -38,6 +38,7 @@ import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useRootScrollLock } from '@/app/viewportVars';
 import { NetworkBanner } from '@/app/NetworkBanner';
+import { MainAgentHost } from '@/screens/mainAgent/MainAgentShell';
 
 /** `rootPath`: where the phone list lives — `/` in the app; the DEV device harness mounts the shell elsewhere. */
 export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
@@ -174,6 +175,8 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
       <FeatureTipHost />
       {/* B-865: the one search entry — ⌘K / ⌘⇧F / sidebar 🔍 (titles + what was said) */}
       <CommandPalette />
+      {/* B-916a: the one main agent — desktop drawer; phones route to /main-agent */}
+      <MainAgentHost rootPath={rootPath} />
       {/* clipboard-push history — singleton like the palette (⌘K / settings open it) */}
       <ClipboardHistoryPanel />
       {/* open_preview pushes — singleton overlay opened by sync/filePreviewPush */}

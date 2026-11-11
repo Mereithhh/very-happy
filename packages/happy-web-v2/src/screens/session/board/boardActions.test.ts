@@ -13,6 +13,14 @@ const base = {
 } satisfies Omit<AttentionItem, 'id'>;
 
 describe('board actions (B-766)', () => {
+    it('B-916c (QA80 P3): a main agent dispatch card choice names the approval and the card', () => {
+        const card = { ...base, id: 'card-1', source: 'agent', key: 'main-agent-dispatch:6b1767e6-9190-442c-b32e-bcc7ae7deeac', title: '主 agent 想派活（external）：私信 A',
+            options: [{ id: 'approve', label: '批准执行' }, { id: 'draft', label: '只出草稿' }, { id: 'drop', label: '放弃' }] };
+        expect(choiceMessage(card, 'approve', boardCopy(true))).toBe('［汇报板 · 决定］主 agent 想派活（external）：私信 A → 批准执行 (dispatch_approved approvalId=6b1767e6-9190-442c-b32e-bcc7ae7deeac boardItemId=card-1)');
+        // other cards are unchanged
+        expect(choiceMessage({ ...base, id: 'd1', key: 'issue-review:1' }, 'B', boardCopy(true))).toBe('［汇报板 · 决定］今天发还是明早发？ → B. 明早');
+    });
+
     it('a choice is sent as an Owner message naming the option', () => {
         expect(choiceMessage({ ...base, id: 'd1' }, 'B', boardCopy(true))).toBe('［汇报板 · 决定］今天发还是明早发？ → B. 明早');
         expect(choiceMessage({ ...base, id: 'd1' }, 'B', boardCopy(false))).toBe('[Briefing · decision] 今天发还是明早发？ → B. 明早');

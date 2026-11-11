@@ -31,7 +31,11 @@ import { startTtsStream } from '@/assistant/ttsStream';
 import { machineLabel } from '@/utils/machineUtils';
 import { ASSISTANT_DIRECTORY, ASSISTANT_MIN_CLI_VERSION, TTS_MAX_CHARS } from '@/assistant/assistantConstants';
 import { isAssistantSupported } from '@/assistant/assistantSupport';
-import { pickAssistantMachine, pickAssistantSession } from '@/assistant/assistantSession';
+import { pickAssistantSession } from '@/assistant/assistantSession';
+import { pickVoiceAssistantMachine, mainAgentSupported } from '@/assistant/mainAgent';
+import { mainAgentCopy } from '@/assistant/mainAgentCopy';
+import { useMainAgentStore } from '@/assistant/mainAgentStore';
+import { useMainAgentPointerSync } from '@/assistant/useMainAgent';
 import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission, deriveTranscript, extractOptions } from '@/assistant/assistantView';
 import { truncateAtSentenceBoundary } from '@/assistant/sentenceTruncate';
 import { useHoldToTalk } from '@/assistant/useHoldToTalk';
@@ -92,9 +96,14 @@ export function AssistantScreen() {
     // ── machine resolution ──
     const machines = useAllMachines({ includeOffline: true });
     const [assistantMachineId, setAssistantMachineId] = useSettingMutable('assistantMachineId');
+    // B-916a: the voice form is a second view of THE main agent — when the
+    // account pointer names a machine, use only that one (never fall back to
+    // another online machine, which would spawn a second assistant).
+    useMainAgentPointerSync();
+    const mainAgentPointer = useMainAgentStore((s) => s.pointer);
     const machinePick = useMemo(
-        () => pickAssistantMachine(machines, assistantMachineId),
-        [machines, assistantMachineId],
+        () => pickVoiceAssistantMachine(machines, assistantMachineId, mainAgentPointer),
+        [machines, assistantMachineId, mainAgentPointer],
     );
     const machine = machinePick.kind === 'machine' ? machinePick.machine : null;
     const cliVersion = machine?.metadata?.happyCliVersion ?? null;
@@ -427,8 +436,15 @@ export function AssistantScreen() {
 
     // ── new conversation: forceNew respawn, then archive the old session ──
     const [resetting, setResetting] = useState(false);
+    // B-916c (QA77 #8): a new conversation re-spawns the assistant — it becomes the main
+    // agent, so it needs a daemon that runs it with the gates (`daemonState.mainAgentGates`).
+    const canStartNew = mainAgentSupported(machine);
     const onNewConversation = useCallback(async () => {
         if (!machine || resetting) return;
+        if (!mainAgentSupported(machine)) {
+            toast.error(mainAgentCopy(lang).upgradeBody(machineLabel(machine), machine.metadata?.happyCliVersion ?? mainAgentCopy(lang).unknownVersion));
+            return;
+        }
         setResetting(true);
         try {
             playerRef.current?.stop();
@@ -450,7 +466,7 @@ export function AssistantScreen() {
         } finally {
             setResetting(false);
         }
-    }, [machine, resetting, spawnAssistant]);
+    }, [machine, resetting, spawnAssistant, toast, lang]);
 
     // ── text input ──
     const [draft, setDraft] = useState('');
@@ -762,7 +778,7 @@ export function AssistantScreen() {
                                 <button
                                     type="button"
                                     className="as-reset-btn"
-                                    disabled={!machine || resetting}
+                                    disabled={!machine || resetting || !canStartNew}
                                     onClick={() => void onNewConversation()}
                                     aria-busy={resetting}
                                 >
