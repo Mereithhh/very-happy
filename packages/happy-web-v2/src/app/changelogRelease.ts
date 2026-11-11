@@ -139,7 +139,6 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
-  {
     id: '2026-11-11-dialog-pinned-head-click-outside',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,
