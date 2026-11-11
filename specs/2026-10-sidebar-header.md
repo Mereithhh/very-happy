@@ -286,7 +286,7 @@ Orca 允许逐行隐藏，但这需要新的设置字段、迁移和设置页 UI
 | 手机 | 不变：chip 行「Issues · 项目 · 团队 · 更多 ▾」本来就带文字 |
 | 折叠 rail | 不变：只有展开按钮、通知、更新入口，均有 `title` + `aria-label` |
 
-文案（2–4 字 / 英文短词）：Issues、运行中 Running、项目 Projects、团队 Teams、自动化 Automations、待办 Todos、联系人 People、反馈 Feedback（入口里用短词，页面标题仍是「发送反馈」）、更多 More、调整入口 Edit entries、常驻入口 Pinned entries、恢复默认 Reset、完成 Done。
+文案（2–4 字 / 英文短词）：Issues、运行看板 Agent board（原「运行中」，QA：单看不知道是什么；tooltip 补一句「所有正在跑的 agent」，页面标题与 ⌘K 同名，⌘K 仍能搜「运行中」）、项目 Projects、团队 Teams、自动化 Automations、待办 Todos、联系人 People、反馈 Feedback（入口里用短词，页面标题仍是「发送反馈」）、更多 More、调整入口 Edit entries、常驻入口 Pinned entries、恢复默认 Reset、完成 Done。
 
 ### 常驻与收起（`splitNavEntries`，纯函数）
 
@@ -294,7 +294,7 @@ Orca 允许逐行隐藏，但这需要新的设置字段、迁移和设置页 UI
 
 | 账号 | 常驻 | 更多 | 理由 |
 |---|---|---|---|
-| 开了 Issues | Issues · 运行中 · 项目 · 团队 | 自动化 · 联系人 · 反馈 | 前四个是每天进出的地方：Issues 是待办队列（带待处理计数）、运行中看全部 agent、项目树入口（带「需要你」计数）、团队；自动化和联系人更像配置页，打开频率低；自动化的待决定计数通过「更多」合计和通知中心仍然可见 |
+| 开了 Issues | Issues · 运行看板 · 项目 · 团队 | 自动化 · 联系人 · 反馈 | 前四个是每天进出的地方：Issues 是待办队列（带待处理计数）、运行中看全部 agent、项目树入口（带「需要你」计数）、团队；自动化和联系人更像配置页，打开频率低；自动化的待决定计数通过「更多」合计和通知中心仍然可见 |
 | 没开 Issues | 项目 · 团队 · 自动化 · 待办 | 联系人 · 反馈 | 同一优先级顺延 |
 
 - 用户的选择是 key 列表；按优先级排序展示，未知或当前不可见的 key 忽略，但保留（Issues 暂时不可用时取消/恢复不会丢掉它的常驻）。`togglePinnedEntry` 第一次改动时先把默认值落成显式列表。
@@ -302,7 +302,7 @@ Orca 允许逐行隐藏，但这需要新的设置字段、迁移和设置页 UI
 
 ### 键盘与无障碍
 
-- 入口区 `role=toolbar` + `aria-orientation=vertical`，只占一个 Tab 位（roving tabindex）：↑/↓（以及原来的 ←/→）循环，Home/End 到两端，Enter / Space 打开；「更多」是最后一站，在它上面 ↓ / Enter 由 Radix 打开菜单。
+- 入口区 `role=toolbar` + `aria-orientation=vertical`，只占一个 Tab 位（roving tabindex）：↑/↓（以及原来的 ←/→）在入口间移动，Home/End 到两端，Enter / Space 打开。「更多」是最后一站：焦点在「更多」上按 ↓（或 Enter / Space）会打开它的菜单（Radix 菜单按钮的行为），不会绕回第一行；要回第一行按 Home 或 ↑ 到顶后继续。
 - 当前页 `aria-current=page` + `--fill-selected`；当前页被收进「更多」时 Tab 位落在「更多」（`.is-current` 文字加深）。
 - 行的 `aria-label` 是「名字 · 计数」，`title` 是名字（窄侧栏截断时可读全名）；计数徽标 `aria-hidden`。
 - 调整入口是原生复选框（`ui/Checkbox`），Space 切换；进入时焦点到「完成」，退出时回到「更多」。
@@ -327,5 +327,5 @@ Orca 允许逐行隐藏，但这需要新的设置字段、迁移和设置页 UI
 
 ### 用户可见变更
 
-- 中：侧栏入口带上了名字：「新建会话」下面那排图标改成一列带文字的入口（Issues、运行中、项目、团队），其余的在「更多 ▾」，「更多 ▾ → 调整入口」可以选哪些常驻。
-- EN: Sidebar entries have names: the icon row under New session is now a labelled list (Issues, Running, Projects, Teams), the rest are under More ▾, and More ▾ → Edit entries picks which rows stay.
+- 中：侧栏入口带上了名字：「新建会话」下面那排图标改成一列带文字的入口（Issues、运行看板、项目、团队），其余的在「更多 ▾」，「更多 ▾ → 调整入口」可以选哪些常驻。
+- EN: Sidebar entries have names: the icon row under New session is now a labelled list (Issues, Agent board, Projects, Teams), the rest are under More ▾, and More ▾ → Edit entries picks which rows stay.

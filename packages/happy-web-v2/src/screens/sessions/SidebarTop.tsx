@@ -30,8 +30,9 @@ function AttentionBadge({ count, tone }: { count: number; tone?: 'warn' }) {
  * the first four, `splitNavEntries`) stay; the rest sit in one 「更多 ▾」 row
  * whose badge sums what it hides, and whose last item 「调整入口」 lets the
  * user choose the rows (per device, `useSidebarPrefs.navPinned`).
- * Keyboard (unchanged from the B-896 strip): one Tab stop, ↑/↓ (and ←/→)
- * wrap, Home/End jump, Enter opens; the current page carries aria-current.
+ * Keyboard: one Tab stop, ↑/↓ (and ←/→) move between rows, Home/End jump,
+ * Enter opens; ↓ on 「更多」 opens its menu (Radix trigger) instead of
+ * wrapping. The current page carries aria-current.
  */
 export function CapabilityNav(props: {
   entries: readonly SidebarNavEntry[];
@@ -40,6 +41,8 @@ export function CapabilityNav(props: {
   onNavigate: (path: string) => void;
   pinned: readonly string[] | null;
   onPinnedChange: (keys: string[] | null) => void;
+  /** B-926: one line of what an entry is, appended to its tooltip (运行看板 — 所有正在跑的 agent) */
+  hints?: Partial<Record<SidebarNavKey, string>>;
 }) {
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -95,8 +98,9 @@ export function CapabilityNav(props: {
       {pinned.map((e, i) => {
         const Icon = navIcon[e.key];
         const name = props.names[e.key];
+        const hint = props.hints?.[e.key];
         return (
-          <button key={e.key} type="button" className="sb-cap-row" data-cap={e.key} tabIndex={i === tabStop ? 0 : -1} aria-label={navMenuLabel(name, e.attention)} title={name}
+          <button key={e.key} type="button" className="sb-cap-row" data-cap={e.key} tabIndex={i === tabStop ? 0 : -1} aria-label={navMenuLabel(name, e.attention)} title={hint ? `${name} — ${hint}` : name}
             aria-current={i === current ? 'page' : undefined}
             onFocus={() => setFocusIndex(i)} onClick={() => props.onNavigate(e.path)}>
             <Icon size={16} aria-hidden /><span className="sb-cap-name">{name}</span>
@@ -129,6 +133,7 @@ export function SidebarActionRows(props: {
   activePath: string;
   pinnedEntries: readonly string[] | null;
   onPinnedEntriesChange: (keys: string[] | null) => void;
+  capabilityHints?: Partial<Record<SidebarNavKey, string>>;
   onNewChat: () => void;
   onNewProject: () => void;
   onNewTeam: () => void;
@@ -161,7 +166,7 @@ export function SidebarActionRows(props: {
         </button>
       )}
       <CapabilityNav entries={props.capabilities} names={props.capabilityNames} activePath={props.activePath} onNavigate={props.onNavigate}
-        pinned={props.pinnedEntries} onPinnedChange={props.onPinnedEntriesChange} />
+        pinned={props.pinnedEntries} onPinnedChange={props.onPinnedEntriesChange} hints={props.capabilityHints} />
     </div>
   );
 }

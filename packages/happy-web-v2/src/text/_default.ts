@@ -3361,7 +3361,7 @@ export const en = {
             nov11s: {
                 title: 'Sidebar entries have names',
                 summary: 'The row of icons under New session is now a short list you can read without hovering.',
-                labels: 'Issues, Running, Projects and Teams are labelled rows with their counts; Automations, Contacts and Feedback are under More ▾, which shows their total count.',
+                labels: 'Issues, Agent board (every agent that is running, formerly Running), Projects and Teams are labelled rows with their counts; Automations, Contacts and Feedback are under More ▾, which shows their total count.',
                 pinned: 'More ▾ → Edit entries picks which rows stay in the sidebar on this device; Reset brings back the default four.',
             },
             nov11p: {

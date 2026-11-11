@@ -180,7 +180,7 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
           {/* B-926: same top as the app — 新建会话 ▾, then the labelled entry rows and 更多 ▾. */}
           <div className="sb-cap-nav" role="presentation">
             <button className="sb-cap-row" type="button" disabled><ListTodo size={16}/><span className="sb-cap-name">Issues</span></button>
-            <button className="sb-cap-row" type="button" disabled><Activity size={16}/><span className="sb-cap-name">{zh ? '运行中' : 'Running'}</span></button>
+            <button className="sb-cap-row" type="button" disabled><Activity size={16}/><span className="sb-cap-name">{zh ? '运行看板' : 'Agent board'}</span></button>
             <button className="sb-cap-row" type="button" disabled><FolderKanban size={16}/><span className="sb-cap-name">{zh ? '项目' : 'Projects'}</span></button>
             <button className="sb-cap-row" type="button" disabled><UsersRound size={16}/><span className="sb-cap-name">{zh ? '团队' : 'Teams'}</span></button>
             <button className="sb-cap-row sb-cap-more" type="button" disabled><Ellipsis size={16}/><span className="sb-cap-name">{zh ? '更多' : 'More'}</span><ChevronDown size={14} className="sb-cap-chevron"/></button>

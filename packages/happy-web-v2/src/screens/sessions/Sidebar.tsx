@@ -1484,6 +1484,7 @@ export function Sidebar() {
         activePath={location.pathname}
         pinnedEntries={navPinned}
         onPinnedEntriesChange={setNavPinned}
+        capabilityHints={{ board: issuesCopy.sidebarRunningHint }}
         onNewChat={() => void createChatOrConfigure(navigate, configureNew, { location })}
         onNewProject={() => void createNamedProject()}
         onNewTeam={newTeam}

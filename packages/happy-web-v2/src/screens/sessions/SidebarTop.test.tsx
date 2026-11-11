@@ -13,7 +13,7 @@ vi.mock('@/app/prefetchSessionDetail', () => ({ prefetchSessionDetail: () => {} 
 vi.mock('@/screens/notifications/NotificationBell', () => ({ NotificationBell: () => <span data-bell /> }));
 vi.mock('@/ui', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/ui')>()), QuickThemeToggle: () => <span data-theme-toggle /> }));
 
-const { SidebarActionRows, SidebarChipRow, SidebarFooter, capabilityMenuItems } = await import('./SidebarTop');
+const { CapabilityNav, SidebarActionRows, SidebarChipRow, SidebarFooter, capabilityMenuItems } = await import('./SidebarTop');
 const { moreMenuEntries, sidebarNavEntries, sidebarTopModel } = await import('./sidebarNavEntries');
 
 const names = { issues: 'Issues', board: 'Running', projects: 'Projects', teams: 'Teams', automations: 'Automations', todos: 'Todos', people: 'People', feedback: 'Send feedback' };
@@ -111,6 +111,12 @@ it('4 rows + 更多 with Issues on (自动化 · 联系人 · 反馈 folded, the
   expect(rowKeys(el)).toEqual(['issues', 'board', 'projects', 'teams', 'more']);
   const more = el.querySelector<HTMLButtonElement>('.sb-cap-more')!;
   expect(more.getAttribute('aria-label')).toBe('sidebar.moreEntries · 4');
+  // a hint says what an entry is in its tooltip (QA P3-2); the label stays the short name
+  await act(async () => root!.render(<CapabilityNav entries={on} names={names} activePath="/" onNavigate={() => {}} pinned={null} onPinnedChange={() => {}} hints={{ board: 'Every agent that is running' }} />));
+  const board = el.querySelector<HTMLButtonElement>('[data-cap="board"]')!;
+  expect(board.getAttribute('title')).toBe('Running — Every agent that is running');
+  expect(board.getAttribute('aria-label')).toBe('Running');
+  expect(el.querySelector('[data-cap="issues"]')?.getAttribute('title')).toBe('Issues');
   expect(more.querySelector('.sb-nav-attn')?.textContent).toBe('4');
 });
 
