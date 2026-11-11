@@ -78,8 +78,10 @@ export function createProjectToolExecutor(sessionId: () => string, client: Proje
     };
 }
 
-export function registerProjectTools(server: AssistantToolRegistrar, execute: ProjectToolExecutor): void {
+/** `skip`: names another surface registers instead (B-916b: the main agent's project_context / project_note take a projectId). */
+export function registerProjectTools(server: AssistantToolRegistrar, execute: ProjectToolExecutor, skip: readonly string[] = []): void {
     for (const name of PROJECT_TOOL_NAMES) {
+        if (skip.includes(name)) continue;
         const spec = PROJECT_TOOL_SCHEMAS[name];
         server.registerTool(name, {
             description: spec.description, title: spec.title, inputSchema: spec.inputSchema,

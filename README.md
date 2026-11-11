@@ -485,6 +485,7 @@ progress. The exact tools deliberately follow the runner:
 | Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress`, `request_human`, `request_idle_restart` |
 | Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress`, `request_idle_restart` |
 | Assistant/meta-agent variant additions | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
+| Main agent (assistant outside a team) additions | `teams_list`, `lead_delegate`, `lead_message`, `issue_list`, `issue_create`, `issue_assign`, `issue_comment`, `todo_list`, `todo_add`, `todo_complete`, `project_list`, `project_context`, `project_note`, `session_wrapup`, `session_handoff`, `session_restart`, `owner_board_*`; every answer capped (write 400 / list 4K / body 8K characters, `cursor` to continue) |
 | User-scoped plain `claude`, after opt-in | `copy_to_clipboard` only |
 
 Enable the narrow plain-terminal bridge with:

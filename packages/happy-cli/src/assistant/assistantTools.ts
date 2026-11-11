@@ -46,6 +46,12 @@ import { listVhTerminals, readVhTerminal, sendToVhTerminal } from './terminals'
 import { applyMemorySectionUpdate, journalPathForDate, PERSONAL_MEMORY_SOFT_LIMIT_CHARS } from './memory'
 import { assistantPersonalMemoryPath, bootstrapAssistantHome } from './bootstrap'
 import { normalizeSpawnDirectory } from './spawnDirectory'
+import { withToolOutputCaps } from './toolCaps'
+import { sanitizeImportTitle } from '@/daemon/importTitle'
+import { chooseProject, joinProject } from '@/projects/attribution'
+import { sharedProjectsClient } from '@/projects/client'
+import { readSettings } from '@/persistence'
+import { resolveLaunchAgentProfile } from '@slopus/happy-wire'
 
 /** Session tools: shared by the Claude assistant and `very-happy mcp` (runner-agnostic). */
 export const ASSISTANT_SESSION_TOOL_NAMES = [
@@ -112,27 +118,98 @@ function describeSummary(summary: SessionSummary): string {
     return parts.join(' ')
 }
 
+/**
+ * B-850d parity with `very-happy spawn --project`: the project's account for
+ * this agent on this machine, when it names one. Best effort — a project the
+ * server cannot answer for spawns on the machine default.
+ */
+async function projectAccount(projectId: string, agent: string | undefined): Promise<string | null | undefined> {
+    try {
+        const defaults = await sharedProjectsClient().defaults(projectId)
+        const machineId = (await readSettings()).machineId
+        return machineId ? resolveLaunchAgentProfile({ project: defaults.agentProfiles, agent: agent ?? 'claude', machineId }).agentProfileId : undefined
+    } catch (error) {
+        logger.debug(`[assistant] project ${projectId} defaults unavailable: ${error instanceof Error ? error.message : String(error)}`)
+        return undefined
+    }
+}
+
+/**
+ * B-916b: deliver one user message into a session (this machine's or, B-506,
+ * another machine's through its daemon) without waiting for an answer — the
+ * same path as session_send, for tools that dispatch on the owner's behalf.
+ */
+export async function deliverAssistantMessage(sessionId: string, text: string): Promise<{ delivered: boolean; error?: string }> {
+    if (!isValidSessionId(sessionId)) return { delivered: false, error: 'Invalid sessionId' }
+    try {
+        if (!readPersistedSessions()[sessionId]) {
+            const remote = await sendRemoteMessage(sessionId, text, { resume: false, sentFrom: 'assistant' })
+            return remote.delivered ? { delivered: true } : { delivered: false, error: remote.error ?? `session is ${remote.status}` }
+        }
+        const persisted = await waitForSessionKey(sessionId, 0)
+        const result = await deliverToSession(sessionId, persisted, text, MCP_CLIENT_TAG, { resume: false, resumeHint: '' })
+        return result.delivered ? { delivered: true } : { delivered: false, error: result.error ?? `session is ${result.status}` }
+    } catch (error) {
+        return { delivered: false, error: error instanceof Error ? error.message : String(error) }
+    }
+}
+
 export function registerAssistantTools(mcp: AssistantToolRegistrar): void {
     registerAssistantSessionTools(mcp)
     registerAssistantMachineTools(mcp)
 }
 
-/** sessions_list / session_read / session_send / session_spawn / session_kill / session_archive. */
-export function registerAssistantSessionTools(mcp: AssistantToolRegistrar): void {
+/** Default and ceiling of `sessions_list` (B-916b, main agent spec §3.2; the answer is capped at 4K anyway). */
+export const SESSIONS_LIST_DEFAULT_LIMIT = 20
+export const SESSIONS_LIST_MAX_LIMIT = 50
+/** `session_read` ceiling (spec §3.2: ≤ 20 messages; the body is capped at 8K). */
+export const SESSION_READ_MAX_LIMIT = 20
+/** Backends `session_spawn` offers (spec §3.2). */
+export const SESSION_SPAWN_AGENTS = ['claude', 'codex', 'pi'] as const
+
+/**
+ * sessions_list / session_read / session_send / session_spawn / session_kill / session_archive.
+ * B-916b: answers are capped (toolCaps) on both hosts — both are a meta-agent's surface.
+ */
+export function registerAssistantSessionTools(host: AssistantToolRegistrar): void {
+    const mcp = withToolOutputCaps(host)
     // ── sessions_list ────────────────────────────────────────────────────────
     mcp.registerTool('sessions_list', {
-        description: 'List Claude Code sessions on this machine: sessions currently tracked by the local daemon (running) plus recently seen ones. Returns id, title, working directory, agent flavor and web URL for each.',
+        description: `List Claude Code sessions on this machine: sessions currently tracked by the local daemon (running) plus recently seen ones. Returns id, title, working directory, agent flavor and web URL for each (default ${SESSIONS_LIST_DEFAULT_LIMIT}).`,
         title: 'List Sessions',
-        inputSchema: {},
-    }, async () => {
+        inputSchema: {
+            filter: z.object({
+                machineId: z.string().min(1).max(128).optional().describe('Only sessions of this machine (this list covers this machine)'),
+                projectId: z.string().min(1).max(128).optional().describe('Only members of this project (from project_list)'),
+                state: z.enum(['running', 'stopped']).optional(),
+            }).optional(),
+            limit: z.number().int().min(1).max(SESSIONS_LIST_MAX_LIMIT).optional().describe(`How many sessions (default ${SESSIONS_LIST_DEFAULT_LIMIT}, max ${SESSIONS_LIST_MAX_LIMIT})`),
+        },
+        annotations: { readOnlyHint: true },
+    }, async (args) => {
         try {
             // Shared with `very-happy sessions list` (B-304): live children +
             // recently seen, terminal-mirror shadows excluded (B-105 — they are
             // read-only mirrors of what the user is already doing in a
             // terminal, and narrating them as tasks is wrong).
-            const sessions = await listSessions()
+            let sessions = await listSessions()
             if (sessions.length === 0) return ok('No sessions found on this machine.')
-            return ok(`${sessions.length} session(s):\n${sessions.map(describeSummary).join('\n')}`)
+            const filter = args?.filter ?? {}
+            if (filter.machineId) {
+                const local = (await readSettings())?.machineId
+                if (filter.machineId !== local) return ok(`This list covers this machine (${local ?? 'unregistered'}) only; session_read / session_send reach another machine's sessions by id.`)
+            }
+            if (filter.state) sessions = sessions.filter(s => s.live === (filter.state === 'running'))
+            if (filter.projectId) {
+                const { members } = await sharedProjectsClient().get(filter.projectId)
+                const ids = new Set(members.map(m => m.sessionId))
+                sessions = sessions.filter(s => ids.has(s.id))
+            }
+            if (sessions.length === 0) return ok('No sessions match the filter.')
+            const limit = typeof args?.limit === 'number' ? args.limit : SESSIONS_LIST_DEFAULT_LIMIT
+            const shown = sessions.slice(0, limit)
+            const more = sessions.length > shown.length ? ` (showing ${shown.length}; pass limit up to ${SESSIONS_LIST_MAX_LIMIT} for more)` : ''
+            return ok(`${sessions.length} session(s)${more}:\n${shown.map(describeSummary).join('\n')}`)
         } catch (error) {
             return fail(`Failed to list sessions: ${error instanceof Error ? error.message : String(error)}`)
         }
@@ -144,7 +221,7 @@ export function registerAssistantSessionTools(mcp: AssistantToolRegistrar): void
         title: 'Read Session Transcript',
         inputSchema: {
             sessionId: z.string().describe('The Happy session id to read'),
-            limit: z.number().optional().describe('How many recent messages to fetch (default 20, max 100)'),
+            limit: z.number().int().min(1).max(SESSION_READ_MAX_LIMIT).optional().describe(`How many recent messages to fetch (default 20, max ${SESSION_READ_MAX_LIMIT})`),
             machineId: z.string().optional().describe('Machine id the session runs on, when known (skips the lookup across the account\'s machines)'),
         },
     }, async (args) => {
@@ -213,11 +290,14 @@ export function registerAssistantSessionTools(mcp: AssistantToolRegistrar): void
 
     // ── session_spawn ────────────────────────────────────────────────────────
     mcp.registerTool('session_spawn', {
-        description: 'Spawn a NEW Claude Code session in a directory via the local daemon, optionally sending its first prompt. Returns the session id and web URL immediately after dispatch — it does NOT wait for the task to run or finish.',
+        description: 'Spawn a NEW session in a directory via the local daemon, optionally sending its first prompt. Give it a short title (what it is for) and, when the work belongs to a Very Happy project, its projectId — it then starts with that project\'s instructions and decisions. Returns the session id and web URL immediately after dispatch — it does NOT wait for the task to run or finish.',
         title: 'Spawn Session',
         inputSchema: {
             directory: z.string().describe('Absolute working directory for the new session (a leading ~ is expanded)'),
             prompt: z.string().optional().describe('Optional first message to send once the session is up'),
+            title: z.string().max(1000).optional().describe('The new session\'s title, one line (≤200 chars). Without it the title is generated from the first prompt.'),
+            agent: z.enum(SESSION_SPAWN_AGENTS).optional().describe(`Backend to run: ${SESSION_SPAWN_AGENTS.join(' | ')} (default claude)`),
+            projectId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/).optional().describe('Very Happy project to put the session in before its first prompt (from project_list)'),
         },
     }, async (args) => {
         // C4: expand "~" and refuse non-absolute paths BEFORE the daemon sees
@@ -225,25 +305,39 @@ export function registerAssistantSessionTools(mcp: AssistantToolRegistrar): void
         const normalized = normalizeSpawnDirectory(typeof args.directory === 'string' ? args.directory : '', os.homedir())
         if (!normalized.ok) return fail(normalized.error)
         const directory = normalized.directory
+        if (args.title !== undefined && sanitizeImportTitle(args.title) === null) return fail('title must contain visible text')
         try {
+            const agentProfileId = args.projectId ? await projectAccount(args.projectId, args.agent) : undefined
             // B-069: tag the spawn origin so the daemon can proactively report
             // this session's completion back into the assistant session.
-            const result = await spawnDaemonSession(directory, undefined, { spawnedBy: 'assistant' })
+            const result = await spawnDaemonSession(directory, undefined, {
+                spawnedBy: 'assistant',
+                ...(args.agent ? { agent: args.agent } : {}),
+                ...(args.title !== undefined ? { title: args.title } : {}),
+                ...(agentProfileId !== undefined ? { agentProfileId } : {}),
+            })
             if (result?.error || !result?.sessionId) {
                 return fail(`Failed to spawn session: ${result?.error ?? 'daemon returned no session id'}`)
             }
             const sessionId = result.sessionId as string
             const url = sessionWebUrl(sessionId)
+            // B-649: attribution before the first prompt, so its first turn carries the project prefix.
+            // Explicit only: the main agent is not in the project it dispatches into (no lineage).
+            const project = args.projectId
+                ? await joinProject(sharedProjectsClient(), sessionId, chooseProject({ project: args.projectId }))
+                : null
+            const projectNote = project === null ? '' : project.joined ? ` project=${project.projectId}` : ` (NOT added to project ${args.projectId}: ${project.reason})`
+            const titleNote = args.title !== undefined ? ` title="${sanitizeImportTitle(args.title)}"` : ''
             if (args.prompt && args.prompt.trim().length > 0) {
                 try {
                     const persisted = await waitForSessionKey(sessionId, 15_000)
                     await sendUserMessage(sessionId, persisted, args.prompt, MCP_CLIENT_TAG)
-                    return ok(`Spawned session ${sessionId} in ${directory} and sent the first prompt. It is now working in the background — check on it later with session_read. ${url}`)
+                    return ok(`Spawned ${sessionId}${titleNote}${projectNote}; first prompt sent, working in the background (session_read later). ${url}`)
                 } catch (error) {
-                    return ok(`Spawned session ${sessionId} in ${directory}, but sending the first prompt failed (${error instanceof Error ? error.message : String(error)}). Use session_send to retry. ${url}`)
+                    return ok(`Spawned ${sessionId}${titleNote}${projectNote}, but sending the first prompt failed (${error instanceof Error ? error.message : String(error)}); retry with session_send. ${url}`)
                 }
             }
-            return ok(`Spawned idle session ${sessionId} in ${directory}. ${url}`)
+            return ok(`Spawned idle session ${sessionId}${titleNote}${projectNote} in ${directory}. ${url}`)
         } catch (error) {
             return fail(`Failed to spawn session: ${error instanceof Error ? error.message : String(error)}`)
         }
@@ -288,7 +382,8 @@ export function registerAssistantSessionTools(mcp: AssistantToolRegistrar): void
 }
 
 /** terminals_* / memory_update / journal_append — Claude assistant home only. */
-function registerAssistantMachineTools(mcp: AssistantToolRegistrar): void {
+function registerAssistantMachineTools(host: AssistantToolRegistrar): void {
+    const mcp = withToolOutputCaps(host)
     // ── terminals_list ───────────────────────────────────────────────────────
     mcp.registerTool('terminals_list', {
         description: 'List the web terminals (tmux sessions) on this machine with their id, title and working directory.',

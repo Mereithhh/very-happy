@@ -125,6 +125,8 @@ export type LeadBoardDeps = {
     onSupported?: () => void;
     log?: (message: string) => void;
     now?: () => number;
+    /** B-916b: who `owner_board_post` posts as — the main agent posts as 'agent' (spec §3.2); default 'lead'. */
+    postSource?: 'lead' | 'agent';
 };
 
 type PendingQuestion = { localId: string; itemId: Promise<string | null> };
@@ -234,7 +236,7 @@ export function createLeadBoard(deps: LeadBoardDeps) {
         async post(input: OwnerBoardPostInput): Promise<OwnerBoardPostOutput> {
             noteBoardTool('owner_board_post');
             const anchor = input.anchor === undefined || input.anchor === 'this_turn' ? thisTurnAnchor() : { localId: input.anchor.localId };
-            const { item, created } = await deps.client.post(ownerBoardPostToRest(deps.sessionId(), input, anchor));
+            const { item, created } = await deps.client.post({ ...ownerBoardPostToRest(deps.sessionId(), input, anchor), ...(deps.postSource ? { source: deps.postSource } : {}) });
             return { id: item.id, created };
         },
         async update(input: OwnerBoardUpdateInput): Promise<OwnerBoardUpdateOutput> {
