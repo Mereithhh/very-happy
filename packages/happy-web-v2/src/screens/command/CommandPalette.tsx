@@ -66,7 +66,8 @@ import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel'
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { FileSearch, ListTodo } from 'lucide-react';
 import { Activity, Bot, Contact, FolderPlus, Zap } from 'lucide-react';
-import { openMainAgent } from '@/assistant/mainAgentStore';
+import { mainAgentDockShowing, openMainAgent, toggleMainAgent, useMainAgentStore } from '@/assistant/mainAgentStore';
+import { mainAgentToolCopy } from '@/screens/mainAgent/toolCards/mainAgentToolCopy';
 import { mainAgentCopy } from '@/assistant/mainAgentCopy';
 import { MAIN_AGENT_ASK_KEY, mainAgentAskTrigger } from './mainAgentPalette';
 import { useAutomations } from '@/sync/automationsStore';
@@ -429,6 +430,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
 
   // ── build the full item index (unfiltered) ──
   const happyBotEntryVisible = useLocalSetting('happyBotEntryVisible');
+  const mainAgentShowing = useMainAgentStore(mainAgentDockShowing);
   const items = useMemo<CommandItem[]>(() => {
     const out: CommandItem[] = [];
 
@@ -595,15 +597,16 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         run: () => { if (target.kind === 'path') navigate(target.path); else if (!requestNewProject()) navigate('/projects'); },
       });
     }
-    // B-916a: the main agent, from anywhere
+    // B-916a: the main agent, from anywhere — B-923: closes the desktop column when it is showing
+    const mainAgentTitle = mainAgentShowing ? mainAgentToolCopy(lang).paletteClose : mainAgentCopy(lang).paletteOpen;
     out.push({
       key: 'action:main-agent',
       group: 'actions',
-      title: mainAgentCopy(lang).paletteOpen,
+      title: mainAgentTitle,
       icon: <Bot size={16} />,
-      search: kw(mainAgentCopy(lang).paletteOpen, 'main agent assistant 主 agent 助手 调度'),
+      search: kw(mainAgentTitle, 'main agent assistant 主 agent 助手 调度 close 关闭'),
       hint: IS_MAC ? '⌘⇧E' : 'Ctrl+Shift+E',
-      run: () => openMainAgent(),
+      run: toggleMainAgent,
     });
     out.push({
       key: 'action:clipboard-history',
@@ -689,6 +692,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
 
     return out;
   }, [
+    mainAgentShowing,
     sessions,
     search.passing,
     filters,

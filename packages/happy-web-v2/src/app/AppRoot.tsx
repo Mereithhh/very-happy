@@ -281,6 +281,9 @@ const MultiAgentTeamsHarness = import.meta.env.DEV
 const BuiltinToolsHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/BuiltinToolsHarness').then((m) => ({ default: m.BuiltinToolsHarness })))
   : null;
+const MainAgentToolsHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/MainAgentToolsHarness').then((m) => ({ default: m.MainAgentToolsHarness })))
+  : null;
 const ToolCardsHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/ToolCardsHarness').then((m) => ({ default: m.ToolCardsHarness })))
   : null;
@@ -358,6 +361,9 @@ const router = createBrowserRouter(
       : []),
     ...(BuiltinToolsHarness
       ? [{ path: '/dev/builtin-tools/:id', element: <Lazy><BuiltinToolsHarness /></Lazy> }]
+      : []),
+    ...(MainAgentToolsHarness
+      ? [{ path: '/dev/main-agent-tools', element: <Lazy><MainAgentToolsHarness /></Lazy> }]
       : []),
     ...(ToolCardsHarness
       ? [{ path: '/dev/tool-cards/:id', element: <Lazy><ToolCardsHarness /></Lazy> }]

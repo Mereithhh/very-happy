@@ -5,7 +5,10 @@
  *  - the account pointer `vh.main-agent.v1` (daemon writes it on spawn; the
  *    web writes it only when the user enables / moves the main agent);
  *  - the config `vh.main-agent-config.v1` (settings page);
- *  - drawer open + a pending draft (⌘K hands a question over).
+ *  - the desktop column (B-923): open + width, persisted per device; an open
+ *    request counter (the shell decides: dock it, or route to /main-agent);
+ *    whether this window can dock it right now; a pending draft (⌘K hands a
+ *    question over).
  *
  * KV `status: 'unsupported'` = the server has no KV route (404 on the whole
  * API is indistinguishable from "no key", so we only mark unsupported on a
@@ -28,6 +31,7 @@ import {
     type MainAgentConfig,
     type MainAgentPointer,
 } from './mainAgent';
+import { readDockPrefs, writeDockPrefs } from '@/screens/mainAgent/mainAgentDock';
 
 type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -39,11 +43,22 @@ interface MainAgentStoreState {
     config: MainAgentConfig;
     configRaw: unknown;
     configVersion: number;
-    drawerOpen: boolean;
-    /** text to put in (or send from) the composer when the drawer opens */
+    /** B-923: the desktop column is open (persisted; shown only while `dockAvailable`) */
+    dockOpen: boolean;
+    /** B-923: the user's column width (persisted; null = default) */
+    dockWidth: number | null;
+    /** B-923: this window is wide enough to dock the column (written by the shell) */
+    dockAvailable: boolean;
+    /** B-923: bumped by openMainAgent — the shell docks the column or routes to the page */
+    openRequest: number;
+    /** text to put in (or send from) the composer when the main agent opens */
     pendingDraft: { text: string; send: boolean } | null;
+    /** B-923: the composer's unsent text — outlives the column (hide / narrow window) and is shared with the /main-agent page */
+    composerDraft: string;
 
-    setDrawerOpen: (open: boolean) => void;
+    setDockOpen: (open: boolean) => void;
+    setDockWidth: (width: number | null) => void;
+    setComposerDraft: (text: string) => void;
     takePendingDraft: () => { text: string; send: boolean } | null;
     reset: () => void;
 }
@@ -56,24 +71,50 @@ const initial = {
     config: { ...EMPTY_MAIN_AGENT_CONFIG },
     configRaw: null,
     configVersion: -1,
-    drawerOpen: false,
     pendingDraft: null,
+    composerDraft: '',
 };
+
+const dockPrefs = readDockPrefs();
 
 export const useMainAgentStore = create<MainAgentStoreState>((set, get) => ({
     ...initial,
-    setDrawerOpen: (open) => set({ drawerOpen: open }),
+    dockOpen: dockPrefs.open,
+    dockWidth: dockPrefs.width,
+    dockAvailable: false,
+    openRequest: 0,
+    setDockOpen: (open) => {
+        set({ dockOpen: open });
+        writeDockPrefs({ open, width: get().dockWidth });
+    },
+    setComposerDraft: (text) => set({ composerDraft: text }),
+    setDockWidth: (width) => {
+        set({ dockWidth: width });
+        writeDockPrefs({ open: get().dockOpen, width });
+    },
     takePendingDraft: () => {
         const d = get().pendingDraft;
         if (d) set({ pendingDraft: null });
         return d;
     },
+    // per-account state only: the column's open / width are this device's layout
     reset: () => set({ ...initial }),
 }));
 
-/** Open the main agent (drawer on desktop, the /main-agent page on phones — the caller routes). */
+/** Open the main agent: the desktop column when this window can dock it, else the /main-agent page (MainAgentHost routes). */
 export function openMainAgent(draft?: { text: string; send: boolean }) {
-    useMainAgentStore.setState({ drawerOpen: true, ...(draft ? { pendingDraft: draft } : {}) });
+    useMainAgentStore.setState((s) => ({ openRequest: s.openRequest + 1, ...(draft ? { pendingDraft: draft } : {}) }));
+}
+
+/** Sidebar entry / ⌘K / ⌘⇧E: close the docked column when it is showing, open the main agent otherwise. */
+export function toggleMainAgent() {
+    const st = useMainAgentStore.getState();
+    if (mainAgentDockShowing(st)) st.setDockOpen(false);
+    else openMainAgent();
+}
+
+export function mainAgentDockShowing(st: Pick<MainAgentStoreState, 'dockOpen' | 'dockAvailable'>): boolean {
+    return st.dockOpen && st.dockAvailable;
 }
 
 export async function refreshMainAgentPointer(creds: AuthCredentials): Promise<void> {

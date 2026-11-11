@@ -3353,6 +3353,12 @@ export const en = {
                 skill: 'New `very-happy skill`: a capability map of sessions, terminals, projects, teams, automations, Issues and todos, accounts, machines, sharing, notifications, panels and settings, with one page per area (`very-happy skill automations`). Sessions get a single line pointing at it, so asking an agent “add a daily 9:00 automation to this project” gets the right command. A copy is kept in ~/.local/share/very-happy/skills/very-happy; files you edited are never overwritten.',
                 autoProject: '`very-happy auto create|edit --project <id>|current` attaches an automation to a project (`--no-project` detaches); before, only the Web could do this.',
             },
+            nov11p: {
+                title: 'The main agent becomes a column; its tool calls become cards',
+                summary: 'On a wide desktop the main agent sits beside your session instead of floating over it, and what it did reads as cards.',
+                column: 'The main agent is a resizable column next to the session (it squeezes, never covers; width and open state are kept). The sidebar entry, ⌘K and ⌘⇧E open and close it; narrow windows and phones keep the full-screen page.',
+                cards: 'Its tool calls show as cards: work for a team (with a link to the Lead), messages to sessions, issues and todos, board posts, decisions waiting for approval, wrap-up / hand-off / restart receipts, and plain-language reasons when the safety gate stops a call. Raw data stays one click away.',
+            },
             nov11n: {
                 title: 'Only you can answer the Briefing as you',
                 summary: 'Choices on Briefing cards now need your own sign-in.',

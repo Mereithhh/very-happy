@@ -3481,6 +3481,12 @@ export const zhHans: TranslationStructure = {
                 skill: '新增 `very-happy skill`：能力地图覆盖会话、终端、项目、团队、自动化、Issues 与待办、账号、机器、分享、通知、面板和设置，每块一页（如 `very-happy skill automations`）。会话里只多一行指向它，问 agent「给这个项目加一个每天 9 点的自动化」就能拿到正确命令。本机副本在 ~/.local/share/very-happy/skills/very-happy，你改过的文件不会被覆盖。',
                 autoProject: '`very-happy auto create|edit --project <id>|current` 可把自动化挂到项目上（`--no-project` 取消）；以前只能在 Web 上设。',
             },
+            nov11p: {
+                title: '主 agent 改成布局里的一栏，工具调用变成卡片',
+                summary: '宽屏桌面上，主 agent 和会话并排显示，不再浮在上面；它做了什么一眼能看懂。',
+                column: '主 agent 是会话旁边可拖宽窄的一栏（挤窄会话区，不遮挡；宽度和开关状态会记住）。侧栏入口、⌘K 和 ⌘⇧E 都能开关它；窄窗口和手机仍是全屏页。',
+                cards: '工具调用按语义显示成卡片：派活给团队（可点到 Lead 会话）、给会话发消息、Issue 和待办、汇报板、等你批准的决定、收尾 / 交接 / 重启回执，被安全阀拦下时用白话说明原因。原始数据一键展开。',
+            },
             nov11n: {
                 title: '汇报板上只有你本人能替你做选择',
                 summary: '汇报板卡片上的选择需要你本人登录。',

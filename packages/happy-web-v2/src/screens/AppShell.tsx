@@ -7,12 +7,14 @@ export type { AppShellMode };
 /** B-896: the drawer is touch-only — six 44px icon cells + the sidebar's side padding need 280px, whatever the saved desktop width. */
 export const DRAWER_MIN_WIDTH = 280;
 
-export function AppShell({ mode, width, sidebar, rail, notes, children, onResizeStart, parked = false, drawerOpen = false, onDrawerClose }: {
+export function AppShell({ mode, width, sidebar, rail, notes, aside, children, onResizeStart, parked = false, drawerOpen = false, onDrawerClose }: {
   mode: AppShellMode;
   width: number;
   sidebar: ReactNode;
   rail: ReactNode;
   notes: ReactNode;
+  /** B-923: the main agent column — last in the main row, so it squeezes the detail instead of covering it */
+  aside?: ReactNode;
   children: ReactNode;
   onResizeStart: MouseEventHandler<HTMLDivElement>;
   /** B-795: keep the sidebar mounted but hidden (a fold dropped it; see nextSidebarParked). */
@@ -46,6 +48,7 @@ export function AppShell({ mode, width, sidebar, rail, notes, children, onResize
       <div key="content" className="app-main-row" style={list ? { display: 'contents' } : undefined}>
         {!list && <main key="detail" className="app-detail">{children}</main>}
         <Fragment key="notes">{notes}</Fragment>
+        <Fragment key="aside">{aside}</Fragment>
       </div>
     </div>
   );

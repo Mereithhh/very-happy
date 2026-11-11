@@ -90,7 +90,7 @@
 .sd-files {
   flex: none;
   width: max(320px, 36vw);
-  max-width: min(60vw, calc(100% - 320px)); /* belt: a width stored on a big monitor can't crush the chat */
+  max-width: min(60vw, calc(100% - 326px)); /* belt: a width stored on a big monitor can't crush the chat (320 + the 6px handle; B-923: the main agent column narrows the container) */
   border-left: 1px solid var(--line);
   background: var(--bg-0);
   display: flex;

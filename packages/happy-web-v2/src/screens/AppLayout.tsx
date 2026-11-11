@@ -39,7 +39,7 @@ import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useRootScrollLock } from '@/app/viewportVars';
 import { NetworkBanner } from '@/app/NetworkBanner';
-import { MainAgentHost } from '@/screens/mainAgent/MainAgentShell';
+import { MainAgentDockSlot, MainAgentHost } from '@/screens/mainAgent/MainAgentShell';
 
 /** `rootPath`: where the phone list lives — `/` in the app; the DEV device harness mounts the shell elsewhere. */
 export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
@@ -161,6 +161,7 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
           <DeferredMajorUpdateEntry compact />
         </>}
         notes={<NotesDock />}
+        aside={<MainAgentDockSlot rootPath={rootPath} />}
       >
         <Outlet />
         {/* B-651 ②: 「等你处理」 → opened latency (renders nothing). */}
@@ -176,7 +177,7 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
       <FeatureTipHost />
       {/* B-865: the one search entry — ⌘K / ⌘⇧F / sidebar 🔍 (titles + what was said) */}
       <CommandPalette />
-      {/* B-916a: the one main agent — desktop drawer; phones route to /main-agent */}
+      {/* B-916a / B-923: the one main agent — open requests + ⌘⇧E; the desktop column is AppShell's aside, phones route to /main-agent */}
       <MainAgentHost rootPath={rootPath} />
       {/* B-915 「交接给…」 — one host; the header ⋯, row ⋯ and /handoff open it by session id */}
       <HandoffDialogHost />

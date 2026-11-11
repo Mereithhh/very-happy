@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const kvGet = vi.fn();
@@ -5,7 +6,7 @@ const kvMutate = vi.fn();
 vi.mock('@/sync/apiKv', () => ({ kvGet: (...a: unknown[]) => kvGet(...a), kvMutate: (...a: unknown[]) => kvMutate(...a) }));
 
 import { decodeKvJson, encodeKvJson, MAIN_AGENT_CONFIG_KEY, MAIN_AGENT_POINTER_KEY } from './mainAgent';
-import { loadMainAgentConfig, openMainAgent, refreshMainAgentPointer, saveMainAgentConfig, useMainAgentStore, writeMainAgentPointer } from './mainAgentStore';
+import { loadMainAgentConfig, mainAgentDockShowing, openMainAgent, toggleMainAgent, refreshMainAgentPointer, saveMainAgentConfig, useMainAgentStore, writeMainAgentPointer } from './mainAgentStore';
 
 const creds = { token: 't', secret: 's' } as never;
 
@@ -68,9 +69,24 @@ describe('mainAgentStore', () => {
     });
 
     it('openMainAgent hands a draft over exactly once', () => {
+        const before = useMainAgentStore.getState().openRequest;
         openMainAgent({ text: 'hi', send: true });
-        expect(useMainAgentStore.getState().drawerOpen).toBe(true);
+        expect(useMainAgentStore.getState().openRequest).toBe(before + 1);
         expect(useMainAgentStore.getState().takePendingDraft()).toEqual({ text: 'hi', send: true });
         expect(useMainAgentStore.getState().takePendingDraft()).toBeNull();
+    });
+
+    it('B-923 toggle: closes a showing column, otherwise asks to open (persisted per device)', () => {
+        useMainAgentStore.setState({ dockOpen: true, dockAvailable: true });
+        toggleMainAgent();
+        expect(useMainAgentStore.getState().dockOpen).toBe(false);
+        expect(JSON.parse(localStorage.getItem('vh.main-agent-dock.v1') ?? '{}')).toMatchObject({ open: false });
+        const before = useMainAgentStore.getState().openRequest;
+        // open but not dockable (narrow window): toggle opens (→ the page), it does not just flip the flag
+        useMainAgentStore.setState({ dockOpen: true, dockAvailable: false });
+        expect(mainAgentDockShowing(useMainAgentStore.getState())).toBe(false);
+        toggleMainAgent();
+        expect(useMainAgentStore.getState().openRequest).toBe(before + 1);
+        expect(useMainAgentStore.getState().dockOpen).toBe(true);
     });
 });
