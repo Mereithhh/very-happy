@@ -236,14 +236,22 @@ describe('B-927a owner guard (startApi, pglite)', () => {
             expect((await act(teamId, { type: 'join', name: 'Lead 2', sessionId: attacker, botId: lead.botId })).status).toBe(200);
         });
 
-        it('a machine cannot add a second root bot, but the first root of a team (and a person) can', async () => {
-            const created = await call('POST', '/v1/teams', { name: `og-${rid()}`, machineId, requestId: rid() }, as(machine));
-            const bare = created.body.team.id as string;
-            expect((await act(bare, { type: 'join', name: 'First', sessionId: await newSession(true) }, machine)).status).toBe(200);
+        it('a machine join without botId into a team that already has a root stays open (Web adopt, team_join)', async () => {
             const { teamId } = await newTeam();
-            expect(await act(teamId, { type: 'join', name: 'Second', sessionId: await newSession(true) }, machine)).toEqual(REFUSED);
-            expect((await readTeam(teamId)).bots.filter((b: any) => b.root)).toHaveLength(1);
-            expect((await act(teamId, { type: 'join', name: 'Second', sessionId: await newSession(true) })).status).toBe(200);
+            expect((await act(teamId, { type: 'join', name: 'Adopted', sessionId: await newSession(true) }, machine)).status).toBe(200);
+        });
+
+        it('a released member seat cannot be taken by a machine; its own session may re-attach', async () => {
+            const { teamId, lead } = await newTeam();
+            const d = await agent(teamId, { type: 'delegate', goal: 'child', acceptance: ['done'], botName: 'w' }, lead.token);
+            const member = (await readTeam(teamId)).bots.find((b: any) => !b.root);
+            const own = await newSession(true);
+            await db.$executeRaw`UPDATE "AgentTeam" SET "state" = jsonb_set("state", '{bots}', (SELECT jsonb_agg(CASE WHEN b->>'id' = ${member.id} THEN jsonb_set(b, '{sessionId}', to_jsonb(${own}::text)) ELSE b END) FROM jsonb_array_elements("state"->'bots') b)) WHERE "id" = ${teamId}`;
+            expect(d.status).toBe(200);
+            const other = await newSession(true);
+            expect(await act(teamId, { type: 'join', name: 'x', sessionId: other, botId: member.id }, machine)).toEqual(REFUSED);
+            await db.$executeRaw`UPDATE "AgentTeam" SET "state" = jsonb_set("state", '{bots}', (SELECT jsonb_agg(CASE WHEN b->>'id' = ${member.id} THEN jsonb_set(b, '{sessionId}', 'null'::jsonb) ELSE b END) FROM jsonb_array_elements("state"->'bots') b)) WHERE "id" = ${teamId}`;
+            expect(await act(teamId, { type: 'join', name: 'x', sessionId: other, botId: member.id }, machine)).toEqual(REFUSED);
         });
 
         it('takeover is only observed in observe mode and unchanged in off mode', async () => {

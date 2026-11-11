@@ -57,17 +57,16 @@ describe('B-927a project loosening and seat takeover', () => {
         expect(guardProjectChange({}, r, 'projects.update', { defaults: { permissionMode: 'yolo' } })).toBe(true);
         expect(r.code).not.toHaveBeenCalled();
     });
-    it('a machine join is refused when it takes over a root seat or adds a second root', () => {
+    it('a machine join naming a seat is refused unless it is the seat\'s own session; no botId is never refused', () => {
         const join = (sessionId: string, botId?: string) => ({ type: 'join', name: 'n', sessionId, ...(botId ? { botId } : {}) }) as never;
-        const lead = (sessionId: string | null) => [{ id: 'bot', sessionId, root: true }];
-        expect(machineJoinRefusal(join('b', 'bot'), lead('a'))).toBe('takeover');
-        expect(machineJoinRefusal(join('b', 'bot'), lead(null))).toBe('takeover');
-        expect(machineJoinRefusal(join('a', 'bot'), lead('a'))).toBeNull();
-        expect(machineJoinRefusal(join('b', 'bot'), [{ id: 'bot', sessionId: 'a', root: false }])).toBeNull();
-        expect(machineJoinRefusal(join('b'), lead('a'))).toBe('second-root');
-        expect(machineJoinRefusal(join('a'), lead('a'))).toBeNull();
-        expect(machineJoinRefusal(join('b'), [])).toBeNull();
-        expect(machineJoinRefusal(join('b'), [{ id: 'm', sessionId: 'x', root: false }])).toBeNull();
+        const seats = (sessionId: string | null, root = true) => [{ id: 'bot', sessionId, root }];
+        expect(machineJoinRefusal(join('b', 'bot'), seats('a'))).toBe('takeover');
+        expect(machineJoinRefusal(join('b', 'bot'), seats(null))).toBe('takeover');
+        expect(machineJoinRefusal(join('b', 'bot'), seats(null, false))).toBe('takeover');
+        expect(machineJoinRefusal(join('b', 'bot'), seats('a', false))).toBe('takeover');
+        expect(machineJoinRefusal(join('a', 'bot'), seats('a'))).toBeNull();
+        expect(machineJoinRefusal(join('b'), seats('a'))).toBeNull();
+        expect(machineJoinRefusal(join('b', 'missing'), seats('a'))).toBeNull();
     });
     it('an unknown OWNER_GUARD_PROJECT_PERMS value is enforce, not observe', () => {
         expect(projectPermsGuardMode({ OWNER_GUARD_PROJECT_PERMS: 'enfroce' } as never)).toBe('enforce');

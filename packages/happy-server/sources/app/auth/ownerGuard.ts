@@ -30,6 +30,7 @@ export function ownerGuardMode(env: NodeJS.ProcessEnv = process.env): OwnerGuard
     return parse(env.OWNER_GUARD_MODE, 'enforce');
 }
 
+let warnedProjectPerms: string | undefined;
 /** Project permission loosening: observe unless the operator opts in; `off` / `observe` at the top level win. */
 export function projectPermsGuardMode(env: NodeJS.ProcessEnv = process.env): OwnerGuardMode {
     const top = ownerGuardMode(env);
@@ -38,7 +39,7 @@ export function projectPermsGuardMode(env: NodeJS.ProcessEnv = process.env): Own
     if (!raw || raw === 'observe') return 'observe';
     if (raw === 'enforce') return 'enforce';
     // An unreadable value must not silently loosen the guard: treat it as enforce, like OWNER_GUARD_MODE does.
-    warn({ module: 'owner-guard', mode: 'enforce', operation: 'config' }, 'OWNER_GUARD_PROJECT_PERMS has an unknown value; treating it as enforce');
+    if (warnedProjectPerms !== raw) { warnedProjectPerms = raw; warn({ module: 'owner-guard', mode: 'enforce', operation: 'config' }, 'OWNER_GUARD_PROJECT_PERMS has an unknown value; treating it as enforce'); }
     return 'enforce';
 }
 
@@ -131,19 +132,12 @@ export function guardProjectChange(request: Caller, reply: FastifyReply, route: 
 }
 
 /**
- * What a machine token may not do with `join` (the owner's login token is not restricted):
- *  - `takeover`: re-join a root seat from a session other than the one the seat is bound to. An unbound seat
- *    (session cleared after the root task was accepted) counts: only the bound session may re-attach.
- *  - `second-root`: become a new root bot while the team already has one. The first root of a team that was
- *    created without `launch` is unaffected.
- * The same session re-joining its own seat is the legitimate re-attach and is untouched.
+ * A machine `join` naming a `botId` (root or member seat) from any session other than the one the seat is bound to is a
+ * takeover; an unbound seat (`sessionId` null) counts. The same session re-attaching its own seat is untouched.
+ * A join without `botId` (Web adopt, `team_join`) is not refused, including into a team that already has a root.
  */
-export function machineJoinRefusal(action: TeamAction, bots: readonly { id: string; sessionId?: string | null; root?: boolean }[]): 'takeover' | 'second-root' | null {
-    if (action.type !== 'join') return null;
-    if (action.botId !== undefined) {
-        const seat = bots.find(b => b.id === action.botId);
-        return seat?.root && seat.sessionId !== action.sessionId ? 'takeover' : null;
-    }
-    const known = bots.some(b => b.sessionId === action.sessionId);
-    return !known && bots.some(b => b.root) ? 'second-root' : null;
+export function machineJoinRefusal(action: TeamAction, bots: readonly { id: string; sessionId?: string | null; root?: boolean }[]): 'takeover' | null {
+    if (action.type !== 'join' || action.botId === undefined) return null;
+    const seat = bots.find(b => b.id === action.botId);
+    return seat && seat.sessionId !== action.sessionId ? 'takeover' : null;
 }

@@ -32,7 +32,7 @@ describe('B-775 team refusal messages', () => {
     it('names the owner sign-in and where to do it (B-927a)', () => {
         const text = teamRefusalMessage(403, { error: 'owner_login_required' }, 'set-permission-mode');
         expect(text).toContain('owner_login_required');
-        expect(text).toContain('signed-in web app');
+        expect(text).toContain('signed in on the web app');
         expect(text).toContain('set-permission-mode');
         expect(text).not.toContain('HTTP 403');
     });

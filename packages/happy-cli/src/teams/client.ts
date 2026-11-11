@@ -87,7 +87,7 @@ export function teamRefusalMessage(status: number, body: unknown, actionType?: u
 }
 export function teamOwnerLoginRequiredMessage(actionType: unknown, webappUrl: string): string {
     const step = typeof actionType === 'string' && /^[a-z-]{1,40}$/.test(actionType) ? ` (${actionType})` : '';
-    return `Teams request refused (owner_login_required): this step${step} is the owner's and needs a signed-in person; the terminal and agents cannot do it for them. Ask the owner to do it in the signed-in web app (${webappUrl}): team settings for the execution mode, or the team page for taking over a Lead seat. Do not retry. 这一步只能由本人在已登录的网页上操作（${webappUrl}），终端和 agent 不能代办：执行模式在团队设置里改，接管 Lead 席位在团队页做。请告知 Owner，不要重试。`;
+    return `Teams request refused (owner_login_required): this step${step} needs the owner personally, signed in on the web app (${webappUrl}); an agent or the terminal cannot do it for them. Ask the owner to do it there. Do not retry. 这一步需要 Owner 本人在已登录的网页（${webappUrl}）上完成，agent 和终端不能代办。请告知 Owner，不要重试。`;
 }
 export function teamMessageViaLeadMessage(code: 'recipient_outside_task' | 'task_not_found', ownerBotId: string): string {
     const lead = /^[A-Za-z0-9_-]{1,128}$/.test(ownerBotId) ? `recipientBotId "${ownerBotId}"` : 'recipientBotId = the task\'s ownerBotId from team_inspect';

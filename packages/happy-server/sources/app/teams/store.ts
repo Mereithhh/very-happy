@@ -220,7 +220,7 @@ export async function actOnTeam(teamId: string, auth: { accountId: string; machi
             const sessionId = action.sessionId!;
             requireTeam(await tx.session.findFirst({ where: { id: sessionId, accountId: p.accountId }, select: { id: true } }), 'session_not_found', 404);
         }
-        // B-927a: an account machine token may re-attach a seat from the seat's own session, never take it over or add a second root.
+        // B-927a: an account machine token may re-attach a seat from the seat's own session, never take it over.
         const refusal = 'accountId' in auth && auth.machine ? machineJoinRefusal(action, row.state.bots) : null;
         if (refusal) {
             const mode = ownerGuardMode();
