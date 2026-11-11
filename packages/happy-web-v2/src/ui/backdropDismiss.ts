@@ -49,6 +49,8 @@ export interface BackdropDismissProps<T extends Element> {
     onClickCapture: (event: MouseEvent<T>) => void;
     onInput: (event: SyntheticEvent<T>) => void;
     onChange: (event: SyntheticEvent<T>) => void;
+    /** Mark the dialog dirty so outside clicks won't close it (P1-1: preset / agent buttons). */
+    markDirty: () => void;
 }
 
 /**
@@ -75,6 +77,7 @@ export function useBackdropDismiss<T extends Element = HTMLElement>(onClose: (()
         },
         onInput: markDirty,
         onChange: markDirty,
+        markDirty,
     };
 }
 

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { useBackdropDismiss } from './backdropDismiss';
 
 /**
@@ -10,4 +10,14 @@ import { useBackdropDismiss } from './backdropDismiss';
 export function DialogBackdrop({ className, onClose, children }: { className: string; onClose?: () => void; children: ReactNode }) {
     const dismiss = useBackdropDismiss<HTMLDivElement>(onClose);
     return <div className={className} {...dismiss}>{children}</div>;
+}
+
+/**
+ * P1-1: like DialogBackdrop but exposes `markDirty` so the caller can mark
+ * explicit choice buttons (preset / agent) as edits. Returns [element, markDirty].
+ */
+export function useDialogBackdrop({ className, onClose, children }: { className: string; onClose?: () => void; children: ReactNode }): [JSX.Element, () => void] {
+    const dismiss = useBackdropDismiss<HTMLDivElement>(onClose);
+    const { markDirty, ...handlers } = dismiss;
+    return [<div className={className} {...handlers}>{children}</div>, markDirty];
 }

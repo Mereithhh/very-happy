@@ -47,7 +47,7 @@ import { SpawnAccountPicker } from '@/components/accounts/SpawnAccountPicker';
 import { readMachineAgentProfiles, resolveSpawnAccount, spawnAgentProfileParam, type SpawnAccountChoice } from '@/sync/agentProfiles';
 import { accountSettingsHref } from '@/screens/session/sessionAccount';
 import { machineLabel as machineDisplayName } from '@/utils/machineUtils';
-import { DialogBackdrop } from '@/ui/DialogBackdrop';
+import { useDialogBackdrop } from '@/ui/DialogBackdrop';
 
 interface PathPreset {
   id: string;
@@ -299,8 +299,10 @@ export function NewSessionModal({
     navigate(`/session/${record.pendingId}`);
   }
 
-  return (
-    <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={onClose}>
+  const [backdrop, markDirty] = useDialogBackdrop({
+    className: "ns-backdrop vh-dialog-overlay",
+    onClose,
+    children: (
       <div className="ns-card vh-dialog vh-dialog--tall" role="dialog" aria-modal="true" aria-labelledby="ns-dialog-title" onClick={(e) => e.stopPropagation()}>
         <DialogHead title={t('newSessionModal.chatTitle')} titleId="ns-dialog-title" onClose={onClose} />
 
@@ -342,7 +344,7 @@ export function NewSessionModal({
                     className={`ns-preset${editingId === p.id ? ' is-on' : ''}`}
                     role="button"
                     tabIndex={0}
-                    onClick={() => selectPreset(p)}
+                    onClick={() => { markDirty(); selectPreset(p); }}
                   >
                     <span className="ns-preset-path">{p.label || p.path}</span>
                     <button
@@ -424,7 +426,7 @@ export function NewSessionModal({
                     : undefined}
                   onClick={() => {
                     // Not installed: selecting it reveals how to install it instead of choosing it.
-                    if (!unavailable) setAgent(a);
+                    if (!unavailable) { markDirty(); setAgent(a); }
                     else if (a !== 'claude') setSetupAgent(showingSetup ? null : a);
                   }}
                 >
@@ -538,8 +540,9 @@ export function NewSessionModal({
           </Button>
         </div>
       </div>
-    </DialogBackdrop>
-  );
+    ),
+  });
+  return backdrop;
 }
 
 /** B-894: 「Codex vX 较旧 · 更新」 (the same B-719 install action). */

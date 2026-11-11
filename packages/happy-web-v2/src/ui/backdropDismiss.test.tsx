@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { isBackdropHit, isOutsideBox } from './backdropDismiss';
+import { isBackdropHit, isOutsideBox, hasOpenPopup } from './backdropDismiss';
 
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ t: (key: string) => key, lang: 'en' }) }));
 
@@ -64,7 +64,8 @@ describe('sticky head and foot (CSS contract)', () => {
       '../screens/sessions/NewTerminalModal.tsx', '../screens/projects/NewProjectDialog.tsx', '../screens/projects/MoveToProjectModal.tsx',
       '../screens/sessions/NewSessionModal.tsx', '../screens/board/TaskBoardScreen.tsx']) {
       const src = read(f);
-      expect(src, f).toMatch(/<DialogBackdrop className=/);
+      // Either <DialogBackdrop className= or useDialogBackdrop({ className:
+      expect(src, f).toMatch(/(<DialogBackdrop className=|useDialogBackdrop\(\{[^}]*className:)/);
       expect(src, f).not.toMatch(/vh-dialog-overlay[^"`]*["`]\}? onClick=/);
     }
   });
@@ -145,6 +146,58 @@ describe('click outside (real components)', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it('P1-1: preset and agent choice (explicit markDirty) count as edits', () => {
+    const onClose = vi.fn();
+    // Simulate preset button: clicking it should mark dirty via a hidden input that fires onInput
+    const presetDialog = teamDialog(onClose, createElement('div', null,
+      createElement('span', { role: 'button', tabIndex: 0, 'data-testid': 'preset-btn' }),
+      createElement('input', { type: 'hidden', 'data-testid': 'preset-trigger' })
+    ));
+    const presetBtn = presetDialog.querySelector('[data-testid="preset-btn"]') as HTMLElement;
+    const presetInput = presetDialog.querySelector('[data-testid="preset-trigger"]') as HTMLInputElement;
+    act(() => {
+      presetBtn.click();
+      presetInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    press(presetDialog, presetDialog, [20, 20]);
+    expect(onClose).not.toHaveBeenCalled();
+    act(() => root.unmount()); host.remove();
+
+    const onClose2 = vi.fn();
+    // Simulate agent button: same pattern with hidden input
+    const agentDialog = teamDialog(onClose2, createElement('div', null,
+      createElement('button', { type: 'button', 'data-testid': 'agent-btn' }),
+      createElement('input', { type: 'hidden', 'data-testid': 'agent-trigger' })
+    ));
+    const agentBtn = agentDialog.querySelector('[data-testid="agent-btn"]') as HTMLButtonElement;
+    const agentInput = agentDialog.querySelector('[data-testid="agent-trigger"]') as HTMLInputElement;
+    act(() => {
+      agentBtn.click();
+      agentInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    press(agentDialog, agentDialog, [20, 20]);
+    expect(onClose2).not.toHaveBeenCalled();
+  });
+
+  it('P3: Picker Enter selection counts as an edit', () => {
+    const onClose = vi.fn();
+    const onChange = vi.fn();
+    // A dialog with a select that fires onChange when an option is picked
+    const select = createElement('select', { 'data-testid': 'my-select', onChange: (e: any) => onChange((e.target as HTMLSelectElement).value) },
+      createElement('option', { value: 'a' }, 'Option A'),
+      createElement('option', { value: 'b' }, 'Option B')
+    );
+    const dialog = teamDialog(onClose, select);
+    const selectEl = dialog.querySelector('[data-testid="my-select"]') as HTMLSelectElement;
+    act(() => {
+      selectEl.value = 'b';
+      selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(onChange).toHaveBeenCalledWith('b');
+    press(dialog, dialog, [20, 20]);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('a press that dismisses an open popup inside does not also close the dialog', () => {
     const onClose = vi.fn();
     const dialog = teamDialog(onClose, createElement('button', { type: 'button', 'aria-haspopup': 'listbox', 'aria-expanded': 'true' }, 'Machine'));
@@ -188,10 +241,12 @@ describe('Radix family (DialogContent)', () => {
   const open = async (onOpenChange: (open: boolean) => void) => {
     const Dialog = await import('@radix-ui/react-dialog');
     const { DialogContent } = await import('./DialogContent');
+    const { createRef } = await import('react');
+    const contentRef = createRef<HTMLDivElement>();
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
     act(() => root.render(createElement(Dialog.Root, { open: true, onOpenChange },
       createElement(Dialog.Portal, null, createElement(Dialog.Overlay, { className: 'vh-dialog-overlay' }),
-        createElement(DialogContent, { className: 'vh-dialog', 'aria-describedby': undefined },
+        createElement(DialogContent, { ref: contentRef, className: 'vh-dialog', 'aria-describedby': undefined },
           createElement(Dialog.Title, null, 'Commit'), createElement('textarea', { name: 'message' }))))));
     await act(async () => { await new Promise(r => setTimeout(r, 10)); }); // Radix arms its outside listener on the next tick
   };
@@ -211,6 +266,20 @@ describe('Radix family (DialogContent)', () => {
     await open(onOpenChange);
     const field = document.querySelector('textarea')!;
     act(() => { field.value = 'fix: typo'; field.dispatchEvent(new Event('input', { bubbles: true })); });
+    pressOutside();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+  it('P1-2: when a dropdown inside is open, clicking outside closes only the dropdown, not the dialog', async () => {
+    const onOpenChange = vi.fn();
+    await open(onOpenChange);
+    const dropdown = document.createElement('button');
+    dropdown.setAttribute('aria-haspopup', 'listbox');
+    dropdown.setAttribute('aria-expanded', 'true');
+    document.querySelector('.vh-dialog')!.append(dropdown);
+    await act(async () => { await new Promise(r => setTimeout(r, 10)); });
+    const root = document.querySelector('.vh-dialog');
+    const popupOpen = hasOpenPopup(root!);
+    expect(popupOpen, 'hasOpenPopup should be true after append').toBe(true);
     pressOutside();
     expect(onOpenChange).not.toHaveBeenCalled();
   });
