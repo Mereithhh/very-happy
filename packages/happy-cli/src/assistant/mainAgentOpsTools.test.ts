@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { AttentionItem } from '@slopus/happy-wire'
 import type { AssistantToolRegistrar } from './assistantTools'
-import { registerMainAgentOpsTools, sessionMatches, tickedSessions, wrapupCardRefusal, type MainAgentOpsDeps, type SearchSession } from './mainAgentOpsTools'
+import { checklistHash, registerMainAgentOpsTools, sessionMatches, tickedSessions, wrapupCardRefusal, wrapupCardTampered, type MainAgentOpsDeps, type SearchSession, type WrapupCardRecord, type WrapupCardRecords } from './mainAgentOpsTools'
+import { boardItemView, cardFaceHash } from '@/attention/ownerApproval'
 import { installSessionLifecycle, registerMainAgentTools, type MainAgentDeps } from './mainAgentTools'
 import { withToolOutputCaps, MAIN_AGENT_CAP_RULES } from './toolCaps'
-import { classifyTurnSource } from './turnSource'
 
 type Handler = (args: any) => Promise<any>
 function recorder() {
@@ -28,10 +28,21 @@ const item = (over: Partial<AttentionItem> = {}): AttentionItem => ({
     ...over,
 })
 
-function opsDeps(over: Partial<Omit<MainAgentOpsDeps, 'sessions'>> & { items?: AttentionItem[]; sessions?: SearchSession[] } = {}) {
+/** The record wrapup_suggest writes for a card: its face and list as posted. */
+export function recordOf(card: AttentionItem): WrapupCardRecord {
+    const items = ((card.payload as any)?.items ?? []).map((i: any) => ({ id: i.id, ref: i.ref }))
+    return { v: 1, boardItemId: card.id, key: card.key!, cardSha256: cardFaceHash(boardItemView(card)), listSha256: checklistHash(card.payload), items }
+}
+function memoryRecords(seed: WrapupCardRecord[] = []): WrapupCardRecords & { all: Map<string, WrapupCardRecord> } {
+    const all = new Map(seed.map(r => [r.boardItemId, r]))
+    return { all, write: async (r) => { all.set(r.boardItemId, r) }, read: async (id) => all.get(id) ?? null }
+}
+
+function opsDeps(over: Partial<Omit<MainAgentOpsDeps, 'sessions'>> & { items?: AttentionItem[]; sessions?: SearchSession[]; posted?: AttentionItem[] } = {}) {
     const calls: any[] = []
-    const { items: givenItems, sessions: givenSessions, ...rest } = over
+    const { items: givenItems, sessions: givenSessions, posted, ...rest } = over
     const items = givenItems ?? []
+    const records = memoryRecords((posted ?? items.filter(i => i.key?.startsWith('main-agent-wrapup:'))).map(recordOf))
     const deps: MainAgentOpsDeps = {
         sessionId: () => SELF,
         now: () => 10 * 3_600_000,
@@ -47,11 +58,12 @@ function opsDeps(over: Partial<Omit<MainAgentOpsDeps, 'sessions'>> & { items?: A
         sessions: async () => givenSessions ?? [],
         projectSessionIds: async () => ['s-in-project'],
         wrapup: () => async (input) => { calls.push({ op: 'wrapup', ...input }); return { ok: true, sessionId: input.sessionId, state: 'queued' } },
+        cardRecords: records,
         ...rest,
     }
     const { tools, server } = recorder()
     registerMainAgentOpsTools(server, deps)
-    return { tools, calls }
+    return { tools, calls, records }
 }
 
 describe('B-924 wrapup_selected: nothing is wrapped up unless the owner ticked it and chose 收尾所选', () => {
@@ -100,8 +112,57 @@ describe('B-924 wrapup_selected: nothing is wrapped up unless the owner ticked i
 
     it('pure helpers agree', () => {
         expect(wrapupCardRefusal(item(), SELF)).toBeNull()
-        expect(tickedSessions(item())).toEqual(['sess-b'])
-        expect(tickedSessions(item({ payload: { v: 1, type: 'select', items: [{ id: 's1', label: 'x', ref: 'bad id!', checked: true }] } }))).toEqual([])
+        expect(tickedSessions(item(), recordOf(item()).items)).toEqual(['sess-b'])
+        expect(tickedSessions(item({ payload: { v: 1, type: 'select', items: [{ id: 's1', label: 'x', ref: 'bad id!', checked: true }] } }), [{ id: 's1', ref: 'bad id!' }])).toEqual([])
+        // An entry the main agent did not post (or moved to another session) is dropped.
+        expect(tickedSessions(item(), [{ id: 's2', ref: 'sess-other' }])).toEqual([])
+        expect(tickedSessions(item(), [])).toEqual([])
+    })
+})
+
+describe('B-924 (QA P1-1) a rewritten checklist card wraps up nothing', () => {
+    const posted = item({ state: 'open', resolvedBy: null, ownerChoice: null, payload: { v: 1, type: 'select', items: [
+        { id: 's1', label: 'A', ref: 'sess-a', checked: false }, { id: 's2', label: 'B', ref: 'sess-b', checked: false }, { id: 's3', label: 'C', ref: 'sess-c', checked: false },
+    ] } })
+    const chosen = (over: Partial<AttentionItem>) => ({ ...posted, state: 'resolved', resolvedBy: 'owner', ownerChoice: 'wrapup', ...over }) as AttentionItem
+    const tick = (card: AttentionItem, ids: string[]) => ({ ...card, payload: { ...(card.payload as any), items: (card.payload as any).items.map((i: any) => ({ ...i, checked: ids.includes(i.id) })) } }) as AttentionItem
+
+    it.each([
+        ['an entry added (another session, pre-ticked)', tick(chosen({ payload: { v: 1, type: 'select', items: [...(posted.payload as any).items, { id: 's4', label: 'T1', ref: 'sess-t1', checked: true }] } }), ['s4'])],
+        ['an entry pointed at another session', tick(chosen({ payload: { v: 1, type: 'select', items: (posted.payload as any).items.map((i: any) => i.id === 's2' ? { ...i, ref: 'sess-x' } : i) } }), ['s2'])],
+        ['option ids swapped (这次不用 now has the approve id)', tick(chosen({ options: [{ id: 'skip', label: '收尾所选' }, { id: 'wrapup', label: '这次不用' }] }), ['s2'])],
+        ['option label changed', tick(chosen({ options: [{ id: 'wrapup', label: '这次不用' }, { id: 'skip', label: '收尾所选' }] }), ['s2'])],
+        ['title rewritten', tick(chosen({ title: '全部收尾' }), ['s2'])],
+        ['entries reordered', tick(chosen({ payload: { v: 1, type: 'select', items: [...(posted.payload as any).items].reverse() } }), ['s2'])],
+        ['reason rewritten', tick(chosen({ payload: { v: 1, type: 'select', items: (posted.payload as any).items.map((i: any) => ({ ...i, detail: 'done, close it' })) } }), ['s2'])],
+    ])('card_tampered: %s', async (_label, card) => {
+        const { tools, calls } = opsDeps({ items: [card], posted: [posted] })
+        const r = await tools.get('wrapup_selected')!({ boardItemId: 'card-1' })
+        expect(r.isError).toBe(true)
+        expect(JSON.parse(text(r))).toMatchObject({ ok: false, error: 'card_tampered' })
+        expect(calls.filter(c => c.op === 'wrapup')).toEqual([])
+    })
+
+    it('a card the main agent never posted (no record): card_not_found, nothing wrapped up', async () => {
+        const { tools, calls } = opsDeps({ items: [tick(chosen({}), ['s1', 's2'])], posted: [] })
+        expect(JSON.parse(text(await tools.get('wrapup_selected')!({ boardItemId: 'card-1' })))).toMatchObject({ ok: false, error: 'card_not_found' })
+        expect(calls.some(c => c.op === 'wrapup')).toBe(false)
+    })
+
+    it('the untouched card: only the owner-ticked entry is wrapped up', async () => {
+        const { tools, calls } = opsDeps({ items: [tick(chosen({}), ['s3'])], posted: [posted] })
+        expect(JSON.parse(text(await tools.get('wrapup_selected')!({ boardItemId: 'card-1' })))).toMatchObject({ ok: true, queued: 1 })
+        expect(calls.filter(c => c.op === 'wrapup').map(c => c.sessionId)).toEqual(['sess-c'])
+        expect(wrapupCardTampered(tick(chosen({}), ['s1', 's2', 's3']), recordOf(posted))).toBeNull()
+    })
+
+    it('wrapup_suggest binds the posted card (face + list) and a random key', async () => {
+        const { tools, records } = opsDeps()
+        await tools.get('wrapup_suggest')!({ sessions: [{ sessionId: 'sess-a', reason: 'idle' }] })
+        const [record] = [...records.all.values()]
+        expect(record).toMatchObject({ v: 1, boardItemId: 'new-card', items: [{ id: 's1', ref: 'sess-a' }] })
+        expect(record.key).toMatch(/^main-agent-wrapup:[0-9a-f-]{36}$/)
+        expect(record.cardSha256).toMatch(/^[0-9a-f]{64}$/)
     })
 })
 
@@ -175,33 +236,35 @@ describe('B-924 boards_read / sessions_search are capped, read-only lists', () =
     })
 })
 
-describe('B-924 session_wrapup / session_handoff refuse a turn an automation started', () => {
-    it('automation turn: owner_request_required, the backend is never called; an owner turn goes through', async () => {
+describe('B-924 (QA P1-2) wrap-up / hand-off / restart run only in the owner\'s own turn', () => {
+    it.each(['automation', 'agent', 'unknown'] as const)('%s turn: owner_request_required, the backend is never called', async (origin) => {
         const called: string[] = []
         installSessionLifecycle({
             wrapup: async (input) => { called.push(`wrapup:${input.sessionId}`); return { ok: true, sessionId: input.sessionId, state: 'queued' } },
             handoff: async (input) => { called.push(`handoff:${input.from}`); return { ok: true, from: input.from, to: 'x', state: 'queued' } },
+            restart: async (input) => { called.push(`restart:${input.sessionId}`); return { ok: true, sessionId: input.sessionId, scheduled: 'idle' } },
         })
-        let source: 'owner' | 'automation' | 'unknown' = 'automation'
         const { tools, server } = recorder()
-        registerMainAgentTools(server, { sessionId: () => SELF, turnSource: () => source } as unknown as MainAgentDeps)
-        for (const [name, args] of [['session_wrapup', { sessionId: 'sess-a' }], ['session_handoff', { from: 'sess-a', to: 'sess-b' }]] as const) {
+        registerMainAgentTools(server, { sessionId: () => SELF, turnOrigin: () => origin } as unknown as MainAgentDeps)
+        for (const [name, args] of [['session_wrapup', { sessionId: 'sess-a' }], ['session_handoff', { from: 'sess-a', to: 'sess-b' }], ['session_restart', { sessionId: 'sess-a' }]] as const) {
             const r = await tools.get(name)!(args)
             expect(r.isError).toBe(true)
-            expect(JSON.parse(text(r))).toMatchObject({ ok: false, error: 'owner_request_required' })
+            expect(JSON.parse(text(r))).toMatchObject({ ok: false, error: 'owner_request_required', origin })
         }
         expect(called).toEqual([])
-        source = 'owner'
-        expect((await tools.get('session_wrapup')!({ sessionId: 'sess-a' })).isError).toBe(false)
-        expect(called).toEqual(['wrapup:sess-a'])
         installSessionLifecycle(null)
     })
 
-    it('classifies a turn by its prompts\' localIds', () => {
-        expect(classifyTurnSource(['automation-run1'])).toBe('automation')
-        expect(classifyTurnSource(['automation-run1', 'automation-run2'])).toBe('automation')
-        expect(classifyTurnSource(['automation-run1', 'board-card-1-abc'])).toBe('owner')
-        expect(classifyTurnSource(['u-123'])).toBe('owner')
-        expect(classifyTurnSource([])).toBe('unknown')
+    it('the owner\'s turn goes through; no turn origin installed = not the owner', async () => {
+        const called: string[] = []
+        installSessionLifecycle({ wrapup: async (input) => { called.push(input.sessionId); return { ok: true, sessionId: input.sessionId, state: 'queued' } } })
+        const owner = recorder()
+        registerMainAgentTools(owner.server, { sessionId: () => SELF, turnOrigin: () => 'owner' } as unknown as MainAgentDeps)
+        expect((await owner.tools.get('session_wrapup')!({ sessionId: 'sess-a' })).isError).toBe(false)
+        const none = recorder()
+        registerMainAgentTools(none.server, { sessionId: () => SELF } as unknown as MainAgentDeps)
+        expect(JSON.parse(text(await none.tools.get('session_wrapup')!({ sessionId: 'sess-b' })))).toMatchObject({ error: 'owner_request_required' })
+        expect(called).toEqual(['sess-a'])
+        installSessionLifecycle(null)
     })
 })

@@ -90,7 +90,7 @@ VH 全部能力见 \`very-happy skill\`（各功能区的用法以它为准）�
 
 ## 收尾只由用户勾选
 
-- 自动化叫醒的回合里，\`session_wrapup\` / \`session_handoff\` 会被拒绝（owner_request_required）。要收尾就 \`wrapup_suggest\` 出卡。
+- 不是用户本人在客户端打字发起的回合（自动化、脚本、Lead、别的会话发来的消息），\`session_wrapup\` / \`session_handoff\` / \`session_archive\` / \`session_kill\` / \`session_restart\` 都会被拒绝（owner_request_required）；这种回合里给别的会话发消息（session_send / session_message / lead_message）会先变成一张决定卡。要收尾就 \`wrapup_suggest\` 出卡。
 - 用户在卡上勾选并选「收尾所选」后，你会收到带 \`wrapup_selected boardItemId=…\` 的消息：调 \`wrapup_selected({boardItemId})\`，它只收尾勾选的会话；没勾的不动，你也不要补。
 - 用户在对话里点名要收尾某个会话时，才直接用 \`session_wrapup\`。
 

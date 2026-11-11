@@ -3148,6 +3148,7 @@ export const en = {
         automationWrapup: 'Wrap-up reminder',
         automationWrapupHint: 'Every evening at 23:30: one checklist card of sessions you could wrap up; only the ones you tick are wrapped up.',
         automationsNeedMainAgent: 'Open the main agent first: these run on its machine.',
+        automationsCliTooOld: 'The very-happy CLI on the main agent\'s machine is too old for these automations. Upgrade it there first.',
         automationsUnavailable: 'Automations are not available on this server.',
         automationsLoadFailed: 'Could not load automations',
         automationToggleFailed: 'Could not change that automation',

@@ -70,7 +70,8 @@ vi.mock('@/teams/client', async (importOriginal) => {
     const team = { id: 'team-1', name: 'Dev', version: 1, bots: many(30, i => ({ id: `bot-${i}`, name: `B${i}`, root: i === 0, activity: 'active', lastEvent: 'idle' })), tasks: many(60, task), messages: many(100, i => ({ id: `m${i}`, taskId: 'task-1', senderBotId: 'bot-0', recipientBotId: 'bot-1', body: MID, deliveredAt: 1, createdAt: 1 })), operations: [], capacity: { metrics: {} } };
     return { ...actual, createTeamsClient: () => ({ initialize: async () => ({ team, botId: 'bot-0' }), inspect: async () => ({ team, botId: 'bot-0' }), action: async () => ({ team, taskId: 'task-1' }) }) };
 });
-vi.mock('@/assistant/mainAgentDeps', () => {
+vi.mock('@/assistant/mainAgentDeps', async () => {
+    const { mainAgentTurnOrigin } = await import('@/assistant/turnOrigin');
     const issue = (i: number) => ({ id: `iss-${i}`, key: `VH-${i}`, number: i, title: `Issue ${i} ${'t'.repeat(300)}`, description: MID, status: 'todo', priority: 'none', labels: [], assignee: { kind: 'none' }, version: 1 });
     const entry = (i: number) => ({ id: `e${i}`, seq: i, projectId: 'p1', kind: i % 3 ? 'finding' : 'decision', title: `Entry ${i} ${'t'.repeat(300)}`, body: MID, authorSessionId: null, authorUser: true, supersedes: null, supersededBy: null, revokedAt: null, createdAt: i });
     return {
@@ -88,6 +89,7 @@ vi.mock('@/assistant/mainAgentDeps', () => {
                 : { id: 'u1', key: 'VH-1', title: 'T'.repeat(500), status: command.action === 'complete' ? 'done' : 'open', version: 2 },
             machineId: async () => 'm1',
             sessionId,
+            turnOrigin: mainAgentTurnOrigin,
             // B-924: boards_read / sessions_search / wrapup_* over huge backends.
             ops: {
                 board: {
@@ -220,8 +222,15 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         delete process.env.VH_TEAM_SCOPE_FILE;
     });
 
+    let session: ReturnType<typeof fakeSession> | undefined;
+    /** B-924: a turn started by one prompt routed with this sentFrom (web = the owner typing). */
+    function turn(localId: string, sentFrom: string) {
+        session!.emit('user-message-routed', { localId, message: { content: { text: 'x' }, meta: { sentFrom } } });
+        session!.emit('turn-started', [localId]);
+    }
     async function connect(options: { assistant?: boolean; mainAgent?: MainAgentRuntime }, id = 'main-agent') {
-        happy = await startHappyServer(fakeSession(id) as any, options);
+        session = fakeSession(id);
+        happy = await startHappyServer(session as any, options);
         mcp = new Client({ name: 'b916b-probe', version: '1' });
         await mcp.connect(new StreamableHTTPClientTransport(new URL(happy.url)));
         return (await mcp.listTools()).tools;
@@ -253,6 +262,7 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         for (const name of ['session_wrapup', 'session_handoff', 'session_restart', 'wrapup_report', 'handoff_send']) expect(names.filter(n => n === name), name).toHaveLength(1);
         // The main agent's own contract (one sessionId), not the B-915 batch shape.
         expect(Object.keys((tools.find(t => t.name === 'session_wrapup')!.inputSchema as any).properties)).toEqual(['sessionId', 'requestId']);
+        turn('u-owner-1', 'web');
         const wrap = await mcp!.callTool({ name: 'session_wrapup', arguments: { sessionId: 'sess-9' } });
         expect(wrap.isError).toBe(false);
         expect(JSON.parse(textOf(wrap))).toEqual({ ok: true, sessionId: 'sess-9', state: 'queued' });
@@ -265,6 +275,22 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         for (const name of ['session_wrapup', 'session_handoff', 'wrapup_report', 'handoff_send']) expect(normalNames.filter(n => n === name), name).toHaveLength(1);
         expect(normalNames).not.toContain('session_restart');
         expect(Object.keys((normal.find(t => t.name === 'session_wrapup')!.inputSchema as any).properties)).toEqual(expect.arrayContaining(['session_ids', 'session_id']));
+    });
+
+    it('B-924 (QA P1-2/3): over the real transport, a turn the owner did not type wraps up, hands off, archives, kills and restarts nothing', async () => {
+        await connect({ assistant: true, mainAgent: testMainAgent() });
+        for (const [localId, sentFrom] of [['3f1c-cli', 'cli'], ['automation-run-1', 'automation'], ['session-message-1', 'web']] as const) {
+            turn(localId, sentFrom);
+            for (const [name, args] of [['session_wrapup', { sessionId: 'sess-1' }], ['session_handoff', { from: 'sess-1', to: 'sess-2' }], ['session_archive', { sessionId: 'sess-1' }], ['session_kill', { sessionId: 'sess-1' }], ['session_restart', { sessionId: 'sess-1', when: 'now' }]] as const) {
+                const r = await mcp!.callTool({ name, arguments: args });
+                expect(r.isError, `${name} in a ${sentFrom} turn`).toBe(true);
+                expect(JSON.parse(textOf(r))).toMatchObject({ ok: false, error: 'owner_request_required' });
+            }
+        }
+        expect(state.lifecycle).toEqual([]);
+        turn('u-owner-2', 'web');
+        expect((await mcp!.callTool({ name: 'session_wrapup', arguments: { sessionId: 'sess-1' } })).isError).toBe(false);
+        expect(state.lifecycle).toEqual(['wrapup:sess-1:main-agent']);
     });
 
     it('QA77 #6: an assistant without the gate runtime (pi / ACP) gets only the legacy B-051 tools', async () => {

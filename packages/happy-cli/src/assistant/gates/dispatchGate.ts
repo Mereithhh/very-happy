@@ -142,7 +142,10 @@ export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'tool
             `工具：${pending.toolName}`,
             `风险：${pending.level}（声明 ${pending.declared}${pending.declared === pending.level ? '' : `，复核 ${pending.level}`}）`,
             `批准号：${pending.approvalId}`,
-            ...(forced ? ['原因：主 agent 的 Bash 已关闭，往终端里发内容等于直接执行命令，所以每次都先问你。'] : []),
+            ...(forced ? [pending.toolName === 'terminal_send'
+                ? '原因：主 agent 的 Bash 已关闭，往终端里发内容等于直接执行命令，所以每次都先问你。'
+                // B-924: the other forced case (sendGuard.ts) — a send to another session in a turn the owner did not type.
+                : '原因：这一回合不是你本人发起的（自动化、脚本或别的会话发来的消息），主 agent 给别的会话发消息都先问你。'] : []),
             '',
             '内容：',
             payload.slice(0, 1_500),

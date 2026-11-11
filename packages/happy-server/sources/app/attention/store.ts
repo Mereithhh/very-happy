@@ -170,6 +170,9 @@ async function upsertTx(tx: Tx, accountId: string, input: Omit<AttentionItemPost
     const plan = planPost(existing, input);
     if (plan.action === 'noop') return { row: existing!, created: false };
     const now = new Date();
+    // B-924 (QA P1-1): a select checklist's ticks are the owner's alone (owner-respond `check`). A post never ticks:
+    // a new card starts unticked, a repost keeps each entry's tick by id (new entries unticked).
+    if (input.payload !== undefined && 'type' in input.payload) input = { ...input, payload: ownerTicksOnly(input.payload, existing?.payload) };
     const content = {
         title: input.title,
         ...repostFields(input),
@@ -210,6 +213,12 @@ async function settleReplyTarget(tx: Tx, accountId: string, targetId: string, ki
             : { state: 'answered', version: { increment: 1 }, updatedAt: now },
     });
     announce(tx, row);
+}
+
+/** The posted select payload with every `checked` taken from the stored card (by id), never from the poster. */
+export function ownerTicksOnly<T extends { items: Array<{ id: string; checked: boolean }> }>(posted: T, stored: unknown): T {
+    const ticks = new Map((parseSelectPayload(stored)?.items ?? []).map(i => [i.id, i.checked === true]));
+    return { ...posted, items: posted.items.map(i => ({ ...i, checked: ticks.get(i.id) ?? false })) };
 }
 
 /** POST /v1/attention-items. */

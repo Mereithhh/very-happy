@@ -50,3 +50,13 @@ describe('saveMainAgentQuietHours (B-924)', () => {
         expect(h.kvMutate).toHaveBeenCalledTimes(2);
     });
 });
+
+describe('B-924 (QA P1-4) default automations need a daemon that announces them', () => {
+    it('mainAgentAutomationsSupported reads daemonState.mainAgentAutomations', async () => {
+        const { mainAgentAutomationsSupported } = await import('./MainAgentAutomationsSection');
+        expect(mainAgentAutomationsSupported(null)).toBe(false);
+        expect(mainAgentAutomationsSupported({ daemonState: {} })).toBe(false);
+        expect(mainAgentAutomationsSupported({ daemonState: { mainAgentSafety: { rpcAvailable: true, detectedAt: 1 } } })).toBe(false);
+        expect(mainAgentAutomationsSupported({ daemonState: { mainAgentAutomations: { rpcAvailable: true, detectedAt: 1 } } })).toBe(true);
+    });
+});

@@ -12,12 +12,17 @@
  * Anything else answers a refusal and calls nothing.
  */
 
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdir, readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { z } from 'zod'
 import {
     ATTENTION_SELECT_LIMITS, MAIN_AGENT_CARD_KEY, parseSelectPayload,
     type AttentionItem, type AttentionItemListQuery, type AttentionItemPost, type AttentionItemResolve, type TurnFailure,
 } from '@slopus/happy-wire'
+import { boardItemView, cardFaceHash, writePrivateJson } from '@/attention/ownerApproval'
 import type { AssistantToolRegistrar } from './assistantTools'
+import { assistantHome } from './bootstrap'
 import { isValidSessionId } from './ids'
 import type { WrapupReceipt } from './mainAgentTools'
 
@@ -51,6 +56,45 @@ export type MainAgentOpsDeps = {
     projectSessionIds: (projectId: string) => Promise<string[]>
     /** B-919 wrap-up backend; absent = not available on this version. */
     wrapup: () => ((input: { sessionId: string; requestId: string }) => Promise<WrapupReceipt>) | undefined
+    /** Where a posted checklist card is bound (QA P1-1); default: 0600 files under `~/.happy/assistant/wrapup-cards`. */
+    cardRecords?: WrapupCardRecords
+}
+
+/** What the main agent posted: the card face and the original list, so a rewritten card wraps up nothing. */
+export type WrapupCardRecord = { v: 1; boardItemId: string; key: string; cardSha256: string; listSha256: string; items: Array<{ id: string; ref: string }> }
+export type WrapupCardRecords = { write: (record: WrapupCardRecord) => Promise<void>; read: (boardItemId: string) => Promise<WrapupCardRecord | null> }
+
+const RECORD_ID = /^[A-Za-z0-9_-]{1,128}$/
+export function fileWrapupCardRecords(dir: string): WrapupCardRecords {
+    return {
+        async write(record) {
+            if (!RECORD_ID.test(record.boardItemId)) throw new Error('invalid card id')
+            await mkdir(dir, { recursive: true, mode: 0o700 })
+            await writePrivateJson(join(dir, `${record.boardItemId}.json`), record)
+        },
+        async read(boardItemId) {
+            if (!RECORD_ID.test(boardItemId)) return null
+            try {
+                const r = JSON.parse(await readFile(join(dir, `${boardItemId}.json`), 'utf8'))
+                const valid = r && r.v === 1 && r.boardItemId === boardItemId && typeof r.key === 'string' && typeof r.cardSha256 === 'string' && typeof r.listSha256 === 'string' && Array.isArray(r.items)
+                return valid ? r as WrapupCardRecord : null
+            } catch { return null }
+        },
+    }
+}
+
+/** Hash of the checklist itself (ids, labels, reasons, sessions, order) without the ticks. */
+export function checklistHash(payload: unknown): string {
+    const items = (parseSelectPayload(payload)?.items ?? []).map(i => ({ id: String(i.id), label: String(i.label), detail: i.detail ?? '', ref: i.ref ?? '' }))
+    return createHash('sha256').update(JSON.stringify(items)).digest('hex')
+}
+
+/** null when the card still shows exactly what was posted (face and list); else `card_tampered`. */
+export function wrapupCardTampered(item: AttentionItem, record: WrapupCardRecord): 'card_tampered' | null {
+    if (item.id !== record.boardItemId || item.key !== record.key) return 'card_tampered'
+    if (cardFaceHash(boardItemView(item)) !== record.cardSha256) return 'card_tampered'
+    if (checklistHash(item.payload) !== record.listSha256) return 'card_tampered'
+    return null
 }
 
 type Result = { content: Array<{ type: 'text'; text: string }>; isError: boolean }
@@ -90,13 +134,20 @@ export function wrapupCardRefusal(item: AttentionItem | undefined, selfSessionId
     return null
 }
 
-/** The sessions the owner ticked on the card (valid session ids only). */
-export function tickedSessions(item: AttentionItem): string[] {
-    return (parseSelectPayload(item.payload)?.items ?? []).filter(i => i.checked && typeof i.ref === 'string' && isValidSessionId(i.ref)).map(i => i.ref!)
+/**
+ * The sessions the owner ticked, kept only when the entry is in the list the
+ * main agent posted (same id, same session); anything else is dropped.
+ */
+export function tickedSessions(item: AttentionItem, posted: ReadonlyArray<{ id: string; ref: string }>): string[] {
+    const original = new Map(posted.map(p => [p.id, p.ref]))
+    return (parseSelectPayload(item.payload)?.items ?? [])
+        .filter(i => i.checked && typeof i.ref === 'string' && isValidSessionId(i.ref) && original.get(i.id) === i.ref)
+        .map(i => i.ref!)
 }
 
 export function registerMainAgentOpsTools(mcp: AssistantToolRegistrar, deps: MainAgentOpsDeps): void {
     const now = deps.now ?? Date.now
+    const records = deps.cardRecords ?? fileWrapupCardRecords(join(assistantHome(), 'wrapup-cards'))
     const register = (name: typeof MAIN_AGENT_OPS_TOOL_NAMES[number], description: string, inputSchema: Record<string, z.ZodTypeAny>, readOnly: boolean, run: (args: any) => Promise<Result>) => {
         mcp.registerTool(name, {
             description, inputSchema,
@@ -175,7 +226,7 @@ export function registerMainAgentOpsTools(mcp: AssistantToolRegistrar, deps: Mai
             seen.add(s.sessionId); return true
         })
         if (!entries.length) return fail('No valid session ids (the main agent itself is never suggested).')
-        const key = `${MAIN_AGENT_CARD_KEY.wrapup}${args.requestId ?? new Date(now()).toISOString().slice(0, 16)}`
+        const key = `${MAIN_AGENT_CARD_KEY.wrapup}${args.requestId ?? randomUUID()}`
         const { items: open } = await deps.board.list({ sessionId: self, state: 'open', limit: 50 })
         const { item, created } = await deps.board.post({
             sessionId: self, source: 'agent', kind: 'decision', key, requestId: key,
@@ -185,6 +236,9 @@ export function registerMainAgentOpsTools(mcp: AssistantToolRegistrar, deps: Mai
             payload: { v: 1, type: 'select', items: entries.map((s, i) => ({ id: `s${i + 1}`, label: oneLine(s.title ?? s.sessionId, ATTENTION_SELECT_LIMITS.labelChars), detail: oneLine(s.reason, ATTENTION_SELECT_LIMITS.detailChars), ref: s.sessionId, checked: false })) },
             inferred: false,
         })
+        // QA P1-1: bind what the owner will see (card face + list) to this card id; wrapup_selected re-checks both.
+        const postedItems = (parseSelectPayload(item.payload)?.items ?? []).filter(i => typeof i.ref === 'string').map(i => ({ id: i.id, ref: i.ref! }))
+        await records.write({ v: 1, boardItemId: item.id, key, cardSha256: cardFaceHash(boardItemView(item)), listSha256: checklistHash(item.payload), items: postedItems })
         let superseded = 0
         for (const old of open) {
             if (old.id === item.id || old.kind !== 'decision' || !old.key?.startsWith(MAIN_AGENT_CARD_KEY.wrapup)) continue
@@ -202,9 +256,13 @@ export function registerMainAgentOpsTools(mcp: AssistantToolRegistrar, deps: Mai
         const item = items.find(i => i.id === args.boardItemId)
         const refusal = wrapupCardRefusal(item, self)
         if (refusal) return fail(JSON.stringify({ ok: false, error: refusal, boardItemId: args.boardItemId }))
+        // QA P1-1: only a card this main agent posted, still showing exactly what it posted.
+        const record = await records.read(item!.id)
+        if (!record) return fail(JSON.stringify({ ok: false, error: 'card_not_found', boardItemId: item!.id, note: 'not a checklist card this main agent posted' }))
+        if (wrapupCardTampered(item!, record)) return fail(JSON.stringify({ ok: false, error: 'card_tampered', boardItemId: item!.id, note: 'the card changed after it was posted: nothing wrapped up' }))
         const wrapup = deps.wrapup()
         if (!wrapup) return fail(JSON.stringify({ ok: false, error: 'not_available', note: 'Wrap-up is not available on this Very Happy version yet' }))
-        const ticked = tickedSessions(item!)
+        const ticked = tickedSessions(item!, record.items)
         const total = parseSelectPayload(item!.payload)?.items.length ?? 0
         if (!ticked.length) return ok(JSON.stringify({ ok: true, boardItemId: item!.id, queued: 0, note: 'the owner ticked none: nothing wrapped up' }))
         const results: string[] = []

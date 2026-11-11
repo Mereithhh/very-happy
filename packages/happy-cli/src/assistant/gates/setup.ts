@@ -15,6 +15,7 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { mainAgentMustAsk } from '../sendGuard'
 import type { AttentionClient } from '@/attention/client'
 import { assistantHome } from '../bootstrap'
 import { installMainAgentSkill, renderManagedSegment, writeManagedSegment } from '../mainAgentSkill'
@@ -119,7 +120,8 @@ export async function prepareMainAgent(deps: {
         log: deps.log,
         dispatchPolicy: () => ({ external: safety.policy.dispatchExternal, production: safety.policy.dispatchProduction }),
         // Calls that always park, whatever their risk. OR further conditions in here (one hook, not several).
-        mustAsk: (tool) => mustAskTerminal(tool, safety.policy.bash),
+        // B-922: terminal_send while Bash is off. B-924: sends to other sessions in a turn the owner did not type (sendGuard.ts).
+        mustAsk: (tool, args) => mustAskTerminal(tool, safety.policy.bash) || mainAgentMustAsk(tool, args) !== null,
     })
     return {
         config,

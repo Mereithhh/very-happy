@@ -397,6 +397,15 @@ export const DaemonStateSchema = z.object({
     rpcAvailable: z.boolean(),
     detectedAt: z.number(),
   }).optional(),
+  /**
+   * B-924 capability flag: this daemon runs the main agent's default automations
+   * (`target: 'main-agent'`, `very-happy main-agent precheck` with its own CLI).
+   * The web offers the default automations only for a machine that sets it.
+   */
+  mainAgentAutomations: z.object({
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
   /** B-877b capability flag: this daemon answers `team-exit-session` (same trust rule). */
   teamExit: z.object({
     rpcAvailable: z.boolean(),

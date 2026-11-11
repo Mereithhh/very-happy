@@ -3281,6 +3281,7 @@ export const zhHans: TranslationStructure = {
         automationWrapup: '提醒收尾',
         automationWrapupHint: '每晚 23:30 发一张可收尾会话的勾选清单卡；只收尾你勾选的。',
         automationsNeedMainAgent: '请先打开主 agent：这些自动化在它所在的机器上运行。',
+        automationsCliTooOld: '主 agent 所在机器的 very-happy CLI 版本太旧，用不了这些自动化，请先在那台机器上升级。',
         automationsUnavailable: '这个服务器还不支持自动化。',
         automationsLoadFailed: '自动化列表加载失败',
         automationToggleFailed: '没能修改这条自动化',

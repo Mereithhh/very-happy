@@ -53,7 +53,7 @@ import { MAIN_AGENT_LIST_VIEWS } from "@/assistant/listViews";
 import { installSessionLifecycle, MAIN_AGENT_REPLACES, MAIN_AGENT_TOOL_NAMES, registerMainAgentTools } from "@/assistant/mainAgentTools";
 import { createLiveMainAgentLifecycle } from "@/assistant/mainAgentLifecycle";
 import { createMainAgentDeps } from "@/assistant/mainAgentDeps";
-import { classifyTurnSource, installMainAgentTurnSource } from "@/assistant/turnSource";
+import { createTurnOriginTracker, installMainAgentTurnOrigin, withOwnerOnlyTools } from "@/assistant/turnOrigin";
 
 interface HappyMcpHandlers {
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
@@ -127,7 +127,8 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     });
     const mainAgent = isMainAgentSession(options);
     // B-916b: on the main agent every answer is capped (receipt 400 / list 4K / body 8K); other sessions unchanged.
-    const mcp = mainAgent ? withToolOutputCaps(server, MAIN_AGENT_LIST_VIEWS) : server;
+    // B-924 (QA P1-2/3): wrap-up / hand-off / archive / kill / restart refuse any turn the owner did not type (turnOrigin.ts).
+    const mcp = mainAgent ? withOwnerOnlyTools(withToolOutputCaps(server, MAIN_AGENT_LIST_VIEWS)) : server;
     // The main agent's account-level versions replace these session-scoped ones (mainAgentTools.ts).
     const replaced = mainAgent ? MAIN_AGENT_REPLACES : [];
 
@@ -327,18 +328,19 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         log: (message) => logger.debug(message),
     });
     const wrapupTools: WrapupToolExecutor = (name, args) => executeWrapupTool(name, args, { selfId: () => client.sessionId, tracker: wrapupTracker });
+    // B-924 (QA P1-2): the main agent's turn origin — owner only when every prompt was typed in a client.
+    const turnOrigin = createTurnOriginTracker();
+    if (mainAgentLifecycle) installMainAgentTurnOrigin(turnOrigin.current);
     const onRoutedUserMessage = (event: { localId?: string | null; message?: { content?: { text?: unknown }; meta?: { sentFrom?: string; delivery?: string } } }) => {
         const text = event.message?.content?.text;
         leadBoard.onUserMessage({ localId: event.localId, text: typeof text === 'string' ? text : null, sentFrom: event.message?.meta?.sentFrom, delivery: event.message?.meta?.delivery });
         wrapupTracker.onUserMessage({ localId: event.localId });
+        turnOrigin.onUserMessage({ localId: event.localId, sentFrom: event.message?.meta?.sentFrom });
     };
     const onClaudeLine = (body: unknown) => { for (const text of assistantTexts(body)) leadBoard.onAssistantText(text); };
-    // B-924: an automation-only turn (every prompt `automation-<runId>`) may not wrap up / hand off (main agent tools).
-    let turnSource: 'owner' | 'automation' | 'unknown' = 'unknown';
-    if (mainAgentLifecycle) installMainAgentTurnSource(() => turnSource);
     const onTurnStarted = (sourceIds?: string[]) => {
         wrapupTracker.onTurnStart(sourceIds);
-        if (sourceIds?.length) turnSource = classifyTurnSource(sourceIds);
+        turnOrigin.onTurnStart(sourceIds);
     };
     const onTurnEnded = () => { void leadBoard.onTurnEnd(); void wrapupTracker.onTurnEnd(); };
     // Codex / pi / Gemini end a turn with a `ready` event and never emit `turn-ended`.

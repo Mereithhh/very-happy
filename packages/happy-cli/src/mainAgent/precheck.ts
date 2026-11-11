@@ -57,7 +57,13 @@ export function newKeys(ledger: SeenLedger, keys: readonly string[], now: number
 
 export type PrecheckOutcome = { exitCode: number; stdout: string }
 
-export async function runMainAgentPrecheck(kind: MainAgentAutomationKind, deps: ScanDeps, ledger: LedgerIo): Promise<PrecheckOutcome> {
+/**
+ * `record` (QA P3-6): only the automation's own call (`--record`) remembers what
+ * it reported; a manual run just shows what is new, so the next real run still
+ * posts its cards.
+ */
+export async function runMainAgentPrecheck(kind: MainAgentAutomationKind, deps: ScanDeps, ledger: LedgerIo, options: { record?: boolean } = {}): Promise<PrecheckOutcome> {
+    const record = options.record === true
     const now = deps.now()
     if (kind === 'brief') return { exitCode: 0, stdout: formatBrief(await briefSnapshot(deps), now) }
     if (kind === 'stuck') {
@@ -66,13 +72,13 @@ export async function runMainAgentPrecheck(kind: MainAgentAutomationKind, deps: 
         const { fresh, next } = newKeys(await ledger.read(kind), keys, now)
         const report = list.filter((_, i) => fresh.has(keys[i]))
         if (!report.length) return { exitCode: PRECHECK_SKIP_EXIT, stdout: list.length ? `no change: ${list.length} stuck session(s), all reported before` : 'nothing stuck' }
-        await ledger.write(kind, next)
+        if (record) await ledger.write(kind, next)
         return { exitCode: 0, stdout: formatStuck(report, now) }
     }
     const list = await findWrapupCandidates(deps)
     const { fresh, next } = newKeys(await ledger.read(kind), wrapupKeys(list), now)
     const report = list.filter(c => fresh.has(c.sessionId))
     if (!report.length) return { exitCode: PRECHECK_SKIP_EXIT, stdout: list.length ? `no change: ${list.length} candidate(s), all suggested before` : 'nothing to wrap up' }
-    await ledger.write(kind, next)
+    if (record) await ledger.write(kind, next)
     return { exitCode: 0, stdout: formatWrapup(report) }
 }

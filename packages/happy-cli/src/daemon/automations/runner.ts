@@ -27,7 +27,7 @@ import { homedir } from 'node:os';
 import { join, isAbsolute } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import {
-    AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_SUMMARY_MAX_CHARS, isAutomationRunTerminal, resolveLaunchAgentProfile,
+    AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DAEMON_CAPABILITY_MAIN_AGENT, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_SUMMARY_MAX_CHARS, isAutomationRunTerminal, resolveLaunchAgentProfile,
     type AutomationAction, type AutomationClaimedRun, type AutomationReport,
 } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
@@ -567,7 +567,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
             const capacity = AUTOMATION_MAX_CONCURRENT - tracked.size;
             if (now() >= disabledUntil && capacity > 0) {
                 try {
-                    const claimed = await client.claim({ machineId: deps.machineId, limit: capacity, leaseMs: AUTOMATION_DEFAULT_LEASE_MS, capabilities: [AUTOMATION_DAEMON_CAPABILITY_PRECHECK] });
+                    const claimed = await client.claim({ machineId: deps.machineId, limit: capacity, leaseMs: AUTOMATION_DEFAULT_LEASE_MS, capabilities: [AUTOMATION_DAEMON_CAPABILITY_PRECHECK, AUTOMATION_DAEMON_CAPABILITY_MAIN_AGENT] });
                     // Concurrent: one slow spawn (key wait, worktree) must not delay the others.
                     await Promise.all(claimed.runs.map((entry) => closed ? Promise.resolve() : execute(entry).catch((error) => deps.log(`Automation run ${entry.run.id} failed to start: ${error instanceof Error ? error.message : String(error)}`))));
                 } catch (error) {

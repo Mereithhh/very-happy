@@ -21,7 +21,8 @@ const USAGE = `${chalk.bold('very-happy main-agent')} — the main agent's defau
   automations [list] [--json]       brief (09:00) · stuck (hourly) · wrapup (23:30): on / off / missing
   automations install [--tz <zone>] create the missing ones on this machine (existing ones are left as they are)
   automations on|off <kind>         switch one on (creates it if missing) or off (pauses it)
-  precheck <kind>                   zero-token check the automations run first; exit 0 wakes the main agent`
+  precheck <kind> [--record]        zero-token check the automations run first; exit 0 wakes the main agent
+                                    (--record: remember what was reported — the automations pass it; a manual run does not)`
 
 function kindOf(value: string | undefined): MainAgentAutomationKind {
     if ((MAIN_AGENT_AUTOMATION_KINDS as readonly string[]).includes(value ?? '')) return value as MainAgentAutomationKind
@@ -39,7 +40,7 @@ export async function handleMainAgentCommand(args: string[]): Promise<void> {
         const kind = kindOf(action)
         let outcome
         try {
-            outcome = await runMainAgentPrecheck(kind, await liveScanDeps(), fileLedger(assistantHome()))
+            outcome = await runMainAgentPrecheck(kind, await liveScanDeps(), fileLedger(assistantHome()), { record: args.includes('--record') })
         } catch (error) {
             // The brief still runs on what the main agent can read itself; the other checks skip (non-zero exit).
             const reason = error instanceof Error ? error.message : String(error)

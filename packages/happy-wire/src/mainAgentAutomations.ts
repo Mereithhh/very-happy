@@ -1,4 +1,5 @@
 import type { AutomationCreate } from './automations';
+import { DEFAULT_QUIET_HOURS, parseMainAgentQuietHours, type MainAgentQuietHours } from './mainAgentSafety';
 
 // B-924 the main agent's default automations (specs/2026-11-main-agent.md §8)
 // and its quiet hours. One definition for the CLI (`very-happy main-agent
@@ -77,7 +78,7 @@ export function mainAgentAutomationCreate(kind: MainAgentAutomationKind, input: 
         machineId: input.machineId,
         trigger,
         action: { kind: 'send', target: 'main-agent', prompt: PROMPTS[kind] },
-        precheck: { command: ['very-happy', 'main-agent', 'precheck', kind], timeoutMs: PRECHECK_TIMEOUT_MS, includeOutput: true },
+        precheck: { command: ['very-happy', 'main-agent', 'precheck', kind, '--record'], timeoutMs: PRECHECK_TIMEOUT_MS, includeOutput: true },
         concurrency: 'skip',
         status: (input.active ?? MAIN_AGENT_AUTOMATION_DEFAULT_ON[kind]) ? 'active' : 'paused',
     };
@@ -87,15 +88,13 @@ export function mainAgentAutomationCreate(kind: MainAgentAutomationKind, input: 
 
 /**
  * During quiet hours a card the main agent posts goes on the board but is not
- * pushed. `start` / `end` are `HH:MM` in `tz`; a window may wrap midnight.
- * Same reading as the B-922 safety settings: no `quietHours` = the default
- * below (on, 00:30–08:30); `tz: null` = "the machine's zone", which the server
- * cannot know — the daemon writes its zone on first install and the Web writes
- * the one shown in Settings, so a null zone only means "nothing to check"
- * (cards push as usual).
+ * pushed. The shape and lenient reading are B-922's `parseMainAgentQuietHours`
+ * (default on, 00:30–08:30; `tz: null` = the main agent machine's local time).
+ * The server cannot know that zone, so a null zone means "nothing to check";
+ * the daemon writes its zone on first install and the Web the one it shows.
  */
-export type MainAgentQuietWindow = { enabled: boolean; start: string; end: string; tz: string | null };
-export const MAIN_AGENT_QUIET_HOURS_DEFAULT: Omit<MainAgentQuietWindow, 'tz'> = { enabled: true, start: '00:30', end: '08:30' };
+export type MainAgentQuietWindow = MainAgentQuietHours;
+export const MAIN_AGENT_QUIET_HOURS_DEFAULT: Omit<MainAgentQuietWindow, 'tz'> = { enabled: DEFAULT_QUIET_HOURS.enabled, start: DEFAULT_QUIET_HOURS.start, end: DEFAULT_QUIET_HOURS.end };
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export function isValidTimeZone(tz: unknown): tz is string {
@@ -103,16 +102,11 @@ export function isValidTimeZone(tz: unknown): tz is string {
     try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; }
 }
 
-/** Lenient read of the config's `quietHours`; anything malformed falls back field by field (zone: `fallbackTz`, else null). */
+/** The config's `quietHours` read with `parseMainAgentQuietHours`; a missing / unknown zone falls back to `fallbackTz` (else null). */
 export function readMainAgentQuietHours(config: unknown, fallbackTz: string | null = null): MainAgentQuietWindow {
     const raw = config && typeof config === 'object' && !Array.isArray(config) ? (config as Record<string, unknown>).quietHours : undefined;
-    const q = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-    return {
-        enabled: typeof q.enabled === 'boolean' ? q.enabled : MAIN_AGENT_QUIET_HOURS_DEFAULT.enabled,
-        start: typeof q.start === 'string' && HHMM.test(q.start) ? q.start : MAIN_AGENT_QUIET_HOURS_DEFAULT.start,
-        end: typeof q.end === 'string' && HHMM.test(q.end) ? q.end : MAIN_AGENT_QUIET_HOURS_DEFAULT.end,
-        tz: isValidTimeZone(q.tz) ? q.tz : isValidTimeZone(fallbackTz) ? fallbackTz : null,
-    };
+    const q = parseMainAgentQuietHours(raw);
+    return { ...q, tz: isValidTimeZone(q.tz) ? q.tz : isValidTimeZone(fallbackTz) ? fallbackTz : null };
 }
 
 /** Whether `now` falls inside the window (start inclusive, end exclusive; start === end = never). */

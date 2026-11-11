@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import {
     AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DEDUPE_WINDOW_MS, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_DEFAULT_MAX_RUNTIME_MS,
     AUTOMATION_QUEUED_ATTENTION_MS, AUTOMATION_RUN_RETENTION, AUTOMATION_SCRIPT_DEFAULT_MAX_RUNTIME_MS, AUTOMATION_RUN_STATUSES,
-    AUTOMATION_RUN_TERMINAL_STATUSES, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, AUTOMATION_MAIN_AGENT_UNAVAILABLE, isAutomationRunTerminal, projectAgentProfilesFor,
+    AUTOMATION_RUN_TERMINAL_STATUSES, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, AUTOMATION_MAIN_AGENT_UNAVAILABLE, AUTOMATION_DAEMON_CAPABILITY_MAIN_AGENT, AUTOMATION_DAEMON_TOO_OLD, automationNeedsMainAgentDaemon, isAutomationRunTerminal, projectAgentProfilesFor,
     type Automation, type AutomationAction, type AutomationClaim, type AutomationClaimResponse, type AutomationCreate, type AutomationFire, type AutomationFireResponse,
     type AutomationManualRun, type AutomationReport, type AutomationRun, type AutomationRunStatus, type AutomationSticky, type AutomationUpdate,
 } from '@slopus/happy-wire';
@@ -471,6 +471,16 @@ export async function ackRun(accountId: string, runId: string, by: string = 'own
     });
 }
 
+/** B-924 (QA P1-4): the claiming daemon predates the main agent's automations — never handed out (an old CLI would start a session from the precheck). */
+async function failDaemonTooOld(tx: Tx, run: RunRow, now: Date): Promise<void> {
+    await tx.automationRun.update({ where: { id: run.id }, data: {
+        status: 'failed', error: AUTOMATION_DAEMON_TOO_OLD, dedupeSlot: null, finishedAt: now, updatedAt: now,
+        summary: "This machine's very-happy CLI is too old to run the main agent's automations, so nothing was run. Upgrade very-happy-cli on that machine.",
+        ...raiseAttention(AUTOMATION_DAEMON_TOO_OLD, now),
+    } });
+    await setLastRunStatus(tx, run.automationId, run.id, 'failed');
+}
+
 /** B-924: a `main-agent` send with no main agent to deliver to (none set up, or its session is gone). Failed with attention, never handed out. */
 async function failMainAgentUnavailable(tx: Tx, run: RunRow, now: Date): Promise<void> {
     await tx.automationRun.update({ where: { id: run.id }, data: {
@@ -537,16 +547,19 @@ export async function claimRuns(accountId: string, input: AutomationClaim): Prom
                 .filter(a => decodeStoredAction(a.action).precheck !== null).map(a => a.id),
         );
         const claimed: RunRow[] = [];
-        // B-924: `send` to `target: 'main-agent'` resolves to the account's main agent when it is handed out.
-        const mainAgentSends = queued.length === 0 ? new Set<string>() : new Set(
-            (await tx.automation.findMany({ where: { id: { in: [...new Set(queued.map(r => r.automationId))] } }, select: { id: true, action: true } }))
-                .filter(a => { const action = decodeStoredAction(a.action).action; return action.kind === 'send' && action.target === 'main-agent'; }).map(a => a.id),
-        );
+        // B-924: `send` to `target: 'main-agent'` resolves to the account's main agent when it is handed out; it and
+        // the main agent's own prechecks run only on a daemon that announces `main-agent-automations` (QA P1-4).
+        const queuedActions = queued.length === 0 ? [] : (await tx.automation.findMany({ where: { id: { in: [...new Set(queued.map(r => r.automationId))] } }, select: { id: true, action: true } }))
+            .map(a => ({ id: a.id, stored: decodeStoredAction(a.action) }));
+        const mainAgentSends = new Set(queuedActions.filter(a => a.stored.action.kind === 'send' && a.stored.action.target === 'main-agent').map(a => a.id));
+        const canMainAgent = input.capabilities?.includes(AUTOMATION_DAEMON_CAPABILITY_MAIN_AGENT) === true;
+        const needsNewDaemon = canMainAgent ? new Set<string>() : new Set(queuedActions.filter(a => automationNeedsMainAgentDaemon(a.stored.action, a.stored.precheck)).map(a => a.id));
         const mainAgent = mainAgentSends.size > 0 ? await readAccountMainAgent(tx, accountId) : null;
         const resolvedSession = new Map<string, string>();
         for (const run of queued) {
             if (claimed.length >= limit || busy.has(run.automationId)) continue;
             if (gated.has(run.automationId)) { await skipUnsupportedPrecheck(tx, run, now); continue; }
+            if (needsNewDaemon.has(run.automationId)) { await failDaemonTooOld(tx, run, now); continue; }
             if (mainAgentSends.has(run.automationId)) {
                 if (!mainAgent) { await failMainAgentUnavailable(tx, run, now); continue; }
                 if (mainAgent.machineId && mainAgent.machineId !== input.machineId && await tx.machine.findFirst({ where: { id: mainAgent.machineId, accountId }, select: { id: true } })) {

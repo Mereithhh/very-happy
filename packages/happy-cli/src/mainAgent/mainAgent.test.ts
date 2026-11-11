@@ -65,13 +65,13 @@ describe('B-924 stuck scan', () => {
         const ledger = memoryLedger()
         let sessions = [session('err', { turnFailure: { at: NOW - H, summary: 'API Error: 500' } })]
         const d = deps({ sessions: async () => sessions })
-        const first = await runMainAgentPrecheck('stuck', d, ledger)
+        const first = await runMainAgentPrecheck('stuck', d, ledger, { record: true })
         expect(first.exitCode).toBe(0)
         expect(first.stdout).toContain('err | T err | API error 1h ago: API Error: 500')
-        const again = await runMainAgentPrecheck('stuck', d, ledger)
+        const again = await runMainAgentPrecheck('stuck', d, ledger, { record: true })
         expect(again).toEqual({ exitCode: PRECHECK_SKIP_EXIT, stdout: 'no change: 1 stuck session(s), all reported before' })
         sessions = [...sessions, session('err2', { turnFailure: { at: NOW, summary: 'API Error: 400' } })]
-        const third = await runMainAgentPrecheck('stuck', d, ledger)
+        const third = await runMainAgentPrecheck('stuck', d, ledger, { record: true })
         expect(third.exitCode).toBe(0)
         expect(third.stdout).toContain('err2')
         expect(third.stdout).not.toContain('- err |')
@@ -85,6 +85,15 @@ describe('B-924 stuck scan', () => {
         expect(scanHours('idle', { VH_MAIN_AGENT_IDLE_HOURS: '0.05' })).toBe(0.05)
         expect(scanHours('idle', { VH_MAIN_AGENT_IDLE_HOURS: '0' })).toBe(12)
         expect(scanHours('stuck', { VH_MAIN_AGENT_STUCK_HOURS: 'x' })).toBe(3)
+    })
+
+    it('(QA P3-6) a manual precheck (no --record) shows what is new but remembers nothing', async () => {
+        const ledger = memoryLedger()
+        const d = deps({ sessions: async () => [session('err', { turnFailure: { at: NOW - H, summary: 'API Error: 500' } })] })
+        expect((await runMainAgentPrecheck('stuck', d, ledger)).exitCode).toBe(0)
+        expect(ledger.store).toEqual({})
+        expect((await runMainAgentPrecheck('stuck', d, ledger, { record: true })).exitCode).toBe(0)
+        expect((await runMainAgentPrecheck('stuck', d, ledger, { record: true })).exitCode).toBe(PRECHECK_SKIP_EXIT)
     })
 
     it('the seen ledger forgets after the TTL', () => {
@@ -110,8 +119,8 @@ describe('B-924 wrap-up scan', () => {
         })
         expect((await findWrapupCandidates(d)).map(c => [c.sessionId, c.idleHours])).toEqual([['a', 20]])
         const ledger = memoryLedger()
-        expect((await runMainAgentPrecheck('wrapup', d, ledger)).exitCode).toBe(0)
-        expect((await runMainAgentPrecheck('wrapup', d, ledger)).exitCode).toBe(PRECHECK_SKIP_EXIT)
+        expect((await runMainAgentPrecheck('wrapup', d, ledger, { record: true })).exitCode).toBe(0)
+        expect((await runMainAgentPrecheck('wrapup', d, ledger, { record: true })).exitCode).toBe(PRECHECK_SKIP_EXIT)
     })
 })
 
@@ -160,7 +169,7 @@ describe('B-924 default automations', () => {
             const body = mainAgentAutomationCreate(kind, target)
             expect(AutomationCreateSchema.safeParse(body).success).toBe(true)
             expect(body.action).toMatchObject({ kind: 'send', target: 'main-agent' })
-            expect(body.precheck).toMatchObject({ command: ['very-happy', 'main-agent', 'precheck', kind], includeOutput: true })
+            expect(body.precheck).toMatchObject({ command: ['very-happy', 'main-agent', 'precheck', kind, '--record'], includeOutput: true })
         }
         expect(mainAgentAutomationCreate('brief', target).trigger).toEqual({ kind: 'cron', expr: '0 9 * * *', tz: 'Asia/Tokyo' })
         expect(mainAgentAutomationCreate('stuck', target).trigger).toEqual({ kind: 'interval', everyMs: 3_600_000 })

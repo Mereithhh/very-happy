@@ -133,6 +133,7 @@ export function MainAgentSettings() {
                 </ItemGroup>
 
                 <MainAgentSafetySection machine={machines.find((m) => m.id === currentMachineId) ?? null} />
+                <MainAgentAutomationsSection />
 
                 <div className="ma-settings-actions">
                     {configStatus === 'error' && <span className="tg-error">{copy.settingsLoadFailed}</span>}
@@ -140,7 +141,6 @@ export function MainAgentSettings() {
                     <span className="ma-settings-note">{copy.settingsStoredIn}</span>
                     <Button variant="primary" loading={saving} disabled={!dirty || !valid} onClick={() => void onSave()}>{copy.settingsSave}</Button>
                 </div>
-                <MainAgentAutomationsSection />
             </ItemList>
         </Page>
     );

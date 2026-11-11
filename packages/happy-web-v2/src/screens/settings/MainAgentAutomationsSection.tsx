@@ -17,6 +17,8 @@ import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslationKey } from '@/text';
 import { Item, ItemGroup, toast } from '@/ui';
 import { kvMutate } from '@/sync/apiKv';
+import { useMachine } from '@/sync/storage';
+import { daemonRpcFlagSupported } from '@/sync/closedTerminals';
 import { AUTOMATIONS_OVERVIEW_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
 import { MAIN_AGENT_CONFIG_KEY, decodeKvJson, encodeKvJson, parseMainAgentConfig } from '@/assistant/mainAgent';
 import { loadMainAgentConfig, refreshMainAgentPointer, useMainAgentStore } from '@/assistant/mainAgentStore';
@@ -24,6 +26,11 @@ import { isValidTimeZone, knownTimeZones, localTimeZone } from '@/screens/automa
 import { SuggestInput } from '@/ui/SuggestInput';
 import { Button } from '@/ui/Button';
 import { isHhmm, mainAgentAutomationRows, mainAgentZone, planMainAgentToggle, planRestoreDefaults, planZoneChange, readMainAgentQuietHours, withQuietHours, type MainAgentAutomationRow } from './mainAgentAutomationsModel';
+
+/** The main agent machine's daemon runs the default automations (`daemonState.mainAgentAutomations`, B-924). */
+export function mainAgentAutomationsSupported(machine: { daemonState?: unknown } | null | undefined): boolean {
+    return daemonRpcFlagSupported(machine?.daemonState, 'mainAgentAutomations');
+}
 
 const KIND_TEXT: Record<MainAgentAutomationKind, { title: TranslationKey; hint: TranslationKey }> = {
     brief: { title: 'settingsMainAgent.automationBrief', hint: 'settingsMainAgent.automationBriefHint' },
@@ -78,6 +85,7 @@ export function MainAgentAutomationsSection() {
 
     const pointerStatus = useMainAgentStore((s) => s.pointerStatus);
     const machineId = useMainAgentStore((s) => s.pointer?.machineId ?? null);
+    const mainAgentMachine = useMachine(machineId ?? '');
     const configStatus = useMainAgentStore((s) => s.configStatus);
     const configRaw = useMainAgentStore((s) => s.configRaw);
     useEffect(() => {
@@ -164,8 +172,12 @@ export function MainAgentAutomationsSection() {
         }
     };
 
-    const listReady = enabled === true && loadedAt !== null;
+    // QA P1-4: the main agent's machine must run a CLI that announces the default automations
+    // (an older one would start a session from their precheck). Unknown machine = not supported.
+    const supported = mainAgentAutomationsSupported(mainAgentMachine);
+    const listReady = enabled === true && loadedAt !== null && supported;
     const status = enabled === false ? t('settingsMainAgent.automationsUnavailable')
+        : machineId && !supported ? t('settingsMainAgent.automationsCliTooOld')
         : loadError && !listReady ? t('settingsMainAgent.automationsLoadFailed')
         : pointerStatus !== 'loading' && pointerStatus !== 'idle' && !machineId && rows.some((r) => !r.automation) ? t('settingsMainAgent.automationsNeedMainAgent')
         : null;
@@ -195,7 +207,7 @@ export function MainAgentAutomationsSection() {
                     subtitle={t('settingsMainAgent.zoneHint')}
                     right={
                         <SuggestInput className="set-value mono" aria-label={t('settingsMainAgent.zone') as string} value={zoneDraft ?? tz}
-                            onValueChange={setZoneDraft} suggestions={timeZones} spellCheck={false} disabled={busy !== null || !credentials}
+                            onValueChange={setZoneDraft} suggestions={timeZones} spellCheck={false} disabled={busy !== null || !credentials || !supported}
                             onBlur={() => void commitZone()} onKeyDown={(e) => { if (e.key === 'Enter') void commitZone(); }} />
                     }
                 />

@@ -1,3 +1,4 @@
+import { silentMainAgentTurn } from '@/assistant/turnOrigin';
 import { createRuntimeControls, isRuntimeCheckpointReplay } from './runtimeControls';
 import { leadBoardFor } from '@/attention/leadBoard';
 import { finalizeRemotePrompt } from './finalizeRemotePrompt';
@@ -896,7 +897,7 @@ export async function claudeRemoteLauncher(
                         if (failure) {
                             session.client.setTurnFailure(failure);
                             const idle = !modeGate.hasParked && session.queue.size() === 0 && !session.client.promptQueueHasPending();
-                            if (idle) {
+                            if (idle && !silentMainAgentTurn(session.mainAgentGuard != null)) {
                                 session.api.push().sendTurnFailedNotification({
                                     sessionId: session.client.sessionId,
                                     metadata: session.client.getMetadata(),
@@ -919,7 +920,9 @@ export async function claudeRemoteLauncher(
                                 // reply_done if Claude produced output, else input_needed
                                 // when the session is idle awaiting the user (best-effort).
                                 session.onTurnEnd(idle);
-                                if (idle) {
+                                // B-924 (QA P2-5): a main agent turn the owner did not start (automation, script, Lead)
+                                // ends silently; what it has to say goes on the board (its notify report obeys quiet hours).
+                                if (idle && !silentMainAgentTurn(session.mainAgentGuard != null)) {
                                     session.api.push().sendSessionNotification({
                                         kind: 'done',
                                         metadata: session.client.getMetadata(),

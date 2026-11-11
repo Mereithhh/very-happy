@@ -319,4 +319,16 @@ describe('attention items store (pglite)', () => {
         expect(pushesFor(night.item.id)).toBe(0);
     });
 
+    it('B-924 (QA P1-1): a post never ticks a checklist — new cards start unticked, a repost keeps the owner\'s ticks', async () => {
+        const items = (ticks: boolean[]) => ({ v: 1 as const, type: 'select' as const, items: ticks.map((checked, i) => ({ id: `s${i + 1}`, label: `S${i + 1}`, ref: `sess-${i + 1}`, checked })) });
+        const opts = [{ id: 'wrapup', label: '收尾所选' }, { id: 'skip', label: '这次不用' }];
+        const first = await store.postItem(accountId, { sessionId, source: 'agent', kind: 'decision', title: 'Wrap up?', options: opts, payload: items([true, true]), key: 'main-agent-wrapup:t1' });
+        expect((first.item.payload as any).items.map((i: any) => i.checked)).toEqual([false, false]);
+        await store.ownerRespond(accountId, first.item.id, { action: 'check', checkId: 's1', checked: true });
+        // A repost (e.g. a machine token) tries to tick s2, untick s1 and add a pre-ticked s3: only the owner's tick survives.
+        const repost = await store.postItem(accountId, { sessionId, source: 'agent', kind: 'decision', title: 'Wrap up?', options: opts, payload: items([false, true, true]), key: 'main-agent-wrapup:t1' });
+        expect(repost.item.id).toBe(first.item.id);
+        expect((repost.item.payload as any).items.map((i: any) => [i.id, i.checked])).toEqual([['s1', true], ['s2', false], ['s3', false]]);
+    });
+
 });

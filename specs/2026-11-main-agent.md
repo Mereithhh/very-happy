@@ -71,7 +71,6 @@
     "allowedTools": ["mcp__chat__send_message"] // 「以后都允许」的工具全名，≤64 项
   },
   "quietHours": { "enabled": true, "start": "00:30", "end": "08:30", "tz": null }, // B-924；缺省 = 00:30–08:30 启用，tz null = 主 agent 机器本地时间
-  "quietHours": { "enabled": true, "start": "00:30", "end": "08:30", "tz": "UTC" }, // B-924，见 §10.4
   "updatedAt": 1794334927713
 }
 ```
@@ -385,8 +384,10 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 
 - `send` 动作二选一：`sessionId`，或 `target: 'main-agent'`（`AUTOMATION_SEND_TARGETS`）。存的是 `target`，每次 run 被 daemon 领取（claim）时 server 读 KV `vh.main-agent.v1` 解析成当时的 `sessionId`，下发给 daemon 的是普通 `send`（旧 daemon 照常执行）；主 agent 换会话 / 新对话后自动化不用改。
 - 指针指向别的机器：这次 run 和自动化的 `machineId` 一起改到那台机器（version +1），由那台 daemon 领取。没有主 agent（无指针、会话不属于本账号）：run 记 `failed`，`error = attention = main_agent_unavailable`，不下发。
+- **daemon 能力位（QA P1-4）**：daemon 领取时声明 `main-agent-automations`（并在 daemonState 写 `mainAgentAutomations`）。`target:'main-agent'` 的 run 和带 `very-happy main-agent` precheck 的 run 只派给声明了它的 daemon；更老的 daemon 领取时这些 run 直接记 `failed`、`daemon_too_old`（带 attention），不派发——否则旧 CLI 不认识 `main-agent` 子命令，会把它当 prompt 新开一个会话。Web 设置页在主 agent 机器没有该能力位时禁用三个开关、时区和「恢复默认自动化」，并提示升级 CLI。
 - 入口：CLI `very-happy auto create --send-main-agent --prompt …`；MCP `automation_create` 的 `action: {kind:'send', target:'main-agent', prompt}`；Web 自动化表单「发送到 → 主 agent」。
-- precheck 沿用 B-548：exit 0 才叫醒主 agent（stdout 追加进 prompt）；其它退出码记 `skipped`，0 token。`command[0] = 'very-happy'` 时 daemon 用自身 CLI 执行（不依赖 PATH）。
+- precheck 沿用 B-548：exit 0 才叫醒主 agent（stdout 追加进 prompt）；其它退出码记 `skipped`，0 token。`command[0] = 'very-happy'` 时 daemon 用自身 CLI 的绝对路径执行（`process.execPath` + 本 CLI 的入口），找不到就让 precheck 启动失败，绝不走 PATH。
+- 默认自动化的 precheck 带 `--record`，只有它会把「已报过」写进账本；手动跑 `very-happy main-agent precheck <kind>` 不写（QA P3-6）。
 
 ### 10.2 默认自动化
 
@@ -403,9 +404,14 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 ### 10.3 提醒收尾：多选决定卡
 
 - decision 卡可带 `payload: {v:1, type:'select', items:[{id, label, detail?, ref?, checked}]}`（≤20 项）。Owner 在卡片 open 时用 `owner-respond {action:'check'}` 勾选，然后选「收尾所选」或「这次不用」；卡片关闭后不能再勾。
-- `wrapup_selected(boardItemId)` 只在以下全部成立时执行：卡片是本会话发的、key 前缀 `main-agent-wrapup:`、带 select payload、`state=resolved` 且 `resolvedBy=owner`、`ownerChoice='wrapup'`；然后只对 `checked` 的项逐个调 B-919 的收尾后端（requestId = `<卡片>:<会话>`，重试不重复）。其它情况一律拒绝，不调用。
-- 硬闸：自动化发起的回合（该回合的 prompt localId 全是 `automation-…`）里 `session_wrapup / session_handoff` 回 `owner_request_required`。Web 选项消息带 `wrapup_selected boardItemId=…`，主 agent 下一回合按它执行。
-- 没有任何定时或自动路径会收尾会话（单测覆盖：8 条拒绝路径、只收尾勾选的 1 个、precheck / 扫描 / 默认自动化代码不引用收尾后端）。
+- `wrapup_selected(boardItemId)` 只在以下全部成立时执行：卡片是本会话发的、key 前缀 `main-agent-wrapup:`、带 select payload、`state=resolved` 且 `resolvedBy=owner`、`ownerChoice='wrapup'`；其它情况一律拒绝，不调用。
+- **卡面绑定（QA P1-1）**：`wrapup_suggest` 发卡后把卡面（`cardFaceHash`：key、标题、正文、选项 id 与标签及顺序）和清单（`checklistHash`：每项 id、标签、理由、会话、顺序，不含勾选）连同原始 `{id, ref}` 列表写进 `~/.happy/assistant/wrapup-cards/<卡片>.json`（0600）。`wrapup_selected` 先核对记录：没有记录 → `card_not_found`；任一 hash 不一致 → `card_tampered`，一个都不收尾。通过后只收尾勾选、且在原始列表里同 id 同会话的项，其它一律丢弃（requestId = `<卡片>:<会话>`，重试不重复）。
+- **勾选只属于 Owner**：server 对 select payload 的 post 一律不认 `checked`——新卡全部未勾，重发时每项沿用卡上已有的勾选（按 id，新项未勾）；只有 `owner-respond check` 能改勾选（需要已登录的人）。`main-agent-wrapup:` 进 `RESERVED_CARD_KEY_PREFIXES`，`owner_board_*` 不能发、改、关这类卡。
+- **回合来源白名单（QA P1-2，`assistant/turnOrigin.ts`）**：只有本回合每条 prompt 都是 Owner 在客户端亲手发出（`meta.sentFrom` ∈ web / mobile / ios / android，且不带自动化 localId 前缀）才算 Owner 回合；自动化、`very-happy send`、session_message、Lead / 团队消息、没有 prompt 的回合都不是。非 Owner 回合里 `session_wrapup / session_handoff / session_archive / session_kill / session_restart` 一律回 `owner_request_required`（startHappyServer 的 `withOwnerOnlyTools` + 工具内各一道）。
+- **非 Owner 回合里的发送（QA P1-3，`assistant/sendGuard.ts`）**：`session_send / session_message / lead_message` 一律走闸 2 出卡（不看 risk 和安全阀预设），除非目标在主 agent 自己的派活台账里（`installDispatchLedger`，B-925 接入；接入前台账为空）。Owner 回合里闸 2 行为不变。
+- 主 agent 的回合结束推送（「It's ready!」、回合失败）只在 Owner 回合发出（QA P2-5）；自动化回合要说的话走汇报板，早报的 `notify` 仍遵守免打扰。
+- 没有任何定时或自动路径会收尾会话。
+- **已知限制（B-927）**：`sentFrom` 由发送端填写，持有本账号机器 token 的进程仍能自称 `web`；保留前缀目前只在 CLI 侧拦（server 仍接受机器 token 对这类 key 发帖、改选项，由上面的卡面绑定兜底）。server 侧打来源标记、保留前缀只认命令侧发帖归 B-927。
 
 ### 10.4 推送与免打扰
 

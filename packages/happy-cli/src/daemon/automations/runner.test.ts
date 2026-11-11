@@ -97,7 +97,7 @@ describe('automation runner: spawn runs', () => {
     it('spawns with run env, sends the rendered prompt, reports running, then done after the anchored turn ends', async () => {
         const client = fakeClient([claimed()]);
         const runner = start(client); await settled(runner);
-        expect(client.claim).toHaveBeenCalledWith({ machineId: 'm1', limit: AUTOMATION_MAX_CONCURRENT, leaseMs: 60_000, capabilities: ['precheck'] });
+        expect(client.claim).toHaveBeenCalledWith({ machineId: 'm1', limit: AUTOMATION_MAX_CONCURRENT, leaseMs: 60_000, capabilities: ['precheck', 'main-agent-automations'] });
         expect(spawn).toHaveBeenCalledWith({ directory: '/repo', agent: 'claude', permissionMode: 'bypassPermissions', spawnedBy: 'automation', environmentVariables: { VH_AUTOMATION_RUN_ID: 'r1', VH_AUTOMATION_NAME: 'nightly' } });
         expect(send).toHaveBeenCalledWith('s1', `${automationPromptHeader('nightly', 'r1')}\nSummarize tanka for nightly`, expect.objectContaining({ localId: 'automation-r1', permissionMode: 'bypassPermissions', model: 'claude-opus-5-5[1m]', effort: null }));
         expect(client.report).toHaveBeenCalledWith('r1', { claimId: 'claim-1', status: 'running', sessionId: 's1' });
@@ -249,7 +249,7 @@ describe('automation runner: spawn runs', () => {
         release(); await settled(runner);
         expect(client.report).toHaveBeenCalledWith('slow', expect.objectContaining({ status: 'running' }));
         await runner.tick();
-        expect(client.claim).toHaveBeenLastCalledWith({ machineId: 'm1', limit: AUTOMATION_MAX_CONCURRENT - 2, leaseMs: 60_000, capabilities: ['precheck'] });
+        expect(client.claim).toHaveBeenLastCalledWith({ machineId: 'm1', limit: AUTOMATION_MAX_CONCURRENT - 2, leaseMs: 60_000, capabilities: ['precheck', 'main-agent-automations'] });
     });
 });
 

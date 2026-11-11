@@ -29,6 +29,20 @@ export const AUTOMATION_PRECHECK_OUTPUT_MAX_CHARS = 4000;
 /** Announced in `AutomationClaim.capabilities` by daemons that execute prechecks; the server never hands a precheck run to a daemon without it. */
 export const AUTOMATION_DAEMON_CAPABILITY_PRECHECK = 'precheck';
 /**
+ * B-924: announced by daemons that run the main agent's automations — they
+ * resolve `very-happy main-agent precheck` with their own CLI. The server hands
+ * a `target: 'main-agent'` run, or one gated by that precheck, only to a daemon
+ * that announces it; any other daemon gets it as failed `daemon_too_old`.
+ */
+export const AUTOMATION_DAEMON_CAPABILITY_MAIN_AGENT = 'main-agent-automations';
+export const AUTOMATION_DAEMON_TOO_OLD = 'daemon_too_old';
+/** True for an automation only a `main-agent-automations` daemon may run. */
+export function automationNeedsMainAgentDaemon(action: { kind: string; target?: unknown }, precheck: { command?: readonly string[] } | null | undefined): boolean {
+    if (action.kind === 'send' && action.target === 'main-agent') return true;
+    const argv = precheck?.command ?? [];
+    return argv[0] === 'very-happy' && argv[1] === 'main-agent';
+}
+/**
  * Reason codes a `skipped` run carries in `error` (B-548). Consecutive skips of
  * one automation's scheduled runs with the same reason fold into the newest run
  * (`occurrenceCount`). Clients show unknown codes verbatim.
