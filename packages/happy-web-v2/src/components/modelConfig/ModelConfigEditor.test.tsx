@@ -68,7 +68,14 @@ describe('ModelConfigEditor pickers (B-714)', () => {
         expect(onOpenChange).not.toHaveBeenCalled();
         expect(document.querySelector('.mce-dialog')).not.toBeNull();
         expect(picker('Machine').textContent).toContain('Bravo');
-        // control: a press really outside still dismisses the dialog
+        // B-928: picking a machine is an edit — a press outside now keeps the dialog (and the choice)
+        act(() => { document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })); });
+        expect(onOpenChange).not.toHaveBeenCalled();
+        expect(document.querySelector('.mce-dialog')).not.toBeNull();
+    });
+
+    it('control: an untouched dialog still closes on a press really outside', async () => {
+        await armOutsideListeners();
         act(() => { document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })); });
         expect(onOpenChange).toHaveBeenCalledWith(false);
     });
