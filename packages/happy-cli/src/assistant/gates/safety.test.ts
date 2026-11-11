@@ -142,7 +142,7 @@ function toolBoard() {
     const board: DispatchBoard = {
         postDecision: vi.fn(async (card) => {
             const id = `item-${++n}`
-            const item: BoardItemView = { id, key: card.key, state: 'open', ownerChoice: null, resolvedBy: null, title: card.title, bodyMd: card.bodyMd, options: (card.options ?? []).map(o => ({ id: o.id, label: o.label })) }
+            const item: BoardItemView = { id, key: card.key, state: 'open', ownerChoice: null, resolvedBy: null, title: card.title, bodyMd: card.bodyMd, options: (card.options ?? []).map((o: { id: string; label: string }) => ({ id: o.id, label: o.label })) }
             items.set(id, item); return { ...item }
         }),
         findByKey: vi.fn(async (key) => [...items.values()].find(i => i.key === key) ?? null),

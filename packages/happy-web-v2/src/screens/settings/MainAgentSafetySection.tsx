@@ -41,8 +41,9 @@ export function MainAgentSafetySection({ machine }: { machine: Machine | null })
     const [error, setError] = useState<string | null>(null);
     useEffect(() => { setDraft(stored.draft); setError(null); }, [stored]);
 
-    const supported = machine ? mainAgentSafetySupported(machine) : false;
-    if (!machine || !supported) {
+    // No main agent machine yet: nothing to configure against (the machine group above handles enabling).
+    if (!machine) return null;
+    if (!mainAgentSafetySupported(machine)) {
         return (
             <ItemGroup settingId="mainAgent.safety" title={copy.title}>
                 <Item title={copy.presets.strict} subtitle={copy.upgrade} />
