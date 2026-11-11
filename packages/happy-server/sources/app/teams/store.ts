@@ -11,6 +11,9 @@ import { advanceSchedules } from './schedules';
 import { escalateIdleMembers } from './teamIdle';
 import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable } from './compaction';
 import { requireCapacity } from './errors';
+import { machineJoinRefusal, ownerGuardMode } from '@/app/auth/ownerGuard';
+import { OWNER_LOGIN_REQUIRED } from '@/app/auth/tokenKind';
+import { log, warn } from '@/utils/log';
 import { adoptLeadAccount, otherTeamBinding, reduceTeam, requireTeam, sessionInOtherTeamMessage, teamView, transferSessionOut, TeamError, type TeamActor } from './reducer';
 
 type Principal = { accountId: string; actor: TeamActor; credentialId?: string };
@@ -191,7 +194,7 @@ export async function readTeam(teamId: string, auth: { accountId: string } | { t
         return teamView(state, p.actor);
     });
 }
-export async function actOnTeam(teamId: string, auth: { accountId: string } | { token: string }, request: TeamActionRequest, opts: { quiet?: boolean } = {}): Promise<TeamResponse> {
+export async function actOnTeam(teamId: string, auth: { accountId: string; machine?: boolean } | { token: string }, request: TeamActionRequest, opts: { quiet?: boolean } = {}): Promise<TeamResponse> {
     return inTx(async tx => {
         const p = await principal(tx, teamId, auth);
         const row = await load(tx, teamId, p.accountId);
@@ -216,6 +219,15 @@ export async function actOnTeam(teamId: string, auth: { accountId: string } | { 
         if (action.type === 'join' || (action.type === 'complete-operation' && action.sessionId)) {
             const sessionId = action.sessionId!;
             requireTeam(await tx.session.findFirst({ where: { id: sessionId, accountId: p.accountId }, select: { id: true } }), 'session_not_found', 404);
+        }
+        // B-927a: an account machine token may re-attach a seat from the seat's own session, never take it over.
+        const refusal = 'accountId' in auth && auth.machine ? machineJoinRefusal(action, row.state.bots) : null;
+        if (refusal) {
+            const mode = ownerGuardMode();
+            if (mode !== 'off') {
+                (mode === 'enforce' ? warn : log)({ module: 'owner-guard', mode, kind: 'machine', operation: `teams.actions.join.${refusal}`, accountId: p.accountId }, `owner guard ${mode === 'enforce' ? 'refused' : 'observed'} a machine join (${refusal})`);
+                requireTeam(mode !== 'enforce', OWNER_LOGIN_REQUIRED, 403);
+            }
         }
         if (action.type === 'join' && action.botId) {
             const old = row.state.bots.find(b => b.id === action.botId);

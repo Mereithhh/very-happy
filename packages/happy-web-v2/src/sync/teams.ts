@@ -2,6 +2,7 @@ import type { AgentProfileRef } from "@slopus/happy-wire";
 import type { ProjectView, TeamAction, TeamProjectBind, TeamProjectChoice, TeamResponse, TeamState } from "@slopus/happy-wire";
 import { getCurrentAuth } from "@/auth/AuthContext";
 import { getServerUrl } from "./serverConfig";
+import { notifyOwnerLoginRequired } from "@/auth/ownerLoginRequired";
 
 export class TeamsApiError extends Error {
   constructor(
@@ -23,11 +24,13 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const data = await response.json().catch(() => null);
-  if (!response.ok)
+  if (!response.ok) {
+    notifyOwnerLoginRequired(response.status, data?.error);
     throw new TeamsApiError(
       response.status,
       data?.error ?? `http_${response.status}`,
     );
+  }
   if (!data || typeof data !== "object")
     throw new TeamsApiError(502, "invalid_response");
   return data as T;

@@ -26,6 +26,7 @@ import {
     terminalGrantEvents,
     updateTerminalGrant,
 } from '@/app/share/terminalShares';
+import { humanOnly } from '@/app/auth/ownerGuard';
 
 const id = z.string().min(1).max(128);
 const grantParams = z.object({ grantId: id });
@@ -46,7 +47,7 @@ export function terminalShareRoutes(app: Fastify) {
     const auth = { preHandler: app.authenticate };
 
     app.post('/v1/terminal-shares', {
-        ...auth,
+        preHandler: [app.authenticate, humanOnly('share.terminal.create')],
         schema: { body: z.object({
             machineId: id,
             terminalId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
@@ -64,7 +65,7 @@ export function terminalShareRoutes(app: Fastify) {
     // B-900: one person × the terminals the owner confirmed (the project's terminals right now).
     const batchRefs = z.array(z.object({ machineId: id, terminalId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), title: z.string().max(200).optional() }).strict()).min(1).max(MAX_TERMINAL_BATCH);
     app.post('/v1/terminal-shares/batch-operate', {
-        ...auth,
+        preHandler: [app.authenticate, humanOnly('share.terminal.batch-operate')],
         schema: { body: z.object({ accountId: z.string().min(1).max(256), terminals: batchRefs, expiresInDays: expirySchema, confirmOperator: z.literal(true).optional() }).strict() },
     }, async (request, reply) => handle(reply, async () => ({
         results: await grantTerminalsOperator({ ownerId: request.userId, granteeAccountId: request.body.accountId, terminals: request.body.terminals, expiresInDays: request.body.expiresInDays, confirmOperator: request.body.confirmOperator }),
@@ -89,7 +90,7 @@ export function terminalShareRoutes(app: Fastify) {
         handle(reply, async () => ({ shares: await listIncomingTerminalShares(request.userId) })));
 
     app.patch('/v1/terminal-shares/:grantId', {
-        ...auth,
+        preHandler: [app.authenticate, humanOnly('share.terminal.update')],
         schema: { params: grantParams, body: z.object({ role: roleSchema.optional(), expiresInDays: expirySchema.optional(), confirmOperator: z.literal(true).optional() }).strict()
             .refine((b) => b.role !== undefined || b.expiresInDays !== undefined, { message: 'role or expiresInDays' }) },
     }, async (request, reply) => handle(reply, async () => ({
@@ -100,7 +101,7 @@ export function terminalShareRoutes(app: Fastify) {
         handle(reply, async () => { await revokeTerminalGrant(request.userId, request.params.grantId); return { ok: true }; }));
 
     app.post('/v1/terminal-shares/:grantId/respond', {
-        ...auth,
+        preHandler: [app.authenticate, humanOnly('share.terminal.respond')],
         schema: { params: grantParams, body: z.object({ accept: z.boolean() }) },
     }, async (request, reply) => handle(reply, async () => { await respondToTerminalGrant(request.userId, request.params.grantId, request.body.accept); return { ok: true }; }));
 

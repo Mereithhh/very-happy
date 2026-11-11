@@ -81,7 +81,13 @@ export function teamRefusalMessage(status: number, body: unknown, actionType?: u
     }
     // B-877b: a team archived under a live session (members, or a lead that has not restarted yet).
     if (code === 'team_archived') return TEAM_ARCHIVED_MESSAGE;
+    // B-927a: the server refuses a token that is not a signed-in person for owner-only steps.
+    if (code === 'owner_login_required') return teamOwnerLoginRequiredMessage(actionType, configuration.webappUrl);
     return `Teams request failed (HTTP ${status}: ${code})`;
+}
+export function teamOwnerLoginRequiredMessage(actionType: unknown, webappUrl: string): string {
+    const step = typeof actionType === 'string' && /^[a-z-]{1,40}$/.test(actionType) ? ` (${actionType})` : '';
+    return `Teams request refused (owner_login_required): this step${step} needs the owner personally, signed in on the web app (${webappUrl}); an agent or the terminal cannot do it for them. Ask the owner to do it there. Do not retry. 这一步需要 Owner 本人在已登录的网页（${webappUrl}）上完成，agent 和终端不能代办。请告知 Owner，不要重试。`;
 }
 export function teamMessageViaLeadMessage(code: 'recipient_outside_task' | 'task_not_found', ownerBotId: string): string {
     const lead = /^[A-Za-z0-9_-]{1,128}$/.test(ownerBotId) ? `recipientBotId "${ownerBotId}"` : 'recipientBotId = the task\'s ownerBotId from team_inspect';

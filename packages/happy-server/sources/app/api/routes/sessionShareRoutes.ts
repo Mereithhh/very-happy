@@ -23,6 +23,7 @@ import {
 } from '@/app/session/sessionShares';
 import { listOperatorActivity, listOperatorEvents } from '@/app/session/operatorBroker';
 import { requireSessionAccess } from '@/app/session/sessionShares';
+import { humanOnly } from '@/app/auth/ownerGuard';
 
 const sessionParams = z.object({ sessionId: z.string().min(1).max(128) });
 const granteeParams = sessionParams.extend({ accountId: z.string().min(1).max(128) });
@@ -46,7 +47,7 @@ export function sessionShareRoutes(app: Fastify) {
         handle(reply, async () => ({ grants: await listSessionGrants(request.userId, request.params.sessionId) })));
 
     app.post('/v1/sessions/:sessionId/shares', {
-        ...auth,
+        preHandler: [app.authenticate, humanOnly('share.session.create')],
         // Either a typed target (email / handle / login username) or a directory
         // account id (friend picker). Exactly one of the two.
         schema: { params: sessionParams, body: z.object({
@@ -63,7 +64,7 @@ export function sessionShareRoutes(app: Fastify) {
     })));
 
     app.patch('/v1/sessions/:sessionId/shares/:accountId', {
-        ...auth,
+        preHandler: [app.authenticate, humanOnly('share.session.update')],
         schema: { params: granteeParams, body: z.object({ role: roleSchema.optional(), expiresInDays: expirySchema.optional(), operate: z.boolean().optional(), confirmOperator: z.literal(true).optional(), endOperation: z.literal(true).optional() }).refine((b) => b.role !== undefined || b.expiresInDays !== undefined || b.operate !== undefined, { message: 'role, expiresInDays or operate' }) },
     }, async (request, reply) => handle(reply, async () => ({
         grant: await updateSessionGrantRole(request.userId, request.params.sessionId, request.params.accountId, request.body.role, request.body.expiresInDays, { operate: request.body.operate, confirmOperator: request.body.confirmOperator, endOperation: request.body.endOperation }),
@@ -89,10 +90,10 @@ export function sessionShareRoutes(app: Fastify) {
     app.get('/v1/shares/pending', auth, async (request, reply) =>
         handle(reply, async () => ({ invites: await listPendingSessionInvites(request.userId) })));
 
-    app.post('/v1/shares/:grantId/accept', { ...auth, schema: { params: grantParams } }, async (request, reply) =>
+    app.post('/v1/shares/:grantId/accept', { preHandler: [app.authenticate, humanOnly('share.session.accept')], schema: { params: grantParams } }, async (request, reply) =>
         handle(reply, async () => ({ invite: await respondToSessionGrant(request.userId, request.params.grantId, true) })));
 
-    app.post('/v1/shares/:grantId/decline', { ...auth, schema: { params: grantParams } }, async (request, reply) =>
+    app.post('/v1/shares/:grantId/decline', { preHandler: [app.authenticate, humanOnly('share.session.decline')], schema: { params: grantParams } }, async (request, reply) =>
         handle(reply, async () => { await respondToSessionGrant(request.userId, request.params.grantId, false); return { ok: true }; }));
 
     app.post('/v1/sessions/:sessionId/shared-messages', {

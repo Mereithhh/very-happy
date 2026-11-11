@@ -5,6 +5,7 @@ import {
 } from '@slopus/happy-wire';
 import type { Fastify } from '../types';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
+import { guardProjectChange, guardProjectCreate, observeProjectMembers, humanOnly } from '@/app/auth/ownerGuard';
 import { countProjectOp, recordProjectUxEvent, type ProjectOp } from '@/app/monitoring/projectMetrics';
 import { ProjectError } from '@/app/projects/rules';
 import {
@@ -47,7 +48,10 @@ export function projectRoutes(app: Fastify) {
     app.get('/v1/projects', { ...auth, schema: { querystring: z.object({ includeArchived: z.enum(['0', '1', 'true', 'false']).optional() }) } },
         async (request, reply) => handle(reply, () => listProjects(request.userId, { includeArchived: truthy(request.query.includeArchived) })));
     app.post('/v1/projects', { ...auth, schema: { body: ProjectCreateSchema } },
-        async (request, reply) => handle(reply, async () => ({ project: await createProject(request.userId, request.body) }), 'create'));
+        async (request, reply) => {
+            if (!guardProjectCreate(request, reply, request.body)) return reply;
+            return handle(reply, async () => ({ project: await createProject(request.userId, request.body) }), 'create');
+        });
 
     // Daemon / wrapper paths.
     app.put('/v1/projects/presence', { ...auth, schema: { body: ProjectPresencePutSchema } },
@@ -74,15 +78,22 @@ export function projectRoutes(app: Fastify) {
     app.get('/v1/projects/:id', { ...auth, schema: { params } },
         async (request, reply) => handle(reply, () => getProject(request.userId, request.params.id)));
     app.patch('/v1/projects/:id', { ...auth, schema: { params, body: ProjectUpdateSchema } },
-        async (request, reply) => handle(reply, async () => ({ project: await updateProject(request.userId, request.params.id, request.body) })));
+        async (request, reply) => {
+            // B-927a: loosening permissions / folders is the owner's (observe-only until OWNER_GUARD_PROJECT_PERMS=enforce).
+            if (!guardProjectChange(request, reply, 'projects.update', request.body)) return reply;
+            return handle(reply, async () => ({ project: await updateProject(request.userId, request.params.id, request.body) }));
+        });
     app.delete('/v1/projects/:id', { ...auth, schema: { params } },
         async (request, reply) => handle(reply, async () => { await deleteProject(request.userId, request.params.id); return { ok: true }; }));
-    app.put('/v1/projects/:id/instructions', { ...auth, schema: { params, body: ProjectInstructionsPutSchema } },
+    app.put('/v1/projects/:id/instructions', { preHandler: [app.authenticate, humanOnly('projects.instructions')], schema: { params, body: ProjectInstructionsPutSchema } },
         async (request, reply) => handle(reply, async () => ({ project: await putInstructions(request.userId, request.params.id, request.body) }), 'instructions_put'));
     app.get('/v1/projects/:id/instructions/history', { ...auth, schema: { params } },
         async (request, reply) => handle(reply, async () => ({ revisions: await listInstructionRevisions(request.userId, request.params.id) })));
     app.post('/v1/projects/:id/members', { ...auth, schema: { params, body: ProjectMembersAddSchema } },
-        async (request, reply) => handle(reply, async () => ({ members: await addMembers(request.userId, request.params.id, request.body) }), 'member_add', request.body.via === 'lineage' || request.body.via === 'automation' ? 'daemon' : 'user'));
+        async (request, reply) => {
+            observeProjectMembers(request, reply); // B-927a: observe only, see ownerGuard.ts
+            return handle(reply, async () => ({ members: await addMembers(request.userId, request.params.id, request.body) }), 'member_add', request.body.via === 'lineage' || request.body.via === 'automation' ? 'daemon' : 'user');
+        });
     app.delete('/v1/projects/:id/members/:sessionId', { ...auth, schema: { params: params.merge(sessionParams) } },
         async (request, reply) => handle(reply, () => removeMember(request.userId, request.params.id, request.params.sessionId), 'member_remove'));
     app.post('/v1/projects/:id/attach-team', { ...auth, schema: { params, body: ProjectAttachTeamSchema } },

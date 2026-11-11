@@ -343,7 +343,7 @@ describe('projects store (pglite)', () => {
             const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');
             const { teamRoutes } = await import('@/app/api/routes/teamRoutes');
             const app = fastify(); app.setValidatorCompiler(validatorCompiler); app.setSerializerCompiler(serializerCompiler);
-            app.decorate('authenticate', async (request: any) => { request.userId = accountId; }); teamRoutes(app as any);
+            app.decorate('authenticate', async (request: any) => { request.userId = accountId; request.authLoginSessionId = 'ls-test'; /* B-927a: a Web login */ }); teamRoutes(app as any);
             try {
                 const p = await newProject('acct-route', { defaults: { agentProfiles: [{ agent: 'claude', machineId, id: 'org-a', label: 'Org A' }] } });
                 const created = await app.inject({ method: 'POST', url: '/v1/teams', payload: { name: 'Route team', machineId, requestId: 'tp-acct-route', launch: launch('/repo'), project: { projectId: p.id } } });
@@ -361,7 +361,7 @@ describe('projects store (pglite)', () => {
             const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');
             const { teamRoutes } = await import('@/app/api/routes/teamRoutes');
             const app = fastify(); app.setValidatorCompiler(validatorCompiler); app.setSerializerCompiler(serializerCompiler);
-            app.decorate('authenticate', async (request: any) => { request.userId = accountId; }); teamRoutes(app as any);
+            app.decorate('authenticate', async (request: any) => { request.userId = accountId; request.authLoginSessionId = 'ls-test'; /* B-927a: a Web login */ }); teamRoutes(app as any);
             try {
                 const p = await newProject('acct-codex-member', { defaults: { agentProfiles: [
                     { agent: 'claude', machineId, id: 'corp', label: 'Corp' },

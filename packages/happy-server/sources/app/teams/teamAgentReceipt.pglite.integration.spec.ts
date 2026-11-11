@@ -67,7 +67,7 @@ describe('B-911 scoped team writes answer a receipt (startApi, pglite)', () => {
         await startApi({ port, host: '127.0.0.1' });
         base = `http://127.0.0.1:${port}`;
         accountId = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
-        token = await auth.createToken(accountId);
+        token = (await auth.createLoginToken(accountId)).token; // B-927a: owner writes need a Web login
         machineId = crypto.randomUUID();
         await db.machine.create({ data: { id: machineId, accountId, metadata: 'm' } });
     }, 60000);
