@@ -727,7 +727,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // machine management tool surface — see assistant/assistantTools.ts)
     // B-916c: the main agent (assistant variant outside any team) gets gate 1
     // (outbound denylist), gate 2 (risk → decision card) and its skill segment.
-    const mainAgent = isAssistantVariant && !process.env.VH_TEAM_SCOPE_FILE ? await prepareMainAgentForSession(api, session) : undefined;
+    const mainAgent = isAssistantVariant && !process.env.VH_TEAM_SCOPE_FILE ? await prepareMainAgentForSession(api, session, credentials) : undefined;
     const happyServer = await startHappyServer(session, { assistant: isAssistantVariant, mainAgent, selfReportState: boardSelfReport, push: { sendAttention: (input) => api.push().sendAttention(input) } });
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
 
@@ -1536,29 +1536,34 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
  * failure anywhere else leaves gate 2 failing closed (no board → non-none
  * dispatches are refused).
  */
-async function prepareMainAgentForSession(api: ApiClient, session: ApiSessionClient) {
-    const [{ prepareMainAgent, attentionDispatchBoard, MAIN_AGENT_GATES_CAPABILITY }, { setAssistantExtraDenied }, { sharedAttentionClient }, { runClaudeOneShot, resolveClaudeBinary }, { sessionWebUrl }] = await Promise.all([
+async function prepareMainAgentForSession(api: ApiClient, session: ApiSessionClient, credentials: Credentials) {
+    const [{ prepareMainAgent, attentionDispatchBoard, MAIN_AGENT_GATES_CAPABILITY, MAIN_AGENT_SAFETY_CAPABILITY }, { setAssistantExtraDenied, setAssistantBuiltinsAllowed, assistantBuiltinsAllowedBy }, { sharedAttentionClient }, { runClaudeOneShot, resolveClaudeBinary }, { sessionWebUrl }, { httpKvIo }] = await Promise.all([
         import('@/assistant/gates/setup'),
         import('@/assistant/dispatcherTools'),
         import('@/attention/client'),
         import('@/claude/utils/titleGenerator'),
         import('@/commands/sessionMessage'),
+        import('@/assistant/mainAgentPointer'),
     ]);
     const log = (line: string) => logger.debug(line);
     const binary = resolveClaudeBinary();
+    // B-922: a KV that throws (not 404) reads as the strict preset, so read through the throwing client.
+    const kv = httpKvIo(configuration.serverUrl, () => credentials.token);
     const runtime = await prepareMainAgent({
-        kvGet: (key) => api.kvGet(key),
+        kvGet: (key) => kv.get(key),
+        kv,
         board: attentionDispatchBoard(sharedAttentionClient(), () => session.sessionId),
         classify: process.env.HAPPY_MAIN_AGENT_CLASSIFIER === 'off' ? null : (prompt) => runClaudeOneShot(binary, prompt),
         approvalLink: (boardItemId) => `${sessionWebUrl(session.sessionId)}?panel=board （决策 ${boardItemId}）`,
         log,
     });
     setAssistantExtraDenied(runtime.denylist.sdkDisallowed);
+    setAssistantBuiltinsAllowed(assistantBuiltinsAllowedBy(runtime.safety.policy));
     try {
-        session.updateMetadata((metadata) => ({ ...metadata, capabilities: [...new Set([...(metadata.capabilities ?? []), MAIN_AGENT_GATES_CAPABILITY])] }));
+        session.updateMetadata((metadata) => ({ ...metadata, capabilities: [...new Set([...(metadata.capabilities ?? []), MAIN_AGENT_GATES_CAPABILITY, MAIN_AGENT_SAFETY_CAPABILITY])] }));
     } catch (error) {
         logger.debug('[START] main agent capability publish failed:', error);
     }
-    logger.debug(`[START] Main agent gates on: ${runtime.denylist.patterns.length} deny patterns, ${runtime.extraDirectories.length} skill root(s)`);
+    logger.debug(`[START] Main agent gates on: ${runtime.denylist.patterns.length} deny patterns, ${runtime.extraDirectories.length} skill root(s), safety ${runtime.safety.safety.preset}${runtime.safety.failedClosed ? " (fail-closed)" : ""}`);
     return runtime;
 }

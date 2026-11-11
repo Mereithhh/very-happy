@@ -49,7 +49,7 @@ describe('B-916c main agent gate wiring', () => {
 
     it('runClaude builds the runtime only for the main agent and installs the guard', () => {
         const run = src('claude/runClaude.ts')
-        expect(run).toContain("const mainAgent = isAssistantVariant && !process.env.VH_TEAM_SCOPE_FILE ? await prepareMainAgentForSession(api, session) : undefined;")
+        expect(run).toContain("const mainAgent = isAssistantVariant && !process.env.VH_TEAM_SCOPE_FILE ? await prepareMainAgentForSession(api, session, credentials) : undefined;")
         expect(run).toContain('startHappyServer(session, { assistant: isAssistantVariant, mainAgent,')
         expect(run).toContain('if (mainAgent) sessionInstance.mainAgentGuard = { preToolUse: mainAgent.preToolUse, extraDirectories: mainAgent.extraDirectories };')
         expect(run).toContain('setAssistantExtraDenied(runtime.denylist.sdkDisallowed);')

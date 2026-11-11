@@ -175,6 +175,15 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     itemKeys: ['changelog.releases.nov11w.keep', 'changelog.releases.nov11w.custom'],
   },
   {
+    id: '2026-11-11-main-agent-safety-settings',
+    cliVersion: '0.2.214',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11o.title',
+    summaryKey: 'changelog.releases.nov11o.summary',
+    itemKeys: ['changelog.releases.nov11o.presets', 'changelog.releases.nov11o.ask', 'changelog.releases.nov11o.owner'],
+  },
+  {
     id: '2026-11-11-very-happy-settings-command',
     cliVersion: '0.2.213',
     date: '2026-11-11',

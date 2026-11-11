@@ -3401,6 +3401,13 @@ export const en = {
                 keep: 'The default prompt asks the session to save the documents worth keeping, prefer scripts or commands over long notes, put only a few verified rules into the project instructions, record who, where and when for conclusions about people and events, and commit and push when nothing is uncertain (anything uncertain is listed instead of committed).',
                 custom: 'If you already wrote your own template in Settings, nothing changes for you. The settings page shows the new default as its placeholder.',
             },
+            nov11o: {
+                title: 'Main agent safety settings: Strict, Standard or Loose',
+                summary: 'Choose how much the main agent may do on its own; Standard asks you before it sends or writes anything.',
+                presets: 'Settings → Main agent → Safety: pick Strict (the old behaviour), Standard (new default) or Loose, and override single items under Advanced — production / outbound / other write tools, external and production dispatches, Bash and file edits. Needs the newest CLI on the main agent\'s machine; older ones keep running as Strict.',
+                ask: 'Under Standard, a send / publish / write tool posts a card with the tool and its arguments. "Approve once" runs exactly that call; "Always allow this tool" adds it to the allowed list; "Decline" refuses.',
+                owner: 'Only you, in a signed-in browser, can loosen these settings; the main agent and machine tokens can only make them stricter.',
+            },
             nov11m: {
                 title: 'Agents can change settings, with your decision for risky ones',
                 summary: '`very-happy settings` lets an agent read and change account, machine and project settings; anything that loosens safety waits for you.',

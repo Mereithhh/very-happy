@@ -8,11 +8,12 @@ import { join } from 'node:path';
 import { createDispatchGate } from '@/assistant/gates/dispatchGate';
 import { compileOutboundDenylist, outboundPreToolUseHook } from '@/assistant/gates/outboundDenylist';
 import type { MainAgentRuntime } from '@/assistant/gates/setup';
+import { PRESET_POLICIES } from '@slopus/happy-wire';
 
 /** B-916c: the main agent surface exists only with the gate runtime (Claude path). */
 function testMainAgent(): MainAgentRuntime {
     const denylist = compileOutboundDenylist();
-    return { config: { skillRoots: [], deniedTools: [], dropped: 0 }, denylist, preToolUse: outboundPreToolUseHook(denylist), extraDirectories: [],
+    return { config: { skillRoots: [], deniedTools: [], dropped: 0 }, safety: { safety: { v: 1, preset: 'strict', overrides: {}, allowedTools: [] }, policy: { ...PRESET_POLICIES.strict }, allowedTools: [], failedClosed: false }, denylist, preToolUse: outboundPreToolUseHook(denylist), extraDirectories: [],
         gate: createDispatchGate({ pendingDir: join(mkdtempSync(join(tmpdir(), 'vh-surface-')), 'pending'), board: null, classify: null, approvalLink: (id) => id }) };
 }
 

@@ -7,6 +7,8 @@ import { kvKeySchema, kvMutate, kvMutationsBodySchema, KV_KEY_MAX_BYTES } from "
 import { log } from "@/utils/log";
 import { isAccountResourceLimitError } from '../resourceLimits';
 import { utf8StringSchema } from '../resourceSchemas';
+import { requestTokenKind } from '@/app/auth/tokenKind';
+import { MAIN_AGENT_CONFIG_OWNER_ONLY, refusedMachineConfigWrite } from '@/app/kv/mainAgentConfigGuard';
 
 export function kvRoutes(app: Fastify) {
     // GET /v1/kv/:key - Get single value
@@ -137,6 +139,8 @@ export function kvRoutes(app: Fastify) {
                         value: z.string().nullable()
                     }))
                 }),
+                // 422, not 403: clients treat 401/403 from /v1/kv as a dead login and sign out.
+                422: z.object({ error: z.literal(MAIN_AGENT_CONFIG_OWNER_ONLY), key: z.string() }),
                 413: z.object({ error: z.literal('kv_bytes_quota_exceeded') }),
                 429: z.object({ error: z.enum(['kv_count_quota_exceeded', 'kv_rate_quota_exceeded']) }),
                 500: z.object({
@@ -149,6 +153,11 @@ export function kvRoutes(app: Fastify) {
         const { mutations } = request.body;
 
         try {
+            // B-922: a machine token may not loosen the main agent safety setting (owner, in a browser, only).
+            if (requestTokenKind(request) === 'machine') {
+                const refused = await refusedMachineConfigWrite(userId, mutations);
+                if (refused) return reply.code(422).send({ error: MAIN_AGENT_CONFIG_OWNER_ONLY, key: refused });
+            }
             const result = await kvMutate({ uid: userId }, mutations);
 
             if (!result.success) {

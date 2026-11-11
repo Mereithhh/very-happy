@@ -8,7 +8,8 @@
  *  3. build the dispatch gate (gate 2) on the briefing board.
  *
  * Every step degrades on failure except the denylist, which always holds the
- * defaults: a broken KV or file never lifts gate 1.
+ * defaults: a broken KV or file never lifts gate 1 (B-922: an unreadable
+ * safety setting reads as the strict preset).
  */
 
 import { existsSync } from 'node:fs'
@@ -17,16 +18,25 @@ import { dirname, join } from 'node:path'
 import type { AttentionClient } from '@/attention/client'
 import { assistantHome } from '../bootstrap'
 import { installMainAgentSkill, renderManagedSegment, writeManagedSegment } from '../mainAgentSkill'
-import { expandHome, loadMainAgentConfig, type MainAgentConfig } from './config'
+import { MAIN_AGENT_SAFETY_CAPABILITY, PRESET_POLICIES } from '@slopus/happy-wire'
+import type { KvIo } from '../mainAgentPointer'
+import { expandHome, loadMainAgentConfig, persistAllowedTool, type MainAgentConfig, type MainAgentSafetyRuntime } from './config'
 import { compileOutboundDenylist, outboundPreToolUseHook, type CompiledDenylist } from './outboundDenylist'
+import { createToolApproval } from './toolApproval'
 import { createDispatchGate, DISPATCH_OPTIONS, type DispatchBoard, type DispatchGate } from './dispatchGate'
 import type { OneShotRunner } from './risk'
 import { boardItemView as view } from '@/attention/ownerApproval'
 
 export const MAIN_AGENT_GATES_CAPABILITY = 'main-agent-gates-v1'
+/** B-922: the wrapper enforces the configurable safety setting (presets, ask cards, gate 2 policy). */
+export { MAIN_AGENT_SAFETY_CAPABILITY }
+
+const STRICT_RUNTIME = (): MainAgentSafetyRuntime => ({ safety: { v: 1, preset: 'strict', overrides: {}, allowedTools: [] }, policy: { ...PRESET_POLICIES.strict }, allowedTools: [], failedClosed: true })
 
 export type MainAgentRuntime = {
     config: MainAgentConfig
+    /** B-922: the safety setting in force (strict when it could not be read). */
+    safety: MainAgentSafetyRuntime
     denylist: CompiledDenylist
     /** SDK `hooks.PreToolUse` callback. */
     preToolUse: ReturnType<typeof outboundPreToolUseHook>
@@ -42,7 +52,7 @@ export function attentionDispatchBoard(client: AttentionClient, sessionId: () =>
             const { item } = await client.post({
                 sessionId: sessionId(), source: 'agent', kind: 'decision',
                 title: card.title, bodyMd: card.bodyMd, key: card.key, requestId: card.requestId,
-                options: DISPATCH_OPTIONS.map(o => ({ ...o })),
+                options: (card.options ?? DISPATCH_OPTIONS).map(o => ({ ...o })),
             })
             return view(item)
         },
@@ -59,6 +69,8 @@ export function attentionDispatchBoard(client: AttentionClient, sessionId: () =>
 
 export async function prepareMainAgent(deps: {
     kvGet: (key: string) => Promise<{ value: string } | null>
+    /** B-922: KV writer for "always allow" (machine token). Absent = in-memory only. */
+    kv?: KvIo
     board: DispatchBoard | null
     classify: OneShotRunner | null
     approvalLink: (boardItemId: string) => string
@@ -68,9 +80,18 @@ export async function prepareMainAgent(deps: {
 }): Promise<MainAgentRuntime> {
     const home = deps.home ?? homedir()
     const aHome = deps.assistantHomeDir ?? assistantHome()
-    const config = await loadMainAgentConfig({ assistantHome: aHome, kvGet: deps.kvGet }).catch(() => ({ skillRoots: [], deniedTools: [], dropped: 0 }))
+    const config: MainAgentConfig = await loadMainAgentConfig({ assistantHome: aHome, kvGet: deps.kvGet }).catch(() => ({ skillRoots: [], deniedTools: [], dropped: 0 }))
     if (config.dropped > 0) deps.log?.(`[main-agent] dropped ${config.dropped} invalid config item(s)`)
-    const denylist = compileOutboundDenylist(config.deniedTools)
+    const safety = config.safety ?? STRICT_RUNTIME()
+    if (safety.failedClosed) deps.log?.('[main-agent] safety setting unreadable or not understood: strict')
+    const denylist = compileOutboundDenylist(config.deniedTools, { policy: safety.policy, allowedTools: safety.allowedTools })
+    const approval = createToolApproval({
+        pendingDir: join(aHome, 'pending-tool'),
+        board: deps.board,
+        allowAlways: (tool) => denylist.allowAlways(tool),
+        persistAlways: deps.kv ? (tool) => persistAllowedTool(deps.kv!, tool) : undefined,
+        log: deps.log,
+    })
     const roots = config.skillRoots.map(r => { const path = expandHome(r, home); return { path, exists: existsSync(path) } })
     let skillPath: string | null = null
     try {
@@ -86,11 +107,13 @@ export async function prepareMainAgent(deps: {
         classify: deps.classify,
         approvalLink: deps.approvalLink,
         log: deps.log,
+        dispatchPolicy: () => ({ external: safety.policy.dispatchExternal, production: safety.policy.dispatchProduction }),
     })
     return {
         config,
+        safety,
         denylist,
-        preToolUse: outboundPreToolUseHook(denylist, (tool) => deps.log?.(`[main-agent gate] denied ${tool}`)),
+        preToolUse: outboundPreToolUseHook(denylist, (tool) => deps.log?.(`[main-agent gate] denied ${tool}`), approval.ask),
         // The managed skills live outside the assistant home: mount the whole Very Happy share root
         // (`~/.local/share/very-happy`), or every Read / Grep of the handbook asks for permission in
         // the default mode (isolated probe; QA77 #7: a Grep one level up asked too).

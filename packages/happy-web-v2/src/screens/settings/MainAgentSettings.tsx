@@ -23,6 +23,7 @@ import { checkConfigLines, hasMainAgentGates, mainAgentSupported, rankMainAgentC
 import { loadMainAgentConfig, saveMainAgentConfig, useMainAgentStore } from '@/assistant/mainAgentStore';
 import { useMainAgentActions, useMainAgentPointerSync, useMainAgentState } from '@/assistant/useMainAgent';
 import '@/screens/mainAgent/mainAgent.css';
+import { MainAgentSafetySection } from './MainAgentSafetySection';
 
 export function MainAgentSettings() {
     const { lang } = useTranslation();
@@ -129,6 +130,8 @@ export function MainAgentSettings() {
                         {deniedProblem && <p className="tg-error ma-settings-error">{deniedProblem}</p>}
                     </div>
                 </ItemGroup>
+
+                <MainAgentSafetySection machine={machines.find((m) => m.id === currentMachineId) ?? null} />
 
                 <div className="ma-settings-actions">
                     {configStatus === 'error' && <span className="tg-error">{copy.settingsLoadFailed}</span>}
