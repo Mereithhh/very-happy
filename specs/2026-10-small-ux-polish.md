@@ -71,6 +71,7 @@ Orca 对照第三轮列出的三件小体验，加上 B-570 上线后发现的�
 - 提示根节点用 `role=region`，不用 `dialog`（`[role=dialog]` 是终端焦点看门狗的「浮层打开」判据）；全部看过后不挂定时器。
 - `useFeatureTipAnchor(id, ref, enabled)`：入口组件登记锚点；`FeatureTipHost`（AppLayout 挂一次）选出唯一 tip，fixed 定位渲染：文案 + 「知道了」+ 关闭（44px 触屏命中），`role="dialog"` 非模态、不抢焦点；滚动/尺寸变化重新定位。避让矩形：`.sd-foot`（输入区、发送按钮、其上的固定区）以及 `.pwa-install` / `.notif-optin` / `.cli-update`；选 tip 时按「未看 + 锚点可见 + 有地方放」依次挑，放不下的不挡后面的。有 Radix 对话框/菜单、待审批卡（`role=alertdialog`）或会话预览打开时不显示。
 - 本轮 4 条（顺序即优先级，全局仍最多 1 个）：⌘P 打开文件（B-576；键盘入口没有按钮，锚在会话顶栏文件按钮旁，只对 pointer: fine 提示，打开 QuickOpen 即算已看）、提问导航轨（B-579；桌面锚刻度轨，手机锚上一条/下一条按钮，文案随形态切换，跳转即算已看）、审阅全部改动（`.tdr-review`，B-572）、会话预览（侧栏第一条会话行，B-588；桌面说悬停、触屏说菜单）。
+- B-926：会话预览 tip 原来放在锚点行的上方或下方，会盖住相邻的会话行，文字和列表叠在一起（main 上 1440×900 实测：气泡 x 8–288、y 320–423，列表 x 0–260）。现在 `FeatureTipDef.beside` 指定一个容器（`.app-sidebar, .sb`），`placeTip` 改成放在容器**右侧**，顶边与锚点行对齐并夹在视口内，不再上下翻转。右侧放不下（手机全宽列表）或和避让矩形相交时不显示，留到下一个 tip 或有空间的时候。实测 1440×900 中英、深浅色：气泡在 x 268–548，和列表不相交，pageerror 0；390 手机不出现。截图在 `docs/screenshots/b926-sidebar-entries/tip-*`。
 - 文案走 `text/_default.ts` + `translations/zh-Hans.ts`（另补 zh-Hant），命名空间 `featureTips.*`、`sessionPeek.*`。
 - 设置 › 外观新增「重置功能提示」行（`settingId=appearance.featureTips`，入 `SETTINGS_INDEX`），点击清空记忆并 toast。
 
