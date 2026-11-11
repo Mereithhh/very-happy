@@ -116,10 +116,13 @@ export function guardProjectCreate(request: Caller, reply: FastifyReply, input: 
     return guardProjectChange(request, reply, 'projects.create', input);
 }
 
-/** Putting existing sessions into a project that has instructions changes what those sessions are told: the owner's, unless it is the daemon's lineage / automation bookkeeping. */
-export function guardProjectMembers(request: Caller, reply: FastifyReply, project: { instructions?: string | null }, via: string | undefined): boolean {
-    if (!project.instructions || via === 'lineage' || via === 'automation') return true;
-    return guardOwnerAction(request, reply, 'projects.members.add');
+/**
+ * Adding sessions to a project is never refused: `via` is client-supplied (a machine could claim `lineage`), and the legitimate
+ * callers (issue dispatch `issue`, `spawn --project` `explicit`) are machine tokens. The instructions themselves are owner-only
+ * on `PUT` and `POST /v1/projects`. This only leaves an observe line (when the guard is not `off`).
+ */
+export function observeProjectMembers(request: Caller, reply: FastifyReply): void {
+    guardOwnerAction(request, reply, 'projects.members.add', ownerGuardMode() === 'off' ? 'off' : 'observe');
 }
 
 export function guardProjectChange(request: Caller, reply: FastifyReply, route: string, input: { defaults?: ProjectDefaults | null; folders?: unknown }): boolean {

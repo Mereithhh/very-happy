@@ -5,8 +5,7 @@ import {
 } from '@slopus/happy-wire';
 import type { Fastify } from '../types';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
-import { requestTokenKind } from '@/app/auth/tokenKind';
-import { ownerGuardMode, guardProjectChange, guardProjectCreate, guardProjectMembers, humanOnly } from '@/app/auth/ownerGuard';
+import { guardProjectChange, guardProjectCreate, observeProjectMembers, humanOnly } from '@/app/auth/ownerGuard';
 import { countProjectOp, recordProjectUxEvent, type ProjectOp } from '@/app/monitoring/projectMetrics';
 import { ProjectError } from '@/app/projects/rules';
 import {
@@ -92,11 +91,7 @@ export function projectRoutes(app: Fastify) {
         async (request, reply) => handle(reply, async () => ({ revisions: await listInstructionRevisions(request.userId, request.params.id) })));
     app.post('/v1/projects/:id/members', { ...auth, schema: { params, body: ProjectMembersAddSchema } },
         async (request, reply) => {
-            // B-927a: only a machine token can be refused here, so only then is the project's instructions looked up.
-            if (requestTokenKind(request) !== 'human' && ownerGuardMode() !== 'off') {
-                const project = (await getProject(request.userId, request.params.id).catch(() => null))?.project;
-                if (project && !guardProjectMembers(request, reply, project, request.body.via)) return reply;
-            }
+            observeProjectMembers(request, reply); // B-927a: observe only, see ownerGuard.ts
             return handle(reply, async () => ({ members: await addMembers(request.userId, request.params.id, request.body) }), 'member_add', request.body.via === 'lineage' || request.body.via === 'automation' ? 'daemon' : 'user');
         });
     app.delete('/v1/projects/:id/members/:sessionId', { ...auth, schema: { params: params.merge(sessionParams) } },

@@ -330,17 +330,15 @@ describe('B-927a owner guard (startApi, pglite)', () => {
     });
 
     describe('projects: one request must not do what the owner-only calls refuse', () => {
-        it('create with instructions, and adding sessions to a project that has instructions, are human-only', async () => {
+        it('create with instructions is human-only; adding sessions to a project with instructions stays open (issue dispatch, spawn --project)', async () => {
             expect(await call('POST', '/v1/projects', { name: 'n', requestId: rid(), instructions: 'INJECTED' }, as(machine))).toEqual(REFUSED);
             expect((await call('POST', '/v1/projects', { name: 'n', requestId: rid() }, as(machine))).status).toBe(200);
             const withText = (await call('POST', '/v1/projects', { name: 'n2', requestId: rid(), instructions: 'rules' })).body.project.id as string;
-            const plain = (await call('POST', '/v1/projects', { name: 'n3', requestId: rid() })).body.project.id as string;
-            const sid = await newSession(true);
-            expect(await call('POST', `/v1/projects/${withText}/members`, { sessionIds: [sid] }, as(machine))).toEqual(REFUSED);
-            expect(await call('POST', `/v1/projects/${withText}/members`, { sessionIds: [sid], via: 'explicit' }, as(machine))).toEqual(REFUSED);
-            expect((await call('POST', `/v1/projects/${withText}/members`, { sessionIds: [sid], via: 'lineage' }, as(machine))).status).toBe(200);
-            expect((await call('POST', `/v1/projects/${plain}/members`, { sessionIds: [sid] }, as(machine))).status).toBe(200);
-            expect((await call('POST', `/v1/projects/${withText}/members`, { sessionIds: [sid] })).status).toBe(200);
+            for (const via of [undefined, 'issue', 'explicit', 'lineage', 'automation']) {
+                const sid = await newSession(true);
+                const res = await call('POST', `/v1/projects/${withText}/members`, { sessionIds: [sid], ...(via ? { via } : {}) }, as(machine));
+                expect(res.status, String(via)).toBe(200);
+            }
         });
 
         it('create with folders follows OWNER_GUARD_PROJECT_PERMS; an unknown value of it is enforce', async () => {
