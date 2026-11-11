@@ -75,9 +75,9 @@ const zh: MainAgentSafetyCopy = {
         return p === 'ask' ? `主 agent 派${what}前先在「需要我决策」等你批准。` : `主 agent 派${what}不再问你，直接交给别的会话去做。`;
     },
     bash: '允许主 agent 用 Bash',
-    bashRisk: '风险：Bash 能跑任何命令，包括直接调用外部接口发消息、改文件、碰生产，上面的出站规则管不住它。',
+    bashRisk: '风险：Bash 能跑任何命令，包括直接调用外部接口发消息、改文件、碰生产，上面的出站规则管不住它。打开后主 agent 能读写本机文件，本机的审批记录和「先问我」卡片都不再可靠；只有服务器上的检查和你本人在网页上的批准还算数。',
     fileEdits: '允许主 agent 直接改文件（Edit / Write）',
-    fileEditsRisk: '风险：主 agent 会在本机直接改文件，不再只是派给别的会话去改。',
+    fileEditsRisk: '风险：主 agent 会在本机直接改文件，不再只是派给别的会话去改；它也能改本机的审批记录，所以「先问我」卡片不再可靠，只有服务器上的检查和你本人在网页上的批准还算数。',
     allowedTools: '已允许的工具',
     allowedToolsEmpty: '还没有。在卡片上选「以后都允许这个工具」后会出现在这里。',
     allowedToolsHint: '这些工具在「先问我」时不再出卡；「禁用」仍然生效。',
@@ -120,9 +120,9 @@ const en: MainAgentSafetyCopy = {
         return p === 'ask' ? `Before handing off ${what}, the main agent waits for your approval on the decision board.` : `The main agent hands off ${what} to other sessions without asking you.`;
     },
     bash: 'Let the main agent use Bash',
-    bashRisk: 'Risk: Bash runs any command — it can call outside services, change files or touch production directly, and the outbound rules above cannot see it.',
+    bashRisk: 'Risk: Bash runs any command — it can call outside services, change files or touch production directly, and the outbound rules above cannot see it. Once on, the main agent can read and write files on this machine, so the local approval records and "Ask me" cards are no longer a reliable boundary; only the server\'s checks and your own approval on the web still count.',
     fileEdits: 'Let the main agent edit files (Edit / Write)',
-    fileEditsRisk: 'Risk: the main agent edits files on this machine itself instead of only dispatching the work.',
+    fileEditsRisk: 'Risk: the main agent edits files on this machine itself instead of only dispatching the work — including the local approval records, so "Ask me" cards are no longer a reliable boundary; only the server\'s checks and your own approval on the web still count.',
     allowedTools: 'Always-allowed tools',
     allowedToolsEmpty: 'None yet. Choosing "Always allow this tool" on a card adds it here.',
     allowedToolsHint: 'These skip the card when set to "Ask me"; "Block" still applies.',

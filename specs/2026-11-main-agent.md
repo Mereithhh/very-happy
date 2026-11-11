@@ -241,6 +241,7 @@ risk: 'none' | 'external' | 'production'
 - 关键词和 haiku 都可能漏判：用户的决策卡是最后一道人工关口，但前提是有一道判成非 `none`。
 - 账号 token 在机器上，理论上能直接调 owner-respond；主 agent 没有 Bash，也没有任何工具暴露这个接口。
 - B-922：开了 Bash 的主 agent 能直接调外部接口，出站分类管不住它；Web 在该项旁写明风险，默认关。
+- B-922：**本机审批记录不是可靠边界**。闸 1 / 闸 2 的 pending 记录和 `.inflight` 标记都在本机，同一个 OS 用户能伪造或删除后重放；拿机器 token 走 REST 也能自己发一张保留前缀的卡并互换标签（`RESERVED_CARD_KEY_PREFIXES` 含 `main-agent-tool:` 只挡 `owner_board_*` 工具，不挡 REST）。主 agent 打开 Bash 或改文件后就具备这些能力，此时只有服务端检查（机器 token 不能改松配置）和 Owner 本人在 Web 上的批准还算数，Web 的开关说明写明了这一点。服务端加固（保留前缀与卡面绑定在服务端校验）归 B-927。
 - B-922：「人 vs 机器」用 B-921 的 `requestTokenKind`（token 带登录会话 = 人）；登录会话出现前签发的旧 Web token 算机器，只能改严，Web 会提示去已登录的浏览器里改或重新登录。
 - 闸只装在 Claude 主 agent 上（`runClaude` 构建运行时）。pi / ACP 的 assistant variant 不注册主 agent 账号级工具和上限，只保留 B-051 的旧会话工具（QA77 #6）。
 
