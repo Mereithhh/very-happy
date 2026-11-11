@@ -168,7 +168,7 @@ export function mainAgentToolView(tool: Pick<ToolCall, 'name' | 'state' | 'input
 
     // gate 2 interceptions answer for any dispatch tool
     if (DISPATCH_TOOLS.has(name) && json) {
-        if (json.state === 'awaiting_decision') return decisionView(base, json, input, name);
+        if (json.state === 'awaiting_decision') return decisionView(base, json, input);
         if (errorCode === 'risk_required' || errorCode === 'board_unavailable') {
             return { ...describe(name, input, json, text, true), kind: 'error', status: 'failed', errorCode, errorText: errorMessage, raw };
         }
@@ -184,12 +184,11 @@ export function mainAgentToolView(tool: Pick<ToolCall, 'name' | 'state' | 'input
     return view;
 }
 
-function decisionView(base: Omit<ToolCardView, 'kind' | 'status'>, json: Rec, input: Rec, name: string): ToolCardView {
+function decisionView(base: Omit<ToolCardView, 'kind' | 'status'>, json: Rec, input: Rec): ToolCardView {
     const payload = str(input.goal) ?? str(input.body) ?? str(input.prompt) ?? str(input.text);
     return {
         ...base, kind: 'decision', status: 'awaiting',
         fields: [...field('risk', json.risk), ...field('approval', json.approvalId, true)],
-        heading: name,
         preview: payload,
         links: [{ kind: 'board' }],
     };

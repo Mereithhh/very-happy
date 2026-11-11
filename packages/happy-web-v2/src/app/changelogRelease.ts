@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-11-main-agent-column-tool-cards',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11p.title',
+    summaryKey: 'changelog.releases.nov11p.summary',
+    itemKeys: ['changelog.releases.nov11p.column', 'changelog.releases.nov11p.cards'],
+  },
+  {
     id: '2026-11-11-briefing-choices-need-sign-in',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,

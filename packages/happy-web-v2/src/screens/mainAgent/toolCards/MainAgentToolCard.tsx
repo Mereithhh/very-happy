@@ -46,7 +46,7 @@ export function MainAgentToolCard({ view, mainAgentSessionId }: { view: ToolCard
         <div className="ma-tc vh-panel" data-kind={view.kind} data-status={view.status} data-tool={view.tool}>
             <div className="ma-tc-head">
                 <Icon size={14} aria-hidden className="ma-tc-icon" />
-                <span className="ma-tc-name">{copy.tool[view.tool] ?? view.tool}</span>
+                <span className="ma-tc-name">{copy.tool[view.tool] ?? displayToolName(view.tool)}</span>
                 <span className={`vh-pill ma-tc-pill${tone === 'live' ? ' vh-pill--live' : tone === 'warn' ? ' vh-pill--warn' : tone === 'danger' ? ' vh-pill--danger' : ''}`} data-tone={tone}>
                     {view.status === 'running' && <Spinner size={10} />}
                     {copy.status[view.status]}
@@ -54,7 +54,7 @@ export function MainAgentToolCard({ view, mainAgentSessionId }: { view: ToolCard
             </div>
             {(view.heading || view.kind === 'list') && view.status !== 'running' && (
                 <div className="ma-tc-heading">
-                    {view.kind === 'list' ? copy.count(Number(view.heading ?? 0)) : view.kind === 'decision' && view.heading ? copy.tool[view.heading] ?? view.heading : view.heading}
+                    {view.kind === 'list' ? copy.count(Number(view.heading ?? 0)) : view.heading}
                 </div>
             )}
             {reason && <p className="ma-tc-reason" role={view.kind === 'blocked' || view.status === 'failed' ? 'alert' : undefined}>{reason}</p>}
@@ -101,6 +101,12 @@ export function MainAgentToolCard({ view, mainAgentSessionId }: { view: ToolCard
             </details>
         </div>
     );
+}
+
+/** `mcp__chat__send_message` → `chat · send_message` (a stopped third-party tool). */
+export function displayToolName(name: string): string {
+    const m = /^mcp__([^_]+(?:_[^_]+)*?)__(.+)$/.exec(name);
+    return m ? `${m[1]} · ${m[2]}` : name;
 }
 
 function safeJson(value: unknown): string {

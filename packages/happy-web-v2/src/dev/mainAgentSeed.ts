@@ -94,6 +94,7 @@ export function seedMainAgentScene(hash: string): void {
         configStatus: 'ready',
         config: { skillRoots: ['~/skills', '~/work/team-skills'], deniedTools: ['mcp__*__*send*'] },
         configRaw: { skillRoots: ['~/skills', '~/work/team-skills'], deniedTools: ['mcp__*__*send*'] },
-        dockOpen: hash === '#main-agent-open' || hash === '#main-agent-cards',
+        // the column's open state is this device's (persisted); the two scenes only force it open
+        ...(hash === '#main-agent-open' || hash === '#main-agent-cards' ? { dockOpen: true } : {}),
     });
 }
