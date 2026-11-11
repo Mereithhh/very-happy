@@ -104,9 +104,9 @@
 | `todo_list / todo_add / todo_complete` | 与 `very-happy todo` 同一套 API | 4K / 400 | — |
 | `project_list` | `cursor?` | 4K | — |
 | `project_context` / `project_note` | 现有参数 + `projectId?`（主 agent 必填） | 4K / 400 | — |
-| `session_wrapup` | `sessionId`、`templateId?` | `{ok, sessionId, state:'queued'\|'running'}` | — |
-| `session_handoff` | `from`、`to?`（缺省 = 新会话）、`note?` | 400 | — |
-| `session_restart` | `sessionId`、`when: 'idle'\|'now'` | `{ok, sessionId, scheduled, targetVersion?}` | — |
+| `session_wrapup` | `sessionId`（用账号的收尾模板，与会话里按「收尾」相同） | `{ok, sessionId, state:'queued'\|'running'}`；拒绝 `{ok:false, sessionId, error}` | — |
+| `session_handoff` | `from`、`to?`（缺省 = 新会话：在 `from` 的目录、本机先起一个同 agent 的会话）、`note?` | `{ok, from, to, state}` ≤400 | — |
+| `session_restart` | `sessionId`、`when: 'idle'\|'now'`（仅本机会话） | `{ok, sessionId, scheduled, already?, targetVersion?}` | — |
 | `teams_list` | `cursor?` | 4K：id / 名称 / 项目 / Lead botId / 在途任务数 | — |
 | `lead_delegate` | `teamId`、`goal`、`acceptance: string[]`（1–32）、`note?`、`risk`、`requestId` | `{ok, as:'owner', via:'main-agent', team, lead, leadSessionId, state:'delivered'}` ≤400 | **是** |
 | `lead_message` | `teamId`、`body`、`taskId?`（只作正文引用）、`risk`、`requestId` | 同上 | **是** |
@@ -114,7 +114,8 @@
 | `session_message` | 现有参数 + `risk` | 400 | **是** |
 | `dispatch_approved` | `approvalId` | 400 | —（§4.2 的执行入口） |
 
-- `session_wrapup / session_handoff / session_restart` 对接 B-915、B-911；对方接口未合入时 B-916b 先放 mock（回执 `{ok:false, error:'not_available'}`），接口落地后只改适配层。
+- `session_wrapup / session_handoff / session_restart` 对接 B-915、B-911（B-919，`assistant/mainAgentLifecycle.ts`，startHappyServer 在主 agent 会话上 `installSessionLifecycle`）；未安装时回执 `{ok:false, error:'not_available'}`。收尾、交接走 `@/wrapup/request`，与会话里按「收尾」「交接给…」和 `very-happy sessions wrapup|handoff` 同一轮；回执只有 id 与状态，不带对方会话内容。三者只在 Owner 明确要求时对点名的会话调用（决策 6），没有定时或自动调用路径。
+- `session_restart` 走本机 daemon 的 `/session-restart-owner`（新路由，旧 daemon 404 → `daemon-too-old`，不会被当成立即重启）：`idle` = Owner 的「本轮结束后重启」队列（B-911）；`now` = 先过同一套会话守卫（不在线、本人终端、assistant、不支持的 agent、不报回合的旧 wrapper 都拒），再以 B-894 `ifIdle` 重启，忙（回合或后台任务）就拒绝，不打断。
 - **给团队派活 = 投递进 Lead 会话，不是建任务**：主 agent 不属于任何团队，不用会话作用域的 `team_delegate / team_message`。`teams_list` 找到团队后，`lead_delegate` / `lead_message` 把原文（首行固定 `[Very Happy main agent → Lead]`，随后 goal、acceptance 列表、note；或 body）**投递进该团队 Lead 的会话**，走 B-506 投递链路（与 `session_send` 同一条路），由 Lead 自己调 `team_delegate` 拆给成员。主 agent 拿不到 taskId；进度由 Lead 回报，或主 agent 用 `session_read` 读 Lead 会话。Lead 不可达或投递失败：`{ok:false, error:'lead_unreachable'}`。不走账号级 owner actor 的 `/v1/teams/:id/actions`（reducer 的 `bot_busy` 检查会拒绝向挂着根任务的 Lead 派活；不填 assignee 又会新建 managed worker，绕过 Lead）。
 - **项目日志作者**：`project_note(projectId, …)` 以**主 agent 会话自己的身份**写（authorSessionId = 主 agent 会话），**不得以账号 Owner 身份代写**（项目日志代谢会把 Owner 条目当作 Owner 本人的意思）。server 侧放宽一处权限：会话是本账号 KV `vh.main-agent.v1.sessionId` 指向的主 agent 会话时，允许它在本账号任意项目写 note（B-916b 实现）。
 

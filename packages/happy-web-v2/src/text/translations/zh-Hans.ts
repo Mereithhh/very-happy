@@ -3481,6 +3481,12 @@ export const zhHans: TranslationStructure = {
                 skill: '新增 `very-happy skill`：能力地图覆盖会话、终端、项目、团队、自动化、Issues 与待办、账号、机器、分享、通知、面板和设置，每块一页（如 `very-happy skill automations`）。会话里只多一行指向它，问 agent「给这个项目加一个每天 9 点的自动化」就能拿到正确命令。本机副本在 ~/.local/share/very-happy/skills/very-happy，你改过的文件不会被覆盖。',
                 autoProject: '`very-happy auto create|edit --project <id>|current` 可把自动化挂到项目上（`--no-project` 取消）；以前只能在 Web 上设。',
             },
+            nov11l: {
+                title: 'CLI 0.2.212：主 agent 可以帮你给指定会话收尾、交接',
+                summary: '让主 agent 给某个会话收尾，或把一个会话的进度交接给另一个会话（或新会话）；它只处理你点名的会话。',
+                wrapup: '主 agent 的收尾和交接现在能用了：对方会话收到的那一轮和你在会话里按「收尾」「交接给…」一样，主 agent 只拿回一行回执。交接给新会话时，会在原会话的目录里新开一个。不会自动收尾。',
+                restart: '主 agent 重启会话改为等空闲后再重启（选「立即」时，忙的会话会被拒绝）；在你自己终端里跑的会话不会被重启。',
+            },
             nov11k: {
                 title: 'CLI 0.2.211：主 agent、会话收尾和交接',
                 summary: '主 agent 与会话收尾、交接的 CLI 部分。',

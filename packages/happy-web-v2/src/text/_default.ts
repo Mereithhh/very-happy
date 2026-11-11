@@ -3353,6 +3353,12 @@ export const en = {
                 skill: 'New `very-happy skill`: a capability map of sessions, terminals, projects, teams, automations, Issues and todos, accounts, machines, sharing, notifications, panels and settings, with one page per area (`very-happy skill automations`). Sessions get a single line pointing at it, so asking an agent “add a daily 9:00 automation to this project” gets the right command. A copy is kept in ~/.local/share/very-happy/skills/very-happy; files you edited are never overwritten.',
                 autoProject: '`very-happy auto create|edit --project <id>|current` attaches an automation to a project (`--no-project` detaches); before, only the Web could do this.',
             },
+            nov11l: {
+                title: 'CLI 0.2.212: the main agent can wrap up and hand off sessions for you',
+                summary: 'Ask the main agent to wrap up a session, or to hand one session\'s work to another (or to a new one); it only does this for the sessions you name.',
+                wrapup: 'The main agent\'s wrap-up and hand-off now work: the session gets the same turn as pressing Wrap up / Hand off to… in it, and the main agent only gets a short receipt back. Hand-off to a new session starts it in the same directory. Nothing is wrapped up automatically.',
+                restart: 'Restarting a session from the main agent now waits until it is idle (or, for “now”, refuses a busy one); sessions running in your own terminal are never restarted.',
+            },
             nov11k: {
                 title: 'CLI 0.2.211: the main agent, session wrap-up and hand-off',
                 summary: 'The CLI side of the main agent and of session wrap-up / hand-off.',
