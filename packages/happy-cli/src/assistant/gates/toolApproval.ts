@@ -13,15 +13,17 @@
  *    `safety.allowedTools` (in memory now, account KV for later runs);
  *  - 拒绝 (`deny`): refused.
  *
- * Card checks are gate 2's (`ownerDecisionError`: key, closed, `cardFaceHash`,
- * `resolvedBy='owner'`), not a copy. Fails closed: no board → refused.
+ * Card checks are the shared owner approval (`attention/ownerApproval.ts`:
+ * `ownerDecision` — key, closed, `cardFaceHash`, `resolvedBy='owner'`;
+ * `approvalClaims` — the O_EXCL single-use marker), not a copy. Fails closed: no board → refused.
  */
 
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { MAIN_AGENT_TOOL_ALWAYS_CHOICE, MAIN_AGENT_TOOL_CARD_KEY_PREFIX } from '@slopus/happy-wire'
-import { canonicalArgsHash, cardFaceHash, claimMarker, clipBytes, ownerDecisionError, writePrivate, type DispatchBoard } from './dispatchGate'
+import { approvalClaims, cardFaceHash, clipBytes, ownerDecision, writePrivateJson } from '@/attention/ownerApproval'
+import { canonicalArgsHash, type DispatchBoard } from './dispatchGate'
 import type { ToolAsker } from './outboundDenylist'
 
 export const TOOL_APPROVAL_OPTIONS = [
@@ -102,7 +104,7 @@ export function createToolApproval(deps: ToolApprovalDeps): { ask: ToolAsker } {
     const now = deps.now ?? Date.now
     const newId = deps.newId ?? randomUUID
     const recordPath = (argsSha256: string) => join(deps.pendingDir, `${argsSha256}.json`)
-    const usedPath = (approvalId: string) => join(deps.pendingDir, `${approvalId}.used`)
+    const claims = approvalClaims(deps.pendingDir)
 
     async function readRecord(argsSha256: string): Promise<ToolApprovalRecord | null> {
         try { return JSON.parse(await readFile(recordPath(argsSha256), 'utf8')) as ToolApprovalRecord } catch { return null }
@@ -115,7 +117,7 @@ export function createToolApproval(deps: ToolApprovalDeps): { ask: ToolAsker } {
         const posted = await board.postDecision(card)
         await mkdir(deps.pendingDir, { recursive: true, mode: 0o700 })
         const record: ToolApprovalRecord = { v: 1, approvalId, toolName, argsSha256, boardItemId: posted.id, cardSha256: cardFaceHash(posted), createdAt: now() }
-        await writePrivate(recordPath(argsSha256), record)
+        await writePrivateJson(recordPath(argsSha256), record)
         deps.log?.(`[main-agent gate] ${toolName} asks the owner (card ${posted.id})`)
         return { reason: toolWaitReason(toolName, posted.id) }
     }
@@ -128,16 +130,15 @@ export function createToolApproval(deps: ToolApprovalDeps): { ask: ToolAsker } {
         if (!record || record.toolName !== toolName || record.argsSha256 !== argsSha256 || !record.boardItemId || !record.cardSha256) {
             return postCard(board, toolName, input, argsSha256)
         }
-        const item = await board.findById(record.boardItemId)
-        const error = ownerDecisionError(item, { key: toolCardKey(record.approvalId, toolName), cardSha256: record.cardSha256 })
-        if (error === 'awaiting_decision') return { reason: toolWaitReason(toolName, record.boardItemId) }
-        if (error) {
+        const decision = ownerDecision(await board.findById(record.boardItemId), { key: toolCardKey(record.approvalId, toolName), cardSha256: record.cardSha256 })
+        if (!decision.ok && decision.error === 'awaiting_decision') return { reason: toolWaitReason(toolName, record.boardItemId) }
+        if (!decision.ok) {
             // Gone, rewritten, or closed by someone other than the owner: nothing was approved — ask afresh.
-            deps.log?.(`[main-agent gate] ${toolName} card ${record.boardItemId}: ${error}`)
+            deps.log?.(`[main-agent gate] ${toolName} card ${record.boardItemId}: ${decision.error}`)
             await dropRecord(argsSha256)
             return postCard(board, toolName, input, argsSha256)
         }
-        const choice = item!.ownerChoice
+        const choice = decision.choice
         if (choice === 'deny') {
             await dropRecord(argsSha256)
             return { reason: toolDeniedReason(toolName, record.boardItemId) }
@@ -148,7 +149,7 @@ export function createToolApproval(deps: ToolApprovalDeps): { ask: ToolAsker } {
         }
         // One call per approval, even under concurrent identical calls.
         await mkdir(deps.pendingDir, { recursive: true, mode: 0o700 })
-        const won = await claimMarker(usedPath(record.approvalId))
+        const won = await claims.claim(record.approvalId)
         await dropRecord(argsSha256)
         if (!won) return postCard(board, toolName, input, argsSha256)
         if (choice === MAIN_AGENT_TOOL_ALWAYS_CHOICE) {

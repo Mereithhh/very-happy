@@ -241,7 +241,7 @@ describe('B-922 gate 1 ask: card → owner → exactly that call', () => {
         s.choose('once')
         const outs = await Promise.all([s.call({ text: 'hi' }), s.call({ text: 'hi' }), s.call({ text: 'hi' })])
         expect(outs.filter(o => 'continue' in o).length).toBe(1)
-        expect((await readdir(join(s.dir, 'pending-tool'))).filter(f => f.endsWith('.used')).length).toBe(1)
+        expect((await readdir(join(s.dir, 'pending-tool'))).filter(f => f.endsWith('.inflight')).length).toBe(1)
     })
 
     it('a board that throws fails closed', async () => {
@@ -330,4 +330,53 @@ it('B-922: local config file written by anyone cannot add allowedTools', async (
     const cfg = await loadMainAgentConfig({ assistantHome: aHome, kvGet: async () => null })
     expect(cfg.safety?.allowedTools).toEqual([])
     expect(cfg.safety?.policy).toEqual(PRESET_POLICIES.loose)
+})
+
+describe('B-922: owner_board_* cannot post, edit or close a gate-1 approval card (main-agent-tool:*)', () => {
+    const TOOL_KEY = 'main-agent-tool:0b8c2b5e-1111-4222-8333-944445555666:mcp__chat__send_message'
+
+    it('the reserved prefix covers it, case- and whitespace-insensitively', () => {
+        for (const key of [TOOL_KEY, `  ${TOOL_KEY.toUpperCase()}`, '\tMain-Agent-Tool:x:y']) expect(isReservedCardKey(key), key).toBe(true)
+        for (const key of ['my-main-agent-tool:x', 'main-agent-tools:x', 'main-agent-tool']) expect(isReservedCardKey(key), key).toBe(false)
+    })
+
+    it('the main agent\'s board tools (gate wrap) refuse it by key and by id; other cards pass', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'vh-tool-reserved-'))
+        const tb = toolBoard()
+        const gate = createDispatchGate({ pendingDir: join(dir, 'pending'), board: tb.board, classify: null, approvalLink: (id) => id })
+        const tools = new Map<string, any>()
+        const wrapped = gate.wrap({ registerTool: ((name: string, _c: any, handler: any) => { tools.set(name, handler) }) as any })
+        const inner = vi.fn(async () => ({ content: [{ type: 'text' as const, text: '{"ok":true}' }], isError: false }))
+        for (const name of ['owner_board_post', 'owner_board_update', 'owner_board_resolve']) wrapped.registerTool(name, { description: name, inputSchema: {} } as any, inner as any)
+        // a real gate-1 card on the board (posted by toolApproval, not by the dispatch gate)
+        const approval = createToolApproval({ pendingDir: join(dir, 'pending-tool'), board: tb.board, allowAlways: () => {} })
+        await approval.ask('mcp__chat__send_message', { text: 'hi' })
+        const card = tb.last()
+        expect(card.key!.startsWith('main-agent-tool:')).toBe(true)
+        const err = (r: any) => JSON.parse(r.content[0].text).error
+        expect(err(await tools.get('owner_board_post')({ kind: 'decision', title: 't', key: ` ${card.key!.toUpperCase()}` }))).toBe('reserved_card')
+        expect(err(await tools.get('owner_board_update')({ id: card.id, title: 'softer' }))).toBe('reserved_card')
+        expect(err(await tools.get('owner_board_resolve')({ id: card.id, outcome: 'done' }))).toBe('reserved_card')
+        expect(inner).not.toHaveBeenCalled()
+        await tools.get('owner_board_post')({ kind: 'report', title: 't', key: 'topic' })
+        expect(inner).toHaveBeenCalledTimes(1)
+    })
+
+    it('the shared owner_board_* tools refuse it too', async () => {
+        const { registerOwnerBoardTools } = await import('@/attention/tools')
+        const calls: string[] = []
+        const board = {
+            post: async () => { calls.push('post'); return { id: 'n', created: true } },
+            update: async (input: { id: string }) => { calls.push(`update:${input.id}`); return {} },
+            resolve: async (input: { id: string }) => { calls.push(`resolve:${input.id}`); return {} },
+            list: async () => ({ items: [{ id: 't1', key: TOOL_KEY }, { id: 't2', key: 'topic' }] }),
+        } as any
+        const tools = new Map<string, any>()
+        registerOwnerBoardTools({ registerTool: (name: string, _c: unknown, handler: any) => { tools.set(name, handler) } } as any, board)
+        expect((await tools.get('owner_board_post')({ kind: 'decision', title: 't', key: TOOL_KEY, request_id: 'req-p', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] })).isError).toBe(true)
+        expect((await tools.get('owner_board_update')({ id: 't1', title: 'softer', request_id: 'req-u' })).isError).toBe(true)
+        expect((await tools.get('owner_board_resolve')({ id: 't1', outcome: 'done', request_id: 'req-r' })).isError).toBe(true)
+        expect((await tools.get('owner_board_update')({ id: 't2', title: 'ok', request_id: 'req-u2' })).isError).toBe(false)
+        expect(calls).toEqual(['update:t2'])
+    })
 })

@@ -20,7 +20,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { approvalClaims, cardFaceHash, clipBytes, DISPATCH_CARD_KEY_PREFIX, isReservedCardKey, ownerDecision, writePrivateJson as writePrivate, type BoardItemView } from '@/attention/ownerApproval'
 import type { AssistantToolRegistrar } from '../assistantTools'
-import { MAIN_AGENT_TOOL_CARD_KEY_PREFIX, type DispatchPolicy } from '@slopus/happy-wire'
+import type { DispatchPolicy } from '@slopus/happy-wire'
 import { effectiveRisk, isRiskLevel, RISK_LEVELS, type OneShotRunner, type RiskLevel } from './risk'
 
 /** Dispatch tools and the argument text each hands over (spec §4.2 table). */
@@ -163,25 +163,6 @@ export function withApprovalPrefix(toolName: string, args: Record<string, unknow
 }
 
 const APPROVAL_ID_RE = /^[0-9a-f-]{36}$/i
-
-/** QA77 #4: a one-time marker (`O_EXCL`); false = someone already holds it. Shared with gate 1 (toolApproval.ts). */
-export async function claimMarker(path: string): Promise<boolean> {
-    try { const fh = await open(path, 'wx', 0o600); await fh.close(); return true }
-    catch (error: any) { if (error?.code === 'EEXIST') return false; throw error }
-}
-
-/**
- * The checks every owner-only card shares (QA77 P1 / #3): the card is the one
- * the gate posted (key), it is closed, its face is unchanged and the OWNER
- * closed it. Returns the failing error code, or null when the choice counts.
- */
-export function ownerDecisionError(item: BoardItemView | null, expect: { key: string; cardSha256: string }): 'approval_not_found' | 'awaiting_decision' | 'card_tampered' | 'not_approved' | null {
-    if (!item || item.key !== expect.key) return 'approval_not_found'
-    if (item.state === 'open' || item.state === 'in_progress') return 'awaiting_decision'
-    if (cardFaceHash(item) !== expect.cardSha256) return 'card_tampered'
-    if (item.resolvedBy !== 'owner') return 'not_approved'
-    return null
-}
 
 export function createDispatchGate(deps: DispatchGateDeps) {
     const now = deps.now ?? Date.now
