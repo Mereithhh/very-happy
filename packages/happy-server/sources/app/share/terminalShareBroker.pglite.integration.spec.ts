@@ -372,7 +372,7 @@ describe('B-878 terminal share broker (pglite)', () => {
         const app = fastify();
         app.setValidatorCompiler(validatorCompiler);
         app.setSerializerCompiler(serializerCompiler);
-        app.decorate('authenticate', async (request: any) => { request.userId = request.headers['x-user']; });
+        app.decorate('authenticate', async (request: any) => { request.userId = request.headers['x-user']; request.authLoginSessionId = 'ls-test'; /* B-927a: a Web login */ });
         terminalShareRoutes(app as any);
         await app.ready();
         const as = (userId: string) => ({ 'x-user': userId });

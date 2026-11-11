@@ -369,7 +369,7 @@ describe('B-878 project shares (pglite)', () => {
         const app = fastify();
         app.setValidatorCompiler(validatorCompiler);
         app.setSerializerCompiler(serializerCompiler);
-        app.decorate('authenticate', async (request: any) => { request.userId = request.headers['x-user']; });
+        app.decorate('authenticate', async (request: any) => { request.userId = request.headers['x-user']; request.authLoginSessionId = 'ls-test'; /* B-927a: a Web login */ });
         terminalShareRoutes(app as any);
         await app.ready();
         const hank = await createAccount('hanky');
@@ -440,7 +440,7 @@ describe('B-878 project shares (pglite)', () => {
         const app = fastify();
         app.setValidatorCompiler(validatorCompiler);
         app.setSerializerCompiler(serializerCompiler);
-        app.decorate('authenticate', async (request: any) => { request.userId = request.headers['x-user']; });
+        app.decorate('authenticate', async (request: any) => { request.userId = request.headers['x-user']; request.authLoginSessionId = 'ls-test'; /* B-927a: a Web login */ });
         projectShareRoutes(app as any);
         await app.ready();
         const as = (u: string) => ({ 'x-user': u });

@@ -1,4 +1,5 @@
 /** B-878 PR-B project sharing — REST client (same error contract as apiSessionShares). */
+import { notifyOwnerLoginRequired } from '@/auth/ownerLoginRequired';
 import { z } from 'zod';
 import { apiSocket } from './apiSocket';
 import { SessionShareApiError, type ShareTarget } from './apiSessionShares';
@@ -20,6 +21,7 @@ async function call<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): 
         try {
             const body = await response.json() as { error?: unknown };
             if (typeof body.error === 'string') code = body.error;
+            notifyOwnerLoginRequired(response.status, body.error);
         } catch { /* non-JSON error body */ }
         throw new SessionShareApiError(code, response.status);
     }

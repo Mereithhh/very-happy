@@ -8,6 +8,7 @@
  * sidebar then shows every session under 未归属 by folder (the old workspace
  * grouping), never an error.
  */
+import { notifyOwnerLoginRequired } from '@/auth/ownerLoginRequired';
 import { useSyncExternalStore } from 'react';
 import type {
   ProjectCreate, ProjectDetailResponse, ProjectInstructionsRevisionView, ProjectListResponse, ProjectLogEntryView, ProjectMemberView,
@@ -37,6 +38,11 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
     },
     ...(init?.body === undefined ? {} : { body: JSON.stringify(init.body) }),
   });
+  // B-927a: a 403 `owner_login_required` is not an auth failure (read it before the check below; it never signs out).
+  if (response.status === 403) {
+    const denied = await response.clone().json().catch(() => null) as { error?: unknown } | null;
+    if (notifyOwnerLoginRequired(response.status, denied?.error)) throw new ProjectsApiError(403, 'owner_login_required');
+  }
   assertNotAuthFailure(response, 'apiProjects');
   const data = await response.json().catch(() => null);
   if (!response.ok) {

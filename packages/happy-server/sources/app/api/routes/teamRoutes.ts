@@ -7,6 +7,8 @@ import type { Fastify } from '../types';
 import { createTeam, listTeams, readTeam, actOnTeam, tickTeamSchedules } from '@/app/teams/store';
 import { TeamError } from '@/app/teams/reducer';
 import { teamActionReceipt } from '@/app/teams/receipt';
+import { requestTokenKind } from '@/app/auth/tokenKind';
+import { guardOwnerAction, guardTeamAction, guardTeamCreate } from '@/app/auth/ownerGuard';
 
 const params = z.object({ id: z.string().min(1).max(128) });
 /** B-912: seconds a client should wait before retrying a team 429 (CLI team_* tools back off on it). */
@@ -30,7 +32,10 @@ export function teamRoutes(app: Fastify) {
         }
     };
     app.get('/v1/teams', { preHandler: app.authenticate }, async (request, reply) => handle(reply, async () => ({ teams: await listTeams(request.userId) })));
-    app.post('/v1/teams', { preHandler: app.authenticate, schema: { body: TeamCreateSchema } }, async (request, reply) => handle(reply, async () => ({ team: await createTeam(request.userId, request.body) })));
+    app.post('/v1/teams', { preHandler: app.authenticate, schema: { body: TeamCreateSchema } }, async (request, reply) => {
+        if (!guardTeamCreate(request, reply, request.body.launch)) return reply;
+        return handle(reply, async () => ({ team: await createTeam(request.userId, request.body) }));
+    });
     app.post('/v1/teams/schedules/tick', { preHandler: app.authenticate, schema: { body: z.object({ machineId: z.string().min(1).max(128) }) } }, async (request, reply) => handle(reply, () => tickTeamSchedules(request.userId, request.body.machineId)));
     app.get('/v1/teams/operations', { preHandler: app.authenticate, schema: { querystring: z.object({ machineId: z.string().min(1).max(128), schedulesVersion: z.coerce.number().int().min(1).max(1).optional(), teamLaunchVersion: z.coerce.number().int().min(1).max(1).optional(), teamArchiveVersion: z.coerce.number().int().min(1).max(1).optional() }) } }, async (request, reply) => handle(reply, async () => {
         const allTeams = await listTeams(request.userId, request.query.machineId);
@@ -39,8 +44,16 @@ export function teamRoutes(app: Fastify) {
     }));
     app.get('/v1/teams/:id', { preHandler: app.authenticate, schema: { params } }, async (request, reply) => handle(reply, async () => ({ team: await readTeam(request.params.id, { accountId: request.userId }) })));
     // B-726: owner-only team ↔ project binding (team settings, old-team one-click).
-    app.post('/v1/teams/:id/project', { preHandler: app.authenticate, schema: { params, body: TeamProjectBindSchema } }, async (request, reply) => handle(reply, () => bindTeamProject(request.userId, request.params.id, request.body)));
-    app.post('/v1/teams/:id/actions', { preHandler: app.authenticate, schema: { params, body: TeamActionRequestSchema } }, async (request, reply) => handle(reply, () => actOnTeam(request.params.id, { accountId: request.userId }, request.body)));
+    app.post('/v1/teams/:id/project', { preHandler: app.authenticate, schema: { params, body: TeamProjectBindSchema } }, async (request, reply) => {
+        if (!guardOwnerAction(request, reply, 'teams.project')) return reply;
+        return handle(reply, () => bindTeamProject(request.userId, request.params.id, request.body));
+    });
+    app.post('/v1/teams/:id/actions', { preHandler: app.authenticate, schema: { params, body: TeamActionRequestSchema } }, async (request, reply) => {
+        // B-927a: an account token is the owner only when a person signed in; a machine keeps the daemon's own actions.
+        if (!guardTeamAction(request, reply, request.body.action)) return reply;
+        // `machine` is true for a machine token that got past the guard in observe/off mode or via the whitelist; the store refuses a seat takeover for it.
+        return handle(reply, () => actOnTeam(request.params.id, { accountId: request.userId, machine: requestTokenKind(request) === 'machine' }, request.body));
+    });
     const scope = (request: { headers: Record<string, unknown> }) => {
         const token = request.headers['x-happy-team-token'];
         if (typeof token !== 'string' || token.length > 256) throw new TeamError('invalid_team_token', 401);

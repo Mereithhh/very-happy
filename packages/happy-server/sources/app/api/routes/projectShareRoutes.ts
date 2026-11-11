@@ -23,6 +23,7 @@ import {
     sharedProjectView,
     updateProjectGrant,
 } from '@/app/share/projectShares';
+import { humanOnly } from '@/app/auth/ownerGuard';
 
 const id = z.string().min(1).max(128);
 // Project shares: view only / can send. "Can operate" is only ever granted per session or terminal.
@@ -44,7 +45,7 @@ export function projectShareRoutes(app: Fastify) {
     const grantParams = z.object({ grantId: id });
 
     app.post('/v1/projects/:projectId/shares', {
-        ...auth,
+        preHandler: [app.authenticate, humanOnly('share.project.create')],
         schema: { params: projectParams, body: z.object({
             target: z.string().min(1).max(320).optional(),
             accountId: z.string().min(1).max(256).optional(),
@@ -59,7 +60,7 @@ export function projectShareRoutes(app: Fastify) {
         handle(reply, async () => ({ grants: await listProjectGrants(request.userId, request.params.projectId) })));
 
     app.patch('/v1/projects/:projectId/shares/:accountId', {
-        ...auth,
+        preHandler: [app.authenticate, humanOnly('share.project.update')],
         schema: { params: granteeParams, body: z.object({ role: roleSchema.optional(), expiresInDays: expirySchema.optional() }).strict()
             .refine((b) => b.role !== undefined || b.expiresInDays !== undefined, { message: 'role or expiresInDays' }) },
     }, async (request, reply) => handle(reply, async () => ({
@@ -75,7 +76,7 @@ export function projectShareRoutes(app: Fastify) {
     app.get('/v1/project-shares/incoming', auth, async (request, reply) =>
         handle(reply, async () => ({ shares: await listIncomingProjectShares(request.userId) })));
 
-    app.post('/v1/project-shares/:grantId/respond', { ...auth, schema: { params: grantParams, body: z.object({ accept: z.boolean() }) } }, async (request, reply) =>
+    app.post('/v1/project-shares/:grantId/respond', { preHandler: [app.authenticate, humanOnly('share.project.respond')], schema: { params: grantParams, body: z.object({ accept: z.boolean() }) } }, async (request, reply) =>
         handle(reply, async () => { await respondToProjectGrant(request.userId, request.params.grantId, request.body.accept); return { ok: true }; }));
 
     app.get('/v1/project-shares/:grantId', { ...auth, schema: { params: grantParams } }, async (request, reply) =>

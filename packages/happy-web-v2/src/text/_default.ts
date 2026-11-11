@@ -581,6 +581,7 @@ export const en = {
     },
 
     errors: {
+        ownerLoginRequired: 'This device\'s sign-in is too old for this action, so it was not done. Sign out and sign in again, then retry (tap to open Account)',
         networkError: 'Network error occurred',
         serverError: 'Server error occurred',
         unknownError: 'An unknown error occurred',
@@ -3384,6 +3385,13 @@ export const en = {
                 summary: 'On a wide desktop the main agent sits beside your session instead of floating over it, and what it did reads as cards.',
                 column: 'The main agent is a resizable column next to the session (it squeezes, never covers; width and open state are kept). The sidebar entry, ⌘K and ⌘⇧E open and close it; narrow windows and phones keep the full-screen page.',
                 cards: 'Its tool calls show as cards: work for a team (with a link to the Lead), messages to sessions, issues and todos, board posts, decisions waiting for approval, wrap-up / hand-off / restart receipts, and plain-language reasons when the safety gate stops a call. Raw data stays one click away.',
+            },
+            nov11v: {
+                title: 'Team, sharing and project settings now answer only to you',
+                summary: 'Accepting or returning a team\'s work, sharing a session, terminal or project, and changing who a team belongs to now need your own sign-in.',
+                teams: 'A program running with this device\'s credentials can no longer accept, return, cancel or hand off a team\'s tasks as you, or take over a team lead\'s seat. The lead and members keep working through their own team tools, and the Web and the Briefing board work as before.',
+                sharing: 'Creating or accepting a terminal, session, link or project share, and editing project instructions, now require a signed-in person; revoking a share stays open.',
+                relogin: 'If this device signed in long ago, these actions ask you to sign out and sign in again instead of failing silently.',
             },
             nov11n: {
                 title: 'Only you can answer the Briefing as you',

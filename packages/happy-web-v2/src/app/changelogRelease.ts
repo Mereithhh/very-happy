@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-11-owner-actions-need-sign-in',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11v.title',
+    summaryKey: 'changelog.releases.nov11v.summary',
+    itemKeys: ['changelog.releases.nov11v.teams', 'changelog.releases.nov11v.sharing', 'changelog.releases.nov11v.relogin'],
+  },
+  {
     id: '2026-11-11-dialog-pinned-head-click-outside',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,

@@ -28,6 +28,7 @@ import {
     rotateShareLink,
     updateShareLink,
 } from '@/app/session/shareLinks';
+import { humanOnly } from '@/app/auth/ownerGuard';
 
 const sessionParams = z.object({ sessionId: z.string().min(1).max(128) });
 const linkParams = sessionParams.extend({ linkId: z.string().min(1).max(128) });
@@ -56,7 +57,7 @@ export function sessionShareLinkRoutes(app: Fastify) {
     const auth_ = { preHandler: app.authenticate };
 
     app.post('/v1/sessions/:sessionId/share-links', {
-        ...auth_,
+        preHandler: [app.authenticate, humanOnly('share.link.create')],
         // .strict(): a link never carries a role / operate (B-867 §7) — extra fields are a 400, not silently dropped.
         schema: { params: sessionParams, body: z.object({ scope: z.enum(['snapshot', 'live']), expiresInDays: expirySchema }).strict() },
     }, async (request, reply) => handle(reply, async () =>
@@ -66,13 +67,13 @@ export function sessionShareLinkRoutes(app: Fastify) {
         handle(reply, async () => ({ links: await listShareLinks(request.userId, request.params.sessionId) })));
 
     app.patch('/v1/sessions/:sessionId/share-links/:linkId', {
-        ...auth_,
+        preHandler: [app.authenticate, humanOnly('share.link.update')],
         schema: { params: linkParams, body: z.object({ snapshotToNow: z.literal(true).optional(), expiresInDays: expirySchema.optional() }) },
     }, async (request, reply) => handle(reply, async () => ({
         link: await updateShareLink(request.userId, request.params.sessionId, request.params.linkId, request.body),
     })));
 
-    app.post('/v1/sessions/:sessionId/share-links/:linkId/rotate', { ...auth_, schema: { params: linkParams } }, async (request, reply) =>
+    app.post('/v1/sessions/:sessionId/share-links/:linkId/rotate', { preHandler: [app.authenticate, humanOnly('share.link.rotate')], schema: { params: linkParams } }, async (request, reply) =>
         handle(reply, async () => rotateShareLink(request.userId, request.params.sessionId, request.params.linkId)));
 
     app.delete('/v1/sessions/:sessionId/share-links/:linkId', { ...auth_, schema: { params: linkParams } }, async (request, reply) =>
