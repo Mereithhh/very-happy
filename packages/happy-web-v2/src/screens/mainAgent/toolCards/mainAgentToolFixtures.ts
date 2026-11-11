@@ -80,6 +80,9 @@ export const MAIN_AGENT_TOOL_FIXTURES: ToolFixture[] = [
 
     // ── gate 1 ───────────────────────────────────────────────────────────
     f('blocked-third-party', 'gate 1 · outbound tool stopped', { ...call('x', { channel: 'general', text: 'Shipping today' }, `${OUTBOUND_DENY_MARKER}或做生产写入；请用派活工具并标 risk，或出 decision 卡。`, 'error'), name: 'mcp__chat__send_message' }),
+    // the exact shape a real main agent got (B-923 e2e): the SDK prefixes the hook's reason
+    f('blocked-hook-real', 'gate 1 · real PreToolUse refusal text', call('todo_add', { title: 'Check the README' },
+        `PreToolUse:mcp__happy__todo_add hook error: ${OUTBOUND_DENY_MARKER}或做生产写入；请用派活工具并标 risk，或出 decision 卡。 (The main agent cannot send outside Very Happy or write production itself; dispatch with a risk level instead.)`, 'error')),
     f('blocked-permission', 'gate 1 · denied via permission', { ...call('owner_board_post', { kind: 'info', title: 'x' }, null, 'error'), permission: { id: 'p1', status: 'denied', reason: `${OUTBOUND_DENY_MARKER}或做生产写入；请用派活工具并标 risk，或出 decision 卡。` } }),
 
     // ── issues / todos / projects ────────────────────────────────────────
@@ -114,6 +117,7 @@ export const MAIN_AGENT_TOOL_FIXTURES: ToolFixture[] = [
     f('session_wrapup-ok', 'session_wrapup · queued', call('session_wrapup', { sessionId: TARGET }, json({ ok: true, sessionId: TARGET, state: 'queued' }))),
     f('session_wrapup-running', 'session_wrapup · already wrapping up', call('session_wrapup', { sessionId: TARGET }, json({ ok: true, sessionId: TARGET, state: 'running' }))),
     f('session_wrapup-deduped', 'session_wrapup · same request again (deduped)', call('session_wrapup', { sessionId: TARGET, requestId: 'r-1' }, json({ ok: true, sessionId: TARGET, state: 'running', deduped: true }))),
+    f('session_wrapup-deduped-done', 'session_wrapup · retry after it finished (deduped)', call('session_wrapup', { sessionId: TARGET, requestId: 'r-1' }, json({ ok: true, sessionId: TARGET, state: 'done', deduped: true }))),
     f('session_wrapup-error', 'session_wrapup · refused', call('session_wrapup', { sessionId: TARGET }, json({ ok: false, sessionId: TARGET, error: 'wrap-up request failed' }), 'error')),
     f('session_wrapup-unknown', 'session_wrapup · unrecognised error text', call('session_wrapup', { sessionId: TARGET }, json({ ok: false, sessionId: TARGET, error: 'server answered 502' }), 'error')),
     f('session_handoff-ok', 'session_handoff · to a new session', call('session_handoff', { from: TARGET, note: 'Continue with the image pipeline.' }, json({ ok: true, from: TARGET, to: 'fresh', state: 'queued' }))),

@@ -256,7 +256,7 @@ risk: 'none' | 'external' | 'production'
 ## 6. Web（B-916a）
 
 - 侧栏顶部固定「主 agent」入口（决策 A1 那一排），状态点：idle / 在想 / 离线。同一个会话，不是新会话。
-- **桌面是布局里的一栏（B-923，取代 B-916a 的悬浮抽屉）**：在壳的主行最右（详情 | 笔记 | 主 agent），挤窄会话区、不遮挡。规则在 `screens/mainAgent/mainAgentDock.ts`：主行（侧栏右侧）≥ 972px 才停靠，否则（窄窗口、手机）打开 `/main-agent` 全屏页；宽度 [320, min(560, 主行 − 6 − 646)]，默认 400，会话区至少留 646px——会话自己的右侧工作区面板（文件 / 预览 / 汇报板）上限是「容器 − 326px」，所以对话与工作区面板各 ≥ 320px，不重叠、不横向滚动；笔记 dock 同排时给栏位和 320px 内容让位。开关与宽度按设备存 localStorage `vh.main-agent-dock.v1`。侧栏入口、⌘K「打开 / 关闭主 agent」、⌘⇧E 都是开关；拖柄支持拖动、键盘、双击恢复默认，拖到 200px 以下松手收起。
+- **桌面是布局里的一栏（B-923，取代 B-916a 的悬浮抽屉）**：在壳的主行最右（详情 | 笔记 | 主 agent），挤窄会话区、不遮挡。规则在 `screens/mainAgent/mainAgentDock.ts`：主行（侧栏右侧）≥ 972px 才停靠，否则（窄窗口、手机）打开 `/main-agent` 全屏页；宽度 [320, min(560, 主行 − 6 − 646)]，默认 400，会话区至少留 646px——会话自己的右侧工作区面板（文件 / 预览 / 汇报板）上限是「容器 − 326px」，所以对话与工作区面板各 ≥ 320px，不重叠、不横向滚动；笔记 dock 同排时（`dockLayout`）优先级是：会话区预留 > 主 agent 栏（先收窄到 320）> 笔记 dock（再收窄到 300）；还放不下时笔记 dock 让位（保持挂载、不显示），栏顶提示一行并给「收起主 agent」，收起后笔记回来。任何面板都不会被压到最小宽度以下。输入框草稿存在 store（`composerDraft`），栏位卸载、换到全屏页都不丢。开关与宽度按设备存 localStorage `vh.main-agent-dock.v1`。侧栏入口、⌘K「打开 / 关闭主 agent」、⌘⇧E 都是开关；拖柄支持拖动、键盘、双击恢复默认，拖到 200px 以下松手收起。
 - **工具调用特化展示（B-923）**：消息流里主 agent 的工具按语义渲染成卡片（`screens/mainAgent/toolCards/`），回执字段以 CLI 实际返回为准；闸 1 拦截按 PreToolUse 拒绝原因识别，闸 2 决策卡按 `state:'awaiting_decision'` 与 `dispatch_approved` 回执识别；未识别的工具走通用行。全部形态见 `/dev/main-agent-tools`。
 - ⌘K「问主 agent…」直接把输入发过去。
 - 设置页：机器（写 `vh.main-agent.v1.machineId`）、`skillRoots`、追加禁用模式（写 `vh.main-agent-config.v1`），按 §2.2 校验后再写。

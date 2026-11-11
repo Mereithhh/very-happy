@@ -76,6 +76,7 @@ const ZH_SENTENCES: Array<[RegExp, (m: RegExpExecArray) => string]> = [
     [/^from is that is the main agent itself/i, () => '不能交接主 agent 自己，请指定要交出工作的会话。'],
     [/^to is that is the main agent itself/i, () => '主 agent 不接手工作，请指定一个工作会话，或不填让它新开一个。'],
     [/^Restart failed: (.+)$/i, (m) => `重启失败（${m[1]}）。`],
+    [/^Session (\S+) was not found on this account/i, (m) => `这个账号下找不到会话 ${m[1]}。`],
     [/^Invalid session ?id/i, () => '会话 id 不合法。'],
     [/^Team (\S+) not found/i, (m) => `找不到团队 ${m[1]}。`],
     [/^Team "(.+)" is archived/i, (m) => `团队「${m[1]}」已归档。`],

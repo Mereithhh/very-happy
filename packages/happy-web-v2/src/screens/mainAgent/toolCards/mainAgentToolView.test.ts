@@ -83,7 +83,7 @@ describe('mainAgentToolView (B-923)', () => {
     });
 
     it('gate 1: a stopped call (any tool, result text or permission reason) explains itself and links settings', () => {
-        for (const id of ['blocked-third-party', 'blocked-permission']) {
+        for (const id of ['blocked-third-party', 'blocked-permission', 'blocked-hook-real']) {
             const v = view(id);
             expect(v).toMatchObject({ kind: 'blocked', status: 'blocked', links: [{ kind: 'settings' }] });
             expect(explain(v, zh)).toMatch(/安全阀拦下/);
@@ -125,6 +125,7 @@ describe('mainAgentToolView (B-923)', () => {
         expect(view('session_wrapup-running').status).toBe('in-progress');
         expect(view('session_wrapup-error')).toMatchObject({ status: 'failed', errorText: 'wrap-up request failed' });
         expect(view('session_wrapup-deduped').status).toBe('already');
+        expect(view('session_wrapup-deduped-done').status).toBe('already');
         expect(view('session_handoff-deduped')).toMatchObject({ status: 'already', links: [{ role: 'from' }, { role: 'to', sessionId: 'sess-new-9' }] });
         expect(view('session_handoff-ok')).toMatchObject({ status: 'queued', fields: expect.arrayContaining([{ key: 'to', value: 'new' }]), links: [{ role: 'from' }] });
         expect(view('session_handoff-to')).toMatchObject({ status: 'done', links: [{ role: 'from' }, { role: 'to', sessionId: 'sess-lead-1234' }] });

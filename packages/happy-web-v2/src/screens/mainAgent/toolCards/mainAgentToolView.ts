@@ -311,7 +311,7 @@ function describe(name: string, input: Rec, json: Rec | null, text: string | nul
         }
         case 'session_wrapup': {
             const state = str(json?.state);
-            return v('lifecycle', state === 'running' ? 'in-progress' : 'queued', {
+            return v('lifecycle', state === 'running' ? 'in-progress' : state === 'done' ? 'done' : 'queued', {
                 fields: field('session', json?.sessionId ?? input.sessionId, true),
                 links: sessionLink(json?.sessionId ?? input.sessionId, 'target'),
                 ...(json?.deduped === true || json?.already === true ? { status: 'already' as const } : {}),
