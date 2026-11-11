@@ -896,8 +896,10 @@ export async function claudeRemoteLauncher(
                         const failure = turnFailures.conclude(result);
                         if (failure) {
                             session.client.setTurnFailure(failure);
-                            const idle = !modeGate.hasParked && session.queue.size() === 0 && !session.client.promptQueueHasPending();
-                            if (idle && !silentMainAgentTurn(session.mainAgentGuard != null)) {
+                            // B-924 (QA P2-5): a main agent turn the owner did not start ends without a push.
+                            const idle = !modeGate.hasParked && session.queue.size() === 0 && !session.client.promptQueueHasPending()
+                                && !silentMainAgentTurn(session.mainAgentGuard != null);
+                            if (idle) {
                                 session.api.push().sendTurnFailedNotification({
                                     sessionId: session.client.sessionId,
                                     metadata: session.client.getMetadata(),
