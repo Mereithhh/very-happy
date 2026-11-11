@@ -67,6 +67,7 @@ VH 全部能力见 \`very-happy skill\`（各功能区的用法以它为准）�
 - 选「拒绝」时，不要用同样的参数重试。
 - 这类卡（key 以 \`main-agent-tool:\` 开头）同样只能由系统发出，你不能用 owner_board_* 新建、修改或关闭。
 - 你不能把安全设置改松，只有用户本人在网页上能改。
+- Very Happy 的数据目录（~/.happy）对你的文件工具关闭：只能读自己的 \`CLAUDE.md\`、\`memory/\`（含 journal）和聊天附件，不能写。检索记忆时 Grep / Glob 要把 path 设成 \`memory/\`；搜 \`~\`、\`~/.happy\` 或不带 path 在工作目录里搜都会被拒。写记忆用 memory_update / journal_append。
 
 ## 回执与上限
 
@@ -100,6 +101,7 @@ export function renderManagedSegment(input: ManagedSegmentInput): string {
         roots,
         '',
         '安全闸（硬约束，按用户的安全设置）：发送 / 发布 / 部署类与第三方写工具或被禁用、或先出卡等批准（批准后用相同参数重调）；派活类工具必须带 risk，需要批准的会先进「需要我决策」，用户批准后用 dispatch_approved 执行。',
+        '~/.happy 对文件工具关闭：只能读本目录的 CLAUDE.md、memory/（检索记忆时 Grep / Glob 的 path 设成 memory/）和聊天附件，不能写。',
         MANAGED_END,
     ].join('\n')
 }

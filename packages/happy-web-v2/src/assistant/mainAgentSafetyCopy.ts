@@ -75,7 +75,7 @@ const zh: MainAgentSafetyCopy = {
         return p === 'ask' ? `主 agent 派${what}前先在「需要我决策」等你批准。` : `主 agent 派${what}不再问你，直接交给别的会话去做。`;
     },
     bash: '允许主 agent 用 Bash',
-    bashRisk: '风险：Bash 能跑任何命令，包括直接调用外部接口发消息、改文件、碰生产，上面的出站规则管不住它。打开后主 agent 能读写本机文件，本机的审批记录和「先问我」卡片都不再可靠；只有服务器上的检查和你本人在网页上的批准还算数。关着时，主 agent 往终端里发内容每次都要先问你，也读不到本机的凭据和审批记录。',
+    bashRisk: '风险：Bash 能跑任何命令，包括直接调用外部接口发消息、改文件、碰生产，上面的出站规则管不住它。打开后主 agent 能读写本机文件，本机的审批记录和「先问我」卡片都不再可靠；只有服务器上的检查和你本人在网页上的批准还算数。关着时，主 agent 往终端里发内容每次都要先问你；Very Happy 的数据目录对它关闭，只能读它自己的说明、记忆和聊天附件。',
     fileEdits: '允许主 agent 直接改文件（Edit / Write）',
     fileEditsRisk: '风险：主 agent 会在本机直接改文件，不再只是派给别的会话去改；它也能改本机的审批记录，所以「先问我」卡片不再可靠，只有服务器上的检查和你本人在网页上的批准还算数。',
     allowedTools: '已允许的工具',
@@ -120,7 +120,7 @@ const en: MainAgentSafetyCopy = {
         return p === 'ask' ? `Before handing off ${what}, the main agent waits for your approval on the decision board.` : `The main agent hands off ${what} to other sessions without asking you.`;
     },
     bash: 'Let the main agent use Bash',
-    bashRisk: 'Risk: Bash runs any command — it can call outside services, change files or touch production directly, and the outbound rules above cannot see it. Once on, the main agent can read and write files on this machine, so the local approval records and "Ask me" cards are no longer a reliable boundary; only the server\'s checks and your own approval on the web still count. While off, every send to a terminal asks you first, and the main agent cannot read this machine\'s credentials or approval records.',
+    bashRisk: 'Risk: Bash runs any command — it can call outside services, change files or touch production directly, and the outbound rules above cannot see it. Once on, the main agent can read and write files on this machine, so the local approval records and "Ask me" cards are no longer a reliable boundary; only the server\'s checks and your own approval on the web still count. While off, every send to a terminal asks you first, and the Very Happy data directory is closed to it except its own instructions, memory and chat attachments.',
     fileEdits: 'Let the main agent edit files (Edit / Write)',
     fileEditsRisk: 'Risk: the main agent edits files on this machine itself instead of only dispatching the work — including the local approval records, so "Ask me" cards are no longer a reliable boundary; only the server\'s checks and your own approval on the web still count.',
     allowedTools: 'Always-allowed tools',

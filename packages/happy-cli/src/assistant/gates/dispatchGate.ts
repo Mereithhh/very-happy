@@ -119,8 +119,11 @@ export type DispatchGateDeps = {
     log?: (line: string) => void
     /** B-922: what each non-none level does (default: ask for both = B-916c). Read per call. */
     dispatchPolicy?: () => { external: DispatchPolicy; production: DispatchPolicy }
-    /** B-922 (QA P2-2): tools that always park whatever their risk (terminal_send while Bash is off: it is a shell). */
-    forceAsk?: (toolName: string) => boolean
+    /**
+     * Force the decision card whatever the risk (and whatever the dispatch policy). One hook for every such
+     * rule: setup.ts ORs the conditions (B-922: terminal_send while Bash is off). Args are the call's (no risk).
+     */
+    mustAsk?: (toolName: string, args: Record<string, unknown>) => boolean
 }
 
 type Handler = (args: any, extra?: any) => Promise<ToolResult> | ToolResult
@@ -185,7 +188,7 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         const payload = DISPATCH_TOOL_PAYLOADS[toolName]?.(args) ?? ''
         const { level, keyword, classifier } = await effectiveRisk({ toolName, declared: risk, payload, classify: deps.classify })
         deps.log?.(`[main-agent gate] ${toolName} declared=${risk} keyword=${keyword} classifier=${classifier ?? 'n/a'} → ${level}`)
-        const forced = deps.forceAsk?.(toolName) === true
+        const forced = deps.mustAsk?.(toolName, args) === true
         if (level === 'none' && !forced) return handlers.get(toolName)!(args, extra)
         // B-922: the owner chose "直接派" for this level (default ask = B-916c).
         const policy = deps.dispatchPolicy?.()

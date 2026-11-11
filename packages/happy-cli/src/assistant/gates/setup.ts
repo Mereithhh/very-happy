@@ -23,7 +23,7 @@ import type { KvIo } from '../mainAgentPointer'
 import { expandHome, loadMainAgentConfig, persistAllowedTool, type MainAgentConfig, type MainAgentSafetyRuntime } from './config'
 import { compileOutboundDenylist, outboundPreToolUseHook, type CompiledDenylist } from './outboundDenylist'
 import { cardLang, createToolApproval, type CardLang } from './toolApproval'
-import { MAIN_AGENT_APPROVALS_DIR, protectedPathsFor } from './protectedPaths'
+import { happyHomeCandidates, MAIN_AGENT_APPROVALS_DIR, protectedPathsFor } from './protectedPaths'
 import { createDispatchGate, DISPATCH_OPTIONS, type DispatchBoard, type DispatchGate } from './dispatchGate'
 import type { OneShotRunner } from './risk'
 import { boardItemView as view } from '@/attention/ownerApproval'
@@ -118,14 +118,16 @@ export async function prepareMainAgent(deps: {
         approvalLink: deps.approvalLink,
         log: deps.log,
         dispatchPolicy: () => ({ external: safety.policy.dispatchExternal, production: safety.policy.dispatchProduction }),
-        // QA P2-2: with Bash off, a terminal is the shell it is not supposed to have — every send asks.
-        forceAsk: (tool) => tool === 'terminal_send' && !safety.policy.bash,
+        // Calls that always park, whatever their risk. OR further conditions in here (one hook, not several).
+        mustAsk: (tool) => mustAskTerminal(tool, safety.policy.bash),
     })
     return {
         config,
         safety,
         denylist,
-        preToolUse: outboundPreToolUseHook(denylist, (tool) => deps.log?.(`[main-agent gate] denied ${tool}`), approval.ask, protectedPathsFor(happyHome, { home })),
+        // QA P2-2: HAPPY_HOME is closed to the file tools (read allowlist: CLAUDE.md, memory/, chat uploads).
+        preToolUse: outboundPreToolUseHook(denylist, (tool) => deps.log?.(`[main-agent gate] denied ${tool}`), approval.ask,
+            protectedPathsFor(happyHomeCandidates(deps.happyHomeDir ?? dirname(assistantHome())), { home })),
         // The managed skills live outside the assistant home: mount the whole Very Happy share root
         // (`~/.local/share/very-happy`), or every Read / Grep of the handbook asks for permission in
         // the default mode (isolated probe; QA77 #7: a Grep one level up asked too).
@@ -151,4 +153,9 @@ export async function accountCardLang(timeoutMs = 5_000): Promise<CardLang> {
     } catch {
         return cardLang(null)
     }
+}
+
+/** QA P2-2: with Bash off, a terminal is the shell the main agent is not supposed to have — every send asks. */
+export function mustAskTerminal(toolName: string, bashAllowed: boolean): boolean {
+    return toolName === 'terminal_send' && !bashAllowed
 }

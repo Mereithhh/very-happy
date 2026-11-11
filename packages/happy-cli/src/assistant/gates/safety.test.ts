@@ -8,7 +8,7 @@ import { createDispatchGate, isReservedCardKey, cardFaceHash, type BoardItemView
 import { createToolApproval, TOOL_APPROVAL_OPTIONS, toolCardKey } from './toolApproval'
 import { parseMainAgentConfig, persistAllowedTool, resolveMainAgentSafety, loadMainAgentConfig } from './config'
 import { prepareMainAgent } from './setup'
-import { protectedPathsFor, PROTECTED_PATH_REASON, BROAD_SEARCH_REASON } from './protectedPaths'
+import { happyHomeCandidates, protectedPathsFor, PROTECTED_PATH_REASON, BROAD_SEARCH_REASON } from './protectedPaths'
 import { withAssistantDenylist, setAssistantBuiltinsAllowed, assistantBuiltinsAllowedBy } from '../dispatcherTools'
 import type { KvIo } from '../mainAgentPointer'
 
@@ -382,66 +382,79 @@ describe('B-922: owner_board_* cannot post, edit or close a gate-1 approval card
     })
 })
 
-describe('QA P2-2: the main agent cannot touch credentials or approval records (every preset)', () => {
+describe('QA P2-2: HAPPY_HOME is closed to the main agent file tools (read allowlist only), every preset', () => {
     async function happyHome() {
         const { mkdir, symlink } = await import('node:fs/promises')
         const root = await mkdtemp(join(tmpdir(), 'vh-protect-'))
         const hh = join(root, '.happy')
-        await mkdir(join(hh, 'assistant', 'memory'), { recursive: true })
+        const a = join(hh, 'assistant')
+        await mkdir(join(a, 'memory', 'journal'), { recursive: true })
+        await mkdir(join(a, 'wrapup-cards'), { recursive: true })
         await mkdir(join(hh, 'main-agent-approvals', 'pending-tool'), { recursive: true })
-        await mkdir(join(hh, 'settings-approvals'), { recursive: true })
+        await mkdir(join(hh, 'uploads', 'chat', 's1'), { recursive: true })
+        await writeFile(join(a, 'CLAUDE.md'), '# role')
+        await writeFile(join(a, 'memory', 'personal.md'), 'likes tea')
+        await writeFile(join(a, 'memory', 'journal', '2026-11-11.md'), 'did things')
+        await writeFile(join(a, 'followups.json'), '{}')
+        await writeFile(join(a, 'wrapup-cards', 'c.json'), '{}')
         await writeFile(join(hh, 'access.key'), '{"token":"t","secret":"s"}')
-        await writeFile(join(hh, 'main-agent-approvals', 'pending-tool', 'abc.json'), '{}')
-        await symlink(join(hh, 'access.key'), join(hh, 'assistant', 'innocent.txt'))
-        return { root, hh, cwd: join(hh, 'assistant') }
+        await writeFile(join(hh, 'uploads', 'chat', 's1', 'pic.png'), 'x')
+        await symlink(join(hh, 'access.key'), join(a, 'memory', 'innocent.md'))   // a link inside the allowlist pointing out
+        await symlink(join(a, 'memory'), join(root, 'mem-link'))                  // a link outside pointing in (fine to read)
+        return { root, hh, cwd: a }
     }
 
-    it('file tools: credentials, approval dirs, .inflight markers — absolute, ~, relative and via a symlink', async () => {
+    it('read: CLAUDE.md, memory/** (journal too) and chat uploads only', async () => {
+        const { root, hh, cwd } = await happyHome()
+        const p = protectedPathsFor(hh, { home: root })
+        for (const fp of ['CLAUDE.md', 'memory/personal.md', join(cwd, 'memory', 'journal', '2026-11-11.md'), '~/.happy/assistant/memory/personal.md', join(hh, 'uploads', 'chat', 's1', 'pic.png'), join(root, 'mem-link', 'personal.md'), join(root, 'elsewhere.md')])
+            expect(p.check('Read', { file_path: fp }, cwd), fp).toBeNull()
+        for (const fp of ['followups.json', 'wrapup-cards/c.json', join(cwd, 'pending-dispatch', 'x.json'), join(cwd, 'precheck-1.json'), join(cwd, 'handoff-new.json'),
+            '../access.key', '~/.happy/access.key', join(hh, 'agent.key'), join(hh, 'daemon.state.json'), join(hh, 'settings.json'), join(hh, 'settings-approvals', 'a.json'),
+            join(hh, 'main-agent-approvals', 'pending-tool', 'abc.json'), join(hh, 'teams', 'x'), 'memory/innocent.md', 'memory/../followups.json', join(cwd, 'x.inflight')])
+            expect(p.check('Read', { file_path: fp }, cwd), fp).toBe(PROTECTED_PATH_REASON)
+    })
+
+    it('write: nothing under HAPPY_HOME, not even the allowlist', async () => {
         const { root, hh, cwd } = await happyHome()
         const p = protectedPathsFor(hh, { home: root })
         for (const [tool, input] of [
-            ['Read', { file_path: join(hh, 'access.key') }],
-            ['Read', { file_path: '~/.happy/access.key' }],
-            ['Read', { file_path: '../access.key' }],
-            ['Read', { file_path: 'innocent.txt' }],
-            ['Read', { file_path: join(hh, 'agent.key') }],
-            ['Read', { file_path: join(hh, 'daemon.state.json') }],
-            ['Read', { file_path: join(hh, 'main-agent-approvals', 'pending-tool', 'abc.json') }],
-            ['Write', { file_path: join(hh, 'main-agent-approvals', 'pending-tool', 'forged.json') }],
-            ['Edit', { file_path: join(hh, 'settings-approvals', 'x.json') }],
-            ['MultiEdit', { file_path: join(hh, 'assistant', 'pending-dispatch', 'old.json') }],
-            ['NotebookEdit', { notebook_path: join(hh, 'access.key') }],
-            ['Read', { file_path: join(hh, 'somewhere', 'id.inflight') }],
+            ['Write', { file_path: 'memory/personal.md' }], ['Edit', { file_path: 'CLAUDE.md' }], ['MultiEdit', { file_path: 'followups.json' }],
+            ['Write', { file_path: join(hh, 'main-agent-approvals', 'pending-tool', 'forged.json') }], ['NotebookEdit', { notebook_path: join(hh, 'x.ipynb') }],
+            ['Write', { file_path: join(root, 'mem-link', 'personal.md') }],
         ] as const) expect(p.check(tool, input, cwd), `${tool} ${JSON.stringify(input)}`).toBe(PROTECTED_PATH_REASON)
-        for (const [tool, input] of [
-            ['Read', { file_path: join(hh, 'assistant', 'memory', 'personal.md') }],
-            ['Read', { file_path: 'CLAUDE.md' }],
-            ['Write', { file_path: join(root, 'notes.md') }],
-            ['WebFetch', { url: 'https://example.com/access.key' }],
-        ] as const) expect(p.check(tool, input, cwd), `${tool} ${JSON.stringify(input)}`).toBeNull()
+        expect(p.check('Write', { file_path: join(root, 'notes.md') }, cwd)).toBeNull()
     })
 
-    it('search tools: refuse roots inside a protected dir or containing HAPPY_HOME; the assistant home is fine', async () => {
+    it('search: Grep / Glob only inside the allowlist; anything covering HAPPY_HOME is refused', async () => {
         const { root, hh, cwd } = await happyHome()
         const p = protectedPathsFor(hh, { home: root })
-        expect(p.check('Grep', { pattern: 'token', path: join(hh, 'main-agent-approvals') }, cwd)).toBe(PROTECTED_PATH_REASON)
-        expect(p.check('Grep', { pattern: 'token', path: '~' }, cwd)).toBe(BROAD_SEARCH_REASON)
-        expect(p.check('Grep', { pattern: 'token', path: hh }, cwd)).toBe(BROAD_SEARCH_REASON)
-        expect(p.check('Glob', { pattern: '**/*.key', path: '/' }, cwd)).toBe(BROAD_SEARCH_REASON)
-        expect(p.check('Glob', { pattern: `${hh}/*.key` }, cwd)).toBe(BROAD_SEARCH_REASON)
-        expect(p.check('Glob', { pattern: `${hh}/main-agent-approvals/**` }, cwd)).toBe(PROTECTED_PATH_REASON)
-        expect(p.check('Grep', { pattern: 'x' }, cwd)).toBeNull() // memory grep in the assistant home
-        expect(p.check('Glob', { pattern: 'memory/**/*.md' }, cwd)).toBeNull()
-        expect(p.check('Grep', { pattern: 'x', path: join(root, 'skills') }, cwd)).toBeNull()
+        for (const input of [{ pattern: 'tea', path: 'memory' }, { pattern: 'tea', path: join(cwd, 'memory', 'journal') }, { pattern: 'x', path: join(root, 'skills') }])
+            expect(p.check('Grep', input, cwd), JSON.stringify(input)).toBeNull()
+        for (const input of [{ pattern: 'memory/**/*.md' }, { pattern: '**/*.md', path: 'memory' }, { pattern: `${cwd}/memory/*.md` }, { pattern: '*.md', path: join(root, 'skills') }])
+            expect(p.check('Glob', input, cwd), JSON.stringify(input)).toBeNull()
+        for (const [tool, input] of [
+            ['Grep', { pattern: 'x' }],                                   // no path = the assistant home (followups.json, wrapup-cards/)
+            ['Grep', { pattern: 'token', path: hh }], ['Grep', { pattern: 'token', path: '~' }], ['Grep', { pattern: 'token', path: '/' }],
+            ['Grep', { pattern: 'token', path: '~/.happy' }], ['Grep', { pattern: 'x', path: 'wrapup-cards' }], ['Grep', { pattern: 'x', path: 'memory/..' }],
+            ['Grep', { pattern: 'x', path: join(hh, 'main-agent-approvals') }],
+            ['Glob', { pattern: '*.json' }], ['Glob', { pattern: '../*.key' }], ['Glob', { pattern: 'memory/../*.json' }],
+            ['Glob', { pattern: `${hh}/*.key` }], ['Glob', { pattern: '~/.happy/**' }], ['Glob', { pattern: '**/*.key', path: '/' }],
+            ['Glob', { pattern: `${hh}/main-agent-approvals/**` }],
+        ] as const) expect(p.check(tool, input, cwd), `${tool} ${JSON.stringify(input)}`).toBe(BROAD_SEARCH_REASON)
     })
 
-    it('the hook refuses before any preset decision — Strict, Standard and Loose alike', async () => {
+    it('HAPPY_HOME_DIR counts too, and the hook refuses before any preset decision', async () => {
         const { root, hh, cwd } = await happyHome()
+        const other = await mkdtemp(join(tmpdir(), 'vh-protect-env-'))
+        await writeFile(join(other, 'access.key'), 'k')
+        const p = protectedPathsFor(happyHomeCandidates(hh, { HAPPY_HOME_DIR: other }), { home: root })
+        expect(p.check('Read', { file_path: join(other, 'access.key') }, cwd)).toBe(PROTECTED_PATH_REASON)
         for (const policy of [PRESET_POLICIES.strict, PRESET_POLICIES.standard, PRESET_POLICIES.loose]) {
             const hook = outboundPreToolUseHook(compileOutboundDenylist([], { policy }), undefined, async () => 'allow', protectedPathsFor(hh, { home: root }))
             expect(await hook({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: join(hh, 'access.key') }, cwd }))
                 .toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: PROTECTED_PATH_REASON } })
-            expect(await hook({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: join(cwd, 'CLAUDE.md') }, cwd })).toEqual({ continue: true })
+            expect(await hook({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: join(cwd, 'memory', 'personal.md') }, cwd })).toEqual({ continue: true })
         }
     })
 
@@ -452,17 +465,18 @@ describe('QA P2-2: the main agent cannot touch credentials or approval records (
         const rt = await prepareMainAgent({ kvGet: async () => ({ value: b64({ v: 1, safety: { v: 1, preset: 'standard' } }) }), board: tb.board, classify: null, approvalLink: (id) => id, home: root, assistantHomeDir: aHome, happyHomeDir: hh })
         await rt.preToolUse({ hook_event_name: 'PreToolUse', tool_name: 'mcp__chat__send_message', tool_input: { text: 'hi' }, cwd: aHome })
         const files = await readdir(join(hh, 'main-agent-approvals', 'pending-tool'))
-        expect(files.some((f) => f.endsWith('.json') && f !== 'abc.json')).toBe(true)
+        expect(files.some((f) => f.endsWith('.json'))).toBe(true)
         expect((await readdir(aHome)).some((f) => f.startsWith('pending-'))).toBe(false)
-        expect(reasonOf(await rt.preToolUse({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: join(hh, 'access.key') }, cwd: aHome }))).toBe(PROTECTED_PATH_REASON)
+        expect(reasonOf(await rt.preToolUse({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: join(aHome, 'followups.json') }, cwd: aHome }))).toBe(PROTECTED_PATH_REASON)
+        expect(await rt.preToolUse({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: join(aHome, 'memory', 'personal.md') }, cwd: aHome })).toEqual({ continue: true })
     })
 })
 
 describe('QA P2-2: terminal_send always asks while Bash is off', () => {
-    async function gate(forceAsk?: (t: string) => boolean) {
+    async function gate(mustAsk?: (t: string, a: Record<string, unknown>) => boolean) {
         const dir = await mkdtemp(join(tmpdir(), 'vh-term-'))
         const tb = toolBoard()
-        const g = createDispatchGate({ pendingDir: join(dir, 'p'), board: tb.board, classify: null, approvalLink: (id) => id, forceAsk, dispatchPolicy: () => ({ external: 'direct', production: 'direct' }) })
+        const g = createDispatchGate({ pendingDir: join(dir, 'p'), board: tb.board, classify: null, approvalLink: (id) => id, mustAsk, dispatchPolicy: () => ({ external: 'direct', production: 'direct' }) })
         const send = vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'sent' }], isError: false }))
         const tools = new Map<string, any>()
         g.wrap({ registerTool: ((n: string, _c: any, h: any) => { tools.set(n, h) }) as any }).registerTool('terminal_send', { description: 't', inputSchema: {} } as any, send as any)
@@ -484,7 +498,7 @@ describe('QA P2-2: terminal_send always asks while Bash is off', () => {
         expect((await g.tools.get('terminal_send')({ terminalId: 't1', text: 'ls\n', risk: 'none' })).content[0].text).toBe('sent')
     })
 
-    it('prepareMainAgent forces it exactly when Bash is off, in every preset', async () => {
+    it('prepareMainAgent sets mustAsk exactly when Bash is off, in every preset', async () => {
         for (const [safety, forced] of [
             [{ v: 1, preset: 'strict' }, true], [{ v: 1, preset: 'standard' }, true], [{ v: 1, preset: 'loose' }, true],
             [{ v: 1, preset: 'loose', overrides: { bash: true } }, false],

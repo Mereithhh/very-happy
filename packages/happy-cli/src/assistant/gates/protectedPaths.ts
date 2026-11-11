@@ -1,38 +1,41 @@
 /**
- * Main agent — paths its file tools may never touch (B-922, QA P2-2).
+ * Main agent — what its file tools may touch under HAPPY_HOME (B-922, QA P2-2).
  *
- * Credentials and the local approval records live under HAPPY_HOME. If the
- * main agent could Read them, a token and secret would land in the model
- * context, and with Edit / Write it could forge an approval record. The
- * PreToolUse hook refuses Read / Edit / Write / MultiEdit / NotebookEdit on
- * these paths, and Grep / Glob whose search root is inside one of them or
- * contains HAPPY_HOME (search a narrower directory instead), in every preset.
+ * HAPPY_HOME (`~/.happy`, and `$HAPPY_HOME_DIR`) holds credentials and every
+ * local record the gates trust: approval records, the wrap-up card hashes,
+ * the follow-up ledger, settings approvals, daemon state. Rather than list
+ * them (and miss the next one), HAPPY_HOME is closed to the main agent's file
+ * tools, with a small read-only allowlist:
  *
- * With Bash on, the agent can read these files anyway: that boundary is stated
- * in the Web toggle and spec §4.3, and server-side hardening is B-927.
+ *  - read (Read / Grep / Glob): only `assistant/CLAUDE.md`, `assistant/memory/**`
+ *    (personal memory + journal) and `uploads/chat/**` (attachments the owner
+ *    sends in chat); a Grep / Glob whose root is not inside those, or that
+ *    covers HAPPY_HOME (`~`, `/`, the assistant home itself), is refused;
+ *  - write (Edit / Write / MultiEdit / NotebookEdit): nothing under HAPPY_HOME.
+ *    `memory_update` / `journal_append` are MCP tools that write in the wrapper.
+ *
+ * Paths are resolved (`~`, relative to the call's cwd, `..`, symlinks through
+ * the nearest existing ancestor) before the check. In every preset. The wrapper
+ * and the daemon read and write these files directly, not through these tools.
+ * With Bash on the agent can read them anyway: stated in the Web toggle and
+ * spec §4.3; server-side hardening is B-927.
  */
 
 import { existsSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
-/** Root of the gates' own approval records (outside the assistant home, which the agent greps). */
+/** The gates' own approval records (moved out of the assistant home). */
 export const MAIN_AGENT_APPROVALS_DIR = 'main-agent-approvals'
 
-export const PROTECTED_FILE_NAMES: readonly string[] = ['access.key', 'agent.key', 'daemon.state.json', 'daemon.state.json.lock']
-export const PROTECTED_DIR_NAMES: readonly string[] = [MAIN_AGENT_APPROVALS_DIR, 'settings-approvals']
-/** Approval dirs from before B-922 moved them out of the assistant home. */
-const LEGACY_DIRS: readonly string[] = [join('assistant', 'pending-dispatch'), join('assistant', 'pending-tool')]
-
-const FILE_TOOLS: Readonly<Record<string, readonly string[]>> = {
-    Read: ['file_path'], Edit: ['file_path'], Write: ['file_path'], MultiEdit: ['file_path'], NotebookEdit: ['notebook_path'],
-}
+const READ_TOOLS: Readonly<Record<string, string>> = { Read: 'file_path' }
+const WRITE_TOOLS: Readonly<Record<string, string>> = { Edit: 'file_path', Write: 'file_path', MultiEdit: 'file_path', NotebookEdit: 'notebook_path' }
 const SEARCH_TOOLS = new Set(['Grep', 'Glob'])
 
-export const PROTECTED_PATH_REASON = '主 agent 不能读写 Very Happy 的凭据和本机审批记录（access.key、agent.key、daemon.state.json、审批目录）。'
-    + ' (The main agent may not read or write Very Happy credentials or the local approval records.)'
-export const BROAD_SEARCH_REASON = '这个搜索范围包含 Very Happy 的数据目录（含凭据和审批记录），请换一个更小的目录再搜。'
-    + ' (This search covers the Very Happy data directory; search a narrower directory.)'
+export const PROTECTED_PATH_REASON = '主 agent 不能读写 Very Happy 数据目录（~/.happy）里的文件，只能读自己的 CLAUDE.md、memory/ 和聊天附件。'
+    + ' (The main agent may not read or write files in the Very Happy data directory, except reading its own CLAUDE.md, memory/ and chat attachments.)'
+export const BROAD_SEARCH_REASON = '这个搜索范围包含 Very Happy 的数据目录（含凭据和审批记录）。检索记忆请把 path 设成 memory/，其他内容换一个不含 ~/.happy 的目录。'
+    + ' (This search covers the Very Happy data directory; search memory/ for memory, or a directory outside ~/.happy.)'
 
 function expand(path: string, cwd: string, home: string): string {
     const p = path === '~' ? home : path.startsWith('~/') ? join(home, path.slice(2)) : path
@@ -62,41 +65,61 @@ export type ProtectedPaths = {
     check(toolName: string, toolInput: unknown, cwd?: string): string | null
 }
 
-export function protectedPathsFor(happyHome: string, opts: { home?: string } = {}): ProtectedPaths {
+/**
+ * `happyHomes`: the configured HAPPY_HOME plus `$HAPPY_HOME_DIR` (both are
+ * resolved; duplicates collapse). The allowlist is relative to each.
+ */
+export function protectedPathsFor(happyHomes: string | readonly string[], opts: { home?: string } = {}): ProtectedPaths {
     const home = opts.home ?? homedir()
-    const root = real(resolve(happyHome))
-    const files = PROTECTED_FILE_NAMES.map((f) => join(root, f))
-    const dirs = [...PROTECTED_DIR_NAMES, ...LEGACY_DIRS].map((d) => join(root, d))
-    const isProtected = (p: string) => files.includes(p) || dirs.some((d) => inside(p, d)) || (inside(p, root) && p.endsWith('.inflight'))
+    const roots = [...new Set((Array.isArray(happyHomes) ? happyHomes : [happyHomes]).filter((h): h is string => typeof h === 'string' && h.length > 0).flatMap((h) => {
+        const abs = resolve(expand(h, home, home))
+        return [abs, real(abs)]
+    }))]
+    const readFiles = roots.map((r) => join(r, 'assistant', 'CLAUDE.md'))
+    const readDirs = roots.flatMap((r) => [join(r, 'assistant', 'memory'), join(r, 'uploads', 'chat')])
+    const underHome = (p: string) => roots.some((r) => inside(p, r))
+    const readable = (p: string) => readFiles.includes(p) || readDirs.some((d) => inside(p, d))
+    /** The real path and the lexical one: both must pass (a symlink inside the allowlist pointing out, or the reverse). */
+    const both = (raw: string, base: string) => { const lex = expand(raw, base, home); return [lex, real(lex)] }
+
     return {
         check(toolName, toolInput, cwd) {
             const input = toolInput && typeof toolInput === 'object' ? toolInput as Record<string, unknown> : {}
             const base = cwd && isAbsolute(cwd) ? cwd : process.cwd()
-            const fields = FILE_TOOLS[toolName]
-            if (fields) {
-                for (const f of fields) {
-                    const v = input[f]
-                    if (typeof v === 'string' && v && isProtected(real(expand(v, base, home)))) return PROTECTED_PATH_REASON
-                }
+            const writeField = WRITE_TOOLS[toolName]
+            if (writeField) {
+                const v = input[writeField]
+                if (typeof v === 'string' && v && both(v, base).some(underHome)) return PROTECTED_PATH_REASON
+                return null
+            }
+            const readField = READ_TOOLS[toolName]
+            if (readField) {
+                const v = input[readField]
+                if (typeof v === 'string' && v && both(v, base).some((p) => underHome(p) && !readable(p))) return PROTECTED_PATH_REASON
                 return null
             }
             if (SEARCH_TOOLS.has(toolName)) {
                 const raw = typeof input.path === 'string' && input.path ? input.path : base
-                const searchRoot = real(expand(raw, base, home))
-                if (isProtected(searchRoot)) return PROTECTED_PATH_REASON
-                if (inside(root, searchRoot)) return BROAD_SEARCH_REASON
-                // Glob with an absolute pattern and no path
+                let target = raw
+                // Glob: the pattern's fixed prefix narrows (or widens: `../`, absolute, `~`) the real search root
                 const pattern = typeof input.pattern === 'string' ? input.pattern : ''
-                if (toolName === 'Glob' && (isAbsolute(pattern) || pattern.startsWith('~'))) {
-                    const parts = pattern.split(sep)
+                if (toolName === 'Glob' && pattern) {
+                    const parts = pattern.split(/[\\/]/)
                     const cut = parts.findIndex((part) => /[*?[{]/.test(part))
-                    const fixed = (cut === -1 ? parts : parts.slice(0, cut)).join(sep) || sep
-                    const patRoot = real(expand(fixed, base, home))
-                    if (isProtected(patRoot)) return PROTECTED_PATH_REASON
-                    if (inside(root, patRoot)) return BROAD_SEARCH_REASON
+                    const fixed = (cut === -1 ? parts.slice(0, -1) : parts.slice(0, cut)).join(sep)
+                    if (fixed || isAbsolute(pattern)) target = isAbsolute(pattern) || pattern.startsWith('~') ? (fixed || sep) : join(expand(raw, base, home), fixed)
+                }
+                for (const r of both(target, base)) {
+                    if (roots.some((h) => inside(h, r))) return BROAD_SEARCH_REASON
+                    if (underHome(r) && !readable(r)) return BROAD_SEARCH_REASON
                 }
             }
             return null
         },
     }
+}
+
+/** HAPPY_HOME candidates for the guard: the configured one and `$HAPPY_HOME_DIR`. */
+export function happyHomeCandidates(configured: string, env: NodeJS.ProcessEnv = process.env): string[] {
+    return [configured, ...(env.HAPPY_HOME_DIR ? [env.HAPPY_HOME_DIR] : [])]
 }
