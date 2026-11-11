@@ -10,7 +10,10 @@ import { suggestProjectFor } from '@/screens/projects/projectSuggestion';
 import { newSessionProjectHint, projectHintText } from '@/screens/projects/newSessionProject';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Bookmark, Check, X } from 'lucide-react';
+import { Bookmark, Check, Paperclip, X } from 'lucide-react';
+import { attachmentKindAllowed, pendingAttachmentKinds } from '@/sync/attachmentCapabilities';
+import { getFilesFromClipboard, getFilesFromDrop, MAX_ATTACHMENT_SOURCE_BYTES, useAttachments } from '@/screens/session/useAttachments';
+import { ComposerAttachments } from '@/screens/session/ComposerAttachments';
 import { useAllMachines, useLocalSetting, useSetting, useSettingMutable } from '@/sync/storage';
 import { isMachineOnline, pickDefaultMachineId } from '@/utils/machineUtils';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
@@ -93,6 +96,9 @@ export function NewSessionModal({
   // B-596: the not-installed agent whose install command is shown (its greyed button was selected).
   const [setupAgent, setSetupAgent] = useState<Exclude<SessionAgent, 'claude'> | null>(null);
   const [initialCommand, setInitialCommand] = useState(initialCommandDefault ?? '');
+  // B-929: images / files sent with the first message (the dialog owns them until 创建).
+  const firstFiles = useAttachments();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // B-649: project picker. Until the user picks, it follows the folder: a path
   // inside a project folder pre-selects that project (visible, one click to
   // change to 无项目) — the dialog is an explicit choice, not a silent join.
@@ -242,8 +248,20 @@ export function NewSessionModal({
     ...machines.filter((m) => !isMachineOnline(m)).map((m) => ({ value: m.id, label: machineLabel(m), meta: offlineText, disabled: true })),
     ...(machineId && !machines.some((m) => m.id === machineId) ? [{ value: machineId, label: machineLabel(undefined), meta: offlineText, disabled: true }] : []),
   ];
+  const attachKinds = pendingAttachmentKinds(agent);
+  async function addFirstFiles(files: File[]) {
+    if (files.length === 0) return;
+    if (attachKinds.length === 0) { toast.show(t('newSession.filesUnsupported'), 'info'); return; }
+    const allowed = files.filter((file) => attachmentKindAllowed(attachKinds, { mimeType: file.type, name: file.name }));
+    const result = await firstFiles.addFiles(allowed);
+    if (result.tooLarge.length > 0) toast.show(t('imageUpload.fileTooLargeMessage', { name: result.tooLarge[0].name, maxMb: MAX_ATTACHMENT_SOURCE_BYTES / 1024 / 1024 }), 'error');
+    else if (allowed.length < files.length) toast.show(t('imageUpload.unsupportedFileMessage'), 'info');
+  }
   async function onCreate() {
     if (!canCreate) return;
+    // B-929: never start without the files the user picked.
+    if (firstFiles.processing) return;
+    if (firstFiles.attachments.length > 0 && attachKinds.length === 0) { toast.show(t('newSession.filesUnsupported'), 'info'); return; }
     let path = resolveDir(trimmed);
     if (worktreeActive) {
       // The worktree must exist before the optimistic page spawns into it.
@@ -271,6 +289,7 @@ export function NewSessionModal({
       permissionMode: resolveNewSessionPermissionMode(agentDefaultOverrides, agent, reviewFirst),
       source: 'dialog',
       firstMessage: initialCommand,
+      firstAttachments: firstFiles.take(),
       ...spawnAgentProfileParam(readMachineAgentProfiles(selectedMachine), agent, accountChoice),
       ...(spawnedTaskId ? { onSpawnedTask: { taskId: spawnedTaskId } } : {}),
       ...(projectId ? { onSpawnedProject: { projectId } } : {}),
@@ -458,11 +477,39 @@ export function NewSessionModal({
               </div>
             ))}
 
-            <label className="ns-label">{t('newSession.initialCommand')}</label>
+            <div className="ns-label-row">
+              <label className="ns-label" htmlFor="ns-initial">{t('newSession.initialCommand')}</label>
+              {attachKinds.length > 0 && (
+                <button type="button" className="ns-connect-link ns-attach" onClick={() => fileInputRef.current?.click()}>
+                  <Paperclip size={13} aria-hidden />{t('newSession.addFiles')}
+                </button>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              accept={attachKinds.includes('*/*') ? undefined : 'image/jpeg,image/png,image/gif,image/webp'}
+              onChange={(e) => { const files = e.target.files ? Array.from(e.target.files) : []; e.target.value = ''; void addFirstFiles(files); }}
+            />
             <textarea
+              id="ns-initial"
               className="ns-input ns-initial"
               value={initialCommand}
               onChange={(e) => setInitialCommand(e.target.value)}
+              onPaste={(e) => {
+                const files = getFilesFromClipboard(e.nativeEvent);
+                if (files.length === 0) return;
+                e.preventDefault();
+                void addFirstFiles(files);
+              }}
+              onDragOver={(e) => { if (Array.from(e.dataTransfer.types).includes('Files')) e.preventDefault(); }}
+              onDrop={(e) => {
+                if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+                e.preventDefault();
+                void addFirstFiles(getFilesFromDrop(e.nativeEvent));
+              }}
               placeholder={t('newSession.initialCommandPlaceholder')}
               rows={2}
               onCompositionStart={ime.onCompositionStart}
@@ -474,6 +521,10 @@ export function NewSessionModal({
                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void onCreate(); }
               }}
             />
+            <ComposerAttachments attachments={firstFiles.attachments} onRemove={firstFiles.remove} />
+            {firstFiles.attachments.length > 0 && attachKinds.length === 0 && (
+              <div className="ns-agent-help" role="status">{t('newSession.filesUnsupported')}</div>
+            )}
           </>
         )}
 
@@ -481,7 +532,7 @@ export function NewSessionModal({
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button variant="primary" disabled={!canCreate} aria-busy={creating !== 'idle' || undefined} onPointerDown={prefetchSessionDetail} onClick={() => { void onCreate(); }}>
+          <Button variant="primary" disabled={!canCreate || firstFiles.processing} aria-busy={creating !== 'idle' || undefined} onPointerDown={prefetchSessionDetail} onClick={() => { void onCreate(); }}>
             {creating === 'slow' ? <><Spinner size={13} /> {worktreeCopy(lang).creating}</> : t('common.create')}
           </Button>
         </div>

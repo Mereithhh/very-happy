@@ -20,7 +20,7 @@ describe('B-850c accounts wiring', () => {
 
     it('Q3: an unusable account blocks before the session is created', () => {
         const detail = src('screens/session/SessionDetailScreen.tsx');
-        expect(detail).toContain('onSend: (text) => !pendingAccountBlock && pendingSessions.append(pending.pendingId, text),');
+        expect(detail).toContain('onSend: (text, files) => !pendingAccountBlock && pendingSessions.append(pending.pendingId, text, files),');
         expect(detail).toContain(': pendingAccountBlock ? pendingAccountBlock');
         expect(detail).toContain("const pendingAccountBlock = pendingMode && pending?.state === 'draft'");
         const modal = src('screens/sessions/NewSessionModal.tsx');

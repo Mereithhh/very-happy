@@ -1,12 +1,13 @@
 import { selectDisplayedEffortKey } from './effortSelection';
 import { wrapperSupportsSteer } from './steerSupport';
-import { supportsSessionAttachments } from '@/sync/attachmentCapabilities';
+import { pendingAttachmentKinds, supportsSessionAttachments } from '@/sync/attachmentCapabilities';
+import type { AttachmentPreview } from '@/sync/attachmentTypes';
 import { ModelEffortMenu } from './ModelEffortMenu';
 import { sessionAgentLabel } from './sessionAgentLabel';
 import { harnessForFlavor, machineSupportsModelConfig, withCustomModels } from '@/sync/modelConfigModel';
 import { modelConfigStore, useCustomPickerModels } from '@/sync/modelConfigStore';
 import { onMessageQuote } from './messageQuote';
-import { mergeRestoredDraft, onComposerRestore } from './composerRestore';
+import { mergeRestoredDraft, onComposerRestore, onComposerRestoreFiles } from './composerRestore';
 import { onDraftSendRequest } from './draftSendRequest';
 import { DispatchedQueueRow, PendingQueueRow } from './SendStatusView';
 import { appendMessageQuote, insertMessageQuoteAt } from './messageActionsModel';
@@ -200,8 +201,14 @@ function persistSessionQueue(sessionId: string, queue: QueuedMessage[]) {
  * (the pending store writes them to the real session before anything is sent).
  */
 export interface PendingComposer {
-    /** Append to the outbox. False = not accepted; the text stays in the composer. */
-    onSend: (text: string) => boolean;
+    /**
+     * Append to the outbox. False = not accepted; the text stays in the
+     * composer. B-929: `files` go with the text as one message; accepted = the
+     * outbox owns them (their Blob URLs) from here on.
+     */
+    onSend: (text: string, files: AttachmentPreview[]) => boolean;
+    /** B-929: files a left / discarded pending page parked — this (draft) page's composer takes them. */
+    takeLeftFiles?: () => AttachmentPreview[];
     /** Why a send is not accepted right now (failed start, owned by another tab). */
     blockedHint?: string;
     permissionMode: string | null;
@@ -300,11 +307,11 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         }
     }, []);
 
-    const supportsAttachments = supportsSessionAttachments(session?.metadata);
-
     const flavor = (session?.metadata?.flavor ?? agentFlavor) as any;
     const metadata = session?.metadata ?? null;
-    const attachmentKinds = metadata?.attachmentKinds ?? [];
+    // B-929: no session yet — what this agent's wrapper takes (checked again against the real session at delivery).
+    const attachmentKinds = !session && pending ? pendingAttachmentKinds(agentFlavor) : metadata?.attachmentKinds ?? [];
+    const supportsAttachments = !session && pending ? attachmentKinds.length > 0 : supportsSessionAttachments(session?.metadata);
     const supportsAnyAttachments = attachmentKinds.includes('*/*');
     const supportsPdfAttachments = attachmentKinds.includes('application/pdf');
     // B-322: the fourth site B-295 missed. `runningTool` is last-known
@@ -761,6 +768,15 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         requestAnimationFrame(() => taRef.current?.focus());
     }), [sessionId]);
 
+    // B-929: a pending first message's files that could not go out (or a left draft page's).
+    useEffect(() => onComposerRestoreFiles(sessionId, (items) => restore(items)), [sessionId, restore]);
+    const takeLeftFilesRef = useRef(pending?.takeLeftFiles);
+    takeLeftFilesRef.current = pending?.takeLeftFiles;
+    useEffect(() => {
+        const left = takeLeftFilesRef.current?.() ?? [];
+        if (left.length > 0) restore(left);
+    }, [restore]);
+
     // B-513: a failed message taken back from the transcript.
     useEffect(() => onComposerRestore(sessionId, (restored) => {
         const next = mergeRestoredDraft(restored, draftRef.current);
@@ -890,19 +906,25 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         if ((!value && !sendFiles && notes.length === 0) || sendingRef.current || processingAttachments) return;
         if (pending && request) return;
         if (pending) {
-            // B-516: no session yet — queue into the pending outbox. Attachments
-            // and `/btw` need a live session; the text stays put for them.
-            if (!value || attachments.length > 0) return;
-            if (parseBtwCommand(value)) {
+            // B-516: no session yet — queue into the pending outbox. B-929: files
+            // go with the text as one message (uploaded once the session is up);
+            // `/btw` needs a live session. Every refusal says why — nothing is dropped.
+            if (value && parseBtwCommand(value)) {
                 toast.show(t('pendingSession.btwLater'), 'info');
                 return;
             }
-            if (parseBuiltinActionCommand(value)) {
+            if (value && parseBuiltinActionCommand(value)) {
                 toast.show(t('wrapup.pendingSession'), 'info');
                 return;
             }
-            if (!pending.onSend(value)) {
-                if (pending.blockedHint) toast.show(pending.blockedHint, 'info');
+            if (sendFiles && !supportsAttachments) {
+                toast.show(t('pendingSession.attachmentsLater'), 'info');
+                return;
+            }
+            const files = sendFiles ? take() : [];
+            if (!pending.onSend(value, files)) {
+                if (files.length > 0) restore(files);
+                toast.show(pending.blockedHint ?? t('pendingSession.notAccepted'), 'info');
                 return;
             }
             draftRef.current = '';
@@ -1412,12 +1434,10 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         const hasFiles = Array.from(e.dataTransfer.types).includes('Files');
         if (hasFiles) {
             e.preventDefault();
-            if (pending) {
-                toast.show(t('pendingSession.attachmentsLater'), 'info');
-                return;
-            }
             if (!supportsAttachments) {
-                Modal.alert(t('imageUpload.notSupportedTitle'), t('imageUpload.notSupportedMessage'));
+                // B-929: a pending page of an agent that only says after it starts.
+                if (pending && !session) toast.show(t('pendingSession.attachmentsLater'), 'info');
+                else Modal.alert(t('imageUpload.notSupportedTitle'), t('imageUpload.notSupportedMessage'));
                 return;
             }
             const files = getFilesFromDrop(e.nativeEvent);

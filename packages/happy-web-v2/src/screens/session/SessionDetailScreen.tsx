@@ -22,7 +22,7 @@ import { AgentInput, type PendingComposer } from './AgentInput';
 import { useAfterSplashPaint } from '@/app/afterSplashPaint';
 import { PendingSessionBody, PendingSessionHeader } from './PendingSessionParts';
 import { composerKey, isPendingSessionId, landingRedirect } from '@/sync/pendingSessions';
-import { clearPendingSessionKeys, pendingDraft, pendingSessions, usePendingRecord } from '@/sync/pendingSessionsRuntime';
+import { clearPendingSessionKeys, pendingDraft, pendingSessions, takeOrphanPendingFiles, usePendingRecord } from '@/sync/pendingSessionsRuntime';
 import { notesPanelTransition, type NotesPanelSnapshot } from './notesPanelTransition';
 import { setNotesPanelOpen } from '../notes/notesPanelState';
 import { SessionWorkspacePanel } from './SessionWorkspacePanel';
@@ -390,7 +390,8 @@ export function SessionDetailScreen() {
     // permission / effort menus unreachable. Banners replace the foot's role.
     const mirror = !!session && isMirrorSession(session);
     const pendingComposer: PendingComposer | undefined = pendingMode && pending ? {
-        onSend: (text) => !pendingAccountBlock && pendingSessions.append(pending.pendingId, text),
+        onSend: (text, files) => !pendingAccountBlock && pendingSessions.append(pending.pendingId, text, files),
+        takeLeftFiles: pending.state === 'draft' ? () => takeOrphanPendingFiles(pending.pendingId) : undefined,
         permissionMode: pending.permissionMode,
         modelMode: pending.modelMode,
         effortLevel: pending.effortLevel,

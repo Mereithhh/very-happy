@@ -860,6 +860,9 @@ export const zhHans: TranslationStructure = {
         agent: '智能体',
         initialCommand: '初始指令',
         initialCommandPlaceholder: '(可选) 会话启动后作为第一条消息发送',
+        // B-929
+        addFiles: '添加图片',
+        filesUnsupported: '这个 agent 要等会话启动后才能确认是否支持图片。请先移除文件，或在会话启动后到会话页里添加。',
         createDirTitle: '创建目录?',
         createDirMessage: ({ directory }: { directory: string }) => `目录 ${directory} 还不存在，要创建吗？`,
         title: '开始新会话',
@@ -3485,6 +3488,12 @@ export const zhHans: TranslationStructure = {
                 summary: '任何会话都能查到 Very Happy 能做什么、怎么操作，提示词不变长。',
                 skill: '新增 `very-happy skill`：能力地图覆盖会话、终端、项目、团队、自动化、Issues 与待办、账号、机器、分享、通知、面板和设置，每块一页（如 `very-happy skill automations`）。会话里只多一行指向它，问 agent「给这个项目加一个每天 9 点的自动化」就能拿到正确命令。本机副本在 ~/.local/share/very-happy/skills/very-happy，你改过的文件不会被覆盖。',
                 autoProject: '`very-happy auto create|edit --project <id>|current` 可把自动化挂到项目上（`--no-project` 取消）；以前只能在 Web 上设。',
+            },
+            nov11u: {
+                title: '新会话的第一条消息可以带图片',
+                summary: '新会话还在启动时就能粘贴、拖入或选择图片，会和文字作为同一条消息发出。',
+                images: '新会话页（会话还没建好时）和新建会话对话框里都能粘贴、拖入或选择图片（手机也能选图）。会话启动后自动上传，和文字一起交给 Claude 或 Codex；只发图片也行。启动中刷新页面，图片也会保留并继续发送。',
+                noSilentDrop: '不再悄悄丢消息：文件发不出去时（上传失败、会话不支持这些文件）会说明原因，文字和文件放回输入框，再点发送即可重试。',
             },
             nov11s: {
                 title: '侧栏入口带上了名字',
@@ -6590,7 +6599,13 @@ export const zhHans: TranslationStructure = {
         outboxTitle: '待发送',
         sendAfterStart: '会话启动后发送',
         removeQueued: '移除',
-        attachmentsLater: '会话启动后可添加附件',
+        attachmentsLater: '这个 agent 要等会话启动后才能确认是否支持图片，启动后再添加',
+        // B-929: 新会话首条消息带的文件
+        filesCount: ({ count }: { count: number }) => `${count} 个文件`,
+        notAccepted: '这个新会话现在收不了消息——文字和文件留在输入框里。',
+        filesUnsupported: '这个会话收不了这些文件（agent 或 CLI 版本太旧），文字和文件已放回输入框。',
+        filesUploadFailed: '文件上传失败，这条消息没有发出。文字和文件已放回输入框，再点发送即可重试。',
+        filesLost: '页面刷新后首条消息的文件没能保留，文字已放回输入框，请重新添加文件。',
         btwLater: '会话启动后可用 /btw',
         needsApprovalTitle: '目录不存在',
         needsApprovalMessage: ({ directory }: { directory: string }) => `目录 ${directory} 还不存在，要创建并启动吗？`,

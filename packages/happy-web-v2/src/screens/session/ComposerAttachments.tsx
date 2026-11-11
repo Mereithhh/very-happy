@@ -3,6 +3,8 @@ import { FileText, X } from 'lucide-react';
 import { ImagePreview } from '@/components/ImagePreview';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { AttachmentPreview } from '@/sync/attachmentTypes';
+// B-929: also shown in the new-session dialog, which does not load the composer.
+import './input.css';
 
 /** The preview never takes ownership of draft URLs or changes the draft. */
 export function ComposerAttachments({ attachments, onRemove }: {

@@ -124,6 +124,13 @@
   min-height: 32px;
 }
 @media (hover: hover) and (pointer: fine) { .ns-connect-link:hover { color: var(--text); } }
+/* B-929: 「添加图片」 beside the first-message label */
+.ns-attach {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  text-decoration: none;
+}
 
 
 .ns-presets {

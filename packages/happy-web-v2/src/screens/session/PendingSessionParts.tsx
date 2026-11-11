@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { projectSettingsPath } from '@/screens/projects/projectSettings';
 import { useNavigate } from 'react-router-dom';
-import { ListEnd, Trash2 } from 'lucide-react';
+import { ListEnd, Paperclip, Trash2 } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { storage, useAllMachines, useSetting } from '@/sync/storage';
 import { Button, Combobox, Spinner, SuggestInput } from '@/ui';
@@ -265,7 +265,12 @@ function PendingOutbox({ record }: { record: PendingSessionRecord }) {
                     <div className="ci-queue-item" key={item.id} data-pending-outbox-item>
                         <ListEnd className="ci-queue-index" size={17} aria-hidden />
                         <span className="ps-outbox-text">
-                            <span className="ci-queue-text">{item.text}</span>
+                            <span className="ci-queue-text">{item.text || t('session.chat.attachmentOnly')}</span>
+                            {(item.attachments?.length ?? 0) > 0 && (
+                                <span className="ps-outbox-files" data-pending-outbox-files>
+                                    <Paperclip size={12} aria-hidden />{t('pendingSession.filesCount', { count: item.attachments!.length })}
+                                </span>
+                            )}
                             <span className="ps-outbox-hint">{record.deferred
                                 ? (record.state === 'failed' ? t('pendingSession.notSent') : t('pendingSession.sending'))
                                 : t('pendingSession.sendAfterStart')}</span>

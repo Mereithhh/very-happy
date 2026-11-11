@@ -735,3 +735,100 @@ describe('B-850c account choice on a new session', () => {
         expect(picked.spawns[0].options.agentProfileId).toBe('acc-2');
     });
 });
+
+describe('B-929: files with a pending session\'s messages', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    const png = (id: string) => ({ id, uri: `blob:${id}`, width: 10, height: 8, size: 99, name: `${id}.png`, mimeType: 'image/png' });
+    function withFiles() {
+        const h = harness();
+        h.deps.holdAttachments = vi.fn();
+        h.deps.restoreAttachments = vi.fn();
+        h.deps.releaseAttachments = vi.fn();
+        return h;
+    }
+
+    it('text + image from a draft page: one outbox item, held, sent as one message once the session is up, then released', async () => {
+        const h = withFiles();
+        const record = h.store.create({ ...input, draft: true });
+        expect(h.store.append(record.pendingId, 'what is in this picture?', [png('a1')])).toBe(true);
+        const item = h.store.get(record.pendingId)!.outbox[0];
+        expect(item).toEqual({ id: item.id, text: 'what is in this picture?', attachments: [{ id: 'a1', width: 10, height: 8, size: 99, name: 'a1.png', mimeType: 'image/png' }] });
+        // Only the description is in the stored record — never a Blob URL.
+        expect(JSON.stringify(h.persisted())).not.toContain('blob:');
+        expect(h.deps.holdAttachments).toHaveBeenCalledWith(item.id, [png('a1')]);
+        h.spawns[0].result.resolve({ type: 'success', sessionId: 'real1' });
+        h.addSession('real1');
+        await flush();
+        expect(h.deps.sendMessage).toHaveBeenCalledExactlyOnceWith('real1', 'what is in this picture?', item.id, item.attachments);
+        expect(h.deps.releaseAttachments).toHaveBeenCalledWith([item.id]);
+        expect(h.store.get(record.pendingId)).toMatchObject({ state: 'landed', outbox: [] });
+    });
+
+    it('images only (no text) are accepted — from the composer and from the dialog', async () => {
+        const h = withFiles();
+        const draft = h.store.create({ ...input, draft: true });
+        expect(h.store.append(draft.pendingId, '   ', [png('b1'), png('b2')])).toBe(true);
+        expect(h.store.get(draft.pendingId)!.outbox[0]).toMatchObject({ text: '', attachments: [{ id: 'b1' }, { id: 'b2' }] });
+        expect(h.store.append(draft.pendingId, '', [])).toBe(false); // nothing at all is still nothing
+
+        const dialog = h.store.create({ ...input, firstAttachments: [png('c1')] });
+        const first = h.store.get(dialog.pendingId)!.outbox[0];
+        expect(first).toMatchObject({ text: '', attachments: [{ id: 'c1' }] });
+        expect(h.deps.holdAttachments).toHaveBeenCalledWith(first.id, [png('c1')]);
+        h.spawns[1].result.resolve({ type: 'success', sessionId: 'real2' });
+        h.addSession('real2');
+        await flush();
+        expect(h.deps.sendMessage).toHaveBeenCalledWith('real2', '', first.id, first.attachments);
+    });
+
+    it('a refused send (upload failed / session takes no files) hands text AND files back to the composer — retry is a plain send', async () => {
+        const h = withFiles();
+        h.deps.sendMessage = vi.fn(async () => { throw new Error('attachments not sent: upload-failed'); });
+        const record = h.store.create({ ...input, draft: true });
+        h.store.append(record.pendingId, 'look', [png('d1')]);
+        const itemId = h.store.get(record.pendingId)!.outbox[0].id;
+        h.spawns[0].result.resolve({ type: 'success', sessionId: 'real3' });
+        h.addSession('real3');
+        await flush();
+        expect(h.deps.restoreText).toHaveBeenCalledWith('real3', 'look', record.pendingId);
+        expect(h.deps.restoreAttachments).toHaveBeenCalledWith('real3', [itemId], record.pendingId);
+        expect(h.deps.releaseAttachments).not.toHaveBeenCalled();
+        expect(h.store.get(record.pendingId)).toMatchObject({ state: 'landed', outbox: [], deliveredAsDraft: true });
+    });
+
+    it('a failed start returns the files with the text (dialog start); a failed draft keeps them queued and 返回修改 returns them', async () => {
+        const h = withFiles();
+        const started = h.store.create({ ...input, firstMessage: 'hi', firstAttachments: [png('e1')] });
+        const startedItem = h.store.get(started.pendingId)!.outbox[0].id;
+        h.spawns[0].result.resolve({ type: 'error', errorMessage: 'boom' });
+        await flush();
+        expect(h.store.get(started.pendingId)).toMatchObject({ state: 'failed', outbox: [], textReturned: true });
+        expect(h.deps.restoreAttachments).toHaveBeenCalledWith(started.pendingId, [startedItem]);
+
+        const draft = h.store.create({ ...input, draft: true });
+        h.store.append(draft.pendingId, '', [png('e2')]);
+        const draftItem = h.store.get(draft.pendingId)!.outbox[0].id;
+        h.spawns[1].result.resolve({ type: 'error', errorMessage: 'boom' });
+        await flush();
+        expect(h.store.get(draft.pendingId)!.outbox).toHaveLength(1); // retry re-sends it, files included
+        h.store.backToDraft(draft.pendingId);
+        expect(h.deps.restoreAttachments).toHaveBeenCalledWith(draft.pendingId, [draftItem], draft.pendingId);
+    });
+
+    it('removing a queued item or discarding the page releases its files; a reload keeps the description', async () => {
+        const h = withFiles();
+        const record = h.store.create({ ...input, firstMessage: 'one', firstAttachments: [png('f1')] });
+        h.store.append(record.pendingId, 'two', [png('f2')]);
+        const [first, second] = h.store.get(record.pendingId)!.outbox;
+        h.store.removeOutboxItem(record.pendingId, second.id);
+        expect(h.deps.releaseAttachments).toHaveBeenCalledWith([second.id]);
+
+        const reloaded = harness({ backing: h.backing, alive: new Set() });
+        expect(reloaded.store.get(record.pendingId)!.outbox[0]).toEqual(first);
+
+        h.store.discard(record.pendingId);
+        expect(h.deps.releaseAttachments).toHaveBeenCalledWith([first.id]);
+    });
+});

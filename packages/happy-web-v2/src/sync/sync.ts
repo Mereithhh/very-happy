@@ -1,4 +1,4 @@
-import { supportsSessionAttachments } from './attachmentCapabilities';
+import { AttachmentSendError, supportsSessionAttachments } from './attachmentCapabilities';
 import { attentionFromEvent, useHumanAttention } from './humanAttention';
 import type { SessionShareInfo } from './sessionShareTypes';
 import { useSessionShares } from './sessionSharesStore';
@@ -254,6 +254,12 @@ type SendMessageOptions = {
     modeMeta?: MessageModeMeta;
     /** B-766: a 汇报板 action's message carries `attentionBoardLocalId(...)` so the server's owner-replied rule skips it. */
     localId?: string;
+    /**
+     * B-929: all files or nothing — no alert, no text-only fallback. A session
+     * that takes none of them, or any failed upload, throws AttachmentSendError
+     * before anything is queued; the caller hands text + files back.
+     */
+    strictAttachments?: boolean;
 };
 
 /** Which client sent this message — the same answer for a direct send and a queued prompt (B-509). */
@@ -1630,6 +1636,7 @@ class Sync {
         const effectiveAttachments = supportsAttachments ? attachments : undefined;
 
         if (attachments && attachments.length > 0 && !supportsAttachments) {
+            if (options?.strictAttachments) throw new AttachmentSendError('unsupported');
             Modal.alert(
                 t('imageUpload.notSupportedTitle'),
                 t('imageUpload.notSupportedMessage'),
@@ -1683,6 +1690,7 @@ class Sync {
         // Upload attachments and queue file events before the text message.
         if (effectiveAttachments && effectiveAttachments.length > 0) {
             const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, effectiveAttachments);
+            if (failed > 0 && options?.strictAttachments) throw new AttachmentSendError('upload-failed');
 
             if (failed > 0) {
                 Modal.alert(

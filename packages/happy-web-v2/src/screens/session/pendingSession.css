@@ -91,6 +91,14 @@
   color: var(--text-faint);
   font-size: var(--fs-11);
 }
+/* B-929: files riding with a queued first message */
+.ps-outbox-files {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: var(--text-dim);
+  font-size: var(--fs-11);
+}
 @media (max-width: 600px) {
   .ps-body { padding-inline: var(--sp-3); }
   .ps-card-actions > * { flex: 1 1 auto; min-height: 44px; }

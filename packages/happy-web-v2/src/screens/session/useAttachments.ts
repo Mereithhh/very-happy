@@ -143,6 +143,17 @@ export function stashAttachments(key: string, items: AttachmentPreview[]): void 
     if (items.length) attachmentStash.set(key, items); else attachmentStash.delete(key);
 }
 
+/** B-929: add `items` to what is parked for `key` (files handed back while no composer is mounted). */
+export function parkAttachments(key: string, items: AttachmentPreview[]): void {
+    if (items.length === 0) return;
+    attachmentStash.set(key, [...(attachmentStash.get(key) ?? []), ...items]);
+}
+
+/** B-929: the keys something is parked under. */
+export function stashedAttachmentKeys(): string[] {
+    return [...attachmentStash.keys()];
+}
+
 /** Drop every parked set (and its Blob URLs) — logout / test isolation. */
 export function clearAttachmentStash(): void {
     for (const key of [...attachmentStash.keys()]) stashAttachments(key, []);
