@@ -42,7 +42,13 @@ export function MainAgentSafetySection({ machine }: { machine: Machine | null })
     useEffect(() => { setDraft(stored.draft); setError(null); }, [stored]);
 
     // No main agent machine yet: nothing to configure against (the machine group above handles enabling).
-    if (!machine) return null;
+    if (!machine) {
+        return (
+            <ItemGroup settingId="mainAgent.safety" title={copy.title}>
+                <Item title={copy.needsMachine} />
+            </ItemGroup>
+        );
+    }
     if (!mainAgentSafetySupported(machine)) {
         return (
             <ItemGroup settingId="mainAgent.safety" title={copy.title}>

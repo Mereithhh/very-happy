@@ -1,7 +1,7 @@
 /**
  * B-922: Settings → Main agent → Safety renders the presets only for a machine
  * whose daemon advertises `mainAgentSafety`; otherwise the upgrade note (that
- * CLI runs strict); nothing before a main agent machine exists.
+ * CLI runs strict); a note before a main agent machine exists.
  */
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -43,7 +43,10 @@ describe('B-922 main agent safety section', () => {
         }
     });
 
-    it('no main agent machine yet: renders nothing', () => {
-        expect(render(null)).not.toContain('mainAgent.safety');
+    it('no main agent machine yet: only a note (the anchor stays for settings search)', () => {
+        const html = render(null);
+        expect(html).toContain('data-setting-id="mainAgent.safety"');
+        expect(html).toMatch(/Enable the main agent|先在上面选一台机器/);
+        expect(html).not.toMatch(/Save safety settings|保存安全设置/);
     });
 });

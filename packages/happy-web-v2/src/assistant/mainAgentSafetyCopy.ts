@@ -11,6 +11,7 @@ export interface MainAgentSafetyCopy {
     title: string;
     footer: string;
     upgrade: string;
+    needsMachine: string;
     unreadable: string;
     presetLabel: string;
     presets: Record<SafetyPreset, string>;
@@ -47,6 +48,7 @@ const enClass: Record<ToolClass, string> = { production: 'Production tools (depl
 const zh: MainAgentSafetyCopy = {
     title: '安全',
     footer: '只有你本人在已登录的浏览器里能把这里改松；主 agent 自己和机器上的 token 只能改严。改动在主 agent 下次新开对话时生效。',
+    needsMachine: '先在上面选一台机器启用主 agent，再来调整安全设置。',
     upgrade: '运行主 agent 的机器上 CLI 版本太旧，还不支持安全设置，目前一律按「严格」处理。升级那台机器的 CLI 后这里就能选。',
     unreadable: '账号里存的安全设置来自更新的版本，这个页面读不懂，主 agent 会按「严格」处理。保存会用下面的选择覆盖它。',
     presetLabel: '预设',
@@ -91,6 +93,7 @@ const zh: MainAgentSafetyCopy = {
 const en: MainAgentSafetyCopy = {
     title: 'Safety',
     footer: 'Only you, in a signed-in browser, can loosen these. The main agent itself and machine tokens can only make them stricter. Changes apply on the main agent\'s next new conversation.',
+    needsMachine: 'Enable the main agent on a machine above first, then adjust its safety here.',
     upgrade: 'The CLI on the machine running the main agent is too old for safety settings, so everything runs as Strict. Update that machine\'s CLI to choose here.',
     unreadable: 'The saved safety setting comes from a newer version this page cannot read; the main agent treats it as Strict. Saving replaces it with the choices below.',
     presetLabel: 'Preset',
