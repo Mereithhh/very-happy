@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { isAttentionBoardLocalId, type AttentionItem } from '@slopus/happy-wire';
 import { mergeItem } from '@/sync/attentionStore';
 import { boardCopy } from './boardCopy';
-import { choiceMessage } from './boardActions';
+import { choiceMessage, isReloginRequired } from './boardActions';
+import { AttentionApiError } from '@/sync/apiAttention';
 
 const base = {
     sessionId: 's', teamId: null, projectId: null, source: 'lead', kind: 'decision', key: null, title: '今天发还是明早发？', bodyMd: null,
@@ -38,5 +39,12 @@ describe('board actions (B-766)', () => {
         const undo = { ...v2, state: 'open' };
         expect(mergeItem([v2], undo)).toEqual([undo]);
         expect(mergeItem(undefined, v1)).toEqual([v1]);
+    });
+
+    it('B-921: owner_login_required is told apart from other failures', () => {
+        expect(isReloginRequired(new AttentionApiError(403, 'owner_login_required'))).toBe(true);
+        expect(isReloginRequired(new AttentionApiError(403, 'forbidden'))).toBe(false);
+        expect(isReloginRequired(new AttentionApiError(409, 'attention_item_closed'))).toBe(false);
+        expect(isReloginRequired(new Error('owner_login_required'))).toBe(false);
     });
 });

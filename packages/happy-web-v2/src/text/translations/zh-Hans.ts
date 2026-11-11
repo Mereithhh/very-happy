@@ -3481,6 +3481,12 @@ export const zhHans: TranslationStructure = {
                 skill: '新增 `very-happy skill`：能力地图覆盖会话、终端、项目、团队、自动化、Issues 与待办、账号、机器、分享、通知、面板和设置，每块一页（如 `very-happy skill automations`）。会话里只多一行指向它，问 agent「给这个项目加一个每天 9 点的自动化」就能拿到正确命令。本机副本在 ~/.local/share/very-happy/skills/very-happy，你改过的文件不会被覆盖。',
                 autoProject: '`very-happy auto create|edit --project <id>|current` 可把自动化挂到项目上（`--no-project` 取消）；以前只能在 Web 上设。',
             },
+            nov11n: {
+                title: '汇报板上只有你本人能替你做选择',
+                summary: '汇报板卡片上的选择需要你本人登录。',
+                owner: 'agent 不能再用机器凭据替你选选项、标完成或追问；它发起的决定卡（比如批准派活）一定等你本人选。',
+                relogin: '这台设备如果是很久以前登录的，在汇报板上选择时会提示你退出后重新登录，不会悄悄失败。',
+            },
             nov11l: {
                 title: 'CLI 0.2.212：主 agent 可以帮你给指定会话收尾、交接',
                 summary: '让主 agent 给某个会话收尾，或把一个会话的进度交接给另一个会话（或新会话）；它只处理你点名的会话。',

@@ -16,6 +16,9 @@ import { assertNotAuthFailure } from '@/auth/authLatch';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
 
+/** Server code for an owner action from a token without a signed-in login (server auth/tokenKind.ts). */
+export const OWNER_LOGIN_REQUIRED = 'owner_login_required';
+
 export class AttentionApiError extends Error {
     constructor(public status: number, public code: string) {
         super(code);
@@ -40,6 +43,13 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+    // B-921: a 403 `owner_login_required` (an old sign-in answering a card as the owner) is not an auth
+    // failure: read its code so the board can ask the person to sign in again. Other 401 / 403 stay auth
+    // failures. A 403 never trips the sign-out latch either way (auth/authLatch.ts: only a 401 does).
+    if (response.status === 403) {
+        const denied = await response.clone().json().catch(() => null) as { error?: unknown } | null;
+        if (denied?.error === OWNER_LOGIN_REQUIRED) throw new AttentionApiError(403, OWNER_LOGIN_REQUIRED);
+    }
     assertNotAuthFailure(response, 'apiAttention');
     const data = await response.json().catch(() => null);
     if (!response.ok) throw new AttentionApiError(response.status, (data as { error?: string } | null)?.error ?? `http_${response.status}`);

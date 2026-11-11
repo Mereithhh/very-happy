@@ -3353,6 +3353,12 @@ export const en = {
                 skill: 'New `very-happy skill`: a capability map of sessions, terminals, projects, teams, automations, Issues and todos, accounts, machines, sharing, notifications, panels and settings, with one page per area (`very-happy skill automations`). Sessions get a single line pointing at it, so asking an agent “add a daily 9:00 automation to this project” gets the right command. A copy is kept in ~/.local/share/very-happy/skills/very-happy; files you edited are never overwritten.',
                 autoProject: '`very-happy auto create|edit --project <id>|current` attaches an automation to a project (`--no-project` detaches); before, only the Web could do this.',
             },
+            nov11n: {
+                title: 'Only you can answer the Briefing as you',
+                summary: 'Choices on Briefing cards now need your own sign-in.',
+                owner: 'An agent can no longer use its machine credentials to choose an option, resolve or reopen a card as you, so a decision card it raised (for example, approving a dispatch) waits for you.',
+                relogin: 'If this device signed in long ago, a Briefing choice asks you to sign out and sign in again instead of failing silently.',
+            },
             nov11l: {
                 title: 'CLI 0.2.212: the main agent can wrap up and hand off sessions for you',
                 summary: 'Ask the main agent to wrap up a session, or to hand one session\'s work to another (or to a new one); it only does this for the sessions you name.',

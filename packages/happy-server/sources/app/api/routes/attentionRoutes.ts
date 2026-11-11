@@ -4,6 +4,7 @@ import {
 } from '@slopus/happy-wire';
 import type { Fastify } from '../types';
 import { AttentionError } from '@/app/attention/rules';
+import { requireHumanOwner } from '@/app/auth/tokenKind';
 import { listItems, ownerRespond, patchItem, postItem, resolveItem } from '@/app/attention/store';
 import { TeamError } from '@/app/teams/reducer';
 
@@ -36,6 +37,11 @@ export function attentionRoutes(app: Fastify) {
         async (request, reply) => handle(reply, () => patchItem(request.userId, request.params.id, request.body)));
     app.post('/v1/attention-items/:id/resolve', { ...auth, schema: { params, body: AttentionItemResolveSchema } },
         async (request, reply) => handle(reply, () => resolveItem(request.userId, request.params.id, request.body)));
+    // B-921: the owner's own buttons. A choice here is recorded as `resolvedBy: 'owner'`, which the approval
+    // gates (main agent dispatch, decision cards) trust; only a signed-in person may make it (auth/tokenKind.ts).
     app.post('/v1/attention-items/:id/owner-respond', { ...auth, schema: { params, body: AttentionItemOwnerRespondSchema } },
-        async (request, reply) => handle(reply, () => ownerRespond(request.userId, request.params.id, request.body)));
+        async (request, reply) => {
+            if (!requireHumanOwner(request, reply)) return reply;
+            return handle(reply, () => ownerRespond(request.userId, request.params.id, request.body));
+        });
 }
