@@ -2023,6 +2023,15 @@ export async function startDaemon(): Promise<void> {
       queue: (sessionId) => idleRestart!.request({ sessionId, source: 'owner', target: autoRestartScheduler.statuses()[sessionId]?.target ?? null }),
       facts: idleRestartFacts,
       queued: (sessionId) => !!idleRestart!.status(sessionId),
+      activity: (sessionId) => ({
+        turnActive: turnActivity.activeSessions().includes(sessionId),
+        backgroundTasks: backgroundTasks.count(sessionId),
+        automationRunning: automationRunner?.hasSession(sessionId) === true,
+        upgradePending: upgradePending(),
+        lastTurnEventAt: idleRestart!.lastTurnEventAt(sessionId),
+      }),
+      quietMs: idleRestartTiming.quietMs,
+      now: Date.now,
       restartIfIdle: async (sessionId) => {
         const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, ifIdle: true });
         return result.type === 'success' ? { ok: true } : { ok: false, error: result.type === 'error' ? result.errorMessage : 'working directory needs to be created first' };

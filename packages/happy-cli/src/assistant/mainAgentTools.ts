@@ -48,8 +48,9 @@ export const MAIN_AGENT_REPLACES = ['issue_list', 'issue_comment', 'project_cont
 
 /** A refusal: one line, never the target session's content. */
 export type LifecycleError = { ok: false; error: string }
-export type WrapupReceipt = { ok: true; sessionId: string; state: 'queued' | 'running' } | (LifecycleError & { sessionId: string })
-export type HandoffReceipt = { ok: true; from: string; to: string; state: 'queued' | 'running' | 'done' } | (LifecycleError & { from: string; to: string })
+/** `deduped`: this requestId was already sent — nothing was sent again; `state` is that earlier request's. */
+export type WrapupReceipt = { ok: true; sessionId: string; state: 'queued' | 'running' | 'done'; deduped?: true } | (LifecycleError & { sessionId: string })
+export type HandoffReceipt = { ok: true; from: string; to: string; state: 'queued' | 'running' | 'done'; deduped?: true } | (LifecycleError & { from: string; to: string })
 /** `already`: a restart was already queued for it (nothing new queued). */
 export type RestartReceipt = { ok: true; sessionId: string; scheduled: 'idle' | 'now'; already?: true; targetVersion?: string } | (LifecycleError & { sessionId: string })
 
@@ -352,16 +353,17 @@ export function registerMainAgentTools(mcp: AssistantToolRegistrar, deps: MainAg
     // ── session lifecycle (B-915 / B-911 adapters, B-919 backends) ──────────
     // Owner-only (main agent spec decision 6: no automatic wrap-up): each call names one session the owner named.
     const ONLY_ON_REQUEST = 'Only when the owner explicitly asks for it, for the session they named — never on your own initiative, on a schedule, or in batches over sessions they did not name.'
+    const DEDUPED = 'deduped: true = this requestId was already used, so nothing was sent again (for to = new: the same new session is returned); use a new requestId for a new request.'
     const notAvailable = (what: string) => ok(JSON.stringify({ ok: false, error: 'not_available', detail: `${what} is not available on this Very Happy version yet` }))
     const receipt = (r: { ok: boolean }) => r.ok ? ok(JSON.stringify(r)) : fail(JSON.stringify(r))
-    register('session_wrapup', `Ask one session of the account to wrap up (the same as the owner pressing 收尾 in it): it gets one turn to write its wrap-up and the board gets a card. Never closes or archives anything. Receipt: { ok, sessionId, state: queued | running (already wrapping up, nothing sent) }. ${ONLY_ON_REQUEST}`, {
+    register('session_wrapup', `Ask one session of the account to wrap up (the same as the owner pressing 收尾 in it): it gets one turn to write its wrap-up and the board gets a card. Never closes or archives anything. Receipt: { ok, sessionId, state: queued | running (already wrapping up, nothing sent) | done, deduped? }. ${DEDUPED} ${ONLY_ON_REQUEST}`, {
         sessionId: id, requestId,
     }, false, async (args) => {
         if (!isValidSessionId(args.sessionId)) return fail('Invalid sessionId')
         if (!lifecycle.wrapup) return notAvailable('Wrap-up')
         return receipt(await lifecycle.wrapup({ sessionId: args.sessionId, requestId: args.requestId ?? randomUUID() }))
     })
-    register('session_handoff', `Ask session \`from\` to hand its progress over (the same as the owner's 交接给…): to = an existing session's id, or "new" / omitted for a new session started in from's directory (from must be on this machine). from writes the handoff itself — do not copy its progress. Receipt: { ok, from, to, state }. ${ONLY_ON_REQUEST}`, {
+    register('session_handoff', `Ask session \`from\` to hand its progress over (the same as the owner's 交接给…): to = an existing session's id, or "new" / omitted for a new session started in from's directory (from must be on this machine). from writes the handoff itself — do not copy its progress. Neither from nor to can be you (the main agent). Receipt: { ok, from, to, state, deduped? }. ${DEDUPED} ${ONLY_ON_REQUEST}`, {
         from: id, to: id.optional().describe('Session id; omit (or "new") for a new session'), note: z.string().max(4000).optional(), requestId,
     }, false, async (args) => {
         const to = args.to ?? 'new'

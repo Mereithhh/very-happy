@@ -246,6 +246,8 @@ export function createIdleRestart(deps: IdleRestartDeps) {
             return { ...entry, ...(waits.get(sessionId) ? { wait: waits.get(sessionId) } : {}), ...(running === sessionId ? { restarting: true as const } : {}) };
         },
         pendingIds(): string[] { return [...pending.keys()]; },
+        /** B-919: the last turn edge this daemon saw for a session (null = none) — the owner's `now` quiet check. */
+        lastTurnEventAt(sessionId: string): number | null { return lastTurnEventAt.get(sessionId) ?? null; },
     };
 }
 export type IdleRestart = ReturnType<typeof createIdleRestart>;
@@ -258,8 +260,12 @@ export type OwnerRestartResult =
  * B-919: the main agent's `session_restart` on behalf of the owner. `idle`
  * is the owner's 「本轮结束后重启」 (the queue above); `now` restarts at once
  * only a session that passes the same guards, has nothing queued and is idle
- * right now (`restart` runs with B-894 `ifIdle`, so a busy one is refused by
- * the daemon instead of interrupted).
+ * by the queue's own rule (`idleRestartReady`: no turn, background task,
+ * automation run or pending upgrade, and quiet since its last turn edge —
+ * only the observation window is left out, since nothing is waiting).
+ * `restartIfIdle` then runs with B-894 `ifIdle`, which re-checks turn and
+ * background tasks at the moment of the stop. Refusals are `busy` with the
+ * reason in `error` (`busy:<wait>`).
  */
 export async function ownerRestartRequest(
     input: { sessionId: string; when: 'idle' | 'now' },
@@ -267,6 +273,9 @@ export async function ownerRestartRequest(
         queue: (sessionId: string) => Promise<IdleRestartRequestResult>;
         facts: (sessionId: string) => IdleRestartSessionFacts | null;
         queued: (sessionId: string) => boolean;
+        activity: (sessionId: string) => { turnActive: boolean; backgroundTasks: number; automationRunning: boolean; upgradePending: string | null; lastTurnEventAt: number | null };
+        quietMs: number;
+        now: () => number;
         restartIfIdle: (sessionId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
         version: string;
     },
@@ -279,6 +288,9 @@ export async function ownerRestartRequest(
     const refusal = idleRestartSessionRefusal(deps.facts(sessionId));
     if (refusal) return { ok: false, code: refusal };
     if (deps.queued(sessionId)) return { ok: false, code: 'already-queued' };
+    const t = deps.now();
+    const verdict = idleRestartReady({ ...deps.activity(sessionId), now: t, requestedAt: t, lastTurnEndedAt: null, quietMs: deps.quietMs, observeMs: 0 });
+    if (!verdict.ready) return { ok: false, code: 'busy', error: `busy:${verdict.wait}` };
     const result = await deps.restartIfIdle(sessionId);
     if (result.ok) return { ok: true, state: 'restarted', targetVersion: deps.version };
     return { ok: false, code: result.error.startsWith('busy:') ? 'busy' : 'restart-failed', error: result.error };
