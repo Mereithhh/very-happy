@@ -139,7 +139,7 @@ export function kvRoutes(app: Fastify) {
                         value: z.string().nullable()
                     }))
                 }),
-                // 422, not 403: clients treat 401/403 from /v1/kv as a dead login and sign out.
+                // 422, not 403: the Web treats 401/403 as auth failures (`isAuthFailure`), not as a refused write.
                 422: z.object({ error: z.literal(MAIN_AGENT_CONFIG_OWNER_ONLY), key: z.string() }),
                 413: z.object({ error: z.literal('kv_bytes_quota_exceeded') }),
                 429: z.object({ error: z.enum(['kv_count_quota_exceeded', 'kv_rate_quota_exceeded']) }),

@@ -289,7 +289,7 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 
 **真正的边界是服务端检查 + Owner 的批准卡**：本机 `config.json` 只能逐项改严（主 agent 若开了 Bash 能改这个文件，所以它不能放松任何东西）；放松只能通过账号 KV，而账号 KV 的放松只接受浏览器登录的 Owner，或 Owner 在卡上选了「以后都允许」的那个工具。
 
-**只有 Owner 本人能改松**。server `POST /v1/kv`：请求 token 被 `requestTokenKind`（`app/auth/tokenKind.ts`，与 B-921 共用；目前判定 = token 带浏览器登录会话 id 即为人）判为机器时，对 `vh.main-agent-config.*` 的每个写入用 happy-wire `mainAgentConfigLoosening(旧值, 新值)` 比较：任何一项变松、删掉 `deniedTools`、删除整个值（回落到默认宽松）、写入非 JSON / 非对象、`safety` 段读不懂（未知版本、字段或取值，按「更宽松」处理）→ `422 {error:'main_agent_config_owner_only', key}`。唯一例外：只新增 `allowedTools`，且每个新增工具都有本账号一张 `main-agent-tool:*:<tool>` 卡被 Owner 以 `always` 关闭（这就是第 3 步的写入）。收紧不限；`quietHours`、`skillRoots` 等其他字段不比较。`POST /v1/kv/bulk` 是批量读，不写，无需检查。用 422 而不是 403：Web 把 `/v1/kv` 的 401/403 当登录失效处理。
+**只有 Owner 本人能改松**。server `POST /v1/kv`：请求 token 被 `requestTokenKind`（`app/auth/tokenKind.ts`，与 B-921 共用；目前判定 = token 带浏览器登录会话 id 即为人）判为机器时，对 `vh.main-agent-config.*` 的每个写入用 happy-wire `mainAgentConfigLoosening(旧值, 新值)` 比较：任何一项变松、删掉 `deniedTools`、删除整个值（回落到默认宽松）、写入非 JSON / 非对象、`safety` 段读不懂（未知版本、字段或取值，按「更宽松」处理）→ `422 {error:'main_agent_config_owner_only', key}`。唯一例外：只新增 `allowedTools`，且每个新增工具都有本账号一张 `main-agent-tool:*:<tool>` 卡被 Owner 以 `always` 关闭（这就是第 3 步的写入）。收紧不限；`quietHours`、`skillRoots` 等其他字段不比较。`POST /v1/kv/bulk` 是批量读，不写，无需检查。用 422 而不是 403：Web 的 `isAuthFailure` 把 401/403 都当认证失败处理（403 不会登出，但也不是「写入被拒」的语义）。
 
 **能力位**。wrapper 在 session `capabilities` 加 `main-agent-safety-v2`，daemon 在 `daemonState` 加 `mainAgentSafety`。Web 设置 → 主 agent → 安全只在主 agent 所在机器有 `mainAgentSafety` 时显示预设与高级项，否则提示升级 CLI（旧 CLI 按严格运行）。
 

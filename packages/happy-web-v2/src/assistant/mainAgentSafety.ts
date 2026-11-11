@@ -92,7 +92,7 @@ export type SafetySaveResult =
 /**
  * Owner-only write. Not through `kvMutate`: the server refuses a loosening
  * from a non-browser login with 422 `main_agent_config_owner_only`, which must
- * surface as a message — not be retried, and not read as a dead login.
+ * surface as a message — not be retried, and not handled as an auth failure.
  * On a version conflict: re-merge onto the newer value once.
  */
 export async function saveMainAgentSafety(
