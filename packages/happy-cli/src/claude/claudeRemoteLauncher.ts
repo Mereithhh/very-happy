@@ -619,6 +619,7 @@ export async function claudeRemoteLauncher(
                     path: session.path,
                     additionalDirectories: [attachmentDirectory, ...(session.mainAgentGuard?.extraDirectories ?? [])],
                     preToolUseHook: session.mainAgentGuard?.preToolUse,
+                    extraSystemPrompt: session.mainAgentGuard?.systemPrompt,
                     allowedTools: session.allowedTools ?? [],
                     mcpServers: session.mcpServers,
                     hookSettingsPath: session.hookSettingsPath,

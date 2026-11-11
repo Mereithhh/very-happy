@@ -126,6 +126,8 @@ export class ApiSessionClient extends EventEmitter {
     private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
     private relaySocket: Socket | null = null;
     private pendingMessages: UserMessage[] = [];
+    /** B-924d: the server localId each routed user message arrived under (who sent it — turnOrigin reads the same id). */
+    private readonly routedLocalIds = new WeakMap<object, string | null>();
     private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
     private pendingFileEvents: FileEventMessage[] = [];
     private pendingFileEventCallback: ((data: FileEventMessage) => void) | null = null;
@@ -486,6 +488,15 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    /**
+     * B-924d: the server localId a routed user message arrived under — the id the turn-origin tracker
+     * classifies (`user-message-routed`). Falls back to the message's own localKey for messages this
+     * client did not route (tests, replays).
+     */
+    routedLocalIdOf(message: UserMessage): string | null {
+        return this.routedLocalIds.has(message) ? this.routedLocalIds.get(message) ?? null : message.localKey ?? null;
+    }
+
     onUserMessage(callback: (data: UserMessage) => void) {
         this.pendingMessageCallback = callback;
         while (this.pendingMessages.length > 0) {
@@ -660,6 +671,7 @@ export class ApiSessionClient extends EventEmitter {
             : message;
         const userResult = UserMessageSchema.safeParse(messageWithSource);
         if (userResult.success) {
+            this.routedLocalIds.set(userResult.data, sourceLocalId ?? null);
             // B-766 tap (owner briefing board): the server localId of every routed user message.
             try { this.emit('user-message-routed', { localId: sourceLocalId ?? null, message: userResult.data }); }
             catch (error) { logger.debug('[API] user-message-routed listener failed:', error); }

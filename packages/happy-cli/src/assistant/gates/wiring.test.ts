@@ -51,7 +51,7 @@ describe('B-916c main agent gate wiring', () => {
         const run = src('claude/runClaude.ts')
         expect(run).toContain("const mainAgent = isAssistantVariant && !process.env.VH_TEAM_SCOPE_FILE ? await prepareMainAgentForSession(api, session, credentials) : undefined;")
         expect(run).toContain('startHappyServer(session, { assistant: isAssistantVariant, mainAgent,')
-        expect(run).toContain('if (mainAgent) sessionInstance.mainAgentGuard = { preToolUse: mainAgent.preToolUse, extraDirectories: mainAgent.extraDirectories };')
+        expect(run).toContain('if (mainAgent) sessionInstance.mainAgentGuard = { preToolUse: mainAgent.preToolUse, extraDirectories: mainAgent.extraDirectories, systemPrompt: MAIN_AGENT_PROVENANCE_SYSTEM_PROMPT };')
         expect(run).toContain('setAssistantExtraDenied(runtime.denylist.sdkDisallowed);')
         // B-922: the safety setting opens built-ins for the main agent only, reads the KV through the throwing client, and advertises the capability
         expect(run).toContain('setAssistantBuiltinsAllowed(assistantBuiltinsAllowedBy(runtime.safety.policy));')

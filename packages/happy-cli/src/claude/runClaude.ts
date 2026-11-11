@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { MAIN_AGENT_PROVENANCE_SYSTEM_PROMPT, mainAgentPromptText } from '@/assistant/turnOrigin';
 import { applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, withoutServerSnapshot, type ReconnectReplay } from '@/utils/reconnectSession';
 import { AUTO_RESTART_CAPABILITY, takeAutoRestartedEvent } from '@/update/autoRestartPolicy';
 import { takeRestartEffort } from '@/update/idleRestartPolicy';
@@ -1221,10 +1222,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
         // Push with resolved permission mode, model, system prompts, and tools
         const enhancedMode: EnhancedMode = resolvedMode;
+        // B-924d: the main agent's model sees who sent a prompt that is not the owner's (a marked block);
+        // the server copy and the Web keep the original text. Same per-prompt verdict as the turn tracker.
+        const modelText = mainAgentPromptText(Boolean(mainAgent), message.content.text, typeof session.routedLocalIdOf === 'function' ? session.routedLocalIdOf(message) : message.localKey, message.meta);
 
         if (message.meta?.delivery === 'steer' && currentRunMode === 'remote') {
             const accepted = await currentSession?.trySteer({
-                message: message.content.text,
+                message: modelText,
                 mode: enhancedMode,
                 attachments: attachmentsForThisMessage,
                 // B-631: the localKey rides along as the steer's uuid, so Claude
@@ -1242,7 +1246,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug('[start] Steer arrived without a compatible live turn; falling back to queue');
         }
 
-        messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage, message.localKey);
+        messageQueue.push(modelText, enhancedMode, attachmentsForThisMessage, message.localKey);
         logger.debug('User message pushed to queue:', {
             ...contentLogMetadata(message.content.text),
             attachmentCount: attachmentsForThisMessage?.length ?? 0,
@@ -1467,7 +1471,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             currentSession = sessionInstance;
             sessionInstance.longContextPolicy = createLongContextPolicy({ session, storePath: longContextStore, key: longContextStoreKey });
             // B-916c: gate 1 hook + skillRoots mount for the main agent's SDK queries.
-            if (mainAgent) sessionInstance.mainAgentGuard = { preToolUse: mainAgent.preToolUse, extraDirectories: mainAgent.extraDirectories };
+            if (mainAgent) sessionInstance.mainAgentGuard = { preToolUse: mainAgent.preToolUse, extraDirectories: mainAgent.extraDirectories, systemPrompt: MAIN_AGENT_PROVENANCE_SYSTEM_PROMPT };
             // B-551: the local launcher's scanner reads the same hints.
             sessionInstance.transcriptPathHints = transcriptPathHints;
             // B-515: the system/init path (an adopted warm process, whose
