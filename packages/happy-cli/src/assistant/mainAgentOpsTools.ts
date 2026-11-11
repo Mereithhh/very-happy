@@ -22,7 +22,8 @@ import {
 } from '@slopus/happy-wire'
 import { boardItemView, cardFaceHash, writePrivateJson } from '@/attention/ownerApproval'
 import type { AssistantToolRegistrar } from './assistantTools'
-import { assistantHome } from './bootstrap'
+import { configuration } from '@/configuration'
+import { MAIN_AGENT_APPROVALS_DIR } from './gates/protectedPaths'
 import { isValidSessionId } from './ids'
 import type { WrapupReceipt } from './mainAgentTools'
 
@@ -56,7 +57,7 @@ export type MainAgentOpsDeps = {
     projectSessionIds: (projectId: string) => Promise<string[]>
     /** B-919 wrap-up backend; absent = not available on this version. */
     wrapup: () => ((input: { sessionId: string; requestId: string }) => Promise<WrapupReceipt>) | undefined
-    /** Where a posted checklist card is bound (QA P1-1); default: 0600 files under `~/.happy/assistant/wrapup-cards`. */
+    /** Where a posted checklist card is bound (QA P1-1); default: 0600 files under `~/.happy/main-agent-approvals/wrapup-cards`. */
     cardRecords?: WrapupCardRecords
 }
 
@@ -147,7 +148,8 @@ export function tickedSessions(item: AttentionItem, posted: ReadonlyArray<{ id: 
 
 export function registerMainAgentOpsTools(mcp: AssistantToolRegistrar, deps: MainAgentOpsDeps): void {
     const now = deps.now ?? Date.now
-    const records = deps.cardRecords ?? fileWrapupCardRecords(join(assistantHome(), 'wrapup-cards'))
+    // Next to the gates' approval records (B-922), closed to the main agent's file tools like all of HAPPY_HOME.
+    const records = deps.cardRecords ?? fileWrapupCardRecords(join(configuration.happyHomeDir, MAIN_AGENT_APPROVALS_DIR, 'wrapup-cards'))
     const register = (name: typeof MAIN_AGENT_OPS_TOOL_NAMES[number], description: string, inputSchema: Record<string, z.ZodTypeAny>, readOnly: boolean, run: (args: any) => Promise<Result>) => {
         mcp.registerTool(name, {
             description, inputSchema,

@@ -11,9 +11,18 @@
  * Owner-only tools (wrap-up, hand-off, archive, kill, restart) refuse every
  * turn that is not the owner's with `owner_request_required`.
  *
- * Limit (B-927): `sentFrom` is set by the sending client, so a process holding
- * the account's machine token can still claim `web`; a server-stamped origin
- * closes that.
+ * Fail-closed: no `sentFrom`, an empty one or one off the list (e.g. `cli`), a
+ * localId the tracker never saw routed, a turn with no prompt, or no tracker
+ * installed — none of these is the owner. Only `owner` unlocks anything.
+ *
+ * Limit, and how B-927 plugs in: `sentFrom` is set by the sending client, so a
+ * process holding the account's machine token can still claim `web`. B-927
+ * stamps each user message on the server from the sending token's kind
+ * (e.g. `meta.origin: 'human' | 'machine'`). `promptOrigin` is the one place to
+ * read it: with the stamp present, only `human` (and no automated localId
+ * prefix) is the owner; without it (an older server) the `sentFrom` list above
+ * applies. Once every server stamps, a missing stamp can be read as not-owner.
+ * Callers and OWNER_ONLY_TOOLS do not change.
  *
  * Shared interface (B-925 / #944 use it too):
  *   classifyTurnOrigin(prompts)          pure verdict for one batch

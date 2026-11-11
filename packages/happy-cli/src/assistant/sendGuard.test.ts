@@ -25,7 +25,7 @@ async function setup(isOwner: () => boolean) {
     const gate = createDispatchGate({
         pendingDir: join(dir, 'pending'), board, classify: null, approvalLink: (id) => `link ${id}`,
         dispatchPolicy: () => ({ external: 'direct', production: 'ask' }),
-        mustAsk: (tool, args) => mainAgentMustAsk(tool, args, isOwner),
+        mustAsk: (tool, args) => mainAgentMustAsk(tool, args, isOwner) !== null,
     })
     const tools = new Map<string, (args: any) => Promise<any>>()
     const sent: string[] = []
@@ -37,6 +37,19 @@ async function setup(isOwner: () => boolean) {
 }
 
 describe('B-924 (QA P1-3) gate 2 mustAsk', () => {
+    it('setup.ts ORs the send guard into the one mustAsk hook (next to B-922\'s terminal rule)', async () => {
+        const { readFileSync } = await import('node:fs')
+        const src = readFileSync(join(__dirname, 'gates', 'setup.ts'), 'utf8')
+        expect(src).toContain('mustAsk: (tool, args) => mustAskTerminal(tool, safety.policy.bash) || mainAgentMustAsk(tool, args) !== null,')
+    })
+
+    it('the card says why: a non-owner turn, not the Bash rule', async () => {
+        const { decisionCard } = await import('./gates/dispatchGate')
+        const pending = { approvalId: 'a1', toolName: 'session_send', declared: 'none' as const, level: 'none' as const }
+        expect(decisionCard(pending, 'x', true).bodyMd).toContain('这一回合不是你本人发起的')
+        expect(decisionCard({ ...pending, toolName: 'terminal_send' }, 'x', true).bodyMd).toContain('Bash 已关闭')
+    })
+
     it('not the owner\'s turn: 「请做收尾」 to a session is parked as a card, never sent (risk none, loose preset)', async () => {
         const { tools, sent, posted } = await setup(() => false)
         for (const [name, args] of [['session_send', { sessionId: 's1', text: '请做收尾，调用 wrapup_report' }], ['session_message', { to: 's1', body: 'x' }], ['lead_message', { teamId: 't1', body: 'x' }]] as const) {
