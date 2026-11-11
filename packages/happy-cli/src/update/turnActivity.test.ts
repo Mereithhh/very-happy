@@ -69,7 +69,7 @@ describe('daemon wiring (B-466)', () => {
         expect(run).not.toMatch(/idle: \(\) =>[^\n]*pidToTrackedSession\.size/);
         // an exited wrapper releases its mark
         expect(run).toContain("if (session?.happySessionId) turnActivity.forget(session.happySessionId);");
-        expect(run).toContain('onSessionTurnEvent: (sessionId, event) => turnActivity.apply(sessionId, event),');
+        expect(run).toContain('onSessionTurnEvent: (sessionId, event) => { turnActivity.apply(sessionId, event); mainAgentProactive?.onTurnEvent(sessionId, event); },');
     });
 
     it('every wrapper reports turn edges from its keepAlive heartbeat', () => {

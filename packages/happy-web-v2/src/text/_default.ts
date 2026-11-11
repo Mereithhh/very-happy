@@ -3390,6 +3390,14 @@ export const en = {
                 skill: 'New `very-happy skill`: a capability map of sessions, terminals, projects, teams, automations, Issues and todos, accounts, machines, sharing, notifications, panels and settings, with one page per area (`very-happy skill automations`). Sessions get a single line pointing at it, so asking an agent “add a daily 9:00 automation to this project” gets the right command. A copy is kept in ~/.local/share/very-happy/skills/very-happy; files you edited are never overwritten.',
                 autoProject: '`very-happy auto create|edit --project <id>|current` attaches an automation to a project (`--no-project` detaches); before, only the Web could do this.',
             },
+            nov11r: {
+                title: 'The main agent speaks up: event wake-ups and follow-ups',
+                summary: 'The main agent no longer waits for you to write: when something needs you it wakes, checks and reports, and it follows the work it handed out until it is done.',
+                wake: 'A team task waiting for your acceptance, a session that ended on an error, a request for help nobody answered, a failed automation, or work it handed out finishing or getting stuck wakes the main agent with one short summary (events close together are merged; the same thing wakes it once). It checks and then puts it on the board or tells you. With nothing worth reporting it is not woken and spends no tokens.',
+                followups: 'Every piece of work the main agent hands out (to a Lead, a new session, a message to a session, an issue) goes into a follow-up ledger on its machine (`followups_list`). When it is done you get a one-line result; when it goes quiet it is nudged once, then reported as stuck.',
+                conduct: 'Its handbook now says: suggest the next step after each topic, do what the safety gates allow and report afterwards instead of asking first, and only post a decision card when you really have to choose. A woken turn never wraps up, hands off or archives a session.',
+                settings: 'Settings → Main agent → Proactivity: Off / Report only / Follow up, plus daily caps on wake-ups and tokens (past a cap it stops for the day and says so on the board). During quiet hours it only posts to the board, without push.',
+            },
             nov11t: {
                 title: 'Dialogs keep their title and × in reach, and close when you click outside',
                 summary: 'Long dialogs such as Task details no longer scroll their title and close button away, and a click outside closes them.',

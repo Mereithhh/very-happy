@@ -790,6 +790,57 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         } finally { clearSystemCardRunners(); }
     });
 
+    it('B-925 on B-924c: a board_choice turn (the owner tapped a card option) unlocks nothing — handoff_send refused, session_spawn parks; a woken turn is no different', async () => {
+        const cards: Array<{ title: string; bodyMd: string }> = [];
+        await connect({ assistant: true, mainAgent: gatedMainAgent(cards) });
+        for (const [localId, sentFrom] of [['board-item-7-n1', 'web'], ['automation-wake-follow-n2', 'automation']] as const) {
+            turn(localId, sentFrom);
+            const handoff = JSON.parse(textOf(await mcp!.callTool({ name: 'handoff_send', arguments: { to: 'sess-t3', summary: 'go', archive_after: true } })));
+            expect(handoff, localId).toMatchObject({ ok: false, error: 'owner_request_required' });
+            const spawn = JSON.parse(textOf(await mcp!.callTool({ name: 'session_spawn', arguments: { directory: '/tmp/x', prompt: 'touch /tmp/pwned', risk: 'none' } })));
+            expect(spawn, localId).toMatchObject({ ok: true, state: 'awaiting_decision' });
+        }
+        expect(state.backend).toEqual([]);
+        expect(state.spawnCalls).toEqual([]);
+        expect(cards).toHaveLength(2);
+    });
+
+    it('B-925 QA P2-1: a report-only wake turn refuses dispatches before the gate sees them (real registration order)', async () => {
+        await connect({ assistant: true, mainAgent: testMainAgent() });
+        turn('automation-wake-report-abc', 'automation');
+        // QA's case: risk external (or raised by the classifier) used to be parked by the gate before any guard ran.
+        for (const risk of ['none', 'external', 'production']) {
+            for (const name of ['team_message', 'team_delegate', 'session_send', 'lead_delegate', 'session_spawn']) {
+                const r = await mcp!.callTool({ name, arguments: { ...(ARGS[name] ?? {}), risk } });
+                expect(JSON.parse(textOf(r)).error, `${name} risk=${risk}`).toBe('report_only');
+            }
+        }
+        expect(state.backend).toEqual([]);
+    });
+
+    it('B-925 QA round 2: a report-only wake turn refuses handoff_send, automation_run and issue_comment — every tool not `allow` in mainAgentToolPolicy', async () => {
+        const tools = await connect({ assistant: true, mainAgent: gatedMainAgent([]) });
+        turn('automation-wake-report-def', 'automation');
+        const call = async (name: string, extra: Record<string, unknown> = {}) => {
+            const tool = tools.find(t => t.name === name)!;
+            const risk = Object.keys((tool.inputSchema as any)?.properties ?? {}).includes('risk') ? { risk: 'none' } : {};
+            return JSON.parse(textOf(await mcp!.callTool({ name, arguments: { ...(ARGS[name] ?? {}), ...risk, ...extra } })));
+        };
+        expect((await call('handoff_send', { archive_after: true })).error).toBe('report_only');
+        expect((await call('automation_run')).error).toBe('report_only');
+        expect((await call('issue_comment')).error).toBe('report_only');
+        for (const tool of tools) {
+            if (mainAgentToolClass(tool.name) === 'allow') continue;
+            expect.soft((await call(tool.name)).error, tool.name).toBe('report_only');
+        }
+        expect(state.backend).toEqual([]);
+        expect(state.lifecycle).toEqual([]);
+        expect(state.spawnCalls).toEqual([]);
+        // A follow-level wake is not held to report-only: the shared layers decide (an ask tool parks a card).
+        turn('automation-wake-follow-ghi', 'automation');
+        expect(await call('automation_run')).toMatchObject({ ok: true, state: 'awaiting_decision' });
+    });
+
     it('QA77 #6: an assistant without the gate runtime (pi / ACP) gets only the legacy B-051 tools', async () => {
         const names = (await connect({ assistant: true })).map(t => t.name);
         expect(names).toContain('sessions_list');

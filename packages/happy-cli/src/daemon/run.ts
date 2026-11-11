@@ -118,6 +118,10 @@ import { TEAM_RETRY_CAPABILITY_VERSION } from './teams/spawnRetry';
 import { createAutomationRunner } from './automations/runner';
 import { createIssueWorker, issueExitEvent } from './issues/worker';
 import { createIssuesClient } from '@/issues/client';
+import { teamRequest } from '@/teams/client';
+import { createMainAgentProactive, type MainAgentProactive } from './mainAgentProactive';
+import { sendRemoteMessage } from '@/sessions/remoteSessionClient';
+import { waitForSessionKey } from '@/commands/sessionMessage';
 import { daemonExitCode, HANDOVER_EXIT_CODE, type ShutdownSource } from './shutdownExit';
 import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob, probeSystemdKillMode, wrappersSurviveHandover, handoverWaitsForSessions } from './daemonSupervisor';
 
@@ -388,6 +392,8 @@ export async function startDaemon(): Promise<void> {
     // B-856: the heartbeat saw a newer bundle on disk (a hand-run `npm i -g`); a handover follows.
     let bundleReplacedSeen = false;
     let automationRunner: ReturnType<typeof createAutomationRunner> | undefined;
+    // B-925: event wake-ups + follow-up ledger of the account's main agent (only on its machine).
+    let mainAgentProactive: MainAgentProactive | undefined;
     // B-874: issue dispatch worker (late-bound like teamWorker).
     let issueWorker: ReturnType<typeof createIssueWorker> | undefined;
     let projectPresence: ReturnType<typeof createProjectPresenceReporter> | undefined;
@@ -1732,6 +1738,15 @@ export async function startDaemon(): Promise<void> {
     // Handle child process exit — preserve session data for resume
     const onChildExited = (pid: number, exit?: { code: number | null; signal: NodeJS.Signals | null }) => {
       const session = pidToTrackedSession.get(pid);
+      // B-925: an abnormal exit is a wake event (sources.ts decides); before hibernation consumes its mark.
+      if (session?.happySessionId && exit) {
+        mainAgentProactive?.onSessionExit({
+          sessionId: session.happySessionId, pid, code: exit.code, signal: exit.signal,
+          title: resolveReportSessionTitle(session.happySessionMetadataFromLocalWebhook, session.happySessionId),
+          requested: false, hibernated: daemonHibernation.pendingExit(session.happySessionId), autoRestart: autoRestartExits.has(session.happySessionId),
+          isMainAgent: isAssistantTracked(session),
+        });
+      }
       // B-874: an auto-restart keeps the session (and its run) going; a hibernation is the run going idle.
       if (session?.happySessionId && !autoRestartExits.has(session.happySessionId) && issueWorker?.hasSession(session.happySessionId)) {
         issueWorker.report(session.happySessionId, daemonHibernation.pendingExit(session.happySessionId) ? 'idle' : issueExitEvent(exit));
@@ -1778,12 +1793,15 @@ export async function startDaemon(): Promise<void> {
     const echoedSpawnedBy = new Map<string, string>();
     const onSessionStateEvent = (sessionId: string, event: AssistantReportEvent, spawnedByFromSession?: string): void => {
       if (spawnedByFromSession) echoedSpawnedBy.set(sessionId, spawnedByFromSession);
+      if (event === 'needs_input') mainAgentProactive?.onNeedsInput(sessionId);
       // B-496: a run's session blocking on input is an attention signal for that run.
       if (automationRunner?.hasSession(sessionId)) automationRunner.report(sessionId, event === 'completed' ? 'idle' : 'blocked');
       if (spawnedByFromSession === 'teams' || teamWorker?.hasSession(sessionId) || [...pidToTrackedSession.values()].some(s => s.happySessionId === sessionId && s.spawnedBy === 'teams')) {
         teamWorker?.report(sessionId, event === 'completed' ? 'idle' : 'blocked');
         return; // Teams has its own recipient; never route to the legacy assistant singleton.
       }
+      // B-925: on the main agent's machine its follow-up ledger reports dispatched work (one merged wake-up), not B-069.
+      if (mainAgentProactive?.active()) return;
       void (async () => {
         try {
           let tracked: TrackedSession | undefined;
@@ -2085,7 +2103,7 @@ export async function startDaemon(): Promise<void> {
       onHappySessionWebhook,
       onSessionStateEvent,
       onClaudeAuthFailed: (sessionId: string) => claudeAuthServiceRef?.signalAuthFailed(sessionId),
-      onSessionTurnEvent: (sessionId, event) => turnActivity.apply(sessionId, event),
+      onSessionTurnEvent: (sessionId, event) => { turnActivity.apply(sessionId, event); mainAgentProactive?.onTurnEvent(sessionId, event); },
       onSessionBackgroundTasks: (sessionId, tasks) => backgroundTasks.apply(sessionId, tasks),
       getBackgroundTasks: (sessionId) => backgroundTasks.report(sessionId),
       onSessionEdit: (edit) => { peerCoordinator.onEdit(edit); },
@@ -2636,6 +2654,7 @@ export async function startDaemon(): Promise<void> {
         teamWorker?.stop();
         automationRunner?.stop();
         issueWorker?.stop();
+        mainAgentProactive?.stop();
         projectPresence?.stop();
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
@@ -2759,6 +2778,54 @@ export async function startDaemon(): Promise<void> {
       log: message => logger.debug(`[DAEMON RUN] ${message}`),
     });
 
+    // B-925: proactive main agent — a 60 s poll (board, failed runs, follow-ups) and the session events above.
+    {
+      const proactiveIssues = createIssuesClient({ token: async () => credentials.token });
+      const proactiveRuns = createAutomationsClient({ serverUrl: configuration.serverUrl, token: credentials.token, client: 'daemon-auto' });
+      const proactiveBoard = createAttentionClient({ token: async () => credentials.token });
+      const liveMainAgent = () => findLiveAssistant(pidToTrackedSession.values(), isPidAlive)?.happySessionId ?? null;
+      const localLive = (id: string) => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid));
+      mainAgentProactive = createMainAgentProactive({
+        home: assistantHome(), machineId,
+        kv: httpKvIo(configuration.serverUrl, () => credentials.token),
+        board: {
+          list: async () => (await proactiveBoard.list({ state: 'open', needsOwner: '1', limit: 200 })).items,
+          post: async (input) => { await proactiveBoard.post({ sessionId: input.sessionId, source: 'agent', kind: 'report', key: input.key, title: input.title, bodyMd: input.bodyMd }); },
+        },
+        failedRuns: () => proactiveRuns.runs({ status: 'failed', limit: 50 }),
+        listTeams: async () => {
+          const result = await teamRequest('/v1/teams', 'GET', credentials.token, false);
+          return Array.isArray(result?.teams) ? result.teams : [];
+        },
+        issue: {
+          status: async (ref) => (await proactiveIssues.get(ref)).issue.status,
+          comment: async (ref, body) => { await proactiveIssues.comment(ref, { body }); },
+        },
+        liveMainAgent,
+        startMainAgent: async () => {
+          const result = await spawnSession({ directory: assistantHome(), agent: 'claude', variant: 'assistant' });
+          return result.type === 'success' ? result.sessionId : null;
+        },
+        sendWake: async (sessionId, text, localId) => {
+          const persisted = await waitForSessionKey(sessionId, 20_000);
+          await sendUserMessage(sessionId, persisted, text, 'daemon-auto/main-agent-wake', { localId, sentFrom: 'automation' });
+        },
+        nudge: async (sessionId, text, localId) => {
+          const persisted = readPersistedSessions()[sessionId];
+          if (persisted) {
+            if (!localLive(sessionId)) return false;
+            await sendUserMessage(sessionId, persisted, text, 'daemon-auto/main-agent-followup', { localId, sentFrom: 'automation' });
+            return true;
+          }
+          const remote = await sendRemoteMessage(sessionId, text, { resume: false, sentFrom: 'automation', localId });
+          return remote.delivered;
+        },
+        busy: (id) => turnActivity.activeSessions().includes(id),
+        log: message => logger.debug(`[DAEMON RUN] ${message}`),
+      });
+      mainAgentProactive.start();
+    }
+
     // B-874: issue dispatches — its own 5s poll; an old or gated server (404) keeps it idle (1 probe / 10 min).
     issueWorker = createIssueWorker({
       machineId, client: createIssuesClient({ token: async () => credentials.token }), spawn: spawnSession,
@@ -2813,6 +2880,7 @@ export async function startDaemon(): Promise<void> {
       // Real shutdown: kill live script trees; the next daemon reports them from the receipt, never re-runs them.
       automationRunner?.stop({ killScripts: true });
       issueWorker?.stop();
+      mainAgentProactive?.stop();
       projectPresence?.stop();
       // B-585: kill running worktree setup trees; the next daemon records them as interrupted.
       currentWorktreeService()?.stopAll();
