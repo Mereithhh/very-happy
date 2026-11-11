@@ -358,6 +358,17 @@ export async function requestIdleRestartViaDaemon(sessionId: string, pid: number
   return result;
 }
 
+/** B-919: the main agent's `session_restart` through the local daemon. Never throws. */
+export async function requestOwnerRestartViaDaemon(sessionId: string, when: 'idle' | 'now'): Promise<import('./controlServer').OwnerRestartReply> {
+  const result = await daemonPost('/session-restart-owner', { sessionId, when });
+  if (result?.error) {
+    const reason = String(result.error);
+    if (/404|Not Found/i.test(reason)) return { ok: false, code: 'daemon-too-old' };
+    return { ok: false, code: 'daemon-unreachable', error: reason };
+  }
+  return result;
+}
+
 export async function stopDaemonHttp(): Promise<void> {
   await daemonPost('/stop');
 }

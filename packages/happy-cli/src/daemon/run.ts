@@ -88,7 +88,7 @@ import { TurnActivityTracker } from '@/update/turnActivity';
 import { createDaemonHibernation, collectAutomationBindings, waitForPidsToExit, waitForSessionLive } from '@/hibernation/daemonHibernation';
 import { resolveCheckMs, resolveIdleMs, settingIdleMs } from '@/hibernation/hibernationPolicy';
 import { createAutoRestart } from './autoRestart';
-import { createIdleRestart, type IdleRestart, type IdleRestartPersisted } from './idleRestart';
+import { createIdleRestart, ownerRestartRequest, type IdleRestart, type IdleRestartPersisted, type IdleRestartSessionFacts } from './idleRestart';
 import { createStaleWrapperNotices } from './staleWrapperNotice';
 import { claudeChildRunIntent } from './agentChildIntent';
 import { createAttentionClient } from '@/attention/client';
@@ -1945,16 +1945,17 @@ export async function startDaemon(): Promise<void> {
     // `request_idle_restart`. Persisted so a daemon handover keeps it.
     const idleRestartFile = join(configuration.happyHomeDir, 'idle-restarts.json');
     const idleRestartTiming = resolveIdleRestartTiming();
+    const idleRestartFacts = (sessionId: string): IdleRestartSessionFacts | null => {
+      for (const tracked of pidToTrackedSession.values()) {
+        if (tracked.happySessionId !== sessionId || !tracked.happySessionMetadataFromLocalWebhook || !isPidAlive(tracked.pid)) continue;
+        const facts = trackedFacts(tracked);
+        return { live: facts.live, wrapperVersion: facts.wrapperVersion, flavor: facts.flavor, variant: facts.variant, startedBy: facts.startedBy };
+      }
+      return null;
+    };
     idleRestart = createIdleRestart({
       ...idleRestartTiming,
-      session: (sessionId) => {
-        for (const tracked of pidToTrackedSession.values()) {
-          if (tracked.happySessionId !== sessionId || !tracked.happySessionMetadataFromLocalWebhook || !isPidAlive(tracked.pid)) continue;
-          const facts = trackedFacts(tracked);
-          return { live: facts.live, wrapperVersion: facts.wrapperVersion, flavor: facts.flavor, variant: facts.variant, startedBy: facts.startedBy };
-        }
-        return null;
-      },
+      session: idleRestartFacts,
       turnActive: (sessionId) => turnActivity.activeSessions().includes(sessionId),
       backgroundTasks: (sessionId) => backgroundTasks.count(sessionId),
       automationRunning: (sessionId) => automationRunner?.hasSession(sessionId) === true,
@@ -2015,6 +2016,19 @@ export async function startDaemon(): Promise<void> {
       const result = await idleRestart!.request({ sessionId, source: 'owner', target: autoRestartScheduler.statuses()[sessionId]?.target ?? null });
       return result.ok ? { type: 'success', sessionId, queued: true } : { type: 'error', errorMessage: `idle-restart:${result.code}` };
     };
+    // B-919: the main agent's `session_restart` (the owner asked it to restart a session on this machine).
+    // idle = the owner's 「本轮结束后重启」 queue; now = only a session that passes the same guards and is idle
+    // right now (B-894 `ifIdle`) — a busy one, the owner's own terminal or an assistant is never killed.
+    const requestOwnerRestart = (body: { sessionId: string; when: 'idle' | 'now' }) => ownerRestartRequest(body, {
+      queue: (sessionId) => idleRestart!.request({ sessionId, source: 'owner', target: autoRestartScheduler.statuses()[sessionId]?.target ?? null }),
+      facts: idleRestartFacts,
+      queued: (sessionId) => !!idleRestart!.status(sessionId),
+      restartIfIdle: async (sessionId) => {
+        const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, ifIdle: true });
+        return result.type === 'success' ? { ok: true } : { ok: false, error: result.type === 'error' ? result.errorMessage : 'working directory needs to be created first' };
+      },
+      version: packageJson.version,
+    });
     const autoRestartSweep = setInterval(() => autoRestartScheduler.sweep(), 60_000);
     autoRestartSweep.unref?.();
     // B-105: mirror manager is constructed after the API client below —
@@ -2065,6 +2079,7 @@ export async function startDaemon(): Promise<void> {
         return idleRestart!.request({ sessionId, source: 'agent' });
       },
       getIdleRestartStatus: (sessionId: string) => idleRestart?.status(sessionId),
+      requestOwnerRestart,
       getDaemonInfo: () => ({ version: packageJson.version, upgradePending: upgradePending(), autoRestartEnabled: autoRestartSetting }),
       pushClipboard: (text: string, terminalId?: string) => {
         if (!apiMachineRef) {

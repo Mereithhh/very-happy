@@ -50,7 +50,6 @@ function deps(over: Partial<MainAgentDeps> = {}): MainAgentDeps & { calls: any[]
         },
         machineId: async () => 'machine-1',
         sessionId: () => 'main-agent-session',
-        restartNow: async (sessionId) => { calls.push({ op: 'restartNow', sessionId }); return { success: true } },
     }
     return Object.assign({ ...base, ...over }, { calls })
 }
@@ -241,29 +240,47 @@ describe('projects by projectId', () => {
 })
 
 describe('lifecycle adapters', () => {
-    it('answer not_available until a backend is installed (restart now: the local daemon)', async () => {
+    it('B-919: not installed → every lifecycle tool answers not_available (no guard-free restart fallback)', async () => {
         const d = deps()
         expect(JSON.parse(text(await run(d, 'session_wrapup', { sessionId: 'abc' })))).toMatchObject({ ok: false, error: 'not_available' })
         expect(JSON.parse(text(await run(d, 'session_handoff', { from: 'abc' })))).toMatchObject({ ok: false, error: 'not_available' })
         expect(JSON.parse(text(await run(d, 'session_restart', { sessionId: 'abc' })))).toMatchObject({ ok: false, error: 'not_available' })
-        expect(JSON.parse(text(await run(d, 'session_restart', { sessionId: 'abc', when: 'now' })))).toEqual({ ok: true, sessionId: 'abc', scheduled: 'now' })
-        expect(d.calls).toEqual([{ op: 'restartNow', sessionId: 'abc' }])
+        expect(JSON.parse(text(await run(d, 'session_restart', { sessionId: 'abc', when: 'now' })))).toMatchObject({ ok: false, error: 'not_available' })
+        expect(d.calls).toEqual([])
     })
 
-    it('forward to the installed B-915 / B-911 backends with a requestId', async () => {
+    it('B-919: installed → forward to the backends with a requestId; a refusal is a tool error with the short receipt', async () => {
         const wrapup = vi.fn(async (input: any) => ({ ok: true as const, sessionId: input.sessionId, state: 'queued' as const }))
         const handoff = vi.fn(async (input: any) => ({ ok: true as const, from: input.from, to: 'new-sess', state: 'queued' as const }))
         const restart = vi.fn(async (input: any) => ({ ok: true as const, sessionId: input.sessionId, scheduled: input.when, targetVersion: '0.2.300' }))
         installSessionLifecycle({ wrapup, handoff })
         installSessionLifecycle({ restart })
         const d = deps()
-        expect(JSON.parse(text(await run(d, 'session_wrapup', { sessionId: 'abc', templateId: 'std', requestId: 'r1' })))).toEqual({ ok: true, sessionId: 'abc', state: 'queued' })
-        expect(wrapup).toHaveBeenCalledWith({ sessionId: 'abc', templateId: 'std', requestId: 'r1' })
+        const r = await run(d, 'session_wrapup', { sessionId: 'abc', requestId: 'r1' })
+        expect(r.isError).toBe(false)
+        expect(JSON.parse(text(r))).toEqual({ ok: true, sessionId: 'abc', state: 'queued' })
+        expect(wrapup).toHaveBeenCalledWith({ sessionId: 'abc', requestId: 'r1' })
         await run(d, 'session_handoff', { from: 'abc', note: 'n' })
         expect(handoff.mock.calls[0][0]).toMatchObject({ from: 'abc', to: 'new', note: 'n' })
         expect(handoff.mock.calls[0][0].requestId).toMatch(/^[0-9a-f-]{36}$/)
         expect(JSON.parse(text(await run(d, 'session_restart', { sessionId: 'abc' })))).toEqual({ ok: true, sessionId: 'abc', scheduled: 'idle', targetVersion: '0.2.300' })
+        expect(restart.mock.calls[0][0]).toMatchObject({ sessionId: 'abc', when: 'idle' })
         expect(d.calls).toEqual([])
+
+        installSessionLifecycle({ wrapup: async () => ({ ok: false as const, sessionId: 'abc', error: 'Session abc is archived' }) })
+        const refused = await run(d, 'session_wrapup', { sessionId: 'abc' })
+        expect(refused.isError).toBe(true)
+        expect(JSON.parse(text(refused))).toEqual({ ok: false, sessionId: 'abc', error: 'Session abc is archived' })
+    })
+
+    it('B-919: the descriptions say owner-only, one named session, never on a schedule', async () => {
+        const descriptions = new Map<string, string>()
+        registerMainAgentTools({ registerTool: ((name: string, config: any) => { descriptions.set(name, config.description) }) } as never, deps())
+        for (const name of ['session_wrapup', 'session_handoff', 'session_restart']) {
+            expect(descriptions.get(name)).toContain('Only when the owner explicitly asks for it')
+            expect(descriptions.get(name)).toContain('never on your own initiative, on a schedule, or in batches')
+        }
+        expect(descriptions.get('session_restart')).toContain('a busy session is refused, never interrupted')
     })
 
     it('reject malformed session ids before any backend', async () => {

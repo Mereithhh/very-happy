@@ -106,6 +106,12 @@ describe('B-911 idle restart wiring', () => {
         expect(control).toContain("typed.post('/session-restart-request'");
         expect(bridge).toContain('callTool({ name: IDLE_RESTART_TOOL_NAME, arguments: {} })');
     });
+    it('B-919: the main agent\'s restart is a new control route on the owner queue / the ifIdle restart', () => {
+        expect(control).toContain("typed.post('/session-restart-owner'");
+        expect(run).toContain("queue: (sessionId) => idleRestart!.request({ sessionId, source: 'owner', target: autoRestartScheduler.statuses()[sessionId]?.target ?? null }),");
+        expect(run).toContain("const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, ifIdle: true });");
+        expect(run).toContain('      requestOwnerRestart,');
+    });
     it('turn edges and wrapper exits reach the queue', () => {
         expect(run).toContain('turnActivity.onEvent((sessionId, event) => idleRestart?.noteTurn(sessionId, event));');
         expect(run).toContain('if (session?.happySessionId) idleRestart?.forget(session.happySessionId);');

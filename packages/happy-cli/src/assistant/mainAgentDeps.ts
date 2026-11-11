@@ -3,7 +3,6 @@ import { teamRequest } from '@/teams/client'
 import { sharedIssuesClient } from '@/issues/client'
 import { sharedProjectsClient } from '@/projects/client'
 import { runTodoCommand } from '@/commands/todo'
-import { restartDaemonSession } from '@/daemon/controlClient'
 import { deliverAssistantMessage } from './assistantTools'
 import type { MainAgentDeps } from './mainAgentTools'
 
@@ -22,6 +21,5 @@ export function createMainAgentDeps(sessionId: () => string): MainAgentDeps {
         todo: (command) => runTodoCommand(command as never),
         machineId: async () => { try { return (await readSettings())?.machineId ?? null } catch { return null } },
         sessionId,
-        restartNow: restartDaemonSession,
     }
 }

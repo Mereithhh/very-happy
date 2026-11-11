@@ -13,8 +13,10 @@
  *  - project_list / project_context / project_note — with an explicit
  *    projectId (the shared ones only see the caller's own project).
  *  - session_wrapup / session_handoff / session_restart — adapters for the
- *    wrap-up / handoff (B-915) and restart (B-911) backends; until a backend
- *    is installed they answer `not_available` (restart now: the local daemon).
+ *    wrap-up / handoff (B-915) and restart (B-911) backends, installed by
+ *    startHappyServer (mainAgentLifecycle.ts, B-919); without a backend they
+ *    answer `not_available`. Only on the owner's explicit request: nothing
+ *    calls them on a schedule or by itself.
  *
  * Interface: specs/2026-11-main-agent.md §3.2. Every answer goes through
  * the main agent's caps (toolCaps.ts). `risk` is not handled here: B-916c's
@@ -44,19 +46,22 @@ export const MAIN_AGENT_REPLACES = ['issue_list', 'issue_comment', 'project_cont
 
 // ─── lifecycle adapters (B-915 / B-911) ──────────────────────────────────────
 
-export type WrapupReceipt = { ok: true; sessionId: string; state: 'queued' | 'running' }
-export type HandoffReceipt = { ok: true; from: string; to: string; state: 'queued' | 'running' | 'done' }
-export type RestartReceipt = { ok: true; sessionId: string; scheduled: 'idle' | 'now'; targetVersion?: string }
+/** A refusal: one line, never the target session's content. */
+export type LifecycleError = { ok: false; error: string }
+export type WrapupReceipt = { ok: true; sessionId: string; state: 'queued' | 'running' } | (LifecycleError & { sessionId: string })
+export type HandoffReceipt = { ok: true; from: string; to: string; state: 'queued' | 'running' | 'done' } | (LifecycleError & { from: string; to: string })
+/** `already`: a restart was already queued for it (nothing new queued). */
+export type RestartReceipt = { ok: true; sessionId: string; scheduled: 'idle' | 'now'; already?: true; targetVersion?: string } | (LifecycleError & { sessionId: string })
 
 /** The contract of main agent spec §3 (B-915 wrap-up / handoff, B-911 restart). A missing member = not available yet. */
 export type SessionLifecycle = {
-    wrapup?: (input: { sessionId: string; templateId?: string; requestId: string }) => Promise<WrapupReceipt>
+    wrapup?: (input: { sessionId: string; requestId: string }) => Promise<WrapupReceipt>
     handoff?: (input: { from: string; to: string | 'new'; note?: string; requestId: string }) => Promise<HandoffReceipt>
     restart?: (input: { sessionId: string; when: 'idle' | 'now'; requestId: string }) => Promise<RestartReceipt>
 }
 
 let lifecycle: SessionLifecycle = {}
-/** B-915 / B-911 install their backends here; members left out keep the previous one. `null` clears. */
+/** The backends (B-919: mainAgentLifecycle.ts, from startHappyServer); members left out keep the previous one. `null` clears. */
 export function installSessionLifecycle(next: SessionLifecycle | null): void {
     lifecycle = next === null ? {} : { ...lifecycle, ...next }
 }
@@ -87,8 +92,6 @@ export type MainAgentDeps = {
     machineId: () => Promise<string | null>
     /** This (main agent) session. */
     sessionId: () => string
-    /** Local daemon restart (the existing `restart-session`): `session_restart(when=now)` until B-911 installs a backend. */
-    restartNow?: (sessionId: string) => Promise<{ success: boolean; error?: string }>
 }
 
 type Result = { content: Array<{ type: 'text'; text: string }>; isError: boolean }
@@ -346,33 +349,32 @@ export function registerMainAgentTools(mcp: AssistantToolRegistrar, deps: MainAg
         }
     })
 
-    // ── session lifecycle (B-915 / B-911 adapters) ───────────────────────────
+    // ── session lifecycle (B-915 / B-911 adapters, B-919 backends) ──────────
+    // Owner-only (main agent spec decision 6: no automatic wrap-up): each call names one session the owner named.
+    const ONLY_ON_REQUEST = 'Only when the owner explicitly asks for it, for the session they named — never on your own initiative, on a schedule, or in batches over sessions they did not name.'
     const notAvailable = (what: string) => ok(JSON.stringify({ ok: false, error: 'not_available', detail: `${what} is not available on this Very Happy version yet` }))
-    register('session_wrapup', 'Ask a session to wrap up (the same as the owner pressing 收尾 in it): it writes its wrap-up and the board gets a "can be closed" card. Never closes or archives anything.', {
-        sessionId: id, templateId: z.string().min(1).max(64).optional(), requestId,
+    const receipt = (r: { ok: boolean }) => r.ok ? ok(JSON.stringify(r)) : fail(JSON.stringify(r))
+    register('session_wrapup', `Ask one session of the account to wrap up (the same as the owner pressing 收尾 in it): it gets one turn to write its wrap-up and the board gets a card. Never closes or archives anything. Receipt: { ok, sessionId, state: queued | running (already wrapping up, nothing sent) }. ${ONLY_ON_REQUEST}`, {
+        sessionId: id, requestId,
     }, false, async (args) => {
         if (!isValidSessionId(args.sessionId)) return fail('Invalid sessionId')
         if (!lifecycle.wrapup) return notAvailable('Wrap-up')
-        return ok(JSON.stringify(await lifecycle.wrapup({ sessionId: args.sessionId, ...(args.templateId ? { templateId: args.templateId } : {}), requestId: args.requestId ?? randomUUID() })))
+        return receipt(await lifecycle.wrapup({ sessionId: args.sessionId, requestId: args.requestId ?? randomUUID() }))
     })
-    register('session_handoff', 'Hand a session\'s progress to another session (to = its id) or to a new one (to = "new"), the same as the owner\'s 交接给…; do not copy the progress yourself.', {
+    register('session_handoff', `Ask session \`from\` to hand its progress over (the same as the owner's 交接给…): to = an existing session's id, or "new" / omitted for a new session started in from's directory (from must be on this machine). from writes the handoff itself — do not copy its progress. Receipt: { ok, from, to, state }. ${ONLY_ON_REQUEST}`, {
         from: id, to: id.optional().describe('Session id; omit (or "new") for a new session'), note: z.string().max(4000).optional(), requestId,
     }, false, async (args) => {
         const to = args.to ?? 'new'
         if (!isValidSessionId(args.from) || (to !== 'new' && !isValidSessionId(to))) return fail('Invalid session id')
         if (!lifecycle.handoff) return notAvailable('Handoff')
-        return ok(JSON.stringify(await lifecycle.handoff({ from: args.from, to, ...(args.note ? { note: args.note } : {}), requestId: args.requestId ?? randomUUID() })))
+        return receipt(await lifecycle.handoff({ from: args.from, to, ...(args.note ? { note: args.note } : {}), requestId: args.requestId ?? randomUUID() }))
     })
-    register('session_restart', 'Restart a session\'s wrapper onto the installed Very Happy version, keeping its conversation: when = idle (after its current turn; default) or now (interrupts a running turn).', {
+    register('session_restart', `Restart a session of this machine onto the installed Very Happy version, keeping its conversation: when = idle (default; queued until its current turn and background tasks end) or now (only if it is idle right now — a busy session is refused, never interrupted). The owner's own terminal sessions are never restarted. ${ONLY_ON_REQUEST}`, {
         sessionId: id, when: z.enum(['idle', 'now']).optional(), requestId,
     }, false, async (args) => {
         if (!isValidSessionId(args.sessionId)) return fail('Invalid sessionId')
         const when = args.when ?? 'idle'
-        if (lifecycle.restart) return ok(JSON.stringify(await lifecycle.restart({ sessionId: args.sessionId, when, requestId: args.requestId ?? randomUUID() })))
-        if (when === 'now' && deps.restartNow) {
-            const result = await deps.restartNow(args.sessionId)
-            return result.success ? ok(JSON.stringify({ ok: true, sessionId: args.sessionId, scheduled: 'now' })) : fail(`Restart failed: ${result.error ?? 'unknown'}`)
-        }
-        return notAvailable(when === 'idle' ? 'Restart when idle' : 'Restart')
+        if (!lifecycle.restart) return notAvailable(when === 'idle' ? 'Restart when idle' : 'Restart')
+        return receipt(await lifecycle.restart({ sessionId: args.sessionId, when, requestId: args.requestId ?? randomUUID() }))
     })
 }

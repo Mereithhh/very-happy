@@ -50,7 +50,8 @@ import { DISPATCH_APPROVED_TOOL } from "@/assistant/gates/dispatchGate";
 import type { MainAgentRuntime } from "@/assistant/gates/setup";
 import { withToolOutputCaps } from "@/assistant/toolCaps";
 import { MAIN_AGENT_LIST_VIEWS } from "@/assistant/listViews";
-import { MAIN_AGENT_REPLACES, MAIN_AGENT_TOOL_NAMES, registerMainAgentTools } from "@/assistant/mainAgentTools";
+import { installSessionLifecycle, MAIN_AGENT_REPLACES, MAIN_AGENT_TOOL_NAMES, registerMainAgentTools } from "@/assistant/mainAgentTools";
+import { createLiveMainAgentLifecycle } from "@/assistant/mainAgentLifecycle";
 import { createMainAgentDeps } from "@/assistant/mainAgentDeps";
 
 interface HappyMcpHandlers {
@@ -297,6 +298,9 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
     logger.debug(`[happyMCP] server:start sessionId=${client.sessionId} assistant=${!!options?.assistant}`);
 
     const selfReportState = options?.selfReportState ?? createSelfReportState();
+    // B-919: the main agent's session_wrapup / session_handoff / session_restart run on the B-915 / B-911 backends.
+    const mainAgentLifecycle = isMainAgentSession(options);
+    if (mainAgentLifecycle) installSessionLifecycle(createLiveMainAgentLifecycle(() => client.sessionId));
 
     // B-766 C-1: briefing board — probe, lead check, owner-question / first-reply / D5 fallbacks.
     const leadBoard = createLeadBoard({
@@ -556,6 +560,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         leadBoard,
         stop: () => {
             logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);
+            if (mainAgentLifecycle) installSessionLifecycle(null);
             if (adoptionEnabled) client.rpcHandlerManager.unregisterHandler('teams-adopt');
             if (tapped) {
                 client.off('user-message-routed', onRoutedUserMessage);
