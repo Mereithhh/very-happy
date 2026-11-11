@@ -41,3 +41,21 @@ describe('gate-2 card 目标 line (B-925 on B-924g: the gate\'s targetTitle look
         }
     }, TARGET_LABEL_TIMEOUT_MS * 3)
 })
+
+describe('approved sends go out verbatim; work that starts somewhere new keeps the approval line (B-925, QA-T B-924c P2-1 / P3)', () => {
+    it('withApprovalPrefix', async () => {
+        const { withApprovalPrefix, dispatchOptions } = await import('./dispatchGate')
+        expect(withApprovalPrefix('session_send', { sessionId: 's', text: '继续' }, 'L', 'approve')).toEqual({ sessionId: 's', text: '继续' })
+        expect(withApprovalPrefix('session_message', { to: 's', body: '继续' }, 'L', 'approve')).toEqual({ to: 's', body: '继续' })
+        expect(withApprovalPrefix('terminal_send', { terminalId: 't', text: 'ls' }, 'L', 'approve')).toEqual({ terminalId: 't', text: 'ls' })
+        expect(withApprovalPrefix('session_spawn', { prompt: 'p' }, 'L', 'approve')).toEqual({ prompt: '本任务已获批：L\n\np' })
+        expect(withApprovalPrefix('lead_delegate', { goal: 'g' }, 'L', 'approve')).toEqual({ goal: '本任务已获批：L\n\ng' })
+        const rec = (tool: string, level: 'none' | 'external' | 'production') => dispatchOptions(tool, level).find(o => o.recommended)?.id
+        expect(rec('session_send', 'none')).toBe('approve')
+        expect(rec('session_message', 'none')).toBe('approve')
+        expect(rec('session_send', 'external')).toBe('draft')
+        expect(rec('terminal_send', 'none')).toBe('draft')
+        expect(rec('session_spawn', 'none')).toBe('draft')
+        expect(rec('lead_delegate', 'none')).toBe('draft')
+    })
+})

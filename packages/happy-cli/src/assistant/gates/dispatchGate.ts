@@ -224,6 +224,7 @@ export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'tool
             payload.slice(0, 1_500),
         ].join('\n'), 7_900),
         requestId: `dispatch-${pending.approvalId}`,
+        options: dispatchOptions(pending.toolName, pending.level),
     }
 }
 
@@ -233,8 +234,32 @@ export const DISPATCH_OPTIONS = [
     { id: 'drop', label: '放弃' },
 ] as const
 
-/** Prefix the approved call's payload; drafts get the do-not-send variant. */
+/**
+ * B-925 (QA-T B-924c P3): which option the card recommends. A risk-none message into an existing session
+ * (session_send / session_message — e.g. 「继续」 to a stuck session) is fully on the card: the target line and the
+ * exact text, both hash-bound, sent verbatim. There 批准执行 is the useful default. Everything else (spawns,
+ * team / Lead work, automations, terminals, external / production) keeps 只出草稿.
+ */
+export function dispatchOptions(toolName: string, level: RiskLevel): ReadonlyArray<{ id: string; label: string; recommended?: boolean }> {
+    if (level === 'none' && (toolName === 'session_send' || toolName === 'session_message')) {
+        return DISPATCH_OPTIONS.map(o => ({ id: o.id, label: o.label, ...(o.id === 'approve' ? { recommended: true } : {}) }))
+    }
+    return DISPATCH_OPTIONS
+}
+
+/**
+ * B-925 (QA-T B-924c P2-1): a message into an EXISTING session or terminal goes out exactly as the card showed it.
+ * The receiver is mid-conversation; a 「本任务已获批：<url>」 line in front of 「继续」 read as a new instruction it
+ * could not place, and in a terminal it would be typed into the shell. The approval stays on the board and in the
+ * pending / done records. Work that STARTS somewhere new (a spawn's first prompt, a Lead / team goal, an
+ * automation's prompt) keeps the line: that executor has no conversation with the owner and the line is how it
+ * knows the owner approved an outbound / production step.
+ */
+export const VERBATIM_SEND_TOOLS: ReadonlySet<string> = new Set(['session_send', 'session_message', 'terminal_send'])
+
+/** Prefix the approved call's payload; drafts get the do-not-send variant. Verbatim sends are left as approved. */
 export function withApprovalPrefix(toolName: string, args: Record<string, unknown>, link: string, choice: 'approve' | 'draft'): Record<string, unknown> {
+    if (choice === 'approve' && VERBATIM_SEND_TOOLS.has(toolName)) return args
     const line = choice === 'approve' ? `本任务已获批：${link}` : `本任务已获批，但只出草稿、不得发送或发布：${link}`
     const field = PAYLOAD_FIELD[toolName]
     if (field) return { ...args, [field]: `${line}\n\n${str(args[field])}` }

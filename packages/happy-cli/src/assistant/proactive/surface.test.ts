@@ -140,8 +140,9 @@ describe('stuck session → 继续 goes through a bound dispatch card (B-924c)',
     async function harness() {
         const dir = await mkdtemp(join(tmpdir(), 'vh-stuck-dispatch-'))
         const items = new Map<string, BoardItemView>()
+        const posted: Array<{ options?: ReadonlyArray<{ id: string; recommended?: boolean }> }> = []
         const board: DispatchBoard = {
-            postDecision: async (c) => { const item: BoardItemView = { id: `item-${items.size + 1}`, key: c.key, state: 'open', ownerChoice: null, resolvedBy: null, title: c.title, bodyMd: c.bodyMd, options: DISPATCH_OPTIONS.map(o => ({ id: o.id, label: o.label })) }; items.set(item.id, item); return { ...item } },
+            postDecision: async (c) => { posted.push(c); const item: BoardItemView = { id: `item-${items.size + 1}`, key: c.key, state: 'open', ownerChoice: null, resolvedBy: null, title: c.title, bodyMd: c.bodyMd, options: (c.options ?? DISPATCH_OPTIONS).map(o => ({ id: o.id, label: o.label })) }; items.set(item.id, item); return { ...item } },
             findByKey: async (key) => [...items.values()].find(i => i.key === key) ?? null,
             findById: async (id) => { const i = items.get(id); return i ? { ...i } : null },
         }
@@ -155,7 +156,7 @@ describe('stuck session → 继续 goes through a bound dispatch card (B-924c)',
         gate.registerApprovedTool(guarded)
         const approveCard = (id: string) => { const i = items.get(id)!; items.set(id, { ...i, state: 'answered', ownerChoice: 'approve', resolvedBy: 'owner' }) }
         const call = async (name: string, args: any) => JSON.parse(body(await tools.get(name)!.handler(args)).replace(/^(Message delivered.*)$/s, (t: string) => JSON.stringify({ text: t })))
-        return { items, sent, call, approveCard, pendingDir }
+        return { items, sent, call, approveCard, pendingDir, posted }
     }
 
     it('the woken turn\'s session_send 继续 parks ONE card naming the session and the text; the owner\'s approval sends exactly that, once', async () => {
@@ -169,6 +170,8 @@ describe('stuck session → 继续 goes through a bound dispatch card (B-924c)',
             expect(card.bodyMd).toContain('工具：session_send')
             expect(card.bodyMd).toContain('目标：会话 「修 sum.js」（sess-a）')
             expect(card.bodyMd).toMatch(/内容：\n继续$/)
+            // QA-T B-924c P3: a bound risk-none send recommends 批准执行.
+            expect(h.posted[0].options?.find(o => o.recommended)?.id).toBe('approve')
             expect(h.sent).toEqual([])
             h.approveCard(parked.boardItemId)
             // Extra arguments to dispatch_approved change nothing: the stored call runs, byte for byte.
@@ -176,7 +179,10 @@ describe('stuck session → 继续 goes through a bound dispatch card (B-924c)',
             expect(run).toMatchObject({ ok: true, state: 'dispatched' })
             expect(h.sent).toHaveLength(1)
             expect(h.sent[0].sessionId).toBe('sess-a')
-            expect(h.sent[0].text).toMatch(/\n\n继续$/)
+            // QA-T B-924c P2-1: the session receives exactly the card's 内容, no approval line in front.
+            const cardText = card.bodyMd!.split('内容：\n')[1]
+            expect(h.sent[0].text).toBe(cardText)
+            expect(h.sent[0].text).toBe('继续')
             expect(await h.call('dispatch_approved', { approvalId: parked.approvalId })).toMatchObject({ state: 'already_dispatched' })
             expect(h.sent).toHaveLength(1)
             expect(h.items.size).toBe(1)
