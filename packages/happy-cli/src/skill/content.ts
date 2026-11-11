@@ -226,7 +226,11 @@ A machine declares panels in \`webPanels\` of its settings.json (\`[{ "id", "tit
 
 Owner decision: loosening a permission mode (toward acceptEdits / bypass / yolo), turning on \`assistantSkipPermissions\`, disabling or widening the sandbox, server URLs, credential store, API keys, and commands that run by themselves (terminal startup commands, run-on-select shortcuts) exit 2 with \`needs_owner_decision\` and a \`cardId\` on this session's board. Tell the user, wait for their choice (it arrives as a chat message), then rerun the same command with \`--approved <cardId>\`. One card approves exactly one value once; 放弃 writes nothing. Tightening is written directly.
 
-Limits, stated plainly: the card governs this command only. It is not a sandbox or a permission mode — an agent with a shell can still edit local files such as \`settings.json\`; do not, and never work around a refusal.
+Limits, stated plainly: the card governs this command only. It is not a sandbox or a permission mode, and it does not stop the same user's processes from forging approval on purpose:
+- An agent with a shell can still edit local files such as \`settings.json\` or the local approval records.
+- The daemon's \`/machine-setting\` route is protected by loopback plus its control token, not by an approval: a process of this user that reads the token can write any machine key.
+- Until the server enforces it, a machine token can still change project defaults (including the permission mode) directly through the projects API; this command's card does not stop that.
+Single use and the card-face binding stop mistakes and in-session bypasses. They are not a defence against deliberate forgery. Do none of the above, and never work around a refusal.
 
 - \`settings_key_unavailable\` (account scope): this machine is paired without the account key. Give the user the returned Web settings link; there is no other path.
 - \`scope_denied\`: restricted team members only read settings.
