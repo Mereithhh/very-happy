@@ -10,7 +10,7 @@ vi.mock('@/persistence', () => ({
   clearDaemonState: mocks.clearDaemonState,
 }));
 
-import { checkIfDaemonRunningAndCleanupStaleState, daemonProbeFailure, listDaemonSessions, resumeDaemonSession, setTerminalTitleViaDaemon, spawnDaemonSession } from './controlClient';
+import { checkIfDaemonRunningAndCleanupStaleState, daemonProbeFailure, listDaemonSessions, ownerRestartReplyFrom, resumeDaemonSession, setTerminalTitleViaDaemon, spawnDaemonSession } from './controlClient';
 
 const baseState = {
   pid: 4242,
@@ -190,4 +190,17 @@ describe('B-864: a busy daemon is never treated as stale', () => {
     expect(daemonProbeFailure(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }))).toBe('not-listening');
     expect(daemonProbeFailure(new TypeError('fetch failed'))).toBe('not-listening');
   });
+});
+
+// B-919 (found in the isolated e2e): a refusal from the daemon has its own `error` — it is not "daemon unreachable".
+describe('ownerRestartReplyFrom (B-919)', () => {
+    it('passes the daemon\'s answer through, refusals included', () => {
+        expect(ownerRestartReplyFrom({ ok: false, code: 'busy', error: 'busy:background-tasks' })).toEqual({ ok: false, code: 'busy', error: 'busy:background-tasks' });
+        expect(ownerRestartReplyFrom({ ok: true, state: 'queued', targetVersion: '1.0.0' })).toEqual({ ok: true, state: 'queued', targetVersion: '1.0.0' });
+    });
+    it('maps daemonPost transport failures', () => {
+        expect(ownerRestartReplyFrom({ error: 'Request failed: /session-restart-owner, HTTP 404' })).toEqual({ ok: false, code: 'daemon-too-old' });
+        expect(ownerRestartReplyFrom({ error: 'No daemon running, no state file found' })).toMatchObject({ ok: false, code: 'daemon-unreachable' });
+        expect(ownerRestartReplyFrom(undefined)).toMatchObject({ ok: false, code: 'daemon-unreachable' });
+    });
 });

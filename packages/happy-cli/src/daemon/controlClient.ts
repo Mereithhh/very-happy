@@ -360,13 +360,18 @@ export async function requestIdleRestartViaDaemon(sessionId: string, pid: number
 
 /** B-919: the main agent's `session_restart` through the local daemon. Never throws. */
 export async function requestOwnerRestartViaDaemon(sessionId: string, when: 'idle' | 'now'): Promise<import('./controlServer').OwnerRestartReply> {
-  const result = await daemonPost('/session-restart-owner', { sessionId, when });
-  if (result?.error) {
-    const reason = String(result.error);
-    if (/404|Not Found/i.test(reason)) return { ok: false, code: 'daemon-too-old' };
-    return { ok: false, code: 'daemon-unreachable', error: reason };
-  }
-  return result;
+  return ownerRestartReplyFrom(await daemonPost('/session-restart-owner', { sessionId, when }));
+}
+
+/**
+ * B-919: the daemon's reply carries its own `error` on a refusal (`{ ok: false, code: 'busy', error }`),
+ * so only an answer WITHOUT `ok` is daemonPost's transport failure.
+ */
+export function ownerRestartReplyFrom(result: any): import('./controlServer').OwnerRestartReply {
+  if (typeof result?.ok === 'boolean') return result;
+  const reason = String(result?.error ?? 'no answer');
+  if (/404|Not Found/i.test(reason)) return { ok: false, code: 'daemon-too-old' };
+  return { ok: false, code: 'daemon-unreachable', error: reason };
 }
 
 export async function stopDaemonHttp(): Promise<void> {
