@@ -105,6 +105,8 @@ export async function loadMainAgentConfig(input: { assistantHome: string; kvGet:
         readLocalMainAgentConfig(input.assistantHome),
     ])
     // B-922: an unreadable account setting must not fall back to the (looser) default preset.
+    // QA P3: a value that is JSON but not an object (e.g. `[]`) is as unreadable as a failed request (the server's rule too).
+    if (kv !== null && (typeof kv !== 'object' || Array.isArray(kv))) kvFailed = true
     const safety = resolveMainAgentSafety(kvFailed ? { safety: FAIL_CLOSED } : kv, local)
     return { ...mergeMainAgentConfigs(parseMainAgentConfig(kv), parseMainAgentConfig(local)), safety }
 }

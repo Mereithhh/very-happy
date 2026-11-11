@@ -8,6 +8,7 @@ import { createDispatchGate, isReservedCardKey, cardFaceHash, type BoardItemView
 import { createToolApproval, TOOL_APPROVAL_OPTIONS, toolCardKey } from './toolApproval'
 import { parseMainAgentConfig, persistAllowedTool, resolveMainAgentSafety, loadMainAgentConfig } from './config'
 import { prepareMainAgent } from './setup'
+import { protectedPathsFor, PROTECTED_PATH_REASON, BROAD_SEARCH_REASON } from './protectedPaths'
 import { withAssistantDenylist, setAssistantBuiltinsAllowed, assistantBuiltinsAllowedBy } from '../dispatcherTools'
 import type { KvIo } from '../mainAgentPointer'
 
@@ -378,5 +379,150 @@ describe('B-922: owner_board_* cannot post, edit or close a gate-1 approval card
         expect((await tools.get('owner_board_resolve')({ id: 't1', outcome: 'done', request_id: 'req-r' })).isError).toBe(true)
         expect((await tools.get('owner_board_update')({ id: 't2', title: 'ok', request_id: 'req-u2' })).isError).toBe(false)
         expect(calls).toEqual(['update:t2'])
+    })
+})
+
+describe('QA P2-2: the main agent cannot touch credentials or approval records (every preset)', () => {
+    async function happyHome() {
+        const { mkdir, symlink } = await import('node:fs/promises')
+        const root = await mkdtemp(join(tmpdir(), 'vh-protect-'))
+        const hh = join(root, '.happy')
+        await mkdir(join(hh, 'assistant', 'memory'), { recursive: true })
+        await mkdir(join(hh, 'main-agent-approvals', 'pending-tool'), { recursive: true })
+        await mkdir(join(hh, 'settings-approvals'), { recursive: true })
+        await writeFile(join(hh, 'access.key'), '{"token":"t","secret":"s"}')
+        await writeFile(join(hh, 'main-agent-approvals', 'pending-tool', 'abc.json'), '{}')
+        await symlink(join(hh, 'access.key'), join(hh, 'assistant', 'innocent.txt'))
+        return { root, hh, cwd: join(hh, 'assistant') }
+    }
+
+    it('file tools: credentials, approval dirs, .inflight markers — absolute, ~, relative and via a symlink', async () => {
+        const { root, hh, cwd } = await happyHome()
+        const p = protectedPathsFor(hh, { home: root })
+        for (const [tool, input] of [
+            ['Read', { file_path: join(hh, 'access.key') }],
+            ['Read', { file_path: '~/.happy/access.key' }],
+            ['Read', { file_path: '../access.key' }],
+            ['Read', { file_path: 'innocent.txt' }],
+            ['Read', { file_path: join(hh, 'agent.key') }],
+            ['Read', { file_path: join(hh, 'daemon.state.json') }],
+            ['Read', { file_path: join(hh, 'main-agent-approvals', 'pending-tool', 'abc.json') }],
+            ['Write', { file_path: join(hh, 'main-agent-approvals', 'pending-tool', 'forged.json') }],
+            ['Edit', { file_path: join(hh, 'settings-approvals', 'x.json') }],
+            ['MultiEdit', { file_path: join(hh, 'assistant', 'pending-dispatch', 'old.json') }],
+            ['NotebookEdit', { notebook_path: join(hh, 'access.key') }],
+            ['Read', { file_path: join(hh, 'somewhere', 'id.inflight') }],
+        ] as const) expect(p.check(tool, input, cwd), `${tool} ${JSON.stringify(input)}`).toBe(PROTECTED_PATH_REASON)
+        for (const [tool, input] of [
+            ['Read', { file_path: join(hh, 'assistant', 'memory', 'personal.md') }],
+            ['Read', { file_path: 'CLAUDE.md' }],
+            ['Write', { file_path: join(root, 'notes.md') }],
+            ['WebFetch', { url: 'https://example.com/access.key' }],
+        ] as const) expect(p.check(tool, input, cwd), `${tool} ${JSON.stringify(input)}`).toBeNull()
+    })
+
+    it('search tools: refuse roots inside a protected dir or containing HAPPY_HOME; the assistant home is fine', async () => {
+        const { root, hh, cwd } = await happyHome()
+        const p = protectedPathsFor(hh, { home: root })
+        expect(p.check('Grep', { pattern: 'token', path: join(hh, 'main-agent-approvals') }, cwd)).toBe(PROTECTED_PATH_REASON)
+        expect(p.check('Grep', { pattern: 'token', path: '~' }, cwd)).toBe(BROAD_SEARCH_REASON)
+        expect(p.check('Grep', { pattern: 'token', path: hh }, cwd)).toBe(BROAD_SEARCH_REASON)
+        expect(p.check('Glob', { pattern: '**/*.key', path: '/' }, cwd)).toBe(BROAD_SEARCH_REASON)
+        expect(p.check('Glob', { pattern: `${hh}/*.key` }, cwd)).toBe(BROAD_SEARCH_REASON)
+        expect(p.check('Glob', { pattern: `${hh}/main-agent-approvals/**` }, cwd)).toBe(PROTECTED_PATH_REASON)
+        expect(p.check('Grep', { pattern: 'x' }, cwd)).toBeNull() // memory grep in the assistant home
+        expect(p.check('Glob', { pattern: 'memory/**/*.md' }, cwd)).toBeNull()
+        expect(p.check('Grep', { pattern: 'x', path: join(root, 'skills') }, cwd)).toBeNull()
+    })
+
+    it('the hook refuses before any preset decision — Strict, Standard and Loose alike', async () => {
+        const { root, hh, cwd } = await happyHome()
+        for (const policy of [PRESET_POLICIES.strict, PRESET_POLICIES.standard, PRESET_POLICIES.loose]) {
+            const hook = outboundPreToolUseHook(compileOutboundDenylist([], { policy }), undefined, async () => 'allow', protectedPathsFor(hh, { home: root }))
+            expect(await hook({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: join(hh, 'access.key') }, cwd }))
+                .toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: PROTECTED_PATH_REASON } })
+            expect(await hook({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: join(cwd, 'CLAUDE.md') }, cwd })).toEqual({ continue: true })
+        }
+    })
+
+    it('prepareMainAgent keeps approval records outside the assistant home and wires the guard', async () => {
+        const { root, hh } = await happyHome()
+        const aHome = join(hh, 'assistant')
+        const tb = toolBoard()
+        const rt = await prepareMainAgent({ kvGet: async () => ({ value: b64({ v: 1, safety: { v: 1, preset: 'standard' } }) }), board: tb.board, classify: null, approvalLink: (id) => id, home: root, assistantHomeDir: aHome, happyHomeDir: hh })
+        await rt.preToolUse({ hook_event_name: 'PreToolUse', tool_name: 'mcp__chat__send_message', tool_input: { text: 'hi' }, cwd: aHome })
+        const files = await readdir(join(hh, 'main-agent-approvals', 'pending-tool'))
+        expect(files.some((f) => f.endsWith('.json') && f !== 'abc.json')).toBe(true)
+        expect((await readdir(aHome)).some((f) => f.startsWith('pending-'))).toBe(false)
+        expect(reasonOf(await rt.preToolUse({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: join(hh, 'access.key') }, cwd: aHome }))).toBe(PROTECTED_PATH_REASON)
+    })
+})
+
+describe('QA P2-2: terminal_send always asks while Bash is off', () => {
+    async function gate(forceAsk?: (t: string) => boolean) {
+        const dir = await mkdtemp(join(tmpdir(), 'vh-term-'))
+        const tb = toolBoard()
+        const g = createDispatchGate({ pendingDir: join(dir, 'p'), board: tb.board, classify: null, approvalLink: (id) => id, forceAsk, dispatchPolicy: () => ({ external: 'direct', production: 'direct' }) })
+        const send = vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'sent' }], isError: false }))
+        const tools = new Map<string, any>()
+        g.wrap({ registerTool: ((n: string, _c: any, h: any) => { tools.set(n, h) }) as any }).registerTool('terminal_send', { description: 't', inputSchema: {} } as any, send as any)
+        return { tools, send, tb }
+    }
+
+    it('forced: risk none (and even a "direct" policy) parks with the reason on the card', async () => {
+        const g = await gate((t) => t === 'terminal_send')
+        const r = await g.tools.get('terminal_send')({ terminalId: 't1', text: 'ls ~/.happy\n', risk: 'none' })
+        expect(JSON.parse(r.content[0].text).state).toBe('awaiting_decision')
+        expect(g.send).not.toHaveBeenCalled()
+        expect(g.tb.last().bodyMd).toContain('Bash 已关闭')
+        const ext = await g.tools.get('terminal_send')({ terminalId: 't1', text: 'git push\n', risk: 'external' })
+        expect(JSON.parse(ext.content[0].text).state).toBe('awaiting_decision')
+    })
+
+    it('not forced (Bash on): the risk rules apply as before', async () => {
+        const g = await gate(() => false)
+        expect((await g.tools.get('terminal_send')({ terminalId: 't1', text: 'ls\n', risk: 'none' })).content[0].text).toBe('sent')
+    })
+
+    it('prepareMainAgent forces it exactly when Bash is off, in every preset', async () => {
+        for (const [safety, forced] of [
+            [{ v: 1, preset: 'strict' }, true], [{ v: 1, preset: 'standard' }, true], [{ v: 1, preset: 'loose' }, true],
+            [{ v: 1, preset: 'loose', overrides: { bash: true } }, false],
+        ] as const) {
+            const aHome = await mkdtemp(join(tmpdir(), 'vh-term-prep-'))
+            const tb = toolBoard()
+            const rt = await prepareMainAgent({ kvGet: async () => ({ value: b64({ v: 1, safety }) }), board: tb.board, classify: null, approvalLink: (id) => id, home: aHome, assistantHomeDir: aHome })
+            const send = vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'sent' }], isError: false }))
+            const tools = new Map<string, any>()
+            rt.gate.wrap({ registerTool: ((n: string, _c: any, h: any) => { tools.set(n, h) }) as any }).registerTool('terminal_send', { description: 't', inputSchema: {} } as any, send as any)
+            await tools.get('terminal_send')({ terminalId: 't1', text: 'ls\n', risk: 'none' })
+            expect(send.mock.calls.length === 0, JSON.stringify(safety)).toBe(forced)
+        }
+    })
+})
+
+describe('QA P3', () => {
+    it('a KV value that is JSON but not an object reads as strict (same rule as the server)', async () => {
+        const aHome = await mkdtemp(join(tmpdir(), 'vh-arr-'))
+        for (const v of [[], 'loose', 42, true]) {
+            const cfg = await loadMainAgentConfig({ assistantHome: aHome, kvGet: async () => ({ value: b64(v) }) })
+            expect(cfg.safety?.policy, JSON.stringify(v)).toEqual(PRESET_POLICIES.strict)
+            expect(cfg.safety?.failedClosed).toBe(true)
+        }
+    })
+
+    it('gate-1 cards follow the account language; option ids never change', async () => {
+        const { cardLang, toolApprovalCard } = await import('./toolApproval')
+        expect(cardLang('zh-Hans')).toBe('zh')
+        expect(cardLang('en', 'zh_CN.UTF-8')).toBe('en')
+        expect(cardLang(null, 'zh_CN.UTF-8')).toBe('zh')
+        expect(cardLang(null, '')).toBe('en')
+        const en = toolApprovalCard('0b8c2b5e-1111-4222-8333-944445555666', 'mcp__x__send', { a: 1 }, 'f'.repeat(64), 'en')
+        expect(en.title).toBe('The main agent wants to call mcp__x__send')
+        expect(en.options.map((o) => o.id)).toEqual(['once', 'always', 'deny'])
+        expect(en.options.map((o) => o.label)).toEqual(['Approve once', 'Always allow this tool', 'Decline'])
+        const zh = toolApprovalCard('0b8c2b5e-1111-4222-8333-944445555666', 'mcp__x__send', { a: 1 }, 'f'.repeat(64), 'zh')
+        expect(zh.options.map((o) => o.id)).toEqual(['once', 'always', 'deny'])
+        expect(zh.title).toBe('主 agent 想调用 mcp__x__send')
     })
 })

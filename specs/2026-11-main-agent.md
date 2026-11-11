@@ -195,7 +195,7 @@ risk: 'none' | 'external' | 'production'
 
 **决策卡**。最终等级为 `none` → 直接执行。否则不执行，改为：
 
-1. 把调用（工具名 + 参数 + 最终等级）存到 `~/.happy/assistant/pending-dispatch/<approvalId>.json`（0600），`approvalId` 为随机 UUID，记录参数的 sha256。
+1. 把调用（工具名 + 参数 + 最终等级）存到 `~/.happy/main-agent-approvals/pending-dispatch/<approvalId>.json`（0600；B-922 起移出主 agent 的工作目录 `~/.happy/assistant`），`approvalId` 为随机 UUID，记录参数的 sha256。
 2. 往汇报板发一张卡（W0 `AttentionItemPost`）：
 
 ```jsonc
@@ -239,9 +239,13 @@ risk: 'none' | 'external' | 'production'
 
 - 被派会话如果是 `bypassPermissions`，它自己能不能对外发送 VH 管不住；闸 2 只保证「派之前用户看过」。被派会话的 PreToolUse 出站拦截放 P3。
 - 关键词和 haiku 都可能漏判：用户的决策卡是最后一道人工关口，但前提是有一道判成非 `none`。
-- 账号 token 在机器上，理论上能直接调 owner-respond；主 agent 没有 Bash，也没有任何工具暴露这个接口。
+- owner-respond 只接受浏览器登录（B-921 `requireHumanOwner`）：机器上的账号 token 调它会被拒（403 `owner_login_required`），所以本机进程不能替 Owner 在卡上做选择。
 - B-922：开了 Bash 的主 agent 能直接调外部接口，出站分类管不住它；Web 在该项旁写明风险，默认关。
-- B-922：**本机审批记录不是可靠边界**。闸 1 / 闸 2 的 pending 记录和 `.inflight` 标记都在本机，同一个 OS 用户能伪造或删除后重放；拿机器 token 走 REST 也能自己发一张保留前缀的卡并互换标签（`RESERVED_CARD_KEY_PREFIXES` 含 `main-agent-tool:` 只挡 `owner_board_*` 工具，不挡 REST）。主 agent 打开 Bash 或改文件后就具备这些能力，此时只有服务端检查（机器 token 不能改松配置）和 Owner 本人在 Web 上的批准还算数，Web 的开关说明写明了这一点。服务端加固（保留前缀与卡面绑定在服务端校验）归 B-927。
+- B-922：**本机审批记录的边界**。闸 1 / 闸 2 的 pending 记录和 `.inflight` 标记都在本机（`~/.happy/main-agent-approvals/`），同一个 OS 用户的进程能伪造或删除后重放；拿机器 token 走 REST 也能自己发一张保留前缀的卡并互换标签（`RESERVED_CARD_KEY_PREFIXES` 含 `main-agent-tool:` 只挡 `owner_board_*` 工具，不挡 REST）。
+  - **主 agent 自己伪造不了**，前提是 Bash 和改文件都关着（三档默认）。B-922 为此补了两条（QA P2-2）：① Bash 关时 `terminal_send` 无论 risk 怎么判一律出卡——往打开的 Web 终端里发内容等于有了 shell；② 任何档位下，PreToolUse 都拒绝 Read / Edit / Write / MultiEdit / NotebookEdit 访问 `access.key`、`agent.key`、`daemon.state.json`、`main-agent-approvals/`、`settings-approvals/` 和 HAPPY_HOME 下任何 `.inflight`，Grep / Glob 的搜索根落在这些目录里或包含整个 HAPPY_HOME（例如 `~`）也拒绝，token 和 secret 不会进模型上下文。
+  - 打开 Bash 或改文件后，主 agent 就具备上面这些能力，本机审批记录和「先问我」卡片都不再可靠；只有服务端检查（机器 token 不能改松配置、always 授权有时效且只兑现一次）和 Owner 本人在 Web 上的批准还算数。Web 的开关说明如实写了这一点。
+  - 同一个系统用户下的其他进程仍然可以伪造本机审批记录；服务端加固（保留前缀与卡面绑定在服务端校验）归 B-927。
+  - 严格档因此有两处有意的变化（相对 B-916c）：`terminal_send` 在 `risk=none` 时也出卡；凭据与审批路径对文件工具不可见。其余逐字不变。
 - B-922：「人 vs 机器」用 B-921 的 `requestTokenKind`（token 带登录会话 = 人）；登录会话出现前签发的旧 Web token 算机器，只能改严，Web 会提示去已登录的浏览器里改或重新登录。
 - 闸只装在 Claude 主 agent 上（`runClaude` 构建运行时）。pi / ACP 的 assistant variant 不注册主 agent 账号级工具和上限，只保留 B-051 的旧会话工具（QA77 #6）。
 
@@ -280,7 +284,7 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 
 **ask（闸 1）**。PreToolUse 判为「先问」时：
 
-1. 参数 `tool_input` 按闸 2 的 `canonicalArgsHash(tool, input)` 取指纹；`~/.happy/assistant/pending-tool/<hash>.json` 没有记录 → 发卡并拒绝本次调用。卡：`key = main-agent-tool:<approvalId>:<toolName>`，标题「主 agent 想调用 <tool>」，正文 = 工具名、参数指纹前 12 位、参数 JSON 摘要（≤1,500 字），选项 `once 批准这一次 / always 以后都允许这个工具 / deny 拒绝`。拒绝原因告诉模型「已出卡，先停下告诉用户；批准后用完全相同的参数再调一次」。
+1. 参数 `tool_input` 按闸 2 的 `canonicalArgsHash(tool, input)` 取指纹；`~/.happy/main-agent-approvals/pending-tool/<hash>.json` 没有记录 → 发卡并拒绝本次调用。卡：`key = main-agent-tool:<approvalId>:<toolName>`，标题「主 agent 想调用 <tool>」，正文 = 工具名、参数指纹前 12 位、参数 JSON 摘要（≤1,500 字），选项 `once 批准这一次 / always 以后都允许这个工具 / deny 拒绝`；卡面文字跟账号的 `preferredLanguage`（读不到用本机 locale，再不行英文），选项 id 不变。拒绝原因告诉模型「已出卡，先停下告诉用户；批准后用完全相同的参数再调一次」。
 2. 再次同参数调用：用闸 2 与 `very-happy settings` 共用的校验（`attention/ownerApproval.ts` 的 `ownerDecision`：key、已关闭、`cardFaceHash` 不变、`resolvedBy='owner'`）。还开着 → 仍拒（等待）；卡没了 / 被改 / 不是 Owner 关的 → 作废并重新出卡。
 3. `once` / `always` → 用 `O_EXCL` 建 `<approvalId>.inflight`（共用的 `approvalClaims`），建成才放行，**只放这一次**，记录随即删除，同参数下一次重新出卡；并发同参数调用只有一个通过。`always` 另把工具加进内存 allow 集，并以机器 token 写入 KV `safety.allowedTools`（`persistAllowedTool`，乐观并发；段读不懂时不写）。`deny` → 拒绝并提示不要重试。
 4. 汇报板不可用或抛错 → 拒绝（fail-closed），原因写明没执行。
@@ -290,7 +294,7 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 
 **真正的边界是服务端检查 + Owner 的批准卡**：本机 `config.json` 只能逐项改严（主 agent 若开了 Bash 能改这个文件，所以它不能放松任何东西）；放松只能通过账号 KV，而账号 KV 的放松只接受浏览器登录的 Owner，或 Owner 在卡上选了「以后都允许」的那个工具。
 
-**只有 Owner 本人能改松**。server `POST /v1/kv`：请求 token 被 `requestTokenKind`（`app/auth/tokenKind.ts`，B-921 定义，与 owner-respond 共用：token 带登录会话 id 即为人）判为机器时，对 `vh.main-agent-config.*` 的每个写入用 happy-wire `mainAgentConfigLoosening(旧值, 新值)` 比较：任何一项变松、删掉 `deniedTools`、删除整个值（回落到默认宽松）、写入非 JSON / 非对象、`safety` 段读不懂（未知版本、字段或取值，按「更宽松」处理）→ `422 {error:'main_agent_config_owner_only', key}`。唯一例外：只新增 `allowedTools`，且每个新增工具都有本账号一张 `main-agent-tool:*:<tool>` 卡被 Owner 以 `always` 关闭（这就是第 3 步的写入）。收紧不限；`quietHours`、`skillRoots` 等其他字段不比较。`POST /v1/kv/bulk` 是批量读，不写，无需检查。用 422 而不是 403：Web 的 `isAuthFailure` 把 401/403 都当认证失败处理（403 不会登出，但也不是「写入被拒」的语义）。
+**只有 Owner 本人能改松**。server `POST /v1/kv`：请求 token 被 `requestTokenKind`（`app/auth/tokenKind.ts`，B-921 定义，与 owner-respond 共用：token 带登录会话 id 即为人）判为机器时，对 `vh.main-agent-config.*` 的每个写入用 happy-wire `mainAgentConfigLoosening(旧值, 新值)` 比较：任何一项变松、删掉 `deniedTools`、删除整个值（回落到默认宽松）、写入非 JSON / 非对象、`safety` 段读不懂（未知版本、字段或取值，按「更宽松」处理）→ `422 {error:'main_agent_config_owner_only', key}`。唯一例外：只新增 `allowedTools`，且每个新增工具都有本账号一张 `main-agent-tool:*:<tool>` 卡被 Owner 以 `always` 关闭（这就是第 3 步的写入）。收紧不限；`quietHours`、`skillRoots` 等其他字段不比较。**always 授权有时效且只兑现一次**（QA P2-1）：服务端自持 KV 记录 `vh.main-agent-grants.v1`（任何客户端 token 写它都 `422 server_owned_kv_key`），记着每个配置 key 最近一次「人类写入」的时间和已兑现的卡 id；一张 always 卡只有 `resolvedAt` 晚于该 key 最近一次人类写入、且没兑现过时才算数。人类写入前先记时间（之后写失败也只会让旧卡提前作废，更严），机器写入成功后再记兑现。Owner 在 Web 上移除一个已允许的工具后，旧卡再也加不回它。`POST /v1/kv/bulk` 是批量读，不写，无需检查。用 422 而不是 403：Web 的 `isAuthFailure` 把 401/403 都当认证失败处理（403 不会登出，但也不是「写入被拒」的语义）。
 
 **能力位**。wrapper 在 session `capabilities` 加 `main-agent-safety-v2`，daemon 在 `daemonState` 加 `mainAgentSafety`。Web 设置 → 主 agent → 安全只在主 agent 所在机器有 `mainAgentSafety` 时显示预设与高级项，否则提示升级 CLI（旧 CLI 按严格运行）。
 

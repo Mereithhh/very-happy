@@ -1537,7 +1537,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
  * dispatches are refused).
  */
 async function prepareMainAgentForSession(api: ApiClient, session: ApiSessionClient, credentials: Credentials) {
-    const [{ prepareMainAgent, attentionDispatchBoard, MAIN_AGENT_GATES_CAPABILITY, MAIN_AGENT_SAFETY_CAPABILITY }, { setAssistantExtraDenied, setAssistantBuiltinsAllowed, assistantBuiltinsAllowedBy }, { sharedAttentionClient }, { runClaudeOneShot, resolveClaudeBinary }, { sessionWebUrl }, { httpKvIo }] = await Promise.all([
+    const [{ prepareMainAgent, attentionDispatchBoard, accountCardLang, MAIN_AGENT_GATES_CAPABILITY, MAIN_AGENT_SAFETY_CAPABILITY }, { setAssistantExtraDenied, setAssistantBuiltinsAllowed, assistantBuiltinsAllowedBy }, { sharedAttentionClient }, { runClaudeOneShot, resolveClaudeBinary }, { sessionWebUrl }, { httpKvIo }] = await Promise.all([
         import('@/assistant/gates/setup'),
         import('@/assistant/dispatcherTools'),
         import('@/attention/client'),
@@ -1555,6 +1555,7 @@ async function prepareMainAgentForSession(api: ApiClient, session: ApiSessionCli
         board: attentionDispatchBoard(sharedAttentionClient(), () => session.sessionId),
         classify: process.env.HAPPY_MAIN_AGENT_CLASSIFIER === 'off' ? null : (prompt) => runClaudeOneShot(binary, prompt),
         approvalLink: (boardItemId) => `${sessionWebUrl(session.sessionId)}?panel=board （决策 ${boardItemId}）`,
+        lang: await accountCardLang(),
         log,
     });
     setAssistantExtraDenied(runtime.denylist.sdkDisallowed);

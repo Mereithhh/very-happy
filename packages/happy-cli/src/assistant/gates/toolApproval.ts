@@ -26,11 +26,24 @@ import { approvalClaims, cardFaceHash, clipBytes, ownerDecision, writePrivateJso
 import { canonicalArgsHash, type DispatchBoard } from './dispatchGate'
 import type { ToolAsker } from './outboundDenylist'
 
-export const TOOL_APPROVAL_OPTIONS = [
-    { id: 'once', label: '批准这一次' },
-    { id: MAIN_AGENT_TOOL_ALWAYS_CHOICE, label: '以后都允许这个工具' },
-    { id: 'deny', label: '拒绝' },
-] as const
+export type CardLang = 'zh' | 'en'
+
+/** Option ids are fixed (the server and the gate read them); labels follow the account language. */
+export const TOOL_APPROVAL_OPTION_LABELS: Readonly<Record<CardLang, readonly [string, string, string]>> = {
+    zh: ['批准这一次', '以后都允许这个工具', '拒绝'],
+    en: ['Approve once', 'Always allow this tool', 'Decline'],
+}
+export function toolApprovalOptions(lang: CardLang = 'zh') {
+    const [once, always, deny] = TOOL_APPROVAL_OPTION_LABELS[lang]
+    return [{ id: 'once', label: once }, { id: MAIN_AGENT_TOOL_ALWAYS_CHOICE, label: always }, { id: 'deny', label: deny }] as const
+}
+export const TOOL_APPROVAL_OPTIONS = toolApprovalOptions('zh')
+
+/** 'zh' for any Chinese locale, otherwise 'en' (account `preferredLanguage`, then the machine locale). */
+export function cardLang(preferred: string | null | undefined, envLocale: string | undefined = process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG): CardLang {
+    const pick = (v: string | null | undefined) => typeof v === 'string' && v.trim() ? (v.toLowerCase().startsWith('zh') ? 'zh' : 'en') : null
+    return pick(preferred) ?? pick(envLocale) ?? 'en'
+}
 
 export const TOOL_ARGS_SUMMARY_CHARS = 1_500
 
@@ -58,23 +71,37 @@ export function toolArgsSummary(input: Record<string, unknown>): string {
     return text.length > TOOL_ARGS_SUMMARY_CHARS ? `${text.slice(0, TOOL_ARGS_SUMMARY_CHARS - 1)}…` : text
 }
 
-export function toolApprovalCard(approvalId: string, toolName: string, input: Record<string, unknown>, argsSha256: string) {
+const CARD_TEXT: Readonly<Record<CardLang, { title: (t: string) => string; tool: string; fp: (h: string) => string; args: string; help: string }>> = {
+    zh: {
+        title: (t) => `主 agent 想调用 ${t}`,
+        tool: '工具：', fp: (h) => `参数指纹：${h}（批准只对这组参数有效）`, args: '参数：',
+        help: '批准这一次 = 只放行这一次调用；以后都允许这个工具 = 写进主 agent 安全设置的「已允许工具」；拒绝 = 不执行。',
+    },
+    en: {
+        title: (t) => `The main agent wants to call ${t}`,
+        tool: 'Tool: ', fp: (h) => `Arguments fingerprint: ${h} (an approval covers exactly these arguments)`, args: 'Arguments:',
+        help: 'Approve once = this one call only; Always allow this tool = added to the main agent\'s allowed tools in Safety settings; Decline = not run.',
+    },
+}
+
+export function toolApprovalCard(approvalId: string, toolName: string, input: Record<string, unknown>, argsSha256: string, lang: CardLang = 'zh') {
+    const t = CARD_TEXT[lang]
     return {
         key: toolCardKey(approvalId, toolName),
-        title: `主 agent 想调用 ${toolName}`.slice(0, 120),
+        title: t.title(toolName).slice(0, 120),
         bodyMd: clipBytes([
-            `工具：${toolName}`,
-            `参数指纹：${argsSha256.slice(0, 12)}（批准只对这组参数有效）`,
+            `${t.tool}${toolName}`,
+            t.fp(argsSha256.slice(0, 12)),
             '',
-            '参数：',
+            t.args,
             '```json',
             toolArgsSummary(input),
             '```',
             '',
-            '批准这一次 = 只放行这一次调用；以后都允许这个工具 = 写进主 agent 安全设置的「已允许工具」；拒绝 = 不执行。',
+            t.help,
         ].join('\n'), 7_900),
         requestId: `tool-${approvalId}`,
-        options: TOOL_APPROVAL_OPTIONS,
+        options: toolApprovalOptions(lang),
     }
 }
 
@@ -88,8 +115,10 @@ export const toolDeniedReason = (toolName: string, boardItemId: string) =>
     + ' (The owner declined this call. Do not retry it.)'
 
 export type ToolApprovalDeps = {
-    /** `~/.happy/assistant/pending-tool` */
+    /** `$HAPPY_HOME/main-agent-approvals/pending-tool` */
     pendingDir: string
+    /** Card language (default zh). */
+    lang?: CardLang
     board: DispatchBoard | null
     /** "always": the tool joins the in-memory allow set (CompiledDenylist.allowAlways). */
     allowAlways: (toolName: string) => void
@@ -113,7 +142,7 @@ export function createToolApproval(deps: ToolApprovalDeps): { ask: ToolAsker } {
 
     async function postCard(board: DispatchBoard, toolName: string, input: Record<string, unknown>, argsSha256: string): Promise<{ reason: string }> {
         const approvalId = newId()
-        const card = toolApprovalCard(approvalId, toolName, input, argsSha256)
+        const card = toolApprovalCard(approvalId, toolName, input, argsSha256, deps.lang)
         const posted = await board.postDecision(card)
         await mkdir(deps.pendingDir, { recursive: true, mode: 0o700 })
         const record: ToolApprovalRecord = { v: 1, approvalId, toolName, argsSha256, boardItemId: posted.id, cardSha256: cardFaceHash(posted), createdAt: now() }

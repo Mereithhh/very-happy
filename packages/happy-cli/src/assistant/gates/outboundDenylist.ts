@@ -25,6 +25,7 @@
 
 import { PRESET_POLICIES, type MainAgentSafetyPolicy, type ToolPolicy } from '@slopus/happy-wire'
 import { ASSISTANT_DISALLOWED_TOOLS, assistantBuiltinsAllowedBy } from '../dispatcherTools'
+import type { ProtectedPaths } from './protectedPaths'
 
 /** The MCP server key Very Happy registers its own tools under (runClaude.ts `mcpServers.happy`). */
 export const VH_MCP_SERVER = 'happy'
@@ -206,7 +207,7 @@ export function compileOutboundDenylist(
     }
 }
 
-export type PreToolUseInput = { hook_event_name?: string; tool_name?: string; tool_input?: unknown }
+export type PreToolUseInput = { hook_event_name?: string; tool_name?: string; tool_input?: unknown; cwd?: string }
 export type PreToolUseOutput = { continue: true } | {
     hookSpecificOutput: { hookEventName: 'PreToolUse'; permissionDecision: 'deny'; permissionDecisionReason: string }
 }
@@ -223,9 +224,12 @@ const denyOutput = (reason: string): PreToolUseOutput => ({
  * list denies; an `ask` goes to `ask` (no asker = deny, fail-closed). Runs in
  * every permission mode, bypassPermissions included.
  */
-export function outboundPreToolUseHook(list: Pick<CompiledDenylist, 'denies'> & Partial<Pick<CompiledDenylist, 'decide'>>, onDeny?: (toolName: string) => void, ask?: ToolAsker) {
+export function outboundPreToolUseHook(list: Pick<CompiledDenylist, 'denies'> & Partial<Pick<CompiledDenylist, 'decide'>>, onDeny?: (toolName: string) => void, ask?: ToolAsker, protect?: ProtectedPaths) {
     return async (input: PreToolUseInput): Promise<PreToolUseOutput> => {
         if (input?.hook_event_name !== 'PreToolUse' || typeof input.tool_name !== 'string') return { continue: true }
+        // B-922 (QA P2-2): credentials and the local approval records, in every preset.
+        const guarded = protect?.check(input.tool_name, input.tool_input, input.cwd) ?? null
+        if (guarded) { onDeny?.(input.tool_name); return denyOutput(guarded) }
         const decision: ToolDecision = list.decide ? list.decide(input.tool_name) : list.denies(input.tool_name) ? 'deny' : 'allow'
         if (decision === 'allow') return { continue: true }
         if (decision === 'ask' && ask) {

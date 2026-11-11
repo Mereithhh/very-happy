@@ -22,7 +22,8 @@ import { MAIN_AGENT_SAFETY_CAPABILITY, PRESET_POLICIES } from '@slopus/happy-wir
 import type { KvIo } from '../mainAgentPointer'
 import { expandHome, loadMainAgentConfig, persistAllowedTool, type MainAgentConfig, type MainAgentSafetyRuntime } from './config'
 import { compileOutboundDenylist, outboundPreToolUseHook, type CompiledDenylist } from './outboundDenylist'
-import { createToolApproval } from './toolApproval'
+import { cardLang, createToolApproval, type CardLang } from './toolApproval'
+import { MAIN_AGENT_APPROVALS_DIR, protectedPathsFor } from './protectedPaths'
 import { createDispatchGate, DISPATCH_OPTIONS, type DispatchBoard, type DispatchGate } from './dispatchGate'
 import type { OneShotRunner } from './risk'
 import { boardItemView as view } from '@/attention/ownerApproval'
@@ -76,17 +77,26 @@ export async function prepareMainAgent(deps: {
     approvalLink: (boardItemId: string) => string
     home?: string
     assistantHomeDir?: string
+    /** HAPPY_HOME (credentials + approval records). Default: the configured one; tests pass a temp dir. */
+    happyHomeDir?: string
+    /** B-922 card language ('zh' | 'en'); default from the account / machine locale (runClaude). */
+    lang?: 'zh' | 'en'
     log?: (line: string) => void
 }): Promise<MainAgentRuntime> {
     const home = deps.home ?? homedir()
     const aHome = deps.assistantHomeDir ?? assistantHome()
+    // Test isolation: a given assistant home without a HAPPY_HOME keeps everything inside it.
+    const happyHome = deps.happyHomeDir ?? (deps.assistantHomeDir ? aHome : dirname(assistantHome()))
+    // QA P2-2: approval records live outside the assistant home (the agent's cwd, which it greps).
+    const approvalsDir = join(happyHome, MAIN_AGENT_APPROVALS_DIR)
     const config: MainAgentConfig = await loadMainAgentConfig({ assistantHome: aHome, kvGet: deps.kvGet }).catch(() => ({ skillRoots: [], deniedTools: [], dropped: 0 }))
     if (config.dropped > 0) deps.log?.(`[main-agent] dropped ${config.dropped} invalid config item(s)`)
     const safety = config.safety ?? STRICT_RUNTIME()
     if (safety.failedClosed) deps.log?.('[main-agent] safety setting unreadable or not understood: strict')
     const denylist = compileOutboundDenylist(config.deniedTools, { policy: safety.policy, allowedTools: safety.allowedTools })
     const approval = createToolApproval({
-        pendingDir: join(aHome, 'pending-tool'),
+        pendingDir: join(approvalsDir, 'pending-tool'),
+        lang: deps.lang ?? cardLang(null),
         board: deps.board,
         allowAlways: (tool) => denylist.allowAlways(tool),
         persistAlways: deps.kv ? (tool) => persistAllowedTool(deps.kv!, tool) : undefined,
@@ -102,22 +112,43 @@ export async function prepareMainAgent(deps: {
         deps.log?.(`[main-agent] managed segment failed: ${error instanceof Error ? error.message : String(error)}`)
     }
     const gate = createDispatchGate({
-        pendingDir: join(aHome, 'pending-dispatch'),
+        pendingDir: join(approvalsDir, 'pending-dispatch'),
         board: deps.board,
         classify: deps.classify,
         approvalLink: deps.approvalLink,
         log: deps.log,
         dispatchPolicy: () => ({ external: safety.policy.dispatchExternal, production: safety.policy.dispatchProduction }),
+        // QA P2-2: with Bash off, a terminal is the shell it is not supposed to have — every send asks.
+        forceAsk: (tool) => tool === 'terminal_send' && !safety.policy.bash,
     })
     return {
         config,
         safety,
         denylist,
-        preToolUse: outboundPreToolUseHook(denylist, (tool) => deps.log?.(`[main-agent gate] denied ${tool}`), approval.ask),
+        preToolUse: outboundPreToolUseHook(denylist, (tool) => deps.log?.(`[main-agent gate] denied ${tool}`), approval.ask, protectedPathsFor(happyHome, { home })),
         // The managed skills live outside the assistant home: mount the whole Very Happy share root
         // (`~/.local/share/very-happy`), or every Read / Grep of the handbook asks for permission in
         // the default mode (isolated probe; QA77 #7: a Grep one level up asked too).
         extraDirectories: [...(skillPath ? [dirname(dirname(dirname(skillPath)))] : []), ...roots.filter(r => r.exists).map(r => r.path)],
         gate,
+    }
+}
+
+/**
+ * B-922 (QA P3): the gate-1 card language — the account's `preferredLanguage`
+ * (the same setting the Web uses), else this machine's locale, else English.
+ * Best effort: any failure falls back to the locale.
+ */
+export async function accountCardLang(timeoutMs = 5_000): Promise<CardLang> {
+    try {
+        const { accountKey, createAccountStore } = await import('@/settings/stores')
+        const key = await accountKey()
+        if (!key) return cardLang(null)
+        const read = createAccountStore(key).read()
+        const settings = await Promise.race([read, new Promise<null>((r) => setTimeout(() => r(null), timeoutMs).unref?.())])
+        const preferred = settings && typeof settings.settings.preferredLanguage === 'string' ? settings.settings.preferredLanguage : null
+        return cardLang(preferred)
+    } catch {
+        return cardLang(null)
     }
 }
