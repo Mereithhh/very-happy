@@ -185,6 +185,8 @@ const ARGS: Record<string, Record<string, unknown>> = {
     owner_board_post: { kind: 'report', title: 'Merged', request_id: 'r1' }, owner_board_update: { id: 'item-1', title: 'x', request_id: 'r2' },
     owner_board_resolve: { id: 'item-1', outcome: 'done', request_id: 'r3' }, owner_board_list: { state: 'all' },
     session_wrapup: { sessionId: 'sess-1' }, session_handoff: { from: 'sess-1', to: 'new' }, session_restart: { sessionId: 'sess-1', when: 'now' },
+    // B-915: the session-scoped wrapup_report / handoff_send also sit on the main agent's surface (capped).
+    wrapup_report: { summary: 'done', can_close: true }, handoff_send: { to: 'sess-1', summary: 'next steps' },
 };
 const CAP = { receipt: RECEIPT_MAX_CHARS, list: LIST_MAX_CHARS, body: BODY_MAX_CHARS } as const;
 const textOf = (r: any) => (r.content as Array<{ text: string }>).map(c => c.text).join('\n');

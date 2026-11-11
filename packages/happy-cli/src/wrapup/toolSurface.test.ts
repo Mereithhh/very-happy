@@ -15,7 +15,7 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 describe('wrap-up tool surface', () => {
     it('is registered in-process for managed Claude and advertised in toolNames', () => {
         const source = read('../claude/utils/startHappyServer.ts')
-        expect(source).toContain('if (wrapup) registerWrapupTools(mcp, wrapup);')
+        expect(source).toContain('if (wrapup) registerWrapupTools(mcp, wrapup, mainAgent ? MAIN_AGENT_TOOL_NAMES : []);')
         expect(source).toContain('...WRAPUP_TOOL_NAMES,')
         expect(source).toContain("wrapupTracker.onUserMessage({ localId: event.localId });")
         expect(source).toContain("client.on('agent-ready', onAgentReady);")
