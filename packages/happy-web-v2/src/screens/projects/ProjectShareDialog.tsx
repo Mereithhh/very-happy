@@ -15,6 +15,7 @@
  * moment, never a project tier.
  */
 import * as Dialog from '@radix-ui/react-dialog';
+import { DialogContent } from '@/ui/DialogContent';
 import { Info, ShieldAlert, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAcceptedFriends } from '@/sync/storage';
@@ -92,7 +93,7 @@ export function ProjectShareDialog({ projectId, open, onOpenChange }: { projectI
         <Dialog.Root open={open} onOpenChange={onOpenChange}>
             <Dialog.Portal>
                 <Dialog.Overlay className="vh-dialog-overlay so-overlay" />
-                <Dialog.Content className="vh-dialog so-dialog" aria-describedby={undefined}>
+                <DialogContent className="vh-dialog so-dialog" aria-describedby={undefined}>
                     <div className="vh-dialog-head so-head">
                         <div>
                             <Dialog.Title className="vh-dialog-title so-title">{t('share.project.title')}</Dialog.Title>
@@ -195,7 +196,7 @@ export function ProjectShareDialog({ projectId, open, onOpenChange }: { projectI
                             onOpenChange={(next) => { if (!next) setOperate(null); }}
                         />
                     )}
-                </Dialog.Content>
+                </DialogContent>
             </Dialog.Portal>
         </Dialog.Root>
     );

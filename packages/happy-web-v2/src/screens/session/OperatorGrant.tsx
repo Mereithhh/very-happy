@@ -8,6 +8,7 @@
  * owner, and background processes survive a revoke. No softer summary.
  */
 import * as Dialog from '@radix-ui/react-dialog';
+import { DialogContent } from '@/ui/DialogContent';
 import { ShieldAlert, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button, Checkbox } from '@/ui';
@@ -85,7 +86,7 @@ export function OperatorConfirmDialog({ open, name, host, expiry, onExpiry, need
         <Dialog.Root open={open} onOpenChange={(next) => { if (!next) onCancel(); }}>
             <Dialog.Portal>
                 <Dialog.Overlay className="vh-dialog-overlay so-overlay" />
-                <Dialog.Content className="vh-dialog so-dialog shd-opconfirm" role="alertdialog" aria-describedby={undefined}>
+                <DialogContent className="vh-dialog so-dialog shd-opconfirm" role="alertdialog" aria-describedby={undefined}>
                     <div className="vh-dialog-head so-head">
                         <Dialog.Title className="vh-dialog-title so-title">{t('share.operator.confirmTitle')}</Dialog.Title>
                         <Dialog.Close className="vh-dialog-close so-close" aria-label={t('common.close')}><X size={18} /></Dialog.Close>
@@ -111,7 +112,7 @@ export function OperatorConfirmDialog({ open, name, host, expiry, onExpiry, need
                         <Button type="button" variant="ghost" size="md" onClick={onCancel}>{t('common.cancel')}</Button>
                         <Button type="button" variant="danger" size="md" loading={busy} disabled={!ack} onClick={onConfirm}>{t('share.operator.confirmGrant')}</Button>
                     </div>
-                </Dialog.Content>
+                </DialogContent>
             </Dialog.Portal>
         </Dialog.Root>
     );

@@ -1,6 +1,7 @@
 import { useTranslation } from '@/i18n/useTranslation';
 import './tmuxhelp.css';
 import { DialogHead } from '@/ui/DialogHead';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 interface Shortcut {
   keys: string;
@@ -61,7 +62,7 @@ export function TmuxHelpModal({ onClose }: { onClose: () => void }) {
   ];
 
   return (
-    <div className="tmux-backdrop vh-dialog-overlay" onClick={onClose}>
+    <DialogBackdrop className="tmux-backdrop vh-dialog-overlay" onClose={onClose}>
       <div className="tmux-card vh-dialog vh-dialog--flush" role="dialog" aria-modal="true" aria-labelledby="tmux-help-title" onClick={(e) => e.stopPropagation()}>
         <DialogHead title={t('tmuxHelp.title')} titleId="tmux-help-title" onClose={onClose} />
         <div className="tmux-body">
@@ -79,6 +80,6 @@ export function TmuxHelpModal({ onClose }: { onClose: () => void }) {
           ))}
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   );
 }

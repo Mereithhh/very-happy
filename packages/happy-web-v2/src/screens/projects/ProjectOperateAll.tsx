@@ -11,6 +11,7 @@
  * the failed ones can be retried. Revoking ends only the direct grants; the project share stays.
  */
 import * as Dialog from '@radix-ui/react-dialog';
+import { DialogContent } from '@/ui/DialogContent';
 import { AlertTriangle, SquareTerminal, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Checkbox } from '@/ui';
@@ -160,7 +161,7 @@ function OperateAllConfirm({ grantee, plan, onClose, batchOperate }: {
         <Dialog.Root open onOpenChange={(next) => { if (!next && !busy) onClose(); }}>
             <Dialog.Portal>
                 <Dialog.Overlay className="vh-dialog-overlay so-overlay" />
-                <Dialog.Content className="vh-dialog so-dialog shd-opconfirm" role="alertdialog" aria-describedby={undefined} data-testid="project-operate-confirm">
+                <DialogContent className="vh-dialog so-dialog shd-opconfirm" role="alertdialog" aria-describedby={undefined} data-testid="project-operate-confirm">
                     <div className="vh-dialog-head so-head">
                         <Dialog.Title className="vh-dialog-title so-title">{results ? t('share.project.resultTitle') : t('share.project.confirmTitle', { name: grantee.displayName, count })}</Dialog.Title>
                         <Dialog.Close className="vh-dialog-close so-close" aria-label={t('common.close')} disabled={busy}><X size={18} /></Dialog.Close>
@@ -206,7 +207,7 @@ function OperateAllConfirm({ grantee, plan, onClose, batchOperate }: {
                             <Button type="button" variant="danger" size="md" loading={busy} disabled={!ack} onClick={() => void run(sent)}>{t('share.operator.confirmGrant')}</Button>
                         </>}
                     </div>
-                </Dialog.Content>
+                </DialogContent>
             </Dialog.Portal>
         </Dialog.Root>
     );

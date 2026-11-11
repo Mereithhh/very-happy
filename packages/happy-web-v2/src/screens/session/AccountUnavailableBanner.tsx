@@ -6,6 +6,7 @@
  * ModelSupportBanner (.mrb, --warn-dim / --danger, never --accent).
  */
 import * as Dialog from '@radix-ui/react-dialog';
+import { DialogContent } from '@/ui/DialogContent';
 import { Check, KeyRound, LogIn, Repeat, ShieldAlert, X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -68,7 +69,7 @@ export function SwitchAccountDialog({ sessionId, facts, onClose, openSettings, o
     return <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
         <Dialog.Portal>
             <Dialog.Overlay className="vh-dialog-overlay so-overlay" />
-            <Dialog.Content className="vh-dialog so-dialog acc-dialog" aria-describedby="acc-switch-desc" data-testid="switch-account-dialog">
+            <DialogContent className="vh-dialog so-dialog acc-dialog" aria-describedby="acc-switch-desc" data-testid="switch-account-dialog">
                 <div className="vh-dialog-head so-head">
                     <div>
                         <Dialog.Title className="vh-dialog-title so-title">{t('accounts.switchDialogTitle')}</Dialog.Title>
@@ -92,7 +93,7 @@ export function SwitchAccountDialog({ sessionId, facts, onClose, openSettings, o
                     })}
                     {section.note && <p className="mce-note">{section.note.text}</p>}
                 </div>
-            </Dialog.Content>
+            </DialogContent>
         </Dialog.Portal>
     </Dialog.Root>;
 }

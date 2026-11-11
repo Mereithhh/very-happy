@@ -58,6 +58,7 @@ import {
 } from './claudeHistoryImport';
 import './newsession.css';
 import { DialogHead } from '@/ui/DialogHead';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 export type ImportHistoryAgent = HistoryAgent;
 /** B-549: browse the most recent conversations, or search their content. */
@@ -306,7 +307,7 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
   const now = Date.now();
   const progressed = summary.done + summary.failed;
   return (
-    <div className="ns-backdrop vh-dialog-overlay" onClick={running ? undefined : onClose}>
+    <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={running ? undefined : onClose}>
       <div className="ns-card ns-card--wide vh-dialog vh-dialog--tall" role="dialog" aria-modal="true" aria-labelledby="ih-dialog-title" onClick={(e) => e.stopPropagation()}>
         <DialogHead title={mode === 'search' ? t('historySearch.title') : copy.title} titleId="ih-dialog-title" onClose={running ? undefined : onClose} />
         {mode === 'recent' && <div className="ns-hint" style={{ marginTop: 0 }}>{copy.intro}</div>}
@@ -505,6 +506,6 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
           )}
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   );
 }

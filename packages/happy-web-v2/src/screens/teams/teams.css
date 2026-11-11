@@ -260,6 +260,22 @@
 @media (hover: hover) and (pointer: fine) { .teams-screen .teams-dialog .vh-dialog-close:not(:disabled):hover { background: var(--fill-hover); } }
 /* UI-P1-15: each form's submit is its footer — own row, bottom-right */
 .teams-dialog form > button:last-child { grid-column: 1 / -1; justify-self: end; min-width: 96px; }
+/* B-928: a form that is the dialog's body keeps its submit on the bottom edge
+   at every width. Behind it a full-width --bg-1 strip hides the body scrolling
+   underneath: a huge shadow (painted below the button's own background)
+   clipped to the button's row. */
+.teams-dialog { --teams-submit-gap: var(--sp-3); }
+.teams-dialog > form > button:last-child {
+  position: sticky;
+  bottom: calc(var(--teams-submit-gap) - var(--vh-dialog-pb));
+  z-index: 1;
+  box-shadow: 0 0 0 100vmax var(--bg-1);
+  clip-path: inset(calc(-1 * var(--sp-3)) -100vw calc(-1 * var(--teams-submit-gap)));
+}
+.teams-screen .teams-dialog > form > button:last-child:focus-visible { box-shadow: var(--focus-ring), 0 0 0 100vmax var(--bg-1); }
+/* an opacity-dimmed disabled submit would let the body show through: stay
+   opaque and pre-mix the dimmed colours instead */
+.teams-screen .teams-dialog > form > .teams-primary:last-child:disabled { opacity: 1; background: color-mix(in srgb, var(--text) 50%, var(--bg-1)); color: color-mix(in srgb, var(--bg-0) 50%, var(--bg-1)); }
 .teams-dialog > button:last-child { align-self: flex-end; margin-top: var(--sp-4); min-width: 96px; }
 .teams-dialog .teams-task { border: 0; }
 .teams-full-result { background: var(--surface-code); padding: 16px; margin: 16px 0; border: 0; border-radius: var(--r-btn); }
@@ -278,8 +294,9 @@
   .teams-members-grid { grid-template-columns: minmax(0, 1fr); }
   /* phone sheet: the native dialog sits on the bottom edge; submit stays reachable */
   .teams-dialog { margin: auto 0 0; }
+  .teams-dialog { --teams-submit-gap: max(var(--sp-3), var(--sa-b)); }
   .teams-dialog form > button:last-child,
-  .teams-dialog > button:last-child { position: sticky; bottom: max(var(--sp-3), var(--sa-b)); justify-self: stretch; align-self: stretch; min-height: 48px; box-shadow: 0 0 0 var(--sp-3) var(--bg-1); }
+  .teams-dialog > button:last-child { position: sticky; bottom: calc(var(--teams-submit-gap) - var(--vh-dialog-pb)); justify-self: stretch; align-self: stretch; min-height: 48px; box-shadow: 0 0 0 100vmax var(--bg-1); clip-path: inset(calc(-1 * var(--sp-3)) -100vw calc(-1 * var(--teams-submit-gap))); }
   .teams-list-card { padding: 18px; }
 }
 /* First use follows the ordinary conversation visual language. */

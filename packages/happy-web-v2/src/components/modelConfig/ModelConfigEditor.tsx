@@ -8,6 +8,7 @@
  * the machine-key-encrypted RPC params, and is cleared after the write.
  */
 import * as Dialog from '@radix-ui/react-dialog';
+import { DialogContent } from '@/ui/DialogContent';
 import { X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -217,7 +218,7 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
     return <Dialog.Root open={open} onOpenChange={(next) => { if (!next) setForm((f) => ({ ...f, keyValue: '' })); onOpenChange(next); }}>
         <Dialog.Portal>
             <Dialog.Overlay className="vh-dialog-overlay so-overlay" />
-            <Dialog.Content className="vh-dialog so-dialog mce-dialog" aria-describedby="mce-desc" onOpenAutoFocus={(e) => { e.preventDefault(); titleRef.current?.focus(); }}>
+            <DialogContent className="vh-dialog so-dialog mce-dialog" aria-describedby="mce-desc" onOpenAutoFocus={(e) => { e.preventDefault(); titleRef.current?.focus(); }}>
                 <div className="vh-dialog-head so-head">
                     <div>
                         <Dialog.Title ref={titleRef} tabIndex={-1} className="vh-dialog-title so-title">{t('modelConfig.editorTitle')}</Dialog.Title>
@@ -340,7 +341,7 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
                         </ul>
                     </details>}
                 </div>
-            </Dialog.Content>
+            </DialogContent>
         </Dialog.Portal>
     </Dialog.Root>;
 }

@@ -3489,6 +3489,12 @@ export const zhHans: TranslationStructure = {
                 skill: '新增 `very-happy skill`：能力地图覆盖会话、终端、项目、团队、自动化、Issues 与待办、账号、机器、分享、通知、面板和设置，每块一页（如 `very-happy skill automations`）。会话里只多一行指向它，问 agent「给这个项目加一个每天 9 点的自动化」就能拿到正确命令。本机副本在 ~/.local/share/very-happy/skills/very-happy，你改过的文件不会被覆盖。',
                 autoProject: '`very-happy auto create|edit --project <id>|current` 可把自动化挂到项目上（`--no-project` 取消）；以前只能在 Web 上设。',
             },
+            nov11t: {
+                title: '弹窗的标题和 × 不再滚走，点外面就能关',
+                summary: '任务详情这类长弹窗，标题和关闭按钮不会再跟着内容滚走；点弹窗外面即可关闭。',
+                pinned: '任务详情、新建团队等弹窗里只有正文滚动：标题和 × 固定在顶部，创建 / 保存等按钮固定在底部。',
+                outside: '点弹窗外面即可关闭。弹窗里已经输入或选过内容时，点外面不会关，不会丢掉你的输入；在弹窗里选中文字、拖到外面松开也不会关。Esc 和 × 照旧。',
+            },
             nov11u: {
                 title: '新会话的第一条消息可以带图片',
                 summary: '新会话还在启动时就能粘贴、拖入或选择图片，会和文字作为同一条消息发出。',

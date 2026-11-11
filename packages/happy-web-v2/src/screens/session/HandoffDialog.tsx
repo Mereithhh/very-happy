@@ -16,6 +16,7 @@ import { registerHandoffOpener, startHandoff, supportsWrapupCard } from '@/app/s
 import { handoffCandidates } from './handoffTargets';
 import '@/screens/sessions/newsession.css';
 import './handoff.css';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 export function HandoffDialogHost() {
     const [sessionId, setSessionId] = useState<string | null>(null);
@@ -61,7 +62,7 @@ export function HandoffDialog({ sessionId, onClose }: { sessionId: string; onClo
     };
 
     return (
-        <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+        <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={onClose}>
             <div className="ns-card vh-dialog hof-card" role="dialog" aria-modal="true" aria-labelledby="handoff-dialog-title" onClick={(e) => e.stopPropagation()}>
                 <DialogHead title={t('wrapup.dialogTitle')} titleId="handoff-dialog-title" description={source ? getSessionName(source) : undefined} onClose={onClose} />
                 <p className="hof-desc">{t('wrapup.dialogDescription')}</p>
@@ -116,6 +117,6 @@ export function HandoffDialog({ sessionId, onClose }: { sessionId: string; onClo
                     <Button variant="primary" disabled={!picked || busy} aria-busy={busy || undefined} onClick={() => void confirm()}>{t('wrapup.confirm')}</Button>
                 </div>
             </div>
-        </div>
+        </DialogBackdrop>
     );
 }

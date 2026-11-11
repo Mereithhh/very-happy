@@ -15,6 +15,7 @@ import { ProjectFolderPicker } from './ProjectFolderPicker';
 import { defaultNewFolder, folderProblem, resolveProjectFolderDraft, type ProjectFolderDraft } from './projectFolderDraft';
 import '@/screens/sessions/newsession.css';
 import './projects.css';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 function copy(zh: boolean) {
   return zh ? {
@@ -102,7 +103,7 @@ export function NewProjectDialog({ initialName = '', sessionIds = [], onClose }:
     }
   };
   return (
-    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+    <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={onClose}>
       <form className="ns-card vh-dialog pj-new-dialog" role="dialog" aria-modal="true" aria-labelledby="pj-new-title" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <DialogHead title={c.title} titleId="pj-new-title" onClose={onClose} />
         <label className="ns-label" htmlFor="pj-new-name">{c.name}</label>
@@ -120,6 +121,6 @@ export function NewProjectDialog({ initialName = '', sessionIds = [], onClose }:
           <Button variant="primary" type="submit" disabled={busy || (tried && !ready)} aria-busy={busy || undefined}>{busy ? c.creating : c.create}</Button>
         </div>
       </form>
-    </div>
+    </DialogBackdrop>
   );
 }

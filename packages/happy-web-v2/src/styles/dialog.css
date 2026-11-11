@@ -12,6 +12,12 @@
  *   foot: right-aligned, quiet cancel then the primary action last (bottom-right)
  *   phone (≤600px): bottom sheet, top corners only; the footer sticks to the
  *   bottom of the sheet with 48px buttons, so 创建 / 保存 never scroll away.
+ *
+ * B-928: the card is the scroller, so a long body used to carry the head (title
+ * + ×) away with it. The head now sticks to the top and the footer to the
+ * bottom at every width; both bleed over the card padding (--vh-dialog-p*) on
+ * --bg-1 so the scrolling body passes under them. --flush cards own their
+ * sections (pinned head + scrolling body) and are left alone.
  */
 .vh-dialog-overlay {
   background: var(--scrim);
@@ -30,7 +36,11 @@
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-modal);
-  padding: var(--sp-5);
+  --vh-dialog-pt: var(--sp-5);
+  --vh-dialog-pr: var(--sp-5);
+  --vh-dialog-pb: var(--sp-5);
+  --vh-dialog-pl: var(--sp-5);
+  padding: var(--vh-dialog-pt) var(--vh-dialog-pr) var(--vh-dialog-pb) var(--vh-dialog-pl);
 }
 /* sections own their padding (runtime controls: pinned head + scrolling body) */
 .vh-dialog--flush { padding: 0; overflow: hidden; }
@@ -42,6 +52,16 @@
   margin-bottom: var(--sp-2);
 }
 .vh-dialog-head > :first-child { flex: 1; min-width: 0; }
+:where(.vh-dialog:not(.vh-dialog--flush)) > .vh-dialog-head {
+  position: sticky;
+  /* sticky insets count from the scroller's content edge: lift it over the padding */
+  top: calc(-1 * var(--vh-dialog-pt));
+  z-index: 2;
+  flex: none;
+  margin: calc(-1 * var(--vh-dialog-pt)) calc(-1 * var(--vh-dialog-pr)) 0 calc(-1 * var(--vh-dialog-pl));
+  padding: var(--vh-dialog-pt) var(--vh-dialog-pr) var(--sp-2) var(--vh-dialog-pl);
+  background: var(--bg-1);
+}
 .vh-dialog-title {
   margin: 0;
   color: var(--text);
@@ -83,6 +103,15 @@
   gap: var(--sp-2);
   margin-top: var(--sp-4);
 }
+/* B-928: the footer stays on the card's bottom edge while the body scrolls */
+:where(.vh-dialog:not(.vh-dialog--flush)) > .vh-dialog-foot {
+  position: sticky;
+  bottom: calc(-1 * var(--vh-dialog-pb));
+  z-index: 1;
+  margin: var(--sp-1) calc(-1 * var(--vh-dialog-pr)) calc(-1 * var(--vh-dialog-pb)) calc(-1 * var(--vh-dialog-pl));
+  padding: var(--sp-3) var(--vh-dialog-pr) var(--vh-dialog-pb) var(--vh-dialog-pl);
+  background: var(--bg-1);
+}
 /* a status line (progress, counter) in the footer takes the left side */
 .vh-dialog-foot > .vh-dialog-foot-note { flex: 1 1 auto; margin: 0 auto 0 0; }
 
@@ -101,7 +130,10 @@
     border-width: 1px 0 0;
     border-radius: var(--r-lg) var(--r-lg) 0 0;
     /* edge to edge: the side insets (B-796, iPhone Duo cover status column) pad the content */
-    padding: var(--sp-4) calc(var(--sp-4) + var(--sa-r)) 0 calc(var(--sp-4) + var(--sa-l));
+    --vh-dialog-pt: var(--sp-4);
+    --vh-dialog-pr: calc(var(--sp-4) + var(--sa-r));
+    --vh-dialog-pb: 0px;
+    --vh-dialog-pl: calc(var(--sp-4) + var(--sa-l));
   }
   :root .vh-dialog--flush { padding: 0 var(--sa-r) 0 var(--sa-l); }
   /* wrapper-type families (Modal, new-session): the backdrop lays the sheet on the bottom edge */
@@ -117,8 +149,8 @@
     bottom: 0;
     z-index: 1;
     flex-wrap: nowrap;
-    margin: auto calc(-1 * (var(--sp-4) + var(--sa-r))) 0 calc(-1 * (var(--sp-4) + var(--sa-l)));
-    padding: var(--sp-3) calc(var(--sp-4) + var(--sa-r)) max(var(--sp-3), var(--sa-b)) calc(var(--sp-4) + var(--sa-l));
+    margin: auto calc(-1 * var(--vh-dialog-pr)) 0 calc(-1 * var(--vh-dialog-pl));
+    padding: var(--sp-3) var(--vh-dialog-pr) max(var(--sp-3), var(--sa-b)) var(--vh-dialog-pl);
     background: var(--bg-1);
     border-top: var(--hairline) solid var(--line);
   }

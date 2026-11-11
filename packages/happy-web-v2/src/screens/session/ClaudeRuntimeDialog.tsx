@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { DialogContent } from '@/ui/DialogContent';
 import { X } from 'lucide-react';
 import { Button, Spinner } from '@/ui';
 import { Combobox } from '@/ui/Combobox';
@@ -78,7 +79,7 @@ export function ClaudeRuntimeDialog({sessionId,open,onOpenChange}:{sessionId:str
     const outcome=operation?.status==='completed' ? runtimeOutcome(operation) : null;
     const taskStatus=(value:string)=>t(`runtimeControls.task.${['running','completed','failed','stopped'].includes(value)?value:'unknown'}` as 'runtimeControls.task.running');
     return <Dialog.Root open={open} onOpenChange={onOpenChange}>
-        <Dialog.Portal><Dialog.Overlay className="vh-dialog-overlay so-overlay"/><Dialog.Content className="vh-dialog vh-dialog--flush so-dialog runtime-controls" onOpenAutoFocus={event=>{event.preventDefault();titleRef.current?.focus();}}>
+        <Dialog.Portal><Dialog.Overlay className="vh-dialog-overlay so-overlay"/><DialogContent className="vh-dialog vh-dialog--flush so-dialog runtime-controls" onOpenAutoFocus={event=>{event.preventDefault();titleRef.current?.focus();}}>
             <div className="vh-dialog-head so-head"><div><Dialog.Title ref={titleRef} tabIndex={-1} className="vh-dialog-title so-title">{t('runtimeControls.title')}</Dialog.Title>
                 <Dialog.Description className="so-description">{t('runtimeControls.description')}</Dialog.Description></div>
                 <Dialog.Close asChild><button className="vh-dialog-close so-close" aria-label={t('common.close')}><X size={18}/></button></Dialog.Close>
@@ -122,6 +123,6 @@ export function ClaudeRuntimeDialog({sessionId,open,onOpenChange}:{sessionId:str
                 </section>
             </>}
             </div>
-        </Dialog.Content></Dialog.Portal>
+        </DialogContent></Dialog.Portal>
     </Dialog.Root>;
 }

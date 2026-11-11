@@ -23,6 +23,7 @@ import { NoMachinesNotice } from './NoMachinesNotice';
 import { formatSessionAge, type UserTmuxSession } from './newTerminalAttach';
 import './newsession.css';
 import { DialogHead } from '@/ui/DialogHead';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 export function AttachTmuxModal({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
@@ -70,7 +71,7 @@ export function AttachTmuxModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+    <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={onClose}>
       <div className="ns-card vh-dialog vh-dialog--tall" role="dialog" aria-modal="true" aria-labelledby="at-dialog-title" onClick={(e) => e.stopPropagation()}>
         <DialogHead title={t('attachTmuxModal.title')} titleId="at-dialog-title" onClose={onClose} />
 
@@ -133,6 +134,6 @@ export function AttachTmuxModal({ onClose }: { onClose: () => void }) {
           <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   );
 }

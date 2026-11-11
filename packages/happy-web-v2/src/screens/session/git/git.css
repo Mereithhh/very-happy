@@ -46,7 +46,7 @@
 
 /* ── dialog (builds on sessionOptionsDialog.css .so-*) ──────────────────── */
 .so-dialog.gd { width: min(520px, calc(100vw - 32px - var(--sa-l) - var(--sa-r))); display: flex; flex-direction: column; gap: var(--sp-4); }
-.so-dialog.gd > .vh-dialog-foot { margin-top: 0; } /* the card's gap already spaces it */
+.so-dialog.gd > .vh-dialog-foot { margin-top: calc(-1 * var(--sp-3)); } /* the card's gap already spaces it; B-928: the sticky foot pads its own top */
 .gd-branch {
   margin: var(--sp-1) 0 0;
   overflow: hidden;

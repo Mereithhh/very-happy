@@ -20,6 +20,7 @@ import { useIssuesCopy, type IssuesCopy } from './issuesCopy';
 import { issueErrorText } from './issueErrors';
 import '@/screens/sessions/newsession.css';
 import './issues.css';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 export function statusOptions(copy: IssuesCopy): SelectOption[] {
     return ISSUE_STATUSES.map((s) => ({ value: s, label: copy.statuses[s] }));
@@ -107,7 +108,7 @@ export function NewIssueDialog({ onClose, initialTitle = '', initialProjectId = 
     }
 
     return (
-        <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+        <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={onClose}>
             <div className="ns-card vh-dialog vh-dialog--tall" role="dialog" aria-modal="true" aria-labelledby="is-new-title" onClick={(e) => e.stopPropagation()} data-testid="new-issue-dialog"
                 onCompositionStart={ime.onCompositionStart} onCompositionEnd={ime.onCompositionEnd}
                 onKeyDown={(e) => { if (e.defaultPrevented || ime.isGuarded(e) || !isCreateChord(e)) return; e.preventDefault(); void onCreate(); }}>
@@ -138,7 +139,7 @@ export function NewIssueDialog({ onClose, initialTitle = '', initialProjectId = 
                     <Button variant="primary" disabled={!canCreate} loading={busy} onClick={() => { void onCreate(); }} data-testid="new-issue-create">{runsNow ? copy.createAndRun : copy.create}</Button>
                 </div>
             </div>
-        </div>
+        </DialogBackdrop>
     );
 }
 
@@ -163,7 +164,7 @@ export function AssigneeDialog({ value, status, projectId, onApply, onClose }: {
         try { await onApply(assignee); onClose(); } catch (e) { setError(issueErrorText(e, copy)); setBusy(false); }
     };
     return (
-        <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+        <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={onClose}>
             <div className="ns-card vh-dialog" role="dialog" aria-modal="true" aria-labelledby="is-assign-title" onClick={(e) => e.stopPropagation()} data-testid="assignee-dialog">
                 <DialogHead title={copy.assignTitle} titleId="is-assign-title" onClose={onClose} />
                 <AssigneeFields draft={draft} onChange={setDraft} copy={copy} status={status} projectId={projectId} idPrefix="is-assign" />
@@ -173,7 +174,7 @@ export function AssigneeDialog({ value, status, projectId, onApply, onClose }: {
                     <Button variant="primary" disabled={!assignee || busy} loading={busy} onClick={() => { void apply(); }} data-testid="assignee-apply">{copy.apply}</Button>
                 </div>
             </div>
-        </div>
+        </DialogBackdrop>
     );
 }
 

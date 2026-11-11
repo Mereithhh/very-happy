@@ -7,6 +7,7 @@ import { addTag, normalizeTag } from '@/utils/tags';
 import './newsession.css';
 import './renamemodal.css';
 import { DialogHead } from '@/ui/DialogHead';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 /**
  * Rename dialog (replaces the old single-line Modal.prompt): title input plus
@@ -86,7 +87,7 @@ export function RenameModal({
   }
 
   return (
-    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+    <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={onClose}>
       <div
         className="ns-card rn-card vh-dialog"
         role="dialog"
@@ -181,6 +182,6 @@ export function RenameModal({
           </Button>
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   );
 }

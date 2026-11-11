@@ -17,6 +17,7 @@
  * Kinds are per agent: the dialog only offers the ones this daemon can add.
  */
 import * as Dialog from '@radix-ui/react-dialog';
+import { DialogContent } from '@/ui/DialogContent';
 import { ExternalLink, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button, Segmented, Spinner, toast } from '@/ui';
@@ -210,7 +211,7 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
     return <Dialog.Root open={open} onOpenChange={close}>
         <Dialog.Portal>
             <Dialog.Overlay className="vh-dialog-overlay so-overlay" />
-            <Dialog.Content className="vh-dialog so-dialog acc-dialog" aria-describedby="acc-add-desc" data-testid="add-account-dialog"
+            <DialogContent className="vh-dialog so-dialog acc-dialog" aria-describedby="acc-add-desc" data-testid="add-account-dialog"
                 onOpenAutoFocus={(e) => { e.preventDefault(); titleRef.current?.focus(); }}>
                 <div className="vh-dialog-head so-head">
                     <div>
@@ -347,7 +348,7 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
 
                     {error && <p className="mce-note mce-note--danger" role="alert" data-testid="account-error">{error}</p>}
                 </div>
-            </Dialog.Content>
+            </DialogContent>
         </Dialog.Portal>
     </Dialog.Root>;
 }

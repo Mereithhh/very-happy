@@ -10,6 +10,7 @@ import { ProjectPicker } from './ProjectPicker';
 import { projectOfTeam, teamProjectAction, type ProjectChoice } from './projectChoice';
 import '@/screens/sessions/newsession.css';
 import './projects.css';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 /**
  * B-763 「换项目…」 from the team row and team page menus: the team-settings
@@ -44,7 +45,7 @@ export function ChangeTeamProjectModal({ team, onClose }: { team: Pick<TeamState
   };
   // Portalled: the sidebar (a transformed drawer on phones) must not become its containing block.
   return createPortal(
-    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+    <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={onClose}>
       <div className="ns-card vh-dialog" role="dialog" aria-modal="true" aria-labelledby="ctp-dialog-title" onClick={(e) => e.stopPropagation()}>
         <DialogHead title={title} titleId="ctp-dialog-title" description={team.name} onClose={onClose} />
         <label className="ns-label" htmlFor="ctp-project">{c.project}</label>
@@ -55,7 +56,7 @@ export function ChangeTeamProjectModal({ team, onClose }: { team: Pick<TeamState
           <Button variant={detaching ? 'danger' : 'primary'} disabled={busy || unchanged} aria-busy={busy || undefined} onClick={() => void apply()}>{detaching ? c.detach : c.apply}</Button>
         </div>
       </div>
-    </div>,
+    </DialogBackdrop>,
     document.body,
   );
 }
