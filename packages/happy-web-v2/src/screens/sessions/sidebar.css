@@ -802,15 +802,32 @@
 .sb-new-split .sb-new-main > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sb-new-split .sb-new-more { flex:none; width:32px; justify-content:center; padding:0; color: var(--text-dim); }
 .sb-new-split .sb-new-more > svg:first-child { width:14px; }
-/* B-896: the capability strip — 5–6 equal icon cells under 新建会话 ▾, one ink
-   step quieter than the create rows; the count is a corner badge, the name the
-   native tooltip. Current page = the selected fill, same as a list row. */
-.sb-cap-strip { display:flex; gap:2px; margin-top:2px; }
-.sb-cap-cell { position:relative; flex:1 1 0; min-width:0; display:flex; align-items:center; justify-content:center; height:32px; border-radius:var(--r-sm); color:var(--text-dim); }
-.sb-cap-cell[aria-current="page"] { background:var(--fill-selected); color:var(--text); }
-.sb-cap-cell:focus-visible { outline:none; box-shadow:var(--focus-ring); color:var(--text); }
-@media (hover: hover) and (pointer: fine) { .sb-cap-cell:hover { background:var(--fill-hover); color:var(--text); } }
-.sb-cap-cell .sb-nav-attn { position:absolute; top:0; right:1px; margin:0; min-width:14px; padding:0 3px; line-height:13px; text-align:center; }
+/* B-926: the capability rows — icon + name like the Codex / Claude desktop
+   sidebars, one ink step quieter than the create rows above (text-dim, regular
+   weight); the count sits at the row end. Current page = the selected fill,
+   same as a list row. 「更多 ▾」 is the last row. */
+.sb-cap-nav { display:flex; flex-direction:column; gap:1px; margin-top:2px; }
+.sb-cap-row { display:flex; align-items:center; gap:var(--sp-2); width:100%; min-width:0; min-height:28px; padding:3px var(--sp-2); border-radius:var(--r-sm); color:var(--text-dim); font-size:var(--fs-13); text-align:left; }
+.sb-cap-row > svg:first-child { flex:none; width:18px; }
+.sb-cap-name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sb-cap-row .sb-nav-attn { flex:none; margin-left:0; }
+.sb-cap-chevron { flex:none; color:var(--text-faint); }
+.sb-cap-row[aria-current="page"], .sb-cap-row[data-state="open"] { background:var(--fill-selected); color:var(--text); }
+.sb-cap-more.is-current { color:var(--text); }
+.sb-cap-row:focus-visible { outline:none; box-shadow:var(--focus-ring); color:var(--text); }
+@media (hover: hover) and (pointer: fine) { .sb-cap-row:hover { background:var(--fill-hover); color:var(--text); } }
+/* B-926: 「调整入口」 — the same rows as checkboxes, done / reset in a header line. */
+.sb-cap-edit { display:flex; flex-direction:column; gap:1px; margin-top:2px; padding:var(--sp-1) 0; border-radius:var(--r-sm); background:var(--fill-soft); }
+.sb-cap-edit-head { display:flex; align-items:center; gap:var(--sp-1); padding:0 var(--sp-1) 0 var(--sp-2); min-height:28px; color:var(--text-faint); font-size:var(--fs-12); }
+.sb-cap-edit-head > span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sb-cap-edit-btn { min-height:24px; padding:0 var(--sp-2); border-radius:var(--r-sm); color:var(--text-dim); font-size:var(--fs-12); }
+.sb-cap-edit-done { color:var(--text); font-weight:500; }
+.sb-cap-edit-btn:focus-visible { outline:none; box-shadow:var(--focus-ring); }
+@media (hover: hover) and (pointer: fine) { .sb-cap-edit-btn:hover { background:var(--fill-hover); color:var(--text); } }
+.sb-cap-edit-row { min-height:28px; padding:0 var(--sp-2); color:var(--text-dim); font-size:var(--fs-13); }
+.sb-cap-edit-row .vh-checkbox-label { display:flex; align-items:center; gap:var(--sp-2); min-width:0; }
+.sb-cap-edit-row .vh-checkbox-label > svg { flex:none; width:18px; }
+.sb-cap-edit-row:focus-within { box-shadow:var(--focus-ring); border-radius:var(--r-sm); }
 /* B-713: phone chip row 项目 · 团队 · 更多 ▾ — one 44px row under the header. */
 .sb-chips { display:flex; align-items:center; gap: var(--sp-1); padding: 0 var(--sp-3) var(--sp-1); }
 .sb-chip { display:inline-flex; align-items:center; gap:6px; min-width:0; min-height:44px; padding:0 var(--sp-3); border-radius: var(--r-md); background: var(--fill-soft); color: var(--text-dim); font-size: var(--fs-13); white-space:nowrap; }
@@ -820,8 +837,8 @@
 @media (pointer:coarse) {
  .sb-actions .sb-nav-btn { min-height:44px; }
  .sb-new-split .sb-new-more { width:44px; }
- .sb-cap-strip { gap:0; }
- .sb-cap-cell { height:44px; min-width:44px; }
+ .sb-cap-row, .sb-cap-edit-row { min-height:44px; }
+ .sb-cap-edit-btn { min-height:44px; }
 }
 
 .sb-nav-btn[aria-busy="true"] { cursor: progress; }

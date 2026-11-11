@@ -282,6 +282,8 @@ export function Sidebar() {
   const terminalViewDefault = useLocalSetting('terminalViewDefault');
   const terminalViewOverrides = useLocalSetting('terminalViewOverrides');
   const toggleCollapsed = useSidebarPrefs((s) => s.toggleCollapsed);
+  const navPinned = useSidebarPrefs((s) => s.navPinned);
+  const setNavPinned = useSidebarPrefs((s) => s.setNavPinned);
   const isDesktop = useIsDesktop();
 
   // Terminal list/agent-state ingestion lives in the AppLayout-level singleton
@@ -1380,7 +1382,7 @@ export function Sidebar() {
   ]);
 
   // B-896 (spec 2026-10-sidebar-header): no header ⋯. Desktop shows 新建会话 ▾
-  // and the capability icon strip; 新建项目 / 新建团队 rows only until the
+  // and the labelled capability rows (B-926); 新建项目 / 新建团队 rows only until the
   // account has one. The phone gets one chip row 项目 · 团队 · 更多 ▾.
   const top = sidebarTopModel({
     isDesktop,
@@ -1399,7 +1401,8 @@ export function Sidebar() {
     automations: t('automations.sidebarEntry'),
     todos: t('todos.title'),
     people: t('people.title'),
-    feedback: t('feedback.title'),
+    // B-926: a visible row label, so the short word (the page keeps 发送反馈 / Send feedback)
+    feedback: lang.startsWith('zh') ? '反馈' : 'Feedback',
   };
   const newTeam = () => navigate(NEW_TEAM_PATH);
   // B-896: desktop ▾ carries every create type — 新建团队 too, since its row goes once a team exists.
@@ -1470,7 +1473,7 @@ export function Sidebar() {
       {/* B-916a: the main agent, always first under the header (desktop + phone) */}
       <MainAgentEntry />
 
-      {/* B-676/B-896: 新建会话 ▾ (新建项目 / 新建团队 rows only for a new account), then the capability strip (spec 2026-10-sidebar-header).
+      {/* B-676/B-896/B-926: 新建会话 ▾ (新建项目 / 新建团队 rows only for a new account), then the labelled capability rows + 更多 ▾ (spec 2026-10-sidebar-header).
           新建会话: the main part starts a chat in one click, ▾ lists every create type. */}
       <SidebarActionRows
         actions={top.actions}
@@ -1479,6 +1482,8 @@ export function Sidebar() {
         capabilities={navEntries}
         capabilityNames={navName}
         activePath={location.pathname}
+        pinnedEntries={navPinned}
+        onPinnedEntriesChange={setNavPinned}
         onNewChat={() => void createChatOrConfigure(navigate, configureNew, { location })}
         onNewProject={() => void createNamedProject()}
         onNewTeam={newTeam}
