@@ -11,7 +11,7 @@ import { advanceSchedules } from './schedules';
 import { escalateIdleMembers } from './teamIdle';
 import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable } from './compaction';
 import { requireCapacity } from './errors';
-import { joinTakeover, ownerGuardMode } from '@/app/auth/ownerGuard';
+import { machineJoinRefusal, ownerGuardMode } from '@/app/auth/ownerGuard';
 import { OWNER_LOGIN_REQUIRED } from '@/app/auth/tokenKind';
 import { log, warn } from '@/utils/log';
 import { adoptLeadAccount, otherTeamBinding, reduceTeam, requireTeam, sessionInOtherTeamMessage, teamView, transferSessionOut, TeamError, type TeamActor } from './reducer';
@@ -220,16 +220,17 @@ export async function actOnTeam(teamId: string, auth: { accountId: string; machi
             const sessionId = action.sessionId!;
             requireTeam(await tx.session.findFirst({ where: { id: sessionId, accountId: p.accountId }, select: { id: true } }), 'session_not_found', 404);
         }
+        // B-927a: an account machine token may re-attach a seat from the seat's own session, never take it over or add a second root.
+        const refusal = 'accountId' in auth && auth.machine ? machineJoinRefusal(action, row.state.bots) : null;
+        if (refusal) {
+            const mode = ownerGuardMode();
+            if (mode !== 'off') {
+                (mode === 'enforce' ? warn : log)({ module: 'owner-guard', mode, kind: 'machine', operation: `teams.actions.join.${refusal}`, accountId: p.accountId }, `owner guard ${mode === 'enforce' ? 'refused' : 'observed'} a machine join (${refusal})`);
+                requireTeam(mode !== 'enforce', OWNER_LOGIN_REQUIRED, 403);
+            }
+        }
         if (action.type === 'join' && action.botId) {
             const old = row.state.bots.find(b => b.id === action.botId);
-            // B-927a: an account machine token may re-attach a seat from the seat's own session, never take it over from another one.
-            if ('accountId' in auth && auth.machine && joinTakeover(action, old)) {
-                const mode = ownerGuardMode();
-                if (mode !== 'off') {
-                    (mode === 'enforce' ? warn : log)({ module: 'owner-guard', mode, kind: 'machine', operation: 'teams.actions.join.takeover', accountId: p.accountId }, `owner guard ${mode === 'enforce' ? 'refused' : 'observed'} a machine seat takeover`);
-                    requireTeam(mode !== 'enforce', OWNER_LOGIN_REQUIRED, 403);
-                }
-            }
             if (old?.sessionId && old.sessionId !== action.sessionId) {
                 const oldSession = await tx.session.findFirst({ where: { id: old.sessionId, accountId: p.accountId }, select: { active: true } });
                 requireTeam(!oldSession?.active, 'old_session_still_active');

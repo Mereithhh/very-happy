@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { guardOwnerAction, guardProjectChange, joinTakeover, looseProjectChange, machineMayAct, ownerGuardMode, projectPermsGuardMode } from './ownerGuard';
+import { guardOwnerAction, guardProjectChange, machineJoinRefusal, looseProjectChange, machineMayAct, ownerGuardMode, projectPermsGuardMode } from './ownerGuard';
 
 const reply = () => { const send = vi.fn(); return { r: { code: vi.fn(() => ({ send })) } as any, send }; };
 
@@ -57,13 +57,22 @@ describe('B-927a project loosening and seat takeover', () => {
         expect(guardProjectChange({}, r, 'projects.update', { defaults: { permissionMode: 'yolo' } })).toBe(true);
         expect(r.code).not.toHaveBeenCalled();
     });
-    it('a takeover is a join with a botId onto a root seat held by another session', () => {
+    it('a machine join is refused when it takes over a root seat or adds a second root', () => {
         const join = (sessionId: string, botId?: string) => ({ type: 'join', name: 'n', sessionId, ...(botId ? { botId } : {}) }) as never;
-        expect(joinTakeover(join('b', 'bot'), { sessionId: 'a', root: true })).toBe(true);
-        expect(joinTakeover(join('a', 'bot'), { sessionId: 'a', root: true })).toBe(false);
-        expect(joinTakeover(join('b'), { sessionId: 'a', root: true })).toBe(false);
-        expect(joinTakeover(join('b', 'bot'), { sessionId: null, root: true })).toBe(false);
-        expect(joinTakeover(join('b', 'bot'), { sessionId: 'a', root: false })).toBe(false);
-        expect(joinTakeover(join('b', 'bot'), undefined)).toBe(false);
+        const lead = (sessionId: string | null) => [{ id: 'bot', sessionId, root: true }];
+        expect(machineJoinRefusal(join('b', 'bot'), lead('a'))).toBe('takeover');
+        expect(machineJoinRefusal(join('b', 'bot'), lead(null))).toBe('takeover');
+        expect(machineJoinRefusal(join('a', 'bot'), lead('a'))).toBeNull();
+        expect(machineJoinRefusal(join('b', 'bot'), [{ id: 'bot', sessionId: 'a', root: false }])).toBeNull();
+        expect(machineJoinRefusal(join('b'), lead('a'))).toBe('second-root');
+        expect(machineJoinRefusal(join('a'), lead('a'))).toBeNull();
+        expect(machineJoinRefusal(join('b'), [])).toBeNull();
+        expect(machineJoinRefusal(join('b'), [{ id: 'm', sessionId: 'x', root: false }])).toBeNull();
+    });
+    it('an unknown OWNER_GUARD_PROJECT_PERMS value is enforce, not observe', () => {
+        expect(projectPermsGuardMode({ OWNER_GUARD_PROJECT_PERMS: 'enfroce' } as never)).toBe('enforce');
+        expect(projectPermsGuardMode({ OWNER_GUARD_PROJECT_PERMS: 'observe' } as never)).toBe('observe');
+        expect(projectPermsGuardMode({} as never)).toBe('observe');
+        expect(projectPermsGuardMode({ OWNER_GUARD_MODE: 'observe', OWNER_GUARD_PROJECT_PERMS: 'enfroce' } as never)).toBe('observe');
     });
 });

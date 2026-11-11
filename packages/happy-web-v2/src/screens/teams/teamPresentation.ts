@@ -71,6 +71,8 @@ export function teamMessageRoute(team: TeamState, localId: string | null): { fro
  */
 export function teamLoadFailure(status: number, code: string): 'unavailable' | 'notFound' | 'error' {
   if (status === 404 && code === 'team_not_found') return 'notFound';
+  // B-927a: a 403 that names a sign-in is not "teams are off"; the re-login toast already says what to do.
+  if (code === 'owner_login_required') return 'error';
   if (status === 403 || status === 404) return 'unavailable';
   return 'error';
 }

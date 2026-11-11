@@ -13,6 +13,9 @@ describe('teamLoadFailure', () => {
     expect(teamLoadFailure(403, 'forbidden')).toBe('unavailable');
     expect(teamLoadFailure(404, 'http_404')).toBe('unavailable');
   });
+  it('an owner sign-in refusal is not "teams are off" (B-927a)', () => {
+    expect(teamLoadFailure(403, 'owner_login_required')).toBe('error');
+  });
   it('anything else is an ordinary error', () => {
     expect(teamLoadFailure(500, 'boom')).toBe('error');
     expect(teamLoadFailure(409, 'conflict')).toBe('error');

@@ -22,6 +22,7 @@ import { confirmExitTeamMode, teamLeadSessionId } from "./teamExit";
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
+import { isOwnerLoginRequired } from "@/auth/ownerLoginRequired";
 import { teamLaunchPhase, teamLoadFailure, teamTextPreviewLines } from "./teamPresentation";
 import { AdoptTeamForm } from "./AdoptTeamForm";
 import { TeamStartForm } from "./TeamStartForm";
@@ -124,6 +125,8 @@ function TeamsContent() {
     requestId: string;
   } | null>(null);
   function fail(e: unknown) {
+    // B-927a: the re-login toast (raised where the request failed) is the whole answer; no banner on the page.
+    if (e instanceof TeamsApiError && isOwnerLoginRequired(e.status, e.code)) return;
     const kind = e instanceof TeamsApiError ? teamLoadFailure(e.status, e.code) : "error";
     if (kind === "unavailable") setUnavailable(true);
     if (kind === "notFound") setNotFound(true);

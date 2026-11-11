@@ -5,7 +5,8 @@ import {
 } from '@slopus/happy-wire';
 import type { Fastify } from '../types';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
-import { guardProjectChange, humanOnly } from '@/app/auth/ownerGuard';
+import { requestTokenKind } from '@/app/auth/tokenKind';
+import { ownerGuardMode, guardProjectChange, guardProjectCreate, guardProjectMembers, humanOnly } from '@/app/auth/ownerGuard';
 import { countProjectOp, recordProjectUxEvent, type ProjectOp } from '@/app/monitoring/projectMetrics';
 import { ProjectError } from '@/app/projects/rules';
 import {
@@ -49,7 +50,7 @@ export function projectRoutes(app: Fastify) {
         async (request, reply) => handle(reply, () => listProjects(request.userId, { includeArchived: truthy(request.query.includeArchived) })));
     app.post('/v1/projects', { ...auth, schema: { body: ProjectCreateSchema } },
         async (request, reply) => {
-            if (!guardProjectChange(request, reply, 'projects.create', { defaults: request.body.defaults })) return reply;
+            if (!guardProjectCreate(request, reply, request.body)) return reply;
             return handle(reply, async () => ({ project: await createProject(request.userId, request.body) }), 'create');
         });
 
@@ -90,7 +91,14 @@ export function projectRoutes(app: Fastify) {
     app.get('/v1/projects/:id/instructions/history', { ...auth, schema: { params } },
         async (request, reply) => handle(reply, async () => ({ revisions: await listInstructionRevisions(request.userId, request.params.id) })));
     app.post('/v1/projects/:id/members', { ...auth, schema: { params, body: ProjectMembersAddSchema } },
-        async (request, reply) => handle(reply, async () => ({ members: await addMembers(request.userId, request.params.id, request.body) }), 'member_add', request.body.via === 'lineage' || request.body.via === 'automation' ? 'daemon' : 'user'));
+        async (request, reply) => {
+            // B-927a: only a machine token can be refused here, so only then is the project's instructions looked up.
+            if (requestTokenKind(request) !== 'human' && ownerGuardMode() !== 'off') {
+                const project = (await getProject(request.userId, request.params.id).catch(() => null))?.project;
+                if (project && !guardProjectMembers(request, reply, project, request.body.via)) return reply;
+            }
+            return handle(reply, async () => ({ members: await addMembers(request.userId, request.params.id, request.body) }), 'member_add', request.body.via === 'lineage' || request.body.via === 'automation' ? 'daemon' : 'user');
+        });
     app.delete('/v1/projects/:id/members/:sessionId', { ...auth, schema: { params: params.merge(sessionParams) } },
         async (request, reply) => handle(reply, () => removeMember(request.userId, request.params.id, request.params.sessionId), 'member_remove'));
     app.post('/v1/projects/:id/attach-team', { ...auth, schema: { params, body: ProjectAttachTeamSchema } },

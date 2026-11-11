@@ -29,4 +29,11 @@ describe('B-775 team refusal messages', () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'team_size_limit', used: 2_030_000, limit: 2_000_000 }), { status: 429 })));
         await expect(teamRequest('/v1/teams/t/agent', 'POST', 'token', true, {})).rejects.toThrow('Teams request refused (team_size_limit: 2030000/2000000): a team capacity limit');
     });
+    it('names the owner sign-in and where to do it (B-927a)', () => {
+        const text = teamRefusalMessage(403, { error: 'owner_login_required' }, 'set-permission-mode');
+        expect(text).toContain('owner_login_required');
+        expect(text).toContain('signed-in web app');
+        expect(text).toContain('set-permission-mode');
+        expect(text).not.toContain('HTTP 403');
+    });
 });

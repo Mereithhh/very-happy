@@ -212,7 +212,7 @@ describe('B-927a owner guard (startApi, pglite)', () => {
             expect((await readTeam(teamId)).bots.find((b: any) => b.id === lead.botId).sessionId).toBe(attacker);
         });
 
-        it('legitimate joins stay open for a machine: same session re-attach (Lead restart / lost scope), a new root, a plain join', async () => {
+        it('legitimate joins stay open for a machine: same session re-attach (Lead restart / lost scope), the first root of a team, a plain join', async () => {
             const { teamId, leadSession, lead } = await newTeam();
             // Lead restarts: same session id, the credential is re-issued (the CLI does this when the scope file is gone).
             const again = await act(teamId, { type: 'join', name: 'Lead', sessionId: leadSession, botId: lead.botId }, machine);
@@ -220,9 +220,30 @@ describe('B-927a owner guard (startApi, pglite)', () => {
             expect(again.body.credential.botId).toBe(lead.botId);
             // Same session without a botId (Web adopt, `team_join`): finds its own seat.
             expect((await act(teamId, { type: 'join', name: 'Lead', sessionId: leadSession }, machine)).status).toBe(200);
-            // A new session joining as its own root bot.
-            expect((await act(teamId, { type: 'join', name: 'Second', sessionId: await newSession(true) }, machine)).status).toBe(200);
             // Member respawn goes through the daemon's claim, not join: covered by submittedChild in the /agent test.
+        });
+
+        it('a Lead seat with no bound session (released after the root task) cannot be taken by a machine either', async () => {
+            const { teamId, lead } = await newTeam();
+            // The state a launched Lead is left in once its root task is accepted and its session released.
+            await db.$executeRaw`UPDATE "AgentTeam" SET "state" = jsonb_set("state", '{bots}', (SELECT jsonb_agg(CASE WHEN b->>'id' = ${lead.botId} THEN jsonb_set(b, '{sessionId}', 'null'::jsonb) ELSE b END) FROM jsonb_array_elements("state"->'bots') b)) WHERE "id" = ${teamId}`;
+            const seat = () => readTeam(teamId).then((t: any) => t.bots.find((b: any) => b.id === lead.botId));
+            expect((await seat()).sessionId ?? null).toBeNull();
+            const attacker = await newSession(true);
+            expect(await act(teamId, { type: 'join', name: 'A', sessionId: attacker, botId: lead.botId }, machine)).toEqual(REFUSED);
+            expect((await seat()).sessionId ?? null).toBeNull();
+            // The owner (a person) can still seat it.
+            expect((await act(teamId, { type: 'join', name: 'Lead 2', sessionId: attacker, botId: lead.botId })).status).toBe(200);
+        });
+
+        it('a machine cannot add a second root bot, but the first root of a team (and a person) can', async () => {
+            const created = await call('POST', '/v1/teams', { name: `og-${rid()}`, machineId, requestId: rid() }, as(machine));
+            const bare = created.body.team.id as string;
+            expect((await act(bare, { type: 'join', name: 'First', sessionId: await newSession(true) }, machine)).status).toBe(200);
+            const { teamId } = await newTeam();
+            expect(await act(teamId, { type: 'join', name: 'Second', sessionId: await newSession(true) }, machine)).toEqual(REFUSED);
+            expect((await readTeam(teamId)).bots.filter((b: any) => b.root)).toHaveLength(1);
+            expect((await act(teamId, { type: 'join', name: 'Second', sessionId: await newSession(true) })).status).toBe(200);
         });
 
         it('takeover is only observed in observe mode and unchanged in off mode', async () => {
@@ -304,6 +325,30 @@ describe('B-927a owner guard (startApi, pglite)', () => {
             // The top-level switch wins: observe / off never enforce the project switch.
             await withEnv({ OWNER_GUARD_PROJECT_PERMS: 'enforce', OWNER_GUARD_MODE: 'off' }, async () => {
                 expect((await call('PATCH', `/v1/projects/${id}`, loosen, as(machine))).status).toBe(200);
+            });
+        });
+    });
+
+    describe('projects: one request must not do what the owner-only calls refuse', () => {
+        it('create with instructions, and adding sessions to a project that has instructions, are human-only', async () => {
+            expect(await call('POST', '/v1/projects', { name: 'n', requestId: rid(), instructions: 'INJECTED' }, as(machine))).toEqual(REFUSED);
+            expect((await call('POST', '/v1/projects', { name: 'n', requestId: rid() }, as(machine))).status).toBe(200);
+            const withText = (await call('POST', '/v1/projects', { name: 'n2', requestId: rid(), instructions: 'rules' })).body.project.id as string;
+            const plain = (await call('POST', '/v1/projects', { name: 'n3', requestId: rid() })).body.project.id as string;
+            const sid = await newSession(true);
+            expect(await call('POST', `/v1/projects/${withText}/members`, { sessionIds: [sid] }, as(machine))).toEqual(REFUSED);
+            expect(await call('POST', `/v1/projects/${withText}/members`, { sessionIds: [sid], via: 'explicit' }, as(machine))).toEqual(REFUSED);
+            expect((await call('POST', `/v1/projects/${withText}/members`, { sessionIds: [sid], via: 'lineage' }, as(machine))).status).toBe(200);
+            expect((await call('POST', `/v1/projects/${plain}/members`, { sessionIds: [sid] }, as(machine))).status).toBe(200);
+            expect((await call('POST', `/v1/projects/${withText}/members`, { sessionIds: [sid] })).status).toBe(200);
+        });
+
+        it('create with folders follows OWNER_GUARD_PROJECT_PERMS; an unknown value of it is enforce', async () => {
+            const body = () => ({ name: 'f', requestId: rid(), folders: [{ machineId, path: '/tmp/p', primary: true }] });
+            expect((await call('POST', '/v1/projects', body(), as(machine))).status).toBe(200);
+            for (const value of ['enforce', 'enfroce']) await withEnv({ OWNER_GUARD_PROJECT_PERMS: value }, async () => {
+                expect(await call('POST', '/v1/projects', body(), as(machine)), value).toEqual(REFUSED);
+                expect((await call('POST', '/v1/projects', body())).status, value).toBe(200);
             });
         });
     });
