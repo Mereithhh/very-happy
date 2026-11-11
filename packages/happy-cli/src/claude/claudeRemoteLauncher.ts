@@ -540,6 +540,8 @@ export async function claudeRemoteLauncher(
         uuid?: string;
         /** Already went through `finalize` once (a Query handed it back, B-853, or a redelivery): replayed verbatim. */
         finalized?: boolean;
+        /** B-924: the parked batch's prompt localIds, so its replayed turn still knows who sent it (turn origin, board). */
+        sourceIds?: string[];
     };
 
     try {
@@ -634,7 +636,7 @@ export async function claudeRemoteLauncher(
                         // B-645: the project prefix / digest is added to exactly what reaches
                         // the SDK, and `onPromptFinalized` records that same string (the JSONL
                         // dedupe compares against what the SDK writes).
-                        // B-766: localIds of the batch being finalized (queue path); a parked replay has none.
+                        // B-766: localIds of the batch being finalized (queue path, or a parked replay's stored ones — B-924).
                         let batchSourceIds: string[] | undefined;
                         const finalize = async (prompt: string): Promise<string> => {
                             lastRawPrompt = prompt;
@@ -651,6 +653,8 @@ export async function claudeRemoteLauncher(
                         };
                         const parked = modeGate.takeParked();
                         if (parked) {
+                            // B-924: a message parked for a mode change (e.g. the owner switched model) keeps its localIds.
+                            batchSourceIds = parked.sourceIds;
                             permissionHandler.handleModeChange(parked.mode.permissionMode);
                             if (parked.finalized) {
                                 if (typeof parked.message === 'string') onPromptFinalized?.(parked.message);
@@ -693,6 +697,7 @@ export async function claudeRemoteLauncher(
                                         : msg.message,
                                     mode: msg.mode,
                                     uuid: promptUuidFor(msg.sourceIds),
+                                    sourceIds: msg.sourceIds,
                                 });
                                 return null;
                             }

@@ -122,3 +122,29 @@ describe('B-924 (QA P2-5) turn-end pushes only for the owner\'s own turns', () =
         expect(silentMainAgentTurn(false, 'automation')).toBe(false)
     })
 })
+
+describe('B-924 (from #944 e2e) the owner switching model mid-conversation is still the owner', () => {
+    it('a prompt parked for a mode change and replayed keeps its localIds → owner turn (tracker view)', () => {
+        const t = createTurnOriginTracker()
+        // The Web sends 「收尾 X」 with a new model: routed (sentFrom web), parked, the launch restarts, then replayed.
+        t.onUserMessage({ localId: 'u-model-switch', sentFrom: 'web' })
+        t.onTurnStart(['u-model-switch'])
+        expect(t.current()).toBe('owner')
+        // Without the stored ids the replay would start a turn with none — and refuse the owner.
+        t.onTurnStart(undefined)
+        expect(t.current()).toBe('unknown')
+    })
+
+    it('claudeRemoteLauncher stores the batch localIds when it parks and restores them before finalizing the replay', async () => {
+        const { readFileSync } = await import('node:fs')
+        const { join } = await import('node:path')
+        const src = readFileSync(join(__dirname, '..', 'claude', 'claudeRemoteLauncher.ts'), 'utf8')
+        const replay = src.slice(src.indexOf('const parked = modeGate.takeParked();'), src.indexOf('await rewindReconciler.settled('))
+        expect(replay).toMatch(/if \(parked\) \{\s*\/\/[^\n]*\n\s*batchSourceIds = parked\.sourceIds;/)
+        // restored before the replay is finalized (finalize emits turn-started with batchSourceIds)
+        expect(replay.indexOf('batchSourceIds = parked.sourceIds;')).toBeLessThan(replay.indexOf('await finalize(parked.message)'))
+        const park = src.slice(src.indexOf("logger.debug('[remote]: mode has changed, pending message');"), src.indexOf('modeGate.adopt(msg.mode);'))
+        expect(park).toMatch(/modeGate\.park\(\{[\s\S]*uuid: promptUuidFor\(msg\.sourceIds\),\s*sourceIds: msg\.sourceIds,\s*\}\);/)
+        expect(src).toContain("onTurnStart: (ids) => session.client.emit('turn-started', ids),\n                                sourceIds: batchSourceIds,")
+    })
+})
