@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-11-cli-main-agent-wrapup-handoff-0-2-211',
+    cliVersion: '0.2.211',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11k.title',
+    summaryKey: 'changelog.releases.nov11k.summary',
+    itemKeys: ['changelog.releases.nov11k.mainAgent', 'changelog.releases.nov11k.wrapup'],
+  },
+  {
     id: '2026-11-11-session-wrap-up-and-handoff',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,
