@@ -1,0 +1,203 @@
+import { z } from 'zod';
+
+/**
+ * Account settings (`/v1/account/settings`): one blob, encrypted client-side
+ * with the account key (NaCl secretbox), CAS on `expectedVersion`. Shared by
+ * the Web client and `very-happy settings` (B-920) so both read and write the
+ * same shape.
+ *
+ * Synced fields carry NO zod `.default()` (AGENTS rule 1): a default would be
+ * injected into every partial parse of a pending blob and POSTed back over the
+ * server's value. Defaults live in the Web's `settingsDefaults`.
+ *
+ * The structure is flat and forward/backward compatible: a client only touches
+ * the fields it knows and keeps the rest.
+ */
+
+/** Current schema version for compatibility detection. */
+export const ACCOUNT_SETTINGS_SCHEMA_VERSION = 2;
+
+export const AgentDefaultOverrideSchema = z.object({
+    permissionMode: z.string().optional(),
+    modelMode: z.string().optional(),
+    effortLevel: z.string().optional(),
+}).passthrough();
+
+export const AgentDefaultOverridesSchema = z.object({
+    claude: AgentDefaultOverrideSchema.optional(),
+    codex: AgentDefaultOverrideSchema.optional(),
+    gemini: AgentDefaultOverrideSchema.optional(),
+    openclaw: AgentDefaultOverrideSchema.optional(),
+    // `.optional()`, never `.default()` (rule 1). Old web bundles don't know the
+    // key but `.passthrough()` keeps it when they re-POST the object.
+    pi: AgentDefaultOverrideSchema.optional(),
+}).passthrough().default({});
+
+export type AgentDefaultOverride = z.infer<typeof AgentDefaultOverrideSchema>;
+export type AgentDefaultOverrides = z.infer<typeof AgentDefaultOverridesSchema>;
+
+export const AccountSettingsSchema = z.object({
+    // Schema version for compatibility detection
+    schemaVersion: z.number().default(ACCOUNT_SETTINGS_SCHEMA_VERSION).describe('Settings schema version for compatibility checks'),
+
+    viewInline: z.boolean().describe('Whether to view inline tool calls'),
+    inferenceOpenAIKey: z.string().nullish().describe('OpenAI API key for inference'),
+    expandTodos: z.boolean().describe('Whether to expand todo lists'),
+    showLineNumbers: z.boolean().describe('Whether to show line numbers in diffs'),
+    showLineNumbersInToolViews: z.boolean().describe('Whether to show line numbers in tool view diffs'),
+    wrapLinesInDiffs: z.boolean().describe('Whether to wrap long lines in diff views'),
+    diffStyle: z.enum(['unified', 'split']).describe('Diff view style (split is web-only)'),
+    analyticsOptOut: z.boolean().describe('Whether to opt out of anonymous analytics'),
+    experiments: z.boolean().describe('Whether to enable experimental features'),
+    alwaysShowContextSize: z.boolean().describe('Always show context size in agent input'),
+    agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
+    avatarStyle: z.string().describe('Avatar display style'),
+    showFlavorIcons: z.boolean().describe('Whether to show AI provider icons in avatars'),
+
+    hideInactiveSessions: z.boolean().describe('Hide inactive sessions in the main list'),
+    expResumeSession: z.boolean().describe('Enable experimental session resume feature'),
+    fileDiffsSidebar: z.boolean().describe('Show the file diffs sidebar next to the chat on desktop'),
+    groupToolCalls: z.boolean().describe('Collapse consecutive tool calls into grouped containers in chat'),
+    expImageUpload: z.boolean().describe('Enable experimental image upload in chat'),
+    reviewPromptAnswered: z.boolean().describe('Whether the review prompt has been answered'),
+    reviewPromptLikedApp: z.boolean().nullish().describe('Whether user liked the app when asked'),
+    voiceAssistantLanguage: z.string().nullable().describe('Preferred language for voice assistant (null for auto-detect)'),
+    // Voice assistant (B-051). Synced; NO zod .default() — the ghost-pending
+    // footgun documented at promptPresets applies to every synced field.
+    // Defaults live in settingsDefaults only.
+    voiceTtsVoiceId: z.string().nullable().describe('TTS voice id for assistant replies (null = server default)'),
+    voiceReadTextReplies: z.boolean().describe('Also read replies to typed (non-voice) messages aloud'),
+    assistantMachineId: z.string().nullable().describe('Machine hosting the assistant meta-agent session (null = sole online machine)'),
+    // NO zod .default(true) — ghost-pending footgun (see promptPresets note).
+    // Default (true = skip approvals, current behavior) lives in settingsDefaults.
+    assistantSkipPermissions: z.boolean().describe('Assistant sessions skip tool permission approvals (off = spawn with permissionMode default so sensitive actions need manual approval)'),
+    // NO zod .default(true) — ghost-pending footgun (see promptPresets note).
+    // Default (true = play cues) lives in settingsDefaults.
+    voicePttSound: z.boolean().describe('Play short audio cues when hold-to-talk starts / sends / cancels (B-092)'),
+    voiceCustomAgentId: z.string().nullable().describe('Custom ElevenLabs agent ID (null to use Happy default)'),
+    voiceBypassToken: z.boolean().describe('Bypass Happy server token and connect directly to ElevenLabs (requires custom agent ID)'),
+    preferredLanguage: z.string().nullable().describe('Preferred UI language (null for auto-detect from device locale)'),
+    recentMachinePaths: z.array(z.object({
+        machineId: z.string(),
+        path: z.string()
+    })).describe('Last 10 machine-path combinations, ordered by most recent first'),
+    // User snippets — synced across devices (same mechanism as recentMachinePaths:
+    // version-gated full-object writes with field-level merge).
+    // CRITICAL: do NOT add .default([]) here. loadPendingSettings() runs the
+    // stored pending blob through SettingsSchema.partial().parse(), and zod
+    // injects a value for every field that carries a .default() — even when the
+    // key was never in the blob. That turns an empty pending {} into
+    // {promptPresets: [], terminalCommands: []} on every reload, which then gets
+    // POSTed and clobbers the server's saved snippets with []. recentMachinePaths
+    // has no default for exactly this reason; mirror it. The default value is
+    // supplied by settingsDefaults below + settingsParse's defaults merge.
+    // Unified shortcuts (B-052): one list serves the chat composer AND the web
+    // terminal. `run: true` = the terminal menu executes the text on select
+    // (paste + Enter); absent/false = insert without Enter everywhere. The
+    // field is `.optional()` — NOT `.default(false)` — for the ghost-pending
+    // reason above AND so old-bundle blobs round-trip without a schema fight.
+    promptPresets: z.array(z.object({
+        id: z.string(),
+        title: z.string(),
+        text: z.string(),
+        run: z.boolean().optional(),
+    })).describe('Saved shortcuts for the chat composer and web terminal (run=true → terminal executes on select)'),
+    // LEGACY (B-052): superseded by promptPresets entries with run:true. Kept
+    // in the schema for wire compatibility (old bundles still read/write it,
+    // and field-level LWW needs the key to exist so the migration can clear
+    // it), but no UI writes it anymore — the client migrates any non-empty
+    // value into promptPresets on load and writes [] back.
+    terminalCommands: z.array(z.object({
+        id: z.string(),
+        title: z.string(),
+        command: z.string(),
+    })).describe('Legacy quick commands for the web terminal; migrated into promptPresets (run:true)'),
+    // Auto-run command for NEWLY CREATED web terminals (daemon skips it on any
+    // reattach). Empty string = disabled. Synced; NO zod .default() (same
+    // ghost-pending footgun as above) — the default lives in settingsDefaults.
+    // Kept as a plain string (not a boolean+string pair) so a future per-machine
+    // map can supersede it without a schema fight.
+    terminalStartupCommand: z.string().describe('Command auto-run when a new web terminal is created (empty = disabled)'),
+    // B-334: MRU of startup commands offered when opening a terminal in a
+    // directory (`claude` / `pi` / …). terminalStartupCommand above stays THE
+    // default; this is only the switcher's memory. Synced; no zod .default()
+    // (same ghost-pending footgun as above).
+    terminalStartupPresets: z.array(z.object({
+        id: z.string(),
+        command: z.string(),
+        label: z.string().optional(),
+    })).describe('Recently used web-terminal startup commands, most recent first'),
+    // User-managed default-directory presets for new session creation. Synced;
+    // no zod .default() (same footgun as recentMachinePaths/promptPresets).
+    sessionPathPresets: z.array(z.object({
+        id: z.string(),
+        path: z.string(),
+        label: z.string().optional(),
+    })).describe('Saved working-directory presets for new sessions'),
+    // Legacy "remember last selection" fields. Kept in the schema for wire
+    // compatibility with old clients/stored blobs, but deliberately NOT read
+    // anywhere: new-session defaults come from agentDefaultOverrides, which is
+    // updated by both Settings → Agents and the conversation mode selectors.
+    lastUsedAgent: z.string().nullable().describe('Legacy; unused. New sessions use newSessionAgent'),
+    lastUsedPermissionMode: z.string().nullable().describe('Legacy; unused. New sessions use agentDefaultOverrides'),
+    lastUsedModelMode: z.string().nullable().describe('Legacy; unused. New sessions use agentDefaultOverrides'),
+    // Quick new-chat flow. Synced; NO zod .default() (ghost-pending footgun
+    // above) — defaults live in settingsDefaults.
+    newSessionAgent: z.string().describe('Agent used by quick new-chat creation (claude/codex/gemini/openclaw/pi)'),
+    newSessionAlwaysAsk: z.boolean().describe('Always open the full options dialog on new chat instead of quick-creating'),
+    agentDefaultOverrides: AgentDefaultOverridesSchema.describe('User-selected agent defaults. Missing values use code defaults and are not sent as agent metadata.'),
+    // B-844: set once the stored model overrides that equalled the then-latest
+    // model were turned into "follow latest" (agentDefaults.ts
+    // migrateFollowLatestOverrides). null = not migrated yet. No .default() (rule 1).
+    modelFollowLatestMigratedAt: z.number().nullable().describe('Epoch ms the follow-latest model migration ran (null = not yet)'),
+    // B-908: the user switched Claude's 1M context off in a picker — picks and
+    // new sessions stop turning it on by themselves (switching it on clears
+    // this). Account-wide so a phone and a desktop agree. No .default() (rule 1).
+    claudeLongContextOptOut: z.boolean().describe('User switched Claude 1M context off: do not turn it on automatically'),
+    // Legacy sidebar pinned rows (superseded by sidebarOrder). Kept in the
+    // schema for wire compatibility with old clients/stored blobs, and still
+    // read/written ONLY while sidebarOrder is empty (pre-materialization):
+    // it drives the legacy pinned-on-top display and is the migration input
+    // for the first drag's materialization. Once sidebarOrder is non-empty
+    // this field is never written again (same treatment as lastUsed*).
+    pinnedRows: z.array(z.object({
+        key: z.string(),
+    })).describe('Legacy sidebar pinned rows; superseded by sidebarOrder'),
+    // FULL manual sidebar order. Each entry maps a row key (session id, or
+    // `t:<terminalId>` for a web terminal) to a lexicographic fractional
+    // order key (boardTaskOps.orderKeyBetween). Rows without an entry render
+    // on top (newest first) until dragged; empty array = manual ordering not
+    // materialized yet (legacy pinnedRows display still applies). Merge is
+    // FIELD-level last-write-wins: two devices dragging concurrently
+    // overwrite each other's whole table — accepted, drags are a
+    // low-frequency single-user gesture and the loser only reverts to a
+    // coherent earlier order (never corrupts). Synced; NO zod .default()
+    // (ghost-pending footgun above) — the default lives in settingsDefaults.
+    sidebarOrder: z.array(z.object({
+        key: z.string(),
+        order: z.string(),
+    })).describe('Sidebar manual order: row key → fractional order key; rows without an entry render on top'),
+    // Which order the 列表 view renders in. 'recent' (the default) sorts every
+    // row — terminals and chats MIXED — by last activity, newest on top;
+    // 'manual' hands the list back to `sidebarOrder` above. The two are
+    // independent fields on purpose: switching to 'recent' never clears
+    // `sidebarOrder`, so switching back restores the hand-made arrangement
+    // exactly. A drag/move gesture in 'recent' mode flips this to 'manual'
+    // (the gesture IS the manual intent) and materializes the order in one
+    // write. Synced; NO zod .default() (ghost-pending footgun above) — the
+    // default lives in settingsDefaults, and any unknown/missing value is
+    // read as 'recent' (sidebarRecentSort.resolveSidebarSort).
+    sidebarSort: z.enum(['recent', 'manual']).describe('Sidebar 列表 order: recent activity (default) or the manual sidebarOrder'),
+    // B-836 feedback prompt card — synced so 以后再说 / 不再提示 / a submission on
+    // one device holds on the others (app/feedback/feedbackPolicy.ts). Flat,
+    // field-level LWW; NO zod .default() (ghost-pending footgun) — defaults
+    // live in settingsDefaults.
+    feedbackActiveDays: z.number().int().min(0).describe('Distinct local days the app was opened (counts toward the first feedback prompt)'),
+    feedbackLastActiveDay: z.string().nullable().describe('Local day (YYYY-MM-DD) last counted in feedbackActiveDays'),
+    feedbackPromptShownAt: z.number().nullable().describe('Epoch ms the feedback prompt card last showed'),
+    feedbackPromptOptOut: z.boolean().describe('Never show the feedback prompt card again (the form stays in Settings)'),
+    feedbackLastSubmittedAt: z.number().nullable().describe('Epoch ms of the last feedback submission'),
+});
+
+export type AccountSettings = z.infer<typeof AccountSettingsSchema>;
+export type AccountSettingsKey = keyof AccountSettings;

@@ -3,7 +3,7 @@
  * Provides endpoints for listing sessions, stopping sessions, and daemon shutdown
  */
 
-import { AgentProfilesStateSchema, type AgentProfilesState } from '@slopus/happy-wire';
+import { AgentProfilesStateSchema, MachineSettingsWritableSchema, type AgentProfilesState } from '@slopus/happy-wire';
 import fastify, { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { OwnerRestartResult } from './idleRestart';
@@ -137,7 +137,8 @@ export function startDaemonControlServer({
   requestIdleRestart,
   getIdleRestartStatus,
   requestOwnerRestart,
-  getAgentProfiles
+  getAgentProfiles,
+  setMachineSetting
 }: {
   /** Fresh per-process bearer token persisted in the private daemon state. */
   controlToken: string;
@@ -220,6 +221,8 @@ export function startDaemonControlServer({
    * a new route, so an old daemon can never take it as an immediate restart).
    */
   requestOwnerRestart?: (body: { sessionId: string; when: 'idle' | 'now' }) => Promise<OwnerRestartReply>;
+  /** B-920: `very-happy settings set --scope machine` (validated against the wire schema here and in the daemon). Absent → 404, the CLI writes the file under the lock. */
+  setMachineSetting?: (key: string, value: unknown) => Promise<void>;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -833,6 +836,26 @@ export function startDaemonControlServer({
       }
       return { status: 'ok' as const };
     });
+
+    // B-920: one machine setting through the daemon (serialized with its own writes).
+    if (setMachineSetting) {
+      typed.post('/machine-setting', {
+        schema: {
+          body: z.object({ key: z.string().min(1).max(64), value: z.unknown() }),
+          response: { 200: z.object({ ok: z.literal(true) }), 400: z.object({ error: z.string() }), 500: z.object({ error: z.string() }) },
+        },
+      }, async (request, reply) => {
+        const parsed = MachineSettingsWritableSchema.strict().safeParse({ [request.body.key]: request.body.value });
+        if (!parsed.success) { reply.code(400); return { error: 'invalid_value' }; }
+        try {
+          await setMachineSetting(request.body.key, (parsed.data as Record<string, unknown>)[request.body.key]);
+          return { ok: true as const };
+        } catch (error) {
+          reply.code(500);
+          return { error: error instanceof Error ? error.message.slice(0, 200) : 'machine_setting_failed' };
+        }
+      });
+    }
 
     // B-497: who else is running here, and what they touched lately. Feeds
     // `session_peers` / `sessions peers` and the liveness check before a

@@ -15,9 +15,10 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, open, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { approvalClaims, cardFaceHash, clipBytes, DISPATCH_CARD_KEY_PREFIX, isReservedCardKey, ownerDecision, writePrivateJson as writePrivate, type BoardItemView } from '@/attention/ownerApproval'
 import type { AssistantToolRegistrar } from '../assistantTools'
 import { effectiveRisk, isRiskLevel, RISK_LEVELS, type OneShotRunner, type RiskLevel } from './risk'
 
@@ -45,11 +46,8 @@ const PAYLOAD_FIELD: Readonly<Record<string, string>> = {
 export const DISPATCH_APPROVED_TOOL = 'dispatch_approved'
 const BOARD_WRITE_TOOLS = new Set(['owner_board_post', 'owner_board_update', 'owner_board_resolve'])
 
-/** QA80 P3: the reserved prefix matches after trim + lowercase (`  MAIN-AGENT-DISPATCH:x` is reserved too). */
-export function isReservedCardKey(key: unknown): boolean {
-    return typeof key === 'string' && key.trim().toLowerCase().startsWith(DISPATCH_CARD_KEY_PREFIX)
-}
-export const DISPATCH_CARD_KEY_PREFIX = 'main-agent-dispatch:'
+// The card face, owner check and single-use claim are shared with `very-happy settings` (attention/ownerApproval.ts).
+export { cardFaceHash, DISPATCH_CARD_KEY_PREFIX, isReservedCardKey, type BoardItemView }
 export const RECEIPT_MAX_CHARS = 400
 
 function str(value: unknown): string { return typeof value === 'string' ? value : '' }
@@ -82,28 +80,6 @@ export function receipt(value: Record<string, unknown>): string {
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError: boolean }
 const ok = (value: Record<string, unknown>): ToolResult => ({ content: [{ type: 'text', text: receipt(value) }], isError: false })
 const fail = (value: Record<string, unknown>): ToolResult => ({ content: [{ type: 'text', text: receipt({ ok: false, ...value }) }], isError: true })
-
-export type BoardItemView = {
-    id: string; key: string | null; state: string; ownerChoice: string | null; resolvedBy: string | null
-    /** Card face (what the owner saw when choosing). */
-    title: string; bodyMd: string | null; options: Array<{ id: string; label: string }> | null
-}
-
-/**
- * QA77 P1: the approval is bound to the card FACE the owner chose on. Hash of
- * {key, title, body_md, options[].id+label} as the server stored it at post
- * time; dispatch_approved re-reads the card and refuses on any difference
- * (a rewritten card — swapped labels, a softer body — is `card_tampered`).
- */
-export function cardFaceHash(item: Pick<BoardItemView, 'key' | 'title' | 'bodyMd' | 'options'>): string {
-    const face = {
-        key: item.key ?? null,
-        title: item.title ?? '',
-        body_md: item.bodyMd ?? '',
-        options: (item.options ?? []).map(o => ({ id: String(o.id), label: String(o.label) })),
-    }
-    return createHash('sha256').update(JSON.stringify(face)).digest('hex')
-}
 
 export type DispatchBoard = {
     /** Post (upsert by key) the decision card; resolves to the item id. Throws when the board is unavailable. */
@@ -149,15 +125,6 @@ function firstLine(text: string, max: number): string {
     return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
 
-/** Clip a string to a UTF-8 byte budget. */
-function clipBytes(text: string, bytes: number): string {
-    const enc = new TextEncoder()
-    if (enc.encode(text).length <= bytes) return text
-    let out = text.slice(0, bytes)
-    while (enc.encode(out).length > bytes - 3) out = out.slice(0, -1)
-    return out + '…'
-}
-
 export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'>, payload: string) {
     const head = firstLine(payload, 60) || pending.toolName
     return {
@@ -190,12 +157,6 @@ export function withApprovalPrefix(toolName: string, args: Record<string, unknow
         return { ...args, action: { ...(args.action as object), prompt: `${line}\n\n${(args.action as any).prompt}` } }
     }
     return args
-}
-
-async function writePrivate(path: string, value: unknown): Promise<void> {
-    const tmp = `${path}.${randomUUID()}.tmp`
-    await writeFile(tmp, JSON.stringify(value), { mode: 0o600 })
-    await rename(tmp, path)
 }
 
 const APPROVAL_ID_RE = /^[0-9a-f-]{36}$/i
@@ -251,10 +212,9 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         if (!deps.board) return fail({ error: 'board_unavailable' })
         let item: BoardItemView | null
         try { item = await deps.board.findById(pending.boardItemId) } catch { return fail({ error: 'board_unavailable' }) }
-        if (!item || item.key !== `${DISPATCH_CARD_KEY_PREFIX}${approvalId}`) return fail({ error: 'approval_not_found' })
-        if (item.state === 'open' || item.state === 'in_progress') return fail({ error: 'awaiting_decision', boardItemId: item.id })
-        if (cardFaceHash(item) !== pending.cardSha256) return fail({ error: 'card_tampered', boardItemId: item.id })
-        if (item.resolvedBy !== 'owner') return fail({ error: 'not_approved', boardItemId: item.id })
+        const decision = ownerDecision(item, { key: `${DISPATCH_CARD_KEY_PREFIX}${approvalId}`, cardSha256: pending.cardSha256 })
+        if (!decision.ok) return fail({ error: decision.error, ...(decision.boardItemId ? { boardItemId: decision.boardItemId } : {}) })
+        item = decision.item
         if (canonicalArgsHash(pending.toolName, pending.args) !== pending.argsSha256) return fail({ error: 'approval_mismatch' })
         // QA77 #4: one dispatch per approvalId, even under concurrent calls (O_EXCL marker; rolled back on failure).
         const claimed = await claim(approvalId)
@@ -283,12 +243,7 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         }
     }
 
-    const inflightPath = (id: string) => join(deps.pendingDir, `${id}.inflight`)
-    async function claim(id: string): Promise<boolean> {
-        try { const fh = await open(inflightPath(id), 'wx', 0o600); await fh.close(); return true }
-        catch (error: any) { if (error?.code === 'EEXIST') return false; throw error }
-    }
-    async function release(id: string): Promise<void> { await unlink(inflightPath(id)).catch(() => {}) }
+    const { claim, release } = approvalClaims(deps.pendingDir)
 
     /** The approval whose pending record names this card (the gate's own records only). */
     async function approvalIdForCard(id: string): Promise<string | null> {

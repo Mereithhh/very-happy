@@ -64,7 +64,7 @@ import { MODEL_CONFIG_CAPABILITY_VERSION } from '@/modules/modelConfig/types';
 import { commandOnPath } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { startWebPanelsSync } from '@/webPanels/webPanelsSync';
-import { readSettings, updateSettings, writeSettings, readCredentials, rewriteCredentialsForRelay } from '@/persistence';
+import { readSettings, updateSettings, readCredentials, rewriteCredentialsForRelay } from '@/persistence';
 import { applyServerMigration } from './serverMigration';
 import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
 import { decideHandover, type HandoverPreflight } from './handoverPreflight';
@@ -187,6 +187,9 @@ export async function startDaemon(): Promise<void> {
   // the same one on every heartbeat).
   let cliUpdateStateRef: CliUpdateState | null = null;
   let lastHandoverHold: string | null = null;
+  // B-920: `very-happy settings set --scope machine` keys whose value the daemon also holds in memory;
+  // filled in where each setting's own handler is wired. Other keys: the locked file write.
+  const machineSettingSetters = new Map<string, (value: unknown) => Promise<void>>();
   let claudeCredentialStoreSetting: 'auto' | 'file' = (await readSettings()).claudeCredentialStore === 'file' ? 'file' : 'auto';
   // B-587: machine-local idle hibernation threshold (undefined = default 6h, 0 = off).
   let agentHibernationSetting: number | undefined = (await readSettings()).agentHibernationIdleMs;
@@ -2057,6 +2060,12 @@ export async function startDaemon(): Promise<void> {
       restartSession, // B-794: `very-happy session provider`
       exitTeamMode: exitTeamModeForSession, // B-877: `very-happy teams exit`
       getAgentProfiles: () => accountServiceRef?.state() ?? null, // B-850a: `very-happy account list`
+      setMachineSetting: async (key, value) => {
+        logger.debug(`[DAEMON RUN] machine setting ${key} (very-happy settings)`);
+        const setter = machineSettingSetters.get(key);
+        if (setter) await setter(value);
+        else await updateSettings((current) => ({ ...current, [key]: value }));
+      },
       requestShutdown: () => requestShutdown('happy-cli'),
       onHappySessionWebhook,
       onSessionStateEvent,
@@ -2252,14 +2261,15 @@ export async function startDaemon(): Promise<void> {
       credentialSource: daemonClaudeCredentials.source,
       getCredentialStore: () => claudeCredentialStoreSetting,
       setCredentialStore: async (store) => {
-        const settings = await readSettings();
-        await writeSettings({ ...settings, claudeCredentialStore: store });
+        // B-920: under the settings lock, like every other writer of settings.json.
+        await updateSettings((current) => ({ ...current, claudeCredentialStore: store }));
         claudeCredentialStoreSetting = store;
       },
       publish: (state) => apiMachine.setClaudeAuthState(state),
       lineage,
     });
     claudeAuthServiceRef = claudeAuthService;
+    machineSettingSetters.set('claudeCredentialStore', async (value) => { await claudeAuthService.setStore(value as 'auto' | 'file'); });
     apiMachine.setClaudeAuthHandlers({
       probe: () => claudeAuthService.probe('rpc', true),
       repair: (action) => claudeAuthService.repair(action),
@@ -2279,29 +2289,35 @@ export async function startDaemon(): Promise<void> {
     }));
 
     // B-587: the machine page's「空闲休眠」setting.
-    apiMachine.setAgentHibernationHandlers(resolveIdleMs(agentHibernationSetting), async (requested) => {
+    const setAgentHibernation = async (requested: number) => {
       const value = requested <= 0 ? 0 : settingIdleMs(requested);
       await updateSettings((current) => ({ ...current, agentHibernationIdleMs: value }));
       agentHibernationSetting = value;
       daemonHibernation.invalidateBindings();
       return resolveIdleMs(agentHibernationSetting);
-    });
+    };
+    apiMachine.setAgentHibernationHandlers(resolveIdleMs(agentHibernationSetting), setAgentHibernation);
+    machineSettingSetters.set('agentHibernationIdleMs', async (value) => { await setAgentHibernation(value as number); });
     // B-852: the machine page's「会话自动更新」switch.
-    apiMachine.setAutoRestartHandlers(autoRestartSetting, async (enabled) => {
+    const setAutoRestart = async (enabled: boolean) => {
       await updateSettings((current) => ({ ...current, autoRestartSessions: enabled }));
       autoRestartSetting = enabled;
       autoRestartScheduler.sweep();
       return autoRestartSetting;
-    });
+    };
+    apiMachine.setAutoRestartHandlers(autoRestartSetting, setAutoRestart);
+    machineSettingSetters.set('autoRestartSessions', async (value) => { await setAutoRestart(value as boolean); });
     setTimeout(() => autoRestartScheduler.sweep(), 5_000).unref?.();
     // B-894: the machine page's「自动更新 agent」switch; the updater is created with the harness installer below.
     let agentAutoUpdater: ReturnType<typeof createAgentAutoUpdater> | null = null;
-    apiMachine.setAgentAutoUpdateHandlers(agentAutoUpdateSetting, async (enabled) => {
+    const setAgentAutoUpdate = async (enabled: boolean) => {
       await updateSettings((current) => ({ ...current, agentAutoUpdate: enabled }));
       agentAutoUpdateSetting = enabled;
       void agentAutoUpdater?.tick();
       return agentAutoUpdateSetting;
-    });
+    };
+    apiMachine.setAgentAutoUpdateHandlers(agentAutoUpdateSetting, setAgentAutoUpdate);
+    machineSettingSetters.set('agentAutoUpdate', async (value) => { await setAgentAutoUpdate(value as boolean); });
 
     // B-850a: accounts. Registered before connect so the connect snapshot
     // carries `agentProfiles` (= the capability). A `very-happy account …`

@@ -629,3 +629,20 @@ export async function checkDaemonHibernation(
     ...(result.keepAwake === true ? { keepAwake: true } : {}),
   };
 }
+
+/**
+ * B-920: `very-happy settings set --scope machine` through the running daemon,
+ * so the write is serialized with the daemon's own and in-memory settings
+ * (hibernation, auto-restart, agent auto-update, credential store) apply at once.
+ * `no-daemon` (none running, or an older daemon without the route) → the caller
+ * writes the file under the settings lock itself.
+ */
+export async function setMachineSettingViaDaemon(key: string, value: unknown): Promise<'ok' | 'no-daemon' | string> {
+  const state = await readDaemonState();
+  if (!state?.httpPort) return 'no-daemon';
+  try { process.kill(state.pid, 0); } catch { return 'no-daemon'; }
+  const result = await daemonPost('/machine-setting', { key, value });
+  if (result?.ok === true) return 'ok';
+  const error = typeof result?.error === 'string' ? result.error : 'unknown';
+  return /HTTP 404|Not Found/i.test(error) ? 'no-daemon' : error;
+}

@@ -18,6 +18,9 @@ describe('board actions (B-766)', () => {
         const card = { ...base, id: 'card-1', source: 'agent', key: 'main-agent-dispatch:6b1767e6-9190-442c-b32e-bcc7ae7deeac', title: '主 agent 想派活（external）：私信 A',
             options: [{ id: 'approve', label: '批准执行' }, { id: 'draft', label: '只出草稿' }, { id: 'drop', label: '放弃' }] };
         expect(choiceMessage(card, 'approve', boardCopy(true))).toBe('［汇报板 · 决定］主 agent 想派活（external）：私信 A → 批准执行 (dispatch_approved approvalId=6b1767e6-9190-442c-b32e-bcc7ae7deeac boardItemId=card-1)');
+        // B-920: a settings card names the card id for --approved
+        const settings = { ...base, id: 'card-9', source: 'agent', key: 'settings-change:abc', title: '要改设置：defaults.permissionMode（project）', options: [{ id: 'approve', label: '批准写入' }, { id: 'drop', label: '放弃' }] };
+        expect(choiceMessage(settings, 'approve', boardCopy(true))).toBe('［汇报板 · 决定］要改设置：defaults.permissionMode（project） → 批准写入 (very-happy settings set … --approved card-9)');
         // other cards are unchanged
         expect(choiceMessage({ ...base, id: 'd1', key: 'issue-review:1' }, 'B', boardCopy(true))).toBe('［汇报板 · 决定］今天发还是明早发？ → B. 明早');
     });

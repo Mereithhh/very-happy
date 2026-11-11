@@ -3502,6 +3502,12 @@ export const zhHans: TranslationStructure = {
                 images: '新会话页（会话还没建好时）和新建会话对话框里都能粘贴、拖入或选择图片（手机也能选图）。会话启动后自动上传，和文字一起交给 Claude 或 Codex；只发图片也行。启动中刷新页面，图片也会保留并继续发送。',
                 noSilentDrop: '不再悄悄丢消息：文件发不出去时（上传失败、会话不支持这些文件）会说明原因，文字和文件放回输入框，再点发送即可重试。',
             },
+            nov11m: {
+                title: 'agent 能改设置了，危险的先问你',
+                summary: '`very-happy settings` 让 agent 读改账号、本机和项目设置；放宽安全的改动等你拍板。',
+                command: '`very-happy settings list / get / set`：显示与语言、新会话默认 agent / 模型 / effort、本机休眠与自动更新、项目默认值。只认列出的键，按 Web 同一套规则校验（需要新版 CLI）。',
+                approval: '放宽权限或沙箱、改服务器和凭据、会自己执行的命令，先在会话汇报板上出决定卡；你批准的就是那一个值，只写一次。',
+            },
             nov11s: {
                 title: '侧栏入口带上了名字',
                 summary: '「新建会话」下面那排图标改成了一列带文字的入口，不用悬停也知道是什么。',

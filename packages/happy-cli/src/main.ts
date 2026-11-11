@@ -589,6 +589,14 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exitCode = 1;
     }
     return;
+  } else if (subcommand === 'settings') {
+    // B-920: read / change Very Happy settings (high-risk changes need the owner's decision card).
+    try {
+      process.exitCode = await (await import('@/commands/settings')).handleSettingsCommand(args.slice(1))
+    } catch (error) {
+      failCommand(error)
+    }
+    return;
   } else if (subcommand === 'skill') {
     // B-917: Very Happy's own capability skill (progressive disclosure).
     try {

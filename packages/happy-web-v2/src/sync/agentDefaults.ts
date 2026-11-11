@@ -27,26 +27,14 @@ import {
     type LatestModelTable,
     readLongContextUnsupported,
     LONG_CONTEXT_MARKER,
+    AgentDefaultOverrideSchema,
+    AgentDefaultOverridesSchema,
 } from '@slopus/happy-wire';
 export { CLAUDE_OPUS_55_MODEL, CLAUDE_OPUS_55_CAPABILITY, supportsClaudeOpus55, CLAUDE_FABLE_52_MODEL, CLAUDE_FABLE_52_CAPABILITY, supportsClaudeFable52, normalizeAgentKey };
 export type { AgentKey, AgentDefaultConfig };
 export const agentKeys = AGENT_KEYS;
 
-export const AgentDefaultOverrideSchema = z.object({
-    permissionMode: z.string().optional(),
-    modelMode: z.string().optional(),
-    effortLevel: z.string().optional(),
-}).passthrough();
-
-export const AgentDefaultOverridesSchema = z.object({
-    claude: AgentDefaultOverrideSchema.optional(),
-    codex: AgentDefaultOverrideSchema.optional(),
-    gemini: AgentDefaultOverrideSchema.optional(),
-    openclaw: AgentDefaultOverrideSchema.optional(),
-    // `.optional()`, never `.default()` (rule 1). Old web bundles don't know the
-    // key but `.passthrough()` keeps it when they re-POST the object.
-    pi: AgentDefaultOverrideSchema.optional(),
-}).passthrough().default({});
+export { AgentDefaultOverrideSchema, AgentDefaultOverridesSchema };
 
 export type AgentDefaultOverride = z.infer<typeof AgentDefaultOverrideSchema>;
 export type AgentDefaultOverrides = z.infer<typeof AgentDefaultOverridesSchema>;

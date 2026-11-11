@@ -167,7 +167,7 @@ Each machine runs one daemon that spawns sessions and Web terminals and keeps th
 - \`very-happy doctor\`: diagnostics; \`doctor clean\` kills runaway Very Happy processes (ask first).
 - \`very-happy sandbox status|configure|disable\`: OS-level sandbox for sessions. Disabling or widening it is a user decision.
 - \`very-happy server\`: run a self-hosted server + Web locally.
-- Machine settings live in \`$HAPPY_HOME_DIR/settings.json\` (default \`~/.happy\`). Hibernation, auto-restart and agent auto-update are set on the Web machine page. \`webPanels\` and \`todoProvider\` are only ever edited by the user by hand.
+- Machine settings live in \`$HAPPY_HOME_DIR/settings.json\` (default \`~/.happy\`). Hibernation, auto-update and terminal auto-restore: \`very-happy settings --scope machine\` or the Web machine page. \`webPanels\` and \`todoProvider\` are only ever edited by the user by hand.
 - Use a separate \`HAPPY_HOME_DIR\` for experiments; never point tests at the user's real home.`,
     },
     {
@@ -214,22 +214,23 @@ A machine declares panels in \`webPanels\` of its settings.json (\`[{ "id", "tit
     {
         id: 'settings',
         title: 'Settings',
-        summary: 'which configuration an agent can change today, and where the rest is changed',
+        summary: '`very-happy settings`: read and change settings; loosening changes need the owner\'s decision card',
         body: () => `# Settings
 
-Agents can change today:
-- Automations, Issues, My todos, team tasks: their CLI commands / MCP tools.
-- Claude / Codex accounts and the machine default account: \`very-happy account\`.
-- Sandbox: \`very-happy sandbox\` (disabling needs the user). Server URL: \`very-happy server\` / \`auth\` (needs the user).
-- Per session: \`spawn --permission-mode/--model\`, \`send --model\`.
+\`very-happy settings\` reads and changes Very Happy settings (JSON output; \`very-happy settings --help\`):
 
-Only in the Web:
-- Account settings (synced and encrypted with the account key: theme, language, new-session defaults, voice, prompt presets, terminal startup commands).
-- Project defaults and instructions; automation projects can also be set with \`auto --project\`.
-- Machine page: hibernation, auto-restart, agent auto-update, credential store.
-- Sharing, notification devices, sign-in.
+- \`very-happy settings list [--scope account|machine|project]\`: the writable keys with their current values.
+- \`very-happy settings get <key>\` / \`very-happy settings set <key> <json-value> [--reason "…"]\`. A bare key picks its scope; \`--project <id>\` (default: this session's project).
+- Scopes: \`account\` (synced settings: display, language, voice, new-session agent / model / effort per agent, \`claudeLongContextOptOut\`), \`machine\` (this machine: hibernation, auto-update, terminal auto-restore; written through the daemon when it runs), \`project\` (\`defaults.agent|model|worktree|permissionMode\`).
+- Only listed keys are writable; values are checked against the same schema the Web uses. \`todoProvider\`, \`webPanels\`, \`machineId\` and credential files are never written by it.
 
-Never edit another tool's credential files, and never loosen permissions, disable the sandbox, share, sign in or change who receives notifications without the user's explicit decision.`,
+Owner decision: loosening a permission mode (toward acceptEdits / bypass / yolo), turning on \`assistantSkipPermissions\`, disabling or widening the sandbox, server URLs, credential store, API keys, and commands that run by themselves (terminal startup commands, run-on-select shortcuts) exit 2 with \`needs_owner_decision\` and a \`cardId\` on this session's board. Tell the user, wait for their choice (it arrives as a chat message), then rerun the same command with \`--approved <cardId>\`. One card approves exactly one value once; 放弃 writes nothing. Tightening is written directly.
+
+Limits, stated plainly: the card governs this command only. It is not a sandbox or a permission mode — an agent with a shell can still edit local files such as \`settings.json\`; do not, and never work around a refusal.
+
+- \`settings_key_unavailable\` (account scope): this machine is paired without the account key. Give the user the returned Web settings link; there is no other path.
+- \`scope_denied\`: restricted team members only read settings.
+- Elsewhere: accounts \`very-happy account\`, sandbox \`very-happy sandbox\`, automations \`auto\`, per session \`spawn --permission-mode/--model\`. Project instructions, sharing, notification devices and sign-in stay in the Web.`,
     },
     {
         id: 'main-agent',
